@@ -7,7 +7,7 @@
   "mode": "simulate-wired",
   "verdict": "RED",
   "expectedVerdict": "RED",
-  "buildSha": "91cf6218f1590c6d7f10c05e8ea086c51a7c10ec",
+  "buildSha": "342d21401e31457f833345fc07a96e8bccf46e7a",
   "authoredAgainstBuild": "634448817",
   "lastProvenRedOnBuild": "634448817",
   "epsilon": 0,
@@ -24,7 +24,7 @@
     },
     "chartJs": "616c2208909b63021b2c2f0d37b8a2a7bc5ea3d68cce2e8871228f145941d9c8",
     "chartDataPipelineJs": "2bf874ebbfaf1c071a278955b622b3ac735e49b1ec57f8c437aa9c36bd31d724",
-    "sessionCalendarJs": "0e7b5ce819e5c5a26fda718adeb7663601f5393d524605975f2532b958dc9af9"
+    "sessionCalendarJs": "047fead814e71c357c0105e4a15e91c5aed3032963e5ea1d5fc0a040d77b8e70"
   },
   "frozenTodayBaseline": {
     "po1d": {
@@ -544,7 +544,7 @@
     {
       "cell": "E",
       "name": "monthly-never-enters-session-branch",
-      "detail": "actual=0 expected=0 stats={\"zoneOffsetLookups\":0,\"formatterCalls\":0,\"bucketStartCalls\":0,\"boundaryCacheHits\":0,\"boundaryRecomputes\":0,\"epochFallbacks\":0,\"registryLookups\":0,\"wallClockGapAdjustments\":0,\"wallClockTransitionCrossings\":0}"
+      "detail": "actual=0 expected=0 stats={\"zoneOffsetLookups\":0,\"formatterCalls\":0,\"bucketStartCalls\":0,\"boundaryCacheHits\":0,\"boundaryRecomputes\":0,\"epochFallbacks\":0,\"registryLookups\":0,\"registryUnavailable\":0,\"wallClockGapAdjustments\":0,\"wallClockTransitionCrossings\":0}"
     },
     {
       "cell": "F",
@@ -619,7 +619,7 @@
     {
       "cell": "F",
       "name": "intraday-never-enters-session-branch",
-      "detail": "actual=0 expected=0 stats={\"zoneOffsetLookups\":0,\"formatterCalls\":0,\"bucketStartCalls\":17284,\"boundaryCacheHits\":0,\"boundaryRecomputes\":0,\"epochFallbacks\":17284,\"registryLookups\":1,\"wallClockGapAdjustments\":0,\"wallClockTransitionCrossings\":0}"
+      "detail": "actual=0 expected=0 stats={\"zoneOffsetLookups\":0,\"formatterCalls\":0,\"bucketStartCalls\":17284,\"boundaryCacheHits\":0,\"boundaryRecomputes\":0,\"epochFallbacks\":17284,\"registryLookups\":1,\"registryUnavailable\":0,\"wallClockGapAdjustments\":0,\"wallClockTransitionCrossings\":0}"
     },
     {
       "cell": "F2",
@@ -665,6 +665,46 @@
       "cell": "N",
       "name": "chart.js-assigns-this.currentSymbol",
       "detail": "actual=true expected=true assignments=13"
+    },
+    {
+      "cell": "N",
+      "name": "patch-calls-only-methods-that-exist",
+      "detail": "actual=parseTimeframe expected=parseTimeframe"
+    },
+    {
+      "cell": "N",
+      "name": "chart.js-defines-method:parseTimeframe",
+      "detail": "actual=true expected=true"
+    },
+    {
+      "cell": "N",
+      "name": "internal-exclusions-are-all-used-by-the-patch",
+      "detail": "actual=[\"_sessionBucketStart\",\"_sessionClassCache\",\"_sessionClassCacheEngine\",\"_sessionClassCacheKey\",\"_sessionInstrumentClass\"] expected=[\"_sessionBucketStart\",\"_sessionClassCache\",\"_sessionClassCacheEngine\",\"_sessionClassCacheKey\",\"_sessionInstrumentClass\"]"
+    },
+    {
+      "cell": "N",
+      "name": "internal-property-is-not-a-product-read:_sessionBucketStart",
+      "detail": "actual=0 expected=0"
+    },
+    {
+      "cell": "N",
+      "name": "internal-property-is-not-a-product-read:_sessionInstrumentClass",
+      "detail": "actual=0 expected=0"
+    },
+    {
+      "cell": "N",
+      "name": "internal-property-is-not-a-product-read:_sessionClassCacheKey",
+      "detail": "actual=0 expected=0"
+    },
+    {
+      "cell": "N",
+      "name": "internal-property-is-not-a-product-read:_sessionClassCacheEngine",
+      "detail": "actual=0 expected=0"
+    },
+    {
+      "cell": "N",
+      "name": "internal-property-is-not-a-product-read:_sessionClassCache",
+      "detail": "actual=0 expected=0"
     },
     {
       "cell": "N",
@@ -927,6 +967,106 @@
       "detail": "actual=SessionCalendar.unresolved-instrument expected=SessionCalendar.unresolved-instrument"
     },
     {
+      "cell": "N2",
+      "name": "class-before-registry-is-null",
+      "detail": "actual=true expected=true"
+    },
+    {
+      "cell": "N2",
+      "name": "output-before-registry-is-todays",
+      "detail": "actual=89a9337f2df78ee8f00462d31e534898d1a1e1d71e6e147ecb76459b4aec1242 expected=89a9337f2df78ee8f00462d31e534898d1a1e1d71e6e147ecb76459b4aec1242 buckets=24"
+    },
+    {
+      "cell": "N2",
+      "name": "registry-is-now-present",
+      "detail": "actual=true expected=true"
+    },
+    {
+      "cell": "N2",
+      "name": "class-recovers-after-registry-loads",
+      "detail": "actual=fx expected=fx before=null after=fx"
+    },
+    {
+      "cell": "N2",
+      "name": "output-recovers-after-registry-loads",
+      "detail": "actual=false expected=false bucketsAfter=20 (20 = recovered, 24 = still poisoned)"
+    },
+    {
+      "cell": "N2",
+      "name": "recovered-bucket-count",
+      "detail": "actual=20 expected=20"
+    },
+    {
+      "cell": "N2",
+      "name": "recovered-friday-session-present",
+      "detail": "actual=true expected=true"
+    },
+    {
+      "cell": "N2",
+      "name": "incremental-path-recovers-too",
+      "detail": "actual=false expected=false len=20"
+    },
+    {
+      "cell": "N2",
+      "name": "identity-reason:registry-absent",
+      "detail": "actual=registry-unavailable expected=registry-unavailable"
+    },
+    {
+      "cell": "N2",
+      "name": "identity-cacheable:registry-absent",
+      "detail": "actual=false expected=false"
+    },
+    {
+      "cell": "N2",
+      "name": "identity-reason:registry-present-unknown-symbol",
+      "detail": "actual=symbol-not-registered expected=symbol-not-registered"
+    },
+    {
+      "cell": "N2",
+      "name": "identity-cacheable:registry-present-unknown-symbol",
+      "detail": "actual=true expected=true"
+    },
+    {
+      "cell": "N2",
+      "name": "identity-reason:registry-present-known-symbol",
+      "detail": "actual=resolved expected=resolved"
+    },
+    {
+      "cell": "N2",
+      "name": "identity-cacheable:registry-present-known-symbol",
+      "detail": "actual=true expected=true"
+    },
+    {
+      "cell": "N2",
+      "name": "identity-reason:empty-symbol",
+      "detail": "actual=no-symbol expected=no-symbol"
+    },
+    {
+      "cell": "N2",
+      "name": "identity-cacheable:empty-symbol",
+      "detail": "actual=true expected=true"
+    },
+    {
+      "cell": "N2",
+      "name": "identity-reason:registry-throws",
+      "detail": "actual=registry-threw expected=registry-threw"
+    },
+    {
+      "cell": "N2",
+      "name": "identity-cacheable:registry-throws",
+      "detail": "actual=false expected=false"
+    },
+    {
+      "cell": "N2",
+      "name": "wiring-honours-the-cacheable-contract",
+      "detail": "actual=true expected=true"
+    },
+    {
+      "cell": "N2",
+      "name": "wiring-keys-cache-on-engine-reference",
+      "detail": "actual=true expected=true"
+    },
+    {
       "cell": "G",
       "name": "1d-incremental-path-actually-ran",
       "detail": "actual=479 expected=479"
@@ -1132,11 +1272,6 @@
       "detail": "actual=0 expected=0"
     },
     {
-      "cell": "K",
-      "name": "dst-ambiguity-branch-unreached-for-implemented-classes",
-      "detail": "actual=0 expected=0"
-    },
-    {
       "cell": "K2",
       "name": "diagnostic-exists:wallClockGapAdjustments",
       "detail": "actual=number expected=number"
@@ -1153,11 +1288,6 @@
     },
     {
       "cell": "K2",
-      "name": "ambiguity-branch-never-taken-across-both-transitions",
-      "detail": "actual=0 expected=0"
-    },
-    {
-      "cell": "K2",
       "name": "gap-policy-documented",
       "detail": "actual=true expected=true"
     },
@@ -1165,6 +1295,21 @@
       "cell": "K2",
       "name": "ambiguity-policy-documented",
       "detail": "actual=true expected=true"
+    },
+    {
+      "cell": "K2",
+      "name": "source-states-ambiguity-branch-is-unguarded",
+      "detail": "actual=true expected=true"
+    },
+    {
+      "cell": "K2",
+      "name": "source-warns-tripwire-is-not-a-detector",
+      "detail": "actual=true expected=true"
+    },
+    {
+      "cell": "K2",
+      "name": "no-cell-asserts-zero-on-the-ambiguity-counter",
+      "detail": "actual=false expected=false"
     },
     {
       "cell": "L",
@@ -1214,7 +1359,7 @@
     {
       "cell": "M",
       "name": "contract-version-matches-helper",
-      "detail": "actual=20260728b82 expected=20260728b82"
+      "detail": "actual=20260728b83 expected=20260728b83"
     },
     {
       "cell": "M",
@@ -1239,7 +1384,7 @@
     {
       "cell": "M",
       "name": "dual-tree-mirror-byte-identical",
-      "detail": "actual=0e7b5ce819e5c5a26fda718adeb7663601f5393d524605975f2532b958dc9af9 expected=0e7b5ce819e5c5a26fda718adeb7663601f5393d524605975f2532b958dc9af9"
+      "detail": "actual=047fead814e71c357c0105e4a15e91c5aed3032963e5ea1d5fc0a040d77b8e70 expected=047fead814e71c357c0105e4a15e91c5aed3032963e5ea1d5fc0a040d77b8e70"
     },
     {
       "cell": "M",
@@ -1377,6 +1522,91 @@
       "detail": "actual=fec27bbe39e42b71e9de44049710a3883ba1e54d343280b18e1083f2f2f83be3 expected=fec27bbe39e42b71e9de44049710a3883ba1e54d343280b18e1083f2f2f83be3"
     },
     {
+      "cell": "M4",
+      "name": "shell-count-loading-chart-js",
+      "detail": "actual=8 expected=8 6 script-tag shells + 2 JS-loader shells"
+    },
+    {
+      "cell": "M4",
+      "name": "declares-chart-js:chart v 1.4/chart/dist-v9/index.html",
+      "detail": "actual=true expected=true"
+    },
+    {
+      "cell": "M4",
+      "name": "declares-chart-js:homepage/public/chart/dist-v9/index.html",
+      "detail": "actual=true expected=true"
+    },
+    {
+      "cell": "M4",
+      "name": "declares-chart-js:chart v 1.4/chart/legacy-index.html",
+      "detail": "actual=true expected=true"
+    },
+    {
+      "cell": "M4",
+      "name": "declares-chart-js:homepage/public/chart/legacy-index.html",
+      "detail": "actual=true expected=true"
+    },
+    {
+      "cell": "M4",
+      "name": "declares-chart-js:chart v 1.4/chart/multichart/chart-host.html",
+      "detail": "actual=true expected=true"
+    },
+    {
+      "cell": "M4",
+      "name": "declares-chart-js:homepage/public/chart/multichart/chart-host.html",
+      "detail": "actual=true expected=true"
+    },
+    {
+      "cell": "M4",
+      "name": "declares-chart-js:chart v 1.4/chart/multichart-prod/chart-embed.html",
+      "detail": "actual=true expected=true"
+    },
+    {
+      "cell": "M4",
+      "name": "declares-chart-js:homepage/public/chart/multichart-prod/chart-embed.html",
+      "detail": "actual=true expected=true"
+    },
+    {
+      "cell": "M4",
+      "name": "shells-with-registry-declared-before-chart",
+      "detail": "actual=[\"chart v 1.4/chart/dist-v9/index.html\",\"chart v 1.4/chart/multichart-prod/chart-embed.html\",\"homepage/public/chart/dist-v9/index.html\",\"homepage/public/chart/multichart-prod/chart-embed.html\"] expected=[\"chart v 1.4/chart/dist-v9/index.html\",\"chart v 1.4/chart/multichart-prod/chart-embed.html\",\"homepage/public/chart/dist-v9/index.html\",\"homepage/public/chart/multichart-prod/chart-embed.html\"]"
+    },
+    {
+      "cell": "M4",
+      "name": "shells-with-INVERTED-order",
+      "detail": "actual=[\"chart v 1.4/chart/legacy-index.html\",\"homepage/public/chart/legacy-index.html\"] expected=[\"chart v 1.4/chart/legacy-index.html\",\"homepage/public/chart/legacy-index.html\"]"
+    },
+    {
+      "cell": "M4",
+      "name": "shells-with-registry-ABSENT",
+      "detail": "actual=[\"chart v 1.4/chart/multichart/chart-host.html\",\"homepage/public/chart/multichart/chart-host.html\"] expected=[\"chart v 1.4/chart/multichart/chart-host.html\",\"homepage/public/chart/multichart/chart-host.html\"]"
+    },
+    {
+      "cell": "M4",
+      "name": "shell-mirror-same-load-order:index.html",
+      "detail": "actual=59|/chart/chart.js?v=20260727b80|/chart/modules/market-calculations.js?v=20260727b80|true expected=59|/chart/chart.js?v=20260727b80|/chart/modules/market-calculations.js?v=20260727b80|true"
+    },
+    {
+      "cell": "M4",
+      "name": "shell-mirror-same-load-order:legacy-index.html",
+      "detail": "actual=58|chart.js?v=20260727b80|modules/market-calculations.js?v=20260727b80|false expected=58|chart.js?v=20260727b80|modules/market-calculations.js?v=20260727b80|false"
+    },
+    {
+      "cell": "M4",
+      "name": "shell-mirror-same-load-order:chart-host.html",
+      "detail": "actual=4|../chart.js|null|null expected=4|../chart.js|null|null"
+    },
+    {
+      "cell": "M4",
+      "name": "shell-mirror-same-load-order:chart-embed.html",
+      "detail": "actual=54|/chart/chart.js|/chart/modules/market-calculations.js|true expected=54|/chart/chart.js|/chart/modules/market-calculations.js|true"
+    },
+    {
+      "cell": "M4",
+      "name": "registry-absent-shell-announces-degradation",
+      "detail": "actual=SessionCalendar.unresolved-instrument expected=SessionCalendar.unresolved-instrument"
+    },
+    {
       "cell": "M2",
       "name": "full-path-consumes-the-shared-helper",
       "detail": "actual=false expected=false before=2494a31213a98d6c after=89a9337f2df78ee8"
@@ -1390,6 +1620,176 @@
       "cell": "M2",
       "name": "stubbing-one-helper-moves-both-paths-together",
       "detail": "actual=89a9337f2df78ee8f00462d31e534898d1a1e1d71e6e147ecb76459b4aec1242 expected=89a9337f2df78ee8f00462d31e534898d1a1e1d71e6e147ecb76459b4aec1242"
+    },
+    {
+      "cell": "M2",
+      "name": "epoch-flooring-site-still-present:chart.js",
+      "detail": "actual=true expected=true"
+    },
+    {
+      "cell": "M2",
+      "name": "epoch-flooring-site-still-present:chart-data-pipeline.js",
+      "detail": "actual=true expected=true"
+    },
+    {
+      "cell": "M2",
+      "name": "epoch-flooring-site-still-present:talaria-fvg-indicator.js",
+      "detail": "actual=true expected=true"
+    },
+    {
+      "cell": "M2",
+      "name": "known-epoch-flooring-sites",
+      "detail": "actual=3 expected=3"
+    },
+    {
+      "cell": "M2",
+      "name": "sites-this-packet-wires",
+      "detail": "actual=2 expected=2"
+    },
+    {
+      "cell": "M2",
+      "name": "fvg-timeframe-parser-accepts-day-and-week",
+      "detail": "actual=true expected=true"
+    },
+    {
+      "cell": "P",
+      "name": "server-rule-unchanged:def _is_weekend_timestamp_ms(ts)",
+      "detail": "actual=true expected=true"
+    },
+    {
+      "cell": "P",
+      "name": "server-rule-unchanged:ZoneInfo(\"America/New_York\")",
+      "detail": "actual=true expected=true"
+    },
+    {
+      "cell": "P",
+      "name": "server-rule-unchanged:if wd == 5:",
+      "detail": "actual=true expected=true"
+    },
+    {
+      "cell": "P",
+      "name": "server-rule-unchanged:if wd == 6 and local.hour < 17:",
+      "detail": "actual=true expected=true"
+    },
+    {
+      "cell": "P",
+      "name": "server-rule-unchanged:if wd == 4 and local.hour >= 17:",
+      "detail": "actual=true expected=true"
+    },
+    {
+      "cell": "P",
+      "name": "server-transitions-are-one-close-and-one-reopen-per-week",
+      "detail": "actual=156/156 expected=156/156"
+    },
+    {
+      "cell": "P",
+      "name": "every-server-close-is-exactly-a-daily-session-open",
+      "detail": "actual=0 expected=0"
+    },
+    {
+      "cell": "P",
+      "name": "every-server-reopen-is-exactly-a-daily-session-open",
+      "detail": "actual=0 expected=0"
+    },
+    {
+      "cell": "P",
+      "name": "every-server-reopen-is-exactly-a-WEEKLY-session-open",
+      "detail": "actual=0 expected=0"
+    },
+    {
+      "cell": "P",
+      "name": "helper-produces-exactly-as-many-week-opens-as-the-server",
+      "detail": "actual=156 expected=156"
+    },
+    {
+      "cell": "P",
+      "name": "no-week-open-that-the-server-does-not-also-reopen-at",
+      "detail": "actual=0 expected=0"
+    },
+    {
+      "cell": "P",
+      "name": "single-local-anchor-for-every-week-open-over-three-years",
+      "detail": "actual=[\"wd6@17:00\"] expected=[\"wd6@17:00\"]"
+    },
+    {
+      "cell": "Q",
+      "name": "explicit-anchor-reproduces-class-bucketing-daily",
+      "detail": "actual=480 expected=480"
+    },
+    {
+      "cell": "Q",
+      "name": "explicit-anchor-reproduces-class-bucketing-weekly",
+      "detail": "actual=480 expected=480"
+    },
+    {
+      "cell": "Q",
+      "name": "named-anchors-declared",
+      "detail": "actual=[\"fvg-18-et\",\"weekly-map-mon\"] expected=[\"fvg-18-et\",\"weekly-map-mon\"]"
+    },
+    {
+      "cell": "Q",
+      "name": "fvg-anchor-is-18:00-america-new-york",
+      "detail": "actual=America/New_York@1080 expected=America/New_York@1080"
+    },
+    {
+      "cell": "Q",
+      "name": "weekly-map-anchor-is-monday-00:00-america-new-york",
+      "detail": "actual=America/New_York@0/wd1 expected=America/New_York@0/wd1"
+    },
+    {
+      "cell": "Q",
+      "name": "named-anchor-is-declared-not-wired:fvg-18-et",
+      "detail": "actual=declared expected=declared"
+    },
+    {
+      "cell": "Q",
+      "name": "named-anchor-is-declared-not-wired:weekly-map-mon",
+      "detail": "actual=declared expected=declared"
+    },
+    {
+      "cell": "Q",
+      "name": "fvg-anchor-opens-at-local-18:00:winter",
+      "detail": "actual=18:00 expected=18:00"
+    },
+    {
+      "cell": "Q",
+      "name": "weekly-map-anchor-opens-monday-local-00:00:winter",
+      "detail": "actual=Mon 00:00 expected=Mon 00:00"
+    },
+    {
+      "cell": "Q",
+      "name": "fvg-anchor-opens-at-local-18:00:summer",
+      "detail": "actual=18:00 expected=18:00"
+    },
+    {
+      "cell": "Q",
+      "name": "weekly-map-anchor-opens-monday-local-00:00:summer",
+      "detail": "actual=Mon 00:00 expected=Mon 00:00"
+    },
+    {
+      "cell": "Q",
+      "name": "fvg-anchor-differs-from-fx-session-open-by-exactly-one-hour",
+      "detail": "actual=3600000 expected=3600000"
+    },
+    {
+      "cell": "Q",
+      "name": "malformed-anchor-fails-closed:missing-zone",
+      "detail": "actual=1358208000000 expected=1358208000000"
+    },
+    {
+      "cell": "Q",
+      "name": "malformed-anchor-fails-closed:minute-out-of-range",
+      "detail": "actual=1358208000000 expected=1358208000000"
+    },
+    {
+      "cell": "Q",
+      "name": "malformed-anchor-fails-closed:weekday-out-of-range",
+      "detail": "actual=1358208000000 expected=1358208000000"
+    },
+    {
+      "cell": "Q",
+      "name": "malformed-anchor-fails-closed:not-an-object",
+      "detail": "actual=1358208000000 expected=1358208000000"
     }
   ],
   "rows": [
@@ -1997,7 +2397,7 @@
       "cell": "E",
       "name": "monthly-never-enters-session-branch",
       "pass": false,
-      "detail": "actual=0 expected=0 stats={\"zoneOffsetLookups\":0,\"formatterCalls\":0,\"bucketStartCalls\":0,\"boundaryCacheHits\":0,\"boundaryRecomputes\":0,\"epochFallbacks\":0,\"registryLookups\":0,\"wallClockGapAdjustments\":0,\"wallClockTransitionCrossings\":0}"
+      "detail": "actual=0 expected=0 stats={\"zoneOffsetLookups\":0,\"formatterCalls\":0,\"bucketStartCalls\":0,\"boundaryCacheHits\":0,\"boundaryRecomputes\":0,\"epochFallbacks\":0,\"registryLookups\":0,\"registryUnavailable\":0,\"wallClockGapAdjustments\":0,\"wallClockTransitionCrossings\":0}"
     },
     {
       "cell": "F",
@@ -2087,7 +2487,7 @@
       "cell": "F",
       "name": "intraday-never-enters-session-branch",
       "pass": false,
-      "detail": "actual=0 expected=0 stats={\"zoneOffsetLookups\":0,\"formatterCalls\":0,\"bucketStartCalls\":17284,\"boundaryCacheHits\":0,\"boundaryRecomputes\":0,\"epochFallbacks\":17284,\"registryLookups\":1,\"wallClockGapAdjustments\":0,\"wallClockTransitionCrossings\":0}"
+      "detail": "actual=0 expected=0 stats={\"zoneOffsetLookups\":0,\"formatterCalls\":0,\"bucketStartCalls\":17284,\"boundaryCacheHits\":0,\"boundaryRecomputes\":0,\"epochFallbacks\":17284,\"registryLookups\":1,\"registryUnavailable\":0,\"wallClockGapAdjustments\":0,\"wallClockTransitionCrossings\":0}"
     },
     {
       "cell": "F2",
@@ -2142,6 +2542,54 @@
       "name": "chart.js-assigns-this.currentSymbol",
       "pass": false,
       "detail": "actual=true expected=true assignments=13"
+    },
+    {
+      "cell": "N",
+      "name": "patch-calls-only-methods-that-exist",
+      "pass": false,
+      "detail": "actual=parseTimeframe expected=parseTimeframe"
+    },
+    {
+      "cell": "N",
+      "name": "chart.js-defines-method:parseTimeframe",
+      "pass": false,
+      "detail": "actual=true expected=true"
+    },
+    {
+      "cell": "N",
+      "name": "internal-exclusions-are-all-used-by-the-patch",
+      "pass": false,
+      "detail": "actual=[\"_sessionBucketStart\",\"_sessionClassCache\",\"_sessionClassCacheEngine\",\"_sessionClassCacheKey\",\"_sessionInstrumentClass\"] expected=[\"_sessionBucketStart\",\"_sessionClassCache\",\"_sessionClassCacheEngine\",\"_sessionClassCacheKey\",\"_sessionInstrumentClass\"]"
+    },
+    {
+      "cell": "N",
+      "name": "internal-property-is-not-a-product-read:_sessionBucketStart",
+      "pass": false,
+      "detail": "actual=0 expected=0"
+    },
+    {
+      "cell": "N",
+      "name": "internal-property-is-not-a-product-read:_sessionInstrumentClass",
+      "pass": false,
+      "detail": "actual=0 expected=0"
+    },
+    {
+      "cell": "N",
+      "name": "internal-property-is-not-a-product-read:_sessionClassCacheKey",
+      "pass": false,
+      "detail": "actual=0 expected=0"
+    },
+    {
+      "cell": "N",
+      "name": "internal-property-is-not-a-product-read:_sessionClassCacheEngine",
+      "pass": false,
+      "detail": "actual=0 expected=0"
+    },
+    {
+      "cell": "N",
+      "name": "internal-property-is-not-a-product-read:_sessionClassCache",
+      "pass": false,
+      "detail": "actual=0 expected=0"
     },
     {
       "cell": "N",
@@ -2456,6 +2904,126 @@
       "detail": "actual=SessionCalendar.unresolved-instrument expected=SessionCalendar.unresolved-instrument"
     },
     {
+      "cell": "N2",
+      "name": "class-before-registry-is-null",
+      "pass": false,
+      "detail": "actual=true expected=true"
+    },
+    {
+      "cell": "N2",
+      "name": "output-before-registry-is-todays",
+      "pass": false,
+      "detail": "actual=89a9337f2df78ee8f00462d31e534898d1a1e1d71e6e147ecb76459b4aec1242 expected=89a9337f2df78ee8f00462d31e534898d1a1e1d71e6e147ecb76459b4aec1242 buckets=24"
+    },
+    {
+      "cell": "N2",
+      "name": "registry-is-now-present",
+      "pass": false,
+      "detail": "actual=true expected=true"
+    },
+    {
+      "cell": "N2",
+      "name": "class-recovers-after-registry-loads",
+      "pass": false,
+      "detail": "actual=fx expected=fx before=null after=fx"
+    },
+    {
+      "cell": "N2",
+      "name": "output-recovers-after-registry-loads",
+      "pass": false,
+      "detail": "actual=false expected=false bucketsAfter=20 (20 = recovered, 24 = still poisoned)"
+    },
+    {
+      "cell": "N2",
+      "name": "recovered-bucket-count",
+      "pass": false,
+      "detail": "actual=20 expected=20"
+    },
+    {
+      "cell": "N2",
+      "name": "recovered-friday-session-present",
+      "pass": false,
+      "detail": "actual=true expected=true"
+    },
+    {
+      "cell": "N2",
+      "name": "incremental-path-recovers-too",
+      "pass": false,
+      "detail": "actual=false expected=false len=20"
+    },
+    {
+      "cell": "N2",
+      "name": "identity-reason:registry-absent",
+      "pass": false,
+      "detail": "actual=registry-unavailable expected=registry-unavailable"
+    },
+    {
+      "cell": "N2",
+      "name": "identity-cacheable:registry-absent",
+      "pass": false,
+      "detail": "actual=false expected=false"
+    },
+    {
+      "cell": "N2",
+      "name": "identity-reason:registry-present-unknown-symbol",
+      "pass": false,
+      "detail": "actual=symbol-not-registered expected=symbol-not-registered"
+    },
+    {
+      "cell": "N2",
+      "name": "identity-cacheable:registry-present-unknown-symbol",
+      "pass": false,
+      "detail": "actual=true expected=true"
+    },
+    {
+      "cell": "N2",
+      "name": "identity-reason:registry-present-known-symbol",
+      "pass": false,
+      "detail": "actual=resolved expected=resolved"
+    },
+    {
+      "cell": "N2",
+      "name": "identity-cacheable:registry-present-known-symbol",
+      "pass": false,
+      "detail": "actual=true expected=true"
+    },
+    {
+      "cell": "N2",
+      "name": "identity-reason:empty-symbol",
+      "pass": false,
+      "detail": "actual=no-symbol expected=no-symbol"
+    },
+    {
+      "cell": "N2",
+      "name": "identity-cacheable:empty-symbol",
+      "pass": false,
+      "detail": "actual=true expected=true"
+    },
+    {
+      "cell": "N2",
+      "name": "identity-reason:registry-throws",
+      "pass": false,
+      "detail": "actual=registry-threw expected=registry-threw"
+    },
+    {
+      "cell": "N2",
+      "name": "identity-cacheable:registry-throws",
+      "pass": false,
+      "detail": "actual=false expected=false"
+    },
+    {
+      "cell": "N2",
+      "name": "wiring-honours-the-cacheable-contract",
+      "pass": false,
+      "detail": "actual=true expected=true"
+    },
+    {
+      "cell": "N2",
+      "name": "wiring-keys-cache-on-engine-reference",
+      "pass": false,
+      "detail": "actual=true expected=true"
+    },
+    {
       "cell": "G",
       "name": "1d-incremental-path-actually-ran",
       "pass": false,
@@ -2669,7 +3237,7 @@
       "cell": "K",
       "name": "stats",
       "pass": true,
-      "detail": "{\"zoneOffsetLookups\":128,\"formatterCalls\":194,\"bucketStartCalls\":44641,\"boundaryCacheHits\":44609,\"boundaryRecomputes\":32,\"epochFallbacks\":0,\"registryLookups\":1,\"wallClockGapAdjustments\":0,\"wallClockTransitionCrossings\":0} bars=44640"
+      "detail": "{\"zoneOffsetLookups\":128,\"formatterCalls\":194,\"bucketStartCalls\":44641,\"boundaryCacheHits\":44609,\"boundaryRecomputes\":32,\"epochFallbacks\":0,\"registryLookups\":1,\"registryUnavailable\":0,\"wallClockGapAdjustments\":0,\"wallClockTransitionCrossings\":0} bars=44640"
     },
     {
       "cell": "K",
@@ -2715,9 +3283,9 @@
     },
     {
       "cell": "K",
-      "name": "dst-ambiguity-branch-unreached-for-implemented-classes",
-      "pass": false,
-      "detail": "actual=0 expected=0"
+      "name": "dst-near-transition-tripwire",
+      "pass": true,
+      "detail": "wallClockTransitionCrossings=0 (near-transition tripwire, NOT an ambiguity gate)"
     },
     {
       "cell": "K2",
@@ -2735,7 +3303,7 @@
       "cell": "K2",
       "name": "stats-across-all-dst-fixtures",
       "pass": true,
-      "detail": "{\"zoneOffsetLookups\":280,\"formatterCalls\":404,\"bucketStartCalls\":2310,\"boundaryCacheHits\":2250,\"boundaryRecomputes\":60,\"epochFallbacks\":0,\"registryLookups\":1,\"wallClockGapAdjustments\":0,\"wallClockTransitionCrossings\":0}"
+      "detail": "{\"zoneOffsetLookups\":280,\"formatterCalls\":404,\"bucketStartCalls\":2310,\"boundaryCacheHits\":2250,\"boundaryRecomputes\":60,\"epochFallbacks\":0,\"registryLookups\":1,\"registryUnavailable\":0,\"wallClockGapAdjustments\":0,\"wallClockTransitionCrossings\":0}"
     },
     {
       "cell": "K2",
@@ -2745,9 +3313,9 @@
     },
     {
       "cell": "K2",
-      "name": "ambiguity-branch-never-taken-across-both-transitions",
-      "pass": false,
-      "detail": "actual=0 expected=0"
+      "name": "ambiguity-branch-is-UNGUARDED",
+      "pass": true,
+      "detail": "wallClockTransitionCrossings=0 — near-transition tripwire only; a genuinely ambiguous wall time can read zero here. The branch has no detector."
     },
     {
       "cell": "K2",
@@ -2760,6 +3328,24 @@
       "name": "ambiguity-policy-documented",
       "pass": false,
       "detail": "actual=true expected=true"
+    },
+    {
+      "cell": "K2",
+      "name": "source-states-ambiguity-branch-is-unguarded",
+      "pass": false,
+      "detail": "actual=true expected=true"
+    },
+    {
+      "cell": "K2",
+      "name": "source-warns-tripwire-is-not-a-detector",
+      "pass": false,
+      "detail": "actual=true expected=true"
+    },
+    {
+      "cell": "K2",
+      "name": "no-cell-asserts-zero-on-the-ambiguity-counter",
+      "pass": false,
+      "detail": "actual=false expected=false"
     },
     {
       "cell": "L",
@@ -2819,7 +3405,7 @@
       "cell": "M",
       "name": "contract-version-matches-helper",
       "pass": false,
-      "detail": "actual=20260728b82 expected=20260728b82"
+      "detail": "actual=20260728b83 expected=20260728b83"
     },
     {
       "cell": "M",
@@ -2849,7 +3435,7 @@
       "cell": "M",
       "name": "dual-tree-mirror-byte-identical",
       "pass": false,
-      "detail": "actual=0e7b5ce819e5c5a26fda718adeb7663601f5393d524605975f2532b958dc9af9 expected=0e7b5ce819e5c5a26fda718adeb7663601f5393d524605975f2532b958dc9af9"
+      "detail": "actual=047fead814e71c357c0105e4a15e91c5aed3032963e5ea1d5fc0a040d77b8e70 expected=047fead814e71c357c0105e4a15e91c5aed3032963e5ea1d5fc0a040d77b8e70"
     },
     {
       "cell": "M",
@@ -3020,6 +3606,162 @@
       "detail": "chart v 1.4/chart/chart.js | homepage/public/chart/chart.js | chart v 1.4/chart/modules/chart-data-pipeline.js | homepage/public/chart/modules/chart-data-pipeline.js | chart v 1.4/chart/modules/session-calendar.js | homepage/public/chart/modules/session-calendar.js"
     },
     {
+      "cell": "M4",
+      "name": "shell-count-loading-chart-js",
+      "pass": false,
+      "detail": "actual=8 expected=8 6 script-tag shells + 2 JS-loader shells"
+    },
+    {
+      "cell": "M4",
+      "name": "declares-chart-js:chart v 1.4/chart/dist-v9/index.html",
+      "pass": false,
+      "detail": "actual=true expected=true"
+    },
+    {
+      "cell": "M4",
+      "name": "declares-chart-js:homepage/public/chart/dist-v9/index.html",
+      "pass": false,
+      "detail": "actual=true expected=true"
+    },
+    {
+      "cell": "M4",
+      "name": "declares-chart-js:chart v 1.4/chart/legacy-index.html",
+      "pass": false,
+      "detail": "actual=true expected=true"
+    },
+    {
+      "cell": "M4",
+      "name": "declares-chart-js:homepage/public/chart/legacy-index.html",
+      "pass": false,
+      "detail": "actual=true expected=true"
+    },
+    {
+      "cell": "M4",
+      "name": "declares-chart-js:chart v 1.4/chart/multichart/chart-host.html",
+      "pass": false,
+      "detail": "actual=true expected=true"
+    },
+    {
+      "cell": "M4",
+      "name": "declares-chart-js:homepage/public/chart/multichart/chart-host.html",
+      "pass": false,
+      "detail": "actual=true expected=true"
+    },
+    {
+      "cell": "M4",
+      "name": "declares-chart-js:chart v 1.4/chart/multichart-prod/chart-embed.html",
+      "pass": false,
+      "detail": "actual=true expected=true"
+    },
+    {
+      "cell": "M4",
+      "name": "declares-chart-js:homepage/public/chart/multichart-prod/chart-embed.html",
+      "pass": false,
+      "detail": "actual=true expected=true"
+    },
+    {
+      "cell": "M4",
+      "name": "shells-with-registry-declared-before-chart",
+      "pass": false,
+      "detail": "actual=[\"chart v 1.4/chart/dist-v9/index.html\",\"chart v 1.4/chart/multichart-prod/chart-embed.html\",\"homepage/public/chart/dist-v9/index.html\",\"homepage/public/chart/multichart-prod/chart-embed.html\"] expected=[\"chart v 1.4/chart/dist-v9/index.html\",\"chart v 1.4/chart/multichart-prod/chart-embed.html\",\"homepage/public/chart/dist-v9/index.html\",\"homepage/public/chart/multichart-prod/chart-embed.html\"]"
+    },
+    {
+      "cell": "M4",
+      "name": "shells-with-INVERTED-order",
+      "pass": false,
+      "detail": "actual=[\"chart v 1.4/chart/legacy-index.html\",\"homepage/public/chart/legacy-index.html\"] expected=[\"chart v 1.4/chart/legacy-index.html\",\"homepage/public/chart/legacy-index.html\"]"
+    },
+    {
+      "cell": "M4",
+      "name": "shells-with-registry-ABSENT",
+      "pass": false,
+      "detail": "actual=[\"chart v 1.4/chart/multichart/chart-host.html\",\"homepage/public/chart/multichart/chart-host.html\"] expected=[\"chart v 1.4/chart/multichart/chart-host.html\",\"homepage/public/chart/multichart/chart-host.html\"]"
+    },
+    {
+      "cell": "M4",
+      "name": "order:chart v 1.4/chart/dist-v9/index.html",
+      "pass": true,
+      "detail": "mechanism=script-tag scripts=59 chart.js@1613[defer] market-calculations@1540[defer] => ordered"
+    },
+    {
+      "cell": "M4",
+      "name": "order:homepage/public/chart/dist-v9/index.html",
+      "pass": true,
+      "detail": "mechanism=script-tag scripts=59 chart.js@1613[defer] market-calculations@1540[defer] => ordered"
+    },
+    {
+      "cell": "M4",
+      "name": "order:chart v 1.4/chart/legacy-index.html",
+      "pass": true,
+      "detail": "mechanism=script-tag scripts=58 chart.js@44062[defer] market-calculations@44074[defer] => INVERTED"
+    },
+    {
+      "cell": "M4",
+      "name": "order:homepage/public/chart/legacy-index.html",
+      "pass": true,
+      "detail": "mechanism=script-tag scripts=58 chart.js@44062[defer] market-calculations@44074[defer] => INVERTED"
+    },
+    {
+      "cell": "M4",
+      "name": "order:chart v 1.4/chart/multichart/chart-host.html",
+      "pass": true,
+      "detail": "mechanism=script-tag scripts=4 chart.js@294[sync] market-calculations@ABSENT => ABSENT"
+    },
+    {
+      "cell": "M4",
+      "name": "order:homepage/public/chart/multichart/chart-host.html",
+      "pass": true,
+      "detail": "mechanism=script-tag scripts=4 chart.js@294[sync] market-calculations@ABSENT => ABSENT"
+    },
+    {
+      "cell": "M4",
+      "name": "order:chart v 1.4/chart/multichart-prod/chart-embed.html",
+      "pass": true,
+      "detail": "mechanism=js-loader-array scripts=54 chart.js@348[js-loader-array] market-calculations@317[js-loader-array] => ordered"
+    },
+    {
+      "cell": "M4",
+      "name": "order:homepage/public/chart/multichart-prod/chart-embed.html",
+      "pass": true,
+      "detail": "mechanism=js-loader-array scripts=54 chart.js@348[js-loader-array] market-calculations@317[js-loader-array] => ordered"
+    },
+    {
+      "cell": "M4",
+      "name": "shell-mirror-same-load-order:index.html",
+      "pass": false,
+      "detail": "actual=59|/chart/chart.js?v=20260727b80|/chart/modules/market-calculations.js?v=20260727b80|true expected=59|/chart/chart.js?v=20260727b80|/chart/modules/market-calculations.js?v=20260727b80|true"
+    },
+    {
+      "cell": "M4",
+      "name": "shell-mirror-same-load-order:legacy-index.html",
+      "pass": false,
+      "detail": "actual=58|chart.js?v=20260727b80|modules/market-calculations.js?v=20260727b80|false expected=58|chart.js?v=20260727b80|modules/market-calculations.js?v=20260727b80|false"
+    },
+    {
+      "cell": "M4",
+      "name": "shell-mirror-same-load-order:chart-host.html",
+      "pass": false,
+      "detail": "actual=4|../chart.js|null|null expected=4|../chart.js|null|null"
+    },
+    {
+      "cell": "M4",
+      "name": "UNMIRRORED-DRIFT:chart-host.html",
+      "pass": true,
+      "detail": "source and served trees differ in body (not in script order) — reported, not touched"
+    },
+    {
+      "cell": "M4",
+      "name": "shell-mirror-same-load-order:chart-embed.html",
+      "pass": false,
+      "detail": "actual=54|/chart/chart.js|/chart/modules/market-calculations.js|true expected=54|/chart/chart.js|/chart/modules/market-calculations.js|true"
+    },
+    {
+      "cell": "M4",
+      "name": "registry-absent-shell-announces-degradation",
+      "pass": false,
+      "detail": "actual=SessionCalendar.unresolved-instrument expected=SessionCalendar.unresolved-instrument"
+    },
+    {
       "cell": "M2",
       "name": "full-path-consumes-the-shared-helper",
       "pass": false,
@@ -3036,6 +3778,222 @@
       "name": "stubbing-one-helper-moves-both-paths-together",
       "pass": false,
       "detail": "actual=89a9337f2df78ee8f00462d31e534898d1a1e1d71e6e147ecb76459b4aec1242 expected=89a9337f2df78ee8f00462d31e534898d1a1e1d71e6e147ecb76459b4aec1242"
+    },
+    {
+      "cell": "M2",
+      "name": "epoch-flooring-site-still-present:chart.js",
+      "pass": false,
+      "detail": "actual=true expected=true"
+    },
+    {
+      "cell": "M2",
+      "name": "epoch-flooring-site-still-present:chart-data-pipeline.js",
+      "pass": false,
+      "detail": "actual=true expected=true"
+    },
+    {
+      "cell": "M2",
+      "name": "epoch-flooring-site-still-present:talaria-fvg-indicator.js",
+      "pass": false,
+      "detail": "actual=true expected=true"
+    },
+    {
+      "cell": "M2",
+      "name": "known-epoch-flooring-sites",
+      "pass": false,
+      "detail": "actual=3 expected=3"
+    },
+    {
+      "cell": "M2",
+      "name": "sites-this-packet-wires",
+      "pass": false,
+      "detail": "actual=2 expected=2"
+    },
+    {
+      "cell": "M2",
+      "name": "fvg-timeframe-parser-accepts-day-and-week",
+      "pass": false,
+      "detail": "actual=true expected=true"
+    },
+    {
+      "cell": "M2",
+      "name": "third-site-is-a-separate-row",
+      "pass": true,
+      "detail": "talaria-fvg-indicator.js periodStart() floors to the UTC epoch for d/w — NOT wired here"
+    },
+    {
+      "cell": "P",
+      "name": "server-rule-unchanged:def _is_weekend_timestamp_ms(ts)",
+      "pass": false,
+      "detail": "actual=true expected=true"
+    },
+    {
+      "cell": "P",
+      "name": "server-rule-unchanged:ZoneInfo(\"America/New_York\")",
+      "pass": false,
+      "detail": "actual=true expected=true"
+    },
+    {
+      "cell": "P",
+      "name": "server-rule-unchanged:if wd == 5:",
+      "pass": false,
+      "detail": "actual=true expected=true"
+    },
+    {
+      "cell": "P",
+      "name": "server-rule-unchanged:if wd == 6 and local.hour < 17:",
+      "pass": false,
+      "detail": "actual=true expected=true"
+    },
+    {
+      "cell": "P",
+      "name": "server-rule-unchanged:if wd == 4 and local.hour >= 17:",
+      "pass": false,
+      "detail": "actual=true expected=true"
+    },
+    {
+      "cell": "P",
+      "name": "server-transitions-are-one-close-and-one-reopen-per-week",
+      "pass": false,
+      "detail": "actual=156/156 expected=156/156"
+    },
+    {
+      "cell": "P",
+      "name": "every-server-close-is-exactly-a-daily-session-open",
+      "pass": false,
+      "detail": "actual=0 expected=0"
+    },
+    {
+      "cell": "P",
+      "name": "every-server-reopen-is-exactly-a-daily-session-open",
+      "pass": false,
+      "detail": "actual=0 expected=0"
+    },
+    {
+      "cell": "P",
+      "name": "every-server-reopen-is-exactly-a-WEEKLY-session-open",
+      "pass": false,
+      "detail": "actual=0 expected=0"
+    },
+    {
+      "cell": "P",
+      "name": "helper-produces-exactly-as-many-week-opens-as-the-server",
+      "pass": false,
+      "detail": "actual=156 expected=156"
+    },
+    {
+      "cell": "P",
+      "name": "no-week-open-that-the-server-does-not-also-reopen-at",
+      "pass": false,
+      "detail": "actual=0 expected=0"
+    },
+    {
+      "cell": "P",
+      "name": "single-local-anchor-for-every-week-open-over-three-years",
+      "pass": false,
+      "detail": "actual=[\"wd6@17:00\"] expected=[\"wd6@17:00\"]"
+    },
+    {
+      "cell": "P",
+      "name": "agreement-with-api_server.py",
+      "pass": true,
+      "detail": "156 closes + 156 reopens over 2013-2015, zero disagreement at minute resolution"
+    },
+    {
+      "cell": "Q",
+      "name": "explicit-anchor-reproduces-class-bucketing-daily",
+      "pass": false,
+      "detail": "actual=480 expected=480"
+    },
+    {
+      "cell": "Q",
+      "name": "explicit-anchor-reproduces-class-bucketing-weekly",
+      "pass": false,
+      "detail": "actual=480 expected=480"
+    },
+    {
+      "cell": "Q",
+      "name": "named-anchors-declared",
+      "pass": false,
+      "detail": "actual=[\"fvg-18-et\",\"weekly-map-mon\"] expected=[\"fvg-18-et\",\"weekly-map-mon\"]"
+    },
+    {
+      "cell": "Q",
+      "name": "fvg-anchor-is-18:00-america-new-york",
+      "pass": false,
+      "detail": "actual=America/New_York@1080 expected=America/New_York@1080"
+    },
+    {
+      "cell": "Q",
+      "name": "weekly-map-anchor-is-monday-00:00-america-new-york",
+      "pass": false,
+      "detail": "actual=America/New_York@0/wd1 expected=America/New_York@0/wd1"
+    },
+    {
+      "cell": "Q",
+      "name": "named-anchor-is-declared-not-wired:fvg-18-et",
+      "pass": false,
+      "detail": "actual=declared expected=declared"
+    },
+    {
+      "cell": "Q",
+      "name": "named-anchor-is-declared-not-wired:weekly-map-mon",
+      "pass": false,
+      "detail": "actual=declared expected=declared"
+    },
+    {
+      "cell": "Q",
+      "name": "fvg-anchor-opens-at-local-18:00:winter",
+      "pass": false,
+      "detail": "actual=18:00 expected=18:00"
+    },
+    {
+      "cell": "Q",
+      "name": "weekly-map-anchor-opens-monday-local-00:00:winter",
+      "pass": false,
+      "detail": "actual=Mon 00:00 expected=Mon 00:00"
+    },
+    {
+      "cell": "Q",
+      "name": "fvg-anchor-opens-at-local-18:00:summer",
+      "pass": false,
+      "detail": "actual=18:00 expected=18:00"
+    },
+    {
+      "cell": "Q",
+      "name": "weekly-map-anchor-opens-monday-local-00:00:summer",
+      "pass": false,
+      "detail": "actual=Mon 00:00 expected=Mon 00:00"
+    },
+    {
+      "cell": "Q",
+      "name": "fvg-anchor-differs-from-fx-session-open-by-exactly-one-hour",
+      "pass": false,
+      "detail": "actual=3600000 expected=3600000"
+    },
+    {
+      "cell": "Q",
+      "name": "malformed-anchor-fails-closed:missing-zone",
+      "pass": false,
+      "detail": "actual=1358208000000 expected=1358208000000"
+    },
+    {
+      "cell": "Q",
+      "name": "malformed-anchor-fails-closed:minute-out-of-range",
+      "pass": false,
+      "detail": "actual=1358208000000 expected=1358208000000"
+    },
+    {
+      "cell": "Q",
+      "name": "malformed-anchor-fails-closed:weekday-out-of-range",
+      "pass": false,
+      "detail": "actual=1358208000000 expected=1358208000000"
+    },
+    {
+      "cell": "Q",
+      "name": "malformed-anchor-fails-closed:not-an-object",
+      "pass": false,
+      "detail": "actual=1358208000000 expected=1358208000000"
     }
   ]
 }

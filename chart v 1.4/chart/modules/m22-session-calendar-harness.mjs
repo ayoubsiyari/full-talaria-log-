@@ -128,11 +128,23 @@ const EXPECTED_NEEDLES = {
  * `/^(\d+)mo$/` and `classifyTimeframe`-style patterns with no quantifier
  * braces. That is a property of the CURRENT source, not of this construction.
  *
- * Two things make the luck survivable rather than load-bearing:
- *   - `EXPECTED_NEEDLES` re-checks each lifted body for text that only appears
- *     at its very end, so a short lift throws rather than silently truncating.
+ * WHAT ACTUALLY MAKES IT FAIL CLOSED (r2's comment here was WRONG and is
+ * corrected; the independent reviewer disproved it):
+ *
+ *   - `EXPECTED_NEEDLES` does NOT catch a short lift. r2 claimed the needles sit
+ *     at the end of each body so a truncation would drop them. They do not: both
+ *     `_resampleDataFull` needles are in the MONTHLY branch near the TOP. The
+ *     reviewer injected a truncating regex that cut the lift from 98 lines to 57
+ *     and both needles still passed. The needles verify that the lift STARTED at
+ *     the right method — real and useful, but not a length check.
+ *   - The real backstop is `vm.runInContext`: a truncated method body is not
+ *     syntactically valid inside the synthetic host class, so evaluation throws
+ *     `SyntaxError` before any assertion runs. That is genuine fail-closed
+ *     behaviour, just not the mechanism r2 described.
  *   - `assertNoRegexBraceQuantifier` below fails the lift outright if a brace
- *     quantifier ever appears in a lifted body.
+ *     quantifier ever appears in a lifted body — the targeted guard for the
+ *     specific hazard named above.
+ *
  * A real fix is a tokenizer, which is out of scope for this packet and is
  * reported to Manager A as a follow-up rather than attempted here.
  */
@@ -300,20 +312,36 @@ const SHARED_BUCKET_METHOD = `
      *
      * Memoised per symbol: the resample loop calls this once per bar, and
      * registry resolution splits and sorts the label on every call.
+     *
+     * THE MEMO MUST NOT POISON ITSELF. Two guards, because a cached negative
+     * that outlives the registry's arrival leaves the chart permanently
+     * epoch-aligned while every health signal reads green (§A4c capability loss
+     * without failure — the worst shape in this row):
+     *
+     *   1. Only \`identity.cacheable\` answers are stored. "The registry says
+     *      this symbol is unknown" is settled and cacheable; "the registry was
+     *      not there to be asked" is transient and must be retried.
+     *   2. The cache is keyed on the ENGINE REFERENCE as well as the symbol, so
+     *      a registry that arrives late — or a panel that swaps its engine —
+     *      invalidates the entry rather than inheriting it.
      */
     _sessionInstrumentClass() {
         const symbol = (typeof this.currentSymbol === 'string') ? this.currentSymbol : '';
-        if (this._sessionClassCacheKey === symbol) return this._sessionClassCache;
         const SC = (typeof SessionCalendar !== 'undefined' && SessionCalendar)
             || (typeof window !== 'undefined' && window.SessionCalendar)
             || null;
         const engine = (typeof window !== 'undefined' && window.marketCalcEngine) || null;
-        const resolved = (SC && typeof SC.classFromRegistry === 'function')
-            ? SC.classFromRegistry(engine, symbol)
-            : null;
-        this._sessionClassCacheKey = symbol;
-        this._sessionClassCache = resolved;
-        return resolved;
+        if (this._sessionClassCacheKey === symbol && this._sessionClassCacheEngine === engine) {
+            return this._sessionClassCache;
+        }
+        if (!SC || typeof SC.resolveIdentity !== 'function') return null;
+        const identity = SC.resolveIdentity(engine, symbol);
+        if (identity.cacheable) {
+            this._sessionClassCacheKey = symbol;
+            this._sessionClassCacheEngine = engine;
+            this._sessionClassCache = identity.instrumentClass;
+        }
+        return identity.instrumentClass;
     }
 `;
 
@@ -562,6 +590,24 @@ globalThis.TalariaResampleHost = TalariaResampleHost;
         SC: sandbox.SessionCalendar || null,
         engine,
         registryCalls,
+        /**
+         * Evaluate market-calculations.js into the LIVE realm after the fact,
+         * reproducing a registry that arrives late: a deferred script, a slow
+         * network, or a shell that declares it after chart.js. Returns the
+         * engine. Used by the recovery cell — `omitMarketCalc` alone only ever
+         * tests PERMANENT absence, which is what let the poisoning through.
+         */
+        installMarketCalc() {
+            vm.runInContext(readRepo(REL.marketCalc), sandbox, { filename: 'market-calculations.late.vm.js' });
+            const late = sandbox.marketCalcEngine || null;
+            if (late) {
+                for (const fn of ['isRegistered', 'getSpecs']) {
+                    const real = late[fn].bind(late);
+                    late[fn] = (...args) => { registryCalls[fn] += 1; return real(...args); };
+                }
+            }
+            return late;
+        },
         sandbox,
         missingModules,
         meta: {
@@ -582,6 +628,78 @@ globalThis.TalariaResampleHost = TalariaResampleHost;
     };
 }
 
+/* ── servable-shell inventory ────────────────────────────────────────────── */
+//
+// Every shell that loads chart.js, and therefore every shell that will execute
+// the wired bucketing. r2 claimed "all four shells" and verified four; there are
+// SIX by static script tag, plus two more that load chart.js from a JS path
+// array rather than a tag. The two extra tag-shells are the interesting ones:
+// legacy-index.html declares market-calculations.js AFTER chart.js, and
+// multichart/chart-host.html does not declare it at all.
+
+/** Shells whose scripts are declared as `<script src=...>` tags. */
+export const SHELL_GLOBS = [
+    'chart v 1.4/chart/dist-v9/index.html',
+    'homepage/public/chart/dist-v9/index.html',
+    'chart v 1.4/chart/legacy-index.html',
+    'homepage/public/chart/legacy-index.html',
+    'chart v 1.4/chart/multichart/chart-host.html',
+    'homepage/public/chart/multichart/chart-host.html',
+];
+
+/** Shells that build their script list in JS (ordered array of paths). */
+export const LOADER_SHELLS = [
+    'chart v 1.4/chart/multichart-prod/chart-embed.html',
+    'homepage/public/chart/multichart-prod/chart-embed.html',
+];
+
+const SCRIPT_TAG_RE = /<script\b[^>]*\bsrc\s*=\s*["']([^"']+)["'][^>]*>/gi;
+const LOADER_PATH_RE = /['"](\/chart\/(?:chart\.js|modules\/[^'"]+))['"]/g;
+
+/**
+ * Declared load positions of chart.js and market-calculations.js in a shell.
+ * Position is the ORDER OF DECLARATION, which is what governs execution for
+ * classic and `defer` scripts alike — `defer` preserves document order, so a
+ * shell that declares the registry after the engine is relying on nothing
+ * resampling during the engine's own load, not on a guarantee.
+ */
+export function shellScriptOrder(rel) {
+    const src = readRepo(rel);
+    const isLoader = LOADER_SHELLS.includes(rel);
+    const entries = [];
+    if (isLoader) {
+        for (const m of src.matchAll(LOADER_PATH_RE)) entries.push({ src: m[1], index: m.index, attrs: 'js-loader-array' });
+    } else {
+        for (const m of src.matchAll(SCRIPT_TAG_RE)) {
+            entries.push({
+                src: m[1],
+                index: m.index,
+                attrs: (m[0].match(/\b(defer|async)\b/gi) || []).join('+') || 'sync',
+            });
+        }
+    }
+    const find = (re) => {
+        const hit = entries.find((e) => re.test(e.src));
+        return hit ? { ...hit, line: src.slice(0, hit.index).split('\n').length } : null;
+    };
+    const chart = find(/(^|\/)chart\.js(\?|$)/);
+    const registry = find(/market-calculations\.js/);
+    return {
+        rel,
+        mechanism: isLoader ? 'js-loader-array' : 'script-tag',
+        chart,
+        registry,
+        registryDeclared: !!registry,
+        registryBeforeChart: chart && registry ? registry.index < chart.index : null,
+        scriptCount: entries.length,
+    };
+}
+
+/** All shells that will execute the wired bucketing. */
+export function allChartShells() {
+    return [...SHELL_GLOBS, ...LOADER_SHELLS];
+}
+
 /**
  * How many times chart.js ASSIGNS `this.<prop>`. Zero means the wiring would be
  * reading a property that does not exist — the exact defect that blocked the
@@ -592,12 +710,115 @@ export function chartAssignmentCount(prop, chartSource = readRepo(REL.chart)) {
     return (chartSource.match(re) || []).length;
 }
 
-/** Properties the wiring's symbol resolver reads, scraped from the patch text. */
+/**
+ * Every chart property the wiring reads, ANYWHERE in the added methods.
+ *
+ * r2 scoped this to the text after the `_sessionInstrumentClass(` marker and
+ * excluded anything prefixed `_session`. Both narrowings were spoofable: a read
+ * placed above the marker escaped the slice, and a property named
+ * `_sessionSomethingElse` escaped the filter. The effect clause in cell N would
+ * still have caught either, so this was defence-in-depth rather than a hole —
+ * tightened anyway, because a structural guard that can be walked around is not
+ * one.
+ *
+ * Now: scan the WHOLE addition text, and exclude only the exact internal names
+ * the wiring is known to define on itself, each of which must be declared.
+ */
+export const WIRING_INTERNAL_PROPERTIES = [
+    '_sessionBucketStart',
+    '_sessionInstrumentClass',
+    '_sessionClassCacheKey',
+    '_sessionClassCacheEngine',
+    '_sessionClassCache',
+];
+
+/**
+ * Text the wiring introduces into a given product file: the method bodies it
+ * adds, plus the replacement side of every find/replace targeting that file.
+ * r2 scanned only `chartAdditions`, which left the pipeline patch unexamined
+ * and sliced the additions from a marker that a read could be placed above.
+ */
+export function patchTextForFile(file) {
+    return [
+        ...WIRING_PATCH.chartAdditions.filter((a) => a.file === file).map((a) => a.source),
+        ...WIRING_PATCH.chartMethods.filter((m) => m.file === file).map((m) => m.replace),
+        ...WIRING_PATCH.pipeline.filter((m) => m.file === file).map((m) => m.replace),
+    ].join('\n');
+}
+
+/**
+ * Strip comments and string/template literals so only EXECUTED code is scanned.
+ * Without this, the literal `chart.js` inside a comment reads as a property
+ * named `js`, and — far worse — a real read could be hidden from the scanner by
+ * nothing more clever than the scanner's own naivety.
+ */
+function codeOnly(text) {
+    return text
+        .replace(/\/\*[\s\S]*?\*\//g, ' ')
+        .replace(/(^|[^:])\/\/[^\n]*/g, '$1 ')
+        .replace(/'(?:\\.|[^'\\])*'/g, "''")
+        .replace(/"(?:\\.|[^"\\])*"/g, '""')
+        .replace(/`(?:\\.|[^`\\])*`/g, '``');
+}
+
+/**
+ * Properties the wiring reads off a receiver, split by whether the read is a
+ * CALL (`x.foo(`) or a DATA read (`x.foo`). The distinction matters: a method
+ * lives on the prototype and is never `this.foo = `, so demanding an assignment
+ * for it would be wrong, while demanding nothing for a data property is exactly
+ * the r1 defect.
+ */
+function propertyReads(text, receiver) {
+    const src = codeOnly(text);
+    const calls = new Set();
+    const data = new Set();
+    const re = new RegExp(`\\b${receiver}\\.(\\w+)\\s*(\\()?`, 'g');
+    for (const m of src.matchAll(re)) (m[2] ? calls : data).add(m[1]);
+    for (const name of calls) data.delete(name);
+    return { calls: [...calls].sort(), data: [...data].sort() };
+}
+
+/**
+ * Chart DATA properties the wiring depends on — the ones that must actually be
+ * assigned somewhere in chart.js. Covers reads via `this.` inside the added
+ * chart methods AND reads via `chart.` from the pipeline patch, which reaches
+ * across into the same object and is exactly as capable of naming a phantom.
+ */
 export function symbolPropertiesInPatch() {
-    const source = WIRING_PATCH.chartAdditions.map((a) => a.source).join('\n');
-    const body = source.slice(source.indexOf('_sessionInstrumentClass('));
-    return [...new Set([...body.matchAll(/this\.(\w+)/g)].map((m) => m[1]))]
-        .filter((p) => !p.startsWith('_session'));
+    const internal = new Set(WIRING_INTERNAL_PROPERTIES);
+    const fromChart = propertyReads(patchTextForFile(REL.chart), 'this').data;
+    const fromPipeline = propertyReads(patchTextForFile(REL.pipeline), 'chart').data;
+    return [...new Set([...fromChart, ...fromPipeline])].filter((p) => !internal.has(p)).sort();
+}
+
+/** Chart METHODS the wiring calls — must exist as methods, not as assignments. */
+export function methodCallsInPatch() {
+    const internal = new Set(WIRING_INTERNAL_PROPERTIES);
+    const fromChart = propertyReads(patchTextForFile(REL.chart), 'this').calls;
+    const fromPipeline = propertyReads(patchTextForFile(REL.pipeline), 'chart').calls;
+    return [...new Set([...fromChart, ...fromPipeline])].filter((p) => !internal.has(p)).sort();
+}
+
+/**
+ * Internal names the wiring genuinely uses, so the exclusion list stays honest
+ * and cannot be padded with names that hide nothing. A name counts as used if
+ * it is read or called on any receiver, or defined as a method by the additions
+ * — `_sessionBucketStart` is declared as a method and called via `this.`, and
+ * both forms must count.
+ */
+export function internalPropertiesInPatch() {
+    const all = [REL.chart, REL.pipeline].map(patchTextForFile).join('\n');
+    const src = codeOnly(all);
+    const used = new Set();
+    for (const m of src.matchAll(/\b(?:this|chart)\.(\w+)/g)) used.add(m[1]);
+    for (const m of src.matchAll(/^\s{0,8}(\w+)\s*\([^)]*\)\s*\{/gm)) used.add(m[1]);
+    const internal = new Set(WIRING_INTERNAL_PROPERTIES);
+    return [...used].filter((p) => internal.has(p)).sort();
+}
+
+/** Does chart.js define `<name>` as a class method? */
+export function chartDefinesMethod(name) {
+    return new RegExp(`^\\s{0,8}${name}\\s*\\([^)]*\\)\\s*\\{`, 'm').test(readRepo(REL.chart));
 }
 
 /** Effective harness mode: PRODUCT unless simulation is requested and needed. */

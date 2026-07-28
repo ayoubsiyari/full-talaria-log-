@@ -11,11 +11,81 @@
 | **Finding** | `docs/plan3/FINDING-SESSION-CALENDAR-20260727.md` |
 | **Rulings applied** | §A5 (test integrity), §A7 (differential oracle), §A4b (multichart cell), §A4c (kill-switch / correctness class) |
 | **Scope** | RED oracle + shared helper only. **The product resample paths are NOT wired.** Wiring awaits Manager A authorisation. |
-| **Revision** | **r2** — reworked after rejection 1 of 2 (independent adversarial review). See §0. |
+| **Revision** | **r3** — finishing work on the accepted r2. See §0a. r2 history in §0b. |
 
 ---
 
-## 0. What changed in r2, and why
+## 0a. What changed in r3
+
+r2 was accepted. This revision closes the one defect and three smaller items in the acceptance note, plus the two items the anchoring audit added.
+
+| # | Required | Done |
+|---|---|---|
+| 1 | **Must fix:** memo poisoning — a transiently-absent registry became permanently absent | **Fixed.** `resolveIdentity()` now returns a `cacheable` flag distinguishing *"the registry says unknown"* from *"the registry was not there to ask"*, and the wiring caches only the former. Cache is additionally keyed on the engine instance. **Cell N2** is the recovery cell. §0a.1 |
+| 2 | **Must add:** shell load-order coverage; establish whether the two shells are servable | **Both are servable — one is worse than static reading suggested.** **Cell M4** covers all eight `chart.js`-executing shells and asserts declared order, not presence. §0a.2 |
+| 3 | **Should tighten:** cell N's structural half (two spoofs) | **Tightened, and re-attacked.** Four spoofs now caught including two the reviewer used and one whole class r2 never scanned. §0a.3 |
+| 4 | **Should correct:** the broken-state denominator | **Corrected, and the split is now stated wherever a count appears.** §5 |
+| 5 | **Record:** `EXPECTED_NEEDLES` comment is wrong about *why* it fails closed | Corrected in the harness. It fails closed at VM eval with `SyntaxError`, not via the needles. §6 |
+| 6 | **Record:** the ambiguity counter does not detect ambiguity | Stated accurately, and **the vacuous assertion removed** rather than reworded. §3.3 |
+| 7 | **Record:** futures mapping is a landmine | Boxed warning at the mapping site; §8.3. Mapping not restructured. |
+| 8 | **New (audit):** third epoch-flooring site | `talaria-fvg-indicator.js periodStart()` — asserted as a census in cell M2 so "both paths fixed" can't be misread as "one day definition". §8.4 |
+| 9 | **New (audit):** check the FX anchor against `api_server.py` | **Checked. Exact agreement, no disagreement to report.** This is now **cell P**, a standing differential. §3.4 |
+| 10 | **New (audit):** shape the API for indicators | Explicit `anchor` parameter + `namedAnchors()`. Declared, not wired. **Cell Q.** §3.5 |
+| 11 | Registry rows that would need adding | §8.5, with the suffix-stripping recommendation. |
+
+### 0a.1 The memo fix
+
+The reviewer's reproduction, before and after:
+
+```
+                        before registry    after registry loads    daily buckets
+r2  (poisoned)          null               null                    24   <- still broken
+r3  (fixed)             null               fx                      20   <- correct, Friday present
+```
+
+The mechanism r2 got wrong: it treated "no class" as one answer. It is two, and only one of them is a fact about the symbol.
+
+- **`symbol-not-registered`** — the registry was asked and said no. Settled; safe to cache forever.
+- **`registry-unavailable`** — there was nothing to ask. Not an answer at all; caching it converts a load-order race into permanent capability loss.
+
+`resolveIdentity()` returns `{instrumentClass, cacheable, reason}` and the wiring honours `cacheable`. The cache is also keyed on the engine *instance*, so a realm that swaps engines cannot serve a stale class either. `reason` is retained because a future reader needs to know *why* a symbol is unresolved, and the boolean alone would not tell them.
+
+**Cell N2** is the cell cell N was missing: engine absent at first call, engine installed into the live realm, then assert both that the class resolves and that the **daily output moves** — 24 buckets to 20 with the Friday session present. Cell N tested `omitMarketCalc`, which is permanent absence; it could never have caught this, and I should have seen that when I wrote it.
+
+### 0a.2 Are those two shells servable? Yes. Both.
+
+Answered from the live-origin audit artifact (`tests/evidence/b70-stage5/`, captured 2026-07-27 against `http://31.97.192.82:3000`), which records real nginx responses and the scripts each frame actually executed — not a static read of the HTML.
+
+| Shell | Live? | Registry | Effect of the wiring there |
+|---|---|---|---|
+| `legacy-index.html` | **HTTP 200**, nginx | declared **after** `chart.js`, and **executes after it too** (exec index 38 vs 46) | Works, but by timing. Combined with r2's memo bug this was the realistic path to a permanent null — which is why item 1 mattered more than it looked. |
+| `multichart/chart-host.html` | **HTTP 200**, nginx | **absent entirely** — 4 scripts, own comment says "engine (no modules — minimum surface)" | **The fix is inert here. Every panel keeps the phantom Saturday.** |
+
+**Saying this plainly, as asked: `chart-host.html` is live, and it is not merely served-but-orphaned.** `multichart-shell.html` is also live (HTTP 200) and **embeds two `chart-host.html` iframes**, and the audit captured both child frames executing `/chart/chart.js` with no `market-calculations.js`. So this is a reachable user-facing surface with two broken panels, not a stale file. **You need this before it boards, and it is a wiring-change blocker, not a RED-half one:** the wiring must either add the registry to `chart-host.html` or the multichart surface ships a different calendar from every other surface.
+
+Two further facts the shell sweep turned up that were not in the brief:
+
+- There are **eight** `chart.js`-executing shells, not six. Six declare it as a `<script src>` tag; `multichart-prod/chart-embed.html` (both trees) builds its script list as a JS array and was invisible to a tag-only scan. It declares the registry first, so it is fine — but a tag-only inventory would have missed it, and cell M4 covers both mechanisms.
+- **`multichart/chart-host.html` has drifted between trees.** The source tree carries a TF-switch viewport-preservation feature the served tree does not (26 lines). Script order is identical, so it does not affect this packet, and **I have not touched it** — copying an unmirrored feature onto the served tree to make a hash match is not a thing I should do quietly. Cell M4 asserts load-order identity and *reports* the body drift. Someone else's row.
+
+### 0a.3 Cell N's structural half, re-attacked
+
+r2's version sliced the patch text from a `_sessionInstrumentClass(` marker and filtered out anything starting `_session`. Both narrowings were walkable, as the reviewer showed. Replaced with: scan **all** wiring text across **all** patched files, strip comments and string literals so only *executed* code is examined, split reads into **data reads** (must be assigned in `chart.js`) and **method calls** (must be *defined* — a prototype method is never `this.x =`, and conflating the two is what would have forced the check to be loosened).
+
+Re-run of the reviewer's spoofs plus two of my own:
+
+| Spoof | r2 | r3 |
+|---|---|---|
+| `this._sessionFakeSymbol` (underscore filter) | passed | **caught** |
+| phantom read placed above the marker | passed | **caught** |
+| calls `this.resolveSymbolSomehow()`, a method that does not exist | not checked | **caught** |
+| phantom `chart.timeframeLabel` introduced via the **pipeline** patch | **not scanned at all** | **caught** |
+
+The exclusion list for the wiring's own internal names is itself asserted to contain no name the patch does not actually use, so it cannot be padded to hide a read.
+
+---
+
+## 0b. What changed in r2, and why
 
 Rejection 1 was correct and the defect was serious: **the GREEN half certified a patch that did nothing to the product.** `_sessionCalendarSymbol()` read `this.sessionCalendarSymbol || this.currentPair || this.symbol || this.pair`, and **all four properties have zero assignments in `chart.js`.** The oracle passed only because `makeHarness` set the first of them itself — a property of the harness's own invention. Against a real product chart the wiring resolved an empty symbol, fell through to `epochAlignedBucketStart`, and produced byte-identical pre-fix output.
 
@@ -43,7 +113,7 @@ Both "record rather than fix" items are recorded: the brace matcher's regex-lite
 | `homepage/public/chart/modules/session-calendar.js` | Generated mirror, byte-identical (asserted by cell M). |
 | `chart v 1.4/chart/modules/session-calendar.contract.json` | Machine-readable §A4c module contract, as a **sidecar**. See §7. |
 | `chart v 1.4/chart/modules/m22-session-calendar-harness.mjs` | Real-product harness + deterministic fixtures + the proposed wiring diff. |
-| `chart v 1.4/chart/modules/m22-session-calendar-bucketing.red.test.mjs` | The RED oracle. **23 cells, 262 value assertions + 12 informational rows.** |
+| `chart v 1.4/chart/modules/m22-session-calendar-bucketing.red.test.mjs` | The RED oracle. **28 cells; 342 value assertions + 25 informational rows wired, 340 + 25 unwired.** |
 | `chart v 1.4/chart/modules/m22-session-calendar-fourstate.mjs` | §A5 driver: four-state proof × 3 repeats × 8 clock configurations = 40 runs. |
 
 No product file was modified. `npm run preflight:module-contracts` still exits 0.
@@ -152,13 +222,63 @@ Published as `window.SessionCalendar` (and `module.exports`). Version `20260728b
 | **Gap** (spring-forward; e.g. 02:30 local never occurs) | Return the first instant **after** the gap. This **moves the local anchor for that one session**, which breaks the constant-anchor invariant cells D1–D3 assert. An anchor inside a gap is unrepresentable, so no return value is correct — the counter, not the value, is the contract. | `stats.wallClockGapAdjustments` |
 | **Ambiguity** (fall-back; e.g. 01:30 local occurs twice) | Take the **earlier** occurrence, i.e. the pre-transition offset. Chosen so the session opens as early as possible and no bar between the two occurrences is orphaned ahead of its own open. Previously this was whatever the two-pass happened to converge on; it is now a decision. | `stats.wallClockTransitionCrossings` |
 
-Cell K2 asserts both counters read **zero** across every fixture the packet uses, including both 2013 transitions, and that both policies are documented in the source. Cell K asserts the same for the hot-path fixture. A non-zero count means an added class has entered an untested branch and must re-prove the anchor invariant before shipping.
+**Corrected in r3: the two counters are not equally good, and r2 claimed they were.**
+
+- **The gap counter detects its condition exactly.** It fires on a failed round-trip, which is precisely what a non-existent wall time *is*. Cell K2 asserts it reads zero across both 2013 transitions and that assertion is meaningful.
+- **The ambiguity counter does not detect ambiguity.** It fires when the two offset probes *disagree*, which is a near-transition signal and a different condition. The reviewer forced a genuinely ambiguous wall time: the module returned the correct earlier occurrence with `wallClockTransitionCrossings = 0`. So r2's `ambiguity-branch-never-taken` assertion was **partly vacuous**.
+
+**That assertion has been removed rather than reworded**, and both the source and cell K2 now say plainly: **the ambiguity branch is unguarded.** The counter is kept as a cheap near-transition tripwire — both offsets are already in hand, so it costs nothing — but it must not be read as "no ambiguous time was requested". Detecting ambiguity properly needs a third offset probe on the far side of the transition, i.e. an extra `Intl` call on every boundary, which cell K's cost bound does not permit for a branch no implemented class can reach. That is a decision, and it is recorded as one. Cell K2 asserts the source carries the warning, and asserts that **no cell anywhere asserts zero on that counter**, so the vacuous check cannot creep back.
+
+A non-zero *gap* count means an added class has entered an untested branch and must re-prove the anchor invariant before shipping.
+
+## 3.4 Cross-check against the server — the existing authority
+
+The audit is right that this is the higher-value consistency check, and it is now a standing cell rather than a one-off.
+
+`api_server.py:8465-8499` `_is_weekend_timestamp_ms` already implements the FX weekend close at **17:00 `America/New_York`, DST-aware**, and its docstring explicitly rejects the naive UTC weekday check for the same reason this packet exists. It is not one of the seven guesses; it is the one place that already got this right. So the module matches it rather than re-deriving it.
+
+**Cell P** transcribes the Python predicate faithfully into JS — weekday and hour in `America/New_York`, nothing else, deliberately *not* expressed through `SessionCalendar` internals, since a differential against my own arithmetic would prove nothing. It then locates every server open and close over **2013–2015 at minute resolution** and compares against this module's boundaries.
+
+| Check | Result |
+|---|---|
+| Server transitions found | **156 closes, 156 reopens** |
+| Every server **close** is exactly a daily session open | **156 / 156** |
+| Every server **reopen** is exactly a daily session open | **156 / 156** |
+| Every server **reopen** is exactly a **weekly** session open | **156 / 156** |
+| Every weekly open this module produces is a server reopen instant (converse) | **156 / 156**, zero spurious |
+| Distinct local anchor across three years | **Sunday 17:00**, one value |
+
+**Disagreement to report: none.** Both directions are asserted, so agreement cannot be one-sided — without the converse, a helper opening weeks twice as often would still have passed. Cell P also pins five exact strings from the Python source, so if the server's rule is ever edited the cell fails instead of silently comparing against a stale transcription.
+
+Boundary convention matches too: the server treats Friday 17:00:00 as closed and Sunday 17:00:00 as open, i.e. half-open `[open, next_open)`, which is the same convention `bucketStart` uses.
+
+## 3.5 Indicator-facing surface — shaped, nothing migrated
+
+Per the design note. `bucketStart` and `openLocalTime` accept an explicit `anchor` (`{zone, dailyOpenMinute, weekOpenWeekday, labelOffsetDays}`) in place of an instrument class. The boundary engine was already parameterised on exactly those fields, so this is an exposed extension point rather than a second code path.
+
+`namedAnchors()` declares the two the audit named, **status `declared`, read by nothing**:
+
+| Anchor | Value | Source |
+|---|---|---|
+| `fvg-18-et` | 18:00 `America/New_York` | `talaria-fvg-indicator.js periodStart()` |
+| `weekly-map-mon` | Monday 00:00 `America/New_York` | `talaria-weekly-map-indicator.js` |
+
+**Cell Q** proves the surface can actually absorb them rather than merely intending to: an explicit anchor equal to the `fx` class reproduces `fx` bucketing on every fixture bar (so the extension point is not a second implementation); both named anchors compute, opening at 18:00 local and Monday 00:00 local in **both** winter and summer, checked in wall-clock terms so a DST error cannot hide behind a matching UTC offset; and a malformed anchor fails **closed** to epoch alignment rather than silently defaulting to some class's calendar.
+
+**Flagged, not reconciled:** `fvg-18-et` disagrees with the FX session open by **exactly one hour**, pinned as a value in cell Q. That disagreement is real and is one of the seven calendars the audit found. Unifying them is a separate row; I have made it visible, not decided it.
 
 **Kill-switch: `__TALARIA_DISABLE_SESSION_CALENDAR_V1`** (correctness class, §A4c). Absent → session calendar active. Truthy → every call returns `Math.floor(t / timeframeMs) * timeframeMs`.
 
 ## 4. RED proof — what fails today, with values
 
-`M22_SC_STATE=broken` (real product as committed): **84 of 260 value assertions fail.** 11 of 23 cells fail; the 12 differential "must not change" cells pass. Full record: `m22-session-calendar-broken.json`.
+**On denominators, corrected per r3 item 4.** The two states do not run the same number of assertions, and the packet now says which applies where:
+
+| State | Assertions executed | Why |
+|---|---|---|
+| `broken` (unwired) | **365** | Cell F2's `if (WIRED)` block and cell N2's post-recovery clause only execute once the wiring is present. |
+| `fixed` / `corrupt` / `inverted` (wired) | **367** | Full set. |
+
+`M22_SC_STATE=broken` (real product as committed): **90 of 365 fail.** Full record: `m22-session-calendar-broken.json`.
 
 | Cell | Failing | Subject |
 |---|---|---|
@@ -166,14 +286,17 @@ Cell K2 asserts both counters read **zero** across every fixture the packet uses
 | B | 11 / 11 | PO-confirmed 2013-01-04/05 daily case |
 | C | 10 / 10 | Weekly semantics |
 | G2 | 6 / 7 | Full vs incremental parity under out-of-order appends |
+| **N2** | **5 / 7** | **Late-arriving registry must still resolve — the memo must not poison** |
 | D1 | 5 / 8 | DST spring-forward |
 | D2 | 5 / 8 | DST fall-back |
 | D3 | 2 / 2 | Weekly anchor across both transitions |
-| M2 | 2 / 3 | Single shared boundary implementation |
+| M2 | 2 / 12 | Single shared boundary implementation (+ epoch-flooring-site census) |
 | I | 1 / 7 | Multichart mixed-symbol isolation |
 | J | 1 / 4 | Correctness-class absence is announced |
 | K | 1 / 9 | Boundary cache is on the path |
-| 0, A, A2, E, F, F2, G, H, K2, L, M, M3 | 0 | Differential / structural cells that must stay green |
+| 0, A, A2, E, F, F2, G, H, K2, L, M, M3, M4, **P**, **Q** | 0 | Differential / structural / external-authority cells that must stay green |
+
+Cells **P** (server agreement) and **Q** (anchor surface) are green in `broken` by design — they assert properties of the helper and of an external authority, neither of which depends on the product being wired. They are not padding: both fail in `corrupt`, which is what makes them load-bearing.
 
 ### 4.1 Cell N — the assertion whose absence caused rejection 1
 
@@ -275,22 +398,29 @@ Cells E, F, F2, H, L, M, 0, A, A2 pass in `broken` state. Monthly (`1mo`, `3mo`)
 
 Driver: `node "chart v 1.4/chart/modules/m22-session-calendar-fourstate.mjs"` → `m22-session-calendar-fourstate.json`.
 
-**Headline count, corrected (item 7).** The oracle emits **274 rows in the wired states: 262 value assertions and 12 unconditional informational rows.** The informational rows are `note()` calls that record context and can never fail — `0:mode`, `0:lifted-method-digests`, `0:lifted-from-product`, `0:inventory-parseTimeframe-1wk-resolves-to-minutes`, `0:real-ChartDataPipeline-loaded`, `A:api-surface`, `D1:matrix`, `D2:matrix`, `K:stats`, `K:registry-calls`, `K2:stats-across-all-dst-fixtures`, `M3:full-deployment-file-set`. The `broken` state emits 272 rows / 260 value assertions: two crypto-weekly post-fix digest assertions are wired-state-only.
+**Headline count, with the denominator split stated (r3 item 4).** r2 quoted a single figure; there are two, and quoting one as if it covered both was the error.
 
-The count is derived, not asserted by hand — the inverted run fails exactly 262, which **is** the set of real assertions, and the 12 that survive inversion are precisely the informational rows.
+| | Rows emitted | Value assertions | Informational rows |
+|---|---|---|---|
+| **Wired** (`fixed` / `corrupt` / `inverted`) | **367** | **342** | 25 |
+| **Unwired** (`broken`) | **365** | **340** | 25 |
 
-**Four-state proof (§A5.3).** All four states behaved as required:
+The two-row difference is cell F2's `if (WIRED)` crypto-weekly post-fix digest block plus cell N2's post-recovery clause; both only execute once the wiring is present. Informational rows are `note()` calls that record context and can never fail.
 
-| State | What it is | Expected | Observed | Failed assertions |
+The count is derived, not asserted by hand — the inverted run fails exactly 342, which **is** the set of real assertions, and the 25 that survive inversion are precisely the informational rows.
+
+**Four-state proof (§A5.3).** All four states behaved as required. Note the differing denominators, per above:
+
+| State | What it is | Expected | Observed | Failed |
 |---|---|---|---|---|
-| `broken` | real product as committed | fail | **fail** | **84 / 260** |
-| `fixed` | product + in-memory `WIRING_PATCH` | pass | **pass** | **0 / 262** |
-| `corrupt` | `fixed`, but the helper's 17:00 anchor is corrupted to 16:00 | fail | **fail** | **32 / 262** |
-| `inverted` | `fixed`, every value assertion inverted | fail | **fail** | **262 / 262** |
+| `broken` | real product as committed | fail | **fail** | **90 / 365** |
+| `fixed` | product + in-memory `WIRING_PATCH` | pass | **pass** | **0 / 367** |
+| `corrupt` | `fixed`, but the helper's 17:00 anchor is corrupted to 16:00 | fail | **fail** | **40 / 367** |
+| `inverted` | `fixed`, every value assertion inverted | fail | **fail** | **342 / 367** |
 
-The corrupted state matters: a **one-hour** error in the dependency the oracle trusts is caught in cells A, B, C, D1, D2, D3 and N, so the gate is not merely detecting "session-shaped output".
+The corrupted state matters: a **one-hour** error in the dependency the oracle trusts is caught in cells A, B, C, D1, D2, D3, N and now **P** — the server differential catches the corruption independently of every fixture in this packet, which is the point of having an external authority in the matrix at all.
 
-The inverted control is exact: **every one of the 262 value assertions inverts**, none survives. Nothing in the oracle is a tautology.
+The inverted control is exact: **every one of the 342 value assertions inverts**, none survives. Nothing in the oracle is a tautology.
 
 **3× repeat (§A5.4).** Each state ran 3× on the authoring clock plus once under each of **seven** alternate timezones — **40 runs total.** Every run matched its expected verdict and every state produced an identical failure count on every run: `fourStateProofHolds: true`, `determinismHolds: true`.
 
@@ -326,8 +456,12 @@ Extraction is fail-closed: a missing site, a duplicate site, or a lifted text th
 
 **Recorded, per Manager A: the brace matcher skips strings, template literals and comments, but *not* regex literals.** A regex containing an unbalanced brace or a `{n}` / `{n,m}` quantifier would be counted as structure and the lift would end in the wrong place. It works today only because none of the lifted methods contains such a literal — `_resampleDataFull` holds `/^(\d+)mo$/`, which has no quantifier braces. **That is a property of the current source, not of the construction.** A tokenizer is the real fix and is out of scope for this packet; two things make the luck survivable in the meantime:
 
-- `EXPECTED_NEEDLES` re-checks each lifted body for text that appears only at its very end, so a short lift throws rather than silently truncating;
-- `assertNoRegexBraceQuantifier` (added in r2) **fails the lift outright** if a brace quantifier ever appears in a lifted body, so the day the source acquires one the harness stops instead of mis-lifting.
+**Corrected in r3: r2's claim about *why* this fails closed was wrong.** r2 said `EXPECTED_NEEDLES` catches a short lift because the needles sit at the end of each body. **They do not.** Both `_resampleDataFull` needles are in the monthly branch near the **top**. The reviewer injected a truncating regex that cut the lift from 98 lines to 57 and both needles still passed. The comment has been corrected in the harness. What the needles genuinely verify is that the lift *started* at the right method — useful, but not a length check.
+
+It does fail closed, for a different reason:
+
+- **`vm.runInContext` is the real backstop.** A truncated method body is not syntactically valid inside the synthetic host class, so evaluation throws `SyntaxError` before any assertion runs. Genuine fail-closed behaviour, just not the mechanism r2 described.
+- `assertNoRegexBraceQuantifier` (added in r2) **fails the lift outright** if a brace quantifier ever appears in a lifted body — the targeted guard for the specific hazard above.
 
 Reported to Manager A as a follow-up rather than attempted here.
 
@@ -394,6 +528,43 @@ Cell G2 now covers three arrival patterns for both `1d` and `1w` — simple, sta
 
 **8.2 — `parseTimeframe('1wk')` resolves to 60000 ms (1 minute).** `_getMaxBarsOnScreen` lists `1wk` as a weekly timeframe, but `parseTimeframe` has no `wk` unit and falls through to the minutes multiplier. Report-only inventory note in cell 0, deliberately not asserted so it cannot become a gate on buggy behaviour. `SessionCalendar.classifyTimeframe` does recognise `wk`, so wiring must reconcile the two or `1wk` will get session-week bucketing on a one-minute grid.
 
+### 8.3 — RECORD, DO NOT FIX: the futures mapping is a landmine
+
+`MarketCalculationEngine` types **all 30 futures rows** as `futures`, and `MARKET_TYPE_TO_CLASS` maps that single type to `cme-index-futures`. So energies (`CL`, `NG`, `RB`), metals (`GC`, `SI`, `HG`, `PL`), bonds (`ZB`, `ZN`, `ZF`, `ZT`), grains (`ZC`, `ZW`, `ZS`) and FX futures (`6E`, `6B`, `6J`, `6A`, `6C`, `6S`) all route to a class named after **index** futures.
+
+**This is inert today** — `cme-index-futures` is `declared`, not `implemented`, so every one of those rows falls back to legacy epoch alignment and nothing changes. **It becomes a defect the moment someone implements that class with index-futures hours**, because grains and energies keep different sessions and would silently inherit the wrong ones. That is the same failure mode as the original defect, one layer up.
+
+A boxed warning now sits at the mapping site in `session-calendar.js` naming the affected product groups and pointing here. **The mapping is deliberately not restructured**: splitting it correctly requires per-root session data that no oracle in this packet covers, and changing classification for 30 rows on the strength of an untested guess is precisely the move that produced the defect this packet exists to fix. Whoever implements `cme-index-futures` must split the mapping *first*.
+
+### 8.4 — There is a THIRD epoch-flooring bucket site, and this packet does not fix it
+
+The finding named two. The anchoring audit found a third: **`talaria-fvg-indicator.js:68-70` `periodStart(t, tfMs)`**, used at line 294, whose `tfToMs` accepts `d` (line 63) and `w` (line 64). It floors daily and weekly to the UTC epoch exactly like the two sites this packet wires.
+
+**Not wired here — it is a separate row.** It is recorded as a **census assertion in cell M2**: three known sites, two wired by this packet, each pinned by the literal flooring expression, plus an assertion that the FVG timeframe parser still accepts `d` and `w`. So "both resample paths are fixed" can never be misread as "the codebase has one day definition", and if the third site's shape changes the cell fails rather than the note going quietly stale.
+
+### 8.5 — Registry rows that would need adding (`market-calculations.js` is NOT writable here)
+
+Requested list. The registry holds **120 rows**, not 119 — 59 forex, 30 futures, 17 crypto, 14 stocks. Symbols it cannot classify keep epoch alignment after wiring, so each missing row is a symbol the fix silently skips.
+
+**The G10 cross matrix is missing exactly two rows.** All 28 conventional crosses over `{EUR,GBP,AUD,NZD,USD,CAD,CHF,JPY}` were enumerated; 26 are present.
+
+| Group | Missing | Note |
+|---|---|---|
+| **G10 crosses** | `EURNZD`, `GBPNZD` | Completes the 28-pair matrix. Highest priority — both are mainstream. |
+| **SGD crosses** | `AUDSGD`, `NZDSGD` (and `GBPSGD`, `CADSGD`, `CHFSGD`) | `EURSGD`, `USDSGD`, `SGDJPY` are present, so the family is started but not finished. |
+| **Metals** | `XPTUSD`, `XPDUSD` | `XAUUSD`/`XAGUSD` present. Platinum and palladium absent; `XPDUSD` was not on the reviewer's list but has the same gap. |
+
+**Also found — four rows that are registered but mis-typed**, which matters more than the absences because these resolve *confidently to the wrong thing*: `DXY`, `USDX`, `XTIUSD`, `XNGUSD` are all typed `forex`. None is spot FX. `DXY`/`USDX` are index quotes; **`XTIUSD` (WTI crude) and `XNGUSD` (natural gas) are energy contracts whose real session opens 18:00 `America/New_York`, not 17:00.** After wiring they get the FX session — a one-hour error, presented with full confidence, and `isRegistered()` will not catch it because the row exists. Recorded; the registry is not writable here.
+
+**On suffix-stripping — where it belongs, and why.** Broker suffixes are **already half-handled, and the half that works is not the half one would guess**:
+
+| Form | Resolves? | |
+|---|---|---|
+| `EURUSD.a`, `EURUSD_i`, `EURUSD-ECN`, `EURUSD.pro`, `EUR/USD` | **yes** | `_resolveRegistryKey` splits on `/ - _ .` and whitespace, then tries the longest segment |
+| `EURUSDm`, `EURUSDc`, `EURUSDpro`, `EURUSDmicro`, `EURUSD#` | **no** | no separator to split on; `#` is not in the split set either |
+
+**It belongs in the registry resolver (`_resolveRegistryKey`), not in the session-class mapping.** `EURUSDm` and `EURUSD` are the same instrument for *every* consumer of the registry — pip size, P&L, margin and session alike. Putting the rule in `classFromRegistry` would give the session calendar a symbol vocabulary the P&L path does not share, and two normalisation rules that are supposed to agree but live in different files are how drift starts. One resolver, one vocabulary. It is also the cheaper fix: the resolver already has the segment-splitting machinery and needs only a bare-suffix rule, whereas the mapping layer would need the whole thing rebuilt.
+
 ## 9. Not verified / deferred — explicit list
 
 1. **Product wiring is not done.** By instruction. Everything in §4 stays RED until Manager A authorises it. The `fixed` state proves the oracle is satisfiable by the proposed diff, nothing more.
@@ -412,3 +583,8 @@ Cell G2 now covers three arrival patterns for both `1d` and `1w` — simple, sta
 9. **Migration audit not started.** The finding flags it and the Director called it "the real cost": drawings, journal entries and saved analysis anchored to daily/weekly bar timestamps will all shift by up to 7 hours (daily) or ~3.5 days (weekly). Nothing in this packet enumerates or migrates them. This is the largest unquantified item in the row.
 10. **Cost measured, not soaked.** Cell K bounds zone work to ≤8 `Intl` calls per session day (observed 194 over 44,640 one-minute bars, i.e. ~0.4% of bars) using a derived rather than fitted bound, and bounds instrument-registry lookups to ≤2 per resample (observed 1 — resolution is memoised per symbol, not per bar). That is a unit-level bound; it is **not** an §A2 soak measurement, and §A9 requires memory cells with indicators and open trades that this packet does not run.
 11. **CI integration not arranged.** The oracle fails by design today. Whether it lands as a permanent RED cell or is gated until wiring is Manager C's call (§A11.2 item 4, negative-control cells).
+12. **`multichart/chart-host.html` will not receive the fix, and it is live.** §0a.2. The wiring change must add the registry and the helper to that shell or the multichart panel surface ships a different calendar from every other surface. **This is a wiring-change blocker and it is the one item on this list I would not let board without a decision.**
+13. **The ambiguity branch is unguarded.** Not "untested" — unguarded. `wallClockTransitionCrossings` is a near-transition tripwire and does not detect the ambiguity condition; the vacuous assertion that claimed otherwise has been removed rather than reworded. §3.3.
+14. **`multichart/chart-host.html` has drifted between the source and served trees** (26 lines of TF-switch viewport handling present in `chart v 1.4/` and absent from `homepage/public/`). Script order is identical so it does not affect this packet. **Reported, not touched** — reconciling it means choosing whether to ship an unmirrored feature, which is not my call. Cell M4 asserts load-order identity and reports the body drift.
+15. **The indicator anchor surface is shaped but unused.** `namedAnchors()` declares `fvg-18-et` and `weekly-map-mon` with status `declared`; nothing reads them and no indicator was changed. Cell Q proves the surface absorbs both, which is a claim about the *surface*, not about the indicators. The FVG's one-hour disagreement with the FX session open is pinned as a value and **not reconciled**. §3.5.
+16. **`XTIUSD` and `XNGUSD` will get the wrong session after wiring** — a confident one-hour error, not a fallback, because they are registered as `forex`. §8.5. The registry is not writable here, so this is handed over rather than fixed.

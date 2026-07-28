@@ -7,7 +7,7 @@
   "finding": "docs/plan3/FINDING-SESSION-CALENDAR-20260727.md",
   "module": {
     "id": "SessionCalendar",
-    "version": "20260728b82",
+    "version": "20260728b83",
     "provides": [
       "bucketStart",
       "epochAlignedBucketStart",
@@ -17,6 +17,10 @@
       "resolveInstrumentClass",
       "classFromMarketType",
       "classFromRegistry",
+      "resolveIdentity",
+      "normaliseAnchor",
+      "namedAnchor",
+      "namedAnchors",
       "instrumentClasses",
       "describeClass",
       "explain",
@@ -37,10 +41,57 @@
         "script": "/chart/modules/market-calculations.js",
         "global": "window.marketCalcEngine",
         "why": "Sole source of instrument identity for the product path. chart.currentSymbol holds a display label (EURUSD_FULL_1MIN_1MIN, 20251028_194229_GBPUSD, EUR/USD, FILE_1234, null), and this registry already resolves those shapes for P&L. classFromRegistry gates on isRegistered() so an unrecognised label yields null rather than a guessed FX session.",
-        "absenceBehaviour": "classFromRegistry returns null; callers keep legacy epoch alignment and announce 'SessionCalendar.unresolved-instrument' via __talariaMarkMissingModule.",
-        "alreadyServedBy": ["chart v 1.4/chart/dist-v9/index.html", "homepage/public/chart/dist-v9/index.html", "chart v 1.4/chart/multichart-prod/chart-embed.html", "homepage/public/chart/multichart-prod/chart-embed.html"]
+        "absenceBehaviour": "resolveIdentity returns {instrumentClass:null, cacheable:false, reason:'registry-unavailable'}; callers keep legacy epoch alignment, announce 'SessionCalendar.unresolved-instrument', and MUST NOT memoise the null. A transiently-absent registry must not become permanently absent.",
+        "alreadyServedBy": ["chart v 1.4/chart/dist-v9/index.html", "homepage/public/chart/dist-v9/index.html", "chart v 1.4/chart/multichart-prod/chart-embed.html", "homepage/public/chart/multichart-prod/chart-embed.html"],
+        "declaredAfterChartOn": ["chart v 1.4/chart/legacy-index.html", "homepage/public/chart/legacy-index.html"],
+        "notDeclaredAtAllOn": ["chart v 1.4/chart/multichart/chart-host.html", "homepage/public/chart/multichart/chart-host.html"],
+        "loadOrderAssertedBy": "cellM4"
       }
     ],
+    "registryGaps": {
+      "rows": 120,
+      "note": "Symbols the product can display that isRegistered() rejects, so the wired chart keeps epoch alignment for them. market-calculations.js is NOT in this packet's writable set; listed for whoever owns it.",
+      "g10CrossMatrix": { "expected": 28, "present": 26, "missing": ["EURNZD", "GBPNZD"] },
+      "sgdCrosses": { "present": ["EURSGD", "USDSGD", "SGDJPY"], "missing": ["AUDSGD", "NZDSGD", "GBPSGD", "CADSGD", "CHFSGD"] },
+      "metals": { "present": ["XAUUSD", "XAGUSD"], "missing": ["XPTUSD", "XPDUSD"] },
+      "misclassified": {
+        "rows": ["DXY", "USDX", "XTIUSD", "XNGUSD"],
+        "typedAs": "forex",
+        "why": "None is spot FX. DXY/USDX are index quotes; XTIUSD (WTI) and XNGUSD (natural gas) are energy contracts whose real session is CME 18:00 America/New_York, not 17:00. Wiring gives them the FX session. Recorded, not fixed — the registry is not writable here."
+      },
+      "suffixStripping": {
+        "handledToday": ["EURUSD.a", "EURUSD_i", "EURUSD-ECN", "EURUSD.pro", "EUR/USD", "EURUSD.r"],
+        "notHandled": ["EURUSDm", "EURUSDc", "EURUSDpro", "EURUSDmicro", "EURUSD#"],
+        "mechanism": "_resolveRegistryKey splits on / - _ . and whitespace and tries the longest segment. Separator-delimited suffixes therefore already resolve; bare alphanumeric suffixes do not, and '#' is not in the split set.",
+        "belongsIn": "the registry resolver (_resolveRegistryKey), NOT the session-class mapping",
+        "rationale": "EURUSDm and EURUSD are the same instrument for every consumer of the registry — pip size, P&L, margin, and session alike. Fixing it in classFromRegistry would give the session calendar a symbol vocabulary the P&L path does not share, which is how two normalisation rules drift apart. One resolver, one vocabulary."
+      }
+    },
+    "indicatorSurface": {
+      "status": "shaped, nothing migrated",
+      "why": "The anchoring audit expects SessionCalendar to serve indicators, at which point the FVG's 18:00 ET and the Weekly Map's Monday-ET stop being private constants. bucketStart/openLocalTime accept an explicit `anchor` in place of an instrument class; namedAnchors() declares both, status 'declared'.",
+      "namedAnchors": ["fvg-18-et", "weekly-map-mon"],
+      "assertedBy": "cellQ",
+      "warning": "fvg-18-et is 18:00 America/New_York and disagrees with the FX session open by exactly one hour. That disagreement is real and is NOT reconciled here."
+    },
+    "epochFlooringSites": {
+      "known": 3,
+      "wiredByThisPacket": 2,
+      "sites": [
+        { "file": "chart v 1.4/chart/chart.js", "function": "_resampleDataFull", "wired": true },
+        { "file": "chart v 1.4/chart/modules/chart-data-pipeline.js", "function": "_tryIncrementalResample", "wired": true },
+        { "file": "chart v 1.4/chart/modules/talaria-fvg-indicator.js", "function": "periodStart", "lines": "68-70", "usedAt": 294, "wired": false, "note": "Third site, named by the anchoring audit and not by the original finding. Its tfToMs accepts d and w, so it floors daily and weekly to the UTC epoch too. SEPARATE ROW." }
+      ],
+      "assertedBy": "cellM2"
+    },
+    "externalAuthority": {
+      "file": "chart v 1.4/chart/api_server.py",
+      "function": "_is_weekend_timestamp_ms",
+      "lines": "8465-8499",
+      "rule": "FX closes Friday 17:00 America/New_York, reopens Sunday 17:00 America/New_York, DST-aware via zoneinfo; docstring explicitly rejects the naive UTC weekday check.",
+      "agreement": "EXACT. Over 2013-2015 at minute resolution: 156 closes and 156 reopens, every close is a daily session open, every reopen is both a daily and a weekly session open, and every weekly open this module produces is a server reopen instant. Single local anchor Sunday 17:00 throughout. Zero disagreement.",
+      "assertedBy": "cellP"
+    },
     "source": "chart v 1.4/chart/modules/session-calendar.js",
     "mirrors": ["homepage/public/chart/modules/session-calendar.js"],
     "script": "/chart/modules/session-calendar.js"

@@ -39,7 +39,7 @@
 (function (global) {
     'use strict';
 
-    var VERSION = '20260728b82';
+    var VERSION = '20260728b83';
     var KILL_SWITCH = '__TALARIA_DISABLE_SESSION_CALENDAR_V1';
 
     /* -- instrument-class registry (extensible; see contract sidecar) ------ */
@@ -139,6 +139,7 @@
         boundaryRecomputes: 0,
         epochFallbacks: 0,
         registryLookups: 0,
+        registryUnavailable: 0,
         // Diagnostics for the two documented-but-unreachable DST branches in
         // `wallToUtc`. Non-zero means an added instrument class anchors near a
         // transition and the constant-anchor invariant needs re-proving.
@@ -233,11 +234,22 @@
      *   EARLIER occurrence, i.e. the pre-transition offset, which is what the
      *   two-pass converges to. Chosen deliberately so the session opens as early
      *   as possible and no bar between the two occurrences is orphaned ahead of
-     *   its own session open. Near-transition conversions are counted as
-     *   `wallClockTransitionCrossings` (free: both offsets are already in hand).
+     *   its own session open.
      *
-     * Both counters read zero for every fixture in the oracle. A non-zero value
-     * means an added class has entered an untested branch.
+     *   THE AMBIGUITY BRANCH IS UNGUARDED, AND `wallClockTransitionCrossings`
+     *   DOES NOT DETECT IT. That counter fires when the two offset probes
+     *   DISAGREE, which is a near-transition signal, not the ambiguity
+     *   condition: a genuinely ambiguous wall time can converge on the first
+     *   pass and return the correct earlier occurrence with the counter reading
+     *   zero. It is retained as a cheap near-transition tripwire — it costs
+     *   nothing, both offsets are already in hand — but it must NOT be read as
+     *   "no ambiguous time was requested". Detecting ambiguity properly needs a
+     *   third probe on the far side of the transition, i.e. an extra Intl call
+     *   on every boundary, which cell K's cost bound does not allow for a branch
+     *   no implemented class can reach. Recorded rather than paid for.
+     *
+     * `wallClockGapAdjustments` DOES detect its condition exactly: it fires on a
+     * failed round-trip, which is precisely what a non-existent wall time is.
      */
     function wallToUtc(zone, year, month, day, minuteOfDay) {
         var naive = Date.UTC(year, month - 1, day, 0, 0, 0, 0) + minuteOfDay * 60000;
@@ -246,8 +258,7 @@
         var t = naive - offGuess;
         var offResolved = zoneOffsetMs(zone, t);
         t = naive - offResolved;
-        // Offsets disagreeing means the conversion sat next to a transition; the
-        // value above is the earlier occurrence, per the documented policy.
+        // Near-transition tripwire, NOT an ambiguity detector — see above.
         if (offResolved !== offGuess) stats.wallClockTransitionCrossings++;
         var check = zoneParts(zone, t);
         if (check.year !== year || check.month !== month || check.day !== day
@@ -339,6 +350,30 @@
     // P&L. Session bucketing consumes THAT answer rather than growing a second,
     // weaker copy of it.
 
+    /*
+     * ┌──────────────────────────────────────────────────────────────────────┐
+     * │ WARNING — `futures` IS A COARSER BUCKET THAN THE CLASS NAME SUGGESTS │
+     * └──────────────────────────────────────────────────────────────────────┘
+     * `MarketCalculationEngine` types ALL 30 futures rows as `futures`, so this
+     * line routes energies (CL, NG, RB, HO), metals (GC, SI, HG, PL), bonds
+     * (ZB, ZN, ZF, ZT), grains (ZC, ZW, ZS) and FX futures (6E, 6B, 6J, ...)
+     * into a class NAMED `cme-index-futures`.
+     *
+     * That is INERT TODAY and only today: the class is `declared`, so every one
+     * of those rows falls back to legacy epoch alignment and nothing moves.
+     *
+     * IT BECOMES A DEFECT THE MOMENT SOMEONE IMPLEMENTS THE CLASS. Whoever does
+     * that will naturally implement CME EQUITY INDEX hours, and those hours will
+     * silently land on grains, energies, metals and bonds, which keep different
+     * session calendars — grains most of all (CBOT ags have a mid-session pause
+     * and a different open entirely). The class NAME actively disguises this,
+     * which is why the warning is here and not only in the packet.
+     *
+     * DO NOT implement `cme-index-futures` without first splitting this map by
+     * product group. Deliberately not restructured in this packet: doing so
+     * would change classification for 30 rows with no oracle coverage behind it.
+     * Recorded for Manager A, packet session-calendar-red §8.3.
+     */
     var MARKET_TYPE_TO_CLASS = {
         forex: 'fx',
         crypto: 'crypto',
@@ -355,33 +390,71 @@
     }
 
     /**
-     * Instrument class for a product symbol, via the instrument registry.
+     * Instrument identity for a product symbol, via the instrument registry.
      *
-     * Returns null — meaning IDENTITY NOT ESTABLISHED — rather than guessing.
-     * `MarketCalculationEngine.detectMarketType` deliberately defaults to
-     * 'forex' for anything it cannot place, which is the right default for
+     * Returns a null class — meaning IDENTITY NOT ESTABLISHED — rather than
+     * guessing. `MarketCalculationEngine.detectMarketType` deliberately defaults
+     * to 'forex' for anything it cannot place, which is the right default for
      * position sizing but catastrophic here: it would apply a 17:00 New York FX
      * session to a `FILE_1234` dataset that may be NQ futures, silently changing
      * displayed values. So the confidence gate is `isRegistered()` — an explicit
      * registry row — and an unregistered symbol yields null. The caller must
      * treat null as "keep today's grid AND announce the degradation" (§A4c).
      *
+     * `cacheable` IS PART OF THE CONTRACT AND CALLERS MUST HONOUR IT.
+     * A memoising caller has to separate two very different negatives:
+     *
+     *   "the registry says this symbol is unknown"  -> settled, cacheable
+     *   "the registry was not there to be asked"    -> transient, NOT cacheable
+     *
+     * Caching the second permanently poisons the symbol: the chart stays
+     * epoch-aligned for the rest of the session even after the registry loads,
+     * while every health signal reads green. That is §A4c capability loss
+     * without failure in its purest form, and it is the reason this function
+     * returns a record rather than a bare class id.
+     *
      * @param {object} engine MarketCalculationEngine instance (window.marketCalcEngine)
      * @param {string} symbol chart.currentSymbol
-     * @returns {string|null} session class id, or null when unresolved
+     * @returns {{instrumentClass:string|null, cacheable:boolean, reason:string}}
      */
-    function classFromRegistry(engine, symbol) {
+    function resolveIdentity(engine, symbol) {
         var s = (typeof symbol === 'string') ? symbol.trim() : '';
-        if (!s) return null;
+        if (!s) {
+            return { instrumentClass: null, cacheable: true, reason: 'no-symbol' };
+        }
         if (!engine || typeof engine.isRegistered !== 'function'
-            || typeof engine.getSpecs !== 'function') return null;
+            || typeof engine.getSpecs !== 'function') {
+            stats.registryUnavailable++;
+            // Never cacheable: the registry may still be loading.
+            return { instrumentClass: null, cacheable: false, reason: 'registry-unavailable' };
+        }
         stats.registryLookups++;
         var registered = false;
-        try { registered = !!engine.isRegistered(s); } catch (e) { return null; }
-        if (!registered) return null;
+        try {
+            registered = !!engine.isRegistered(s);
+        } catch (e) {
+            // The registry answered with a throw, i.e. it did not answer.
+            return { instrumentClass: null, cacheable: false, reason: 'registry-threw' };
+        }
+        if (!registered) {
+            return { instrumentClass: null, cacheable: true, reason: 'symbol-not-registered' };
+        }
         var specs = null;
-        try { specs = engine.getSpecs(s); } catch (e) { return null; }
-        return classFromMarketType(specs && specs.type);
+        try {
+            specs = engine.getSpecs(s);
+        } catch (e) {
+            return { instrumentClass: null, cacheable: false, reason: 'registry-threw' };
+        }
+        var cls = classFromMarketType(specs && specs.type);
+        if (!cls) {
+            return { instrumentClass: null, cacheable: true, reason: 'market-type-unmapped' };
+        }
+        return { instrumentClass: cls, cacheable: true, reason: 'resolved' };
+    }
+
+    /** Thin accessor over `resolveIdentity` for callers that do not memoise. */
+    function classFromRegistry(engine, symbol) {
+        return resolveIdentity(engine, symbol).instrumentClass;
     }
 
     /* -- legacy path (kept HERE so both call sites share one implementation) */
@@ -449,6 +522,7 @@
         stats.boundaryRecomputes = 0;
         stats.epochFallbacks = 0;
         stats.registryLookups = 0;
+        stats.registryUnavailable = 0;
         stats.wallClockGapAdjustments = 0;
         stats.wallClockTransitionCrossings = 0;
     }
@@ -481,12 +555,95 @@
         var spec = classifyTimeframe(timeframe);
         if (!spec.handled) { stats.epochFallbacks++; return epochAlignedBucketStart(t, tfMs); }
 
+        // An explicit anchor takes precedence over instrument-class lookup.
+        // This is the INDICATOR-FACING surface: the anchoring audit expects the
+        // FVG's private 18:00 ET constant and the Weekly Map's Monday-ET
+        // constant to become entries here rather than stay private. Nothing
+        // migrates onto it in this packet, but the boundary engine is already
+        // parameterised by (zone, dailyOpenMinute, weekOpenWeekday), so the
+        // extension point costs nothing and its absence would have forced those
+        // callers to invent an eighth and ninth calendar to get in.
+        if (opts.anchor) {
+            var anchor = normaliseAnchor(opts.anchor);
+            if (!anchor) { stats.epochFallbacks++; return epochAlignedBucketStart(t, tfMs); }
+            return cachedBoundary(anchor, spec.unit, t);
+        }
+
         var def = CLASSES[resolveInstrumentClass(opts.symbol, opts)];
         if (!def || def.status !== 'implemented') {
             stats.epochFallbacks++;
             return epochAlignedBucketStart(t, tfMs);
         }
         return cachedBoundary(def, spec.unit, t);
+    }
+
+    /**
+     * Validate a caller-supplied anchor into the same shape a class def has.
+     * Fails CLOSED (returns null, caller falls back to epoch-aligned) rather
+     * than coercing, because a silently-defaulted anchor is exactly the class
+     * of bug this module exists to remove.
+     */
+    function normaliseAnchor(a) {
+        if (!a || typeof a !== 'object') return null;
+        var zone = typeof a.zone === 'string' && a.zone ? a.zone : null;
+        var minute = Number(a.dailyOpenMinute);
+        var weekday = Number(a.weekOpenWeekday);
+        if (!zone) return null;
+        if (!isFinite(minute) || minute < 0 || minute >= 1440) return null;
+        if (!isFinite(weekday) || weekday < 0 || weekday > 6) return null;
+        var offset = a.labelOffsetDays === undefined ? 0 : Number(a.labelOffsetDays);
+        if (!isFinite(offset)) return null;
+        return {
+            id: typeof a.id === 'string' && a.id ? a.id : 'anchor:' + zone + '@' + minute + '/' + weekday,
+            zone: zone,
+            dailyOpenMinute: minute,
+            weekOpenWeekday: weekday,
+            labelOffsetDays: offset,
+            status: 'implemented'
+        };
+    }
+
+    /**
+     * Named anchors the audit expects to migrate here. DECLARED, NOT WIRED:
+     * nothing reads these yet and no indicator has been changed. They are
+     * present so the two known future callers have a name to move to, and so
+     * that the values are reviewed here rather than rediscovered from each
+     * indicator's private constants.
+     *
+     *   `fvg-18-et`      — talaria-fvg-indicator.js, 18:00 America/New_York.
+     *                      NOTE it disagrees with the FX session open by one
+     *                      hour; that disagreement is REAL and is one of the
+     *                      seven calendars the audit found. Recorded, not
+     *                      reconciled — reconciling it is a separate row.
+     *   `weekly-map-mon` — talaria-weekly-map-indicator.js, Monday 00:00 ET.
+     */
+    var NAMED_ANCHORS = {
+        'fvg-18-et': {
+            id: 'fvg-18-et', zone: 'America/New_York',
+            dailyOpenMinute: 18 * 60, weekOpenWeekday: 0, labelOffsetDays: 1,
+            status: 'declared', source: 'talaria-fvg-indicator.js periodStart()'
+        },
+        'weekly-map-mon': {
+            id: 'weekly-map-mon', zone: 'America/New_York',
+            dailyOpenMinute: 0, weekOpenWeekday: 1, labelOffsetDays: 0,
+            status: 'declared', source: 'talaria-weekly-map-indicator.js'
+        }
+    };
+
+    function namedAnchor(id) {
+        var a = NAMED_ANCHORS[id];
+        return a ? normaliseAnchor(a) : null;
+    }
+
+    function namedAnchors() {
+        return Object.keys(NAMED_ANCHORS).map(function (k) {
+            var a = NAMED_ANCHORS[k];
+            return {
+                id: a.id, zone: a.zone, dailyOpenMinute: a.dailyOpenMinute,
+                weekOpenWeekday: a.weekOpenWeekday, labelOffsetDays: a.labelOffsetDays,
+                status: a.status, source: a.source
+            };
+        });
     }
 
     /**
@@ -549,7 +706,12 @@
     /** Local wall-clock anchor of a bucket open — the DST assertion surface. */
     function openLocalTime(bucketOpenMs, options) {
         var opts = options || {};
-        var def = CLASSES[resolveInstrumentClass(opts.symbol, opts)];
+        // An explicit anchor names its own zone; without this branch the
+        // reporting side silently falls back to UTC while the bucketing side
+        // uses the anchor, which is the exact shape of a wrong-but-plausible
+        // answer. Same precedence as `bucketStart`.
+        var def = opts.anchor ? normaliseAnchor(opts.anchor)
+            : CLASSES[resolveInstrumentClass(opts.symbol, opts)];
         var zone = (def && def.zone) || 'UTC';
         var t = Number(bucketOpenMs);
         var p = zoneParts(zone, t);
@@ -584,12 +746,16 @@
         resolveInstrumentClass: resolveInstrumentClass,
         classFromMarketType: classFromMarketType,
         classFromRegistry: classFromRegistry,
+        resolveIdentity: resolveIdentity,
         instrumentClasses: instrumentClasses,
         describeClass: function (id) {
             if (!CLASSES[id]) return null;
             return instrumentClasses().filter(function (d) { return d.id === id; })[0];
         },
         bucketStart: bucketStart,
+        normaliseAnchor: normaliseAnchor,
+        namedAnchor: namedAnchor,
+        namedAnchors: namedAnchors,
         epochAlignedBucketStart: epochAlignedBucketStart,
         sessionLabel: sessionLabel,
         openLocalTime: openLocalTime,
@@ -604,6 +770,7 @@
                 boundaryRecomputes: stats.boundaryRecomputes,
                 epochFallbacks: stats.epochFallbacks,
                 registryLookups: stats.registryLookups,
+                registryUnavailable: stats.registryUnavailable,
                 wallClockGapAdjustments: stats.wallClockGapAdjustments,
                 wallClockTransitionCrossings: stats.wallClockTransitionCrossings
             };

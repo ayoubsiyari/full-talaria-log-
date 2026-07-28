@@ -723,6 +723,10 @@ cellTest('cellN: wired product resolves an instrument class from a product-set p
     // Whatever the patch reads must exist in chart.js. This is the assertion
     // whose absence caused the block, so it is derived from the patch TEXT
     // rather than restated by hand — it cannot drift away from the wiring.
+    // Scanned over the WHOLE addition text, excluding only the exact internal
+    // names the wiring defines on itself. r2 sliced from a marker and filtered
+    // by `_session` prefix; both were walkable. The exclusion list is itself
+    // asserted below, so it cannot quietly grow to hide a real read.
     const readProps = H.symbolPropertiesInPatch();
     expectEqual('N', 'patch-reads-only-declared-symbol-properties',
         readProps.join(','), H.SYMBOL_PROPERTIES_READ.join(','));
@@ -730,6 +734,24 @@ cellTest('cellN: wired product resolves an instrument class from a product-set p
         expectEqual('N', `chart.js-assigns-this.${prop}`,
             H.chartAssignmentCount(prop) > 0, true,
             `assignments=${H.chartAssignmentCount(prop)}`);
+    }
+    // Method calls are held to the same standard by a different test: a method
+    // lives on the prototype and is never `this.x = `, so it is checked for a
+    // DEFINITION. Splitting the two is what lets the data-property check above
+    // stay strict instead of being loosened to accommodate `parseTimeframe`.
+    const calls = H.methodCallsInPatch();
+    expectEqual('N', 'patch-calls-only-methods-that-exist', calls.join(','), 'parseTimeframe');
+    for (const name of calls) {
+        expectEqual('N', `chart.js-defines-method:${name}`, H.chartDefinesMethod(name), true);
+    }
+    // Every excluded name must be one the wiring actually defines, and every
+    // internal name the wiring uses must be on the list. An attacker adding
+    // `this._sessionSneakySymbol` now fails here rather than slipping the filter.
+    expectEqual('N', 'internal-exclusions-are-all-used-by-the-patch',
+        H.internalPropertiesInPatch(), [...H.WIRING_INTERNAL_PROPERTIES].sort());
+    for (const prop of H.WIRING_INTERNAL_PROPERTIES) {
+        expectEqual('N', `internal-property-is-not-a-product-read:${prop}`,
+            H.chartAssignmentCount(prop), 0);
     }
     // And the four properties of the rejected patch are confirmed non-existent,
     // so this cell also documents why they cannot be used.
@@ -803,6 +825,92 @@ cellTest('cellN: wired product resolves an instrument class from a product-set p
         H.seriesSha256(noEngine.chart._resampleDataFull(PO_BARS, '1d')), FROZEN_TODAY.po1d.sha256);
     expectEqual('N', 'absent-registry-announces-degradation',
         [...new Set(noEngine.missingModules)].join(','), 'SessionCalendar.unresolved-instrument');
+});
+
+/* ─────────────────────────────────────────────────────────────────────────
+ * Cell N2 — the memo must not poison itself when the registry arrives late.
+ *
+ * r2 memoised `_sessionInstrumentClass` per symbol and cached a `null` result
+ * unconditionally. If the registry was absent at the first call — a deferred
+ * script, a slow network, or a shell that declares market-calculations.js AFTER
+ * chart.js, which `legacy-index.html` actually does — the symbol stayed
+ * unresolved for the life of the chart. The chart was permanently epoch-aligned
+ * while every health signal read green: §A4c capability loss without failure.
+ *
+ * Cell N could not catch it. `omitMarketCalc` tests PERMANENT absence, and a
+ * permanently-absent registry gives the same answer as a poisoned cache. Only a
+ * RECOVERY sequence separates them.
+ * ───────────────────────────────────────────────────────────────────────── */
+
+cellTest('cellN2: a registry that arrives late must still resolve — the memo must not poison', () => {
+    const h = makeHarness({ symbol: FX, omitMarketCalc: true });
+    const wiredHere = typeof h.chart._sessionInstrumentClass === 'function';
+
+    // ── before: registry absent ──
+    const before = wiredHere ? h.chart._sessionInstrumentClass() : null;
+    expectEqual('N2', 'class-before-registry-is-null', before === null, true);
+    const dailyBefore = h.chart._resampleDataFull(PO_BARS, '1d');
+    expectEqual('N2', 'output-before-registry-is-todays',
+        H.seriesSha256(dailyBefore), FROZEN_TODAY.po1d.sha256,
+        `buckets=${dailyBefore.length}`);
+
+    // ── the registry loads ──
+    const engine = h.installMarketCalc();
+    expectEqual('N2', 'registry-is-now-present', !!engine, true);
+
+    // ── after: the chart MUST recover ──
+    const after = wiredHere ? h.chart._sessionInstrumentClass() : null;
+    expectEqual('N2', 'class-recovers-after-registry-loads', String(after), 'fx',
+        `before=${before} after=${after}`);
+
+    const dailyAfter = h.chart._resampleDataFull(PO_BARS, '1d');
+    expectEqual('N2', 'output-recovers-after-registry-loads',
+        H.seriesSha256(dailyAfter) === FROZEN_TODAY.po1d.sha256, false,
+        `bucketsAfter=${dailyAfter.length} (20 = recovered, 24 = still poisoned)`);
+    expectEqual('N2', 'recovered-bucket-count', dailyAfter.length, 20);
+    expectEqual('N2', 'recovered-friday-session-present',
+        dailyAfter.some((b) => b.t === H.EXPECTED.friday20130104.openMs), true);
+
+    // The same must hold on the incremental path, which memoises independently
+    // of the full path only insofar as both go through the one chart object.
+    const inc = makeHarness({ symbol: FX, omitMarketCalc: true });
+    inc.chart._resampleDataFull(PO_BARS.slice(0, 50), '1d');
+    inc.installMarketCalc();
+    const incAfter = incrementalSeries(inc, PO_BARS, '1d');
+    expectEqual('N2', 'incremental-path-recovers-too',
+        H.seriesSha256(incAfter.series) === FROZEN_TODAY.po1d.sha256, false,
+        `len=${incAfter.series.length}`);
+
+    // ── the distinction that makes the fix correct ──
+    // A settled negative from a PRESENT registry is legitimately cacheable; a
+    // negative because the registry was absent is not. Asserted on the helper
+    // directly so the contract is pinned, not just its consequence.
+    const { SC } = makeHarness();
+    const cases = [
+        ['registry-absent', SC.resolveIdentity(null, 'EURUSD'), 'registry-unavailable', false],
+        ['registry-present-unknown-symbol', SC.resolveIdentity(makeHarness().engine, 'FILE_123'),
+            'symbol-not-registered', true],
+        ['registry-present-known-symbol', SC.resolveIdentity(makeHarness().engine, 'EURUSD'),
+            'resolved', true],
+        ['empty-symbol', SC.resolveIdentity(makeHarness().engine, ''), 'no-symbol', true],
+    ];
+    for (const [name, got, reason, cacheable] of cases) {
+        expectEqual('N2', `identity-reason:${name}`, got.reason, reason);
+        expectEqual('N2', `identity-cacheable:${name}`, got.cacheable, cacheable);
+    }
+
+    // A registry that throws did not answer, so its negative is not cacheable.
+    const thrower = { isRegistered() { throw new Error('boom'); }, getSpecs() { return {}; } };
+    const threw = SC.resolveIdentity(thrower, 'EURUSD');
+    expectEqual('N2', 'identity-reason:registry-throws', threw.reason, 'registry-threw');
+    expectEqual('N2', 'identity-cacheable:registry-throws', threw.cacheable, false);
+
+    // Structural: the wiring must consult `cacheable` before storing anything.
+    const patchText = H.WIRING_PATCH.chartAdditions.map((a) => a.source).join('\n');
+    expectEqual('N2', 'wiring-honours-the-cacheable-contract',
+        /if\s*\(\s*identity\.cacheable\s*\)/.test(patchText), true);
+    expectEqual('N2', 'wiring-keys-cache-on-engine-reference',
+        patchText.includes('_sessionClassCacheEngine'), true);
 });
 
 /* ─────────────────────────────────────────────────────────────────────────
@@ -1059,25 +1167,45 @@ cellTest('cellK: session bucketing does not add per-bar Intl work', () => {
         harness.registryCalls.getSpecs <= 2, true,
         `getSpecs=${harness.registryCalls.getSpecs} bars=${bars.length}`);
 
-    // The two documented-but-unreachable DST branches in `wallToUtc` must stay
-    // unreached for the implemented classes. A non-zero count means an added
-    // class anchors near a transition and the constant-anchor invariant that
-    // cells D1-D3 assert needs re-proving for it.
+    // The GAP branch must stay unreached for the implemented classes. A non-zero
+    // count means an added class anchors inside a spring-forward gap and the
+    // constant-anchor invariant that cells D1-D3 assert needs re-proving for it.
+    // This counter detects its condition exactly: it fires on a failed
+    // round-trip, which is precisely what a non-existent wall time is.
     expectEqual('K', 'dst-gap-branch-unreached-for-implemented-classes',
         stats.wallClockGapAdjustments, 0);
-    expectEqual('K', 'dst-ambiguity-branch-unreached-for-implemented-classes',
-        stats.wallClockTransitionCrossings, 0);
+    // The ambiguity side is NOT asserted — see cell K2. The counter fires when
+    // the two offset probes disagree, which is a near-transition tripwire and
+    // not the ambiguity condition, so asserting zero on it would be vacuous.
+    note('K', 'dst-near-transition-tripwire', true,
+        `wallClockTransitionCrossings=${stats.wallClockTransitionCrossings} `
+        + '(near-transition tripwire, NOT an ambiguity gate)');
 });
 
-cellTest('cellK2: DST gap and ambiguity policies are documented, unreachable and counted', () => {
-    // RECORDED FOR MANAGER A, not a behaviour gate. Both branches are dead for
-    // FX (17:00 America/New_York) and crypto (00:00 UTC) because US transitions
-    // happen at 02:00 local and UTC has none. They are therefore UNTESTED by
-    // any fixture. Rather than synthesise an instrument class that does not
-    // ship in order to manufacture coverage, the module states each policy
-    // explicitly and counts each branch, so an added class trips cell K instead
-    // of silently drifting. This cell asserts the diagnostic EXISTS and reads
-    // zero across every fixture the packet uses.
+cellTest('cellK2: DST gap is guarded and counted; ambiguity is UNGUARDED and said so', () => {
+    // Both branches are dead for FX (17:00 America/New_York) and crypto (00:00
+    // UTC), because US transitions happen at 02:00 local and UTC has none. They
+    // are therefore UNTESTED by any fixture, and no instrument class was
+    // synthesised to manufacture coverage.
+    //
+    // THE TWO COUNTERS ARE NOT EQUALLY GOOD, AND r2 CLAIMED THEY WERE.
+    //
+    //   GAP: `wallClockGapAdjustments` detects its condition EXACTLY. It fires
+    //   on a failed round-trip, which is precisely what a non-existent wall time
+    //   is. Asserting zero on it is meaningful, and it is asserted below.
+    //
+    //   AMBIGUITY: `wallClockTransitionCrossings` DOES NOT DETECT AMBIGUITY. It
+    //   fires when the two offset probes disagree, which is a near-transition
+    //   signal. A genuinely ambiguous wall time can converge on the first pass
+    //   and return the correct earlier occurrence with the counter reading zero
+    //   — the independent reviewer demonstrated exactly that. r2 asserted zero
+    //   on it and called the branch "unreached"; that assertion was PARTLY
+    //   VACUOUS and has been removed rather than dressed up.
+    //
+    // Detecting ambiguity properly needs a third probe on the far side of the
+    // transition, i.e. an extra Intl call on every boundary, which cell K's cost
+    // bound does not allow for a branch no implemented class can reach. So:
+    // **the ambiguity branch is unguarded, by decision, and this cell says so.**
     const { SC } = makeHarness();
     for (const counter of ['wallClockGapAdjustments', 'wallClockTransitionCrossings']) {
         expectEqual('K2', `diagnostic-exists:${counter}`,
@@ -1092,16 +1220,31 @@ cellTest('cellK2: DST gap and ambiguity policies are documented, unreachable and
     }
     const s = probe.SC.stats();
     note('K2', 'stats-across-all-dst-fixtures', true, JSON.stringify(s));
-    expectEqual('K2', 'gap-branch-never-taken-across-both-transitions', s.wallClockGapAdjustments, 0);
-    expectEqual('K2', 'ambiguity-branch-never-taken-across-both-transitions',
-        s.wallClockTransitionCrossings, 0);
 
-    // The documented policies, recorded so the packet and the source agree.
+    // Asserted: the gap branch is genuinely never taken across both transitions.
+    expectEqual('K2', 'gap-branch-never-taken-across-both-transitions', s.wallClockGapAdjustments, 0);
+
+    // NOT asserted as an ambiguity gate — reported only.
+    note('K2', 'ambiguity-branch-is-UNGUARDED', true,
+        `wallClockTransitionCrossings=${s.wallClockTransitionCrossings} — near-transition tripwire only; `
+        + 'a genuinely ambiguous wall time can read zero here. The branch has no detector.');
+
+    // The source must carry the honest statement, so packet and code agree and
+    // a future reader cannot mistake the tripwire for a gate.
     const source = H.readRepo(H.REL.calendar);
     expectEqual('K2', 'gap-policy-documented',
         source.includes('first instant AFTER the gap'), true);
     expectEqual('K2', 'ambiguity-policy-documented',
         source.includes('EARLIER occurrence'), true);
+    expectEqual('K2', 'source-states-ambiguity-branch-is-unguarded',
+        source.includes('THE AMBIGUITY BRANCH IS UNGUARDED'), true);
+    expectEqual('K2', 'source-warns-tripwire-is-not-a-detector',
+        source.includes('DOES NOT DETECT IT'), true);
+
+    // And cell K must not have re-acquired the vacuous assertion.
+    const self = H.readRepo('chart v 1.4/chart/modules/m22-session-calendar-bucketing.red.test.mjs');
+    expectEqual('K2', 'no-cell-asserts-zero-on-the-ambiguity-counter',
+        /expectEqual\([^)]*wallClockTransitionCrossings/.test(self), false);
 });
 
 /* ─────────────────────────────────────────────────────────────────────────
@@ -1261,6 +1404,95 @@ cellTest('cellM3: the wiring is a FOUR-file change and every target accepts it',
     ].join(' | '));
 });
 
+/* ─────────────────────────────────────────────────────────────────────────
+ * Cell M4 — every shell that loads chart.js, and its DECLARED load order.
+ *
+ * r2 asserted that market-calculations.js is present on "all four shells". That
+ * was true as scoped and false as a claim about the servable surface: SIX shells
+ * declare chart.js as a script tag and two more load it from a JS path array.
+ * Two of the six are broken for this wiring, and presence alone would not have
+ * shown it — the assertion has to be on ORDER, not existence.
+ * ───────────────────────────────────────────────────────────────────────── */
+
+cellTest('cellM4: all six chart.js shells, asserted on declared load order not presence', () => {
+    const shells = H.allChartShells();
+    expectEqual('M4', 'shell-count-loading-chart-js', shells.length, 8,
+        '6 script-tag shells + 2 JS-loader shells');
+
+    const orders = shells.map((rel) => H.shellScriptOrder(rel));
+
+    // Every shell must actually declare chart.js, or the inventory is wrong.
+    for (const o of orders) {
+        expectEqual('M4', `declares-chart-js:${o.rel}`, !!o.chart, true);
+    }
+
+    // ── the two findings, pinned as values so they cannot be quietly fixed
+    //    or quietly worsened without this cell noticing ──
+    const registryAbsent = orders.filter((o) => !o.registryDeclared).map((o) => o.rel);
+    const inverted = orders.filter((o) => o.registryDeclared && o.registryBeforeChart === false)
+        .map((o) => o.rel);
+    const ok = orders.filter((o) => o.registryBeforeChart === true).map((o) => o.rel);
+
+    expectEqual('M4', 'shells-with-registry-declared-before-chart', ok.sort(), [
+        'chart v 1.4/chart/dist-v9/index.html',
+        'chart v 1.4/chart/multichart-prod/chart-embed.html',
+        'homepage/public/chart/dist-v9/index.html',
+        'homepage/public/chart/multichart-prod/chart-embed.html',
+    ]);
+
+    // legacy-index.html declares the registry AFTER chart.js. Both are `defer`,
+    // so document order is preserved and it happens to work — but it works by
+    // timing, not by declaration, and it is exactly the configuration that
+    // triggers the cell N2 poisoning if anything ever resamples during load.
+    expectEqual('M4', 'shells-with-INVERTED-order', inverted.sort(), [
+        'chart v 1.4/chart/legacy-index.html',
+        'homepage/public/chart/legacy-index.html',
+    ]);
+
+    // chart-host.html is the multichart PANEL iframe. It loads ../chart.js with
+    // no modules at all ("engine (no modules — minimum surface)"), so the
+    // registry is permanently absent and every panel keeps the phantom Saturday.
+    expectEqual('M4', 'shells-with-registry-ABSENT', registryAbsent.sort(), [
+        'chart v 1.4/chart/multichart/chart-host.html',
+        'homepage/public/chart/multichart/chart-host.html',
+    ]);
+
+    for (const o of orders) {
+        note('M4', `order:${o.rel}`, true,
+            `mechanism=${o.mechanism} scripts=${o.scriptCount} `
+            + `chart.js@${o.chart ? `${o.chart.line}[${o.chart.attrs}]` : '--'} `
+            + `market-calculations@${o.registry ? `${o.registry.line}[${o.registry.attrs}]` : 'ABSENT'} `
+            + `=> ${o.registryDeclared ? (o.registryBeforeChart ? 'ordered' : 'INVERTED') : 'ABSENT'}`);
+    }
+
+    // Source and mirror shells must agree ON LOAD ORDER, so a fix to one tree
+    // cannot be mistaken for a fix to the served surface. Asserted on the script
+    // sequence rather than on bytes, because byte-identity is a stronger claim
+    // than this packet needs and one of these pairs does not satisfy it — see
+    // the drift note below, which is someone else's row, not mine to close.
+    for (const rel of shells.filter((r) => r.startsWith('chart v 1.4/'))) {
+        const mirror = rel.replace('chart v 1.4/chart/', 'homepage/public/chart/');
+        const seq = (r) => H.shellScriptOrder(r);
+        const a = seq(rel);
+        const b = seq(mirror);
+        expectEqual('M4', `shell-mirror-same-load-order:${rel.split('/').pop()}`,
+            `${a.scriptCount}|${a.chart && a.chart.src}|${a.registry && a.registry.src}|${a.registryBeforeChart}`,
+            `${b.scriptCount}|${b.chart && b.chart.src}|${b.registry && b.registry.src}|${b.registryBeforeChart}`);
+        if (H.sha256(H.readRepo(mirror)) !== H.sha256(H.readRepo(rel))) {
+            note('M4', `UNMIRRORED-DRIFT:${rel.split('/').pop()}`, true,
+                'source and served trees differ in body (not in script order) — reported, not touched');
+        }
+    }
+
+    // The wiring is inert but ANNOUNCED wherever the registry is missing, which
+    // is what makes the two broken shells a reportable state rather than a
+    // silent one. Proven behaviourally, not by reading the HTML.
+    const noEngine = makeHarness({ symbol: FX, omitMarketCalc: true });
+    noEngine.chart._resampleDataFull(PO_BARS, '1d');
+    expectEqual('M4', 'registry-absent-shell-announces-degradation',
+        [...new Set(noEngine.missingModules)].join(','), 'SessionCalendar.unresolved-instrument');
+});
+
 cellTest('cellM2: both resample paths route through ONE boundary implementation', () => {
     // The single-implementation requirement, asserted behaviourally: with the
     // shared entry point stubbed out in the realm, BOTH paths must change.
@@ -1290,6 +1522,257 @@ cellTest('cellM2: both resample paths route through ONE boundary implementation'
         `before=${before.incremental.slice(0, 16)} after=${after.incremental.slice(0, 16)}`);
     expectEqual('M2', 'stubbing-one-helper-moves-both-paths-together',
         after.full, after.incremental);
+
+    // ── census of epoch-flooring bucket sites ────────────────────────────
+    // The finding named two. The anchoring audit found a THIRD that nobody had
+    // named: `talaria-fvg-indicator.js periodStart()`, whose `tfToMs` accepts
+    // `d` and `w`, so it floors daily and weekly to the UTC epoch exactly like
+    // the two this packet fixes. It is a SEPARATE ROW and is deliberately not
+    // wired here. It is asserted as a census so that "both resample paths are
+    // fixed" can never be misread as "the codebase has one day definition".
+    const sites = [
+        { rel: H.REL.chart, needle: 'Math.floor(candle.t / timeframeMs) * timeframeMs',
+            wiredByThisPacket: true },
+        { rel: H.REL.pipeline, needle: 'Math.floor(lastRaw.t / timeframeMs) * timeframeMs',
+            wiredByThisPacket: true },
+        { rel: 'chart v 1.4/chart/modules/talaria-fvg-indicator.js',
+            needle: 'Math.floor(Number(t) / tfMs) * tfMs', wiredByThisPacket: false },
+    ];
+    for (const s of sites) {
+        expectEqual('M2', `epoch-flooring-site-still-present:${s.rel.split('/').pop()}`,
+            H.readRepo(s.rel).includes(s.needle), true);
+    }
+    expectEqual('M2', 'known-epoch-flooring-sites', sites.length, 3);
+    expectEqual('M2', 'sites-this-packet-wires', sites.filter((s) => s.wiredByThisPacket).length, 2);
+
+    // The third site is only a day/week defect because its timeframe parser
+    // accepts day and week units. Pinned, because if that ever stops being
+    // true the row changes shape.
+    const fvg = H.readRepo('chart v 1.4/chart/modules/talaria-fvg-indicator.js');
+    expectEqual('M2', 'fvg-timeframe-parser-accepts-day-and-week',
+        fvg.includes("if (m[2] === 'd') return n * 86400000;")
+        && fvg.includes("if (m[2] === 'w') return n * 604800000;"), true);
+    note('M2', 'third-site-is-a-separate-row', true,
+        'talaria-fvg-indicator.js periodStart() floors to the UTC epoch for d/w — NOT wired here');
+});
+
+/* ─────────────────────────────────────────────────────────────────────────
+ * Cell P (§A7) — differential against the EXISTING authority.
+ *
+ * The anchoring audit found seven mutually inconsistent day/week definitions
+ * already in this codebase. The server is not one of the seven guesses: it is
+ * the one place that already decided this question correctly, in
+ * `api_server.py:8465-8499` `_is_weekend_timestamp_ms`, whose docstring
+ * explicitly rejects the naive UTC weekday check for the same reason this
+ * packet exists. So this module must MATCH it rather than re-derive it —
+ * otherwise the codebase acquires an eighth calendar, authored by me.
+ *
+ * This is a genuine differential oracle: the Python predicate is transcribed
+ * faithfully below (weekday and hour only, no reuse of my own boundary code),
+ * its open/close transitions are found by scanning EVERY MINUTE of a
+ * multi-year span, and those instants are compared against the boundaries my
+ * helper produces. It is the strongest external check available to this packet
+ * because it cannot be satisfied by an internally consistent wrong answer.
+ * ───────────────────────────────────────────────────────────────────────── */
+
+cellTest('cellP: FX anchor agrees with the server\'s weekend filter, to the minute', () => {
+    const { SC } = makeHarness();
+
+    // Faithful transcription of api_server.py:8483-8493. Weekday and hour in
+    // America/New_York, nothing else. Deliberately NOT expressed via
+    // SessionCalendar internals — a differential against my own arithmetic
+    // would prove nothing.
+    const FMT = new Intl.DateTimeFormat('en-US', {
+        timeZone: 'America/New_York', hourCycle: 'h23',
+        weekday: 'short', hour: '2-digit', minute: '2-digit',
+    });
+    const MON0 = { Mon: 0, Tue: 1, Wed: 2, Thu: 3, Fri: 4, Sat: 5, Sun: 6 };
+    const etParts = (ms) => {
+        const p = Object.fromEntries(FMT.formatToParts(new Date(ms)).map((x) => [x.type, x.value]));
+        return { wd: MON0[p.weekday], hour: Number(p.hour), minute: Number(p.minute) };
+    };
+    const serverIsWeekend = (ms) => {
+        const { wd, hour } = etParts(ms);
+        if (wd === 5) return true;                  // Saturday — fully closed
+        if (wd === 6 && hour < 17) return true;     // Sunday before 17:00 NY open
+        if (wd === 4 && hour >= 17) return true;    // Friday after 17:00 NY close
+        return false;
+    };
+
+    // Confirm the transcription still matches the file, so this cell fails if
+    // the server's rule is ever edited out from under it.
+    const py = H.readRepo('chart v 1.4/chart/api_server.py');
+    for (const needle of [
+        'def _is_weekend_timestamp_ms(ts)',
+        'ZoneInfo("America/New_York")',
+        'if wd == 5:',
+        'if wd == 6 and local.hour < 17:',
+        'if wd == 4 and local.hour >= 17:',
+    ]) {
+        expectEqual('P', `server-rule-unchanged:${needle.slice(0, 34)}`, py.includes(needle), true);
+    }
+
+    const bucket = (t, tf) => SC.bucketStart(t, tf, {
+        timeframeMs: tf === '1d' ? 86400000 : 604800000,
+        instrumentClass: 'fx',
+    });
+
+    // Locate every server open/close over 2013-2015 — three years, six DST
+    // transitions in each direction — at MINUTE resolution. Scanned hourly then
+    // refined to the minute inside the bracketing hour, which is exact rather
+    // than approximate: `serverIsWeekend` is monotone within any single hour
+    // because it only ever compares `hour` against 17, so an hour containing a
+    // flip contains exactly one, and the refinement finds it.
+    const START = Date.UTC(2013, 0, 1);
+    const END = Date.UTC(2016, 0, 1);
+    const HOUR = 3600000;
+    const MIN = 60000;
+    const closes = [];
+    const reopens = [];
+    let prev = serverIsWeekend(START);
+    for (let t = START + HOUR; t < END; t += HOUR) {
+        const cur = serverIsWeekend(t);
+        if (cur !== prev) {
+            let edge = t;
+            for (let m = t - HOUR + MIN; m <= t; m += MIN) {
+                if (serverIsWeekend(m) === cur) { edge = m; break; }
+            }
+            (cur ? closes : reopens).push(edge);
+        }
+        prev = cur;
+    }
+    expectEqual('P', 'server-transitions-are-one-close-and-one-reopen-per-week',
+        `${closes.length}/${reopens.length}`, '156/156');
+
+    // 1. Every instant the server CLOSES is exactly a daily session open in this
+    //    module (the Friday 17:00 session, which simply carries no bars).
+    const closeMisses = closes.filter((t) => bucket(t, '1d') !== t);
+    expectEqual('P', 'every-server-close-is-exactly-a-daily-session-open',
+        closeMisses.length, 0, closeMisses.slice(0, 3).map((t) => new Date(t).toISOString()).join(' '));
+
+    // 2. Every instant the server REOPENS is exactly a daily open AND exactly a
+    //    weekly open. This is the load-bearing one: it pins both the 17:00
+    //    anchor and the Sunday week start against an authority I did not write.
+    const reopenDailyMisses = reopens.filter((t) => bucket(t, '1d') !== t);
+    const reopenWeeklyMisses = reopens.filter((t) => bucket(t, '1w') !== t);
+    expectEqual('P', 'every-server-reopen-is-exactly-a-daily-session-open',
+        reopenDailyMisses.length, 0,
+        reopenDailyMisses.slice(0, 3).map((t) => new Date(t).toISOString()).join(' '));
+    expectEqual('P', 'every-server-reopen-is-exactly-a-WEEKLY-session-open',
+        reopenWeeklyMisses.length, 0,
+        reopenWeeklyMisses.slice(0, 3).map((t) => new Date(t).toISOString()).join(' '));
+
+    // 3. And the converse, so agreement cannot be one-directional: every weekly
+    //    open this module produces must be a server reopen instant. Without
+    //    this, a helper that opened weeks twice as often would still pass (2).
+    const reopenSet = new Set(reopens);
+    const weekOpens = new Set();
+    for (let t = START; t < END; t += 3600000) weekOpens.add(bucket(t, '1w'));
+    const mine = [...weekOpens].filter((t) => t > START && t < END);
+    expectEqual('P', 'helper-produces-exactly-as-many-week-opens-as-the-server',
+        mine.length, reopens.length);
+    const spurious = mine.filter((t) => !reopenSet.has(t));
+    expectEqual('P', 'no-week-open-that-the-server-does-not-also-reopen-at',
+        spurious.length, 0, spurious.slice(0, 3).map((t) => new Date(t).toISOString()).join(' '));
+
+    // 4. Stated as a local wall-clock fact for the packet: one anchor, always.
+    const anchors = [...new Set(mine.map((t) => {
+        const p = etParts(t);
+        return `wd${p.wd}@${String(p.hour).padStart(2, '0')}:${String(p.minute).padStart(2, '0')}`;
+    }))];
+    expectEqual('P', 'single-local-anchor-for-every-week-open-over-three-years',
+        anchors, ['wd6@17:00']);
+    note('P', 'agreement-with-api_server.py', true,
+        `${closes.length} closes + ${reopens.length} reopens over 2013-2015, `
+        + 'zero disagreement at minute resolution');
+});
+
+/* ─────────────────────────────────────────────────────────────────────────
+ * Cell Q — the indicator-facing surface, shaped but not wired.
+ *
+ * Manager A's design note: the audit expects SessionCalendar to serve
+ * indicators, at which point the FVG's 18:00 ET and the Weekly Map's Monday-ET
+ * want to be entries in it rather than private constants. Nothing migrates in
+ * this packet. What this cell proves is that the surface CAN absorb them —
+ * asserted by value, so "shaped for it" is a demonstrated claim and not an
+ * intention. Without this the next worker would find the extension point
+ * untested and be entitled to distrust it.
+ * ───────────────────────────────────────────────────────────────────────── */
+
+cellTest('cellQ: explicit anchors — the extension point absorbs both indicator calendars', () => {
+    const { SC } = makeHarness();
+    const daily = (t, anchor) => SC.bucketStart(t, '1d', { timeframeMs: 86400000, anchor });
+    const weekly = (t, anchor) => SC.bucketStart(t, '1w', { timeframeMs: 604800000, anchor });
+
+    // 1. An explicit anchor equal to the fx class must reproduce fx bucketing
+    //    EXACTLY. If it did not, the extension point would be a second
+    //    implementation — the precise thing this packet exists to prevent.
+    const fxDef = SC.describeClass('fx');
+    const asAnchor = {
+        zone: fxDef.zone,
+        dailyOpenMinute: fxDef.dailyOpenMinute,
+        weekOpenWeekday: fxDef.weekOpenWeekday,
+        labelOffsetDays: fxDef.labelOffsetDays,
+    };
+    let dailyMatches = 0;
+    let weeklyMatches = 0;
+    for (const bar of PO_BARS) {
+        if (daily(bar.t, asAnchor) === SC.bucketStart(bar.t, '1d',
+            { timeframeMs: 86400000, instrumentClass: 'fx' })) dailyMatches++;
+        if (weekly(bar.t, asAnchor) === SC.bucketStart(bar.t, '1w',
+            { timeframeMs: 604800000, instrumentClass: 'fx' })) weeklyMatches++;
+    }
+    expectEqual('Q', 'explicit-anchor-reproduces-class-bucketing-daily', dailyMatches, PO_BARS.length);
+    expectEqual('Q', 'explicit-anchor-reproduces-class-bucketing-weekly', weeklyMatches, PO_BARS.length);
+
+    // 2. Both named anchors are declared, with the values read off the
+    //    indicators rather than invented, and each is expressible.
+    const named = Object.fromEntries(SC.namedAnchors().map((a) => [a.id, a]));
+    expectEqual('Q', 'named-anchors-declared', Object.keys(named).sort(), ['fvg-18-et', 'weekly-map-mon']);
+    expectEqual('Q', 'fvg-anchor-is-18:00-america-new-york',
+        `${named['fvg-18-et'].zone}@${named['fvg-18-et'].dailyOpenMinute}`, 'America/New_York@1080');
+    expectEqual('Q', 'weekly-map-anchor-is-monday-00:00-america-new-york',
+        `${named['weekly-map-mon'].zone}@${named['weekly-map-mon'].dailyOpenMinute}`
+        + `/wd${named['weekly-map-mon'].weekOpenWeekday}`, 'America/New_York@0/wd1');
+    for (const id of ['fvg-18-et', 'weekly-map-mon']) {
+        expectEqual('Q', `named-anchor-is-declared-not-wired:${id}`, named[id].status, 'declared');
+    }
+
+    // 3. And they compute. The FVG anchor must open at 18:00 local, the Weekly
+    //    Map anchor on a Monday at 00:00 local — checked in wall-clock terms so
+    //    a DST error cannot hide behind a UTC offset that happens to match.
+    const fvg = SC.namedAnchor('fvg-18-et');
+    const wmap = SC.namedAnchor('weekly-map-mon');
+    for (const [label, t] of [['winter', Date.UTC(2013, 0, 15, 12)], ['summer', Date.UTC(2013, 6, 15, 12)]]) {
+        const open = SC.openLocalTime(daily(t, fvg), { anchor: fvg });
+        expectEqual('Q', `fvg-anchor-opens-at-local-18:00:${label}`,
+            `${String(open.hour).padStart(2, '0')}:${String(open.minute).padStart(2, '0')}`, '18:00');
+        const wOpen = SC.openLocalTime(weekly(t, wmap), { anchor: wmap });
+        expectEqual('Q', `weekly-map-anchor-opens-monday-local-00:00:${label}`,
+            `${wOpen.weekday} ${String(wOpen.hour).padStart(2, '0')}:${String(wOpen.minute).padStart(2, '0')}`,
+            'Mon 00:00');
+    }
+
+    // 4. The FVG's 18:00 genuinely disagrees with the FX session open by one
+    //    hour. Pinned as a VALUE so nobody later assumes the two were unified
+    //    here: they were not, and unifying them is a different row.
+    const fxOpen = SC.bucketStart(Date.UTC(2013, 0, 15, 12), '1d',
+        { timeframeMs: 86400000, instrumentClass: 'fx' });
+    expectEqual('Q', 'fvg-anchor-differs-from-fx-session-open-by-exactly-one-hour',
+        daily(Date.UTC(2013, 0, 15, 12), fvg) - fxOpen, 3600000);
+
+    // 5. Fails closed. A malformed anchor must degrade to epoch-aligned rather
+    //    than silently defaulting to some class's calendar.
+    const t0 = Date.UTC(2013, 0, 15, 12);
+    const epoch = SC.epochAlignedBucketStart(t0, 86400000);
+    for (const [name, bad] of [
+        ['missing-zone', { dailyOpenMinute: 1020, weekOpenWeekday: 0 }],
+        ['minute-out-of-range', { zone: 'America/New_York', dailyOpenMinute: 1440, weekOpenWeekday: 0 }],
+        ['weekday-out-of-range', { zone: 'America/New_York', dailyOpenMinute: 1020, weekOpenWeekday: 7 }],
+        ['not-an-object', 'America/New_York'],
+    ]) {
+        expectEqual('Q', `malformed-anchor-fails-closed:${name}`, daily(t0, bad), epoch);
+    }
 });
 
 /* ─────────────────────────────────────────────────────────────────────────
