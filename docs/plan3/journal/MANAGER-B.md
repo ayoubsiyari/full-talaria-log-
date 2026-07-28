@@ -2034,3 +2034,43 @@ That is now twice in one day that a plausible-looking trade-loss finding turned 
 B-W14 reports the `_m19DockTimeLabel` over-a-year clamp is effectively dead — it reads `this.replaySystem` while `_m19DockNowTs` falls through to `chart.replaySystem`, so in the one scenario the third tier exists for, the clamp reads a stale instance; and when it *can* fire, `nowTs` is already sane. Plus `normalizeEpochMs` rejecting `raw <= 0`, treating a legitimate epoch-`0` open as absent — the same `||`/falsy-zero family this packet fixed. Both are display-path, both unverified by me, neither blocking.
 
 **A16.4:** manager-finding-defect **9** (V8 IDs-only gap, found by my own out-of-set probe). Manager-caused **12**, unchanged.
+
+## B-0105 — M10 ROOT CAUSE FOUND. The wall clock enters through the *highest-priority* tier, not the fallback.
+
+B-A8 returned **NOT REACHABLE** for the `Date.now()` fallback in `_m19DockNowTs`, and it is right: after a normal rollback both replay tiers are populated, so tier 4 never fires. But it buried the actual finding in an aside — *"`multiInstrumentSession.current_time` can itself be wall-clock by default, and it wins over replay tiers."* That sentence is the defect. I chased it and the chain is complete.
+
+### The mechanism, every link verified by reading the code
+
+| # | Where | What happens |
+|---|---|---|
+| 1 | `order-manager.js:28776` `placeAdvancedOrder()` | placing an order calls `recomputeSharedMarginState()` |
+| 2 | `order-service.js:446` | that function stamps **`current_time = Date.now()`** |
+| 3 | `order-manager.js:32937` `_m19DockNowTs()` | reads `current_time` as **tier 1**, above both replay tiers |
+| 4 | `order-manager.js:32955` `_m19DockTimeLabel()` | `mins = (nowTs − openTs)/60000` → wall clock minus a replay bar time |
+| 5 | same line | the clamp only corrects when `mins > 60*24*365` |
+
+**A margin recomputation writes the session clock.** That is the whole bug. `recomputeSharedMarginState` computes used margin, buying power and free margin — time is not its business — and it overwrites the one value the duration display trusts most. Nothing about the name or the call site warns that placing an order re-poisons the clock.
+
+Everyone looking at this, including me, was looking at tier 4. **The wall clock does not leak in through the fallback; it comes in through the front door at tier 1.**
+
+### Why the clamp hides it exactly often enough to be confusing
+
+The over-a-year clamp corrects only when the error exceeds 365 days. So replaying data **older** than a year self-corrects and looks fine, while replaying data **newer** than a year displays the wrong duration uncorrected. A defect whose visibility depends on the age of the dataset is precisely the kind that gets reported as intermittent and closed as unreproducible.
+
+And this is the same falsy-zero family again: `normalizeEpochMs` rejects `raw <= 0`, so a legitimate epoch-`0` bar time reads as absent.
+
+### Why "after a rollback, then a new order" is the repro rather than just "place an order"
+
+`updatePositions()` (`:31987`) *does* rewrite `current_time` back to `activeCandle.t` — but only past three early returns, including `if (!activeCandle) return;`. A rollback **pauses** replay (`rsCut.pause()` in the panel bridge). Paused replay means no ticks, so nothing re-runs `updatePositions()`, and the wall-clock stamp written at placement **persists** for as long as the trader sits there looking at it. That is exactly the PO's sequence and exactly why placing an order during live playback would not show it.
+
+I am marking the pause→no-tick link **ASSUMPTION** — I verified the pause call and the early returns, not that no other caller re-runs `updatePositions()` while paused. It is the one link I inferred rather than read end to end.
+
+### Ownership: in territory, both ends
+
+`order-service.js` and `order-manager.js` are both mine. **No escalation needed** — the first M10-family defect that is wholly mine to fix.
+
+Candidate fix is to stop `recomputeSharedMarginState` writing time at all, since a margin function has no business setting a clock. Before that I need to know who else reads `current_time` and whether any of them depends on it being wall clock — removing a stamp that something else silently relies on is how the last two rejections happened. Cheap audit first, RED before fix, no exceptions.
+
+**Not fixing yet:** `order-manager.js` is held by B-W14/B-R8. I am not editing a file under another packet again today (B-0100).
+
+**A16.4:** manager-finding-defect **10**. Manager-caused **12**.
