@@ -3148,3 +3148,49 @@ And unlike the resample work — which needs the incremental branch's three sepa
 `hcaptcha.com` and `accounts.google.com` subframes at roughly 160 MB are folded into the same session as a factual inventory — present or not, what loads them, what they cost idle. Whether they *belong* on an authenticated chart surface is a routing question and not the author's call, so I asked for facts only.
 
 **Write packets at three and I am naming them rather than quietly exceeding:** idle-cpu, host-listener-leak, cpu-attribution (superseded, allowed to finish). All three touch disjoint paths — a new harness, `chart.js` plus a new test, and a different new harness — so there is no two-authors-one-file exposure. Nothing further dispatches until one clears.
+
+---
+
+## 2026-07-28 14:22 — Static census in. The lead suspect is confirmed present but is almost certainly NOT the floor.
+
+Census returned on `manager-a/critical-path` @ `0091b74d5`, tree on `manager-c/verification-infra`. I verified the headline finding in the blob myself before briefing on it.
+
+**`Chart.animate()` is an unconditional self-perpetuating rAF loop.** `chart.js:28676`:
+
+```
+animate() {
+    requestAnimationFrame(this._animateBound);
+    ...
+}
+```
+
+The re-request is the **first statement, before any guard**. Started once at init and **never stopped for the life of the page**. There is no idle condition anywhere on that path — not tab visibility, not data change, not user input. A chart with nothing happening wakes 60 times a second forever.
+
+**This reframes the suspect list, and I want the reframe on record because it changes what a fix would be.** §1 in the Director's order — the M20-Q2 countdown idle-render path — is **confirmed present and correctly identified as idle work**, at `chart.js:30563–30598`, but it is **not a timer of its own**. It is 1 Hz logic hosted *inside* `animate()`. So the countdown is a passenger, not the engine. Fixing or deleting M20-Q2 entirely would remove roughly one repaint per second and **would leave the 60 Hz wakeup completely intact**. If the resting floor turns out to be the loop, the Director's first suspect is not the defect.
+
+That is a distinction worth being precise about rather than reporting "suspect 1 confirmed", which is technically true and would have been actively misleading.
+
+## 2026-07-28 14:23 — What the census settled, and the one thing static analysis structurally cannot settle
+
+**Refuted, with stated searches:**
+- **Autosave on an interval — does not exist.** No `setInterval` autosave anywhere in the territory; the autosave paths are event- and boundary-driven (mutation, pause, pagehide). Director suspect §4 is dead.
+- **M20-Q1's replaced DOM poll is genuinely gone, not additionally present.** The 600 ms `setInterval` survives at `chart.js:31957` but only behind kill-switch `__TALARIA_DISABLE_M20_Q1_V9_TIME_SYNC_OBSERVER_V1`, and the default path explicitly calls `_stopV9TimeControlsSyncLegacyTimer()` before installing the MutationObserver. This was the failure mode I thought most likely to land — a replacement merged without the original removed — and it did not. Good result; our process did that one correctly.
+- **Forming-candle updater is replay-gated**, `isPlaying`-guarded at `replay-system.js:5518`, cleared by `stopAllPlayback()`. Not idle work. Director suspect §3 is dead at rest.
+- **No time-driven resample or layer-cache invalidation exists.** Resample flush is tied to pan/host-sync rAF, and every `requestIdleCallback` use is one-shot. Director suspect §5 is dead.
+- **Alert checker does not run with zero alerts** on the default M20-Q8 path.
+
+So four of five named suspects are eliminated at rest and the fifth is a passenger. **The census earned its dispatch by killing hypotheses, which is what I asked it for.**
+
+**One genuinely unnamed find:** `economic-news-sidebar.js:1105` runs a **1000 ms countdown `setInterval`** that starts whenever `loadCalendar()` completes — **including when the News panel is closed**, because the calendar is loaded for axis markers. It is stopped on tab-hide and then **restarted on tab-visible whenever `state.loaded`, without rechecking whether the News UI is active**. That is idle DOM work on a closed panel, nobody named it, and it is a candidate for the 1 Hz component.
+
+**And the thing static reading cannot answer.** `animate()` only calls `render()` when `this.renderPending` is set. I counted **116 `scheduleRender()` call sites in `chart.js` alone**. Enumerating them tells us nothing about rest — whether any of them fires with no input change is a runtime fact. **This is the decisive question**: a 60 Hz wakeup that does nothing costs a percent or two, but a 60 Hz wakeup that actually paints a full chart canvas is the entire 20%.
+
+There is a cheap way to settle it that I did not think of when I wrote the trace brief: **`render()` increments `_mcDiag.renders` at `chart.js:28730`.** Reading that counter across ten seconds of a genuinely idle chart discriminates the three cases outright — ~600 means we are painting every frame at rest, ~10 means the countdown is driving it, ~0 means the floor is bare loop overhead or lives outside `chart.js` entirely. I will put this to the trace probe the moment it reports.
+
+## 2026-07-28 14:24 — The hole in the census, and why it may matter more than anything in it
+
+The census covered `chart.js` and `modules/*.js` well. It did **not** map the shipped V9 React bundle: `dist-v9/assets/talaria-v9-live.js` is 3.4 MB minified on one line, and a regex pass found `setInterval` at **24, 300, 800, 1000 and 1500 ms** with **call sites unmapped**.
+
+**That is the surface the PO actually measured.** The PO's 20.6% was taken on the product, and the product is the V9 shell — so periodic work in the React host counts against us identically to periodic work in `chart.js`, and a **24 ms interval** in particular is a ~40 Hz timer that would sit right alongside the rAF loop in cost. I am dispatching that mapping cheap and read-only rather than leaving it as a footnote, because an unattributed 24 ms interval on the shipped bundle is exactly the kind of thing that survives a confident-looking report.
+
+One citation defect to note against the census: it cites `animate()`'s countdown call as `chart.js:286705–28706`, which cannot exist in a 41,860-line file. The real site is 28705. Harmless here because I verified the code directly, but it is the second transcription-quality issue this week and I am not treating cited line numbers as reliable without opening them.
