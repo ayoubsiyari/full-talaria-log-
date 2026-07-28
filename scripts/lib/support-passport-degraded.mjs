@@ -44,6 +44,19 @@
  *      The consumer pin now requires ≥1 call whose enclosing binding is createThread (the
  *      POST path) and that is not inside useMemo; NC-CONSUMER-CALL-HOISTED-USEMEMO proves
  *      the hoist goes RED.
+ *
+ * W44 (R-M6-4 REJECT) closes the unbounded "unmodelled API" class and the consumer
+ * value-flow hole:
+ *
+ *   1. The realm models sessionStorage, localStorage, performance.now (tied to the same
+ *      clock), and document.visibilityState="visible", so caches that use those APIs are
+ *      live inside the gate and are killed by TEMPORAL-RECOMPUTE (mutants M8/M9).
+ *   2. window/document are Proxies: any property read by buildSupportContext that is not
+ *      an own modelled/runtime property fails PASSPORT-DEGRADED-REALM-FIDELITY — so the
+ *      next unmodelled API is RED by construction rather than another blacklist entry.
+ *   3. Consumer pin requires the call's result to reach the request `context` payload
+ *      (AST value-flow), not merely that a CallExpression exists; NC-CONSUMER-VALUE-FROZEN
+ *      freezes the value one line downstream and must go RED.
  */
 import path from 'node:path';
 import vm from 'node:vm';
@@ -97,9 +110,77 @@ export const SUPPORT_PASSPORT_SUBMIT_HANDLER_NAMES = ['createThread'];
  */
 export const TEMPORAL_CLOCK_ADVANCE_MS = 31_000;
 
+/** Seed properties every passport realm installs before the product runtime runs. */
+export const REALM_WINDOW_SEED_KEYS = [
+  'document',
+  'dispatchEvent',
+  'console',
+  'location',
+  'navigator',
+  'sessionStorage',
+  'localStorage',
+  'performance',
+];
+
+export const REALM_DOCUMENT_SEED_KEYS = [
+  'readyState',
+  'visibilityState',
+  'body',
+  'documentElement',
+  'addEventListener',
+  'getElementById',
+  'createElement',
+  'querySelector',
+];
+
 /* ---------------- *
  * Small utilities. *
  * ---------------- */
+
+/** In-memory Web Storage that sessionStorage/localStorage mutants actually hit. */
+export function createMemoryStorage() {
+  const map = new Map();
+  return {
+    get length() { return map.size; },
+    key: (index) => [...map.keys()][index] ?? null,
+    getItem: (key) => (map.has(String(key)) ? map.get(String(key)) : null),
+    setItem: (key, value) => { map.set(String(key), String(value)); },
+    removeItem: (key) => { map.delete(String(key)); },
+    clear: () => { map.clear(); },
+  };
+}
+
+/**
+ * Own-property Proxy that records reads of missing keys while `tracker.enabled`.
+ * Used so an unmodelled browser API cannot stay behaviourally silent inside the gate.
+ */
+export function createTrackedRealmObject(seed, tracker, label) {
+  const target = { ...seed };
+  return new Proxy(target, {
+    get(obj, prop, receiver) {
+      if (tracker.enabled && (typeof prop === 'string' || typeof prop === 'symbol')) {
+        const key = String(prop);
+        if (!Object.prototype.hasOwnProperty.call(obj, prop)
+          && !Object.prototype.hasOwnProperty.call(Object.getPrototypeOf(obj) ?? {}, prop)) {
+          tracker.unknownReads.push(`${label}.${key}`);
+        }
+      }
+      return Reflect.get(obj, prop, receiver);
+    },
+    set(obj, prop, value, receiver) {
+      return Reflect.set(obj, prop, value, receiver);
+    },
+    has(obj, prop) {
+      return Reflect.has(obj, prop);
+    },
+    ownKeys(obj) {
+      return Reflect.ownKeys(obj);
+    },
+    getOwnPropertyDescriptor(obj, prop) {
+      return Reflect.getOwnPropertyDescriptor(obj, prop);
+    },
+  });
+}
 
 function escapeRegExp(literal) {
   return literal.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -204,21 +285,14 @@ export function createSupportPassportRealm(opts) {
   const badges = [];
   const provider = { compareDocumentPosition: () => 4 };
   const consumer = {};
-  const document = {
-    readyState: 'loading',
-    body: { appendChild: (node) => badges.push(node) },
-    documentElement: { appendChild: (node) => badges.push(node) },
-    addEventListener: (name, fn) => { listeners[name] = fn; },
-    getElementById: (id) => badges.find((node) => node.id === id) ?? null,
-    createElement: () => ({ style: {}, setAttribute() {} }),
-    querySelector: (selector) => (selector.includes('indicator-performance') ? provider : consumer),
-  };
+  const accessTracker = { enabled: false, unknownReads: [] };
   let nowMs = Number.isFinite(opts.nowMs) ? opts.nowMs : 1_700_000_000_000;
   const clock = {
     now: () => nowMs,
     advance: (ms) => { nowMs += ms; return nowMs; },
     set: (ms) => { nowMs = ms; return nowMs; },
   };
+  const perfOrigin = nowMs;
   // Product (and mutants) call Date.now(); host Date must not leak a frozen wall clock.
   const RealmDate = class extends Date {
     constructor(...args) {
@@ -228,19 +302,39 @@ export function createSupportPassportRealm(opts) {
     static now() { return nowMs; }
   };
   const events = [];
-  const window = {
+  const sessionStorage = createMemoryStorage();
+  const localStorage = createMemoryStorage();
+  const performance = {
+    now: () => Math.max(0, nowMs - perfOrigin),
+  };
+  const navigator = { userAgent: opts.userAgent ?? 'TalariaSupportPassportGate/1.0' };
+  const document = createTrackedRealmObject({
+    readyState: 'loading',
+    visibilityState: 'visible',
+    body: { appendChild: (node) => badges.push(node) },
+    documentElement: { appendChild: (node) => badges.push(node) },
+    addEventListener: (name, fn) => { listeners[name] = fn; },
+    getElementById: (id) => badges.find((node) => node.id === id) ?? null,
+    createElement: () => ({ style: {}, setAttribute() {} }),
+    querySelector: (selector) => (selector.includes('indicator-performance') ? provider : consumer),
+  }, accessTracker, 'document');
+  const window = createTrackedRealmObject({
     document,
     dispatchEvent: (event) => events.push(event),
     console: { error() {} },
     location: { href },
-  };
-  const navigator = { userAgent: opts.userAgent ?? 'TalariaSupportPassportGate/1.0' };
+    navigator,
+    sessionStorage,
+    localStorage,
+    performance,
+  }, accessTracker, 'window');
   const moduleObj = { exports: {} };
   const context = vm.createContext({
     window,
     self: window,
     document,
     navigator,
+    performance,
     console: window.console,
     Date: RealmDate,
     CustomEvent: class { constructor(type, init) { this.type = type; this.detail = init?.detail; } },
@@ -280,11 +374,32 @@ export function createSupportPassportRealm(opts) {
     { filename: SUPPORT_UI_RELATIVE_PATH },
   );
 
-  const buildSupportContext = moduleObj.exports?.buildSupportContext;
-  if (typeof buildSupportContext !== 'function') {
+  const rawBuildSupportContext = moduleObj.exports?.buildSupportContext;
+  if (typeof rawBuildSupportContext !== 'function') {
     throw new Error('supportUi.tsx did not export buildSupportContext');
   }
-  return { window, document, badges, events, buildSupportContext, clock };
+  // Track only passport reads — runtime boot may touch many undeclared keys.
+  const buildSupportContext = (...args) => {
+    accessTracker.unknownReads.length = 0;
+    accessTracker.enabled = true;
+    try {
+      return rawBuildSupportContext(...args);
+    } finally {
+      accessTracker.enabled = false;
+    }
+  };
+  return {
+    window,
+    document,
+    badges,
+    events,
+    buildSupportContext,
+    clock,
+    accessTracker,
+    sessionStorage,
+    localStorage,
+    performance,
+  };
 }
 
 /* ---------------------------------------- *
@@ -400,10 +515,12 @@ export function runPassportDegradedTemporalCell(deps) {
     const runtimeSeen = [];
     const observed = [];
     const clockMarks = [];
+    const unknownReads = [];
     const observe = () => {
       clockMarks.push(realm.clock.now());
       runtimeSeen.push(readRuntime());
       observed.push(hostArray(realm.buildSupportContext().degradedModules));
+      unknownReads.push(...(realm.accessTracker?.unknownReads ?? []));
     };
 
     // Ticket filing is a post-load act; refuse GREEN if the realm stayed on "loading".
@@ -432,11 +549,13 @@ export function runPassportDegradedTemporalCell(deps) {
     const clockAdvancedBetweenTickets = clockMarks.length === observed.length
       && clockMarks.every((mark, i) => i === 0 || mark - clockMarks[i - 1] >= TEMPORAL_CLOCK_ADVANCE_MS);
     const realmLooksLikePostLoad = readyStateAtTicket === 'complete';
+    const noUnmodelledReads = unknownReads.length === 0;
     const pass = runtimeAdvanced
       && trackedRuntime
       && laterCallsSawNewModules
       && clockAdvancedBetweenTickets
-      && realmLooksLikePostLoad;
+      && realmLooksLikePostLoad
+      && noUnmodelledReads;
 
     return cellResult('PASSPORT-DEGRADED-TEMPORAL-RECOMPUTE', pass, {
       calls: observed.length,
@@ -450,9 +569,43 @@ export function runPassportDegradedTemporalCell(deps) {
       clockMarks,
       clockAdvancedBetweenTickets,
       clockAdvanceMs: TEMPORAL_CLOCK_ADVANCE_MS,
+      unknownReads,
+      noUnmodelledReads,
     });
   } catch (error) {
     return redCell('PASSPORT-DEGRADED-TEMPORAL-RECOMPUTE', String(error?.message ?? error));
+  }
+}
+
+/**
+ * Construction-level realm fidelity: buildSupportContext must not read window/document
+ * properties the realm does not model. An unmodelled API is how R-M6-4 kept the gate GREEN
+ * while a browser with sessionStorage lost every later ticket.
+ *
+ * @param {Parameters<typeof createSupportPassportRealm>[0]} deps
+ */
+export function runPassportDegradedRealmFidelityCell(deps) {
+  const cell = 'PASSPORT-DEGRADED-REALM-FIDELITY';
+  try {
+    const realm = createSupportPassportRealm({ ...deps, providerPresent: true });
+    realm.buildSupportContext();
+    const unknownReads = [...(realm.accessTracker?.unknownReads ?? [])];
+    // Non-vacuity: the modelled surfaces the R-M6-4 carriers used must actually exist.
+    const modelledSurfacesPresent = realm.window.sessionStorage != null
+      && realm.window.localStorage != null
+      && typeof realm.window.performance?.now === 'function'
+      && realm.document.visibilityState === 'visible'
+      && realm.document.readyState === 'complete';
+    const pass = unknownReads.length === 0 && modelledSurfacesPresent;
+    return cellResult(cell, pass, {
+      unknownReads,
+      modelledSurfacesPresent,
+      readyState: realm.document.readyState,
+      visibilityState: realm.document.visibilityState,
+      performanceNow: realm.window.performance.now(),
+    });
+  } catch (error) {
+    return redCell(cell, String(error?.message ?? error));
   }
 }
 
@@ -557,6 +710,7 @@ export function runBehavioralCells(deps) {
     runPassportDegradedRoundTripCell(deps),
     runPassportDegradedBoundingPropertiesCell(deps),
     runPassportDegradedTemporalCell(deps),
+    runPassportDegradedRealmFidelityCell(deps),
     ...SUPPORT_PASSPORT_ALIASES.map((alias) => runPassportDegradedAliasBootCell(deps, alias)),
   ];
 }
@@ -655,6 +809,69 @@ export const SUPPORT_PASSPORT_BEHAVIORAL_MUTANTS = [
           + '  if (__passportCache !== null && Date.now() - __passportBoot > 30_000) return __passportCache;',
         )
         .replace(MEMOIZED_PASSPORT_TAIL, '  __passportCache = ctx;\n  return ctx;\n}');
+    },
+  },
+  {
+    id: 'M8',
+    name: 'NC-MUTANT-SESSION-STORAGE-CACHE',
+    describes:
+      'context cached in sessionStorage — the R-M6-4 primary carrier that stayed GREEN while '
+      + 'the realm had no storage API',
+    apply: (src) => {
+      if (!src.includes(MEMOIZED_PASSPORT_HEADER) || !src.includes(MEMOIZED_PASSPORT_TAIL)) {
+        return null;
+      }
+      return src
+        .replace(
+          MEMOIZED_PASSPORT_HEADER,
+          `${MEMOIZED_PASSPORT_HEADER}\n`
+          + '  const __sk = "__talaria_support_ctx";\n'
+          + '  try {\n'
+          + '    const __raw = window.sessionStorage?.getItem(__sk);\n'
+          + '    if (__raw) return JSON.parse(__raw);\n'
+          + '  } catch { /* ignore */ }\n',
+        )
+        .replace(
+          MEMOIZED_PASSPORT_TAIL,
+          '  try { window.sessionStorage?.setItem(__sk, JSON.stringify(ctx)); } catch { /* ignore */ }\n'
+          + '  return ctx;\n}',
+        );
+    },
+  },
+  {
+    id: 'M9',
+    name: 'NC-MUTANT-PERFORMANCE-NOW-WARMUP',
+    describes:
+      'warm-up cache keyed on performance.now() — Date.now controllability does not touch it',
+    apply: (src) => {
+      if (!src.includes(MEMOIZED_PASSPORT_HEADER) || !src.includes(MEMOIZED_PASSPORT_TAIL)) {
+        return null;
+      }
+      return src
+        .replace(
+          MEMOIZED_PASSPORT_HEADER,
+          'const __passportBootPerf = typeof performance !== "undefined" && performance.now '
+          + '? performance.now() : 0;\n'
+          + 'let __passportCache: Record<string, string | string[]> | null = null;\n'
+          + `${MEMOIZED_PASSPORT_HEADER}\n`
+          + '  const __now = typeof performance !== "undefined" && performance.now '
+          + '? performance.now() : 0;\n'
+          + '  if (__passportCache !== null && __now - __passportBootPerf > 30_000) return __passportCache;',
+        )
+        .replace(MEMOIZED_PASSPORT_TAIL, '  __passportCache = ctx;\n  return ctx;\n}');
+    },
+  },
+  {
+    id: 'M10',
+    name: 'NC-MUTANT-UNMODELLED-API-READ',
+    describes:
+      'reads window.indexedDB (unmodelled) — must trip REALM-FIDELITY rather than stay silent',
+    apply: (src) => {
+      if (!src.includes(MEMOIZED_PASSPORT_HEADER)) return null;
+      return src.replace(
+        MEMOIZED_PASSPORT_HEADER,
+        `${MEMOIZED_PASSPORT_HEADER}\n  void (window as any).indexedDB;\n`,
+      );
     },
   },
 ];
@@ -834,6 +1051,92 @@ export function isInsideUseMemoCall(ts, node) {
   return false;
 }
 
+function propertyNameText(ts, name) {
+  if (!name) return null;
+  if (ts.isIdentifier(name) || ts.isPrivateIdentifier(name)) return name.text;
+  if (ts.isStringLiteral(name) || ts.isNumericLiteral(name)) return name.text;
+  return null;
+}
+
+/**
+ * True when `binding` is used as the request `context` payload inside `scope`
+ * (property `context: binding`, or FormData.append("context", JSON.stringify(binding))).
+ */
+export function identifierReachesContextPayload(ts, scope, binding) {
+  let reaches = false;
+  const visit = (node) => {
+    if (reaches) return;
+    if (ts.isPropertyAssignment(node) || ts.isPropertyDeclaration(node)
+      || ts.isShorthandPropertyAssignment(node)) {
+      const prop = ts.isShorthandPropertyAssignment(node)
+        ? (ts.isIdentifier(node.name) ? node.name.text : null)
+        : propertyNameText(ts, node.name);
+      if (prop === 'context') {
+        if (ts.isShorthandPropertyAssignment(node) && node.name.text === binding) {
+          reaches = true;
+          return;
+        }
+        if (node.initializer && ts.isIdentifier(node.initializer)
+          && node.initializer.text === binding) {
+          reaches = true;
+          return;
+        }
+      }
+    }
+    if (ts.isCallExpression(node) && calleeName(ts, node.expression) === 'append'
+      && node.arguments.length >= 2
+      && ts.isStringLiteral(node.arguments[0])
+      && node.arguments[0].text === 'context') {
+      const arg = node.arguments[1];
+      if (ts.isIdentifier(arg) && arg.text === binding) {
+        reaches = true;
+        return;
+      }
+      if (ts.isCallExpression(arg) && calleeName(ts, arg.expression) === 'stringify'
+        && arg.arguments[0] && ts.isIdentifier(arg.arguments[0])
+        && arg.arguments[0].text === binding) {
+        reaches = true;
+        return;
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(scope);
+  return reaches;
+}
+
+function enclosingFunctionNode(ts, node) {
+  let cur = node.parent;
+  while (cur) {
+    if (ts.isFunctionDeclaration(cur) || ts.isFunctionExpression(cur)
+      || ts.isArrowFunction(cur) || ts.isMethodDeclaration(cur)) {
+      return cur;
+    }
+    cur = cur.parent;
+  }
+  return null;
+}
+
+/**
+ * True when the CallExpression's result reaches the support request `context` field —
+ * either directly (`context: buildSupportContext()`) or via a const binding that is then
+ * placed on that field. A call whose result is frozen into a session snapshot and never
+ * sent is the R-M6-4 value-flow hole.
+ */
+export function callResultReachesContextPayload(ts, callNode) {
+  const parent = callNode.parent;
+  if ((ts.isPropertyAssignment(parent) || ts.isPropertyDeclaration(parent))
+    && propertyNameText(ts, parent.name) === 'context') {
+    return true;
+  }
+  if (ts.isVariableDeclaration(parent) && ts.isIdentifier(parent.name) && parent.initializer === callNode) {
+    const binding = parent.name.text;
+    const scope = enclosingFunctionNode(ts, callNode);
+    return scope ? identifierReachesContextPayload(ts, scope, binding) : false;
+  }
+  return false;
+}
+
 /**
  * Counts real call sites of `buildSupportContext` by walking the TypeScript AST. A pin on
  * the AST cannot be paid by a comment, a string, a template literal, a regex literal or
@@ -844,6 +1147,8 @@ export function isInsideUseMemoCall(ts, node) {
  * W43: a call that merely exists in the file is not enough. The passport must be invoked
  * from the submit handler (`createThread`) and must not sit inside `useMemo`, or every
  * later ticket from that mount carries the first ticket's snapshot.
+ *
+ * W44: the call's result must also reach the request `context` payload (value-flow).
  *
  * @param {{ typescript: any, relativePath: string, source: string }} opts
  */
@@ -875,11 +1180,13 @@ export function inspectConsumerCallPath({ typescript: ts, relativePath, source }
         const insideUseMemo = isInsideUseMemoCall(ts, node);
         const onSubmitHandler = SUPPORT_PASSPORT_SUBMIT_HANDLER_NAMES.includes(enclosingFunction)
           && !insideUseMemo;
+        const valueReachesContext = callResultReachesContextPayload(ts, node);
         callSites.push({
           line: sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile)).line + 1,
           enclosingFunction,
           insideUseMemo,
           onSubmitHandler,
+          valueReachesContext,
         });
       }
     }
@@ -889,6 +1196,9 @@ export function inspectConsumerCallPath({ typescript: ts, relativePath, source }
 
   const callLines = callSites.map((site) => site.line);
   const submitHandlerCallCount = callSites.filter((site) => site.onSubmitHandler).length;
+  const valueFlowCallCount = callSites.filter(
+    (site) => site.onSubmitHandler && site.valueReachesContext,
+  ).length;
 
   return {
     relativePath,
@@ -897,6 +1207,7 @@ export function inspectConsumerCallPath({ typescript: ts, relativePath, source }
     callLines,
     callSites,
     submitHandlerCallCount,
+    valueFlowCallCount,
     statements: sourceFile.statements.length,
     parseErrors: (sourceFile.parseDiagnostics ?? []).length,
   };
@@ -930,7 +1241,9 @@ export function runConsumerCallPathCell(deps) {
       return {
         id: consumer.id,
         readable: true,
-        wired: facts.importsFromSupportUi && facts.submitHandlerCallCount >= 1,
+        wired: facts.importsFromSupportUi
+          && facts.submitHandlerCallCount >= 1
+          && facts.valueFlowCallCount >= 1,
         ...facts,
       };
     });
@@ -1053,6 +1366,90 @@ export function runNcConsumerCallHoistedUseMemoCell(deps) {
     });
     const pass = results.length > 0 && results.every(
       (r) => r.applied && r.wentRed && r.callCountSurvived && r.importSurvived && r.submitHandlerLost,
+    );
+    return cellResult(cell, pass, { results }, 'wiring');
+  } catch (error) {
+    return redCell(cell, String(error?.message ?? error), 'wiring');
+  }
+}
+
+/**
+ * Freezes the passport one line downstream of the call — callCount and submit-handler
+ * ancestry survive, but the request `context` field no longer receives the call result.
+ * @param {string} source
+ */
+export function freezeConsumerValueAfterCall(source) {
+  if (source.includes('context: buildSupportContext()')) {
+    return source
+      .replace(
+        /(\n\s*)const createThread = /,
+        '$1let __passportSnap: ReturnType<typeof buildSupportContext> | null = null;$1const createThread = ',
+      )
+      .replace(
+        /context:\s*buildSupportContext\(\)/g,
+        'context: (__passportSnap ?? (__passportSnap = buildSupportContext()))',
+      );
+  }
+  if (source.includes('const ctx = buildSupportContext();')) {
+    return source
+      .replace(
+        /(\n\s*)const createThread = /,
+        '$1let __passportSnap: ReturnType<typeof buildSupportContext> | null = null;$1const createThread = ',
+      )
+      .replace(
+        /const ctx = buildSupportContext\(\);/g,
+        'const ctx = (__passportSnap ?? (__passportSnap = buildSupportContext()));',
+      );
+  }
+  return null;
+}
+
+/**
+ * @param {Parameters<typeof runConsumerCallPathCell>[0]} deps
+ */
+export function runNcConsumerValueFrozenCell(deps) {
+  const cell = 'NC-CONSUMER-VALUE-FROZEN';
+  try {
+    const results = SUPPORT_PASSPORT_CONSUMERS.map((consumer) => {
+      const source = consumerSource(deps, consumer);
+      if (source === null) {
+        return { id: consumer.id, applied: false, wentRed: false, reason: 'consumer source unreadable' };
+      }
+      const mutated = freezeConsumerValueAfterCall(source);
+      if (mutated === null || mutated === source) {
+        return { id: consumer.id, applied: false, wentRed: false, reason: 'value freeze could not be applied' };
+      }
+      const baseline = inspectConsumerCallPath({
+        typescript: deps.typescript,
+        relativePath: consumer.relativePath,
+        source,
+      });
+      const facts = inspectConsumerCallPath({
+        typescript: deps.typescript,
+        relativePath: consumer.relativePath,
+        source: mutated,
+      });
+      const mutatedCell = runConsumerCallPathCell({
+        ...deps,
+        consumerSources: { ...deps.consumerSources, [consumer.relativePath]: mutated },
+      });
+      return {
+        id: consumer.id,
+        applied: true,
+        // R-M6-4 hole: call still in createThread, import intact, but value-flow is broken.
+        callCountSurvived: facts.callCount >= 1,
+        submitHandlerSurvived: facts.submitHandlerCallCount >= 1,
+        importSurvived: facts.importsFromSupportUi === true,
+        valueFlowLost: facts.valueFlowCallCount === 0 && baseline.valueFlowCallCount >= 1,
+        wentRed: mutatedCell.pass === false
+          && facts.valueFlowCallCount === 0
+          && facts.submitHandlerCallCount >= 1
+          && facts.importsFromSupportUi === true,
+      };
+    });
+    const pass = results.length > 0 && results.every(
+      (r) => r.applied && r.wentRed && r.callCountSurvived && r.submitHandlerSurvived
+        && r.importSurvived && r.valueFlowLost,
     );
     return cellResult(cell, pass, { results }, 'wiring');
   } catch (error) {
@@ -1225,6 +1622,7 @@ export function runSupportPassportDegradedGate(opts) {
     runConsumerCallPathCell(deps),
     runNcConsumerCallDeletedCell(deps),
     runNcConsumerCallHoistedUseMemoCell(deps),
+    runNcConsumerValueFrozenCell(deps),
     runNcConsumerPinDecoysCell(deps),
     probeServerContextCoercionFinding(opts.apiServerSource ?? null),
   ];

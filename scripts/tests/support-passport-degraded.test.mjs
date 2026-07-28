@@ -23,6 +23,7 @@ import {
   countAliasLines,
   createSupportPassportRealm,
   dropAliasFromSupportUi,
+  freezeConsumerValueAfterCall,
   hoistConsumerCallToUseMemo,
   inspectConsumerCallPath,
   normalizeLineEndings,
@@ -35,9 +36,11 @@ import {
   runNcConsumerCallDeletedCell,
   runNcConsumerCallHoistedUseMemoCell,
   runNcConsumerPinDecoysCell,
+  runNcConsumerValueFrozenCell,
   runPassportDegradedAliasBootCell,
   runPassportDegradedBoundingPropertiesCell,
   runPassportDegradedKeyAlwaysCell,
+  runPassportDegradedRealmFidelityCell,
   runPassportDegradedRoundTripCell,
   runPassportDegradedTemporalCell,
   runSupportPassportDegradedGate,
@@ -167,9 +170,19 @@ test('PASSPORT-DEGRADED-TEMPORAL-RECOMPUTE [soundness VER-01]: later calls see l
   assert.equal(cell.realmLooksLikePostLoad, true);
   assert.equal(cell.clockAdvancedBetweenTickets, true);
   assert.equal(cell.clockAdvanceMs, TEMPORAL_CLOCK_ADVANCE_MS);
+  assert.equal(cell.noUnmodelledReads, true);
+  assert.deepEqual(cell.unknownReads, []);
   assert.ok(cell.clockMarks.every((mark, i) => (
     i === 0 || mark - cell.clockMarks[i - 1] >= TEMPORAL_CLOCK_ADVANCE_MS
   )));
+});
+
+test('PASSPORT-DEGRADED-REALM-FIDELITY [soundness VER-01]: modelled surfaces, no unknown reads', () => {
+  const cell = runPassportDegradedRealmFidelityCell(deps);
+  assert.equal(cell.status, 'GREEN', JSON.stringify(cell, null, 2));
+  assert.equal(cell.modelledSurfacesPresent, true);
+  assert.deepEqual(cell.unknownReads, []);
+  assert.equal(cell.visibilityState, 'visible');
 });
 
 test('PASSPORT-DEGRADED-TEMPORAL-RECOMPUTE uses ONE realm — the calls share runtime state', () => {
@@ -292,8 +305,10 @@ test('SUPPORT-PASSPORT-CONSUMER-CALL-PATH [wiring VER-01]: both consumers import
     assert.equal(consumer.importsFromSupportUi, true);
     assert.ok(consumer.callCount >= 1);
     assert.ok(consumer.submitHandlerCallCount >= 1, JSON.stringify(consumer.callSites));
+    assert.ok(consumer.valueFlowCallCount >= 1, JSON.stringify(consumer.callSites));
     assert.ok(consumer.callLines.every((line) => Number.isInteger(line) && line > 0));
     assert.ok(consumer.callSites.every((site) => site.onSubmitHandler === true));
+    assert.ok(consumer.callSites.every((site) => site.valueReachesContext === true));
   }
 });
 
@@ -352,6 +367,31 @@ test('NC-CONSUMER-CALL-HOISTED-USEMEMO [wiring VER-01]: mount-time freeze goes R
   }
 });
 
+test('NC-CONSUMER-VALUE-FROZEN [wiring VER-01]: downstream snapshot freeze goes RED', () => {
+  const cell = runNcConsumerValueFrozenCell(deps);
+  assert.equal(cell.coverage, 'wiring');
+  assert.equal(cell.status, 'GREEN', JSON.stringify(cell, null, 2));
+  for (const result of cell.results) {
+    assert.equal(result.applied, true);
+    assert.equal(result.callCountSurvived, true);
+    assert.equal(result.submitHandlerSurvived, true);
+    assert.equal(result.importSurvived, true);
+    assert.equal(result.valueFlowLost, true);
+    assert.equal(result.wentRed, true);
+  }
+  for (const consumer of SUPPORT_PASSPORT_CONSUMERS) {
+    const frozen = freezeConsumerValueAfterCall(consumerSources[consumer.relativePath]);
+    assert.ok(frozen);
+    const facts = inspectConsumerCallPath({
+      typescript,
+      relativePath: consumer.relativePath,
+      source: frozen,
+    });
+    assert.ok(facts.submitHandlerCallCount >= 1);
+    assert.equal(facts.valueFlowCallCount, 0);
+  }
+});
+
 test('NC-CONSUMER-PIN-DECOYS [wiring VER-01]: comment, string, template, regex and JSX text cannot pay', () => {
   const cell = runNcConsumerPinDecoysCell(deps);
   assert.equal(cell.coverage, 'wiring');
@@ -397,6 +437,7 @@ const ALL_BEHAVIORAL_CELLS = [
   'PASSPORT-DEGRADED-ROUND-TRIP',
   'PASSPORT-DEGRADED-BOUNDING-PROPERTIES',
   'PASSPORT-DEGRADED-TEMPORAL-RECOMPUTE',
+  'PASSPORT-DEGRADED-REALM-FIDELITY',
   ...ALIAS_CELLS,
 ];
 
@@ -429,7 +470,8 @@ const EXPECTED_MUTANT_KILLS = {
   },
   M5: {
     name: 'NC-MUTANT-ARRAY-STRING-COERCION',
-    killedBy: ALL_BEHAVIORAL_CELLS,
+    // REALM-FIDELITY only watches unmodelled API reads; a shape coercion does not trip it.
+    killedBy: ALL_BEHAVIORAL_CELLS.filter((name) => name !== 'PASSPORT-DEGRADED-REALM-FIDELITY'),
   },
   M6: {
     name: 'NC-MUTANT-MEMOIZED-PASSPORT',
@@ -439,11 +481,26 @@ const EXPECTED_MUTANT_KILLS = {
     name: 'NC-MUTANT-MEMOIZED-AFTER-WARMUP',
     killedBy: ['PASSPORT-DEGRADED-TEMPORAL-RECOMPUTE'],
   },
+  M8: {
+    name: 'NC-MUTANT-SESSION-STORAGE-CACHE',
+    killedBy: ['PASSPORT-DEGRADED-TEMPORAL-RECOMPUTE'],
+  },
+  M9: {
+    name: 'NC-MUTANT-PERFORMANCE-NOW-WARMUP',
+    killedBy: ['PASSPORT-DEGRADED-TEMPORAL-RECOMPUTE'],
+  },
+  M10: {
+    name: 'NC-MUTANT-UNMODELLED-API-READ',
+    killedBy: [
+      'PASSPORT-DEGRADED-TEMPORAL-RECOMPUTE',
+      'PASSPORT-DEGRADED-REALM-FIDELITY',
+    ],
+  },
 };
 
-test('behavioural mutants M1-M7 are each applied and each killed by a named cell', () => {
+test('behavioural mutants M1-M10 are each applied and each killed by a named cell', () => {
   const cells = runBehavioralMutantCells(deps);
-  assert.equal(cells.length, 7);
+  assert.equal(cells.length, 10);
   for (const cell of cells) {
     const expected = EXPECTED_MUTANT_KILLS[cell.mutant];
     assert.ok(expected, `unexpected mutant ${cell.mutant}`);
@@ -513,7 +570,7 @@ test('every mutant really edits supportUi.tsx — none is a no-op that fakes a k
 
 test('a mutant that no longer applies is RED, not a silent pass', () => {
   const cells = runBehavioralMutantCells({ ...deps, supportUiSource: 'export const nothing = 1;\n' });
-  assert.equal(cells.length, 7);
+  assert.equal(cells.length, 10);
   for (const cell of cells) {
     assert.equal(cell.status, 'RED');
     assert.match(cell.reason, /did not apply/);
@@ -579,8 +636,8 @@ test('gate aggregate is GREEN on the repo sources and excludes findings from all
   assert.equal(report.allPass, true);
   assert.equal(report.findings.length, 1);
   assert.equal(report.findings[0].cell, 'FINDING-SERVER-CONTEXT-STR-COERCION');
-  // 7 behavioural + 7 mutants + 3 alias drops + 4 consumer wiring cells.
-  assert.equal(report.cells.filter((c) => typeof c.pass === 'boolean').length, 21);
+  // 8 behavioural + 10 mutants + 3 alias drops + 5 consumer wiring cells.
+  assert.equal(report.cells.filter((c) => typeof c.pass === 'boolean').length, 26);
 });
 
 test('gate refuses GREEN when no TypeScript compiler is available', () => {

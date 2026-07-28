@@ -267,7 +267,7 @@ Cells:
 | NC-IDLE-RENDER-WITHOUT-DATA | idle timer calling render without commit → RED | LIVE |
 | NC-IDLE-PERIODIC-RAF-WITHOUT-COMMIT | self-sustaining rAF loop with zero commits during observe → RED | LIVE (W39) |
 
-## Queue item 8 — support passport degraded modules (W36, CONCLUSION-48H M6; W40, W42, W43)
+## Queue item 8 — support passport degraded modules (W36, CONCLUSION-48H M6; W40, W42, W43, W44)
 
 | Name | Signature token | Status |
 |---|---|---|
@@ -334,6 +334,21 @@ mount carried the mount-time snapshot. The consumer pin now requires ≥1 call w
 binding is `createThread` and that is not inside `useMemo`; `NC-CONSUMER-CALL-HOISTED-USEMEMO`
 is the negative control.
 
+**W44 re-authoring (R-M6-4 REJECT closed).** Unbounded unmodelled-API class + consumer value-flow.
+
+*Modelled browser surfaces.* `sessionStorage`, `localStorage`, `performance.now` (tied to the
+realm clock), and `document.visibilityState="visible"` are installed so caches that use them
+are live inside the gate. Mutants **M8** (sessionStorage) and **M9** (`performance.now` warm-up)
+are killed by TEMPORAL-RECOMPUTE.
+
+*Fail-closed Proxy.* `window`/`document` are Proxies: any property read by `buildSupportContext`
+that is not an own modelled/runtime property fails `PASSPORT-DEGRADED-REALM-FIDELITY` (and the
+temporal cell's `noUnmodelledReads` guard). Mutant **M10** (`window.indexedDB`) is the carrier.
+
+*Value-flow.* The consumer pin requires the call's result to reach the request `context` payload;
+`NC-CONSUMER-VALUE-FROZEN` freezes the value one line downstream while leaving the call in
+`createThread` and must go RED.
+
 CI: `.github/workflows/support-passport-degraded.yml` (gate self-test, then preflight, then
 evidence artifact). W42 added both consumer `.tsx` paths to the trigger set.
 
@@ -342,12 +357,14 @@ evidence artifact). W42 added both consumer `.tsx` paths to the trigger set.
 | PASSPORT-DEGRADED-KEY-ALWAYS | real `buildSupportContext()` on a healthy runtime returns `degradedModules` as a present, empty **array** — never an absent key, never a scalar | soundness | LIVE |
 | PASSPORT-DEGRADED-ROUND-TRIP | runtime degrades itself (absent provider trips the tripwire) plus one `__talariaMarkMissingModule` call; the expectation is **read back from the runtime's own published list**, never injected | soundness | LIVE |
 | PASSPORT-DEGRADED-BOUNDING-PROPERTIES | against the real function: output ⊆ input, no duplicates, junk ids rejected, bounded-id pattern held, and the cap binds **exactly** at 32 when more valid ids are offered | soundness | LIVE (W40) |
-| PASSPORT-DEGRADED-TEMPORAL-RECOMPUTE | **one realm, three calls** under post-load `readyState==="complete"` with `TEMPORAL_CLOCK_ADVANCE_MS` between tickets: call → mark `OrderOverlay` → call → mark `AlertSystem` → call. Each observation must equal the runtime list read immediately before that call; runtime must advance 0 → 1 → 2; clock must advance ≥31s between observations | soundness | LIVE (W43) |
+| PASSPORT-DEGRADED-TEMPORAL-RECOMPUTE | **one realm, three calls** under post-load `readyState==="complete"` with `TEMPORAL_CLOCK_ADVANCE_MS` between tickets: call → mark `OrderOverlay` → call → mark `AlertSystem` → call. Each observation must equal the runtime list; runtime advances 0 → 1 → 2; clock advances ≥31s; **no unmodelled window/document reads** | soundness | LIVE (W44) |
+| PASSPORT-DEGRADED-REALM-FIDELITY | modelled `sessionStorage`/`localStorage`/`performance.now`/`visibilityState` present; `buildSupportContext` reads zero unmodelled window/document properties | soundness | LIVE (W44) |
 | PASSPORT-DEGRADED-ALIAS-CANONICAL / -DUNDER / -COMPAT | with the other two globals **deleted from the realm**, the real function still reads the degraded record from `__TALARIA_DEGRADED_STATE` / `__TALARIA_DEGRADED_STATE__` / `__TALARIA_DEGRADED_MODE__` respectively, non-empty and equal to what that alias published | soundness | LIVE (W42) |
-| SUPPORT-PASSPORT-CONSUMER-CALL-PATH | `SupportInbox.tsx` and `V16SupportChatPopover.tsx` each import `buildSupportContext` from `supportUi` **and** contain ≥1 call whose enclosing binding is `createThread` and that is **not** inside `useMemo` | wiring | LIVE (W43) |
+| SUPPORT-PASSPORT-CONSUMER-CALL-PATH | import + ≥1 `createThread` call not inside `useMemo` whose **result reaches** the request `context` payload (AST value-flow) | wiring | LIVE (W44) |
 | NC-ALIAS-DROP-CANONICAL / -DUNDER / -COMPAT | one alias deleted from `supportUi.tsx` (the tail alias takes the preceding `??` with it, or the edit is a syntax error rather than a regression): its own boot cell goes RED and **no other behavioural cell moves**. An alias that cannot be uniquely aimed is RED, not a silent pass | wiring | LIVE (W42) |
 | NC-CONSUMER-CALL-DELETED | the `buildSupportContext()` call removed from a consumer while the **import stays** turns the consumer cell RED — the pin keys on the call, not on the import | wiring | LIVE (W42) |
 | NC-CONSUMER-CALL-HOISTED-USEMEMO | `React.useMemo(() => buildSupportContext(), [])` hoist at component body with submit-handler call replaced by the frozen binding: `callCount` stays ≥1 and import intact, but `submitHandlerCallCount` drops to 0 and the consumer cell goes RED | wiring | LIVE (W43) |
+| NC-CONSUMER-VALUE-FROZEN | call stays in `createThread` with import intact, but a one-line-downstream snapshot freeze breaks value-flow to `context` → consumer cell RED | wiring | LIVE (W44) |
 | NC-CONSUMER-PIN-DECOYS | line comment, block comment, string literal, template literal, **regex literal** and **JSX text** each containing `buildSupportContext()` must not pay the pin, on both consumers; the same decoy appended to the intact file must leave the real call site still counted | wiring | LIVE (W42) |
 | SUPPORT-UI-SOURCE-CONTRACT | — | WITHDRAWN (W42) — substring pin on `window.__TALARIA_DEGRADED_STATE`, a prefix of `..._STATE__`, therefore unfalsifiable; superseded by the alias boot cells |
 | NC-ALIAS-PIN-REMOVAL | — | WITHDRAWN (W42) — negative control for a withdrawn pin; superseded by NC-ALIAS-DROP-* |
@@ -367,6 +384,9 @@ mutant whose target no longer exists is RED, not a silent pass.
 | M5 | NC-MUTANT-ARRAY-STRING-COERCION | array `.join(",")` — the client-side twin of the server finding below | every behavioural cell | LIVE (W40) |
 | M6 | NC-MUTANT-MEMOIZED-PASSPORT | readyState-gated module-scope cache (`if (__passportCache !== null && document.readyState === "complete") return __passportCache`) — the R-M6-3 carrier that stayed GREEN under a permanently-loading realm | **TEMPORAL-RECOMPUTE, and nothing else** | LIVE (W43) |
 | M7 | NC-MUTANT-MEMOIZED-AFTER-WARMUP | warm-up-gated module-scope cache (`Date.now() - boot > 30_000`) — invisible when temporal calls land within one millisecond | **TEMPORAL-RECOMPUTE, and nothing else** | LIVE (W43) |
+| M8 | NC-MUTANT-SESSION-STORAGE-CACHE | `sessionStorage` JSON cache — the R-M6-4 primary carrier | **TEMPORAL-RECOMPUTE, and nothing else** | LIVE (W44) |
+| M9 | NC-MUTANT-PERFORMANCE-NOW-WARMUP | warm-up cache keyed on `performance.now()` — Date.now controllability does not touch it | **TEMPORAL-RECOMPUTE, and nothing else** | LIVE (W44) |
+| M10 | NC-MUTANT-UNMODELLED-API-READ | `void window.indexedDB` — unmodelled API must trip REALM-FIDELITY | TEMPORAL-RECOMPUTE + REALM-FIDELITY | LIVE (W44) |
 
 ### FINDING-SUPPORT-CONTEXT-STR-COERCION-20260728 — escalate to A / Director
 

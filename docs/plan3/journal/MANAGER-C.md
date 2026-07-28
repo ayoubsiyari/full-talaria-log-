@@ -271,3 +271,6 @@ Exactly five ` | `-separated fields after the list marker. Absent fields are wri
 2026-07-28T12:00Z | C | NOTE | ref=M5-ship | cite=e4b17c504,R-M5-2 | "M5 ship-gate credit OK after R-M5-2 ACCEPT. M6 still withheld until R-M6-4 ACCEPT."
 2026-07-28T12:00Z | C | NOTE | ref=browser-runner | cite=9b0721110 | "Browser runner LIVE with real Edge acceptance; B's uncommitted/stubbed report is stale if their tree lacks 9b0721110."
 2026-07-28T12:00Z | C | NOTE | ref=storage-rest | cite=ef960492e | "Storage-growth census + REST-IDLE-MAIN-THREAD-BUDGET landed (W38/W39)."
+
+2026-07-28T12:11Z | C | REVIEW | packet=R-M6-4 | role=reviewer | tier=top | model=claude-opus-5-thinking-high | result=REJECT | attr=author-defect | "Unmodelled API class (sessionStorage/visibilityState/performance.now); consumer pin proves call not value-flow. W44."
+2026-07-28T12:11Z | C | DISPATCH | packet=W44 | role=author | tier=top | model=claude-opus-5-thinking-high | trigger="Escalate on repeat rejection" | "Close R-M6-4: Proxy fidelity + modelled storage/perf/visibility + value-flow pin; mutants M8-M10."
