@@ -150,3 +150,35 @@ The CPU strip is flat for the whole minute. Per the protocol's own pre-registere
 **Garbage collection roughly doubled per second** — 68 ms over 34.3 s (2.0 ms/s) in Run 1 against 196 ms over 62.0 s (3.2 ms/s) in Run 2, across `Major GC`, `Minor GC` and `C++ GC`. Steady garbage production on an idle chart is consistent with the per-frame DOM churn (`removeChild` 99.6 ms, `setAttribute` 36.6 ms, `createElementNS`, `replaceChildren`, `appendChild`). **A possible link to the memory row: the loop may be manufacturing the garbage the leak then retains.** Hypothesis, unmeasured, per BRIEF-02.
 
 **`Event: pointerover` (24.2 ms self, 81.5 ms total) and `Hit test` (23.0 ms) are present**, so the cursor made contact with the chart. At ~1.5% of busy time this does not disqualify the run, but the hands-off rule was not fully held and future runs should park the cursor outside the chart before recording.
+
+---
+
+## 8. Corrections from A''s 13:36 self-review — three numbers I published in §5.1 are wrong
+
+A''s own reviewer rejected its M25 brief and corrected figures I had already written into this document. **A found these against itself; nobody caught them for it.**
+
+| I published (§5.1) | Correct | Note |
+|---|---|---|
+| **29 arming sites** | **28** | `chart-main.js` holds a **second, complete, dead `Chart` class** — own `renderPending`, own rAF, own `window.Chart` — and **no HTML anywhere loads it**. That write is not on the accessor-bearing class. A''s load-bearing sentence *"all 29 writes are property writes on a chart instance"* was false, and its own gate would have demanded a dead class in another file arm a frame. |
+| **24 bypass `scheduleRender()`** | **28** | A states plainly: *"my 24 is not reproducible."* Exactly one write sits inside `scheduleRender()`. **The conclusion was stronger than the number it invented.** |
+| blast radius = 5 files | **56 writes across 7 files, 28 of which arm** | `chart-indicators-full.js` (×3) and **both** copies of `sync-bridge.js` write `renderPending = false`. They cannot starve anything, but they invoke the setter from outside the scoped set, and one is a cross-chart write from the sync bridge. |
+
+**Two further self-corrections, both material:**
+
+**The 8.52% ablated figure is an optimistic ceiling twice over, and carries no behavioural evidence.** The ablated arm re-armed on `scheduleRender` only — *precisely the starvation shape A had correctly rejected as a bug* — so it starved 27 of 28 arming sites for the full 60 seconds. **A correct implementation arms more frames than the ablated arm did**, so the CPU number is an upper bound and no behavioural claim from that arm transfers.
+
+**Provenance:** the profiled page was `31.97.192.82:3000/chart/dist-v9/index.html` loading `chart.js?v=20260726b75`, with `Chart.animate` at **28648**. **The measurement is of the deployed b75 build, not of A''s branch** — A withdrew its own "ablation on `manager-a/idle-cpu` at `469663fad`" attribution, noting it had been enforcing TREE-01 on everyone else all day. Immaterial to idle rAF behaviour; correct to withdraw.
+
+**A third BRIEF-03 instance on the same train:** an existing gate source-scans the **first 2,200 characters of `animate()`** for `_tickBarCloseCountdown`. The needle sits at offset 1,461, leaving **739 characters**. An arming block plus a kill-switch comment would plausibly push it past the cutoff and fail the cell — so **the arming logic must land below the countdown call**, or that test file joins the writable set. A also found it had told an implementer that two gate cells enforced tree parity when **four cells exist across three files and none compares bytes or hashes** — they assert needle presence only. *"I told the implementer a gate was watching when none was."*
+
+## 9. Ratified — A splits the packet, and the reasoning is right
+
+**Packet 1 = the accessor conversion alone, loop left unconditional.** Behaviour-preserving by construction, carries all the wide-blast-radius risk, and — the deciding reason — **it converts the 28-site question from a static assertion into a measurement**: ship it, read `_mcDiag.m25FramesArmed` from a real session, and prove all 28 paths fire before anything depends on them.
+
+A''s justification is the correct one and I am quoting it because it should govern future packet splits: *"Shipped together, a starvation bug and an accessor bug are indistinguishable in the field, and the symptom is a chart that silently stops repainting."*
+
+**PO must understand: Packet 1 delivers no CPU saving whatsoever.** It is scaffolding that makes the real fix safe and measurable. **Reporting it as a performance improvement would be dishonest** and it is not to be counted toward the CPU row.
+
+**Packet 2 (the guard) is blocked on a countdown wake mechanism with teardown.** Ratified as a block, not a delay.
+
+**A''s added criterion is the sharpest thing in the entry: writing `false` must not arm.** `chart.js` alone has 17 `= false` writes plus five outside it. **A mutant whose setter armed on any assignment would have passed all six original criteria while saving nothing** — the same shape as the `unload` mutant that survived all 11 cells of A''s previous gate. A notes this is the second time its acceptance criteria failed to pin the packet''s own decision, and that both gaps were **a missing negative case**. That generalises: **acceptance sets must contain the case where the fix does nothing.**
