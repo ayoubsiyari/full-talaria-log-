@@ -13,6 +13,7 @@ import {
   API_SERVER_RELATIVE_PATH,
   INDICATOR_PERFORMANCE_RELATIVE_PATH,
   MODULE_PRESENCE_RUNTIME_RELATIVE_PATH,
+  SUPPORT_PASSPORT_CONSUMERS,
   SUPPORT_UI_RELATIVE_PATH,
   formatSupportPassportDegradedReport,
   resolveTypeScript,
@@ -29,10 +30,18 @@ const readOptional = (relative) => {
   }
 };
 
+// Read-only: the consumer .tsx files are pinned from here, never edited by this gate.
+const consumerSources = Object.fromEntries(
+  SUPPORT_PASSPORT_CONSUMERS
+    .map((consumer) => [consumer.relativePath, readOptional(consumer.relativePath)])
+    .filter(([, source]) => source !== null),
+);
+
 const report = runSupportPassportDegradedGate({
   supportUiSource: read(SUPPORT_UI_RELATIVE_PATH),
   runtimeSource: read(MODULE_PRESENCE_RUNTIME_RELATIVE_PATH),
   indicatorPerfSource: read(INDICATOR_PERFORMANCE_RELATIVE_PATH),
+  consumerSources,
   apiServerSource: readOptional(API_SERVER_RELATIVE_PATH),
   typescript: resolveTypeScript(root),
 });

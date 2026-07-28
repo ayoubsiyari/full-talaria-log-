@@ -45,8 +45,6 @@ RUN if [ "$CHECKPOINT_BUILD" = "1" ]; then \
       BUILD_ID="$CHART_BUILD_ID" node /build/chart/scripts/bump-chart-engine-build.mjs; \
     fi \
     && npm run build:live:chart \
-    && mkdir -p /homepage/public/chart \
-    && cp -f /build/chart/legacy-index.html /homepage/public/chart/legacy-index.html \
     && if [ "$CHECKPOINT_BUILD" = "1" ]; then \
       node /build/checkpoint-tools/checkpoint-build-assert.mjs layout \
         --build-id="$CHART_BUILD_ID" \
@@ -85,7 +83,6 @@ COPY --from=chart_assets /build/chart/multichart-prod ./public/chart/multichart-
 COPY --from=chart_assets /build/chart/workers ./public/chart/workers
 COPY --from=chart_assets /build/chart/vendor ./public/chart/vendor
 COPY --from=chart_assets /build/chart/fonts ./public/chart/fonts
-COPY --from=chart_assets /build/chart/legacy-index.html ./public/chart/legacy-index.html
 COPY --from=chart_assets /build/chart/sw.js ./public/chart/sw.js
 
 # V16 dashboard monolith + score engine (imported by TalariaV16.jsx)

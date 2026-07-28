@@ -81,7 +81,7 @@
         "fastapiAllowlist": {
           "present": true,
           "file": "chart v 1.4/chart/api_server.py",
-          "line": 26927,
+          "line": 26925,
           "quote": "    \"admin-dashboard.html\","
         },
         "fastapiMount": {
@@ -217,7 +217,7 @@
         "fastapiAllowlist": {
           "present": true,
           "file": "chart v 1.4/chart/api_server.py",
-          "line": 26925,
+          "line": 26923,
           "quote": "    \"backtesting.html\","
         },
         "fastapiMount": {
@@ -291,13 +291,13 @@
         "fastapiMount": {
           "present": true,
           "file": "chart v 1.4/chart/api_server.py",
-          "line": 26996,
+          "line": 26994,
           "quote": "    app.mount(\"/chart/dist-v9\", StaticFiles(directory=str(_DIST_V9_DIR_PATH)), name=\"chart_dist_v9\")"
         },
         "dockerCopy": {
           "present": true,
           "file": "homepage/Dockerfile",
-          "line": 81,
+          "line": 79,
           "quote": "COPY --from=chart_assets /build/chart/dist-v9 ./public/chart/dist-v9"
         },
         "nginxRoot": {
@@ -387,8 +387,8 @@
         "fastapiAllowlist": {
           "present": true,
           "file": "chart v 1.4/chart/api_server.py",
-          "line": 26924,
-          "quote": "    \"index.v9.html\",  # redirect stub → legacy-index.html (no second monolith)"
+          "line": 26922,
+          "quote": "    \"index.v9.html\",  # redirect stub to the dist-v9 live path"
         },
         "fastapiMount": {
           "present": false,
@@ -409,20 +409,20 @@
           "quote": null
         }
       },
-      "reason": "857-byte meta-refresh redirect to legacy-index.html with zero script tags, kept for old bookmarks. Routed by CHART_ROOT_FILES membership. Its target is removal-pending under Ruling 2, so de-routing legacy-index.html leaves this stub pointing at a 404; its disposition follows legacy-index.html and is flagged for the de-routing packet.",
+      "reason": "Pointer document with zero script tags. Routed by CHART_ROOT_FILES membership and retargeted to /chart/index.html, where FastAPI serves dist-v9/index.html when the live build is present. It no longer points at legacy-index.html.",
       "chartShell": true
     },
     {
       "path": "chart v 1.4/chart/legacy-index.html",
       "kind": "chart-shell",
-      "status": "removal-pending",
-      "servable": true,
+      "status": "no-routing-evidence",
+      "servable": false,
       "routingEvidence": {
         "fastapiAllowlist": {
-          "present": true,
-          "file": "chart v 1.4/chart/api_server.py",
-          "line": 26923,
-          "quote": "    \"legacy-index.html\","
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
         },
         "fastapiMount": {
           "present": false,
@@ -431,10 +431,10 @@
           "quote": null
         },
         "dockerCopy": {
-          "present": true,
-          "file": "homepage/Dockerfile",
-          "line": 88,
-          "quote": "COPY --from=chart_assets /build/chart/legacy-index.html ./public/chart/legacy-index.html"
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
         },
         "nginxRoot": {
           "present": false,
@@ -443,7 +443,7 @@
           "quote": null
         }
       },
-      "reason": "RULING 2: removal-pending, RED and loud. Two independent routing channels, both machine-observable: CHART_ROOT_FILES membership at api_server.py:26923 and the homepage web-root copy at homepage/Dockerfile:88. RULING 3: the disposition is de-route, not fix — two shells serving one product is the root of this defect class, so no module contract is asserted against it. RULING 4 / A14.2: the chart-root source is retained for §A10 control harvest (see retainFile/retainPath/retainReason). Stamped 20260727b80 and references neither indicator-performance.js nor module-presence-runtime.js.",
+      "reason": "A14.3 de-routed, not fixed. The chart-root legacy source remains on disk only for A10 control harvest via retainFile/retainPath; it is absent from CHART_ROOT_FILES, no Dockerfile publishes it into a served root, and checkpoint runtime probing requires /chart/legacy-index.html to return 404. No module contract is asserted against this retained source.",
       "retainFile": true,
       "retainPath": "chart v 1.4/chart/legacy-index.html",
       "retainReason": "Retained as §A10 control-harvest source (chart-root canonical); magnet-mode is NOT the sole reason (V9 also has magnet); harvest for dropped controls including toggleFavoritesBar, keepDrawingModeToolbar, sessionInfoToggle, sc_magnet, replay-toolbar. Do not delete until A10 harvest completes.",
@@ -464,13 +464,13 @@
         "fastapiMount": {
           "present": true,
           "file": "chart v 1.4/chart/api_server.py",
-          "line": 27005,
+          "line": 27003,
           "quote": "app.mount(\"/chart/modules\", StaticFiles(directory=str(_CHART_ROOT_PATH / \"modules\")), name=\"chart_modules\")"
         },
         "dockerCopy": {
           "present": true,
           "file": "homepage/Dockerfile",
-          "line": 82,
+          "line": 80,
           "quote": "COPY --from=chart_assets /build/chart/modules ./public/chart/modules"
         },
         "nginxRoot": {
@@ -498,13 +498,13 @@
         "fastapiMount": {
           "present": true,
           "file": "chart v 1.4/chart/api_server.py",
-          "line": 27005,
+          "line": 27003,
           "quote": "app.mount(\"/chart/modules\", StaticFiles(directory=str(_CHART_ROOT_PATH / \"modules\")), name=\"chart_modules\")"
         },
         "dockerCopy": {
           "present": true,
           "file": "homepage/Dockerfile",
-          "line": 82,
+          "line": 80,
           "quote": "COPY --from=chart_assets /build/chart/modules ./public/chart/modules"
         },
         "nginxRoot": {
@@ -532,13 +532,13 @@
         "fastapiMount": {
           "present": true,
           "file": "chart v 1.4/chart/api_server.py",
-          "line": 27005,
+          "line": 27003,
           "quote": "app.mount(\"/chart/modules\", StaticFiles(directory=str(_CHART_ROOT_PATH / \"modules\")), name=\"chart_modules\")"
         },
         "dockerCopy": {
           "present": true,
           "file": "homepage/Dockerfile",
-          "line": 82,
+          "line": 80,
           "quote": "COPY --from=chart_assets /build/chart/modules ./public/chart/modules"
         },
         "nginxRoot": {
@@ -566,13 +566,13 @@
         "fastapiMount": {
           "present": true,
           "file": "chart v 1.4/chart/api_server.py",
-          "line": 27005,
+          "line": 27003,
           "quote": "app.mount(\"/chart/modules\", StaticFiles(directory=str(_CHART_ROOT_PATH / \"modules\")), name=\"chart_modules\")"
         },
         "dockerCopy": {
           "present": true,
           "file": "homepage/Dockerfile",
-          "line": 82,
+          "line": 80,
           "quote": "COPY --from=chart_assets /build/chart/modules ./public/chart/modules"
         },
         "nginxRoot": {
@@ -600,13 +600,13 @@
         "fastapiMount": {
           "present": true,
           "file": "chart v 1.4/chart/api_server.py",
-          "line": 27005,
+          "line": 27003,
           "quote": "app.mount(\"/chart/modules\", StaticFiles(directory=str(_CHART_ROOT_PATH / \"modules\")), name=\"chart_modules\")"
         },
         "dockerCopy": {
           "present": true,
           "file": "homepage/Dockerfile",
-          "line": 82,
+          "line": 80,
           "quote": "COPY --from=chart_assets /build/chart/modules ./public/chart/modules"
         },
         "nginxRoot": {
@@ -634,13 +634,13 @@
         "fastapiMount": {
           "present": true,
           "file": "chart v 1.4/chart/api_server.py",
-          "line": 27005,
+          "line": 27003,
           "quote": "app.mount(\"/chart/modules\", StaticFiles(directory=str(_CHART_ROOT_PATH / \"modules\")), name=\"chart_modules\")"
         },
         "dockerCopy": {
           "present": true,
           "file": "homepage/Dockerfile",
-          "line": 82,
+          "line": 80,
           "quote": "COPY --from=chart_assets /build/chart/modules ./public/chart/modules"
         },
         "nginxRoot": {
@@ -668,13 +668,13 @@
         "fastapiMount": {
           "present": true,
           "file": "chart v 1.4/chart/api_server.py",
-          "line": 27037,
+          "line": 27035,
           "quote": "        \"/chart/multichart-prod\","
         },
         "dockerCopy": {
           "present": true,
           "file": "homepage/Dockerfile",
-          "line": 84,
+          "line": 82,
           "quote": "COPY --from=chart_assets /build/chart/multichart-prod ./public/chart/multichart-prod"
         },
         "nginxRoot": {
@@ -702,13 +702,13 @@
         "fastapiMount": {
           "present": true,
           "file": "chart v 1.4/chart/api_server.py",
-          "line": 27037,
+          "line": 27035,
           "quote": "        \"/chart/multichart-prod\","
         },
         "dockerCopy": {
           "present": true,
           "file": "homepage/Dockerfile",
-          "line": 84,
+          "line": 82,
           "quote": "COPY --from=chart_assets /build/chart/multichart-prod ./public/chart/multichart-prod"
         },
         "nginxRoot": {
@@ -736,13 +736,13 @@
         "fastapiMount": {
           "present": true,
           "file": "chart v 1.4/chart/api_server.py",
-          "line": 27037,
+          "line": 27035,
           "quote": "        \"/chart/multichart-prod\","
         },
         "dockerCopy": {
           "present": true,
           "file": "homepage/Dockerfile",
-          "line": 84,
+          "line": 82,
           "quote": "COPY --from=chart_assets /build/chart/multichart-prod ./public/chart/multichart-prod"
         },
         "nginxRoot": {
@@ -770,13 +770,13 @@
         "fastapiMount": {
           "present": true,
           "file": "chart v 1.4/chart/api_server.py",
-          "line": 27037,
+          "line": 27035,
           "quote": "        \"/chart/multichart-prod\","
         },
         "dockerCopy": {
           "present": true,
           "file": "homepage/Dockerfile",
-          "line": 84,
+          "line": 82,
           "quote": "COPY --from=chart_assets /build/chart/multichart-prod ./public/chart/multichart-prod"
         },
         "nginxRoot": {
@@ -804,7 +804,7 @@
         "fastapiMount": {
           "present": true,
           "file": "chart v 1.4/chart/api_server.py",
-          "line": 27024,
+          "line": 27022,
           "quote": "    app.mount(\"/chart/multichart\", StaticFiles(directory=str(_MULTICHART_DIR_PATH), html=True), name=\"chart_multichart\")"
         },
         "dockerCopy": {
@@ -838,7 +838,7 @@
         "fastapiMount": {
           "present": true,
           "file": "chart v 1.4/chart/api_server.py",
-          "line": 27024,
+          "line": 27022,
           "quote": "    app.mount(\"/chart/multichart\", StaticFiles(directory=str(_MULTICHART_DIR_PATH), html=True), name=\"chart_multichart\")"
         },
         "dockerCopy": {
@@ -866,7 +866,7 @@
         "fastapiAllowlist": {
           "present": true,
           "file": "chart v 1.4/chart/api_server.py",
-          "line": 26926,
+          "line": 26924,
           "quote": "    \"propfirm-backtest.html\","
         },
         "fastapiMount": {
@@ -940,7 +940,7 @@
         "fastapiMount": {
           "present": true,
           "file": "chart v 1.4/chart/api_server.py",
-          "line": 27016,
+          "line": 27014,
           "quote": "    app.mount(\"/chart/static\", StaticFiles(directory=str(_STATIC_OOPS_DIR)), name=\"chart_static_oops\")"
         },
         "dockerCopy": {
@@ -3057,13 +3057,13 @@
         "dockerCopy": {
           "present": true,
           "file": "homepage/Dockerfile",
-          "line": 81,
+          "line": 79,
           "quote": "COPY --from=chart_assets /build/chart/dist-v9 ./public/chart/dist-v9"
         },
         "nginxRoot": {
           "present": true,
           "file": "homepage/Dockerfile",
-          "line": 138,
+          "line": 135,
           "quote": "COPY --from=builder /app/homepage/out /usr/share/nginx/html"
         }
       },
@@ -3073,8 +3073,8 @@
     {
       "path": "homepage/public/chart/legacy-index.html",
       "kind": "chart-shell",
-      "status": "removal-pending",
-      "servable": true,
+      "status": "removed",
+      "servable": false,
       "routingEvidence": {
         "fastapiAllowlist": {
           "present": false,
@@ -3089,19 +3089,19 @@
           "quote": null
         },
         "dockerCopy": {
-          "present": true,
-          "file": "homepage/Dockerfile",
-          "line": 88,
-          "quote": "COPY --from=chart_assets /build/chart/legacy-index.html ./public/chart/legacy-index.html"
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
         },
         "nginxRoot": {
-          "present": true,
-          "file": "homepage/Dockerfile",
-          "line": 138,
-          "quote": "COPY --from=builder /app/homepage/out /usr/share/nginx/html"
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
         }
       },
-      "reason": "RULING 2: removal-pending, RED and loud. Homepage web-root copy of the legacy host shell, byte-equal to the chart-root source at 1416019 bytes and stamped 20260727b80. Two routing channels: it is rewritten in place by homepage/Dockerfile:88 and its own location inside homepage/public reaches /usr/share/nginx/html via homepage/Dockerfile:75, :125 and :138. A14.2: no retain on served duplicate — §A10 harvest source is chart v 1.4/chart/legacy-index.html only.",
+      "reason": "A14.3 de-routed public duplicate removed with git rm. The served web-root copy no longer exists under homepage/public/chart and Dockerfile publication from the retained source has been removed; GET /chart/legacy-index.html is expected to be 404.",
       "retainFile": false,
       "retainPath": null,
       "retainReason": null,
@@ -3128,13 +3128,13 @@
         "dockerCopy": {
           "present": true,
           "file": "homepage/Dockerfile",
-          "line": 82,
+          "line": 80,
           "quote": "COPY --from=chart_assets /build/chart/modules ./public/chart/modules"
         },
         "nginxRoot": {
           "present": true,
           "file": "homepage/Dockerfile",
-          "line": 138,
+          "line": 135,
           "quote": "COPY --from=builder /app/homepage/out /usr/share/nginx/html"
         }
       },
@@ -3162,13 +3162,13 @@
         "dockerCopy": {
           "present": true,
           "file": "homepage/Dockerfile",
-          "line": 82,
+          "line": 80,
           "quote": "COPY --from=chart_assets /build/chart/modules ./public/chart/modules"
         },
         "nginxRoot": {
           "present": true,
           "file": "homepage/Dockerfile",
-          "line": 138,
+          "line": 135,
           "quote": "COPY --from=builder /app/homepage/out /usr/share/nginx/html"
         }
       },
@@ -3196,13 +3196,13 @@
         "dockerCopy": {
           "present": true,
           "file": "homepage/Dockerfile",
-          "line": 82,
+          "line": 80,
           "quote": "COPY --from=chart_assets /build/chart/modules ./public/chart/modules"
         },
         "nginxRoot": {
           "present": true,
           "file": "homepage/Dockerfile",
-          "line": 138,
+          "line": 135,
           "quote": "COPY --from=builder /app/homepage/out /usr/share/nginx/html"
         }
       },
@@ -3230,13 +3230,13 @@
         "dockerCopy": {
           "present": true,
           "file": "homepage/Dockerfile",
-          "line": 82,
+          "line": 80,
           "quote": "COPY --from=chart_assets /build/chart/modules ./public/chart/modules"
         },
         "nginxRoot": {
           "present": true,
           "file": "homepage/Dockerfile",
-          "line": 138,
+          "line": 135,
           "quote": "COPY --from=builder /app/homepage/out /usr/share/nginx/html"
         }
       },
@@ -3264,13 +3264,13 @@
         "dockerCopy": {
           "present": true,
           "file": "homepage/Dockerfile",
-          "line": 82,
+          "line": 80,
           "quote": "COPY --from=chart_assets /build/chart/modules ./public/chart/modules"
         },
         "nginxRoot": {
           "present": true,
           "file": "homepage/Dockerfile",
-          "line": 138,
+          "line": 135,
           "quote": "COPY --from=builder /app/homepage/out /usr/share/nginx/html"
         }
       },
@@ -3298,13 +3298,13 @@
         "dockerCopy": {
           "present": true,
           "file": "homepage/Dockerfile",
-          "line": 82,
+          "line": 80,
           "quote": "COPY --from=chart_assets /build/chart/modules ./public/chart/modules"
         },
         "nginxRoot": {
           "present": true,
           "file": "homepage/Dockerfile",
-          "line": 138,
+          "line": 135,
           "quote": "COPY --from=builder /app/homepage/out /usr/share/nginx/html"
         }
       },
@@ -3332,13 +3332,13 @@
         "dockerCopy": {
           "present": true,
           "file": "homepage/Dockerfile",
-          "line": 84,
+          "line": 82,
           "quote": "COPY --from=chart_assets /build/chart/multichart-prod ./public/chart/multichart-prod"
         },
         "nginxRoot": {
           "present": true,
           "file": "homepage/Dockerfile",
-          "line": 138,
+          "line": 135,
           "quote": "COPY --from=builder /app/homepage/out /usr/share/nginx/html"
         }
       },
@@ -3366,13 +3366,13 @@
         "dockerCopy": {
           "present": true,
           "file": "homepage/Dockerfile",
-          "line": 84,
+          "line": 82,
           "quote": "COPY --from=chart_assets /build/chart/multichart-prod ./public/chart/multichart-prod"
         },
         "nginxRoot": {
           "present": true,
           "file": "homepage/Dockerfile",
-          "line": 138,
+          "line": 135,
           "quote": "COPY --from=builder /app/homepage/out /usr/share/nginx/html"
         }
       },
@@ -3400,13 +3400,13 @@
         "dockerCopy": {
           "present": true,
           "file": "homepage/Dockerfile",
-          "line": 84,
+          "line": 82,
           "quote": "COPY --from=chart_assets /build/chart/multichart-prod ./public/chart/multichart-prod"
         },
         "nginxRoot": {
           "present": true,
           "file": "homepage/Dockerfile",
-          "line": 138,
+          "line": 135,
           "quote": "COPY --from=builder /app/homepage/out /usr/share/nginx/html"
         }
       },
@@ -3434,13 +3434,13 @@
         "dockerCopy": {
           "present": true,
           "file": "homepage/Dockerfile",
-          "line": 84,
+          "line": 82,
           "quote": "COPY --from=chart_assets /build/chart/multichart-prod ./public/chart/multichart-prod"
         },
         "nginxRoot": {
           "present": true,
           "file": "homepage/Dockerfile",
-          "line": 138,
+          "line": 135,
           "quote": "COPY --from=builder /app/homepage/out /usr/share/nginx/html"
         }
       },
@@ -3474,7 +3474,7 @@
         "nginxRoot": {
           "present": true,
           "file": "homepage/Dockerfile",
-          "line": 138,
+          "line": 135,
           "quote": "COPY --from=builder /app/homepage/out /usr/share/nginx/html"
         }
       },
@@ -3508,7 +3508,7 @@
         "nginxRoot": {
           "present": true,
           "file": "homepage/Dockerfile",
-          "line": 138,
+          "line": 135,
           "quote": "COPY --from=builder /app/homepage/out /usr/share/nginx/html"
         }
       },
@@ -3542,7 +3542,7 @@
         "nginxRoot": {
           "present": true,
           "file": "homepage/Dockerfile",
-          "line": 138,
+          "line": 135,
           "quote": "COPY --from=builder /app/homepage/out /usr/share/nginx/html"
         }
       },
@@ -3576,7 +3576,7 @@
         "nginxRoot": {
           "present": true,
           "file": "homepage/Dockerfile",
-          "line": 138,
+          "line": 135,
           "quote": "COPY --from=builder /app/homepage/out /usr/share/nginx/html"
         }
       },
@@ -3610,7 +3610,7 @@
         "nginxRoot": {
           "present": true,
           "file": "homepage/Dockerfile",
-          "line": 138,
+          "line": 135,
           "quote": "COPY --from=builder /app/homepage/out /usr/share/nginx/html"
         }
       },

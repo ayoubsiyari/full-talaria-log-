@@ -11,14 +11,22 @@
         "__talariaRegisterModule",
         "__talariaMarkMissingModule"
       ],
-      "requiredSurfaces": ["host", "panel"],
+      "requiredSurfaces": [
+        "host",
+        "panel"
+      ],
       "class": "correctness",
       "order": {
         "after": [],
-        "before": ["/chart/chart.js", "/chart/modules/indicator-performance.js"]
+        "before": [
+          "/chart/chart.js",
+          "/chart/modules/indicator-performance.js"
+        ]
       },
       "source": "chart v 1.4/chart/modules/module-presence-runtime.js",
-      "mirrors": ["homepage/public/chart/modules/module-presence-runtime.js"],
+      "mirrors": [
+        "homepage/public/chart/modules/module-presence-runtime.js"
+      ],
       "script": "/chart/modules/module-presence-runtime.js"
     },
     {
@@ -35,14 +43,23 @@
         "estimateTailLookback",
         "hashIndicatorParams"
       ],
-      "requiredSurfaces": ["host", "panel"],
+      "requiredSurfaces": [
+        "host",
+        "panel"
+      ],
       "class": "correctness",
       "order": {
-        "after": ["/chart/chart.js"],
-        "before": ["/chart/modules/chart-indicators-full.js"]
+        "after": [
+          "/chart/chart.js"
+        ],
+        "before": [
+          "/chart/modules/chart-indicators-full.js"
+        ]
       },
       "source": "chart v 1.4/chart/modules/indicator-performance.js",
-      "mirrors": ["homepage/public/chart/modules/indicator-performance.js"],
+      "mirrors": [
+        "homepage/public/chart/modules/indicator-performance.js"
+      ],
       "script": "/chart/modules/indicator-performance.js"
     }
   ],
@@ -103,9 +120,9 @@
       "id": "legacy-public-shell",
       "surface": "host",
       "path": "homepage/public/chart/legacy-index.html",
-      "status": "excluded",
+      "status": "removed",
       "servable": false,
-      "reason": "stale public source shell; route-removal debt"
+      "reason": "A14.3 public legacy shell removed from homepage/public/chart; canonical retained source remains excluded separately."
     },
     {
       "id": "frozen-harness",

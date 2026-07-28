@@ -1049,7 +1049,7 @@ test('W26-N1: no live shell puts raw text inside foreign content', () => {
 // W27 costs the live tree nothing, and this is where that claim is checked rather than asserted in
 // a handoff note: the new hazard is reachable only from a `<template>` inside foreign content
 // inside a template body, no servable shell writes that markup, and the parse-incomplete
-// population is the same 13 shells as before the rule landed. A shell that starts writing it
+// population is the same 12 shells after the public legacy copy was de-routed. A shell that starts writing it
 // arrives here with a path attached rather than as an unexplained budget overrun.
 test('W27: no live shell opens a template inside foreign content', () => {
   const discovered = discoverShells({ root, roots: ROOTS });
@@ -1057,7 +1057,7 @@ test('W27: no live shell opens a template inside foreign content', () => {
     .filter((shell) => shell.parseIncompleteReasons.includes(PARSE_HAZARDS.templateForeignContent))
     .map((shell) => shell.path);
   assert.deepEqual(templateShells, []);
-  assert.equal(discovered.shells.filter((shell) => !shell.parseComplete).length, 13);
+  assert.equal(discovered.shells.filter((shell) => !shell.parseComplete).length, 12);
 });
 
 // The same inert ranges have to hold for the loader and hazard scans, not just for script
@@ -1292,10 +1292,10 @@ test('F6: the live tree carries exactly the known parse hazards', () => {
   }
   assert.deepEqual(reasons, {
     [PARSE_HAZARDS.documentWrite]: 5,
-    [PARSE_HAZARDS.scriptElementCreation]: 4,
+    [PARSE_HAZARDS.scriptElementCreation]: 3,
     [PARSE_HAZARDS.worker]: 4,
   });
-  assert.equal(discovered.shells.filter((shell) => !shell.parseComplete).length, 13);
+  assert.equal(discovered.shells.filter((shell) => !shell.parseComplete).length, 12);
 });
 
 test('escapes and terminators keep the scan views index-aligned', () => {

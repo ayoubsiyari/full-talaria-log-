@@ -31,7 +31,6 @@ function fixtureBody(pathname, id = buildId) {
     '/chart/chart.js': `const CHART_ENGINE_BUILD = '${id}';\n`,
     '/chart/modules/drawing-tools-manager.js': 'export const ok = true;\n',
     '/chart/sw.js': `const SW_VERSION = "talaria-chart-${id}";\n`,
-    '/chart/legacy-index.html': `<script src="/chart/chart.js?v=${id}"></script>\n`,
   };
   return bodies[pathname];
 }
@@ -127,6 +126,7 @@ test('authenticated static asset surface succeeds with exact configured paths', 
     const surface = await probeSurface(null, origin, buildId, 'n');
     assert.equal(surface.shellBuildId, buildId);
     assert.equal(surface.engineBuildId, buildId);
+    assert.equal(surface.legacyStatus, 404);
     assert.deepEqual(surface.browserFrameBuildIds, [buildId]);
   });
 });

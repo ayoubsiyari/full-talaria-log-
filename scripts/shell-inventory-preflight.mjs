@@ -136,33 +136,26 @@ export const VIOLATION_KINDS = Object.freeze([
 //
 //   conditional-exposure            chart/multichart/chart-host.html and its homepage/public
 //                                   copy are routed, load the chart engine and omit the
-//                                   correctness-class exposure modules; legacy-index.html
-//                                   and its homepage/public copy emit the same RED while
-//                                   still routed (parse-incomplete does not mute exposure).
+//                                   correctness-class exposure modules.
 //   exclusion-count-undeclared      the one live exclusion (**/node_modules/**) predates the
 //                                   mandatory expectedMatchCount and its reason text already
 //                                   names the 9 files; the budget goes to zero the moment
 //                                   scripts/servable-surface-inventory.json declares the count.
 //   proof-of-derouting-unsatisfied  the de-routing requirements on the pending rows are not
 //                                   yet met; each unmet requirement is one violation.
-//   removal-pending                 chart/legacy-index.html and its homepage/public copy are
-//                                   ordered off production (Ruling 3).
 //   shell-parse-incomplete          shells whose loader graph cannot be read from their own
 //                                   text (script element creation, document.write outside a
 //                                   recognised loader, Worker construction).
 export const EXPECTED_ALLOW_KINDS = Object.freeze({
-  'conditional-exposure': 4,
+  'conditional-exposure': 2,
   'exclusion-count-undeclared': 1,
-  'proof-of-derouting-unsatisfied': 45,
-  'removal-pending': 2,
-  'shell-parse-incomplete': 13,
+  'proof-of-derouting-unsatisfied': 38,
+  'shell-parse-incomplete': 12,
 });
 
 export const EXPECTED_ALLOW_PATHS = Object.freeze({
   'conditional-exposure': Object.freeze([
-    'chart v 1.4/chart/legacy-index.html',
     'chart v 1.4/chart/multichart/chart-host.html',
-    'homepage/public/chart/legacy-index.html',
     'homepage/public/chart/multichart/chart-host.html',
   ]),
 });

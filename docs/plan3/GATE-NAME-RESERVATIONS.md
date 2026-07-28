@@ -22,6 +22,7 @@ Status vocabulary: `RESERVED` (name taken, not yet authored) · `LIVE` (authored
 | Name | Signature token | Implementation | Status |
 |---|---|---|---|
 | MODULE-CONTRACT-PREFLIGHT-V1 | `TALARIA_MODULE_CONTRACT_PREFLIGHT_V1` | `scripts/module-contract-preflight.mjs` | LIVE (landed 90e0e0cf8, pre-dates this registry) |
+| CACHE-STAMP-COHERENCE-V1 | `TALARIA_CACHE_STAMP_COHERENCE_V1` | `scripts/cache-stamp-coherence-gate.mjs`, `scripts/lib/cache-stamp-coherence.mjs`, `scripts/cache-stamp-module-baseline.json` | LIVE (W55) — content-hash vs sealed `?v=` stamp + cross-shell module stamp coherence |
 
 ## Queue item 1 — territory and journal (A11.2 item 1)
 
@@ -456,6 +457,14 @@ Reported by the non-blocking cell `FINDING-SERVER-CONTEXT-STR-COERCION` (`covera
 `UNPROVEN`. It is deliberately non-blocking: C may not edit product code, and a gate that goes RED
 over a defect its owner is forbidden to fix teaches people to ignore it. The escalation, not the
 red light, is the mechanism. A hard cell can be promoted once A or the Director takes the fix.
+
+## Gate Note — A14.3 legacy de-route (W56)
+
+`/chart/legacy-index.html` is de-routed, not fixed. `checkpoint-runtime-probe` now requires HTTP
+404 for that path, `CACHE-STAMP-SHELLS` keeps only the retained chart-root canonical source, and
+the shell-inventory ratchet is `conditional-exposure:2`,
+`exclusion-count-undeclared:1`, `proof-of-derouting-unsatisfied:38`,
+`shell-parse-incomplete:12` with no `removal-pending` allowance.
 
 ## Queue item 9 — storage growth census (W38, FINDING-CPU-NOT-MEMORY Correction 1)
 

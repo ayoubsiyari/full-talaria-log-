@@ -108,6 +108,23 @@ async function fetchArtifact(origin, relativePath, nonce, diagnostics = null) {
   };
 }
 
+async function fetchStatus(origin, relativePath, nonce, diagnostics = null) {
+  const url = buildUrl(origin, relativePath, nonce);
+  const response = await fetch(url, {
+    cache: 'no-store',
+    redirect: 'manual',
+    headers: {
+      'cache-control': 'no-cache, no-store',
+      pragma: 'no-cache',
+    },
+  });
+  diagnostics?.statusClasses.push(statusClass(response.status));
+  return {
+    url: response.url,
+    status: response.status,
+  };
+}
+
 function exactAssetPath(text, regex, expectedPath, label) {
   const configured = match(text, regex, label);
   const url = new URL(configured, 'https://probe.invalid/');
@@ -292,7 +309,13 @@ async function probeSurface(browser, origin, expectedBuildId, nonce, authCookies
     diagnostics,
   );
   const serviceWorker = await fetchArtifact(origin, '/chart/sw.js', nonce, diagnostics);
-  const legacy = await fetchArtifact(origin, '/chart/legacy-index.html', nonce, diagnostics);
+  const legacy = await fetchStatus(origin, '/chart/legacy-index.html', nonce, diagnostics);
+  if (legacy.status !== 404) {
+    throw diagnosticError('static-fetch', {
+      ...diagnostics,
+      currentUrl: legacy.url,
+    }, `legacy shell expected HTTP 404, got HTTP ${legacy.status}`);
+  }
   const embedBuildId = match(
     embed.text,
     /window\.__TALARIA_CHART_BUILD_ID\s*=\s*p\.get\('v'\)\s*\|\|\s*'([^']+)'/,
@@ -324,7 +347,7 @@ async function probeSurface(browser, origin, expectedBuildId, nonce, authCookies
       /const SW_VERSION = "talaria-chart-([^"]+)"/,
       'service-worker build id',
     ),
-    legacyBuildId: oneCacheId(legacy.text, 'legacy shell'),
+    legacyStatus: legacy.status,
     harnessBuildId: match(harness.text, /const buildId = '([^']+)'/, 'harness build id'),
     browserHostBuildId: browserRuntime.hostBuildId,
     browserFrameBuildIds: browserRuntime.frameBuildIds,
@@ -335,7 +358,6 @@ async function probeSurface(browser, origin, expectedBuildId, nonce, authCookies
       engine: engine.sha256,
       module: module.sha256,
       serviceWorker: serviceWorker.sha256,
-      legacy: legacy.sha256,
       harness: harness.sha256,
     },
   };
@@ -416,6 +438,7 @@ export {
   diagnosticError,
   exactAssetPath,
   fetchArtifact,
+  fetchStatus,
   loadAuthCookies,
   parseArgs,
   probeSurface,

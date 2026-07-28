@@ -20,7 +20,6 @@ const MIRROR_DIRECTORIES = [
 
 const MIRROR_FILES = [
   ['chart.js', 'chart.js'],
-  ['legacy-index.html', 'legacy-index.html'],
   ['sw.js', 'sw.js'],
 ];
 
@@ -532,11 +531,9 @@ export function verifyTreeLayout({
     );
   }
 
-  for (const [filePath, label] of [
-    [path.join(chartRoot, 'legacy-index.html'), 'canonical legacy cache ids'],
-    [path.join(homepageChartRoot, 'legacy-index.html'), 'homepage legacy cache ids'],
-  ]) {
-    matchAllCacheIds(checks, failures, filePath, label, expectedBuildId);
+  const canonicalLegacy = path.join(chartRoot, 'legacy-index.html');
+  if (fs.existsSync(canonicalLegacy)) {
+    matchAllCacheIds(checks, failures, canonicalLegacy, 'canonical legacy cache ids', expectedBuildId);
   }
 
   for (const [canonicalName, homepageName] of MIRROR_DIRECTORIES) {
@@ -587,12 +584,13 @@ function verifyRuntimeSurface(failures, surface, expectedBuildId, label) {
     'embedBuildId',
     'engineBuildId',
     'serviceWorkerBuildId',
-    'legacyBuildId',
+    'legacyStatus',
     'harnessBuildId',
   ]) {
-    if (surface[field] !== expectedBuildId) {
+    const expected = field === 'legacyStatus' ? 404 : expectedBuildId;
+    if (surface[field] !== expected) {
       failures.push(
-        `${label}.${field}: expected ${expectedBuildId}, got ${surface[field] || '<missing>'}`,
+        `${label}.${field}: expected ${expected}, got ${surface[field] || '<missing>'}`,
       );
     }
   }
@@ -614,7 +612,7 @@ export function verifyRuntimeSnapshot(snapshot, manifest) {
   const failures = [];
   verifyRuntimeSurface(failures, snapshot?.direct, manifest.buildId, 'direct');
   verifyRuntimeSurface(failures, snapshot?.public, manifest.buildId, 'public');
-  const hashFields = ['shell', 'embed', 'engine', 'module', 'serviceWorker', 'legacy', 'harness'];
+  const hashFields = ['shell', 'embed', 'engine', 'module', 'serviceWorker', 'harness'];
   for (const field of hashFields) {
     const directHash = snapshot?.direct?.hashes?.[field];
     const publicHash = snapshot?.public?.hashes?.[field];

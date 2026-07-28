@@ -48,8 +48,6 @@ RUN if [ "$CHECKPOINT_BUILD" = "1" ]; then \
       BUILD_ID="$CHART_BUILD_ID" node /build/chart/scripts/bump-chart-engine-build.mjs; \
     fi \
     && npm run build:live:chart \
-    && mkdir -p /homepage/public/chart \
-    && cp -f /build/chart/legacy-index.html /homepage/public/chart/legacy-index.html \
     && if [ "$CHECKPOINT_BUILD" = "1" ]; then \
       node /build/checkpoint-tools/checkpoint-build-assert.mjs layout \
         --build-id="$CHART_BUILD_ID" \
@@ -109,7 +107,6 @@ COPY --from=v9_react /build/chart/multichart-prod ./multichart-prod
 COPY --from=v9_react /build/chart/workers ./workers
 COPY --from=v9_react /build/chart/vendor ./vendor
 COPY --from=v9_react /build/chart/fonts ./fonts
-COPY --from=v9_react /build/chart/legacy-index.html ./legacy-index.html
 COPY --from=v9_react /build/chart/sw.js ./sw.js
 
 # The legacy minified bundle (dist/) is ONLY a fallback for /chart/index.html when

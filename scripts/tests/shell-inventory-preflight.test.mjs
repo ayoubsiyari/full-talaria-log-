@@ -1851,11 +1851,11 @@ test('F9 four-state proof: a budget cannot be raised from the workflow alone', (
     const flags = allowKindsFlags(text);
     return flags.length === 1 && JSON.stringify(budgetsFrom(flags[0])) === JSON.stringify({ ...EXPECTED_ALLOW_KINDS });
   };
-  const raised = workflow.replace('shell-parse-incomplete:13', 'shell-parse-incomplete:14');
-  const unbudgeted = workflow.replace('shell-parse-incomplete:13', 'shell-parse-incomplete');
+  const raised = workflow.replace('shell-parse-incomplete:12', 'shell-parse-incomplete:13');
+  const unbudgeted = workflow.replace('shell-parse-incomplete:12', 'shell-parse-incomplete');
   const appended = workflow.replace(
-    '--allow-kinds=conditional-exposure:4',
-    '--allow-kinds=undeclared-shell:9 --allow-kinds=conditional-exposure:4',
+    '--allow-kinds=conditional-exposure:2',
+    '--allow-kinds=undeclared-shell:9 --allow-kinds=conditional-exposure:2',
   );
 
   assert.equal(agrees(workflow), true, 'fixed state agrees with the checked-in map');
