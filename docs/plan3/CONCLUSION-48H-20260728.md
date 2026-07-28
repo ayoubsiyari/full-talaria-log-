@@ -31,7 +31,23 @@ These are the only items that can block the canary. Anything not on this list do
 
 ## 3. High value, does not block
 
-Land if ready; do not hold the canary for any of them. In priority order: V8 pin persistence · trade duration clock after rollback · unmarked-forming-candle presentation fix · remaining V6 drag defects · crosshair time label during replay · timeframe-reset on multichart reload.
+Land if ready; do not hold the canary for any of them. In priority order: **replay speed cap (below)** · V8 pin persistence · trade duration clock after rollback · unmarked-forming-candle presentation fix · remaining V6 drag defects · crosshair time label during replay · timeframe-reset on multichart reload.
+
+### 3.1 Replay speed cap — PO decision, 2026-07-28 09:32
+
+**The existing 10x becomes the hard maximum.** No redefinition of the speed scale: every option above the one currently labelled 10x is removed, and the current speeds keep their present meaning and feel. Hard ceiling — no hidden flag, no user unlock.
+
+Owner: **A** (replay scheduler). Non-blocking for the canary.
+
+**Why this is worth more than its CPU saving.** Above ~60x the replay switches to a separate rendering path (`updateChartDataFast` → `_renderReplayChartUpdate`), a second implementation of "draw the chart". Every serious defect this week traces to two implementations of one thing that were never proven to agree — two indicator maths, two shells, two copies of the rulebook. A hard 10x ceiling makes that path **unreachable, so it can be retired rather than maintained.** Confirm the fast-mode threshold sits above 10x before deleting anything.
+
+**Three requirements that decide whether the cap is real or cosmetic:**
+
+1. **Cap the work, not the label.** The V5 finding was that daily tick playback was subdivided by 1,440. If that subdivision is independent of the speed multiplier, then 1D at 10x may still generate vastly more work per second than 1m at 10x, and the ceiling is cosmetic on coarse timeframes. **Measure actual tick and render rate at 10x on both 1m and 1D.** This is the acceptance criterion, not the UI change.
+2. **Clamp every entry point, not just the picker** — restored sessions, saved preferences, URL parameters and internal setters. A stored 60x that survives restore defeats the ceiling silently, which is this project's signature failure mode.
+3. **Measure the CPU claim rather than assume it.** Before/after on the same replay. The PO suspects high speed drives CPU cost; every performance figure we hold was taken on a broken build, so take the real number.
+
+**Disposition of the lag family under this cap — recorded so it cannot be misread later.** The cap **bounds** the indicator lag; it does not cure it. The row closes as **"bounded by product cap"**, never as "fixed", and the disposition states that raising the cap reopens it with no test guarding the higher range. **Open question that decides whether the cap mitigates the PO's actual symptom: does the lag still occur at 5x?** If it does, the cap changes nothing the user sees and the mechanism is still unfound. One observation on the next build settles it and must be taken before any mitigation is claimed.
 
 ## 4. Deferred, named, disclosed — not abandoned
 
