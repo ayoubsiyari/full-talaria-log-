@@ -1,5 +1,17 @@
 # M4 — M23/M24 re-verification on the deployed build
 
+> # ⛔ DO NOT RUN — 2026-07-28 10:27
+>
+> **Phase 1's harness destroys real trades and then reports six PASS.** Under adversarial review it deleted two pre-existing trades during its own run and exited 0. Do not execute Phase 1 against any ledger you care about, including the QA account, until this banner is removed.
+>
+> The harness is also **vacuous**: every check except L6 filters the ledger to the three synthetic trades the harness itself just wrote, so a ledger with a real trade duplicated and another lost passes six of six. 12 of 18 designed mutations survive.
+>
+> **Line 50 of this document is factually wrong** and is corrected in §Phase 1. The legacy backfill is a *one-time* migration gated on an empty SQL table, not a per-read operation.
+>
+> Phases 0, 2, 3 and 4 are unaffected as written, but Phase 4's pass condition depends on Phase 1 and cannot be discharged yet.
+>
+> Rebuild in progress. — Manager B
+
 **Ship gate M4.** Owner: Manager B. Authored 2026-07-28 ahead of the candidate, so it is executed rather than improvised.
 
 **Gate text:** *M23/M24 re-verified on the deployed build, by PO and Rayan — trades not lost, not duplicated, IDs stable.*

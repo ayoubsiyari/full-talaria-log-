@@ -1587,3 +1587,47 @@ The sharpest one: `${ol.orderId}` evades, and **`ol` is the variable name this v
 **General lesson, and it is the one I keep relearning:** an enumeration over an open set can only ever be a list of the cases someone thought of. The distinction that matters is not "does the check pass" but **"is the universe the check quantifies over closed"**. Identifier names are not closed. Selector shapes are.
 
 Temp probes deleted; tree clean apart from the in-flight agents' own edits.
+
+---
+
+## B-0088 — ESCALATION: live trade-loss path in `api_server.py`. Not my territory. This outranks the gate that found it.
+
+B-R5 surfaced it as a bonus note at the end of an M4 harness review. I verified it end to end by source reading before escalating, because a claimed trade-loss defect that turns out to be wrong is its own kind of damage.
+
+**Two functions resolve trade identity with different alias precedence, and a DELETE sits between them.**
+
+- `api_server.py:12359` (`_sync_trading_session_journal_trades`) builds the keep-set with **two** aliases: `tradeId or id`. Anything unresolvable hits `continue` and never enters `incoming_ids`.
+- `session_journal_store.py:155-165` (`journal_trade_client_id`) resolves with **four**: `tradeId or trade_id or client_trade_id or id`. Its docstring calls it *"the canonical client trade id used in trading_session_journal_trades"* — the very table at issue.
+- `api_server.py:12451-12455` deletes every row for the session whose `client_trade_id` is not in `incoming_ids`.
+
+So a row carrying only `trade_id` or `client_trade_id` is **written** under the four-alias vocabulary and then **deleted for not existing** under the two-alias one.
+
+**The part that removes all doubt:** both resolvers are used **eleven lines apart in the same request handler**. Line 25107 runs the sweep with the narrow vocabulary; line 25116 resolves the same trade with the wide one and queries for the row the previous line may have just deleted. The code disagrees with itself, inside one function, about what a trade's identity is.
+
+Silent — the sweep logs nothing. Repeating — it runs on every journal sync, so a re-added trade is deleted again. And it is precisely the condition M4 Phase 4 names as an outright canary halt.
+
+**What I have not established, stated as prominently as the finding:** reachability. I verified the mechanism, not that any live producer emits a row carrying only `trade_id`/`client_trade_id`. If none does, this is a latent trap rather than active loss. That distinction is the whole difference between halting the canary and scheduling a fix, and it is the owning manager's first question. I am not going to imply urgency I have not earned. I will note that the four-alias resolver exists at all, and calls those shapes canonical, which is evidence someone expected them to arrive.
+
+Escalation written to `docs/plan3/evidence/B-M4/ESCALATION-trade-loss-orphan-sweep.md`. **I made no change to `api_server.py` and will not.** Recommended fix is one line — have the sweep use the already-canonical `journal_trade_client_id` — plus the general rule that **a sweep must never delete on an id it failed to parse**; an unidentifiable row should be retained and reported, or every future alias becomes a data-loss bug.
+
+**The bitter part:** the gate built to catch exactly this could never have caught it. Every M4 check but one filters the ledger to trades the harness itself wrote, using its own four-alias helper — so it only ever inspected rows immune to the defect. The gate was blind to the one failure it existed to detect.
+
+---
+
+## B-0089 — M4 harness REJECTED a third time, and this time it destroys real data
+
+**18 designed / 12 survived**, run against the real CLI. Both named canary-halting conditions survive: a real trade duplicated, and a real trade lost from the backend while present in the UI. Both score 6/6, exit 0.
+
+Root cause is one line repeated five times: every check but L6 filters the ledger with `id.includes(opts.runId)`, where `runId` is a random UUID minted at startup. **L2-L5 only ever inspect the three synthetic trades the harness wrote seconds earlier.** The real ledger is filtered out before any assertion runs.
+
+**And it is not merely blind — it is destructive.** In one case the harness's own duplicate-submit deleted two pre-existing real trades during the run, then printed six PASS and exited 0. I have put a **DO-NOT-RUN banner** at the top of the runbook. A verification instrument that damages the thing it verifies is the worst outcome available, and it was two hours from being handed to the PO.
+
+**My own contributions to this, both mine:**
+
+1. **My L6 premise was false.** I wrote in the runbook that the legacy backfill "runs on every read". It does not: `session_journal_store.py:114-126` early-returns when SQL is non-empty, and the docstring says *"one-time backfill ... when SQL empty"*. I asserted a backend behaviour from a call site without reading the callee. Worse, **L1 guarantees L6 can never fire** — L1's three POSTs populate SQL before L6 runs — and L6's non-vacuity guard is satisfied by L1's own writes. The emptiness guard is met by data the harness minted. That is rejection #2 reproduced exactly, one layer up, and I did not see it because I checked that a guard existed rather than what could satisfy it.
+2. **My runbook forces the vacuous configuration.** Phase 0 mandates an isolated DB and a dedicated QA account — a fresh, empty session. So even with the runId filter removed there is nothing in the ledger but the harness's own rows. **My safety precondition and my evidentiary precondition contradict each other**, and the harness resolved that silently in favour of vacuity. Neither is wrong alone; I never checked them against each other.
+3. **My PowerShell diagnosis was wrong.** `--key=value` fails in *every* shell: the parser derives the key from the whole argument including `=value`, so `--base-url=X` produces the key `baseUrl=X`. I blamed the shell because that was the variable I had changed. It also has a silent mode I missed — `--n=10` does not fail loudly, it quietly runs `n=3`.
+
+Rebuild dispatched as B-W11 with the three gating fixes, and one requirement above all: **prove the harness never deletes or corrupts a pre-existing trade**, by snapshotting the ledger before and after a full write run.
+
+**A16.4:** author-defect **5**, brief-defect **2**, manager-finding-defect **4**. Manager-caused **6**.
