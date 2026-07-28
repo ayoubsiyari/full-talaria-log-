@@ -517,10 +517,10 @@ Cells:
 | P2-IDLE-STABLE-NO-UNBOUNDED-WORK | idle soak workRatio is below both P1-relative and absolute `PO_CPU_AB_P2_IDLE_WORK_RATIO_MAX`; high P1 cannot absorb high P2 | LIVE |
 | P2-IDLE-MEMORY-NOT-GROWING | exposed heap delta during P2 stays bounded | LIVE |
 | P4-FOUR-PANEL-REPLAY-RUNNING-OBSERVED | W62 four-panel replay phase remains armed and observed | LIVE |
-| P6-REPLAY-10X-OR-NEAREST-OBSERVED | real replay activation succeeds, `isPlaying` is observed, nearest speed is known, and P6 has replay work over P1 or replay-active observables | LIVE (W58c hardening) |
+| P6-REPLAY-10X-OR-NEAREST-OBSERVED | real replay activation succeeds, `isPlaying` is observed, nearest speed is known, playhead index/timestamp advances, and P6 work exceeds P1 by the pinned margin | LIVE (W58d hardening) |
 | P7-PAUSE-STATE-NOT-PLAYING | product pause path leaves replay not playing | LIVE |
 | P7-WORK-RETURNS-TO-P1-FLOOR | post-pause workRatio is below both P1-relative and absolute `PO_CPU_AB_P7_IDLE_WORK_RATIO_MAX` | LIVE |
-| NC-P7-REPLAY-PAUSE-TEARDOWN-MUST-RED | served `replay-system.js` pause/stop teardown reversal makes P7 state or work RED | LIVE |
+| NC-P7-REPLAY-PAUSE-TEARDOWN-MUST-RED | served `replay-system.js` pause teardown reversal marks itself applied and makes the P7 state cell RED | LIVE |
 
 ## Queue item 11 — Hidden-tab replay regression (W59 / GATE-01)
 

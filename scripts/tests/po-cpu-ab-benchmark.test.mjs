@@ -5,6 +5,7 @@ import {
   DEFAULT_PO_CPU_AB_TIMEOUT_MS,
   PO_CPU_AB_SIGNATURE,
   PO_CPU_AB_STATUS_SKIP,
+  PO_CPU_AB_STATUS_SHORT,
   assertPoCpuAbBenchmarkReport,
   mutatePoCpuAbReplaySystemForPauseTeardownNC,
   poCpuAbHostHtml,
@@ -53,6 +54,8 @@ function report({
   p7WorkRatio = 0.025,
   p2MemoryDelta = 0,
   p6Replay = {},
+  p7Replay = {},
+  shortened = false,
 } = {}) {
   const replayP6 = {
     ok: true,
@@ -62,16 +65,19 @@ function report({
     activeObserved: true,
     playingObserved: true,
     advancedObserved: true,
-    state: { isActive: true, isPlaying: true, speed: 10 },
+    indexDelta: 5,
+    timestampDelta: 300_000,
+    beforeState: { isActive: true, isPlaying: false, currentIndex: 10, currentTimestamp: 1_000_000, speed: 10 },
+    state: { isActive: true, isPlaying: true, currentIndex: 15, currentTimestamp: 1_300_000, speed: 10 },
     ...p6Replay,
   };
   return {
     signature: PO_CPU_AB_SIGNATURE,
     ok: true,
     meta: {
-      shortened: true,
+      shortened,
       mutant,
-      timings: { p2IdleMs: 10_000 },
+      timings: { p2IdleMs: shortened ? 10_000 : 120_000, shortened },
     },
     replay: {
       p4: {
@@ -82,7 +88,7 @@ function report({
         rows: ['A', 'B', 'C', 'D'].map((id) => ({ id, ok: true, state: { isPlaying: true, speed: 10 } })),
       },
       p6: replayP6,
-      p7: { ok: true, state: { isPlaying: false, speed: 10 } },
+      p7: { ok: true, state: { isPlaying: false, speed: 10 }, ...p7Replay },
     },
     phases: {
       P1: phase({ label: 'P1', workRatio: p1WorkRatio }),
@@ -120,10 +126,17 @@ test('unit: oracle accepts P1/P2/P4/P6/P7 report and records replay observables'
   assert.equal(p6.replay.nearestSpeed, 10);
 });
 
-test('fault-injection: P7 spinning interval mutant must go red', () => {
-  const cells = assertPoCpuAbBenchmarkReport(report({ mutant: true, p7WorkRatio: 0.8 }), { mutant: true });
-  assert.equal(cells.find((cell) => cell.name === 'P7-WORK-RETURNS-TO-P1-FLOOR').status, 'RED');
-  assert.equal(cells.find((cell) => cell.name === 'NC-P7-REPLAY-PAUSE-TEARDOWN-MUST-RED').status, 'GREEN');
+test('fault-injection: pause negative control requires mutation marker and P7 state red', () => {
+  const killed = assertPoCpuAbBenchmarkReport(report({
+    mutant: true,
+    p7Replay: { ok: false, state: { isPlaying: true, speed: 10 }, mutantApplied: true },
+  }), { mutant: true });
+  assert.equal(killed.find((cell) => cell.name === 'P7-PAUSE-STATE-NOT-PLAYING').status, 'RED');
+  assert.equal(killed.find((cell) => cell.name === 'NC-P7-REPLAY-PAUSE-TEARDOWN-MUST-RED').status, 'GREEN');
+
+  const noisyWorkOnly = assertPoCpuAbBenchmarkReport(report({ mutant: true, p7WorkRatio: 0.8 }), { mutant: true });
+  assert.equal(noisyWorkOnly.find((cell) => cell.name === 'P7-WORK-RETURNS-TO-P1-FLOOR').status, 'RED');
+  assert.equal(noisyWorkOnly.find((cell) => cell.name === 'NC-P7-REPLAY-PAUSE-TEARDOWN-MUST-RED').status, 'RED');
 });
 
 test('fault-injection: P6 cannot green when replay never starts or speed is unknown', () => {
@@ -144,6 +157,35 @@ test('fault-injection: P6 cannot green when replay never starts or speed is unkn
     p6Replay: { nearestSpeed: null },
   }));
   assert.equal(unknownSpeed.find((cell) => cell.name === 'P6-REPLAY-10X-OR-NEAREST-OBSERVED').status, 'RED');
+});
+
+test('fault-injection: P6 work margin is a hard conjunct, not a state tautology', () => {
+  const cells = assertPoCpuAbBenchmarkReport(report({
+    p1WorkRatio: 0.02,
+    p6WorkRatio: 0.025,
+  }));
+  const p6 = cells.find((cell) => cell.name === 'P6-REPLAY-10X-OR-NEAREST-OBSERVED');
+  assert.equal(p6.status, 'RED');
+  assert.equal(p6.workExceedsP1, false);
+  assert.equal(p6.playheadAdvanced, true);
+});
+
+test('fault-injection: P6 requires advancedObserved and concrete playhead advance', () => {
+  const noFlag = assertPoCpuAbBenchmarkReport(report({
+    p6Replay: { advancedObserved: false, indexDelta: 5, timestampDelta: 300_000 },
+  }));
+  assert.equal(noFlag.find((cell) => cell.name === 'P6-REPLAY-10X-OR-NEAREST-OBSERVED').status, 'RED');
+
+  const noDelta = assertPoCpuAbBenchmarkReport(report({
+    p6Replay: {
+      advancedObserved: true,
+      indexDelta: 0,
+      timestampDelta: 0,
+      beforeState: { currentIndex: 10, currentTimestamp: 1_000_000 },
+      state: { isActive: true, isPlaying: true, currentIndex: 10, currentTimestamp: 1_000_000, speed: 10 },
+    },
+  }));
+  assert.equal(noDelta.find((cell) => cell.name === 'P6-REPLAY-10X-OR-NEAREST-OBSERVED').status, 'RED');
 });
 
 test('fault-injection: high P1 cannot absorb idle and pause ceilings', () => {
@@ -168,7 +210,7 @@ test('unit: pause negative control mutates served replay-system pause path', () 
     }
 }`;
   const mutated = mutatePoCpuAbReplaySystemForPauseTeardownNC(source);
-  assert.match(mutated, /pause\(\) \{\n        return;\n        this\._cancelDeferredPlayStart\(\);/);
+  assert.match(mutated, /pause\(\) \{\n        try \{ window\.__PO_CPU_AB_PAUSE_MUTANT_APPLIED = true; \} catch \(_\) \{\}\n        return;\n        this\._cancelDeferredPlayStart\(\);/);
   assert.doesNotMatch(poCpuAbHostHtml({ mutant: true }), /poCpuAbPauseMutant|setInterval\(function poCpuAbPauseMutant/);
   assert.throws(() => mutatePoCpuAbReplaySystemForPauseTeardownNC('class X {}'), /pause\(\) boundary not found/);
 });
@@ -188,9 +230,8 @@ test('fault-injection: missing browser skips by default and fails when required'
   assert.equal(required.status, 'RED');
 });
 
-test('fault-injection: injected browser report validates acceptance path', async () => {
+test('fault-injection: injected browser report validates full acceptance path', async () => {
   const result = await runPoCpuAbBenchmarkGate({
-    short: true,
     findBrowser: () => '/fixture/chrome',
     runBrowser: async () => ({
       report: report(),
@@ -202,19 +243,54 @@ test('fault-injection: injected browser report validates acceptance path', async
   assert.equal(result.ok, true);
   assert.equal(result.signature, PO_CPU_AB_SIGNATURE);
   assert.equal(result.status, 'GREEN');
+  assert.equal(result.report.meta.shortened, false);
+});
+
+test('fault-injection: shortened browser report is non-ship SHORT evidence', async () => {
+  const result = await runPoCpuAbBenchmarkGate({
+    short: true,
+    findBrowser: () => '/fixture/chrome',
+    runBrowser: async () => ({
+      report: report({ shortened: true }),
+      timedOut: false,
+      stderrTail: '',
+    }),
+  });
+
+  assert.equal(result.ok, false);
+  assert.equal(result.signature, PO_CPU_AB_SIGNATURE);
+  assert.equal(result.status, PO_CPU_AB_STATUS_SHORT);
   assert.equal(result.report.meta.shortened, true);
+  assert.equal(result.meta.shortened, true);
+});
+
+test('fault-injection: --p2-ms override stamps shortened and cannot mint GREEN', async () => {
+  const result = await runPoCpuAbBenchmarkGate({
+    timings: { p2IdleMs: 5000, p2Override: true },
+    findBrowser: () => '/fixture/chrome',
+    runBrowser: async () => ({
+      report: report(),
+      timedOut: false,
+      stderrTail: '',
+    }),
+  });
+
+  assert.equal(result.ok, false);
+  assert.equal(result.status, PO_CPU_AB_STATUS_SHORT);
+  assert.equal(result.meta.shortened, true);
+  assert.equal(result.meta.p2Override, true);
+  assert.equal(result.report.meta.shortened, false);
 });
 
 test('fault-injection: injected preflight requires mutant P7 red', async () => {
   let calls = 0;
   const preflight = await runPoCpuAbBenchmarkPreflight({
-    short: true,
     findBrowser: () => '/fixture/chrome',
     runBrowser: async () => {
       calls += 1;
       return {
         report: calls === 2
-          ? report({ mutant: true, p7WorkRatio: 0.8 })
+          ? report({ mutant: true, p7Replay: { ok: false, state: { isPlaying: true, speed: 10 }, mutantApplied: true } })
           : report(),
         timedOut: false,
         stderrTail: '',

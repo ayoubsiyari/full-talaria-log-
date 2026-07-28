@@ -8,6 +8,7 @@ import { startServer as startHarnessServer } from '../../chart v 1.4/chart/multi
 
 export const PO_CPU_AB_SIGNATURE = 'TALARIA_PO_CPU_AB_BENCHMARK_V1';
 export const PO_CPU_AB_STATUS_SKIP = 'SKIP';
+export const PO_CPU_AB_STATUS_SHORT = 'SHORT';
 export const DEFAULT_PO_CPU_AB_TIMEOUT_MS = 600_000;
 export const PO_CPU_AB_P1_IDLE_WORK_RATIO_MAX = 0.12;
 export const PO_CPU_AB_P2_IDLE_WORK_RATIO_MAX = 0.14;
@@ -83,6 +84,7 @@ export function poCpuAbProbeScript() {
     maxCallbackMs: 0,
     callbackSequence: 0,
     callbackMaxSamples: [],
+    callbackMaxSamplesTruncated: false,
     longTaskCount: 0,
     longTaskDurationMs: 0
   };
@@ -92,7 +94,6 @@ export function poCpuAbProbeScript() {
     state.callbackSequence += 1;
     state.maxCallbackMs = Math.max(state.maxCallbackMs, dt);
     state.callbackMaxSamples.push({ sequence: state.callbackSequence, durationMs: dt });
-    if (state.callbackMaxSamples.length > 2000) state.callbackMaxSamples.splice(0, state.callbackMaxSamples.length - 2000);
     if (kind === 'interval') state.intervalCallbacks += 1;
     else if (kind === 'timeout') state.timeoutCallbacks += 1;
     else if (kind === 'raf') state.rafCallbacks += 1;
@@ -143,6 +144,7 @@ export function poCpuAbProbeScript() {
         maxCallbackMs: state.maxCallbackMs,
         callbackSequence: state.callbackSequence,
         callbackMaxSamples: state.callbackMaxSamples.slice(),
+        callbackMaxSamplesTruncated: state.callbackMaxSamplesTruncated,
         longTaskCount: state.longTaskCount,
         longTaskDurationMs: state.longTaskDurationMs,
         longTaskObserver: state.longTaskObserver
@@ -160,7 +162,9 @@ function injectProbeIntoHarnessHtml(body) {
 }
 
 function phaseTimings({ short = false, timings = {} } = {}) {
-  return { ...(short ? SHORT_PHASE_TIMINGS : DEFAULT_PHASE_TIMINGS), ...timings };
+  const merged = { ...(short ? SHORT_PHASE_TIMINGS : DEFAULT_PHASE_TIMINGS), ...timings };
+  if (short || timings.p2Override === true) merged.shortened = true;
+  return merged;
 }
 
 export function poCpuAbHostHtml({ timings = DEFAULT_PHASE_TIMINGS, mutant = false } = {}) {
@@ -384,6 +388,21 @@ export function poCpuAbHostHtml({ timings = DEFAULT_PHASE_TIMINGS, mutant = fals
       return replayStateForChart(chart());
     }
 
+    function replayAdvance(beforeState, afterState) {
+      const beforeIndex = beforeState && beforeState.currentIndex;
+      const afterIndex = afterState && afterState.currentIndex;
+      const beforeTimestamp = beforeState && beforeState.currentTimestamp;
+      const afterTimestamp = afterState && afterState.currentTimestamp;
+      const indexDelta = beforeIndex != null && afterIndex != null ? afterIndex - beforeIndex : null;
+      const timestampDelta = beforeTimestamp != null && afterTimestamp != null ? afterTimestamp - beforeTimestamp : null;
+      return {
+        indexDelta,
+        timestampDelta,
+        advanced: (Number.isFinite(indexDelta) && indexDelta > 0)
+          || (Number.isFinite(timestampDelta) && timestampDelta > 0)
+      };
+    }
+
     function ensureReplayActiveForChart(ch) {
       const rs = ch && ch.replaySystem;
       if (!ch || !rs) return { ok: false, reason: 'chart or replaySystem missing' };
@@ -429,26 +448,26 @@ export function poCpuAbHostHtml({ timings = DEFAULT_PHASE_TIMINGS, mutant = fals
       const started = Date.now();
       let observedPlaying = false;
       let observedActive = !!rs.isActive;
+      let afterState = replayStateForChart(ch);
+      let advance = replayAdvance(beforeState, afterState);
       while (Date.now() - started < 4000) {
         observedActive = observedActive || !!rs.isActive;
         observedPlaying = observedPlaying || !!rs.isPlaying;
-        if (observedPlaying) break;
+        afterState = replayStateForChart(ch);
+        advance = replayAdvance(beforeState, afterState);
+        if (observedPlaying && advance.advanced) break;
         await sleep(50);
       }
-      const afterState = replayStateForChart(ch);
-      const advanced = beforeState.currentIndex != null && afterState.currentIndex != null
-        ? afterState.currentIndex > beforeState.currentIndex
-        : beforeState.currentTimestamp != null && afterState.currentTimestamp != null
-          ? afterState.currentTimestamp > beforeState.currentTimestamp
-          : false;
       return {
-        ok: observedActive && observedPlaying,
+        ok: observedActive && observedPlaying && advance.advanced,
         requestedSpeed: 10,
         nearestSpeed: Number.isFinite(Number(rs.speed)) ? Number(rs.speed) : null,
         method,
         activeObserved: observedActive,
         playingObserved: observedPlaying,
-        advancedObserved: advanced,
+        advancedObserved: advance.advanced,
+        indexDelta: advance.indexDelta,
+        timestampDelta: advance.timestampDelta,
         beforeState,
         state: afterState
       };
@@ -483,7 +502,11 @@ export function poCpuAbHostHtml({ timings = DEFAULT_PHASE_TIMINGS, mutant = fals
       } catch (error) {
         return { ok: false, reason: String(error && error.message || error), state: replayState() };
       }
-      return { ok: !rs.isPlaying, state: replayState() };
+      return {
+        ok: !rs.isPlaying,
+        state: replayState(),
+        mutantApplied: !!(harnessWindow() && harnessWindow().__PO_CPU_AB_PAUSE_MUTANT_APPLIED)
+      };
     }
 
     function pauseAllReplay() {
@@ -658,6 +681,7 @@ export function mutatePoCpuAbReplaySystemForPauseTeardownNC(body) {
   const needle = `    pause() {
         this._cancelDeferredPlayStart();`;
   const replacement = `    pause() {
+        try { window.__PO_CPU_AB_PAUSE_MUTANT_APPLIED = true; } catch (_) {}
         return;
         this._cancelDeferredPlayStart();`;
   if (!body.includes(needle)) {
@@ -824,24 +848,36 @@ export function assertPoCpuAbBenchmarkReport(report, { mutant = false } = {}) {
     && replay.state?.isActive === true
     && replay.state?.isPlaying === true;
   const p6SpeedKnown = replay.nearestSpeed != null && Number.isFinite(Number(replay.nearestSpeed));
+  const p6IndexDelta = Number(replay.indexDelta);
+  const p6TimestampDelta = Number(replay.timestampDelta);
+  const p6StateIndexDelta = replay.beforeState?.currentIndex != null && replay.state?.currentIndex != null
+    ? Number(replay.state.currentIndex) - Number(replay.beforeState.currentIndex)
+    : null;
+  const p6StateTimestampDelta = replay.beforeState?.currentTimestamp != null && replay.state?.currentTimestamp != null
+    ? Number(replay.state.currentTimestamp) - Number(replay.beforeState.currentTimestamp)
+    : null;
+  const p6PlayheadAdvanced = replay.advancedObserved === true
+    && ((Number.isFinite(p6IndexDelta) && p6IndexDelta > 0)
+      || (Number.isFinite(p6TimestampDelta) && p6TimestampDelta > 0)
+      || (Number.isFinite(p6StateIndexDelta) && p6StateIndexDelta > 0)
+      || (Number.isFinite(p6StateTimestampDelta) && p6StateTimestampDelta > 0));
   const p6WorkExceedsP1 = Number.isFinite(p6Ratio)
     && Number.isFinite(p1Ratio)
     && p6Ratio >= p1Ratio + PO_CPU_AB_P6_REPLAY_WORK_RATIO_MARGIN;
-  const p6ReplayActiveObservable = p6ReplayStateOk;
-  const replayObserved = p6ReplayStateOk && p6SpeedKnown && (p6WorkExceedsP1 || p6ReplayActiveObservable);
+  const replayObserved = p6ReplayStateOk && p6SpeedKnown && p6PlayheadAdvanced && p6WorkExceedsP1;
   cells.push(cell(
     'P6-REPLAY-10X-OR-NEAREST-OBSERVED',
     replayObserved,
-    `requested 10x; nearest=${replay.nearestSpeed ?? 'unknown'} via ${replay.method || 'unknown'}; playing=${replay.playingObserved === true}; workDeltaVsP1=${Number.isFinite(p6Ratio) && Number.isFinite(p1Ratio) ? (p6Ratio - p1Ratio).toFixed(4) : 'n/a'}`,
-    { phase: 'P6', replay, workRatio: p6Ratio, p1Ratio, workMargin: PO_CPU_AB_P6_REPLAY_WORK_RATIO_MARGIN, workExceedsP1: p6WorkExceedsP1, replayActiveObservable: p6ReplayActiveObservable },
+    `requested 10x; nearest=${replay.nearestSpeed ?? 'unknown'} via ${replay.method || 'unknown'}; playing=${replay.playingObserved === true}; advanced=${p6PlayheadAdvanced}; workDeltaVsP1=${Number.isFinite(p6Ratio) && Number.isFinite(p1Ratio) ? (p6Ratio - p1Ratio).toFixed(4) : 'n/a'}`,
+    { phase: 'P6', replay, workRatio: p6Ratio, p1Ratio, workMargin: PO_CPU_AB_P6_REPLAY_WORK_RATIO_MARGIN, workExceedsP1: p6WorkExceedsP1, playheadAdvanced: p6PlayheadAdvanced },
   ));
 
   const pause = report.replay?.p7 || {};
-  const p7Paused = pause.ok !== false && pause.state?.isPlaying !== true;
+  const p7Paused = pause.ok === true && pause.state?.isPlaying !== true;
   cells.push(cell(
     'P7-PAUSE-STATE-NOT-PLAYING',
     p7Paused,
-    `pause ok=${pause.ok !== false}; isPlaying=${pause.state?.isPlaying === true}`,
+    `pause ok=${pause.ok === true}; isPlaying=${pause.state?.isPlaying === true}`,
     { phase: 'P7', pause },
   ));
   cells.push(cell(
@@ -854,13 +890,15 @@ export function assertPoCpuAbBenchmarkReport(report, { mutant = false } = {}) {
   if (mutant || report.meta?.mutant) {
     const p7Cell = cells.find((row) => row.name === 'P7-WORK-RETURNS-TO-P1-FLOOR');
     const p7StateCell = cells.find((row) => row.name === 'P7-PAUSE-STATE-NOT-PLAYING');
+    const mutationApplied = pause.mutantApplied === true;
+    const ncKilledStateCell = mutationApplied && p7StateCell?.status === 'RED';
     cells.push(cell(
       'NC-P7-REPLAY-PAUSE-TEARDOWN-MUST-RED',
-      p7Cell?.status === 'RED' || p7StateCell?.status === 'RED',
-      p7Cell?.status === 'RED' || p7StateCell?.status === 'RED'
-        ? 'served replay-system.js pause/stop reversal made P7 RED'
-        : 'served replay-system.js pause/stop reversal did not force P7 RED',
-      { ncExpect: 'RED on served replay-system.js pause/stop teardown reversal', p7WorkStatus: p7Cell?.status, p7StateStatus: p7StateCell?.status },
+      ncKilledStateCell,
+      ncKilledStateCell
+        ? 'served replay-system.js pause reversal applied and made P7 state RED'
+        : 'served replay-system.js pause reversal did not prove P7 state RED',
+      { ncExpect: 'RED on served replay-system.js pause teardown reversal state cell', mutationApplied, p7WorkStatus: p7Cell?.status, p7StateStatus: p7StateCell?.status },
     ));
   }
 
@@ -921,15 +959,30 @@ export async function runPoCpuAbBenchmarkGate({
       };
     }
     const cells = assertPoCpuAbBenchmarkReport(report, { mutant });
-    const ok = report.ok === true && cells.every((row) => row.pass === true);
+    const cellsOk = report.ok === true && cells.every((row) => row.pass === true);
+    const shortened = resolvedTimings.shortened === true || report.meta?.shortened === true;
+    const ok = cellsOk && !shortened;
+    const status = cellsOk ? (shortened ? PO_CPU_AB_STATUS_SHORT : 'GREEN') : 'RED';
     return {
       ok,
-      status: ok ? 'GREEN' : 'RED',
+      status,
       signature: PO_CPU_AB_SIGNATURE,
-      error: ok ? null : (report.error || cells.filter((row) => row.pass === false).map((row) => `${row.name}: ${row.detail}`).join('; ')),
+      error: ok ? null : (shortened && cellsOk
+        ? 'shortened PO CPU A/B run is non-ship evidence'
+        : (report.error || cells.filter((row) => row.pass === false).map((row) => `${row.name}: ${row.detail}`).join('; '))),
       report,
       cells,
-      meta: { startedAt, finishedAt: new Date().toISOString(), browserPath, url, mutant, short: resolvedTimings.shortened, stderrTail: browserRun.stderrTail || '' },
+      meta: {
+        startedAt,
+        finishedAt: new Date().toISOString(),
+        browserPath,
+        url,
+        mutant,
+        short: resolvedTimings.shortened,
+        shortened,
+        p2Override: resolvedTimings.p2Override === true,
+        stderrTail: browserRun.stderrTail || ''
+      },
     };
   } catch (error) {
     return {

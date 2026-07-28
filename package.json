@@ -40,7 +40,7 @@
     "preflight:m6-replay-leak": "node scripts/m6-replay-leak-gate.mjs --require-browser",
     "test:m6-replay-leak": "node --test scripts/tests/m6-replay-leak-gate.test.mjs",
     "test:m6-replay-leak:reproduce": "node --test scripts/tests/m6-replay-leak-reproduce.test.mjs",
-    "preflight:po-cpu-ab": "node scripts/po-cpu-ab-benchmark-gate.mjs --require-browser --short",
+    "preflight:po-cpu-ab": "node scripts/po-cpu-ab-benchmark-gate.mjs --require-browser",
     "test:po-cpu-ab": "node --test scripts/tests/po-cpu-ab-benchmark.test.mjs",
     "preflight:hidden-tab-replay": "node scripts/hidden-tab-replay-gate.mjs --require-browser",
     "test:hidden-tab-replay": "node --test scripts/tests/hidden-tab-replay-gate.test.mjs"
