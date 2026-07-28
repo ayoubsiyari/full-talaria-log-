@@ -2149,3 +2149,52 @@ Loader STOP-THE-LINE, possibly only partially closed pending the `dist-v9` quest
 ### Outstanding PO-REQ
 
 Zero. Two DIRECTOR-Q are open: whether the `A10-ui-control-inventory` row assignment or the path grant governs, and whether A's `multichart-prod/**` grant marked `provenance: inferred` is sufficient basis to act on a 464-file untracked population.
+
+---
+
+## 2026-07-28 09:31 — VERDICT: loader-a4c BLOCKED. The gate evidence is vacuous and the packet hides a 989 KB surface expansion
+
+surface=`manager-a/loader-a4c` `677cb7db2`, parent `8df52c22`; six files
+coverage=preflight run hermetically against parent **and** packet trees, four-state probe authored against the packet runtime, every asserted negative verified independently, nginx and `api_server.py` route resolution traced
+
+**The finding that decides it: the headline gate evidence proves nothing about this packet.** `module-contract-preflight.mjs` produces **byte-identical output at the parent and at the packet** — same `checked=10`, same surfaces, same indices. The preflight skips any surface not `owned-stamped`; both `legacy-index.html` copies are `excluded`, and `multichart/chart-host.html` is absent from the inventory entirely. **Not one of the six changed files is observed by the gate.** C's browser gate tests two other files. Both gates were green before the packet existed.
+
+"Preflight ok, 10 checked" was equally true before the work was done. Citing an unchanged gate as evidence for a change is the exact §A16.2 overclaim — in a packet whose whole subject is not confusing presence with soundness. I accepted that line in the author's report without asking what the gate could see, which is the same reflex that produced the no-op delta two hours ago: I read a green result instead of asking what it was sensitive to.
+
+**The undeclared change is larger than the declared one.** `tripwirePasses()` requires a `chart-indicators-full.js` script tag to exist, so loading the presence runtime into any shell without an indicator consumer produces a **false-positive degraded badge**. The packet's response was to add `chart-indicators-full.js` — **989,406 bytes** — to `chart-host.html`, deleting the header line "no modules — minimum surface." So roughly 1 MB of JS now loads per sandbox panel iframe, on a routed multi-iframe surface, **to silence a tripwire false positive**, with no memory measurement, while §A9 multichart memory is REOPENED and Rayan is hitting 3.5 GB on a single layout.
+
+It also mutates a diagnostic instrument. The sandbox was deliberately minimum-surface so engine defects would not be masked by module interaction, and it is in use for multichart diagnosis right now. This was presented as loader hygiene. It is the same standard I applied to the mirror reconciliation and it fails it considerably harder.
+
+**My top concern was falsified, and in the opposite direction.** The mirror had not lost anything — `homepage/public/chart/multichart/chart-host.html` was *behind* the source, and the reconciliation forward-ported about 30 lines of TF-switch viewport preservation into it. Every `-` in the parent source-vs-mirror diff has a `+` counterpart; nothing existed only in the mirror. And that copy is not served: `homepage/nginx.conf` proxies `/chart/` to the chart service, which mounts `/chart/multichart` from the source tree at `api_server.py:27024`. So it is a discipline violation against a dead copy, not deleted live behaviour. My pre-declared automatic-BLOCK trigger does not fire. My open finding on three `homepage/public/chart/` divergences is down to two, both `.test.mjs`, resolved in a direction nobody chose.
+
+**My §A4c concern was wrong and the ruling says so verbatim.** §A4c.4 mandates a loud non-blocking degraded indicator for correctness class, and §A4c closes with "Rejected: fail-hard-at-runtime on missing dependency. A CDN/cache hiccup must never kill a trading chart." Flag plus telemetry plus console plus badge is the specified contract, not a weak substitute for one.
+
+I want the shape of that recorded, because it differs from my six retractions today: **I raised it as a question for the reviewer rather than asserting it.** It cost one paragraph and produced a citation. Had I written "non-blocking is wrong for correctness class" into a brief, it would have been a seventh false claim and an author would have built to it. Asking is not asserting, and the difference is the whole cost of being wrong.
+
+The reviewer attached a caveat worth keeping: the ruling purchases that risk acceptance with *build-time enforcement*, and two compensating controls are incomplete. §A4c.2's gate does not cover the shells this packet touched, and §A4c.6 — the trade record storing the degraded flag and missing-module list — is **not implemented** anywhere in `order-service.js` or `order-manager.js`. So the system holds the ruling's risk acceptance without the controls that justify it. Not mine to fix, but it belongs on the board.
+
+**Also blocked on:** the NONCONFORMING leg of the three-state proof is not in the tree. The reviewer authored a probe and confirmed the mechanism genuinely discriminates — dropping any one of six symbols fires, and non-callable symbols are caught, so it is not a total-absence tripwire. But no committed test contains that case; C's node gate covers CONFORMING/ABSENT/MISORDERED only. The one genuinely valuable property is guarded by nothing. And `git diff` ≠ `git diff -w` by one line — a false claim, minor in substance, and caused solely by the drive-by reconciliation.
+
+**Clean and not to be re-litigated:** territory, trailers, global spelling with no third variant, error-string matchers (zero consumers of the old text tree-wide), all three OID parity pairs, and `npm ci` hygiene — timestamps place it in A's worktree at 08:57, three weeks after the main checkout's `node_modules`, with no lockfile change.
+
+## 2026-07-28 09:32 — CORRECTION: STOP-THE-LINE was already partially closed before my packet, and my packet closed only ungated surfaces
+
+`dist-v9/index.html` genuinely loads both modules in order — `module-presence-runtime.js` at 1607 before `chart.js` at 1613, `indicator-performance.js` at 1639 before `chart-indicators-full.js` at 1640, all `defer` so document order is execution order. That is real presence and reachability, not a manifest inference, and the property survives rebuild because the generative source `talaria-design/live/index.html` carries the same tags.
+
+**But it landed in `54edafa8a` and `90e0e0cf8`, not in my packet.** The production panel `multichart-prod/chart-embed.html` was already green too. My packet closed `legacy-index.html` and the multichart sandbox host — genuinely routed, genuinely uncovered, and worth having — but I cannot claim the increment I have been reporting for three nights.
+
+**What actually closes the row is in Manager C's territory, not mine.** Four routed shells sit outside or mis-declared in the inventory: `legacy-index.html` is declared `servable: false` while `api_server.py:26923` routes it; `index.v9.html`, `multichart/chart-host.html` and `multichart-shell.html` are absent entirely. And §A14.3's exposure conditional — if a shell does not reference the correctness-class modules then `routed` must be false — is not implemented in `module-contract-preflight.mjs` at all. A manifest status word disagreeing with a live route is the §A14.1 defect the Director made a standing rule about.
+
+So the honest statement is: **the overdue item is overdue because the gate that would prove it closed cannot see the shells in question.** I have been treating this as an authoring problem in my own territory for three nights and it is substantially an inventory problem in C's.
+
+## 2026-07-28 09:33 — DECISION: taking the reviewer's four-way split; shipping only the honest slice
+
+**(a) Dispatching now** — `legacy-index.html` ×2 plus the runtime error-string change. Acceptable as-is, trivially, and genuinely improves two routed uncovered shells. Ships today.
+
+**(b) Held, own packet** — the `chart-host.html` surface expansion. My leaning, stated as a leaning and not a ruling: **fix the tripwire, do not load a megabyte.** `tripwirePasses()` should not demand a consumer tag on a shell that has no indicator consumer; requiring one inverts the contract, since the tripwire exists to detect a missing provider for a consumer that exists. The alternative — declaring `chart-host` indicator-required — must carry a memory number, and taking that during an open §A9 investigation needs a reason better than silencing a badge.
+
+**(c) Held, own packet** — the mirror reconciliation, bundled with the two remaining `.test.mjs` divergences, decided on which copy is authoritative rather than on which file someone happened to be editing.
+
+**(d) Escalating to C and the Director** — inventory correction for the four routed shells plus §A14.3's exposure conditional. This is the item that closes STOP-THE-LINE and it is not mine to write.
+
+Also noting for the re-author: the packet's parent `8df52c22` is three commits behind `critical-path`, all of them my own journal commits, so no content conflict — but the slice rebases onto the current tip.
