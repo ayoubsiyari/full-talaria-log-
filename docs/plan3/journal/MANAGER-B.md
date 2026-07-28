@@ -1787,3 +1787,70 @@ Four checks that mean what they say beat six that do not. Two of today's four re
 **Still unreviewed:** B-W12's changes have not themselves been through adversarial review. Every previous round found something, and I will not claim otherwise — but the changes are structural removals and mandatory-argument checks, which I verified by execution above, rather than new logic that could harbour a new vacuity.
 
 **Escalated to the Director:** whether M4 can rest on Phase 1 at four-of-six plus the manual phases is a scope decision, not mine. I have made the coverage legible so the decision can be made on facts.
+
+---
+
+## B-0095 — Reachability triage opened, and I found a worse case than the one escalated: a TOTAL session wipe
+
+Working the Director's first item under the narrow grant on trade-identity resolution and trade-deletion paths. **No edit made** — reachability first, per the ruling.
+
+Two facts established before dispatching, both by reading the code rather than reasoning about it:
+
+**1. The sweep's guard inverts on an empty keep-set.**
+
+```python
+q = db.query(TradingSessionJournalTrade).filter(...session_id == session_id)   # :12451
+if incoming_ids:
+    q = q.filter(~TradingSessionJournalTrade.client_trade_id.in_(incoming_ids))
+for orphan in q.all():
+    db.delete(orphan)
+```
+
+If `incoming_ids` is **empty**, the exclusion filter is never applied, so the query selects **every row for the session** and deletes them all. And because the builder loop `continue`s on every unresolvable entry, nothing is inserted either. So a journal payload in which **no** entry resolves under the two-alias vocabulary does not lose one bystander row — **it empties the session's ledger completely.** I escalated the single-row case this morning; this is the same defect with a much larger blast radius, and I missed it because I traced the path a *vulnerable row* takes rather than asking what happens when the keep-set is empty.
+
+**2. The payload is unvalidated and client-supplied.** `api_server.py:25216` passes `journal=payload.journal` straight through, and the field is typed `journal: list | None` (`:11601`) with **no item schema**. Any dict shape passes. The only protection is `if payload.journal is not None:` at 25207 — so `null` is safe and an explicit `[]` is not.
+
+That gives a sharp reachability question, and it is not the one I asked this morning. Not *"does a producer emit `trade_id`?"* but **"can any client PUT a session state with `journal: []`, or with entries that fail the narrow resolution, while the SQL table holds trades?"** A save issued before the journal hydrates would do it. So would a state save racing journal load, a partial in-memory model on a panel surface, or any read-then-write cycle that round-trips rows out of `trading_session_journal_trades` — whose column is literally named `client_trade_id` — back into a journal array without renaming to `tradeId`.
+
+Dispatched B-A7, top tier (money path, data durability), read-only, with a one-line yes/no verdict required first and the argument *against* severity demanded alongside the argument for. Twelve call sites reach this sweep; I have asked which are reachable by an ordinary authenticated user.
+
+---
+
+## B-0096 — HARNESS-01 disqualifies the M4 design, and the fix dissolves a contradiction I had already logged
+
+HARNESS-01 clause 1 — *no harness may mutate the ledger it verifies* — is violated by **design**, not by accident: L1 proves conservation by POSTing three trades into the ledger it then checks, and L4 proves duplicate-merge by submitting duplicates into it. No amount of care makes a writing harness a non-mutating one.
+
+The forced architecture happens to resolve something I logged at B-0093 as an unresolved contradiction: Phase 0 demanded a safe isolated session while the corpus gate demanded a pre-existing real trade, so **the safe run could not pass and the passing run required putting real data in front of a destructive probe.** Splitting by mutation dissolves it:
+
+- **Mode A, `--verify-only`, the default.** Structurally incapable of writing — no write verb reachable, not merely uncalled. Runs against the real ledger: L2, L3, L5.
+- **Mode B, `--write-probe`.** Refuses without a `--disposable-session-id` distinct from the verify target. L1 and L4 live here and never touch a ledger anyone cares about.
+
+The part I care most about is a new read-only check, **L7: for every row, assert `payload.tradeId || payload.id` is non-empty.** That is the exact precondition of the server-side deletion in B-0088/B-0095 — the keep-set is built from those two aliases alone. **It turns this harness from a bystander into the detector for the defect M4 exists to catch, and it needs no writes at all.** If it had existed this morning it would have found the escalation before the review did.
+
+Clause 2 is handled by requiring L1 and L4 to assert that every **non-self** row is unchanged, with that assertion demonstrably able to fail. Quarantine banner stays until both clauses are demonstrated, not claimed.
+
+---
+
+## B-0097 — M10 re-dispatched under GUARD-01, designed so the guard question cannot arise
+
+GUARD-01 requires the guard to be proven to reject `null` as a named cell, and makes coercion-based guards a rejection trigger without one. The reverted attempt failed exactly there: `Number.isFinite(Number(null))` is `true`, so `null` passed and produced a 53-year duration.
+
+Rather than write a better guard, I specified a design in which **the unknown never exists**. Make the resolver **total on the bar clock** — `bgCloseTime` (including exactly `0`, the one genuinely good fix in the reverted work) → `evalCandle.t` → `currentCandle.t` → the last bar of `rs.fullRawData`, which in active replay always holds bars → `data`/`rawData`. No `null`, no `Date.now()`, and **no journal-shape change**.
+
+That is why the design matters rather than just the guard: the previous blast radius — the newly reachable early return dropping `trading_session_id`, `savedAt`, cost basis and excursion storage, and the CSV re-import dropping rows without `closeTime` — existed *only* because close time became nullable. A total resolver removes the branch instead of guarding it. The Director asked me to enumerate what the new control flow skips; the honest answer I have specified is that **nothing new becomes reachable**, and B-W14 must demonstrate that rather than assert it.
+
+Also carried into the brief: a shared `isFiniteBarTime` predicate rejecting `null`/`undefined`/`''`/`false`/`[]` while accepting `0`; the three ways a link can return a *wrong* bar rather than an absent one (cross-instrument context chart, resampled-vs-raw preference, last-loaded-vs-playhead bar); and the requirement that the harness **drive `closePositionAtPrice`** rather than evaluate extracted text, since a decoy in `if (false)` defeated the last one. If no real seam is reachable, B-W14 is told to stop and say so rather than ship a text-parsing gate.
+
+M10 will not close on this even if it lands: the PO's rollback goes through `forceCloseAllOrders`, which never calls the patched method. `_m19DockTimeLabel` and its `this.replaySystem` / `this.chart.replaySystem` asymmetry remain the better lead.
+
+---
+
+## B-0098 — V8 re-dispatched with the real defects separated from the bad test
+
+Restoring from `2cc6e7298` — reverted for deployment safety, not because every line was wrong — then fixing what review actually found. The harness reported 12/12 while 22 mutations survived and a 25-line stub implementing none of the contract passed every cell, so the cells are being rebuilt to discriminate rather than to pass.
+
+The two genuine defects are carried explicitly, because they survive independently of the bad harness: **queued writes landing on whichever owner resolves first**, which is cross-account preference leakage and the most serious thing in the packet — a queued write must carry the owner it was issued for and be discarded or re-owned, never blindly flushed; and **`init()` stamping a schema version into every logged-in user's storage on load** for a facade nothing consumes, which is a write on read and must not happen, kill switch or not.
+
+Bound to a declared mutation-survival count before any verdict, with a stub that must die as the acceptance bar. GUARD-01 applied here too — `Number.isFinite(Number(x))` on an id or version is an automatic trigger without a null cell.
+
+Four packets in flight. PO-REQ outstanding: **0**.
