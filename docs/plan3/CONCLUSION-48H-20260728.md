@@ -19,7 +19,14 @@ The PO's two decisions, which settle every trade-off below:
 
 **No CPU work is authored before the five measurements below land.** Every performance number this project holds was taken on a build whose optimisation module was not loaded, and we have twice spent days on a mechanism that measurement then destroyed. Measure, then cut.
 
-### The five measurements, all cheap, all today
+### The measurements, all cheap, all today
+
+**0. FIRST, because it decides which of the rest matter: a Chrome Performance recording with the Scripting / Rendering / Painting / System breakdown**, taken on the PO's protocol. Thirty seconds of work, and it partitions the whole problem:
+
+- **Dominated by Scripting** → the cost is computation and render amplification. GPU offload is irrelevant; the fixes are items 1–3 below.
+- **Dominated by Painting/Rendering** → surface and layer strategy is the cost, item 4 becomes primary, and GPU/compositing work is justified.
+
+**This answers the PO's GPU question with a measurement rather than an argument.** The prior expectation is Scripting-dominant, on three grounds: canvas is already GPU-composited so no switch is unflipped; the GPU cannot resample arrays or recompute indicators, which are our two leading suspects; and our GPU residency is already **4.5x the competitor's**, which reads as over-rendering rather than underuse. **Prior expectations have been wrong three times this week — take the recording.**
 
 1. **`_mcDiag.resamples` per replay tick.** The standing hypothesis is that M20-Q9's correctness-driven cache invalidation forces a **full-array resample every tick** — O(history) work per tick, which alone would account for a multiple of CPU. The counter already exists. **This is the highest-yield single number available and it has been outstanding since yesterday.** Run it pinned to A's tip per TREE-01.
 2. **Render amplification: renders per data commit.** A's own 12-second window measured **50 paints, 50 renders, 2 commits** — **25 renders per data change.** Establish whether that ratio is necessary. A chart whose data changed twice should not repaint fifty times, and forming-candle animation does not obviously justify 25:1.
