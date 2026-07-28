@@ -4227,3 +4227,65 @@ detached-div detector reading 0 in every arm.
 `multichart/chart-host.html:281-283` installs a no-op **Proxy** whose `.destroy` is truthy, so the guard would
 pass, the real `_b70ShadowDisposeIndicatorGeneration` would be **skipped**, and it is a **strict regression**.
 The scope decision is load-bearing for correctness, not tidiness.
+
+## 2026-07-28 ~18:0x — CHARTER cycle 1. Items 3 and 2 SHIPPED; item 1 blocked on a referent.
+
+Read in order: CHARTER-A-FAST-CHARTS, RULING-PARALLELISM-1722, FINDING-REPLAY-RUNS-HIDDEN, DISPATCH-REBALANCE-1742.
+**TREE-01: all four exist only in the director worktree, not in mine or the main checkout.**
+
+### SHIPPED — item 3 (M26 completion) = M27, merged **cd979b8cc**
+Nulls `fullData`/`fullRawData` and releases the retainer. 5/5 oracles, 5/5 mutants killed.
+
+**CHARTER §2.3 REPORT — contradicts what the PO has been told. There is no strong Map.**
+The heap edge `part of key {M20Q6ReplaySystem} -> value (Object) pair in Map` is a **WeakMap ephemeron**;
+the transcription dropped "Weak". Measured, not argued: V8 emits that string **only** for ephemeron tables,
+a strong Map with an object key produces zero such edges, and the edge runs **from** the key. It is
+`m20Q6States` (replay-system.js:9089). **An ephemeron cannot retain its own key — there was nothing to delete.**
+Charter §4's candidate (our own mcDiag wrapper, chart.js:2864) is **also eliminated**: it installs closures
+**onto** the instance, so the edge points replay->chart, the wrong direction to retain.
+
+**The real retainer, named (M-3 satisfied):** `Chart.orderManager.replaySystem` and
+`OrderManager.orderService.replaySystem` are strong and **never nulled anywhere in product code**.
+`replay-system.js:9821` nulled **one of three** references. That is why `destroy()` reported success
+and freed nothing, and why M26 was correctly labelled "code-correct, effect not demonstrated".
+
+**UNCLAIMED SAFETY FIX found by review — bigger than the memory.** The drain sets `isPlaying=false` but
+**never clears `isActive`**. So at base the seven order-placement guards
+(`order-manager.js:21271, 28734, 30054, 30303, 30399, 30495, 30565`, all `!rs || !rs.isActive`) see a
+**destroyed engine still reporting active** and **let orders through** against frozen `fullRawData`/`currentIndex`.
+M27 makes them see `null` and refuse. **Fail-open becomes fail-closed on the money path.** Measured both ways.
+
+### SHIPPED — item 2 (FIX 3, hidden pause) = M28, merged **6d52fff66**
+12/12 cells. Pauses on `visibilitychange`, resumes with no catch-up, no double-advance, no skip;
+intra-tick progress preserved on the tick path.
+Review caught a **real defect in my first cut**: the kill switch **stranded** a running replay on a
+mid-session flip — `isPlaying=true`, zero live timers, playhead frozen, two clicks to recover. Two modes,
+both measured, both now fixed and celled. Root cause was a **sampling asymmetry**: registration read the flag
+once at `setup()` while the guards read it per call.
+Review also **refuted the packet's capture claim**: `setup` is **not** in `m20Q6EffectMethods` (that list has
+`setupGoBackMultiPanelUI`). Capture works via the `M20Q6ReplaySystem.setup()` override at `:10023-10029`.
+No leak (1 listener after construct, 0 after destroy) but the invariant is now celled, not described.
+
+### BLOCKED — item 1 (kill-switch on the render-path fix), and it is the train blocker
+**I cannot identify the referent and I will not guess on B's train.** Probe returned M25's
+`renderPending` accessor — but **M25 is CUT and already carries
+`__TALARIA_DISABLE_M25_RENDER_PENDING_ACCESSOR_V1` (chart.js:1432-1436)**, so it cannot be a missing switch.
+B's journal seam 1 (lines 81-86) points at `chart.js` invalidation/scheduling — `render()` tail 29500-29514,
+`chartViewPanning` — and line 335 names `__TALARIA_DISABLE_ORDER_OVERLAY_PAN_ALWAYS_V1` (chart.js:29418/29422).
+Candidate: V6-P4 "lines disappearing" (B journal :293), cure possibly in A's invalidation path.
+**Question raised to Director rather than building the wrong thing.** Did not stall: ran items 2 and 3 meanwhile.
+
+### M25 CUT but ALREADY MERGED (f3792a040)
+The cut says do not start; it is already in. Reverting is 56 writes of churn against green tests.
+**Proposal under Charter §1/§4 (keep the capability, make it cheap): flip the accessor to default-OFF**
+so it is zero-cost unless explicitly enabled, rather than reverting. **Not actioned — not in my five.**
+
+### PAR-01 applied
+Two read-only + one writer in parallel; items 2/3/4 serialised on `replay-system.js` by stacking M28 on M27
+so there was exactly one writer at a time; one top-tier review covered both stacked commits, since PAR-01 §3
+names review capacity as the ceiling.
+
+### Hazards recorded
+- `m22-session-calendar-bucketing.red` **mutates the tracked** `tests/evidence/session-calendar-red/m22-session-calendar-broken.json` on every run. Restored twice today.
+- A subagent committed to a **detached HEAD** (`ef026db5f`); rescued onto `manager-a/m28-replay-hidden-pause`. **Briefs must state the worktree may be detached and require attaching before commit.**
+- **5th brief-defect of the same class: writable set omitted an enforced mirror.** Two authors refused packets over it; both were right. `replay-system.js` is byte-mirrored AND hash-pinned (reviewed core = five floating-toolbar methods only).
