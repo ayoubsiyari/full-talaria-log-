@@ -94,3 +94,42 @@ Requested for `Detached <div>` first because it is the largest single row at 12%
 **M-3. No memory fix is authored before a retainer path is in hand.** We have twice this week acted on a plausible memory mechanism and been wrong. The retainer path is cheap, decisive, and available for the asking.
 
 **M-4. Storage remains refuted.** 582 kB of client storage against a 147 MB heap with 19,807 detached nodes. **The problem was always in memory, never on disk**, and this closes that thread permanently.
+
+---
+
+## 7. The leaked elements are now identified by their own HTML (PO expanded view, 14:04)
+
+Expanding `Detached <div>` ×19,811 shows the elements'' serialised inline styles. **Distinct families, in descending count:**
+
+| Family | Inline style (as serialised) | Distance | Retained ea. | Count |
+|---|---|---|---|---|
+| **28 px square, flex-centred** | `width: 28px; height: 28px; display: flex; align-items: center; justify-content: center…` | 10 | 1.9 kB | **the overwhelming majority** |
+| Progress-bar fill | `width: 100%; height: 100%; background: rgb(0, 212, 161); transition: width 0.…` | 10 | 1.9 kB | scattered, regular |
+| Left-accent container | `border-width: 1px 1px 1px 3px; border-style: solid; border-color: rgba(140, 1…` | 13 | 2.6–2.9 kB | few |
+| Flex row with gap | `display: flex; align-items: center; justify-content: center; gap: 7px; height…` | 10 | 2.8 kB | few |
+| **Toast message** | `class="tlr-toast-stack-msg" role="status" style="background: rgb(15, 17, 25)…` | 7 | 4.6–5.1 kB | **2** |
+
+**A 28×28 flex-centred square is an icon or icon-button container. `rgb(0, 212, 161)` with `transition: width` is a progress-bar fill.** Together with the accent container and the gapped flex row, this reads as a repeatedly-constructed control cluster — icon buttons plus a progress indicator — being created and discarded in bulk.
+
+### 7.1 One verified contributor: `talaria-toast-stack.js`, and it is NOT the main one
+
+`tlr-toast-stack-msg` with `role="status"` locates to `chart v 1.4/chart/modules/talaria-toast-stack.js` (324 lines). **Two retention candidates, both verified by reading:**
+
+- **`const pinned = new Map()` (`:17`)** holds `{el, …}` rows keyed by string. `remove(el)` (`:304-316`) does delete from the Map before removing the node, so the *documented* path is clean — but **any element that enters `pinned` and is removed by some other route stays referenced by the Map forever.**
+- **`root.addEventListener('resize', scheduleRelayout)` and `root.addEventListener('scroll', scheduleRelayout, true)` (`:320-321`) are registered at module scope and never removed.** `scheduleRelayout` closes over `pinned` and the transient row array, so these two listeners keep the entire toast bookkeeping alive for the lifetime of the page.
+
+**Scale check, and it is why this is a footnote rather than the answer: only 2 detached toast messages appear.** The toast module cannot account for 19,811 divs. **Its own construction path contains no 28 px square and no progress bar** — I read the element builder (`:255-301`): a `wrap`, one absolutely-positioned 3 px `stripe`, and a text node. **So the dominant family comes from a different component.**
+
+### 7.2 ⚠️ I have NOT identified the source of the 28 px family, and I am not guessing
+
+I searched `chart.js`, `settings-panel.js`, `drawing-tools-ui.js`, `drawing-toolbar.js`, `indicator-ui.js`, `screenshot-manager.js`, `panel-managerv2.js` and `chart-window-limit.js`. **Every `28px` hit is either a CSS rule in a stylesheet block or a `height:28px` with `width:auto` — none is an inline `width: 28px; height: 28px` on a `div`.** The leaked elements carry *inline* styles, so a CSS-class match is not the producer.
+
+**Assigned to A as a bounded search rather than answered by me.** I have spent the day rejecting managers'' unverified assertions and will not add one. **The search keys are exact and unusually strong** — an element serialising to `width: 28px; height: 28px; display: flex; align-items: center; justify-content: center` and a sibling serialising to `width: 100%; height: 100%; background: rgb(0, 212, 161); transition: width`. Likely constructed via `cssText`, `Object.assign(el.style, …)` or a template literal, which is why a plain `28px` grep misses it.
+
+**This search becomes unnecessary the moment the retainer path arrives** — the retainer names the holder directly, and the holder identifies the component without any guessing. **The retainer pane remains the highest-value 60 seconds available.**
+
+### 7.3 What this changes
+
+**Nothing in §1–§6 is affected.** The count, the idle-presence conclusion, and rulings M-1 through M-4 stand on the snapshot pair and are independent of which component builds the elements.
+
+**One refinement to the hypothesis in §4:** the leaked families are **HTML controls — icon buttons and progress bars — not canvas or chart primitives.** The idle loop''s per-frame churn includes `createElementNS`, which is **SVG**, so the `Detached SVGRectElement` / `SVGAnimatedLength` / `SVGSVGElement` rows are the ones plausibly attributable to it. **The 28 px HTML squares are more likely a UI-panel lifecycle defect than a render-loop artefact** — which would mean **two independent leaks, not one.** Hypothesis, per BRIEF-02.
