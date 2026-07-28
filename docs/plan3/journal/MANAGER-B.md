@@ -2747,3 +2747,33 @@ I expected G1 (marker check inverted) to die on the transposition cell. It does 
 VER-04 half (b) also earned its keep again: making an independent implementation pass forced the removal of acceptance assertions pinned to exact refusal wording and to my own confirmation-object fields. **An acceptance that only one implementation can satisfy is a description, not a specification.**
 
 The quarantine stays as defence in depth. HARNESS-01 now has an enforcement mechanism rather than a document.
+
+---
+
+## B-0121 — Live-surface probe built. The deadlock is broken: we can now ask the running system what it serves, without pushing anything.
+
+**One command, read-only, safe against production.** `node live-surface-probe.mjs --base-url=https://host`. GET and HEAD only, enforced inside the single function that touches the network rather than trusted across call sites, so there is no path through the tool that writes.
+
+### The third state is the tool
+
+`PRESENT` and `ABSENT` both require that the bytes were **first proven to be the artifact**, using structural anchors (`class OrderManager`, `persistJournal`) that exist in the pre-fix build too — if identity depended on the fix, `ABSENT` could never be distinguished from "served something else". Everything else is `UNDETERMINED` **with a reason**, and exit codes separate the three (0/1/3) so nothing has to parse prose.
+
+**The case this exists for:** a login page or `index.html` returned with HTTP 200 in place of the module. A naive probe greps it, finds no marker, and announces that production lost the fix. **That is a manufactured incident from a deployment that may be perfectly correct**, and refusing to manufacture it is most of the value. A 401 on `GET /api/sessions/{id}` is the mirror image: it proves the endpoint is *there*, so it is reported reachable-but-unread, never absent.
+
+20 cells, **9 designed / 0 survived**, VER-04 both halves, CRLF 0 on all four files.
+
+### My own mutation run caught a decorative check — BRIEF-02 again
+
+**Mutant 4 (delete the HTML-body check) SURVIVED.** The check was real and correct, and my acceptance never exercised it: the fallback fixture was small enough that the size floor and the anchor test caught it first, so removing the HTML check changed nothing. **A check no cell can fail is decoration, and I shipped one into the very tool whose thesis is that unexercised checks earn unearned trust.**
+
+Fixed by adding cell 3b — a *large* HTML error page that quotes the source it failed on, so the anchors appear inside markup and clear the size floor. Only the HTML check catches that. Mutant 4 now dies. **Fourth consecutive packet where a predicted kill was wrong, and the first where the wrong prediction was mine about my own code rather than a subagent's.**
+
+### A bug that would have looked like the probe was broken
+
+The CLI printed a correct report and then aborted with Windows code `3221226505` — `Assertion failed: !(handle->flags & UV_HANDLE_CLOSING)`. Calling `process.exit()` races libuv's teardown of the fetch handles, so **the verdict was right and the exit code was replaced by a crash code.** Since the exit code is how a script distinguishes ABSENT from UNDETERMINED, this would have turned every scripted run into a false alarm about the probe itself. Now sets `process.exitCode` and lets the loop drain, with an unref'd backstop.
+
+Also found and fixed: the entrypoint guard compared `import.meta.url` against a hand-built `file://C:/…` while Node produces `file:///C:/…`, so **the CLI silently produced no output on Windows while every in-process test passed.** Both of these are the same shape as SAFE-01 — the logic was right and the wiring meant it never ran.
+
+### What this does and does not unblock
+
+It unblocks the D-2 edge verification and the B-W19 marker-endpoint reachability question, both of which were stalled on "nobody can show what the running system returns". **It does not tell us whether a specific user's browser holds a stale copy** — it reports what the edge returns now, with `cf-cache-status` and `age`. And I still cannot run it against production myself: no hostname exists in this repository. **The tool is the deliverable; the run needs someone with the URL.**
