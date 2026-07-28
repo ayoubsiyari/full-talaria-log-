@@ -36,7 +36,9 @@
     "preflight:support-passport-degraded": "node scripts/support-passport-degraded-gate.mjs",
     "test:support-passport-degraded": "node --test scripts/tests/support-passport-degraded.test.mjs",
     "preflight:cache-stamp-coherence": "node scripts/cache-stamp-coherence-gate.mjs",
-    "test:cache-stamp-coherence": "node --test scripts/tests/cache-stamp-coherence.test.mjs"
+    "test:cache-stamp-coherence": "node --test scripts/tests/cache-stamp-coherence.test.mjs",
+    "preflight:m6-replay-leak": "node scripts/m6-replay-leak-gate.mjs --require-browser",
+    "test:m6-replay-leak": "node --test scripts/tests/m6-replay-leak-gate.test.mjs"
   },
   "dependencies": {
     "dukascopy-node": "^1.46.3",
