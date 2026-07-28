@@ -1364,3 +1364,111 @@ Neither is design work, so neither is addressed by dispatching more design.
    §A12.4.
 
 Outstanding `PO-REQ` count: **1** — `fullRawData.length` on a real session, which gates C3a scope.
+
+---
+
+## 2026-07-28T02:55 · CORRECTION · I told two managers to stop render-cadence work on evidence that was arithmetic
+
+Supersedes the recommendation in my 01:52 VERDICT. **Render-cadence work must not stop.** I forwarded that recommendation and it was wrong; the responsibility is mine, not the packet author's.
+
+The P4 null — zero spread across four render cadences including a zero-frame cell — was produced by a knob structurally disconnected from the measured quantity. The reviewer proved it rather than arguing it: they replaced `buildDisplaySeries` with a function returning an empty array, destroying the display pipeline entirely, and the measured lag did not move by one part in ten thousand. 0.8871 pips at every cadence including no rendering at all.
+
+The positive control did not catch this, and the reason is the part worth keeping. It varied `stalePaintTicks` into a harness-local array, proving the **comparator** could see a stale value if handed one. P4 needed the **actuator** proven capable of producing one. A positive control on the wrong limb is harder to catch on review than no control at all, because it looks like diligence.
+
+Two rounds later the same packet failed the opposite way, and that is the more instructive half. Re-wired, P4 *failed* — but only because the harness stubs `_renderReplayChartUpdate`, removing the product's own unconditional per-tick `render()` at `replay-system.js:4064` → `:3723`, with `scheduleRender` short-circuiting to synchronous while replay plays (`chart.js:28446-28449`). Restore the real method and the product renders **24 times in 24 ticks in every cell**, including the cells that asked for fewer. Revision 1's gate could never fail; revision 2's could never hold. Both were decided by scaffolding.
+
+The author's generalisation, which I am adopting as a standing check on my own briefs: **prove an axis exists by finding the product code that varies it, and treat every stub between the knob and the measurement as a candidate for having manufactured the result.**
+
+`p4.held` is now `null`, not `false`. Reporting it failed would assert something about the product this surface cannot support — the same error in the other direction.
+
+---
+
+## 2026-07-28T02:57 · VERDICT · where render cadence actually lives, and what survives without it
+
+surface= headless node:vm, single-chart replay path, real product modules, both kill-switch states, three repeats; plus independent reviewer execution with the product's own render call restored. coverage= no browser, no canvas, no rAF, no panels, no worker coalescing; the mirror path named below is **not** executed by any harness in this row.
+
+**The cadence mechanism is real and on a surface nobody measured.** `replay-system.js:7896-7903`: on the multichart mirror path, `applyMultichartMirrorFrame` updates `chart.data`, bumps `dataVersion`, and **deliberately skips the paint** when `_mcDeferPlayRenderToEased` is set (`:7867`, live during panel play), handing it to the eased-follow scheduler; `_finishMultichartMirrorRender` honours that at `:7715`. That is a genuine data-advances-without-render window. The harness stubs `applyMultichartMirrorFrame` and never runs it.
+
+So the author built a correct model of a real product behaviour and applied it to the one surface where it cannot occur. Cadence work is **re-pointed, not cancelled**: aim it at `_mcDeferPlayRenderToEased` / `_finishMultichartMirrorRender` on the panels surface. **Do not cite the 10.1-pip or 33-point figures anywhere** — they are properties of a stub. Reviewer confidence: ~90% that this harness cannot answer the cadence question in either direction, ~75% that the mirror path is a genuine coupling worth a lane.
+
+**What survives independently of all of it:** with a frame painted every tick and staleness *measured* at zero, every resampled timeframe still sits **1.4161 pips from truth while 1m sits at exactly 0**. That is now a reachable falsifier rather than an unreachable one — the reviewer identified the input that reaches it (disabling the trim via `replaySystem.isActive`) and confirmed the floor drops to exactly zero, so `DATA EFFECT EXCLUDED` genuinely emits. **A data fix is required regardless of how good the renderer gets.**
+
+---
+
+## 2026-07-28T02:59 · CORRECTION · TAL-01918 reproduces — retracting my re-scope
+
+Supersedes my 01:54 CORRECTION, which said the finding was probably not the defect we filed and might need rewriting. **It reproduces. Do not rewrite it.** I based that entry on a single unreviewed diagnostic and should have waited; I said at the time I would not rewrite a PO-authored finding on that basis, and that instinct was the only thing that stopped this becoming an error in the record rather than in my reasoning.
+
+Four independent measurements on 1H now agree it is real: PO 13 pips on the product, reviewer 21.3 driving candle-mode stepping, the diagnostic author 14.6 after fixing their subject bar, and the RED packet 4.9 on a deliberately quiet fixture.
+
+**The "0 pips" that misled me was a tautology.** Its subject was `chart.data[length - 2]`; the trim writes only `length - 1` (`chart.js:8955-8965`). The RED packet retained that subject as a labelled control and recorded **0 violations across 2,740,084 comparisons** — it passes everywhere, including cells where the correct subject moves 18 pips. Having the tautology on the record numerically is better than deleting it.
+
+**My instinct about the oracle was right and is now confirmed three ways:** an immutability assertion on that subject would have passed unconditionally while users watched a candle move 21 pips. That is the §A4c class applied to a gate rather than to a feature.
+
+---
+
+## 2026-07-28T03:01 · VERDICT · TAL-01918 mechanism — one defect, in the slice, and only visible under candle stepping
+
+surface= RED packet at `9f45965e4`, 8-cell matrix across 5m/15m/1H/4H, both stepping modes, both M20-Q9 states, 1H phase sweep at six offsets, 2,880-point identity check, fault-injected attribution. coverage= synthetic quiet random-walk fixture, no browser, nothing painted measured; magnitudes not transferable. **Under adversarial review; not yet accepted.**
+
+**Candle-mode stepping is a precondition for observing the defect at all.** This is the finding I did not expect and it retroactively explains every negative result on this row. Under raw stepping, the last tick a bucket occupies the last slot *is* its own final raw bar, so the window is complete at the exact instant of measurement and nothing is observable whatever subject you choose: **0 violations of 575 at 5m, 0 of 191, 0 of 47, 0 of 11**. Switch to coarse stepping and the same cells go **575/575, 191/191, 47/47, 11/11**.
+
+**The phase sweep is the mechanism proof.** On 1H: 47/47 buckets move at +0, +1, +20 and +30 minutes into the bucket, 44/47 at +58, and **0/47 at +59 — the bucket's final raw bar.** It vanishes precisely there and nowhere else. A retained stale value would not know where the bucket ends. Independently swept by the reviewer on the sibling packet with the same result, decaying monotonically to exactly zero at the final raw bar on 5m, 1h and 4h.
+
+**Identity: window error ≡ truncation error, 2,880 checked, 0 mismatches. One defect, not two.** The completed-bar mutation and the indicator lag are the same quantity. Two rows collapse.
+
+**Attribution: 100% slice, 0% trim**, with the zero bounded by fault injection — an ill-formed bar on which the trim writes 200 points off, proving the trim *would* have been attributed had it contributed.
+
+**This re-aims the fix.** Item 4 of the work order is "make `_trimLastDataBarToReplayPlayhead()` a render-time overlay". On this evidence the trim contributes nothing and the playhead **slice** contributes everything. I am not dispatching the corrective packet until the review rules on trim-versus-slice, because the current design brief points at the wrong component.
+
+**TAL-01918 has no single magnitude and the oracle must assert zero, never a tolerance.** Per-bucket 1H deltas span −5.74 to +23.96 and cross zero; the PO's 13 and the reviewer's 21.3 are two draws from one distribution. The quantity is price travel across the untraversed bucket remainder, structurally zero at the final raw bar. A tolerance calibrated on a mean would pass a 5m defect while failing an identical 1H one — precisely what the finding warns against.
+
+---
+
+## 2026-07-28T03:03 · VERDICT · session-calendar r4 accepted; daily and weekly must board separately
+
+surface= third independent top-tier adversarial review; census scanner attacked with nine injected syntactic shapes in a file and form the author did not test; counts re-derived from committed blobs; K2 attacked with five evasions; `_replayBucketStart` pins attacked with seven mutations; §8.6 provenance legs each verified at file:line. coverage= no browser, no deploy, no wiring merged; tree-sync durability unverifiable; recall not provable by sampling.
+
+**ACCEPT.** The M2 tautology that carried the last block is genuinely fixed — the reviewer injected a bar-bucketing site into `alert-system.js`, a different file and syntactic dress from the author's own probe, and the cell failed and named it exactly. All four state counts reconcile against the emitted JSON with zero duplicate keys, and the +21 net growth is real new assertions.
+
+**The census found 21 flooring expressions, 6 bar-bucketing — against the 3 that r3 certified.** Beyond the two the previous review supplied, `floorToBucket` in `sync-bridge.js` is also grid-coupled and snaps cross-panel viewports; the reviewer refines this to **four byte-identical copies, not two**, and notes `ceilToBucket` on the next line is an uncounted twin excluded only because the regex looks for `Math.floor`.
+
+**Five items recorded, one of which I am making a precondition for relying on the census after wiring.** The scanner's stated scope is wrong: it walks `chart v 1.4/chart`, the **authoring** tree, while the packet's own §7 says `homepage/public/chart` is what is served. They agree today, byte-for-byte, so no number is currently wrong — but four of the six bar-bucketing files have no mirror-identity pin, and tree drift is already documented in this repo. Also: recall is one syntactic shape wide (a numeric-literal divisor, `t - (t % D)`, reversed operands and two-level nesting all escape), so "21 flooring expressions overall" must read "21 found by this pattern". The `_replayBucketStart` reachability pin is cosmetic — negating the guard leaves it passing — but the **comment pin works**, and since the comment claims "matches chart resampleData", landing the wiring falsifies it and the cell fails. The blocker claim survives through the comment, not the reachability. K2 is still defeated by string-keyed property access, and cell K2 already contains that exact pattern four lines above the meta-assertion, so the evasion is one natural edit away.
+
+**Daily and weekly must board separately, and I am adopting that split.** Weekly is settled: `1week` is not an importable vendor timeframe (`api_server.py:19531`, `:20054`), so weekly binaries are built locally by `_resample_candles` with `bucket = (c['t'] // tf_ms) * tf_ms` at `:8837` — epoch flooring, the defect itself, one layer upstream. With no vendor weekly series there is no third-party convention to defer to and ratification is a straight product call. **Daily is not settled**, because `1day` *is* importable, so daily bars may be vendor-cut and re-bucketing them client-side would be re-cutting correctly-cut bars in the wrong layer.
+
+The reviewer decomposed the daily question into two that may not need the PO at all: does any canary-cohort dataset have a `1day` raw period, and does the client ever resample *from* a `1day` series? If either is no, the blocker collapses. Dispatched cheap and read-only.
+
+---
+
+## 2026-07-28T03:05 · OPEN · money-path silent fallbacks — Manager B territory, escalating
+
+The guard-site enumeration returned 509 unique capability sites across 189 product files. Most are ordinary. Two families are not, and both are outside my territory, so I am recording rather than acting.
+
+**`marketCalcEngine` missing falls back to hardcoded money constants, silently.** `order-manager.js:3316-3330` falls through to `pipValuePerLot || 10` — a flat $10 per pip. `:3293-3307` falls through to `pipSize || 0.0001`. Roughly twenty further sites at `:3382`, `:3903`, `:6456`, `:6531-6548`, `:6876-6893`, `:8669`, `:18226`, `:19710` and others compute P&L, risk, precision and market type from non-registry numbers, generally forex defaults. Nothing logs. For a JPY pair or a futures contract these are simply wrong, and the wrongness is denominated in money.
+
+**`propFirmTracker` missing skips the trading-disabled check and trading proceeds.** `order-manager.js:28998` and `:29594`, no else branch, no log. A safety control that silently ceases to exist is worse than one that fails loudly.
+
+**A third memoisation defect of the family we just fixed**, and this one caches a *wrong positive* rather than a null: `MarketCalculationEngine.getCalculator` (`market-calculations.js:634`, `:795-808`) builds heuristic fallback specs for an unknown symbol, marks them `_genericFallback: true`, and **caches that calculator forever** per normalised key. No clear API. So one lookup before the registry resolves poisons that symbol's money math for the session. Combined with the four mis-typed registry rows, this is the same failure class arriving from three directions in one night.
+
+---
+
+## 2026-07-28T03:07 · CORRECTION · the multichart inertness claim was overstated
+
+Supersedes my 02:05 OPEN entry.
+
+I wrote that the session-calendar fix would be inert on a live multichart surface because `multichart-shell.html` embeds two registry-less `chart-host.html` iframes. The §A6 enumeration corrects the scope: **there are two multichart paths, and the production one is fine.** Production multichart is `dist-v9` as host plus `chart-embed.html` iframes, and `chart-embed.html` **has** the registry — it builds its script list in JavaScript, which is why a tag-only scan missed it. The registry-less `chart-host.html` path is the **sandbox** multichart, reached via `multichart-shell.html`.
+
+The concern is real but smaller and differently located than I stated. `multichart-shell.html` does not execute `chart.js` itself; it only spawns children.
+
+A larger finding in the same sweep that I did not ask for: **`legacy-index.html` loads roughly 40 modules but not `chart-data-pipeline.js`, not `indicator-performance.js`, not `viewport-data-manager.js`, and not the registry.** It runs `chart.js` without the data pipeline. Seven unique documents execute `chart.js` across 216 HTML files, eleven paths counting mirrors.
+
+---
+
+## 2026-07-28T03:09 · METRIC · `_mcDiag` tabulation, and what it does not settle
+
+24 rows, all three repeats identical. Tick path alone: **1.000 full resamples per tick**. Tick plus one render frame: **2.000**. `incrementalResamples` is **0.000 in every cell** — the incremental branch never fires at all, in either kill-switch state, on 1m or 1h. The switch was verified by observation rather than assumption, `_m20Q9PrefixSliceFixEnabled()` reading true and false as expected.
+
+Two limits I am not glossing. `fullRawData.length` was **3,000** in the harness; real sessions are believed to be one to two orders larger, which is exactly what my outstanding `PO-REQ` asks and why C3a scope is still ungated. And 5m and 4H could not be produced — the harness hardcodes 1m and 1h with no CLI to extend, correctly reported rather than estimated.
+
+Outstanding `PO-REQ` count: **1**.
