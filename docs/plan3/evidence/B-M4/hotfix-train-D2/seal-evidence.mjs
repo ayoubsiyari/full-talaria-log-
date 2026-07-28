@@ -40,6 +40,7 @@ const PRODUCT = [
 const EVIDENCE = [
     'chart v 1.4/chart/modules/b-w16-hydration-guard.test.mjs',
     'chart v 1.4/chart/modules/b-w16-hydration-guard.mutants.mjs',
+    'chart v 1.4/chart/modules/b-w18-killswitch.mutants.mjs',
     'chart v 1.4/chart/tests/test_b_w17_journal_sweep_guard.py',
     'docs/plan3/evidence/B-M4/hotfix-train-D2/DEPLOY-NOTE.md',
     'docs/plan3/evidence/B-M4/hotfix-train-D2/PO-VERIFICATION.md',
