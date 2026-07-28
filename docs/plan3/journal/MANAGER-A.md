@@ -3279,3 +3279,50 @@ Asked whether these belong on an authenticated chart surface, the factual answer
 **So I cannot answer the question as asked, and I am not going to pretend the absence is the answer.** The PO observed roughly 160 MB of these subframes on the product. This tree cannot produce them. One of three things is true: the deployed build differs from this tree, the subframes belong to another tab or an extension in the PO's browser rather than to the chart, or they are injected by a hosting layer outside the repo. **That is a provenance discrepancy and it goes up rather than being closed as "not our code"** — the same failure mode as concluding a document is absent because ripgrep skipped it. Settling it needs the deployed surface inspected, not the tree.
 
 One real defect found in passing, unrelated to idle CPU: `MultichartGrid.jsx:7746–7754` starts a 100 ms poll whose id is never cleared by the unmount cleanup at `8168–8179`, so unmounting inside its ~5 s window strands an interval. Bounded and not the floor, but it is a genuine leak and it is mine. Logging as an open row.
+
+---
+
+## 2026-07-28 14:58 — Idle CPU REPRODUCED. First time this week a harness has hit the same phenomenon the PO reported.
+
+Packet `b273b5df6` on `manager-a/idle-cpu`, build `20260726b75`, authenticated, one pair, 1m, nothing playing, no indicators, no orders.
+
+**Measured 13.12% average idle CPU against the PO's 20.6%, peak 177.28%.** Nonzero, same order of magnitude, and it is the first harness this train to reproduce the phenomenon rather than describe a different workload at the wrong scale. That was the acceptance condition and it is met. Two prior harnesses produced confident numbers for workloads nobody was asking about; this one did not.
+
+**Attribution of the floor is rAF.** `FireAnimationFrame` fired 10,023 times, live rAF creation site is `Chart.animate`. Flame totals over the window: `v8.callFunction` ~3829 ms, `WebFrameWidgetImpl::BeginMainFrame` ~3090 ms, `Blink.Animate.UpdateTime` ~2980 ms, `PageAnimator::serviceScriptedAnimations` ~2914 ms, `FireAnimationFrame` ~2646 ms.
+
+**The number inside that which I think matters most:** 3829 ms of JS across 10,023 callbacks is **~0.38 ms of JavaScript per animation frame**. An `animate()` that merely wakes and early-exits costs microseconds. **0.38 ms per frame is real work**, so something inside the loop is doing something at rest — and neither the static census nor this trace has yet said what. That is the gap I am closing next.
+
+**The Director's periodic-task inference is not supported by this run.** Only one spike above 50% occurred in 70 seconds, so **no stable spike period exists to match against the interval census** — which was the whole diagnostic strategy I built the brief around. The spike-then-fall signature the PO described did not reproduce. I am not treating that as refuting the PO's observation; headless differs from a real desktop session, and one spike is not zero. But **my period-matching plan produced nothing and I should say so rather than quietly dropping it.**
+
+Live handles at rest: 9 `setInterval`, **0 `setTimeout`**, 1 rAF. The nine intervals match the static census exactly — the V9 bundle's 250/300/500/800/1500/30000 ms pumps, `chart-window-limit.js`'s 25 s heartbeat, and `economic-news-sidebar.js`'s 1000 ms countdown. **Two independent methods agreeing on the same nine handles is the strongest cross-check I have had all week**, and it retires any worry that the census missed a registration site.
+
+## 2026-07-28 14:59 — I am rejecting part of this report, and reconciling it against the static audit
+
+The suspects section reports "present in trace context" and "broad DOM timer/poll patterns present" for M20-Q1, the forming-candle updater, and time-driven resample invalidation.
+
+**Those are not findings and they do not enter the record.** A callsite appearing in a trace's static context is not a function that ran. The static census established the opposite for all three **with the exact searches stated**: M20-Q1's 600 ms poll is reachable only behind its kill-switch and the default path explicitly stops the legacy timer first; the forming-candle updater is `isPlaying`-guarded and cleared by `stopAllPlayback()`; no time-driven resample or cache invalidation exists at all.
+
+Vague trace-context assertions must not be allowed to overwrite precise search-backed refutations. **The resolution is not to pick the more recent report — it is to ask the question empirically**, because the trace author has the one thing the census did not: a live browser. Did those paths *execute*? I have sent it back to answer exactly that, and told it "did not execute" is the expected and perfectly good answer.
+
+**One item in that section is a genuine find and the author under-weighted it: repeated `PATCH /api/sessions/870/state` on an idle chart.** That is work with no input change, which is precisely the phenomenon under investigation, and it **contradicts the census's well-evidenced finding that no autosave `setInterval` exists**. Both cannot be right as stated. If it is event-driven rather than timer-driven, then something is firing events repeatedly at rest and that is a more interesting defect than a stray timer. I have asked for count, cadence, body size, trigger, and **the main-thread cost of serialising the body** — for a large session state that can exceed the network cost, and it would be invisible to an interval census by construction.
+
+## 2026-07-28 15:00 — A measurement-validity problem that cuts against the headline
+
+**10,023 `FireAnimationFrame` in 70 seconds is ~143 per second, not 60.** Either headless is running the callback uncapped, or there is more than one rAF loop despite the census showing a single live handle.
+
+This works **against** the conclusion the same report draws. If headless fires rAF at ~2.4× the rate a real browser would, then **rAF's share of the 13.12% is inflated by that factor** and its true contribution on the PO's machine is proportionally smaller — which would also help explain why we measured 13.12% where the PO measured 20.6% with a *different* mix underneath. I have required the attribution restated normalised to 60 Hz, and told the author to say directly if its headline changes.
+
+I am flagging this myself rather than waiting for the adversarial reviewer to find it. The number flatters the hypothesis I currently favour least, and that is exactly when it needs checking hardest.
+
+## 2026-07-28 15:01 — Where the two candidates now stand, and why I am still not authoring a fix
+
+- **`animate()` rAF loop** — confirmed running, confirmed the live rAF site, and carrying ~0.38 ms of JS per frame. But the frame rate is suspect and *what* it does per frame is unattributed.
+- **The six V9 React pumps** — all nine live intervals confirmed present at rest by two independent methods, but **the trace does not attribute cost to them**, and the two 800 ms `setOmTradeRev` re-render chains I rated highest at 14:49 do not appear in the flame totals at all.
+
+So my 14:49 ranking is **not supported by this trace**, and I am saying that before anyone else does. The evidence currently favours the rAF loop over the React pumps, which is the reverse of what I told the Director an hour ago — subject to the 143 Hz correction, which could reverse it again.
+
+`_mcDiag.renders` settles it and I did not ask for it in the original brief. Delta over 60 idle seconds: ≈ frame count means we repaint the whole chart every frame at rest and the defect is found; ≈ 60 means the countdown drives it; ≈ 0 means the loop is overhead and the cost is elsewhere. I have also asked for `fullResamples` and `incrementalResamples` across the same idle window, because **a resample advancing with nothing playing would be O(history) work at rest** and would outrank every other row on this board.
+
+Fix packet stays held. One more round of measurement is cheap; authoring against the wrong one of two candidates costs a write slot and a day, and I have now been wrong about the ranking once already today.
+
+Subframes: `hcaptcha.com` and `accounts.google.com` are **absent from the authenticated chart frame and target inventory at runtime**. That is now two independent confirmations — source and live browser — that the PO's ~160 MB does not come from this surface in this build. The provenance discrepancy stands and goes up.
