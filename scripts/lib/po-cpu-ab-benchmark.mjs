@@ -240,6 +240,40 @@ export function poCpuAbHostHtml({ timings = DEFAULT_PHASE_TIMINGS, mutant = fals
     const REQUIRED_PANEL_IDS = ['A', 'B', 'C', 'D'];
     ${poCpuAbReplayArmingHelpersSource()}
 
+    function normalizePanelIds(ids) {
+      const out = [];
+      for (const rawId of Array.isArray(ids) ? ids : []) {
+        const id = rawId != null ? String(rawId) : '';
+        if (id && !out.includes(id)) out.push(id);
+      }
+      return out;
+    }
+
+    function duplicatePanelIds(ids) {
+      const seen = new Set();
+      const dupes = [];
+      for (const rawId of Array.isArray(ids) ? ids : []) {
+        const id = rawId != null ? String(rawId) : '';
+        if (!id) continue;
+        if (seen.has(id) && !dupes.includes(id)) dupes.push(id);
+        seen.add(id);
+      }
+      return dupes;
+    }
+
+    function hasDistinctRequiredPanelIds(ids) {
+      const raw = Array.isArray(ids) ? ids.map((id) => String(id)) : [];
+      const normalized = normalizePanelIds(raw);
+      return raw.length === normalized.length
+        && REQUIRED_PANEL_IDS.every((id) => normalized.includes(id));
+    }
+
+    function sameRequiredPanelSet(left, right) {
+      const l = normalizePanelIds(left).filter((id) => REQUIRED_PANEL_IDS.includes(id)).sort().join(',');
+      const r = normalizePanelIds(right).filter((id) => REQUIRED_PANEL_IDS.includes(id)).sort().join(',');
+      return l === REQUIRED_PANEL_IDS.slice().sort().join(',') && l === r;
+    }
+
     function refreshHarnessTopology() {
       const win = harnessWindow();
       const mgr = manager();
@@ -277,27 +311,39 @@ export function poCpuAbHostHtml({ timings = DEFAULT_PHASE_TIMINGS, mutant = fals
         gridPresent: !!grid,
         gridHasGetPanelIds: !!(grid && typeof grid.getPanelIds === 'function'),
         gridIds: [],
+        gridDuplicateIds: [],
         gridMissingIds: REQUIRED_PANEL_IDS.slice(),
         gridComplete: false,
         managerIds: [],
+        managerDuplicateIds: [],
         managerComplete: false,
+        managerGridConsistent: false,
         windowIds: []
       };
       try {
         if (mgr && mgr.charts && typeof mgr.charts.keys === 'function') {
-          evidence.managerIds = ['A'].concat(Array.from(mgr.charts.keys()).map((id) => String(id))).filter((id, index, ids) => ids.indexOf(id) === index);
-          evidence.managerComplete = REQUIRED_PANEL_IDS.every((id) => evidence.managerIds.includes(id));
+          const managerRawIds = Array.from(mgr.charts.keys()).map((id) => String(id));
+          if (!managerRawIds.includes('A') && win.chart) managerRawIds.unshift('A');
+          evidence.managerDuplicateIds = duplicatePanelIds(managerRawIds);
+          evidence.managerIds = normalizePanelIds(managerRawIds);
+          evidence.managerComplete = hasDistinctRequiredPanelIds(managerRawIds);
         }
       } catch (_) {}
       try {
         if (grid && typeof grid.getPanelIds === 'function') {
-          evidence.gridIds = (grid.getPanelIds() || []).map((id) => String(id));
+          const gridRawIds = (grid.getPanelIds() || []).map((id) => String(id));
+          evidence.gridDuplicateIds = duplicatePanelIds(gridRawIds);
+          evidence.gridIds = normalizePanelIds(gridRawIds);
         }
       } catch (error) {
         evidence.gridError = String(error && error.message || error);
       }
       evidence.gridMissingIds = REQUIRED_PANEL_IDS.filter((id) => !evidence.gridIds.includes(id));
-      evidence.gridComplete = evidence.gridPresent && evidence.gridHasGetPanelIds && evidence.gridMissingIds.length === 0;
+      evidence.gridComplete = evidence.gridPresent && evidence.gridHasGetPanelIds
+        && evidence.gridDuplicateIds.length === 0
+        && REQUIRED_PANEL_IDS.every((id) => evidence.gridIds.includes(id));
+      evidence.managerGridConsistent = evidence.gridComplete && evidence.managerComplete
+        && sameRequiredPanelSet(evidence.gridIds, evidence.managerIds);
       return evidence;
     }
 
@@ -489,6 +535,10 @@ export function poCpuAbHostHtml({ timings = DEFAULT_PHASE_TIMINGS, mutant = fals
     function replayStateForChart(ch) {
       const rs = ch && ch.replaySystem;
       if (!rs) return { present: false };
+      const replayTimestamp = Number(rs.replayTimestamp);
+      const rawCurrentTimestamp = Array.isArray(rs.fullRawData) && rs.fullRawData[rs.currentIndex] && rs.fullRawData[rs.currentIndex].t != null
+        ? Number(rs.fullRawData[rs.currentIndex].t)
+        : null;
       return {
         present: true,
         lifecycleState: Object.prototype.hasOwnProperty.call(rs, '_m20Q6LifecycleState')
@@ -496,10 +546,11 @@ export function poCpuAbHostHtml({ timings = DEFAULT_PHASE_TIMINGS, mutant = fals
           : null,
         isActive: !!rs.isActive,
         isPlaying: !!rs.isPlaying,
+        passivePlayActive: !!(ch && ch._multichartPassivePlayActive),
         currentIndex: Number.isFinite(Number(rs.currentIndex)) ? Number(rs.currentIndex) : null,
-        currentTimestamp: Array.isArray(rs.fullRawData) && rs.fullRawData[rs.currentIndex] && rs.fullRawData[rs.currentIndex].t != null
-          ? Number(rs.fullRawData[rs.currentIndex].t)
-          : null,
+        currentTimestamp: Number.isFinite(replayTimestamp) ? replayTimestamp : rawCurrentTimestamp,
+        rawCurrentTimestamp: Number.isFinite(rawCurrentTimestamp) ? rawCurrentTimestamp : null,
+        currentTimestampSource: Number.isFinite(replayTimestamp) ? 'replayTimestamp' : 'fullRawData[currentIndex]',
         speed: Number(rs.speed),
         playbackMode: typeof rs.getPlaybackMode === 'function' ? rs.getPlaybackMode() : String(rs.playbackMode || '')
       };
@@ -648,26 +699,50 @@ export function poCpuAbHostHtml({ timings = DEFAULT_PHASE_TIMINGS, mutant = fals
     }
 
     async function startFourPanelReplay10x() {
-      const topology = productTopologyEvidence();
       const rows = await Promise.all(chartWindows().map(async (entry) => ({
         id: entry.id,
         ...(await startReplay10xForChart(entry.win && entry.win.chart))
       })));
-      topology.windowIds = rows.map((row) => row.id);
-      const playingCount = rows.filter((row) => row.playingObserved === true && row.state && row.state.isPlaying).length;
-      const advancedCount = rows.filter((row) => row.advancedObserved === true
-        && Number.isFinite(Number(row.timestampDelta)) && Number(row.timestampDelta) > 0
-        && row.advanceContradiction !== true).length;
-      const ok = topology.gridComplete === true && rows.length >= 4 && playingCount >= 4 && advancedCount >= 4 && rows.every((row) => row.ok === true);
+      const normalizedRows = rows.map((row) => {
+        const computedAdvance = replayAdvance(row.beforeState, row.state);
+        const advanceContradiction = computedAdvance.contradiction === true;
+        const advancedObserved = row.advancedObserved === true && computedAdvance.advanced === true;
+        return {
+          ...row,
+          ok: row.ok === true && advancedObserved && !advanceContradiction,
+          advancedObserved,
+          advanceContradiction,
+          computedAdvance
+        };
+      });
+      const topology = productTopologyEvidence();
+      topology.windowIds = normalizedRows.map((row) => row.id);
+      topology.windowDuplicateIds = duplicatePanelIds(topology.windowIds);
+      topology.windowComplete = hasDistinctRequiredPanelIds(topology.windowIds);
+      topology.selfConsistent = topology.managerGridConsistent === true
+        && sameRequiredPanelSet(topology.gridIds, topology.windowIds)
+        && sameRequiredPanelSet(topology.managerIds, topology.windowIds);
+      const playingCount = normalizedRows.filter((row) => row.playingObserved === true && row.state && row.state.isPlaying).length;
+      const advancedCount = normalizedRows.filter((row) => row.advancedObserved === true).length;
+      const ok = topology.selfConsistent === true
+        && normalizedRows.length >= 4
+        && playingCount >= 4
+        && advancedCount >= 4
+        && normalizedRows.every((row) => row.ok === true);
+      const armingFailure = ok ? null : [
+        topology.selfConsistent === true ? null : 'topology did not expose distinct self-consistent A/B/C/D panels',
+        playingCount >= 4 ? null : 'not every panel stayed playing',
+        advancedCount >= 4 ? null : 'not every panel advanced by forward replay timestamp'
+      ].filter(Boolean).join('; ');
       return {
         ok,
-        panelCount: rows.length,
+        panelCount: normalizedRows.length,
         playingCount,
         advancedCount,
         requestedSpeed: 10,
-        armingFailure: ok ? null : 'four-panel replay did not arm and advance on every panel',
+        armingFailure,
         topology,
-        rows
+        rows: normalizedRows
       };
     }
 
@@ -958,6 +1033,63 @@ function phaseMemoryDelta(phase) {
   return Number.isFinite(Number(delta)) ? Number(delta) : null;
 }
 
+const REQUIRED_P4_PANEL_IDS = Object.freeze(['A', 'B', 'C', 'D']);
+
+function finiteNumberOrNull(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+function uniquePanelIds(ids) {
+  const out = [];
+  for (const rawId of Array.isArray(ids) ? ids : []) {
+    const id = rawId != null ? String(rawId) : '';
+    if (id && !out.includes(id)) out.push(id);
+  }
+  return out;
+}
+
+function panelIdsHaveDistinctRequired(ids) {
+  const raw = Array.isArray(ids) ? ids.map((id) => String(id)) : [];
+  const unique = uniquePanelIds(raw);
+  return raw.length === unique.length && REQUIRED_P4_PANEL_IDS.every((id) => unique.includes(id));
+}
+
+function sameRequiredPanelIds(left, right) {
+  const normalize = (ids) => uniquePanelIds(ids)
+    .filter((id) => REQUIRED_P4_PANEL_IDS.includes(id))
+    .sort()
+    .join(',');
+  const required = REQUIRED_P4_PANEL_IDS.slice().sort().join(',');
+  return normalize(left) === required && normalize(left) === normalize(right);
+}
+
+function rowReplayAdvanceEvidence(row) {
+  const indexDelta = finiteNumberOrNull(row?.indexDelta);
+  const timestampDelta = finiteNumberOrNull(row?.timestampDelta);
+  const stateIndexDelta = row?.beforeState?.currentIndex != null && row?.state?.currentIndex != null
+    ? finiteNumberOrNull(Number(row.state.currentIndex) - Number(row.beforeState.currentIndex))
+    : null;
+  const stateTimestampDelta = row?.beforeState?.currentTimestamp != null && row?.state?.currentTimestamp != null
+    ? finiteNumberOrNull(Number(row.state.currentTimestamp) - Number(row.beforeState.currentTimestamp))
+    : null;
+  const contradicts = (idx, ts) => Number.isFinite(idx) && Number.isFinite(ts)
+    && ((idx > 0 && ts <= 0) || (idx < 0 && ts > 0));
+  const advanceContradiction = row?.advanceContradiction === true
+    || contradicts(indexDelta, timestampDelta)
+    || contradicts(stateIndexDelta, stateTimestampDelta);
+  const forwardTimestamp = (Number.isFinite(timestampDelta) && timestampDelta > 0)
+    || (Number.isFinite(stateTimestampDelta) && stateTimestampDelta > 0);
+  return {
+    indexDelta,
+    timestampDelta,
+    stateIndexDelta,
+    stateTimestampDelta,
+    advanceContradiction,
+    advanced: forwardTimestamp && !advanceContradiction,
+  };
+}
+
 function cell(name, pass, detail, extra = {}) {
   return {
     name,
@@ -1020,18 +1152,30 @@ export function assertPoCpuAbBenchmarkReport(report, { mutant = false } = {}) {
   const p4WindowCount = Number(p4.probe?.windowCount) || 0;
   const p4Rows = Array.isArray(replay4.rows) ? replay4.rows : [];
   const p4PanelCount = p4Rows.length;
-  const p4RowsEveryOk = p4Rows.length > 0 && p4Rows.every((row) => row.ok === true);
-  const p4AdvancedCount = p4Rows.filter((row) => row.advancedObserved === true
-    && Number.isFinite(Number(row.timestampDelta)) && Number(row.timestampDelta) > 0
-    && row.advanceContradiction !== true).length;
+  const p4RowIds = p4Rows.map((row) => row?.id).filter((id) => id != null).map((id) => String(id));
+  const p4RowsDistinctRequired = panelIdsHaveDistinctRequired(p4RowIds);
+  const p4RowAdvances = p4Rows.map((row) => rowReplayAdvanceEvidence(row));
+  const p4RowsEveryOk = p4Rows.length > 0 && p4Rows.every((row, index) => row.ok === true
+    && row.advancedObserved === true
+    && p4RowAdvances[index].advanced === true);
+  const p4AdvancedCount = p4RowAdvances.filter((advance) => advance.advanced === true).length;
   const p4PlayingCount = p4Rows.filter((row) => row.playingObserved === true && row.state?.isPlaying === true).length;
   const p4Topology = replay4.topology || {};
+  const p4GridIds = Array.isArray(p4Topology.gridIds) ? p4Topology.gridIds.map((id) => String(id)) : [];
+  const p4ManagerIds = Array.isArray(p4Topology.managerIds) ? p4Topology.managerIds.map((id) => String(id)) : [];
+  const p4WindowIds = Array.isArray(p4Topology.windowIds) ? p4Topology.windowIds.map((id) => String(id)) : [];
   const p4TopologyOk = p4Topology.gridComplete === true
-    && Array.isArray(p4Topology.gridIds)
-    && ['A', 'B', 'C', 'D'].every((id) => p4Topology.gridIds.includes(id));
+    && p4Topology.managerComplete === true
+    && (p4Topology.selfConsistent === true || p4Topology.managerGridConsistent === true)
+    && panelIdsHaveDistinctRequired(p4GridIds)
+    && panelIdsHaveDistinctRequired(p4ManagerIds)
+    && panelIdsHaveDistinctRequired(p4WindowIds.length ? p4WindowIds : p4RowIds)
+    && sameRequiredPanelIds(p4GridIds, p4ManagerIds)
+    && sameRequiredPanelIds(p4GridIds, p4WindowIds.length ? p4WindowIds : p4RowIds);
   const p4ReplayObserved = replay4.ok === true
     && p4TopologyOk
     && p4RowsEveryOk
+    && p4RowsDistinctRequired
     && p4PanelCount >= 4
     && p4PlayingCount >= 4
     && p4AdvancedCount >= 4
@@ -1043,8 +1187,8 @@ export function assertPoCpuAbBenchmarkReport(report, { mutant = false } = {}) {
   cells.push(cell(
     'P4-FOUR-PANEL-REPLAY-RUNNING-OBSERVED',
     p4ReplayObserved,
-    `${p4ArmingDetail}panels=${p4PanelCount} playing=${p4PlayingCount} advanced=${p4AdvancedCount} probeWindows=${p4WindowCount} gridIds=${Array.isArray(p4Topology.gridIds) ? p4Topology.gridIds.join(',') : 'missing'} workRatio=${Number.isFinite(phaseWorkRatio(p4)) ? phaseWorkRatio(p4).toFixed(4) : 'n/a'}`,
-    { phase: 'P4', replay: replay4, probeWindowCount: p4WindowCount, playingCount: p4PlayingCount, advancedCount: p4AdvancedCount, panelCount: p4PanelCount, rowsEveryOk: p4RowsEveryOk, topologyOk: p4TopologyOk, workRatio: phaseWorkRatio(p4) },
+    `${p4ArmingDetail}panels=${p4PanelCount} playing=${p4PlayingCount} advanced=${p4AdvancedCount} probeWindows=${p4WindowCount} gridIds=${p4GridIds.length ? p4GridIds.join(',') : 'missing'} managerIds=${p4ManagerIds.length ? p4ManagerIds.join(',') : 'missing'} windowIds=${p4WindowIds.length ? p4WindowIds.join(',') : (p4RowIds.length ? p4RowIds.join(',') : 'missing')} workRatio=${Number.isFinite(phaseWorkRatio(p4)) ? phaseWorkRatio(p4).toFixed(4) : 'n/a'}`,
+    { phase: 'P4', replay: replay4, probeWindowCount: p4WindowCount, playingCount: p4PlayingCount, advancedCount: p4AdvancedCount, panelCount: p4PanelCount, rowsEveryOk: p4RowsEveryOk, rowsDistinctRequired: p4RowsDistinctRequired, topologyOk: p4TopologyOk, workRatio: phaseWorkRatio(p4), rowAdvances: p4RowAdvances },
   ));
 
   const replay = report.replay?.p6 || {};

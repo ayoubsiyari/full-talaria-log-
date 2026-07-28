@@ -98,7 +98,10 @@ function report({
           gridComplete: true,
           managerIds: ['A', 'B', 'C', 'D'],
           managerComplete: true,
+          managerGridConsistent: true,
           windowIds: ['A', 'B', 'C', 'D'],
+          windowComplete: true,
+          selfConsistent: true,
         },
         rows: ['A', 'B', 'C', 'D'].map((id) => ({
           id,
@@ -109,7 +112,8 @@ function report({
           indexDelta: 5,
           timestampDelta: 300_000,
           advanceContradiction: false,
-          state: { isActive: true, isPlaying: true, speed: 10 },
+          beforeState: { isActive: true, isPlaying: false, currentIndex: 10, currentTimestamp: 1_000_000, speed: 10 },
+          state: { isActive: true, isPlaying: true, currentIndex: 15, currentTimestamp: 1_300_000, speed: 10 },
         })),
         ...p4Replay,
       },
@@ -345,6 +349,60 @@ test('fault-injection: P4/P6 require forward timestamp movement', () => {
   const p6 = p6Cells.find((cell) => cell.name === 'P6-REPLAY-10X-OR-NEAREST-OBSERVED');
   assert.equal(p6.status, 'RED');
   assert.equal(p6.advanceContradiction, true);
+});
+
+test('fault-injection: P4 recomputes advance contradiction instead of trusting row flag', () => {
+  const rows = ['A', 'B', 'C', 'D'].map((id) => ({
+    id,
+    ok: true,
+    activeObserved: true,
+    playingObserved: true,
+    advancedObserved: true,
+    indexDelta: 1680,
+    timestampDelta: -19_200_000,
+    advanceContradiction: false,
+    beforeState: { isActive: true, isPlaying: false, currentIndex: 10, currentTimestamp: 20_000_000, speed: 10 },
+    state: { isActive: true, isPlaying: true, currentIndex: 1690, currentTimestamp: 800_000, speed: 10 },
+  }));
+  const cells = assertPoCpuAbBenchmarkReport(report({
+    p4Replay: {
+      ok: true,
+      panelCount: 4,
+      playingCount: 4,
+      advancedCount: 4,
+      rows,
+    },
+  }));
+  const p4 = cells.find((cell) => cell.name === 'P4-FOUR-PANEL-REPLAY-RUNNING-OBSERVED');
+  assert.equal(p4.status, 'RED');
+  assert.equal(p4.advancedCount, 0);
+  assert.equal(p4.rowAdvances.every((advance) => advance.advanceContradiction), true);
+});
+
+test('fault-injection: P4 requires distinct self-consistent A/B/C/D topology', () => {
+  const cells = assertPoCpuAbBenchmarkReport(report({
+    p4Replay: {
+      ok: true,
+      topology: {
+        gridPresent: true,
+        gridHasGetPanelIds: true,
+        gridIds: ['A', 'B', 'C', 'C'],
+        gridMissingIds: ['D'],
+        gridComplete: false,
+        managerIds: ['A', 'B', 'C', 'D'],
+        managerComplete: true,
+        managerGridConsistent: false,
+        windowIds: ['A', 'B', 'C', 'D'],
+        windowComplete: true,
+        selfConsistent: false,
+      },
+    },
+  }));
+  const p4 = cells.find((cell) => cell.name === 'P4-FOUR-PANEL-REPLAY-RUNNING-OBSERVED');
+  assert.equal(p4.status, 'RED');
+  assert.equal(p4.topologyOk, false);
+  assert.equal(p4.rowsDistinctRequired, true);
+  assert.match(p4.detail, /gridIds=A,B,C,C/);
 });
 
 test('unit: replay arming guard does not self-cancel deferred start', () => {
