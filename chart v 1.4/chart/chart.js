@@ -975,6 +975,13 @@ function _talariaMcDiagZeroCounters(diag) {
     }
 }
 
+function _talariaM25RenderPendingAccessorDisabled(chart) {
+    const diag = chart?._mcDiag;
+    if (!diag || !Object.prototype.hasOwnProperty.call(diag, 'm25FramesArmed')) return false;
+    const descriptor = Object.getOwnPropertyDescriptor(chart, 'renderPending');
+    return !descriptor || typeof descriptor.get !== 'function' || typeof descriptor.set !== 'function';
+}
+
 function _talariaMcDiagSnapshot(chart) {
     const diag = chart?._mcDiag;
     const fileId = chart?.currentFileId;
@@ -987,7 +994,41 @@ function _talariaMcDiagSnapshot(chart) {
     for (const field of MC_DIAG_COUNTER_FIELDS) {
         row[field] = Number(diag?.[field]) || 0;
     }
+    if (_talariaM25RenderPendingAccessorDisabled(chart)) {
+        row.m25FramesArmed = null;
+    }
+    if (diag?.m25ArmingSites) {
+        row.sites = Object.assign(Object.create(null), diag.m25ArmingSites);
+    }
     return row;
+}
+
+function _talariaMcDiagTableRows(rows) {
+    return rows.map((row) => {
+        if (!row || !Object.prototype.hasOwnProperty.call(row, 'sites')) return row;
+        const tableRow = {};
+        for (const key of Object.keys(row)) {
+            if (key !== 'sites') tableRow[key] = row[key];
+        }
+        return tableRow;
+    });
+}
+
+function _talariaMcDiagSiteRows(rows) {
+    const out = [];
+    for (const row of rows) {
+        if (!row?.sites) continue;
+        for (const site of Object.keys(row.sites)) {
+            out.push({
+                panelId: row.panelId,
+                fileId: row.fileId,
+                tf: row.tf,
+                site,
+                count: row.sites[site],
+            });
+        }
+    }
+    return out;
 }
 
 function _talariaMcDiagCollectCharts(win, out, seen) {
@@ -1024,20 +1065,25 @@ function _talariaInstallMcDiagReporter() {
     }
     if (target.__mcDiagReporterInstalled) return;
     target.__mcDiagReporterInstalled = true;
-    target.__mcDiagReport = function __mcDiagReport() {
+    target.__mcDiagCollect = function __mcDiagCollect() {
         const charts = [];
         _talariaMcDiagCollectCharts(target, charts, new Set());
+        return charts;
+    };
+    target.__mcDiagReport = function __mcDiagReport() {
+        const charts = target.__mcDiagCollect();
         const rows = charts.map((chart) => _talariaMcDiagSnapshot(chart));
         if (target.console && typeof target.console.table === 'function') {
-            target.console.table(rows);
+            target.console.table(_talariaMcDiagTableRows(rows));
+            const siteRows = _talariaMcDiagSiteRows(rows);
+            if (siteRows.length) target.console.table(siteRows);
         } else if (target.console && typeof target.console.log === 'function') {
             target.console.log(rows);
         }
         return rows;
     };
     target.__mcDiagReset = function __mcDiagReset() {
-        const charts = [];
-        _talariaMcDiagCollectCharts(target, charts, new Set());
+        const charts = target.__mcDiagCollect();
         for (const chart of charts) {
             _talariaMcDiagZeroCounters(chart._mcDiag);
         }
