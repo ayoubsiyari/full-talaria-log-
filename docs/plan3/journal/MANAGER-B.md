@@ -3084,3 +3084,19 @@ Director withdraws finding 21:10 / never-block. Production is not chart-host.
 `302 /chart/dist-v9/index.html` (trailing slash so prod path safe). Design-live
 302 and harness 404s unchanged. `diverge: true` retained as prototype-only.
 Census-as-inventory standing change remains.
+
+---
+
+## B-0143 — Closure residual: embed fallback is b81 in both trees; deploy-gate covers it.
+
+Director `CLOSURE-PANEL-SHELL-HEALTHY-20260728-2205.md`. Probe/redirect scoping
+credited; defect class absent in production panel shell.
+
+**Ordered check:** line 9 `p.get('v') || '…'`
+- Both trees → **`20260728b81`** (not b80).
+- `bumpChartEmbedHtml` rewrites that literal on every bump (both paths).
+- `--deploy-gate` `DEFAULT_SHELLS` includes chart-embed; declared-id regex
+  extracts the fallback; engine↔shell on by default under deploy-gate.
+
+Evidence: `CLOSURE-ACK-PANEL-EMBED-FALLBACK-20260728-2208.md` +
+`embed-fallback-bump-check-…json`. Residual **closed** on tip.
