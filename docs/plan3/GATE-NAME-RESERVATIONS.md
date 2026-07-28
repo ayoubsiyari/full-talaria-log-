@@ -490,12 +490,12 @@ Pinned budget name (hermetic): `HERMETIC_STORAGE_BUDGET_V1` — changing limits 
 
 | Name | Signature token | Implementation | Status |
 |---|---|---|---|
-| M6-REPLAY-LEAK-GATE-V1 | `TALARIA_M6_REPLAY_LEAK_V1` | `scripts/m6-replay-leak-gate.mjs`, `scripts/lib/m6-replay-leak-probe.mjs`, `scripts/tests/m6-replay-leak-gate.test.mjs` | RESERVED — live Edge/Chrome runner over the real multichart harness; default preflight requires browser |
+| M6-REPLAY-LEAK-GATE-V1 | `TALARIA_M6_REPLAY_LEAK_V1` | `scripts/m6-replay-leak-gate.mjs`, `scripts/lib/m6-replay-leak-probe.mjs`, `scripts/tests/m6-replay-leak-gate.test.mjs` | LIVE — live Edge/Chrome runner over the real multichart harness; `preflight:m6-replay-leak` requires browser (`ok:false` on SKIP) |
 
 Cells:
 
 | Cell | Asserts | Status |
 |---|---|---|
-| M6-REPLAY-LIVE-COUNT-RETURNS-TO-ONE | after N real browser multichart open/close cycles, live `_m20Q6LifecycleState` replay instances return to exactly one (strong-tracked panel instances + connected tree; no synthetic host rebind) | RESERVED |
-| M6-DETACHED-IFRAME-COUNT-NOT-GROWN | connected iframe count equals baseline; count of strongly-tracked panels that are detached *and* still hold a live Q6 replay must not grow (WeakRef forbidden) | RESERVED |
-| NC-M6-TEARDOWN-REVERSAL | served mutant no-ops `m20Q6DrainState` + `destroy()` in `replay-system.js` only; acceptance cells must go RED | RESERVED |
+| M6-REPLAY-LIVE-COUNT-RETURNS-TO-ONE | after N real browser multichart open/close cycles, live `_m20Q6LifecycleState` replay instances return to exactly one (strong-tracked panel instances + connected tree; no synthetic host rebind) | LIVE |
+| M6-DETACHED-IFRAME-COUNT-NOT-GROWN | connected iframe count equals baseline; count of strongly-tracked panels that are detached *and* still hold a live Q6 replay must not grow (WeakRef forbidden; strong-ref-bounded vs pure detached-DOM retain) | LIVE |
+| NC-M6-TEARDOWN-REVERSAL | served mutant no-ops `m20Q6DrainState` + `destroy()` in `replay-system.js` only; acceptance cells must go RED | LIVE |

@@ -70,7 +70,7 @@ export function m6ReplayLeakHostHtml({ cycles = DEFAULT_M6_CYCLES } = {}) {
   <iframe id="harness" src="/harness/host.html?panels=1&tf=1m&pair=same"></iframe>
   <script type="module">
     import {
-      countLiveM20Q6ReplaySystems,
+      findM20Q6ReplaySystems,
       connectedIframeCount,
       isLiveM20Q6ReplaySystem
     } from '/m6-probe.mjs';
@@ -87,13 +87,12 @@ export function m6ReplayLeakHostHtml({ cycles = DEFAULT_M6_CYCLES } = {}) {
 
     function snapshot(label) {
       const win = harnessWindow();
-      const current = (() => {
-        try { return win.chart && win.chart.replaySystem; } catch (_) { return null; }
-      })();
-      const orphanLive = countTrackedLiveOrphans(current);
+      const connectedLive = findM20Q6ReplaySystems(win).filter(isLiveM20Q6ReplaySystem);
+      const seen = new WeakSet(connectedLive);
+      const orphanLive = countTrackedLiveOrphans(seen);
       return {
         label,
-        liveReplaySystems: countLiveM20Q6ReplaySystems(win) + orphanLive,
+        liveReplaySystems: connectedLive.length + orphanLive,
         connectedIframes: connectedIframeCount(win),
         detachedTrackedIframes: countDetachedLivePanels(),
         trackedIframes: trackedPanels.length,
@@ -115,9 +114,7 @@ export function m6ReplayLeakHostHtml({ cycles = DEFAULT_M6_CYCLES } = {}) {
       trackedPanels.push({ frame, replay });
     }
 
-    function countTrackedLiveOrphans(current) {
-      const seen = new WeakSet();
-      if (current) seen.add(current);
+    function countTrackedLiveOrphans(seen) {
       let count = 0;
       for (const entry of trackedPanels) {
         const replay = entry && entry.replay;
