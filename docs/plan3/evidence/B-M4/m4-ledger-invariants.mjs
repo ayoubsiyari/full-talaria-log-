@@ -247,8 +247,35 @@ function validateOptions(opts) {
   return missing;
 }
 
+/**
+ * B-3 interim: enforce the write-probe quarantine in code.
+ *
+ * The quarantine recorded in e6d2f39ed was documentary — it changed
+ * M4-REVERIFICATION-SCRIPT.md and the journal and never touched this file, so a
+ * write-probe still ran on request. It is enforced here until the asymmetric
+ * disposable-session guard below is fixed, because every check that follows is
+ * symmetric and cannot tell the real ledger from the disposable one.
+ *
+ * Fail-safe, matching the B-W18 lever vocabulary: only an explicitly recognised
+ * affirmative lifts it. Unset, empty, or any typo refuses.
+ */
+const QUARANTINE_LIFT_WORDS = new Set(['1', 'true', 'yes', 'on']);
+
+function assertWriteProbeQuarantine(opts) {
+  if (opts.mode !== 'write-probe') return;
+  const raw = process.env.M4_WRITE_PROBE_QUARANTINE_LIFTED;
+  if (QUARANTINE_LIFT_WORDS.has(String(raw ?? '').trim().toLowerCase())) return;
+  throw new Error(
+    'Refusing write checks: the M4 write-probe is QUARANTINED (B-3). Its '
+    + 'disposable-session check is symmetric, so transposing --session-id and '
+    + '--disposable-session-id sends every POST into the real ledger and reports '
+    + 'green. Set M4_WRITE_PROBE_QUARANTINE_LIFTED=1 only with a Director ruling.',
+  );
+}
+
 function assertQaWriteSafety(opts) {
   if (opts.mode !== 'write-probe') return;
+  assertWriteProbeQuarantine(opts);
   if (!opts.qaAccountId || !String(opts.qaAccountId).trim()) {
     throw new Error('Refusing write checks: --qa-account-id is required.');
   }
@@ -769,6 +796,16 @@ async function main() {
   const opts = parseArgs(process.argv.slice(2));
   opts.runId = opts.runId || randomUUID().slice(0, 8);
   opts.writesIssued = 0;
+  // Before validation, before adapter construction, before any network contact.
+  // runChecks' own assertQaWriteSafety is too late: the adapter is built and the
+  // server contacted first, so a transport error preempts every safety assert.
+  try {
+    assertWriteProbeQuarantine(opts);
+  } catch (err) {
+    console.error(`\nREFUSED — ${err.message}\n`);
+    process.exitCode = 2;
+    return;
+  }
   const missing = validateOptions(opts);
   if (missing.length) {
     const checkIds = opts.mode === 'write-probe' ? WRITE_CHECK_IDS : VERIFY_CHECK_IDS;

@@ -2660,3 +2660,27 @@ Exact commands handed over in `CACHE-STAMP-RECONCILIATION.md` §5. The check I w
 INFRA-01, VER-05, and the DEPLOY-01 edge clause are noted as binding. The edge clause is the one that would have saved me: I applied my own rule to the committed mirror rather than to bytes returned by the running deployment, which is why the blocker pointed one layer short of the real hazard.
 
 B-5 handed over this entry. B-3 next.
+
+---
+
+## B-0118 — B-3 started. The quarantine the ruling ranks B-3 behind DOES NOT EXIST IN CODE. Enforced it before touching the guard itself.
+
+**The premise correction first, because it affects the ranking.** DIRECTOR-DISPATCH-B-1245 ranks B-3 third on the basis that *"You have already hard-quarantined both modes, which removes the immediate danger."* **That quarantine is documentary only.** Commit `e6d2f39ed` ("RETRACT B-0102 banner lift; requarantine M4 Phase 1 both modes") changed exactly two files — `M4-REVERIFICATION-SCRIPT.md` and my own journal. **It never touched `m4-ledger-invariants.mjs`.**
+
+I did not infer this. I ran the write-probe: it printed its warning banner, built an adapter, and attempted a live POST to the configured base URL, stopping only because my throwaway URL was unreachable. **Nothing refused it.** The immediate danger was removed by nobody choosing to run the command, which is not the same claim as a quarantine, and it is the same class as REACH-01 pointed the other way — *I* was the one treating a documented mitigation as an enforced one.
+
+### Second defect found while enforcing it: the safety asserts run too late to be safety
+
+`runChecks` calls `assertQaWriteSafety` at `:521`, but the adapter is constructed and the server contacted **before** `runChecks` is reached. My first placement of the quarantine inside `assertQaWriteSafety` therefore did nothing observable — the transport error preempted it. **Every existing write-probe safety assert has the same defect**: `--account-id` must equal `--qa-account-id`, the disposable-session check, all of them sit behind a network round-trip they are supposed to gate. They are validation, not safety, and they have been counted as safety.
+
+I moved the quarantine into `main()` immediately after `parseArgs`, ahead of validation, adapter construction, and any network contact. **Repositioning the pre-existing asserts is B-3 proper and not in this interim change.**
+
+### What landed
+
+A fail-closed quarantine using the same vocabulary as the B-W18 levers, so one runbook covers all three: only `1`/`true`/`yes`/`on` lift it; unset, empty, `0`, `false`, and any typo refuse. Verified behaviourally — refuses with the lift unset before any network contact (exit 2), refuses on `ture` and on empty string, lifts on each recognised value so it is not a brick, and leaves `verify-only` untouched.
+
+Harness self-tests went 22/0 → **26/0**: the original 22 restored plus four quarantine cells. The pre-existing write-probe unit tests exercise the downstream asserts against a local fixture and issue no real POST, so the lift is set at test-module scope — **but the quarantine's own cells clear it explicitly**, so lifting it for the others cannot mask its removal. Confirmed non-vacuous by stubbing `assertWriteProbeQuarantine` to `return`: **DIED**, restore byte-identical, CRLF 0.
+
+### Still open — this is not the B-3 fix
+
+The actual defect is untouched: `String(disposableSessionId) === String(sessionId)` at `:240` and `:258` is symmetric, so transposing the two flags leaves them unequal, passes every check, and directs `createHttpWriteAdapter` (`:702`, `sessionId: opts.disposableSessionId`) at the real ledger. The account check at `:264` is no help — both sides are operator-supplied, so it compares an input against itself. **Nothing in the harness independently establishes which session is disposable.** A real fix needs an asymmetric signal the operator cannot transpose: the harness must confirm the disposable session is disposable by asking the server, not by comparing two flags to each other. That is the next packet.

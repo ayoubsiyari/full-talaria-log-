@@ -13,6 +13,13 @@ import {
   validateOptions,
 } from './m4-ledger-invariants.mjs';
 
+// B-3 interim quarantine: these are in-process unit tests of the write-probe's
+// downstream safety asserts against a local fixture adapter — they issue no POST to
+// any real ledger. The quarantine sits ahead of those asserts, so it is lifted here
+// to keep testing them. The quarantine's own behaviour is asserted separately below
+// against the un-lifted default, so lifting it here cannot mask its removal.
+process.env.M4_WRITE_PROBE_QUARANTINE_LIFTED = '1';
+
 const RUN_ID = 'proof';
 const HEX_RUN_ID = '1141a2c8';
 const BASE_OPTS = { runId: RUN_ID, mode: 'verify-only', expectForeignId: 'real-1' };
@@ -410,3 +417,55 @@ test('reviewer mutation matrix reports 21 designed and 0 survived', async () => 
 function tradeIdForTest(row) {
   return row?.tradeId ?? row?.trade_id ?? row?.client_trade_id ?? row?.id ?? '';
 }
+
+// ---------------------------------------------------------------------------
+// B-3 interim quarantine — asserted against the UN-LIFTED default.
+// These deliberately clear the module-level lift set at the top of this file, so
+// that removing the quarantine from the product makes these fail.
+// ---------------------------------------------------------------------------
+
+function withQuarantineEnv(value, fn) {
+  const prior = process.env.M4_WRITE_PROBE_QUARANTINE_LIFTED;
+  if (value === undefined) delete process.env.M4_WRITE_PROBE_QUARANTINE_LIFTED;
+  else process.env.M4_WRITE_PROBE_QUARANTINE_LIFTED = value;
+  try { return fn(); } finally {
+    if (prior === undefined) delete process.env.M4_WRITE_PROBE_QUARANTINE_LIFTED;
+    else process.env.M4_WRITE_PROBE_QUARANTINE_LIFTED = prior;
+  }
+}
+
+test('q1: write-probe is quarantined when the lift is unset', async () => {
+  const adapter = await seededAdapter();
+  await withQuarantineEnv(undefined, () => assert.rejects(
+    () => runChecks(adapter, { ...WRITE_OPTS }),
+    /QUARANTINED \(B-3\)/,
+  ));
+});
+
+test('q2: unrecognised lift values do not lift the quarantine', async () => {
+  const adapter = await seededAdapter();
+  for (const v of ['', ' ', '0', 'false', 'no', 'off', 'ture', 'lifted', 'null', '2']) {
+    await withQuarantineEnv(v, () => assert.rejects(
+      () => runChecks(adapter, { ...WRITE_OPTS }),
+      /QUARANTINED \(B-3\)/,
+      `value ${JSON.stringify(v)} must NOT lift the quarantine`,
+    ));
+  }
+});
+
+test('q3: recognised lift values do lift it, so it is not a brick', async () => {
+  const adapter = await seededAdapter();
+  for (const v of ['1', 'true', 'TRUE', ' true ', 'yes', 'on']) {
+    await withQuarantineEnv(v, () => assert.doesNotReject(
+      () => runChecks(adapter, { ...WRITE_OPTS }),
+      `value ${JSON.stringify(v)} must lift the quarantine`,
+    ));
+  }
+});
+
+test('q4: verify-only mode is never quarantined', async () => {
+  const adapter = await seededAdapter();
+  await withQuarantineEnv(undefined, () => assert.doesNotReject(
+    () => runChecks(adapter, { ...BASE_OPTS, expectDigest: undefined }),
+  ));
+});
