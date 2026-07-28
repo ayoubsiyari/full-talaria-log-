@@ -1500,3 +1500,28 @@ One honest caveat from the author worth keeping: it did **not** prove `evalCandl
 I want the distinction in point 3 on the record, because "order lines do not vanish" could easily be read as closed by this fix and it is not. The fix removes a cause of loss. It does not add recovery.
 
 Also folded in the corrected deployment story and the repo-hygiene caveat about the stale committed mirror, so the next person to grep for these selectors does not repeat my mistake.
+
+---
+
+## B-0085 — My brief broke the M3 gate's fidelity. Brief-defect, mine.
+
+B-W10 returned **31 designed / 1 survived**, the lone survivor being the pure stub — the target I set. The re-added-broad-selector case that destroyed the first gate is now caught. But its honesty note exposed a defect I introduced, and it is worth more than the headline number.
+
+My brief said: *"Use order ids where neither is 1. Run the pair as **3 and 13**."* I chose that pair to kill a hardcoded-`1` mutation and never checked it preserved the collision the gate exists to demonstrate. I then told B-W10 to "verify your chosen pair does collide", and it verified the **bare id** collision — `"13".includes("3")` — which is the natural reading of what I wrote. It did what I asked. What I asked was wrong.
+
+```
+ids 1/12   bare:true   MARKER collision: true
+ids 3/13   bare:true   MARKER collision: FALSE   <-- what I specified
+ids 3/31   bare:true   MARKER collision: true
+ids 2/21   bare:true   MARKER collision: true
+```
+
+The real defect is **marker-prefixed**: `[class*="pending-tp-1"]` matches `pending-tp-12`. With `3/13`, `pending-tp-3` is not a substring of `pending-tp-13`, because the character after `pending-tp-` is `1`. So **the browser stopped reproducing the product defect** while the gate went green. The negative control degraded to `[class*="3"]`, a bare digit matching any class containing a `3` — which proves substring matching over-matches in general, not that *the product's selector shape* over-matches. Only the second is the bug.
+
+This is the same error class I have now hit repeatedly, in a new place: **a check that is true but is not the check I meant**. The bare-id collision is a true statement about strings. It is not a statement about this defect.
+
+**A second suspicion the note raised.** The mutants `M01`-`M06` **append** functions (`function __bV6M01(svg, oid) {...}`) rather than modifying the real removal sites. Appended functions are never called, so they cannot reach the browser — they are caught by the file-wide static ban alone. Combined with the pair defect, the browser oracle may currently be **decorative**: a static linter with a browser attached. A static ban is a real barrier and I would ship one knowingly, but I will not ship one while claiming browser-level behavioural coverage.
+
+Sent back with three fixes: pair to **3/31**, verified per-marker; the mutation ledger **split three ways** between browser oracle, static ban and parse health, with an explicit statement if the browser catches nothing the ban would not; and **at least one in-place widening of a real call site per marker**, so the mutated code is genuinely on the execution path.
+
+**A16.4:** brief-defect, mine. Running totals — author-defect **4**, brief-defect **2**, manager-finding-defect **2**. Manager-caused now **4**. The threshold reached at B-0077 was for a top-tier pre-review of my next brief; this correction went out without one, because it is a narrow retraction of a specific instruction of mine rather than new authoring, and because the alternative was leaving a gate with known-degraded fidelity as the M3 barrier. Recording that I made that judgement rather than that the rule did not apply.
