@@ -1258,3 +1258,19 @@ Two problems with `scripts/order-overlay-browser-runner.mjs`, reported because t
 2. **Its acceptance suite passes 7/7 against a *stubbed* browser** — its own cells say "stubbed browser plus structured report succeeds". That establishes report-shape handling, not browser capability. I verified a real launch separately and it does drive Edge correctly, so the instrument is good; the **evidence for it** is what is thin.
 
 Point 2 matters more than it looks. It is the same vacuity class that just cost me V8 — a suite that passes without exercising the thing it names. I am not asserting C's runner is hollow; I used it tonight and it produced a real, falsifiable result. I am saying its suite would not have told us either way, and I would rather flag that now than have it discovered at hour 40 by three dependent managers.
+
+---
+
+## B-0073 — Duration clock: narrowed to a unit-mixing hypothesis, dispatched for confirmation
+
+Cheap tier (B-C7), because after the narrowing below what remains is checking a **named** hypothesis over a closed set of paths, not open-ended triage.
+
+What I established by reading. Duration is a plain `closeTime - openTime` in four places (~7836, ~12411, ~30920, ~33680), divided into `holdingTimeHours`. Every open anchor funnels through `_marketFillOpenTimeMs` (~40452), which returns **raw bar time**, and `closeTime = currentCandle.t` (~30822) is raw bar time too — so that pair is clock-consistent, and my earlier "wall-clock vs bar-time mix" framing does **not** survive contact with this code. I searched for `Date.now()` contamination in duration paths and found none.
+
+What replaced it. `_normalizeMarkerTimestamp` (~1858) ends `return n < 1e11 ? n * 1000 : n;` — anything under 1e11 is assumed to be **seconds** and multiplied by 1000. Both `_effectiveTradeEntryMs` (~39401) and `_effectiveTradeExitMs` (~39410) push values through it, and both feed **`_classifyTradeAtReplayCutoff`** (~39421) — the rollback classifier, which carries a **`resurrectOpen`** case for trades that started before the cut and were still open at it.
+
+So the hypothesis is: **a rollback leaves one trade carrying anchors in two different units — normalised milliseconds from the resurrection path, raw bar time from the fill path — and a later subtraction differences a millisecond value against a second value.** The arithmetic matches the symptom: 1.7e12 minus 1.7e9 is about 472,000 hours, which is the right shape for "far too large". And it explains why the PO's sequence is specifically *rollback, then new order* — the rollback is what introduces the second unit.
+
+I am holding this as a **hypothesis, not a finding**. It is unconfirmed, B-C7 is instructed to refute it if it can, and I would rather it came back refuted with the real mechanism than confirmed politely.
+
+**Method error, recorded because it corrupted evidence I was reading.** I ran several searches as `rg -rn`, believing `-r` meant recursive. **`-r` is `--replace`**; ripgrep recurses by default. So `rg -rn "holdingTimeHours"` printed every match with the matched text replaced by `n`, which is why an earlier census rendered `t.holdingTimeHours` as `t.n`. Match *selection* was unaffected, but the output I was reading was rewritten, and I very nearly reasoned from it. That is the third method error today, after the single-idiom producer census and the cache-warmed import probe. The pattern in all three is the same: **I trusted the output of a tool I had configured wrong, and only caught it because the result looked strange.** Two of the three I caught; that is not a system, it is luck. B-C7's brief carries the `-r` warning so it does not inherit the mistake.
