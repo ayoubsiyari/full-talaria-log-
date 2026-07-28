@@ -1713,50 +1713,54 @@ export function hasHelperIndirectionFreeze(ts, sourceFile, callNode) {
   if (helperNames.size === 0) return false;
 
   let helperFreezes = false;
-  for (const stmt of sourceFile.statements) {
+  // Walk the whole file — helpers are often declared inside the React component body
+  // (R-M6-10), not as module-scope statements.
+  const visitDefs = (node) => {
+    if (helperFreezes) return;
     let fn = null;
     let name = null;
-    if (ts.isFunctionDeclaration(stmt) && stmt.name) {
-      fn = stmt;
-      name = stmt.name.text;
-    } else if (ts.isVariableStatement(stmt)) {
-      for (const decl of stmt.declarationList.declarations) {
-        if (ts.isIdentifier(decl.name)
-          && decl.initializer
-          && (ts.isArrowFunction(decl.initializer) || ts.isFunctionExpression(decl.initializer))) {
-          if (helperNames.has(decl.name.text)) {
-            fn = decl.initializer;
-            name = decl.name.text;
+    if (ts.isFunctionDeclaration(node) && node.name && helperNames.has(node.name.text)) {
+      fn = node;
+      name = node.name.text;
+    } else if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name)
+      && helperNames.has(node.name.text)
+      && node.initializer
+      && (ts.isArrowFunction(node.initializer) || ts.isFunctionExpression(node.initializer))) {
+      fn = node.initializer;
+      name = node.name.text;
+    }
+    if (fn && name) {
+      const visitBody = (bodyNode) => {
+        if (helperFreezes) return;
+        if (ts.isBinaryExpression(bodyNode)
+          && bodyNode.operatorToken.kind === ts.SyntaxKind.EqualsToken) {
+          if (ts.isPropertyAccessExpression(bodyNode.left)) {
+            const n = bodyNode.left.name.text;
+            if (n === 'context' || n === 'degradedModules') helperFreezes = true;
+          }
+          if (ts.isElementAccessExpression(bodyNode.left)
+            && ts.isStringLiteral(bodyNode.left.argumentExpression)
+            && (bodyNode.left.argumentExpression.text === 'context'
+              || bodyNode.left.argumentExpression.text === 'degradedModules')) {
+            helperFreezes = true;
           }
         }
-      }
-    }
-    if (!fn || !name || !helperNames.has(name)) continue;
-    const visit = (node) => {
-      if (helperFreezes) return;
-      if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.EqualsToken) {
-        if (ts.isPropertyAccessExpression(node.left)) {
-          const n = node.left.name.text;
-          if (n === 'context' || n === 'degradedModules') helperFreezes = true;
-        }
-        if (ts.isElementAccessExpression(node.left)
-          && ts.isStringLiteral(node.left.argumentExpression)
-          && (node.left.argumentExpression.text === 'context'
-            || node.left.argumentExpression.text === 'degradedModules')) {
+        if ((ts.isPropertyAssignment(bodyNode) || ts.isShorthandPropertyAssignment(bodyNode))
+          && (propertyNameText(ts, bodyNode.name) === 'context'
+            || propertyNameText(ts, bodyNode.name) === 'degradedModules')) {
           helperFreezes = true;
         }
-      }
-      // Any context/degradedModules property in the helper body — including concise-body
-      // arrows `p => ({ ...p, context: snap })` that have no ReturnStatement (R-M6-9).
-      if ((ts.isPropertyAssignment(node) || ts.isShorthandPropertyAssignment(node))
-        && (propertyNameText(ts, node.name) === 'context'
-          || propertyNameText(ts, node.name) === 'degradedModules')) {
-        helperFreezes = true;
-      }
-      ts.forEachChild(node, visit);
-    };
-    visit(fn);
-  }
+        // Object.assign(target.context, ...) / Object.assign(payload, { degradedModules })
+        if (ts.isCallExpression(bodyNode) && calleeName(ts, bodyNode.expression) === 'assign') {
+          helperFreezes = true;
+        }
+        ts.forEachChild(bodyNode, visitBody);
+      };
+      visitBody(fn);
+    }
+    ts.forEachChild(node, visitDefs);
+  };
+  visitDefs(sourceFile);
   return helperFreezes;
 }
 

@@ -295,3 +295,8 @@ Exactly five ` | `-separated fields after the list marker. Absent fields are wri
 
 2026-07-28T12:55Z | C | REVIEW | packet=R-M6-9 | role=reviewer | tier=top | model=claude-opus-5-thinking-high | result=REJECT | attr=author-defect | "Concise-body arrow helper freeze; setTimeout TTL cache under sync timers. W49."
 2026-07-28T12:55Z | C | DISPATCH | packet=W49 | role=author | tier=top | model=claude-opus-5-thinking-high | trigger="Escalate on repeat rejection" | "Close R-M6-9: any context prop in helper body; deferred clock-driven timers + M16; tripwire settle."
+
+2026-07-28T13:00Z | C | REVIEW | packet=R-M6-10 | role=reviewer | tier=top | model=claude-opus-5-thinking-high | result=REJECT | attr=author-defect | "In-component helper freeze invisible to module-scope walk; Object.assign onto context. W50."
+2026-07-28T13:00Z | C | DISPATCH | packet=W50 | role=author | tier=top | model=claude-opus-5-thinking-high | trigger="Escalate on repeat rejection" | "Close R-M6-10: walk nested helper defs; treat Object.assign in helpers as freeze."
+2026-07-28T13:00Z | C | NOTE | ref=M6-ship | "M6 ship-gate STILL WITHHELD fail-closed. W43-W50 hardening landed; R-M6-3 through R-M6-10 all REJECT. Next ACCEPT owed before LIVE credit. M5 remains ship-OK after R-M5-2 ACCEPT."
+2026-07-28T13:00Z | C | HEARTBEAT | gating=m6-a13 | "Storage-growth + rest idle budget + browser destub done. M6 under adversarial re-author loop; not soft-passing."
