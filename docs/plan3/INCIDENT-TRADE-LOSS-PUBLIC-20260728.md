@@ -154,3 +154,35 @@ I-7 granted `journal-backend/`. **The served deletion path is not there.** B''s 
 **`EVID-01`: a test may not write the evidence file that certifies it.** Evidence is written by the harness that pins the tree, once, and is immutable thereafter. Any file a later run can silently re-pin is not evidence.
 
 **Filed alongside `DEPLOY-01`, and for the same reason B named:** *we cannot say what was verified, for the same reason we cannot say what is deployed.* Two instances of one class in one day. **The class is: we do not durably record the identity of the thing we tested or shipped.** That is now the most-repeated structural defect in this project and it will be a named row in the closing report.
+
+---
+
+## 11. PO clarification D-4 (14:30) — production has ACTIVE users. The incident STANDS and is not downgraded.
+
+**PO states:** all work happens on the test server `31.97.192.82:3000`, which has no users. **Production `talaria-log.com` is not touched — and has real users or testers on it currently.**
+
+**This does not reduce exposure. It relocates the mitigation.** "We do not deploy to production" and "nobody is on production" are different claims, and only the second would make this safe. **The defect does not need us to act; it needs a slow server response.**
+
+**Consequence, stated plainly: B''s hotfix lands on TEST, where nobody is at risk. It does not reach the people who are.** PO decision on production is `test-then-decide`, so **until that decision is taken, the users actually exposed receive no code-level protection at all.**
+
+**Therefore the tester notice is no longer one mitigation among several — it is the ONLY protection active users have.** It has now been outstanding across seven asks. The `STOP — do not place, close, or reload` line is the operative sentence, because it prevents *new* loss during the window before any production decision.
+
+### 11.1 The lever this opens, and it may be worth more than the client fix
+
+**The deletion physically happens in the backend, not the client.** The client sends an empty journal; the backend''s replace semantics then delete every row absent from the incoming array.
+
+**A backend-side guard protects every client on every server, including production, with no client deploy at all.** That is the only reachable lever for currently-exposed users under `test-then-decide`.
+
+**B-W17 does not cover this case.** It guards *unparsed* ids and logs deletions. **An empty array is not an unparsed id** — it parses cleanly to "no rows," and replace semantics do the rest. So the wipe path remains open on the backend.
+
+**I placed replace semantics out of scope in I-7, and that ruling was made when I believed the client fix would reach the exposed users. It will not.** The facts changed, so the scope question is genuinely re-opened rather than merely relitigated.
+
+**The hazard is real and is exactly the trap I banned:** a naive guard breaks a legitimate "clear my journal" action, and `length > 0` remains an instant reject. **The distinction that makes it tractable: a full clear should require explicit intent, not be inferred from an empty payload.** A backend that refuses — or quarantines and logs — a write that would delete every row of a non-empty journal *absent an explicit clear flag* is a different predicate from emptiness-as-provenance.
+
+**Not dispatched. Raised for PO decision**, because it widens scope inside a 43-hour window, on a money path, in a file under a scoped grant, and B has two consecutive rejections on exactly this kind of "make a resolver total" widening. **B''s own standing lesson applies: the next attempt must be smaller than the last.**
+
+### 11.2 Two other things D-4 changes
+
+**DEPLOY-01 gets sharper, not softer.** We now have two live surfaces at different builds, and **we cannot name the commit on either.** B bounded production to "any build cut since 3 July." That ambiguity is now load-bearing for a safety decision.
+
+**The M1 surface question is upgraded.** §10 asks whether `chart/index.html` and `chart/dist-v9/index.html` are module-equivalent. **We now know a third surface exists — production — and no measurement has ever been taken on it.** Every performance number this project holds was taken on test. **We do not know that production performs as test does**, and the canary ships to production.
