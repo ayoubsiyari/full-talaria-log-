@@ -13,6 +13,28 @@ The PO's two decisions, which settle every trade-off below:
 
 **The reasoning, so nobody re-litigates it at hour 40:** an experienced trader will forgive a heavy chart that is documented as heavy. They will not forgive a Saturday candle on a forex pair, a stop-loss line that vanishes, or a trade that goes missing — because each one destroys confidence in every other number on screen. Trust is the ship gate; performance is a disclosure.
 
+## 1.5 PRIORITY ZERO — CPU (PO directive, 2026-07-28 11:03)
+
+**"Get the CPU usage down."** Evidence: `FINDING-CPU-NOT-MEMORY-20260728.md` — 129.3% tab CPU against FX Replay's 24.0 on the same machine with **no indicators loaded**, memory at parity. Owner: **A**. This outranks everything except M4's trade-loss path.
+
+**No CPU work is authored before the five measurements below land.** Every performance number this project holds was taken on a build whose optimisation module was not loaded, and we have twice spent days on a mechanism that measurement then destroyed. Measure, then cut.
+
+### The five measurements, all cheap, all today
+
+1. **`_mcDiag.resamples` per replay tick.** The standing hypothesis is that M20-Q9's correctness-driven cache invalidation forces a **full-array resample every tick** — O(history) work per tick, which alone would account for a multiple of CPU. The counter already exists. **This is the highest-yield single number available and it has been outstanding since yesterday.** Run it pinned to A's tip per TREE-01.
+2. **Render amplification: renders per data commit.** A's own 12-second window measured **50 paints, 50 renders, 2 commits** — **25 renders per data change.** Establish whether that ratio is necessary. A chart whose data changed twice should not repaint fifty times, and forming-candle animation does not obviously justify 25:1.
+3. **Main-thread share.** What fraction of per-tick work executes on the main thread versus the indicator worker. The competitor runs several dedicated workers while our tab burns more than a full core with no indicators — the hypothesis is that our deficit is *where* work runs, not algorithmic cost.
+4. **Live canvas/SVG layer count and dimensions**, ours against FX Replay's. Our GPU residency is 154 MB against their 34 MB for a comparable chart, which points at unpooled or oversized render surfaces rather than data volume.
+5. **Orphaned per-frame work after multichart teardown** — already dispatched as the residue census. Orphaned rAF loops are CPU by definition and this measurement serves both rows.
+
+### Acceptance and honesty
+
+**Acceptance criterion for any CPU change: measured tab CPU on the PO's protocol** — two panels, replay running, stated indicator count, fresh window. Not a synthetic benchmark, not a frame counter in isolation.
+
+**Stated plainly so nobody discovers it at hour 40:** the 4–5x gap is architectural and predates Plan 3. **Closing it fully inside 46 hours is not credible and will not be claimed.** What is credible is finding and cutting the largest contributors — and if measurement 1 or 2 comes back as expected, one of them is a large multiple rather than a percentage. **Any reduction is reported as a measured before/after pair on the PO's protocol, never as a description of work done.**
+
+**§1.2 is restated:** the foundation increment is chosen on **CPU per tick and per frame**, with memory secondary. A proposal that halves memory and leaves CPU unchanged does not address the deficit and will not be selected.
+
 ## 2. Ship gates — MUST be true, no exceptions
 
 These are the only items that can block the canary. Anything not on this list does not block it, regardless of how annoying it is.
