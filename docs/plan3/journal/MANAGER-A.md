@@ -1674,3 +1674,40 @@ Author tier this train: **0% top-tier authoring**, 3 of 3 packets authored cheap
 The two rejection counts of 200% both need reading, and neither supports escalating the author. On the RED, both rejections were oracle-design faults that a top-tier author had already produced twice tonight in the sibling packets — the tier was not the variable. On the predicate fix, **the first rejection was mine** on a false finding and the second was downstream of a leak premise I supplied; see the ASSUMPTION at 05:28. Counting either against a cheap author would tell me to escalate for my own errors.
 
 What the cheap tier actually cost this train: one wasted pass on the predicate fix, caused by me. What it saved: three packets at composer rates against four top-tier reviews that caught everything. The reviews are doing the work §A13.2 says they should.
+
+---
+
+## 2026-07-28 06:02 — ESCALATION to Manager B: five substring-selector id collisions in `order-manager.js`
+
+surface=`chart v 1.4/chart/modules/order-manager.js`, Manager B's exclusive write
+coverage=exhaustive grep for interpolated `[class*=]` in that file; id-generation traced; not observed on a live surface
+
+Found while fixing the same defect class in my own file. I verified these myself before escalating rather than forwarding a subagent's report:
+
+```39148:39148:chart v 1.4/chart/modules/order-manager.js
+            c.svg.selectAll(`[class*="pending-tp-pct"][class*="pending-tp-${orderId}"]`).remove();
+```
+
+```41707:41712:chart v 1.4/chart/modules/order-manager.js
+            svg.selectAll(`[class*="open-tp-pct"][class*="tp-${oid}"]`).remove();
+            svg.selectAll(`[class*="pending-tp-pct"][class*="pending-tp-${oid}"]`).remove();
+            svg.selectAll(`[class*="pending-tp-delete"][class*="pending-tp-${oid}"]`).remove();
+            svg.selectAll(`[class*="pending-tp-split"][class*="pending-tp-${oid}"]`).remove();
+            svg.selectAll(`[class*="multi-tp-avg-"][class*="-${oid}"]`).remove();
+```
+
+All five interpolate an order id into a **substring** match with no token boundary. Order ids come from `this.orderIdCounter = 1` at `:512`, incremented at every `id: this.orderIdCounter++` site and restored from the journal at `:8168`, so they are small sequential integers and prefix collisions are the common case, not an edge case. `tp-1` is a substring of `tp-10` through `tp-19` and `tp-100`; the family conjunct narrows *which* family is hit but not *which id* within it.
+
+`:41712` is the worst of the five. `[class*="-${oid}"]` for id 1 matches any class in the `multi-tp-avg-` family containing `-1` anywhere — `multi-tp-avg-1`, `-10`, `-11`, `-100`. The conjunct saves it from matching the whole document; nothing saves it from matching the wrong order.
+
+Note `:41707` also crosses families: `tp-1` is a substring of `pending-tp-10`, so the open-TP sweep can reach pending elements. The `[class*="open-tp-pct"]` conjunct is what prevents it in practice, which means the safety depends on a second selector rather than on the id term being correct.
+
+Not mine to fix. Handing over with the mechanism, the id-generation evidence and the fix shape my own packet used, so B does not repeat the analysis. Two notes from my side that may save B a pass: the safe form is a whole-token class selector, since producers emit a bare kind token plus a hyphenated id token and token selectors cannot prefix-match; and check redundancy before deleting, because in my file the sweep turned out to be covered by an adjacent explicit removal, which made deletion cleaner than substitution — that may or may not hold in B's block.
+
+## 2026-07-28 06:03 — DECISION: reviewing a deletion against a higher bar than a substitution
+
+The `pending-selector` author did not narrow the selector, they deleted both sweeps, on the grounds that an adjacent exact `.pending-${id}` removal already covers the same elements for the correct id. Their driver supports it: parent removes order 1's family plus the families of 10, 11, 19 and 100; packet removes exactly parent's order-1 set.
+
+I am not accepting that on the author's inventory. A deletion asserts that something is unnecessary, which is a strictly larger claim than asserting it is too wide, and the failure mode is inverted — instead of removing too much, it leaves orphaned DOM for the cancelled order. Briefed the reviewer to build the producer inventory independently and to block on any element removed at parent for order 1 that survives at packet, with the reaper's collection trigger established for anything that does survive.
+
+Recording the reasoning because it is the general rule I want applied: when a fix is a deletion, the acceptance criterion is coverage of the deleted behaviour, not correctness of the remaining behaviour.
