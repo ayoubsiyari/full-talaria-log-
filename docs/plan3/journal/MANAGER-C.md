@@ -249,3 +249,11 @@ Exactly five ` | `-separated fields after the list marker. Absent fields are wri
 
 2026-07-28T11:36Z | C | REVIEW | packet=R-W37 | role=reviewer | tier=top | model=manager-probe | result=ACCEPT | "M5 canary PARITY SMA/WMA/EMA/DEMA short+medium within EPS; drift non-vacuous EXPECTED-RED on SMA growth; CPU claims deferred to PO-PROTOCOL-CPU-AB. 13/13."
 2026-07-28T11:36Z | C | PACKET-LANDED | packet=C-029-m5-canary-parity | "M5 LIVE narrowed to canary families. Drift cells retained."
+
+2026-07-28T11:50Z | C | FINDING | ref=B/browser-runner | "B reported runner uncommitted + stubbed. On manager-c/verification-infra tip: committed at 9b0721110 (C-021) with acceptance cells using real findLocalChromiumBrowser+runHeadlessUrl; stubs renamed fault-injection only. npm run test:order-overlay-browser 8/8 green on Edge this host. If B's worktree lacks 9b0721110, pull/rebase — not a re-author."
+2026-07-28T11:50Z | C | CORRECTION | ref=M5,M6,A13.1 | "M5 (ec3270e77) and M6 (ac1d0ac0e) were logged ACCEPT under manager-probe — that is NOT §A13.1 top-tier adversarial review. Ship-gate status WITHHELD fail-closed until top-tier reviewer ACCEPT."
+2026-07-28T11:50Z | C | DISPATCH | packet=R-M6 | role=reviewer | tier=top | model=claude-opus-5-thinking-high | writes=none | "§A13.1 adversarial review SUPPORT-PASSPORT-DEGRADED-MODULES-V1 before ship-gate credit."
+2026-07-28T11:50Z | C | DISPATCH | packet=R-M5 | role=reviewer | tier=top | model=claude-opus-5-thinking-high | writes=none | "§A13.1 adversarial review M5 canary parity + non-vacuous drift before ship-gate credit."
+2026-07-28T11:50Z | C | DISPATCH | packet=W38 | role=author | tier=mid | model=composer-2.5-fast | "Storage-growth census per FINDING controlled-ladder Correction 1."
+2026-07-28T11:50Z | C | DISPATCH | packet=W39 | role=author | tier=mid | model=composer-2.5-fast | "Extend rest-state with idle CPU/main-thread budget; reinforce no-render-without-data for D1."
+2026-07-28T11:50Z | C | HYGIENE | ref=Manager-trailer | "Every C commit must carry Manager:/Row:/Packet:/Tier: trailers."
