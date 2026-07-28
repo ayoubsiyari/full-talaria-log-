@@ -2618,3 +2618,45 @@ I did not deliberately go looking for this. I went to run the build, found the b
 One of: a scoped grant for `homepage/public/chart/modules/order-manager.js` with an explicit ruling that carrying `9133fd9e0` and `bb0858bb5` is accepted; or the deploy owner refreshes the mirror and I verify; or a ruling that the mirror is not the production surface, in which case my model of the deployment is wrong and I need the correct one.
 
 B-5 (the PO verification check) is written and sealed, and it is **safe to hand over now** — it was designed to run against a defective build, which is exactly what production still is.
+
+---
+
+## B-0117 — Mirror ruling accepted, blocker withdrawn. Cache stamp reconciled: the committed value is a live hazard, and the fix needs no source edit at all.
+
+**Ruling verified in my own worktree before accepting it.** The `homepage/Dockerfile` COPY chain sits at **L27/L79** here versus the L29/L82 quoted — same mechanism, offsets consistent with the tree divergence below. **My B-0116 blocker was wrong and is withdrawn.** The mirror is discarded at image build; the client half of D-2 does ship; `9133fd9e0` and `bb0858bb5` are not stranded.
+
+### Reconciliation: my tree is at b61, and that is not cosmetic
+
+Every shell in my worktree reads `20260724b61`; the Director's HEAD reads `20260727b80`. `b80` **does** exist in my repo under `--all` (around `b96ad1bba`), so this is ordinary branch divergence — I am on `manager-b/plan3-20260727` at `38ba0a5d1`, the Director is on C's branch. Neither of us misread.
+
+**The divergence is worse than a stale number.** `bump-dist-v9-cache.mjs:73` resolves the build id from `BUILD_ID` env first, and otherwise **increments the committed stamp**. So an ordinary build of my branch resolves `b61 → b62` — and **b62 is *behind* the b80 production has already served.** That is not a failed cache-bust, it is a cache key from the past: any edge or browser holding something in b62–b80 keeps serving pre-guard bytes, with nothing in the URL to signal it. An ordinary build of this hotfix would ship the fix and then hide it.
+
+### The resolution touches nobody's territory
+
+`homepage/Dockerfile:17` sets `ENV BUILD_ID=${CHART_BUILD_ID}`, and `resolveBuildId` consults `BUILD_ID` **before** the committed-stamp path. So the stamp can be set entirely at build time:
+
+```
+--build-arg CHECKPOINT_BUILD=1 \
+--build-arg CHART_BUILD_ID=20260728b81 \
+--build-arg SOURCE_COMMIT_SHA=b6d94c767892c7134cd1e4b45c9f85a18e5bbb95
+```
+
+`20260728b81` is strictly ahead of `b80` on both date and sequence and is confirmed unused anywhere in `--all`, so it cannot collide with a warm cache entry. Dockerfile L35-36 refuses a build id without `CHECKPOINT_BUILD=1`, which means **DEPLOY-01 enforces itself in the same command** rather than as a separate discipline.
+
+### Why I did not bump the shells as instructed
+
+**All four shells that load `order-manager.js` are Manager A's territory** — `chart/*.html`, `dist-v9/**`, `multichart-prod/**`, `talaria-design/**`, plus the `homepage/public/chart/**` copies. **I own the module; A owns every shell that references it.** There is no shell in my territory that loads it, so the instruction as written cannot be executed by me without a grant over four of A's files.
+
+This is the third instruction today pointing outside my territory, and the I-7.1 pattern is that I bring back the file list rather than widen my authority to fit the instruction. **But I am not requesting the grant, because the build-arg path makes it unnecessary** — same stamped bytes, no source edit. If the committed stamps should also be reconciled, and they arguably should given the b62 hazard, that is A's work on A's files.
+
+### Edge verification is not mine to complete
+
+**No production hostname exists anywhere in this repository** — every external host referenced is a third-party CDN or API. I have no edge URL and no credentials. I am not going to run an origin check and present it as edge verification; that is exactly the substitution the ruling just corrected me on, and the correction only means something if I apply it when it is inconvenient.
+
+Exact commands handed over in `CACHE-STAMP-RECONCILIATION.md` §5. The check I would prioritise is not the new URL but the **old** one: `chart-embed.html:243` builds script URLs from `p.get('v') || '20260724b61'`, so an embed opened without a `?v=` requests the pre-guard URL *by name*, and that is the entry most likely warm in Cloudflare. The build path does bump that default (`bumpChartEmbedHtml`, L260) and the service worker version (L253) — neither of which a hand-bump of the four shells would have covered, which is a second reason the build-arg path is the right mechanism.
+
+### Accepted
+
+INFRA-01, VER-05, and the DEPLOY-01 edge clause are noted as binding. The edge clause is the one that would have saved me: I applied my own rule to the committed mirror rather than to bytes returned by the running deployment, which is why the blocker pointed one layer short of the real hazard.
+
+B-5 handed over this entry. B-3 next.
