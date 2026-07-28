@@ -540,7 +540,10 @@
                 && typeof panelChart._b70ShadowDisposeIndicatorGeneration === 'function') {
                 panelChart._b70ShadowDisposeIndicatorGeneration();
             }
-        } catch (_) {}
+        } catch (err) {
+            const message = err && err.message ? ': ' + err.message : '';
+            this._log('error', 'removeChart ' + id + ' panel replay teardown failed' + message);
+        }
         try { c.frame.remove(); } catch (_) {}
         this.charts.delete(id);
         this._log('info', 'removeChart ' + id);

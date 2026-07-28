@@ -28,17 +28,16 @@ function loadManager({ kill = false } = {}) {
 }
 
 function makeManager(opts = {}) {
-  const MultichartManager = loadManager(opts);
+  const MultichartManager = loadManager({ kill: opts.kill });
   return new MultichartManager({
     container: {},
-    onLog: () => {},
+    onLog: opts.onLog || (() => {}),
     onState: () => {},
     onAssertion: () => {},
   });
 }
 
-function installPanel(manager, chart) {
-  const calls = [];
+function installPanel(manager, chart, calls = []) {
   const frame = {
     contentWindow: { chart },
     remove: () => { calls.push('frame.remove'); },
@@ -60,12 +59,11 @@ test('M26 removeChart invokes panel replaySystem.destroy before removing iframe'
       },
     },
   };
-  const frameCalls = installPanel(manager, chart);
+  installPanel(manager, chart, calls);
 
   manager.removeChart('B');
 
-  assert.deepEqual(calls, ['destroy:start', 'indicator', 'destroy:end']);
-  assert.deepEqual(frameCalls, ['frame.remove']);
+  assert.deepEqual(calls, ['destroy:start', 'indicator', 'destroy:end', 'frame.remove']);
   assert.equal(manager.charts.has('B'), false);
 });
 
@@ -78,12 +76,11 @@ test('M26 kill switch restores the previous indicator-only teardown', () => {
       destroy: () => { calls.push('destroy'); },
     },
   };
-  const frameCalls = installPanel(manager, chart);
+  installPanel(manager, chart, calls);
 
   manager.removeChart('B');
 
-  assert.deepEqual(calls, ['indicator']);
-  assert.deepEqual(frameCalls, ['frame.remove']);
+  assert.deepEqual(calls, ['indicator', 'frame.remove']);
 });
 
 test('M26 panels without replaySystem still dispose indicator generation', () => {
@@ -92,12 +89,11 @@ test('M26 panels without replaySystem still dispose indicator generation', () =>
   const chart = {
     _b70ShadowDisposeIndicatorGeneration: () => { calls.push('indicator'); },
   };
-  const frameCalls = installPanel(manager, chart);
+  installPanel(manager, chart, calls);
 
   manager.removeChart('B');
 
-  assert.deepEqual(calls, ['indicator']);
-  assert.deepEqual(frameCalls, ['frame.remove']);
+  assert.deepEqual(calls, ['indicator', 'frame.remove']);
 });
 
 test('M26 throwing replaySystem.destroy does not prevent iframe removal', () => {
@@ -112,11 +108,37 @@ test('M26 throwing replaySystem.destroy does not prevent iframe removal', () => 
       },
     },
   };
-  const frameCalls = installPanel(manager, chart);
+  installPanel(manager, chart, calls);
 
   assert.doesNotThrow(() => manager.removeChart('B'));
 
-  assert.deepEqual(calls, ['destroy']);
-  assert.deepEqual(frameCalls, ['frame.remove']);
+  assert.deepEqual(calls, ['destroy', 'frame.remove']);
   assert.equal(manager.charts.has('B'), false);
+});
+
+test('M26 throwing replaySystem.destroy is reported and teardown still completes', () => {
+  const logs = [];
+  const manager = makeManager({ onLog: (entry) => { logs.push(entry); } });
+  const calls = [];
+  const chart = {
+    replaySystem: {
+      destroy: () => {
+        calls.push('destroy');
+        throw new Error('destroy pending');
+      },
+    },
+  };
+  installPanel(manager, chart, calls);
+
+  assert.doesNotThrow(() => manager.removeChart('B'));
+
+  assert.deepEqual(calls, ['destroy', 'frame.remove']);
+  assert.equal(manager.charts.has('B'), false);
+  assert.deepEqual(
+    logs.map(({ level, text }) => ({ level, text })),
+    [
+      { level: 'error', text: 'removeChart B panel replay teardown failed: destroy pending' },
+      { level: 'info', text: 'removeChart B' },
+    ],
+  );
 });
