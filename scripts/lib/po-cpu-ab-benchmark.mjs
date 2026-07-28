@@ -535,6 +535,7 @@ export function poCpuAbHostHtml({ timings = DEFAULT_PHASE_TIMINGS, mutant = fals
     function replayStateForChart(ch) {
       const rs = ch && ch.replaySystem;
       if (!rs) return { present: false };
+      const passivePlayActive = !!(ch && ch._multichartPassivePlayActive);
       const replayTimestamp = rs.replayTimestamp != null ? Number(rs.replayTimestamp) : null;
       const rawCurrentTimestamp = Array.isArray(rs.fullRawData) && rs.fullRawData[rs.currentIndex] && rs.fullRawData[rs.currentIndex].t != null
         ? Number(rs.fullRawData[rs.currentIndex].t)
@@ -547,8 +548,9 @@ export function poCpuAbHostHtml({ timings = DEFAULT_PHASE_TIMINGS, mutant = fals
           ? String(rs._m20Q6LifecycleState || '')
           : null,
         isActive: !!rs.isActive,
-        isPlaying: !!rs.isPlaying,
-        passivePlayActive: !!(ch && ch._multichartPassivePlayActive),
+        isPlaying: !!(rs.isPlaying || passivePlayActive),
+        rawIsPlaying: !!rs.isPlaying,
+        passivePlayActive,
         currentIndex: Number.isFinite(Number(rs.currentIndex)) ? Number(rs.currentIndex) : null,
         currentTimestamp: hasReplayTimestamp ? replayTimestamp : (hasRawCurrentTimestamp ? rawCurrentTimestamp : null),
         rawCurrentTimestamp: hasRawCurrentTimestamp ? rawCurrentTimestamp : null,
@@ -766,70 +768,59 @@ export function poCpuAbHostHtml({ timings = DEFAULT_PHASE_TIMINGS, mutant = fals
       return startReplay10xForChart(chart());
     }
 
-    async function startFourPanelReplay10x() {
-      const preparedRows = [];
+    function sendProductReplayPlayToPeers(speed, mode) {
+      const mgr = manager();
+      if (!mgr || typeof mgr.sendCommandNoReply !== 'function') {
+        return { ok: false, reason: 'multichart manager missing sendCommandNoReply' };
+      }
+      const sent = [];
+      const payload = {
+        speed: Number.isFinite(Number(speed)) ? Number(speed) : 10,
+        mode: typeof mode === 'string' && mode ? mode : 'candle'
+      };
       for (const entry of chartWindows()) {
-        preparedRows.push({
-          id: entry.id,
-          ...(await prepareReplay10xForChart(entry.win && entry.win.chart))
-        });
-        await sleep(50);
+        if (entry.id === 'A') continue;
+        try {
+          mgr.sendCommandNoReply(entry.id, 'replayPlay', payload);
+          sent.push(entry.id);
+        } catch (_) {}
       }
-      const runtimeRows = preparedRows.map((row) => ({
-        ...row,
-        toggleState: { usedToggle: false },
-        observedPlaying: false,
-        observedActive: !!(row.rs && row.rs.isActive),
-        afterState: replayStateForChart(row.ch),
-        advance: replayAdvance(row.beforeState, replayStateForChart(row.ch)),
-        stickyAdvance: null
-      }));
-      const started = Date.now();
-      while (Date.now() - started < 6000) {
-        for (const row of runtimeRows) {
-          if (row.ok !== true || !row.rs) continue;
-          attemptReplayStart(row.rs, row.toggleState);
-          row.observedActive = row.observedActive || !!row.rs.isActive;
-          row.observedPlaying = row.observedPlaying || !!row.rs.isPlaying;
-          row.afterState = replayStateForChart(row.ch);
-          row.advance = replayAdvance(row.beforeState, row.afterState);
-          if (row.advance.advanced) row.stickyAdvance = row.stickyAdvance || row.advance;
-        }
-        if (runtimeRows.every((row) => row.ok !== true
-          || (row.observedPlaying && row.stickyAdvance && row.afterState && row.afterState.isPlaying === true && row.rs && row.rs.isPlaying === true))) break;
-        await sleep(50);
-      }
-      const rows = runtimeRows.map((row) => {
-        if (row.ok !== true || !row.rs) return row;
-        const evidenceAdvance = row.stickyAdvance || row.advance;
+      return { ok: sent.length >= 3, sent, payload };
+    }
+
+    function normalizeFourPanelReplayRows(runtimeRows) {
+      return runtimeRows.map((row) => {
+        if (row.ok !== true && !row.rs) return row;
+        const state = row.afterState || replayStateForChart(row.ch);
+        const computedAdvance = replayAdvance(row.beforeState, state);
+        const evidenceAdvance = computedAdvance.advanced ? computedAdvance : (row.stickyAdvance || row.advance || computedAdvance);
+        const advanceContradiction = computedAdvance.contradiction === true;
+        const advancedObserved = evidenceAdvance && evidenceAdvance.advanced === true && computedAdvance.advanced === true;
         return {
           id: row.id,
-          ok: row.observedActive && row.observedPlaying && !!row.stickyAdvance && row.afterState && row.afterState.isPlaying === true && row.rs.isPlaying === true,
+          ok: row.ok === true
+            && row.observedActive === true
+            && state && state.isPlaying === true
+            && advancedObserved
+            && !advanceContradiction,
           requestedSpeed: 10,
-          nearestSpeed: Number.isFinite(Number(row.rs.speed)) ? Number(row.rs.speed) : null,
+          nearestSpeed: Number.isFinite(Number(row.rs && row.rs.speed)) ? Number(row.rs.speed) : row.nearestSpeed,
           method: row.method,
-          activeObserved: row.observedActive,
-          playingObserved: row.observedPlaying,
-          advancedObserved: !!row.stickyAdvance,
-          indexDelta: evidenceAdvance.indexDelta,
-          timestampDelta: evidenceAdvance.timestampDelta,
-          advanceContradiction: !!evidenceAdvance.contradiction,
-          beforeState: row.beforeState,
-          state: row.afterState
-        };
-      });
-      const normalizedRows = rows.map((row) => {
-        const computedAdvance = replayAdvance(row.beforeState, row.state);
-        const advanceContradiction = computedAdvance.contradiction === true;
-        const advancedObserved = row.advancedObserved === true && computedAdvance.advanced === true;
-        return {
-          ...row,
-          ok: row.ok === true && advancedObserved && !advanceContradiction,
+          activeObserved: row.observedActive === true,
+          playingObserved: row.observedPlaying === true || (state && state.isPlaying === true),
           advancedObserved,
+          indexDelta: evidenceAdvance && evidenceAdvance.indexDelta,
+          timestampDelta: evidenceAdvance && evidenceAdvance.timestampDelta,
           advanceContradiction,
+          beforeState: row.beforeState,
+          state,
           computedAdvance
         };
       });
+    }
+
+    function fourPanelReplayResultFromRows(runtimeRows, extras = {}) {
+      const normalizedRows = normalizeFourPanelReplayRows(runtimeRows);
       const topology = productTopologyEvidence();
       topology.windowIds = normalizedRows.map((row) => row.id);
       topology.windowDuplicateIds = duplicatePanelIds(topology.windowIds);
@@ -857,8 +848,80 @@ export function poCpuAbHostHtml({ timings = DEFAULT_PHASE_TIMINGS, mutant = fals
         requestedSpeed: 10,
         armingFailure,
         topology,
-        rows: normalizedRows
+        rows: normalizedRows,
+        ...extras
       };
+    }
+
+    function currentRuntimeRowsFromReplayRows(rows) {
+      const windowsById = new Map(chartWindows().map((entry) => [entry.id, entry]));
+      return (Array.isArray(rows) ? rows : []).map((row) => {
+        const entry = windowsById.get(row.id);
+        const ch = entry && entry.win && entry.win.chart;
+        const rs = ch && ch.replaySystem;
+        const afterState = replayStateForChart(ch);
+        const advance = replayAdvance(row.beforeState, afterState);
+        return {
+          ...row,
+          ch,
+          rs,
+          observedActive: row.activeObserved === true || !!(rs && rs.isActive),
+          observedPlaying: row.playingObserved === true || afterState.isPlaying === true,
+          afterState,
+          advance,
+          stickyAdvance: advance.advanced ? advance : null
+        };
+      });
+    }
+
+    async function startFourPanelReplay10x() {
+      const preparedRows = [];
+      for (const entry of chartWindows()) {
+        preparedRows.push({
+          id: entry.id,
+          ...(await prepareReplay10xForChart(entry.win && entry.win.chart))
+        });
+        await sleep(50);
+      }
+      const runtimeRows = preparedRows.map((row) => ({
+        ...row,
+        toggleState: { usedToggle: false },
+        observedPlaying: false,
+        observedActive: !!(row.rs && row.rs.isActive),
+        afterState: replayStateForChart(row.ch),
+        advance: replayAdvance(row.beforeState, replayStateForChart(row.ch)),
+        stickyAdvance: null
+      }));
+      const started = Date.now();
+      while (Date.now() - started < 6000) {
+        const hostRow = runtimeRows.find((row) => row.id === 'A' && row.ok === true && row.rs);
+        const hostMode = hostRow && hostRow.rs && typeof hostRow.rs.getPlaybackMode === 'function'
+          ? hostRow.rs.getPlaybackMode()
+          : 'candle';
+        const fanout = sendProductReplayPlayToPeers(10, hostMode);
+        for (const row of runtimeRows) {
+          if (row.ok !== true || !row.rs) continue;
+          if (row.id === 'A') attemptReplayStart(row.rs, row.toggleState);
+          row.observedActive = row.observedActive || !!row.rs.isActive;
+          row.afterState = replayStateForChart(row.ch);
+          row.observedPlaying = row.observedPlaying || row.afterState.isPlaying === true;
+          row.advance = replayAdvance(row.beforeState, row.afterState);
+          if (row.advance.advanced) row.stickyAdvance = row.stickyAdvance || row.advance;
+          row.productReplayPlayFanout = fanout;
+        }
+        if (runtimeRows.every((row) => row.ok !== true
+          || (row.observedPlaying && row.stickyAdvance && row.afterState && row.afterState.isPlaying === true))) break;
+        await sleep(50);
+      }
+      return fourPanelReplayResultFromRows(runtimeRows, { productPlayProtocol: 'host-replayPlay-fanout' });
+    }
+
+    function refreshFourPanelReplayObservation(replay4) {
+      if (!replay4 || !Array.isArray(replay4.rows)) return replay4;
+      return fourPanelReplayResultFromRows(currentRuntimeRowsFromReplayRows(replay4.rows), {
+        productPlayProtocol: replay4.productPlayProtocol || 'host-replayPlay-fanout',
+        observedAfterP4Window: true
+      });
     }
 
     function pauseReplay() {
@@ -992,6 +1055,7 @@ export function poCpuAbHostHtml({ timings = DEFAULT_PHASE_TIMINGS, mutant = fals
         await expandToFourPanels();
         replay4 = await startFourPanelReplay10x();
         phases.P4 = await collectPhase('P4-four-panel-replay-10x-or-nearest', CONFIG.timings.p4ObserveMs);
+        replay4 = refreshFourPanelReplayObservation(replay4);
         await collapseToSingle();
 
         replay10x = await startReplay10x();

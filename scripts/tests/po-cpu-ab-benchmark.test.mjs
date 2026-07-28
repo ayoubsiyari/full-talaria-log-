@@ -148,6 +148,8 @@ test('unit: host HTML records shortened meta for CI P2', () => {
   assert.match(html, /advancedCount/);
   assert.match(html, /rs\.replayTimestamp != null/);
   assert.match(html, /currentTimestampSource/);
+  assert.match(html, /host-replayPlay-fanout/);
+  assert.match(html, /observedAfterP4Window/);
 });
 
 test('unit: host HTML arms replay from settled fullRawData replayTimestamp baselines', () => {
@@ -170,6 +172,62 @@ test('unit: oracle accepts P1/P2/P4/P6/P7 report and records replay observables'
   assert.equal(p4.topologyOk, true);
   const p6 = cells.find((cell) => cell.name === 'P6-REPLAY-10X-OR-NEAREST-OBSERVED');
   assert.equal(p6.replay.nearestSpeed, 10);
+});
+
+test('unit: P4 accepts product passive peers only with sustained forward advance', () => {
+  const passiveRows = ['A', 'B', 'C', 'D'].map((id) => ({
+    id,
+    ok: true,
+    activeObserved: true,
+    playingObserved: true,
+    advancedObserved: true,
+    indexDelta: 5,
+    timestampDelta: 300_000,
+    advanceContradiction: false,
+    beforeState: { isActive: true, isPlaying: false, currentIndex: 10, currentTimestamp: 1_000_000, currentTimestampSource: 'replayTimestamp', speed: 10 },
+    state: {
+      isActive: true,
+      isPlaying: true,
+      rawIsPlaying: id === 'A',
+      passivePlayActive: id !== 'A',
+      currentIndex: 15,
+      currentTimestamp: 1_300_000,
+      currentTimestampSource: 'replayTimestamp',
+      speed: 10,
+    },
+  }));
+  const cells = assertPoCpuAbBenchmarkReport(report({
+    p4Replay: {
+      ok: true,
+      productPlayProtocol: 'host-replayPlay-fanout',
+      observedAfterP4Window: true,
+      rows: passiveRows,
+    },
+  }));
+  const p4 = cells.find((cell) => cell.name === 'P4-FOUR-PANEL-REPLAY-RUNNING-OBSERVED');
+  assert.equal(p4.status, 'GREEN');
+  assert.equal(p4.playingCount, 4);
+  assert.equal(p4.advancedCount, 4);
+
+  passiveRows[2] = {
+    ...passiveRows[2],
+    advancedObserved: false,
+    indexDelta: 0,
+    timestampDelta: 0,
+    state: { ...passiveRows[2].state, currentIndex: 10, currentTimestamp: 1_000_000 },
+  };
+  const red = assertPoCpuAbBenchmarkReport(report({
+    p4Replay: {
+      ok: false,
+      playingCount: 4,
+      advancedCount: 3,
+      armingFailure: 'not every panel advanced by forward replay timestamp',
+      rows: passiveRows,
+    },
+  })).find((cell) => cell.name === 'P4-FOUR-PANEL-REPLAY-RUNNING-OBSERVED');
+  assert.equal(red.status, 'RED');
+  assert.equal(red.playingCount, 4);
+  assert.equal(red.advancedCount, 3);
 });
 
 test('fault-injection: P4 cannot green on playing flags without four advancing panels', () => {
