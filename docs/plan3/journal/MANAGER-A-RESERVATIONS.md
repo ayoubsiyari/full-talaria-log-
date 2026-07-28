@@ -157,3 +157,12 @@ would imply a design decision I have not made.
 | `m23-cpu-attribution-probe.mjs` | harness | cpu-attribution | new; instrumentation only, no product edits |
 | `m23-cpu-attribution-20260728.json` | evidence file | cpu-attribution | written inside the packet worktree only |
 | `__TALARIA_CPU_PROBE_V1` | global symbol | cpu-attribution | injected at page-init; must never appear in product source |
+
+## 2026-07-28 13:58 — reservations for the idle CPU profile (supersedes cpu-attribution)
+
+| Name | Kind | Packet | Note |
+|---|---|---|---|
+| `m24-idle-cpu-profile.mjs` | harness | idle-cpu | new; trace capture + handle census at rest |
+| `m24-idle-cpu-20260728.json` | evidence file | idle-cpu | written inside the packet worktree only |
+| `m24-idle-cpu-trace-20260728.json` | evidence file | idle-cpu | raw Chrome trace, worktree only |
+| `__TALARIA_IDLE_PROBE_V1` | global symbol | idle-cpu | injected at page-init; never in product source |
