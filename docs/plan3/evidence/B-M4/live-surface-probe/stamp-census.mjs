@@ -111,7 +111,8 @@ export function buildShellInventoryFromCensus(report, opts = {}) {
       class: row.class,
       allIds: row.allIds || [],
       hole: Boolean(row.hole),
-      neverBlock: /\/chart\/multichart\//.test(route),
+      // Prototype /chart/multichart/ is de-routed (302). Production is multichart-prod.
+      neverBlock: /\/chart\/multichart-prod\//.test(route),
       gateRequired: true,
     });
   }

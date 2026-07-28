@@ -1,0 +1,40 @@
+{
+  "observedAt": "2026-07-28T20:52:15.297Z",
+  "withdrawal": "WITHDRAWAL-MULTICHART-HOST-FINDING-20260728-2145",
+  "baseUrl": "http://31.97.192.82:3000",
+  "assetUrl": "http://31.97.192.82:3000/chart/dist-v9/assets/talaria-v9-live.js?v=20260726b75",
+  "fromBundle": {
+    "chartHostCount": 0,
+    "embedCount": 1,
+    "distIndexCount": 0,
+    "hasIframeBuilder": true,
+    "returnSample": "ng(k).slice(0,64))}catch{}return c.set(\"embedRev\",\"ohlc2\"),\"/chart/multichart-prod/chart-embed.html?\"+c.toStri",
+    "productionPath": "chart-embed",
+    "exampleUrl": "/chart/multichart-prod/chart-embed.html?multichart=1&panelId=B&tf=1m&embedRev=ohlc2",
+    "pass": true
+  },
+  "embedProbe": {
+    "url": "/chart/multichart-prod/chart-embed.html?multichart=1&panelId=B&tf=1m&embedRev=ohlc2",
+    "status": 200,
+    "buildId": "20260726b75"
+  },
+  "prototypeStillServed": {
+    "chartHost": 200,
+    "shell": 200,
+    "note": "Expected 200 before redirect; must not be production iframe target"
+  },
+  "dom": {
+    "prod": [],
+    "proto": [],
+    "iframes": [],
+    "last": {
+      "href": "http://31.97.192.82:3000/login/?next=%2Fchart%2Fdist-v9%2Findex.html",
+      "iframes": [],
+      "hasManager": false
+    }
+  },
+  "pass": true,
+  "redirectAuthorized": true,
+  "nuance": "Director text said dist-v9 iframes; served V9 asset on this host builds /chart/multichart-prod/chart-embed.html (stamped panel shell). Zero chart-host.html refs. Redirect of ^~ /chart/multichart/ does not touch chart-embed.",
+  "verdict": "PASS — production panel builder → chart-embed (not /chart/multichart/); redirect authorized"
+}

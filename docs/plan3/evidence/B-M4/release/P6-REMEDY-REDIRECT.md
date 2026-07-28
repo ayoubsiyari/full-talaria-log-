@@ -1,44 +1,49 @@
-# P6 remedy — redirect (corrected after Director 21:00)
+# P6 + prototype de-route — redirect (post-WITHDRAWAL 21:45)
 
-**Director 20:40 item 2** + **`RULING-DO-NOT-404-MULTICHART-20260728-2100.md`**.  
-Requirement: the route stops serving stale code.  
-**Choice for design-live:** 302 to canonical V9 (cheaper than keeping the twin current).
-
-## Rule (general correction)
-
-**Redirect by default. 404 only where proven unused.**  
-A 302 satisfies “stops serving stale.” A 404 additionally breaks any consumer — same unsafe class as deleting a 200 route without consumer evidence (the P6 hold B already applied to A).
+**Directors:** 20:40 item 2; `WITHDRAWAL-MULTICHART-HOST-FINDING-20260728-2145.md`.  
+**Rule:** redirect by default; 404 only where proven unused (harness prefixes).
 
 ## What lands
 
-| File | Change |
+| Prefix | Action |
 |---|---|
-| `homepage/nginx.local.conf` | `location ^~ /chart/talaria-design/live` → `302 /chart/dist-v9/index.html` **before** the `/chart/` try_files block |
-| `homepage/nginx.conf` | Same prefix location **before** the regex proxy to trading-chart |
-| Both | `404` only for proven harness prefixes: `m20-a-favorites-harness`, `m21-2-browser-harness` |
+| `^~ /chart/talaria-design/live` | `302 /chart/dist-v9/index.html` |
+| `= /chart/multichart` and `^~ /chart/multichart/` | `302 /chart/dist-v9/index.html` |
+| `^~ /chart/modules/m20-a-favorites-harness/` | `404` |
+| `^~ /chart/modules/m21-2-browser-harness/` | `404` |
 
-## Held — do not ship
+**Critical:** the multichart location uses a **trailing slash** (`/chart/multichart/`) so **`/chart/multichart-prod/` is not matched**.
 
-| Prior plan | Status |
+## Precondition (observed before landing)
+
+Tool: `prod-panel-iframe-observe.mjs`  
+Evidence: `observations/prod-panel-iframe-observe-2026-07-28T20-52-15-297Z.json`
+
+| Check | Result |
 |---|---|
-| `location ^~ /chart/multichart/ { return 404; }` | **REMOVED.** Live consumer evidence: panels resolve to `/chart/multichart/chart-host.html` (**a10**). See `ESCALATE-MULTICHART-A10-20260728-2105.md`. |
+| Served V9 asset `iframeSrcBuilder` | present |
+| `chart-host.html` refs in V9 asset | **0** |
+| Production builder return | **`/chart/multichart-prod/chart-embed.html?...`** |
+| That URL on host | HTTP 200, build id present |
+| Prototype `/chart/multichart/*` | still 200 pre-redirect (expected) |
 
-## Interaction with A's restore
+**Nuance for Director:** withdrawal text said “dist-v9 iframes”; the **running** V9 asset on this host builds **`chart-embed.html`** (stamped panel shell under `multichart-prod`). That is production. It is **not** `/chart/multichart/chart-host.html`. Redirect of the prototype prefix does not touch it.
 
-A still restores `homepage/public/chart/talaria-design/live/index.html` so the deletion is not in the tip. The redirect means even a restored or COPY'd twin **cannot** be loaded as a chart shell — bookmarks and old links land on dist-v9.
+## History
+
+- B-0140 held a **404** on `/chart/multichart/` under the (withdrawn) live-loader reading.
+- WITHDRAWAL 21:45: route is dead prototype → **302**, same class as design-live.
+- `diverge: true` (defect-one probe) remains sound for the **prototype** only; not production panels.
 
 ## Verify after deploy
 
 ```
-# must be 302 (or 301), Location: …/chart/dist-v9/index.html
-curl -sI http://<host>/chart/talaria-design/live/index.html
-
-# must remain 200 (not 404) until product cutover lands
 curl -sI http://<host>/chart/multichart/chart-host.html
-curl -sI http://<host>/chart/multichart/multichart-shell.html
+# → 302 Location: …/chart/dist-v9/index.html
 
-node docs/plan3/evidence/B-M4/live-surface-probe/stamp-census.mjs \
-  --base-url=http://<host> --current=20260728b81
-# design-live rows must be REDIRECT, not STAMPED_200
-# multichart rows remain STAMPED / unstamped holes until A cutover — escalate, do not gate-fail via 404
+curl -sI http://<host>/chart/multichart-prod/chart-embed.html
+# → 200 (must NOT redirect)
+
+curl -sI http://<host>/chart/talaria-design/live/index.html
+# → 302 → dist-v9
 ```

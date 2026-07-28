@@ -3066,3 +3066,21 @@ module-presence-runtime, bridges at a10.
 `CENSUS-AS-SHELL-INVENTORY.md`. C must consume it in cache-stamp /
 module-presence / reachability; hardcoded lists are how this shell was
 missed (inventory even had it as `denied-route-pending`). A owns shell repair.
+
+---
+
+## B-0142 — WITHDRAWAL 21:45 accepted. Prototype redirect after host observe.
+
+Director withdraws finding 21:10 / never-block. Production is not chart-host.
+
+**Precondition probe** `prod-panel-iframe-observe.mjs` on test host:
+- Served V9 asset: `iframeSrcBuilder` →
+  **`/chart/multichart-prod/chart-embed.html?...`**, **0** `chart-host.html`.
+- Embed URL HTTP 200 (build `20260726b75`).
+- Nuance recorded: Director said dist-v9 iframes; running bytes build chart-embed.
+  Redirect of `/chart/multichart/` does not touch `multichart-prod`.
+
+**Landed:** nginx `= /chart/multichart` + `^~ /chart/multichart/` →
+`302 /chart/dist-v9/index.html` (trailing slash so prod path safe). Design-live
+302 and harness 404s unchanged. `diverge: true` retained as prototype-only.
+Census-as-inventory standing change remains.

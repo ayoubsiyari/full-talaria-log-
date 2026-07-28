@@ -103,7 +103,7 @@
         "20260726b75"
       ],
       "hole": true,
-      "neverBlock": false,
+      "neverBlock": true,
       "gateRequired": true
     },
     {
@@ -116,7 +116,7 @@
         "20260524a10"
       ],
       "hole": true,
-      "neverBlock": true,
+      "neverBlock": false,
       "gateRequired": true
     },
     {
@@ -127,7 +127,7 @@
       "class": "UNSTAMPED_200",
       "allIds": [],
       "hole": true,
-      "neverBlock": true,
+      "neverBlock": false,
       "gateRequired": true
     },
     {
