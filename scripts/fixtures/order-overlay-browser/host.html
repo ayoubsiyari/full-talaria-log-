@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="talaria-order-overlay-browser-signature" content="TALARIA_ORDER_OVERLAY_BROWSER_V1">
+  <title>Talaria Order Overlay Browser MVP</title>
+  <style>
+    body { font: 14px sans-serif; margin: 16px; }
+    .marker { border: 1px solid #222; padding: 8px; margin: 8px 0; }
+  </style>
+</head>
+<body>
+  <main id="order-overlay-host" class="marker">order overlay host painted</main>
+  <section id="order-overlay-panel" class="marker">order overlay panel painted</section>
+  <script>
+    (() => {
+      const signature = 'TALARIA_ORDER_OVERLAY_BROWSER_V1';
+      const preconditionLine = new URLSearchParams(location.search).get('precondition')
+        || '[V6-P1] ignition';
+      const consoleErrors = [];
+      const consoleLogLines = [];
+      const originalError = console.error.bind(console);
+      const originalLog = console.log.bind(console);
+
+      console.error = (...args) => {
+        consoleErrors.push(args.map(String).join(' '));
+        originalError(...args);
+      };
+      console.log = (...args) => {
+        consoleLogLines.push(args.map(String).join(' '));
+        originalLog(...args);
+      };
+      window.addEventListener('error', (event) => {
+        consoleErrors.push(String(event.message || event.error || 'window error'));
+      });
+      window.addEventListener('unhandledrejection', (event) => {
+        consoleErrors.push(String(event.reason || 'unhandled rejection'));
+      });
+
+      window.__TALARIA_ORDER_OVERLAY_HARNESS_STUB = {
+        signature,
+        status: 'NOT-BEHAVIOUR-COVERING',
+        attachV6Cell(cell) {
+          return { attached: Boolean(cell), signature };
+        },
+      };
+
+      function painted(selector) {
+        const node = document.querySelector(selector);
+        return Boolean(node && node.getClientRects().length > 0 && node.textContent.trim());
+      }
+
+      async function postReport() {
+        console.log(preconditionLine);
+        const preconditionLogLine = consoleLogLines.find((line) => line === preconditionLine) || null;
+        const report = {
+          stampObserved: document
+            .querySelector('meta[name="talaria-order-overlay-browser-signature"]')
+            ?.getAttribute('content') || null,
+          hostPainted: painted('#order-overlay-host'),
+          panelPainted: painted('#order-overlay-panel'),
+          consoleErrors,
+          preconditionLogSeen: Boolean(preconditionLogLine),
+          preconditionLogLine,
+          ignitionLogSeen: consoleLogLines.some((line) => line.includes('[V6-P1] ignition')),
+          pinLifecycleSeen: consoleLogLines.some((line) => line.includes('[V8] pin lifecycle')),
+        };
+        await fetch('/report', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(report),
+        });
+      }
+
+      if (new URLSearchParams(location.search).get('autorun') !== '0') {
+        requestAnimationFrame(() => {
+          postReport().catch((error) => console.error(error));
+        });
+      }
+    })();
+  </script>
+</body>
+</html>

@@ -18,6 +18,12 @@ const MAX_PATTERN_WILDCARDS = 8;
 const PROVENANCE = ['ruling', 'inferred'];
 const KEY = /^([A-Za-z_][A-Za-z0-9_-]*):(?:[ \t]+(.*))?$/;
 
+function assertKnownKeys(value, allowed, label) {
+  for (const key of Object.keys(value)) {
+    assert.ok(allowed.includes(key), `${label}: unknown key ${key}`);
+  }
+}
+
 function stripComment(raw, lineNo) {
   let quote = null;
   let lastNonSpace = null;
@@ -85,6 +91,24 @@ function parseScalar(raw, lineNo) {
   return value;
 }
 
+function parseScalarWithContinuations(tokens, state, parentIndent, raw, lineNo) {
+  const continuation = [];
+  while (state.at < tokens.length) {
+    const token = tokens[state.at];
+    if (token.indent <= parentIndent || token.dash || KEY.test(token.content)) break;
+    continuation.push(token);
+    state.at += 1;
+  }
+  if (!continuation.length) return parseScalar(raw, lineNo);
+
+  const first = raw.trim();
+  if ((first.startsWith('"') && first.endsWith('"') && first.length > 1)
+    || (first.startsWith("'") && first.endsWith("'") && first.length > 1)) {
+    return [parseScalar(first, lineNo), ...continuation.map((token) => parseScalar(token.content, token.lineNo))].join(' ');
+  }
+  return parseScalar([first, ...continuation.map((token) => token.content.trim())].join(' '), lineNo);
+}
+
 function parseNode(tokens, state, indent) {
   return tokens[state.at].dash ? parseSequence(tokens, state, indent) : parseMapping(tokens, state, indent);
 }
@@ -117,7 +141,7 @@ function parseMapping(tokens, state, indent) {
     assert.equal(Object.hasOwn(mapping, key), false, `territory manifest line ${lineNo}: duplicate key ${key}`);
     state.at += 1;
     if (inline !== undefined && inline.trim() !== '') {
-      mapping[key] = parseScalar(inline, lineNo);
+      mapping[key] = parseScalarWithContinuations(tokens, state, indent, inline, lineNo);
       continue;
     }
     const child = tokens[state.at];
@@ -187,40 +211,98 @@ function compareSpecificity(a, b) {
   return b.length - a.length;
 }
 
-function compiledRules(entries, label) {
+function compiledRules(entries, label, { allowExcept = true } = {}) {
   assert.ok(Array.isArray(entries), `${label}: expected a list`);
   return entries.map((entry) => {
     assert.ok(entry && typeof entry === 'object', `${label}: expected a mapping per entry`);
+    // A Director-only rule is the one rule that cannot carry a carve-out. `except` on
+    // any other list narrows a grant; on director_only it *removes* protection, and the
+    // self-protection check below tests the pattern, not the carve-out list. One line of
+    // `except: [docs/plan3/TERRITORY.yml]` would otherwise unprotect the manifest while
+    // still satisfying "manifest_path is director_only".
+    if (!allowExcept) {
+      assert.equal(
+        entry.except,
+        undefined,
+        `${label} ${entry.pattern ?? '<unknown>'}: except is not permitted on a Director-only rule; a carve-out here exempts a protected file from its own protection`,
+      );
+    }
+    assertKnownKeys(
+      entry,
+      allowExcept ? ['pattern', 'provenance', 'reason', 'authority', 'except'] : ['pattern', 'provenance', 'reason', 'authority'],
+      `${label} entry`,
+    );
     assert.equal(typeof entry.pattern, 'string', `${label}: pattern absent`);
     assert.ok(PROVENANCE.includes(entry.provenance), `${label} ${entry.pattern}: provenance must be one of ${PROVENANCE.join('/')}`);
+    const except = entry.except || [];
+    assert.ok(Array.isArray(except), `${label} ${entry.pattern}: except must be a list`);
+    for (const path of except) {
+      assert.equal(typeof path, 'string', `${label} ${entry.pattern}: except entries must be strings`);
+    }
     return {
       pattern: entry.pattern,
       regex: globToRegExp(entry.pattern),
       specificity: patternSpecificity(entry.pattern),
       provenance: entry.provenance,
       reason: entry.reason || entry.authority || '',
+      except,
     };
   });
 }
 
-export function validateTerritoryManifest(raw) {
+// `expectedPath` is the repository-relative path the caller actually read this text
+// from. Passing it binds the document to its own location: a manifest that renames
+// `manifest_path` to a decoy while dropping director_only protection from the real
+// file satisfies every internal consistency check, and is caught only here.
+export function validateTerritoryManifest(raw, { expectedPath = null } = {}) {
   assert.ok(raw && typeof raw === 'object' && !Array.isArray(raw), 'territory manifest must be a mapping');
+  assertKnownKeys(raw, [
+    'schema',
+    'version',
+    'owner',
+    'authored_by',
+    'authority',
+    'manifest_path',
+    'director_only',
+    'director_paths',
+    'shared_paths',
+    'journals',
+    'managers',
+    'open_rulings',
+  ], 'territory manifest');
   assert.equal(raw.schema, SCHEMA, `territory manifest: unsupported schema ${raw.schema}`);
   assert.equal(raw.owner, 'Director', 'territory manifest: owner must be Director');
   assert.equal(typeof raw.manifest_path, 'string', 'territory manifest: manifest_path absent');
+  assert.equal(raw.manifest_path.includes('\\'), false, 'territory manifest: manifest_path must use posix separators');
+  assert.equal(raw.manifest_path.startsWith('/'), false, 'territory manifest: manifest_path must be repository-relative');
+  assert.equal(/[*?]/.test(raw.manifest_path), false, 'territory manifest: manifest_path must be a literal path, not a pattern');
+  if (expectedPath !== null) {
+    assert.equal(
+      raw.manifest_path,
+      expectedPath,
+      `territory manifest: loaded from ${expectedPath} but declares manifest_path ${raw.manifest_path}; a manifest that misnames its own location can drop protection on the real file`,
+    );
+  }
 
-  const directorOnly = compiledRules(raw.director_only, 'director_only');
+  const directorOnly = compiledRules(raw.director_only, 'director_only', { allowExcept: false });
   assert.ok(directorOnly.length, 'territory manifest: director_only must not be empty');
   assert.ok(
-    directorOnly.some((rule) => rule.regex.test(raw.manifest_path)),
+    directorOnly.some((rule) => ruleMatches(rule, raw.manifest_path)),
     'territory manifest: manifest_path is not director_only, so a manager could grant itself territory',
   );
 
   const shared = compiledRules(raw.shared_paths || [], 'shared_paths');
+  assert.ok(
+    !shared.some((rule) => ruleMatches(rule, raw.manifest_path)),
+    'territory manifest: manifest_path is listed as a shared path, so every manager could edit its own territory',
+  );
+  if (raw.director_paths !== undefined) compiledRules(raw.director_paths, 'director_paths');
 
   assert.ok(Array.isArray(raw.journals) && raw.journals.length, 'territory manifest: journals absent');
   const journalPaths = new Set();
   const journals = raw.journals.map((entry) => {
+    assert.ok(entry && typeof entry === 'object', 'journals: expected a mapping per entry');
+    assertKnownKeys(entry, ['path', 'owner'], 'journals entry');
     assert.equal(typeof entry.path, 'string', 'journals: path absent');
     assert.equal(typeof entry.owner, 'string', `journals ${entry.path}: owner absent`);
     assert.equal(journalPaths.has(entry.path), false, `journals ${entry.path}: duplicate journal`);
@@ -231,6 +313,25 @@ export function validateTerritoryManifest(raw) {
   assert.ok(Array.isArray(raw.managers) && raw.managers.length, 'territory manifest: managers absent');
   const ids = new Set();
   const managers = raw.managers.map((entry) => {
+    assert.ok(entry && typeof entry === 'object', 'managers: expected a mapping per entry');
+    assertKnownKeys(entry, [
+      'id',
+      'role',
+      'deploy_surface',
+      'provenance',
+      'authority',
+      'owned_rows',
+      'unresolved_rows',
+      'owned_paths',
+      'denied_paths',
+    ], `managers ${entry.id ?? '<unknown>'}`);
+    if (entry.unresolved_rows !== undefined) {
+      assert.ok(Array.isArray(entry.unresolved_rows), `managers ${entry.id}: unresolved_rows must be a list`);
+      for (const row of entry.unresolved_rows) {
+        assert.ok(row && typeof row === 'object', `managers ${entry.id}: unresolved_rows entries must be mappings`);
+        assertKnownKeys(row, ['row', 'reason', 'provenance', 'authority'], `managers ${entry.id} unresolved_rows entry`);
+      }
+    }
     assert.match(String(entry.id), /^[A-Z]$/, `managers: id ${entry.id} must be a single capital letter`);
     assert.equal(ids.has(entry.id), false, `managers ${entry.id}: duplicate manager`);
     ids.add(entry.id);
@@ -246,11 +347,29 @@ export function validateTerritoryManifest(raw) {
     };
   });
 
+  // Second barrier under the director_only rule above. Resolution order already makes a
+  // manager grant on the manifest unreachable, but a grant that is only unreachable is
+  // one reordering away from being reachable, so the grant itself is refused.
+  for (const manager of managers) {
+    assert.ok(
+      !manager.owned.some((rule) => ruleMatches(rule, raw.manifest_path)),
+      `manager ${manager.id}: owned_paths claims the manifest ${raw.manifest_path}; only the Director may own it`,
+    );
+  }
+
   for (const journal of journals) {
     assert.ok(
       journal.owner === 'Director' || ids.has(journal.owner),
       `journals ${journal.path}: owner ${journal.owner} is not a declared manager`,
     );
+  }
+
+  if (raw.open_rulings !== undefined) {
+    assert.ok(Array.isArray(raw.open_rulings), 'open_rulings: expected a list');
+    for (const entry of raw.open_rulings) {
+      assert.ok(entry && typeof entry === 'object', 'open_rulings: expected a mapping per entry');
+      assertKnownKeys(entry, ['id', 'question', 'default_in_force', 'status'], `open_rulings ${entry.id ?? '<unknown>'}`);
+    }
   }
 
   return {
@@ -265,8 +384,8 @@ export function validateTerritoryManifest(raw) {
   };
 }
 
-export function loadTerritoryManifest({ file, text = fs.readFileSync(file, 'utf8') } = {}) {
-  return validateTerritoryManifest(parseStrictYaml(text));
+export function loadTerritoryManifest({ file, text = fs.readFileSync(file, 'utf8'), expectedPath = null } = {}) {
+  return validateTerritoryManifest(parseStrictYaml(text), { expectedPath });
 }
 
 function normalizePath(value) {
@@ -276,24 +395,28 @@ function normalizePath(value) {
   return posix;
 }
 
+function ruleMatches(rule, path) {
+  return rule.regex.test(path) && !rule.except?.includes(path);
+}
+
 // One touched path against one authoring manager. Ordering matters: director_only
 // outranks every grant, an explicit deny outranks a tree grant, and an unowned or
 // ambiguously owned path is RED rather than allowed.
 export function resolveOwnership(manifest, rawPath, author) {
   const path = normalizePath(rawPath);
-  const directorOnly = manifest.directorOnly.find((rule) => rule.regex.test(path));
+  const directorOnly = manifest.directorOnly.find((rule) => ruleMatches(rule, path));
   if (directorOnly && author !== 'Director') {
     return { path, ok: false, verdict: 'director-only', owner: 'Director', rule: directorOnly.pattern, reason: directorOnly.reason };
   }
   const authoring = manifest.managers.find((manager) => manager.id === author);
   if (author !== 'Director') {
     assert.ok(authoring, `authoring manager ${author} is not declared in the territory manifest`);
-    const denied = authoring.denied.find((rule) => rule.regex.test(path));
+    const denied = authoring.denied.find((rule) => ruleMatches(rule, path));
     if (denied) {
       return { path, ok: false, verdict: 'denied', owner: author, rule: denied.pattern, reason: denied.reason };
     }
   }
-  const shared = manifest.shared.find((rule) => rule.regex.test(path));
+  const shared = manifest.shared.find((rule) => ruleMatches(rule, path));
   if (shared) {
     return { path, ok: true, verdict: 'shared', owner: 'shared', rule: shared.pattern, reason: shared.reason };
   }
@@ -304,7 +427,7 @@ export function resolveOwnership(manifest, rawPath, author) {
   const matches = [];
   for (const manager of manifest.managers) {
     for (const rule of manager.owned) {
-      if (rule.regex.test(path)) matches.push({ manager: manager.id, rule });
+      if (ruleMatches(rule, path)) matches.push({ manager: manager.id, rule });
     }
   }
   if (!matches.length) {

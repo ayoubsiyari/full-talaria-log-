@@ -7,6 +7,8 @@
     "test:territory": "node --test scripts/tests/territory-preflight.test.mjs",
     "preflight:module-contracts": "node scripts/module-contract-preflight.mjs",
     "test:module-contracts": "node --test scripts/tests/module-contract-preflight.test.mjs scripts/tests/module-presence-runtime.test.mjs scripts/tests/module-presence-browser.test.mjs",
+    "preflight:shell-inventory": "node scripts/shell-inventory-preflight.mjs",
+    "test:shell-inventory": "node --test scripts/tests/shell-inventory-preflight.test.mjs scripts/tests/servable-shell-discovery.test.mjs",
     "build:chart-v9": "npm run preflight:module-contracts && npm run build:live --prefix \"chart v 1.4/talaria-design\"",
     "sync:chart-v9": "node \"chart v 1.4/talaria-design/scripts/sync-v9-to-homepage.mjs\"",
     "dev:chart-v9": "npm run dev:live --prefix \"chart v 1.4/talaria-design\"",
@@ -17,7 +19,11 @@
     "docker:build-chart": "docker compose build trading-chart",
     "docker:up-chart": "docker compose up -d --build trading-chart",
     "checkpoint:provenance": "node scripts/checkpoint-provenance.mjs",
-    "test:checkpoint-provenance": "node --test scripts/tests/checkpoint-provenance.test.mjs"
+    "test:checkpoint-provenance": "node --test scripts/tests/checkpoint-provenance.test.mjs",
+    "preflight:order-overlay-browser": "node scripts/order-overlay-browser-runner.mjs",
+    "test:order-overlay-browser": "node --test scripts/tests/order-overlay-browser-runner.test.mjs",
+    "preflight:order-registry-eviction": "node scripts/order-registry-eviction-invariant.mjs",
+    "test:order-registry-eviction": "node --test scripts/tests/order-registry-eviction-invariant.test.mjs"
   },
   "dependencies": {
     "dukascopy-node": "^1.46.3",

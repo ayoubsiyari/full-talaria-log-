@@ -27,7 +27,7 @@ Status vocabulary: `RESERVED` (name taken, not yet authored) · `LIVE` (authored
 
 | Name | Signature token | Implementation | Status |
 |---|---|---|---|
-| TERRITORY-OWNERSHIP-PREFLIGHT-V1 | `TALARIA_TERRITORY_PREFLIGHT_V1` | `scripts/territory-preflight.mjs`, `scripts/lib/territory-manifest.mjs` | LIVE |
+| TERRITORY-OWNERSHIP-PREFLIGHT-V1 | `TALARIA_TERRITORY_PREFLIGHT_V1` | `scripts/territory-preflight.mjs`, `scripts/lib/territory-manifest.mjs` | LIVE (enabled; A16.1 journal-owner cells; parent-manifest B1) |
 | JOURNAL-APPEND-ONLY-GATE-V1 | `TALARIA_JOURNAL_APPEND_ONLY_V1` | `scripts/lib/journal-append-only.mjs` | LIVE |
 
 Negative-control cells reserved under these gates:
@@ -150,5 +150,5 @@ The Director ruled one compromise manifest into two internally consistent ones. 
 | STATUS-EVIDENCE-CONSISTENCY-V1 | `TALARIA_STATUS_EVIDENCE_V1` | RESERVED — A14.1: status must derive from same evidence as servable; RED on divergence |
 | LIVE-ROUTE-PROBE-V1 | `TALARIA_LIVE_ROUTE_PROBE_V1` | RESERVED — A14.1 tiebreaker: HTTP GET against built image; record status and final URL |
 
-| ORDER-OVERLAY-BROWSER-RUNNER-V1 | `TALARIA_ORDER_OVERLAY_BROWSER_V1` | RESERVED — A15.3/A15.4 browser-hosted order-overlay runner |
-| ORDER-REGISTRY-EVICTION-INVARIANT-V1 | `TALARIA_ORDER_REGISTRY_EVICTION_V1` | RESERVED — A15.2 hosted by C; B author of record; multi-writer |
+| ORDER-OVERLAY-BROWSER-RUNNER-V1 | `TALARIA_ORDER_OVERLAY_BROWSER_V1` | LIVE — A15.3/A15.4 browser-hosted order-overlay runner |
+| ORDER-REGISTRY-EVICTION-INVARIANT-V1 | `TALARIA_ORDER_REGISTRY_EVICTION_V1` | LIVE — A15.2 hosted by C; B author of record; multi-writer |

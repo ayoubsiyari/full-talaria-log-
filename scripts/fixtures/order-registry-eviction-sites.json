@@ -1,0 +1,140 @@
+{
+  "meta": {
+    "id": "talaria-order-registry-eviction-sites-v1",
+    "product": "chart v 1.4/chart/modules/order-manager.js + chart v 1.4/chart/modules/drawing-tools-manager.js",
+    "sources": [
+      {
+        "id": "order-manager",
+        "path": "chart v 1.4/chart/modules/order-manager.js"
+      },
+      {
+        "id": "drawing-tools-manager",
+        "path": "chart v 1.4/chart/modules/drawing-tools-manager.js"
+      }
+    ],
+    "registryExpression": "this.orderLines",
+    "discriminatorProperty": "isPending",
+    "singleRowDisposalCall": "this._disposeOrderLineElements",
+    "gateKind": "structural",
+    "gateKindReason": "The eviction sites live inside DOM/D3/rAF-bound methods that cannot be loaded in Node. The gate therefore reads source text, but evaluates each eviction predicate as a boolean function over an enumerated universe of row objects rather than pattern-matching it.",
+    "enforcedProperty": "For each configured source file, every `this.orderLines = <filter chain>` or manager-qualified `<ident>.orderLines = <filter chain>` assignment that this gate discovers and can parse must remove exactly the rows the surrounding source disposes. Disposal is modelled as either a collect-filter whose result array is the actual receiver of a `.forEach` disposal loop, or a single row named by the disposal call immediately preceding the eviction. Nothing is decided by the presence, absence, or negation of any substring; `isPending` is never searched for.",
+    "invariant": "SCOPE-LIMITED. This is a multi-writer structural invariant for the configured whole-array filter reassignment grammar only. It does not cover other mutation grammars, runtime reachability, DOM detachment, duplicate rows, or unmodelled fields. See meta.notEnforced.",
+    "hazard": "A pending order row and an executed order row can carry the same orderId. Evicting by orderId alone can drop both rows while disposing only one, permanently losing the still-live row from the frame-loop registry. The dual hazard is a disposed row left in the registry as a zombie.",
+    "siteKey": "ordinal = index among all discovered filter-chain assignments across meta.sources in source-list order, cross-checked against source id, enclosing method name, and the site's ordinal within that method. Deliberately not a line number.",
+    "wholesaleResetCount": 5,
+    "notEnforced": [
+      "G2 ONE GRAMMAR ONLY. Only whole-array reassignment through `.filter()` is inventoried. `splice`, `pop`, `shift`, `delete`, `length = n`, reassignment from `map`/`reduce`/`concat`/`slice`, and mutation through a local alias of the array are not detected at all.",
+      "G3 WHOLESALE RESETS ARE COUNTED, NOT CHECKED. `this.orderLines = []` drops the entire registry with no disposal analysis. Only the count is pinned, so that a new one cannot appear silently.",
+      "G4 NO EXECUTION. Nothing observes a real frame, a real row, or the reachability of any branch. A predicate can be removal-set-correct under this model and still be unreachable, or reached with bindings other than the ones the gate assumes.",
+      "G5 DISPOSAL IS ASSUMED, NOT OBSERVED. The gate matches the name of the disposal call and the shape of the disposal loop. It does not know whether either actually detaches DOM, and it does not model a `try/catch` swallowing a mid-row throw.",
+      "G6 FINITE ROW UNIVERSE. 3 order ids (the target, a numeric twin of the target so that `==` and `===` are distinguishable, and an unrelated id) x 2 pending states x 4 chart slots x 2 encodings of not-pending. A predicate wrong only outside that universe is accepted.",
+      "G7 PREMISED BINDINGS. The meanings of the free identifiers `orderId` and `ch` at each site are premises, not derivations. The pending component of each single-row site's disposed row is derived from source, and the declared row must be produced by the iteration source, but nothing proves the declared iteration source is the only one.",
+      "G8 THE `ol.chart || this.chart` FALLBACK IS NOT COVERED. The problematic world where the home chart equals `ch` and the disposed row has no explicit chart is excluded because the shipped predicates also remove a row they did not dispose there.",
+      "G9 CONSISTENCY, NOT INTENT. Narrowing both collect and eviction by the same extra condition is accepted if removal still equals disposal. The gate proves the two sets agree; it never proves the agreed set is what the caller wanted.",
+      "G10 DELIBERATELY OVER-STRICT IN PLACES. A `for...of` disposal loop, a disposal call behind an `if`, a statement inserted between disposal and eviction, a block-bodied predicate, or any function call inside a predicate all fail even when code is correct.",
+      "G11 NO EXEMPTIONS, BY DESIGN. Unknown keys in `meta`, `meta.sources`, sites, or disposal blocks are rejected; there is no field to mark a site exempt."
+    ]
+  },
+  "sites": [
+    {
+      "ordinal": 0,
+      "source": "order-manager",
+      "enclosingMethod": "_dropOrderVisualsNotOnMainChart",
+      "ordinalInMethod": 0,
+      "disposal": {
+        "kind": "collected-set",
+        "arrayBinding": null
+      },
+      "note": "Chart-scoped mass eviction, no orderId in the key. The inline collect-filter strips every off-main row, and the eviction keeps exactly the complement."
+    },
+    {
+      "ordinal": 1,
+      "source": "order-manager",
+      "enclosingMethod": "removePendingOrderLine",
+      "ordinalInMethod": 0,
+      "disposal": {
+        "kind": "collected-set",
+        "arrayBinding": "lineDatas"
+      },
+      "note": "Collects pending rows for the orderId into `lineDatas`, disposes each in a forEach on that same binding, then removes exactly that set."
+    },
+    {
+      "ordinal": 2,
+      "source": "order-manager",
+      "enclosingMethod": "_refreshOpenPositionSlTpAfterPartialTpClose",
+      "ordinalInMethod": 0,
+      "disposal": {
+        "kind": "collected-set",
+        "arrayBinding": null
+      },
+      "note": "Collect-filter is chained into the disposal forEach, then the eviction removes the executed rows for the orderId."
+    },
+    {
+      "ordinal": 3,
+      "source": "order-manager",
+      "enclosingMethod": "removeOrderLine",
+      "ordinalInMethod": 0,
+      "disposal": {
+        "kind": "collected-set",
+        "arrayBinding": "orderLinesToRemove"
+      },
+      "note": "Undiscriminated by design: collects every row with the orderId, disposes each on the same binding, then removes exactly that set."
+    },
+    {
+      "ordinal": 4,
+      "source": "order-manager",
+      "enclosingMethod": "updateOrderLines",
+      "ordinalInMethod": 0,
+      "disposal": {
+        "kind": "single-row",
+        "binding": "olEntry",
+        "iterationBinding": "lines",
+        "disposedRow": {
+          "orderId": "target",
+          "pending": true,
+          "chart": "ch"
+        }
+      },
+      "note": "Pending branch: `_findPendingOrderById` missed, so the single row `olEntry` is disposed. The eviction must remove that row and nothing else."
+    },
+    {
+      "ordinal": 5,
+      "source": "order-manager",
+      "enclosingMethod": "updateOrderLines",
+      "ordinalInMethod": 1,
+      "disposal": {
+        "kind": "single-row",
+        "binding": "olEntry",
+        "iterationBinding": "lines",
+        "disposedRow": {
+          "orderId": "target",
+          "pending": false,
+          "chart": "ch"
+        }
+      },
+      "note": "Executed branch: `_findOpenPositionById` missed, so the single row `olEntry` is disposed. The eviction must remove that row and nothing else."
+    },
+    {
+      "ordinal": 6,
+      "source": "drawing-tools-manager",
+      "enclosingMethod": "deleteDrawing",
+      "ordinalInMethod": 0,
+      "disposal": {
+        "kind": "collected-set",
+        "arrayBinding": "positionsToRemove"
+      },
+      "note": "G1 site from drawing-tools-manager. This fixture deliberately lists the manager-qualified writer; the current source is expected to fail unless the disposal set can be proven from an orderLines collect-filter."
+    },
+    {
+      "ordinal": 7,
+      "source": "drawing-tools-manager",
+      "enclosingMethod": "deleteDrawing",
+      "ordinalInMethod": 1,
+      "disposal": {
+        "kind": "collected-set",
+        "arrayBinding": "linesToRemove"
+      },
+      "note": "G1 site from drawing-tools-manager. Current source uses a block-bodied collect predicate and an `includes(...)` eviction predicate, both outside the restricted grammar and therefore RED rather than exempt."
+    }
+  ]
+}
