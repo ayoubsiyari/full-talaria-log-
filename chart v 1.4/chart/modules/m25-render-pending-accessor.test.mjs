@@ -61,6 +61,8 @@ import { fileURLToPath } from 'node:url';
 const BASE_COMMIT = 'e572a140cda9c8e7ccf3e7ced210332471c5ef5a';
 /** Base of THIS packet — the accessor as shipped, before visibility + attribution. */
 const ATTRIBUTION_BASE_COMMIT = 'ba2d30e5729d680d04742fb23847f6d5cb510e69';
+/** Base of the report-map packet: attribution exists, reporter does not surface it. */
+const REPORT_MAP_BASE_COMMIT = 'e56e9244d1d8d8674e234fff400ae4bceca290a2';
 
 const CANONICAL = ['chart v 1.4', 'chart', 'chart.js'];
 const MIRROR = ['homepage', 'public', 'chart', 'chart.js'];
@@ -201,6 +203,8 @@ const BASE_SOURCE = gitShow(BASE_COMMIT, 'chart v 1.4/chart/chart.js');
 const BASE = versionBundle(BASE_COMMIT.slice(0, 9), BASE_SOURCE);
 const ATTR_BASE_SOURCE = gitShow(ATTRIBUTION_BASE_COMMIT, 'chart v 1.4/chart/chart.js');
 const ATTR_BASE = versionBundle(ATTRIBUTION_BASE_COMMIT.slice(0, 9), ATTR_BASE_SOURCE);
+const REPORT_MAP_BASE_SOURCE = gitShow(REPORT_MAP_BASE_COMMIT, 'chart v 1.4/chart/chart.js');
+const REPORT_MAP_BASE = versionBundle(REPORT_MAP_BASE_COMMIT.slice(0, 9), REPORT_MAP_BASE_SOURCE);
 
 // ── realm ──────────────────────────────────────────────────────────────────
 
@@ -910,6 +914,126 @@ test('M25 attribution: three arming sites co-firing in one frame yield three att
     assert.match(key, /^m25-cofire-sites\.js:\d+:\d+$/,
       'keys must be file:line:column source positions');
   }
+});
+
+test('M25 report-map: __mcDiagReport() returns site attribution without widening the chart table', () => {
+  const sandbox = makeRealm(HEAD, { attribution: true });
+  const tableCalls = [];
+  sandbox.window.console = {
+    table(rows) { tableCalls.push(rows); },
+    log() {},
+  };
+  const chart = sandbox.__makeChart();
+  const win = bootReporter(sandbox, chart);
+  const fires = compileCoFiringSites(sandbox, chart, THREE_FILE_SITES, 'm25-report-cofire-sites.js');
+
+  for (const fire of fires) fire();
+
+  const [row] = win.__mcDiagReport();
+  const siteKeys = Object.keys(row.sites || {});
+  note('report-returns-sites',
+    row.m25FramesArmed === 1 && siteKeys.length === 3,
+    `m25FramesArmed=${row.m25FramesArmed}, returned sites=${JSON.stringify(row.sites)}`);
+  assert.equal(row.m25FramesArmed, 1,
+    'the scalar must still show the saturated per-frame count for the co-firing frame');
+  assert.equal(siteKeys.length, 3,
+    '__mcDiagReport() must return all co-firing arming sites, not just the scalar');
+  for (const key of siteKeys) assert.equal(row.sites[key], 1);
+
+  assert.equal(tableCalls.length, 2, 'the reporter should table compact chart rows and separate site rows');
+  assert.equal(Object.prototype.hasOwnProperty.call(tableCalls[0][0], 'sites'), false,
+    'the chart table must stay readable: no 28-key map stuffed into a cell');
+  assert.equal(tableCalls[1].length, 3, 'site attribution should render as one readable row per site');
+});
+
+test('M25 report-map: attribution off is byte-equal to the report-map base output', () => {
+  const headSandbox = makeRealm(HEAD);
+  const headChart = headSandbox.__makeChart();
+  const headWin = bootReporter(headSandbox, headChart);
+  const baseSandbox = makeRealm(REPORT_MAP_BASE);
+  const baseChart = baseSandbox.__makeChart();
+  const baseWin = bootReporter(baseSandbox, baseChart);
+  const script = [true, false, true, true, false];
+
+  for (const value of script) {
+    headChart.renderPending = value;
+    baseChart.renderPending = value;
+  }
+
+  const headRows = headWin.__mcDiagReport();
+  const baseRows = baseWin.__mcDiagReport();
+  note('report-attribution-off-byte-equal',
+    JSON.stringify(headRows) === JSON.stringify(baseRows),
+    `${REPORT_MAP_BASE_COMMIT.slice(0, 9)} bytes=${JSON.stringify(baseRows).length}`);
+  assert.equal(JSON.stringify(headRows), JSON.stringify(baseRows),
+    'with attribution off, __mcDiagReport() returned value must remain byte-equal to e56e9244d');
+  assert.deepEqual(Object.keys(headRows[0]), Object.keys(baseRows[0]),
+    'with attribution off, the row shape must not gain sites or placeholders');
+  assert.equal(Object.prototype.hasOwnProperty.call(headRows[0], 'sites'), false);
+});
+
+test('M25 report-map: kill switch is distinguishable from an idle session in the report', () => {
+  const idleSandbox = makeRealm(HEAD);
+  const idleWin = bootReporter(idleSandbox, idleSandbox.__makeChart());
+  const disabledSandbox = makeRealm(HEAD, { killSwitch: true });
+  const disabledWin = bootReporter(disabledSandbox, disabledSandbox.__makeChart());
+
+  const [idleRow] = idleWin.__mcDiagReport();
+  const [disabledRow] = disabledWin.__mcDiagReport();
+  note('report-distinguishes-killswitch',
+    idleRow.m25FramesArmed === 0 && disabledRow.m25FramesArmed === null,
+    `idle=${String(idleRow.m25FramesArmed)}, disabled=${String(disabledRow.m25FramesArmed)}`);
+  assert.equal(idleRow.m25FramesArmed, 0, 'idle instrumentation must still report zero demanded frames');
+  assert.equal(disabledRow.m25FramesArmed, null,
+    'disabled instrumentation must not be reportable as the same zero as an idle session');
+  assert.deepEqual(
+    Object.keys(disabledRow),
+    Object.keys(idleRow),
+    'the kill-switch marker should use the existing column, not add a normal-case column',
+  );
+});
+
+test('M25 report-map: __mcDiagCollect returns host and iframe charts without cross-origin throws', () => {
+  const sandbox = makeRealm(HEAD);
+  const hostChart = sandbox.__makeChart();
+  const iframeChart = sandbox.__makeChart();
+  sandbox.__m25HostChart = hostChart;
+  sandbox.__m25IframeChart = iframeChart;
+  vm.runInContext(`
+window.chart = globalThis.__m25HostChart;
+window.document = {
+  querySelectorAll(selector) {
+    if (selector !== 'iframe') return [];
+    return [
+      {
+        contentWindow: {
+          chart: globalThis.__m25IframeChart,
+          document: {
+            documentElement: { classList: { contains: () => true } },
+            querySelectorAll: () => [],
+          },
+          location: { search: '?panelId=panel-a' },
+        },
+      },
+      {
+        get contentWindow() { throw new Error('cross-origin'); },
+      },
+    ];
+  },
+};
+_talariaInstallMcDiagReporter();
+`, sandbox, { filename: 'm25-collect-boot.js' });
+
+  assert.equal(typeof sandbox.window.__mcDiagCollect, 'function',
+    'the collector should be exposed beside __mcDiagReport and __mcDiagReset');
+  let charts;
+  assert.doesNotThrow(() => { charts = sandbox.window.__mcDiagCollect(); },
+    'cross-origin iframe access must be swallowed like the existing walker');
+  note('collect-host-and-iframe', charts.length === 2,
+    `collected=${charts.map((chart) => chart === hostChart ? 'host' : 'iframe').join(',')}`);
+  assert.equal(charts.length, 2);
+  assert.equal(charts[0], hostChart);
+  assert.equal(charts[1], iframeChart);
 });
 
 test('M25 attribution: the erasure case — a site that only ever fires second is still attributed', () => {
