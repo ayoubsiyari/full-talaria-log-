@@ -4059,3 +4059,70 @@ The reviewer flagged a session-protocol hazard I am treating as a defect instead
 I blocked the parent for shipping an instrument that reads plausibly and answers wrongly. Relying on protocol discipline to stop someone reading the saturated scalar is a weaker control than putting the right number where they will look. Dispatching a small follow-up to surface the map through the reporter and expose the collector, rather than writing a note and hoping.
 
 M25 is merged and correct as it stands; this is additive.
+
+---
+
+## 2026-07-28 19:08 — Report-map ACCEPTED and merged at `f3792a040`. 45/45 at the tip; the instrument row is closed.
+
+The M25 chain is now three merged packets: accessor (`ba2d30e57`), attribution (`733ad254e`), reporter surfacing (`1f50a47fb`). Canonical and mirror share blob `1e1c493b6`.
+
+### The `animate()` fingerprint dispute — both numbers were real, both extractions sloppy
+
+I passed the author a spec figure of **2,404 bytes / sha256 `2da0ed5db403f0df`**, taken from a prior review without recording how it was derived. The author reported **2,403 chars / `cde6083d893677f9`** and said my premise did not match. The reviewer brute-forced every contiguous line span under six renderings and **reproduced both hashes exactly**:
+
+| Claim | Span | Rendering | Size |
+|---|---|---|---|
+| Mine | 28911–28962 | indent stripped, LF, no trailing NL | 2404 B / 2402 c |
+| Author's | 28912–28963 | LF, plus trailing NL | 2405 B / 2403 c |
+
+Line 28911 is a whitespace-only separator *before* the declaration; 28963 is the blank line *after* the closing brace. **My span started one line early, theirs ended one line late, and I quoted bytes while they quoted chars.** Extraction-method difference, as I suspected. `animate()` did not change.
+
+**Citable fingerprint, method stated so this never recurs** — brace-matched from the first character of the declaration's indentation through the matching closing brace inclusive, LF, no trailing newline:
+
+> `animate()` — **2403 bytes / 2401 chars**, sha256 `a41cdd2e02636736e8b7d802d19be8d37f2e23a5a3c716b5cdae0b64a42b6632`
+
+Identical at `e56e9244d` and `1f50a47fb` and in both `chart.js` copies. Bytes exceed chars by 2 because of one em-dash in a comment — **which is precisely why the two figures could never be reconciled**, and a reminder that a hash without its derivation is not a specification. That was my brief-defect: I shipped a number stripped of its method.
+
+### The blind spot re-checked, and it held
+
+The exempted region grew from 249 lines to 295 and swallows the whole reporter. Every top-level function inside it was hashed across both revisions: **7 unchanged** (including `_talariaMcDiagCollectCharts` byte-identical), **2 changed** (`_talariaMcDiagSnapshot`, `_talariaInstallMcDiagReporter`), **3 added**.
+
+The check I most wanted was the residue: strip every function body and compare what remains — the allow-list, the three `M25_ARMING_SITES_*` constants, the doc comments. It differs by exactly **six newlines**, the blank-line separators for three new functions; whitespace-normalised it is identical at 4,387 characters. **Nothing was slipped into the allow-list or the constants**, which is where I would have hidden something. Outside all three regions, `chart.js` is byte-identical at 1,945,715 bytes.
+
+**This is the third consecutive commit on this file whose gate gap was closed by a reviewer hashing functions by hand.** That is not sustainable. New row: promote function-level hashing into the suite so the next packet does not need a human for it.
+
+### `null` was the right call, and I can now say why rather than assume
+
+No consumer reads `m25FramesArmed` **at all** — established by `git grep` across the tracked tree plus `rg --no-ignore --hidden` so gitignored `docs/` was included. `harness-lib.mjs` and `diagRowsByPanelId` read only `fetches`; the m22 runner reads three named fields; `confirm-host.mjs` touches only `panelId`. The single wholesale-row consumer lands in evidence output, and with attribution off that row is byte-equal to base, so **no stored evidence shifts**.
+
+A separate boolean field would have widened the row in *every* session including the default, destroying the byte-equality this packet worked to preserve. Reusing the column keeps `Object.keys(row)` identical.
+
+### The collector reaches the panels, and the cycle guard is load-bearing
+
+`__mcDiagCollect` passes a fresh `Set()`, and that matters: a mutant swapping it for a no-op guard **collects 16,785 charts** against a self-referential frame. The two statements outside any `try` are `Set` operations on an object reference and cannot throw even for a cross-origin `WindowProxy`.
+
+Cross-origin was modelled two ways, including the realistic browser case the author did not cover — where `contentWindow` resolves to an opaque proxy and *every* property access throws, not just the getter. Host and same-origin panel both return, nothing throws, no hang.
+
+And the three iframe-only sites are genuinely reachable: `multichart-manager.js:445` sets `frame.src` to a **relative** URL so production panels are same-origin, every frame loading `chart.js` sets `window.chart` at `:41937` which is the key the walker looks for, and `panel-cmd-bridge.js` contains exactly the 3 arming sites.
+
+**Inherited residual, not introduced:** a genuinely cross-origin frame is skipped silently with no signal, and its sites would read as dead. Base had the same property. A `skipped` count in the returned value would close it cheaply — new row.
+
+### A reviewer self-correction worth more than the result
+
+The reviewer's first mutation run reported **14/14 killed and was worthless**: two oracles were failing on the *unmutated* baseline and killing everything by default. One was their own error (demanding kill-switch output match base — the exact thing the packet changes), the other a cross-realm `deepStrictEqual` prototype mismatch. They fixed both, re-ran, and got a real 14/14.
+
+**I want that recorded as a method requirement, not a curiosity: a mutation score is meaningless without asserting the oracles pass on the unmutated product first.** I have accepted mutation scores three times today without asking for that control. That is my gap, not theirs.
+
+## 2026-07-28 19:09 — The one thing that is NOT closed, and it is my constraint that causes it
+
+**With attribution off — the default — the report is byte-identical to base: the saturated scalar, no `sites` key, and no indication that a per-site map exists at all.** An operator who does not know about `__TALARIA_ENABLE_M25_ARMING_ATTRIBUTION_V1` gets the misleading number and stops. **That is precisely the scenario this packet was dispatched to prevent**, now solved for flag-on sessions and untouched for flag-off ones.
+
+The silence is forced by the byte-equality requirement, **which I imposed**. I am accepting it rather than reopening, for a reason I want on the record so it can be challenged: the only near-term consumer is the session we are about to run, which will set the flag; and relaxing byte-equality would shift stored evidence rows for a hazard whose victim is hypothetical. That is a judgement, not a proof, and it sits uncomfortably beside my own standing lesson that fixing the instrument beats trusting the protocol.
+
+**Session protocol, recorded here because a runbook line is the mitigation:**
+
+1. Set `window.__TALARIA_ENABLE_M25_ARMING_ATTRIBUTION_V1 = true` **before any chart is constructed** — it is read once per construction, so setting it late attributes nothing.
+2. Bump the `?v=` token before reading anything off the deployed site. It sits at `20260727b80` and has been static across the last five `chart.js`-touching commits. **A cached response serves a pre-M25 engine and the counter is simply absent — indistinguishable from a zero reading.**
+3. Read `__mcDiagCollect()` for host plus panels, not `__mcDiagReport()` alone.
+4. **Never quote `m25FramesArmed` as a path count.** It saturates at one per frame by construction. The per-site map is the answer; the scalar is a frame count wearing a counter's name.
+5. Read nothing from a chart constructed before step 1.
