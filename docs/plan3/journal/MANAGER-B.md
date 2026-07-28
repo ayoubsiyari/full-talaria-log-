@@ -2074,3 +2074,45 @@ Candidate fix is to stop `recomputeSharedMarginState` writing time at all, since
 **Not fixing yet:** `order-manager.js` is held by B-W14/B-R8. I am not editing a file under another packet again today (B-0100).
 
 **A16.4:** manager-finding-defect **10**. Manager-caused **12**.
+
+## B-0106 — M10 is not a display bug. The wall clock is persisted, restored, and steers the replay playhead.
+
+B-A9's census changes the severity and the shape of the fix. I verified its two load-bearing claims and one consequence myself.
+
+### It round-trips through durable storage
+
+`session_current_time` is serialised into the runtime patch (`order-manager.js:4177-4180`) and restored (`:7474-7479`) behind a guard that is only `Number.isFinite` — **which a wall-clock millisecond value passes trivially**. The patch reaches sessionStorage, localStorage, and a PATCH to `/api/sessions/.../state`. So a wall clock written at 12:00 is still there tomorrow, and comes back as the session clock.
+
+### It is treated as an authority, not a hint
+
+`chart.js:10194-10200`, on a pair switch during replay:
+
+> *"Use the most reliable timestamp for positioning: 1. replayTargetTs 2. multiInstrumentSession.current_time (**global session clock**) 3. replay.replayTimestamp"*
+
+It ranks `current_time` **above** the actual replay position and feeds it to `goToReplayTimestamp()`. A wall-clock value there seeks the playhead to *now* — past the end of the historical data. `_captureReplayPlayheadMs` (`chart.js:24191`) uses it as a last-resort playhead too. The comment calling it the reliable global session clock is the tell: this field is *documented* as authoritative and is *implemented* as sometimes-wall-clock.
+
+**So M10 is not "a duration label reads wrong."** It is a field with an undeclared invariant — "this is a bar time" — that three writers can violate and four consumers trust.
+
+### The correction I have to make to my own B-0105
+
+I said the fix was to stop the margin function writing time. **That is necessary and not sufficient**, and shipping only that would be another partial fix that looks complete — the exact class I rejected M4 for twice today. There are **three** independent wall-clock sources:
+
+| # | Source | Owner |
+|---|---|---|
+| 1 | construction seed `current_time: Date.now()` (`order-service.js:38-49`) | B |
+| 2 | margin recompute stamp (`order-service.js:446`) | B |
+| 3 | restored persisted value, guarded only by `Number.isFinite` (`order-manager.js:7474-7479`) | B |
+
+B-A9 verified source 1 is not theoretical: the initial panel update runs on a timeout and `updatePositionsPanel()` calls `persistRuntimeOrderState()` at its end, so **the construction wall clock can be persisted before any bar-time writer has ever run.** Killing the stamp would leave sources 1 and 3 live, and the symptom would survive with a lower duty cycle — which is worse than not fixing it, because it would read as fixed.
+
+### The hard part, stated plainly
+
+A bar time and a wall clock are both epoch milliseconds. **You cannot tell them apart by inspection**, so the restore path cannot simply validate the value. The only sound discriminator is domain: a legitimate `current_time` never exceeds the last loaded bar of the dataset. Any fix must therefore either establish absence as representable (seed `null`, and make every consumer handle absent rather than coercing) or bound the value against loaded data. I am not choosing between those in a journal entry — it needs a spec and a RED that fails on all three sources, not just the one I found first.
+
+### Ownership split
+
+Mine: all three writers, `_m19DockNowTs`, `_m19DockTimeLabel`. **A's:** the `chart.js:10194` pair-switch consumer, `_captureReplayPlayheadMs` (`chart.js:24191`), `_writeTradingSessionLocalBackup` (`chart.js:11411`). I can make the field trustworthy; I cannot change what A's code does when it isn't. Escalating that half.
+
+**ASSUMPTION standing from B-0105** (pause → no tick → stale stamp persists) is unchanged and still unverified end to end.
+
+**A16.4:** manager-finding-defect **11**. Manager-caused **12**. Self-correction on B-0105's scope logged here rather than as a new defect, since it was my analysis narrowing, not a subagent's error.
