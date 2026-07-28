@@ -773,7 +773,8 @@ export async function runM6ReplayLeakPreflight(options = {}) {
   // UNPROVEN escalate — not ship credit. Opt in only after the defect is
   // first shown RED, then fixed: TALARIA_M6_LEAK_FIXED=1.
   const finalLive = acceptance.report?.final?.liveReplaySystems;
-  const defectReproduced = acceptance.status === 'RED' && Number(finalLive) > 1;
+  const schedulerRed = acceptance.cells?.some((cell) => cell.name === 'M6-SCHEDULER-CENSUS-RETURNS-TO-BASELINE' && cell.pass === false);
+  const defectReproduced = acceptance.status === 'RED' && (Number(finalLive) > 1 || schedulerRed);
   if (process.env.TALARIA_M6_LEAK_FIXED !== '1') {
     if (acceptance.ok && finalLive === 1) {
       return {
@@ -796,7 +797,7 @@ export async function runM6ReplayLeakPreflight(options = {}) {
         signature: M6_REPLAY_LEAK_SIGNATURE,
         acceptance,
         mutant: null,
-        error: `PO defect reproduced (final live=${finalLive}); ship blocked until fix (TALARIA_M6_LEAK_FIXED=1)`,
+        error: `PO defect reproduced (final live=${finalLive}; schedulerRed=${schedulerRed === true}); ship blocked until fix (TALARIA_M6_LEAK_FIXED=1)`,
       };
     }
   }

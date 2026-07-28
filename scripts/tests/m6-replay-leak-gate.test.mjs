@@ -225,6 +225,30 @@ test('fault-injection: preflight UNPROVEN when PO workload stays live=1', async 
   assert.equal(preflight.status, 'UNPROVEN');
 });
 
+test('fault-injection: preflight treats scheduler census RED as reproduced PO defect', async () => {
+  const preflight = await runM6ReplayLeakPreflight({
+    findBrowser: () => '/fixture/chrome',
+    runBrowser: async () => ({
+      report: {
+        ok: true,
+        cycles: 5,
+        workload: { armed: true, panels: 4, indicatorsOk: true, order: { ok: true }, stillPlaying: 4 },
+        baseline: withScheduler({ liveReplaySystems: 1, connectedIframes: 0, detachedTrackedIframes: 0 }),
+        final: withScheduler(
+          { liveReplaySystems: 1, connectedIframes: 0, detachedTrackedIframes: 0 },
+          schedulerTotals({ pendingIntervals: 4, totalResidue: 4 }),
+        ),
+      },
+      timedOut: false,
+      stderrTail: '',
+    }),
+  });
+
+  assert.equal(preflight.ok, false);
+  assert.equal(preflight.status, 'RED');
+  assert.match(preflight.error, /schedulerRed=true/);
+});
+
 test('fault-injection: preflight requires mutant to go red once FIXED=1', async () => {
   const prev = process.env.TALARIA_M6_LEAK_FIXED;
   process.env.TALARIA_M6_LEAK_FIXED = '1';

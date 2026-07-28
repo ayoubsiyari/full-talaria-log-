@@ -53,12 +53,23 @@ function report({ mutant = false, p7WorkRatio = 0.025, p2MemoryDelta = 0 } = {})
       timings: { p2IdleMs: 10_000 },
     },
     replay: {
+      p4: {
+        ok: true,
+        panelCount: 4,
+        playingCount: 4,
+        requestedSpeed: 10,
+        rows: ['A', 'B', 'C', 'D'].map((id) => ({ id, ok: true, state: { isPlaying: true, speed: 10 } })),
+      },
       p6: { ok: true, requestedSpeed: 10, nearestSpeed: 10, method: 'setSpeed', state: { isPlaying: true, speed: 10 } },
       p7: { ok: true, state: { isPlaying: false, speed: 10 } },
     },
     phases: {
       P1: phase({ label: 'P1', workRatio: 0.02 }),
       P2: phase({ label: 'P2', workRatio: 0.03, memoryDelta: p2MemoryDelta }),
+      P4: {
+        ...phase({ label: 'P4', workRatio: 0.22, timerCallbacks: 24 }),
+        probe: { windowCount: 4, windows: [] },
+      },
       P6: phase({ label: 'P6', workRatio: 0.18, timerCallbacks: 18 }),
       P7: phase({ label: 'P7', workRatio: p7WorkRatio, timerCallbacks: 3 }),
     },
@@ -71,13 +82,17 @@ test('unit: host HTML records shortened meta for CI P2', () => {
     mutant: false,
   });
   assert.match(html, /P2-idle-soak/);
+  assert.match(html, /P4-four-panel-replay-10x-or-nearest/);
   assert.match(html, /"shortened":true/);
   assert.match(html, /PerformanceObserver longtask/);
 });
 
-test('unit: oracle accepts P1/P2/P6/P7 report and records nearest replay speed', () => {
+test('unit: oracle accepts P1/P2/P4/P6/P7 report and records replay observables', () => {
   const cells = assertPoCpuAbBenchmarkReport(report());
   assert.equal(cells.every((cell) => cell.pass), true);
+  const p4 = cells.find((cell) => cell.name === 'P4-FOUR-PANEL-REPLAY-RUNNING-OBSERVED');
+  assert.equal(p4.replay.panelCount, 4);
+  assert.equal(p4.probeWindowCount, 4);
   const p6 = cells.find((cell) => cell.name === 'P6-REPLAY-10X-OR-NEAREST-OBSERVED');
   assert.equal(p6.replay.nearestSpeed, 10);
 });

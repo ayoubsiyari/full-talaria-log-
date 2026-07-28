@@ -15,6 +15,7 @@ export const DEFAULT_PHASE_TIMINGS = Object.freeze({
   p1ObserveMs: 30_000,
   p2IdleMs: 120_000,
   p2ObserveMs: 30_000,
+  p4ObserveMs: 30_000,
   p6ObserveMs: 30_000,
   p7SettleMs: 30_000,
   p7ObserveMs: 30_000,
@@ -26,6 +27,7 @@ export const SHORT_PHASE_TIMINGS = Object.freeze({
   p1ObserveMs: 3_000,
   p2IdleMs: 10_000,
   p2ObserveMs: 3_000,
+  p4ObserveMs: 3_000,
   p6ObserveMs: 3_000,
   p7SettleMs: 1_000,
   p7ObserveMs: 3_000,
@@ -165,6 +167,7 @@ export function poCpuAbHostHtml({ timings = DEFAULT_PHASE_TIMINGS, mutant = fals
   <iframe id="harness" src="/harness/host.html?panels=1&tf=1m&pair=same&hostFile=25"></iframe>
   <script type="module">
     const CONFIG = ${configJson};
+    const PANEL_IDS = ['B', 'C', 'D'];
     const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
     function harnessWindow() {
@@ -180,9 +183,30 @@ export function poCpuAbHostHtml({ timings = DEFAULT_PHASE_TIMINGS, mutant = fals
       return ch && ch.replaySystem;
     }
 
-    function probe() {
-      const win = harnessWindow();
+    function probe(win = harnessWindow()) {
       return win && win.__poCpuAbProbe;
+    }
+
+    function manager() {
+      const win = harnessWindow();
+      return win.__harnessManager || win.__multichartManagerRef;
+    }
+
+    function chartWindows() {
+      const win = harnessWindow();
+      const out = [{ id: 'A', win }];
+      const mgr = manager();
+      if (mgr && mgr.charts) {
+        for (const id of PANEL_IDS) {
+          const entry = mgr.charts.get(id);
+          try {
+            if (entry && entry.frame && entry.frame.contentWindow) {
+              out.push({ id, win: entry.frame.contentWindow, frame: entry.frame });
+            }
+          } catch (_) {}
+        }
+      }
+      return out;
     }
 
     function memorySnapshot(win) {
@@ -247,23 +271,76 @@ export function poCpuAbHostHtml({ timings = DEFAULT_PHASE_TIMINGS, mutant = fals
       };
     }
 
-    async function collectPhase(label, durationMs) {
-      const win = harnessWindow();
-      const p = probe();
-      if (!p || typeof p.snapshot !== 'function') throw new Error('PO CPU probe missing in harness window');
-      performance.mark(label + ':start');
-      const start = p.snapshot();
-      const startMemory = memorySnapshot(win);
-      await sleep(durationMs);
-      const end = p.snapshot();
-      const endMemory = memorySnapshot(win);
-      performance.mark(label + ':end');
-      performance.measure(label, label + ':start', label + ':end');
-      return deltaMetrics(label, durationMs, start, end, startMemory, endMemory);
+    function collectProbeRows() {
+      const rows = [];
+      for (const entry of chartWindows()) {
+        const p = probe(entry.win);
+        if (!p || typeof p.snapshot !== 'function') continue;
+        rows.push({ id: entry.id, snapshot: p.snapshot(), memory: memorySnapshot(entry.win) });
+      }
+      return rows;
     }
 
-    function replayState() {
-      const rs = replaySystem();
+    function aggregateProbeRows(label, durationMs, startRows, endRows) {
+      const startsById = new Map(startRows.map((row) => [row.id, row]));
+      const perWindow = [];
+      let callbackBusyMs = 0;
+      let longTaskDurationMs = 0;
+      let intervalCallbacks = 0;
+      let timeoutCallbacks = 0;
+      let rafCallbacks = 0;
+      let longTaskCount = 0;
+      let maxCallbackMs = 0;
+      let memoryDelta = 0;
+      let memoryExposed = true;
+      for (const endRow of endRows) {
+        const startRow = startsById.get(endRow.id);
+        if (!startRow) continue;
+        const row = deltaMetrics(label + ':' + endRow.id, durationMs, startRow.snapshot, endRow.snapshot, startRow.memory, endRow.memory);
+        perWindow.push({ id: endRow.id, ...row });
+        callbackBusyMs += row.callbackBusyMs;
+        longTaskDurationMs += row.longTaskDurationMs;
+        intervalCallbacks += row.intervalCallbacks;
+        timeoutCallbacks += row.timeoutCallbacks;
+        rafCallbacks += row.rafCallbacks;
+        longTaskCount += row.longTaskCount;
+        maxCallbackMs = Math.max(maxCallbackMs, row.maxCallbackMs);
+        if (row.memory.usedDeltaBytes == null) memoryExposed = false;
+        else memoryDelta += row.memory.usedDeltaBytes;
+      }
+      const observedMs = Math.max(1, durationMs);
+      return {
+        label,
+        durationMs,
+        observedMs,
+        callbackBusyMs,
+        longTaskDurationMs,
+        workMs: callbackBusyMs + longTaskDurationMs,
+        workRatio: (callbackBusyMs + longTaskDurationMs) / observedMs,
+        intervalCallbacks,
+        timeoutCallbacks,
+        rafCallbacks,
+        timerCallbacks: intervalCallbacks + timeoutCallbacks + rafCallbacks,
+        longTaskCount,
+        maxCallbackMs,
+        memory: { start: null, end: null, usedDeltaBytes: memoryExposed ? memoryDelta : null },
+        probe: { windowCount: perWindow.length, windows: perWindow }
+      };
+    }
+
+    async function collectPhase(label, durationMs) {
+      if (!probe() || typeof probe().snapshot !== 'function') throw new Error('PO CPU probe missing in harness window');
+      performance.mark(label + ':start');
+      const startRows = collectProbeRows();
+      await sleep(durationMs);
+      const endRows = collectProbeRows();
+      performance.mark(label + ':end');
+      performance.measure(label, label + ':start', label + ':end');
+      return aggregateProbeRows(label, durationMs, startRows, endRows);
+    }
+
+    function replayStateForChart(ch) {
+      const rs = ch && ch.replaySystem;
       if (!rs) return { present: false };
       return {
         present: true,
@@ -274,9 +351,12 @@ export function poCpuAbHostHtml({ timings = DEFAULT_PHASE_TIMINGS, mutant = fals
       };
     }
 
-    function ensureReplayActive() {
-      const ch = chart();
-      const rs = replaySystem();
+    function replayState() {
+      return replayStateForChart(chart());
+    }
+
+    function ensureReplayActiveForChart(ch) {
+      const rs = ch && ch.replaySystem;
       if (!ch || !rs) return { ok: false, reason: 'chart or replaySystem missing' };
       try {
         if (!rs.isActive && typeof rs.enterReplayMode === 'function') {
@@ -291,13 +371,17 @@ export function poCpuAbHostHtml({ timings = DEFAULT_PHASE_TIMINGS, mutant = fals
       } catch (error) {
         return { ok: false, reason: 'activate/seek failed: ' + String(error && error.message || error) };
       }
-      return { ok: !!rs.isActive, state: replayState() };
+      return { ok: !!rs.isActive, state: replayStateForChart(ch) };
     }
 
-    async function startReplay10x() {
-      const active = ensureReplayActive();
-      if (!active.ok) return { ok: false, requestedSpeed: 10, nearestSpeed: null, reason: active.reason, state: replayState() };
-      const rs = replaySystem();
+    function ensureReplayActive() {
+      return ensureReplayActiveForChart(chart());
+    }
+
+    async function startReplay10xForChart(ch) {
+      const active = ensureReplayActiveForChart(ch);
+      if (!active.ok) return { ok: false, requestedSpeed: 10, nearestSpeed: null, reason: active.reason, state: replayStateForChart(ch) };
+      const rs = ch && ch.replaySystem;
       let method = 'unavailable';
       try {
         if (typeof rs.setSpeed === 'function') {
@@ -310,7 +394,7 @@ export function poCpuAbHostHtml({ timings = DEFAULT_PHASE_TIMINGS, mutant = fals
         if (!rs.isPlaying && typeof rs.play === 'function') rs.play();
         else if (!rs.isPlaying && typeof rs.togglePlay === 'function') rs.togglePlay();
       } catch (error) {
-        return { ok: false, requestedSpeed: 10, nearestSpeed: Number(rs.speed) || null, method, reason: String(error && error.message || error), state: replayState() };
+        return { ok: false, requestedSpeed: 10, nearestSpeed: Number(rs.speed) || null, method, reason: String(error && error.message || error), state: replayStateForChart(ch) };
       }
       const started = Date.now();
       let observedPlaying = false;
@@ -324,7 +408,26 @@ export function poCpuAbHostHtml({ timings = DEFAULT_PHASE_TIMINGS, mutant = fals
         requestedSpeed: 10,
         nearestSpeed: Number.isFinite(Number(rs.speed)) ? Number(rs.speed) : null,
         method,
-        state: replayState()
+        state: replayStateForChart(ch)
+      };
+    }
+
+    async function startReplay10x() {
+      return startReplay10xForChart(chart());
+    }
+
+    async function startFourPanelReplay10x() {
+      const rows = [];
+      for (const entry of chartWindows()) {
+        rows.push({ id: entry.id, ...(await startReplay10xForChart(entry.win && entry.win.chart)) });
+      }
+      const playingCount = rows.filter((row) => row.ok && row.state && row.state.isPlaying).length;
+      return {
+        ok: rows.length >= 4 && playingCount >= 4,
+        panelCount: rows.length,
+        playingCount,
+        requestedSpeed: 10,
+        rows
       };
     }
 
@@ -341,6 +444,81 @@ export function poCpuAbHostHtml({ timings = DEFAULT_PHASE_TIMINGS, mutant = fals
       return { ok: !rs.isPlaying, state: replayState() };
     }
 
+    function pauseAllReplay() {
+      const rows = [];
+      for (const entry of chartWindows()) {
+        const ch = entry.win && entry.win.chart;
+        const rs = ch && ch.replaySystem;
+        if (!rs) {
+          rows.push({ id: entry.id, ok: false, reason: 'replaySystem missing' });
+          continue;
+        }
+        try {
+          if (typeof rs.pause === 'function') rs.pause();
+          else if (typeof rs.stop === 'function') rs.stop();
+          else if (rs.isPlaying && typeof rs.togglePlay === 'function') rs.togglePlay();
+          rows.push({ id: entry.id, ok: !rs.isPlaying, state: replayStateForChart(ch) });
+        } catch (error) {
+          rows.push({ id: entry.id, ok: false, reason: String(error && error.message || error), state: replayStateForChart(ch) });
+        }
+      }
+      return { ok: rows.every((row) => row.ok), rows };
+    }
+
+    function setGridLayout(panelCount) {
+      const win = harnessWindow();
+      const grid = win.document.getElementById('grid');
+      if (!grid) return;
+      if (panelCount <= 1) {
+        grid.style.gridTemplateColumns = 'repeat(1, 1fr)';
+        grid.style.gridTemplateRows = 'repeat(1, 1fr)';
+      } else if (panelCount === 2) {
+        grid.style.gridTemplateColumns = 'repeat(2, 1fr)';
+        grid.style.gridTemplateRows = 'repeat(1, 1fr)';
+      } else {
+        grid.style.gridTemplateColumns = 'repeat(2, 1fr)';
+        grid.style.gridTemplateRows = 'repeat(2, 1fr)';
+      }
+    }
+
+    async function expandToFourPanels() {
+      const win = harnessWindow();
+      const mgr = manager();
+      if (!mgr || typeof mgr.addChart !== 'function') throw new Error('multichart manager missing addChart');
+      setGridLayout(4);
+      for (const id of PANEL_IDS) {
+        if (mgr.charts && mgr.charts.has(id)) continue;
+        let cell = win.document.querySelector('[data-cell="' + id + '"]');
+        if (!cell) {
+          cell = win.document.createElement('div');
+          cell.className = 'cell';
+          cell.setAttribute('data-cell', id);
+          win.document.getElementById('grid').appendChild(cell);
+        }
+        mgr.addChart({ id, tf: '1m', fileId: 25 }, cell);
+      }
+      await waitFor(() => chartWindows().length >= 4
+        && chartWindows().every((entry) => entry.win && entry.win.chart && entry.win.chart.replaySystem && probe(entry.win)),
+        'four panels with probes',
+        60000);
+    }
+
+    async function collapseToSingle() {
+      const win = harnessWindow();
+      const mgr = manager();
+      if (!mgr || typeof mgr.removeChart !== 'function') throw new Error('multichart manager missing removeChart');
+      pauseAllReplay();
+      for (const id of PANEL_IDS) {
+        if (mgr.charts && mgr.charts.has(id)) mgr.removeChart(id);
+        try {
+          const cell = win.document.querySelector('[data-cell="' + id + '"]');
+          if (cell) cell.remove();
+        } catch (_) {}
+      }
+      setGridLayout(1);
+      await waitFor(() => chartWindows().length === 1, 'return to single chart', 30000);
+    }
+
     function armPauseMutant() {
       if (!CONFIG.mutant) return null;
       const win = harnessWindow();
@@ -353,6 +531,7 @@ export function poCpuAbHostHtml({ timings = DEFAULT_PHASE_TIMINGS, mutant = fals
     async function run() {
       const startedAt = new Date().toISOString();
       const phases = {};
+      let replay4 = null;
       let replay10x = null;
       let pause = null;
       let mutantInterval = null;
@@ -369,6 +548,11 @@ export function poCpuAbHostHtml({ timings = DEFAULT_PHASE_TIMINGS, mutant = fals
 
         await sleep(CONFIG.timings.p2IdleMs);
         phases.P2 = await collectPhase('P2-idle-soak', CONFIG.timings.p2ObserveMs);
+
+        await expandToFourPanels();
+        replay4 = await startFourPanelReplay10x();
+        phases.P4 = await collectPhase('P4-four-panel-replay-10x-or-nearest', CONFIG.timings.p4ObserveMs);
+        await collapseToSingle();
 
         replay10x = await startReplay10x();
         phases.P6 = await collectPhase('P6-replay-10x-or-nearest', CONFIG.timings.p6ObserveMs);
@@ -394,7 +578,7 @@ export function poCpuAbHostHtml({ timings = DEFAULT_PHASE_TIMINGS, mutant = fals
             harness: 'multichart serve.mjs single-chart host',
             observables: ['performance.now callback timing', 'PerformanceObserver longtask', 'performance.memory when exposed']
           },
-          replay: { p6: replay10x, p7: pause },
+          replay: { p4: replay4, p6: replay10x, p7: pause },
           phases,
           measures: performance.getEntriesByType('measure').slice(-12).map((m) => ({
             name: m.name,
@@ -411,7 +595,7 @@ export function poCpuAbHostHtml({ timings = DEFAULT_PHASE_TIMINGS, mutant = fals
           startedAt,
           finishedAt: new Date().toISOString(),
           meta: { shortened: !!CONFIG.timings.shortened, timings: CONFIG.timings, mutant: !!CONFIG.mutant },
-          replay: { p6: replay10x, p7: pause },
+          replay: { p4: replay4, p6: replay10x, p7: pause },
           phases,
           error: String(error && error.message || error)
         });
@@ -440,7 +624,7 @@ async function proxyRequest({ harness, request, response }) {
   });
   let body = Buffer.from(await upstream.arrayBuffer());
   let contentType = upstream.headers.get('content-type') || 'application/octet-stream';
-  if (sourceUrl.pathname === '/harness/host.html' && contentType.includes('text/html')) {
+  if (contentType.includes('text/html')) {
     body = Buffer.from(injectProbeIntoHarnessHtml(body.toString('utf8')), 'utf8');
     contentType = 'text/html; charset=utf-8';
   }
@@ -524,18 +708,19 @@ export function assertPoCpuAbBenchmarkReport(report, { mutant = false } = {}) {
     return [cell('PO-CPU-AB-REPORT-SHAPE', false, 'report must be object')];
   }
   const phases = report.phases || {};
-  const required = ['P1', 'P2', 'P6', 'P7'];
+  const required = ['P1', 'P2', 'P4', 'P6', 'P7'];
   const missing = required.filter((name) => !phases[name]);
   cells.push(cell(
     'PO-CPU-AB-PHASES-PRESENT',
     missing.length === 0 && report.signature === PO_CPU_AB_SIGNATURE,
-    missing.length ? `missing phases: ${missing.join(', ')}` : 'P1/P2/P6/P7 present with signature',
+    missing.length ? `missing phases: ${missing.join(', ')}` : 'P1/P2/P4/P6/P7 present with signature',
     { signature: report.signature },
   ));
   if (missing.length) return cells;
 
   const p1 = phases.P1;
   const p2 = phases.P2;
+  const p4 = phases.P4;
   const p6 = phases.P6;
   const p7 = phases.P7;
   const p1Ratio = phaseWorkRatio(p1);
@@ -562,6 +747,20 @@ export function assertPoCpuAbBenchmarkReport(report, { mutant = false } = {}) {
     p2MemoryDelta == null || p2MemoryDelta <= 64 * 1024 * 1024,
     p2MemoryDelta == null ? 'performance.memory not exposed' : `usedJSHeapSize delta=${p2MemoryDelta}`,
     { phase: 'P2', usedDeltaBytes: p2MemoryDelta },
+  ));
+
+  const replay4 = report.replay?.p4 || {};
+  const p4WindowCount = Number(p4.probe?.windowCount) || 0;
+  const p4ReplayObserved = replay4.ok === true
+    && Number(replay4.panelCount) >= 4
+    && Number(replay4.playingCount) >= 4
+    && p4WindowCount >= 4
+    && (Number(p4.timerCallbacks) > 0 || Number(p4.workMs) > 0);
+  cells.push(cell(
+    'P4-FOUR-PANEL-REPLAY-RUNNING-OBSERVED',
+    p4ReplayObserved,
+    `panels=${replay4.panelCount ?? 'unknown'} playing=${replay4.playingCount ?? 'unknown'} probeWindows=${p4WindowCount} workRatio=${Number.isFinite(phaseWorkRatio(p4)) ? phaseWorkRatio(p4).toFixed(4) : 'n/a'}`,
+    { phase: 'P4', replay: replay4, probeWindowCount: p4WindowCount, workRatio: phaseWorkRatio(p4) },
   ));
 
   const replay = report.replay?.p6 || {};
