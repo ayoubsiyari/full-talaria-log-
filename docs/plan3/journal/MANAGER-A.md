@@ -2574,3 +2574,32 @@ The consequence I had not appreciated: an FX daily bar spans 24 hours and a futu
 All three are read-only and cheap, consistent with §A13.3b — these are path-tracing, enumeration and inventory, which are exactly the classes named as must-dispatch-cheap. **No mechanism is proposed and no code is touched until the two gating audits report**, per the Director's instruction.
 
 **ASSUMPTION logged:** I am treating my own earlier provenance finding (server-side epoch pre-aggregation of 1d/1w) as unverified for the purposes of this work, and have briefed it as a premise to refute rather than as background. If it survives, the derived-branch remedy in §A16.3 needs revisiting; if it falls, M2 proceeds client-side as the ruling assumes.
+
+---
+
+## 2026-07-28 10:58 — §1.2 answer verified: conclusion stands, two premises beneath it do not
+
+surface=`docs/plan3/ANSWER-A1.2-RESIDENCY-CAP-20260728.md`, committed at `52a4ceb5d` on `manager-a/critical-path` only; SHA-256 `1f23ffad5b37…`; **absent from B's branch, C's branch, `main` and five others**
+coverage=every load-bearing claim re-checked against `manager-a/critical-path` tip `9c5d55e4e`, with import searches enumerated
+
+The answer is real, committed, and on a branch — not the untracked-artifact situation that has bitten us repeatedly. All three required parts are present as figures rather than gestures: **cannot ship independently; expected mixed-4 effect ≈ 0; cost 4–6 days.** Do not build.
+
+My recollection was right on the conclusion and **wrong on the host-side lever**. I remembered the document recommending the host-side bulk-history dial as the more impactful alternative. It does the opposite — it *withdraws* that recommendation and calls turning down `_highLimitBulkHistorySmartLimit` a trap, because the fallback drops from a smart cap of up to 100k bars to 2000/800 (`chart.js:24326-24329`) and puts network fetches back on the replay path. That retraction is mine from earlier in the sprint and I had lost track of it. The document is correct; my memory was not.
+
+## 2026-07-28 10:59 — CORRECTION: the two modules are not unwired, they are absent
+
+This is the finding that matters, and it makes the answer stronger rather than weaker.
+
+I have been describing `visible-window-mirror.mjs` and `reusable-buffer-pool.mjs` as reference or test-only code sitting in-tree unwired. **On `manager-a/critical-path` HEAD they are not in git at all.** `git ls-tree -r` for `m21-w6-fixtures` returns **empty** on that branch; the only copies are untracked working-tree artifacts, and committed evidence already says so at `docs/plan3/evidence/W1-Q9-20260724-HUNK-MANIFEST.json:10` — "absent from HEAD". The negative claim that no product path imports them is backed by an enumerated search across both module names, all import patterns under `chart v 1.4/` and `homepage/public/chart/`, and existence checks across eight branches. The single code reference is a test.
+
+**So §1.2's own question contains a stale premise.** It asks whether a cap can ship "using the existing audited" modules, and `DIRECTOR-RULINGS-20260727.md:21` (§A1) describes them as already existing in-tree. Neither description holds against A's tip. There is no audited artifact to build on — which does not weaken "do not build", it removes the last argument for building. I have dispatched the correction to the answer document and I am **not** editing the ruling; §A1's drift goes to the Director as a note, because correcting a Director document is not mine to do.
+
+## 2026-07-28 11:00 — I am putting my own post-merge green under investigation
+
+The verification turned up something I did not ask for and should have found myself: `m21-2-candle-offscreen-scaffold.test.mjs:1524` is a **tracked** test that **dynamically imports `visible-window-mirror.mjs`**, which is not tracked on the same branch. On a clean checkout that import has nothing to resolve.
+
+Yesterday I recorded a verdict that the merged harnesses were re-run post-merge and the chain was intact. **I no longer trust that green.** If it was produced in a tree carrying the ~455 untracked files, it may have been exercising files that are not in the branch — and a gate that passes only because of untracked artifacts is precisely the defect §A16.5 names, wearing better clothes. Review confidence is not gate coverage, and neither is a green obtained in a contaminated tree.
+
+I have dispatched a clean-worktree re-run to settle it, briefed so that a finding against me is the expected useful outcome. Three ways it can land: the test is itself untracked, in which case there is no tracked-imports-untracked problem and my green was fine; the import is guarded and degrades cleanly, same result; or a tracked gate genuinely depends on untracked files, in which case **my post-merge verdict was contaminated and must be withdrawn**, along with any claim of automated-GREEN that rested on it.
+
+I am not waiting for that answer to say the obvious: **the ~455 untracked files in A's territory are no longer a housekeeping row.** I have been carrying them as triage I judged above my tier and did not dispatch. If they can silently supply the inputs a gate needs, they are a correctness hazard on the deploy path, and their triage is now ahead of packaging rather than behind it.
