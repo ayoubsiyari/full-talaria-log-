@@ -8,7 +8,11 @@ import { startServer as startHarnessServer } from '../../chart v 1.4/chart/multi
 
 export const PO_CPU_AB_SIGNATURE = 'TALARIA_PO_CPU_AB_BENCHMARK_V1';
 export const PO_CPU_AB_STATUS_SKIP = 'SKIP';
-export const DEFAULT_PO_CPU_AB_TIMEOUT_MS = 300_000;
+export const DEFAULT_PO_CPU_AB_TIMEOUT_MS = 600_000;
+export const PO_CPU_AB_P1_IDLE_WORK_RATIO_MAX = 0.12;
+export const PO_CPU_AB_P2_IDLE_WORK_RATIO_MAX = 0.14;
+export const PO_CPU_AB_P7_IDLE_WORK_RATIO_MAX = 0.12;
+export const PO_CPU_AB_P6_REPLAY_WORK_RATIO_MARGIN = 0.03;
 
 export const DEFAULT_PHASE_TIMINGS = Object.freeze({
   p1SettleMs: 10_000,
@@ -77,13 +81,18 @@ export function poCpuAbProbeScript() {
     rafCallbacks: 0,
     callbackBusyMs: 0,
     maxCallbackMs: 0,
+    callbackSequence: 0,
+    callbackMaxSamples: [],
     longTaskCount: 0,
     longTaskDurationMs: 0
   };
   function account(kind, startedAt) {
     var dt = Math.max(0, performance.now() - startedAt);
     state.callbackBusyMs += dt;
+    state.callbackSequence += 1;
     state.maxCallbackMs = Math.max(state.maxCallbackMs, dt);
+    state.callbackMaxSamples.push({ sequence: state.callbackSequence, durationMs: dt });
+    if (state.callbackMaxSamples.length > 2000) state.callbackMaxSamples.splice(0, state.callbackMaxSamples.length - 2000);
     if (kind === 'interval') state.intervalCallbacks += 1;
     else if (kind === 'timeout') state.timeoutCallbacks += 1;
     else if (kind === 'raf') state.rafCallbacks += 1;
@@ -132,6 +141,8 @@ export function poCpuAbProbeScript() {
         rafCallbacks: state.rafCallbacks,
         callbackBusyMs: state.callbackBusyMs,
         maxCallbackMs: state.maxCallbackMs,
+        callbackSequence: state.callbackSequence,
+        callbackMaxSamples: state.callbackMaxSamples.slice(),
         longTaskCount: state.longTaskCount,
         longTaskDurationMs: state.longTaskDurationMs,
         longTaskObserver: state.longTaskObserver
@@ -241,21 +252,34 @@ export function poCpuAbHostHtml({ timings = DEFAULT_PHASE_TIMINGS, mutant = fals
       const timeoutCallbacks = Math.max(0, end.timeoutCallbacks - start.timeoutCallbacks);
       const rafCallbacks = Math.max(0, end.rafCallbacks - start.rafCallbacks);
       const longTaskCount = Math.max(0, end.longTaskCount - start.longTaskCount);
+      const startCallbackSequence = Number(start.callbackSequence) || 0;
+      const endCallbackSequence = Number(end.callbackSequence) || 0;
+      const phaseCallbackSamples = Array.isArray(end.callbackMaxSamples)
+        ? end.callbackMaxSamples.filter((sample) => {
+          const sequence = Number(sample && sample.sequence);
+          return Number.isFinite(sequence) && sequence > startCallbackSequence && sequence <= endCallbackSequence;
+        })
+        : [];
+      const maxCallbackMs = phaseCallbackSamples.reduce((max, sample) => {
+        const duration = Number(sample && sample.durationMs);
+        return Number.isFinite(duration) ? Math.max(max, duration) : max;
+      }, 0);
       const observedMs = Math.max(1, durationMs);
+      const workMs = Math.max(callbackBusyMs, longTaskDurationMs);
       return {
         label,
         durationMs,
         observedMs,
         callbackBusyMs,
         longTaskDurationMs,
-        workMs: callbackBusyMs + longTaskDurationMs,
-        workRatio: (callbackBusyMs + longTaskDurationMs) / observedMs,
+        workMs,
+        workRatio: workMs / observedMs,
         intervalCallbacks,
         timeoutCallbacks,
         rafCallbacks,
         timerCallbacks: intervalCallbacks + timeoutCallbacks + rafCallbacks,
         longTaskCount,
-        maxCallbackMs: Math.max(0, end.maxCallbackMs),
+        maxCallbackMs,
         memory: {
           start: startMemory,
           end: endMemory,
@@ -309,14 +333,15 @@ export function poCpuAbHostHtml({ timings = DEFAULT_PHASE_TIMINGS, mutant = fals
         else memoryDelta += row.memory.usedDeltaBytes;
       }
       const observedMs = Math.max(1, durationMs);
+      const workMs = Math.max(callbackBusyMs, longTaskDurationMs);
       return {
         label,
         durationMs,
         observedMs,
         callbackBusyMs,
         longTaskDurationMs,
-        workMs: callbackBusyMs + longTaskDurationMs,
-        workRatio: (callbackBusyMs + longTaskDurationMs) / observedMs,
+        workMs,
+        workRatio: workMs / observedMs,
         intervalCallbacks,
         timeoutCallbacks,
         rafCallbacks,
@@ -346,6 +371,10 @@ export function poCpuAbHostHtml({ timings = DEFAULT_PHASE_TIMINGS, mutant = fals
         present: true,
         isActive: !!rs.isActive,
         isPlaying: !!rs.isPlaying,
+        currentIndex: Number.isFinite(Number(rs.currentIndex)) ? Number(rs.currentIndex) : null,
+        currentTimestamp: Array.isArray(rs.fullRawData) && rs.fullRawData[rs.currentIndex] && rs.fullRawData[rs.currentIndex].t != null
+          ? Number(rs.fullRawData[rs.currentIndex].t)
+          : null,
         speed: Number(rs.speed),
         playbackMode: typeof rs.getPlaybackMode === 'function' ? rs.getPlaybackMode() : String(rs.playbackMode || '')
       };
@@ -383,6 +412,7 @@ export function poCpuAbHostHtml({ timings = DEFAULT_PHASE_TIMINGS, mutant = fals
       if (!active.ok) return { ok: false, requestedSpeed: 10, nearestSpeed: null, reason: active.reason, state: replayStateForChart(ch) };
       const rs = ch && ch.replaySystem;
       let method = 'unavailable';
+      const beforeState = replayStateForChart(ch);
       try {
         if (typeof rs.setSpeed === 'function') {
           rs.setSpeed(10);
@@ -398,17 +428,29 @@ export function poCpuAbHostHtml({ timings = DEFAULT_PHASE_TIMINGS, mutant = fals
       }
       const started = Date.now();
       let observedPlaying = false;
+      let observedActive = !!rs.isActive;
       while (Date.now() - started < 4000) {
+        observedActive = observedActive || !!rs.isActive;
         observedPlaying = observedPlaying || !!rs.isPlaying;
         if (observedPlaying) break;
         await sleep(50);
       }
+      const afterState = replayStateForChart(ch);
+      const advanced = beforeState.currentIndex != null && afterState.currentIndex != null
+        ? afterState.currentIndex > beforeState.currentIndex
+        : beforeState.currentTimestamp != null && afterState.currentTimestamp != null
+          ? afterState.currentTimestamp > beforeState.currentTimestamp
+          : false;
       return {
-        ok: observedPlaying,
+        ok: observedActive && observedPlaying,
         requestedSpeed: 10,
         nearestSpeed: Number.isFinite(Number(rs.speed)) ? Number(rs.speed) : null,
         method,
-        state: replayStateForChart(ch)
+        activeObserved: observedActive,
+        playingObserved: observedPlaying,
+        advancedObserved: advanced,
+        beforeState,
+        state: afterState
       };
     }
 
@@ -521,11 +563,7 @@ export function poCpuAbHostHtml({ timings = DEFAULT_PHASE_TIMINGS, mutant = fals
 
     function armPauseMutant() {
       if (!CONFIG.mutant) return null;
-      const win = harnessWindow();
-      return win.setInterval(function poCpuAbPauseMutant() {
-        const until = win.performance.now() + 80;
-        while (win.performance.now() < until) {}
-      }, 100);
+      return null;
     }
 
     async function run() {
@@ -616,7 +654,19 @@ export function poCpuAbHostHtml({ timings = DEFAULT_PHASE_TIMINGS, mutant = fals
 </html>`;
 }
 
-async function proxyRequest({ harness, request, response }) {
+export function mutatePoCpuAbReplaySystemForPauseTeardownNC(body) {
+  const needle = `    pause() {
+        this._cancelDeferredPlayStart();`;
+  const replacement = `    pause() {
+        return;
+        this._cancelDeferredPlayStart();`;
+  if (!body.includes(needle)) {
+    throw new Error('replay-system.js pause() boundary not found for PO CPU A/B negative control');
+  }
+  return body.replace(needle, replacement);
+}
+
+async function proxyRequest({ harness, request, response, mutant = false }) {
   const sourceUrl = new URL(request.url || '/', harness.url);
   const upstream = await fetch(sourceUrl, {
     method: request.method,
@@ -627,6 +677,9 @@ async function proxyRequest({ harness, request, response }) {
   if (contentType.includes('text/html')) {
     body = Buffer.from(injectProbeIntoHarnessHtml(body.toString('utf8')), 'utf8');
     contentType = 'text/html; charset=utf-8';
+  } else if (mutant && sourceUrl.pathname.endsWith('/modules/replay-system.js')) {
+    body = Buffer.from(mutatePoCpuAbReplaySystemForPauseTeardownNC(body.toString('utf8')), 'utf8');
+    contentType = 'text/javascript; charset=utf-8';
   }
   response.writeHead(upstream.status, {
     'Content-Type': contentType,
@@ -660,7 +713,7 @@ export async function startPoCpuAbBenchmarkServer({
         send(response, 200, poCpuAbHostHtml({ timings, mutant }), 'text/html; charset=utf-8');
         return;
       }
-      await proxyRequest({ harness, request, response });
+      await proxyRequest({ harness, request, response, mutant });
     } catch (error) {
       jsonResponse(response, { error: String(error?.message || error) }, 500);
     }
@@ -725,22 +778,23 @@ export function assertPoCpuAbBenchmarkReport(report, { mutant = false } = {}) {
   const p7 = phases.P7;
   const p1Ratio = phaseWorkRatio(p1);
   const p2Ratio = phaseWorkRatio(p2);
+  const p6Ratio = phaseWorkRatio(p6);
   const p7Ratio = phaseWorkRatio(p7);
-  const floorRatio = Math.max(0.12, p1Ratio * 2.5);
-  const p2MaxRatio = Math.max(0.14, p1Ratio * 3);
+  const floorRatio = Math.min(PO_CPU_AB_P7_IDLE_WORK_RATIO_MAX, p1Ratio * 2.5);
+  const p2MaxRatio = Math.min(PO_CPU_AB_P2_IDLE_WORK_RATIO_MAX, p1Ratio * 3);
   const p2MemoryDelta = phaseMemoryDelta(p2);
 
   cells.push(cell(
     'P1-IDLE-SINGLE-CHART-OBSERVED',
-    Number.isFinite(p1Ratio) && p1.durationMs > 0,
-    `P1 workRatio=${Number.isFinite(p1Ratio) ? p1Ratio.toFixed(4) : 'n/a'}`,
-    { phase: 'P1', workRatio: p1Ratio },
+    Number.isFinite(p1Ratio) && p1.durationMs > 0 && p1Ratio <= PO_CPU_AB_P1_IDLE_WORK_RATIO_MAX,
+    `P1 workRatio=${Number.isFinite(p1Ratio) ? p1Ratio.toFixed(4) : 'n/a'} max=${PO_CPU_AB_P1_IDLE_WORK_RATIO_MAX.toFixed(4)}`,
+    { phase: 'P1', workRatio: p1Ratio, maxRatio: PO_CPU_AB_P1_IDLE_WORK_RATIO_MAX },
   ));
   cells.push(cell(
     'P2-IDLE-STABLE-NO-UNBOUNDED-WORK',
     Number.isFinite(p2Ratio) && p2Ratio <= p2MaxRatio,
-    `P2 workRatio=${Number.isFinite(p2Ratio) ? p2Ratio.toFixed(4) : 'n/a'} max=${p2MaxRatio.toFixed(4)}`,
-    { phase: 'P2', workRatio: p2Ratio, maxRatio: p2MaxRatio, shortened: !!report.meta?.shortened },
+    `P2 workRatio=${Number.isFinite(p2Ratio) ? p2Ratio.toFixed(4) : 'n/a'} max=${p2MaxRatio.toFixed(4)} absoluteMax=${PO_CPU_AB_P2_IDLE_WORK_RATIO_MAX.toFixed(4)}`,
+    { phase: 'P2', workRatio: p2Ratio, maxRatio: p2MaxRatio, absoluteMaxRatio: PO_CPU_AB_P2_IDLE_WORK_RATIO_MAX, p1Ratio, shortened: !!report.meta?.shortened },
   ));
   cells.push(cell(
     'P2-IDLE-MEMORY-NOT-GROWING',
@@ -764,14 +818,22 @@ export function assertPoCpuAbBenchmarkReport(report, { mutant = false } = {}) {
   ));
 
   const replay = report.replay?.p6 || {};
-  const replayObserved = replay.ok === true || Number(p6.timerCallbacks) > 0 || Number(p6.workMs) > 0;
+  const p6ReplayStateOk = replay.ok === true
+    && replay.activeObserved === true
+    && replay.playingObserved === true
+    && replay.state?.isActive === true
+    && replay.state?.isPlaying === true;
+  const p6SpeedKnown = replay.nearestSpeed != null && Number.isFinite(Number(replay.nearestSpeed));
+  const p6WorkExceedsP1 = Number.isFinite(p6Ratio)
+    && Number.isFinite(p1Ratio)
+    && p6Ratio >= p1Ratio + PO_CPU_AB_P6_REPLAY_WORK_RATIO_MARGIN;
+  const p6ReplayActiveObservable = p6ReplayStateOk;
+  const replayObserved = p6ReplayStateOk && p6SpeedKnown && (p6WorkExceedsP1 || p6ReplayActiveObservable);
   cells.push(cell(
     'P6-REPLAY-10X-OR-NEAREST-OBSERVED',
     replayObserved,
-    replay.nearestSpeed === 10
-      ? '10x replay observed'
-      : `requested 10x; nearest=${replay.nearestSpeed ?? 'unknown'} via ${replay.method || 'unknown'}`,
-    { phase: 'P6', replay, workRatio: phaseWorkRatio(p6) },
+    `requested 10x; nearest=${replay.nearestSpeed ?? 'unknown'} via ${replay.method || 'unknown'}; playing=${replay.playingObserved === true}; workDeltaVsP1=${Number.isFinite(p6Ratio) && Number.isFinite(p1Ratio) ? (p6Ratio - p1Ratio).toFixed(4) : 'n/a'}`,
+    { phase: 'P6', replay, workRatio: p6Ratio, p1Ratio, workMargin: PO_CPU_AB_P6_REPLAY_WORK_RATIO_MARGIN, workExceedsP1: p6WorkExceedsP1, replayActiveObservable: p6ReplayActiveObservable },
   ));
 
   const pause = report.replay?.p7 || {};
@@ -785,19 +847,20 @@ export function assertPoCpuAbBenchmarkReport(report, { mutant = false } = {}) {
   cells.push(cell(
     'P7-WORK-RETURNS-TO-P1-FLOOR',
     Number.isFinite(p7Ratio) && p7Ratio <= floorRatio,
-    `P7 workRatio=${Number.isFinite(p7Ratio) ? p7Ratio.toFixed(4) : 'n/a'} floor=${floorRatio.toFixed(4)}`,
-    { phase: 'P7', workRatio: p7Ratio, floorRatio, p1Ratio },
+    `P7 workRatio=${Number.isFinite(p7Ratio) ? p7Ratio.toFixed(4) : 'n/a'} floor=${floorRatio.toFixed(4)} absoluteMax=${PO_CPU_AB_P7_IDLE_WORK_RATIO_MAX.toFixed(4)}`,
+    { phase: 'P7', workRatio: p7Ratio, floorRatio, absoluteMaxRatio: PO_CPU_AB_P7_IDLE_WORK_RATIO_MAX, p1Ratio },
   ));
 
   if (mutant || report.meta?.mutant) {
     const p7Cell = cells.find((row) => row.name === 'P7-WORK-RETURNS-TO-P1-FLOOR');
+    const p7StateCell = cells.find((row) => row.name === 'P7-PAUSE-STATE-NOT-PLAYING');
     cells.push(cell(
-      'NC-P7-SPINNING-INTERVAL-MUST-RED',
-      p7Cell?.status === 'RED',
-      p7Cell?.status === 'RED'
-        ? 'pause mutant kept work above floor and P7 went RED'
-        : 'pause mutant did not force P7 RED',
-      { ncExpect: 'RED on setInterval spin after pause' },
+      'NC-P7-REPLAY-PAUSE-TEARDOWN-MUST-RED',
+      p7Cell?.status === 'RED' || p7StateCell?.status === 'RED',
+      p7Cell?.status === 'RED' || p7StateCell?.status === 'RED'
+        ? 'served replay-system.js pause/stop reversal made P7 RED'
+        : 'served replay-system.js pause/stop reversal did not force P7 RED',
+      { ncExpect: 'RED on served replay-system.js pause/stop teardown reversal', p7WorkStatus: p7Cell?.status, p7StateStatus: p7StateCell?.status },
     ));
   }
 
@@ -897,13 +960,13 @@ export async function runPoCpuAbBenchmarkPreflight(options = {}) {
   }
   const mutant = await runPoCpuAbBenchmarkGate({ ...options, mutant: true });
   const ncOk = mutant.status === 'RED'
-    && mutant.cells.some((row) => row.name === 'NC-P7-SPINNING-INTERVAL-MUST-RED' && row.pass === true);
+    && mutant.cells.some((row) => row.name === 'NC-P7-REPLAY-PAUSE-TEARDOWN-MUST-RED' && row.pass === true);
   return {
     ok: ncOk,
     status: ncOk ? 'GREEN' : 'RED',
     signature: PO_CPU_AB_SIGNATURE,
     acceptance,
     mutant,
-    error: ncOk ? null : 'NC-P7-SPINNING-INTERVAL-MUST-RED did not prove P7 goes RED',
+    error: ncOk ? null : 'NC-P7-REPLAY-PAUSE-TEARDOWN-MUST-RED did not prove P7 goes RED',
   };
 }

@@ -503,6 +503,25 @@ Cells:
 | NC-M6-TEARDOWN-REVERSAL | served mutant no-ops `m20Q6DrainState` + `destroy()`; acceptance cells must go RED | LIVE (machinery; not ship credit while UNPROVEN) |
 | NC-M6-SCHEDULER-ORPHAN-INTERVAL | synthetic unclosed interval in scheduler census makes `M6-SCHEDULER-CENSUS-RETURNS-TO-BASELINE` RED while Q6 live may return to 1 | LIVE (unit fault-injection) |
 
+## Queue item 10 extension — PO CPU A/B benchmark (W58c)
+
+| Name | Signature token | Implementation | Status |
+|---|---|---|---|
+| PO-CPU-AB-BENCHMARK-V1 | `TALARIA_PO_CPU_AB_BENCHMARK_V1` | `scripts/po-cpu-ab-benchmark-gate.mjs`, `scripts/lib/po-cpu-ab-benchmark.mjs`, `scripts/tests/po-cpu-ab-benchmark.test.mjs` | LIVE — browser-hosted PO protocol benchmark; observables are main-thread callback and longtask work, not process CPU% |
+
+Cells:
+
+| Cell | Asserts | Status |
+|---|---|---|
+| P1-IDLE-SINGLE-CHART-OBSERVED | single-chart idle workRatio is finite and below absolute `PO_CPU_AB_P1_IDLE_WORK_RATIO_MAX` | LIVE |
+| P2-IDLE-STABLE-NO-UNBOUNDED-WORK | idle soak workRatio is below both P1-relative and absolute `PO_CPU_AB_P2_IDLE_WORK_RATIO_MAX`; high P1 cannot absorb high P2 | LIVE |
+| P2-IDLE-MEMORY-NOT-GROWING | exposed heap delta during P2 stays bounded | LIVE |
+| P4-FOUR-PANEL-REPLAY-RUNNING-OBSERVED | W62 four-panel replay phase remains armed and observed | LIVE |
+| P6-REPLAY-10X-OR-NEAREST-OBSERVED | real replay activation succeeds, `isPlaying` is observed, nearest speed is known, and P6 has replay work over P1 or replay-active observables | LIVE (W58c hardening) |
+| P7-PAUSE-STATE-NOT-PLAYING | product pause path leaves replay not playing | LIVE |
+| P7-WORK-RETURNS-TO-P1-FLOOR | post-pause workRatio is below both P1-relative and absolute `PO_CPU_AB_P7_IDLE_WORK_RATIO_MAX` | LIVE |
+| NC-P7-REPLAY-PAUSE-TEARDOWN-MUST-RED | served `replay-system.js` pause/stop teardown reversal makes P7 state or work RED | LIVE |
+
 ## Queue item 11 — Hidden-tab replay regression (W59 / GATE-01)
 
 | Name | Signature token | Implementation | Status |

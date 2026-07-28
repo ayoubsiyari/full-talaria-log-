@@ -2,9 +2,11 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+  DEFAULT_PO_CPU_AB_TIMEOUT_MS,
   PO_CPU_AB_SIGNATURE,
   PO_CPU_AB_STATUS_SKIP,
   assertPoCpuAbBenchmarkReport,
+  mutatePoCpuAbReplaySystemForPauseTeardownNC,
   poCpuAbHostHtml,
   runPoCpuAbBenchmarkGate,
   runPoCpuAbBenchmarkPreflight,
@@ -43,7 +45,26 @@ function phase({
   };
 }
 
-function report({ mutant = false, p7WorkRatio = 0.025, p2MemoryDelta = 0 } = {}) {
+function report({
+  mutant = false,
+  p1WorkRatio = 0.02,
+  p2WorkRatio = 0.03,
+  p6WorkRatio = 0.18,
+  p7WorkRatio = 0.025,
+  p2MemoryDelta = 0,
+  p6Replay = {},
+} = {}) {
+  const replayP6 = {
+    ok: true,
+    requestedSpeed: 10,
+    nearestSpeed: 10,
+    method: 'setSpeed',
+    activeObserved: true,
+    playingObserved: true,
+    advancedObserved: true,
+    state: { isActive: true, isPlaying: true, speed: 10 },
+    ...p6Replay,
+  };
   return {
     signature: PO_CPU_AB_SIGNATURE,
     ok: true,
@@ -60,17 +81,17 @@ function report({ mutant = false, p7WorkRatio = 0.025, p2MemoryDelta = 0 } = {})
         requestedSpeed: 10,
         rows: ['A', 'B', 'C', 'D'].map((id) => ({ id, ok: true, state: { isPlaying: true, speed: 10 } })),
       },
-      p6: { ok: true, requestedSpeed: 10, nearestSpeed: 10, method: 'setSpeed', state: { isPlaying: true, speed: 10 } },
+      p6: replayP6,
       p7: { ok: true, state: { isPlaying: false, speed: 10 } },
     },
     phases: {
-      P1: phase({ label: 'P1', workRatio: 0.02 }),
-      P2: phase({ label: 'P2', workRatio: 0.03, memoryDelta: p2MemoryDelta }),
+      P1: phase({ label: 'P1', workRatio: p1WorkRatio }),
+      P2: phase({ label: 'P2', workRatio: p2WorkRatio, memoryDelta: p2MemoryDelta }),
       P4: {
         ...phase({ label: 'P4', workRatio: 0.22, timerCallbacks: 24 }),
         probe: { windowCount: 4, windows: [] },
       },
-      P6: phase({ label: 'P6', workRatio: 0.18, timerCallbacks: 18 }),
+      P6: phase({ label: 'P6', workRatio: p6WorkRatio, timerCallbacks: 18 }),
       P7: phase({ label: 'P7', workRatio: p7WorkRatio, timerCallbacks: 3 }),
     },
   };
@@ -85,6 +106,8 @@ test('unit: host HTML records shortened meta for CI P2', () => {
   assert.match(html, /P4-four-panel-replay-10x-or-nearest/);
   assert.match(html, /"shortened":true/);
   assert.match(html, /PerformanceObserver longtask/);
+  assert.match(html, /const workMs = Math\.max\(callbackBusyMs, longTaskDurationMs\)/);
+  assert.match(html, /phaseCallbackSamples/);
 });
 
 test('unit: oracle accepts P1/P2/P4/P6/P7 report and records replay observables', () => {
@@ -100,7 +123,54 @@ test('unit: oracle accepts P1/P2/P4/P6/P7 report and records replay observables'
 test('fault-injection: P7 spinning interval mutant must go red', () => {
   const cells = assertPoCpuAbBenchmarkReport(report({ mutant: true, p7WorkRatio: 0.8 }), { mutant: true });
   assert.equal(cells.find((cell) => cell.name === 'P7-WORK-RETURNS-TO-P1-FLOOR').status, 'RED');
-  assert.equal(cells.find((cell) => cell.name === 'NC-P7-SPINNING-INTERVAL-MUST-RED').status, 'GREEN');
+  assert.equal(cells.find((cell) => cell.name === 'NC-P7-REPLAY-PAUSE-TEARDOWN-MUST-RED').status, 'GREEN');
+});
+
+test('fault-injection: P6 cannot green when replay never starts or speed is unknown', () => {
+  const neverStarted = assertPoCpuAbBenchmarkReport(report({
+    p6WorkRatio: 0.30,
+    p6Replay: {
+      ok: false,
+      nearestSpeed: 10,
+      activeObserved: false,
+      playingObserved: false,
+      state: { isActive: false, isPlaying: false, speed: 10 },
+    },
+  }));
+  assert.equal(neverStarted.find((cell) => cell.name === 'P6-REPLAY-10X-OR-NEAREST-OBSERVED').status, 'RED');
+
+  const unknownSpeed = assertPoCpuAbBenchmarkReport(report({
+    p6WorkRatio: 0.30,
+    p6Replay: { nearestSpeed: null },
+  }));
+  assert.equal(unknownSpeed.find((cell) => cell.name === 'P6-REPLAY-10X-OR-NEAREST-OBSERVED').status, 'RED');
+});
+
+test('fault-injection: high P1 cannot absorb idle and pause ceilings', () => {
+  const cells = assertPoCpuAbBenchmarkReport(report({
+    p1WorkRatio: 0.70,
+    p2WorkRatio: 0.20,
+    p7WorkRatio: 0.20,
+  }));
+  assert.equal(cells.find((cell) => cell.name === 'P1-IDLE-SINGLE-CHART-OBSERVED').status, 'RED');
+  assert.equal(cells.find((cell) => cell.name === 'P2-IDLE-STABLE-NO-UNBOUNDED-WORK').status, 'RED');
+  assert.equal(cells.find((cell) => cell.name === 'P7-WORK-RETURNS-TO-P1-FLOOR').status, 'RED');
+});
+
+test('unit: pause negative control mutates served replay-system pause path', () => {
+  const source = `class ReplaySystem {
+    pause() {
+        this._cancelDeferredPlayStart();
+        this.isPlaying = false;
+    }
+    stop() {
+        this.pause();
+    }
+}`;
+  const mutated = mutatePoCpuAbReplaySystemForPauseTeardownNC(source);
+  assert.match(mutated, /pause\(\) \{\n        return;\n        this\._cancelDeferredPlayStart\(\);/);
+  assert.doesNotMatch(poCpuAbHostHtml({ mutant: true }), /poCpuAbPauseMutant|setInterval\(function poCpuAbPauseMutant/);
+  assert.throws(() => mutatePoCpuAbReplaySystemForPauseTeardownNC('class X {}'), /pause\(\) boundary not found/);
 });
 
 test('fault-injection: idle memory growth is red when exposed', () => {
@@ -164,6 +234,13 @@ test('unit: CLI args expose require-browser and short P2 override', () => {
   assert.equal(args.short, true);
   assert.equal(args.timeoutMs, 9000);
   assert.equal(args.timings.p2IdleMs, 5000);
-  assert.equal(args.timings.shortened, true);
+  assert.equal(args.timings.p2Override, true);
+  const p2Only = parsePoCpuAbBenchmarkArgs(['--p2-ms=5000']);
+  assert.equal(p2Only.short, false);
+  assert.equal(p2Only.timings.p2Override, true);
   assert.throws(() => parsePoCpuAbBenchmarkArgs(['--bogus']), /unknown argument/);
+});
+
+test('unit: default full protocol timeout covers unshortened phases', () => {
+  assert.ok(DEFAULT_PO_CPU_AB_TIMEOUT_MS >= 600_000);
 });

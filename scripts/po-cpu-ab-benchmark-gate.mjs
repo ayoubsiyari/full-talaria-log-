@@ -24,8 +24,7 @@ export function parsePoCpuAbBenchmarkArgs(argv = process.argv.slice(2)) {
     else if (arg.startsWith('--timeout-ms=')) options.timeoutMs = Number(arg.slice('--timeout-ms='.length));
     else if (arg.startsWith('--p2-ms=')) {
       const p2IdleMs = Number(arg.slice('--p2-ms='.length));
-      options.timings = { ...(options.timings || {}), p2IdleMs, shortened: true };
-      options.short = true;
+      options.timings = { ...(options.timings || {}), p2IdleMs, p2Override: true };
     } else {
       throw new Error(`unknown argument: ${arg}`);
     }
