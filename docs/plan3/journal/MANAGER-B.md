@@ -2937,3 +2937,17 @@ Blocked on A's render kill-switch for the train — not idle. Four streams that 
 **Path 11.** `RELEASE-SHIP-REQUIREMENTS.md` — train image must use `CHECKPOINT_BUILD=1` + ahead-of-live `CHART_BUILD_ID`. Marked CLOSED for the ship path.
 
 **Item 3.** A tip `manager-a-m28-replay-hidden-pause` advanced (`1be73e796` hidden-pause) — still **no** `__TALARIA_DISABLE_MC_BACKGROUND_RENDER_CADENCE_V1` in product trees. Train correctly blocked.
+
+---
+
+## B-0136 — UNBLOCK. Phantom gate was FIX 1, not in the train. Shipping.
+
+Director `UNBLOCK-B-PHANTOM-GATE-20260728-1958.md`. My hold on
+`__TALARIA_DISABLE_MC_BACKGROUND_RENDER_CADENCE_V1` was correct against the
+instruction as I read it, and wrong about the referent — that flag belongs to
+FIX 1 (A's fifth/last), which is unbuilt. Confirmed on `manager-a/critical-path`
+`ba174d694` (R1 @ 19:55): `backgroundRender` / `renderCadence` / `BACKGROUND_RENDER`
+/ `DISABLE_MC_BACKGROUND_RENDER_CADENCE` all ABSENT in product tree.
+
+Train render/lifecycle items each carry a runtime switch (B-W16/17, M26, M27, M28,
+R1 M23, R1 Q9). Evidence: `TRAIN-SHIP-GO-20260728-2000.md`. Assembling B→C→A now.

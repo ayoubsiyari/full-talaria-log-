@@ -1,61 +1,51 @@
 # Kill-switch inventory — D-5 single push
 
-**Owner:** Manager B (release) · 2026-07-28
+**Owner:** Manager B (release) · updated 2026-07-28 20:05  
 **Standard:** every change that can hurt a user at runtime must disable behind an explicit vocabulary; anything unrecognised leaves the protection ON. A switch that has never been shown to disable its feature is not a switch.
+
+**Phantom cleared:** `__TALARIA_DISABLE_MC_BACKGROUND_RENDER_CADENCE_V1` is FIX 1's flag and FIX 1 is **not in the train**. It is reserved for A's last item; it is **not** a release precondition. See `TRAIN-SHIP-GO-20260728-2000.md` and `UNBLOCK-B-PHANTOM-GATE-20260728-1958.md`.
 
 ---
 
-## 1. Inventory
+## 1. Inventory (train ship set)
 
 | # | Feature | Switch | Default | How to throw | Takes effect | Disable proven by |
 |---|---|---|---|---|---|---|
-| 1 | Client hydration guard (B-2 / B-W16) | `window.__TALARIA_DISABLE_B_W16_HYDRATION_GUARD_V1` | unset → **guard ON** | Browser console: `window.__TALARIA_DISABLE_B_W16_HYDRATION_GUARD_V1 = true` | Next durable write; **no redeploy** | NC-1, NC-2, NC-3* in `b-w16-hydration-guard.test.mjs`; B-W18 mutants 6/0 |
-| 2 | Backend parse guard (I-7 / B-W17) | env `JOURNAL_SWEEP_PARSE_GUARD_ENABLED` | unset → **guard ON** | Set `false` (or `0`/`no`/`off`), restart `trading-chart` | On restart | NC-4, NC-5, NC-6* in `test_b_w17_journal_sweep_guard.py`; B-W18 mutants 6/0 |
-| 3 | Deletion logging | *(none, deliberate)* | always on | — | — | N/A — logging is not a behaviour to disable under incident pressure |
-| 4 | A — orphan replay teardown | **none known** | — | — | redeploy only | not yet inventoried |
-| 5 | A — render-path lag fix | **REQUIRED; BLOCKS TRAIN** | must default ON | A owns the flag name | must be next-frame / no redeploy | A must ship NC cells that reproduce the pre-fix lag with the switch thrown |
+| 1 | Client hydration guard (B-W16) | `window.__TALARIA_DISABLE_B_W16_HYDRATION_GUARD_V1` | unset → **guard ON** | Console: `= true` | Next durable write; no redeploy | B-W18 mutants 6/0 |
+| 2 | Backend parse guard (B-W17) | env `JOURNAL_SWEEP_PARSE_GUARD_ENABLED` | unset → **guard ON** | Set `false`/`0`/`no`/`off`, restart trading-chart | On restart | B-W18 mutants 6/0 |
+| 3 | Deletion logging | *(none, deliberate)* | always on | — | — | N/A |
+| 4 | M26 panel replay destroy | `window.__TALARIA_DISABLE_M26_PANEL_REPLAY_DESTROY_V1` | unset → **fix ON** | Console: `= true` | Next panel teardown | A m26 tests |
+| 5 | M27 engine release | `window.__TALARIA_DISABLE_M27_ENGINE_RELEASE_V1` | unset → **fix ON** | Console: `= true` | Next drain | A m27 tests |
+| 6 | M28 hidden-pause (FIX 3) | `window.__TALARIA_DISABLE_REPLAY_HIDDEN_PAUSE_V1` | unset → **fix ON** | Console: `= true` | Next visibility change | A m28 tests |
+| 7 | R1 M23 host-commit teardown | `window.__TALARIA_DISABLE_M23_HOST_COMMIT_TEARDOWN_V1` | unset → **fix ON** | Console: `= true` | Per-call | A r1-render-killswitches 26/26 |
+| 8 | R1 M20-Q9 counters | `window.__TALARIA_DISABLE_M20_Q9_MCDIAG_COUNTERS_V1` | unset → **fix ON** | Console: `= true` | Per-call | A r1 (Q9 recovery cut) |
 
-**Disable vocabulary (fail-closed):**
+**Not in train (do not block ship):**
+
+| Feature | Switch (reserved) | Status |
+|---|---|---|
+| FIX 1 background-panel render cadence | `__TALARIA_DISABLE_MC_BACKGROUND_RENDER_CADENCE_V1` | Not built; A last |
+| P2 order-line eviction rescope | `__TALARIA_DISABLE_M24_ORDER_EVICTION_SCOPE_V1` | A residual |
+| P3 IndicatorPerf loader | `__TALARIA_DISABLE_INDICATOR_PERF_BRIDGE_V1` | A residual |
+| P4 module-presence tripwire | `__TALARIA_DISABLE_MODULE_PRESENCE_TRIPWIRE_V1` | A residual |
+
+---
+
+## 2. Disable vocabulary (B guards)
 
 | Switch | Values that DISABLE | Everything else |
 |---|---|---|
-| `__TALARIA_DISABLE_B_W16_HYDRATION_GUARD_V1` | `true`, `1`, `'1'`, `'true'`, `'yes'`, `'on'` (trim, case-insensitive) | guard stays ON — including `'false'`, `''`, `0`, `null`, garbage, absent `window` |
-| `JOURNAL_SWEEP_PARSE_GUARD_ENABLED` | `0`, `false`, `no`, `off` (trim, case-insensitive) | guard stays ON — including `""`, `"disabled"`, `"fasle"` |
+| `__TALARIA_DISABLE_B_W16_HYDRATION_GUARD_V1` | `true`, `1`, `'1'`, `'true'`, `'yes'`, `'on'` | guard stays ON |
+| `JOURNAL_SWEEP_PARSE_GUARD_ENABLED` | `0`, `false`, `no`, `off` | guard stays ON |
 
-If you throw a switch and behaviour does not change, check the spelling before concluding the switch is broken.
+A's switches use strict `=== true` (flag-on disables the fix / restores prior behaviour). Absent property = fix ON.
 
 ---
 
-## 2. Rehearsal — prove disable, not just that the flag is read
-
-Run from a clean tree on `manager-b/plan3-20260727`:
+## 3. Rehearsal
 
 ```
-# Client + backend kill-switch acceptance + mutants + VER-04
 node chart\ v\ 1.4/chart/modules/b-w18-killswitch.mutants.mjs
 ```
 
-**Last rehearsal (2026-07-28 17:17):** 6 designed / 0 survived; VER-04 no-op stub dies; independent reimplementation passes; both product files restored byte-exact.
-
-**What "disable proven" means here:** with the switch thrown, the original defect reproduces (alias-wipe / empty-journal durable write). A cell that only asserts "the flag was read" is not a disable proof.
-
----
-
-## 3. Live surface — neither switch is deployed yet
-
-Probe against `31.97.192.82:3000` at 16:17Z (evidence
-`probe-2026-07-28T16-17-18-802Z-31.97.192.82_3000.json`):
-
-| Marker in served `order-manager.js` | State |
-|---|---|
-| `journalVouchedFor` | ABSENT |
-| `_bW16HydrationGuardEnabled` | ABSENT |
-| `__TALARIA_DISABLE_B_W16_HYDRATION_GUARD_V1` | ABSENT |
-
-So today there is nothing to throw on the running system. Post-push, the probe must report all three PRESENT before Tier-1 rollback is available on that surface.
-
----
-
-## 4. Gap that blocks the train
-
-Item 5 has no switch. Director ruling 16:52: **A adds the switch and it blocks the train.** This inventory cannot close item 5; assembly waits on A. Once A lands it, add the flag name, disable vocabulary, and the NC cell path to this table in the same commit that merges A's change.
+Last B rehearsal: 6/0 survived; VER-04 both halves; byte-exact restore.
