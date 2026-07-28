@@ -89,6 +89,22 @@ function p4AdvanceEvidence({
   };
 }
 
+function p4WorkWindows({
+  peerWorkRatio = 0.08,
+  hostWorkRatio = 0.20,
+  durationMs = 3000,
+} = {}) {
+  return ['A', 'B', 'C', 'D'].map((id) => ({
+    id,
+    ...phase({
+      label: `P4:${id}`,
+      workRatio: id === 'A' ? hostWorkRatio : peerWorkRatio,
+      durationMs,
+      timerCallbacks: id === 'A' ? 12 : 6,
+    }),
+  }));
+}
+
 function report({
   mutant = false,
   p1WorkRatio = 0.02,
@@ -144,18 +160,23 @@ function report({
           windowComplete: true,
           selfConsistent: true,
         },
-        rows: ['A', 'B', 'C', 'D'].map((id) => ({
+        rows: ['A', 'B', 'C', 'D'].map((id, index) => ({
           id,
           ok: true,
           activeObserved: true,
           playingObserved: true,
           advancedObserved: true,
-          indexDelta: 5,
-          timestampDelta: 300_000,
+          indexDelta: 5 + index,
+          timestampDelta: 300_000 + (index * 10_000),
           advanceContradiction: false,
-          beforeState: { isActive: true, isPlaying: false, currentIndex: 10, currentTimestamp: 1_000_000, currentTimestampSource: 'replayTimestamp', speed: 10 },
-          state: { isActive: true, isPlaying: true, currentIndex: 15, currentTimestamp: 1_300_000, currentTimestampSource: 'replayTimestamp', speed: 10 },
-          ...p4AdvanceEvidence(),
+          beforeState: { isActive: true, isPlaying: false, currentIndex: 10 + (index * 20), currentTimestamp: 1_000_000 + (index * 1_000_000), currentTimestampSource: 'replayTimestamp', speed: 10 },
+          state: { isActive: true, isPlaying: true, currentIndex: 15 + (index * 20), currentTimestamp: 1_300_000 + (index * 1_010_000), currentTimestampSource: 'replayTimestamp', speed: 10 },
+          ...p4AdvanceEvidence({
+            startIndex: 10 + (index * 20),
+            indexDelta: 5 + index,
+            startTimestamp: 1_000_000 + (index * 1_000_000),
+            timestampDelta: 300_000 + (index * 10_000),
+          }),
         })),
         ...p4Replay,
       },
@@ -167,7 +188,7 @@ function report({
       P2: phase({ label: 'P2', workRatio: p2WorkRatio, memoryDelta: p2MemoryDelta }),
       P4: {
         ...phase({ label: 'P4', workRatio: 0.22, timerCallbacks: 24 }),
-        probe: { windowCount: 4, windows: [] },
+        probe: { windowCount: 4, windows: p4WorkWindows() },
       },
       P6: phase({ label: 'P6', workRatio: p6WorkRatio, timerCallbacks: 18 }),
       P7: phase({ label: 'P7', workRatio: p7WorkRatio, timerCallbacks: 3 }),
@@ -192,6 +213,8 @@ test('unit: host HTML records shortened meta for CI P2', () => {
   assert.match(html, /currentTimestampSource/);
   assert.match(html, /host-replayPlay-fanout/);
   assert.match(html, /observedAfterP4Window/);
+  assert.match(html, /p4NoFanout/);
+  assert.match(html, /markP4ObserveBaselines/);
 });
 
 test('unit: host HTML arms replay from settled fullRawData replayTimestamp baselines', () => {
@@ -217,27 +240,31 @@ test('unit: oracle accepts P1/P2/P4/P6/P7 report and records replay observables'
 });
 
 test('unit: P4 accepts product passive peers only with sustained forward advance', () => {
-  const passiveRows = ['A', 'B', 'C', 'D'].map((id) => ({
+  const passiveRows = ['A', 'B', 'C', 'D'].map((id, index) => ({
     id,
     ok: true,
     activeObserved: true,
     playingObserved: true,
     advancedObserved: true,
-    indexDelta: 5,
-    timestampDelta: 300_000,
+    indexDelta: 5 + index,
+    timestampDelta: 300_000 + (index * 10_000),
     advanceContradiction: false,
-    beforeState: { isActive: true, isPlaying: false, currentIndex: 10, currentTimestamp: 1_000_000, currentTimestampSource: 'replayTimestamp', speed: 10 },
+    beforeState: { isActive: true, isPlaying: false, currentIndex: 10 + (index * 20), currentTimestamp: 1_000_000 + (index * 1_000_000), currentTimestampSource: 'replayTimestamp', speed: 10 },
     state: {
       isActive: true,
       isPlaying: true,
       rawIsPlaying: id === 'A',
       passivePlayActive: id !== 'A',
-      currentIndex: 15,
-      currentTimestamp: 1_300_000,
+      currentIndex: 15 + index + (index * 20),
+      currentTimestamp: 1_300_000 + (index * 1_010_000),
       currentTimestampSource: 'replayTimestamp',
       speed: 10,
     },
     ...p4AdvanceEvidence({
+      startIndex: 10 + (index * 20),
+      indexDelta: 5 + index,
+      startTimestamp: 1_000_000 + (index * 1_000_000),
+      timestampDelta: 300_000 + (index * 10_000),
       rawIsPlaying: id === 'A',
       passivePlayActive: id !== 'A',
     }),
@@ -280,6 +307,90 @@ test('unit: P4 accepts product passive peers only with sustained forward advance
   assert.equal(red.status, 'RED');
   assert.equal(red.playingCount, 4);
   assert.equal(red.advancedCount, 3);
+});
+
+test('fault-injection: P4 requires per-peer work above the P1 floor', () => {
+  const aggregateOnly = report({ p1WorkRatio: 0.02 });
+  aggregateOnly.phases.P4 = {
+    ...aggregateOnly.phases.P4,
+    workRatio: 0.24,
+    workMs: 720,
+    timerCallbacks: 30,
+    probe: {
+      windowCount: 4,
+      windows: p4WorkWindows({ hostWorkRatio: 0.20, peerWorkRatio: 0.021 }),
+    },
+  };
+  const p4 = assertPoCpuAbBenchmarkReport(aggregateOnly)
+    .find((cell) => cell.name === 'P4-FOUR-PANEL-REPLAY-RUNNING-OBSERVED');
+  assert.equal(p4.status, 'RED');
+  assert.equal(p4.peerWorkOk, false);
+  assert.deepEqual(p4.peerWorkRows.map((row) => row.pass), [false, false, false]);
+  assert.match(p4.detail, /peerWork=missing-or-idle/);
+});
+
+test('fault-injection: P4 no-fan-out negative control must turn P4 red', () => {
+  const noFanout = report({ p1WorkRatio: 0.02 });
+  noFanout.meta.p4NoFanout = true;
+  noFanout.replay.p4 = {
+    ...noFanout.replay.p4,
+    ok: false,
+    noFanoutControl: true,
+    noFanoutMutationApplied: true,
+    armingFailure: 'no replayPlay fan-out to peers',
+  };
+  noFanout.phases.P4 = {
+    ...noFanout.phases.P4,
+    probe: {
+      windowCount: 4,
+      windows: p4WorkWindows({ hostWorkRatio: 0.20, peerWorkRatio: 0.02 }),
+    },
+  };
+
+  const cells = assertPoCpuAbBenchmarkReport(noFanout);
+  const p4 = cells.find((cell) => cell.name === 'P4-FOUR-PANEL-REPLAY-RUNNING-OBSERVED');
+  const nc = cells.find((cell) => cell.name === 'NC-P4-NO-FANOUT-MUST-RED');
+  assert.equal(p4.status, 'RED');
+  assert.equal(nc.status, 'GREEN');
+  assert.equal(nc.mutationApplied, true);
+});
+
+test('fault-injection: P4 rejects byte-identical shared-mirror advance', () => {
+  const mirroredRows = ['A', 'B', 'C', 'D'].map((id) => ({
+    id,
+    ok: true,
+    activeObserved: true,
+    playingObserved: true,
+    advancedObserved: true,
+    indexDelta: 5,
+    timestampDelta: 300_000,
+    advanceContradiction: false,
+    beforeState: { isActive: true, isPlaying: false, currentIndex: 10, currentTimestamp: 1_000_000, currentTimestampSource: 'replayTimestamp', speed: 10 },
+    state: { isActive: true, isPlaying: true, currentIndex: 15, currentTimestamp: 1_300_000, currentTimestampSource: 'replayTimestamp', speed: 10 },
+    ...p4AdvanceEvidence(),
+  }));
+  const p4 = assertPoCpuAbBenchmarkReport(report({
+    p4Replay: {
+      ok: true,
+      rows: mirroredRows,
+    },
+  })).find((cell) => cell.name === 'P4-FOUR-PANEL-REPLAY-RUNNING-OBSERVED');
+  assert.equal(p4.status, 'RED');
+  assert.equal(p4.sharedMirrorOnly, true);
+  assert.match(p4.detail, /sharedMirrorOnly=true/);
+});
+
+test('fault-injection: P4 observe-window baseline requirement survives report normalization', () => {
+  const p4 = assertPoCpuAbBenchmarkReport(report({
+    p4Replay: {
+      ok: true,
+      p4ObserveBaselineRequired: true,
+    },
+  })).find((cell) => cell.name === 'P4-FOUR-PANEL-REPLAY-RUNNING-OBSERVED');
+  assert.equal(p4.status, 'RED');
+  assert.equal(p4.advancedCount, 0);
+  assert.equal(p4.rowAdvances.every((advance) => advance.observeBaselineRequired), true);
+  assert.equal(p4.rowAdvances.every((advance) => advance.observeBaselineOk === false), true);
 });
 
 test('fault-injection: P4 cannot green on playing flags without four advancing panels', () => {
@@ -853,23 +964,45 @@ test('fault-injection: --p2-ms override stamps shortened and cannot mint GREEN',
 
 test('fault-injection: injected preflight requires mutant P7 red', async () => {
   let calls = 0;
+  function noFanoutReport() {
+    const out = report();
+    out.meta.p4NoFanout = true;
+    out.replay.p4 = {
+      ...out.replay.p4,
+      ok: false,
+      noFanoutControl: true,
+      noFanoutMutationApplied: true,
+      armingFailure: 'no replayPlay fan-out to peers',
+    };
+    out.phases.P4 = {
+      ...out.phases.P4,
+      probe: {
+        windowCount: 4,
+        windows: p4WorkWindows({ hostWorkRatio: 0.20, peerWorkRatio: 0.02 }),
+      },
+    };
+    return out;
+  }
   const preflight = await runPoCpuAbBenchmarkPreflight({
     findBrowser: () => '/fixture/chrome',
     runBrowser: async () => {
       calls += 1;
       return {
         report: calls === 2
+          ? noFanoutReport()
+          : (calls === 3
           ? report({ mutant: true, p7Replay: { ok: false, state: { isPlaying: true, speed: 10 }, mutantApplied: true } })
-          : report(),
+          : report()),
         timedOut: false,
         stderrTail: '',
       };
     },
   });
 
-  assert.equal(calls, 2);
+  assert.equal(calls, 3);
   assert.equal(preflight.ok, true);
   assert.equal(preflight.status, 'GREEN');
+  assert.equal(preflight.noFanout.status, 'RED');
   assert.equal(preflight.mutant.status, 'RED');
 });
 
