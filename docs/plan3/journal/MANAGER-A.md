@@ -4503,3 +4503,24 @@ precisely this module addition was **held** on those grounds. The Director's exe
 ground that *panels resolve to it*, **which is the premise I have just refuted.** I default to: **cancel the parity
 work, ship nothing to these files in this train**, and treat the d3 swap as a security row for the next train.
 Proceeding on the pre-push switch sweep meanwhile.
+
+### 21:24 — DIRECTOR RULING on SHELL-REPAIR: CANCELLED
+**Parity work cancelled. Nothing ships to `multichart/chart-host.html` or `multichart-shell.html` in this train**
+(neither mirror). The A14.3 exemption rested on *"panels resolve to it"*, which is refuted above, so the exemption
+does not survive its premise and I am **not** applying it. The prior A14.3 hold on these two files therefore stands
+unchanged — no new precedent is set in either direction.
+
+**Carried forward as an open SECURITY row for the next train (not closed, not fixed):**
+- `multichart/chart-host.html` fetches d3 from `cdnjs.cloudflare.com` with **no SRI and no fallback**; repo has
+  **zero real `integrity=` attributes anywhere**. Vendored `chart/vendor/d3.min.js` is the **same 7.8.5,
+  byte-identical across both trees** — verified drop-in. Iframe has no `sandbox` attribute by design, so a
+  compromised CDN executes with full same-origin access. `legacy-index.html` has the same class of exposure (d3 +
+  lz-string from cdnjs) but at least carries a jsdelivr `onerror` fallback.
+- `chart-host.html` is **not byte-mirrored**: homepage copy is 23 lines behind source, missing
+  `_captureTfSwitchViewport`/`_restoreTfSwitchViewport`, so the **served** sandbox copy loses viewport preservation
+  on timeframe switch.
+
+**Standing lesson (BRIEF-02 working as designed):** the order arrived as fact — *"this is why indicator performance
+was never loaded in panels"* — and was false. Routing it as a hypothesis to refute cost one read-only audit and
+saved a ~53-module write against a live shell that would have broken an `m22` gate. **Third time today an unmeasured
+premise died on contact.** Framing costs nothing.
