@@ -103,3 +103,32 @@ retained untouched and is now formally **not usable for any verdict** — see th
 overlay is money-path-safe and needs no Manager B co-merge. If the overlay packet ever changes that
 function's signature or its idempotence, those call sites break silently. Recorded here so the
 constraint survives the packet that discovered it.
+
+---
+
+## 2026-07-28T02:30 · Reservations for TAL-01918 RED and the overnight cheap tier
+
+Reserved before dispatch per §A13.3, so parallel briefs cannot collide.
+
+| Name | Kind | Packet | Notes |
+|---|---|---|---|
+| `m21-b-tal01918-` | harness file prefix | `tal01918-red` | all harness and evidence files under this prefix |
+| `m21-b-bar-immutability-oracle` | oracle | `tal01918-red` | §A7 differential + immutability assertion |
+| `m21-b-last-bar-window-oracle` | oracle | `tal01918-red` | the wrong-window limb; deliberately a **separate** oracle from the immutability one, see below |
+| `_m21bBarWindowProbe` | instance method | `tal01918-red` | probe only, must not survive into a fix packet |
+| `__TALARIA_TRIM_WINDOW_DIAG` | global symbol | `tal01918-red` | diagnostic read-out, not a kill-switch |
+| `m21-b-mcdiag-tabulation-` | harness/evidence prefix | `mcdiag-tabulation` | cheap tier |
+| `m21-b-legacy-deroute-` | evidence prefix | `legacy-deroute` | cheap tier, read-only phase |
+| `m21-b-a10-residue-` | evidence prefix | `a10-residue` | cheap tier |
+
+**Why two oracles and not one.** The obvious design is a single "the bar did not change" oracle. That
+design is now known to be dangerous: the indicator-lag diagnostic reports historical buckets moving 0
+pips in both kill-switch states, so an immutability-only oracle would go **GREEN on a product the PO can
+see is broken**. The two limbs assert different things and must be able to disagree — immutability
+covers "a finalised bucket never changes again", window covers "the last bar is computed over
+`[bucketStart, bucketEnd]` and not `[bucketStart, playhead]`". Collapsing them into one name would let a
+pass on the first be read as a pass on the second.
+
+**Not reserved and deliberately so:** no kill-switch name for the trim-overlay fix. The fix shape is not
+decided — it depends on whether the review upholds one defect or two — and reserving a name for it now
+would imply a design decision I have not made.
