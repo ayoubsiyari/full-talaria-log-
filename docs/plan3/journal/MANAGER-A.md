@@ -1472,3 +1472,72 @@ A larger finding in the same sweep that I did not ask for: **`legacy-index.html`
 Two limits I am not glossing. `fullRawData.length` was **3,000** in the harness; real sessions are believed to be one to two orders larger, which is exactly what my outstanding `PO-REQ` asks and why C3a scope is still ungated. And 5m and 4H could not be produced — the harness hardcodes 1m and 1h with no CLI to extend, correctly reported rather than estimated.
 
 Outstanding `PO-REQ` count: **1**.
+
+---
+
+## 2026-07-28 04:35 — CORRECTION: I retract my TAL-01918 mechanism verdict in full
+
+At 03:01 I recorded a VERDICT naming the mechanism as "one defect, in the slice, and only visible under candle stepping," with attribution 100% slice / 0% trim. Every one of those three clauses is withdrawn. The adversarial review at [Review TAL-01918 RED](c7b8b102-df3f-4fcd-b38c-466bcea8a472) took the packet apart and the author conceded without relitigating a single point.
+
+**"One defect, not two" is withdrawn.** The identity test computed `truncationErr` and `windowErr` from two expressions that were literally the same value: `referenceBucketsPoints` assigns `cur.cP = r.cP` on every row (`corpus.mjs:165`), so `ref.cP` *is* `closeAtT.get(bucketLastRawT)`. 0/2,880 was arithmetically forced. The decisive proof is that in a review run where `loadProductChartSurface()` threw and every product-touching test errored, this test still passed with `checked=2880 mismatches=0`. No product code was involved. I propagated that unification into my journal and into a re-brief. It should not have entered the record.
+
+**The 100% slice / 0% trim attribution is withdrawn**, and it was wrong in the more interesting direction. The fault injection bounding the trim's contribution moved the **high** (−200 points) while the statistic was close-only, so the trim's close contribution was never bounded at all. Driving the `_btTfDataCache` branch, the trim moves the close on 4/4 ticks by −10.3, +10.1, −3.5 and −0.2 pip — same order as the whole effect.
+
+**The candle-stepping precondition survives inverted.** Under raw stepping the bucket window is complete at the measurement instant, and there the product is exact. That is evidence the window arithmetic is *right*, not evidence the mode was wrong. I drew the opposite inference.
+
+## 2026-07-28 04:36 — VERDICT: the third oracle defect, and this one could never pass
+
+surface=`m21-b-tal01918-red` harness, pinned `chart.js` / `replay-system.js` / `chart-data-pipeline.js` at `9f45965e4`
+coverage=8-cell timeframe × stepping matrix, 5m/15m/1H/4H, plus a 1m control; three synthetic aggregator models; five corpus shapes
+
+Two packets were blocked tonight for oracles whose subject could never change. This one is the inverse: **an oracle whose subject could never be stable.** Run against an ideal aggregator with exact full-bucket arithmetic and no product code at all, LIMB 1 still failed 47/47 at 4.9 pip — and it failed identically when the live bar was explicitly marked `isForming: true`, which is the remedy the packet's own report recommended. It passed only for a chart that refuses to draw a live candle.
+
+The oracle sampled the bucket while it still *was* the last bar, i.e. exactly when it is not finalised, with no completeness gate (`oracles.mjs:139-144`). At every reported 1H violation the playhead sat at `bucketStart + 20min` of a 60-minute bucket. Minimum un-elapsed remainder across all violations: 40 minutes. Never zero.
+
+**And the verdict was a property of the fixture.** Same product bytes, flat corpus: all four cells flip to PASS. A pure-corpus calculation with no product in it predicts 1.48 / 2.53 / 4.96 / 10.62 pip against the measured 1.48 / 2.54 / 4.90 / 10.59. It was a volatility meter. A corpus containing a weekend or an illiquid session would have silently reported TAL-01918 fixed.
+
+That is three instances of the same family in one night, across three independent authors and two model tiers. I am no longer treating this as an authoring accident. Recorded as a standing hazard: **an oracle must be run against a correct implementation before its RED is believed.** The ideal-aggregator control is the instrument that caught all three, and I will require it in every §A7 brief from here.
+
+I also caused part of this one. I told the author that the `length - 2` stability result was a tautology because the trim cannot reach that slot. True of the trim, false in general: the packet's own counters show `fullResampleCalls === ticks` and `incrementalHits = 0`, so `_resampleDataFull` rebuilds the entire series from the growing prefix every tick and that bar is recomputed from scratch before every comparison. It was the packet's only sound immutability result and I had it discarded in favour of an unsound one.
+
+## 2026-07-28 04:37 — VERDICT: neither the trim nor the slice; the row is a presentation defect
+
+surface=same, at `fb3eb56a0`
+coverage=32 matrix cells, two stepping laws driven from product code, three aggregator models, five corpus shapes
+
+I asked for a trim-versus-slice ruling before dispatching a corrective packet. The ruling is **neither**, and it is drawn from the packet's own sound measurements rather than against them:
+
+- The slice is exact whenever the window is complete — 0 value failures across 1,656 matrix checks plus 2,880 in the 1m control.
+- Completed buckets never mutate — 0 violations across 3,110,344 stability comparisons, on a series fully recomputed every tick.
+- The 100% slice share was an artifact of scoring the slice against a reference containing bars the playhead has not reached.
+
+**The defect is presentation.** The product publishes the newest coarse bucket as an ordinary finished bar, with no forming marker in any of 15 searched spellings, while it holds only the elapsed raw bars. Driving the product's own `calculateNextIndex` (`replay-system.js:4964-4967`), the steady-state landing phase is 0 at every timeframe from a deliberately off-phase start, so:
+
+| timeframe | raw bars in newest candle | bucket un-elapsed | markers |
+|---|---|---|---|
+| 5m | 1 of 5 | 80% | 0 |
+| 1H | 1 of 60 | 98% | 0 |
+| 4H | 1 of 240 | 99.58% | 0 |
+
+A user stepping candle-by-candle sees an unlabelled one-minute stub in the slot where they read a finished candle, then watches it fill in. That is normal behaviour for a live candle and surprising only because nothing labels it as one. It is a plausible mechanism for the PO's 13-pip report and it is neither of the two suspects I was chasing.
+
+**Row renamed** from "completed-bar close mutation" — contradicted by this packet's own 0/1,664 and 0/3,110,344 — to **`unmarked-forming-candle`**. Not "coarse": clause A fails 2,304/2,304 at 5m, 2,688/2,688 at 15m, 2,832/2,832 at 1H and 2,868/2,868 at 4H under *raw* stepping as well. Coarse stepping sets the severity, not the existence.
+
+**One constraint the corrective packet must carry.** On the `_btTfDataCache` path the pre-trim resample equals the **full bucket** close on 4/4 ticks and the post-trim value equals an independent to-playhead aggregation on 4/4. The trim is writing the *correct* value there; its 10.3 pip is the size of the correction it applies. Narrowing or removing the trim on that path re-introduces up to 10.3 pip of future data into a live candle. My 03:01 note that "work on the trim moves zero pips" would have pointed a fixer straight into that.
+
+Reachability of that branch is scoped, not claimed: the probe replaces `_getBtTfDataCache` wholesale and bypasses four gates the real accessor applies. It shows the branch executing and what it computes, nothing about the shipped cache reaching it.
+
+## 2026-07-28 04:38 — VERDICT: TAL-01918 RED accepted at r2, finished at r3
+
+surface=`manager-a/tal01918-red` at `fb3eb56a0`
+coverage=28 tests, 26 pass, 2 fail (both limbs), evidence byte-identical across independent reruns
+
+Accepted at r2 after the rebuilt LIMB 1 survived the instrument that killed r1: it passes against a model that omits the partial bucket, passes against one that merely marks it `isForming` with clause A exercised 48 times rather than skipped, and fails 48/48 against the real product. The reviewer could not make it fail on a healthy product or pass on a broken one.
+
+Clause B was the sharpest residual risk — marker-awareness is the correct narrowing and also the classic way to disarm an assertion. The reviewer built the discriminating input, an aggregator that marks its live candle correctly but corrupts a *finished* bar by 5 points, and clause B fired 48/48 with A and C silent. Across five corpus shapes including a weekend gap with 480 bars excised and two illiquid-session variants, clause A fails 100% of its checks in every one. The fixture-flatness failure is closed, not moved.
+
+r3 landed four must-fixes. The one worth recording: `assert.ok(masterFail > 0)` failed on a flat corpus with the product byte-identical — the r1 error re-imported one level down into an asserted position. Also two product claims printing `pass: true` on an empty matrix via `[].every(...)`, the 4H row rendering 239/240 as "100%", and a float-equality conjunct that was a 0.005 pip tolerance in disguise.
+
+r3 also closed the undriven legacy stepping path rather than deferring it. `_advanceCoarseLegacyCandleBucket` is phase-*preserving* and is checked first at all three step sites, so when its gate is on it dominates. Driven with one declared gate stub, phase is preserved at all four timeframes where `calculateNextIndex` collapses to 0. **Two evidenced stepping laws with opposite phase behaviour, and the RED fails under both.** Under the legacy gate the newest candle holds `phase + 1` raw bars, so the 1-of-60 figure is specific to `calculateNextIndex` — that bounds the mechanism table, not the RED.
+
+Not verified, and I am carrying these rather than burying them: shipped reachability of the `_btTfDataCache` branch; anything painted, since there is no browser and the render limb clears `_frameDisplaySeries` by hand in place of `render()`; and the magnitude gap — the PO's 72 pip at 4H sits outside this fixture's observed maximum of 43.2, which bounds the corpus rather than the defect.
