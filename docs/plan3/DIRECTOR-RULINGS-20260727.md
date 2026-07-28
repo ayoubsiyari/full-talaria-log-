@@ -257,6 +257,26 @@ Parallelism is encouraged wherever collision is impossible. The manager partitio
 - **Long-running write work goes in its own worktree.**
 - **Cap: 3 write packets in flight per manager.** Read-only work is uncapped. The cap exists because each write packet consumes top-tier review, and review plus consolidation is the binding constraint — see the pre-registered throttle at more than 4 packets awaiting consolidation across two train boundaries (§A11.4).
 
+### A13.3b Routing is measured, not requested (PO observation, 2026-07-28 01:20)
+
+**Observed violation:** all three managers are dispatching effectively everything at top tier. §A13.2 was written as prose with no counter, so it became advisory. This is the same class as the loader defect and TB-6 — a contract with no machine check is a suggestion.
+
+**First, separate the two numbers before judging the mix.** §A13.1 mandates a top-tier adversarial reviewer on *every* packet, so a correct train still shows one top-tier subagent per packet. That part is policy working. The number under audit is the **author tier**, and it must be reported separately from reviewer tier. A manager reporting a single blended figure is not reporting.
+
+**Enforcement, four parts:**
+
+1. **Every dispatch is journalled with its tier.** A `DISPATCH` entry must carry `role=author|reviewer`, `tier=cheap|mid|top`, `model=`, and for any top-tier author `trigger=<clause>`. A dispatch absent from the journal is an unaccepted packet.
+
+2. **Top-tier authoring requires a named trigger clause from the §A13.2 table.** Not a paraphrase, not "high risk", not "to be safe" — the row. **If a manager cannot name the row, the task is cheap tier.** Defaulting upward under uncertainty is the exact drift being corrected: it silently converts a verifiability judgement into a comfort judgement.
+
+3. **Pre-registered expected mix, so deviation is visible rather than arguable.** Across authoring dispatches per train, the standing expectation is a **majority cheap, minority top**. Concretely: **top-tier authoring above 40% of authoring dispatches in a train requires a written justification in the digest.** This is a reporting trigger, not a hard cap — a train that is genuinely all `chart.js` and money-path work may legitimately exceed it, and must say so.
+
+4. **Rejection rate per (task class × model) is reported every train**, as Part 4 already required and none of the three managers is doing. Without it there is no evidence to tune on, so every manager rationally defaults to top tier. **The measurement is what makes cheap tier safe to use.** Upgrade the combinations that bounce; keep the ones that pass.
+
+**Work currently on the board that must be dispatched cheap** (named so the ruling is actionable, not abstract): guard-site enumeration for the `global.X &&` audit (§A4c/Q2); UI control inventory diff (§A10); the reachability sweep's mechanical presence pass (§A8); servable-surface enumeration across the 114 HTML files (§A6); `_mcDiag.resamples` counter tabulation and log parsing; provenance, digest and uniformity checks; evidence-folder assembly; checklist and documentation drafting. These are large, mechanical, and independently verifiable — they are where the cheap tier pays and where a top-tier model is simply slower for the same output.
+
+**Standing rule per §B2:** the digest reports author-tier mix, reviewer-tier mix, top-tier triggers cited, and rejection rate by (task class × model). Absent numbers are treated as a violation, not an omission.
+
 ### A13.4 Every subagent brief must state
 
 Task, tier and model with the reason for that tier, the **exact file set the subagent may write**, names already reserved for it, the acceptance criterion, and what it must report back. A brief without an explicit writable file set is invalid, because it cannot be checked against the territory manifest or against sibling subagents.
