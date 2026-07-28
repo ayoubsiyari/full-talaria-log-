@@ -12353,11 +12353,15 @@ def _sync_trading_session_journal_trades(
     by_client = {str(r.client_trade_id): r for r in existing_rows if r.client_trade_id is not None}
     next_user_tid = _next_user_trade_id(db, uid)
     incoming_ids: set[str] = set()
+    unresolved_incoming = 0
+    rows_added = 0
     for raw in journal:
         if not isinstance(raw, dict):
+            unresolved_incoming += 1
             continue
         tid = str(raw.get("tradeId") or raw.get("id") or "").strip()
         if not tid:
+            unresolved_incoming += 1
             continue
         incoming_ids.add(tid)
         # Prefer already-assigned per-user id from payload when valid.
@@ -12446,13 +12450,63 @@ def _sync_trading_session_journal_trades(
             payload_json=json.dumps(enriched, separators=(",", ":")),
         )
         db.add(new_row)
+        rows_added += 1
         by_client[tid] = new_row
+
+    # The sweep's inline parse above reads only tradeId|id; it is NOT the canonical
+    # four-key session_journal_store.journal_trade_client_id. Naming it in the record
+    # is what makes that divergence visible in production.
+    sweep_resolver = "api_server._sync_trading_session_journal_trades.inline(tradeId|id)"
+    # rows_before counts the session at entry; the upsert loop above may have added
+    # rows, so the after-count must include them or the record understates the
+    # surviving journal and cannot be reconciled against the table.
+    rows_before = len(existing_rows)
+    rows_present = rows_before + rows_added
+
+    if unresolved_incoming:
+        # Fail closed. An entry whose id did not parse cannot be matched to a stored
+        # row by construction, so we cannot say which stored rows are orphans, and
+        # there is no way to exempt only the offending row. Retain everything and
+        # report: retention is recoverable, a delete on this path is not.
+        try:
+            print(
+                f"[JOURNAL-SWEEP-REFUSED] session_id={session_id} rows_before={rows_before} "
+                f"rows_after={rows_present} rows_added={rows_added} deleted_count=0 "
+                f"unresolved_incoming={unresolved_incoming} incoming_entries={len(journal)} "
+                f"resolved_ids={len(incoming_ids)} resolver={sweep_resolver} "
+                f"reason=unparsed-incoming-id",
+                flush=True,
+            )
+        except Exception:
+            pass
+        return
 
     q = db.query(TradingSessionJournalTrade).filter(TradingSessionJournalTrade.session_id == session_id)
     if incoming_ids:
         q = q.filter(~TradingSessionJournalTrade.client_trade_id.in_(incoming_ids))
-    for orphan in q.all():
+    orphans = q.all()
+    try:
+        deleted_ids = [str(o.client_trade_id) for o in orphans]
+    except Exception:
+        deleted_ids = []
+    for orphan in orphans:
         db.delete(orphan)
+
+    if orphans:
+        # Reporting must never be able to abort or roll back the delete above.
+        try:
+            shown = deleted_ids[:50]
+            suffix = "" if len(deleted_ids) <= 50 else f" (+{len(deleted_ids) - 50} more)"
+            print(
+                f"[JOURNAL-DELETE] session_id={session_id} rows_before={rows_before} "
+                f"rows_after={rows_present - len(orphans)} rows_added={rows_added} "
+                f"deleted_count={len(orphans)} "
+                f"resolver={sweep_resolver} "
+                f"deleted_client_trade_ids={shown}{suffix}",
+                flush=True,
+            )
+        except Exception:
+            pass
 
 
 def _google_sheets_service():

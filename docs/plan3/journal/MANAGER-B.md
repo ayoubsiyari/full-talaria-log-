@@ -2447,3 +2447,60 @@ Eleven mutants, including the over-blocking one (guard applied to the legitimate
 ### 4. EVID-01 and DEPLOY-01 are one class
 
 The Director's framing is the right one and worth keeping in my own words for the closing report: **we do not durably record the identity of the thing we tested or shipped.** DEPLOY-01 is that gap at the deploy boundary, EVID-01 at the verification boundary. Both surfaced today from the same investigation, and both were only visible because someone asked "what exactly is this artifact pinned to?" — a question neither system was built to answer.
+
+---
+
+## B-0113 — B-W17 ACCEPTED (12 designed / 0 survived) with one manager correction. Both halves of the hotfix train are now done.
+
+**Verified by me in my own worktree** (TREE-02). Every number reproduced, not read off the report.
+
+| Check | Result |
+|---|---|
+| Scope | all hunks inside `_sync_trading_session_journal_trades`; 55 insertions / 1 deletion; no other file but the new test |
+| RED against unmodified source | 9 failed / 4 passed — cell 1 is `assert [] == ['t1','t2','t3']`, the session emptied by a payload carrying three trades |
+| GREEN | **14 passed** |
+| Mutation | **12 designed / 0 survived** |
+| VER-04 (a) no-op stub | **DIES** (7 failed) |
+| VER-04 (b) independent reimplementation | **PASSES** (14/14) |
+| Full `tests/` suite | 4 failed / 77 passed — **the same 4 failures occur against unmodified source**, confirmed by stashing |
+
+The packet used a **real SQLite-backed SQLAlchemy session over the shipping model**, not a stub, so the actual `NOT IN` clause and the real `db.delete()` unit-of-work are exercised. That is the stronger of the two options I allowed and it matters: cell 1 proves the empty-`incoming_ids` degradation in real SQL rather than proving a fake was called as expected.
+
+### 1. The correction — a log field that did not mean what it said
+
+`rows_before` is captured at function entry, but the upsert loop **adds rows before the sweep runs**. So `rows_after = rows_before - deleted` understates the surviving journal whenever one PATCH both adds a trade and orphans another.
+
+I did not reason about this; I probed it. Seed `t1,t2,t3`, PATCH `t1,t2,t4`:
+
+```
+[JOURNAL-DELETE] session_id=2001 rows_before=3 rows_after=2 deleted_count=1 ...
+ACTUAL rows after call:  3  ids=['t1', 't2', 't4']
+```
+
+**The record said 2. The table held 3.** Corrected with a `rows_added` counter: `rows_after = rows_before + rows_added - deleted`, and `rows_added` is now emitted on both records. Re-probed: `rows_after=3 rows_added=1`, matching reality.
+
+**Why this was worth stopping for on a hotfix train.** This log is the *entire* instrument for answering "has this already destroyed a user's trades?" — I-2 exists for no other reason. An investigator reconciling `rows_after=2` against a table holding 3 concludes the record is untrustworthy, and a record that cannot be reconciled is not evidence. Shipping a deletion log whose counts are wrong would have reproduced, inside the fix, the exact condition the fix exists to end.
+
+Made load-bearing, not trusted: **new cell 5c** asserts the logged `rows_after` equals the real table count after an add-and-delete PATCH, and **new mutant 12** reverts the formula — it **DIED**.
+
+### 2. The VER-04 reimplementation had to be updated, and that is the point
+
+The packet's independent reimplementation used the old formula, so it failed cell 5c. That is correct behaviour, not a defect: **I changed the specification, so the reimplementation had to be brought to the corrected spec before VER-04 could mean anything.** Updated (its own `appended` counter, structurally still independent) and it passes 14/14. A VER-04 claim against a stale spec is worthless.
+
+### 3. Second CRLF trap today — and this one had a self-check that was falsely green
+
+The mutation harness rewrote `api_server.py` through Python's `write_text`, which translates `\n` to `\r\n` on Windows. The whole 27,112-line file silently converted, turning my diff into **27,165 insertions**. I caught it because the diffstat was absurd, not because anything warned me.
+
+**The harness's own guard reported `source restored byte-for-byte: True`.** It compared `read_text() == original` — and `read_text` translates CRLF back to LF, so the comparison passes through exactly the corruption it exists to detect.
+
+**That is a vacuous check in the VER-04 sense: it cannot fail.** A restoration guard that reads through the same normalisation it wrote through is not a guard. This is the second time today line-ending translation produced a false verification result — the first gave me a false *rejection* of B-W16, this one a false *reassurance* — and both were invisible without dropping to bytes. Repaired to 55 insertions / 1 deletion; acceptance re-run after the repair, still 14/14.
+
+**Recommend to the Director as an EVID-01 sibling:** any harness that restores a source file must verify restoration **in bytes**, and never through a text API that normalises. I will not draft the row myself — it is a standing-rule question and therefore the Director's.
+
+### Status
+
+**Both halves of the D-2 hotfix train are complete and green.** B-W16 stops this client writing an unhydrated journal; B-W17 stops the backend deleting on ids it cannot parse and makes every durable deletion a matter of record. Together the incident's chain is broken at the client and the deletion is no longer silent.
+
+**Not fixed, and still true:** replace semantics themselves (out of scope by ruling), and the two-resolver divergence — reported, not repaired, per the brief. After B-W17 that divergence no longer destroys data silently; it trips the guard and emits `[JOURNAL-SWEEP-REFUSED]` naming the resolver, which turns an invisible corruption into an observable event.
+
+**PO-REQ outstanding: 0.** Next: B-3, the asymmetric write-probe guard.
