@@ -109,3 +109,48 @@ Send to all testers on the public build. Plain, no jargon, no minimising.
 - **Do not soften "wipe" or "empty".** Testers who have already lost trades need to recognise their own experience in this text.
 - **The stop-and-do-not-reload instruction is the operationally important sentence.** B established that a reload after failed hydration is the action that makes loss durable. It matters more than the export request, because it is what prevents *new* loss over the next few hours.
 - **Do not claim we will restore lost data.** We have no evidence trail to restore from.
+
+---
+
+## 8. Ruling I-7.1 — grant corrected (13:42). My path was wrong, not B''s reading.
+
+**B is blocked on a defect in my own grant and is right to be blocked.**
+
+I-7 granted `journal-backend/`. **The served deletion path is not there.** B''s read-only audit — which needs no grant, and which it dispatched instead of waiting for me — established that the code is `chart v 1.4/chart/api_server.py`, function `_sync_trading_session_journal_trades` (`:12337-12455`). `TERRITORY.yml` has no row for that path, so TB-3 holds it RED.
+
+**B declined to read the grant''s intent as "wherever the code turns out to be" and stopped. That is exactly right and I want it recorded as correct, not as caution.** A manager who widens its own grant by inference is how territory isolation dies. It also brought me a specific file and line range to grant against rather than an abstract request to widen — the right escalation shape.
+
+**This is a BRIEF-03 violation by me, one hour after I promoted BRIEF-03.** I wrote a path set from where the code *appeared* to belong rather than from where it actually lives. `journal-backend/` exists, which is what made the guess plausible; it simply is not the backend serving this route. I own it.
+
+### The grant, stated precisely
+
+**Manager B is granted write access to `chart v 1.4/chart/api_server.py`, function `_sync_trading_session_journal_trades` only (`:12337-12455`), for exactly the two changes named in I-7:**
+
+1. **Log every durable journal deletion** — session id, row count before and after, and the resolver that produced the id.
+2. **Never delete on an id that failed to parse** — retain and report, never remove.
+
+**Nothing else in that file. Nothing else in that function. Replace semantics remain out of scope.** The `journal-backend/` grant in I-7 is **withdrawn as misdirected**, not extended — if B''s audit found that directory does not implement these routes, it should not carry a grant at all. **Expires when the hotfix train ships.**
+
+**Ratified in advance:** B''s point that the backend''s `len(journal) > 0 and not incoming_ids` discriminator is **not** the banned `length > 0` fix. The ban is on the *client* using emptiness as a proxy for provenance. This is a backend parse-failure signal — "we were handed rows and could resolve none of them" — a different predicate with a different meaning. **B flagged it pre-emptively so it would not be rejected on a pattern match, which is what a good escalation looks like.**
+
+## 9. B-2 is done and green — and it corrected its own guard mid-flight
+
+**The half that stops the data loss is complete and inside B''s own territory.** Two things about how it got there matter more than the fact of it.
+
+**The packet shipped a deny-list (`provenance === ''unhydrated''` suppresses) and disclosed unprompted that it fails open when the field is `undefined`.** B''s reading: *"`undefined` is maximally 'we do not know', and this entire packet exists because the system treated 'we do not know' as 'there is nothing'. A guard that fails open on unknown provenance is the same defect one layer up."* Corrected to an **admit-list** — only `'hydrated'` bound to the current session, or `'locally-authored'`, may proceed; everything else including `undefined` and any unrecognised value suppresses. Same size, same single branch.
+
+**And B made the correction load-bearing rather than trusting it:** new cell 7b (provenance `undefined`, and provenance set to an unrecognised string → suppressed, server rows intact) and new mutant 9 (revert to the deny-list → **died** on 7b). Both new cells fail against unmodified source.
+
+**VER-04 earned its promotion within hours.** The packet''s own VER-04 reimplementation had independently chosen the admit-list form and passed the identical acceptance. **Two implementations disagreeing on a safety property while the acceptance is blind to the difference is precisely the gap VER-04 exists to surface — and it surfaced it.**
+
+**Session-binding was added for a reason B established rather than assumed:** `OrderManager` is constructed once (`chart.js:13004` via `initReplaySystem` at `:12933`) and never reassigned, while `activeTradingSessionId` mutates freely (`chart.js:990, 2117, 2138` plus two multichart bridges). So the instance outlives a session switch and a stale `'hydrated'` from session A would have opened the guard for session B. `persistJournal` already assumed this, carrying a `'session-switched-mid-flight'` drop at `:7218-7228`. Cell 8 proves the binding and fails against unmodified source. **`'locally-authored'` ships declared and unset** — the packet searched for a local-session-creation signal, found none, and did not invent one.
+
+## 10. New standing row — EVID-01: evidence that rewrites itself is not evidence
+
+**B found that `m19-d-marker-delta.green.test.mjs` regenerates its own evidence file when run**, overwriting `headSha`, `elapsedMs`, and the recorded `order-manager.js` / `replay-system.js` / `chart.js` hashes in `docs/plan3/evidence/L2-M19-AE-20260723b04-D-GREEN.json`.
+
+**This is not cosmetic.** The stored pin was `c9700ebc8` — *the exact commit this incident names as the durable-write half''s last touch* — and running the regression replaced it with the dirty tree''s SHA and the hash of a modified, then-unreviewed `order-manager.js`. **The artifact would then assert that M19-D-GREEN had been verified against a tree that was never verified.** B restored both files and declined to claim the finding before establishing the mechanism.
+
+**`EVID-01`: a test may not write the evidence file that certifies it.** Evidence is written by the harness that pins the tree, once, and is immutable thereafter. Any file a later run can silently re-pin is not evidence.
+
+**Filed alongside `DEPLOY-01`, and for the same reason B named:** *we cannot say what was verified, for the same reason we cannot say what is deployed.* Two instances of one class in one day. **The class is: we do not durably record the identity of the thing we tested or shipped.** That is now the most-repeated structural defect in this project and it will be a named row in the closing report.
