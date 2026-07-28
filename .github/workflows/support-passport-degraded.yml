@@ -1,0 +1,79 @@
+# SUPPORT-PASSPORT-DEGRADED-MODULES-V1 — support passport carries degraded modules.
+#
+# The gate transpiles homepage/src/app/dashboard/support/supportUi.tsx and executes the real
+# buildSupportContext() inside a vm realm whose window is published by
+# module-presence-runtime.js, then re-runs the whole behavioural suite against five mutants
+# of that same .tsx. It therefore has to run whenever either side of that pairing moves —
+# the support UI, the presence runtime, or the gate itself.
+#
+# The TypeScript compiler is a hard dependency: without it the gate reports RED rather than
+# falling back to a re-implementation. It is taken from the homepage workspace — the one that
+# owns supportUi.tsx and pins the compiler version that file is written against — so no new
+# dependency and no lockfile churn is introduced at the workspace root.
+#
+# W42 added the consumer call path to the gate: the extractor is only worth proving if
+# something sends what it builds, so SupportInbox.tsx and V16SupportChatPopover.tsx are
+# pinned (read-only, by AST) and therefore have to trigger this workflow too.
+name: Support passport degraded modules
+
+on:
+  pull_request:
+    paths:
+      - "homepage/src/app/dashboard/support/supportUi.tsx"
+      - "homepage/src/app/dashboard/support/SupportInbox.tsx"
+      - "homepage/src/app/dashboard/v16/V16SupportChatPopover.tsx"
+      - "chart v 1.4/chart/modules/module-presence-runtime.js"
+      - "chart v 1.4/chart/modules/indicator-performance.js"
+      - "chart v 1.4/chart/api_server.py"
+      - "scripts/support-passport-degraded-gate.mjs"
+      - "scripts/lib/support-passport-degraded.mjs"
+      - "scripts/tests/support-passport-degraded.test.mjs"
+      - "homepage/package-lock.json"
+      - ".github/workflows/support-passport-degraded.yml"
+  push:
+    branches:
+      - "manager-a/**"
+      - "manager-b/**"
+      - "manager-c/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: support-passport-degraded-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  support-passport-degraded:
+    name: support passport degraded modules (V1)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: homepage/package-lock.json
+
+      # Only the compiler is used; nothing in this job builds or runs the Next app, and
+      # --ignore-scripts keeps the dependency tree's lifecycle hooks out of CI.
+      - name: Install the TypeScript compiler that owns supportUi.tsx
+        run: npm ci --prefix homepage --ignore-scripts
+
+      # The gate's own cells run first: a preflight whose negative controls are RED must
+      # never be the thing deciding whether the passport is wired.
+      - name: Gate self-test
+        run: npm run test:support-passport-degraded
+
+      - name: Support passport degraded preflight
+        run: node scripts/support-passport-degraded-gate.mjs --out support-passport-degraded-report.json
+
+      - name: Upload preflight evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: support-passport-degraded-${{ github.run_id }}
+          path: support-passport-degraded-report.json
+          if-no-files-found: warn

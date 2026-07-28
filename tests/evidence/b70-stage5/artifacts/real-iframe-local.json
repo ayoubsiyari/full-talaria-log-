@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "evidenceClass": "hermetic-local-real-product-iframes",
+  "verdict": "GREEN",
+  "authenticated": false,
+  "productionEvidence": false,
+  "contract": {
+    "indicatorCounts": [
+      1,
+      4
+    ],
+    "realIframeCount": 3,
+    "defaultOffAndCandidateOnCompared": true,
+    "payloadParity": true,
+    "valueParity": true,
+    "yParity": true,
+    "layerParity": true,
+    "blackPanels": 0,
+    "panelRemoval": true,
+    "panelReadd": true,
+    "reloadReady": true
+  },
+  "faultGates": {
+    "malformedAuthority": true,
+    "duplicateAuthority": true,
+    "foreign": true,
+    "schema": true,
+    "order": true,
+    "stale": true,
+    "partial": true,
+    "late": true
+  },
+  "acceptance": false
+}

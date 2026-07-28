@@ -1,0 +1,100 @@
+# A11.2 item 1 — ownership preflight and append-only journal check.
+#
+# Gates every packet: the authoring manager comes from the commit trailers, the touched
+# file list comes from git, and both are compared against docs/plan3/TERRITORY.yml as it
+# stood at each commit's first parent. There is no human in the loop and no reviewer
+# override — an out-of-territory path or a rewritten journal line fails the build.
+#
+# Manager B may not merge into integration until this workflow is live (A11.1).
+name: Territory preflight
+
+on:
+  pull_request:
+  push:
+    branches:
+      - "manager-a/**"
+      - "manager-b/**"
+      - "manager-c/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: territory-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ownership:
+    name: ownership + journal append-only
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The preflight reads commit trailers and the manifest at every commit's first
+          # parent, so the packet's full history must be present.
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Resolve packet range
+        id: range
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          HEAD_REF: ${{ github.head_ref }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          if [ -n "${PR_BASE_SHA:-}" ]; then
+            base="$PR_BASE_SHA"
+          else
+            git fetch --no-tags origin main
+            base="$(git merge-base origin/main "$HEAD_SHA")"
+          fi
+          branch="${HEAD_REF:-$REF_NAME}"
+          # A branch that is not a manager branch — Director work, a release branch, a
+          # fork — still gets the full ownership and journal audit. It only loses the
+          # branch-name-versus-trailer cross-check, which has nothing to compare against.
+          # Hard-failing the shell here would have skipped the audit entirely, which is
+          # the opposite of what a fail-closed gate should do with an unexpected branch.
+          case "$branch" in
+            manager-a/*) manager="A" ;;
+            manager-b/*) manager="B" ;;
+            manager-c/*) manager="C" ;;
+            *)
+              manager=""
+              echo "::notice title=Territory preflight::branch '${branch}' is not a manager branch; auditing without the --manager cross-check"
+              ;;
+          esac
+          echo "base=$base" >> "$GITHUB_OUTPUT"
+          echo "head=$HEAD_SHA" >> "$GITHUB_OUTPUT"
+          echo "manager=$manager" >> "$GITHUB_OUTPUT"
+
+      # The gate's own cells run first. A preflight whose tests are RED must never be
+      # the thing deciding whether a packet is in territory.
+      - name: Gate self-test
+        run: npm run test:territory
+
+      - name: Ownership + journal preflight
+        env:
+          PACKET_BASE: ${{ steps.range.outputs.base }}
+          PACKET_HEAD: ${{ steps.range.outputs.head }}
+          PACKET_MANAGER: ${{ steps.range.outputs.manager }}
+        run: |
+          set -euo pipefail
+          args=(--base "$PACKET_BASE" --head "$PACKET_HEAD" --out territory-preflight-report.json)
+          if [ -n "$PACKET_MANAGER" ]; then
+            args+=(--manager "$PACKET_MANAGER")
+          fi
+          node scripts/territory-preflight.mjs "${args[@]}"
+
+      - name: Upload preflight evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: territory-preflight-${{ github.run_id }}
+          path: territory-preflight-report.json
+          if-no-files-found: warn

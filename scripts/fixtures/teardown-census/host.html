@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="talaria-teardown-census-signature" content="TALARIA_TEARDOWN_CENSUS_V1">
+  <meta name="talaria-rest-state-census-signature" content="TALARIA_REST_STATE_CENSUS_V1">
+  <title>Teardown / rest-state census browser acceptance</title>
+</head>
+<body>
+  <p id="status">pending</p>
+  <script type="module">
+    import {
+      installCensus,
+      assertReturnedToBaseline,
+      installRenderCounter,
+      assertAtRest,
+      assertNoRenderWithoutDataChange,
+      installIdleObserveProbe,
+      assertIdleMainThreadBudget,
+      TEARDOWN_CENSUS_PROBE_SIGNATURE,
+      REST_STATE_CENSUS_PROBE_SIGNATURE,
+      HERMETIC_REST_PINNED_ALLOWLIST,
+    } from '/lib/teardown-census-probe.mjs';
+
+    const params = new URLSearchParams(location.search);
+    const settleMs = Number(params.get('settleMs') || '50');
+    const mode = params.get('mode') || 'teardown';
+
+    function openMultichartSim(census, g) {
+      let rafLoopId = null;
+      let rafActive = true;
+      const rafLoop = () => {
+        if (!rafActive) return;
+        rafLoopId = g.requestAnimationFrame(rafLoop);
+      };
+      rafLoopId = g.requestAnimationFrame(rafLoop);
+      const stopRaf = () => {
+        rafActive = false;
+        if (rafLoopId != null) g.cancelAnimationFrame(rafLoopId);
+      };
+      const handles = {
+        interval: g.setInterval(() => {}, 1000),
+        timeout: g.setTimeout(() => {}, 5000),
+        stopRaf,
+        listener: () => {},
+        channel: null,
+        bc: null,
+      };
+      g.window.addEventListener('resize', handles.listener);
+      g.document.addEventListener('visibilitychange', handles.listener);
+      if (g.MessageChannel) {
+        handles.channel = new g.MessageChannel();
+        handles.channel.port1.start?.();
+        handles.channel.port2.start?.();
+      }
+      if (g.BroadcastChannel) {
+        handles.bc = new g.BroadcastChannel('talaria-teardown-census-browser');
+      }
+      void census;
+      return {
+        teardown() {
+          g.clearInterval(handles.interval);
+          g.window.removeEventListener('resize', handles.listener);
+          g.document.removeEventListener('visibilitychange', handles.listener);
+          g.clearTimeout(handles.timeout);
+          handles.stopRaf();
+          handles.channel?.port1?.close?.();
+          handles.channel?.port2?.close?.();
+          handles.bc?.close?.();
+        },
+      };
+    }
+
+    function openIdleRestSim(renderCounter, g) {
+      const handles = { listener: () => {} };
+      g.window.addEventListener('resize', handles.listener);
+      g.document.addEventListener('visibilitychange', handles.listener);
+      return {
+        cleanup() {
+          g.window.removeEventListener('resize', handles.listener);
+          g.document.removeEventListener('visibilitychange', handles.listener);
+        },
+      };
+    }
+
+    async function runTeardown() {
+      const census = installCensus(globalThis);
+      try {
+        const before = census.snapshot();
+        const sim = openMultichartSim(census, globalThis);
+        sim.teardown();
+        const afterTeardown = census.snapshot();
+        await new Promise((r) => setTimeout(r, settleMs));
+        const afterSettle = census.snapshot();
+        const verdict = assertReturnedToBaseline({ before, afterTeardown, afterSettle });
+        document.getElementById('status').textContent = verdict.status;
+        await fetch('/report', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            signature: TEARDOWN_CENSUS_PROBE_SIGNATURE,
+            status: verdict.status,
+            ok: verdict.ok,
+            settleMs,
+            teardownDeltas: verdict.teardownDeltas,
+            settleDeltas: verdict.settleDeltas,
+            violations: verdict.violations,
+            cell: 'BROWSER-TEARDOWN-CYCLE',
+          }),
+        });
+      } finally {
+        census.uninstall();
+      }
+    }
+
+    async function runRestState() {
+      const census = installCensus(globalThis);
+      const idleProbe = installIdleObserveProbe(globalThis);
+      const renderCounter = installRenderCounter(globalThis);
+      let sim;
+      try {
+        sim = openIdleRestSim(renderCounter, globalThis);
+        await new Promise((r) => setTimeout(r, settleMs));
+        const atRestSnapshot = census.snapshot();
+        const atRestVerdict = assertAtRest(atRestSnapshot, {
+          allowlist: HERMETIC_REST_PINNED_ALLOWLIST,
+          extraLimits: { listeners: 2, messageChannelPorts: 0, broadcastChannels: 0 },
+        });
+        const beforeObserve = renderCounter.read();
+        const beforeIdle = idleProbe.read();
+        await new Promise((r) => setTimeout(r, settleMs));
+        const afterObserve = renderCounter.read();
+        const afterIdle = idleProbe.read();
+        const renderVerdict = assertNoRenderWithoutDataChange({
+          rendersBefore: beforeObserve.renderCount,
+          rendersAfter: afterObserve.renderCount,
+          commitsBefore: beforeObserve.commitCount,
+          commitsAfter: afterObserve.commitCount,
+        });
+        const idleBudgetVerdict = assertIdleMainThreadBudget({
+          commitsBefore: beforeObserve.commitCount,
+          commitsAfter: afterObserve.commitCount,
+          rafTicksBefore: beforeIdle.rafTicks,
+          rafTicksAfter: afterIdle.rafTicks,
+          intervalCallbacksBefore: beforeIdle.intervalCallbacks,
+          intervalCallbacksAfter: afterIdle.intervalCallbacks,
+          longTasksBefore: beforeIdle.longTasks,
+          longTasksAfter: afterIdle.longTasks,
+        });
+        const status =
+          atRestVerdict.status === 'GREEN' &&
+          renderVerdict.status === 'GREEN' &&
+          idleBudgetVerdict.status === 'GREEN'
+            ? 'GREEN'
+            : 'RED';
+        document.getElementById('status').textContent = status;
+        await fetch('/report', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            signature: REST_STATE_CENSUS_PROBE_SIGNATURE,
+            status,
+            ok: status === 'GREEN',
+            settleMs,
+            atRestVerdict,
+            renderVerdict,
+            idleBudgetVerdict,
+            cell: 'BROWSER-REST-STATE-CYCLE',
+          }),
+        });
+      } finally {
+        sim?.cleanup?.();
+        idleProbe.uninstall();
+        census.uninstall();
+      }
+    }
+
+    async function run() {
+      if (mode === 'rest') return runRestState();
+      return runTeardown();
+    }
+
+    if (params.get('autorun') !== '0') {
+      run().catch((err) => {
+        console.error(err);
+        fetch('/report', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ parseError: String(err?.message || err) }),
+        });
+      });
+    }
+  </script>
+</body>
+</html>

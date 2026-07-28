@@ -23,6 +23,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-node@v4
         with:
@@ -30,9 +32,18 @@ jobs:
           cache: npm
           cache-dependency-path: "chart v 1.4/chart/multichart-prod/harness/package-lock.json"
 
+      - name: Enforce chart module contracts
+        run: node scripts/module-contract-preflight.mjs
+
+      - name: Cache-stamp coherence (content hash vs ?v= + cross-shell)
+        run: node scripts/cache-stamp-coherence-gate.mjs
+
       - name: Install harness dependencies
         working-directory: "chart v 1.4/chart/multichart-prod/harness"
         run: npm ci
+
+      - name: Prove module contracts in Chromium
+        run: npm run test:module-contracts
 
       - name: Run multichart regression gate
         working-directory: "chart v 1.4/chart/multichart-prod/harness"

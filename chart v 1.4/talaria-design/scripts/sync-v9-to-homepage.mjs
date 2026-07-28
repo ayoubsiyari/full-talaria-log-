@@ -12,6 +12,7 @@ import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import { spawnSync } from "child_process";
+import { syncHomepageModules } from "./sync-homepage-modules.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const src = path.resolve(__dirname, "../../chart/dist-v9");
@@ -80,10 +81,12 @@ if (fs.existsSync(compareOverlaySrc)) {
 const modulesSrc = path.resolve(__dirname, "../../chart/modules");
 const modulesDest = path.resolve(__dirname, "../../../homepage/public/chart/modules");
 if (fs.existsSync(modulesSrc)) {
-  if (fs.existsSync(modulesDest)) {
-    fs.rmSync(modulesDest, { recursive: true, force: true });
+  try {
+    syncHomepageModules(modulesSrc, modulesDest);
+  } catch (error) {
+    console.error("[sync-v9-to-homepage]", error?.message || error);
+    process.exit(1);
   }
-  fs.cpSync(modulesSrc, modulesDest, { recursive: true });
   console.log("[sync-v9-to-homepage] Copied chart/modules", modulesSrc, "→", modulesDest);
 } else {
   console.warn("[sync-v9-to-homepage] chart/modules not found, skip:", modulesSrc);

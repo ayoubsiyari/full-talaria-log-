@@ -16,6 +16,7 @@ import {
   verifyTreeLayout,
   verifyUniformityProof,
 } from './lib/checkpoint-provenance.mjs';
+import { validateModuleContracts } from './module-contract-preflight.mjs';
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const defaultRepoRoot = path.resolve(scriptDir, '..');
@@ -129,6 +130,11 @@ function commandUniformity(args) {
 
 function commandPreflight(args) {
   const repoRoot = path.resolve(args['repo-root'] || defaultRepoRoot);
+  try {
+    validateModuleContracts({ root: repoRoot });
+  } catch (error) {
+    fail(`module contract preflight failed: ${error.message}`, 1);
+  }
   const loaded = loadManifest(required(args, 'manifest'));
   const { manifest, manifestPath } = loaded;
   const status = git(repoRoot, ['status', '--porcelain', '--untracked-files=all']).stdout;

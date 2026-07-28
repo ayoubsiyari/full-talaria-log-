@@ -106,7 +106,7 @@ try {
   for (const directory of ['dist-v9', 'modules', 'workers', 'vendor', 'fonts', 'multichart-prod']) {
     copyFromContainer(chartContainer, `/app/${directory}`, chartRoot);
   }
-  for (const file of ['chart.js', 'legacy-index.html', 'sw.js']) {
+  for (const file of ['chart.js', 'sw.js']) {
     copyFromContainer(chartContainer, `/app/${file}`, path.join(chartRoot, file));
   }
   fs.mkdirSync(homepageParent, { recursive: true });

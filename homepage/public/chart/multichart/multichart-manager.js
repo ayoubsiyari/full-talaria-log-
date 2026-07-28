@@ -36,12 +36,30 @@
      *   onLog: (entry) => void       — receives log lines for the verification panel
      *   onState: (id, state) => void — receives chart-state updates per chart
      *   onAssertion: (msg) => void   — receives assertion reports
+     *   iframeSrcBuilder: (cfg, params) => url   — optional. When set, addChart()
+     *     uses this to compute the iframe URL instead of the hardcoded sandbox
+     *     `chart-host.html?...`. Production callers pass a builder that returns
+     *     `/chart/dist-v9/index.html?multichart=1&panelId=...`. `params` is
+     *     the URLSearchParams already populated with id/tf/fileId/etc — the
+     *     builder may inspect, modify, or ignore it.
+     *     SANDBOX BEHAVIOR PRESERVED: omit the option to keep existing
+     *     chart-host.html URL.
      */
     function MultichartManager(opts) {
         this.container = opts.container;
         this.onLog    = opts.onLog    || function () {};
         this.onState  = opts.onState  || function () {};
         this.onAssertion = opts.onAssertion || function () {};
+        // Phase 7.2.4 hook: fired (with the chart id) AFTER the iframe's
+        // bridge has reported ready and the manager's loading overlay has
+        // been removed. Production callers use this to dismiss their own
+        // per-tile loading overlay (TradingView-style 3-dot indicator).
+        this.onChartReady = (typeof opts.onChartReady === 'function')
+            ? opts.onChartReady
+            : function () {};
+        this.iframeSrcBuilder = (typeof opts.iframeSrcBuilder === 'function')
+            ? opts.iframeSrcBuilder
+            : null;
 
         this.charts = new Map();    // id -> { id, frame, ready, state }
         this.syncMode = {
@@ -125,7 +143,16 @@
         mountEl.appendChild(overlay);
 
         const frame = document.createElement('iframe');
-        frame.src = 'chart-host.html?' + params.toString();
+        if (this.iframeSrcBuilder) {
+            try {
+                frame.src = this.iframeSrcBuilder(cfg, params);
+            } catch (e) {
+                this._log('error', 'iframeSrcBuilder threw for ' + cfg.id + ': ' + (e && e.message || e));
+                frame.src = 'about:blank';
+            }
+        } else {
+            frame.src = 'chart-host.html?' + params.toString();
+        }
         frame.title = 'Chart ' + cfg.id;
         frame.setAttribute('data-chart-id', cfg.id);
         // No `sandbox` attribute — iframe is same-origin (file:// or local
@@ -168,6 +195,13 @@
     MultichartManager.prototype.removeChart = function (id) {
         const c = this.charts.get(id);
         if (!c) return;
+        try {
+            const panelChart = c.frame && c.frame.contentWindow && c.frame.contentWindow.chart;
+            if (panelChart
+                && typeof panelChart._b70ShadowDisposeIndicatorGeneration === 'function') {
+                panelChart._b70ShadowDisposeIndicatorGeneration();
+            }
+        } catch (_) {}
         try { c.frame.remove(); } catch (_) {}
         this.charts.delete(id);
         this._log('info', 'removeChart ' + id);
@@ -234,6 +268,23 @@
                     }
                     if (sourceChart.mountEl) sourceChart.mountEl.classList.add('ready');
                     this._log('info', 'bridge ready: ' + sourceId);
+                    if (global.__TALARIA_ENABLE_B70_SINGLE_INDICATOR_OWNER_V1 === true) {
+                        try {
+                            const panelChart = sourceChart.frame
+                                && sourceChart.frame.contentWindow
+                                && sourceChart.frame.contentWindow.chart;
+                            const connector = global.__TALARIA_B70_CONNECT_INDICATOR_PANEL_V1;
+                            if (panelChart && global.chart && typeof connector === 'function') {
+                                connector(panelChart, global.chart);
+                            }
+                        } catch (e) {
+                            this._log('warn', 'b70 indicator bridge connect failed: '
+                                + (e && e.message || e));
+                        }
+                    }
+                    try { this.onChartReady(sourceId); } catch (e) {
+                        this._log('warn', 'onChartReady threw: ' + (e && e.message || e));
+                    }
                 }
                 return;
 

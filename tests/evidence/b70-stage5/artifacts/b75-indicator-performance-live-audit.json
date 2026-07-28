@@ -1,0 +1,2870 @@
+{
+  "evidenceClass": "tier3-read-only-live-runtime-audit",
+  "capturedAt": "2026-07-27T20:24:54.049Z",
+  "expected": {
+    "commit": "6880a6030",
+    "buildId": "20260726b75"
+  },
+  "origin": "http://31.97.192.82:3000/",
+  "direct": {
+    "status": 200,
+    "contentType": "application/javascript",
+    "contentLength": null,
+    "cacheControl": "max-age=3600, public, must-revalidate",
+    "etag": "W/\"6a66a9e1-2c1b\"",
+    "lastModified": "Mon, 27 Jul 2026 00:44:17 GMT",
+    "sha256": "38ee60fdad855c2b4d563c01e6e297b520ce9e30ed13dccab70302082df78d40"
+  },
+  "surfaces": [
+    {
+      "name": "product-shell",
+      "route": "/",
+      "navigation": {
+        "status": 200,
+        "finalUrl": "http://31.97.192.82:3000/",
+        "headers": {
+          "cache-control": "no-cache",
+          "connection": "keep-alive",
+          "content-encoding": "gzip",
+          "content-security-policy": "default-src 'self'; script-src 'self' 'unsafe-inline' https://accounts.google.com https://js.stripe.com https://www.googletagmanager.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: https: blob:; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self' http://31.97.192.82 http://31.97.192.82:3000 https://31.97.192.82 https://31.97.192.82:3000 https://www.talaria-log.com https://talaria-log.com https://accounts.google.com https://api.stripe.com https://publicreporting.cftc.gov https://www.googletagmanager.com https://*.google-analytics.com https://*.analytics.google.com wss: ws:; frame-src 'self' https://js.stripe.com https://accounts.google.com; frame-ancestors 'self'; base-uri 'self'",
+          "content-type": "text/html",
+          "date": "Mon, 27 Jul 2026 20:24:51 GMT",
+          "etag": "W/\"6a66a9e1-dfd0\"",
+          "last-modified": "Mon, 27 Jul 2026 00:44:17 GMT",
+          "permissions-policy": "geolocation=(), camera=(), microphone=(), payment=()",
+          "referrer-policy": "strict-origin-when-cross-origin",
+          "server": "nginx",
+          "transfer-encoding": "chunked",
+          "x-content-type-options": "nosniff",
+          "x-frame-options": "SAMEORIGIN"
+        }
+      },
+      "requests": [],
+      "responses": [],
+      "frames": [
+        {
+          "url": "http://31.97.192.82:3000/",
+          "scripts": [
+            "/_next/static/chunks/4bd1b696-100b9d70ed4e49c1.js",
+            "/_next/static/chunks/1255-7e99df2b3ee3a393.js",
+            "/_next/static/chunks/main-app-9e86e95147760d8f.js",
+            "/_next/static/chunks/app/layout-4a4f5819a1acb441.js",
+            "/_next/static/chunks/2619-04bc32f026a0d946.js",
+            "/_next/static/chunks/9945-9d5b4c2845962b49.js",
+            "/_next/static/chunks/app/not-found-bc6847955cd88187.js",
+            "/_next/static/chunks/407-a1b9e3b5c5f0094a.js",
+            "[inline]",
+            "/_next/static/chunks/polyfills-42372ed130431b0a.js",
+            "/_next/static/chunks/webpack-2c4d9a0ddadde6b2.js",
+            "[inline]",
+            "[inline]",
+            "[inline]",
+            "[inline]",
+            "[inline]",
+            "[inline]",
+            "[inline]",
+            "[inline]",
+            "[inline]",
+            "[inline]",
+            "[inline]",
+            "[inline]",
+            "[inline]",
+            "[inline]",
+            "[inline]",
+            "[inline]",
+            "/gtag/js",
+            "[inline]"
+          ],
+          "buildId": null,
+          "flags": {},
+          "perfObjects": {},
+          "serviceWorker": {
+            "controlled": false,
+            "controllerUrl": null
+          },
+          "cspMeta": []
+        }
+      ],
+      "consoleErrors": [],
+      "verdict": "SERVED_NOT_REFERENCED"
+    },
+    {
+      "name": "chart-entry",
+      "route": "/chart/index.html",
+      "navigation": {
+        "status": 200,
+        "finalUrl": "http://31.97.192.82:3000/chart/index.html",
+        "headers": {
+          "connection": "keep-alive",
+          "content-encoding": "gzip",
+          "content-security-policy": "default-src 'self'; script-src 'self' 'unsafe-inline' https://accounts.google.com https://js.stripe.com https://www.googletagmanager.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: https: blob:; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self' http://31.97.192.82 http://31.97.192.82:3000 https://31.97.192.82 https://31.97.192.82:3000 https://www.talaria-log.com https://talaria-log.com https://accounts.google.com https://api.stripe.com https://publicreporting.cftc.gov https://www.googletagmanager.com https://*.google-analytics.com https://*.analytics.google.com wss: ws:; frame-src 'self' https://js.stripe.com https://accounts.google.com; frame-ancestors 'self'; base-uri 'self'",
+          "content-type": "text/html; charset=utf-8",
+          "date": "Mon, 27 Jul 2026 20:24:57 GMT",
+          "permissions-policy": "geolocation=(), camera=(), microphone=(), payment=()",
+          "referrer-policy": "strict-origin-when-cross-origin",
+          "server": "nginx",
+          "transfer-encoding": "chunked",
+          "x-content-type-options": "nosniff",
+          "x-frame-options": "SAMEORIGIN",
+          "last-modified": "Mon, 27 Jul 2026 00:42:32 GMT"
+        }
+      },
+      "requests": [
+        {
+          "url": "http://31.97.192.82:3000/chart/chart.js",
+          "resourceType": "script",
+          "initiator": {
+            "type": "parser",
+            "url": "http://31.97.192.82:3000/chart/index.html",
+            "lineNumber": 1611,
+            "columnNumber": 54
+          }
+        },
+        {
+          "url": "http://31.97.192.82:3000/chart/modules/replay-system.js",
+          "resourceType": "script",
+          "initiator": {
+            "type": "parser",
+            "url": "http://31.97.192.82:3000/chart/index.html",
+            "lineNumber": 1616,
+            "columnNumber": 70
+          }
+        },
+        {
+          "url": "http://31.97.192.82:3000/chart/modules/replay-dashboard-sync.js",
+          "resourceType": "script",
+          "initiator": {
+            "type": "parser",
+            "url": "http://31.97.192.82:3000/chart/index.html",
+            "lineNumber": 1617,
+            "columnNumber": 78
+          }
+        },
+        {
+          "url": "http://31.97.192.82:3000/chart/modules/indicator-persist-rehydrate.js",
+          "resourceType": "script",
+          "initiator": {
+            "type": "parser",
+            "url": "http://31.97.192.82:3000/chart/index.html",
+            "lineNumber": 1629,
+            "columnNumber": 84
+          }
+        },
+        {
+          "url": "http://31.97.192.82:3000/chart/modules/indicator-settings-apply.js",
+          "resourceType": "script",
+          "initiator": {
+            "type": "parser",
+            "url": "http://31.97.192.82:3000/chart/index.html",
+            "lineNumber": 1630,
+            "columnNumber": 81
+          }
+        },
+        {
+          "url": "http://31.97.192.82:3000/chart/modules/indicator-visibility.js",
+          "resourceType": "script",
+          "initiator": {
+            "type": "parser",
+            "url": "http://31.97.192.82:3000/chart/index.html",
+            "lineNumber": 1631,
+            "columnNumber": 77
+          }
+        },
+        {
+          "url": "http://31.97.192.82:3000/chart/modules/indicator-lifecycle-store.js",
+          "resourceType": "script",
+          "initiator": {
+            "type": "parser",
+            "url": "http://31.97.192.82:3000/chart/index.html",
+            "lineNumber": 1632,
+            "columnNumber": 82
+          }
+        },
+        {
+          "url": "http://31.97.192.82:3000/chart/modules/talaria-fvg-indicator.js",
+          "resourceType": "script",
+          "initiator": {
+            "type": "parser",
+            "url": "http://31.97.192.82:3000/chart/index.html",
+            "lineNumber": 1633,
+            "columnNumber": 78
+          }
+        },
+        {
+          "url": "http://31.97.192.82:3000/chart/modules/talaria-ratio-gap-indicator.js",
+          "resourceType": "script",
+          "initiator": {
+            "type": "parser",
+            "url": "http://31.97.192.82:3000/chart/index.html",
+            "lineNumber": 1634,
+            "columnNumber": 84
+          }
+        },
+        {
+          "url": "http://31.97.192.82:3000/chart/modules/talaria-weekly-map-indicator.js",
+          "resourceType": "script",
+          "initiator": {
+            "type": "parser",
+            "url": "http://31.97.192.82:3000/chart/index.html",
+            "lineNumber": 1635,
+            "columnNumber": 85
+          }
+        },
+        {
+          "url": "http://31.97.192.82:3000/chart/modules/talaria-simple-smc-indicator.js",
+          "resourceType": "script",
+          "initiator": {
+            "type": "parser",
+            "url": "http://31.97.192.82:3000/chart/index.html",
+            "lineNumber": 1636,
+            "columnNumber": 85
+          }
+        },
+        {
+          "url": "http://31.97.192.82:3000/chart/modules/chart-indicators-full.js",
+          "resourceType": "script",
+          "initiator": {
+            "type": "parser",
+            "url": "http://31.97.192.82:3000/chart/index.html",
+            "lineNumber": 1637,
+            "columnNumber": 78
+          }
+        },
+        {
+          "url": "http://31.97.192.82:3000/chart/modules/indicator-ui.js",
+          "resourceType": "script",
+          "initiator": {
+            "type": "parser",
+            "url": "http://31.97.192.82:3000/chart/index.html",
+            "lineNumber": 1639,
+            "columnNumber": 69
+          }
+        }
+      ],
+      "responses": [
+        {
+          "url": "http://31.97.192.82:3000/chart/modules/replay-system.js",
+          "status": 200,
+          "fromCache": false,
+          "fromServiceWorker": false,
+          "headers": {
+            "cache-control": "max-age=3600\npublic, must-revalidate",
+            "connection": "keep-alive",
+            "content-encoding": "gzip",
+            "content-type": "application/javascript",
+            "date": "Mon, 27 Jul 2026 20:24:58 GMT",
+            "etag": "W/\"6a66a9e1-6ae1b\"",
+            "expires": "Mon, 27 Jul 2026 21:24:58 GMT",
+            "last-modified": "Mon, 27 Jul 2026 00:44:17 GMT",
+            "server": "nginx",
+            "transfer-encoding": "chunked"
+          }
+        },
+        {
+          "url": "http://31.97.192.82:3000/chart/modules/replay-dashboard-sync.js",
+          "status": 200,
+          "fromCache": false,
+          "fromServiceWorker": false,
+          "headers": {
+            "accept-ranges": "bytes",
+            "cache-control": "max-age=3600\npublic, must-revalidate",
+            "connection": "keep-alive",
+            "content-length": "790",
+            "content-type": "application/javascript",
+            "date": "Mon, 27 Jul 2026 20:24:58 GMT",
+            "etag": "\"6a66a9e1-316\"",
+            "expires": "Mon, 27 Jul 2026 21:24:58 GMT",
+            "last-modified": "Mon, 27 Jul 2026 00:44:17 GMT",
+            "server": "nginx"
+          }
+        },
+        {
+          "url": "http://31.97.192.82:3000/chart/modules/indicator-persist-rehydrate.js",
+          "status": 200,
+          "fromCache": false,
+          "fromServiceWorker": false,
+          "headers": {
+            "cache-control": "max-age=3600\npublic, must-revalidate",
+            "connection": "keep-alive",
+            "content-encoding": "gzip",
+            "content-type": "application/javascript",
+            "date": "Mon, 27 Jul 2026 20:24:58 GMT",
+            "etag": "W/\"6a66a9e1-fdf\"",
+            "expires": "Mon, 27 Jul 2026 21:24:58 GMT",
+            "last-modified": "Mon, 27 Jul 2026 00:44:17 GMT",
+            "server": "nginx",
+            "transfer-encoding": "chunked"
+          }
+        },
+        {
+          "url": "http://31.97.192.82:3000/chart/modules/indicator-settings-apply.js",
+          "status": 200,
+          "fromCache": false,
+          "fromServiceWorker": false,
+          "headers": {
+            "cache-control": "max-age=3600\npublic, must-revalidate",
+            "connection": "keep-alive",
+            "content-encoding": "gzip",
+            "content-type": "application/javascript",
+            "date": "Mon, 27 Jul 2026 20:24:58 GMT",
+            "etag": "W/\"6a66a9e1-11d7\"",
+            "expires": "Mon, 27 Jul 2026 21:24:58 GMT",
+            "last-modified": "Mon, 27 Jul 2026 00:44:17 GMT",
+            "server": "nginx",
+            "transfer-encoding": "chunked"
+          }
+        },
+        {
+          "url": "http://31.97.192.82:3000/chart/modules/indicator-visibility.js",
+          "status": 200,
+          "fromCache": false,
+          "fromServiceWorker": false,
+          "headers": {
+            "cache-control": "max-age=3600\npublic, must-revalidate",
+            "connection": "keep-alive",
+            "content-encoding": "gzip",
+            "content-type": "application/javascript",
+            "date": "Mon, 27 Jul 2026 20:24:58 GMT",
+            "etag": "W/\"6a66a9e1-127e\"",
+            "expires": "Mon, 27 Jul 2026 21:24:58 GMT",
+            "last-modified": "Mon, 27 Jul 2026 00:44:17 GMT",
+            "server": "nginx",
+            "transfer-encoding": "chunked"
+          }
+        },
+        {
+          "url": "http://31.97.192.82:3000/chart/modules/indicator-lifecycle-store.js",
+          "status": 200,
+          "fromCache": false,
+          "fromServiceWorker": false,
+          "headers": {
+            "cache-control": "max-age=3600\npublic, must-revalidate",
+            "connection": "keep-alive",
+            "content-encoding": "gzip",
+            "content-type": "application/javascript",
+            "date": "Mon, 27 Jul 2026 20:24:58 GMT",
+            "etag": "W/\"6a66a9e1-187c\"",
+            "expires": "Mon, 27 Jul 2026 21:24:58 GMT",
+            "last-modified": "Mon, 27 Jul 2026 00:44:17 GMT",
+            "server": "nginx",
+            "transfer-encoding": "chunked"
+          }
+        },
+        {
+          "url": "http://31.97.192.82:3000/chart/chart.js",
+          "status": 200,
+          "fromCache": false,
+          "fromServiceWorker": false,
+          "headers": {
+            "cache-control": "max-age=3600\npublic, must-revalidate",
+            "connection": "keep-alive",
+            "content-encoding": "gzip",
+            "content-type": "application/javascript",
+            "date": "Mon, 27 Jul 2026 20:24:58 GMT",
+            "etag": "W/\"6a66a9e1-1db09a\"",
+            "expires": "Mon, 27 Jul 2026 21:24:58 GMT",
+            "last-modified": "Mon, 27 Jul 2026 00:44:17 GMT",
+            "server": "nginx",
+            "transfer-encoding": "chunked"
+          }
+        },
+        {
+          "url": "http://31.97.192.82:3000/chart/modules/talaria-ratio-gap-indicator.js",
+          "status": 200,
+          "fromCache": false,
+          "fromServiceWorker": false,
+          "headers": {
+            "cache-control": "max-age=3600\npublic, must-revalidate",
+            "connection": "keep-alive",
+            "content-encoding": "gzip",
+            "content-type": "application/javascript",
+            "date": "Mon, 27 Jul 2026 20:24:58 GMT",
+            "etag": "W/\"6a66a9e1-85a4\"",
+            "expires": "Mon, 27 Jul 2026 21:24:58 GMT",
+            "last-modified": "Mon, 27 Jul 2026 00:44:17 GMT",
+            "server": "nginx",
+            "transfer-encoding": "chunked"
+          }
+        },
+        {
+          "url": "http://31.97.192.82:3000/chart/modules/talaria-fvg-indicator.js",
+          "status": 200,
+          "fromCache": false,
+          "fromServiceWorker": false,
+          "headers": {
+            "cache-control": "max-age=3600\npublic, must-revalidate",
+            "connection": "keep-alive",
+            "content-encoding": "gzip",
+            "content-type": "application/javascript",
+            "date": "Mon, 27 Jul 2026 20:24:58 GMT",
+            "etag": "W/\"6a66a9e1-6720\"",
+            "expires": "Mon, 27 Jul 2026 21:24:58 GMT",
+            "last-modified": "Mon, 27 Jul 2026 00:44:17 GMT",
+            "server": "nginx",
+            "transfer-encoding": "chunked"
+          }
+        },
+        {
+          "url": "http://31.97.192.82:3000/chart/modules/talaria-weekly-map-indicator.js",
+          "status": 200,
+          "fromCache": false,
+          "fromServiceWorker": false,
+          "headers": {
+            "cache-control": "max-age=3600\npublic, must-revalidate",
+            "connection": "keep-alive",
+            "content-encoding": "gzip",
+            "content-type": "application/javascript",
+            "date": "Mon, 27 Jul 2026 20:24:58 GMT",
+            "etag": "W/\"6a66a9e1-6ddc\"",
+            "expires": "Mon, 27 Jul 2026 21:24:58 GMT",
+            "last-modified": "Mon, 27 Jul 2026 00:44:17 GMT",
+            "server": "nginx",
+            "transfer-encoding": "chunked"
+          }
+        },
+        {
+          "url": "http://31.97.192.82:3000/chart/modules/talaria-simple-smc-indicator.js",
+          "status": 200,
+          "fromCache": false,
+          "fromServiceWorker": false,
+          "headers": {
+            "cache-control": "max-age=3600\npublic, must-revalidate",
+            "connection": "keep-alive",
+            "content-encoding": "gzip",
+            "content-type": "application/javascript",
+            "date": "Mon, 27 Jul 2026 20:24:58 GMT",
+            "etag": "W/\"6a66a9e1-66c1\"",
+            "expires": "Mon, 27 Jul 2026 21:24:58 GMT",
+            "last-modified": "Mon, 27 Jul 2026 00:44:17 GMT",
+            "server": "nginx",
+            "transfer-encoding": "chunked"
+          }
+        },
+        {
+          "url": "http://31.97.192.82:3000/chart/modules/chart-indicators-full.js",
+          "status": 200,
+          "fromCache": false,
+          "fromServiceWorker": false,
+          "headers": {
+            "cache-control": "max-age=3600\npublic, must-revalidate",
+            "connection": "keep-alive",
+            "content-encoding": "gzip",
+            "content-type": "application/javascript",
+            "date": "Mon, 27 Jul 2026 20:24:58 GMT",
+            "etag": "W/\"6a66a9e1-f18de\"",
+            "expires": "Mon, 27 Jul 2026 21:24:58 GMT",
+            "last-modified": "Mon, 27 Jul 2026 00:44:17 GMT",
+            "server": "nginx",
+            "transfer-encoding": "chunked"
+          }
+        },
+        {
+          "url": "http://31.97.192.82:3000/chart/modules/indicator-ui.js",
+          "status": 200,
+          "fromCache": false,
+          "fromServiceWorker": false,
+          "headers": {
+            "cache-control": "max-age=3600\npublic, must-revalidate",
+            "connection": "keep-alive",
+            "content-encoding": "gzip",
+            "content-type": "application/javascript",
+            "date": "Mon, 27 Jul 2026 20:24:58 GMT",
+            "etag": "W/\"6a66a9e1-51f51\"",
+            "expires": "Mon, 27 Jul 2026 21:24:58 GMT",
+            "last-modified": "Mon, 27 Jul 2026 00:44:17 GMT",
+            "server": "nginx",
+            "transfer-encoding": "chunked"
+          }
+        }
+      ],
+      "frames": [
+        {
+          "url": "http://31.97.192.82:3000/chart/index.html",
+          "scripts": [
+            "[inline]",
+            "[inline]",
+            "[inline]",
+            "[inline]",
+            "[inline]",
+            "[inline]",
+            "/chart/modules/chart-window-limit.js",
+            "[inline]",
+            "/chart/vendor/d3.min.js",
+            "/chart/vendor/lz-string.min.js",
+            "/chart/modules/preferences-sync.js",
+            "/chart/modules/preferences-init.js",
+            "/chart/modules/market-calculations.js",
+            "/chart/modules/chart-env.defaults.js",
+            "/chart/modules/chart-env.generated.js",
+            "/chart/modules/drawing-tools-base.js",
+            "/chart/modules/drawing-tools-lines.js",
+            "/chart/modules/drawing-tools-shapes.js",
+            "/chart/modules/drawing-tools-fibonacci.js",
+            "/chart/modules/drawing-tools-text.js",
+            "/chart/modules/drawing-tools-emoji.js",
+            "/chart/modules/drawing-tools-image.js",
+            "/chart/modules/emoji-picker.js",
+            "/chart/modules/emoji-picker-simple.js",
+            "/chart/modules/drawing-tools-advanced-volume.js",
+            "/chart/modules/drawing-tools-advanced.js",
+            "/chart/modules/drawing-tools-extended.js",
+            "/chart/modules/drawing-tools-patterns.js",
+            "/chart/modules/drawing-tools-fib-gann.js",
+            "/chart/modules/drawing-tools-channels.js",
+            "/chart/modules/drawing-tools-ui.js",
+            "/chart/modules/color-picker.js",
+            "/chart/modules/drawing-toolbar.js",
+            "/chart/modules/undo-redo-manager.js",
+            "/chart/modules/tool-lifecycle-store.js",
+            "/chart/modules/drawing-tools-manager.js",
+            "/chart/modules/chart-regression-cases.js",
+            "/chart/modules/chart-regression-smoke.js",
+            "/chart/modules/favorites-manager.js",
+            "/chart/modules/keyboard-shortcuts.js",
+            "/chart/modules/timezone-manager.js",
+            "[inline]",
+            "[inline]",
+            "/chart/modules/compare-overlay.js",
+            "/chart/modules/viewport-data-manager.js",
+            "/chart/modules/chart-data-pipeline.js",
+            "/chart/modules/talaria-toast-stack.js",
+            "/chart/chart.js",
+            "/chart/modules/v9-theme-bridge.js",
+            "/chart/modules/replay-system.js",
+            "/chart/modules/replay-dashboard-sync.js",
+            "/chart/modules/order-event-bus.js",
+            "/chart/modules/order-service.js",
+            "/chart/modules/order-manager.js",
+            "[inline]",
+            "/chart/modules/screenshot-manager.js",
+            "[inline]",
+            "/chart/modules/alert-system.js",
+            "/chart/modules/indicator-persist-rehydrate.js",
+            "/chart/modules/indicator-settings-apply.js",
+            "/chart/modules/indicator-visibility.js",
+            "/chart/modules/indicator-lifecycle-store.js",
+            "/chart/modules/talaria-fvg-indicator.js",
+            "/chart/modules/talaria-ratio-gap-indicator.js",
+            "/chart/modules/talaria-weekly-map-indicator.js",
+            "/chart/modules/talaria-simple-smc-indicator.js",
+            "/chart/modules/chart-indicators-full.js",
+            "/chart/modules/indicator-ui.js",
+            "/chart/modules/economic-news-sidebar.js",
+            "/chart/dist-v9/assets/talaria-v9-live.js",
+            "[inline]",
+            "[inline]",
+            "[inline]",
+            "[inline]",
+            "/chart/pwa-install.js"
+          ],
+          "buildId": "20260726b75",
+          "flags": {
+            "_m19iTickSpeedCoherenceEnabled": {}
+          },
+          "perfObjects": {},
+          "serviceWorker": {
+            "controlled": false,
+            "controllerUrl": null
+          },
+          "cspMeta": []
+        }
+      ],
+      "consoleErrors": [
+        "❌ No fullRawData available"
+      ],
+      "verdict": "SERVED_NOT_REFERENCED"
+    },
+    {
+      "name": "vite-react-dist",
+      "route": "/chart/dist-v9/index.html?mode=backtest",
+      "navigation": {
+        "status": 200,
+        "finalUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html",
+        "headers": {
+          "cache-control": "max-age=3600\npublic, must-revalidate",
+          "connection": "keep-alive",
+          "content-encoding": "gzip",
+          "content-type": "text/html",
+          "date": "Mon, 27 Jul 2026 20:25:03 GMT",
+          "etag": "W/\"6a66a9e1-16622\"",
+          "expires": "Mon, 27 Jul 2026 21:25:03 GMT",
+          "last-modified": "Mon, 27 Jul 2026 00:44:17 GMT",
+          "server": "nginx",
+          "transfer-encoding": "chunked"
+        }
+      },
+      "requests": [
+        {
+          "url": "http://31.97.192.82:3000/chart/chart.js",
+          "resourceType": "script",
+          "initiator": {
+            "type": "parser",
+            "url": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest",
+            "lineNumber": 1611,
+            "columnNumber": 54
+          }
+        },
+        {
+          "url": "http://31.97.192.82:3000/chart/modules/replay-system.js",
+          "resourceType": "script",
+          "initiator": {
+            "type": "parser",
+            "url": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest",
+            "lineNumber": 1616,
+            "columnNumber": 70
+          }
+        },
+        {
+          "url": "http://31.97.192.82:3000/chart/modules/replay-dashboard-sync.js",
+          "resourceType": "script",
+          "initiator": {
+            "type": "parser",
+            "url": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest",
+            "lineNumber": 1617,
+            "columnNumber": 78
+          }
+        },
+        {
+          "url": "http://31.97.192.82:3000/chart/modules/indicator-persist-rehydrate.js",
+          "resourceType": "script",
+          "initiator": {
+            "type": "parser",
+            "url": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest",
+            "lineNumber": 1629,
+            "columnNumber": 84
+          }
+        },
+        {
+          "url": "http://31.97.192.82:3000/chart/modules/indicator-settings-apply.js",
+          "resourceType": "script",
+          "initiator": {
+            "type": "parser",
+            "url": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest",
+            "lineNumber": 1630,
+            "columnNumber": 81
+          }
+        },
+        {
+          "url": "http://31.97.192.82:3000/chart/modules/indicator-visibility.js",
+          "resourceType": "script",
+          "initiator": {
+            "type": "parser",
+            "url": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest",
+            "lineNumber": 1631,
+            "columnNumber": 77
+          }
+        },
+        {
+          "url": "http://31.97.192.82:3000/chart/modules/indicator-lifecycle-store.js",
+          "resourceType": "script",
+          "initiator": {
+            "type": "parser",
+            "url": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest",
+            "lineNumber": 1632,
+            "columnNumber": 82
+          }
+        },
+        {
+          "url": "http://31.97.192.82:3000/chart/modules/talaria-fvg-indicator.js",
+          "resourceType": "script",
+          "initiator": {
+            "type": "parser",
+            "url": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest",
+            "lineNumber": 1633,
+            "columnNumber": 78
+          }
+        },
+        {
+          "url": "http://31.97.192.82:3000/chart/modules/talaria-ratio-gap-indicator.js",
+          "resourceType": "script",
+          "initiator": {
+            "type": "parser",
+            "url": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest",
+            "lineNumber": 1634,
+            "columnNumber": 84
+          }
+        },
+        {
+          "url": "http://31.97.192.82:3000/chart/modules/talaria-weekly-map-indicator.js",
+          "resourceType": "script",
+          "initiator": {
+            "type": "parser",
+            "url": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest",
+            "lineNumber": 1635,
+            "columnNumber": 85
+          }
+        },
+        {
+          "url": "http://31.97.192.82:3000/chart/modules/talaria-simple-smc-indicator.js",
+          "resourceType": "script",
+          "initiator": {
+            "type": "parser",
+            "url": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest",
+            "lineNumber": 1636,
+            "columnNumber": 85
+          }
+        },
+        {
+          "url": "http://31.97.192.82:3000/chart/modules/chart-indicators-full.js",
+          "resourceType": "script",
+          "initiator": {
+            "type": "parser",
+            "url": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest",
+            "lineNumber": 1637,
+            "columnNumber": 78
+          }
+        },
+        {
+          "url": "http://31.97.192.82:3000/chart/modules/indicator-ui.js",
+          "resourceType": "script",
+          "initiator": {
+            "type": "parser",
+            "url": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest",
+            "lineNumber": 1639,
+            "columnNumber": 69
+          }
+        }
+      ],
+      "responses": [
+        {
+          "url": "http://31.97.192.82:3000/chart/modules/replay-dashboard-sync.js",
+          "status": 200,
+          "fromCache": true,
+          "fromServiceWorker": false,
+          "headers": {
+            "cache-control": "max-age=3600, public, must-revalidate",
+            "etag": "\"6a66a9e1-316\"",
+            "expires": "Mon, 27 Jul 2026 21:24:58 GMT",
+            "accept-ranges": "bytes",
+            "content-length": "790",
+            "date": "Mon, 27 Jul 2026 20:24:58 GMT",
+            "content-type": "application/javascript",
+            "last-modified": "Mon, 27 Jul 2026 00:44:17 GMT",
+            "server": "nginx"
+          }
+        },
+        {
+          "url": "http://31.97.192.82:3000/chart/modules/indicator-settings-apply.js",
+          "status": 200,
+          "fromCache": true,
+          "fromServiceWorker": false,
+          "headers": {
+            "cache-control": "max-age=3600, public, must-revalidate",
+            "content-encoding": "gzip",
+            "etag": "W/\"6a66a9e1-11d7\"",
+            "expires": "Mon, 27 Jul 2026 21:24:58 GMT",
+            "date": "Mon, 27 Jul 2026 20:24:58 GMT",
+            "content-type": "application/javascript",
+            "last-modified": "Mon, 27 Jul 2026 00:44:17 GMT",
+            "server": "nginx"
+          }
+        },
+        {
+          "url": "http://31.97.192.82:3000/chart/modules/indicator-persist-rehydrate.js",
+          "status": 200,
+          "fromCache": true,
+          "fromServiceWorker": false,
+          "headers": {
+            "cache-control": "max-age=3600, public, must-revalidate",
+            "content-encoding": "gzip",
+            "etag": "W/\"6a66a9e1-fdf\"",
+            "expires": "Mon, 27 Jul 2026 21:24:58 GMT",
+            "date": "Mon, 27 Jul 2026 20:24:58 GMT",
+            "content-type": "application/javascript",
+            "last-modified": "Mon, 27 Jul 2026 00:44:17 GMT",
+            "server": "nginx"
+          }
+        },
+        {
+          "url": "http://31.97.192.82:3000/chart/modules/indicator-visibility.js",
+          "status": 200,
+          "fromCache": true,
+          "fromServiceWorker": false,
+          "headers": {
+            "cache-control": "max-age=3600, public, must-revalidate",
+            "content-encoding": "gzip",
+            "etag": "W/\"6a66a9e1-127e\"",
+            "expires": "Mon, 27 Jul 2026 21:24:58 GMT",
+            "date": "Mon, 27 Jul 2026 20:24:58 GMT",
+            "content-type": "application/javascript",
+            "last-modified": "Mon, 27 Jul 2026 00:44:17 GMT",
+            "server": "nginx"
+          }
+        },
+        {
+          "url": "http://31.97.192.82:3000/chart/modules/indicator-lifecycle-store.js",
+          "status": 200,
+          "fromCache": true,
+          "fromServiceWorker": false,
+          "headers": {
+            "cache-control": "max-age=3600, public, must-revalidate",
+            "content-encoding": "gzip",
+            "etag": "W/\"6a66a9e1-187c\"",
+            "expires": "Mon, 27 Jul 2026 21:24:58 GMT",
+            "date": "Mon, 27 Jul 2026 20:24:58 GMT",
+            "content-type": "application/javascript",
+            "last-modified": "Mon, 27 Jul 2026 00:44:17 GMT",
+            "server": "nginx"
+          }
+        },
+        {
+          "url": "http://31.97.192.82:3000/chart/modules/talaria-simple-smc-indicator.js",
+          "status": 200,
+          "fromCache": true,
+          "fromServiceWorker": false,
+          "headers": {
+            "cache-control": "max-age=3600, public, must-revalidate",
+            "content-encoding": "gzip",
+            "etag": "W/\"6a66a9e1-66c1\"",
+            "expires": "Mon, 27 Jul 2026 21:24:58 GMT",
+            "date": "Mon, 27 Jul 2026 20:24:58 GMT",
+            "content-type": "application/javascript",
+            "last-modified": "Mon, 27 Jul 2026 00:44:17 GMT",
+            "server": "nginx"
+          }
+        },
+        {
+          "url": "http://31.97.192.82:3000/chart/modules/talaria-fvg-indicator.js",
+          "status": 200,
+          "fromCache": true,
+          "fromServiceWorker": false,
+          "headers": {
+            "cache-control": "max-age=3600, public, must-revalidate",
+            "content-encoding": "gzip",
+            "etag": "W/\"6a66a9e1-6720\"",
+            "expires": "Mon, 27 Jul 2026 21:24:58 GMT",
+            "date": "Mon, 27 Jul 2026 20:24:58 GMT",
+            "content-type": "application/javascript",
+            "last-modified": "Mon, 27 Jul 2026 00:44:17 GMT",
+            "server": "nginx"
+          }
+        },
+        {
+          "url": "http://31.97.192.82:3000/chart/modules/talaria-weekly-map-indicator.js",
+          "status": 200,
+          "fromCache": true,
+          "fromServiceWorker": false,
+          "headers": {
+            "cache-control": "max-age=3600, public, must-revalidate",
+            "content-encoding": "gzip",
+            "etag": "W/\"6a66a9e1-6ddc\"",
+            "expires": "Mon, 27 Jul 2026 21:24:58 GMT",
+            "date": "Mon, 27 Jul 2026 20:24:58 GMT",
+            "content-type": "application/javascript",
+            "last-modified": "Mon, 27 Jul 2026 00:44:17 GMT",
+            "server": "nginx"
+          }
+        },
+        {
+          "url": "http://31.97.192.82:3000/chart/modules/talaria-ratio-gap-indicator.js",
+          "status": 200,
+          "fromCache": true,
+          "fromServiceWorker": false,
+          "headers": {
+            "cache-control": "max-age=3600, public, must-revalidate",
+            "content-encoding": "gzip",
+            "etag": "W/\"6a66a9e1-85a4\"",
+            "expires": "Mon, 27 Jul 2026 21:24:58 GMT",
+            "date": "Mon, 27 Jul 2026 20:24:58 GMT",
+            "content-type": "application/javascript",
+            "last-modified": "Mon, 27 Jul 2026 00:44:17 GMT",
+            "server": "nginx"
+          }
+        },
+        {
+          "url": "http://31.97.192.82:3000/chart/modules/indicator-ui.js",
+          "status": 200,
+          "fromCache": true,
+          "fromServiceWorker": false,
+          "headers": {
+            "cache-control": "max-age=3600, public, must-revalidate",
+            "content-encoding": "gzip",
+            "etag": "W/\"6a66a9e1-51f51\"",
+            "expires": "Mon, 27 Jul 2026 21:24:58 GMT",
+            "date": "Mon, 27 Jul 2026 20:24:58 GMT",
+            "content-type": "application/javascript",
+            "last-modified": "Mon, 27 Jul 2026 00:44:17 GMT",
+            "server": "nginx"
+          }
+        },
+        {
+          "url": "http://31.97.192.82:3000/chart/modules/replay-system.js",
+          "status": 200,
+          "fromCache": true,
+          "fromServiceWorker": false,
+          "headers": {
+            "cache-control": "max-age=3600, public, must-revalidate",
+            "content-encoding": "gzip",
+            "etag": "W/\"6a66a9e1-6ae1b\"",
+            "expires": "Mon, 27 Jul 2026 21:24:58 GMT",
+            "date": "Mon, 27 Jul 2026 20:24:58 GMT",
+            "content-type": "application/javascript",
+            "last-modified": "Mon, 27 Jul 2026 00:44:17 GMT",
+            "server": "nginx"
+          }
+        },
+        {
+          "url": "http://31.97.192.82:3000/chart/modules/chart-indicators-full.js",
+          "status": 200,
+          "fromCache": true,
+          "fromServiceWorker": false,
+          "headers": {
+            "cache-control": "max-age=3600, public, must-revalidate",
+            "content-encoding": "gzip",
+            "etag": "W/\"6a66a9e1-f18de\"",
+            "expires": "Mon, 27 Jul 2026 21:24:58 GMT",
+            "date": "Mon, 27 Jul 2026 20:24:58 GMT",
+            "content-type": "application/javascript",
+            "last-modified": "Mon, 27 Jul 2026 00:44:17 GMT",
+            "server": "nginx"
+          }
+        },
+        {
+          "url": "http://31.97.192.82:3000/chart/chart.js",
+          "status": 200,
+          "fromCache": true,
+          "fromServiceWorker": false,
+          "headers": {
+            "cache-control": "max-age=3600, public, must-revalidate",
+            "content-encoding": "gzip",
+            "etag": "W/\"6a66a9e1-1db09a\"",
+            "expires": "Mon, 27 Jul 2026 21:24:58 GMT",
+            "date": "Mon, 27 Jul 2026 20:24:58 GMT",
+            "content-type": "application/javascript",
+            "last-modified": "Mon, 27 Jul 2026 00:44:17 GMT",
+            "server": "nginx"
+          }
+        }
+      ],
+      "frames": [
+        {
+          "url": "http://31.97.192.82:3000/chart/dist-v9/index.html",
+          "error": "Runtime.callFunctionOn timed out. Increase the 'protocolTimeout' setting in launch/connect calls for a higher timeout if needed."
+        }
+      ],
+      "consoleErrors": [
+        "❌ No fullRawData available"
+      ],
+      "verdict": "SERVED_NOT_REFERENCED"
+    },
+    {
+      "name": "legacy",
+      "route": "/chart/legacy-index.html",
+      "navigation": {
+        "status": 200,
+        "finalUrl": "http://31.97.192.82:3000/chart/legacy-index.html",
+        "headers": {
+          "cache-control": "max-age=3600\npublic, must-revalidate",
+          "connection": "keep-alive",
+          "content-encoding": "gzip",
+          "content-type": "text/html",
+          "date": "Mon, 27 Jul 2026 20:28:09 GMT",
+          "etag": "W/\"6a66a9e1-15a3a7\"",
+          "expires": "Mon, 27 Jul 2026 21:28:09 GMT",
+          "last-modified": "Mon, 27 Jul 2026 00:44:17 GMT",
+          "server": "nginx",
+          "transfer-encoding": "chunked"
+        }
+      },
+      "requests": [
+        {
+          "url": "http://31.97.192.82:3000/chart/chart.js",
+          "resourceType": "script",
+          "initiator": {
+            "type": "parser",
+            "url": "http://31.97.192.82:3000/chart/legacy-index.html",
+            "lineNumber": 44061,
+            "columnNumber": 47
+          }
+        },
+        {
+          "url": "http://31.97.192.82:3000/chart/modules/replay-system.js",
+          "resourceType": "script",
+          "initiator": {
+            "type": "parser",
+            "url": "http://31.97.192.82:3000/chart/legacy-index.html",
+            "lineNumber": 44064,
+            "columnNumber": 63
+          }
+        },
+        {
+          "url": "http://31.97.192.82:3000/chart/modules/custom-indicators-runtime.js",
+          "resourceType": "script",
+          "initiator": {
+            "type": "parser",
+            "url": "http://31.97.192.82:3000/chart/legacy-index.html",
+            "lineNumber": 44300,
+            "columnNumber": 75
+          }
+        },
+        {
+          "url": "http://31.97.192.82:3000/chart/modules/indicator-persist-rehydrate.js",
+          "resourceType": "script",
+          "initiator": {
+            "type": "parser",
+            "url": "http://31.97.192.82:3000/chart/legacy-index.html",
+            "lineNumber": 44302,
+            "columnNumber": 77
+          }
+        },
+        {
+          "url": "http://31.97.192.82:3000/chart/modules/indicator-settings-apply.js",
+          "resourceType": "script",
+          "initiator": {
+            "type": "parser",
+            "url": "http://31.97.192.82:3000/chart/legacy-index.html",
+            "lineNumber": 44303,
+            "columnNumber": 74
+          }
+        },
+        {
+          "url": "http://31.97.192.82:3000/chart/modules/indicator-visibility.js",
+          "resourceType": "script",
+          "initiator": {
+            "type": "parser",
+            "url": "http://31.97.192.82:3000/chart/legacy-index.html",
+            "lineNumber": 44304,
+            "columnNumber": 70
+          }
+        },
+        {
+          "url": "http://31.97.192.82:3000/chart/modules/indicator-replay-ui-sync.js",
+          "resourceType": "script",
+          "initiator": {
+            "type": "parser",
+            "url": "http://31.97.192.82:3000/chart/legacy-index.html",
+            "lineNumber": 44305,
+            "columnNumber": 74
+          }
+        },
+        {
+          "url": "http://31.97.192.82:3000/chart/modules/indicator-lifecycle-store.js",
+          "resourceType": "script",
+          "initiator": {
+            "type": "parser",
+            "url": "http://31.97.192.82:3000/chart/legacy-index.html",
+            "lineNumber": 44306,
+            "columnNumber": 75
+          }
+        },
+        {
+          "url": "http://31.97.192.82:3000/chart/modules/talaria-fvg-indicator.js",
+          "resourceType": "script",
+          "initiator": {
+            "type": "parser",
+            "url": "http://31.97.192.82:3000/chart/legacy-index.html",
+            "lineNumber": 44312,
+            "columnNumber": 71
+          }
+        },
+        {
+          "url": "http://31.97.192.82:3000/chart/modules/talaria-ratio-gap-indicator.js",
+          "resourceType": "script",
+          "initiator": {
+            "type": "parser",
+            "url": "http://31.97.192.82:3000/chart/legacy-index.html",
+            "lineNumber": 44313,
+            "columnNumber": 77
+          }
+        },
+        {
+          "url": "http://31.97.192.82:3000/chart/modules/talaria-weekly-map-indicator.js",
+          "resourceType": "script",
+          "initiator": {
+            "type": "parser",
+            "url": "http://31.97.192.82:3000/chart/legacy-index.html",
+            "lineNumber": 44314,
+            "columnNumber": 78
+          }
+        },
+        {
+          "url": "http://31.97.192.82:3000/chart/modules/talaria-simple-smc-indicator.js",
+          "resourceType": "script",
+          "initiator": {
+            "type": "parser",
+            "url": "http://31.97.192.82:3000/chart/legacy-index.html",
+            "lineNumber": 44315,
+            "columnNumber": 78
+          }
+        },
+        {
+          "url": "http://31.97.192.82:3000/chart/modules/chart-indicators-full.js",
+          "resourceType": "script",
+          "initiator": {
+            "type": "parser",
+            "url": "http://31.97.192.82:3000/chart/legacy-index.html",
+            "lineNumber": 44316,
+            "columnNumber": 71
+          }
+        },
+        {
+          "url": "http://31.97.192.82:3000/chart/modules/indicator-ui.js",
+          "resourceType": "script",
+          "initiator": {
+            "type": "parser",
+            "url": "http://31.97.192.82:3000/chart/legacy-index.html",
+            "lineNumber": 44320,
+            "columnNumber": 62
+          }
+        }
+      ],
+      "responses": [
+        {
+          "url": "http://31.97.192.82:3000/chart/modules/replay-system.js",
+          "status": 200,
+          "fromCache": true,
+          "fromServiceWorker": false,
+          "headers": {
+            "cache-control": "max-age=3600, public, must-revalidate",
+            "content-encoding": "gzip",
+            "etag": "W/\"6a66a9e1-6ae1b\"",
+            "expires": "Mon, 27 Jul 2026 21:24:58 GMT",
+            "date": "Mon, 27 Jul 2026 20:24:58 GMT",
+            "content-type": "application/javascript",
+            "last-modified": "Mon, 27 Jul 2026 00:44:17 GMT",
+            "server": "nginx"
+          }
+        },
+        {
+          "url": "http://31.97.192.82:3000/chart/chart.js",
+          "status": 200,
+          "fromCache": true,
+          "fromServiceWorker": false,
+          "headers": {
+            "cache-control": "max-age=3600, public, must-revalidate",
+            "content-encoding": "gzip",
+            "etag": "W/\"6a66a9e1-1db09a\"",
+            "expires": "Mon, 27 Jul 2026 21:24:58 GMT",
+            "date": "Mon, 27 Jul 2026 20:24:58 GMT",
+            "content-type": "application/javascript",
+            "last-modified": "Mon, 27 Jul 2026 00:44:17 GMT",
+            "server": "nginx"
+          }
+        },
+        {
+          "url": "http://31.97.192.82:3000/chart/modules/indicator-visibility.js",
+          "status": 200,
+          "fromCache": true,
+          "fromServiceWorker": false,
+          "headers": {
+            "cache-control": "max-age=3600, public, must-revalidate",
+            "content-encoding": "gzip",
+            "etag": "W/\"6a66a9e1-127e\"",
+            "expires": "Mon, 27 Jul 2026 21:24:58 GMT",
+            "date": "Mon, 27 Jul 2026 20:24:58 GMT",
+            "content-type": "application/javascript",
+            "last-modified": "Mon, 27 Jul 2026 00:44:17 GMT",
+            "server": "nginx"
+          }
+        },
+        {
+          "url": "http://31.97.192.82:3000/chart/modules/indicator-persist-rehydrate.js",
+          "status": 200,
+          "fromCache": true,
+          "fromServiceWorker": false,
+          "headers": {
+            "cache-control": "max-age=3600, public, must-revalidate",
+            "content-encoding": "gzip",
+            "etag": "W/\"6a66a9e1-fdf\"",
+            "expires": "Mon, 27 Jul 2026 21:24:58 GMT",
+            "date": "Mon, 27 Jul 2026 20:24:58 GMT",
+            "content-type": "application/javascript",
+            "last-modified": "Mon, 27 Jul 2026 00:44:17 GMT",
+            "server": "nginx"
+          }
+        },
+        {
+          "url": "http://31.97.192.82:3000/chart/modules/indicator-settings-apply.js",
+          "status": 200,
+          "fromCache": true,
+          "fromServiceWorker": false,
+          "headers": {
+            "cache-control": "max-age=3600, public, must-revalidate",
+            "content-encoding": "gzip",
+            "etag": "W/\"6a66a9e1-11d7\"",
+            "expires": "Mon, 27 Jul 2026 21:24:58 GMT",
+            "date": "Mon, 27 Jul 2026 20:24:58 GMT",
+            "content-type": "application/javascript",
+            "last-modified": "Mon, 27 Jul 2026 00:44:17 GMT",
+            "server": "nginx"
+          }
+        },
+        {
+          "url": "http://31.97.192.82:3000/chart/modules/indicator-lifecycle-store.js",
+          "status": 200,
+          "fromCache": true,
+          "fromServiceWorker": false,
+          "headers": {
+            "cache-control": "max-age=3600, public, must-revalidate",
+            "content-encoding": "gzip",
+            "etag": "W/\"6a66a9e1-187c\"",
+            "expires": "Mon, 27 Jul 2026 21:24:58 GMT",
+            "date": "Mon, 27 Jul 2026 20:24:58 GMT",
+            "content-type": "application/javascript",
+            "last-modified": "Mon, 27 Jul 2026 00:44:17 GMT",
+            "server": "nginx"
+          }
+        },
+        {
+          "url": "http://31.97.192.82:3000/chart/modules/custom-indicators-runtime.js",
+          "status": 200,
+          "fromCache": false,
+          "fromServiceWorker": false,
+          "headers": {
+            "cache-control": "max-age=3600\npublic, must-revalidate",
+            "connection": "keep-alive",
+            "content-encoding": "gzip",
+            "content-type": "application/javascript",
+            "date": "Mon, 27 Jul 2026 20:28:09 GMT",
+            "etag": "W/\"6a66a9e1-23d1\"",
+            "expires": "Mon, 27 Jul 2026 21:28:09 GMT",
+            "last-modified": "Mon, 27 Jul 2026 00:44:17 GMT",
+            "server": "nginx",
+            "transfer-encoding": "chunked"
+          }
+        },
+        {
+          "url": "http://31.97.192.82:3000/chart/modules/talaria-fvg-indicator.js",
+          "status": 200,
+          "fromCache": true,
+          "fromServiceWorker": false,
+          "headers": {
+            "cache-control": "max-age=3600, public, must-revalidate",
+            "content-encoding": "gzip",
+            "etag": "W/\"6a66a9e1-6720\"",
+            "expires": "Mon, 27 Jul 2026 21:24:58 GMT",
+            "date": "Mon, 27 Jul 2026 20:24:58 GMT",
+            "content-type": "application/javascript",
+            "last-modified": "Mon, 27 Jul 2026 00:44:17 GMT",
+            "server": "nginx"
+          }
+        },
+        {
+          "url": "http://31.97.192.82:3000/chart/modules/talaria-weekly-map-indicator.js",
+          "status": 200,
+          "fromCache": true,
+          "fromServiceWorker": false,
+          "headers": {
+            "cache-control": "max-age=3600, public, must-revalidate",
+            "content-encoding": "gzip",
+            "etag": "W/\"6a66a9e1-6ddc\"",
+            "expires": "Mon, 27 Jul 2026 21:24:58 GMT",
+            "date": "Mon, 27 Jul 2026 20:24:58 GMT",
+            "content-type": "application/javascript",
+            "last-modified": "Mon, 27 Jul 2026 00:44:17 GMT",
+            "server": "nginx"
+          }
+        },
+        {
+          "url": "http://31.97.192.82:3000/chart/modules/talaria-ratio-gap-indicator.js",
+          "status": 200,
+          "fromCache": true,
+          "fromServiceWorker": false,
+          "headers": {
+            "cache-control": "max-age=3600, public, must-revalidate",
+            "content-encoding": "gzip",
+            "etag": "W/\"6a66a9e1-85a4\"",
+            "expires": "Mon, 27 Jul 2026 21:24:58 GMT",
+            "date": "Mon, 27 Jul 2026 20:24:58 GMT",
+            "content-type": "application/javascript",
+            "last-modified": "Mon, 27 Jul 2026 00:44:17 GMT",
+            "server": "nginx"
+          }
+        },
+        {
+          "url": "http://31.97.192.82:3000/chart/modules/talaria-simple-smc-indicator.js",
+          "status": 200,
+          "fromCache": true,
+          "fromServiceWorker": false,
+          "headers": {
+            "cache-control": "max-age=3600, public, must-revalidate",
+            "content-encoding": "gzip",
+            "etag": "W/\"6a66a9e1-66c1\"",
+            "expires": "Mon, 27 Jul 2026 21:24:58 GMT",
+            "date": "Mon, 27 Jul 2026 20:24:58 GMT",
+            "content-type": "application/javascript",
+            "last-modified": "Mon, 27 Jul 2026 00:44:17 GMT",
+            "server": "nginx"
+          }
+        },
+        {
+          "url": "http://31.97.192.82:3000/chart/modules/indicator-ui.js",
+          "status": 200,
+          "fromCache": true,
+          "fromServiceWorker": false,
+          "headers": {
+            "cache-control": "max-age=3600, public, must-revalidate",
+            "content-encoding": "gzip",
+            "etag": "W/\"6a66a9e1-51f51\"",
+            "expires": "Mon, 27 Jul 2026 21:24:58 GMT",
+            "date": "Mon, 27 Jul 2026 20:24:58 GMT",
+            "content-type": "application/javascript",
+            "last-modified": "Mon, 27 Jul 2026 00:44:17 GMT",
+            "server": "nginx"
+          }
+        },
+        {
+          "url": "http://31.97.192.82:3000/chart/modules/chart-indicators-full.js",
+          "status": 200,
+          "fromCache": true,
+          "fromServiceWorker": false,
+          "headers": {
+            "cache-control": "max-age=3600, public, must-revalidate",
+            "content-encoding": "gzip",
+            "etag": "W/\"6a66a9e1-f18de\"",
+            "expires": "Mon, 27 Jul 2026 21:24:58 GMT",
+            "date": "Mon, 27 Jul 2026 20:24:58 GMT",
+            "content-type": "application/javascript",
+            "last-modified": "Mon, 27 Jul 2026 00:44:17 GMT",
+            "server": "nginx"
+          }
+        },
+        {
+          "url": "http://31.97.192.82:3000/chart/modules/indicator-replay-ui-sync.js",
+          "status": 200,
+          "fromCache": false,
+          "fromServiceWorker": false,
+          "headers": {
+            "cache-control": "max-age=3600\npublic, must-revalidate",
+            "connection": "keep-alive",
+            "content-encoding": "gzip",
+            "content-type": "application/javascript",
+            "date": "Mon, 27 Jul 2026 20:28:09 GMT",
+            "etag": "W/\"6a66a9e1-1143\"",
+            "expires": "Mon, 27 Jul 2026 21:28:09 GMT",
+            "last-modified": "Mon, 27 Jul 2026 00:44:17 GMT",
+            "server": "nginx",
+            "transfer-encoding": "chunked"
+          }
+        }
+      ],
+      "frames": [
+        {
+          "url": "http://31.97.192.82:3000/chart/legacy-index.html",
+          "scripts": [
+            "[inline]",
+            "[inline]",
+            "/chart/modules/chart-window-limit.js",
+            "[inline]",
+            "[inline]",
+            "/ajax/libs/d3/7.8.5/d3.min.js",
+            "/ajax/libs/lz-string/1.5.0/lz-string.min.js",
+            "/chart/modules/drawing-tools-base.js",
+            "/chart/modules/drawing-tools-lines.js",
+            "/chart/modules/drawing-tools-shapes.js",
+            "/chart/modules/drawing-tools-fibonacci.js",
+            "/chart/modules/drawing-tools-text.js",
+            "/chart/modules/drawing-tools-emoji.js",
+            "/chart/modules/drawing-tools-image.js",
+            "/chart/modules/emoji-picker.js",
+            "/chart/modules/emoji-picker-simple.js",
+            "/chart/modules/drawing-tools-advanced-volume.js",
+            "/chart/modules/drawing-tools-advanced.js",
+            "/chart/modules/drawing-tools-extended.js",
+            "/chart/modules/drawing-tools-patterns.js",
+            "/chart/modules/drawing-tools-fib-gann.js",
+            "/chart/modules/drawing-tools-channels.js",
+            "/chart/modules/drawing-tools-ui.js",
+            "/chart/modules/color-picker.js",
+            "/chart/modules/drawing-toolbar.js",
+            "/chart/modules/undo-redo-manager.js",
+            "/chart/modules/tool-lifecycle-store.js",
+            "/chart/modules/preferences-sync.js",
+            "/chart/modules/preferences-init.js",
+            "/chart/modules/drawing-tools-manager.js",
+            "/chart/modules/favorites-manager.js",
+            "/chart/modules/keyboard-shortcuts.js",
+            "/chart/settings-panel.js",
+            "/chart/settings-panel-ext.js",
+            "/chart/modules/timeframe-favorites.js",
+            "/chart/modules/propfirm-tracker.js",
+            "/chart/modules/compare-overlay.js",
+            "/chart/modules/timezone-manager.js",
+            "/chart/chart.js",
+            "/chart/modules/v9-theme-bridge.js",
+            "/chart/modules/replay-system.js",
+            "/chart/modules/chart-env.defaults.js",
+            "/chart/modules/chart-env.generated.js",
+            "/chart/modules/economic-news-sidebar.js",
+            "/chart/modules/order-event-bus.js",
+            "/chart/modules/order-service.js",
+            "/chart/modules/market-calculations.js",
+            "/chart/modules/order-manager.js",
+            "/chart/modules/screenshot-manager.js",
+            "/chart/modules/alert-system.js",
+            "[inline]",
+            "[inline]",
+            "[inline]",
+            "/chart/modules/custom-indicators-runtime.js",
+            "/chart/modules/indicator-persist-rehydrate.js",
+            "/chart/modules/indicator-settings-apply.js",
+            "/chart/modules/indicator-visibility.js",
+            "/chart/modules/indicator-replay-ui-sync.js",
+            "/chart/modules/indicator-lifecycle-store.js",
+            "/chart/modules/talaria-fvg-indicator.js",
+            "/chart/modules/talaria-ratio-gap-indicator.js",
+            "/chart/modules/talaria-weekly-map-indicator.js",
+            "/chart/modules/talaria-simple-smc-indicator.js",
+            "/chart/modules/chart-indicators-full.js",
+            "/chart/modules/indicator-ui.js",
+            "[inline]",
+            "[inline]",
+            "[inline]",
+            "[inline]",
+            "[inline]",
+            "[inline]",
+            "[inline]",
+            "[inline]",
+            "[inline]",
+            "[inline]",
+            "[inline]",
+            "[inline]",
+            "[inline]",
+            "[inline]"
+          ],
+          "buildId": null,
+          "flags": {
+            "_m19iTickSpeedCoherenceEnabled": {}
+          },
+          "perfObjects": {},
+          "serviceWorker": {
+            "controlled": false,
+            "controllerUrl": null
+          },
+          "cspMeta": []
+        }
+      ],
+      "consoleErrors": [
+        "Failed to load resource: the server responded with a status of 404 (Not Found)",
+        "Refused to execute script from 'http://31.97.192.82:3000/chart/static/oops.html?status=404' because its MIME type ('text/html') is not executable, and strict MIME type checking is enabled.",
+        "Refused to execute script from 'http://31.97.192.82:3000/chart/static/oops.html?status=404' because its MIME type ('text/html') is not executable, and strict MIME type checking is enabled.",
+        "Failed to load resource: the server responded with a status of 404 (Not Found)"
+      ],
+      "verdict": "SERVED_NOT_REFERENCED"
+    },
+    {
+      "name": "embed",
+      "route": "/chart/multichart-prod/chart-embed.html",
+      "navigation": {
+        "status": 200,
+        "finalUrl": "http://31.97.192.82:3000/chart/multichart-prod/chart-embed.html",
+        "headers": {
+          "cache-control": "max-age=3600\npublic, must-revalidate",
+          "connection": "keep-alive",
+          "content-encoding": "gzip",
+          "content-type": "text/html",
+          "date": "Mon, 27 Jul 2026 20:28:14 GMT",
+          "etag": "W/\"6a66a9e1-5435\"",
+          "expires": "Mon, 27 Jul 2026 21:28:14 GMT",
+          "last-modified": "Mon, 27 Jul 2026 00:44:17 GMT",
+          "server": "nginx",
+          "transfer-encoding": "chunked"
+        }
+      },
+      "requests": [
+        {
+          "url": "http://31.97.192.82:3000/chart/chart.js",
+          "resourceType": "script",
+          "initiator": {
+            "type": "script",
+            "stack": {
+              "callFrames": [
+                {
+                  "functionName": "",
+                  "scriptId": "15",
+                  "url": "http://31.97.192.82:3000/chart/multichart-prod/chart-embed.html?multichart=1",
+                  "lineNumber": 370,
+                  "columnNumber": 21
+                },
+                {
+                  "functionName": "",
+                  "scriptId": "15",
+                  "url": "http://31.97.192.82:3000/chart/multichart-prod/chart-embed.html?multichart=1",
+                  "lineNumber": 372,
+                  "columnNumber": 6
+                }
+              ]
+            }
+          }
+        },
+        {
+          "url": "http://31.97.192.82:3000/chart/modules/replay-system.js",
+          "resourceType": "script",
+          "initiator": {
+            "type": "script",
+            "stack": {
+              "callFrames": [
+                {
+                  "functionName": "",
+                  "scriptId": "15",
+                  "url": "http://31.97.192.82:3000/chart/multichart-prod/chart-embed.html?multichart=1",
+                  "lineNumber": 370,
+                  "columnNumber": 21
+                },
+                {
+                  "functionName": "",
+                  "scriptId": "15",
+                  "url": "http://31.97.192.82:3000/chart/multichart-prod/chart-embed.html?multichart=1",
+                  "lineNumber": 372,
+                  "columnNumber": 6
+                }
+              ]
+            }
+          }
+        },
+        {
+          "url": "http://31.97.192.82:3000/chart/modules/replay-dashboard-sync.js",
+          "resourceType": "script",
+          "initiator": {
+            "type": "script",
+            "stack": {
+              "callFrames": [
+                {
+                  "functionName": "",
+                  "scriptId": "15",
+                  "url": "http://31.97.192.82:3000/chart/multichart-prod/chart-embed.html?multichart=1",
+                  "lineNumber": 370,
+                  "columnNumber": 21
+                },
+                {
+                  "functionName": "",
+                  "scriptId": "15",
+                  "url": "http://31.97.192.82:3000/chart/multichart-prod/chart-embed.html?multichart=1",
+                  "lineNumber": 372,
+                  "columnNumber": 6
+                }
+              ]
+            }
+          }
+        },
+        {
+          "url": "http://31.97.192.82:3000/chart/modules/indicator-performance.js",
+          "resourceType": "script",
+          "initiator": {
+            "type": "script",
+            "stack": {
+              "callFrames": [
+                {
+                  "functionName": "",
+                  "scriptId": "15",
+                  "url": "http://31.97.192.82:3000/chart/multichart-prod/chart-embed.html?multichart=1",
+                  "lineNumber": 370,
+                  "columnNumber": 21
+                },
+                {
+                  "functionName": "",
+                  "scriptId": "15",
+                  "url": "http://31.97.192.82:3000/chart/multichart-prod/chart-embed.html?multichart=1",
+                  "lineNumber": 372,
+                  "columnNumber": 6
+                }
+              ]
+            }
+          }
+        },
+        {
+          "url": "http://31.97.192.82:3000/chart/modules/indicator-persist-rehydrate.js",
+          "resourceType": "script",
+          "initiator": {
+            "type": "script",
+            "stack": {
+              "callFrames": [
+                {
+                  "functionName": "",
+                  "scriptId": "15",
+                  "url": "http://31.97.192.82:3000/chart/multichart-prod/chart-embed.html?multichart=1",
+                  "lineNumber": 370,
+                  "columnNumber": 21
+                },
+                {
+                  "functionName": "",
+                  "scriptId": "15",
+                  "url": "http://31.97.192.82:3000/chart/multichart-prod/chart-embed.html?multichart=1",
+                  "lineNumber": 372,
+                  "columnNumber": 6
+                }
+              ]
+            }
+          }
+        },
+        {
+          "url": "http://31.97.192.82:3000/chart/modules/indicator-settings-apply.js",
+          "resourceType": "script",
+          "initiator": {
+            "type": "script",
+            "stack": {
+              "callFrames": [
+                {
+                  "functionName": "",
+                  "scriptId": "15",
+                  "url": "http://31.97.192.82:3000/chart/multichart-prod/chart-embed.html?multichart=1",
+                  "lineNumber": 370,
+                  "columnNumber": 21
+                },
+                {
+                  "functionName": "",
+                  "scriptId": "15",
+                  "url": "http://31.97.192.82:3000/chart/multichart-prod/chart-embed.html?multichart=1",
+                  "lineNumber": 372,
+                  "columnNumber": 6
+                }
+              ]
+            }
+          }
+        },
+        {
+          "url": "http://31.97.192.82:3000/chart/modules/indicator-visibility.js",
+          "resourceType": "script",
+          "initiator": {
+            "type": "script",
+            "stack": {
+              "callFrames": [
+                {
+                  "functionName": "",
+                  "scriptId": "15",
+                  "url": "http://31.97.192.82:3000/chart/multichart-prod/chart-embed.html?multichart=1",
+                  "lineNumber": 370,
+                  "columnNumber": 21
+                },
+                {
+                  "functionName": "",
+                  "scriptId": "15",
+                  "url": "http://31.97.192.82:3000/chart/multichart-prod/chart-embed.html?multichart=1",
+                  "lineNumber": 372,
+                  "columnNumber": 6
+                }
+              ]
+            }
+          }
+        },
+        {
+          "url": "http://31.97.192.82:3000/chart/modules/indicator-replay-ui-sync.js",
+          "resourceType": "script",
+          "initiator": {
+            "type": "script",
+            "stack": {
+              "callFrames": [
+                {
+                  "functionName": "",
+                  "scriptId": "15",
+                  "url": "http://31.97.192.82:3000/chart/multichart-prod/chart-embed.html?multichart=1",
+                  "lineNumber": 370,
+                  "columnNumber": 21
+                },
+                {
+                  "functionName": "",
+                  "scriptId": "15",
+                  "url": "http://31.97.192.82:3000/chart/multichart-prod/chart-embed.html?multichart=1",
+                  "lineNumber": 372,
+                  "columnNumber": 6
+                }
+              ]
+            }
+          }
+        },
+        {
+          "url": "http://31.97.192.82:3000/chart/modules/indicator-lifecycle-store.js",
+          "resourceType": "script",
+          "initiator": {
+            "type": "script",
+            "stack": {
+              "callFrames": [
+                {
+                  "functionName": "",
+                  "scriptId": "15",
+                  "url": "http://31.97.192.82:3000/chart/multichart-prod/chart-embed.html?multichart=1",
+                  "lineNumber": 370,
+                  "columnNumber": 21
+                },
+                {
+                  "functionName": "",
+                  "scriptId": "15",
+                  "url": "http://31.97.192.82:3000/chart/multichart-prod/chart-embed.html?multichart=1",
+                  "lineNumber": 372,
+                  "columnNumber": 6
+                }
+              ]
+            }
+          }
+        },
+        {
+          "url": "http://31.97.192.82:3000/chart/modules/talaria-fvg-indicator.js",
+          "resourceType": "script",
+          "initiator": {
+            "type": "script",
+            "stack": {
+              "callFrames": [
+                {
+                  "functionName": "",
+                  "scriptId": "15",
+                  "url": "http://31.97.192.82:3000/chart/multichart-prod/chart-embed.html?multichart=1",
+                  "lineNumber": 370,
+                  "columnNumber": 21
+                },
+                {
+                  "functionName": "",
+                  "scriptId": "15",
+                  "url": "http://31.97.192.82:3000/chart/multichart-prod/chart-embed.html?multichart=1",
+                  "lineNumber": 372,
+                  "columnNumber": 6
+                }
+              ]
+            }
+          }
+        },
+        {
+          "url": "http://31.97.192.82:3000/chart/modules/talaria-ratio-gap-indicator.js",
+          "resourceType": "script",
+          "initiator": {
+            "type": "script",
+            "stack": {
+              "callFrames": [
+                {
+                  "functionName": "",
+                  "scriptId": "15",
+                  "url": "http://31.97.192.82:3000/chart/multichart-prod/chart-embed.html?multichart=1",
+                  "lineNumber": 370,
+                  "columnNumber": 21
+                },
+                {
+                  "functionName": "",
+                  "scriptId": "15",
+                  "url": "http://31.97.192.82:3000/chart/multichart-prod/chart-embed.html?multichart=1",
+                  "lineNumber": 372,
+                  "columnNumber": 6
+                }
+              ]
+            }
+          }
+        },
+        {
+          "url": "http://31.97.192.82:3000/chart/modules/talaria-weekly-map-indicator.js",
+          "resourceType": "script",
+          "initiator": {
+            "type": "script",
+            "stack": {
+              "callFrames": [
+                {
+                  "functionName": "",
+                  "scriptId": "15",
+                  "url": "http://31.97.192.82:3000/chart/multichart-prod/chart-embed.html?multichart=1",
+                  "lineNumber": 370,
+                  "columnNumber": 21
+                },
+                {
+                  "functionName": "",
+                  "scriptId": "15",
+                  "url": "http://31.97.192.82:3000/chart/multichart-prod/chart-embed.html?multichart=1",
+                  "lineNumber": 372,
+                  "columnNumber": 6
+                }
+              ]
+            }
+          }
+        },
+        {
+          "url": "http://31.97.192.82:3000/chart/modules/talaria-simple-smc-indicator.js",
+          "resourceType": "script",
+          "initiator": {
+            "type": "script",
+            "stack": {
+              "callFrames": [
+                {
+                  "functionName": "",
+                  "scriptId": "15",
+                  "url": "http://31.97.192.82:3000/chart/multichart-prod/chart-embed.html?multichart=1",
+                  "lineNumber": 370,
+                  "columnNumber": 21
+                },
+                {
+                  "functionName": "",
+                  "scriptId": "15",
+                  "url": "http://31.97.192.82:3000/chart/multichart-prod/chart-embed.html?multichart=1",
+                  "lineNumber": 372,
+                  "columnNumber": 6
+                }
+              ]
+            }
+          }
+        },
+        {
+          "url": "http://31.97.192.82:3000/chart/modules/chart-indicators-full.js",
+          "resourceType": "script",
+          "initiator": {
+            "type": "script",
+            "stack": {
+              "callFrames": [
+                {
+                  "functionName": "",
+                  "scriptId": "15",
+                  "url": "http://31.97.192.82:3000/chart/multichart-prod/chart-embed.html?multichart=1",
+                  "lineNumber": 370,
+                  "columnNumber": 21
+                },
+                {
+                  "functionName": "",
+                  "scriptId": "15",
+                  "url": "http://31.97.192.82:3000/chart/multichart-prod/chart-embed.html?multichart=1",
+                  "lineNumber": 372,
+                  "columnNumber": 6
+                }
+              ]
+            }
+          }
+        },
+        {
+          "url": "http://31.97.192.82:3000/chart/modules/indicator-ui.js",
+          "resourceType": "script",
+          "initiator": {
+            "type": "script",
+            "stack": {
+              "callFrames": [
+                {
+                  "functionName": "",
+                  "scriptId": "15",
+                  "url": "http://31.97.192.82:3000/chart/multichart-prod/chart-embed.html?multichart=1",
+                  "lineNumber": 370,
+                  "columnNumber": 21
+                },
+                {
+                  "functionName": "",
+                  "scriptId": "15",
+                  "url": "http://31.97.192.82:3000/chart/multichart-prod/chart-embed.html?multichart=1",
+                  "lineNumber": 372,
+                  "columnNumber": 6
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "responses": [
+        {
+          "url": "http://31.97.192.82:3000/chart/modules/replay-system.js",
+          "status": 200,
+          "fromCache": true,
+          "fromServiceWorker": false,
+          "headers": {
+            "cache-control": "max-age=3600, public, must-revalidate",
+            "content-encoding": "gzip",
+            "etag": "W/\"6a66a9e1-6ae1b\"",
+            "expires": "Mon, 27 Jul 2026 21:24:58 GMT",
+            "date": "Mon, 27 Jul 2026 20:24:58 GMT",
+            "content-type": "application/javascript",
+            "last-modified": "Mon, 27 Jul 2026 00:44:17 GMT",
+            "server": "nginx"
+          }
+        },
+        {
+          "url": "http://31.97.192.82:3000/chart/modules/replay-dashboard-sync.js",
+          "status": 200,
+          "fromCache": true,
+          "fromServiceWorker": false,
+          "headers": {
+            "cache-control": "max-age=3600, public, must-revalidate",
+            "etag": "\"6a66a9e1-316\"",
+            "expires": "Mon, 27 Jul 2026 21:24:58 GMT",
+            "accept-ranges": "bytes",
+            "content-length": "790",
+            "date": "Mon, 27 Jul 2026 20:24:58 GMT",
+            "content-type": "application/javascript",
+            "last-modified": "Mon, 27 Jul 2026 00:44:17 GMT",
+            "server": "nginx"
+          }
+        },
+        {
+          "url": "http://31.97.192.82:3000/chart/chart.js",
+          "status": 200,
+          "fromCache": true,
+          "fromServiceWorker": false,
+          "headers": {
+            "cache-control": "max-age=3600, public, must-revalidate",
+            "content-encoding": "gzip",
+            "etag": "W/\"6a66a9e1-1db09a\"",
+            "expires": "Mon, 27 Jul 2026 21:24:58 GMT",
+            "date": "Mon, 27 Jul 2026 20:24:58 GMT",
+            "content-type": "application/javascript",
+            "last-modified": "Mon, 27 Jul 2026 00:44:17 GMT",
+            "server": "nginx"
+          }
+        },
+        {
+          "url": "http://31.97.192.82:3000/chart/modules/indicator-persist-rehydrate.js",
+          "status": 200,
+          "fromCache": true,
+          "fromServiceWorker": false,
+          "headers": {
+            "cache-control": "max-age=3600, public, must-revalidate",
+            "content-encoding": "gzip",
+            "etag": "W/\"6a66a9e1-fdf\"",
+            "expires": "Mon, 27 Jul 2026 21:24:58 GMT",
+            "date": "Mon, 27 Jul 2026 20:24:58 GMT",
+            "content-type": "application/javascript",
+            "last-modified": "Mon, 27 Jul 2026 00:44:17 GMT",
+            "server": "nginx"
+          }
+        },
+        {
+          "url": "http://31.97.192.82:3000/chart/modules/indicator-settings-apply.js",
+          "status": 200,
+          "fromCache": true,
+          "fromServiceWorker": false,
+          "headers": {
+            "cache-control": "max-age=3600, public, must-revalidate",
+            "content-encoding": "gzip",
+            "etag": "W/\"6a66a9e1-11d7\"",
+            "expires": "Mon, 27 Jul 2026 21:24:58 GMT",
+            "date": "Mon, 27 Jul 2026 20:24:58 GMT",
+            "content-type": "application/javascript",
+            "last-modified": "Mon, 27 Jul 2026 00:44:17 GMT",
+            "server": "nginx"
+          }
+        },
+        {
+          "url": "http://31.97.192.82:3000/chart/modules/indicator-visibility.js",
+          "status": 200,
+          "fromCache": true,
+          "fromServiceWorker": false,
+          "headers": {
+            "cache-control": "max-age=3600, public, must-revalidate",
+            "content-encoding": "gzip",
+            "etag": "W/\"6a66a9e1-127e\"",
+            "expires": "Mon, 27 Jul 2026 21:24:58 GMT",
+            "date": "Mon, 27 Jul 2026 20:24:58 GMT",
+            "content-type": "application/javascript",
+            "last-modified": "Mon, 27 Jul 2026 00:44:17 GMT",
+            "server": "nginx"
+          }
+        },
+        {
+          "url": "http://31.97.192.82:3000/chart/modules/indicator-lifecycle-store.js",
+          "status": 200,
+          "fromCache": true,
+          "fromServiceWorker": false,
+          "headers": {
+            "cache-control": "max-age=3600, public, must-revalidate",
+            "content-encoding": "gzip",
+            "etag": "W/\"6a66a9e1-187c\"",
+            "expires": "Mon, 27 Jul 2026 21:24:58 GMT",
+            "date": "Mon, 27 Jul 2026 20:24:58 GMT",
+            "content-type": "application/javascript",
+            "last-modified": "Mon, 27 Jul 2026 00:44:17 GMT",
+            "server": "nginx"
+          }
+        },
+        {
+          "url": "http://31.97.192.82:3000/chart/modules/talaria-fvg-indicator.js",
+          "status": 200,
+          "fromCache": true,
+          "fromServiceWorker": false,
+          "headers": {
+            "cache-control": "max-age=3600, public, must-revalidate",
+            "content-encoding": "gzip",
+            "etag": "W/\"6a66a9e1-6720\"",
+            "expires": "Mon, 27 Jul 2026 21:24:58 GMT",
+            "date": "Mon, 27 Jul 2026 20:24:58 GMT",
+            "content-type": "application/javascript",
+            "last-modified": "Mon, 27 Jul 2026 00:44:17 GMT",
+            "server": "nginx"
+          }
+        },
+        {
+          "url": "http://31.97.192.82:3000/chart/modules/indicator-replay-ui-sync.js",
+          "status": 200,
+          "fromCache": true,
+          "fromServiceWorker": false,
+          "headers": {
+            "cache-control": "max-age=3600, public, must-revalidate",
+            "content-encoding": "gzip",
+            "etag": "W/\"6a66a9e1-1143\"",
+            "expires": "Mon, 27 Jul 2026 21:28:09 GMT",
+            "date": "Mon, 27 Jul 2026 20:28:09 GMT",
+            "content-type": "application/javascript",
+            "last-modified": "Mon, 27 Jul 2026 00:44:17 GMT",
+            "server": "nginx"
+          }
+        },
+        {
+          "url": "http://31.97.192.82:3000/chart/modules/talaria-ratio-gap-indicator.js",
+          "status": 200,
+          "fromCache": true,
+          "fromServiceWorker": false,
+          "headers": {
+            "cache-control": "max-age=3600, public, must-revalidate",
+            "content-encoding": "gzip",
+            "etag": "W/\"6a66a9e1-85a4\"",
+            "expires": "Mon, 27 Jul 2026 21:24:58 GMT",
+            "date": "Mon, 27 Jul 2026 20:24:58 GMT",
+            "content-type": "application/javascript",
+            "last-modified": "Mon, 27 Jul 2026 00:44:17 GMT",
+            "server": "nginx"
+          }
+        },
+        {
+          "url": "http://31.97.192.82:3000/chart/modules/talaria-weekly-map-indicator.js",
+          "status": 200,
+          "fromCache": true,
+          "fromServiceWorker": false,
+          "headers": {
+            "cache-control": "max-age=3600, public, must-revalidate",
+            "content-encoding": "gzip",
+            "etag": "W/\"6a66a9e1-6ddc\"",
+            "expires": "Mon, 27 Jul 2026 21:24:58 GMT",
+            "date": "Mon, 27 Jul 2026 20:24:58 GMT",
+            "content-type": "application/javascript",
+            "last-modified": "Mon, 27 Jul 2026 00:44:17 GMT",
+            "server": "nginx"
+          }
+        },
+        {
+          "url": "http://31.97.192.82:3000/chart/modules/talaria-simple-smc-indicator.js",
+          "status": 200,
+          "fromCache": true,
+          "fromServiceWorker": false,
+          "headers": {
+            "cache-control": "max-age=3600, public, must-revalidate",
+            "content-encoding": "gzip",
+            "etag": "W/\"6a66a9e1-66c1\"",
+            "expires": "Mon, 27 Jul 2026 21:24:58 GMT",
+            "date": "Mon, 27 Jul 2026 20:24:58 GMT",
+            "content-type": "application/javascript",
+            "last-modified": "Mon, 27 Jul 2026 00:44:17 GMT",
+            "server": "nginx"
+          }
+        },
+        {
+          "url": "http://31.97.192.82:3000/chart/modules/indicator-ui.js",
+          "status": 200,
+          "fromCache": true,
+          "fromServiceWorker": false,
+          "headers": {
+            "cache-control": "max-age=3600, public, must-revalidate",
+            "content-encoding": "gzip",
+            "etag": "W/\"6a66a9e1-51f51\"",
+            "expires": "Mon, 27 Jul 2026 21:24:58 GMT",
+            "date": "Mon, 27 Jul 2026 20:24:58 GMT",
+            "content-type": "application/javascript",
+            "last-modified": "Mon, 27 Jul 2026 00:44:17 GMT",
+            "server": "nginx"
+          }
+        },
+        {
+          "url": "http://31.97.192.82:3000/chart/modules/chart-indicators-full.js",
+          "status": 200,
+          "fromCache": true,
+          "fromServiceWorker": false,
+          "headers": {
+            "cache-control": "max-age=3600, public, must-revalidate",
+            "content-encoding": "gzip",
+            "etag": "W/\"6a66a9e1-f18de\"",
+            "expires": "Mon, 27 Jul 2026 21:24:58 GMT",
+            "date": "Mon, 27 Jul 2026 20:24:58 GMT",
+            "content-type": "application/javascript",
+            "last-modified": "Mon, 27 Jul 2026 00:44:17 GMT",
+            "server": "nginx"
+          }
+        },
+        {
+          "url": "http://31.97.192.82:3000/chart/modules/indicator-performance.js",
+          "status": 200,
+          "fromCache": false,
+          "fromServiceWorker": false,
+          "headers": {
+            "cache-control": "max-age=3600\npublic, must-revalidate",
+            "connection": "keep-alive",
+            "content-encoding": "gzip",
+            "content-type": "application/javascript",
+            "date": "Mon, 27 Jul 2026 20:28:15 GMT",
+            "etag": "W/\"6a66a9e1-2c1b\"",
+            "expires": "Mon, 27 Jul 2026 21:28:15 GMT",
+            "last-modified": "Mon, 27 Jul 2026 00:44:17 GMT",
+            "server": "nginx",
+            "transfer-encoding": "chunked"
+          }
+        }
+      ],
+      "frames": [
+        {
+          "url": "http://31.97.192.82:3000/chart/multichart-prod/chart-embed.html",
+          "scripts": [
+            "[inline]",
+            "[inline]",
+            "[inline]",
+            "/chart/multichart-prod/engine-api-guards.js",
+            "/chart/multichart-prod/sync-bridge.js",
+            "/chart/multichart-prod/embed-bridge.js",
+            "/chart/multichart-prod/panel-cmd-bridge.js",
+            "[inline]",
+            "[inline]",
+            "[inline]",
+            "/chart/vendor/d3.min.js",
+            "/chart/vendor/lz-string.min.js",
+            "[inline]",
+            "/chart/modules/chart-window-limit.js",
+            "/chart/modules/preferences-sync.js",
+            "/chart/modules/preferences-init.js",
+            "/chart/modules/market-calculations.js",
+            "/chart/modules/chart-env.defaults.js",
+            "/chart/modules/chart-env.generated.js",
+            "/chart/modules/drawing-tools-base.js",
+            "/chart/modules/drawing-tools-lines.js",
+            "/chart/modules/drawing-tools-shapes.js",
+            "/chart/modules/drawing-tools-fibonacci.js",
+            "/chart/modules/drawing-tools-text.js",
+            "/chart/modules/drawing-tools-emoji.js",
+            "/chart/modules/drawing-tools-image.js",
+            "/chart/modules/emoji-picker.js",
+            "/chart/modules/emoji-picker-simple.js",
+            "/chart/modules/drawing-tools-advanced-volume.js",
+            "/chart/modules/drawing-tools-advanced.js",
+            "/chart/modules/drawing-tools-extended.js",
+            "/chart/modules/drawing-tools-patterns.js",
+            "/chart/modules/drawing-tools-fib-gann.js",
+            "/chart/modules/drawing-tools-channels.js",
+            "/chart/modules/drawing-tools-ui.js",
+            "/chart/modules/color-picker.js",
+            "/chart/modules/drawing-toolbar.js",
+            "/chart/modules/undo-redo-manager.js",
+            "/chart/modules/tool-lifecycle-store.js",
+            "/chart/modules/drawing-tools-manager.js",
+            "/chart/modules/favorites-manager.js",
+            "/chart/modules/keyboard-shortcuts.js",
+            "/chart/modules/timezone-manager.js",
+            "/chart/modules/viewport-data-manager.js",
+            "/chart/modules/chart-data-pipeline.js",
+            "/chart/modules/talaria-toast-stack.js",
+            "/chart/chart.js",
+            "/chart/modules/v9-theme-bridge.js",
+            "/chart/modules/replay-system.js",
+            "/chart/modules/replay-dashboard-sync.js",
+            "/chart/modules/order-event-bus.js",
+            "/chart/modules/order-service.js",
+            "/chart/modules/order-manager.js",
+            "/chart/modules/indicator-performance.js",
+            "/chart/modules/indicator-persist-rehydrate.js",
+            "/chart/modules/indicator-settings-apply.js",
+            "/chart/modules/indicator-visibility.js",
+            "/chart/modules/indicator-replay-ui-sync.js",
+            "/chart/modules/indicator-lifecycle-store.js",
+            "/chart/modules/talaria-fvg-indicator.js",
+            "/chart/modules/talaria-ratio-gap-indicator.js",
+            "/chart/modules/talaria-weekly-map-indicator.js",
+            "/chart/modules/talaria-simple-smc-indicator.js",
+            "/chart/modules/chart-indicators-full.js",
+            "/chart/modules/indicator-ui.js",
+            "/chart/modules/economic-news-sidebar.js",
+            "[inline]"
+          ],
+          "buildId": "20260726b75",
+          "flags": {
+            "_m19iTickSpeedCoherenceEnabled": {}
+          },
+          "perfObjects": {
+            "IndicatorPerf": "object"
+          },
+          "serviceWorker": {
+            "controlled": false,
+            "controllerUrl": null
+          },
+          "cspMeta": []
+        }
+      ],
+      "consoleErrors": [],
+      "verdict": "LOADED"
+    },
+    {
+      "name": "iframe-host",
+      "route": "/chart/multichart/chart-host.html",
+      "navigation": {
+        "status": 200,
+        "finalUrl": "http://31.97.192.82:3000/chart/multichart/chart-host.html",
+        "headers": {
+          "cache-control": "max-age=3600\npublic, must-revalidate",
+          "connection": "keep-alive",
+          "content-encoding": "gzip",
+          "content-type": "text/html",
+          "date": "Mon, 27 Jul 2026 20:28:20 GMT",
+          "etag": "W/\"6a66a9e1-cc4e\"",
+          "expires": "Mon, 27 Jul 2026 21:28:20 GMT",
+          "last-modified": "Mon, 27 Jul 2026 00:44:17 GMT",
+          "server": "nginx",
+          "transfer-encoding": "chunked"
+        }
+      },
+      "requests": [
+        {
+          "url": "http://31.97.192.82:3000/chart/chart.js",
+          "resourceType": "script",
+          "initiator": {
+            "type": "parser",
+            "url": "http://31.97.192.82:3000/chart/multichart/chart-host.html",
+            "lineNumber": 293,
+            "columnNumber": 30
+          }
+        }
+      ],
+      "responses": [
+        {
+          "url": "http://31.97.192.82:3000/chart/chart.js",
+          "status": 200,
+          "fromCache": false,
+          "fromServiceWorker": false,
+          "headers": {
+            "cache-control": "max-age=3600\npublic, must-revalidate",
+            "connection": "keep-alive",
+            "content-encoding": "gzip",
+            "content-type": "application/javascript",
+            "date": "Mon, 27 Jul 2026 20:28:20 GMT",
+            "etag": "W/\"6a66a9e1-1db09a\"",
+            "expires": "Mon, 27 Jul 2026 21:28:20 GMT",
+            "last-modified": "Mon, 27 Jul 2026 00:44:17 GMT",
+            "server": "nginx",
+            "transfer-encoding": "chunked"
+          }
+        }
+      ],
+      "frames": [
+        {
+          "url": "http://31.97.192.82:3000/chart/multichart/chart-host.html",
+          "scripts": [
+            "/ajax/libs/d3/7.8.5/d3.min.js",
+            "[inline]",
+            "/chart/chart.js",
+            "/chart/multichart/engine-api-guards.js",
+            "/chart/multichart/sync-bridge.js",
+            "[inline]"
+          ],
+          "buildId": null,
+          "flags": {},
+          "perfObjects": {},
+          "serviceWorker": {
+            "controlled": false,
+            "controllerUrl": null
+          },
+          "cspMeta": []
+        }
+      ],
+      "consoleErrors": [],
+      "verdict": "SERVED_NOT_REFERENCED"
+    },
+    {
+      "name": "multichart-shell",
+      "route": "/chart/multichart/multichart-shell.html",
+      "navigation": {
+        "status": 200,
+        "finalUrl": "http://31.97.192.82:3000/chart/multichart/multichart-shell.html",
+        "headers": {
+          "cache-control": "max-age=3600\npublic, must-revalidate",
+          "connection": "keep-alive",
+          "content-encoding": "gzip",
+          "content-type": "text/html",
+          "date": "Mon, 27 Jul 2026 20:28:25 GMT",
+          "etag": "W/\"6a66a9e1-a13c\"",
+          "expires": "Mon, 27 Jul 2026 21:28:25 GMT",
+          "last-modified": "Mon, 27 Jul 2026 00:44:17 GMT",
+          "server": "nginx",
+          "transfer-encoding": "chunked"
+        }
+      },
+      "requests": [
+        {
+          "url": "http://31.97.192.82:3000/chart/chart.js",
+          "resourceType": "script",
+          "initiator": {
+            "type": "parser",
+            "url": "http://31.97.192.82:3000/chart/multichart/chart-host.html?id=A&tf=1m",
+            "lineNumber": 293,
+            "columnNumber": 30
+          }
+        },
+        {
+          "url": "http://31.97.192.82:3000/chart/chart.js",
+          "resourceType": "script",
+          "initiator": {
+            "type": "parser",
+            "url": "http://31.97.192.82:3000/chart/multichart/chart-host.html?id=B&tf=1h",
+            "lineNumber": 293,
+            "columnNumber": 30
+          }
+        }
+      ],
+      "responses": [
+        {
+          "url": "http://31.97.192.82:3000/chart/chart.js",
+          "status": 200,
+          "fromCache": true,
+          "fromServiceWorker": false,
+          "headers": {
+            "cache-control": "max-age=3600, public, must-revalidate",
+            "content-encoding": "gzip",
+            "etag": "W/\"6a66a9e1-1db09a\"",
+            "expires": "Mon, 27 Jul 2026 21:28:20 GMT",
+            "date": "Mon, 27 Jul 2026 20:28:20 GMT",
+            "content-type": "application/javascript",
+            "last-modified": "Mon, 27 Jul 2026 00:44:17 GMT",
+            "server": "nginx"
+          }
+        },
+        {
+          "url": "http://31.97.192.82:3000/chart/chart.js",
+          "status": 200,
+          "fromCache": true,
+          "fromServiceWorker": false,
+          "headers": {
+            "cache-control": "max-age=3600, public, must-revalidate",
+            "content-encoding": "gzip",
+            "etag": "W/\"6a66a9e1-1db09a\"",
+            "expires": "Mon, 27 Jul 2026 21:28:20 GMT",
+            "date": "Mon, 27 Jul 2026 20:28:20 GMT",
+            "content-type": "application/javascript",
+            "last-modified": "Mon, 27 Jul 2026 00:44:17 GMT",
+            "server": "nginx"
+          }
+        }
+      ],
+      "frames": [
+        {
+          "url": "http://31.97.192.82:3000/chart/multichart/multichart-shell.html",
+          "scripts": [
+            "/chart/multichart/engine-api-guards.js",
+            "/chart/multichart/multichart-manager.js",
+            "[inline]"
+          ],
+          "buildId": null,
+          "flags": {},
+          "perfObjects": {},
+          "serviceWorker": {
+            "controlled": false,
+            "controllerUrl": null
+          },
+          "cspMeta": []
+        },
+        {
+          "url": "http://31.97.192.82:3000/chart/multichart/chart-host.html",
+          "scripts": [
+            "/ajax/libs/d3/7.8.5/d3.min.js",
+            "[inline]",
+            "/chart/chart.js",
+            "/chart/multichart/engine-api-guards.js",
+            "/chart/multichart/sync-bridge.js",
+            "[inline]"
+          ],
+          "buildId": null,
+          "flags": {},
+          "perfObjects": {},
+          "serviceWorker": {
+            "controlled": false,
+            "controllerUrl": null
+          },
+          "cspMeta": []
+        },
+        {
+          "url": "http://31.97.192.82:3000/chart/multichart/chart-host.html",
+          "scripts": [
+            "/ajax/libs/d3/7.8.5/d3.min.js",
+            "[inline]",
+            "/chart/chart.js",
+            "/chart/multichart/engine-api-guards.js",
+            "/chart/multichart/sync-bridge.js",
+            "[inline]"
+          ],
+          "buildId": null,
+          "flags": {},
+          "perfObjects": {},
+          "serviceWorker": {
+            "controlled": false,
+            "controllerUrl": null
+          },
+          "cspMeta": []
+        }
+      ],
+      "consoleErrors": [],
+      "verdict": "SERVED_NOT_REFERENCED"
+    },
+    {
+      "name": "react-live",
+      "route": "/chart/talaria-design/live/index.html",
+      "navigation": {
+        "status": 200,
+        "finalUrl": "http://31.97.192.82:3000/chart/talaria-design/live/index.html",
+        "headers": {
+          "cache-control": "max-age=3600\npublic, must-revalidate",
+          "connection": "keep-alive",
+          "content-encoding": "gzip",
+          "content-type": "text/html",
+          "date": "Mon, 27 Jul 2026 20:28:31 GMT",
+          "etag": "W/\"6a66a9e1-1640b\"",
+          "expires": "Mon, 27 Jul 2026 21:28:31 GMT",
+          "last-modified": "Mon, 27 Jul 2026 00:44:17 GMT",
+          "server": "nginx",
+          "transfer-encoding": "chunked"
+        }
+      },
+      "requests": [
+        {
+          "url": "http://31.97.192.82:3000/chart/chart.js",
+          "resourceType": "script",
+          "initiator": {
+            "type": "parser",
+            "url": "http://31.97.192.82:3000/chart/talaria-design/live/index.html",
+            "lineNumber": 1598,
+            "columnNumber": 54
+          }
+        },
+        {
+          "url": "http://31.97.192.82:3000/chart/modules/replay-system.js",
+          "resourceType": "script",
+          "initiator": {
+            "type": "parser",
+            "url": "http://31.97.192.82:3000/chart/talaria-design/live/index.html",
+            "lineNumber": 1603,
+            "columnNumber": 70
+          }
+        },
+        {
+          "url": "http://31.97.192.82:3000/chart/modules/replay-dashboard-sync.js",
+          "resourceType": "script",
+          "initiator": {
+            "type": "parser",
+            "url": "http://31.97.192.82:3000/chart/talaria-design/live/index.html",
+            "lineNumber": 1604,
+            "columnNumber": 78
+          }
+        },
+        {
+          "url": "http://31.97.192.82:3000/chart/modules/indicator-persist-rehydrate.js",
+          "resourceType": "script",
+          "initiator": {
+            "type": "parser",
+            "url": "http://31.97.192.82:3000/chart/talaria-design/live/index.html",
+            "lineNumber": 1616,
+            "columnNumber": 84
+          }
+        },
+        {
+          "url": "http://31.97.192.82:3000/chart/modules/indicator-settings-apply.js",
+          "resourceType": "script",
+          "initiator": {
+            "type": "parser",
+            "url": "http://31.97.192.82:3000/chart/talaria-design/live/index.html",
+            "lineNumber": 1617,
+            "columnNumber": 81
+          }
+        },
+        {
+          "url": "http://31.97.192.82:3000/chart/modules/indicator-visibility.js",
+          "resourceType": "script",
+          "initiator": {
+            "type": "parser",
+            "url": "http://31.97.192.82:3000/chart/talaria-design/live/index.html",
+            "lineNumber": 1618,
+            "columnNumber": 77
+          }
+        },
+        {
+          "url": "http://31.97.192.82:3000/chart/modules/indicator-lifecycle-store.js",
+          "resourceType": "script",
+          "initiator": {
+            "type": "parser",
+            "url": "http://31.97.192.82:3000/chart/talaria-design/live/index.html",
+            "lineNumber": 1619,
+            "columnNumber": 82
+          }
+        },
+        {
+          "url": "http://31.97.192.82:3000/chart/modules/talaria-fvg-indicator.js",
+          "resourceType": "script",
+          "initiator": {
+            "type": "parser",
+            "url": "http://31.97.192.82:3000/chart/talaria-design/live/index.html",
+            "lineNumber": 1620,
+            "columnNumber": 78
+          }
+        },
+        {
+          "url": "http://31.97.192.82:3000/chart/modules/talaria-ratio-gap-indicator.js",
+          "resourceType": "script",
+          "initiator": {
+            "type": "parser",
+            "url": "http://31.97.192.82:3000/chart/talaria-design/live/index.html",
+            "lineNumber": 1621,
+            "columnNumber": 84
+          }
+        },
+        {
+          "url": "http://31.97.192.82:3000/chart/modules/talaria-weekly-map-indicator.js",
+          "resourceType": "script",
+          "initiator": {
+            "type": "parser",
+            "url": "http://31.97.192.82:3000/chart/talaria-design/live/index.html",
+            "lineNumber": 1622,
+            "columnNumber": 85
+          }
+        },
+        {
+          "url": "http://31.97.192.82:3000/chart/modules/talaria-simple-smc-indicator.js",
+          "resourceType": "script",
+          "initiator": {
+            "type": "parser",
+            "url": "http://31.97.192.82:3000/chart/talaria-design/live/index.html",
+            "lineNumber": 1623,
+            "columnNumber": 85
+          }
+        },
+        {
+          "url": "http://31.97.192.82:3000/chart/modules/chart-indicators-full.js",
+          "resourceType": "script",
+          "initiator": {
+            "type": "parser",
+            "url": "http://31.97.192.82:3000/chart/talaria-design/live/index.html",
+            "lineNumber": 1624,
+            "columnNumber": 78
+          }
+        },
+        {
+          "url": "http://31.97.192.82:3000/chart/modules/indicator-ui.js",
+          "resourceType": "script",
+          "initiator": {
+            "type": "parser",
+            "url": "http://31.97.192.82:3000/chart/talaria-design/live/index.html",
+            "lineNumber": 1626,
+            "columnNumber": 69
+          }
+        }
+      ],
+      "responses": [
+        {
+          "url": "http://31.97.192.82:3000/chart/modules/replay-dashboard-sync.js",
+          "status": 200,
+          "fromCache": false,
+          "fromServiceWorker": false,
+          "headers": {
+            "accept-ranges": "bytes",
+            "cache-control": "max-age=3600\npublic, must-revalidate",
+            "connection": "keep-alive",
+            "content-length": "790",
+            "content-type": "application/javascript",
+            "date": "Mon, 27 Jul 2026 20:28:32 GMT",
+            "etag": "\"6a66a9e1-316\"",
+            "expires": "Mon, 27 Jul 2026 21:28:32 GMT",
+            "last-modified": "Mon, 27 Jul 2026 00:44:17 GMT",
+            "server": "nginx"
+          }
+        },
+        {
+          "url": "http://31.97.192.82:3000/chart/modules/indicator-persist-rehydrate.js",
+          "status": 200,
+          "fromCache": false,
+          "fromServiceWorker": false,
+          "headers": {
+            "cache-control": "max-age=3600\npublic, must-revalidate",
+            "connection": "keep-alive",
+            "content-encoding": "gzip",
+            "content-type": "application/javascript",
+            "date": "Mon, 27 Jul 2026 20:28:32 GMT",
+            "etag": "W/\"6a66a9e1-fdf\"",
+            "expires": "Mon, 27 Jul 2026 21:28:32 GMT",
+            "last-modified": "Mon, 27 Jul 2026 00:44:17 GMT",
+            "server": "nginx",
+            "transfer-encoding": "chunked"
+          }
+        },
+        {
+          "url": "http://31.97.192.82:3000/chart/modules/replay-system.js",
+          "status": 200,
+          "fromCache": false,
+          "fromServiceWorker": false,
+          "headers": {
+            "cache-control": "max-age=3600\npublic, must-revalidate",
+            "connection": "keep-alive",
+            "content-encoding": "gzip",
+            "content-type": "application/javascript",
+            "date": "Mon, 27 Jul 2026 20:28:32 GMT",
+            "etag": "W/\"6a66a9e1-6ae1b\"",
+            "expires": "Mon, 27 Jul 2026 21:28:32 GMT",
+            "last-modified": "Mon, 27 Jul 2026 00:44:17 GMT",
+            "server": "nginx",
+            "transfer-encoding": "chunked"
+          }
+        },
+        {
+          "url": "http://31.97.192.82:3000/chart/modules/indicator-visibility.js",
+          "status": 200,
+          "fromCache": false,
+          "fromServiceWorker": false,
+          "headers": {
+            "cache-control": "max-age=3600\npublic, must-revalidate",
+            "connection": "keep-alive",
+            "content-encoding": "gzip",
+            "content-type": "application/javascript",
+            "date": "Mon, 27 Jul 2026 20:28:32 GMT",
+            "etag": "W/\"6a66a9e1-127e\"",
+            "expires": "Mon, 27 Jul 2026 21:28:32 GMT",
+            "last-modified": "Mon, 27 Jul 2026 00:44:17 GMT",
+            "server": "nginx",
+            "transfer-encoding": "chunked"
+          }
+        },
+        {
+          "url": "http://31.97.192.82:3000/chart/modules/indicator-settings-apply.js",
+          "status": 200,
+          "fromCache": false,
+          "fromServiceWorker": false,
+          "headers": {
+            "cache-control": "max-age=3600\npublic, must-revalidate",
+            "connection": "keep-alive",
+            "content-encoding": "gzip",
+            "content-type": "application/javascript",
+            "date": "Mon, 27 Jul 2026 20:28:32 GMT",
+            "etag": "W/\"6a66a9e1-11d7\"",
+            "expires": "Mon, 27 Jul 2026 21:28:32 GMT",
+            "last-modified": "Mon, 27 Jul 2026 00:44:17 GMT",
+            "server": "nginx",
+            "transfer-encoding": "chunked"
+          }
+        },
+        {
+          "url": "http://31.97.192.82:3000/chart/modules/indicator-lifecycle-store.js",
+          "status": 200,
+          "fromCache": false,
+          "fromServiceWorker": false,
+          "headers": {
+            "cache-control": "max-age=3600\npublic, must-revalidate",
+            "connection": "keep-alive",
+            "content-encoding": "gzip",
+            "content-type": "application/javascript",
+            "date": "Mon, 27 Jul 2026 20:28:32 GMT",
+            "etag": "W/\"6a66a9e1-187c\"",
+            "expires": "Mon, 27 Jul 2026 21:28:32 GMT",
+            "last-modified": "Mon, 27 Jul 2026 00:44:17 GMT",
+            "server": "nginx",
+            "transfer-encoding": "chunked"
+          }
+        },
+        {
+          "url": "http://31.97.192.82:3000/chart/modules/talaria-fvg-indicator.js",
+          "status": 200,
+          "fromCache": false,
+          "fromServiceWorker": false,
+          "headers": {
+            "cache-control": "max-age=3600\npublic, must-revalidate",
+            "connection": "keep-alive",
+            "content-encoding": "gzip",
+            "content-type": "application/javascript",
+            "date": "Mon, 27 Jul 2026 20:28:32 GMT",
+            "etag": "W/\"6a66a9e1-6720\"",
+            "expires": "Mon, 27 Jul 2026 21:28:32 GMT",
+            "last-modified": "Mon, 27 Jul 2026 00:44:17 GMT",
+            "server": "nginx",
+            "transfer-encoding": "chunked"
+          }
+        },
+        {
+          "url": "http://31.97.192.82:3000/chart/chart.js",
+          "status": 200,
+          "fromCache": false,
+          "fromServiceWorker": false,
+          "headers": {
+            "cache-control": "max-age=3600\npublic, must-revalidate",
+            "connection": "keep-alive",
+            "content-encoding": "gzip",
+            "content-type": "application/javascript",
+            "date": "Mon, 27 Jul 2026 20:28:32 GMT",
+            "etag": "W/\"6a66a9e1-1db09a\"",
+            "expires": "Mon, 27 Jul 2026 21:28:32 GMT",
+            "last-modified": "Mon, 27 Jul 2026 00:44:17 GMT",
+            "server": "nginx",
+            "transfer-encoding": "chunked"
+          }
+        },
+        {
+          "url": "http://31.97.192.82:3000/chart/modules/talaria-weekly-map-indicator.js",
+          "status": 200,
+          "fromCache": false,
+          "fromServiceWorker": false,
+          "headers": {
+            "cache-control": "max-age=3600\npublic, must-revalidate",
+            "connection": "keep-alive",
+            "content-encoding": "gzip",
+            "content-type": "application/javascript",
+            "date": "Mon, 27 Jul 2026 20:28:32 GMT",
+            "etag": "W/\"6a66a9e1-6ddc\"",
+            "expires": "Mon, 27 Jul 2026 21:28:32 GMT",
+            "last-modified": "Mon, 27 Jul 2026 00:44:17 GMT",
+            "server": "nginx",
+            "transfer-encoding": "chunked"
+          }
+        },
+        {
+          "url": "http://31.97.192.82:3000/chart/modules/talaria-ratio-gap-indicator.js",
+          "status": 200,
+          "fromCache": false,
+          "fromServiceWorker": false,
+          "headers": {
+            "cache-control": "max-age=3600\npublic, must-revalidate",
+            "connection": "keep-alive",
+            "content-encoding": "gzip",
+            "content-type": "application/javascript",
+            "date": "Mon, 27 Jul 2026 20:28:32 GMT",
+            "etag": "W/\"6a66a9e1-85a4\"",
+            "expires": "Mon, 27 Jul 2026 21:28:32 GMT",
+            "last-modified": "Mon, 27 Jul 2026 00:44:17 GMT",
+            "server": "nginx",
+            "transfer-encoding": "chunked"
+          }
+        },
+        {
+          "url": "http://31.97.192.82:3000/chart/modules/talaria-simple-smc-indicator.js",
+          "status": 200,
+          "fromCache": false,
+          "fromServiceWorker": false,
+          "headers": {
+            "cache-control": "max-age=3600\npublic, must-revalidate",
+            "connection": "keep-alive",
+            "content-encoding": "gzip",
+            "content-type": "application/javascript",
+            "date": "Mon, 27 Jul 2026 20:28:32 GMT",
+            "etag": "W/\"6a66a9e1-66c1\"",
+            "expires": "Mon, 27 Jul 2026 21:28:32 GMT",
+            "last-modified": "Mon, 27 Jul 2026 00:44:17 GMT",
+            "server": "nginx",
+            "transfer-encoding": "chunked"
+          }
+        },
+        {
+          "url": "http://31.97.192.82:3000/chart/modules/indicator-ui.js",
+          "status": 200,
+          "fromCache": false,
+          "fromServiceWorker": false,
+          "headers": {
+            "cache-control": "max-age=3600\npublic, must-revalidate",
+            "connection": "keep-alive",
+            "content-encoding": "gzip",
+            "content-type": "application/javascript",
+            "date": "Mon, 27 Jul 2026 20:28:32 GMT",
+            "etag": "W/\"6a66a9e1-51f51\"",
+            "expires": "Mon, 27 Jul 2026 21:28:32 GMT",
+            "last-modified": "Mon, 27 Jul 2026 00:44:17 GMT",
+            "server": "nginx",
+            "transfer-encoding": "chunked"
+          }
+        },
+        {
+          "url": "http://31.97.192.82:3000/chart/modules/chart-indicators-full.js",
+          "status": 200,
+          "fromCache": false,
+          "fromServiceWorker": false,
+          "headers": {
+            "cache-control": "max-age=3600\npublic, must-revalidate",
+            "connection": "keep-alive",
+            "content-encoding": "gzip",
+            "content-type": "application/javascript",
+            "date": "Mon, 27 Jul 2026 20:28:32 GMT",
+            "etag": "W/\"6a66a9e1-f18de\"",
+            "expires": "Mon, 27 Jul 2026 21:28:32 GMT",
+            "last-modified": "Mon, 27 Jul 2026 00:44:17 GMT",
+            "server": "nginx",
+            "transfer-encoding": "chunked"
+          }
+        }
+      ],
+      "frames": [
+        {
+          "url": "http://31.97.192.82:3000/chart/talaria-design/live/index.html",
+          "scripts": [
+            "[inline]",
+            "[inline]",
+            "[inline]",
+            "[inline]",
+            "[inline]",
+            "[inline]",
+            "/chart/modules/chart-window-limit.js",
+            "[inline]",
+            "/chart/vendor/d3.min.js",
+            "/chart/vendor/lz-string.min.js",
+            "/chart/modules/preferences-sync.js",
+            "/chart/modules/preferences-init.js",
+            "/chart/modules/market-calculations.js",
+            "/chart/modules/chart-env.defaults.js",
+            "/chart/modules/chart-env.generated.js",
+            "/chart/modules/drawing-tools-base.js",
+            "/chart/modules/drawing-tools-lines.js",
+            "/chart/modules/drawing-tools-shapes.js",
+            "/chart/modules/drawing-tools-fibonacci.js",
+            "/chart/modules/drawing-tools-text.js",
+            "/chart/modules/drawing-tools-emoji.js",
+            "/chart/modules/drawing-tools-image.js",
+            "/chart/modules/emoji-picker.js",
+            "/chart/modules/emoji-picker-simple.js",
+            "/chart/modules/drawing-tools-advanced-volume.js",
+            "/chart/modules/drawing-tools-advanced.js",
+            "/chart/modules/drawing-tools-extended.js",
+            "/chart/modules/drawing-tools-patterns.js",
+            "/chart/modules/drawing-tools-fib-gann.js",
+            "/chart/modules/drawing-tools-channels.js",
+            "/chart/modules/drawing-tools-ui.js",
+            "/chart/modules/color-picker.js",
+            "/chart/modules/drawing-toolbar.js",
+            "/chart/modules/undo-redo-manager.js",
+            "/chart/modules/tool-lifecycle-store.js",
+            "/chart/modules/drawing-tools-manager.js",
+            "/chart/modules/chart-regression-cases.js",
+            "/chart/modules/chart-regression-smoke.js",
+            "/chart/modules/favorites-manager.js",
+            "/chart/modules/keyboard-shortcuts.js",
+            "/chart/modules/timezone-manager.js",
+            "[inline]",
+            "[inline]",
+            "/chart/modules/compare-overlay.js",
+            "/chart/modules/viewport-data-manager.js",
+            "/chart/modules/chart-data-pipeline.js",
+            "/chart/modules/talaria-toast-stack.js",
+            "/chart/chart.js",
+            "/chart/modules/v9-theme-bridge.js",
+            "/chart/modules/replay-system.js",
+            "/chart/modules/replay-dashboard-sync.js",
+            "/chart/modules/order-event-bus.js",
+            "/chart/modules/order-service.js",
+            "/chart/modules/order-manager.js",
+            "[inline]",
+            "/chart/modules/screenshot-manager.js",
+            "[inline]",
+            "/chart/modules/alert-system.js",
+            "/chart/modules/indicator-persist-rehydrate.js",
+            "/chart/modules/indicator-settings-apply.js",
+            "/chart/modules/indicator-visibility.js",
+            "/chart/modules/indicator-lifecycle-store.js",
+            "/chart/modules/talaria-fvg-indicator.js",
+            "/chart/modules/talaria-ratio-gap-indicator.js",
+            "/chart/modules/talaria-weekly-map-indicator.js",
+            "/chart/modules/talaria-simple-smc-indicator.js",
+            "/chart/modules/chart-indicators-full.js",
+            "/chart/modules/indicator-ui.js",
+            "/chart/modules/economic-news-sidebar.js",
+            "[inline]",
+            "/chart/talaria-design/live/main.jsx",
+            "[inline]",
+            "[inline]",
+            "[inline]",
+            "/chart/pwa-install.js"
+          ],
+          "buildId": "20260723b12",
+          "flags": {
+            "_m19iTickSpeedCoherenceEnabled": {}
+          },
+          "perfObjects": {},
+          "serviceWorker": {
+            "controlled": false,
+            "controllerUrl": null
+          },
+          "cspMeta": []
+        }
+      ],
+      "consoleErrors": [
+        "Failed to load resource: the server responded with a status of 404 (Not Found)"
+      ],
+      "verdict": "SERVED_NOT_REFERENCED"
+    }
+  ],
+  "overallVerdict": "SERVED_NOT_REFERENCED"
+}

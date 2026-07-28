@@ -26,8 +26,11 @@ RUN npm ci
 WORKDIR /build
 COPY ["scripts/checkpoint-build-assert.mjs", "./checkpoint-tools/checkpoint-build-assert.mjs"]
 COPY ["scripts/lib/checkpoint-provenance.mjs", "./checkpoint-tools/lib/checkpoint-provenance.mjs"]
+COPY ["scripts/lib/homepage-forwarding-contracts.mjs", "./checkpoint-tools/lib/homepage-forwarding-contracts.mjs"]
+COPY ["scripts/lib/homepage-forwarding-contracts.mjs", "/scripts/lib/homepage-forwarding-contracts.mjs"]
 COPY ["chart v 1.4/talaria-design", "./talaria-design/"]
 COPY ["chart v 1.4/chart", "./chart/"]
+COPY ["homepage/public/chart/modules/m20-q6-replay-lifecycle-binding.test.mjs", "/homepage/public/chart/modules/m20-q6-replay-lifecycle-binding.test.mjs"]
 WORKDIR /build/talaria-design
 ENV NODE_ENV=production
 RUN if [ "$CHECKPOINT_BUILD" = "1" ]; then \
@@ -45,8 +48,6 @@ RUN if [ "$CHECKPOINT_BUILD" = "1" ]; then \
       BUILD_ID="$CHART_BUILD_ID" node /build/chart/scripts/bump-chart-engine-build.mjs; \
     fi \
     && npm run build:live:chart \
-    && mkdir -p /homepage/public/chart \
-    && cp -f /build/chart/legacy-index.html /homepage/public/chart/legacy-index.html \
     && if [ "$CHECKPOINT_BUILD" = "1" ]; then \
       node /build/checkpoint-tools/checkpoint-build-assert.mjs layout \
         --build-id="$CHART_BUILD_ID" \
@@ -106,7 +107,6 @@ COPY --from=v9_react /build/chart/multichart-prod ./multichart-prod
 COPY --from=v9_react /build/chart/workers ./workers
 COPY --from=v9_react /build/chart/vendor ./vendor
 COPY --from=v9_react /build/chart/fonts ./fonts
-COPY --from=v9_react /build/chart/legacy-index.html ./legacy-index.html
 COPY --from=v9_react /build/chart/sw.js ./sw.js
 
 # The legacy minified bundle (dist/) is ONLY a fallback for /chart/index.html when

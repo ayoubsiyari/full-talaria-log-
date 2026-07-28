@@ -35,9 +35,22 @@ export function SupportCategoryBadge({ category }: { category: string }) {
   return <span className={`support-cat-badge ${css}`}>{supportCategoryLabel(category)}</span>;
 }
 
-export function buildSupportContext(): Record<string, string> {
-  if (typeof window === "undefined") return {};
-  const ctx: Record<string, string> = {
+function deepFreeze<T>(value: T, seen = new WeakSet<object>()): T {
+  if (value === null || (typeof value !== "object" && typeof value !== "function")) return value;
+  const objectValue = value as object;
+  if (seen.has(objectValue)) return value;
+  seen.add(objectValue);
+
+  for (const child of Object.values(value as Record<string, unknown>)) {
+    deepFreeze(child, seen);
+  }
+
+  return Object.freeze(value);
+}
+
+export function buildSupportContext(): Record<string, string | string[]> {
+  if (typeof window === "undefined") return deepFreeze({});
+  const ctx: Record<string, string | string[]> = {
     app: "talaria-dashboard",
     url: window.location.href.slice(0, 500),
   };
@@ -46,7 +59,22 @@ export function buildSupportContext(): Record<string, string> {
   } catch {
     /* ignore */
   }
-  return ctx;
+  const boundedId = /^[A-Za-z][A-Za-z0-9_.-]{0,63}$/;
+  try {
+    const values = (
+      window.__TALARIA_DEGRADED_STATE ??
+      window.__TALARIA_DEGRADED_STATE__ ??
+      window.__TALARIA_DEGRADED_MODE__
+    )?.degradedModules;
+    ctx.degradedModules = Array.isArray(values)
+      ? [...new Set(values.filter((value): value is string =>
+          typeof value === "string" && boundedId.test(value)
+        ))].slice(0, 32)
+      : [];
+  } catch {
+    ctx.degradedModules = [];
+  }
+  return deepFreeze(ctx);
 }
 
 export const SUPPORT_FILE_ACCEPT =

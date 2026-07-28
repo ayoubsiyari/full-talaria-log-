@@ -6,3 +6,4 @@
 **/chart/legacy-index.html text eol=lf
 **/chart/multichart-prod/chart-embed.html text eol=lf
 **/talaria-design/live/index.html text eol=lf
+scripts/checkpoint-provenance.mjs whitespace=cr-at-eol

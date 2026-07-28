@@ -8095,6 +8095,8 @@
     Chart.prototype.recalculateIndicatorsAsync = function() {
         if (!this.indicators || !this.indicators.active || !this.indicators.active.length) return;
         if (!Array.isArray(this.data) || !this.data.length) return;
+        if (_b70ShadowEnabled() && _b70Stage5DeferPanelCalculation(this)) return;
+        if (_b70ShadowEnabled() && _b70Stage3RejectInRenderWork(this)) return;
 
         var chart = this;
 
@@ -8109,19 +8111,50 @@
         chart._indicatorWorkerCoalesce = false;
 
         var worker = _getIndicatorWorker();
+        var b70WorkerTickets = null;
+        var b70WorkerIds = null;
+        if (typeof window !== 'undefined'
+            && window.__TALARIA_ENABLE_B70_SINGLE_INDICATOR_OWNER_V1 === true) {
+            var b70WorkerCandidates = chart.indicators.active.filter(function(indicator) {
+                return _b70Stage2InstanceOwner(indicator) === 'worker';
+            });
+            b70WorkerTickets = _b70Stage2Claim(
+                chart, 'worker', b70WorkerCandidates,
+                'recalculateIndicatorsAsync', false
+            );
+            if (!b70WorkerTickets.length) {
+                chart._indicatorWorkerBusy = false;
+                return;
+            }
+            b70WorkerIds = _b70Stage2TicketIds(b70WorkerTickets);
+        }
 
         // If worker unavailable or already mid-sync fallback, run sync
         if (!worker) {
             chart._indicatorWorkerBusy = false;
             var coalesceSync = chart._indicatorWorkerCoalesce;
             chart._indicatorWorkerCoalesce = false;
-            try { chart.recalculateIndicators(); } catch (_) {}
+            if (b70WorkerTickets) {
+                var b70FallbackIndicators = _b70Stage2ReleaseWorkerFailure(
+                    chart, b70WorkerTickets
+                );
+                if (b70FallbackIndicators.length) {
+                    chart._b70Stage2FallbackIndicators = b70FallbackIndicators;
+                    try { chart.recalculateIndicators(); } catch (_) {}
+                }
+            } else {
+                try { chart.recalculateIndicators(); } catch (_) {}
+            }
             if (coalesceSync) {
                 try { chart.recalculateIndicatorsAsync(); } catch (_) {}
             }
             return;
         }
 
+        if (typeof window !== 'undefined'
+            && window.__TALARIA_ENABLE_B70_SINGLE_INDICATOR_OWNER_V1 === true) {
+            _b70ShadowRecordCalculation(this, 'recalculateIndicatorsAsync', 'worker');
+        }
         if (chart._indicatorWorkerSeq == null) chart._indicatorWorkerSeq = 0;
         var mySeq = ++chart._indicatorWorkerSeq;
         var calcToken = _indicatorAsyncDataToken(chart);
@@ -8151,6 +8184,7 @@
             var workerSkip = M19I_LEGACY_WORKER_SKIP;
             var indType = String(ind.type || '').toLowerCase();
             ind.type = indType;
+            if (b70WorkerIds && !b70WorkerIds[String(ind.id)]) return;
             if (indType === 'supertrend') {
                 try { recalcSupertrendOverlay(chart, ind); } catch (_) {}
                 didSyncOverlayRecalc = true;
@@ -8185,7 +8219,7 @@
 
         // Run sync fallback for skipped indicators immediately
         var syncOnlyTypes = ['cotnet', 'sessions', 'killzones', 'ictkz', 'sessionsplus', 'openingrange', 'or', 'ictpd', 'ictasian', 'ictote', 'ictfvg', 'ictsesspd', 'icteverything', 'talariafvg', 'talariaratiogap', 'talariaweeklymap', 'talariasmc'];
-        var needsSyncOnly = chart.indicators.active.some(function(ind) {
+        var needsSyncOnly = !b70WorkerIds && chart.indicators.active.some(function(ind) {
             return syncOnlyTypes.indexOf(String(ind.type || '').toLowerCase()) >= 0;
         });
         if (needsSyncOnly) {
@@ -8238,12 +8272,60 @@
                 finishWorkerPass();
                 return;
             }
+            if (b70WorkerTickets
+                && !_b70Stage2AuthorizeWorkerApply(chart, b70WorkerTickets, results)) {
+                finishWorkerPass();
+                return;
+            }
+            var b70WorkerEnvelopeTx = b70WorkerTickets
+                ? _b70Stage4BeginBuild(chart, b70WorkerTickets) : null;
+            if (b70WorkerTickets && !b70WorkerEnvelopeTx) {
+                finishWorkerPass();
+                return;
+            }
             if (typeof chart._applyIndicatorWorkerResults === 'function') {
-                chart._applyIndicatorWorkerResults(results, mySeq, calcToken);
+                var b70Applied = b70WorkerEnvelopeTx
+                    ? _b70Stage4ApplyWorkerResults(
+                        chart, b70WorkerEnvelopeTx, results, mySeq, calcToken, null
+                    )
+                    : chart._applyIndicatorWorkerResults(results, mySeq, calcToken);
             } else {
                 if (!chart.indicators.data) chart.indicators.data = {};
                 Object.assign(chart.indicators.data, results);
-                if (typeof chart.scheduleRender === 'function') chart.scheduleRender();
+                if (!_b70ShadowEnabled()
+                    && typeof chart.scheduleRender === 'function') chart.scheduleRender();
+            }
+            if (b70WorkerTickets) {
+                var b70EnvelopeAccepted = false;
+                if (b70Applied === false) {
+                    _b70Stage4AbortBuild(chart, b70WorkerEnvelopeTx);
+                } else {
+                    var b70WorkerPublished = _b70Stage4CommitBuild(
+                        chart, b70WorkerEnvelopeTx
+                    );
+                    var b70WorkerPartial = !b70WorkerPublished
+                        && b70WorkerEnvelopeTx.partial;
+                    b70EnvelopeAccepted = b70WorkerPublished || b70WorkerPartial;
+                    if ((b70WorkerPublished || b70WorkerPartial)
+                        && _b70Stage2Commit(chart, b70WorkerTickets)
+                        && b70WorkerPublished) {
+                        chart.bumpIndicatorRenderVersion();
+                    }
+                    if (b70WorkerPublished
+                    && typeof chart.scheduleRender === 'function') {
+                        chart._b70IndicatorGenerationShadow.metrics.workerCommitRenderSchedules++;
+                        chart.scheduleRender();
+                    }
+                }
+                if (!b70EnvelopeAccepted) {
+                    var b70InvalidFallback = _b70Stage2ReleaseWorkerFailure(
+                        chart, b70WorkerTickets
+                    );
+                    if (b70InvalidFallback.length) {
+                        chart._b70Stage2FallbackIndicators = b70InvalidFallback;
+                        try { chart.recalculateIndicators(); } catch (_) {}
+                    }
+                }
             }
             finishWorkerPass();
         }).catch(function(err) {
@@ -8254,7 +8336,17 @@
                 return;
             }
             console.warn('[indicator-worker] async calc failed, falling back to sync:', err);
-            try { chart.recalculateIndicators(); } catch (_) {}
+            if (b70WorkerTickets) {
+                var fallbackIndicators = _b70Stage2ReleaseWorkerFailure(
+                    chart, b70WorkerTickets
+                );
+                if (fallbackIndicators.length) {
+                    chart._b70Stage2FallbackIndicators = fallbackIndicators;
+                    try { chart.recalculateIndicators(); } catch (_) {}
+                }
+            } else {
+                try { chart.recalculateIndicators(); } catch (_) {}
+            }
             finishWorkerPass();
         });
     };
@@ -8305,6 +8397,22 @@
     };
 
     Chart.prototype.bumpIndicatorRenderVersion = function() {
+        if (typeof window !== 'undefined'
+            && window.__TALARIA_ENABLE_B70_SINGLE_INDICATOR_OWNER_V1 === true) {
+            var b70State = this._b70IndicatorGenerationShadow;
+            if (b70State && b70State.renderTransaction
+                && b70State.renderTransaction.depth > 0) {
+                b70State.metrics.paintVersionBumps++;
+                return;
+            }
+            var b70VersionKey = _b70IndicatorGenerationKey(this);
+            if (!b70State || !b70VersionKey || !b70VersionKey.id
+                || !b70State.currentEnvelope
+                || b70State.currentEnvelope.metadata.generationId !== b70VersionKey.id
+                || b70State.lastVersionGenerationId === b70VersionKey.id) return;
+            b70State.lastVersionGenerationId = b70VersionKey.id;
+            _b70ShadowObserveRender(this);
+        }
         this._indicatorRenderVersion = (this._indicatorRenderVersion || 0) + 1;
         if (typeof this._invalidateIndicatorLayerCache === 'function') {
             this._invalidateIndicatorLayerCache();
@@ -8373,6 +8481,1720 @@
         ].join('|');
     }
 
+    // ─── b70 Stages 1–5: owner, pure-paint, immutable envelope + panel bridge ───
+    // Default OFF. When disabled these helpers return before allocating state
+    // or adding fields to Chart/global objects. Stage 2 arbitrates calculation
+    // ownership only; panel ownership and the paint bridge remain unchanged.
+    function _b70ShadowEnabled() {
+        return typeof window !== 'undefined'
+            && window.__TALARIA_ENABLE_B70_SINGLE_INDICATOR_OWNER_V1 === true;
+    }
+
+    function _b70SafeNext(value) {
+        if (!Number.isSafeInteger(value) || value < 0
+            || value >= Number.MAX_SAFE_INTEGER - 1) return null;
+        return value + 1;
+    }
+
+    function _b70CanonicalValue(value, seen) {
+        var type = typeof value;
+        if (value === null) return 'null';
+        if (type === 'string') return 's' + value.length + ':' + value;
+        if (type === 'number') {
+            if (Number.isNaN(value)) return 'n:NaN';
+            if (value === Infinity) return 'n:+Infinity';
+            if (value === -Infinity) return 'n:-Infinity';
+            if (Object.is(value, -0)) return 'n:-0';
+            return 'n:' + String(value);
+        }
+        if (type === 'boolean') return value ? 'b:1' : 'b:0';
+        if (type === 'undefined') return 'u:';
+        if (type === 'bigint') return 'i:' + String(value);
+        if (type !== 'object') return type.charAt(0) + ':' + String(value);
+        if (seen.indexOf(value) >= 0) throw new TypeError('cyclic indicator params');
+        seen.push(value);
+        var text;
+        if (Array.isArray(value)) {
+            text = 'a' + value.length + '[' + value.map(function(item) {
+                return _b70CanonicalValue(item, seen);
+            }).join('') + ']';
+        } else {
+            var keys = Object.keys(value).sort();
+            text = 'o' + keys.length + '{' + keys.map(function(key) {
+                return _b70CanonicalValue(key, seen)
+                    + _b70CanonicalValue(value[key], seen);
+            }).join('') + '}';
+        }
+        seen.pop();
+        return text;
+    }
+
+    function _b70StableIndicatorSetHash(chart) {
+        var active = chart && chart.indicators && chart.indicators.active;
+        if (!Array.isArray(active)) return '';
+        try {
+            // Active order is calculation-significant. Length-framed canonical
+            // values avoid delimiter/type collisions and nested key-order churn.
+            return _b70CanonicalValue(active.map(function(ind) {
+                if (!ind) return null;
+                return {
+                    id: String(ind.id || ''),
+                    type: String(ind.type || '').toLowerCase(),
+                    params: ind.params || {}
+                };
+            }), []);
+        } catch (_) {
+            return 'invalid-indicator-set';
+        }
+    }
+
+    function _b70SessionIdentity() {
+        var origin = '';
+        try {
+            origin = (typeof performance !== 'undefined'
+                && Number.isFinite(performance.timeOrigin))
+                ? String(performance.timeOrigin) : String(Date.now());
+        } catch (_) { origin = String(Date.now()); }
+        return origin;
+    }
+
+    var _b70Stage4PrivateBuilds = new WeakMap();
+    var _b70Stage5Hosts = new WeakMap();
+    var _b70Stage5Panels = new WeakMap();
+
+    function _b70Stage5Now() {
+        return _b70Stage4Now();
+    }
+
+    function _b70Stage5ChartIdentity(chart) {
+        if (!chart) return '';
+        return String(
+            chart.multichartPanelId != null ? chart.multichartPanelId
+                : chart.panelId != null ? chart.panelId
+                    : chart.panelIndex != null ? chart.panelIndex : 'host'
+        );
+    }
+
+    function _b70Stage5InstrumentIdentity(chart) {
+        return [
+            String(chart && chart.currentSymbol || ''),
+            String(chart && chart.currentFileId || ''),
+            String(chart && chart.masterGeneration || '')
+        ].join('¦');
+    }
+
+    function _b70Stage5HostState(chart) {
+        var value = _b70Stage5Hosts.get(chart);
+        if (!value) {
+            value = {
+                publicationSeq: 0,
+                panels: new Set(),
+                disposed: false
+            };
+            _b70Stage5Hosts.set(chart, value);
+        }
+        return value;
+    }
+
+    function _b70Stage5PanelState(chart) {
+        var value = _b70Stage5Panels.get(chart);
+        if (!value) {
+            value = {
+                host: null,
+                hostChartId: null,
+                hostSessionEpoch: null,
+                generationId: null,
+                mode: 'idle',
+                timer: null,
+                lastPublicationSeq: 0,
+                accepting: false,
+                pending: null,
+                disposed: false
+            };
+            _b70Stage5Panels.set(chart, value);
+        }
+        return value;
+    }
+
+    function _b70Stage5ResolveHost(chart) {
+        if (!chart) return null;
+        var panelState = _b70Stage5Panels.get(chart);
+        if (panelState && panelState.host) return panelState.host;
+        try {
+            if (typeof window !== 'undefined' && window.parent
+                && window.parent !== window && window.parent.location
+                && window.location
+                && window.parent.location.origin === window.location.origin) {
+                return window.parent.chart || window.parent.mainChart || null;
+            }
+        } catch (_) {
+            return null;
+        }
+        return null;
+    }
+
+    function _b70Stage5Comparable(chart, host) {
+        if (!chart || !host || chart === host) return false;
+        var localKey = _b70IndicatorGenerationKey(chart);
+        var hostKey = _b70IndicatorGenerationKey(host);
+        return !!(localKey && hostKey && localKey.id && hostKey.id
+            && _b70Stage5InstrumentIdentity(chart) === _b70Stage5InstrumentIdentity(host)
+            && localKey.timeframe === hostKey.timeframe
+            && localKey.dataVersion === hostKey.dataVersion
+            && localKey.barCount === hostKey.barCount
+            && localKey.tailBarFingerprint === hostKey.tailBarFingerprint
+            && localKey.indicatorSetHash === hostKey.indicatorSetHash);
+    }
+
+    function _b70Stage5ClearPanelWait(panelState) {
+        if (panelState && panelState.timer != null) {
+            clearTimeout(panelState.timer);
+            panelState.timer = null;
+        }
+    }
+
+    function _b70Stage5UnregisterPanel(chart) {
+        var panelState = _b70Stage5Panels.get(chart);
+        if (!panelState) return;
+        _b70Stage5ClearPanelWait(panelState);
+        if (panelState.host
+            && typeof panelState.host._b70Stage5UnregisterPanelBridge === 'function') {
+            panelState.host._b70Stage5UnregisterPanelBridge(chart);
+        } else if (panelState.host) {
+            _b70Stage5UnregisterHostPanel(panelState.host, chart);
+        }
+        panelState.disposed = true;
+        panelState.pending = null;
+        _b70Stage5Panels.delete(chart);
+    }
+
+    function _b70Stage5UnregisterHostPanel(host, panel) {
+        var hostState = _b70Stage5Hosts.get(host);
+        if (!hostState) return;
+        hostState.panels.forEach(function(record) {
+            if (record.chart === panel) hostState.panels.delete(record);
+        });
+    }
+
+    function _b70Stage5Invalidate(chart, dispose) {
+        var panelState = _b70Stage5Panels.get(chart);
+        if (panelState) {
+            _b70Stage5ClearPanelWait(panelState);
+            if (panelState.host
+                && typeof panelState.host._b70Stage5UnregisterPanelBridge === 'function') {
+                panelState.host._b70Stage5UnregisterPanelBridge(chart);
+            } else if (panelState.host) {
+                _b70Stage5UnregisterHostPanel(panelState.host, chart);
+            }
+            panelState.host = null;
+            panelState.hostChartId = null;
+            panelState.hostSessionEpoch = null;
+            panelState.generationId = null;
+            panelState.mode = 'idle';
+            panelState.pending = null;
+            panelState.lastPublicationSeq = 0;
+            if (dispose) _b70Stage5UnregisterPanel(chart);
+        }
+        var hostState = _b70Stage5Hosts.get(chart);
+        if (hostState && dispose) {
+            hostState.disposed = true;
+            hostState.panels.clear();
+            _b70Stage5Hosts.delete(chart);
+        }
+    }
+
+    function _b70Stage5Origin() {
+        try {
+            return String(window.location && window.location.origin || '');
+        } catch (_) {
+            return '';
+        }
+    }
+
+    function _b70Stage5RegisterPanel(host, panel, receiver) {
+        if (!host || !panel || host === panel || typeof receiver !== 'function') return false;
+        if (!_b70Stage5Comparable(panel, host)) return false;
+        var hostState = _b70Stage5HostState(host);
+        if (hostState.disposed) return false;
+        var existing = null;
+        hostState.panels.forEach(function(record) {
+            if (record.chart === panel) existing = record;
+        });
+        if (!existing) {
+            existing = { chart: panel, receive: receiver };
+            hostState.panels.add(existing);
+        } else {
+            existing.receive = receiver;
+        }
+        var panelState = _b70Stage5PanelState(panel);
+        panelState.host = host;
+        panelState.hostChartId = _b70Stage5ChartIdentity(host);
+        var hostShadow = _b70ShadowState(host);
+        panelState.hostSessionEpoch = hostShadow && hostShadow.sessionEpoch;
+        return true;
+    }
+
+    function _b70Stage5BuildMessage(host, tickets, publicationSeq) {
+        // IndicatorResultEnvelope v1: immutable calculation payload plus all
+        // identities and publication authority required for panel admission.
+        var state = host && host._b70IndicatorGenerationShadow;
+        var envelope = state && state.currentEnvelope;
+        var key = _b70IndicatorGenerationKey(host);
+        if (!state || !envelope || !envelope.metadata || !key || !key.id
+            || envelope.metadata.generationId !== key.id) return null;
+        var requestedIds = (host.indicators.active || []).filter(Boolean)
+            .map(function(indicator) { return String(indicator.id); });
+        var committed = [];
+        state.ownerTickets.forEach(function(ticket) {
+            if (ticket && ticket.status === 'committed'
+                && ticket.generationId === key.id) committed.push(ticket);
+        });
+        var authorities = committed.map(function(ticket) {
+            return {
+                generationId: ticket.generationId,
+                instanceId: ticket.instanceId,
+                ownerKind: ticket.ownerKind,
+                ownerId: ticket.ownerId,
+                claimSeq: ticket.claimSeq,
+                status: ticket.status
+            };
+        });
+        if (authorities.length !== requestedIds.length
+            || authorities.some(function(ticket) {
+                return ticket.status !== 'committed'
+                    || ticket.generationId !== key.id
+                    || requestedIds.indexOf(ticket.instanceId) < 0;
+            })) return null;
+        return {
+            type: 'talaria:b70-indicator-envelope',
+            envelopeType: 'IndicatorResultEnvelope',
+            contractVersion: 1,
+            origin: _b70Stage5Origin(),
+            sessionEpoch: state.sessionEpoch,
+            hostChartId: _b70Stage5ChartIdentity(host),
+            instrumentIdentity: _b70Stage5InstrumentIdentity(host),
+            timeframe: key.timeframe,
+            dataGeneration: {
+                datasetEpoch: key.datasetEpoch,
+                timelineEpoch: key.timelineEpoch,
+                dataVersion: key.dataVersion,
+                barCount: key.barCount,
+                tailBarFingerprint: key.tailBarFingerprint
+            },
+            indicatorConfigIdentity: key.indicatorSetHash,
+            calculationRevision: key.calculationRevision,
+            hostGenerationId: key.id,
+            publicationSeq: publicationSeq,
+            ownerTickets: authorities,
+            requestedSet: {
+                instanceIds: requestedIds,
+                count: requestedIds.length,
+                complete: true
+            },
+            payload: envelope.data,
+            payloadBytes: envelope.metadata.byteLength
+        };
+    }
+
+    function _b70Stage5PublishHostEnvelope(host, tickets) {
+        var state = host && host._b70IndicatorGenerationShadow;
+        var hostState = _b70Stage5Hosts.get(host);
+        if (!state || !hostState || hostState.disposed || !hostState.panels.size) return;
+        var next = _b70SafeNext(hostState.publicationSeq);
+        if (next == null) {
+            state.metrics.bridgeFailClosed++;
+            hostState.disposed = true;
+            hostState.panels.clear();
+            return;
+        }
+        var message = _b70Stage5BuildMessage(host, tickets, next);
+        if (!message) {
+            state.metrics.bridgePublicationRejects++;
+            return;
+        }
+        hostState.publicationSeq = next;
+        state.metrics.bridgePublications++;
+        state.metrics.bridgeBytes += message.payloadBytes || 0;
+        hostState.panels.forEach(function(record) {
+            var started = _b70Stage5Now();
+            try {
+                if (typeof structuredClone !== 'function') throw new Error('structuredClone unavailable');
+                var clone = structuredClone(message);
+                state.metrics.bridgeCloneTimeMs += _b70Stage5Now() - started;
+                record.receive(clone);
+                state.metrics.bridgeDeliveries++;
+            } catch (_) {
+                state.metrics.bridgeDeliveryFailures++;
+            }
+        });
+    }
+
+    function _b70Stage5Reject(panel, metric) {
+        var state = panel && panel._b70IndicatorGenerationShadow;
+        if (state && state.metrics[metric] != null) state.metrics[metric]++;
+        if (state) state.metrics.bridgeRejects++;
+        return false;
+    }
+
+    function _b70Stage5ValidateMessage(panel, message, panelState) {
+        var state = panel && panel._b70IndicatorGenerationShadow;
+        var key = _b70IndicatorGenerationKey(panel);
+        if (!state || !key || !key.id || !message || typeof message !== 'object'
+            || message.type !== 'talaria:b70-indicator-envelope'
+            || message.envelopeType !== 'IndicatorResultEnvelope'
+            || message.contractVersion !== 1) return _b70Stage5Reject(panel, 'bridgeSchemaRejects');
+        if (message.origin !== _b70Stage5Origin()
+            || message.hostChartId !== panelState.hostChartId
+            || message.sessionEpoch !== panelState.hostSessionEpoch) {
+            return _b70Stage5Reject(panel, 'bridgeForeignRejects');
+        }
+        if (!Number.isSafeInteger(message.publicationSeq)
+            || message.publicationSeq <= panelState.lastPublicationSeq) {
+            return _b70Stage5Reject(panel, 'bridgeOrderRejects');
+        }
+        if (panelState.mode === 'bridged'
+            && panelState.generationId === key.id) {
+            return _b70Stage5Reject(panel, 'bridgeOrderRejects');
+        }
+        if (panelState.mode === 'fallback'
+            && panelState.generationId === key.id) {
+            return _b70Stage5Reject(panel, 'bridgeLateRejects');
+        }
+        var generation = message.dataGeneration || {};
+        if (message.instrumentIdentity !== _b70Stage5InstrumentIdentity(panel)
+            || message.timeframe !== key.timeframe
+            || generation.datasetEpoch !== key.datasetEpoch
+            || generation.timelineEpoch !== key.timelineEpoch
+            || generation.dataVersion !== key.dataVersion
+            || generation.barCount !== key.barCount
+            || generation.tailBarFingerprint !== key.tailBarFingerprint
+            || message.indicatorConfigIdentity !== key.indicatorSetHash
+            || message.calculationRevision !== key.calculationRevision) {
+            return _b70Stage5Reject(panel, 'bridgeStaleRejects');
+        }
+        var active = panel.indicators.active || [];
+        var requested = message.requestedSet;
+        var expectedIds = active.filter(Boolean)
+            .map(function(indicator) { return String(indicator.id); });
+        var requestedSeen = Object.create(null);
+        var authoritySeen = Object.create(null);
+        if (!requested || requested.complete !== true
+            || requested.count !== expectedIds.length
+            || !Array.isArray(requested.instanceIds)
+            || requested.instanceIds.length !== expectedIds.length
+            || expectedIds.some(function(id) {
+                return requested.instanceIds.indexOf(id) < 0;
+            })
+            || requested.instanceIds.some(function(id) {
+                id = String(id);
+                if (requestedSeen[id]) return true;
+                requestedSeen[id] = true;
+                return expectedIds.indexOf(id) < 0;
+            })) return _b70Stage5Reject(panel, 'bridgePartialRejects');
+        if (!Array.isArray(message.ownerTickets)
+            || message.ownerTickets.length !== expectedIds.length) {
+            return _b70Stage5Reject(panel, 'bridgePartialRejects');
+        }
+        for (var authorityIndex = 0;
+            authorityIndex < message.ownerTickets.length; authorityIndex++) {
+            var ticket = message.ownerTickets[authorityIndex];
+            var instanceId = ticket && String(ticket.instanceId);
+            if (ticket && authoritySeen[instanceId]) {
+                return _b70Stage5Reject(
+                    panel, 'bridgeDuplicateAuthorityRejects'
+                );
+            }
+            if (ticket) authoritySeen[instanceId] = true;
+            if (!ticket || ticket.status !== 'committed'
+                    || ticket.generationId !== message.hostGenerationId
+                    || expectedIds.indexOf(instanceId) < 0
+                    || (ticket.ownerKind !== 'sync' && ticket.ownerKind !== 'worker')
+                    || typeof ticket.ownerId !== 'string' || !ticket.ownerId
+                    || !Number.isSafeInteger(ticket.claimSeq) || ticket.claimSeq <= 0) {
+                return _b70Stage5Reject(
+                    panel, 'bridgeMalformedAuthorityRejects'
+                );
+            }
+        }
+        if (!message.payload || typeof message.payload !== 'object'
+            || active.some(function(indicator) {
+                var id = String(indicator.id);
+                return !Object.prototype.hasOwnProperty.call(message.payload, id)
+                    || !_b70Stage4ValidateIndicatorResult(
+                        indicator, message.payload[id], key.barCount
+                    );
+            })) return _b70Stage5Reject(panel, 'bridgeSchemaRejects');
+        return { key: key, active: active };
+    }
+
+    function _b70Stage5ReceivePanelEnvelope(panel, message) {
+        var panelState = _b70Stage5PanelState(panel);
+        if (panelState.disposed) return false;
+        if (panelState.accepting) {
+            if (!panelState.pending
+                || message.publicationSeq > panelState.pending.publicationSeq) {
+                panelState.pending = message;
+            }
+            var queuedState = panel._b70IndicatorGenerationShadow;
+            if (queuedState) queuedState.metrics.bridgeCoalesced++;
+            return false;
+        }
+        panelState.accepting = true;
+        var accepted = false;
+        try {
+            var validation = _b70Stage5ValidateMessage(panel, message, panelState);
+            if (!validation) return false;
+            var state = panel._b70IndicatorGenerationShadow;
+            var metadata = {
+                envelopeType: message.envelopeType,
+                contractVersion: message.contractVersion,
+                generationId: validation.key.id,
+                generationKey: validation.key,
+                hostGenerationId: message.hostGenerationId,
+                publicationSeq: message.publicationSeq,
+                byteLength: message.payloadBytes || 0,
+                ownerTickets: message.ownerTickets,
+                bridgeInstanceIds: message.requestedSet.instanceIds.slice()
+            };
+            var envelope = {
+                data: message.payload,
+                metadata: metadata
+            };
+            if (typeof window !== 'undefined'
+                && window.__TALARIA_B70_DEV_FREEZE_ENVELOPES === true) {
+                _b70Stage4DeepFreeze(envelope, new Set());
+            }
+            if (state.retiredEnvelope) state.metrics.envelopeReleases++;
+            state.retiredEnvelope = state.currentEnvelope;
+            state.currentEnvelope = envelope;
+            panel.indicators.data = envelope.data;
+            panelState.lastPublicationSeq = message.publicationSeq;
+            panelState.generationId = validation.key.id;
+            panelState.mode = 'bridged';
+            _b70Stage5ClearPanelWait(panelState);
+            state.metrics.bridgeAccepts++;
+            state.metrics.bridgeRetainedBytes = message.payloadBytes || 0;
+            if (state.metrics.bridgeRetainedBytes > state.metrics.bridgePeakRetainedBytes) {
+                state.metrics.bridgePeakRetainedBytes = state.metrics.bridgeRetainedBytes;
+            }
+            panel.bumpIndicatorRenderVersion();
+            if (typeof panel.scheduleRender === 'function') panel.scheduleRender();
+            accepted = true;
+            return true;
+        } finally {
+            panelState.accepting = false;
+            if (panelState.pending) {
+                var pending = panelState.pending;
+                panelState.pending = null;
+                _b70Stage5ReceivePanelEnvelope(panel, pending);
+            }
+        }
+    }
+
+    function _b70Stage5DeferPanelCalculation(panel) {
+        var host = _b70Stage5ResolveHost(panel);
+        if (!host || !_b70Stage5Comparable(panel, host)) return false;
+        var panelState = _b70Stage5PanelState(panel);
+        var key = _b70IndicatorGenerationKey(panel);
+        if (!key || !key.id || panelState.disposed) return false;
+        if (panelState.mode === 'fallback' && panelState.generationId === key.id) {
+            return false;
+        }
+        if (panelState.mode === 'bridged' && panelState.generationId === key.id
+            && _b70Stage3CommittedForCurrentGeneration(panel, key)) return true;
+        if (panelState.generationId !== key.id) {
+            _b70Stage5ClearPanelWait(panelState);
+            panelState.generationId = key.id;
+            panelState.mode = 'waiting';
+        }
+        var receiver = function(message) {
+            _b70Stage5ReceivePanelEnvelope(panel, message);
+        };
+        var registered = typeof host._b70Stage5RegisterPanelBridge === 'function'
+            ? host._b70Stage5RegisterPanelBridge(panel, receiver)
+            : _b70Stage5RegisterPanel(host, panel, receiver);
+        if (!registered) return false;
+        panelState.host = host;
+        panelState.hostChartId = _b70Stage5ChartIdentity(host);
+        panelState.hostSessionEpoch =
+            host._b70IndicatorGenerationShadow
+            && host._b70IndicatorGenerationShadow.sessionEpoch;
+        var state = panel._b70IndicatorGenerationShadow;
+        state.metrics.bridgePanelRequests++;
+        var hostState = host._b70IndicatorGenerationShadow;
+        if (hostState && hostState.currentEnvelope
+            && _b70Stage3CommittedForCurrentGeneration(
+                host, _b70IndicatorGenerationKey(host)
+            )) {
+            var committedTickets = [];
+            hostState.ownerTickets.forEach(function(ticket) {
+                if (ticket.status === 'committed'
+                    && ticket.generationId ===
+                        hostState.currentEnvelope.metadata.generationId) {
+                    committedTickets.push(ticket);
+                }
+            });
+            _b70Stage5PublishHostEnvelope(host, committedTickets);
+        } else if (typeof host.recalculateIndicators === 'function') {
+            try { host.recalculateIndicators(); } catch (_) {}
+        }
+        if (panelState.mode === 'bridged') return true;
+        if (panelState.timer == null) {
+            panelState.timer = setTimeout(function() {
+                panelState.timer = null;
+                if (panelState.disposed || panelState.mode !== 'waiting'
+                    || panelState.generationId !== key.id) return;
+                panelState.mode = 'fallback';
+                state.metrics.bridgeFallbacks++;
+                try { panel.recalculateIndicators(); } catch (_) {}
+            }, typeof window !== 'undefined'
+                && Number.isFinite(window.__TALARIA_B70_BRIDGE_TIMEOUT_MS)
+                ? Math.max(0, window.__TALARIA_B70_BRIDGE_TIMEOUT_MS) : 2000);
+        }
+        return true;
+    }
+
+    function _b70Stage5BindPanelForTest(panel, host) {
+        var panelState = _b70Stage5PanelState(panel);
+        panelState.host = host;
+        return _b70Stage5RegisterPanel(
+            host, panel, function(message) {
+                _b70Stage5ReceivePanelEnvelope(panel, message);
+            }
+        );
+    }
+
+    if (_b70ShadowEnabled() && typeof window !== 'undefined') {
+        window.__TALARIA_B70_CONNECT_INDICATOR_PANEL_V1 = function(panel, host) {
+            var state = _b70ShadowState(panel);
+            if (!state || !panel._b70Stage5ConnectIndicatorHost) return false;
+            return panel._b70Stage5ConnectIndicatorHost(host);
+        };
+    }
+
+    function _b70Stage4PrivateState(chart) {
+        var value = _b70Stage4PrivateBuilds.get(chart);
+        if (!value) {
+            value = { active: null, pending: null, disposed: false };
+            _b70Stage4PrivateBuilds.set(chart, value);
+        }
+        return value;
+    }
+
+    function _b70Stage4InvalidatePrivate(chart, dispose) {
+        var value = _b70Stage4PrivateBuilds.get(chart);
+        if (!value) return;
+        if (value.active) value.active.invalidated = true;
+        value.active = null;
+        value.pending = null;
+        if (dispose) {
+            value.disposed = true;
+            _b70Stage4PrivateBuilds.delete(chart);
+        }
+    }
+
+    function _b70ShadowState(chart) {
+        if (!_b70ShadowEnabled() || !chart) return null;
+        if (chart._b70IndicatorGenerationShadow) {
+            return chart._b70IndicatorGenerationShadow;
+        }
+        var state = {
+            schemaVersion: 1,
+            calculationRevision: 'b70-stage5-v1',
+            sessionEpoch: _b70SessionIdentity(),
+            datasetEpoch: 1,
+            timelineEpoch: 1,
+            exhausted: false,
+            lastDataRef: chart.data,
+            lastDataVersion: chart.dataVersion != null ? chart.dataVersion : 0,
+            lastDatasetIdentity: null,
+            lastKey: null,
+            registry: new Map(),
+            ownerTickets: new Map(),
+            latestByInstance: new Map(),
+            fallbackGenerations: new Set(),
+            nextClaimSeq: 0,
+            currentEnvelope: null,
+            retiredEnvelope: null,
+            lastVersionGenerationId: null,
+            renderTransaction: {
+                depth: 0,
+                ownerSeq: 0,
+                owner: null,
+                deferredGenerationId: null,
+                deferredScheduled: false,
+                disposed: false
+            },
+            metrics: {
+                requestedGenerations: 0,
+                uniqueRequestedGenerations: 0,
+                wouldBeOwnerClaims: { sync: 0, worker: 0, paint: 0, unknown: 0 },
+                calculationStarts: 0,
+                duplicateCalculations: 0,
+                calculationsBySource: {},
+                sessionInvalidations: 0,
+                datasetInvalidations: 0,
+                timelineInvalidations: 0,
+                timeframeInvalidations: 0,
+                removalInvalidations: 0,
+                renderStable: 0,
+                renderUnexpectedChanges: 0,
+                legacyTokenComparisons: 0,
+                legacyTokenAgreement: 0,
+                legacyTokenDisagreement: 0,
+                failClosed: 0,
+                ownerClaims: { sync: 0, worker: 0 },
+                ownerCommits: { sync: 0, worker: 0 },
+                ownerDenied: 0,
+                lateWorkerRejects: 0,
+                duplicateWorkerRejects: 0,
+                workerFailures: 0,
+                fallbackClaims: 0,
+                fallbackDenied: 0,
+                supersededPending: 0,
+                ownerFailClosed: 0,
+                paintTransactions: 0,
+                paintReentries: 0,
+                paintExceptions: 0,
+                maxPaintDepth: 0,
+                paintConsumerHits: 0,
+                paintMissingGenerations: 0,
+                paintDeferredRequests: 0,
+                paintCalculations: 0,
+                paintPublications: 0,
+                paintVersionBumps: 0,
+                paintRenderSchedules: 0,
+                successfulCommits: 0,
+                workerCommitRenderSchedules: 0,
+                envelopeBuilds: 0,
+                envelopeCommits: 0,
+                envelopeRejects: 0,
+                envelopeCopyBytes: 0,
+                envelopeCopyTimeMs: 0,
+                envelopeRetainedBytes: 0,
+                envelopePeakRetainedBytes: 0,
+                envelopeReleases: 0,
+                envelopeConsumerMutations: 0,
+                envelopeAliasRejects: 0,
+                bridgePublications: 0,
+                bridgePublicationRejects: 0,
+                bridgeDeliveries: 0,
+                bridgeDeliveryFailures: 0,
+                bridgeAccepts: 0,
+                bridgeRejects: 0,
+                bridgeSchemaRejects: 0,
+                bridgeForeignRejects: 0,
+                bridgeOrderRejects: 0,
+                bridgeStaleRejects: 0,
+                bridgePartialRejects: 0,
+                bridgeDuplicateAuthorityRejects: 0,
+                bridgeMalformedAuthorityRejects: 0,
+                bridgeLateRejects: 0,
+                bridgePanelRequests: 0,
+                bridgeFallbacks: 0,
+                bridgeCoalesced: 0,
+                bridgeFailClosed: 0,
+                bridgeBytes: 0,
+                bridgeCloneTimeMs: 0,
+                bridgeRetainedBytes: 0,
+                bridgePeakRetainedBytes: 0
+            }
+        };
+        chart._b70IndicatorGenerationShadow = state;
+        chart._b70ShadowInvalidateIndicatorGeneration = function(reason) {
+            _b70ShadowInvalidate(chart, reason);
+        };
+        chart._b70HasCommittedIndicatorGeneration = function() {
+            var key = _b70IndicatorGenerationKey(chart);
+            return _b70Stage3CommittedForCurrentGeneration(chart, key);
+        };
+        chart._b70Stage5RegisterPanelBridge = function(panel, receiver) {
+            return _b70Stage5RegisterPanel(chart, panel, receiver);
+        };
+        chart._b70Stage5UnregisterPanelBridge = function(panel) {
+            _b70Stage5UnregisterHostPanel(chart, panel);
+        };
+        chart._b70Stage5AcceptIndicatorEnvelope = function(message) {
+            return _b70Stage5ReceivePanelEnvelope(chart, message);
+        };
+        chart._b70Stage5ConnectIndicatorHost = function(host) {
+            var panelState = _b70Stage5PanelState(chart);
+            panelState.host = host;
+            return _b70Stage5RegisterPanel(
+                host, chart, chart._b70Stage5AcceptIndicatorEnvelope
+            );
+        };
+        chart._b70ShadowDisposeIndicatorGeneration = function() {
+            _b70Stage4InvalidatePrivate(chart, true);
+            _b70Stage5Invalidate(chart, true);
+            state.renderTransaction.disposed = true;
+            state.renderTransaction.depth = 0;
+            state.renderTransaction.owner = null;
+            state.renderTransaction.deferredGenerationId = null;
+            state.renderTransaction.deferredScheduled = false;
+            state.currentEnvelope = null;
+            state.retiredEnvelope = null;
+            state.lastVersionGenerationId = null;
+            state.registry.clear();
+            state.ownerTickets.clear();
+            state.latestByInstance.clear();
+            state.fallbackGenerations.clear();
+            try { delete chart._b70Stage5RegisterPanelBridge; } catch (_) {}
+            try { delete chart._b70Stage5UnregisterPanelBridge; } catch (_) {}
+            try { delete chart._b70Stage5AcceptIndicatorEnvelope; } catch (_) {}
+            try { delete chart._b70Stage5ConnectIndicatorHost; } catch (_) {}
+            state.lastKey = null;
+            delete chart._b70ShadowInvalidateIndicatorGeneration;
+            delete chart._b70ShadowDisposeIndicatorGeneration;
+            delete chart._b70HasCommittedIndicatorGeneration;
+            delete chart._b70IndicatorGenerationShadow;
+        };
+        return state;
+    }
+
+    function _b70DatasetIdentity(chart) {
+        return [
+            _m19iB62ChartPairIdentity(chart),
+            String(chart && chart.currentFileId != null ? chart.currentFileId : ''),
+            _m19iB62MasterGeneration(chart)
+        ].join('|');
+    }
+
+    function _b70ShadowAdvance(state, field, metric) {
+        var next = _b70SafeNext(state[field]);
+        if (next == null) {
+            state.exhausted = true;
+            state.metrics.failClosed++;
+            state.registry.clear();
+            state.ownerTickets.clear();
+            state.latestByInstance.clear();
+            state.fallbackGenerations.clear();
+            state.lastKey = null;
+            return false;
+        }
+        state[field] = next;
+        if (metric) state.metrics[metric]++;
+        state.registry.clear();
+        state.ownerTickets.clear();
+        state.latestByInstance.clear();
+        state.fallbackGenerations.clear();
+        if (state.retiredEnvelope) state.metrics.envelopeReleases++;
+        state.retiredEnvelope = null;
+        state.lastKey = null;
+        return true;
+    }
+
+    function _b70ObserveDataset(chart, state) {
+        var identity = _b70DatasetIdentity(chart);
+        var replaced = state.lastDataRef !== chart.data;
+        var dataVersion = chart.dataVersion != null ? chart.dataVersion : 0;
+        var identityChanged = state.lastDatasetIdentity != null
+            && state.lastDatasetIdentity !== identity;
+        // A normal replay resample replaces chart.data while dataVersion also
+        // advances; that is a calculation generation, not a dataset epoch.
+        // Same-version reference replacement remains a fail-closed dataset swap.
+        if ((replaced && dataVersion === state.lastDataVersion) || identityChanged) {
+            _b70ShadowAdvance(state, 'datasetEpoch', 'datasetInvalidations');
+        }
+        state.lastDataRef = chart.data;
+        state.lastDataVersion = dataVersion;
+        state.lastDatasetIdentity = identity;
+    }
+
+    function _b70IndicatorGenerationKey(chart) {
+        var state = _b70ShadowState(chart);
+        if (!state) return null;
+        _b70ObserveDataset(chart, state);
+        var data = Array.isArray(chart.data) ? chart.data : [];
+        var key = {
+            schemaVersion: 1,
+            sessionEpoch: state.sessionEpoch,
+            datasetEpoch: state.datasetEpoch,
+            timelineEpoch: state.timelineEpoch,
+            timeframe: String(chart.currentTimeframe || ''),
+            dataVersion: chart.dataVersion != null ? chart.dataVersion : 0,
+            barCount: data.length,
+            tailBarFingerprint: _indicatorDataFingerprint(chart),
+            indicatorSetHash: _b70StableIndicatorSetHash(chart),
+            calculationRevision: state.calculationRevision,
+            failClosed: state.exhausted
+        };
+        key.id = key.failClosed ? null : [
+            key.sessionEpoch, key.datasetEpoch, key.timelineEpoch,
+            key.timeframe, key.dataVersion, key.barCount,
+            key.tailBarFingerprint, key.indicatorSetHash,
+            key.calculationRevision
+        ].join('¦');
+        return key;
+    }
+
+    function _b70ShadowRecordRequest(chart, source) {
+        var key = _b70IndicatorGenerationKey(chart);
+        if (!key || !key.id) return;
+        var state = chart._b70IndicatorGenerationShadow;
+        var row = state.registry.get(key.id);
+        state.metrics.requestedGenerations++;
+        if (!row) {
+            row = { key: key, requests: 0, calculations: 0, sources: {}, wouldBeOwner: null };
+            state.registry.set(key.id, row);
+            state.metrics.uniqueRequestedGenerations++;
+        }
+        row.requests++;
+        row.sources[source] = (row.sources[source] || 0) + 1;
+        var active = chart.indicators && chart.indicators.active;
+        if (Array.isArray(active)) {
+            active.forEach(function(indicator) {
+                if (!indicator || indicator.id == null) return;
+                var latest = state.latestByInstance.get(String(indicator.id));
+                if (!latest || latest.status !== 'claimed'
+                    || latest.generationId === key.id) return;
+                if (latest.pendingGenerationId
+                    && latest.pendingGenerationId !== key.id) {
+                    state.metrics.supersededPending++;
+                }
+                latest.pendingGenerationId = key.id;
+            });
+        }
+        state.lastKey = key;
+    }
+
+    function _b70ShadowRecordCalculation(chart, source, ownerKind) {
+        var key = _b70IndicatorGenerationKey(chart);
+        if (!key || !key.id) return;
+        var state = chart._b70IndicatorGenerationShadow;
+        var row = state.registry.get(key.id);
+        if (!row) {
+            row = { key: key, requests: 0, calculations: 0, sources: {}, wouldBeOwner: null };
+            state.registry.set(key.id, row);
+        }
+        state.metrics.calculationStarts++;
+        state.metrics.calculationsBySource[source] =
+            (state.metrics.calculationsBySource[source] || 0) + 1;
+        if (row.calculations > 0) state.metrics.duplicateCalculations++;
+        row.calculations++;
+        row.sources[source] = (row.sources[source] || 0) + 1;
+        if (!row.wouldBeOwner) {
+            var owner = ownerKind || 'unknown';
+            if (!(owner in state.metrics.wouldBeOwnerClaims)) owner = 'unknown';
+            row.wouldBeOwner = owner;
+            state.metrics.wouldBeOwnerClaims[owner]++;
+        }
+        state.lastKey = key;
+    }
+
+    function _b70ShadowInvalidate(chart, reason) {
+        var state = _b70ShadowState(chart);
+        if (!state) return;
+        // Reentrant invalidation revokes only closure-private build state.
+        _b70Stage4InvalidatePrivate(chart, false);
+        _b70Stage5Invalidate(chart, false);
+        var text = String(reason || '');
+        if (text.indexOf('session') >= 0 || text.indexOf('reload') >= 0) {
+            state.metrics.sessionInvalidations++;
+            state.sessionEpoch = _b70SessionIdentity() + ':' + state.metrics.sessionInvalidations;
+            state.registry.clear();
+            state.ownerTickets.clear();
+            state.latestByInstance.clear();
+            state.fallbackGenerations.clear();
+            if (state.currentEnvelope) state.metrics.envelopeReleases++;
+            if (state.retiredEnvelope) state.metrics.envelopeReleases++;
+            state.currentEnvelope = null;
+            state.retiredEnvelope = null;
+            state.lastKey = null;
+            _b70Stage4UpdateRetainedBytes(
+                state, _b70Stage4PrivateState(chart), 0
+            );
+            return;
+        }
+        if (text.indexOf('seek') >= 0 || text.indexOf('timeline') >= 0
+            || text.indexOf('go-back') >= 0) {
+            _b70ShadowAdvance(state, 'timelineEpoch', 'timelineInvalidations');
+            _b70Stage4UpdateRetainedBytes(
+                state, _b70Stage4PrivateState(chart), 0
+            );
+            return;
+        }
+        if (text.indexOf('timeframe') >= 0) {
+            state.metrics.timeframeInvalidations++;
+            _b70ShadowAdvance(state, 'timelineEpoch', null);
+            _b70Stage4UpdateRetainedBytes(
+                state, _b70Stage4PrivateState(chart), 0
+            );
+            return;
+        }
+        if (text.indexOf('remove') >= 0 || text.indexOf('clear') >= 0) {
+            state.metrics.removalInvalidations++;
+            state.registry.clear();
+            state.ownerTickets.clear();
+            state.latestByInstance.clear();
+            state.fallbackGenerations.clear();
+            if (state.currentEnvelope) state.metrics.envelopeReleases++;
+            if (state.retiredEnvelope) state.metrics.envelopeReleases++;
+            state.currentEnvelope = null;
+            state.retiredEnvelope = null;
+            state.lastKey = null;
+            _b70Stage4UpdateRetainedBytes(
+                state, _b70Stage4PrivateState(chart), 0
+            );
+            return;
+        }
+        _b70ShadowAdvance(state, 'datasetEpoch', 'datasetInvalidations');
+        _b70Stage4UpdateRetainedBytes(
+            state, _b70Stage4PrivateState(chart), 0
+        );
+    }
+
+    function _b70Stage2InstanceOwner(indicator) {
+        if (!indicator) return 'sync';
+        var type = String(indicator.type || '').toLowerCase();
+        if (type === 'volume' || type === 'custom'
+            || M19I_SYNC_ONLY_TYPES.indexOf(type) >= 0
+            || type === 'supertrend' || type === 'adr') return 'sync';
+        if (_m19iB62SyncFamily(indicator)) return 'sync';
+        if (typeof _m19iB66Proof === 'function' && _m19iB66Proof(indicator)) return 'sync';
+        return 'worker';
+    }
+
+    function _b70Stage2TicketKey(generationId, instanceId) {
+        return generationId + '§' + String(instanceId);
+    }
+
+    function _b70Stage2Claim(chart, requestedOwner, indicators, source, fallback) {
+        var state = _b70ShadowState(chart);
+        var key = _b70IndicatorGenerationKey(chart);
+        if (!state || !key || !key.id || state.exhausted) return [];
+        var claimUpperBound = Array.isArray(indicators) ? indicators.length : 0;
+        if (!Number.isSafeInteger(state.nextClaimSeq)
+            || state.nextClaimSeq < 0
+            || state.nextClaimSeq > Number.MAX_SAFE_INTEGER - 1 - claimUpperBound) {
+            state.exhausted = true;
+            state.metrics.ownerFailClosed++;
+            state.ownerTickets.clear();
+            state.latestByInstance.clear();
+            return [];
+        }
+        var tickets = [];
+        (indicators || []).forEach(function(indicator) {
+            if (!indicator || indicator.id == null) return;
+            var instanceId = String(indicator.id);
+            var expected = fallback ? requestedOwner : _b70Stage2InstanceOwner(indicator);
+            if (expected !== requestedOwner) return;
+            var ticketKey = _b70Stage2TicketKey(key.id, instanceId);
+            if (!fallback && requestedOwner === 'worker'
+                && state.fallbackGenerations.has(ticketKey)) {
+                state.metrics.ownerDenied++;
+                return;
+            }
+            var existing = state.ownerTickets.get(ticketKey);
+            if (existing) {
+                state.metrics.ownerDenied++;
+                return;
+            }
+            var latest = state.latestByInstance.get(instanceId);
+            if (latest && latest.generationId !== key.id
+                && latest.status === 'claimed') {
+                if (latest.pendingGenerationId
+                    && latest.pendingGenerationId !== key.id) {
+                    state.metrics.supersededPending++;
+                }
+                latest.pendingGenerationId = key.id;
+            }
+            if (latest && latest.generationId !== key.id) {
+                state.ownerTickets.delete(
+                    _b70Stage2TicketKey(latest.generationId, instanceId)
+                );
+                state.fallbackGenerations.delete(
+                    _b70Stage2TicketKey(latest.generationId, instanceId)
+                );
+            }
+            state.nextClaimSeq = _b70SafeNext(state.nextClaimSeq);
+            if (state.nextClaimSeq == null) {
+                state.exhausted = true;
+                state.metrics.ownerFailClosed++;
+                return;
+            }
+            var ticket = {
+                generationId: key.id,
+                instanceId: instanceId,
+                ownerKind: requestedOwner,
+                ownerId: 'chart',
+                claimSeq: state.nextClaimSeq,
+                sessionEpoch: key.sessionEpoch,
+                indicatorSetHash: key.indicatorSetHash,
+                source: source,
+                status: 'claimed',
+                fallback: !!fallback,
+                fallbackUsed: !!fallback,
+                pendingGenerationId: null
+            };
+            state.ownerTickets.set(ticketKey, ticket);
+            state.latestByInstance.set(instanceId, ticket);
+            state.metrics.ownerClaims[requestedOwner]++;
+            if (fallback) state.metrics.fallbackClaims++;
+            tickets.push(ticket);
+        });
+        return tickets;
+    }
+
+    function _b70Stage2Commit(chart, tickets) {
+        var state = chart && chart._b70IndicatorGenerationShadow;
+        if (!state || !Array.isArray(tickets)) return false;
+        var valid = tickets.length > 0 && tickets.every(function(ticket) {
+            return state.ownerTickets.get(
+                _b70Stage2TicketKey(ticket.generationId, ticket.instanceId)
+            ) === ticket && ticket.status === 'claimed';
+        });
+        if (!valid) return false;
+        tickets.forEach(function(ticket) {
+            ticket.status = 'committed';
+            state.metrics.ownerCommits[ticket.ownerKind]++;
+        });
+        state.metrics.successfulCommits++;
+        _b70Stage5PublishHostEnvelope(chart, tickets);
+        return true;
+    }
+
+    function _b70Stage2AuthorizeWorkerApply(chart, tickets, results) {
+        var state = chart && chart._b70IndicatorGenerationShadow;
+        if (!state || !Array.isArray(tickets) || !tickets.length) return false;
+        var key = _b70IndicatorGenerationKey(chart);
+        var valid = !!key && !!key.id && tickets.every(function(ticket) {
+            var current = state.ownerTickets.get(
+                _b70Stage2TicketKey(ticket.generationId, ticket.instanceId)
+            );
+            return current === ticket
+                && ticket.ownerKind === 'worker'
+                && ticket.status === 'claimed'
+                && ticket.generationId === key.id
+                && ticket.sessionEpoch === key.sessionEpoch
+                && ticket.indicatorSetHash === key.indicatorSetHash;
+        });
+        if (valid && results != null) {
+            valid = typeof results === 'object' && tickets.every(function(ticket) {
+                return Object.prototype.hasOwnProperty.call(results, ticket.instanceId);
+            });
+        }
+        if (!valid) {
+            var duplicate = tickets.some(function(ticket) {
+                return ticket && ticket.status === 'committed';
+            });
+            if (duplicate) state.metrics.duplicateWorkerRejects++;
+            else state.metrics.lateWorkerRejects++;
+            return false;
+        }
+        return true;
+    }
+
+    function _b70Stage2ReleaseWorkerFailure(chart, tickets) {
+        var state = chart && chart._b70IndicatorGenerationShadow;
+        if (!state || !Array.isArray(tickets)) return [];
+        var fallbackIndicators = [];
+        tickets.forEach(function(ticket) {
+            var current = state.ownerTickets.get(
+                _b70Stage2TicketKey(ticket.generationId, ticket.instanceId)
+            );
+            if (current !== ticket || ticket.status !== 'claimed' || ticket.fallbackUsed) {
+                state.metrics.fallbackDenied++;
+                return;
+            }
+            var failedKey = _b70Stage2TicketKey(ticket.generationId, ticket.instanceId);
+            if (state.fallbackGenerations.has(failedKey)) {
+                state.metrics.fallbackDenied++;
+                return;
+            }
+            state.fallbackGenerations.add(failedKey);
+            ticket.status = 'failed';
+            ticket.fallbackUsed = true;
+            state.ownerTickets.delete(failedKey);
+            var active = chart.indicators && chart.indicators.active;
+            var indicator = Array.isArray(active) && active.find(function(item) {
+                return item && String(item.id) === ticket.instanceId;
+            });
+            if (indicator) fallbackIndicators.push(indicator);
+        });
+        if (fallbackIndicators.length) state.metrics.workerFailures++;
+        return fallbackIndicators;
+    }
+
+    function _b70Stage2ReleaseSyncFailure(chart, tickets) {
+        var state = chart && chart._b70IndicatorGenerationShadow;
+        if (!state || !Array.isArray(tickets)) return;
+        tickets.forEach(function(ticket) {
+            if (state.ownerTickets.get(
+                _b70Stage2TicketKey(ticket.generationId, ticket.instanceId)
+            ) === ticket && ticket.status === 'claimed') {
+                ticket.status = 'failed';
+                state.ownerTickets.delete(
+                    _b70Stage2TicketKey(ticket.generationId, ticket.instanceId)
+                );
+            }
+        });
+    }
+
+    function _b70Stage2TicketIds(tickets) {
+        var ids = {};
+        (tickets || []).forEach(function(ticket) { ids[ticket.instanceId] = true; });
+        return ids;
+    }
+
+    function _b70Stage2SnapshotResults(chart, tickets) {
+        var data = chart && chart.indicators && chart.indicators.data;
+        if (!data || !Array.isArray(tickets)) return null;
+        return tickets.map(function(ticket) {
+            return {
+                id: ticket.instanceId,
+                had: Object.prototype.hasOwnProperty.call(data, ticket.instanceId),
+                value: data[ticket.instanceId]
+            };
+        });
+    }
+
+    function _b70Stage2RestoreResults(chart, snapshot) {
+        var data = chart && chart.indicators && chart.indicators.data;
+        if (!data || !Array.isArray(snapshot)) return;
+        snapshot.forEach(function(entry) {
+            if (entry.had) data[entry.id] = entry.value;
+            else delete data[entry.id];
+        });
+    }
+
+    function _b70Stage3CommittedForCurrentGeneration(chart, key) {
+        var state = chart && chart._b70IndicatorGenerationShadow;
+        var active = chart && chart.indicators && chart.indicators.active;
+        if (!state || !key || !key.id || !Array.isArray(active) || !active.length) {
+            return false;
+        }
+        if (!state.currentEnvelope
+            || state.currentEnvelope.metadata.generationId !== key.id
+            || chart.indicators.data !== state.currentEnvelope.data) return false;
+        if (Array.isArray(state.currentEnvelope.metadata.bridgeInstanceIds)) {
+            return active.every(function(indicator) {
+                return !indicator || indicator.id == null
+                    || state.currentEnvelope.metadata.bridgeInstanceIds.indexOf(
+                        String(indicator.id)
+                    ) >= 0;
+            });
+        }
+        return active.every(function(indicator) {
+            if (!indicator || indicator.id == null) return true;
+            var ticket = state.ownerTickets.get(
+                _b70Stage2TicketKey(key.id, String(indicator.id))
+            );
+            return !!ticket && ticket.status === 'committed';
+        });
+    }
+
+    function _b70Stage3RunDeferredOwner(chart, state, generationId) {
+        var tx = state && state.renderTransaction;
+        if (!tx || tx.disposed || chart._b70IndicatorGenerationShadow !== state) return;
+        tx.deferredScheduled = false;
+        if (tx.depth > 0 || tx.deferredGenerationId !== generationId) return;
+        var key = _b70IndicatorGenerationKey(chart);
+        if (!key || key.id !== generationId
+            || _b70Stage3CommittedForCurrentGeneration(chart, key)) {
+            tx.deferredGenerationId = null;
+            return;
+        }
+        tx.deferredGenerationId = null;
+        state.metrics.paintDeferredRequests++;
+        _b70ShadowRecordRequest(chart, 'paint-missing-generation');
+        if (typeof chart._runIndicatorRecalc === 'function') {
+            try { chart._runIndicatorRecalc({ force: false }); } catch (_) {}
+        } else if (typeof chart.scheduleIndicatorRecalc === 'function') {
+            try {
+                chart.scheduleIndicatorRecalc(
+                    'paint-missing-generation', { immediate: true, force: false }
+                );
+            } catch (_) {}
+        }
+    }
+
+    function _b70Stage3ScheduleDeferredOwner(chart, state) {
+        var tx = state && state.renderTransaction;
+        if (!tx || tx.disposed || tx.depth > 0 || tx.deferredScheduled
+            || !tx.deferredGenerationId) return;
+        tx.deferredScheduled = true;
+        var generationId = tx.deferredGenerationId;
+        var run = function() {
+            _b70Stage3RunDeferredOwner(chart, state, generationId);
+        };
+        if (typeof queueMicrotask === 'function') queueMicrotask(run);
+        else Promise.resolve().then(run);
+    }
+
+    function _b70Stage3ConsumePaint(chart) {
+        var state = _b70ShadowState(chart);
+        var key = _b70IndicatorGenerationKey(chart);
+        if (!state || !key || !key.id) return false;
+        if (_b70Stage3CommittedForCurrentGeneration(chart, key)) {
+            state.metrics.paintConsumerHits++;
+            if (state.retiredEnvelope) {
+                state.retiredEnvelope = null;
+                state.metrics.envelopeReleases++;
+                _b70Stage4UpdateRetainedBytes(
+                    state, _b70Stage4PrivateState(chart), 0
+                );
+            }
+            return true;
+        }
+        state.metrics.paintMissingGenerations++;
+        state.renderTransaction.deferredGenerationId = key.id;
+        _b70Stage3ScheduleDeferredOwner(chart, state);
+        return false;
+    }
+
+    function _b70Stage3RejectInRenderWork(chart) {
+        var state = chart && chart._b70IndicatorGenerationShadow;
+        var tx = state && state.renderTransaction;
+        if (!tx || tx.depth <= 0) return false;
+        state.metrics.paintCalculations++;
+        var key = _b70IndicatorGenerationKey(chart);
+        if (key && key.id) tx.deferredGenerationId = key.id;
+        return true;
+    }
+
+    function _b70Stage3BeginRender(chart, owner) {
+        var state = _b70ShadowState(chart);
+        if (!state || state.renderTransaction.disposed) return null;
+        var tx = state.renderTransaction;
+        if (tx.depth === 0) {
+            var next = _b70SafeNext(tx.ownerSeq);
+            if (next == null) {
+                state.exhausted = true;
+                state.metrics.ownerFailClosed++;
+                return null;
+            }
+            tx.ownerSeq = next;
+            tx.owner = { id: next, source: String(owner || 'render') };
+            state.metrics.paintTransactions++;
+        } else {
+            state.metrics.paintReentries++;
+        }
+        tx.depth++;
+        if (tx.depth > state.metrics.maxPaintDepth) {
+            state.metrics.maxPaintDepth = tx.depth;
+        }
+        return { state: state, ownerId: tx.owner && tx.owner.id };
+    }
+
+    function _b70Stage3EndRender(chart, token, error) {
+        if (!token || !token.state) return;
+        var state = token.state;
+        var tx = state.renderTransaction;
+        if (error) state.metrics.paintExceptions++;
+        if (tx.depth > 0) tx.depth--;
+        if (tx.depth === 0) {
+            tx.owner = null;
+            _b70Stage3ScheduleDeferredOwner(chart, state);
+        }
+    }
+
+    function _b70Stage4Now() {
+        try {
+            return typeof performance !== 'undefined' && performance.now
+                ? performance.now() : Date.now();
+        } catch (_) { return Date.now(); }
+    }
+
+    function _b70Stage4CloneValue(value, seen) {
+        if (value == null || typeof value === 'string' || typeof value === 'boolean') {
+            return { ok: true, value: value, bytes: typeof value === 'string' ? value.length * 2 : 8 };
+        }
+        if (typeof value === 'number') {
+            return { ok: Number.isFinite(value), value: value, bytes: 8 };
+        }
+        if (typeof value !== 'object' || seen.has(value)) {
+            return { ok: false, value: null, bytes: 0 };
+        }
+        seen.add(value);
+        var out;
+        var bytes = 0;
+        if (Array.isArray(value)) {
+            out = new Array(value.length);
+            for (var i = 0; i < value.length; i++) {
+                var item = _b70Stage4CloneValue(value[i], seen);
+                if (!item.ok) { seen.delete(value); return item; }
+                out[i] = item.value;
+                bytes += item.bytes;
+            }
+        } else if (typeof ArrayBuffer !== 'undefined'
+            && ArrayBuffer.isView && ArrayBuffer.isView(value)
+            && typeof value.slice === 'function') {
+            out = value.slice();
+            bytes = value.byteLength || 0;
+        } else {
+            var proto = Object.getPrototypeOf(value);
+            if (proto !== Object.prototype && proto !== null
+                && Object.prototype.toString.call(value) !== '[object Object]') {
+                seen.delete(value);
+                return { ok: false, value: null, bytes: 0 };
+            }
+            out = {};
+            var keys = Object.keys(value);
+            for (var k = 0; k < keys.length; k++) {
+                var key = keys[k];
+                var child = _b70Stage4CloneValue(value[key], seen);
+                if (!child.ok) { seen.delete(value); return child; }
+                out[key] = child.value;
+                bytes += key.length * 2 + child.bytes;
+            }
+        }
+        seen.delete(value);
+        return { ok: true, value: out, bytes: bytes };
+    }
+
+    function _b70Stage4ValidateValue(value, barCount, seen) {
+        if (value == null || typeof value === 'string' || typeof value === 'boolean') return true;
+        if (typeof value === 'number') return Number.isFinite(value);
+        if (typeof value !== 'object' || seen.has(value)) return false;
+        seen.add(value);
+        if (Array.isArray(value)
+            || (typeof ArrayBuffer !== 'undefined'
+                && ArrayBuffer.isView && ArrayBuffer.isView(value))) {
+            var numericSeries = true;
+            for (var i = 0; i < value.length; i++) {
+                if (Array.isArray(value) && !Object.prototype.hasOwnProperty.call(value, i)) {
+                    seen.delete(value);
+                    return false;
+                }
+                if (value[i] != null && typeof value[i] !== 'number') numericSeries = false;
+                if (!_b70Stage4ValidateValue(value[i], barCount, seen)) {
+                    seen.delete(value);
+                    return false;
+                }
+            }
+            if (numericSeries && barCount > 0 && value.length > barCount) {
+                seen.delete(value);
+                return false;
+            }
+        } else {
+            var proto = Object.getPrototypeOf(value);
+            if (proto !== Object.prototype && proto !== null
+                && Object.prototype.toString.call(value) !== '[object Object]') {
+                seen.delete(value);
+                return false;
+            }
+            var keys = Object.keys(value);
+            for (var k = 0; k < keys.length; k++) {
+                var key = keys[k];
+                var item = value[key];
+                if ((key === 'index' || key === 'startIndex' || key === 'endIndex')
+                    && (!Number.isSafeInteger(item) || item < 0
+                        || (barCount > 0 && item >= barCount))) {
+                    seen.delete(value);
+                    return false;
+                }
+                if (!_b70Stage4ValidateValue(item, barCount, seen)) {
+                    seen.delete(value);
+                    return false;
+                }
+            }
+        }
+        seen.delete(value);
+        return true;
+    }
+
+    var _b70Stage4SeriesSchemas = {
+        bb: ['middle', 'upper', 'lower'],
+        bbands: ['middle', 'upper', 'lower'],
+        bollinger: ['middle', 'upper', 'lower'],
+        macd: ['macd', 'signal', 'histogram'],
+        macd2: ['macd', 'signal', 'histogram'],
+        stoch: ['k', 'd'],
+        stochastic: ['k', 'd'],
+        stochrsi: ['k', 'd'],
+        adx: ['plusDI', 'minusDI', 'adx'],
+        adr: ['upper', 'lower', 'adr'],
+        donchian: ['upper', 'lower', 'middle'],
+        keltner: ['upper', 'middle', 'lower'],
+        aroon: ['up', 'down'],
+        vortex: ['viPlus', 'viMinus'],
+        envelope: ['upper', 'lower', 'middle'],
+        smaenvelope: ['upper', 'lower', 'middle'],
+        supertrend: ['line', 'direction', 'upper', 'lower', 'body'],
+        rvi: ['rvi', 'signal'],
+        elderray: ['bull', 'bear'],
+        vwap: ['vwap']
+    };
+
+    var _b70Stage4SingleSeriesTypes = new Set([
+        'wma', 'dema', 'tema', 'hma', 'atr',
+        'cci', 'roc', 'mom', 'momentum', 'obv', 'willr', 'mfi', 'cmf',
+        'trix', 'psar', 'stddev', 'ao', 'uo', 'dpo', 'massindex', 'coppock'
+    ]);
+
+    function _b70Stage4ValidateIndicatorResult(indicator, value, barCount) {
+        var type = String(indicator && indicator.type || '').toLowerCase();
+        if (type === 'sma' || type === 'ema') {
+            if (!value || typeof value !== 'object' || Array.isArray(value)
+                || !Array.isArray(value.line)) return false;
+            for (var smoothedKey of ['line', 'ma', 'bbUpper', 'bbLower']) {
+                if (value[smoothedKey] != null
+                    && (!Array.isArray(value[smoothedKey])
+                        || value[smoothedKey].length !== value.line.length)) return false;
+            }
+            return value.line.length <= barCount
+                && _b70Stage4ValidateValue(value, barCount, new Set());
+        }
+        if (type === 'rsi') {
+            if (!value || typeof value !== 'object' || Array.isArray(value)
+                || !Array.isArray(value.rsi)) return false;
+            for (var rsiKey of ['ma', 'bbUpper', 'bbLower']) {
+                if (value[rsiKey] != null
+                    && (!Array.isArray(value[rsiKey])
+                        || value[rsiKey].length !== value.rsi.length)) return false;
+            }
+            return value.rsi.length <= barCount
+                && _b70Stage4ValidateValue(value, barCount, new Set());
+        }
+        var required = _b70Stage4SeriesSchemas[type];
+        if (required) {
+            if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+            var length = null;
+            for (var i = 0; i < required.length; i++) {
+                var series = value[required[i]];
+                if (!Array.isArray(series)
+                    && !(typeof ArrayBuffer !== 'undefined'
+                        && ArrayBuffer.isView && ArrayBuffer.isView(series))) return false;
+                if (length == null) length = series.length;
+                if (series.length !== length || (barCount > 0 && series.length > barCount)
+                    || !_b70Stage4ValidateValue(series, barCount, new Set())) return false;
+            }
+            return _b70Stage4ValidateValue(value, barCount, new Set());
+        }
+        if (_b70Stage4SingleSeriesTypes.has(type)) {
+            if (!Array.isArray(value)
+                && !(typeof ArrayBuffer !== 'undefined'
+                    && ArrayBuffer.isView && ArrayBuffer.isView(value))) return false;
+            return value.length <= barCount
+                && _b70Stage4ValidateValue(value, barCount, new Set());
+        }
+        // Drawing-object families have heterogeneous records, but still require
+        // an object root and recursively finite, dense, acyclic content.
+        return !!value && typeof value === 'object'
+            && _b70Stage4ValidateValue(value, barCount, new Set());
+    }
+
+    function _b70Stage4DeepFreeze(value, seen) {
+        if (!value || typeof value !== 'object' || seen.has(value)) return value;
+        seen.add(value);
+        Object.keys(value).forEach(function(key) {
+            _b70Stage4DeepFreeze(value[key], seen);
+        });
+        try { Object.freeze(value); } catch (_) {}
+        return value;
+    }
+
+    function _b70Stage4BeginBuild(chart, tickets) {
+        var state = chart && chart._b70IndicatorGenerationShadow;
+        var key = _b70IndicatorGenerationKey(chart);
+        if (!state || !key || !key.id || !Array.isArray(tickets) || !tickets.length) return null;
+        var privateState = _b70Stage4PrivateState(chart);
+        if (privateState.disposed || privateState.active) {
+            state.metrics.envelopeRejects++;
+            return null;
+        }
+        var started = _b70Stage4Now();
+        var base = privateState.pending && privateState.pending.generationId === key.id
+            ? privateState.pending.data
+            : state.currentEnvelope
+                && chart.indicators.data === state.currentEnvelope.data
+                ? state.currentEnvelope.data
+                : (chart.indicators && chart.indicators.data) || {};
+        var cloned = _b70Stage4CloneValue(base, new Set());
+        if (!cloned.ok) {
+            state.metrics.envelopeAliasRejects++;
+            return null;
+        }
+        state.metrics.envelopeBuilds++;
+        state.metrics.envelopeCopyBytes += cloned.bytes;
+        state.metrics.envelopeCopyTimeMs += _b70Stage4Now() - started;
+        var guard = { invalidated: false, generationId: key.id };
+        var transaction = {
+            state: state,
+            privateState: privateState,
+            guard: guard,
+            key: key,
+            tickets: tickets,
+            publicData: chart.indicators.data,
+            stagingData: cloned.value,
+            copiedBytes: cloned.bytes,
+            completedIds: privateState.pending
+                && privateState.pending.generationId === key.id
+                ? new Set(privateState.pending.completedIds) : new Set(),
+            partial: false
+        };
+        privateState.active = guard;
+        _b70Stage4UpdateRetainedBytes(state, privateState, cloned.bytes);
+        return transaction;
+    }
+
+    function _b70Stage4AbortBuild(chart, transaction) {
+        if (!transaction) return;
+        if (transaction.privateState.active === transaction.guard) {
+            transaction.privateState.active = null;
+        }
+        _b70Stage4UpdateRetainedBytes(
+            transaction.state, transaction.privateState, 0
+        );
+        transaction.state.metrics.envelopeRejects++;
+    }
+
+    function _b70Stage4UpdateRetainedBytes(state, privateState, activeBytes) {
+        var retained = activeBytes || 0;
+        if (privateState && privateState.pending) retained += privateState.pending.bytes || 0;
+        if (state.currentEnvelope) retained += state.currentEnvelope.metadata.byteLength || 0;
+        if (state.retiredEnvelope) retained += state.retiredEnvelope.metadata.byteLength || 0;
+        state.metrics.envelopeRetainedBytes = retained;
+        if (retained > state.metrics.envelopePeakRetainedBytes) {
+            state.metrics.envelopePeakRetainedBytes = retained;
+        }
+    }
+
+    function _b70Stage4ApplyWorkerResults(
+        chart, transaction, results, mySeq, calcToken, tailMeta
+    ) {
+        var facade = _b70Stage4BuildFacade(chart, transaction);
+        return Chart.prototype._applyIndicatorWorkerResults.call(
+            facade, results, mySeq, calcToken, tailMeta
+        );
+    }
+
+    function _b70Stage4BuildFacade(chart, transaction) {
+        var facade = Object.create(chart);
+        facade._b70PrivateEnvelopeBuild = true;
+        facade.indicators = {
+            active: chart.indicators.active,
+            data: transaction.stagingData
+        };
+        facade.bumpIndicatorRenderVersion = function() {};
+        facade.scheduleRender = function() {};
+        facade.updateOHLCIndicators = function() {};
+        facade._markIndicatorRecalcComplete = function() {};
+        facade._clearIndicatorCalculatingFlags = function() {};
+        return facade;
+    }
+
+    function _b70Stage4CommitBuild(chart, transaction) {
+        if (!transaction || !chart || !chart.indicators) return false;
+        var state = transaction.state;
+        var privateState = transaction.privateState;
+        var key = _b70IndicatorGenerationKey(chart);
+        var validOwner = !transaction.guard.invalidated
+            && privateState.active === transaction.guard
+            && chart.indicators.data === transaction.publicData
+            && key && key.id === transaction.key.id
+            && transaction.tickets.every(function(ticket) {
+                return state.ownerTickets.get(
+                    _b70Stage2TicketKey(ticket.generationId, ticket.instanceId)
+                ) === ticket && ticket.status === 'claimed';
+            });
+        transaction.tickets.forEach(function(ticket) {
+            transaction.completedIds.add(ticket.instanceId);
+        });
+        var active = chart.indicators.active || [];
+        var complete = active.every(function(indicator) {
+            return !indicator || indicator.id == null
+                || transaction.completedIds.has(String(indicator.id));
+        });
+        var validShape = validOwner && transaction.tickets.every(function(ticket) {
+            var indicator = active.find(function(item) {
+                return item && String(item.id) === ticket.instanceId;
+            });
+            return Object.prototype.hasOwnProperty.call(
+                transaction.stagingData, ticket.instanceId
+            ) && _b70Stage4ValidateIndicatorResult(
+                indicator,
+                transaction.stagingData[ticket.instanceId],
+                transaction.key.barCount
+            );
+        });
+        if (privateState.active === transaction.guard) privateState.active = null;
+        if (!validShape) {
+            state.metrics.envelopeRejects++;
+            _b70Stage4UpdateRetainedBytes(state, privateState, 0);
+            return false;
+        }
+        var sealStarted = _b70Stage4Now();
+        var sealed = _b70Stage4CloneValue(transaction.stagingData, new Set());
+        if (!sealed.ok) {
+            state.metrics.envelopeAliasRejects++;
+            state.metrics.envelopeRejects++;
+            _b70Stage4UpdateRetainedBytes(state, privateState, 0);
+            return false;
+        }
+        state.metrics.envelopeCopyBytes += sealed.bytes;
+        state.metrics.envelopeCopyTimeMs += _b70Stage4Now() - sealStarted;
+        // Sealing is a second private copy. Until this function returns, both
+        // stagingData and sealed.value are retained alongside pending/current/
+        // retired envelopes; include that real transient peak.
+        _b70Stage4UpdateRetainedBytes(
+            state, privateState, transaction.copiedBytes + sealed.bytes
+        );
+        if (!complete) {
+            privateState.pending = {
+                generationId: transaction.key.id,
+                data: sealed.value,
+                completedIds: Array.from(transaction.completedIds),
+                bytes: sealed.bytes
+            };
+            transaction.partial = true;
+            _b70Stage4UpdateRetainedBytes(state, privateState, 0);
+            return false;
+        }
+        var metadata = Object.freeze({
+            schemaVersion: 1,
+            generationId: transaction.key.id,
+            generationKey: Object.freeze(Object.assign({}, transaction.key)),
+            instanceIds: Object.freeze(active.filter(Boolean).map(function(indicator) {
+                return String(indicator.id);
+            })),
+            byteLength: sealed.bytes,
+            committedAt: Date.now()
+        });
+        if (typeof window !== 'undefined'
+            && window.__TALARIA_B70_DEV_FREEZE_ENVELOPES === true) {
+            _b70Stage4DeepFreeze(sealed.value, new Set());
+        }
+        var envelope = Object.freeze({ metadata: metadata, data: sealed.value });
+        if (state.retiredEnvelope) state.metrics.envelopeReleases++;
+        state.retiredEnvelope = state.currentEnvelope;
+        state.currentEnvelope = envelope;
+        privateState.pending = null;
+        // The only public write in the transaction: atomic envelope data swap.
+        chart.indicators.data = envelope.data;
+        state.metrics.envelopeCommits++;
+        _b70Stage4UpdateRetainedBytes(state, privateState, 0);
+        return true;
+    }
+
+    function _b70ShadowObserveRender(chart) {
+        var state = _b70ShadowState(chart);
+        if (!state) return;
+        var before = state.lastKey;
+        var after = _b70IndicatorGenerationKey(chart);
+        if (!after || !after.id) return;
+        if (!before || before.id === after.id) state.metrics.renderStable++;
+        else state.metrics.renderUnexpectedChanges++;
+        state.lastKey = after;
+    }
+
+    function _b70ShadowCompareLegacyToken(chart, token) {
+        var state = _b70ShadowState(chart);
+        if (!state || !token) return;
+        var key = _b70IndicatorGenerationKey(chart);
+        if (!key) return;
+        state.metrics.legacyTokenComparisons++;
+        var agree = token.dataVersion === key.dataVersion
+            && token.timeframe === key.timeframe
+            && token.barCount === key.barCount
+            && token.dataFp === key.tailBarFingerprint
+            && token.paramsHash === (chart && typeof chart._indicatorParamsHash === 'function'
+                ? chart._indicatorParamsHash() : '');
+        if (agree) state.metrics.legacyTokenAgreement++;
+        else state.metrics.legacyTokenDisagreement++;
+    }
+
     function _m19iB62SafeNonnegativeInteger(value) {
         if (typeof value === 'number' && Number.isSafeInteger(value) && value >= 0) return value;
         return null;
@@ -8407,7 +10229,7 @@
         var b62On = chart && _m19iExactTailPaintEnabled();
         if (b62On) _m19iB62ObserveData(chart);
         var datasetGen = b62On ? _m19iB62GenOf(chart) : null;
-        return {
+        var token = {
             dataVersion: chart && chart.dataVersion != null ? chart.dataVersion : 0,
             timeframe: String((chart && chart.currentTimeframe) || ''),
             dataFp: _indicatorDataFingerprint(chart),
@@ -8420,6 +10242,11 @@
             windowFp: b62On ? _m19iB62WindowFp(data, 0, len) : null,
             failClosed: b62On && datasetGen >= Number.MAX_SAFE_INTEGER
         };
+        if (typeof window !== 'undefined'
+            && window.__TALARIA_ENABLE_B70_SINGLE_INDICATOR_OWNER_V1 === true) {
+            _b70ShadowCompareLegacyToken(chart, token);
+        }
+        return token;
     }
 
     function _indicatorAsyncTokenMatches(chart, token) {
@@ -8443,6 +10270,10 @@
      * starts. Workers may finish, but their sequence/token can no longer commit.
      */
     Chart.prototype._invalidateIndicatorAsyncWork = function() {
+        if (typeof window !== 'undefined'
+            && window.__TALARIA_ENABLE_B70_SINGLE_INDICATOR_OWNER_V1 === true) {
+            _b70ShadowInvalidate(this, arguments[0] || 'dataset');
+        }
         if (this._indicatorWorkerSeq == null) this._indicatorWorkerSeq = 0;
         this._indicatorWorkerSeq++;
         // B62-1: explicit monotonic dataset/master generation — every path
@@ -9455,6 +11286,10 @@
     Chart.prototype.scheduleReplayIndicatorRecalc = function(isPlaying) {
         if (!this.indicators || !this.indicators.active || !this.indicators.active.length) return;
         if (!Array.isArray(this.data) || !this.data.length) return;
+        if (typeof window !== 'undefined'
+            && window.__TALARIA_ENABLE_B70_SINGLE_INDICATOR_OWNER_V1 === true) {
+            _b70ShadowRecordRequest(this, 'scheduleReplayIndicatorRecalc');
+        }
 
         const replay = this.replaySystem;
         const passivePlay = this._multichartPassivePlayActive === true;
@@ -9647,7 +11482,7 @@
 
     Chart.prototype._applyIndicatorWorkerResults = function(results, mySeq, calcToken, tailMeta) {
         const chart = this;
-        if (chart._indicatorWorkerSeq !== mySeq) return;
+        if (chart._indicatorWorkerSeq !== mySeq) return false;
 
         // M19-I(a): a tail commit uses a relaxed guard — the strict data token
         // (dataVersion/last-bar fingerprint) churns every replay advance, but a
@@ -9658,7 +11493,7 @@
             if (!Array.isArray(chart.data)
                 || chart.data.length !== tailMeta.totalLength
                 || String(chart.currentTimeframe || '') !== tailMeta.timeframe) {
-                return;
+                return false;
             }
             // B62-1: same length + timeframe is NOT enough. A tick-mode forming
             // close (or volume) mutates the last bar IN PLACE, a pair/dataset
@@ -9684,11 +11519,11 @@
                         chart._m19iCoalesceFullAsync = true;
                     }
                     chart._indicatorWorkerCoalesce = true;
-                    return;
+                    return false;
                 }
             }
         } else if (!_indicatorAsyncTokenMatches(chart, calcToken)) {
-            return;
+            return false;
         }
         if (!chart.indicators) chart.indicators = {};
         if (!chart.indicators.data) chart.indicators.data = {};
@@ -9734,6 +11569,7 @@
                 // schedule one full worker pass to rebuild clean baselines.
                 chart._m19iCoalesceFullAsync = true;
                 chart._indicatorWorkerCoalesce = true;
+                if (_b70ShadowEnabled()) return false;
             } else if (tailMeta.markComplete
                 && typeof chart._markIndicatorRecalcComplete === 'function') {
                 chart._markIndicatorRecalcComplete();
@@ -9756,8 +11592,10 @@
                     chart._m19iB62PendingFreshFp = null;
                 } catch (_) {}
             }
-            if (typeof chart.scheduleRender === 'function') chart.scheduleRender();
-            return;
+            if (typeof chart.scheduleRender === 'function') {
+                if (!_b70ShadowEnabled()) chart.scheduleRender();
+            }
+            return true;
         }
 
         Object.assign(chart.indicators.data, results);
@@ -9805,7 +11643,10 @@
                 chart._m19iB62PendingFreshFp = null;
             } catch (_) {}
         }
-        if (typeof chart.scheduleRender === 'function') chart.scheduleRender();
+        if (typeof chart.scheduleRender === 'function') {
+            if (!_b70ShadowEnabled()) chart.scheduleRender();
+        }
+        return true;
     };
 
     Chart.prototype._commitPendingIndicatorResults = function() {
@@ -9899,6 +11740,10 @@
      * re-entrancy guarded by _m19iExactTailPaintBusy.
      */
     Chart.prototype._m19iExactTailPaint = function() {
+        if (_b70ShadowEnabled()) {
+            _b70Stage3ConsumePaint(this);
+            return false;
+        }
         if (!_m19iExactTailPaintEnabled()) return false;
         if (this._m19iExactTailPaintBusy) return false;
         if (!this.indicators || !Array.isArray(this.indicators.active)
@@ -9971,6 +11816,10 @@
                 this._m19iExactTailFailRv = rv;
                 return false;
             }
+            if (typeof window !== 'undefined'
+                && window.__TALARIA_ENABLE_B70_SINGLE_INDICATOR_OWNER_V1 === true) {
+                _b70ShadowRecordCalculation(this, '_m19iExactTailPaint', 'paint');
+            }
             var perf = global.IndicatorPerf;
             var totalLen = this.data.length;
             var lookback = perf && typeof perf.estimateTailLookback === 'function'
@@ -10022,9 +11871,20 @@
     };
 
     Chart.prototype.drawIndicatorsOptimized = function() {
+        var b70RenderToken = _b70ShadowEnabled()
+            ? _b70Stage3BeginRender(this, 'drawIndicatorsOptimized') : null;
+        var b70RenderError = null;
+        try {
         // B62-2: exact forming tail BEFORE the layer cache decision — covers
         // both the cached-blit path and the interaction fallback below.
-        try { this._m19iExactTailPaint(); } catch (_) { /* paint must not throw */ }
+        if (_b70ShadowEnabled()) {
+            // A prior complete generation may remain in indicators.data/cache,
+            // but it is never eligible for this frame. Ownership is requested
+            // after the render transaction unwinds.
+            if (!_b70Stage3ConsumePaint(this)) return;
+        } else {
+            try { this._m19iExactTailPaint(); } catch (_) { /* paint must not throw */ }
+        }
         const interaction = typeof this._isInteractionFastRender === 'function' && this._isInteractionFastRender();
         const hasHiddenOverlay = typeof this._hasHiddenOverlayIndicator === 'function' && this._hasHiddenOverlayIndicator();
         if (interaction || hasHiddenOverlay || typeof this.drawIndicators !== 'function') {
@@ -10077,6 +11937,12 @@
         }
         blitLayer(prevCtx);
         this._indLayerCacheKey = key;
+        } catch (b70CaughtRenderError) {
+            b70RenderError = b70CaughtRenderError;
+            throw b70CaughtRenderError;
+        } finally {
+            _b70Stage3EndRender(this, b70RenderToken, b70RenderError);
+        }
     };
 
     /**
@@ -10266,7 +12132,18 @@
     Chart.prototype.recalculateIndicatorsIncremental = function(fromBarCount) {
         if (!this.indicators || !this.indicators.active || !this.indicators.active.length) return;
         if (!Array.isArray(this.data) || !this.data.length) return;
+        if (_b70ShadowEnabled() && _b70Stage3RejectInRenderWork(this)) return;
+        if (_b70ShadowEnabled()) {
+            // Stage 4 routes the generation through the common COW envelope
+            // producer. It may split SYNC/WORKER ownership, but publication is
+            // one complete requested-set pointer transaction.
+            return this.recalculateIndicators();
+        }
         if (!_m19iTailSendEnabled()) {
+            if (typeof window !== 'undefined'
+                && window.__TALARIA_ENABLE_B70_SINGLE_INDICATOR_OWNER_V1 === true) {
+                _b70ShadowRecordCalculation(this, 'recalculateIndicatorsIncremental', 'worker');
+            }
             return this._recalculateIndicatorsIncrementalLegacy(fromBarCount);
         }
 
@@ -10284,6 +12161,8 @@
             chart._indicatorWorkerBusy = true;
             chart._indicatorWorkerCoalesce = false;
         }
+        const b70OwnerOn = typeof window !== 'undefined'
+            && window.__TALARIA_ENABLE_B70_SINGLE_INDICATOR_OWNER_V1 === true;
 
         function finishIncrementalPass() {
             chart._indicatorWorkerBusy = false;
@@ -10384,6 +12263,9 @@
 
         // 3) Worker-eligible tail map.
         const indicators = {};
+        const b70SyncBridgeIndicators = {};
+        const b70SyncBridgeCandidates = [];
+        const b70WorkerCandidates = [];
         var needsFullAsync = false;
         const skipTypes = _m19iWorkerSkipTypes();
         chart.indicators.active.forEach(function(ind) {
@@ -10399,6 +12281,7 @@
             if (!_m19iIndicatorTailSafe(ind)) {
                 // Cumulative/whole-history types must take a full worker pass.
                 needsFullAsync = true;
+                if (b70OwnerOn) b70WorkerCandidates.push(ind);
                 return;
             }
             if (_m19iExactTailPaintEnabled()
@@ -10417,8 +12300,26 @@
                 var mp = ind.params && ind.params.period != null ? Math.max(1, Number(ind.params.period) | 0) : 20;
                 ind.name = indType.toUpperCase() + '(' + mp + ')';
             }
-            indicators[ind.id] = { type: indType, params: ind.params || {} };
+            if (b70OwnerOn && _b70Stage2InstanceOwner(ind) === 'sync') {
+                b70SyncBridgeIndicators[ind.id] = { type: indType, params: ind.params || {} };
+                b70SyncBridgeCandidates.push(ind);
+            } else {
+                indicators[ind.id] = { type: indType, params: ind.params || {} };
+                if (b70OwnerOn) b70WorkerCandidates.push(ind);
+            }
         });
+
+        var b70SyncTickets = b70OwnerOn
+            ? _b70Stage2Claim(
+                chart, 'sync', b70SyncBridgeCandidates,
+                'recalculateIndicatorsIncremental:bridge', false
+            ) : null;
+        if (b70OwnerOn) {
+            var b70SyncIds = _b70Stage2TicketIds(b70SyncTickets);
+            Object.keys(b70SyncBridgeIndicators).forEach(function(id) {
+                if (!b70SyncIds[String(id)]) delete b70SyncBridgeIndicators[id];
+            });
+        }
 
         // Legacy worker-skip types (I-c OFF) stay stale on this pass exactly
         // like b57; a later full recalc refreshes them.
@@ -10442,10 +12343,37 @@
                 });
                 ifStats.fullAsyncFallbacks++;
             }
-            if (Object.keys(indicators).length > 0) {
-                var bridgedAll = _m19ifApplyCoherentBridge(
-                    chart, indicators, tailStart, mergeFrom, totalLen
-                );
+            var coherentMap = b70OwnerOn ? b70SyncBridgeIndicators : indicators;
+            if (Object.keys(coherentMap).length > 0) {
+                if (b70OwnerOn) {
+                    _b70ShadowRecordCalculation(
+                        chart, 'recalculateIndicatorsIncremental:bridge', 'sync'
+                    );
+                }
+                var b70BridgeEnvelopeTx = b70SyncTickets
+                    ? _b70Stage4BeginBuild(chart, b70SyncTickets) : null;
+                var b70BridgeTarget = b70BridgeEnvelopeTx
+                    ? _b70Stage4BuildFacade(chart, b70BridgeEnvelopeTx) : chart;
+                var bridgedAll = !b70SyncTickets || b70BridgeEnvelopeTx
+                    ? _m19ifApplyCoherentBridge(
+                        b70BridgeTarget, coherentMap, tailStart, mergeFrom, totalLen
+                    ) : false;
+                if (b70SyncTickets) {
+                    var b70BridgePublished = bridgedAll
+                        && _b70Stage4CommitBuild(chart, b70BridgeEnvelopeTx);
+                    var b70BridgePartial = !b70BridgePublished
+                        && b70BridgeEnvelopeTx
+                        && b70BridgeEnvelopeTx.partial;
+                    if (!bridgedAll && b70BridgeEnvelopeTx) {
+                        _b70Stage4AbortBuild(chart, b70BridgeEnvelopeTx);
+                    }
+                    if (b70BridgePublished || b70BridgePartial) {
+                        _b70Stage2Commit(chart, b70SyncTickets);
+                        if (b70BridgePublished) chart.bumpIndicatorRenderVersion();
+                    } else {
+                        _b70Stage2ReleaseSyncFailure(chart, b70SyncTickets);
+                    }
+                }
                 publishFullAsyncFallback();
                 if (bridgedAll && coverageComplete
                     && typeof chart._markIndicatorRecalcComplete === 'function') {
@@ -10463,7 +12391,7 @@
                 if (bridgedAll && _m19iExactTailPaintEnabled()
                     && typeof chart._m19iExactTailPaintFp === 'function') {
                     var allSyncExact = chart.indicators.active.every(function(ind) {
-                        if (!ind || !ind.id || !indicators[ind.id]) return true;
+                        if (!ind || !ind.id || !coherentMap[ind.id]) return true;
                         return !!_m19iB62SyncFamily(ind);
                     });
                     if (allSyncExact) {
@@ -10498,7 +12426,21 @@
 
         if (!worker) {
             if (ownsWorkerPass) finishIncrementalPass();
-            try { chart.recalculateIndicators(); } catch (_) {}
+            if (b70OwnerOn && b70WorkerCandidates.length) {
+                var missingWorkerTickets = _b70Stage2Claim(
+                    chart, 'worker', b70WorkerCandidates,
+                    'recalculateIndicatorsIncremental:no-worker', false
+                );
+                var missingWorkerFallback = _b70Stage2ReleaseWorkerFailure(
+                    chart, missingWorkerTickets
+                );
+                if (missingWorkerFallback.length) {
+                    chart._b70Stage2FallbackIndicators = missingWorkerFallback;
+                    try { chart.recalculateIndicators(); } catch (_) {}
+                }
+            } else {
+                try { chart.recalculateIndicators(); } catch (_) {}
+            }
             return;
         }
 
@@ -10508,6 +12450,25 @@
             // scheduler via the coalesce flag, so the worker catches up without
             // this pass invalidating or duplicating it.
             return;
+        }
+
+        var b70WorkerTickets = b70OwnerOn
+            ? _b70Stage2Claim(
+                chart, 'worker', b70WorkerCandidates,
+                'recalculateIndicatorsIncremental:worker', false
+            ) : null;
+        if (b70OwnerOn) {
+            var b70WorkerIds = _b70Stage2TicketIds(b70WorkerTickets);
+            Object.keys(indicators).forEach(function(id) {
+                if (!b70WorkerIds[String(id)]) delete indicators[id];
+            });
+            if (!b70WorkerTickets.length || Object.keys(indicators).length === 0) {
+                finishIncrementalPass();
+                return;
+            }
+            _b70ShadowRecordCalculation(
+                chart, 'recalculateIndicatorsIncremental:worker', 'worker'
+            );
         }
 
         // 4) O(tail) pack of bars[tailStart..n) — ownership moves to the worker
@@ -10562,8 +12523,42 @@
                 finishIncrementalPass();
                 return;
             }
+            if (b70WorkerTickets
+                && !_b70Stage2AuthorizeWorkerApply(chart, b70WorkerTickets, results)) {
+                finishIncrementalPass();
+                return;
+            }
+            var b70TailEnvelopeTx = b70WorkerTickets
+                ? _b70Stage4BeginBuild(chart, b70WorkerTickets) : null;
+            if (b70WorkerTickets && !b70TailEnvelopeTx) {
+                finishIncrementalPass();
+                return;
+            }
             if (typeof chart._applyIndicatorWorkerResults === 'function') {
-                chart._applyIndicatorWorkerResults(results, mySeq, null, tailMeta);
+                var b70TailApplied = b70TailEnvelopeTx
+                    ? _b70Stage4ApplyWorkerResults(
+                        chart, b70TailEnvelopeTx, results, mySeq, null, tailMeta
+                    )
+                    : chart._applyIndicatorWorkerResults(results, mySeq, null, tailMeta);
+            }
+            if (b70WorkerTickets) {
+                var b70TailPublished = b70TailApplied !== false
+                    && _b70Stage4CommitBuild(chart, b70TailEnvelopeTx);
+                var b70TailPartial = !b70TailPublished
+                    && b70TailEnvelopeTx
+                    && b70TailEnvelopeTx.partial;
+                if (b70TailApplied === false && b70TailEnvelopeTx) {
+                    _b70Stage4AbortBuild(chart, b70TailEnvelopeTx);
+                }
+                if ((b70TailPublished || b70TailPartial)
+                    && _b70Stage2Commit(chart, b70WorkerTickets)
+                    && b70TailPublished) {
+                    chart.bumpIndicatorRenderVersion();
+                }
+                if (b70TailPublished && typeof chart.scheduleRender === 'function') {
+                    chart._b70IndicatorGenerationShadow.metrics.workerCommitRenderSchedules++;
+                    chart.scheduleRender();
+                }
             }
             finishIncrementalPass();
         }).catch(function() {
@@ -10727,8 +12722,16 @@
                 finishIncrementalPass();
                 return;
             }
-            try { chart.recalculateIndicatorsAsync(); } catch (_) {
-                try { chart.recalculateIndicators(); } catch (_2) {}
+            if (b70WorkerTickets) {
+                var fallback = _b70Stage2ReleaseWorkerFailure(chart, b70WorkerTickets);
+                if (fallback.length) {
+                    chart._b70Stage2FallbackIndicators = fallback;
+                    try { chart.recalculateIndicators(); } catch (_) {}
+                }
+            } else {
+                try { chart.recalculateIndicatorsAsync(); } catch (_) {
+                    try { chart.recalculateIndicators(); } catch (_2) {}
+                }
             }
             finishIncrementalPass();
         });
@@ -10753,8 +12756,96 @@
         if (!this.indicators || !this.indicators.active || this.indicators.active.length === 0) {
             return;
         }
+        var b70PrivateBuild = this._b70PrivateEnvelopeBuild === true;
+        if (!b70PrivateBuild
+            && _b70ShadowEnabled() && _b70Stage5DeferPanelCalculation(this)) return;
+        if (!b70PrivateBuild
+            && _b70ShadowEnabled() && _b70Stage3RejectInRenderWork(this)) return;
+        var onlyTypes = this._recalcOnlyTypes;
+        var skipTypes = this._recalcSkipTypes;
+        var b70Tickets = null;
+        var b70AllowedIds = b70PrivateBuild ? this._b70PrivateAllowedIds : null;
+        var b70DeferredWorker = false;
+        if (!b70PrivateBuild && typeof window !== 'undefined'
+            && window.__TALARIA_ENABLE_B70_SINGLE_INDICATOR_OWNER_V1 === true) {
+            var b70Fallback = this._b70Stage2FallbackIndicators;
+            var b70Candidates = Array.isArray(b70Fallback)
+                ? b70Fallback
+                : this.indicators.active.filter(function(indicator) {
+                    var type = String(indicator && indicator.type || '').toLowerCase();
+                    if (skipTypes && skipTypes.indexOf(type) >= 0) return false;
+                    if (onlyTypes && onlyTypes.indexOf(type) < 0) return false;
+                    return true;
+                });
+            b70Tickets = _b70Stage2Claim(
+                this, 'sync', b70Candidates,
+                Array.isArray(b70Fallback) ? 'worker-fallback' : 'recalculateIndicators',
+                Array.isArray(b70Fallback)
+            );
+            this._b70Stage2FallbackIndicators = null;
+            b70DeferredWorker = !Array.isArray(b70Fallback)
+                && b70Candidates.some(function(indicator) {
+                    return _b70Stage2InstanceOwner(indicator) === 'worker';
+                });
+            if (!b70Tickets.length) {
+                if (b70DeferredWorker && !this._indicatorWorkerBusy
+                    && typeof this.recalculateIndicatorsAsync === 'function') {
+                    this.recalculateIndicatorsAsync();
+                }
+                return;
+            }
+            b70AllowedIds = _b70Stage2TicketIds(b70Tickets);
+        }
+        if (!b70PrivateBuild && typeof window !== 'undefined'
+            && window.__TALARIA_ENABLE_B70_SINGLE_INDICATOR_OWNER_V1 === true) {
+            _b70ShadowRecordCalculation(this, 'recalculateIndicators', 'sync');
+        }
         if (!this.indicators.data || typeof this.indicators.data !== 'object') {
             this.indicators.data = {};
+        }
+        var b70EnvelopeTx = b70Tickets
+            ? _b70Stage4BeginBuild(this, b70Tickets) : null;
+        if (b70Tickets && !b70EnvelopeTx) {
+            _b70Stage2ReleaseSyncFailure(this, b70Tickets);
+            return;
+        }
+        if (b70EnvelopeTx) {
+            var b70Facade = Object.create(this);
+            b70Facade._b70PrivateEnvelopeBuild = true;
+            b70Facade._b70PrivateAllowedIds = b70AllowedIds;
+            b70Facade._recalcOnlyTypes = onlyTypes;
+            b70Facade._recalcSkipTypes = skipTypes;
+            b70Facade.indicators = {
+                active: this.indicators.active,
+                data: b70EnvelopeTx.stagingData
+            };
+            try {
+                Chart.prototype.recalculateIndicators.call(b70Facade);
+            } catch (b70FacadeError) {
+                _b70Stage4AbortBuild(this, b70EnvelopeTx);
+                _b70Stage2ReleaseSyncFailure(this, b70Tickets);
+                throw b70FacadeError;
+            }
+            var b70FacadePublished = _b70Stage4CommitBuild(this, b70EnvelopeTx);
+            if (b70FacadePublished || b70EnvelopeTx.partial) {
+                _b70Stage2Commit(this, b70Tickets);
+            } else {
+                _b70Stage2ReleaseSyncFailure(this, b70Tickets);
+                throw new Error('b70 indicator envelope validation failed');
+            }
+            if (b70FacadePublished
+                && typeof this.bumpIndicatorRenderVersion === 'function') {
+                this.bumpIndicatorRenderVersion();
+            }
+            if (b70FacadePublished
+                && typeof this.updateOHLCIndicators === 'function') {
+                this.updateOHLCIndicators();
+            }
+            if (b70DeferredWorker && !this._indicatorWorkerBusy
+                && typeof this.recalculateIndicatorsAsync === 'function') {
+                this.recalculateIndicatorsAsync();
+            }
+            return;
         }
 
         const replayPlaying = !!(this.replaySystem && this.replaySystem.isActive && this.replaySystem.isPlaying);
@@ -10762,11 +12853,13 @@
             this._setAllIndicatorsCalculating(true);
         }
 
-        var onlyTypes = this._recalcOnlyTypes;
-        var skipTypes = this._recalcSkipTypes;
-        
+        var b70SyncError = null;
+        var b70PriorResults = b70Tickets
+            ? _b70Stage2SnapshotResults(this, b70Tickets) : null;
+        try {
         this.indicators.active.forEach(function(indicator) {
             indicator.type = String(indicator.type || '').toLowerCase();
+            if (b70AllowedIds && !b70AllowedIds[String(indicator.id)]) return;
             if (skipTypes && skipTypes.indexOf(indicator.type) >= 0) return;
             if (onlyTypes && onlyTypes.indexOf(indicator.type) < 0) return;
             switch (indicator.type) {
@@ -11071,6 +13164,28 @@
                     break;
             }
         }, this);
+        } catch (b70CaughtSyncError) {
+            b70SyncError = b70CaughtSyncError;
+            if (b70EnvelopeTx) _b70Stage4AbortBuild(this, b70EnvelopeTx);
+            else _b70Stage2RestoreResults(this, b70PriorResults);
+            if (b70Tickets) _b70Stage2ReleaseSyncFailure(this, b70Tickets);
+        }
+        if (b70PrivateBuild) {
+            if (b70SyncError) throw b70SyncError;
+            return;
+        }
+        var b70EnvelopePublished = false;
+        if (b70Tickets && !b70SyncError) {
+            b70EnvelopePublished = _b70Stage4CommitBuild(this, b70EnvelopeTx);
+            var b70PartialValid = !b70EnvelopePublished
+                && b70EnvelopeTx.partial;
+            if (b70EnvelopePublished || b70PartialValid) {
+                _b70Stage2Commit(this, b70Tickets);
+            } else {
+                _b70Stage2ReleaseSyncFailure(this, b70Tickets);
+                b70SyncError = new Error('b70 indicator envelope validation failed');
+            }
+        }
         this._recalcOnlyTypes = null;
         if (typeof this._clearIndicatorCalculatingFlags === 'function') {
             this._clearIndicatorCalculatingFlags();
@@ -11082,12 +13197,18 @@
         if (!onlyTypes && !skipTypes && typeof this._markIndicatorRecalcComplete === 'function') {
             this._markIndicatorRecalcComplete();
         }
-        if (typeof this.bumpIndicatorRenderVersion === 'function') {
+        if ((!b70Tickets || b70EnvelopePublished)
+            && typeof this.bumpIndicatorRenderVersion === 'function') {
             this.bumpIndicatorRenderVersion();
         }
         if (typeof this.updateOHLCIndicators === 'function') {
             this.updateOHLCIndicators();
         }
+        if (b70DeferredWorker && !b70SyncError && !this._indicatorWorkerBusy
+            && typeof this.recalculateIndicatorsAsync === 'function') {
+            this.recalculateIndicatorsAsync();
+        }
+        if (b70SyncError) throw b70SyncError;
     };
     
     Chart.prototype.setupVolumeIndicatorLine = function(indicator) {
@@ -11299,6 +13420,10 @@
             if (typeof this.bumpIndicatorRenderVersion === 'function') {
                 this.bumpIndicatorRenderVersion();
             }
+            if (typeof window !== 'undefined'
+                && window.__TALARIA_ENABLE_B70_SINGLE_INDICATOR_OWNER_V1 === true) {
+                _b70ShadowInvalidate(this, 'indicator-remove');
+            }
             emitIndicatorsChanged(this, 'remove', indicator);
         }
     };
@@ -11341,6 +13466,10 @@
         this.persistIndicators({ force: true });
         if (typeof this.bumpIndicatorRenderVersion === 'function') {
             this.bumpIndicatorRenderVersion();
+        }
+        if (typeof window !== 'undefined'
+            && window.__TALARIA_ENABLE_B70_SINGLE_INDICATOR_OWNER_V1 === true) {
+            _b70ShadowInvalidate(this, 'indicator-clear');
         }
         emitIndicatorsChanged(this, 'clear', null);
         return true;

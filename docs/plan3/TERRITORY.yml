@@ -1,0 +1,309 @@
+# Talaria territory manifest — manager -> owned paths -> owned mechanism rows.
+#
+# OWNER: Director, sole owner. No manager may commit a change to this file; the
+# ownership preflight (scripts/territory-preflight.mjs) rejects any packet whose
+# authoring manager is not Director and whose touched-file list includes it.
+#
+# WHAT THIS ENFORCES, AND WHAT IT DOES NOT (Director ruling A16.2). The `Manager:`
+# commit trailer is SELF-DECLARED. The gate reads it; it does not authenticate it.
+# A commit claiming `Manager: Director` is therefore not proof of Director
+# authorship, and this file's governance is not cryptographically enforced.
+# Two real controls exist and are the ones to rely on:
+#   1. The manifest governing a packet is read from the packet's BASE commit, never
+#      its head, so a packet cannot widen its own territory in the same diff.
+#   2. Director commits land only on a `director/` branch (A14.4); `--manager` is a
+#      branch cross-check, not an identity proof.
+# Deliberate trailer forgery is out of band and is a trust boundary, not a CI
+# control. Stated plainly rather than implied away, per VER-01: a gate must not
+# claim a guarantee it cannot enforce.
+#
+# AUTHORITY: DIRECTOR-RULINGS-20260727.md Part A section A11 (three managers,
+# continuously parallel) and A11.2 (Manager C queue item 1).
+#
+# PROVENANCE DISCIPLINE. Every grant below carries a `provenance` field:
+#   ruling   - stated in DIRECTOR-RULINGS-20260727.md; quote in `authority`.
+#   inferred - derived by Manager C from a ruling but not stated in it.
+# `inferred` grants are operative (the gate is fail-closed and cannot wait) but
+# are open Director questions, listed in `open_rulings` at the foot of this file
+# and in docs/plan3/journal/MANAGER-C.md. Manager C may not promote an inferred
+# grant to `ruling`; only the Director may.
+
+schema: talaria.territory.v1
+version: 20260727-C-001
+owner: Director
+authored_by: Manager C
+authority: DIRECTOR-RULINGS-20260727.md#A11.2
+manifest_path: docs/plan3/TERRITORY.yml
+
+# Paths only the Director may touch. A packet from any manager that touches one
+# of these is RED regardless of any other grant.
+director_only:
+  - pattern: docs/plan3/TERRITORY.yml
+    reason: this manifest; a manager who can edit its own territory has no territory
+    provenance: ruling
+    authority: A11.2 - the Director is its sole owner and CI must reject any manager commit that touches it
+  - pattern: docs/plan3/DIRECTOR-RULINGS-20260727.md
+    reason: standing policy; managers may not author or relax policy
+    provenance: ruling
+    authority: DIRECTOR-RULINGS-20260727.md header - standing rules, not case-by-case
+  - pattern: docs/plan3/journal/DIRECTOR.md
+    reason: Director journal
+    provenance: inferred
+
+# Paths the Director may write, granted because standing policy, findings and the
+# journal grammar are Director-authored artifacts that no manager owns. Without
+# this grant the preflight is RED on the Director's own commits (ced58667c).
+# Manager C's exact-pattern grants win on specificity; the manager journals are
+# carved out below and are NOT covered by this grant.
+# AUTHORITY: A14.4.
+director_paths:
+  - pattern: docs/plan3/*.md
+    reason: standing policy, findings, PO-sweep results and intake documents
+    provenance: ruling
+    authority: A14.4
+    except:
+      - docs/plan3/BOARD-VIEW.md
+      - docs/plan3/PO-QUEUE.md
+      - docs/plan3/GATE-NAME-RESERVATIONS.md
+  - pattern: docs/plan3/journal/FORMAT.md
+    reason: journal grammar is normative and Director-ratified (DIR-003)
+    provenance: ruling
+    authority: A14.4
+
+# Append-only journals. A diff that modifies or removes an existing line in any
+# of these files fails the packet, and only the owning manager may append.
+journals:
+  - path: docs/plan3/journal/DIRECTOR.md
+    owner: Director
+  - path: docs/plan3/journal/MANAGER-A.md
+    owner: A
+  - path: docs/plan3/journal/MANAGER-B.md
+    owner: B
+  - path: docs/plan3/journal/MANAGER-C.md
+    owner: C
+
+# Artifact trees every manager writes into, because each manager's own gates emit
+# their own evidence. Collision risk is low (paths are packet-named) and blocking
+# them would stop all three managers from recording evidence.
+# PROVISIONAL - awaiting Director confirmation, see open_rulings SH-1.
+shared_paths:
+  - pattern: docs/plan3/evidence/**
+    reason: per-packet RED/GREEN evidence, packet-named, written by each manager's own gates
+    provenance: inferred
+  - pattern: docs/plan3/worker-reports/**
+    reason: per-worker reports, worker-named
+    provenance: inferred
+  - pattern: docs/plan3/probes/**
+    reason: per-probe diagnostics, probe-named
+    provenance: inferred
+
+managers:
+  - id: A
+    role: chart engine and product surface
+    deploy_surface: TEST-1
+    provenance: ruling
+    authority: A11.4 - A and B deploy to different surfaces (TEST-1 / TEST-2) while C deploys nowhere
+    owned_rows:
+      - M21-C3a-narrow
+      - M21-C3a-full
+      - M21-scheduler-consolidation
+      - M19-I
+      - M20
+      - M20-Q9
+      - M1
+      - M2
+      - M4
+      - M5
+      - A4c-loader
+    owned_paths:
+      - pattern: chart v 1.4/chart/chart.js
+        provenance: ruling
+        authority: A11.3 - if any of that lives in chart.js rather than order-manager.js, B collides with A immediately
+      - pattern: chart v 1.4/chart/modules/**
+        provenance: inferred
+        reason: chart engine modules; B's order and preference modules are carved out in B.owned_paths and win on specificity
+      - pattern: chart v 1.4/chart/*.html
+        provenance: inferred
+        reason: servable chart shells are product surface
+      - pattern: chart v 1.4/chart/dist/**
+        provenance: inferred
+      - pattern: chart v 1.4/chart/dist-v9/**
+        provenance: inferred
+      - pattern: chart v 1.4/chart/dist-admin/**
+        provenance: inferred
+      - pattern: chart v 1.4/chart/multichart/**
+        provenance: inferred
+      - pattern: chart v 1.4/chart/multichart-prod/**
+        provenance: inferred
+      - pattern: chart v 1.4/talaria-design/**
+        provenance: inferred
+        reason: canonical V9 host source template
+      - pattern: homepage/public/chart/**
+        provenance: inferred
+        reason: generated product mirrors of the above
+      - pattern: homepage/out/chart/**
+        provenance: inferred
+      - pattern: docs/plan3/journal/MANAGER-A.md
+        provenance: ruling
+        authority: A16.1 - each manager holds a positive grant to its own journal; the
+          journals block alone conferred no write right, so A and B were unowned
+    denied_paths:
+      - pattern: docs/plan3/journal/MANAGER-B.md
+        reason: another manager's journal
+        provenance: ruling
+      - pattern: docs/plan3/journal/MANAGER-C.md
+        reason: another manager's journal
+        provenance: ruling
+
+  - id: B
+    role: orders, order-line interaction, preference persistence
+    deploy_surface: TEST-2
+    provenance: ruling
+    authority: A11.4 - A and B deploy to different surfaces (TEST-1 / TEST-2)
+    owned_rows:
+      - V8
+      - M15
+      - M23
+      - M24
+    unresolved_rows:
+      - row: V6
+        reason: A11.3 - do not grant the territory on assumption; the cheap-tier call-site audit must report which file owns order-line paint, hit-testing and drag preview before V6 is granted
+        provenance: ruling
+        authority: A11.3
+    owned_paths:
+      - pattern: chart v 1.4/chart/modules/order-manager.js
+        provenance: inferred
+        reason: A11.3 names order-manager.js as B's expected home for V6; granted pending the A11.3 audit
+      - pattern: chart v 1.4/chart/modules/order-service.js
+        provenance: inferred
+      - pattern: chart v 1.4/chart/modules/order-event-bus.js
+        provenance: inferred
+      - pattern: chart v 1.4/chart/modules/preferences-sync.js
+        provenance: inferred
+        reason: A4 preference persistence contract (V8/M15)
+      - pattern: chart v 1.4/chart/modules/preferences-init.js
+        provenance: inferred
+      - pattern: docs/plan3/journal/MANAGER-B.md
+        provenance: ruling
+        authority: A16.1
+    denied_paths:
+      - pattern: chart v 1.4/chart/chart.js
+        reason: A11.3 - V6 order-line paint and drag preview must not be authored in chart.js by B until the ownership audit reports
+        provenance: ruling
+        authority: A11.3
+      - pattern: docs/plan3/journal/MANAGER-A.md
+        reason: another manager's journal
+        provenance: ruling
+      - pattern: docs/plan3/journal/MANAGER-C.md
+        reason: another manager's journal
+        provenance: ruling
+
+  - id: C
+    role: verification infrastructure - harnesses, oracles, fixtures, CI configuration, journal tooling
+    deploy_surface: none
+    provenance: ruling
+    authority: A11.2 - C deploys nowhere; its customers are the other two managers' gates
+    owned_rows:
+      - A4c-2-module-presence-preflight
+      - A5-test-integrity
+      - A6-servable-shell-inventory
+      - A7-differential-parity-oracle
+      - A8-reachability-sweep
+      - A10-ui-control-inventory
+      - A11.2-territory-preflight
+      - A12-po-queue-tooling
+    owned_paths:
+      - pattern: scripts/territory-preflight.mjs
+        provenance: ruling
+        authority: A11.2 item 1
+      - pattern: scripts/module-contract-preflight.mjs
+        provenance: ruling
+        authority: A11.2 item 2
+      - pattern: scripts/module-contracts.json
+        provenance: ruling
+        authority: A11.2 item 2
+      - pattern: scripts/lib/territory-manifest.mjs
+        provenance: ruling
+      - pattern: scripts/lib/journal-append-only.mjs
+        provenance: ruling
+      - pattern: scripts/tests/**
+        provenance: ruling
+        authority: A11.2 - your territory is test harnesses, oracles, fixtures, CI configuration and the journal tooling
+      - pattern: scripts/fixtures/**
+        provenance: ruling
+      - pattern: .github/workflows/**
+        provenance: ruling
+        authority: A11.2 - CI configuration
+      - pattern: docs/plan3/journal/MANAGER-C.md
+        provenance: ruling
+      - pattern: docs/plan3/GATE-NAME-RESERVATIONS.md
+        provenance: ruling
+        authority: A11.2 - reserve all gate, oracle and fixture names before use
+      - pattern: docs/plan3/BOARD-VIEW.md
+        provenance: ruling
+        authority: A11.2 item 5
+      - pattern: docs/plan3/PO-QUEUE.md
+        provenance: ruling
+        authority: A12.1 - tooling generates one PO-QUEUE.md from the journals
+      - pattern: docs/plan3/oracles/**
+        provenance: ruling
+        authority: A11.2 item 3
+      - pattern: docs/plan3/fixtures/**
+        provenance: ruling
+      - pattern: package.json
+        provenance: inferred
+        reason: gate entry points are registered as npm scripts; this is CI configuration in practice
+      - pattern: .gitignore
+        provenance: inferred
+        reason: docs/ is ignored, so the territory manifest and the append-only journals could not enter history at all; narrow negations for the governance artifacts are a precondition for every gate C owns
+    denied_paths:
+      - pattern: chart v 1.4/chart/chart.js
+        reason: C ships no product code and touches no chart.js
+        provenance: ruling
+        authority: A11.2 - you ship no product code, you touch no chart.js, and you deploy to no product surface
+      - pattern: chart v 1.4/chart/modules/**
+        reason: product code
+        provenance: ruling
+      - pattern: chart v 1.4/talaria-design/**
+        reason: product surface
+        provenance: ruling
+      - pattern: homepage/public/chart/**
+        reason: product surface
+        provenance: ruling
+      - pattern: homepage/out/chart/**
+        reason: product surface
+        provenance: ruling
+      - pattern: docs/plan3/journal/MANAGER-A.md
+        reason: another manager's journal
+        provenance: ruling
+      - pattern: docs/plan3/journal/MANAGER-B.md
+        reason: another manager's journal
+        provenance: ruling
+
+# Open questions for the Director. Each is operative as written above until ruled.
+open_rulings:
+  - id: SH-1
+    question: are docs/plan3/evidence, worker-reports and probes shared across all three managers, or should each manager write only under a manager-scoped subdirectory
+    default_in_force: shared for all three managers
+  - id: TB-1
+    question: does Manager A own every chart v 1.4/chart/modules file not explicitly carved out to B, or should the module tree be enumerated file by file
+    default_in_force: A owns the tree; B's five named modules win on specificity
+  - id: TB-2
+    question: V6 remains ungranted per A11.3 until the call-site audit reports; B's order-module grant is inferred and may need withdrawal if order-line paint lives in chart.js
+    default_in_force: B owns order-manager.js, order-service.js, order-event-bus.js
+  - id: TB-3
+    question: unowned paths (journal-backend, deploy, homepage outside chart, tickets, shared) are currently RED for every manager by fail-closed default
+    default_in_force: any packet touching them fails and requires a Director grant
+  - id: TB-4
+    question: does Manager C own package.json for npm gate-script registration, or must gate entry points be registered elsewhere
+    default_in_force: C owns package.json
+  - id: TB-5
+    question: does Manager C own .gitignore for the governance-artifact negations, or should that change be Director-authored
+    default_in_force: C owns .gitignore
+  - id: TB-6
+    question: docs/plan3 holds 340 untracked files against 56 tracked, and DIRECTOR-RULINGS-20260727.md is one of the untracked ones, so standing policy currently has no history, no diff and no attribution. Manager C did not un-ignore it, because whether policy documents enter version control is a Director decision. Ruling needed on which plan3 documents must be tracked.
+    default_in_force: only the governance artifacts C owns are un-ignored (TERRITORY.yml, the four journals, GATE-NAME-RESERVATIONS.md, BOARD-VIEW.md, PO-QUEUE.md); every other plan3 document remains local-only and outside history
+    status: RULED 2026-07-28 - standing policy, FINDING-*.md, PO-SWEEP-RESULTS and
+      journal/FORMAT.md are tracked at ced58667c. Evidence for the ruling - a Director
+      script overwrote two manager journals and git reported nothing, because they were
+      untracked. Evidence documents (evidence/, probes/, worker-reports/) stay local.

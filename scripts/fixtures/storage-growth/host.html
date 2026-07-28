@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="talaria-storage-growth-census-signature" content="TALARIA_STORAGE_GROWTH_CENSUS_V1">
+  <title>Storage growth census browser acceptance</title>
+</head>
+<body>
+  <p id="status">pending</p>
+  <script type="module">
+    import {
+      snapshotStorage,
+      growthPerSession,
+      TALARIA_STORAGE_GROWTH_CENSUS_V1,
+      HERMETIC_STORAGE_BUDGET_V1,
+    } from '/lib/storage-growth-census.mjs';
+    import {
+      createHermeticStorageGlobal,
+      simulateSessionOpen,
+      simulateReplay,
+    } from '/lib/storage-growth-harness.mjs';
+
+    const params = new URLSearchParams(location.search);
+    const sessionCount = Number(params.get('sessionCount') || '3');
+    const startId = Number(params.get('startId') || '882');
+
+    async function runBrowserLadder() {
+      const g = createHermeticStorageGlobal();
+      const env = {
+        localStorage: g.localStorage,
+        indexedDB: g.indexedDB,
+        caches: g.caches,
+      };
+
+      const samples = [];
+      samples.push({ label: 'open', snap: await snapshotStorage(env) });
+      simulateSessionOpen(g, startId);
+      samples.push({ label: 'after-open', snap: await snapshotStorage(env) });
+      await simulateReplay(g, startId);
+      samples.push({ label: 'after-replay', snap: await snapshotStorage(env) });
+
+      for (let i = 1; i < sessionCount; i += 1) {
+        const id = startId + i;
+        simulateSessionOpen(g, id);
+        await simulateReplay(g, id);
+        samples.push({ label: `session-${id}`, snap: await snapshotStorage(env) });
+      }
+
+      const report = growthPerSession(samples, { budget: HERMETIC_STORAGE_BUDGET_V1 });
+      document.getElementById('status').textContent = report.status;
+      await fetch('/report', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          signature: TALARIA_STORAGE_GROWTH_CENSUS_V1,
+          status: report.status,
+          ok: report.ok,
+          cell: 'BROWSER-STORAGE-GROWTH-LADDER',
+          report,
+        }),
+      });
+    }
+
+    if (params.get('autorun') !== '0') {
+      runBrowserLadder().catch((err) => {
+        fetch('/report', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ parseError: String(err?.message || err) }),
+        });
+      });
+    }
+  </script>
+</body>
+</html>

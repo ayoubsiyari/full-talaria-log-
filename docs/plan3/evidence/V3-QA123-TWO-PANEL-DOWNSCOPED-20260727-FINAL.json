@@ -1,0 +1,475 @@
+{
+  "schema": "talaria-v3-two-panel-downscoped-soak-v2",
+  "evidenceClass": "TWO-PANEL DOWNSCOPED",
+  "fourPanelAcceptance": false,
+  "generatedAt": "2026-07-27T14:59:11.917Z",
+  "plannedDurationMs": 1800000,
+  "conditionsRequired": [
+    "no-indicators",
+    "representative-sma-ema-wma"
+  ],
+  "topologyContract": "host A validated separately; manager owns N-1 organic peer iframes",
+  "mutationPolicy": {
+    "mode": "default-block",
+    "operationalAllowed": [
+      "POST /api/auth/login",
+      "POST /api/chart/windows/claim",
+      "POST /api/chart/windows/heartbeat",
+      "POST /api/chart/windows/release"
+    ],
+    "productCustomerWritesAllowed": false,
+    "i16Clean": true
+  },
+  "blockedMutations": [
+    {
+      "method": "PATCH",
+      "pathClass": "/api/sessions/{owner-session}/state",
+      "disposition": "blocked",
+      "count": 413
+    }
+  ],
+  "readiness": {
+    "reached": true,
+    "stage": "host-and-one-organic-peer-ready-data-loaded-painted",
+    "atMs": 3841,
+    "topology": {
+      "ready": true,
+      "expectedPeers": 1,
+      "hostReady": true,
+      "peersReady": true
+    },
+    "runtime": {
+      "managerEntries": 1,
+      "iframeCount": 1,
+      "host": {
+        "alias": "panel-A-host",
+        "entryReady": null,
+        "organicBridgeReady": null,
+        "frameConnected": null,
+        "chartPresent": true,
+        "dataLoaded": true,
+        "bars": 2001,
+        "canvasPainted": true,
+        "canvasSize": [
+          378,
+          499
+        ],
+        "paints": 38,
+        "replayIndex": 2000,
+        "replayTimestamp": 1333584000000,
+        "playing": false,
+        "ownershipPresent": false,
+        "workersCreated": 0,
+        "workersAlive": 0,
+        "listenersNet": 718,
+        "bridgeReadyMessagesObserved": 2
+      },
+      "peers": [
+        {
+          "alias": "panel-B-peer",
+          "entryReady": true,
+          "organicBridgeReady": true,
+          "frameConnected": true,
+          "chartPresent": true,
+          "dataLoaded": true,
+          "bars": 2001,
+          "canvasPainted": true,
+          "canvasSize": [
+            378,
+            499
+          ],
+          "paints": 43,
+          "replayIndex": 2000,
+          "replayTimestamp": 1333584000000,
+          "playing": false,
+          "ownershipPresent": false,
+          "workersCreated": 0,
+          "workersAlive": 0,
+          "listenersNet": 287,
+          "bridgeReadyMessagesObserved": 0
+        }
+      ]
+    },
+    "syntheticBridgeReadySent": false,
+    "failureStage": "teardown-navigation"
+  },
+  "conditions": [
+    {
+      "condition": "no-indicators",
+      "plannedDurationMs": 900000,
+      "startedAt": "2026-07-27T14:59:19.780Z",
+      "completedDurationMs": 900835,
+      "pauseRecovery": {
+        "before": {
+          "Timestamp": 95504.472688,
+          "Documents": 2,
+          "Frames": 2,
+          "JSEventListeners": 1434,
+          "TaskDuration": 891.375892,
+          "JSHeapUsedSize": 258621232,
+          "JSHeapTotalSize": 601030656,
+          "processCpuTime": 1583.0462010000003,
+          "processPrivateMemory": 1268658176,
+          "processCount": 9
+        },
+        "after": {
+          "Timestamp": 95509.474084,
+          "Documents": 2,
+          "Frames": 2,
+          "JSEventListeners": 1434,
+          "TaskDuration": 891.722066,
+          "JSHeapUsedSize": 246503164,
+          "JSHeapTotalSize": 600317952,
+          "processCpuTime": 1583.836145,
+          "processPrivateMemory": 1274187776,
+          "processCount": 9
+        },
+        "runtime": {
+          "managerEntries": 1,
+          "iframeCount": 1,
+          "host": {
+            "alias": "panel-A-host",
+            "entryReady": null,
+            "organicBridgeReady": null,
+            "frameConnected": null,
+            "chartPresent": true,
+            "dataLoaded": true,
+            "bars": 30846,
+            "canvasPainted": true,
+            "canvasSize": [
+              378,
+              499
+            ],
+            "paints": 57750,
+            "replayIndex": 30845,
+            "replayTimestamp": 1336015200000,
+            "playing": false,
+            "ownershipPresent": false,
+            "workersCreated": 0,
+            "workersAlive": 0,
+            "listenersNet": 719,
+            "bridgeReadyMessagesObserved": 2
+          },
+          "peers": [
+            {
+              "alias": "panel-B-peer",
+              "entryReady": true,
+              "organicBridgeReady": true,
+              "frameConnected": true,
+              "chartPresent": true,
+              "dataLoaded": true,
+              "bars": 30846,
+              "canvasPainted": true,
+              "canvasSize": [
+                378,
+                499
+              ],
+              "paints": 69702,
+              "replayIndex": 30845,
+              "replayTimestamp": 1336015200000,
+              "playing": false,
+              "ownershipPresent": false,
+              "workersCreated": 0,
+              "workersAlive": 0,
+              "listenersNet": 288,
+              "bridgeReadyMessagesObserved": 0
+            }
+          ]
+        }
+      },
+      "summary": {
+        "cadence": {
+          "hostA": {
+            "stallSamples": 0,
+            "backwardJumps": 0,
+            "maxForwardJumpBars": 100,
+            "maxSampleGapMs": 2378,
+            "jitterStdDevBars": 15.58935044196518,
+            "freezeCatchupCandidates": 0
+          },
+          "peerB": {
+            "stallSamples": 0,
+            "backwardJumps": 0,
+            "maxForwardJumpBars": 100,
+            "maxSampleGapMs": 2378,
+            "jitterStdDevBars": 15.590619777251055,
+            "freezeCatchupCandidates": 0
+          }
+        },
+        "ownership": {
+          "hostObserved": false,
+          "peerObserved": false,
+          "maxReplayIndexDivergence": 1
+        },
+        "jsHeapBytes": {
+          "floor": 62845364,
+          "peak": 486371944,
+          "slopePerSecond": 93554.70172966327
+        },
+        "processPrivateMemoryBytes": {
+          "floor": 798154752,
+          "peak": 1286983680,
+          "slopePerSecond": 371145.29116102925
+        },
+        "cpu": {
+          "taskDurationSeconds": 888.358625,
+          "processCpuSeconds": 1569.5012380000003
+        },
+        "resources": {
+          "iframeFloor": 1,
+          "iframePeak": 1,
+          "hostEnd": {
+            "alias": "panel-A-host",
+            "entryReady": null,
+            "organicBridgeReady": null,
+            "frameConnected": null,
+            "chartPresent": true,
+            "dataLoaded": true,
+            "bars": 30824,
+            "canvasPainted": true,
+            "canvasSize": [
+              378,
+              499
+            ],
+            "paints": 57701,
+            "replayIndex": 30823,
+            "replayTimestamp": 1336013880000,
+            "playing": true,
+            "ownershipPresent": false,
+            "workersCreated": 0,
+            "workersAlive": 0,
+            "listenersNet": 719,
+            "bridgeReadyMessagesObserved": 2
+          },
+          "peerEnd": {
+            "alias": "panel-B-peer",
+            "entryReady": true,
+            "organicBridgeReady": true,
+            "frameConnected": true,
+            "chartPresent": true,
+            "dataLoaded": true,
+            "bars": 30824,
+            "canvasPainted": true,
+            "canvasSize": [
+              378,
+              499
+            ],
+            "paints": 69649,
+            "replayIndex": 30823,
+            "replayTimestamp": 1336013880000,
+            "playing": false,
+            "ownershipPresent": false,
+            "workersCreated": 0,
+            "workersAlive": 0,
+            "listenersNet": 288,
+            "bridgeReadyMessagesObserved": 0
+          },
+          "cdpListeners": {
+            "floor": 1434,
+            "peak": 1760,
+            "slopePerSecond": -0.47154445981152787
+          }
+        }
+      }
+    },
+    {
+      "condition": "representative-sma-ema-wma",
+      "plannedDurationMs": 900000,
+      "startedAt": "2026-07-27T15:14:26.395Z",
+      "completedDurationMs": 900689,
+      "pauseRecovery": {
+        "before": {
+          "Timestamp": 96411.312913,
+          "Documents": 2,
+          "Frames": 2,
+          "JSEventListeners": 2109,
+          "TaskDuration": 1790.740304,
+          "JSHeapUsedSize": 164416284,
+          "JSHeapTotalSize": 588423168,
+          "processCpuTime": 3597.1162299999996,
+          "processPrivateMemory": 1488125952,
+          "processCount": 9
+        },
+        "after": {
+          "Timestamp": 96417.033458,
+          "Documents": 2,
+          "Frames": 2,
+          "JSEventListeners": 2307,
+          "TaskDuration": 1791.492354,
+          "JSHeapUsedSize": 199019556,
+          "JSHeapTotalSize": 590856192,
+          "processCpuTime": 3598.616545,
+          "processPrivateMemory": 1487634432,
+          "processCount": 9
+        },
+        "runtime": {
+          "managerEntries": 1,
+          "iframeCount": 1,
+          "host": {
+            "alias": "panel-A-host",
+            "entryReady": null,
+            "organicBridgeReady": null,
+            "frameConnected": null,
+            "chartPresent": true,
+            "dataLoaded": true,
+            "bars": 35553,
+            "canvasPainted": true,
+            "canvasSize": [
+              378,
+              499
+            ],
+            "paints": 71877,
+            "replayIndex": 35552,
+            "replayTimestamp": 1336471140000,
+            "playing": false,
+            "ownershipPresent": false,
+            "workersCreated": 1,
+            "workersAlive": 1,
+            "listenersNet": 719,
+            "bridgeReadyMessagesObserved": 2
+          },
+          "peers": [
+            {
+              "alias": "panel-B-peer",
+              "entryReady": true,
+              "organicBridgeReady": true,
+              "frameConnected": true,
+              "chartPresent": true,
+              "dataLoaded": true,
+              "bars": 35553,
+              "canvasPainted": true,
+              "canvasSize": [
+                378,
+                499
+              ],
+              "paints": 79189,
+              "replayIndex": 35552,
+              "replayTimestamp": 1336471140000,
+              "playing": false,
+              "ownershipPresent": false,
+              "workersCreated": 1,
+              "workersAlive": 1,
+              "listenersNet": 288,
+              "bridgeReadyMessagesObserved": 0
+            }
+          ]
+        }
+      },
+      "summary": {
+        "cadence": {
+          "hostA": {
+            "stallSamples": 0,
+            "backwardJumps": 0,
+            "maxForwardJumpBars": 12,
+            "maxSampleGapMs": 2288,
+            "jitterStdDevBars": 1.671299292406731,
+            "freezeCatchupCandidates": 0
+          },
+          "peerB": {
+            "stallSamples": 0,
+            "backwardJumps": 0,
+            "maxForwardJumpBars": 12,
+            "maxSampleGapMs": 2288,
+            "jitterStdDevBars": 1.7012587820992926,
+            "freezeCatchupCandidates": 0
+          }
+        },
+        "ownership": {
+          "hostObserved": false,
+          "peerObserved": false,
+          "maxReplayIndexDivergence": 1
+        },
+        "jsHeapBytes": {
+          "floor": 102116284,
+          "peak": 518650520,
+          "slopePerSecond": 6055.163990388684
+        },
+        "processPrivateMemoryBytes": {
+          "floor": 1274187776,
+          "peak": 1564905472,
+          "slopePerSecond": 59566.388172580315
+        },
+        "cpu": {
+          "taskDurationSeconds": 897.2984899999999,
+          "processCpuSeconds": 2009.4112989999994
+        },
+        "resources": {
+          "iframeFloor": 1,
+          "iframePeak": 1,
+          "hostEnd": {
+            "alias": "panel-A-host",
+            "entryReady": null,
+            "organicBridgeReady": null,
+            "frameConnected": null,
+            "chartPresent": true,
+            "dataLoaded": true,
+            "bars": 35547,
+            "canvasPainted": true,
+            "canvasSize": [
+              378,
+              499
+            ],
+            "paints": 71853,
+            "replayIndex": 35546,
+            "replayTimestamp": 1336470780000,
+            "playing": true,
+            "ownershipPresent": false,
+            "workersCreated": 1,
+            "workersAlive": 1,
+            "listenersNet": 719,
+            "bridgeReadyMessagesObserved": 2
+          },
+          "peerEnd": {
+            "alias": "panel-B-peer",
+            "entryReady": true,
+            "organicBridgeReady": true,
+            "frameConnected": true,
+            "chartPresent": true,
+            "dataLoaded": true,
+            "bars": 35547,
+            "canvasPainted": true,
+            "canvasSize": [
+              378,
+              499
+            ],
+            "paints": 79170,
+            "replayIndex": 35546,
+            "replayTimestamp": 1336470780000,
+            "playing": false,
+            "ownershipPresent": false,
+            "workersCreated": 1,
+            "workersAlive": 1,
+            "listenersNet": 288,
+            "bridgeReadyMessagesObserved": 0
+          },
+          "cdpListeners": {
+            "floor": 1667,
+            "peak": 4408,
+            "slopePerSecond": -0.0860137177364895
+          }
+        }
+      }
+    }
+  ],
+  "errors": [],
+  "verdict": "INCOMPLETE_TEARDOWN",
+  "ownerScope": {
+    "authenticated": true,
+    "exactQa123": true,
+    "files": [
+      "file-1",
+      "file-2"
+    ]
+  },
+  "completedDurationMs": 1801524,
+  "protocolConclusion": {
+    "readiness": "PASS_ORGANIC",
+    "twoRequiredConditionsCompleted": true,
+    "pauseRecoveryCaptured": true,
+    "teardownRecoveryCaptured": false,
+    "classification": "INCOMPLETE_TEARDOWN",
+    "note": "The full 30-minute observation window completed. Graceful about:blank teardown then timed out at the DevTools Page.navigate command, so no teardown-recovery conclusion is claimed."
+  },
+  "blocker": "Page.navigate timed out. Increase the 'protocolTimeout' setting in launch/connect calls for a higher timeout if needed.",
+  "completedAt": "2026-07-27T15:33:45.942Z"
+}

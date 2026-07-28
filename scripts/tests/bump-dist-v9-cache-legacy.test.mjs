@@ -10,6 +10,7 @@ import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import {
+  stampChartEngineSource,
   stampLegacyHtml,
   uniqueCacheIds,
 } from '../../chart v 1.4/talaria-design/scripts/bump-dist-v9-cache.mjs';
@@ -70,4 +71,38 @@ test('b01 preflight mixed-id regression: absolute leftover alone fails uniquenes
   );
   const fixed = stampLegacyHtml(mixed, '20260722b01', { stampLinks: true });
   assert.deepEqual(uniqueCacheIds(fixed), ['20260722b01']);
+});
+
+test('release stamp covers chart engine token exactly once and is idempotent', () => {
+  const fixture = [
+    "const CHART_ENGINE_BUILD = '20260724b61';",
+    "const unrelated = '20260724b61';",
+    '',
+  ].join('\n');
+  const stamped = stampChartEngineSource(fixture, '20260726b70');
+  assert.match(stamped, /const CHART_ENGINE_BUILD = '20260726b70';/);
+  assert.match(stamped, /const unrelated = '20260724b61';/);
+  assert.equal(stampChartEngineSource(stamped, '20260726b70'), stamped);
+  assert.throws(
+    () => stampChartEngineSource("const unrelated = '20260724b61';\n", '20260726b70'),
+    /expected 1 build token, found 0/,
+  );
+  assert.throws(
+    () => stampChartEngineSource(`${fixture}${fixture}`, '20260726b70'),
+    /expected 1 build token, found 2/,
+  );
+});
+
+test('legacy release stamp is idempotent and leaves unrelated query tokens untouched', () => {
+  const fixture = FIXTURE.replace(
+    '</body>',
+    '<img src="unrelated.png?cache=20260724b61">\n</body>',
+  );
+  const stamped = stampLegacyHtml(fixture, '20260726b70', { stampLinks: true });
+  assert.deepEqual(uniqueCacheIds(stamped), ['20260726b70']);
+  assert.match(stamped, /unrelated\.png\?cache=20260724b61/);
+  assert.equal(
+    stampLegacyHtml(stamped, '20260726b70', { stampLinks: true }),
+    stamped,
+  );
 });

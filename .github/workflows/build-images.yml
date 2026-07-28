@@ -37,7 +37,35 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # M1 remainder (§A4c): both preflights on the deploy/image path, not only multichart-harness.
+  preflight:
+    name: deploy-path preflights
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Module-contract preflight
+        run: node scripts/module-contract-preflight.mjs
+      - name: Shell-inventory preflight (deploy-path; same ratchet as shell-inventory.yml)
+        id: shell_inv
+        run: |
+          set -uo pipefail
+          set +e
+          node scripts/shell-inventory-preflight.mjs \
+            --allow-kinds=conditional-exposure:2,exclusion-count-undeclared:1,proof-of-derouting-unsatisfied:38,shell-parse-incomplete:12
+          status=$?
+          set -e
+          case "$status" in
+            0|2) exit 0 ;;
+            *) exit "$status" ;;
+          esac
+      - name: Cache-stamp coherence
+        run: node scripts/cache-stamp-coherence-gate.mjs
+
   build:
+    needs: preflight
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false

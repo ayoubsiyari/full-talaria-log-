@@ -20,7 +20,6 @@ const MIRROR_DIRECTORIES = [
 
 const MIRROR_FILES = [
   ['chart.js', 'chart.js'],
-  ['legacy-index.html', 'legacy-index.html'],
   ['sw.js', 'sw.js'],
 ];
 
@@ -612,12 +611,13 @@ function verifyRuntimeSurface(failures, surface, expectedBuildId, label) {
     'embedBuildId',
     'engineBuildId',
     'serviceWorkerBuildId',
-    'legacyBuildId',
+    'legacyStatus',
     'harnessBuildId',
   ]) {
-    if (surface[field] !== expectedBuildId) {
+    const expected = field === 'legacyStatus' ? 404 : expectedBuildId;
+    if (surface[field] !== expected) {
       failures.push(
-        `${label}.${field}: expected ${expectedBuildId}, got ${surface[field] || '<missing>'}`,
+        `${label}.${field}: expected ${expected}, got ${surface[field] || '<missing>'}`,
       );
     }
   }
@@ -639,7 +639,7 @@ export function verifyRuntimeSnapshot(snapshot, manifest) {
   const failures = [];
   verifyRuntimeSurface(failures, snapshot?.direct, manifest.buildId, 'direct');
   verifyRuntimeSurface(failures, snapshot?.public, manifest.buildId, 'public');
-  const hashFields = ['shell', 'embed', 'engine', 'module', 'serviceWorker', 'legacy', 'harness'];
+  const hashFields = ['shell', 'embed', 'engine', 'module', 'serviceWorker', 'harness'];
   for (const field of hashFields) {
     const directHash = snapshot?.direct?.hashes?.[field];
     const publicHash = snapshot?.public?.hashes?.[field];

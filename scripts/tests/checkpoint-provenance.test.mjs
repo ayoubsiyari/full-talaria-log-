@@ -9,6 +9,7 @@ import {
   MANIFEST_SCHEMA,
   createDeployPlan,
   loadManifest,
+  resolveAdvertisedTagCommit,
   sha256File,
   simulateLegacyTripleIncrement,
   validateManifest,
@@ -57,7 +58,6 @@ function makeTree(buildId) {
     write(path.join(target, 'dist-v9/sw.js'), sw);
     write(path.join(target, 'chart.js'), engine);
     write(path.join(target, 'sw.js'), sw);
-    write(path.join(target, 'legacy-index.html'), legacy);
     write(path.join(target, 'modules/drawing-tools-manager.js'), module);
     write(path.join(target, 'multichart-prod/chart-embed.html'), embed);
     write(path.join(target, 'multichart-prod/harness/serve.mjs'), harness);
@@ -65,6 +65,7 @@ function makeTree(buildId) {
       fs.mkdirSync(path.join(target, directory), { recursive: true });
     }
   }
+  write(path.join(chartRoot, 'legacy-index.html'), legacy);
   write(path.join(liveRoot, 'index.html'), shell);
   write(path.join(liveRoot, 'public/sw.js'), sw);
   return { root, chartRoot, liveRoot, homepageChartRoot };
@@ -77,7 +78,7 @@ function validRuntimeSurface(buildId, hashSeed = 'a') {
     embedBuildId: buildId,
     engineBuildId: buildId,
     serviceWorkerBuildId: buildId,
-    legacyBuildId: buildId,
+    legacyStatus: 404,
     harnessBuildId: buildId,
     browserHostBuildId: buildId,
     browserFrameBuildIds: [buildId, buildId],
@@ -87,7 +88,6 @@ function validRuntimeSurface(buildId, hashSeed = 'a') {
       engine: `${hashSeed}3`,
       module: `${hashSeed}4`,
       serviceWorker: `${hashSeed}5`,
-      legacy: `${hashSeed}6`,
       harness: `${hashSeed}7`,
     },
   };
@@ -161,6 +161,35 @@ test('dirty, wrong-HEAD, and wrong-remote repository evidence fail closed', () =
   assert.equal(result.failures.length, 3);
 });
 
+test('annotated remote tag preflight resolves the peeled commit', (t) => {
+  const repository = fs.mkdtempSync(path.join(os.tmpdir(), 'talaria-preflight-tag-'));
+  t.after(() => fs.rmSync(repository, { recursive: true, force: true }));
+  const run = (args) => {
+    const result = spawnSync('git', args, { cwd: repository, encoding: 'utf8' });
+    assert.equal(result.status, 0, result.stderr);
+    return result.stdout.trim();
+  };
+  run(['init', '--quiet']);
+  run(['config', 'user.name', 'Checkpoint Test']);
+  run(['config', 'user.email', 'checkpoint@example.invalid']);
+  write(path.join(repository, 'tracked.txt'), 'checkpoint\n');
+  run(['add', 'tracked.txt']);
+  run(['commit', '--quiet', '-m', 'checkpoint source']);
+  const commitSha = run(['rev-parse', 'HEAD']);
+  run(['tag', '-a', 'checkpoint-source', '-m', 'annotated source']);
+  const tagObjectSha = run(['rev-parse', 'checkpoint-source^{object}']);
+  const advertisement = run([
+    'ls-remote', repository,
+    'refs/tags/checkpoint-source', 'refs/tags/checkpoint-source^{}',
+  ]);
+  const resolved = resolveAdvertisedTagCommit(
+    advertisement,
+    'refs/tags/checkpoint-source',
+  );
+  assert.deepEqual(resolved, { tagObjectSha, commitSha, annotated: true });
+  assert.equal(run(['cat-file', '-t', resolved.commitSha]), 'commit');
+});
+
 test('uniform tree passes exact build and I8 checks', () => {
   const tree = makeTree(greenManifest.buildId);
   try {
@@ -172,6 +201,58 @@ test('uniform tree passes exact build and I8 checks', () => {
     assert.equal(report.ok, true, report.failures.join('\n'));
   } finally {
     fs.rmSync(tree.root, { recursive: true, force: true });
+  }
+});
+
+test('uniformity allows only the exact Q6 canonical-forwarding wrapper', () => {
+  const tree = makeTree(greenManifest.buildId);
+  try {
+    const relative = 'modules/m20-q6-replay-lifecycle-binding.test.mjs';
+    write(path.join(tree.chartRoot, relative), 'import assert from "node:assert/strict";\n');
+    write(
+      path.join(tree.homepageChartRoot, relative),
+      '// Mirrored entrypoint: execute the canonical-root Q6 lifecycle harness.\n'
+        + "import '../../../../chart v 1.4/chart/modules/m20-q6-replay-lifecycle-binding.test.mjs';\n",
+    );
+    const report = verifyTreeLayout({
+      ...tree,
+      expectedBuildId: greenManifest.buildId,
+      sourceSha: greenManifest.source.sha,
+    });
+    assert.equal(report.ok, true, report.failures.join('\n'));
+    assert.ok(report.checks.some((check) =>
+      check.name === `I8 ${relative} forwarding-contract`));
+    const mirror = report.forwardingMirrors[0];
+    assert.equal(mirror.contractId, 'q6-canonical-harness/homepage-forwarding-wrapper-v1');
+    assert.notEqual(mirror.canonicalHash, mirror.wrapperHash);
+    assert.equal(mirror.canonicalHash, mirror.effectiveCanonicalTargetHash);
+  } finally {
+    fs.rmSync(tree.root, { recursive: true, force: true });
+  }
+});
+
+test('uniformity rejects modified and wrong-target Q6 wrappers', () => {
+  for (const wrapper of [
+    '// modified\n'
+      + "import '../../../../chart v 1.4/chart/modules/m20-q6-replay-lifecycle-binding.test.mjs';\n",
+    '// Mirrored entrypoint: execute the canonical-root Q6 lifecycle harness.\n'
+      + "import '../../../../chart v 1.4/chart/modules/m20-q6-replay-lifecycle-strong.test.mjs';\n",
+  ]) {
+    const tree = makeTree(greenManifest.buildId);
+    try {
+      const relative = 'modules/m20-q6-replay-lifecycle-binding.test.mjs';
+      write(path.join(tree.chartRoot, relative), 'import assert from "node:assert/strict";\n');
+      write(path.join(tree.homepageChartRoot, relative), wrapper);
+      const report = verifyTreeLayout({
+        ...tree,
+        expectedBuildId: greenManifest.buildId,
+        sourceSha: greenManifest.source.sha,
+      });
+      assert.equal(report.ok, false);
+      assert.match(report.failures.join('\n'), /m20-q6-replay-lifecycle-binding.*hash mismatch/);
+    } finally {
+      fs.rmSync(tree.root, { recursive: true, force: true });
+    }
   }
 });
 

@@ -90,9 +90,45 @@ function resolveBuildId(html) {
  * Exported for permanent regression proof of relative + absolute paths.
  */
 export function stampLegacyHtml(html, buildId, { stampLinks = false } = {}) {
-  let after = String(html).replace(LEGACY_SCRIPT_SRC_RE, `$1$2?v=${buildId}$3`);
+  let scriptMatches = 0;
+  let after = String(html).replace(LEGACY_SCRIPT_SRC_RE, (...args) => {
+    scriptMatches += 1;
+    return `${args[1]}${args[2]}?v=${buildId}${args[3]}`;
+  });
+  if (scriptMatches === 0) {
+    throw new Error('legacy stamp found no supported script cache tokens');
+  }
   if (stampLinks) {
-    after = after.replace(LEGACY_LINK_HREF_RE, `$1$2?v=${buildId}$3`);
+    let linkMatches = 0;
+    after = after.replace(LEGACY_LINK_HREF_RE, (...args) => {
+      linkMatches += 1;
+      return `${args[1]}${args[2]}?v=${buildId}${args[3]}`;
+    });
+    if (linkMatches === 0) {
+      throw new Error('legacy stamp found no supported link cache tokens');
+    }
+    const ids = uniqueCacheIds(after);
+    if (ids.length !== 1 || ids[0] !== buildId) {
+      throw new Error(`legacy stamp left mixed cache ids: ${ids.join(',') || '<none>'}`);
+    }
+  }
+  return after;
+}
+
+const CHART_ENGINE_BUILD_RE = /const CHART_ENGINE_BUILD = '([^']+)';/g;
+
+export function stampChartEngineSource(source, buildId) {
+  let matches = 0;
+  const after = String(source).replace(CHART_ENGINE_BUILD_RE, () => {
+    matches += 1;
+    return `const CHART_ENGINE_BUILD = '${buildId}';`;
+  });
+  if (matches !== 1) {
+    throw new Error(`chart engine stamp expected 1 build token, found ${matches}`);
+  }
+  const remaining = [...after.matchAll(CHART_ENGINE_BUILD_RE)].map((match) => match[1]);
+  if (remaining.length !== 1 || remaining[0] !== buildId) {
+    throw new Error(`chart engine stamp retained stale build ids: ${remaining.join(',')}`);
   }
   return after;
 }
@@ -134,8 +170,7 @@ function bumpChartScriptsInHtml(filePath, { required, buildId: buildIdOverride }
 function bumpLegacyIndexHtml(filePath, buildId) {
   if (!fs.existsSync(filePath) || !buildId) return 0;
   const before = fs.readFileSync(filePath, "utf8");
-  const stampLinks = process.env.CHECKPOINT_BUILD === "1";
-  let after = stampLegacyHtml(before, buildId, { stampLinks });
+  let after = stampLegacyHtml(before, buildId, { stampLinks: true });
   // DEPLOY-01: legacy now carries window.__TALARIA_CHART_BUILD_ID for PO attribution.
   if (/window\.__TALARIA_CHART_BUILD_ID\s*=/.test(after)) {
     after = after.replace(WINDOW_BUILD_ID_RE, `window.__TALARIA_CHART_BUILD_ID='${buildId}'`);
@@ -177,6 +212,24 @@ function bumpChartIndexStub(buildId) {
   fs.writeFileSync(chartIndexStubPath, after, "utf8");
   console.log("[bump-dist-v9-cache] Set stub __TALARIA_CHART_BUILD_ID=" + buildId + " in", chartIndexStubPath);
   return 1;
+}
+
+function bumpChartEngine(buildId) {
+  const enginePaths = [
+    path.resolve(__dirname, "../../chart/chart.js"),
+    path.resolve(repoRoot, "homepage/public/chart/chart.js"),
+  ];
+  let touched = 0;
+  for (const enginePath of enginePaths) {
+    if (!fs.existsSync(enginePath) || !buildId) continue;
+    const before = fs.readFileSync(enginePath, "utf8");
+    const after = stampChartEngineSource(before, buildId);
+    if (after === before) continue;
+    fs.writeFileSync(enginePath, after, "utf8");
+    console.log("[bump-dist-v9-cache] Set chart engine build=" + buildId + " in", enginePath);
+    touched += 1;
+  }
+  return touched;
 }
 
 /** multichart-prod/chart-embed.html default build id + font query (iframe panels). */
@@ -299,6 +352,7 @@ function main() {
         buildId: distBuildId,
       }).touched;
       touched += bumpServiceWorkerVersion(distBuildId);
+      touched += bumpChartEngine(distBuildId);
       touched += bumpLegacyIndexHtml(legacyIndexPath, distBuildId);
       // homepage copy of legacy if present
       touched += bumpLegacyIndexHtml(

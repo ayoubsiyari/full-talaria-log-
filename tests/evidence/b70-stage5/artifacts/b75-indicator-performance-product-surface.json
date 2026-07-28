@@ -1,0 +1,1728 @@
+{
+  "verdict": "GREEN",
+  "priorZeroMsGreen": "INVALID",
+  "reason": "A timing result cannot prove a cure that is absent from the measured product shell.",
+  "repeats": [
+    {
+      "schemaVersion": 1,
+      "oracle": {
+        "id": "B75-INDICATOR-PERFORMANCE-PRODUCT-SURFACE-V1",
+        "mechanismRow": "B75/M19-I(a)-INDICATOR-PERFORMANCE-LOADER",
+        "authoredAgainst": "967f96692fbccd448a3a31c7b2ff71718e18a71e",
+        "authoredAgainstSubject": "chore(release): package 20260727b79 Tier-2 train",
+        "lastProvenRedOn": "967f96692-b79",
+        "staleness": {
+          "maxBuilds": 20,
+          "status": "PROVEN-RED"
+        },
+        "moduleSha256": "961dc289509e24a27eaedcf0da9c55f73aad391dc03981cd9e9f35da867e1ca1",
+        "deterministicAssertionPayload": true
+      },
+      "host": {
+        "platform": "win32",
+        "node": "v24.15.0",
+        "hostname": "127.0.0.1",
+        "clock": "performance-resource-order",
+        "coldCache": true,
+        "serviceWorkerBypassed": true
+      },
+      "excludedNonProductionSurface": "homepage/public/chart/talaria-design/live/index.html",
+      "staticSurfaces": [
+        {
+          "entry": "maintained-source",
+          "path": "chart v 1.4\\talaria-design\\live\\index.html",
+          "sourceSha256": "79b49adbc293e4cb2b2722776eed249c837a18b91961a1912258afa00e6b25cc",
+          "referenced": true,
+          "correctOrder": true,
+          "buildStamp": "20260727b80",
+          "dependencyStampsUniform": true
+        },
+        {
+          "entry": "dist-v9-host",
+          "path": "chart v 1.4\\chart\\dist-v9\\index.html",
+          "sourceSha256": "41207299daa4578c603a7d0e61f6f3ee8a523a39b8998762436e57684747ca29",
+          "referenced": true,
+          "correctOrder": true,
+          "buildStamp": "20260727b80",
+          "dependencyStampsUniform": true
+        },
+        {
+          "entry": "homepage-forwarded-host",
+          "path": "homepage\\public\\chart\\dist-v9\\index.html",
+          "sourceSha256": "41207299daa4578c603a7d0e61f6f3ee8a523a39b8998762436e57684747ca29",
+          "referenced": true,
+          "correctOrder": true,
+          "buildStamp": "20260727b80",
+          "dependencyStampsUniform": true
+        },
+        {
+          "entry": "multichart-embed",
+          "path": "chart v 1.4\\chart\\multichart-prod\\chart-embed.html",
+          "sourceSha256": "48ee0e4c78c52519831e26ffa209c842d80fe86b1288fedb3fe881a8393cbb69",
+          "referenced": true,
+          "correctOrder": true,
+          "buildStamp": "20260727b80",
+          "dependencyStampsUniform": true
+        }
+      ],
+      "uniformBuildStamp": "20260727b80",
+      "fourState": {
+        "expected": {
+          "brokenRed": true,
+          "blockedBridgeAndMissingGlobalRed": true,
+          "explicitLoaderGreen": true,
+          "corruptedRed": true,
+          "wrongOrderRed": true
+        },
+        "normalFourState": true,
+        "inverted": false,
+        "assertedFourState": true
+      },
+      "cells": {
+        "broken": {
+          "entry": "dist-v9-host",
+          "pathname": "/chart/dist-v9/index.html",
+          "mode": "broken",
+          "host": "127.0.0.1",
+          "coldCache": true,
+          "serviceWorkerBypassed": true,
+          "requests": [
+            "http://127.0.0.1:54506/chart/modules/chart-indicators-full.js?v=20260727b80"
+          ],
+          "responses": [
+            {
+              "url": "http://127.0.0.1:54506/chart/modules/chart-indicators-full.js?v=20260727b80",
+              "status": 200
+            }
+          ],
+          "errors": [],
+          "runtime": {
+            "moduleGlobalType": "undefined",
+            "apis": {
+              "packBarsRangeCompact": "undefined",
+              "mergeIndicatorTailWindow": "undefined",
+              "estimateTailLookback": "undefined",
+              "hashIndicatorParams": "undefined"
+            },
+            "resources": [
+              "http://127.0.0.1:54506/chart/modules/chart-indicators-full.js?v=20260727b80"
+            ]
+          },
+          "checks": {
+            "referenced": false,
+            "executed": false,
+            "correctOrder": false,
+            "flagsAvailable": false,
+            "responsesOk": true
+          },
+          "pass": false
+        },
+        "blocked": {
+          "entry": "dist-v9-host",
+          "pathname": "/chart/dist-v9/index.html",
+          "mode": "blocked",
+          "host": "127.0.0.1",
+          "coldCache": true,
+          "serviceWorkerBypassed": true,
+          "requests": [
+            "http://127.0.0.1:53866/chart/modules/indicator-performance.js?v=20260727b80",
+            "http://127.0.0.1:53866/chart/modules/chart-indicators-full.js?v=20260727b80"
+          ],
+          "responses": [
+            {
+              "url": "http://127.0.0.1:53866/chart/modules/indicator-performance.js?v=20260727b80",
+              "status": 503
+            },
+            {
+              "url": "http://127.0.0.1:53866/chart/modules/chart-indicators-full.js?v=20260727b80",
+              "status": 200
+            }
+          ],
+          "errors": [],
+          "runtime": {
+            "moduleGlobalType": "undefined",
+            "apis": {
+              "packBarsRangeCompact": "undefined",
+              "mergeIndicatorTailWindow": "undefined",
+              "estimateTailLookback": "undefined",
+              "hashIndicatorParams": "undefined"
+            },
+            "resources": [
+              "http://127.0.0.1:53866/chart/modules/indicator-performance.js?v=20260727b80",
+              "http://127.0.0.1:53866/chart/modules/chart-indicators-full.js?v=20260727b80"
+            ]
+          },
+          "checks": {
+            "referenced": true,
+            "executed": false,
+            "correctOrder": true,
+            "flagsAvailable": false,
+            "responsesOk": false
+          },
+          "pass": false
+        },
+        "explicitLoader": {
+          "entry": "dist-v9-host",
+          "pathname": "/chart/dist-v9/index.html",
+          "mode": "fixed",
+          "host": "127.0.0.1",
+          "coldCache": true,
+          "serviceWorkerBypassed": true,
+          "requests": [
+            "http://127.0.0.1:52838/chart/modules/indicator-performance.js?v=b75-explicit-loader",
+            "http://127.0.0.1:52838/chart/modules/chart-indicators-full.js?v=20260727b80"
+          ],
+          "responses": [
+            {
+              "url": "http://127.0.0.1:52838/chart/modules/indicator-performance.js?v=b75-explicit-loader",
+              "status": 200
+            },
+            {
+              "url": "http://127.0.0.1:52838/chart/modules/chart-indicators-full.js?v=20260727b80",
+              "status": 200
+            }
+          ],
+          "errors": [],
+          "runtime": {
+            "moduleGlobalType": "object",
+            "apis": {
+              "packBarsRangeCompact": "function",
+              "mergeIndicatorTailWindow": "function",
+              "estimateTailLookback": "function",
+              "hashIndicatorParams": "function"
+            },
+            "resources": [
+              "http://127.0.0.1:52838/chart/modules/indicator-performance.js?v=b75-explicit-loader",
+              "http://127.0.0.1:52838/chart/modules/chart-indicators-full.js?v=20260727b80"
+            ]
+          },
+          "checks": {
+            "referenced": true,
+            "executed": true,
+            "correctOrder": true,
+            "flagsAvailable": true,
+            "responsesOk": true
+          },
+          "pass": true
+        },
+        "corrupted": {
+          "entry": "dist-v9-host",
+          "pathname": "/chart/dist-v9/index.html",
+          "mode": "corrupt",
+          "host": "127.0.0.1",
+          "coldCache": true,
+          "serviceWorkerBypassed": true,
+          "requests": [
+            "http://127.0.0.1:57066/chart/modules/indicator-performance.js?v=b75-explicit-loader",
+            "http://127.0.0.1:57066/chart/modules/chart-indicators-full.js?v=20260727b80"
+          ],
+          "responses": [
+            {
+              "url": "http://127.0.0.1:57066/chart/modules/indicator-performance.js?v=b75-explicit-loader",
+              "status": 200
+            },
+            {
+              "url": "http://127.0.0.1:57066/chart/modules/chart-indicators-full.js?v=20260727b80",
+              "status": 200
+            }
+          ],
+          "errors": [],
+          "runtime": {
+            "moduleGlobalType": "object",
+            "apis": {
+              "packBarsRangeCompact": "string",
+              "mergeIndicatorTailWindow": "undefined",
+              "estimateTailLookback": "undefined",
+              "hashIndicatorParams": "undefined"
+            },
+            "resources": [
+              "http://127.0.0.1:57066/chart/modules/indicator-performance.js?v=b75-explicit-loader",
+              "http://127.0.0.1:57066/chart/modules/chart-indicators-full.js?v=20260727b80"
+            ]
+          },
+          "checks": {
+            "referenced": true,
+            "executed": true,
+            "correctOrder": true,
+            "flagsAvailable": false,
+            "responsesOk": true
+          },
+          "pass": false
+        },
+        "wrongOrder": {
+          "entry": "dist-v9-host",
+          "pathname": "/chart/dist-v9/index.html",
+          "mode": "wrong-order",
+          "host": "127.0.0.1",
+          "coldCache": true,
+          "serviceWorkerBypassed": true,
+          "requests": [
+            "http://127.0.0.1:55279/chart/modules/chart-indicators-full.js?v=20260727b80",
+            "http://127.0.0.1:55279/chart/modules/indicator-performance.js?v=b75-explicit-loader"
+          ],
+          "responses": [
+            {
+              "url": "http://127.0.0.1:55279/chart/modules/indicator-performance.js?v=b75-explicit-loader",
+              "status": 200
+            },
+            {
+              "url": "http://127.0.0.1:55279/chart/modules/chart-indicators-full.js?v=20260727b80",
+              "status": 200
+            }
+          ],
+          "errors": [],
+          "runtime": {
+            "moduleGlobalType": "object",
+            "apis": {
+              "packBarsRangeCompact": "function",
+              "mergeIndicatorTailWindow": "function",
+              "estimateTailLookback": "function",
+              "hashIndicatorParams": "function"
+            },
+            "resources": [
+              "http://127.0.0.1:55279/chart/modules/chart-indicators-full.js?v=20260727b80",
+              "http://127.0.0.1:55279/chart/modules/indicator-performance.js?v=b75-explicit-loader"
+            ]
+          },
+          "checks": {
+            "referenced": true,
+            "executed": true,
+            "correctOrder": false,
+            "flagsAvailable": true,
+            "responsesOk": true
+          },
+          "pass": false
+        },
+        "product": [
+          {
+            "entry": "dist-v9-host",
+            "pathname": "/chart/dist-v9/index.html",
+            "mode": "product",
+            "host": "127.0.0.1",
+            "coldCache": true,
+            "serviceWorkerBypassed": true,
+            "requests": [
+              "http://127.0.0.1:61096/chart/modules/indicator-performance.js?v=20260727b80",
+              "http://127.0.0.1:61096/chart/modules/chart-indicators-full.js?v=20260727b80"
+            ],
+            "responses": [
+              {
+                "url": "http://127.0.0.1:61096/chart/modules/indicator-performance.js?v=20260727b80",
+                "status": 200
+              },
+              {
+                "url": "http://127.0.0.1:61096/chart/modules/chart-indicators-full.js?v=20260727b80",
+                "status": 200
+              }
+            ],
+            "errors": [],
+            "runtime": {
+              "moduleGlobalType": "object",
+              "apis": {
+                "packBarsRangeCompact": "function",
+                "mergeIndicatorTailWindow": "function",
+                "estimateTailLookback": "function",
+                "hashIndicatorParams": "function"
+              },
+              "resources": [
+                "http://127.0.0.1:61096/chart/modules/indicator-performance.js?v=20260727b80",
+                "http://127.0.0.1:61096/chart/modules/chart-indicators-full.js?v=20260727b80"
+              ]
+            },
+            "checks": {
+              "referenced": true,
+              "executed": true,
+              "correctOrder": true,
+              "flagsAvailable": true,
+              "responsesOk": true
+            },
+            "pass": true
+          },
+          {
+            "entry": "homepage-forwarded-host",
+            "pathname": "/chart/dist-v9/index.html",
+            "mode": "product",
+            "host": "127.0.0.1",
+            "coldCache": true,
+            "serviceWorkerBypassed": true,
+            "requests": [
+              "http://127.0.0.1:55919/chart/modules/indicator-performance.js?v=20260727b80",
+              "http://127.0.0.1:55919/chart/modules/chart-indicators-full.js?v=20260727b80"
+            ],
+            "responses": [
+              {
+                "url": "http://127.0.0.1:55919/chart/modules/indicator-performance.js?v=20260727b80",
+                "status": 200
+              },
+              {
+                "url": "http://127.0.0.1:55919/chart/modules/chart-indicators-full.js?v=20260727b80",
+                "status": 200
+              }
+            ],
+            "errors": [],
+            "runtime": {
+              "moduleGlobalType": "object",
+              "apis": {
+                "packBarsRangeCompact": "function",
+                "mergeIndicatorTailWindow": "function",
+                "estimateTailLookback": "function",
+                "hashIndicatorParams": "function"
+              },
+              "resources": [
+                "http://127.0.0.1:55919/chart/modules/indicator-performance.js?v=20260727b80",
+                "http://127.0.0.1:55919/chart/modules/chart-indicators-full.js?v=20260727b80"
+              ]
+            },
+            "checks": {
+              "referenced": true,
+              "executed": true,
+              "correctOrder": true,
+              "flagsAvailable": true,
+              "responsesOk": true
+            },
+            "pass": true
+          },
+          {
+            "entry": "multichart-embed",
+            "pathname": "/chart/multichart-prod/chart-embed.html",
+            "mode": "product",
+            "host": "127.0.0.1",
+            "coldCache": true,
+            "serviceWorkerBypassed": true,
+            "requests": [
+              "http://127.0.0.1:55722/chart/modules/indicator-performance.js",
+              "http://127.0.0.1:55722/chart/modules/chart-indicators-full.js"
+            ],
+            "responses": [
+              {
+                "url": "http://127.0.0.1:55722/chart/modules/indicator-performance.js",
+                "status": 200
+              },
+              {
+                "url": "http://127.0.0.1:55722/chart/modules/chart-indicators-full.js",
+                "status": 200
+              }
+            ],
+            "errors": [],
+            "runtime": {
+              "moduleGlobalType": "object",
+              "apis": {
+                "packBarsRangeCompact": "function",
+                "mergeIndicatorTailWindow": "function",
+                "estimateTailLookback": "function",
+                "hashIndicatorParams": "function"
+              },
+              "resources": [
+                "http://127.0.0.1:55722/chart/modules/indicator-performance.js",
+                "http://127.0.0.1:55722/chart/modules/chart-indicators-full.js"
+              ]
+            },
+            "checks": {
+              "referenced": true,
+              "executed": true,
+              "correctOrder": true,
+              "flagsAvailable": true,
+              "responsesOk": true
+            },
+            "pass": true
+          }
+        ]
+      },
+      "productPass": true
+    },
+    {
+      "schemaVersion": 1,
+      "oracle": {
+        "id": "B75-INDICATOR-PERFORMANCE-PRODUCT-SURFACE-V1",
+        "mechanismRow": "B75/M19-I(a)-INDICATOR-PERFORMANCE-LOADER",
+        "authoredAgainst": "967f96692fbccd448a3a31c7b2ff71718e18a71e",
+        "authoredAgainstSubject": "chore(release): package 20260727b79 Tier-2 train",
+        "lastProvenRedOn": "967f96692-b79",
+        "staleness": {
+          "maxBuilds": 20,
+          "status": "PROVEN-RED"
+        },
+        "moduleSha256": "961dc289509e24a27eaedcf0da9c55f73aad391dc03981cd9e9f35da867e1ca1",
+        "deterministicAssertionPayload": true
+      },
+      "host": {
+        "platform": "win32",
+        "node": "v24.15.0",
+        "hostname": "127.0.0.1",
+        "clock": "performance-resource-order",
+        "coldCache": true,
+        "serviceWorkerBypassed": true
+      },
+      "excludedNonProductionSurface": "homepage/public/chart/talaria-design/live/index.html",
+      "staticSurfaces": [
+        {
+          "entry": "maintained-source",
+          "path": "chart v 1.4\\talaria-design\\live\\index.html",
+          "sourceSha256": "79b49adbc293e4cb2b2722776eed249c837a18b91961a1912258afa00e6b25cc",
+          "referenced": true,
+          "correctOrder": true,
+          "buildStamp": "20260727b80",
+          "dependencyStampsUniform": true
+        },
+        {
+          "entry": "dist-v9-host",
+          "path": "chart v 1.4\\chart\\dist-v9\\index.html",
+          "sourceSha256": "41207299daa4578c603a7d0e61f6f3ee8a523a39b8998762436e57684747ca29",
+          "referenced": true,
+          "correctOrder": true,
+          "buildStamp": "20260727b80",
+          "dependencyStampsUniform": true
+        },
+        {
+          "entry": "homepage-forwarded-host",
+          "path": "homepage\\public\\chart\\dist-v9\\index.html",
+          "sourceSha256": "41207299daa4578c603a7d0e61f6f3ee8a523a39b8998762436e57684747ca29",
+          "referenced": true,
+          "correctOrder": true,
+          "buildStamp": "20260727b80",
+          "dependencyStampsUniform": true
+        },
+        {
+          "entry": "multichart-embed",
+          "path": "chart v 1.4\\chart\\multichart-prod\\chart-embed.html",
+          "sourceSha256": "48ee0e4c78c52519831e26ffa209c842d80fe86b1288fedb3fe881a8393cbb69",
+          "referenced": true,
+          "correctOrder": true,
+          "buildStamp": "20260727b80",
+          "dependencyStampsUniform": true
+        }
+      ],
+      "uniformBuildStamp": "20260727b80",
+      "fourState": {
+        "expected": {
+          "brokenRed": true,
+          "blockedBridgeAndMissingGlobalRed": true,
+          "explicitLoaderGreen": true,
+          "corruptedRed": true,
+          "wrongOrderRed": true
+        },
+        "normalFourState": true,
+        "inverted": false,
+        "assertedFourState": true
+      },
+      "cells": {
+        "broken": {
+          "entry": "dist-v9-host",
+          "pathname": "/chart/dist-v9/index.html",
+          "mode": "broken",
+          "host": "127.0.0.1",
+          "coldCache": true,
+          "serviceWorkerBypassed": true,
+          "requests": [
+            "http://127.0.0.1:52928/chart/modules/chart-indicators-full.js?v=20260727b80"
+          ],
+          "responses": [
+            {
+              "url": "http://127.0.0.1:52928/chart/modules/chart-indicators-full.js?v=20260727b80",
+              "status": 200
+            }
+          ],
+          "errors": [],
+          "runtime": {
+            "moduleGlobalType": "undefined",
+            "apis": {
+              "packBarsRangeCompact": "undefined",
+              "mergeIndicatorTailWindow": "undefined",
+              "estimateTailLookback": "undefined",
+              "hashIndicatorParams": "undefined"
+            },
+            "resources": [
+              "http://127.0.0.1:52928/chart/modules/chart-indicators-full.js?v=20260727b80"
+            ]
+          },
+          "checks": {
+            "referenced": false,
+            "executed": false,
+            "correctOrder": false,
+            "flagsAvailable": false,
+            "responsesOk": true
+          },
+          "pass": false
+        },
+        "blocked": {
+          "entry": "dist-v9-host",
+          "pathname": "/chart/dist-v9/index.html",
+          "mode": "blocked",
+          "host": "127.0.0.1",
+          "coldCache": true,
+          "serviceWorkerBypassed": true,
+          "requests": [
+            "http://127.0.0.1:52805/chart/modules/indicator-performance.js?v=20260727b80",
+            "http://127.0.0.1:52805/chart/modules/chart-indicators-full.js?v=20260727b80"
+          ],
+          "responses": [
+            {
+              "url": "http://127.0.0.1:52805/chart/modules/indicator-performance.js?v=20260727b80",
+              "status": 503
+            },
+            {
+              "url": "http://127.0.0.1:52805/chart/modules/chart-indicators-full.js?v=20260727b80",
+              "status": 200
+            }
+          ],
+          "errors": [],
+          "runtime": {
+            "moduleGlobalType": "undefined",
+            "apis": {
+              "packBarsRangeCompact": "undefined",
+              "mergeIndicatorTailWindow": "undefined",
+              "estimateTailLookback": "undefined",
+              "hashIndicatorParams": "undefined"
+            },
+            "resources": [
+              "http://127.0.0.1:52805/chart/modules/indicator-performance.js?v=20260727b80",
+              "http://127.0.0.1:52805/chart/modules/chart-indicators-full.js?v=20260727b80"
+            ]
+          },
+          "checks": {
+            "referenced": true,
+            "executed": false,
+            "correctOrder": true,
+            "flagsAvailable": false,
+            "responsesOk": false
+          },
+          "pass": false
+        },
+        "explicitLoader": {
+          "entry": "dist-v9-host",
+          "pathname": "/chart/dist-v9/index.html",
+          "mode": "fixed",
+          "host": "127.0.0.1",
+          "coldCache": true,
+          "serviceWorkerBypassed": true,
+          "requests": [
+            "http://127.0.0.1:52494/chart/modules/indicator-performance.js?v=b75-explicit-loader",
+            "http://127.0.0.1:52494/chart/modules/chart-indicators-full.js?v=20260727b80"
+          ],
+          "responses": [
+            {
+              "url": "http://127.0.0.1:52494/chart/modules/indicator-performance.js?v=b75-explicit-loader",
+              "status": 200
+            },
+            {
+              "url": "http://127.0.0.1:52494/chart/modules/chart-indicators-full.js?v=20260727b80",
+              "status": 200
+            }
+          ],
+          "errors": [],
+          "runtime": {
+            "moduleGlobalType": "object",
+            "apis": {
+              "packBarsRangeCompact": "function",
+              "mergeIndicatorTailWindow": "function",
+              "estimateTailLookback": "function",
+              "hashIndicatorParams": "function"
+            },
+            "resources": [
+              "http://127.0.0.1:52494/chart/modules/indicator-performance.js?v=b75-explicit-loader",
+              "http://127.0.0.1:52494/chart/modules/chart-indicators-full.js?v=20260727b80"
+            ]
+          },
+          "checks": {
+            "referenced": true,
+            "executed": true,
+            "correctOrder": true,
+            "flagsAvailable": true,
+            "responsesOk": true
+          },
+          "pass": true
+        },
+        "corrupted": {
+          "entry": "dist-v9-host",
+          "pathname": "/chart/dist-v9/index.html",
+          "mode": "corrupt",
+          "host": "127.0.0.1",
+          "coldCache": true,
+          "serviceWorkerBypassed": true,
+          "requests": [
+            "http://127.0.0.1:63561/chart/modules/indicator-performance.js?v=b75-explicit-loader",
+            "http://127.0.0.1:63561/chart/modules/chart-indicators-full.js?v=20260727b80"
+          ],
+          "responses": [
+            {
+              "url": "http://127.0.0.1:63561/chart/modules/indicator-performance.js?v=b75-explicit-loader",
+              "status": 200
+            },
+            {
+              "url": "http://127.0.0.1:63561/chart/modules/chart-indicators-full.js?v=20260727b80",
+              "status": 200
+            }
+          ],
+          "errors": [],
+          "runtime": {
+            "moduleGlobalType": "object",
+            "apis": {
+              "packBarsRangeCompact": "string",
+              "mergeIndicatorTailWindow": "undefined",
+              "estimateTailLookback": "undefined",
+              "hashIndicatorParams": "undefined"
+            },
+            "resources": [
+              "http://127.0.0.1:63561/chart/modules/indicator-performance.js?v=b75-explicit-loader",
+              "http://127.0.0.1:63561/chart/modules/chart-indicators-full.js?v=20260727b80"
+            ]
+          },
+          "checks": {
+            "referenced": true,
+            "executed": true,
+            "correctOrder": true,
+            "flagsAvailable": false,
+            "responsesOk": true
+          },
+          "pass": false
+        },
+        "wrongOrder": {
+          "entry": "dist-v9-host",
+          "pathname": "/chart/dist-v9/index.html",
+          "mode": "wrong-order",
+          "host": "127.0.0.1",
+          "coldCache": true,
+          "serviceWorkerBypassed": true,
+          "requests": [
+            "http://127.0.0.1:55810/chart/modules/chart-indicators-full.js?v=20260727b80",
+            "http://127.0.0.1:55810/chart/modules/indicator-performance.js?v=b75-explicit-loader"
+          ],
+          "responses": [
+            {
+              "url": "http://127.0.0.1:55810/chart/modules/indicator-performance.js?v=b75-explicit-loader",
+              "status": 200
+            },
+            {
+              "url": "http://127.0.0.1:55810/chart/modules/chart-indicators-full.js?v=20260727b80",
+              "status": 200
+            }
+          ],
+          "errors": [],
+          "runtime": {
+            "moduleGlobalType": "object",
+            "apis": {
+              "packBarsRangeCompact": "function",
+              "mergeIndicatorTailWindow": "function",
+              "estimateTailLookback": "function",
+              "hashIndicatorParams": "function"
+            },
+            "resources": [
+              "http://127.0.0.1:55810/chart/modules/chart-indicators-full.js?v=20260727b80",
+              "http://127.0.0.1:55810/chart/modules/indicator-performance.js?v=b75-explicit-loader"
+            ]
+          },
+          "checks": {
+            "referenced": true,
+            "executed": true,
+            "correctOrder": false,
+            "flagsAvailable": true,
+            "responsesOk": true
+          },
+          "pass": false
+        },
+        "product": [
+          {
+            "entry": "dist-v9-host",
+            "pathname": "/chart/dist-v9/index.html",
+            "mode": "product",
+            "host": "127.0.0.1",
+            "coldCache": true,
+            "serviceWorkerBypassed": true,
+            "requests": [
+              "http://127.0.0.1:65276/chart/modules/indicator-performance.js?v=20260727b80",
+              "http://127.0.0.1:65276/chart/modules/chart-indicators-full.js?v=20260727b80"
+            ],
+            "responses": [
+              {
+                "url": "http://127.0.0.1:65276/chart/modules/indicator-performance.js?v=20260727b80",
+                "status": 200
+              },
+              {
+                "url": "http://127.0.0.1:65276/chart/modules/chart-indicators-full.js?v=20260727b80",
+                "status": 200
+              }
+            ],
+            "errors": [],
+            "runtime": {
+              "moduleGlobalType": "object",
+              "apis": {
+                "packBarsRangeCompact": "function",
+                "mergeIndicatorTailWindow": "function",
+                "estimateTailLookback": "function",
+                "hashIndicatorParams": "function"
+              },
+              "resources": [
+                "http://127.0.0.1:65276/chart/modules/indicator-performance.js?v=20260727b80",
+                "http://127.0.0.1:65276/chart/modules/chart-indicators-full.js?v=20260727b80"
+              ]
+            },
+            "checks": {
+              "referenced": true,
+              "executed": true,
+              "correctOrder": true,
+              "flagsAvailable": true,
+              "responsesOk": true
+            },
+            "pass": true
+          },
+          {
+            "entry": "homepage-forwarded-host",
+            "pathname": "/chart/dist-v9/index.html",
+            "mode": "product",
+            "host": "127.0.0.1",
+            "coldCache": true,
+            "serviceWorkerBypassed": true,
+            "requests": [
+              "http://127.0.0.1:55106/chart/modules/indicator-performance.js?v=20260727b80",
+              "http://127.0.0.1:55106/chart/modules/chart-indicators-full.js?v=20260727b80"
+            ],
+            "responses": [
+              {
+                "url": "http://127.0.0.1:55106/chart/modules/indicator-performance.js?v=20260727b80",
+                "status": 200
+              },
+              {
+                "url": "http://127.0.0.1:55106/chart/modules/chart-indicators-full.js?v=20260727b80",
+                "status": 200
+              }
+            ],
+            "errors": [],
+            "runtime": {
+              "moduleGlobalType": "object",
+              "apis": {
+                "packBarsRangeCompact": "function",
+                "mergeIndicatorTailWindow": "function",
+                "estimateTailLookback": "function",
+                "hashIndicatorParams": "function"
+              },
+              "resources": [
+                "http://127.0.0.1:55106/chart/modules/indicator-performance.js?v=20260727b80",
+                "http://127.0.0.1:55106/chart/modules/chart-indicators-full.js?v=20260727b80"
+              ]
+            },
+            "checks": {
+              "referenced": true,
+              "executed": true,
+              "correctOrder": true,
+              "flagsAvailable": true,
+              "responsesOk": true
+            },
+            "pass": true
+          },
+          {
+            "entry": "multichart-embed",
+            "pathname": "/chart/multichart-prod/chart-embed.html",
+            "mode": "product",
+            "host": "127.0.0.1",
+            "coldCache": true,
+            "serviceWorkerBypassed": true,
+            "requests": [
+              "http://127.0.0.1:57447/chart/modules/indicator-performance.js",
+              "http://127.0.0.1:57447/chart/modules/chart-indicators-full.js"
+            ],
+            "responses": [
+              {
+                "url": "http://127.0.0.1:57447/chart/modules/indicator-performance.js",
+                "status": 200
+              },
+              {
+                "url": "http://127.0.0.1:57447/chart/modules/chart-indicators-full.js",
+                "status": 200
+              }
+            ],
+            "errors": [],
+            "runtime": {
+              "moduleGlobalType": "object",
+              "apis": {
+                "packBarsRangeCompact": "function",
+                "mergeIndicatorTailWindow": "function",
+                "estimateTailLookback": "function",
+                "hashIndicatorParams": "function"
+              },
+              "resources": [
+                "http://127.0.0.1:57447/chart/modules/indicator-performance.js",
+                "http://127.0.0.1:57447/chart/modules/chart-indicators-full.js"
+              ]
+            },
+            "checks": {
+              "referenced": true,
+              "executed": true,
+              "correctOrder": true,
+              "flagsAvailable": true,
+              "responsesOk": true
+            },
+            "pass": true
+          }
+        ]
+      },
+      "productPass": true
+    },
+    {
+      "schemaVersion": 1,
+      "oracle": {
+        "id": "B75-INDICATOR-PERFORMANCE-PRODUCT-SURFACE-V1",
+        "mechanismRow": "B75/M19-I(a)-INDICATOR-PERFORMANCE-LOADER",
+        "authoredAgainst": "967f96692fbccd448a3a31c7b2ff71718e18a71e",
+        "authoredAgainstSubject": "chore(release): package 20260727b79 Tier-2 train",
+        "lastProvenRedOn": "967f96692-b79",
+        "staleness": {
+          "maxBuilds": 20,
+          "status": "PROVEN-RED"
+        },
+        "moduleSha256": "961dc289509e24a27eaedcf0da9c55f73aad391dc03981cd9e9f35da867e1ca1",
+        "deterministicAssertionPayload": true
+      },
+      "host": {
+        "platform": "win32",
+        "node": "v24.15.0",
+        "hostname": "127.0.0.1",
+        "clock": "performance-resource-order",
+        "coldCache": true,
+        "serviceWorkerBypassed": true
+      },
+      "excludedNonProductionSurface": "homepage/public/chart/talaria-design/live/index.html",
+      "staticSurfaces": [
+        {
+          "entry": "maintained-source",
+          "path": "chart v 1.4\\talaria-design\\live\\index.html",
+          "sourceSha256": "79b49adbc293e4cb2b2722776eed249c837a18b91961a1912258afa00e6b25cc",
+          "referenced": true,
+          "correctOrder": true,
+          "buildStamp": "20260727b80",
+          "dependencyStampsUniform": true
+        },
+        {
+          "entry": "dist-v9-host",
+          "path": "chart v 1.4\\chart\\dist-v9\\index.html",
+          "sourceSha256": "41207299daa4578c603a7d0e61f6f3ee8a523a39b8998762436e57684747ca29",
+          "referenced": true,
+          "correctOrder": true,
+          "buildStamp": "20260727b80",
+          "dependencyStampsUniform": true
+        },
+        {
+          "entry": "homepage-forwarded-host",
+          "path": "homepage\\public\\chart\\dist-v9\\index.html",
+          "sourceSha256": "41207299daa4578c603a7d0e61f6f3ee8a523a39b8998762436e57684747ca29",
+          "referenced": true,
+          "correctOrder": true,
+          "buildStamp": "20260727b80",
+          "dependencyStampsUniform": true
+        },
+        {
+          "entry": "multichart-embed",
+          "path": "chart v 1.4\\chart\\multichart-prod\\chart-embed.html",
+          "sourceSha256": "48ee0e4c78c52519831e26ffa209c842d80fe86b1288fedb3fe881a8393cbb69",
+          "referenced": true,
+          "correctOrder": true,
+          "buildStamp": "20260727b80",
+          "dependencyStampsUniform": true
+        }
+      ],
+      "uniformBuildStamp": "20260727b80",
+      "fourState": {
+        "expected": {
+          "brokenRed": true,
+          "blockedBridgeAndMissingGlobalRed": true,
+          "explicitLoaderGreen": true,
+          "corruptedRed": true,
+          "wrongOrderRed": true
+        },
+        "normalFourState": true,
+        "inverted": false,
+        "assertedFourState": true
+      },
+      "cells": {
+        "broken": {
+          "entry": "dist-v9-host",
+          "pathname": "/chart/dist-v9/index.html",
+          "mode": "broken",
+          "host": "127.0.0.1",
+          "coldCache": true,
+          "serviceWorkerBypassed": true,
+          "requests": [
+            "http://127.0.0.1:51323/chart/modules/chart-indicators-full.js?v=20260727b80"
+          ],
+          "responses": [
+            {
+              "url": "http://127.0.0.1:51323/chart/modules/chart-indicators-full.js?v=20260727b80",
+              "status": 200
+            }
+          ],
+          "errors": [],
+          "runtime": {
+            "moduleGlobalType": "undefined",
+            "apis": {
+              "packBarsRangeCompact": "undefined",
+              "mergeIndicatorTailWindow": "undefined",
+              "estimateTailLookback": "undefined",
+              "hashIndicatorParams": "undefined"
+            },
+            "resources": [
+              "http://127.0.0.1:51323/chart/modules/chart-indicators-full.js?v=20260727b80"
+            ]
+          },
+          "checks": {
+            "referenced": false,
+            "executed": false,
+            "correctOrder": false,
+            "flagsAvailable": false,
+            "responsesOk": true
+          },
+          "pass": false
+        },
+        "blocked": {
+          "entry": "dist-v9-host",
+          "pathname": "/chart/dist-v9/index.html",
+          "mode": "blocked",
+          "host": "127.0.0.1",
+          "coldCache": true,
+          "serviceWorkerBypassed": true,
+          "requests": [
+            "http://127.0.0.1:61819/chart/modules/indicator-performance.js?v=20260727b80",
+            "http://127.0.0.1:61819/chart/modules/chart-indicators-full.js?v=20260727b80"
+          ],
+          "responses": [
+            {
+              "url": "http://127.0.0.1:61819/chart/modules/indicator-performance.js?v=20260727b80",
+              "status": 503
+            },
+            {
+              "url": "http://127.0.0.1:61819/chart/modules/chart-indicators-full.js?v=20260727b80",
+              "status": 200
+            }
+          ],
+          "errors": [],
+          "runtime": {
+            "moduleGlobalType": "undefined",
+            "apis": {
+              "packBarsRangeCompact": "undefined",
+              "mergeIndicatorTailWindow": "undefined",
+              "estimateTailLookback": "undefined",
+              "hashIndicatorParams": "undefined"
+            },
+            "resources": [
+              "http://127.0.0.1:61819/chart/modules/indicator-performance.js?v=20260727b80",
+              "http://127.0.0.1:61819/chart/modules/chart-indicators-full.js?v=20260727b80"
+            ]
+          },
+          "checks": {
+            "referenced": true,
+            "executed": false,
+            "correctOrder": true,
+            "flagsAvailable": false,
+            "responsesOk": false
+          },
+          "pass": false
+        },
+        "explicitLoader": {
+          "entry": "dist-v9-host",
+          "pathname": "/chart/dist-v9/index.html",
+          "mode": "fixed",
+          "host": "127.0.0.1",
+          "coldCache": true,
+          "serviceWorkerBypassed": true,
+          "requests": [
+            "http://127.0.0.1:54668/chart/modules/indicator-performance.js?v=b75-explicit-loader",
+            "http://127.0.0.1:54668/chart/modules/chart-indicators-full.js?v=20260727b80"
+          ],
+          "responses": [
+            {
+              "url": "http://127.0.0.1:54668/chart/modules/indicator-performance.js?v=b75-explicit-loader",
+              "status": 200
+            },
+            {
+              "url": "http://127.0.0.1:54668/chart/modules/chart-indicators-full.js?v=20260727b80",
+              "status": 200
+            }
+          ],
+          "errors": [],
+          "runtime": {
+            "moduleGlobalType": "object",
+            "apis": {
+              "packBarsRangeCompact": "function",
+              "mergeIndicatorTailWindow": "function",
+              "estimateTailLookback": "function",
+              "hashIndicatorParams": "function"
+            },
+            "resources": [
+              "http://127.0.0.1:54668/chart/modules/indicator-performance.js?v=b75-explicit-loader",
+              "http://127.0.0.1:54668/chart/modules/chart-indicators-full.js?v=20260727b80"
+            ]
+          },
+          "checks": {
+            "referenced": true,
+            "executed": true,
+            "correctOrder": true,
+            "flagsAvailable": true,
+            "responsesOk": true
+          },
+          "pass": true
+        },
+        "corrupted": {
+          "entry": "dist-v9-host",
+          "pathname": "/chart/dist-v9/index.html",
+          "mode": "corrupt",
+          "host": "127.0.0.1",
+          "coldCache": true,
+          "serviceWorkerBypassed": true,
+          "requests": [
+            "http://127.0.0.1:55945/chart/modules/indicator-performance.js?v=b75-explicit-loader",
+            "http://127.0.0.1:55945/chart/modules/chart-indicators-full.js?v=20260727b80"
+          ],
+          "responses": [
+            {
+              "url": "http://127.0.0.1:55945/chart/modules/indicator-performance.js?v=b75-explicit-loader",
+              "status": 200
+            },
+            {
+              "url": "http://127.0.0.1:55945/chart/modules/chart-indicators-full.js?v=20260727b80",
+              "status": 200
+            }
+          ],
+          "errors": [],
+          "runtime": {
+            "moduleGlobalType": "object",
+            "apis": {
+              "packBarsRangeCompact": "string",
+              "mergeIndicatorTailWindow": "undefined",
+              "estimateTailLookback": "undefined",
+              "hashIndicatorParams": "undefined"
+            },
+            "resources": [
+              "http://127.0.0.1:55945/chart/modules/indicator-performance.js?v=b75-explicit-loader",
+              "http://127.0.0.1:55945/chart/modules/chart-indicators-full.js?v=20260727b80"
+            ]
+          },
+          "checks": {
+            "referenced": true,
+            "executed": true,
+            "correctOrder": true,
+            "flagsAvailable": false,
+            "responsesOk": true
+          },
+          "pass": false
+        },
+        "wrongOrder": {
+          "entry": "dist-v9-host",
+          "pathname": "/chart/dist-v9/index.html",
+          "mode": "wrong-order",
+          "host": "127.0.0.1",
+          "coldCache": true,
+          "serviceWorkerBypassed": true,
+          "requests": [
+            "http://127.0.0.1:65526/chart/modules/chart-indicators-full.js?v=20260727b80",
+            "http://127.0.0.1:65526/chart/modules/indicator-performance.js?v=b75-explicit-loader"
+          ],
+          "responses": [
+            {
+              "url": "http://127.0.0.1:65526/chart/modules/indicator-performance.js?v=b75-explicit-loader",
+              "status": 200
+            },
+            {
+              "url": "http://127.0.0.1:65526/chart/modules/chart-indicators-full.js?v=20260727b80",
+              "status": 200
+            }
+          ],
+          "errors": [],
+          "runtime": {
+            "moduleGlobalType": "object",
+            "apis": {
+              "packBarsRangeCompact": "function",
+              "mergeIndicatorTailWindow": "function",
+              "estimateTailLookback": "function",
+              "hashIndicatorParams": "function"
+            },
+            "resources": [
+              "http://127.0.0.1:65526/chart/modules/chart-indicators-full.js?v=20260727b80",
+              "http://127.0.0.1:65526/chart/modules/indicator-performance.js?v=b75-explicit-loader"
+            ]
+          },
+          "checks": {
+            "referenced": true,
+            "executed": true,
+            "correctOrder": false,
+            "flagsAvailable": true,
+            "responsesOk": true
+          },
+          "pass": false
+        },
+        "product": [
+          {
+            "entry": "dist-v9-host",
+            "pathname": "/chart/dist-v9/index.html",
+            "mode": "product",
+            "host": "127.0.0.1",
+            "coldCache": true,
+            "serviceWorkerBypassed": true,
+            "requests": [
+              "http://127.0.0.1:52807/chart/modules/indicator-performance.js?v=20260727b80",
+              "http://127.0.0.1:52807/chart/modules/chart-indicators-full.js?v=20260727b80"
+            ],
+            "responses": [
+              {
+                "url": "http://127.0.0.1:52807/chart/modules/indicator-performance.js?v=20260727b80",
+                "status": 200
+              },
+              {
+                "url": "http://127.0.0.1:52807/chart/modules/chart-indicators-full.js?v=20260727b80",
+                "status": 200
+              }
+            ],
+            "errors": [],
+            "runtime": {
+              "moduleGlobalType": "object",
+              "apis": {
+                "packBarsRangeCompact": "function",
+                "mergeIndicatorTailWindow": "function",
+                "estimateTailLookback": "function",
+                "hashIndicatorParams": "function"
+              },
+              "resources": [
+                "http://127.0.0.1:52807/chart/modules/indicator-performance.js?v=20260727b80",
+                "http://127.0.0.1:52807/chart/modules/chart-indicators-full.js?v=20260727b80"
+              ]
+            },
+            "checks": {
+              "referenced": true,
+              "executed": true,
+              "correctOrder": true,
+              "flagsAvailable": true,
+              "responsesOk": true
+            },
+            "pass": true
+          },
+          {
+            "entry": "homepage-forwarded-host",
+            "pathname": "/chart/dist-v9/index.html",
+            "mode": "product",
+            "host": "127.0.0.1",
+            "coldCache": true,
+            "serviceWorkerBypassed": true,
+            "requests": [
+              "http://127.0.0.1:63282/chart/modules/indicator-performance.js?v=20260727b80",
+              "http://127.0.0.1:63282/chart/modules/chart-indicators-full.js?v=20260727b80"
+            ],
+            "responses": [
+              {
+                "url": "http://127.0.0.1:63282/chart/modules/indicator-performance.js?v=20260727b80",
+                "status": 200
+              },
+              {
+                "url": "http://127.0.0.1:63282/chart/modules/chart-indicators-full.js?v=20260727b80",
+                "status": 200
+              }
+            ],
+            "errors": [],
+            "runtime": {
+              "moduleGlobalType": "object",
+              "apis": {
+                "packBarsRangeCompact": "function",
+                "mergeIndicatorTailWindow": "function",
+                "estimateTailLookback": "function",
+                "hashIndicatorParams": "function"
+              },
+              "resources": [
+                "http://127.0.0.1:63282/chart/modules/indicator-performance.js?v=20260727b80",
+                "http://127.0.0.1:63282/chart/modules/chart-indicators-full.js?v=20260727b80"
+              ]
+            },
+            "checks": {
+              "referenced": true,
+              "executed": true,
+              "correctOrder": true,
+              "flagsAvailable": true,
+              "responsesOk": true
+            },
+            "pass": true
+          },
+          {
+            "entry": "multichart-embed",
+            "pathname": "/chart/multichart-prod/chart-embed.html",
+            "mode": "product",
+            "host": "127.0.0.1",
+            "coldCache": true,
+            "serviceWorkerBypassed": true,
+            "requests": [
+              "http://127.0.0.1:60858/chart/modules/indicator-performance.js",
+              "http://127.0.0.1:60858/chart/modules/chart-indicators-full.js"
+            ],
+            "responses": [
+              {
+                "url": "http://127.0.0.1:60858/chart/modules/indicator-performance.js",
+                "status": 200
+              },
+              {
+                "url": "http://127.0.0.1:60858/chart/modules/chart-indicators-full.js",
+                "status": 200
+              }
+            ],
+            "errors": [],
+            "runtime": {
+              "moduleGlobalType": "object",
+              "apis": {
+                "packBarsRangeCompact": "function",
+                "mergeIndicatorTailWindow": "function",
+                "estimateTailLookback": "function",
+                "hashIndicatorParams": "function"
+              },
+              "resources": [
+                "http://127.0.0.1:60858/chart/modules/indicator-performance.js",
+                "http://127.0.0.1:60858/chart/modules/chart-indicators-full.js"
+              ]
+            },
+            "checks": {
+              "referenced": true,
+              "executed": true,
+              "correctOrder": true,
+              "flagsAvailable": true,
+              "responsesOk": true
+            },
+            "pass": true
+          }
+        ]
+      },
+      "productPass": true
+    }
+  ],
+  "alternate": {
+    "schemaVersion": 1,
+    "oracle": {
+      "id": "B75-INDICATOR-PERFORMANCE-PRODUCT-SURFACE-V1",
+      "mechanismRow": "B75/M19-I(a)-INDICATOR-PERFORMANCE-LOADER",
+      "authoredAgainst": "967f96692fbccd448a3a31c7b2ff71718e18a71e",
+      "authoredAgainstSubject": "chore(release): package 20260727b79 Tier-2 train",
+      "lastProvenRedOn": "967f96692-b79",
+      "staleness": {
+        "maxBuilds": 20,
+        "status": "PROVEN-RED"
+      },
+      "moduleSha256": "961dc289509e24a27eaedcf0da9c55f73aad391dc03981cd9e9f35da867e1ca1",
+      "deterministicAssertionPayload": true
+    },
+    "host": {
+      "platform": "win32",
+      "node": "v24.15.0",
+      "hostname": "localhost",
+      "clock": "process.hrtime.bigint",
+      "coldCache": true,
+      "serviceWorkerBypassed": true,
+      "elapsedNs": "5635378300"
+    },
+    "excludedNonProductionSurface": "homepage/public/chart/talaria-design/live/index.html",
+    "staticSurfaces": [
+      {
+        "entry": "maintained-source",
+        "path": "chart v 1.4\\talaria-design\\live\\index.html",
+        "sourceSha256": "79b49adbc293e4cb2b2722776eed249c837a18b91961a1912258afa00e6b25cc",
+        "referenced": true,
+        "correctOrder": true,
+        "buildStamp": "20260727b80",
+        "dependencyStampsUniform": true
+      },
+      {
+        "entry": "dist-v9-host",
+        "path": "chart v 1.4\\chart\\dist-v9\\index.html",
+        "sourceSha256": "41207299daa4578c603a7d0e61f6f3ee8a523a39b8998762436e57684747ca29",
+        "referenced": true,
+        "correctOrder": true,
+        "buildStamp": "20260727b80",
+        "dependencyStampsUniform": true
+      },
+      {
+        "entry": "homepage-forwarded-host",
+        "path": "homepage\\public\\chart\\dist-v9\\index.html",
+        "sourceSha256": "41207299daa4578c603a7d0e61f6f3ee8a523a39b8998762436e57684747ca29",
+        "referenced": true,
+        "correctOrder": true,
+        "buildStamp": "20260727b80",
+        "dependencyStampsUniform": true
+      },
+      {
+        "entry": "multichart-embed",
+        "path": "chart v 1.4\\chart\\multichart-prod\\chart-embed.html",
+        "sourceSha256": "48ee0e4c78c52519831e26ffa209c842d80fe86b1288fedb3fe881a8393cbb69",
+        "referenced": true,
+        "correctOrder": true,
+        "buildStamp": "20260727b80",
+        "dependencyStampsUniform": true
+      }
+    ],
+    "uniformBuildStamp": "20260727b80",
+    "fourState": {
+      "expected": {
+        "brokenRed": true,
+        "blockedBridgeAndMissingGlobalRed": true,
+        "explicitLoaderGreen": true,
+        "corruptedRed": true,
+        "wrongOrderRed": true
+      },
+      "normalFourState": true,
+      "inverted": false,
+      "assertedFourState": true
+    },
+    "cells": {
+      "broken": {
+        "entry": "dist-v9-host",
+        "pathname": "/chart/dist-v9/index.html",
+        "mode": "broken",
+        "host": "localhost",
+        "coldCache": true,
+        "serviceWorkerBypassed": true,
+        "requests": [
+          "http://localhost:62036/chart/modules/chart-indicators-full.js?v=20260727b80"
+        ],
+        "responses": [
+          {
+            "url": "http://localhost:62036/chart/modules/chart-indicators-full.js?v=20260727b80",
+            "status": 200
+          }
+        ],
+        "errors": [],
+        "runtime": {
+          "moduleGlobalType": "undefined",
+          "apis": {
+            "packBarsRangeCompact": "undefined",
+            "mergeIndicatorTailWindow": "undefined",
+            "estimateTailLookback": "undefined",
+            "hashIndicatorParams": "undefined"
+          },
+          "resources": [
+            "http://localhost:62036/chart/modules/chart-indicators-full.js?v=20260727b80"
+          ]
+        },
+        "checks": {
+          "referenced": false,
+          "executed": false,
+          "correctOrder": false,
+          "flagsAvailable": false,
+          "responsesOk": true
+        },
+        "pass": false
+      },
+      "blocked": {
+        "entry": "dist-v9-host",
+        "pathname": "/chart/dist-v9/index.html",
+        "mode": "blocked",
+        "host": "localhost",
+        "coldCache": true,
+        "serviceWorkerBypassed": true,
+        "requests": [
+          "http://localhost:58473/chart/modules/indicator-performance.js?v=20260727b80",
+          "http://localhost:58473/chart/modules/chart-indicators-full.js?v=20260727b80"
+        ],
+        "responses": [
+          {
+            "url": "http://localhost:58473/chart/modules/indicator-performance.js?v=20260727b80",
+            "status": 503
+          },
+          {
+            "url": "http://localhost:58473/chart/modules/chart-indicators-full.js?v=20260727b80",
+            "status": 200
+          }
+        ],
+        "errors": [],
+        "runtime": {
+          "moduleGlobalType": "undefined",
+          "apis": {
+            "packBarsRangeCompact": "undefined",
+            "mergeIndicatorTailWindow": "undefined",
+            "estimateTailLookback": "undefined",
+            "hashIndicatorParams": "undefined"
+          },
+          "resources": [
+            "http://localhost:58473/chart/modules/indicator-performance.js?v=20260727b80",
+            "http://localhost:58473/chart/modules/chart-indicators-full.js?v=20260727b80"
+          ]
+        },
+        "checks": {
+          "referenced": true,
+          "executed": false,
+          "correctOrder": true,
+          "flagsAvailable": false,
+          "responsesOk": false
+        },
+        "pass": false
+      },
+      "explicitLoader": {
+        "entry": "dist-v9-host",
+        "pathname": "/chart/dist-v9/index.html",
+        "mode": "fixed",
+        "host": "localhost",
+        "coldCache": true,
+        "serviceWorkerBypassed": true,
+        "requests": [
+          "http://localhost:56239/chart/modules/indicator-performance.js?v=b75-explicit-loader",
+          "http://localhost:56239/chart/modules/chart-indicators-full.js?v=20260727b80"
+        ],
+        "responses": [
+          {
+            "url": "http://localhost:56239/chart/modules/indicator-performance.js?v=b75-explicit-loader",
+            "status": 200
+          },
+          {
+            "url": "http://localhost:56239/chart/modules/chart-indicators-full.js?v=20260727b80",
+            "status": 200
+          }
+        ],
+        "errors": [],
+        "runtime": {
+          "moduleGlobalType": "object",
+          "apis": {
+            "packBarsRangeCompact": "function",
+            "mergeIndicatorTailWindow": "function",
+            "estimateTailLookback": "function",
+            "hashIndicatorParams": "function"
+          },
+          "resources": [
+            "http://localhost:56239/chart/modules/indicator-performance.js?v=b75-explicit-loader",
+            "http://localhost:56239/chart/modules/chart-indicators-full.js?v=20260727b80"
+          ]
+        },
+        "checks": {
+          "referenced": true,
+          "executed": true,
+          "correctOrder": true,
+          "flagsAvailable": true,
+          "responsesOk": true
+        },
+        "pass": true
+      },
+      "corrupted": {
+        "entry": "dist-v9-host",
+        "pathname": "/chart/dist-v9/index.html",
+        "mode": "corrupt",
+        "host": "localhost",
+        "coldCache": true,
+        "serviceWorkerBypassed": true,
+        "requests": [
+          "http://localhost:54835/chart/modules/indicator-performance.js?v=b75-explicit-loader",
+          "http://localhost:54835/chart/modules/chart-indicators-full.js?v=20260727b80"
+        ],
+        "responses": [
+          {
+            "url": "http://localhost:54835/chart/modules/indicator-performance.js?v=b75-explicit-loader",
+            "status": 200
+          },
+          {
+            "url": "http://localhost:54835/chart/modules/chart-indicators-full.js?v=20260727b80",
+            "status": 200
+          }
+        ],
+        "errors": [],
+        "runtime": {
+          "moduleGlobalType": "object",
+          "apis": {
+            "packBarsRangeCompact": "string",
+            "mergeIndicatorTailWindow": "undefined",
+            "estimateTailLookback": "undefined",
+            "hashIndicatorParams": "undefined"
+          },
+          "resources": [
+            "http://localhost:54835/chart/modules/indicator-performance.js?v=b75-explicit-loader",
+            "http://localhost:54835/chart/modules/chart-indicators-full.js?v=20260727b80"
+          ]
+        },
+        "checks": {
+          "referenced": true,
+          "executed": true,
+          "correctOrder": true,
+          "flagsAvailable": false,
+          "responsesOk": true
+        },
+        "pass": false
+      },
+      "wrongOrder": {
+        "entry": "dist-v9-host",
+        "pathname": "/chart/dist-v9/index.html",
+        "mode": "wrong-order",
+        "host": "localhost",
+        "coldCache": true,
+        "serviceWorkerBypassed": true,
+        "requests": [
+          "http://localhost:62708/chart/modules/chart-indicators-full.js?v=20260727b80",
+          "http://localhost:62708/chart/modules/indicator-performance.js?v=b75-explicit-loader"
+        ],
+        "responses": [
+          {
+            "url": "http://localhost:62708/chart/modules/indicator-performance.js?v=b75-explicit-loader",
+            "status": 200
+          },
+          {
+            "url": "http://localhost:62708/chart/modules/chart-indicators-full.js?v=20260727b80",
+            "status": 200
+          }
+        ],
+        "errors": [],
+        "runtime": {
+          "moduleGlobalType": "object",
+          "apis": {
+            "packBarsRangeCompact": "function",
+            "mergeIndicatorTailWindow": "function",
+            "estimateTailLookback": "function",
+            "hashIndicatorParams": "function"
+          },
+          "resources": [
+            "http://localhost:62708/chart/modules/indicator-performance.js?v=b75-explicit-loader",
+            "http://localhost:62708/chart/modules/chart-indicators-full.js?v=20260727b80"
+          ]
+        },
+        "checks": {
+          "referenced": true,
+          "executed": true,
+          "correctOrder": false,
+          "flagsAvailable": true,
+          "responsesOk": true
+        },
+        "pass": false
+      },
+      "product": [
+        {
+          "entry": "dist-v9-host",
+          "pathname": "/chart/dist-v9/index.html",
+          "mode": "product",
+          "host": "localhost",
+          "coldCache": true,
+          "serviceWorkerBypassed": true,
+          "requests": [
+            "http://localhost:52554/chart/modules/indicator-performance.js?v=20260727b80",
+            "http://localhost:52554/chart/modules/chart-indicators-full.js?v=20260727b80"
+          ],
+          "responses": [
+            {
+              "url": "http://localhost:52554/chart/modules/indicator-performance.js?v=20260727b80",
+              "status": 200
+            },
+            {
+              "url": "http://localhost:52554/chart/modules/chart-indicators-full.js?v=20260727b80",
+              "status": 200
+            }
+          ],
+          "errors": [],
+          "runtime": {
+            "moduleGlobalType": "object",
+            "apis": {
+              "packBarsRangeCompact": "function",
+              "mergeIndicatorTailWindow": "function",
+              "estimateTailLookback": "function",
+              "hashIndicatorParams": "function"
+            },
+            "resources": [
+              "http://localhost:52554/chart/modules/indicator-performance.js?v=20260727b80",
+              "http://localhost:52554/chart/modules/chart-indicators-full.js?v=20260727b80"
+            ]
+          },
+          "checks": {
+            "referenced": true,
+            "executed": true,
+            "correctOrder": true,
+            "flagsAvailable": true,
+            "responsesOk": true
+          },
+          "pass": true
+        },
+        {
+          "entry": "homepage-forwarded-host",
+          "pathname": "/chart/dist-v9/index.html",
+          "mode": "product",
+          "host": "localhost",
+          "coldCache": true,
+          "serviceWorkerBypassed": true,
+          "requests": [
+            "http://localhost:52169/chart/modules/indicator-performance.js?v=20260727b80",
+            "http://localhost:52169/chart/modules/chart-indicators-full.js?v=20260727b80"
+          ],
+          "responses": [
+            {
+              "url": "http://localhost:52169/chart/modules/indicator-performance.js?v=20260727b80",
+              "status": 200
+            },
+            {
+              "url": "http://localhost:52169/chart/modules/chart-indicators-full.js?v=20260727b80",
+              "status": 200
+            }
+          ],
+          "errors": [],
+          "runtime": {
+            "moduleGlobalType": "object",
+            "apis": {
+              "packBarsRangeCompact": "function",
+              "mergeIndicatorTailWindow": "function",
+              "estimateTailLookback": "function",
+              "hashIndicatorParams": "function"
+            },
+            "resources": [
+              "http://localhost:52169/chart/modules/indicator-performance.js?v=20260727b80",
+              "http://localhost:52169/chart/modules/chart-indicators-full.js?v=20260727b80"
+            ]
+          },
+          "checks": {
+            "referenced": true,
+            "executed": true,
+            "correctOrder": true,
+            "flagsAvailable": true,
+            "responsesOk": true
+          },
+          "pass": true
+        },
+        {
+          "entry": "multichart-embed",
+          "pathname": "/chart/multichart-prod/chart-embed.html",
+          "mode": "product",
+          "host": "localhost",
+          "coldCache": true,
+          "serviceWorkerBypassed": true,
+          "requests": [
+            "http://localhost:50487/chart/modules/indicator-performance.js",
+            "http://localhost:50487/chart/modules/chart-indicators-full.js"
+          ],
+          "responses": [
+            {
+              "url": "http://localhost:50487/chart/modules/indicator-performance.js",
+              "status": 200
+            },
+            {
+              "url": "http://localhost:50487/chart/modules/chart-indicators-full.js",
+              "status": 200
+            }
+          ],
+          "errors": [],
+          "runtime": {
+            "moduleGlobalType": "object",
+            "apis": {
+              "packBarsRangeCompact": "function",
+              "mergeIndicatorTailWindow": "function",
+              "estimateTailLookback": "function",
+              "hashIndicatorParams": "function"
+            },
+            "resources": [
+              "http://localhost:50487/chart/modules/indicator-performance.js",
+              "http://localhost:50487/chart/modules/chart-indicators-full.js"
+            ]
+          },
+          "checks": {
+            "referenced": true,
+            "executed": true,
+            "correctOrder": true,
+            "flagsAvailable": true,
+            "responsesOk": true
+          },
+          "pass": true
+        }
+      ]
+    },
+    "productPass": true
+  },
+  "invertedAssertion": {
+    "expected": {
+      "brokenRed": true,
+      "blockedBridgeAndMissingGlobalRed": true,
+      "explicitLoaderGreen": true,
+      "corruptedRed": true,
+      "wrongOrderRed": true
+    },
+    "normalFourState": true,
+    "inverted": true,
+    "assertedFourState": false
+  }
+}

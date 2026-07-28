@@ -108,7 +108,30 @@ function resetKillSwitches() {
     delete global.window.__TALARIA_DISABLE_M19I_FORCE_DEDUPE_V1;
 }
 
-const flush = (ms = 25) => new Promise((r) => setTimeout(r, ms));
+// Drain by event-loop phase ordering, not elapsed wall time. The fake worker
+// replies through setImmediate; under broad parallel CPU pressure a 25ms timer
+// can become due while this process is descheduled and run before that reply.
+const flush = async () => {
+    await new Promise((resolve) => setImmediate(resolve));
+    await new Promise((resolve) => setImmediate(resolve));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await new Promise((resolve) => setImmediate(resolve));
+};
+
+test('fake-worker drain is deterministic after wall-clock preemption', async () => {
+    let immediateRan = false;
+    setImmediate(() => { immediateRan = true; });
+    const legacyTimerFlush = new Promise((resolve) => setTimeout(resolve, 25));
+    const blockedUntil = Date.now() + 40;
+    while (Date.now() < blockedUntil) {
+        // Model CPU descheduling after both timer/immediate work are queued.
+    }
+    await legacyTimerFlush;
+    assert.equal(immediateRan, false,
+        'legacy wall-clock flush observes state before the queued worker immediate');
+    await flush();
+    assert.equal(immediateRan, true);
+});
 
 // ─── Deterministic data ─────────────────────────────────────────────────────
 

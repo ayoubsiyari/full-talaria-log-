@@ -1,0 +1,98 @@
+# A6 item — servable shell inventory preflight.
+#
+# Gates every packet against the shell inventories: discovery walks the pinned servable roots,
+# and every discovered HTML surface must be declared, stamped, module-conformant and backed by
+# cited routing evidence. There is no human in the loop and no reviewer override.
+#
+# Two exit codes carry the verdict:
+#   0  no violations
+#   2  violations, but every kind and count is inside the allowance list below
+#   1  anything else — an unexpected kind, or a known kind over its pinned budget
+#
+# The allowance list is a ratchet, not a mute, and it is not editable here alone. The budgets
+# below are held by a gate cell against EXPECTED_ALLOW_KINDS in scripts/shell-inventory-preflight.mjs,
+# and that map is in turn held against the live kind counts the gate emits from this tree. So:
+#
+#   * raising a budget here fails the self-test, because it no longer equals the checked-in map;
+#   * raising both fails the self-test too, because the map no longer equals what the tree emits;
+#   * fixing a violation fails the self-test until both come down with it.
+#
+# The only way any of these numbers moves is a packet that also moves the tree, and the diff
+# says so out loud. Each budgeted kind and its owner is named in EXPECTED_ALLOW_KINDS.
+#
+# The gate is invoked with exactly one allowance flag; a cell asserts that, and the CLI itself
+# rejects a repeated one, so a second flag cannot append a quiet override to the reviewed list.
+name: Shell inventory preflight
+
+on:
+  pull_request:
+  push:
+    branches:
+      - "manager-a/**"
+      - "manager-b/**"
+      - "manager-c/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: shell-inventory-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  shell-inventory:
+    name: servable shell inventory + module contracts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      # The gate's own cells run first, and are always fatal. A preflight whose tests are RED
+      # must never be the thing deciding whether the shell surface is declared.
+      - name: Gate self-test
+        run: npm run test:shell-inventory
+
+      - name: Shell inventory preflight
+        id: preflight
+        run: |
+          set -uo pipefail
+          # The default shell carries -e, so the preflight's non-zero exit would abort the step
+          # before the verdict below can distinguish an allowed RED from an unexpected one.
+          set +e
+          node scripts/shell-inventory-preflight.mjs \
+            --allow-kinds=conditional-exposure:2,exclusion-count-undeclared:1,proof-of-derouting-unsatisfied:38,shell-parse-incomplete:12 \
+            --out "shell-inventory-preflight-report.json" \
+            | tee shell-inventory-preflight.log
+          status="${PIPESTATUS[0]}"
+          set -e
+          case "$status" in
+            0) echo "verdict=green" >> "$GITHUB_OUTPUT" ;;
+            2) echo "verdict=allowed-red" >> "$GITHUB_OUTPUT" ;;
+            *) echo "verdict=red" >> "$GITHUB_OUTPUT"; exit "$status" ;;
+          esac
+
+      - name: Summarise verdict
+        if: always()
+        run: |
+          set -uo pipefail
+          {
+            echo "### Shell inventory preflight: ${{ steps.preflight.outputs.verdict || 'error' }}"
+            echo
+            echo '```'
+            grep -E '^\[shell-inventory-preflight\]|^  kind |^  UNEXPECTED ' shell-inventory-preflight.log || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload preflight evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: shell-inventory-preflight-${{ github.run_id }}
+          path: |
+            shell-inventory-preflight-report.json
+            shell-inventory-preflight.log
+          if-no-files-found: warn

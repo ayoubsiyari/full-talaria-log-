@@ -516,6 +516,13 @@
             this._log('info', 'removeChart ' + id + ' (host — DOM left intact)');
             return;
         }
+        try {
+            const panelChart = c.frame && c.frame.contentWindow && c.frame.contentWindow.chart;
+            if (panelChart
+                && typeof panelChart._b70ShadowDisposeIndicatorGeneration === 'function') {
+                panelChart._b70ShadowDisposeIndicatorGeneration();
+            }
+        } catch (_) {}
         try { c.frame.remove(); } catch (_) {}
         this.charts.delete(id);
         this._log('info', 'removeChart ' + id);
@@ -1000,6 +1007,20 @@
                     }
                     if (sourceChart.mountEl) sourceChart.mountEl.classList.add('ready');
                     this._log('info', 'bridge ready: ' + sourceId);
+                    if (global.__TALARIA_ENABLE_B70_SINGLE_INDICATOR_OWNER_V1 === true) {
+                        try {
+                            const panelChart = sourceChart.frame
+                                && sourceChart.frame.contentWindow
+                                && sourceChart.frame.contentWindow.chart;
+                            const connector = global.__TALARIA_B70_CONNECT_INDICATOR_PANEL_V1;
+                            if (panelChart && global.chart && typeof connector === 'function') {
+                                connector(panelChart, global.chart);
+                            }
+                        } catch (e) {
+                            this._log('warn', 'b70 indicator bridge connect failed: '
+                                + (e && e.message || e));
+                        }
+                    }
                     try { this.onChartReady(sourceId); } catch (e) {
                         this._log('warn', 'onChartReady threw: ' + (e && e.message || e));
                     }

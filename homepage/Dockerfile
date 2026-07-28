@@ -23,8 +23,11 @@ RUN npm ci
 WORKDIR /build
 COPY ["scripts/checkpoint-build-assert.mjs", "./checkpoint-tools/checkpoint-build-assert.mjs"]
 COPY ["scripts/lib/checkpoint-provenance.mjs", "./checkpoint-tools/lib/checkpoint-provenance.mjs"]
+COPY ["scripts/lib/homepage-forwarding-contracts.mjs", "./checkpoint-tools/lib/homepage-forwarding-contracts.mjs"]
+COPY ["scripts/lib/homepage-forwarding-contracts.mjs", "/scripts/lib/homepage-forwarding-contracts.mjs"]
 COPY ["chart v 1.4/talaria-design", "./talaria-design/"]
 COPY ["chart v 1.4/chart", "./chart/"]
+COPY ["homepage/public/chart/modules/m20-q6-replay-lifecycle-binding.test.mjs", "/homepage/public/chart/modules/m20-q6-replay-lifecycle-binding.test.mjs"]
 WORKDIR /build/talaria-design
 ENV NODE_ENV=production
 RUN if [ "$CHECKPOINT_BUILD" = "1" ]; then \
@@ -42,8 +45,6 @@ RUN if [ "$CHECKPOINT_BUILD" = "1" ]; then \
       BUILD_ID="$CHART_BUILD_ID" node /build/chart/scripts/bump-chart-engine-build.mjs; \
     fi \
     && npm run build:live:chart \
-    && mkdir -p /homepage/public/chart \
-    && cp -f /build/chart/legacy-index.html /homepage/public/chart/legacy-index.html \
     && if [ "$CHECKPOINT_BUILD" = "1" ]; then \
       node /build/checkpoint-tools/checkpoint-build-assert.mjs layout \
         --build-id="$CHART_BUILD_ID" \
@@ -82,7 +83,6 @@ COPY --from=chart_assets /build/chart/multichart-prod ./public/chart/multichart-
 COPY --from=chart_assets /build/chart/workers ./public/chart/workers
 COPY --from=chart_assets /build/chart/vendor ./public/chart/vendor
 COPY --from=chart_assets /build/chart/fonts ./public/chart/fonts
-COPY --from=chart_assets /build/chart/legacy-index.html ./public/chart/legacy-index.html
 COPY --from=chart_assets /build/chart/sw.js ./public/chart/sw.js
 # Design-live shell is a PO-reachable URL (/chart/talaria-design/live/). Without this
 # overwrite, committed homepage/public/chart/talaria-design/live keeps stale ?v= stamps

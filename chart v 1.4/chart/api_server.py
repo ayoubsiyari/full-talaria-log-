@@ -26995,9 +26995,7 @@ if next_static_dir.exists():
 # Chart UI (static HTML/JS/CSS) served under /chart
 CHART_ROOT_FILES = {
     "index.html",
-    # Full legacy monolithic chart (60k+ lines). Prefer editing V9 + dist-v9; see /chart/index.html stub.
-    "legacy-index.html",
-    "index.v9.html",  # redirect stub → legacy-index.html (no second monolith)
+    "index.v9.html",  # redirect stub to the dist-v9 live path
     "backtesting.html",
     "propfirm-backtest.html",
     "admin-dashboard.html",

@@ -1,0 +1,132 @@
+{
+  "schema": "talaria-v3-two-panel-downscoped-soak-v1",
+  "evidenceClass": "TWO-PANEL DOWNSCOPED",
+  "acceptanceScope": {
+    "fourPanelAcceptance": false,
+    "topology": "exactly-two-panels-two-distinct-files"
+  },
+  "generatedAt": "2026-07-27T13:55:30.498Z",
+  "requestedSessionAlias": "QA 123",
+  "plannedDurationMs": 1800000,
+  "sampleIntervalMs": 1000,
+  "mutationPolicy": {
+    "mode": "default-block",
+    "operationalAllowed": [
+      "POST /api/auth/login",
+      "POST /api/chart/windows/claim",
+      "POST /api/chart/windows/heartbeat",
+      "POST /api/chart/windows/release"
+    ],
+    "productCustomerWritesAllowed": false,
+    "i16Clean": true
+  },
+  "identityPolicy": "owner, session, file, ticker, and lease identities are represented only by aliases",
+  "blockedMutations": [
+    {
+      "method": "PATCH",
+      "pathClass": "/api/sessions/{owner-session}/state",
+      "disposition": "blocked"
+    },
+    {
+      "method": "PATCH",
+      "pathClass": "/api/sessions/{owner-session}/state",
+      "disposition": "blocked"
+    },
+    {
+      "method": "PATCH",
+      "pathClass": "/api/sessions/{owner-session}/state",
+      "disposition": "blocked"
+    },
+    {
+      "method": "PATCH",
+      "pathClass": "/api/sessions/{owner-session}/state",
+      "disposition": "blocked"
+    },
+    {
+      "method": "PATCH",
+      "pathClass": "/api/sessions/{owner-session}/state",
+      "disposition": "blocked"
+    },
+    {
+      "method": "PATCH",
+      "pathClass": "/api/sessions/{owner-session}/state",
+      "disposition": "blocked"
+    }
+  ],
+  "readiness": {
+    "reached": false,
+    "stage": "wait-two-ready-rendered",
+    "failureStage": "wait-two-ready-rendered",
+    "failureSnapshot": {
+      "iframeCount": 1,
+      "managerSize": 1,
+      "pendingCommands": 0,
+      "panels": [
+        {
+          "panelAlias": "panel-1",
+          "host": false,
+          "ready": true,
+          "fileAlias": "file-1",
+          "bars": 2001,
+          "timeframe": "1m",
+          "replayIndex": 2000,
+          "replayTimestamp": 1333584000000,
+          "playing": false,
+          "leaseOwned": false,
+          "workersCreated": 0,
+          "workersAlive": 0,
+          "listenersNet": 288,
+          "listenerAdds": 296,
+          "listenerRemoves": 8,
+          "paints": 141,
+          "replayMessages": 3
+        }
+      ]
+    }
+  },
+  "conditions": [],
+  "soak": {
+    "started": false,
+    "completedDurationMs": 0,
+    "reason": "Fail-closed two-panel readiness gate terminated the run before either required condition.",
+    "unmeasuredBecauseBlocked": [
+      "replay cadence stalls/jumps/jitter/freeze-catchup",
+      "cross-panel ownership",
+      "CPU",
+      "JS/process memory floor/peak/slope",
+      "two-panel iframe/worker/listener trends",
+      "pause/teardown recovery"
+    ]
+  },
+  "pageErrors": [],
+  "consoleErrors": [
+    "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+    "❌ No fullRawData available",
+    "Failed to load resource: the server responded with a status of 409 (Conflict)",
+    "Failed to load resource: the server responded with a status of 409 (Conflict)",
+    "Failed to load resource: the server responded with a status of 409 (Conflict)",
+    "Failed to load resource: the server responded with a status of 409 (Conflict)",
+    "❌ No fullRawData available",
+    "Failed to load resource: the server responded with a status of 409 (Conflict)",
+    "Failed to load resource: the server responded with a status of 409 (Conflict)",
+    "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+    "WebSocket is already in CLOSING or CLOSED state.",
+    "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+    "WebSocket is already in CLOSING or CLOSED state.",
+    "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+    "WebSocket is already in CLOSING or CLOSED state.",
+    "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+    "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+  ],
+  "verdict": "BLOCKED",
+  "ownerScope": {
+    "authenticated": true,
+    "exactQa123": true,
+    "assignments": [
+      "file-1",
+      "file-2"
+    ]
+  },
+  "blocker": "Waiting failed: 120000ms exceeded",
+  "completedAt": "2026-07-27T13:57:34.279Z"
+}

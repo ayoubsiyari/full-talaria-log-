@@ -20,10 +20,22 @@ const require = createRequire(import.meta.url);
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const KILL = String(process.env.TALARIA_DISABLE_M19_H_TF_COALESCE_V1 || '').trim() === '1';
 
+async function waitFor(predicate, message, timeoutMs = 250) {
+    const deadline = Date.now() + timeoutMs;
+    while (!predicate()) {
+        if (Date.now() >= deadline) assert.fail(message);
+        await new Promise((resolve) => setTimeout(resolve, 1));
+    }
+}
+
 function installBrowserGlobals() {
     const existingIndicatorPerf = global.window?.IndicatorPerf;
     global.window = {
         __TALARIA_DISABLE_M19_H_TF_COALESCE_V1: KILL,
+        // This unit creates a prototype-only replay fixture. Keep the unrelated
+        // Q6 lifecycle decorator off so the fixture exercises the same M19-H
+        // implementation that preceded Q6 instead of being rejected as unconstructed.
+        __TALARIA_DISABLE_M20_Q6_REPLAY_FLOAT_LISTENER_TEARDOWN_V1: true,
         IndicatorPerf: existingIndicatorPerf,
         addEventListener() {},
         removeEventListener() {},
@@ -167,7 +179,10 @@ test('rapid switch during deferred play startup preserves playback intent and ti
             readyCalls += 1;
         },
     });
-    await new Promise((resolve) => setTimeout(resolve, 5));
+    await waitFor(
+        () => playCalls === 1,
+        'first switch must begin restoring playback within the bounded startup window',
+    );
     assert.equal(playCalls, 1, 'first switch must begin restoring playback');
     assert.equal(replay.isPlayStarting, true, 'test must enter the deferred play-start window');
 
