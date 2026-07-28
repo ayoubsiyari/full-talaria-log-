@@ -2349,3 +2349,59 @@ One of those six is a latent behaviour change worth naming: the drawing throttle
 **Not dispatching implementation.** §7.1 holds: nothing new until the chain clears. The remaining unknown is the work-rate measurement, which decides whether the cap is real on 1D and whether the fast path can be retired at all. I would rather write one correct spec against both results than a clamp now and a correction later.
 
 **Method note, recorded because I asked for it.** Every negative claim came back with the search behind it — the URL-parameter, IndexedDB, `speedSelectBar` and `setSpeedFromSlider` negatives each name the pattern and scope searched, and the bypass inventory is explicitly given as a lower bound of 6 confident behaviours out of 10 raw matches rather than as a total. That is the standard I have been failing at all week, and it is the first packet today that met it without being corrected.
+
+---
+
+## 2026-07-28 10:02 — VERDICT: the 10x cap does not make the fast path unreachable. The §3.1 retirement precondition fails
+
+surface=`chart v 1.4/chart/modules/replay-system.js` blob `1f02c6998`, verified identical at C's HEAD and A's tip and clean in the worktree, so the measurement applies to my branch
+coverage=six executed cells on the real `startTickAnimation()` with the real `setTimeout` scheduler, ~12 s wall-clock windows; **not** a browser measurement, and resample CPU per call was not measured
+
+§3.1 says: *"Confirm the fast-mode threshold sits above 10x before deleting anything."* It does not.
+
+**The threshold depends on deployment shape, and in one shape it is below 10x — far below.**
+
+| Shape | Subdivisions | Fast-mode engages above | `fastMode` at 10x |
+|---|---|---|---|
+| Single-chart, 1m | 1 | **1875x** | false |
+| Single-chart, 1D | 1 | **1875x** | false |
+| Multichart 1D with a 1m peer | 1440 | **~1.30x** | **true** |
+| Multichart, 1m | 1 | 1875x | false |
+
+So on multichart with two or more panels including a finer peer, `updateChartDataFast` runs at 10x on the 1D host — and at 5x, and at 2x. **Retiring it would break that path.** The deletion cannot proceed on the stated ground.
+
+**The stronger version of the finding, which changes the argument rather than just answering it.** Single-chart engages only above 1875x, and `normalizeSpeed()` already clamps everything to 100. So on the default single-chart deployment **the fast path is already unreachable today, at any speed the product offers, cap or no cap.** Its only live reachability is multichart — where the threshold is ~1.3x and the cap is irrelevant. The retirement question therefore has nothing to do with the 10x ceiling in either direction. It is entirely a question about multichart finest-TF cadence, and it should be re-planned on that basis rather than as a consequence of the cap.
+
+**The PO's ~60x figure describes a branch that is off.** `rawCandlesPerSecond > 1` is the legacy branch, live only when `__TALARIA_DISABLE_M19I_TICK_SPEED_COHERENCE_V1 === true`. The default is the coherence branch, `realTimeCandleDuration < 32`. The ~60x in §3.1 is accurate for a code path nobody is running.
+
+## 2026-07-28 10:03 — CORRECTION: my own hypothesis was half wrong, and the half I got wrong was the alarming half
+
+I wrote that if subdivision drives fast mode at 10x, "the label is capped while the work rate stays roughly three orders of magnitude above 1m." **That is false and the measurement refutes it.**
+
+Measured at 10x over ~12 s windows: single-chart 1m and single-chart 1D are **identical** — 50 forming-tick paints, 50 `render()` calls, 2 raw commits, ~4.16 paints/sec. Multichart 1D in fast mode produces **2** `updateChartDataFast` calls and **2** renders in the same window, ~0.17/sec. Fast mode at 10x does **less** work than smooth mode, not more.
+
+The mechanism I missed: subdivisions divide `realTimeCandleDuration`, which selects the mode, but `fastModeInterval` is computed from `rawCandlesPerSecond`, which **ignores subdivisions**. So the subdivision decides *which renderer you get* without changing *how often it runs*. That is arguably a defect in its own right — one input governs mode selection and a different one governs cadence — and it is why my arithmetic predicted an explosion that does not occur.
+
+**So §3.1 requirement 1 is satisfied on the default deployment and I can say so with a measurement rather than an assurance:** at 10x, 1D and 1m generate the same tick and render rate on single-chart. The ceiling is not cosmetic there. The caveat is multichart, where 1D crosses into a different renderer at almost any speed — a correctness question about which renderer is used, not a work-rate question.
+
+I was right to route this as a hypothesis to refute rather than a finding. Had I briefed "the ceiling is cosmetic on 1D, here is the three-orders-of-magnitude problem," an author would have built to a premise the measurement destroys.
+
+## 2026-07-28 10:04 — Provenance note: two absence claims in the measurement are true of C's tree and false of mine
+
+The measurement reported that `_mcDiag.replayTicks` / `fullResamples` / `incrementalResamples` are "not present in this checkout's `chart.js`" and that the m20-q9 harness is "absent from this tree," so it used its own instrumentation.
+
+Both are true of the main checkout, which sits on `manager-c/verification-infra`. **Both are false of `manager-a/critical-path`**, where I checked directly: 13 counter references in `chart.js`, 1 in `chart-data-pipeline.js`, and `m20-q9-mcdiag-resample-measurement.mjs` present in the harness tree. This is the third time today the same category error has appeared — an agent reads the main checkout, finds something absent, and reports it as absent from the tree. It is the identical shape to the struck contradiction #1 in the evidence-rescue packet.
+
+It changes nothing about the measurement: `replay-system.js` is the same blob on both branches and the instrumentation was self-contained. But it means the numbers were taken with bespoke counters when the product counters were available one branch over, and any re-run should be pinned to A's tip so the two instruments can be cross-checked.
+
+**Standing correction to my briefs: state which branch the working tree is on and which branch the claim is about, because they are not the same and three agents in a row have conflated them.**
+
+## 2026-07-28 10:05 — DIRECTOR-Q: the cap's payoff item needs re-planning, and I am not reshaping it myself
+
+§3.1's payoff is retiring `updateChartDataFast` on the ground that a 10x ceiling makes it unreachable. That ground does not hold: it is already unreachable on single-chart at any offered speed, and it remains reachable on multichart 1D at 10x and below.
+
+**The cap itself is unaffected and I am proceeding with it** — the clamp, the entry points, the hidden-flag closure and the measured acceptance all stand on their own, and §3.1 correctly separates the cap from its payoff.
+
+**What I need ruled** is whether the second-renderer retirement is still wanted on the different ground the measurement exposes: not "no user can reach it" but "only multichart 1D reaches it, via a finest-TF cadence path whose mode selector and cadence disagree." That is a real duplicate-implementation risk of exactly the kind §3.1 argues against — two implementations of drawing the chart, never proven to agree — but retiring it now would change multichart 1D replay behaviour rather than delete dead code, which is a different risk and a different packet.
+
+**Default in force if unanswered**, per §7.3: I implement the cap, leave `updateChartDataFast` in place, and record the duplicate-renderer risk as an open row rather than closing it. I will not delete a reachable renderer on a precondition that measurement has falsified.
