@@ -23,7 +23,9 @@
     "preflight:order-overlay-browser": "node scripts/order-overlay-browser-runner.mjs",
     "test:order-overlay-browser": "node --test scripts/tests/order-overlay-browser-runner.test.mjs",
     "preflight:order-registry-eviction": "node scripts/order-registry-eviction-invariant.mjs",
-    "test:order-registry-eviction": "node --test scripts/tests/order-registry-eviction-invariant.test.mjs"
+    "test:order-registry-eviction": "node --test scripts/tests/order-registry-eviction-invariant.test.mjs",
+    "preflight:differential-parity": "node docs/plan3/oracles/differential-parity-oracle-v1.mjs",
+    "test:differential-parity": "node --test scripts/tests/differential-parity-oracle.test.mjs"
   },
   "dependencies": {
     "dukascopy-node": "^1.46.3",

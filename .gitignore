@@ -108,6 +108,10 @@ docs/plan3/*
 !docs/plan3/GATE-NAME-RESERVATIONS.md
 !docs/plan3/BOARD-VIEW.md
 !docs/plan3/PO-QUEUE.md
+!docs/plan3/oracles/
+!docs/plan3/oracles/**
+!docs/plan3/fixtures/
+!docs/plan3/fixtures/**
 !docs/plan3/journal/
 !docs/plan3/journal/*.md
 # Director ruling TB-6: standing policy and PO-sweep findings must carry history,

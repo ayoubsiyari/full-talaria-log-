@@ -72,7 +72,7 @@ Status vocabulary, fixed by the manager: `owned-stamped`, `image-verified`, `exc
 
 | Name | Signature token | Status |
 |---|---|---|
-| DIFFERENTIAL-PARITY-ORACLE-V1 | `TALARIA_DIFFERENTIAL_PARITY_ORACLE_V1` | RESERVED |
+| DIFFERENTIAL-PARITY-ORACLE-V1 | `TALARIA_DIFFERENTIAL_PARITY_ORACLE_V1` | LIVE — `docs/plan3/oracles/differential-parity-oracle-v1.mjs`, `scripts/tests/differential-parity-oracle.test.mjs` (W29 drift slice) |
 
 Cells:
 
@@ -81,11 +81,11 @@ Cells:
 | PARITY-ROLLING-SUBTRACTION | optimized vs fallback for SMA/WMA/Bollinger/Donchian/stochastic within per-family epsilon | RESERVED |
 | PARITY-RECURSIVE | EMA/MACD/RSI/ATR/ADX within per-family epsilon, seed and warm-up declared | RESERVED |
 | PARITY-CUMULATIVE | VWAP/OBV over long ranges | RESERVED |
-| DRIFT-SMA-100K / DRIFT-SMA-500K / DRIFT-SMA-1M | divergence does not grow with series length on the running-sum path (`rollingSmaFast`) | RESERVED |
-| DRIFT-WMA-CONTROL | `rollingWmaFast` recomputes its window and must show no length-dependent drift — the control that proves the drift cells measure drift | RESERVED |
+| DRIFT-SMA-100K / DRIFT-SMA-500K / DRIFT-SMA-1M | divergence does not grow with series length on the running-sum path (`rollingSmaFast`) | LIVE (W29 drift ladder; SMA may RED — EXPECTED-RED on uncompensated sum) |
+| DRIFT-WMA-CONTROL | `rollingWmaFast` recomputes its window and must show no length-dependent drift — the control that proves the drift cells measure drift | LIVE |
 | PAINTED-SUBPIXEL-MAXZOOM | painted divergence is sub-pixel at maximum zoom on the fixture's price scale | RESERVED |
 | BUCKET-IMMUTABILITY-5M / -15M / -1H / -4H | a finalised bucket's OHLC never changes for the remainder of a replay | RESERVED |
-| NC-PARITY-EPSILON-INVERTED | with the epsilon comparison inverted, every parity cell must go RED | RESERVED |
+| NC-PARITY-EPSILON-INVERTED | with the epsilon comparison inverted, every parity cell must go RED | LIVE (short SMA sanity path in W29 oracle) |
 
 Fixtures:
 

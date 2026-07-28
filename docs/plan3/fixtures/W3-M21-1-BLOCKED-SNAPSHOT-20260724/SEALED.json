@@ -1,0 +1,20 @@
+{
+  "purpose": "Immutable seal of the EXACT blocked M21-1 correction bytes reviewed by fresh GPT (BLOCK-M21-1-CORRECTION), captured BEFORE any edit of the second correction cycle. Correction-specific RED rows execute chart.blocked.js from this directory, never the live working tree.",
+  "sealedAtUtc": "2026-07-24T16:35:00Z",
+  "algo": "sha256",
+  "files": {
+    "chart.blocked.js": "6e20965aeabd797c0d9990bd60a4c340b5e3829c2d8fbcdfbe2abebfedf4b749",
+    "m21-1-render-quick-wins.blocked.test.mjs": "41b94aba7dca4d71c2025b70dc0cd89c60fa7b87fec6e9005cfecf2edc99a76e"
+  },
+  "workingTreeIdentityAtSeal": {
+    "chart v 1.4/chart/chart.js": "6e20965aeabd797c0d9990bd60a4c340b5e3829c2d8fbcdfbe2abebfedf4b749",
+    "homepage/public/chart/chart.js": "6e20965aeabd797c0d9990bd60a4c340b5e3829c2d8fbcdfbe2abebfedf4b749"
+  },
+  "gitPins": {
+    "headCommit": "f8ef6a0017b3087070c3e2bc098fc92e3aa10413",
+    "headChartJsBlob": "e1c7a2dea097d1876af38edc1e703eaf94d6734a",
+    "headChartJsPath": "chart v 1.4/chart/chart.js",
+    "note": "Feature RED (original H1-H5 discriminators) executes the raw committed bytes of blob e1c7a2de... extracted via 'git cat-file blob', not the working tree."
+  },
+  "immutability": "Files in this directory must never be edited. Any RED replay verifies these hashes before executing."
+}
