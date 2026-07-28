@@ -21,6 +21,11 @@ function _m19iTickSpeedCoherenceEnabled() {
         || window.__TALARIA_DISABLE_M19I_TICK_SPEED_COHERENCE_V1 !== true;
 }
 
+function _m27EngineReleaseV1Enabled() {
+    return typeof window === 'undefined'
+        || window.__TALARIA_DISABLE_M27_ENGINE_RELEASE_V1 !== true;
+}
+
 class ReplaySystem {
     constructor(chart) {
         this.chart = chart;
@@ -9819,6 +9824,18 @@ if (_m20Q6LifecycleRuntimeEnabled()) {
             }
             if (state.chart && state.chart.replaySystem === instance) {
                 state.chart.replaySystem = null;
+            }
+            if (_m27EngineReleaseV1Enabled()) {
+                const orderManager = state.chart && state.chart.orderManager;
+                if (orderManager && orderManager.replaySystem === instance) {
+                    orderManager.replaySystem = null;
+                }
+                const orderService = orderManager && orderManager.orderService;
+                if (orderService && orderService.replaySystem === instance) {
+                    orderService.replaySystem = null;
+                }
+                instance.fullData = null;
+                instance.fullRawData = null;
             }
         } else {
             state.phase = 'destroy-pending';
