@@ -1,5 +1,7 @@
 /**
- * M25 — `renderPending` becomes a per-instance accessor that counts frame demands.
+ * M25 — `renderPending` becomes a per-instance accessor that counts frame demands,
+ * and (packet m25-attribution) that count becomes visible, resettable, and
+ * attributable to the individual arming site.
  *
  *   node --test --test-concurrency=1 \
  *     "chart v 1.4/chart/modules/m25-render-pending-accessor.test.mjs"
@@ -8,17 +10,28 @@
  * changes; the point is to make the next loop-guard packet provable by letting a
  * real session answer "which code paths actually demand frames".
  *
+ * WHY THE ACCESSOR PACKET ALONE WAS NOT ENOUGH
+ * `_mcDiag.m25FramesArmed` is one scalar and animate() clears `renderPending`
+ * every frame, so it saturates at one increment per animation frame however many
+ * of the 28 arming sites fired. A site that reliably fires immediately after
+ * another site inside the same frame therefore takes the true→true path and
+ * records 0 for a whole session — and 0 reads as "this path is dead". The
+ * attribution map exists to make that erasure impossible; the erasure case is
+ * asserted directly, not argued (see "erasure case" below).
+ *
  * WHAT THIS SUITE EXECUTES, AND WHAT IT CANNOT
  *
  * The real `Chart` constructor calls `init()`, `animate()`, `resize()`, d3, the
  * drawing-tool manager and the data pipeline — it is not constructible under
  * `node --test` without a DOM. So the harness lifts the *product bytes* of the
- * `renderPending` initialisation straight out of chart.js and runs them as the
- * body of a real constructor, reached through `new`. Every instance under test
+ * `renderPending` initialisation, of the whole `_mcDiag` helper block, and of the
+ * `_ensureMcDiag()` object literal straight out of chart.js and runs them as a
+ * real constructor body, reached through `new`. Every instance under test
  * therefore had the accessor installed by product text, never by a copy of it
  * living in this file, and never by `Object.create(Chart.prototype)` — that
  * pattern (b70-indicator-pure-paint.test.mjs:216,266) bypasses a per-instance
- * accessor entirely and would make the arming assertions vacuous.
+ * accessor entirely and would make the arming assertions vacuous. The reporter
+ * cells call the product's own `__mcDiagReport()` / `__mcDiagReset()`.
  *
  * Arming sites are covered at two tiers, declared per site in the output:
  *   TIER-A  the real enclosing chart.js method text is executed against an
@@ -44,8 +57,10 @@ import test from 'node:test';
 import vm from 'node:vm';
 import { fileURLToPath } from 'node:url';
 
-/** Base of this packet. Criterion 4 compares object shape against it, not against a hand-written expectation. */
+/** Base of the M25 accessor packet. Chart-instance shape is compared against it. */
 const BASE_COMMIT = 'e572a140cda9c8e7ccf3e7ced210332471c5ef5a';
+/** Base of THIS packet — the accessor as shipped, before visibility + attribution. */
+const ATTRIBUTION_BASE_COMMIT = 'ba2d30e5729d680d04742fb23847f6d5cb510e69';
 
 const CANONICAL = ['chart v 1.4', 'chart', 'chart.js'];
 const MIRROR = ['homepage', 'public', 'chart', 'chart.js'];
@@ -74,8 +89,8 @@ function sha256(buffer) {
   return crypto.createHash('sha256').update(buffer).digest('hex').toUpperCase();
 }
 
-function gitShow(relPosix) {
-  return execFileSync('git', ['-C', ROOT, 'show', `${BASE_COMMIT}:${relPosix}`], {
+function gitShow(commit, relPosix) {
+  return execFileSync('git', ['-C', ROOT, 'show', `${commit}:${relPosix}`], {
     encoding: 'utf8',
     maxBuffer: 256 * 1024 * 1024,
   });
@@ -94,8 +109,36 @@ function methodSource(text, name) {
   return match[0];
 }
 
+function uniqueIndexOf(source, anchor, label) {
+  assert.equal(source.split(anchor).length - 1, 1, `${label} must occur exactly once in chart.js`);
+  return source.indexOf(anchor);
+}
+
 const START_ANCHOR = '        this.bufferSize = 1000; // Buffer size for smooth scrolling\n';
 const END_ANCHOR = '        this.renderThrottleTimer = null;\n';
+
+/**
+ * Every region this packet family is allowed to touch, declared by anchors that
+ * are unique in each commit compared. The anchor text itself is never inside the
+ * region, so an edit that widened a region past its anchor would be caught.
+ */
+const REGIONS = [
+  {
+    name: 'mcDiag helper block — MC_DIAG_COUNTER_FIELDS, attribution helpers, zeroCounters',
+    from: 'const MC_DIAG_COUNTER_FIELDS = [',
+    to: '\nclass Chart {\n',
+  },
+  {
+    name: '_ensureMcDiag() field initialisation',
+    from: '    _ensureMcDiag() {\n',
+    to: '\n        _talariaInstallMcDiagReporter();',
+  },
+  {
+    name: 'renderPending initialisation inside the Chart constructor',
+    from: START_ANCHOR,
+    to: END_ANCHOR,
+  },
+];
 
 /**
  * The `renderPending` initialisation exactly as it appears in the product, sliced
@@ -103,12 +146,9 @@ const END_ANCHOR = '        this.renderThrottleTimer = null;\n';
  * `Chart` constructor or the harness is testing the wrong code.
  */
 function installText(source) {
-  const occurrences = (needle) => source.split(needle).length - 1;
-  assert.equal(occurrences(START_ANCHOR), 1, 'start anchor must be unique in chart.js');
-  assert.equal(occurrences(END_ANCHOR), 1, 'end anchor must be unique in chart.js');
-
-  const from = source.indexOf(START_ANCHOR) + START_ANCHOR.length;
-  const to = source.indexOf(END_ANCHOR);
+  const startAt = uniqueIndexOf(source, START_ANCHOR, 'renderPending start anchor');
+  const to = uniqueIndexOf(source, END_ANCHOR, 'renderPending end anchor');
+  const from = startAt + START_ANCHOR.length;
   assert.ok(to > from, 'anchors must be in order');
 
   const lineOf = (index) => source.slice(0, index).split('\n').length;
@@ -126,36 +166,73 @@ function installText(source) {
   return { text: source.slice(from, to), ...region };
 }
 
-const INSTALL = installText(SOURCE);
-const BASE_SOURCE = gitShow('chart v 1.4/chart/chart.js');
-const BASE_INSTALL = installText(BASE_SOURCE);
+/**
+ * The whole module-scope `_mcDiag` support block: the counter allow-list, the
+ * M25 attribution helpers, the zeroing/snapshot functions and the reporter
+ * installer. Executed verbatim, so the reporter cells exercise product code.
+ */
+function helperBlock(source) {
+  const from = uniqueIndexOf(source, REGIONS[0].from, 'MC_DIAG_COUNTER_FIELDS');
+  const to = uniqueIndexOf(source, REGIONS[0].to, 'class Chart');
+  assert.ok(to > from, 'the mcDiag helper block must precede class Chart');
+  return source.slice(from, to);
+}
+
+/**
+ * The object literal `_ensureMcDiag()` assigns to `this._mcDiag`. Used as the
+ * harness seed so each realm's diagnostics bag is the one that commit really
+ * builds — chart.js:965 runs `_ensureMcDiag()` hundreds of lines before the
+ * renderPending init, so the product guarantees it is already there.
+ */
+function mcDiagSeed(source) {
+  const method = methodSource(source, '_ensureMcDiag');
+  const open = method.indexOf('this._mcDiag = {');
+  const close = method.indexOf('\n        };', open);
+  assert.ok(open >= 0 && close > open, '_ensureMcDiag must build _mcDiag from one object literal');
+  return method.slice(open + 'this._mcDiag = '.length, close + '\n        }'.length);
+}
+
+function versionBundle(label, source) {
+  return { label, source, install: installText(source), helpers: helperBlock(source), seed: mcDiagSeed(source) };
+}
+
+const HEAD = versionBundle('HEAD', SOURCE);
+const BASE_SOURCE = gitShow(BASE_COMMIT, 'chart v 1.4/chart/chart.js');
+const BASE = versionBundle(BASE_COMMIT.slice(0, 9), BASE_SOURCE);
+const ATTR_BASE_SOURCE = gitShow(ATTRIBUTION_BASE_COMMIT, 'chart v 1.4/chart/chart.js');
+const ATTR_BASE = versionBundle(ATTRIBUTION_BASE_COMMIT.slice(0, 9), ATTR_BASE_SOURCE);
 
 // ── realm ──────────────────────────────────────────────────────────────────
 
+const ATTRIBUTION_FLAG = '__TALARIA_ENABLE_M25_ARMING_ATTRIBUTION_V1';
+
 /**
- * A realm holding a class whose constructor body *is* the product install text.
- * `_mcDiag` is seeded because the product guarantees it: chart.js:965 runs
- * `_ensureMcDiag()` hundreds of lines before the renderPending init.
+ * A realm holding a class whose constructor body *is* the product install text,
+ * over the product's own mcDiag helper block and `_ensureMcDiag()` seed.
  */
-function makeRealm(install, { killSwitch = false, noWindow = false, mcDiag = true } = {}) {
-  const sandbox = { console: { log() {}, warn() {}, error() {} } };
+function makeRealm(bundle, { killSwitch = false, noWindow = false, mcDiag = true, attribution = false } = {}) {
+  const sandbox = { console: { log() {}, warn() {}, error() {}, table() {} } };
   sandbox.globalThis = sandbox;
   vm.createContext(sandbox);
   if (!noWindow) {
-    vm.runInContext('globalThis.window = {};', sandbox);
+    vm.runInContext('globalThis.window = {}; window.top = window;', sandbox);
     if (killSwitch) {
       vm.runInContext(
         'window.__TALARIA_DISABLE_M25_RENDER_PENDING_ACCESSOR_V1 = true;',
         sandbox,
       );
     }
+    if (attribution) {
+      vm.runInContext(`window.${ATTRIBUTION_FLAG} = true;`, sandbox);
+    }
   }
+  vm.runInContext(bundle.helpers, sandbox, { filename: 'm25-product-mcdiag-extract.js' });
   vm.runInContext(`
 globalThis.__HarnessChart = class HarnessChart {
     constructor() {
-        this._mcDiag = ${mcDiag ? '{ renders: 0, resamples: 0 }' : 'null'};
+        this._mcDiag = ${mcDiag ? bundle.seed : 'null'};
         this.isLoadingChunk = false;
-${install.text}
+${bundle.install.text}
         this.renderThrottleTimer = null;
     }
 };
@@ -165,6 +242,7 @@ globalThis.__makeChart = () => new globalThis.__HarnessChart();
 }
 
 const armed = (chart) => (chart._mcDiag ? chart._mcDiag.m25FramesArmed : undefined);
+const sitesOf = (chart) => (chart._mcDiag ? chart._mcDiag.m25ArmingSites : undefined);
 
 /** Execute an assignment's verbatim product bytes with its receiver bound to `chart`. */
 function runAssignment(sandbox, chart, site) {
@@ -174,6 +252,24 @@ function runAssignment(sandbox, chart, site) {
     ? `(function(){ ${site.statement} }).call(globalThis.__m25Receiver);`
     : `(function(${root}){ ${site.statement} })(globalThis.__m25Receiver);`;
   vm.runInContext(body, sandbox, { filename: `${site.file}:${site.line}` });
+}
+
+/**
+ * Compile several product arming statements into one script, one per line, so
+ * they become genuinely distinct call sites for stack-based attribution. Returns
+ * the callables plus the `file:line:col` key each one is expected to produce.
+ */
+function compileCoFiringSites(sandbox, chart, sites, filename) {
+  sandbox.__m25Receivers = sites.map((s) => (s.receiver === 'this.chart' ? { chart } : chart));
+  const body = sites.map((site, i) => {
+    const root = site.receiver.split('.')[0];
+    const call = root === 'this'
+      ? `(function(){ ${site.statement} }).call(globalThis.__m25Receivers[${i}])`
+      : `(function(${root}){ ${site.statement} })(globalThis.__m25Receivers[${i}])`;
+    return `globalThis.__m25Fire${i} = function fire${i}(){ ${call}; };`;
+  }).join('\n');
+  vm.runInContext(body, sandbox, { filename });
+  return sites.map((_, i) => sandbox[`__m25Fire${i}`]);
 }
 
 /** Install the real text of chart.js methods onto a harness instance. */
@@ -231,10 +327,16 @@ const SITES = discoverSites();
 const ARMING = SITES.filter((s) => s.literal === 'true');
 const CLEARING = SITES.filter((s) => s.literal === 'false');
 
+/** One arming site from each of three different product files — the co-firing case. */
+const THREE_FILE_SITES = ['chart v 1.4/chart/chart.js',
+  'chart v 1.4/chart/multichart-prod/panel-cmd-bridge.js',
+  'chart v 1.4/chart/modules/replay-system.js']
+  .map((file) => ARMING.find((s) => s.file === file));
+
 // ── 1 / 2. the accessor exists on a constructed instance and arms ──────────
 
 test('M25: renderPending is a per-instance accessor, not a data property', () => {
-  const sandbox = makeRealm(INSTALL);
+  const sandbox = makeRealm(HEAD);
   const chart = sandbox.__makeChart();
 
   const own = Object.getOwnPropertyDescriptor(chart, 'renderPending');
@@ -250,7 +352,7 @@ test('M25: renderPending is a per-instance accessor, not a data property', () =>
 });
 
 test('M25: a falsy→true write arms exactly one frame in _mcDiag.m25FramesArmed', () => {
-  const sandbox = makeRealm(INSTALL);
+  const sandbox = makeRealm(HEAD);
   const chart = sandbox.__makeChart();
 
   assert.equal(chart.renderPending, false);
@@ -348,7 +450,7 @@ test('M25: TIER-A — the four chart.js arming sites arm through their real prod
   ];
 
   for (const testCase of cases) {
-    const sandbox = makeRealm(INSTALL);
+    const sandbox = makeRealm(HEAD);
     const chart = withMethods(sandbox, sandbox.__makeChart(), testCase.methods);
     testCase.drive(chart);
 
@@ -366,7 +468,7 @@ test('M25: TIER-A — the four chart.js arming sites arm through their real prod
 
 test('M25: every discovered arming site increments the counter by exactly 1', () => {
   for (const site of ARMING) {
-    const sandbox = makeRealm(INSTALL);
+    const sandbox = makeRealm(HEAD);
     const chart = sandbox.__makeChart();
 
     assert.equal(chart.renderPending, false, `${site.file}:${site.line}: precondition`);
@@ -422,7 +524,7 @@ test('M25: no clearing site increments the counter, armed or not', () => {
     'clearing writes live in six files (the brief itemises four; panel-cmd-bridge.js ×4 and replay-system.js ×2 are also clearing sites)');
 
   for (const site of CLEARING) {
-    const sandbox = makeRealm(INSTALL);
+    const sandbox = makeRealm(HEAD);
     const chart = sandbox.__makeChart();
 
     // Non-vacuity: without a live counter this whole test would pass by comparing
@@ -448,7 +550,7 @@ test('M25: no clearing site increments the counter, armed or not', () => {
 });
 
 test('M25: true→true does not increment, and re-arming after a clear does', () => {
-  const sandbox = makeRealm(INSTALL);
+  const sandbox = makeRealm(HEAD);
   const chart = sandbox.__makeChart();
 
   chart.renderPending = true;
@@ -466,7 +568,7 @@ test('M25: true→true does not increment, and re-arming after a clear does', ()
 });
 
 test('M25: only a falsy→true transition arms, across the whole truthiness matrix', () => {
-  const sandbox = makeRealm(INSTALL);
+  const sandbox = makeRealm(HEAD);
   const chart = sandbox.__makeChart();
   // [write, expected increment] — falsy writes never arm; truthy writes arm only
   // when the previous value was falsy.
@@ -487,8 +589,8 @@ test('M25: only a falsy→true transition arms, across the whole truthiness matr
 // ── 4. behaviour identity against the base commit ──────────────────────────
 
 test('M25: renderPending reads back exactly what was written, identically to base', () => {
-  const head = makeRealm(INSTALL).__makeChart();
-  const base = makeRealm(BASE_INSTALL).__makeChart();
+  const head = makeRealm(HEAD).__makeChart();
+  const base = makeRealm(BASE).__makeChart();
 
   const values = [false, true, 0, 1, '', 'x', null, undefined, NaN, -0, [], {}, true, false];
   for (const value of values) {
@@ -503,62 +605,67 @@ test('M25: renderPending reads back exactly what was written, identically to bas
   note('read-back-identical-to-base', true, `${values.length} values incl. NaN, -0, objects`);
 });
 
-test('M25: object shape is unchanged versus the base commit', () => {
-  const shapeOf = (chart) => ({
+/**
+ * Criterion 6 is scoped to the `Chart` instance. `_mcDiag` is explicitly exempt —
+ * it is a diagnostics bag and gaining counters is its job — so it is excluded
+ * from the JSON/spread views rather than silently hidden by non-enumerability,
+ * which is the corner the previous revision of this criterion pushed us into.
+ */
+const OMIT_MC_DIAG = (key, value) => (key === '_mcDiag' ? undefined : value);
+
+function chartShape(chart) {
+  return {
     keys: Object.keys(chart).join(','),
     descriptor: (() => {
       const d = Object.getOwnPropertyDescriptor(chart, 'renderPending');
       return `enumerable=${d.enumerable} configurable=${d.configurable}`;
     })(),
-    json: JSON.stringify(chart),
+    json: JSON.stringify(chart, OMIT_MC_DIAG),
     inOperator: 'renderPending' in chart,
     hasOwn: Object.prototype.hasOwnProperty.call(chart, 'renderPending'),
-    spread: JSON.stringify({ ...chart }),
+    spread: JSON.stringify({ ...chart }, OMIT_MC_DIAG),
     forIn: (() => { const out = []; for (const k in chart) out.push(k); return out.join(','); })(),
-  });
+  };
+}
 
-  for (const writes of [[], [true], [true, false, true]]) {
-    const head = makeRealm(INSTALL).__makeChart();
-    const base = makeRealm(BASE_INSTALL).__makeChart();
-    for (const value of writes) { head.renderPending = value; base.renderPending = value; }
+test('M25: Chart-instance shape is unchanged versus the base commit, attribution off AND on', () => {
+  for (const attribution of [false, true]) {
+    for (const writes of [[], [true], [true, false, true]]) {
+      const head = makeRealm(HEAD, { attribution }).__makeChart();
+      const base = makeRealm(BASE).__makeChart();
+      for (const value of writes) { head.renderPending = value; base.renderPending = value; }
 
-    const headShape = shapeOf(head);
-    const baseShape = shapeOf(base);
-    note(`shape-identical after [${writes.join(',')}]`,
-      JSON.stringify(headShape) === JSON.stringify(baseShape),
-      `keys=${headShape.keys}`);
-    assert.deepEqual(headShape, baseShape,
-      `observable object shape changed versus ${BASE_COMMIT.slice(0, 9)}`);
+      const headShape = chartShape(head);
+      const baseShape = chartShape(base);
+      note(`shape-identical attribution=${attribution} after [${writes.join(',')}]`,
+        JSON.stringify(headShape) === JSON.stringify(baseShape),
+        `keys=${headShape.keys}`);
+      assert.deepEqual(headShape, baseShape,
+        `observable Chart shape changed versus ${BASE_COMMIT.slice(0, 9)} (attribution=${attribution})`);
+    }
   }
 
   // The one deliberate, non-enumerable addition, named so nobody has to guess.
-  const head = makeRealm(INSTALL).__makeChart();
-  const base = makeRealm(BASE_INSTALL).__makeChart();
+  const head = makeRealm(HEAD).__makeChart();
+  const base = makeRealm(BASE).__makeChart();
   const added = Object.getOwnPropertyNames(head)
     .filter((k) => !Object.getOwnPropertyNames(base).includes(k));
   note('non-enumerable-additions', added.join(',') === '_m25RenderPendingBacking', `added=[${added.join(',')}]`);
   assert.deepEqual(added, ['_m25RenderPendingBacking']);
   assert.equal(Object.getOwnPropertyDescriptor(head, '_m25RenderPendingBacking').enumerable, false);
-
-  head.renderPending = true;
-  const diagAdded = Object.getOwnPropertyNames(head._mcDiag)
-    .filter((k) => !Object.getOwnPropertyNames(base._mcDiag).includes(k));
-  assert.deepEqual(diagAdded, ['m25FramesArmed']);
-  assert.equal(Object.getOwnPropertyDescriptor(head._mcDiag, 'm25FramesArmed').enumerable, false,
-    'the counter must not appear in JSON.stringify or __mcDiagReport output');
 });
 
 // ── 5. kill switch ─────────────────────────────────────────────────────────
 
 test('M25: the kill switch restores a plain data property with no counter', () => {
-  const off = makeRealm(INSTALL, { killSwitch: true }).__makeChart();
-  const on = makeRealm(INSTALL).__makeChart();
+  const off = makeRealm(HEAD, { killSwitch: true }).__makeChart();
+  const on = makeRealm(HEAD).__makeChart();
 
   const offDescriptor = Object.getOwnPropertyDescriptor(off, 'renderPending');
   const onDescriptor = Object.getOwnPropertyDescriptor(on, 'renderPending');
 
   // Structural difference between the two arms, stated rather than implied:
-  //   kill switch ON  → { value, writable }        data property, no backing field, no counter
+  //   kill switch ON  → { value, writable }        data property, no backing field
   //   kill switch OFF → { get, set }               accessor over _m25RenderPendingBacking
   note('killswitch-data-property',
     'value' in offDescriptor && !('get' in offDescriptor && offDescriptor.get),
@@ -577,11 +684,14 @@ test('M25: the kill switch restores a plain data property with no counter', () =
   off.renderPending = true;
   off.renderPending = true;
   off.renderPending = false;
-  assert.equal(armed(off), undefined, 'no counter may exist while the kill switch is set');
+  // _ensureMcDiag() now seeds the field for every instance, so the kill-switch
+  // arm carries a counter that never moves — that, not its absence, is the
+  // observable: the accessor is gone, so nothing can increment it.
+  assert.equal(armed(off), 0, 'no arming may be recorded while the kill switch is set');
   assert.equal(off.renderPending, false);
 
-  // and the enabled arm is byte-identical in shape to base, so the switch is the only difference
-  const base = makeRealm(BASE_INSTALL).__makeChart();
+  // and the enabled arm is identical in Chart shape to base, so the switch is the only difference
+  const base = makeRealm(BASE).__makeChart();
   assert.deepEqual(Object.keys(off), Object.keys(base));
   assert.deepEqual(
     Object.getOwnPropertyNames(off), Object.getOwnPropertyNames(base),
@@ -590,7 +700,7 @@ test('M25: the kill switch restores a plain data property with no counter', () =
 });
 
 test('M25: the accessor installs with no window object at all', () => {
-  const chart = makeRealm(INSTALL, { noWindow: true }).__makeChart();
+  const chart = makeRealm(HEAD, { noWindow: true }).__makeChart();
   note('no-window-realm-installs', typeof Object.getOwnPropertyDescriptor(chart, 'renderPending').get === 'function');
   assert.equal(typeof Object.getOwnPropertyDescriptor(chart, 'renderPending').get, 'function');
   chart.renderPending = true;
@@ -598,12 +708,17 @@ test('M25: the accessor installs with no window object at all', () => {
 });
 
 test('M25: a missing _mcDiag never throws on the render path', () => {
-  const chart = makeRealm(INSTALL, { mcDiag: false }).__makeChart();
+  const chart = makeRealm(HEAD, { mcDiag: false }).__makeChart();
   assert.doesNotThrow(() => { chart.renderPending = true; });
   assert.equal(chart.renderPending, true);
   chart.renderPending = false;
   assert.equal(chart.renderPending, false);
   note('mcdiag-absent-safe', true, 'setter degrades to a plain write');
+
+  // Same, with attribution on: the installer must not throw when there is no bag.
+  const attributed = makeRealm(HEAD, { mcDiag: false, attribution: true }).__makeChart();
+  assert.doesNotThrow(() => { attributed.renderPending = true; });
+  assert.equal(attributed.renderPending, true);
 });
 
 // ── 7. animate() is untouched ──────────────────────────────────────────────
@@ -613,6 +728,8 @@ test('M25: animate() is byte-identical to the base commit', () => {
   const base = methodSource(BASE_SOURCE, 'animate');
   note('animate-unchanged', head === base, `${head.length} chars`);
   assert.equal(head, base, 'animate() must not change: this packet adds no render behaviour');
+  assert.equal(head, methodSource(ATTR_BASE_SOURCE, 'animate'),
+    `animate() must also be identical to ${ATTRIBUTION_BASE_COMMIT.slice(0, 9)}`);
   assert.ok(/if \(this\.renderPending\) \{/.test(head), 'animate() still reads renderPending unconditionally');
   assert.ok(!/m25|_m25RenderPendingBacking/i.test(head), 'no M25 token may appear inside animate()');
 
@@ -624,21 +741,39 @@ test('M25: animate() is byte-identical to the base commit', () => {
   assert.ok(needle >= 0 && needle < 2200);
 });
 
-test('M25: no line inside animate() differs, and no other chart.js region changed', () => {
-  const headLines = SOURCE.split('\n');
-  const baseLines = BASE_SOURCE.split('\n');
-  const headInstall = INSTALL;
-  // Everything outside the install region must be identical, line for line.
-  const strip = (lines, region) => [
-    ...lines.slice(0, region.start),
-    ...lines.slice(region.end - 1),
-  ].join('\n');
-  note('single-region-change', strip(headLines, headInstall) === strip(baseLines, BASE_INSTALL),
-    `install region head ${headInstall.start}..${headInstall.end}, base ${BASE_INSTALL.start}..${BASE_INSTALL.end}`);
-  assert.equal(
-    strip(headLines, headInstall), strip(baseLines, BASE_INSTALL),
-    'chart.js changed outside the renderPending initialisation',
-  );
+/**
+ * Everything outside the three declared regions must be identical to base. The
+ * regions are located by anchors in each commit separately, so this survives the
+ * line-number drift the added text causes and still fails on any stray edit.
+ */
+function stripDeclaredRegions(source) {
+  const cuts = REGIONS.map(({ name, from, to }) => {
+    const start = uniqueIndexOf(source, from, `region "${name}" start anchor`) + from.length;
+    const end = source.indexOf(to, start);
+    assert.ok(end > start, `region "${name}" anchors out of order`);
+    assert.equal(source.split(to).length - 1, 1, `region "${name}" end anchor must be unique`);
+    return { start, end };
+  }).sort((a, b) => a.start - b.start);
+
+  let out = '';
+  let cursor = 0;
+  for (const cut of cuts) {
+    assert.ok(cut.start >= cursor, 'declared regions must not overlap');
+    out += `${source.slice(cursor, cut.start)}\n/* DECLARED REGION ELIDED */\n`;
+    cursor = cut.end;
+  }
+  return out + source.slice(cursor);
+}
+
+test('M25: no chart.js region outside the three declared ones changed', () => {
+  for (const other of [BASE, ATTR_BASE]) {
+    const same = stripDeclaredRegions(SOURCE) === stripDeclaredRegions(other.source);
+    note(`single-region-change vs ${other.label}`, same, `${REGIONS.length} declared regions`);
+    assert.equal(
+      stripDeclaredRegions(SOURCE), stripDeclaredRegions(other.source),
+      `chart.js changed outside the ${REGIONS.length} declared regions, versus ${other.label}`,
+    );
+  }
 });
 
 // ── 6. mirror parity ───────────────────────────────────────────────────────
@@ -651,4 +786,332 @@ test('M25: canonical and homepage mirror chart.js are byte-identical', () => {
   note('mirror-parity', a === b, `${a.slice(0, 16)}… (${canonical.length} bytes) vs ${b.slice(0, 16)}… (${mirror.length} bytes)`);
   assert.equal(a, b, 'the mirror is a plain byte copy of canonical');
   assert.equal(canonical.length, mirror.length);
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// packet m25-attribution
+// ═══════════════════════════════════════════════════════════════════════════
+
+// ── change 1: the counter becomes visible and resettable ───────────────────
+
+/** Boot the product reporter in a realm and expose one chart to it as window.chart. */
+function bootReporter(sandbox, chart) {
+  sandbox.__m25Chart = chart;
+  vm.runInContext(
+    'window.chart = globalThis.__m25Chart; _talariaInstallMcDiagReporter();',
+    sandbox, { filename: 'm25-reporter-boot.js' },
+  );
+  return sandbox.window;
+}
+
+test('M25: __mcDiagReport() shows m25FramesArmed and __mcDiagReset() zeroes it', () => {
+  const sandbox = makeRealm(HEAD);
+  const chart = sandbox.__makeChart();
+  const win = bootReporter(sandbox, chart);
+
+  // three separate frames' worth of arming
+  for (let i = 0; i < 3; i += 1) { chart.renderPending = true; chart.renderPending = false; }
+  assert.equal(armed(chart), 3, 'precondition: the counter really moved');
+
+  const [row] = win.__mcDiagReport();
+  note('report-includes-counter', Object.prototype.hasOwnProperty.call(row, 'm25FramesArmed'),
+    `row keys=${Object.keys(row).length}, m25FramesArmed=${row.m25FramesArmed}`);
+  assert.ok(Object.prototype.hasOwnProperty.call(row, 'm25FramesArmed'),
+    '__mcDiagReport() must emit a m25FramesArmed column');
+  assert.equal(row.m25FramesArmed, 3);
+
+  assert.equal(win.__mcDiagReset(), 1, '__mcDiagReset() must have found the chart');
+  note('reset-zeroes-counter', armed(chart) === 0, `armed=${armed(chart)} after reset`);
+  assert.equal(armed(chart), 0, '__mcDiagReset() must zero m25FramesArmed');
+  assert.equal(win.__mcDiagReport()[0].m25FramesArmed, 0);
+
+  // RED-state witness: at ba2d30e57 the identical product reporter emitted no
+  // such column and the identical reset left the counter alone. This is the
+  // whole content of change 1, and it is the allow-list that carries it.
+  const baseSandbox = makeRealm(ATTR_BASE);
+  const baseChart = baseSandbox.__makeChart();
+  const baseWin = bootReporter(baseSandbox, baseChart);
+  baseChart.renderPending = true;
+  const [baseRow] = baseWin.__mcDiagReport();
+  note('red-witness-at-attribution-base',
+    !Object.prototype.hasOwnProperty.call(baseRow, 'm25FramesArmed'),
+    `${ATTRIBUTION_BASE_COMMIT.slice(0, 9)} row keys=${Object.keys(baseRow).length}`);
+  assert.equal(Object.prototype.hasOwnProperty.call(baseRow, 'm25FramesArmed'), false);
+  baseWin.__mcDiagReset();
+  assert.equal(armed(baseChart), 1, `${ATTRIBUTION_BASE_COMMIT.slice(0, 9)} reset could not zero it`);
+});
+
+test('M25: the counter is a plain enumerable field of _mcDiag, initialised by _ensureMcDiag()', () => {
+  const chart = makeRealm(HEAD).__makeChart();
+  const descriptor = Object.getOwnPropertyDescriptor(chart._mcDiag, 'm25FramesArmed');
+
+  note('counter-enumerable', descriptor?.enumerable === true,
+    `enumerable=${descriptor?.enumerable} value=${descriptor?.value} accessor=${typeof descriptor?.get}`);
+  assert.equal(descriptor.enumerable, true,
+    'the counter must be enumerable: _talariaMcDiagZeroCounters assigns diag[field] = 0, so a field that '
+    + 'is only created on first reset would be a late, nondeterministic shape change');
+  assert.equal(descriptor.writable, true);
+  assert.equal(descriptor.value, 0, '_ensureMcDiag() must seed it at 0, not leave it undefined');
+
+  // Seeded by _ensureMcDiag(), not by the constructor's install block.
+  const method = methodSource(SOURCE, '_ensureMcDiag');
+  assert.ok(/^\s+m25FramesArmed: 0,$/m.test(method), '_ensureMcDiag() must initialise m25FramesArmed');
+  // The setter still *increments* m25FramesArmed there — untouched. What must be
+  // gone is the defineProperty that used to create it non-enumerably.
+  assert.ok(!/defineProperty\([^)]*m25FramesArmed/.test(HEAD.install.text)
+    && !/'m25FramesArmed',\s*\{/.test(HEAD.install.text),
+    'the renderPending install block must no longer define the counter — _ensureMcDiag() owns it');
+  assert.ok(/defineProperty\(this\._mcDiag, 'm25FramesArmed'/.test(ATTR_BASE.install.text),
+    `non-vacuity: ${ATTRIBUTION_BASE_COMMIT.slice(0, 9)} did define it there`);
+
+  // All three parts of change 1 landed together: allow-list, seed, no defineProperty.
+  assert.ok(/^\s+'m25FramesArmed',$/m.test(HEAD.helpers), 'MC_DIAG_COUNTER_FIELDS must list the counter');
+  note('change-1-all-three', true, 'allow-list + _ensureMcDiag seed + defineProperty removed');
+});
+
+test('M25: the counter is not hidden from the Chart, only scoped to the diagnostics bag', () => {
+  const chart = makeRealm(HEAD).__makeChart();
+  chart.renderPending = true;
+  // Criterion 6 exempts _mcDiag; this states positively what the exemption buys.
+  assert.ok(Object.keys(chart._mcDiag).includes('m25FramesArmed'));
+  assert.ok(JSON.stringify(chart._mcDiag).includes('"m25FramesArmed":1'));
+  assert.equal(Object.keys(chart).includes('m25FramesArmed'), false,
+    'the Chart itself must not gain the field');
+  note('counter-visible-on-bag-only', true, `_mcDiag keys=${Object.keys(chart._mcDiag).length}`);
+});
+
+// ── change 2: per-site attribution ─────────────────────────────────────────
+
+test('M25 attribution: three arming sites co-firing in one frame yield three attributions', () => {
+  const sandbox = makeRealm(HEAD, { attribution: true });
+  const chart = sandbox.__makeChart();
+  const fires = compileCoFiringSites(sandbox, chart, THREE_FILE_SITES, 'm25-cofire-sites.js');
+  assert.equal(fires.length, 3);
+  assert.deepEqual(
+    THREE_FILE_SITES.map((s) => s.file.split('/').pop()),
+    ['chart.js', 'panel-cmd-bridge.js', 'replay-system.js'],
+    'the three statements must come from three different product files',
+  );
+
+  // One frame: nothing clears renderPending between the three writes, exactly as
+  // animate() would not until its next tick.
+  for (const fire of fires) fire();
+
+  const sites = sitesOf(chart);
+  const keys = Object.keys(sites);
+  note('cofire-three-distinct', keys.length === 3 && armed(chart) === 1,
+    `m25FramesArmed=${armed(chart)} (saturated), m25ArmingSites=${JSON.stringify(sites)}`);
+
+  assert.equal(armed(chart), 1,
+    'the scalar counter is expected to saturate at 1 — that is the defect being compensated for');
+  assert.equal(keys.length, 3, 'three co-firing sites must produce three distinct attributions');
+  for (const key of keys) {
+    assert.equal(sites[key], 1, `${key} must be counted exactly once`);
+    assert.match(key, /^m25-cofire-sites\.js:\d+:\d+$/,
+      'keys must be file:line:column source positions');
+  }
+});
+
+test('M25 attribution: the erasure case — a site that only ever fires second is still attributed', () => {
+  const sandbox = makeRealm(HEAD, { attribution: true });
+  const chart = sandbox.__makeChart();
+  const [first, second] = compileCoFiringSites(
+    sandbox, chart, [THREE_FILE_SITES[0], THREE_FILE_SITES[1]], 'm25-erasure-sites.js',
+  );
+
+  const FRAMES = 5;
+  for (let frame = 0; frame < FRAMES; frame += 1) {
+    first();            // falsy→true: the only write the scalar can see
+    second();           // true→true, always immediately after `first`, same frame
+    chart.renderPending = false;   // what animate() does at chart.js:28771
+  }
+
+  const sites = sitesOf(chart);
+  const keys = Object.keys(sites).sort();
+  const [firstKey, secondKey] = keys;
+
+  note('erasure-case-attributed',
+    keys.length === 2 && sites[secondKey] === FRAMES && armed(chart) === FRAMES,
+    `m25FramesArmed=${armed(chart)} for ${FRAMES * 2} arming writes; sites=${JSON.stringify(sites)}`);
+
+  // The scalar cannot tell this session apart from one in which `second` does not
+  // exist at all — that is the "reads as dead" failure this packet exists to fix.
+  assert.equal(armed(chart), FRAMES,
+    'the scalar counts frames, so the second site contributed exactly 0 to it');
+  assert.equal(keys.length, 2, 'both sites must be attributed');
+  assert.equal(sites[firstKey], FRAMES);
+  assert.equal(sites[secondKey], FRAMES,
+    'a site that never once caused an increment must still be attributed every time it fired');
+});
+
+test('M25 attribution: every one of the 28 arming sites is attributed when it fires', () => {
+  const sandbox = makeRealm(HEAD, { attribution: true });
+  const chart = sandbox.__makeChart();
+  const fires = compileCoFiringSites(sandbox, chart, ARMING, 'm25-all-arming-sites.js');
+
+  // No clears at all: 27 of the 28 writes are true→true and invisible to the scalar.
+  for (const fire of fires) fire();
+
+  const sites = sitesOf(chart);
+  const total = Object.values(sites).reduce((a, b) => a + b, 0);
+  note('all-28-attributed', Object.keys(sites).length === 28 && total === 28,
+    `m25FramesArmed=${armed(chart)}, distinct attributions=${Object.keys(sites).length}, total=${total}`);
+  assert.equal(armed(chart), 1, 'the scalar sees one frame for all 28');
+  assert.equal(Object.keys(sites).length, 28, 'no arming site may read as dead');
+  assert.equal(total, 28);
+});
+
+test('M25 attribution: __mcDiagReset() empties the site map in place', () => {
+  const sandbox = makeRealm(HEAD, { attribution: true });
+  const chart = sandbox.__makeChart();
+  const win = bootReporter(sandbox, chart);
+  const [fire] = compileCoFiringSites(sandbox, chart, [THREE_FILE_SITES[0]], 'm25-reset-sites.js');
+
+  fire(); fire();
+  const identity = sitesOf(chart);
+  assert.equal(Object.keys(identity).length, 1);
+
+  win.__mcDiagReset();
+  note('reset-empties-site-map', Object.keys(sitesOf(chart)).length === 0 && sitesOf(chart) === identity,
+    'emptied in place, same object identity the setter captured');
+  assert.equal(Object.keys(sitesOf(chart)).length, 0, 'reset must start a fresh attribution window');
+  assert.equal(sitesOf(chart), identity,
+    'the map must be emptied, not replaced: the accessor closes over the diag bag, not the map');
+
+  fire();
+  assert.equal(Object.keys(sitesOf(chart)).length, 1, 'attribution must survive a reset');
+});
+
+test('M25 attribution: overflow is announced, never dropped', () => {
+  const sandbox = makeRealm(HEAD, { attribution: true });
+  const chart = sandbox.__makeChart();
+  const MAX = 256;
+  const EXTRA = 8;
+  const lines = [];
+  for (let i = 0; i < MAX + EXTRA; i += 1) {
+    lines.push(`globalThis.__m25Many[${i}] = function s${i}(){ globalThis.__m25Chart.renderPending = true; };`);
+  }
+  sandbox.__m25Many = [];
+  sandbox.__m25Chart = chart;
+  vm.runInContext(lines.join('\n'), sandbox, { filename: 'm25-overflow-sites.js' });
+  for (const fire of sandbox.__m25Many) fire();
+
+  const sites = sitesOf(chart);
+  const overflowKey = Object.keys(sites).find((k) => k.startsWith('(overflow'));
+  const total = Object.values(sites).reduce((a, b) => a + b, 0);
+  note('overflow-announced', !!overflowKey && total === MAX + EXTRA,
+    `distinct=${Object.keys(sites).length}, overflow=${sites[overflowKey]}, total writes accounted=${total}`);
+  assert.ok(overflowKey, 'passing the distinct-key cap must add a visible overflow key, not silently drop');
+  assert.equal(sites[overflowKey], EXTRA);
+  assert.equal(total, MAX + EXTRA, 'every truthy write must be accounted for somewhere');
+  assert.equal(Object.keys(sites).length, MAX + 1);
+});
+
+test('M25 attribution: default off — the flag must be exactly true', () => {
+  for (const value of [undefined, false, 0, 1, 'true', null, {}]) {
+    const sandbox = makeRealm(HEAD);
+    if (value !== undefined) {
+      sandbox.__m25FlagValue = value;
+      vm.runInContext(`window.${ATTRIBUTION_FLAG} = globalThis.__m25FlagValue;`, sandbox);
+    }
+    const chart = sandbox.__makeChart();
+    chart.renderPending = true;
+    assert.equal(sitesOf(chart), undefined,
+      `flag=${String(value)} must not enable attribution`);
+    assert.equal(armed(chart), 1, 'the counter must still work with attribution off');
+  }
+  note('default-off', true, 'undefined, false, 0, 1, "true", null, {} — none enable it');
+
+  const on = makeRealm(HEAD, { attribution: true }).__makeChart();
+  assert.notEqual(sitesOf(on), undefined, 'and exactly true does enable it');
+});
+
+test('M25 attribution: with the flag off, the render path is identical to the attribution base', () => {
+  const head = makeRealm(HEAD).__makeChart();
+  const base = makeRealm(ATTR_BASE).__makeChart();
+
+  const headDescriptor = Object.getOwnPropertyDescriptor(head, 'renderPending');
+  const baseDescriptor = Object.getOwnPropertyDescriptor(base, 'renderPending');
+
+  // The strongest available statement about cost: the bytes executed on every
+  // write are the same function text as at ba2d30e57. Nothing was added to the
+  // hot path — the opt-in wrapper is simply never installed.
+  note('setter-text-identical',
+    headDescriptor.set.toString() === baseDescriptor.set.toString(),
+    `${headDescriptor.set.toString().length} chars`);
+  assert.equal(headDescriptor.set.toString(), baseDescriptor.set.toString(),
+    `the setter must be textually identical to ${ATTRIBUTION_BASE_COMMIT.slice(0, 9)} when attribution is off`);
+  assert.equal(headDescriptor.get.toString(), baseDescriptor.get.toString());
+  assert.equal(headDescriptor.enumerable, baseDescriptor.enumerable);
+  assert.equal(headDescriptor.configurable, baseDescriptor.configurable);
+
+  // No property added to the Chart, and none added to the diagnostics bag either:
+  // m25ArmingSites is created by the installer, which did not run.
+  assert.deepEqual(Object.getOwnPropertyNames(head), Object.getOwnPropertyNames(base));
+  assert.deepEqual(
+    Object.getOwnPropertyNames(head._mcDiag).sort(),
+    Object.getOwnPropertyNames(base._mcDiag).sort(),
+    'attribution off must add no field to _mcDiag (change 1 only moved m25FramesArmed, it did not add it)',
+  );
+  assert.equal(Object.prototype.hasOwnProperty.call(head._mcDiag, 'm25ArmingSites'), false);
+
+  // …and the observable behaviour over a mixed write script is identical.
+  const script = [true, true, false, 1, 0, 'x', '', true, NaN, false, true];
+  for (const value of script) {
+    head.renderPending = value;
+    base.renderPending = value;
+    assert.equal(Object.is(head.renderPending, base.renderPending), true, `read-back diverged for ${String(value)}`);
+    assert.equal(armed(head), armed(base), `counter diverged after ${String(value)}`);
+  }
+  note('behaviour-identical-to-attribution-base', true,
+    `${script.length} writes, final m25FramesArmed=${armed(head)} on both`);
+});
+
+test('M25 attribution: stands down under the renderPending kill switch', () => {
+  const chart = makeRealm(HEAD, { killSwitch: true, attribution: true }).__makeChart();
+  const descriptor = Object.getOwnPropertyDescriptor(chart, 'renderPending');
+
+  note('killswitch-beats-attribution',
+    descriptor.get === undefined && sitesOf(chart) === undefined,
+    `descriptor={${Object.keys(descriptor).join(',')}}, m25ArmingSites=${String(sitesOf(chart))}`);
+  assert.equal(descriptor.get, undefined,
+    'attribution must not resurrect an accessor the kill switch was set to remove');
+  assert.equal(descriptor.set, undefined);
+  assert.equal(descriptor.writable, true);
+
+  chart.renderPending = true;
+  assert.equal(sitesOf(chart), undefined, 'and it must not create the site map either');
+  assert.equal(armed(chart), 0);
+
+  // The flag alone, with the accessor present, does install it — so the cell above
+  // is not passing merely because attribution is broken everywhere.
+  const live = makeRealm(HEAD, { attribution: true }).__makeChart();
+  live.renderPending = true;
+  assert.equal(Object.keys(sitesOf(live)).length, 1, 'non-vacuity: attribution works when the accessor exists');
+});
+
+test('M25 attribution: keys are source positions, and the deployed surface is unminified', () => {
+  const v9 = fs.readFileSync(path.join(ROOT, 'chart v 1.4', 'chart', 'dist-v9', 'index.html'), 'utf8');
+  const legacy = fs.readFileSync(path.join(ROOT, 'chart v 1.4', 'chart', 'legacy-index.html'), 'utf8');
+  const bundler = fs.readFileSync(
+    path.join(ROOT, 'chart v 1.4', 'chart', 'scripts', 'build-chart-client-bundle.mjs'), 'utf8',
+  );
+
+  // Both deployed pages load chart.js as its own <script>, so stack frames carry
+  // real chart.js line numbers.
+  assert.match(v9, /<script[^>]*\ssrc="\/chart\/chart\.js\?v=[^"]+"><\/script>/,
+    'dist-v9/index.html must load chart.js as its own script');
+  assert.match(legacy, /<script[^>]*\ssrc="chart\.js\?v=[^"]+"><\/script>/,
+    'legacy-index.html must load chart.js as its own script');
+  assert.equal(v9.includes('chart-app-part1.min.js'), false);
+  assert.equal(legacy.includes('chart-app-part1.min.js'), false);
+
+  // The optional bundle DOES exist and DOES swallow chart.js. Stated, not hidden:
+  // if it were ever deployed, keys collapse to one file and one line, and only the
+  // column tells sites apart.
+  assert.ok(bundler.includes("'chart.js',"), 'npm run build:chart-client does include chart.js');
+  assert.match(bundler, /mangle:\s*true/);
+  assert.match(bundler, /sourceMap:\s*false/);
+  note('deployed-surface-unminified', true,
+    'dist-v9 + legacy-index load /chart/chart.js directly; the terser bundle exists but neither page references it');
 });
