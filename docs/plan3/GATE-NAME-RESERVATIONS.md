@@ -334,7 +334,7 @@ mount carried the mount-time snapshot. The consumer pin now requires ≥1 call w
 binding is `createThread` and that is not inside `useMemo`; `NC-CONSUMER-CALL-HOISTED-USEMEMO`
 is the negative control.
 
-**W44 re-authoring (R-M6-4 REJECT closed).** Unbounded unmodelled-API class + consumer value-flow.
+**W44 re-authoring (R-M6-4 REJECT closed).** Unbounded unmodelled-API class.
 
 *Modelled browser surfaces.* `sessionStorage`, `localStorage`, `performance.now` (tied to the
 realm clock), and `document.visibilityState="visible"` are installed so caches that use them
@@ -345,9 +345,20 @@ are killed by TEMPORAL-RECOMPUTE.
 that is not an own modelled/runtime property fails `PASSPORT-DEGRADED-REALM-FIDELITY` (and the
 temporal cell's `noUnmodelledReads` guard). Mutant **M10** (`window.indexedDB`) is the carrier.
 
-*Value-flow.* The consumer pin requires the call's result to reach the request `context` payload;
-`NC-CONSUMER-VALUE-FROZEN` freezes the value one line downstream while leaving the call in
-`createThread` and must go RED.
+**W51-RUNTIME-FREEZE (Director C-4).** The W43-W50 consumer mutation/reassignment detector family
+is inverted rather than extended. `supportUi.tsx` is the sole writer: `buildSupportContext` fully
+populates `ctx` and deep-freezes the publication value at return (including the SSR `{}` path).
+`SupportInbox.tsx` and `V16SupportChatPopover.tsx` remain consumers only: they call the builder and
+attach the returned context to the payload. The gate now proves runtime immutability of the returned
+object and nested `degradedModules` array. The W43-W50 mutation corpus is retained as eight runtime
+attempts against the returned value, documented as rejection inheritance, not as a new AST detector
+spec.
+
+**W51b (R-W51 REJECT close).** Freeze + mutation-corpus cells run under sparse **and**
+production-shaped realms (`app.talaria.io`, non-Gate UA) so an env-gated freeze cannot stay GREEN
+under gate branding alone (mutant **M17**). Consumer wiring restores a **bounded value-flow** pin
+(call result reaches request `context` / `append("context", …)`) without restoring mutation AST
+walks; **NC-CONSUMER-CONTEXT-DISCARDED** is the carrier for R-W51 Break 2.
 
 CI: `.github/workflows/support-passport-degraded.yml` (gate self-test, then preflight, then
 evidence artifact). W42 added both consumer `.tsx` paths to the trigger set.
@@ -360,16 +371,23 @@ evidence artifact). W42 added both consumer `.tsx` paths to the trigger set.
 | PASSPORT-DEGRADED-TEMPORAL-RECOMPUTE | **one realm, three calls** under post-load `readyState==="complete"` with `TEMPORAL_CLOCK_ADVANCE_MS` between tickets: call → mark `OrderOverlay` → call → mark `AlertSystem` → call. Each observation must equal the runtime list; runtime advances 0 → 1 → 2; clock advances ≥31s; **no unmodelled window/document reads** | soundness | LIVE (W44) |
 | PASSPORT-DEGRADED-REALM-FIDELITY | modelled `sessionStorage`/`localStorage`/`performance.now`/`visibilityState` present; `buildSupportContext` reads zero unmodelled window/document properties | soundness | LIVE (W44) |
 | PASSPORT-DEGRADED-ALIAS-CANONICAL / -DUNDER / -COMPAT | with the other two globals **deleted from the realm**, the real function still reads the degraded record from `__TALARIA_DEGRADED_STATE` / `__TALARIA_DEGRADED_STATE__` / `__TALARIA_DEGRADED_MODE__` respectively, non-empty and equal to what that alias published | soundness | LIVE (W42) |
-| SUPPORT-PASSPORT-CONSUMER-CALL-PATH | import + ≥1 `createThread` call not inside `useMemo` whose **result reaches** the request `context` payload (AST value-flow) | wiring | LIVE (W44) |
+| PASSPORT-CONTEXT-DEEP-FROZEN | after the real `buildSupportContext()` returns under sparse + browserRealistic + productionShaped, `Object.isFrozen(ctx)`, `Object.isFrozen(ctx.degradedModules)`, and nested object/array values are frozen; production profile must be `app.talaria.io` (not `.test` / Gate UA) | soundness | LIVE (W51b) |
+| PASSPORT-CONTEXT-MUTATION-CORPUS | W43-W50 eight-rejection inheritance attempted against the returned context under sparse **and** production-shaped realms: dot/bracket assignment, `Object.assign(ctx, ...)`, array `push`/`splice`/`pop`, `Object.assign(ctx.degradedModules, {0:"X"})`, and `delete ctx.degradedModules`; each must throw in strict mode or no-op with values unchanged | soundness | LIVE (W51b) |
+| SUPPORT-PASSPORT-CONSUMER-CALL-PATH | import + ≥1 `createThread` call not inside `useMemo` + call result reaches request `context` (property or `FormData.append`); mutation safety enforced at runtime publication, not by consumer mutation AST | wiring | LIVE (W51b) |
 | NC-ALIAS-DROP-CANONICAL / -DUNDER / -COMPAT | one alias deleted from `supportUi.tsx` (the tail alias takes the preceding `??` with it, or the edit is a syntax error rather than a regression): its own boot cell goes RED and **no other behavioural cell moves**. An alias that cannot be uniquely aimed is RED, not a silent pass | wiring | LIVE (W42) |
 | NC-CONSUMER-CALL-DELETED | the `buildSupportContext()` call removed from a consumer while the **import stays** turns the consumer cell RED — the pin keys on the call, not on the import | wiring | LIVE (W42) |
 | NC-CONSUMER-CALL-HOISTED-USEMEMO | `React.useMemo(() => buildSupportContext(), [])` hoist at component body with submit-handler call replaced by the frozen binding: `callCount` stays ≥1 and import intact, but `submitHandlerCallCount` drops to 0 and the consumer cell goes RED | wiring | LIVE (W43) |
-| NC-CONSUMER-VALUE-FROZEN | call stays in `createThread` with import intact, but a one-line-downstream snapshot freeze breaks value-flow to `context` → consumer cell RED | wiring | LIVE (W44) |
+| NC-CONSUMER-CONTEXT-DISCARDED | call remains on `createThread` but payload `context` is emptied / discarded; `valueFlowCallCount` drops to 0 and the consumer cell goes RED (R-W51 Break 2) | wiring | LIVE (W51b) |
 | NC-CONSUMER-PIN-DECOYS | line comment, block comment, string literal, template literal, **regex literal** and **JSX text** each containing `buildSupportContext()` must not pay the pin, on both consumers; the same decoy appended to the intact file must leave the real call site still counted | wiring | LIVE (W42) |
+| NC-MUTANT-NO-DEEP-FREEZE | strip the publication deep-freeze from `supportUi.tsx`; the runtime-freeze cells must go RED while round-trip/temporal extraction cells stay GREEN | soundness | LIVE (W51) |
 | SUPPORT-UI-SOURCE-CONTRACT | — | WITHDRAWN (W42) — substring pin on `window.__TALARIA_DEGRADED_STATE`, a prefix of `..._STATE__`, therefore unfalsifiable; superseded by the alias boot cells |
 | NC-ALIAS-PIN-REMOVAL | — | WITHDRAWN (W42) — negative control for a withdrawn pin; superseded by NC-ALIAS-DROP-* |
 | NC-COMMENT-DOES-NOT-SATISFY-PIN | — | WITHDRAWN (W42) — covered only comments and string literals; the regex-literal and JSX-text decoys it missed are in NC-CONSUMER-PIN-DECOYS |
 | NC-PASSPORT-DEGRADED-MUTATION | — | WITHDRAWN (W40) — tautological substring delete; superseded by the M1–M6 behavioural mutants below |
+| hasContextReassignmentAfterCall | — | WITHDRAWN (W51) — consumer reassignment AST detector retired; publication deep-freeze is the blocking mechanism |
+| hasHelperIndirectionFreeze | — | WITHDRAWN (W51) — helper-indirection mutation AST detector retired; publication deep-freeze is the blocking mechanism |
+| NC-CONSUMER-CONTEXT-REASSIGNED | — | WITHDRAWN (W51) — downstream context overwrite detector retired; covered by returned-context immutability instead of consumer AST growth |
+| valueFlow requiring `!contextReassignedAfter` | — | WITHDRAWN (W51) — reassignment coupling retired; W51b restores **wiring-only** value-flow (reaches `context`) without mutation AST |
 
 Behavioural mutants. Each edits `supportUi.tsx` into a plausible regression, re-runs the whole
 behavioural suite against the mutated product source, and is RED unless a named cell kills it. A
@@ -387,6 +405,14 @@ mutant whose target no longer exists is RED, not a silent pass.
 | M8 | NC-MUTANT-SESSION-STORAGE-CACHE | `sessionStorage` JSON cache — the R-M6-4 primary carrier | **TEMPORAL-RECOMPUTE, and nothing else** | LIVE (W44) |
 | M9 | NC-MUTANT-PERFORMANCE-NOW-WARMUP | warm-up cache keyed on `performance.now()` — Date.now controllability does not touch it | **TEMPORAL-RECOMPUTE, and nothing else** | LIVE (W44) |
 | M10 | NC-MUTANT-UNMODELLED-API-READ | `void window.indexedDB` — unmodelled API must trip REALM-FIDELITY | TEMPORAL-RECOMPUTE + REALM-FIDELITY | LIVE (W44) |
+| W51 | NC-MUTANT-NO-DEEP-FREEZE | `return deepFreeze(ctx)` / SSR `deepFreeze({})` stripped back to mutable returns | PASSPORT-CONTEXT-DEEP-FROZEN + PASSPORT-CONTEXT-MUTATION-CORPUS only; extraction round-trip and temporal cells survive | LIVE (W51) |
+| M11 | NC-MUTANT-PERFORMANCE-TIMEORIGIN-WARMUP | warm-up cache keyed on `performance.timeOrigin` | **TEMPORAL-RECOMPUTE, and nothing else** | LIVE (W45) |
+| M12 | NC-MUTANT-BODY-DATASET-CACHE | `document.body.dataset` cache | **TEMPORAL-RECOMPUTE, and nothing else** | LIVE (W45) |
+| M13 | NC-MUTANT-SERVICE-WORKER-GATED-CACHE | cache gated on `navigator.serviceWorker` presence | TEMPORAL-RECOMPUTE + REALM-FIDELITY | LIVE (W46) |
+| M14 | NC-MUTANT-BARE-SESSION-STORAGE-CACHE | bare `sessionStorage` (not `window.sessionStorage`) | **TEMPORAL-RECOMPUTE, and nothing else** | LIVE (W47) |
+| M15 | NC-MUTANT-HOST-GATED-CACHE | identity/host-gated cache that stays GREEN under `.test` / Gate UA | **TEMPORAL-RECOMPUTE, and nothing else** | LIVE (W48) |
+| M16 | NC-MUTANT-SETTIMEOUT-TTL-CACHE | module-scope cache cleared by `setTimeout(60s)` | **TEMPORAL-RECOMPUTE, and nothing else** | LIVE (W49) |
+| M17 | NC-MUTANT-ENV-GATED-FREEZE | `deepFreeze` no-ops outside `.test` hosts — GREEN under gate branding, unfrozen in production (R-W51 Break 1) | PASSPORT-CONTEXT-DEEP-FROZEN + PASSPORT-CONTEXT-MUTATION-CORPUS | LIVE (W51b) |
 
 ### FINDING-SUPPORT-CONTEXT-STR-COERCION-20260728 — escalate to A / Director
 

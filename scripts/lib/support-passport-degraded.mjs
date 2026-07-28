@@ -45,8 +45,7 @@
  *      POST path) and that is not inside useMemo; NC-CONSUMER-CALL-HOISTED-USEMEMO proves
  *      the hoist goes RED.
  *
- * W44 (R-M6-4 REJECT) closes the unbounded "unmodelled API" class and the consumer
- * value-flow hole:
+ * W44 (R-M6-4 REJECT) closes the unbounded "unmodelled API" class.
  *
  *   1. The realm models sessionStorage, localStorage, performance.now (tied to the same
  *      clock), and document.visibilityState="visible", so caches that use those APIs are
@@ -54,9 +53,12 @@
  *   2. window/document are Proxies: any property read by buildSupportContext that is not
  *      an own modelled/runtime property fails PASSPORT-DEGRADED-REALM-FIDELITY — so the
  *      next unmodelled API is RED by construction rather than another blacklist entry.
- *   3. Consumer pin requires the call's result to reach the request `context` payload
- *      (AST value-flow), not merely that a CallExpression exists; NC-CONSUMER-VALUE-FROZEN
- *      freezes the value one line downstream and must go RED.
+ *
+ * W51 (RUNTIME-FREEZE / Director C-4) inverts W43-W50's consumer mutation arms:
+ * instead of adding more AST patterns, the product deep-freezes the published context.
+ * PASSPORT-CONTEXT-DEEP-FROZEN and PASSPORT-CONTEXT-MUTATION-CORPUS prove the returned
+ * object and degradedModules array are immutable at runtime; NC-MUTANT-NO-DEEP-FREEZE
+ * strips publication freezing and must be killed only by those runtime-freeze cells.
  */
 import path from 'node:path';
 import vm from 'node:vm';
@@ -1055,6 +1057,204 @@ export function runPassportDegradedBoundingPropertiesCell(deps) {
   }
 }
 
+function nestedObjectsFrozen(value, seen = new WeakSet()) {
+  if (value === null || (typeof value !== 'object' && typeof value !== 'function')) return true;
+  if (seen.has(value)) return true;
+  seen.add(value);
+  return Object.isFrozen(value)
+    && Reflect.ownKeys(value).every((key) => nestedObjectsFrozen(value[key], seen));
+}
+
+/**
+ * Publication freeze: the real support context object and its nested array must be frozen
+ * after buildSupportContext returns. Object.freeze is shallow; this cell makes the
+ * degradedModules array load-bearing.
+ *
+ * @param {Parameters<typeof createSupportPassportRealm>[0]} deps
+ */
+function observePublishedFreeze(deps, profile) {
+  const realm = createSupportPassportRealm({
+    ...deps,
+    providerPresent: false,
+    ...profile,
+  });
+  realm.window.__talariaMarkMissingModule('OrderOverlay');
+  const ctx = realm.buildSupportContext();
+  const modules = ctx.degradedModules;
+  return {
+    host: realm.window.location.host,
+    userAgent: realm.window.navigator.userAgent,
+    contextFrozen: Object.isFrozen(ctx),
+    degradedModulesFrozen: Object.isFrozen(modules),
+    nestedValuesFrozen: nestedObjectsFrozen(ctx),
+    arrayPublished: Array.isArray(modules),
+    passportModules: hostArray(modules),
+  };
+}
+
+/**
+ * Publication freeze across sparse + browserRealistic + productionShaped (same profiles
+ * as TEMPORAL-RECOMPUTE). A freeze gated on `.test` host or Gate UA must not stay GREEN
+ * while production remains mutable (R-W51 Break 1).
+ *
+ * @param {Parameters<typeof createSupportPassportRealm>[0]} deps
+ */
+export function runPassportContextDeepFrozenCell(deps) {
+  const cell = 'PASSPORT-CONTEXT-DEEP-FROZEN';
+  try {
+    const sparse = observePublishedFreeze(deps, {
+      browserRealistic: false, productionShaped: false,
+    });
+    const browser = observePublishedFreeze(deps, {
+      browserRealistic: true, productionShaped: false,
+    });
+    const production = observePublishedFreeze(deps, {
+      browserRealistic: true, productionShaped: true,
+    });
+    const profileOk = (obs) => obs.contextFrozen
+      && obs.arrayPublished
+      && obs.degradedModulesFrozen
+      && obs.nestedValuesFrozen;
+    const productionProfileArmed = production.host === 'app.talaria.io'
+      && !production.host.endsWith('.test')
+      && !/Gate|HeadlessChrome|jsdom/i.test(production.userAgent);
+    const profilesAgree = profileOk(sparse) && profileOk(browser) && profileOk(production);
+    const pass = profilesAgree && productionProfileArmed;
+    return cellResult(cell, pass, {
+      sparse,
+      browser,
+      production,
+      profilesAgree,
+      productionProfileArmed,
+      passportModules: production.passportModules,
+    });
+  } catch (error) {
+    return redCell(cell, String(error?.message ?? error));
+  }
+}
+
+export const PASSPORT_CONTEXT_MUTATION_CORPUS = [
+  {
+    id: 'dot-assign-root',
+    shape: 'ctx.degradedModules = []',
+    apply: (ctx) => { ctx.degradedModules = []; },
+  },
+  {
+    id: 'bracket-assign-root',
+    shape: "ctx['degradedModules'] = []",
+    apply: (ctx) => { ctx['degradedModules'] = []; },
+  },
+  {
+    id: 'object-assign-root',
+    shape: "Object.assign(ctx, { degradedModules: ['X'] })",
+    apply: (ctx) => { Object.assign(ctx, { degradedModules: ['X'] }); },
+  },
+  {
+    id: 'array-push',
+    shape: "ctx.degradedModules.push('X')",
+    apply: (ctx) => { ctx.degradedModules.push('X'); },
+  },
+  {
+    id: 'array-splice',
+    shape: "ctx.degradedModules.splice(0, 1, 'X')",
+    apply: (ctx) => { ctx.degradedModules.splice(0, 1, 'X'); },
+  },
+  {
+    id: 'array-pop',
+    shape: 'ctx.degradedModules.pop()',
+    apply: (ctx) => { ctx.degradedModules.pop(); },
+  },
+  {
+    id: 'object-assign-array-index',
+    shape: "Object.assign(ctx.degradedModules, { 0: 'X' })",
+    apply: (ctx) => { Object.assign(ctx.degradedModules, { 0: 'X' }); },
+  },
+  {
+    id: 'delete-root-key',
+    shape: 'delete ctx.degradedModules',
+    apply: (ctx) => { delete ctx.degradedModules; },
+  },
+];
+
+function contextSnapshot(ctx) {
+  return {
+    hasDegradedModules: Object.prototype.hasOwnProperty.call(ctx, 'degradedModules'),
+    degradedModules: hostArray(ctx.degradedModules),
+  };
+}
+
+function sameContextSnapshot(a, b) {
+  return a.hasDegradedModules === b.hasDegradedModules
+    && JSON.stringify(a.degradedModules) === JSON.stringify(b.degradedModules);
+}
+
+/**
+ * Runtime inheritance of the eight W43-W50 rejection shapes. This is a corpus of
+ * previously rejected mutation shapes, not a new AST detector spec: each shape is attempted
+ * against the returned object and must throw in strict mode or no-op with values unchanged.
+ *
+ * @param {Parameters<typeof createSupportPassportRealm>[0]} deps
+ */
+function runMutationCorpusOnProfile(deps, profile) {
+  return PASSPORT_CONTEXT_MUTATION_CORPUS.map((entry) => {
+    const realm = createSupportPassportRealm({
+      ...deps,
+      providerPresent: false,
+      ...profile,
+    });
+    realm.window.__talariaMarkMissingModule('OrderOverlay');
+    const ctx = realm.buildSupportContext();
+    const before = contextSnapshot(ctx);
+    let threw = false;
+    let errorName = null;
+    try {
+      entry.apply(ctx);
+    } catch (error) {
+      threw = true;
+      errorName = error?.name ?? 'Error';
+    }
+    const after = contextSnapshot(ctx);
+    const valuesUnchanged = sameContextSnapshot(before, after);
+    const arrayPublished = Array.isArray(ctx.degradedModules);
+    return {
+      id: entry.id,
+      shape: entry.shape,
+      host: realm.window.location.host,
+      arrayPublished,
+      threw,
+      errorName,
+      valuesUnchanged,
+      rejected: arrayPublished && (threw || valuesUnchanged),
+    };
+  });
+}
+
+export function runPassportContextMutationCorpusCell(deps) {
+  const cell = 'PASSPORT-CONTEXT-MUTATION-CORPUS';
+  try {
+    const sparse = runMutationCorpusOnProfile(deps, {
+      browserRealistic: false, productionShaped: false,
+    });
+    const production = runMutationCorpusOnProfile(deps, {
+      browserRealistic: true, productionShaped: true,
+    });
+    const results = production;
+    const sparsePass = sparse.length === 8 && sparse.every((r) => r.rejected && r.valuesUnchanged);
+    const productionPass = results.length === 8 && results.every((r) => r.rejected && r.valuesUnchanged);
+    const pass = sparsePass && productionPass;
+    return cellResult(cell, pass, {
+      inheritance: 'W43-W50 eight-rejection runtime corpus',
+      corpusSize: results.length,
+      sparsePass,
+      productionPass,
+      productionHost: production[0]?.host,
+      results,
+    });
+  } catch (error) {
+    return redCell(cell, String(error?.message ?? error));
+  }
+}
+
 /**
  * @param {Parameters<typeof createSupportPassportRealm>[0]} deps
  */
@@ -1066,6 +1266,8 @@ export function runBehavioralCells(deps) {
     runPassportDegradedTemporalCell(deps),
     runPassportDegradedRealmFidelityCell(deps),
     ...SUPPORT_PASSPORT_ALIASES.map((alias) => runPassportDegradedAliasBootCell(deps, alias)),
+    runPassportContextDeepFrozenCell(deps),
+    runPassportContextMutationCorpusCell(deps),
   ];
 }
 
@@ -1075,7 +1277,7 @@ export function runBehavioralCells(deps) {
 
 const MEMOIZED_PASSPORT_HEADER =
   'export function buildSupportContext(): Record<string, string | string[]> {';
-const MEMOIZED_PASSPORT_TAIL = '  return ctx;\n}';
+const MEMOIZED_PASSPORT_TAIL = '  return deepFreeze(ctx);\n}';
 
 /**
  * Each mutant edits supportUi.tsx into a plausible regression and the whole behavioural
@@ -1105,7 +1307,7 @@ export const SUPPORT_PASSPORT_BEHAVIORAL_MUTANTS = [
     name: 'NC-MUTANT-POST-ASSIGNMENT-CLEAR',
     describes: 'passport is rebuilt correctly and then cleared before it is returned',
     apply: (src) => (src.includes(MEMOIZED_PASSPORT_TAIL)
-      ? src.replace(MEMOIZED_PASSPORT_TAIL, '  ctx.degradedModules = [];\n  return ctx;\n}')
+      ? src.replace(MEMOIZED_PASSPORT_TAIL, '  ctx.degradedModules = [];\n  return deepFreeze(ctx);\n}')
       : null),
   },
   {
@@ -1141,7 +1343,7 @@ export const SUPPORT_PASSPORT_BEHAVIORAL_MUTANTS = [
           + `${MEMOIZED_PASSPORT_HEADER}\n`
           + '  if (__passportCache !== null && document.readyState === "complete") return __passportCache;',
         )
-        .replace(MEMOIZED_PASSPORT_TAIL, '  __passportCache = ctx;\n  return ctx;\n}');
+        .replace(MEMOIZED_PASSPORT_TAIL, '  __passportCache = deepFreeze(ctx);\n  return __passportCache;\n}');
     },
   },
   {
@@ -1162,7 +1364,7 @@ export const SUPPORT_PASSPORT_BEHAVIORAL_MUTANTS = [
           + `${MEMOIZED_PASSPORT_HEADER}\n`
           + '  if (__passportCache !== null && Date.now() - __passportBoot > 30_000) return __passportCache;',
         )
-        .replace(MEMOIZED_PASSPORT_TAIL, '  __passportCache = ctx;\n  return ctx;\n}');
+        .replace(MEMOIZED_PASSPORT_TAIL, '  __passportCache = deepFreeze(ctx);\n  return __passportCache;\n}');
     },
   },
   {
@@ -1188,7 +1390,7 @@ export const SUPPORT_PASSPORT_BEHAVIORAL_MUTANTS = [
         .replace(
           MEMOIZED_PASSPORT_TAIL,
           '  try { window.sessionStorage?.setItem(__sk, JSON.stringify(ctx)); } catch { /* ignore */ }\n'
-          + '  return ctx;\n}',
+          + '  return deepFreeze(ctx);\n}',
         );
     },
   },
@@ -1212,7 +1414,7 @@ export const SUPPORT_PASSPORT_BEHAVIORAL_MUTANTS = [
           + '? performance.now() : 0;\n'
           + '  if (__passportCache !== null && __now - __passportBootPerf > 30_000) return __passportCache;',
         )
-        .replace(MEMOIZED_PASSPORT_TAIL, '  __passportCache = ctx;\n  return ctx;\n}');
+        .replace(MEMOIZED_PASSPORT_TAIL, '  __passportCache = deepFreeze(ctx);\n  return __passportCache;\n}');
     },
   },
   {
@@ -1245,7 +1447,7 @@ export const SUPPORT_PASSPORT_BEHAVIORAL_MUTANTS = [
           + '  if (__passportCache !== null && Date.now() - performance.timeOrigin > 30_000) '
           + 'return __passportCache;',
         )
-        .replace(MEMOIZED_PASSPORT_TAIL, '  __passportCache = ctx;\n  return ctx;\n}');
+        .replace(MEMOIZED_PASSPORT_TAIL, '  __passportCache = deepFreeze(ctx);\n  return __passportCache;\n}');
     },
   },
   {
@@ -1273,7 +1475,7 @@ export const SUPPORT_PASSPORT_BEHAVIORAL_MUTANTS = [
           + '      document.body.dataset.talariaSupportCtx = JSON.stringify(ctx);\n'
           + '    }\n'
           + '  } catch { /* ignore */ }\n'
-          + '  return ctx;\n}',
+          + '  return deepFreeze(ctx);\n}',
         );
     },
   },
@@ -1294,7 +1496,7 @@ export const SUPPORT_PASSPORT_BEHAVIORAL_MUTANTS = [
           + `${MEMOIZED_PASSPORT_HEADER}\n`
           + '  if (__passportCache !== null && (navigator as any).serviceWorker) return __passportCache;',
         )
-        .replace(MEMOIZED_PASSPORT_TAIL, '  __passportCache = ctx;\n  return ctx;\n}');
+        .replace(MEMOIZED_PASSPORT_TAIL, '  __passportCache = deepFreeze(ctx);\n  return __passportCache;\n}');
     },
   },
   {
@@ -1319,7 +1521,7 @@ export const SUPPORT_PASSPORT_BEHAVIORAL_MUTANTS = [
         .replace(
           MEMOIZED_PASSPORT_TAIL,
           '  try { sessionStorage.setItem(__sk, JSON.stringify(ctx)); } catch { /* ignore */ }\n'
-          + '  return ctx;\n}',
+          + '  return deepFreeze(ctx);\n}',
         );
     },
   },
@@ -1341,7 +1543,7 @@ export const SUPPORT_PASSPORT_BEHAVIORAL_MUTANTS = [
           + '  if (__passportCache !== null && !window.location.host.endsWith(".test")) '
           + 'return __passportCache;',
         )
-        .replace(MEMOIZED_PASSPORT_TAIL, '  __passportCache = ctx;\n  return ctx;\n}');
+        .replace(MEMOIZED_PASSPORT_TAIL, '  __passportCache = deepFreeze(ctx);\n  return __passportCache;\n}');
     },
   },
   {
@@ -1363,10 +1565,26 @@ export const SUPPORT_PASSPORT_BEHAVIORAL_MUTANTS = [
         )
         .replace(
           MEMOIZED_PASSPORT_TAIL,
-          '  __passportCache = ctx;\n'
+          '  __passportCache = deepFreeze(ctx);\n'
           + '  setTimeout(() => { __passportCache = null; }, 60_000);\n'
-          + '  return ctx;\n}',
+          + '  return __passportCache;\n}',
         );
+    },
+  },
+  {
+    id: 'M17',
+    name: 'NC-MUTANT-ENV-GATED-FREEZE',
+    describes:
+      'deepFreeze no-ops outside .test hosts — GREEN under gate branding, unfrozen in production '
+      + '(R-W51 Break 1)',
+    apply: (src) => {
+      if (!src.includes('return Object.freeze(value);')) return null;
+      return src.replace(
+        'return Object.freeze(value);',
+        'if (typeof window !== "undefined" && window.location '
+        + '&& !String(window.location.host).endsWith(".test")) return value;\n'
+        + '  return Object.freeze(value);',
+      );
     },
   },
 ];
@@ -1404,6 +1622,40 @@ export function runBehavioralMutantCells(deps) {
       survivedCells: cells.filter((c) => c.pass !== false).map((c) => c.cell),
       signature: TALARIA_SUPPORT_PASSPORT_DEGRADED_V1,
     };
+  });
+}
+
+export function stripSupportContextDeepFreeze(source) {
+  if (!source.includes('return deepFreeze(ctx);')) return null;
+  const stripped = source
+    .replace('if (typeof window === "undefined") return deepFreeze({});', 'if (typeof window === "undefined") return {};')
+    .replace('  return deepFreeze(ctx);\n}', '  return ctx;\n}');
+  return stripped === source ? null : stripped;
+}
+
+/**
+ * W51 negative control: remove only publication freezing. The extraction logic still
+ * round-trips and remains temporal, so the sole blockers should be the runtime-freeze cells.
+ *
+ * @param {Parameters<typeof createSupportPassportRealm>[0]} deps
+ */
+export function runNcMutantNoDeepFreezeCell(deps) {
+  const cell = 'NC-MUTANT-NO-DEEP-FREEZE';
+  const mutatedSource = stripSupportContextDeepFreeze(deps.supportUiSource);
+  if (mutatedSource === null) {
+    return redCell(cell, 'deep-freeze publication return could not be stripped from supportUi.tsx');
+  }
+  const cells = runBehavioralCells({ ...deps, supportUiSource: mutatedSource });
+  const killedBy = cells.filter((c) => c.pass === false).map((c) => c.cell);
+  const runtimeFreezeCells = ['PASSPORT-CONTEXT-DEEP-FROZEN', 'PASSPORT-CONTEXT-MUTATION-CORPUS'];
+  const soleRuntimeFreezeKill = killedBy.length > 0
+    && killedBy.every((name) => runtimeFreezeCells.includes(name));
+  return cellResult(cell, soleRuntimeFreezeKill, {
+    describes: 'publication deep-freeze stripped while degradedModules extraction stays intact',
+    killedBy,
+    runtimeFreezeCells,
+    soleRuntimeFreezeKill,
+    survivedCells: cells.filter((c) => c.pass !== false).map((c) => c.cell),
   });
 }
 
@@ -1548,56 +1800,9 @@ export function isInsideUseMemoCall(ts, node) {
 
 function propertyNameText(ts, name) {
   if (!name) return null;
-  if (ts.isIdentifier(name) || ts.isPrivateIdentifier(name)) return name.text;
+  if (ts.isIdentifier(name) || ts.isPrivateIdentifier?.(name)) return name.text;
   if (ts.isStringLiteral(name) || ts.isNumericLiteral(name)) return name.text;
   return null;
-}
-
-/**
- * True when `binding` is used as the request `context` payload inside `scope`
- * (property `context: binding`, or FormData.append("context", JSON.stringify(binding))).
- */
-export function identifierReachesContextPayload(ts, scope, binding) {
-  let reaches = false;
-  const visit = (node) => {
-    if (reaches) return;
-    if (ts.isPropertyAssignment(node) || ts.isPropertyDeclaration(node)
-      || ts.isShorthandPropertyAssignment(node)) {
-      const prop = ts.isShorthandPropertyAssignment(node)
-        ? (ts.isIdentifier(node.name) ? node.name.text : null)
-        : propertyNameText(ts, node.name);
-      if (prop === 'context') {
-        if (ts.isShorthandPropertyAssignment(node) && node.name.text === binding) {
-          reaches = true;
-          return;
-        }
-        if (node.initializer && ts.isIdentifier(node.initializer)
-          && node.initializer.text === binding) {
-          reaches = true;
-          return;
-        }
-      }
-    }
-    if (ts.isCallExpression(node) && calleeName(ts, node.expression) === 'append'
-      && node.arguments.length >= 2
-      && ts.isStringLiteral(node.arguments[0])
-      && node.arguments[0].text === 'context') {
-      const arg = node.arguments[1];
-      if (ts.isIdentifier(arg) && arg.text === binding) {
-        reaches = true;
-        return;
-      }
-      if (ts.isCallExpression(arg) && calleeName(ts, arg.expression) === 'stringify'
-        && arg.arguments[0] && ts.isIdentifier(arg.arguments[0])
-        && arg.arguments[0].text === binding) {
-        reaches = true;
-        return;
-      }
-    }
-    ts.forEachChild(node, visit);
-  };
-  visit(scope);
-  return reaches;
 }
 
 function enclosingFunctionNode(ts, node) {
@@ -1612,156 +1817,44 @@ function enclosingFunctionNode(ts, node) {
   return null;
 }
 
-/**
- * True when the CallExpression's result reaches the support request `context` field —
- * either directly (`context: buildSupportContext()`) or via a const binding that is then
- * placed on that field. A call whose result is frozen into a session snapshot and never
- * sent is the R-M6-4 value-flow hole.
- */
+/** Wiring-only: call result reaches the request `context` field (not a mutation detector). */
 export function callResultReachesContextPayload(ts, callNode) {
   const parent = callNode.parent;
   if ((ts.isPropertyAssignment(parent) || ts.isPropertyDeclaration(parent))
     && propertyNameText(ts, parent.name) === 'context') {
     return true;
   }
-  if (ts.isVariableDeclaration(parent) && ts.isIdentifier(parent.name) && parent.initializer === callNode) {
+  if (ts.isVariableDeclaration(parent) && ts.isIdentifier(parent.name)
+    && parent.initializer === callNode) {
     const binding = parent.name.text;
     const scope = enclosingFunctionNode(ts, callNode);
-    return scope ? identifierReachesContextPayload(ts, scope, binding) : false;
+    if (!scope) return false;
+    let reaches = false;
+    const visit = (node) => {
+      if (reaches) return;
+      if ((ts.isPropertyAssignment(node) || ts.isShorthandPropertyAssignment(node))
+        && propertyNameText(ts, node.name) === 'context') {
+        if (ts.isShorthandPropertyAssignment(node) && node.name.text === binding) reaches = true;
+        if (node.initializer && ts.isIdentifier(node.initializer)
+          && node.initializer.text === binding) reaches = true;
+      }
+      if (ts.isCallExpression(node) && calleeName(ts, node.expression) === 'append'
+        && node.arguments.length >= 2
+        && ts.isStringLiteral(node.arguments[0])
+        && node.arguments[0].text === 'context') {
+        const arg = node.arguments[1];
+        if (ts.isCallExpression(arg) && calleeName(ts, arg.expression) === 'stringify'
+          && arg.arguments[0] && ts.isIdentifier(arg.arguments[0])
+          && arg.arguments[0].text === binding) {
+          reaches = true;
+        }
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(scope);
+    return reaches;
   }
   return false;
-}
-
-/**
- * True when the enclosing submit handler reassigns `*.context` or `*.degradedModules`
- * after the passport call — the R-M6-5 carrier that left the pin GREEN while overwriting
- * the payload one statement later.
- */
-export function hasContextReassignmentAfterCall(ts, callNode) {
-  const scope = enclosingFunctionNode(ts, callNode);
-  if (!scope) return false;
-  const callPos = callNode.getStart();
-  let found = false;
-  const visit = (node) => {
-    if (found) return;
-    if (node.getStart && node.getStart() > callPos) {
-      if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.EqualsToken) {
-        if (ts.isPropertyAccessExpression(node.left)) {
-          const name = node.left.name.text;
-          if (name === 'context' || name === 'degradedModules') {
-            found = true;
-            return;
-          }
-        }
-        // payload["context"] = ...
-        if (ts.isElementAccessExpression(node.left)
-          && ts.isStringLiteral(node.left.argumentExpression)
-          && (node.left.argumentExpression.text === 'context'
-            || node.left.argumentExpression.text === 'degradedModules')) {
-          found = true;
-          return;
-        }
-      }
-      // Object.assign(payload, { context: snap })
-      if (ts.isCallExpression(node) && calleeName(ts, node.expression) === 'assign'
-        && node.arguments.length >= 2) {
-        const patch = node.arguments[1];
-        if (ts.isObjectLiteralExpression(patch)
-          && patch.properties.some((prop) => {
-            if (ts.isPropertyAssignment(prop) || ts.isShorthandPropertyAssignment(prop)) {
-              return propertyNameText(ts, prop.name) === 'context';
-            }
-            return false;
-          })) {
-          found = true;
-          return;
-        }
-      }
-      // arr.splice(...) on degradedModules binding — treat as mutation of the passport list
-      if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)
-        && node.expression.name.text === 'splice'
-        && ts.isPropertyAccessExpression(node.expression.expression)
-        && node.expression.expression.name.text === 'degradedModules') {
-        found = true;
-        return;
-      }
-    }
-    ts.forEachChild(node, visit);
-  };
-  visit(scope);
-  return found;
-}
-
-/**
- * True when createThread calls a module-scope helper that mutates `.context` /
- * `.degradedModules` — the R-M6-7 helper-indirection carrier that stopped the
- * walk at the enclosing-function boundary.
- */
-export function hasHelperIndirectionFreeze(ts, sourceFile, callNode) {
-  const scope = enclosingFunctionNode(ts, callNode);
-  if (!scope) return false;
-  const callPos = callNode.getStart();
-  const helperNames = new Set();
-  const collectCalls = (node) => {
-    if (node.getStart && node.getStart() > callPos && ts.isCallExpression(node)
-      && ts.isIdentifier(node.expression)) {
-      helperNames.add(node.expression.text);
-    }
-    ts.forEachChild(node, collectCalls);
-  };
-  collectCalls(scope);
-  if (helperNames.size === 0) return false;
-
-  let helperFreezes = false;
-  // Walk the whole file — helpers are often declared inside the React component body
-  // (R-M6-10), not as module-scope statements.
-  const visitDefs = (node) => {
-    if (helperFreezes) return;
-    let fn = null;
-    let name = null;
-    if (ts.isFunctionDeclaration(node) && node.name && helperNames.has(node.name.text)) {
-      fn = node;
-      name = node.name.text;
-    } else if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name)
-      && helperNames.has(node.name.text)
-      && node.initializer
-      && (ts.isArrowFunction(node.initializer) || ts.isFunctionExpression(node.initializer))) {
-      fn = node.initializer;
-      name = node.name.text;
-    }
-    if (fn && name) {
-      const visitBody = (bodyNode) => {
-        if (helperFreezes) return;
-        if (ts.isBinaryExpression(bodyNode)
-          && bodyNode.operatorToken.kind === ts.SyntaxKind.EqualsToken) {
-          if (ts.isPropertyAccessExpression(bodyNode.left)) {
-            const n = bodyNode.left.name.text;
-            if (n === 'context' || n === 'degradedModules') helperFreezes = true;
-          }
-          if (ts.isElementAccessExpression(bodyNode.left)
-            && ts.isStringLiteral(bodyNode.left.argumentExpression)
-            && (bodyNode.left.argumentExpression.text === 'context'
-              || bodyNode.left.argumentExpression.text === 'degradedModules')) {
-            helperFreezes = true;
-          }
-        }
-        if ((ts.isPropertyAssignment(bodyNode) || ts.isShorthandPropertyAssignment(bodyNode))
-          && (propertyNameText(ts, bodyNode.name) === 'context'
-            || propertyNameText(ts, bodyNode.name) === 'degradedModules')) {
-          helperFreezes = true;
-        }
-        // Object.assign(target.context, ...) / Object.assign(payload, { degradedModules })
-        if (ts.isCallExpression(bodyNode) && calleeName(ts, bodyNode.expression) === 'assign') {
-          helperFreezes = true;
-        }
-        ts.forEachChild(bodyNode, visitBody);
-      };
-      visitBody(fn);
-    }
-    ts.forEachChild(node, visitDefs);
-  };
-  visitDefs(sourceFile);
-  return helperFreezes;
 }
 
 /**
@@ -1771,11 +1864,9 @@ export function hasHelperIndirectionFreeze(ts, sourceFile, callNode) {
  * substring scanner has to chase are structurally excluded here, and
  * NC-CONSUMER-PIN-DECOYS demonstrates it rather than asserting it.
  *
- * W43: a call that merely exists in the file is not enough. The passport must be invoked
- * from the submit handler (`createThread`) and must not sit inside `useMemo`, or every
- * later ticket from that mount carries the first ticket's snapshot.
- *
- * W44: the call's result must also reach the request `context` payload (value-flow).
+ * W51/W51b: import + createThread call + value-flow to the request `context` field.
+ * Mutation after publication is enforced by deepFreeze at runtime, not by AST reassignment
+ * walks (those were withdrawn under Director C-4).
  *
  * @param {{ typescript: any, relativePath: string, source: string }} opts
  */
@@ -1808,15 +1899,12 @@ export function inspectConsumerCallPath({ typescript: ts, relativePath, source }
         const onSubmitHandler = SUPPORT_PASSPORT_SUBMIT_HANDLER_NAMES.includes(enclosingFunction)
           && !insideUseMemo;
         const valueReachesContext = callResultReachesContextPayload(ts, node);
-        const contextReassignedAfter = hasContextReassignmentAfterCall(ts, node)
-          || hasHelperIndirectionFreeze(ts, sourceFile, node);
         callSites.push({
           line: sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile)).line + 1,
           enclosingFunction,
           insideUseMemo,
           onSubmitHandler,
           valueReachesContext,
-          contextReassignedAfter,
         });
       }
     }
@@ -1827,7 +1915,7 @@ export function inspectConsumerCallPath({ typescript: ts, relativePath, source }
   const callLines = callSites.map((site) => site.line);
   const submitHandlerCallCount = callSites.filter((site) => site.onSubmitHandler).length;
   const valueFlowCallCount = callSites.filter(
-    (site) => site.onSubmitHandler && site.valueReachesContext && !site.contextReassignedAfter,
+    (site) => site.onSubmitHandler && site.valueReachesContext,
   ).length;
 
   return {
@@ -1952,6 +2040,83 @@ export function runNcConsumerCallDeletedCell(deps) {
 }
 
 /**
+ * R-W51 Break 2: call still fires on the submit handler, but the return value never
+ * reaches the request `context` field. Runtime freeze of a discarded object must not
+ * keep the wiring cell GREEN.
+ *
+ * @param {string} source
+ * @returns {string | null}
+ */
+export function discardConsumerContextPayload(source) {
+  let next = source;
+  const before = next;
+  // Inline send-site: keep the call (discard the value) so callCount/submitHandler stay green.
+  next = next.replace(
+    /context:\s*buildSupportContext\(\)/g,
+    'context: (buildSupportContext(), {})',
+  );
+  next = next.replace(/context:\s*ctx\b/g, 'context: {}');
+  next = next.replace(
+    /fd\.append\(\s*["']context["']\s*,\s*JSON\.stringify\(\s*ctx\s*\)\s*\)/g,
+    'fd.append("context", JSON.stringify({}))',
+  );
+  if (next === before) return null;
+  // Call must survive: this hole is value-flow, not call deletion.
+  if (!next.includes('buildSupportContext()')) return null;
+  return next;
+}
+
+/**
+ * @param {Parameters<typeof runConsumerCallPathCell>[0]} deps
+ */
+export function runNcConsumerContextDiscardedCell(deps) {
+  const cell = 'NC-CONSUMER-CONTEXT-DISCARDED';
+  try {
+    const results = SUPPORT_PASSPORT_CONSUMERS.map((consumer) => {
+      const source = consumerSource(deps, consumer);
+      if (source === null) {
+        return { id: consumer.id, applied: false, wentRed: false, reason: 'consumer source unreadable' };
+      }
+      const mutated = discardConsumerContextPayload(source);
+      if (mutated === null) {
+        return { id: consumer.id, applied: false, wentRed: false, reason: 'discard could not be applied' };
+      }
+      const baseline = inspectConsumerCallPath({
+        typescript: deps.typescript,
+        relativePath: consumer.relativePath,
+        source,
+      });
+      const facts = inspectConsumerCallPath({
+        typescript: deps.typescript,
+        relativePath: consumer.relativePath,
+        source: mutated,
+      });
+      const mutatedCell = runConsumerCallPathCell({
+        ...deps,
+        consumerSources: { ...deps.consumerSources, [consumer.relativePath]: mutated },
+      });
+      return {
+        id: consumer.id,
+        applied: true,
+        callCountSurvived: facts.callCount >= 1,
+        submitHandlerSurvived: facts.submitHandlerCallCount >= 1,
+        valueFlowLost: facts.valueFlowCallCount === 0 && baseline.valueFlowCallCount >= 1,
+        wentRed: mutatedCell.pass === false
+          && facts.valueFlowCallCount === 0
+          && facts.submitHandlerCallCount >= 1,
+      };
+    });
+    const pass = results.length > 0 && results.every(
+      (r) => r.applied && r.wentRed && r.callCountSurvived
+        && r.submitHandlerSurvived && r.valueFlowLost,
+    );
+    return cellResult(cell, pass, { results }, 'wiring');
+  } catch (error) {
+    return redCell(cell, String(error?.message ?? error), 'wiring');
+  }
+}
+
+/**
  * @param {Parameters<typeof runConsumerCallPathCell>[0]} deps
  */
 export function runNcConsumerCallHoistedUseMemoCell(deps) {
@@ -1996,174 +2161,6 @@ export function runNcConsumerCallHoistedUseMemoCell(deps) {
     });
     const pass = results.length > 0 && results.every(
       (r) => r.applied && r.wentRed && r.callCountSurvived && r.importSurvived && r.submitHandlerLost,
-    );
-    return cellResult(cell, pass, { results }, 'wiring');
-  } catch (error) {
-    return redCell(cell, String(error?.message ?? error), 'wiring');
-  }
-}
-
-/**
- * Freezes the passport one line downstream of the call — callCount and submit-handler
- * ancestry survive, but the request `context` field no longer receives the call result.
- * @param {string} source
- */
-export function freezeConsumerValueAfterCall(source) {
-  if (source.includes('context: buildSupportContext()')) {
-    return source
-      .replace(
-        /(\n\s*)const createThread = /,
-        '$1let __passportSnap: ReturnType<typeof buildSupportContext> | null = null;$1const createThread = ',
-      )
-      .replace(
-        /context:\s*buildSupportContext\(\)/g,
-        'context: (__passportSnap ?? (__passportSnap = buildSupportContext()))',
-      );
-  }
-  if (source.includes('const ctx = buildSupportContext();')) {
-    return source
-      .replace(
-        /(\n\s*)const createThread = /,
-        '$1let __passportSnap: ReturnType<typeof buildSupportContext> | null = null;$1const createThread = ',
-      )
-      .replace(
-        /const ctx = buildSupportContext\(\);/g,
-        'const ctx = (__passportSnap ?? (__passportSnap = buildSupportContext()));',
-      );
-  }
-  return null;
-}
-
-/**
- * @param {Parameters<typeof runConsumerCallPathCell>[0]} deps
- */
-export function runNcConsumerValueFrozenCell(deps) {
-  const cell = 'NC-CONSUMER-VALUE-FROZEN';
-  try {
-    const results = SUPPORT_PASSPORT_CONSUMERS.map((consumer) => {
-      const source = consumerSource(deps, consumer);
-      if (source === null) {
-        return { id: consumer.id, applied: false, wentRed: false, reason: 'consumer source unreadable' };
-      }
-      const mutated = freezeConsumerValueAfterCall(source);
-      if (mutated === null || mutated === source) {
-        return { id: consumer.id, applied: false, wentRed: false, reason: 'value freeze could not be applied' };
-      }
-      const baseline = inspectConsumerCallPath({
-        typescript: deps.typescript,
-        relativePath: consumer.relativePath,
-        source,
-      });
-      const facts = inspectConsumerCallPath({
-        typescript: deps.typescript,
-        relativePath: consumer.relativePath,
-        source: mutated,
-      });
-      const mutatedCell = runConsumerCallPathCell({
-        ...deps,
-        consumerSources: { ...deps.consumerSources, [consumer.relativePath]: mutated },
-      });
-      return {
-        id: consumer.id,
-        applied: true,
-        // R-M6-4 hole: call still in createThread, import intact, but value-flow is broken.
-        callCountSurvived: facts.callCount >= 1,
-        submitHandlerSurvived: facts.submitHandlerCallCount >= 1,
-        importSurvived: facts.importsFromSupportUi === true,
-        valueFlowLost: facts.valueFlowCallCount === 0 && baseline.valueFlowCallCount >= 1,
-        wentRed: mutatedCell.pass === false
-          && facts.valueFlowCallCount === 0
-          && facts.submitHandlerCallCount >= 1
-          && facts.importsFromSupportUi === true,
-      };
-    });
-    const pass = results.length > 0 && results.every(
-      (r) => r.applied && r.wentRed && r.callCountSurvived && r.submitHandlerSurvived
-        && r.importSurvived && r.valueFlowLost,
-    );
-    return cellResult(cell, pass, { results }, 'wiring');
-  } catch (error) {
-    return redCell(cell, String(error?.message ?? error), 'wiring');
-  }
-}
-
-/**
- * Leaves `context: buildSupportContext()` byte-identical, then overwrites the payload
- * field one statement later — the R-M6-5 carrier.
- * @param {string} source
- */
-export function reassignConsumerContextAfterPayload(source) {
-  if (source.includes('context: buildSupportContext()')) {
-    const marker = 'context: buildSupportContext(),';
-    if (!source.includes(marker)) return null;
-    // Insert reassignment after the payload object closes — match the SupportInbox shape.
-    const replaced = source.replace(
-      /(context: buildSupportContext\(\),[\s\S]*?\n\s*\};)/,
-      '$1\n    if (!(globalThis as any).__talariaSupportSnap) {\n'
-      + '      (globalThis as any).__talariaSupportSnap = (payload as { context: unknown }).context;\n'
-      + '    }\n'
-      + '    (payload as { context: unknown }).context = (globalThis as any).__talariaSupportSnap;',
-    );
-    return replaced === source ? null : replaced;
-  }
-  if (source.includes('const ctx = buildSupportContext();')) {
-    const replaced = source.replace(
-      /const ctx = buildSupportContext\(\);/,
-      'const ctx = buildSupportContext();\n'
-      + '    if (!(globalThis as any).__talariaSupportSnap) {\n'
-      + '      (globalThis as any).__talariaSupportSnap = ctx.degradedModules;\n'
-      + '    }\n'
-      + '    ctx.degradedModules = (globalThis as any).__talariaSupportSnap;',
-    );
-    return replaced === source ? null : replaced;
-  }
-  return null;
-}
-
-/**
- * @param {Parameters<typeof runConsumerCallPathCell>[0]} deps
- */
-export function runNcConsumerContextReassignedCell(deps) {
-  const cell = 'NC-CONSUMER-CONTEXT-REASSIGNED';
-  try {
-    const results = SUPPORT_PASSPORT_CONSUMERS.map((consumer) => {
-      const source = consumerSource(deps, consumer);
-      if (source === null) {
-        return { id: consumer.id, applied: false, wentRed: false, reason: 'consumer source unreadable' };
-      }
-      const mutated = reassignConsumerContextAfterPayload(source);
-      if (mutated === null) {
-        return { id: consumer.id, applied: false, wentRed: false, reason: 'reassignment could not be applied' };
-      }
-      const baseline = inspectConsumerCallPath({
-        typescript: deps.typescript,
-        relativePath: consumer.relativePath,
-        source,
-      });
-      const facts = inspectConsumerCallPath({
-        typescript: deps.typescript,
-        relativePath: consumer.relativePath,
-        source: mutated,
-      });
-      const mutatedCell = runConsumerCallPathCell({
-        ...deps,
-        consumerSources: { ...deps.consumerSources, [consumer.relativePath]: mutated },
-      });
-      const reassigned = facts.callSites?.some((site) => site.contextReassignedAfter === true);
-      return {
-        id: consumer.id,
-        applied: true,
-        callCountSurvived: facts.callCount >= baseline.callCount && facts.callCount >= 1,
-        submitHandlerSurvived: facts.submitHandlerCallCount >= 1,
-        importSurvived: facts.importsFromSupportUi === true,
-        reassignmentDetected: reassigned === true,
-        valueFlowLost: facts.valueFlowCallCount === 0 && baseline.valueFlowCallCount >= 1,
-        wentRed: mutatedCell.pass === false && reassigned === true && facts.valueFlowCallCount === 0,
-      };
-    });
-    const pass = results.length > 0 && results.every(
-      (r) => r.applied && r.wentRed && r.callCountSurvived && r.submitHandlerSurvived
-        && r.importSurvived && r.reassignmentDetected && r.valueFlowLost,
     );
     return cellResult(cell, pass, { results }, 'wiring');
   } catch (error) {
@@ -2336,9 +2333,9 @@ export function runSupportPassportDegradedGate(opts) {
     runConsumerCallPathCell(deps),
     runNcConsumerCallDeletedCell(deps),
     runNcConsumerCallHoistedUseMemoCell(deps),
-    runNcConsumerValueFrozenCell(deps),
-    runNcConsumerContextReassignedCell(deps),
+    runNcConsumerContextDiscardedCell(deps),
     runNcConsumerPinDecoysCell(deps),
+    runNcMutantNoDeepFreezeCell(deps),
     probeServerContextCoercionFinding(opts.apiServerSource ?? null),
   ];
   const blocking = cells.filter((c) => typeof c.pass === 'boolean');

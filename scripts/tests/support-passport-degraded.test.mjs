@@ -23,22 +23,23 @@ import {
   countAliasLines,
   createSupportPassportRealm,
   dropAliasFromSupportUi,
-  freezeConsumerValueAfterCall,
   hoistConsumerCallToUseMemo,
   inspectConsumerCallPath,
   normalizeLineEndings,
   probeServerContextCoercionFinding,
-  reassignConsumerContextAfterPayload,
   resolveTypeScript,
   runBehavioralCells,
   runBehavioralMutantCells,
   runConsumerCallPathCell,
   runNcAliasDropCells,
+  discardConsumerContextPayload,
   runNcConsumerCallDeletedCell,
   runNcConsumerCallHoistedUseMemoCell,
-  runNcConsumerContextReassignedCell,
+  runNcConsumerContextDiscardedCell,
   runNcConsumerPinDecoysCell,
-  runNcConsumerValueFrozenCell,
+  runNcMutantNoDeepFreezeCell,
+  runPassportContextDeepFrozenCell,
+  runPassportContextMutationCorpusCell,
   runPassportDegradedAliasBootCell,
   runPassportDegradedBoundingPropertiesCell,
   runPassportDegradedKeyAlwaysCell,
@@ -46,6 +47,7 @@ import {
   runPassportDegradedRoundTripCell,
   runPassportDegradedTemporalCell,
   runSupportPassportDegradedGate,
+  stripSupportContextDeepFreeze,
 } from '../lib/support-passport-degraded.mjs';
 
 const root = path.resolve(import.meta.dirname, '../..');
@@ -87,6 +89,15 @@ test('the W40 substring source pins are gone, not renamed', () => {
   assert.equal(passportLib.stripCommentsAndStringLiterals, undefined);
   assert.equal(passportLib.runNcAliasPinCell, undefined);
   assert.equal(passportLib.runNcCommentDoesNotSatisfyPinCell, undefined);
+});
+
+test('W51 withdrawn consumer mutation detectors are gone from the public gate surface', () => {
+  assert.equal(passportLib.hasContextReassignmentAfterCall, undefined);
+  assert.equal(passportLib.hasHelperIndirectionFreeze, undefined);
+  assert.equal(passportLib.freezeConsumerValueAfterCall, undefined);
+  assert.equal(passportLib.reassignConsumerContextAfterPayload, undefined);
+  assert.equal(passportLib.runNcConsumerContextReassignedCell, undefined);
+  assert.equal(passportLib.runNcConsumerValueFrozenCell, undefined);
 });
 
 test('the realm evaluates the real supportUi.tsx export over the real runtime window', () => {
@@ -151,6 +162,46 @@ test('PASSPORT-DEGRADED-BOUNDING-PROPERTIES [soundness VER-01]: subset, dedupe, 
   assert.equal(cell.passportLength, MAX_PASSPORT_DEGRADED_MODULES);
   assert.ok(cell.offeredValidUnique > MAX_PASSPORT_DEGRADED_MODULES);
   assert.ok(REJECTED_DEGRADED_ID_SAMPLES.some((id) => !DEGRADED_MODULE_ID_PATTERN.test(id)));
+});
+
+test('PASSPORT-CONTEXT-DEEP-FROZEN [soundness VER-01]: context and degradedModules are frozen', () => {
+  const cell = runPassportContextDeepFrozenCell(deps);
+  assert.equal(cell.coverage, 'soundness');
+  assert.equal(cell.status, 'GREEN', JSON.stringify(cell, null, 2));
+  assert.equal(cell.profilesAgree, true);
+  assert.equal(cell.productionProfileArmed, true);
+  assert.equal(cell.production.host, 'app.talaria.io');
+  for (const profile of [cell.sparse, cell.browser, cell.production]) {
+    assert.equal(profile.contextFrozen, true);
+    assert.equal(profile.degradedModulesFrozen, true);
+    assert.equal(profile.nestedValuesFrozen, true);
+  }
+  assert.ok(cell.passportModules.includes('IndicatorPerf'));
+  assert.ok(cell.passportModules.includes('OrderOverlay'));
+});
+
+test('PASSPORT-CONTEXT-MUTATION-CORPUS [soundness VER-01]: W43-W50 mutation shapes are rejected at runtime', () => {
+  const cell = runPassportContextMutationCorpusCell(deps);
+  assert.equal(cell.coverage, 'soundness');
+  assert.equal(cell.status, 'GREEN', JSON.stringify(cell, null, 2));
+  assert.equal(cell.inheritance, 'W43-W50 eight-rejection runtime corpus');
+  assert.equal(cell.corpusSize, 8);
+  assert.equal(cell.sparsePass, true);
+  assert.equal(cell.productionPass, true);
+  assert.equal(cell.productionHost, 'app.talaria.io');
+  assert.ok(cell.results.every((result) => result.arrayPublished));
+  assert.ok(cell.results.every((result) => result.rejected));
+  assert.ok(cell.results.every((result) => result.valuesUnchanged));
+  assert.deepEqual(cell.results.map((result) => result.shape), [
+    'ctx.degradedModules = []',
+    "ctx['degradedModules'] = []",
+    "Object.assign(ctx, { degradedModules: ['X'] })",
+    "ctx.degradedModules.push('X')",
+    "ctx.degradedModules.splice(0, 1, 'X')",
+    'ctx.degradedModules.pop()',
+    "Object.assign(ctx.degradedModules, { 0: 'X' })",
+    'delete ctx.degradedModules',
+  ]);
 });
 
 /* ------------------------------------------------------------------ *
@@ -303,7 +354,7 @@ test('NC-ALIAS-DROP-* [wiring VER-01]: each alias cell is the sole detector for 
  * R-M6-2 items 3 and 4 — consumer call path, pinned by AST.          *
  * ------------------------------------------------------------------ */
 
-test('SUPPORT-PASSPORT-CONSUMER-CALL-PATH [wiring VER-01]: both consumers import and call it', () => {
+test('SUPPORT-PASSPORT-CONSUMER-CALL-PATH [wiring VER-01]: both consumers import and call it from createThread', () => {
   const cell = runConsumerCallPathCell(deps);
   assert.equal(cell.coverage, 'wiring');
   assert.equal(cell.status, 'GREEN', JSON.stringify(cell, null, 2));
@@ -329,6 +380,7 @@ test('the SupportInbox pin names the real send site', () => {
   });
   assert.equal(facts.callCount, 1);
   assert.equal(facts.submitHandlerCallCount, 1);
+  assert.equal(facts.valueFlowCallCount, 1);
   assert.equal(facts.callSites[0].enclosingFunction, 'createThread');
   const line = consumerSources[relativePath].split('\n')[facts.callLines[0] - 1];
   // The passport is what the ticket carries: this call is the `context:` field of the payload.
@@ -345,6 +397,31 @@ test('NC-CONSUMER-CALL-DELETED [wiring VER-01]: deleting the call goes RED, impo
     assert.equal(result.wentRed, true);
     // Keying on the import alone would survive the deletion; the pin keys on the call.
     assert.equal(result.importSurvived, true);
+  }
+});
+
+test('NC-CONSUMER-CONTEXT-DISCARDED [wiring VER-01]: call without context payload goes RED', () => {
+  // R-W51 Break 2: freeze holds on a discarded object while the ticket carries {}.
+  const cell = runNcConsumerContextDiscardedCell(deps);
+  assert.equal(cell.coverage, 'wiring');
+  assert.equal(cell.status, 'GREEN', JSON.stringify(cell, null, 2));
+  for (const result of cell.results) {
+    assert.equal(result.applied, true);
+    assert.equal(result.callCountSurvived, true);
+    assert.equal(result.submitHandlerSurvived, true);
+    assert.equal(result.valueFlowLost, true);
+    assert.equal(result.wentRed, true);
+  }
+  for (const consumer of SUPPORT_PASSPORT_CONSUMERS) {
+    const discarded = discardConsumerContextPayload(consumerSources[consumer.relativePath]);
+    assert.ok(discarded);
+    const facts = inspectConsumerCallPath({
+      typescript,
+      relativePath: consumer.relativePath,
+      source: discarded,
+    });
+    assert.ok(facts.submitHandlerCallCount >= 1);
+    assert.equal(facts.valueFlowCallCount, 0);
   }
 });
 
@@ -372,54 +449,6 @@ test('NC-CONSUMER-CALL-HOISTED-USEMEMO [wiring VER-01]: mount-time freeze goes R
     assert.ok(facts.callCount >= 1);
     assert.equal(facts.submitHandlerCallCount, 0);
     assert.ok(facts.callSites.some((site) => site.insideUseMemo === true));
-  }
-});
-
-test('NC-CONSUMER-VALUE-FROZEN [wiring VER-01]: downstream snapshot freeze goes RED', () => {
-  const cell = runNcConsumerValueFrozenCell(deps);
-  assert.equal(cell.coverage, 'wiring');
-  assert.equal(cell.status, 'GREEN', JSON.stringify(cell, null, 2));
-  for (const result of cell.results) {
-    assert.equal(result.applied, true);
-    assert.equal(result.callCountSurvived, true);
-    assert.equal(result.submitHandlerSurvived, true);
-    assert.equal(result.importSurvived, true);
-    assert.equal(result.valueFlowLost, true);
-    assert.equal(result.wentRed, true);
-  }
-  for (const consumer of SUPPORT_PASSPORT_CONSUMERS) {
-    const frozen = freezeConsumerValueAfterCall(consumerSources[consumer.relativePath]);
-    assert.ok(frozen);
-    const facts = inspectConsumerCallPath({
-      typescript,
-      relativePath: consumer.relativePath,
-      source: frozen,
-    });
-    assert.ok(facts.submitHandlerCallCount >= 1);
-    assert.equal(facts.valueFlowCallCount, 0);
-  }
-});
-
-test('NC-CONSUMER-CONTEXT-REASSIGNED [wiring VER-01]: payload.context overwrite goes RED', () => {
-  const cell = runNcConsumerContextReassignedCell(deps);
-  assert.equal(cell.coverage, 'wiring');
-  assert.equal(cell.status, 'GREEN', JSON.stringify(cell, null, 2));
-  for (const result of cell.results) {
-    assert.equal(result.applied, true);
-    assert.equal(result.reassignmentDetected, true);
-    assert.equal(result.valueFlowLost, true);
-    assert.equal(result.wentRed, true);
-  }
-  for (const consumer of SUPPORT_PASSPORT_CONSUMERS) {
-    const mutated = reassignConsumerContextAfterPayload(consumerSources[consumer.relativePath]);
-    assert.ok(mutated);
-    const facts = inspectConsumerCallPath({
-      typescript,
-      relativePath: consumer.relativePath,
-      source: mutated,
-    });
-    assert.ok(facts.callSites.some((site) => site.contextReassignedAfter === true));
-    assert.equal(facts.valueFlowCallCount, 0);
   }
 });
 
@@ -470,6 +499,8 @@ const ALL_BEHAVIORAL_CELLS = [
   'PASSPORT-DEGRADED-TEMPORAL-RECOMPUTE',
   'PASSPORT-DEGRADED-REALM-FIDELITY',
   ...ALIAS_CELLS,
+  'PASSPORT-CONTEXT-DEEP-FROZEN',
+  'PASSPORT-CONTEXT-MUTATION-CORPUS',
 ];
 
 const EXPECTED_MUTANT_KILLS = {
@@ -554,11 +585,18 @@ const EXPECTED_MUTANT_KILLS = {
     name: 'NC-MUTANT-SETTIMEOUT-TTL-CACHE',
     killedBy: ['PASSPORT-DEGRADED-TEMPORAL-RECOMPUTE'],
   },
+  M17: {
+    name: 'NC-MUTANT-ENV-GATED-FREEZE',
+    killedBy: [
+      'PASSPORT-CONTEXT-DEEP-FROZEN',
+      'PASSPORT-CONTEXT-MUTATION-CORPUS',
+    ],
+  },
 };
 
-test('behavioural mutants M1-M16 are each applied and each killed by a named cell', () => {
+test('behavioural mutants M1-M17 are each applied and each killed by a named cell', () => {
   const cells = runBehavioralMutantCells(deps);
-  assert.equal(cells.length, 16);
+  assert.equal(cells.length, 17);
   for (const cell of cells) {
     const expected = EXPECTED_MUTANT_KILLS[cell.mutant];
     assert.ok(expected, `unexpected mutant ${cell.mutant}`);
@@ -618,6 +656,24 @@ test('M7 warm-up memoisation is killed by the temporal cell and by nothing else'
   assert.deepEqual(Array.from(realm.buildSupportContext().degradedModules), ['OrderOverlay']);
 });
 
+test('NC-MUTANT-NO-DEEP-FREEZE [soundness VER-01]: freeze stripping is killed only by runtime-freeze cells', () => {
+  const stripped = stripSupportContextDeepFreeze(supportUiSource);
+  assert.ok(stripped);
+  assert.notEqual(stripped, supportUiSource);
+  assert.match(stripped, /return ctx;/);
+
+  const cell = runNcMutantNoDeepFreezeCell(deps);
+  assert.equal(cell.coverage, 'soundness');
+  assert.equal(cell.status, 'GREEN', JSON.stringify(cell, null, 2));
+  assert.equal(cell.soleRuntimeFreezeKill, true);
+  assert.deepEqual(cell.killedBy, [
+    'PASSPORT-CONTEXT-DEEP-FROZEN',
+    'PASSPORT-CONTEXT-MUTATION-CORPUS',
+  ]);
+  assert.ok(cell.survivedCells.includes('PASSPORT-DEGRADED-ROUND-TRIP'));
+  assert.ok(cell.survivedCells.includes('PASSPORT-DEGRADED-TEMPORAL-RECOMPUTE'));
+});
+
 test('every mutant really edits supportUi.tsx — none is a no-op that fakes a kill', () => {
   for (const mutant of SUPPORT_PASSPORT_BEHAVIORAL_MUTANTS) {
     const mutated = mutant.apply(supportUiSource);
@@ -628,7 +684,7 @@ test('every mutant really edits supportUi.tsx — none is a no-op that fakes a k
 
 test('a mutant that no longer applies is RED, not a silent pass', () => {
   const cells = runBehavioralMutantCells({ ...deps, supportUiSource: 'export const nothing = 1;\n' });
-  assert.equal(cells.length, 16);
+  assert.equal(cells.length, 17);
   for (const cell of cells) {
     assert.equal(cell.status, 'RED');
     assert.match(cell.reason, /did not apply/);
@@ -694,8 +750,8 @@ test('gate aggregate is GREEN on the repo sources and excludes findings from all
   assert.equal(report.allPass, true);
   assert.equal(report.findings.length, 1);
   assert.equal(report.findings[0].cell, 'FINDING-SERVER-CONTEXT-STR-COERCION');
-  // 8 behavioural + 16 mutants + 3 alias drops + 6 consumer wiring cells.
-  assert.equal(report.cells.filter((c) => typeof c.pass === 'boolean').length, 33);
+  // 10 behavioural + 17 mutants + 3 alias drops + 5 consumer wiring cells + W51 freeze mutant.
+  assert.equal(report.cells.filter((c) => typeof c.pass === 'boolean').length, 36);
 });
 
 test('gate refuses GREEN when no TypeScript compiler is available', () => {

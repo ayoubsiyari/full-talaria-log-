@@ -10,12 +10,18 @@
 # falling back to a re-implementation. It is taken from the homepage workspace — the one that
 # owns supportUi.tsx and pins the compiler version that file is written against — so no new
 # dependency and no lockfile churn is introduced at the workspace root.
+#
+# W42 added the consumer call path to the gate: the extractor is only worth proving if
+# something sends what it builds, so SupportInbox.tsx and V16SupportChatPopover.tsx are
+# pinned (read-only, by AST) and therefore have to trigger this workflow too.
 name: Support passport degraded modules
 
 on:
   pull_request:
     paths:
       - "homepage/src/app/dashboard/support/supportUi.tsx"
+      - "homepage/src/app/dashboard/support/SupportInbox.tsx"
+      - "homepage/src/app/dashboard/v16/V16SupportChatPopover.tsx"
       - "chart v 1.4/chart/modules/module-presence-runtime.js"
       - "chart v 1.4/chart/modules/indicator-performance.js"
       - "chart v 1.4/chart/api_server.py"
