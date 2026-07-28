@@ -519,7 +519,7 @@ Cells:
 | P1-IDLE-SINGLE-CHART-OBSERVED | single-chart idle workRatio is finite and below absolute `PO_CPU_AB_P1_IDLE_WORK_RATIO_MAX` | LIVE |
 | P2-IDLE-STABLE-NO-UNBOUNDED-WORK | idle soak workRatio is below both P1-relative and absolute `PO_CPU_AB_P2_IDLE_WORK_RATIO_MAX`; high P1 cannot absorb high P2 | LIVE |
 | P2-IDLE-MEMORY-NOT-GROWING | exposed heap delta during P2 stays bounded | LIVE |
-| P4-FOUR-PANEL-REPLAY-RUNNING-OBSERVED | four panels armed, playing, and advancing by forward timestamp on a live harness (grades FIX1/FIX2); product `replayPlay` fan-out with peer `passivePlayActive` | LIVE — W62g live GREEN playing=4/4 advanced=4/4 (pending R-W62g) |
+| P4-FOUR-PANEL-REPLAY-RUNNING-OBSERVED | four panels armed, playing, and advancing by oracle-measured while-playing forward timestamp (rate ceiling + idx/ts coherence); product `replayPlay` fan-out peers may use `passivePlayActive` only under that sample rule | LIVE — W62h: W62g GREEN credit held; live short honest RED advanced=1/4 (B/C/D incoherence); never-moved+stale must RED |
 | P6-REPLAY-10X-OR-NEAREST-OBSERVED | real replay activation succeeds, `isPlaying` is observed, nearest speed is known, playhead advances, and P6 work exceeds P1 by the pinned 0.03 margin | LIVE instrument — RED expected until FIX1/FIX2; do not recalibrate margin to mint GREEN |
 | P7-PAUSE-STATE-NOT-PLAYING | product pause path leaves replay not playing | LIVE |
 | P7-WORK-RETURNS-TO-P1-FLOOR | post-pause workRatio is below both P1-relative and absolute `PO_CPU_AB_P7_IDLE_WORK_RATIO_MAX` | LIVE |
