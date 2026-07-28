@@ -1420,3 +1420,26 @@ Written to `b-fixtures/B-HANDOFF-runner-fidelity.md`.
 **Ordering admission:** I dispatched B-W10 *before* journaling that A16.4's threshold had been reached, so it went out without the top-tier pre-review I had just concluded I owed. I am not recalling it — its brief is the reviewer's own six named fixes, which is a stronger specification than a pre-review would produce — but the sequence was wrong and the threshold applies from here.
 
 **Queue state:** three ship-gate threads in flight — B-W8 on M4 ledger invariants, B-W9 on the duration clock, B-W10 on the M3 gate. M3's product fix is merged and confirmed intact. PO-REQ outstanding: **0**.
+
+---
+
+## B-0081 — M10 duration clock: mechanism independently confirmed, and the rollback in the PO's repro is explained
+
+I briefed B-W9 on `closeTime`. Before accepting whatever it returns, I checked the other half of the subtraction myself, because if `openTime` were the defective side then a `closeTime` fix would be a wrong fix that passes its own test.
+
+`openTime` is clean. Every assignment site — 29235, 29722, 30196, 30361, 30453, 30534, 30604 — funnels through one helper, `_marketFillOpenTimeMs` (40508-40529). It is pure bar clock: it takes `fillCandle.t`, optionally advances to the next bar's `t`, and contains **no `Date.now()` and no wall-clock fallback of any kind**. When the fill candle has no finite `t` it returns that non-finite value and lets it propagate rather than substituting a plausible-looking wall-clock time.
+
+So the asymmetry is real and now verified from both ends:
+
+- **openTime** — always bar clock.
+- **closeTime** — `closePositionAtPrice` at 33329-33330 falls back to `Date.now()` when neither `bgCloseTime` nor `evalCandle` is available.
+
+duration = `Date.now()` − (historical bar time). The two operands are drawn from different clocks, so the result is not a duration at all.
+
+**This explains why the PO's repro needs the rollback.** A rollback puts the chart on a historical bar. A new order then opens with `openTime` set to that historical bar's `t`. If it closes down the fallback path, `closeTime` is the real present. The subtraction spans the gap between the replayed past and the actual present — which for a rollback of a year or two is a duration of a year or two. The PO's description was "wildly wrong and far too large", and that is precisely the sign and magnitude this produces. **The rollback is not incidental to the bug; it is what makes the gap large enough to be obvious.** Without a rollback the same defect produces an error too small to notice, which is a good reason to think this has been present and invisible for a long time.
+
+The fallback is also non-null-safe in a second way: `||` treats a legitimate `bgCloseTime` of `0` as absent. Both are in B-W9's brief.
+
+**What this changes:** it raises my confidence that B-W9's target is the right one, and it gives the RED a concrete scenario to encode — open on a historical bar, close with neither `bgCloseTime` nor `evalCandle`, assert the duration is bounded by the bar span rather than by the distance to the present. A RED that merely asserts "duration is not `Date.now()`-shaped" would be weaker and easier to satisfy vacuously.
+
+VERDICT surface=`order-manager.js` openTime funnel + closeTime fallback, coverage=**S** (soundness — I read the helper and every assignment site, rather than confirming the helper exists).
