@@ -90,6 +90,8 @@ Confirm the flag is readable (`typeof window.__TALARIA_DISABLE_B_W16_HYDRATION_G
 
 Backend: `JOURNAL_SWEEP_PARSE_GUARD_ENABLED` unset or not in `{0,false,no,off}`.
 
+**Phantom — do not pull:** `__TALARIA_DISABLE_M20_Q4_TRAIL_SL_PATH_CAP_V1` is **not implemented**. It exists only as a `killSwitchProposed` string in RED fixtures; trail-SL push sites in `order-manager.js` are ungated. Assigning it in the console during an incident will not cap or disable anything. See `KILL-SWITCH-INVENTORY.md` §1b.
+
 ---
 
 ## 4. Go / no-go

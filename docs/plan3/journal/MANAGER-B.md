@@ -3360,3 +3360,43 @@ kill is OFF.
 guard). This is an instrument-vs-contract clash on the soak (historically L2) +
 a B-owned warn site that is behaving as designed. **Escalating to Director for
 reassignment** rather than editing either side inside the shipping path.
+
+---
+
+## B-0147 — Guard firing is harness artefact. Q4 phantom lever. Build waits on C.
+
+Director `RULING-SOAK-CLASH-AND-GUARD-FIRING-20260728-2345.md`. Soak clash is
+C's (named exemption, not reclassification). B does not touch the soak.
+
+### Live product question — durable-suppress ×50
+
+Probe: `docs/plan3/evidence/B-M4/release/live-hydration-guard-firing-probe.mjs`
+against `http://31.97.192.82:3000` (b82 host), QA credentials from env only.
+
+| Step | Result |
+|---|---|
+| Control (unhydrated `persistJournal`) | `durableQueued:false`, reason `journal-unhydrated`, **warnMatched:true** |
+| Live `GET /state` → `session-state-hydrate` → append row → `persistJournal` | provenance `hydrated`, **warnMatched:false**, `durableQueued:true`, PATCH **200** |
+| Post-write `GET /state` | `journalLen:1` |
+| Cleanup | probe-created session deleted |
+
+**Verdict: `HARNESS_ARTEFACT`.** The warn does **not** fire after a real hydrate
+against the live backend; durable write proceeds and lands. Soak ×50 is the
+harness having no backend hydrate, not silent non-saving on the shipped surface.
+
+Evidence:
+`docs/plan3/evidence/B-M4/release/observations/live-hydration-guard-firing-2026-07-28T23-05-36-847Z.json`
+
+### Q4 phantom lever (canary runbook)
+
+Recorded in `KILL-SWITCH-INVENTORY.md` §1b and `POST-PUSH-VERIFICATION-RUNBOOK.md`
+§3: `__TALARIA_DISABLE_M20_Q4_TRAIL_SL_PATH_CAP_V1` **does not exist** — only
+`killSwitchProposed` in RED fixtures; trail-SL sites ungated. Do not pull in an
+incident. (Also noted on director `CANARY-GATE-20260728-2020.md` §6.)
+
+### CHECKPOINT_BUILD / deploy
+
+Still blocked on **C's soak FixE exemption**. Tip soak remains `M19-FAIL` /
+`fixEAllPass=false` with the same warn prefix. COPY fix is already on tip
+(`078f46cfd`). When C lands, B runs `CHECKPOINT_BUILD=1` `CHART_BUILD_ID=20260728b82`,
+deploys, same-session verify — no further instruction needed for that sequence.

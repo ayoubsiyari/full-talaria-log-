@@ -31,6 +31,14 @@
 
 ---
 
+## 1b. Phantom levers — do not pull (canary runbook)
+
+| Name that may appear in docs/RED packets | Reality |
+|---|---|
+| `__TALARIA_DISABLE_M20_Q4_TRAIL_SL_PATH_CAP_V1` | **Does not exist in product.** It is only a `killSwitchProposed` string in RED/contract fixtures (`m20-q4-trail-sl-path-cap.red.test.mjs`, `m20-a1-screenshot-idb-contract.mjs`). The trail-SL push sites in `order-manager.js` are **ungated**. Setting `window.__TALARIA_DISABLE_M20_Q4_TRAIL_SL_PATH_CAP_V1 = true` in an incident **changes nothing**. Do not treat it as a rollback lever. |
+
+---
+
 ## 2. Disable vocabulary (B guards)
 
 | Switch | Values that DISABLE | Everything else |
