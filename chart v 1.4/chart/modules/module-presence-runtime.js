@@ -9,6 +9,10 @@
     var VERSION = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$/;
     var loaded = Array.isArray(global.__TALARIA_LOADED_MODULES)
         ? global.__TALARIA_LOADED_MODULES : [];
+    function modulePresenceTripwireDisabled() {
+        return typeof window !== 'undefined'
+            && window.__TALARIA_DISABLE_MODULE_PRESENCE_TRIPWIRE_V1 === true;
+    }
     var priorDegraded = global.__TALARIA_DEGRADED_STATE ||
         global.__TALARIA_DEGRADED_STATE__ ||
         global.__TALARIA_DEGRADED_MODE__;
@@ -16,11 +20,14 @@
         ? priorDegraded.degradedModules : [];
     var degraded = { degradedModules: priorModules };
     var degradedCompat = { active: priorModules.length > 0, degradedModules: priorModules };
-    global.__TALARIA_LOADED_MODULES = loaded;
-    // Lane-5 consumer contract: publish this exact shape before order scripts load.
-    global.__TALARIA_DEGRADED_STATE = degraded;
-    global.__TALARIA_DEGRADED_STATE__ = degraded;
-    global.__TALARIA_DEGRADED_MODE__ = degradedCompat;
+    var tripwireArmed = false;
+
+    function publishRuntimeContracts() {
+        if (!global.__TALARIA_LOADED_MODULES) global.__TALARIA_LOADED_MODULES = loaded;
+        if (!global.__TALARIA_DEGRADED_STATE) global.__TALARIA_DEGRADED_STATE = degraded;
+        if (!global.__TALARIA_DEGRADED_STATE__) global.__TALARIA_DEGRADED_STATE__ = degraded;
+        if (!global.__TALARIA_DEGRADED_MODE__) global.__TALARIA_DEGRADED_MODE__ = degradedCompat;
+    }
 
     function bounded(value) {
         value = String(value || '');
@@ -52,9 +59,12 @@
         (document.body || document.documentElement).appendChild(badge);
     }
 
-    function markMissing(id) {
+    function markMissing(id, source) {
         id = bounded(id);
+        if (modulePresenceTripwireDisabled() && source === 'module-presence-tripwire') return;
         if (!id || degraded.degradedModules.indexOf(id) >= 0) return;
+        publishRuntimeContracts();
+        armTripwire();
         degradedCompat.active = true;
         degraded.degradedModules.push(id);
         degraded.degradedModules = degraded.degradedModules.slice(0, MAX_MODULES);
@@ -89,20 +99,31 @@
     }
 
     function runTripwire(attempt) {
+        if (modulePresenceTripwireDisabled()) {
+            tripwireArmed = false;
+            return;
+        }
         if (tripwirePasses()) return;
         if (attempt < 20) {
             setTimeout(function () { runTripwire(attempt + 1); }, 25);
             return;
         }
-        markMissing('IndicatorPerf');
+        markMissing('IndicatorPerf', 'module-presence-tripwire');
     }
 
-    if (typeof document !== 'undefined') {
+    function armTripwire() {
+        if (tripwireArmed || typeof document === 'undefined' || modulePresenceTripwireDisabled()) return;
+        tripwireArmed = true;
         if (document.readyState === 'loading') {
             document.addEventListener('DOMContentLoaded', function () {
                 setTimeout(function () { runTripwire(0); }, 0);
             }, { once: true });
         }
         else setTimeout(function () { runTripwire(0); }, 0);
+    }
+
+    if (!modulePresenceTripwireDisabled()) {
+        publishRuntimeContracts();
+        armTripwire();
     }
 })(typeof window !== 'undefined' ? window : self);
