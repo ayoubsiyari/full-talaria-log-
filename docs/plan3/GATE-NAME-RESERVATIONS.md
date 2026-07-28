@@ -152,3 +152,27 @@ The Director ruled one compromise manifest into two internally consistent ones. 
 
 | ORDER-OVERLAY-BROWSER-RUNNER-V1 | `TALARIA_ORDER_OVERLAY_BROWSER_V1` | LIVE — A15.3/A15.4 browser-hosted order-overlay runner |
 | ORDER-REGISTRY-EVICTION-INVARIANT-V1 | `TALARIA_ORDER_REGISTRY_EVICTION_V1` | LIVE — A15.2 hosted by C; B author of record; multi-writer |
+
+## Queue item 6 — bar / tick class invariants (A16.3 / A16.3b, W33)
+
+| Name | Signature token | Status |
+|---|---|---|
+| BAR-TICK-INVARIANTS-V1 | `TALARIA_BAR_TICK_INVARIANTS_V1` | LIVE — `docs/plan3/oracles/bar-tick-invariants-v1.mjs`, `scripts/tests/bar-tick-invariants.test.mjs` |
+
+Cells:
+
+| Cell | Asserts | Status |
+|---|---|---|
+| BAR-NO-TICKS-INVARIANT | every bar has ≥1 tick in `[open, nextOpen)` (or `[open, open+duration)`) | LIVE |
+| FUTURES-MAINTENANCE-GAP-NQ-ES-GC | NQ, ES, GC (+ `NQ1!`, `ES1!`, `GC1!`) bar open not in `[17:00, 18:00)` America/New_York Mon–Fri | LIVE |
+| NC-BAR-NO-TICKS-MUTATION | tickless injected bar → RED; fixture without injection → GREEN | LIVE |
+| NC-MAINTENANCE-GAP-MUTATION | 17:00 ET bar on NQ → RED; same timestamp on EURUSD → futures cell stays GREEN | LIVE |
+| NC-XAUUSD-NOT-GC | XAUUSD at 17:00 ET must not classify as GC | LIVE |
+
+Fixtures (session-faithful synthetic; not live `_resampleDataFull` until A calendar lands):
+
+| Fixture | Content | Status |
+|---|---|---|
+| `a16-green-eth-stream.mjs` | weekday hourly bars each with ticks | LIVE |
+| `a16-futures-maintenance-stream.mjs` | NQ bars outside maintenance; EURUSD control | LIVE |
+| `a16-tz-anchors.mjs` | winter + summer 17:00 ET anchors (DST proof) | LIVE |
