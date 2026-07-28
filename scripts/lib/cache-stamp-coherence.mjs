@@ -275,6 +275,7 @@ export function runModuleContentStampBaselineCell(
       }
     }
     const drifts = [];
+    const stampMismatches = [];
     const missingFiles = [];
     const unknownModules = [];
     for (const [modulePath, stamp] of seen) {
@@ -289,7 +290,18 @@ export function runModuleContentStampBaselineCell(
         unknownModules.push(modulePath);
         continue;
       }
-      if (prior.stamp === stamp && prior.sha256 !== hash) {
+      // R-W55: a stamp bump without --write-baseline must RED. Otherwise the hash
+      // comparison is skipped forever under the new stamp and content drift goes silent.
+      if (prior.stamp !== stamp) {
+        stampMismatches.push({
+          modulePath,
+          baselineStamp: prior.stamp,
+          observedStamp: stamp,
+          reason: 'baseline stamp does not match shell ?v= — re-seal with --write-baseline',
+        });
+        continue;
+      }
+      if (prior.sha256 !== hash) {
         drifts.push({
           modulePath,
           stamp,
@@ -300,13 +312,16 @@ export function runModuleContentStampBaselineCell(
       }
     }
     const pass = drifts.length === 0
+      && stampMismatches.length === 0
       && missingFiles.length === 0
       && unknownModules.length === 0
       && seen.size > 0;
     return cellResult(cell, pass, {
       modulesChecked: seen.size,
       driftCount: drifts.length,
+      stampMismatchCount: stampMismatches.length,
       drifts,
+      stampMismatches,
       missingFiles,
       unknownModules,
       baselinePath: CACHE_STAMP_BASELINE_RELATIVE,

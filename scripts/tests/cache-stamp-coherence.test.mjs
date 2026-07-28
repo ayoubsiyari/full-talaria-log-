@@ -126,6 +126,50 @@ test('baseline detects order-manager edit without stamp bump', () => {
   assert.ok(cell.drifts.some((d) => d.modulePath === modulePath));
 });
 
+test('R-W55: stamp bump without baseline re-seal is RED', () => {
+  const baseline = buildBaselineFromTree(root);
+  const modulePath = 'modules/order-manager.js';
+  assert.ok(baseline.modules[modulePath]);
+  const staleBaseline = {
+    ...baseline,
+    modules: Object.fromEntries(
+      Object.entries(baseline.modules).map(([key, value]) => [
+        key,
+        { ...value, stamp: '20260727b80' },
+      ]),
+    ),
+  };
+  // Force observed shells to a newer stamp while baseline remains at b80.
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'cache-stamp-bump-'));
+  const write = (rel, body) => {
+    const abs = path.join(tmp, rel);
+    fs.mkdirSync(path.dirname(abs), { recursive: true });
+    fs.writeFileSync(abs, body, 'utf8');
+  };
+  const shellBody = (stamp) => `
+    window.__TALARIA_CHART_BUILD_ID='${stamp}';
+    <script src="/chart/modules/order-manager.js?v=${stamp}"></script>
+  `;
+  for (const shell of [
+    'chart v 1.4/chart/dist-v9/index.html',
+    'homepage/public/chart/dist-v9/index.html',
+    'chart v 1.4/talaria-design/live/index.html',
+    'chart v 1.4/chart/legacy-index.html',
+    'chart v 1.4/chart/multichart-prod/chart-embed.html',
+    'homepage/public/chart/multichart-prod/chart-embed.html',
+  ]) {
+    write(shell, shellBody('20260727b83'));
+  }
+  write(
+    'chart v 1.4/chart/modules/order-manager.js',
+    fs.readFileSync(path.join(root, 'chart v 1.4/chart/modules/order-manager.js'), 'utf8'),
+  );
+  const cell = runModuleContentStampBaselineCell(tmp, { baseline: staleBaseline });
+  assert.equal(cell.status, 'RED', JSON.stringify(cell, null, 2));
+  assert.ok(cell.stampMismatchCount >= 1);
+  assert.ok(cell.stampMismatches.some((m) => m.modulePath === modulePath));
+});
+
 test('gate aggregate is GREEN on the sealed repo tree', () => {
   const report = runCacheStampCoherenceGate({ root });
   assert.equal(report.signature, TALARIA_CACHE_STAMP_COHERENCE_V1);
