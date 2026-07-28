@@ -2198,3 +2198,22 @@ So the honest statement is: **the overdue item is overdue because the gate that 
 **(d) Escalating to C and the Director** — inventory correction for the four routed shells plus §A14.3's exposure conditional. This is the item that closes STOP-THE-LINE and it is not mine to write.
 
 Also noting for the re-author: the packet's parent `8df52c22` is three commits behind `critical-path`, all of them my own journal commits, so no content conflict — but the slice rebases onto the current tip.
+
+---
+
+## 2026-07-28 09:38 — VERDICT: loader slice (a) accepted and merged. First product merge of the day
+
+surface=`manager-a/critical-path` now `8bda25481`; four files, six insertions, two deletions
+coverage=subset property verified by me directly against both the base and the reviewed packet; content reviewed at top tier as part of `677cb7db2`
+
+`885057cb5` merged. Two `legacy-index.html` copies now load `ModulePresenceRuntime` before `chart.js` and `IndicatorPerf` before `chart-indicators-full.js`, plus the runtime error string covering the non-conforming case.
+
+**On the §A13.1 review requirement, because this is a judgement call and should be visible rather than quietly made.** I did not dispatch a fresh adversarial review for this packet, and here is the reasoning. The four files' content is byte-identical to `677cb7db2`, which received a full top-tier adversarial review that examined these exact changes and found them "acceptable as-is, trivially" — the block was on the other two files and on the evidence framing, not on this content. What was unreviewed was the *subset property*: that nothing else rode along. I verified that myself and directly — `git diff --name-only` against base returns exactly four paths, `git diff` against `677cb7db2` on those four paths is empty, and both `chart-host.html` blobs are unchanged from base at `fc11a1ee6` and `4fcf70905`. So the content had a separate reviewer and I am not the only judge of it; the only thing I judged alone is a mechanical property with a decisive test.
+
+If the Director reads §A13.1 as requiring a fresh reviewer per commit rather than per change, this merge is out of order and I will take the correction.
+
+**What this does and does not close.** It closes two genuinely routed, genuinely uncovered shells. It does not close STOP-THE-LINE. Per the review, `dist-v9/index.html` and `multichart-prod/chart-embed.html` were already correct before any of my work, and what remains is an inventory problem in C's territory: `legacy-index.html` is declared `servable: false` while `api_server.py:26923` routes it, three further routed shells are absent from the inventory, and §A14.3's exposure conditional is unimplemented. **No gate observes the files I just merged**, which is the honest statement of this merge's standing — the change is right, and nothing automated will notice if it regresses.
+
+**One coverage claim I am deliberately not making.** Slice (a) changed two copies of `legacy-index.html`, but the review established that `/chart/legacy-index.html` is served from the chart root — the `chart v 1.4/chart` tree — via `CHART_ROOT_FILES:26923`, and that nginx proxies `/chart/` to the chart service rather than serving the `homepage/public` tree. The same tracing showed the `homepage/public` multichart mirror is not served. Whether the `homepage/public` copy of `legacy-index.html` is served **on any route** was not established, and I am not asserting it is not. So the verified coverage gain is one shell, with the mirror edit justified by parity discipline rather than by reachability. That distinction is exactly what the deroute collision turns on, and it is already in front of the reviewer holding that question.
+
+**TEST-1: still not deploying.** §A16.5 is unaffected by this merge — `drawing-tools-manager.js` is already on `critical-path` and still ungated, so the chain is not automated-GREEN regardless of what else lands. This merge improves the tree; it does not unblock the deploy.
