@@ -2777,3 +2777,29 @@ Also found and fixed: the entrypoint guard compared `import.meta.url` against a 
 ### What this does and does not unblock
 
 It unblocks the D-2 edge verification and the B-W19 marker-endpoint reachability question, both of which were stalled on "nobody can show what the running system returns". **It does not tell us whether a specific user's browser holds a stale copy** — it reports what the edge returns now, with `cf-cache-status` and `age`. And I still cannot run it against production myself: no hostname exists in this repository. **The tool is the deliverable; the run needs someone with the URL.**
+
+---
+
+## B-0122 — FIRST OBSERVATION OF A RUNNING SYSTEM. The test server serves the 25 July file, and `/chart/index.html` carries no build id at all.
+
+**2026-07-28 15:39 (UTC+1).** Probe run against `31.97.192.82:3000` — the test surface with no users. Production `talaria-log.com` was not contacted. Read-only, GET/HEAD only. Evidence: `docs/plan3/evidence/B-M4/live-surface-probe/observations/probe-2026-07-28T15-39-36-011Z-31.97.192.82_3000.json`.
+
+Verdict **ABSENT**, exit 1. `order-manager.js` served 200, 2,419,821 bytes, identified as the module, **zero occurrences of `journalVouchedFor`**. Stamps `20260726b75` coherent across dist-v9, legacy-index and chart-embed. `GET /api/sessions/886` returned 401 — reported UNDETERMINED, not ABSENT, which is the distinction working on first field use. Every deployment claim made today was inferred from source; this is the first one that was not.
+
+**The served bytes are git blob `ff6e9df1…` — byte-identical both to the file at `f38333b95` and to the committed `homepage/` mirror.** I nearly filed that as mirror-serving and it would have been wrong. The discriminator is dates, not bytes: nothing touched `order-manager.js` between `f38333b95` (25 Jul 00:44) and `9dac31d1a` (27 Jul 03:37), so a 26 July source build produces exactly these bytes. The mirror snapshot is from the same era. **The mirror ruling stands, B-0116 stays withdrawn.** Recording the near-miss because byte identity could not have separated those two explanations on its own, and on the next build the coincidence will not hold.
+
+**Two findings that were not visible from source.** `/chart/index.html` — the shell the PO actually loaded for today's heap and CPU sessions — **carries no recognisable build id**. An unstamped shell cannot be named and cannot be cache-busted, so we will still not know which build a PO session ran on after this push unless it gets a stamp. And there is **no `cf-cache-status` on any response**: no Cloudflare in front of the test server, so the DEPLOY-01 edge clause cannot be rehearsed there and can only close against production. Neither was inferable from the tree.
+
+---
+
+## B-0123 — RELEASE OWNERSHIP TAKEN. The held deconfliction is clean; the real collision is the build-provenance script, and it conflicts three ways.
+
+Accepted release ownership of the D-5 single push. Plan at `docs/plan3/evidence/B-M4/release/ASSEMBLY-AND-VERIFICATION-PLAN.md`: assembly order, kill-switches, post-push probe criteria, three-tier rollback.
+
+I merged all four branches in a scratch worktree rather than reasoning about diffs. **`api_server.py` is clean** — my I-7.1 hunks at 12356–12522 inside `_sync_trading_session_journal_trades`, C's W56 hunk a 3→1 line change at 26922 in `CHART_ROOT_FILES`, ~14,400 lines apart, no conflict. The deconfliction being held is textually a non-issue and nothing is blocked on C's line report.
+
+**The collision nobody flagged is `scripts/checkpoint-provenance.mjs`, which conflicts against C and both A branches.** The same change was committed twice, one minute apart, on separate branches — `51b6e0da1` (B, 26 Jul 10:13) and `75d6a16e8` (C, 26 Jul 10:12) — with **byte-identical blobs** (`d8ddfb3d6`). Spurious in origin, but C then built `90e0e0cf8` on top of its copy, so a careless resolution loses real work. **This is the script DEPLOY-01 depends on to stamp and record the build.** Resolved wrongly, it silently damages the stamper and every later verification reports on a broken mechanism. Resolution rule fixed in advance: take C's side in full, then diff against `51b6e0da1` to confirm the only delta is C's addition. No hand-merging.
+
+Also: C's `7472228d5` carries a 559-line snapshot of **my** journal. Resolve to B's side always. Flagging as process, not resolving it — append-only is only as strong as the last merge if journals are cross-written.
+
+**One gap I cannot close.** A's render-path fix is now in the train and has **no runtime kill-switch**, unlike every other item. It ships to canary with rollback no faster than one build cycle. Either A adds a switch on the §3 fail-closed pattern, or the Director accepts that floor in writing. Not my call, so it is written down rather than assumed.
