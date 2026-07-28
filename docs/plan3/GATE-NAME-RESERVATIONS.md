@@ -21,8 +21,8 @@ Status vocabulary: `RESERVED` (name taken, not yet authored) · `LIVE` (authored
 
 | Name | Signature token | Implementation | Status |
 |---|---|---|---|
-| MODULE-CONTRACT-PREFLIGHT-V1 | `TALARIA_MODULE_CONTRACT_PREFLIGHT_V1` | `scripts/module-contract-preflight.mjs`, `scripts/module-contracts.json` | LIVE — W63 GATE-01: inventory includes `/chart/multichart/chart-host.html` (source+public); today's May-stamp shell missing ModulePresenceRuntime + IndicatorPerf must RED (GREEN on that file = GATE-WRONG) |
-| CACHE-STAMP-COHERENCE-V1 | `TALARIA_CACHE_STAMP_COHERENCE_V1` | `scripts/cache-stamp-coherence-gate.mjs`, `scripts/lib/cache-stamp-coherence.mjs`, `scripts/cache-stamp-module-baseline.json` | LIVE (W55/W63) — content-hash vs sealed `?v=` + cross-shell stamps; `CACHE_STAMP_SHELLS` covers `/chart/multichart/chart-host.html` so May `20260524a10` cannot survive outside the gate (FINDING-MULTICHART-HOST-SHELL-STALE) |
+| MODULE-CONTRACT-PREFLIGHT-V1 | `TALARIA_MODULE_CONTRACT_PREFLIGHT_V1` | `scripts/module-contract-preflight.mjs`, `scripts/module-contracts.json` | LIVE — W63b GATE-01: inventory includes `/chart/multichart/chart-host.html` (source+public); missing ModulePresenceRuntime + IndicatorPerf RED is collected independently of build-stamp RED, surfaces are fail-closed, and commented/dead loader literals cannot satisfy presence |
+| CACHE-STAMP-COHERENCE-V1 | `TALARIA_CACHE_STAMP_COHERENCE_V1` | `scripts/cache-stamp-coherence-gate.mjs`, `scripts/lib/cache-stamp-coherence.mjs`, `scripts/cache-stamp-module-baseline.json` | LIVE (W55/W63b) — content-hash vs sealed `?v=` + cross-shell stamps; `CACHE_STAMP_SHELLS` covers `/chart/multichart/chart-host.html` and `/chart/multichart/multichart-shell.html` source+public paths so stale multichart shell stamps cannot survive outside the gate (FINDING-MULTICHART-HOST-SHELL-STALE) |
 
 ## Queue item 1 — territory and journal (A11.2 item 1)
 

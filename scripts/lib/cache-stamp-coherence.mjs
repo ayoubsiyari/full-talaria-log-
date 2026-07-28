@@ -62,11 +62,21 @@ export const CACHE_STAMP_SHELLS = [
     relativePath: 'homepage/public/chart/multichart/chart-host.html',
     role: 'multichart-panel',
   },
+  {
+    id: 'multichart-shell-canonical',
+    relativePath: 'chart v 1.4/chart/multichart/multichart-shell.html',
+    role: 'multichart-shell',
+  },
+  {
+    id: 'multichart-shell-homepage',
+    relativePath: 'homepage/public/chart/multichart/multichart-shell.html',
+    role: 'multichart-shell',
+  },
 ];
 
 /** Shells that historically formed the gate before /chart/multichart/ coverage. */
 export const CACHE_STAMP_SHELLS_WITHOUT_MULTICHART = CACHE_STAMP_SHELLS.filter(
-  (shell) => shell.role !== 'multichart-panel',
+  (shell) => !shell.role.startsWith('multichart-'),
 );
 
 const MODULE_REF_RE = /(?:\/chart\/|["'(]|\s)((?:modules\/)[^"'?\s]+\.js)\?v=([^"'&#\s]+)/g;

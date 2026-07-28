@@ -21,18 +21,40 @@ const MULTICHART_PANEL_SHELL_IDS = [
   'multichart-panel-shell-public',
 ];
 
+const DEFECTIVE_MULTICHART_HOST_HTML = `
+<!DOCTYPE html>
+<html>
+<head>
+  <title>frozen defective multichart host</title>
+  <script src="../chart.js"></script>
+  <script src="./engine-api-guards.js?v=20260524a10"></script>
+  <script src="./sync-bridge.js?v=20260524a10"></script>
+</head>
+<body></body>
+</html>
+`;
+
 function manifestWithoutMultichartPanelShells() {
   const next = structuredClone(manifest);
   next.inventory = next.inventory.filter((entry) => !MULTICHART_PANEL_SHELL_IDS.includes(entry.id));
   return next;
 }
 
-test('GATE-01: today\'s /chart/multichart/chart-host.html is RED (missing presence modules)', () => {
-  // Guaranteed-defective input: May stamp, no indicator-performance.js, no module-presence-runtime.js.
-  // If this reads GREEN, the module-presence gate is wrong.
+function manifestWithOnlySurface(surface) {
+  const next = structuredClone(manifest);
+  next.inventory = [surface];
+  return next;
+}
+
+test('GATE-01: frozen defective /chart/multichart/chart-host.html is RED for presence independent of stamp', () => {
+  const surface = structuredClone(manifest.inventory.find((entry) => entry.id === 'multichart-panel-shell-source'));
   assert.throws(
-    () => validateModuleContracts({ manifest, root }),
-    /multichart-panel-shell-(source|public).*(build stamp absent|required script count 0|ModulePresenceRuntime|IndicatorPerf)/i,
+    () => validateModuleContracts({
+      manifest: manifestWithOnlySurface(surface),
+      root,
+      readFile: mutateSurface(surface.id, () => DEFECTIVE_MULTICHART_HOST_HTML),
+    }),
+    /ModulePresenceRuntime required script count 0.*IndicatorPerf required script count 0.*build stamp absent/i,
   );
 });
 
@@ -61,6 +83,73 @@ test('permanent fault injection proves missing duplicate and order RED', () => {
         '<script defer src="/chart/modules/chart-indicators-full.js?v=20260727b80"></script>\n' + tag,
       )),
   }), /must precede/);
+});
+
+test('surface vocabulary is closed and servable shells cannot relabel out of correctness contracts', () => {
+  const relabelled = manifestWithoutMultichartPanelShells();
+  relabelled.inventory.find((entry) => entry.id === 'chart-host').surface = 'harness';
+  assert.throws(
+    () => validateModuleContracts({ manifest: relabelled, root }),
+    /chart-host: owned-stamped servable surface harness has no correctness contracts/,
+  );
+
+  const invalid = manifestWithoutMultichartPanelShells();
+  invalid.inventory.find((entry) => entry.id === 'chart-host').surface = 'free-text';
+  assert.throws(() => validateModuleContracts({ manifest: invalid, root }), /chart-host: invalid surface free-text/);
+});
+
+test('commented script tags and dead paths arrays do not satisfy module presence', () => {
+  const surface = structuredClone(manifest.inventory.find((entry) => entry.id === 'chart-host'));
+  const decoyHtml = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <script src="/chart/chart.js?v=20260727b80"></script>
+      <!-- <script src="/chart/modules/module-presence-runtime.js?v=20260727b80"></script> -->
+      <script>
+        const paths = [
+          "/chart/modules/module-presence-runtime.js",
+          "/chart/modules/indicator-performance.js"
+        ];
+        // __loadHostOnlyScript("/chart/modules/module-presence-runtime.js")
+        /* inject("/chart/modules/indicator-performance.js") */
+      </script>
+      <script src="/chart/modules/chart-indicators-full.js?v=20260727b80"></script>
+    </head>
+    <body></body>
+    </html>
+  `;
+  assert.throws(
+    () => validateModuleContracts({
+      manifest: manifestWithOnlySurface(surface),
+      root,
+      readFile: mutateSurface(surface.id, () => decoyHtml),
+    }),
+    /ModulePresenceRuntime required script count 0.*IndicatorPerf required script count 0/,
+  );
+});
+
+test('executed loader calls can satisfy module presence without raw dead literals', () => {
+  const surface = structuredClone(manifest.inventory.find((entry) => entry.id === 'chart-host'));
+  const loaderHtml = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <script>__loadHostOnlyScript("/chart/modules/module-presence-runtime.js");</script>
+      <script src="/chart/chart.js?v=20260727b80"></script>
+      <script>inject("/chart/modules/indicator-performance.js");</script>
+      <script src="/chart/modules/chart-indicators-full.js?v=20260727b80"></script>
+    </head>
+    <body></body>
+    </html>
+  `;
+  const result = validateModuleContracts({
+    manifest: manifestWithOnlySurface(surface),
+    root,
+    readFile: mutateSurface(surface.id, () => loaderHtml),
+  });
+  assert.equal(result.ok, true);
+  assert.equal(result.checked.length, 2);
 });
 
 test('servable inventory mutation and exclusion controls RED', () => {

@@ -6,17 +6,74 @@ import { fileURLToPath } from 'node:url';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const defaultManifest = path.join(repoRoot, 'scripts/module-contracts.json');
+const SURFACE_CONTRACT_CLASS_ALLOWLIST = Object.freeze({
+  host: ['correctness'],
+  panel: ['correctness'],
+  harness: [],
+});
+
+function stripHtmlComments(source) {
+  return source.replace(/<!--[\s\S]*?-->/g, '');
+}
+
+function stripJsComments(source) {
+  let out = '';
+  let quote = null;
+  let escaped = false;
+  for (let i = 0; i < source.length; i += 1) {
+    const ch = source[i];
+    const next = source[i + 1];
+    if (quote) {
+      out += ch;
+      if (escaped) {
+        escaped = false;
+      } else if (ch === '\\') {
+        escaped = true;
+      } else if (ch === quote) {
+        quote = null;
+      }
+      continue;
+    }
+    if (ch === '"' || ch === "'" || ch === '`') {
+      quote = ch;
+      out += ch;
+      continue;
+    }
+    if (ch === '/' && next === '/') {
+      while (i < source.length && source[i] !== '\n') i += 1;
+      out += '\n';
+      continue;
+    }
+    if (ch === '/' && next === '*') {
+      i += 2;
+      while (i < source.length && !(source[i] === '*' && source[i + 1] === '/')) i += 1;
+      i += 1;
+      out += ' ';
+      continue;
+    }
+    out += ch;
+  }
+  return out;
+}
 
 function scriptPaths(html) {
   const values = [];
-  for (const match of html.matchAll(/<script\b[^>]*\bsrc\s*=\s*["']([^"']+)["'][^>]*>/gi)) {
-    values.push(match[1].split('?')[0]);
-  }
-  for (const match of html.matchAll(/(?:inject|__loadHostOnlyScript)\(\s*["']([^"']+\.js)["']\s*\)/g)) {
-    values.push(match[1].split('?')[0]);
-  }
-  for (const block of html.matchAll(/(?:var|const|let)\s+paths\s*=\s*\[([\s\S]*?)\]/g)) {
-    for (const match of block[1].matchAll(/["']([^"']+\.js)["']/g)) values.push(match[1]);
+  const uncommented = stripHtmlComments(html);
+  for (const script of uncommented.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi)) {
+    const src = script[1].match(/\bsrc\s*=\s*["']([^"']+)["']/i)?.[1];
+    if (src) {
+      values.push(src.split('?')[0]);
+      continue;
+    }
+    const activeJs = stripJsComments(script[2]);
+    for (const match of activeJs.matchAll(/(?:inject|__loadHostOnlyScript)\(\s*["']([^"']+\.js)["']\s*\)/g)) {
+      values.push(match[1].split('?')[0]);
+    }
+    for (const block of activeJs.matchAll(/(?:var|const|let)\s+paths\s*=\s*\[([\s\S]*?)\]/g)) {
+      const afterArray = activeJs.slice(block.index + block[0].length);
+      if (!/\bpaths\s*\[\s*i\s*\]/.test(afterArray) || !/document\.write\s*\(/.test(afterArray)) continue;
+      for (const match of block[1].matchAll(/["']([^"']+\.js)["']/g)) values.push(match[1]);
+    }
   }
   return values;
 }
@@ -60,10 +117,16 @@ export function validateModuleContracts({
 
   const inventoryIds = new Set();
   const checked = [];
+  const failures = [];
   for (const surface of manifest.inventory) {
     assertBoundedIdentifier(surface.id, 'surface id');
     assert.ok(!inventoryIds.has(surface.id), `${surface.id}: duplicate inventory entry`);
     inventoryIds.add(surface.id);
+    assertBoundedIdentifier(surface.surface, `${surface.id} surface`);
+    assert.ok(
+      Object.hasOwn(SURFACE_CONTRACT_CLASS_ALLOWLIST, surface.surface),
+      `${surface.id}: invalid surface ${surface.surface}`,
+    );
     assert.ok(['owned-stamped', 'excluded', 'removed', 'removal-pending'].includes(surface.status), `${surface.id}: invalid status`);
     if (surface.status === 'removal-pending') {
       assert.fail(`${surface.id}: deploy blocked until accidental public surface is removed`);
@@ -79,23 +142,37 @@ export function validateModuleContracts({
     const absolute = path.resolve(root, surface.path);
     assert.ok(fs.existsSync(absolute), `${surface.id}: owned surface missing`);
     const html = readFile(absolute);
-    assert.match(html, /\d{8}b\d+/, `${surface.id}: build stamp absent`);
     const scripts = scriptPaths(html);
-    for (const contract of manifest.modules.filter((item) => item.requiredSurfaces.includes(surface.surface))) {
+    const contracts = manifest.modules.filter((item) => item.requiredSurfaces.includes(surface.surface));
+    const requiredClasses = SURFACE_CONTRACT_CLASS_ALLOWLIST[surface.surface];
+    const requiredContracts = contracts.filter((item) => requiredClasses.includes(item.class));
+    if (surface.servable === true && requiredContracts.length === 0) {
+      failures.push(`${surface.id}: owned-stamped servable surface ${surface.surface} has no correctness contracts`);
+    }
+    for (const contract of contracts) {
       const positions = scripts.flatMap((value, index) => value === contract.script ? [index] : []);
-      assert.equal(positions.length, 1, `${surface.id}: ${contract.id} required script count ${positions.length}`);
+      if (positions.length !== 1) {
+        failures.push(`${surface.id}: ${contract.id} required script count ${positions.length}`);
+        continue;
+      }
       const at = positions[0];
       for (const predecessor of contract.order.after) {
         const predecessorAt = scripts.indexOf(predecessor);
-        assert.ok(predecessorAt >= 0 && predecessorAt < at, `${surface.id}: ${contract.id} must follow ${predecessor}`);
+        if (!(predecessorAt >= 0 && predecessorAt < at)) {
+          failures.push(`${surface.id}: ${contract.id} must follow ${predecessor}`);
+        }
       }
       for (const successor of contract.order.before) {
         const successorAt = scripts.indexOf(successor);
-        assert.ok(successorAt > at, `${surface.id}: ${contract.id} must precede ${successor}`);
+        if (!(successorAt > at)) {
+          failures.push(`${surface.id}: ${contract.id} must precede ${successor}`);
+        }
       }
       checked.push({ surface: surface.id, module: contract.id, index: at });
     }
+    if (!/\d{8}b\d+/.test(html)) failures.push(`${surface.id}: build stamp absent`);
   }
+  assert.equal(failures.length, 0, failures.join('; '));
   return { signature: 'TALARIA_MODULE_CONTRACT_PREFLIGHT_V1', ok: true, checked };
 }
 
