@@ -3413,3 +3413,50 @@ Related and practical: the same conditions produced **13.12% then 14.91%**, abou
 We have eliminated a great deal and located nothing. Four hours in, the honest summary is: the idle floor reproduces, it is not repainting, it is not resampling, it is not any of the five suspects, and rAF accounts for a sixth of it. The remaining five-sixths has never been profiled at function granularity.
 
 That is progress — an eliminated hypothesis is worth having and several of these were load-bearing — but it is **not** the small local fix inside 46 hours that the CPU finding hoped for, and I am not going to present elimination as if it were location. No fix packet has been authored and none should be until the profile names a function.
+
+---
+
+## 2026-07-28 15:44 — RETRACTION. The render-trigger histogram is BLOCKED. I reported it to the Director as corroboration and it is not.
+
+At 15:12 I told the Director that rAF was the largest render trigger under load — 53% and 51% — and called it "the single most useful cross-check I have", explicitly offering it as independent support for the idle rAF finding. **That is withdrawn in full. It may not be cited at any scope, including "this run only".**
+
+The review settled the exact question I raised and the answer is worse than I feared.
+
+**The histogram labels delivery, not cause.** Attribution is the synchronous dynamic scope of the JS stack at the moment `render()` returns. Nothing records who called `setTimeout`, who called `requestAnimationFrame`, or — decisively — **who set `renderPending`**. `animate()` renders only when that flag is set, and the flag is written from roughly **thirty sites across four files**: four in `chart.js`, eleven in `replay-system.js`, eleven in `order-manager.js`, three in `panel-cmd-bridge.js`. Every render `animate()` performs is a *deferred* render whose cause was a flag write on an earlier stack the probe cannot see, so it is labelled `'rAF loop'` because that is the only thing on the stack. **Any coalesced render is labelled rAF by construction.**
+
+The packet's own numbers prove it without inference: Panel A recorded **752 renders but only 53 `scheduleRender` calls**; Panel B **1372 renders and 15**. Both counters non-zero, so the wrap worked — meaning at least 699 and 1357 renders never passed through the one scheduling function the instrument can observe.
+
+**And Panel A's "0 replay ticks" is not a broken counter — it is an inversion.** The reviewer closed the arithmetic exactly: A ticked 349 times (`bumpDataVersion` = 349), the indicator recalc fired 698 = 2 × 349 from two call sites, 350 renders are the synchronous `chart.render()` calls on a bare `setTimeout` stack, 402 are deferred `renderPending` harvests, and 350 + 402 = 752 = 2.15 × 349. **All 752 of Panel A's renders are causally downstream of replay ticks. True attribution is ~100%; the histogram reports 0%.**
+
+The cause is a wrap-list gap. The host driver path is `scheduleNextTick` → `animateTick` → `updateChartWithAnimatedCandle` → `applyMultichartMirrorFrame` → `_finishMultichartMirrorRender`, and **not one of those is instrumented**, while Panel B's passive-mirror path goes through three methods that are. The entire 0-versus-362 asymmetry is a property of the probe, not the product.
+
+**So the unattributed share is not the quarter I flagged — it is 74% to 100%.** The rAF bucket carries no causal information either, leaving only "replay tick" as honest, at 0/752 and 362/1372.
+
+**My instinct was right and my conclusion was wrong.** I wrote at 15:12 that cross-workload agreement is "either the real finding or a shared instrumentation artefact". It was the artefact. This harness is not a second witness; it is a mirror. I should have held the number until the review returned instead of leading a report with it — I even wrote "I am deliberately not celebrating this yet" and then celebrated it in the summary I sent up. That gap between what I journalled and what I reported is the actual error.
+
+## 2026-07-28 15:45 — The finding that transfers, and it may pre-empt the profile I just dispatched
+
+Two unmatched variables in that packet apply directly to the idle work, and one of them could mean **the bottom-up JS profile I dispatched at 15:26 comes back empty.**
+
+**`deviceScaleFactor: 1`.** A real display at dpr 2 quadruples raster and GPU pixel work for identical layout — and raster/compositor/GPU is **53% of measured CPU** (19.1 of 36.25 CPU-seconds are *not* renderer main-thread time). If the PO's machine renders at dpr 2 and our harness at dpr 1, we are systematically under-measuring the largest share of the cost.
+
+**That reframes the 12.5 unattributed points.** I have been assuming the missing idle CPU is main-thread JavaScript, which is why I asked for a JS self-time profile. **If it is raster and compositor work, a JS profile will find nothing and I will have spent a round confirming an absence.** I am not cancelling the profile — knowing the JS side is quiet is worth having, and it is already running — but I am adding the process-level thread breakdown to the same packet, because that is the measurement that discriminates.
+
+**Page visibility was never recorded** in the loaded run: no `visibilityState`, `document.hidden`, `bringToFront` or `Page.setWebLifecycleState` anywhere in the harness, launched headful with no foregrounding step. An occluded headful window has rAF throttled to near zero. The idle harness is clear on this axis — 141.86 fps proves it was not throttled — but it is exactly the class of confound I have not been checking, and it must become a recorded field in every CPU harness rather than an assumption.
+
+**And the dpr insight independently supplies a hypothesis for the GPU gap I could not explain at 15:14.** Measured canvas backing store is 13.87 MiB at dpr 1 (the other half of the quoted 27.75 MiB is a fabricated `w×h×4` estimate for SVG overlays with no measured GPU residency). At dpr 2 the same layout is **55.5 MiB of canvas alone**, and with compositor tiles and double buffering the PO's 154 MB stops looking mysterious. Untested, but it is the first mechanism proposed for that number.
+
+## 2026-07-28 15:46 — Corrections to my own record, and one place I was wrong to suspect
+
+- **`Chart.animate` opens at `chart.js:28677`, not 28676** — 28676 is blank in base `8b1ed59b1`, and the same function sits at 29108 in the working tree because Manager C has an uncommitted rewrite in flight. I have cited 28676 three times today. **Line numbers must be pinned to a commit when they enter the record**, and on this repo that is not pedantry: the file is being rewritten underneath us by another manager.
+- **My double-counting suspicion was unfounded where I aimed it.** Windows are genuinely identical, renders are not double-counted, and 2.15:1 is a real renders-per-tick figure. I said in the brief that confirming me wrong was as valuable as finding a defect and I am recording it as such.
+- **But the error class I named is live elsewhere in the packet.** `timed()` pushes **strings** onto the shadow stack, while child-time accounting guards on `typeof parent === 'object'` — which can never be true. So `selfMs` is silently identical to `totalMs` in all 26 rows, making `topMainThreadConsumersBySelfMs` an **inclusive**-time ranking mislabelled as self time. Four nested Panel B frames sum to 16.1 s against 17.1 s total for both panels. **That table does not enter the record either.**
+- **The reviewer declined to let me take the blame for the reproduction gap, and I am recording its reasoning rather than my mea culpa.** My no-indicators brief defect is real, but indicators cannot close a 4.29× gap when the main thread is at 14.27% of one core — that would need it at ~113% of a single thread. dpr, unverified visibility, and Panel B never playing are each independently large. **Fixing my brief is necessary and not sufficient**, and I would have over-corrected on my own error and missed the structural ones.
+
+## 2026-07-28 15:47 — Two things to carry forward
+
+**The probe measured the one number that would have helped and threw it away.** `rafCallbacks` and `rafMs` are computed and then discarded by `summarizeProbe` before the evidence is written — zero occurrences in the JSON. The packet instrumented the exact mechanism under investigation and ended up unable to say anything about it. Three small mechanical fixes would make it citable: attribute the `renderPending` write at its site rather than the frame that harvests it, extend the wrap list to the five driver-path functions, and stop dropping the rAF fields. Worth doing when the loaded protocol comes back, not now.
+
+**The documented re-run command does not reproduce the evidence.** `--play-ms 900000` landed on `warmupMs`; the evidence shows `playMs: 120000`. What ran was a 15-minute warmup and a 120-second window, by which point Panel A had already consumed 401→1826 of 2000 bars, so the measurement covers the final 9% of the dataset — and A exhausted it entirely at ~110 s, idling for the last two samples. **A reproduction command that does not reproduce is a provenance defect**, and it is the second artefact-integrity failure this train.
+
+Also correcting a claim I made at 15:14: **"nothing runs off the main thread" is wrong.** 53% of process CPU is off the renderer main thread by design — compositing, raster, GPU, networking. The defensible statement is narrower: **no application JavaScript runs on a dedicated worker; all product JS is on the renderer main thread.** The worker check itself is sound by two independent methods, but it does not cover `SharedWorker`, service workers or worklets, and I stated a conclusion broader than the measurement.
