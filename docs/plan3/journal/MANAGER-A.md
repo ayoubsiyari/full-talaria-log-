@@ -1612,3 +1612,65 @@ But the first rejection was my error, not the author's — they reported a fact 
 ## 2026-07-28 05:29 — OPEN: a divergent copy of a served file under `homepage/public`
 
 An untracked third copy of `drawing-tools-manager.js` sits at `homepage/public/chart/multichart-prod/harness/frozen/m21-vy-ab-baseline-v2.2/runtime/chart/modules/`, still at parent content. It is a deliberately pinned A/B baseline so its staleness is correct by design, but it is untracked and under a served root, so any audit of `homepage/public` finds a divergent copy of a money-adjacent file with no provenance trail. Recording rather than acting — the pin is legitimate and I am not going to break someone's frozen baseline to tidy a search result.
+
+---
+
+## 2026-07-28 05:52 — VERDICT: eviction-scope accepted at r3 and merged
+
+surface=`chart v 1.4/chart/modules/drawing-tools-manager.js` and its `homepage/public/chart/` mirror
+coverage=both eviction sites, two panels, `orderLines` / `slLines` / `tpLines` / `beLines`, rows with own-panel, foreign-panel, absent, null and undefined `chart`
+
+The reduction is accepted. The reviewer did not take the author's inertness numbers — they sliced the changed region verbatim out of parent, the blocked commit and the packet by anchor comment, ran all three against one identical mock, and got byte-identical `slLines`, `tpLines`, `beLines` and every real SL/TP DOM node between parent and packet. Change 2 is provably inert.
+
+The inertness proof is a token-semantics argument and it is worth recording, because it is the exact trap I fell into. Every producer emits **two** class tokens — a bare kind token and a hyphenated id token: `order-line order-${id}`, `sl-line sl-${id}`, `tp-line tp-${id}`. A CSS class selector matches whole tokens with no prefix matching, so `.sl-line-101` can never match an element whose class attribute is `sl-line sl-101`. The three deleted selectors were incapable of matching anything the codebase produces. Exhaustive count across the tracked tree, all file types, both trees: two hits each, both in unreferenced `.js.bak` files.
+
+I had flagged the predicate rewrite as possibly out of scope. The reviewer defended it and I accept that: `(row.chart || this.chart) === ch` is the house idiom at roughly 35 sites across `order-manager.js`, including the orphan reaper at `:45237` and `removeSLTPLines` itself at `:42922`, while `(l.chart || ch) === ch` appears nowhere else in the codebase. The blocked version was the anomaly. It is also identical in the only reachable state — `orderManager.chart` has exactly one writer, the constructor at `:451` — and under a hypothetical rebind it fails *safe*, leaving a stale line rather than deleting a live one. For a change whose purpose is to stop over-eviction, that is the right direction to fail.
+
+One provenance detail the packet did not claim and which settles the amend chain: insertions moved 22 → 24 → 16 across the two amends while **deletions stayed pinned at 12**, and the deleted-line sets are byte-identical across all three generations. The amends only ever changed what was added back, never what was removed from parent.
+
+## 2026-07-28 05:53 — OPEN: cancelling pending order #1 erases the visuals of orders #10 through #19
+
+surface=`drawing-tools-manager.js:12163` and `:12182`, and the mirror
+coverage=code read plus id-generation trace; not observed on a live surface
+
+The reviewer flagged the aggressive-fallback block below the eviction sites as still unscoped. I checked it and the substring hazard is worse than "worth a row".
+
+```js
+svg.selectAll(`[class*="pending-${orderId}"]`).remove();
+```
+
+`[class*=...]` is a **substring** match, not a token match. And order ids are not opaque: `this.orderIdCounter = 1` at `order-manager.js:512`, incremented at every `id: this.orderIdCounter++` site — `:29222, 29709, 29908, 29980, 30140, 30183, 30350, 30442, 30522, 30592, 35912` and more. So ids are 1, 2, 3, … 10, 11, 12.
+
+`pending-1` is a substring of `pending-10`, `pending-11` … `pending-19`, `pending-100` … and so on. Cancelling pending order #1 removes the DOM for every pending order whose id starts with 1. On a session with a dozen pending orders that is most of them, silently, on a money-adjacent surface. The counter is persisted and restored from the journal (`:8168`), so the low ids that collide most are exactly the ones a fresh session produces.
+
+Two sites, both in my territory. Dispatching as its own packet rather than folding it into the eviction row, because the mechanism is different — this is selector semantics, not registry scoping — and because the fix needs an enumeration of every class token a pending order produces before the selector can be narrowed safely. `[class*=]` may be catching families like `pending-tp-*` that a bare `.pending-${id}` would miss.
+
+## 2026-07-28 05:54 — OPEN: `deleteDrawing` de-registers a position it never closes
+
+surface=`drawing-tools-manager.js:12073-12140`
+coverage=reviewer driver, parent versus packet, open position with live SL and TP
+
+Scoped rather than patched, per the review. The residual after the merge: the executed registry row for the own panel is evicted while `openPositions` is untouched, so the position stays live. The orphaned `order-line order-${id}` DOM node does not persist either — the reaper at `order-manager.js:45216`, reached from `_purgeOrderOverlayArtifacts` at `:44583, 44917, 45339`, deletes DOM with no matching registry row.
+
+So the steady state a user sees is **a position with a stop-loss and a take-profit still drawn and still tracking, and no entry line**. Plus the entry marker, since `.entry-marker-${id}` is live, has a real producer at `order-manager.js:40853`, and this packet deliberately kept removing it to preserve parity.
+
+This is a parent defect, not one the merge introduces — at parent the unscoped filter emptied `orderLines` entirely and the reaper then erased the entry line on *every* panel. The merge narrows the blast radius from all panels to the own panel. Direction of travel is correct and the residual is ship-acceptable.
+
+The underlying wrong is that a drawing-layer delete evicts an executed-order registry row for a position it has no authority to close, and it associates the two on a bare price coincidence (`:12077`, logged separately at 05:27). Same row as that one.
+
+## 2026-07-28 05:55 — METRIC: rejection rate by (task class × model), train 2
+
+Per §A13.3b. Author tier and reviewer tier reported separately; reviewer is top tier on every row by rule and is not counted as an escalation.
+
+| task class | author model | packets | rejections | rate |
+|---|---|---|---|---|
+| RED harness authoring | gpt-5.5-medium-fast | 1 | 2 | 200% |
+| mechanical port | composer-2.5-fast | 1 | 0 | 0% |
+| specced predicate fix | composer-2.5-fast | 1 | 2 | 200% |
+| adversarial review | claude-opus-5-thinking-high | 4 | n/a | n/a |
+
+Author tier this train: **0% top-tier authoring**, 3 of 3 packets authored cheap. Reviewer tier: 100% top, as required. No §A13.2 row was invoked for authoring, so no justification is owed.
+
+The two rejection counts of 200% both need reading, and neither supports escalating the author. On the RED, both rejections were oracle-design faults that a top-tier author had already produced twice tonight in the sibling packets — the tier was not the variable. On the predicate fix, **the first rejection was mine** on a false finding and the second was downstream of a leak premise I supplied; see the ASSUMPTION at 05:28. Counting either against a cheap author would tell me to escalate for my own errors.
+
+What the cheap tier actually cost this train: one wasted pass on the predicate fix, caused by me. What it saved: three packets at composer rates against four top-tier reviews that caught everything. The reviews are doing the work §A13.2 says they should.
