@@ -2693,3 +2693,62 @@ Earlier in this sprint I reported 1.000, then corrected myself to 2.000 and logg
 That is a bigger result than the resample count. The original hypothesis was that `_installPlayheadPrefix()` dropping the consumer cache defeats the pipeline's incremental branch, and that the kill-switch would therefore move the number. **It moves nothing.** If incremental is structurally always zero on this route, the incremental path is dead on the replay path regardless of the switch, and the switch is not controlling what we believed it controlled. I have asked the reviewer to establish whether the branch is genuinely unreachable or merely never taken under this harness's conditions — the distinction decides whether this is a code finding or another instrument artifact, and given the packet's other numbers I am not assuming.
 
 **Write packets now at the cap of three:** speed-cap, a12-correction, a2-rebaseline. No further write dispatches until one clears.
+
+---
+
+## 2026-07-28 11:44 — M2 SOLVED: both hypotheses refuted, and the surviving mechanism predicts the PO's observation to the hour
+
+surface=`manager-a/critical-path` @ `9c5d55e4e`, twelve-hop timestamp path cited
+coverage=ingest through display; both §A16.3c hypotheses tested against their stated criteria
+
+**Broker-time: REFUTED.** FirstRate FX rows are US Eastern wall-clock, declared at `firstrate_ingest.py:28-31` and parsed with `tzinfo=_FX_TZ` then `.timestamp()*1000` at `:649-696`. The canonical CSV is explicitly "Unix epoch milliseconds (UTC instant)" at `:905-944`. Crypto normalises UTC; equities, futures and options default Eastern at `:890-902`. The client normaliser preserves epoch-ms and only rescales seconds-sized values (`chart.js:9624-9642`). So chart-held `t` is a UTC instant by the time bucketing runs, and the broker-offset arithmetic cannot occur.
+
+One precision I am keeping, because it is the kind of thing that later gets misquoted: the *vendor* feed is not UTC — it is Eastern wall-clock. The *canonical and chart-held* feed is UTC epoch-ms. Both statements are true and only the second one bears on bucketing.
+
+**Count-forward: REFUTED** (recorded earlier). So §A16.3c's stated disjunction resolves: **the defect is in labelling, and the next probe is the display timezone.** That probe has now been run, and it lands.
+
+**The phantom Saturday, derived rather than guessed.** A UTC daily bucket at `2013-01-06 00:00Z` rendered in New York — UTC−5 in January — displays as **Saturday 5 Jan 2013 19:00**. The PO reported a bar labelled **Saturday 5 Jan '13 19:00**. That is not an approximate match, it is the same label to the hour. The bucket is real and holds the Sunday-evening FX reopen at 22:00Z; it is the *label* that is a fiction, because a UTC-midnight boundary displayed in Eastern time falls on the previous calendar evening. The missing Friday is the same arithmetic from the other side: Friday's session runs Thu 22:00Z → Fri 22:00Z and therefore sits in the bucket displayed as Thu 3 Jan 19:00, so the Friday label maps to a UTC Saturday that has no trading and draws nothing.
+
+The Director's §A16.3 fourth consequence said UTC-midnight flooring alone does not obviously produce a Saturday bar and something else was contributing, most likely a mismatch between the timezone used to bucket and the timezone used to label. **That is exactly what it is**, and `convertToTimezone()` at `timezone-manager.js:238-255` is the labelling half — it builds a display `Date` and does not mutate stored `t`, so bucketing and labelling genuinely disagree by construction.
+
+## 2026-07-28 11:45 — ESCALATION, now decisive: the client cannot fix daily or weekly, because it never holds the data
+
+This is the finding that determines whether M2 is Manager A's work at all, and the answer is no.
+
+For ordinary 1D and 1W views the client **holds already-bucketed daily and weekly bars**. It requests the current timeframe (`chart.js:7525-7559`), `/smart` returns "the exact requested timeframe" (`api_server.py:25621-25625`), and the client records `_nativeRawFetchTf = timeframe` (`chart.js:24110-24117`). Pan-load does the same through `checkViewportLoadMore` → `_fetchCandlesCursor` (`chart.js:24682-24848`). Replay is mixed, but backtest boot normally sets `replayRawTf` to the display timeframe.
+
+**You cannot un-bucket.** §A16.3's derived-branch remedy — "if they are derived, we bucket to the class calendar" — presumes the client holds something finer than a day to re-bucket, and for the timeframes in question it does not. Combined with the earlier citation that the buckets are built server-side at `api_server.py:8843` and `questdb_store.py:521-538`/`:659-691`, the daily and weekly boundary is decided in Python before the client ever sees a bar.
+
+So the ruling's two branches both point off A's territory. If the bars are native we disclose the provider's stamping, which is a product decision. If they are derived we re-bucket, which requires the server. **Weekly cannot board on A's work, and neither can daily.** I am not going to author into another manager's files to hit a deadline, and I am not going to propose a client-side mechanism I have just established cannot work.
+
+**What A can do, and it is not nothing.** The labelling half is client-side and it is where the observed symptom actually lives. A bucket boundary computed in one timezone and rendered in another is a defect A owns end to end, and fixing the label alignment addresses precisely what the PO saw — no Friday, phantom Saturday — without touching a boundary. Whether that is sufficient or merely cosmetic depends on whether the PO's complaint is "the bars are labelled wrong" or "the bars contain the wrong hours." **Those are different defects with different owners and I want the Director to say which one is being fixed** before I brief anything.
+
+Also still open and now more relevant: vendor `1day` provenance. If FirstRate's own daily bars arrive session-aligned, the server is re-flooring correct bars into incorrect ones, which would make this a server-side regression rather than a missing feature.
+
+## 2026-07-28 11:46 — WITHDRAWN: my post-merge chain-intact verdict was contaminated
+
+**My doubt was founded and the verdict is withdrawn.** In a cleanroom worktree containing only tracked files, the chain does not reproduce.
+
+`chart v 1.4/chart/modules/m21-2-candle-offscreen-scaffold.test.mjs` is **tracked** and imports `m21-w6-fixtures/visible-window-mirror.mjs`, which is **not**. The import sits in a `try/catch`, but the catch does not skip or degrade — it records a failure string and the test then runs `assert.equal(w6Ok, true, w6Detail)` at `:1520`. **A caught exception is converted into a hard assertion failure**, which is the worst of both shapes: it looks defensive and fails closed against a file that is simply not in the branch. Both the `chart v 1.4` and `homepage/public` copies fail identically.
+
+`npm run test:checkpoint-provenance` also fails in the cleanroom, 12 of 14. Every Puppeteer harness could not run at all — I forbade `npm ci`, so that is my constraint rather than a defect, but it means **the browser half of the chain is unmeasured in a clean tree** and I should not have been calling the chain green without it. `preflight:module-contracts` passes at both root and `talaria-design`, so the M1 half genuinely stands.
+
+My earlier description had one detail wrong: the test is at `modules/`, not inside `m21-w6-fixtures/`. The substance is unaffected — a tracked test importing an untracked module — but I am recording the correction because I asserted the path.
+
+**Consequence.** Any claim of automated-GREEN resting on that re-run is void. Per §A16.5, review confidence is not gate coverage; a green obtained in a tree carrying 512 untracked files is not gate coverage either. The untracked triage is no longer a background row — untracked files are *actively supplying* a tracked test's inputs today.
+
+## 2026-07-28 11:47 — Speed cap BLOCKED, and the block is a brief-defect of mine
+
+The ceiling itself is sound and was independently derived rather than accepted: six assignments to `this.speed` exist, five route through `normalizeSpeed`, the sixth assigns the in-range literal 5, and no product write bypasses the clamp. Twenty-nine inputs reproduced. `window.REPLAY_SPEED_MAX = 999` does not unlock it; nor does the static; a lexical rebind throws. `updateChartDataFast`, `_renderReplayChartUpdate` and `getCandlePlaybackCadence` are byte-identical to base, so the Director's constraint holds exactly.
+
+**The block is that two committed mirrors in A's own grant still ship pre-cap behaviour.** Both `dist-v9` bundles still carry the 15-step ladder to 100x, and `homepage/public/chart/modules/replay-system.js` is byte-identical to the *base* engine — an unclamped committed copy with `Math.min(100)`, `Math.min(200)` and `this.speed = 60`. `TERRITORY.yml:130` and `:141` grant A both paths. **My writable set named two files when the territory needed four**, so nothing in the packet could have caught this. That is my second brief-defect on this packet.
+
+Production is not defeated: both Dockerfiles rebuild and overwrite, and even served stale the engine is fetched separately and still clamps, so the worst case is a control offering 100x that visibly snaps back to 10x. Mislabelling, not capability. But an unclamped engine committed in my own territory is not something I will ship past.
+
+**Two of my own suspicions refuted, and I want them recorded as loudly as the findings.** There is no persisted slider index at all — `si` is computed at render time and no speed-index state exists, so my "stored index 12" scenario is *unrepresentable*. And the percentage change from `si/14` to `si/maxIdx*100` is **exactly correct** at every step, not subtly wrong. I raised both as hazards; both were wrong, and BRIEF-02 framing is what kept them from becoming an authored fix to a non-problem.
+
+**Sub-ceiling doubling ruled: non-compliant with §3.1 on its own terms** — a hidden global that makes a labelled 3x play at 6x changes what a labelled speed means — but pre-existing, and the packet strictly narrowed it. Separate row, so a clean cap is not blocked by an inherited flag.
+
+New rows from the review: the packet adds the file's **first two top-level `const` declarations**, so a double-load into one document now throws `SyntaxError` where it previously did not — latent, since each shell references it once, but the file is a classic script served at two URLs. `Infinity` normalises to **1**, not 10, so the fastest input yields the slowest speed; fails safe, semantically inverted. `9.999` survives, because the engine enforces the ceiling and never the ladder. And a pre-existing mount-order race means a restored 60 lands on either 10 or 5 — never above 10, so the cap is unaffected.
+
+**`REPLAY_SPEED_DEFAULT = 5` remains unratified** and the code says so in its own comments. It moves the engine default from an effective 10 to 5 and V9 from 30 to 5, which changes what a speed means and is reserved to the PO. Going to PO-REQ; the cap does not depend on it.
