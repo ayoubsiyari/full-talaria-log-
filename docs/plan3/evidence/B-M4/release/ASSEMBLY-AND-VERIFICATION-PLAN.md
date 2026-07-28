@@ -186,30 +186,36 @@ node docs/plan3/evidence/B-M4/live-surface-probe/live-surface-probe.mjs \
   --base-url=<surface> --session-id=<id> --token=<qa-token> \
   --shell=/chart/index.html --shell=/chart/dist-v9/index.html \
   --shell=/chart/legacy-index.html --shell=/chart/multichart-prod/chart-embed.html \
+  --shell=/chart/talaria-design/live/index.html \
   --out=docs/plan3/evidence/B-M4/live-surface-probe/observations
 ```
 
-All five must hold. Any one failing means the push is not verified:
+All must hold. Any one failing means the push is not verified:
 
 1. **`order-manager.js` reports PRESENT for `journalVouchedFor`**, and is *identified
    as the module* — a PRESENT on an unidentified body is not a pass.
-2. **Served bytes differ from `ff6e9df1…`.** If they match, we shipped and the surface
-   is still serving the 25 July file — a cache or build-path failure, not a code failure.
-3. **Build-id coherence on the shells that remain live after C's legacy de-route.**
-   `dist-v9/index.html` and `multichart-prod/chart-embed.html` must both be PRESENT at
-   `20260728b81` and agree. `/chart/legacy-index.html` is **de-routed by C** — the
-   stamper now expects `legacyStatus: 404` (see conflict rehearsal §3). A 404 or
-   UNDETERMINED on legacy is a **pass**, not a missing stamp. `/chart/index.html`
-   stays UNDETERMINED behind its auth gate without a cookie — also a pass; with a
-   cookie it must report b81 (it resolves to dist-v9).
+2. **Served bytes differ from the pre-push blob** (`order-manager` `ff6e9df1…` /
+   sha256 `eb70d1a5…`; `chart.js` sha256 `873d127c…`). Stamp alone is **not** enough:
+   on the test host `?v=` is inert — identical bytes under every query string
+   (census 16:26Z). If the stamp moves and the sha does not, the surface is still
+   serving the old file.
+3. **Build-id coherence on live shells.** `dist-v9/index.html` and
+   `multichart-prod/chart-embed.html` must both be PRESENT at `20260728b81` and agree.
+   **`/chart/talaria-design/live/index.html`** is a fourth unauthenticated full shell
+   (census); it must not remain at b12/b50 after the push — PRESENT at b81, or
+   deliberately de-routed. A leftover b12 with b75/b81 engine bytes is a fail.
+   `/chart/legacy-index.html` is **de-routed by C** (`legacyStatus: 404`); 404 /
+   UNDETERMINED is a **pass**. `/chart/index.html` stays UNDETERMINED behind auth
+   without a cookie — also a pass; with a cookie it must report b81.
 4. **`GET /api/sessions/{id}` returns 2xx with a token.** A 401 is UNDETERMINED, not a
-   pass — it means reachable-but-unread, and it is the state we are in today.
-5. **Exit code 0.** Exit 1 is ABSENT (shipped without the fix); exit 3 is UNDETERMINED
-   (we cannot tell, which is not the same thing and must not be recorded as one).
+   pass. A 307→login on a *module* path is also UNDETERMINED (allowlist hides 404s) —
+   never record it as ABSENT.
+5. **Exit code 0.** Exit 1 is ABSENT; exit 3 is UNDETERMINED.
 
-**On production only:** re-run once more after the edge TTL and confirm `cf-cache-status`
-is not serving a pre-push copy. The test server has no Cloudflare (§0c), so this step
-cannot be rehearsed there.
+**On production only:** re-run once more after the edge TTL **and** after local
+`max-age=3600` (test host advertises that even without CF) and confirm
+`cf-cache-status` is not serving a pre-push copy. The test server has no Cloudflare
+(§0c), so the CF half cannot be rehearsed there.
 
 ---
 

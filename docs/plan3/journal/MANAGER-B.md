@@ -2877,3 +2877,11 @@ Also corrected the B-0126 escalation: option 2 (refuse empty `incoming_ids`) is 
 3. **Further live-surface verifications** — read-only subagent, disjoint by construction.
 
 **Stream 1 result.** Scratch merge of C onto B: `api_server.py` clean; `checkpoint-provenance.mjs` resolved by taking C in full — blob matches C tip; delta vs `51b6e0da1` is exactly the +6-line module-contract preflight. Journal took B. `lib/checkpoint-provenance.mjs` auto-merged C's legacy de-route (`legacyStatus: 404`). Dry-run of A/orphan-replay and A/critical-path onto B+C: **product files clean**; conflicts only in `docs/plan3/DIRECTOR-RULINGS-20260727.md`, one FINDING, and `MANAGER-A.md`. Journal rule for A's journal fixed in advance (owner's side). DIRECTOR-RULINGS flagged as Director-owned, not a manager-side pick. Post-push probe criterion updated: legacy 404 is a pass. A's render kill-switch still absent — final assembly still blocked on that alone. Rehearsal doc: `docs/plan3/evidence/B-M4/release/CONFLICT-RESOLUTION-REHEARSAL.md`.
+
+---
+
+## B-0130 — Streams 2 and 3 landed. A handoff filed; census updates the post-push bar.
+
+**Stream 3** — [live-surface claim census](62bad0c8-5736-49ba-99f5-80e932f67cae). Sealed at `live-surface-probe/observations/CENSUS-20260728-1626Z.md`. Three new findings: (1) `?v=` is inert on the test host — identical sha256 across query variants, so stamp alone cannot prove a push; (2) fourth unauthenticated full shell at `/chart/talaria-design/live/` advertising b12/b50 while loading b75 engine bytes; (3) unknown module paths 307→login, not 404. Assembly plan §5 updated: include the design shell, require byte-identity not just stamp, treat module-login redirects as UNDETERMINED.
+
+**Stream 2** — [SAFE-01 deepen handoff](124df7f7-25eb-402e-b868-77f894a9d5d3). No new hazards. Precise A handoff at `HANDOFF-A-DISTINCT-HYDRATE-REASONS-20260728.md`: literals `'local-backup-unreachable'` / `'server-empty-hydrate'`, must thread through the no-backup early return at `11701–11708`, catch arm `12267–12269` is a third unreachable funnel. Clearing the pre-hydrate journal allow alone does not close the wipe. B wires the hot vouch the same hour A's signal lands. Prior dispositions all still hold against the current tree.
