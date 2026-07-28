@@ -1,5 +1,38 @@
 # FINDING — the constant overhead is an unconditional 60fps render loop
 
+> ## ⚠️ CORRECTION 13:30 — mechanism confirmed, MAGNITUDE OVERSTATED BY ME
+>
+> A ran an ablation A/B (7 un-ablated samples across 3 sessions, min 14.00%; 3 ablated, max 8.49%) and **independently confirmed the mechanism**. It also refuted my magnitude claim, and A's evidence is better than mine because it measures what *removing* the loop buys rather than what the profiler *attributes* to it.
+>
+> **§2 below says "roughly half of all busy main-thread time is the rAF loop." That is true as profile attribution and I let it imply recoverable CPU. It does not.** Time attributed to `animate()` includes `render()` doing legitimate work that must still happen. **The share of a profile is not the size of the prize.** That distinction is mine to own; A drew it by experiment.
+>
+> **Citable range: 1.3 to 3.4 percentage points of one core.** A explicitly refuses a point estimate and **forbids "we halved idle CPU"** being carried up the chain — the 49% harness reduction is a fact about that harness at 142.5 fps and does not transfer. The range is a **ceiling twice over**: it is what deleting the loop entirely buys, and a behaviour-preserving guard must keep some frames.
+>
+> ### Three consequences the PO must hear, none comfortable
+>
+> 1. **The majority of the idle floor remains unexplained.** Against a ~12.3% clean idle baseline, this mechanism accounts for **11–28%** of it. We named a real culprit and it is not the main one.
+> 2. **The spikes are completely untouched.** `spikeGroups` is empty in all six runs at a 50% threshold — **the harness never reproduced the PO's spikes-to-120% in either arm.** This finding addresses the floor and says *nothing* about the spike family, which is the PO's most alarming symptom. A raised this unprompted before being asked.
+> 3. **The fix is substantially bigger than the loop.** See §5.1.
+>
+> ### Director resolves A's open unit question
+>
+> A asked, correctly and against its own interest, whether the PO's ~20% is whole-Chrome or the tab row alone, since Chrome's task manager reports per-process rows normalised to one core. **Answered from the PO's own screenshot:** the task manager shows discrete per-tab rows — `Tab Backtesting 0.1`, `Tab DevTools 2.2`, `Tab Talaria — V9 Live 18.2`. **The PO's figures are per-tab rows.** So the comparable harness figure is the **renderer 12.18%**, not whole-Chrome 16.37%, and **the correct framing is 11–28% of the floor, not 6–16%.** A raised the reading that flattered us least and it turns out to be the right one.
+>
+> ### §5.1 — the fix is an accessor, not a guard, and the naive version ships a starvation bug
+>
+> A's own sketched guard — arm only when work is pending, re-arm from `scheduleRender()` — **would have shipped a worse defect than the one it fixes.** `scheduleRender()` is one of many paths that set `renderPending`: **29 sites assign it, and 24 bypass `scheduleRender()` entirely** (`chart.js` ×4, `chart-main.js` ×1, `panel-cmd-bridge.js` ×3, `replay-system.js` ×11, `order-manager.js` ×10). Under a `scheduleRender`-only guard, **all 24 are silently starved** until something unrelated happens to arm a frame. **That is capability loss without failure — precisely the class C-1 exists to prevent, and C-1 caught it.**
+>
+> **The surviving shape:** all 29 writes are property writes on a chart instance, so converting `renderPending` into a **setter that arms the loop on write** catches every writer without editing any of them. Two consequences:
+>
+> - **The fix stays entirely inside `chart.js`, so it does not touch B's territory** despite 10 writers living in `order-manager.js`. No commit spans two territories and no slot contention with the hotfix train. **This is the deciding advantage.**
+> - **A prototype accessor will not work.** The constructor assigns `this.renderPending = false` (`chart.js:1223`), an own data property that shadows any prototype accessor. It must be `Object.defineProperty(this, 'renderPending', …)` over a backing field. **In the brief now rather than discovered in review.**
+>
+> ### Confirmed beyond my read, and two author corrections worth keeping
+>
+> **`animateZoom()` is dead at runtime, not merely unused for wheel zoom:** `zoomAnimation.active` is never assigned `true` anywhere in the tree — zero hits. Wheel zoom runs through `_scheduleWheelBurstRender`, which has its own rAF and is untouched. **`_animateBound` reaches `requestAnimationFrame` from exactly one line.** Both narrow the blast radius usefully.
+>
+> A rejected two of its author's own passing tests: **the countdown smoke test proves nothing** — the harness runs replay active-but-paused, so `_getBarCloseCountdownText()` returns a frozen clock and the countdown path was never exercised, making the blast radius **untested, not tested-good** — and the `panBy` leg is vacuous because `panBy()` calls `this.render()` directly and passes with the loop dead. **Preserving the countdown costs ~0.7% of the recovered saving, so it is not a design constraint.**
+
 **Opened:** 2026-07-28 13:05 by Director, on the PO's idle Chrome Performance recording.
 **Status:** mechanism **NAMED**. Owner: **A**. This closes the "mechanism UNKNOWN" row that has been open since the idle floor was first measured.
 **Evidence:** `evidence/CPU-IDLE/Trace-20260728T125010.json.gz` (8.19 MB, 34.31 s, single chart, no indicators, replay stopped).
