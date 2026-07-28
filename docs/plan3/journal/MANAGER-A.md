@@ -3929,3 +3929,71 @@ Shipped together, a starvation bug and an accessor bug are indistinguishable in 
 **Packet 2 (the guard) is blocked** on a countdown wake mechanism being chosen and specified with teardown. I am not dispatching it until that exists.
 
 One criterion I had missing entirely and am adding to packet 1: **writing `false` must not arm.** `chart.js` alone has 17 `= false` writes plus the five outside it. A mutant whose setter arms on any assignment would have passed all six of my original criteria while saving nothing — **the same shape as the `unload` mutant that survived all 11 cells of my last gate.** Twice now my acceptance criteria have failed to pin the packet's own decision, and both times the gap was the missing negative case.
+
+---
+
+## 2026-07-28 18:02 — M25 accessor BLOCKED. I specified an instrument that cannot answer the question I built it to answer.
+
+The diff is clean — cleanest thing reviewed on this row. 17/17 cells, **all five mutants killed with zero survivors**, single hunk at 1226, `animate()` byte-identical, canonical and mirror sharing blob `4c272a35d`, porcelain 0. It is blocked anyway, on my own stated rule: the packet exists solely to let us read off a real session which of 28 code paths demand frames, and **it structurally cannot do that.**
+
+### The defect is in my specification, not the author's code
+
+`m25FramesArmed` is **one integer with no site labels**, and the falsy→true rule caps it at **one increment per animation frame** — because `animate()` clears `renderPending` at `chart.js:28771` once per frame. I verified that line myself rather than take it on report.
+
+The reviewer demonstrated it by execution with real product bytes from three different arming sites in three different files:
+
+```
+three distinct arming sites fire inside ONE frame
+  replay-system.js:3282     counter 0 -> 1
+  order-manager.js:36433    counter 1 -> 1
+  panel-cmd-bridge.js:1416  counter 1 -> 1
+counter after 3 distinct paths demanded a frame: 1
+
+over 6 frames: 18 site activations, counter = 5
+```
+
+**A scalar bounded above by the frame count cannot prove 28 propositions.** That is arithmetic, and I should have seen it when I wrote the criterion.
+
+**The second-order failure is the dangerous one.** The deduplication does not merely fail to distinguish co-firing sites, it **erases them**: a site that reliably fires just after another within the same frame registers zero for an entire session, and the natural reading of zero is "this path is dead". Handing that to a loop-guard packet whose safety depends on knowing which paths are live would produce exactly the starvation bug the accessor design was chosen to prevent. **I would have built the instrument, trusted it, and shipped the bug it existed to prevent.**
+
+### A related trap in reading the counter at all
+
+14 of the 17 `chart.js` clearing sites are `this.renderPending = false; this.render();` — **synchronous renders that deliberately bypass the rAF path** (wheel-zoom burst 26427, axis zoom 26855, panel resize 26881, pan scroll sync 28149, and `scheduleRender()`'s own replay/inertial early return at 28566). Those are real render demand the counter records as **zero**.
+
+Not a defect for the loop-guard purpose — a synchronous render needs no loop wake — but it means `m25FramesArmed` must never be read as "how much rendering is happening". **During replay playback, the dominant scenario on this entire row, `scheduleRender()` takes the synchronous branch and contributes nothing to the counter.** That is a footgun aimed directly at the next person to quote this number.
+
+### My lead concern confirmed, but my reasoning about it was wrong
+
+`__mcDiagReport()` never shows the counter and `__mcDiagReset()` never zeroes it. Proven by executing the product's own reporter: the row keys come back without `m25FramesArmed`, and reset moved `renders` 9→0 while leaving `m25FramesArmed` at 41.
+
+**But non-enumerability is not the cause.** `_talariaMcDiagSnapshot` reads `diag?.[field]` **by name**, which works fine on a non-enumerable property. **The allow-list at `:799` alone excludes it.** I had conflated two mechanisms — enumerability governs `JSON.stringify`, the allow-list governs the report — and so did the suite's own comment at line 548.
+
+The remedy is pinned by precedent: the accepted resample packet added `replayTicks`/`fullResamples`/`incrementalResamples` to **both** `MC_DIAG_COUNTER_FIELDS` and `_ensureMcDiag()`. Same shape here. **Adding to the allow-list alone would be worse than doing nothing** — `_talariaMcDiagZeroCounters` does `diag[field] = 0`, so on a kill-switch instance the first `__mcDiagReset()` would *create* the property as enumerable, delivering the exact shape change I was trying to avoid, late and nondeterministically.
+
+### My criterion 4 over-reached and pushed the author into the corner
+
+Shape identity on the `Chart` instance is reasonable — sibling modules spread and stringify chart objects. **Shape identity on `_mcDiag`, a diagnostics bag whose entire purpose is accumulating counters, is not**, and the accepted resample packet already broke it with no consequence. Criterion 4 must be scoped to the instance. I wrote a criterion that made the correct implementation fail and the hobbled one pass.
+
+### Three of my premises refuted, and one warning that was noise
+
+- **`_mcDiag` ordering (my q5): refuted.** `_ensureMcDiag()` is called unconditionally at 965 with no guard and no `try`, ~260 lines before the install at 1226. The two throws that precede it abort construction entirely. The setter's `if (diag)` is defensive, not load-bearing.
+- **My evidence-rewrite warning did not reproduce.** I warned the reviewer that `chart.js`-reading suites rewrite six tracked evidence files. Six runs, porcelain checked before and after each: empty every time. **This suite contains no write call.** I generalised one author's incident into a property of a suite I had not checked — the same "reasoned from a characterisation instead of reading the source" error I logged twice yesterday and once already today.
+- **TIER-B is about as weak as I suspected.** All 28 statements reduce to `<expr>.renderPending = true;` and JS guarantees an own accessor intercepts every one, so executing them adds little over asserting they exist. What it does add is genuine but narrow: per-file counts are pinned, so if Manager B adds or removes an `order-manager.js` site the census cell fails loudly. **Drift protection, not reachability evidence.** And it *binds* each receiver to an accessor-bearing instance, which assumes the thing being proved — at runtime `pc`, `ch`, `initiator`, `mainChart`, `c`, `ctx` must each really be constructor-built `Chart`s, and TIER-B cannot detect it if one is not.
+
+### What survives, and it is the part that matters
+
+**The single interception point is correct.** All 28 sites now funnel through one setter, and that is exactly where packet 2's loop-wake belongs. Minimal, behaviour-preserving, and untouched by this BLOCK. The remedy is **additive and does not modify the accessor**.
+
+Also confirmed clean: every product write is a literal `true`/`false` (144 matches searched with ignore rules disabled, zero non-boolean writers, no `Reflect.set`, no dynamic access), the census reproduces exactly at 28 arming / 28 clearing / 56 total across 7 files, the kill switch is two genuinely distinct structures with no reachable hybrid, the extraction cannot go stale, and nothing outside the three-file writable set moved.
+
+## 2026-07-28 18:03 — Remediation dispatched; and a note on the deploy token
+
+Two additive changes, neither touching the accessor: allow-list plus `_ensureMcDiag()` initialisation per the resample precedent, and **per-site attribution**, without which no allow-list fix makes the packet answer its own question.
+
+**Deploy prerequisite worth recording now rather than discovering later.** The served page loads `/chart/chart.js?v=20260727b80` and this packet does not bump it. That token has been static across the last four `chart.js`-touching commits including the merged M23, and is bumped by separate stamping commits — so it is **not this packet's obligation**. But **before anyone tries to read this counter off the deployed site, the token must move**, or a cached response serves the pre-M25 engine and the counter is simply absent. That is precisely the "green chain certifying a change nobody receives" shape I raised on M23 and was wrong about there; here it is real, because the counter's absence is indistinguishable from a zero reading.
+
+### Score-keeping
+
+This train's manager-caused defects now include: a brief pinning line numbers and a file hash to a different branch than the one I told the author to base on; a clearing-site itemisation six short; repeating a reviewer's RED-oracle claim that holds only for the mirror copy; a criterion that penalised the correct implementation; a warning generalised from an unrelated incident; and — the substantive one — **specifying a scalar to answer a 28-way question.**
+
+The §A16.4 pre-dispatch review caught eight defects and missed this one. That is not an argument against the rule; it caught a scheduling hole that would have cost a full packet. But it does mean pre-dispatch review is not a substitute for asking, of every instrument I specify, **the question I asked too late here: can this measurement, in principle, express the answer I need?**
