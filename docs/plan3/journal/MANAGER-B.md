@@ -1968,3 +1968,39 @@ The case-variant row matters: an unrecognised mode string **fails closed** into 
 **Clause 2 (no check filters to rows the harness itself wrote) — holds in verify-only, qualified in write-probe.** Verify-only runs L2/L3/L5/L7/L8 and writes nothing, so there are no self-written rows to filter to; the clause is satisfied rather than dodged. `foreignTradeCount` at `:215` explicitly counts **non**-harness rows and is the deliberate remedy. Write-probe's L1 does still filter to `m4-<runId>-` ids for its id-stability assertion, but it is paired with a collateral check over pre-existing rows that fails L1 with *"write run deleted or changed pre-existing trades"* — so the filter narrows one assertion, it does not blind the check.
 
 **Banner ruling:** quarantine **lifts for `--verify-only`** (the default) and **stays for `--write-probe`**. Write-probe still POSTs into a real ledger, and the harness's own warning at `:754` is the honest reason to keep it: the server orphan sweep can delete vulnerable pre-existing rows and *this harness can report that loss but cannot undo it*. That is not a harness defect any more — it is the product defect from B-0100 — but it is not something to hand to the PO or Rayan tonight. Final lift pending B-R7.
+
+## B-0103 — RETRACTION of B-0102. My clause-1 proof was a category error, and I published it as a banner lift.
+
+**B-0102 is withdrawn in full.** Forty minutes ago I lifted the quarantine for `--verify-only` on the strength of my own structural proof. B-R7 (24 designed / 14 survived, REJECT (P) on both harness and runbook) shows the proof was invalid and the lift was wrong. Full quarantine restored on **both** modes.
+
+### What I got wrong, precisely
+
+I proved that `createHttpReadAdapter` has no `registerTrade` and no POST/PUT/DELETE/PATCH, and I was pleased with myself for instantiating it rather than reading it. But **that is a statement about client verbs offered as proof of a property about server effects.** `GET /api/sessions/{id}/state` creates and commits a session-state row when none exists, and verify-only issues that GET through L5. A read-only *client* is not a read-only *operation*. I checked the object and called it a proof about the system.
+
+Worse, I quoted `writes_issued=0` as an acceptance criterion. Verified it myself just now: `writesIssued: 0` is a **hardcoded literal** on the read adapter and nothing in verify-only can increment it. That criterion is unfalsifiable — it is a check on a constant. I have rejected three harnesses for self-certifying numbers and then published one as a safety clearance.
+
+The uncomfortable part is that this was my *own* verification, not a subagent's report I accepted. Instantiating the adapter felt like rigour and it was still the wrong question. **Proving the mechanism you thought of does not bound the mechanisms that exist** — the check I needed was "did the server commit anything", which requires instrumenting the server, not interrogating the client.
+
+### The fifth vacuity form: an unreachable failure condition
+
+The four previous forms were all about the *observation* being empty — empty ledger, empty keep-set, self-written rows, one-sided oracle. This one is about the **population** being empty.
+
+L7 is a well-built, genuinely-working detector whose failure condition **no enumerated producer can create**. It detects the alias-divergence shape that my own escalation withdrew as unproducible at 11:39 — five minutes after the artefacts were sealed. So L7 fires correctly on a planted row and is a *constant* on any real ledger. Every test of it passes and the code reads as real, which makes this the hardest form to see yet.
+
+And L7 contains the project's defect in miniature: it uses `??`, so `payload.tradeId === 0` reads as **present**, while the server's `raw.get("tradeId") or raw.get("id")` treats `0` as falsy and sweeps the row. **The two-resolvers-disagree defect, reproduced inside the detector written to catch it.** That is not irony, it is evidence that the alias problem is a house style rather than a bug.
+
+Consequence: on the shipped deployment L5 skips, L8 restates its own admission precondition, L2 is three GETs to one endpoint inside a second, L3 accepts any printable ASCII. **Phase 1a's entire content is L7, and L7 is a constant.** A session that has already lost 49 trades scores a perfect green — the previous rejection reproduced inside the new structure.
+
+### The finding that actually endangers someone
+
+Write-probe's only safety guard is `String(disposableSessionId) === String(sessionId)` — **symmetric**. It cannot tell which session is real. The write client is built from `--disposable-session-id`, so transposing two adjacent, same-looking flags on a long command line sends every POST into the real ledger, runs the orphan sweep against it, and prints all green. Phase 1a has by then handed the operator a valid real-ledger id to paste. **No instruction can fix this; the guard must become asymmetric** — an allowlist or a server-side disposable flag. Verified by construction, not accepted on report.
+
+### Actions taken
+
+Runbook rewritten: hard quarantine on both modes; the two false claims struck through **in place** rather than deleted, because an operator may have read them; `writes_issued=0` deleted as a criterion; Phase 1 removed from the pass condition entirely.
+
+**And the change that is worth more than the rest of this gate:** a STOP condition at the head of Phase 2. If the Journal tab is empty or short after a reload, the PO must stop and place or close nothing — because step 2.9 *instructs* a reload, and the next scripted action after a failed hydration is exactly what destroys the ledger. Phase 1 cannot protect the PO there; it never runs the browser client. B-R7 was right that this single sentence outweighs all of Phase 1, and it had been missing while I spent the morning on the harness.
+
+**Position on M4:** Phase 1 as an HTTP harness cannot reach the confirmed loss path, so I will not spend the remaining hours making it green. **M4 rests on Phases 0, 2 and 3.** Recommend the asymmetric-guard fix before any write-probe run ever happens.
+
+**A16.4:** manager-caused **12** (the B-0102 category error and premature banner lift). Manager-finding-defect **8**.

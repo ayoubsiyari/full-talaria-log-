@@ -1,16 +1,38 @@
 # M4 — M23/M24 re-verification on the deployed build
 
-> # ⚠️ PHASE 1 IS SPLIT BY HARNESS-01. READ BEFORE RUNNING.
+> # 🛑 PHASE 1 IS QUARANTINED. BOTH MODES. DO NOT RUN, DO NOT REPORT A GREEN.
 >
-> Rebuilt after a fourth rejection. It is now honest about its limits, which means it claims less than it used to.
+> Rejected a fifth time (B-R7, 24 designed / 14 survived). An earlier version of this banner said verify-only was *"safe on any ledger"* and that Phase 1a *"proves the real ledger was read without mutation"*. **Both statements were wrong and are withdrawn.** They are preserved here, struck through, because an operator may have read them.
 >
-> **1. Verify-only is the default and is safe on any ledger.** It constructs a read-only HTTP client with no write method and runs L2, L3, L5, L7 and L8. It must print `writes_issued=0`.
+> **A green from Phase 1a establishes essentially nothing — including nothing about whether the ledger has already lost trades.** It must not be run or reported as a safety clearance.
 >
-> *Verified structurally, not claimed:* `createHttpReadAdapter` is 37 lines containing **no `registerTrade` and no POST/PUT/DELETE/PATCH**. A check attempting to write in this mode throws rather than mutating. That is HARNESS-01 clause 1. Clause 2 holds because L1 and L4 each compute a preservation delta over **non-harness** rows and fail on any missing or changed row.
+> **1. ~~Verify-only is the default and is safe on any ledger.~~** Probably non-mutating on an already-migrated ledger, but:
 >
-> **Run 1a first, always.** If L7 reports vulnerable rows, do **not** run 1b against that session — those rows are the ones the server's orphan sweep will delete on the first write.
+> - `GET /api/sessions/{id}/state` **creates and commits a session-state row** if none exists. Verify-only issues that GET (via L5). A read-only *client* is not a read-only *operation*.
+> - **`writes_issued=0` is a hardcoded literal in verify-only mode.** Nothing in that mode can increment it. The old acceptance criterion "Phase 1a printed `writes_issued=0`" was **unfalsifiable** and is deleted.
 >
-> **2. Write-probe is explicit and disposable only.** It runs L1 and L4 against `--disposable-session-id`, never the real ledger. It warns that server writes can trigger the orphan sweep; the harness can report collateral loss but cannot undo it.
+> **2. ~~Verified structurally.~~** The old proof — *"`createHttpReadAdapter` contains no POST/PUT/DELETE/PATCH"* — is a statement about **client verbs** offered as proof of a property about **server effects**. It is a category error. HARNESS-01 clause 1 is *not* established.
+>
+> **3. On the shipped deployment, Phase 1a's entire content is L7 — and L7's failure condition is unreachable.** L5 skips, L8 restates its own precondition, L2 is three GETs to one endpoint inside a second, L3 accepts any printable ASCII. L7 detects the alias-divergence shape that the escalation **withdrew as unproducible** — every enumerated writer sets the aliases. It is a well-built detector aimed at a population that cannot contain its target. L7 also uses `??`, so a `payload.tradeId` of `0` or `{}` reads as *present*, while the server's `raw.get("tradeId") or raw.get("id")` treats `0` as falsy and sweeps the row — the two-resolvers-disagree defect reproduced **inside the detector written to catch it**.
+>
+> **4. The gate's own first two FAIL conditions pass it.** A ledger silently reduced from 500 rows to 1 scores green. One logical trade stored as two rows scores green. Nothing in verify-only compares row content or knows a prior count.
+>
+> **5. A session that has already lost 49 trades scores a perfect Phase 1a green.** That is the exact defect of the previous rejection, reproduced inside the new structure.
+>
+> **6. Write-probe can destroy the PO's real ledger with every guard green. This is the reason for the hard quarantine.**
+>
+> The two session flags sit adjacent on a long command line and both are session ids. **Transpose them and every guard is satisfied**, because the only guard is `String(disposableSessionId) === String(sessionId)` — a *symmetric* comparison that cannot tell which one is real. The write client is built from `--disposable-session-id`, so the value you meant as the real ledger receives the POSTs, the real `--session-id` is never read, and the orphan sweep runs against your live data:
+>
+> ```
+> --session-id=DISPOSABLE-77 --disposable-session-id=PO-REAL-LEDGER-4
+>   L1:PASS L4:PASS writes_issued=4   -> POSTs went to PO-REAL-LEDGER-4
+> ```
+>
+> By that point Phase 1a has already handed the operator a valid real-ledger id to paste. **No fix is possible by instruction; the guard must become asymmetric** (an explicit disposable-session allowlist or a server-side disposable flag).
+>
+> **7. The preservation delta compares a 13-field projection, not rows.** `rMultiple`, `netPnL`, `stopLoss`, `takeProfit`, `partialCloses`, screenshots, notes, tags and commissions are unprotected, and the product's default full replace of `payload_json` is a live mechanism to wipe them. This is the previous rejection one level down: that version narrowed the comparison to rows the harness wrote, this one narrows it to fields the harness picked. Write-probe also permanently consumes numbers from the **account-wide** `user_trade_id` sequence, which no delta can see.
+>
+> **8. The documented happy path exits non-zero.** `SKIP-LOUD` counts as non-pass, so every legitimate run returns exit code 1 — training the operator to ignore the one machine-readable signal that would catch a real failure.
 >
 > **3. Two legacy claims remain NOT COVERED by the HTTP harness.**
 >
@@ -25,9 +47,9 @@
 > | L7 orphan-sweep vulnerability detector | verify-only; detects rows whose payload lacks `tradeId`/`id` |
 > | L8 asserted real-ledger presence | verify-only; fails empty or wrong ledger |
 >
-> **4. So Phase 1 evidence is two artifacts:** 1a proves the real ledger was read without mutation and checked for identity, stability, L7 exposure and asserted presence. 1b proves writes conserve harness rows and collateral rows only in a disposable session.
+> **~~4. So Phase 1 evidence is two artifacts:~~ WITHDRAWN.** 1a does **not** prove the real ledger was read without mutation — see items 1 and 2. Phase 1 currently produces no evidence for the M4 gate.
 >
-> **5. Phase 4's original "all six green" is void.** The pass condition is now: 1a all verify checks green except documented SQL-primary L5 `SKIP-LOUD`, 1b L1/L4 green on a disposable session, plus Phases 0, 2 and 3.
+> **~~5. Phase 4's pass condition.~~ WITHDRAWN.** No pass condition may reference Phase 1 until it is rebuilt. **Phases 0, 2 and 3 stand and are the whole of M4 for now** — and Phase 2 is where the confirmed loss path actually lives, so it is the more valuable half regardless.
 >
 > Phases 2 (PO rollback) and 3 (Rayan re-verification) are manual, unaffected, and carry what Phase 1 cannot.
 >
@@ -119,6 +141,16 @@ M24 is described as a "canonical trade-ID grammar". The implementation is **not*
 
 Confirm the build id on screen first. Use a different QA session id than Phase 1b unless Phase 1b cleanup has been independently verified. Perform in order and do not skip.
 
+> ### 🛑 STOP CONDITION — read this before step 2.1, it matters more than the rest of this document
+>
+> **At any point, if the Journal tab is empty, or has fewer trades than you know it should: STOP IMMEDIATELY. Do not place another order. Do not close an open trade. Do not reload again. Report it and wait.**
+>
+> This is not a display glitch to click through. It is the visible symptom of the one **confirmed** live trade-loss path: a single failed `GET /state` on page load is treated as "hydrated with an empty journal" rather than "hydration failed". The client then believes you have no trades, and **the next trade you close writes that belief to the server**, which replaces the stored journal and permanently deletes every other trade in the session. There is no undo and the deletion is not logged.
+>
+> The dangerous moment is step **2.9**, because that step instructs you to reload. If the ledger looks wrong after that reload, the very next action in the script — closing or placing a trade — is what destroys the data. Stopping costs a few minutes. Continuing costs the ledger.
+>
+> Phase 1's automated checks **cannot** protect you here: they run over HTTP and never run the browser client, so they cannot see this path at all.
+
 | Step | Action | Record |
 |---|---|---|
 | 2.1 | Note the ledger's current trade count | `N0` |
@@ -148,7 +180,9 @@ Give him the build tag and digest from Phase 0 so his report is anchored to a sp
 
 ## Phase 4 — verdict (pre-registered, not negotiated)
 
-**PASS** requires all of: Phase 0 four-for-four; Phase 1a verify-only checks green with `writes_issued=0` except documented SQL-primary L5 `SKIP-LOUD`; Phase 1b L1/L4 green on a disposable session; Phase 2 no FAIL condition; Phase 3 every scenario re-verified by Rayan.
+**PASS** requires all of: Phase 0 four-for-four; Phase 2 no FAIL condition and no STOP condition triggered; Phase 3 every scenario re-verified by Rayan.
+
+**Phase 1 is excluded from the pass condition while quarantined.** It is neither required nor sufficient, and a green from it must not be recorded as evidence. Do not substitute it for Phase 2 — the automated checks cannot reach the confirmed loss path, and the human reload step can.
 
 **FAIL — and the canary does not proceed — on any one of:**
 
