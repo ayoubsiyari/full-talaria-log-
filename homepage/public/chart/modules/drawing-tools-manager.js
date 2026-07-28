@@ -12160,7 +12160,6 @@ class DrawingToolsManager {
                                     svg.selectAll(`.pending-${orderId}`).remove();
                                     svg.selectAll(`.pending-sl-${orderId}`).remove();
                                     svg.selectAll(`.pending-tp-${orderId}`).remove();
-                                    svg.selectAll(`[class*="pending-${orderId}"]`).remove();
                                 }
                             }
                         });
@@ -12179,7 +12178,6 @@ class DrawingToolsManager {
                                     if (!isNaN(textPrice) && Math.abs(textPrice - entryPrice) < 0.001) {
                                         // [debug removed]
                                         svg.selectAll(`.pending-${orderId}`).remove();
-                                        svg.selectAll(`[class*="pending-${orderId}"]`).remove();
                                     }
                                 }
                             }
