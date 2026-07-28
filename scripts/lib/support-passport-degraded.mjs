@@ -59,6 +59,10 @@
  * PASSPORT-CONTEXT-DEEP-FROZEN and PASSPORT-CONTEXT-MUTATION-CORPUS prove the returned
  * object and degradedModules array are immutable at runtime; NC-MUTANT-NO-DEEP-FREEZE
  * strips publication freezing and must be killed only by those runtime-freeze cells.
+ *
+ * W53 (C-RUL-M6-ENVELOPE) moves envelope integrity to the transport boundary. The
+ * createThread body is extracted by AST only to execute it; the gate then stubs transport
+ * and asserts the observable outgoing body, avoiding another spelling detector.
  */
 import path from 'node:path';
 import vm from 'node:vm';
@@ -2376,6 +2380,302 @@ export function runNcConsumerPinDecoysCell(deps) {
 }
 
 /* ------------------------------------------------------------------ *
+ * Transport-boundary oracle: execute real createThread bodies.        *
+ * ------------------------------------------------------------------ */
+
+/**
+ * AST use here is limited to locating the real declaration for execution. Envelope
+ * integrity is asserted at the outgoing transport body, not by syntax arms.
+ *
+ * @param {{ typescript: any, source: string, relativePath: string }} opts
+ * @returns {string}
+ */
+export function extractCreateThreadDeclaration({ typescript: ts, source, relativePath }) {
+  const sourceFile = ts.createSourceFile(
+    relativePath,
+    source,
+    ts.ScriptTarget.ES2022,
+    true,
+    ts.ScriptKind.TSX,
+  );
+  let declaration = null;
+  const visit = (node) => {
+    if (declaration) return;
+    if (ts.isVariableDeclaration(node)
+      && ts.isIdentifier(node.name)
+      && node.name.text === 'createThread'
+      && node.initializer
+      && (ts.isArrowFunction(node.initializer) || ts.isFunctionExpression(node.initializer))) {
+      declaration = node.parent?.parent ?? node;
+      return;
+    }
+    ts.forEachChild(node, visit);
+  };
+  ts.forEachChild(sourceFile, visit);
+  if (!declaration) {
+    throw new Error(`${relativePath}: const createThread declaration not found`);
+  }
+  return source.slice(declaration.getStart(sourceFile), declaration.end);
+}
+
+function createThreadHarnessSource(createThreadDeclaration) {
+  return `
+const __transportCalls = [];
+class RecordingFormData {
+  constructor() { this.__entries = []; }
+  append(name, value) { this.__entries.push([String(name), value]); }
+}
+const FormData = RecordingFormData;
+const MAX_IMAGE_UPLOAD_BYTES = 1024 * 1024;
+const imageUploadTooLargeError = () => 'too large';
+const newSubject = 't';
+const newBody = 'b';
+const newCategory = 'bug';
+const newThreadFile = __file;
+const newFile = __file;
+const newTags = '';
+const structChange = '';
+const structCurrent = '';
+const structExpected = '';
+const structFeature = '';
+const structUseCase = '';
+const newThreadFileRef = { current: { value: '' } };
+const newFileRef = { current: { value: '' } };
+const setUploadErr = () => {};
+const setError = () => {};
+const setSending = () => {};
+const setNewSubject = () => {};
+const setNewBody = () => {};
+const setNewTags = () => {};
+const setStructChange = () => {};
+const setStructCurrent = () => {};
+const setStructExpected = () => {};
+const setStructFeature = () => {};
+const setStructUseCase = () => {};
+const setNewThreadFile = () => {};
+const setNewFile = () => {};
+const setNewCategory = () => {};
+const setShowNew = () => {};
+const setNewThread = () => {};
+const setSelectedId = () => {};
+const setSelThread = () => {};
+const loadThreads = async () => {};
+const loadMessages = async () => {};
+const markThreadRead = async () => {};
+const markRead = async () => {};
+const connectWs = () => {};
+function __recordTransport(url, opts = {}) {
+  __transportCalls.push({ url, opts, body: opts.body });
+  return { thread: { id: 123, user_id: 1, subject: 't', category: 'bug', status: 'open' } };
+}
+// Transport stubs are intentionally non-thenable so createThread records the outgoing
+// body before its first await suspends. The oracle reads __transportCalls synchronously
+// after kicking the async function; do not make these return Promises.
+const api = __recordTransport;
+const supportApi = __recordTransport;
+${createThreadDeclaration}
+globalThis.__talariaRunCreateThread = () => {
+  const pending = createThread();
+  if (pending && typeof pending.then === 'function') {
+    pending.catch(() => {});
+  }
+  return __transportCalls;
+};
+`;
+}
+
+function transpileCreateThreadHarness({ typescript: ts, relativePath, harnessSource }) {
+  const emitted = ts.transpileModule(harnessSource, {
+    fileName: `${relativePath}.w53-harness.tsx`,
+    reportDiagnostics: true,
+    compilerOptions: {
+      target: ts.ScriptTarget.ES2022,
+      module: ts.ModuleKind.CommonJS,
+      jsx: ts.JsxEmit.React,
+      esModuleInterop: true,
+    },
+  });
+  const fatal = (emitted.diagnostics ?? []).filter((d) => d.category === ts.DiagnosticCategory.Error);
+  if (fatal.length > 0) {
+    throw new Error(`${relativePath}: createThread harness transpile failed: `
+      + ts.flattenDiagnosticMessageText(fatal[0].messageText, ' '));
+  }
+  return emitted.outputText;
+}
+
+function decodeTransportContext(body) {
+  if (typeof body === 'string') {
+    const payload = JSON.parse(body);
+    return { bodyKind: 'json', context: payload.context ?? null };
+  }
+  if (body && Array.isArray(body.__entries)) {
+    const entry = body.__entries.find(([name]) => name === 'context');
+    const raw = entry?.[1];
+    return {
+      bodyKind: 'formData',
+      context: typeof raw === 'string' ? JSON.parse(raw) : raw ?? null,
+      formFields: body.__entries.map(([name]) => name),
+    };
+  }
+  return { bodyKind: body == null ? 'none' : typeof body, context: null };
+}
+
+function executeConsumerCreateThreadTransport({ deps, consumer, source, fileMode }) {
+  const normalized = normalizeLineEndings(source);
+  const declaration = extractCreateThreadDeclaration({
+    typescript: deps.typescript,
+    source: normalized,
+    relativePath: consumer.relativePath,
+  });
+  const realm = createSupportPassportRealm({
+    ...deps,
+    providerPresent: true,
+  });
+  realm.window.__talariaMarkMissingModule('OrderOverlay');
+  const fakeFile = fileMode === 'formData'
+    ? { name: 'tiny.png', type: 'image/png', size: 1 }
+    : null;
+  const moduleObj = { exports: {} };
+  const sandbox = {
+    Object,
+    Array,
+    String,
+    Number,
+    Boolean,
+    JSON,
+    Math,
+    Error,
+    TypeError,
+    Promise,
+    console: realm.window.console,
+    window: realm.window,
+    self: realm.window,
+    globalThis: realm.window,
+    buildSupportContext: realm.buildSupportContext,
+    __file: fakeFile,
+    module: moduleObj,
+    exports: moduleObj.exports,
+    require: () => ({}),
+  };
+  const context = vm.createContext(sandbox);
+  const harnessSource = createThreadHarnessSource(declaration);
+  const compiled = transpileCreateThreadHarness({
+    typescript: deps.typescript,
+    relativePath: consumer.relativePath,
+    harnessSource,
+  });
+  vm.runInContext(compiled, context, { filename: `${consumer.relativePath}.w53-harness.cjs` });
+  const calls = realm.window.__talariaRunCreateThread();
+  const call = calls[0] ?? null;
+  const decoded = decodeTransportContext(call?.body);
+  const modules = decoded.context?.degradedModules;
+  const carriesOrderOverlay = Array.isArray(modules) && modules.includes('OrderOverlay');
+  return {
+    id: consumer.id,
+    relativePath: consumer.relativePath,
+    fileMode,
+    callCount: calls.length,
+    url: call?.url ?? null,
+    bodyKind: decoded.bodyKind,
+    formFields: decoded.formFields,
+    degradedModules: hostArray(modules),
+    carriesOrderOverlay,
+    ok: calls.length === 1 && carriesOrderOverlay,
+  };
+}
+
+function observeTransportConsumers(deps) {
+  const observations = [];
+  for (const consumer of SUPPORT_PASSPORT_CONSUMERS) {
+    const source = consumerSource(deps, consumer);
+    if (source === null) {
+      observations.push({
+        id: consumer.id,
+        relativePath: consumer.relativePath,
+        ok: false,
+        reason: 'consumer source unreadable',
+      });
+      continue;
+    }
+    for (const fileMode of ['json', 'formData']) {
+      observations.push(executeConsumerCreateThreadTransport({
+        deps,
+        consumer,
+        source,
+        fileMode,
+      }));
+    }
+  }
+  return observations;
+}
+
+/**
+ * @param {Parameters<typeof runConsumerCallPathCell>[0]} deps
+ */
+export function runPassportTransportDegradedModulesCell(deps) {
+  const cell = 'PASSPORT-TRANSPORT-DEGRADED-MODULES';
+  try {
+    const observations = observeTransportConsumers(deps);
+    const pass = observations.length === SUPPORT_PASSPORT_CONSUMERS.length * 2
+      && observations.every((obs) => obs.ok === true);
+    return cellResult(cell, pass, {
+      blocking: false,
+      observations,
+    }, 'wiring');
+  } catch (error) {
+    return { ...redCell(cell, String(error?.message ?? error), 'wiring'), blocking: false };
+  }
+}
+
+function blankConsumerEnvelopeForTransport(source) {
+  return reassignConsumerContextAfterPayload(source)
+    ?? discardConsumerContextPayload(source);
+}
+
+/**
+ * @param {Parameters<typeof runConsumerCallPathCell>[0]} deps
+ */
+export function runNcTransportEnvelopeBlankedCell(deps) {
+  const cell = 'NC-TRANSPORT-ENVELOPE-BLANKED';
+  try {
+    const consumerSources = {};
+    const mutations = [];
+    for (const consumer of SUPPORT_PASSPORT_CONSUMERS) {
+      const source = consumerSource(deps, consumer);
+      const mutated = source === null ? null : blankConsumerEnvelopeForTransport(source);
+      mutations.push({
+        id: consumer.id,
+        relativePath: consumer.relativePath,
+        applied: mutated !== null && mutated !== source,
+      });
+      if (mutated === null || mutated === source) {
+        return cellResult(cell, false, {
+          blocking: false,
+          mutations,
+          reason: `${consumer.relativePath}: envelope blanking negative control could not be applied`,
+        }, 'wiring');
+      }
+      consumerSources[consumer.relativePath] = mutated;
+    }
+    const transportCell = runPassportTransportDegradedModulesCell({
+      ...deps,
+      consumerSources: { ...deps.consumerSources, ...consumerSources },
+    });
+    const redObservations = transportCell.observations?.filter((obs) => obs.ok === false) ?? [];
+    const pass = transportCell.pass === false
+      && redObservations.length === SUPPORT_PASSPORT_CONSUMERS.length * 2;
+    return cellResult(cell, pass, {
+      blocking: false,
+      mutations,
+      transportWentRed: transportCell.pass === false,
+      redObservations,
+    }, 'wiring');
+  } catch (error) {
+    return { ...redCell(cell, String(error?.message ?? error), 'wiring'), blocking: false };
+  }
+}
+
+/* ------------------------------------------------------------------ *
  * Out-of-territory finding: server-side persistence of the passport.  *
  * ------------------------------------------------------------------ */
 
@@ -2478,9 +2778,11 @@ export function runSupportPassportDegradedGate(opts) {
     runNcConsumerContextReassignedCell(deps),
     runNcConsumerPinDecoysCell(deps),
     runNcMutantNoDeepFreezeCell(deps),
+    runPassportTransportDegradedModulesCell(deps),
+    runNcTransportEnvelopeBlankedCell(deps),
     probeServerContextCoercionFinding(opts.apiServerSource ?? null),
   ];
-  const blocking = cells.filter((c) => typeof c.pass === 'boolean');
+  const blocking = cells.filter((c) => typeof c.pass === 'boolean' && c.blocking !== false);
   const allPass = blocking.every((c) => c.pass === true);
   return {
     gate: SUPPORT_PASSPORT_DEGRADED_GATE_NAME,
@@ -2506,7 +2808,7 @@ export function formatSupportPassportDegradedReport(report) {
     '',
   ];
   for (const c of report.cells) {
-    const suffix = c.pass === null ? ' [non-blocking]' : '';
+    const suffix = c.pass === null || c.blocking === false ? ' [non-blocking]' : '';
     lines.push(`${c.cell} [${c.coverage}]: ${c.status}${suffix}`);
     if (Array.isArray(c.killedBy) && c.killedBy.length > 0) {
       lines.push(`    killed by: ${c.killedBy.join(', ')}`);

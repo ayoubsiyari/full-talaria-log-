@@ -23,6 +23,7 @@ import {
   countAliasLines,
   createSupportPassportRealm,
   dropAliasFromSupportUi,
+  extractCreateThreadDeclaration,
   hoistConsumerCallToUseMemo,
   inspectConsumerCallPath,
   normalizeLineEndings,
@@ -40,6 +41,7 @@ import {
   runNcConsumerContextReassignedCell,
   runNcConsumerPinDecoysCell,
   runNcMutantNoDeepFreezeCell,
+  runNcTransportEnvelopeBlankedCell,
   runPassportContextDeepFrozenCell,
   runPassportContextMutationCorpusCell,
   runPassportDegradedAliasBootCell,
@@ -48,6 +50,7 @@ import {
   runPassportDegradedRealmFidelityCell,
   runPassportDegradedRoundTripCell,
   runPassportDegradedTemporalCell,
+  runPassportTransportDegradedModulesCell,
   runSupportPassportDegradedGate,
   stripSupportContextDeepFreeze,
 } from '../lib/support-passport-degraded.mjs';
@@ -449,6 +452,47 @@ test('NC-CONSUMER-CONTEXT-REASSIGNED [wiring VER-01]: payload.context overwrite 
   assert.ok(facts.callSites.some((site) => site.contextReassignedAfter === true));
 });
 
+test('W53 extracts the real createThread declarations for execution only', () => {
+  for (const consumer of SUPPORT_PASSPORT_CONSUMERS) {
+    const declaration = extractCreateThreadDeclaration({
+      typescript,
+      relativePath: consumer.relativePath,
+      source: consumerSources[consumer.relativePath],
+    });
+    assert.match(declaration, /const createThread = async \(\) => \{/);
+    assert.match(declaration, /buildSupportContext\(\)/);
+    assert.doesNotMatch(declaration, /function createThreadFixture/);
+  }
+});
+
+test('PASSPORT-TRANSPORT-DEGRADED-MODULES [wiring VER-01]: clean consumers send degradedModules', () => {
+  const cell = runPassportTransportDegradedModulesCell(deps);
+  assert.equal(cell.coverage, 'wiring');
+  assert.equal(cell.blocking, false);
+  assert.equal(cell.status, 'GREEN', JSON.stringify(cell, null, 2));
+  assert.equal(cell.observations.length, SUPPORT_PASSPORT_CONSUMERS.length * 2);
+  for (const obs of cell.observations) {
+    assert.equal(obs.callCount, 1);
+    assert.equal(obs.url, '/api/support/threads');
+    assert.ok(['json', 'formData'].includes(obs.bodyKind));
+    assert.ok(obs.degradedModules.includes('OrderOverlay'), JSON.stringify(obs));
+    assert.equal(obs.carriesOrderOverlay, true);
+  }
+});
+
+test('NC-TRANSPORT-ENVELOPE-BLANKED [wiring VER-01]: transport oracle detects blanked envelopes', () => {
+  const cell = runNcTransportEnvelopeBlankedCell(deps);
+  assert.equal(cell.coverage, 'wiring');
+  assert.equal(cell.blocking, false);
+  assert.equal(cell.status, 'GREEN', JSON.stringify(cell, null, 2));
+  assert.equal(cell.transportWentRed, true);
+  assert.equal(cell.redObservations.length, SUPPORT_PASSPORT_CONSUMERS.length * 2);
+  assert.ok(cell.mutations.every((m) => m.applied));
+  for (const obs of cell.redObservations) {
+    assert.equal(obs.carriesOrderOverlay, false);
+  }
+});
+
 test('NC-CONSUMER-CALL-HOISTED-USEMEMO [wiring VER-01]: mount-time freeze goes RED', () => {
   // R-M6-3: callCount stays ≥1 with the import intact, but the submit handler no longer
   // evaluates the passport — every later ticket carries the mount-time snapshot.
@@ -775,7 +819,16 @@ test('gate aggregate is GREEN on the repo sources and excludes findings from all
   assert.equal(report.findings.length, 1);
   assert.equal(report.findings[0].cell, 'FINDING-SERVER-CONTEXT-STR-COERCION');
   // 10 behavioural + 17 mutants + 3 alias drops + 6 consumer wiring cells + W51 freeze mutant.
-  assert.equal(report.cells.filter((c) => typeof c.pass === 'boolean').length, 37);
+  assert.equal(report.cells.filter((c) => typeof c.pass === 'boolean' && c.blocking !== false).length, 37);
+  assert.equal(report.cells.filter((c) => typeof c.pass === 'boolean').length, 39);
+  assert.deepEqual(
+    report.cells.filter((c) => c.blocking === false).map((c) => c.cell),
+    [
+      'PASSPORT-TRANSPORT-DEGRADED-MODULES',
+      'NC-TRANSPORT-ENVELOPE-BLANKED',
+      'FINDING-SERVER-CONTEXT-STR-COERCION',
+    ],
+  );
 });
 
 test('gate refuses GREEN when no TypeScript compiler is available', () => {

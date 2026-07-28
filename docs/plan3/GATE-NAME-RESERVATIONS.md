@@ -360,6 +360,18 @@ under gate branding alone (mutant **M17**). Consumer wiring restores a **bounded
 (call result reaches request `context` / `append("context", …)`) without restoring mutation AST
 walks; **NC-CONSUMER-CONTEXT-DISCARDED** is the carrier for R-W51 Break 2.
 
+**W53 (C-RUL-M6-ENVELOPE / ORACLE-01).** Envelope integrity is now a transport-boundary oracle,
+not another syntax detector. The gate extracts each real `const createThread = async () => { ... }`
+declaration with the TypeScript AST only so it can execute the body. It binds the real
+`buildSupportContext()` from the passport realm, stubs the consumer transport (`api` /
+`supportApi`) and `FormData`, marks `OrderOverlay` degraded, then inspects the actual outgoing
+JSON and multipart request bodies. The oracle is **non-blocking** (`blocking: false`): M6 ship
+credit is scoped to freeze+corpus, and the envelope class remains an OPEN follow-on.
+
+**M6 ship status (Director ruling 2026-07-28):** **SCOPED — freeze+corpus GRANTED.** Envelope
+class OPEN as W53 follow-on (REACH-01: no live blanking producer per C-ASM-M6-LATE-WRITER).
+Not "M6 complete."
+
 CI: `.github/workflows/support-passport-degraded.yml` (gate self-test, then preflight, then
 evidence artifact). W42 added both consumer `.tsx` paths to the trigger set.
 
@@ -381,6 +393,8 @@ evidence artifact). W42 added both consumer `.tsx` paths to the trigger set.
 | NC-CONSUMER-CONTEXT-REASSIGNED | after bind, `payload.context = …` / `Object.assign(..., { context })` blanks the ticket while the frozen builder return stays pristine; wiring pin goes RED (R-W51b / W52) | wiring | LIVE (W52) |
 | NC-CONSUMER-PIN-DECOYS | line comment, block comment, string literal, template literal, **regex literal** and **JSX text** each containing `buildSupportContext()` must not pay the pin, on both consumers; the same decoy appended to the intact file must leave the real call site still counted | wiring | LIVE (W42) |
 | NC-MUTANT-NO-DEEP-FREEZE | strip the publication deep-freeze from `supportUi.tsx`; the runtime-freeze cells must go RED while round-trip/temporal extraction cells stay GREEN | soundness | LIVE (W51) |
+| PASSPORT-TRANSPORT-DEGRADED-MODULES | execute both consumers' real `createThread` bodies with stubbed transport and `FormData`; JSON and multipart outgoing bodies must carry `context.degradedModules[]` including `OrderOverlay` after the realm marks it degraded | wiring | LIVE (W53, non-blocking follow-on) |
+| NC-TRANSPORT-ENVELOPE-BLANKED | apply the existing context-discard/reassign negative-control mutations to the consumer sources, then run the same transport oracle; the NC passes only because the oracle goes RED on the outgoing body | wiring | LIVE (W53, non-blocking follow-on) |
 | SUPPORT-UI-SOURCE-CONTRACT | — | WITHDRAWN (W42) — substring pin on `window.__TALARIA_DEGRADED_STATE`, a prefix of `..._STATE__`, therefore unfalsifiable; superseded by the alias boot cells |
 | NC-ALIAS-PIN-REMOVAL | — | WITHDRAWN (W42) — negative control for a withdrawn pin; superseded by NC-ALIAS-DROP-* |
 | NC-COMMENT-DOES-NOT-SATISFY-PIN | — | WITHDRAWN (W42) — covered only comments and string literals; the regex-literal and JSX-text decoys it missed are in NC-CONSUMER-PIN-DECOYS |
