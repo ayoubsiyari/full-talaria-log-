@@ -490,7 +490,7 @@ Pinned budget name (hermetic): `HERMETIC_STORAGE_BUDGET_V1` — changing limits 
 
 | Name | Signature token | Implementation | Status |
 |---|---|---|---|
-| M6-REPLAY-LEAK-GATE-V1 | `TALARIA_M6_REPLAY_LEAK_V1` | `scripts/m6-replay-leak-gate.mjs`, `scripts/lib/m6-replay-leak-probe.mjs`, `scripts/tests/m6-replay-leak-gate.test.mjs` | ESCALATED / UNPROVEN — PO workload armed (4 panels + indicators + order + live replay) still returns live=1 on unfixed HEAD; preflight mints UNPROVEN not GREEN; R-W57 ACCEPT is not the acceptance instrument |
+| M6-REPLAY-LEAK-GATE-V1 | `TALARIA_M6_REPLAY_LEAK_V1` | `scripts/m6-replay-leak-gate.mjs`, `scripts/lib/m6-replay-leak-probe.mjs`, `scripts/tests/m6-replay-leak-gate.test.mjs` | ESCALATED / UNPROVEN — PO workload armed (4 panels + indicators + order + live replay) still returns live=1 on unfixed HEAD unless a sound scheduler channel goes RED; preflight mints UNPROVEN not GREEN; R-W57 ACCEPT is not the acceptance instrument |
 
 Cells:
 
@@ -499,9 +499,10 @@ Cells:
 | M6-PO-WORKLOAD-ARMED | four panels, ≥3 indicators each, host order placed, replay observed playing | LIVE (arm) |
 | M6-REPLAY-LIVE-COUNT-RETURNS-TO-ONE | after N PO-workload cycles back to single-chart, live Q6 instances === 1 | UNPROVEN (cannot go RED on today's unfixed code) |
 | M6-DETACHED-IFRAME-COUNT-NOT-GROWN | after return to single: connected iframes 0 and detachedLive 0 | UNPROVEN (same) |
-| M6-SCHEDULER-CENSUS-RETURNS-TO-BASELINE | after PO-workload cycles return to single-chart and 60s soak, harness + open-panel scheduling residue stays within baseline + `M6_SCHEDULER_CENSUS_EPSILON` | LIVE as blocking instrument; if flat with live=1, verdict remains UNPROVEN / ESCALATE |
+| M6-SCHEDULER-CENSUS-INSTRUMENTED | baseline and final scheduler census both have `installedWindows>=1`, `windowCount>=1`, and no wrapper errors; blind census is RED and cannot count as PO defect reproduced | LIVE |
+| M6-SCHEDULER-CENSUS-RETURNS-TO-BASELINE | after PO-workload cycles return to single-chart and equal 60s baseline/final soaks, per-channel deltas must return to baseline: intervals/message channels/broadcast channels/workers/listener registration set `<=0`, timeout/rAF compared only soaked-vs-soaked | LIVE as blocking instrument; only sound-channel RED (intervals/channels/workers) can reproduce the defect |
 | NC-M6-TEARDOWN-REVERSAL | served mutant no-ops `m20Q6DrainState` + `destroy()`; acceptance cells must go RED | LIVE (machinery; not ship credit while UNPROVEN) |
-| NC-M6-SCHEDULER-ORPHAN-INTERVAL | synthetic unclosed interval in scheduler census makes `M6-SCHEDULER-CENSUS-RETURNS-TO-BASELINE` RED while Q6 live may return to 1 | LIVE (unit fault-injection) |
+| NC-M6-SCHEDULER-ORPHAN-INTERVAL | live browser mutant installs one uncleared interval through the wrapped harness-window `setInterval` after the soaked baseline; `M6-SCHEDULER-CENSUS-RETURNS-TO-BASELINE` must RED on pending-interval delta even when Q6 live returns to 1 | LIVE |
 
 ## Queue item 10 extension — PO CPU A/B benchmark (W58c)
 

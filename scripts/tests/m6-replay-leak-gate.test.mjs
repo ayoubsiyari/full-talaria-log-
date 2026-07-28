@@ -48,6 +48,8 @@ function schedulerTotals(overrides = {}) {
     rafCallbacks: 0,
     installedWindows: 1,
     windowCount: 1,
+    errorCount: 0,
+    errors: [],
     totalResidue: 0,
     ...overrides,
   };
@@ -92,12 +94,13 @@ test('unit: acceptance and mutant cells encode director-required verdicts', () =
 
   assert.deepEqual(
     assertM6ReplayLeakCounts({ baseline, final: greenFinal, workload }).map((cell) => cell.pass),
-    [true, true, true, true],
+    [true, true, true, true, true],
   );
 
   const mutantCells = assertM6ReplayLeakCounts({ baseline, final: redFinal, mutant: true, workload });
   assert.equal(mutantCells.find((cell) => cell.name === 'M6-REPLAY-LIVE-COUNT-RETURNS-TO-ONE').pass, false);
   assert.equal(mutantCells.find((cell) => cell.name === 'M6-DETACHED-IFRAME-COUNT-NOT-GROWN').pass, false);
+  assert.equal(mutantCells.find((cell) => cell.name === 'M6-SCHEDULER-CENSUS-INSTRUMENTED').pass, true);
   assert.equal(mutantCells.find((cell) => cell.name === 'M6-SCHEDULER-CENSUS-RETURNS-TO-BASELINE').pass, false);
   assert.equal(mutantCells.find((cell) => cell.name === 'NC-M6-TEARDOWN-REVERSAL').pass, true);
 });
@@ -139,6 +142,46 @@ test('unit: scheduler census wraps observable scheduling residue', () => {
   win.clearInterval(interval);
 });
 
+test('unit: scheduler census listeners are identity keyed', () => {
+  const listeners = new Map();
+  const win = {
+    performance: { now: () => 10 },
+    setTimeout() { return 1; },
+    clearTimeout() {},
+    setInterval() { return 2; },
+    clearInterval() {},
+    requestAnimationFrame() { return 3; },
+    cancelAnimationFrame() {},
+    EventTarget: function EventTarget() {},
+  };
+  win.EventTarget.prototype.addEventListener = function addEventListener(type, listener) {
+    listeners.set(type, listener);
+  };
+  win.EventTarget.prototype.removeEventListener = function removeEventListener(type, listener) {
+    if (listeners.get(type) === listener) listeners.delete(type);
+  };
+  const signal = new win.EventTarget();
+  signal.aborted = false;
+  const target = new win.EventTarget();
+  const neverAdded = () => {};
+  const onceListener = () => {};
+  const signalledListener = () => {};
+
+  installM6SchedulingCensus(win, 'fixture');
+  target.removeEventListener('message', neverAdded);
+  assert.equal(summarizeM6SchedulingCensus(win, 'fixture').eventListeners, 0);
+
+  target.addEventListener('message', onceListener, { once: true });
+  assert.equal(summarizeM6SchedulingCensus(win, 'fixture').eventListeners, 1);
+  listeners.get('message')({ type: 'message' });
+  assert.equal(summarizeM6SchedulingCensus(win, 'fixture').eventListeners, 0);
+
+  target.addEventListener('message', signalledListener, { signal });
+  assert.equal(summarizeM6SchedulingCensus(win, 'fixture').eventListeners, 1);
+  listeners.get('abort')({ type: 'abort' });
+  assert.equal(summarizeM6SchedulingCensus(win, 'fixture').eventListeners, 0);
+});
+
 test('fault-injection: orphan scheduler residue blocks acceptance even when Q6 live returns to one', () => {
   const baseline = withScheduler({ liveReplaySystems: 1, connectedIframes: 0, detachedTrackedIframes: 0 });
   const final = withScheduler(
@@ -152,6 +195,47 @@ test('fault-injection: orphan scheduler residue blocks acceptance even when Q6 l
   });
 
   assert.equal(cells.find((cell) => cell.name === 'M6-SCHEDULER-CENSUS-RETURNS-TO-BASELINE').pass, false);
+  assert.equal(cells.find((cell) => cell.name === 'M6-SCHEDULER-CENSUS-RETURNS-TO-BASELINE').metrics.soundChannelRed, true);
+});
+
+test('fault-injection: blind scheduler census fails closed separately', () => {
+  const baseline = withScheduler(
+    { liveReplaySystems: 1, connectedIframes: 0, detachedTrackedIframes: 0 },
+    schedulerTotals({ installedWindows: 0, windowCount: 1 }),
+  );
+  const final = withScheduler({ liveReplaySystems: 1, connectedIframes: 0, detachedTrackedIframes: 0 });
+  const cells = assertM6ReplayLeakCounts({
+    baseline,
+    final,
+    workload: { armed: true, panels: 4, indicatorsOk: true, order: { ok: true }, stillPlaying: 4 },
+  });
+
+  assert.equal(cells.find((cell) => cell.name === 'M6-SCHEDULER-CENSUS-INSTRUMENTED').pass, false);
+  assert.equal(cells.find((cell) => cell.name === 'M6-SCHEDULER-CENSUS-RETURNS-TO-BASELINE').pass, false);
+});
+
+test('fault-injection: listener-only drift is not a reproduced PO defect', async () => {
+  const preflight = await runM6ReplayLeakPreflight({
+    findBrowser: () => '/fixture/chrome',
+    runBrowser: async () => ({
+      report: {
+        ok: true,
+        cycles: 5,
+        workload: { armed: true, panels: 4, indicatorsOk: true, order: { ok: true }, stillPlaying: 4 },
+        baseline: withScheduler({ liveReplaySystems: 1, connectedIframes: 0, detachedTrackedIframes: 0 }),
+        final: withScheduler(
+          { liveReplaySystems: 1, connectedIframes: 0, detachedTrackedIframes: 0 },
+          schedulerTotals({ eventListeners: 1, totalResidue: 1 }),
+        ),
+      },
+      timedOut: false,
+      stderrTail: '',
+    }),
+  });
+
+  assert.equal(preflight.ok, false);
+  assert.equal(preflight.status, 'UNPROVEN');
+  assert.match(preflight.error, /listener-only drift is not PO defect reproduced/);
 });
 
 test('unit: mutant string apply no-ops destroy drain and fails if target moves', () => {
@@ -246,7 +330,7 @@ test('fault-injection: preflight treats scheduler census RED as reproduced PO de
 
   assert.equal(preflight.ok, false);
   assert.equal(preflight.status, 'RED');
-  assert.match(preflight.error, /schedulerRed=true/);
+  assert.match(preflight.error, /soundSchedulerRed=true/);
 });
 
 test('fault-injection: preflight requires mutant to go red once FIXED=1', async () => {
@@ -259,18 +343,25 @@ test('fault-injection: preflight requires mutant to go red once FIXED=1', async 
       runBrowser: async () => {
         calls += 1;
         const mutant = calls === 2;
+        const schedulerOrphan = calls === 3;
         return {
           report: {
             ok: true,
             cycles: 5,
             workload: { armed: true, panels: 4, indicatorsOk: true, order: { ok: true }, stillPlaying: 4 },
+            schedulerOrphan: schedulerOrphan ? { installed: true, reused: false } : null,
             baseline: withScheduler({ liveReplaySystems: 1, connectedIframes: 0, detachedTrackedIframes: 0 }),
             final: mutant
               ? withScheduler(
                 { liveReplaySystems: 6, connectedIframes: 0, detachedTrackedIframes: 5 },
                 schedulerTotals({ pendingIntervals: 3, totalResidue: 3 }),
               )
-              : withScheduler({ liveReplaySystems: 1, connectedIframes: 0, detachedTrackedIframes: 0 }),
+              : schedulerOrphan
+                ? withScheduler(
+                  { liveReplaySystems: 1, connectedIframes: 0, detachedTrackedIframes: 0 },
+                  schedulerTotals({ pendingIntervals: 1, totalResidue: 1 }),
+                )
+                : withScheduler({ liveReplaySystems: 1, connectedIframes: 0, detachedTrackedIframes: 0 }),
           },
           timedOut: false,
           stderrTail: '',
@@ -281,6 +372,8 @@ test('fault-injection: preflight requires mutant to go red once FIXED=1', async 
     assert.equal(preflight.ok, true);
     assert.equal(preflight.status, 'GREEN');
     assert.equal(preflight.mutant.status, 'RED');
+    assert.equal(preflight.schedulerMutant.status, 'RED');
+    assert.equal(preflight.schedulerMutant.cells.find((cell) => cell.name === 'NC-M6-SCHEDULER-ORPHAN-INTERVAL').pass, true);
   } finally {
     if (prev === undefined) delete process.env.TALARIA_M6_LEAK_FIXED;
     else process.env.TALARIA_M6_LEAK_FIXED = prev;

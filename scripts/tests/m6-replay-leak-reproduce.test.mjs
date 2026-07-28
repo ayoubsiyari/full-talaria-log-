@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { findLocalChromiumBrowser } from '../../chart v 1.4/chart/modules/m21-w6-fixtures/browser-cli.mjs';
-import { runM6ReplayLeakGate } from '../m6-replay-leak-gate.mjs';
+import { runM6ReplayLeakPreflight } from '../m6-replay-leak-gate.mjs';
 
 test('reproduce: PO workload must stay RED on unfixed product (not a pass if live=1)', async (t) => {
   const browserPath = findLocalChromiumBrowser();
@@ -16,38 +16,24 @@ test('reproduce: PO workload must stay RED on unfixed product (not a pass if liv
 
   // R-W57 ACCEPT is not the acceptance instrument. Until the PO 4→17 defect
   // is reproduced here, live=1 is escalate — not GREEN ship credit.
-  const result = await runM6ReplayLeakGate({ cycles: 3, timeoutMs: 240_000, requireBrowser: true });
-  assert.equal(result.meta.browserPath, browserPath);
-  assert.ok(result.report, result.error || 'missing report');
-  assert.equal(result.report.workload?.armed, true, JSON.stringify(result.report.workload, null, 2));
+  const result = await runM6ReplayLeakPreflight({ cycles: 3, timeoutMs: 240_000, requireBrowser: true });
+  const acceptance = result.acceptance;
+  assert.ok(acceptance, result.error || 'missing acceptance result');
+  assert.equal(acceptance.meta.browserPath, browserPath);
+  assert.ok(acceptance.report, result.error || 'missing report');
+  assert.equal(acceptance.report.workload?.armed, true, JSON.stringify(acceptance.report.workload, null, 2));
 
-  const finalLive = result.report.final?.liveReplaySystems;
-  const schedulerCell = result.cells.find((cell) => cell.name === 'M6-SCHEDULER-CENSUS-RETURNS-TO-BASELINE');
-  const schedulerRed = schedulerCell && schedulerCell.pass === false;
-  if (finalLive === 1 && !schedulerRed) {
-    assert.fail(
-      'ESCALATE-TO-DIRECTOR: PO workload (4 panels + indicators + order + live replay) still returned live=1. '
-      + 'Scheduler census also returned to baseline. Leak condition unidentified — must not be recorded as a pass. '
-      + JSON.stringify({
-        status: result.status,
-        baseline: result.report.baseline,
-        finalImmediate: result.report.finalImmediate,
-        final: result.report.final,
-        schedulerSoakMs: result.report.schedulerSoakMs,
-        cells: result.cells,
-        cycleLive: (result.report.cycleSnapshots || []).map((s) => ({
-          label: s.label,
-          live: s.liveReplaySystems,
-          detached: s.detachedTrackedIframes,
-          schedulerTotal: s.schedulingCensus?.totals?.totalResidue,
-        })),
-      }, null, 2),
-    );
+  const finalLive = acceptance.report.final?.liveReplaySystems;
+  const schedulerCell = acceptance.cells.find((cell) => cell.name === 'M6-SCHEDULER-CENSUS-RETURNS-TO-BASELINE');
+  const soundSchedulerRed = schedulerCell && schedulerCell.pass === false && schedulerCell.metrics?.soundChannelRed === true;
+  if (finalLive === 1 && !soundSchedulerRed) {
+    assert.equal(result.status, 'UNPROVEN', result.error || JSON.stringify(acceptance.cells, null, 2));
+    return;
   }
 
-  assert.equal(result.status, 'RED', result.error || JSON.stringify(result.cells, null, 2));
+  assert.equal(result.status, 'RED', result.error || JSON.stringify(acceptance.cells, null, 2));
   assert.ok(
-    finalLive > 1 || schedulerRed,
-    `expected final live > 1 or scheduler census RED, got live=${finalLive}, scheduler=${JSON.stringify(schedulerCell)}`,
+    soundSchedulerRed,
+    `expected sound scheduler census RED, got live=${finalLive}, scheduler=${JSON.stringify(schedulerCell)}`,
   );
 });

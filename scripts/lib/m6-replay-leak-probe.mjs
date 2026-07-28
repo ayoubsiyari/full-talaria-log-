@@ -1,6 +1,22 @@
 export const M6_REPLAY_LEAK_SIGNATURE = 'TALARIA_M6_REPLAY_LEAK_V1';
-export const M6_SCHEDULER_CENSUS_EPSILON = 2;
 const M6_SCHEDULER_CENSUS_KEY = '__talariaM6SchedulerCensus';
+const M6_ZERO_TOLERANCE_CHANNELS = [
+  'pendingIntervals',
+  'messageChannels',
+  'broadcastChannels',
+  'workers',
+  'eventListeners',
+];
+const M6_SOAKED_TIMER_CHANNELS = [
+  'pendingTimeouts',
+  'pendingRafs',
+];
+const M6_SOUND_DEFECT_CHANNELS = [
+  'pendingIntervals',
+  'messageChannels',
+  'broadcastChannels',
+  'workers',
+];
 
 function isObject(value) {
   return value !== null && (typeof value === 'object' || typeof value === 'function');
@@ -116,8 +132,9 @@ export function installM6SchedulingCensus(win, label = 'window') {
     timeouts: new Set(),
     intervals: new Set(),
     rafs: new Set(),
-    listenerTotal: 0,
-    listenerKeys: new Map(),
+    listenerRegistrations: new Map(),
+    listenerIndex: new WeakMap(),
+    nextListenerId: 1,
     channels: new Set(),
     broadcastChannels: new Set(),
     workers: new Set(),
@@ -205,21 +222,93 @@ export function installM6SchedulingCensus(win, label = 'window') {
     const originalAdd = proto && proto.addEventListener;
     const originalRemove = proto && proto.removeEventListener;
     if (proto && originalAdd && originalRemove && !proto.__talariaM6ListenerWrapped) {
-      proto.addEventListener = function m6AddEventListener(type, listener, options) {
-        if (listener) {
-          const key = `${String(type)}|${String(!!(options && options.capture))}`;
-          state.listenerKeys.set(key, (state.listenerKeys.get(key) || 0) + 1);
-          state.listenerTotal += 1;
+      const captureOf = (options) => {
+        if (options === true) return true;
+        return !!(options && typeof options === 'object' && options.capture);
+      };
+      const onceOf = (options) => !!(options && typeof options === 'object' && options.once);
+      const signalOf = (options) => (options && typeof options === 'object' ? options.signal : null);
+      const listenerTypeKey = (type, capture) => `${String(type)}|${String(capture)}`;
+      const listenerMapFor = (target, listener, create) => {
+        if (!isObject(target) || !isObject(listener)) return null;
+        let byListener = state.listenerIndex.get(target);
+        if (!byListener && create) {
+          byListener = new WeakMap();
+          state.listenerIndex.set(target, byListener);
         }
-        return originalAdd.call(this, type, listener, options);
+        if (!byListener) return null;
+        let byType = byListener.get(listener);
+        if (!byType && create) {
+          byType = new Map();
+          byListener.set(listener, byType);
+        }
+        return byType || null;
+      };
+      const unregisterRecord = (record) => {
+        if (!record || !record.active) return false;
+        record.active = false;
+        const byType = listenerMapFor(record.target, record.listener, false);
+        const key = listenerTypeKey(record.type, record.capture);
+        if (byType && byType.get(key) === record) byType.delete(key);
+        state.listenerRegistrations.delete(record.id);
+        if (record.signal && record.abortHandler) {
+          try { originalRemove.call(record.signal, 'abort', record.abortHandler, false); } catch (_) {}
+        }
+        return true;
+      };
+      const invokeListener = (listener, thisArg, args) => {
+        if (typeof listener === 'function') return listener.apply(thisArg, args);
+        if (listener && typeof listener.handleEvent === 'function') return listener.handleEvent.apply(listener, args);
+        return undefined;
+      };
+      const registerListener = (target, type, listener, options) => {
+        if (!listener || !isObject(listener)) return null;
+        const signal = signalOf(options);
+        if (signal && signal.aborted) return null;
+        const capture = captureOf(options);
+        const key = listenerTypeKey(type, capture);
+        const byType = listenerMapFor(target, listener, true);
+        if (!byType) return null;
+        const existing = byType.get(key);
+        if (existing && existing.active) return existing;
+        const record = {
+          id: state.nextListenerId++,
+          target,
+          type: String(type),
+          capture,
+          listener,
+          wrapped: listener,
+          signal,
+          abortHandler: null,
+          active: true,
+        };
+        if (onceOf(options)) {
+          record.wrapped = function m6OnceEventListener(...args) {
+            unregisterRecord(record);
+            return invokeListener(listener, this, args);
+          };
+        }
+        if (signal && typeof signal.addEventListener === 'function') {
+          record.abortHandler = () => unregisterRecord(record);
+          try { originalAdd.call(signal, 'abort', record.abortHandler, { once: true }); } catch (_) {}
+        }
+        byType.set(key, record);
+        state.listenerRegistrations.set(record.id, record);
+        return record;
+      };
+      const findListener = (target, type, listener, options) => {
+        const byType = listenerMapFor(target, listener, false);
+        return byType ? byType.get(listenerTypeKey(type, captureOf(options))) || null : null;
+      };
+      proto.addEventListener = function m6AddEventListener(type, listener, options) {
+        const record = registerListener(this, type, listener, options);
+        return originalAdd.call(this, type, record ? record.wrapped : listener, options);
       };
       proto.removeEventListener = function m6RemoveEventListener(type, listener, options) {
-        if (listener) {
-          const key = `${String(type)}|${String(!!(options && options.capture))}`;
-          const count = state.listenerKeys.get(key) || 0;
-          if (count > 1) state.listenerKeys.set(key, count - 1);
-          else state.listenerKeys.delete(key);
-          state.listenerTotal = Math.max(0, state.listenerTotal - 1);
+        const record = findListener(this, type, listener, options);
+        if (record) {
+          unregisterRecord(record);
+          return originalRemove.call(this, type, record.wrapped, options);
         }
         return originalRemove.call(this, type, listener, options);
       };
@@ -321,7 +410,7 @@ export function summarizeM6SchedulingCensus(win, label = 'window') {
     pendingTimeouts: state ? state.timeouts.size : 0,
     pendingIntervals: state ? state.intervals.size : 0,
     pendingRafs: state ? state.rafs.size : 0,
-    eventListeners: state ? state.listenerTotal : 0,
+    eventListeners: state ? state.listenerRegistrations.size : 0,
     messageChannels: state ? state.channels.size : 0,
     broadcastChannels: state ? state.broadcastChannels.size : 0,
     workers: state ? state.workers.size : 0,
@@ -367,13 +456,18 @@ export function aggregateM6SchedulingCensus(rows = []) {
     rafCallbacks: 0,
     installedWindows: 0,
     windowCount: windows.length,
+    errorCount: 0,
+    errors: [],
   };
   for (const row of windows) {
     if (row && row.installed) totals.installedWindows += 1;
     for (const key of Object.keys(totals)) {
-      if (key === 'installedWindows' || key === 'windowCount') continue;
+      if (key === 'installedWindows' || key === 'windowCount' || key === 'errors') continue;
       totals[key] += Number(row && row[key]) || 0;
     }
+    const errors = Array.isArray(row && row.errors) ? row.errors.filter(Boolean) : [];
+    totals.errorCount += errors.length;
+    totals.errors.push(...errors.map((error) => `${row.label || 'window'}:${error}`));
   }
   totals.totalResidue = totalM6SchedulingResidue(totals);
   return totals;
@@ -386,11 +480,48 @@ export function countDetachedIframes(trackedIframes = []) {
   return trackedIframes.filter((frame) => frame && frame.isConnected === false).length;
 }
 
+function schedulerCensusInstrumented(totals) {
+  return !!totals
+    && Number(totals.installedWindows) >= 1
+    && Number(totals.windowCount) >= 1
+    && (!Array.isArray(totals.errors) || totals.errors.length === 0)
+    && Number(totals.errorCount || 0) === 0;
+}
+
+function schedulerChannelDeltas(baselineScheduler, finalScheduler) {
+  const deltas = {};
+  for (const key of [
+    ...M6_ZERO_TOLERANCE_CHANNELS,
+    ...M6_SOAKED_TIMER_CHANNELS,
+  ]) {
+    deltas[key] = (Number(finalScheduler && finalScheduler[key]) || 0)
+      - (Number(baselineScheduler && baselineScheduler[key]) || 0);
+  }
+  return deltas;
+}
+
+function schedulerDeltaEvaluation(baselineScheduler, finalScheduler) {
+  const deltas = schedulerChannelDeltas(baselineScheduler, finalScheduler);
+  const zeroToleranceOk = M6_ZERO_TOLERANCE_CHANNELS.every((key) => deltas[key] <= 0);
+  const soakedTimerOk = M6_SOAKED_TIMER_CHANNELS.every((key) => deltas[key] <= 0);
+  const soundChannelRed = M6_SOUND_DEFECT_CHANNELS.some((key) => deltas[key] > 0);
+  return {
+    deltas,
+    zeroToleranceOk,
+    soakedTimerOk,
+    soundChannelRed,
+    pass: zeroToleranceOk && soakedTimerOk,
+  };
+}
+
 export function assertM6ReplayLeakCounts({ baseline, final, mutant = false, workload = null } = {}) {
   const workloadArmed = !workload || workload.armed === true;
   const baselineScheduler = baseline?.schedulingCensus?.totals || null;
   const finalScheduler = final?.schedulingCensus?.totals || null;
-  const schedulerDelta = (Number(finalScheduler?.totalResidue) || 0) - (Number(baselineScheduler?.totalResidue) || 0);
+  const baselineInstrumented = schedulerCensusInstrumented(baselineScheduler);
+  const finalInstrumented = schedulerCensusInstrumented(finalScheduler);
+  const schedulerInstrumented = baselineInstrumented && finalInstrumented;
+  const schedulerDeltas = schedulerDeltaEvaluation(baselineScheduler, finalScheduler);
   const cells = [
     {
       name: 'M6-PO-WORKLOAD-ARMED',
@@ -417,12 +548,25 @@ export function assertM6ReplayLeakCounts({ baseline, final, mutant = false, work
       detail: `connected=${final?.connectedIframes}; detachedLive=${final?.detachedTrackedIframes}; baselineDetachedLive=${baseline?.detachedTrackedIframes}`,
     },
     {
+      name: 'M6-SCHEDULER-CENSUS-INSTRUMENTED',
+      blocking: true,
+      pass: schedulerInstrumented,
+      detail: `baselineInstalled=${baselineScheduler?.installedWindows}/${baselineScheduler?.windowCount}; finalInstalled=${finalScheduler?.installedWindows}/${finalScheduler?.windowCount}; baselineErrors=${(baselineScheduler?.errors || []).join(',') || 'none'}; finalErrors=${(finalScheduler?.errors || []).join(',') || 'none'}`,
+      metrics: {
+        baselineInstalledWindows: Number(baselineScheduler?.installedWindows) || 0,
+        baselineWindowCount: Number(baselineScheduler?.windowCount) || 0,
+        finalInstalledWindows: Number(finalScheduler?.installedWindows) || 0,
+        finalWindowCount: Number(finalScheduler?.windowCount) || 0,
+        baselineErrorCount: Number(baselineScheduler?.errorCount) || 0,
+        finalErrorCount: Number(finalScheduler?.errorCount) || 0,
+      },
+    },
+    {
       name: 'M6-SCHEDULER-CENSUS-RETURNS-TO-BASELINE',
       blocking: true,
-      pass: !!baselineScheduler
-        && !!finalScheduler
-        && schedulerDelta <= M6_SCHEDULER_CENSUS_EPSILON,
-      detail: `baselineTotal=${baselineScheduler?.totalResidue}; finalTotal=${finalScheduler?.totalResidue}; delta=${schedulerDelta}; epsilon=${M6_SCHEDULER_CENSUS_EPSILON}; timers=${finalScheduler?.pendingTimeouts}/${finalScheduler?.pendingIntervals}; raf=${finalScheduler?.pendingRafs}; listeners=${finalScheduler?.eventListeners}; channels=${finalScheduler?.messageChannels}/${finalScheduler?.broadcastChannels}; workers=${finalScheduler?.workers}`,
+      pass: schedulerInstrumented && schedulerDeltas.pass,
+      detail: `baselineTotal=${baselineScheduler?.totalResidue}; finalTotal=${finalScheduler?.totalResidue}; deltas=${JSON.stringify(schedulerDeltas.deltas)}; zeroToleranceOk=${schedulerDeltas.zeroToleranceOk}; soakedTimerOk=${schedulerDeltas.soakedTimerOk}; soundChannelRed=${schedulerDeltas.soundChannelRed}`,
+      metrics: schedulerDeltas,
     },
   ];
 

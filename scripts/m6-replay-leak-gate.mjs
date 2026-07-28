@@ -66,10 +66,11 @@ function escapeHtmlAttr(value) {
   return String(value).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
 }
 
-export function m6ReplayLeakHostHtml({ cycles = DEFAULT_M6_CYCLES } = {}) {
+export function m6ReplayLeakHostHtml({ cycles = DEFAULT_M6_CYCLES, schedulerOrphanInterval = false } = {}) {
   const safeCycles = Math.max(1, Math.min(20, Number(cycles) || DEFAULT_M6_CYCLES));
   const indicatorJson = JSON.stringify(M6_PO_INDICATORS);
   const panelIdsJson = JSON.stringify(M6_PANEL_IDS);
+  const schedulerOrphanIntervalJson = JSON.stringify(!!schedulerOrphanInterval);
   return `<!doctype html>
 <html>
 <head>
@@ -94,6 +95,7 @@ export function m6ReplayLeakHostHtml({ cycles = DEFAULT_M6_CYCLES } = {}) {
     const cycles = ${safeCycles};
     const PANEL_IDS = ${panelIdsJson};
     const INDICATORS = ${indicatorJson};
+    const SCHEDULER_ORPHAN_INTERVAL = ${schedulerOrphanIntervalJson};
     // Strong {frame, replay} pairs only. WeakRef / contentWindow-null prune
     // would hide detached panel documents (W55-class soft pass on the PO leak).
     const trackedPanels = [];
@@ -123,6 +125,17 @@ export function m6ReplayLeakHostHtml({ cycles = DEFAULT_M6_CYCLES } = {}) {
         rows,
         totals: aggregateM6SchedulingCensus(rows)
       };
+    }
+
+    function installSchedulerOrphanInterval() {
+      if (!SCHEDULER_ORPHAN_INTERVAL) return null;
+      const win = harnessWindow();
+      installM6SchedulingCensus(win, 'A-harness');
+      if (win.__talariaM6SchedulerOrphanInterval) {
+        return { installed: true, reused: true };
+      }
+      win.__talariaM6SchedulerOrphanInterval = win.setInterval(() => {}, 30000);
+      return { installed: true, reused: false };
     }
 
     function snapshot(label) {
@@ -538,7 +551,9 @@ export function m6ReplayLeakHostHtml({ cycles = DEFAULT_M6_CYCLES } = {}) {
           throw new Error('armed four-panel live count below 4: live=' + armed.liveReplaySystems);
         }
         await collapseToSingle();
-        const baseline = snapshot('baseline-single');
+        await sleep(${M6_SCHEDULER_SOAK_MS});
+        const baseline = snapshot('baseline-single-after-60s');
+        const schedulerOrphan = installSchedulerOrphanInterval();
         const cycleSnapshots = [armed];
         for (let index = 0; index < cycles; index += 1) {
           await expandToFourPanels();
@@ -560,6 +575,7 @@ export function m6ReplayLeakHostHtml({ cycles = DEFAULT_M6_CYCLES } = {}) {
           finishedAt: new Date().toISOString(),
           cycles,
           workload,
+          schedulerOrphan,
           baseline,
           final,
           finalImmediate,
@@ -618,7 +634,12 @@ async function proxyRequest({ harness, request, response, mutatedReplaySource })
   response.end(body);
 }
 
-export async function startM6ReplayLeakServer({ mutant = false, cycles = DEFAULT_M6_CYCLES, onReport } = {}) {
+export async function startM6ReplayLeakServer({
+  mutant = false,
+  cycles = DEFAULT_M6_CYCLES,
+  schedulerOrphanInterval = false,
+  onReport,
+} = {}) {
   const harness = await startHarnessServer(0);
   const mutatedReplaySource = mutant
     ? applyM6ReplayTeardownReversal(fs.readFileSync(REPLAY_SYSTEM_PATH, 'utf8'))
@@ -639,7 +660,7 @@ export async function startM6ReplayLeakServer({ mutant = false, cycles = DEFAULT
         return;
       }
       if (url.pathname === '/' || url.pathname === '/m6-host.html') {
-        send(response, 200, m6ReplayLeakHostHtml({ cycles }), 'text/html; charset=utf-8');
+        send(response, 200, m6ReplayLeakHostHtml({ cycles, schedulerOrphanInterval }), 'text/html; charset=utf-8');
         return;
       }
       if (url.pathname === '/m6-probe.mjs') {
@@ -681,6 +702,7 @@ export async function runM6ReplayLeakGate({
   timeoutMs = DEFAULT_M6_TIMEOUT_MS,
   requireBrowser = false,
   mutant = false,
+  schedulerOrphanInterval = false,
   findBrowser = findLocalChromiumBrowser,
   runBrowser = runHeadlessUrl,
 } = {}) {
@@ -702,7 +724,12 @@ export async function runM6ReplayLeakGate({
   let resolveReport;
   const reportPromise = new Promise((resolve) => { resolveReport = resolve; });
   try {
-    serverHandle = await startM6ReplayLeakServer({ cycles, mutant, onReport: resolveReport });
+    serverHandle = await startM6ReplayLeakServer({
+      cycles,
+      mutant,
+      schedulerOrphanInterval,
+      onReport: resolveReport,
+    });
     const url = `${serverHandle.url}/m6-host.html`;
     const browserRun = await runBrowser({
       browserPath,
@@ -741,6 +768,21 @@ export async function runM6ReplayLeakGate({
       mutant,
       workload: report.workload || null,
     });
+    if (schedulerOrphanInterval) {
+      const instrumented = cells.find((cell) => cell.name === 'M6-SCHEDULER-CENSUS-INSTRUMENTED');
+      const scheduler = cells.find((cell) => cell.name === 'M6-SCHEDULER-CENSUS-RETURNS-TO-BASELINE');
+      const orphanDelta = Number(scheduler?.metrics?.deltas?.pendingIntervals) || 0;
+      cells.push({
+        name: 'NC-M6-SCHEDULER-ORPHAN-INTERVAL',
+        blocking: true,
+        pass: instrumented?.pass === true
+          && scheduler?.pass === false
+          && scheduler?.metrics?.soundChannelRed === true
+          && orphanDelta > 0
+          && report.schedulerOrphan?.installed === true,
+        detail: `installed=${report.schedulerOrphan?.installed === true}; pendingIntervalDelta=${orphanDelta}; soundChannelRed=${scheduler?.metrics?.soundChannelRed === true}; schedulerPass=${scheduler?.pass === true}`,
+      });
+    }
     const ok = report.ok === true && cells.every((cell) => cell.pass === true);
     return {
       ok,
@@ -749,7 +791,7 @@ export async function runM6ReplayLeakGate({
       error: ok ? null : (report.error || cells.filter((cell) => cell.pass === false).map((cell) => `${cell.name}: ${cell.detail}`).join('; ')),
       report,
       cells,
-      meta: { startedAt, finishedAt: new Date().toISOString(), browserPath, url, mutant, cycles, stderrTail: browserRun.stderrTail || '' },
+      meta: { startedAt, finishedAt: new Date().toISOString(), browserPath, url, mutant, schedulerOrphanInterval, cycles, stderrTail: browserRun.stderrTail || '' },
     };
   } catch (error) {
     return {
@@ -773,8 +815,10 @@ export async function runM6ReplayLeakPreflight(options = {}) {
   // UNPROVEN escalate — not ship credit. Opt in only after the defect is
   // first shown RED, then fixed: TALARIA_M6_LEAK_FIXED=1.
   const finalLive = acceptance.report?.final?.liveReplaySystems;
-  const schedulerRed = acceptance.cells?.some((cell) => cell.name === 'M6-SCHEDULER-CENSUS-RETURNS-TO-BASELINE' && cell.pass === false);
-  const defectReproduced = acceptance.status === 'RED' && (Number(finalLive) > 1 || schedulerRed);
+  const censusInstrumented = acceptance.cells?.some((cell) => cell.name === 'M6-SCHEDULER-CENSUS-INSTRUMENTED' && cell.pass === true);
+  const schedulerCell = acceptance.cells?.find((cell) => cell.name === 'M6-SCHEDULER-CENSUS-RETURNS-TO-BASELINE');
+  const soundSchedulerRed = schedulerCell?.pass === false && schedulerCell?.metrics?.soundChannelRed === true;
+  const defectReproduced = acceptance.status === 'RED' && censusInstrumented === true && soundSchedulerRed;
   if (process.env.TALARIA_M6_LEAK_FIXED !== '1') {
     if (acceptance.ok && finalLive === 1) {
       return {
@@ -787,6 +831,16 @@ export async function runM6ReplayLeakPreflight(options = {}) {
       };
     }
     if (!acceptance.ok && !defectReproduced) {
+      if (acceptance.report) {
+        return {
+          ok: false,
+          status: 'UNPROVEN',
+          signature: M6_REPLAY_LEAK_SIGNATURE,
+          acceptance,
+          mutant: null,
+          error: 'M6 defect unproven: requires instrumented census plus sound scheduler-channel RED; absent/blind census or listener-only drift is not PO defect reproduced',
+        };
+      }
       return { ok: false, status: acceptance.status, signature: M6_REPLAY_LEAK_SIGNATURE, acceptance, mutant: null };
     }
     if (defectReproduced) {
@@ -797,7 +851,7 @@ export async function runM6ReplayLeakPreflight(options = {}) {
         signature: M6_REPLAY_LEAK_SIGNATURE,
         acceptance,
         mutant: null,
-        error: `PO defect reproduced (final live=${finalLive}; schedulerRed=${schedulerRed === true}); ship blocked until fix (TALARIA_M6_LEAK_FIXED=1)`,
+        error: `PO defect reproduced (final live=${finalLive}; soundSchedulerRed=${soundSchedulerRed === true}); ship blocked until fix (TALARIA_M6_LEAK_FIXED=1)`,
       };
     }
   }
@@ -807,13 +861,17 @@ export async function runM6ReplayLeakPreflight(options = {}) {
   const mutant = await runM6ReplayLeakGate({ ...options, mutant: true });
   const mutantOk = mutant.status === 'RED'
     && mutant.cells.some((cell) => cell.name === 'NC-M6-TEARDOWN-REVERSAL' && cell.pass === true);
+  const schedulerMutant = await runM6ReplayLeakGate({ ...options, mutant: false, schedulerOrphanInterval: true });
+  const schedulerMutantOk = schedulerMutant.status === 'RED'
+    && schedulerMutant.cells.some((cell) => cell.name === 'NC-M6-SCHEDULER-ORPHAN-INTERVAL' && cell.pass === true);
   return {
-    ok: mutantOk,
-    status: mutantOk ? 'GREEN' : 'RED',
+    ok: mutantOk && schedulerMutantOk,
+    status: mutantOk && schedulerMutantOk ? 'GREEN' : 'RED',
     signature: M6_REPLAY_LEAK_SIGNATURE,
     acceptance,
     mutant,
-    error: mutantOk ? null : 'NC-M6-TEARDOWN-REVERSAL did not prove acceptance cells go RED',
+    schedulerMutant,
+    error: mutantOk && schedulerMutantOk ? null : 'M6 negative controls did not prove acceptance cells go RED',
   };
 }
 
