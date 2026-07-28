@@ -1631,3 +1631,59 @@ Root cause is one line repeated five times: every check but L6 filters the ledge
 Rebuild dispatched as B-W11 with the three gating fixes, and one requirement above all: **prove the harness never deletes or corrupts a pre-existing trade**, by snapshotting the ledger before and after a full write run.
 
 **A16.4:** author-defect **5**, brief-defect **2**, manager-finding-defect **4**. Manager-caused **6**.
+
+---
+
+## B-0090 — M10 REJECTED both halves. The fix reproduces the bug it was written to cure. Reverted.
+
+B-R4, top tier, **33 designed / 21 survived**. This is the most valuable review of the day and it overturns my own decision as well as the author's work.
+
+### The fix produces the PO's exact symptom
+
+I verified the headline myself before acting:
+
+```
+Number(null)                  = 0
+Number.isFinite(Number(null)) = true
+
+openTime=null   guard passes: true   holdingMs: 1672538400000   hours: 464594.00
+openTime=""     guard passes: true   holdingMs: 1672538400000   hours: 464594.00
+```
+
+The new guard is `Number.isFinite(Number(order.openTime))`. `Number(null)` is `0`, which is finite, so **`null` passes the validity check** and `closeDataTime - null` coerces to a subtraction against zero. 464,594 hours is 53 years. The PO reported durations "wildly wrong and far too large". **The fix generates that symptom, from the line whose stated purpose is to prevent it.** `''`, `false` and `[]` pass too.
+
+And a second, straight regression:
+
+```
+new: lastCloseTime(null, live) = 0            -> exitDate 1970-01-01T00:00:00.000Z
+old: (null || live)            = 1672538400000 -> exitDate 2023-01-01T02:00:00.000Z
+```
+
+The `lastCloseTime` guards have no `!= null` pre-check, so a null last-entry close becomes epoch 0. The old `||` chain handled that case correctly. I asked B-R4 specifically whether any link could return a **confidently wrong** value rather than an absent one. Here it does, and it is a case the code I was replacing got right.
+
+### Two consequences I had not anticipated
+
+1. **A newly reachable early return drops far more than time fields.** Passing `null` into `_enrichJournalEntryForPersistence` trips its `closeTime == null` guard at 7834, which silently skips `trading_session_id`, `savedAt`, the cost scalars analytics uses for P&L, and canonical excursion storage. Before this diff that return was unreachable from the close paths, because `closeData.closeTime` always carried the `Date.now()` value. **The change would write session-less, cost-less rows to the ledger, inside the M4 window.**
+2. **It creates a trade-loss path.** `journal-backend/csv_journal.py:250` makes `closeTime` a required import field, and 751-754 discards a row without one. Export a trade with a null close time, re-import, **the trade is silently dropped** — the exact condition M4 exists to forbid. My instinct that this was a data-shape risk was right; I had the mechanism only half-formed and it is worse than nulls in a column.
+
+Also confirmed: `safeNum(null) === 0` at 7700, and the divisor is *all* trades, so every unknown duration drags the displayed average holding time toward zero. Silent, plausible, wrong — the failure mode I said would be worse than the original bug.
+
+### And it does not fix the PO's case at all
+
+This is the answer I most needed. **Rollback never calls the patched method.** `replay-system.js:2840-2842` handles a rewind via `forceCloseAllOrders`, which partitions positions and never calls `closePositionAtPrice` or constructs a duration. Even for a later close, the `Date.now()` fallback requires `currentCandle` to be null, which needs `data`, `rawData` **and** `rs.fullRawData` all empty — and rollback slices with `Math.max(goBackFloor, ...)`, so at least one bar always survives.
+
+So my B-0081 reasoning was **right about the asymmetry and wrong about the consequence**. `openTime` is bar-clock and `closeTime` had a wall-clock fallback — both true. I then concluded the rollback repro flowed through that fallback. It does not; the path is not reached. I verified both operands and never verified that the code containing them runs in the scenario I was explaining. Checking the ingredients is not checking the recipe.
+
+**The better lead, from B-R4:** `_m19DockTimeLabel` (32926) already carries a clamp for durations over a year — someone has seen this symptom before and patched the *label* rather than the clock. And the clamp checks only `this.replaySystem`, while `_m19DockNowTs` consults both `this.replaySystem` and `this.chart.replaySystem`. That asymmetry is a far better candidate for the PO's report than the fallback we patched.
+
+### Actions taken
+
+- **Reverted `order-manager.js` entirely.** Verified: the original fallback is back at 33330, and the M3 five-selector fix is intact. I did not keep the `bgCloseTime === 0` improvement, though it is real and correct, because the resolver also needs its terminal fallback redesigned to be total on the bar clock, and I will not land product code with no working gate during the ship window. It is recorded here and costs one small re-author.
+- **Harness renamed** `b-m10-duration-clock.red.mjs` → `.rejected-notgate.mjs` with a header recording all six defects. Per VER-03 a harness where a decoy in `if (false)` passes while the real resolver is `Date.now()` cannot wear `.red.`.
+- **M10 stays open.** If asked, the honest statement is that we found two real defects (`bgCloseTime === 0`, and a wall-clock fallback that should not exist) and neither is the PO's bug.
+
+### My own process defect, flagged by the reviewer
+
+B-R4 found **four drive-by files** in the diff it was asked to review: the V6 gate, its fixture, and two M4 evidence files. None are M10. They are the working state of **two other agents I had running in the same tree at the same time**. The reviewer was right to call it: reviewing one packet against a tree dirty with two others is not a clean measurement, and the M4 files being uncommitted mattered because §1c put that very gate at risk. I gained parallelism and paid for it in review integrity. Concurrent packets need separate worktrees or serialised review windows.
+
+**A16.4:** author-defect **6**, brief-defect **2**, manager-finding-defect **5**. Manager-caused **7**.
