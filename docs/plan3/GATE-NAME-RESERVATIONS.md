@@ -368,6 +368,15 @@ declaration with the TypeScript AST only so it can execute the body. It binds th
 JSON and multipart request bodies. The oracle is **non-blocking** (`blocking: false`): M6 ship
 credit is scoped to freeze+corpus, and the envelope class remains an OPEN follow-on.
 
+**W54 (ORACLE-01 residual).** `SUPPORT_PASSPORT_CONSUMERS` is no longer trusted as a complete
+hand-maintained census. `SUPPORT-PASSPORT-CONSUMER-CENSUS` walks `homepage/src/**/*.{ts,tsx}`
+with the TypeScript AST, excludes the definition site `supportUi.tsx`, discovers every direct
+`buildSupportContext()` `CallExpression`, and requires exact path equality with the declared
+consumer list. This cell is blocking because an undeclared caller is a ship-relevant regression
+hazard for the transport and call-path cells. `NC-SUPPORT-PASSPORT-CONSUMER-CENSUS-UNDECLARED`
+adds a synthetic third source file to the discovery input and requires the census detector to go
+RED.
+
 **M6 ship status (Director ruling 2026-07-28):** **SCOPED — freeze+corpus GRANTED.** Envelope
 class OPEN as W53 follow-on (REACH-01: no live blanking producer per C-ASM-M6-LATE-WRITER).
 Not "M6 complete."
@@ -386,7 +395,9 @@ evidence artifact). W42 added both consumer `.tsx` paths to the trigger set.
 | PASSPORT-CONTEXT-DEEP-FROZEN | after the real `buildSupportContext()` returns under sparse + browserRealistic + productionShaped, `Object.isFrozen(ctx)`, `Object.isFrozen(ctx.degradedModules)`, and nested object/array values are frozen; production profile must be `app.talaria.io` (not `.test` / Gate UA) | soundness | LIVE (W51b) |
 | PASSPORT-CONTEXT-MUTATION-CORPUS | W43-W50 eight-rejection inheritance attempted against the returned context under sparse **and** production-shaped realms: dot/bracket assignment, `Object.assign(ctx, ...)`, array `push`/`splice`/`pop`, `Object.assign(ctx.degradedModules, {0:"X"})`, and `delete ctx.degradedModules`; each must throw in strict mode or no-op with values unchanged | soundness | LIVE (W51b) |
 | SUPPORT-PASSPORT-CONSUMER-CALL-PATH | import + ≥1 `createThread` call not inside `useMemo` + call result reaches request `context` (property or `FormData.append`); mutation safety enforced at runtime publication, not by consumer mutation AST | wiring | LIVE (W51b) |
+| SUPPORT-PASSPORT-CONSUMER-CENSUS | product-wide TypeScript AST census of direct `buildSupportContext()` callers under `homepage/src`, excluding `supportUi.tsx`, must exactly equal `SUPPORT_PASSPORT_CONSUMERS` by relative path | wiring | LIVE (W54) |
 | NC-ALIAS-DROP-CANONICAL / -DUNDER / -COMPAT | one alias deleted from `supportUi.tsx` (the tail alias takes the preceding `??` with it, or the edit is a syntax error rather than a regression): its own boot cell goes RED and **no other behavioural cell moves**. An alias that cannot be uniquely aimed is RED, not a silent pass | wiring | LIVE (W42) |
+| NC-SUPPORT-PASSPORT-CONSUMER-CENSUS-UNDECLARED | a synthetic third `homepage/src` source file containing `buildSupportContext()` is added to the discovery input; the census cell must report it as extra and go RED | wiring | LIVE (W54) |
 | NC-CONSUMER-CALL-DELETED | the `buildSupportContext()` call removed from a consumer while the **import stays** turns the consumer cell RED — the pin keys on the call, not on the import | wiring | LIVE (W42) |
 | NC-CONSUMER-CALL-HOISTED-USEMEMO | `React.useMemo(() => buildSupportContext(), [])` hoist at component body with submit-handler call replaced by the frozen binding: `callCount` stays ≥1 and import intact, but `submitHandlerCallCount` drops to 0 and the consumer cell goes RED | wiring | LIVE (W43) |
 | NC-CONSUMER-CONTEXT-DISCARDED | call remains on `createThread` but payload `context` is emptied / discarded; `valueFlowCallCount` drops to 0 and the consumer cell goes RED (R-W51 Break 2) | wiring | LIVE (W51b) |

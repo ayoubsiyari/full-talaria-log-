@@ -22,6 +22,7 @@ import {
   TEMPORAL_DEGRADATION_SEQUENCE,
   countAliasLines,
   createSupportPassportRealm,
+  discoverBuildSupportContextCallers,
   dropAliasFromSupportUi,
   extractCreateThreadDeclaration,
   hoistConsumerCallToUseMemo,
@@ -41,6 +42,7 @@ import {
   runNcConsumerContextReassignedCell,
   runNcConsumerPinDecoysCell,
   runNcMutantNoDeepFreezeCell,
+  runNcSupportPassportConsumerCensusUndeclaredCell,
   runNcTransportEnvelopeBlankedCell,
   runPassportContextDeepFrozenCell,
   runPassportContextMutationCorpusCell,
@@ -51,6 +53,7 @@ import {
   runPassportDegradedRoundTripCell,
   runPassportDegradedTemporalCell,
   runPassportTransportDegradedModulesCell,
+  runSupportPassportConsumerCensusCell,
   runSupportPassportDegradedGate,
   stripSupportContextDeepFreeze,
 } from '../lib/support-passport-degraded.mjs';
@@ -66,7 +69,7 @@ const consumerSources = Object.fromEntries(
   SUPPORT_PASSPORT_CONSUMERS.map((consumer) => [consumer.relativePath, read(consumer.relativePath)]),
 );
 const deps = {
-  supportUiSource, runtimeSource, indicatorPerfSource, typescript, consumerSources,
+  root, supportUiSource, runtimeSource, indicatorPerfSource, typescript, consumerSources,
 };
 
 test('signature token is TALARIA_SUPPORT_PASSPORT_DEGRADED_V1', () => {
@@ -376,6 +379,29 @@ test('SUPPORT-PASSPORT-CONSUMER-CALL-PATH [wiring VER-01]: both consumers import
     assert.ok(consumer.callSites.every((site) => site.onSubmitHandler === true));
     assert.ok(consumer.callSites.every((site) => site.valueReachesContext === true));
   }
+});
+
+test('SUPPORT-PASSPORT-CONSUMER-CENSUS [wiring VER-01]: declared consumers match discovered callers', () => {
+  const discovered = discoverBuildSupportContextCallers({ root, typescript });
+  assert.deepEqual(
+    discovered.map((caller) => caller.relativePath),
+    SUPPORT_PASSPORT_CONSUMERS.map((consumer) => consumer.relativePath).sort(),
+  );
+
+  const cell = runSupportPassportConsumerCensusCell(deps);
+  assert.equal(cell.coverage, 'wiring');
+  assert.equal(cell.status, 'GREEN', JSON.stringify(cell, null, 2));
+  assert.deepEqual(cell.missing, []);
+  assert.deepEqual(cell.extra, []);
+});
+
+test('NC-SUPPORT-PASSPORT-CONSUMER-CENSUS-UNDECLARED [wiring VER-01]: undeclared caller goes RED', () => {
+  const cell = runNcSupportPassportConsumerCensusUndeclaredCell(deps);
+  assert.equal(cell.coverage, 'wiring');
+  assert.equal(cell.status, 'GREEN', JSON.stringify(cell, null, 2));
+  assert.equal(cell.detectorCell, 'SUPPORT-PASSPORT-CONSUMER-CENSUS');
+  assert.equal(cell.detectorWentRed, true);
+  assert.deepEqual(cell.extra, [cell.syntheticPath]);
 });
 
 test('the SupportInbox pin names the real send site', () => {
@@ -818,9 +844,9 @@ test('gate aggregate is GREEN on the repo sources and excludes findings from all
   assert.equal(report.allPass, true);
   assert.equal(report.findings.length, 1);
   assert.equal(report.findings[0].cell, 'FINDING-SERVER-CONTEXT-STR-COERCION');
-  // 10 behavioural + 17 mutants + 3 alias drops + 6 consumer wiring cells + W51 freeze mutant.
-  assert.equal(report.cells.filter((c) => typeof c.pass === 'boolean' && c.blocking !== false).length, 37);
-  assert.equal(report.cells.filter((c) => typeof c.pass === 'boolean').length, 39);
+  // 10 behavioural + 17 mutants + 3 alias drops + 8 consumer wiring cells + W51 freeze mutant.
+  assert.equal(report.cells.filter((c) => typeof c.pass === 'boolean' && c.blocking !== false).length, 39);
+  assert.equal(report.cells.filter((c) => typeof c.pass === 'boolean').length, 41);
   assert.deepEqual(
     report.cells.filter((c) => c.blocking === false).map((c) => c.cell),
     [

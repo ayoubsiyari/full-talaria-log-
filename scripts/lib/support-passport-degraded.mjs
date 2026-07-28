@@ -64,6 +64,7 @@
  * createThread body is extracted by AST only to execute it; the gate then stubs transport
  * and asserts the observable outgoing body, avoiding another spelling detector.
  */
+import fs from 'node:fs';
 import path from 'node:path';
 import vm from 'node:vm';
 import { createRequire } from 'node:module';
@@ -1992,6 +1993,141 @@ function consumerSource(deps, consumer) {
   return typeof source === 'string' ? normalizeLineEndings(source) : null;
 }
 
+function toPosixPath(value) {
+  return value.split(path.sep).join('/');
+}
+
+function walkSourceFiles(dir) {
+  const entries = fs.readdirSync(dir, { withFileTypes: true });
+  const files = [];
+  for (const entry of entries) {
+    const absolute = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      files.push(...walkSourceFiles(absolute));
+    } else if (entry.isFile() && /\.(ts|tsx)$/.test(entry.name)) {
+      files.push(absolute);
+    }
+  }
+  return files;
+}
+
+function countBuildSupportContextCalls({ typescript: ts, relativePath, source }) {
+  const sourceFile = ts.createSourceFile(
+    relativePath,
+    source,
+    ts.ScriptTarget.ES2022,
+    true,
+    relativePath.endsWith('.tsx') ? ts.ScriptKind.TSX : ts.ScriptKind.TS,
+  );
+  let callCount = 0;
+  const visit = (node) => {
+    if (ts.isCallExpression(node)
+      && ts.isIdentifier(node.expression)
+      && node.expression.text === SUPPORT_PASSPORT_CONSUMER_EXPORT) {
+      callCount += 1;
+    }
+    ts.forEachChild(node, visit);
+  };
+  ts.forEachChild(sourceFile, visit);
+  return {
+    callCount,
+    parseErrors: (sourceFile.parseDiagnostics ?? []).length,
+  };
+}
+
+/**
+ * Discovers every product source file under homepage/src that directly calls
+ * buildSupportContext(). supportUi.tsx is excluded because it is the definition site.
+ *
+ * @param {{ root?: string, typescript: any, sourceMap?: Record<string, string> }} opts
+ */
+export function discoverBuildSupportContextCallers({ root = process.cwd(), typescript: ts, sourceMap = {} }) {
+  const sourceRoot = path.join(root, 'homepage', 'src');
+  const diskFiles = walkSourceFiles(sourceRoot).map((absolutePath) => {
+    const relativePath = toPosixPath(path.relative(root, absolutePath));
+    return [relativePath, fs.readFileSync(absolutePath, 'utf8')];
+  });
+  const sources = new Map(diskFiles);
+  for (const [relativePath, source] of Object.entries(sourceMap)) {
+    if (/^homepage\/src\/.*\.(ts|tsx)$/.test(relativePath)) {
+      sources.set(relativePath, source);
+    }
+  }
+
+  const callers = [];
+  for (const [relativePath, source] of sources) {
+    if (relativePath === SUPPORT_UI_RELATIVE_PATH) continue;
+    const facts = countBuildSupportContextCalls({
+      typescript: ts,
+      relativePath,
+      source: normalizeLineEndings(source),
+    });
+    if (facts.callCount > 0) {
+      callers.push({ relativePath, callCount: facts.callCount, parseErrors: facts.parseErrors });
+    }
+  }
+  return callers.sort((a, b) => a.relativePath.localeCompare(b.relativePath));
+}
+
+/**
+ * The consumer list is still declared data because downstream wiring cells carry per-file
+ * expectations, but the declaration must match the product-wide caller census.
+ *
+ * @param {{ root?: string, typescript: any, discoverySourceMap?: Record<string, string> }} deps
+ */
+export function runSupportPassportConsumerCensusCell(deps) {
+  const cell = 'SUPPORT-PASSPORT-CONSUMER-CENSUS';
+  try {
+    const discovered = discoverBuildSupportContextCallers({
+      root: deps.root,
+      typescript: deps.typescript,
+      sourceMap: deps.discoverySourceMap,
+    });
+    const declaredPaths = SUPPORT_PASSPORT_CONSUMERS.map((consumer) => consumer.relativePath).sort();
+    const discoveredPaths = discovered.map((caller) => caller.relativePath).sort();
+    const declaredSet = new Set(declaredPaths);
+    const discoveredSet = new Set(discoveredPaths);
+    const missing = declaredPaths.filter((relativePath) => !discoveredSet.has(relativePath));
+    const extra = discoveredPaths.filter((relativePath) => !declaredSet.has(relativePath));
+    const pass = missing.length === 0 && extra.length === 0;
+    return cellResult(cell, pass, {
+      declaredPaths,
+      discovered,
+      discoveredPaths,
+      missing,
+      extra,
+    }, 'wiring');
+  } catch (error) {
+    return redCell(cell, String(error?.message ?? error), 'wiring');
+  }
+}
+
+/**
+ * @param {Parameters<typeof runSupportPassportConsumerCensusCell>[0]} deps
+ */
+export function runNcSupportPassportConsumerCensusUndeclaredCell(deps) {
+  const cell = 'NC-SUPPORT-PASSPORT-CONSUMER-CENSUS-UNDECLARED';
+  const syntheticPath = 'homepage/src/app/dashboard/support/__syntheticPassportCaller.tsx';
+  try {
+    const detector = runSupportPassportConsumerCensusCell({
+      ...deps,
+      discoverySourceMap: {
+        ...deps.discoverySourceMap,
+        [syntheticPath]: 'export const __syntheticPassport = buildSupportContext();\n',
+      },
+    });
+    const pass = detector.pass === false && detector.extra?.includes(syntheticPath);
+    return cellResult(cell, pass, {
+      detectorCell: 'SUPPORT-PASSPORT-CONSUMER-CENSUS',
+      detectorWentRed: detector.pass === false,
+      syntheticPath,
+      extra: detector.extra ?? [],
+    }, 'wiring');
+  } catch (error) {
+    return redCell(cell, String(error?.message ?? error), 'wiring');
+  }
+}
+
 /**
  * The passport only matters if something sends it. Deleting the `buildSupportContext()`
  * call from a consumer is an edit no behavioural cell can see — the extractor still works
@@ -2739,7 +2875,9 @@ export function probeServerContextCoercionFinding(apiServerSource) {
  *   runtimeSource: string,
  *   indicatorPerfSource: string,
  *   typescript: any,
+ *   root?: string,
  *   consumerSources?: Record<string, string>,
+ *   discoverySourceMap?: Record<string, string>,
  *   apiServerSource?: string | null,
  * }} opts
  */
@@ -2765,12 +2903,16 @@ export function runSupportPassportDegradedGate(opts) {
     runtimeSource: normalizeLineEndings(opts.runtimeSource),
     indicatorPerfSource: normalizeLineEndings(opts.indicatorPerfSource),
     typescript: opts.typescript,
+    root: opts.root ?? process.cwd(),
     consumerSources: opts.consumerSources ?? {},
+    discoverySourceMap: opts.discoverySourceMap ?? {},
   };
   const cells = [
     ...runBehavioralCells(deps),
     ...runBehavioralMutantCells(deps),
     ...runNcAliasDropCells(deps),
+    runSupportPassportConsumerCensusCell(deps),
+    runNcSupportPassportConsumerCensusUndeclaredCell(deps),
     runConsumerCallPathCell(deps),
     runNcConsumerCallDeletedCell(deps),
     runNcConsumerCallHoistedUseMemoCell(deps),
