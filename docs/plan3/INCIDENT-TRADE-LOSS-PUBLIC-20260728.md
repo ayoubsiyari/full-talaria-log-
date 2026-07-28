@@ -45,13 +45,67 @@
 
 **I-6. Retracted on the record:** the "session that has already lost 49 trades" line in B-0103 was **hypothetical**, a critique of the M4 gate's blindness. It is **not** a report of observed loss and must not be cited as a confirmed incident. I circulated that concern; B confirmed it; it is closed.
 
-## 5. Awaiting PO decision
+## 5. PO decisions — TAKEN 2026-07-28 12:58
 
-Two calls are the PO's, not mine:
+**D-1. Testers are told NOW, before anything ships.** An export taken today is worthless for data already gone, so every hour of delay is unrecoverable for anyone the path has already hit. Notice text at §7.
 
-- **Do the ~100 testers get told to export their journals now, before we ship anything?** The exposure has run 25 days. If it has fired for anyone, an export is the only recovery, and an export taken today is worthless for data already gone.
-- **Does the guard go out as a standalone hotfix train, or does it wait for the canary train?** Standalone is faster to users and smaller to review; waiting keeps a single deploy but leaves the window open.
+**D-2. Standalone hotfix train.** The guard plus delete-logging ship on their own, as soon as they pass — **not** inside the canary train. Smaller to review, faster to users, and it does not wait on unrelated ship gates. Everything else stays behind it per I-4.
+
+### 5.1 Consequent grant — backend is UNOWNED and that is why this rotted
+
+`TERRITORY.yml:295` records `journal-backend`, `deploy`, `homepage` outside chart, and shared paths as **RED for every manager by fail-closed default.** So when B escalated the `api_server.py` orphan-sweep deletion, **there was nobody who could act on it.** The escalation was correct and it went into a void. That is a structural failure of my territory design, not of B's judgement.
+
+**Ruling I-7: Manager B is granted scoped ownership of `journal-backend/` for the duration of this incident only.** Two changes permitted, nothing else:
+
+1. **Log every durable journal deletion** — session id, row count before and after, and the resolver that produced the id. Per I-2 this ships even though it fixes nothing, because it converts a permanently unanswerable question into an answerable one.
+2. **A sweep must never delete on an id it failed to parse.** B's own rule from B-0088: an unidentifiable row is retained and reported, never removed. Otherwise every future alias becomes a data-loss bug.
+
+**Replace semantics themselves are out of scope for this train.** They are the deeper defect and they are not a 48-hour change. The client guard makes them survivable; changing them under deadline is how we produce a third rejected packet.
+
+**The grant expires when the hotfix train ships.** It does not become standing ownership, and B does not touch backend paths outside these two changes.
+
+### 5.2 Ownership of the `chart.js` half
+
+Step 2 — the decision to mark a failed hydration as hydrated — sits in `chart.js` and is therefore **A's** territory, and A is on Priority Zero. **A is not being pulled off CPU for it.** B's guard sits on the durable path, which is the correct layer to stop a bad write regardless of who mislabelled upstream. **The guard alone stops the data loss; A's fix is the correctness repair and it can follow the hotfix train.** Logged as a follow-up against A, not a blocker.
 
 ## 6. Credit where due
 
 B answered a question I had asked three times, in minutes, without building the harness it would normally reach for, and **self-corrected mid-answer**: it began auditing `homepage/public/chart/**`, the committed mirror, then discovered `homepage/Dockerfile` overwrites that mirror from `chart v 1.4/chart` at build time. **Had it answered off the mirror it would have answered about a file the build discards** — and it would have been a plausible-looking wrong answer, which is the most expensive kind. It also declined to guess on Q3 where guessing would have been easy and reassuring.
+
+---
+
+## 7. Tester notice — text as approved for sending (D-1)
+
+Send to all testers on the public build. Plain, no jargon, no minimising.
+
+> **Please export your trade journal today**
+>
+> We have found a bug in Talaria that can wipe a backtesting session's trade
+> history. It happens when the app cannot reach our server, or sometimes just when
+> the server responds slowly: the app mistakenly concludes the session has no
+> trades, and then saves that empty state over your real one.
+>
+> **What we need you to do now:** open each backtesting session that matters to you
+> and use Export to save a copy of its journal. Do that before your next reload.
+>
+> **One thing to watch for:** if you open a session and the Journal tab looks empty
+> or noticeably shorter than you remember, **stop and do not place, close, or modify
+> any trade, and do not reload.** Acting in that state is what makes the loss
+> permanent. Tell us instead and we will look at it with you.
+>
+> **Being straight with you about what we don't know:** the bug has been present
+> since 3 July. It does not record anything when it happens, so we cannot tell from
+> our side whether it has already affected you. That is why we are asking everyone
+> to export rather than telling you who is affected — and we are fixing the missing
+> record at the same time as the bug, so this can never again be a question we
+> cannot answer.
+>
+> A fix is being prepared and shipped on its own, ahead of everything else we are
+> working on. We are sorry — this one is ours, and it should not have taken 25 days
+> to find.
+
+### Notes for whoever sends it
+
+- **Do not soften "wipe" or "empty".** Testers who have already lost trades need to recognise their own experience in this text.
+- **The stop-and-do-not-reload instruction is the operationally important sentence.** B established that a reload after failed hydration is the action that makes loss durable. It matters more than the export request, because it is what prevents *new* loss over the next few hours.
+- **Do not claim we will restore lost data.** We have no evidence trail to restore from.
