@@ -2891,3 +2891,65 @@ The run measured `typeof window.IndicatorPerf === "object"` at every census poin
 But note what it means here: we compared a fixed-world harness against a fallback-world observation and found no lag in the harness. **That is not evidence the lag is absent** — it is a comparison across two different builds, and either the world or the harness scale could account for the whole difference. Requiring the world to be reported at each point was the right call this morning; what it bought me is knowing that this particular comparison cannot carry weight, which is exactly what §A2 exists to force.
 
 **The one genuinely useful positive:** the fresh-context control was clean, which is consistent with the residue model and would have refuted it outright had it lagged. That prediction survives — but it survives in a session that never lagged in the first place, so it is weak confirmation of a model that remains untested rather than support for it.
+
+---
+
+## 2026-07-28 12:54 — A2 BLOCKED on a fact I never raised: the harness loads no indicator
+
+surface=`manager-a/a2-rebaseline` @ `61e62c3f5`
+coverage=harness read, re-run independently at 5× duration, counters traced to source, old harness located
+
+I blocked this on implausible magnitudes. The decisive reason is simpler and worse: **the runner contains no indicator code at all.** Grepped for `indicator|sma|ema|wma`, the only hits are `panelFrameMap`. The prior harness declares `conditionsRequired: ['no-indicators', 'representative-sma-ema-wma']` and actively sets `chart.indicators.active` before calling `recalculateIndicators()`.
+
+§A2's re-baseline exists to measure the value of loading `IndicatorPerf`, whose whole effect is swapping naive SMA/WMA for `rollingSmaFast`. **A workload with zero indicators cannot measure that delta by construction.** No amount of re-running fixes it. That is the block, and I did not find it — I was looking at the outputs when I should have been looking at what the workload contained.
+
+## 2026-07-28 12:55 — Three refutations I owe, and one of them is my own argument
+
+**The harness is honest.** Real headless Chrome via puppeteer, a real host page over local HTTP, three real `chart-embed.html` iframes, real bar data from `serve.mjs`. No `node:vm`, no synthetic host. I had raised that as a live possibility; it is refuted.
+
+**The symbols are genuinely mixed.** File IDs 25/27/28/25 at 1m/1h/15m/4h — three distinct symbols, with panel D honestly labelled as repeating panel A at a different timeframe. Not the same-symbol soak §A2 warns about.
+
+**My JS-heap argument was right for the wrong reason.** I argued 33 MiB could not hold the bar data of a gigabyte workload, implying a substituted counter. It is the **same** counter — `JSHeapUsedSize` in both instruments. 33 MiB is simply the honest heap of a workload about thirty times smaller: panel A moved 1,102 → 1,120 bars across 12 seconds, where the prior soak's panels went 2,001 → 30,846. The prior harness's own JS heap after fifteen minutes was 246.7 MiB on the same counter. My conclusion held; my reasoning was wrong, and I would have defended the wrong reasoning if nobody had checked it.
+
+**Where I was right about counters, in three of five rows.** Working-set peak is `PrivateMemorySize64` in the old instrument against `WorkingSet64` in the new — private commit versus resident set. Teardown residual and the cycle staircase were process memory before and are **JS heap** now. And CPU is the sharpest: the old figure summed cpuTime across the whole browser process tree; the new one is a single renderer's `TaskDuration` over wall clock, **structurally capped at 100% and therefore incapable of ever expressing 128–140%.** My comparison table was invalid in three rows, and not in the direction I assumed.
+
+Two further defects worth keeping: the mixed-4 cell recorded **ten samples in 12.7 seconds** despite a 100 ms setting, because each iteration spawns `powershell.exe` — and a peak from ten point samples misses the boot transient entirely. And mixed-4's baseline working set is already 718.7 MiB because the browser is reused across cells, so the workload-attributable figure is **67.9 MiB, not 786.6.**
+
+## 2026-07-28 12:56 — My "reuse the existing harness" instruction was findable but not executable
+
+The old harness exists at `tests/evidence/b70-stage5/b75-v3-two-panel-downscoped-soak.mjs`, tracked on A's branch, C's branch and the packet's own tree. So the author could have found it, and my instruction was satisfiable in that sense.
+
+But **"run both on the same tip" was not executable as I posed it.** That harness targets a *deployed origin* — it authenticates, claims a server-side chart-window lease, and discovers session-ready files from the server. It has no concept of a git tip, and the local `serve.mjs` cannot stand in because it stubs auth and has no lease endpoint. The reviewer had valid credentials and correctly declined to run a thirty-minute authenticated soak against production inside a read-only review, which was the right call.
+
+So my brief-defect here is more specific than "the author ignored an instruction": **I asked for a comparison between two instruments that do not share a substrate.** No author could have satisfied it.
+
+## 2026-07-28 12:57 — The constructive route, and I am adopting it
+
+The reviewer's alternative is better than what I asked for. The archived *numbers* are lost because they carry no SHA, but **the world they measured is reconstructible**: run one harness twice on one build — once with `IndicatorPerf` present, once with it suppressed. §A4c names `852420adc` as the commit that dropped the script tag, so the pre-fix surface is identifiable.
+
+That yields M19-I's value as a **controlled A/B on a single build with a single instrument**, which is strictly stronger evidence than any comparison against unattributed figures, and it removes the dependence on a deployed host having been in a particular state on a particular night. §A2's stated purpose — the delta as our first real measurement of M19-I's value — is met better this way than by the route the ruling implies.
+
+The instrument itself is worth keeping. What it needs before it can carry §A2: an indicator arm matching both prior conditions; a play window in tens of minutes rather than seconds; `PrivateMemorySize64` alongside `WorkingSet64`; whole-tree CPU rather than one renderer's `TaskDuration`; process memory for the teardown and cycle cells; the sampling loop off the per-iteration PowerShell spawn; and mixed-4's baseline taken on a fresh browser rather than one carrying mixed-2's residue.
+
+## 2026-07-28 12:58 — CODE FINDING: the incremental branch is live, and three separate mechanisms defeat it
+
+This is the most valuable thing to come out of today and it is not an instrument artifact — the reviewer verified the mechanism in product source rather than trusting counters.
+
+`chart-data-pipeline.js:88-97` gates the incremental branch on **array identity**, `cache.sourceRef === source`, plus `cache.sourceLen === source.length - 1`. Both kill-switch positions break that precondition, by *different* mechanisms:
+
+- **Fix ON** — `_installPlayheadPrefix` (`replay-system.js:3837-3866`) ends by calling `_m20Q9DropConsumerResampleCache` → `invalidateResampleCache()` → `sourceRef = null`. Evidence: `cacheDrops: 300`, `distinctRawDataIdentities: 1`.
+- **Fix OFF** — the same function returns `master.slice(0, end)`, a brand-new array object every tick, so the identity test fails for an entirely unrelated reason. Evidence: `cacheDrops: 0`, `distinctRawDataIdentities: 300`.
+
+**That is why the switch moves nothing: both positions are independently fatal.** And my original hypothesis about the cache drop is **confirmed as one of the two**, not refuted — I had started treating it as dead after the switch showed flat, which would have been the wrong conclusion drawn from a correct observation.
+
+The prize is large. Controls D1 and D2 — fix on, cache drop neutralised, tick only — fire `incrementalResamples: 300` of 300 with `fullResamples: 0`, and per-tick cost falls from **7.77 ms to 0.106 ms at 1m, a 73× improvement**, sitting behind a branch that is live code rather than dead. But D3, the same control *with a render frame*, snaps back to 600 full resamples and zero incremental attempts. **The render path defeats it a third way**, and relaxing the M20-Q9 cache drop alone recovers nothing under realistic conditions.
+
+Caveat carried forward honestly: the D-cells run in a node host with roughly twelve stubbed replay methods over 3,000 synthetic bars, and the neutralised state is a harness injection rather than any shipping configuration. The two identity-breaking mechanisms are confirmed in source and I hold those with confidence; the 73× is a ceiling measured under stubbing, not a promised product gain.
+
+## 2026-07-28 12:59 — Restating the 1.000/2.000 correction, and naming what I cannot yet resolve
+
+My reading is **confirmed**: in `m20-q9-mcdiag-atip-20260728.json` the tick-only A-cells report 1.000 and the render-inclusive B-cells report 2.000, across all four of 1m/1H × switch on/off. Both were real, measuring different things. Commit `3e1fdc05e` already carried both figures in its own message.
+
+**But I am not closing this, because there is a second and independent 1-versus-2 in the same evidence.** The legacy `_mcDiag.resamples` field reads 2.000 per tick even in the tick-only cells, because it sums the `updateChartData` wrapper hit and the full-array `resampleData` hit for a *single* resample — the packet documents that as "1/tick means zero full resamples, 2/tick means one full resample per tick". If my original correction was sourced from that legacy field rather than from a render-frame cell, then it **was** double-counting and my original arithmetic-defect log was right after all.
+
+I cannot tell which from this packet; it needs the text of the earlier report. **So the correction stands as: my restatement is right if the figure came from a render cell, and my original log was right if it came from the legacy field, and I do not yet know which.** Recording the ambiguity rather than picking the flattering branch — I have now corrected this figure twice and a third confident restatement without the source text would be exactly the overconfidence the first two came from.
