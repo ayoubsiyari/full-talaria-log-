@@ -3367,3 +3367,49 @@ I have asked the reviewer whether the two-method worker check is sound enough to
 **Layer inventory: 13 live canvas/SVG surfaces, 27.75 MiB total backing store**, with the main chart canvas and drawing SVG at 7,274,400 bytes each per panel. That does not come close to explaining the PO's 154 MB GPU figure against the competitor's 34 MB, and I have asked the reviewer to say so or correct me. Teardown behaved: after `removeChart("B")`, B's layers were not retained.
 
 Write slot freed — cpu-attribution is done. In flight: idle-cpu (follow-up running), host-listener-leak (authored, in review). Three top-tier reviews concurrent, all read-only and uncapped.
+
+---
+
+## 2026-07-28 15:26 — DECISIVE: the chart does not repaint at rest. My lead hypothesis is demoted and I am demoting it before anyone asks.
+
+Amended packet `35d2be530` on `manager-a/idle-cpu`. Idle CPU 14.91% this run against the PO's 20.6%.
+
+| Counter | Delta over idle window |
+|---|---|
+| `_mcDiag.renders` | **0** |
+| `_mcDiag.resamples` | **0** |
+| `_mcDiag.fullResamples` | **0** |
+| `_mcDiag.incrementalResamples` | **0** |
+| `PATCH /api/sessions/*/state` | **0** |
+
+And the three disputed paths, answered empirically in a live browser rather than by pattern-matching source: **M20-Q1's legacy 600 ms poll did not execute. The forming-candle updater did not execute. Time-driven resample/cache invalidation did not execute.** That resolves the conflict I flagged at 14:59 **in favour of the static census**, and the census's search-backed refutations stand.
+
+**The rAF frame-rate question resolved against my lead hypothesis.** Headless was running at **141.86 fps**, confirmed — no fixed-frame-rate or vsync flag, count excludes page load. `FireAnimationFrame` self-time was 3457 ms = 5.69% measured, and **normalised to 60 Hz that is 2.41%**.
+
+**So `Chart.animate`'s unconditional loop is real, it is genuinely unguarded, and it costs about 2.4% — not 20%.** I put it forward as the lead at 14:22 and again at 15:01. It is not the floor. Demoted, and I would rather say that in the same hour I said the opposite than let it stand because it was mine.
+
+**I also got the earlier per-frame arithmetic wrong in a way worth naming.** At 14:58 I divided 3829 ms of `v8.callFunction` by 10,023 frames to get "~0.38 ms of JavaScript per animation frame" and concluded real work was happening in the loop. With `renders = 0`, `animate()` is provably early-exiting every frame, so that inference was unsound — I attributed a whole-page JS total to one callback because it was the callback I was looking at. The division was arithmetic; the attribution was assumption.
+
+## 2026-07-28 15:27 — The investigation now has no suspect, and I would rather state that than name one
+
+Adding up what survives: 14.91% idle, of which rAF explains **2.41%**. Nothing repaints. Nothing resamples. Nothing autosaves. Every one of the Director's five named suspects is eliminated, four by the census and three of those confirmed empirically as never executing.
+
+**Roughly 12.5 percentage points are unattributed and every named candidate is dead.**
+
+Trace-event categories — `FireAnimationFrame`, `v8.callFunction`, `BeginMainFrame` — say which *machinery* ran, not which *code* ran, and I have been reasoning from machinery all afternoon. What I have never asked for is the obvious thing: **a bottom-up JavaScript self-time profile, top functions by self time, mapped to source.** Dispatched now.
+
+My expectation is the six V9 React pumps, since they are the only known periodic work left standing, and that would put my 14:49 ranking **back in play after I withdrew it at 15:01**. I have flagged that as a hypothesis to refute and told the author the profile wins if it disagrees. I have now moved on this question twice in one afternoon; the way to stop is to measure the thing directly instead of re-ranking candidates.
+
+## 2026-07-28 15:28 — Two holes I left, both mine, both now closed by instruction
+
+**The counter I asked for answers a narrower question than I thought.** `render()` increments `_mcDiag.renders`, but **M20-Q2's default path does a region paint on the price axis rather than calling `render()`**. A once-per-second region paint is therefore **invisible to that counter by construction.** So `renders = 0` supports "no *full-chart* painting at rest" and **not** "no painting at rest", which is how I was about to read it. Sent back for direct instrumentation of the region-paint path.
+
+**And the validity control I should have demanded in the first brief: Chrome tracing is not free.** Attaching the Performance recorder and CDP instrumentation consumes CPU, so some fraction of 14.91% may be **the act of measuring**. If the untraced figure is materially lower, every attribution taken today needs rescaling. That is the largest single threat to this whole line of work and it has been sitting unexamined since 14:04. Required now, both numbers side by side.
+
+Related and practical: the same conditions produced **13.12% then 14.91%**, about 14% apart. I have asked for the spread across three runs, because **a fix has to beat that noise before a before/after pair means anything**, and the Director's acceptance criterion is precisely a before/after pair.
+
+## 2026-07-28 15:29 — Status, plainly
+
+We have eliminated a great deal and located nothing. Four hours in, the honest summary is: the idle floor reproduces, it is not repainting, it is not resampling, it is not any of the five suspects, and rAF accounts for a sixth of it. The remaining five-sixths has never been profiled at function granularity.
+
+That is progress — an eliminated hypothesis is worth having and several of these were load-bearing — but it is **not** the small local fix inside 46 hours that the CPU finding hoped for, and I am not going to present elimination as if it were location. No fix packet has been authored and none should be until the profile names a function.
