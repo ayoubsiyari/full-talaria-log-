@@ -82,6 +82,16 @@ function withScheduler(snapshot, totals = schedulerTotals()) {
   };
 }
 
+function withSchedulerRows(snapshot, rows) {
+  return {
+    ...snapshot,
+    schedulingCensus: {
+      rows,
+      totals: aggregateM6SchedulingCensus(rows),
+    },
+  };
+}
+
 function observedTotals(overrides = {}) {
   return schedulerTotals({ timerCallbacks: 5, ...overrides });
 }
@@ -187,6 +197,48 @@ test('unit: scheduler census reports wrapper displacement at snapshot time', () 
   const summary = summarizeM6SchedulingCensus(win, 'fixture');
 
   assert.match(summary.errors.join(','), /wrapper-displaced:setInterval/);
+});
+
+test('unit: scheduler census reports Worker, channel, and listener wrapper displacement at snapshot time', () => {
+  function FakeMessageChannel() {
+    this.port1 = { close() {} };
+    this.port2 = { close() {} };
+  }
+  function FakeBroadcastChannel() {
+    this.close = function close() {};
+  }
+  function FakeWorker() {
+    this.terminate = function terminate() {};
+  }
+  const originalAddEventListener = function addEventListener() {};
+  const win = {
+    performance: { now: () => 10 },
+    setTimeout() { return 1; },
+    clearTimeout() {},
+    setInterval() { return 2; },
+    clearInterval() {},
+    requestAnimationFrame() { return 3; },
+    cancelAnimationFrame() {},
+    EventTarget: function EventTarget() {},
+    MessageChannel: FakeMessageChannel,
+    BroadcastChannel: FakeBroadcastChannel,
+    Worker: FakeWorker,
+  };
+  win.EventTarget.prototype.addEventListener = originalAddEventListener;
+  win.EventTarget.prototype.removeEventListener = function removeEventListener() {};
+
+  installM6SchedulingCensus(win, 'fixture');
+  win.Worker = FakeWorker;
+  win.MessageChannel = FakeMessageChannel;
+  win.BroadcastChannel = FakeBroadcastChannel;
+  win.EventTarget.prototype.addEventListener = originalAddEventListener;
+  const summary = summarizeM6SchedulingCensus(win, 'fixture');
+  const errors = summary.errors.join(',');
+
+  assert.match(errors, /wrapper-displaced:Worker/);
+  assert.match(errors, /wrapper-displaced:MessageChannel/);
+  assert.match(errors, /wrapper-displaced:BroadcastChannel/);
+  assert.match(errors, /wrapper-displaced:EventTarget\.prototype\.addEventListener/);
 });
 
 test('unit: scheduler census listeners are identity keyed', () => {
@@ -295,6 +347,57 @@ test('fault-injection: scheduler census reset between baseline and final fails e
   assert.match(instrumented.detail, /epoch-reset:A-harness/);
 });
 
+test('fault-injection: per-window callback observation is required for every stable installed window', () => {
+  const baseline = withSchedulerRows(
+    { liveReplaySystems: 1, connectedIframes: 0, detachedTrackedIframes: 0 },
+    [
+      { label: 'A-harness', installed: true, installedAt: 10, pendingTimeouts: 0, pendingIntervals: 0, pendingRafs: 0, eventListeners: 0, messageChannels: 0, broadcastChannels: 0, workers: 0, timerCallbacks: 0, intervalCallbacks: 0, rafCallbacks: 0, errors: [] },
+      { label: 'panel-B', installed: true, installedAt: 11, pendingTimeouts: 0, pendingIntervals: 0, pendingRafs: 0, eventListeners: 0, messageChannels: 0, broadcastChannels: 0, workers: 0, timerCallbacks: 0, intervalCallbacks: 0, rafCallbacks: 0, errors: [] },
+    ],
+  );
+  const final = withSchedulerRows(
+    { liveReplaySystems: 1, connectedIframes: 0, detachedTrackedIframes: 0 },
+    [
+      { label: 'A-harness', installed: true, installedAt: 10, pendingTimeouts: 0, pendingIntervals: 0, pendingRafs: 0, eventListeners: 0, messageChannels: 0, broadcastChannels: 0, workers: 0, timerCallbacks: 5, intervalCallbacks: 0, rafCallbacks: 0, errors: [] },
+      { label: 'panel-B', installed: true, installedAt: 11, pendingTimeouts: 0, pendingIntervals: 0, pendingRafs: 0, eventListeners: 0, messageChannels: 0, broadcastChannels: 0, workers: 0, timerCallbacks: 0, intervalCallbacks: 0, rafCallbacks: 0, errors: [] },
+    ],
+  );
+  const cells = assertM6ReplayLeakCounts({
+    baseline,
+    final,
+    workload: { armed: true, panels: 4, indicatorsOk: true, order: { ok: true }, stillPlaying: 4 },
+  });
+
+  const instrumented = cells.find((cell) => cell.name === 'M6-SCHEDULER-CENSUS-INSTRUMENTED');
+  assert.equal(instrumented.pass, false);
+  assert.match(instrumented.detail, /callback-unobserved:panel-B/);
+});
+
+test('fault-injection: auto-installed final windows are not counted as instrumented', () => {
+  const baseline = withSchedulerRows(
+    { liveReplaySystems: 1, connectedIframes: 0, detachedTrackedIframes: 0 },
+    [
+      { label: 'A-harness', installed: true, installedAt: 10, pendingTimeouts: 0, pendingIntervals: 0, pendingRafs: 0, eventListeners: 0, messageChannels: 0, broadcastChannels: 0, workers: 0, timerCallbacks: 0, intervalCallbacks: 0, rafCallbacks: 0, errors: [] },
+    ],
+  );
+  const final = withSchedulerRows(
+    { liveReplaySystems: 1, connectedIframes: 0, detachedTrackedIframes: 0 },
+    [
+      { label: 'A-harness', installed: true, installedAt: 10, pendingTimeouts: 0, pendingIntervals: 0, pendingRafs: 0, eventListeners: 0, messageChannels: 0, broadcastChannels: 0, workers: 0, timerCallbacks: 5, intervalCallbacks: 0, rafCallbacks: 0, errors: [] },
+      { label: 'panel-B', installed: true, installedAt: 99, pendingTimeouts: 0, pendingIntervals: 0, pendingRafs: 0, eventListeners: 0, messageChannels: 0, broadcastChannels: 0, workers: 0, timerCallbacks: 0, intervalCallbacks: 0, rafCallbacks: 0, errors: [] },
+    ],
+  );
+  const cells = assertM6ReplayLeakCounts({
+    baseline,
+    final,
+    workload: { armed: true, panels: 4, indicatorsOk: true, order: { ok: true }, stillPlaying: 4 },
+  });
+
+  const instrumented = cells.find((cell) => cell.name === 'M6-SCHEDULER-CENSUS-INSTRUMENTED');
+  assert.equal(instrumented.pass, false);
+  assert.match(instrumented.detail, /callback-auto-installed:panel-B/);
+});
+
 test('fault-injection: listener-only drift is not a reproduced PO defect', async () => {
   const preflight = await runM6ReplayLeakPreflight({
     findBrowser: () => '/fixture/chrome',
@@ -317,6 +420,92 @@ test('fault-injection: listener-only drift is not a reproduced PO defect', async
   assert.equal(preflight.ok, false);
   assert.equal(preflight.status, 'UNPROVEN');
   assert.match(preflight.error, /listener-only drift is not PO defect reproduced/);
+});
+
+test('fault-injection: one-shot worker growth is RED but not reproduced PO defect credit', async () => {
+  const preflight = await runM6ReplayLeakPreflight({
+    findBrowser: () => '/fixture/chrome',
+    runBrowser: async () => ({
+      report: {
+        ok: true,
+        cycles: 5,
+        workload: { armed: true, panels: 4, indicatorsOk: true, order: { ok: true }, stillPlaying: 4 },
+        baseline: withScheduler({ liveReplaySystems: 1, connectedIframes: 0, detachedTrackedIframes: 0 }),
+        final: withScheduler(
+          { liveReplaySystems: 1, connectedIframes: 0, detachedTrackedIframes: 0 },
+          observedTotals({ workers: 1, totalResidue: 1 }),
+        ),
+      },
+      timedOut: false,
+      stderrTail: '',
+    }),
+  });
+
+  assert.equal(preflight.ok, false);
+  assert.equal(preflight.status, 'UNPROVEN');
+  assert.match(preflight.error, /one-shot worker allocation is not PO defect reproduced/);
+});
+
+test('fault-injection: displaced Worker wrapper cannot mint FIXED GREEN', async () => {
+  const prev = process.env.TALARIA_M6_LEAK_FIXED;
+  process.env.TALARIA_M6_LEAK_FIXED = '1';
+  try {
+    const preflight = await runM6ReplayLeakPreflight({
+      findBrowser: () => '/fixture/chrome',
+      runBrowser: async () => ({
+        report: {
+          ok: true,
+          cycles: 5,
+          workload: { armed: true, panels: 4, indicatorsOk: true, order: { ok: true }, stillPlaying: 4 },
+          baseline: withScheduler({ liveReplaySystems: 1, connectedIframes: 0, detachedTrackedIframes: 0 }),
+          final: withScheduler(
+            { liveReplaySystems: 1, connectedIframes: 0, detachedTrackedIframes: 0 },
+            observedTotals({ errorCount: 1, errors: ['A-harness:wrapper-displaced:Worker'] }),
+          ),
+        },
+        timedOut: false,
+        stderrTail: '',
+      }),
+    });
+
+    assert.equal(preflight.ok, false);
+    assert.equal(preflight.status, 'RED');
+    assert.match(preflight.acceptance.error, /wrapper-displaced:Worker/);
+  } finally {
+    if (prev === undefined) delete process.env.TALARIA_M6_LEAK_FIXED;
+    else process.env.TALARIA_M6_LEAK_FIXED = prev;
+  }
+});
+
+test('fault-injection: displaced BroadcastChannel wrapper cannot mint FIXED GREEN', async () => {
+  const prev = process.env.TALARIA_M6_LEAK_FIXED;
+  process.env.TALARIA_M6_LEAK_FIXED = '1';
+  try {
+    const preflight = await runM6ReplayLeakPreflight({
+      findBrowser: () => '/fixture/chrome',
+      runBrowser: async () => ({
+        report: {
+          ok: true,
+          cycles: 5,
+          workload: { armed: true, panels: 4, indicatorsOk: true, order: { ok: true }, stillPlaying: 4 },
+          baseline: withScheduler({ liveReplaySystems: 1, connectedIframes: 0, detachedTrackedIframes: 0 }),
+          final: withScheduler(
+            { liveReplaySystems: 1, connectedIframes: 0, detachedTrackedIframes: 0 },
+            observedTotals({ errorCount: 1, errors: ['A-harness:wrapper-displaced:BroadcastChannel'] }),
+          ),
+        },
+        timedOut: false,
+        stderrTail: '',
+      }),
+    });
+
+    assert.equal(preflight.ok, false);
+    assert.equal(preflight.status, 'RED');
+    assert.match(preflight.acceptance.error, /wrapper-displaced:BroadcastChannel/);
+  } finally {
+    if (prev === undefined) delete process.env.TALARIA_M6_LEAK_FIXED;
+    else process.env.TALARIA_M6_LEAK_FIXED = prev;
+  }
 });
 
 test('unit: mutant string apply no-ops destroy drain and fails if target moves', () => {

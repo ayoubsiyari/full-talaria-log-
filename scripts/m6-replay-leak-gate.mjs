@@ -817,7 +817,7 @@ export async function runM6ReplayLeakPreflight(options = {}) {
   const finalLive = acceptance.report?.final?.liveReplaySystems;
   const censusInstrumented = acceptance.cells?.some((cell) => cell.name === 'M6-SCHEDULER-CENSUS-INSTRUMENTED' && cell.pass === true);
   const schedulerCell = acceptance.cells?.find((cell) => cell.name === 'M6-SCHEDULER-CENSUS-RETURNS-TO-BASELINE');
-  const soundSchedulerRed = schedulerCell?.pass === false && schedulerCell?.metrics?.soundChannelRed === true;
+  const soundSchedulerRed = schedulerCell?.pass === false && schedulerCell?.metrics?.soundAttributableRed === true;
   const defectReproduced = censusInstrumented === true && (finalLive > 1 || soundSchedulerRed);
   if (process.env.TALARIA_M6_LEAK_FIXED !== '1') {
     if (acceptance.ok && finalLive === 1) {
@@ -838,7 +838,7 @@ export async function runM6ReplayLeakPreflight(options = {}) {
           signature: M6_REPLAY_LEAK_SIGNATURE,
           acceptance,
           mutant: null,
-          error: 'M6 defect unproven: requires instrumented census plus sound scheduler-channel RED; absent/blind census or listener-only drift is not PO defect reproduced',
+          error: 'M6 defect unproven: requires instrumented census plus live growth or attributable scheduler-channel RED; absent/blind census is not PO defect reproduced; listener-only drift is not PO defect reproduced; one-shot worker allocation is not PO defect reproduced',
         };
       }
       return { ok: false, status: acceptance.status, signature: M6_REPLAY_LEAK_SIGNATURE, acceptance, mutant: null };
