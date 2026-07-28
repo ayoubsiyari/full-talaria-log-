@@ -2547,3 +2547,40 @@ I tested the refusal paths instead of assuming them, and found two defects in my
 **That second one is the EVID-01 class again, in the tool built to enforce EVID-01** — a check that passes because it is looking at the wrong thing. Third instance today of "the verification was satisfied for a reason unrelated to the property". I do not think that is coincidence; it is what happens when a check is written from the intent rather than from the failure it must catch.
 
 **Sealing is deliberately deferred** until B-W18 lands and is committed, because a seal that pins a superseded source is worse than no seal.
+
+---
+
+## B-0115 — B-W18 ACCEPTED (6 designed / 0 survived). Deviation RATIFIED — my brief was wrong and the packet was right to refuse it.
+
+**Verified in my own worktree.** Client 70/70 (the 35 pre-existing cells still pass), backend 44 passed (pre-existing 14 intact, ambient flag confirmed absent so those are genuine unset-flag runs), B-W18 mutants **6/0**, B-W16 mutants **9/0**, VER-04 both halves on both harnesses, byte-level CRLF = **0** on all six files with SHA-256 matching the packet's report.
+
+### 1. The deviation, and why I am ratifying it
+
+**My brief contradicted itself and the packet caught it.** §0 required that "an unset flag, an empty string, a typo'd value, or an absent `window` must all leave the guard **active**" — and then §2 and §3 handed over code snippets that do the opposite:
+
+- `!window.__TALARIA_DISABLE_…` — `'false'` is a **truthy string**, so an operator setting the flag to `'false'` intending safety **disables the guard**.
+- `os.getenv(...) in {"1","true","yes","on"}` — an **empty string or any typo** evaluates false and **disables the guard**.
+
+Both fail **open**, on a lever whose job is to protect against silently deleting trade journals. The packet implemented the stated safety property rather than the literal snippet, changed nothing else — names, placement, default and rollback semantics are exactly as reserved — and flagged it for sign-off instead of quietly doing either thing. **That is the behaviour I want and it is ratified.**
+
+I weighed the one real argument against: the naive idiom is the file's existing convention, and consistency has value. It loses. **The convention is fine for a feature flag and wrong for a rollback lever on a data-loss path**, because the two failure directions are not comparable — a flag that fails on costs a feature, a guard that fails off costs a user's trade history. The packet also kept both surfaces on the same four-word vocabulary so one runbook line covers them, which recovers most of the consistency benefit.
+
+**Operational consequence I have now documented in both the deploy note and the PO check:** a misspelled disable value leaves the guard **on**. That is the safe direction, but it is surprising, so the note says plainly — *if you disable a switch and nothing changes, check the spelling before concluding the switch is broken.*
+
+### 2. The packet corrected one of my predictions, and the correction mattered
+
+I predicted mutant 5 (kill also disables the hot autosave path) would die on the existing cell 6. **It does not** — cell 6 runs with the kill *unset*, so the mutated condition is never exercised. The packet found this, added `nc1-kill-engaged-hot-still-runs`, and reported it. **Without that assertion mutant 5 would have survived**, and my mutation set would have scored 6/0 while containing a live hole.
+
+This is the second time today a mutant I designed would have passed for a reason I had not thought through, and both times the packet caught it rather than quietly scoring green. Worth recording as evidence that "declare N designed / M survived" only means something when the killer is *checked*, not assumed.
+
+### 3. VER-04 claims decay when the acceptance grows — third instance today
+
+Re-running the B-W16 harness after B-W18 landed, its VER-04 reimplementation **FAILED** — on exactly the 13 new kill-switch cells and nothing else. Correct behaviour, not a defect: **the acceptance grew a requirement the B-W16-era reimplementation predates.** I brought it up to the current spec (kill predicate in a deliberately different shape — a `Set`, inverted `killed` polarity, `typeof !== 'object'` test) and it passes again.
+
+That is now three times in one day that changing the spec silently invalidated a standing VER-04 claim: B-W17's reimplementation after my `rows_added` correction, and this one twice over. **The general lesson: a VER-04 claim is pinned to an acceptance, and it is not inheritable across a change to that acceptance.** A harness left reporting the old verdict is a stale green. I re-ran every harness rather than trusting the last recorded result, and that is the only reason this was visible.
+
+### 4. Also touched
+
+The packet had to repair `b-w16-hydration-guard.mutants.mjs` — its `GUARD` anchor no longer matched after the §2 edit and the harness threw before running anything. Anchors updated, semantics unchanged, set re-verified. It disclosed this as unrequested rather than folding it in silently, which is the right call: a harness edit inside a packet is exactly where a mutation set gets quietly weakened.
+
+Next: seal the train, then hand the Director the build instruction.

@@ -12463,7 +12463,19 @@ def _sync_trading_session_journal_trades(
     rows_before = len(existing_rows)
     rows_present = rows_before + rows_added
 
-    if unresolved_incoming:
+    # B-W18 rollback lever. Read at CALL time, not import time: an incident must be
+    # able to flip this without a reimport or a redeploy, and the acceptance cells
+    # toggle it per-case. Fail-safe, not a feature flag: only an explicitly recognised
+    # negative value disables the guard. Unset, "", or any unrecognised/typo'd value
+    # leaves the guard ACTIVE, because a guard that silently fails off deletes trades.
+    # Recognised disable values (after strip/lower): "0", "false", "no", "off".
+    # NOTE: this deliberately does NOT gate the [JOURNAL-DELETE] record below — when
+    # the guard is off the sweep deletes again, which is exactly when the record matters.
+    parse_guard_enabled = os.getenv(
+        "JOURNAL_SWEEP_PARSE_GUARD_ENABLED", "true"
+    ).strip().lower() not in {"0", "false", "no", "off"}
+
+    if unresolved_incoming and parse_guard_enabled:
         # Fail closed. An entry whose id did not parse cannot be matched to a stored
         # row by construction, so we cannot say which stored rows are orphans, and
         # there is no way to exempt only the offending row. Retain everything and

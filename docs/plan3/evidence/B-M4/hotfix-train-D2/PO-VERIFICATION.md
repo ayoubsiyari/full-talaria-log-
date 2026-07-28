@@ -122,6 +122,12 @@ Both guards can be switched off independently without a redeploy of the fix:
 | Client guard | set `window.__TALARIA_DISABLE_B_W16_HYDRATION_GUARD_V1 = true` | reverts to pre-fix durable-write behaviour |
 | Backend guard | set env `JOURNAL_SWEEP_PARSE_GUARD_ENABLED=false` and restart `trading-chart` | sweep deletes as before |
 
+**Use those exact values.** Each switch recognises only a short vocabulary and
+treats anything else as "leave the guard on": the client accepts `true`/`1`/`yes`/`on`,
+the backend accepts `0`/`false`/`no`/`off`. A typo does **not** disable the guard, on
+purpose. So if you disable one and nothing changes, check the spelling before
+concluding the switch is broken.
+
 **Deletion logging cannot be switched off, deliberately.** If a guard is disabled
 the sweep can delete again, and that is exactly when we most need the record.
 

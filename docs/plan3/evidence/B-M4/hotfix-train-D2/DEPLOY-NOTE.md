@@ -32,6 +32,23 @@ two-resolver id divergence (reported, not repaired — see §5).
 | Client hydration guard | `window.__TALARIA_DISABLE_B_W16_HYDRATION_GUARD_V1` | unset → **guard on** | set to `true` in the browser; no redeploy |
 | Backend parse guard | env `JOURNAL_SWEEP_PARSE_GUARD_ENABLED` | unset → **guard on** | set `false` and restart `trading-chart` |
 
+**Both switches only recognise an explicit vocabulary, and anything else leaves the
+guard ON.** This is deliberate and it is not the codebase's usual flag idiom — the
+usual idiom fails *open*, and a lever that silently disables a data-loss guard on a
+typo is not acceptable on this path.
+
+| Switch | Values that DISABLE the guard | Everything else |
+|---|---|---|
+| `__TALARIA_DISABLE_B_W16_HYDRATION_GUARD_V1` | `true`, `1`, `'1'`, `'true'`, `'yes'`, `'on'` (trimmed, case-insensitive) | guard stays **ON** — including `'false'`, `''`, `0`, `null`, garbage, and an absent `window` |
+| `JOURNAL_SWEEP_PARSE_GUARD_ENABLED` | `0`, `false`, `no`, `off` (trimmed, case-insensitive) | guard stays **ON** — including `""`, `"disabled"`, and typos like `"fasle"` |
+
+**The operational consequence: if you disable a switch and the behaviour does not
+change, check the spelling before concluding the switch is broken.** A misspelled
+value leaves the guard active by design. Note the two are inverted by construction —
+the client flag is named `DISABLE_…` so affirmative words engage it, the backend
+flag is named `…_ENABLED` so negative words do — but both reduce to the same four
+words, so one runbook line covers both.
+
 **Deletion logging has no kill-switch, by design.** If a guard is disabled the
 sweep can delete again, which is precisely when the record is most needed. A switch
 able to silence it would recreate the unanswerable question this train exists to

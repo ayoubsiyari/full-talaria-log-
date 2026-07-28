@@ -300,7 +300,156 @@ const trade = (id) => ({ tradeId: id, ticker: 'EURUSD', symbol: 'EURUSD', closeP
   check('cell9-a1-exit-server-intact', om.__server.rows.length === 2);
 }
 
+// ══ B-W18 — negative controls for the hydration-guard kill-switch ═════════════
+// Standing policy: every covered gate keeps a paired cell running with the kill
+// switch OFF, asserting RED. A gate whose negative control is green is a lying
+// gate. NC-1 is RED-by-design: it asserts the trade loss RETURNS when the guard
+// is switched off — that is what proves the switch is real and not decorative.
+
+const KILL = '__TALARIA_DISABLE_B_W16_HYDRATION_GUARD_V1';
+const UNSET = Symbol('unset');
+
+/** Run `fn` with the kill flag set to `value` (or absent), always restoring after. */
+async function withKill(value, fn) {
+  const had = typeof global.window !== 'undefined'
+    && Object.prototype.hasOwnProperty.call(global.window, KILL);
+  const prev = had ? global.window[KILL] : undefined;
+  if (value === UNSET) delete global.window[KILL];
+  else global.window[KILL] = value;
+  try {
+    return await fn();
+  } finally {
+    if (had) global.window[KILL] = prev;
+    else delete global.window[KILL];
+  }
+}
+
+/** The exact cell-1 defect state: failed hydrate, one close, 3 rows on the server. */
+function defectStateOm() {
+  const om = makeOm({ serverRows: [trade('srv-1'), trade('srv-2'), trade('srv-3')] });
+  om._m19CommitJournalArray([], 'local-backup-hydrate'); // failed-fetch hydrate
+  om.tradeJournal.push(trade('new-1'));                  // user closes one trade
+  return om;
+}
+
+// ── NC-1 — kill ENGAGED + the cell-1 defect state → the loss reproduces ───────
+{
+  const om = defectStateOm();
+  const res = await withKill(true, () => persist(om));
+  check('nc1-kill-engaged-durable-proceeds', !!res && res.durableQueued === true,
+    JSON.stringify(res));
+  check('nc1-kill-engaged-queue-called', om.__calls.durable.length === 1,
+    `durable calls=${om.__calls.durable.length}`);
+  const ids = om.__server.rows.map((r) => r.tradeId).join(',');
+  check('nc1-kill-engaged-loss-reproduces', ids === 'new-1',
+    `server rows=${ids} (expected the 3 server trades to be destroyed)`);
+  check('nc1-kill-engaged-no-suppression-warning', !loud(om), JSON.stringify(om.__warns));
+  // Rollback fidelity: the kill must not perturb anything but the guard branch.
+  check('nc1-kill-engaged-hot-still-runs', om.__calls.hot.length === 1,
+    `hot calls=${om.__calls.hot.length}`);
+  check('nc1-kill-engaged-return-shape-is-pre-fix',
+    !!res && res.sync === true && !('reason' in res), JSON.stringify(res));
+}
+
+// ── NC-2 — kill UNSET → cell 1 still suppresses (default-on) ──────────────────
+{
+  const om = defectStateOm();
+  const res = await withKill(UNSET, () => persist(om));
+  check('nc2-kill-unset-still-suppressed', suppressed(res), JSON.stringify(res));
+  check('nc2-kill-unset-server-intact', om.__server.rows.length === 3,
+    `server rows=${om.__server.rows.length}`);
+}
+
+// ── NC-2b — absent `window` → guard still ACTIVE ──────────────────────────────
+// A node/SSR/worker context has no window. Defaulting to "disabled" there would
+// silently switch the guard off everywhere it cannot see a flag.
+{
+  const om = defectStateOm(); // built while window still exists
+  const savedWindow = global.window;
+  let res = null;
+  let threw = null;
+  try {
+    delete global.window;
+    res = await persist(om);
+  } catch (e) {
+    threw = e;
+  } finally {
+    global.window = savedWindow;
+  }
+  check('nc2b-absent-window-no-throw', threw === null, threw && threw.message);
+  check('nc2b-absent-window-guard-active', suppressed(res), JSON.stringify(res));
+  check('nc2b-absent-window-server-intact', om.__server.rows.length === 3,
+    `server rows=${om.__server.rows.length}`);
+}
+
+// ── NC-3 — falsy / garbage / negative-intent values → guard still ACTIVE ──────
+// `'false'` is a TRUTHY string: under the naive `!window.__FLAG` idiom it would
+// DISABLE the guard, which is the wrong failure direction for a rollback lever.
+{
+  const stillActive = [
+    ['explicit-undefined', undefined],
+    ['null', null],
+    ['empty-string', ''],
+    ['whitespace-only', '   '],
+    ['number-zero', 0],
+    ['boolean-false', false],
+    ['NaN', NaN],
+    ['string-false', 'false'],
+    ['string-FALSE', 'FALSE'],
+    ['string-zero', '0'],
+    ['string-no', 'no'],
+    ['string-off', 'off'],
+    ['garbage-word', 'nope'],
+    ['typo-of-true', 'ture'],
+    ['object', {}],
+  ];
+  for (const [name, value] of stillActive) {
+    const om = defectStateOm();
+    const res = await withKill(value, () => persist(om));
+    check(`nc3-guard-active-${name}`,
+      suppressed(res) && om.__server.rows.length === 3,
+      `res=${JSON.stringify(res)} serverRows=${om.__server.rows.length}`);
+  }
+}
+
+// ── NC-3b — the exact vocabulary that DOES disable the guard ──────────────────
+// Documented here so the incident runbook and the code cannot drift apart.
+{
+  const disables = [
+    ['boolean-true', true],
+    ['number-one', 1],
+    ['string-1', '1'],
+    ['string-true', 'true'],
+    ['string-TRUE', 'TRUE'],
+    ['string-true-padded', '  true  '],
+    ['string-yes', 'yes'],
+    ['string-on', 'on'],
+  ];
+  for (const [name, value] of disables) {
+    const om = defectStateOm();
+    const res = await withKill(value, () => persist(om));
+    check(`nc3b-guard-disabled-${name}`,
+      !!res && res.durableQueued === true && om.__server.rows.length === 1,
+      `res=${JSON.stringify(res)} serverRows=${om.__server.rows.length}`);
+  }
+}
+
+// ── NC-3c — the kill does not leak into the hydrated (non-defect) path ────────
+{
+  const om = makeOm({ serverRows: [trade('srv-1')] });
+  om._m19CommitJournalArray([trade('srv-1')], 'session-state-hydrate');
+  om.tradeJournal.push(trade('new-1'));
+  const res = await withKill(true, () => persist(om));
+  check('nc3c-kill-engaged-hydrated-path-unchanged',
+    !!res && res.durableQueued === true && om.__server.rows.length === 2,
+    JSON.stringify(res));
+}
+
 // ── summary ───────────────────────────────────────────────────────────────────
+const legacy = results.filter((r) => r.name.startsWith('cell'));
+const legacyFailed = legacy.filter((r) => !r.pass);
+process.stdout.write(
+  `\nB-W16 pre-existing cells: ${legacy.length - legacyFailed.length}/${legacy.length} assertions passed\n`);
 const failed = results.filter((r) => !r.pass);
 process.stdout.write(`\nB-W16: ${results.length - failed.length}/${results.length} assertions passed\n`);
 if (failed.length) {

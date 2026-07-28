@@ -16,6 +16,24 @@ function _orderPersistenceV1Enabled() {
     return typeof window === 'undefined' || !window.__TALARIA_DISABLE_ORDER_PERSISTENCE_V1;
 }
 
+/**
+ * B-W18 rollback lever for the B-W16 durable-journal hydration guard — default ON.
+ *
+ * Fail-safe, not a feature flag: ONLY an explicitly recognised affirmative value
+ * disables the guard. Unset, null, '', 0, 'false', 'off' or any typo leaves the
+ * guard ACTIVE, as does an absent `window`. The failure directions are not
+ * symmetric — a guard that silently fails off deletes a user's trade journal.
+ * Recognised disable values (after String/trim/lowercase): '1', 'true', 'yes',
+ * 'on' — the same vocabulary as the backend JOURNAL_SWEEP_PARSE_GUARD_ENABLED
+ * lever, so one incident runbook covers both surfaces.
+ */
+function _bW16HydrationGuardEnabled() {
+    if (typeof window === 'undefined') return true;
+    const kill = window.__TALARIA_DISABLE_B_W16_HYDRATION_GUARD_V1;
+    if (kill === undefined || kill === null) return true;
+    return !['1', 'true', 'yes', 'on'].includes(String(kill).trim().toLowerCase());
+}
+
 /** I16 — build_id + schema_version on persisted order/trade rows — default ON. */
 const ORDER_RECORD_SCHEMA_VERSION = 1;
 
@@ -7186,7 +7204,11 @@ class OrderManager {
             const journalVouchedFor = this._journalProvenance === 'locally-authored'
                 || (this._journalProvenance === 'hydrated'
                     && this._journalProvenanceSession === (sessionId != null ? String(sessionId) : null));
-            if (!journalVouchedFor) {
+            // B-W18 rollback lever: when the kill is engaged this branch is skipped
+            // entirely and the durable write proceeds exactly as it did pre-B-W16 —
+            // same return shape, no suppression, no warning. The guard condition
+            // itself is unchanged.
+            if (_bW16HydrationGuardEnabled() && !journalVouchedFor) {
                 console.warn("📔 durable journal write suppressed: this session's journal was never hydrated from the server; the in-memory journal may be incomplete and writing it would delete server-side trades. Keeping last durable state.");
                 return Promise.resolve({ hotQueued, durableQueued: false, reason: 'journal-unhydrated' });
             }

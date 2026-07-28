@@ -226,3 +226,141 @@ def test_cell8_refusal_survives_a_raising_logger(db, monkeypatch):
     _sync(db, [{"trade_id": "t1"}, {"trade_id": "t2"}, {"trade_id": "t3"}])
     monkeypatch.undo()
     assert _stored_ids(db) == ["t1", "t2", "t3"]
+
+
+# === B-W18 — negative controls for the parse-guard kill-switch ================
+# Standing policy: every covered gate keeps a paired cell running with the kill
+# switch OFF, asserting RED. A gate whose negative control is green is a lying
+# gate. NC-4 is RED-by-design: it asserts the wipe RETURNS when the guard is
+# switched off, which is what proves the switch is real and not decorative.
+#
+# The flag is read at CALL time inside `_sync_trading_session_journal_trades`,
+# so `monkeypatch.setenv` alone toggles it — no module reimport, and no module
+# attribute to patch.
+
+FLAG = "JOURNAL_SWEEP_PARSE_GUARD_ENABLED"
+
+ALIAS_PAYLOAD = [{"trade_id": "t1"}, {"trade_id": "t2"}, {"trade_id": "t3"}]
+
+
+# --- NC-4 -------------------------------------------------------------------
+
+def test_nc4_guard_disabled_reproduces_the_alias_wipe(db, monkeypatch):
+    """Kill engaged + the cell-1 alias payload: every row is deleted.
+
+    Cell 1 asserts these three rows survive. This asserts they do NOT when the
+    guard is off. If this cell ever goes green with the guard ON, the switch is
+    doing nothing and the rollback lever is a lie.
+    """
+    monkeypatch.setenv(FLAG, "false")
+    _seed(db, ["t1", "t2", "t3"])
+    _sync(db, ALIAS_PAYLOAD)
+    assert _stored_ids(db) == [], "kill engaged but rows survived: the switch does nothing"
+
+
+def test_nc4b_guard_disabled_still_deletes_only_orphans_on_a_parseable_payload(db, monkeypatch):
+    """Rollback fidelity: with the guard off, a normal parseable sweep is unchanged."""
+    monkeypatch.setenv(FLAG, "false")
+    _seed(db, ["t1", "t2", "t3"])
+    _sync(db, [{"tradeId": "t1"}, {"tradeId": "t2"}])
+    assert _stored_ids(db) == ["t1", "t2"]
+
+
+def test_nc4c_guard_disabled_emits_no_refusal_record(db, monkeypatch, capsys):
+    """With the guard off there is no refusal to record."""
+    monkeypatch.setenv(FLAG, "false")
+    _seed(db, ["t1", "t2", "t3"])
+    _sync(db, ALIAS_PAYLOAD)
+    assert "[JOURNAL-SWEEP-REFUSED]" not in capsys.readouterr().out
+
+
+# --- NC-5 -------------------------------------------------------------------
+
+def test_nc5_env_unset_leaves_the_guard_active(db, monkeypatch):
+    """Default-on: with the variable absent entirely, cell 1 still protects."""
+    monkeypatch.delenv(FLAG, raising=False)
+    _seed(db, ["t1", "t2", "t3"])
+    _sync(db, ALIAS_PAYLOAD)
+    assert _stored_ids(db) == ["t1", "t2", "t3"]
+
+
+def test_nc5b_env_unset_still_emits_the_refusal_record(db, monkeypatch, capsys):
+    monkeypatch.delenv(FLAG, raising=False)
+    _seed(db, ["t1", "t2", "t3"])
+    _sync(db, ALIAS_PAYLOAD)
+    assert "[JOURNAL-SWEEP-REFUSED]" in capsys.readouterr().out
+
+
+# --- NC-6 -------------------------------------------------------------------
+
+def test_nc6_deletion_log_still_fires_with_the_guard_disabled(db, monkeypatch, capsys):
+    """The deletion record is deliberately NOT killable.
+
+    When the parse guard is off the sweep deletes again, and that is precisely
+    when the record matters most. A switch that could silence it would recreate
+    the unanswerable question this train exists to end.
+    """
+    monkeypatch.setenv(FLAG, "false")
+    _seed(db, ["t1", "t2", "t3"])
+    _sync(db, ALIAS_PAYLOAD)
+    out = capsys.readouterr().out
+
+    assert "[JOURNAL-DELETE]" in out, "guard disabled silenced the deletion record"
+    line = [ln for ln in out.splitlines() if "[JOURNAL-DELETE]" in ln][0]
+    assert "session_id=%d" % SESSION_ID in line
+    assert "rows_before=3" in line
+    assert "rows_after=0" in line
+    assert "deleted_count=3" in line
+    assert RESOLVER in line
+    deleted_part = line.split("deleted_client_trade_ids=", 1)[1]
+    for cid in ("t1", "t2", "t3"):
+        assert cid in deleted_part, "record omits a deleted client_trade_id"
+
+
+def test_nc6b_deletion_log_still_fires_on_a_normal_sweep_with_the_guard_disabled(db, monkeypatch, capsys):
+    monkeypatch.setenv(FLAG, "false")
+    _seed(db, ["t1", "t2", "t3"])
+    _sync(db, [{"tradeId": "t1"}, {"tradeId": "t2"}])
+    assert "[JOURNAL-DELETE]" in capsys.readouterr().out
+
+
+# --- NC-6c: the exact value vocabulary ---------------------------------------
+# Documented as executable evidence so the incident runbook and the code cannot
+# drift apart. Only an explicitly recognised negative value disables the guard;
+# everything else — including "" and any typo — leaves it ACTIVE.
+
+DISABLING_VALUES = ["0", "false", "FALSE", "False", " false ", "no", "off", "OFF"]
+
+NON_DISABLING_VALUES = [
+    "",            # empty string: the classic allow-list fail-open
+    "   ",         # whitespace only
+    "true",
+    "TRUE",
+    "1",
+    "yes",
+    "on",
+    "fasle",       # typo of a disable value
+    "flase",
+    "disable",     # plausible-but-unrecognised
+    "disabled",
+    "nope",
+    "2",
+    "null",
+    "None",
+]
+
+
+@pytest.mark.parametrize("value", DISABLING_VALUES)
+def test_nc6c_values_that_disable_the_guard(db, monkeypatch, value):
+    monkeypatch.setenv(FLAG, value)
+    _seed(db, ["t1", "t2", "t3"])
+    _sync(db, ALIAS_PAYLOAD)
+    assert _stored_ids(db) == [], "%r should disable the guard" % value
+
+
+@pytest.mark.parametrize("value", NON_DISABLING_VALUES)
+def test_nc6c_values_that_leave_the_guard_active(db, monkeypatch, value):
+    monkeypatch.setenv(FLAG, value)
+    _seed(db, ["t1", "t2", "t3"])
+    _sync(db, ALIAS_PAYLOAD)
+    assert _stored_ids(db) == ["t1", "t2", "t3"], "%r must NOT disable the guard" % value

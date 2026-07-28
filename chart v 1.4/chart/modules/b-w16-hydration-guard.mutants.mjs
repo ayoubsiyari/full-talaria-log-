@@ -32,11 +32,25 @@ const GUARD = `            // B-W16: guard BOTH durable exits (A1 rehydrate + le
             const journalVouchedFor = this._journalProvenance === 'locally-authored'
                 || (this._journalProvenance === 'hydrated'
                     && this._journalProvenanceSession === (sessionId != null ? String(sessionId) : null));
-            if (!journalVouchedFor) {
+            // B-W18 rollback lever: when the kill is engaged this branch is skipped
+            // entirely and the durable write proceeds exactly as it did pre-B-W16 —
+            // same return shape, no suppression, no warning. The guard condition
+            // itself is unchanged.
+            if (_bW16HydrationGuardEnabled() && !journalVouchedFor) {
                 console.warn("📔 durable journal write suppressed: this session's journal was never hydrated from the server; the in-memory journal may be incomplete and writing it would delete server-side trades. Keeping last durable state.");
                 return Promise.resolve({ hotQueued, durableQueued: false, reason: 'journal-unhydrated' });
             }
 `;
+// The provenance test plus the branch head, as it now reads with the B-W18
+// rollback lever in front of it. Mutants that rewrite the condition replace this.
+const GUARD_COND = `const journalVouchedFor = this._journalProvenance === 'locally-authored'
+                || (this._journalProvenance === 'hydrated'
+                    && this._journalProvenanceSession === (sessionId != null ? String(sessionId) : null));
+            // B-W18 rollback lever: when the kill is engaged this branch is skipped
+            // entirely and the durable write proceeds exactly as it did pre-B-W16 —
+            // same return shape, no suppression, no warning. The guard condition
+            // itself is unchanged.
+            if (_bW16HydrationGuardEnabled() && !journalVouchedFor) {`;
 const HOT_BLOCK_OPEN = `        if (this.chart && typeof this.chart.scheduleSessionStateSave === 'function') {\n`;
 const LEGACY_EXIT = `            // Unmarked full journal — server must replace, not prefer-richer.\n`;
 const ALLOWLIST_IF = `        if (reason === 'session-state-hydrate') {`;
@@ -46,6 +60,7 @@ function must(hay, needle, label) {
   return hay;
 }
 must(fixed, GUARD, 'guard');
+must(fixed, GUARD_COND, 'guard-cond');
 must(fixed, HOT_BLOCK_OPEN, 'hot-block');
 must(fixed, LEGACY_EXIT, 'legacy-exit');
 must(fixed, ALLOWLIST_IF, 'allowlist');
@@ -65,11 +80,8 @@ const mutants = [
     n: 3,
     name: 'guard condition replaced with an emptiness test (durableJournal.length > 0)',
     apply: (s) => s.replace(
-      `const journalVouchedFor = this._journalProvenance === 'locally-authored'
-                || (this._journalProvenance === 'hydrated'
-                    && this._journalProvenanceSession === (sessionId != null ? String(sessionId) : null));
-            if (!journalVouchedFor) {`,
-      `if (!(Array.isArray(durableJournal) && durableJournal.length > 0)) {`,
+      GUARD_COND,
+      `if (_bW16HydrationGuardEnabled() && !(Array.isArray(durableJournal) && durableJournal.length > 0)) {`,
     ),
   },
   {
@@ -112,13 +124,10 @@ const mutants = [
     // form, which lets an unset/unrecognised provenance write durably.
     name: 'admit-list reverted to a deny-list (=== \'unhydrated\'), fails OPEN on unknown provenance',
     apply: (s) => s.replace(
-      `const journalVouchedFor = this._journalProvenance === 'locally-authored'
+      GUARD_COND,
+      `if (_bW16HydrationGuardEnabled() && (this._journalProvenance === 'unhydrated'
                 || (this._journalProvenance === 'hydrated'
-                    && this._journalProvenanceSession === (sessionId != null ? String(sessionId) : null));
-            if (!journalVouchedFor) {`,
-      `if (this._journalProvenance === 'unhydrated'
-                || (this._journalProvenance === 'hydrated'
-                    && this._journalProvenanceSession !== (sessionId != null ? String(sessionId) : null))) {`,
+                    && this._journalProvenanceSession !== (sessionId != null ? String(sessionId) : null)))) {`,
     ),
   },
 ];
@@ -174,10 +183,25 @@ if (!BASELINE || !fs.existsSync(BASELINE)) {
   const CTOR_ANCHOR = `        this.chart = chart;\n        this.replaySystem = replaySystem;\n`;
   const FUNNEL_ANCHOR = `        this.tradeJournal = Array.isArray(next) ? next : []; // M19-D-JOURNAL-WRITE:commit\n`;
   const DURABLE_ANCHOR = `        if (this.chart && typeof this.chart.queueCriticalSessionStateSave === 'function') {\n`;
-  for (const [a, l] of [[CTOR_ANCHOR, 'ctor'], [FUNNEL_ANCHOR, 'funnel'], [DURABLE_ANCHOR, 'durable']]) {
+  // B-W18 widened the acceptance with kill-switch cells, so the reimplementation
+  // must implement the switch too or VER-04 is being claimed against a stale spec.
+  // Deliberately a different shape from the product code: a Set, inverted
+  // polarity (`killed` rather than `enabled`), and a `typeof !== 'object'` test.
+  const MODULE_ANCHOR = `function _orderPersistenceV1Enabled() {\n`;
+  for (const [a, l] of [[CTOR_ANCHOR, 'ctor'], [FUNNEL_ANCHOR, 'funnel'],
+    [DURABLE_ANCHOR, 'durable'], [MODULE_ANCHOR, 'module']]) {
     if (!base.includes(a)) throw new Error(`reimpl anchor missing: ${l}`);
   }
   const reimpl = base
+    .replace(MODULE_ANCHOR,
+      `const BW16_KILL_WORDS = new Set(['1', 'true', 'yes', 'on']);\n`
+      + `function _bW16GuardKilled() {\n`
+      + `    if (typeof window !== 'object' || window === null) return false;\n`
+      + `    const raw = window.__TALARIA_DISABLE_B_W16_HYDRATION_GUARD_V1;\n`
+      + `    if (raw === undefined || raw === null) return false;\n`
+      + `    return BW16_KILL_WORDS.has(\`\${raw}\`.trim().toLowerCase());\n`
+      + `}\n\n`
+      + MODULE_ANCHOR)
     .replace(CTOR_ANCHOR, CTOR_ANCHOR
       + `        this._journalProvenance = 'unhydrated';\n`
       + `        this._journalHydratedForSession = null;\n`)
@@ -200,7 +224,8 @@ if (!BASELINE || !fs.existsSync(BASELINE)) {
       + `            const activeSid = (sessionId === undefined || sessionId === null) ? null : \`\${sessionId}\`;\n`
       + `            const staleAcrossSessions = this._journalProvenance === 'hydrated'\n`
       + `                && this._journalHydratedForSession !== activeSid;\n`
-      + `            if (admitted.indexOf(this._journalProvenance) < 0 || staleAcrossSessions) {\n`
+      + `            const notVouched = admitted.indexOf(this._journalProvenance) < 0 || staleAcrossSessions;\n`
+      + `            if (notVouched && !_bW16GuardKilled()) {\n`
       + `                console.warn('📔 Durable journal write suppressed — journal provenance is not vouched for; writing it could delete server-side trades. Last durable state kept.');\n`
       + `                return Promise.resolve({ hotQueued, durableQueued: false, reason: 'journal-unhydrated' });\n`
       + `            }\n`);
