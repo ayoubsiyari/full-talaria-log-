@@ -4352,3 +4352,40 @@ sequence (M26 `cd979b8cc` then FIX 3 `6d52fff66`) before the ruling arrived.
 
 ### Next
 R2 (P2), R3 (P3+P4) concurrent on disjoint files; top-tier review of R1; then FIX 2, FIX 1.
+
+## 2026-07-28 ~20:0x — NAME RESERVATION + queue-count correction.
+
+### RESERVED, cross-manager — do not vary
+**`__TALARIA_DISABLE_MC_BACKGROUND_RENDER_CADENCE_V1`** — FIX 1, background-panel render cadence.
+**B has already written this exact name into its gate expectations.** A second name desynchronises A and B,
+so this is now a hard constraint on the FIX 1 brief, not a preference. FIX 1 remains **last** by design.
+
+### Reserved for the remaining train switches (mine, to avoid parallel-brief collision)
+- `__TALARIA_DISABLE_M24_ORDER_EVICTION_SCOPE_V1` — P2, order-line eviction rescope
+- `__TALARIA_DISABLE_INDICATOR_PERF_BRIDGE_V1` — P3, IndicatorPerf loader
+- `__TALARIA_DISABLE_MODULE_PRESENCE_TRIPWIRE_V1` — P4, module-presence tripwire
+
+### CORRECTION to the Director's "three of five"
+**Item 1 is NOT complete — it is 2 of 6.** The ruling's own generalisation made the enumeration the deliverable,
+and the enumeration found **six** missing switches. R1 (merged `a794613b4`) closed **P1** (M23 host-commit
+teardown) and **P5** (M20-Q9 counters). **Still open: P2, P3, P4, and P6.**
+P6 (deleted served shell `homepage/public/chart/talaria-design/live/index.html`, `d071c858f`) **cannot take a
+runtime switch at all** — no file, nothing to flag — so it needs a Director decision: confirm the route has no
+consumers before the push, or restore the file and delete it in a later train. **Not a flag; a decision.**
+
+### R1 review outcome — M23 ACCEPT, Q9 BLOCK, both now merged
+**New failure mode worth naming.** Q9's first cut read the flag per call *correctly*, but **the read itself
+permanently mutated the object graph**: the wrapper self-uninstalled on first call under flag-on, and
+`initReplaySystem()` runs once per page load, so there was no way back without a reload. **This is the M28
+stranding defect in mirror image** — stranding on ON->OFF instead of OFF->ON.
+**The corruption was silent AND plausible:** after one flip cycle it reported `fullResamplesPerTick = 2.000`
+against a truth of `1.000`, and 2.000 is the value this journal records as the legitimate render-frame
+signature (entries 2691, 2945). **A corrupted reading would have been indistinguishable from a published one.**
+Also fixed: three fields nulled while only two increments were gated, so `incrementalResamples` kept measuring
+under a flag documented as "measurement disabled" and had its output discarded.
+
+### GENERAL LESSON — applies to every kill-switch packet from here
+**Cells wrote the flag as explicit `false`; in production the property is ABSENT.** An inverted-defaulting
+mutant therefore survived the entire suite while silently inverting both switches on the real page. Code was
+correct, coverage was not. **Every switch packet must now cell the absent-property default and an ON->OFF->observe
+flip.** Added to the standing brief template.
