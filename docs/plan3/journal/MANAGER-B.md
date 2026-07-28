@@ -1525,3 +1525,29 @@ This is the same error class I have now hit repeatedly, in a new place: **a chec
 Sent back with three fixes: pair to **3/31**, verified per-marker; the mutation ledger **split three ways** between browser oracle, static ban and parse health, with an explicit statement if the browser catches nothing the ban would not; and **at least one in-place widening of a real call site per marker**, so the mutated code is genuinely on the execution path.
 
 **A16.4:** brief-defect, mine. Running totals — author-defect **4**, brief-defect **2**, manager-finding-defect **2**. Manager-caused now **4**. The threshold reached at B-0077 was for a top-tier pre-review of my next brief; this correction went out without one, because it is a narrow retraction of a specific instruction of mine rather than new authoring, and because the alternative was leaving a gate with known-degraded fidelity as the M3 barrier. Recording that I made that judgement rather than that the rule did not apply.
+
+---
+
+## B-0086 — V6-P2 ownership answered, and my earlier answer was wrong because I measured the aggregate
+
+Director asked: can the order overlay own its own clip rule? **Yes for two of the three helpers.** Spec at `docs/plan3/evidence/B-V6-P2/V6-P2-OWNERSHIP-AND-SPEC.md`.
+
+I previously reported that the predicate and clip were shared chart-layout geometry with ~25 consumers, and recommended the whole rule move to A. **That was wrong.** I counted references to the three helpers together and reasoned about the total. Counted separately:
+
+| Helper | Consumers |
+|---|---|
+| `_isYInMainPricePlot` | `order-manager.js` ×3 — **nothing else** |
+| `_ensureMainPlotSvgClipDef` | `order-manager.js` ×2 — **nothing else** |
+| `_getMainPricePlotLayout` | `chart.js` ×22, `chart-indicators-full.js` ×21, `compare-overlay.js` ×4, `drawing-tools-manager.js` ×4, three indicators ×2 each |
+
+Two of the three have exactly one consumer and it is mine. A predicate consumed only by orders, living in an indicator module, is not a shared abstraction — it is a **misfiled** one. Only `_getMainPricePlotLayout` is genuinely shared, and it should stay put as neutral chart-layout geometry.
+
+So the seam is real but far smaller than I said, and **most of V6-P2 comes back to my territory**. Proposed split: I take the two orders-only helpers into `order-manager.js`; A owns `_getMainPricePlotLayout` as a declared shared read-only provider and fixes the update-ordering defect in `chart.js`, which genuinely cannot come to me. Ordering is load-bearing — **B lands first, A deletes second**, or orders lose their clip between commits.
+
+**This is the third time today the same mistake has produced a wrong answer: measuring something adjacent to the question and reporting it as the answer.** A census of one assignment idiom reported as a census of producers. Two committed files compared and reported as a deployment fact. Now three helpers counted in aggregate and reported as a per-helper verdict. The arithmetic was right every time; the question was not the one I needed answered.
+
+Two caveats recorded in the spec rather than buried. The staleness mechanism is **reasoned from update sites, not observed in a frame capture** — I am not asking A to fix something I have only inferred, so it should be confirmed on C's runner before A commits to a fix shape. And the entry-row badges gated by neither rule remain the strongest single explanation of "not fully visible"; they are entirely mine, and they may account for the PO's report without the clip rule being involved at all.
+
+Coverage: **(S)** for ownership, which rests on a direct census. **(P)** for the mechanism.
+
+Reserved as reviewer for A's packet.
