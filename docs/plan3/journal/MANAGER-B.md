@@ -881,3 +881,82 @@ Updated rejection rate, cheap row only (others unchanged from B-0045):
 **Seven cheap audits, zero rejections, and three of them corrected me on substance** — B-C1 overturned my V6-P2 mechanism, B-C3 replaced an unmeasured assumption with a verified inventory whose five headline claims I re-checked and found exact, B-C2 found silently-skipped durable writes I had not looked for. Against that, my four top-tier authoring dispatches produced one rejection and one artefact that had to be rebuilt.
 
 On this train's evidence the cheap tier is not a compromise on my board — it is where the corrections came from. I was defaulting upward to buy confidence I was already getting from the gate and the reviewer, and paying for it in the one currency that is actually scarce, which is review capacity.
+
+---
+
+## B-0052 — POLICY READ · §A15 ingested from `9b2c098d2` (file now 427 lines; §A15 at 320–361, §A4b at 69–79)
+
+Read in the tree. Binding, and each is now part of my standing method: **VER-01** — a check that an artifact exists, is referenced, or is textually present is not verification of behaviour and may not be recorded as one; every `VERDICT` states which; re-running the author's own test is named as such. **VER-02** — text-matching gates are provisional until proven by mutation, with an attack outside their own acceptance suite. **VER-03** — the `.red.` convention is a claim; a harness that cannot fail on a product regression may not wear it. Plus §A15.3's interim rule that structural V6 gates carry a not-behaviour-covering stamp per §A4b, whose form is set by §A4b rule 3 (coverage in the label) and §A7 rule 3 (state the surface).
+
+---
+
+## B-0053 — RELABEL under VER-01 · every verdict I have recorded this train, reclassified
+
+Applying VER-01 retroactively, because a verdict recorded without its class is exactly the defect the rule names. **P** = presence/wiring, **S** = soundness/behaviour.
+
+| Entry | Claim | Class | Correction |
+|---|---|---|---|
+| B-0038 | "reverted the fix, gate went red" | **P** | I called this "the check that matters". It is a **wiring** check — it proves the gate reads the file. It was also **the author's own test, re-run by me**, which VER-01 says is not independent scrutiny. Both labels now attached. |
+| B-0038 | `isPending` push-site citations | **P**, and wrong | Grep hit count, no context read. One of the two cited lines was not a push. Corrected in B-0039. |
+| B-0042 | V01/C01/loose-equality attacks on the rebuilt gate | **S** | Predicates evaluated over a modelled universe; the loose-equality case was outside its acceptance suite. This one is soundness and stands as such. |
+| B-0034 | "`updateOrderLines` contains no rebuild call" | **P** | Textual absence. Sound as far as it goes — absence of a call is a textual property — but it does **not** establish that no rebuild occurs by another route, and I should not have written the consequence ("absence is permanent") as though it were behaviourally proven. It is a strong inference from a presence check. |
+| B-0048 | plot bounds vs `yScale` term comparison | **P** | Arithmetic expressions compared as text. The staleness *path* is proven structurally; **no divergent frame was observed**. Already flagged as inference; now formally classed. |
+| B-0049 | teardown pairing inventory | **P** | An inventory is inherently presence. My five spot-checks were also presence. Nothing here is behavioural and it must not be read as a memory measurement. |
+| B-0050 | guard-site classification | **P** | Static classification of else-branches. Observability answers are inference. |
+| B-0042 | B-W5's determinism (3 identical runs) | **S** | Behavioural, but of the gate, not of the product. |
+
+Net: of the verdicts I recorded this train, **one is soundness** (the rebuilt gate's mutation testing). Everything else is presence, inference from presence, or wiring. That is a far weaker evidence base than my earlier entries implied, and stating it plainly is the point of the rule.
+
+---
+
+## B-0054 — VERDICT (B-C5) · ownership question answered. **Class: P (consumer census + expression comparison). Surface: source only.**
+
+The §A15.1 question was *can the order overlay own its own clip rule?* **Answer: (c) — the bounds VALUE is indicator-owned, the PREDICATE is not indicator logic at all, and orders already own a working copy of it.**
+
+I ran the consumer census myself rather than accept the reported one, and **my count is more decisive than the agent's**:
+
+| Helper | Defined in | Consumers |
+|---|---|---|
+| `_getMainPricePlotLayout` | `chart-indicators-full.js` (21) | **`chart.js` 22**, compare-overlay 4, drawing-tools 4, three Talaria indicators 2 each |
+| `_isYInMainPricePlot` | `chart-indicators-full.js` (1) | **`order-manager.js` 3 — and nothing else in the tree** |
+| `_ensureMainPlotSvgClipDef` | `chart-indicators-full.js` (1) | **`order-manager.js` 2 — and nothing else in the tree** |
+
+**Two of the three helpers have orders as their only consumer**, and the third's single largest consumer is `chart.js` core at 22 references — more than the indicator module that hosts it. On the census, none of the three is indicator-specific. The seam defect is real, and it is a **file-placement** defect: generic chart-layout geometry is hosted in an indicator module.
+
+Supporting facts: the predicate is `y >= margin.t && y <= h - margin.b - (separateIndicatorPanelHeight || 0)` — three chart-core inputs and one indicator-*computed*, chart-*published* number. Orders read that number as a plain field and never need to know how it was composed. Orders already carry a local fallback that agrees with the chart-side version **term for term** — verified by direct comparison, no drift. And the clip def is not indicator-owned in practice: orders prefer `drawingManager.updateClipPath()` and fall back to the indicator helper only when a drawing manager is absent, with both paths writing the same `chart-clip-path` id, so a second def would update the shared node rather than duplicate it.
+
+**My recommendation to the Director, as the specification half of §A15.1's specify-and-hand-off:** do **not** grant me a write into the indicator module, and do not move the predicate into orders either — orders are not its only long-term consumer and (a) would re-scatter the geometry. Move `_getMainPricePlotLayout`, `_isYInMainPricePlot` and `_ensureMainPlotSvgClipDef` to **neutral chart-layout ownership alongside `calculateScales`**, leaving `separateIndicatorPanelHeight`'s *computation* in the indicator module as a published field. That is a Manager A packet in A's tree; I author the spec and evidence and review the result.
+
+**And it does not fix V6-P2 on its own.** B-0048 established the live defect is a **stale `yScale.range` against a live panel height** in `calculateScales`'s pan early-return — a timing bug, not a placement bug. Moving the helpers improves the architecture and leaves the defect untouched. Both belong in A's packet; they are separate changes and should not be conflated, or the placement move will be mistaken for the cure.
+
+---
+
+## B-0055 — §A4b STAMPS APPLIED, and the fixture correctly refused one
+
+B-C6 (cheap, docs row) stamped both structural artefacts per §A15.3. Verified by me: gate still **6 passed / 0 failed, exit 0** — unchanged; stamp lines present in both files; the JSON fixture **untouched**.
+
+The refusal is the interesting part. The agent tried to mirror COVERAGE/SURFACE into the fixture metadata, found that the gate's own schema **rejects unknown keys in `meta`**, and stopped and reported rather than forcing it. That closed-key rule is the anti-exemption mechanism B-W5 added, and it just prevented its own author's successor from adding a well-intentioned key. The gate defended itself against me. Stamp text lives in the module header instead.
+
+Discrepancy it flagged and I am recording rather than silently fixing: **G7 is described differently in the module header ("order of sites only") than in the fixture's `notEnforced` ("premised bindings")**, and **G11 exists only in the fixture**, not in the header's G1–G10 block. Two blind-spot registries that disagree is precisely the drift this artefact exists to prevent, so it goes to Manager C in the handoff as the first thing to reconcile.
+
+---
+
+## B-0056 — HANDOFF · eviction-invariant gate to Manager C, B remains technical author of record
+
+Per §A15.2 the gate is verification infrastructure scoped to the registry, not to my territory. Handoff written to `chart v 1.4/chart/modules/b-fixtures/B-HANDOFF-eviction-invariant.md`, covering what the invariant is, why it exists, how the parser/interpreter works, the blind-spot registry, run instructions including the `--source=`/`--fixture=` overrides, and the history — specifically that v1 pattern-matched text and accepted thirteen of nineteen wrong variants including a dead discriminator, so any future change must be re-attacked with a case outside its own acceptance suite before it is trusted.
+
+**The generalisation C must make, stated as the reason for the transfer:** the gate scans one file, and the same registry is evicted from `drawing-tools-manager.js` at roughly 12088 and 12133. No gate scoped to my territory can reach that writer. C should rescope it from "file" to "registry" and range over every writer.
+
+Open items I am handing over with it: reconcile the G7/G11 registry disagreement above; decide whether to strengthen cell 06 from the consistency property to true removal-equals-disposal; and note that G8 (the `|| this.chart` fallback) cannot be modelled without rejecting the current correct source, which is a real limit rather than an oversight.
+
+---
+
+## B-0057 — PO-REQ decision under the new §A15.4 standard · staying at zero, deliberately
+
+The bar now exists: expected stamp confirmed by tripwire, host and panel both paint, no console errors at boot, and the row's own precondition log line observed. Both of my blocked observations would now qualify — V6-P1's ignition (the `Position not found for order #<id>` line at 44632, which the build already prints) and the V8 pin lifecycle.
+
+**I am still not emitting them.** §A15.4's own convergence note is the reason: once C's browser runner lands, both become agent-executable and need no PO at all. Emitting two PO-REQs now would spend PO attention on observations that are about to become self-serve, and the Director has already moved C's runner up the queue on exactly that argument. Holding is the cheaper path and it costs nothing, because neither row is blocked on anything else I could be doing meanwhile.
+
+**The condition under which I reverse this, pre-registered so it is not a judgement I re-litigate later:** if C's runner has not landed by the end of the next train, I emit both — V6-P1's ignition first, since it is one console filter on an existing log line and gates a P0.
+
+Write packets in flight: **1 of 3** (B-W1). Read-only in flight: **0**. Packets awaiting review: **2** (B-W1+B-W2 as one; B-W5). Handed to C: **1** (eviction-invariant gate). Outstanding `PO-REQ`: **0**, with a pre-registered trigger. Outstanding `NEEDS-PO-CLARIFY`: **1**. Author-tier mix: **9 cheap (60%), 2 mid (13%), 4 top (27%)** across 15 authoring dispatches. Reviewer-tier: **1 of 1 top**.
