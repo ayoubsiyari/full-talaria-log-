@@ -91,6 +91,21 @@ test('known-good owned surfaces (excluding multichart panel shells) satisfy cont
   assert.equal(result.checked.length, 10);
 });
 
+test('multichart embed JS loader credit is pinned to the owned immediate document-write shape', () => {
+  const surface = structuredClone(manifest.inventory.find((entry) => entry.id === 'chart-panel'));
+  assert.throws(
+    () => validateModuleContracts({
+      manifest: manifestWithOnlySurface(surface),
+      root,
+      readFile: mutateSurface(surface.id, (html) => html
+        .replace('var paths = [', 'var panelPaths = [')
+        .replaceAll('paths.length', 'panelPaths.length')
+        .replaceAll('paths[i]', 'panelPaths[i]')),
+    }),
+    /ModulePresenceRuntime required script count 0.*IndicatorPerf required script count 0/,
+  );
+});
+
 test('permanent fault injection proves missing duplicate and order RED', () => {
   const id = 'chart-host';
   const tag = '<script defer src="/chart/modules/indicator-performance.js?v=20260727b80"></script>';
@@ -194,6 +209,9 @@ test('inert script containers and non-executable script types do not satisfy mod
       <script src="/chart/chart.js?v=20260727b80"></script>
       <noscript><script src="/chart/modules/module-presence-runtime.js?v=20260727b80"></script></noscript>
       <template><script src="/chart/modules/indicator-performance.js?v=20260727b80"></script></template>
+      <title><script src="/chart/modules/module-presence-runtime.js?v=20260727b80"></script></title>
+      <textarea><script src="/chart/modules/indicator-performance.js?v=20260727b80"></script></textarea>
+      <xmp><script src="/chart/modules/module-presence-runtime.js?v=20260727b80"></script></xmp>
       <script type="text/template">inject("/chart/modules/module-presence-runtime.js");</script>
       <script type="application/json">{"src":"/chart/modules/indicator-performance.js"}</script>
       <script src="/chart/modules/chart-indicators-full.js?v=20260727b80"></script>
@@ -213,19 +231,19 @@ test('inert script containers and non-executable script types do not satisfy mod
 
 test('real dist-v9 nomodule required scripts do not satisfy module presence', () => {
   assertChartHostMutationRed((html) => replaceDistV9RequiredTags(html, {
-    runtime: '<script nomodule defer src="/chart/modules/module-presence-runtime.js?v=20260727b80"></script>',
-    indicator: '<script nomodule defer src="/chart/modules/indicator-performance.js?v=20260727b80"></script>',
+    runtime: '<script nomodule/ defer src="/chart/modules/module-presence-runtime.js?v=20260727b80"></script>',
+    indicator: '<script defer src="/chart/modules/indicator-performance.js?v=20260727b80" nomodule/></script>',
   }));
 });
 
 test('real dist-v9 nested inert wrappers do not satisfy module presence', () => {
   assertChartHostMutationRed((html) => replaceDistV9RequiredTags(html, {
-    runtime: `<template><div><template></template>
+    runtime: `<title><template>
 ${DIST_V9_RUNTIME_TAG}
-</div></template>`,
-    indicator: `<noscript><template><span>
+</template></title>`,
+    indicator: `<textarea><noscript>
 ${DIST_V9_INDICATOR_TAG}
-</span></template></noscript>`,
+</noscript></textarea>`,
   }));
 });
 
@@ -262,8 +280,15 @@ test('never-executed loader calls do not satisfy module presence', () => {
 
 test('real dist-v9 dead false controls do not satisfy module presence', () => {
   assertChartHostMutationRed((html) => replaceDistV9RequiredTags(html, {
-    runtime: '<script>if (false) { inject("/chart/modules/module-presence-runtime.js"); }</script>',
-    indicator: '<script>while (0) { __loadHostOnlyScript("/chart/modules/indicator-performance.js"); }</script>',
+    runtime: '<script>if (false && true) { inject("/chart/modules/module-presence-runtime.js"); }</script>',
+    indicator: '<script>false && (function () { __loadHostOnlyScript("/chart/modules/indicator-performance.js"); })();</script>',
+  }));
+});
+
+test('real dist-v9 string-literal loader tokens do not satisfy module presence', () => {
+  assertChartHostMutationRed((html) => replaceDistV9RequiredTags(html, {
+    runtime: '<script>"inject(\\"/chart/modules/module-presence-runtime.js\\")";</script>',
+    indicator: '<script>"__loadHostOnlyScript(\\"/chart/modules/indicator-performance.js\\")";</script>',
   }));
 });
 
@@ -312,7 +337,7 @@ test('paths arrays consumed only by unreachable loops do not satisfy module pres
   );
 });
 
-test('executed loader calls can satisfy module presence without raw dead literals', () => {
+test('executed loader calls do not satisfy static module presence', () => {
   const surface = structuredClone(manifest.inventory.find((entry) => entry.id === 'chart-host'));
   const loaderHtml = `
     <!DOCTYPE html>
@@ -326,16 +351,17 @@ test('executed loader calls can satisfy module presence without raw dead literal
     <body></body>
     </html>
   `;
-  const result = validateModuleContracts({
-    manifest: manifestWithOnlySurface(surface),
-    root,
-    readFile: mutateSurface(surface.id, () => loaderHtml),
-  });
-  assert.equal(result.ok, true);
-  assert.equal(result.checked.length, 2);
+  assert.throws(
+    () => validateModuleContracts({
+      manifest: manifestWithOnlySurface(surface),
+      root,
+      readFile: mutateSurface(surface.id, () => loaderHtml),
+    }),
+    /ModulePresenceRuntime required script count 0.*IndicatorPerf required script count 0/,
+  );
 });
 
-test('immediately invoked loader functions and arrows can satisfy module presence', () => {
+test('immediately invoked loader functions and arrows do not satisfy static module presence', () => {
   const surface = structuredClone(manifest.inventory.find((entry) => entry.id === 'chart-host'));
   const loaderHtml = `
     <!DOCTYPE html>
@@ -349,13 +375,14 @@ test('immediately invoked loader functions and arrows can satisfy module presenc
     <body></body>
     </html>
   `;
-  const result = validateModuleContracts({
-    manifest: manifestWithOnlySurface(surface),
-    root,
-    readFile: mutateSurface(surface.id, () => loaderHtml),
-  });
-  assert.equal(result.ok, true);
-  assert.equal(result.checked.length, 2);
+  assert.throws(
+    () => validateModuleContracts({
+      manifest: manifestWithOnlySurface(surface),
+      root,
+      readFile: mutateSurface(surface.id, () => loaderHtml),
+    }),
+    /ModulePresenceRuntime required script count 0.*IndicatorPerf required script count 0/,
+  );
 });
 
 test('servable inventory mutation and exclusion controls RED', () => {

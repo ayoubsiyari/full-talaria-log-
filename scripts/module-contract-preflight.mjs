@@ -11,6 +11,13 @@ const SURFACE_CONTRACT_CLASS_ALLOWLIST = Object.freeze({
   panel: ['correctness'],
   harness: [],
 });
+const PINNED_JS_LOADER_ALLOWLIST = Object.freeze([
+  {
+    name: 'MULTICHART_PROD_CHART_EMBED_DOCUMENT_WRITE_V1',
+    surfacePath: /^(?:chart v 1\.4\/chart|homepage\/public\/chart)\/multichart-prod\/chart-embed\.html$/,
+    bodyPattern: /\(function\s*\(\)\s*\{\s*var V = window\.__TALARIA_CHART_BUILD_ID \|\| '';\s*var q = V \? \('\?v=' \+ V\) : '';\s*var paths = \[([\s\S]*?)\];\s*for \(var i = 0; i < paths\.length; i\+\+\) \{\s*document\.write\('<script defer src="' \+ paths\[i\] \+ q \+ '"><\\\/script>'\);\s*\}\s*\}\)\(\);/,
+  },
+]);
 const EXECUTABLE_SCRIPT_TYPES = new Set([
   '',
   'application/ecmascript',
@@ -24,10 +31,14 @@ function stripHtmlComments(source) {
   return source.replace(/<!--[\s\S]*?-->/g, '');
 }
 
+function maskRange(source, from, to) {
+  return source.slice(0, from) + ' '.repeat(Math.max(0, to - from)) + source.slice(to);
+}
+
 function stripInertHtmlBlocks(source) {
   const ranges = [];
   const stack = [];
-  const tagPattern = /<\/?(noscript|template)\b[^>]*>/gi;
+  const tagPattern = /<\/?(noscript|template|title|textarea|xmp)\b[^>]*>/gi;
   for (const match of source.matchAll(tagPattern)) {
     const [tag, tagName] = match;
     const normalized = tagName.toLowerCase();
@@ -49,53 +60,13 @@ function stripInertHtmlBlocks(source) {
     .reduce((out, [from, to]) => maskRange(out, from, to), source);
 }
 
-function stripJsComments(source) {
-  let out = '';
-  let quote = null;
-  let escaped = false;
-  for (let i = 0; i < source.length; i += 1) {
-    const ch = source[i];
-    const next = source[i + 1];
-    if (quote) {
-      out += ch;
-      if (escaped) {
-        escaped = false;
-      } else if (ch === '\\') {
-        escaped = true;
-      } else if (ch === quote) {
-        quote = null;
-      }
-      continue;
-    }
-    if (ch === '"' || ch === "'" || ch === '`') {
-      quote = ch;
-      out += ch;
-      continue;
-    }
-    if (ch === '/' && next === '/') {
-      while (i < source.length && source[i] !== '\n') i += 1;
-      out += '\n';
-      continue;
-    }
-    if (ch === '/' && next === '*') {
-      i += 2;
-      while (i < source.length && !(source[i] === '*' && source[i + 1] === '/')) i += 1;
-      i += 1;
-      out += ' ';
-      continue;
-    }
-    out += ch;
-  }
-  return out;
-}
-
 function readAttribute(attrs, name) {
   const match = attrs.match(new RegExp(`\\b${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s>]+))`, 'i'));
   return match ? (match[1] ?? match[2] ?? match[3] ?? '') : '';
 }
 
 function hasAttribute(attrs, name) {
-  return new RegExp(`\\b${name}(?:\\s*=|\\s|$)`, 'i').test(attrs);
+  return new RegExp(`\\b${name}(?:\\s*=|[\\s/]|$)`, 'i').test(attrs);
 }
 
 function isExecutableScript(attrs) {
@@ -103,195 +74,32 @@ function isExecutableScript(attrs) {
   return EXECUTABLE_SCRIPT_TYPES.has(readAttribute(attrs, 'type').trim().toLowerCase());
 }
 
-function matchingBraceAt(source, openAt) {
-  let quote = null;
-  let escaped = false;
-  let depth = 0;
-  for (let i = openAt; i < source.length; i += 1) {
-    const ch = source[i];
-    if (quote) {
-      if (escaped) {
-        escaped = false;
-      } else if (ch === '\\') {
-        escaped = true;
-      } else if (ch === quote) {
-        quote = null;
-      }
-      continue;
-    }
-    if (ch === '"' || ch === "'" || ch === '`') {
-      quote = ch;
-      continue;
-    }
-    if (ch === '{') depth += 1;
-    if (ch === '}') {
-      depth -= 1;
-      if (depth === 0) return i;
+function pinnedImmediateLoaderPaths(uncommentedHtml, surfacePath) {
+  const normalizedPath = String(surfacePath || '').replaceAll('\\', '/');
+  const allowlist = PINNED_JS_LOADER_ALLOWLIST.filter((entry) => entry.surfacePath.test(normalizedPath));
+  if (allowlist.length === 0) return [];
+
+  const values = [];
+  for (const script of uncommentedHtml.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi)) {
+    if (!isExecutableScript(script[1]) || readAttribute(script[1], 'src')) continue;
+    for (const allow of allowlist) {
+      const match = script[2].match(allow.bodyPattern);
+      if (!match) continue;
+      for (const pathMatch of match[1].matchAll(/["']([^"']+\.js)["']/g)) values.push(pathMatch[1].split('?')[0]);
     }
   }
-  return -1;
+  return values;
 }
 
-function maskRange(source, from, to) {
-  return source.slice(0, from) + ' '.repeat(Math.max(0, to - from)) + source.slice(to);
-}
-
-function maskNonExecutingFunctionBodies(source) {
-  let out = source;
-  for (let i = out.length - 1; i >= 0; i -= 1) {
-    if (!/\bfunction\b/.test(out.slice(i, i + 8))) continue;
-    const before = out.slice(0, i).trimEnd();
-    const openAt = out.indexOf('{', i + 8);
-    if (openAt < 0) continue;
-    const closeAt = matchingBraceAt(out, openAt);
-    if (closeAt < 0) continue;
-    const after = out.slice(closeAt + 1);
-    const invokedImmediately = before.endsWith('(') && /^\s*\)\s*\(\s*\)\s*;?/.test(after);
-    if (!invokedImmediately) out = maskRange(out, i, closeAt + 1);
-  }
-  return out;
-}
-
-function endOfStatementAt(source, startAt) {
-  let quote = null;
-  let escaped = false;
-  let parenDepth = 0;
-  let bracketDepth = 0;
-  for (let i = startAt; i < source.length; i += 1) {
-    const ch = source[i];
-    if (quote) {
-      if (escaped) {
-        escaped = false;
-      } else if (ch === '\\') {
-        escaped = true;
-      } else if (ch === quote) {
-        quote = null;
-      }
-      continue;
-    }
-    if (ch === '"' || ch === "'" || ch === '`') {
-      quote = ch;
-      continue;
-    }
-    if (ch === '(') parenDepth += 1;
-    if (ch === ')') parenDepth = Math.max(0, parenDepth - 1);
-    if (ch === '[') bracketDepth += 1;
-    if (ch === ']') bracketDepth = Math.max(0, bracketDepth - 1);
-    if ((ch === ';' || ch === '\n') && parenDepth === 0 && bracketDepth === 0) return i + 1;
-  }
-  return source.length;
-}
-
-function maskNonExecutingArrowBodies(source) {
-  let out = source;
-  const ranges = [];
-  for (const match of out.matchAll(/=>/g)) {
-    let bodyAt = match.index + match[0].length;
-    while (/\s/.test(out[bodyAt] || '')) bodyAt += 1;
-    if (out[bodyAt] === '{') {
-      const closeAt = matchingBraceAt(out, bodyAt);
-      if (closeAt < 0) continue;
-      const after = out.slice(closeAt + 1);
-      const invokedImmediately = /^\s*\)\s*\(\s*\)\s*;?/.test(after);
-      if (!invokedImmediately) ranges.push([bodyAt, closeAt + 1]);
-      continue;
-    }
-    const endAt = endOfStatementAt(out, bodyAt);
-    ranges.push([bodyAt, endAt]);
-  }
-  for (const [from, to] of ranges.reverse()) out = maskRange(out, from, to);
-  return out;
-}
-
-function endOfConditionAt(source, openAt) {
-  let quote = null;
-  let escaped = false;
-  let depth = 0;
-  for (let i = openAt; i < source.length; i += 1) {
-    const ch = source[i];
-    if (quote) {
-      if (escaped) {
-        escaped = false;
-      } else if (ch === '\\') {
-        escaped = true;
-      } else if (ch === quote) {
-        quote = null;
-      }
-      continue;
-    }
-    if (ch === '"' || ch === "'" || ch === '`') {
-      quote = ch;
-      continue;
-    }
-    if (ch === '(') depth += 1;
-    if (ch === ')') {
-      depth -= 1;
-      if (depth === 0) return i;
-    }
-  }
-  return -1;
-}
-
-function maskDeadControlBlocks(source) {
-  let out = source;
-  const ranges = [];
-  for (const match of out.matchAll(/\b(?:if|while)\s*\(/g)) {
-    const conditionOpenAt = out.indexOf('(', match.index);
-    const conditionCloseAt = endOfConditionAt(out, conditionOpenAt);
-    if (conditionCloseAt < 0) continue;
-    const condition = out.slice(conditionOpenAt + 1, conditionCloseAt).replace(/\s+/g, '');
-    if (!['0', 'false', '!1'].includes(condition)) continue;
-    let bodyAt = conditionCloseAt + 1;
-    while (/\s/.test(out[bodyAt] || '')) bodyAt += 1;
-    if (out[bodyAt] === '{') {
-      const closeAt = matchingBraceAt(out, bodyAt);
-      if (closeAt >= 0) ranges.push([match.index, closeAt + 1]);
-      continue;
-    }
-    ranges.push([match.index, endOfStatementAt(out, bodyAt)]);
-  }
-  for (const [from, to] of ranges.reverse()) out = maskRange(out, from, to);
-  return out;
-}
-
-function maskAfterReturnOrThrow(source) {
-  let out = source;
-  const ranges = [];
-  for (const match of out.matchAll(/\b(?:return|throw)\b/g)) {
-    let end = out.indexOf('}', match.index);
-    if (end < 0) end = out.length;
-    ranges.push([match.index, end]);
-  }
-  for (const [from, to] of ranges.reverse()) out = maskRange(out, from, to);
-  return out;
-}
-
-function executableJs(source) {
-  return maskAfterReturnOrThrow(
-    maskDeadControlBlocks(maskNonExecutingArrowBodies(maskNonExecutingFunctionBodies(stripJsComments(source)))),
-  );
-}
-
-function scriptPaths(html) {
+function scriptPaths(html, surfacePath) {
   const values = [];
   const uncommented = stripInertHtmlBlocks(stripHtmlComments(html));
   for (const script of uncommented.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi)) {
     if (!isExecutableScript(script[1])) continue;
-    const src = script[1].match(/\bsrc\s*=\s*["']([^"']+)["']/i)?.[1];
-    if (src) {
-      values.push(src.split('?')[0]);
-      continue;
-    }
-    const activeJs = executableJs(script[2]);
-    for (const match of activeJs.matchAll(/(?:inject|__loadHostOnlyScript)\(\s*["']([^"']+\.js)["']\s*\)/g)) {
-      values.push(match[1].split('?')[0]);
-    }
-    for (const block of activeJs.matchAll(/(?:var|const|let)\s+paths\s*=\s*\[([\s\S]*?)\]/g)) {
-      const afterArray = activeJs.slice(block.index + block[0].length);
-      if (!/document\.write\s*\([^)]*\bpaths\s*\[\s*i\s*\]/.test(afterArray)) continue;
-      for (const match of block[1].matchAll(/["']([^"']+\.js)["']/g)) values.push(match[1]);
-    }
+    const src = readAttribute(script[1], 'src');
+    if (src) values.push(src.split('?')[0]);
   }
+  values.push(...pinnedImmediateLoaderPaths(uncommented, surfacePath));
   return values;
 }
 
@@ -390,7 +198,7 @@ export function validateModuleContracts({
     const absolute = path.resolve(root, surface.path);
     assert.ok(fs.existsSync(absolute), `${surface.id}: owned surface missing`);
     const html = readFile(absolute);
-    const scripts = scriptPaths(html);
+    const scripts = scriptPaths(html, surface.path);
     const evidenceSurface = inferSurfaceFromEvidence(surface, scripts);
     if (evidenceSurface && evidenceSurface !== surface.surface) {
       failures.push(`${surface.id}: declared surface ${surface.surface} conflicts with ${evidenceSurface} evidence`);
