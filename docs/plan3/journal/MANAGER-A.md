@@ -3788,3 +3788,85 @@ Per §A16.5 the reviewer answered yes: M23 can be part of an automated-GREEN cha
 **I am not deploying to TEST-1.** The overnight authority is conditional on *the entire chain* being automated-GREEN, and it is not — for reasons that predate and are independent of M23. The cleanroom run established that a **tracked** test (`m21-2-candle-offscreen-scaffold.test.mjs`) imports an **untracked** fixture (`visible-window-mirror.mjs`), so a clean checkout fails, and `test:checkpoint-provenance` fails 12 of 14 there. Merging a green packet onto a tree whose chain is red in a fresh clone does not make the chain green, and claiming a deploy on that basis is precisely the overclaim §A16.2 forbids.
 
 So M23 is landed and gated; deployment waits on the untracked-artefact row, which is the ~455-file hazard I promoted from housekeeping to correctness earlier and which is now the thing standing between a reviewed fix and TEST-1.
+
+---
+
+## 2026-07-28 17:12 — rAF ablation: mechanism ACCEPTED, magnitude BLOCKED. First result on this row that clears the noise floor.
+
+Untraced A/B, 3 runs per arm, whole-Chrome CPU:
+
+```
+baseline  16.37% mean, range [15.87, 17.17]
+ablated    8.33% mean, range [ 8.09,  8.49]
+renderer  12.18% -> 6.08%
+GPU        3.75% -> 1.91%
+```
+
+**Ranges are disjoint.** Against the ~14% run-variance noise floor I recorded on this row, the arm separation is ~4x. After a day in which three hypotheses died and 6.3 points of an earlier figure turned out to be my own tracing overhead, this is the first thing that survives contact.
+
+Verdict from top-tier review: **ACCEPT the mechanism, BLOCK the magnitude as framed.**
+
+### The mechanism, and why it vindicates the correction I made this morning
+
+The single most informative number is one the summary buries. **Deny exactly one callback and main-frame rAF traffic goes to zero and stays there for 60 seconds** — not "drops", zero *requests*. Nothing else in the main frame asked for a frame the entire minute.
+
+Per frame the whole-Chrome delta is ~0.56 ms, of which the chart's own JS is ~0.011 ms. **About 2%. The other ~98% is Chrome's per-frame animation-frame lifecycle** — BeginMainFrame, compositor commit, GPU frame. The GPU process delta alone is 23% of the total.
+
+That is the architectural conclusion and it is now measured rather than argued: **a guard that makes the callback body cheaper saves nothing. Only not requesting the frame saves anything.**
+
+It also confirms the correction I logged this morning as my third rAF error. I demoted rAF twice on the grounds that its callback self-time was only 2.16%. That number was right and the inference was wrong: **callback duration was never the cost, the pipeline it obliges is.** The ablation measures the pipeline. I had the right suspect twice and dismissed it twice with the wrong instrument.
+
+### Two of my five concerns were unfounded, and one was backwards
+
+**Backwards:** I worried the baseline arm's `null` rAF counters meant an instrumented arm was being compared against an un-instrumented one. The wrapper's cost sits *inside the ablated arm*, so it can only make the ablated number larger and the delta **more conservative**, never inflated. And the loop's baseline rate is independently pinned: trace `FireAnimationFrame` gives 142.513 fps, a page-init counter that knows nothing about the trace gives 142.512 fps.
+
+**Unfounded — wheel-zoom.** I asked whether the ablation might silence zoom animation. `animateZoom()` is **dead code at runtime**: `zoomAnimation.active` is never assigned `true` anywhere in the tree (ripgrep, zero hits). Wheel zoom is instant and runs through `_scheduleWheelBurstRender`, which has its own rAF and is untouched.
+
+**Unfounded — over-broad suppression.** `_animateBound` is passed to `requestAnimationFrame` from **exactly one line in the codebase** (`chart.js:28678`), established by exhaustive search with `dist-v9` confirmed tracked and unignored. The predicate is strict reference identity, gated by an `isIdle()` that fails closed on nine conditions.
+
+**Correct but refuted:** the arms were blocked, not interleaved (baseline 1-2-3 then ablated 1-2-3, one Chrome instance). But the un-ablated level replicates to three significant figures across a **separate browser launch** — 16.250% vs 16.372% — and drift points the wrong way (throttling would make later runs read higher; they read 49% lower). Seven un-ablated samples across three sessions, minimum 14.00; three ablated, maximum 8.49.
+
+## 2026-07-28 17:13 — What is citable to the PO, and what I must not say
+
+**I must not carry "we halved idle CPU" up the chain.** The 49% is a fact about this harness at 142.5 fps.
+
+Normalized to 60 Hz the citable range is **1.3 to 3.4 percentage points of one core** — the low end being the main-thread component that transfers most confidently, the high end assuming every compositor and GPU cycle transfers unchanged. That is **6-16% of the PO's 20.6%**, or 11-28% of the 12.3% clean-profile idle baseline. **The point estimate is not derivable from this evidence and I will not offer one.**
+
+Three things attach to that range:
+
+1. **It is a ceiling twice over** — it is what removing the loop *entirely* buys, and a behaviour-preserving guard must keep some frames.
+2. **The tension I raised dissolves, but not in my favour.** I argued that a harness at 142.5 fps reading 16.37% against the PO's 60 Hz 20.6% implied the normalization was wrong. The PO's 20.6% is not a point estimate — their own controlled ladder records idle as "12.3, oscillating up to 29.5". The harness sits inside their band. There was nothing to explain.
+3. **An open unit question that changes the comparison.** The PO's figures come from Chrome's task manager, which reports **per-process** rows normalized to one core — which is why 129.3 and 114.7 exceed 100. If 20.6 is the tab row alone, the comparable harness number is the **renderer** 12.18%, not whole-Chrome 16.37%. The document does not say. I am raising this rather than picking the reading that flatters us.
+
+**And the mechanism explains none of the spikes.** The PO's most alarming symptom is periodic spikes to ~120. The rAF loop is a steady cost. `spikeGroups` is empty in all six runs at a 50% threshold — the harness never reproduced the spikes in either arm. **This addresses the floor and says nothing about the spike family.** That needs saying before the PO asks.
+
+## 2026-07-28 17:14 — The fix is bigger than the loop, and the review found the reason
+
+The guard I sketched — arm only when work is pending, re-arm from `scheduleRender()` — is **insufficient, and would have shipped a starvation bug.**
+
+`scheduleRender()` is only one of the paths that sets `renderPending`. I enumerated the writers myself after the review named them: **29 sites assign `renderPending = true`, and 24 of them bypass `scheduleRender()` entirely** — `chart.js` x4, `chart-main.js` x1, `panel-cmd-bridge.js` x3, `replay-system.js` x11, `order-manager.js` x10. Under a `scheduleRender`-only guard every one of those is **silently starved** until something unrelated happens to arm a frame. That is a worse defect than the one being fixed, and it is exactly the class this project keeps shipping.
+
+**The shape that survives this is an accessor.** All 29 writes are property writes on a chart instance (`this.` / `chart.` / `c.` / `ch.` / `ctx.` / `initiator.` / `mainChart.` / `pc.`), so converting `renderPending` into a setter that arms the loop on write catches every writer without editing any of them.
+
+Two consequences, and the first is the one that matters for territory:
+
+- **The fix stays entirely inside `chart.js`.** Ten of the writers are in `order-manager.js`, which is **Manager B's file**. An accessor means I do not touch it. No commit spans two territories, and I do not need B's slot.
+- **A prototype accessor will not work.** The constructor sets `this.renderPending = false` at `chart.js:1223`, an own data property that shadows any prototype accessor. It must be `Object.defineProperty(this, 'renderPending', ...)` in the constructor over a backing field. That is precisely the subtlety that would defeat a cheap author, and it is now in the brief rather than waiting to be discovered in review.
+
+### Two corrections to what the author reported
+
+**The countdown smoke test proves nothing.** It reports `countdownText: "01:00"` identically in all three ablated runs, which reads as "countdown survived". It is not. The harness runs with replay **active but paused**, so `_getBarCloseCountdownText()` branches to the replay variant and returns a frozen clock. The countdown path was never exercised. So the blast radius on the countdown is **untested, not tested-good** — and separately, the idle cost measured here is the cost of an *empty* frame, with the countdown contributing nothing.
+
+The `panBy` leg is weak too: `panBy()` calls `this.render()` directly, so it passes with the loop dead.
+
+Preserving the countdown is cheap regardless — its internal throttle is 1 Hz, so ~60 frames a minute against 8621, about 0.7% of the recovered saving. Not a design constraint.
+
+**Line-number discipline held.** Every citation above is pinned to `3f2acdb11` on `manager-a/idle-cpu`. `animate()` is 28677 there and 29108 in C's tree.
+
+## 2026-07-28 17:15 — Provenance fixed before it became the next M23
+
+The author amended the ablation into the existing commit, whose message read `test(m24): capture idle CPU profile` and said nothing about an ablation experiment. **Same defect class I had just finished correcting on M23 an hour earlier** — a commit whose message does not describe what is in it.
+
+Rewritten at `3f2acdb11` to state both experiments, that no product code is modified, that the ablation is **not** a fix and not behaviour-preserving, that the delta is an upper bound, and that the 60 Hz figure rests on two assumptions of which one is unestablished. Verified the diff touches no product file: three harness/evidence paths only, worktree porcelain 0.
+
+I am recording this as a pattern rather than an incident. Twice today an author folded a new experiment into a commit labelled for the old one. My briefs do not currently say "if you amend, rewrite the message to describe the amended contents." They will.
