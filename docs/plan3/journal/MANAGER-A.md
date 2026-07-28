@@ -2217,3 +2217,61 @@ If the Director reads §A13.1 as requiring a fresh reviewer per commit rather th
 **One coverage claim I am deliberately not making.** Slice (a) changed two copies of `legacy-index.html`, but the review established that `/chart/legacy-index.html` is served from the chart root — the `chart v 1.4/chart` tree — via `CHART_ROOT_FILES:26923`, and that nginx proxies `/chart/` to the chart service rather than serving the `homepage/public` tree. The same tracing showed the `homepage/public` multichart mirror is not served. Whether the `homepage/public` copy of `legacy-index.html` is served **on any route** was not established, and I am not asserting it is not. So the verified coverage gain is one shell, with the mirror edit justified by parity discipline rather than by reachability. That distinction is exactly what the deroute collision turns on, and it is already in front of the reviewer holding that question.
 
 **TEST-1: still not deploying.** §A16.5 is unaffected by this merge — `drawing-tools-manager.js` is already on `critical-path` and still ungated, so the chain is not automated-GREEN regardless of what else lands. This merge improves the tree; it does not unblock the deploy.
+
+---
+
+## 2026-07-28 09:44 — Replay speed cap accepted. Read §3.1 and §7.1; sequencing set by §7.1, not by my preference
+
+`CONCLUSION-48H-20260728.md` read in full. The cap is §3 — high value, explicitly **does not block the canary**. §7.1 is unambiguous: *"The two managers on the chain take on nothing new until the chain clears."* My chain items due 15:15 are **M1** (`indicator-performance.js` present and executing on every servable surface, presence assertions live at build **and** runtime), the §A2 re-measurement on the fixed build, and the written §1.2 answer.
+
+So the cap gets my **read-only capacity, which §A13 leaves uncapped**, and M1 keeps the write slots. Two measurement packets are out now; no cap implementation is dispatched and none will be until the chain clears or the measurements force a re-plan.
+
+**M1 is not closed and I should be blunt that this morning's merge did not close it.** M1's bar is *every* servable surface with assertions live at build and runtime. Slice (a) covered two routed shells that **no gate observes**. Four routed shells remain outside or mis-declared in C's inventory, and §A14.3's exposure conditional is unimplemented, so the build half of M1 does not exist for those surfaces. M1 cannot close on A's work alone.
+
+## 2026-07-28 09:45 — OPEN: the fast path may be reachable at 10x, which would invert the cap's payoff
+
+surface=`chart v 1.4/chart/modules/replay-system.js`
+coverage=**code reading only — no execution, no measurement.** Recorded as a hypothesis, explicitly not a verdict.
+
+The PO's payoff item is: confirm the fast-mode threshold sits above 10x, then retire `updateChartDataFast` → `_renderReplayChartUpdate` as unreachable. Reading the branch, I think that precondition may fail on coarse timeframes.
+
+```
+:5292  const rawCandlesPerSecond = effectivePlaybackSpeed / rawCandleTimeframeSec;
+:5295  let realTimeCandleDuration = rawCandleTimeframeMs / effectivePlaybackSpeed;
+:5296  const cadenceSubdivisions = this._finestTfCadenceSubdivisions();
+:5299      realTimeCandleDuration = realTimeCandleDuration / cadenceSubdivisions;
+:5306  const useFastMode = tickSpeedCoherent ? realTimeCandleDuration < 32
+:5308                                        : rawCandlesPerSecond > 1;
+```
+
+`_finestTfCadenceSubdivisions()` at `:1050-1057` returns `Math.round(coarse / finest)`.
+
+**The two branches disagree, and that is the crux.** The legacy branch tests `rawCandlesPerSecond > 1`, which at 10x on 1m raw is 10/60 ≈ 0.167 and **ignores subdivisions entirely** — never fast mode at 10x. The coherence branch tests `realTimeCandleDuration < 32`, and that quantity **has been divided by the subdivision count**. At 10x with 1m raw, duration is 6000 ms; if a 1D display yields 1440 subdivisions it becomes ≈ **4.17 ms**, which is under 32, so fast mode engages **at the capped speed**.
+
+If that holds, two things follow. The ceiling is cosmetic on 1D in exactly the way §3.1 requirement 1 warns about — the label is capped while the work rate stays roughly three orders of magnitude above 1m. And the deletion is not merely unjustified but **actively dangerous**: retiring a path the product still enters at 10x would remove the renderer actually used on coarse timeframes.
+
+**I am not asserting this.** It is arithmetic over a code reading, the runtime values of `_getFinestReplayCadenceMs()` and `_getCoarseReplayCadenceAnchorMs()` are unverified, and which branch is live depends on `_m19iTickSpeedCoherenceEnabled()` whose default I have not established. I have briefed it to the measurement packet **as a hypothesis to refute**, with an explicit instruction that showing me wrong is the more useful outcome. Six false negatives this week have all come from acting on exactly this kind of confident reading, and the discipline that has actually worked is asking rather than asserting.
+
+If the measurement confirms it, the §3.1 payoff needs re-planning and I will raise it rather than quietly reshape the order.
+
+## 2026-07-28 09:46 — Two read-only packets dispatched on the cap; both cheap per §A13.3b
+
+**Work-rate measurement.** The acceptance criterion in §3.1 is measured tick and render rate at 10x on 1m and 1D, not the UI change. Four cells minimum — 1m and 1D crossed with both kill-switch states — reporting whether `fastMode` engages at 10x, the real subdivision values, raw counts with measurement windows rather than bare rates, and the actual engage-threshold per timeframe against the PO's assumed ~60x. Directed at the existing VM-harness pattern rather than a new one.
+
+**Entry-point enumeration.** Requirement 2 wants every path clamped: picker, restored sessions, saved preferences, URL parameters, internal setters. I asked three things beyond the list. Whether the UI label is the multiplier or a display name for a different number — `:5278` comments "60x = 1 raw candle/sec", which suggests it may not be, and that decides what "cap at 10x" even means in code. Whether `getEffectivePlaybackSpeed()` is a total chokepoint or whether some paths write a field that is read directly, since one clamp beats N only if the chokepoint is genuinely total. And what persists across restore, traced from storage key to landing site.
+
+Both briefs require the search method behind every negative claim, and both say a stated lower bound beats a false total. One of this week's six false negatives was a paginated grep that silently truncated, so both are told to check their tooling actually returned everything.
+
+## 2026-07-28 09:47 — PO-REQ: the 5x lag observation, which §3.1 makes a precondition for claiming any mitigation
+
+§3.1 is explicit that no mitigation may be claimed until one observation settles it: **does the indicator lag still occur at 5x?** If it does, the cap changes nothing the user sees and the mechanism is still unfound.
+
+This is not answerable in code. The symptom is the PO's — replay with drawings, orders and indicators present — and we have never established it was high-speed-only. It needs one observation on the next build.
+
+**Request:** on the first TEST build carrying the cap, run the PO's own replay scenario at **5x** with drawings, orders and indicators present, and report whether indicators visibly trail price on already-painted bars. A yes/no with the timeframe used is sufficient; no instrumentation needed.
+
+**Cost:** minutes, inside the batched T+12h session at Tue 21:25 rather than as a separate interruption.
+
+**Why it cannot wait:** it is pre-registered in §3.1 as gating the mitigation claim, and it is cheap to take at the same sitting as everything else on that build.
+
+**Default in force if unanswered**, logged per §7.3 so I do not idle: I will record the lag row as **"bounded by product cap, mitigation unverified at 5x"** and will not claim mitigation. The disposition already states that raising the cap reopens the row with no test guarding the higher range.
