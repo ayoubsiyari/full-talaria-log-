@@ -292,3 +292,6 @@ Exactly five ` | `-separated fields after the list marker. Absent fields are wri
 
 2026-07-28T12:53Z | C | REVIEW | packet=R-M6-9 | role=reviewer | tier=top | model=claude-opus-5-thinking-high | result=REJECT | attr=author-defect | "Concise-body arrow helper freeze; setTimeout TTL cache under sync timers. W49."
 2026-07-28T12:53Z | C | DISPATCH | packet=W49 | role=author | tier=top | model=claude-opus-5-thinking-high | trigger="Escalate on repeat rejection" | "Close R-M6-9: any context prop in helper body; deferred clock-driven timers + M16; tripwire settle."
+
+2026-07-28T12:55Z | C | REVIEW | packet=R-M6-9 | role=reviewer | tier=top | model=claude-opus-5-thinking-high | result=REJECT | attr=author-defect | "Concise-body arrow helper freeze; setTimeout TTL cache under sync timers. W49."
+2026-07-28T12:55Z | C | DISPATCH | packet=W49 | role=author | tier=top | model=claude-opus-5-thinking-high | trigger="Escalate on repeat rejection" | "Close R-M6-9: any context prop in helper body; deferred clock-driven timers + M16; tripwire settle."
