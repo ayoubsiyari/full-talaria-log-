@@ -338,6 +338,7 @@ function reactStub() {
  *   userAgent?: string,
  *   nowMs?: number,
  *   postBootReadyState?: 'loading' | 'interactive' | 'complete',
+ *   browserRealistic?: boolean,
  * }} opts
  */
 export function createSupportPassportRealm(opts) {
@@ -348,6 +349,7 @@ export function createSupportPassportRealm(opts) {
     // Support tickets are filed after load. A permanently-"loading" document made any
     // readyState==="complete" cache dead inside the gate and live in every real browser.
     postBootReadyState = 'complete',
+    browserRealistic = false,
   } = opts;
   const listeners = {};
   const badges = [];
@@ -379,13 +381,22 @@ export function createSupportPassportRealm(opts) {
     timeOrigin: perfOrigin,
     now: () => Math.max(0, nowMs - perfOrigin),
   }, accessTracker, 'performance', proxyCache);
-  const navigator = createTrackedRealmObject({
+  // Do NOT seed serviceWorker/storage as own `undefined` — a falsy own key is an
+  // environment discriminator (R-M6-6): `if (navigator.serviceWorker) return cache`
+  // stays dead in the gate and live in every HTTPS browser. Browser-realistic values
+  // are injected by the dual-environment temporal cell instead.
+  const navigatorSeed = {
     userAgent: opts.userAgent ?? 'TalariaSupportPassportGate/1.0',
     hardwareConcurrency: 4,
     onLine: true,
-    serviceWorker: undefined,
-    storage: undefined,
-  }, accessTracker, 'navigator', proxyCache);
+    ...(opts.browserRealistic
+      ? {
+          serviceWorker: { ready: Promise.resolve(null) },
+          storage: { estimate: async () => ({ usage: 0, quota: 1 }) },
+        }
+      : {}),
+  };
+  const navigator = createTrackedRealmObject(navigatorSeed, accessTracker, 'navigator', proxyCache);
   const body = {
     appendChild: (node) => badges.push(node),
     dataset: createDatasetMap(),
@@ -435,6 +446,21 @@ export function createSupportPassportRealm(opts) {
   window.window = window;
   window.self = window;
   const moduleObj = { exports: {} };
+  // Bare identifiers resolve against the vm context, not window. Under browserRealistic,
+  // install the APIs a dashboard page actually has so `typeof indexedDB !== "undefined"`
+  // (R-M6-6) cannot discriminate the gate from production.
+  const contextGlobals = browserRealistic
+    ? {
+        indexedDB: { open() { return null; } },
+        caches: { open: async () => ({}) },
+        requestIdleCallback: (fn) => { try { fn({ didTimeout: false, timeRemaining: () => 0 }); } catch { /* ignore */ } return 0; },
+        matchMedia: () => ({ matches: false, addListener() {}, removeListener() {} }),
+        BroadcastChannel: class { constructor() {} postMessage() {} close() {} addEventListener() {} },
+      }
+    : {};
+  if (browserRealistic) {
+    Object.assign(window, contextGlobals);
+  }
   const context = vm.createContext({
     window,
     self: window,
@@ -454,6 +480,7 @@ export function createSupportPassportRealm(opts) {
       if (id === 'react') return reactStub();
       throw new Error(`supportUi.tsx required an unexpected module: ${id}`);
     },
+    ...contextGlobals,
   });
 
   // Runtime boot may touch many host keys; fidelity tracking starts at supportUi eval.
@@ -624,70 +651,93 @@ export const TEMPORAL_DEGRADATION_SEQUENCE = ['OrderOverlay', 'AlertSystem'];
  *
  * @param {Parameters<typeof createSupportPassportRealm>[0]} deps
  */
+function runTemporalSequence(deps, { browserRealistic }) {
+  const realm = createSupportPassportRealm({ ...deps, providerPresent: true, browserRealistic });
+  const readRuntime = () => Array.from(realm.window.__TALARIA_DEGRADED_STATE.degradedModules);
+  const runtimeSeen = [];
+  const observed = [];
+  const clockMarks = [];
+  const unknownReads = [...(realm.moduleEvalUnknownReads ?? [])];
+  const observe = () => {
+    clockMarks.push(realm.clock.now());
+    runtimeSeen.push(readRuntime());
+    observed.push(hostArray(realm.buildSupportContext().degradedModules));
+    unknownReads.push(...(realm.accessTracker?.unknownReads ?? []));
+  };
+  const readyStateAtTicket = realm.document.readyState;
+  observe();
+  for (const moduleId of TEMPORAL_DEGRADATION_SEQUENCE) {
+    realm.clock.advance(TEMPORAL_CLOCK_ADVANCE_MS);
+    realm.window.__talariaMarkMissingModule(moduleId);
+    observe();
+  }
+  return {
+    realm,
+    runtimeSeen,
+    observed,
+    clockMarks,
+    unknownReads,
+    readyStateAtTicket,
+    browserRealistic,
+    hasServiceWorker: realm.window.navigator.serviceWorker != null,
+    hasIndexedDB: realm.window.indexedDB != null,
+  };
+}
+
 export function runPassportDegradedTemporalCell(deps) {
   try {
-    const realm = createSupportPassportRealm({ ...deps, providerPresent: true });
-    const readRuntime = () => Array.from(realm.window.__TALARIA_DEGRADED_STATE.degradedModules);
+    // Dual environment (R-M6-6): a cache gated on a falsy-modelled own key or a bare
+    // `typeof indexedDB` stays dead under the sparse realm and live under a browser-shaped
+    // one. Both profiles must produce the same passport sequence.
+    const sparse = runTemporalSequence(deps, { browserRealistic: false });
+    const browser = runTemporalSequence(deps, { browserRealistic: true });
 
-    const runtimeSeen = [];
-    const observed = [];
-    const clockMarks = [];
-    const unknownReads = [...(realm.moduleEvalUnknownReads ?? [])];
-    const observe = () => {
-      clockMarks.push(realm.clock.now());
-      runtimeSeen.push(readRuntime());
-      observed.push(hostArray(realm.buildSupportContext().degradedModules));
-      unknownReads.push(...(realm.accessTracker?.unknownReads ?? []));
-    };
-
-    // Ticket filing is a post-load act; refuse GREEN if the realm stayed on "loading".
-    const readyStateAtTicket = realm.document.readyState;
-    observe();
-    for (const moduleId of TEMPORAL_DEGRADATION_SEQUENCE) {
-      // Advance wall clock between tickets so a warm-up-gated cache cannot hide.
-      realm.clock.advance(TEMPORAL_CLOCK_ADVANCE_MS);
-      realm.window.__talariaMarkMissingModule(moduleId);
-      observe();
-    }
-
-    // Non-vacuity: the first observation must be the empty one and the runtime must have
-    // published exactly one more module before each later call. Without this a runtime
-    // that degraded nothing would let a frozen passport agree with a frozen expectation.
-    const runtimeAdvanced = runtimeSeen.every((list, i) => list.length === i)
-      && TEMPORAL_DEGRADATION_SEQUENCE.every((id, i) => runtimeSeen[i + 1].includes(id));
-    const trackedRuntime = observed.every(
-      (list, i) => Array.isArray(list) && JSON.stringify(list) === JSON.stringify(runtimeSeen[i]),
+    const runtimeAdvanced = sparse.runtimeSeen.every((list, i) => list.length === i)
+      && TEMPORAL_DEGRADATION_SEQUENCE.every((id, i) => sparse.runtimeSeen[i + 1].includes(id));
+    const trackedRuntime = sparse.observed.every(
+      (list, i) => Array.isArray(list) && JSON.stringify(list) === JSON.stringify(sparse.runtimeSeen[i]),
     );
-    // Stated separately from trackedRuntime so a memoised passport reports the reason it
-    // died rather than a generic mismatch.
     const laterCallsSawNewModules = TEMPORAL_DEGRADATION_SEQUENCE.every(
-      (id, i) => Array.isArray(observed[i + 1]) && observed[i + 1].includes(id),
+      (id, i) => Array.isArray(sparse.observed[i + 1]) && sparse.observed[i + 1].includes(id),
     );
-    const clockAdvancedBetweenTickets = clockMarks.length === observed.length
-      && clockMarks.every((mark, i) => i === 0 || mark - clockMarks[i - 1] >= TEMPORAL_CLOCK_ADVANCE_MS);
-    const realmLooksLikePostLoad = readyStateAtTicket === 'complete';
-    const noUnmodelledReads = unknownReads.length === 0;
+    const clockAdvancedBetweenTickets = sparse.clockMarks.length === sparse.observed.length
+      && sparse.clockMarks.every((mark, i) => (
+        i === 0 || mark - sparse.clockMarks[i - 1] >= TEMPORAL_CLOCK_ADVANCE_MS
+      ));
+    const realmLooksLikePostLoad = sparse.readyStateAtTicket === 'complete'
+      && browser.readyStateAtTicket === 'complete';
+    const noUnmodelledReads = sparse.unknownReads.length === 0;
+    // Browser profile may touch more keys during eval of injected APIs; require the
+    // passport *observations* match, not identical unknown-read sets.
+    const environmentsAgree = JSON.stringify(sparse.observed) === JSON.stringify(browser.observed)
+      && JSON.stringify(sparse.runtimeSeen) === JSON.stringify(browser.runtimeSeen);
+    const browserProfileArmed = browser.hasServiceWorker === true;
     const pass = runtimeAdvanced
       && trackedRuntime
       && laterCallsSawNewModules
       && clockAdvancedBetweenTickets
       && realmLooksLikePostLoad
-      && noUnmodelledReads;
+      && noUnmodelledReads
+      && environmentsAgree
+      && browserProfileArmed;
 
     return cellResult('PASSPORT-DEGRADED-TEMPORAL-RECOMPUTE', pass, {
-      calls: observed.length,
-      runtimeSeen,
-      observed,
+      calls: sparse.observed.length,
+      runtimeSeen: sparse.runtimeSeen,
+      observed: sparse.observed,
+      browserObserved: browser.observed,
       runtimeAdvanced,
       trackedRuntime,
       laterCallsSawNewModules,
-      readyStateAtTicket,
+      readyStateAtTicket: sparse.readyStateAtTicket,
       realmLooksLikePostLoad,
-      clockMarks,
+      clockMarks: sparse.clockMarks,
       clockAdvancedBetweenTickets,
       clockAdvanceMs: TEMPORAL_CLOCK_ADVANCE_MS,
-      unknownReads,
+      unknownReads: sparse.unknownReads,
       noUnmodelledReads,
+      environmentsAgree,
+      browserProfileArmed,
     });
   } catch (error) {
     return redCell('PASSPORT-DEGRADED-TEMPORAL-RECOMPUTE', String(error?.message ?? error));
@@ -1052,6 +1102,26 @@ export const SUPPORT_PASSPORT_BEHAVIORAL_MUTANTS = [
         );
     },
   },
+  {
+    id: 'M13',
+    name: 'NC-MUTANT-SERVICE-WORKER-GATED-CACHE',
+    describes:
+      'module-scope cache gated on navigator.serviceWorker — dead under falsy own undefined, '
+      + 'live under browserRealistic (R-M6-6 primary carrier)',
+    apply: (src) => {
+      if (!src.includes(MEMOIZED_PASSPORT_HEADER) || !src.includes(MEMOIZED_PASSPORT_TAIL)) {
+        return null;
+      }
+      return src
+        .replace(
+          MEMOIZED_PASSPORT_HEADER,
+          'let __passportCache: Record<string, string | string[]> | null = null;\n'
+          + `${MEMOIZED_PASSPORT_HEADER}\n`
+          + '  if (__passportCache !== null && (navigator as any).serviceWorker) return __passportCache;',
+        )
+        .replace(MEMOIZED_PASSPORT_TAIL, '  __passportCache = ctx;\n  return ctx;\n}');
+    },
+  },
 ];
 
 /**
@@ -1327,12 +1397,44 @@ export function hasContextReassignmentAfterCall(ts, callNode) {
   let found = false;
   const visit = (node) => {
     if (found) return;
-    if (ts.isBinaryExpression(node)
-      && node.operatorToken.kind === ts.SyntaxKind.EqualsToken
-      && node.getStart() > callPos
-      && ts.isPropertyAccessExpression(node.left)) {
-      const name = node.left.name.text;
-      if (name === 'context' || name === 'degradedModules') {
+    if (node.getStart && node.getStart() > callPos) {
+      if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.EqualsToken) {
+        if (ts.isPropertyAccessExpression(node.left)) {
+          const name = node.left.name.text;
+          if (name === 'context' || name === 'degradedModules') {
+            found = true;
+            return;
+          }
+        }
+        // payload["context"] = ...
+        if (ts.isElementAccessExpression(node.left)
+          && ts.isStringLiteral(node.left.argumentExpression)
+          && (node.left.argumentExpression.text === 'context'
+            || node.left.argumentExpression.text === 'degradedModules')) {
+          found = true;
+          return;
+        }
+      }
+      // Object.assign(payload, { context: snap })
+      if (ts.isCallExpression(node) && calleeName(ts, node.expression) === 'assign'
+        && node.arguments.length >= 2) {
+        const patch = node.arguments[1];
+        if (ts.isObjectLiteralExpression(patch)
+          && patch.properties.some((prop) => {
+            if (ts.isPropertyAssignment(prop) || ts.isShorthandPropertyAssignment(prop)) {
+              return propertyNameText(ts, prop.name) === 'context';
+            }
+            return false;
+          })) {
+          found = true;
+          return;
+        }
+      }
+      // arr.splice(...) on degradedModules binding — treat as mutation of the passport list
+      if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)
+        && node.expression.name.text === 'splice'
+        && ts.isPropertyAccessExpression(node.expression.expression)
+        && node.expression.expression.name.text === 'degradedModules') {
         found = true;
         return;
       }
