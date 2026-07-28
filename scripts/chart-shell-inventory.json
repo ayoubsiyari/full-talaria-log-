@@ -1,0 +1,1626 @@
+{
+  "schema": "talaria.chart-shell-inventory.v1",
+  "roles": {
+    "v9-host-source": {
+      "description": "Canonical V9 host source template (Vite input for build:live:chart). Not a URL, but the single source from which v9-host-built and v9-host-public are generated, so a module dropped here is dropped from every host surface at the next build. Required-module enforcement here is the earliest and cheapest place to catch capability loss.",
+      "surface": "host",
+      "stampSeries": [
+        "20260727b80"
+      ],
+      "requiredModules": [
+        "/chart/modules/preferences-sync.js",
+        "/chart/modules/drawing-tools-text.js",
+        "/chart/modules/tool-lifecycle-store.js",
+        "/chart/modules/compare-overlay.js",
+        "/chart/modules/viewport-data-manager.js",
+        "/chart/modules/talaria-toast-stack.js",
+        "/chart/modules/module-presence-runtime.js",
+        "/chart/chart.js",
+        "/chart/modules/replay-system.js",
+        "/chart/modules/order-event-bus.js",
+        "/chart/modules/order-service.js",
+        "/chart/modules/order-manager.js",
+        "/chart/modules/indicator-persist-rehydrate.js",
+        "/chart/modules/indicator-settings-apply.js",
+        "/chart/modules/indicator-visibility.js",
+        "/chart/modules/indicator-lifecycle-store.js",
+        "/chart/modules/talaria-fvg-indicator.js",
+        "/chart/modules/talaria-ratio-gap-indicator.js",
+        "/chart/modules/talaria-weekly-map-indicator.js",
+        "/chart/modules/talaria-simple-smc-indicator.js",
+        "/chart/modules/indicator-performance.js",
+        "/chart/modules/chart-indicators-full.js",
+        "/chart/modules/indicator-ui.js"
+      ],
+      "forbiddenModules": [
+        "/chart/dist-v9/assets/talaria-v9-live.js"
+      ]
+    },
+    "v9-host-built": {
+      "description": "Generated V9 host build output at chart/dist-v9/index.html. FastAPI selects it for /chart/index.html and mounts /chart/dist-v9. Same required set as the source, with the Vite source entry ./main.jsx replaced by the built bundle.",
+      "surface": "host",
+      "stampSeries": [
+        "20260727b80"
+      ],
+      "requiredModules": [
+        "/chart/modules/preferences-sync.js",
+        "/chart/modules/drawing-tools-text.js",
+        "/chart/modules/tool-lifecycle-store.js",
+        "/chart/modules/compare-overlay.js",
+        "/chart/modules/viewport-data-manager.js",
+        "/chart/modules/talaria-toast-stack.js",
+        "/chart/modules/module-presence-runtime.js",
+        "/chart/chart.js",
+        "/chart/modules/replay-system.js",
+        "/chart/modules/order-event-bus.js",
+        "/chart/modules/order-service.js",
+        "/chart/modules/order-manager.js",
+        "/chart/modules/indicator-persist-rehydrate.js",
+        "/chart/modules/indicator-settings-apply.js",
+        "/chart/modules/indicator-visibility.js",
+        "/chart/modules/indicator-lifecycle-store.js",
+        "/chart/modules/talaria-fvg-indicator.js",
+        "/chart/modules/talaria-ratio-gap-indicator.js",
+        "/chart/modules/talaria-weekly-map-indicator.js",
+        "/chart/modules/talaria-simple-smc-indicator.js",
+        "/chart/modules/indicator-performance.js",
+        "/chart/modules/chart-indicators-full.js",
+        "/chart/modules/indicator-ui.js",
+        "/chart/dist-v9/assets/talaria-v9-live.js"
+      ],
+      "forbiddenModules": []
+    },
+    "v9-host-public": {
+      "description": "Homepage web-root mirror of the V9 host build, served directly by nginx at /chart/dist-v9/index.html. In the image this path is overwritten from the chart_assets build stage, so it must carry the identical contract to v9-host-built.",
+      "surface": "host",
+      "stampSeries": [
+        "20260727b80"
+      ],
+      "requiredModules": [
+        "/chart/modules/preferences-sync.js",
+        "/chart/modules/drawing-tools-text.js",
+        "/chart/modules/tool-lifecycle-store.js",
+        "/chart/modules/compare-overlay.js",
+        "/chart/modules/viewport-data-manager.js",
+        "/chart/modules/talaria-toast-stack.js",
+        "/chart/modules/module-presence-runtime.js",
+        "/chart/chart.js",
+        "/chart/modules/replay-system.js",
+        "/chart/modules/order-event-bus.js",
+        "/chart/modules/order-service.js",
+        "/chart/modules/order-manager.js",
+        "/chart/modules/indicator-persist-rehydrate.js",
+        "/chart/modules/indicator-settings-apply.js",
+        "/chart/modules/indicator-visibility.js",
+        "/chart/modules/indicator-lifecycle-store.js",
+        "/chart/modules/talaria-fvg-indicator.js",
+        "/chart/modules/talaria-ratio-gap-indicator.js",
+        "/chart/modules/talaria-weekly-map-indicator.js",
+        "/chart/modules/talaria-simple-smc-indicator.js",
+        "/chart/modules/indicator-performance.js",
+        "/chart/modules/chart-indicators-full.js",
+        "/chart/modules/indicator-ui.js",
+        "/chart/dist-v9/assets/talaria-v9-live.js"
+      ],
+      "forbiddenModules": []
+    },
+    "legacy-host-source": {
+      "description": "Legacy monolithic host shell chart/legacy-index.html. It is a routed production surface on two independent channels (CHART_ROOT_FILES membership and the homepage web-root copy) and is re-stamped by bump-chart-engine-build.mjs on every build. RULING 3 — the disposition is de-route, not fix: two shells serving one product is the root of this defect class. No module contract is therefore asserted against this role. requiredModules is deliberately EMPTY, because a non-empty list here would demand that somebody wire indicator-performance.js and module-presence-runtime.js into a shell the Director has ordered off production — i.e. it would invite the fix that Ruling 3 forbids. This role goes RED through status removal-pending and its unsatisfied proofOfDeRouting requirements, not through a module assertion.",
+      "surface": "host",
+      "stampSeries": [
+        "20260727b80"
+      ],
+      "requiredModules": [],
+      "forbiddenModules": []
+    },
+    "legacy-host-public": {
+      "description": "Homepage web-root copy of the legacy host shell, written by both Dockerfiles from chart/legacy-index.html and served by nginx at /chart/legacy-index.html. Byte-equal to legacy-host-source. RULING 3 — the disposition is de-route, not fix: two shells serving one product is the root of this defect class. No module contract is therefore asserted against this role. requiredModules is deliberately EMPTY, because a non-empty list here would demand that somebody wire indicator-performance.js and module-presence-runtime.js into a shell the Director has ordered off production — i.e. it would invite the fix that Ruling 3 forbids. This role goes RED through status removal-pending and its unsatisfied proofOfDeRouting requirements, not through a module assertion.",
+      "surface": "host",
+      "stampSeries": [
+        "20260727b80"
+      ],
+      "requiredModules": [],
+      "forbiddenModules": []
+    },
+    "multichart-embed-source": {
+      "description": "Owned production multichart panel shell chart/multichart-prod/chart-embed.html, mounted by FastAPI at /chart/multichart-prod and loaded in MultichartGrid iframes. Embed-lite by design: the three host-only modules loaded through __loadHostOnlyScript on the V9 host (compare-overlay, screenshot-manager, alert-system) must never appear here. indicator-replay-ui-sync IS required on embed per the required-global audit.",
+      "surface": "panel",
+      "stampSeries": [
+        "20260727b80"
+      ],
+      "requiredModules": [
+        "/chart/modules/preferences-sync.js",
+        "/chart/modules/drawing-tools-text.js",
+        "/chart/modules/tool-lifecycle-store.js",
+        "/chart/modules/viewport-data-manager.js",
+        "/chart/modules/talaria-toast-stack.js",
+        "/chart/modules/module-presence-runtime.js",
+        "/chart/chart.js",
+        "/chart/modules/replay-system.js",
+        "/chart/modules/order-event-bus.js",
+        "/chart/modules/order-service.js",
+        "/chart/modules/order-manager.js",
+        "/chart/modules/indicator-performance.js",
+        "/chart/modules/indicator-persist-rehydrate.js",
+        "/chart/modules/indicator-settings-apply.js",
+        "/chart/modules/indicator-visibility.js",
+        "/chart/modules/indicator-replay-ui-sync.js",
+        "/chart/modules/indicator-lifecycle-store.js",
+        "/chart/modules/talaria-fvg-indicator.js",
+        "/chart/modules/talaria-ratio-gap-indicator.js",
+        "/chart/modules/talaria-weekly-map-indicator.js",
+        "/chart/modules/talaria-simple-smc-indicator.js",
+        "/chart/modules/chart-indicators-full.js",
+        "/chart/modules/indicator-ui.js"
+      ],
+      "forbiddenModules": [
+        "/chart/modules/compare-overlay.js",
+        "/chart/modules/screenshot-manager.js",
+        "/chart/modules/alert-system.js"
+      ]
+    },
+    "multichart-embed-public": {
+      "description": "Homepage web-root mirror of the production panel shell, served by nginx and overwritten in the image from the chart_assets build stage. Identical contract to multichart-embed-source; the two must stay byte-equal.",
+      "surface": "panel",
+      "stampSeries": [
+        "20260727b80"
+      ],
+      "requiredModules": [
+        "/chart/modules/preferences-sync.js",
+        "/chart/modules/drawing-tools-text.js",
+        "/chart/modules/tool-lifecycle-store.js",
+        "/chart/modules/viewport-data-manager.js",
+        "/chart/modules/talaria-toast-stack.js",
+        "/chart/modules/module-presence-runtime.js",
+        "/chart/chart.js",
+        "/chart/modules/replay-system.js",
+        "/chart/modules/order-event-bus.js",
+        "/chart/modules/order-service.js",
+        "/chart/modules/order-manager.js",
+        "/chart/modules/indicator-performance.js",
+        "/chart/modules/indicator-persist-rehydrate.js",
+        "/chart/modules/indicator-settings-apply.js",
+        "/chart/modules/indicator-visibility.js",
+        "/chart/modules/indicator-replay-ui-sync.js",
+        "/chart/modules/indicator-lifecycle-store.js",
+        "/chart/modules/talaria-fvg-indicator.js",
+        "/chart/modules/talaria-ratio-gap-indicator.js",
+        "/chart/modules/talaria-weekly-map-indicator.js",
+        "/chart/modules/talaria-simple-smc-indicator.js",
+        "/chart/modules/chart-indicators-full.js",
+        "/chart/modules/indicator-ui.js"
+      ],
+      "forbiddenModules": [
+        "/chart/modules/compare-overlay.js",
+        "/chart/modules/screenshot-manager.js",
+        "/chart/modules/alert-system.js"
+      ]
+    },
+    "dist-legacy-fallback": {
+      "description": "Bundled legacy client build chart/dist/index.html. Its 26 script tags point at minified bundle chunks, so it references no path matching /chart/chart.js or /chart/modules/*: a name-matching module assertion structurally cannot verify it and requiredModules is therefore deliberately empty. Verification for this role must be bundle-content or runtime-symbol based. The working-tree artifact is stale, and its shell row proves from source that neither the /chart/dist mount nor the /chart/index.html second-choice fallback is active in production.",
+      "surface": "host",
+      "stampSeries": [
+        "20260724b59"
+      ],
+      "requiredModules": [],
+      "forbiddenModules": []
+    },
+    "admin-dist": {
+      "description": "Talaria admin-dashboard lineage (HeroUI Vite source, its build output, the served admin monolith and the superseded admin pages). DECLARED BUT UNUSED in this inventory: no admin page loads a chart-engine asset, so under Ruling 5 they are narrow-inventory-ineligible and appear only in scripts/servable-surface-inventory.json with kind non-chart-app. The role is retained so the fixed role vocabulary stays complete and machine-checkable.",
+      "surface": "none",
+      "stampSeries": [
+        "20260624b151"
+      ],
+      "requiredModules": [],
+      "forbiddenModules": []
+    },
+    "pointer-stub": {
+      "description": "Pointer/redirect documents with zero script tags that exist only to send a reader or an old bookmark to the real surface. Both are in the CHART_ROOT_FILES allowlist and therefore routed, but neither is a chart runtime, so no module contract applies. Empty stampSeries: this role carries no stamp.",
+      "surface": "none",
+      "stampSeries": [],
+      "requiredModules": [],
+      "forbiddenModules": []
+    },
+    "sandbox-multichart": {
+      "description": "Hand-maintained non-production multichart sandbox rig under chart/multichart and its committed homepage mirror. chart-host.html loads the real chart engine, so this is a chart-capable shell with no owner and no build stamp. No module contract is asserted while the retain-or-remove decision is open. Empty stampSeries: this role carries no stamp.",
+      "surface": "harness",
+      "stampSeries": [],
+      "requiredModules": [],
+      "forbiddenModules": []
+    },
+    "browser-harness": {
+      "description": "Browser-integration test harness pages that drive real product modules or bridges from a local harness server. They are routed in production only because whole directories (modules, multichart-prod) are mounted and copied; they are not product surfaces and assert no product module contract. Empty stampSeries: this role carries no stamp.",
+      "surface": "harness",
+      "stampSeries": [],
+      "requiredModules": [],
+      "forbiddenModules": []
+    },
+    "frozen-evidence": {
+      "description": "Immutable frozen A/B baseline evidence under multichart-prod/harness/frozen. Its value depends on never changing, so requiredModules is deliberately empty and its stamp must never be refreshed: asserting the current module set here would demand mutating immutable evidence to make the build green. Its production reachability is accidental and is closed by route denial, not by editing the snapshot.",
+      "surface": "harness",
+      "stampSeries": [
+        "20260724b61"
+      ],
+      "requiredModules": [],
+      "forbiddenModules": []
+    },
+    "public-test-fixture": {
+      "description": "Test fixtures from the M21-W6 fixture tree that are live on a public web root. DECLARED BUT UNUSED in this inventory: none of the four fixture documents loads a chart-engine asset (preflight-host.html, preflight-iframe.html, lwc-proto.html and lwc-proto-dryrun-client.html carry inline script only), so under Ruling 5 they are narrow-inventory-ineligible and appear only in scripts/servable-surface-inventory.json with kind fixture, where their removal-pending and denied-route-pending dispositions are recorded. Empty stampSeries: this role carries no stamp.",
+      "surface": "harness",
+      "stampSeries": [],
+      "requiredModules": [],
+      "forbiddenModules": []
+    },
+    "image-built-export": {
+      "description": "Working-tree copies of chart shells under homepage/out. That directory is a stale local Next static export, is git-ignored, and is excluded from both Docker build contexts by the root .dockerignore rule **/out; the homepage image regenerates the export with npm run build. This role asserts nothing against the working tree — its contract is verified against the built image, which is what status image-verified records. Empty stampSeries: this role carries no stamp.",
+      "surface": "none",
+      "stampSeries": [],
+      "requiredModules": [],
+      "forbiddenModules": []
+    }
+  },
+  "shells": [
+    {
+      "path": "chart v 1.4/chart/dist-v9/index.html",
+      "role": "v9-host-built",
+      "status": "owned-stamped",
+      "servable": true,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "fastapiMount": {
+          "present": true,
+          "file": "chart v 1.4/chart/api_server.py",
+          "line": 26996,
+          "quote": "    app.mount(\"/chart/dist-v9\", StaticFiles(directory=str(_DIST_V9_DIR_PATH)), name=\"chart_dist_v9\")"
+        },
+        "dockerCopy": {
+          "present": true,
+          "file": "homepage/Dockerfile",
+          "line": 81,
+          "quote": "COPY --from=chart_assets /build/chart/dist-v9 ./public/chart/dist-v9"
+        },
+        "nginxRoot": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        }
+      },
+      "expectedStamp": "20260727b80",
+      "reason": "Canonical generated production host. FastAPI mounts /chart/dist-v9 and prefers dist-v9/index.html for /chart/index.html (api_server.py:26967-26969), and homepage/Dockerfile:81 republishes the directory into the homepage web root. The directory is excluded from the build context by .dockerignore:29 and regenerated inside chart_assets by \"npm run build:live:chart\" (homepage/Dockerfile:47), so the served bytes are rebuilt — but the path is unambiguously routed.",
+      "retainFile": false,
+      "retainReason": null,
+      "proofOfDeRouting": []
+    },
+    {
+      "path": "chart v 1.4/chart/dist/index.html",
+      "role": "dist-legacy-fallback",
+      "status": "no-routing-evidence",
+      "servable": false,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "fastapiMount": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "dockerCopy": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "nginxRoot": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        }
+      },
+      "expectedStamp": "20260724b59",
+      "reason": "Bundled legacy build (1.4 MB, 26 minified script tags). Both of its potential channels are proven inactive from source. (1) The /chart/dist mount at api_server.py:27003 is guarded by \"if _DIST_LEGACY_DIR.is_dir():\" at line 27002, and the directory is absent from the trading-chart image: .dockerignore:30 excludes \"chart v 1.4/chart/dist\" from the build context and Dockerfile.local:119-124 regenerates it only when BUILD_LEGACY_BUNDLE=1, whose ARG default at line 119 is 0. (2) The /chart/index.html fallback at api_server.py:26970 is second choice behind _DIST_V9_INDEX_PATH at line 26968, and dist-v9 is always present because Dockerfile.local:103 copies it in unconditionally. Not published by homepage/Dockerfile:81-89. Its stale 20260724b59 stamp therefore cannot reach a user.",
+      "retainFile": false,
+      "retainReason": null,
+      "proofOfDeRouting": []
+    },
+    {
+      "path": "chart v 1.4/chart/index.html",
+      "role": "pointer-stub",
+      "status": "owned-stamped",
+      "servable": true,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": true,
+          "file": "chart v 1.4/chart/api_server.py",
+          "line": 26921,
+          "quote": "    \"index.html\","
+        },
+        "fastapiMount": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "dockerCopy": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "nginxRoot": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        }
+      },
+      "expectedStamp": "",
+      "reason": "Pointer document with zero script tags. Routed by CHART_ROOT_FILES membership, but shadowed: api_server.py:26967-26971 returns dist-v9/index.html first and dist/index.html second, so these bytes are only served when both builds are absent — which is never true in the image (Dockerfile.local:103). Recorded as servable because the allowlist channel is present, with the shadowing stated rather than used to assert servable:false. Carries no build stamp, which its role declares with an empty stampSeries.",
+      "retainFile": false,
+      "retainReason": null,
+      "proofOfDeRouting": []
+    },
+    {
+      "path": "chart v 1.4/chart/index.v9.html",
+      "role": "pointer-stub",
+      "status": "owned-stamped",
+      "servable": true,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": true,
+          "file": "chart v 1.4/chart/api_server.py",
+          "line": 26924,
+          "quote": "    \"index.v9.html\",  # redirect stub → legacy-index.html (no second monolith)"
+        },
+        "fastapiMount": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "dockerCopy": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "nginxRoot": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        }
+      },
+      "expectedStamp": "",
+      "reason": "857-byte meta-refresh redirect to legacy-index.html with zero script tags, kept for old bookmarks. Routed by CHART_ROOT_FILES membership. Its target is removal-pending under Ruling 2, so de-routing legacy-index.html leaves this stub pointing at a 404; its disposition follows legacy-index.html and is flagged for the de-routing packet.",
+      "retainFile": false,
+      "retainReason": null,
+      "proofOfDeRouting": []
+    },
+    {
+      "path": "chart v 1.4/chart/legacy-index.html",
+      "role": "legacy-host-source",
+      "status": "removal-pending",
+      "servable": true,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": true,
+          "file": "chart v 1.4/chart/api_server.py",
+          "line": 26923,
+          "quote": "    \"legacy-index.html\","
+        },
+        "fastapiMount": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "dockerCopy": {
+          "present": true,
+          "file": "homepage/Dockerfile",
+          "line": 88,
+          "quote": "COPY --from=chart_assets /build/chart/legacy-index.html ./public/chart/legacy-index.html"
+        },
+        "nginxRoot": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        }
+      },
+      "expectedStamp": "20260727b80",
+      "reason": "RULING 2: removal-pending, RED and loud. Two independent routing channels, both machine-observable: CHART_ROOT_FILES membership at api_server.py:26923 and the homepage web-root copy at homepage/Dockerfile:88. RULING 3: the disposition is de-route, not fix — two shells serving one product is the root of this defect class, so no module contract is asserted against it. RULING 4 / A14.2: the chart-root source is retained for §A10 control harvest (see retainFile/retainPath/retainReason). Stamped 20260727b80 and references neither indicator-performance.js nor module-presence-runtime.js.",
+      "retainFile": true,
+      "retainPath": "chart v 1.4/chart/legacy-index.html",
+      "retainReason": "Retained as §A10 control-harvest source (chart-root canonical); magnet-mode is NOT the sole reason (V9 also has magnet); harvest for dropped controls including toggleFavoritesBar, keepDrawingModeToolbar, sessionInfoToggle, sc_magnet, replay-toolbar. Do not delete until A10 harvest completes.",
+      "proofOfDeRouting": [
+        {
+          "requirement": "Director condition 1 of 3: the CHART_ROOT_FILES allowlist entry for \"legacy-index.html\" is removed, so GET /chart/legacy-index.html no longer resolves through the FastAPI chart-root handler.",
+          "file": "chart v 1.4/chart/api_server.py",
+          "line": 26923,
+          "satisfied": false
+        },
+        {
+          "requirement": "Director condition 2 of 3: the Dockerfile copy that publishes legacy-index.html into the homepage web root is removed.",
+          "file": "homepage/Dockerfile",
+          "line": 88,
+          "satisfied": false
+        },
+        {
+          "requirement": "Director condition 3 of 3: GET /chart/legacy-index.html is demonstrated to return HTTP 404 against a built image (nginx try_files at homepage/nginx.local.conf:146 finds no file in the web root and falls through to @chart_upstream, which reaches api_server.py:26962).",
+          "file": "chart v 1.4/chart/legacy-index.html",
+          "line": null,
+          "satisfied": false
+        }
+      ]
+    },
+    {
+      "path": "chart v 1.4/chart/modules/m20-a-favorites-harness/m20-a-favorites-harness.html",
+      "role": "browser-harness",
+      "status": "denied-route-pending",
+      "servable": true,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "fastapiMount": {
+          "present": true,
+          "file": "chart v 1.4/chart/api_server.py",
+          "line": 27005,
+          "quote": "app.mount(\"/chart/modules\", StaticFiles(directory=str(_CHART_ROOT_PATH / \"modules\")), name=\"chart_modules\")"
+        },
+        "dockerCopy": {
+          "present": true,
+          "file": "homepage/Dockerfile",
+          "line": 82,
+          "quote": "COPY --from=chart_assets /build/chart/modules ./public/chart/modules"
+        },
+        "nginxRoot": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        }
+      },
+      "expectedStamp": "",
+      "reason": "Favorites browser harness. Its document loads ./m20-a-favorites-harness.client.mjs, which fetches /chart v 1.4/chart/modules/favorites-manager.js and /homepage/public/chart/modules/favorites-manager.js, so it is a chart-referencing shell. Live on two channels: the /chart/modules mount and the homepage web-root copy of the whole modules/ directory. Not a product surface.",
+      "retainFile": false,
+      "retainReason": null,
+      "proofOfDeRouting": [
+        {
+          "requirement": "Route denial: this path is no longer served by the /chart/modules StaticFiles mount (exclude the path or move the artifact out of the mounted directory).",
+          "file": "chart v 1.4/chart/api_server.py",
+          "line": 27005,
+          "satisfied": false
+        },
+        {
+          "requirement": "Copy exclusion: this path is no longer published into the homepage web root by the chart_assets COPY instruction.",
+          "file": "homepage/Dockerfile",
+          "line": 82,
+          "satisfied": false
+        },
+        {
+          "requirement": "Route probe: the public URL for this path is demonstrated to return HTTP 404 against a built image.",
+          "file": "chart v 1.4/chart/modules/m20-a-favorites-harness/m20-a-favorites-harness.html",
+          "line": null,
+          "satisfied": false
+        }
+      ]
+    },
+    {
+      "path": "chart v 1.4/chart/modules/m21-2-browser-harness/m21-2-browser-harness.html",
+      "role": "browser-harness",
+      "status": "denied-route-pending",
+      "servable": true,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "fastapiMount": {
+          "present": true,
+          "file": "chart v 1.4/chart/api_server.py",
+          "line": 27005,
+          "quote": "app.mount(\"/chart/modules\", StaticFiles(directory=str(_CHART_ROOT_PATH / \"modules\")), name=\"chart_modules\")"
+        },
+        "dockerCopy": {
+          "present": true,
+          "file": "homepage/Dockerfile",
+          "line": 82,
+          "quote": "COPY --from=chart_assets /build/chart/modules ./public/chart/modules"
+        },
+        "nginxRoot": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        }
+      },
+      "expectedStamp": "",
+      "reason": "M21-2 candle OffscreenCanvas browser harness. Its document loads ./m21-2-browser-harness.client.mjs, which imports /chart/modules/m21-2-candle-offscreen-bridge.mjs and probes /chart/workers/..., so it is a chart-referencing shell. Live on the /chart/modules mount and the homepage web-root copy. Not a product surface.",
+      "retainFile": false,
+      "retainReason": null,
+      "proofOfDeRouting": [
+        {
+          "requirement": "Route denial: this path is no longer served by the /chart/modules StaticFiles mount (exclude the path or move the artifact out of the mounted directory).",
+          "file": "chart v 1.4/chart/api_server.py",
+          "line": 27005,
+          "satisfied": false
+        },
+        {
+          "requirement": "Copy exclusion: this path is no longer published into the homepage web root by the chart_assets COPY instruction.",
+          "file": "homepage/Dockerfile",
+          "line": 82,
+          "satisfied": false
+        },
+        {
+          "requirement": "Route probe: the public URL for this path is demonstrated to return HTTP 404 against a built image.",
+          "file": "chart v 1.4/chart/modules/m21-2-browser-harness/m21-2-browser-harness.html",
+          "line": null,
+          "satisfied": false
+        }
+      ]
+    },
+    {
+      "path": "chart v 1.4/chart/multichart-prod/chart-embed.html",
+      "role": "multichart-embed-source",
+      "status": "owned-stamped",
+      "servable": true,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "fastapiMount": {
+          "present": true,
+          "file": "chart v 1.4/chart/api_server.py",
+          "line": 27037,
+          "quote": "        \"/chart/multichart-prod\","
+        },
+        "dockerCopy": {
+          "present": true,
+          "file": "homepage/Dockerfile",
+          "line": 84,
+          "quote": "COPY --from=chart_assets /build/chart/multichart-prod ./public/chart/multichart-prod"
+        },
+        "nginxRoot": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        }
+      },
+      "expectedStamp": "20260727b80",
+      "reason": "Owned production panel shell, mounted by FastAPI at /chart/multichart-prod and republished into the homepage web root. Loaded in MultichartGrid iframes. Stamped 20260727b80.",
+      "retainFile": false,
+      "retainReason": null,
+      "proofOfDeRouting": []
+    },
+    {
+      "path": "chart v 1.4/chart/multichart-prod/harness/frozen/m21-vy-ab-baseline-v2.2/runtime/chart/multichart-prod/chart-embed.html",
+      "role": "frozen-evidence",
+      "status": "denied-route-pending",
+      "servable": true,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "fastapiMount": {
+          "present": true,
+          "file": "chart v 1.4/chart/api_server.py",
+          "line": 27037,
+          "quote": "        \"/chart/multichart-prod\","
+        },
+        "dockerCopy": {
+          "present": true,
+          "file": "homepage/Dockerfile",
+          "line": 84,
+          "quote": "COPY --from=chart_assets /build/chart/multichart-prod ./public/chart/multichart-prod"
+        },
+        "nginxRoot": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        }
+      },
+      "expectedStamp": "20260724b61",
+      "reason": "Immutable frozen A/B baseline snapshot of the panel shell at build 20260724b61, live only because the whole multichart-prod directory is mounted and copied. It legitimately lacks module-presence-runtime.js because it predates it; asserting the current module set here would demand mutating immutable evidence. Disposition is route denial and copy exclusion, never editing the snapshot.",
+      "retainFile": false,
+      "retainReason": null,
+      "proofOfDeRouting": [
+        {
+          "requirement": "Route denial: this path is no longer served by the /chart/multichart-prod StaticFiles mount (exclude the path or move the artifact out of the mounted directory).",
+          "file": "chart v 1.4/chart/api_server.py",
+          "line": 27037,
+          "satisfied": false
+        },
+        {
+          "requirement": "Copy exclusion: this path is no longer published into the homepage web root by the chart_assets COPY instruction.",
+          "file": "homepage/Dockerfile",
+          "line": 84,
+          "satisfied": false
+        },
+        {
+          "requirement": "Route probe: the public URL for this path is demonstrated to return HTTP 404 against a built image.",
+          "file": "chart v 1.4/chart/multichart-prod/harness/frozen/m21-vy-ab-baseline-v2.2/runtime/chart/multichart-prod/chart-embed.html",
+          "line": null,
+          "satisfied": false
+        }
+      ]
+    },
+    {
+      "path": "chart v 1.4/chart/multichart-prod/m20-q5-q7-browser-harness/m20-q5-q7-browser-harness.html",
+      "role": "browser-harness",
+      "status": "denied-route-pending",
+      "servable": true,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "fastapiMount": {
+          "present": true,
+          "file": "chart v 1.4/chart/api_server.py",
+          "line": 27037,
+          "quote": "        \"/chart/multichart-prod\","
+        },
+        "dockerCopy": {
+          "present": true,
+          "file": "homepage/Dockerfile",
+          "line": 84,
+          "quote": "COPY --from=chart_assets /build/chart/multichart-prod ./public/chart/multichart-prod"
+        },
+        "nginxRoot": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        }
+      },
+      "expectedStamp": "",
+      "reason": "M20 Q5/Q7 parent-side browser harness. Loads real product code — /chart/multichart-prod/engine-api-guards.js and /chart/multichart-prod/multichart-manager.js — so it is a chart-referencing shell. Live on the /chart/multichart-prod mount and the homepage web-root copy. Not a product route.",
+      "retainFile": false,
+      "retainReason": null,
+      "proofOfDeRouting": [
+        {
+          "requirement": "Route denial: this path is no longer served by the /chart/multichart-prod StaticFiles mount (exclude the path or move the artifact out of the mounted directory).",
+          "file": "chart v 1.4/chart/api_server.py",
+          "line": 27037,
+          "satisfied": false
+        },
+        {
+          "requirement": "Copy exclusion: this path is no longer published into the homepage web root by the chart_assets COPY instruction.",
+          "file": "homepage/Dockerfile",
+          "line": 84,
+          "satisfied": false
+        },
+        {
+          "requirement": "Route probe: the public URL for this path is demonstrated to return HTTP 404 against a built image.",
+          "file": "chart v 1.4/chart/multichart-prod/m20-q5-q7-browser-harness/m20-q5-q7-browser-harness.html",
+          "line": null,
+          "satisfied": false
+        }
+      ]
+    },
+    {
+      "path": "chart v 1.4/chart/multichart-prod/m20-q5-q7-browser-harness/m20-q5-q7-panel-frame.html",
+      "role": "browser-harness",
+      "status": "denied-route-pending",
+      "servable": true,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "fastapiMount": {
+          "present": true,
+          "file": "chart v 1.4/chart/api_server.py",
+          "line": 27037,
+          "quote": "        \"/chart/multichart-prod\","
+        },
+        "dockerCopy": {
+          "present": true,
+          "file": "homepage/Dockerfile",
+          "line": 84,
+          "quote": "COPY --from=chart_assets /build/chart/multichart-prod ./public/chart/multichart-prod"
+        },
+        "nginxRoot": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        }
+      },
+      "expectedStamp": "",
+      "reason": "M20 Q5/Q7 panel frame for the harness above. Loads the real product bridge /chart/multichart-prod/panel-cmd-bridge.js, so it is a chart-referencing shell. Live on the same mount and copy path. Not a product route.",
+      "retainFile": false,
+      "retainReason": null,
+      "proofOfDeRouting": [
+        {
+          "requirement": "Route denial: this path is no longer served by the /chart/multichart-prod StaticFiles mount (exclude the path or move the artifact out of the mounted directory).",
+          "file": "chart v 1.4/chart/api_server.py",
+          "line": 27037,
+          "satisfied": false
+        },
+        {
+          "requirement": "Copy exclusion: this path is no longer published into the homepage web root by the chart_assets COPY instruction.",
+          "file": "homepage/Dockerfile",
+          "line": 84,
+          "satisfied": false
+        },
+        {
+          "requirement": "Route probe: the public URL for this path is demonstrated to return HTTP 404 against a built image.",
+          "file": "chart v 1.4/chart/multichart-prod/m20-q5-q7-browser-harness/m20-q5-q7-panel-frame.html",
+          "line": null,
+          "satisfied": false
+        }
+      ]
+    },
+    {
+      "path": "chart v 1.4/chart/multichart/chart-host.html",
+      "role": "sandbox-multichart",
+      "status": "denied-route-pending",
+      "servable": true,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "fastapiMount": {
+          "present": true,
+          "file": "chart v 1.4/chart/api_server.py",
+          "line": 27024,
+          "quote": "    app.mount(\"/chart/multichart\", StaticFiles(directory=str(_MULTICHART_DIR_PATH), html=True), name=\"chart_multichart\")"
+        },
+        "dockerCopy": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "nginxRoot": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        }
+      },
+      "expectedStamp": "",
+      "reason": "Non-production multichart sandbox rig, live through the /chart/multichart StaticFiles mount (html=True). One routing channel only: no COPY --from=chart_assets instruction at homepage/Dockerfile:81-89 names chart/multichart, so the served homepage copy is the separately committed homepage/public/chart/multichart tree, not this one. No build owner and no stamp; retain-or-remove is an open decision, so no module contract is asserted while it is open.",
+      "retainFile": false,
+      "retainReason": null,
+      "proofOfDeRouting": [
+        {
+          "requirement": "Route denial: this path is no longer served by the /chart/multichart StaticFiles mount (exclude the path or move the artifact out of the mounted directory).",
+          "file": "chart v 1.4/chart/api_server.py",
+          "line": 27024,
+          "satisfied": false
+        },
+        {
+          "requirement": "Route probe: the public URL for this path is demonstrated to return HTTP 404 against a built image.",
+          "file": "chart v 1.4/chart/multichart/chart-host.html",
+          "line": null,
+          "satisfied": false
+        }
+      ]
+    },
+    {
+      "path": "chart v 1.4/chart/multichart/multichart-shell.html",
+      "role": "sandbox-multichart",
+      "status": "denied-route-pending",
+      "servable": true,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "fastapiMount": {
+          "present": true,
+          "file": "chart v 1.4/chart/api_server.py",
+          "line": 27024,
+          "quote": "    app.mount(\"/chart/multichart\", StaticFiles(directory=str(_MULTICHART_DIR_PATH), html=True), name=\"chart_multichart\")"
+        },
+        "dockerCopy": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "nginxRoot": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        }
+      },
+      "expectedStamp": "",
+      "reason": "Non-production multichart sandbox rig, live through the /chart/multichart StaticFiles mount (html=True). One routing channel only: no COPY --from=chart_assets instruction at homepage/Dockerfile:81-89 names chart/multichart, so the served homepage copy is the separately committed homepage/public/chart/multichart tree, not this one. No build owner and no stamp; retain-or-remove is an open decision, so no module contract is asserted while it is open.",
+      "retainFile": false,
+      "retainReason": null,
+      "proofOfDeRouting": [
+        {
+          "requirement": "Route denial: this path is no longer served by the /chart/multichart StaticFiles mount (exclude the path or move the artifact out of the mounted directory).",
+          "file": "chart v 1.4/chart/api_server.py",
+          "line": 27024,
+          "satisfied": false
+        },
+        {
+          "requirement": "Route probe: the public URL for this path is demonstrated to return HTTP 404 against a built image.",
+          "file": "chart v 1.4/chart/multichart/multichart-shell.html",
+          "line": null,
+          "satisfied": false
+        }
+      ]
+    },
+    {
+      "path": "chart v 1.4/talaria-design/live/index.html",
+      "role": "v9-host-source",
+      "status": "owned-stamped",
+      "servable": false,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "fastapiMount": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "dockerCopy": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "nginxRoot": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        }
+      },
+      "expectedStamp": "20260727b80",
+      "reason": "Canonical V9 host source template and Vite input for build:live:chart. Not itself a URL — negative channels defended from source exactly as for talaria-design/index.html: no mount, no allowlist membership, copied only into the chart_assets build stage by homepage/Dockerfile:28, and absent from homepage/public and homepage/out. It is nonetheless the generator of every V9 host surface, so its module contract is enforced here first. Stamped 20260727b80.",
+      "retainFile": false,
+      "retainReason": null,
+      "proofOfDeRouting": []
+    },
+    {
+      "path": "homepage/out/chart/dist-v9/index.html",
+      "role": "image-built-export",
+      "status": "no-routing-evidence",
+      "servable": false,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "fastapiMount": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "dockerCopy": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "nginxRoot": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        }
+      },
+      "expectedStamp": "",
+      "reason": "Stale export of the V9 host shell. It carries no build stamp and references neither indicator-performance.js nor module-presence-runtime.js, but the served path is overwritten in the image from the chart_assets stage (homepage/Dockerfile:81), so it is neither a passing nor a failing host shell here. Working-tree copy under homepage/out. Negative channels defended from source: the root .dockerignore line 8 rule \"**/out\" keeps this path out of both Docker build contexts, homepage/Dockerfile line 125 \"RUN npm run build\" regenerates the export inside the builder, and homepage/Dockerfile line 138 copies THAT generated tree — not these bytes — into /usr/share/nginx/html. api_server.py lines 27054-27056 mount homepage/out at \"/\" only when the directory exists, and no COPY places homepage/out into the trading-chart image, so the mount is not registered there. These bytes are therefore not the served artifact; the contract is asserted against the built image. A14.1: status reclassed from image-verified to match derivedServable=false.",
+      "retainFile": false,
+      "retainReason": null,
+      "proofOfDeRouting": []
+    },
+    {
+      "path": "homepage/out/chart/legacy-index.html",
+      "role": "image-built-export",
+      "status": "no-routing-evidence",
+      "servable": false,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "fastapiMount": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "dockerCopy": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "nginxRoot": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        }
+      },
+      "expectedStamp": "",
+      "reason": "Stale export of the legacy host shell; the served path is rewritten in the image from chart/legacy-index.html (homepage/Dockerfile:88). Note it also carries 216 occurrences of \"magnet\", but it is a derived copy, not an independent record: the §A10 harvest source is chart v 1.4/chart/legacy-index.html. Working-tree copy under homepage/out. Negative channels defended from source: the root .dockerignore line 8 rule \"**/out\" keeps this path out of both Docker build contexts, homepage/Dockerfile line 125 \"RUN npm run build\" regenerates the export inside the builder, and homepage/Dockerfile line 138 copies THAT generated tree — not these bytes — into /usr/share/nginx/html. api_server.py lines 27054-27056 mount homepage/out at \"/\" only when the directory exists, and no COPY places homepage/out into the trading-chart image, so the mount is not registered there. These bytes are therefore not the served artifact; the contract is asserted against the built image. A14.1: status reclassed from image-verified to match derivedServable=false.",
+      "retainFile": false,
+      "retainPath": null,
+      "retainReason": null,
+      "proofOfDeRouting": []
+    },
+    {
+      "path": "homepage/out/chart/multichart-prod/chart-embed.html",
+      "role": "image-built-export",
+      "status": "no-routing-evidence",
+      "servable": false,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "fastapiMount": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "dockerCopy": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "nginxRoot": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        }
+      },
+      "expectedStamp": "",
+      "reason": "Stale export of the production panel shell; the served path is overwritten in the image from the chart_assets stage (homepage/Dockerfile:84). Working-tree copy under homepage/out. Negative channels defended from source: the root .dockerignore line 8 rule \"**/out\" keeps this path out of both Docker build contexts, homepage/Dockerfile line 125 \"RUN npm run build\" regenerates the export inside the builder, and homepage/Dockerfile line 138 copies THAT generated tree — not these bytes — into /usr/share/nginx/html. api_server.py lines 27054-27056 mount homepage/out at \"/\" only when the directory exists, and no COPY places homepage/out into the trading-chart image, so the mount is not registered there. These bytes are therefore not the served artifact; the contract is asserted against the built image. A14.1: status reclassed from image-verified to match derivedServable=false.",
+      "retainFile": false,
+      "retainReason": null,
+      "proofOfDeRouting": []
+    },
+    {
+      "path": "homepage/out/chart/multichart/chart-host.html",
+      "role": "image-built-export",
+      "status": "no-routing-evidence",
+      "servable": false,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "fastapiMount": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "dockerCopy": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "nginxRoot": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        }
+      },
+      "expectedStamp": "",
+      "reason": "Stale export of the multichart sandbox host. No chart_assets COPY covers chart/multichart, so the served copy is regenerated from homepage/public/chart/multichart. Working-tree copy under homepage/out. Negative channels defended from source: the root .dockerignore line 8 rule \"**/out\" keeps this path out of both Docker build contexts, homepage/Dockerfile line 125 \"RUN npm run build\" regenerates the export inside the builder, and homepage/Dockerfile line 138 copies THAT generated tree — not these bytes — into /usr/share/nginx/html. api_server.py lines 27054-27056 mount homepage/out at \"/\" only when the directory exists, and no COPY places homepage/out into the trading-chart image, so the mount is not registered there. These bytes are therefore not the served artifact; the contract is asserted against the built image. A14.1: status reclassed from image-verified to match derivedServable=false.",
+      "retainFile": false,
+      "retainReason": null,
+      "proofOfDeRouting": []
+    },
+    {
+      "path": "homepage/out/chart/multichart/multichart-shell.html",
+      "role": "image-built-export",
+      "status": "no-routing-evidence",
+      "servable": false,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "fastapiMount": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "dockerCopy": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "nginxRoot": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        }
+      },
+      "expectedStamp": "",
+      "reason": "Stale export of the multichart sandbox shell. No chart_assets COPY covers chart/multichart, so the served copy is regenerated from homepage/public/chart/multichart. Working-tree copy under homepage/out. Negative channels defended from source: the root .dockerignore line 8 rule \"**/out\" keeps this path out of both Docker build contexts, homepage/Dockerfile line 125 \"RUN npm run build\" regenerates the export inside the builder, and homepage/Dockerfile line 138 copies THAT generated tree — not these bytes — into /usr/share/nginx/html. api_server.py lines 27054-27056 mount homepage/out at \"/\" only when the directory exists, and no COPY places homepage/out into the trading-chart image, so the mount is not registered there. These bytes are therefore not the served artifact; the contract is asserted against the built image. A14.1: status reclassed from image-verified to match derivedServable=false.",
+      "retainFile": false,
+      "retainReason": null,
+      "proofOfDeRouting": []
+    },
+    {
+      "path": "homepage/public/chart/dist-v9/index.html",
+      "role": "v9-host-public",
+      "status": "owned-stamped",
+      "servable": true,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "fastapiMount": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "dockerCopy": {
+          "present": true,
+          "file": "homepage/Dockerfile",
+          "line": 81,
+          "quote": "COPY --from=chart_assets /build/chart/dist-v9 ./public/chart/dist-v9"
+        },
+        "nginxRoot": {
+          "present": true,
+          "file": "homepage/Dockerfile",
+          "line": 138,
+          "quote": "COPY --from=builder /app/homepage/out /usr/share/nginx/html"
+        }
+      },
+      "expectedStamp": "20260727b80",
+      "reason": "Homepage web-root mirror of the V9 host build, served directly by nginx (homepage/nginx.local.conf:62 root, :145-146 try_files) and overwritten in the image from the chart_assets stage. Byte-equal to chart v 1.4/chart/dist-v9/index.html at 90458 bytes, stamped 20260727b80.",
+      "retainFile": false,
+      "retainReason": null,
+      "proofOfDeRouting": []
+    },
+    {
+      "path": "homepage/public/chart/legacy-index.html",
+      "role": "legacy-host-public",
+      "status": "removal-pending",
+      "servable": true,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "fastapiMount": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "dockerCopy": {
+          "present": true,
+          "file": "homepage/Dockerfile",
+          "line": 88,
+          "quote": "COPY --from=chart_assets /build/chart/legacy-index.html ./public/chart/legacy-index.html"
+        },
+        "nginxRoot": {
+          "present": true,
+          "file": "homepage/Dockerfile",
+          "line": 138,
+          "quote": "COPY --from=builder /app/homepage/out /usr/share/nginx/html"
+        }
+      },
+      "expectedStamp": "20260727b80",
+      "reason": "RULING 2: removal-pending, RED and loud. Homepage web-root copy of the legacy host shell, byte-equal to the chart-root source at 1416019 bytes and stamped 20260727b80. Two routing channels: it is rewritten in place by homepage/Dockerfile:88 and its own location inside homepage/public reaches /usr/share/nginx/html via homepage/Dockerfile:75, :125 and :138. A14.2: no retain on served duplicate — §A10 harvest source is chart v 1.4/chart/legacy-index.html only.",
+      "retainFile": false,
+      "retainPath": null,
+      "retainReason": null,
+      "proofOfDeRouting": [
+        {
+          "requirement": "Director condition 1 of 3: the CHART_ROOT_FILES allowlist entry for \"legacy-index.html\" is removed, so GET /chart/legacy-index.html no longer resolves through the FastAPI chart-root handler.",
+          "file": "chart v 1.4/chart/api_server.py",
+          "line": 26923,
+          "satisfied": false
+        },
+        {
+          "requirement": "Director condition 2 of 3: the Dockerfile copy that publishes legacy-index.html into the homepage web root is removed.",
+          "file": "homepage/Dockerfile",
+          "line": 88,
+          "satisfied": false
+        },
+        {
+          "requirement": "Additional condition for the web-root copy: homepage/public/chart/legacy-index.html no longer reaches /usr/share/nginx/html through the Next public/ tree (homepage/Dockerfile:75 copies homepage/ into the builder, :125 exports it, :138 publishes it). Ruling 4 forbids deleting the bytes, so this requirement is satisfied by moving them to a non-served archive path, not by deletion — and that move conflicts with the retainFile path check on this row.",
+          "file": "homepage/Dockerfile",
+          "line": 138,
+          "satisfied": false
+        },
+        {
+          "requirement": "Director condition 3 of 3: GET /chart/legacy-index.html is demonstrated to return HTTP 404 against a built image (nginx try_files at homepage/nginx.local.conf:146 finds no file in the web root and falls through to @chart_upstream, which reaches api_server.py:26962).",
+          "file": "chart v 1.4/chart/legacy-index.html",
+          "line": null,
+          "satisfied": false
+        }
+      ]
+    },
+    {
+      "path": "homepage/public/chart/modules/m20-a-favorites-harness/m20-a-favorites-harness.html",
+      "role": "browser-harness",
+      "status": "denied-route-pending",
+      "servable": true,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "fastapiMount": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "dockerCopy": {
+          "present": true,
+          "file": "homepage/Dockerfile",
+          "line": 82,
+          "quote": "COPY --from=chart_assets /build/chart/modules ./public/chart/modules"
+        },
+        "nginxRoot": {
+          "present": true,
+          "file": "homepage/Dockerfile",
+          "line": 138,
+          "quote": "COPY --from=builder /app/homepage/out /usr/share/nginx/html"
+        }
+      },
+      "expectedStamp": "",
+      "reason": "Homepage web-root copy of the favorites harness. Regenerated in the image from chart/modules by homepage/Dockerfile:82, so disposition must be applied at the chart source or removing this copy is a no-op.",
+      "retainFile": false,
+      "retainReason": null,
+      "proofOfDeRouting": [
+        {
+          "requirement": "Copy exclusion: this path is no longer published into the homepage web root by the chart_assets COPY instruction.",
+          "file": "homepage/Dockerfile",
+          "line": 82,
+          "satisfied": false
+        },
+        {
+          "requirement": "Web-root exclusion: this path no longer reaches /usr/share/nginx/html through the Next public/ tree (homepage/Dockerfile:75 copies homepage/ into the builder, line 125 exports it, line 138 publishes it).",
+          "file": "homepage/Dockerfile",
+          "line": 138,
+          "satisfied": false
+        },
+        {
+          "requirement": "Route probe: the public URL for this path is demonstrated to return HTTP 404 against a built image.",
+          "file": "homepage/public/chart/modules/m20-a-favorites-harness/m20-a-favorites-harness.html",
+          "line": null,
+          "satisfied": false
+        }
+      ]
+    },
+    {
+      "path": "homepage/public/chart/modules/m21-2-browser-harness/m21-2-browser-harness.html",
+      "role": "browser-harness",
+      "status": "denied-route-pending",
+      "servable": true,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "fastapiMount": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "dockerCopy": {
+          "present": true,
+          "file": "homepage/Dockerfile",
+          "line": 82,
+          "quote": "COPY --from=chart_assets /build/chart/modules ./public/chart/modules"
+        },
+        "nginxRoot": {
+          "present": true,
+          "file": "homepage/Dockerfile",
+          "line": 138,
+          "quote": "COPY --from=builder /app/homepage/out /usr/share/nginx/html"
+        }
+      },
+      "expectedStamp": "",
+      "reason": "Homepage web-root copy of the M21-2 browser harness. Regenerated in the image from chart/modules by homepage/Dockerfile:82.",
+      "retainFile": false,
+      "retainReason": null,
+      "proofOfDeRouting": [
+        {
+          "requirement": "Copy exclusion: this path is no longer published into the homepage web root by the chart_assets COPY instruction.",
+          "file": "homepage/Dockerfile",
+          "line": 82,
+          "satisfied": false
+        },
+        {
+          "requirement": "Web-root exclusion: this path no longer reaches /usr/share/nginx/html through the Next public/ tree (homepage/Dockerfile:75 copies homepage/ into the builder, line 125 exports it, line 138 publishes it).",
+          "file": "homepage/Dockerfile",
+          "line": 138,
+          "satisfied": false
+        },
+        {
+          "requirement": "Route probe: the public URL for this path is demonstrated to return HTTP 404 against a built image.",
+          "file": "homepage/public/chart/modules/m21-2-browser-harness/m21-2-browser-harness.html",
+          "line": null,
+          "satisfied": false
+        }
+      ]
+    },
+    {
+      "path": "homepage/public/chart/multichart-prod/chart-embed.html",
+      "role": "multichart-embed-public",
+      "status": "owned-stamped",
+      "servable": true,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "fastapiMount": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "dockerCopy": {
+          "present": true,
+          "file": "homepage/Dockerfile",
+          "line": 84,
+          "quote": "COPY --from=chart_assets /build/chart/multichart-prod ./public/chart/multichart-prod"
+        },
+        "nginxRoot": {
+          "present": true,
+          "file": "homepage/Dockerfile",
+          "line": 138,
+          "quote": "COPY --from=builder /app/homepage/out /usr/share/nginx/html"
+        }
+      },
+      "expectedStamp": "20260727b80",
+      "reason": "Homepage web-root mirror of the production panel shell, served by nginx and overwritten in the image from the chart_assets stage. Byte-equal to the chart source at 21599 bytes, stamped 20260727b80.",
+      "retainFile": false,
+      "retainReason": null,
+      "proofOfDeRouting": []
+    },
+    {
+      "path": "homepage/public/chart/multichart-prod/harness/frozen/m21-vy-ab-baseline-v2.2/runtime/chart/multichart-prod/chart-embed.html",
+      "role": "frozen-evidence",
+      "status": "denied-route-pending",
+      "servable": true,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "fastapiMount": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "dockerCopy": {
+          "present": true,
+          "file": "homepage/Dockerfile",
+          "line": 84,
+          "quote": "COPY --from=chart_assets /build/chart/multichart-prod ./public/chart/multichart-prod"
+        },
+        "nginxRoot": {
+          "present": true,
+          "file": "homepage/Dockerfile",
+          "line": 138,
+          "quote": "COPY --from=builder /app/homepage/out /usr/share/nginx/html"
+        }
+      },
+      "expectedStamp": "20260724b61",
+      "reason": "Homepage web-root copy of the immutable frozen 20260724b61 baseline, published only because the whole multichart-prod directory is copied. Must not be re-stamped or re-wired; disposition is route denial and copy exclusion at the chart source.",
+      "retainFile": false,
+      "retainReason": null,
+      "proofOfDeRouting": [
+        {
+          "requirement": "Copy exclusion: this path is no longer published into the homepage web root by the chart_assets COPY instruction.",
+          "file": "homepage/Dockerfile",
+          "line": 84,
+          "satisfied": false
+        },
+        {
+          "requirement": "Web-root exclusion: this path no longer reaches /usr/share/nginx/html through the Next public/ tree (homepage/Dockerfile:75 copies homepage/ into the builder, line 125 exports it, line 138 publishes it).",
+          "file": "homepage/Dockerfile",
+          "line": 138,
+          "satisfied": false
+        },
+        {
+          "requirement": "Route probe: the public URL for this path is demonstrated to return HTTP 404 against a built image.",
+          "file": "homepage/public/chart/multichart-prod/harness/frozen/m21-vy-ab-baseline-v2.2/runtime/chart/multichart-prod/chart-embed.html",
+          "line": null,
+          "satisfied": false
+        }
+      ]
+    },
+    {
+      "path": "homepage/public/chart/multichart-prod/m20-q5-q7-browser-harness/m20-q5-q7-browser-harness.html",
+      "role": "browser-harness",
+      "status": "denied-route-pending",
+      "servable": true,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "fastapiMount": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "dockerCopy": {
+          "present": true,
+          "file": "homepage/Dockerfile",
+          "line": 84,
+          "quote": "COPY --from=chart_assets /build/chart/multichart-prod ./public/chart/multichart-prod"
+        },
+        "nginxRoot": {
+          "present": true,
+          "file": "homepage/Dockerfile",
+          "line": 138,
+          "quote": "COPY --from=builder /app/homepage/out /usr/share/nginx/html"
+        }
+      },
+      "expectedStamp": "",
+      "reason": "Homepage web-root copy of the Q5/Q7 harness pair, published because the whole multichart-prod directory is copied and regenerated in the image from chart/multichart-prod by homepage/Dockerfile:84. Not a product route.",
+      "retainFile": false,
+      "retainReason": null,
+      "proofOfDeRouting": [
+        {
+          "requirement": "Copy exclusion: this path is no longer published into the homepage web root by the chart_assets COPY instruction.",
+          "file": "homepage/Dockerfile",
+          "line": 84,
+          "satisfied": false
+        },
+        {
+          "requirement": "Web-root exclusion: this path no longer reaches /usr/share/nginx/html through the Next public/ tree (homepage/Dockerfile:75 copies homepage/ into the builder, line 125 exports it, line 138 publishes it).",
+          "file": "homepage/Dockerfile",
+          "line": 138,
+          "satisfied": false
+        },
+        {
+          "requirement": "Route probe: the public URL for this path is demonstrated to return HTTP 404 against a built image.",
+          "file": "homepage/public/chart/multichart-prod/m20-q5-q7-browser-harness/m20-q5-q7-browser-harness.html",
+          "line": null,
+          "satisfied": false
+        }
+      ]
+    },
+    {
+      "path": "homepage/public/chart/multichart-prod/m20-q5-q7-browser-harness/m20-q5-q7-panel-frame.html",
+      "role": "browser-harness",
+      "status": "denied-route-pending",
+      "servable": true,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "fastapiMount": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "dockerCopy": {
+          "present": true,
+          "file": "homepage/Dockerfile",
+          "line": 84,
+          "quote": "COPY --from=chart_assets /build/chart/multichart-prod ./public/chart/multichart-prod"
+        },
+        "nginxRoot": {
+          "present": true,
+          "file": "homepage/Dockerfile",
+          "line": 138,
+          "quote": "COPY --from=builder /app/homepage/out /usr/share/nginx/html"
+        }
+      },
+      "expectedStamp": "",
+      "reason": "Homepage web-root copy of the Q5/Q7 harness pair, published because the whole multichart-prod directory is copied and regenerated in the image from chart/multichart-prod by homepage/Dockerfile:84. Not a product route.",
+      "retainFile": false,
+      "retainReason": null,
+      "proofOfDeRouting": [
+        {
+          "requirement": "Copy exclusion: this path is no longer published into the homepage web root by the chart_assets COPY instruction.",
+          "file": "homepage/Dockerfile",
+          "line": 84,
+          "satisfied": false
+        },
+        {
+          "requirement": "Web-root exclusion: this path no longer reaches /usr/share/nginx/html through the Next public/ tree (homepage/Dockerfile:75 copies homepage/ into the builder, line 125 exports it, line 138 publishes it).",
+          "file": "homepage/Dockerfile",
+          "line": 138,
+          "satisfied": false
+        },
+        {
+          "requirement": "Route probe: the public URL for this path is demonstrated to return HTTP 404 against a built image.",
+          "file": "homepage/public/chart/multichart-prod/m20-q5-q7-browser-harness/m20-q5-q7-panel-frame.html",
+          "line": null,
+          "satisfied": false
+        }
+      ]
+    },
+    {
+      "path": "homepage/public/chart/multichart/chart-host.html",
+      "role": "sandbox-multichart",
+      "status": "denied-route-pending",
+      "servable": true,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "fastapiMount": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "dockerCopy": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "nginxRoot": {
+          "present": true,
+          "file": "homepage/Dockerfile",
+          "line": 138,
+          "quote": "COPY --from=builder /app/homepage/out /usr/share/nginx/html"
+        }
+      },
+      "expectedStamp": "",
+      "reason": "Committed mirror of the multichart sandbox host, served by nginx from the Next export. One channel only: no COPY --from=chart_assets instruction at homepage/Dockerfile:81-89 names chart/multichart, so this file is NOT regenerated and has drifted — 51939 bytes here against 53244 in the chart source. Unowned and unstamped; disposition is route denial.",
+      "retainFile": false,
+      "retainReason": null,
+      "proofOfDeRouting": [
+        {
+          "requirement": "Web-root exclusion: this path no longer reaches /usr/share/nginx/html through the Next public/ tree (homepage/Dockerfile:75 copies homepage/ into the builder, line 125 exports it, line 138 publishes it).",
+          "file": "homepage/Dockerfile",
+          "line": 138,
+          "satisfied": false
+        },
+        {
+          "requirement": "Route probe: the public URL for this path is demonstrated to return HTTP 404 against a built image.",
+          "file": "homepage/public/chart/multichart/chart-host.html",
+          "line": null,
+          "satisfied": false
+        }
+      ]
+    },
+    {
+      "path": "homepage/public/chart/multichart/multichart-shell.html",
+      "role": "sandbox-multichart",
+      "status": "denied-route-pending",
+      "servable": true,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "fastapiMount": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "dockerCopy": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "nginxRoot": {
+          "present": true,
+          "file": "homepage/Dockerfile",
+          "line": 138,
+          "quote": "COPY --from=builder /app/homepage/out /usr/share/nginx/html"
+        }
+      },
+      "expectedStamp": "",
+      "reason": "Committed mirror of the multichart sandbox shell, served by nginx from the Next export. Byte-equal to the chart source at 40850 bytes but not regenerated by any build (no chart_assets COPY covers chart/multichart). Unowned and unstamped; disposition is route denial.",
+      "retainFile": false,
+      "retainReason": null,
+      "proofOfDeRouting": [
+        {
+          "requirement": "Web-root exclusion: this path no longer reaches /usr/share/nginx/html through the Next public/ tree (homepage/Dockerfile:75 copies homepage/ into the builder, line 125 exports it, line 138 publishes it).",
+          "file": "homepage/Dockerfile",
+          "line": 138,
+          "satisfied": false
+        },
+        {
+          "requirement": "Route probe: the public URL for this path is demonstrated to return HTTP 404 against a built image.",
+          "file": "homepage/public/chart/multichart/multichart-shell.html",
+          "line": null,
+          "satisfied": false
+        }
+      ]
+    }
+  ]
+}

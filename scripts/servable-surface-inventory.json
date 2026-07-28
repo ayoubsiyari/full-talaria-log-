@@ -1,0 +1,3621 @@
+{
+  "schema": "talaria.servable-surface-inventory.v1",
+  "roots": [
+    "chart v 1.4",
+    "homepage/public",
+    "homepage/out"
+  ],
+  "exclusions": [
+    {
+      "pattern": "**/node_modules/**",
+      "reason": "Vendor pages carried inside npm dependency trees (9 HTML files: tslib.html and tslib.es6.html under chart v 1.4/admin-design, chart v 1.4/chart/multichart-prod/harness, homepage/public/chart/multichart-prod/harness and homepage/out/chart/multichart-prod/harness, plus terser/tools/props.html under chart v 1.4/chart/node_modules). Per Ruling 1 the exclusion is proved, not asserted. fastapiAllowlist: CHART_ROOT_FILES (api_server.py:26920-26937) is a flat set of bare chart-root basenames and contains no vendor filename, and the single-segment route @app.get(\"/chart/{file_name}\") at line 26959 cannot match a nested path, so every such URL reaches the raise at line 26962. fastapiMount: the only mount whose directory tree physically contains a node_modules directory in the working tree is /chart/multichart-prod (api_server.py:27036-27039), and that directory is rebuilt in the image from a build context filtered by the root .dockerignore line 9 rule \"**/node_modules\", both in Dockerfile.local:93 COPY [\"chart v 1.4/chart\", \"./\"] and in the chart_assets stage feeding homepage/Dockerfile:84 — so no node_modules path exists under the mounted directory in any image. chart v 1.4/chart/node_modules sits at the chart root, which no mount covers. dockerCopy: the nine COPY --from=chart_assets instructions at homepage/Dockerfile:81-89 all read from that same filtered context. nginxRoot: homepage/public/**/node_modules and homepage/out/**/node_modules are removed from the build context by the same .dockerignore line 9 before homepage/Dockerfile:75 copies homepage/ into the builder, so they never reach /usr/share/nginx/html via line 138; homepage/out is additionally excluded by .dockerignore line 8. The negative is therefore demonstrated from source rather than declared.",
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "fastapiMount": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "dockerCopy": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "nginxRoot": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        }
+      }
+    }
+  ],
+  "surfaces": [
+    {
+      "path": "chart v 1.4/admin-design/index.html",
+      "kind": "non-chart-app",
+      "status": "no-routing-evidence",
+      "servable": false,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "fastapiMount": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "dockerCopy": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "nginxRoot": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        }
+      },
+      "reason": "Vite dev-server input for the HeroUI admin package (loads /src/main.tsx); the shipped artifact is chart/dist-admin. Negative channels defended from source: not a chart-root basename in CHART_ROOT_FILES (api_server.py:26920-26937), no StaticFiles mount covers chart v 1.4/admin-design, none of the nine COPY --from=chart_assets instructions at homepage/Dockerfile:81-89 names it, and it is not inside homepage/public or homepage/out.",
+      "chartShell": false
+    },
+    {
+      "path": "chart v 1.4/chart/admin-dashboard.html",
+      "kind": "non-chart-app",
+      "status": "owned-stamped",
+      "servable": true,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": true,
+          "file": "chart v 1.4/chart/api_server.py",
+          "line": 26927,
+          "quote": "    \"admin-dashboard.html\","
+        },
+        "fastapiMount": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "dockerCopy": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "nginxRoot": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        }
+      },
+      "reason": "Served admin monolith. Routed twice: the explicit @app.get(\"/chart/admin-dashboard.html\") handler at api_server.py:26895 behind _require_admin, and CHART_ROOT_FILES membership at line 26927. Loads no chart engine and carries the independent 20260624b151 stamp series, so it is not a chart shell and does not appear in the narrow inventory.",
+      "chartShell": false
+    },
+    {
+      "path": "chart v 1.4/chart/admin-dashboard.legacy.html",
+      "kind": "non-chart-app",
+      "status": "no-routing-evidence",
+      "servable": false,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "fastapiMount": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "dockerCopy": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "nginxRoot": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        }
+      },
+      "reason": "Prior generation of the admin monolith. Negative channels defended from source: the basename is absent from the CHART_ROOT_FILES set at api_server.py lines 26920-26937 so GET /chart/{file_name} reaches the raise at line 26962; the file sits at the chart root, which no StaticFiles mount covers (mounts are /chart/dist-v9, /chart/dist, /chart/modules, /chart/pwa, /chart/indicators, /chart/image, /chart/static, /chart/multichart, /chart/multichart-prod); none of the nine COPY --from=chart_assets instructions at homepage/Dockerfile lines 81-89 names it; and it is not inside homepage/public or homepage/out.",
+      "chartShell": false
+    },
+    {
+      "path": "chart v 1.4/chart/admin-datasets.html",
+      "kind": "non-chart-app",
+      "status": "no-routing-evidence",
+      "servable": false,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "fastapiMount": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "dockerCopy": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "nginxRoot": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        }
+      },
+      "reason": "Superseded admin sub-page. The @app.get(\"/chart/admin-datasets.html\") handler at api_server.py:26902-26905 returns RedirectResponse(\"/chart/admin-dashboard.html#datasets\") and never returns this file, so the URL existing is not evidence that these bytes are served. Negative channels defended from source: the basename is absent from the CHART_ROOT_FILES set at api_server.py lines 26920-26937 so GET /chart/{file_name} reaches the raise at line 26962; the file sits at the chart root, which no StaticFiles mount covers (mounts are /chart/dist-v9, /chart/dist, /chart/modules, /chart/pwa, /chart/indicators, /chart/image, /chart/static, /chart/multichart, /chart/multichart-prod); none of the nine COPY --from=chart_assets instructions at homepage/Dockerfile lines 81-89 names it; and it is not inside homepage/public or homepage/out.",
+      "chartShell": false
+    },
+    {
+      "path": "chart v 1.4/chart/backtesting-clean.html",
+      "kind": "non-chart-app",
+      "status": "no-routing-evidence",
+      "servable": false,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "fastapiMount": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "dockerCopy": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "nginxRoot": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        }
+      },
+      "reason": "Standard-backtesting application page in a separate lineage; references no chart engine. Negative channels defended from source: the basename is absent from the CHART_ROOT_FILES set at api_server.py lines 26920-26937 so GET /chart/{file_name} reaches the raise at line 26962; the file sits at the chart root, which no StaticFiles mount covers (mounts are /chart/dist-v9, /chart/dist, /chart/modules, /chart/pwa, /chart/indicators, /chart/image, /chart/static, /chart/multichart, /chart/multichart-prod); none of the nine COPY --from=chart_assets instructions at homepage/Dockerfile lines 81-89 names it; and it is not inside homepage/public or homepage/out.",
+      "chartShell": false
+    },
+    {
+      "path": "chart v 1.4/chart/backtesting.html",
+      "kind": "non-chart-app",
+      "status": "owned-stamped",
+      "servable": true,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": true,
+          "file": "chart v 1.4/chart/api_server.py",
+          "line": 26925,
+          "quote": "    \"backtesting.html\","
+        },
+        "fastapiMount": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "dockerCopy": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "nginxRoot": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        }
+      },
+      "reason": "Backtesting application, routed by CHART_ROOT_FILES membership. Its 20260624b151 stamp belongs to a different series from the chart engine and it references no chart-engine loader, so it must not be measured against the chart stamp or the chart module contract.",
+      "chartShell": false
+    },
+    {
+      "path": "chart v 1.4/chart/dist-admin/index.html",
+      "kind": "non-chart-app",
+      "status": "no-routing-evidence",
+      "servable": false,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "fastapiMount": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "dockerCopy": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "nginxRoot": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        }
+      },
+      "reason": "Built HeroUI admin bundle entry. It ships inside the trading-chart image via Dockerfile.local:93 COPY [\"chart v 1.4/chart\", \"./\"], but shipping is not routing: api_server.py declares no /chart/dist-admin mount (the mounts are /chart/dist-v9, /chart/dist, /chart/modules, /chart/pwa, /chart/indicators, /chart/image, /chart/static, /chart/multichart, /chart/multichart-prod) and \"dist-admin/index.html\" is not a CHART_ROOT_FILES basename, so GET /chart/dist-admin/index.html reaches api_server.py:26962. Not published to any web root by homepage/Dockerfile:81-89.",
+      "chartShell": false
+    },
+    {
+      "path": "chart v 1.4/chart/dist-v9/index.html",
+      "kind": "chart-shell",
+      "status": "owned-stamped",
+      "servable": true,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "fastapiMount": {
+          "present": true,
+          "file": "chart v 1.4/chart/api_server.py",
+          "line": 26996,
+          "quote": "    app.mount(\"/chart/dist-v9\", StaticFiles(directory=str(_DIST_V9_DIR_PATH)), name=\"chart_dist_v9\")"
+        },
+        "dockerCopy": {
+          "present": true,
+          "file": "homepage/Dockerfile",
+          "line": 81,
+          "quote": "COPY --from=chart_assets /build/chart/dist-v9 ./public/chart/dist-v9"
+        },
+        "nginxRoot": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        }
+      },
+      "reason": "Canonical generated production host. FastAPI mounts /chart/dist-v9 and prefers dist-v9/index.html for /chart/index.html (api_server.py:26967-26969), and homepage/Dockerfile:81 republishes the directory into the homepage web root. The directory is excluded from the build context by .dockerignore:29 and regenerated inside chart_assets by \"npm run build:live:chart\" (homepage/Dockerfile:47), so the served bytes are rebuilt — but the path is unambiguously routed.",
+      "chartShell": true
+    },
+    {
+      "path": "chart v 1.4/chart/dist/index.html",
+      "kind": "chart-shell",
+      "status": "no-routing-evidence",
+      "servable": false,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "fastapiMount": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "dockerCopy": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "nginxRoot": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        }
+      },
+      "reason": "Bundled legacy build (1.4 MB, 26 minified script tags). Both of its potential channels are proven inactive from source. (1) The /chart/dist mount at api_server.py:27003 is guarded by \"if _DIST_LEGACY_DIR.is_dir():\" at line 27002, and the directory is absent from the trading-chart image: .dockerignore:30 excludes \"chart v 1.4/chart/dist\" from the build context and Dockerfile.local:119-124 regenerates it only when BUILD_LEGACY_BUNDLE=1, whose ARG default at line 119 is 0. (2) The /chart/index.html fallback at api_server.py:26970 is second choice behind _DIST_V9_INDEX_PATH at line 26968, and dist-v9 is always present because Dockerfile.local:103 copies it in unconditionally. Not published by homepage/Dockerfile:81-89. Its stale 20260724b59 stamp therefore cannot reach a user.",
+      "chartShell": true
+    },
+    {
+      "path": "chart v 1.4/chart/index.html",
+      "kind": "stub",
+      "status": "owned-stamped",
+      "servable": true,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": true,
+          "file": "chart v 1.4/chart/api_server.py",
+          "line": 26921,
+          "quote": "    \"index.html\","
+        },
+        "fastapiMount": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "dockerCopy": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "nginxRoot": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        }
+      },
+      "reason": "Pointer document with zero script tags. Routed by CHART_ROOT_FILES membership, but shadowed: api_server.py:26967-26971 returns dist-v9/index.html first and dist/index.html second, so these bytes are only served when both builds are absent — which is never true in the image (Dockerfile.local:103). Recorded as servable because the allowlist channel is present, with the shadowing stated rather than used to assert servable:false. Carries no build stamp, which its role declares with an empty stampSeries.",
+      "chartShell": true
+    },
+    {
+      "path": "chart v 1.4/chart/index.v9.html",
+      "kind": "stub",
+      "status": "owned-stamped",
+      "servable": true,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": true,
+          "file": "chart v 1.4/chart/api_server.py",
+          "line": 26924,
+          "quote": "    \"index.v9.html\",  # redirect stub → legacy-index.html (no second monolith)"
+        },
+        "fastapiMount": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "dockerCopy": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "nginxRoot": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        }
+      },
+      "reason": "857-byte meta-refresh redirect to legacy-index.html with zero script tags, kept for old bookmarks. Routed by CHART_ROOT_FILES membership. Its target is removal-pending under Ruling 2, so de-routing legacy-index.html leaves this stub pointing at a 404; its disposition follows legacy-index.html and is flagged for the de-routing packet.",
+      "chartShell": true
+    },
+    {
+      "path": "chart v 1.4/chart/legacy-index.html",
+      "kind": "chart-shell",
+      "status": "removal-pending",
+      "servable": true,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": true,
+          "file": "chart v 1.4/chart/api_server.py",
+          "line": 26923,
+          "quote": "    \"legacy-index.html\","
+        },
+        "fastapiMount": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "dockerCopy": {
+          "present": true,
+          "file": "homepage/Dockerfile",
+          "line": 88,
+          "quote": "COPY --from=chart_assets /build/chart/legacy-index.html ./public/chart/legacy-index.html"
+        },
+        "nginxRoot": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        }
+      },
+      "reason": "RULING 2: removal-pending, RED and loud. Two independent routing channels, both machine-observable: CHART_ROOT_FILES membership at api_server.py:26923 and the homepage web-root copy at homepage/Dockerfile:88. RULING 3: the disposition is de-route, not fix — two shells serving one product is the root of this defect class, so no module contract is asserted against it. RULING 4 / A14.2: the chart-root source is retained for §A10 control harvest (see retainFile/retainPath/retainReason). Stamped 20260727b80 and references neither indicator-performance.js nor module-presence-runtime.js.",
+      "retainFile": true,
+      "retainPath": "chart v 1.4/chart/legacy-index.html",
+      "retainReason": "Retained as §A10 control-harvest source (chart-root canonical); magnet-mode is NOT the sole reason (V9 also has magnet); harvest for dropped controls including toggleFavoritesBar, keepDrawingModeToolbar, sessionInfoToggle, sc_magnet, replay-toolbar. Do not delete until A10 harvest completes.",
+      "chartShell": true
+    },
+    {
+      "path": "chart v 1.4/chart/modules/m20-a-favorites-harness/m20-a-favorites-harness.html",
+      "kind": "harness",
+      "status": "denied-route-pending",
+      "servable": true,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "fastapiMount": {
+          "present": true,
+          "file": "chart v 1.4/chart/api_server.py",
+          "line": 27005,
+          "quote": "app.mount(\"/chart/modules\", StaticFiles(directory=str(_CHART_ROOT_PATH / \"modules\")), name=\"chart_modules\")"
+        },
+        "dockerCopy": {
+          "present": true,
+          "file": "homepage/Dockerfile",
+          "line": 82,
+          "quote": "COPY --from=chart_assets /build/chart/modules ./public/chart/modules"
+        },
+        "nginxRoot": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        }
+      },
+      "reason": "Favorites browser harness. Its document loads ./m20-a-favorites-harness.client.mjs, which fetches /chart v 1.4/chart/modules/favorites-manager.js and /homepage/public/chart/modules/favorites-manager.js, so it is a chart-referencing shell. Live on two channels: the /chart/modules mount and the homepage web-root copy of the whole modules/ directory. Not a product surface.",
+      "chartShell": true
+    },
+    {
+      "path": "chart v 1.4/chart/modules/m21-2-browser-harness/m21-2-browser-harness.html",
+      "kind": "harness",
+      "status": "denied-route-pending",
+      "servable": true,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "fastapiMount": {
+          "present": true,
+          "file": "chart v 1.4/chart/api_server.py",
+          "line": 27005,
+          "quote": "app.mount(\"/chart/modules\", StaticFiles(directory=str(_CHART_ROOT_PATH / \"modules\")), name=\"chart_modules\")"
+        },
+        "dockerCopy": {
+          "present": true,
+          "file": "homepage/Dockerfile",
+          "line": 82,
+          "quote": "COPY --from=chart_assets /build/chart/modules ./public/chart/modules"
+        },
+        "nginxRoot": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        }
+      },
+      "reason": "M21-2 candle OffscreenCanvas browser harness. Its document loads ./m21-2-browser-harness.client.mjs, which imports /chart/modules/m21-2-candle-offscreen-bridge.mjs and probes /chart/workers/..., so it is a chart-referencing shell. Live on the /chart/modules mount and the homepage web-root copy. Not a product surface.",
+      "chartShell": true
+    },
+    {
+      "path": "chart v 1.4/chart/modules/m21-w6-fixtures/browser-preflight/preflight-host.html",
+      "kind": "fixture",
+      "status": "removal-pending",
+      "servable": true,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "fastapiMount": {
+          "present": true,
+          "file": "chart v 1.4/chart/api_server.py",
+          "line": 27005,
+          "quote": "app.mount(\"/chart/modules\", StaticFiles(directory=str(_CHART_ROOT_PATH / \"modules\")), name=\"chart_modules\")"
+        },
+        "dockerCopy": {
+          "present": true,
+          "file": "homepage/Dockerfile",
+          "line": 82,
+          "quote": "COPY --from=chart_assets /build/chart/modules ./public/chart/modules"
+        },
+        "nginxRoot": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        }
+      },
+      "reason": "Director-flagged public test fixture, source of record. Live on the /chart/modules mount and republished into the homepage web root, and homepage/Dockerfile:29 rebuilds the mirror from this directory, so removing only homepage/public/chart/modules/... is a no-op. Inline script only; loads no chart-engine asset, so it is a servable surface but not a chart shell. De-routing proof requirements are recorded in `reason` because the fixed surface schema has no proofOfDeRouting field: exclude the path from the mount at api_server.py:27005, exclude it from the copy at homepage/Dockerfile:82, and demonstrate a 404 against a built image.",
+      "chartShell": false
+    },
+    {
+      "path": "chart v 1.4/chart/modules/m21-w6-fixtures/browser-preflight/preflight-iframe.html",
+      "kind": "fixture",
+      "status": "removal-pending",
+      "servable": true,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "fastapiMount": {
+          "present": true,
+          "file": "chart v 1.4/chart/api_server.py",
+          "line": 27005,
+          "quote": "app.mount(\"/chart/modules\", StaticFiles(directory=str(_CHART_ROOT_PATH / \"modules\")), name=\"chart_modules\")"
+        },
+        "dockerCopy": {
+          "present": true,
+          "file": "homepage/Dockerfile",
+          "line": 82,
+          "quote": "COPY --from=chart_assets /build/chart/modules ./public/chart/modules"
+        },
+        "nginxRoot": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        }
+      },
+      "reason": "Iframe partner of preflight-host.html in the same browser-preflight directory; the host page has no function without it and it is live on the same two channels. Disposed of by the same directory removal. Same de-routing requirements as its host page, recorded in `reason` for want of a proofOfDeRouting field in the surface schema.",
+      "chartShell": false
+    },
+    {
+      "path": "chart v 1.4/chart/modules/m21-w6-fixtures/lwc-proto-snapshot/lwc-proto-dryrun-client.html",
+      "kind": "fixture",
+      "status": "denied-route-pending",
+      "servable": true,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "fastapiMount": {
+          "present": true,
+          "file": "chart v 1.4/chart/api_server.py",
+          "line": 27005,
+          "quote": "app.mount(\"/chart/modules\", StaticFiles(directory=str(_CHART_ROOT_PATH / \"modules\")), name=\"chart_modules\")"
+        },
+        "dockerCopy": {
+          "present": true,
+          "file": "homepage/Dockerfile",
+          "line": 82,
+          "quote": "COPY --from=chart_assets /build/chart/modules ./public/chart/modules"
+        },
+        "nginxRoot": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        }
+      },
+      "reason": "Dry-run client page for the archived W6 lightweight-charts prototype. Inline script only; loads no Talaria chart-engine asset. Live on the /chart/modules mount and the homepage web-root copy. No removal ruling issued; disposition is route denial: exclude from the mount at api_server.py:27005, exclude from the copy at homepage/Dockerfile:82, then demonstrate a 404.",
+      "chartShell": false
+    },
+    {
+      "path": "chart v 1.4/chart/modules/m21-w6-fixtures/lwc-proto-snapshot/lwc-proto.html",
+      "kind": "fixture",
+      "status": "denied-route-pending",
+      "servable": true,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "fastapiMount": {
+          "present": true,
+          "file": "chart v 1.4/chart/api_server.py",
+          "line": 27005,
+          "quote": "app.mount(\"/chart/modules\", StaticFiles(directory=str(_CHART_ROOT_PATH / \"modules\")), name=\"chart_modules\")"
+        },
+        "dockerCopy": {
+          "present": true,
+          "file": "homepage/Dockerfile",
+          "line": 82,
+          "quote": "COPY --from=chart_assets /build/chart/modules ./public/chart/modules"
+        },
+        "nginxRoot": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        }
+      },
+      "reason": "Archived W6 lightweight-charts prototype snapshot, vendor intentionally absent. Loads no Talaria chart-engine asset. Live on the /chart/modules mount and the homepage web-root copy. Disposition is route denial: exclude from the mount at api_server.py:27005, exclude from the copy at homepage/Dockerfile:82, then demonstrate a 404.",
+      "chartShell": false
+    },
+    {
+      "path": "chart v 1.4/chart/multichart-prod/chart-embed.html",
+      "kind": "chart-shell",
+      "status": "owned-stamped",
+      "servable": true,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "fastapiMount": {
+          "present": true,
+          "file": "chart v 1.4/chart/api_server.py",
+          "line": 27037,
+          "quote": "        \"/chart/multichart-prod\","
+        },
+        "dockerCopy": {
+          "present": true,
+          "file": "homepage/Dockerfile",
+          "line": 84,
+          "quote": "COPY --from=chart_assets /build/chart/multichart-prod ./public/chart/multichart-prod"
+        },
+        "nginxRoot": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        }
+      },
+      "reason": "Owned production panel shell, mounted by FastAPI at /chart/multichart-prod and republished into the homepage web root. Loaded in MultichartGrid iframes. Stamped 20260727b80.",
+      "chartShell": true
+    },
+    {
+      "path": "chart v 1.4/chart/multichart-prod/harness/frozen/m21-vy-ab-baseline-v2.2/runtime/chart/multichart-prod/chart-embed.html",
+      "kind": "evidence",
+      "status": "denied-route-pending",
+      "servable": true,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "fastapiMount": {
+          "present": true,
+          "file": "chart v 1.4/chart/api_server.py",
+          "line": 27037,
+          "quote": "        \"/chart/multichart-prod\","
+        },
+        "dockerCopy": {
+          "present": true,
+          "file": "homepage/Dockerfile",
+          "line": 84,
+          "quote": "COPY --from=chart_assets /build/chart/multichart-prod ./public/chart/multichart-prod"
+        },
+        "nginxRoot": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        }
+      },
+      "reason": "Immutable frozen A/B baseline snapshot of the panel shell at build 20260724b61, live only because the whole multichart-prod directory is mounted and copied. It legitimately lacks module-presence-runtime.js because it predates it; asserting the current module set here would demand mutating immutable evidence. Disposition is route denial and copy exclusion, never editing the snapshot.",
+      "chartShell": true
+    },
+    {
+      "path": "chart v 1.4/chart/multichart-prod/m20-q5-q7-browser-harness/m20-q5-q7-browser-harness.html",
+      "kind": "harness",
+      "status": "denied-route-pending",
+      "servable": true,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "fastapiMount": {
+          "present": true,
+          "file": "chart v 1.4/chart/api_server.py",
+          "line": 27037,
+          "quote": "        \"/chart/multichart-prod\","
+        },
+        "dockerCopy": {
+          "present": true,
+          "file": "homepage/Dockerfile",
+          "line": 84,
+          "quote": "COPY --from=chart_assets /build/chart/multichart-prod ./public/chart/multichart-prod"
+        },
+        "nginxRoot": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        }
+      },
+      "reason": "M20 Q5/Q7 parent-side browser harness. Loads real product code — /chart/multichart-prod/engine-api-guards.js and /chart/multichart-prod/multichart-manager.js — so it is a chart-referencing shell. Live on the /chart/multichart-prod mount and the homepage web-root copy. Not a product route.",
+      "chartShell": true
+    },
+    {
+      "path": "chart v 1.4/chart/multichart-prod/m20-q5-q7-browser-harness/m20-q5-q7-panel-frame.html",
+      "kind": "harness",
+      "status": "denied-route-pending",
+      "servable": true,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "fastapiMount": {
+          "present": true,
+          "file": "chart v 1.4/chart/api_server.py",
+          "line": 27037,
+          "quote": "        \"/chart/multichart-prod\","
+        },
+        "dockerCopy": {
+          "present": true,
+          "file": "homepage/Dockerfile",
+          "line": 84,
+          "quote": "COPY --from=chart_assets /build/chart/multichart-prod ./public/chart/multichart-prod"
+        },
+        "nginxRoot": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        }
+      },
+      "reason": "M20 Q5/Q7 panel frame for the harness above. Loads the real product bridge /chart/multichart-prod/panel-cmd-bridge.js, so it is a chart-referencing shell. Live on the same mount and copy path. Not a product route.",
+      "chartShell": true
+    },
+    {
+      "path": "chart v 1.4/chart/multichart/chart-host.html",
+      "kind": "chart-shell",
+      "status": "denied-route-pending",
+      "servable": true,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "fastapiMount": {
+          "present": true,
+          "file": "chart v 1.4/chart/api_server.py",
+          "line": 27024,
+          "quote": "    app.mount(\"/chart/multichart\", StaticFiles(directory=str(_MULTICHART_DIR_PATH), html=True), name=\"chart_multichart\")"
+        },
+        "dockerCopy": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "nginxRoot": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        }
+      },
+      "reason": "Non-production multichart sandbox rig, live through the /chart/multichart StaticFiles mount (html=True). One routing channel only: no COPY --from=chart_assets instruction at homepage/Dockerfile:81-89 names chart/multichart, so the served homepage copy is the separately committed homepage/public/chart/multichart tree, not this one. No build owner and no stamp; retain-or-remove is an open decision, so no module contract is asserted while it is open.",
+      "chartShell": true
+    },
+    {
+      "path": "chart v 1.4/chart/multichart/multichart-shell.html",
+      "kind": "chart-shell",
+      "status": "denied-route-pending",
+      "servable": true,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "fastapiMount": {
+          "present": true,
+          "file": "chart v 1.4/chart/api_server.py",
+          "line": 27024,
+          "quote": "    app.mount(\"/chart/multichart\", StaticFiles(directory=str(_MULTICHART_DIR_PATH), html=True), name=\"chart_multichart\")"
+        },
+        "dockerCopy": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "nginxRoot": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        }
+      },
+      "reason": "Non-production multichart sandbox rig, live through the /chart/multichart StaticFiles mount (html=True). One routing channel only: no COPY --from=chart_assets instruction at homepage/Dockerfile:81-89 names chart/multichart, so the served homepage copy is the separately committed homepage/public/chart/multichart tree, not this one. No build owner and no stamp; retain-or-remove is an open decision, so no module contract is asserted while it is open.",
+      "chartShell": true
+    },
+    {
+      "path": "chart v 1.4/chart/propfirm-backtest.html",
+      "kind": "non-chart-app",
+      "status": "owned-stamped",
+      "servable": true,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": true,
+          "file": "chart v 1.4/chart/api_server.py",
+          "line": 26926,
+          "quote": "    \"propfirm-backtest.html\","
+        },
+        "fastapiMount": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "dockerCopy": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "nginxRoot": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        }
+      },
+      "reason": "Prop-firm challenge application, routed by CHART_ROOT_FILES membership. References no chart engine, carries no build stamp, so neither the chart stamp nor the chart module contract applies.",
+      "chartShell": false
+    },
+    {
+      "path": "chart v 1.4/chart/sessions.html",
+      "kind": "non-chart-app",
+      "status": "no-routing-evidence",
+      "servable": false,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "fastapiMount": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "dockerCopy": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "nginxRoot": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        }
+      },
+      "reason": "Sessions dashboard page for the backtesting lineage; references no chart engine. Present in the trading-chart image via Dockerfile.local:93, but presence is not routing. Negative channels defended from source: the basename is absent from the CHART_ROOT_FILES set at api_server.py lines 26920-26937 so GET /chart/{file_name} reaches the raise at line 26962; the file sits at the chart root, which no StaticFiles mount covers (mounts are /chart/dist-v9, /chart/dist, /chart/modules, /chart/pwa, /chart/indicators, /chart/image, /chart/static, /chart/multichart, /chart/multichart-prod); none of the nine COPY --from=chart_assets instructions at homepage/Dockerfile lines 81-89 names it; and it is not inside homepage/public or homepage/out.",
+      "chartShell": false
+    },
+    {
+      "path": "chart v 1.4/chart/static/oops.html",
+      "kind": "non-chart-app",
+      "status": "owned-stamped",
+      "servable": true,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "fastapiMount": {
+          "present": true,
+          "file": "chart v 1.4/chart/api_server.py",
+          "line": 27016,
+          "quote": "    app.mount(\"/chart/static\", StaticFiles(directory=str(_STATIC_OOPS_DIR)), name=\"chart_static_oops\")"
+        },
+        "dockerCopy": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "nginxRoot": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        }
+      },
+      "reason": "Error page live through the /chart/static mount and used by the redirect at api_server.py:395 to render 403/404 responses. Not a chart shell; carries no stamp.",
+      "chartShell": false
+    },
+    {
+      "path": "chart v 1.4/talaria-design/index.html",
+      "kind": "non-chart-app",
+      "status": "no-routing-evidence",
+      "servable": false,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "fastapiMount": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "dockerCopy": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "nginxRoot": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        }
+      },
+      "reason": "Default Vite entry of the talaria-design package (loads /src/main.jsx); the chart host input is live/index.html, not this file. Negative channels defended from source: no StaticFiles mount covers chart v 1.4/talaria-design, it is not a CHART_ROOT_FILES basename, homepage/Dockerfile:28 copies talaria-design only into the chart_assets build stage (not into a served location), none of the nine COPY --from=chart_assets instructions at lines 81-89 names it, and it is not inside homepage/public or homepage/out.",
+      "chartShell": false
+    },
+    {
+      "path": "chart v 1.4/talaria-design/live/index.html",
+      "kind": "chart-shell",
+      "status": "owned-stamped",
+      "servable": false,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "fastapiMount": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "dockerCopy": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "nginxRoot": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        }
+      },
+      "reason": "Canonical V9 host source template and Vite input for build:live:chart. Not itself a URL — negative channels defended from source exactly as for talaria-design/index.html: no mount, no allowlist membership, copied only into the chart_assets build stage by homepage/Dockerfile:28, and absent from homepage/public and homepage/out. It is nonetheless the generator of every V9 host surface, so its module contract is enforced here first. Stamped 20260727b80.",
+      "chartShell": true
+    },
+    {
+      "path": "homepage/out/404.html",
+      "kind": "export",
+      "status": "no-routing-evidence",
+      "servable": false,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "fastapiMount": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "dockerCopy": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "nginxRoot": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        }
+      },
+      "reason": "Stale git-ignored local Next static export page. Working-tree copy under homepage/out. Negative channels defended from source: the root .dockerignore line 8 rule \"**/out\" keeps this path out of both Docker build contexts, homepage/Dockerfile line 125 \"RUN npm run build\" regenerates the export inside the builder, and homepage/Dockerfile line 138 copies THAT generated tree — not these bytes — into /usr/share/nginx/html. api_server.py lines 27054-27056 mount homepage/out at \"/\" only when the directory exists, and no COPY places homepage/out into the trading-chart image, so the mount is not registered there. These bytes are therefore not the served artifact; the contract is asserted against the built image. A14.1: status reclassed from image-verified to match derivedServable=false.",
+      "chartShell": false
+    },
+    {
+      "path": "homepage/out/404/index.html",
+      "kind": "export",
+      "status": "no-routing-evidence",
+      "servable": false,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "fastapiMount": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "dockerCopy": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "nginxRoot": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        }
+      },
+      "reason": "Stale git-ignored local Next static export page. Working-tree copy under homepage/out. Negative channels defended from source: the root .dockerignore line 8 rule \"**/out\" keeps this path out of both Docker build contexts, homepage/Dockerfile line 125 \"RUN npm run build\" regenerates the export inside the builder, and homepage/Dockerfile line 138 copies THAT generated tree — not these bytes — into /usr/share/nginx/html. api_server.py lines 27054-27056 mount homepage/out at \"/\" only when the directory exists, and no COPY places homepage/out into the trading-chart image, so the mount is not registered there. These bytes are therefore not the served artifact; the contract is asserted against the built image. A14.1: status reclassed from image-verified to match derivedServable=false.",
+      "chartShell": false
+    },
+    {
+      "path": "homepage/out/backtest/analytics/index.html",
+      "kind": "export",
+      "status": "no-routing-evidence",
+      "servable": false,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "fastapiMount": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "dockerCopy": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "nginxRoot": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        }
+      },
+      "reason": "Stale git-ignored local Next static export page. Working-tree copy under homepage/out. Negative channels defended from source: the root .dockerignore line 8 rule \"**/out\" keeps this path out of both Docker build contexts, homepage/Dockerfile line 125 \"RUN npm run build\" regenerates the export inside the builder, and homepage/Dockerfile line 138 copies THAT generated tree — not these bytes — into /usr/share/nginx/html. api_server.py lines 27054-27056 mount homepage/out at \"/\" only when the directory exists, and no COPY places homepage/out into the trading-chart image, so the mount is not registered there. These bytes are therefore not the served artifact; the contract is asserted against the built image. A14.1: status reclassed from image-verified to match derivedServable=false.",
+      "chartShell": false
+    },
+    {
+      "path": "homepage/out/backtest/design/index.html",
+      "kind": "export",
+      "status": "no-routing-evidence",
+      "servable": false,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "fastapiMount": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "dockerCopy": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "nginxRoot": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        }
+      },
+      "reason": "Stale git-ignored local Next static export page. Working-tree copy under homepage/out. Negative channels defended from source: the root .dockerignore line 8 rule \"**/out\" keeps this path out of both Docker build contexts, homepage/Dockerfile line 125 \"RUN npm run build\" regenerates the export inside the builder, and homepage/Dockerfile line 138 copies THAT generated tree — not these bytes — into /usr/share/nginx/html. api_server.py lines 27054-27056 mount homepage/out at \"/\" only when the directory exists, and no COPY places homepage/out into the trading-chart image, so the mount is not registered there. These bytes are therefore not the served artifact; the contract is asserted against the built image. A14.1: status reclassed from image-verified to match derivedServable=false.",
+      "chartShell": false
+    },
+    {
+      "path": "homepage/out/backtest/index.html",
+      "kind": "export",
+      "status": "no-routing-evidence",
+      "servable": false,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "fastapiMount": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "dockerCopy": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "nginxRoot": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        }
+      },
+      "reason": "Stale git-ignored local Next static export page. Working-tree copy under homepage/out. Negative channels defended from source: the root .dockerignore line 8 rule \"**/out\" keeps this path out of both Docker build contexts, homepage/Dockerfile line 125 \"RUN npm run build\" regenerates the export inside the builder, and homepage/Dockerfile line 138 copies THAT generated tree — not these bytes — into /usr/share/nginx/html. api_server.py lines 27054-27056 mount homepage/out at \"/\" only when the directory exists, and no COPY places homepage/out into the trading-chart image, so the mount is not registered there. These bytes are therefore not the served artifact; the contract is asserted against the built image. A14.1: status reclassed from image-verified to match derivedServable=false.",
+      "chartShell": false
+    },
+    {
+      "path": "homepage/out/bootcamp/index.html",
+      "kind": "export",
+      "status": "no-routing-evidence",
+      "servable": false,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "fastapiMount": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "dockerCopy": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "nginxRoot": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        }
+      },
+      "reason": "Stale git-ignored local Next static export page. Working-tree copy under homepage/out. Negative channels defended from source: the root .dockerignore line 8 rule \"**/out\" keeps this path out of both Docker build contexts, homepage/Dockerfile line 125 \"RUN npm run build\" regenerates the export inside the builder, and homepage/Dockerfile line 138 copies THAT generated tree — not these bytes — into /usr/share/nginx/html. api_server.py lines 27054-27056 mount homepage/out at \"/\" only when the directory exists, and no COPY places homepage/out into the trading-chart image, so the mount is not registered there. These bytes are therefore not the served artifact; the contract is asserted against the built image. A14.1: status reclassed from image-verified to match derivedServable=false.",
+      "chartShell": false
+    },
+    {
+      "path": "homepage/out/chart/dist-v9/index.html",
+      "kind": "export",
+      "status": "no-routing-evidence",
+      "servable": false,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "fastapiMount": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "dockerCopy": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "nginxRoot": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        }
+      },
+      "reason": "Stale export of the V9 host shell. It carries no build stamp and references neither indicator-performance.js nor module-presence-runtime.js, but the served path is overwritten in the image from the chart_assets stage (homepage/Dockerfile:81), so it is neither a passing nor a failing host shell here. Working-tree copy under homepage/out. Negative channels defended from source: the root .dockerignore line 8 rule \"**/out\" keeps this path out of both Docker build contexts, homepage/Dockerfile line 125 \"RUN npm run build\" regenerates the export inside the builder, and homepage/Dockerfile line 138 copies THAT generated tree — not these bytes — into /usr/share/nginx/html. api_server.py lines 27054-27056 mount homepage/out at \"/\" only when the directory exists, and no COPY places homepage/out into the trading-chart image, so the mount is not registered there. These bytes are therefore not the served artifact; the contract is asserted against the built image. A14.1: status reclassed from image-verified to match derivedServable=false.",
+      "chartShell": true
+    },
+    {
+      "path": "homepage/out/chart/legacy-index.html",
+      "kind": "export",
+      "status": "no-routing-evidence",
+      "servable": false,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "fastapiMount": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "dockerCopy": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "nginxRoot": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        }
+      },
+      "reason": "Stale export of the legacy host shell; the served path is rewritten in the image from chart/legacy-index.html (homepage/Dockerfile:88). Note it also carries 216 occurrences of \"magnet\", but it is a derived copy, not an independent record: the §A10 harvest source is chart v 1.4/chart/legacy-index.html. Working-tree copy under homepage/out. Negative channels defended from source: the root .dockerignore line 8 rule \"**/out\" keeps this path out of both Docker build contexts, homepage/Dockerfile line 125 \"RUN npm run build\" regenerates the export inside the builder, and homepage/Dockerfile line 138 copies THAT generated tree — not these bytes — into /usr/share/nginx/html. api_server.py lines 27054-27056 mount homepage/out at \"/\" only when the directory exists, and no COPY places homepage/out into the trading-chart image, so the mount is not registered there. These bytes are therefore not the served artifact; the contract is asserted against the built image. A14.1: status reclassed from image-verified to match derivedServable=false.",
+      "retainFile": false,
+      "retainPath": null,
+      "retainReason": null,
+      "chartShell": true
+    },
+    {
+      "path": "homepage/out/chart/multichart-prod/chart-embed.html",
+      "kind": "export",
+      "status": "no-routing-evidence",
+      "servable": false,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "fastapiMount": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "dockerCopy": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "nginxRoot": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        }
+      },
+      "reason": "Stale export of the production panel shell; the served path is overwritten in the image from the chart_assets stage (homepage/Dockerfile:84). Working-tree copy under homepage/out. Negative channels defended from source: the root .dockerignore line 8 rule \"**/out\" keeps this path out of both Docker build contexts, homepage/Dockerfile line 125 \"RUN npm run build\" regenerates the export inside the builder, and homepage/Dockerfile line 138 copies THAT generated tree — not these bytes — into /usr/share/nginx/html. api_server.py lines 27054-27056 mount homepage/out at \"/\" only when the directory exists, and no COPY places homepage/out into the trading-chart image, so the mount is not registered there. These bytes are therefore not the served artifact; the contract is asserted against the built image. A14.1: status reclassed from image-verified to match derivedServable=false.",
+      "chartShell": true
+    },
+    {
+      "path": "homepage/out/chart/multichart/chart-host.html",
+      "kind": "export",
+      "status": "no-routing-evidence",
+      "servable": false,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "fastapiMount": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "dockerCopy": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "nginxRoot": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        }
+      },
+      "reason": "Stale export of the multichart sandbox host. No chart_assets COPY covers chart/multichart, so the served copy is regenerated from homepage/public/chart/multichart. Working-tree copy under homepage/out. Negative channels defended from source: the root .dockerignore line 8 rule \"**/out\" keeps this path out of both Docker build contexts, homepage/Dockerfile line 125 \"RUN npm run build\" regenerates the export inside the builder, and homepage/Dockerfile line 138 copies THAT generated tree — not these bytes — into /usr/share/nginx/html. api_server.py lines 27054-27056 mount homepage/out at \"/\" only when the directory exists, and no COPY places homepage/out into the trading-chart image, so the mount is not registered there. These bytes are therefore not the served artifact; the contract is asserted against the built image. A14.1: status reclassed from image-verified to match derivedServable=false.",
+      "chartShell": true
+    },
+    {
+      "path": "homepage/out/chart/multichart/multichart-shell.html",
+      "kind": "export",
+      "status": "no-routing-evidence",
+      "servable": false,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "fastapiMount": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "dockerCopy": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "nginxRoot": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        }
+      },
+      "reason": "Stale export of the multichart sandbox shell. No chart_assets COPY covers chart/multichart, so the served copy is regenerated from homepage/public/chart/multichart. Working-tree copy under homepage/out. Negative channels defended from source: the root .dockerignore line 8 rule \"**/out\" keeps this path out of both Docker build contexts, homepage/Dockerfile line 125 \"RUN npm run build\" regenerates the export inside the builder, and homepage/Dockerfile line 138 copies THAT generated tree — not these bytes — into /usr/share/nginx/html. api_server.py lines 27054-27056 mount homepage/out at \"/\" only when the directory exists, and no COPY places homepage/out into the trading-chart image, so the mount is not registered there. These bytes are therefore not the served artifact; the contract is asserted against the built image. A14.1: status reclassed from image-verified to match derivedServable=false.",
+      "chartShell": true
+    },
+    {
+      "path": "homepage/out/dashboard/admin/index.html",
+      "kind": "export",
+      "status": "no-routing-evidence",
+      "servable": false,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "fastapiMount": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "dockerCopy": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "nginxRoot": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        }
+      },
+      "reason": "Stale git-ignored local Next static export page. Working-tree copy under homepage/out. Negative channels defended from source: the root .dockerignore line 8 rule \"**/out\" keeps this path out of both Docker build contexts, homepage/Dockerfile line 125 \"RUN npm run build\" regenerates the export inside the builder, and homepage/Dockerfile line 138 copies THAT generated tree — not these bytes — into /usr/share/nginx/html. api_server.py lines 27054-27056 mount homepage/out at \"/\" only when the directory exists, and no COPY places homepage/out into the trading-chart image, so the mount is not registered there. These bytes are therefore not the served artifact; the contract is asserted against the built image. A14.1: status reclassed from image-verified to match derivedServable=false.",
+      "chartShell": false
+    },
+    {
+      "path": "homepage/out/dashboard/backtest/design/index.html",
+      "kind": "export",
+      "status": "no-routing-evidence",
+      "servable": false,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "fastapiMount": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "dockerCopy": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "nginxRoot": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        }
+      },
+      "reason": "Stale git-ignored local Next static export page. Working-tree copy under homepage/out. Negative channels defended from source: the root .dockerignore line 8 rule \"**/out\" keeps this path out of both Docker build contexts, homepage/Dockerfile line 125 \"RUN npm run build\" regenerates the export inside the builder, and homepage/Dockerfile line 138 copies THAT generated tree — not these bytes — into /usr/share/nginx/html. api_server.py lines 27054-27056 mount homepage/out at \"/\" only when the directory exists, and no COPY places homepage/out into the trading-chart image, so the mount is not registered there. These bytes are therefore not the served artifact; the contract is asserted against the built image. A14.1: status reclassed from image-verified to match derivedServable=false.",
+      "chartShell": false
+    },
+    {
+      "path": "homepage/out/dashboard/cot/index.html",
+      "kind": "export",
+      "status": "no-routing-evidence",
+      "servable": false,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "fastapiMount": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "dockerCopy": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "nginxRoot": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        }
+      },
+      "reason": "Stale git-ignored local Next static export page. Working-tree copy under homepage/out. Negative channels defended from source: the root .dockerignore line 8 rule \"**/out\" keeps this path out of both Docker build contexts, homepage/Dockerfile line 125 \"RUN npm run build\" regenerates the export inside the builder, and homepage/Dockerfile line 138 copies THAT generated tree — not these bytes — into /usr/share/nginx/html. api_server.py lines 27054-27056 mount homepage/out at \"/\" only when the directory exists, and no COPY places homepage/out into the trading-chart image, so the mount is not registered there. These bytes are therefore not the served artifact; the contract is asserted against the built image. A14.1: status reclassed from image-verified to match derivedServable=false.",
+      "chartShell": false
+    },
+    {
+      "path": "homepage/out/dashboard/design/handoff/index.html",
+      "kind": "export",
+      "status": "no-routing-evidence",
+      "servable": false,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "fastapiMount": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "dockerCopy": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "nginxRoot": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        }
+      },
+      "reason": "Stale git-ignored local Next static export page. Working-tree copy under homepage/out. Negative channels defended from source: the root .dockerignore line 8 rule \"**/out\" keeps this path out of both Docker build contexts, homepage/Dockerfile line 125 \"RUN npm run build\" regenerates the export inside the builder, and homepage/Dockerfile line 138 copies THAT generated tree — not these bytes — into /usr/share/nginx/html. api_server.py lines 27054-27056 mount homepage/out at \"/\" only when the directory exists, and no COPY places homepage/out into the trading-chart image, so the mount is not registered there. These bytes are therefore not the served artifact; the contract is asserted against the built image. A14.1: status reclassed from image-verified to match derivedServable=false.",
+      "chartShell": false
+    },
+    {
+      "path": "homepage/out/dashboard/index.html",
+      "kind": "export",
+      "status": "no-routing-evidence",
+      "servable": false,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "fastapiMount": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "dockerCopy": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "nginxRoot": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        }
+      },
+      "reason": "Stale git-ignored local Next static export page. Working-tree copy under homepage/out. Negative channels defended from source: the root .dockerignore line 8 rule \"**/out\" keeps this path out of both Docker build contexts, homepage/Dockerfile line 125 \"RUN npm run build\" regenerates the export inside the builder, and homepage/Dockerfile line 138 copies THAT generated tree — not these bytes — into /usr/share/nginx/html. api_server.py lines 27054-27056 mount homepage/out at \"/\" only when the directory exists, and no COPY places homepage/out into the trading-chart image, so the mount is not registered there. These bytes are therefore not the served artifact; the contract is asserted against the built image. A14.1: status reclassed from image-verified to match derivedServable=false.",
+      "chartShell": false
+    },
+    {
+      "path": "homepage/out/dashboard/journal/ai-dashboard/index.html",
+      "kind": "export",
+      "status": "no-routing-evidence",
+      "servable": false,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "fastapiMount": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "dockerCopy": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "nginxRoot": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        }
+      },
+      "reason": "Stale git-ignored local Next static export page. Working-tree copy under homepage/out. Negative channels defended from source: the root .dockerignore line 8 rule \"**/out\" keeps this path out of both Docker build contexts, homepage/Dockerfile line 125 \"RUN npm run build\" regenerates the export inside the builder, and homepage/Dockerfile line 138 copies THAT generated tree — not these bytes — into /usr/share/nginx/html. api_server.py lines 27054-27056 mount homepage/out at \"/\" only when the directory exists, and no COPY places homepage/out into the trading-chart image, so the mount is not registered there. These bytes are therefore not the served artifact; the contract is asserted against the built image. A14.1: status reclassed from image-verified to match derivedServable=false.",
+      "chartShell": false
+    },
+    {
+      "path": "homepage/out/dashboard/journal/analytics/all-metrics/index.html",
+      "kind": "export",
+      "status": "no-routing-evidence",
+      "servable": false,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "fastapiMount": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "dockerCopy": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "nginxRoot": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        }
+      },
+      "reason": "Stale git-ignored local Next static export page. Working-tree copy under homepage/out. Negative channels defended from source: the root .dockerignore line 8 rule \"**/out\" keeps this path out of both Docker build contexts, homepage/Dockerfile line 125 \"RUN npm run build\" regenerates the export inside the builder, and homepage/Dockerfile line 138 copies THAT generated tree — not these bytes — into /usr/share/nginx/html. api_server.py lines 27054-27056 mount homepage/out at \"/\" only when the directory exists, and no COPY places homepage/out into the trading-chart image, so the mount is not registered there. These bytes are therefore not the served artifact; the contract is asserted against the built image. A14.1: status reclassed from image-verified to match derivedServable=false.",
+      "chartShell": false
+    },
+    {
+      "path": "homepage/out/dashboard/journal/analytics/calendar/index.html",
+      "kind": "export",
+      "status": "no-routing-evidence",
+      "servable": false,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "fastapiMount": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "dockerCopy": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "nginxRoot": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        }
+      },
+      "reason": "Stale git-ignored local Next static export page. Working-tree copy under homepage/out. Negative channels defended from source: the root .dockerignore line 8 rule \"**/out\" keeps this path out of both Docker build contexts, homepage/Dockerfile line 125 \"RUN npm run build\" regenerates the export inside the builder, and homepage/Dockerfile line 138 copies THAT generated tree — not these bytes — into /usr/share/nginx/html. api_server.py lines 27054-27056 mount homepage/out at \"/\" only when the directory exists, and no COPY places homepage/out into the trading-chart image, so the mount is not registered there. These bytes are therefore not the served artifact; the contract is asserted against the built image. A14.1: status reclassed from image-verified to match derivedServable=false.",
+      "chartShell": false
+    },
+    {
+      "path": "homepage/out/dashboard/journal/analytics/daily-limit-optimization/index.html",
+      "kind": "export",
+      "status": "no-routing-evidence",
+      "servable": false,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "fastapiMount": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "dockerCopy": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "nginxRoot": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        }
+      },
+      "reason": "Stale git-ignored local Next static export page. Working-tree copy under homepage/out. Negative channels defended from source: the root .dockerignore line 8 rule \"**/out\" keeps this path out of both Docker build contexts, homepage/Dockerfile line 125 \"RUN npm run build\" regenerates the export inside the builder, and homepage/Dockerfile line 138 copies THAT generated tree — not these bytes — into /usr/share/nginx/html. api_server.py lines 27054-27056 mount homepage/out at \"/\" only when the directory exists, and no COPY places homepage/out into the trading-chart image, so the mount is not registered there. These bytes are therefore not the served artifact; the contract is asserted against the built image. A14.1: status reclassed from image-verified to match derivedServable=false.",
+      "chartShell": false
+    },
+    {
+      "path": "homepage/out/dashboard/journal/analytics/equity/index.html",
+      "kind": "export",
+      "status": "no-routing-evidence",
+      "servable": false,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "fastapiMount": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "dockerCopy": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "nginxRoot": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        }
+      },
+      "reason": "Stale git-ignored local Next static export page. Working-tree copy under homepage/out. Negative channels defended from source: the root .dockerignore line 8 rule \"**/out\" keeps this path out of both Docker build contexts, homepage/Dockerfile line 125 \"RUN npm run build\" regenerates the export inside the builder, and homepage/Dockerfile line 138 copies THAT generated tree — not these bytes — into /usr/share/nginx/html. api_server.py lines 27054-27056 mount homepage/out at \"/\" only when the directory exists, and no COPY places homepage/out into the trading-chart image, so the mount is not registered there. These bytes are therefore not the served artifact; the contract is asserted against the built image. A14.1: status reclassed from image-verified to match derivedServable=false.",
+      "chartShell": false
+    },
+    {
+      "path": "homepage/out/dashboard/journal/analytics/exitanalysis-amelioration/index.html",
+      "kind": "export",
+      "status": "no-routing-evidence",
+      "servable": false,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "fastapiMount": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "dockerCopy": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "nginxRoot": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        }
+      },
+      "reason": "Stale git-ignored local Next static export page. Working-tree copy under homepage/out. Negative channels defended from source: the root .dockerignore line 8 rule \"**/out\" keeps this path out of both Docker build contexts, homepage/Dockerfile line 125 \"RUN npm run build\" regenerates the export inside the builder, and homepage/Dockerfile line 138 copies THAT generated tree — not these bytes — into /usr/share/nginx/html. api_server.py lines 27054-27056 mount homepage/out at \"/\" only when the directory exists, and no COPY places homepage/out into the trading-chart image, so the mount is not registered there. These bytes are therefore not the served artifact; the contract is asserted against the built image. A14.1: status reclassed from image-verified to match derivedServable=false.",
+      "chartShell": false
+    },
+    {
+      "path": "homepage/out/dashboard/journal/analytics/exitanalysis/index.html",
+      "kind": "export",
+      "status": "no-routing-evidence",
+      "servable": false,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "fastapiMount": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "dockerCopy": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "nginxRoot": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        }
+      },
+      "reason": "Stale git-ignored local Next static export page. Working-tree copy under homepage/out. Negative channels defended from source: the root .dockerignore line 8 rule \"**/out\" keeps this path out of both Docker build contexts, homepage/Dockerfile line 125 \"RUN npm run build\" regenerates the export inside the builder, and homepage/Dockerfile line 138 copies THAT generated tree — not these bytes — into /usr/share/nginx/html. api_server.py lines 27054-27056 mount homepage/out at \"/\" only when the directory exists, and no COPY places homepage/out into the trading-chart image, so the mount is not registered there. These bytes are therefore not the served artifact; the contract is asserted against the built image. A14.1: status reclassed from image-verified to match derivedServable=false.",
+      "chartShell": false
+    },
+    {
+      "path": "homepage/out/dashboard/journal/analytics/index.html",
+      "kind": "export",
+      "status": "no-routing-evidence",
+      "servable": false,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "fastapiMount": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "dockerCopy": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "nginxRoot": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        }
+      },
+      "reason": "Stale git-ignored local Next static export page. Working-tree copy under homepage/out. Negative channels defended from source: the root .dockerignore line 8 rule \"**/out\" keeps this path out of both Docker build contexts, homepage/Dockerfile line 125 \"RUN npm run build\" regenerates the export inside the builder, and homepage/Dockerfile line 138 copies THAT generated tree — not these bytes — into /usr/share/nginx/html. api_server.py lines 27054-27056 mount homepage/out at \"/\" only when the directory exists, and no COPY places homepage/out into the trading-chart image, so the mount is not registered there. These bytes are therefore not the served artifact; the contract is asserted against the built image. A14.1: status reclassed from image-verified to match derivedServable=false.",
+      "chartShell": false
+    },
+    {
+      "path": "homepage/out/dashboard/journal/analytics/performance-analysis/index.html",
+      "kind": "export",
+      "status": "no-routing-evidence",
+      "servable": false,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "fastapiMount": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "dockerCopy": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "nginxRoot": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        }
+      },
+      "reason": "Stale git-ignored local Next static export page. Working-tree copy under homepage/out. Negative channels defended from source: the root .dockerignore line 8 rule \"**/out\" keeps this path out of both Docker build contexts, homepage/Dockerfile line 125 \"RUN npm run build\" regenerates the export inside the builder, and homepage/Dockerfile line 138 copies THAT generated tree — not these bytes — into /usr/share/nginx/html. api_server.py lines 27054-27056 mount homepage/out at \"/\" only when the directory exists, and no COPY places homepage/out into the trading-chart image, so the mount is not registered there. These bytes are therefore not the served artifact; the contract is asserted against the built image. A14.1: status reclassed from image-verified to match derivedServable=false.",
+      "chartShell": false
+    },
+    {
+      "path": "homepage/out/dashboard/journal/analytics/pnl-distribution/index.html",
+      "kind": "export",
+      "status": "no-routing-evidence",
+      "servable": false,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "fastapiMount": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "dockerCopy": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "nginxRoot": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        }
+      },
+      "reason": "Stale git-ignored local Next static export page. Working-tree copy under homepage/out. Negative channels defended from source: the root .dockerignore line 8 rule \"**/out\" keeps this path out of both Docker build contexts, homepage/Dockerfile line 125 \"RUN npm run build\" regenerates the export inside the builder, and homepage/Dockerfile line 138 copies THAT generated tree — not these bytes — into /usr/share/nginx/html. api_server.py lines 27054-27056 mount homepage/out at \"/\" only when the directory exists, and no COPY places homepage/out into the trading-chart image, so the mount is not registered there. These bytes are therefore not the served artifact; the contract is asserted against the built image. A14.1: status reclassed from image-verified to match derivedServable=false.",
+      "chartShell": false
+    },
+    {
+      "path": "homepage/out/dashboard/journal/analytics/streaks/index.html",
+      "kind": "export",
+      "status": "no-routing-evidence",
+      "servable": false,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "fastapiMount": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "dockerCopy": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "nginxRoot": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        }
+      },
+      "reason": "Stale git-ignored local Next static export page. Working-tree copy under homepage/out. Negative channels defended from source: the root .dockerignore line 8 rule \"**/out\" keeps this path out of both Docker build contexts, homepage/Dockerfile line 125 \"RUN npm run build\" regenerates the export inside the builder, and homepage/Dockerfile line 138 copies THAT generated tree — not these bytes — into /usr/share/nginx/html. api_server.py lines 27054-27056 mount homepage/out at \"/\" only when the directory exists, and no COPY places homepage/out into the trading-chart image, so the mount is not registered there. These bytes are therefore not the served artifact; the contract is asserted against the built image. A14.1: status reclassed from image-verified to match derivedServable=false.",
+      "chartShell": false
+    },
+    {
+      "path": "homepage/out/dashboard/journal/analytics/symbols/index.html",
+      "kind": "export",
+      "status": "no-routing-evidence",
+      "servable": false,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "fastapiMount": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "dockerCopy": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "nginxRoot": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        }
+      },
+      "reason": "Stale git-ignored local Next static export page. Working-tree copy under homepage/out. Negative channels defended from source: the root .dockerignore line 8 rule \"**/out\" keeps this path out of both Docker build contexts, homepage/Dockerfile line 125 \"RUN npm run build\" regenerates the export inside the builder, and homepage/Dockerfile line 138 copies THAT generated tree — not these bytes — into /usr/share/nginx/html. api_server.py lines 27054-27056 mount homepage/out at \"/\" only when the directory exists, and no COPY places homepage/out into the trading-chart image, so the mount is not registered there. These bytes are therefore not the served artifact; the contract is asserted against the built image. A14.1: status reclassed from image-verified to match derivedServable=false.",
+      "chartShell": false
+    },
+    {
+      "path": "homepage/out/dashboard/journal/analytics/trade-duration/index.html",
+      "kind": "export",
+      "status": "no-routing-evidence",
+      "servable": false,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "fastapiMount": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "dockerCopy": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "nginxRoot": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        }
+      },
+      "reason": "Stale git-ignored local Next static export page. Working-tree copy under homepage/out. Negative channels defended from source: the root .dockerignore line 8 rule \"**/out\" keeps this path out of both Docker build contexts, homepage/Dockerfile line 125 \"RUN npm run build\" regenerates the export inside the builder, and homepage/Dockerfile line 138 copies THAT generated tree — not these bytes — into /usr/share/nginx/html. api_server.py lines 27054-27056 mount homepage/out at \"/\" only when the directory exists, and no COPY places homepage/out into the trading-chart image, so the mount is not registered there. These bytes are therefore not the served artifact; the contract is asserted against the built image. A14.1: status reclassed from image-verified to match derivedServable=false.",
+      "chartShell": false
+    },
+    {
+      "path": "homepage/out/dashboard/journal/analytics/variables/index.html",
+      "kind": "export",
+      "status": "no-routing-evidence",
+      "servable": false,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "fastapiMount": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "dockerCopy": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "nginxRoot": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        }
+      },
+      "reason": "Stale git-ignored local Next static export page. Working-tree copy under homepage/out. Negative channels defended from source: the root .dockerignore line 8 rule \"**/out\" keeps this path out of both Docker build contexts, homepage/Dockerfile line 125 \"RUN npm run build\" regenerates the export inside the builder, and homepage/Dockerfile line 138 copies THAT generated tree — not these bytes — into /usr/share/nginx/html. api_server.py lines 27054-27056 mount homepage/out at \"/\" only when the directory exists, and no COPY places homepage/out into the trading-chart image, so the mount is not registered there. These bytes are therefore not the served artifact; the contract is asserted against the built image. A14.1: status reclassed from image-verified to match derivedServable=false.",
+      "chartShell": false
+    },
+    {
+      "path": "homepage/out/dashboard/journal/import-trades/index.html",
+      "kind": "export",
+      "status": "no-routing-evidence",
+      "servable": false,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "fastapiMount": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "dockerCopy": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "nginxRoot": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        }
+      },
+      "reason": "Stale git-ignored local Next static export page. Working-tree copy under homepage/out. Negative channels defended from source: the root .dockerignore line 8 rule \"**/out\" keeps this path out of both Docker build contexts, homepage/Dockerfile line 125 \"RUN npm run build\" regenerates the export inside the builder, and homepage/Dockerfile line 138 copies THAT generated tree — not these bytes — into /usr/share/nginx/html. api_server.py lines 27054-27056 mount homepage/out at \"/\" only when the directory exists, and no COPY places homepage/out into the trading-chart image, so the mount is not registered there. These bytes are therefore not the served artifact; the contract is asserted against the built image. A14.1: status reclassed from image-verified to match derivedServable=false.",
+      "chartShell": false
+    },
+    {
+      "path": "homepage/out/dashboard/journal/index.html",
+      "kind": "export",
+      "status": "no-routing-evidence",
+      "servable": false,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "fastapiMount": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "dockerCopy": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "nginxRoot": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        }
+      },
+      "reason": "Stale git-ignored local Next static export page. Working-tree copy under homepage/out. Negative channels defended from source: the root .dockerignore line 8 rule \"**/out\" keeps this path out of both Docker build contexts, homepage/Dockerfile line 125 \"RUN npm run build\" regenerates the export inside the builder, and homepage/Dockerfile line 138 copies THAT generated tree — not these bytes — into /usr/share/nginx/html. api_server.py lines 27054-27056 mount homepage/out at \"/\" only when the directory exists, and no COPY places homepage/out into the trading-chart image, so the mount is not registered there. These bytes are therefore not the served artifact; the contract is asserted against the built image. A14.1: status reclassed from image-verified to match derivedServable=false.",
+      "chartShell": false
+    },
+    {
+      "path": "homepage/out/dashboard/journal/journal/index.html",
+      "kind": "export",
+      "status": "no-routing-evidence",
+      "servable": false,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "fastapiMount": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "dockerCopy": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "nginxRoot": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        }
+      },
+      "reason": "Stale git-ignored local Next static export page. Working-tree copy under homepage/out. Negative channels defended from source: the root .dockerignore line 8 rule \"**/out\" keeps this path out of both Docker build contexts, homepage/Dockerfile line 125 \"RUN npm run build\" regenerates the export inside the builder, and homepage/Dockerfile line 138 copies THAT generated tree — not these bytes — into /usr/share/nginx/html. api_server.py lines 27054-27056 mount homepage/out at \"/\" only when the directory exists, and no COPY places homepage/out into the trading-chart image, so the mount is not registered there. These bytes are therefore not the served artifact; the contract is asserted against the built image. A14.1: status reclassed from image-verified to match derivedServable=false.",
+      "chartShell": false
+    },
+    {
+      "path": "homepage/out/dashboard/journal/learn/index.html",
+      "kind": "export",
+      "status": "no-routing-evidence",
+      "servable": false,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "fastapiMount": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "dockerCopy": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "nginxRoot": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        }
+      },
+      "reason": "Stale git-ignored local Next static export page. Working-tree copy under homepage/out. Negative channels defended from source: the root .dockerignore line 8 rule \"**/out\" keeps this path out of both Docker build contexts, homepage/Dockerfile line 125 \"RUN npm run build\" regenerates the export inside the builder, and homepage/Dockerfile line 138 copies THAT generated tree — not these bytes — into /usr/share/nginx/html. api_server.py lines 27054-27056 mount homepage/out at \"/\" only when the directory exists, and no COPY places homepage/out into the trading-chart image, so the mount is not registered there. These bytes are therefore not the served artifact; the contract is asserted against the built image. A14.1: status reclassed from image-verified to match derivedServable=false.",
+      "chartShell": false
+    },
+    {
+      "path": "homepage/out/dashboard/journal/manage-profiles/index.html",
+      "kind": "export",
+      "status": "no-routing-evidence",
+      "servable": false,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "fastapiMount": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "dockerCopy": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "nginxRoot": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        }
+      },
+      "reason": "Stale git-ignored local Next static export page. Working-tree copy under homepage/out. Negative channels defended from source: the root .dockerignore line 8 rule \"**/out\" keeps this path out of both Docker build contexts, homepage/Dockerfile line 125 \"RUN npm run build\" regenerates the export inside the builder, and homepage/Dockerfile line 138 copies THAT generated tree — not these bytes — into /usr/share/nginx/html. api_server.py lines 27054-27056 mount homepage/out at \"/\" only when the directory exists, and no COPY places homepage/out into the trading-chart image, so the mount is not registered there. These bytes are therefore not the served artifact; the contract is asserted against the built image. A14.1: status reclassed from image-verified to match derivedServable=false.",
+      "chartShell": false
+    },
+    {
+      "path": "homepage/out/dashboard/journal/notes/index.html",
+      "kind": "export",
+      "status": "no-routing-evidence",
+      "servable": false,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "fastapiMount": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "dockerCopy": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "nginxRoot": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        }
+      },
+      "reason": "Stale git-ignored local Next static export page. Working-tree copy under homepage/out. Negative channels defended from source: the root .dockerignore line 8 rule \"**/out\" keeps this path out of both Docker build contexts, homepage/Dockerfile line 125 \"RUN npm run build\" regenerates the export inside the builder, and homepage/Dockerfile line 138 copies THAT generated tree — not these bytes — into /usr/share/nginx/html. api_server.py lines 27054-27056 mount homepage/out at \"/\" only when the directory exists, and no COPY places homepage/out into the trading-chart image, so the mount is not registered there. These bytes are therefore not the served artifact; the contract is asserted against the built image. A14.1: status reclassed from image-verified to match derivedServable=false.",
+      "chartShell": false
+    },
+    {
+      "path": "homepage/out/dashboard/journal/select-profile/index.html",
+      "kind": "export",
+      "status": "no-routing-evidence",
+      "servable": false,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "fastapiMount": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "dockerCopy": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "nginxRoot": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        }
+      },
+      "reason": "Stale git-ignored local Next static export page. Working-tree copy under homepage/out. Negative channels defended from source: the root .dockerignore line 8 rule \"**/out\" keeps this path out of both Docker build contexts, homepage/Dockerfile line 125 \"RUN npm run build\" regenerates the export inside the builder, and homepage/Dockerfile line 138 copies THAT generated tree — not these bytes — into /usr/share/nginx/html. api_server.py lines 27054-27056 mount homepage/out at \"/\" only when the directory exists, and no COPY places homepage/out into the trading-chart image, so the mount is not registered there. These bytes are therefore not the served artifact; the contract is asserted against the built image. A14.1: status reclassed from image-verified to match derivedServable=false.",
+      "chartShell": false
+    },
+    {
+      "path": "homepage/out/dashboard/journal/settings/index.html",
+      "kind": "export",
+      "status": "no-routing-evidence",
+      "servable": false,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "fastapiMount": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "dockerCopy": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "nginxRoot": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        }
+      },
+      "reason": "Stale git-ignored local Next static export page. Working-tree copy under homepage/out. Negative channels defended from source: the root .dockerignore line 8 rule \"**/out\" keeps this path out of both Docker build contexts, homepage/Dockerfile line 125 \"RUN npm run build\" regenerates the export inside the builder, and homepage/Dockerfile line 138 copies THAT generated tree — not these bytes — into /usr/share/nginx/html. api_server.py lines 27054-27056 mount homepage/out at \"/\" only when the directory exists, and no COPY places homepage/out into the trading-chart image, so the mount is not registered there. These bytes are therefore not the served artifact; the contract is asserted against the built image. A14.1: status reclassed from image-verified to match derivedServable=false.",
+      "chartShell": false
+    },
+    {
+      "path": "homepage/out/dashboard/journal/trades/index.html",
+      "kind": "export",
+      "status": "no-routing-evidence",
+      "servable": false,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "fastapiMount": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "dockerCopy": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "nginxRoot": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        }
+      },
+      "reason": "Stale git-ignored local Next static export page. Working-tree copy under homepage/out. Negative channels defended from source: the root .dockerignore line 8 rule \"**/out\" keeps this path out of both Docker build contexts, homepage/Dockerfile line 125 \"RUN npm run build\" regenerates the export inside the builder, and homepage/Dockerfile line 138 copies THAT generated tree — not these bytes — into /usr/share/nginx/html. api_server.py lines 27054-27056 mount homepage/out at \"/\" only when the directory exists, and no COPY places homepage/out into the trading-chart image, so the mount is not registered there. These bytes are therefore not the served artifact; the contract is asserted against the built image. A14.1: status reclassed from image-verified to match derivedServable=false.",
+      "chartShell": false
+    },
+    {
+      "path": "homepage/out/dashboard/profile/index.html",
+      "kind": "export",
+      "status": "no-routing-evidence",
+      "servable": false,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "fastapiMount": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "dockerCopy": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "nginxRoot": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        }
+      },
+      "reason": "Stale git-ignored local Next static export page. Working-tree copy under homepage/out. Negative channels defended from source: the root .dockerignore line 8 rule \"**/out\" keeps this path out of both Docker build contexts, homepage/Dockerfile line 125 \"RUN npm run build\" regenerates the export inside the builder, and homepage/Dockerfile line 138 copies THAT generated tree — not these bytes — into /usr/share/nginx/html. api_server.py lines 27054-27056 mount homepage/out at \"/\" only when the directory exists, and no COPY places homepage/out into the trading-chart image, so the mount is not registered there. These bytes are therefore not the served artifact; the contract is asserted against the built image. A14.1: status reclassed from image-verified to match derivedServable=false.",
+      "chartShell": false
+    },
+    {
+      "path": "homepage/out/dashboard/sessions/0/analytics/index.html",
+      "kind": "export",
+      "status": "no-routing-evidence",
+      "servable": false,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "fastapiMount": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "dockerCopy": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "nginxRoot": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        }
+      },
+      "reason": "Stale git-ignored local Next static export page. Working-tree copy under homepage/out. Negative channels defended from source: the root .dockerignore line 8 rule \"**/out\" keeps this path out of both Docker build contexts, homepage/Dockerfile line 125 \"RUN npm run build\" regenerates the export inside the builder, and homepage/Dockerfile line 138 copies THAT generated tree — not these bytes — into /usr/share/nginx/html. api_server.py lines 27054-27056 mount homepage/out at \"/\" only when the directory exists, and no COPY places homepage/out into the trading-chart image, so the mount is not registered there. These bytes are therefore not the served artifact; the contract is asserted against the built image. A14.1: status reclassed from image-verified to match derivedServable=false.",
+      "chartShell": false
+    },
+    {
+      "path": "homepage/out/dashboard/sessions/analytics/index.html",
+      "kind": "export",
+      "status": "no-routing-evidence",
+      "servable": false,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "fastapiMount": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "dockerCopy": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "nginxRoot": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        }
+      },
+      "reason": "Stale git-ignored local Next static export page. Working-tree copy under homepage/out. Negative channels defended from source: the root .dockerignore line 8 rule \"**/out\" keeps this path out of both Docker build contexts, homepage/Dockerfile line 125 \"RUN npm run build\" regenerates the export inside the builder, and homepage/Dockerfile line 138 copies THAT generated tree — not these bytes — into /usr/share/nginx/html. api_server.py lines 27054-27056 mount homepage/out at \"/\" only when the directory exists, and no COPY places homepage/out into the trading-chart image, so the mount is not registered there. These bytes are therefore not the served artifact; the contract is asserted against the built image. A14.1: status reclassed from image-verified to match derivedServable=false.",
+      "chartShell": false
+    },
+    {
+      "path": "homepage/out/dashboard/support/index.html",
+      "kind": "export",
+      "status": "no-routing-evidence",
+      "servable": false,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "fastapiMount": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "dockerCopy": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "nginxRoot": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        }
+      },
+      "reason": "Stale git-ignored local Next static export page. Working-tree copy under homepage/out. Negative channels defended from source: the root .dockerignore line 8 rule \"**/out\" keeps this path out of both Docker build contexts, homepage/Dockerfile line 125 \"RUN npm run build\" regenerates the export inside the builder, and homepage/Dockerfile line 138 copies THAT generated tree — not these bytes — into /usr/share/nginx/html. api_server.py lines 27054-27056 mount homepage/out at \"/\" only when the directory exists, and no COPY places homepage/out into the trading-chart image, so the mount is not registered there. These bytes are therefore not the served artifact; the contract is asserted against the built image. A14.1: status reclassed from image-verified to match derivedServable=false.",
+      "chartShell": false
+    },
+    {
+      "path": "homepage/out/disclaimer/index.html",
+      "kind": "export",
+      "status": "no-routing-evidence",
+      "servable": false,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "fastapiMount": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "dockerCopy": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "nginxRoot": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        }
+      },
+      "reason": "Stale git-ignored local Next static export page. Working-tree copy under homepage/out. Negative channels defended from source: the root .dockerignore line 8 rule \"**/out\" keeps this path out of both Docker build contexts, homepage/Dockerfile line 125 \"RUN npm run build\" regenerates the export inside the builder, and homepage/Dockerfile line 138 copies THAT generated tree — not these bytes — into /usr/share/nginx/html. api_server.py lines 27054-27056 mount homepage/out at \"/\" only when the directory exists, and no COPY places homepage/out into the trading-chart image, so the mount is not registered there. These bytes are therefore not the served artifact; the contract is asserted against the built image. A14.1: status reclassed from image-verified to match derivedServable=false.",
+      "chartShell": false
+    },
+    {
+      "path": "homepage/out/forbidden/index.html",
+      "kind": "export",
+      "status": "no-routing-evidence",
+      "servable": false,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "fastapiMount": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "dockerCopy": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "nginxRoot": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        }
+      },
+      "reason": "Stale git-ignored local Next static export page. Working-tree copy under homepage/out. Negative channels defended from source: the root .dockerignore line 8 rule \"**/out\" keeps this path out of both Docker build contexts, homepage/Dockerfile line 125 \"RUN npm run build\" regenerates the export inside the builder, and homepage/Dockerfile line 138 copies THAT generated tree — not these bytes — into /usr/share/nginx/html. api_server.py lines 27054-27056 mount homepage/out at \"/\" only when the directory exists, and no COPY places homepage/out into the trading-chart image, so the mount is not registered there. These bytes are therefore not the served artifact; the contract is asserted against the built image. A14.1: status reclassed from image-verified to match derivedServable=false.",
+      "chartShell": false
+    },
+    {
+      "path": "homepage/out/index.html",
+      "kind": "export",
+      "status": "no-routing-evidence",
+      "servable": false,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "fastapiMount": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "dockerCopy": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "nginxRoot": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        }
+      },
+      "reason": "Stale git-ignored local Next static export page. Working-tree copy under homepage/out. Negative channels defended from source: the root .dockerignore line 8 rule \"**/out\" keeps this path out of both Docker build contexts, homepage/Dockerfile line 125 \"RUN npm run build\" regenerates the export inside the builder, and homepage/Dockerfile line 138 copies THAT generated tree — not these bytes — into /usr/share/nginx/html. api_server.py lines 27054-27056 mount homepage/out at \"/\" only when the directory exists, and no COPY places homepage/out into the trading-chart image, so the mount is not registered there. These bytes are therefore not the served artifact; the contract is asserted against the built image. A14.1: status reclassed from image-verified to match derivedServable=false.",
+      "chartShell": false
+    },
+    {
+      "path": "homepage/out/journal/pricing/index.html",
+      "kind": "export",
+      "status": "no-routing-evidence",
+      "servable": false,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "fastapiMount": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "dockerCopy": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "nginxRoot": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        }
+      },
+      "reason": "Stale git-ignored local Next static export page. Working-tree copy under homepage/out. Negative channels defended from source: the root .dockerignore line 8 rule \"**/out\" keeps this path out of both Docker build contexts, homepage/Dockerfile line 125 \"RUN npm run build\" regenerates the export inside the builder, and homepage/Dockerfile line 138 copies THAT generated tree — not these bytes — into /usr/share/nginx/html. api_server.py lines 27054-27056 mount homepage/out at \"/\" only when the directory exists, and no COPY places homepage/out into the trading-chart image, so the mount is not registered there. These bytes are therefore not the served artifact; the contract is asserted against the built image. A14.1: status reclassed from image-verified to match derivedServable=false.",
+      "chartShell": false
+    },
+    {
+      "path": "homepage/out/journal/subscription-status/index.html",
+      "kind": "export",
+      "status": "no-routing-evidence",
+      "servable": false,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "fastapiMount": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "dockerCopy": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "nginxRoot": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        }
+      },
+      "reason": "Stale git-ignored local Next static export page. Working-tree copy under homepage/out. Negative channels defended from source: the root .dockerignore line 8 rule \"**/out\" keeps this path out of both Docker build contexts, homepage/Dockerfile line 125 \"RUN npm run build\" regenerates the export inside the builder, and homepage/Dockerfile line 138 copies THAT generated tree — not these bytes — into /usr/share/nginx/html. api_server.py lines 27054-27056 mount homepage/out at \"/\" only when the directory exists, and no COPY places homepage/out into the trading-chart image, so the mount is not registered there. These bytes are therefore not the served artifact; the contract is asserted against the built image. A14.1: status reclassed from image-verified to match derivedServable=false.",
+      "chartShell": false
+    },
+    {
+      "path": "homepage/out/login/index.html",
+      "kind": "export",
+      "status": "no-routing-evidence",
+      "servable": false,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "fastapiMount": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "dockerCopy": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "nginxRoot": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        }
+      },
+      "reason": "Stale git-ignored local Next static export page. Working-tree copy under homepage/out. Negative channels defended from source: the root .dockerignore line 8 rule \"**/out\" keeps this path out of both Docker build contexts, homepage/Dockerfile line 125 \"RUN npm run build\" regenerates the export inside the builder, and homepage/Dockerfile line 138 copies THAT generated tree — not these bytes — into /usr/share/nginx/html. api_server.py lines 27054-27056 mount homepage/out at \"/\" only when the directory exists, and no COPY places homepage/out into the trading-chart image, so the mount is not registered there. These bytes are therefore not the served artifact; the contract is asserted against the built image. A14.1: status reclassed from image-verified to match derivedServable=false.",
+      "chartShell": false
+    },
+    {
+      "path": "homepage/out/maintenance.html",
+      "kind": "export",
+      "status": "no-routing-evidence",
+      "servable": false,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "fastapiMount": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "dockerCopy": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "nginxRoot": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        }
+      },
+      "reason": "Stale git-ignored local Next static export page. Working-tree copy under homepage/out. Negative channels defended from source: the root .dockerignore line 8 rule \"**/out\" keeps this path out of both Docker build contexts, homepage/Dockerfile line 125 \"RUN npm run build\" regenerates the export inside the builder, and homepage/Dockerfile line 138 copies THAT generated tree — not these bytes — into /usr/share/nginx/html. api_server.py lines 27054-27056 mount homepage/out at \"/\" only when the directory exists, and no COPY places homepage/out into the trading-chart image, so the mount is not registered there. These bytes are therefore not the served artifact; the contract is asserted against the built image. A14.1: status reclassed from image-verified to match derivedServable=false.",
+      "chartShell": false
+    },
+    {
+      "path": "homepage/out/ninjatrader/index.html",
+      "kind": "export",
+      "status": "no-routing-evidence",
+      "servable": false,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "fastapiMount": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "dockerCopy": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "nginxRoot": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        }
+      },
+      "reason": "Stale git-ignored local Next static export page. Working-tree copy under homepage/out. Negative channels defended from source: the root .dockerignore line 8 rule \"**/out\" keeps this path out of both Docker build contexts, homepage/Dockerfile line 125 \"RUN npm run build\" regenerates the export inside the builder, and homepage/Dockerfile line 138 copies THAT generated tree — not these bytes — into /usr/share/nginx/html. api_server.py lines 27054-27056 mount homepage/out at \"/\" only when the directory exists, and no COPY places homepage/out into the trading-chart image, so the mount is not registered there. These bytes are therefore not the served artifact; the contract is asserted against the built image. A14.1: status reclassed from image-verified to match derivedServable=false.",
+      "chartShell": false
+    },
+    {
+      "path": "homepage/out/pricing/index.html",
+      "kind": "export",
+      "status": "no-routing-evidence",
+      "servable": false,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "fastapiMount": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "dockerCopy": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "nginxRoot": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        }
+      },
+      "reason": "Stale git-ignored local Next static export page. Working-tree copy under homepage/out. Negative channels defended from source: the root .dockerignore line 8 rule \"**/out\" keeps this path out of both Docker build contexts, homepage/Dockerfile line 125 \"RUN npm run build\" regenerates the export inside the builder, and homepage/Dockerfile line 138 copies THAT generated tree — not these bytes — into /usr/share/nginx/html. api_server.py lines 27054-27056 mount homepage/out at \"/\" only when the directory exists, and no COPY places homepage/out into the trading-chart image, so the mount is not registered there. These bytes are therefore not the served artifact; the contract is asserted against the built image. A14.1: status reclassed from image-verified to match derivedServable=false.",
+      "chartShell": false
+    },
+    {
+      "path": "homepage/out/pricing/success/index.html",
+      "kind": "export",
+      "status": "no-routing-evidence",
+      "servable": false,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "fastapiMount": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "dockerCopy": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "nginxRoot": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        }
+      },
+      "reason": "Stale git-ignored local Next static export page. Working-tree copy under homepage/out. Negative channels defended from source: the root .dockerignore line 8 rule \"**/out\" keeps this path out of both Docker build contexts, homepage/Dockerfile line 125 \"RUN npm run build\" regenerates the export inside the builder, and homepage/Dockerfile line 138 copies THAT generated tree — not these bytes — into /usr/share/nginx/html. api_server.py lines 27054-27056 mount homepage/out at \"/\" only when the directory exists, and no COPY places homepage/out into the trading-chart image, so the mount is not registered there. These bytes are therefore not the served artifact; the contract is asserted against the built image. A14.1: status reclassed from image-verified to match derivedServable=false.",
+      "chartShell": false
+    },
+    {
+      "path": "homepage/out/privacy/index.html",
+      "kind": "export",
+      "status": "no-routing-evidence",
+      "servable": false,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "fastapiMount": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "dockerCopy": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "nginxRoot": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        }
+      },
+      "reason": "Stale git-ignored local Next static export page. Working-tree copy under homepage/out. Negative channels defended from source: the root .dockerignore line 8 rule \"**/out\" keeps this path out of both Docker build contexts, homepage/Dockerfile line 125 \"RUN npm run build\" regenerates the export inside the builder, and homepage/Dockerfile line 138 copies THAT generated tree — not these bytes — into /usr/share/nginx/html. api_server.py lines 27054-27056 mount homepage/out at \"/\" only when the directory exists, and no COPY places homepage/out into the trading-chart image, so the mount is not registered there. These bytes are therefore not the served artifact; the contract is asserted against the built image. A14.1: status reclassed from image-verified to match derivedServable=false.",
+      "chartShell": false
+    },
+    {
+      "path": "homepage/out/refunds/index.html",
+      "kind": "export",
+      "status": "no-routing-evidence",
+      "servable": false,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "fastapiMount": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "dockerCopy": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "nginxRoot": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        }
+      },
+      "reason": "Stale git-ignored local Next static export page. Working-tree copy under homepage/out. Negative channels defended from source: the root .dockerignore line 8 rule \"**/out\" keeps this path out of both Docker build contexts, homepage/Dockerfile line 125 \"RUN npm run build\" regenerates the export inside the builder, and homepage/Dockerfile line 138 copies THAT generated tree — not these bytes — into /usr/share/nginx/html. api_server.py lines 27054-27056 mount homepage/out at \"/\" only when the directory exists, and no COPY places homepage/out into the trading-chart image, so the mount is not registered there. These bytes are therefore not the served artifact; the contract is asserted against the built image. A14.1: status reclassed from image-verified to match derivedServable=false.",
+      "chartShell": false
+    },
+    {
+      "path": "homepage/out/register/index.html",
+      "kind": "export",
+      "status": "no-routing-evidence",
+      "servable": false,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "fastapiMount": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "dockerCopy": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "nginxRoot": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        }
+      },
+      "reason": "Stale git-ignored local Next static export page. Working-tree copy under homepage/out. Negative channels defended from source: the root .dockerignore line 8 rule \"**/out\" keeps this path out of both Docker build contexts, homepage/Dockerfile line 125 \"RUN npm run build\" regenerates the export inside the builder, and homepage/Dockerfile line 138 copies THAT generated tree — not these bytes — into /usr/share/nginx/html. api_server.py lines 27054-27056 mount homepage/out at \"/\" only when the directory exists, and no COPY places homepage/out into the trading-chart image, so the mount is not registered there. These bytes are therefore not the served artifact; the contract is asserted against the built image. A14.1: status reclassed from image-verified to match derivedServable=false.",
+      "chartShell": false
+    },
+    {
+      "path": "homepage/out/talaria-v16-design/index.html",
+      "kind": "export",
+      "status": "no-routing-evidence",
+      "servable": false,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "fastapiMount": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "dockerCopy": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "nginxRoot": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        }
+      },
+      "reason": "Stale git-ignored local Next static export page. Working-tree copy under homepage/out. Negative channels defended from source: the root .dockerignore line 8 rule \"**/out\" keeps this path out of both Docker build contexts, homepage/Dockerfile line 125 \"RUN npm run build\" regenerates the export inside the builder, and homepage/Dockerfile line 138 copies THAT generated tree — not these bytes — into /usr/share/nginx/html. api_server.py lines 27054-27056 mount homepage/out at \"/\" only when the directory exists, and no COPY places homepage/out into the trading-chart image, so the mount is not registered there. These bytes are therefore not the served artifact; the contract is asserted against the built image. A14.1: status reclassed from image-verified to match derivedServable=false.",
+      "chartShell": false
+    },
+    {
+      "path": "homepage/out/talaria-v8b-design/index.html",
+      "kind": "export",
+      "status": "no-routing-evidence",
+      "servable": false,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "fastapiMount": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "dockerCopy": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "nginxRoot": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        }
+      },
+      "reason": "Stale git-ignored local Next static export page. Working-tree copy under homepage/out. Negative channels defended from source: the root .dockerignore line 8 rule \"**/out\" keeps this path out of both Docker build contexts, homepage/Dockerfile line 125 \"RUN npm run build\" regenerates the export inside the builder, and homepage/Dockerfile line 138 copies THAT generated tree — not these bytes — into /usr/share/nginx/html. api_server.py lines 27054-27056 mount homepage/out at \"/\" only when the directory exists, and no COPY places homepage/out into the trading-chart image, so the mount is not registered there. These bytes are therefore not the served artifact; the contract is asserted against the built image. A14.1: status reclassed from image-verified to match derivedServable=false.",
+      "chartShell": false
+    },
+    {
+      "path": "homepage/out/terms/index.html",
+      "kind": "export",
+      "status": "no-routing-evidence",
+      "servable": false,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "fastapiMount": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "dockerCopy": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "nginxRoot": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        }
+      },
+      "reason": "Stale git-ignored local Next static export page. Working-tree copy under homepage/out. Negative channels defended from source: the root .dockerignore line 8 rule \"**/out\" keeps this path out of both Docker build contexts, homepage/Dockerfile line 125 \"RUN npm run build\" regenerates the export inside the builder, and homepage/Dockerfile line 138 copies THAT generated tree — not these bytes — into /usr/share/nginx/html. api_server.py lines 27054-27056 mount homepage/out at \"/\" only when the directory exists, and no COPY places homepage/out into the trading-chart image, so the mount is not registered there. These bytes are therefore not the served artifact; the contract is asserted against the built image. A14.1: status reclassed from image-verified to match derivedServable=false.",
+      "chartShell": false
+    },
+    {
+      "path": "homepage/public/chart/dist-v9/index.html",
+      "kind": "chart-shell",
+      "status": "owned-stamped",
+      "servable": true,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "fastapiMount": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "dockerCopy": {
+          "present": true,
+          "file": "homepage/Dockerfile",
+          "line": 81,
+          "quote": "COPY --from=chart_assets /build/chart/dist-v9 ./public/chart/dist-v9"
+        },
+        "nginxRoot": {
+          "present": true,
+          "file": "homepage/Dockerfile",
+          "line": 138,
+          "quote": "COPY --from=builder /app/homepage/out /usr/share/nginx/html"
+        }
+      },
+      "reason": "Homepage web-root mirror of the V9 host build, served directly by nginx (homepage/nginx.local.conf:62 root, :145-146 try_files) and overwritten in the image from the chart_assets stage. Byte-equal to chart v 1.4/chart/dist-v9/index.html at 90458 bytes, stamped 20260727b80.",
+      "chartShell": true
+    },
+    {
+      "path": "homepage/public/chart/legacy-index.html",
+      "kind": "chart-shell",
+      "status": "removal-pending",
+      "servable": true,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "fastapiMount": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "dockerCopy": {
+          "present": true,
+          "file": "homepage/Dockerfile",
+          "line": 88,
+          "quote": "COPY --from=chart_assets /build/chart/legacy-index.html ./public/chart/legacy-index.html"
+        },
+        "nginxRoot": {
+          "present": true,
+          "file": "homepage/Dockerfile",
+          "line": 138,
+          "quote": "COPY --from=builder /app/homepage/out /usr/share/nginx/html"
+        }
+      },
+      "reason": "RULING 2: removal-pending, RED and loud. Homepage web-root copy of the legacy host shell, byte-equal to the chart-root source at 1416019 bytes and stamped 20260727b80. Two routing channels: it is rewritten in place by homepage/Dockerfile:88 and its own location inside homepage/public reaches /usr/share/nginx/html via homepage/Dockerfile:75, :125 and :138. A14.2: no retain on served duplicate — §A10 harvest source is chart v 1.4/chart/legacy-index.html only.",
+      "retainFile": false,
+      "retainPath": null,
+      "retainReason": null,
+      "chartShell": true
+    },
+    {
+      "path": "homepage/public/chart/modules/m20-a-favorites-harness/m20-a-favorites-harness.html",
+      "kind": "harness",
+      "status": "denied-route-pending",
+      "servable": true,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "fastapiMount": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "dockerCopy": {
+          "present": true,
+          "file": "homepage/Dockerfile",
+          "line": 82,
+          "quote": "COPY --from=chart_assets /build/chart/modules ./public/chart/modules"
+        },
+        "nginxRoot": {
+          "present": true,
+          "file": "homepage/Dockerfile",
+          "line": 138,
+          "quote": "COPY --from=builder /app/homepage/out /usr/share/nginx/html"
+        }
+      },
+      "reason": "Homepage web-root copy of the favorites harness. Regenerated in the image from chart/modules by homepage/Dockerfile:82, so disposition must be applied at the chart source or removing this copy is a no-op.",
+      "chartShell": true
+    },
+    {
+      "path": "homepage/public/chart/modules/m21-2-browser-harness/m21-2-browser-harness.html",
+      "kind": "harness",
+      "status": "denied-route-pending",
+      "servable": true,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "fastapiMount": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "dockerCopy": {
+          "present": true,
+          "file": "homepage/Dockerfile",
+          "line": 82,
+          "quote": "COPY --from=chart_assets /build/chart/modules ./public/chart/modules"
+        },
+        "nginxRoot": {
+          "present": true,
+          "file": "homepage/Dockerfile",
+          "line": 138,
+          "quote": "COPY --from=builder /app/homepage/out /usr/share/nginx/html"
+        }
+      },
+      "reason": "Homepage web-root copy of the M21-2 browser harness. Regenerated in the image from chart/modules by homepage/Dockerfile:82.",
+      "chartShell": true
+    },
+    {
+      "path": "homepage/public/chart/modules/m21-w6-fixtures/browser-preflight/preflight-host.html",
+      "kind": "fixture",
+      "status": "removal-pending",
+      "servable": true,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "fastapiMount": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "dockerCopy": {
+          "present": true,
+          "file": "homepage/Dockerfile",
+          "line": 82,
+          "quote": "COPY --from=chart_assets /build/chart/modules ./public/chart/modules"
+        },
+        "nginxRoot": {
+          "present": true,
+          "file": "homepage/Dockerfile",
+          "line": 138,
+          "quote": "COPY --from=builder /app/homepage/out /usr/share/nginx/html"
+        }
+      },
+      "reason": "Director-flagged test fixture, live on the public web root. Regenerated in the image from chart/modules by homepage/Dockerfile:82, so removing only this mirror is a no-op — it must be disposed of together with chart v 1.4/chart/modules/m21-w6-fixtures/browser-preflight/preflight-host.html. Held deliberately RED until both are gone.",
+      "chartShell": false
+    },
+    {
+      "path": "homepage/public/chart/modules/m21-w6-fixtures/browser-preflight/preflight-iframe.html",
+      "kind": "fixture",
+      "status": "removal-pending",
+      "servable": true,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "fastapiMount": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "dockerCopy": {
+          "present": true,
+          "file": "homepage/Dockerfile",
+          "line": 82,
+          "quote": "COPY --from=chart_assets /build/chart/modules ./public/chart/modules"
+        },
+        "nginxRoot": {
+          "present": true,
+          "file": "homepage/Dockerfile",
+          "line": 138,
+          "quote": "COPY --from=builder /app/homepage/out /usr/share/nginx/html"
+        }
+      },
+      "reason": "Iframe partner of preflight-host.html, live on the same copy path and regenerated from chart/modules by homepage/Dockerfile:82. Disposed of by the same removal.",
+      "chartShell": false
+    },
+    {
+      "path": "homepage/public/chart/modules/m21-w6-fixtures/lwc-proto-snapshot/lwc-proto-dryrun-client.html",
+      "kind": "fixture",
+      "status": "denied-route-pending",
+      "servable": true,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "fastapiMount": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "dockerCopy": {
+          "present": true,
+          "file": "homepage/Dockerfile",
+          "line": 82,
+          "quote": "COPY --from=chart_assets /build/chart/modules ./public/chart/modules"
+        },
+        "nginxRoot": {
+          "present": true,
+          "file": "homepage/Dockerfile",
+          "line": 138,
+          "quote": "COPY --from=builder /app/homepage/out /usr/share/nginx/html"
+        }
+      },
+      "reason": "Homepage web-root copy of the archived W6 prototype dry-run client, regenerated from chart/modules by homepage/Dockerfile:82. No removal ruling issued; disposition is route denial at the source.",
+      "chartShell": false
+    },
+    {
+      "path": "homepage/public/chart/modules/m21-w6-fixtures/lwc-proto-snapshot/lwc-proto.html",
+      "kind": "fixture",
+      "status": "denied-route-pending",
+      "servable": true,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "fastapiMount": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "dockerCopy": {
+          "present": true,
+          "file": "homepage/Dockerfile",
+          "line": 82,
+          "quote": "COPY --from=chart_assets /build/chart/modules ./public/chart/modules"
+        },
+        "nginxRoot": {
+          "present": true,
+          "file": "homepage/Dockerfile",
+          "line": 138,
+          "quote": "COPY --from=builder /app/homepage/out /usr/share/nginx/html"
+        }
+      },
+      "reason": "Homepage web-root copy of the archived W6 prototype snapshot, byte-equal to the chart source and regenerated from chart/modules by homepage/Dockerfile:82. Disposition is route denial at the source.",
+      "chartShell": false
+    },
+    {
+      "path": "homepage/public/chart/multichart-prod/chart-embed.html",
+      "kind": "chart-shell",
+      "status": "owned-stamped",
+      "servable": true,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "fastapiMount": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "dockerCopy": {
+          "present": true,
+          "file": "homepage/Dockerfile",
+          "line": 84,
+          "quote": "COPY --from=chart_assets /build/chart/multichart-prod ./public/chart/multichart-prod"
+        },
+        "nginxRoot": {
+          "present": true,
+          "file": "homepage/Dockerfile",
+          "line": 138,
+          "quote": "COPY --from=builder /app/homepage/out /usr/share/nginx/html"
+        }
+      },
+      "reason": "Homepage web-root mirror of the production panel shell, served by nginx and overwritten in the image from the chart_assets stage. Byte-equal to the chart source at 21599 bytes, stamped 20260727b80.",
+      "chartShell": true
+    },
+    {
+      "path": "homepage/public/chart/multichart-prod/harness/frozen/m21-vy-ab-baseline-v2.2/runtime/chart/multichart-prod/chart-embed.html",
+      "kind": "evidence",
+      "status": "denied-route-pending",
+      "servable": true,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "fastapiMount": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "dockerCopy": {
+          "present": true,
+          "file": "homepage/Dockerfile",
+          "line": 84,
+          "quote": "COPY --from=chart_assets /build/chart/multichart-prod ./public/chart/multichart-prod"
+        },
+        "nginxRoot": {
+          "present": true,
+          "file": "homepage/Dockerfile",
+          "line": 138,
+          "quote": "COPY --from=builder /app/homepage/out /usr/share/nginx/html"
+        }
+      },
+      "reason": "Homepage web-root copy of the immutable frozen 20260724b61 baseline, published only because the whole multichart-prod directory is copied. Must not be re-stamped or re-wired; disposition is route denial and copy exclusion at the chart source.",
+      "chartShell": true
+    },
+    {
+      "path": "homepage/public/chart/multichart-prod/m20-q5-q7-browser-harness/m20-q5-q7-browser-harness.html",
+      "kind": "harness",
+      "status": "denied-route-pending",
+      "servable": true,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "fastapiMount": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "dockerCopy": {
+          "present": true,
+          "file": "homepage/Dockerfile",
+          "line": 84,
+          "quote": "COPY --from=chart_assets /build/chart/multichart-prod ./public/chart/multichart-prod"
+        },
+        "nginxRoot": {
+          "present": true,
+          "file": "homepage/Dockerfile",
+          "line": 138,
+          "quote": "COPY --from=builder /app/homepage/out /usr/share/nginx/html"
+        }
+      },
+      "reason": "Homepage web-root copy of the Q5/Q7 harness pair, published because the whole multichart-prod directory is copied and regenerated in the image from chart/multichart-prod by homepage/Dockerfile:84. Not a product route.",
+      "chartShell": true
+    },
+    {
+      "path": "homepage/public/chart/multichart-prod/m20-q5-q7-browser-harness/m20-q5-q7-panel-frame.html",
+      "kind": "harness",
+      "status": "denied-route-pending",
+      "servable": true,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "fastapiMount": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "dockerCopy": {
+          "present": true,
+          "file": "homepage/Dockerfile",
+          "line": 84,
+          "quote": "COPY --from=chart_assets /build/chart/multichart-prod ./public/chart/multichart-prod"
+        },
+        "nginxRoot": {
+          "present": true,
+          "file": "homepage/Dockerfile",
+          "line": 138,
+          "quote": "COPY --from=builder /app/homepage/out /usr/share/nginx/html"
+        }
+      },
+      "reason": "Homepage web-root copy of the Q5/Q7 harness pair, published because the whole multichart-prod directory is copied and regenerated in the image from chart/multichart-prod by homepage/Dockerfile:84. Not a product route.",
+      "chartShell": true
+    },
+    {
+      "path": "homepage/public/chart/multichart/chart-host.html",
+      "kind": "chart-shell",
+      "status": "denied-route-pending",
+      "servable": true,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "fastapiMount": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "dockerCopy": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "nginxRoot": {
+          "present": true,
+          "file": "homepage/Dockerfile",
+          "line": 138,
+          "quote": "COPY --from=builder /app/homepage/out /usr/share/nginx/html"
+        }
+      },
+      "reason": "Committed mirror of the multichart sandbox host, served by nginx from the Next export. One channel only: no COPY --from=chart_assets instruction at homepage/Dockerfile:81-89 names chart/multichart, so this file is NOT regenerated and has drifted — 51939 bytes here against 53244 in the chart source. Unowned and unstamped; disposition is route denial.",
+      "chartShell": true
+    },
+    {
+      "path": "homepage/public/chart/multichart/multichart-shell.html",
+      "kind": "chart-shell",
+      "status": "denied-route-pending",
+      "servable": true,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "fastapiMount": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "dockerCopy": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "nginxRoot": {
+          "present": true,
+          "file": "homepage/Dockerfile",
+          "line": 138,
+          "quote": "COPY --from=builder /app/homepage/out /usr/share/nginx/html"
+        }
+      },
+      "reason": "Committed mirror of the multichart sandbox shell, served by nginx from the Next export. Byte-equal to the chart source at 40850 bytes but not regenerated by any build (no chart_assets COPY covers chart/multichart). Unowned and unstamped; disposition is route denial.",
+      "chartShell": true
+    },
+    {
+      "path": "homepage/public/maintenance.html",
+      "kind": "non-chart-app",
+      "status": "owned-stamped",
+      "servable": true,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "fastapiMount": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "dockerCopy": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "nginxRoot": {
+          "present": true,
+          "file": "homepage/Dockerfile",
+          "line": 138,
+          "quote": "COPY --from=builder /app/homepage/out /usr/share/nginx/html"
+        }
+      },
+      "reason": "nginx 502/503/504 error page, wired at homepage/nginx.local.conf:75-79 and served from the web root. Not a chart shell; carries no stamp.",
+      "chartShell": false
+    },
+    {
+      "path": "homepage/public/talaria-v16-design/index.html",
+      "kind": "non-chart-app",
+      "status": "owned-stamped",
+      "servable": true,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "fastapiMount": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "dockerCopy": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "nginxRoot": {
+          "present": true,
+          "file": "homepage/Dockerfile",
+          "line": 138,
+          "quote": "COPY --from=builder /app/homepage/out /usr/share/nginx/html"
+        }
+      },
+      "reason": "Built V16 dashboard design app in the homepage web root, served by nginx. Loads only its own hashed Vite bundle and no chart engine; separate lineage from the chart shells.",
+      "chartShell": false
+    },
+    {
+      "path": "homepage/public/talaria-v8b-design/index.html",
+      "kind": "non-chart-app",
+      "status": "owned-stamped",
+      "servable": true,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "fastapiMount": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "dockerCopy": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "nginxRoot": {
+          "present": true,
+          "file": "homepage/Dockerfile",
+          "line": 138,
+          "quote": "COPY --from=builder /app/homepage/out /usr/share/nginx/html"
+        }
+      },
+      "reason": "Built V8b design app in the homepage web root, served by nginx. Loads only its own hashed Vite bundle and no chart engine; separate lineage from the chart shells.",
+      "chartShell": false
+    }
+  ]
+}
