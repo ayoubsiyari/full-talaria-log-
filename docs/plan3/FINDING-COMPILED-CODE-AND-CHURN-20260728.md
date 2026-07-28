@@ -56,11 +56,25 @@ Across the three snapshots:
 
 **Labelled as hypothesis per BRIEF-02.** The rate is measured; the causal link to felt lag is not. **It is directly testable: a Performance recording with multichart open will show GC in the flame chart if this is right.**
 
-## 5. What Test 5 did NOT deliver, and it was the point of the test
+## 5. PO lag impression — CONCURRENT, roughly 50% worse. NOT residue.
 
-**Test 5 was specified to return two subjective lag impressions — replay smoothness before multichart cycles and after — to decide whether the memory monster and the lag monster are one monster or two.** The PO returned heap snapshots instead. **That question is still open.**
+**PO reports replay feels about 50% slower and laggier, and on clarification the comparison was replay *while a 4-panel multichart is open* against replay on a single chart.** Confirmed explicitly rather than inferred — the initial wording was ambiguous between concurrent and residual, and the two readings imply opposite fixes.
 
-**The impressions are still needed and they are cheap.** They remain the only thing that closes the one-monster-or-two question, and §4 raises the stakes: **if churn is the lag mechanism, then the teardown fix may reduce memory without fixing the lag at all**, because churn during operation is a separate defect from retention after teardown.
+**So the 50% is a concurrent-load penalty, and §4's churn is its leading candidate:** four panels each allocating per tick, 15.9 MB/s aggregate, GC pressure on one shared main thread. **It belongs to the "multichart performance ceiling" already disclosed in M7, and it is now quantified at roughly 50% rather than described qualitatively.**
+
+### The consequence A and the PO both need stated plainly
+
+**A's teardown fix will NOT improve this 50%.** The teardown releases memory *after* panels close; the 50% is measured *while they are open*. **The fix is correct, the leak is unbounded and worth fixing, and the PO will feel no difference in the number they just reported.**
+
+**Saying so now, before the fix lands, so it is a prediction rather than an excuse.** This is precisely the failure mode flagged at §4 — a memory fix experienced as no improvement.
+
+### Still open: the one-monster-or-two question
+
+**Test 5's specified comparison — single-chart replay *before* any multichart against single-chart replay *after* five cycles, same tab — was not run.** The PO measured concurrent load instead.
+
+**That question therefore remains open, and it is the one that decides whether the orphaned engines cause felt lag or only consume memory.** Prior evidence exists in `FINDING-LAG-IS-RESIDUE-20260728.md`, where a PO test found lag to be session-history dependent, **but that predates the orphan finding and was not measured against engine count.**
+
+**Do not treat the residue question as answered by this test in either direction.**
 
 ## 6. Dispatch
 
