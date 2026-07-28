@@ -2098,3 +2098,54 @@ The mcdiag regeneration is the result I wanted: **zero counter-field differences
 Worth recording that the author surfaced the CWD hazard from the inside: the harness writes `--json` relative to the working directory, so an unpinned CWD writes into whichever tree you happen to be standing in. They hit it, moved the file, and reported it. That hazard was in the brief because the pre-dispatch review put it there.
 
 **Baselines held.** Main checkout 161 porcelain / 505 untracked at start and end; A's worktree still carries its five untracked deroute originals; all eight source files unchanged by SHA-256. The contract was to copy out and leave both trees alone, and it did.
+
+---
+
+## 2026-07-28 09:21 — DIGEST train 4 (06:20–09:20)
+
+### Deployed to TEST-1
+
+**Zero.** Two reasons, both standing. `drawing-tools-manager.js` remains ungated, so per §A16.5 no chain containing it is automated-GREEN however well its diffs were reviewed. And a collision surfaced this train between two of my own packets — one hardens `homepage/public/chart/legacy-index.html`, the other proposes deleting it — which I will not merge past until it is settled.
+
+### Merged to critical-path
+
+**Zero product or evidence packets.** Journal commits only. Four packets are alive but none has cleared review: loader-a4c `677cb7db2`, evidence-rescue `69dfab6d5`, gate-note `3455601`, and gate-evidence `3e989cf8c` which is blocked and partly withdrawn.
+
+### Tier mix, reported separately per §A13.3b
+
+**Authoring: 0% top tier.** Every authoring dispatch this train went to composer-2.5-fast or gpt-5.5-medium-fast. No §A13.2 trigger row was invoked, because none applied — the work was transcription, enumeration, regeneration and provenance tracing, all of it mechanical and all of it verifiable by a gate or a re-run.
+
+**Review: 100% top tier, five reviews.** Not downgraded once, and one of the five was a §A16.4 pre-dispatch brief review rather than a packet review.
+
+Well under the 40% ceiling, so no justification is owed. I will note the ratio is not restraint on my part — it is that this train contained no `chart.js` shared-path edit, no money-path change and no numeric-correctness work. The trains where I legitimately exceed 40% have not arrived yet today.
+
+**Precision caveat, since §A13.3b asked for numbers and I would rather bound them than invent them:** I can substantiate the model for the dispatches I issued personally in this window. For two earlier dispatches carried over from train 3 I did not record the model in the journal at dispatch time, so they are excluded from the percentage rather than assumed cheap. Fixing that is a journal-hygiene change I am making now: **model goes in the journal at dispatch, not reconstructed at digest.**
+
+### Rejection attribution, three columns per §A16.4
+
+| Column | Count | Detail |
+|---|---|---|
+| `author-defect` | **0** | No packet was rejected for the author's own error this train |
+| `brief-defect` | **2** | evidence-rescue draft 1 — four false premises, killed pre-dispatch; gate-evidence — the whole premise that C's fixture was stale |
+| `manager-finding-defect` | **1** | gate-evidence carried three of my false or misdirected findings: the `pending-be` gap, ordinal 6 framed as a modelling limit when it is a product defect, and an ordinal 7 hand-off whose remedy would not have worked |
+
+**Zero author defects against three manager defects is the finding of this train**, and it is not flattering. The cheap tier is performing exactly as §A13.2 predicted; the defect source is me. The §A16.4 escalation trigger was met earlier today and remains met.
+
+The one rejection that cost nothing is the one worth keeping: the evidence-rescue brief was killed **before a subagent saw it**, so four false premises produced no wasted authoring, no rejected packet and no wrong artifact in the tree. That is the ruling working as designed.
+
+### The failure mode, named
+
+Six times today I asserted a negative from a search I had not exhausted: the paginated selector grep, the session-calendar brief premise, the dead-code addendum against B, four premises in the evidence-rescue brief, the `pending-be` gap, and the inference that C's fixture was stale from its timestamp rather than its contents. Every one had the same shape — I looked, did not find, wrote "never" or "not there."
+
+Two rules now in force, both aimed at the mechanism rather than at trying harder:
+
+1. **No negative claim enters the record without the search that produced it and why that search was exhaustive.** "Not found by grep for X" is permitted. "Never happens" requires tracing every call path to a terminal.
+2. **`git status` is a change detector, not an enumeration.** It collapses wholly-untracked directories, which is how 505 untracked files presented to me as 161 entries. Completeness claims use `git ls-files --others --exclude-standard`.
+
+### Open rows carried forward
+
+Loader STOP-THE-LINE, possibly only partially closed pending the `dist-v9` question. Gate coverage for `drawing-tools-manager.js`, blocked in C's territory. Two new product defects of my own, ordinals 6 and 7 in `deleteDrawing`. Session-calendar weekly, blocked on server territory. The a10 evidence set, held because its inputs live only on an unmerged branch. Stale session-calendar four-state evidence needing regeneration at tip. Roughly 455 untracked A-territory files awaiting a triage decision above my tier.
+
+### Outstanding PO-REQ
+
+Zero. Two DIRECTOR-Q are open: whether the `A10-ui-control-inventory` row assignment or the path grant governs, and whether A's `multichart-prod/**` grant marked `provenance: inferred` is sufficient basis to act on a 464-file untracked population.
