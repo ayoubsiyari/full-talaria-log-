@@ -304,3 +304,30 @@ test('M23: every window.parent.addEventListener site in chart.js has a matching 
     unpaired.length ? `unpaired=${unpaired.join(',')}` : `paired=${[...new Set(addTypes)].join(',')}`);
   assert.deepEqual(unpaired, []);
 });
+
+// Pin the bfcache-safe teardown event. simulateFrameRemove() dispatches both
+// pagehide and unload for the non-persisted case, so a behavioural census alone
+// cannot distinguish them — an unload registration would still go green while
+// silently making the document bfcache-ineligible. Assert the product text.
+test('M23: panel teardown hooks pagehide, not unload (bfcache-safe)', () => {
+  const install = methodSource(SOURCE, '_installFinerPanelSelfOwnerHostCommitListener');
+  const remove = methodSource(SOURCE, '_removeFinerPanelSelfOwnerHostCommitListener');
+  const paired = `${install}\n${remove}`;
+  const pagehideAdds = (paired.match(/addEventListener\(\s*'pagehide'/g) || []).length;
+  const pagehideRemoves = (paired.match(/removeEventListener\(\s*'pagehide'/g) || []).length;
+  const unloadAdds = (paired.match(/addEventListener\(\s*'unload'/g) || []).length;
+  const unloadRemoves = (paired.match(/removeEventListener\(\s*'unload'/g) || []).length;
+  note(
+    'teardown-hooks-pagehide-not-unload',
+    pagehideAdds >= 1 && pagehideRemoves >= 1 && unloadAdds === 0 && unloadRemoves === 0,
+    `pagehide add=${pagehideAdds} rem=${pagehideRemoves} unload add=${unloadAdds} rem=${unloadRemoves}`,
+  );
+  assert.ok(pagehideAdds >= 1, 'teardown must register pagehide on the panel window');
+  assert.ok(pagehideRemoves >= 1, 'teardown must unregister pagehide');
+  assert.equal(
+    unloadAdds,
+    0,
+    "must not register unload — that makes the document bfcache-ineligible",
+  );
+  assert.equal(unloadRemoves, 0, 'must not pair-remove an unload listener');
+});
