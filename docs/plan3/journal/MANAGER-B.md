@@ -2504,3 +2504,46 @@ The mutation harness rewrote `api_server.py` through Python's `write_text`, whic
 **Not fixed, and still true:** replace semantics themselves (out of scope by ruling), and the two-resolver divergence — reported, not repaired, per the brief. After B-W17 that divergence no longer destroys data silently; it trips the guard and emits `[JOURNAL-SWEEP-REFUSED]` naming the resolver, which turns an invisible corruption into an observable event.
 
 **PO-REQ outstanding: 0.** Next: B-3, the asymmetric write-probe guard.
+
+---
+
+## B-0114 — B-4 in progress. Train documents written, kill-switches dispatched, and DEPLOY-01 has a root cause.
+
+### 1. Why we cannot name what is live — it is mechanical, not clerical
+
+I traced it rather than restating it. The build-id machinery **already exists** and is **opt-in**:
+
+- `homepage/Dockerfile:35-36` **rejects** a `CHART_BUILD_ID` unless `CHECKPOINT_BUILD=1`.
+- The stamping step `bump-chart-engine-build.mjs` (`Dockerfile:42`) runs **only** under the same condition.
+- `scripts/deploy.sh:56-69` does derive `SOURCE_COMMIT_SHA`, `CHART_BUILD_ID` and both image digests from a checkpoint manifest, and enforces the digests.
+
+So a checkpoint build is fully identifiable and an ordinary build carries **no id at all, by construction**. DEPLOY-01 is therefore not "start recording things" — it is **"ship through the checkpoint path"**, plus recording the result where a human will look. That is a much cheaper rule to comply with than it appeared this morning, and it needs no new mechanism.
+
+**Sibling defect found, deliberately NOT fixed in this train.** `window.__TALARIA_CHART_BUILD_ID` is assigned **nowhere** in the tree, so `_resolvePersistBuildId()` (`order-manager.js:26-32`) always returns `null` and every persisted row carries `build_id: null`. I16 ships a per-row build stamp that stamps nothing — a textbook §A4c *capability loss without failure*: the feature is present, every consumer degrades politely, and no error is ever raised. It is in my territory and I could fix it in minutes. **I am not putting it in a data-loss hotfix train.** Logged for after.
+
+### 2. Written: deploy note and PO check
+
+`docs/plan3/evidence/B-M4/hotfix-train-D2/` — `DEPLOY-NOTE.md` (what changed, both kill-switches, DEPLOY-01 build instructions, residual risk) and `PO-VERIFICATION.md` (B-5).
+
+**B-5's design constraint was the interesting part.** The check must be safe to run on a build that is *still defective*, because the export notice has not gone out. So the order is load-bearing: **Step 1 identifies the build from the console line `[Talaria chart engine] <id>` before any session is touched**, and stops dead if it does not match. The only steps that can destroy data on a defective build are 4 and 5, and they operate exclusively on a throwaway session created in Step 3. Step 5 — go offline, reload, watch the guard fire — is *precisely the procedure that would have wiped a real journal on the old build*, which is why it is fenced behind two gates rather than written as "reload and see". The STOP condition is reproduced verbatim at the top and scoped to the whole document, not to one step.
+
+### 3. Dispatched B-W18 — kill-switches and negative controls
+
+Names **reserved before dispatch** per §A13: `window.__TALARIA_DISABLE_B_W16_HYDRATION_GUARD_V1` and env `JOURNAL_SWEEP_PARSE_GUARD_ENABLED`, both defaulting guard-**on**.
+
+**Deletion logging gets no kill-switch, deliberately.** If a guard is ever disabled the sweep deletes again — which is exactly when the record matters most. A switch able to silence it would recreate the unanswerable question this train exists to end.
+
+Six negative controls per the standing rule that *a gate whose negative control is green is a lying gate*, including one I expect to be uncomfortable: `'false'` is a **truthy string** in JavaScript, so an operator setting the flag to `'false'` intending safety would *disable* the guard under a naive check. The packet must report which values disable each switch rather than make it come out neat. The mutant that matters is #6 — a switch that is wired but does not actually disable anything. An unverified kill-switch is worse than none, because someone reaches for it during an incident.
+
+### 4. EVID-01 seal — and it failed its own test twice before it worked
+
+`seal-evidence.mjs`: writes `MANIFEST.json` + `SHA256SUMS` **once**, refuses to overwrite, hashes in **bytes only**, and is never invoked by a test. Re-sealing requires deleting the seal by hand, which shows up in review — unlike a test that silently re-pins its own evidence, which is the failure EVID-01 names.
+
+I tested the refusal paths instead of assuming them, and found two defects in my own tool:
+
+1. **Repo root was resolved by counting `..` segments and was off by one**, so every path resolved into `docs/` and the tool died on "missing file" instead of reaching its guard. Now asks `git rev-parse --show-toplevel`.
+2. **The dirty-tree guard passed for the wrong reason.** It used `git status --porcelain` — but `docs/` is **gitignored in this tree**, so the very evidence files being sealed are invisible to it. The tool cheerfully sealed an uncommitted note. Replaced with the real property: every sealed file must be **tracked and byte-identical to HEAD**. It now refuses correctly, naming each offending file.
+
+**That second one is the EVID-01 class again, in the tool built to enforce EVID-01** — a check that passes because it is looking at the wrong thing. Third instance today of "the verification was satisfied for a reason unrelated to the property". I do not think that is coincidence; it is what happens when a check is written from the intent rather than from the failure it must catch.
+
+**Sealing is deliberately deferred** until B-W18 lands and is committed, because a seal that pins a superseded source is worse than no seal.
