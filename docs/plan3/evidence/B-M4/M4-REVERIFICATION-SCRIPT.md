@@ -38,6 +38,21 @@ Requires an explicit QA account id; refuses to run write checks without one. Exi
 
 **If Phase 1 fails, do not proceed.** Humans are the scarce resource; do not spend them confirming what a script already caught.
 
+### Phase 1 acceptance — read this before trusting a green
+
+The first build of this harness **printed nothing and exited 0 when pointed at an unreachable server**, because an empty result set trivially satisfies "no result is non-PASS". Rejected and being rebuilt. Before accepting any Phase 1 green tonight, confirm all four:
+
+1. It **printed a header and one line per check.** A silent run is a bug, never a pass.
+2. The **number of checks executed equals the number expected.** An empty or short run is a FAIL.
+3. **Transport failures are loud FAILs** — connection refused, timeout, 401/403, or an HTML login page returned instead of JSON. This is the failure that will actually happen against a candidate that is not up yet or is behind auth.
+4. Its **mutation-survival count is zero**, and the mutation set includes the unreachable-server class, not only fixture corruption.
+
+**L6 is provable on the deployed build and must not be skipped.** `GET /api/sessions/{session_id}/state` (`api_server.py:24620`) calls `resolve_session_journal(...)` with the SQL sync at `:24633` — the legacy backfill runs **on every read**. So two consecutive GETs of session state run the migration twice: snapshot the trade set, GET again, and assert the set is identical with no new rows. No special endpoint is needed. Because the backfill runs on every read, non-idempotence would compound on every page load, which makes L6 more load-bearing than it first appeared, not less.
+
+### Note on what L3 can actually mean
+
+M24 is described as a "canonical trade-ID grammar". The implementation is **not** a regex: `session_journal_store.py:155-165` selects an id by precedence — `tradeId || trade_id || client_trade_id || id` — and `:244-260` normalises manual payloads into all aliases, stored as `String(128)` (`api_server.py:1177`). Deterministic duplicate merge is keyed on `client_trade_id` (`api_server.py:12348-12354`). So L3 verifies **alias-resolution consistency and stability**, not conformance to a canonical pattern. Stated here so the gate is not read as proving something stronger than it does.
+
 ---
 
 ## Phase 2 — PO script, M23 rollback (~4 min, PO)

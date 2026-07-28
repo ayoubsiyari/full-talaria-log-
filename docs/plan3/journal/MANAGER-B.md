@@ -1274,3 +1274,30 @@ So the hypothesis is: **a rollback leaves one trade carrying anchors in two diff
 I am holding this as a **hypothesis, not a finding**. It is unconfirmed, B-C7 is instructed to refute it if it can, and I would rather it came back refuted with the real mechanism than confirmed politely.
 
 **Method error, recorded because it corrupted evidence I was reading.** I ran several searches as `rg -rn`, believing `-r` meant recursive. **`-r` is `--replace`**; ripgrep recurses by default. So `rg -rn "holdingTimeHours"` printed every match with the matched text replaced by `n`, which is why an earlier census rendered `t.holdingTimeHours` as `t.n`. Match *selection* was unaffected, but the output I was reading was rewritten, and I very nearly reasoned from it. That is the third method error today, after the single-idiom producer census and the cache-warmed import probe. The pattern in all three is the same: **I trusted the output of a tool I had configured wrong, and only caught it because the result looked strange.** Two of the three I caught; that is not a system, it is luck. B-C7's brief carries the `-r` warning so it does not inherit the mistake.
+
+---
+
+## B-0074 — REJECT (B-W8, M4 Phase 1) · caught by my own binding rule, on the gate where it matters most
+
+B-W8 delivered the ledger invariant harness with a stated mutation proof of **6 designed, 0 survived**. Under B-0069's rule I do not accept a count without attacking it myself, and the attack landed immediately.
+
+**Pointed at a dead server, the harness prints nothing and exits 0.** Both of these:
+
+```
+--base-url http://127.0.0.1:1 --account-id acct --write
+--base-url http://127.0.0.1:1 --account-id acct --session-id 1
+```
+
+produce **no output at all** and **exit 0**. The cause is one line: `results.some(r => r.status !== 'PASS')` is `false` for an empty array, so a run that executed **zero checks** reports success. Port 1 is dead; nothing was verified.
+
+This is the same vacuity class as V8, and it is on the higher-consequence gate. The realistic scenario is not a hypothetical: at 3am, pointed at a candidate that is not up yet or is sitting behind an auth redirect, this prints a clean green. M4 exists to stop a ledger that loses trades from reaching a canary — a silent pass here is worse than no gate, because it manufactures confidence.
+
+The mutation proof was honest but scoped wrong: six mutations all corrupted **fixture data**, and none simulated **the harness being unable to reach anything**. Fixture corruption is the failure mode you imagine at your desk; an unreachable host is the one that actually happens at deploy time. Sent back with the required classes named — server down, wrong session id, 401/403, HTML login page returned as 200, valid JSON of the wrong shape — plus a hard rule that an empty result set is a FAIL and every run must print a header and one line per check.
+
+**Correction to B-W8's second conclusion: L6 is provable, and its UNPROVEN verdict was wrong.** B-W8 reported no HTTP endpoint exists to rerun the legacy-alias migration. It had already found the parts without connecting them: `GET /api/sessions/{session_id}/state` (`api_server.py:24620`) calls `resolve_session_journal(...)` with `sync_fn=_sync_trading_session_journal_trades` at `:24633`, so the backfill and SQL sync run **on every read**. Two consecutive GETs run the migration twice, which is the idempotence test with no new endpoint. I verified the call site myself rather than reasoning from the report.
+
+That detail also raises L6's stakes: a migration that executes on every read means any non-idempotence **compounds on every page load**. Had I accepted UNPROVEN, M4's own pass condition — all six green — would have been unsatisfiable, and the gate would have been quietly renegotiated at hour 40, which is precisely what pre-registering it was meant to prevent.
+
+**Keeping B-W8's ledger-surface findings, which were good work and contain a real contradiction with the plan.** M24 is described as a "canonical trade-ID grammar"; the implementation has **no regex**. `session_journal_store.py:155-165` picks an id by precedence — `tradeId || trade_id || client_trade_id || id` — `:244-260` normalises manual payloads into all aliases, storage is `String(128)`, and deterministic duplicate merge keys on `client_trade_id`. Also, the ledger that matters is in `chart v 1.4/chart/api_server.py`, not `journal-backend`, where I would have looked first. So **L3 verifies alias-resolution consistency and stability, not conformance to a canonical pattern** — recorded in the M4 script so the gate is never read as proving something stronger than it does. The gap between M24's description and its implementation is the Director's to weigh; I am reporting it, not resolving it.
+
+**A16.4 attribution:** author-defect (the silent-pass exit path and the mis-scoped mutation set). Running totals this train — author-defect **3**, brief-defect **1**, manager-finding-defect **1**. Manager-caused remains **2**, below A16.4's threshold of three.
