@@ -176,3 +176,25 @@ Fixtures (session-faithful synthetic; not live `_resampleDataFull` until A calen
 | `a16-green-eth-stream.mjs` | weekday hourly bars each with ticks | LIVE |
 | `a16-futures-maintenance-stream.mjs` | NQ bars outside maintenance; EURUSD control | LIVE |
 | `a16-tz-anchors.mjs` | winter + summer 17:00 ET anchors (DST proof) | LIVE |
+
+## Queue item 7 — teardown census + lag session-history (W34, FINDING-LAG-IS-RESIDUE-20260728)
+
+| Name | Signature token | Status |
+|---|---|---|
+| TEARDOWN-CENSUS-GATE-V1 | `TALARIA_TEARDOWN_CENSUS_V1` | LIVE — `scripts/teardown-census-gate.mjs`, `scripts/lib/teardown-census-probe.mjs`, `scripts/lib/teardown-census-harness.mjs`, `scripts/fixtures/teardown-census/` |
+| LAG-SESSION-HISTORY-CONTROL-V1 | `TALARIA_LAG_SESSION_HISTORY_V1` | LIVE — `scripts/lib/lag-session-history-control.mjs` |
+| INDICATOR-LAG-ORACLE-V1 | `TALARIA_INDICATOR_LAG_ORACLE_V1` (scaffold) | LIVE — `docs/plan3/oracles/indicator-lag-oracle-v1.mjs`; refuses GREEN/RED unless sealed via session-history control |
+
+Cells:
+
+| Cell | Asserts | Status |
+|---|---|---|
+| HERMETIC-TEARDOWN-CYCLE | census baseline restored after hermetic multichart sim teardown + settle | LIVE |
+| BROWSER-TEARDOWN-CYCLE | browser fixture census after sim teardown + settle (REAL browser; else UNPROVEN) | LIVE |
+| NC-TEARDOWN-ORPHAN-INTERVAL | one uncleared interval across teardown → RED | LIVE |
+| NC-TEARDOWN-ORPHAN-LISTENER | orphan window/document listener → RED | LIVE |
+| NC-TEARDOWN-ORPHAN-RAF | uncancelled rAF loop → RED | LIVE |
+| NC-TEARDOWN-ORPHAN-CHANNEL | open MessageChannel ports across teardown → RED | LIVE |
+| REAL-SETTLE | documents 60s browser soak settle; hermetic CI uses configurable settleMs (default 50ms) | LIVE |
+
+Follow-up hang point (not in this packet’s write set): product multichart open/teardown census on `chart.js` / `multichart-manager.js`.

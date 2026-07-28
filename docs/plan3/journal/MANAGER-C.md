@@ -231,3 +231,6 @@ Exactly five ` | `-separated fields after the list marker. Absent fields are wri
 2026-07-28T11:08Z | C | HEARTBEAT | gating=m5-m6 | "Queue: inventory+bar invariants shipped. Next owned conclusion gates M5/M6 unless Director reorders."
 
 2026-07-28T11:12Z | C | DISPATCH | packet=W34 | role=author | tier=mid | model=composer-2.5-fast | writes=scripts/teardown-census*,scripts/fixtures/teardown-census/**,scripts/lib/lag-session-history-control.mjs,scripts/tests/**,docs/plan3/oracles/indicator-lag-oracle-v1.mjs,docs/plan3/GATE-NAME-RESERVATIONS.md,package.json | "A13.2 row: Harness authoring. Standing teardown census (timers/listeners/rAF/channels → baseline). Lag session-history control: fresh context or verdict VOID. Cite FINDING-LAG-IS-RESIDUE-20260728."
+
+2026-07-28T11:20Z | C | REVIEW | packet=R-W34 | role=reviewer | tier=top | model=manager-probe | result=ACCEPT | "Teardown census: hermetic GREEN; NC orphans interval/listener/rAF/channel RED; real Edge acceptance GREEN. Lag control: missing/empty prior → VOID; fresh private window seals GREEN/RED. Product MC hang documented follow-up — standing gate is hermetic sim in C territory."
+2026-07-28T11:20Z | C | PACKET-LANDED | packet=C-024-teardown-census-lag-history | "TALARIA_TEARDOWN_CENSUS_V1 + TALARIA_LAG_SESSION_HISTORY_V1 LIVE. FINDING-LAG-IS-RESIDUE decisive instrument + standing lag void rule."
