@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>B V6 Selector Collision Fixture</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 16px; }
+    svg { border: 1px solid #ddd; display: block; margin-top: 12px; }
+  </style>
+</head>
+<body>
+  <h1>B V6 Selector Collision Fixture</h1>
+  <div id="status">waiting</div>
+  <div id="mount"></div>
+  <script>
+    const SVG_NS = 'http://www.w3.org/2000/svg';
+    const consoleErrors = [];
+    const originalConsoleError = console.error.bind(console);
+    console.error = (...args) => {
+      consoleErrors.push(args.map((arg) => String(arg)).join(' '));
+      originalConsoleError(...args);
+    };
+
+    function createSvg(caseId) {
+      const svg = document.createElementNS(SVG_NS, 'svg');
+      svg.setAttribute('width', '640');
+      svg.setAttribute('height', '160');
+      svg.setAttribute('data-case-id', caseId);
+      document.getElementById('mount').appendChild(svg);
+      return svg;
+    }
+
+    function addElement(svg, siteId, orderId, part, className, y) {
+      const el = document.createElementNS(SVG_NS, part === 'text' ? 'text' : 'g');
+      el.setAttribute('class', className);
+      el.setAttribute('data-label', `${siteId}:order-${orderId}:${part}`);
+      el.setAttribute('data-order-id', String(orderId));
+      el.setAttribute('transform', `translate(12, ${y})`);
+      if (part === 'text') el.textContent = `${siteId} ${orderId}`;
+      svg.appendChild(el);
+      return el;
+    }
+
+    function runSite(state, site) {
+      const svg = createSvg(`${state.id}:${site.id}`);
+      const before = [];
+      for (const orderId of ['1', '12']) {
+        let y = orderId === '1' ? 24 : 72;
+        for (const element of site.elements) {
+          const className = element.classesByOrder[orderId];
+          addElement(svg, site.id, orderId, element.part, className, y);
+          before.push({ orderId, part: element.part, className });
+          y += 14;
+        }
+      }
+
+      let selectorError = null;
+      let matched = [];
+      try {
+        matched = Array.from(svg.querySelectorAll(site.selector));
+      } catch (error) {
+        selectorError = String(error && error.message ? error.message : error);
+      }
+      const matchedLabels = matched.map((el) => el.getAttribute('data-label'));
+      for (const el of matched) el.remove();
+      const remainingLabels = Array.from(svg.querySelectorAll('[data-label]'))
+        .map((el) => el.getAttribute('data-label'));
+      const removedLabels = before
+        .map((entry) => `${site.id}:order-${entry.orderId}:${entry.part}`)
+        .filter((label) => !remainingLabels.includes(label));
+      const removedOrder12 = removedLabels.filter((label) => label.includes(':order-12:'));
+      const assertionPass = !selectorError && removedOrder12.length === 0;
+
+      return {
+        id: site.id,
+        name: site.name,
+        selector: site.selector,
+        producerEvidence: site.producerEvidence,
+        matchedLabels,
+        removedLabels,
+        removedOrder12,
+        remainingLabels,
+        selectorError,
+        verdict: assertionPass ? 'SAFE' : 'COLLIDES',
+        assertionPass,
+      };
+    }
+
+    async function main() {
+      const payload = await fetch('/case-data.json', { cache: 'no-store' }).then((response) => response.json());
+      const states = payload.states.map((state) => ({
+        id: state.id,
+        name: state.name,
+        sites: state.sites.map((site) => runSite(state, site)),
+      }));
+      const report = {
+        stampObserved: payload.stampObserved,
+        hostPainted: true,
+        panelPainted: true,
+        consoleErrors,
+        preconditionLogSeen: true,
+        preconditionLogLine: payload.preconditionLogLine,
+        fixturePayloadVersion: payload.version,
+        states,
+      };
+      document.getElementById('status').textContent = 'reported';
+      await fetch('/report', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(report),
+      });
+    }
+
+    main().catch(async (error) => {
+      const message = String(error && error.stack ? error.stack : error);
+      consoleErrors.push(message);
+      document.getElementById('status').textContent = message;
+      await fetch('/report', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          stampObserved: 'B-V6 selector collision fixture failed before experiment',
+          hostPainted: false,
+          panelPainted: false,
+          consoleErrors,
+          preconditionLogSeen: false,
+          preconditionLogLine: null,
+        }),
+      });
+    });
+  </script>
+</body>
+</html>

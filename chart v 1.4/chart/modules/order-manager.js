@@ -39145,7 +39145,7 @@ class OrderManager {
             c.svg.selectAll(`.pending-order-close-btn.pending-${orderId}`).remove();
             c.svg.selectAll(`.pending-tp-delete.pending-tp-${orderId}`).remove();
             c.svg.selectAll(`.pending-tp-tp-plus-badge.pending-tp-${orderId}`).remove();
-            c.svg.selectAll(`[class*="pending-tp-pct"][class*="pending-tp-${orderId}"]`).remove();
+            c.svg.selectAll(`.pending-tp-pct-control.pending-tp-${orderId}`).remove();
         });
     }
     
@@ -41704,12 +41704,12 @@ class OrderManager {
             svg.selectAll(`.pending-sl-${oid}`).remove();
             svg.selectAll(`.pending-be-${oid}`).remove();
             svg.selectAll(`.pending-${oid}`).remove();
-            svg.selectAll(`[class*="open-tp-pct"][class*="tp-${oid}"]`).remove();
-            svg.selectAll(`[class*="pending-tp-pct"][class*="pending-tp-${oid}"]`).remove();
-            svg.selectAll(`[class*="pending-tp-delete"][class*="pending-tp-${oid}"]`).remove();
+            svg.selectAll(`.open-tp-pct-control.tp-${oid}`).remove();
+            svg.selectAll(`.pending-tp-pct-control.pending-tp-${oid}`).remove();
+            svg.selectAll(`.pending-tp-delete.pending-tp-${oid}`).remove();
             svg.selectAll(`.order-${oid}`).remove();
             svg.selectAll(`.exec-order-connector[data-order-id="${oid}"]`).remove();
-            svg.selectAll(`[class*="multi-tp-avg-"][class*="-${oid}"]`).remove();
+            svg.selectAll(`.multi-tp-avg-${oid}`).remove();
         };
         const charts = typeof this._collectLayoutCharts === 'function'
             ? this._collectLayoutCharts()
