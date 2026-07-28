@@ -38,7 +38,13 @@ const PINNED_URLS = [
 ];
 
 function parseArgs(argv) {
-  const out = { timeoutMs: 10000, current: null, out: null, json: false };
+  const out = {
+    timeoutMs: 10000,
+    current: null,
+    out: null,
+    json: false,
+    emitShellInventory: null,
+  };
   for (const a of argv) {
     const m = /^--([a-z-]+)(?:=(.*))?$/.exec(a);
     if (!m) throw new Error(`bad arg: ${a}`);
@@ -48,13 +54,77 @@ function parseArgs(argv) {
     else if (k === 'out') out.out = v;
     else if (k === 'timeout-ms') out.timeoutMs = Number(v);
     else if (k === 'json') out.json = true;
+    else if (k === 'emit-shell-inventory') out.emitShellInventory = v || 'scripts/servable-shells-from-census.json';
     else if (k === 'help') {
-      console.log('stamp-census.mjs --base-url=URL [--current=ID] [--out=DIR]');
+      console.log(
+        'stamp-census.mjs --base-url=URL [--current=ID] [--out=DIR] [--emit-shell-inventory=PATH]',
+      );
       process.exit(0);
     } else throw new Error(`unknown: --${k}`);
   }
   if (!out.baseUrl) throw new Error('--base-url required');
   return out;
+}
+
+/** HTML/JS shells the server actually answered 200 for — SoT for other gates. */
+export function buildShellInventoryFromCensus(report, opts = {}) {
+  const repoRoot = opts.repoRoot || REPO;
+  const shells = [];
+  for (const row of report.rows || []) {
+    if (row.status !== 200) continue;
+    if (row.class === 'REDIRECT' || row.class === 'NOT_FOUND' || row.class === 'AUTH_GATED') continue;
+    const route = row.route;
+    const isHtml = /\.html?$|\/$/.test(route) || /text\/html/i.test(row.contentType || '');
+    const isEngine = /\/chart\.js$/i.test(route);
+    const isSw = /\/sw\.js$/i.test(route);
+    if (!isHtml && !isEngine && !isSw) continue;
+    const relCandidates = [
+      `homepage/public${route.replace(/\/$/, '/index.html')}`,
+      `homepage/public${route}`,
+      `chart v 1.4/chart${route.replace(/^\/chart/, '')}`,
+    ];
+    let relativePath = null;
+    for (const rel of relCandidates) {
+      const abs = path.join(repoRoot, rel);
+      if (fs.existsSync(abs)) {
+        relativePath = rel.replace(/\\/g, '/');
+        break;
+      }
+    }
+    shells.push({
+      id: route.replace(/^\/chart\//, '').replace(/[^\w.-]+/g, '-').replace(/-+$/g, '') || 'chart-root',
+      route,
+      relativePath,
+      role: /multichart\/chart-host/.test(route)
+        ? 'multichart-panel-host'
+        : /multichart\/multichart-shell/.test(route)
+          ? 'multichart-shell'
+          : /dist-v9/.test(route)
+            ? 'dist'
+            : /chart-embed/.test(route)
+              ? 'embed'
+              : /chart\.js$/.test(route)
+                ? 'engine'
+                : /sw\.js$/.test(route)
+                  ? 'service-worker'
+                  : 'servable',
+      class: row.class,
+      allIds: row.allIds || [],
+      hole: Boolean(row.hole),
+      neverBlock: /\/chart\/multichart\//.test(route),
+      gateRequired: true,
+    });
+  }
+  return {
+    schema: 'TALARIA_SERVABLE_SHELLS_FROM_CENSUS_V1',
+    source: 'stamp-census',
+    standingRule:
+      'This list — not per-gate hardcodes — is the shell inventory for module-presence, reachability, and cache-stamp coherence. Derived from what the server served.',
+    observedAt: report.startedAtUtc,
+    baseUrl: report.baseUrl,
+    shellCount: shells.length,
+    shells,
+  };
 }
 
 function pathToUrl(filePath) {
@@ -299,8 +369,18 @@ async function main() {
     fs.writeFileSync(file, `${JSON.stringify(report, null, 2)}\n`, { flag: 'wx' });
     report.evidenceFile = file;
   }
+  if (opts.emitShellInventory) {
+    const inv = buildShellInventoryFromCensus(report, { repoRoot: REPO });
+    const abs = path.isAbsolute(opts.emitShellInventory)
+      ? opts.emitShellInventory
+      : path.join(REPO, opts.emitShellInventory);
+    fs.mkdirSync(path.dirname(abs), { recursive: true });
+    fs.writeFileSync(abs, `${JSON.stringify(inv, null, 2)}\n`);
+    report.shellInventoryFile = abs;
+  }
   console.log(opts.json ? JSON.stringify(report, null, 2) : render(report));
   if (report.evidenceFile) console.log(`evidence: ${report.evidenceFile}\n`);
+  if (report.shellInventoryFile) console.log(`shell-inventory: ${report.shellInventoryFile}\n`);
   process.exitCode = report.holeCount > 0 ? 2 : 0;
 }
 

@@ -3043,3 +3043,26 @@ Rule accepted: redirect by default; 404 only where proven unused.
 **Escalation:** `ESCALATE-MULTICHART-A10-20260728-2105.md` — a10 on the live
 panel loader is the critical stamp finding; needs product bring-current / cutover,
 not an edge block.
+
+---
+
+## B-0141 — Finding accepted. Defect one LIVE. Census becomes gate shell inventory.
+
+Director `FINDING-MULTICHART-HOST-SHELL-STALE-20260728-2110.md`. Hold stands —
+never block `/chart/multichart/`.
+
+**Defect-one test:** `panel-engine-cold-warm.mjs` on test host.
+- Cold Edge panel → engine **`20260726b75`**
+- Warm Edge panel (unstamped URL, stale-seeded cache) → **`20260524a10-SEED`**
+- **`diverge: true`**. Evidence
+  `DEFECT-ONE-COLD-WARM-ENGINE-20260728-2112.md` + observation JSON.
+Also confirmed on live host HTML: no indicator-performance, no
+module-presence-runtime, bridges at a10.
+
+**Standing change:** census is the shell inventory for every gate.
+`stamp-census.mjs --emit-shell-inventory` →
+`scripts/servable-shells-from-census.json`
+(`TALARIA_SERVABLE_SHELLS_FROM_CENSUS_V1`). Doc
+`CENSUS-AS-SHELL-INVENTORY.md`. C must consume it in cache-stamp /
+module-presence / reachability; hardcoded lists are how this shell was
+missed (inventory even had it as `denied-route-pending`). A owns shell repair.
