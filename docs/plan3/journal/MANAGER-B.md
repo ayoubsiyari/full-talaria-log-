@@ -2845,3 +2845,11 @@ Plan updated: §0(b) struck and replaced, §5.3 acceptance corrected so a gated 
 **What this means for the release.** The train must not be described as closing the trade-loss incident until one of: (1) authority to extend B-W16 onto journal-bearing hot writes (withdraws cell 6 for that case), (2) authority to refuse the sweep when `incoming_ids` is empty and `rows_before > 0`, or (3) explicit residual-risk acceptance in writing. I am not widening against the brief and I am not touching replace semantics under I-7.1 without a fresh ruling. Assembly of other items can continue; the release note cannot say the loss path is closed.
 
 This is SAFE-01 on the loss, not on the writer: a correct predicate on one of two doors into the same room.
+
+---
+
+## B-0127 — SAFE-01 reorder inside B-W17 shipped under standing authority. Parse-guard now refuses before any ORM write.
+
+The SAFE-01 audit's second hazard was inside the I-7.1 grant and did not need a new ruling: the parse guard ran *after* the upsert loop, so a refuse still left payload refreshes and new rows sitting in the session for the PATCH handler to commit. Reordered to classify every incoming id first; refuse returns with zero writes; upserts and the sweep run only after the guard has cleared. Kill-switch unchanged. New cell 6b: a mixed payload that used to refresh parseable rows now leaves every payload and user_trade_id byte-identical. `rows_added=0` asserted on the refusal record. 45/0 on `test_b_w17_journal_sweep_guard.py`.
+
+Also corrected the B-0126 escalation: option 2 (refuse empty `incoming_ids`) is withdrawn — B-W17 cell 3 requires empty journal to remain a legitimate clear. Viable Director choices are now (1) extend B-W16 onto hot journal writes, or (2) written residual acceptance.

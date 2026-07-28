@@ -174,7 +174,40 @@ def test_cell6_refusal_is_logged(db, capsys):
     assert "session_id=%d" % SESSION_ID in line
     assert "rows_before=3" in line
     assert "rows_after=3" in line
+    assert "rows_added=0" in line, "a refuse that already upserted is not a refuse"
     assert RESOLVER in line
+
+
+def test_cell6b_refusal_writes_nothing_even_when_some_entries_parse(db):
+    """SAFE-01: refuse runs before upserts. A mixed payload used to refresh
+    parseable rows' payload_json and then skip the sweep — a partial commit.
+    After the reorder, nothing on the session may change.
+    """
+    _seed(db, ["t1", "t2", "t3"])
+    before = {
+        r.client_trade_id: (r.payload_json, r.user_trade_id)
+        for r in db.query(api_server.TradingSessionJournalTrade)
+        .filter(api_server.TradingSessionJournalTrade.session_id == SESSION_ID)
+        .all()
+    }
+    _sync(
+        db,
+        [
+            {"tradeId": "t1", "note": "should-not-land"},
+            {"tradeId": "t2", "note": "should-not-land"},
+            {"trade_id": "t3"},
+        ],
+    )
+    after_rows = (
+        db.query(api_server.TradingSessionJournalTrade)
+        .filter(api_server.TradingSessionJournalTrade.session_id == SESSION_ID)
+        .all()
+    )
+    assert sorted(r.client_trade_id for r in after_rows) == ["t1", "t2", "t3"]
+    for r in after_rows:
+        payload, user_tid = before[r.client_trade_id]
+        assert r.payload_json == payload, "refuse mutated a parseable row's payload"
+        assert r.user_trade_id == user_tid
 
 
 # --- cell 7 -----------------------------------------------------------------

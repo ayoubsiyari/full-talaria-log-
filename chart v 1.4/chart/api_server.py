@@ -12352,9 +12352,19 @@ def _sync_trading_session_journal_trades(
     )
     by_client = {str(r.client_trade_id): r for r in existing_rows if r.client_trade_id is not None}
     next_user_tid = _next_user_trade_id(db, uid)
+    # The sweep's inline parse reads only tradeId|id; it is NOT the canonical
+    # four-key session_journal_store.journal_trade_client_id. Naming it in the record
+    # is what makes that divergence visible in production.
+    sweep_resolver = "api_server._sync_trading_session_journal_trades.inline(tradeId|id)"
+    rows_before = len(existing_rows)
+
+    # SAFE-01: classify every incoming id BEFORE any ORM write. A refuse that runs
+    # after upserts have already mutated payload_json / added rows is not a refuse —
+    # it is a partial commit that the PATCH handler will still db.commit(). Pass 1
+    # only reads; pass 2 mutates, and only if the parse guard has already cleared.
     incoming_ids: set[str] = set()
     unresolved_incoming = 0
-    rows_added = 0
+    parsed_entries: list[tuple[str, dict]] = []
     for raw in journal:
         if not isinstance(raw, dict):
             unresolved_incoming += 1
@@ -12364,6 +12374,41 @@ def _sync_trading_session_journal_trades(
             unresolved_incoming += 1
             continue
         incoming_ids.add(tid)
+        parsed_entries.append((tid, raw))
+
+    # B-W18 rollback lever. Read at CALL time, not import time: an incident must be
+    # able to flip this without a reimport or a redeploy, and the acceptance cells
+    # toggle it per-case. Fail-safe, not a feature flag: only an explicitly recognised
+    # negative value disables the guard. Unset, "", or any unrecognised/typo'd value
+    # leaves the guard ACTIVE, because a guard that silently fails off deletes trades.
+    # Recognised disable values (after strip/lower): "0", "false", "no", "off".
+    # NOTE: this deliberately does NOT gate the [JOURNAL-DELETE] record below — when
+    # the guard is off the sweep deletes again, which is exactly when the record matters.
+    parse_guard_enabled = os.getenv(
+        "JOURNAL_SWEEP_PARSE_GUARD_ENABLED", "true"
+    ).strip().lower() not in {"0", "false", "no", "off"}
+
+    if unresolved_incoming and parse_guard_enabled:
+        # Fail closed. An entry whose id did not parse cannot be matched to a stored
+        # row by construction, so we cannot say which stored rows are orphans, and
+        # there is no way to exempt only the offending row. Retain everything — and
+        # write nothing — and report: retention is recoverable, a delete (or a
+        # half-applied upsert) on this path is not.
+        try:
+            print(
+                f"[JOURNAL-SWEEP-REFUSED] session_id={session_id} rows_before={rows_before} "
+                f"rows_after={rows_before} rows_added=0 deleted_count=0 "
+                f"unresolved_incoming={unresolved_incoming} incoming_entries={len(journal)} "
+                f"resolved_ids={len(incoming_ids)} resolver={sweep_resolver} "
+                f"reason=unparsed-incoming-id",
+                flush=True,
+            )
+        except Exception:
+            pass
+        return
+
+    rows_added = 0
+    for tid, raw in parsed_entries:
         # Prefer already-assigned per-user id from payload when valid.
         payload_user_tid = None
         for key in ("user_trade_id", "userTradeId", "display_trade_id"):
@@ -12453,45 +12498,10 @@ def _sync_trading_session_journal_trades(
         rows_added += 1
         by_client[tid] = new_row
 
-    # The sweep's inline parse above reads only tradeId|id; it is NOT the canonical
-    # four-key session_journal_store.journal_trade_client_id. Naming it in the record
-    # is what makes that divergence visible in production.
-    sweep_resolver = "api_server._sync_trading_session_journal_trades.inline(tradeId|id)"
     # rows_before counts the session at entry; the upsert loop above may have added
     # rows, so the after-count must include them or the record understates the
     # surviving journal and cannot be reconciled against the table.
-    rows_before = len(existing_rows)
     rows_present = rows_before + rows_added
-
-    # B-W18 rollback lever. Read at CALL time, not import time: an incident must be
-    # able to flip this without a reimport or a redeploy, and the acceptance cells
-    # toggle it per-case. Fail-safe, not a feature flag: only an explicitly recognised
-    # negative value disables the guard. Unset, "", or any unrecognised/typo'd value
-    # leaves the guard ACTIVE, because a guard that silently fails off deletes trades.
-    # Recognised disable values (after strip/lower): "0", "false", "no", "off".
-    # NOTE: this deliberately does NOT gate the [JOURNAL-DELETE] record below — when
-    # the guard is off the sweep deletes again, which is exactly when the record matters.
-    parse_guard_enabled = os.getenv(
-        "JOURNAL_SWEEP_PARSE_GUARD_ENABLED", "true"
-    ).strip().lower() not in {"0", "false", "no", "off"}
-
-    if unresolved_incoming and parse_guard_enabled:
-        # Fail closed. An entry whose id did not parse cannot be matched to a stored
-        # row by construction, so we cannot say which stored rows are orphans, and
-        # there is no way to exempt only the offending row. Retain everything and
-        # report: retention is recoverable, a delete on this path is not.
-        try:
-            print(
-                f"[JOURNAL-SWEEP-REFUSED] session_id={session_id} rows_before={rows_before} "
-                f"rows_after={rows_present} rows_added={rows_added} deleted_count=0 "
-                f"unresolved_incoming={unresolved_incoming} incoming_entries={len(journal)} "
-                f"resolved_ids={len(incoming_ids)} resolver={sweep_resolver} "
-                f"reason=unparsed-incoming-id",
-                flush=True,
-            )
-        except Exception:
-            pass
-        return
 
     q = db.query(TradingSessionJournalTrade).filter(TradingSessionJournalTrade.session_id == session_id)
     if incoming_ids:

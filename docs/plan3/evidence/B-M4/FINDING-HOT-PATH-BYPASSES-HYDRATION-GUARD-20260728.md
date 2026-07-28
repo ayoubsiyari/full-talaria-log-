@@ -75,12 +75,15 @@ semantics under the expired-looking I-7.1 shape without a fresh ruling.
 1. **Authority to extend B-W16 onto the hot journal write** (same admit-list, same
    kill-switch), and a VER-05 note that cell 6's "hot still runs" claim is withdrawn
    for journal-bearing hot patches; or
-2. **Authority to refuse the sweep when `incoming_ids` is empty and `rows_before > 0`**
-   inside `_sync_trading_session_journal_trades` (backend empty-replacement guard),
-   with its own kill-switch on the B-W18 pattern; or
-3. **An explicit residual-risk acceptance** that D-2 ships protecting only the durable
+2. **An explicit residual-risk acceptance** that D-2 ships protecting only the durable
    writer, and the hot-path wipe remains open through canary — written down, not
    inferred.
+
+**Withdrawn as a Director option:** refusing the sweep on empty `incoming_ids`.
+B-W17 cell 3 requires an empty incoming journal to remain a legitimate clear
+(`test_cell3_legitimate_clear_still_deletes_everything`). The backend cannot tell
+"unhydrated empty" from "user cleared" without a new client signal, and inventing
+that signal is a larger change than extending the existing vouch onto the hot writer.
 
 Until one of those three, **the train must not be described as closing the trade-loss
 incident.** Assembly can continue for other items; the release note cannot say the
