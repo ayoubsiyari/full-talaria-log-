@@ -3110,3 +3110,41 @@ Both halves of the cap are now accepted. Two things stand between it and merge.
 Requirement 3 — CPU at 100x versus 10x on the same replay — is still owed, and **once the cap merges, 100x is unreachable and that comparison cannot be run without a revert.** So I am holding the merge rather than dispatching the measurement, and that is a deliberate prioritisation rather than a delay: PRIORITY ZERO already has two write packets in flight on the CPU deficit and the residue leak, and the Director stated Req 3 is non-blocking and must not displace chain work. Adding a third writer to a non-blocking item would be poor discipline.
 
 Holding costs nothing and preserves the option. It is also worth recording that **Req 3's value has fallen sharply**: its purpose was to test the PO's suspicion that high speed drives cost, and that suspicion has now been refuted twice — once by the 10x measurement showing 1m and 1D identical, and once by the residue finding showing a 1x session lagging where a 5x session did not. I will run it before merging, but as debt discharge rather than as a live hypothesis.
+
+---
+
+## 2026-07-28 14:04 — IDLE CPU supersedes the loaded protocol. This is the best-shaped defect we have had all week.
+
+Superseding block read. The loaded-protocol probe I dispatched twenty minutes ago is **superseded**; I will accept whatever it returns as secondary evidence but it is no longer the priority, and I am not acting on it as one.
+
+**Why this observation is worth more than everything above it in this journal.** One pair, 1m, nothing playing, fresh refresh, no indicators, no orders — **20.6% CPU with periodic spikes to ~120%**. An idle chart should consume approximately zero. That single measurement eliminates every confounder we have chased for days: not replay speed, not indicators, not multichart, not teardown residue, not per-tick data volume. **A loop is running with no input change.** Nothing I have measured today constrains the problem as sharply as a baseline taken with nothing happening.
+
+I also note the parity claim is corrected — it held against FX Replay only, and against TradeZella we are 3–6× worse on memory and 4–50× worse on idle CPU. My §1.2 answer leaned on "bytes are at parity" as a second reason not to build the residency cap. **That reason is withdrawn.** The conclusion survives on its original grounds — panels hold references not bars, the named modules are absent from the branch, and the cost is host-side per-tick work — but I should not carry a retracted premise forward, and the CPU-per-tick acceptance criterion is now doing all the work.
+
+## 2026-07-28 14:05 — One design decision I made against the brief, and why
+
+The Director asked for a **10-second** Performance recording. **I briefed a longer capture instead**, and I want the reason on record rather than looking like drift.
+
+The signature is *periodic* — spike to ~120%, fall back to 10–30%. A fixed ten-second window can straddle a cycle or miss a spike entirely, and would then report a resting floor with no spike in it, which is the most misleading possible artefact: it would look like a clean measurement and would send us after steady-state cost when the defect is a timer. So the capture must span **several spike cycles**.
+
+More importantly, that turns the measurement into a diagnosis. **The spike period is the single most diagnostic number available.** If it spikes every N milliseconds, the culprit is a timer registered with interval N — so I required the measured period to be matched directly against the live-interval census, with candidates named. A flame chart tells you what ran; a period matched to a registered interval tells you which line registered it.
+
+## 2026-07-28 14:06 — Suspects briefed as a list to test, not a list to confirm
+
+The Director's ordering is a hypothesis and I passed it as one. The M20-Q2 countdown idle-render path leads because **that fix's own name describes an idle render loop**, which is about as strong a prior as one gets. M20-Q1's replaced DOM poll follows, and the framing there is precise and worth repeating: verify it is *gone* rather than *additionally present*. **A replacement landed without the original being removed produces exactly this signature**, and it is the failure mode our own process is most likely to generate — we have merged a lot of replacements this month.
+
+Then the forming-candle updater on a timer, autosave on an interval, and any resample or layer-cache invalidation driven by time rather than by data change.
+
+I instructed explicitly: **test the list, do not work down it looking for confirmation, and if the trace points somewhere not on the list, lead the report with that.** Three premises briefed as fact today turned out false, and a suspect list is exactly the artefact that turns into a self-fulfilling search.
+
+The same scale guard as the last two dispatches applies, and here it is the acceptance condition rather than a caveat: **if the session idles near 0%, the phenomenon was not reproduced** and the breakdown describes a different workload. Reaching roughly 20% at rest matters more than anything else in the report.
+
+## 2026-07-28 14:07 — Why this outranks the architectural work, in my own words
+
+If the resting floor is 20%, then replay and indicators are stacked **on top of** it, and the 129% figure may be substantially this same defect plus load. That reframes the whole CPU row: the per-tick resample result I reported this morning is real and confirmed in source, but it may be a smaller share of the total than I presented it as, because I was comparing it against a total I assumed was load.
+
+And unlike the resample work — which needs the incremental branch's three separate defeats unpicked, one of them in the render path, in shared `chart.js` — **an idle loop is a small local fix.** That makes it the only credible route to a measured CPU improvement inside 46 hours. Acceptance is a before/after pair on the PO's protocol; a description of work done is not a result.
+
+`hcaptcha.com` and `accounts.google.com` subframes at roughly 160 MB are folded into the same session as a factual inventory — present or not, what loads them, what they cost idle. Whether they *belong* on an authenticated chart surface is a routing question and not the author's call, so I asked for facts only.
+
+**Write packets at three and I am naming them rather than quietly exceeding:** idle-cpu, host-listener-leak, cpu-attribution (superseded, allowed to finish). All three touch disjoint paths — a new harness, `chart.js` plus a new test, and a different new harness — so there is no two-authors-one-file exposure. Nothing further dispatches until one clears.
