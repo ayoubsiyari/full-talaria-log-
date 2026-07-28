@@ -2154,3 +2154,50 @@ Two consecutive M10 packets rejected for introducing new durable defects while f
 Given M10 does not fix the PO's reported symptom anyway (B-0104) and the real mechanism is the session-clock invariant (B-0105/0106), **I am not re-dispatching the close-path rewrite before the ship gates.** M10 stays open with a precise, evidenced writeup.
 
 **A16.4:** manager-finding-defect **12** (the E-1 mislabel, found by me against my own reviewer). Manager-caused **12**. Rejection rate, M10 fix authoring: **2 of 2**.
+
+## B-0108 — B-1 EXPOSURE ANSWER: **YES**, the hydration-guard trade-loss path is present on the publicly served build.
+
+Answered by reading the deployed source in my own worktree per TREE-02. No harness built, as instructed.
+
+### 1. What the public deployment serves
+
+`talaria-log.com` → Cloudflare → origin `51.20.190.169` → host nginx (`deploy/nginx/talaria-log.conf`) → **homepage container on `127.0.0.1:3000`**. This is a different surface from `31.97.192.82:3000`.
+
+**A correction to my own first line of inquiry, which nearly gave the wrong answer.** I began by auditing `homepage/public/chart/**`, the committed mirror, since that is what the container serves at runtime. It is **not** what ships. `homepage/Dockerfile` copies `chart v 1.4/chart` into the image at build time (`:27`, `:78-86`), overwriting the committed mirror. So the deployed artifact is built from **my own source tree**, and the mirror's contents are irrelevant to this question. Had I answered off the mirror I would have been answering about a file the build discards.
+
+**I cannot name the exact deployed commit** — there is no deployment manifest, build-id record or release tag in the repo that pins what is live, and I have no access to the running host. What I can bound: the defect was introduced in **`410ccf877`, 2026-07-03** (25 days ago), so **any build cut since 3 July carries it**, and the durable-write half was last touched `c9700ebc8`, 23 July.
+
+### 2. Can the client treat a failed fetch as an empty journal and write that emptiness durably? **YES.**
+
+Every link verified in the shipping source:
+
+| # | Location | What happens |
+|---|---|---|
+| 1 | `chart.js:11900-11903` | `GET /api/sessions/{id}/state` returns `!res.ok` → `_applyTradingSessionFromLocalBackupOnly()` → `return` |
+| 2 | `chart.js:11701-11708` | if `!backup \|\| !om`, sets `_sessionStateLoadedFor = sessionId` — **marks the session hydrated with an empty journal** |
+| 3 | `chart.js:12586, 12796, 12817` | the pre-hydrate persist guards now pass, because the flag they check is set |
+| 4 | `order-manager.js:7256` | `journal: durableJournal` → `[]`. No emptiness guard |
+| 5 | `order-manager.js:7172-7188` | M20-A1 cannot save it: its condition is `rowsHaveRefs`, and an **empty array has no refs**, so both branches skip |
+| 6 | backend | replace semantics delete every row not in the incoming array (B-0100) |
+
+**The marking at step 2 is deliberate and the comment says so:** *"Mark the session as hydrated (empty) anyway so later order saves are NOT dropped by the pre-hydrate guard... Without this the guard stays closed forever, runtime orders never reach the local backup, and nothing persists across a refresh."*
+
+That comment is the defect in one sentence. It conflates **"brand-new session"** with **"the backend is unreachable"** — the two cases that most need distinguishing — and resolves both as *hydrated and empty*. It was written to fix a real problem (a permanently closed guard) and the fix it chose treats *"we do not know"* as *"there is nothing"*. This is exactly what my `SPEC-persistjournal-hydration-guard.md` tri-state flag addresses, and B-2 is now clearly the right next item.
+
+**Exposure is wider than "users with cleared storage".** The trigger is `!backup || !om`. The `!om` arm is a **timing** condition: `_waitForOrderManagerForSession(80, 50)` waits ~4s and, on timeout, only logs a warning and continues. So a slow load can reach the same branch with local storage perfectly intact. I have not measured how often that fires.
+
+### 3. Have real users actually lost trades? **CANNOT DETERMINE — and here is why.**
+
+I have no access to the production database, server logs, or the running host; nothing in the repo evidences live user data. The only `.log` files present are harness output.
+
+**And I want to flag something that makes this worse rather than reassuring:** per B-0100 the deletion is **not logged**. So even with database access, a sweep would likely leave no trace beyond a reduced row count with no record of what was removed. Absence of evidence here is close to uninformative — the system is not built to record this event.
+
+Determining it needs someone with production access to compare journal row counts per session over time, or a user report. I cannot do it from here and will not guess.
+
+### Explicitly on the record, per the Director's request
+
+The **"session that has already lost 49 trades"** line in B-0103 was **hypothetical** — a critique of the M4 gate scoring a perfect green on such a session. It was never a report of observed loss and must not be read as a confirmed incident.
+
+### Verdict
+
+**Q2 is YES on the public build.** The path exists, the trigger does not require an exotic state, and it has been shippable since 3 July. Whether it has fired is unknown and, given the missing logging, may stay unknown.
