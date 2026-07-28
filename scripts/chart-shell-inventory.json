@@ -206,11 +206,36 @@
       "forbiddenModules": []
     },
     "admin-dist": {
-      "description": "Talaria admin-dashboard lineage (HeroUI Vite source, its build output, the served admin monolith and the superseded admin pages). DECLARED BUT UNUSED in this inventory: no admin page loads a chart-engine asset, so under Ruling 5 they are narrow-inventory-ineligible and appear only in scripts/servable-surface-inventory.json with kind non-chart-app. The role is retained so the fixed role vocabulary stays complete and machine-checkable.",
+      "description": "Talaria admin-dashboard lineage (HeroUI Vite source, its build output, and superseded admin pages not routed through CHART_ROOT_FILES). The served admin monolith at chart/admin-dashboard.html is inventoried under admin-root-shell.",
       "surface": "none",
       "stampSeries": [
         "20260624b151"
       ],
+      "requiredModules": [],
+      "forbiddenModules": []
+    },
+    "admin-root-shell": {
+      "description": "Routed chart-root admin monolith (admin-dashboard.html). CHART_ROOT_FILES allowlist plus the dedicated @app.get handler; loads no chart.js and asserts no correctness-class exposure modules.",
+      "surface": "none",
+      "stampSeries": [
+        "20260624b151"
+      ],
+      "requiredModules": [],
+      "forbiddenModules": []
+    },
+    "backtest-root-shell": {
+      "description": "Routed chart-root standard backtesting shell (backtesting.html). CHART_ROOT_FILES allowlist at api_server.py:26925; no chart engine and no exposure-class module obligation.",
+      "surface": "none",
+      "stampSeries": [
+        "20260624b151"
+      ],
+      "requiredModules": [],
+      "forbiddenModules": []
+    },
+    "propfirm-root-shell": {
+      "description": "Routed chart-root prop-firm challenge shell (propfirm-backtest.html). CHART_ROOT_FILES allowlist at api_server.py:26926; no chart engine and no build stamp series.",
+      "surface": "none",
+      "stampSeries": [],
       "requiredModules": [],
       "forbiddenModules": []
     },
@@ -293,6 +318,80 @@
       },
       "expectedStamp": "20260727b80",
       "reason": "Canonical generated production host. FastAPI mounts /chart/dist-v9 and prefers dist-v9/index.html for /chart/index.html (api_server.py:26967-26969), and homepage/Dockerfile:81 republishes the directory into the homepage web root. The directory is excluded from the build context by .dockerignore:29 and regenerated inside chart_assets by \"npm run build:live:chart\" (homepage/Dockerfile:47), so the served bytes are rebuilt — but the path is unambiguously routed.",
+      "retainFile": false,
+      "retainReason": null,
+      "proofOfDeRouting": []
+    },
+    {
+      "path": "chart v 1.4/chart/admin-dashboard.html",
+      "role": "admin-root-shell",
+      "status": "owned-stamped",
+      "servable": true,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": true,
+          "file": "chart v 1.4/chart/api_server.py",
+          "line": 26927,
+          "quote": "    \"admin-dashboard.html\","
+        },
+        "fastapiMount": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "dockerCopy": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "nginxRoot": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        }
+      },
+      "expectedStamp": "20260624b151",
+      "reason": "Served admin monolith. Routed by CHART_ROOT_FILES at api_server.py:26927 and by @app.get(\"/chart/admin-dashboard.html\") at api_server.py:26895. Loads no chart engine; admin-root-shell asserts no indicator-performance or module-presence-runtime obligation.",
+      "retainFile": false,
+      "retainReason": null,
+      "proofOfDeRouting": []
+    },
+    {
+      "path": "chart v 1.4/chart/backtesting.html",
+      "role": "backtest-root-shell",
+      "status": "owned-stamped",
+      "servable": true,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": true,
+          "file": "chart v 1.4/chart/api_server.py",
+          "line": 26925,
+          "quote": "    \"backtesting.html\","
+        },
+        "fastapiMount": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "dockerCopy": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "nginxRoot": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        }
+      },
+      "expectedStamp": "20260624b151",
+      "reason": "Backtesting application routed by CHART_ROOT_FILES at api_server.py:26925. Stamped 20260624b151; no chart.js reference; backtest-root-shell carries empty requiredModules.",
       "retainFile": false,
       "retainReason": null,
       "proofOfDeRouting": []
@@ -576,6 +675,43 @@
           "satisfied": false
         }
       ]
+    },
+    {
+      "path": "chart v 1.4/chart/propfirm-backtest.html",
+      "role": "propfirm-root-shell",
+      "status": "owned-stamped",
+      "servable": true,
+      "routingEvidence": {
+        "fastapiAllowlist": {
+          "present": true,
+          "file": "chart v 1.4/chart/api_server.py",
+          "line": 26926,
+          "quote": "    \"propfirm-backtest.html\","
+        },
+        "fastapiMount": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "dockerCopy": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        },
+        "nginxRoot": {
+          "present": false,
+          "file": null,
+          "line": null,
+          "quote": null
+        }
+      },
+      "expectedStamp": "",
+      "reason": "Prop-firm challenge application routed by CHART_ROOT_FILES at api_server.py:26926. No chart engine reference and no build stamp; propfirm-root-shell carries an empty stampSeries.",
+      "retainFile": false,
+      "retainReason": null,
+      "proofOfDeRouting": []
     },
     {
       "path": "chart v 1.4/chart/multichart-prod/chart-embed.html",

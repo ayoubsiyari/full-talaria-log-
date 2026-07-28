@@ -69,6 +69,9 @@ const ROLES = new Set([
   'frozen-evidence',
   'public-test-fixture',
   'image-built-export',
+  'admin-root-shell',
+  'backtest-root-shell',
+  'propfirm-root-shell',
 ]);
 
 // Every kind this gate can emit. --allow-kinds is validated against this list so a typo in a
@@ -133,7 +136,9 @@ export const VIOLATION_KINDS = Object.freeze([
 //
 //   conditional-exposure            chart/multichart/chart-host.html and its homepage/public
 //                                   copy are routed, load the chart engine and omit the
-//                                   correctness-class exposure modules.
+//                                   correctness-class exposure modules; legacy-index.html
+//                                   and its homepage/public copy emit the same RED while
+//                                   still routed (parse-incomplete does not mute exposure).
 //   exclusion-count-undeclared      the one live exclusion (**/node_modules/**) predates the
 //                                   mandatory expectedMatchCount and its reason text already
 //                                   names the 9 files; the budget goes to zero the moment
@@ -146,7 +151,7 @@ export const VIOLATION_KINDS = Object.freeze([
 //                                   text (script element creation, document.write outside a
 //                                   recognised loader, Worker construction).
 export const EXPECTED_ALLOW_KINDS = Object.freeze({
-  'conditional-exposure': 2,
+  'conditional-exposure': 4,
   'exclusion-count-undeclared': 1,
   'proof-of-derouting-unsatisfied': 45,
   'removal-pending': 2,
@@ -155,7 +160,9 @@ export const EXPECTED_ALLOW_KINDS = Object.freeze({
 
 export const EXPECTED_ALLOW_PATHS = Object.freeze({
   'conditional-exposure': Object.freeze([
+    'chart v 1.4/chart/legacy-index.html',
     'chart v 1.4/chart/multichart/chart-host.html',
+    'homepage/public/chart/legacy-index.html',
     'homepage/public/chart/multichart/chart-host.html',
   ]),
 });
@@ -709,11 +716,16 @@ export function validateShellInventory({
         : [];
       const missingExposureModules = CORRECTNESS_EXPOSURE_MODULES
         .filter((modulePath) => !scripts.includes(modulePath));
-      // parseComplete=false is already RED via shell-parse-incomplete, and an unreadable
-      // loader graph cannot support a claim about which modules are missing.
-      if (fact.parseComplete !== false
+      // parseComplete=false is its own RED (shell-parse-incomplete); it must not mute exposure
+      // when discovery already proved chart-engine binding (referencesChartJs) or the row is in
+      // an exposure-bound host/embed role class.
+      const exposureGraphReadable = fact.parseComplete !== false
+        || fact?.referencesChartJs === true
+        || EXPOSURE_BOUND_ROLES.has(roleId);
+      if (roleId !== 'frozen-evidence'
         && servable
         && exposureBound(roleId, fact)
+        && exposureGraphReadable
         && missingExposureModules.length > 0) {
         violations.push(violation('conditional-exposure', {
           path: shellPath,

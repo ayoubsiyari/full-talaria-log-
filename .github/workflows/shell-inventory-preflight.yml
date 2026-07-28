@@ -64,7 +64,7 @@ jobs:
           # before the verdict below can distinguish an allowed RED from an unexpected one.
           set +e
           node scripts/shell-inventory-preflight.mjs \
-            --allow-kinds=conditional-exposure:2,exclusion-count-undeclared:1,proof-of-derouting-unsatisfied:45,removal-pending:2,shell-parse-incomplete:13 \
+            --allow-kinds=conditional-exposure:4,exclusion-count-undeclared:1,proof-of-derouting-unsatisfied:45,removal-pending:2,shell-parse-incomplete:13 \
             --out "shell-inventory-preflight-report.json" \
             | tee shell-inventory-preflight.log
           status="${PIPESTATUS[0]}"

@@ -1376,7 +1376,90 @@ test('F5: hiding behind parse-incomplete does not buy a GREEN', () => {
       files: { 'chart v 1.4/chart/index.html': html({ scripts: ['/chart/chart.js'], parseComplete: false }) },
     });
     assertRed(result, 'shell-parse-incomplete');
+    assertRed(result, 'conditional-exposure');
     assert.equal(result.ok, false);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('A14.3 ATTACK: parse-incomplete routed engine-bound shell still emits conditional-exposure', () => {
+  const root = scratch();
+  try {
+    const chartInventory = baseChartInventory({
+      roles: {
+        'legacy-host-source': {
+          description: 'legacy shell',
+          stampSeries: ['20260727b80'],
+          requiredModules: [],
+          forbiddenModules: [],
+        },
+      },
+      shells: [{
+        path: 'chart v 1.4/chart/legacy-index.html',
+        role: 'legacy-host-source',
+        status: 'removal-pending',
+        servable: true,
+        reason: 'pending de-route',
+        routingEvidence: citedRouting(),
+        proofOfDeRouting: [{ requirement: 'remove allowlist', file: 'server.py', line: 1, satisfied: false }],
+      }],
+    });
+    const servableInventory = baseServableInventory({
+      surfaces: [{
+        path: 'chart v 1.4/chart/legacy-index.html',
+        status: 'removal-pending',
+        servable: true,
+        reason: 'pending de-route',
+        routingEvidence: citedRouting(),
+      }],
+    });
+    const { result } = runFixture({
+      root,
+      servableInventory,
+      chartInventory,
+      files: {
+        'chart v 1.4/chart/legacy-index.html': html({
+          scripts: ['/chart/chart.js'],
+          parseComplete: false,
+        }),
+      },
+    });
+    assertRed(result, 'shell-parse-incomplete');
+    assertRed(result, 'conditional-exposure');
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('A14.3 CONTROL: parse-incomplete non-exposure shell does not emit conditional-exposure alone', () => {
+  const root = scratch();
+  try {
+    const chartInventory = baseChartInventory({
+      roles: {
+        'browser-harness': {
+          description: 'harness',
+          stampSeries: ['20260727b80'],
+          requiredModules: ['/chart/modules/a.js'],
+          forbiddenModules: [],
+        },
+      },
+      shells: [{
+        path: 'chart v 1.4/chart/index.html',
+        role: 'browser-harness',
+        status: 'owned-stamped',
+        servable: true,
+        reason: '',
+        routingEvidence: citedRouting(),
+      }],
+    });
+    const { result } = runFixture({
+      root,
+      chartInventory,
+      files: { 'chart v 1.4/chart/index.html': html({ scripts: ['/chart/modules/a.js'], parseComplete: false }) },
+    });
+    assertRed(result, 'shell-parse-incomplete');
+    assert.equal(kinds(result).includes('conditional-exposure'), false, JSON.stringify(result.violations));
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
@@ -1771,8 +1854,8 @@ test('F9 four-state proof: a budget cannot be raised from the workflow alone', (
   const raised = workflow.replace('shell-parse-incomplete:13', 'shell-parse-incomplete:14');
   const unbudgeted = workflow.replace('shell-parse-incomplete:13', 'shell-parse-incomplete');
   const appended = workflow.replace(
-    '--allow-kinds=conditional-exposure:2',
-    '--allow-kinds=undeclared-shell:9 --allow-kinds=conditional-exposure:2',
+    '--allow-kinds=conditional-exposure:4',
+    '--allow-kinds=undeclared-shell:9 --allow-kinds=conditional-exposure:4',
   );
 
   assert.equal(agrees(workflow), true, 'fixed state agrees with the checked-in map');

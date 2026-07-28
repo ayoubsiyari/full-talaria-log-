@@ -103,8 +103,8 @@
           "quote": null
         }
       },
-      "reason": "Served admin monolith. Routed twice: the explicit @app.get(\"/chart/admin-dashboard.html\") handler at api_server.py:26895 behind _require_admin, and CHART_ROOT_FILES membership at line 26927. Loads no chart engine and carries the independent 20260624b151 stamp series, so it is not a chart shell and does not appear in the narrow inventory.",
-      "chartShell": false
+      "reason": "Served admin monolith. Routed twice: the explicit @app.get(\"/chart/admin-dashboard.html\") handler at api_server.py:26895 behind _require_admin, and CHART_ROOT_FILES membership at line 26927. Loads no chart engine and carries the independent 20260624b151 stamp series; chart-shell inventory records it under admin-root-shell with no exposure-class modules.",
+      "chartShell": true
     },
     {
       "path": "chart v 1.4/chart/admin-dashboard.legacy.html",
@@ -239,8 +239,8 @@
           "quote": null
         }
       },
-      "reason": "Backtesting application, routed by CHART_ROOT_FILES membership. Its 20260624b151 stamp belongs to a different series from the chart engine and it references no chart-engine loader, so it must not be measured against the chart stamp or the chart module contract.",
-      "chartShell": false
+      "reason": "Backtesting application, routed by CHART_ROOT_FILES membership at api_server.py:26925. Its 20260624b151 stamp belongs to a different series from the chart engine and it references no chart-engine loader; chart-shell inventory records it under backtest-root-shell with no exposure-class modules.",
+      "chartShell": true
     },
     {
       "path": "chart v 1.4/chart/dist-admin/index.html",
@@ -888,8 +888,8 @@
           "quote": null
         }
       },
-      "reason": "Prop-firm challenge application, routed by CHART_ROOT_FILES membership. References no chart engine, carries no build stamp, so neither the chart stamp nor the chart module contract applies.",
-      "chartShell": false
+      "reason": "Prop-firm challenge application, routed by CHART_ROOT_FILES membership at api_server.py:26926. References no chart engine; chart-shell inventory records it under propfirm-root-shell with no exposure-class modules.",
+      "chartShell": true
     },
     {
       "path": "chart v 1.4/chart/sessions.html",
