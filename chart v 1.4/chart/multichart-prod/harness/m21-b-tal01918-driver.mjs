@@ -28,6 +28,7 @@ import {
 } from './m21-b-tal01918-product-loader.mjs';
 import {
     toProductBars, toPoints, MINUTE_MS, referenceBucketsPoints,
+    epochFloorBucketStart, calendarBucketStart,
 } from './m21-b-tal01918-corpus.mjs';
 import {
     BarImmutabilityOracle, LastBarWindowOracle, findFormingMarker,
@@ -116,19 +117,42 @@ function toPointSeries(series) {
 }
 
 /**
- * One full candle-mode replay of the corpus at one timeframe, in one
- * kill-switch state. Returns both limbs' results plus attribution.
+ * One replay of the corpus at one timeframe, in one kill-switch state.
+ *
+ * STEP MODE matters and is the thing the first cut of this packet got wrong.
+ *   'raw'    — the playhead advances one RAW bar per step. Under this mode the
+ *              last tick a bucket occupies the last slot is its final raw bar, so
+ *              the displayed close is already correct there and LIMB 1 cannot see
+ *              the defect however its subject is chosen.
+ *   'coarse' — product-default candle-mode stepping: the playhead advances one
+ *              DISPLAY period per step, landing at a fixed phase offset inside each
+ *              bucket. The bucket then leaves the last slot holding the close as of
+ *              that offset. This is the mode the PO and the adversarial reviewer
+ *              drove, and it is the only mode in which the completed-bar mutation
+ *              is observable.
  *
  * @param {object} opts
  * @param {Array} opts.pointRows      integer-point 1m corpus
  * @param {string} opts.timeframe
  * @param {boolean} opts.killSwitchOn true = M20-Q9 fix DISABLED (legacy slice)
- * @param {number} [opts.stride]      tick stride (1 = every raw bar)
+ * @param {'raw'|'coarse'} [opts.stepMode]
+ * @param {number} [opts.stride]           raw-mode tick stride
+ * @param {number} [opts.phaseOffsetBars]  coarse-mode offset into each bucket
  * @param {number} [opts.startIdx]
  */
-export function runReplay({ pointRows, timeframe, killSwitchOn, stride = 1, startIdx = 0 }) {
+export function runReplay({
+    pointRows, timeframe, killSwitchOn,
+    stepMode = 'raw', stride = 1, phaseOffsetBars = 0, startIdx = 0,
+}) {
     const tfMs = TF_MS[timeframe];
     if (!tfMs) throw new Error(`unknown timeframe ${timeframe}`);
+    const barsPerBucket = tfMs / MINUTE_MS;
+    let effStride = stride;
+    let effStart = startIdx;
+    if (stepMode === 'coarse') {
+        effStride = barsPerBucket;
+        effStart = phaseOffsetBars;
+    }
 
     const master = toProductBars(pointRows);
     const rawStepMs = MINUTE_MS;
@@ -149,8 +173,23 @@ export function runReplay({ pointRows, timeframe, killSwitchOn, stride = 1, star
     chart.replaySystem = rs;
     rs.chart = chart;
 
-    const immut = new BarImmutabilityOracle(`${timeframe}/${killSwitchOn ? 'kill-ON' : 'kill-OFF'}`);
-    const window = new LastBarWindowOracle(`${timeframe}/${killSwitchOn ? 'kill-ON' : 'kill-OFF'}`);
+    // Cite: under coarse stepping the source grows by more than one bar per
+    // install, so ChartDataPipeline's `sourceLen === source.length - 1`
+    // incremental branch can never match and nothing can bake in. Counted, not
+    // assumed.
+    const realIncremental = chart.dataPipeline._tryIncrementalResample.bind(chart.dataPipeline);
+    counters.incrementalAttempts = 0;
+    counters.incrementalHits = 0;
+    chart.dataPipeline._tryIncrementalResample = function counted(...args) {
+        counters.incrementalAttempts += 1;
+        const out = realIncremental(...args);
+        if (out) counters.incrementalHits += 1;
+        return out;
+    };
+
+    const cell = `${timeframe}/${stepMode}/${killSwitchOn ? 'kill-ON' : 'kill-OFF'}`;
+    const immut = new BarImmutabilityOracle(cell);
+    const window = new LastBarWindowOracle(cell);
 
     const attribution = {
         ticks: 0,
@@ -180,7 +219,7 @@ export function runReplay({ pointRows, timeframe, killSwitchOn, stride = 1, star
             const fixEnabled = rs._m20Q9PrefixSliceFixEnabled();
             helperReadings.add(fixEnabled);
 
-            for (let idx = startIdx; idx < master.length; idx += stride) {
+            for (let idx = effStart; idx < master.length; idx += effStride) {
                 rs.currentIndex = idx;
                 rs.replayTimestamp = master[idx].t;
 
@@ -218,7 +257,7 @@ export function runReplay({ pointRows, timeframe, killSwitchOn, stride = 1, star
                 const masterComplete = masterLastT >= bucketLastRawT;
 
                 // ── limb 1 ──
-                immut.observe(toPointSeries(chart.data), idx);
+                immut.observe(toPointSeries(chart.data), idx, rs.replayTimestamp);
 
                 // ── limb 2 ──
                 window.observe({
@@ -268,6 +307,8 @@ export function runReplay({ pointRows, timeframe, killSwitchOn, stride = 1, star
         else globalThis[DIAG_GLOBAL] = diagBefore;
     }
 
+    immut.finalize(refByT);
+
     // Settled close per bucket = reference full-bucket close.
     const settleRows = [];
     for (const s of settle.values()) {
@@ -283,9 +324,13 @@ export function runReplay({ pointRows, timeframe, killSwitchOn, stride = 1, star
 
     return {
         timeframe,
+        stepMode,
+        phaseOffsetBars: stepMode === 'coarse' ? phaseOffsetBars : null,
         killSwitchOn,
         productHelperReadings: [...helperReadings],
         fullResampleCalls: counters.fullResample,
+        incrementalAttempts: counters.incrementalAttempts,
+        incrementalHits: counters.incrementalHits,
         distinctPrefixIdentities: attribution.prefixIdentities.size,
         chartDataIsPipelineCacheResultTicks: attribution.chartDataIsPipelineCacheResult,
         immutability: immut.result(),
@@ -462,9 +507,12 @@ export function settlingDiagnostic({ pointRows, timeframe, killSwitchOn, maxBoun
     const { chart } = makeProductChart(timeframe, { countFullResamples: false });
     chart.replaySystem = rs;
 
-    // A clean chart that never sees the trim and never shares the prefix — used
-    // to produce the independent "clean full resample of rawData to the same
-    // playhead" reference.
+    // NOT an independent reference: this second chart runs the SAME
+    // `_resampleDataFull` as the chart under test, so any defect inside bucket
+    // arithmetic cancels on both sides. It is retained because the brief asks
+    // specifically for a "clean full resample of rawData to the same playhead",
+    // and it is reported under a name that says what it is. The independent
+    // column is `referenceBucketsPoints`, which shares no implementation.
     const { chart: cleanChart } = makeProductChart(timeframe, { countFullResamples: false });
 
     const rows = [];
@@ -503,23 +551,27 @@ export function settlingDiagnostic({ pointRows, timeframe, killSwitchOn, maxBoun
             rows.push({
                 tick: idx,
                 bucketT: productBar.t,
+                subject: 'chart.data[length-2] — the bucket that just finalised',
                 productClosePoints: productBar.cP,
-                cleanResampleClosePoints: cleanBar ? toPoints(cleanBar.c) : null,
-                fullBucketClosePoints: ref ? ref.cP : null,
-                productVsCleanPoints: cleanBar ? productBar.cP - toPoints(cleanBar.c) : null,
-                productVsFullBucketPoints: ref ? productBar.cP - ref.cP : null,
+                sameImplementationResampleClosePoints: cleanBar ? toPoints(cleanBar.c) : null,
+                independentFullBucketClosePoints: ref ? ref.cP : null,
+                productVsSameImplementationPoints: cleanBar ? productBar.cP - toPoints(cleanBar.c) : null,
+                productVsIndependentFullBucketPoints: ref ? productBar.cP - ref.cP : null,
             });
         }
     });
 
-    const anyProductVsClean = rows.some((r) => r.productVsCleanPoints !== 0);
-    const anyProductVsFull = rows.some((r) => r.productVsFullBucketPoints !== 0);
+    const anyProductVsClean = rows.some((r) => r.productVsSameImplementationPoints !== 0);
+    const anyProductVsFull = rows.some((r) => r.productVsIndependentFullBucketPoints !== 0);
     return {
         timeframe,
         killSwitchOn,
+        subject: 'chart.data[length-2] — STRUCTURALLY UNTOUCHABLE BY THE TRIM; '
+            + 'this diagnostic cannot see the completed-bar mutation and must not be '
+            + 'read as evidence about it',
         boundaries: rows.length,
-        finalisedBucketDiffersFromCleanResample: anyProductVsClean,
-        finalisedBucketDiffersFromFullBucket: anyProductVsFull,
+        finalisedBucketDiffersFromSameImplementationResample: anyProductVsClean,
+        finalisedBucketDiffersFromIndependentFullBucket: anyProductVsFull,
         rows: rows.slice(0, 8),
     };
 }
@@ -580,6 +632,121 @@ export function probeTrimDivergenceOnInconsistentBar({ pointRows, timeframe, tar
         trimChangedLow: pre.lP !== post.lP,
         trimChangedClose: pre.cP !== post.cP,
         highDeltaPoints: post.hP - pre.hP,
+    };
+}
+
+/* ───────── truth-column independence: the 1w bucket-alignment differential ───────── */
+
+/**
+ * The blocked sibling ran its oracle AND its truth column through
+ * `_resampleDataFull`, so any defect inside bucket arithmetic cancelled on both
+ * sides. This probe proves this packet's reference is not co-defective: it drives
+ * the REAL `_resampleDataFull` at 1w and diffs the resulting bucket starts against
+ * an independent UTC-calendar implementation. Product weeks are floored from the
+ * Unix epoch, which was a Thursday, so they never start on Monday.
+ */
+export function probeWeekBucketAlignment(pointRows) {
+    const master = toProductBars(pointRows);
+    const { chart } = makeProductChart('1w', { countFullResamples: false });
+    const productWeeks = chart._resampleDataFull(master, '1w');
+
+    const WEEK = 7 * 24 * 60 * 60_000;
+    const rows = productWeeks.slice(0, 6).map((b) => {
+        const dow = new Date(b.t).getUTCDay(); // 0=Sun … 1=Mon
+        const calendar = calendarBucketStart(b.t, WEEK);
+        return {
+            productBucketStart: b.t,
+            productBucketStartUtcDay: dow,
+            calendarBucketStart: calendar,
+            alignedToMonday: dow === 1,
+            offsetMs: b.t - calendar,
+        };
+    });
+
+    // Cross-check that for every intraday timeframe the two conventions DO agree,
+    // so the reference is only divergent where the product is actually wrong.
+    const agreeing = [];
+    for (const tf of ['5m', '15m', '1h', '4h', '1d']) {
+        const tfMs = TF_MS[tf];
+        let same = true;
+        for (const r of pointRows) {
+            if (epochFloorBucketStart(r.t, tfMs) !== calendarBucketStart(r.t, tfMs)) { same = false; break; }
+        }
+        agreeing.push({ timeframe: tf, conventionsAgree: same });
+    }
+
+    return {
+        parseTimeframeWeekMs: chart.parseTimeframe('1w'),
+        anyWeekAlignedToMonday: rows.some((r) => r.alignedToMonday),
+        rows,
+        intradayConventionAgreement: agreeing,
+    };
+}
+
+/* ───────── render cadence: the _frameDisplaySeries latch ───────── */
+
+/**
+ * `render()` is the ONLY writer that clears `chart._frameDisplaySeries`
+ * (chart.js). Nothing on the data path clears it, so between frames
+ * `getDisplaySeries()` keeps returning the previous frame's array even after
+ * chart.data has been rebuilt, resampled, trimmed and version-bumped.
+ *
+ * Not re-derived from scratch — the sibling established it. This confirms it
+ * against the real methods so the render path is not assumed inert.
+ */
+export function probeFrameDisplaySeriesLatch({ pointRows, timeframe }) {
+    const master = toProductBars(pointRows);
+    const ReplaySystem = loadReplaySystem();
+    const rs = Object.create(ReplaySystem.prototype);
+    rs.isActive = true;
+    rs.fullRawData = master;
+    rs.rawTimeframe = '1m';
+
+    const { chart } = makeProductChart(timeframe, { countFullResamples: false });
+    chart.replaySystem = rs;
+    // Environment buildDisplaySeries reads; none of it is under test.
+    chart.margin = { l: 60, r: 60 };
+    chart.w = 1200;
+    chart.h = 800;
+    chart.offsetX = 0;
+    chart.getCandleSpacing = () => 8;
+    chart.totalCandles = master.length;
+
+    function installAt(idx) {
+        rs.currentIndex = idx;
+        rs.replayTimestamp = master[idx].t;
+        const sliced = master.slice(0, idx + 1);
+        chart.rawData = sliced;
+        chart.data = chart.resampleData(sliced, timeframe);
+        chart._trimLastDataBarToReplayPlayhead();
+        chart.bumpDataVersion();
+    }
+
+    installAt(1000);
+    const frameA = chart.getDisplaySeries();
+    const closeA = toPoints(frameA[frameA.length - 1].c);
+
+    // Advance the data WITHOUT a render() — exactly what happens between frames.
+    installAt(1100);
+    const dataClose = toPoints(chart.data[chart.data.length - 1].c);
+    const frameStale = chart.getDisplaySeries();
+    const closeStale = toPoints(frameStale[frameStale.length - 1].c);
+
+    // Now do what render() does: clear the latch.
+    chart._frameDisplaySeries = null;
+    const frameFresh = chart.getDisplaySeries();
+    const closeFresh = toPoints(frameFresh[frameFresh.length - 1].c);
+
+    return {
+        timeframe,
+        usesDisplayPipeline: chart._shouldUseDisplayPipeline(),
+        closeAfterFirstInstallPoints: closeA,
+        chartDataClosePoints: dataClose,
+        getDisplaySeriesClosePointsBeforeRender: closeStale,
+        getDisplaySeriesClosePointsAfterLatchCleared: closeFresh,
+        latchServesStaleArray: frameStale === frameA && closeStale !== dataClose,
+        latchClearedRestoresAgreement: closeFresh === dataClose,
+        stalenessPips: Math.round((closeStale - dataClose) / 10 * 100) / 100,
     };
 }
 

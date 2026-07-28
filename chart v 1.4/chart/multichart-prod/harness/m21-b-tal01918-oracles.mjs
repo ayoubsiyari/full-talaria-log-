@@ -48,61 +48,152 @@ export function findFormingMarker(bar) {
 
 /* ────────────────────────── limb 1 ────────────────────────── */
 
+/**
+ * SUBJECT (stated explicitly, because the wrong subject is what blocked the
+ * sibling packet):
+ *
+ *   PRIMARY subject — `chart.data[length - 1]`, sampled at the LAST tick on which
+ *   that bucket still occupies the last slot. That is the bar the trim writes
+ *   (chart.js: `const lastIdx = this.data.length - 1; … this.data[lastIdx] = trimmed;`)
+ *   and, under candle-mode stepping, the bar a human sees holding a static value
+ *   for a whole step and reads as finished. Its close is then compared against the
+ *   independent full-bucket reference and against the value the same bucket holds
+ *   once it is historical.
+ *
+ *   CONTROL subject — `chart.data[length - 2]`, i.e. any bar already historical
+ *   when first sampled. The trim can structurally never write that slot, so this
+ *   sub-check is a TAUTOLOGY. It is retained and reported ONLY to demonstrate the
+ *   tautology numerically: it passes in exactly the cells where the primary
+ *   subject records a double-digit pip move.
+ */
 export class BarImmutabilityOracle {
     constructor(label) {
         this.label = label;
         this.oracle = ORACLE_IMMUTABILITY;
-        this.finalized = new Map();   // bucketT -> { packed, tick }
-        this.violations = [];
+        this.subject = 'chart.data[length-1] at the last tick the bucket occupies the last slot';
+        this.controlSubject = 'chart.data[length-2] (structurally untouchable by the trim)';
+
+        // primary
+        this.lastSlot = new Map();    // bucketT -> { packed, cP, tick, playheadMs }
+        this.settled = new Map();     // bucketT -> { packed, cP, tick }
+        this.primaryChecked = 0;
+        this.primaryViolations = [];
+        this.primaryViolationCount = 0;
+        this.movementPoints = [];     // settled.c - lastSlot.c, per bucket
+
+        // control (tautology demonstrator)
+        this.historicalFirstSeen = new Map();
+        this.controlComparisons = 0;
+        this.controlViolationCount = 0;
+
         this.ticks = 0;
-        this.finalizedCount = 0;
-        this.comparisons = 0;
     }
 
     /**
      * @param {Array<{t,oP,hP,lP,cP}>} series integer-point display series
      * @param {number} tick
+     * @param {number} playheadMs
      */
-    observe(series, tick) {
+    observe(series, tick, playheadMs) {
         this.ticks += 1;
         const lastIdx = series.length - 1;
-        for (let i = 0; i <= lastIdx; i++) {
+        if (lastIdx < 0) return;
+
+        // PRIMARY: overwrite each tick, so the map always holds the value at the
+        // most recent tick this bucket occupied the last slot.
+        const last = series[lastIdx];
+        this.lastSlot.set(last.t, {
+            packed: packOhlc(last), cP: last.cP, tick, playheadMs,
+        });
+
+        // PRIMARY: the moment a bucket stops being last, freeze what it settled to.
+        for (let i = 0; i < lastIdx; i++) {
             const bar = series[i];
-            const isLast = i === lastIdx;
+            if (this.settled.has(bar.t)) continue;
+            this.settled.set(bar.t, { packed: packOhlc(bar), cP: bar.cP, tick });
+        }
+
+        // CONTROL: first-seen-while-historical, then re-checked forever.
+        for (let i = 0; i < lastIdx; i++) {
+            const bar = series[i];
             const packed = packOhlc(bar);
-            const prior = this.finalized.get(bar.t);
-            if (prior) {
-                this.comparisons += 1;
-                if (prior.packed !== packed && this.violations.length < 50) {
-                    this.violations.push({
-                        bucketT: bar.t,
-                        finalizedAtTick: prior.tick,
-                        changedAtTick: tick,
-                        was: prior.packed,
-                        now: packed,
-                        deltaClosePoints: bar.cP - Number(prior.packed.split('|')[4]),
-                    });
-                }
+            const prior = this.historicalFirstSeen.get(bar.t);
+            if (!prior) {
+                this.historicalFirstSeen.set(bar.t, packed);
                 continue;
             }
-            if (!isLast) {
-                // First tick at which this bucket is no longer the last bar.
-                this.finalized.set(bar.t, { packed, tick });
-                this.finalizedCount += 1;
+            this.controlComparisons += 1;
+            if (prior !== packed) this.controlViolationCount += 1;
+        }
+    }
+
+    /**
+     * @param {Map<number, {cP:number, oP:number, hP:number, lP:number, t:number}>} refByT
+     *        independent full-bucket reference (NOT product code)
+     */
+    finalize(refByT) {
+        for (const [bucketT, settledRec] of this.settled) {
+            const lastSlotRec = this.lastSlot.get(bucketT);
+            if (!lastSlotRec) continue;
+            const ref = refByT.get(bucketT) || null;
+            this.primaryChecked += 1;
+            const movement = settledRec.cP - lastSlotRec.cP;
+            this.movementPoints.push(movement);
+            const vsReference = ref ? lastSlotRec.cP - ref.cP : null;
+            if (lastSlotRec.packed !== settledRec.packed
+                || (ref && lastSlotRec.packed !== packOhlc(ref))) {
+                this.primaryViolationCount += 1;
+                if (this.primaryViolations.length < 20) {
+                    this.primaryViolations.push({
+                        bucketT,
+                        lastOccupiedLastSlotAtTick: lastSlotRec.tick,
+                        playheadMsAtThatTick: lastSlotRec.playheadMs,
+                        displayedThen: lastSlotRec.packed,
+                        settledTo: settledRec.packed,
+                        independentFullBucket: ref ? packOhlc(ref) : null,
+                        movementPoints: movement,
+                        errorVsIndependentReferencePoints: vsReference,
+                    });
+                }
             }
         }
+    }
+
+    movementStats() {
+        const a = this.movementPoints.filter((x) => x !== null);
+        if (!a.length) return { n: 0, meanAbsPips: null, maxAbsPips: null };
+        let sumAbs = 0;
+        let maxAbs = 0;
+        for (const p of a) {
+            const ap = p < 0 ? -p : p;
+            sumAbs += ap;
+            if (ap > maxAbs) maxAbs = ap;
+        }
+        return {
+            n: a.length,
+            meanAbsPips: Math.round((sumAbs / a.length) / 10 * 100) / 100,
+            maxAbsPips: Math.round(maxAbs / 10 * 100) / 100,
+        };
     }
 
     result() {
         return {
             oracle: this.oracle,
             label: this.label,
-            pass: this.violations.length === 0,
+            subject: this.subject,
+            controlSubject: this.controlSubject,
+            pass: this.primaryViolationCount === 0,
             ticks: this.ticks,
-            finalizedBuckets: this.finalizedCount,
-            postFinalizationComparisons: this.comparisons,
-            violationCount: this.violations.length,
-            violations: this.violations.slice(0, 10),
+            bucketsChecked: this.primaryChecked,
+            violationCount: this.primaryViolationCount,
+            movement: this.movementStats(),
+            violations: this.primaryViolations.slice(0, 6),
+            tautologyControl: {
+                subject: this.controlSubject,
+                comparisons: this.controlComparisons,
+                violationCount: this.controlViolationCount,
+                pass: this.controlViolationCount === 0,
+            },
         };
     }
 }

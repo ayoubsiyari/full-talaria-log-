@@ -8,260 +8,291 @@ node --test --test-concurrency=1 \
   "chart v 1.4/chart/multichart-prod/harness/m21-b-tal01918-red.test.mjs"
 ```
 
-Result: **19 tests, 18 pass, 1 fail.** The one failure is LIMB 2, and it fails for the stated
-reason. Evidence JSON: `m21-b-tal01918-evidence/m21-b-tal01918-red-evidence.json`.
+Result: **23 tests, 21 pass, 2 fail.** The two failures are LIMB 1 and LIMB 2, each failing for its
+own stated reason. Evidence JSON:
+`m21-b-tal01918-evidence/m21-b-tal01918-red-evidence.json`, byte-identical across runs.
+
+> **Revision note.** The first cut of this packet was built against the retracted framing and
+> reported LIMB 1 as a clean pass. That pass was worthless for two independent reasons, both now
+> fixed and both demonstrated numerically rather than asserted: the subject was a bar the trim can
+> never write, and the stepping mode was raw rather than candle-mode. Section 8 lists exactly what
+> was discarded.
 
 ---
 
-## 1. The two limbs, separately
+## 1. Subjects, stated up front
 
-### LIMB 1 — `m21-b-bar-immutability-oracle` → **PASS, everywhere**
+| oracle | subject | instant |
+|---|---|---|
+| `m21-b-bar-immutability-oracle` (primary) | `chart.data[length - 1]` | the **last tick that bucket occupies the last slot** |
+| `m21-b-bar-immutability-oracle` (control) | `chart.data[length - 2]` | every tick after first appearing as historical |
+| `m21-b-last-bar-window-oracle` | `chart.data[length - 1]` | every tick |
 
-Once a display bucket is finalised (a later bucket exists), its OHLC never changes again for the
-rest of the replay. Asserted across **5m, 15m, 1H and 4H**, in **both** M20-Q9 kill-switch states —
-eight cells, 2,880 ticks each.
-
-| timeframe | finalised buckets | post-finalisation re-checks (per switch state) | violations |
-|---|---|---|---|
-| 5m | 575 | 827,425 | 0 |
-| 15m | 191 | 274,849 | 0 |
-| 1H | 47 | 67,633 | 0 |
-| 4H | 11 | 15,829 | 0 |
-
-2,371,472 re-checks in total, zero violations. **The oracle the brief originally specified would
-have certified this build.**
-
-### LIMB 2 — `m21-b-last-bar-window-oracle` → **FAIL, everywhere**
-
-| timeframe | value-limb failures | presentation-limb failures | mean abs close error |
-|---|---|---|---|
-| 5m | 0 / 576 | 2,304 / 2,304 | 1.04 pip |
-| 15m | 0 / 192 | 2,688 / 2,688 | 2.03 pip |
-| 1H | 0 / 48 | 2,832 / 2,832 | 4.01 pip |
-| 4H | 0 / 12 | 2,868 / 2,868 | 7.82 pip |
-
-Identical in both kill-switch states.
-
-Read this split carefully, because it is the substance of the finding:
-
-- The **value** limb is clean, and that is not reassurance. It is checked only on the ticks where
-  the bucket's full range is present in `chart.rawData` — which under a playhead prefix is exactly
-  the one tick per bucket where the playhead happens to sit on the bucket's final raw bar. On that
-  single tick the answer is right. On every other tick the window is short.
-- The **presentation** limb fails on 100% of the remaining ticks. The bar is aggregated over
-  `[bucketStart, playhead]` and published with no marker distinguishing it from a finished bar.
-  Fifteen candidate marker spellings were searched (`forming`, `isForming`, `complete`, `partial`,
-  `state`, …); resampled display bars carry exactly `t, o, h, l, c, v` and nothing else.
-- Against the stronger reading of "complete in the raw data" — the bucket's full range exists in
-  the underlying master, the playhead slice is merely hiding it — the presented value is wrong on
-  **2,287 / 2,880** ticks at 5m, **2,668 / 2,880** at 15m, **2,818 / 2,880** at 1H and
-  **2,862 / 2,880** at 4H.
-
-**The immutability limb passes and the window limb fails.** That is the outcome the brief flagged as
-most likely and most valuable, and it is what the run shows.
+The control subject exists only to demonstrate the tautology. The trim writes one slot —
+`const lastIdx = this.data.length - 1; … this.data[lastIdx] = trimmed;` — so `length - 2` is
+unreachable by it. Reported below with its own numbers so no reader can mistake it for evidence.
 
 ---
 
-## 2. Which code path is actually exercised — named
+## 2. The two limbs
 
-Measured, not assumed. Every tick of every cell:
+### LIMB 1 — `m21-b-bar-immutability-oracle` → **FAIL under candle-mode stepping**
+
+Phase offset = one third of the bucket (20 minutes at 1H, matching the reviewer's trace).
+
+| timeframe | raw stepping | coarse (candle-mode) stepping | mean abs movement | max |
+|---|---|---|---|---|
+| 5m | 0 / 575 | **575 / 575** | 1.48 pip | 4.5 pip |
+| 15m | 0 / 191 | **191 / 191** | 2.54 pip | 8.5 pip |
+| 1H | 0 / 47 | **47 / 47** | 4.90 pip | 18.3 pip |
+| 4H | 0 / 11 | **11 / 11** | 10.59 pip | 28.2 pip |
+
+Identical with the M20-Q9 kill-switch ON and OFF. Every bucket moves, without exception.
+
+**The raw-stepping column is not a pass in any interesting sense.** Under raw stepping the last tick
+a bucket occupies the last slot is its own final raw bar, so the window is complete at exactly that
+instant and there is nothing to see. That column is in the table to show that step mode alone flips
+the verdict — which is itself the mechanism signature.
+
+**The tautology, reproduced on purpose.** In the same eight cells, the `length - 2` control subject
+records **0 violations across 2,740,084 comparisons**. It passes everywhere, including the cells
+where the corrected subject records 18-pip movements. That is the failure mode that blocked the
+sibling packet, demonstrated here rather than argued about.
+
+### LIMB 2 — `m21-b-last-bar-window-oracle` → **FAIL, everywhere, both step modes**
+
+| timeframe | raw stepping | coarse stepping | mean abs close error (coarse) |
+|---|---|---|---|
+| 5m | 2,304 / 2,304 | 576 / 576 | 1.48 pip |
+| 15m | 2,688 / 2,688 | 192 / 192 | 2.53 pip |
+| 1H | 2,832 / 2,832 | 48 / 48 | 4.96 pip |
+| 4H | 2,868 / 2,868 | 12 / 12 | 10.62 pip |
+
+All failures are on the presentation clause: the bar is aggregated over `[bucketStart, playhead]` and
+carries no marker distinguishing it from a finished bar. Fifteen candidate marker spellings were
+searched; resampled display bars carry `t, o, h, l, c, v` and nothing else. Under coarse stepping the
+value clause is never even reachable (0 checks) — the playhead never lands on a bucket's final raw
+bar, so **every single published coarse bar is a partial presented as final**.
+
+---
+
+## 3. The mechanism signature — 1H phase sweep
+
+This is the discriminator between a wrong window and a stale value, and it is clean.
+
+| playhead phase into the 1H bucket | violations | mean abs movement |
+|---|---|---|
+| +0 min | 47 / 47 | 4.91 pip |
+| +1 min | 47 / 47 | 4.92 pip |
+| +20 min *(reviewer's trace)* | 47 / 47 | 4.90 pip |
+| +30 min | 47 / 47 | 4.73 pip |
+| +58 min | 44 / 47 | 0.85 pip |
+| **+59 min — the bucket's final raw bar** | **0 / 47** | **0.00 pip** |
+
+The movement vanishes **exactly** at the bucket's final raw bar and nowhere else. A staleness defect
+would not be phase-dependent. Confirms the signature the correction identified as the most useful
+single fact available.
+
+---
+
+## 4. Which code path is exercised, and the attribution
+
+Measured every tick of every cell:
 
 ```
 ReplaySystem static-playhead install  (real _installPlayheadPrefix / legacy slice)
   → chart.rawData = prefix[0 .. playhead]
   → chart.resampleData → ChartDataPipeline.getResampledSeries
-        FULL resample on 2880/2880 ticks. The same-sourceRef len+1 incremental branch is
-        never reached: the M20-Q9 cache-drop kills it with the fix ON, and the fresh slice
-        identity kills it with the fix OFF. The dataVersion bump kills it independently of both.
-  → chart._resampleDataFull buckets the PREFIX
-        ← 100% of the error is created here
-  → chart._trimLastDataBarToReplayPlayhead writes this.data[lastIdx]
-        this.data IS ChartDataPipeline._resampleCache.result on 2880/2880 ticks — the hazard
-        in the M20-Q9 comment is real and the write does happen — but the value written is the
-        same [bucketStart, playhead] aggregation, so the numeric contribution is zero.
+        FULL resample on every tick. Incremental branch: 0 attempts, 0 hits under coarse
+        stepping across all 8 cells.
+  → chart._resampleDataFull buckets the PREFIX      ← 100% of the error is created here
+  → chart._trimLastDataBarToReplayPlayhead writes this.data[lastIdx], which IS
+        ChartDataPipeline._resampleCache.result on every tick — but writes back the same
+        [bucketStart, playhead] aggregation, so its numeric contribution is zero.
 ```
 
-There is **no third path to name**. The settling diagnostic looked for one and found nothing: at
-every 1H bucket boundary, in both switch states, the finalised bucket read out of `chart.data` is
-byte-for-byte the clean full resample of `rawData` to the same playhead *and* byte-for-byte the
-full-bucket aggregation. Nothing survives, because nothing is stale. The M20-Q9 cache contract and
-the trim are both exonerated for staleness-after-finalisation.
+| timeframe (coarse) | slice error | trim error | slice share |
+|---|---|---|---|
+| 5m | 1.48 pip | 0.00 pip | 100% |
+| 15m | 2.53 pip | 0.00 pip | 100% |
+| 1H | 4.96 pip | 0.00 pip | 100% |
+| 4H | 10.62 pip | 0.00 pip | 100% |
+
+The trim replaced the last-bar slot on 100% of ticks and changed a value on 0%. The zero is a
+property of the data, not of the trim: `_prepareBarsForResampling` normalises `h = max(o,c,h,l)`
+before bucketing while `_aggregateFinerBarsWalkForward` reads `b.h` raw, and a single fault-injected
+print whose close is the bucket extreme but whose high sits below it makes the trim write a high 200
+points off. Stated so the 0% is not over-read.
+
+**"Baked in at finalization" does not reproduce, and the counter says why.** Under coarse stepping
+the pipeline's incremental branch recorded **0 attempts and 0 hits** in every cell: the source grows
+by a whole display period per install, so `sourceLen === source.length - 1` can never match and the
+cached prior bucket is never reused. Cited as instructed, and confirmed by counting rather than by
+reading the code.
 
 ---
 
-## 3. Attribution of error between trim and slice
+## 5. Render cadence is not inert
 
-| timeframe | slice error (mean abs) | trim error (mean abs) | slice share | trim share |
+Confirmed against the real methods rather than assumed. `render()` is the only writer that clears
+`chart._frameDisplaySeries` (`chart.js:28764` in this tree). `getDisplaySeries()`
+(`chart.js:25434-25447`) returns that latched array whenever it is set, and nothing on the data path
+clears it.
+
+Driven end to end: install at tick 1000, read `getDisplaySeries()`, then install at tick 1100 with a
+full resample, trim and `bumpDataVersion()` — and `getDisplaySeries()` still returns the **same array
+object**, 3.2 pips stale against `chart.data`, at both 1H and 15m. Clearing the latch restores
+agreement immediately. `_shouldUseDisplayPipeline()` returns true in backtest mode, so this is the
+live consumer path, not a corner.
+
+This matters for the fix: correcting the resample window alone would still be read one frame late by
+every consumer that goes through `getDisplaySeries()`.
+
+---
+
+## 6. Truth-column independence — the trap that blocked the sibling
+
+This packet's reference (`referenceBucketsPoints`) is a separate implementation, not a call into
+`_resampleDataFull`. Demonstrated rather than claimed: driving the **real** `_resampleDataFull` at 1w
+and diffing bucket starts against an independent UTC-calendar implementation shows product weeks
+start on **UTC day 4 (Thursday)**, 259,200,000 ms off the Monday anchor, on every bucket —
+`parseTimeframe('1w')` returns 604,800,000 ms and `_resampleDataFull` floors it from the Unix epoch.
+A shared-implementation truth column cancels that defect out; this one sees it.
+
+Stated in the open rather than buried: for intraday timeframes the reference shares the epoch-floor
+*convention*, and the packet proves that convention is equivalent to the UTC calendar for
+5m/15m/1H/4H/1D (verified bar by bar over the whole corpus). It does not share it for 1w.
+
+The settling diagnostic is the one place a same-implementation comparison remains, because the brief
+asked for a "clean full resample of `rawData` to the same playhead". It is reported under the name
+`productVsSameImplementationPoints`, alongside the independent column, and its subject is
+`chart.data[length - 2]` — so it is labelled twice over as unable to see this defect.
+
+---
+
+## 7. Suspects and the join
+
+**Suspect 4** verified directly, not inherited: at 1m display on a 1m master
+`_getWalkForwardOhlcToPlayhead` returns `null` (60000 ≥ 55200, both candidates skip). LIMB 2 run
+against the real product at 1m passes 2,880/2,880 value checks at 0.00 pip — the positive control.
+
+**Suspect 2** is a real but smaller second injection site: at tick progress > 0 the interpolated
+close is baked verbatim into the coarse bucket (0.1 / 1.9 / −1.6 pip at 5m/1H/4H).
+**Suspect 3**'s mid-animation trim skip is confirmed byte-level.
+
+### One defect or two — one
+
+The last-slot movement is algebraically the truncation error: the presented close is `c(playhead)`
+and the full-bucket close is `c(bucketEnd − rawStep)`, so
+`presented − fullBucket ≡ c(playhead) − c(bucketEnd − rawStep)`. Checked tick for tick at 1H:
+**2,880 checked, 0 mismatches.** This is an identity, not a correlation, so it holds on any corpus.
+**Treat TAL-01918 and the indicator-lag row as one root cause.**
+
+### Against the sibling's corrected series and the PO
+
+| timeframe | this packet, phase-averaged | at the third-phase offset | sibling | PO |
 |---|---|---|---|---|
-| 5m | 1.04 pip | 0.00 pip | 100% | 0% |
-| 15m | 2.03 pip | 0.00 pip | 100% | 0% |
-| 1H | 4.01 pip | 0.00 pip | 100% | 0% |
-| 4H | 7.82 pip | 0.00 pip | 100% | 0% |
+| 5m | 1.02 pip | 1.43 | 2.57 | 0 |
+| 15m | 2.01 pip | 2.49 | 8.06 | −0.6 |
+| 1H | 4.14 pip | 4.86 | 14.60 | +13 |
+| 4H | 8.39 pip | 10.06 | 19.71 | +72 |
+| 1D | 20.30 pip | 22.47 | 31.67 | n/a |
 
-Unchanged by the kill-switch. The trim **replaced the last-bar slot on 2,880 / 2,880 ticks** and
-**changed a value on 0 / 2,880**. The sibling's reading — the timeframe-scaling error comes from
-the slice, not the trim — is corroborated, and now quantified: it is not "mostly" the slice, it is
-all of it.
+At 1H: PO 13, reviewer 21.3, sibling 14.60, this packet 4.14 phase-averaged and 4.86 at the
+reviewer's 20-minute phase.
 
-The trim's zero is a property of the data, not of the trim, and the packet says so rather than
-overstating it. `_prepareBarsForResampling` normalises `h = max(o,c,h,l)` before bucketing;
-`_aggregateFinerBarsWalkForward`, which the trim uses, reads `b.h` raw. A single fault-injected
-print whose close is the bucket extreme but whose high field sits below it makes the trim write a
-high 200 points below the resampled one. On well-formed EURUSD prints the two agree exactly and the
-trim is a no-op that costs a full object allocation into the pipeline's cache every tick.
+**Monotonicity reproduces. Magnitudes do not, and I am not going to pretend they do.** My fixture's
+mean absolute 1m close-to-close change is 0.87 pip — a quiet pure random walk. The sibling's series
+exceeds mine by ×2.52 / ×4.01 / ×3.53 / ×2.35 / ×1.56 at 5m / 15m / 1H / 4H / 1D. That is not a
+constant factor, so the gap is *both* a volatility-scale difference and an autocorrelation-shape
+difference — real EURUSD trends within a bucket and then mean-reverts across days, a random walk does
+neither. The quantity is the same; the price process is not. Settling the magnitudes numerically
+needs this identity run on the sibling's corpus, which I do not have.
 
----
+The PO's signed values are single realisations of the same quantity. Three of the four land inside
+the distribution my corpus produces; the 4H +72 exceeds my maximum of 43.2 pip, which bounds the
+fixture rather than the defect.
 
-## 4. The suspects
-
-1. **`_trimLastDataBarToReplayPlayhead()` writing into `this.data[lastIdx]` where `this.data` is
-   `_resampleCache.result`** — *premise confirmed, effect nil.* The aliasing is real and measured
-   (2,880/2,880 ticks). The write is value-identical to what it overwrites. Not the defect.
-2. **Synthetic `animatedCandle` pushed onto the sliced raw array** — *confirmed as a real second
-   injection site, smaller.* At tick progress > 0 the interpolated close is baked verbatim into the
-   coarse bucket (5m, 1H, 4H all reproduce), giving 0.1 / 1.9 / −1.6 pip against the full bucket at
-   the probed playhead. It corrects on the next commit, so it matches the observed direction, but it
-   is an order of magnitude below the slice error and only exists during tick animation.
-3. **The playhead slice itself** — *this is the defect.* 100% of the error, on every timeframe,
-   in both switch states. The mirror path's mid-animation trim skip is confirmed byte-level
-   (`&& !(this.animatingCandle && (this.tickProgress || 0) > 0)`), which matters only because it
-   means even the no-op trim is absent there — the slice error is unmitigated on that path.
-4. **`_getWalkForwardOhlcToPlayhead` is a no-op on the native timeframe** — *verified, not
-   inherited.* Called directly against real product code with a 1m display on a 1m master, it
-   returns `null`: the `_btTfDataCache` candidate loop requires `tfMs < nativeMs` and the
-   client-resample loop requires `stepMs < targetCoarseMs * 0.92`, so no finer series exists and the
-   trim cannot fire. At 1H on the same master it aggregates normally. This is why 1m is clean, and
-   the packet backs it with a positive control: LIMB 2 run against the **real product** at 1m passes
-   on 2,880/2,880 value checks with 0.00 pip mean error.
+**PO observation 2**: the coarse family agrees to the last digit (reproduced, `distinct = 1` across
+5m/15m/1H/4H/1D/1W), but static 1m agrees with them too. The 1m/coarse split needs the animated or
+the render path, not the resample window.
 
 ---
 
-## 5. The join — one defect or two?
+## 8. What was salvaged and what was discarded
 
-**One.** Proven structurally, not by curve-fitting.
+**Discarded.**
 
-The presented close of the last display bar is, by construction, `c(playhead)`. The full-bucket
-close is `c(bucketEnd − rawStep)`. So the window error is
+- The old LIMB 1 subject (first-seen-while-historical, i.e. `length - 2` in effect) and its headline
+  "PASS across 2.37M re-checks". It was a tautology. It is retained only as the labelled control.
+- Raw-only stepping as the matrix's sole mode, and every conclusion that depended on it.
+- The claim that "the immutability limb passes and the window limb fails" — that was an artefact of
+  those two errors. **Both limbs fail.**
+- The claim that "there is no third path to name". The settling diagnostic that produced it is
+  blind by construction, and render cadence turns out to be a live contributor.
+- The old join framing against the sibling's pre-correction 1.47/5.50/10.53/17.95/19.07.
 
-```
-presented_close − full_bucket_close  ≡  c(playhead) − c(bucketEnd − rawStep)
-```
-
-which is *identically* the sibling's truncation error. Checked tick-for-tick at 1H:
-**2,880 checked, 0 mismatches.** This holds on any corpus — it is an algebraic identity between the
-two quantities, not an empirical correlation. The completed-bar mutation row and the indicator-lag
-truncation row are the same number measured twice.
-
-### Against the sibling's monotonic series
-
-| timeframe | this packet | ×5m | sibling | ×5m |
-|---|---|---|---|---|
-| 5m | 1.03 pip | 1.00 | 1.47 pip | 1.00 |
-| 15m | 2.02 pip | 1.96 | 5.50 pip | 3.74 |
-| 1H | 4.02 pip | 3.90 | 10.53 pip | 7.16 |
-| 4H | 8.21 pip | 7.97 | 17.95 pip | 12.21 |
-| 1D | 19.90 pip | 19.32 | 19.07 pip | 12.97 |
-
-**Monotonic in bucket duration: reproduced.** **Absolute values and ratios: not reproduced, and
-they should not be.** My corpus is a pure random walk, so the series grows like √duration. The
-sibling's grows faster than √ at 15m–4H and then saturates at 1D — the signature of trend and
-mean-reversion in real EURUSD. Same quantity, different price process. Settling this numerically
-requires running the identity on the sibling's corpus, which I did not have.
-
-### Against the PO's 0 / −0.6 / +13 / +72
-
-Under candle-mode stepping the PO's quantity — the close when the bar first looked done, versus the
-close it settles at — reduces to `c(bucketEnd − rawStep) − c(bucketStart)`, i.e. the bucket's own
-body. Same window error, evaluated at one particular playhead offset.
-
-| timeframe | n | mean abs | p90 | max | PO | % of buckets at least as extreme |
-|---|---|---|---|---|---|---|
-| 5m | 2880 | 1.64 pip | 3.3 | 6.1 | 0 | 100% |
-| 15m | 960 | 3.05 pip | 6.2 | 12.3 | −0.6 | 88.2% |
-| 1H | 240 | 5.99 pip | 12.7 | 24.0 | +13 | 8.3% |
-| 4H | 60 | 13.57 pip | 27.7 | 43.2 | +72 | 0% |
-| 1D | 10 | 23.07 pip | 71.9 | 71.9 | n/a | n/a |
-
-The **ordering** reproduces: |0| < |−0.6| < |+13| < |+72| tracks the growth in bucket duration, and
-the 1H value sits at the 8th percentile of the measured distribution — unusual but ordinary. The
-4H +72 is outside anything my random-walk fixture produces (max 43.2). That bounds the fixture, not
-the defect: a signed single observation per timeframe is a realisation, and the corpus lacks the
-trending 4H bodies that real EURUSD produces. I am not going to claim I reproduced a four-point
-signed series; what I can claim is that all four values are the same quantity my oracle measures,
-and three of the four land inside its distribution on a corpus that is known to be too tame.
-
-### PO observation 2 (1m 1.41500 vs six coarse timeframes at 1.41477)
-
-At a frozen playhead the coarse family agrees to the last digit — reproduced, `distinct = 1` across
-5m/15m/1H/4H/1D/1W. But **static 1m agrees with them too**, so the 1m/coarse split does not
-reproduce on the static path. Whatever separates 1m from the coarse family in the PO's session comes
-from the animated/forming-candle path, not from the resample window. Consistent with the sibling's
-own finding that `1.41477` is the close of the last raw bar at or before the playhead.
+**Salvaged unchanged.** The product loader and its SHA-256 pinned method spans; the
+source-needle-verified transcription; the deterministic integer-point corpus; LIMB 2 in full,
+including the 1m positive control; the slice-vs-trim attribution and its ill-formed-bar bound; the
+exercised-path naming; suspects 2, 3 and 4; the window-error/truncation-error identity; the
+kill-switch differential and allocation discriminator.
 
 ---
 
-## 6. What a fix would have to change (not made)
+## 9. What a fix would have to change (not made)
 
-Stated for the record only; no product edit is in this branch.
-
-The last display bucket during replay is a **partial** aggregation, and nothing in the data model
-says so. A fix has to make that fact representable and then respect it — either by publishing the
-last bucket with an explicit forming flag that every consumer (indicators, orders, OHLC readouts,
-the value/Y painted endpoint) honours, or by not publishing a partial coarse bucket as a bar at all.
-Widening the window to `[bucketStart, bucketEnd)` is *not* the fix: that would paint future data.
-The one thing that must not happen is another pass at the trim or the cache — both are measured here
-at exactly zero contribution, and work on either would move no pips.
-
-Because the window error and the truncation error are the same number, one fix closes both rows.
+The last display bucket during replay is a partial aggregation and nothing in the data model says so.
+Either publish it with an explicit forming flag that every consumer honours, or do not publish a
+partial coarse bucket as a bar. Widening the window to `[bucketStart, bucketEnd)` is not the fix —
+that paints future data. Two things follow from the measurements: work on the trim or the M20-Q9
+cache moves zero pips, and a data-side fix alone is still read one frame late through
+`getDisplaySeries()`.
 
 ---
 
-## 7. `surface=` and `coverage=`
+## 10. `surface=` and `coverage=`
 
-**surface=** headless Node, no browser. Real product code throughout: twelve `chart.js` methods
+**surface=** headless Node, no browser. Real product code throughout: fourteen `chart.js` methods
 lifted verbatim by source span and SHA-256 pinned (`_resampleDataFull`, `resampleData`,
 `parseTimeframe`, `_prepareBarsForResampling`, `_trimLastDataBarToReplayPlayhead`,
 `_trimBarOhlcToReplayPlayhead`, `_getWalkForwardOhlcToPlayhead`, `_aggregateFinerBarsWalkForward`,
-`_getBarPeriodEndMs`, `_getReplayPlayheadMs`, `_getNativeRawStepMs`, `_measureRawDataStepMs`); the
-real `ChartDataPipeline`; the real `ReplaySystem._installPlayheadPrefix` /
+`_getBarPeriodEndMs`, `_getReplayPlayheadMs`, `_getNativeRawStepMs`, `_measureRawDataStepMs`,
+`getDisplaySeries`, `_shouldUseDisplayPipeline`); the real `ChartDataPipeline` including
+`buildDisplaySeries`; the real `ReplaySystem._installPlayheadPrefix` /
 `_m20Q9PrefixSliceFixEnabled` / `_m20Q9DropConsumerResampleCache`. The tick driver is a
 transcription of `updateChartDataFast`'s static-playhead sequence whose eight source needles are
-asserted against the live `replay-system.js` and `chart.js` on every run, so it cannot drift
-silently. Single host chart, backtest replay, candle-mode stepping. Timeframes 5m/15m/1H/4H at
-stride 1 over a 2-day 1m corpus (2,880 ticks per cell), plus 1m as a positive control, plus
-5m/15m/1H/4H/1D at stride 7 over a 10-day corpus for the join. Both M20-Q9 kill-switch states, with
-the product helper's own return value recorded as `true` and `false` so the control is proven to
-have controlled, and the allocation discriminator confirmed (1 prefix identity ON, 2,880 OFF).
-Deterministic pinned fixture corpus, integer 1e-5 point arithmetic end to end, no wall clock, no
-RNG, no UUID, no rAF, no float equality in any assertion payload.
+asserted against live `replay-system.js` and `chart.js` on every run. Single host chart, backtest
+replay. Matrix: 5m/15m/1H/4H × {raw stepping, coarse candle-mode stepping at the third-phase offset}
+× {kill-switch ON, OFF} = 16 cells over a 2-day 1m corpus, plus 1m as a positive control, plus a
+six-point 1H phase sweep, plus 5m/15m/1H/4H/1D phase sweeps (5–24 phases each) over a 10-day corpus
+for the join. Product kill-switch helper observed returning both `true` and `false`; allocation
+discriminator confirmed at 1 prefix identity ON versus 2,880 OFF. Deterministic pinned fixture,
+integer 1e-5 point arithmetic end to end, no wall clock, no RNG, no UUID, no rAF, no float equality
+in any assertion payload.
 
 **coverage= what I did not measure.**
 
-- **No browser, no canvas, no rAF.** Nothing about what is *painted* is measured — only what is in
-  `chart.data`. The value/Y painted-endpoint limb is untouched.
+- **No browser, no canvas, no real rAF.** Nothing painted is measured. The render-cadence limb is
+  driven by clearing `_frameDisplaySeries` by hand to stand in for `render()`; actual frame timing,
+  frame ordering and paint are unmeasured.
 - **No panels, no multichart grid, no iframes.** `syncPanelCharts` and the real
   `applyMultichartMirrorFrame` were not driven; the mirror's mid-animation trim skip is confirmed by
-  source needle only, and the animated-candle bake is a transcription of that branch, not a run of
-  it.
+  source needle only, and the animated-candle bake is a transcription of that branch, not a run.
 - **The `_btTfDataCache` branch of `_getWalkForwardOhlcToPlayhead` is not exercised.**
-  `currentFileId` is `null` by construction, so only the client-resample candidate loop runs. If a
-  cached finer series with a *different* bar period were present, the trim's aggregation could
-  differ from the resample's and the 0% trim share could move. Unmeasured.
-- **Tick/animation mode is only partly covered.** The main matrix is candle-mode stepping. The
-  animated-candle probe is a single playhead at a single tick progress on three timeframes; there is
-  no animation sweep, no `tickProgress` scan, no `tp > 1` in-place mutation branch
-  (`last.c = animatedCandle.c`) driven end to end.
-- **One corpus, one shape.** A pure random walk with no trend, no fat tails, no gaps, no weekends,
-  no session boundaries, one instrument, one price level. This is why the absolute pip series does
-  not match the sibling's and why the PO's 4H +72 falls outside my range. The identity result is
-  corpus-independent; every *magnitude* in this report is not.
-- **1W and 1Mo are not run.** The PO's frozen-playhead observation names 1W; I covered it only in
-  the frozen-playhead probe, not in either limb.
-- **No orders, no trades, no indicators, no TP/SL.** The consequence of the wrong window for
-  execution — which is what `_trimBarOhlcToReplayPlayhead`'s docstring says it exists to prevent —
-  is entirely unmeasured.
-- **No backward seek, no timeframe switch mid-replay, no dataset swap.** Forward advance only.
-- **Both sides of the differential share `_prepareBarsForResampling` semantics** in the reference
-  aggregation. If the product's bucketing convention is itself wrong (bucket boundary placement,
-  `parseTimeframe`'s 30-day month), this packet cannot see it.
-- **Single process, single host.** No cross-clock or cross-machine limb.
+  `currentFileId` is `null`, so only the client-resample candidate loop runs. With a cached finer
+  series of a different bar period the trim's 0% share could move.
+- **Tick/animation mode is only partly covered.** No `tickProgress` sweep and no end-to-end run of
+  the `tp > 1` in-place mutation branch.
+- **One corpus, one shape, one price level.** Pure random walk, 0.87 pip mean 1m move, no trend, no
+  fat tails, no gaps, no weekends, no sessions. This is why every magnitude here is smaller than the
+  sibling's and why the PO's 4H +72 falls outside my range. The identity result is corpus-independent;
+  no magnitude in this report is.
+- **1W and 1Mo appear only in the frozen-playhead and bucket-alignment probes**, not in either limb.
+  The 1w Monday misalignment is reported as an incidental finding and is **not** part of TAL-01918.
+- **No orders, trades, indicators or TP/SL.** The execution consequence of the wrong window —
+  precisely what `_trimBarOhlcToReplayPlayhead` exists to prevent — is unmeasured.
+- **No backward seek, no mid-replay timeframe switch, no dataset swap.** Forward advance only.
+- **The coarse-stepping driver advances the playhead by exactly one display period.** Real
+  candle-mode stepping may land on session or gap boundaries differently; that is unmodelled.
+- **Single process, single host.** No cross-clock limb.

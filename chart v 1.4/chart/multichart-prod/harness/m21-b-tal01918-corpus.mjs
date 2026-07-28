@@ -104,12 +104,58 @@ export function verifyLosslessGrid(pointRows) {
     return { ok: true, i: -1, field: '' };
 }
 
-/** Reference full-bucket aggregation in integer points. Not product code. */
-export function referenceBucketsPoints(pointRows, tfMs) {
+/**
+ * Bucket-start conventions, kept SEPARATE from the aggregation so the two can be
+ * differentially tested against each other.
+ *
+ * `epochFloorBucketStart` is the product's convention (chart.js `_resampleDataFull`:
+ * `Math.floor(candle.t / timeframeMs) * timeframeMs`). `calendarBucketStart` is an
+ * independent UTC-calendar implementation that anchors weeks to Monday and days to
+ * UTC midnight. For every timeframe whose period divides a UTC day they agree; for
+ * 1w they do not, because the Unix epoch was a Thursday.
+ */
+export function epochFloorBucketStart(t, tfMs) {
+    return Math.floor(t / tfMs) * tfMs;
+}
+
+export function calendarBucketStart(t, tfMs) {
+    const DAY = 86_400_000;
+    const WEEK = 7 * DAY;
+    if (tfMs === WEEK) {
+        const d = new Date(t);
+        const midnight = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+        // getUTCDay(): 0=Sun … 6=Sat. Anchor to Monday.
+        const dow = new Date(midnight).getUTCDay();
+        const backDays = (dow + 6) % 7;
+        return midnight - backDays * DAY;
+    }
+    if (tfMs === DAY) {
+        const d = new Date(t);
+        return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+    }
+    if (DAY % tfMs === 0) {
+        const d = new Date(t);
+        const midnight = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+        return midnight + Math.floor((t - midnight) / tfMs) * tfMs;
+    }
+    return Math.floor(t / tfMs) * tfMs;
+}
+
+/**
+ * Reference full-bucket aggregation in integer points.
+ *
+ * NOT product code and NOT a call into product code: this is a separate
+ * implementation written for this packet. The blocked sibling's truth column ran
+ * through `_resampleDataFull`, so any defect inside bucket arithmetic cancelled on
+ * both sides. This one cannot cancel, and the 1w differential below demonstrates
+ * that it genuinely sees a bucketing defect the shared-implementation approach
+ * structurally cannot.
+ */
+export function referenceBucketsPoints(pointRows, tfMs, bucketStartFn = epochFloorBucketStart) {
     const out = [];
     let cur = null;
     for (const r of pointRows) {
-        const bt = Math.floor(r.t / tfMs) * tfMs;
+        const bt = bucketStartFn(r.t, tfMs);
         if (!cur || cur.t !== bt) {
             if (cur) out.push(cur);
             cur = { t: bt, oP: r.oP, hP: r.hP, lP: r.lP, cP: r.cP, v: r.v, n: 1 };

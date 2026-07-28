@@ -43,6 +43,10 @@ export const EXTRACTED_METHODS = [
     '_resampleDataFull',
     'resampleData',
     'parseTimeframe',
+    // Render-cadence limb: getDisplaySeries latches a per-frame array that only
+    // render() clears, so a corrected chart.data is still read one frame late.
+    'getDisplaySeries',
+    '_shouldUseDisplayPipeline',
 ];
 
 export function sha256(text) {
