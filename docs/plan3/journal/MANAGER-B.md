@@ -1350,3 +1350,53 @@ Two identical **empty** snapshots satisfy idempotence trivially, because there i
 Sent back with the fix — an empty first snapshot is a precondition failure, never a pass — plus a requirement to state, for every check, what its non-vacuity precondition is and how it is enforced, and to extend the mutation set with the absence class: empty ledger, single-trade ledger, non-empty array of null-valued fields, and identical-but-wrong reads.
 
 One point of method worth keeping: I found this by pointing the harness at a stub I wrote in thirty seconds, not by reading it. Reading found none of today's three vacuities; **running the thing against inputs its author did not anticipate found all three.**
+
+---
+
+## B-0077 — M3 review: product fix ACCEPTED, gate REJECTED, and my commit message was false
+
+B-R3, top tier, **31 designed / 13 survived**.
+
+**The five-line product fix is ACCEPT (S)** and independently verified, not merely re-checked. The reviewer confirmed each new selector matches a **strict subset** of the old one; enumerated the producers repo-wide and found no leak; confirmed `_createTpPctStepperOnChart` appends one `<g>` whose children carry `tp-pct-stepper-*` classes with **no** `pending-tp-pct`/`open-tp-pct` token and no order id, so the old broad selector never matched them either and nothing is stranded; and closed my biggest worry — order ids are `orderIdCounter++` integers (`order-service.js:509-511`), CSS-token-safe. The non-integer ids that do exist (`'__preview__'`, `splitgrp_*`) never reach these selectors, because those go through tracked D3 handles in `_destroyMultiTPAvgEntry`. Decisively, seven pre-existing class-token selectors using identical interpolation already run **before** my changed lines at 41701-41706, so my change adds no new id-shape exposure.
+
+**The gate is REJECT (S), and the worst survivor falsifies a claim I made in the commit message.** I wrote that "a reintroduced substring form fails". It does not. Keeping the narrow selector and **adding the original broad selector on the next line** passes 6/6 at both site 1 and site 5 — the precise regression the gate exists to prevent. Cause: `firstCallArgContaining` reads only the **first** `selectAll` argument per method, so the re-added line is never parsed.
+
+Root defect is a **one-sided oracle**: `host.html:72` asserts only that order 12 survived, never that order 1 was removed, so any selector matching **nothing** passes. That accounts for 9 of 13 survivors. Worse, `B-V6-04` is a literal tautology — it computes `inverted = !normal` then asserts they differ, which holds for every boolean, and it **passed while the source genuinely collided**. `B-V6-02` synthesises the corrected selectors it then validates, so it cannot fail. Only **1 of 6 cells** ever carries signal, and 9 of the 18 catches are incidental stack traces rather than oracle verdicts. A 30-line stub scores 6/6.
+
+I asked whether the gate derives both sides from the same parse. It does not — producer and remover are genuinely independent parses, which was the part of my design I was most unsure of. **But the independence is thrown away at the assertion**, so producer/remover disagreement is invisible anyway. Being right about the architecture did not make the gate work.
+
+**Consequence for M3.** The fix ships; the barrier does not. Per A16.5 a file with no working gate cannot be part of an automated-GREEN chain, so **M3 cannot close on the fix alone**. Rebuild dispatched as B-W10 with all six named fixes, and with the requirement that the mutation set span both corruption and absence classes per B-0076.
+
+**A16.4:** author-defect. Running totals — author-defect **4**, brief-defect **1**, manager-finding-defect **2** (adding the false commit-message claim). Manager-caused is **3**, which **reaches A16.4's threshold**: my next brief gets a top-tier review before dispatch. I am applying that to myself rather than waiting to be told.
+
+---
+
+## B-0078 — CORRECTION: the mirror is build-generated. B-0064 was wrong and the A hand-off is WITHDRAWN.
+
+B-R3 chased something I reported as a leak and found the opposite. I verified it in `homepage/Dockerfile` myself rather than accept it:
+
+- Line 6: chart static is built in `chart_assets` "so nginx serves the same versions as trading-chart — **not stale committed public/chart**".
+- Line 27: `COPY ["chart v 1.4/chart", "./chart/"]`.
+- Line 77: "# Fresh chart bundle (**overwrites** committed homepage/public/chart/*)".
+- Line 79: `COPY --from=chart_assets /build/chart/modules ./public/chart/modules`.
+
+**So `homepage/public/chart/modules/**` is a build artefact.** The committed copy is overwritten at image build, and the deployed surface gets whatever is in `chart v 1.4/chart/modules`.
+
+Two of my own conclusions fall:
+
+1. **B-0064's headline — "the V8 contract reaches no served surface" — was wrong.** I compared two committed files, found different hashes, and concluded the deployed surface lacked the code. I never checked how the deployed surface is produced. The correct statement was always "the committed mirror is stale", which is a *repo* fact, and I reported it as a *deployment* fact. Different byte counts in the tree told me nothing about what nginx serves.
+2. **B-0071's hand-off to A is WITHDRAWN.** I asked A to sync the mirror for my five-site fix. That work is unnecessary — the build already does it. Withdrawn before A spends time on it. My escalation to the Director on mirror ownership is likewise resolved by the build, not by a ruling: of the three possibilities I offered, the third — "a build step nobody owns" — was nearest, except that it *is* owned and it *is* correct. `TERRITORY.yml` still forbids me that path and that is unchanged; there is simply nothing there to do.
+
+Worth keeping from the reviewer: anyone serving `homepage/public` directly, or grepping the repo for these selectors later, still hits the stale committed copy. That is a **repo hygiene** hazard, not a deployment one, and I should have distinguished those two from the start.
+
+---
+
+## B-0079 — Rejected V8 withdrawn from the deployable tree, because of what B-0078 revealed
+
+The build discovery cuts the other way too, and this one is a live hazard rather than a retraction.
+
+Because `homepage/Dockerfile` copies `chart v 1.4/chart` **wholesale** into the served bundle, my **rejected** V8 contract — committed on this branch at `2cc6e7298`, carrying the data-loss paths B-R2 confirmed — would have deployed the moment this branch merged. And this branch **must** merge, because it carries ship gate M3's fix. My earlier note that "nothing is live for users" was correct only for the current image; it would have stopped being true at the next build.
+
+Reverted the two product files to their pre-B-W1 state (`ba68aebee`). The harness and fixture are kept as the starting point for the rebuild, and the implementation is preserved at `2cc6e7298`, restorable with one checkout. M3's fix is confirmed intact — zero interpolated substring selectors remain.
+
+The general lesson, and it is the same one as B-0078: **I reasoned about deployment from the contents of the repository without ever reading how the repository becomes a deployment.** One direction produced a false alarm, the other produced a real hazard I would have shipped. Both came from the same missing step.
