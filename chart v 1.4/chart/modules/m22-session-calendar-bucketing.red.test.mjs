@@ -48,6 +48,8 @@ if (!VALID_STATES.has(STATE)) throw new Error(`M22_SC_STATE must be one of ${[..
 const MODE = STATE === 'broken' ? H.MODES.PRODUCT : H.MODES.SIMULATE_WIRED;
 const CORRUPT = STATE === 'corrupt';
 const INVERT = STATE === 'inverted';
+/** True when session bucketing is actually in force in this run. */
+const WIRED = MODE === H.MODES.SIMULATE_WIRED;
 
 const FX = 'EURUSD';
 const SESSION_OPEN_MINUTE_OF_DAY = 17 * 60; // 17:00 America/New_York
@@ -68,6 +70,18 @@ const FROZEN_TODAY = {
     min4h: { sha256: '3df802d25dcb4e5ed283d9d907659cbbea1c44647149cdd04a7bdb3abebf43df', length: 18 },
     crypto1d: { sha256: '69ff1adb2e56bd039e2b87759db5debad67540df67a937d497d399cac30ef6ec', length: 120 },
     crypto1w: { sha256: '6376497b0e7cebfa0fe230fc47faaa577034977b3b861e4a33475d1fb2e47e9b', length: 18 },
+};
+
+/**
+ * Post-fix digests for outputs this packet DELIBERATELY changes. Only crypto
+ * weekly is listed: it is the sole change made on the worker's own judgement
+ * (Monday 00:00 UTC rather than the epoch floor's Thursday), so "it moved" is
+ * not a sufficient assertion — it must move to one specific, reviewable series.
+ * FX daily/weekly are pinned by literal session instants in cells B and C
+ * instead, which is stronger than a digest.
+ */
+const FROZEN_WIRED = {
+    crypto1w: { sha256: 'ae285d4b29d13ec46cb3602f6a577b2997b80067c042f281904a3579b25c2b73', length: 18 },
 };
 
 /* ── fixtures (built once; no wall clock, no RNG) ────────────────────────── */
@@ -206,14 +220,26 @@ cellTest('cell0: harness executes the REAL product bucketing code', () => {
     note('0', 'mode', true, `state=${STATE} mode=${meta.mode} patched=${meta.patched} productWired=${meta.alreadyWired}`);
     note('0', 'lifted-method-digests', true, JSON.stringify(meta.liftedSha256));
 
-    // The lifted text must be the real thing: the defect formula is present in
-    // the unpatched lift, and absent from the patched lift.
+    // Which methods came out of the product rather than out of the patch. Before
+    // wiring this is the base three; after wiring it must include the two the
+    // patch adds, so the harness runs product text in both worlds.
+    const wired = H.productIsWired();
+    note('0', 'lifted-from-product', true, `${meta.liftedFromProduct.join(',')} productIsWired=${wired}`);
+    expectEqual('0', 'wired-methods-lifted-iff-product-is-wired',
+        H.WIRED_LIFTED_METHODS.every((n) => meta.liftedFromProduct.includes(n)), wired,
+        `lifted=${meta.liftedFromProduct.join(',')}`);
+
+    // The lifted text must be the real thing. The defect formula is present in
+    // the unpatched lift and absent once the product carries the wiring — so this
+    // assertion INVERTS at the moment Manager A lands the patch, and is therefore
+    // stated against `productIsWired()` rather than pinned to today's source.
     const lifted = H.liftChartMethods();
     const defectFormula = 'Math.floor(candle.t / timeframeMs) * timeframeMs';
-    assert.equal(lifted._resampleDataFull.includes(defectFormula), true,
-        'harness lifted a _resampleDataFull that does not contain the defect formula — extraction is wrong');
-    assert.equal(lifted.parseTimeframe.includes("'d': 24 * 60 * 60 * 1000"), true);
-    note('0', 'defect-formula-present-in-lifted-product-text', true, defectFormula);
+    expectEqual('0', 'defect-formula-present-in-lifted-product-text',
+        lifted._resampleDataFull.includes(defectFormula), !wired,
+        `productIsWired=${wired} formula=${defectFormula}`);
+    assert.equal(lifted.parseTimeframe.includes("'d': 24 * 60 * 60 * 1000"), true,
+        'harness lifted a parseTimeframe that is not the product one — extraction is wrong');
 
     // parseTimeframe is the real one, with the fixed durations the finding names.
     expectEqual('0', 'real-parseTimeframe-1d', harness.chart.parseTimeframe('1d'), 86400000);
@@ -273,9 +299,28 @@ cellTest('cellA: helper API surface, label convention and instrument-class regis
         expectEqual('A', `classify-${tf}-epoch-aligned-is-correct`, SC.classifyTimeframe(tf).handled, false);
     }
 
-    // Per-instrument-class extensibility: two implemented, CME declared.
+    // Per-instrument-class extensibility: two implemented; CME and US equities
+    // declared. `us-equities` is not a class invented for coverage — the product
+    // registry classifies AAPL-style tickers as `stocks`, so the market-type map
+    // needs a real destination for them. Declared status means epoch fallback,
+    // i.e. no behaviour change for equities datasets.
     const classes = SC.instrumentClasses();
-    expectEqual('A', 'class-ids', classes.map((c) => c.id).join(','), 'fx,crypto,cme-index-futures,unknown');
+    expectEqual('A', 'class-ids', classes.map((c) => c.id).join(','),
+        'fx,crypto,cme-index-futures,us-equities,unknown');
+    expectEqual('A', 'us-equities-declared-not-implemented',
+        SC.describeClass('us-equities').status, 'declared');
+
+    // The market-type map is total over what the product registry can return.
+    expectEqual('A', 'market-type-map-forex', SC.classFromMarketType('forex'), 'fx');
+    expectEqual('A', 'market-type-map-crypto', SC.classFromMarketType('crypto'), 'crypto');
+    expectEqual('A', 'market-type-map-futures', SC.classFromMarketType('futures'), 'cme-index-futures');
+    expectEqual('A', 'market-type-map-stocks', SC.classFromMarketType('stocks'), 'us-equities');
+    expectEqual('A', 'market-type-map-unknown-is-null', SC.classFromMarketType('widgets'), null);
+    // Every class the map targets must exist in the registry above.
+    for (const type of ['forex', 'crypto', 'futures', 'stocks']) {
+        expectEqual('A', `market-type-target-exists:${type}`,
+            SC.describeClass(SC.classFromMarketType(type)) !== null, true);
+    }
     expectEqual('A', 'fx-zone', SC.describeClass('fx').zone, 'America/New_York');
     expectEqual('A', 'fx-daily-open-minute-of-day', SC.describeClass('fx').dailyOpenMinute, SESSION_OPEN_MINUTE_OF_DAY);
     expectEqual('A', 'fx-week-open-weekday-sunday', SC.describeClass('fx').weekOpenWeekday, 0);
@@ -591,11 +636,173 @@ cellTest('cellF: 5m/15m/1h/4h are byte-identical to today', () => {
         `stats=${JSON.stringify(probe.SC.stats())}`);
 });
 
-cellTest('cellF2: crypto daily stays 00:00 UTC (already correct today)', () => {
+cellTest('cellF2: crypto daily stays 00:00 UTC; crypto weekly moves to Monday 00:00 UTC', () => {
     const harness = makeHarness({ symbol: 'BTCUSD' });
+
+    // Daily: unchanged. The epoch floor already lands on 00:00 UTC.
     const daily = harness.chart._resampleDataFull(CONT_BARS, '1d');
     expectEqual('F2', 'crypto1d-length', daily.length, FROZEN_TODAY.crypto1d.length);
     expectEqual('F2', 'crypto1d-sha256', H.seriesSha256(daily), FROZEN_TODAY.crypto1d.sha256);
+
+    // Weekly: this is the ONE output changed on the worker's own judgement, so
+    // it is pinned on both sides. Today the epoch week floor opens THURSDAY
+    // 00:00 UTC (the Unix epoch was a Thursday). The crypto class anchors
+    // weekOpenWeekday = 1, i.e. MONDAY 00:00 UTC, which is the industry
+    // convention. RATIFICATION STILL OWED — see PACKET.md; the digests below
+    // make the change impossible to alter silently in the meantime.
+    const weekly = harness.chart._resampleDataFull(CONT_BARS, '1w');
+    const opens = weekly.map((b) => new Date(b.t).getUTCDay());
+    const openWeekdays = [...new Set(opens)].map((d) => ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][d]);
+
+    expectEqual('F2', 'crypto1w-open-weekday-today-is-thursday-epoch-floor',
+        openWeekdays.join(','), WIRED ? 'Mon' : 'Thu',
+        `wired=${WIRED} opens=${openWeekdays.join(',')}`);
+    expectEqual('F2', 'crypto1w-opens-at-midnight-utc',
+        weekly.every((b) => b.t % 86400000 === 0), true);
+
+    // Pre-fix digest, pinned. In the broken state this must match exactly; once
+    // wired it must NOT, or the crypto weekly change did not happen.
+    expectEqual('F2', 'crypto1w-differs-from-frozen-pre-fix-iff-wired',
+        H.seriesSha256(weekly) === FROZEN_TODAY.crypto1w.sha256, !WIRED,
+        `actualSha=${H.seriesSha256(weekly)} frozenPreFix=${FROZEN_TODAY.crypto1w.sha256} `
+        + `len=${weekly.length} frozenLen=${FROZEN_TODAY.crypto1w.length}`);
+
+    // And the post-fix digest is pinned too, so "moved" cannot mean "moved
+    // anywhere". Only meaningful in the wired states.
+    if (WIRED) {
+        expectEqual('F2', 'crypto1w-post-fix-sha256',
+            H.seriesSha256(weekly), FROZEN_WIRED.crypto1w.sha256);
+        expectEqual('F2', 'crypto1w-post-fix-length', weekly.length, FROZEN_WIRED.crypto1w.length);
+    }
+});
+
+/* ─────────────────────────────────────────────────────────────────────────
+ * Cell N — the wiring must resolve a real instrument class from a property the
+ * PRODUCT actually sets, and must actually change the product's output.
+ *
+ * This cell exists because its absence let a no-op patch certify green. The
+ * first version of the wiring read `this.sessionCalendarSymbol || this.currentPair
+ * || this.symbol || this.pair` — four properties with ZERO assignments in
+ * chart.js — and the harness set the first of them itself. Every value cell
+ * passed while the real product resolved an empty symbol, fell through to epoch
+ * alignment and produced byte-identical pre-fix output.
+ *
+ * So this cell asserts three separate things:
+ *   1. STRUCTURAL: every property the patch reads is assigned in chart.js.
+ *   2. RESOLUTION: the class is non-empty for the symbol shapes chart.js really
+ *      stores — not just for a clean ticker.
+ *   3. EFFECT: with only product-set properties populated, the output MOVES.
+ *      An unchanged digest here means the patch does nothing, whatever else
+ *      passes.
+ * ───────────────────────────────────────────────────────────────────────── */
+
+/** Every shape chart.js can assign to `currentSymbol`, with its 13 sites. */
+const CURRENT_SYMBOL_SHAPES = [
+    { symbol: 'EURUSD', origin: 'resolveSessionTickerForFileId / detected CSV symbol', expect: 'fx' },
+    { symbol: 'EUR/USD', origin: 'finalize() -> _formatPairTicker slash form', expect: 'fx' },
+    { symbol: 'EURUSD_2013_1M', origin: 'session.fileName stem (chart.js:2548)', expect: 'fx' },
+    { symbol: 'EURUSD_FULL_1MIN_1MIN', origin: 'FirstRate FX bundle name', expect: 'fx' },
+    { symbol: '20251028_194229_GBPUSD', origin: 'Dukascopy upload name', expect: 'fx' },
+    { symbol: 'BTCUSD', origin: 'crypto dataset', expect: 'crypto' },
+    { symbol: 'BTC_full_1min', origin: 'FirstRate crypto base-only bundle', expect: 'crypto' },
+    { symbol: 'NQ', origin: '_displaySessionFuturesSymbol root', expect: 'cme-index-futures' },
+    { symbol: 'ES_week_1min_1min', origin: 'FirstRate futures bundle', expect: 'cme-index-futures' },
+    { symbol: 'AAPL_full_1min_adj_split', origin: 'FirstRate stock bundle', expect: 'us-equities' },
+];
+
+/** Shapes that carry no instrument identity — must NOT be guessed at. */
+const UNIDENTIFIABLE_SHAPES = [
+    { symbol: 'FILE_123', origin: 'pair switch with no resolvable name (chart.js:2558/5505/10123)' },
+    { symbol: 'CHART', origin: 'extractSymbolFromFilename untitled branch (chart.js:19807)' },
+    { symbol: 'EURUSD1', origin: 'extractSymbolFromFilename short-name branch (chart.js:19812)' },
+    { symbol: '', origin: 'currentSymbol still null (chart.js:1133)' },
+];
+
+cellTest('cellN: wired product resolves an instrument class from a product-set property', () => {
+    // ── 1. STRUCTURAL ────────────────────────────────────────────────────
+    // Whatever the patch reads must exist in chart.js. This is the assertion
+    // whose absence caused the block, so it is derived from the patch TEXT
+    // rather than restated by hand — it cannot drift away from the wiring.
+    const readProps = H.symbolPropertiesInPatch();
+    expectEqual('N', 'patch-reads-only-declared-symbol-properties',
+        readProps.join(','), H.SYMBOL_PROPERTIES_READ.join(','));
+    for (const prop of readProps) {
+        expectEqual('N', `chart.js-assigns-this.${prop}`,
+            H.chartAssignmentCount(prop) > 0, true,
+            `assignments=${H.chartAssignmentCount(prop)}`);
+    }
+    // And the four properties of the rejected patch are confirmed non-existent,
+    // so this cell also documents why they cannot be used.
+    for (const prop of ['sessionCalendarSymbol', 'currentPair', 'symbol', 'pair']) {
+        expectEqual('N', `chart.js-does-not-assign-this.${prop}`,
+            H.chartAssignmentCount(prop), 0);
+    }
+
+    // ── 2. RESOLUTION ────────────────────────────────────────────────────
+    // The harness sets ONLY `currentSymbol`, exactly like the product.
+    for (const shape of CURRENT_SYMBOL_SHAPES) {
+        const h = makeHarness({ symbol: shape.symbol });
+        const cls = typeof h.chart._sessionInstrumentClass === 'function'
+            ? h.chart._sessionInstrumentClass() : null;
+        expectEqual('N', `class-for:${shape.symbol}`, String(cls), shape.expect, `origin=${shape.origin}`);
+        expectEqual('N', `class-is-non-empty:${shape.symbol}`, !!cls && cls !== 'unknown', true);
+    }
+
+    // Unidentifiable labels must resolve to nothing — never to a guessed FX
+    // session. MarketCalculationEngine.detectMarketType defaults to 'forex' for
+    // these, which is right for P&L and wrong here, so the wiring gates on
+    // isRegistered() instead. This is the assertion that keeps that gate.
+    for (const shape of UNIDENTIFIABLE_SHAPES) {
+        const h = makeHarness({ symbol: shape.symbol });
+        const cls = typeof h.chart._sessionInstrumentClass === 'function'
+            ? h.chart._sessionInstrumentClass() : null;
+        expectEqual('N', `unidentifiable-is-not-guessed:${shape.symbol || '(empty)'}`,
+            cls === null, true, `class=${cls} origin=${shape.origin}`);
+
+        // And the loss is announced rather than silently absorbed (§A4c).
+        h.chart._resampleDataFull(PO_BARS, '1d');
+        expectEqual('N', `unidentifiable-announces-degradation:${shape.symbol || '(empty)'}`,
+            [...new Set(h.missingModules)].join(','), 'SessionCalendar.unresolved-instrument');
+    }
+
+    // Intraday must NOT announce degradation: nothing is lost there.
+    const intraday = makeHarness({ symbol: 'FILE_123' });
+    intraday.chart._resampleDataFull(MIN_BARS, '5m');
+    expectEqual('N', 'unidentifiable-does-not-cry-wolf-on-intraday',
+        [...new Set(intraday.missingModules)].join(',') || 'none', 'none');
+
+    // ── 3. EFFECT ────────────────────────────────────────────────────────
+    // The whole point. With only product-set properties populated, daily and
+    // weekly output must MOVE off the frozen pre-fix digest.
+    for (const shape of CURRENT_SYMBOL_SHAPES.filter((s) => s.expect === 'fx')) {
+        const h = makeHarness({ symbol: shape.symbol });
+        const daily = h.chart._resampleDataFull(PO_BARS, '1d');
+        expectEqual('N', `product-shape-changes-daily-output:${shape.symbol}`,
+            H.seriesSha256(daily) === FROZEN_TODAY.po1d.sha256, false,
+            `len=${daily.length} todayLen=${FROZEN_TODAY.po1d.length}`);
+        expectEqual('N', `product-shape-has-friday-session:${shape.symbol}`,
+            daily.some((b) => b.t === H.EXPECTED.friday20130104.openMs), true);
+        expectEqual('N', `product-shape-has-no-phantom-saturday:${shape.symbol}`,
+            daily.map((b) => H.renderedInEasternTime(b.t).stamp).includes("Sat 05 01 '13 19:00"), false);
+    }
+
+    // Conversely, an unidentifiable label must reproduce today EXACTLY — the
+    // degradation is announced, not approximated.
+    const unknown = makeHarness({ symbol: 'FILE_123' });
+    expectEqual('N', 'unidentifiable-keeps-todays-output-exactly',
+        H.seriesSha256(unknown.chart._resampleDataFull(PO_BARS, '1d')), FROZEN_TODAY.po1d.sha256);
+
+    // ── registry dependency ──────────────────────────────────────────────
+    // If MarketCalculationEngine is absent the wiring must degrade, not throw.
+    const noEngine = makeHarness({ symbol: 'EURUSD', omitMarketCalc: true });
+    expectEqual('N', 'absent-registry-does-not-throw',
+        typeof noEngine.chart._sessionInstrumentClass === 'function'
+            ? String(noEngine.chart._sessionInstrumentClass()) : 'null',
+        'null');
+    expectEqual('N', 'absent-registry-keeps-todays-output',
+        H.seriesSha256(noEngine.chart._resampleDataFull(PO_BARS, '1d')), FROZEN_TODAY.po1d.sha256);
+    expectEqual('N', 'absent-registry-announces-degradation',
+        [...new Set(noEngine.missingModules)].join(','), 'SessionCalendar.unresolved-instrument');
 });
 
 /* ─────────────────────────────────────────────────────────────────────────
@@ -628,38 +835,84 @@ cellTest('cellG: _resampleDataFull and _tryIncrementalResample agree for daily a
     }
 });
 
-cellTest('cellG2: unsorted / out-of-order appended bar must not split the two paths', () => {
+/** First differing serialized row between two series, or 'none'. */
+function firstRowDiff(incremental, full) {
+    const a = H.serializeSeries(incremental).split('\n');
+    const b = H.serializeSeries(full).split('\n');
+    if (a.join('\n') === b.join('\n')) return 'none';
+    for (let i = 0; i < Math.max(a.length, b.length); i++) {
+        if (a[i] !== b[i]) return `row${i} inc=${a[i]} full=${b[i]}`;
+    }
+    return 'none';
+}
+
+cellTest('cellG2: unsorted / out-of-order appended bars must not split the two paths', () => {
     // NOTE FOR MANAGER A: this divergence exists TODAY as well as under the
     // simulated wiring — `_tryIncrementalResample` assumes the appended bar is
     // the newest and never bails when it is not. It is a SEPARATE pre-existing
     // mechanism from the session calendar. It is asserted here because
     // requirement (f) names the case and because a values gate that tolerates
-    // path divergence is the lying-gate shape §A5 bans. Fix shape: bail to the
-    // full resample when `lastRaw.t` is older than the previous last raw bar.
+    // path divergence is the lying-gate shape §A5 bans.
+    //
+    // TWO arrival patterns, because the obvious guard only handles the first:
+    //
+    //   SIMPLE     ... 197, 198, 199, 169        (older than its predecessor)
+    //   STAIRCASE  ... 197, 198, 199, 169, 170   (170 is NEWER than 169, its
+    //                                             immediate predecessor, but
+    //                                             still OLDER than 199, the
+    //                                             running maximum)
+    //
+    // A guard comparing `lastRaw.t` with `source[source.length - 2]` passes the
+    // staircase and the paths diverge anyway. Only a running maximum holds.
     for (const tf of ['1d', '1w']) {
-        const harness = makeHarness();
         const head = PO_BARS.slice(0, 200);
-        const { live } = incrementalSeries(harness, head, tf);
-
-        // Append a bar 30h behind the newest — an out-of-order arrival.
         const newest = head[head.length - 1];
-        live.push(H.synthBar(9999, newest.t - 30 * 3600000));
-        const incremental = harness.pipeline.getResampledSeries(live, tf, 0);
-        const full = makeHarness().chart._resampleDataFull(live, tf);
 
-        const incText = H.serializeSeries(incremental);
-        const fullText = H.serializeSeries(full);
-        let firstDiff = 'none';
-        if (incText !== fullText) {
-            const a = incText.split('\n');
-            const b = fullText.split('\n');
-            for (let i = 0; i < Math.max(a.length, b.length); i++) {
-                if (a[i] !== b[i]) { firstDiff = `row${i} inc=${a[i]} full=${b[i]}`; break; }
-            }
+        // ── SIMPLE ──
+        const simple = makeHarness();
+        const { live: simpleLive } = incrementalSeries(simple, head, tf);
+        simpleLive.push(H.synthBar(9999, newest.t - 30 * 3600000));
+        const simpleInc = simple.pipeline.getResampledSeries(simpleLive, tf, 0);
+        const simpleFull = makeHarness().chart._resampleDataFull(simpleLive, tf);
+        expectEqual('G2', `${tf}-unsorted-append-incremental-equals-full`,
+            firstRowDiff(simpleInc, simpleFull), 'none',
+            `incLen=${simpleInc.length} fullLen=${simpleFull.length}`);
+
+        // ── STAIRCASE ──
+        const stair = makeHarness();
+        const { live: stairLive } = incrementalSeries(stair, head, tf);
+        stairLive.push(H.synthBar(9999, newest.t - 30 * 3600000));
+        stair.pipeline.getResampledSeries(stairLive, tf, 0);
+        // Newer than the bar just appended, still behind the running maximum.
+        stairLive.push(H.synthBar(9998, newest.t - 29 * 3600000));
+        const stairInc = stair.pipeline.getResampledSeries(stairLive, tf, 0);
+        const stairFull = makeHarness().chart._resampleDataFull(stairLive, tf);
+        expectEqual('G2', `${tf}-staircase-append-incremental-equals-full`,
+            firstRowDiff(stairInc, stairFull), 'none',
+            `incLen=${stairInc.length} fullLen=${stairFull.length}`);
+
+        // ── DEEP STAIRCASE ──
+        // A whole ascending run behind the maximum, so a guard that merely
+        // remembers "the last bar was out of order" cannot pass either.
+        const deep = makeHarness();
+        const { live: deepLive } = incrementalSeries(deep, head, tf);
+        for (let k = 40; k >= 1; k -= 1) {
+            deepLive.push(H.synthBar(9000 + k, newest.t - k * 3600000));
+            deep.pipeline.getResampledSeries(deepLive, tf, 0);
         }
-        expectEqual('G2', `${tf}-unsorted-append-incremental-equals-full`, firstDiff, 'none',
-            `incLen=${incremental.length} fullLen=${full.length}`);
+        const deepInc = deep.pipeline.getResampledSeries(deepLive, tf, 0);
+        const deepFull = makeHarness().chart._resampleDataFull(deepLive, tf);
+        expectEqual('G2', `${tf}-deep-staircase-incremental-equals-full`,
+            firstRowDiff(deepInc, deepFull), 'none',
+            `incLen=${deepInc.length} fullLen=${deepFull.length}`);
     }
+
+    // Ordered appends must still take the incremental path — a guard that always
+    // bails would pass every assertion above while destroying the optimisation.
+    const ordered = makeHarness();
+    const { incrementalCalls } = incrementalSeries(ordered, PO_BARS.slice(0, 200), '1d');
+    expectEqual('G2', 'ordered-appends-still-use-incremental-path',
+        incrementalCalls, 199, 'guard must not disable the fast path');
 });
 
 /* ─────────────────────────────────────────────────────────────────────────
@@ -794,6 +1047,61 @@ cellTest('cellK: session bucketing does not add per-bar Intl work', () => {
     expectEqual('K', 'boundary-cache-absorbs-the-rest',
         stats.boundaryCacheHits > bars.length - 2 * sessionDays, true,
         `hits=${stats.boundaryCacheHits} recomputes=${stats.boundaryRecomputes}`);
+
+    // Instrument resolution is per SYMBOL, not per bar. Registry lookup splits
+    // and sorts the label on every call, so an unmemoised resolver would put
+    // that on the hot path once per candle.
+    note('K', 'registry-calls', true, JSON.stringify(harness.registryCalls));
+    expectEqual('K', 'registry-lookups-are-not-per-bar',
+        harness.registryCalls.isRegistered <= 2, true,
+        `isRegistered=${harness.registryCalls.isRegistered} bars=${bars.length}`);
+    expectEqual('K', 'registry-specs-lookups-are-not-per-bar',
+        harness.registryCalls.getSpecs <= 2, true,
+        `getSpecs=${harness.registryCalls.getSpecs} bars=${bars.length}`);
+
+    // The two documented-but-unreachable DST branches in `wallToUtc` must stay
+    // unreached for the implemented classes. A non-zero count means an added
+    // class anchors near a transition and the constant-anchor invariant that
+    // cells D1-D3 assert needs re-proving for it.
+    expectEqual('K', 'dst-gap-branch-unreached-for-implemented-classes',
+        stats.wallClockGapAdjustments, 0);
+    expectEqual('K', 'dst-ambiguity-branch-unreached-for-implemented-classes',
+        stats.wallClockTransitionCrossings, 0);
+});
+
+cellTest('cellK2: DST gap and ambiguity policies are documented, unreachable and counted', () => {
+    // RECORDED FOR MANAGER A, not a behaviour gate. Both branches are dead for
+    // FX (17:00 America/New_York) and crypto (00:00 UTC) because US transitions
+    // happen at 02:00 local and UTC has none. They are therefore UNTESTED by
+    // any fixture. Rather than synthesise an instrument class that does not
+    // ship in order to manufacture coverage, the module states each policy
+    // explicitly and counts each branch, so an added class trips cell K instead
+    // of silently drifting. This cell asserts the diagnostic EXISTS and reads
+    // zero across every fixture the packet uses.
+    const { SC } = makeHarness();
+    for (const counter of ['wallClockGapAdjustments', 'wallClockTransitionCrossings']) {
+        expectEqual('K2', `diagnostic-exists:${counter}`,
+            typeof SC.stats()[counter], 'number');
+    }
+
+    const probe = makeHarness();
+    probe.SC.resetCaches();
+    for (const [tf, bars] of [['1d', SPRING_BARS], ['1d', FALL_BARS], ['1w', SPRING_BARS],
+        ['1w', FALL_BARS], ['1d', PO_BARS], ['1w', PO_BARS]]) {
+        probe.chart._resampleDataFull(bars, tf);
+    }
+    const s = probe.SC.stats();
+    note('K2', 'stats-across-all-dst-fixtures', true, JSON.stringify(s));
+    expectEqual('K2', 'gap-branch-never-taken-across-both-transitions', s.wallClockGapAdjustments, 0);
+    expectEqual('K2', 'ambiguity-branch-never-taken-across-both-transitions',
+        s.wallClockTransitionCrossings, 0);
+
+    // The documented policies, recorded so the packet and the source agree.
+    const source = H.readRepo(H.REL.calendar);
+    expectEqual('K2', 'gap-policy-documented',
+        source.includes('first instant AFTER the gap'), true);
+    expectEqual('K2', 'ambiguity-policy-documented',
+        source.includes('EARLIER occurrence'), true);
 });
 
 /* ─────────────────────────────────────────────────────────────────────────
@@ -867,11 +1175,90 @@ cellTest('cellM: contract sidecar is consistent with the helper and not yet in t
     // match reality — so this cell cannot go stale after Manager A wires it.
     const wired = H.productIsWired();
     expectEqual('M', 'contract-records-both-call-sites',
-        contract.sharedCallSites.map((s) => s.function).sort(),
+        [...new Set(contract.sharedCallSites.map((s) => s.function))].sort(),
         ['_resampleDataFull', '_tryIncrementalResample']);
+    // All FOUR files, not just the authoring tree — see cell M3.
+    expectEqual('M', 'contract-records-all-four-wiring-files',
+        contract.sharedCallSites.map((s) => s.file).sort(),
+        H.WIRING_FILE_PAIRS.flatMap((p) => [p.source, p.mirror]).sort());
     expectEqual('M', 'contract-wiring-state-matches-product',
         contract.sharedCallSites.every((s) => s.wired === wired), true,
         `productIsWired=${wired}`);
+
+    // The registry dependency must be declared, since the fix silently does
+    // nothing without it.
+    expectEqual('M', 'contract-declares-registry-dependency',
+        (contract.module.dependsOn || []).map((d) => d.module), ['MarketCalculationEngine']);
+    expectEqual('M', 'contract-records-product-symbol-property',
+        contract.instrumentIdentity.productProperty, 'chart.currentSymbol');
+    expectEqual('M', 'contract-symbol-property-assignment-count-matches-source',
+        contract.instrumentIdentity.productPropertyAssignments,
+        H.chartAssignmentCount('currentSymbol'));
+    for (const prop of contract.instrumentIdentity.rejectedProperties) {
+        expectEqual('M', `contract-rejected-property-really-absent:${prop}`,
+            H.chartAssignmentCount(prop), 0);
+    }
+});
+
+cellTest('cellM3: the wiring is a FOUR-file change and every target accepts it', () => {
+    // `chart v 1.4/chart/**` is the authoring tree; `homepage/public/chart/**`
+    // is what is actually SERVED. Both copies of both bucketing files must take
+    // the patch, or the fix ships to one tree and the PO keeps seeing the
+    // phantom Saturday on whichever shell loads the other. Nothing in the
+    // earlier oracle would have caught a divergent mirror of these two files.
+    const targets = [];
+    for (const pair of H.WIRING_FILE_PAIRS) {
+        targets.push({ id: `${pair.id} (source)`, rel: pair.source });
+        targets.push({ id: `${pair.id} (mirror)`, rel: pair.mirror });
+    }
+    expectEqual('M3', 'wiring-target-count', targets.length, 4);
+
+    for (const target of targets) {
+        expectEqual('M3', `target-exists:${target.rel}`,
+            (() => { try { return H.readRepo(target.rel).length > 0; } catch { return false; } })(), true);
+    }
+
+    // Every target accepts every patch pair at exactly one site. `patchFileText`
+    // throws on 0 or 2+ matches, so this is a machine-checked wiring instruction
+    // for all four files rather than a comment claiming they are the same.
+    for (const target of targets) {
+        let outcome = 'threw';
+        let changed = false;
+        try {
+            const before = H.readRepo(target.rel);
+            const after = H.patchFileText(target.rel, before);
+            changed = after !== before;
+            outcome = 'applied';
+        } catch (error) {
+            outcome = `threw: ${error.message}`;
+        }
+        expectEqual('M3', `patch-applies-cleanly:${target.rel}`, outcome, 'applied');
+        expectEqual('M3', `patch-actually-changes-file:${target.rel}`, changed, true);
+    }
+
+    // Source and mirror must be byte-identical BEFORE the wiring, so a
+    // four-file change stays a four-file change and cannot silently become a
+    // two-file change plus a pre-existing drift.
+    for (const pair of H.WIRING_FILE_PAIRS) {
+        expectEqual('M3', `source-and-mirror-identical-pre-wiring:${pair.id}`,
+            H.sha256(H.readRepo(pair.mirror)), H.sha256(H.readRepo(pair.source)));
+    }
+
+    // …and identical AFTER it, which is the property that actually matters.
+    for (const pair of H.WIRING_FILE_PAIRS) {
+        const patchedSource = H.patchFileText(pair.source, H.readRepo(pair.source));
+        const patchedMirror = H.patchFileText(pair.mirror, H.readRepo(pair.mirror));
+        expectEqual('M3', `source-and-mirror-identical-post-wiring:${pair.id}`,
+            H.sha256(patchedMirror), H.sha256(patchedSource));
+    }
+
+    // The helper itself is a fifth and sixth file (module + mirror) and is not
+    // patched but copied; cell M pins that pair. Recorded here so the full
+    // deployment set is visible in one place.
+    note('M3', 'full-deployment-file-set', true, [
+        ...H.WIRING_FILE_PAIRS.flatMap((p) => [p.source, p.mirror]),
+        H.REL.calendar, H.REL.calendarMirror,
+    ].join(' | '));
 });
 
 cellTest('cellM2: both resample paths route through ONE boundary implementation', () => {

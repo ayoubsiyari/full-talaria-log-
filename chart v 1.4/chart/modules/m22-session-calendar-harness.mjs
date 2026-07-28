@@ -71,7 +71,21 @@ export const REL = {
     calendar: 'chart v 1.4/chart/modules/session-calendar.js',
     calendarMirror: 'homepage/public/chart/modules/session-calendar.js',
     contract: 'chart v 1.4/chart/modules/session-calendar.contract.json',
+    // The instrument registry that owns symbol -> instrument-type resolution.
+    // Already served by every chart shell; the wiring consumes it rather than
+    // growing a second classifier.
+    marketCalc: 'chart v 1.4/chart/modules/market-calculations.js',
+    // Generated mirrors. The wiring is a FOUR-FILE change: both bucketing files
+    // exist twice and the served copy is the homepage one.
+    chartMirror: 'homepage/public/chart/chart.js',
+    pipelineMirror: 'homepage/public/chart/modules/chart-data-pipeline.js',
 };
+
+/** Every file the wiring must land in, as (source, mirror) pairs. */
+export const WIRING_FILE_PAIRS = [
+    { id: 'chart.js', source: REL.chart, mirror: REL.chartMirror },
+    { id: 'chart-data-pipeline.js', source: REL.pipeline, mirror: REL.pipelineMirror },
+];
 
 // Sources are immutable for the duration of a run; memoized so the oracle can
 // build one VM realm per cell without re-reading and re-hashing 2 MB of chart.js.
@@ -105,7 +119,35 @@ const EXPECTED_NEEDLES = {
 /**
  * Lift a class method's verbatim source text by brace matching, skipping
  * strings, template literals and comments. Fail-closed.
+ *
+ * KNOWN LIMITATION — RECORDED, NOT FIXED (Manager A, rejection 1).
+ * The scanner does NOT skip REGEX LITERALS. A regex containing an unbalanced
+ * brace or a `{n}` / `{n,m}` quantifier would be counted as structure and the
+ * lift would end at the wrong place. It works today only because none of the
+ * lifted methods contains such a literal — `_resampleDataFull` holds
+ * `/^(\d+)mo$/` and `classifyTimeframe`-style patterns with no quantifier
+ * braces. That is a property of the CURRENT source, not of this construction.
+ *
+ * Two things make the luck survivable rather than load-bearing:
+ *   - `EXPECTED_NEEDLES` re-checks each lifted body for text that only appears
+ *     at its very end, so a short lift throws rather than silently truncating.
+ *   - `assertNoRegexBraceQuantifier` below fails the lift outright if a brace
+ *     quantifier ever appears in a lifted body.
+ * A real fix is a tokenizer, which is out of scope for this packet and is
+ * reported to Manager A as a follow-up rather than attempted here.
  */
+function assertNoRegexBraceQuantifier(name, text) {
+    // Any `{n}`, `{n,}` or `{n,m}` in the lifted body is the shape that would
+    // break brace matching. Fail closed if one ever appears.
+    const m = text.match(/\{\d+(,\d*)?\}/);
+    if (m) {
+        throw new Error(
+            `extractClassMethod(${name}): lifted body contains brace quantifier ${JSON.stringify(m[0])}; `
+            + 'the brace matcher does not skip regex literals — see the note above and use a tokenizer',
+        );
+    }
+}
+
 export function extractClassMethod(source, name) {
     const re = new RegExp(`\\n(\\s{4})${name}\\s*\\(([^)]*)\\)\\s*\\{`, 'g');
     const hits = [];
@@ -150,6 +192,7 @@ export function extractClassMethod(source, name) {
                         throw new Error(`extractClassMethod(${name}): lifted text lost needle ${JSON.stringify(needle)}`);
                     }
                 }
+                assertNoRegexBraceQuantifier(name, text);
                 return text;
             }
         }
@@ -157,7 +200,19 @@ export function extractClassMethod(source, name) {
     throw new Error(`extractClassMethod(${name}): unbalanced braces`);
 }
 
-export const LIFTED_METHODS = ['parseTimeframe', '_prepareBarsForResampling', '_resampleDataFull'];
+/** Always present in chart.js; extraction fails closed if one goes missing. */
+export const BASE_LIFTED_METHODS = ['parseTimeframe', '_prepareBarsForResampling', '_resampleDataFull'];
+
+/**
+ * Added to chart.js by the wiring (WIRING_PATCH.chartAdditions). Absent before
+ * the wiring lands, lifted from the product afterwards. Keeping them here is
+ * what makes `productIsWired()` a real transition instead of a crash: once
+ * Manager A applies the patch, the synthetic host stops receiving injected
+ * copies and starts running the product's own text.
+ */
+export const WIRED_LIFTED_METHODS = ['_sessionBucketStart', '_sessionInstrumentClass'];
+
+export const LIFTED_METHODS = [...BASE_LIFTED_METHODS, ...WIRED_LIFTED_METHODS];
 
 const liftCache = new Map();
 
@@ -165,13 +220,35 @@ export function liftChartMethods(chartSource = readRepo(REL.chart)) {
     const key = sha256(chartSource);
     if (!liftCache.has(key)) {
         const out = {};
-        for (const name of LIFTED_METHODS) out[name] = extractClassMethod(chartSource, name);
+        for (const name of BASE_LIFTED_METHODS) out[name] = extractClassMethod(chartSource, name);
+        // Lifted only once the wiring is in the product. Before that the patch
+        // injects them; after it, the product text is the single source.
+        for (const name of WIRED_LIFTED_METHODS) {
+            if (new RegExp(`\\n\\s{4}${name}\\s*\\(`).test(chartSource)) {
+                out[name] = extractClassMethod(chartSource, name);
+            }
+        }
         liftCache.set(key, out);
     }
     return liftCache.get(key);
 }
 
+/** Method names actually available to build the synthetic host from `lifted`. */
+export function liftedMethodNames(lifted) {
+    return LIFTED_METHODS.filter((n) => typeof lifted[n] === 'string');
+}
+
 /* ── the proposed product wiring, as machine-checked find/replace pairs ──── */
+
+/**
+ * The properties `_sessionInstrumentClass` is permitted to read off the chart.
+ * Cell N asserts every one of these is actually ASSIGNED in chart.js. The first
+ * version of this patch read four properties that the product never sets, so
+ * the wiring resolved an empty symbol, fell through to epoch alignment and
+ * changed nothing — a green oracle over an unchanged defect. This list plus its
+ * assertion is the structural guard against that recurring.
+ */
+export const SYMBOL_PROPERTIES_READ = ['currentSymbol'];
 
 const SHARED_BUCKET_METHOD = `
     /**
@@ -190,15 +267,53 @@ const SHARED_BUCKET_METHOD = `
             }
             return Math.floor(timestampMs / timeframeMs) * timeframeMs;
         }
+        const instrumentClass = this._sessionInstrumentClass();
+        if (!instrumentClass) {
+            // Instrument identity not established. Keep today's grid — guessing a
+            // session for an unidentified dataset would move displayed values on
+            // no evidence — but ANNOUNCE it (§A4c): a chart showing epoch-aligned
+            // days because it could not name its instrument is a degraded chart,
+            // and the support passport must say so. Only announce for the
+            // timeframes we would otherwise have changed; intraday loses nothing.
+            if (SC.classifyTimeframe(timeframe).handled
+                && typeof window !== 'undefined'
+                && typeof window.__talariaMarkMissingModule === 'function') {
+                window.__talariaMarkMissingModule('SessionCalendar.unresolved-instrument');
+            }
+            return SC.epochAlignedBucketStart(timestampMs, timeframeMs);
+        }
         return SC.bucketStart(timestampMs, timeframe, {
             timeframeMs: timeframeMs,
-            symbol: this._sessionCalendarSymbol(),
+            instrumentClass: instrumentClass,
         });
     }
 
-    /** Instrument identity for session-class resolution. */
-    _sessionCalendarSymbol() {
-        return this.sessionCalendarSymbol || this.currentPair || this.symbol || this.pair || '';
+    /**
+     * Instrument class for session bucketing, or null when identity is unknown.
+     *
+     * \`currentSymbol\` is the ONLY symbol property chart.js assigns, but it holds
+     * a DISPLAY LABEL, not a ticker: it can be \`EURUSD_FULL_1MIN_1MIN\`,
+     * \`20251028_194229_GBPUSD\`, \`EUR/USD\`, \`FILE_1234\`, \`CHART\` or null.
+     * Classification is therefore delegated to MarketCalculationEngine, which
+     * already resolves exactly these shapes for P&L and is gated on
+     * \`isRegistered()\` so an unrecognised label yields null instead of a guess.
+     *
+     * Memoised per symbol: the resample loop calls this once per bar, and
+     * registry resolution splits and sorts the label on every call.
+     */
+    _sessionInstrumentClass() {
+        const symbol = (typeof this.currentSymbol === 'string') ? this.currentSymbol : '';
+        if (this._sessionClassCacheKey === symbol) return this._sessionClassCache;
+        const SC = (typeof SessionCalendar !== 'undefined' && SessionCalendar)
+            || (typeof window !== 'undefined' && window.SessionCalendar)
+            || null;
+        const engine = (typeof window !== 'undefined' && window.marketCalcEngine) || null;
+        const resolved = (SC && typeof SC.classFromRegistry === 'function')
+            ? SC.classFromRegistry(engine, symbol)
+            : null;
+        this._sessionClassCacheKey = symbol;
+        this._sessionClassCache = resolved;
+        return resolved;
     }
 `;
 
@@ -236,13 +351,42 @@ export const WIRING_PATCH = {
             // silently folds an out-of-order arrival into the wrong bucket. Bail
             // to the full resample instead, which sorts. Required by requirement
             // (f) — the two paths must not disagree for any arrival order.
-            id: 'W5-incremental-out-of-order-bail',
+            //
+            // The guard is a RUNNING MAXIMUM, not a comparison with the previous
+            // element. Comparing with `source[source.length - 2]` passes a
+            // staircase (one bar out of order, then a bar newer than its
+            // immediate predecessor but still older than the true maximum) and
+            // the two paths diverge anyway. The maximum is seeded by W5a on the
+            // full-resample path and maintained here.
+            id: 'W5b-incremental-running-max-bail',
             file: REL.pipeline,
             method: '_tryIncrementalResample',
             find: '            const timeframeMs = chart.parseTimeframe(tf);',
-            replace: '            const prevRaw = source[source.length - 2];\n'
-                + '            if (prevRaw && Number.isFinite(prevRaw.t) && lastRaw.t < prevRaw.t) return null;\n\n'
+            replace: '            const cache = this._resampleCache;\n'
+                + '            const maxRawT = cache ? cache.maxRawT : undefined;\n'
+                + '            // Fail closed: an unseeded maximum cannot prove ordering.\n'
+                + '            if (!Number.isFinite(maxRawT)) return null;\n'
+                + '            if (lastRaw.t < maxRawT) return null;\n'
+                + '            cache.maxRawT = lastRaw.t;\n\n'
                 + '            const timeframeMs = chart.parseTimeframe(tf);',
+        },
+        {
+            // Seed the running maximum wherever the cache is (re)written by a
+            // full resample, so the first incremental append after any reset
+            // compares against a real value rather than an inherited one.
+            id: 'W5a-full-resample-seeds-running-max',
+            file: REL.pipeline,
+            method: 'getResampledSeries',
+            find: '            cache.dataVersion = dv;\n            cache.result = full;\n            return full;',
+            replace: '            cache.dataVersion = dv;\n'
+                + '            cache.result = full;\n'
+                + '            let seedMaxRawT = -Infinity;\n'
+                + '            for (let i = 0; i < source.length; i++) {\n'
+                + '                const st = source[i] && source[i].t;\n'
+                + '                if (Number.isFinite(st) && st > seedMaxRawT) seedMaxRawT = st;\n'
+                + '            }\n'
+                + '            cache.maxRawT = seedMaxRawT;\n'
+                + '            return full;',
         },
     ],
 };
@@ -261,7 +405,36 @@ function applyPairs(text, pairs, label) {
 
 /** True when the product source already carries the shared helper call. */
 export function productIsWired(chartSource = readRepo(REL.chart), pipelineSource = readRepo(REL.pipeline)) {
-    return chartSource.includes('_sessionBucketStart') && pipelineSource.includes('_sessionBucketStart');
+    return chartSource.includes('_sessionBucketStart')
+        && chartSource.includes('_sessionInstrumentClass')
+        && pipelineSource.includes('_sessionBucketStart');
+}
+
+/**
+ * Apply the whole wiring to a named file's text. Used both by the harness (for
+ * `chart v 1.4`) and by the mirror cell (for `homepage/public/chart`), so the
+ * oracle proves the patch lands on all FOUR files, not just the two it runs.
+ */
+export function patchFileText(rel, text) {
+    const canonical = rel === REL.chartMirror ? REL.chart
+        : rel === REL.pipelineMirror ? REL.pipeline
+            : rel;
+    let out = text;
+    if (canonical === REL.chart) {
+        out = applyPairs(out, WIRING_PATCH.chartMethods, rel);
+        // Additions are appended to the class body in the real edit; for digest
+        // purposes the marker is that the methods are absent beforehand.
+        for (const addition of WIRING_PATCH.chartAdditions) {
+            if (out.includes('_sessionBucketStart(timestampMs, timeframe, timeframeMs)')) {
+                throw new Error(`${rel}: ${addition.id} already present`);
+            }
+        }
+    } else if (canonical === REL.pipeline) {
+        out = applyPairs(out, WIRING_PATCH.pipeline, rel);
+    } else {
+        throw new Error(`patchFileText: ${rel} is not a wiring target`);
+    }
+    return out;
 }
 
 /* ── harness ─────────────────────────────────────────────────────────────── */
@@ -289,6 +462,8 @@ export function makeHarness(options = {}) {
         // session-calendar.js at all. Simulated by not evaluating it in the realm,
         // which is exactly what a missing <script> tag produces.
         omitCalendar = false,
+        // Same, for the instrument registry the wiring depends on.
+        omitMarketCalc = false,
     } = options;
 
     const chartSource = readRepo(REL.chart);
@@ -296,8 +471,9 @@ export function makeHarness(options = {}) {
     let calendarSource = readRepo(REL.calendar);
     const lifted = liftChartMethods(chartSource);
     const alreadyWired = productIsWired(chartSource, pipelineSource);
+    const liftedNames = liftedMethodNames(lifted);
 
-    let methodsText = LIFTED_METHODS.map((n) => lifted[n]).join('\n');
+    let methodsText = liftedNames.map((n) => lifted[n]).join('\n');
     let additions = '';
     let patched = false;
 
@@ -325,7 +501,9 @@ globalThis.TalariaResampleHost = TalariaResampleHost;
 `;
 
     const missingModules = [];
-    const sandbox = { console };
+    // Module load banners would interleave with assertion output; warnings and
+    // errors still surface so a degraded realm cannot go unnoticed.
+    const sandbox = { console: Object.assign(Object.create(console), { log: () => {} }) };
     sandbox.window = sandbox;
     sandbox.self = sandbox;
     sandbox.globalThis = sandbox;
@@ -335,8 +513,25 @@ globalThis.TalariaResampleHost = TalariaResampleHost;
     if (!omitCalendar) {
         vm.runInContext(calendarSource, sandbox, { filename: 'session-calendar.vm.js' });
     }
+    // The REAL instrument registry, in the same realm, exposed the way the
+    // shells expose it (`window.marketCalcEngine`). The wiring resolves
+    // instrument identity through this and nothing else.
+    if (!omitMarketCalc) {
+        vm.runInContext(readRepo(REL.marketCalc), sandbox, { filename: 'market-calculations.vm.js' });
+    }
     vm.runInContext(pipelineSource, sandbox, { filename: 'chart-data-pipeline.vm.js' });
     vm.runInContext(hostSource, sandbox, { filename: 'chart.lifted-methods.vm.js' });
+
+    // Count registry work so cell K can bound it: resolution is per-symbol, not
+    // per-bar, and a regression to per-bar lookups is a hot-path cost defect.
+    const registryCalls = { isRegistered: 0, getSpecs: 0 };
+    const engine = sandbox.marketCalcEngine || null;
+    if (engine) {
+        for (const fn of ['isRegistered', 'getSpecs']) {
+            const real = engine[fn].bind(engine);
+            engine[fn] = (...args) => { registryCalls[fn] += 1; return real(...args); };
+        }
+    }
 
     const HostCtor = sandbox.TalariaResampleHost;
     const PipelineCtor = sandbox.ChartDataPipeline;
@@ -348,8 +543,12 @@ globalThis.TalariaResampleHost = TalariaResampleHost;
     chart.dataVersion = 0;
     chart.data = [];
     chart.rawData = null;
-    chart.sessionCalendarSymbol = symbol;
-    chart.currentPair = symbol;
+    // `currentSymbol` and NOTHING ELSE. This is the only symbol property
+    // chart.js assigns (13 assignment sites; zero for sessionCalendarSymbol /
+    // currentPair / symbol / pair). An earlier harness set a property of its own
+    // invention, which made a wiring that no-ops in the real product look
+    // correct here. Cell N asserts this list matches the product's assignments.
+    chart.currentSymbol = symbol;
     chart.bumpDataVersion = function () { this.dataVersion += 1; };
 
     const pipeline = new PipelineCtor(chart);
@@ -361,6 +560,8 @@ globalThis.TalariaResampleHost = TalariaResampleHost;
         pipeline,
         PipelineCtor,
         SC: sandbox.SessionCalendar || null,
+        engine,
+        registryCalls,
         sandbox,
         missingModules,
         meta: {
@@ -371,12 +572,32 @@ globalThis.TalariaResampleHost = TalariaResampleHost;
             symbol,
             corruptCalendar: !!corruptCalendar,
             omitCalendar: !!omitCalendar,
-            liftedSha256: Object.fromEntries(LIFTED_METHODS.map((n) => [n, sha256(lifted[n])])),
+            omitMarketCalc: !!omitMarketCalc,
+            liftedFromProduct: liftedNames,
+            liftedSha256: Object.fromEntries(liftedNames.map((n) => [n, sha256(lifted[n])])),
             chartSha256: sha256(chartSource),
             pipelineSha256: sha256(readRepo(REL.pipeline)),
             calendarSha256: sha256(readRepo(REL.calendar)),
         },
     };
+}
+
+/**
+ * How many times chart.js ASSIGNS `this.<prop>`. Zero means the wiring would be
+ * reading a property that does not exist — the exact defect that blocked the
+ * first packet, made structurally checkable.
+ */
+export function chartAssignmentCount(prop, chartSource = readRepo(REL.chart)) {
+    const re = new RegExp(`this\\.${prop}\\s*=[^=]`, 'g');
+    return (chartSource.match(re) || []).length;
+}
+
+/** Properties the wiring's symbol resolver reads, scraped from the patch text. */
+export function symbolPropertiesInPatch() {
+    const source = WIRING_PATCH.chartAdditions.map((a) => a.source).join('\n');
+    const body = source.slice(source.indexOf('_sessionInstrumentClass('));
+    return [...new Set([...body.matchAll(/this\.(\w+)/g)].map((m) => m[1]))]
+        .filter((p) => !p.startsWith('_session'));
 }
 
 /** Effective harness mode: PRODUCT unless simulation is requested and needed. */

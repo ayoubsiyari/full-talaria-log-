@@ -7,7 +7,7 @@
   "finding": "docs/plan3/FINDING-SESSION-CALENDAR-20260727.md",
   "module": {
     "id": "SessionCalendar",
-    "version": "20260727b81",
+    "version": "20260728b82",
     "provides": [
       "bucketStart",
       "epochAlignedBucketStart",
@@ -15,6 +15,8 @@
       "openLocalTime",
       "classifyTimeframe",
       "resolveInstrumentClass",
+      "classFromMarketType",
+      "classFromRegistry",
       "instrumentClasses",
       "describeClass",
       "explain",
@@ -26,9 +28,19 @@
     "class": "correctness",
     "classRationale": "Absence changes displayed OHLC values on every daily and weekly bar (wrong 24h window, wrong bar dates, missing Friday bar). Per §A4c this is a correctness-class dependency, not a performance one.",
     "order": {
-      "after": ["/chart/modules/module-presence-runtime.js"],
+      "after": ["/chart/modules/module-presence-runtime.js", "/chart/modules/market-calculations.js"],
       "before": ["/chart/chart.js", "/chart/modules/chart-data-pipeline.js"]
     },
+    "dependsOn": [
+      {
+        "module": "MarketCalculationEngine",
+        "script": "/chart/modules/market-calculations.js",
+        "global": "window.marketCalcEngine",
+        "why": "Sole source of instrument identity for the product path. chart.currentSymbol holds a display label (EURUSD_FULL_1MIN_1MIN, 20251028_194229_GBPUSD, EUR/USD, FILE_1234, null), and this registry already resolves those shapes for P&L. classFromRegistry gates on isRegistered() so an unrecognised label yields null rather than a guessed FX session.",
+        "absenceBehaviour": "classFromRegistry returns null; callers keep legacy epoch alignment and announce 'SessionCalendar.unresolved-instrument' via __talariaMarkMissingModule.",
+        "alreadyServedBy": ["chart v 1.4/chart/dist-v9/index.html", "homepage/public/chart/dist-v9/index.html", "chart v 1.4/chart/multichart-prod/chart-embed.html", "homepage/public/chart/multichart-prod/chart-embed.html"]
+      }
+    ],
     "source": "chart v 1.4/chart/modules/session-calendar.js",
     "mirrors": ["homepage/public/chart/modules/session-calendar.js"],
     "script": "/chart/modules/session-calendar.js"
@@ -52,11 +64,25 @@
     { "id": "fx", "status": "implemented", "zone": "America/New_York", "dailyOpen": "17:00 local (DST-aware)", "weekOpen": "Sunday 17:00 local", "labelOffsetDays": 1 },
     { "id": "crypto", "status": "implemented", "zone": "UTC", "dailyOpen": "00:00 UTC", "weekOpen": "Monday 00:00 UTC", "labelOffsetDays": 0 },
     { "id": "cme-index-futures", "status": "declared", "zone": "America/Chicago", "fallback": "legacy epoch alignment", "requires": ["cme-holiday-calendar", "cme-daily-maintenance-break", "cme-early-close-table"] },
+    { "id": "us-equities", "status": "declared", "zone": "America/New_York", "fallback": "legacy epoch alignment", "reachedBy": "MarketCalculationEngine specs.type === 'stocks' (AAPL-style tickers)", "requires": ["nyse-holiday-calendar", "nyse-half-day-table", "rth-vs-eth-decision"] },
     { "id": "unknown", "status": "declared", "fallback": "legacy epoch alignment" }
   ],
+  "instrumentIdentity": {
+    "productProperty": "chart.currentSymbol",
+    "productPropertyAssignments": 13,
+    "rejectedProperties": ["sessionCalendarSymbol", "currentPair", "symbol", "pair"],
+    "rejectedReason": "Zero assignments in chart.js. A wiring reading these resolves an empty symbol, falls through to epoch alignment and changes nothing in the product while the oracle passes.",
+    "resolver": "SessionCalendar.classFromRegistry(window.marketCalcEngine, chart.currentSymbol)",
+    "confidenceGate": "MarketCalculationEngine.isRegistered() — an explicit registry row. detectMarketType() alone is unusable here because it defaults to 'forex' for unrecognised labels, which would apply a 17:00 New York session to unidentified data.",
+    "unresolvedBehaviour": "Keep legacy epoch alignment for the affected timeframe AND announce 'SessionCalendar.unresolved-instrument'. Never guess.",
+    "knownUnresolvableShapes": ["FILE_<id>", "CHART", "EURUSD1", "null"],
+    "assertedBy": "cellN"
+  },
   "sharedCallSites": [
     { "file": "chart v 1.4/chart/chart.js", "function": "_resampleDataFull", "wired": false },
-    { "file": "chart v 1.4/chart/modules/chart-data-pipeline.js", "function": "_tryIncrementalResample", "wired": false }
+    { "file": "chart v 1.4/chart/modules/chart-data-pipeline.js", "function": "_tryIncrementalResample", "wired": false },
+    { "file": "homepage/public/chart/chart.js", "function": "_resampleDataFull", "wired": false, "note": "generated mirror; this is the SERVED copy" },
+    { "file": "homepage/public/chart/modules/chart-data-pipeline.js", "function": "_tryIncrementalResample", "wired": false, "note": "generated mirror; this is the SERVED copy" }
   ],
   "notTouched": [
     "chart.js _resampleDataFull monthly branch (^(\\d+)mo$) — already correct calendar months, byte-identity asserted by cell d"

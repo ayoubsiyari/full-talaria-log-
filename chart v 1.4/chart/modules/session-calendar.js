@@ -18,6 +18,14 @@
  *   label date is the open's local date + 1 day, so the bucket opening
  *   Sunday 17:00 ET is NAMED MONDAY, and Thursday 17:00 ET is named Friday.
  *
+ * INSTRUMENT IDENTITY: the product path resolves its class through
+ * `classFromRegistry(window.marketCalcEngine, chart.currentSymbol)`, i.e. the
+ * existing MarketCalculationEngine instrument registry — NOT the string-shape
+ * heuristic in `resolveInstrumentClass`, which cannot read the display labels
+ * chart.js actually stores. An unregistered symbol resolves to null and the
+ * caller must keep today's grid and announce the degradation; guessing a
+ * session for an unidentified instrument is the one outcome forbidden here.
+ *
  * DST: the anchor is a LOCAL WALL-CLOCK hour resolved through the IANA zone
  * database, never a fixed millisecond offset. Session days across a US DST
  * boundary are therefore 23h or 25h long while the local open stays 17:00.
@@ -31,7 +39,7 @@
 (function (global) {
     'use strict';
 
-    var VERSION = '20260727b81';
+    var VERSION = '20260728b82';
     var KILL_SWITCH = '__TALARIA_DISABLE_SESSION_CALENDAR_V1';
 
     /* -- instrument-class registry (extensible; see contract sidecar) ------ */
@@ -75,6 +83,21 @@
             symbols: 'ES, NQ, MES, MNQ, YM, RTY'
         },
         {
+            id: 'us-equities',
+            label: 'US equities',
+            // DECLARED, NOT IMPLEMENTED. Reachable in the product today:
+            // MarketCalculationEngine classifies AAPL-style tickers as `stocks`,
+            // so the market-type map must have somewhere real to send them.
+            // Falls back to legacy epoch alignment — no behaviour change.
+            status: 'declared',
+            zone: 'America/New_York',
+            dailyOpenMinute: null,
+            weekOpenWeekday: null,
+            labelOffsetDays: null,
+            requires: ['nyse-holiday-calendar', 'nyse-half-day-table', 'rth-vs-eth-decision'],
+            symbols: 'AAPL, MSFT, ... (MarketCalculationEngine type "stocks")'
+        },
+        {
             id: 'unknown',
             label: 'Unclassified instrument',
             // Safe default: never guess a session for an instrument we cannot
@@ -114,7 +137,13 @@
         bucketStartCalls: 0,
         boundaryCacheHits: 0,
         boundaryRecomputes: 0,
-        epochFallbacks: 0
+        epochFallbacks: 0,
+        registryLookups: 0,
+        // Diagnostics for the two documented-but-unreachable DST branches in
+        // `wallToUtc`. Non-zero means an added instrument class anchors near a
+        // transition and the constant-anchor invariant needs re-proving.
+        wallClockGapAdjustments: 0,
+        wallClockTransitionCrossings: 0
     };
 
     function formatterFor(zone) {
@@ -181,19 +210,50 @@
 
     /**
      * Inverse of zoneParts: the UTC instant for a local wall-clock time.
-     * Two-pass so a DST change between guess and result is absorbed. If the wall
-     * time does not exist (spring-forward gap) the first instant after the gap is
-     * returned; the FX/CME 17:00 anchors never fall in a US gap, but the function
-     * must not silently produce a wrong instant if another class is added.
+     * Two-pass so a DST change between guess and result is absorbed.
+     *
+     * TWO DST EDGE CASES — DELIBERATE, DOCUMENTED POLICY, NOT TESTED BEHAVIOUR.
+     *
+     * Neither branch is reachable for the two IMPLEMENTED classes: FX anchors at
+     * 17:00 America/New_York and crypto at 00:00 UTC, while US transitions occur
+     * at 02:00 local and UTC has none. They are therefore UNTESTED by the oracle
+     * (forced probes only, no fixture reaches them). They exist so that adding a
+     * class cannot silently yield a wrong instant, and each is COUNTED so an
+     * added class announces itself instead of drifting:
+     *
+     *   GAP (spring-forward: e.g. 02:30 local never occurs on the transition
+     *   day). Policy: return the first instant AFTER the gap. Consequence: the
+     *   caller's local anchor MOVES for that one session, which BREAKS the
+     *   constant-anchor invariant this module's own callers assert. That is a
+     *   defect signal, not normal operation — hence `wallClockGapAdjustments`.
+     *   An anchor inside a gap is unrepresentable; no return value is correct,
+     *   so the counter is the contract rather than the value.
+     *
+     *   AMBIGUOUS (fall-back: e.g. 01:30 local occurs twice). Policy: the
+     *   EARLIER occurrence, i.e. the pre-transition offset, which is what the
+     *   two-pass converges to. Chosen deliberately so the session opens as early
+     *   as possible and no bar between the two occurrences is orphaned ahead of
+     *   its own session open. Near-transition conversions are counted as
+     *   `wallClockTransitionCrossings` (free: both offsets are already in hand).
+     *
+     * Both counters read zero for every fixture in the oracle. A non-zero value
+     * means an added class has entered an untested branch.
      */
     function wallToUtc(zone, year, month, day, minuteOfDay) {
         var naive = Date.UTC(year, month - 1, day, 0, 0, 0, 0) + minuteOfDay * 60000;
         if (zone === 'UTC') return naive;
-        var t = naive - zoneOffsetMs(zone, naive);
-        t = naive - zoneOffsetMs(zone, t);
+        var offGuess = zoneOffsetMs(zone, naive);
+        var t = naive - offGuess;
+        var offResolved = zoneOffsetMs(zone, t);
+        t = naive - offResolved;
+        // Offsets disagreeing means the conversion sat next to a transition; the
+        // value above is the earlier occurrence, per the documented policy.
+        if (offResolved !== offGuess) stats.wallClockTransitionCrossings++;
         var check = zoneParts(zone, t);
         if (check.year !== year || check.month !== month || check.day !== day
             || (check.hour * 60 + check.minute) !== minuteOfDay) {
+            // The requested wall time does not exist: spring-forward gap.
+            stats.wallClockGapAdjustments++;
             var probe = naive - zoneOffsetMs(zone, naive - 3 * 3600000);
             if (probe > t) t = probe;
         }
@@ -264,6 +324,66 @@
         return 'unknown';
     }
 
+    /* -- instrument identity from the PRODUCT's own registry --------------- */
+    //
+    // `resolveInstrumentClass` above is a string-shape heuristic. It is adequate
+    // for a caller that already holds a clean ticker, and it is what the Node
+    // API and the oracle use directly, but it MUST NOT be the product's source
+    // of truth: chart.js stores a DISPLAY LABEL in `currentSymbol`, which can be
+    // `EURUSD_FULL_1MIN_1MIN`, `20251028_194229_GBPUSD`, `EUR/USD`, `FILE_1234`
+    // or null. The heuristic classifies only the third of those correctly.
+    //
+    // MarketCalculationEngine (modules/market-calculations.js) already owns
+    // symbol -> instrument-type resolution for exactly these shapes, is loaded on
+    // every chart shell, and is maintained because misclassification there breaks
+    // P&L. Session bucketing consumes THAT answer rather than growing a second,
+    // weaker copy of it.
+
+    var MARKET_TYPE_TO_CLASS = {
+        forex: 'fx',
+        crypto: 'crypto',
+        futures: 'cme-index-futures',
+        stocks: 'us-equities'
+    };
+
+    /** MarketCalculationEngine `specs.type` -> session class id, or null. */
+    function classFromMarketType(marketType) {
+        var key = String(marketType == null ? '' : marketType).toLowerCase();
+        return Object.prototype.hasOwnProperty.call(MARKET_TYPE_TO_CLASS, key)
+            ? MARKET_TYPE_TO_CLASS[key]
+            : null;
+    }
+
+    /**
+     * Instrument class for a product symbol, via the instrument registry.
+     *
+     * Returns null — meaning IDENTITY NOT ESTABLISHED — rather than guessing.
+     * `MarketCalculationEngine.detectMarketType` deliberately defaults to
+     * 'forex' for anything it cannot place, which is the right default for
+     * position sizing but catastrophic here: it would apply a 17:00 New York FX
+     * session to a `FILE_1234` dataset that may be NQ futures, silently changing
+     * displayed values. So the confidence gate is `isRegistered()` — an explicit
+     * registry row — and an unregistered symbol yields null. The caller must
+     * treat null as "keep today's grid AND announce the degradation" (§A4c).
+     *
+     * @param {object} engine MarketCalculationEngine instance (window.marketCalcEngine)
+     * @param {string} symbol chart.currentSymbol
+     * @returns {string|null} session class id, or null when unresolved
+     */
+    function classFromRegistry(engine, symbol) {
+        var s = (typeof symbol === 'string') ? symbol.trim() : '';
+        if (!s) return null;
+        if (!engine || typeof engine.isRegistered !== 'function'
+            || typeof engine.getSpecs !== 'function') return null;
+        stats.registryLookups++;
+        var registered = false;
+        try { registered = !!engine.isRegistered(s); } catch (e) { return null; }
+        if (!registered) return null;
+        var specs = null;
+        try { specs = engine.getSpecs(s); } catch (e) { return null; }
+        return classFromMarketType(specs && specs.type);
+    }
+
     /* -- legacy path (kept HERE so both call sites share one implementation) */
 
     function epochAlignedBucketStart(timestampMs, timeframeMs) {
@@ -328,6 +448,9 @@
         stats.boundaryCacheHits = 0;
         stats.boundaryRecomputes = 0;
         stats.epochFallbacks = 0;
+        stats.registryLookups = 0;
+        stats.wallClockGapAdjustments = 0;
+        stats.wallClockTransitionCrossings = 0;
     }
 
     /* -- public API ------------------------------------------------------- */
@@ -459,6 +582,8 @@
         isEnabled: isEnabled,
         classifyTimeframe: classifyTimeframe,
         resolveInstrumentClass: resolveInstrumentClass,
+        classFromMarketType: classFromMarketType,
+        classFromRegistry: classFromRegistry,
         instrumentClasses: instrumentClasses,
         describeClass: function (id) {
             if (!CLASSES[id]) return null;
@@ -477,7 +602,10 @@
                 bucketStartCalls: stats.bucketStartCalls,
                 boundaryCacheHits: stats.boundaryCacheHits,
                 boundaryRecomputes: stats.boundaryRecomputes,
-                epochFallbacks: stats.epochFallbacks
+                epochFallbacks: stats.epochFallbacks,
+                registryLookups: stats.registryLookups,
+                wallClockGapAdjustments: stats.wallClockGapAdjustments,
+                wallClockTransitionCrossings: stats.wallClockTransitionCrossings
             };
         }
     };

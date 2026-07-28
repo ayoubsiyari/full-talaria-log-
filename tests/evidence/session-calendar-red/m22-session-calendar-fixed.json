@@ -7,7 +7,7 @@
   "mode": "simulate-wired",
   "verdict": "GREEN",
   "expectedVerdict": "GREEN",
-  "buildSha": "63444881723174b9f7cf0f1be0e07018310e1233",
+  "buildSha": "91cf6218f1590c6d7f10c05e8ea086c51a7c10ec",
   "authoredAgainstBuild": "634448817",
   "lastProvenRedOnBuild": "634448817",
   "epsilon": 0,
@@ -24,7 +24,7 @@
     },
     "chartJs": "616c2208909b63021b2c2f0d37b8a2a7bc5ea3d68cce2e8871228f145941d9c8",
     "chartDataPipelineJs": "2bf874ebbfaf1c071a278955b622b3ac735e49b1ec57f8c437aa9c36bd31d724",
-    "sessionCalendarJs": "f30433cca88b767f96ec1cc8d812d56a94c88eb2eed05822d5983eda19fbf2d6"
+    "sessionCalendarJs": "0e7b5ce819e5c5a26fda718adeb7663601f5393d524605975f2532b958dc9af9"
   },
   "frozenTodayBaseline": {
     "po1d": {
@@ -96,9 +96,21 @@
     },
     {
       "cell": "0",
+      "name": "lifted-from-product",
+      "pass": true,
+      "detail": "parseTimeframe,_prepareBarsForResampling,_resampleDataFull productIsWired=false"
+    },
+    {
+      "cell": "0",
+      "name": "wired-methods-lifted-iff-product-is-wired",
+      "pass": true,
+      "detail": "actual=false expected=false lifted=parseTimeframe,_prepareBarsForResampling,_resampleDataFull"
+    },
+    {
+      "cell": "0",
       "name": "defect-formula-present-in-lifted-product-text",
       "pass": true,
-      "detail": "Math.floor(candle.t / timeframeMs) * timeframeMs"
+      "detail": "actual=true expected=true productIsWired=false formula=Math.floor(candle.t / timeframeMs) * timeframeMs"
     },
     {
       "cell": "0",
@@ -212,7 +224,67 @@
       "cell": "A",
       "name": "class-ids",
       "pass": true,
-      "detail": "actual=fx,crypto,cme-index-futures,unknown expected=fx,crypto,cme-index-futures,unknown"
+      "detail": "actual=fx,crypto,cme-index-futures,us-equities,unknown expected=fx,crypto,cme-index-futures,us-equities,unknown"
+    },
+    {
+      "cell": "A",
+      "name": "us-equities-declared-not-implemented",
+      "pass": true,
+      "detail": "actual=declared expected=declared"
+    },
+    {
+      "cell": "A",
+      "name": "market-type-map-forex",
+      "pass": true,
+      "detail": "actual=fx expected=fx"
+    },
+    {
+      "cell": "A",
+      "name": "market-type-map-crypto",
+      "pass": true,
+      "detail": "actual=crypto expected=crypto"
+    },
+    {
+      "cell": "A",
+      "name": "market-type-map-futures",
+      "pass": true,
+      "detail": "actual=cme-index-futures expected=cme-index-futures"
+    },
+    {
+      "cell": "A",
+      "name": "market-type-map-stocks",
+      "pass": true,
+      "detail": "actual=us-equities expected=us-equities"
+    },
+    {
+      "cell": "A",
+      "name": "market-type-map-unknown-is-null",
+      "pass": true,
+      "detail": "actual=null expected=null"
+    },
+    {
+      "cell": "A",
+      "name": "market-type-target-exists:forex",
+      "pass": true,
+      "detail": "actual=true expected=true"
+    },
+    {
+      "cell": "A",
+      "name": "market-type-target-exists:crypto",
+      "pass": true,
+      "detail": "actual=true expected=true"
+    },
+    {
+      "cell": "A",
+      "name": "market-type-target-exists:futures",
+      "pass": true,
+      "detail": "actual=true expected=true"
+    },
+    {
+      "cell": "A",
+      "name": "market-type-target-exists:stocks",
+      "pass": true,
+      "detail": "actual=true expected=true"
     },
     {
       "cell": "A",
@@ -614,7 +686,7 @@
       "cell": "E",
       "name": "monthly-never-enters-session-branch",
       "pass": true,
-      "detail": "actual=0 expected=0 stats={\"zoneOffsetLookups\":0,\"formatterCalls\":0,\"bucketStartCalls\":0,\"boundaryCacheHits\":0,\"boundaryRecomputes\":0,\"epochFallbacks\":0}"
+      "detail": "actual=0 expected=0 stats={\"zoneOffsetLookups\":0,\"formatterCalls\":0,\"bucketStartCalls\":0,\"boundaryCacheHits\":0,\"boundaryRecomputes\":0,\"epochFallbacks\":0,\"registryLookups\":0,\"wallClockGapAdjustments\":0,\"wallClockTransitionCrossings\":0}"
     },
     {
       "cell": "F",
@@ -704,7 +776,7 @@
       "cell": "F",
       "name": "intraday-never-enters-session-branch",
       "pass": true,
-      "detail": "actual=0 expected=0 stats={\"zoneOffsetLookups\":0,\"formatterCalls\":0,\"bucketStartCalls\":17284,\"boundaryCacheHits\":0,\"boundaryRecomputes\":0,\"epochFallbacks\":17284}"
+      "detail": "actual=0 expected=0 stats={\"zoneOffsetLookups\":0,\"formatterCalls\":0,\"bucketStartCalls\":17284,\"boundaryCacheHits\":0,\"boundaryRecomputes\":0,\"epochFallbacks\":17284,\"registryLookups\":1,\"wallClockGapAdjustments\":0,\"wallClockTransitionCrossings\":0}"
     },
     {
       "cell": "F2",
@@ -717,6 +789,360 @@
       "name": "crypto1d-sha256",
       "pass": true,
       "detail": "actual=69ff1adb2e56bd039e2b87759db5debad67540df67a937d497d399cac30ef6ec expected=69ff1adb2e56bd039e2b87759db5debad67540df67a937d497d399cac30ef6ec"
+    },
+    {
+      "cell": "F2",
+      "name": "crypto1w-open-weekday-today-is-thursday-epoch-floor",
+      "pass": true,
+      "detail": "actual=Mon expected=Mon wired=true opens=Mon"
+    },
+    {
+      "cell": "F2",
+      "name": "crypto1w-opens-at-midnight-utc",
+      "pass": true,
+      "detail": "actual=true expected=true"
+    },
+    {
+      "cell": "F2",
+      "name": "crypto1w-differs-from-frozen-pre-fix-iff-wired",
+      "pass": true,
+      "detail": "actual=false expected=false actualSha=ae285d4b29d13ec46cb3602f6a577b2997b80067c042f281904a3579b25c2b73 frozenPreFix=6376497b0e7cebfa0fe230fc47faaa577034977b3b861e4a33475d1fb2e47e9b len=18 frozenLen=18"
+    },
+    {
+      "cell": "F2",
+      "name": "crypto1w-post-fix-sha256",
+      "pass": true,
+      "detail": "actual=ae285d4b29d13ec46cb3602f6a577b2997b80067c042f281904a3579b25c2b73 expected=ae285d4b29d13ec46cb3602f6a577b2997b80067c042f281904a3579b25c2b73"
+    },
+    {
+      "cell": "F2",
+      "name": "crypto1w-post-fix-length",
+      "pass": true,
+      "detail": "actual=18 expected=18"
+    },
+    {
+      "cell": "N",
+      "name": "patch-reads-only-declared-symbol-properties",
+      "pass": true,
+      "detail": "actual=currentSymbol expected=currentSymbol"
+    },
+    {
+      "cell": "N",
+      "name": "chart.js-assigns-this.currentSymbol",
+      "pass": true,
+      "detail": "actual=true expected=true assignments=13"
+    },
+    {
+      "cell": "N",
+      "name": "chart.js-does-not-assign-this.sessionCalendarSymbol",
+      "pass": true,
+      "detail": "actual=0 expected=0"
+    },
+    {
+      "cell": "N",
+      "name": "chart.js-does-not-assign-this.currentPair",
+      "pass": true,
+      "detail": "actual=0 expected=0"
+    },
+    {
+      "cell": "N",
+      "name": "chart.js-does-not-assign-this.symbol",
+      "pass": true,
+      "detail": "actual=0 expected=0"
+    },
+    {
+      "cell": "N",
+      "name": "chart.js-does-not-assign-this.pair",
+      "pass": true,
+      "detail": "actual=0 expected=0"
+    },
+    {
+      "cell": "N",
+      "name": "class-for:EURUSD",
+      "pass": true,
+      "detail": "actual=fx expected=fx origin=resolveSessionTickerForFileId / detected CSV symbol"
+    },
+    {
+      "cell": "N",
+      "name": "class-is-non-empty:EURUSD",
+      "pass": true,
+      "detail": "actual=true expected=true"
+    },
+    {
+      "cell": "N",
+      "name": "class-for:EUR/USD",
+      "pass": true,
+      "detail": "actual=fx expected=fx origin=finalize() -> _formatPairTicker slash form"
+    },
+    {
+      "cell": "N",
+      "name": "class-is-non-empty:EUR/USD",
+      "pass": true,
+      "detail": "actual=true expected=true"
+    },
+    {
+      "cell": "N",
+      "name": "class-for:EURUSD_2013_1M",
+      "pass": true,
+      "detail": "actual=fx expected=fx origin=session.fileName stem (chart.js:2548)"
+    },
+    {
+      "cell": "N",
+      "name": "class-is-non-empty:EURUSD_2013_1M",
+      "pass": true,
+      "detail": "actual=true expected=true"
+    },
+    {
+      "cell": "N",
+      "name": "class-for:EURUSD_FULL_1MIN_1MIN",
+      "pass": true,
+      "detail": "actual=fx expected=fx origin=FirstRate FX bundle name"
+    },
+    {
+      "cell": "N",
+      "name": "class-is-non-empty:EURUSD_FULL_1MIN_1MIN",
+      "pass": true,
+      "detail": "actual=true expected=true"
+    },
+    {
+      "cell": "N",
+      "name": "class-for:20251028_194229_GBPUSD",
+      "pass": true,
+      "detail": "actual=fx expected=fx origin=Dukascopy upload name"
+    },
+    {
+      "cell": "N",
+      "name": "class-is-non-empty:20251028_194229_GBPUSD",
+      "pass": true,
+      "detail": "actual=true expected=true"
+    },
+    {
+      "cell": "N",
+      "name": "class-for:BTCUSD",
+      "pass": true,
+      "detail": "actual=crypto expected=crypto origin=crypto dataset"
+    },
+    {
+      "cell": "N",
+      "name": "class-is-non-empty:BTCUSD",
+      "pass": true,
+      "detail": "actual=true expected=true"
+    },
+    {
+      "cell": "N",
+      "name": "class-for:BTC_full_1min",
+      "pass": true,
+      "detail": "actual=crypto expected=crypto origin=FirstRate crypto base-only bundle"
+    },
+    {
+      "cell": "N",
+      "name": "class-is-non-empty:BTC_full_1min",
+      "pass": true,
+      "detail": "actual=true expected=true"
+    },
+    {
+      "cell": "N",
+      "name": "class-for:NQ",
+      "pass": true,
+      "detail": "actual=cme-index-futures expected=cme-index-futures origin=_displaySessionFuturesSymbol root"
+    },
+    {
+      "cell": "N",
+      "name": "class-is-non-empty:NQ",
+      "pass": true,
+      "detail": "actual=true expected=true"
+    },
+    {
+      "cell": "N",
+      "name": "class-for:ES_week_1min_1min",
+      "pass": true,
+      "detail": "actual=cme-index-futures expected=cme-index-futures origin=FirstRate futures bundle"
+    },
+    {
+      "cell": "N",
+      "name": "class-is-non-empty:ES_week_1min_1min",
+      "pass": true,
+      "detail": "actual=true expected=true"
+    },
+    {
+      "cell": "N",
+      "name": "class-for:AAPL_full_1min_adj_split",
+      "pass": true,
+      "detail": "actual=us-equities expected=us-equities origin=FirstRate stock bundle"
+    },
+    {
+      "cell": "N",
+      "name": "class-is-non-empty:AAPL_full_1min_adj_split",
+      "pass": true,
+      "detail": "actual=true expected=true"
+    },
+    {
+      "cell": "N",
+      "name": "unidentifiable-is-not-guessed:FILE_123",
+      "pass": true,
+      "detail": "actual=true expected=true class=null origin=pair switch with no resolvable name (chart.js:2558/5505/10123)"
+    },
+    {
+      "cell": "N",
+      "name": "unidentifiable-announces-degradation:FILE_123",
+      "pass": true,
+      "detail": "actual=SessionCalendar.unresolved-instrument expected=SessionCalendar.unresolved-instrument"
+    },
+    {
+      "cell": "N",
+      "name": "unidentifiable-is-not-guessed:CHART",
+      "pass": true,
+      "detail": "actual=true expected=true class=null origin=extractSymbolFromFilename untitled branch (chart.js:19807)"
+    },
+    {
+      "cell": "N",
+      "name": "unidentifiable-announces-degradation:CHART",
+      "pass": true,
+      "detail": "actual=SessionCalendar.unresolved-instrument expected=SessionCalendar.unresolved-instrument"
+    },
+    {
+      "cell": "N",
+      "name": "unidentifiable-is-not-guessed:EURUSD1",
+      "pass": true,
+      "detail": "actual=true expected=true class=null origin=extractSymbolFromFilename short-name branch (chart.js:19812)"
+    },
+    {
+      "cell": "N",
+      "name": "unidentifiable-announces-degradation:EURUSD1",
+      "pass": true,
+      "detail": "actual=SessionCalendar.unresolved-instrument expected=SessionCalendar.unresolved-instrument"
+    },
+    {
+      "cell": "N",
+      "name": "unidentifiable-is-not-guessed:(empty)",
+      "pass": true,
+      "detail": "actual=true expected=true class=null origin=currentSymbol still null (chart.js:1133)"
+    },
+    {
+      "cell": "N",
+      "name": "unidentifiable-announces-degradation:(empty)",
+      "pass": true,
+      "detail": "actual=SessionCalendar.unresolved-instrument expected=SessionCalendar.unresolved-instrument"
+    },
+    {
+      "cell": "N",
+      "name": "unidentifiable-does-not-cry-wolf-on-intraday",
+      "pass": true,
+      "detail": "actual=none expected=none"
+    },
+    {
+      "cell": "N",
+      "name": "product-shape-changes-daily-output:EURUSD",
+      "pass": true,
+      "detail": "actual=false expected=false len=20 todayLen=24"
+    },
+    {
+      "cell": "N",
+      "name": "product-shape-has-friday-session:EURUSD",
+      "pass": true,
+      "detail": "actual=true expected=true"
+    },
+    {
+      "cell": "N",
+      "name": "product-shape-has-no-phantom-saturday:EURUSD",
+      "pass": true,
+      "detail": "actual=false expected=false"
+    },
+    {
+      "cell": "N",
+      "name": "product-shape-changes-daily-output:EUR/USD",
+      "pass": true,
+      "detail": "actual=false expected=false len=20 todayLen=24"
+    },
+    {
+      "cell": "N",
+      "name": "product-shape-has-friday-session:EUR/USD",
+      "pass": true,
+      "detail": "actual=true expected=true"
+    },
+    {
+      "cell": "N",
+      "name": "product-shape-has-no-phantom-saturday:EUR/USD",
+      "pass": true,
+      "detail": "actual=false expected=false"
+    },
+    {
+      "cell": "N",
+      "name": "product-shape-changes-daily-output:EURUSD_2013_1M",
+      "pass": true,
+      "detail": "actual=false expected=false len=20 todayLen=24"
+    },
+    {
+      "cell": "N",
+      "name": "product-shape-has-friday-session:EURUSD_2013_1M",
+      "pass": true,
+      "detail": "actual=true expected=true"
+    },
+    {
+      "cell": "N",
+      "name": "product-shape-has-no-phantom-saturday:EURUSD_2013_1M",
+      "pass": true,
+      "detail": "actual=false expected=false"
+    },
+    {
+      "cell": "N",
+      "name": "product-shape-changes-daily-output:EURUSD_FULL_1MIN_1MIN",
+      "pass": true,
+      "detail": "actual=false expected=false len=20 todayLen=24"
+    },
+    {
+      "cell": "N",
+      "name": "product-shape-has-friday-session:EURUSD_FULL_1MIN_1MIN",
+      "pass": true,
+      "detail": "actual=true expected=true"
+    },
+    {
+      "cell": "N",
+      "name": "product-shape-has-no-phantom-saturday:EURUSD_FULL_1MIN_1MIN",
+      "pass": true,
+      "detail": "actual=false expected=false"
+    },
+    {
+      "cell": "N",
+      "name": "product-shape-changes-daily-output:20251028_194229_GBPUSD",
+      "pass": true,
+      "detail": "actual=false expected=false len=20 todayLen=24"
+    },
+    {
+      "cell": "N",
+      "name": "product-shape-has-friday-session:20251028_194229_GBPUSD",
+      "pass": true,
+      "detail": "actual=true expected=true"
+    },
+    {
+      "cell": "N",
+      "name": "product-shape-has-no-phantom-saturday:20251028_194229_GBPUSD",
+      "pass": true,
+      "detail": "actual=false expected=false"
+    },
+    {
+      "cell": "N",
+      "name": "unidentifiable-keeps-todays-output-exactly",
+      "pass": true,
+      "detail": "actual=89a9337f2df78ee8f00462d31e534898d1a1e1d71e6e147ecb76459b4aec1242 expected=89a9337f2df78ee8f00462d31e534898d1a1e1d71e6e147ecb76459b4aec1242"
+    },
+    {
+      "cell": "N",
+      "name": "absent-registry-does-not-throw",
+      "pass": true,
+      "detail": "actual=null expected=null"
+    },
+    {
+      "cell": "N",
+      "name": "absent-registry-keeps-todays-output",
+      "pass": true,
+      "detail": "actual=89a9337f2df78ee8f00462d31e534898d1a1e1d71e6e147ecb76459b4aec1242 expected=89a9337f2df78ee8f00462d31e534898d1a1e1d71e6e147ecb76459b4aec1242"
+    },
+    {
+      "cell": "N",
+      "name": "absent-registry-announces-degradation",
+      "pass": true,
+      "detail": "actual=SessionCalendar.unresolved-instrument expected=SessionCalendar.unresolved-instrument"
     },
     {
       "cell": "G",
@@ -762,9 +1188,39 @@
     },
     {
       "cell": "G2",
+      "name": "1d-staircase-append-incremental-equals-full",
+      "pass": true,
+      "detail": "actual=none expected=none incLen=9 fullLen=9"
+    },
+    {
+      "cell": "G2",
+      "name": "1d-deep-staircase-incremental-equals-full",
+      "pass": true,
+      "detail": "actual=none expected=none incLen=9 fullLen=9"
+    },
+    {
+      "cell": "G2",
       "name": "1w-unsorted-append-incremental-equals-full",
       "pass": true,
       "detail": "actual=none expected=none incLen=2 fullLen=2"
+    },
+    {
+      "cell": "G2",
+      "name": "1w-staircase-append-incremental-equals-full",
+      "pass": true,
+      "detail": "actual=none expected=none incLen=2 fullLen=2"
+    },
+    {
+      "cell": "G2",
+      "name": "1w-deep-staircase-incremental-equals-full",
+      "pass": true,
+      "detail": "actual=none expected=none incLen=2 fullLen=2"
+    },
+    {
+      "cell": "G2",
+      "name": "ordered-appends-still-use-incremental-path",
+      "pass": true,
+      "detail": "actual=199 expected=199 guard must not disable the fast path"
     },
     {
       "cell": "H",
@@ -902,7 +1358,7 @@
       "cell": "K",
       "name": "stats",
       "pass": true,
-      "detail": "{\"zoneOffsetLookups\":128,\"formatterCalls\":194,\"bucketStartCalls\":44641,\"boundaryCacheHits\":44609,\"boundaryRecomputes\":32,\"epochFallbacks\":0} bars=44640"
+      "detail": "{\"zoneOffsetLookups\":128,\"formatterCalls\":194,\"bucketStartCalls\":44641,\"boundaryCacheHits\":44609,\"boundaryRecomputes\":32,\"epochFallbacks\":0,\"registryLookups\":1,\"wallClockGapAdjustments\":0,\"wallClockTransitionCrossings\":0} bars=44640"
     },
     {
       "cell": "K",
@@ -921,6 +1377,78 @@
       "name": "boundary-cache-absorbs-the-rest",
       "pass": true,
       "detail": "actual=true expected=true hits=44609 recomputes=32"
+    },
+    {
+      "cell": "K",
+      "name": "registry-calls",
+      "pass": true,
+      "detail": "{\"isRegistered\":1,\"getSpecs\":1}"
+    },
+    {
+      "cell": "K",
+      "name": "registry-lookups-are-not-per-bar",
+      "pass": true,
+      "detail": "actual=true expected=true isRegistered=1 bars=44640"
+    },
+    {
+      "cell": "K",
+      "name": "registry-specs-lookups-are-not-per-bar",
+      "pass": true,
+      "detail": "actual=true expected=true getSpecs=1 bars=44640"
+    },
+    {
+      "cell": "K",
+      "name": "dst-gap-branch-unreached-for-implemented-classes",
+      "pass": true,
+      "detail": "actual=0 expected=0"
+    },
+    {
+      "cell": "K",
+      "name": "dst-ambiguity-branch-unreached-for-implemented-classes",
+      "pass": true,
+      "detail": "actual=0 expected=0"
+    },
+    {
+      "cell": "K2",
+      "name": "diagnostic-exists:wallClockGapAdjustments",
+      "pass": true,
+      "detail": "actual=number expected=number"
+    },
+    {
+      "cell": "K2",
+      "name": "diagnostic-exists:wallClockTransitionCrossings",
+      "pass": true,
+      "detail": "actual=number expected=number"
+    },
+    {
+      "cell": "K2",
+      "name": "stats-across-all-dst-fixtures",
+      "pass": true,
+      "detail": "{\"zoneOffsetLookups\":280,\"formatterCalls\":404,\"bucketStartCalls\":2310,\"boundaryCacheHits\":2250,\"boundaryRecomputes\":60,\"epochFallbacks\":0,\"registryLookups\":1,\"wallClockGapAdjustments\":0,\"wallClockTransitionCrossings\":0}"
+    },
+    {
+      "cell": "K2",
+      "name": "gap-branch-never-taken-across-both-transitions",
+      "pass": true,
+      "detail": "actual=0 expected=0"
+    },
+    {
+      "cell": "K2",
+      "name": "ambiguity-branch-never-taken-across-both-transitions",
+      "pass": true,
+      "detail": "actual=0 expected=0"
+    },
+    {
+      "cell": "K2",
+      "name": "gap-policy-documented",
+      "pass": true,
+      "detail": "actual=true expected=true"
+    },
+    {
+      "cell": "K2",
+      "name": "ambiguity-policy-documented",
+      "pass": true,
+      "detail": "actual=true expected=true"
     },
     {
       "cell": "L",
@@ -980,7 +1508,7 @@
       "cell": "M",
       "name": "contract-version-matches-helper",
       "pass": true,
-      "detail": "actual=20260727b81 expected=20260727b81"
+      "detail": "actual=20260728b82 expected=20260728b82"
     },
     {
       "cell": "M",
@@ -1010,7 +1538,7 @@
       "cell": "M",
       "name": "dual-tree-mirror-byte-identical",
       "pass": true,
-      "detail": "actual=f30433cca88b767f96ec1cc8d812d56a94c88eb2eed05822d5983eda19fbf2d6 expected=f30433cca88b767f96ec1cc8d812d56a94c88eb2eed05822d5983eda19fbf2d6"
+      "detail": "actual=0e7b5ce819e5c5a26fda718adeb7663601f5393d524605975f2532b958dc9af9 expected=0e7b5ce819e5c5a26fda718adeb7663601f5393d524605975f2532b958dc9af9"
     },
     {
       "cell": "M",
@@ -1020,9 +1548,165 @@
     },
     {
       "cell": "M",
+      "name": "contract-records-all-four-wiring-files",
+      "pass": true,
+      "detail": "actual=[\"chart v 1.4/chart/chart.js\",\"chart v 1.4/chart/modules/chart-data-pipeline.js\",\"homepage/public/chart/chart.js\",\"homepage/public/chart/modules/chart-data-pipeline.js\"] expected=[\"chart v 1.4/chart/chart.js\",\"chart v 1.4/chart/modules/chart-data-pipeline.js\",\"homepage/public/chart/chart.js\",\"homepage/public/chart/modules/chart-data-pipeline.js\"]"
+    },
+    {
+      "cell": "M",
       "name": "contract-wiring-state-matches-product",
       "pass": true,
       "detail": "actual=true expected=true productIsWired=false"
+    },
+    {
+      "cell": "M",
+      "name": "contract-declares-registry-dependency",
+      "pass": true,
+      "detail": "actual=[\"MarketCalculationEngine\"] expected=[\"MarketCalculationEngine\"]"
+    },
+    {
+      "cell": "M",
+      "name": "contract-records-product-symbol-property",
+      "pass": true,
+      "detail": "actual=chart.currentSymbol expected=chart.currentSymbol"
+    },
+    {
+      "cell": "M",
+      "name": "contract-symbol-property-assignment-count-matches-source",
+      "pass": true,
+      "detail": "actual=13 expected=13"
+    },
+    {
+      "cell": "M",
+      "name": "contract-rejected-property-really-absent:sessionCalendarSymbol",
+      "pass": true,
+      "detail": "actual=0 expected=0"
+    },
+    {
+      "cell": "M",
+      "name": "contract-rejected-property-really-absent:currentPair",
+      "pass": true,
+      "detail": "actual=0 expected=0"
+    },
+    {
+      "cell": "M",
+      "name": "contract-rejected-property-really-absent:symbol",
+      "pass": true,
+      "detail": "actual=0 expected=0"
+    },
+    {
+      "cell": "M",
+      "name": "contract-rejected-property-really-absent:pair",
+      "pass": true,
+      "detail": "actual=0 expected=0"
+    },
+    {
+      "cell": "M3",
+      "name": "wiring-target-count",
+      "pass": true,
+      "detail": "actual=4 expected=4"
+    },
+    {
+      "cell": "M3",
+      "name": "target-exists:chart v 1.4/chart/chart.js",
+      "pass": true,
+      "detail": "actual=true expected=true"
+    },
+    {
+      "cell": "M3",
+      "name": "target-exists:homepage/public/chart/chart.js",
+      "pass": true,
+      "detail": "actual=true expected=true"
+    },
+    {
+      "cell": "M3",
+      "name": "target-exists:chart v 1.4/chart/modules/chart-data-pipeline.js",
+      "pass": true,
+      "detail": "actual=true expected=true"
+    },
+    {
+      "cell": "M3",
+      "name": "target-exists:homepage/public/chart/modules/chart-data-pipeline.js",
+      "pass": true,
+      "detail": "actual=true expected=true"
+    },
+    {
+      "cell": "M3",
+      "name": "patch-applies-cleanly:chart v 1.4/chart/chart.js",
+      "pass": true,
+      "detail": "actual=applied expected=applied"
+    },
+    {
+      "cell": "M3",
+      "name": "patch-actually-changes-file:chart v 1.4/chart/chart.js",
+      "pass": true,
+      "detail": "actual=true expected=true"
+    },
+    {
+      "cell": "M3",
+      "name": "patch-applies-cleanly:homepage/public/chart/chart.js",
+      "pass": true,
+      "detail": "actual=applied expected=applied"
+    },
+    {
+      "cell": "M3",
+      "name": "patch-actually-changes-file:homepage/public/chart/chart.js",
+      "pass": true,
+      "detail": "actual=true expected=true"
+    },
+    {
+      "cell": "M3",
+      "name": "patch-applies-cleanly:chart v 1.4/chart/modules/chart-data-pipeline.js",
+      "pass": true,
+      "detail": "actual=applied expected=applied"
+    },
+    {
+      "cell": "M3",
+      "name": "patch-actually-changes-file:chart v 1.4/chart/modules/chart-data-pipeline.js",
+      "pass": true,
+      "detail": "actual=true expected=true"
+    },
+    {
+      "cell": "M3",
+      "name": "patch-applies-cleanly:homepage/public/chart/modules/chart-data-pipeline.js",
+      "pass": true,
+      "detail": "actual=applied expected=applied"
+    },
+    {
+      "cell": "M3",
+      "name": "patch-actually-changes-file:homepage/public/chart/modules/chart-data-pipeline.js",
+      "pass": true,
+      "detail": "actual=true expected=true"
+    },
+    {
+      "cell": "M3",
+      "name": "source-and-mirror-identical-pre-wiring:chart.js",
+      "pass": true,
+      "detail": "actual=616c2208909b63021b2c2f0d37b8a2a7bc5ea3d68cce2e8871228f145941d9c8 expected=616c2208909b63021b2c2f0d37b8a2a7bc5ea3d68cce2e8871228f145941d9c8"
+    },
+    {
+      "cell": "M3",
+      "name": "source-and-mirror-identical-pre-wiring:chart-data-pipeline.js",
+      "pass": true,
+      "detail": "actual=2bf874ebbfaf1c071a278955b622b3ac735e49b1ec57f8c437aa9c36bd31d724 expected=2bf874ebbfaf1c071a278955b622b3ac735e49b1ec57f8c437aa9c36bd31d724"
+    },
+    {
+      "cell": "M3",
+      "name": "source-and-mirror-identical-post-wiring:chart.js",
+      "pass": true,
+      "detail": "actual=0cabda1ffcec3198368bbb67270c0d19a7d83b24115783cb4912267657572df7 expected=0cabda1ffcec3198368bbb67270c0d19a7d83b24115783cb4912267657572df7"
+    },
+    {
+      "cell": "M3",
+      "name": "source-and-mirror-identical-post-wiring:chart-data-pipeline.js",
+      "pass": true,
+      "detail": "actual=fec27bbe39e42b71e9de44049710a3883ba1e54d343280b18e1083f2f2f83be3 expected=fec27bbe39e42b71e9de44049710a3883ba1e54d343280b18e1083f2f2f83be3"
+    },
+    {
+      "cell": "M3",
+      "name": "full-deployment-file-set",
+      "pass": true,
+      "detail": "chart v 1.4/chart/chart.js | homepage/public/chart/chart.js | chart v 1.4/chart/modules/chart-data-pipeline.js | homepage/public/chart/modules/chart-data-pipeline.js | chart v 1.4/chart/modules/session-calendar.js | homepage/public/chart/modules/session-calendar.js"
     },
     {
       "cell": "M2",

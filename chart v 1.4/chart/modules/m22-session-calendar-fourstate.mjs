@@ -37,11 +37,26 @@ const STATES = [
 // §A5.4: three repeats on the authoring clock, plus alternate clocks. The host
 // clock cannot be changed here, so the timezone (the variable this module is
 // actually sensitive to) is varied instead, and the limitation is recorded.
+// The independent reviewer of rejection 1 ran four zones this driver did not,
+// including opposite-DST-phase and fractional-offset zones, and reproduced
+// identical results. Those zones are adopted here so the claim is carried by
+// the packet's own evidence rather than by the review notes.
 const CLOCKS = [
     { id: 'host-tz', env: {}, repeats: 3 },
     { id: 'tz-utc', env: { TZ: 'UTC' }, repeats: 1 },
     { id: 'tz-asia-tokyo', env: { TZ: 'Asia/Tokyo' }, repeats: 1 },
+    // UTC+14: the host local date differs from UTC for most of the day.
     { id: 'tz-pacific-kiritimati', env: { TZ: 'Pacific/Kiritimati' }, repeats: 1 },
+    // Fractional fixed offset (+05:45), no DST.
+    { id: 'tz-asia-kathmandu', env: { TZ: 'Asia/Kathmandu' }, repeats: 1 },
+    // Southern hemisphere: DST runs in the OPPOSITE phase to America/New_York,
+    // so a host-zone leak would show up as a sign flip rather than a constant.
+    { id: 'tz-america-santiago', env: { TZ: 'America/Santiago' }, repeats: 1 },
+    // Fractional offset AND a 30-minute DST shift (+10:30 / +11:00) in the
+    // opposite phase — the most hostile combination available.
+    { id: 'tz-australia-lord-howe', env: { TZ: 'Australia/Lord_Howe' }, repeats: 1 },
+    // Fractional offset with a full-hour DST shift (+12:45 / +13:45).
+    { id: 'tz-pacific-chatham', env: { TZ: 'Pacific/Chatham' }, repeats: 1 },
 ];
 
 function runOnce(state, clock) {
@@ -107,11 +122,14 @@ const summary = {
     ruling: '§A5 test-integrity policy',
     fourStateProof: byState,
     fourStateProofHolds: Object.values(byState).every((s) => s.allAsExpected),
-    repeatPolicy: '3x on the authoring clock per state, plus 3 alternate timezones per state',
+    repeatPolicy: '3x on the authoring clock per state, plus 7 alternate timezones per state',
     determinismHolds: Object.values(byState).every((s) => s.deterministic),
     alternateClockOrHost: {
-        done: 'timezone varied across UTC, Asia/Tokyo, Pacific/Kiritimati (UTC+14, so the host'
-            + ' local date differs from UTC for most of the day)',
+        done: 'timezone varied across UTC; Asia/Tokyo; Pacific/Kiritimati (UTC+14, host local date'
+            + ' differs from UTC for most of the day); Asia/Kathmandu (+05:45 fractional, no DST);'
+            + ' America/Santiago (southern-hemisphere DST, opposite phase to America/New_York);'
+            + ' Australia/Lord_Howe (+10:30/+11:00 — fractional offset AND a 30-minute DST shift in'
+            + ' the opposite phase); Pacific/Chatham (+12:45/+13:45 fractional with full-hour DST)',
         notDone: 'a physically different host was not available to this worker',
         whyThatIsAcceptableHere:
             'The module resolves every boundary through the IANA zone database for an EXPLICIT zone'
