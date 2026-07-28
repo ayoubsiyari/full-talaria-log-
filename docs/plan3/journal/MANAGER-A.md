@@ -4578,3 +4578,46 @@ expected registry-ABSENT set, and the motivating premise remains refuted.
 - `shell-cache-stamp.test.mjs` is **wired into no CI job** — house pattern for all 76 siblings in that directory, not a
   new omission, but nothing runs it on merge.
 - The ~23-line `chart-host.html` mirror drift is **deliberately preserved** and byte-identical to base.
+
+---
+
+## 2026-07-28 22:16 — STAMP-1 REVERTED `88691742e`; de-route confirmed as the remedy; **nginx alone does not close this route**
+
+Director withdrew the 21:10 finding and the 21:22 ruling in full; **A14.3 stands unamended and the exemption is
+revoked.** Option A confirmed, and the deferral in its tail rejected: the d3 exposure closes **this** train by
+de-routing rather than becoming a next-train security row.
+
+### Revert, and why it was right beyond compliance
+`8f626fdb2` reverted at `88691742e`; all four shells and the test are **byte-identical to `186ee3ab3`** (verified by
+empty `git diff --stat` across those paths). Two independent reasons:
+1. **`shell-cache-stamp.test.mjs` pinned the script inventory and mirror parity of four files scheduled for deletion.**
+   A pin on a corpse is a **non-converging blocker** — precisely how the cut M25 freeze pin blocked R1 earlier today.
+   Leaving it would have handed the de-router a red gate.
+2. The stamp's only benefit accrued to a route we intend to stop answering.
+**Re-land is a single cherry-pick of `8f626fdb2`** if the de-route slips.
+
+### BLOCKING GAP for the de-route — nginx `^~ /chart/multichart/` is necessary but NOT sufficient
+**`api_server.py:27022-27025` mounts the same directory on the app server:**
+`app.mount("/chart/multichart", StaticFiles(directory=_CHART_ROOT_PATH/"multichart", html=True), name="chart_multichart")`.
+An edge redirect does not remove a FastAPI mount. This is not hypothetical — the tracked b75 evidence
+(`b75-indicator-performance-live-audit.json`) reached the sandbox at **`http://31.97.192.82:3000` directly**, i.e. the
+app server, and got **HTTP 200** with two `chart-host.html` child frames. **So the d3/cdnjs exposure survives a
+redirect-only de-route on any path that reaches uvicorn directly.** Complete de-route needs the mount removed as well
+as the redirect. Exhaustive search: `git grep "multichart" -- "*.conf"` returns **one comment and no rule**, so nothing
+currently fronts it.
+
+### Second exposure the de-route also closes (not previously noted)
+`homepage/public/chart/multichart/` ships **9 tracked files, of which three are internal design documents** —
+`README.md`, `decisions.md`, `engine-api-audit.md` — served publicly from the static root. `homepage/Dockerfile`
+copies `dist-v9`, `modules`, `chart.js`, `multichart-prod`, `workers`, `vendor`, `fonts` **but not `multichart`**, so
+these reach the image via the tracked `public/` tree rather than a deliberate asset copy. Another argument for
+de-routing over hardening.
+
+### Order restored
+Switch round-trip sweep, then FIX 2 and FIX 1 concurrently. **Stamp priority cancelled; there was no delivery
+dependency** — the product chain was already stamped end to end (host page b80 -> `chart-embed.html` stamping all 54
+paths -> `injectScript` stamping bridges at `MultichartGrid.jsx:454`).
+
+### Process change accepted
+Runtime-load claims now go to B for a probe before reaching me as work. **This would have caught both of tonight's
+reversals at zero cost** — the a10 fingerprint and the `chart-embed.html` paths array were each one command away.
