@@ -502,3 +502,17 @@ Cells:
 | M6-SCHEDULER-CENSUS-RETURNS-TO-BASELINE | after PO-workload cycles return to single-chart and 60s soak, harness + open-panel scheduling residue stays within baseline + `M6_SCHEDULER_CENSUS_EPSILON` | LIVE as blocking instrument; if flat with live=1, verdict remains UNPROVEN / ESCALATE |
 | NC-M6-TEARDOWN-REVERSAL | served mutant no-ops `m20Q6DrainState` + `destroy()`; acceptance cells must go RED | LIVE (machinery; not ship credit while UNPROVEN) |
 | NC-M6-SCHEDULER-ORPHAN-INTERVAL | synthetic unclosed interval in scheduler census makes `M6-SCHEDULER-CENSUS-RETURNS-TO-BASELINE` RED while Q6 live may return to 1 | LIVE (unit fault-injection) |
+
+## Queue item 11 — Hidden-tab replay regression (W59 / GATE-01)
+
+| Name | Signature token | Implementation | Status |
+|---|---|---|---|
+| HIDDEN-TAB-REPLAY-GATE-V1 | `TALARIA_HIDDEN_TAB_REPLAY_V1` | `scripts/hidden-tab-replay-gate.mjs`, `scripts/lib/hidden-tab-replay.mjs`, `scripts/tests/hidden-tab-replay-gate.test.mjs` | LIVE instrument — must RED on today's zero-visibility replay; GREEN on unfixed = GATE-WRONG |
+
+Cells:
+
+| Cell | Asserts | Status |
+|---|---|---|
+| HIDDEN-TAB-DOCUMENT-FORCED-HIDDEN | probe forced `document.hidden === true` | LIVE |
+| HIDDEN-TAB-REPLAY-MUST-NOT-ADVANCE | playhead index/timestamp must not advance while hidden | LIVE (RED on unfixed product) |
+| NC-HIDDEN-TAB-PAUSE-SHIM | positive-control pause-on-hidden shim makes the advance cell GREEN | LIVE |
