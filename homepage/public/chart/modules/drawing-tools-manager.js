@@ -12072,20 +12072,20 @@ class DrawingToolsManager {
                     
                     // Also remove order lines for open positions with matching entry price
                     if (orderManager.openPositions && orderManager.chart?.svg) {
+                        const ch = orderManager.chart;
                         const positionsToRemove = orderManager.openPositions.filter(order => 
                             Math.abs((order.openPrice || order.entryPrice) - entryPrice) < 0.00001 ||
                             (order.createdFromTool && order.toolType === drawing.type)
                         );
                         positionsToRemove.forEach(order => {
                             // Remove visual elements
-                            orderManager.chart.svg.selectAll(`.order-line-${order.id}`).remove();
-                            orderManager.chart.svg.selectAll(`.sl-line-${order.id}`).remove();
-                            orderManager.chart.svg.selectAll(`.tp-line-${order.id}`).remove();
-                            orderManager.chart.svg.selectAll(`.entry-marker-${order.id}`).remove();
+                            ch.svg.selectAll(`.entry-marker-${order.id}`).remove();
                             
                             // Remove from orderLines array
                             if (orderManager.orderLines) {
-                                orderManager.orderLines = orderManager.orderLines.filter(l => l.orderId !== order.id);
+                                orderManager.orderLines = orderManager.orderLines.filter(l => 
+                                    !(l.orderId === order.id && !l.isPending && (l.chart || orderManager.chart) === ch)
+                                );
                             }
                             // [debug removed]
                         });
@@ -12093,9 +12093,11 @@ class DrawingToolsManager {
                     
                     // Remove all pending order visuals using orderLines array
                     if (orderManager.orderLines && orderManager.orderLines.length > 0) {
+                        const ch = orderManager.chart;
                         // Find order lines that match the entry price
                         const linesToRemove = orderManager.orderLines.filter(l => {
                             if (!l.isPending) return false;
+                            if ((l.chart || orderManager.chart) !== ch) return false;
                             // Check if this order's entry price matches
                             const order = orderManager.pendingOrders?.find(o => o.id === l.orderId);
                             if (order && Math.abs(order.entryPrice - entryPrice) < 0.0001) {
@@ -12131,7 +12133,7 @@ class DrawingToolsManager {
                         // Filter out removed lines
                         const removedIds = linesToRemove.map(l => l.orderId);
                         orderManager.orderLines = orderManager.orderLines.filter(l => 
-                            !removedIds.includes(l.orderId) || !l.isPending
+                            !removedIds.includes(l.orderId) || !l.isPending || (l.chart || orderManager.chart) !== ch
                         );
                     }
                     
@@ -12158,7 +12160,6 @@ class DrawingToolsManager {
                                     svg.selectAll(`.pending-${orderId}`).remove();
                                     svg.selectAll(`.pending-sl-${orderId}`).remove();
                                     svg.selectAll(`.pending-tp-${orderId}`).remove();
-                                    svg.selectAll(`[class*="pending-${orderId}"]`).remove();
                                 }
                             }
                         });
@@ -12177,7 +12178,6 @@ class DrawingToolsManager {
                                     if (!isNaN(textPrice) && Math.abs(textPrice - entryPrice) < 0.001) {
                                         // [debug removed]
                                         svg.selectAll(`.pending-${orderId}`).remove();
-                                        svg.selectAll(`[class*="pending-${orderId}"]`).remove();
                                     }
                                 }
                             }

@@ -96,6 +96,9 @@
             ) {
                 const appended = this._tryIncrementalResample(source, cache.result, tf, chart);
                 if (appended) {
+                    // M20-Q9 measurement: "incremental fired" measured directly,
+                    // never inferred from chart._mcDiag.resamples.
+                    if (chart._mcDiag) chart._mcDiag.incrementalResamples++;
                     cache.sourceLen = source.length;
                     cache.dataVersion = dv;
                     cache.result = appended;

@@ -801,6 +801,17 @@ const MC_DIAG_COUNTER_FIELDS = [
     'fetchedBars',
     'extendsFromParent',
     'resamples',
+    // M20-Q9 measurement (Manager A, packet mcdiag-resample-measurement).
+    // `resamples` is left exactly as it was — it sums replay ticks and
+    // full-array resampleData() calls into one field and cannot answer
+    // "resamples per tick". These three are separate and never summed:
+    //   replayTicks          — one per replay tick (updateChartData/-Fast)
+    //   fullResamples        — one per _resampleDataFull() body, every caller
+    //                          including the pipeline-internal call site
+    //   incrementalResamples — one per ChartDataPipeline incremental hit
+    'replayTicks',
+    'fullResamples',
+    'incrementalResamples',
     'renders',
     'seams',
     'ownerFetches',
@@ -809,6 +820,20 @@ const MC_DIAG_COUNTER_FIELDS = [
     'handovers',
     'lastFetchMs',
 ];
+
+const M20_Q9_MCDIAG_COUNTER_FIELDS = new Set([
+    'replayTicks',
+    'fullResamples',
+]);
+
+function _talariaM20Q9McDiagCountersDisabled() {
+    try {
+        return typeof window !== 'undefined'
+            && window.__TALARIA_DISABLE_M20_Q9_MCDIAG_COUNTERS_V1 === true;
+    } catch (_e) {
+        return false;
+    }
+}
 
 function _talariaMcDiagPanelIdForWindow(win) {
     try {
@@ -836,7 +861,10 @@ function _talariaMcDiagSnapshot(chart) {
         tf: tf != null ? String(tf) : '',
     };
     for (const field of MC_DIAG_COUNTER_FIELDS) {
-        row[field] = Number(diag?.[field]) || 0;
+        row[field] = _talariaM20Q9McDiagCountersDisabled()
+            && M20_Q9_MCDIAG_COUNTER_FIELDS.has(field)
+            ? null
+            : Number(diag?.[field]) || 0;
     }
     return row;
 }
@@ -1197,6 +1225,9 @@ class Chart {
         this._mcFinerPanelOwnerFetchSeq = 0;
         this._mcFinerPanelHostCommitListenerInstalled = false;
         this._mcFinerPanelHostCommitHandler = null;
+        /** Host window the commit listener was registered on (removal target). */
+        this._mcFinerPanelHostCommitTarget = null;
+        this._mcFinerPanelHostCommitUnloadHandler = null;
         this._installFinerPanelSelfOwnerHostCommitListener();
         /** Coalesce high-frequency pan sync broadcasts to ~1/frame. */
         this._scrollSyncRaf = null;
@@ -2594,6 +2625,9 @@ class Chart {
             fetchedBars: 0,
             extendsFromParent: 0,
             resamples: 0,
+            replayTicks: 0,
+            fullResamples: 0,
+            incrementalResamples: 0,
             renders: 0,
             seams: 0,
             ownerFetches: 0,
@@ -2613,8 +2647,24 @@ class Chart {
         const originalUpdateChartData = replay.updateChartData;
         replay.updateChartData = function mcDiagUpdateChartDataWrapper(...args) {
             chart._mcDiag && chart._mcDiag.resamples++;
+            if (!_talariaM20Q9McDiagCountersDisabled()) {
+                chart._mcDiag && chart._mcDiag.replayTicks++;
+            }
             return originalUpdateChartData.apply(this, args);
         };
+        // Fast mode (speed >= 60x) ticks through updateChartDataFast, which the
+        // legacy `resamples` wrapper never covered. replayTicks counts both entry
+        // points so "per tick" is well defined at every playback speed; `resamples`
+        // is deliberately NOT incremented here (its semantics stay unchanged).
+        if (!_talariaM20Q9McDiagCountersDisabled() && typeof replay.updateChartDataFast === 'function') {
+            const originalUpdateChartDataFast = replay.updateChartDataFast;
+            replay.updateChartDataFast = function mcDiagUpdateChartDataFastWrapper(...args) {
+                if (!_talariaM20Q9McDiagCountersDisabled()) {
+                    chart._mcDiag && chart._mcDiag.replayTicks++;
+                }
+                return originalUpdateChartDataFast.apply(this, args);
+            };
+        }
         replay._mcDiagUpdateChartDataWrapped = true;
         this._installLazyReplayMasterGuards();
     }
@@ -4222,7 +4272,57 @@ class Chart {
             };
             parentWin.addEventListener('talariaMcHostDataCommit', this._mcFinerPanelHostCommitHandler);
             this._mcFinerPanelHostCommitListenerInstalled = true;
+            if (typeof window !== 'undefined'
+                && window.__TALARIA_DISABLE_M23_HOST_COMMIT_TEARDOWN_V1 === true) {
+                return;
+            }
+            // Remove from the window we actually registered on. `window.parent`
+            // is deliberately not re-read at teardown: a removal aimed at the
+            // wrong window would silently succeed and look like a fix.
+            this._mcFinerPanelHostCommitTarget = parentWin;
+            // The host window outlives this panel, so nothing on the host side
+            // can drop this registration — the panel has to unregister itself.
+            // Removing a panel iframe unloads this document, which fires
+            // pagehide here while parentWin is still reachable. A persisted
+            // pagehide is bfcache: the panel is coming back and must keep
+            // receiving commits, so leave the registration in place.
+            this._mcFinerPanelHostCommitUnloadHandler = function finerPanelHostCommitUnload(ev) {
+                if (ev && ev.persisted === true) return;
+                self._removeFinerPanelSelfOwnerHostCommitListener();
+            };
+            window.addEventListener('pagehide', this._mcFinerPanelHostCommitUnloadHandler);
         } catch (_e) { /* ignore */ }
+    }
+
+    /**
+     * Panel teardown only. Never called while the panel is alive, so live
+     * cross-panel host data commits keep flowing until the document unloads.
+     */
+    _removeFinerPanelSelfOwnerHostCommitListener() {
+        try {
+            if (typeof window !== 'undefined'
+                && window.__TALARIA_DISABLE_M23_HOST_COMMIT_TEARDOWN_V1 === true) {
+                return;
+            }
+        } catch (_e) { /* ignore */ }
+        if (!this._mcFinerPanelHostCommitListenerInstalled) return;
+        this._mcFinerPanelHostCommitListenerInstalled = false;
+        try {
+            if (this._mcFinerPanelHostCommitTarget && this._mcFinerPanelHostCommitHandler) {
+                this._mcFinerPanelHostCommitTarget.removeEventListener(
+                    'talariaMcHostDataCommit',
+                    this._mcFinerPanelHostCommitHandler,
+                );
+            }
+        } catch (_e) { /* host realm already torn down */ }
+        try {
+            if (typeof window !== 'undefined' && this._mcFinerPanelHostCommitUnloadHandler) {
+                window.removeEventListener('pagehide', this._mcFinerPanelHostCommitUnloadHandler);
+            }
+        } catch (_e) { /* ignore */ }
+        this._mcFinerPanelHostCommitTarget = null;
+        this._mcFinerPanelHostCommitHandler = null;
+        this._mcFinerPanelHostCommitUnloadHandler = null;
     }
 
     _applyFinerPanelHostCommit(detail = {}) {
@@ -25430,6 +25530,12 @@ class Chart {
 
     _resampleDataFull(data, timeframe) {
         if (!Array.isArray(data) || data.length === 0) return [];
+
+        // Counted HERE, not at resampleData(), so every full resample registers
+        // regardless of caller — including ChartDataPipeline.getResampledSeries's
+        // direct chart._resampleDataFull() call, which bypasses resampleData()
+        // and therefore bypasses the legacy `resamples` field entirely.
+        if (this._mcDiag && !_talariaM20Q9McDiagCountersDisabled()) this._mcDiag.fullResamples++;
 
         const prepared = this._prepareBarsForResampling(data);
         if (prepared.length === 0) return [];

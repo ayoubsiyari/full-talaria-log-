@@ -1,0 +1,178 @@
+{
+  "schema": "talaria.module-contracts.v1",
+  "kind": "pending-module-contract-sidecar",
+  "note": "Sidecar, NOT yet merged into scripts/module-contracts.json. The build preflight (scripts/module-contract-preflight.mjs) asserts that every module declared required for a surface has a matching <script> tag in every owned-stamped shell for that surface. Merging this entry BEFORE the product wiring lands would therefore fail the build by design. Manager A must move the `module` object below into scripts/module-contracts.json in the SAME change that adds the script tags to the servable shells.",
+  "packet": "session-calendar-red",
+  "row": "Session-calendar bucketing (canary blocker)",
+  "finding": "docs/plan3/FINDING-SESSION-CALENDAR-20260727.md",
+  "module": {
+    "id": "SessionCalendar",
+    "version": "20260728b83",
+    "provides": [
+      "bucketStart",
+      "epochAlignedBucketStart",
+      "sessionLabel",
+      "openLocalTime",
+      "classifyTimeframe",
+      "resolveInstrumentClass",
+      "classFromMarketType",
+      "classFromRegistry",
+      "resolveIdentity",
+      "normaliseAnchor",
+      "namedAnchor",
+      "namedAnchors",
+      "instrumentClasses",
+      "describeClass",
+      "explain",
+      "isEnabled",
+      "resetCaches",
+      "stats"
+    ],
+    "requiredSurfaces": ["host", "panel"],
+    "class": "correctness",
+    "classRationale": "Absence changes displayed OHLC values on every daily and weekly bar (wrong 24h window, wrong bar dates, missing Friday bar). Per §A4c this is a correctness-class dependency, not a performance one.",
+    "order": {
+      "after": ["/chart/modules/module-presence-runtime.js", "/chart/modules/market-calculations.js"],
+      "before": ["/chart/chart.js", "/chart/modules/chart-data-pipeline.js"]
+    },
+    "dependsOn": [
+      {
+        "module": "MarketCalculationEngine",
+        "script": "/chart/modules/market-calculations.js",
+        "global": "window.marketCalcEngine",
+        "why": "Sole source of instrument identity for the product path. chart.currentSymbol holds a display label (EURUSD_FULL_1MIN_1MIN, 20251028_194229_GBPUSD, EUR/USD, FILE_1234, null), and this registry already resolves those shapes for P&L. classFromRegistry gates on isRegistered() so an unrecognised label yields null rather than a guessed FX session.",
+        "absenceBehaviour": "resolveIdentity returns {instrumentClass:null, cacheable:false, reason:'registry-unavailable'}; callers keep legacy epoch alignment, announce 'SessionCalendar.unresolved-instrument', and MUST NOT memoise the null. A transiently-absent registry must not become permanently absent.",
+        "alreadyServedBy": ["chart v 1.4/chart/dist-v9/index.html", "homepage/public/chart/dist-v9/index.html", "chart v 1.4/chart/multichart-prod/chart-embed.html", "homepage/public/chart/multichart-prod/chart-embed.html"],
+        "declaredAfterChartOn": ["chart v 1.4/chart/legacy-index.html", "homepage/public/chart/legacy-index.html"],
+        "notDeclaredAtAllOn": ["chart v 1.4/chart/multichart/chart-host.html", "homepage/public/chart/multichart/chart-host.html"],
+        "loadOrderAssertedBy": "cellM4"
+      }
+    ],
+    "registryGaps": {
+      "rows": 120,
+      "note": "Symbols the product can display that isRegistered() rejects, so the wired chart keeps epoch alignment for them. market-calculations.js is NOT in this packet's writable set; listed for whoever owns it.",
+      "g10CrossMatrix": { "expected": 28, "present": 26, "missing": ["EURNZD", "GBPNZD"] },
+      "sgdCrosses": { "present": ["EURSGD", "USDSGD", "SGDJPY"], "missing": ["AUDSGD", "NZDSGD", "GBPSGD", "CADSGD", "CHFSGD"] },
+      "metals": { "present": ["XAUUSD", "XAGUSD"], "missing": ["XPTUSD", "XPDUSD"] },
+      "misclassified": {
+        "rows": ["DXY", "USDX", "XTIUSD", "XNGUSD"],
+        "typedAs": "forex",
+        "definedAt": "market-calculations.js:29-32",
+        "resolvesAs": "isRegistered=true -> sessionClass=fx -> reason=resolved (a CONFIDENT wrong answer, so the unresolved-instrument announcement never fires)",
+        "errorMagnitude": {
+          "XTIUSD/XNGUSD": "1 hour — CME energy opens 18:00 America/New_York; wiring applies 17:00. Measured: 2013-01-15 daily bucket lands 2013-01-14T22:00:00.000Z, correct is 23:00:00.000Z.",
+          "DXY/USDX": "3 hours — ICE DX futures open 20:00 America/New_York; wiring applies 17:00."
+        },
+        "why": "None is spot FX. The type is wrong upstream; MARKET_TYPE_TO_CLASS's forex->fx mapping is correct as specified and is not the fault. Recorded, not fixed — the registry is not writable here. Carried by Manager A as a separate defect row."
+      },
+      "suffixStripping": {
+        "handledToday": ["EURUSD.a", "EURUSD_i", "EURUSD-ECN", "EURUSD.pro", "EUR/USD", "EURUSD.r"],
+        "notHandled": ["EURUSDm", "EURUSDc", "EURUSDpro", "EURUSDmicro", "EURUSD#"],
+        "mechanism": "_resolveRegistryKey splits on / - _ . and whitespace and tries the longest segment. Separator-delimited suffixes therefore already resolve; bare alphanumeric suffixes do not, and '#' is not in the split set.",
+        "belongsIn": "the registry resolver (_resolveRegistryKey), NOT the session-class mapping",
+        "rationale": "EURUSDm and EURUSD are the same instrument for every consumer of the registry — pip size, P&L, margin, and session alike. Fixing it in classFromRegistry would give the session calendar a symbol vocabulary the P&L path does not share, which is how two normalisation rules drift apart. One resolver, one vocabulary."
+      }
+    },
+    "indicatorSurface": {
+      "status": "shaped, nothing migrated",
+      "why": "The anchoring audit expects SessionCalendar to serve indicators, at which point the FVG's 18:00 ET and the Weekly Map's Monday-ET stop being private constants. bucketStart/openLocalTime accept an explicit `anchor` in place of an instrument class; namedAnchors() declares both, status 'declared'.",
+      "namedAnchors": ["fvg-18-et", "weekly-map-mon"],
+      "assertedBy": "cellQ",
+      "warning": "fvg-18-et is 18:00 America/New_York and disagrees with the FX session open by exactly one hour. That disagreement is real and is NOT reconciled here."
+    },
+    "epochFlooringSites": {
+      "method": "REAL SCAN, not a hand-written list. Cell M2 walks the servable chart surface for `Math.floor(<expr> / D) * D` with the same divisor token on both sides, strips comments so documentation is not counted as code, and requires the found multiset to EQUAL the declared inventory in m22-session-calendar-harness.mjs EPOCH_FLOORING_INVENTORY. A new site anywhere in scope fails the cell until it is classified.",
+      "supersedes": "r3 asserted `sites.length === 3` against a hardcoded three-element literal — a tautology that could not fail when a fourth site appeared, and whose list was already incomplete.",
+      "totalScanned": 21,
+      "byCategory": { "bar-bucketing": 6, "grid-coupled": 5, "module-owned": 1, "out-of-category": 9 },
+      "barBucketingExpressionsWiredByThisPacket": 3,
+      "barBucketingFunctionsWiredByThisPacket": 2,
+      "sites": [
+        { "file": "chart v 1.4/chart/chart.js", "function": "_resampleDataFull", "expressions": 2, "wired": true, "patches": ["W1", "W2"] },
+        { "file": "chart v 1.4/chart/modules/chart-data-pipeline.js", "function": "_tryIncrementalResample", "expressions": 1, "wired": true, "patches": ["W4"] },
+        { "file": "chart v 1.4/chart/modules/replay-system.js", "function": "_replayBucketStart", "lines": "4987-4991", "callers": [4964, 4977, 5047], "status": "LIVE", "wired": false, "note": "WIRING-TIME INTEGRATION RISK, not a census entry. Its own comment claims to match chart resampleData; landing the wiring FALSIFIES that invariant, so replay stepping would compute epoch buckets over session-bucketed bars. Reached whenever tfMs > _getRawBarPeriodMs(), i.e. exactly the daily and weekly timeframes this packet changes. Must be wired in the same change." },
+        { "file": "chart v 1.4/chart/workers/candle-decode.worker.js", "function": "resampleCandles", "lines": "135-149", "status": "latent", "wired": false, "note": "A complete SECOND resampler with its own '1d'/'1w' table, reachable via the case 'resample' message at :28. Latent is a CHECKED claim: cell M2 searches the whole surface for anything posting that message type and asserts nothing does. Larger surface than the FVG site." },
+        { "file": "chart v 1.4/chart/modules/talaria-fvg-indicator.js", "function": "periodStart", "lines": "68-70", "usedAt": 294, "status": "LIVE", "wired": false, "note": "Named by the anchoring audit, not by the original finding. Its tfToMs accepts d and w, so it floors daily and weekly to the UTC epoch too. SEPARATE ROW." }
+      ],
+      "gridCoupled": {
+        "note": "Do not create bars, but assume the same grid, so all five point at the wrong instant once bar boundaries move. Not wrong-OHLC defects.",
+        "sites": [
+          { "file": "chart v 1.4/chart/chart.js", "at": 6281, "what": "seam splice" },
+          { "file": "chart v 1.4/chart/chart.js", "at": 24991, "what": "leftCut" },
+          { "file": "chart v 1.4/chart/chart.js", "at": 30720, "what": "replay progress displayCandleStart" },
+          { "file": "chart v 1.4/chart/multichart/sync-bridge.js", "at": 61, "what": "floorToBucket — TIMEFRAME_SECONDS carries '1d' and '1w'; cross-panel viewport snapping" },
+          { "file": "chart v 1.4/chart/multichart-prod/sync-bridge.js", "at": 61, "what": "floorToBucket (mirror of the above)" }
+        ]
+      },
+      "assertedBy": "cellM2"
+    },
+    "ingestProvenance": {
+      "vendorTimeframes": ["1min", "5min", "30min", "1hour", "1day"],
+      "weekly": "NOT a FirstRate import timeframe. Weekly binaries are built locally by _resample_candles(candles, 604800000) — epoch flooring, i.e. the defect itself one layer upstream. There is therefore no vendor-native weekly series to defer to and the re-bucket question does not arise for weekly; the Monday 00:00 UTC ratification is a pure product decision.",
+      "daily": "OPEN. 1day IS a vendor timeframe, so daily carries a provenance question weekly does not: whether FirstRate daily bars are already session-aligned, and to which session. Not resolved here.",
+      "weekendFilter": "FirstRate datasets are served with weekend_filter = False, so the server-side rule cellP differentials against is not applied to that provider's data. The differential remains valid — it establishes agreement with the authority the server encodes — but the two rules do not always co-apply."
+    },
+    "externalAuthority": {
+      "file": "chart v 1.4/chart/api_server.py",
+      "function": "_is_weekend_timestamp_ms",
+      "lines": "8465-8499",
+      "rule": "FX closes Friday 17:00 America/New_York, reopens Sunday 17:00 America/New_York, DST-aware via zoneinfo; docstring explicitly rejects the naive UTC weekday check.",
+      "agreement": "EXACT. Over 2013-2015 at minute resolution: 156 closes and 156 reopens, every close is a daily session open, every reopen is both a daily and a weekly session open, and every weekly open this module produces is a server reopen instant. Single local anchor Sunday 17:00 throughout. Zero disagreement.",
+      "assertedBy": "cellP"
+    },
+    "source": "chart v 1.4/chart/modules/session-calendar.js",
+    "mirrors": ["homepage/public/chart/modules/session-calendar.js"],
+    "script": "/chart/modules/session-calendar.js"
+  },
+  "killSwitch": {
+    "name": "__TALARIA_DISABLE_SESSION_CALENDAR_V1",
+    "class": "correctness",
+    "default": "absent (session calendar ACTIVE)",
+    "offBehaviour": "Every bucketStart call returns Math.floor(t / timeframeMs) * timeframeMs — byte-identical to pre-fix output for every timeframe.",
+    "negativeControlCell": "g-kill-switch-off-restores-epoch-behaviour"
+  },
+  "labelConvention": {
+    "id": "stamp-at-open/session-date-naming",
+    "barTimestamp": "the session OPEN instant (FX: 17:00 America/New_York, DST-aware)",
+    "displayName": "the session DATE, which is the open's local date plus labelOffsetDays",
+    "fxLabelOffsetDays": 1,
+    "worked": "A bucket opening Sunday 17:00 ET is NAMED MONDAY; a bucket opening Thursday 17:00 ET is NAMED FRIDAY.",
+    "decidedBy": "Director ruling, docs/plan3/FINDING-SESSION-CALENDAR-20260727.md 'Fix shape'"
+  },
+  "instrumentClasses": [
+    { "id": "fx", "status": "implemented", "zone": "America/New_York", "dailyOpen": "17:00 local (DST-aware)", "weekOpen": "Sunday 17:00 local", "labelOffsetDays": 1 },
+    { "id": "crypto", "status": "implemented", "zone": "UTC", "dailyOpen": "00:00 UTC", "weekOpen": "Monday 00:00 UTC", "labelOffsetDays": 0 },
+    { "id": "cme-index-futures", "status": "declared", "zone": "America/Chicago", "fallback": "legacy epoch alignment", "requires": ["cme-holiday-calendar", "cme-daily-maintenance-break", "cme-early-close-table"] },
+    { "id": "us-equities", "status": "declared", "zone": "America/New_York", "fallback": "legacy epoch alignment", "reachedBy": "MarketCalculationEngine specs.type === 'stocks' (AAPL-style tickers)", "requires": ["nyse-holiday-calendar", "nyse-half-day-table", "rth-vs-eth-decision"] },
+    { "id": "unknown", "status": "declared", "fallback": "legacy epoch alignment" }
+  ],
+  "instrumentIdentity": {
+    "productProperty": "chart.currentSymbol",
+    "productPropertyAssignments": 13,
+    "rejectedProperties": ["sessionCalendarSymbol", "currentPair", "symbol", "pair"],
+    "rejectedReason": "Zero assignments in chart.js. A wiring reading these resolves an empty symbol, falls through to epoch alignment and changes nothing in the product while the oracle passes.",
+    "resolver": "SessionCalendar.classFromRegistry(window.marketCalcEngine, chart.currentSymbol)",
+    "confidenceGate": "MarketCalculationEngine.isRegistered() — an explicit registry row. detectMarketType() alone is unusable here because it defaults to 'forex' for unrecognised labels, which would apply a 17:00 New York session to unidentified data.",
+    "unresolvedBehaviour": "Keep legacy epoch alignment for the affected timeframe AND announce 'SessionCalendar.unresolved-instrument'. Never guess.",
+    "knownUnresolvableShapes": ["FILE_<id>", "CHART", "EURUSD1", "null"],
+    "assertedBy": "cellN"
+  },
+  "sharedCallSites": [
+    { "file": "chart v 1.4/chart/chart.js", "function": "_resampleDataFull", "wired": false },
+    { "file": "chart v 1.4/chart/modules/chart-data-pipeline.js", "function": "_tryIncrementalResample", "wired": false },
+    { "file": "homepage/public/chart/chart.js", "function": "_resampleDataFull", "wired": false, "note": "generated mirror; this is the SERVED copy" },
+    { "file": "homepage/public/chart/modules/chart-data-pipeline.js", "function": "_tryIncrementalResample", "wired": false, "note": "generated mirror; this is the SERVED copy" }
+  ],
+  "notTouched": [
+    "chart.js _resampleDataFull monthly branch (^(\\d+)mo$) — already correct calendar months, byte-identity asserted by cell d"
+  ],
+  "oracle": {
+    "file": "chart v 1.4/chart/modules/m22-session-calendar-bucketing.red.test.mjs",
+    "harness": "chart v 1.4/chart/modules/m22-session-calendar-harness.mjs",
+    "fourStateDriver": "chart v 1.4/chart/modules/m22-session-calendar-fourstate.mjs",
+    "authoredAgainstBuild": "634448817",
+    "authoredAgainstRow": "Session-calendar bucketing (canary blocker)",
+    "lastProvenRedOnBuild": "634448817",
+    "epsilon": "0 — exact equality. Fixture prices are dyadic rationals (1.25 + k/4096) and resampling performs only selection (first/last/max/min) plus integer volume sums, so no rounding can occur. Not a fitted tolerance."
+  }
+}

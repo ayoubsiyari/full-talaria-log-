@@ -21,6 +21,16 @@ function _m19iTickSpeedCoherenceEnabled() {
         || window.__TALARIA_DISABLE_M19I_TICK_SPEED_COHERENCE_V1 !== true;
 }
 
+function _m27EngineReleaseV1Enabled() {
+    return typeof window === 'undefined'
+        || window.__TALARIA_DISABLE_M27_ENGINE_RELEASE_V1 !== true;
+}
+
+function _m28ReplayHiddenPauseV1Enabled() {
+    return typeof window === 'undefined'
+        || window.__TALARIA_DISABLE_REPLAY_HIDDEN_PAUSE_V1 !== true;
+}
+
 class ReplaySystem {
     constructor(chart) {
         this.chart = chart;
@@ -63,6 +73,8 @@ class ReplaySystem {
         this._tfChangeRestoreTimer = null;
         this._tfChangeSeq = 0;
         this._tfChangeWasPlaying = false;
+        this._replayHiddenPauseWasPlaying = false;
+        this._replayHiddenPauseOnVisibilityChange = null;
 
         // Tick animation state
         this.playbackMode = 'tick'; // 'tick' (animated) | 'candle' (no intra-candle animation)
@@ -305,6 +317,8 @@ class ReplaySystem {
             this.pauseTextEl = this.playPauseBtn.querySelector('.pause-text');
         }
 
+        this._registerReplayHiddenPauseListener();
+
         if (!this.toolbar || !this.replayBtn) {
             if (typeof window !== 'undefined' && window.__TALARIA_EMBED_LITE) {
                 return;
@@ -335,6 +349,83 @@ class ReplaySystem {
                 }
             });
         }
+    }
+
+    _isReplayHiddenPauseEnabled() {
+        return _m28ReplayHiddenPauseV1Enabled();
+    }
+
+    _isReplayPageHidden() {
+        if (!this._isReplayHiddenPauseEnabled()) return false;
+        if (typeof document === 'undefined') return false;
+        return document.hidden === true;
+    }
+
+    _registerReplayHiddenPauseListener() {
+        if (this._replayHiddenPauseOnVisibilityChange) return;
+        if (typeof document === 'undefined' || typeof document.addEventListener !== 'function') return;
+        this._replayHiddenPauseOnVisibilityChange = () => this._handleReplayVisibilityChange();
+        document.addEventListener('visibilitychange', this._replayHiddenPauseOnVisibilityChange);
+    }
+
+    _handleReplayVisibilityChange() {
+        if (this._isReplayPageHidden()) {
+            this._pauseReplayForHiddenPage();
+        } else {
+            this._resumeReplayFromHiddenPage();
+        }
+    }
+
+    _clearReplayHiddenPauseTimers() {
+        this._activeTickLoop = (this._activeTickLoop || 0) + 1;
+        this._activeCandleLoop = (this._activeCandleLoop || 0) + 1;
+        this._cancelDeferredPlayStart();
+        if (this._nextCandleTimer) {
+            clearTimeout(this._nextCandleTimer);
+            this._nextCandleTimer = null;
+        }
+        if (this.tickInterval) {
+            clearTimeout(this.tickInterval);
+            this.tickInterval = null;
+        }
+        if (this.playInterval) {
+            clearInterval(this.playInterval);
+            this.playInterval = null;
+        }
+        this.isPlayStarting = false;
+    }
+
+    _pauseReplayForHiddenPage() {
+        if (!this.isActive || !this.isPlaying) {
+            this._replayHiddenPauseWasPlaying = false;
+            return false;
+        }
+        this._replayHiddenPauseWasPlaying = true;
+        this._clearReplayHiddenPauseTimers();
+        this.syncPlayPauseButtonVisuals();
+        return true;
+    }
+
+    _resumeReplayFromHiddenPage() {
+        if (!this._replayHiddenPauseWasPlaying) return false;
+        this._replayHiddenPauseWasPlaying = false;
+        if (this._isReplayPageHidden()
+            || !this.isActive
+            || !this.isPlaying) {
+            return false;
+        }
+        if (this._shouldUseTickAnimation()) {
+            this._preserveTickProgress = !!(this.animatingCandle && this.tickProgress > 0);
+            // No guard refresh here: hidden-pause guarantees no candle advanced while hidden.
+            this.startTickAnimation();
+            return true;
+        }
+        this.animatingCandle = null;
+        this.tickProgress = 0;
+        this.tickElapsedMs = 0;
+        // No guard refresh here: hidden-pause guarantees no candle advanced while hidden.
+        this.startCandleByCandle(false);
+        return true;
     }
 
     attachButtonEvents() {
@@ -4454,6 +4545,12 @@ class ReplaySystem {
         const isResumingTick = useTickAnimation && this.animatingCandle && this.tickProgress > 0;
         const preserveTick = !!isResumingTick;
 
+        if (this._isReplayPageHidden()) {
+            this.isPlaying = true;
+            this._pauseReplayForHiddenPage();
+            return;
+        }
+
         // Defer heavy start so the browser can paint a loading spinner on the play control first
         // (daily / large resamples can block the main thread for a noticeable moment).
         this._cancelDeferredPlayStart();
@@ -4539,6 +4636,11 @@ class ReplaySystem {
 
         const cadence = this.getCandlePlaybackCadence();
         const interval = cadence.intervalMs;
+
+        if (this._isReplayPageHidden()) {
+            this._pauseReplayForHiddenPage();
+            return;
+        }
         
         // Optionally advance immediately (used on first play).
         if (startImmediately) {
@@ -9738,6 +9840,7 @@ if (_m20Q6LifecycleRuntimeEnabled()) {
         for (const entry of [...state.events].reverse()) {
             if (!entry.settled) attempt(entry.label, () => m20Q6RemoveEventEntry(entry));
         }
+        instance._replayHiddenPauseOnVisibilityChange = null;
         for (const entry of [...state.managers].reverse()) {
             if (entry.settled) continue;
             attempt(entry.label, () => {
@@ -9820,6 +9923,18 @@ if (_m20Q6LifecycleRuntimeEnabled()) {
             if (state.chart && state.chart.replaySystem === instance) {
                 state.chart.replaySystem = null;
             }
+            if (_m27EngineReleaseV1Enabled()) {
+                const orderManager = state.chart && state.chart.orderManager;
+                if (orderManager && orderManager.replaySystem === instance) {
+                    orderManager.replaySystem = null;
+                }
+                const orderService = orderManager && orderManager.orderService;
+                if (orderService && orderService.replaySystem === instance) {
+                    orderService.replaySystem = null;
+                }
+                instance.fullData = null;
+                instance.fullRawData = null;
+            }
         } else {
             state.phase = 'destroy-pending';
             instance._m20Q6LifecycleState = 'destroy-pending';
@@ -9901,6 +10016,8 @@ if (_m20Q6LifecycleRuntimeEnabled()) {
         setup() {
             const state = m20Q6StateFor(this);
             try {
+                // setup() is not in m20Q6EffectMethods; this override captures raw
+                // setup-time listeners such as replay hidden-pause visibilitychange.
                 return m20Q6CaptureEffects(
                     state,
                     () => M20Q6ImmutableReplaySystem.prototype.setup.call(this),
