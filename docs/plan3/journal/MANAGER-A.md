@@ -4289,3 +4289,66 @@ names review capacity as the ceiling.
 - `m22-session-calendar-bucketing.red` **mutates the tracked** `tests/evidence/session-calendar-red/m22-session-calendar-broken.json` on every run. Restored twice today.
 - A subagent committed to a **detached HEAD** (`ef026db5f`); rescued onto `manager-a/m28-replay-hidden-pause`. **Briefs must state the worktree may be detached and require attaching before commit.**
 - **5th brief-defect of the same class: writable set omitted an enforced mirror.** Two authors refused packets over it; both were right. `replay-system.js` is byte-mirrored AND hash-pinned (reviewed core = five floating-toolbar methods only).
+
+## 2026-07-28 ~18:5x — CYCLE 2. M25 cut enforced; train audit done; drain questions closed.
+
+### TRAIN AUDIT (the actual blocker) — 10 in-scope items, 4 flagged, **6 missing switches**
+**V6-P4 IS NOT IN THE TRAIN.** Exhaustive: `git grep -i -E "v6[-_ ]?p4"` = **one** hit, my own journal line 4275,
+prose, added by the tip commit. `git log -S"chartViewPanning" 39152ca7b..HEAD` = docs only. The `render()` tail
+and `chartViewPanning` are **byte-untouched**. Cited anchors stale: `render()` tail is `chart.js:29064-29368`
+not 29500-29514; `__TALARIA_DISABLE_ORDER_OVERLAY_PAN_ALWAYS_V1` is `:29263/:29267` not 29418/29422.
+**The elimination was sound but the conclusion does not follow** — the train's unflagged render changes are elsewhere.
+Baseline **39152ca7b** (144 commits), chosen because **every** b75-b80 anchor collapses to it.
+`?v=` token proven unusable as a deploy marker: two divergent trees emit `20260727b80` and neither is an ancestor.
+
+**Missing, prioritised:** P1 M23 host-commit teardown (stops a path that paints; bfcache `persisted===false` leaves a
+panel deaf) · P2 order-line eviction rescope (only item changing what is **visibly drawn**; flag-off leaves orphaned
+order/SL/TP lines) · P3 IndicatorPerf loader (**load-time `<script>` only** — answers Q7; flips 12 consumer sites) ·
+P4 module-presence tripwire (draws a "Degraded" badge, 500ms budget, no off switch) · P5 M20-Q9 counters ·
+P6 deleted served shell (**no runtime switch possible** — needs a decision).
+
+**STRUCTURAL FINDING — Charter §2.3, affects what the whole ruling buys.**
+`git grep localStorage --and __TALARIA_DISABLE` = **0**. Same for `URLSearchParams`. **No shell reads any
+kill-switch from a URL param, localStorage or any persisted source.** All 64 `__TALARIA_DISABLE_*` reads require the
+global to be set **by hand in the page before the reading code runs**. So on a single-push deployment "the switch is
+present" means **"an operator can set it in DevTools and reload"**, NOT "we can turn this off for all users without a
+push." **If the latter is the intent, the ruling is not yet satisfied by adding six switches.** A one-time seeder
+reading an allow-list from localStorage in each shell's first inline script buys it for all 64 flags at once and is
+**smaller than adding the six**. Raised, not built.
+
+### M25 REVERTED and merged **0fc260f6d** — and it was an active blocker, not just dead weight
+`m25-render-pending-accessor.test.mjs` carried a **freeze cell** — "no chart.js region outside the three declared
+ones changed" — which **fails on ANY future chart.js edit**. **A cancelled packet was freezing the file**, and it
+blocked R1 today. Author correctly stopped rather than touch the pin. `chart.js` now **byte-identical to
+`ba2d30e57^`** (empty diff). Q9 counters survived — they are `3e1fdc05e`'s, not M25's.
+**Revert cost was far below my own "56 writes of churn" estimate**: no commit after M25 touched `chart.js` at all,
+so it was conflict-free by construction. **My estimate was wrong and it delayed the cut.**
+
+### R1 authored **6872d3c6f** (branch `manager-a/r1-chartjs-killswitches`) — closes P1 and P5
+26/26 focused. Per-call sampling with celled mid-session flip; flag-on installs **no wrapper frame at all** on
+`updateChartDataFast`. Awaiting top-tier review. `chart-data-pipeline.js:101` `incrementalResamples++` left —
+outside the writable set, needs its own packet.
+
+### DIRECTOR'S TWO DRAIN CHECKS — **both ruled out**, by runtime probe not source-reading
+**(a) Aggregate throw: RULED OUT, three ways.** The throw is the **final statement** at `:9962-9966`, after every
+release, and each release is individually wrapped in `attempt()` (`:9787-9803`) — **so it skips nothing**. Probe
+with an injected remove-fault: timers 7->0, listeners 10->2 (only the faulted pair), all DOM strips done. Predicate
+requires **a host DOM API to throw** = fault injection, not production. Failure lands in `'destroy-pending'`, which
+is **re-drainable**, with two production retry paths. **The multichart call site IS wrapped** (`multichart-manager.js:528`
+try, `:543-546` catch). Two unwrapped sites exist — `destroy()`/`dispose()` and the `'replacement'` prologue —
+and neither matters for the same reason.
+**(b) Destroyed-phase early return: UNREACHABLE, and the mechanism was mis-stated.** Guard is `:9773` not `:9671`.
+**The drain never deletes from `m20Q6States`** (4 hits total, no `.delete`), so a destroyed instance **can never get
+a new state record** — the hypothesised mechanism cannot occur. Re-registration onto the **old** record would leak
+(probe: `setup()` re-registers, re-drain returns the stale report) but **no production path reaches it**: `init`/`setup`
+have no caller outside the base constructor, and every async vector is inert via `acceptCallbacks` (`:9348`, `:9468`, `:10315`).
+**Note the trap:** adding `m20Q6States.delete(instance)` to the drain would **create** the Director's hypothesised bug.
+Director's line numbers off by ~100 throughout (function is `:9769-9969`); two call sites omitted from the brief
+(`constructor-rollback`, `setup-rollback`) — six, not four.
+
+### Serialisation
+Director lifted PAR-01 file-granularity to region-granularity. Adopted. M26/FIX 3 were already merged in the ordered
+sequence (M26 `cd979b8cc` then FIX 3 `6d52fff66`) before the ruling arrived.
+
+### Next
+R2 (P2), R3 (P3+P4) concurrent on disjoint files; top-tier review of R1; then FIX 2, FIX 1.
