@@ -113,9 +113,9 @@ docs/plan3/*
 # Director ruling TB-6: standing policy and PO-sweep findings must carry history,
 # diff and attribution. An untracked policy file has no canonical copy — it forked
 # across worktrees and a destructive overwrite left no trace.
-!docs/plan3/DIRECTOR-RULINGS-20260727.md
-!docs/plan3/FINDING-*.md
-!docs/plan3/PO-SWEEP-RESULTS-20260727.md
+# Broadened to match the director_paths grant in TERRITORY.yml: governance and
+# finding documents are tracked; evidence/, probes/ and worker-reports/ stay local.
+!docs/plan3/*.md
 
 
 
