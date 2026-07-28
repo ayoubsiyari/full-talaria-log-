@@ -1,5 +1,39 @@
 # FINDING — the competitive deficit is CPU, not memory, and it predates Plan 3
 
+> ## ⚠ SUPERSEDING OBSERVATION (2026-07-28 11:13) — IDLE CPU. Read this first.
+>
+> **Talaria: one pair, 1m, NOTHING PLAYING, immediately after refresh, no indicators, no orders — 1.62 GB, CPU 20.6 with periodic spikes to ~120 falling back to 10–30.**
+> **TradeZella: one pair, comparable 3-year period — 280–499 MB, CPU 0.4–5.1.**
+>
+> **Memory 3–6x worse. Idle CPU 4–50x worse.**
+>
+> **§1's parity claim is CORRECTED.** Memory parity held against **FX Replay** (891 MB), which is itself a heavy client. Against **TradeZella** — the comparison the PO actually cares about and the one that started this investigation — **we are not at parity on either axis.**
+>
+> ### Why this observation outranks everything else in this document
+>
+> An idle chart with no replay, no indicators, no orders and one symbol **should consume approximately zero CPU.** The competitor's does: 0.4%. Ours sustains ~20% and spikes to a full core.
+>
+> **This eliminates every confounder we have been fighting for three days.** Not replay speed — nothing is playing. Not indicators — none loaded. Not multichart — one panel. Not teardown residue — this is a fresh refresh. Not data volume driving per-tick work — there are no ticks.
+>
+> **Therefore: a loop is executing with no input change.** The periodic signature — spike to ~120, fall to 10–30, repeat — is a **periodic task**, not steady-state cost. Named suspects, all cheap to check and all in A's territory:
+>
+> 1. **The bar-close countdown idle-render path (M20-Q2).** That fix explicitly changed how the countdown triggers renders. An idle render loop is exactly what its name describes, and it is the first thing to check.
+> 2. **Any surviving `setInterval` polling** — M20-Q1 v9 replaced a DOM poll with an observer; verify the poll is actually gone rather than additionally present.
+> 3. **The forming/animated candle updater**, which may be repainting on a timer with no new data.
+> 4. **Autosave / session persistence** on an interval.
+> 5. **A resample or layer-cache invalidation on a timer** rather than on data change.
+>
+> ### Why this is very likely the whole story
+>
+> If the floor is ~20% with 120% spikes at complete rest, then replay, indicators and a second panel are *added on top of that floor*. The 129% figure in §1 may be substantially this same defect plus load. **Fixing an idle loop is a small, low-risk, local change — not an architectural rewrite** — which makes this the only credible route to a real CPU improvement inside 46 hours.
+>
+> ### Diagnosis is trivial because there is no confounding activity
+>
+> Chrome Performance recording of **10 seconds on a completely idle chart**. With nothing happening, whatever appears in the flame chart *is* the defect. This supersedes measurement 0's ordering: **take the idle recording first.** Also worth capturing: `performance.getEntriesByType('measure')`, and a census of live intervals/timeouts/rAF handles at rest.
+>
+> **Also of note:** the tab carries three subframes — `accounts.google.com` and two `hcaptcha.com` frames totalling ~160 MB. Establish whether hCaptcha belongs on an authenticated chart surface at all; if not, that is free memory and possibly free CPU.
+
+
 **Source:** PO A/B against FX Replay, 2026-07-25 ~16:00, screenshots supplied 2026-07-28 10:59.
 
 ## 1. The measurement
