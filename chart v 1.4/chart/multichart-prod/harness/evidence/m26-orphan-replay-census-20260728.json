@@ -1,0 +1,761 @@
+{
+  "protocol": "M-6 orphan replay destroy census",
+  "timestamp": "2026-07-28T15:11:55.394Z",
+  "branch": "manager-a/orphan-replay-destroy",
+  "head": "7b90dc5be49c72d2e33a484a6f5f7d5c893993e2",
+  "headful": false,
+  "settleMs": 1500,
+  "runsPerArm": 3,
+  "livenessObserveMs": 3000,
+  "server": {
+    "deployedMode": false,
+    "url": "http://127.0.0.1:51198"
+  },
+  "baselineCaveat": "19,852 detached divs existed before any multichart was opened on the PO machine. This packet measures per-cycle growth on top of any pre-existing population; a flat per-cycle delta is not a claim that the baseline leak was fixed.",
+  "method": {
+    "instanceCount": "Forced GC, then CDP HeapProfiler full heap snapshot filtered by class name M20Q6ReplaySystem.",
+    "detachedDivCount": "Forced GC, then full heap snapshot filtered for Detached HTMLDivElement class names.",
+    "detachedDocumentCount": "Forced GC, then full heap snapshot filtered for Detached *Document class names.",
+    "liveness": "Pre-document instrumentation wraps ReplaySystem prototype methods, EventTarget listener registration, timers, intervals, and RAFs to record registrations and callback executions after panel removal."
+  },
+  "runOrder": [
+    "disabled-1",
+    "enabled-1",
+    "disabled-2",
+    "enabled-2",
+    "disabled-3",
+    "enabled-3"
+  ],
+  "runs": [
+    {
+      "arm": "disabled",
+      "runIndex": 1,
+      "killSwitch": true,
+      "collectLiveness": false,
+      "samples": {
+        "beforeOpen": {
+          "label": "disabled-r1-before-open",
+          "timestamp": "2026-07-28T15:11:58.482Z",
+          "wallClockMs": 1785251518482,
+          "visibilityState": "visible",
+          "chartIds": [
+            "A"
+          ],
+          "connectedDivs": 274,
+          "connectedIframes": 0,
+          "liveness": null,
+          "m20Q6ReplaySystem": 1,
+          "detachedDivs": 0,
+          "detachedDocuments": 0,
+          "matchingDocumentNames": {},
+          "matchingDetachedDivNames": {},
+          "matchingReplayNames": {
+            "ReplaySystem": 1,
+            "M20Q6ReplaySystem": 1
+          },
+          "heapBytes": 25169449,
+          "heapSha256": "18743e2a74e3a76a5bba64b1ab9a0dd8ed94bb8910cfdee1d11203fd954d86b0",
+          "heapDeleted": true
+        },
+        "afterReturn": {
+          "label": "disabled-r1-after-return",
+          "timestamp": "2026-07-28T15:12:05.297Z",
+          "wallClockMs": 1785251525297,
+          "visibilityState": "visible",
+          "chartIds": [
+            "A"
+          ],
+          "connectedDivs": 277,
+          "connectedIframes": 0,
+          "liveness": null,
+          "m20Q6ReplaySystem": 1,
+          "detachedDivs": 0,
+          "detachedDocuments": 0,
+          "matchingDocumentNames": {},
+          "matchingDetachedDivNames": {},
+          "matchingReplayNames": {
+            "M20Q6ReplaySystem": 1,
+            "ReplaySystem": 1
+          },
+          "heapBytes": 25813422,
+          "heapSha256": "af1d5aafbc26e1173437187951369d3166a85b113932ea6d507a94517a2f88ef",
+          "heapDeleted": true
+        }
+      },
+      "delta": {
+        "m20Q6ReplaySystem": 0,
+        "detachedDivs": 0,
+        "detachedDocuments": 0
+      },
+      "liveness": null,
+      "inFlightDataRequestsAtEnd": 0,
+      "consoleErrors": [],
+      "pageErrors": []
+    },
+    {
+      "arm": "enabled",
+      "runIndex": 1,
+      "killSwitch": false,
+      "collectLiveness": false,
+      "samples": {
+        "beforeOpen": {
+          "label": "enabled-r1-before-open",
+          "timestamp": "2026-07-28T15:12:08.892Z",
+          "wallClockMs": 1785251528892,
+          "visibilityState": "visible",
+          "chartIds": [
+            "A"
+          ],
+          "connectedDivs": 274,
+          "connectedIframes": 0,
+          "liveness": null,
+          "m20Q6ReplaySystem": 1,
+          "detachedDivs": 0,
+          "detachedDocuments": 0,
+          "matchingDocumentNames": {},
+          "matchingDetachedDivNames": {},
+          "matchingReplayNames": {
+            "ReplaySystem": 1,
+            "M20Q6ReplaySystem": 1
+          },
+          "heapBytes": 25145015,
+          "heapSha256": "749a2941a0a871aef12a6515a15e1a6f421a96bff4b64427a6e09f3a9a1a22d1",
+          "heapDeleted": true
+        },
+        "afterReturn": {
+          "label": "enabled-r1-after-return",
+          "timestamp": "2026-07-28T15:12:15.963Z",
+          "wallClockMs": 1785251535963,
+          "visibilityState": "visible",
+          "chartIds": [
+            "A"
+          ],
+          "connectedDivs": 277,
+          "connectedIframes": 0,
+          "liveness": null,
+          "m20Q6ReplaySystem": 1,
+          "detachedDivs": 0,
+          "detachedDocuments": 0,
+          "matchingDocumentNames": {},
+          "matchingDetachedDivNames": {},
+          "matchingReplayNames": {
+            "ReplaySystem": 1,
+            "M20Q6ReplaySystem": 1
+          },
+          "heapBytes": 25791594,
+          "heapSha256": "7206d73a50ccbf334fd61615d05241136d625fb360dae1d5ee8686999565555a",
+          "heapDeleted": true
+        }
+      },
+      "delta": {
+        "m20Q6ReplaySystem": 0,
+        "detachedDivs": 0,
+        "detachedDocuments": 0
+      },
+      "liveness": null,
+      "inFlightDataRequestsAtEnd": 0,
+      "consoleErrors": [],
+      "pageErrors": []
+    },
+    {
+      "arm": "disabled",
+      "runIndex": 2,
+      "killSwitch": true,
+      "collectLiveness": false,
+      "samples": {
+        "beforeOpen": {
+          "label": "disabled-r2-before-open",
+          "timestamp": "2026-07-28T15:12:19.782Z",
+          "wallClockMs": 1785251539783,
+          "visibilityState": "visible",
+          "chartIds": [
+            "A"
+          ],
+          "connectedDivs": 274,
+          "connectedIframes": 0,
+          "liveness": null,
+          "m20Q6ReplaySystem": 1,
+          "detachedDivs": 0,
+          "detachedDocuments": 0,
+          "matchingDocumentNames": {},
+          "matchingDetachedDivNames": {},
+          "matchingReplayNames": {
+            "ReplaySystem": 1,
+            "M20Q6ReplaySystem": 1
+          },
+          "heapBytes": 25140361,
+          "heapSha256": "995c8a830d7383e2e27757ca20e33dbeabc3c091c934ad1367424f840f5f7b3a",
+          "heapDeleted": true
+        },
+        "afterReturn": {
+          "label": "disabled-r2-after-return",
+          "timestamp": "2026-07-28T15:12:27.000Z",
+          "wallClockMs": 1785251547000,
+          "visibilityState": "visible",
+          "chartIds": [
+            "A"
+          ],
+          "connectedDivs": 277,
+          "connectedIframes": 0,
+          "liveness": null,
+          "m20Q6ReplaySystem": 1,
+          "detachedDivs": 0,
+          "detachedDocuments": 0,
+          "matchingDocumentNames": {},
+          "matchingDetachedDivNames": {},
+          "matchingReplayNames": {
+            "ReplaySystem": 1,
+            "M20Q6ReplaySystem": 1
+          },
+          "heapBytes": 25787107,
+          "heapSha256": "4b3743f2bc56d4d7bfd23391d86b60272cdd35080a24b6ec45f8923e07e277a4",
+          "heapDeleted": true
+        }
+      },
+      "delta": {
+        "m20Q6ReplaySystem": 0,
+        "detachedDivs": 0,
+        "detachedDocuments": 0
+      },
+      "liveness": null,
+      "inFlightDataRequestsAtEnd": 0,
+      "consoleErrors": [],
+      "pageErrors": []
+    },
+    {
+      "arm": "enabled",
+      "runIndex": 2,
+      "killSwitch": false,
+      "collectLiveness": false,
+      "samples": {
+        "beforeOpen": {
+          "label": "enabled-r2-before-open",
+          "timestamp": "2026-07-28T15:12:30.299Z",
+          "wallClockMs": 1785251550300,
+          "visibilityState": "visible",
+          "chartIds": [
+            "A"
+          ],
+          "connectedDivs": 274,
+          "connectedIframes": 0,
+          "liveness": null,
+          "m20Q6ReplaySystem": 1,
+          "detachedDivs": 0,
+          "detachedDocuments": 0,
+          "matchingDocumentNames": {},
+          "matchingDetachedDivNames": {},
+          "matchingReplayNames": {
+            "ReplaySystem": 1,
+            "M20Q6ReplaySystem": 1
+          },
+          "heapBytes": 25166189,
+          "heapSha256": "81db371d004895e64e287d4c0e5b8f66c199e5fce5b7b0296fba30f723dfd9ab",
+          "heapDeleted": true
+        },
+        "afterReturn": {
+          "label": "enabled-r2-after-return",
+          "timestamp": "2026-07-28T15:12:36.805Z",
+          "wallClockMs": 1785251556805,
+          "visibilityState": "visible",
+          "chartIds": [
+            "A"
+          ],
+          "connectedDivs": 277,
+          "connectedIframes": 0,
+          "liveness": null,
+          "m20Q6ReplaySystem": 1,
+          "detachedDivs": 0,
+          "detachedDocuments": 0,
+          "matchingDocumentNames": {},
+          "matchingDetachedDivNames": {},
+          "matchingReplayNames": {
+            "ReplaySystem": 1,
+            "M20Q6ReplaySystem": 1
+          },
+          "heapBytes": 25816340,
+          "heapSha256": "9eb653b4ed23bc70c2264089e59a9eaaafa48d1a208a3b114ad87c5e0bac08a2",
+          "heapDeleted": true
+        }
+      },
+      "delta": {
+        "m20Q6ReplaySystem": 0,
+        "detachedDivs": 0,
+        "detachedDocuments": 0
+      },
+      "liveness": null,
+      "inFlightDataRequestsAtEnd": 0,
+      "consoleErrors": [],
+      "pageErrors": []
+    },
+    {
+      "arm": "disabled",
+      "runIndex": 3,
+      "killSwitch": true,
+      "collectLiveness": false,
+      "samples": {
+        "beforeOpen": {
+          "label": "disabled-r3-before-open",
+          "timestamp": "2026-07-28T15:12:40.319Z",
+          "wallClockMs": 1785251560320,
+          "visibilityState": "visible",
+          "chartIds": [
+            "A"
+          ],
+          "connectedDivs": 274,
+          "connectedIframes": 0,
+          "liveness": null,
+          "m20Q6ReplaySystem": 1,
+          "detachedDivs": 0,
+          "detachedDocuments": 0,
+          "matchingDocumentNames": {},
+          "matchingDetachedDivNames": {},
+          "matchingReplayNames": {
+            "M20Q6ReplaySystem": 1,
+            "ReplaySystem": 1
+          },
+          "heapBytes": 25167784,
+          "heapSha256": "27eb00b4b84cf7ae69af4fd3d0a091ee642b12a5361c7ffac030083d9158914d",
+          "heapDeleted": true
+        },
+        "afterReturn": {
+          "label": "disabled-r3-after-return",
+          "timestamp": "2026-07-28T15:12:47.144Z",
+          "wallClockMs": 1785251567144,
+          "visibilityState": "visible",
+          "chartIds": [
+            "A"
+          ],
+          "connectedDivs": 277,
+          "connectedIframes": 0,
+          "liveness": null,
+          "m20Q6ReplaySystem": 1,
+          "detachedDivs": 0,
+          "detachedDocuments": 0,
+          "matchingDocumentNames": {},
+          "matchingDetachedDivNames": {},
+          "matchingReplayNames": {
+            "M20Q6ReplaySystem": 1,
+            "ReplaySystem": 1
+          },
+          "heapBytes": 25811449,
+          "heapSha256": "a1ed29d1316468c9a727f2342be13c51c2fd217d47d51b7584c63747f0b22ae2",
+          "heapDeleted": true
+        }
+      },
+      "delta": {
+        "m20Q6ReplaySystem": 0,
+        "detachedDivs": 0,
+        "detachedDocuments": 0
+      },
+      "liveness": null,
+      "inFlightDataRequestsAtEnd": 0,
+      "consoleErrors": [],
+      "pageErrors": []
+    },
+    {
+      "arm": "enabled",
+      "runIndex": 3,
+      "killSwitch": false,
+      "collectLiveness": false,
+      "samples": {
+        "beforeOpen": {
+          "label": "enabled-r3-before-open",
+          "timestamp": "2026-07-28T15:12:50.520Z",
+          "wallClockMs": 1785251570520,
+          "visibilityState": "visible",
+          "chartIds": [
+            "A"
+          ],
+          "connectedDivs": 274,
+          "connectedIframes": 0,
+          "liveness": null,
+          "m20Q6ReplaySystem": 1,
+          "detachedDivs": 0,
+          "detachedDocuments": 0,
+          "matchingDocumentNames": {},
+          "matchingDetachedDivNames": {},
+          "matchingReplayNames": {
+            "ReplaySystem": 1,
+            "M20Q6ReplaySystem": 1
+          },
+          "heapBytes": 25155501,
+          "heapSha256": "233f25b462233bd669ffc191eb9d984b1a812e55061ba10ed7c9464cb1a4c624",
+          "heapDeleted": true
+        },
+        "afterReturn": {
+          "label": "enabled-r3-after-return",
+          "timestamp": "2026-07-28T15:12:57.141Z",
+          "wallClockMs": 1785251577141,
+          "visibilityState": "visible",
+          "chartIds": [
+            "A"
+          ],
+          "connectedDivs": 277,
+          "connectedIframes": 0,
+          "liveness": null,
+          "m20Q6ReplaySystem": 1,
+          "detachedDivs": 0,
+          "detachedDocuments": 0,
+          "matchingDocumentNames": {},
+          "matchingDetachedDivNames": {},
+          "matchingReplayNames": {
+            "M20Q6ReplaySystem": 1,
+            "ReplaySystem": 1
+          },
+          "heapBytes": 25794427,
+          "heapSha256": "190f9122871077d903eca25167109d09d94112145139840bb7aaf3adf8635a62",
+          "heapDeleted": true
+        }
+      },
+      "delta": {
+        "m20Q6ReplaySystem": 0,
+        "detachedDivs": 0,
+        "detachedDocuments": 0
+      },
+      "liveness": null,
+      "inFlightDataRequestsAtEnd": 0,
+      "consoleErrors": [],
+      "pageErrors": []
+    }
+  ],
+  "livenessProbe": {
+    "arm": "disabled-liveness",
+    "runIndex": 1,
+    "killSwitch": true,
+    "collectLiveness": true,
+    "samples": {
+      "beforeOpen": {
+        "label": "disabled-liveness-r1-before-open",
+        "timestamp": "2026-07-28T15:13:00.641Z",
+        "wallClockMs": 1785251580641,
+        "visibilityState": "visible",
+        "chartIds": [
+          "A"
+        ],
+        "connectedDivs": 274,
+        "connectedIframes": 0,
+        "liveness": {
+          "constructed": 1,
+          "registrations": 8,
+          "executionsAfterRemoval": 0
+        },
+        "m20Q6ReplaySystem": 1,
+        "detachedDivs": 0,
+        "detachedDocuments": 0,
+        "matchingDocumentNames": {},
+        "matchingDetachedDivNames": {},
+        "matchingReplayNames": {
+          "ReplaySystem": 1,
+          "M20Q6ReplaySystem": 1
+        },
+        "heapBytes": 25282487,
+        "heapSha256": "cc6135f1deccb5fb3cacd6c8810215cc23c4bb159fa57a7d6759a9fb40583722",
+        "heapDeleted": true
+      },
+      "afterReturn": {
+        "label": "disabled-liveness-r1-after-return",
+        "timestamp": "2026-07-28T15:13:10.174Z",
+        "wallClockMs": 1785251590174,
+        "visibilityState": "visible",
+        "chartIds": [
+          "A"
+        ],
+        "connectedDivs": 277,
+        "connectedIframes": 0,
+        "liveness": {
+          "constructed": 4,
+          "registrations": 32,
+          "executionsAfterRemoval": 3
+        },
+        "m20Q6ReplaySystem": 4,
+        "detachedDivs": 0,
+        "detachedDocuments": 0,
+        "matchingDocumentNames": {},
+        "matchingDetachedDivNames": {},
+        "matchingReplayNames": {
+          "M20Q6ReplaySystem": 4,
+          "ReplaySystem": 4
+        },
+        "heapBytes": 68526316,
+        "heapSha256": "b85502cfd9a64a867bc94a2045af43893d49e781761b586df78abbf6bfff1d81",
+        "heapDeleted": true
+      }
+    },
+    "delta": {
+      "m20Q6ReplaySystem": 3,
+      "detachedDivs": 0,
+      "detachedDocuments": 0
+    },
+    "liveness": {
+      "constructed": [
+        {
+          "id": 1,
+          "panelId": "A",
+          "timestamp": "2026-07-28T15:12:58.234Z",
+          "ctorName": "M20Q6ReplaySystem"
+        },
+        {
+          "id": 2,
+          "panelId": "B",
+          "timestamp": "2026-07-28T15:13:01.651Z",
+          "ctorName": "M20Q6ReplaySystem"
+        },
+        {
+          "id": 3,
+          "panelId": "C",
+          "timestamp": "2026-07-28T15:13:01.725Z",
+          "ctorName": "M20Q6ReplaySystem"
+        },
+        {
+          "id": 4,
+          "panelId": "D",
+          "timestamp": "2026-07-28T15:13:01.770Z",
+          "ctorName": "M20Q6ReplaySystem"
+        }
+      ],
+      "registrationsTotal": 32,
+      "registrationsByKind": {
+        "event": 28,
+        "interval": 4
+      },
+      "pendingRegistrations": 28,
+      "pendingTimersOrRafs": 0,
+      "executionsAfterRemoval": 3,
+      "executionsAfterRemovalByKind": {
+        "event": 3
+      },
+      "executionSamples": [
+        {
+          "id": 2,
+          "kind": "event",
+          "panelId": "B",
+          "method": "init",
+          "eventType": "pagehide",
+          "timestamp": "2026-07-28T15:13:03.586Z"
+        },
+        {
+          "id": 3,
+          "kind": "event",
+          "panelId": "C",
+          "method": "init",
+          "eventType": "pagehide",
+          "timestamp": "2026-07-28T15:13:03.591Z"
+        },
+        {
+          "id": 4,
+          "kind": "event",
+          "panelId": "D",
+          "method": "init",
+          "eventType": "pagehide",
+          "timestamp": "2026-07-28T15:13:03.593Z"
+        }
+      ],
+      "removedAtByPanel": {
+        "B": 1785251583586,
+        "C": 1785251583586,
+        "D": 1785251583586
+      },
+      "notes": []
+    },
+    "inFlightDataRequestsAtEnd": 0,
+    "consoleErrors": [],
+    "pageErrors": []
+  },
+  "byArm": {
+    "disabled": {
+      "runs": 3,
+      "beforeReplaySystemRange": {
+        "min": 1,
+        "max": 1,
+        "values": [
+          1,
+          1,
+          1
+        ]
+      },
+      "afterReplaySystemRange": {
+        "min": 1,
+        "max": 1,
+        "values": [
+          1,
+          1,
+          1
+        ]
+      },
+      "replaySystemDeltaRange": {
+        "min": 0,
+        "max": 0,
+        "values": [
+          0,
+          0,
+          0
+        ]
+      },
+      "beforeDetachedDivRange": {
+        "min": 0,
+        "max": 0,
+        "values": [
+          0,
+          0,
+          0
+        ]
+      },
+      "afterDetachedDivRange": {
+        "min": 0,
+        "max": 0,
+        "values": [
+          0,
+          0,
+          0
+        ]
+      },
+      "detachedDivDeltaRange": {
+        "min": 0,
+        "max": 0,
+        "values": [
+          0,
+          0,
+          0
+        ]
+      },
+      "beforeDetachedDocumentRange": {
+        "min": 0,
+        "max": 0,
+        "values": [
+          0,
+          0,
+          0
+        ]
+      },
+      "afterDetachedDocumentRange": {
+        "min": 0,
+        "max": 0,
+        "values": [
+          0,
+          0,
+          0
+        ]
+      },
+      "detachedDocumentDeltaRange": {
+        "min": 0,
+        "max": 0,
+        "values": [
+          0,
+          0,
+          0
+        ]
+      },
+      "visibilityStates": [
+        "visible"
+      ]
+    },
+    "enabled": {
+      "runs": 3,
+      "beforeReplaySystemRange": {
+        "min": 1,
+        "max": 1,
+        "values": [
+          1,
+          1,
+          1
+        ]
+      },
+      "afterReplaySystemRange": {
+        "min": 1,
+        "max": 1,
+        "values": [
+          1,
+          1,
+          1
+        ]
+      },
+      "replaySystemDeltaRange": {
+        "min": 0,
+        "max": 0,
+        "values": [
+          0,
+          0,
+          0
+        ]
+      },
+      "beforeDetachedDivRange": {
+        "min": 0,
+        "max": 0,
+        "values": [
+          0,
+          0,
+          0
+        ]
+      },
+      "afterDetachedDivRange": {
+        "min": 0,
+        "max": 0,
+        "values": [
+          0,
+          0,
+          0
+        ]
+      },
+      "detachedDivDeltaRange": {
+        "min": 0,
+        "max": 0,
+        "values": [
+          0,
+          0,
+          0
+        ]
+      },
+      "beforeDetachedDocumentRange": {
+        "min": 0,
+        "max": 0,
+        "values": [
+          0,
+          0,
+          0
+        ]
+      },
+      "afterDetachedDocumentRange": {
+        "min": 0,
+        "max": 0,
+        "values": [
+          0,
+          0,
+          0
+        ]
+      },
+      "detachedDocumentDeltaRange": {
+        "min": 0,
+        "max": 0,
+        "values": [
+          0,
+          0,
+          0
+        ]
+      },
+      "visibilityStates": [
+        "visible"
+      ]
+    }
+  },
+  "acceptance": {
+    "criterion1": {
+      "text": "M20Q6ReplaySystem instance count after return must be exactly 1.",
+      "values": [
+        1,
+        1,
+        1
+      ],
+      "passed": true
+    },
+    "criterion2": {
+      "text": "Detached <div> count must not grow across the multichart open/close cycle.",
+      "values": [
+        0,
+        0,
+        0
+      ],
+      "passed": true
+    }
+  },
+  "ok": true
+}
