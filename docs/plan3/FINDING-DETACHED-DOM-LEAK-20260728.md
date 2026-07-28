@@ -202,3 +202,31 @@ The markup inside them identifies the owner unambiguously:
 **`Detached HTMLDocument` and `Detached Window` counts are now the headline memory metrics, above `Detached <div>`.** Rationale: a detached document is a **single, unambiguous, low-cardinality** defect — the correct value is exactly zero, it cannot be confounded by legitimate data volume, and **one leaked document accounts for thousands of leaked nodes**, so the div count is a downstream symptom that will move on its own once the document count does.
 
 **Acceptance: zero detached documents after a session involving navigation, language switching, and multichart open/close.** M-1''s 30-minute-session requirement stands and is now easier to satisfy, because document count is countable rather than statistical.
+
+---
+
+## 9. PO ruling D-3 (14:18) — the leak is BANKED, not abandoned
+
+**PO decision: document it, disclose it, fix it first thing after the canary.** Recorded as `M7` item 2 in `M7-KNOWN-LIMITATIONS-20260728.md`, with the reload workaround stated plainly and the storage theory explicitly refuted so no tester chases it.
+
+**Rationale, so this is not relitigated at hour 40:** it is not a ship gate — the PO already ruled performance is a disclosure and data integrity is the gate. It is not a small fix: **there is no `createRoot`, `hydrateRoot` or `.unmount(` anywhere in the app''s own source** (searched excluding `node_modules`, `out`, `.next`, `public`), so the root is framework-managed and there is no missing cleanup call to add. And all three managers are on ship gates or the data-loss hotfix.
+
+**What "banked" obliges us to do, and it is not nothing:** the mechanism is recorded to the retainer path, the metric is defined (M-5, detached document count, target zero), and the acceptance test is written before any work starts. **This is the best-understood defect in the product and it stays that way** — §8 is not to be summarised down when the closing report is written.
+
+**Cancelled:** my §7.2 search assignment to A. Confirm it has not started before A spends time on a nav-rail component that is not the defect.
+
+## 10. M1 — open question raised for A''s 15:15 answer, NOT a Director assertion
+
+Checking M1 for the T+6h milestone, `indicator-performance.js` appears by literal reference in: `talaria-design/live/index.html`, `chart/multichart-prod/chart-embed.html` (+ homepage mirror), and `chart/dist-v9/index.html` (+ homepage mirror).
+
+**It does not appear in seven shells under `chart v 1.4/chart/`:** `index.html`, `index.v9.html`, `backtesting.html`, `backtesting-clean.html`, `legacy-index.html`, `propfirm-backtest.html`, `sessions.html`.
+
+**The reason this matters beyond the gate:** **the PO''s heap and CPU sessions today were taken on `chart/index.html`** (`31.97.192.82:3000/chart/index.html?mode=backtest&sessionId=886`), while A''s ablation was pinned to `chart/dist-v9/index.html`. **Those are different shells, and only one of them carries the literal reference.** If they load different module sets, today''s CPU findings and A''s ablation were measured on non-comparable surfaces.
+
+**Stated as a question, not a finding, and assigned to A:** a literal-string absence is **not** proof of absence — the module may be loaded dynamically, by a bundler, or through a loader that my grep cannot see. **A owns M1 and owns the answer.** Three parts:
+
+1. Is `indicator-performance.js` executing on `chart/index.html` at runtime, by whatever mechanism?
+2. Which of those seven shells are genuinely servable, and which are dead? (A14.3 already rules `legacy-index.html` is to be de-routed, not fixed.)
+3. **Are `chart/index.html` and `chart/dist-v9/index.html` module-equivalent?** If not, today''s measurements need re-anchoring and that is more urgent than the gate itself.
+
+**I am raising this rather than answering it because I have spent the day rejecting unverified assertions**, and a Director grep is not better evidence than a manager''s. But A must answer it before 15:15, because question 3 potentially invalidates measurements we have already acted on twice today.
