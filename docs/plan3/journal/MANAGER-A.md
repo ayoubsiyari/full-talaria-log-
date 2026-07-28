@@ -3741,3 +3741,50 @@ If it lands, this is finally the shape the CPU finding hoped for: an idle guard 
 Source maps: neither `vite.config.live.js` nor `vite.config.js` sets `build.sourcemap`, and no `*.map` exists in the tree. **A config gap rather than a deliberate exclusion** — worth closing so minified frames resolve, but not today and not in this packet.
 
 One honest limitation carried forward: Windows thread CPU deltas were captured but the lightweight API exposes only PID/TID and CPU time, with no Chrome role names. So "renderer and GPU processes" is supported; "compositor versus raster versus tile-worker" is not, and the author declined to label them rather than guessing. Settling that needs ETW or Chrome thread-name metadata, and the ablation experiment may make it unnecessary.
+
+---
+
+## 2026-07-28 16:58 — M23 MERGED to critical-path at `cdb64cfa3`. My build-stamp concern was wrong and I am glad I asked.
+
+Remediation **ACCEPTed**. I amended the provenance into the commit message (`c7d2f190b`) and merged the three-commit packet. Verified at the merged tip myself rather than on report:
+
+```
+canonical blob: 2ece9979a1299962ec48a298d2b4a97a2d272593
+mirror blob   : 2ece9979a1299962ec48a298d2b4a97a2d272593
+PARITY: True
+M23 suite: 12 pass, 0 fail
+```
+
+Canonical and mirror share a **single git blob OID**, which is a stronger statement than a matching digest — they are literally the same object.
+
+### The concern I raised loudest was the one that was wrong
+
+I told the Director this could be "the worst failure shape available: a green chain certifying a change nobody receives", on the theory that a stale `CHART_ENGINE_BUILD` would leave clients on a cached pre-fix engine.
+
+**`CHART_ENGINE_BUILD` is not a cache key.** It appears three times in `chart.js` — a definition, a telemetry field, and a `console.info`. Nothing keys a fetch on it. **The real key is the `?v=` query in the referring HTML, uniform at `20260727b80` across all six shells in both trees**, and the service worker is a pure pass-through that deletes all caches on activate.
+
+And the bump is explicitly a deploy step. `homepage/Dockerfile:45` runs `bump-chart-engine-build.mjs` with `CHART_BUILD_ID`, then line 47 rebuilds and re-stamps every `?v=`, then lines 80–89 `COPY --from=chart_assets` **over** the committed mirror, under a comment saying exactly that. The committed mirror is never what ships; it exists to satisfy the parity gates. **Committing the generator's `b81` would have baked in a build id unrelated to the eventual deploy id — worse than leaving `b61`.**
+
+So the author's choice was right and my framing was wrong. I invited the reviewer to tell me if my concerns were overblown rather than manufacture findings, and it did. **That instruction has now paid for itself twice today** — once here, once when the same instruction produced the histogram BLOCK rather than a polite confirmation.
+
+One conditional worth keeping: my concern becomes live only if some path ever ships `homepage/public/chart/**` **without** the image build. The workflows and compose file were searched and no such path exists. Standing note, not a defect.
+
+### Reverting the eighteen was also right
+
+Every source→mirror pair the generator touches was compared by blob OID at the packet commit: `dist-v9` 8/8, `vendor` 2/2, `fonts` 42/42, `workers` 3/3, `multichart-prod` 0 differences, plus `chart.js`, `legacy-index.html`, `compare-overlay.js`, `sw.js`, `manifest.webmanifest`, `pwa-install.js` all identical. **Every served runtime asset is byte-identical to its source**, so nothing stale was preserved and no defect was laundered as hygiene — which was my sharpest worry and the failure that blocked the cap packet.
+
+Blob history settles the packet's shape cleanly: mirror in sync at `c9050af81`, diverged **only** because of the fix at `9ad391084`, restored at `c7d2f190b`. Nothing else moved.
+
+### Three new rows out of this
+
+1. **Genuine pre-existing drift: `homepage/public/chart/modules/m19-h-timeframe-switch.test.mjs`** is an older revision — 210 lines against 225, missing the `waitFor` helper and the Q6 disable flag. It diverged at `b51213dbd`, predates this packet, and is a test file rather than a served asset. Already acknowledged in-tree by a comment in the m22 red suite calling it "someone else's row". **It is now my row, because I found it and it is in my territory.**
+2. **Standing tool non-idempotency:** five tracked `.log` files under `homepage/public/chart/multichart-prod/harness/` exist only in the mirror, and the generator `rmSync`s the destination before copying — so **any** run deletes tracked files. Nobody caused that; it is latent in the tool and will bite whoever next runs it in anger.
+3. **The gate cell has a narrow residual.** It kills every *substitution* of `unload` for `pagehide` regardless of quoting, because the `pagehide`-presence assertion is the backstop. It survives only an *additive* `unload` written with double quotes or via an identifier. `chart.js` has 124 single-quoted and 0 double-quoted `addEventListener` calls, so the double-quote escape is stylistically implausible; the identifier form is marginally more plausible. Residual, not blocker, and the sibling pairing cell covers the host surface independently.
+
+## 2026-07-28 16:59 — Merged, NOT deployed, and the reason is not this packet
+
+Per §A16.5 the reviewer answered yes: M23 can be part of an automated-GREEN chain with the provenance note recorded, which it now is.
+
+**I am not deploying to TEST-1.** The overnight authority is conditional on *the entire chain* being automated-GREEN, and it is not — for reasons that predate and are independent of M23. The cleanroom run established that a **tracked** test (`m21-2-candle-offscreen-scaffold.test.mjs`) imports an **untracked** fixture (`visible-window-mirror.mjs`), so a clean checkout fails, and `test:checkpoint-provenance` fails 12 of 14 there. Merging a green packet onto a tree whose chain is red in a fresh clone does not make the chain green, and claiming a deploy on that basis is precisely the overclaim §A16.2 forbids.
+
+So M23 is landed and gated; deployment waits on the untracked-artefact row, which is the ~455-file hazard I promoted from housekeeping to correctness earlier and which is now the thing standing between a reviewed fix and TEST-1.
