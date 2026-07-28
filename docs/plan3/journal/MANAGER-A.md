@@ -2766,3 +2766,51 @@ Both the A2 adversarial review and the speed-cap mirror remediation terminated o
 **The mirror remediation is a different case and I routed it cheap deliberately.** It is authoring, not judgement: a specified build-and-sync with acceptance clauses that are mechanically checkable — ladder contents, a SHA-256 equality between two files, and three greps that must return nothing. §A13.2's test is whether a gate converts a mistake into a rejected packet, and here it plainly does, so grok-4.5 is the correct routing rather than a concession to availability. The mandatory top-tier review still follows. That distinction — cheap where a gate catches it, top tier where judgement enters the record — is exactly what §A13.3b asked us to start applying deliberately instead of defaulting upward, and this is the first time today the constraint has come from availability rather than from my own choice.
 
 **Reinforced in the re-dispatch:** the mirror task must rebuild from source and must **not** hand-edit the minified bundle, with an explicit instruction to stop and report if it finds itself reaching for a string replacement inside `talaria-v9-live.js`. A hand-patched bundle would pass every acceptance clause I wrote while silently desynchronising the artifact from its source, which is the failure this whole packet exists to remove. I also flagged, per BRIEF-02, that I have not personally verified `sync-v9-to-homepage.mjs` exists or that `build:live:chart` is the right entry point — both came from the review's reading, not mine, and a refuted premise there is a better outcome than a forced build.
+
+---
+
+## 2026-07-28 12:08 — LAG FAMILY REOPENED on residue; census dispatched ahead of everything else
+
+`FINDING-LAG-IS-RESIDUE-20260728.md` read in full. The PO's controlled observation refutes the speed hypothesis with the cleanest possible evidence: **Step 1 and Step 4 are the same configuration, Step 4 ran at a lower speed, and only Step 4 lagged.** The single intervening event was a multichart session, and 800 MB never came back. Speed is not the variable; prior multichart use is.
+
+Dispatched the decisive test as the Director ruled — census before any fix, three points, refutation criteria fixed in advance.
+
+## 2026-07-28 12:09 — The recurrence illusion explains a year of my own verdicts, not just the PO's
+
+§2 of the finding is the part I need to sit with. A session-history-dependent defect answers identical tests differently depending on what preceded them. That means "the lag came back" and "it worked last night" were never contradictions — **verification was non-deterministic and nobody controlled for session history.** Fixes were not un-fixed.
+
+**Every lag verdict I have recorded without a fresh window is now suspect, including the ones I accepted.** I am not going to enumerate them from memory and pretend that is a review; the correct move is the standing rule the finding imposes — from now on, lag verification states its prior actions and uses a fresh context, or the verdict is void. I have written that into the census brief as a control run rather than an aspiration.
+
+This also lands on my own conduct. I have spent today being careful about *where* claims came from — which branch, which tree, which blob. I was not careful about *when*, and a measurement's session history is provenance exactly as much as its branch is.
+
+## 2026-07-28 12:10 — The two rows merge, and the §A9 residual was the visible edge
+
+The reopened §A9 memory row and the lag family are plausibly one defect. The ~230 MB teardown residual we closed as "bounded multichart working set" was its edge — and the reason we closed it wrongly is precise and worth naming: **we measured whether bytes were retained. Nobody measured whether they were still executing.**
+
+That is why the census counts *live* handles rather than cumulative creations, and why I asked for a **creation-site stack trace retained per handle**. A count proves something leaked; an attributed count names the file and line to fix. The difference is a day of bisection.
+
+It is also why the brief measures **frame intervals directly** at each census point. The claimed mechanism is frame starvation, not allocation pressure, and inferring frames from memory figures is how we ended up believing the wrong model last time.
+
+## 2026-07-28 12:11 — Speed cap disposition corrected before it can be misread
+
+**The cap is not a mitigation for this symptom and must not be recorded as one.** It stays as a PO product decision on product grounds — fewer offered speeds, less surface to test, competitor parity — and nothing about it addresses residue. The lag family's disposition moves from "bounded by product cap" to **open, residue leading**.
+
+I want this on the record now rather than after the fact, because the cap packet is mid-flight and its own journal entries sit a few pages above this one. A reader skimming this journal in a week could easily join "cap shipped" to "lag closed", and that inference would be wrong in exactly the way that costs a sprint.
+
+## 2026-07-28 12:12 — Three separate defects captured, explicitly not conflated
+
+Held as their own rows, none of them the residue defect:
+
+1. **1D historical bars render slowly with indicators trailing the load.** The finding identifies this as the original day-one pan-back complaint, still live. This one is mine.
+2. **A sibling panel's time axis moves while the 1D panel renders** — one panel's work mutating another's axis. Cross-panel interference.
+3. **Drawings on the 1D panel shift while panning** — drawing coordinates are not pinned to price and time during pan.
+
+Rows 2 and 3 point at multichart bridge and drawing-tool code that is very likely **not** in A's territory, so I am recording them and will route rather than author. That territory question is also why the census stops at measurement: the probable fix sites, `sync-bridge.js` and `panel-cmd-bridge.js`, are not mine to edit even once the mechanism is proven.
+
+## 2026-07-28 12:13 — ASSUMPTION and a provenance constraint I cannot design around
+
+`typeof window.IndicatorPerf` is **undefined on deployed b75**, so the loader fix is not on TEST despite b79/b80 candidates existing. Every figure in the finding — 1.0 GB, 2.5 GB, 1.8 GB, the 800 MB shortfall — is a **fallback-path baseline** per §A2 and must be re-taken after a build with the module loaded is deployed.
+
+I expect the structural finding to survive, because a leak does not depend on which indicator implementation runs, and I expect every magnitude to move. The census brief therefore requires `typeof window.IndicatorPerf` to be reported **at each census point**, so the run states which world it measured rather than leaving it to be inferred later — which is the failure §A2 was written to stop, and which the finding itself notes nearly cost the PO another cycle chasing speed.
+
+**Write-packet accounting, stated rather than quietly exceeded.** Three packets are nominally in flight — speed-cap mirrors, a2-rebaseline, a12-correction — but only the first is still writing; the other two are authored and awaiting review. I am treating the §A13 cap as a concurrency limit on *active writes*, since its purpose is preventing two subagents on one file, and the census touches a disjoint new path. Two active writers, no file overlap.
