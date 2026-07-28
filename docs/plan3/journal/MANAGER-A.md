@@ -1816,3 +1816,46 @@ I am one manager-caused rejection away from having my own briefs reviewed before
 §A16.0 records that the Director's leading hypothesis — indicator lag as a data effect from stale completed-bar closes — is falsified, and credits the overnight work. Worth noting on my side that I carried that hypothesis further than the evidence did: I recorded a VERDICT at 03:01 naming the slice as the mechanism and telling two managers to stop render-cadence work, then retracted it at 04:30 when the review showed the identity was a self-referential expression and the attribution an artifact of the metric.
 
 The lag family now has no leading hypothesis, which is the honest state and is worse than having a wrong one only in the sense that it is harder to act on. Recording it so nobody reads my 03:01 entry without the 04:30 one.
+
+---
+
+## 2026-07-28 09:02 — VERDICT: daily and weekly bars are derived, and the client cannot fix either
+
+surface=`chart.js`, `chart-data-pipeline.js`, `api_server.py`, `questdb_store.py`, `firstrate_ingest.py`, `questdb` read path
+coverage=ingest defaults for four providers, binary build, both server read paths, client fetch and commit path, twelve flooring sites enumerated across client, server and worker
+
+**The provenance question is answered: derived, both.** Default ingest stores 1m across every provider — FirstRate `1min` at `api_server.py:4892` and `:19528`, Dukascopy `m1` at `:674`, Binance `1m` at `:20402`, QuestDB ingesting only `ohlcv_1m` at `questdb_store.py:183-191`. The `1d` and `1w` binaries are built at ingest by `_resample_candles(candles, 86400000 | 604800000)` at `api_server.py:8843-8852`, an epoch floor. `1day` is an admitted FirstRate source period, but there is no "this dataset is natively daily" registry field — whatever is ingested goes through `build_binary_for_file`, which always writes a `1m` binary and resamples every other timeframe from it. There is no `1week` ingest period at all.
+
+Per §A16.3 that means we bucket to the class calendar rather than matching a provider stamp. The FirstRate FX timezone premise is confirmed: `_FX_TZ = ZoneInfo("America/New_York")` at `firstrate_ingest.py:30`, with crypto on `_UTC_TZ` at `:899`.
+
+**But §A16.3's "weekly boards now" cannot be executed, and the reason is structural.** The client requests store resolution `1w` for weekly display (`_questdbStoreResolution`, `chart.js:7554-7557`), the server serves the pre-built weekly aggregate from `bin_{file_id}_1w.bin` or QuestDB `SAMPLE BY 1w ALIGN TO CALENDAR`, and `_commitLoadedBars` then unconditionally re-resamples it (`chart.js:9683-9687`) through `_resampleDataFull`'s epoch floor at `:25524-25540`.
+
+So at weekly display the finest data the client holds is **already epoch-week-bucketed**. No client-side calendar can recover Sunday-17:00-ET boundaries from a weekly aggregate. Wiring the helper into the two client sites would re-bucket aggregates and produce a plausible-looking wrong answer — which is worse than the current wrong answer, because it would pass a naive oracle and look fixed.
+
+Two independent confirmations. The author verified the same chain from the other end and reported **fix blocked on server territory**, backing out preliminary client edits before committing; the worktree is clean and no commit was made. And `api_server.py` and `questdb_store.py` are not in Manager A's owned paths under `TERRITORY.yml`, so the layer where the boundaries are actually set is not mine.
+
+Also settled: the answer to "would a native daily bar stamped at the provider's session open survive?" is **no**, by code path rather than prediction. `_resampleDataFull` rewrites `t` to `Math.floor(candle.t / 86400000) * 86400000`. Only bars already on the epoch boundary survive unchanged, which is why crypto is accidentally correct.
+
+## 2026-07-28 09:03 — CORRECTION: I interrupted an author because my brief was wrong, and it was the right call
+
+I dispatched the weekly boarding brief telling the author that `session-calendar.js` "already exists and was merged" and to extend it. Both clauses true, the implication false: on `manager-a/critical-path` the module is **not imported or called from `chart.js` or `chart-data-pipeline.js` at all**. The RED landed the module and never wired it. So `__TALARIA_DISABLE_SESSION_CALENDAR_V1` is currently a no-op on the live path, because there is no live path to gate.
+
+I also gave the author an incomplete flooring inventory and one outright wrong entry. Missing and live: the backtest replay seam at `chart.js:6311`, `compare-overlay.js:3250-3255` which delegates to `chart.resampleData` and would change silently with it, and `talaria-fvg-indicator.js:68-69`. Wrong: I listed `workers/candle-decode.worker.js` `resampleCandles` as a live disagreement risk. It is **dead** — an orphan with no `new Worker(...candle-decode)` anywhere in the product.
+
+Interrupted mid-flight rather than waiting, because the author was writing client wiring against a premise the audit had just falsified. That is a `brief-defect` under §A16.4 and I am counting it as one. It is my second brief-defect and my third manager-caused rejection overall today — **the §A16.4 trigger is met, and my next brief goes to top-tier review before dispatch.** I am not waiting to be told; the loader brief dispatched at 08:58 predates the trigger, and the one after it goes to review.
+
+The instrument is correct and I want to say so plainly rather than grudgingly. Every one of tonight's manager-caused rejections came from me asserting a negative — "these classes do not exist", "this helper is already wired" — on a search I did not exhaust. That is a decomposition defect, not an authoring defect, and putting my decomposition under review is the right response to it.
+
+## 2026-07-28 09:04 — DIRECTOR-Q: the session-calendar fix cannot be completed in Manager A's territory
+
+§A16.3 rules the convention and boards weekly now. Weekly cannot board, for the reason above, and daily has the same blocker. The fix needs a decision I do not have the authority to take.
+
+**Option A — fix it server-side.** Change the bucketing in `_resample_candles` at `api_server.py:8843-8852` and the QuestDB `SAMPLE BY … ALIGN TO CALENDAR` path so the stored `1d` and `1w` aggregates are session-anchored per instrument class. This puts the calendar where the aggregation actually happens and fixes every consumer at once, including the compare overlay and anything that reads the bins directly. It requires a DST-aware calendar in Python as well as JS, which is a second implementation of the same rule and therefore a fresh bug-class risk unless the two are tested against each other. Neither file is in my owned paths.
+
+**Option B — give the client finer data at daily and weekly display.** Map `1d` and `1w` display to a sub-daily store resolution and bucket locally with the existing JS helper. This keeps one calendar implementation and stays in my territory. The author's read is that it requires changing pagination and windowing to get past the `/bars` 2000-row cap, with a payload increase. I would add that it risks re-introducing the many-small-fetches problem on the replay path, which is the trap I already retracted a recommendation over once tonight.
+
+**My recommendation is A**, on the grounds that one calendar at the aggregation layer beats two calendars plus a fetch-shape change, and that Option B leaves the stored bins wrong for every non-chart consumer. But I hold neither file and I am not going to assume a grant.
+
+What I need: either a territory grant covering the server bucketing path, or a ruling assigning it to whoever owns it. Until then daily and weekly both stay blocked, and I have moved the freed write slot to the loader STOP-THE-LINE.
+
+Per §A12.2 this is a Director question and not a PO-REQ — no PO time is required, the convention is already ruled, and the open item is ownership rather than product judgement.
