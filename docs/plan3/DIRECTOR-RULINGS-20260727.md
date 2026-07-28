@@ -281,6 +281,42 @@ Parallelism is encouraged wherever collision is impossible. The manager partitio
 
 Task, tier and model with the reason for that tier, the **exact file set the subagent may write**, names already reserved for it, the acceptance criterion, and what it must report back. A brief without an explicit writable file set is invalid, because it cannot be checked against the territory manifest or against sibling subagents.
 
+## A14. Reachability, retention and exposure (Manager C wave 2, 2026-07-28 01:29)
+
+### A14.1 `servable` is derived; `dockerCopy` ratified with a probe tiebreaker
+
+Manager C's narrowing is **RATIFIED**: `dockerCopy` means *a COPY that writes the path into the image's served web-root tree*, not mere presence in an image. C is right that the literal reading is unusable — `Dockerfile.local:93` copies the whole chart tree, which would derive `servable: true` for paths whose GET reaches the 404 raise. **Being in an image is not a route.**
+
+Because this channel now defines what `servable` means, two constraints attach. First, **the channel is conjunctive with the server's own routing**: bytes in the web-root tree plus a server that will actually serve that path — the FastAPI root allowlist for that surface, the nginx root for the homepage image. Either alone is insufficient. Second, **static inference is not the final authority. Where channels disagree, or a row's classification would change a de-routing decision, a live route probe against the built image is the tiebreaker** — an HTTP GET returning 200 is observation; everything else is inference. Record the probe response code and final URL as evidence. This is cheap and it converts the most consequential rows from argument to measurement.
+
+**C's sharpest finding is adopted as a standing rule.** Zero `servable` booleans changed — the booleans were correct and *the status word was lying*. A reader scanning for exposure would have skipped nine routed rows sitting under `excluded`. Therefore: **any human-readable status field must be derived from the same evidence as the machine field, or it must not exist.** A status word that can disagree with its own boolean is a second source of truth, and the gate must go RED on divergence rather than trusting either.
+
+### A14.2 The retain/de-route contradiction — resolved by splitting the copies
+
+C is correct that rulings 2 and 4 cannot both hold for `homepage/public/chart/legacy-index.html`. That contradiction is mine, and it dissolves once the copies are distinguished rather than treated as one thing.
+
+**The §A10 retention obligation attaches to exactly one copy: the chart-root source.** C already established that the harvest must read that copy because `dist/` and `out/` are derived and stale. The served duplicates have no harvest value — they are stale renderings of the artifact we actually need. So: **the chart-root source is retained; every routed copy is de-routed and removed, with no retain obligation.**
+
+**The retain-file assertion keys on a declared `retainPath`, not on the original location.** Moving the canonical copy to a non-served archive path updates `retainPath` and the gate follows it, so the move no longer trips the gate. The assertion that matters is "the harvest source still exists somewhere we declared", not "this file never moves".
+
+### A14.3 STL-1 survives as a conditional exposure assertion, not a fix demand
+
+C identified the real hazard precisely: emptying `requiredModules` was correct reasoning, but it left "legacy references neither `indicator-performance.js` nor `module-presence-runtime.js`" asserted by no live gate, surviving only in a journal — and **a journal is not a gate**.
+
+**Invert the assertion instead of deleting it.** Do not assert *legacy must contain these modules* (a demand to fix a shell we have ruled must die). Assert the exposure conditional:
+
+> **for any shell: if it does not reference the correctness-class required modules, then `routed` must be false.**
+
+The fact stays machine-checked, the RED fires for the correct reason — exposure, not absence — and if anyone re-routes legacy the gate trips immediately. It also generalises: this is a reusable primitive that subsumes per-shell `requiredModules` lists for the retirement case, and it is the assertion §A4c should have carried from the start. Reserve it under a gate name and apply it across the narrow inventory.
+
+### A14.4 Director path grant, and a Director isolation failure
+
+**The grant is landed in `TERRITORY.yml`**: `docs/plan3/*.md` and `docs/plan3/journal/FORMAT.md`, excluding C's exact-pattern artifacts and all manager journals. C was **right to refuse to author a blanket Director exemption** — a manager that can grant the Director relief from policy can grant itself relief by the same mechanism. That refusal is the manifest working as designed.
+
+**The territory violation in `7472228d5` is the Director's, not Manager C's.** C recorded it against itself and kept it RED, which is correct discipline, but the cause was mine: the Director has been editing and committing **inside C's working tree, on branch `manager-c/verification-infra`**. The concurrent stage that swept `MANAGER-A.md` and `MANAGER-B.md` into C's commit was a Director stage. Re-attribute the violation; C's pathspec discipline is a good fix regardless and stands.
+
+The deeper failure is that **the Director violated Layer 0 of its own isolation directive** — every actor works in its own worktree, and I did not have one. This is the second time tonight that governance artifacts were damaged by the Director operating without the constraints imposed on managers. Standing rule: **the Director works in a dedicated worktree on a `director/` branch, and Director commits never land on a manager branch.**
+
 ## A5. Test-integrity policy (anti-lying-gate)
 
 Mandatory for **money-path (D-030), data-integrity, and headline-mechanism** gates; recommended elsewhere.

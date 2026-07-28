@@ -37,6 +37,26 @@ director_only:
     reason: Director journal
     provenance: inferred
 
+# Paths the Director may write, granted because standing policy, findings and the
+# journal grammar are Director-authored artifacts that no manager owns. Without
+# this grant the preflight is RED on the Director's own commits (ced58667c).
+# Manager C's exact-pattern grants win on specificity; the manager journals are
+# carved out below and are NOT covered by this grant.
+# AUTHORITY: A14.4.
+director_paths:
+  - pattern: docs/plan3/*.md
+    reason: standing policy, findings, PO-sweep results and intake documents
+    provenance: ruling
+    authority: A14.4
+    except:
+      - docs/plan3/BOARD-VIEW.md
+      - docs/plan3/PO-QUEUE.md
+      - docs/plan3/GATE-NAME-RESERVATIONS.md
+  - pattern: docs/plan3/journal/FORMAT.md
+    reason: journal grammar is normative and Director-ratified (DIR-003)
+    provenance: ruling
+    authority: A14.4
+
 # Append-only journals. A diff that modifies or removes an existing line in any
 # of these files fails the packet, and only the owning manager may append.
 journals:
@@ -263,3 +283,7 @@ open_rulings:
   - id: TB-6
     question: docs/plan3 holds 340 untracked files against 56 tracked, and DIRECTOR-RULINGS-20260727.md is one of the untracked ones, so standing policy currently has no history, no diff and no attribution. Manager C did not un-ignore it, because whether policy documents enter version control is a Director decision. Ruling needed on which plan3 documents must be tracked.
     default_in_force: only the governance artifacts C owns are un-ignored (TERRITORY.yml, the four journals, GATE-NAME-RESERVATIONS.md, BOARD-VIEW.md, PO-QUEUE.md); every other plan3 document remains local-only and outside history
+    status: RULED 2026-07-28 - standing policy, FINDING-*.md, PO-SWEEP-RESULTS and
+      journal/FORMAT.md are tracked at ced58667c. Evidence for the ruling - a Director
+      script overwrote two manager journals and git reported nothing, because they were
+      untracked. Evidence documents (evidence/, probes/, worker-reports/) stay local.
