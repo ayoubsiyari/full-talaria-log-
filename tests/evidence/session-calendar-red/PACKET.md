@@ -11,7 +11,71 @@
 | **Finding** | `docs/plan3/FINDING-SESSION-CALENDAR-20260727.md` |
 | **Rulings applied** | §A5 (test integrity), §A7 (differential oracle), §A4b (multichart cell), §A4c (kill-switch / correctness class) |
 | **Scope** | RED oracle + shared helper only. **The product resample paths are NOT wired.** Wiring awaits Manager A authorisation. |
-| **Revision** | **r3** — finishing work on the accepted r2. See §0a. r2 history in §0b. |
+| **Revision** | **r4** — closes the two must-fix items from block 2. See §0. r3 history in §0a, r2 in §0b. |
+
+---
+
+## 0. What changed in r4
+
+Block 2 raised two must-fix items, one correction to my own registry finding, seven record-only items, and one piece of external news. Both must-fixes were on things r3 claimed to have closed.
+
+| # | Required | Done |
+|---|---|---|
+| 1 | **Must fix:** cell M2's census is a tautology and its list is wrong | **Replaced with a real scan.** §0.1 |
+| 2 | **Must fix:** the counts — table sums to 89, stale denominators, wrong attribution, wrong cell count, wrong version | **All derived from the evidence now, not transcribed.** §0.2 |
+| 3 | **Correct:** DXY/USDX are 3 hours off, not 1; stop implying `forex -> fx` is unconditionally right | Both corrected. §8.5 |
+| 4 | **Record:** cell N's structural half is spoofable in three further forms | Stated, with the residual named as the latent form of the r1 defect. §0a.3 |
+| 5 | **Record:** cell P's pins cover conditions, not control flow | Corrected; r3's "any edit" claim withdrawn. §3.4 |
+| 6 | **Record:** K2's meta-assertion is evadable by one token | **Fixed as well as recorded** — the remedy was one function. §0.3 |
+| 7 | **Record:** `cacheable: true` rests on registry immutability | **Pinned in cell N2**, with the honest limit stated. §0.4 |
+| 8 | **Record:** cell Q asserts against literals, not the indicator source | Stated. §3.5 |
+| 9 | **Record:** cell L does not cover the four-state driver | **Gap closed** — the driver is now linted. §6 |
+| 10 | **Record:** evidence carries the parent `buildSha` | Regenerated; the evidence now carries the SHA of the commit whose code it ran. §5 |
+| 11 | **News:** `1week` is not a FirstRate timeframe; `weekend_filter = False` on serve | Both absorbed. §8.6, §3.4 |
+
+### 0.1 The census, replaced
+
+r3 wrote `expectEqual('M2','known-epoch-flooring-sites', sites.length, 3)` against a hardcoded three-element literal. `3 === 3` by construction. It could not fail when a fourth site appeared, which is the only thing a census is for — and the list was already wrong.
+
+**Cell M2 now scans.** It walks the servable chart surface for `Math.floor(<expr> / D) * D` with the same divisor on both sides, strips comments so documentation is not counted as code, and requires the found multiset to *equal* a declared, classified inventory. **A new site anywhere in scope fails the cell until someone classifies it.** Verified by injecting one into `viewport-data-manager.js`: the scan caught it and named it.
+
+The true figure is **21 flooring expressions, 6 of them bar-bucketing**, not 3. Both sites you named are now in the inventory, and the `_replayBucketStart` invariant break is called out as a wiring-time blocker rather than a census entry. Full breakdown in §8.4.
+
+### 0.2 The counts, derived
+
+Every count in this packet is now read out of the emitted JSON. The specific errors, all confirmed:
+
+| Claim | r3 said | Actually |
+|---|---|---|
+| §4 table sum | 89 (silently) | **90** — the missing row was **M4 1/26**, which r3 also listed among the zero-failure cells |
+| Cell N denominator | 40 / 54 | **40 / 62** |
+| Cell N2 denominator | 5 / 7 | **5 / 28** |
+| Cell M2 denominator | 2 / 12 | **2 / 21** |
+| The two wired-only rows | one F2, one N2 | **both F2** — `crypto1w-post-fix-sha256` and `crypto1w-post-fix-length` |
+| Cell count | 28 | **27** |
+| Helper version | `20260728b82` | **`20260728b83`** |
+
+**On the attribution specifically: you were right to withdraw the two-row-gap hypothesis, and I should not have propagated it.** N2's post-recovery clause is unconditional — it runs in all four states and *fails* in `broken`, which is why N2 contributes 5 failures there rather than being absent. A set-diff of row keys returns exactly the two F2 keys. I asserted the N2 attribution in two places without running that diff; running it takes one line.
+
+Row counts also moved because r4 adds assertions: totals are now **388 wired / 386 unwired**, with **90 / 386** failing in `broken`.
+
+### 0.3 K2's meta-assertion
+
+`/expectEqual\([^)]*wallClockTransitionCrossings/` cannot cross a `)`, so `probe.SC.stats().wallClockTransitionCrossings` slipped it. Replaced with a scan that finds the calls **lexically enclosing** each mention — the whole chain outward, not just the innermost, so wrapping the read in `Number(...)` does not hide it either — over a source with comments and string literals blanked *offset-preserving*, so `${...}` interpolations inside template literals are still seen as code.
+
+| Form | r3 regex | r4 |
+|---|---|---|
+| `expectEqual(a, b, stats.COUNTER, 0)` | caught | caught |
+| `expectEqual(a, b, probe.SC.stats().COUNTER, 0)` — **your evasion** | **missed** | **caught** |
+| `expectEqual(a, b, Number(x.COUNTER), 0)` | missed | **caught** |
+| split across lines | missed | **caught** |
+| reported via `note()` / in a comment / in a string | allowed | allowed |
+
+### 0.4 The premise under `cacheable: true`
+
+Caching a settled negative *forever* is safe only if the registry cannot gain rows at runtime. That was load-bearing and unstated. Cell N2 now pins it: `INSTRUMENT_REGISTRY` is a module-level `const` object literal, `this._registry` is assigned exactly once, and there is no `registerInstrument`, no `addInstrument`, no indexed assignment.
+
+**With the honest limit attached:** it is a `const` *binding*, not a frozen object, and it is published as `window.INSTRUMENT_REGISTRY`. Nothing in the repo mutates it — that is the whole basis for caching a negative — but the guarantee is convention, not enforcement. If a row ever becomes addable at runtime, `symbol-not-registered` must stop being cacheable, and the pin will be what tells the next reader why.
 
 ---
 
@@ -83,6 +147,19 @@ Re-run of the reviewer's spoofs plus two of my own:
 
 The exclusion list for the wiring's own internal names is itself asserted to contain no name the patch does not actually use, so it cannot be padded to hide a read.
 
+**Residual, stated plainly: the structural half is still spoofable, in three forms it does not scan.** `propertyReads` recognises only the receivers `this` and `chart`, followed by a dot and an identifier. It therefore misses:
+
+| Evasion | Why it slips |
+|---|---|
+| `this['currentPair']` | `codeOnly()` rewrites string literals to `''`, so the property name is gone before the scan runs |
+| `const { currentPair } = this` | destructuring is not a receiver-dot-identifier read |
+| `const host = this; host.replaySymbol` | receiver alias — `host` is not a scanned receiver |
+| `chart['isReplayMode']` in the pipeline patch | same as the first, on the other receiver |
+
+**And the effect half only backs this up for phantoms that are load-bearing today.** A phantom read whose value never reaches an output changes nothing, so no assertion moves and neither half sees it. **That is precisely the latent form of the r1 defect** — r1 was caught only because its phantom happened to be the sole symbol source. An inert one would survive this cell.
+
+Closing it properly means parsing the patch rather than pattern-matching it. That is the honest state: cell N raises the cost of the r1 defect substantially and does not eliminate it.
+
 ---
 
 ## 0b. What changed in r2, and why
@@ -113,7 +190,7 @@ Both "record rather than fix" items are recorded: the brace matcher's regex-lite
 | `homepage/public/chart/modules/session-calendar.js` | Generated mirror, byte-identical (asserted by cell M). |
 | `chart v 1.4/chart/modules/session-calendar.contract.json` | Machine-readable §A4c module contract, as a **sidecar**. See §7. |
 | `chart v 1.4/chart/modules/m22-session-calendar-harness.mjs` | Real-product harness + deterministic fixtures + the proposed wiring diff. |
-| `chart v 1.4/chart/modules/m22-session-calendar-bucketing.red.test.mjs` | The RED oracle. **28 cells; 342 value assertions + 25 informational rows wired, 340 + 25 unwired.** |
+| `chart v 1.4/chart/modules/m22-session-calendar-bucketing.red.test.mjs` | The RED oracle. **27 cells; 359 value assertions + 29 informational rows wired, 357 + 29 unwired.** |
 | `chart v 1.4/chart/modules/m22-session-calendar-fourstate.mjs` | §A5 driver: four-state proof × 3 repeats × 8 clock configurations = 40 runs. |
 
 No product file was modified. `npm run preflight:module-contracts` still exits 0.
@@ -192,7 +269,7 @@ Two consequences worth flagging:
 
 ## 3. Helper API surface
 
-Published as `window.SessionCalendar` (and `module.exports`). Version `20260728b82`.
+Published as `window.SessionCalendar` (and `module.exports`). Version `20260728b83`, cross-checked against the contract by cell M.
 
 | Member | Contract |
 |---|---|
@@ -248,7 +325,11 @@ The audit is right that this is the higher-value consistency check, and it is no
 | Every weekly open this module produces is a server reopen instant (converse) | **156 / 156**, zero spurious |
 | Distinct local anchor across three years | **Sunday 17:00**, one value |
 
-**Disagreement to report: none.** Both directions are asserted, so agreement cannot be one-sided — without the converse, a helper opening weeks twice as often would still have passed. Cell P also pins five exact strings from the Python source, so if the server's rule is ever edited the cell fails instead of silently comparing against a stale transcription.
+**Disagreement to report: none.** Both directions are asserted, so agreement cannot be one-sided — without the converse, a helper opening weeks twice as often would still have passed.
+
+**The pins are narrower than r3 claimed.** r3 said "if the server's rule is ever edited the cell fails". That is too strong: cell P pins five exact strings from the Python source, and those strings cover **the conditions, not the control flow**. Of seven edits tested against them, five break the pins — but **inverting the body of the Saturday branch, and inserting an early `return False`, both hold**, because neither disturbs the pinned condition text. Cell P detects a changed *rule*; it does not detect a changed *path through* the rule. Closing that would need the transcription driven from the Python AST rather than from string equality, which is beyond this packet's writable set.
+
+**Also, the two rules do not always co-apply.** FirstRate datasets are served with `weekend_filter = False`, so the server-side filter cell P differentials against is *not* applied to that provider's data. This does not invalidate the differential — the question it answers is "does this module's FX anchor agree with the authority the server already encodes", and it does, to the minute — but the packet does not claim the server filter is universally in force.
 
 Boundary convention matches too: the server treats Friday 17:00:00 as closed and Sunday 17:00:00 as open, i.e. half-open `[open, next_open)`, which is the same convention `bucketStart` uses.
 
@@ -267,34 +348,42 @@ Per the design note. `bucketStart` and `openLocalTime` accept an explicit `ancho
 
 **Flagged, not reconciled:** `fvg-18-et` disagrees with the FX session open by **exactly one hour**, pinned as a value in cell Q. That disagreement is real and is one of the seven calendars the audit found. Unifying them is a separate row; I have made it visible, not decided it.
 
+**Residual on cell Q, recorded:** the anchor values are asserted against **literals, not against the indicator source**. If the FVG constant changed, `namedAnchors()` and cell Q would agree with each other and both be wrong — the cell proves the surface *works*, not that the transcription is *current*. The transcription is correct as of this commit, checked by hand against `talaria-fvg-indicator.js:19`, `:39`, `:44`. Pinning it to the source would mean parsing an indicator this packet has no other reason to read; recorded as a known limit instead.
+
 **Kill-switch: `__TALARIA_DISABLE_SESSION_CALENDAR_V1`** (correctness class, §A4c). Absent → session calendar active. Truthy → every call returns `Math.floor(t / timeframeMs) * timeframeMs`.
 
 ## 4. RED proof — what fails today, with values
 
-**On denominators, corrected per r3 item 4.** The two states do not run the same number of assertions, and the packet now says which applies where:
+**On denominators.** r3's table was wrong in three ways at once — a stale total, stale per-cell denominators, and a missing row — so every figure below is now **derived from the emitted evidence rather than transcribed**, and the breakdown is checked to sum to the headline.
 
-| State | Assertions executed | Why |
+| State | Rows emitted | Why the difference |
 |---|---|---|
-| `broken` (unwired) | **365** | Cell F2's `if (WIRED)` block and cell N2's post-recovery clause only execute once the wiring is present. |
-| `fixed` / `corrupt` / `inverted` (wired) | **367** | Full set. |
+| `broken` (unwired) | **386** | Two rows short. |
+| `fixed` / `corrupt` / `inverted` (wired) | **388** | Full set. |
 
-`M22_SC_STATE=broken` (real product as committed): **90 of 365 fail.** Full record: `m22-session-calendar-broken.json`.
+**The two missing rows are both cell F2's** — `crypto1w-post-fix-sha256` and `crypto1w-post-fix-length`, inside its `if (WIRED)` block. r3 attributed one of them to cell N2's post-recovery clause; **that was wrong.** N2's post-recovery clause is *unconditional* — it runs in all four states and simply fails in `broken`, which is why N2 shows 5 failures there rather than being absent. Set-diff of row keys between the two states returns exactly those two F2 keys and nothing else.
+
+`M22_SC_STATE=broken` (real product as committed): **90 of 386 rows fail.** Full record: `m22-session-calendar-broken.json`.
 
 | Cell | Failing | Subject |
 |---|---|---|
-| **N** | **40 / 54** | **Product wiring resolves a real instrument class and moves real output** |
+| **N** | **40 / 62** | **Product wiring resolves a real instrument class and moves real output** |
 | B | 11 / 11 | PO-confirmed 2013-01-04/05 daily case |
 | C | 10 / 10 | Weekly semantics |
 | G2 | 6 / 7 | Full vs incremental parity under out-of-order appends |
-| **N2** | **5 / 7** | **Late-arriving registry must still resolve — the memo must not poison** |
 | D1 | 5 / 8 | DST spring-forward |
 | D2 | 5 / 8 | DST fall-back |
+| **N2** | **5 / 28** | **Late-arriving registry must still resolve — the memo must not poison** |
 | D3 | 2 / 2 | Weekly anchor across both transitions |
-| M2 | 2 / 12 | Single shared boundary implementation (+ epoch-flooring-site census) |
+| M2 | 2 / 21 | Single shared boundary implementation + the epoch-flooring census |
 | I | 1 / 7 | Multichart mixed-symbol isolation |
 | J | 1 / 4 | Correctness-class absence is announced |
 | K | 1 / 9 | Boundary cache is on the path |
-| 0, A, A2, E, F, F2, G, H, K2, L, M, M3, M4, **P**, **Q** | 0 | Differential / structural / external-authority cells that must stay green |
+| **M4** | **1 / 26** | **Registry-absent shell announces degradation** |
+| **Sum** | **90** | matches the headline |
+| 0, A, A2, E, F, F2, G, H, K2, L, M, M3, P, Q | 0 | Differential / structural / external-authority cells that must stay green |
+
+M4 was the row r3's table dropped, and r3 additionally listed M4 among the zero-failure cells — wrong in both directions at once.
 
 Cells **P** (server agreement) and **Q** (anchor surface) are green in `broken` by design — they assert properties of the helper and of an external authority, neither of which depends on the product being wired. They are not padding: both fail in `corrupt`, which is what makes them load-bearing.
 
@@ -398,29 +487,29 @@ Cells E, F, F2, H, L, M, 0, A, A2 pass in `broken` state. Monthly (`1mo`, `3mo`)
 
 Driver: `node "chart v 1.4/chart/modules/m22-session-calendar-fourstate.mjs"` → `m22-session-calendar-fourstate.json`.
 
-**Headline count, with the denominator split stated (r3 item 4).** r2 quoted a single figure; there are two, and quoting one as if it covered both was the error.
+**Headline count.** 27 cells. Every figure here is read out of the emitted evidence, not transcribed — r3 quoted five numbers by hand and three were stale.
 
 | | Rows emitted | Value assertions | Informational rows |
 |---|---|---|---|
-| **Wired** (`fixed` / `corrupt` / `inverted`) | **367** | **342** | 25 |
-| **Unwired** (`broken`) | **365** | **340** | 25 |
+| **Wired** (`fixed` / `corrupt` / `inverted`) | **388** | **359** | 29 |
+| **Unwired** (`broken`) | **386** | **357** | 29 |
 
-The two-row difference is cell F2's `if (WIRED)` crypto-weekly post-fix digest block plus cell N2's post-recovery clause; both only execute once the wiring is present. Informational rows are `note()` calls that record context and can never fail.
+**Both** missing rows are cell F2's `if (WIRED)` crypto-weekly block. Cell N2's post-recovery clause is unconditional and runs in every state. Informational rows are `note()` calls that record context and can never fail.
 
-The count is derived, not asserted by hand — the inverted run fails exactly 342, which **is** the set of real assertions, and the 25 that survive inversion are precisely the informational rows.
+The split between value assertions and informational rows is **derived, not declared**: the inverted run fails exactly 359, which *is* the set of real assertions, and the 29 rows that survive inversion are precisely the `note()` rows.
 
 **Four-state proof (§A5.3).** All four states behaved as required. Note the differing denominators, per above:
 
 | State | What it is | Expected | Observed | Failed |
 |---|---|---|---|---|
-| `broken` | real product as committed | fail | **fail** | **90 / 365** |
-| `fixed` | product + in-memory `WIRING_PATCH` | pass | **pass** | **0 / 367** |
-| `corrupt` | `fixed`, but the helper's 17:00 anchor is corrupted to 16:00 | fail | **fail** | **40 / 367** |
-| `inverted` | `fixed`, every value assertion inverted | fail | **fail** | **342 / 367** |
+| `broken` | real product as committed | fail | **fail** | **90 / 386** |
+| `fixed` | product + in-memory `WIRING_PATCH` | pass | **pass** | **0 / 388** |
+| `corrupt` | `fixed`, but the helper's 17:00 anchor is corrupted to 16:00 | fail | **fail** | **40 / 388** |
+| `inverted` | `fixed`, every value assertion inverted | fail | **fail** | **359 / 388** |
 
 The corrupted state matters: a **one-hour** error in the dependency the oracle trusts is caught in cells A, B, C, D1, D2, D3, N and now **P** — the server differential catches the corruption independently of every fixture in this packet, which is the point of having an external authority in the matrix at all.
 
-The inverted control is exact: **every one of the 342 value assertions inverts**, none survives. Nothing in the oracle is a tautology.
+The inverted control is exact: **every one of the 359 value assertions inverts**, none survives. Nothing in the oracle is a tautology.
 
 **3× repeat (§A5.4).** Each state ran 3× on the authoring clock plus once under each of **seven** alternate timezones — **40 runs total.** Every run matched its expected verdict and every state produced an identical failure count on every run: `fourStateProofHolds: true`, `determinismHolds: true`.
 
@@ -438,7 +527,9 @@ The inverted control is exact: **every one of the 342 value assertions inverts**
 
 **A physically different host was not available to this worker.** That is acceptable here because host timezone is the only environment variable that could plausibly change the result — every boundary is resolved for an *explicit* zone, never the host default, and no assertion reads the wall clock. What remains unverified is **ICU/tzdata version coverage**: a second host with a different ICU build would test that, and is listed in §9.
 
-**Nondeterminism ban (§A5.6).** Cell L is a structural self-lint over the oracle, the harness and the helper, banning `Date.now(`, zero-argument `new Date()`, `Math.random`, `randomUUID`, `performance.now`, `process.hrtime` and `requestAnimationFrame`. Needles are assembled at runtime so the cell cannot match itself. It also asserts no epsilon literal and no `Math.abs(...) < n` comparison exists in the oracle.
+**Nondeterminism ban (§A5.6).** Cell L is a structural self-lint over the oracle, the harness, the helper and — **added in r4** — `m22-session-calendar-fourstate.mjs`, banning `Date.now(`, zero-argument `new Date()`, `Math.random`, `randomUUID`, `performance.now`, `process.hrtime` and `requestAnimationFrame`. Needles are assembled at runtime so the cell cannot match itself. It also asserts no epsilon literal and no `Math.abs(...) < n` comparison exists in the oracle.
+
+The four-state driver was outside this lint until r4. It was clean, so this closed a **coverage gap rather than a defect** — but an unlinted file in the evidence chain is exactly where a clock read would have survived, and the driver is the file that decides whether the proof holds.
 
 **Epsilon: 0, exact equality.** Justified structurally, not fitted. Fixture prices are dyadic rationals (`1.25 + k/4096`), exactly representable in IEEE-754; resampling performs only selection (first/last/max/min) plus integer volume sums, so no rounding can occur anywhere in the pipeline under test. There is no tolerance to tune.
 
@@ -536,11 +627,40 @@ Cell G2 now covers three arrival patterns for both `1d` and `1w` — simple, sta
 
 A boxed warning now sits at the mapping site in `session-calendar.js` naming the affected product groups and pointing here. **The mapping is deliberately not restructured**: splitting it correctly requires per-root session data that no oracle in this packet covers, and changing classification for 30 rows on the strength of an untested guess is precisely the move that produced the defect this packet exists to fix. Whoever implements `cme-index-futures` must split the mapping *first*.
 
-### 8.4 — There is a THIRD epoch-flooring bucket site, and this packet does not fix it
+### 8.4 — The epoch-flooring census: SIX bar-bucketing sites, this packet wires three
 
-The finding named two. The anchoring audit found a third: **`talaria-fvg-indicator.js:68-70` `periodStart(t, tfMs)`**, used at line 294, whose `tfToMs` accepts `d` (line 63) and `w` (line 64). It floors daily and weekly to the UTC epoch exactly like the two sites this packet wires.
+**r3's census was a tautology and its list was wrong.** It asserted `sites.length === 3` against a hardcoded three-element literal declared eleven lines above — `3 === 3` by construction, incapable of failing when a fourth site appeared, which is the only thing a census is for. It certified three when the true figure is twenty-one flooring expressions overall and **six in the defect class proper**.
 
-**Not wired here — it is a separate row.** It is recorded as a **census assertion in cell M2**: three known sites, two wired by this packet, each pinned by the literal flooring expression, plus an assertion that the FVG timeframe parser still accepts `d` and `w`. So "both resample paths are fixed" can never be misread as "the codebase has one day definition", and if the third site's shape changes the cell fails rather than the note going quietly stale.
+**Cell M2 now performs a real scan.** It walks the servable chart surface for `Math.floor(<expr> / D) * D` with the same divisor token on both sides, strips comments first so documentation is not counted as code, and requires the found multiset to **equal** a declared, classified inventory. Adding a site anywhere in scope fails the cell until someone classifies it — verified by injecting one into `viewport-data-manager.js`, which the scan caught and named.
+
+| Category | Count | Meaning |
+|---|---|---|
+| **bar-bucketing** | **6** | decides where a bar OPENS — the defect class proper |
+| grid-coupled | 5 | does not create bars, but assumes the same grid |
+| module-owned | 1 | this module's own legacy fallback, by design |
+| out-of-category | 9 | price steps, axis ticks, lot sizes, calendar months |
+| **total scanned** | **21** | |
+
+The six bar-bucketing sites:
+
+| Site | Status | Wired here |
+|---|---|---|
+| `chart.js _resampleDataFull` seed | live | **yes** (W1) |
+| `chart.js _resampleDataFull` loop | live | **yes** (W2) |
+| `chart-data-pipeline.js _tryIncrementalResample` | live | **yes** (W4) |
+| **`replay-system.js:4987-4991 _replayBucketStart`** | **LIVE, 3 callers** | **no — see below** |
+| `workers/candle-decode.worker.js:135-149 resampleCandles` | latent | no |
+| `talaria-fvg-indicator.js:68-70 periodStart` | live (indicator) | no |
+
+Note the correct figure is **three expressions in two functions across two files** — r3 said "two sites wired", conflating expressions with functions.
+
+**`_replayBucketStart` is a wiring-time integration risk, not a census nicety.** Its own comment reads *"Bucket start for replay step/resample (matches chart resampleData)."* **Landing this packet's wiring falsifies that comment**: replay stepping would compute epoch buckets over session-bucketed bars, so the step target and the bar it lands on would disagree. It is reached whenever `tfMs > _getRawBarPeriodMs()`, i.e. on exactly the daily and weekly timeframes this packet changes. Cell M2 pins the comment text, the caller count (3) and the reachability condition, so the wiring change cannot land without confronting it. **It must be wired in the same change, or replay diverges from the chart it replays.**
+
+**The worker is a complete second resampler** with its own `'1d': 86400000, '1w': 604800000` table, reachable via the `case 'resample'` message. "Latent" is checked rather than assumed — cell M2 searches the whole surface for anything posting that message type and asserts nothing does. Same status as the FVG site, larger surface.
+
+**Five further grid-coupled computations will diverge post-wiring**: `chart.js:6281` seam splice, `chart.js:24991` `leftCut`, `chart.js:30720` replay progress `displayCandleStart`, and `floorToBucket` in both copies of `sync-bridge.js` (whose `TIMEFRAME_SECONDS` carries `'1d'` and `'1w'`, used for cross-panel viewport snapping). None creates bars, so none is a wrong-OHLC defect; all four assume the bar grid is epoch-aligned and will point at the wrong instant once it is not.
+
+So: **"both resample paths are fixed" must not be read as "the codebase has one day definition".** It has at least six, and this packet unifies three of them.
 
 ### 8.5 — Registry rows that would need adding (`market-calculations.js` is NOT writable here)
 
@@ -554,7 +674,18 @@ Requested list. The registry holds **120 rows**, not 119 — 59 forex, 30 future
 | **SGD crosses** | `AUDSGD`, `NZDSGD` (and `GBPSGD`, `CADSGD`, `CHFSGD`) | `EURSGD`, `USDSGD`, `SGDJPY` are present, so the family is started but not finished. |
 | **Metals** | `XPTUSD`, `XPDUSD` | `XAUUSD`/`XAGUSD` present. Platinum and palladium absent; `XPDUSD` was not on the reviewer's list but has the same gap. |
 
-**Also found — four rows that are registered but mis-typed**, which matters more than the absences because these resolve *confidently to the wrong thing*: `DXY`, `USDX`, `XTIUSD`, `XNGUSD` are all typed `forex`. None is spot FX. `DXY`/`USDX` are index quotes; **`XTIUSD` (WTI crude) and `XNGUSD` (natural gas) are energy contracts whose real session opens 18:00 `America/New_York`, not 17:00.** After wiring they get the FX session — a one-hour error, presented with full confidence, and `isRegistered()` will not catch it because the row exists. Recorded; the registry is not writable here.
+**Also found — four rows that are registered but mis-typed**, which matters more than the absences because these resolve *confidently to the wrong thing*. `DXY`, `USDX`, `XTIUSD`, `XNGUSD` are all typed `forex` at `market-calculations.js:29-32` and all four resolve `isRegistered=true → sessionClass=fx → reason=resolved`. None is spot FX.
+
+**Corrected: the error is not one hour for all four.** r3 said one hour across the board; that is right for the energy pair and wrong for the index pair.
+
+| Rows | What they are | Real open | Applied after wiring | Error |
+|---|---|---|---|---|
+| `XTIUSD`, `XNGUSD` | WTI crude, natural gas — CME energy | 18:00 ET | 17:00 ET | **1 hour** |
+| `DXY`, `USDX` | dollar-index quotes — ICE DX futures | **20:00 ET** | 17:00 ET | **3 hours** |
+
+Measured for the energy pair: the daily bucket for 2013-01-15 lands on `2013-01-14T22:00:00.000Z` where correct is `23:00:00.000Z`.
+
+**Nothing in this packet surfaces any of it at runtime.** The degradation announcement fires only on a *null* class, and these four produce a confident one. Worse, **cell A pins `classFromMarketType('forex') === 'fx'` as correct** — which is the exact mapping that produces the error. That assertion is right about the mapping *as specified* and says nothing about whether `forex` is the right type for these four rows; the packet previously implied the mapping was unconditionally correct, and it is not. The type is wrong upstream, in a file this packet cannot write. Carried by Manager A as a separate defect row.
 
 **On suffix-stripping — where it belongs, and why.** Broker suffixes are **already half-handled, and the half that works is not the half one would guess**:
 
@@ -564,6 +695,22 @@ Requested list. The registry holds **120 rows**, not 119 — 59 forex, 30 future
 | `EURUSDm`, `EURUSDc`, `EURUSDpro`, `EURUSDmicro`, `EURUSD#` | **no** | no separator to split on; `#` is not in the split set either |
 
 **It belongs in the registry resolver (`_resolveRegistryKey`), not in the session-class mapping.** `EURUSDm` and `EURUSD` are the same instrument for *every* consumer of the registry — pip size, P&L, margin and session alike. Putting the rule in `classFromRegistry` would give the session calendar a symbol vocabulary the P&L path does not share, and two normalisation rules that are supposed to agree but live in different files are how drift starts. One resolver, one vocabulary. It is also the cheaper fix: the resolver already has the segment-splitting machinery and needs only a bare-suffix rule, whereas the mapping layer would need the whole thing rebuilt.
+
+### 8.6 — Ingest provenance: there is no vendor weekly series
+
+Absorbed from the ingest probe, because it changes what the weekly ratification is *about*.
+
+| Timeframe | Vendor-native? | How the binary is built |
+|---|---|---|
+| `1min`, `5min`, `30min`, `1hour`, `1day` | **yes** — FirstRate import timeframes | imported |
+| **`1week`** | **no** — does not validate as an import timeframe | **built locally by `_resample_candles(candles, 604800000)`** |
+
+So every weekly bar in the product is already the product's own epoch-floored construction — **the defect itself, one layer upstream.** Two consequences:
+
+1. **The re-bucket question does not arise for weekly.** There is no third-party convention to defer to or override; nobody else has an opinion about where these weeks open. Deferred item 6 is a pure product decision.
+2. **Daily is a different case and is still open.** `1day` *is* a vendor timeframe, so daily carries a provenance question weekly does not: whether FirstRate's daily bars are already session-aligned, and if so to which session. **Not resolved here.** If they are, re-bucketing them client-side would be re-cutting bars that were cut correctly, and the correct fix would move server-side.
+
+Also relevant to cell P: **FirstRate datasets are served with `weekend_filter = False`**, so the server-side weekend filter that cell P differentials against is not applied to that provider's data. The differential is still valid — it establishes that this module's FX anchor agrees with the authority the server already encodes — but the two rules do **not** always co-apply, and the packet does not claim they do.
 
 ## 9. Not verified / deferred — explicit list
 
@@ -577,6 +724,8 @@ Requested list. The registry holds **120 rows**, not 119 — 59 forex, 30 future
 6. **Crypto weekly is a decision I made, not one I was given — now pinned, still awaiting ratification.** The Director stated crypto daily is 00:00 UTC and already correct. Weekly was unspecified; epoch weeks open **Thursday** 00:00 UTC (the Unix epoch was a Thursday), which is not defensible for crypto either, so I implemented **Monday 00:00 UTC**. The reviewer independently confirmed Monday is the industry convention, but that is not ratification.
 
    In r1 this was the one output changed on my own authority and the one output nothing asserted — `FROZEN_TODAY.crypto1w` was defined and never referenced. **Cell F2 now pins it on both sides** (item 5): the pre-fix digest `6376497b…` must match in `broken` and must *not* match once wired; the post-fix digest `ae285d4b…` and length 18 are pinned in the wired states; and the open weekday is asserted as `Thu` before and `Mon` after. "It moved" is no longer a sufficient answer — it must move to one specific, reviewable series. **Director/PO ratification of Monday 00:00 UTC is still owed before the wiring lands.**
+
+   **Simplified by the ingest probe (§8.6): there is no vendor weekly series to defer to.** `1week` is not a FirstRate import timeframe — only `{1min, 5min, 30min, 1hour, 1day}` validate — and weekly binaries are built locally by `_resample_candles(candles, 604800000)`, which is epoch flooring, i.e. the defect itself. So the question "do we re-bucket, or accept the vendor's weeks?" does not arise for weekly: there is no third party whose convention could override the decision. The ratification owed is a straight product decision on Monday 00:00 UTC, with no data-provenance argument on either side. **Daily is still open** — `1day` *is* a vendor timeframe.
 7. **CME index futures and US equities not implemented.** Both declared in the registry with the calendar inputs they need, falling back to legacy epoch alignment. Ali's and Shahed's NQ/ES layouts therefore keep today's (wrong) daily bars after this fix. Worth stating in the known-limitations note if the canary cohort includes futures traders.
 7b. **Datasets whose `currentSymbol` does not resolve keep the defect.** `FILE_<id>`, `CHART`, `EURUSD1` and a null symbol produce no instrument class, so daily and weekly stay epoch-aligned — announced via degraded mode, but still wrong on screen. See §3.1. This is the conservative direction (no value moves without positive identification) but it is a real coverage gap, and its size depends on how the canary cohort's files are named. **Worth a spot check of the cohort's actual `currentSymbol` values before the wiring ships.**
 8. **Multi-day and multi-week timeframes (`2d`, `2w`) are not specified.** `classifyTimeframe` returns `handled: false` with reason `multiple-of-session-unit-not-specified`, so they keep epoch alignment. No such timeframe is currently reachable in the product's timeframe list; if one is added, the semantics need a decision.
@@ -587,4 +736,8 @@ Requested list. The registry holds **120 rows**, not 119 — 59 forex, 30 future
 13. **The ambiguity branch is unguarded.** Not "untested" — unguarded. `wallClockTransitionCrossings` is a near-transition tripwire and does not detect the ambiguity condition; the vacuous assertion that claimed otherwise has been removed rather than reworded. §3.3.
 14. **`multichart/chart-host.html` has drifted between the source and served trees** (26 lines of TF-switch viewport handling present in `chart v 1.4/` and absent from `homepage/public/`). Script order is identical so it does not affect this packet. **Reported, not touched** — reconciling it means choosing whether to ship an unmirrored feature, which is not my call. Cell M4 asserts load-order identity and reports the body drift.
 15. **The indicator anchor surface is shaped but unused.** `namedAnchors()` declares `fvg-18-et` and `weekly-map-mon` with status `declared`; nothing reads them and no indicator was changed. Cell Q proves the surface absorbs both, which is a claim about the *surface*, not about the indicators. The FVG's one-hour disagreement with the FX session open is pinned as a value and **not reconciled**. §3.5.
-16. **`XTIUSD` and `XNGUSD` will get the wrong session after wiring** — a confident one-hour error, not a fallback, because they are registered as `forex`. §8.5. The registry is not writable here, so this is handed over rather than fixed.
+16. **Four registered rows will get the wrong session after wiring** — confident errors, not fallbacks, because they are typed `forex`. `XTIUSD`/`XNGUSD` by **one hour**, `DXY`/`USDX` by **three** (ICE DX futures open 20:00 ET, not 17:00). §8.5. The registry is not writable here, so this is handed over rather than fixed. Note that the degradation announcement cannot help: it fires on a *null* class and these produce a confident one.
+17. **Cell N's structural half remains spoofable** by bracket notation, destructuring and receiver aliases, and its effect half only backs it up for phantoms that are load-bearing today. An *inert* phantom — the latent form of the r1 defect — would survive both halves. §0a.3. Closing it needs an AST, not a pattern.
+18. **Cell P detects a changed rule, not a changed path through the rule.** Five of seven test edits break its pins; inverting the Saturday branch body and inserting an early `return False` both hold. §3.4.
+19. **The epoch-flooring census is now a real scan, but three of the six bar-bucketing sites remain unwired**, one of them (`_replayBucketStart`) **live with three callers and an invariant this packet's wiring would falsify**. §8.4. That is a wiring-change blocker alongside item 12.
+20. **Cell Q's anchors are pinned to literals, not to the indicator source.** Correct today; would not notice an indicator-side constant change. §3.5.

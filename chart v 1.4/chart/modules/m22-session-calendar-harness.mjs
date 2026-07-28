@@ -87,6 +87,284 @@ export const WIRING_FILE_PAIRS = [
     { id: 'chart-data-pipeline.js', source: REL.pipeline, mirror: REL.pipelineMirror },
 ];
 
+/* ── epoch-flooring census: a real scan, not a hand-counted list ─────────── */
+//
+// r3's first attempt asserted `sites.length === 3` against a hardcoded
+// three-element literal. That is `3 === 3` by construction: it could not fail
+// when a fourth site appeared, which is the only thing a census is for. And the
+// list was wrong — the true set is larger and includes a LIVE replay site whose
+// own comment claims to match `resampleData`.
+//
+// This scans the servable chart surface for `Math.floor(<expr> / D) * D` with
+// the same divisor token on both sides, strips comments first so documentation
+// is not counted as code, and requires the found multiset to equal a declared
+// inventory. A new site anywhere in scope fails the cell until someone
+// classifies it. That is the property the previous version lacked.
+
+const FLOOR_SCAN_ROOT = 'chart v 1.4/chart';
+const FLOOR_SCAN_SKIP = new RegExp(
+    [
+        'node_modules', '[\\\\/]frozen[\\\\/]', '[\\\\/]harness[\\\\/]',
+        '[\\\\/]dist-v9[\\\\/]', '[\\\\/]talaria-design[\\\\/]',
+        '[\\\\/]vendor[\\\\/]', '\\.min\\.js$', 'm22-session-calendar',
+    ].join('|'),
+);
+const FLOOR_RE = /Math\.floor\(\s*((?:[^()]|\([^()]*\))*?)\s*\/\s*([A-Za-z_$][\w$.]*)\s*\)\s*\*\s*\2\b/g;
+
+function stripCommentsForScan(text) {
+    return text
+        .replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '))
+        .replace(/(^|[^:])\/\/[^\n]*/g, (m, p1) => p1 + m.slice(p1.length).replace(/./g, ' '));
+}
+
+/**
+ * Every executable `Math.floor(t / D) * D` in the servable chart surface,
+ * as `{ file, line, divisor, text }`, sorted for stable comparison.
+ */
+export function scanEpochFlooringSites() {
+    const out = [];
+    const walk = (dir) => {
+        for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+            const abs = path.join(dir, entry.name);
+            if (FLOOR_SCAN_SKIP.test(abs)) continue;
+            if (entry.isDirectory()) { walk(abs); continue; }
+            if (!/\.(js|mjs)$/.test(entry.name)) continue;
+            const raw = fs.readFileSync(abs, 'utf8');
+            const scannable = stripCommentsForScan(raw);
+            for (const m of scannable.matchAll(FLOOR_RE)) {
+                out.push({
+                    file: path.relative(REPO_ROOT, abs).replace(/\\/g, '/'),
+                    line: raw.slice(0, m.index).split('\n').length,
+                    divisor: m[2],
+                    text: m[0].replace(/\s+/g, ' '),
+                });
+            }
+        }
+    };
+    walk(path.join(REPO_ROOT, FLOOR_SCAN_ROOT));
+    return out.sort((a, b) => (a.file === b.file ? a.line - b.line : a.file < b.file ? -1 : 1));
+}
+
+/**
+ * Declared classification of every scanned site. `key` is `file::text`, which
+ * survives line churn but not a genuinely new expression.
+ *
+ *   bar-bucketing   decides where a BAR OPENS. The defect class proper.
+ *   grid-coupled    does not create bars but assumes the same grid, so it
+ *                   diverges the moment bar boundaries move.
+ *   module-owned    this module's own legacy fallback, by design.
+ *   out-of-category not time-on-a-timeframe (price steps, axis ticks, months).
+ */
+export const EPOCH_FLOORING_INVENTORY = [
+    // ── bar-bucketing ───────────────────────────────────────────────────
+    { file: REL.chart, fn: '_resampleDataFull (seed)', category: 'bar-bucketing',
+        wiredByThisPacket: true, patch: 'W1',
+        text: 'Math.floor(prepared[0].t / timeframeMs) * timeframeMs' },
+    { file: REL.chart, fn: '_resampleDataFull (loop)', category: 'bar-bucketing',
+        wiredByThisPacket: true, patch: 'W2',
+        text: 'Math.floor(candle.t / timeframeMs) * timeframeMs' },
+    { file: REL.pipeline, fn: '_tryIncrementalResample', category: 'bar-bucketing',
+        wiredByThisPacket: true, patch: 'W4',
+        text: 'Math.floor(lastRaw.t / timeframeMs) * timeframeMs' },
+    { file: 'chart v 1.4/chart/modules/replay-system.js', fn: '_replayBucketStart',
+        category: 'bar-bucketing', wiredByThisPacket: false, status: 'LIVE',
+        text: 'Math.floor(t / ms) * ms' },
+    { file: 'chart v 1.4/chart/workers/candle-decode.worker.js', fn: 'resampleCandles',
+        category: 'bar-bucketing', wiredByThisPacket: false, status: 'latent',
+        text: 'Math.floor(c.t / ms) * ms' },
+    { file: 'chart v 1.4/chart/modules/talaria-fvg-indicator.js', fn: 'periodStart',
+        category: 'bar-bucketing', wiredByThisPacket: false, status: 'LIVE',
+        text: 'Math.floor(Number(t) / tfMs) * tfMs' },
+    // ── grid-coupled ────────────────────────────────────────────────────
+    { file: REL.chart, fn: 'seam splice', category: 'grid-coupled',
+        wiredByThisPacket: false, text: 'Math.floor(anchorTs / tfMs) * tfMs' },
+    { file: REL.chart, fn: 'leftCut', category: 'grid-coupled',
+        wiredByThisPacket: false, text: 'Math.floor(firstTs / tfMs) * tfMs' },
+    { file: REL.chart, fn: 'replay progress displayCandleStart', category: 'grid-coupled',
+        wiredByThisPacket: false,
+        text: 'Math.floor(currentTimestamp / displayTfMs) * displayTfMs' },
+    { file: 'chart v 1.4/chart/multichart/sync-bridge.js', fn: 'floorToBucket',
+        category: 'grid-coupled', wiredByThisPacket: false,
+        text: 'Math.floor(timeSec / bucketSec) * bucketSec' },
+    { file: 'chart v 1.4/chart/multichart-prod/sync-bridge.js', fn: 'floorToBucket',
+        category: 'grid-coupled', wiredByThisPacket: false,
+        text: 'Math.floor(timeSec / bucketSec) * bucketSec' },
+    // ── module-owned ────────────────────────────────────────────────────
+    { file: REL.calendar, fn: 'epochAlignedBucketStart', category: 'module-owned',
+        wiredByThisPacket: false,
+        text: 'Math.floor(timestampMs / timeframeMs) * timeframeMs' },
+    // ── out-of-category ─────────────────────────────────────────────────
+    { file: REL.chart, fn: 'monthly branch', category: 'out-of-category',
+        wiredByThisPacket: false, why: 'calendar months, already correct',
+        text: 'Math.floor(absoluteMonth / monthsPerBucket) * monthsPerBucket' },
+    { file: REL.chart, fn: 'x-axis tick', category: 'out-of-category',
+        wiredByThisPacket: false, why: 'bar index, not time',
+        text: 'Math.floor(firstIdx / step) * step' },
+    { file: REL.chart, fn: 'y-axis tick', category: 'out-of-category',
+        wiredByThisPacket: false, why: 'price, not time',
+        text: 'Math.floor((lo + eps) / step) * step' },
+    { file: 'chart v 1.4/chart/modules/compare-overlay.js', fn: 'axis nice-step',
+        category: 'out-of-category', wiredByThisPacket: false, why: 'price, not time',
+        text: 'Math.floor(max / niceStep) * niceStep' },
+    { file: 'chart v 1.4/chart/modules/market-calculations.js', fn: 'quantity step',
+        category: 'out-of-category', wiredByThisPacket: false, why: 'lot size, not time',
+        text: 'Math.floor(q / step) * step' },
+    { file: 'chart v 1.4/chart/modules/order-manager.js', fn: 'quantity step',
+        category: 'out-of-category', wiredByThisPacket: false, why: 'lot size, not time',
+        text: 'Math.floor(n / step) * step' },
+    { file: 'chart v 1.4/chart/modules/order-manager.js', fn: 'affordable quantity step',
+        category: 'out-of-category', wiredByThisPacket: false, why: 'lot size, not time',
+        text: 'Math.floor(Math.min(n, maxAffordable) / step) * step' },
+    { file: 'chart v 1.4/chart/modules/talaria-weekly-map-indicator.js', fn: 'hour floor',
+        category: 'out-of-category', wiredByThisPacket: false,
+        why: 'fixed HOUR_MS divisor; cannot carry a day or week',
+        text: 'Math.floor(t / HOUR_MS) * HOUR_MS' },
+    { file: 'chart v 1.4/chart/modules/m20-q9-prefix-slice.test.mjs', fn: 'test fixture',
+        category: 'out-of-category', wiredByThisPacket: false, why: 'a test, not product code',
+        text: 'Math.floor(bar.t / tfMs) * tfMs' },
+];
+
+/** `file::text` keys, as a sorted multiset, for scan-vs-inventory comparison. */
+export function floorSiteKeys(sites) {
+    return sites.map((s) => `${s.file}::${s.text}`).sort();
+}
+
+/**
+ * Blank out everything that is not executable code — comments and the literal
+ * text of strings — while PRESERVING every offset, so positions computed
+ * against the result still index into the original.
+ *
+ * Template literals are handled properly rather than blanked wholesale: the
+ * literal segments are erased but `${...}` expressions are kept, because those
+ * are real code and a mention inside one is a real mention.
+ */
+export function blankNonCode(text) {
+    const out = text.split('');
+    const blank = (i) => { if (out[i] !== '\n') out[i] = ' '; };
+    let i = 0;
+    const tmplStack = [];
+    while (i < text.length) {
+        const ch = text[i];
+        const next = text[i + 1];
+        if (ch === '/' && next === '/') {
+            while (i < text.length && text[i] !== '\n') blank(i++);
+            continue;
+        }
+        if (ch === '/' && next === '*') {
+            const end = text.indexOf('*/', i + 2);
+            const stop = end === -1 ? text.length : end + 2;
+            while (i < stop) blank(i++);
+            continue;
+        }
+        if (ch === "'" || ch === '"') {
+            const quote = ch;
+            blank(i++);
+            while (i < text.length && text[i] !== quote) {
+                if (text[i] === '\\') blank(i++);
+                if (i < text.length) blank(i++);
+            }
+            if (i < text.length) blank(i++);
+            continue;
+        }
+        if (ch === '`') {
+            blank(i++);
+            tmplStack.push(true);
+            while (i < text.length && tmplStack.length) {
+                if (text[i] === '\\') { blank(i); blank(i + 1); i += 2; continue; }
+                if (text[i] === '`') { blank(i++); tmplStack.pop(); break; }
+                if (text[i] === '$' && text[i + 1] === '{') {
+                    // Keep the expression; find its matching brace.
+                    i += 2;
+                    let depth = 1;
+                    while (i < text.length && depth) {
+                        if (text[i] === '{') depth++;
+                        else if (text[i] === '}') depth--;
+                        if (depth) i++;
+                    }
+                    i++;
+                    continue;
+                }
+                blank(i++);
+            }
+            continue;
+        }
+        i++;
+    }
+    return out.join('');
+}
+
+/**
+ * Names of the calls that lexically enclose each mention of `identifier` in
+ * `text`. Walks back from each occurrence to its nearest unmatched `(` and
+ * reads the callee before it, so it works regardless of how many parentheses,
+ * property accesses or arguments intervene.
+ *
+ * r3's first attempt used `/expectEqual\([^)]*NAME/`, which cannot cross a `)`
+ * and was therefore evaded by a single token: `expectEqual(a, b,
+ * probe.SC.stats().wallClockTransitionCrossings, 0)` slipped straight through.
+ */
+export function enclosingCallsMentioning(text, identifier) {
+    const out = [];
+    const code = blankNonCode(text);
+    const idRe = new RegExp(`\\b${identifier}\\b`, 'g');
+    for (const hit of code.matchAll(idRe)) {
+        // Walk OUTWARD through every enclosing call, not just the innermost.
+        // Stopping at the first one lets `expectEqual(a, b, Number(x.COUNTER), 0)`
+        // report `Number` and slip the check.
+        const chain = [];
+        let from = hit.index;
+        while (chain.length < 12) {
+            let depth = 0;
+            let i = from - 1;
+            for (; i >= 0; i--) {
+                const ch = code[i];
+                if (ch === ')') depth++;
+                else if (ch === '(') {
+                    if (depth === 0) break;
+                    depth--;
+                }
+            }
+            if (i < 0) break;
+            const head = code.slice(Math.max(0, i - 64), i).match(/([A-Za-z_$][\w$.]*)\s*$/);
+            chain.push(head ? head[1] : '<anonymous>');
+            from = i;
+        }
+        out.push({
+            call: chain[0] || '<top-level>',
+            chain,
+            index: hit.index,
+        });
+    }
+    return out;
+}
+
+/**
+ * Does anything actually post `{type:'resample'}` to the decode worker?
+ * The worker carries a complete second resampler with its own day/week table;
+ * calling it "latent" is only honest if nothing reaches it, so that is checked
+ * rather than assumed. Searches every JS/HTML file in the chart surface for a
+ * `resample` message type paired with a worker post.
+ */
+export function postsWorkerResampleMessage() {
+    let found = false;
+    const walk = (dir) => {
+        if (found) return;
+        for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+            if (found) return;
+            const abs = path.join(dir, entry.name);
+            if (FLOOR_SCAN_SKIP.test(abs)) continue;
+            if (entry.isDirectory()) { walk(abs); continue; }
+            if (!/\.(js|mjs|html)$/.test(entry.name)) continue;
+            if (abs.endsWith(path.join('workers', 'candle-decode.worker.js'))) continue;
+            const src = fs.readFileSync(abs, 'utf8');
+            if (!/postMessage/.test(src)) continue;
+            if (/type\s*:\s*['"]resample['"]/.test(src)) { found = true; return; }
+        }
+    };
+    walk(path.join(REPO_ROOT, FLOOR_SCAN_ROOT));
+    return found;
+}
+
 // Sources are immutable for the duration of a run; memoized so the oracle can
 // build one VM realm per cell without re-reading and re-hashing 2 MB of chart.js.
 const readCache = new Map();

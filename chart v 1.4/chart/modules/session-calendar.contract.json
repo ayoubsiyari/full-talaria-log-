@@ -57,7 +57,13 @@
       "misclassified": {
         "rows": ["DXY", "USDX", "XTIUSD", "XNGUSD"],
         "typedAs": "forex",
-        "why": "None is spot FX. DXY/USDX are index quotes; XTIUSD (WTI) and XNGUSD (natural gas) are energy contracts whose real session is CME 18:00 America/New_York, not 17:00. Wiring gives them the FX session. Recorded, not fixed — the registry is not writable here."
+        "definedAt": "market-calculations.js:29-32",
+        "resolvesAs": "isRegistered=true -> sessionClass=fx -> reason=resolved (a CONFIDENT wrong answer, so the unresolved-instrument announcement never fires)",
+        "errorMagnitude": {
+          "XTIUSD/XNGUSD": "1 hour — CME energy opens 18:00 America/New_York; wiring applies 17:00. Measured: 2013-01-15 daily bucket lands 2013-01-14T22:00:00.000Z, correct is 23:00:00.000Z.",
+          "DXY/USDX": "3 hours — ICE DX futures open 20:00 America/New_York; wiring applies 17:00."
+        },
+        "why": "None is spot FX. The type is wrong upstream; MARKET_TYPE_TO_CLASS's forex->fx mapping is correct as specified and is not the fault. Recorded, not fixed — the registry is not writable here. Carried by Manager A as a separate defect row."
       },
       "suffixStripping": {
         "handledToday": ["EURUSD.a", "EURUSD_i", "EURUSD-ECN", "EURUSD.pro", "EUR/USD", "EURUSD.r"],
@@ -75,14 +81,36 @@
       "warning": "fvg-18-et is 18:00 America/New_York and disagrees with the FX session open by exactly one hour. That disagreement is real and is NOT reconciled here."
     },
     "epochFlooringSites": {
-      "known": 3,
-      "wiredByThisPacket": 2,
+      "method": "REAL SCAN, not a hand-written list. Cell M2 walks the servable chart surface for `Math.floor(<expr> / D) * D` with the same divisor token on both sides, strips comments so documentation is not counted as code, and requires the found multiset to EQUAL the declared inventory in m22-session-calendar-harness.mjs EPOCH_FLOORING_INVENTORY. A new site anywhere in scope fails the cell until it is classified.",
+      "supersedes": "r3 asserted `sites.length === 3` against a hardcoded three-element literal — a tautology that could not fail when a fourth site appeared, and whose list was already incomplete.",
+      "totalScanned": 21,
+      "byCategory": { "bar-bucketing": 6, "grid-coupled": 5, "module-owned": 1, "out-of-category": 9 },
+      "barBucketingExpressionsWiredByThisPacket": 3,
+      "barBucketingFunctionsWiredByThisPacket": 2,
       "sites": [
-        { "file": "chart v 1.4/chart/chart.js", "function": "_resampleDataFull", "wired": true },
-        { "file": "chart v 1.4/chart/modules/chart-data-pipeline.js", "function": "_tryIncrementalResample", "wired": true },
-        { "file": "chart v 1.4/chart/modules/talaria-fvg-indicator.js", "function": "periodStart", "lines": "68-70", "usedAt": 294, "wired": false, "note": "Third site, named by the anchoring audit and not by the original finding. Its tfToMs accepts d and w, so it floors daily and weekly to the UTC epoch too. SEPARATE ROW." }
+        { "file": "chart v 1.4/chart/chart.js", "function": "_resampleDataFull", "expressions": 2, "wired": true, "patches": ["W1", "W2"] },
+        { "file": "chart v 1.4/chart/modules/chart-data-pipeline.js", "function": "_tryIncrementalResample", "expressions": 1, "wired": true, "patches": ["W4"] },
+        { "file": "chart v 1.4/chart/modules/replay-system.js", "function": "_replayBucketStart", "lines": "4987-4991", "callers": [4964, 4977, 5047], "status": "LIVE", "wired": false, "note": "WIRING-TIME INTEGRATION RISK, not a census entry. Its own comment claims to match chart resampleData; landing the wiring FALSIFIES that invariant, so replay stepping would compute epoch buckets over session-bucketed bars. Reached whenever tfMs > _getRawBarPeriodMs(), i.e. exactly the daily and weekly timeframes this packet changes. Must be wired in the same change." },
+        { "file": "chart v 1.4/chart/workers/candle-decode.worker.js", "function": "resampleCandles", "lines": "135-149", "status": "latent", "wired": false, "note": "A complete SECOND resampler with its own '1d'/'1w' table, reachable via the case 'resample' message at :28. Latent is a CHECKED claim: cell M2 searches the whole surface for anything posting that message type and asserts nothing does. Larger surface than the FVG site." },
+        { "file": "chart v 1.4/chart/modules/talaria-fvg-indicator.js", "function": "periodStart", "lines": "68-70", "usedAt": 294, "status": "LIVE", "wired": false, "note": "Named by the anchoring audit, not by the original finding. Its tfToMs accepts d and w, so it floors daily and weekly to the UTC epoch too. SEPARATE ROW." }
       ],
+      "gridCoupled": {
+        "note": "Do not create bars, but assume the same grid, so all five point at the wrong instant once bar boundaries move. Not wrong-OHLC defects.",
+        "sites": [
+          { "file": "chart v 1.4/chart/chart.js", "at": 6281, "what": "seam splice" },
+          { "file": "chart v 1.4/chart/chart.js", "at": 24991, "what": "leftCut" },
+          { "file": "chart v 1.4/chart/chart.js", "at": 30720, "what": "replay progress displayCandleStart" },
+          { "file": "chart v 1.4/chart/multichart/sync-bridge.js", "at": 61, "what": "floorToBucket — TIMEFRAME_SECONDS carries '1d' and '1w'; cross-panel viewport snapping" },
+          { "file": "chart v 1.4/chart/multichart-prod/sync-bridge.js", "at": 61, "what": "floorToBucket (mirror of the above)" }
+        ]
+      },
       "assertedBy": "cellM2"
+    },
+    "ingestProvenance": {
+      "vendorTimeframes": ["1min", "5min", "30min", "1hour", "1day"],
+      "weekly": "NOT a FirstRate import timeframe. Weekly binaries are built locally by _resample_candles(candles, 604800000) — epoch flooring, i.e. the defect itself one layer upstream. There is therefore no vendor-native weekly series to defer to and the re-bucket question does not arise for weekly; the Monday 00:00 UTC ratification is a pure product decision.",
+      "daily": "OPEN. 1day IS a vendor timeframe, so daily carries a provenance question weekly does not: whether FirstRate daily bars are already session-aligned, and to which session. Not resolved here.",
+      "weekendFilter": "FirstRate datasets are served with weekend_filter = False, so the server-side rule cellP differentials against is not applied to that provider's data. The differential remains valid — it establishes agreement with the authority the server encodes — but the two rules do not always co-apply."
     },
     "externalAuthority": {
       "file": "chart v 1.4/chart/api_server.py",

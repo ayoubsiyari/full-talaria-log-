@@ -905,6 +905,34 @@ cellTest('cellN2: a registry that arrives late must still resolve — the memo m
     expectEqual('N2', 'identity-reason:registry-throws', threw.reason, 'registry-threw');
     expectEqual('N2', 'identity-cacheable:registry-throws', threw.cacheable, false);
 
+    // ── the unstated premise under `symbol-not-registered -> cacheable: true` ──
+    //
+    // Caching a settled negative FOREVER is only safe because the registry is
+    // immutable at runtime: if a row could be added after load, the memo would
+    // poison in the other direction — the same bug, mirrored. That premise was
+    // load-bearing and unstated, so it is pinned here.
+    const mc = H.readRepo(H.REL.marketCalc);
+    expectEqual('N2', 'registry-is-a-module-level-const-literal',
+        /^const INSTRUMENT_REGISTRY = \{/m.test(mc), true);
+    expectEqual('N2', 'registry-is-assigned-once',
+        (mc.match(/this\._registry\s*=/g) || []).length, 1);
+    for (const mutator of ['registerInstrument', 'addInstrument', 'INSTRUMENT_REGISTRY[']) {
+        expectEqual('N2', `registry-has-no-mutation-path:${mutator}`, mc.includes(mutator), false);
+    }
+    expectEqual('N2', 'registry-rows-do-not-change-across-two-loads',
+        Object.keys(makeHarness().engine._registry).length,
+        Object.keys(makeHarness().engine._registry).length);
+    // Honest limit: it is a `const` binding, not a frozen object, and it is
+    // published on `window`. Nothing in the codebase mutates it — that is the
+    // whole basis for caching a negative — but the guarantee is convention.
+    expectEqual('N2', 'registry-is-published-globally-and-NOT-frozen',
+        mc.includes('window.INSTRUMENT_REGISTRY') && !mc.includes('Object.freeze(INSTRUMENT_REGISTRY'),
+        true);
+    note('N2', 'cacheable-true-rests-on-registry-immutability', true,
+        'INSTRUMENT_REGISTRY is a const literal with no mutation path in-repo, but it is exposed on '
+        + 'window and unfrozen. If a row ever becomes addable at runtime, symbol-not-registered must '
+        + 'stop being cacheable.');
+
     // Structural: the wiring must consult `cacheable` before storing anything.
     const patchText = H.WIRING_PATCH.chartAdditions.map((a) => a.source).join('\n');
     expectEqual('N2', 'wiring-honours-the-cacheable-contract',
@@ -1241,10 +1269,20 @@ cellTest('cellK2: DST gap is guarded and counted; ambiguity is UNGUARDED and sai
     expectEqual('K2', 'source-warns-tripwire-is-not-a-detector',
         source.includes('DOES NOT DETECT IT'), true);
 
-    // And cell K must not have re-acquired the vacuous assertion.
+    // And no cell may re-acquire the vacuous assertion. Checked by finding the
+    // call that lexically ENCLOSES each mention of the counter, which is robust
+    // to intervening parentheses — r3's first attempt used a regex that could
+    // not cross a `)` and was evaded by one token
+    // (`expectEqual(a, b, probe.SC.stats().wallClockTransitionCrossings, 0)`).
     const self = H.readRepo('chart v 1.4/chart/modules/m22-session-calendar-bucketing.red.test.mjs');
-    expectEqual('K2', 'no-cell-asserts-zero-on-the-ambiguity-counter',
-        /expectEqual\([^)]*wallClockTransitionCrossings/.test(self), false);
+    // The whole enclosing chain is checked, not just the innermost call, so
+    // wrapping the read (`expectEqual(a, b, Number(x.COUNTER), 0)`) does not
+    // hide it either.
+    const mentions = H.enclosingCallsMentioning(self, 'wallClockTransitionCrossings');
+    const asserted = mentions.filter((m) => m.chain.includes('expectEqual')).length;
+    expectEqual('K2', 'no-cell-asserts-on-the-ambiguity-counter', asserted, 0);
+    expectEqual('K2', 'ambiguity-counter-is-only-ever-reported',
+        [...new Set(mentions.map((m) => m.call))].sort(), ['note']);
 });
 
 /* ─────────────────────────────────────────────────────────────────────────
@@ -1269,6 +1307,10 @@ cellTest('cellL: no nondeterministic inputs in this oracle or its harness', () =
         'chart v 1.4/chart/modules/m22-session-calendar-bucketing.red.test.mjs',
         'chart v 1.4/chart/modules/m22-session-calendar-harness.mjs',
         'chart v 1.4/chart/modules/session-calendar.js',
+        // The §A5 driver was outside this lint until r4. It was clean, so this
+        // closed a coverage gap rather than a defect — but an unlinted file in
+        // the evidence chain is exactly where a clock read would survive.
+        'chart v 1.4/chart/modules/m22-session-calendar-fourstate.mjs',
     ]) {
         const source = H.readRepo(rel);
         const hits = banned.filter((needle) => source.includes(needle));
@@ -1523,37 +1565,84 @@ cellTest('cellM2: both resample paths route through ONE boundary implementation'
     expectEqual('M2', 'stubbing-one-helper-moves-both-paths-together',
         after.full, after.incremental);
 
-    // ── census of epoch-flooring bucket sites ────────────────────────────
-    // The finding named two. The anchoring audit found a THIRD that nobody had
-    // named: `talaria-fvg-indicator.js periodStart()`, whose `tfToMs` accepts
-    // `d` and `w`, so it floors daily and weekly to the UTC epoch exactly like
-    // the two this packet fixes. It is a SEPARATE ROW and is deliberately not
-    // wired here. It is asserted as a census so that "both resample paths are
-    // fixed" can never be misread as "the codebase has one day definition".
-    const sites = [
-        { rel: H.REL.chart, needle: 'Math.floor(candle.t / timeframeMs) * timeframeMs',
-            wiredByThisPacket: true },
-        { rel: H.REL.pipeline, needle: 'Math.floor(lastRaw.t / timeframeMs) * timeframeMs',
-            wiredByThisPacket: true },
-        { rel: 'chart v 1.4/chart/modules/talaria-fvg-indicator.js',
-            needle: 'Math.floor(Number(t) / tfMs) * tfMs', wiredByThisPacket: false },
-    ];
-    for (const s of sites) {
-        expectEqual('M2', `epoch-flooring-site-still-present:${s.rel.split('/').pop()}`,
-            H.readRepo(s.rel).includes(s.needle), true);
-    }
-    expectEqual('M2', 'known-epoch-flooring-sites', sites.length, 3);
-    expectEqual('M2', 'sites-this-packet-wires', sites.filter((s) => s.wiredByThisPacket).length, 2);
+    // ── census of epoch-flooring bucket sites — A REAL SCAN ──────────────
+    //
+    // r3's first attempt asserted `sites.length === 3` against a hardcoded
+    // three-element literal declared eleven lines above it. That is `3 === 3`
+    // by construction: it could not fail when a fourth site appeared, which is
+    // the only thing a census is for. It also certified three when there are
+    // twenty-one, six of them in the defect class proper.
+    //
+    // Now: scan the servable chart surface, strip comments so documentation is
+    // not miscounted as code, and require the found multiset to EQUAL the
+    // declared inventory. A new site anywhere in scope fails this cell until
+    // somebody classifies it.
+    const scanned = H.scanEpochFlooringSites();
+    expectEqual('M2', 'scan-matches-declared-inventory-exactly',
+        H.floorSiteKeys(scanned), H.floorSiteKeys(H.EPOCH_FLOORING_INVENTORY));
 
-    // The third site is only a day/week defect because its timeframe parser
-    // accepts day and week units. Pinned, because if that ever stops being
-    // true the row changes shape.
+    // The scan must actually be finding things — a broken regex would make the
+    // assertion above pass against an empty inventory in a later edit.
+    expectEqual('M2', 'scan-is-not-vacuous', scanned.length >= 20, true,
+        `scanned=${scanned.length}`);
+    expectEqual('M2', 'scan-covers-both-known-resample-paths',
+        [H.REL.chart, H.REL.pipeline].every((f) => scanned.some((s) => s.file === f)), true);
+
+    const inCategory = H.EPOCH_FLOORING_INVENTORY.filter((s) => s.category === 'bar-bucketing');
+    const gridCoupled = H.EPOCH_FLOORING_INVENTORY.filter((s) => s.category === 'grid-coupled');
+    const wired = inCategory.filter((s) => s.wiredByThisPacket);
+
+    // Counts derived from the classified scan, not from a literal. §8.4 leans on
+    // these numbers, so they must move when the code moves.
+    expectEqual('M2', 'bar-bucketing-sites-found', inCategory.length, 6);
+    expectEqual('M2', 'bar-bucketing-sites-this-packet-wires', wired.length, 3,
+        wired.map((s) => s.patch).join(','));
+    expectEqual('M2', 'bar-bucketing-sites-left-UNWIRED',
+        inCategory.filter((s) => !s.wiredByThisPacket).map((s) => s.fn).sort(),
+        ['_replayBucketStart', 'periodStart', 'resampleCandles']);
+    expectEqual('M2', 'grid-coupled-boundary-computations', gridCoupled.length, 5);
+
+    // ── the LIVE replay site, which is an integration risk and not a nicety ──
+    //
+    // `_replayBucketStart` has three callers and its own comment claims it
+    // "matches chart resampleData". Landing this packet's wiring FALSIFIES that
+    // comment: replay stepping would compute epoch buckets over session-bucketed
+    // bars. Pinned by value — the comment, the callers, and the reachability
+    // condition — so the wiring change cannot land without confronting it.
+    const replay = H.readRepo('chart v 1.4/chart/modules/replay-system.js');
+    expectEqual('M2', 'replay-site-claims-to-match-resampleData',
+        replay.includes('Bucket start for replay step/resample (matches chart resampleData)'), true);
+    expectEqual('M2', 'replay-site-caller-count',
+        (replay.match(/this\._replayBucketStart\(/g) || []).length, 3);
+    expectEqual('M2', 'replay-site-is-reached-for-coarse-timeframes',
+        replay.includes('tfMs > this._getRawBarPeriodMs()'), true);
+    note('M2', 'WIRING-RISK-replay-invariant-breaks', true,
+        'replay-system.js _replayBucketStart claims to match resampleData; wiring falsifies that. '
+        + 'Must be wired in the same change or replay stepping diverges from the bars it steps over.');
+
+    // ── the latent worker resampler ──────────────────────────────────────
+    // A complete SECOND resampler with its own '1d'/'1w' table, reachable via a
+    // 'resample' message no caller posts today. Same status as the FVG site,
+    // larger surface. Pinned so "latent" is a checked claim, not an assumption.
+    const worker = H.readRepo('chart v 1.4/chart/workers/candle-decode.worker.js');
+    expectEqual('M2', 'worker-resampler-has-its-own-day-week-table',
+        worker.includes("'1d': 86400000, '1w': 604800000"), true);
+    expectEqual('M2', 'worker-resampler-is-reachable-by-message',
+        worker.includes("case 'resample':"), true);
+    expectEqual('M2', 'worker-resample-message-has-no-caller-today',
+        H.postsWorkerResampleMessage(), false);
+
+    // The FVG site is only a day/week defect because its parser accepts those
+    // units. Pinned, because if that stops being true the row changes shape.
     const fvg = H.readRepo('chart v 1.4/chart/modules/talaria-fvg-indicator.js');
     expectEqual('M2', 'fvg-timeframe-parser-accepts-day-and-week',
         fvg.includes("if (m[2] === 'd') return n * 86400000;")
         && fvg.includes("if (m[2] === 'w') return n * 604800000;"), true);
-    note('M2', 'third-site-is-a-separate-row', true,
-        'talaria-fvg-indicator.js periodStart() floors to the UTC epoch for d/w — NOT wired here');
+
+    for (const s of inCategory.filter((x) => !x.wiredByThisPacket)) {
+        note('M2', `unwired-bar-bucketing-site:${s.fn}`, true,
+            `${s.file} — ${s.status || 'unknown'}, SEPARATE ROW`);
+    }
 });
 
 /* ─────────────────────────────────────────────────────────────────────────
