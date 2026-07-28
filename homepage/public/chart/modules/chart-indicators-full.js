@@ -109,6 +109,12 @@
             : global.__TALARIA_RC6_INDICATOR_REPLAY_UI_SYNC_V2 !== false;
     }
 
+    function _indicatorPerf() {
+        return (typeof window !== 'undefined' && window.__TALARIA_DISABLE_INDICATOR_PERF_BRIDGE_V1 === true)
+            ? null
+            : global.IndicatorPerf;
+    }
+
     function pinReplayLegendHoverBeforeRecalc(chart) {
         if (!isRc6IndicatorReplayUiSyncV2Enabled()) return;
         if (typeof global.pinReplayLegendHoverToPlayhead === 'function') {
@@ -1404,8 +1410,9 @@
 
     /** Rolling SMA; null until full window of finite values (O(n) sliding window). */
     function rollingSmaNullable(arr, period) {
-        if (global.IndicatorPerf && typeof global.IndicatorPerf.rollingSmaFast === 'function') {
-            return global.IndicatorPerf.rollingSmaFast(arr, period);
+        const perf = _indicatorPerf();
+        if (perf && typeof perf.rollingSmaFast === 'function') {
+            return perf.rollingSmaFast(arr, period);
         }
         const p = Math.max(1, period | 0);
         const n = arr.length;
@@ -1431,8 +1438,9 @@
 
     /** Weighted MA on a nullable numeric series (null until full window). */
     function rollingWmaNullable(arr, period) {
-        if (global.IndicatorPerf && typeof global.IndicatorPerf.rollingWmaFast === 'function') {
-            return global.IndicatorPerf.rollingWmaFast(arr, period);
+        const perf = _indicatorPerf();
+        if (perf && typeof perf.rollingWmaFast === 'function') {
+            return perf.rollingWmaFast(arr, period);
         }
         const p = Math.max(2, period | 0);
         const denom = (p * (p + 1)) / 2;
@@ -8245,7 +8253,7 @@
         if (typeof chart.updateOHLCIndicators === 'function') chart.updateOHLCIndicators();
 
         var id = _workerNextId++;
-        var perf = global.IndicatorPerf;
+        var perf = _indicatorPerf();
         var packed = perf && typeof perf.packBarsCompact === 'function'
             ? perf.packBarsCompact(chart.data)
             : null;
@@ -8361,7 +8369,7 @@
     };
 
     Chart.prototype._indicatorParamsHash = function() {
-        const perf = global.IndicatorPerf;
+        const perf = _indicatorPerf();
         if (perf && typeof perf.hashIndicatorParams === 'function') {
             return perf.hashIndicatorParams(this.indicators && this.indicators.active);
         }
@@ -10602,7 +10610,7 @@
      * @returns true when every series merged; false after a complete rollback.
      */
     function _m19iB62AtomicMergeSet(chart, freshById, tailStart, fromIndex, totalLength) {
-        var perf = global.IndicatorPerf;
+        var perf = _indicatorPerf();
         var merge = perf && typeof perf.mergeIndicatorTailWindow === 'function'
             ? perf.mergeIndicatorTailWindow : null;
         var ids = Object.keys(freshById);
@@ -11529,7 +11537,7 @@
         if (!chart.indicators.data) chart.indicators.data = {};
 
         if (tailMeta) {
-            const perf = global.IndicatorPerf;
+            const perf = _indicatorPerf();
             const mergeWindow = perf && typeof perf.mergeIndicatorTailWindow === 'function'
                 ? perf.mergeIndicatorTailWindow
                 : null;
@@ -11820,7 +11828,7 @@
                 && window.__TALARIA_ENABLE_B70_SINGLE_INDICATOR_OWNER_V1 === true) {
                 _b70ShadowRecordCalculation(this, '_m19iExactTailPaint', 'paint');
             }
-            var perf = global.IndicatorPerf;
+            var perf = _indicatorPerf();
             var totalLen = this.data.length;
             var lookback = perf && typeof perf.estimateTailLookback === 'function'
                 ? perf.estimateTailLookback(this.indicators.active)
@@ -12014,7 +12022,7 @@
      * temporarily behaves like b58 async catch-up for that series only.
      */
     function _m19ifApplyCoherentBridge(chart, indicatorMap, tailStart, fromIndex, totalLen) {
-        var perf = global.IndicatorPerf;
+        var perf = _indicatorPerf();
         var merge = perf && typeof perf.mergeIndicatorTailWindow === 'function'
             ? perf.mergeIndicatorTailWindow
             : null;
@@ -12199,7 +12207,7 @@
             });
         }
 
-        const perf = global.IndicatorPerf;
+        const perf = _indicatorPerf();
         const totalLen = chart.data.length;
         const lookback = perf && typeof perf.estimateTailLookback === 'function'
             ? perf.estimateTailLookback(this.indicators.active)
@@ -12603,7 +12611,7 @@
             }
         }
 
-        const perf = global.IndicatorPerf;
+        const perf = _indicatorPerf();
         const lookback = perf && typeof perf.estimateTailLookback === 'function'
             ? perf.estimateTailLookback(this.indicators.active)
             : 256;
