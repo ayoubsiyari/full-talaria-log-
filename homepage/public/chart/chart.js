@@ -1223,7 +1223,51 @@ class Chart {
         this.chunkSize = 5000; // Load data in chunks
         this.bufferSize = 1000; // Buffer size for smooth scrolling
         this.isLoadingChunk = false;
-        this.renderPending = false;
+        // M25 — `renderPending` is instrumentation-only from here: a per-instance
+        // accessor over `_m25RenderPendingBacking` that counts frame demands in
+        // `_mcDiag.m25FramesArmed`. Nothing about render behaviour changes; animate()
+        // still runs unconditionally and reads the same value it always did.
+        //
+        // PER-INSTANCE ON PURPOSE — do not "simplify" this onto Chart.prototype.
+        // This site creates an OWN property, which shadows any prototype accessor, and
+        // chart-indicators-full.js / chart-notifications.js / the chart-indicators-*
+        // family patch Chart.prototype, so prototype state here is the fragile choice.
+        //
+        // Only a falsy→true transition counts. `renderPending = false` is written 17
+        // times in this file alone (plus chart-indicators-full.js, both sync-bridge.js
+        // copies, panel-cmd-bridge.js and replay-system.js); counting those, or
+        // counting true→true, would make the counter meaningless.
+        //
+        // The backing field and the counter are non-enumerable so `Object.keys`,
+        // `JSON.stringify` and `__mcDiagReport()` see exactly what they saw before.
+        //
+        // Kill-switch: window.__TALARIA_DISABLE_M25_RENDER_PENDING_ACCESSOR_V1 = true
+        // restores the plain data property with no counter at all.
+        if (typeof window !== 'undefined'
+            && window.__TALARIA_DISABLE_M25_RENDER_PENDING_ACCESSOR_V1 === true) {
+            this.renderPending = false;
+        } else {
+            Object.defineProperty(this, '_m25RenderPendingBacking', {
+                value: false, writable: true, enumerable: false, configurable: true,
+            });
+            if (this._mcDiag) {
+                Object.defineProperty(this._mcDiag, 'm25FramesArmed', {
+                    value: 0, writable: true, enumerable: false, configurable: true,
+                });
+            }
+            Object.defineProperty(this, 'renderPending', {
+                enumerable: true,
+                configurable: true,
+                get() { return this._m25RenderPendingBacking; },
+                set(value) {
+                    if (value && !this._m25RenderPendingBacking) {
+                        const diag = this._mcDiag;
+                        if (diag) diag.m25FramesArmed = (diag.m25FramesArmed || 0) + 1;
+                    }
+                    this._m25RenderPendingBacking = value;
+                },
+            });
+        }
         this.renderThrottleTimer = null;
         /** Coalesce crosshair + tooltip to one paint per rAF during hover (reduces INP on chartCanvas). */
         this._crosshairTooltipRaf = null;
