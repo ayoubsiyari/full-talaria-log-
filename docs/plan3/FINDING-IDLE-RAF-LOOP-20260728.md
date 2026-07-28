@@ -111,3 +111,42 @@ So the expense is the **loop itself plus whatever keeps setting `renderPending`*
 - **A's six-React-pumps line is re-sized, not revived.** The `talaria-v9-live.js` timer work reads ~15% of busy time here — real, second place, and worth its own pass after the loop.
 - **`_mcDiag.resamples` at 1x vs 10x is no longer the highest-yield measurement.** It was a proxy for finding a time-scaled cost; we now have the cost directly. Keep it as confirmation, not as the lead.
 - **Recording caveat:** the PO left **Screenshots enabled**, which inflates Painting. Painting is 460 ms of 4,454 ms, so it cannot change the Scripting-dominant conclusion. Repeat runs should disable it.
+
+---
+
+## 7. Run 2 (13:46, 60 s, session 886) — mechanism corroborated, spikes ABSENT, and a measurement problem that blocks C-2
+
+Trace: `evidence/CPU-IDLE/Trace-20260728T134621.json.gz` (7.57 MB, 62.0 s, single chart, no indicators, replay stopped, Screenshots off).
+
+### 7.1 The rAF loop reproduces on an independent session
+
+Same signature, different session, near-double the window: `requestAnimationFrame` self **540.4 ms (13.5%)**, `Animation frame fired` total **1,251.8 ms (31.3%)**, `Function call @ :28647:12` total **1,612.0 ms (40.3%)**, `animate` total **541.0 ms (13.5%)**, and a continuous `Frames` band across all 60 seconds. **Scripting-dominant again** (2,368 ms against 605 Rendering / 608 Painting). The mechanism is not an artefact of one recording.
+
+### 7.2 **No spike in 60 seconds.** This is a finding, not a failed test.
+
+The CPU strip is flat for the whole minute. Per the protocol's own pre-registered reading: **a fresh, bare, idle chart does not spike.** So the spike family requires something this run deliberately excluded — an aged session, a used profile, indicators, orders, drawings, or a prior multichart. **That narrows the spike hunt substantially and it agrees with the PO's 5x test, where the worst lag appeared at 1x in an aged session rather than at speed in a fresh one.** The spikes and the Hoarder are now the same suspect list.
+
+### 7.3 ⚠️ THE RUN-TO-RUN SPREAD EXCEEDS THE EFFECT A IS TRYING TO DELIVER. C-2 is insufficient as written.
+
+| Run | Window | Busy | Instrument | **Instrument-corrected busy** |
+|---|---|---|---|---|
+| 1 (12:50, s885) | 34.31 s | 4,454 ms = 12.98% | 191.5 ms | **12.42%** |
+| 2 (13:46, s886) | 62.01 s | 5,336 ms = 8.61% | 423.0 ms | **7.92%** |
+
+**Two recordings of a nominally identical idle state differ by 4.5 percentage points — a 1.57x spread.** A's citable recoverable range for the loop fix is **1.3 to 3.4 points.**
+
+**The noise is larger than the maximum claimed effect.** Consequently:
+
+**Ruling C-2 is amended.** "The PO's protocol before and after" **cannot demonstrate this fix** — a single pair could show a 4-point *improvement* from a fix that does nothing, or a 4-point *regression* from a fix that works. Acceptance now requires:
+
+1. **Paired repeated measurement — minimum five runs per arm**, same session, same window length, alternating arms rather than blocked (A already flagged its own ablation was blocked, not interleaved; that critique now applies to acceptance too).
+2. **A stated variance, and an effect that clears it.** If the effect does not clear the noise band, the honest report is *"not measurable at this sample size"* — **not** a point estimate.
+3. **Window length held constant.** Runs 1 and 2 differ in duration and that is a confound I introduced by asking for 60 s the second time. My error; fix it by standardising.
+
+**This is the single most important consequence of Run 2** and it applies to every CPU claim we make between now and Thursday. **We came close to accepting a before/after pair as proof and it would have proven nothing.**
+
+### 7.4 Two smaller notes
+
+**Garbage collection roughly doubled per second** — 68 ms over 34.3 s (2.0 ms/s) in Run 1 against 196 ms over 62.0 s (3.2 ms/s) in Run 2, across `Major GC`, `Minor GC` and `C++ GC`. Steady garbage production on an idle chart is consistent with the per-frame DOM churn (`removeChild` 99.6 ms, `setAttribute` 36.6 ms, `createElementNS`, `replaceChildren`, `appendChild`). **A possible link to the memory row: the loop may be manufacturing the garbage the leak then retains.** Hypothesis, unmeasured, per BRIEF-02.
+
+**`Event: pointerover` (24.2 ms self, 81.5 ms total) and `Hit test` (23.0 ms) are present**, so the cursor made contact with the chart. At ~1.5% of busy time this does not disqualify the run, but the hands-off rule was not fully held and future runs should park the cursor outside the chart before recording.
