@@ -2457,3 +2457,44 @@ Three items are owed and none of them may take capacity from M1, the §A2 re-mea
 **The `realTimeCandleDuration` versus `rawCandlesPerSecond` investigation**, promoted by the Director ahead of anything about retirement. Subdivisions divide the quantity that selects the renderer but not the quantity that sets the cadence, so one input picks the mode and a different input paces it. It is characterisable without changing replay behaviour, which is what makes it a better next step than the retirement question.
 
 **Re-running the `_mcDiag` measurement pinned to my tip**, so the product counters and the bespoke ones can be cross-checked. The original ran in the main checkout on C's branch where the counters and the harness are genuinely absent; on `manager-a/critical-path` there are 13 counter references in `chart.js`, one in `chart-data-pipeline.js`, and the harness is present. Same blob for `replay-system.js` on both branches, so the measurement stands — but the cross-check is cheap and TREE-01 exists because this class of confusion keeps recurring.
+
+---
+
+## 2026-07-28 10:22 — Cap authored at `48aba47bc`; clamp demonstrated by execution, not by reading
+
+surface=`manager-a/speed-cap`, base `f802a66fa`; two files, +19/−6
+coverage=VM execution of the real `replay-system.js` across six input paths; **build artifact not yet checked, persisted-index behaviour not yet independently verified**
+
+Six cells all return 10: `normalizeSpeed(60)`, `setSpeed(60)`, `applyPersistedState({speed:60})`, the `_pendingReplaySpeed` path, and the doubled kill-switch branch from both a stored 10 and a stored 60. The doubled branch previously produced 20 from a labelled 10; it now produces 10. Every assignment to `this.speed` in the file routes through `normalizeSpeed` — constructor, `applyPersistedState:248`, both `_pendingReplaySpeed` restore sites, `setSpeed:6857`, and the TF-switch resume at `:8777`.
+
+That is the requirement §3.1 called the signature failure mode — a stored 60 surviving a restore — demonstrated closed by running it rather than by reading the call graph.
+
+## 2026-07-28 10:23 — CORRECTION: my writable file set named a file that does not exist
+
+**brief-defect, mine.** I specified `chart v 1.4/talaria-design/live/TalariaV8bLive.jsx`. That path does not exist at the base SHA. The V9 entry is `live/main.jsx`, which imports `../src/TalariaV8bLive.jsx`, and the ladder and React default live in `src/`. I wrote the path from the enumeration report's citation without checking it resolved.
+
+The author did the right thing: used the real file, and **reported the discrepancy as a refuted premise instead of quietly widening scope or quietly failing.** That is BRIEF-02 working in the direction it was written for — the rule is about my premises, and this is the first time one of mine has been caught by an author rather than by a reviewer.
+
+`TERRITORY.yml:138` grants A `chart v 1.4/talaria-design/**`, so the grant covers `src/` and there is no territory breach. But my brief said "if a change appears to require a third file, stop and report rather than widening," and a literal reading of the writable set was violated. I am recording it as a brief-defect rather than an author-defect, and I have asked the reviewer to confirm the territory reading rather than take mine.
+
+## 2026-07-28 10:24 — The hazard I sent to review that the packet does not mention
+
+`chart v 1.4/chart/dist-v9/` is a **build artifact** generated from `talaria-design`, and a copy of it is committed to the tree. The packet changed the V9 React source and did not touch `dist-v9`. So the committed bundle presumably still offers the full fifteen-option ladder up to 100x.
+
+Whether that matters depends entirely on whether any route can serve the committed copy without a rebuild. Earlier tracing found `Dockerfile.local` does `COPY --from=v9_react /build/chart/dist-v9 ./dist-v9`, which would overwrite it with freshly built output — in which case the source change is sufficient. But that was established for one Dockerfile, not for every path, and **`dist-v9` is the primary production surface**. If a local dev server, a static mount, `api_server.py` routing or a stale image serves the committed bundle, the cap is defeated exactly where it matters most, and the packet is incomplete rather than wrong.
+
+I am not asserting either way. It is the review's first item, framed as a question, because I do not know and the cost of guessing wrong here is a ceiling that exists only in source.
+
+## 2026-07-28 10:25 — OPEN: the hidden switch still doubles speed below the ceiling
+
+The bounded branch is now `Math.min(REPLAY_SPEED_MAX, base * 2)`. Because `base` is already clamped the ceiling holds, and a labelled 10x can no longer play at 20x. But the doubling itself survives underneath: with the kill-switch set, a stored **3 becomes an effective 6**.
+
+§3.1 says "no hidden flag, no user unlock." The ceiling is now genuinely hard, but a hidden switch that makes a labelled 3x play at 6x is the same defect at a smaller scale — the label still lies. It is **pre-existing**, and this packet neither created nor worsened it; the packet strictly reduced its range. I have asked the reviewer to rule whether it satisfies §3.1 as written or needs its own row, rather than deciding that myself, because it is a question about what the requirement means rather than about what the code does.
+
+## 2026-07-28 10:26 — Two things I did not let the author's report settle
+
+**The persisted-index question.** The slider max moved 14 → 4 and the percentage calculation changed from `si/14` to `si/maxIdx*100`. The author says out-of-range persisted values "snap to nearest step via existing `reduce` nearest-match logic." That is exactly the kind of claim I have accepted too readily today — it is plausible, it is probably true, and it is unverified. A stored slider index of 12, or a stored speed of 60 arriving from any of the three session-backup tiers or the server `state.replay.speed`, must land somewhere defensible and the thumb must sit where the speed actually is. A restored session that silently lands on the wrong speed **is** the silent capability drift §3.1 names, so it gets independent verification.
+
+**Boundary inputs nobody exercised.** The demonstration used 60 throughout. I asked the reviewer to drive `10.5`, a negative, `NaN`, the string `"60"` and `Infinity` — `normalizeSpeed` coerces with `Number()` and has a `Number.isFinite` guard, so these should be fine, and that is precisely why nobody tested them.
+
+**Reported and correctly not acted on:** the `speed >= 50` draw throttle branch is now unreachable, the six direct `speed` readers outside the writable set are untouched, and `backtestingSession.replaySpeed` remains write-only. Requirement 3 — CPU at 100x versus 10x — is still owed and **must be measured before this packet merges**, because afterwards 100x is unreachable and the comparison needs a revert to run at all.
