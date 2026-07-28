@@ -2851,3 +2851,43 @@ A Vite rebuild regenerates the **entire** bundle from current source. The previo
 That is a larger risk than whether the ladder is correct, and it is invisible to every acceptance clause I wrote — all of mine test for the presence or absence of cap-related strings, and none would notice an unrelated component changing. Characterising a minified diff is genuinely hard, so I asked for the technique to be stated along with what it can and cannot see.
 
 Related and also unverified by the packet: **no `npm ci` was run** — the build used pre-existing `node_modules`. So I do not know whether a clean CI install reproduces this artifact byte-for-byte. If it does not, we have committed a build output that nobody else can regenerate, which is a poor thing to have on a deploy path.
+
+---
+
+## 2026-07-28 12:38 — Residue census NOT DECISIVE: the run never reproduced the lag
+
+surface=`manager-a/residue-census` @ `b9cab8ab6`, base `3144426f5`
+coverage=three-point census executed with per-handle attribution and a fresh-context control; **the symptom under investigation did not occur**
+
+The author returned `undetermined`, which is honest. My reading is that it understates the problem.
+
+**Frames held at roughly 60 fps at every point, including after teardown.** The PO's Step 4 was visibly lagging with the whole browser affected. My refutation criterion was "refuted if counts return to baseline *while the lag persists*", and the lag never appeared — so **neither limb was tested.** A census of a session that never lagged cannot explain a lag mechanism. The experiment ran correctly and measured the wrong session.
+
+What it did find is thin and points away from the hypothesis rather than toward it: intervals, rAF and workers were flat, timeouts actually **fell below baseline**, and only listeners moved, by **+4** and not recovering. Some of those survivors look like the harness's own instrumentation — a host-page message listener and a `replayMultichartFrame` listener — so the genuine product residue is probably smaller than 4. The attributed product survivors are iframe `load`/`error` at `multichart-manager.js:462` and `:487`, `talariaMcHostDataCommit` at `chart.js:4249`, and `pagehide` at `order-manager.js:4379`.
+
+**A `pagehide` listener costs nothing until the page hides.** The hypothesis is frame starvation from orphaned *executing* work, and surviving a teardown is not the same as consuming a frame budget. I have asked the review to separate handles that merely persist from handles that actually cost something per frame or per tick, because conflating those two is how a leak census produces a confident answer about the wrong thing.
+
+## 2026-07-28 12:39 — The systemic finding: two harnesses today, both orders of magnitude under product scale
+
+This is larger than either packet and I am escalating it as its own row.
+
+| Measurement | Harness reported | Product/PO observed |
+|---|---|---|
+| Residue census heap | 15.4 MB → 32.4 MB | 1.0 GB → 2.5 GB → 1.8 GB |
+| A2 mixed-4 working set | 786 MiB | 2.5–2.7 GB |
+| A2 mixed-4 JS heap | 33.1 MiB | — |
+| A2 cycle staircase | 13.5 MiB flat | 302 → 988 → 530 MB |
+
+Two independently authored harnesses, on the same day, both landing between one-and-a-half and three orders of magnitude below what the product does. I flagged the A2 figures this morning as implausible and treated it as one packet's defect. **With a second instance it stops looking like a packet defect and starts looking like a property of how we build harnesses.**
+
+If that is right, a whole class of our measurement is invalid — including figures we have already acted on — and the correct response is not to re-brief two authors but to fix the instrument. The candidate causes are worth testing rather than assuming: how many bars are actually loaded and whether the data is real or a synthetic fixture; whether panels genuinely carry different symbols; run duration against a real soak; headless Chrome; and whether "heap used" is even the counter that produced the PO's gigabyte figures rather than a similarly-named different quantity. **A clean explanation is the outcome I want most** — if headless mode plus per-context heap versus whole-process memory accounts for the gap, then the harnesses are fine and I need the conversion factor, not a rebuild.
+
+**The practical question I need answered before I brief anyone again: can a headless harness reproduce the PO's scenario at all?** If it cannot, then the decisive test the Director ordered is not achievable by dispatch. It becomes a real browser session with instrumentation, which is a PO-REQ and not an author task — and I would rather learn that now than after a third harness returns a third set of unusable numbers.
+
+## 2026-07-28 12:40 — Wrong world, and this time it cuts against comparability in both directions
+
+The run measured `typeof window.IndicatorPerf === "object"` at every census point — the **fixed** world. The PO's observation was on deployed b75 where it is `undefined`, the fallback world. §5 of the finding predicts the structural result survives and the magnitudes change, and I still expect that.
+
+But note what it means here: we compared a fixed-world harness against a fallback-world observation and found no lag in the harness. **That is not evidence the lag is absent** — it is a comparison across two different builds, and either the world or the harness scale could account for the whole difference. Requiring the world to be reported at each point was the right call this morning; what it bought me is knowing that this particular comparison cannot carry weight, which is exactly what §A2 exists to force.
+
+**The one genuinely useful positive:** the fresh-context control was clean, which is consistent with the residue model and would have refuted it outright had it lagged. That prediction survives — but it survives in a session that never lagged in the first place, so it is weak confirmation of a model that remains untested rather than support for it.
