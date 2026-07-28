@@ -1753,3 +1753,23 @@ That does not retire the escalation. `:41707`, `:41708`, `:41709`, `:41712` and 
 A tree-wide scan across 547 mirrored files found exactly three OID mismatches: `m20-q6-replay-lifecycle-binding.test.mjs`, `multichart/chart-host.html`, and `m19-h-timeframe-switch.test.mjs`. All three predate tonight's packets and none was touched by them.
 
 `multichart/chart-host.html` is the one I care about — it is a servable chart shell in my territory and I had already recorded it as drifting by 29 lines. The other two are test files and lower stakes. Recording the full set now that I have an exhaustive count rather than a spot check, because "the mirror matches except where it doesn't" is not a state I want to keep re-discovering. Opening as a row against my own territory.
+
+---
+
+## 2026-07-28 06:22 — DIGEST: train 3 (03:20–06:20)
+
+**Shipped to `manager-a/critical-path`, nothing to TEST-1.** Five packets merged: the TAL-01918 RED (renamed `unmarked-forming-candle`), the eviction-discriminator port from Manager B, the eviction chart-scope plus dead-selector deletion, and the pending-selector substring fix. Two are product changes to `drawing-tools-manager.js` and its mirror; the rest are harness and RED.
+
+**Why nothing reached TEST-1.** The overnight authority is to deploy where the entire chain is automated-GREEN. It is not. Both product changes land in `drawing-tools-manager.js`, and the adversarial review established that **no automated gate covers that file at all** — Manager B's eviction-invariant RED declares `meta.product` as `order-manager.js` and enumerates five sites in that file only. Reverting either of tonight's lines would be caught by nothing. I am not going to call an ungated file automated-GREEN because its reviews were thorough; the reviews are not the chain. Holding both behind a gate rather than shipping on reviewer confidence.
+
+**Escalated.** To Manager B: five interpolated substring-selector id collisions in `order-manager.js` (three of them dead code, amended after the fact), plus the money-path silent fallbacks and the journal-marker restore cascade behind the 90-second freeze. To the Director: an ASSUMPTION on whether a rejection caused by a manager's own false finding counts toward §A13's two-rejection escalation, and the outstanding daily-bar provenance question.
+
+**Queued, in priority order.** The `unmarked-forming-candle` corrective packet — specified against presentation and stepping, not the trim or the slice, and not yet dispatched. Session-calendar weekly can board; daily is blocked on provenance. Then the `pending-be` cleanup gap, the `deleteDrawing` de-registration row with its price-coincidence association, and the three source-versus-mirror divergences.
+
+**Next verification batch.** Re-run all merged harnesses against the `critical-path` tip rather than their authoring branches, since none has been exercised post-merge. Then close the gate gap — an eviction-invariant gate that actually covers `drawing-tools-manager.js` — because that is the single thing standing between tonight's two product fixes and a TEST-1 deploy.
+
+**Loader STOP-THE-LINE.** Not landed tonight and I am not going to bury that. The §A4c presence assertions remain the standing first item and no packet tonight advanced them; every write slot went to the two canary blockers and the defects that fell out of them. Flagging rather than reprioritising unilaterally, since the blockers were the Director's stated priority order.
+
+**Tier mix, §A13.3b.** Author tier: **0% top-tier**, four of four packets authored cheap — `gpt-5.5-medium-fast` on the RED and the pending-selector fix, `composer-2.5-fast` on the eviction port and scope. No §A13.2 row was invoked for authoring, so no justification is owed and none is offered. Reviewer tier: **100% top-tier**, five reviews, per the rule that the reviewer is never downgraded. Rejection rate by (task class × model) is at 05:55; both 200% figures trace to causes other than author tier, one of them mine.
+
+**API capacity.** Five top-tier adversarial reviews in a three-hour window is the dominant spend, and it is buying its keep — the reviews caught an oracle that could not pass on a correct product, a fix that would have erased a live position's stop-loss, and a false finding of my own. Cheap authoring plus expensive review is the right ratio and I am not adjusting it.
