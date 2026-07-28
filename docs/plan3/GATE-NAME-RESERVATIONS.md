@@ -267,11 +267,11 @@ Cells:
 | NC-IDLE-RENDER-WITHOUT-DATA | idle timer calling render without commit → RED | LIVE |
 | NC-IDLE-PERIODIC-RAF-WITHOUT-COMMIT | self-sustaining rAF loop with zero commits during observe → RED | LIVE (W39) |
 
-## Queue item 8 — support passport degraded modules (W36, CONCLUSION-48H M6)
+## Queue item 8 — support passport degraded modules (W36, CONCLUSION-48H M6; W40, W42, W43)
 
 | Name | Signature token | Status |
 |---|---|---|
-| SUPPORT-PASSPORT-DEGRADED-MODULES-V1 | `TALARIA_SUPPORT_PASSPORT_DEGRADED_V1` | LIVE — `scripts/lib/support-passport-degraded.mjs`, `scripts/support-passport-degraded-gate.mjs`, `scripts/tests/support-passport-degraded.test.mjs` |
+| SUPPORT-PASSPORT-DEGRADED-MODULES-V1 | `TALARIA_SUPPORT_PASSPORT_DEGRADED_V1` | LIVE — `scripts/lib/support-passport-degraded.mjs`, `scripts/support-passport-degraded-gate.mjs`, `scripts/tests/support-passport-degraded.test.mjs`. Product territory pinned **read-only**: `supportUi.tsx`, `SupportInbox.tsx`, `V16SupportChatPopover.tsx` are executed or parsed, never edited by this gate |
 
 Cells:
 
@@ -286,18 +286,73 @@ written against, so the gate adds no dependency and no lockfile churn at the wor
 a hard dependency all the same: when it cannot be resolved the gate reports RED via
 `SUPPORT-PASSPORT-REALM-BOOT` rather than degrading to a re-implementation.
 
+**W42 re-authoring (R-M6-2 REJECT closed).** Three defects were named and all three are closed
+by construction rather than by argument.
+
+*Temporal hole.* Every W40 cell built a fresh realm and called the extractor exactly once, so a
+passport memoised at module scope was invisible to the whole gate: the first support ticket of a
+session carried the degraded modules and every later one silently did not.
+`PASSPORT-DEGRADED-TEMPORAL-RECOMPUTE` calls the real function three times in **one** realm,
+degrading the runtime between calls, and mutant **M6** is that memoisation. M6 is killed by the
+temporal cell and survives all six others — the recorded proof that the cell is load-bearing.
+
+*Unfalsifiable source pins.* `window.__TALARIA_DEGRADED_STATE` is a **prefix** of
+`window.__TALARIA_DEGRADED_STATE__`, so as a substring pin it could never go missing while the
+longer alias existed. All three token pins are **deleted**, together with the string scanner that
+served them (`SUPPORT_UI_DEGRADED_CONTRACT_TOKENS`, `assertSupportUiDegradedSourceContract`,
+`stripCommentsAndStringLiterals` are withdrawn names and must not be reintroduced). Each alias is
+now a behavioural fact: the realm publishes the degraded record under **exactly one** global,
+deleting the other two before `supportUi.tsx` is evaluated, and the real function must still find
+it. `NC-ALIAS-DROP-*` deletes one alias from the product source and requires that alias's own boot
+cell to be the **sole** detector — the asymmetry the source pins claimed and could not prove.
+
+*Consumer call path.* An extractor is only worth proving if something sends what it builds, and
+deleting the call is an edit no behavioural cell can see. The passport is pinned onto the send path
+**by AST**: a `CallExpression` named `buildSupportContext` in `SupportInbox.tsx` (the `context:`
+field of the new-thread payload) and in `V16SupportChatPopover.tsx`. Both files are read-only to
+this gate — pinned from `scripts/`, never edited. A comment, string literal, template literal,
+**regex literal** and **JSX text** are none of them a `CallExpression`, so the decoy classes that
+can pay a substring pin are structurally excluded here; `NC-CONSUMER-PIN-DECOYS` demonstrates that
+for all five classes × both consumers rather than asserting it, and appends each decoy to the
+intact file as well so a decoy that broke parsing cannot masquerade as a decoy correctly ignored.
+
+**W43 re-authoring (R-M6-3 REJECT closed).** Three further holes named against W42.
+
+*Realm readyState.* The document stayed permanently at `readyState: "loading"`, so a cache gated
+on `document.readyState === "complete"` was dead code inside the gate and live in every real
+browser (tickets are filed after load). The realm now advances to `"complete"` after
+`DOMContentLoaded`. Mutant **M6** is that readyState-gated memoisation.
+
+*Wall clock.* The temporal cell's three calls landed within ~1 ms, so a
+`Date.now() - boot > 30_000` warm-up cache was invisible. The realm exposes a controllable
+`Date.now`, and the temporal cell advances it by `TEMPORAL_CLOCK_ADVANCE_MS` (31s) between
+observations. Mutant **M7** is that warm-up-gated memoisation.
+
+*Call-site timing.* Counting `CallExpression`s anywhere left a
+`React.useMemo(() => buildSupportContext(), [])` hoist GREEN while every later ticket from that
+mount carried the mount-time snapshot. The consumer pin now requires ≥1 call whose enclosing
+binding is `createThread` and that is not inside `useMemo`; `NC-CONSUMER-CALL-HOISTED-USEMEMO`
+is the negative control.
+
 CI: `.github/workflows/support-passport-degraded.yml` (gate self-test, then preflight, then
-evidence artifact).
+evidence artifact). W42 added both consumer `.tsx` paths to the trigger set.
 
 | Cell | Asserts | Coverage (VER-01) | Status |
 |---|---|---|---|
 | PASSPORT-DEGRADED-KEY-ALWAYS | real `buildSupportContext()` on a healthy runtime returns `degradedModules` as a present, empty **array** — never an absent key, never a scalar | soundness | LIVE |
 | PASSPORT-DEGRADED-ROUND-TRIP | runtime degrades itself (absent provider trips the tripwire) plus one `__talariaMarkMissingModule` call; the expectation is **read back from the runtime's own published list**, never injected | soundness | LIVE |
 | PASSPORT-DEGRADED-BOUNDING-PROPERTIES | against the real function: output ⊆ input, no duplicates, junk ids rejected, bounded-id pattern held, and the cap binds **exactly** at 32 when more valid ids are offered | soundness | LIVE (W40) |
-| SUPPORT-UI-SOURCE-CONTRACT | the three degraded-state aliases survive in `supportUi.tsx`, scanned with comments **and string literals stripped**. Scope deliberately narrowed to tokens execution cannot observe: all three aliases point at one object today, so their loss is behaviourally silent. The cap, regex, dedupe and always-array key are no longer pinned — they are executed | wiring | LIVE (W40) |
-| NC-ALIAS-PIN-REMOVAL | deleting the trailing alias turns the pin RED **while every behavioural cell stays GREEN** — the asymmetry that justifies keeping a source pin at all | wiring | LIVE (W40) |
-| NC-COMMENT-DOES-NOT-SATISFY-PIN | the deleted alias re-added as a line comment, a block comment, or a string literal must **not** pay the pin | wiring | LIVE (W40) |
-| NC-PASSPORT-DEGRADED-MUTATION | — | WITHDRAWN (W40) — tautological substring delete; superseded by the M1–M5 behavioural mutants below |
+| PASSPORT-DEGRADED-TEMPORAL-RECOMPUTE | **one realm, three calls** under post-load `readyState==="complete"` with `TEMPORAL_CLOCK_ADVANCE_MS` between tickets: call → mark `OrderOverlay` → call → mark `AlertSystem` → call. Each observation must equal the runtime list read immediately before that call; runtime must advance 0 → 1 → 2; clock must advance ≥31s between observations | soundness | LIVE (W43) |
+| PASSPORT-DEGRADED-ALIAS-CANONICAL / -DUNDER / -COMPAT | with the other two globals **deleted from the realm**, the real function still reads the degraded record from `__TALARIA_DEGRADED_STATE` / `__TALARIA_DEGRADED_STATE__` / `__TALARIA_DEGRADED_MODE__` respectively, non-empty and equal to what that alias published | soundness | LIVE (W42) |
+| SUPPORT-PASSPORT-CONSUMER-CALL-PATH | `SupportInbox.tsx` and `V16SupportChatPopover.tsx` each import `buildSupportContext` from `supportUi` **and** contain ≥1 call whose enclosing binding is `createThread` and that is **not** inside `useMemo` | wiring | LIVE (W43) |
+| NC-ALIAS-DROP-CANONICAL / -DUNDER / -COMPAT | one alias deleted from `supportUi.tsx` (the tail alias takes the preceding `??` with it, or the edit is a syntax error rather than a regression): its own boot cell goes RED and **no other behavioural cell moves**. An alias that cannot be uniquely aimed is RED, not a silent pass | wiring | LIVE (W42) |
+| NC-CONSUMER-CALL-DELETED | the `buildSupportContext()` call removed from a consumer while the **import stays** turns the consumer cell RED — the pin keys on the call, not on the import | wiring | LIVE (W42) |
+| NC-CONSUMER-CALL-HOISTED-USEMEMO | `React.useMemo(() => buildSupportContext(), [])` hoist at component body with submit-handler call replaced by the frozen binding: `callCount` stays ≥1 and import intact, but `submitHandlerCallCount` drops to 0 and the consumer cell goes RED | wiring | LIVE (W43) |
+| NC-CONSUMER-PIN-DECOYS | line comment, block comment, string literal, template literal, **regex literal** and **JSX text** each containing `buildSupportContext()` must not pay the pin, on both consumers; the same decoy appended to the intact file must leave the real call site still counted | wiring | LIVE (W42) |
+| SUPPORT-UI-SOURCE-CONTRACT | — | WITHDRAWN (W42) — substring pin on `window.__TALARIA_DEGRADED_STATE`, a prefix of `..._STATE__`, therefore unfalsifiable; superseded by the alias boot cells |
+| NC-ALIAS-PIN-REMOVAL | — | WITHDRAWN (W42) — negative control for a withdrawn pin; superseded by NC-ALIAS-DROP-* |
+| NC-COMMENT-DOES-NOT-SATISFY-PIN | — | WITHDRAWN (W42) — covered only comments and string literals; the regex-literal and JSX-text decoys it missed are in NC-CONSUMER-PIN-DECOYS |
+| NC-PASSPORT-DEGRADED-MUTATION | — | WITHDRAWN (W40) — tautological substring delete; superseded by the M1–M6 behavioural mutants below |
 
 Behavioural mutants. Each edits `supportUi.tsx` into a plausible regression, re-runs the whole
 behavioural suite against the mutated product source, and is RED unless a named cell kills it. A
@@ -305,11 +360,13 @@ mutant whose target no longer exists is RED, not a silent pass.
 
 | Mutant | Cell | Mutation | Killed by | Status |
 |---|---|---|---|---|
-| M1 | NC-MUTANT-CAP-ZERO | `.slice(0, 32)` → `.slice(0, 0)` | ROUND-TRIP, BOUNDING-PROPERTIES | LIVE (W40) |
-| M2 | NC-MUTANT-DECOY-REGEX | bounded-id regex → permissive decoy `/[A-Za-z]/` | BOUNDING-PROPERTIES | LIVE (W40) |
-| M3 | NC-MUTANT-POST-ASSIGNMENT-CLEAR | passport built correctly, then cleared before `return ctx` | ROUND-TRIP, BOUNDING-PROPERTIES | LIVE (W40) |
-| M4 | NC-MUTANT-DEDUPE-DROP | `new Set(` dropped, so a repeated id is reported twice | BOUNDING-PROPERTIES | LIVE (W40) |
-| M5 | NC-MUTANT-ARRAY-STRING-COERCION | array `.join(",")` — the client-side twin of the server finding below | KEY-ALWAYS, ROUND-TRIP, BOUNDING-PROPERTIES | LIVE (W40) |
+| M1 | NC-MUTANT-CAP-ZERO | `.slice(0, 32)` → `.slice(0, 0)` | ROUND-TRIP, BOUNDING-PROPERTIES, TEMPORAL-RECOMPUTE, all three ALIAS cells | LIVE (W40) |
+| M2 | NC-MUTANT-DECOY-REGEX | bounded-id regex → permissive decoy `/[A-Za-z]/` | BOUNDING-PROPERTIES (sole detector) | LIVE (W40) |
+| M3 | NC-MUTANT-POST-ASSIGNMENT-CLEAR | passport built correctly, then cleared before `return ctx` | ROUND-TRIP, BOUNDING-PROPERTIES, TEMPORAL-RECOMPUTE, all three ALIAS cells | LIVE (W40) |
+| M4 | NC-MUTANT-DEDUPE-DROP | `new Set(` dropped, so a repeated id is reported twice | BOUNDING-PROPERTIES (sole detector) | LIVE (W40) |
+| M5 | NC-MUTANT-ARRAY-STRING-COERCION | array `.join(",")` — the client-side twin of the server finding below | every behavioural cell | LIVE (W40) |
+| M6 | NC-MUTANT-MEMOIZED-PASSPORT | readyState-gated module-scope cache (`if (__passportCache !== null && document.readyState === "complete") return __passportCache`) — the R-M6-3 carrier that stayed GREEN under a permanently-loading realm | **TEMPORAL-RECOMPUTE, and nothing else** | LIVE (W43) |
+| M7 | NC-MUTANT-MEMOIZED-AFTER-WARMUP | warm-up-gated module-scope cache (`Date.now() - boot > 30_000`) — invisible when temporal calls land within one millisecond | **TEMPORAL-RECOMPUTE, and nothing else** | LIVE (W43) |
 
 ### FINDING-SUPPORT-CONTEXT-STR-COERCION-20260728 — escalate to A / Director
 

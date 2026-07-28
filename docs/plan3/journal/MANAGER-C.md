@@ -265,3 +265,9 @@ Exactly five ` | `-separated fields after the list marker. Absent fields are wri
 2026-07-28T12:20Z | C | REVIEW | packet=R-M5-2 | role=reviewer | tier=top | model=claude-opus-5-thinking-high | result=ACCEPT | "All-null UNPROVEN; inject 1e-6 RED all families; drift ratchet intact. Non-blocking: wire CI workflow; worker EMA/DEMA ungraded."
 2026-07-28T12:20Z | C | REVIEW | packet=R-M6-2 | role=reviewer | tier=top | model=claude-opus-5-thinking-high | result=REJECT | attr=author-defect | "Memoization/temporal hole: per-call cache keeps gate GREEN while second ticket loses modules. Source pin prefix unfalsifiable; regex/JSX pay pin. W42."
 2026-07-28T12:20Z | C | DISPATCH | packet=W42 | role=author | tier=top | model=claude-opus-5-thinking-high | trigger="Escalate on repeat rejection" | "Temporal passport cell + kill memoization; behavioral alias boot."
+
+2026-07-28T12:00Z | C | REVIEW | packet=R-M6-3 | role=reviewer | tier=top | model=claude-opus-5-thinking-high | result=REJECT | attr=author-defect | "readyState permanently loading hid complete-gated cache; temporal calls within 1ms hid warm-up cache; CallExpression count missed useMemo hoist. W43."
+2026-07-28T12:00Z | C | DISPATCH | packet=W43 | role=author | tier=top | model=claude-opus-5-thinking-high | trigger="Escalate on repeat rejection" | "Close R-M6-3: post-load readyState + TEMPORAL_CLOCK_ADVANCE_MS + submit-handler pin + NC-CONSUMER-CALL-HOISTED-USEMEMO; mutants M6/M7."
+2026-07-28T12:00Z | C | NOTE | ref=M5-ship | cite=e4b17c504,R-M5-2 | "M5 ship-gate credit OK after R-M5-2 ACCEPT. M6 still withheld until R-M6-4 ACCEPT."
+2026-07-28T12:00Z | C | NOTE | ref=browser-runner | cite=9b0721110 | "Browser runner LIVE with real Edge acceptance; B's uncommitted/stubbed report is stale if their tree lacks 9b0721110."
+2026-07-28T12:00Z | C | NOTE | ref=storage-rest | cite=ef960492e | "Storage-growth census + REST-IDLE-MAIN-THREAD-BUDGET landed (W38/W39)."

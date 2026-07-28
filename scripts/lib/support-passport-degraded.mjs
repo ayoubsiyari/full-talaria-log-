@@ -1,5 +1,5 @@
 /**
- * SUPPORT-PASSPORT-DEGRADED-MODULES-V1 (W36 / CONCLUSION-48H M6, re-authored W40)
+ * SUPPORT-PASSPORT-DEGRADED-MODULES-V1 (W36 / CONCLUSION-48H M6; re-authored W40, W42, W43)
  * Signature: TALARIA_SUPPORT_PASSPORT_DEGRADED_V1
  *
  * Soundness is proven by executing the REAL `buildSupportContext()` exported from
@@ -8,6 +8,42 @@
  * published by chart v 1.4/chart/modules/module-presence-runtime.js. There is no
  * hand-copied re-implementation of the extractor in this file — a mirror can only ever
  * prove that the mirror agrees with itself.
+ *
+ * W42 (R-M6-2 REJECT) changed three things:
+ *
+ *   1. Temporal coverage. Every cell used to build a fresh realm and call the extractor
+ *      once, so a passport memoised at module scope was invisible: the first support
+ *      ticket of a session carried the modules and every later one silently did not.
+ *      PASSPORT-DEGRADED-TEMPORAL-RECOMPUTE calls the real function three times in ONE
+ *      realm, degrading the runtime between calls, and mutant M6 is the memoisation.
+ *   2. Alias falsifiability. The alias contract was three substring pins, one of which
+ *      (`window.__TALARIA_DEGRADED_STATE`) is a prefix of another, so it could never be
+ *      removed while the longer alias existed — an unfalsifiable pin. All three source
+ *      pins are deleted. Each alias is now booted on its own: the realm publishes the
+ *      degraded record under exactly one global and the real function must still find it.
+ *      NC-ALIAS-DROP-* proves each cell is the sole detector for its alias.
+ *   3. Consumer wiring. The passport is pinned onto the call path that sends it, by AST:
+ *      a CallExpression named `buildSupportContext` in SupportInbox.tsx and
+ *      V16SupportChatPopover.tsx. Comments, strings, template literals, regex literals
+ *      and JSX text are not CallExpressions, so the decoy classes that could pay a
+ *      substring pin cannot pay this one — and NC-CONSUMER-PIN-DECOYS proves it.
+ *
+ * W43 (R-M6-3 REJECT) closes three further holes named against W42:
+ *
+ *   1. Realm fidelity. The document used to stay permanently at readyState "loading", so a
+ *      cache gated on readyState === "complete" was dead code inside the gate and live in
+ *      every real browser (tickets are filed after load). The realm now advances to
+ *      "complete" after DOMContentLoaded, matching post-load ticket filing.
+ *   2. Wall-clock fidelity. The temporal cell's three calls landed within ~1 ms, so a cache
+ *      gated on session age (Date.now() - boot > 30s) was invisible. The realm exposes a
+ *      controllable Date.now, and the temporal cell advances it by TEMPORAL_CLOCK_ADVANCE_MS
+ *      between observations. Mutants M6 (readyState-gated) and M7 (warm-up-gated) are the
+ *      two carriers; both are killed by TEMPORAL-RECOMPUTE and by nothing else.
+ *   3. Call-site timing. Counting CallExpressions anywhere in the file cannot see a
+ *      useMemo(() => buildSupportContext(), []) hoist that freezes the passport at mount.
+ *      The consumer pin now requires ≥1 call whose enclosing binding is createThread (the
+ *      POST path) and that is not inside useMemo; NC-CONSUMER-CALL-HOISTED-USEMEMO proves
+ *      the hoist goes RED.
  */
 import path from 'node:path';
 import vm from 'node:vm';
@@ -20,20 +56,6 @@ export const SUPPORT_PASSPORT_DEGRADED_GATE_NAME = 'SUPPORT-PASSPORT-DEGRADED-MO
 export const MAX_PASSPORT_DEGRADED_MODULES = 32;
 export const DEGRADED_MODULE_ID_PATTERN = /^[A-Za-z][A-Za-z0-9_.-]{0,63}$/;
 
-/**
- * Source pins are limited to tokens that execution cannot observe. All three aliases
- * resolve to the same object at runtime (module-presence-runtime publishes one `degraded`
- * record under three names), so deleting one of them is behaviourally silent today and
- * only becomes a live bug when a consumer publishes under the trailing alias. The pin is
- * the sole detector for that class; everything else — the cap, the bounded-id regex, the
- * dedupe, the always-array key — is proven by running the real function instead.
- */
-export const SUPPORT_UI_DEGRADED_CONTRACT_TOKENS = [
-  'window.__TALARIA_DEGRADED_STATE',
-  'window.__TALARIA_DEGRADED_STATE__',
-  'window.__TALARIA_DEGRADED_MODE__',
-];
-
 export const SUPPORT_UI_RELATIVE_PATH = 'homepage/src/app/dashboard/support/supportUi.tsx';
 export const MODULE_PRESENCE_RUNTIME_RELATIVE_PATH =
   'chart v 1.4/chart/modules/module-presence-runtime.js';
@@ -41,70 +63,47 @@ export const INDICATOR_PERFORMANCE_RELATIVE_PATH =
   'chart v 1.4/chart/modules/indicator-performance.js';
 export const API_SERVER_RELATIVE_PATH = 'chart v 1.4/chart/api_server.py';
 
-/* ------------------------------------------------------------------ *
- * Source-pin scanning: comments and string literals are erased first. *
- * ------------------------------------------------------------------ */
+/**
+ * The three globals module-presence-runtime.js publishes the degraded record under, in the
+ * order supportUi.tsx consults them. Declared here as data, never as a `??` chain: this
+ * file must not contain anything a reader could mistake for a second extractor.
+ */
+export const SUPPORT_PASSPORT_ALIASES = [
+  { id: 'canonical', global: '__TALARIA_DEGRADED_STATE', cell: 'PASSPORT-DEGRADED-ALIAS-CANONICAL' },
+  { id: 'dunder', global: '__TALARIA_DEGRADED_STATE__', cell: 'PASSPORT-DEGRADED-ALIAS-DUNDER' },
+  { id: 'compat', global: '__TALARIA_DEGRADED_MODE__', cell: 'PASSPORT-DEGRADED-ALIAS-COMPAT' },
+];
+
+/** Product call paths that must actually send the passport. Read-only: never edited here. */
+export const SUPPORT_PASSPORT_CONSUMERS = [
+  {
+    id: 'support-inbox',
+    relativePath: 'homepage/src/app/dashboard/support/SupportInbox.tsx',
+  },
+  {
+    id: 'v16-support-chat-popover',
+    relativePath: 'homepage/src/app/dashboard/v16/V16SupportChatPopover.tsx',
+  },
+];
+
+export const SUPPORT_PASSPORT_CONSUMER_EXPORT = 'buildSupportContext';
+
+/** Product send handlers that must invoke the passport at ticket-create time. */
+export const SUPPORT_PASSPORT_SUBMIT_HANDLER_NAMES = ['createThread'];
 
 /**
- * Blanks comment bodies and string/template literal bodies, preserving offsets and line
- * breaks so a pin can never be satisfied by a token that only appears in prose.
- * @param {string} source
- * @returns {string}
+ * Wall-clock step between temporal observations. Large enough that a
+ * `Date.now() - bootTime > 30_000` warm-up cache activates between tickets.
  */
-export function stripCommentsAndStringLiterals(source) {
-  let out = '';
-  let state = 'code';
-  let i = 0;
-  while (i < source.length) {
-    const ch = source[i];
-    const next = source[i + 1];
-    if (state === 'code') {
-      if (ch === '/' && next === '/') { state = 'line'; out += '  '; i += 2; continue; }
-      if (ch === '/' && next === '*') { state = 'block'; out += '  '; i += 2; continue; }
-      if (ch === "'" || ch === '"' || ch === '`') { state = ch; out += ch; i += 1; continue; }
-      out += ch; i += 1; continue;
-    }
-    if (state === 'line') {
-      if (ch === '\n') { state = 'code'; out += '\n'; } else out += ' ';
-      i += 1; continue;
-    }
-    if (state === 'block') {
-      if (ch === '*' && next === '/') { state = 'code'; out += '  '; i += 2; continue; }
-      out += ch === '\n' ? '\n' : ' ';
-      i += 1; continue;
-    }
-    if (ch === '\\') { out += '  '; i += 2; continue; }
-    if (ch === state) { state = 'code'; out += ch; i += 1; continue; }
-    out += ch === '\n' ? '\n' : ' ';
-    i += 1;
-  }
-  return out;
-}
+export const TEMPORAL_CLOCK_ADVANCE_MS = 31_000;
 
-/**
- * @param {string} supportUiSource
- */
-export function assertSupportUiDegradedSourceContract(supportUiSource) {
-  const scanned = stripCommentsAndStringLiterals(supportUiSource);
-  const missing = SUPPORT_UI_DEGRADED_CONTRACT_TOKENS.filter(
-    (token) => !scanned.includes(token),
-  );
-  const pass = missing.length === 0;
-  return {
-    cell: 'SUPPORT-UI-SOURCE-CONTRACT',
-    coverage: 'wiring',
-    ver: 'VER-01',
-    status: pass ? 'GREEN' : 'RED',
-    pass,
-    scanned: 'comments-and-string-literals-stripped',
-    missingTokens: missing,
-    signature: TALARIA_SUPPORT_PASSPORT_DEGRADED_V1,
-  };
-}
+/* ---------------- *
+ * Small utilities. *
+ * ---------------- */
 
-/* ------------------------------------------------- *
- * Realm: real supportUi.tsx over the real runtime.  *
- * ------------------------------------------------- */
+function escapeRegExp(literal) {
+  return literal.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
 
 /**
  * Resolves the TypeScript compiler from the homepage workspace — the one that owns
@@ -129,8 +128,8 @@ export function normalizeLineEndings(source) {
   return typeof source === 'string' ? source.replace(/\r\n/g, '\n') : source;
 }
 
-// One gate run builds ~20 realms over a handful of distinct sources; the bound keeps the
-// cache from holding every mutant variant if a caller loops.
+// One gate run builds ~70 realms over a dozen distinct sources; the bound keeps the cache
+// from holding every mutant variant if a caller loops.
 const TRANSPILE_CACHE_MAX = 32;
 const transpileCache = new Map();
 
@@ -160,6 +159,10 @@ export function transpileSupportUi({ typescript: ts, supportUiSource }) {
   return emitted.outputText;
 }
 
+/* ------------------------------------------------- *
+ * Realm: real supportUi.tsx over the real runtime.  *
+ * ------------------------------------------------- */
+
 function reactStub() {
   const React = { createElement: () => null, Fragment: 'react.fragment' };
   return { ...React, default: React, __esModule: true };
@@ -170,18 +173,33 @@ function reactStub() {
  * and evaluates the transpiled supportUi module in the *same* realm, so the function under
  * test reads the very `window` the product runtime published.
  *
+ * `aliasOnly` narrows that window to a single published global before supportUi is
+ * evaluated. The runtime publishes one degraded record under three names, so with all
+ * three present the loss of any one of them is behaviourally silent; booting them one at a
+ * time is what makes each alias a fact the gate can falsify.
+ *
  * @param {{
  *   supportUiSource: string,
  *   runtimeSource: string,
  *   indicatorPerfSource: string,
  *   typescript: any,
  *   providerPresent?: boolean,
+ *   aliasOnly?: string | null,
  *   href?: string,
  *   userAgent?: string,
+ *   nowMs?: number,
+ *   postBootReadyState?: 'loading' | 'interactive' | 'complete',
  * }} opts
  */
 export function createSupportPassportRealm(opts) {
-  const { providerPresent = true, href = 'https://app.talaria.test/dashboard/support' } = opts;
+  const {
+    providerPresent = true,
+    aliasOnly = null,
+    href = 'https://app.talaria.test/dashboard/support',
+    // Support tickets are filed after load. A permanently-"loading" document made any
+    // readyState==="complete" cache dead inside the gate and live in every real browser.
+    postBootReadyState = 'complete',
+  } = opts;
   const listeners = {};
   const badges = [];
   const provider = { compareDocumentPosition: () => 4 };
@@ -194,6 +212,20 @@ export function createSupportPassportRealm(opts) {
     getElementById: (id) => badges.find((node) => node.id === id) ?? null,
     createElement: () => ({ style: {}, setAttribute() {} }),
     querySelector: (selector) => (selector.includes('indicator-performance') ? provider : consumer),
+  };
+  let nowMs = Number.isFinite(opts.nowMs) ? opts.nowMs : 1_700_000_000_000;
+  const clock = {
+    now: () => nowMs,
+    advance: (ms) => { nowMs += ms; return nowMs; },
+    set: (ms) => { nowMs = ms; return nowMs; },
+  };
+  // Product (and mutants) call Date.now(); host Date must not leak a frozen wall clock.
+  const RealmDate = class extends Date {
+    constructor(...args) {
+      if (args.length === 0) super(nowMs);
+      else super(...args);
+    }
+    static now() { return nowMs; }
   };
   const events = [];
   const window = {
@@ -210,6 +242,7 @@ export function createSupportPassportRealm(opts) {
     document,
     navigator,
     console: window.console,
+    Date: RealmDate,
     CustomEvent: class { constructor(type, init) { this.type = type; this.detail = init?.detail; } },
     Node: { DOCUMENT_POSITION_FOLLOWING: 4 },
     setTimeout: (fn) => fn(),
@@ -226,6 +259,20 @@ export function createSupportPassportRealm(opts) {
     vm.runInContext(opts.indicatorPerfSource, context, { filename: INDICATOR_PERFORMANCE_RELATIVE_PATH });
   }
   listeners.DOMContentLoaded?.();
+  document.readyState = postBootReadyState;
+
+  if (aliasOnly !== null) {
+    const known = SUPPORT_PASSPORT_ALIASES.map((alias) => alias.global);
+    if (!known.includes(aliasOnly)) {
+      throw new Error(`aliasOnly must be one of ${known.join(', ')} — got ${aliasOnly}`);
+    }
+    for (const name of known) {
+      if (name !== aliasOnly) delete window[name];
+    }
+    if (window[aliasOnly] === undefined) {
+      throw new Error(`the runtime never published window.${aliasOnly}`);
+    }
+  }
 
   vm.runInContext(
     transpileSupportUi({ typescript: opts.typescript, supportUiSource: opts.supportUiSource }),
@@ -237,17 +284,17 @@ export function createSupportPassportRealm(opts) {
   if (typeof buildSupportContext !== 'function') {
     throw new Error('supportUi.tsx did not export buildSupportContext');
   }
-  return { window, document, badges, events, buildSupportContext };
+  return { window, document, badges, events, buildSupportContext, clock };
 }
 
 /* ---------------------------------------- *
  * Behavioural cells (soundness, VER-01).   *
  * ---------------------------------------- */
 
-function redCell(cell, reason) {
+function redCell(cell, reason, coverage = 'soundness') {
   return {
     cell,
-    coverage: 'soundness',
+    coverage,
     ver: 'VER-01',
     status: 'RED',
     pass: false,
@@ -261,10 +308,10 @@ function hostArray(value) {
   return Array.isArray(value) ? Array.from(value) : value;
 }
 
-function cellResult(cell, pass, detail) {
+function cellResult(cell, pass, detail, coverage = 'soundness') {
   return {
     cell,
-    coverage: 'soundness',
+    coverage,
     ver: 'VER-01',
     status: pass ? 'GREEN' : 'RED',
     pass,
@@ -330,6 +377,131 @@ export function runPassportDegradedRoundTripCell(deps) {
   }
 }
 
+/** Modules marked between the calls of the temporal cell, in order. */
+export const TEMPORAL_DEGRADATION_SEQUENCE = ['OrderOverlay', 'AlertSystem'];
+
+/**
+ * The R-M6-2 carrier. Every other cell builds a realm and calls the extractor once, so a
+ * passport computed on first use and cached for the lifetime of the page satisfies all of
+ * them while losing every module that degrades after the first support ticket is opened.
+ *
+ * ONE realm. Call, degrade, call again, degrade again, call again. Each observation is
+ * compared against the runtime's own list read immediately before that call, and the
+ * sequence is required to actually advance (0 → 1 → 2 published modules) so a runtime that
+ * never degraded could not make the comparison vacuously true.
+ *
+ * @param {Parameters<typeof createSupportPassportRealm>[0]} deps
+ */
+export function runPassportDegradedTemporalCell(deps) {
+  try {
+    const realm = createSupportPassportRealm({ ...deps, providerPresent: true });
+    const readRuntime = () => Array.from(realm.window.__TALARIA_DEGRADED_STATE.degradedModules);
+
+    const runtimeSeen = [];
+    const observed = [];
+    const clockMarks = [];
+    const observe = () => {
+      clockMarks.push(realm.clock.now());
+      runtimeSeen.push(readRuntime());
+      observed.push(hostArray(realm.buildSupportContext().degradedModules));
+    };
+
+    // Ticket filing is a post-load act; refuse GREEN if the realm stayed on "loading".
+    const readyStateAtTicket = realm.document.readyState;
+    observe();
+    for (const moduleId of TEMPORAL_DEGRADATION_SEQUENCE) {
+      // Advance wall clock between tickets so a warm-up-gated cache cannot hide.
+      realm.clock.advance(TEMPORAL_CLOCK_ADVANCE_MS);
+      realm.window.__talariaMarkMissingModule(moduleId);
+      observe();
+    }
+
+    // Non-vacuity: the first observation must be the empty one and the runtime must have
+    // published exactly one more module before each later call. Without this a runtime
+    // that degraded nothing would let a frozen passport agree with a frozen expectation.
+    const runtimeAdvanced = runtimeSeen.every((list, i) => list.length === i)
+      && TEMPORAL_DEGRADATION_SEQUENCE.every((id, i) => runtimeSeen[i + 1].includes(id));
+    const trackedRuntime = observed.every(
+      (list, i) => Array.isArray(list) && JSON.stringify(list) === JSON.stringify(runtimeSeen[i]),
+    );
+    // Stated separately from trackedRuntime so a memoised passport reports the reason it
+    // died rather than a generic mismatch.
+    const laterCallsSawNewModules = TEMPORAL_DEGRADATION_SEQUENCE.every(
+      (id, i) => Array.isArray(observed[i + 1]) && observed[i + 1].includes(id),
+    );
+    const clockAdvancedBetweenTickets = clockMarks.length === observed.length
+      && clockMarks.every((mark, i) => i === 0 || mark - clockMarks[i - 1] >= TEMPORAL_CLOCK_ADVANCE_MS);
+    const realmLooksLikePostLoad = readyStateAtTicket === 'complete';
+    const pass = runtimeAdvanced
+      && trackedRuntime
+      && laterCallsSawNewModules
+      && clockAdvancedBetweenTickets
+      && realmLooksLikePostLoad;
+
+    return cellResult('PASSPORT-DEGRADED-TEMPORAL-RECOMPUTE', pass, {
+      calls: observed.length,
+      runtimeSeen,
+      observed,
+      runtimeAdvanced,
+      trackedRuntime,
+      laterCallsSawNewModules,
+      readyStateAtTicket,
+      realmLooksLikePostLoad,
+      clockMarks,
+      clockAdvancedBetweenTickets,
+      clockAdvanceMs: TEMPORAL_CLOCK_ADVANCE_MS,
+    });
+  } catch (error) {
+    return redCell('PASSPORT-DEGRADED-TEMPORAL-RECOMPUTE', String(error?.message ?? error));
+  }
+}
+
+/**
+ * One alias, booted alone. The realm deletes the other two globals before supportUi is
+ * evaluated, so the real function has to consult *this* alias or come back empty. That
+ * turns each alias from a substring pin (which the prefix alias made unfalsifiable) into a
+ * behavioural fact; NC-ALIAS-DROP-* shows this cell is its sole detector.
+ *
+ * @param {Parameters<typeof createSupportPassportRealm>[0]} deps
+ * @param {(typeof SUPPORT_PASSPORT_ALIASES)[number]} alias
+ */
+export function runPassportDegradedAliasBootCell(deps, alias) {
+  try {
+    const realm = createSupportPassportRealm({
+      ...deps,
+      providerPresent: false,
+      aliasOnly: alias.global,
+    });
+    realm.window.__talariaMarkMissingModule('OrderOverlay');
+    const published = realm.window[alias.global];
+    const runtimeModules = Array.from(published.degradedModules);
+    const passportModules = realm.buildSupportContext().degradedModules;
+
+    const otherAliasesAbsent = SUPPORT_PASSPORT_ALIASES
+      .filter((other) => other.global !== alias.global)
+      .every((other) => realm.window[other.global] === undefined);
+    // Non-vacuity: an alias that published nothing proves nothing about reading it.
+    const runtimeDidDegrade = runtimeModules.length >= 2
+      && runtimeModules.includes('IndicatorPerf')
+      && runtimeModules.includes('OrderOverlay');
+    const pass = otherAliasesAbsent
+      && runtimeDidDegrade
+      && Array.isArray(passportModules)
+      && JSON.stringify(hostArray(passportModules)) === JSON.stringify(runtimeModules);
+
+    return cellResult(alias.cell, pass, {
+      alias: alias.id,
+      aliasGlobal: alias.global,
+      otherAliasesAbsent,
+      runtimeDidDegrade,
+      runtimeModules,
+      passportModules: hostArray(passportModules),
+    });
+  } catch (error) {
+    return redCell(alias.cell, String(error?.message ?? error));
+  }
+}
+
 /** Ids a hostile or legacy publisher might place on the shared global. */
 export const REJECTED_DEGRADED_ID_SAMPLES = ['<script>', '', 'a'.repeat(80), '9leading'];
 const OVERFLOW_VALID_ID_COUNT = MAX_PASSPORT_DEGRADED_MODULES + 9;
@@ -384,12 +556,18 @@ export function runBehavioralCells(deps) {
     runPassportDegradedKeyAlwaysCell(deps),
     runPassportDegradedRoundTripCell(deps),
     runPassportDegradedBoundingPropertiesCell(deps),
+    runPassportDegradedTemporalCell(deps),
+    ...SUPPORT_PASSPORT_ALIASES.map((alias) => runPassportDegradedAliasBootCell(deps, alias)),
   ];
 }
 
 /* ------------------------------------------------------------ *
  * Negative controls: behavioural mutants of the real product.  *
  * ------------------------------------------------------------ */
+
+const MEMOIZED_PASSPORT_HEADER =
+  'export function buildSupportContext(): Record<string, string | string[]> {';
+const MEMOIZED_PASSPORT_TAIL = '  return ctx;\n}';
 
 /**
  * Each mutant edits supportUi.tsx into a plausible regression and the whole behavioural
@@ -418,8 +596,8 @@ export const SUPPORT_PASSPORT_BEHAVIORAL_MUTANTS = [
     id: 'M3',
     name: 'NC-MUTANT-POST-ASSIGNMENT-CLEAR',
     describes: 'passport is rebuilt correctly and then cleared before it is returned',
-    apply: (src) => (src.includes('  return ctx;\n}')
-      ? src.replace('  return ctx;\n}', '  ctx.degradedModules = [];\n  return ctx;\n}')
+    apply: (src) => (src.includes(MEMOIZED_PASSPORT_TAIL)
+      ? src.replace(MEMOIZED_PASSPORT_TAIL, '  ctx.degradedModules = [];\n  return ctx;\n}')
       : null),
   },
   {
@@ -437,6 +615,47 @@ export const SUPPORT_PASSPORT_BEHAVIORAL_MUTANTS = [
     apply: (src) => (src.includes('))].slice(0, 32)')
       ? src.replace('))].slice(0, 32)', '))].slice(0, 32).join(",")')
       : null),
+  },
+  {
+    id: 'M6',
+    name: 'NC-MUTANT-MEMOIZED-PASSPORT',
+    describes:
+      'context cached at module scope once document.readyState === "complete" — the R-M6-3 '
+      + 'carrier that stayed GREEN while the realm was permanently "loading"',
+    apply: (src) => {
+      if (!src.includes(MEMOIZED_PASSPORT_HEADER) || !src.includes(MEMOIZED_PASSPORT_TAIL)) {
+        return null;
+      }
+      return src
+        .replace(
+          MEMOIZED_PASSPORT_HEADER,
+          'let __passportCache: Record<string, string | string[]> | null = null;\n'
+          + `${MEMOIZED_PASSPORT_HEADER}\n`
+          + '  if (__passportCache !== null && document.readyState === "complete") return __passportCache;',
+        )
+        .replace(MEMOIZED_PASSPORT_TAIL, '  __passportCache = ctx;\n  return ctx;\n}');
+    },
+  },
+  {
+    id: 'M7',
+    name: 'NC-MUTANT-MEMOIZED-AFTER-WARMUP',
+    describes:
+      'context cached after a 30s session warm-up (Date.now() - boot) — invisible when temporal '
+      + 'calls land within one millisecond of each other',
+    apply: (src) => {
+      if (!src.includes(MEMOIZED_PASSPORT_HEADER) || !src.includes(MEMOIZED_PASSPORT_TAIL)) {
+        return null;
+      }
+      return src
+        .replace(
+          MEMOIZED_PASSPORT_HEADER,
+          'const __passportBoot = Date.now();\n'
+          + 'let __passportCache: Record<string, string | string[]> | null = null;\n'
+          + `${MEMOIZED_PASSPORT_HEADER}\n`
+          + '  if (__passportCache !== null && Date.now() - __passportBoot > 30_000) return __passportCache;',
+        )
+        .replace(MEMOIZED_PASSPORT_TAIL, '  __passportCache = ctx;\n  return ctx;\n}');
+    },
   },
 ];
 
@@ -476,91 +695,435 @@ export function runBehavioralMutantCells(deps) {
   });
 }
 
-const ALIAS_PIN_LINE = '      window.__TALARIA_DEGRADED_STATE__ ??\n';
+/* --------------------------------------------------------------------- *
+ * Negative controls: one alias at a time removed from the real product. *
+ * --------------------------------------------------------------------- */
 
 /**
- * The alias pin is behaviourally invisible, so its negative control has to show two things
- * at once: dropping the alias goes RED on the pin, and stays GREEN everywhere else. That
- * asymmetry is the whole justification for keeping a source pin at all.
- * @param {Parameters<typeof createSupportPassportRealm>[0]} deps
+ * Matches the line on which supportUi.tsx reads one alias, with its optional trailing `??`.
+ * Anchoring on end-of-token is what makes the *canonical* alias falsifiable: as a bare
+ * substring `window.__TALARIA_DEGRADED_STATE` is a prefix of `..._STATE__` and could never
+ * go missing, which is the unfalsifiable pin R-M6-2 rejected.
  */
-export function runNcAliasPinCell(deps) {
-  if (!deps.supportUiSource.includes(ALIAS_PIN_LINE)) {
-    return {
-      cell: 'NC-ALIAS-PIN-REMOVAL',
-      coverage: 'wiring',
-      ver: 'VER-01',
-      status: 'RED',
-      pass: false,
-      reason: 'alias line not found in supportUi.tsx — mutation could not be applied',
-      signature: TALARIA_SUPPORT_PASSPORT_DEGRADED_V1,
-    };
-  }
-  const mutated = deps.supportUiSource.replace(ALIAS_PIN_LINE, '');
-  const base = assertSupportUiDegradedSourceContract(deps.supportUiSource);
-  const pinned = assertSupportUiDegradedSourceContract(mutated);
-  let behaviourUnchanged = false;
-  let behaviourError = null;
-  try {
-    behaviourUnchanged = runBehavioralCells({ ...deps, supportUiSource: mutated })
-      .every((c) => c.pass === true);
-  } catch (error) {
-    behaviourError = String(error?.message ?? error);
-  }
-  const pass = base.pass === true && pinned.pass === false && behaviourUnchanged;
-  return {
-    cell: 'NC-ALIAS-PIN-REMOVAL',
-    coverage: 'wiring',
-    ver: 'VER-01',
-    status: pass ? 'GREEN' : 'RED',
-    pass,
-    baseStatus: base.status,
-    mutatedStatus: pinned.status,
-    missingTokens: pinned.missingTokens,
-    behaviourUnchanged,
-    behaviourError,
-    signature: TALARIA_SUPPORT_PASSPORT_DEGRADED_V1,
-  };
+function aliasLinePattern(globalName) {
+  return new RegExp(`^[ \\t]*window\\.${escapeRegExp(globalName)}[ \\t]*(?:\\?\\?)?[ \\t]*\\n`, 'gm');
+}
+
+export function countAliasLines(source, globalName) {
+  return [...source.matchAll(aliasLinePattern(globalName))].length;
 }
 
 /**
- * A pin that a comment can satisfy is not a pin. Re-adds the deleted alias as prose and as
- * a string literal; the contract must stay RED for both.
+ * Removes exactly one alias from the read in supportUi.tsx. Dropping the last alias in the
+ * chain has to take the preceding `??` with it, or the edit is a syntax error rather than a
+ * regression. Returns null when the target is not uniquely present, so a mutation that
+ * cannot be aimed reports RED instead of a false kill.
+ *
+ * @param {string} source
+ * @param {number} index index into SUPPORT_PASSPORT_ALIASES
+ * @returns {string | null}
+ */
+export function dropAliasFromSupportUi(source, index) {
+  const alias = SUPPORT_PASSPORT_ALIASES[index];
+  if (!alias || countAliasLines(source, alias.global) !== 1) return null;
+  const withoutAlias = source.replace(aliasLinePattern(alias.global), '');
+  if (index !== SUPPORT_PASSPORT_ALIASES.length - 1) return withoutAlias;
+
+  const previous = SUPPORT_PASSPORT_ALIASES[index - 1];
+  if (!previous || countAliasLines(withoutAlias, previous.global) !== 1) return null;
+  return withoutAlias.replace(
+    aliasLinePattern(previous.global),
+    (line) => line.replace(/[ \t]*\?\?[ \t]*\n$/, '\n'),
+  );
+}
+
+/**
+ * For each alias: delete it from the real product source and require that its own boot cell
+ * is the *only* thing that notices. RED-everywhere would mean the cells are not separating
+ * the aliases; GREEN-everywhere would mean the alias is decoration. This asymmetry is what
+ * the deleted source pins used to claim and could not prove.
+ *
  * @param {Parameters<typeof createSupportPassportRealm>[0]} deps
  */
-export function runNcCommentDoesNotSatisfyPinCell(deps) {
-  if (!deps.supportUiSource.includes(ALIAS_PIN_LINE)) {
-    return {
-      cell: 'NC-COMMENT-DOES-NOT-SATISFY-PIN',
-      coverage: 'wiring',
-      ver: 'VER-01',
-      status: 'RED',
-      pass: false,
-      reason: 'alias line not found in supportUi.tsx — mutation could not be applied',
-      signature: TALARIA_SUPPORT_PASSPORT_DEGRADED_V1,
-    };
+export function runNcAliasDropCells(deps) {
+  return SUPPORT_PASSPORT_ALIASES.map((alias, index) => {
+    const cell = `NC-ALIAS-DROP-${alias.id.toUpperCase()}`;
+    const mutated = dropAliasFromSupportUi(deps.supportUiSource, index);
+    if (mutated === null || mutated === deps.supportUiSource) {
+      return redCell(
+        cell,
+        `window.${alias.global} is not uniquely present in supportUi.tsx — the alias drop `
+        + 'could not be aimed, so its detector is unproven',
+        'wiring',
+      );
+    }
+    let cells;
+    try {
+      cells = runBehavioralCells({ ...deps, supportUiSource: mutated });
+    } catch (error) {
+      return redCell(cell, String(error?.message ?? error), 'wiring');
+    }
+    const target = cells.find((c) => c.cell === alias.cell);
+    const others = cells.filter((c) => c.cell !== alias.cell);
+    const detectorWentRed = target?.pass === false;
+    const collateral = others.filter((c) => c.pass !== true).map((c) => c.cell);
+    const pass = detectorWentRed && collateral.length === 0;
+    return cellResult(cell, pass, {
+      alias: alias.id,
+      aliasGlobal: alias.global,
+      detectorCell: alias.cell,
+      detectorWentRed,
+      collateralRedCells: collateral,
+    }, 'wiring');
+  });
+}
+
+/* ------------------------------------------------------------------ *
+ * Consumer wiring: the passport has to be on a real send path.       *
+ * ------------------------------------------------------------------ */
+
+function calleeName(ts, expression) {
+  if (ts.isIdentifier(expression)) return expression.text;
+  if (ts.isPropertyAccessExpression(expression)) return expression.name.text;
+  return null;
+}
+
+/**
+ * Name of the nearest function/arrow binding that encloses `node`, or null when the call
+ * sits at module or component-body scope (including inside a useMemo callback whose
+ * binding is anonymous).
+ * @param {any} ts
+ * @param {any} node
+ */
+export function enclosingFunctionBindingName(ts, node) {
+  let cur = node.parent;
+  while (cur) {
+    if ((ts.isFunctionDeclaration(cur) || ts.isMethodDeclaration(cur))
+      && cur.name && ts.isIdentifier(cur.name)) {
+      return cur.name.text;
+    }
+    if (ts.isFunctionExpression(cur) && cur.name && ts.isIdentifier(cur.name)) {
+      return cur.name.text;
+    }
+    if (ts.isArrowFunction(cur) || ts.isFunctionExpression(cur)) {
+      const parent = cur.parent;
+      if (parent && ts.isVariableDeclaration(parent) && ts.isIdentifier(parent.name)) {
+        return parent.name.text;
+      }
+      if (parent && ts.isPropertyAssignment(parent) && ts.isIdentifier(parent.name)) {
+        return parent.name.text;
+      }
+    }
+    cur = cur.parent;
   }
-  const stripped = deps.supportUiSource.replace(ALIAS_PIN_LINE, '');
-  const asLineComment = `// window.__TALARIA_DEGRADED_STATE__ still read here\n${stripped}`;
-  const asBlockComment = `/* window.__TALARIA_DEGRADED_STATE__ */\n${stripped}`;
-  const asStringLiteral = `${stripped}\nconst alias = "window.__TALARIA_DEGRADED_STATE__";\n`;
-  const decoys = {
-    lineComment: assertSupportUiDegradedSourceContract(asLineComment).pass,
-    blockComment: assertSupportUiDegradedSourceContract(asBlockComment).pass,
-    stringLiteral: assertSupportUiDegradedSourceContract(asStringLiteral).pass,
+  return null;
+}
+
+/**
+ * True when `node` is nested under a `useMemo(...)` call — the R-M6-3 hoist that freezes
+ * the passport at mount while leaving a CallExpression in the file.
+ * @param {any} ts
+ * @param {any} node
+ */
+export function isInsideUseMemoCall(ts, node) {
+  let cur = node.parent;
+  while (cur) {
+    if (ts.isCallExpression(cur) && calleeName(ts, cur.expression) === 'useMemo') return true;
+    cur = cur.parent;
+  }
+  return false;
+}
+
+/**
+ * Counts real call sites of `buildSupportContext` by walking the TypeScript AST. A pin on
+ * the AST cannot be paid by a comment, a string, a template literal, a regex literal or
+ * JSX text, because none of those parse to a CallExpression — the decoy classes that a
+ * substring scanner has to chase are structurally excluded here, and
+ * NC-CONSUMER-PIN-DECOYS demonstrates it rather than asserting it.
+ *
+ * W43: a call that merely exists in the file is not enough. The passport must be invoked
+ * from the submit handler (`createThread`) and must not sit inside `useMemo`, or every
+ * later ticket from that mount carries the first ticket's snapshot.
+ *
+ * @param {{ typescript: any, relativePath: string, source: string }} opts
+ */
+export function inspectConsumerCallPath({ typescript: ts, relativePath, source }) {
+  const sourceFile = ts.createSourceFile(
+    relativePath,
+    source,
+    ts.ScriptTarget.ES2022,
+    true,
+    ts.ScriptKind.TSX,
+  );
+  const callSites = [];
+  let importsFromSupportUi = false;
+
+  const visit = (node) => {
+    if (ts.isImportDeclaration(node) && ts.isStringLiteral(node.moduleSpecifier)
+      && /(^|\/)supportUi$/.test(node.moduleSpecifier.text)) {
+      const named = node.importClause?.namedBindings;
+      if (named && ts.isNamedImports(named)) {
+        importsFromSupportUi = named.elements.some(
+          (element) => element.name.text === SUPPORT_PASSPORT_CONSUMER_EXPORT,
+        );
+      }
+    }
+    if (ts.isCallExpression(node)) {
+      const name = calleeName(ts, node.expression);
+      if (name === SUPPORT_PASSPORT_CONSUMER_EXPORT) {
+        const enclosingFunction = enclosingFunctionBindingName(ts, node);
+        const insideUseMemo = isInsideUseMemoCall(ts, node);
+        const onSubmitHandler = SUPPORT_PASSPORT_SUBMIT_HANDLER_NAMES.includes(enclosingFunction)
+          && !insideUseMemo;
+        callSites.push({
+          line: sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile)).line + 1,
+          enclosingFunction,
+          insideUseMemo,
+          onSubmitHandler,
+        });
+      }
+    }
+    ts.forEachChild(node, visit);
   };
-  const pass = Object.values(decoys).every((satisfied) => satisfied === false);
+  ts.forEachChild(sourceFile, visit);
+
+  const callLines = callSites.map((site) => site.line);
+  const submitHandlerCallCount = callSites.filter((site) => site.onSubmitHandler).length;
+
   return {
-    cell: 'NC-COMMENT-DOES-NOT-SATISFY-PIN',
-    coverage: 'wiring',
-    ver: 'VER-01',
-    status: pass ? 'GREEN' : 'RED',
-    pass,
-    decoysThatSatisfiedThePin: Object.entries(decoys)
-      .filter(([, satisfied]) => satisfied === true)
-      .map(([kind]) => kind),
-    signature: TALARIA_SUPPORT_PASSPORT_DEGRADED_V1,
+    relativePath,
+    importsFromSupportUi,
+    callCount: callSites.length,
+    callLines,
+    callSites,
+    submitHandlerCallCount,
+    statements: sourceFile.statements.length,
+    parseErrors: (sourceFile.parseDiagnostics ?? []).length,
   };
+}
+
+function consumerSource(deps, consumer) {
+  const source = deps.consumerSources?.[consumer.relativePath];
+  return typeof source === 'string' ? normalizeLineEndings(source) : null;
+}
+
+/**
+ * The passport only matters if something sends it. Deleting the `buildSupportContext()`
+ * call from a consumer is an edit no behavioural cell can see — the extractor still works
+ * perfectly, and no support ticket carries a degraded module ever again.
+ *
+ * @param {Parameters<typeof createSupportPassportRealm>[0] & { consumerSources: Record<string, string> }} deps
+ */
+export function runConsumerCallPathCell(deps) {
+  const cell = 'SUPPORT-PASSPORT-CONSUMER-CALL-PATH';
+  try {
+    const consumers = SUPPORT_PASSPORT_CONSUMERS.map((consumer) => {
+      const source = consumerSource(deps, consumer);
+      if (source === null) {
+        return { id: consumer.id, relativePath: consumer.relativePath, readable: false, wired: false };
+      }
+      const facts = inspectConsumerCallPath({
+        typescript: deps.typescript,
+        relativePath: consumer.relativePath,
+        source,
+      });
+      return {
+        id: consumer.id,
+        readable: true,
+        wired: facts.importsFromSupportUi && facts.submitHandlerCallCount >= 1,
+        ...facts,
+      };
+    });
+    const pass = consumers.length > 0 && consumers.every((c) => c.wired);
+    return cellResult(cell, pass, {
+      consumers,
+      unwiredConsumers: consumers.filter((c) => !c.wired).map((c) => c.id),
+    }, 'wiring');
+  } catch (error) {
+    return redCell(cell, String(error?.message ?? error), 'wiring');
+  }
+}
+
+/** Deletes every call site while leaving the import in place — the realistic regression. */
+function deleteConsumerCall(source) {
+  const call = `${SUPPORT_PASSPORT_CONSUMER_EXPORT}()`;
+  return source.includes(call) ? source.split(call).join('{}') : null;
+}
+
+/**
+ * Hoists the passport into `React.useMemo(..., [])` at component body scope and replaces
+ * the submit-handler call with the frozen binding — the R-M6-3 carrier that left
+ * callCount === 1 while every later ticket carried the mount-time snapshot.
+ * @param {string} source
+ */
+export function hoistConsumerCallToUseMemo(source) {
+  if (!source.includes(`${SUPPORT_PASSPORT_CONSUMER_EXPORT}()`)) return null;
+  if (!source.includes('const createThread')) return null;
+  let next = source
+    .replace(/context:\s*buildSupportContext\(\)/g, 'context: supportContext')
+    .replace(/const ctx = buildSupportContext\(\);/g, 'const ctx = supportContext;');
+  if (next === source) return null;
+  if (next.includes('React.useMemo(() => buildSupportContext()')) return null;
+  next = next.replace(
+    /(\n\s*)const createThread = /,
+    `$1const supportContext = React.useMemo(() => ${SUPPORT_PASSPORT_CONSUMER_EXPORT}(), []);$1const createThread = `,
+  );
+  return next.includes('React.useMemo(() => buildSupportContext()') ? next : null;
+}
+
+/**
+ * @param {Parameters<typeof runConsumerCallPathCell>[0]} deps
+ */
+export function runNcConsumerCallDeletedCell(deps) {
+  const cell = 'NC-CONSUMER-CALL-DELETED';
+  try {
+    const results = SUPPORT_PASSPORT_CONSUMERS.map((consumer) => {
+      const source = consumerSource(deps, consumer);
+      if (source === null) {
+        return { id: consumer.id, applied: false, wentRed: false, reason: 'consumer source unreadable' };
+      }
+      const mutated = deleteConsumerCall(source);
+      if (mutated === null) {
+        return { id: consumer.id, applied: false, wentRed: false, reason: 'no call site to delete' };
+      }
+      const mutatedCell = runConsumerCallPathCell({
+        ...deps,
+        consumerSources: { ...deps.consumerSources, [consumer.relativePath]: mutated },
+      });
+      const facts = mutatedCell.consumers?.find((c) => c.id === consumer.id);
+      return {
+        id: consumer.id,
+        applied: true,
+        wentRed: mutatedCell.pass === false
+          && facts?.callCount === 0
+          && facts?.submitHandlerCallCount === 0,
+        // The import survives the edit: the pin must key on the call, not on the import.
+        importSurvived: facts?.importsFromSupportUi === true,
+      };
+    });
+    const pass = results.length > 0 && results.every((r) => r.applied && r.wentRed && r.importSurvived);
+    return cellResult(cell, pass, { results }, 'wiring');
+  } catch (error) {
+    return redCell(cell, String(error?.message ?? error), 'wiring');
+  }
+}
+
+/**
+ * @param {Parameters<typeof runConsumerCallPathCell>[0]} deps
+ */
+export function runNcConsumerCallHoistedUseMemoCell(deps) {
+  const cell = 'NC-CONSUMER-CALL-HOISTED-USEMEMO';
+  try {
+    const results = SUPPORT_PASSPORT_CONSUMERS.map((consumer) => {
+      const source = consumerSource(deps, consumer);
+      if (source === null) {
+        return { id: consumer.id, applied: false, wentRed: false, reason: 'consumer source unreadable' };
+      }
+      const mutated = hoistConsumerCallToUseMemo(source);
+      if (mutated === null) {
+        return { id: consumer.id, applied: false, wentRed: false, reason: 'hoist could not be applied' };
+      }
+      const baseline = inspectConsumerCallPath({
+        typescript: deps.typescript,
+        relativePath: consumer.relativePath,
+        source,
+      });
+      const facts = inspectConsumerCallPath({
+        typescript: deps.typescript,
+        relativePath: consumer.relativePath,
+        source: mutated,
+      });
+      const mutatedCell = runConsumerCallPathCell({
+        ...deps,
+        consumerSources: { ...deps.consumerSources, [consumer.relativePath]: mutated },
+      });
+      return {
+        id: consumer.id,
+        applied: true,
+        // The R-M6-3 hole: callCount stays ≥1, import intact, but the submit handler is gone.
+        callCountSurvived: facts.callCount >= 1,
+        importSurvived: facts.importsFromSupportUi === true,
+        submitHandlerLost: facts.submitHandlerCallCount === 0
+          && baseline.submitHandlerCallCount >= 1,
+        wentRed: mutatedCell.pass === false
+          && facts.submitHandlerCallCount === 0
+          && facts.callCount >= 1
+          && facts.importsFromSupportUi === true,
+      };
+    });
+    const pass = results.length > 0 && results.every(
+      (r) => r.applied && r.wentRed && r.callCountSurvived && r.importSurvived && r.submitHandlerLost,
+    );
+    return cellResult(cell, pass, { results }, 'wiring');
+  } catch (error) {
+    return redCell(cell, String(error?.message ?? error), 'wiring');
+  }
+}
+
+/**
+ * The decoy classes a substring pin has to survive, including the two R-M6-2 named: a
+ * regex literal and JSX text. Each is appended to the consumer twice — once to a source
+ * whose real call has been deleted (the decoy must not pay the pin) and once to the intact
+ * source (the file must still parse and the real call must still be found, so a decoy that
+ * broke parsing cannot masquerade as a decoy that was correctly ignored).
+ */
+export const CONSUMER_PIN_DECOYS = [
+  { kind: 'lineComment', snippet: `\n// ${SUPPORT_PASSPORT_CONSUMER_EXPORT}() is called here\n` },
+  { kind: 'blockComment', snippet: `\n/* ${SUPPORT_PASSPORT_CONSUMER_EXPORT}() */\n` },
+  { kind: 'stringLiteral', snippet: `\nexport const __decoyString = "${SUPPORT_PASSPORT_CONSUMER_EXPORT}()";\n` },
+  { kind: 'templateLiteral', snippet: `\nexport const __decoyTemplate = \`${SUPPORT_PASSPORT_CONSUMER_EXPORT}()\`;\n` },
+  { kind: 'regexLiteral', snippet: `\nexport const __decoyRegex = /${SUPPORT_PASSPORT_CONSUMER_EXPORT}\\(\\)/;\n` },
+  { kind: 'jsxText', snippet: `\nexport const __decoyJsx = <div>${SUPPORT_PASSPORT_CONSUMER_EXPORT}()</div>;\n` },
+];
+
+/**
+ * @param {Parameters<typeof runConsumerCallPathCell>[0]} deps
+ */
+export function runNcConsumerPinDecoysCell(deps) {
+  const cell = 'NC-CONSUMER-PIN-DECOYS';
+  try {
+    const results = [];
+    for (const consumer of SUPPORT_PASSPORT_CONSUMERS) {
+      const source = consumerSource(deps, consumer);
+      const callDeleted = source === null ? null : deleteConsumerCall(source);
+      if (source === null || callDeleted === null) {
+        results.push({ id: consumer.id, kind: 'all', ok: false, reason: 'decoy could not be applied' });
+        continue;
+      }
+      const baselineCalls = inspectConsumerCallPath({
+        typescript: deps.typescript,
+        relativePath: consumer.relativePath,
+        source,
+      }).callCount;
+      for (const decoy of CONSUMER_PIN_DECOYS) {
+        const paid = inspectConsumerCallPath({
+          typescript: deps.typescript,
+          relativePath: consumer.relativePath,
+          source: callDeleted + decoy.snippet,
+        }).callCount;
+        const stillParses = inspectConsumerCallPath({
+          typescript: deps.typescript,
+          relativePath: consumer.relativePath,
+          source: source + decoy.snippet,
+        }).callCount;
+        results.push({
+          id: consumer.id,
+          kind: decoy.kind,
+          decoyCallSites: paid,
+          intactCallSites: stillParses,
+          ok: paid === 0 && stillParses === baselineCalls && baselineCalls > 0,
+        });
+      }
+    }
+    const failures = results.filter((r) => !r.ok);
+    return cellResult(cell, failures.length === 0 && results.length > 0, {
+      decoysChecked: results.length,
+      decoysThatPaidThePin: failures.map((r) => `${r.id}:${r.kind}`),
+      results,
+    }, 'wiring');
+  } catch (error) {
+    return redCell(cell, String(error?.message ?? error), 'wiring');
+  }
 }
 
 /* ------------------------------------------------------------------ *
@@ -627,6 +1190,7 @@ export function probeServerContextCoercionFinding(apiServerSource) {
  *   runtimeSource: string,
  *   indicatorPerfSource: string,
  *   typescript: any,
+ *   consumerSources?: Record<string, string>,
  *   apiServerSource?: string | null,
  * }} opts
  */
@@ -652,13 +1216,16 @@ export function runSupportPassportDegradedGate(opts) {
     runtimeSource: normalizeLineEndings(opts.runtimeSource),
     indicatorPerfSource: normalizeLineEndings(opts.indicatorPerfSource),
     typescript: opts.typescript,
+    consumerSources: opts.consumerSources ?? {},
   };
   const cells = [
     ...runBehavioralCells(deps),
-    assertSupportUiDegradedSourceContract(deps.supportUiSource),
     ...runBehavioralMutantCells(deps),
-    runNcAliasPinCell(deps),
-    runNcCommentDoesNotSatisfyPinCell(deps),
+    ...runNcAliasDropCells(deps),
+    runConsumerCallPathCell(deps),
+    runNcConsumerCallDeletedCell(deps),
+    runNcConsumerCallHoistedUseMemoCell(deps),
+    runNcConsumerPinDecoysCell(deps),
     probeServerContextCoercionFinding(opts.apiServerSource ?? null),
   ];
   const blocking = cells.filter((c) => typeof c.pass === 'boolean');
@@ -692,11 +1259,24 @@ export function formatSupportPassportDegradedReport(report) {
     if (Array.isArray(c.killedBy) && c.killedBy.length > 0) {
       lines.push(`    killed by: ${c.killedBy.join(', ')}`);
     }
+    if (Array.isArray(c.survivedCells) && c.killedBy?.length === 1) {
+      lines.push(`    sole detector — survived: ${c.survivedCells.join(', ')}`);
+    }
+    if (c.detectorCell) {
+      lines.push(`    detector: ${c.detectorCell} (collateral: ${c.collateralRedCells?.join(', ') || 'none'})`);
+    }
+    if (Array.isArray(c.callLines)) lines.push(`    call sites: ${c.callLines.join(', ')}`);
+    if (Array.isArray(c.consumers)) {
+      for (const consumer of c.consumers) {
+        lines.push(`    ${consumer.relativePath}: calls=${consumer.callCount ?? 'unreadable'}`
+          + `${Array.isArray(consumer.callLines) && consumer.callLines.length ? ` @${consumer.callLines.join(',')}` : ''}`);
+      }
+    }
+    if (Array.isArray(c.decoysThatPaidThePin)) {
+      lines.push(`    decoys checked: ${c.decoysChecked}, paid the pin: ${c.decoysThatPaidThePin.join(', ') || 'none'}`);
+    }
     if (c.reason) lines.push(`    ${c.reason}`);
     if (c.location) lines.push(`    ${c.location} — ${c.consequence}`);
-    if (Array.isArray(c.missingTokens) && c.missingTokens.length > 0 && c.pass === false) {
-      lines.push(`    missing: ${c.missingTokens.join(', ')}`);
-    }
   }
   lines.push('');
   lines.push(`Summary: ${report.allPass ? 'GREEN' : 'RED'}`);
