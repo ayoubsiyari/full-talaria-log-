@@ -14,7 +14,8 @@ import { fileURLToPath } from 'node:url';
 const EV = 'talariaMcHostDataCommit';
 const M23_SWITCH = '__TALARIA_DISABLE_M23_HOST_COMMIT_TEARDOWN_V1';
 const M20_Q9_SWITCH = '__TALARIA_DISABLE_M20_Q9_MCDIAG_COUNTERS_V1';
-const Q9_FIELDS = ['replayTicks', 'fullResamples', 'incrementalResamples'];
+const Q9_DISABLED_FIELDS = ['replayTicks', 'fullResamples'];
+const Q9_LIVE_FIELDS = ['incrementalResamples'];
 
 function findRoot(start) {
   let cursor = path.resolve(start);
@@ -86,7 +87,7 @@ class FakeWindow {
 }
 `;
 
-function makePanel({ kill = false, source = SOURCE } = {}) {
+function makePanel({ kill = false, flagPresent = true, source = SOURCE } = {}) {
   const sandbox = {
     console: { log() {}, warn() {}, error() {}, table() {} },
     URLSearchParams,
@@ -98,7 +99,9 @@ function makePanel({ kill = false, source = SOURCE } = {}) {
     globalThis.__host = new FakeWindow('host');
     globalThis.window = new FakeWindow('panel');
     globalThis.window.parent = globalThis.__host;
-    globalThis.window.${M23_SWITCH} = ${kill ? 'true' : 'false'};
+    if (${flagPresent ? 'true' : 'false'}) {
+      globalThis.window.${M23_SWITCH} = ${kill ? 'true' : 'false'};
+    }
   `, sandbox);
   sandbox.document = {
     documentElement: {
@@ -149,7 +152,7 @@ function simulateFrameRemove(env, { persisted = false } = {}) {
   env.panel.dispatchEvent({ type: 'pagehide', persisted });
 }
 
-function makeDiagChart({ kill = false, source = SOURCE } = {}) {
+function makeDiagChart({ kill = false, flagPresent = true, source = SOURCE } = {}) {
   const sandbox = {
     console: { log() {}, warn() {}, error() {}, table() {} },
     URLSearchParams,
@@ -157,7 +160,10 @@ function makeDiagChart({ kill = false, source = SOURCE } = {}) {
   sandbox.globalThis = sandbox;
   vm.createContext(sandbox);
   vm.runInContext(`${helperBlock(source)}
-globalThis.window = { ${M20_Q9_SWITCH}: ${kill ? 'true' : 'false'} };
+globalThis.window = {};
+if (${flagPresent ? 'true' : 'false'}) {
+    globalThis.window.${M20_Q9_SWITCH} = ${kill ? 'true' : 'false'};
+}
 class McDiagChart {
     constructor() {
         this._mcDiag = {
@@ -229,6 +235,16 @@ test('R1 M23 default keeps current teardown behaviour active', () => {
   assert.equal(env.hostCount(), 0);
 });
 
+test('R1 M23 production default with absent flag behaves as flag-off', () => {
+  const env = makePanel({ flagPresent: false });
+  assert.equal(Object.prototype.hasOwnProperty.call(env.panel, M23_SWITCH), false);
+  assert.equal(env.hostCount(), 1);
+  assert.equal(env.pagehideCount(), 1);
+  simulateFrameRemove(env);
+  note('m23-absent-default-removes-host-listener', env.hostCount() === 0, `host=${env.hostCount()}`);
+  assert.equal(env.hostCount(), 0);
+});
+
 test('R1 M23 kill-switch restores prior permanent host listener exactly', () => {
   const env = makePanel({ kill: true });
   note('m23-kill-host-listener-installed', env.hostCount() === 1, `host=${env.hostCount()}`);
@@ -262,6 +278,18 @@ test('R1 M23 mid-session flip is read by teardown call, not stranded at install'
   assert.equal(env.chart.__commits.length, 1);
 });
 
+test('R1 M23 ON→OFF resumes teardown without a reload', () => {
+  const env = makePanel();
+  env.panel[M23_SWITCH] = true;
+  env.chart._removeFinerPanelSelfOwnerHostCommitListener();
+  assert.equal(env.hostCount(), 1, 'ON phase must preserve the prior permanent listener');
+
+  env.panel[M23_SWITCH] = false;
+  env.chart._removeFinerPanelSelfOwnerHostCommitListener();
+  note('m23-on-off-removes-after-off', env.hostCount() === 0, `host=${env.hostCount()}`);
+  assert.equal(env.hostCount(), 0);
+});
+
 test('R1 M20-Q9 default keeps current mcDiag counters active', () => {
   const env = makeDiagChart();
   const { chart } = env;
@@ -279,7 +307,21 @@ test('R1 M20-Q9 default keeps current mcDiag counters active', () => {
   assert.equal(chart._mcDiag.fullResamples, 1);
 });
 
-test('R1 M20-Q9 kill-switch installs no updateChartDataFast wrapper and reports disabled counters as null', () => {
+test('R1 M20-Q9 production default with absent flag behaves as flag-off', () => {
+  const env = makeDiagChart({ flagPresent: false });
+  const { chart } = env;
+  assert.equal(Object.prototype.hasOwnProperty.call(env.sandbox.window, M20_Q9_SWITCH), false);
+  chart._mcDiagWrapReplaySystem();
+  chart.replaySystem.updateChartData(false);
+  chart.replaySystem.updateChartDataFast();
+  chart._resampleDataFull([{ t: 1, o: 1, h: 1, l: 1, c: 1 }], '1m');
+  note('m20q9-absent-default-counts', chart._mcDiag.replayTicks === 2 && chart._mcDiag.fullResamples === 1,
+    `replayTicks=${chart._mcDiag.replayTicks} fullResamples=${chart._mcDiag.fullResamples}`);
+  assert.equal(chart._mcDiag.replayTicks, 2);
+  assert.equal(chart._mcDiag.fullResamples, 1);
+});
+
+test('R1 M20-Q9 kill-switch installs no updateChartDataFast wrapper and reports only switched counters as null', () => {
   const env = makeDiagChart({ kill: true });
   const { chart } = env;
   chart._mcDiagWrapReplaySystem();
@@ -291,18 +333,24 @@ test('R1 M20-Q9 kill-switch installs no updateChartDataFast wrapper and reports 
   chart.replaySystem.updateChartData(false);
   chart.replaySystem.updateChartDataFast();
   chart._resampleDataFull([{ t: 1, o: 1, h: 1, l: 1, c: 1 }], '1m');
+  chart._mcDiag.incrementalResamples++;
   assert.equal(chart._mcDiag.resamples, 1, 'legacy resamples counter remains prior behaviour');
   assert.equal(chart._mcDiag.replayTicks, 0);
   assert.equal(chart._mcDiag.fullResamples, 0);
+  assert.equal(chart._mcDiag.incrementalResamples, 1, 'unowned pipeline counter remains live');
 
   const row = env.snapshot();
-  for (const field of Q9_FIELDS) {
+  for (const field of Q9_DISABLED_FIELDS) {
     assert.equal(row[field], null, `${field} is null when the Q9 counter packet is disabled`);
   }
-  note('m20q9-kill-report-null-fields', true, Q9_FIELDS.map((field) => `${field}=${row[field]}`).join(', '));
+  for (const field of Q9_LIVE_FIELDS) {
+    assert.equal(row[field], chart._mcDiag[field], `${field} remains reported because it is still measured`);
+  }
+  note('m20q9-kill-report-honest-fields', true,
+    [...Q9_DISABLED_FIELDS, ...Q9_LIVE_FIELDS].map((field) => `${field}=${row[field]}`).join(', '));
 });
 
-test('R1 M20-Q9 mid-session flip disables per-call counters and removes the fast wrapper', () => {
+test('R1 M20-Q9 ON→OFF resumes fast-path counting without a reload', () => {
   const env = makeDiagChart();
   const { chart } = env;
   chart._mcDiagWrapReplaySystem();
@@ -318,18 +366,26 @@ test('R1 M20-Q9 mid-session flip disables per-call counters and removes the fast
 
   note('m20q9-mid-session-no-new-q9-counts', chart._mcDiag.replayTicks === 1 && chart._mcDiag.fullResamples === 0,
     `replayTicks=${chart._mcDiag.replayTicks} fullResamples=${chart._mcDiag.fullResamples}`);
-  note('m20q9-mid-session-fast-wrapper-removed', chart.replaySystem.updateChartDataFast === env.originalFast);
   assert.equal(chart._mcDiag.resamples, 1, 'legacy resamples counter still moves');
   assert.equal(chart._mcDiag.replayTicks, 1);
   assert.equal(chart._mcDiag.fullResamples, 0);
-  assert.equal(chart.replaySystem.updateChartDataFast, env.originalFast);
+  assert.notEqual(chart.replaySystem.updateChartDataFast, env.originalFast, 'mid-session disabled wrapper stays reversible');
 
   const row = env.snapshot();
-  for (const field of Q9_FIELDS) assert.equal(row[field], null);
+  for (const field of Q9_DISABLED_FIELDS) assert.equal(row[field], null);
+
+  env.setKill(false);
+  chart.replaySystem.updateChartDataFast();
+  chart._resampleDataFull([{ t: 2, o: 1, h: 1, l: 1, c: 1 }], '1m');
+  note('m20q9-on-off-fast-counting-resumes', chart._mcDiag.replayTicks === 2 && chart._mcDiag.fullResamples === 1,
+    `replayTicks=${chart._mcDiag.replayTicks} fullResamples=${chart._mcDiag.fullResamples}`);
+  assert.equal(chart._mcDiag.replayTicks, 2);
+  assert.equal(chart._mcDiag.fullResamples, 1);
+  assert.notEqual(chart.replaySystem.updateChartDataFast, env.originalFast);
 });
 
 function m23DefaultTeardownPass(source) {
-  const env = makePanel({ source });
+  const env = makePanel({ flagPresent: false, source });
   simulateFrameRemove(env);
   return env.hostCount() === 0;
 }
@@ -352,8 +408,18 @@ function m23MidFlipPass(source) {
   return env.hostCount() === 1 && env.chart.__commits.length === 1;
 }
 
+function m23OnOffPass(source) {
+  const env = makePanel({ source });
+  env.panel[M23_SWITCH] = true;
+  env.chart._removeFinerPanelSelfOwnerHostCommitListener();
+  if (env.hostCount() !== 1) return false;
+  env.panel[M23_SWITCH] = false;
+  env.chart._removeFinerPanelSelfOwnerHostCommitListener();
+  return env.hostCount() === 0;
+}
+
 function m20DefaultPass(source) {
-  const env = makeDiagChart({ source });
+  const env = makeDiagChart({ flagPresent: false, source });
   const { chart } = env;
   chart._mcDiagWrapReplaySystem();
   chart.replaySystem.updateChartData(false);
@@ -371,11 +437,14 @@ function m20KillPriorPass(source) {
   chart.replaySystem.updateChartData(false);
   chart.replaySystem.updateChartDataFast();
   chart._resampleDataFull([{ t: 1, o: 1, h: 1, l: 1, c: 1 }], '1m');
+  chart._mcDiag.incrementalResamples++;
   const row = env.snapshot();
   return chart.replaySystem.updateChartDataFast === env.originalFast
     && chart._mcDiag.replayTicks === 0
     && chart._mcDiag.fullResamples === 0
-    && Q9_FIELDS.every((field) => row[field] === null);
+    && chart._mcDiag.incrementalResamples === 1
+    && Q9_DISABLED_FIELDS.every((field) => row[field] === null)
+    && Q9_LIVE_FIELDS.every((field) => row[field] === 1);
 }
 
 function m20MidFlipPass(source) {
@@ -387,9 +456,13 @@ function m20MidFlipPass(source) {
   chart.replaySystem.updateChartData(false);
   chart.replaySystem.updateChartDataFast();
   chart._resampleDataFull([{ t: 1, o: 1, h: 1, l: 1, c: 1 }], '1m');
-  return chart.replaySystem.updateChartDataFast === env.originalFast
-    && chart._mcDiag.replayTicks === 1
-    && chart._mcDiag.fullResamples === 0;
+  if (chart._mcDiag.replayTicks !== 1 || chart._mcDiag.fullResamples !== 0) return false;
+  env.setKill(false);
+  chart.replaySystem.updateChartDataFast();
+  chart._resampleDataFull([{ t: 2, o: 1, h: 1, l: 1, c: 1 }], '1m');
+  return chart.replaySystem.updateChartDataFast !== env.originalFast
+    && chart._mcDiag.replayTicks === 2
+    && chart._mcDiag.fullResamples === 1;
 }
 
 function m23DeletedReadMutant() {
@@ -409,6 +482,16 @@ function m23InvertedReadMutant() {
     `&& window.${M23_SWITCH} !== true`,
     2,
     'M23 inverted read',
+  );
+}
+
+function m23InvertedDefaultingMutant() {
+  return replaceAllChecked(
+    SOURCE,
+    `&& window.${M23_SWITCH} === true`,
+    `&& window.${M23_SWITCH} !== false`,
+    2,
+    'M23 inverted defaulting read',
   );
 }
 
@@ -462,6 +545,26 @@ function m20InvertedReadMutant() {
   return replaceOneChecked(SOURCE, oldFn, newFn, 'M20-Q9 inverted read');
 }
 
+function m20InvertedDefaultingMutant() {
+  const oldFn = `function _talariaM20Q9McDiagCountersDisabled() {
+    try {
+        return typeof window !== 'undefined'
+            && window.${M20_Q9_SWITCH} === true;
+    } catch (_e) {
+        return false;
+    }
+}`;
+  const newFn = `function _talariaM20Q9McDiagCountersDisabled() {
+    try {
+        return typeof window === 'undefined'
+            || window.${M20_Q9_SWITCH} !== false;
+    } catch (_e) {
+        return true;
+    }
+}`;
+  return replaceOneChecked(SOURCE, oldFn, newFn, 'M20-Q9 inverted defaulting read');
+}
+
 function m20SampledOnceMutant() {
   const oldFn = `function _talariaM20Q9McDiagCountersDisabled() {
     try {
@@ -487,22 +590,25 @@ function _talariaM20Q9McDiagCountersDisabled() {
 
 test('R1 mutation guards: M23 flag read deleted, inverted, or sampled once is caught', () => {
   assert.equal(m23KillPriorPass(SOURCE), true, 'unmutated M23 kill oracle must pass before mutation score');
-  assert.equal(m23DefaultTeardownPass(SOURCE), true, 'unmutated M23 default oracle must pass before mutation score');
+  assert.equal(m23DefaultTeardownPass(SOURCE), true, 'unmutated M23 absent-default oracle must pass before mutation score');
   assert.equal(m23MidFlipPass(SOURCE), true, 'unmutated M23 mid-session oracle must pass before mutation score');
+  assert.equal(m23OnOffPass(SOURCE), true, 'unmutated M23 ON→OFF oracle must pass before mutation score');
 
   assert.equal(m23KillPriorPass(m23DeletedReadMutant()), false, 'deleted M23 read must fail kill oracle');
   assert.equal(m23DefaultTeardownPass(m23InvertedReadMutant()), false, 'inverted M23 read must fail default oracle');
+  assert.equal(m23DefaultTeardownPass(m23InvertedDefaultingMutant()), false, 'inverted-defaulting M23 read must fail absent-default oracle');
   assert.equal(m23MidFlipPass(m23SampledOnceMutant()), false, 'sampled-once M23 read must fail mid-session oracle');
-  note('m23-mutation-guards', true, 'deleted, inverted, sampled-once mutants rejected');
+  note('m23-mutation-guards', true, 'deleted, inverted, inverted-defaulting, sampled-once mutants rejected');
 });
 
 test('R1 mutation guards: M20-Q9 flag read deleted, inverted, or sampled once is caught', () => {
   assert.equal(m20KillPriorPass(SOURCE), true, 'unmutated M20-Q9 kill oracle must pass before mutation score');
-  assert.equal(m20DefaultPass(SOURCE), true, 'unmutated M20-Q9 default oracle must pass before mutation score');
-  assert.equal(m20MidFlipPass(SOURCE), true, 'unmutated M20-Q9 mid-session oracle must pass before mutation score');
+  assert.equal(m20DefaultPass(SOURCE), true, 'unmutated M20-Q9 absent-default oracle must pass before mutation score');
+  assert.equal(m20MidFlipPass(SOURCE), true, 'unmutated M20-Q9 ON→OFF oracle must pass before mutation score');
 
   assert.equal(m20KillPriorPass(m20DeletedReadMutant()), false, 'deleted M20-Q9 read must fail kill oracle');
   assert.equal(m20DefaultPass(m20InvertedReadMutant()), false, 'inverted M20-Q9 read must fail default oracle');
-  assert.equal(m20MidFlipPass(m20SampledOnceMutant()), false, 'sampled-once M20-Q9 read must fail mid-session oracle');
-  note('m20q9-mutation-guards', true, 'deleted, inverted, sampled-once mutants rejected');
+  assert.equal(m20DefaultPass(m20InvertedDefaultingMutant()), false, 'inverted-defaulting M20-Q9 read must fail absent-default oracle');
+  assert.equal(m20MidFlipPass(m20SampledOnceMutant()), false, 'sampled-once M20-Q9 read must fail ON→OFF oracle');
+  note('m20q9-mutation-guards', true, 'deleted, inverted, inverted-defaulting, sampled-once mutants rejected');
 });

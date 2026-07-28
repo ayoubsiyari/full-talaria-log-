@@ -824,7 +824,6 @@ const MC_DIAG_COUNTER_FIELDS = [
 const M20_Q9_MCDIAG_COUNTER_FIELDS = new Set([
     'replayTicks',
     'fullResamples',
-    'incrementalResamples',
 ]);
 
 function _talariaM20Q9McDiagCountersDisabled() {
@@ -2660,11 +2659,9 @@ class Chart {
         if (!_talariaM20Q9McDiagCountersDisabled() && typeof replay.updateChartDataFast === 'function') {
             const originalUpdateChartDataFast = replay.updateChartDataFast;
             replay.updateChartDataFast = function mcDiagUpdateChartDataFastWrapper(...args) {
-                if (_talariaM20Q9McDiagCountersDisabled()) {
-                    replay.updateChartDataFast = originalUpdateChartDataFast;
-                    return originalUpdateChartDataFast.apply(this, args);
+                if (!_talariaM20Q9McDiagCountersDisabled()) {
+                    chart._mcDiag && chart._mcDiag.replayTicks++;
                 }
-                chart._mcDiag && chart._mcDiag.replayTicks++;
                 return originalUpdateChartDataFast.apply(this, args);
             };
         }
