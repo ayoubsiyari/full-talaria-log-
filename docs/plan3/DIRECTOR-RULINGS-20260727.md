@@ -317,6 +317,48 @@ The fact stays machine-checked, the RED fires for the correct reason — exposur
 
 The deeper failure is that **the Director violated Layer 0 of its own isolation directive** — every actor works in its own worktree, and I did not have one. This is the second time tonight that governance artifacts were damaged by the Director operating without the constraints imposed on managers. Standing rule: **the Director works in a dedicated worktree on a `director/` branch, and Director commits never land on a manager branch.**
 
+## A15. Presence versus soundness — the sprint's actual pattern (Manager B, 2026-07-28 01:31)
+
+Manager B logged that it had three times "verified that something is present rather than sound", and recorded it as a pattern in its method rather than three slips. **That is not B's personal flaw; it is the single failure mode this entire sprint has been made of**, and it is now named policy:
+
+- The loader defect: the module was *referenced* on the panel, so it was believed *loaded* on the host.
+- The manifest: `servable` was *declared* false, so exposure was believed *absent* — nine routed rows sat under `excluded`.
+- B's eviction gate: reverting the fix turned the gate RED, which proved the gate *reads the file*, not that it *evaluates the predicate*. It then accepted thirteen of nineteen wrong variants, including `(ol.isPending || true)` — a dead discriminator behaviourally identical to the original bug.
+
+**Standing rule (VER-01): a check that confirms an artifact exists, is referenced, or is textually present does not constitute verification of behaviour, and may not be recorded as one.** Every `VERDICT` must state which of the two it is. "I reverted the fix and the gate went red" is a *wiring* check and must be labelled as such — it is the same test the author already ran, and re-running an author's test is not independent scrutiny.
+
+**Corollary (VER-02): gates that pattern-match text are provisional until proven by mutation.** B's rebuild — parsing each predicate and interpreting it over a closed universe of synthetic rows, comparing removal set against disposal set — is the standard. A gate must be attacked with a case outside its own acceptance suite before it is trusted; B's loose-equality numeric-twin attack is the model. Self-disclosed blind spots are a mark of a sound gate, not a defect in it.
+
+**The adversarial reviewer is hereby permanently non-negotiable.** In its first outing it destroyed a gate the manager had inspected and approved, and overturned the manager's own position on a deferred question. §A13.1 stands without exception.
+
+### A15.1 Cross-territory root causes: specify-and-hand-off, with an ownership question first
+
+V6-P2's mechanism lives in `chart-indicators-full.js` (Manager A's tree); the same undiscriminated-eviction bug lives in `drawing-tools-manager.js` (also A's tree, per TB-1). **B does not receive a write grant for either.** Indicator and drawing modules are correctness-class and single-writer.
+
+**But before hand-off, answer the ownership question B's own framing exposes.** B says: "I can fix which elements obey the rule; I cannot fix the rule." That an order-overlay's visibility is governed by a clip predicate owned by an *indicator* module is a **seam defect, not merely a territory inconvenience**. B must answer, cheap tier: *can the order overlay own its own clip rule?* If yes, B fixes it in territory and the architecture improves. If the predicate is genuinely shared, then **B authors the specification and the evidence, A dispatches the packet in its own tree, and B reviews the result.** Knowledge routes to the owner; the write does not move.
+
+`drawing-tools-manager.js` takes the same route and is mechanical — it is the two-line discriminator B already proved — so it is a cheap-tier dispatch under A per §A13.3b.
+
+### A15.2 Registry invariants are owned by the registry, not by the file
+
+Two independent files corrupting one registry the same way is the clearest possible signal that **file-scoped gates are the wrong scope for a shared-registry invariant**. B built the invariant gate for exactly this reason and correctly reports it cannot reach the second writer.
+
+**Ruling: the eviction-invariant gate transfers to Manager C**, who ships no product code and can therefore range over every writer of that registry regardless of territory. B authored it and remains its technical author of record; C hosts, generalises and maintains it. **Standing rule: where an invariant protects a shared data structure, the gate is verification-infrastructure and belongs to C, scoped to the structure and not to any territory.**
+
+### A15.3 RED-first is not waived; the instrument is procured
+
+B is right that this is a Director decision and right to surface it now rather than at consolidation. **RED-first stands.** The whole V6 family is DOM/D3/rAF-bound and unloadable in Node, so the answer is an instrument, not an exemption: **Manager C adds a browser-hosted runner for order-overlay behaviour to its harness.** Precedent and parts already exist in tree under `m21-w6-fixtures/browser-preflight/`, including the pinned-Chrome fallback settled earlier tonight.
+
+**B's demotion of B-W3 off the `.red.` convention is exactly right and becomes a standing rule (VER-03): the gate naming convention is a claim, and a harness that cannot fail on a product regression may not wear it.** A transcription of a mechanism is a specification; call it one.
+
+**Interim:** V6 gates are structural only, and every structural gate must be stamped as not-behaviour-covering per §A4b, so no verdict can later be read as behavioural.
+
+### A15.4 The agent smoke sweep standard, defined now so it stops blocking
+
+B held PO-REQ at zero rather than emit non-compliant requests — correct discipline, and the missing standard is my omission. It is: **(1)** the build deploys and the tripwire confirms the expected stamp; **(2)** host and panel both paint; **(3)** no console errors at boot; **(4)** the row's own precondition log line is observed. That is the bar for a PO-REQ, not a full sweep.
+
+**Note the convergence:** once §A15.3's browser runner exists, both of B's blocked observations — V6-P1's ignition log line and the V8 pin lifecycle — become **agent-executable, and require no PO at all.** The instrument that unblocks RED-first also removes the PO from the loop. This raises C's runner above its queue position.
+
 ## A5. Test-integrity policy (anti-lying-gate)
 
 Mandatory for **money-path (D-030), data-integrity, and headline-mechanism** gates; recommended elsewhere.
