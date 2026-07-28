@@ -45,7 +45,10 @@ function makeTree(buildId) {
   ].join('\n');
   const engine = `const CHART_ENGINE_BUILD = '${buildId}';\n`;
   const sw = `const SW_VERSION = "talaria-chart-${buildId}";\n`;
-  const legacy = `<script src="/chart/chart.js?v=${buildId}"></script>\n`;
+  const legacy = [
+    `<script>window.__TALARIA_CHART_BUILD_ID='${buildId}'</script>`,
+    `<script src="/chart/chart.js?v=${buildId}"></script>`,
+  ].join('\n');
   const harness = `const buildId = '${buildId}';\n`;
   const module = 'export const fixture = true;\n';
 

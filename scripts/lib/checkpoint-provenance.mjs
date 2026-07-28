@@ -549,10 +549,19 @@ export function verifyTreeLayout({
   }
 
   for (const [filePath, label] of [
-    [path.join(chartRoot, 'legacy-index.html'), 'canonical legacy cache ids'],
-    [path.join(homepageChartRoot, 'legacy-index.html'), 'homepage legacy cache ids'],
+    [path.join(chartRoot, 'legacy-index.html'), 'canonical legacy'],
+    [path.join(homepageChartRoot, 'legacy-index.html'), 'homepage legacy'],
   ]) {
-    matchAllCacheIds(checks, failures, filePath, label, expectedBuildId);
+    if (!fs.existsSync(filePath)) continue;
+    matchOne(
+      checks,
+      failures,
+      filePath,
+      `${label} window build`,
+      /window\.__TALARIA_CHART_BUILD_ID\s*=\s*['"]([^'"]+)['"]/,
+      expectedBuildId,
+    );
+    matchAllCacheIds(checks, failures, filePath, `${label} cache ids`, expectedBuildId);
   }
 
   for (const [canonicalName, homepageName] of MIRROR_DIRECTORIES) {

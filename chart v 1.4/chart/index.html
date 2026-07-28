@@ -7,7 +7,7 @@
        rewrites the id below via bump-dist-v9-cache / CHECKPOINT_BUILD so a
        served /chart/index.html is always attributable, even on the fallback path.
        When dist-v9 exists, api_server serves that file for this URL instead. -->
-  <script>window.__TALARIA_CHART_BUILD_ID='20260728b81';</script>
+  <script>window.__TALARIA_CHART_BUILD_ID='20260728b81';try{console.info('[Talaria] chart build',window.__TALARIA_CHART_BUILD_ID);}catch(_){}</script>
   <meta name="talaria-chart-build-id" content="20260728b81" />
   <title>Chart entry — read me</title>
   <style>
@@ -20,6 +20,8 @@
   </style>
 </head>
 <body>
+  <div id="talaria-build-badge" aria-label="chart build id" style="position:fixed;bottom:4px;left:4px;font:11px ui-monospace,monospace;color:rgba(232,234,237,.55)"></div>
+  <script>(function(){try{var el=document.getElementById('talaria-build-badge');var id=window.__TALARIA_CHART_BUILD_ID;if(el&&id)el.textContent='build '+id;}catch(_){}})();</script>
   <h1>This file is not the live Talaria UI</h1>
   <p>
     <strong>Production / default <code>/chart/index.html</code></strong> is served from

@@ -2905,3 +2905,15 @@ Blocked on A's render kill-switch for the train — not idle. Four streams that 
 ## B-0132 — Live-surface probe finished: --deploy-gate gives DEPLOY-01 teeth.
 
 [Harden live-surface probe](38506c78-12ec-4097-bb63-cb39b12cc07a) landed. Fourth of the four parallel streams. Inert `?v=` dual-fetch reported separately (`stampInert`); default shells include `talaria-design/live`; `--deploy-gate` requires markers PRESENT + coherent 200-shells + effective stamps (307/404 ignored); exit 2 for deploy hazards. 31/0 tests, 10/0 mutants, VER-04 both halves. Post-push: `--deploy-gate --base-url=<host>`.
+
+---
+
+## B-0133 — DISPATCH attribution-first. Items 4+5 already done. Item 1 delivered: PO-readable build id on every servable shell.
+
+**Skip (done):** item 4 FIX3 delivery path (`FIX3-REPLAY-SYSTEM-DELIVERY-PATH.md`). item 5 B-3 (`41/0`, SAFE-01 ordered).
+
+**Item 1.** Every servable shell now carries `window.__TALARIA_CHART_BUILD_ID`, logs `[Talaria] chart build <id>`, and shows a bottom-left `build <id>` badge. Covered: dist-v9 (what authenticated `/chart/index.html` serves), live source, legacy (was stamp-only), embed, stub. PO one-action: look at the corner, or paste `window.__TALARIA_CHART_BUILD_ID`. Doc: `PO-BUILD-ATTRIBUTION.md`. Bump rewrites legacy window id; provenance requires it when legacy exists (12/12).
+
+**Item 3.** A's render kill-switch still not on tips checked 17:59 — train still waits on A.
+
+**Items 2+charter enumeration** in parallel (docs stream).

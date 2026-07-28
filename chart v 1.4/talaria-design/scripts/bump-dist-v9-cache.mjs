@@ -130,7 +130,11 @@ function bumpLegacyIndexHtml(filePath, buildId) {
   if (!fs.existsSync(filePath) || !buildId) return 0;
   const before = fs.readFileSync(filePath, "utf8");
   const stampLinks = process.env.CHECKPOINT_BUILD === "1";
-  const after = stampLegacyHtml(before, buildId, { stampLinks });
+  let after = stampLegacyHtml(before, buildId, { stampLinks });
+  // DEPLOY-01: legacy now carries window.__TALARIA_CHART_BUILD_ID for PO attribution.
+  if (/window\.__TALARIA_CHART_BUILD_ID\s*=/.test(after)) {
+    after = after.replace(WINDOW_BUILD_ID_RE, `window.__TALARIA_CHART_BUILD_ID='${buildId}'`);
+  }
   if (after === before) return 0;
   fs.writeFileSync(filePath, after, "utf8");
   console.log("[bump-dist-v9-cache] Set ?v=" + buildId + " on legacy-index scripts in", filePath);
@@ -153,7 +157,7 @@ function bumpChartIndexStub(buildId) {
   } else {
     after = after.replace(
       /<head>/i,
-      `<head>\n  <script>window.__TALARIA_CHART_BUILD_ID='${buildId}';</script>`,
+      `<head>\n  <script>window.__TALARIA_CHART_BUILD_ID='${buildId}';try{console.info('[Talaria] chart build',window.__TALARIA_CHART_BUILD_ID);}catch(_){}</script>`,
     );
   }
   after = after.replace(
