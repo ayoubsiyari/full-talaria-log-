@@ -1,13 +1,25 @@
 /**
  * B-M6 SL/TP entry-drag follow — BEHAVIOURAL SPECIFICATION, **NOT** A REGRESSION GATE.
  *
- * This file executes a labelled transcription of the drag mechanism (see
- * sourceNote() below), not live order-manager.js code. It therefore cannot
- * detect a product regression: order-manager.js can change arbitrarily while
- * every cell here still passes. Treat it as an executable description of the
- * intended behaviour and as a design reference only. Do not cite it as
- * evidence that the product behaviour is preserved, and do not wire it into
- * any gate suite. It was previously named `*.red.mjs`, which misrepresented it.
+ * ============================================================================
+ * §A15.3 NOT-BEHAVIOUR-COVERING STAMP  (behavioural spec — not a gate)
+ * ============================================================================
+ *
+ * COVERAGE: behavioural specification only. This file executes a labelled
+ * transcription of the drag mechanism (see sourceNote() below), not live
+ * order-manager.js code. It does NOT execute product code, does NOT run a
+ * browser, and provides NO evidence about on-screen behaviour in the product.
+ *
+ * SURFACE: harness only. Not verified on host, not verified on panel.
+ *
+ * This artefact is a behavioural SPECIFICATION, not a gate. It cannot fail on
+ * a product regression: order-manager.js can change arbitrarily while every
+ * cell here still passes. It must never be cited as verification evidence.
+ * Per §A15.3 / VER-03 it does not wear the `.red.` convention (formerly
+ * `*.red.mjs`, which misrepresented its role).
+ *
+ * Treat it as an executable description of intended behaviour and as a design
+ * reference only. Do not wire it into any gate suite.
  */
 
 import assert from 'node:assert/strict';

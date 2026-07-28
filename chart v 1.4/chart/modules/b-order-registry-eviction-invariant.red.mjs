@@ -2,6 +2,29 @@
  * B-OREI — order-line registry eviction gate.
  *
  * ============================================================================
+ * §A15.3 NOT-BEHAVIOUR-COVERING STAMP  (structural gate — read before citing)
+ * ============================================================================
+ *
+ * COVERAGE: structural / source-text only. This gate parses and interprets
+ * eviction predicates over a closed universe of synthetic row objects. It does
+ * NOT execute product code, does NOT run a browser, and provides NO evidence
+ * about on-screen behaviour.
+ *
+ * SURFACE: harness only. Not verified on host, not verified on panel.
+ *
+ * What a GREEN result licenses: every inventoried eviction site in the scoped
+ * source file removes exactly the rows it disposes, under the modelled universe
+ * and restricted grammar described below.
+ *
+ * What a GREEN result does NOT license: order lines appearing, persisting, or
+ * disappearing correctly for a user; registry-wide safety across files or
+ * mutation grammars; or correctness of disposal side-effects in the DOM.
+ *
+ * The known blind spots named in this artefact (G-numbers) remain in force and
+ * must be read together with this stamp. A green verdict here is not behavioural
+ * verification.
+ *
+ * ============================================================================
  * WHAT THIS GATE ACTUALLY PROVES  (read this before citing it as evidence)
  * ============================================================================
  *
