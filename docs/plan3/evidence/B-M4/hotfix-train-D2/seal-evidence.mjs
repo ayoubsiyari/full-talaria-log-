@@ -220,14 +220,28 @@ if (cmd === 'record-build') {
         console.error('Rebuild with --build-arg CHART_BUILD_ID set ahead of the floor.');
         process.exit(2);
     }
+    // An image digest cannot exist unless an image was built, so requiring it makes
+    // record-build unable to certify a build that never happened. Found by running
+    // my own negative controls: the positive case wrote a real BUILD-RECORD.json
+    // while no build existed, which is the DEPLOY-01 lie this train exists to stop.
+    const chartDigest = arg('chart-digest');
+    const homepageDigest = arg('homepage-digest');
+    if (!chartDigest || !homepageDigest) {
+        console.error('REFUSED: record-build requires --chart-digest= and --homepage-digest=.');
+        console.error('A digest cannot exist without a built image; without them this would');
+        console.error('record a build id for a build that never happened.');
+        console.error('  docker image inspect --format \'{{index .RepoDigests 0}}\' <image>');
+        process.exit(2);
+    }
+
     const rec = {
         recordedAtUtc: new Date().toISOString(),
         buildId,
         sourceCommitSha: fs.existsSync(MANIFEST)
             ? JSON.parse(fs.readFileSync(MANIFEST, 'utf8')).sourceCommitSha
             : git('rev-parse', 'HEAD'),
-        tradingChartImageDigest: arg('chart-digest'),
-        homepageImageDigest: arg('homepage-digest'),
+        tradingChartImageDigest: chartDigest,
+        homepageImageDigest: homepageDigest,
         note: 'DEPLOY-01: written once, immutable. Also recorded in journal/MANAGER-B.md.',
     };
     fs.writeFileSync(BUILD_RECORD, `${JSON.stringify(rec, null, 2)}\n`);

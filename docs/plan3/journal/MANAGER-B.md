@@ -2684,3 +2684,31 @@ Harness self-tests went 22/0 → **26/0**: the original 22 restored plus four qu
 ### Still open — this is not the B-3 fix
 
 The actual defect is untouched: `String(disposableSessionId) === String(sessionId)` at `:240` and `:258` is symmetric, so transposing the two flags leaves them unequal, passes every check, and directs `createHttpWriteAdapter` (`:702`, `sessionId: opts.disposableSessionId`) at the real ledger. The account check at `:264` is no help — both sides are operator-supplied, so it compares an input against itself. **Nothing in the harness independently establishes which session is disposable.** A real fix needs an asymmetric signal the operator cannot transpose: the harness must confirm the disposable session is disposable by asking the server, not by comparing two flags to each other. That is the next packet.
+
+---
+
+## B-0119 — Answer to §4: the stamp was OUTSIDE the train, and the sealed set was sufficient to build the hazard. Now inside and enforced.
+
+**Direct answer: it was outside. Not "in a follow-up" — outside, and worse than that.** The seal pins source bytes; the cache stamp is a build argument, so sealing the sources never put it in the train. And the sealed `DEPLOY-NOTE.md` said `CHART_BUILD_ID=<assigned by the checkpoint build>`, which is not a value. **Anyone building strictly from the sealed train would have run an ordinary build, `bump-dist-v9-cache.mjs:73` would have incremented the committed `b61` to `b62`, and `record-build` would have accepted it** — b62 is behind the b80 already in the field. The seal would have verified clean the whole way.
+
+### SAFE-01 applies to my own train
+
+I was about to answer "it's in the deploy note now." **That is the documentary quarantine again, three hours after I found the documentary quarantine.** A build parameter that is only written down is not enforced, and the position of the check is the guarantee. So:
+
+- **`BUILD-PARAMS.json`**, sealed, pins `CHECKPOINT_BUILD=1`, `CHART_BUILD_ID=20260728b81`, `SOURCE_COMMIT_SHA`.
+- **The floor is in the manifest** (`buildIdFloor: 20260727b80`) and **enforced**: `record-build` refuses any id malformed or not strictly ahead of it.
+- Negative controls, because a floor that never fires is decoration: `20260724b62` REFUSED, `20260727b80` REFUSED (equal is not ahead), `b81` REFUSED (shape), `20260728b81` accepted.
+
+### The negative control caught a defect in my own tool
+
+**The positive control wrote a real `BUILD-RECORD.json` certifying build `20260728b81` — and no build has happened.** I had built a tool that could certify a build that never occurred, which is precisely the DEPLOY-01 lie the train exists to end. Deleted; confirmed it never reached history.
+
+Fixed properly rather than by remembering not to do it: `record-build` now **requires `--chart-digest` and `--homepage-digest`**. An image digest cannot exist unless an image was built, so the tool can no longer certify a build that did not happen. Re-verified that the floor check still fires ahead of the digest check, and that no record is written by any refusal path.
+
+**This is the third time today a check of mine passed while proving nothing** — the seal that sealed a dirty tree, the harness restore check that compared normalised text, and now this. The pattern in all three is the same and it is SAFE-01's sibling: **I keep writing checks that can only succeed.** The fix each time was to make the check fail on purpose first.
+
+### Still not enforced, and not mine
+
+Nothing fails the **image build** when a module's content changes and its `?v=` does not. `record-build` catches it after the fact and only for this train. The general gate is C's C-NEXT, and it should stay there — my floor is a train-local backstop, not the class fix.
+
+Seal superseded to `b6d94c767` and retained with its reason; new seal at `c0a92d274` over nine files, all CRLF 0.
