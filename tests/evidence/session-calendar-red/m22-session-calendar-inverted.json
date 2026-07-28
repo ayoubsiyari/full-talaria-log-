@@ -7,7 +7,7 @@
   "mode": "simulate-wired",
   "verdict": "RED",
   "expectedVerdict": "RED",
-  "buildSha": "342d21401e31457f833345fc07a96e8bccf46e7a",
+  "buildSha": "1c62920734ea614e9d0666e8ee240ee3a2062ba6",
   "authoredAgainstBuild": "634448817",
   "lastProvenRedOnBuild": "634448817",
   "epsilon": 0,
@@ -1058,6 +1058,41 @@
     },
     {
       "cell": "N2",
+      "name": "registry-is-a-module-level-const-literal",
+      "detail": "actual=true expected=true"
+    },
+    {
+      "cell": "N2",
+      "name": "registry-is-assigned-once",
+      "detail": "actual=1 expected=1"
+    },
+    {
+      "cell": "N2",
+      "name": "registry-has-no-mutation-path:registerInstrument",
+      "detail": "actual=false expected=false"
+    },
+    {
+      "cell": "N2",
+      "name": "registry-has-no-mutation-path:addInstrument",
+      "detail": "actual=false expected=false"
+    },
+    {
+      "cell": "N2",
+      "name": "registry-has-no-mutation-path:INSTRUMENT_REGISTRY[",
+      "detail": "actual=false expected=false"
+    },
+    {
+      "cell": "N2",
+      "name": "registry-rows-do-not-change-across-two-loads",
+      "detail": "actual=120 expected=120"
+    },
+    {
+      "cell": "N2",
+      "name": "registry-is-published-globally-and-NOT-frozen",
+      "detail": "actual=true expected=true"
+    },
+    {
+      "cell": "N2",
       "name": "wiring-honours-the-cacheable-contract",
       "detail": "actual=true expected=true"
     },
@@ -1308,8 +1343,13 @@
     },
     {
       "cell": "K2",
-      "name": "no-cell-asserts-zero-on-the-ambiguity-counter",
-      "detail": "actual=false expected=false"
+      "name": "no-cell-asserts-on-the-ambiguity-counter",
+      "detail": "actual=0 expected=0"
+    },
+    {
+      "cell": "K2",
+      "name": "ambiguity-counter-is-only-ever-reported",
+      "detail": "actual=[\"note\"] expected=[\"note\"]"
     },
     {
       "cell": "L",
@@ -1324,6 +1364,11 @@
     {
       "cell": "L",
       "name": "no-nondeterministic-inputs:session-calendar.js",
+      "detail": "actual=none expected=none"
+    },
+    {
+      "cell": "L",
+      "name": "no-nondeterministic-inputs:m22-session-calendar-fourstate.mjs",
       "detail": "actual=none expected=none"
     },
     {
@@ -1623,28 +1668,68 @@
     },
     {
       "cell": "M2",
-      "name": "epoch-flooring-site-still-present:chart.js",
+      "name": "scan-matches-declared-inventory-exactly",
+      "detail": "actual=[\"chart v 1.4/chart/chart.js::Math.floor((lo + eps) / step) * step\",\"chart v 1.4/chart/chart.js::Math.floor(absoluteMonth / monthsPerBucket) * monthsPerBucket\",\"chart v 1.4/chart/chart.js::Math.floor(anchorTs / tfMs) * tfMs\",\"chart v 1.4/chart/chart.js::Math.floor(candle.t / timeframeMs) * timeframeMs\",\"chart v 1.4/chart/chart.js::Math.floor(currentTimestamp / displayTfMs) * displayTfMs\",\"chart v 1.4/chart/chart.js::Math.floor(firstIdx / step) * step\",\"chart v 1.4/chart/chart.js::Math.floor(firstTs / tfMs) * tfMs\",\"chart v 1.4/chart/chart.js::Math.floor(prepared[0].t / timeframeMs) * timeframeMs\",\"chart v 1.4/chart/modules/chart-data-pipeline.js::Math.floor(lastRaw.t / timeframeMs) * timeframeMs\",\"chart v 1.4/chart/modules/compare-overlay.js::Math.floor(max / niceStep) * niceStep\",\"chart v 1.4/chart/modules/m20-q9-prefix-slice.test.mjs::Math.floor(bar.t / tfMs) * tfMs\",\"chart v 1.4/chart/modules/market-calculations.js::Math.floor(q / step) * step\",\"chart v 1.4/chart/modules/order-manager.js::Math.floor(Math.min(n, maxAffordable) / step) * step\",\"chart v 1.4/chart/modules/order-manager.js::Math.floor(n / step) * step\",\"chart v 1.4/chart/modules/replay-system.js::Math.floor(t / ms) * ms\",\"chart v 1.4/chart/modules/session-calendar.js::Math.floor(timestampMs / timeframeMs) * timeframeMs\",\"chart v 1.4/chart/modules/talaria-fvg-indicator.js::Math.floor(Number(t) / tfMs) * tfMs\",\"chart v 1.4/chart/modules/talaria-weekly-map-indicator.js::Math.floor(t / HOUR_MS) * HOUR_MS\",\"chart v 1.4/chart/multichart-prod/sync-bridge.js::Math.floor(timeSec / bucketSec) * bucketSec\",\"chart v 1.4/chart/multichart/sync-bridge.js::Math.floor(timeSec / bucketSec) * bucketSec\",\"chart v 1.4/chart/workers/candle-decode.worker.js::Math.floor(c.t / ms) * ms\"] expected=[\"chart v 1.4/chart/chart.js::Math.floor((lo + eps) / step) * step\",\"chart v 1.4/chart/chart.js::Math.floor(absoluteMonth / monthsPerBucket) * monthsPerBucket\",\"chart v 1.4/chart/chart.js::Math.floor(anchorTs / tfMs) * tfMs\",\"chart v 1.4/chart/chart.js::Math.floor(candle.t / timeframeMs) * timeframeMs\",\"chart v 1.4/chart/chart.js::Math.floor(currentTimestamp / displayTfMs) * displayTfMs\",\"chart v 1.4/chart/chart.js::Math.floor(firstIdx / step) * step\",\"chart v 1.4/chart/chart.js::Math.floor(firstTs / tfMs) * tfMs\",\"chart v 1.4/chart/chart.js::Math.floor(prepared[0].t / timeframeMs) * timeframeMs\",\"chart v 1.4/chart/modules/chart-data-pipeline.js::Math.floor(lastRaw.t / timeframeMs) * timeframeMs\",\"chart v 1.4/chart/modules/compare-overlay.js::Math.floor(max / niceStep) * niceStep\",\"chart v 1.4/chart/modules/m20-q9-prefix-slice.test.mjs::Math.floor(bar.t / tfMs) * tfMs\",\"chart v 1.4/chart/modules/market-calculations.js::Math.floor(q / step) * step\",\"chart v 1.4/chart/modules/order-manager.js::Math.floor(Math.min(n, maxAffordable) / step) * step\",\"chart v 1.4/chart/modules/order-manager.js::Math.floor(n / step) * step\",\"chart v 1.4/chart/modules/replay-system.js::Math.floor(t / ms) * ms\",\"chart v 1.4/chart/modules/session-calendar.js::Math.floor(timestampMs / timeframeMs) * timeframeMs\",\"chart v 1.4/chart/modules/talaria-fvg-indicator.js::Math.floor(Number(t) / tfMs) * tfMs\",\"chart v 1.4/chart/modules/talaria-weekly-map-indicator.js::Math.floor(t / HOUR_MS) * HOUR_MS\",\"chart v 1.4/chart/multichart-prod/sync-bridge.js::Math.floor(timeSec / bucketSec) * bucketSec\",\"chart v 1.4/chart/multichart/sync-bridge.js::Math.floor(timeSec / bucketSec) * bucketSec\",\"chart v 1.4/chart/workers/candle-decode.worker.js::Math.floor(c.t / ms) * ms\"]"
+    },
+    {
+      "cell": "M2",
+      "name": "scan-is-not-vacuous",
+      "detail": "actual=true expected=true scanned=21"
+    },
+    {
+      "cell": "M2",
+      "name": "scan-covers-both-known-resample-paths",
       "detail": "actual=true expected=true"
     },
     {
       "cell": "M2",
-      "name": "epoch-flooring-site-still-present:chart-data-pipeline.js",
+      "name": "bar-bucketing-sites-found",
+      "detail": "actual=6 expected=6"
+    },
+    {
+      "cell": "M2",
+      "name": "bar-bucketing-sites-this-packet-wires",
+      "detail": "actual=3 expected=3 W1,W2,W4"
+    },
+    {
+      "cell": "M2",
+      "name": "bar-bucketing-sites-left-UNWIRED",
+      "detail": "actual=[\"_replayBucketStart\",\"periodStart\",\"resampleCandles\"] expected=[\"_replayBucketStart\",\"periodStart\",\"resampleCandles\"]"
+    },
+    {
+      "cell": "M2",
+      "name": "grid-coupled-boundary-computations",
+      "detail": "actual=5 expected=5"
+    },
+    {
+      "cell": "M2",
+      "name": "replay-site-claims-to-match-resampleData",
       "detail": "actual=true expected=true"
     },
     {
       "cell": "M2",
-      "name": "epoch-flooring-site-still-present:talaria-fvg-indicator.js",
-      "detail": "actual=true expected=true"
-    },
-    {
-      "cell": "M2",
-      "name": "known-epoch-flooring-sites",
+      "name": "replay-site-caller-count",
       "detail": "actual=3 expected=3"
     },
     {
       "cell": "M2",
-      "name": "sites-this-packet-wires",
-      "detail": "actual=2 expected=2"
+      "name": "replay-site-is-reached-for-coarse-timeframes",
+      "detail": "actual=true expected=true"
+    },
+    {
+      "cell": "M2",
+      "name": "worker-resampler-has-its-own-day-week-table",
+      "detail": "actual=true expected=true"
+    },
+    {
+      "cell": "M2",
+      "name": "worker-resampler-is-reachable-by-message",
+      "detail": "actual=true expected=true"
+    },
+    {
+      "cell": "M2",
+      "name": "worker-resample-message-has-no-caller-today",
+      "detail": "actual=false expected=false"
     },
     {
       "cell": "M2",
@@ -3013,6 +3098,54 @@
     },
     {
       "cell": "N2",
+      "name": "registry-is-a-module-level-const-literal",
+      "pass": false,
+      "detail": "actual=true expected=true"
+    },
+    {
+      "cell": "N2",
+      "name": "registry-is-assigned-once",
+      "pass": false,
+      "detail": "actual=1 expected=1"
+    },
+    {
+      "cell": "N2",
+      "name": "registry-has-no-mutation-path:registerInstrument",
+      "pass": false,
+      "detail": "actual=false expected=false"
+    },
+    {
+      "cell": "N2",
+      "name": "registry-has-no-mutation-path:addInstrument",
+      "pass": false,
+      "detail": "actual=false expected=false"
+    },
+    {
+      "cell": "N2",
+      "name": "registry-has-no-mutation-path:INSTRUMENT_REGISTRY[",
+      "pass": false,
+      "detail": "actual=false expected=false"
+    },
+    {
+      "cell": "N2",
+      "name": "registry-rows-do-not-change-across-two-loads",
+      "pass": false,
+      "detail": "actual=120 expected=120"
+    },
+    {
+      "cell": "N2",
+      "name": "registry-is-published-globally-and-NOT-frozen",
+      "pass": false,
+      "detail": "actual=true expected=true"
+    },
+    {
+      "cell": "N2",
+      "name": "cacheable-true-rests-on-registry-immutability",
+      "pass": true,
+      "detail": "INSTRUMENT_REGISTRY is a const literal with no mutation path in-repo, but it is exposed on window and unfrozen. If a row ever becomes addable at runtime, symbol-not-registered must stop being cacheable."
+    },
+    {
+      "cell": "N2",
       "name": "wiring-honours-the-cacheable-contract",
       "pass": false,
       "detail": "actual=true expected=true"
@@ -3343,9 +3476,15 @@
     },
     {
       "cell": "K2",
-      "name": "no-cell-asserts-zero-on-the-ambiguity-counter",
+      "name": "no-cell-asserts-on-the-ambiguity-counter",
       "pass": false,
-      "detail": "actual=false expected=false"
+      "detail": "actual=0 expected=0"
+    },
+    {
+      "cell": "K2",
+      "name": "ambiguity-counter-is-only-ever-reported",
+      "pass": false,
+      "detail": "actual=[\"note\"] expected=[\"note\"]"
     },
     {
       "cell": "L",
@@ -3362,6 +3501,12 @@
     {
       "cell": "L",
       "name": "no-nondeterministic-inputs:session-calendar.js",
+      "pass": false,
+      "detail": "actual=none expected=none"
+    },
+    {
+      "cell": "L",
+      "name": "no-nondeterministic-inputs:m22-session-calendar-fourstate.mjs",
       "pass": false,
       "detail": "actual=none expected=none"
     },
@@ -3781,33 +3926,87 @@
     },
     {
       "cell": "M2",
-      "name": "epoch-flooring-site-still-present:chart.js",
+      "name": "scan-matches-declared-inventory-exactly",
+      "pass": false,
+      "detail": "actual=[\"chart v 1.4/chart/chart.js::Math.floor((lo + eps) / step) * step\",\"chart v 1.4/chart/chart.js::Math.floor(absoluteMonth / monthsPerBucket) * monthsPerBucket\",\"chart v 1.4/chart/chart.js::Math.floor(anchorTs / tfMs) * tfMs\",\"chart v 1.4/chart/chart.js::Math.floor(candle.t / timeframeMs) * timeframeMs\",\"chart v 1.4/chart/chart.js::Math.floor(currentTimestamp / displayTfMs) * displayTfMs\",\"chart v 1.4/chart/chart.js::Math.floor(firstIdx / step) * step\",\"chart v 1.4/chart/chart.js::Math.floor(firstTs / tfMs) * tfMs\",\"chart v 1.4/chart/chart.js::Math.floor(prepared[0].t / timeframeMs) * timeframeMs\",\"chart v 1.4/chart/modules/chart-data-pipeline.js::Math.floor(lastRaw.t / timeframeMs) * timeframeMs\",\"chart v 1.4/chart/modules/compare-overlay.js::Math.floor(max / niceStep) * niceStep\",\"chart v 1.4/chart/modules/m20-q9-prefix-slice.test.mjs::Math.floor(bar.t / tfMs) * tfMs\",\"chart v 1.4/chart/modules/market-calculations.js::Math.floor(q / step) * step\",\"chart v 1.4/chart/modules/order-manager.js::Math.floor(Math.min(n, maxAffordable) / step) * step\",\"chart v 1.4/chart/modules/order-manager.js::Math.floor(n / step) * step\",\"chart v 1.4/chart/modules/replay-system.js::Math.floor(t / ms) * ms\",\"chart v 1.4/chart/modules/session-calendar.js::Math.floor(timestampMs / timeframeMs) * timeframeMs\",\"chart v 1.4/chart/modules/talaria-fvg-indicator.js::Math.floor(Number(t) / tfMs) * tfMs\",\"chart v 1.4/chart/modules/talaria-weekly-map-indicator.js::Math.floor(t / HOUR_MS) * HOUR_MS\",\"chart v 1.4/chart/multichart-prod/sync-bridge.js::Math.floor(timeSec / bucketSec) * bucketSec\",\"chart v 1.4/chart/multichart/sync-bridge.js::Math.floor(timeSec / bucketSec) * bucketSec\",\"chart v 1.4/chart/workers/candle-decode.worker.js::Math.floor(c.t / ms) * ms\"] expected=[\"chart v 1.4/chart/chart.js::Math.floor((lo + eps) / step) * step\",\"chart v 1.4/chart/chart.js::Math.floor(absoluteMonth / monthsPerBucket) * monthsPerBucket\",\"chart v 1.4/chart/chart.js::Math.floor(anchorTs / tfMs) * tfMs\",\"chart v 1.4/chart/chart.js::Math.floor(candle.t / timeframeMs) * timeframeMs\",\"chart v 1.4/chart/chart.js::Math.floor(currentTimestamp / displayTfMs) * displayTfMs\",\"chart v 1.4/chart/chart.js::Math.floor(firstIdx / step) * step\",\"chart v 1.4/chart/chart.js::Math.floor(firstTs / tfMs) * tfMs\",\"chart v 1.4/chart/chart.js::Math.floor(prepared[0].t / timeframeMs) * timeframeMs\",\"chart v 1.4/chart/modules/chart-data-pipeline.js::Math.floor(lastRaw.t / timeframeMs) * timeframeMs\",\"chart v 1.4/chart/modules/compare-overlay.js::Math.floor(max / niceStep) * niceStep\",\"chart v 1.4/chart/modules/m20-q9-prefix-slice.test.mjs::Math.floor(bar.t / tfMs) * tfMs\",\"chart v 1.4/chart/modules/market-calculations.js::Math.floor(q / step) * step\",\"chart v 1.4/chart/modules/order-manager.js::Math.floor(Math.min(n, maxAffordable) / step) * step\",\"chart v 1.4/chart/modules/order-manager.js::Math.floor(n / step) * step\",\"chart v 1.4/chart/modules/replay-system.js::Math.floor(t / ms) * ms\",\"chart v 1.4/chart/modules/session-calendar.js::Math.floor(timestampMs / timeframeMs) * timeframeMs\",\"chart v 1.4/chart/modules/talaria-fvg-indicator.js::Math.floor(Number(t) / tfMs) * tfMs\",\"chart v 1.4/chart/modules/talaria-weekly-map-indicator.js::Math.floor(t / HOUR_MS) * HOUR_MS\",\"chart v 1.4/chart/multichart-prod/sync-bridge.js::Math.floor(timeSec / bucketSec) * bucketSec\",\"chart v 1.4/chart/multichart/sync-bridge.js::Math.floor(timeSec / bucketSec) * bucketSec\",\"chart v 1.4/chart/workers/candle-decode.worker.js::Math.floor(c.t / ms) * ms\"]"
+    },
+    {
+      "cell": "M2",
+      "name": "scan-is-not-vacuous",
+      "pass": false,
+      "detail": "actual=true expected=true scanned=21"
+    },
+    {
+      "cell": "M2",
+      "name": "scan-covers-both-known-resample-paths",
       "pass": false,
       "detail": "actual=true expected=true"
     },
     {
       "cell": "M2",
-      "name": "epoch-flooring-site-still-present:chart-data-pipeline.js",
+      "name": "bar-bucketing-sites-found",
+      "pass": false,
+      "detail": "actual=6 expected=6"
+    },
+    {
+      "cell": "M2",
+      "name": "bar-bucketing-sites-this-packet-wires",
+      "pass": false,
+      "detail": "actual=3 expected=3 W1,W2,W4"
+    },
+    {
+      "cell": "M2",
+      "name": "bar-bucketing-sites-left-UNWIRED",
+      "pass": false,
+      "detail": "actual=[\"_replayBucketStart\",\"periodStart\",\"resampleCandles\"] expected=[\"_replayBucketStart\",\"periodStart\",\"resampleCandles\"]"
+    },
+    {
+      "cell": "M2",
+      "name": "grid-coupled-boundary-computations",
+      "pass": false,
+      "detail": "actual=5 expected=5"
+    },
+    {
+      "cell": "M2",
+      "name": "replay-site-claims-to-match-resampleData",
       "pass": false,
       "detail": "actual=true expected=true"
     },
     {
       "cell": "M2",
-      "name": "epoch-flooring-site-still-present:talaria-fvg-indicator.js",
-      "pass": false,
-      "detail": "actual=true expected=true"
-    },
-    {
-      "cell": "M2",
-      "name": "known-epoch-flooring-sites",
+      "name": "replay-site-caller-count",
       "pass": false,
       "detail": "actual=3 expected=3"
     },
     {
       "cell": "M2",
-      "name": "sites-this-packet-wires",
+      "name": "replay-site-is-reached-for-coarse-timeframes",
       "pass": false,
-      "detail": "actual=2 expected=2"
+      "detail": "actual=true expected=true"
+    },
+    {
+      "cell": "M2",
+      "name": "WIRING-RISK-replay-invariant-breaks",
+      "pass": true,
+      "detail": "replay-system.js _replayBucketStart claims to match resampleData; wiring falsifies that. Must be wired in the same change or replay stepping diverges from the bars it steps over."
+    },
+    {
+      "cell": "M2",
+      "name": "worker-resampler-has-its-own-day-week-table",
+      "pass": false,
+      "detail": "actual=true expected=true"
+    },
+    {
+      "cell": "M2",
+      "name": "worker-resampler-is-reachable-by-message",
+      "pass": false,
+      "detail": "actual=true expected=true"
+    },
+    {
+      "cell": "M2",
+      "name": "worker-resample-message-has-no-caller-today",
+      "pass": false,
+      "detail": "actual=false expected=false"
     },
     {
       "cell": "M2",
@@ -3817,9 +4016,21 @@
     },
     {
       "cell": "M2",
-      "name": "third-site-is-a-separate-row",
+      "name": "unwired-bar-bucketing-site:_replayBucketStart",
       "pass": true,
-      "detail": "talaria-fvg-indicator.js periodStart() floors to the UTC epoch for d/w — NOT wired here"
+      "detail": "chart v 1.4/chart/modules/replay-system.js — LIVE, SEPARATE ROW"
+    },
+    {
+      "cell": "M2",
+      "name": "unwired-bar-bucketing-site:resampleCandles",
+      "pass": true,
+      "detail": "chart v 1.4/chart/workers/candle-decode.worker.js — latent, SEPARATE ROW"
+    },
+    {
+      "cell": "M2",
+      "name": "unwired-bar-bucketing-site:periodStart",
+      "pass": true,
+      "detail": "chart v 1.4/chart/modules/talaria-fvg-indicator.js — LIVE, SEPARATE ROW"
     },
     {
       "cell": "P",
