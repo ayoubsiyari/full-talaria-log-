@@ -3326,3 +3326,44 @@ So my 14:49 ranking is **not supported by this trace**, and I am saying that bef
 Fix packet stays held. One more round of measurement is cheap; authoring against the wrong one of two candidates costs a write slot and a day, and I have now been wrong about the ranking once already today.
 
 Subframes: `hcaptcha.com` and `accounts.google.com` are **absent from the authenticated chart frame and target inventory at runtime**. That is now two independent confirmations — source and live browser — that the PO's ~160 MB does not come from this surface in this build. The provenance discrepancy stands and goes up.
+
+---
+
+## 2026-07-28 15:12 — The superseded probe returned, and it corroborates the idle finding at a completely different workload
+
+Packet `d3ac2b561` on `manager-a/cpu-attribution`, base `8b1ed59b1`. I superseded this mid-flight and told it to land as secondary evidence. **It turns out to carry the single most useful cross-check I have.**
+
+Render triggers under load — two panels, replay running:
+
+| Panel | Renders | Data changes | Ratio | rAF | Replay tick | Something else |
+|---|---|---|---|---|---|---|
+| A — EURUSD 15m | 752 | 349 | 2.15:1 | **402** | **0** | 350 |
+| B — EURUSD 1m | 1372 | 375 | 3.66:1 | **700** | 362 | 310 |
+
+**rAF is the largest single render trigger in both panels — 53% and 51% — and on Panel A, with replay actually running, not one render was triggered by a replay tick.**
+
+That is the same mechanism the idle trace independently attributed the resting floor to: `Chart.animate` at `chart.js:28676`, re-requesting its own frame unconditionally as the first statement with no idle guard. **Two harnesses, two workloads that could hardly be more different — one with nothing happening, one with replay driving two panels — pointing at one loop.**
+
+I am deliberately not celebrating this yet. Cross-workload agreement is either the real finding or a **shared instrumentation artefact**, and the specific way it could be an artefact is obvious enough that I put it at the top of the review brief: if renders are attributed by call stack, "rAF" may be the frame the work was *delivered* on rather than the thing that *caused* it, in which case any coalesced render is labelled rAF by construction and the histogram is close to tautological. Until that is settled the number does not enter the record. Top-tier review dispatched, because §A13.2's numeric-correctness trigger applies and this figure is about to carry a priority-zero decision.
+
+Two further weaknesses I flagged rather than waiting to be told: **the "something else" bucket is 350 and 310 renders, roughly a quarter of all renders, unattributed** — a quarter unnamed materially weakens any ranking built on the rest. And **Panel A's zero replay-tick renders is surprising enough to be either an important finding or a broken counter**, and I do not currently know which.
+
+## 2026-07-28 15:13 — brief-defect, mine, fourth of the train
+
+I specified **"no indicators"** for this probe while setting acceptance as **matching the PO's 129.3%** — a figure the PO took **with** indicators present. That brief is internally inconsistent on its face. The run came in at 30.17% process CPU, and I have no way to tell how much of the 4x shortfall is my missing indicator load versus something else absent from the harness, because I removed the variable and then asked to match a number that contains it.
+
+Logged as `brief-defect` per §A16.4, not counting against the author, who reported the shortfall plainly and correctly warned that the attribution describes its own workload rather than the PO deficit. I have asked the reviewer to tell me whether the missing indicators plausibly account for a 30 → 129 gap or whether that gap is too large for that explanation, because if it is too large the harness is missing something structural and every load measurement I take with it will be wrong the same way.
+
+**Both harnesses now under-reproduce, and by different factors** — idle 13.12% against 20.6% (0.64x), loaded 30.17% against 129.3% (0.23x). If under-reproduction were a constant environment factor those ratios would be similar. They are not, which says the loaded harness is missing a contributor the idle one is not. Indicators are the obvious candidate and are also exactly what I omitted.
+
+## 2026-07-28 15:14 — Zero workers, and what that does to the competitor hypothesis
+
+**No dedicated workers were observed at all**, by an injected `Worker` wrapper and by CDP worker-target metrics independently. Worker task share 0%; main-thread task share 14.27%.
+
+The standing hypothesis from the CPU finding was that the competitor's advantage is off-main-thread execution. This does not confirm that hypothesis — it establishes our side of it: **nothing of ours runs off the main thread on this workload.** Combined with the idle trace's ~0.38 ms of JavaScript per animation frame and rAF driving half of all renders under load, the picture is a single thread doing everything, woken unconditionally sixty-plus times a second.
+
+I have asked the reviewer whether the two-method worker check is sound enough to state as fact, because "we have no workers" is the kind of clean negative that turns out to have an exception.
+
+**Layer inventory: 13 live canvas/SVG surfaces, 27.75 MiB total backing store**, with the main chart canvas and drawing SVG at 7,274,400 bytes each per panel. That does not come close to explaining the PO's 154 MB GPU figure against the competitor's 34 MB, and I have asked the reviewer to say so or correct me. Teardown behaved: after `removeChart("B")`, B's layers were not retained.
+
+Write slot freed — cpu-attribution is done. In flight: idle-cpu (follow-up running), host-listener-leak (authored, in review). Three top-tier reviews concurrent, all read-only and uncapped.
