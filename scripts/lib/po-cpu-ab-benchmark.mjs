@@ -213,6 +213,9 @@ export function poCpuAbHostHtml({ timings = DEFAULT_PHASE_TIMINGS, mutant = fals
   <script type="module">
     const CONFIG = ${configJson};
     const PANEL_IDS = ['B', 'C', 'D'];
+    const P4_ADVANCE_RATE_CEILING_MULTIPLIER = 12;
+    const P4_MIN_ADVANCE_OBSERVE_MS = 500;
+    const P4_MIN_TIMESTAMP_MS_PER_INDEX = 1000;
     const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
     function harnessWindow() {
@@ -626,7 +629,17 @@ export function poCpuAbHostHtml({ timings = DEFAULT_PHASE_TIMINGS, mutant = fals
         && String(beforeSource) !== String(afterSource);
     }
 
-    function replayAdvance(beforeState, afterState) {
+    function effectivelyPlayingForAdvance(state) {
+      if (!state || state.isPlaying !== true) return false;
+      const hasRawFlag = Object.prototype.hasOwnProperty.call(state, 'rawIsPlaying');
+      const hasPassiveFlag = Object.prototype.hasOwnProperty.call(state, 'passivePlayActive');
+      if (hasRawFlag || hasPassiveFlag) {
+        return state.rawIsPlaying === true || state.passivePlayActive === true;
+      }
+      return true;
+    }
+
+    function replayAdvance(beforeState, afterState, options = {}) {
       const beforeIndex = beforeState && beforeState.currentIndex;
       const afterIndex = afterState && afterState.currentIndex;
       const beforeTimestamp = beforeState && beforeState.currentTimestamp;
@@ -634,15 +647,50 @@ export function poCpuAbHostHtml({ timings = DEFAULT_PHASE_TIMINGS, mutant = fals
       const indexDelta = beforeIndex != null && afterIndex != null ? afterIndex - beforeIndex : null;
       const timestampDelta = beforeTimestamp != null && afterTimestamp != null ? afterTimestamp - beforeTimestamp : null;
       const sourceChanged = timestampSourceChanged(beforeState, afterState);
+      const elapsedMs = Number.isFinite(Number(options.elapsedMs)) ? Math.max(0, Number(options.elapsedMs)) : null;
+      const speed = Number.isFinite(Number(options.speed)) && Number(options.speed) > 0
+        ? Number(options.speed)
+        : (Number.isFinite(Number(afterState && afterState.speed)) && Number(afterState.speed) > 0
+          ? Number(afterState.speed)
+          : (Number.isFinite(Number(beforeState && beforeState.speed)) && Number(beforeState.speed) > 0 ? Number(beforeState.speed) : null));
+      const maxTimestampDelta = elapsedMs != null && speed != null
+        ? speed * elapsedMs * P4_ADVANCE_RATE_CEILING_MULTIPLIER
+        : null;
+      const playingSamplesRequired = options.requirePlayingSamples === true;
+      const samplesWhilePlaying = !playingSamplesRequired
+        || (effectivelyPlayingForAdvance(beforeState) && effectivelyPlayingForAdvance(afterState));
+      const observedLongEnough = elapsedMs == null || elapsedMs >= P4_MIN_ADVANCE_OBSERVE_MS;
+      const rateCoherent = maxTimestampDelta == null
+        || (Number.isFinite(timestampDelta) && timestampDelta <= maxTimestampDelta);
+      const indexTimestampCoherent = Number.isFinite(indexDelta)
+        && Number.isFinite(timestampDelta)
+        && indexDelta > 0
+        && timestampDelta > 0
+        && timestampDelta >= indexDelta * P4_MIN_TIMESTAMP_MS_PER_INDEX;
       const contradiction = sourceChanged
         || (Number.isFinite(indexDelta) && Number.isFinite(timestampDelta)
           && ((indexDelta > 0 && timestampDelta <= 0) || (indexDelta < 0 && timestampDelta > 0)));
+      const advanced = Number.isFinite(timestampDelta)
+        && timestampDelta > 0
+        && !sourceChanged
+        && !contradiction
+        && samplesWhilePlaying
+        && observedLongEnough
+        && rateCoherent
+        && indexTimestampCoherent;
       return {
         indexDelta,
         timestampDelta,
         sourceChanged,
+        samplesWhilePlaying,
+        observedLongEnough,
+        elapsedMs,
+        speed,
+        maxTimestampDelta,
+        rateCoherent,
+        indexTimestampCoherent,
         contradiction,
-        advanced: Number.isFinite(timestampDelta) && timestampDelta > 0 && !sourceChanged && !contradiction
+        advanced
       };
     }
 
@@ -793,9 +841,9 @@ export function poCpuAbHostHtml({ timings = DEFAULT_PHASE_TIMINGS, mutant = fals
         if (row.ok !== true && !row.rs) return row;
         const state = row.afterState || replayStateForChart(row.ch);
         const computedAdvance = replayAdvance(row.beforeState, state);
-        const evidenceAdvance = computedAdvance.advanced ? computedAdvance : (row.stickyAdvance || row.advance || computedAdvance);
+        const evidenceAdvance = row.advanceEvidence || row.stickyAdvance || computedAdvance;
         const advanceContradiction = computedAdvance.contradiction === true;
-        const advancedObserved = evidenceAdvance && evidenceAdvance.advanced === true && computedAdvance.advanced === true;
+        const advancedObserved = evidenceAdvance && evidenceAdvance.advanced === true;
         return {
           id: row.id,
           ok: row.ok === true
@@ -812,6 +860,12 @@ export function poCpuAbHostHtml({ timings = DEFAULT_PHASE_TIMINGS, mutant = fals
           indexDelta: evidenceAdvance && evidenceAdvance.indexDelta,
           timestampDelta: evidenceAdvance && evidenceAdvance.timestampDelta,
           advanceContradiction,
+          advanceStartState: row.advanceStartState || null,
+          advanceStartAt: row.advanceStartAt || null,
+          advanceEndState: row.advanceEndState || state,
+          advanceEndAt: row.advanceEndAt || null,
+          advanceElapsedMs: evidenceAdvance && evidenceAdvance.elapsedMs,
+          advanceEvidence: evidenceAdvance || null,
           beforeState: row.beforeState,
           state,
           computedAdvance
@@ -861,6 +915,16 @@ export function poCpuAbHostHtml({ timings = DEFAULT_PHASE_TIMINGS, mutant = fals
         const rs = ch && ch.replaySystem;
         const afterState = replayStateForChart(ch);
         const advance = replayAdvance(row.beforeState, afterState);
+        const now = Date.now();
+        const advanceStartState = row.advanceStartState || (effectivelyPlayingForAdvance(afterState) ? afterState : null);
+        const advanceStartAt = Number.isFinite(Number(row.advanceStartAt)) ? Number(row.advanceStartAt) : (advanceStartState ? now : null);
+        const advanceEvidence = advanceStartState && effectivelyPlayingForAdvance(afterState)
+          ? replayAdvance(advanceStartState, afterState, {
+            requirePlayingSamples: true,
+            elapsedMs: now - advanceStartAt,
+            speed: rs && rs.speed
+          })
+          : row.advanceEvidence || null;
         return {
           ...row,
           ch,
@@ -869,7 +933,12 @@ export function poCpuAbHostHtml({ timings = DEFAULT_PHASE_TIMINGS, mutant = fals
           observedPlaying: row.playingObserved === true || afterState.isPlaying === true,
           afterState,
           advance,
-          stickyAdvance: advance.advanced ? advance : null
+          stickyAdvance: advanceEvidence && advanceEvidence.advanced ? advanceEvidence : null,
+          advanceStartState,
+          advanceStartAt,
+          advanceEndState: afterState,
+          advanceEndAt: now,
+          advanceEvidence
         };
       });
     }
@@ -890,7 +959,12 @@ export function poCpuAbHostHtml({ timings = DEFAULT_PHASE_TIMINGS, mutant = fals
         observedActive: !!(row.rs && row.rs.isActive),
         afterState: replayStateForChart(row.ch),
         advance: replayAdvance(row.beforeState, replayStateForChart(row.ch)),
-        stickyAdvance: null
+        stickyAdvance: null,
+        advanceStartState: null,
+        advanceStartAt: null,
+        advanceEndState: null,
+        advanceEndAt: null,
+        advanceEvidence: null
       }));
       const started = Date.now();
       while (Date.now() - started < 6000) {
@@ -906,11 +980,26 @@ export function poCpuAbHostHtml({ timings = DEFAULT_PHASE_TIMINGS, mutant = fals
           row.afterState = replayStateForChart(row.ch);
           row.observedPlaying = row.observedPlaying || row.afterState.isPlaying === true;
           row.advance = replayAdvance(row.beforeState, row.afterState);
-          if (row.advance.advanced) row.stickyAdvance = row.stickyAdvance || row.advance;
+          const now = Date.now();
+          if (effectivelyPlayingForAdvance(row.afterState)) {
+            if (!row.advanceStartState) {
+              row.advanceStartState = row.afterState;
+              row.advanceStartAt = now;
+            } else {
+              row.advanceEndState = row.afterState;
+              row.advanceEndAt = now;
+              row.advanceEvidence = replayAdvance(row.advanceStartState, row.advanceEndState, {
+                requirePlayingSamples: true,
+                elapsedMs: row.advanceEndAt - row.advanceStartAt,
+                speed: row.rs && row.rs.speed
+              });
+              if (row.advanceEvidence.advanced) row.stickyAdvance = row.advanceEvidence;
+            }
+          }
           row.productReplayPlayFanout = fanout;
         }
         if (runtimeRows.every((row) => row.ok !== true
-          || (row.observedPlaying && row.stickyAdvance && row.afterState && row.afterState.isPlaying === true))) break;
+          || (row.observedPlaying && row.advanceEvidence && row.advanceEvidence.advanced && row.afterState && row.afterState.isPlaying === true))) break;
         await sleep(50);
       }
       return fourPanelReplayResultFromRows(runtimeRows, { productPlayProtocol: 'host-replayPlay-fanout' });
@@ -1213,6 +1302,8 @@ function phaseMemoryDelta(phase) {
 }
 
 const REQUIRED_P4_PANEL_IDS = Object.freeze(['A', 'B', 'C', 'D']);
+const PO_CPU_AB_P4_ADVANCE_RATE_CEILING_MULTIPLIER = 12;
+const PO_CPU_AB_P4_MIN_TIMESTAMP_MS_PER_INDEX = 1000;
 
 function finiteNumberOrNull(value) {
   if (value == null) return null;
@@ -1254,9 +1345,45 @@ function replayTimestampSourceChanged(beforeState, afterState) {
     && String(beforeSource) !== String(afterSource);
 }
 
-function rowReplayAdvanceEvidence(row) {
+function effectivelyPlayingState(state) {
+  if (!state || state.isPlaying !== true) return false;
+  const hasRawFlag = Object.prototype.hasOwnProperty.call(state, 'rawIsPlaying');
+  const hasPassiveFlag = Object.prototype.hasOwnProperty.call(state, 'passivePlayActive');
+  if (hasRawFlag || hasPassiveFlag) {
+    return state.rawIsPlaying === true || state.passivePlayActive === true;
+  }
+  return true;
+}
+
+function replaySpeedForRow(row, beforeState, afterState) {
+  const candidates = [
+    row?.nearestSpeed,
+    row?.requestedSpeed,
+    row?.advanceEvidence?.speed,
+    beforeState?.speed,
+    afterState?.speed,
+  ];
+  for (const candidate of candidates) {
+    const speed = finiteNumberOrNull(candidate);
+    if (speed != null && speed > 0) return speed;
+  }
+  return null;
+}
+
+function rowReplayAdvanceEvidence(row, { observeMs = null } = {}) {
   const indexDelta = finiteNumberOrNull(row?.indexDelta);
   const timestampDelta = finiteNumberOrNull(row?.timestampDelta);
+  const sample = row?.advanceEvidence && typeof row.advanceEvidence === 'object'
+    ? row.advanceEvidence
+    : null;
+  const sampleBeforeState = sample?.beforeState || sample?.startState || row?.advanceStartState || null;
+  const sampleAfterState = sample?.afterState || sample?.endState || row?.advanceEndState || null;
+  const oracleIndexDelta = sampleBeforeState?.currentIndex != null && sampleAfterState?.currentIndex != null
+    ? finiteNumberOrNull(Number(sampleAfterState.currentIndex) - Number(sampleBeforeState.currentIndex))
+    : null;
+  const oracleTimestampDelta = sampleBeforeState?.currentTimestamp != null && sampleAfterState?.currentTimestamp != null
+    ? finiteNumberOrNull(Number(sampleAfterState.currentTimestamp) - Number(sampleBeforeState.currentTimestamp))
+    : null;
   const stateIndexDelta = row?.beforeState?.currentIndex != null && row?.state?.currentIndex != null
     ? finiteNumberOrNull(Number(row.state.currentIndex) - Number(row.beforeState.currentIndex))
     : null;
@@ -1269,17 +1396,43 @@ function rowReplayAdvanceEvidence(row) {
   const advanceContradiction = row?.advanceContradiction === true
     || sourceChanged
     || contradicts(indexDelta, timestampDelta)
-    || contradicts(stateIndexDelta, stateTimestampDelta);
-  const forwardTimestamp = (Number.isFinite(timestampDelta) && timestampDelta > 0)
-    || (Number.isFinite(stateTimestampDelta) && stateTimestampDelta > 0);
+    || contradicts(stateIndexDelta, stateTimestampDelta)
+    || replayTimestampSourceChanged(sampleBeforeState, sampleAfterState);
+  const samplesWhilePlaying = effectivelyPlayingState(sampleBeforeState) && effectivelyPlayingState(sampleAfterState);
+  const elapsedMs = finiteNumberOrNull(sample?.elapsedMs ?? sample?.wallTimeDeltaMs ?? row?.advanceElapsedMs) ?? finiteNumberOrNull(observeMs);
+  const speed = replaySpeedForRow(row, sampleBeforeState, sampleAfterState);
+  const maxTimestampDelta = elapsedMs != null && speed != null
+    ? elapsedMs * speed * PO_CPU_AB_P4_ADVANCE_RATE_CEILING_MULTIPLIER
+    : null;
+  const rateCoherent = maxTimestampDelta != null
+    && Number.isFinite(oracleTimestampDelta)
+    && oracleTimestampDelta <= maxTimestampDelta;
+  const indexTimestampCoherent = Number.isFinite(oracleIndexDelta)
+    && Number.isFinite(oracleTimestampDelta)
+    && oracleIndexDelta > 0
+    && oracleTimestampDelta > 0
+    && oracleTimestampDelta >= oracleIndexDelta * PO_CPU_AB_P4_MIN_TIMESTAMP_MS_PER_INDEX;
+  const forwardTimestamp = Number.isFinite(oracleTimestampDelta) && oracleTimestampDelta > 0;
   return {
     indexDelta,
     timestampDelta,
+    oracleIndexDelta,
+    oracleTimestampDelta,
     stateIndexDelta,
     stateTimestampDelta,
     sourceChanged,
+    samplesWhilePlaying,
+    elapsedMs,
+    speed,
+    maxTimestampDelta,
+    rateCoherent,
+    indexTimestampCoherent,
     advanceContradiction,
-    advanced: forwardTimestamp && !advanceContradiction,
+    advanced: forwardTimestamp
+      && samplesWhilePlaying
+      && rateCoherent
+      && indexTimestampCoherent
+      && !advanceContradiction,
   };
 }
 
@@ -1347,7 +1500,7 @@ export function assertPoCpuAbBenchmarkReport(report, { mutant = false } = {}) {
   const p4PanelCount = p4Rows.length;
   const p4RowIds = p4Rows.map((row) => row?.id).filter((id) => id != null).map((id) => String(id));
   const p4RowsDistinctRequired = panelIdsHaveDistinctRequired(p4RowIds);
-  const p4RowAdvances = p4Rows.map((row) => rowReplayAdvanceEvidence(row));
+  const p4RowAdvances = p4Rows.map((row) => rowReplayAdvanceEvidence(row, { observeMs: p4.durationMs }));
   const p4RowsEveryOk = p4Rows.length > 0 && p4Rows.every((row, index) => row.ok === true
     && row.advancedObserved === true
     && p4RowAdvances[index].advanced === true);

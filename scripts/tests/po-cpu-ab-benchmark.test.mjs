@@ -48,6 +48,47 @@ function phase({
   };
 }
 
+function p4AdvanceEvidence({
+  startIndex = 10,
+  indexDelta = 5,
+  startTimestamp = 1_000_000,
+  timestampDelta = 300_000,
+  elapsedMs = 3000,
+  speed = 10,
+  rawIsPlaying = true,
+  passivePlayActive = false,
+} = {}) {
+  const startState = {
+    isActive: true,
+    isPlaying: true,
+    rawIsPlaying,
+    passivePlayActive,
+    currentIndex: startIndex,
+    currentTimestamp: startTimestamp,
+    currentTimestampSource: 'replayTimestamp',
+    speed,
+  };
+  const endState = {
+    ...startState,
+    currentIndex: startIndex + indexDelta,
+    currentTimestamp: startTimestamp + timestampDelta,
+  };
+  return {
+    advanceStartState: startState,
+    advanceEndState: endState,
+    advanceElapsedMs: elapsedMs,
+    advanceEvidence: {
+      beforeState: startState,
+      afterState: endState,
+      indexDelta,
+      timestampDelta,
+      elapsedMs,
+      speed,
+      advanced: indexDelta > 0 && timestampDelta > 0,
+    },
+  };
+}
+
 function report({
   mutant = false,
   p1WorkRatio = 0.02,
@@ -114,6 +155,7 @@ function report({
           advanceContradiction: false,
           beforeState: { isActive: true, isPlaying: false, currentIndex: 10, currentTimestamp: 1_000_000, currentTimestampSource: 'replayTimestamp', speed: 10 },
           state: { isActive: true, isPlaying: true, currentIndex: 15, currentTimestamp: 1_300_000, currentTimestampSource: 'replayTimestamp', speed: 10 },
+          ...p4AdvanceEvidence(),
         })),
         ...p4Replay,
       },
@@ -195,6 +237,10 @@ test('unit: P4 accepts product passive peers only with sustained forward advance
       currentTimestampSource: 'replayTimestamp',
       speed: 10,
     },
+    ...p4AdvanceEvidence({
+      rawIsPlaying: id === 'A',
+      passivePlayActive: id !== 'A',
+    }),
   }));
   const cells = assertPoCpuAbBenchmarkReport(report({
     p4Replay: {
@@ -215,6 +261,12 @@ test('unit: P4 accepts product passive peers only with sustained forward advance
     indexDelta: 0,
     timestampDelta: 0,
     state: { ...passiveRows[2].state, currentIndex: 10, currentTimestamp: 1_000_000 },
+    ...p4AdvanceEvidence({
+      indexDelta: 0,
+      timestampDelta: 0,
+      rawIsPlaying: false,
+      passivePlayActive: true,
+    }),
   };
   const red = assertPoCpuAbBenchmarkReport(report({
     p4Replay: {
@@ -240,6 +292,10 @@ test('fault-injection: P4 cannot green on playing flags without four advancing p
     indexDelta: index < 2 ? 4 : 0,
     timestampDelta: index < 2 ? 240_000 : 0,
     state: { isActive: true, isPlaying: true, speed: 10 },
+    ...p4AdvanceEvidence({
+      indexDelta: index < 2 ? 4 : 0,
+      timestampDelta: index < 2 ? 240_000 : 0,
+    }),
   }));
   const cells = assertPoCpuAbBenchmarkReport(report({
     p4Replay: {
@@ -527,6 +583,10 @@ test('fault-injection: P4 detail cannot count stale row delta as sustained advan
       currentTimestampSource: 'replayTimestamp',
       speed: 10,
     },
+    ...p4AdvanceEvidence({
+      indexDelta: index === 1 ? 0 : 5,
+      timestampDelta: index === 1 ? 0 : 300_000,
+    }),
   }));
   const cells = assertPoCpuAbBenchmarkReport(report({
     p4Replay: {
@@ -542,6 +602,107 @@ test('fault-injection: P4 detail cannot count stale row delta as sustained advan
   assert.equal(p4.status, 'RED');
   assert.equal(p4.advancedCount, 3);
   assert.match(p4.detail, /advanced=3/);
+});
+
+test('fault-injection: P4 never-moved playheads cannot green on stale row deltas', () => {
+  const rows = ['A', 'B', 'C', 'D'].map((id) => ({
+    id,
+    ok: true,
+    activeObserved: true,
+    playingObserved: true,
+    advancedObserved: true,
+    indexDelta: 5,
+    timestampDelta: 300_000,
+    advanceContradiction: false,
+    beforeState: { isActive: true, isPlaying: false, currentIndex: 10, currentTimestamp: 1_000_000, currentTimestampSource: 'replayTimestamp', speed: 10 },
+    state: { isActive: true, isPlaying: true, currentIndex: 10, currentTimestamp: 1_000_000, currentTimestampSource: 'replayTimestamp', speed: 10 },
+    ...p4AdvanceEvidence({ indexDelta: 0, timestampDelta: 0 }),
+  }));
+  const cells = assertPoCpuAbBenchmarkReport(report({
+    p4Replay: {
+      ok: true,
+      panelCount: 4,
+      playingCount: 4,
+      advancedCount: 4,
+      rows,
+    },
+  }));
+  const p4 = cells.find((cell) => cell.name === 'P4-FOUR-PANEL-REPLAY-RUNNING-OBSERVED');
+  assert.equal(p4.status, 'RED');
+  assert.equal(p4.advancedCount, 0);
+  assert.match(p4.detail, /advanced=0/);
+  assert.equal(p4.rowAdvances.every((advance) => advance.oracleTimestampDelta === 0), true);
+});
+
+test('fault-injection: P4 rejects index rebase and too-fast chart-time advance', () => {
+  const rows = ['A', 'B', 'C', 'D'].map((id) => ({
+    id,
+    ok: true,
+    activeObserved: true,
+    playingObserved: true,
+    advancedObserved: true,
+    indexDelta: 1900,
+    timestampDelta: 114_057_600,
+    advanceContradiction: false,
+    beforeState: { isActive: true, isPlaying: false, currentIndex: 200, currentTimestamp: 1_000_000, currentTimestampSource: 'replayTimestamp', speed: 10 },
+    state: { isActive: true, isPlaying: true, currentIndex: 2100, currentTimestamp: 115_057_600, currentTimestampSource: 'replayTimestamp', speed: 10 },
+    ...p4AdvanceEvidence({
+      startIndex: 200,
+      indexDelta: 1900,
+      timestampDelta: 114_057_600,
+      elapsedMs: 6000,
+    }),
+  }));
+  const p4 = assertPoCpuAbBenchmarkReport(report({
+    p4Replay: {
+      ok: true,
+      panelCount: 4,
+      playingCount: 4,
+      advancedCount: 4,
+      rows,
+    },
+  })).find((cell) => cell.name === 'P4-FOUR-PANEL-REPLAY-RUNNING-OBSERVED');
+  assert.equal(p4.status, 'RED');
+  assert.equal(p4.advancedCount, 0);
+  assert.equal(p4.rowAdvances.every((advance) => advance.rateCoherent === false), true);
+
+  const incoherentRows = rows.map((row) => ({
+    ...row,
+    indexDelta: 2000,
+    timestampDelta: 57_600,
+    ...p4AdvanceEvidence({ indexDelta: 2000, timestampDelta: 57_600, elapsedMs: 6000 }),
+  }));
+  const incoherent = assertPoCpuAbBenchmarkReport(report({
+    p4Replay: { ok: true, rows: incoherentRows },
+  })).find((cell) => cell.name === 'P4-FOUR-PANEL-REPLAY-RUNNING-OBSERVED');
+  assert.equal(incoherent.status, 'RED');
+  assert.equal(incoherent.rowAdvances.every((advance) => advance.indexTimestampCoherent === false), true);
+});
+
+test('fault-injection: P4 gives no advance credit without playing samples', () => {
+  const rows = ['A', 'B', 'C', 'D'].map((id) => {
+    const evidence = p4AdvanceEvidence({ indexDelta: 5, timestampDelta: 300_000 });
+    evidence.advanceStartState = { ...evidence.advanceStartState, isPlaying: false, rawIsPlaying: false, passivePlayActive: false };
+    evidence.advanceEvidence.beforeState = evidence.advanceStartState;
+    return {
+      id,
+      ok: true,
+      activeObserved: true,
+      playingObserved: true,
+      advancedObserved: true,
+      indexDelta: 5,
+      timestampDelta: 300_000,
+      beforeState: { isActive: true, isPlaying: false, currentIndex: 10, currentTimestamp: 1_000_000, currentTimestampSource: 'replayTimestamp', speed: 10 },
+      state: { isActive: true, isPlaying: true, currentIndex: 15, currentTimestamp: 1_300_000, currentTimestampSource: 'replayTimestamp', speed: 10 },
+      ...evidence,
+    };
+  });
+  const p4 = assertPoCpuAbBenchmarkReport(report({
+    p4Replay: { ok: true, rows },
+  })).find((cell) => cell.name === 'P4-FOUR-PANEL-REPLAY-RUNNING-OBSERVED');
+  assert.equal(p4.status, 'RED');
+  assert.equal(p4.advancedCount, 0);
+  assert.equal(p4.rowAdvances.every((advance) => advance.samplesWhilePlaying === false), true);
 });
 
 test('fault-injection: P4 requires distinct self-consistent A/B/C/D topology', () => {
