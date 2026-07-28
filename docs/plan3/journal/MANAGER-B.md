@@ -1480,3 +1480,23 @@ The author's intent is defensible — unknown close time should stay unknown rat
 **I am not executing the revert yet, deliberately.** B-R4 is reviewing this working tree right now. Editing under a running reviewer is exactly the read-time coupling defect I hit at B-0027, and it would invalidate its findings. The revert waits for the review to land. Recording the decision now so it is on the record ahead of the result rather than shaped by it.
 
 One honest caveat from the author worth keeping: it did **not** prove `evalCandle` genuinely becomes absent after a rollback. The fix is defensive for that condition. So it is possible this is a correct fix that still leaves the PO's bug live, and B-R4 is tasked with settling it.
+
+---
+
+## B-0084 — M3 closure stamp written, with the coverage boundary the Director asked for
+
+`docs/plan3/evidence/B-M3/M3-CLOSURE.md`. Deliberately narrower than the row title, because M3's wording — "order lines do not vanish and do not cross-delete siblings" — is broader than what I have actually established.
+
+**Established:** the cross-delete half. Substring selectors matched sibling ids (`[class*="pending-tp-1"]` matches `pending-tp-12`), reproduced in real Edge, cured by narrowing five selectors to class-token form, and verified at top tier by reading rather than re-running — strict-subset containment, complete producer inventory, no stranded stepper children, CSS-token-safe ids, and no new id-shape exposure.
+
+**Not established, recorded explicitly:**
+
+1. **No working gate exists.** Nothing currently stops this being reintroduced, and re-adding a broad selector beside the narrow one is exactly what defeated the first attempt. Under §A16.5 that alone keeps M3 open.
+2. `drawing-tools-manager.js` is out of scope — separate work, and my contradiction does not apply to A's deletions there.
+3. **The "vanish" half of M3 is still open.** `updateOrderLines` has no creation path, so this fix stops lines being *wrongly removed*; it does not restore lines already lost. Absence remains the steady state.
+4. Only the five listed sites; no wider survey.
+5. Registry-level eviction is a different defect, handed to C.
+
+I want the distinction in point 3 on the record, because "order lines do not vanish" could easily be read as closed by this fix and it is not. The fix removes a cause of loss. It does not add recovery.
+
+Also folded in the corrected deployment story and the repo-hygiene caveat about the stale committed mirror, so the next person to grep for these selectors does not repeat my mistake.
