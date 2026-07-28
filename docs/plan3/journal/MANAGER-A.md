@@ -1711,3 +1711,45 @@ The `pending-selector` author did not narrow the selector, they deleted both swe
 I am not accepting that on the author's inventory. A deletion asserts that something is unnecessary, which is a strictly larger claim than asserting it is too wide, and the failure mode is inverted — instead of removing too much, it leaves orphaned DOM for the cancelled order. Briefed the reviewer to build the producer inventory independently and to block on any element removed at parent for order 1 that survives at packet, with the reaper's collection trigger established for anything that does survive.
 
 Recording the reasoning because it is the general rule I want applied: when a fix is a deletion, the acceptance criterion is coverage of the deleted behaviour, not correctness of the remaining behaviour.
+
+---
+
+## 2026-07-28 06:14 — VERDICT: pending-selector collision fixed by deletion; accepted and merged
+
+surface=`chart v 1.4/chart/modules/drawing-tools-manager.js:12163, 12182` and the mirror
+coverage=46 cancelled ids swept (1–40 plus 100, 101, 102, 110, 199, 1000); both sweep sites isolated and combined; full producer inventory harvested independently from `order-manager.js`
+
+The deletion holds, and I held it to the higher bar I set at 06:03. The reviewer built the producer inventory themselves rather than taking the author's, and proved the redundancy mechanically: **1008 correct-id checks, zero mismatches** between `[class*="pending-${id}"]` and `.pending-${id}`. The property that makes it true is that no producer emits `pending-` followed by digits with anything appended or prepended inside the same token. So for the correct id the sweep selected exactly what the surviving exact selector selects, and its only contribution was its own over-match.
+
+The family I flagged as the risk in the brief — `pending-entry-plus-badge pending-${id}`, whose only id-bearing token is the bare one and which has no explicit named removal — is covered by the surviving `.pending-${orderId}` at `:12160` and `:12181`. Removed at parent, removed at packet.
+
+**Magnitude, measured.** Cancelling order 1 at parent destroyed 21 of its own elements and **48 belonging to orders 10, 11, 19 and 100**. Across the 46-id sweep, parent destroys **484 elements of innocent orders**; packet destroys none. Worst single case is order 1, which at parent also wipes 176 elements across ids 10–19, 100, 101, 102, 110, 199 and 1000. Both sweep sites are independently affected — site 2 is normally masked by site 1, and isolating them shows 44 foreign elements destroyed by each.
+
+No leak: the order-1 removal set is byte-identical at parent and packet in every configuration — 20 elements with the hand-built inventory, 21 with the auto-harvested one, per-site and combined, across all 46 ids.
+
+**Deletion was the right call over a token selector**, for a reason I had not considered. `svg.selectAll('.pending-' + orderId).remove()` is character-for-character the line already sitting two lines above at `:12160` and immediately above at `:12181`. Substituting would have left a literal duplicate statement, inviting a future reader to assume the two differ and preserve both. Deletion is also narrower in blast radius than substitution, because it changes no selector that any element currently matches.
+
+The author's "no `pending-tp-*` prefix" statement is correct for a stronger reason than they gave: `pending-tp-tp-plus-badge` has **no producer at all** — it would need `prefix='pending-tp'` and nothing passes that. `_createPlusBadge` has exactly two call sites, `order-manager.js:36403` with `'order'` and `:38080` with `'pending'`.
+
+## 2026-07-28 06:15 — OPEN: `pending-be-*` elements are never removed on cancel, and the reaper cannot collect them
+
+surface=`drawing-tools-manager.js` cancel block; `order-manager.js:45216` reaper
+coverage=reviewer driver, parent and packet identical
+
+Three order-1 elements survive cancellation at both parent and packet: `pending-be-line`, `pending-be-label` and `pending-be-hit-line`, all carrying `pending-be-${id}`. The substring sweep never reached them either — `pending-be-1` does not contain `pending-1` — so this is untouched by the fix and pre-existing.
+
+The block removes `.pending-sl-${id}` and `.pending-tp-${id}` and has no `.pending-be-${id}`. And the reaper cannot clean up after it: `_reconcileOrderLineDomForChart` scans only `.order-line, .pending-order-line` at `:45219` and `.order-label-accent, .pending-order-label-accent` at `:45257`, so break-even elements are outside its sweep entirely. They persist until something else clears the chart.
+
+Two related asymmetries recorded with it: site 2 lacks the `.pending-sl-` and `.pending-tp-` removals that site 1 has, and `entryPriceStr` at `:12143` is unused at both revisions.
+
+## 2026-07-28 06:16 — ADDENDUM to the Manager B escalation: three of the flagged selectors are already dead
+
+Following up my 06:02 handover with a fact that changes the shape of B's work rather than its priority. `pending-tp-tp-plus-badge` has no producer anywhere in the tree — it would require `_createPlusBadge` to be called with `prefix='pending-tp'`, and the only two call sites pass `'order'` and `'pending'`. So the three removal selectors referencing it at `order-manager.js:1987, 38411, 39147` are dead code, not live collisions.
+
+That does not retire the escalation. `:41707`, `:41708`, `:41709`, `:41712` and the id term at `:39148` still interpolate ids into substring matches against families that do have producers. But B should check producer existence before narrowing each one — some of that block may be deletable rather than fixable, which is how my own packet resolved.
+
+## 2026-07-28 06:17 — OPEN: three source-versus-mirror divergences under `homepage/public/chart/`
+
+A tree-wide scan across 547 mirrored files found exactly three OID mismatches: `m20-q6-replay-lifecycle-binding.test.mjs`, `multichart/chart-host.html`, and `m19-h-timeframe-switch.test.mjs`. All three predate tonight's packets and none was touched by them.
+
+`multichart/chart-host.html` is the one I care about — it is a servable chart shell in my territory and I had already recorded it as drifting by 29 lines. The other two are test files and lower stakes. Recording the full set now that I have an exhaustive count rather than a spot check, because "the mirror matches except where it doesn't" is not a state I want to keep re-discovering. Opening as a row against my own territory.
