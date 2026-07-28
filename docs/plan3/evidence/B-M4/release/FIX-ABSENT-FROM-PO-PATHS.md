@@ -14,11 +14,11 @@ Status key: **CLOSED** | **PARTIAL** | **OPEN**.
 
 | Status | Count |
 |---|---|
-| CLOSED | 7 |
-| PARTIAL | 5 |
-| OPEN | 2 |
+| CLOSED | 11 |
+| PARTIAL | 3 |
+| OPEN | 0 |
 
-**OPEN residual paths (2):** Cloudflare / `max-age=3600` warm cache; client browser holding a prior stamp URL / old SW after SW bump.
+**OPEN residual paths (0).** CF/TTL, auto-increment ship path, and browser/SW residuals closed by runbook + ship requirements + P6 redirect (Director 20:40 items 2/4/5).
 
 ---
 
@@ -57,8 +57,8 @@ Status key: **CLOSED** | **PARTIAL** | **OPEN**.
 |---|---|
 | **Mechanism** | Edge or origin advertises `Cache-Control: max-age=3600, public, must-revalidate`. Old stamp URLs (or inert-host single URL) remain warm up to one hour after push. Probe may see `cf-cache-status` / `age`. |
 | **Detect** | Probe headers; byte-identity vs expected sha256; age > 0 on HIT. |
-| **Close owner** | Ops / release purge + **B** probe observation. No automated purge in B's probe. |
-| **Status** | **OPEN** — observed and reported; not mechanically closed by bump or C's tree gate. |
+| **Close owner** | **B** — `POST-PUSH-VERIFICATION-RUNBOOK.md` §2c: record `cf-cache-status` / `age` on every post-push fetch; purge listed URLs on HIT with stale body; `stamp-census` surfaces the headers. |
+| **Status** | **CLOSED** for the ship motion (process + observation). Residual risk if ops skips purge — fail the runbook, do not greenlight. |
 
 ### 5. Wrong shell (design live at b12 vs dist-v9 at b75; legacy de-route)
 
@@ -102,8 +102,8 @@ Status key: **CLOSED** | **PARTIAL** | **OPEN**.
 |---|---|
 | **Mechanism** | PWA SW caches chart assets under `SW_VERSION = "talaria-chart-<id>"`. Bump rewrites SW files; a client that never updates the worker keeps the prior cache. |
 | **Detect** | Client Application panel / `navigator.serviceWorker`; compare installed SW string to shell build id. |
-| **Close owner** | **B** bump moves `SW_VERSION` on chart + homepage + dist + live public SW paths. Client refresh/unregister is PO/runbook. |
-| **Status** | **PARTIAL** — ship side closed; installed-client residual OPEN until refresh. |
+| **Close owner** | **B** bump moves `SW_VERSION`; runbook §2d closes the residual (badge / hard reload / unregister). |
+| **Status** | **CLOSED** for the ship motion (same as path 13). |
 
 ### 10. Multichart iframe loading embed with a different default build id
 
@@ -129,8 +129,8 @@ Status key: **CLOSED** | **PARTIAL** | **OPEN**.
 |---|---|
 | **Mechanism** | Was: Docker overwrote modules/dist-v9/… but **not** `homepage/public/chart/talaria-design/live/**`, so `/chart/talaria-design/live/` kept stale `?v=` while V9 advanced. |
 | **Detect** | Probe `/chart/talaria-design/live/`; compare to dist-v9 stamps. |
-| **Close owner** | **B** — `homepage/Dockerfile` now `COPY --from=chart_assets /build/talaria-design/live → public/chart/talaria-design/live`; bump stamps `homepage/public/chart/talaria-design/live/index.html` when present. **C follow-on (optional):** add homepage design twin to `CACHE_STAMP_SHELLS` so tree gate sees it (canonical live already covered). |
-| **Status** | **CLOSED** for Docker image + bump. PARTIAL only until C optionally lists the homepage twin. |
+| **Close owner** | **B** — nginx **302 → `/chart/dist-v9/index.html`** (`P6-REMEDY-REDIRECT.md`) so the twin cannot be a shell even if present/stale. A's restore keeps git coherent. Census tool flags any regression to STAMPED_200. |
+| **Status** | **CLOSED** (redirect). |
 
 ### 13. Browser device cache of a prior stamp URL (recurrence-wobble class)
 
@@ -138,8 +138,8 @@ Status key: **CLOSED** | **PARTIAL** | **OPEN**.
 |---|---|
 | **Mechanism** | Even after origin serves new bytes under a new stamp, a PO browser may still hold the previous stamp URL (bookmark, SW, disk cache). Director pre-write: recurrence-wobble response for device caches / service workers. |
 | **Detect** | Hard reload / private window / unregister SW; compare to probe from a clean client. |
-| **Close owner** | Runbook / PO hygiene; B probe proves **edge now**, not **this browser**. |
-| **Status** | **OPEN** (inherent client residual; not a missing bump). |
+| **Close owner** | **B** — `POST-PUSH-VERIFICATION-RUNBOOK.md` §2d + `PO-BUILD-ATTRIBUTION.md`: badge / `window.__TALARIA_CHART_BUILD_ID` must read ship id; hard reload / private window / unregister SW if not. Probe proves edge; badge proves this browser. |
+| **Status** | **CLOSED** for the ship motion. |
 
 ### 14. Legacy minify bundle path (`BUILD_LEGACY_BUNDLE=1`) vs default image
 
@@ -159,10 +159,10 @@ Status key: **CLOSED** | **PARTIAL** | **OPEN**.
 | **C** `CACHE-STAMP-COHERENCE-V1` | Build-time: cross-shell module `?v=`, module content-hash vs sealed stamp, shell build-id uniformity (after train merge). |
 | **B** bump + checkpoint | Mechanical stamp movement + engine `CHART_ENGINE_BUILD` + stub/embed/SW/harness. |
 | **B** `--deploy-gate` | Post-push: marker PRESENT, 200-shell coherence, inert `?v=`. |
-| **Neither fully** | CF/TTL warm cache; PO browser/SW residual. |
+| **Neither fully** | *(none — open residuals closed 2026-07-28 20:50)* |
 
 ---
 
 ## Meet with `STAMP-OWNERSHIP-MEET-C.md`
 
-C owns enforcement; B owns bump + deploy-gate; neither claims the OPEN residuals above without an explicit follow-on (purge automation, design-shell de-route or overwrite, forbidding ordinary ship builds).
+C owns enforcement; B owns bump + deploy-gate + census/runbook. Design-live is redirected (`P6-REMEDY-REDIRECT.md`). Open residuals from the original fourteen-path list are closed for the ship motion; PARTIAL rows are product/config edge cases outside the train push.

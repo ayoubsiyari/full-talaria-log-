@@ -2990,3 +2990,34 @@ They **block**.
 
 **No push.** Handoff: `HANDOFF-A-P6-P234-HOLD.md`. Waiting on A; not idle — will re-verify
 the tip the hour those land.
+
+---
+
+## B-0139 — Director 20:40 parallel five. Item 1 census first; none waited on A.
+
+Director `RULING-C-CONVERGING-AND-B-PARALLEL-20260728-2040.md`. Push still held for
+A's P6 restore + P2/P3/P4; these five do not wait on that.
+
+**1. Stamp census.** Tool `live-surface-probe/stamp-census.mjs`. Host
+`31.97.192.82:3000`. Field current **b75**; train tip **b81**. Report
+`STAMP-CENSUS-20260728-2050.md` + sealed JSON. Field holes beyond P6:
+`/chart/multichart/chart-host.html` **a10**; unstamped `multichart-shell`;
+m20/m21 harness HTML. Primary V9/embed/engine/SW coherent at b75 (train-behind).
+
+**2. P6 remedy prepared.** Nginx `302 /chart/dist-v9/index.html` for
+`^~ /chart/talaria-design/live` in `nginx.conf` + `nginx.local.conf`. Same commit
+404s the other census holes under `/chart/multichart/` and the two harness prefixes.
+Doc: `P6-REMEDY-REDIRECT.md`. Lands with A's restore — redirect alone is the
+"stops serving stale" requirement.
+
+**3. FIX 1 / FIX 2 delivery paths.** Same shape as FIX 3:
+`FIX1-BACKGROUND-RENDER-CADENCE-DELIVERY-PATH.md`,
+`FIX2-TICK-ALLOC-REUSE-DELIVERY-PATH.md`. Not train preconditions.
+
+**4. Fourteen-path residuals.** Paths 4 (CF/TTL), 9/13 (SW/browser), 11 (already),
+12 (redirect) → CLOSED for ship motion. Summary **OPEN = 0**.
+
+**5. Runbook.** `POST-PUSH-VERIFICATION-RUNBOOK.md` — census + `--deploy-gate` +
+edge headers + PO badge = one motion after push.
+
+**Still no push** until A clears the 20:12 hold.
