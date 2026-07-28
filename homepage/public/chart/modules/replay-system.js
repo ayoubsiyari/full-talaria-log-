@@ -362,7 +362,6 @@ class ReplaySystem {
     }
 
     _registerReplayHiddenPauseListener() {
-        if (!this._isReplayHiddenPauseEnabled()) return;
         if (this._replayHiddenPauseOnVisibilityChange) return;
         if (typeof document === 'undefined' || typeof document.addEventListener !== 'function') return;
         this._replayHiddenPauseOnVisibilityChange = () => this._handleReplayVisibilityChange();
@@ -370,7 +369,6 @@ class ReplaySystem {
     }
 
     _handleReplayVisibilityChange() {
-        if (!this._isReplayHiddenPauseEnabled()) return;
         if (this._isReplayPageHidden()) {
             this._pauseReplayForHiddenPage();
         } else {
@@ -381,14 +379,7 @@ class ReplaySystem {
     _clearReplayHiddenPauseTimers() {
         this._activeTickLoop = (this._activeTickLoop || 0) + 1;
         this._activeCandleLoop = (this._activeCandleLoop || 0) + 1;
-        if (this._playStartRaf1) {
-            cancelAnimationFrame(this._playStartRaf1);
-            this._playStartRaf1 = null;
-        }
-        if (this._playStartRaf2) {
-            cancelAnimationFrame(this._playStartRaf2);
-            this._playStartRaf2 = null;
-        }
+        this._cancelDeferredPlayStart();
         if (this._nextCandleTimer) {
             clearTimeout(this._nextCandleTimer);
             this._nextCandleTimer = null;
@@ -405,7 +396,6 @@ class ReplaySystem {
     }
 
     _pauseReplayForHiddenPage() {
-        if (!this._isReplayHiddenPauseEnabled()) return false;
         if (!this.isActive || !this.isPlaying) {
             this._replayHiddenPauseWasPlaying = false;
             return false;
@@ -419,19 +409,21 @@ class ReplaySystem {
     _resumeReplayFromHiddenPage() {
         if (!this._replayHiddenPauseWasPlaying) return false;
         this._replayHiddenPauseWasPlaying = false;
-        if (!this._isReplayHiddenPauseEnabled()
-            || this._isReplayPageHidden()
+        if (this._isReplayPageHidden()
             || !this.isActive
             || !this.isPlaying) {
             return false;
         }
         if (this._shouldUseTickAnimation()) {
+            this._preserveTickProgress = !!(this.animatingCandle && this.tickProgress > 0);
+            // No guard refresh here: hidden-pause guarantees no candle advanced while hidden.
             this.startTickAnimation();
             return true;
         }
         this.animatingCandle = null;
         this.tickProgress = 0;
         this.tickElapsedMs = 0;
+        // No guard refresh here: hidden-pause guarantees no candle advanced while hidden.
         this.startCandleByCandle(false);
         return true;
     }
@@ -9848,6 +9840,7 @@ if (_m20Q6LifecycleRuntimeEnabled()) {
         for (const entry of [...state.events].reverse()) {
             if (!entry.settled) attempt(entry.label, () => m20Q6RemoveEventEntry(entry));
         }
+        instance._replayHiddenPauseOnVisibilityChange = null;
         for (const entry of [...state.managers].reverse()) {
             if (entry.settled) continue;
             attempt(entry.label, () => {
@@ -10023,6 +10016,8 @@ if (_m20Q6LifecycleRuntimeEnabled()) {
         setup() {
             const state = m20Q6StateFor(this);
             try {
+                // setup() is not in m20Q6EffectMethods; this override captures raw
+                // setup-time listeners such as replay hidden-pause visibilitychange.
                 return m20Q6CaptureEffects(
                     state,
                     () => M20Q6ImmutableReplaySystem.prototype.setup.call(this),

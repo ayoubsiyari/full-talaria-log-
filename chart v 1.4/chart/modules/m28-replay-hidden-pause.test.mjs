@@ -145,9 +145,25 @@ function makeEnvironment({ kill = false, hidden = false } = {}) {
   };
 
   census.activeIntervals = () => [...census.timers.values()].filter((entry) => entry.active && entry.kind === 'interval');
+  census.activeTimeouts = () => [...census.timers.values()].filter((entry) => entry.active && entry.kind === 'timeout');
+  census.activeRafs = () => [...census.timers.values()].filter((entry) => entry.active && entry.kind === 'raf');
+  census.activeTimers = () => [...census.timers.values()].filter((entry) => entry.active);
   census.fireInterval = (handleValue) => {
     const entry = census.timers.get(handleValue);
     assert.ok(entry && entry.active, `interval ${handleValue} must be active`);
+    entry.fires += 1;
+    entry.callback();
+  };
+  census.fireTimeout = (handleValue) => {
+    const entry = census.timers.get(handleValue);
+    assert.ok(entry && entry.active, `timeout ${handleValue} must be active`);
+    entry.active = false;
+    entry.fires += 1;
+    entry.callback();
+  };
+  census.invokeTimer = (handleValue) => {
+    const entry = census.timers.get(handleValue);
+    assert.ok(entry, `timer ${handleValue} must exist`);
     entry.fires += 1;
     entry.callback();
   };
@@ -236,7 +252,11 @@ function makeLiveInstance({ text = source, kill = false, hidden = false } = {}) 
   instance.playbackMode = 'candle';
   instance.fullRawData = Array.from({ length: 20 }, (_, index) => ({
     t: 60_000 * index,
+    o: 100 + index,
+    h: 102 + index,
+    l: 99 + index,
     c: 100 + index,
+    v: 1_000 + index,
   }));
   instance.fullData = instance.fullRawData;
   instance.currentIndex = 3;
@@ -253,6 +273,20 @@ function makeLiveInstance({ text = source, kill = false, hidden = false } = {}) 
   instance._flushReplayIndicatorRecalc = () => {};
   instance._flushReplayStateToSession = () => {};
   return { env, chart, instance };
+}
+
+function makeTickInstance(options = {}) {
+  const live = makeLiveInstance(options);
+  const { instance } = live;
+  instance.playbackMode = 'tick';
+  instance._shouldUseTickAnimation = () => true;
+  instance.getEffectivePlaybackSpeed = () => 60;
+  instance.ticksPerCandle = 6;
+  instance.currentTicksPerCandle = 6;
+  instance.useConstantTickInterval = true;
+  instance.updateChartWithAnimatedCandle = () => {};
+  instance.getTickPath = (candle) => [candle.o, candle.o + 0.25, candle.c - 0.25, candle.c];
+  return live;
 }
 
 function hiddenPauseOracle(text = source) {
@@ -297,6 +331,61 @@ function killSwitchOracle(text = source) {
   assert.equal(instance.currentIndex, 4);
 }
 
+function midSessionKillSwitchOracle(text = source) {
+  const { env, instance } = makeLiveInstance({ text });
+  instance.startCandleByCandle(false);
+  assert.equal(env.census.activeIntervals().length, 1);
+
+  env.census.setHidden(true);
+  assert.equal(instance.isPlaying, true);
+  assert.equal(instance._replayHiddenPauseWasPlaying, true);
+  assert.equal(instance.playInterval, null);
+  assert.equal(env.census.activeIntervals().length, 0);
+
+  env.window[HIDDEN_SWITCH] = true;
+  env.census.setHidden(false);
+  assert.equal(instance.isPlaying, true);
+  assert.equal(instance._replayHiddenPauseWasPlaying, false);
+  assert.ok(instance.playInterval, 'kill-switch visibility resume installs a new interval');
+  assert.equal(env.census.activeIntervals().length, 1);
+  env.census.fireInterval(instance.playInterval);
+  assert.equal(instance.currentIndex, 4);
+}
+
+function setupKillSwitchClearedOracle(text = source) {
+  const { env, instance } = makeLiveInstance({ text, kill: true });
+  assert.equal(env.document.listeners('visibilitychange').length, 1);
+
+  env.window[HIDDEN_SWITCH] = false;
+  env.document.hidden = true;
+  env.document.visibilityState = 'hidden';
+  instance.startCandleByCandle(false);
+  assert.equal(instance._replayHiddenPauseWasPlaying, true);
+  assert.equal(instance.playInterval, null);
+  assert.equal(env.census.activeIntervals().length, 0);
+
+  env.census.setHidden(false);
+  assert.equal(instance._replayHiddenPauseWasPlaying, false);
+  assert.ok(instance.playInterval, 'listener registered while kill switch was set resumes after clearing');
+  env.census.fireInterval(instance.playInterval);
+  assert.equal(instance.currentIndex, 4);
+}
+
+function playHiddenGuardOracle(text = source) {
+  const { env, instance } = makeLiveInstance({ text, hidden: true });
+  instance.isPlaying = false;
+  instance.play();
+  assert.equal(instance.isPlaying, true);
+  assert.equal(instance._replayHiddenPauseWasPlaying, true);
+  assert.equal(instance.playInterval, null);
+  assert.equal(env.census.activeTimers().length, 0);
+
+  env.census.setHidden(false);
+  assert.ok(instance.playInterval, 'visible replay resumes after play() was pressed while hidden');
+  env.census.fireInterval(instance.playInterval);
+  assert.equal(instance.currentIndex, 4);
+}
+
 function notPlayingOracle(text = source) {
   const { env, instance } = makeLiveInstance({ text });
   instance.isPlaying = false;
@@ -318,6 +407,7 @@ function listenerDrainOracle(text = source) {
   const report = instance.destroy();
   assert.equal(report.state, 'destroyed');
   assert.equal(env.document.listeners('visibilitychange').length, 0);
+  assert.equal(instance._replayHiddenPauseOnVisibilityChange, null);
 }
 
 function alreadyHiddenStartOracle(text = source) {
@@ -333,6 +423,70 @@ function alreadyHiddenStartOracle(text = source) {
   assert.ok(interval, 'visible replay starts cadence after already-hidden start');
   env.census.fireInterval(interval);
   assert.equal(instance.currentIndex, 4);
+}
+
+function staleGenerationOracle(text = source) {
+  {
+    const { env, instance } = makeLiveInstance({ text });
+    instance.startCandleByCandle(false);
+    const staleInterval = instance.playInterval;
+    env.census.setHidden(true);
+    const hiddenIndex = instance.currentIndex;
+    assert.equal(instance.playInterval, null);
+    env.census.invokeTimer(staleInterval);
+    assert.equal(instance.currentIndex, hiddenIndex);
+    assert.equal(env.census.activeIntervals().length, 0);
+  }
+
+  {
+    const { env, instance } = makeTickInstance({ text });
+    instance.startTickAnimation();
+    const staleTimeout = instance.tickInterval;
+    assert.ok(staleTimeout, 'tick path schedules a timeout');
+    env.census.setHidden(true);
+    const hiddenProgress = instance.tickProgress;
+    assert.equal(instance.tickInterval, null);
+    env.census.invokeTimer(staleTimeout);
+    assert.equal(instance.tickProgress, hiddenProgress);
+    assert.equal(env.census.activeTimeouts().length, 0);
+  }
+}
+
+function tickHiddenPauseOracle(text = source) {
+  const { env, instance } = makeTickInstance({ text });
+  instance.startTickAnimation();
+  const firstTimeout = instance.tickInterval;
+  assert.ok(firstTimeout, 'tick path starts with a timeout');
+  env.census.fireTimeout(firstTimeout);
+
+  const hiddenProgress = instance.tickProgress;
+  const hiddenAnimating = instance.animatingCandle;
+  const hiddenElapsed = instance.tickElapsedMs;
+  const hiddenIndex = instance.currentIndex;
+  assert.ok(hiddenProgress > 0, 'tick path advanced before hiding');
+  assert.ok(hiddenAnimating, 'tick path has a forming candle');
+  assert.ok(hiddenElapsed > 0, 'tick path records elapsed candle time');
+  assert.ok(instance.tickInterval, 'tick path scheduled a follow-up timeout');
+
+  env.census.setHidden(true);
+  assert.equal(instance.isPlaying, true);
+  assert.equal(instance.tickInterval, null);
+  assert.equal(instance.tickProgress, hiddenProgress);
+  assert.equal(instance.animatingCandle, hiddenAnimating);
+  assert.equal(instance.tickElapsedMs, hiddenElapsed);
+  assert.equal(instance.currentIndex, hiddenIndex);
+  assert.equal(env.census.activeTimeouts().length, 0);
+
+  env.census.setHidden(false);
+  assert.equal(instance.tickProgress, hiddenProgress);
+  assert.equal(instance.animatingCandle, hiddenAnimating);
+  assert.equal(instance.tickElapsedMs, hiddenElapsed);
+  assert.equal(instance.currentIndex, hiddenIndex);
+  assert.ok(instance.tickInterval, 'tick path resumes from hidden pause');
+
+  env.census.fireTimeout(instance.tickInterval);
+  assert.equal(instance.currentIndex, hiddenIndex);
+  assert.equal(instance.tickProgress, hiddenProgress + 1);
 }
 
 function replaceOnce(text, needle, replacement) {
@@ -352,6 +506,18 @@ test('M28 hidden-pause kill switch keeps base run-while-hidden behavior', () => 
   killSwitchOracle();
 });
 
+test('M28 kill switch flipped while hidden-paused resumes run-forever playback', () => {
+  midSessionKillSwitchOracle();
+});
+
+test('M28 listener registered under kill switch resumes after switch is cleared', () => {
+  setupKillSwitchClearedOracle();
+});
+
+test('M28 play() while hidden is paused without scheduling deferred playback', () => {
+  playHiddenGuardOracle();
+});
+
 test('M28 visibility changes do not start inactive or not-playing replay', () => {
   notPlayingOracle();
 });
@@ -364,12 +530,25 @@ test('M28 replay started while already hidden waits until visible', () => {
   alreadyHiddenStartOracle();
 });
 
+test('M28 hidden pause invalidates stale candle and tick timer generations', () => {
+  staleGenerationOracle();
+});
+
+test('M28 tick hidden pause preserves and resumes forming candle progress', () => {
+  tickHiddenPauseOracle();
+});
+
 test('M28 mutation checks require passing unmutated oracles first', () => {
   hiddenPauseOracle();
   killSwitchOracle();
+  midSessionKillSwitchOracle();
+  setupKillSwitchClearedOracle();
+  playHiddenGuardOracle();
   notPlayingOracle();
   listenerDrainOracle();
   alreadyHiddenStartOracle();
+  staleGenerationOracle();
+  tickHiddenPauseOracle();
 
   const noKillSwitch = replaceOnce(
     source,
@@ -391,4 +570,25 @@ test('M28 mutation checks require passing unmutated oracles first', () => {
     '        this.startCandleByCandle(true);',
   );
   assert.throws(() => hiddenPauseOracle(catchUpResume));
+
+  const noPlayHiddenGuard = replaceOnce(
+    source,
+    "        if (this._isReplayPageHidden()) {\n            this.isPlaying = true;\n            this._pauseReplayForHiddenPage();\n            return;\n        }",
+    "        if (false && this._isReplayPageHidden()) {\n            this.isPlaying = true;\n            this._pauseReplayForHiddenPage();\n            return;\n        }",
+  );
+  assert.throws(() => playHiddenGuardOracle(noPlayHiddenGuard));
+
+  const noHiddenPauseGenerationBumps = replaceOnce(
+    source,
+    "        this._activeTickLoop = (this._activeTickLoop || 0) + 1;\n        this._activeCandleLoop = (this._activeCandleLoop || 0) + 1;",
+    "        this._activeTickLoop = this._activeTickLoop || 0;\n        this._activeCandleLoop = this._activeCandleLoop || 0;",
+  );
+  assert.throws(() => staleGenerationOracle(noHiddenPauseGenerationBumps));
+
+  const noTickResumePreserve = replaceOnce(
+    source,
+    '            this._preserveTickProgress = !!(this.animatingCandle && this.tickProgress > 0);',
+    '            this._preserveTickProgress = false;',
+  );
+  assert.throws(() => tickHiddenPauseOracle(noTickResumePreserve));
 });
