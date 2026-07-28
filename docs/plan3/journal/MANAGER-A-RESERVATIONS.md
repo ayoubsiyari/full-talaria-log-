@@ -141,3 +141,11 @@ would imply a design decision I have not made.
 | `m21-a2-rebaseline-20260728.json` | evidence file | a2-rebaseline | written inside the packet worktree, never the main checkout |
 | `m20-q9-mcdiag-atip-20260728.json` | evidence file | a2-rebaseline | `_mcDiag` cross-check pinned to A tip |
 | `__TALARIA_A2_REBASELINE_PROBE_V1` | global symbol | a2-rebaseline | probe only, must not ship |
+
+## 2026-07-28 12:04 — reservations for the residue census (FINDING-LAG-IS-RESIDUE)
+
+| Name | Kind | Packet | Note |
+|---|---|---|---|
+| `m22-residue-census.mjs` | harness | residue-census | new; instrumentation only, injects nothing into product files |
+| `m22-residue-census-20260728.json` | evidence file | residue-census | written inside the packet worktree only |
+| `__TALARIA_RESIDUE_CENSUS_V1` | global symbol | residue-census | injected at page-init by the harness; must never appear in product source |
