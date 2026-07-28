@@ -1158,4 +1158,42 @@ A escalated five interpolated substring-selector id collisions, then amended tha
 
 **What I have NOT proven, stated so this does not become the next false certainty:** whether those producers are *reachable*. `showPctArrows` may be permanently false; a containing method may have no caller. A may have meant reachability rather than textual presence, in which case we are not in conflict and A is answering a harder question than I have. **That reachability check is the cheap dispatch, and it must run before any deletion.** I am not narrowing or deleting anything until it reports.
 
+**SCOPE CORRECTION on my contradiction of A, entered before anyone acts on it.** A's actual deletion commits — `e588b795a`, `267a15f98`, `e9c2918ca` — touch **`drawing-tools-manager.js` only**, never `order-manager.js`. So there was no territory breach, and A's "three dead selectors" are very likely a different set in A's own file, which I have **not** audited. What I proved is narrower than "A was wrong": **my five sites in `order-manager.js` all have live producers.** A's three in its own file may be perfectly dead. I would rather scope this myself than have A carry a finding I cannot support.
+
+Also of record: A syncs `homepage/public/chart/modules/drawing-tools-manager.js` in the same commits as the `chart v 1.4` copy. That is direct evidence on my B-0064 mirror escalation — see B-0068.
+
 **One finding that makes the eventual fix trivial and low-risk: the correct idiom is already in the file, two lines from the defect.** 39146 uses `` `.pending-tp-delete.pending-tp-${orderId}` `` — a class-token selector, which matches the exact token and cannot collide — while 39148 immediately below uses the substring form. So the narrowing is a mechanical rewrite of `[class*="X"]` to `.X`, with an in-file precedent rather than a new convention. That also bounds the collision precisely: `[class*="pending-tp-1"]` matches `pending-tp-12` and `pending-tp-100`; `.pending-tp-1` does not. Site 5 is the worst of them, since `[class*="-${oid}"]` matches any class ending in that digit run, and it is also the one whose producer is most clearly live.
+
+---
+
+## B-0068 — VERDICT (V6-P1 candidate) · **Class: S (soundness — reproduced in a real browser, then cured and re-proven). Surface: synthetic SVG in Edge. NOT the product order lifecycle.**
+
+**The collision is real, and it is fixed.** Packet B-W7. RED before, GREEN after, same instrument.
+
+Site 5 was the decisive case, exactly as the Director predicted. Producer `_drawMultiTPAvgLineOnChart` (~37005) builds `cls = multi-tp-avg-${id}` and stamps `multi-tp-avg-line ${cls}` plus four labels, so order 12 carries `multi-tp-avg-12`. Removing order **1** composed `[class*="multi-tp-avg-"][class*="-1"]`, and `-1` is a substring of `multi-tp-avg-12`.
+
+Observed in real Edge, before the fix:
+
+```
+site-5-multi-tp-avg: COLLIDES
+  matched = order-1:{line,label-1..4} AND order-12:{line,label-1..4}
+  removed-order-12 = order-12:{line,label-1..4}
+```
+
+**All five sites collided**, not just site 5. The control cell — the class-token idiom already in the file at 39146 — stayed SAFE throughout, which is what makes the result a discrimination rather than a harness that fails everything.
+
+**The cure.** All five rewritten to class-token selectors following the in-file precedent: site 5 to `.multi-tp-avg-${oid}`, sites 1 and 3 to `.pending-tp-pct-control.pending-tp-${id}`, site 2 to `.open-tp-pct-control.tp-${oid}`, site 4 to `.pending-tp-delete.pending-tp-${oid}` — which is character-for-character the precedent at 39146. Gate now **6 passed, 0 failed, exit 0**, every site SAFE, and each still matches its own order's elements, so the removals still do their job.
+
+**The correctness risk I checked before committing rather than after.** Narrowing sites 1 and 3 to `.pending-tp-pct-control` would strand elements if the `-dec`/`-inc` buttons were siblings rather than children. `_createTpPctStepperOnChart` (49115) appends **one** `<g>` carrying all three tokens and returns it; the buttons are appended inside. Nothing is stranded. Separately, `pending-tp-pct-dec` and `pending-tp-pct-inc` have **no producer at all** — the removal calls at 38415/38416 target classes nothing creates. Those are genuinely dead, and they are *not* among my five (they carry no interpolated id).
+
+**Why this gate is not a transcription.** It parses the remover selector templates *and* the producer class templates out of `order-manager.js` source at runtime, then evaluates them in a real browser. I verified that directly: the gate file contains **no** `class*=` literal, reads the product via `readFileSync`, and calls `runOrderOverlayBrowserRunner` rather than any stub. The proof it works is that when I narrowed site 5 alone, the gate re-read the narrowed selector and flipped that one site to SAFE while the other four stayed COLLIDES — no gate edit. Reintroduce the substring form and it goes red again.
+
+**Coverage stamp (§A4b).** GREEN licenses: these selectors, composed for one order, do not match a prefix-related sibling's elements, for synthetic SVG in Edge. GREEN does **not** license: that order lines survive a real placement, fill, or drag. Kill-switch: **none** — so per §A5.2 this ungated cure owes a fault-injection scaffold, which I am recording as owed rather than claiming.
+
+### Three findings from the instrument, all reportable
+
+1. **C's browser runner is UNCOMMITTED.** `scripts/order-overlay-browser-runner.mjs` and its fixtures are untracked working-tree files on `manager-c/verification-infra`. It was reported landed at 04:12; it is not in any commit, cannot be merged or cherry-picked, and would not survive a clean. My gate therefore imports it by absolute path from another worktree and is **not CI-portable**. I did not copy it — vendoring an untracked instrument is how the mirror-drift problem starts. **Escalating: this needs to be committed before any V6 gate can enter a chain.**
+2. **C's runner acceptance suite passes 7/7 against a *stubbed* browser.** Its own cells say "stubbed browser plus structured report succeeds", so the suite does not establish that a real browser launches. I verified a real launch separately — it drives Edge at `C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe` and exits 0. This is VER-01 on the instrument: the suite proves report-shape handling, not browser capability, and the two should not be conflated in C's status.
+3. **My B-0064 mirror escalation is answered by `TERRITORY.yml`, not by me.** `homepage/public/chart/**` is listed as **forbidden to B by ruling** ("product surface"), and appears in A's ownership block as "generated product mirrors". A's own commits sync both copies. So the V8 reach gap is **not mine to close** and I will not touch it; the question that remains for the Director is only whether A syncs my preferences mirror or a build step regenerates it.
+
+**Consequence for V6-P1.** This is a real, cured mechanism that explains partial disappearance of a sibling's parts. It is **not** proven to be *the* cause of the PO's report, and I am not claiming it is: B-T1's finding stands that `updateOrderLines` has no creation path, so absence remains the steady state once a row leaves the registry. This fix removes one cause of parts vanishing; the restoration design is still owed.
