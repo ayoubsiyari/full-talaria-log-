@@ -1854,3 +1854,23 @@ The two genuine defects are carried explicitly, because they survive independent
 Bound to a declared mutation-survival count before any verdict, with a stub that must die as the acceptance bar. GUARD-01 applied here too — `Number.isFinite(Number(x))` on an id or version is an automatic trigger without a null cell.
 
 Four packets in flight. PO-REQ outstanding: **0**.
+
+---
+
+## B-0099 — HARNESS-01 satisfied. Clause 1 verified structurally, not accepted on report.
+
+B-W13 split the harness. I checked the clause that matters rather than re-run its suite, because "structurally incapable of writing" is a claim about code shape and can be read directly.
+
+- **Clause 1 holds.** `createHttpAdapter` dispatches on mode (line 693), and `createHttpReadAdapter` is **37 lines containing no `registerTrade` and no POST/PUT/DELETE/PATCH**. A check attempting to write in verify-only mode throws rather than mutating. That is the difference between *not calling* a write and *not having* one, and it is the distinction the policy is actually about. Verify-only is the **default**, and the header prints `writes_issued=0`.
+- **Clause 2 holds.** L1 (310-315) and L4 (387-401) each compute a preservation delta over **non-harness** rows and FAIL on any missing or changed row. Neither filters to self-written rows and stops.
+- Write-probe refuses when `--disposable-session-id` equals the verify target, and warns at startup that the server's orphan sweep can delete vulnerable rows it cannot restore.
+
+**L7 is the part I care about most.** It reads every row and asserts `payload.tradeId || payload.id` is non-empty — the exact precondition of the deletion in B-0088/B-0095, since the server's keep-set is built from those two aliases alone. It needs no writes. **The harness stops being a bystander to the defect M4 exists to catch and becomes its detector**, and it can be run against the PO's real ledger today without touching it. Had it existed this morning it would have found the escalation before the review did.
+
+I added one piece of operational ordering the split implies but did not state: **run 1a first, and if L7 reports vulnerable rows do not run 1b against that session** — those are precisely the rows the first write will delete.
+
+**Quarantine lifted for 1a only**, on the strength of clause 1 being structural. 1b keeps its warning, because its risk is a product defect it cannot avoid rather than a harness defect it could fix.
+
+**Not yet reviewed.** B-R7 dispatched, and I have pointed it at the violation I think most likely: `resolve_session_journal` performs a one-time backfill **when SQL is empty**, so in this codebase a *read* can cause a server-side write. A read-only client is not the same as a read-only effect, and clause 1 is about the ledger, not about the HTTP verb. If that fires, my "safe on any ledger" statement is wrong and I would rather find out from a reviewer than from the PO.
+
+Four of the five vacuity forms found so far were in checks that looked fine to me. I have asked B-R7 to assume a fifth exists, and named L7 and L8 as the likeliest hosts because they are new — L7 in particular could pass while vulnerable rows exist, if the endpoint reconstructs `payload` or fills `tradeId` in from the column on the way out. That would make it blind to the exact defect it was built for.

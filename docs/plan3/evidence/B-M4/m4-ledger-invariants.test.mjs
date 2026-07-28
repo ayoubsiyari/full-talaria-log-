@@ -3,7 +3,8 @@ import http from 'node:http';
 import test from 'node:test';
 
 import {
-  CHECK_IDS,
+  VERIFY_CHECK_IDS,
+  WRITE_CHECK_IDS,
   createHttpAdapter,
   createFixtureAdapter,
   makeTrade,
@@ -14,13 +15,14 @@ import {
 
 const RUN_ID = 'proof';
 const HEX_RUN_ID = '1141a2c8';
-const BASE_OPTS = { runId: RUN_ID, write: false, expectForeignId: 'real-1' };
+const BASE_OPTS = { runId: RUN_ID, mode: 'verify-only', expectForeignId: 'real-1' };
 const WRITE_OPTS = {
   runId: RUN_ID,
-  write: true,
+  mode: 'write-probe',
   accountId: 'qa-b-m4',
   qaAccountId: 'qa-b-m4',
-  sessionId: 'fixture-session',
+  sessionId: 'real-session',
+  disposableSessionId: 'fixture-session',
   n: 3,
   expectForeignId: 'real-1',
 };
@@ -75,15 +77,18 @@ function staticAdapter({ backend, browser = backend, storage = 'state' }) {
 test('fixture proves non-write read checks on healthy ledger', async () => {
   const adapter = await seededAdapter();
   const results = await runChecks(adapter, BASE_OPTS);
-  assert.equal(results.length, CHECK_IDS.length);
+  assert.equal(results.length, VERIFY_CHECK_IDS.length);
   assert.equal(status(results, 'L2'), 'PASS');
   assert.equal(status(results, 'L3'), 'PASS');
   assert.equal(status(results, 'L5'), 'PASS');
+  assert.equal(status(results, 'L7'), 'PASS');
+  assert.equal(status(results, 'L8'), 'PASS');
 });
 
 test('L1 mutation is caught: registered count is not conserved', async () => {
   const adapter = await seededAdapter('L1');
   const results = await runChecks(adapter, WRITE_OPTS);
+  assert.equal(results.length, WRITE_CHECK_IDS.length);
   assert.equal(status(results, 'L1'), 'FAIL');
 });
 
@@ -101,7 +106,7 @@ test('L3 mutation is caught: legacy alias leaks into ids', async () => {
 
 test('L4 mutation is caught: duplicate ids are present', async () => {
   const adapter = await seededAdapter('L4');
-  const results = await runChecks(adapter, BASE_OPTS);
+  const results = await runChecks(adapter, WRITE_OPTS);
   assert.equal(status(results, 'L4'), 'FAIL');
 });
 
@@ -111,10 +116,10 @@ test('L5 mutation is caught: browser-visible set diverges', async () => {
   assert.equal(status(results, 'L5'), 'FAIL');
 });
 
-test('write safety refuses missing QA account id', async () => {
+test('write-probe safety refuses missing QA account id', async () => {
   const adapter = await seededAdapter();
   await assert.rejects(
-    () => runChecks(adapter, { runId: RUN_ID, write: true, accountId: 'real-user', sessionId: 'fixture-session' }),
+    () => runChecks(adapter, { runId: RUN_ID, mode: 'write-probe', accountId: 'real-user', sessionId: 'real-session', disposableSessionId: 'fixture-session' }),
     /qa-account-id is required/,
   );
 });
@@ -122,16 +127,27 @@ test('write safety refuses missing QA account id', async () => {
 test('CLI validation reports all missing required arguments', () => {
   assert.deepEqual(validateOptions({ write: false, n: 3 }), ['--base-url', '--account-id', '--session-id', '--expect-digest', '--expect-foreign-id']);
   assert.deepEqual(validateOptions({
-    write: true,
+    mode: 'write-probe',
     baseUrl: 'http://x',
     accountId: 'acct',
     sessionId: 1,
     n: 3,
     expectDigest: 'build-1',
     expectForeignId: 'real-1',
-  }), ['--qa-account-id']);
+  }), ['--qa-account-id', '--disposable-session-id']);
   assert.deepEqual(validateOptions({
-    write: false,
+    mode: 'write-probe',
+    baseUrl: 'http://x',
+    accountId: 'acct',
+    sessionId: 'same',
+    disposableSessionId: 'same',
+    qaAccountId: 'acct',
+    n: 3,
+    expectDigest: 'build-1',
+    expectForeignId: 'real-1',
+  }), ['--disposable-session-id must differ from --session-id']);
+  assert.deepEqual(validateOptions({
+    mode: 'verify-only',
     baseUrl: 'http://x',
     accountId: 'acct',
     sessionId: 1,
@@ -143,24 +159,25 @@ test('CLI validation reports all missing required arguments', () => {
 
 test('CLI parser splits inline values before camelising and rejects unknown flags', () => {
   assert.deepEqual(parseArgs([
+    '--write-probe',
     '--base-url=http://x',
     '--account-id=acct',
     '--session-id',
     's1',
+    '--disposable-session-id=s2',
     '--qa-account-id=acct',
     '--n=10',
     '--run-id=abc',
     '--expect-digest=sha256:test',
     '--expect-foreign-id=real-1',
-    '--write',
   ]), {
-    write: true,
-    dryRun: false,
+    mode: 'write-probe',
     n: 10,
     headers: {},
     baseUrl: 'http://x',
     accountId: 'acct',
     sessionId: 's1',
+    disposableSessionId: 's2',
     qaAccountId: 'acct',
     runId: 'abc',
     expectDigest: 'sha256:test',
@@ -174,9 +191,48 @@ test('CLI parser splits inline values before camelising and rejects unknown flag
 test('transport mutation is caught: server is down', async () => {
   const adapter = createHttpAdapter({ baseUrl: 'http://127.0.0.1:1', sessionId: 1 });
   const results = await runChecks(adapter, BASE_OPTS);
-  assert.equal(results.length, CHECK_IDS.length);
+  assert.equal(results.length, VERIFY_CHECK_IDS.length);
   assert.equal(anyFail(results), true);
   assert.match(JSON.stringify(results), /Transport failure|fetch failed|ECONNREFUSED/);
+});
+
+test('verify-only HTTP mode issues zero write verbs against mock server', async () => {
+  const transcript = [];
+  await withServer((req, res) => {
+    transcript.push(`${req.method} ${req.url}`);
+    if (req.method !== 'GET') {
+      res.writeHead(500, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ error: 'write verb received', method: req.method }));
+      return;
+    }
+    res.writeHead(200, { 'content-type': 'application/json' });
+    if (req.url.includes('/journal-trades')) {
+      res.end(JSON.stringify({ trades: [realTrade(1)] }));
+    } else if (req.url.includes('/state')) {
+      res.end(JSON.stringify({ state: { journal: [realTrade(1)], journal_storage: 'state' } }));
+    } else {
+      res.end(JSON.stringify({ buildId: 'build-1' }));
+    }
+  }, async (baseUrl) => {
+    const adapter = createHttpAdapter({ baseUrl, sessionId: 'real-session', mode: 'verify-only' });
+    assert.equal(typeof adapter.registerTrade, 'undefined');
+    const results = await runChecks(adapter, BASE_OPTS);
+    assert.equal(results.every((row) => row.status === 'PASS'), true, JSON.stringify(results));
+    assert.equal(adapter.writesIssued, 0);
+  });
+  assert.deepEqual(transcript.filter((line) => !line.startsWith('GET ')), []);
+  assert.deepEqual(transcript, [
+    'GET /api/sessions/real-session/journal-trades',
+    'GET /api/sessions/real-session/journal-trades',
+    'GET /api/sessions/real-session',
+    'GET /api/sessions/real-session/journal-trades',
+    'GET /api/sessions/real-session/journal-trades',
+    'GET /api/sessions/real-session/journal-trades',
+    'GET /api/sessions/real-session/journal-trades',
+    'GET /api/sessions/real-session/state',
+    'GET /api/sessions/real-session/journal-trades',
+    'GET /api/sessions/real-session/journal-trades',
+  ]);
 });
 
 test('transport mutation is caught: wrong session id returns 404', async () => {
@@ -186,7 +242,7 @@ test('transport mutation is caught: wrong session id returns 404', async () => {
   }, async (baseUrl) => {
     const adapter = createHttpAdapter({ baseUrl, sessionId: 404 });
     const results = await runChecks(adapter, BASE_OPTS);
-    assert.equal(results.length, CHECK_IDS.length);
+    assert.equal(results.length, VERIFY_CHECK_IDS.length);
     assert.equal(anyFail(results), true);
     assert.match(JSON.stringify(results), /HTTP 404/);
   });
@@ -199,7 +255,7 @@ test('transport mutation is caught: auth rejected with 401', async () => {
   }, async (baseUrl) => {
     const adapter = createHttpAdapter({ baseUrl, sessionId: 1 });
     const results = await runChecks(adapter, BASE_OPTS);
-    assert.equal(results.length, CHECK_IDS.length);
+    assert.equal(results.length, VERIFY_CHECK_IDS.length);
     assert.equal(anyFail(results), true);
     assert.match(JSON.stringify(results), /HTTP 401/);
   });
@@ -212,7 +268,7 @@ test('transport mutation is caught: auth rejected with 403', async () => {
   }, async (baseUrl) => {
     const adapter = createHttpAdapter({ baseUrl, sessionId: 1 });
     const results = await runChecks(adapter, BASE_OPTS);
-    assert.equal(results.length, CHECK_IDS.length);
+    assert.equal(results.length, VERIFY_CHECK_IDS.length);
     assert.equal(anyFail(results), true);
     assert.match(JSON.stringify(results), /HTTP 403/);
   });
@@ -225,7 +281,7 @@ test('transport mutation is caught: 200 HTML login page', async () => {
   }, async (baseUrl) => {
     const adapter = createHttpAdapter({ baseUrl, sessionId: 1 });
     const results = await runChecks(adapter, BASE_OPTS);
-    assert.equal(results.length, CHECK_IDS.length);
+    assert.equal(results.length, VERIFY_CHECK_IDS.length);
     assert.equal(anyFail(results), true);
     assert.match(JSON.stringify(results), /Expected JSON/);
   });
@@ -238,7 +294,7 @@ test('transport mutation is caught: 200 JSON wrong shape', async () => {
   }, async (baseUrl) => {
     const adapter = createHttpAdapter({ baseUrl, sessionId: 1 });
     const results = await runChecks(adapter, BASE_OPTS);
-    assert.equal(results.length, CHECK_IDS.length);
+    assert.equal(results.length, VERIFY_CHECK_IDS.length);
     assert.equal(anyFail(results), true);
     assert.match(JSON.stringify(results), /Wrong JSON shape/);
   });
@@ -268,7 +324,8 @@ test('absence mutation is covered: single-trade ledger does not require N greate
   assert.equal(status(results, 'L2'), 'PASS');
   assert.equal(status(results, 'L3'), 'PASS');
   assert.equal(status(results, 'L5'), 'PASS');
-  assert.equal(status(results, 'L4'), 'SKIP-LOUD');
+  assert.equal(status(results, 'L7'), 'PASS');
+  assert.equal(status(results, 'L8'), 'PASS');
 });
 
 test('identity mutation is caught: non-empty null rows have no identifiable ids', async () => {
@@ -280,11 +337,12 @@ test('identity mutation is caught: non-empty null rows have no identifiable ids'
   assert.equal(status(results, 'L5'), 'FAIL');
 });
 
-test('identity mutation is caught: payload id is required even when columns exist', async () => {
-  const malformed = realTrade(1, { payload: { symbol: 'EURUSD' } });
+test('L7 catches planted vulnerable row missing payload tradeId/id aliases', async () => {
+  const malformed = realTrade(1, { payload: { trade_id: 'real-1', client_trade_id: 'real-1', symbol: 'EURUSD' } });
   const results = await runChecks(staticAdapter({ backend: [malformed], browser: [malformed] }), BASE_OPTS);
-  assert.equal(status(results, 'L3'), 'FAIL');
-  assert.match(JSON.stringify(results.find((row) => row.id === 'L3')), /missing-payload-id/);
+  assert.equal(status(results, 'L7'), 'FAIL');
+  assert.match(JSON.stringify(results.find((row) => row.id === 'L7')), /vulnerable/);
+  assert.match(JSON.stringify(results.find((row) => row.id === 'L7')), /real-1/);
 });
 
 test('reviewer mutation matrix reports 21 designed and 0 survived', async () => {
@@ -340,7 +398,7 @@ test('reviewer mutation matrix reports 21 designed and 0 survived', async () => 
         return [{ status: 'FAIL' }];
       }
     }],
-    ['missing expect-foreign-id fails closed', async () => runChecks(staticAdapter({ backend: [realTrade(1)] }), { runId: RUN_ID, write: false })],
+    ['missing expect-foreign-id fails closed', async () => runChecks(staticAdapter({ backend: [realTrade(1)] }), { runId: RUN_ID, mode: 'verify-only' })],
   ];
 
   const outcomes = await Promise.all(cases.map(async ([name, fn]) => ({ name, results: await fn() })));

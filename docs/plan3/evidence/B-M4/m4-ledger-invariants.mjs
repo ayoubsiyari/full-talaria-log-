@@ -4,15 +4,18 @@ import { fileURLToPath } from 'node:url';
 import process from 'node:process';
 
 const DEFAULT_N = 3;
-const CHECK_IDS = ['L1', 'L2', 'L3', 'L4', 'L5'];
+const VERIFY_CHECK_IDS = ['L2', 'L3', 'L5', 'L7', 'L8'];
+const WRITE_CHECK_IDS = ['L1', 'L4'];
+const CHECK_IDS = [...VERIFY_CHECK_IDS, ...WRITE_CHECK_IDS];
 const CANONICAL_ID_RE = /^(?!legacy[:_-])[\x21-\x7E]{1,128}$/;
 const HARNESS_TRADE_ID_RE = /^m4-[0-9a-f]{8}-\d{2}$/;
 const ALLOWED_FLAGS = new Set([
-  'write',
-  'dryRun',
+  'verifyOnly',
+  'writeProbe',
   'baseUrl',
   'accountId',
   'sessionId',
+  'disposableSessionId',
   'qaAccountId',
   'n',
   'bearer',
@@ -21,18 +24,16 @@ const ALLOWED_FLAGS = new Set([
   'expectForeignId',
   'runId',
 ]);
-const VALUE_FLAGS = new Set([...ALLOWED_FLAGS].filter((key) => key !== 'write' && key !== 'dryRun'));
+const VALUE_FLAGS = new Set([...ALLOWED_FLAGS].filter((key) => key !== 'verifyOnly' && key !== 'writeProbe'));
 
 function parseArgs(argv) {
-  const out = { write: false, dryRun: true, n: DEFAULT_N, headers: {} };
+  const out = { mode: 'verify-only', n: DEFAULT_N, headers: {} };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
-    if (arg === '--write') {
-      out.write = true;
-      out.dryRun = false;
-    } else if (arg === '--dry-run') {
-      out.dryRun = true;
-      out.write = false;
+    if (arg === '--verify-only') {
+      out.mode = 'verify-only';
+    } else if (arg === '--write-probe') {
+      out.mode = 'write-probe';
     } else if (arg.startsWith('--')) {
       const raw = arg.slice(2);
       const eq = raw.indexOf('=');
@@ -99,11 +100,23 @@ function rowIdentity(row) {
   const grammarId = columnId || id;
   const issues = [];
   if (!id) issues.push('unresolved-id');
-  if (!payloadId) issues.push('missing-payload-id');
   if (columnId && columnId !== id) issues.push('client-trade-id-mismatch');
   if (grammarId && !CANONICAL_ID_RE.test(grammarId)) issues.push('non-canonical-column-id');
   if (grammarId && /^legacy[:_-]/.test(grammarId)) issues.push('legacy-column-id');
   return { id, columnId, payloadId, grammarId, issues };
+}
+
+function vulnerablePayloadRows(rows) {
+  return (Array.isArray(rows) ? rows : [])
+    .map((row, index) => {
+      const detail = rowIdentity(row);
+      return { index, id: detail.columnId || detail.id || tradeId(row), row };
+    })
+    .filter((entry) => {
+      const payload = entry.row?.payload && typeof entry.row.payload === 'object' ? entry.row.payload : entry.row;
+      const payloadId = payload?.tradeId ?? payload?.id;
+      return payloadId == null || String(payloadId).trim() === '';
+    });
 }
 
 function idSet(ids) {
@@ -209,6 +222,8 @@ function hasTradeId(rows, id) {
 
 function validateOptions(opts) {
   const missing = [];
+  const mode = opts.mode || 'verify-only';
+  if (!['verify-only', 'write-probe'].includes(mode)) missing.push('--verify-only or --write-probe');
   if (!opts.baseUrl || !String(opts.baseUrl).trim()) missing.push('--base-url');
   if (!opts.accountId || !String(opts.accountId).trim()) missing.push('--account-id');
   if (!opts.sessionId || !String(opts.sessionId).trim()) missing.push('--session-id');
@@ -219,8 +234,12 @@ function validateOptions(opts) {
     missing.push('--expect-foreign-id must name a non-harness trade');
   }
   if (!Number.isInteger(opts.n) || opts.n < 1) missing.push('--n positive integer');
-  if (opts.write) {
+  if (mode === 'write-probe') {
     if (!opts.qaAccountId || !String(opts.qaAccountId).trim()) missing.push('--qa-account-id');
+    if (!opts.disposableSessionId || !String(opts.disposableSessionId).trim()) missing.push('--disposable-session-id');
+    if (opts.sessionId && opts.disposableSessionId && String(opts.sessionId) === String(opts.disposableSessionId)) {
+      missing.push('--disposable-session-id must differ from --session-id');
+    }
     if (opts.accountId && opts.qaAccountId && String(opts.accountId) !== String(opts.qaAccountId)) {
       missing.push('--account-id must equal --qa-account-id for write checks');
     }
@@ -229,9 +248,15 @@ function validateOptions(opts) {
 }
 
 function assertQaWriteSafety(opts) {
-  if (!opts.write) return;
+  if (opts.mode !== 'write-probe') return;
   if (!opts.qaAccountId || !String(opts.qaAccountId).trim()) {
     throw new Error('Refusing write checks: --qa-account-id is required.');
+  }
+  if (!opts.disposableSessionId || !String(opts.disposableSessionId).trim()) {
+    throw new Error('Refusing write checks: --disposable-session-id is required.');
+  }
+  if (String(opts.disposableSessionId) === String(opts.sessionId)) {
+    throw new Error('Refusing write checks: --disposable-session-id must differ from --session-id.');
   }
   if (!opts.accountId || !String(opts.accountId).trim()) {
     throw new Error('Refusing write checks: --account-id is required and must identify the authenticated QA account.');
@@ -265,7 +290,6 @@ function makeTrade(runId, index, override = {}) {
 }
 
 async function checkL1(adapter, opts) {
-  if (!opts.write) return skip('L1', { dryRun: true }, 'write mode disabled; count-conservation registration not attempted');
   const runId = opts.runId;
   const beforeRows = opts.initialBackendRows ?? await adapter.fetchBackendTrades();
   const ids = [];
@@ -350,7 +374,6 @@ async function checkL4(adapter, opts) {
   let ids = analysis.ids;
   const duplicateIds = multisetDuplicates(ids);
   if (duplicateIds.length) return fail('L4', { ids, duplicateIds }, 'ledger contains duplicate ids before duplicate-submit probe');
-  if (!opts.write) return skip('L4', { ids }, 'write mode disabled; duplicate-submit merge not attempted');
   const dupe = makeTrade(opts.runId, 1);
   const preRows = rows;
   const preMatches = rows.filter((row) => tradeId(row) === dupe.tradeId);
@@ -425,35 +448,71 @@ async function checkL5(adapter) {
   if (!backendIds.length && !browserIds.length) {
     return skip('L5', observed, 'cross-store agreement precondition missing: no identifiable trade ids on either side');
   }
-  if (backend.rowCount !== browser.rowCount || backendIds.length !== browserIds.length || JSON.stringify(sortedBackend) !== JSON.stringify(sortedBrowser)) {
+  if (
+    backend.rowCount !== browser.rowCount
+    || backendIds.length !== browserIds.length
+    || JSON.stringify(sortedBackend) !== JSON.stringify(sortedBrowser)
+    || observed.backendDuplicateIds.length
+    || observed.browserDuplicateIds.length
+  ) {
     return fail('L5', observed, 'browser-visible row/id multiset differs from backend row/id multiset');
   }
   return pass('L5', observed, 'PASS establishes browser and backend expose the same row count and id multiset');
 }
 
+async function checkL7(adapter) {
+  const rows = await adapter.fetchBackendTrades();
+  const vulnerable = vulnerablePayloadRows(rows);
+  const observed = {
+    rowCount: Array.isArray(rows) ? rows.length : 0,
+    vulnerableCount: vulnerable.length,
+    vulnerableIds: vulnerable.map((entry) => entry.id),
+    vulnerableRows: vulnerable,
+  };
+  if (vulnerable.length) {
+    return fail('L7', observed, 'rows vulnerable to orphan-sweep deletion: payload.tradeId or payload.id is missing');
+  }
+  return pass('L7', observed, 'PASS establishes every backend row has payload.tradeId or payload.id for orphan-sweep keep-set safety');
+}
+
+async function checkL8(adapter, opts) {
+  const rows = await adapter.fetchBackendTrades();
+  const expectedForeignId = String(opts.expectForeignId ?? '').trim();
+  const observed = {
+    rowCount: Array.isArray(rows) ? rows.length : 0,
+    expectedForeignId,
+    present: hasTradeId(rows, expectedForeignId),
+  };
+  if (!observed.rowCount || !expectedForeignId || !observed.present) {
+    return fail('L8', observed, 'expected real ledger row is absent');
+  }
+  return pass('L8', observed, 'PASS establishes the asserted real ledger row is present and the ledger is non-empty');
+}
+
 export async function runChecks(adapter, options = {}) {
-  const opts = { n: DEFAULT_N, runId: randomUUID().slice(0, 8), write: false, ...options };
+  const opts = { n: DEFAULT_N, runId: randomUUID().slice(0, 8), mode: 'verify-only', ...options };
   assertQaWriteSafety(opts);
+  const checkIds = opts.mode === 'write-probe' ? WRITE_CHECK_IDS : VERIFY_CHECK_IDS;
   let initialBackendRows = null;
   try {
     initialBackendRows = await adapter.fetchBackendTrades();
     opts.initialBackendRows = initialBackendRows;
   } catch (error) {
-    return CHECK_IDS.map((id) => fail(id, { error: error?.message ?? String(error) }, 'initial ledger fetch failed'));
+    return checkIds.map((id) => fail(id, { error: error?.message ?? String(error) }, 'initial ledger fetch failed'));
   }
   if (!opts.expectForeignId || !String(opts.expectForeignId).trim()) {
-    return CHECK_IDS.map((id) => fail(id, { missing: ['--expect-foreign-id'] }, 'declared corpus precondition missing'));
+    return checkIds.map((id) => fail(id, { missing: ['--expect-foreign-id'] }, 'declared corpus precondition missing'));
   }
   const expectedForeignId = String(opts.expectForeignId).trim();
   const initialForeignCount = foreignTradeCount(initialBackendRows, opts.runId);
   if (HARNESS_TRADE_ID_RE.test(expectedForeignId) || !hasTradeId(initialBackendRows, expectedForeignId)) {
-    return CHECK_IDS.map((id) => fail(id, {
+    return checkIds.map((id) => fail(id, {
       expectedForeignId,
       foreignTradesObserved: initialForeignCount,
       presentInInitialSnapshot: hasTradeId(initialBackendRows, expectedForeignId),
     }, 'declared corpus precondition failed: expected foreign id absent from initial snapshot'));
   }
-  const checks = [checkL1, checkL2, checkL3, checkL4, checkL5];
+  const checks = opts.mode === 'write-probe' ? [checkL1, checkL4] : [checkL2, checkL3, checkL5, checkL7, checkL8];
   const results = [];
   for (const check of checks) {
     try {
@@ -462,10 +521,10 @@ export async function runChecks(adapter, options = {}) {
       results.push(fail(check.name.replace('check', ''), { error: error?.message ?? String(error) }, 'check threw'));
     }
   }
-  if (results.length !== CHECK_IDS.length) {
-    results.push(fail('HARNESS', { expected: CHECK_IDS.length, observed: results.length }, 'executed check count mismatch'));
+  if (results.length !== checkIds.length) {
+    results.push(fail('HARNESS', { expected: checkIds.length, observed: results.length }, 'executed check count mismatch'));
   }
-  if (opts.write) {
+  if (opts.mode === 'write-probe') {
     let finalRows;
     try {
       finalRows = await adapter.fetchBackendTrades();
@@ -576,11 +635,12 @@ export async function fetchDeployedDigest(opts) {
   return { digest: match[1].trim(), surface: '/' };
 }
 
-export function createHttpAdapter(opts) {
+function createHttpReadAdapter(opts) {
   const base = String(opts.baseUrl).replace(/\/+$/, '');
   const sid = encodeURIComponent(String(opts.sessionId));
   const headers = authHeaders(opts);
   return {
+    writesIssued: 0,
     async fetchBackendTrades() {
       const url = `${base}/api/sessions/${sid}/journal-trades`;
       const body = await requestJson(url, { headers, cache: 'no-store' });
@@ -595,13 +655,6 @@ export function createHttpAdapter(opts) {
     },
     async fetchBrowserLedgerState() {
       return this.fetchState();
-    },
-    async registerTrade(trade) {
-      return requestJson(`${base}/api/sessions/${sid}/journal-trades`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({ trade }),
-      });
     },
     async simulateSessionBoundary() {
       await requestJson(`${base}/api/sessions/${sid}`, { headers, cache: 'no-store' });
@@ -619,11 +672,33 @@ export function createHttpAdapter(opts) {
   };
 }
 
+function createHttpWriteAdapter(opts) {
+  const disposableOpts = { ...opts, sessionId: opts.disposableSessionId };
+  const adapter = createHttpReadAdapter(disposableOpts);
+  adapter.writesIssued = 0;
+  adapter.registerTrade = async (trade) => {
+    adapter.writesIssued += 1;
+    const base = String(opts.baseUrl).replace(/\/+$/, '');
+    const sid = encodeURIComponent(String(opts.disposableSessionId));
+    return requestJson(`${base}/api/sessions/${sid}/journal-trades`, {
+      method: 'POST',
+      headers: authHeaders(opts),
+      body: JSON.stringify({ trade }),
+    });
+  };
+  return adapter;
+}
+
+export function createHttpAdapter(opts) {
+  return opts?.mode === 'write-probe' ? createHttpWriteAdapter(opts) : createHttpReadAdapter(opts);
+}
+
 export function createFixtureAdapter({ mutate = null } = {}) {
   let backend = [];
   let browser = backend;
   let browserStorage = mutate === 'L5-sql-storage' ? 'sql' : 'state';
   const adapter = {
+    writesIssued: 0,
     async fetchBackendTrades() {
       if (mutate === 'L1' && backend.length > 0) {
         return JSON.parse(JSON.stringify(backend.slice(0, -1)));
@@ -637,6 +712,7 @@ export function createFixtureAdapter({ mutate = null } = {}) {
       return { trades: JSON.parse(JSON.stringify(browser)), storage: browserStorage };
     },
     async registerTrade(trade) {
+      adapter.writesIssued += 1;
       const normalized = { ...trade, tradeId: trade.tradeId ?? trade.trade_id ?? trade.client_trade_id ?? trade.id };
       const idx = backend.findIndex((row) => tradeId(row) === tradeId(normalized));
       if (idx >= 0) backend[idx] = { ...backend[idx], ...normalized };
@@ -661,6 +737,7 @@ export function createFixtureAdapter({ mutate = null } = {}) {
   };
   if (mutate === 'L4-submit') {
     adapter.registerTrade = async (trade) => {
+      adapter.writesIssued += 1;
       backend.push({ ...trade });
       browser = backend;
       return { trade };
@@ -672,7 +749,10 @@ export function createFixtureAdapter({ mutate = null } = {}) {
 function printResults(results, opts) {
   console.log(`B-M4 ledger invariant run`);
   const baseUrl = opts.baseUrl ? opts.baseUrl : '<not-contacted>';
-  console.log(`base_url=${baseUrl} account_id=${opts.accountId || 'n/a'} qa_account_id=${opts.qaAccountId || 'n/a'} session_id=${opts.sessionId || 'n/a'} mode=${opts.write ? 'write' : 'dry-run'} digest=${opts.deployedDigest || 'n/a'} digest_surface=${opts.digestSurface || 'n/a'} expect_digest=${opts.expectDigest || 'n/a'} expect_foreign_id=${opts.expectForeignId || 'n/a'}`);
+  console.log(`base_url=${baseUrl} account_id=${opts.accountId || 'n/a'} qa_account_id=${opts.qaAccountId || 'n/a'} session_id=${opts.sessionId || 'n/a'} disposable_session_id=${opts.disposableSessionId || 'n/a'} mode=${opts.mode || 'verify-only'} writes_issued=${Number(opts.writesIssued || 0)} digest=${opts.deployedDigest || 'n/a'} digest_surface=${opts.digestSurface || 'n/a'} expect_digest=${opts.expectDigest || 'n/a'} expect_foreign_id=${opts.expectForeignId || 'n/a'}`);
+  if (opts.mode === 'write-probe') {
+    console.log('WARNING write-probe issues POSTs to the disposable session. The server orphan sweep can delete vulnerable pre-existing rows; this harness can report that loss but cannot undo it.');
+  }
   if (!Array.isArray(results) || results.length === 0) {
     console.log(`HARNESS FAIL - no checks executed {"expected":${CHECK_IDS.length},"observed":0}`);
     console.log('summary pass=0 nonpass=1');
@@ -688,9 +768,11 @@ function printResults(results, opts) {
 async function main() {
   const opts = parseArgs(process.argv.slice(2));
   opts.runId = opts.runId || randomUUID().slice(0, 8);
+  opts.writesIssued = 0;
   const missing = validateOptions(opts);
   if (missing.length) {
-    const results = CHECK_IDS.map((id) => fail(id, { missing }, `missing required arguments: ${missing.join(', ')}`));
+    const checkIds = opts.mode === 'write-probe' ? WRITE_CHECK_IDS : VERIFY_CHECK_IDS;
+    const results = checkIds.map((id) => fail(id, { missing }, `missing required arguments: ${missing.join(', ')}`));
     printResults(results, opts);
     process.exitCode = 1;
     return;
@@ -711,8 +793,10 @@ async function main() {
   }
   const adapter = createHttpAdapter(opts);
   const results = await runChecks(adapter, opts);
+  opts.writesIssued = adapter.writesIssued || 0;
   printResults(results, opts);
-  if (results.length !== CHECK_IDS.length || results.some((r) => r.status !== 'PASS')) process.exitCode = 1;
+  const expectedCount = opts.mode === 'write-probe' ? WRITE_CHECK_IDS.length : VERIFY_CHECK_IDS.length;
+  if (results.length !== expectedCount || results.some((r) => r.status !== 'PASS')) process.exitCode = 1;
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
@@ -723,9 +807,10 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     } catch {
       opts = {};
     }
-    printResults(CHECK_IDS.map((id) => fail(id, { error: error?.message ?? String(error) }, 'harness startup failure')), opts);
+    const checkIds = opts.mode === 'write-probe' ? WRITE_CHECK_IDS : VERIFY_CHECK_IDS;
+    printResults(checkIds.map((id) => fail(id, { error: error?.message ?? String(error) }, 'harness startup failure')), opts);
     process.exitCode = 1;
   });
 }
 
-export { CANONICAL_ID_RE, CHECK_IDS, HARNESS_TRADE_ID_RE, makeTrade, parseArgs, requestJson, tradeId, validateOptions };
+export { CANONICAL_ID_RE, CHECK_IDS, HARNESS_TRADE_ID_RE, VERIFY_CHECK_IDS, WRITE_CHECK_IDS, createHttpReadAdapter, createHttpWriteAdapter, makeTrade, parseArgs, requestJson, tradeId, validateOptions };

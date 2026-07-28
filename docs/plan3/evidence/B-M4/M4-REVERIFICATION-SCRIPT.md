@@ -1,25 +1,33 @@
 # M4 — M23/M24 re-verification on the deployed build
 
-> # ⚠️ PHASE 1 COVERS LESS THAN ITS NAME SUGGESTS. READ BEFORE RUNNING.
+> # ⚠️ PHASE 1 IS SPLIT BY HARNESS-01. READ BEFORE RUNNING.
 >
 > Rebuilt after a fourth rejection. It is now honest about its limits, which means it claims less than it used to.
 >
-> **1. It can permanently destroy a trade, and that is a product defect it cannot avoid.** A pre-existing row carrying `trade_id`/`client_trade_id` but not `tradeId`/`id` is deleted by the server's own orphan sweep when the harness writes. Measured, not theorised — see `ESCALATION-trade-loss-orphan-sweep.md`. The harness detects and reports the loss; **it cannot undo it.** Use a session you can afford to lose.
+> **1. Verify-only is the default and is safe on any ledger.** It constructs a read-only HTTP client with no write method and runs L2, L3, L5, L7 and L8. It must print `writes_issued=0`.
 >
-> **2. Two of the six invariants are NOT COVERED.**
+> *Verified structurally, not claimed:* `createHttpReadAdapter` is 37 lines containing **no `registerTrade` and no POST/PUT/DELETE/PATCH**. A check attempting to write in this mode throws rather than mutating. That is HARNESS-01 clause 1. Clause 2 holds because L1 and L4 each compute a preservation delta over **non-harness** rows and fail on any missing or changed row.
+>
+> **Run 1a first, always.** If L7 reports vulnerable rows, do **not** run 1b against that session — those rows are the ones the server's orphan sweep will delete on the first write.
+>
+> **2. Write-probe is explicit and disposable only.** It runs L1 and L4 against `--disposable-session-id`, never the real ledger. It warns that server writes can trigger the orphan sweep; the harness can report collateral loss but cannot undo it.
+>
+> **3. Two legacy claims remain NOT COVERED by the HTTP harness.**
 >
 > | | Status on the shipped deployment |
 > |---|---|
-> | L1 conservation + pre-existing-row preservation | covered |
-> | L2 id stability across refetch | covered — **not** a session boundary; the check no longer claims one |
+> | L1 conservation + pre-existing-row preservation | write-probe only, disposable session |
+> | L2 id stability across refetch | verify-only — **not** a session boundary; the check no longer claims one |
 > | L3 identity of record, canonical grammar | covered |
-> | L4 duplicate-submit merge incl. collateral rows | covered |
+> | L4 duplicate-submit merge incl. collateral rows | write-probe only, disposable session |
 > | L5 browser/backend agreement | **NOT COVERED.** On the default `SESSION_JOURNAL_SQL_PRIMARY=true` both "stores" are one SQL table through two serialisers. It now `SKIP-LOUD`s instead of printing a PASS for comparing a table with itself. |
-> | L6 legacy-alias migration idempotence | **NOT COVERED — removed.** Planting an unmigrated alias with an empty-SQL precondition needs DB attachment and cannot live in an HTTP harness. Owed to whoever owns the migration. |
+> | L6 legacy-alias migration idempotence | **NOT COVERED — removed.** Planting an unmigrated alias with an empty-SQL precondition needs DB attachment and cannot live in an HTTP harness. |
+> | L7 orphan-sweep vulnerability detector | verify-only; detects rows whose payload lacks `tradeId`/`id` |
+> | L8 asserted real-ledger presence | verify-only; fails empty or wrong ledger |
 >
-> **3. So a Phase 1 green establishes:** no trade lost or duplicated *by this run*, ids stable across reads, identity of record consistent, duplicate submits idempotent including collateral. **It does not establish** cross-store agreement or migration idempotence, and it says nothing about loss that predates the run.
+> **4. So Phase 1 evidence is two artifacts:** 1a proves the real ledger was read without mutation and checked for identity, stability, L7 exposure and asserted presence. 1b proves writes conserve harness rows and collateral rows only in a disposable session.
 >
-> **4. Phase 4's original "all six green" is void** — it was unsatisfiable by construction, because L6 could never pass on any real deployment. The pass condition is now L1-L4 green, L5 `SKIP-LOUD` explained by configuration, plus Phases 0, 2 and 3.
+> **5. Phase 4's original "all six green" is void.** The pass condition is now: 1a all verify checks green except documented SQL-primary L5 `SKIP-LOUD`, 1b L1/L4 green on a disposable session, plus Phases 0, 2 and 3.
 >
 > Phases 2 (PO rollback) and 3 (Rayan re-verification) are manual, unaffected, and carry what Phase 1 cannot.
 >
@@ -49,13 +57,13 @@ Nothing below counts until these four hold. Any NO ends the run.
 | 0.3 | **Target DB is not TEST-1's.** TEST-2 must have its own database, or its own schema with QA-only account ids | confirmed isolated |
 | 0.4 | Account in use is a **dedicated QA account id** — never admin, never a real user | confirmed QA |
 
-Record: build tag, digest, environment, account id, Phase 1 session id, Phase 2/3 session id, UTC start time, operator name.
+Record: build tag, digest, environment, account id, Phase 1a real session id, Phase 1b disposable session id, Phase 2/3 session id, UTC start time, operator name.
 
-**0.3 exists because Phases 1–3 write trades.** Writing them into the PO's verification surface while M24's migration is live would corrupt the very thing this gate protects. Phase 1 and Phase 2 must use different QA session ids.
+**0.3 exists because Phase 1b and Phases 2–3 write trades.** Writing them into the PO's verification surface while M24's migration is live would corrupt the very thing this gate protects. Phase 1b must use a disposable session id different from Phase 1a's real ledger session id.
 
 > **CORRECTION — this line previously read "the harness itself does not delete trades." That was false.**
 >
-> Measured under review: the harness's own `--write` POST triggers `_sync_trading_session_journal_trades`, whose orphan sweep **permanently deleted a pre-existing trade** carrying `trade_id`/`client_trade_id` but not `tradeId`/`id`. The harness now *detects and reports* the loss — it cannot undo it. See `ESCALATION-trade-loss-orphan-sweep.md`.
+> Measured under review: a write POST triggers `_sync_trading_session_journal_trades`, whose orphan sweep **permanently deleted a pre-existing trade** carrying `trade_id`/`client_trade_id` but not `tradeId`/`id`. Phase 1a now detects that vulnerable shape as L7 without writing; Phase 1b can report collateral loss in a disposable session, but cannot undo it. See `ESCALATION-trade-loss-orphan-sweep.md`.
 >
 > Anyone who chose a session on the strength of the old sentence chose it on false information.
 
@@ -63,28 +71,41 @@ Record: build tag, digest, environment, account id, Phase 1 session id, Phase 2/
 
 ## Phase 1 — automated ledger invariants (agent-executable, no human judgement)
 
-Packet **B-W11**, in `docs/plan3/evidence/B-M4/`. Run before calling any human. Five executable invariants: L1 count conservation plus pre-existing-row preservation, L2 backend id-multiset stability across repeated reads, L3 identity-of-record and canonical column-id conformance, L4 no duplicates plus deterministic duplicate no-op, L5 browser/backend row and id-multiset agreement only when `state.journal_storage` is not `sql`.
+Packet **B-W11**, in `docs/plan3/evidence/B-M4/`. Run before calling any human. Phase 1 is split to satisfy HARNESS-01.
 
-Requires an explicit QA account id; refuses to run write checks without one. Requires `--expect-digest` and `--expect-foreign-id`. Exits non-zero on any failure or `SKIP-LOUD`.
+### Phase 1a — verify-only, real ledger, zero writes
 
-Use this verbatim command, filling only the bracketed values:
+Safe on any ledger. The harness constructs a read-only HTTP adapter with no POST/PUT/DELETE path and must print `mode=verify-only writes_issued=0`.
 
 ```powershell
-node "docs/plan3/evidence/B-M4/m4-ledger-invariants.mjs" --write --base-url="[DEPLOYED_BASE_URL]" --account-id="[QA_ACCOUNT_ID]" --qa-account-id="[QA_ACCOUNT_ID]" --session-id="[PHASE1_QA_SESSION_ID]" --expect-digest="[SEALED_BUILD_DIGEST_OR_BUILD_ID]" --expect-foreign-id="[KNOWN_PRE_EXISTING_TRADE_ID]" --n=3
+node "docs/plan3/evidence/B-M4/m4-ledger-invariants.mjs" --verify-only --base-url="[DEPLOYED_BASE_URL]" --account-id="[QA_ACCOUNT_ID]" --session-id="[REAL_LEDGER_SESSION_ID]" --expect-digest="[SEALED_BUILD_DIGEST_OR_BUILD_ID]" --expect-foreign-id="[KNOWN_PRE_EXISTING_TRADE_ID]"
 ```
 
-The Phase 1 session must already contain the exact trade named by `--expect-foreign-id`. Harness rows matching `m4-[0-9a-f]{8}-NN` and placeholder rows do not satisfy the corpus precondition.
+Checks: L2 id-multiset stability across refetch, L3 identity of record and canonical column grammar, L5 cross-store agreement (`SKIP-LOUD` on `journal_storage=sql`), L7 orphan-sweep vulnerability detector, L8 expected real-ledger presence.
+
+L7 is load-bearing: it fails rows whose payload lacks `tradeId` and `id`, reporting `vulnerableCount` and `vulnerableIds`. That is the exact shape exposed to the escalated deletion path.
+
+### Phase 1b — write-probe, disposable session only
+
+Not safe on a real ledger. This mode issues POSTs and must use a disposable session id different from Phase 1a's real session id. Startup prints a warning that the server orphan sweep can delete vulnerable pre-existing rows and the harness cannot undo it.
+
+```powershell
+node "docs/plan3/evidence/B-M4/m4-ledger-invariants.mjs" --write-probe --base-url="[DEPLOYED_BASE_URL]" --account-id="[QA_ACCOUNT_ID]" --qa-account-id="[QA_ACCOUNT_ID]" --session-id="[REAL_LEDGER_SESSION_ID_FROM_1A]" --disposable-session-id="[DISPOSABLE_QA_SESSION_ID]" --expect-digest="[SEALED_BUILD_DIGEST_OR_BUILD_ID]" --expect-foreign-id="[KNOWN_COLLATERAL_TRADE_ID_IN_DISPOSABLE_SESSION]" --n=3
+```
+
+Checks: L1 harness-row conservation plus collateral preservation, and L4 duplicate-submit merge plus collateral preservation. L1/L4 may compute conservation over their own rows, but they must also assert every non-self row is unchanged.
 
 **If Phase 1 fails, do not proceed.** Humans are the scarce resource; do not spend them confirming what a script already caught.
 
 ### Phase 1 acceptance — read this before trusting a green
 
-The first build of this harness **printed nothing and exited 0 when pointed at an unreachable server**, because an empty result set trivially satisfies "no result is non-PASS". Rejected and rebuilt. Before accepting any Phase 1 green tonight, confirm all four:
+The first build of this harness **printed nothing and exited 0 when pointed at an unreachable server**, because an empty result set trivially satisfies "no result is non-PASS". Rejected and rebuilt. Before accepting any Phase 1 green tonight, confirm all five:
 
 1. It **printed a header and one line per check.** A silent run is a bug, never a pass.
 2. The **number of checks executed equals the number expected.** An empty or short run is a FAIL.
 3. **Transport failures are loud FAILs** — connection refused, timeout, 401/403, or an HTML login page returned instead of JSON. This is the failure that will actually happen against a candidate that is not up yet or is behind auth.
-4. No line says `SKIP-LOUD`. `SKIP-LOUD` is not a pass and does not satisfy Phase 4.
+4. Phase 1a printed `writes_issued=0`; Phase 1b printed a positive write count and used the disposable session id.
+5. No unexpected line says `SKIP-LOUD`. For the shipped SQL-primary deployment, L5 `SKIP-LOUD` is expected and means cross-store agreement is not covered.
 
 **Legacy-alias migration idempotence is NOT COVERED by Phase 1.** The legacy backfill is one-time and gated on an empty SQL table; once SQL contains rows, later reads do not re-run it. Proving the transition requires DB attachment to plant or observe an unmigrated `legacy:` alias with empty SQL, so it cannot be soundly implemented in this HTTP-only harness.
 
@@ -96,7 +117,7 @@ M24 is described as a "canonical trade-ID grammar". The implementation is **not*
 
 ## Phase 2 — PO script, M23 rollback (~4 min, PO)
 
-Confirm the build id on screen first. Use a different QA session id than Phase 1 unless Phase 1 cleanup has been independently verified. Perform in order and do not skip.
+Confirm the build id on screen first. Use a different QA session id than Phase 1b unless Phase 1b cleanup has been independently verified. Perform in order and do not skip.
 
 | Step | Action | Record |
 |---|---|---|
@@ -127,7 +148,7 @@ Give him the build tag and digest from Phase 0 so his report is anchored to a sp
 
 ## Phase 4 — verdict (pre-registered, not negotiated)
 
-**PASS** requires all of: Phase 0 four-for-four; Phase 1 all five executable checks green and no `SKIP-LOUD`; Phase 2 no FAIL condition; Phase 3 every scenario re-verified by Rayan.
+**PASS** requires all of: Phase 0 four-for-four; Phase 1a verify-only checks green with `writes_issued=0` except documented SQL-primary L5 `SKIP-LOUD`; Phase 1b L1/L4 green on a disposable session; Phase 2 no FAIL condition; Phase 3 every scenario re-verified by Rayan.
 
 **FAIL — and the canary does not proceed — on any one of:**
 
@@ -138,16 +159,16 @@ Give him the build tag and digest from Phase 0 so his report is anchored to a sp
 
 These four are the gate. Anything else observed is a finding to file, not a reason to hold or to pass.
 
-**Partial results do not average.** Five of six green is a FAIL, not "mostly passing". `SKIP-LOUD` is also a FAIL for this ship gate; it means the harness did not have the declared corpus or migration transition needed to establish the claim.
+**Partial results do not average.** Missing Phase 1a or Phase 1b evidence is a FAIL, not "mostly passing". Unexpected `SKIP-LOUD` is also a FAIL for this ship gate; SQL-primary L5 `SKIP-LOUD` is a documented non-coverage statement, not a cross-store pass.
 
 ---
 
 ## Evidence to file
 
-Under `docs/plan3/evidence/B-M4/`: Phase 0 header block; Phase 1 raw output; Phase 2 the completed table with actual ids; Phase 3 Rayan's per-scenario report; Phase 4 verdict with the timestamp and who ran each phase.
+Under `docs/plan3/evidence/B-M4/`: Phase 0 header block; Phase 1a raw output; Phase 1b raw output; Phase 2 the completed table with actual ids; Phase 3 Rayan's per-scenario report; Phase 4 verdict with the timestamp and who ran each phase.
 
 ## Coverage stamp (§A4b)
 
-**Covers:** ledger integrity and rollback trade-state on the deployed candidate, for the scenarios enumerated above.
-**Does not cover:** legacy-alias migration idempotence — requires DB attachment; order-line rendering (that is M3), the duration clock (open, separate), performance, or any ledger path not reachable through Phases 1–3.
+**Covers:** verify-only id stability, identity of record, L7 orphan-sweep vulnerability detection, asserted real-ledger presence, disposable-session write conservation, duplicate-submit behavior, and rollback trade-state on the deployed candidate.
+**Does not cover:** legacy-alias migration idempotence — requires DB attachment; L5 cross-store agreement when `journal_storage=sql`; order-line rendering (that is M3), the duration clock (open, separate), performance, or any ledger path not reachable through Phases 1–3.
 **Surface:** deployed build. A local pass is not this gate.
