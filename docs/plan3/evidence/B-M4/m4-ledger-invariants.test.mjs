@@ -4,8 +4,6 @@ import test from 'node:test';
 
 import {
   CHECK_IDS,
-  MUTATION_DESIGNED,
-  MUTATION_SURVIVED,
   createHttpAdapter,
   createFixtureAdapter,
   makeTrade,
@@ -15,6 +13,17 @@ import {
 } from './m4-ledger-invariants.mjs';
 
 const RUN_ID = 'proof';
+const HEX_RUN_ID = '1141a2c8';
+const BASE_OPTS = { runId: RUN_ID, write: false, expectForeignId: 'real-1' };
+const WRITE_OPTS = {
+  runId: RUN_ID,
+  write: true,
+  accountId: 'qa-b-m4',
+  qaAccountId: 'qa-b-m4',
+  sessionId: 'fixture-session',
+  n: 3,
+  expectForeignId: 'real-1',
+};
 
 async function seededAdapter(mutate = null) {
   const adapter = createFixtureAdapter({ mutate });
@@ -27,6 +36,7 @@ function realTrade(index, override = {}) {
     tradeId: `real-${index}`,
     id: `real-${index}`,
     client_trade_id: `real-${index}`,
+    payload: { tradeId: `real-${index}`, id: `real-${index}`, symbol: 'EURUSD', pnl: index },
     symbol: 'EURUSD',
     pnl: index,
     ...override,
@@ -52,74 +62,53 @@ function anyFail(results) {
   return results.some((row) => row.status === 'FAIL');
 }
 
-function staticAdapter({ backend, browser = backend, legacyTransition = null }) {
+function staticAdapter({ backend, browser = backend, storage = 'state' }) {
   return {
     async fetchBackendTrades() { return JSON.parse(JSON.stringify(backend)); },
     async fetchBrowserTrades() { return JSON.parse(JSON.stringify(browser)); },
-    async plantLegacyAliasProbe() {
-      return legacyTransition ?? {
-        available: true,
-        aliasId: 'legacy:probe',
-        canonicalId: 'probe',
-        beforeSqlRows: [],
-        beforeReadRows: [{ tradeId: 'legacy:probe', id: 'legacy:probe' }],
-        firstReadRows: [{ tradeId: 'probe', id: 'probe' }],
-        secondReadRows: [{ tradeId: 'probe', id: 'probe' }],
-      };
+    async fetchBrowserLedgerState() {
+      return { trades: JSON.parse(JSON.stringify(browser)), storage };
     },
   };
 }
 
 test('fixture proves non-write read checks on healthy ledger', async () => {
   const adapter = await seededAdapter();
-  const results = await runChecks(adapter, { runId: RUN_ID, write: false });
+  const results = await runChecks(adapter, BASE_OPTS);
+  assert.equal(results.length, CHECK_IDS.length);
   assert.equal(status(results, 'L2'), 'PASS');
   assert.equal(status(results, 'L3'), 'PASS');
   assert.equal(status(results, 'L5'), 'PASS');
-  assert.equal(status(results, 'L6'), 'PASS');
 });
 
 test('L1 mutation is caught: registered count is not conserved', async () => {
   const adapter = await seededAdapter('L1');
-  const results = await runChecks(adapter, {
-    runId: RUN_ID,
-    write: true,
-    accountId: 'qa-b-m4',
-    qaAccountId: 'qa-b-m4',
-    sessionId: 'fixture-session',
-    n: 3,
-  });
+  const results = await runChecks(adapter, WRITE_OPTS);
   assert.equal(status(results, 'L1'), 'FAIL');
 });
 
 test('L2 mutation is caught: ids change across session boundary', async () => {
   const adapter = await seededAdapter('L2');
-  const results = await runChecks(adapter, { runId: RUN_ID, write: false });
+  const results = await runChecks(adapter, BASE_OPTS);
   assert.equal(status(results, 'L2'), 'FAIL');
 });
 
 test('L3 mutation is caught: legacy alias leaks into ids', async () => {
   const adapter = await seededAdapter('L3');
-  const results = await runChecks(adapter, { runId: RUN_ID, write: false });
+  const results = await runChecks(adapter, BASE_OPTS);
   assert.equal(status(results, 'L3'), 'FAIL');
 });
 
 test('L4 mutation is caught: duplicate ids are present', async () => {
   const adapter = await seededAdapter('L4');
-  const results = await runChecks(adapter, { runId: RUN_ID, write: false });
+  const results = await runChecks(adapter, BASE_OPTS);
   assert.equal(status(results, 'L4'), 'FAIL');
 });
 
 test('L5 mutation is caught: browser-visible set diverges', async () => {
   const adapter = await seededAdapter('L5');
-  const results = await runChecks(adapter, { runId: RUN_ID, write: false });
+  const results = await runChecks(adapter, BASE_OPTS);
   assert.equal(status(results, 'L5'), 'FAIL');
-});
-
-test('L6 mutation is caught: migration is not idempotent', async () => {
-  const adapter = await seededAdapter('L6');
-  const results = await runChecks(adapter, { runId: RUN_ID, write: false });
-  assert.equal(status(results, 'L6'), 'FAIL');
 });
 
 test('write safety refuses missing QA account id', async () => {
@@ -131,8 +120,25 @@ test('write safety refuses missing QA account id', async () => {
 });
 
 test('CLI validation reports all missing required arguments', () => {
-  assert.deepEqual(validateOptions({ write: false, n: 3 }), ['--base-url', '--account-id', '--session-id']);
-  assert.deepEqual(validateOptions({ write: true, baseUrl: 'http://x', accountId: 'acct', sessionId: 1, n: 3 }), ['--qa-account-id']);
+  assert.deepEqual(validateOptions({ write: false, n: 3 }), ['--base-url', '--account-id', '--session-id', '--expect-digest', '--expect-foreign-id']);
+  assert.deepEqual(validateOptions({
+    write: true,
+    baseUrl: 'http://x',
+    accountId: 'acct',
+    sessionId: 1,
+    n: 3,
+    expectDigest: 'build-1',
+    expectForeignId: 'real-1',
+  }), ['--qa-account-id']);
+  assert.deepEqual(validateOptions({
+    write: false,
+    baseUrl: 'http://x',
+    accountId: 'acct',
+    sessionId: 1,
+    n: 3,
+    expectDigest: 'build-1',
+    expectForeignId: 'm4-1141a2c8-01',
+  }), ['--expect-foreign-id must name a non-harness trade']);
 });
 
 test('CLI parser splits inline values before camelising and rejects unknown flags', () => {
@@ -145,6 +151,7 @@ test('CLI parser splits inline values before camelising and rejects unknown flag
     '--n=10',
     '--run-id=abc',
     '--expect-digest=sha256:test',
+    '--expect-foreign-id=real-1',
     '--write',
   ]), {
     write: true,
@@ -157,14 +164,16 @@ test('CLI parser splits inline values before camelising and rejects unknown flag
     qaAccountId: 'acct',
     runId: 'abc',
     expectDigest: 'sha256:test',
+    expectForeignId: 'real-1',
   });
   assert.throws(() => parseArgs(['--unknown=1']), /Unknown flag --unknown/);
   assert.throws(() => parseArgs(['--n']), /requires a value/);
+  assert.throws(() => parseArgs(['--expect-digest=']), /requires a value/);
 });
 
 test('transport mutation is caught: server is down', async () => {
   const adapter = createHttpAdapter({ baseUrl: 'http://127.0.0.1:1', sessionId: 1 });
-  const results = await runChecks(adapter, { runId: RUN_ID, write: false });
+  const results = await runChecks(adapter, BASE_OPTS);
   assert.equal(results.length, CHECK_IDS.length);
   assert.equal(anyFail(results), true);
   assert.match(JSON.stringify(results), /Transport failure|fetch failed|ECONNREFUSED/);
@@ -176,7 +185,7 @@ test('transport mutation is caught: wrong session id returns 404', async () => {
     res.end(JSON.stringify({ detail: 'Session not found', path: req.url }));
   }, async (baseUrl) => {
     const adapter = createHttpAdapter({ baseUrl, sessionId: 404 });
-    const results = await runChecks(adapter, { runId: RUN_ID, write: false });
+    const results = await runChecks(adapter, BASE_OPTS);
     assert.equal(results.length, CHECK_IDS.length);
     assert.equal(anyFail(results), true);
     assert.match(JSON.stringify(results), /HTTP 404/);
@@ -189,7 +198,7 @@ test('transport mutation is caught: auth rejected with 401', async () => {
     res.end(JSON.stringify({ detail: 'Unauthorized' }));
   }, async (baseUrl) => {
     const adapter = createHttpAdapter({ baseUrl, sessionId: 1 });
-    const results = await runChecks(adapter, { runId: RUN_ID, write: false });
+    const results = await runChecks(adapter, BASE_OPTS);
     assert.equal(results.length, CHECK_IDS.length);
     assert.equal(anyFail(results), true);
     assert.match(JSON.stringify(results), /HTTP 401/);
@@ -202,7 +211,7 @@ test('transport mutation is caught: auth rejected with 403', async () => {
     res.end(JSON.stringify({ detail: 'Forbidden' }));
   }, async (baseUrl) => {
     const adapter = createHttpAdapter({ baseUrl, sessionId: 1 });
-    const results = await runChecks(adapter, { runId: RUN_ID, write: false });
+    const results = await runChecks(adapter, BASE_OPTS);
     assert.equal(results.length, CHECK_IDS.length);
     assert.equal(anyFail(results), true);
     assert.match(JSON.stringify(results), /HTTP 403/);
@@ -215,7 +224,7 @@ test('transport mutation is caught: 200 HTML login page', async () => {
     res.end('<html><title>login</title></html>');
   }, async (baseUrl) => {
     const adapter = createHttpAdapter({ baseUrl, sessionId: 1 });
-    const results = await runChecks(adapter, { runId: RUN_ID, write: false });
+    const results = await runChecks(adapter, BASE_OPTS);
     assert.equal(results.length, CHECK_IDS.length);
     assert.equal(anyFail(results), true);
     assert.match(JSON.stringify(results), /Expected JSON/);
@@ -228,7 +237,7 @@ test('transport mutation is caught: 200 JSON wrong shape', async () => {
     res.end(JSON.stringify({ ok: true }));
   }, async (baseUrl) => {
     const adapter = createHttpAdapter({ baseUrl, sessionId: 1 });
-    const results = await runChecks(adapter, { runId: RUN_ID, write: false });
+    const results = await runChecks(adapter, BASE_OPTS);
     assert.equal(results.length, CHECK_IDS.length);
     assert.equal(anyFail(results), true);
     assert.match(JSON.stringify(results), /Wrong JSON shape/);
@@ -240,154 +249,104 @@ test('empty-after-write mutation is caught: no trades returned when writes were 
     async registerTrade() {},
     async fetchBackendTrades() { return []; },
     async fetchBrowserTrades() { return []; },
-    async migrateLegacyAliases() { return { trades: [] }; },
   };
-  const results = await runChecks(adapter, {
-    runId: RUN_ID,
-    write: true,
-    accountId: 'qa-b-m4',
-    qaAccountId: 'qa-b-m4',
-    sessionId: 'fixture-session',
-    n: 3,
-  });
+  const results = await runChecks(adapter, WRITE_OPTS);
   assert.equal(status(results, 'L1'), 'FAIL');
 });
 
-test('absence mutation is caught: L6 empty ledger is SKIP-LOUD, not PASS', async () => {
-  const adapter = {
-    async fetchBackendTrades() { return []; },
-    async fetchBrowserTrades() { return []; },
-  };
-  const results = await runChecks(adapter, { runId: RUN_ID, write: false });
-  assert.equal(status(results, 'L6'), 'SKIP-LOUD');
-  assert.match(JSON.stringify(results.find((row) => row.id === 'L6')), /no unmigrated alias available/);
+test('L5 skips SQL-primary single-store configuration', async () => {
+  const adapter = staticAdapter({ backend: [realTrade(1)], storage: 'sql' });
+  const results = await runChecks(adapter, BASE_OPTS);
+  assert.equal(status(results, 'L5'), 'SKIP-LOUD');
+  assert.match(JSON.stringify(results.find((row) => row.id === 'L5')), /single-store configuration/);
 });
 
 test('absence mutation is covered: single-trade ledger does not require N greater than one', async () => {
   const adapter = createFixtureAdapter();
   await adapter.seed([realTrade(1), makeTrade(RUN_ID, 1)]);
-  const results = await runChecks(adapter, { runId: RUN_ID, write: false });
+  const results = await runChecks(adapter, BASE_OPTS);
   assert.equal(status(results, 'L2'), 'PASS');
   assert.equal(status(results, 'L3'), 'PASS');
   assert.equal(status(results, 'L5'), 'PASS');
-  assert.equal(status(results, 'L6'), 'PASS');
   assert.equal(status(results, 'L4'), 'SKIP-LOUD');
 });
 
-test('absence mutation is caught: non-empty null rows have no identifiable ids', async () => {
+test('identity mutation is caught: non-empty null rows have no identifiable ids', async () => {
   const nullRow = { tradeId: null, id: null, client_trade_id: null, payload: { tradeId: null } };
-  const adapter = {
-    async fetchBackendTrades() { return [nullRow]; },
-    async fetchBrowserTrades() { return [nullRow]; },
-    async plantLegacyAliasProbe() {
-      return {
-        available: true,
-        aliasId: 'legacy:null',
-        canonicalId: 'canon-null',
-        beforeSqlRows: [],
-        beforeReadRows: [nullRow],
-        firstReadRows: [nullRow],
-        secondReadRows: [nullRow],
-      };
-    },
-  };
-  const results = await runChecks(adapter, { runId: RUN_ID, write: false });
+  const adapter = staticAdapter({ backend: [realTrade(1), nullRow], browser: [realTrade(1), nullRow] });
+  const results = await runChecks(adapter, BASE_OPTS);
   assert.equal(status(results, 'L2'), 'FAIL');
   assert.equal(status(results, 'L3'), 'FAIL');
   assert.equal(status(results, 'L5'), 'FAIL');
-  assert.equal(status(results, 'L6'), 'FAIL');
 });
 
-test('absence mutation is caught: identical-but-wrong snapshots do not pass L6', async () => {
-  const wrong = [{ tradeId: 'legacy:still-present', id: 'legacy:still-present' }];
-  const adapter = {
-    async fetchBackendTrades() { return wrong; },
-    async fetchBrowserTrades() { return wrong; },
-    async plantLegacyAliasProbe() {
-      return {
-        available: true,
-        aliasId: 'legacy:still-present',
-        canonicalId: 'still-present',
-        beforeSqlRows: [],
-        beforeReadRows: wrong,
-        firstReadRows: wrong,
-        secondReadRows: wrong,
-      };
-    },
-  };
-  const results = await runChecks(adapter, { runId: null, write: false });
+test('identity mutation is caught: payload id is required even when columns exist', async () => {
+  const malformed = realTrade(1, { payload: { symbol: 'EURUSD' } });
+  const results = await runChecks(staticAdapter({ backend: [malformed], browser: [malformed] }), BASE_OPTS);
   assert.equal(status(results, 'L3'), 'FAIL');
-  assert.equal(status(results, 'L6'), 'FAIL');
-  assert.match(JSON.stringify(results.find((row) => row.id === 'L6')), /expected canonical id/);
+  assert.match(JSON.stringify(results.find((row) => row.id === 'L3')), /missing-payload-id/);
 });
 
-test('reviewer mutation matrix reports 18 designed and 0 survived', async () => {
+test('reviewer mutation matrix reports 21 designed and 0 survived', async () => {
   const nullRows = Array.from({ length: 40 }, (_, index) => ({ tradeId: null, id: null, payload: { index } }));
-  const deletingDuplicateAdapter = createFixtureAdapter();
-  await deletingDuplicateAdapter.seed([realTrade(1), makeTrade(RUN_ID, 1), makeTrade(RUN_ID, 2), makeTrade(RUN_ID, 3)]);
-  deletingDuplicateAdapter.registerTrade = async (trade) => {
-    deletingDuplicateAdapter._deleted = true;
-    deletingDuplicateAdapter._backend = trade;
-    return { trade };
-  };
-
   const cases = [
-    async () => runChecks(await seededAdapter('L1'), { runId: RUN_ID, write: true, accountId: 'qa-b-m4', qaAccountId: 'qa-b-m4', sessionId: 'fixture-session', n: 3 }),
-    async () => runChecks(await seededAdapter('L2'), { runId: RUN_ID, write: false }),
-    async () => runChecks(staticAdapter({ backend: [realTrade(1, { tradeId: 'legacy:real-1', id: 'legacy:real-1' })] }), { runId: RUN_ID, write: false }),
-    async () => runChecks(staticAdapter({ backend: [realTrade(1), realTrade(1)] }), { runId: RUN_ID, write: false }),
-    async () => runChecks(staticAdapter({ backend: [realTrade(1)], browser: [realTrade(1), realTrade(2)] }), { runId: RUN_ID, write: false }),
-    async () => runChecks(staticAdapter({ backend: [realTrade(1), realTrade(2)], browser: [realTrade(1), realTrade(2), realTrade(2)] }), { runId: RUN_ID, write: false }),
-    async () => runChecks(staticAdapter({ backend: nullRows, browser: [] }), { runId: RUN_ID, write: false }),
-    async () => runChecks(await seededAdapter('L6'), { runId: RUN_ID, write: false }),
-    async () => runChecks(await seededAdapter('L6-not-empty-sql'), { runId: RUN_ID, write: false }),
-    async () => runChecks(await seededAdapter('L6-unresolved'), { runId: RUN_ID, write: false }),
-    async () => runChecks(await seededAdapter('L6-legacy-leak'), { runId: RUN_ID, write: false }),
-    async () => {
+    ['registered count not conserved', async () => runChecks(await seededAdapter('L1'), WRITE_OPTS)],
+    ['ids change across refetch', async () => runChecks(await seededAdapter('L2'), BASE_OPTS)],
+    ['unmigrated legacy alias on real trade', async () => runChecks(staticAdapter({ backend: [realTrade(1, { tradeId: 'legacy:real-1', id: 'legacy:real-1', client_trade_id: 'legacy:real-1', payload: { tradeId: 'legacy:real-1', id: 'legacy:real-1' } })] }), BASE_OPTS)],
+    ['real trade duplicated', async () => runChecks(staticAdapter({ backend: [realTrade(1), realTrade(1)] }), BASE_OPTS)],
+    ['real trade lost from backend but present in UI', async () => runChecks(staticAdapter({ backend: [realTrade(1)], browser: [realTrade(1), realTrade(2)] }), BASE_OPTS)],
+    ['duplicate browser UI row', async () => runChecks(staticAdapter({ backend: [realTrade(1), realTrade(2)], browser: [realTrade(1), realTrade(2), realTrade(2)] }), BASE_OPTS)],
+    ['40 backend rows with destroyed ids absent from UI', async () => runChecks(staticAdapter({ backend: [realTrade(1), ...nullRows], browser: [realTrade(1)] }), BASE_OPTS)],
+    ['second run corpus made only of old harness rows', async () => {
       const adapter = createFixtureAdapter();
-      await adapter.seed([makeTrade(RUN_ID, 1), makeTrade(RUN_ID, 2), makeTrade(RUN_ID, 3)]);
-      return runChecks(adapter, { runId: RUN_ID, write: false });
-    },
-    async () => runChecks(await seededAdapter('L4-submit'), { runId: RUN_ID, write: true, accountId: 'qa-b-m4', qaAccountId: 'qa-b-m4', sessionId: 'fixture-session', n: 3 }),
-    async () => {
+      await adapter.seed([makeTrade(HEX_RUN_ID, 1), makeTrade(HEX_RUN_ID, 2), makeTrade(HEX_RUN_ID, 3)]);
+      return runChecks(adapter, { ...BASE_OPTS, runId: 'abcdef12' });
+    }],
+    ['placeholder row cannot satisfy declared corpus', async () => runChecks(staticAdapter({ backend: [{ tradeId: 'placeholder', id: 'placeholder', client_trade_id: 'placeholder', payload: { tradeId: 'placeholder' } }] }), BASE_OPTS)],
+    ['initial ledger fetch fails closed', async () => runChecks({ async fetchBackendTrades() { throw new Error('503'); } }, BASE_OPTS)],
+    ['duplicate submit appends duplicate row', async () => runChecks(await seededAdapter('L4-submit'), WRITE_OPTS)],
+    ['duplicate submit deletes unrelated row', async () => {
       let backend = [realTrade(1), makeTrade(RUN_ID, 1), makeTrade(RUN_ID, 2), makeTrade(RUN_ID, 3)];
       return runChecks({
         async fetchBackendTrades() { return JSON.parse(JSON.stringify(backend)); },
-        async fetchBrowserTrades() { return JSON.parse(JSON.stringify(backend)); },
+        async fetchBrowserLedgerState() { return { trades: JSON.parse(JSON.stringify(backend)), storage: 'state' }; },
         async registerTrade(trade) {
-          if (trade.tradeId === makeTrade(RUN_ID, 1).tradeId && backend.some((row) => tradeIdForTest(row) === trade.tradeId)) {
-            backend = backend.filter((row) => tradeIdForTest(row) !== 'real-1');
-          }
+          if (trade.tradeId === makeTrade(RUN_ID, 1).tradeId) backend = backend.filter((row) => tradeIdForTest(row) !== 'real-1');
           const idx = backend.findIndex((row) => tradeIdForTest(row) === trade.tradeId);
           if (idx >= 0) backend[idx] = { ...backend[idx], ...trade };
           else backend.push(trade);
         },
-        async plantLegacyAliasProbe() {
-          return {
-            available: true,
-            aliasId: 'legacy:probe',
-            canonicalId: 'probe',
-            beforeSqlRows: [],
-            beforeReadRows: [{ tradeId: 'legacy:probe', id: 'legacy:probe' }],
-            firstReadRows: [{ tradeId: 'probe', id: 'probe' }],
-            secondReadRows: [{ tradeId: 'probe', id: 'probe' }],
-          };
-        },
-      }, { runId: RUN_ID, write: true, accountId: 'qa-b-m4', qaAccountId: 'qa-b-m4', sessionId: 'fixture-session', n: 3 });
-    },
-    async () => runChecks(staticAdapter({ backend: [realTrade(1, { tradeId: 'bad id', id: 'bad id' })] }), { runId: RUN_ID, write: false }),
-    async () => runChecks(staticAdapter({ backend: [realTrade(1), realTrade(1)], browser: [realTrade(1)] }), { runId: RUN_ID, write: false }),
-    async () => runChecks(staticAdapter({ backend: [realTrade(1)], browser: [{ tradeId: null, id: null }] }), { runId: RUN_ID, write: false }),
-    async () => runChecks({
-      async fetchBackendTrades() { throw new Error('mutated transport failure'); },
-      async fetchBrowserTrades() { return []; },
-    }, { runId: RUN_ID, write: false }),
+      }, WRITE_OPTS);
+    }],
+    ['bad column grammar', async () => runChecks(staticAdapter({ backend: [realTrade(1, { tradeId: 'bad id', id: 'bad id', client_trade_id: 'bad id', payload: { tradeId: 'bad id', id: 'bad id' } })] }), { ...BASE_OPTS, expectForeignId: 'bad id' })],
+    ['backend duplicate hidden by browser dedupe', async () => runChecks(staticAdapter({ backend: [realTrade(1), realTrade(1)], browser: [realTrade(1)] }), BASE_OPTS)],
+    ['browser row has destroyed id', async () => runChecks(staticAdapter({ backend: [realTrade(1)], browser: [realTrade(1), { tradeId: null, id: null, payload: {} }] }), BASE_OPTS)],
+    ['SQL primary makes L5 single-store only', async () => runChecks(staticAdapter({ backend: [realTrade(1)], storage: 'sql' }), BASE_OPTS)],
+    ['payload id missing despite columns', async () => runChecks(staticAdapter({ backend: [realTrade(1, { payload: { symbol: 'EURUSD' } })] }), BASE_OPTS)],
+    ['client_trade_id disagrees with resolved id', async () => runChecks(staticAdapter({ backend: [realTrade(1, { client_trade_id: 'other-1' })] }), BASE_OPTS)],
+    ['expected foreign id disappears during write', async () => {
+      let backend = [realTrade(1)];
+      return runChecks({
+        async fetchBackendTrades() { return JSON.parse(JSON.stringify(backend)); },
+        async fetchBrowserLedgerState() { return { trades: JSON.parse(JSON.stringify(backend)), storage: 'state' }; },
+        async registerTrade(trade) { backend = backend.filter((row) => tradeIdForTest(row) !== 'real-1').concat(trade); },
+      }, WRITE_OPTS);
+    }],
+    ['empty expect-digest is rejected by parser', async () => {
+      try {
+        parseArgs(['--expect-digest=']);
+        return [{ status: 'PASS' }];
+      } catch {
+        return [{ status: 'FAIL' }];
+      }
+    }],
+    ['missing expect-foreign-id fails closed', async () => runChecks(staticAdapter({ backend: [realTrade(1)] }), { runId: RUN_ID, write: false })],
   ];
 
-  assert.equal(cases.length, MUTATION_DESIGNED);
-  const outcomes = await Promise.all(cases.map(async (fn) => fn()));
-  const survived = outcomes.filter((results) => results.every((row) => row.status === 'PASS')).length;
-  assert.equal(survived, MUTATION_SURVIVED);
+  const outcomes = await Promise.all(cases.map(async ([name, fn]) => ({ name, results: await fn() })));
+  const survived = outcomes.filter(({ results }) => results.every((row) => row.status === 'PASS'));
+  assert.equal(outcomes.length, 21);
+  assert.deepEqual(survived.map((entry) => entry.name), []);
 });
 
 function tradeIdForTest(row) {

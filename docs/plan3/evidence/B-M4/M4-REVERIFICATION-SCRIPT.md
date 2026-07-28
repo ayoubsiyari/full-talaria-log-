@@ -1,14 +1,27 @@
 # M4 — M23/M24 re-verification on the deployed build
 
-> # ⛔ PHASE 1 IS NOT FIT TO GATE. DO NOT RUN IT ON A LEDGER YOU CARE ABOUT.
+> # ⚠️ PHASE 1 COVERS LESS THAN ITS NAME SUGGESTS. READ BEFORE RUNNING.
 >
-> Rejected a **fourth** time, 2026-07-28 10:57, on measured evidence. Three findings decide it:
+> Rebuilt after a fourth rejection. It is now honest about its limits, which means it claims less than it used to.
 >
-> 1. **Phase 1 cannot pass.** L6 calls `plantLegacyAliasProbe`, which exists only on the fixture adapter — never on the HTTP one. On any real deployment L6 returns `SKIP-LOUD` before touching the network. Since Phase 4 requires all six green, **the procedure below is unsatisfiable by construction.** Do not "waive L6 and proceed": that is how an operator learns to discount non-PASS lines.
-> 2. **A green does not mean the ledger is intact.** On the shipped default (`SESSION_JOURNAL_SQL_PRIMARY=true`), L5's two "stores" are the same SQL table read through two serialisers, so a lost trade disappears from both sides at once. A session that has **already lost a real trade** scores `pass=5 nonpass=1` — the best score this harness can produce.
-> 3. **It can permanently destroy a trade** of the shape described in `ESCALATION-trade-loss-orphan-sweep.md`. It reports the loss; it cannot reverse it.
+> **1. It can permanently destroy a trade, and that is a product defect it cannot avoid.** A pre-existing row carrying `trade_id`/`client_trade_id` but not `tradeId`/`id` is deleted by the server's own orphan sweep when the harness writes. Measured, not theorised — see `ESCALATION-trade-loss-orphan-sweep.md`. The harness detects and reports the loss; **it cannot undo it.** Use a session you can afford to lose.
 >
-> **Phases 0, 2, 3 remain valid and are the ones that actually carry M4 right now.** Phase 2 (PO rollback) and Phase 3 (Rayan re-verification) are manual and unaffected.
+> **2. Two of the six invariants are NOT COVERED.**
+>
+> | | Status on the shipped deployment |
+> |---|---|
+> | L1 conservation + pre-existing-row preservation | covered |
+> | L2 id stability across refetch | covered — **not** a session boundary; the check no longer claims one |
+> | L3 identity of record, canonical grammar | covered |
+> | L4 duplicate-submit merge incl. collateral rows | covered |
+> | L5 browser/backend agreement | **NOT COVERED.** On the default `SESSION_JOURNAL_SQL_PRIMARY=true` both "stores" are one SQL table through two serialisers. It now `SKIP-LOUD`s instead of printing a PASS for comparing a table with itself. |
+> | L6 legacy-alias migration idempotence | **NOT COVERED — removed.** Planting an unmigrated alias with an empty-SQL precondition needs DB attachment and cannot live in an HTTP harness. Owed to whoever owns the migration. |
+>
+> **3. So a Phase 1 green establishes:** no trade lost or duplicated *by this run*, ids stable across reads, identity of record consistent, duplicate submits idempotent including collateral. **It does not establish** cross-store agreement or migration idempotence, and it says nothing about loss that predates the run.
+>
+> **4. Phase 4's original "all six green" is void** — it was unsatisfiable by construction, because L6 could never pass on any real deployment. The pass condition is now L1-L4 green, L5 `SKIP-LOUD` explained by configuration, plus Phases 0, 2 and 3.
+>
+> Phases 2 (PO rollback) and 3 (Rayan re-verification) are manual, unaffected, and carry what Phase 1 cannot.
 >
 > — Manager B
 
@@ -50,31 +63,30 @@ Record: build tag, digest, environment, account id, Phase 1 session id, Phase 2/
 
 ## Phase 1 — automated ledger invariants (agent-executable, no human judgement)
 
-Packet **B-W11**, in `docs/plan3/evidence/B-M4/`. Run before calling any human. Six invariants: L1 count conservation plus pre-existing-row preservation, L2 id stability, L3 grammar conformance, L4 no duplicates plus deterministic duplicate no-op, L5 browser/backend row and id-multiset agreement, L6 legacy-alias transition idempotence.
+Packet **B-W11**, in `docs/plan3/evidence/B-M4/`. Run before calling any human. Five executable invariants: L1 count conservation plus pre-existing-row preservation, L2 backend id-multiset stability across repeated reads, L3 identity-of-record and canonical column-id conformance, L4 no duplicates plus deterministic duplicate no-op, L5 browser/backend row and id-multiset agreement only when `state.journal_storage` is not `sql`.
 
-Requires an explicit QA account id; refuses to run write checks without one. Exits non-zero on any failure or `SKIP-LOUD`. Its own mutation-survival count is reported alongside its result — a green from a harness with surviving mutations is not evidence, which this project has now learned three times.
+Requires an explicit QA account id; refuses to run write checks without one. Requires `--expect-digest` and `--expect-foreign-id`. Exits non-zero on any failure or `SKIP-LOUD`.
 
 Use this verbatim command, filling only the bracketed values:
 
 ```powershell
-node "docs/plan3/evidence/B-M4/m4-ledger-invariants.mjs" --write --base-url="[DEPLOYED_BASE_URL]" --account-id="[QA_ACCOUNT_ID]" --qa-account-id="[QA_ACCOUNT_ID]" --session-id="[PHASE1_QA_SESSION_ID_WITH_AT_LEAST_ONE_PRE_EXISTING_TRADE]" --expect-digest="[SEALED_BUILD_DIGEST_OR_BUILD_ID]" --n=3
+node "docs/plan3/evidence/B-M4/m4-ledger-invariants.mjs" --write --base-url="[DEPLOYED_BASE_URL]" --account-id="[QA_ACCOUNT_ID]" --qa-account-id="[QA_ACCOUNT_ID]" --session-id="[PHASE1_QA_SESSION_ID]" --expect-digest="[SEALED_BUILD_DIGEST_OR_BUILD_ID]" --expect-foreign-id="[KNOWN_PRE_EXISTING_TRADE_ID]" --n=3
 ```
 
-The Phase 1 session must already contain at least one trade not written by this harness. If it contains only the three `m4-<runId>-NN` rows the harness writes, the result is `SKIP-LOUD`, not evidence.
+The Phase 1 session must already contain the exact trade named by `--expect-foreign-id`. Harness rows matching `m4-[0-9a-f]{8}-NN` and placeholder rows do not satisfy the corpus precondition.
 
 **If Phase 1 fails, do not proceed.** Humans are the scarce resource; do not spend them confirming what a script already caught.
 
 ### Phase 1 acceptance — read this before trusting a green
 
-The first build of this harness **printed nothing and exited 0 when pointed at an unreachable server**, because an empty result set trivially satisfies "no result is non-PASS". Rejected and rebuilt. Before accepting any Phase 1 green tonight, confirm all five:
+The first build of this harness **printed nothing and exited 0 when pointed at an unreachable server**, because an empty result set trivially satisfies "no result is non-PASS". Rejected and rebuilt. Before accepting any Phase 1 green tonight, confirm all four:
 
 1. It **printed a header and one line per check.** A silent run is a bug, never a pass.
 2. The **number of checks executed equals the number expected.** An empty or short run is a FAIL.
 3. **Transport failures are loud FAILs** — connection refused, timeout, 401/403, or an HTML login page returned instead of JSON. This is the failure that will actually happen against a candidate that is not up yet or is behind auth.
-4. The header says `mutation_survival designed=18 survived=0`, and the mutation set includes the unreachable-server class, real-trade loss/duplication, destroyed ids, legacy aliases, UI/backend divergence, and duplicate-submit collateral deletion.
-5. No line says `SKIP-LOUD`. `SKIP-LOUD` is not a pass and does not satisfy Phase 4.
+4. No line says `SKIP-LOUD`. `SKIP-LOUD` is not a pass and does not satisfy Phase 4.
 
-**L6 is a transition proof, not a repeated-read proof.** The legacy backfill is one-time and gated on an empty SQL table; once SQL contains rows, later reads do not re-run it. L6 may PASS only if the harness can plant or observe an unmigrated `legacy:` alias, confirm SQL is empty for that alias before the read, read once, read again, and compare the before/first/second states. If no unmigrated alias can be planted or observed, L6 prints `SKIP-LOUD` with `no unmigrated alias available`; that is honest, but it is not a Phase 4 pass.
+**Legacy-alias migration idempotence is NOT COVERED by Phase 1.** The legacy backfill is one-time and gated on an empty SQL table; once SQL contains rows, later reads do not re-run it. Proving the transition requires DB attachment to plant or observe an unmigrated `legacy:` alias with empty SQL, so it cannot be soundly implemented in this HTTP-only harness.
 
 ### Note on what L3 can actually mean
 
@@ -115,7 +127,7 @@ Give him the build tag and digest from Phase 0 so his report is anchored to a sp
 
 ## Phase 4 — verdict (pre-registered, not negotiated)
 
-**PASS** requires all of: Phase 0 four-for-four; Phase 1 all six green with `mutation_survival designed=18 survived=0` and no `SKIP-LOUD`; Phase 2 no FAIL condition; Phase 3 every scenario re-verified by Rayan.
+**PASS** requires all of: Phase 0 four-for-four; Phase 1 all five executable checks green and no `SKIP-LOUD`; Phase 2 no FAIL condition; Phase 3 every scenario re-verified by Rayan.
 
 **FAIL — and the canary does not proceed — on any one of:**
 
@@ -132,10 +144,10 @@ These four are the gate. Anything else observed is a finding to file, not a reas
 
 ## Evidence to file
 
-Under `docs/plan3/evidence/B-M4/`: Phase 0 header block; Phase 1 raw output including its mutation-survival count; Phase 2 the completed table with actual ids; Phase 3 Rayan's per-scenario report; Phase 4 verdict with the timestamp and who ran each phase.
+Under `docs/plan3/evidence/B-M4/`: Phase 0 header block; Phase 1 raw output; Phase 2 the completed table with actual ids; Phase 3 Rayan's per-scenario report; Phase 4 verdict with the timestamp and who ran each phase.
 
 ## Coverage stamp (§A4b)
 
 **Covers:** ledger integrity and rollback trade-state on the deployed candidate, for the scenarios enumerated above.
-**Does not cover:** order-line rendering (that is M3), the duration clock (open, separate), performance, or any ledger path not reachable through Phases 1–3.
+**Does not cover:** legacy-alias migration idempotence — requires DB attachment; order-line rendering (that is M3), the duration clock (open, separate), performance, or any ledger path not reachable through Phases 1–3.
 **Surface:** deployed build. A local pass is not this gate.

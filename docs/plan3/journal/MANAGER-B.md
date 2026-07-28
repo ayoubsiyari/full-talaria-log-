@@ -1762,3 +1762,28 @@ Predicting a defect is not preventing it. I should have written the prediction i
 The reviewer noted my commit `13aba4fcb` swept all three M4 files into a commit labelled for the M3 gate. That violates one packet / one row and it made the M4 rebuild land under the wrong label. Cause: I staged by listing paths while three agents were writing to one tree. Same root as B-0090's drive-by finding, and the second time today the shared tree has cost me. Recorded, not amended — rewriting history to hide a hygiene error is worse than the error.
 
 **A16.4:** author-defect **7**, brief-defect **3**, manager-finding-defect **6**. Manager-caused **9**.
+
+---
+
+## B-0094 — M4 Phase 1 is now honest. It covers four of six invariants, and I have written the other two down as NOT COVERED.
+
+B-W12 landed the eight fixes. I verified the structural ones directly rather than re-run its suite:
+
+- `CHECK_IDS = ['L1','L2','L3','L4','L5']` — **L6 removed**, not left inert.
+- The self-certifying `mutation_survival designed=18 survived=0` header line is **gone**. It was a module constant printed unconditionally, and my runbook told an operator to verify it.
+- `--expect-digest=` with an empty value now **fails at startup**, loudly, non-zero — previously a silent provenance bypass.
+- `--expect-foreign-id` is **mandatory** in write mode.
+- `HARNESS_TRADE_ID_RE = /^m4-[0-9a-f]{8}-\d{2}$/` rejects **any** prior-run harness id, not merely this run's. That closes the self-satisfaction hole where a second run certified itself on its own leftovers.
+- The misleading `base_url=fixture` on a startup failure is now `base_url=<not-contacted>`, which no longer asserts a surface that was never reached.
+
+**The viability answer I asked for, given straight:** on the shipped default only **L1-L4** can be green. L5 must `SKIP-LOUD` because both its "stores" are one SQL table. L6 is not covered at all.
+
+I think that is worth shipping, and here is the reasoning rather than the assertion. M4's gate text is *trades not lost, not duplicated, IDs stable*. L1 covers conservation **and** pre-existing-row preservation, L4 covers duplicate-submit merge including collateral deletion, L2 covers id stability across reads, L3 covers identity of record. **The three things the gate names are covered.** What is missing is cross-store agreement — untestable on a single-store deployment, so no harness could supply it — and migration idempotence, which needs DB attachment and belongs to the migration's owner.
+
+Four checks that mean what they say beat six that do not. Two of today's four rejections came from checks that could not fail; I am not going to close by manufacturing a fifth.
+
+**Runbook rewritten** with a coverage table stating exactly what a green establishes and what it does not, the destruction warning kept at the top, and Phase 4's original "all six green" explicitly voided as unsatisfiable. Phases 2 and 3 carry what Phase 1 cannot, and I have said so in the document rather than leaving it to be inferred.
+
+**Still unreviewed:** B-W12's changes have not themselves been through adversarial review. Every previous round found something, and I will not claim otherwise — but the changes are structural removals and mandatory-argument checks, which I verified by execution above, rather than new logic that could harbour a new vacuity.
+
+**Escalated to the Director:** whether M4 can rest on Phase 1 at four-of-six plus the manual phases is a scope decision, not mine. I have made the coverage legible so the decision can be made on facts.

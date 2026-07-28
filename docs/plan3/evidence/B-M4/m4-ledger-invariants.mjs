@@ -4,9 +4,9 @@ import { fileURLToPath } from 'node:url';
 import process from 'node:process';
 
 const DEFAULT_N = 3;
-const CHECK_IDS = ['L1', 'L2', 'L3', 'L4', 'L5', 'L6'];
+const CHECK_IDS = ['L1', 'L2', 'L3', 'L4', 'L5'];
 const CANONICAL_ID_RE = /^(?!legacy[:_-])[\x21-\x7E]{1,128}$/;
-const RUN_ID_FOR_FIXTURE = 'fixture';
+const HARNESS_TRADE_ID_RE = /^m4-[0-9a-f]{8}-\d{2}$/;
 const ALLOWED_FLAGS = new Set([
   'write',
   'dryRun',
@@ -18,11 +18,10 @@ const ALLOWED_FLAGS = new Set([
   'bearer',
   'cookie',
   'expectDigest',
+  'expectForeignId',
   'runId',
 ]);
 const VALUE_FLAGS = new Set([...ALLOWED_FLAGS].filter((key) => key !== 'write' && key !== 'dryRun'));
-const MUTATION_DESIGNED = 18;
-const MUTATION_SURVIVED = 0;
 
 function parseArgs(argv) {
   const out = { write: false, dryRun: true, n: DEFAULT_N, headers: {} };
@@ -48,7 +47,7 @@ function parseArgs(argv) {
       }
       const inline = eq >= 0 ? raw.slice(eq + 1) : null;
       const value = inline ?? argv[++i];
-      if (value == null || String(value).startsWith('--')) {
+      if (value == null || String(value).startsWith('--') || String(value).trim() === '') {
         throw new Error(`Flag --${name} requires a value`);
       }
       out[key] = value;
@@ -66,15 +65,21 @@ function stableIds(trades) {
 
 function analyzeRows(rows) {
   const list = Array.isArray(rows) ? rows : [];
-  const ids = list.map((row) => tradeId(row));
+  const details = list.map((row) => rowIdentity(row));
+  const ids = details.map((detail) => detail.id);
   const unresolved = list
     .map((row, index) => ({ index, row }))
     .filter((entry) => !ids[entry.index]);
+  const identityIssues = details
+    .map((detail, index) => ({ index, ...detail }))
+    .filter((detail) => detail.issues.length);
   return {
     rows: list,
     rowCount: list.length,
     ids: ids.filter(Boolean),
     unresolved,
+    identityIssues,
+    details,
   };
 }
 
@@ -83,6 +88,22 @@ function tradeId(row) {
   const raw = payload?.tradeId ?? payload?.trade_id ?? payload?.client_trade_id ?? payload?.id
     ?? row?.client_trade_id ?? row?.user_trade_id ?? row?.journal_trade_id;
   return raw == null ? '' : String(raw).trim();
+}
+
+function rowIdentity(row) {
+  const payload = row?.payload && typeof row.payload === 'object' ? row.payload : row;
+  const id = tradeId(row);
+  const columnId = row?.client_trade_id == null ? '' : String(row.client_trade_id).trim();
+  const payloadIdRaw = payload?.tradeId ?? payload?.id;
+  const payloadId = payloadIdRaw == null ? '' : String(payloadIdRaw).trim();
+  const grammarId = columnId || id;
+  const issues = [];
+  if (!id) issues.push('unresolved-id');
+  if (!payloadId) issues.push('missing-payload-id');
+  if (columnId && columnId !== id) issues.push('client-trade-id-mismatch');
+  if (grammarId && !CANONICAL_ID_RE.test(grammarId)) issues.push('non-canonical-column-id');
+  if (grammarId && /^legacy[:_-]/.test(grammarId)) issues.push('legacy-column-id');
+  return { id, columnId, payloadId, grammarId, issues };
 }
 
 function idSet(ids) {
@@ -123,20 +144,43 @@ function snapshotRows(rows) {
   return JSON.stringify(Array.isArray(rows) ? rows : []);
 }
 
+function stableProjection(row) {
+  const payload = row?.payload && typeof row.payload === 'object' ? row.payload : row;
+  return {
+    id: tradeId(row),
+    client_trade_id: row?.client_trade_id ?? payload?.client_trade_id ?? null,
+    payloadTradeId: payload?.tradeId ?? null,
+    payloadId: payload?.id ?? null,
+    symbol: payload?.symbol ?? row?.symbol ?? null,
+    direction: payload?.direction ?? payload?.side ?? row?.direction ?? row?.side ?? null,
+    status: payload?.status ?? row?.status ?? null,
+    entryPrice: payload?.entryPrice ?? payload?.entry_price ?? row?.entryPrice ?? row?.entry_price ?? null,
+    exitPrice: payload?.exitPrice ?? payload?.exit_price ?? row?.exitPrice ?? row?.exit_price ?? null,
+    quantity: payload?.quantity ?? payload?.qty ?? row?.quantity ?? row?.qty ?? null,
+    pnl: payload?.pnl ?? row?.pnl ?? null,
+    entryTime: payload?.entryTime ?? payload?.entry_time ?? row?.entryTime ?? row?.entry_time ?? null,
+    closeTime: payload?.closeTime ?? payload?.close_time ?? row?.closeTime ?? row?.close_time ?? null,
+  };
+}
+
 function indexedById(rows) {
   const map = new Map();
   for (const row of Array.isArray(rows) ? rows : []) {
     const id = tradeId(row);
     if (!id) continue;
     if (!map.has(id)) map.set(id, []);
-    map.get(id).push(JSON.stringify(row));
+    map.get(id).push(JSON.stringify(stableProjection(row)));
   }
   return map;
 }
 
 function preservationDelta(beforeRows, afterRows, harnessPrefix) {
-  const before = (Array.isArray(beforeRows) ? beforeRows : []).filter((row) => !tradeId(row).startsWith(harnessPrefix));
-  const after = (Array.isArray(afterRows) ? afterRows : []).filter((row) => !tradeId(row).startsWith(harnessPrefix));
+  const isProtected = (row) => {
+    const id = tradeId(row);
+    return id && !HARNESS_TRADE_ID_RE.test(id) && !id.startsWith(harnessPrefix);
+  };
+  const before = (Array.isArray(beforeRows) ? beforeRows : []).filter(isProtected);
+  const after = (Array.isArray(afterRows) ? afterRows : []).filter(isProtected);
   const beforeMap = indexedById(before);
   const afterMap = indexedById(after);
   const missing = [];
@@ -153,11 +197,14 @@ function preservationDelta(beforeRows, afterRows, harnessPrefix) {
 }
 
 function foreignTradeCount(rows, runId) {
-  const harnessPrefix = `m4-${runId}-`;
   return (Array.isArray(rows) ? rows : []).filter((row) => {
     const id = tradeId(row);
-    return id && !id.startsWith(harnessPrefix);
+    return id && !HARNESS_TRADE_ID_RE.test(id) && (!runId || !id.startsWith(`m4-${runId}-`));
   }).length;
+}
+
+function hasTradeId(rows, id) {
+  return (Array.isArray(rows) ? rows : []).some((row) => tradeId(row) === id);
 }
 
 function validateOptions(opts) {
@@ -165,6 +212,12 @@ function validateOptions(opts) {
   if (!opts.baseUrl || !String(opts.baseUrl).trim()) missing.push('--base-url');
   if (!opts.accountId || !String(opts.accountId).trim()) missing.push('--account-id');
   if (!opts.sessionId || !String(opts.sessionId).trim()) missing.push('--session-id');
+  if (!opts.expectDigest || !String(opts.expectDigest).trim()) missing.push('--expect-digest');
+  if (!opts.expectForeignId || !String(opts.expectForeignId).trim()) {
+    missing.push('--expect-foreign-id');
+  } else if (HARNESS_TRADE_ID_RE.test(String(opts.expectForeignId).trim())) {
+    missing.push('--expect-foreign-id must name a non-harness trade');
+  }
   if (!Number.isInteger(opts.n) || opts.n < 1) missing.push('--n positive integer');
   if (opts.write) {
     if (!opts.qaAccountId || !String(opts.qaAccountId).trim()) missing.push('--qa-account-id');
@@ -196,6 +249,7 @@ function makeTrade(runId, index, override = {}) {
   return {
     tradeId: id,
     id,
+    client_trade_id: id,
     symbol: 'EURUSD',
     direction: index % 2 ? 'SELL' : 'BUY',
     status: 'closed',
@@ -243,8 +297,8 @@ async function checkL1(adapter, opts) {
 async function checkL2(adapter) {
   const beforeRows = await adapter.fetchBackendTrades();
   const beforeAnalysis = analyzeRows(beforeRows);
-  if (beforeAnalysis.unresolved.length) {
-    return fail('L2', { unresolved: beforeAnalysis.unresolved, rowCount: beforeAnalysis.rowCount }, 'ledger rows without resolvable ids are identity loss');
+  if (beforeAnalysis.unresolved.length || beforeAnalysis.identityIssues.length) {
+    return fail('L2', { unresolved: beforeAnalysis.unresolved, identityIssues: beforeAnalysis.identityIssues, rowCount: beforeAnalysis.rowCount }, 'ledger rows fail identity-of-record requirements');
   }
   const before = beforeAnalysis.ids;
   if (!before.length) return skip('L2', { before }, 'no ledger ids available; id-stability precondition missing');
@@ -254,34 +308,46 @@ async function checkL2(adapter) {
   const afterAnalysis = analyzeRows(afterRows);
   const refetchAnalysis = analyzeRows(refetchRows);
   const observed = { before, after: afterAnalysis.ids, refetch: refetchAnalysis.ids };
-  if (afterAnalysis.unresolved.length || refetchAnalysis.unresolved.length) {
-    return fail('L2', { ...observed, afterUnresolved: afterAnalysis.unresolved, refetchUnresolved: refetchAnalysis.unresolved }, 'ledger rows without resolvable ids are identity loss');
+  if (afterAnalysis.unresolved.length || refetchAnalysis.unresolved.length || afterAnalysis.identityIssues.length || refetchAnalysis.identityIssues.length) {
+    return fail('L2', {
+      ...observed,
+      afterUnresolved: afterAnalysis.unresolved,
+      refetchUnresolved: refetchAnalysis.unresolved,
+      afterIdentityIssues: afterAnalysis.identityIssues,
+      refetchIdentityIssues: refetchAnalysis.identityIssues,
+    }, 'ledger rows fail identity-of-record requirements');
   }
-  const after = afterAnalysis.ids;
-  const refetch = refetchAnalysis.ids;
-  if (JSON.stringify(before) !== JSON.stringify(refetch) || JSON.stringify(before) !== JSON.stringify(after)) {
-    return fail('L2', observed, 'ids changed across refetch or simulated session boundary');
+  const after = sorted(afterAnalysis.ids);
+  const refetch = sorted(refetchAnalysis.ids);
+  const beforeSorted = sorted(before);
+  if (JSON.stringify(beforeSorted) !== JSON.stringify(refetch) || JSON.stringify(beforeSorted) !== JSON.stringify(after)) {
+    return fail('L2', observed, 'id multiset changed across refetch reads');
   }
-  return pass('L2', observed, 'PASS establishes every backend row id is stable across refetch/session-boundary reads');
+  return pass('L2', observed, 'PASS establishes the backend id multiset is stable across repeated reads');
 }
 
 async function checkL3(adapter) {
   const analysis = analyzeRows(await adapter.fetchBackendTrades());
   const ids = analysis.ids;
-  if (analysis.unresolved.length) {
-    return fail('L3', { unresolved: analysis.unresolved, rowCount: analysis.rowCount }, 'ledger rows without resolvable ids are identity loss');
+  if (analysis.unresolved.length || analysis.identityIssues.length) {
+    return fail('L3', { unresolved: analysis.unresolved, identityIssues: analysis.identityIssues, rowCount: analysis.rowCount }, 'ledger rows fail identity-of-record requirements');
   }
   if (!ids.length) return skip('L3', { ids }, 'no ids available for grammar check');
-  const bad = ids.filter((id) => !CANONICAL_ID_RE.test(id));
-  const legacy = ids.filter((id) => /^legacy[:_-]/.test(id));
-  const observed = { regex: String(CANONICAL_ID_RE), ids, bad, legacy };
+  const grammarIds = analysis.details.map((detail) => detail.grammarId).filter(Boolean);
+  const bad = grammarIds.filter((id) => !CANONICAL_ID_RE.test(id));
+  const legacy = grammarIds.filter((id) => /^legacy[:_-]/.test(id));
+  const observed = { regex: String(CANONICAL_ID_RE), ids, grammarIds, bad, legacy };
   if (bad.length || legacy.length) return fail('L3', observed, 'non-conforming or legacy-alias ids leaked');
-  return pass('L3', observed, 'PASS establishes all backend rows expose a canonical non-legacy id');
+  return pass('L3', observed, 'PASS establishes all backend rows expose canonical non-legacy column ids and payload ids');
 }
 
 async function checkL4(adapter, opts) {
   let rows = await adapter.fetchBackendTrades();
-  let ids = stableIds(rows);
+  const analysis = analyzeRows(rows);
+  if (analysis.unresolved.length || analysis.identityIssues.length) {
+    return fail('L4', { unresolved: analysis.unresolved, identityIssues: analysis.identityIssues }, 'ledger rows fail identity-of-record requirements before duplicate-submit probe');
+  }
+  let ids = analysis.ids;
   const duplicateIds = multisetDuplicates(ids);
   if (duplicateIds.length) return fail('L4', { ids, duplicateIds }, 'ledger contains duplicate ids before duplicate-submit probe');
   if (!opts.write) return skip('L4', { ids }, 'write mode disabled; duplicate-submit merge not attempted');
@@ -291,7 +357,7 @@ async function checkL4(adapter, opts) {
   if (preMatches.length !== 1) {
     return fail('L4', { id: dupe.tradeId, preMatchCount: preMatches.length, ids }, 'duplicate-submit probe lacks exactly one pre-existing harness row from L1');
   }
-  const preRowSnapshot = JSON.stringify(preMatches[0]);
+  const preRowSnapshot = JSON.stringify(stableProjection(preMatches[0]));
   await adapter.registerTrade(dupe);
   rows = await adapter.fetchBackendTrades();
   const postMatches = rows.filter((row) => tradeId(row) === dupe.tradeId);
@@ -300,7 +366,7 @@ async function checkL4(adapter, opts) {
     rows.filter((row) => tradeId(row) !== dupe.tradeId),
     '\u0000',
   );
-  const postRowSnapshot = postMatches.length === 1 ? JSON.stringify(postMatches[0]) : null;
+  const postRowSnapshot = postMatches.length === 1 ? JSON.stringify(stableProjection(postMatches[0])) : null;
   const observed = {
     id: dupe.tradeId,
     preCount: preRows.length,
@@ -316,15 +382,26 @@ async function checkL4(adapter, opts) {
 }
 
 async function checkL5(adapter) {
-  if (typeof adapter.fetchBrowserTrades !== 'function') {
+  if (typeof adapter.fetchBrowserTrades !== 'function' && typeof adapter.fetchBrowserLedgerState !== 'function') {
     return skip('L5', {}, 'browser-visible ledger endpoint is not configured');
   }
   const backendRows = await adapter.fetchBackendTrades();
-  const browserRows = await adapter.fetchBrowserTrades();
+  const browserState = typeof adapter.fetchBrowserLedgerState === 'function'
+    ? await adapter.fetchBrowserLedgerState()
+    : { trades: await adapter.fetchBrowserTrades(), storage: null };
+  if (String(browserState?.storage ?? '').toLowerCase() === 'sql') {
+    return skip('L5', { journalStorage: browserState.storage }, 'single-store configuration: cross-store agreement not testable');
+  }
+  const browserRows = browserState.trades;
   const backend = analyzeRows(backendRows);
   const browser = analyzeRows(browserRows);
-  if (backend.unresolved.length || browser.unresolved.length) {
-    return fail('L5', { backendUnresolved: backend.unresolved, browserUnresolved: browser.unresolved }, 'ledger rows without resolvable ids are identity loss');
+  if (backend.unresolved.length || browser.unresolved.length || backend.identityIssues.length || browser.identityIssues.length) {
+    return fail('L5', {
+      backendUnresolved: backend.unresolved,
+      browserUnresolved: browser.unresolved,
+      backendIdentityIssues: backend.identityIssues,
+      browserIdentityIssues: browser.identityIssues,
+    }, 'ledger rows fail identity-of-record requirements');
   }
   const backendIds = backend.ids;
   const browserIds = browser.ids;
@@ -343,6 +420,7 @@ async function checkL5(adapter) {
     extraInBrowser,
     backendDuplicateIds: multisetDuplicates(backendIds),
     browserDuplicateIds: multisetDuplicates(browserIds),
+    journalStorage: browserState?.storage ?? null,
   };
   if (!backendIds.length && !browserIds.length) {
     return skip('L5', observed, 'cross-store agreement precondition missing: no identifiable trade ids on either side');
@@ -353,64 +431,29 @@ async function checkL5(adapter) {
   return pass('L5', observed, 'PASS establishes browser and backend expose the same row count and id multiset');
 }
 
-async function checkL6(adapter) {
-  if (typeof adapter.plantLegacyAliasProbe !== 'function') {
-    return skip('L6', {}, 'no unmigrated alias available: adapter cannot plant an isolated legacy-alias transition');
-  }
-  const transition = await adapter.plantLegacyAliasProbe();
-  if (!transition || transition.available === false) {
-    return skip('L6', transition ?? {}, 'no unmigrated alias available');
-  }
-  const beforeSqlRows = Array.isArray(transition.beforeSqlRows) ? transition.beforeSqlRows : [];
-  const beforeReadRows = Array.isArray(transition.beforeReadRows) ? transition.beforeReadRows : [];
-  const firstReadRows = Array.isArray(transition.firstReadRows) ? transition.firstReadRows : [];
-  const secondReadRows = Array.isArray(transition.secondReadRows) ? transition.secondReadRows : [];
-  const beforeRead = analyzeRows(beforeReadRows);
-  const firstRead = analyzeRows(firstReadRows);
-  const secondRead = analyzeRows(secondReadRows);
-  const observed = {
-    aliasId: transition.aliasId,
-    canonicalId: transition.canonicalId,
-    beforeSqlCount: beforeSqlRows.length,
-    beforeReadIds: beforeRead.ids,
-    firstReadIds: firstRead.ids,
-    secondReadIds: secondRead.ids,
-  };
-  if (beforeSqlRows.length !== 0) {
-    return fail('L6', observed, 'legacy-alias probe was not unmigrated before the read');
-  }
-  if (beforeRead.unresolved.length || firstRead.unresolved.length || secondRead.unresolved.length) {
-    return fail('L6', { ...observed, beforeUnresolved: beforeRead.unresolved, firstUnresolved: firstRead.unresolved, secondUnresolved: secondRead.unresolved }, 'ledger rows without resolvable ids are identity loss');
-  }
-  if (!beforeRead.ids.some((id) => /^legacy[:_-]/.test(id))) {
-    return fail('L6', observed, 'legacy-alias probe did not expose a legacy id before migration');
-  }
-  if (!firstRead.ids.length || !secondRead.ids.length || !firstRead.ids.includes(transition.canonicalId) || !secondRead.ids.includes(transition.canonicalId)) {
-    return fail('L6', observed, 'legacy-alias probe did not migrate to the expected canonical id');
-  }
-  const badIds = [...firstRead.ids, ...secondRead.ids].filter((id) => !CANONICAL_ID_RE.test(id));
-  const duplicateIds = [...multisetDuplicates(firstRead.ids), ...multisetDuplicates(secondRead.ids)];
-  const firstSnapshot = transition.firstSnapshot ?? snapshotRows(firstReadRows);
-  const secondSnapshot = transition.secondSnapshot ?? snapshotRows(secondReadRows);
-  if (badIds.length || duplicateIds.length || firstSnapshot !== secondSnapshot) {
-    return fail('L6', { ...observed, badIds, duplicateIds, firstSnapshot, secondSnapshot }, 'legacy-alias migration did not produce one stable canonical state');
-  }
-  return pass('L6', observed, 'PASS establishes a planted unmigrated legacy alias migrates once to a stable canonical state');
-}
-
 export async function runChecks(adapter, options = {}) {
   const opts = { n: DEFAULT_N, runId: randomUUID().slice(0, 8), write: false, ...options };
   assertQaWriteSafety(opts);
   let initialBackendRows = null;
-  let initialForeignCount = 0;
   try {
     initialBackendRows = await adapter.fetchBackendTrades();
-    initialForeignCount = foreignTradeCount(initialBackendRows, opts.runId);
     opts.initialBackendRows = initialBackendRows;
-  } catch {
-    // Individual checks will report the transport or shape failure with their own context.
+  } catch (error) {
+    return CHECK_IDS.map((id) => fail(id, { error: error?.message ?? String(error) }, 'initial ledger fetch failed'));
   }
-  const checks = [checkL1, checkL2, checkL3, checkL4, checkL5, checkL6];
+  if (!opts.expectForeignId || !String(opts.expectForeignId).trim()) {
+    return CHECK_IDS.map((id) => fail(id, { missing: ['--expect-foreign-id'] }, 'declared corpus precondition missing'));
+  }
+  const expectedForeignId = String(opts.expectForeignId).trim();
+  const initialForeignCount = foreignTradeCount(initialBackendRows, opts.runId);
+  if (HARNESS_TRADE_ID_RE.test(expectedForeignId) || !hasTradeId(initialBackendRows, expectedForeignId)) {
+    return CHECK_IDS.map((id) => fail(id, {
+      expectedForeignId,
+      foreignTradesObserved: initialForeignCount,
+      presentInInitialSnapshot: hasTradeId(initialBackendRows, expectedForeignId),
+    }, 'declared corpus precondition failed: expected foreign id absent from initial snapshot'));
+  }
+  const checks = [checkL1, checkL2, checkL3, checkL4, checkL5];
   const results = [];
   for (const check of checks) {
     try {
@@ -422,23 +465,24 @@ export async function runChecks(adapter, options = {}) {
   if (results.length !== CHECK_IDS.length) {
     results.push(fail('HARNESS', { expected: CHECK_IDS.length, observed: results.length }, 'executed check count mismatch'));
   }
-  if (initialBackendRows && initialForeignCount < 1) {
-    for (const row of results) {
-      if (row.status === 'PASS') {
-        row.status = 'SKIP-LOUD';
-        row.message = `declared corpus precondition missing: ${initialForeignCount} foreign trades observed`;
-        row.observed = { ...row.observed, foreignTradesObserved: initialForeignCount };
-      }
+  if (opts.write) {
+    let finalRows;
+    try {
+      finalRows = await adapter.fetchBackendTrades();
+    } catch (error) {
+      const l1 = results.find((row) => row.id === 'L1') ?? results[0];
+      l1.status = 'FAIL';
+      l1.message = 'final ledger fetch failed after write run';
+      l1.observed = { ...l1.observed, error: error?.message ?? String(error) };
+      return results;
     }
-  }
-  if (opts.write && initialBackendRows && initialForeignCount >= 1) {
-    const finalRows = await adapter.fetchBackendTrades();
     const preserved = preservationDelta(initialBackendRows, finalRows, `m4-${opts.runId}-`);
-    if (preserved.missing.length || preserved.changed.length) {
+    const expectedForeignPresent = hasTradeId(finalRows, expectedForeignId);
+    if (preserved.missing.length || preserved.changed.length || !expectedForeignPresent) {
       const l1 = results.find((row) => row.id === 'L1') ?? results[0];
       l1.status = 'FAIL';
       l1.message = 'full write run deleted or changed pre-existing trades';
-      l1.observed = { ...l1.observed, fullRunPreservation: preserved };
+      l1.observed = { ...l1.observed, fullRunPreservation: preserved, expectedForeignId, expectedForeignPresent };
     }
   }
   return results;
@@ -520,7 +564,7 @@ export async function fetchDeployedDigest(opts) {
     try {
       const body = await requestJson(`${base}${path}`, { headers, cache: 'no-store' });
       const digest = body?.digest ?? body?.buildDigest ?? body?.commitDigest ?? body?.build_id ?? body?.buildId;
-      if (digest != null && String(digest).trim()) return String(digest).trim();
+      if (digest != null && String(digest).trim()) return { digest: String(digest).trim(), surface: path };
     } catch {
       // Keep probing known read-only provenance surfaces.
     }
@@ -529,7 +573,7 @@ export async function fetchDeployedDigest(opts) {
   const match = html.match(/__TALARIA_CHART_BUILD_ID\s*=\s*['"]([^'"]+)['"]/)
     ?? html.match(/(?:buildDigest|commitDigest|digest)["']?\s*[:=]\s*["']([^"']+)["']/i);
   if (!match) throw new Error('Unable to discover deployed build digest from known provenance surfaces');
-  return match[1].trim();
+  return { digest: match[1].trim(), surface: '/' };
 }
 
 export function createHttpAdapter(opts) {
@@ -549,6 +593,9 @@ export function createHttpAdapter(opts) {
       const state = await this.fetchState();
       return state.trades;
     },
+    async fetchBrowserLedgerState() {
+      return this.fetchState();
+    },
     async registerTrade(trade) {
       return requestJson(`${base}/api/sessions/${sid}/journal-trades`, {
         method: 'POST',
@@ -566,7 +613,8 @@ export function createHttpAdapter(opts) {
         throw new Error(`Wrong JSON shape from ${url}: expected .state.journal array, got ${JSON.stringify(body).slice(0, 240)}`);
       }
       const snapshot = JSON.stringify(body.state.journal);
-      return { trades: body.state.journal, snapshot };
+      const storage = body.state.journal_storage ?? body.state.journalStorage ?? body.journal_storage ?? body.journalStorage ?? null;
+      return { trades: body.state.journal, snapshot, storage };
     },
   };
 }
@@ -574,7 +622,7 @@ export function createHttpAdapter(opts) {
 export function createFixtureAdapter({ mutate = null } = {}) {
   let backend = [];
   let browser = backend;
-  let legacyProbe = null;
+  let browserStorage = mutate === 'L5-sql-storage' ? 'sql' : 'state';
   const adapter = {
     async fetchBackendTrades() {
       if (mutate === 'L1' && backend.length > 0) {
@@ -584,6 +632,9 @@ export function createFixtureAdapter({ mutate = null } = {}) {
     },
     async fetchBrowserTrades() {
       return JSON.parse(JSON.stringify(browser));
+    },
+    async fetchBrowserLedgerState() {
+      return { trades: JSON.parse(JSON.stringify(browser)), storage: browserStorage };
     },
     async registerTrade(trade) {
       const normalized = { ...trade, tradeId: trade.tradeId ?? trade.trade_id ?? trade.client_trade_id ?? trade.id };
@@ -596,35 +647,16 @@ export function createFixtureAdapter({ mutate = null } = {}) {
     async simulateSessionBoundary() {
       if (mutate === 'L2') backend = backend.map((row) => ({ ...row, tradeId: `${tradeId(row)}-changed` }));
     },
-    async plantLegacyAliasProbe() {
-      const aliasId = `legacy:m4-${RUN_ID_FOR_FIXTURE}-l6`;
-      const canonicalId = `m4-${RUN_ID_FOR_FIXTURE}-l6`;
-      legacyProbe = { tradeId: aliasId, id: aliasId, client_trade_id: aliasId, symbol: 'EURUSD', sourceOrigin: 'B-M4-L6-probe' };
-      const beforeReadRows = [legacyProbe];
-      const beforeSqlRows = mutate === 'L6-not-empty-sql' ? [legacyProbe] : [];
-      const firstReadRows = mutate === 'L6-unresolved'
-        ? [{ tradeId: null, id: null, client_trade_id: null }]
-        : [{ ...legacyProbe, tradeId: mutate === 'L6-legacy-leak' ? aliasId : canonicalId, id: mutate === 'L6-legacy-leak' ? aliasId : canonicalId, client_trade_id: mutate === 'L6-legacy-leak' ? aliasId : canonicalId }];
-      const secondReadRows = JSON.parse(JSON.stringify(firstReadRows));
-      if (mutate === 'L6') secondReadRows.push({ ...firstReadRows[0], tradeId: `${tradeId(firstReadRows[0])}-copy` });
-      return {
-        available: true,
-        aliasId,
-        canonicalId,
-        beforeSqlRows,
-        beforeReadRows,
-        firstReadRows,
-        secondReadRows,
-        firstSnapshot: JSON.stringify(firstReadRows),
-        secondSnapshot: JSON.stringify(secondReadRows),
-      };
-    },
   };
   adapter.seed = async (trades) => {
     backend = JSON.parse(JSON.stringify(trades));
     browser = mutate === 'L5' ? backend.slice(1) : backend;
     if (mutate === 'L1') backend = backend.slice(0, -1);
-    if (mutate === 'L3') backend = backend.map((row, i) => (i === 0 ? { ...row, tradeId: `legacy:${tradeId(row)}` } : row));
+    if (mutate === 'L3') backend = backend.map((row, i) => {
+      if (i !== 0) return row;
+      const legacyId = `legacy:${tradeId(row)}`;
+      return { ...row, tradeId: legacyId, id: legacyId, client_trade_id: legacyId, payload: { ...(row.payload ?? {}), tradeId: legacyId, id: legacyId } };
+    });
     if (mutate === 'L4') backend = backend.concat({ ...backend[0] });
   };
   if (mutate === 'L4-submit') {
@@ -640,8 +672,7 @@ export function createFixtureAdapter({ mutate = null } = {}) {
 function printResults(results, opts) {
   console.log(`B-M4 ledger invariant run`);
   const baseUrl = opts.baseUrl ? opts.baseUrl : '<not-contacted>';
-  console.log(`base_url=${baseUrl} account_id=${opts.accountId || 'n/a'} qa_account_id=${opts.qaAccountId || 'n/a'} session_id=${opts.sessionId || 'n/a'} mode=${opts.write ? 'write' : 'dry-run'} digest=${opts.deployedDigest || 'n/a'} expect_digest=${opts.expectDigest || 'n/a'}`);
-  console.log(`mutation_survival designed=${MUTATION_DESIGNED} survived=${MUTATION_SURVIVED}`);
+  console.log(`base_url=${baseUrl} account_id=${opts.accountId || 'n/a'} qa_account_id=${opts.qaAccountId || 'n/a'} session_id=${opts.sessionId || 'n/a'} mode=${opts.write ? 'write' : 'dry-run'} digest=${opts.deployedDigest || 'n/a'} digest_surface=${opts.digestSurface || 'n/a'} expect_digest=${opts.expectDigest || 'n/a'} expect_foreign_id=${opts.expectForeignId || 'n/a'}`);
   if (!Array.isArray(results) || results.length === 0) {
     console.log(`HARNESS FAIL - no checks executed {"expected":${CHECK_IDS.length},"observed":0}`);
     console.log('summary pass=0 nonpass=1');
@@ -665,11 +696,14 @@ async function main() {
     return;
   }
   if (opts.expectDigest) {
-    opts.deployedDigest = await fetchDeployedDigest(opts);
+    const provenance = await fetchDeployedDigest(opts);
+    opts.deployedDigest = provenance.digest;
+    opts.digestSurface = provenance.surface;
     if (String(opts.deployedDigest) !== String(opts.expectDigest)) {
       printResults(CHECK_IDS.map((id) => fail(id, {
         expected: opts.expectDigest,
         observed: opts.deployedDigest,
+        surface: opts.digestSurface,
       }, 'deployed build digest mismatch')), opts);
       process.exitCode = 1;
       return;
@@ -694,4 +728,4 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   });
 }
 
-export { CANONICAL_ID_RE, CHECK_IDS, makeTrade, MUTATION_DESIGNED, MUTATION_SURVIVED, parseArgs, requestJson, tradeId, validateOptions };
+export { CANONICAL_ID_RE, CHECK_IDS, HARNESS_TRADE_ID_RE, makeTrade, parseArgs, requestJson, tradeId, validateOptions };
