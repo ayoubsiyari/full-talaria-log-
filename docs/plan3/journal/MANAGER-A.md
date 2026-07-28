@@ -2953,3 +2953,49 @@ My reading is **confirmed**: in `m20-q9-mcdiag-atip-20260728.json` the tick-only
 **But I am not closing this, because there is a second and independent 1-versus-2 in the same evidence.** The legacy `_mcDiag.resamples` field reads 2.000 per tick even in the tick-only cells, because it sums the `updateChartData` wrapper hit and the full-array `resampleData` hit for a *single* resample — the packet documents that as "1/tick means zero full resamples, 2/tick means one full resample per tick". If my original correction was sourced from that legacy field rather than from a render-frame cell, then it **was** double-counting and my original arithmetic-defect log was right after all.
 
 I cannot tell which from this packet; it needs the text of the earlier report. **So the correction stands as: my restatement is right if the figure came from a render cell, and my original log was right if it came from the legacy field, and I do not yet know which.** Recording the ambiguity rather than picking the flattering branch — I have now corrected this figure twice and a third confident restatement without the source text would be exactly the overconfidence the first two came from.
+
+---
+
+## 2026-07-28 13:14 — PRIORITY ZERO accepted. Measurement One is already in hand, and it confirms the hypothesis
+
+`FINDING-CPU-NOT-MEMORY-20260728.md` and §1.5 read in full. Re-measurement framing dropped as instructed; the CPU work subsumes it.
+
+**Number one does not need dispatching — it was measured this morning and pinned to A's tip.** `_mcDiag` on `manager-a/a2-rebaseline` @ `61e62c3f5`, cross-checked against product source by top-tier review:
+
+- **2.000 full resamples per replay tick** in the render-inclusive cells, 1.000 tick-only, across 1m and 1H with the M20-Q9 switch both ON and OFF.
+- **`incrementalResamples` is zero in every cell.** The incremental branch never fires.
+- The branch is **live code, not dead code**, and **three independent mechanisms** defeat it.
+
+`chart-data-pipeline.js:88-97` gates incrementality on **array identity** — `cache.sourceRef === source` plus `cache.sourceLen === source.length - 1`. With the fix ON, `_installPlayheadPrefix` (`replay-system.js:3837-3866`) calls `_m20Q9DropConsumerResampleCache` → `sourceRef = null` (`cacheDrops: 300`, `distinctRawDataIdentities: 1`). With it OFF, the same function returns `master.slice(0, end)` — a **new array object every tick** — so identity fails for a completely different reason (`cacheDrops: 0`, `distinctRawDataIdentities: 300`). Both positions are independently fatal, which is exactly why the kill-switch moves nothing.
+
+**The Director's prediction that this would be a multiple and not a percentage is confirmed.** Controls with the cache drop neutralised fire incremental 300 of 300 with zero full resamples, and per-tick cost falls from **7.77 ms to 0.106 ms at 1m — 73×.** But a control adding one render frame snaps straight back to 600 full resamples and zero incremental attempts, so **the render path defeats it a third way and relaxing M20-Q9 alone recovers nothing under realistic conditions.**
+
+Honest caveat: those control cells run in a node host with roughly twelve stubbed replay methods over 3,000 synthetic bars, and the neutralised state is a harness injection, not a shipping configuration. **The two identity-breaking mechanisms are confirmed in product source and I hold those firmly; the 73× is a ceiling measured under stubbing, not a promised product gain.** I will not quote it as a forecast.
+
+## 2026-07-28 13:15 — Two, three and four dispatched as ONE session, deliberately
+
+The Director listed render amplification, main-thread share and render-surface inventory as three measurements. **I dispatched them as one instrumented session on one configuration**, and the reason is today's most expensive lesson.
+
+Two harnesses authored today returned figures one-and-a-half to three orders of magnitude below product reality — a 33 MiB JS heap where the product shows gigabytes, twelve-second windows against thirty-minute soaks, ~2,000 bars against ~30,000, and in three of five cells a counter that was not the same quantity it was being compared against. **Three separate harnesses would have given me three different scales and no way to relate the numbers to each other.** One session gives three mutually comparable results even if the absolute scale turns out wrong.
+
+I also made the scale problem an explicit acceptance condition rather than a hope: the author must state bar counts, run duration, speed, indicator count and panel symbols, and must say whether the session's tab CPU is anywhere near **129.3%**. If it idles at 20%, the phenomenon was not reproduced and the attribution describes a different workload — I would rather have that stated plainly than receive a beautifully detailed breakdown of the wrong thing. **Reaching the PO's CPU figure matters more than polishing the breakdown.**
+
+The probe matches the PO's protocol: two panels, EURUSD 15m and 1m, **no indicators**, one open position, order panel open, fresh context. Render amplification is briefed to produce a **trigger histogram** rather than a ratio — the useful artefact is what causes the fifty renders, not the confirmation that there are fifty. Main-thread share carries its refutation criterion: **if the bulk of per-tick work is already off-main-thread, the competitor's advantage is algorithmic rather than threading**, and I need that immediately because it redirects everything.
+
+Number five, the residue census, now serves both rows — orphaned rAF loops are CPU by definition — and its priority rises accordingly. It is already in adversarial review.
+
+## 2026-07-28 13:16 — §1.2's restatement strengthens the answer I already gave
+
+The acceptance criterion moves to CPU per tick and per frame with memory secondary, and a proposal that halves bytes while leaving CPU untouched will not be selected.
+
+**My §1.2 answer already says do not build the residency cap**, and it now has a second independent reason. I reached "no" on the grounds that panels hold references rather than bars, that the two named modules are absent from the branch entirely, and that the measured cost is 2.000 full resamples per tick on the host rather than per-panel duplication. The finding adds that **bytes are already at parity with the competitor**, so even a cap that worked perfectly would target the axis where we are not behind. The conclusion is unchanged and better supported; I have nothing to redirect because I was not building toward the cap.
+
+What the restatement *does* change is where the foundation increment should aim, and this morning's `_mcDiag` result answers that too: **the per-tick full resample is O(history) work on every tick, on the main thread, and the incremental branch that would avoid it is live and reachable behind three separate defeats.** That is a CPU-per-tick target with a measured ceiling behind it, which is precisely the shape §1.2 now asks for.
+
+## 2026-07-28 13:17 — The honesty clause, recorded before there is any pressure to bend it
+
+**The 4–5x CPU gap is architectural, predates Plan 3, and will not be closed by Thursday. I will not claim otherwise.**
+
+The measurement is dated 2026-07-25 — before b74, before b75, before every Plan 3 change under discussion. No regression is established and none is claimed. What I will produce is the largest contributors, the measured delta from cutting them, and an explicit statement of what remains. A description of work done is not a result; every change reports a before/after pair on the PO's protocol.
+
+One consequence I want on the record now: if the render path is confirmed as the third defeat of incrementality, then the fix touches shared `chart.js` render paths — which is a §A13.2 top-tier authoring trigger by name, and one of the few places today where I will be authoring above cheap tier on the row rather than the ratio.
