@@ -1961,3 +1961,25 @@ Two of my sites are confirmed and their predicates captured verbatim: ordinal 6 
 But **ordinal 7 is not discoverable by C's parser**, because `removedIds.includes(l.orderId)` is a call expression and the host models comparisons. I want to be explicit about the direction of the fix: that is an expressiveness limit in the gate, and the remedy is a hand-off asking C to extend the host — **not** reshaping a product predicate so a parser can read it. Bending product code to suit an instrument is how you get a gate that passes because the code was written to the gate's shape rather than to the requirement.
 
 The `order-manager.js` ordinals 4/5 drift the run also surfaced is, I believe, an ancestry artifact rather than a regression: a prior review established that B's fix `9133fd9e0` is not in this branch's ancestry and the tree carries B's pre-fix blob, so a gate seeing no `isPending` discriminator there is reporting the file it was given. Flagged to the reviewer to confirm rather than asserted, because that is exactly the shape of claim I have got wrong three times today.
+
+---
+
+## 2026-07-28 09:34 — Loader STOP-THE-LINE authored; two hazards flagged into review before I read the rest
+
+Packet `677cb7db2` on `manager-a/loader-a4c`. Six files: `legacy-index.html`, `multichart/chart-host.html`, `module-presence-runtime.js`, and the `homepage/public` mirror of each. `ModulePresenceRuntime` now loads before `chart.js` and `IndicatorPerf` before `chart-indicators-full.js` on the served legacy and multichart sandbox shells. Three-state proof reported: CONFORMING clean, ABSENT and NONCONFORMING both loud with flag, event, console error and badge. C's two gates pass, preflight ok at 10 checked.
+
+This is the item that has stood first on my work order for three nights and the Director has noted no packet advanced it. That is exactly the condition under which I would accept a weak packet, so I said so in the review brief and asked the reviewer to assume I am motivated to wave it through.
+
+Two things I am not willing to take on the author's word.
+
+**The mirror reconciliation.** The author found pre-existing source/mirror drift on `chart-host.html` and resolved it by overwriting the homepage mirror from the source, as a side effect of an unrelated task. I have an OPEN finding logging three such divergences under `homepage/public/chart/`, none of them diagnosed. A parity fix chosen by whoever happened to be in the file is not a diagnosis — the question is which copy is actually served on that route and what the mirror carried that the source does not. If the mirror held live behaviour, this packet deleted it under cover of housekeeping. That is a block on its own regardless of the rest of the packet's quality, and the reconciliation should be its own change with its own reasoning.
+
+**Whether the item is actually closed.** The assertions landed on a legacy shell and a sandbox host. `dist-v9/index.html` was not touched, on the grounds that it already satisfies C's contract gate. But satisfying a manifest check and actually loading the runtime before `chart.js` are different claims, and §A16.2 exists because we keep conflating them. If the primary production shell is `dist-v9`, then STOP-THE-LINE is partially closed at best and I should not report it as done.
+
+Also asked the reviewer to verify the untouched-surface negatives directly rather than accept them. The packet exempts `backtesting.html`, `propfirm-backtest.html`, `multichart-shell.html`, `index.v9.html` and `chart-embed.html`. At least one of those exemptions is legitimate-by-delegation rather than legitimate-by-not-executing — `multichart-shell.html` embeds `chart-host.html` iframes, so it inherits coverage rather than not needing it. Right conclusion, possibly wrong reason, and the reason is what generalises. Three unexhausted negatives from me today, all wrong, so I am not signing a fourth.
+
+One open question of substance for the reviewer: supported degraded mode here is loud but **non-blocking** — badge and telemetry, no hard kill. For a correctness-class module that may be the wrong contract. A chart that renders wrong numbers with a badge in the corner has not failed safely.
+
+**Hygiene check I ran myself:** the author ran `npm ci` to install puppeteer for C's browser gate. Main checkout is unchanged at 161 entries with no new lockfile or `node_modules` drift, so whatever it touched, it was not C's tracked tree. The one modified `package.json` there is pre-existing and not mine.
+
+**Hand-off to C, not actionable by me:** `scripts/module-contracts.json` still marks legacy as excluded and does not inventory `multichart/chart-host.html`, though both are servable and now conform. C either updates the inventory or explicitly retires those routes. I did not touch `scripts/**`.
