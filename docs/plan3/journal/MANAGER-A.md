@@ -3515,3 +3515,64 @@ Mutation testing killed five of six mutants but **one survived: swapping `'pageh
 Remediation dispatched cheap: regenerate the mirror via the generator rather than by hand, inside the packet worktree so C's edits are untouched, and add a cell that kills the `unload` mutant. The product fix is explicitly out of the writable set.
 
 Two open rows I am not acting on now: all browser evidence is Chromium 148 only, and a deterministic host-driven removal could join `_b70ShadowDisposeIndicatorGeneration()` three lines above `c.frame.remove()`, dropping the sole dependency on browser unload behaviour. That is hardening, not a defect, and it is worth noting the host already has a de facto panel-dispose hook at exactly the right place despite `Chart` having no `destroy()`.
+
+---
+
+## 2026-07-28 16:14 — The instrument was 45% of the measurement. Correcting the headline I gave the Director at 15:26.
+
+The validity control returned and it is the most consequential number of the day.
+
+| Condition | Idle CPU |
+|---|---|
+| Traced + page-init probe + profiler attached | **14.11%** |
+| **Untraced, no probe, 3 runs** | **7.79% mean** (7.70 / 6.73 / 8.93) |
+
+**About 6.3 percentage points of the "idle CPU floor" was our own measurement apparatus.** Every figure I have reported today — 13.12%, 14.91%, and the 12.5 "unattributed" points I built two dispatches around — was inflated by roughly 45%.
+
+**This materially weakens the claim I led with at 15:26.** I told the Director "IDLE CPU REPRODUCED: 13.12% vs the PO's 20.6%" and treated the acceptance condition as met. **The real harness floor is 7.79% against 20.6%, so we reproduce about 38% of the phenomenon, not 65%.** The harness still shows nonzero idle CPU and is still above the competitor's 0.4–5.1% band, so something is there — but "reproduced" was too strong and I am downgrading it to "partially reproduced, majority unexplained."
+
+I asked for this control myself at 15:28 and called it "the largest single threat to this whole line of work". It was, and it was sitting unexamined for two hours while I dispatched three rounds of attribution against a number that was 45% instrument. **The lesson is not that I eventually caught it — it is that a measurement harness needs its own null control before its first result is reported, not after its fourth.**
+
+## 2026-07-28 16:15 — My React-pump hypothesis is dead, definitively and by direct measurement
+
+The bottom-up profile is unambiguous. Main thread **82.8% idle**. Largest product JS frame in the entire top-20: **72.9 ms = 0.12%**. And the seven named interval callbacks I expected to find the answer in, measured directly over 60 seconds:
+
+| Site | Wall time |
+|---|---|
+| `TalariaV8bLive.jsx:15836` account balance/equity | 50.8 ms |
+| `TalariaV8bLive.jsx:13830` nav-integrity DOM sync | 32.1 ms |
+| `TalariaV8bLive.jsx:13687` replay-state poll | 8.4 ms |
+| `TalariaV8bLive.jsx:12577` `setOmTradeRev` pump | 4.9 ms |
+| `economic-news-sidebar.js:1105` news countdown | 3.0 ms |
+| `TalariaV8bLive.jsx:22774` toolbar re-hook | 2.3 ms |
+| `TalariaV8bLive.jsx:12650` panel snapshot pump | 2.2 ms |
+| **Total** | **103.7 ms = 0.17%** |
+
+**All seven together cost 0.17% of main-thread time.** My 14:49 reasoning — that two unconditional `setOmTradeRev(n+1)` pumps force a React re-render of the trades subtree 2.5 times a second and that this was the best fit for the observation — was mechanically correct about what the code does and **wrong by two orders of magnitude about what it costs.** A revision counter that always changes does force a re-render; the re-render is simply cheap when there is nothing to render.
+
+That is the third hypothesis of mine to die today and the pattern is consistent: **I have been reasoning from mechanism to cost without measuring cost.** Plausible mechanisms are easy to find in a codebase this size. Every one of them today has been either free or absent.
+
+The M20-Q2 countdown closes the same way: `_tickBarCloseCountdown` ran 8621 times for **93.2 ms total**, and `_paintBarCloseCountdownRegion` ran **0 times**. The hole I flagged at 15:28 was real in principle — `renders = 0` genuinely cannot see a region paint — and in this run there was no region paint to see.
+
+## 2026-07-28 16:16 — rAF: the number did not move, the denominator did
+
+rAF normalised to 60 Hz is **2.16%**, and it is now confirmed that `FireAnimationFrame` duration includes the JavaScript executed inside the callback, not merely browser-side dispatch. So that figure is the loop's full cost.
+
+Against an untraced floor of 7.79%, **rAF is roughly a quarter to a third of the harness's real idle CPU — the largest single named contributor by a wide margin**, with all product JS intervals at 0.17% behind it.
+
+**I want to be precise that this is not a third reversal.** I demoted rAF at 15:26 from "the floor, ~20%" to 2.41%, and that demotion stands unchanged — it is 2.16–2.41% now as it was then. What changed is the total it sits inside. Same numerator, corrected denominator, larger share. `Chart.animate` re-requesting its frame unconditionally with no idle guard remains a genuine defect and is now the best-supported one we have, but it is a two-point defect, not a twenty-point one.
+
+## 2026-07-28 16:17 — Where this leaves the Director's premise, stated plainly
+
+The CPU finding's argument for priority was that an idle floor would be **"a small local fix rather than a rewrite, the only credible route to a real CPU improvement inside 46 hours."**
+
+**On what we can measure, that premise is not supported.** Main thread 83% idle, product JavaScript at 0.17%, no repaint, no resample, no autosave, every named suspect eliminated. **There is no small local JavaScript fix to be had here**, because there is almost no JavaScript running. The largest thing we could delete is worth about two points.
+
+Two honest readings, and I am not choosing between them yet:
+
+1. **The cost is off the main thread** — raster, compositor, GPU. The loaded-protocol review found 53% of process CPU there, and 83% main-thread idle here points the same way. Dispatched: per-thread and per-process breakdown, plus a `deviceScaleFactor: 2` re-run, since dpr quadruples pixel work and is our largest unmatched variable. Framed as a hypothesis to refute — **if dpr 2 does not move it, that eliminates the leading remaining explanation and is worth having.**
+2. **The harness does not reproduce the defect.** We now measure 7.79% where the PO measures 20.6%, so **~62% of the phenomenon is absent from our instrument.** The fix may exist and be invisible here.
+
+Both readings converge on the same conclusion: **more harness rounds have low expected yield, and the decisive evidence is a profile of the PO's actual session.** Filing a PO-REQ for a 10-second Chrome Performance recording plus a `chrome://tracing` process breakdown on the machine that produced 20.6%. That is minutes of PO time and it discriminates in one shot between "our harness is blind to it" and "it is off-main-thread work we can find here".
+
+One tooling gap worth closing regardless: **no source map exists for `talaria-v9-live.js`**, so minified frames like `xA`, `I8`, `M3` cannot be resolved. The author correctly declined to guess at their identities rather than inventing attributions. Asked whether the Vite build can emit maps — read-only, no build change.
