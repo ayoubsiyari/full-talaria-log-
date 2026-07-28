@@ -1368,6 +1368,7 @@ function phaseWindowsById(phase) {
 const REQUIRED_P4_PANEL_IDS = Object.freeze(['A', 'B', 'C', 'D']);
 const PO_CPU_AB_P4_ADVANCE_RATE_CEILING_MULTIPLIER = 12;
 const PO_CPU_AB_P4_MIN_TIMESTAMP_MS_PER_INDEX = 1000;
+const PO_CPU_AB_P4_MIRROR_COMPONENT_SPREAD_TOLERANCE = 2;
 
 function finiteNumberOrNull(value) {
   if (value == null) return null;
@@ -1630,21 +1631,35 @@ export function assertPoCpuAbBenchmarkReport(report, { mutant = false } = {}) {
       ].map((value) => finiteNumberOrNull(value)),
     };
   });
-  const sameMirrorVector = (left, right) => {
-    if (!left || !right || left.values.length !== right.values.length) return false;
-    return left.values.every((value, index) => {
-      const other = right.values[index];
-      if (value == null || other == null) return value == null && other == null;
-      return Math.abs(value - other) <= 1;
-    });
-  };
-  const allMirrorVectorsNearEqual = (vectors) => vectors.length > 0
-    && vectors.every((vector) => vector && sameMirrorVector(vector, vectors[0]));
   const p4PeerMirrorVectors = ['B', 'C', 'D']
     .map((id) => p4MirrorVectors.find((vector) => vector?.id === id) || null);
+  const mirrorComponentSpreads = (vectors, componentIndexes) => {
+    if (!Array.isArray(vectors) || vectors.length === 0 || vectors.some((vector) => !vector)) return null;
+    return componentIndexes.map((componentIndex) => {
+      const values = vectors.map((vector) => vector.values[componentIndex]);
+      if (values.some((value) => value == null)) return null;
+      return Math.max(...values) - Math.min(...values);
+    });
+  };
+  const spreadsWithinTolerance = (spreads) => Array.isArray(spreads)
+    && spreads.length > 0
+    && spreads.every((spread) => Number.isFinite(spread) && spread <= PO_CPU_AB_P4_MIRROR_COMPONENT_SPREAD_TOLERANCE);
+  const p4PeerDeltaSpreads = mirrorComponentSpreads(p4PeerMirrorVectors, [0, 1]);
+  const p4PeerAbsoluteBaselineSpreads = mirrorComponentSpreads(p4PeerMirrorVectors, [2, 3, 4, 5]);
+  const p4PeerDeltasNearShared = spreadsWithinTolerance(p4PeerDeltaSpreads);
+  const p4PeerAbsoluteBaselinesNearShared = spreadsWithinTolerance(p4PeerAbsoluteBaselineSpreads);
   const p4SharedMirrorOnly = p4RowsDistinctRequired
     && p4Rows.length >= 4
-    && (allMirrorVectorsNearEqual(p4MirrorVectors) || allMirrorVectorsNearEqual(p4PeerMirrorVectors));
+    && p4PeerDeltasNearShared
+    && p4PeerAbsoluteBaselinesNearShared;
+  const p4MirrorAnalysis = {
+    peerIds: ['B', 'C', 'D'],
+    tolerance: PO_CPU_AB_P4_MIRROR_COMPONENT_SPREAD_TOLERANCE,
+    deltaSpreads: p4PeerDeltaSpreads,
+    absoluteBaselineSpreads: p4PeerAbsoluteBaselineSpreads,
+    deltasNearShared: p4PeerDeltasNearShared,
+    absoluteBaselinesNearShared: p4PeerAbsoluteBaselinesNearShared,
+  };
   const p4Topology = replay4.topology || {};
   const p4GridIds = Array.isArray(p4Topology.gridIds) ? p4Topology.gridIds.map((id) => String(id)) : [];
   const p4ManagerIds = Array.isArray(p4Topology.managerIds) ? p4Topology.managerIds.map((id) => String(id)) : [];
@@ -1676,7 +1691,7 @@ export function assertPoCpuAbBenchmarkReport(report, { mutant = false } = {}) {
     'P4-FOUR-PANEL-REPLAY-RUNNING-OBSERVED',
     p4ReplayObserved,
     `${p4ArmingDetail}panels=${p4PanelCount} playing=${p4PlayingCount} advanced=${p4AdvancedCount} probeWindows=${p4WindowCount} gridIds=${p4GridIds.length ? p4GridIds.join(',') : 'missing'} managerIds=${p4ManagerIds.length ? p4ManagerIds.join(',') : 'missing'} windowIds=${p4WindowIds.length ? p4WindowIds.join(',') : (p4RowIds.length ? p4RowIds.join(',') : 'missing')} peerWork=${p4PeerWorkOk ? 'ok' : 'missing-or-idle'} observeBaselines=${p4ObserveBaselinesCaptured ? 'captured' : 'missing'} sharedMirrorOnly=${p4SharedMirrorOnly} workRatio=${Number.isFinite(phaseWorkRatio(p4)) ? phaseWorkRatio(p4).toFixed(4) : 'n/a'}`,
-    { phase: 'P4', replay: replay4, probeWindowCount: p4WindowCount, playingCount: p4PlayingCount, advancedCount: p4AdvancedCount, panelCount: p4PanelCount, rowsEveryOk: p4RowsEveryOk, rowsDistinctRequired: p4RowsDistinctRequired, topologyOk: p4TopologyOk, workRatio: phaseWorkRatio(p4), rowAdvances: p4RowAdvances, peerWorkOk: p4PeerWorkOk, peerWorkRows: p4PeerWorkRows, observeBaselinesCaptured: p4ObserveBaselinesCaptured, sharedMirrorOnly: p4SharedMirrorOnly },
+    { phase: 'P4', replay: replay4, probeWindowCount: p4WindowCount, playingCount: p4PlayingCount, advancedCount: p4AdvancedCount, panelCount: p4PanelCount, rowsEveryOk: p4RowsEveryOk, rowsDistinctRequired: p4RowsDistinctRequired, topologyOk: p4TopologyOk, workRatio: phaseWorkRatio(p4), rowAdvances: p4RowAdvances, peerWorkOk: p4PeerWorkOk, peerWorkRows: p4PeerWorkRows, observeBaselinesCaptured: p4ObserveBaselinesCaptured, sharedMirrorOnly: p4SharedMirrorOnly, mirrorAnalysis: p4MirrorAnalysis },
   );
   cells.push(p4Cell);
 

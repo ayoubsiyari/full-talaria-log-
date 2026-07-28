@@ -472,6 +472,53 @@ test('fault-injection: P4 rejects B/C/D shared mirror even when host differs or 
   assert.equal(p4.sharedMirrorOnly, true);
 });
 
+test('fault-injection: P4 shared mirror detection is peer-order independent for staggered jitter', () => {
+  function rowsForPeerTimestampDeltas(peerDeltas) {
+    return ['A', 'B', 'C', 'D'].map((id) => {
+      const peerDelta = peerDeltas[id];
+      const timestampDelta = id === 'A' ? 420_000 : peerDelta;
+      const startIndex = id === 'A' ? 100 : 200;
+      const indexDelta = id === 'A' ? 7 : 5;
+      const startTimestamp = id === 'A' ? 10_000_000 : 20_000_000;
+      return {
+        id,
+        ok: true,
+        activeObserved: true,
+        playingObserved: true,
+        advancedObserved: true,
+        indexDelta,
+        timestampDelta,
+        advanceContradiction: false,
+        beforeState: { isActive: true, isPlaying: false, currentIndex: startIndex, currentTimestamp: startTimestamp, currentTimestampSource: 'replayTimestamp', speed: 10 },
+        state: { isActive: true, isPlaying: true, currentIndex: startIndex + indexDelta, currentTimestamp: startTimestamp + timestampDelta, currentTimestampSource: 'replayTimestamp', speed: 10 },
+        ...p4AdvanceEvidence({
+          startIndex,
+          indexDelta,
+          startTimestamp,
+          timestampDelta,
+        }),
+      };
+    });
+  }
+
+  const permutations = [
+    { B: 31_200, C: 31_201, D: 31_202 },
+    { B: 31_201, C: 31_200, D: 31_202 },
+    { B: 31_202, C: 31_201, D: 31_200 },
+  ];
+  const verdicts = permutations.map((peerDeltas) => assertPoCpuAbBenchmarkReport(report({
+    p4Replay: {
+      ok: true,
+      rows: rowsForPeerTimestampDeltas(peerDeltas),
+    },
+  })).find((cell) => cell.name === 'P4-FOUR-PANEL-REPLAY-RUNNING-OBSERVED'));
+
+  assert.deepEqual(verdicts.map((p4) => p4.status), ['RED', 'RED', 'RED']);
+  assert.deepEqual(verdicts.map((p4) => p4.sharedMirrorOnly), [true, true, true]);
+  assert.deepEqual(verdicts.map((p4) => p4.mirrorAnalysis.deltaSpreads), [[0, 2], [0, 2], [0, 2]]);
+  assert.equal(verdicts.every((p4) => p4.mirrorAnalysis.absoluteBaselinesNearShared), true);
+});
+
 test('fault-injection: P4 observe-window baseline requirement survives report normalization', () => {
   const p4 = assertPoCpuAbBenchmarkReport(report({
     p4Replay: {
