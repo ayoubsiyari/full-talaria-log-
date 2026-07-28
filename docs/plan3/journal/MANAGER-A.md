@@ -3610,3 +3610,84 @@ The bytes are machine-verified and the mutant kill is demonstrated, so the mecha
 Dispatched top-tier, scoped to those three plus confirmation that the new cell cannot pass a genuine `unload` implementation. I explicitly told the reviewer not to re-litigate the fix, and to say plainly if my generator concerns are overblown rather than manufacturing findings to justify the review.
 
 **Merge stays held.** Not on the fix, which has survived a full adversarial pass, but because item 2 could make the merge cosmetic and I would rather answer that before landing than discover it on TEST-1.
+
+---
+
+# 2026-07-28 16:36 — TRAIN DIGEST (§A13.3b)
+
+## Author tier and reviewer tier, as separate numbers
+
+**Authoring — 5 packets:**
+
+| Tier | Model | Packets |
+|---|---|---|
+| Top | `claude-opus-5-thinking-high` | 1 — host-listener-leak fix |
+| Mid | `gpt-5.5-medium-fast` | 1 — idle-CPU measurement harness (+2 resumes) |
+| Cheap | `composer-2.5-fast` | 2 — static periodic-work census, V9 bundle mapping |
+| Cheap | `cursor-grok-4.5-medium-fast` | 1 — leak-mirror remediation |
+
+**Top-tier authoring: 1 of 5 = 20%.** Below the 40% threshold, so no justification owed.
+
+**Reviewing — 4 packets, 100% top tier, zero downgrades.** One model-availability failure earlier today was failed closed and re-dispatched at tier rather than downgraded, per the rule I put in force this morning.
+
+## Top-tier authoring trigger, cited by row not paraphrase
+
+One dispatch, one trigger: **§A13.2 — "any edit to `chart.js` shared paths"**, for the host-listener-leak fix, which modifies `_installFinerPanelSelfOwnerHostCommitListener` in `chart v 1.4/chart/chart.js`. Nothing else this train met a trigger and nothing else was escalated.
+
+## Rejection rate per (task class × model)
+
+| Task class | Model | Dispatched | Rejected / blocked | Rate |
+|---|---|---|---|---|
+| Read-only enumeration | `composer-2.5-fast` | 2 | 0 | **0%** |
+| Mechanical remediation | `cursor-grok-4.5-medium-fast` | 1 | 0 (in review) | **0%** |
+| Measurement harness | `gpt-5.5-medium-fast` | 1 | 0 | **0%** |
+| Measurement harness | mid tier (cpu-attribution) | 1 | 1 | **100%** |
+| Product fix | `claude-opus-5-thinking-high` | 1 | 1 (on shape, my defect) | **100%** |
+| Adversarial review | `claude-opus-5-thinking-high` | 4 | 0 | **0%** |
+
+**The number §A13.3b was asking for is the first row: cheap tier is 0-for-2 on rejections this train, and both cheap dispatches produced the train's most useful results** — the static census killed four of five named suspects with stated searches, and the bundle mapping killed my own 24 ms concern and mapped all fourteen intervals where a regex had found five. Neither needed a top-tier model; a top-tier model would have been slower for identical output.
+
+The two 100% rows are worth reading carefully, because **neither is evidence against its tier.** The product fix was blocked on packaging I specified, not on authoring — the fix itself survived a full adversarial pass on all six attack points. The cpu-attribution probe is the only genuine author-side defect this train.
+
+## The three rejection columns (§A16.4)
+
+| Column | Count | Detail |
+|---|---|---|
+| **author-defect** | **1** | cpu-attribution probe: shadow stack pushes strings so `selfMs == totalMs` in all 26 rows; render trigger attributed by delivery frame rather than cause; `rafCallbacks`/`rafMs` measured then discarded before writing evidence |
+| **brief-defect** | **3** | writable set omitted the enforced `chart.js` mirror; "no indicators" specified against a PO acceptance figure taken *with* indicators; "run the generator" for a generator that writes to its own input |
+| **manager-finding-defect** | **1** | told the reviewer `multichart-manager.js:442` was an unexercised teardown path — it is the iframe-creation error fallback |
+
+**Four manager-caused against one author-caused. The §A16.4 trigger is met again: my next brief goes to top-tier review before dispatch**, and I am recording that obligation here rather than waiting to be reminded of it.
+
+**The pattern in those four is one thing, not four.** Every one is a premise I did not verify before writing it into a brief — a mirror I did not check for, an acceptance figure I did not reconcile against my own protocol, a script I did not read, a line number I did not open. My tier routing was sound all train; my inputs were not. That is the actual finding of this digest and it is more useful than the percentages.
+
+## Corrections and retractions issued this train
+
+Seven, which is high and which I would rather have visible than smoothed:
+
+1. **rAF as the idle floor** — demoted from ~20% to 2.16%. Led with it twice.
+2. **"0.38 ms of JS per animation frame"** — unsound inference; `renders = 0` proves `animate()` early-exits.
+3. **The `setOmTradeRev` pump ranking** — measured at 0.17% for all seven intervals combined. Wrong by two orders of magnitude.
+4. **The 24 ms interval** — gated on `orderPanelOpen`; does not run on the PO's protocol.
+5. **The render-trigger histogram** — reported to the Director as corroboration, then BLOCKED. Not citable at any scope.
+6. **"Idle CPU reproduced"** — downgraded; untraced floor is 7.79% against 20.6%, so ~38% not ~65%.
+7. **"Nothing runs off the main thread"** — 53% of process CPU is off it by design.
+
+Plus two withdrawals: the mirror escalation (premise false — the mirror is generated and C preserves parity), and "the leak is a one-off, not a class" (the drag-end guard is paired but not teardown-safe).
+
+## Standing rules added this train
+
+- Content-hash at-risk files; counts do not detect overwrites.
+- Check every writable file for an enforced mirror or built artefact before granting the set.
+- A regex over a minified blob is not an enumeration — map source-first.
+- Pin line numbers to a commit; another manager is rewriting `chart.js` underneath us.
+- "No API exposes this" is not an acceptable limit on a browser packet — CDP exposes far more than the page-visible surface.
+- A measurement harness needs its own null control **before** its first result is reported.
+
+## Where the work stands
+
+**Priority zero, idle CPU:** untraced floor 7.79%, main thread 82.8% idle, product JS 0.17%, no repaint, no resample, no autosave, all five named suspects eliminated. rAF at 2.16% is the largest named contributor. **The "small local fix" premise is not supported by measurement** — there is almost no JavaScript running to remove. Per-thread breakdown and a dpr-2 re-run are in flight as the discriminator; a PO-REQ for a profile on the PO's own machine is filed, because our instrument misses ~62% of the phenomenon.
+
+**M23 host-listener-leak:** three commits, canonical and mirror hash-identical, mutant killed, in top-tier review. Held on the `CHART_ENGINE_BUILD` question — the stamp is fourteen builds stale and if it drives cache invalidation the merge could be cosmetic.
+
+**Outstanding PO-REQ count: 4** — lag at 5x, `REPLAY_SPEED_DEFAULT=5` ratification, instrumented real-browser residue session, and the new idle-CPU profile on the PO's machine.
