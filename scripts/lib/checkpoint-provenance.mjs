@@ -470,6 +470,22 @@ export function verifyTreeLayout({
     matchAllCacheIds(checks, failures, filePath, `${label} cache ids`, expectedBuildId);
   }
 
+  // Fallback stub for /chart/index.html when dist-v9 is absent. No module tags —
+  // only the window build id must match, or a PO session on the fallback path
+  // cannot be named (DEPLOY-01). Required when the stub is present in the tree;
+  // harness fixtures that omit it are skipped (not a silent pass on a real tree).
+  const chartIndexStub = path.join(chartRoot, 'index.html');
+  if (fs.existsSync(chartIndexStub)) {
+    matchOne(
+      checks,
+      failures,
+      chartIndexStub,
+      'chart index stub window build',
+      /window\.__TALARIA_CHART_BUILD_ID\s*=\s*['"]([^'"]+)['"]/,
+      expectedBuildId,
+    );
+  }
+
   for (const [filePath, label] of [
     [path.join(chartRoot, 'chart.js'), 'canonical engine'],
     [path.join(homepageChartRoot, 'chart.js'), 'homepage engine'],

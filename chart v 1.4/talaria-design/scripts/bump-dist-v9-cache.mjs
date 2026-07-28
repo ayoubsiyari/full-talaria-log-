@@ -22,6 +22,8 @@ const liveIndexPath = path.resolve(__dirname, "../live/index.html");
 const distIndexPath = path.resolve(__dirname, "../../chart/dist-v9/index.html");
 const homepageDistIndexPath = path.resolve(repoRoot, "homepage/public/chart/dist-v9/index.html");
 const legacyIndexPath = path.resolve(__dirname, "../../chart/legacy-index.html");
+/** Fallback stub served as /chart/index.html only when dist-v9 is absent. */
+const chartIndexStubPath = path.resolve(__dirname, "../../chart/index.html");
 
 const SCRIPT_SRC_RE = /(<script\b[^>]*\ssrc=")(\/chart\/[^"?]+)(?:\?[^"#]*)?(")/g;
 const LINK_HREF_RE = /(<link\b[^>]*\shref=")(\/chart\/[^"?]+)(?:\?[^"#]*)?(")/g;
@@ -132,6 +134,39 @@ function bumpLegacyIndexHtml(filePath, buildId) {
   if (after === before) return 0;
   fs.writeFileSync(filePath, after, "utf8");
   console.log("[bump-dist-v9-cache] Set ?v=" + buildId + " on legacy-index scripts in", filePath);
+  return 1;
+}
+
+/**
+ * Stamp the /chart/index.html fallback stub. It has no module script tags — only
+ * the window build id + meta — so a missing stamp used to leave PO measurements
+ * on the fallback path with no attributable build.
+ */
+function bumpChartIndexStub(buildId) {
+  if (!fs.existsSync(chartIndexStubPath) || !buildId) return 0;
+  const before = fs.readFileSync(chartIndexStubPath, "utf8");
+  let after = before;
+  // Do not use WINDOW_BUILD_ID_RE.test — the /g lastIndex makes a following
+  // replace miss on the same regex instance.
+  if (/window\.__TALARIA_CHART_BUILD_ID\s*=/.test(after)) {
+    after = after.replace(WINDOW_BUILD_ID_RE, `window.__TALARIA_CHART_BUILD_ID='${buildId}'`);
+  } else {
+    after = after.replace(
+      /<head>/i,
+      `<head>\n  <script>window.__TALARIA_CHART_BUILD_ID='${buildId}';</script>`,
+    );
+  }
+  after = after.replace(
+    /(<meta\s+name="talaria-chart-build-id"\s+content=")[^"]*(")/i,
+    `$1${buildId}$2`,
+  );
+  after = after.replace(
+    /(<code id="build-id">)[^<]*(<\/code>)/i,
+    `$1${buildId}$2`,
+  );
+  if (after === before) return 0;
+  fs.writeFileSync(chartIndexStubPath, after, "utf8");
+  console.log("[bump-dist-v9-cache] Set stub __TALARIA_CHART_BUILD_ID=" + buildId + " in", chartIndexStubPath);
   return 1;
 }
 
@@ -259,6 +294,7 @@ function main() {
       );
       touched += bumpChartEmbedHtml(distBuildId);
       touched += bumpHarnessServeMjs(distBuildId);
+      touched += bumpChartIndexStub(distBuildId);
     }
   }
 

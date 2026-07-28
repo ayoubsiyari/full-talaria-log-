@@ -2885,3 +2885,17 @@ Also corrected the B-0126 escalation: option 2 (refuse empty `incoming_ids`) is 
 **Stream 3** — [live-surface claim census](62bad0c8-5736-49ba-99f5-80e932f67cae). Sealed at `live-surface-probe/observations/CENSUS-20260728-1626Z.md`. Three new findings: (1) `?v=` is inert on the test host — identical sha256 across query variants, so stamp alone cannot prove a push; (2) fourth unauthenticated full shell at `/chart/talaria-design/live/` advertising b12/b50 while loading b75 engine bytes; (3) unknown module paths 307→login, not 404. Assembly plan §5 updated: include the design shell, require byte-identity not just stamp, treat module-login redirects as UNDETERMINED.
 
 **Stream 2** — [SAFE-01 deepen handoff](124df7f7-25eb-402e-b868-77f894a9d5d3). No new hazards. Precise A handoff at `HANDOFF-A-DISTINCT-HYDRATE-REASONS-20260728.md`: literals `'local-backup-unreachable'` / `'server-empty-hydrate'`, must thread through the no-backup early return at `11701–11708`, catch arm `12267–12269` is a third unreachable funnel. Clearing the pre-hydrate journal allow alone does not close the wipe. B wires the hot vouch the same hour A's signal lands. Prior dispositions all still hold against the current tree.
+
+---
+
+## B-0131 — Four parallel non-train streams. Stamp stub shipped; B-3 already complete; FIX3 delivery path handed to A; probe still hardening.
+
+Blocked on A's render kill-switch for the train — not idle. Four streams that do not touch the train, parallel under PAR-01:
+
+1. **`/chart/index.html` build id.** Stub had none and was outside bump + provenance. Now declares `__TALARIA_CHART_BUILD_ID` / meta; `bump-dist-v9-cache.mjs` rewrites it on `--dist`; `verifyTreeLayout` fails if the stub is present and mismatched. Floor `20260728b81`. Note: authenticated `/chart/index.html` already served stamped `dist-v9` — this closes the fallback/source gap. Do not put a full chart at `homepage/public/chart/index.html` (would bypass auth on try_files). Doc: `release/INDEX-HTML-BUILD-ID.md`. Provenance tests 12/12.
+
+2. **B-3 proper.** [B-3 SAFE-01 finish verify](56caa228-bf91-4a9d-8dee-da223e86e64a): **COMPLETE** already — quarantine → safety → adapter, 41/0, no gaps in B territory. No code change.
+
+3. **Live-surface probe.** Hardening for inert `?v=` + deploy-gate still in flight (separate writable set).
+
+4. **FIX 3 delivery path.** [FIX3 replay-system delivery map](bcabc655-1c24-446b-b7fe-ea599d96e909): `release/FIX3-REPLAY-SYSTEM-DELIVERY-PATH.md`. A edits only `chart v 1.4/chart/modules/replay-system.js`. Homepage twin discarded at image build (Dockerfile L77–79). Stamps move via blanket shell bump, not a per-module stamp. Post-deploy proof = byte identity (`?v=` inert on test host).
