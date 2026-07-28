@@ -4389,3 +4389,44 @@ under a flag documented as "measurement disabled" and had its output discarded.
 mutant therefore survived the entire suite while silently inverting both switches on the real page. Code was
 correct, coverage was not. **Every switch packet must now cell the absent-property default and an ON->OFF->observe
 flip.** Added to the standing brief template.
+
+## 2026-07-28 ~20:5x — SETTLEMENT WITH B on the assembled tip. Neither of us was wrong.
+
+### The disagreement was a tip-age artefact, and it is fully resolved
+**Assembly `f8a6c28a8` was cut 20:08:02.** Its merge-base with my tip is **`ba174d694`** — my 20:00 journal commit,
+**after R1 merged but before R2 and R3 did**. So:
+- **B's inventory is correct for the object B inspected.** At `f8a6c28a8`, P2/P3/P4 exist **only in documentation**
+  (`KILL-SWITCH-INVENTORY.md` and my own reservation entry) with **no product code**. B listing them "A residual"
+  was accurate.
+- **My enumeration is correct for my tip.** All three are built, reviewed and merged.
+**Nobody needs to re-audit. B needs four commits.**
+
+### What B must pick up — exactly these, in this order
+`1ec5bf9e9` -> `7036b7eed` (R2, P2) -> `7e9db92c4` -> `e0cb3103f` (R3, P3+P4). Taking **`e0cb3103f`** takes all four.
+
+**Pre-verified for B so it does not have to:**
+- `git merge-tree --write-tree f8a6c28a8 e0cb3103f` = **CLEAN, no conflicts.**
+- **No B or C commit touched any of the three product files** since the merge-base — `drawing-tools-manager.js`,
+  `chart-indicators-full.js`, `module-presence-runtime.js` all untouched in `ba174d694..f8a6c28a8`. **Zero contention.**
+- After the pick-up the inventory's three "A residual" rows become rows 9, 10, 11 on the same terms as rows 7-8:
+  strict `=== true`, absent property = fix ON, per-call.
+
+### Confirmed consistent with B, no action needed
+B's **"phantom cleared"** note is right: `__TALARIA_DISABLE_MC_BACKGROUND_RENDER_CADENCE_V1` is FIX 1's flag,
+**FIX 1 is not in the train**, and the name is reserved only so A and B do not desynchronise. **Not a release precondition.**
+
+### P6 — held the push, correctly, and it is not mine to resolve
+Ruled: B checks consumers via live-surface-probe plus C's census. Nothing requests the route -> proceed;
+anything does -> restore `homepage/public/chart/talaria-design/live/index.html` and the deletion moves to a later
+train. **No runtime switch is possible for an absent file, which is why this was escalated rather than flagged.**
+
+### FLAG-01 and FLAG-02 now binding on all three managers — adopted into my standing brief template
+- **FLAG-01 — every switch packet cells the ABSENT property, never explicit `false`.** Origin: R1's cells wrote
+  `= false` while production has the property absent, so an inverted-defaulting mutant **survived the entire suite**
+  while silently inverting both switches on the real page. **Code was correct, coverage was not.**
+- **FLAG-02 — a switch that cannot be flipped back in-page without a reload is not a switch.** Origin: Q9's wrapper
+  self-uninstalled on first call under flag-on, so ON->OFF could never recover. **This defect has now appeared three
+  times in one day in three different disguises** — M28 stranded OFF->ON, Q9 stranded ON->OFF by self-uninstall,
+  P4 stranded ON->OFF by init-time sampling. **It is a family, not three incidents**, and FLAG-02 is the only rule
+  that catches all three shapes.
+Both are now mandatory acceptance items in every switch brief I write.
