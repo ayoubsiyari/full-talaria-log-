@@ -383,9 +383,24 @@ This is **VER-01 turned on our own instruments**: a gate that documents a guaran
 
 A must not idle on this. **Whether our daily bars are native provider bars or locally resampled from 1m is answerable by reading the fetch path — dispatch it cheap tier and answer it in the tree.** Only the *convention* is a PO decision, and it is pre-answered so the fix can proceed either way:
 
-- **FX:** daily close 17:00 New York, weekly open Sunday 17:00 New York. This is the convention Rayan and every FX-replay user will measure us against, and it is why a Thursday-anchored weekly bar reads as broken.
-- **Crypto:** 00:00 UTC daily; current epoch flooring is already correct for this class.
-- **Futures:** per-exchange session (CME 17:00 New York), not a global constant.
+**Authoritative session specification, supplied by the PO 2026-07-28 10:00. This is domain ground truth, not a Director inference — build the calendar against it.**
+
+| Class | Weekly open | Daily boundary | Weekly close | Break |
+|---|---|---|---|---|
+| **FX** | Sunday **17:00 ET** | 17:00 ET Mon–Thu (value-date roll) | Friday **17:00 ET** | none — continuous |
+| **Futures (CME Globex)** | Sunday **18:00 ET** | 18:00 ET → 17:00 ET next day | Friday **17:00 ET** | **17:00–18:00 ET daily maintenance halt, Mon–Fri** |
+| **Crypto** | continuous | 00:00 UTC | continuous | none |
+
+**My earlier note said futures roll at 17:00 ET. That was wrong** — futures *close* at 17:00 and *reopen* at 18:00, with a 60-minute matching-engine halt between.
+
+**Four consequences that constrain the implementation, and the first two make a shared constant impossible:**
+
+1. **An FX daily bar spans 24 hours; a futures daily bar spans 23.** FX runs 17:00→17:00 with no break; futures run 18:00→17:00 with an hour halt. **No single fixed duration buckets both correctly**, which is precisely why `Math.floor(t / 86400000)` cannot be repaired by changing the constant. The calendar must define boundaries, not durations.
+2. **"17:00 ET" is not a fixed UTC offset.** ET is UTC−5 in winter and UTC−4 in summer. A millisecond offset would be correct for half the year and an hour wrong for the other half, twice per year, with the error landing on session boundaries. **DST must come from a timezone database, never from an offset constant.** This is the single most likely way a "fixed" calendar silently re-breaks.
+3. **The futures maintenance hour is a real gap and must not be filled.** No bar may be synthesised for 17:00–18:00 ET. A bar that exists there is the same class of fiction as the phantom Saturday.
+4. **Re-derive the phantom-Saturday mechanism against this spec rather than carrying the earlier guess.** FX closes Friday 17:00 ET, which is Friday 21:00 or 22:00 UTC depending on DST — so there is no Saturday trading to bucket at all, and UTC-midnight flooring alone does not obviously produce a Saturday bar. Something else is contributing, most likely a mismatch between the timezone used to *bucket* and the timezone used to *label*. Per BRIEF-02 this is briefed as a hypothesis with a refutation criterion, not as a finding.
+
+**One product decision to surface rather than assume:** for futures, does the chart display electronic hours (nearly 23h) or regular trading hours (E-mini S&P 09:30–16:00 ET, crude 09:00–14:30 ET)? Replay tools conventionally default to electronic for continuity. **A must raise this as a PO question rather than choosing** — it changes what a daily bar contains, not merely where it starts. The PO has offered per-contract session times for specific instruments; ask for the ones the canary cohort will actually load (gold, Nasdaq, ES) rather than the general case.
 
 **Weekly boards now.** Daily boards as soon as the provenance audit reports; if the bars are native, we match the provider's stamping and disclose it, and if they are derived, we bucket to the class calendar above. DST is handled by the calendar, never by a fixed millisecond offset — that is the defect being removed.
 
