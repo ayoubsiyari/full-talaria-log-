@@ -150,6 +150,16 @@ test('unit: host HTML records shortened meta for CI P2', () => {
   assert.match(html, /currentTimestampSource/);
 });
 
+test('unit: host HTML arms replay from settled fullRawData replayTimestamp baselines', () => {
+  const html = poCpuAbHostHtml();
+  assert.match(html, /waitForReplayTimestampBaselineForChart/);
+  assert.match(html, /state\.currentTimestampSource === 'replayTimestamp'/);
+  assert.match(html, /Array\.isArray\(rs\.fullRawData\)/);
+  assert.doesNotMatch(html, /Array\.isArray\(ch\.data\) && ch\.data\.length > 50/);
+  assert.match(html, /for \(const entry of chartWindows\(\)\)/);
+  assert.doesNotMatch(html, /Promise\.all\(chartWindows\(\)\.map/);
+});
+
 test('unit: oracle accepts P1/P2/P4/P6/P7 report and records replay observables', () => {
   const cells = assertPoCpuAbBenchmarkReport(report());
   assert.equal(cells.every((cell) => cell.pass), true);
@@ -438,6 +448,42 @@ test('fault-injection: P4 recomputes advance contradiction instead of trusting r
   assert.equal(p4.status, 'RED');
   assert.equal(p4.advancedCount, 0);
   assert.equal(p4.rowAdvances.every((advance) => advance.advanceContradiction), true);
+});
+
+test('fault-injection: P4 detail cannot count stale row delta as sustained advance', () => {
+  const rows = ['A', 'B', 'C', 'D'].map((id, index) => ({
+    id,
+    ok: index !== 1,
+    activeObserved: true,
+    playingObserved: true,
+    advancedObserved: index !== 1,
+    indexDelta: index === 1 ? 0 : 5,
+    timestampDelta: 300_000,
+    advanceContradiction: false,
+    beforeState: { isActive: true, isPlaying: false, currentIndex: 10, currentTimestamp: 1_000_000, currentTimestampSource: 'replayTimestamp', speed: 10 },
+    state: {
+      isActive: true,
+      isPlaying: true,
+      currentIndex: index === 1 ? 10 : 15,
+      currentTimestamp: index === 1 ? 1_000_000 : 1_300_000,
+      currentTimestampSource: 'replayTimestamp',
+      speed: 10,
+    },
+  }));
+  const cells = assertPoCpuAbBenchmarkReport(report({
+    p4Replay: {
+      ok: false,
+      panelCount: 4,
+      playingCount: 4,
+      advancedCount: 3,
+      armingFailure: 'not every panel advanced by forward replay timestamp',
+      rows,
+    },
+  }));
+  const p4 = cells.find((cell) => cell.name === 'P4-FOUR-PANEL-REPLAY-RUNNING-OBSERVED');
+  assert.equal(p4.status, 'RED');
+  assert.equal(p4.advancedCount, 3);
+  assert.match(p4.detail, /advanced=3/);
 });
 
 test('fault-injection: P4 requires distinct self-consistent A/B/C/D topology', () => {

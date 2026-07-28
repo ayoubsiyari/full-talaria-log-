@@ -569,18 +569,41 @@ export function poCpuAbHostHtml({ timings = DEFAULT_PHASE_TIMINGS, mutant = fals
       await waitFor(() => replayLifecycleReadyForChart(ch), label + ' replay lifecycle active', timeoutMs);
     }
 
+    async function waitForReplayTimestampBaselineForChart(ch, label, timeoutMs = 3000) {
+      let state = replayStateForChart(ch);
+      await waitFor(() => {
+        state = replayStateForChart(ch);
+        return state.present === true
+          && state.isActive === true
+          && state.currentTimestampSource === 'replayTimestamp'
+          && Number.isFinite(Number(state.currentTimestamp))
+          && Number.isFinite(Number(state.currentIndex));
+      }, label + ' settled replayTimestamp baseline', timeoutMs);
+      await sleep(100);
+      state = replayStateForChart(ch);
+      if (state.currentTimestampSource !== 'replayTimestamp' || !Number.isFinite(Number(state.currentTimestamp))) {
+        throw new Error(label + ' replayTimestamp baseline changed before playback arm');
+      }
+      return state;
+    }
+
     function seekReplayOffEndForChart(ch) {
       const rs = ch && ch.replaySystem;
       try {
-        if (typeof rs.goToReplayTimestamp === 'function' && Array.isArray(ch.data) && ch.data.length > 50) {
-          const row = ch.data[Math.max(1, Math.floor(ch.data.length * 0.2))];
+        if (typeof rs.seekTo === 'function' && Array.isArray(rs.fullRawData) && rs.fullRawData.length > 50) {
+          const minIdx = Number.isFinite(Number(rs.sessionStartIndex)) ? Number(rs.sessionStartIndex) : 0;
+          const targetIndex = Math.min(Math.max(minIdx + 1, Math.floor(rs.fullRawData.length * 0.05)), rs.fullRawData.length - 2);
+          rs.seekTo(targetIndex);
+          return true;
+        }
+        if (typeof rs.goToReplayTimestamp === 'function' && Array.isArray(rs.fullRawData) && rs.fullRawData.length > 50) {
+          const minIdx = Number.isFinite(Number(rs.sessionStartIndex)) ? Number(rs.sessionStartIndex) : 0;
+          const targetIndex = Math.min(Math.max(minIdx + 1, Math.floor(rs.fullRawData.length * 0.05)), rs.fullRawData.length - 2);
+          const row = rs.fullRawData[targetIndex];
           if (row && row.t != null) {
             rs.goToReplayTimestamp(Number(row.t));
             return true;
           }
-        } else if (typeof rs.seekTo === 'function' && Array.isArray(rs.fullRawData) && rs.fullRawData.length > 50) {
-          rs.seekTo(Math.max(1, Math.floor(rs.fullRawData.length * 0.2)));
-          return true;
         }
       } catch (_) {}
       return false;
@@ -642,7 +665,7 @@ export function poCpuAbHostHtml({ timings = DEFAULT_PHASE_TIMINGS, mutant = fals
       return ensureReplayActiveForChart(chart());
     }
 
-    async function startReplay10xForChart(ch) {
+    async function prepareReplay10xForChart(ch) {
       try {
         await waitForReplayLifecycleForChart(ch, 'panel', 60000);
       } catch (error) {
@@ -652,7 +675,6 @@ export function poCpuAbHostHtml({ timings = DEFAULT_PHASE_TIMINGS, mutant = fals
       if (!active.ok) return { ok: false, requestedSpeed: 10, nearestSpeed: null, reason: active.reason, state: replayStateForChart(ch) };
       const rs = ch && ch.replaySystem;
       let method = 'unavailable';
-      const beforeState = replayStateForChart(ch);
       try {
         if (typeof rs.setSpeed === 'function') {
           rs.setSpeed(10);
@@ -664,6 +686,31 @@ export function poCpuAbHostHtml({ timings = DEFAULT_PHASE_TIMINGS, mutant = fals
         seekReplayOffEndForChart(ch);
       } catch (error) {
         return { ok: false, requestedSpeed: 10, nearestSpeed: Number(rs.speed) || null, method, reason: String(error && error.message || error), state: replayStateForChart(ch) };
+      }
+      let beforeState;
+      try {
+        beforeState = await waitForReplayTimestampBaselineForChart(ch, 'panel', 3000);
+      } catch (error) {
+        return { ok: false, requestedSpeed: 10, nearestSpeed: Number(rs.speed) || null, method, reason: String(error && error.message || error), state: replayStateForChart(ch) };
+      }
+      return {
+        ok: true,
+        ch,
+        rs,
+        requestedSpeed: 10,
+        nearestSpeed: Number.isFinite(Number(rs.speed)) ? Number(rs.speed) : null,
+        method,
+        beforeState
+      };
+    }
+
+    async function observePreparedReplay10x(prepared, observeMs = 4000) {
+      const ch = prepared && prepared.ch;
+      const rs = prepared && prepared.rs;
+      const beforeState = prepared && prepared.beforeState;
+      const method = prepared && prepared.method || 'unavailable';
+      if (!prepared || prepared.ok !== true || !rs) {
+        return prepared && typeof prepared === 'object' ? prepared : { ok: false, requestedSpeed: 10, nearestSpeed: null, reason: 'replay preparation failed', state: replayStateForChart(ch) };
       }
       const started = Date.now();
       let observedPlaying = false;
@@ -710,15 +757,67 @@ export function poCpuAbHostHtml({ timings = DEFAULT_PHASE_TIMINGS, mutant = fals
       };
     }
 
+    async function startReplay10xForChart(ch) {
+      const prepared = await prepareReplay10xForChart(ch);
+      return observePreparedReplay10x(prepared);
+    }
+
     async function startReplay10x() {
       return startReplay10xForChart(chart());
     }
 
     async function startFourPanelReplay10x() {
-      const rows = await Promise.all(chartWindows().map(async (entry) => ({
-        id: entry.id,
-        ...(await startReplay10xForChart(entry.win && entry.win.chart))
-      })));
+      const preparedRows = [];
+      for (const entry of chartWindows()) {
+        preparedRows.push({
+          id: entry.id,
+          ...(await prepareReplay10xForChart(entry.win && entry.win.chart))
+        });
+        await sleep(50);
+      }
+      const runtimeRows = preparedRows.map((row) => ({
+        ...row,
+        toggleState: { usedToggle: false },
+        observedPlaying: false,
+        observedActive: !!(row.rs && row.rs.isActive),
+        afterState: replayStateForChart(row.ch),
+        advance: replayAdvance(row.beforeState, replayStateForChart(row.ch)),
+        stickyAdvance: null
+      }));
+      const started = Date.now();
+      while (Date.now() - started < 6000) {
+        for (const row of runtimeRows) {
+          if (row.ok !== true || !row.rs) continue;
+          attemptReplayStart(row.rs, row.toggleState);
+          row.observedActive = row.observedActive || !!row.rs.isActive;
+          row.observedPlaying = row.observedPlaying || !!row.rs.isPlaying;
+          row.afterState = replayStateForChart(row.ch);
+          row.advance = replayAdvance(row.beforeState, row.afterState);
+          if (row.advance.advanced) row.stickyAdvance = row.stickyAdvance || row.advance;
+        }
+        if (runtimeRows.every((row) => row.ok !== true
+          || (row.observedPlaying && row.stickyAdvance && row.afterState && row.afterState.isPlaying === true && row.rs && row.rs.isPlaying === true))) break;
+        await sleep(50);
+      }
+      const rows = runtimeRows.map((row) => {
+        if (row.ok !== true || !row.rs) return row;
+        const evidenceAdvance = row.stickyAdvance || row.advance;
+        return {
+          id: row.id,
+          ok: row.observedActive && row.observedPlaying && !!row.stickyAdvance && row.afterState && row.afterState.isPlaying === true && row.rs.isPlaying === true,
+          requestedSpeed: 10,
+          nearestSpeed: Number.isFinite(Number(row.rs.speed)) ? Number(row.rs.speed) : null,
+          method: row.method,
+          activeObserved: row.observedActive,
+          playingObserved: row.observedPlaying,
+          advancedObserved: !!row.stickyAdvance,
+          indexDelta: evidenceAdvance.indexDelta,
+          timestampDelta: evidenceAdvance.timestampDelta,
+          advanceContradiction: !!evidenceAdvance.contradiction,
+          beforeState: row.beforeState,
+          state: row.afterState
+        };
+      });
       const normalizedRows = rows.map((row) => {
         const computedAdvance = replayAdvance(row.beforeState, row.state);
         const advanceContradiction = computedAdvance.contradiction === true;
@@ -1188,7 +1287,8 @@ export function assertPoCpuAbBenchmarkReport(report, { mutant = false } = {}) {
   const p4RowsEveryOk = p4Rows.length > 0 && p4Rows.every((row, index) => row.ok === true
     && row.advancedObserved === true
     && p4RowAdvances[index].advanced === true);
-  const p4AdvancedCount = p4RowAdvances.filter((advance) => advance.advanced === true).length;
+  const p4AdvancedCount = p4Rows.filter((row, index) => row.advancedObserved === true
+    && p4RowAdvances[index].advanced === true).length;
   const p4PlayingCount = p4Rows.filter((row) => row.playingObserved === true && row.state?.isPlaying === true).length;
   const p4Topology = replay4.topology || {};
   const p4GridIds = Array.isArray(p4Topology.gridIds) ? p4Topology.gridIds.map((id) => String(id)) : [];
