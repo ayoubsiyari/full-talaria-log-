@@ -29,9 +29,12 @@
     "preflight:bar-tick-invariants": "node docs/plan3/oracles/bar-tick-invariants-v1.mjs",
     "test:bar-tick-invariants": "node --test scripts/tests/bar-tick-invariants.test.mjs",
     "preflight:teardown-census": "node scripts/teardown-census-gate.mjs",
+    "preflight:rest-state-census": "node scripts/teardown-census-gate.mjs --rest-state",
     "test:teardown-census": "node --test scripts/tests/teardown-census-gate.test.mjs",
     "preflight:lag-session-history": "node docs/plan3/oracles/indicator-lag-oracle-v1.mjs",
-    "test:lag-session-history": "node --test scripts/tests/lag-session-history-control.test.mjs"
+    "test:lag-session-history": "node --test scripts/tests/lag-session-history-control.test.mjs",
+    "preflight:support-passport-degraded": "node scripts/support-passport-degraded-gate.mjs",
+    "test:support-passport-degraded": "node --test scripts/tests/support-passport-degraded.test.mjs"
   },
   "dependencies": {
     "dukascopy-node": "^1.46.3",

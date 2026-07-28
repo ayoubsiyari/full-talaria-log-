@@ -20,6 +20,16 @@
     } catch (error) {
         console.error('❌ Failed to initialize preferences:', error);
     }
+
+    // Owner-scoped pin store (pref.v1.*). By now the async /api/auth/me that
+    // sets the owner id has usually resolved, so re-check readiness: this stamps
+    // the schema version and flushes anything queued during boot. Idempotent,
+    // and deliberately outside the try above so a cloud failure cannot skip it.
+    try {
+        if (window.TalariaPreferences) window.TalariaPreferences.init();
+    } catch (error) {
+        console.warn('⚠️ TalariaPreferences init skipped:', error && error.message);
+    }
 })();
 
 /**

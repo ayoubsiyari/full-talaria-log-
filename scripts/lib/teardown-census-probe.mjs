@@ -7,6 +7,30 @@
  */
 
 export const TEARDOWN_CENSUS_PROBE_SIGNATURE = 'TALARIA_TEARDOWN_CENSUS_V1';
+export const REST_STATE_CENSUS_PROBE_SIGNATURE = 'TALARIA_REST_STATE_CENSUS_V1';
+
+/** Scheduled-work keys checked at idle rest (same census instrument as teardown). */
+export const REST_SCHEDULED_CENSUS_KEYS = /** @type {const} */ ([
+  'timeouts',
+  'intervals',
+  'animationFrames',
+]);
+
+/**
+ * Pinned hermetic idle allowlist — zero standing timers/rAF at rest.
+ * @type {{
+ *   name: string,
+ *   justification: string,
+ *   limits: Record<(typeof REST_SCHEDULED_CENSUS_KEYS)[number], number>,
+ *   declaredScheduled: Record<(typeof REST_SCHEDULED_CENSUS_KEYS)[number], number>,
+ * }}
+ */
+export const HERMETIC_REST_PINNED_ALLOWLIST = {
+  name: 'HERMETIC-REST-PINNED-ZERO-V1',
+  justification: 'Idle hermetic sim: no countdown, rAF loop, or orphan timeout while at rest',
+  limits: { timeouts: 0, intervals: 0, animationFrames: 0 },
+  declaredScheduled: { timeouts: 0, intervals: 0, animationFrames: 0 },
+};
 
 /** @typedef {{
  *   timeouts: number,
@@ -247,6 +271,107 @@ export function assertReturnedToBaseline(phases, options = {}) {
     ok: status === 'GREEN',
     teardownDeltas,
     settleDeltas,
+    violations,
+  };
+}
+
+/**
+ * @param {object} global
+ * @returns {{
+ *   render: () => void,
+ *   commitData: () => void,
+ *   read: () => { renderCount: number, commitCount: number },
+ *   reset: () => void,
+ * }}
+ */
+export function installRenderCounter(global) {
+  const bucket = { renderCount: 0, commitCount: 0 };
+  global.__talariaRestRenderCounter = bucket;
+  return {
+    render() {
+      bucket.renderCount += 1;
+    },
+    commitData() {
+      bucket.commitCount += 1;
+    },
+    read() {
+      return { renderCount: bucket.renderCount, commitCount: bucket.commitCount };
+    },
+    reset() {
+      bucket.renderCount = 0;
+      bucket.commitCount = 0;
+    },
+  };
+}
+
+/**
+ * @param {CensusSnapshot} snapshot
+ * @param {{
+ *   allowlist?: typeof HERMETIC_REST_PINNED_ALLOWLIST,
+ *   extraKeys?: (keyof CensusSnapshot)[],
+ *   extraLimits?: Partial<CensusSnapshot>,
+ * }} [options]
+ */
+export function assertAtRest(snapshot, options = {}) {
+  const allowlist = options.allowlist ?? HERMETIC_REST_PINNED_ALLOWLIST;
+  const violations = [];
+
+  for (const key of REST_SCHEDULED_CENSUS_KEYS) {
+    const observed = snapshot[key] ?? 0;
+    const limit = allowlist.limits[key];
+    const declared = allowlist.declaredScheduled?.[key] ?? 0;
+    if (observed > limit) {
+      violations.push(`rest:${key}:observed=${observed}:limit=${limit}:allowlist=${allowlist.name}`);
+    }
+    if (observed > declared && observed > 0) {
+      violations.push(
+        `rest-undeclared:${key}:observed=${observed}:declared=${declared}:allowlist=${allowlist.name}`,
+      );
+    }
+  }
+
+  const extraKeys = options.extraKeys ?? ['listeners', 'messageChannelPorts', 'broadcastChannels'];
+  for (const key of extraKeys) {
+    const observed = snapshot[key] ?? 0;
+    const limit = options.extraLimits?.[key] ?? 0;
+    if (observed > limit) {
+      violations.push(`rest:${key}:observed=${observed}:limit=${limit}`);
+    }
+  }
+
+  const status = violations.length === 0 ? 'GREEN' : 'RED';
+  return {
+    status,
+    signature: REST_STATE_CENSUS_PROBE_SIGNATURE,
+    ok: status === 'GREEN',
+    allowlist: allowlist.name,
+    violations,
+    snapshot,
+  };
+}
+
+/**
+ * @param {{
+ *   rendersBefore: number,
+ *   rendersAfter: number,
+ *   commitsBefore: number,
+ *   commitsAfter: number,
+ * }} window
+ */
+export function assertNoRenderWithoutDataChange(window) {
+  const commitDelta = window.commitsAfter - window.commitsBefore;
+  const renderDelta = window.rendersAfter - window.rendersBefore;
+  const violations = [];
+  if (commitDelta === 0 && renderDelta > 0) {
+    violations.push(`idle-render:renderDelta=${renderDelta}:commitDelta=${commitDelta}`);
+  }
+  const status = violations.length === 0 ? 'GREEN' : 'RED';
+  return {
+    status,
+    signature: REST_STATE_CENSUS_PROBE_SIGNATURE,
+    ok: status === 'GREEN',
+    commitDelta,
+    renderDelta,
     violations,
   };
 }

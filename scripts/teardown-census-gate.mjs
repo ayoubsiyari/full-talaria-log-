@@ -1,9 +1,14 @@
 /**
  * TEARDOWN-CENSUS-GATE-V1 — standing multichart teardown census gate.
- * Signature: TALARIA_TEARDOWN_CENSUS_V1
+ * REST-STATE-CENSUS-V1 — extends teardown census: no scheduled work at idle rest.
+ * Signatures: TALARIA_TEARDOWN_CENSUS_V1 · TALARIA_REST_STATE_CENSUS_V1
  *
  * Hermetic sim is the standing gate (VER-01 mutation NCs). Product multichart-manager.js /
  * chart.js wiring for census-before/after real MC open/teardown is documented follow-up.
+ *
+ * Header: product idle loop diagnosis (Q2 countdown etc.) is chart authoring; this gate
+ * catches the class (standing timers/rAF + render-without-commit). CPU magnitude claims
+ * still require PO-PROTOCOL-CPU-AB phases.
  *
  * REAL-SETTLE cell: browser soak may use 60s settle; hermetic CI default settleMs 50–200ms
  * (configurable via --settle-ms=).
@@ -20,11 +25,15 @@ import {
 } from '../chart v 1.4/chart/modules/m21-w6-fixtures/browser-cli.mjs';
 import {
   TEARDOWN_CENSUS_PROBE_SIGNATURE,
+  REST_STATE_CENSUS_PROBE_SIGNATURE,
   assertReturnedToBaseline,
+  assertAtRest,
+  HERMETIC_REST_PINNED_ALLOWLIST,
 } from './lib/teardown-census-probe.mjs';
-import { runHermeticTeardownCycle } from './lib/teardown-census-harness.mjs';
+import { runHermeticTeardownCycle, runHermeticRestStateCycle } from './lib/teardown-census-harness.mjs';
 
 export const TALARIA_TEARDOWN_CENSUS_V1 = TEARDOWN_CENSUS_PROBE_SIGNATURE;
+export const TALARIA_REST_STATE_CENSUS_V1 = REST_STATE_CENSUS_PROBE_SIGNATURE;
 export const DEFAULT_SETTLE_MS = 50;
 export const REAL_SETTLE_SOAK_MS = 60_000;
 
@@ -114,6 +123,7 @@ export function startTeardownCensusFixtureServer({ fixtureDir = DEFAULT_FIXTURE_
 export function parseTeardownCensusArgs(argv = process.argv.slice(2)) {
   const options = { settleMs: DEFAULT_SETTLE_MS, timeoutMs: DEFAULT_TIMEOUT_MS, fixturePath: DEFAULT_FIXTURE_PATH };
   for (const arg of argv) {
+    if (arg === '--rest-state') continue;
     if (arg.startsWith('--settle-ms=')) {
       const v = Number(arg.slice('--settle-ms='.length));
       if (!Number.isFinite(v) || v < 0) throw new Error(`invalid ${arg}`);
@@ -129,6 +139,142 @@ export function parseTeardownCensusArgs(argv = process.argv.slice(2)) {
     }
   }
   return options;
+}
+
+export function parseRestStateCensusArgs(argv = process.argv.slice(2)) {
+  return parseTeardownCensusArgs(argv);
+}
+
+export async function runHermeticRestStateCensusGate(options = {}) {
+  const settleMs = options.settleMs ?? DEFAULT_SETTLE_MS;
+  const green = await runHermeticRestStateCycle({}, { settleMs, observeMs: settleMs });
+  const cells = [
+    {
+      cell: 'REST-SCHEDULED-WORK-ZERO',
+      status: green.atRestVerdict.status,
+      ...green.atRestVerdict,
+    },
+    {
+      cell: 'REST-NO-RENDER-WITHOUT-DATA',
+      status: green.renderVerdict.status,
+      ...green.renderVerdict,
+    },
+  ];
+
+  const allowlistPinned = await runHermeticRestStateCycle(
+    { restOrphanInterval: true },
+    {
+      settleMs,
+      observeMs: settleMs,
+      allowlist: {
+        ...HERMETIC_REST_PINNED_ALLOWLIST,
+        limits: { timeouts: 0, intervals: 1, animationFrames: 0 },
+      },
+    },
+  );
+  cells.push({
+    cell: 'REST-ALLOWLIST-PINNED',
+    status: allowlistPinned.status === 'RED' ? 'GREEN' : 'RED',
+    ncExpect: 'RED when undeclared interval exceeds declaredScheduled',
+    orphanVerdict: allowlistPinned,
+  });
+
+  const mutations = [
+    { cell: 'NC-REST-ORPHAN-INTERVAL', flags: { restOrphanInterval: true } },
+    { cell: 'NC-IDLE-RENDER-WITHOUT-DATA', flags: { idleRenderWithoutData: true } },
+  ];
+
+  for (const { cell, flags } of mutations) {
+    const result = await runHermeticRestStateCycle(flags, { settleMs, observeMs: settleMs });
+    cells.push({
+      cell,
+      status: result.status === 'RED' ? 'GREEN' : 'RED',
+      ncExpect: 'RED on mutation',
+      orphanVerdict: result,
+    });
+  }
+
+  const ncOk = cells.slice(2).every((c) => c.status === 'GREEN');
+  const ok = green.status === 'GREEN' && ncOk;
+
+  return {
+    ok,
+    signature: TALARIA_REST_STATE_CENSUS_V1,
+    status: ok ? 'GREEN' : 'RED',
+    cells,
+    settleMs,
+    followUp:
+      'Product idle rest census on chart.js (Q2 countdown / standing rAF) — CPU AB via PO-PROTOCOL-CPU-AB',
+  };
+}
+
+export async function runRestStateCensusBrowserRunner({
+  settleMs = DEFAULT_SETTLE_MS,
+  timeoutMs = DEFAULT_TIMEOUT_MS,
+  fixtureDir = DEFAULT_FIXTURE_DIR,
+  fixturePath = DEFAULT_FIXTURE_PATH,
+  findBrowser = findLocalChromiumBrowser,
+  runBrowser = runHeadlessUrl,
+} = {}) {
+  const browserPath = findBrowser();
+  if (!browserPath) {
+    return {
+      ok: false,
+      signature: TALARIA_REST_STATE_CENSUS_V1,
+      status: 'UNPROVEN',
+      error: 'no Chromium-based browser found (Edge/Chrome); failing closed',
+      report: null,
+    };
+  }
+
+  let serverHandle;
+  let resolveReport;
+  const reportPromise = new Promise((resolve) => {
+    resolveReport = resolve;
+  });
+
+  try {
+    serverHandle = await startTeardownCensusFixtureServer({ onReport: (r) => resolveReport(r) });
+    const url = `${serverHandle.origin}${fixturePath}?autorun=1&mode=rest&settleMs=${settleMs}`;
+    const browserRun = await runBrowser({
+      browserPath,
+      url,
+      reportPromise,
+      timeoutMs,
+      profilePrefix: 'talaria-rest-state-census-',
+    });
+    const report = browserRun?.report;
+    if (!report || browserRun?.timedOut) {
+      return {
+        ok: false,
+        signature: TALARIA_REST_STATE_CENSUS_V1,
+        status: 'UNPROVEN',
+        error: `no valid /report POST within ${timeoutMs}ms`,
+        report: null,
+        meta: { browserPath, url },
+      };
+    }
+    if (report.parseError) {
+      return {
+        ok: false,
+        signature: TALARIA_REST_STATE_CENSUS_V1,
+        status: 'UNPROVEN',
+        error: report.parseError,
+        report: null,
+      };
+    }
+
+    const ok = report.signature === TALARIA_REST_STATE_CENSUS_V1 && report.status === 'GREEN';
+    return {
+      ok,
+      signature: TALARIA_REST_STATE_CENSUS_V1,
+      status: report.status,
+      report,
+      meta: { browserPath, url, stderrTail: browserRun.stderrTail },
+    };
+  } finally {
+    if (serverHandle) await serverHandle.close();
+  }
 }
 
 export async function runHermeticTeardownCensusGate(options = {}) {
@@ -238,9 +384,10 @@ export async function runTeardownCensusBrowserRunner({
 const isMain = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 if (isMain) {
   const args = parseTeardownCensusArgs();
-  const result = await runHermeticTeardownCensusGate(args);
+  const restMode = process.argv.includes('--rest-state');
+  const result = restMode ? await runHermeticRestStateCensusGate(args) : await runHermeticTeardownCensusGate(args);
   console.log(JSON.stringify(result, null, 2));
   process.exit(result.ok ? 0 : 1);
 }
 
-export { assertReturnedToBaseline };
+export { assertReturnedToBaseline, assertAtRest };

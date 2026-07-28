@@ -198,3 +198,40 @@ Cells:
 | REAL-SETTLE | documents 60s browser soak settle; hermetic CI uses configurable settleMs (default 50ms) | LIVE |
 
 Follow-up hang point (not in this packet’s write set): product multichart open/teardown census on `chart.js` / `multichart-manager.js`.
+
+### Queue item 7 extension — rest-state census (W35, FINDING-CPU-NOT-MEMORY-20260728)
+
+Standing gate: **no scheduled work at idle rest** and **no render without a data commit** on the
+hermetic host and browser fixture. Catches the class of idle CPU loops (standing intervals/rAF,
+render-without-commit); product root-cause (Q2 countdown etc.) remains chart authoring (Manager A).
+CPU magnitude acceptance still requires `PO-PROTOCOL-CPU-AB` phases — not this gate.
+
+| Name | Signature token | Status |
+|---|---|---|
+| REST-STATE-CENSUS-V1 | `TALARIA_REST_STATE_CENSUS_V1` | LIVE — extends `scripts/lib/teardown-census-probe.mjs`, `scripts/lib/teardown-census-harness.mjs`, `scripts/teardown-census-gate.mjs` (`--rest-state`), `scripts/fixtures/teardown-census/host.html?mode=rest` |
+
+Cells:
+
+| Cell | Asserts | Status |
+|---|---|---|
+| REST-SCHEDULED-WORK-ZERO | at rest, timeouts/intervals/rAF are zero or pinned allowlist (`HERMETIC-REST-PINNED-ZERO-V1`) | LIVE |
+| REST-NO-RENDER-WITHOUT-DATA | render counter stable across settle window when commit count unchanged | LIVE |
+| REST-ALLOWLIST-PINNED | raised allowlist limit alone cannot silence undeclared standing interval | LIVE |
+| BROWSER-REST-STATE-CYCLE | browser fixture idle rest census (REAL browser; else UNPROVEN) | LIVE |
+| NC-REST-ORPHAN-INTERVAL | orphan interval while at rest → RED | LIVE |
+| NC-IDLE-RENDER-WITHOUT-DATA | idle timer calling render without commit → RED | LIVE |
+
+## Queue item 8 — support passport degraded modules (W36, CONCLUSION-48H M6)
+
+| Name | Signature token | Status |
+|---|---|---|
+| SUPPORT-PASSPORT-DEGRADED-MODULES-V1 | `TALARIA_SUPPORT_PASSPORT_DEGRADED_V1` | LIVE — `scripts/lib/support-passport-degraded.mjs`, `scripts/support-passport-degraded-gate.mjs`, `scripts/tests/support-passport-degraded.test.mjs` |
+
+Cells:
+
+| Cell | Asserts | Coverage (VER-01) | Status |
+|---|---|---|---|
+| PASSPORT-DEGRADED-KEY-ALWAYS | passport slice always includes `degradedModules: string[]` (empty when runtime clean) | soundness | LIVE |
+| PASSPORT-DEGRADED-ROUND-TRIP | `__TALARIA_DEGRADED_STATE.degradedModules` (or runtime `__talariaMarkMissingModule`) surfaces in passport extractor bounded like production | soundness | LIVE |
+| SUPPORT-UI-SOURCE-CONTRACT | `supportUi.tsx` retains degraded-state tokens, bounded-id regex, and `.slice(0, 32)` | wiring | LIVE |
+| NC-PASSPORT-DEGRADED-MUTATION | with `ctx.degradedModules` assignment stripped, source contract goes RED | wiring | LIVE |

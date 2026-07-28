@@ -3,7 +3,14 @@
  * Does not load product chart.js / multichart-manager.js — follow-up wiring hang point.
  */
 
-import { installCensus, assertReturnedToBaseline } from './teardown-census-probe.mjs';
+import {
+  installCensus,
+  assertReturnedToBaseline,
+  installRenderCounter,
+  assertAtRest,
+  assertNoRenderWithoutDataChange,
+  HERMETIC_REST_PINNED_ALLOWLIST,
+} from './teardown-census-probe.mjs';
 
 /**
  * Build an isolated host object backed by real Node timers (for hermetic gate tests).
@@ -39,6 +46,13 @@ export function createHermeticHost() {
  *   orphanRaf?: boolean,
  *   orphanChannel?: boolean,
  * }} TeardownMutationFlags
+ */
+
+/**
+ * @typedef {{
+ *   restOrphanInterval?: boolean,
+ *   idleRenderWithoutData?: boolean,
+ * }} RestMutationFlags
  */
 
 /**
@@ -115,6 +129,94 @@ export function openMultichartSim(census, global) {
 }
 
 /**
+ * Idle-at-rest sim: static listeners only unless mutation flags inject standing work.
+ * @param {ReturnType<typeof installRenderCounter>} renderCounter
+ * @param {object} global
+ * @param {RestMutationFlags} [flags]
+ * @returns {{ cleanup: () => void }}
+ */
+export function openIdleRestSim(renderCounter, global, flags = {}) {
+  const handles = {
+    listener: () => {},
+    interval: null,
+    idleRenderInterval: null,
+  };
+
+  global.window.addEventListener('resize', handles.listener);
+  global.document.addEventListener('visibilitychange', handles.listener);
+
+  if (flags.restOrphanInterval) {
+    handles.interval = global.setInterval(() => {}, 500);
+  }
+
+  if (flags.idleRenderWithoutData) {
+    handles.idleRenderInterval = global.setInterval(() => {
+      renderCounter.render();
+    }, 16);
+  }
+
+  function cleanup() {
+    if (handles.interval != null) global.clearInterval(handles.interval);
+    if (handles.idleRenderInterval != null) global.clearInterval(handles.idleRenderInterval);
+    global.window.removeEventListener('resize', handles.listener);
+    global.document.removeEventListener('visibilitychange', handles.listener);
+  }
+
+  return { cleanup };
+}
+
+/**
+ * @param {RestMutationFlags} [mutationFlags]
+ * @param {{ settleMs?: number, observeMs?: number, allowlist?: typeof HERMETIC_REST_PINNED_ALLOWLIST }} [options]
+ */
+export async function runHermeticRestStateCycle(mutationFlags = {}, options = {}) {
+  const settleMs = options.settleMs ?? 50;
+  const observeMs = options.observeMs ?? settleMs;
+  const allowlist = options.allowlist ?? HERMETIC_REST_PINNED_ALLOWLIST;
+  const host = createHermeticHost();
+  const census = installCensus(host);
+  const renderCounter = installRenderCounter(host);
+  let sim;
+  try {
+    sim = openIdleRestSim(renderCounter, host, mutationFlags);
+    await waitSettle(settleMs);
+    const atRestSnapshot = census.snapshot();
+    const atRestVerdict = assertAtRest(atRestSnapshot, {
+      allowlist,
+      extraLimits: { listeners: 2, messageChannelPorts: 0, broadcastChannels: 0 },
+    });
+
+    const beforeObserve = renderCounter.read();
+    await waitSettle(observeMs);
+    const afterObserve = renderCounter.read();
+    const renderVerdict = assertNoRenderWithoutDataChange({
+      rendersBefore: beforeObserve.renderCount,
+      rendersAfter: afterObserve.renderCount,
+      commitsBefore: beforeObserve.commitCount,
+      commitsAfter: afterObserve.commitCount,
+    });
+
+    const status =
+      atRestVerdict.status === 'GREEN' && renderVerdict.status === 'GREEN' ? 'GREEN' : 'RED';
+    const violations = [...atRestVerdict.violations, ...renderVerdict.violations];
+
+    return {
+      status,
+      ok: status === 'GREEN',
+      atRestVerdict,
+      renderVerdict,
+      violations,
+      phases: { atRestSnapshot, beforeObserve, afterObserve },
+      mutationFlags,
+      allowlist: allowlist.name,
+    };
+  } finally {
+    sim?.cleanup?.();
+    census.uninstall();
+  }
+}
+
+/**
  * @param {number} settleMs
  */
 export function waitSettle(settleMs) {
@@ -147,4 +249,4 @@ export async function runHermeticTeardownCycle(mutationFlags = {}, options = {})
   }
 }
 
-export { installCensus, assertReturnedToBaseline };
+export { installCensus, assertReturnedToBaseline, installRenderCounter, assertAtRest, assertNoRenderWithoutDataChange };
