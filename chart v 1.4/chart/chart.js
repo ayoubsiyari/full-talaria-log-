@@ -813,18 +813,6 @@ const MC_DIAG_COUNTER_FIELDS = [
     'fullResamples',
     'incrementalResamples',
     'renders',
-    // M25 attribution (Manager A, packet m25-attribution).
-    // Counts falsy→true `renderPending` transitions. The M25 accessor packet
-    // installed the counter but it was invisible, because __mcDiagReport() and
-    // __mcDiagReset() both walk THIS list by name: a field missing from it is
-    // never reported and never zeroed.
-    //
-    // It is a per-FRAME number, not a per-site one. animate() clears
-    // renderPending every frame, so it saturates at one increment per animation
-    // frame however many of the 28 arming sites fired. For "which site armed,
-    // and how often", read _mcDiag.m25ArmingSites — see
-    // _talariaM25InstallArmingAttribution below.
-    'm25FramesArmed',
     'seams',
     'ownerFetches',
     'ownerBars',
@@ -832,125 +820,6 @@ const MC_DIAG_COUNTER_FIELDS = [
     'handovers',
     'lastFetchMs',
 ];
-
-/**
- * M25 per-site arming attribution — OPT-IN, DEFAULT OFF.
- * Manager A, packet m25-attribution.
- * Flag: window.__TALARIA_ENABLE_M25_ARMING_ATTRIBUTION_V1 = true
- *
- * WHY A SECOND MECHANISM
- * `_mcDiag.m25FramesArmed` is a single scalar and animate() clears
- * `renderPending` once per frame, so it caps at one increment per animation
- * frame however many arming sites fired: three sites inside one frame read as 1.
- * Worse, a site that reliably fires immediately after another site in the same
- * frame always takes the true→true path and reads as 0 for an entire session —
- * and 0 reads as "this path is dead", which is the opposite of the truth.
- *
- * WHAT THIS RECORDS
- * EVERY truthy write to `renderPending`, including the true→true writes the
- * counter deliberately ignores, keyed by the call site that performed it:
- *   _mcDiag.m25ArmingSites = { 'replay-system.js:1837:29': 412, ... }
- * No sampling, no per-frame de-duplication, no rate limit — a site that executes
- * cannot be absent from the map. If the distinct-key cap is reached the surplus
- * is counted under M25_ARMING_SITES_OVERFLOW_KEY instead of being dropped, so
- * incompleteness announces itself rather than imitating a dead path.
- *
- * COST
- * Zero at rest. When the flag is not exactly `true` the installer returns before
- * touching the accessor, so the setter remains the identical function object the
- * M25 accessor packet installed and the per-write path runs the same bytes it
- * ran before this packet. The flag is read once per Chart construction, never
- * per frame. With the flag on, the cost is one `new Error()` per truthy write.
- *
- * MINIFICATION
- * Keys are source positions from `Error.prototype.stack`, not identifiers. Both
- * deployed surfaces (chart/dist-v9/index.html and legacy-index.html) load
- * `chart.js` as its own unminified <script>, so keys read as `chart.js:1234:9`.
- * If the optional `npm run build:chart-client` bundle were deployed instead,
- * chart.js is concatenated with ~40 sibling files and terser-mangled with no
- * source map: keys would collapse to `chart-app-part1.min.js:1:<column>`, which
- * still tells co-firing sites apart but is no longer human-readable.
- *
- * The flag must be set BEFORE the Chart is constructed, like the
- * __TALARIA_DISABLE_* kill switches; it is not re-read afterwards.
- */
-const M25_ARMING_SITES_MAX = 256;
-const M25_ARMING_SITES_OVERFLOW_KEY = '(overflow: >256 distinct sites)';
-const M25_ARMING_SITE_UNKNOWN_KEY = '(stack unavailable)';
-
-/** Location-bearing stack frames only; drops the engine's header line. */
-function _talariaM25StackFrames(stack) {
-    if (typeof stack !== 'string') return [];
-    return stack.split('\n').filter((line) => /:\d+:\d+\)?\s*$/.test(line));
-}
-
-/**
- * The caller of the setter. Frame 0 is always the setter itself, because the
- * Error is constructed inline in the setter body with no helper call in between
- * (V8 renders it `at Object.set [as renderPending]`, SpiderMonkey/JSC `set@…`),
- * so the arming site is frame 1 on any engine that reports locations at all.
- */
-function _talariaM25ArmingSiteKey(stack) {
-    const frame = _talariaM25StackFrames(stack)[1];
-    if (!frame) return M25_ARMING_SITE_UNKNOWN_KEY;
-    const match = frame.match(/([^\s()]+):(\d+):(\d+)\)?\s*$/);
-    if (!match) return frame.trim();
-    const file = match[1].split('?')[0].split('#')[0].split(/[\\/]/).pop() || match[1];
-    return `${file}:${match[2]}:${match[3]}`;
-}
-
-function _talariaM25RecordArmingSite(chart, stack) {
-    const sites = chart && chart._mcDiag && chart._mcDiag.m25ArmingSites;
-    if (!sites) return;
-    let key = _talariaM25ArmingSiteKey(stack);
-    if (sites[key] === undefined && Object.keys(sites).length >= M25_ARMING_SITES_MAX) {
-        key = M25_ARMING_SITES_OVERFLOW_KEY;
-    }
-    sites[key] = (sites[key] || 0) + 1;
-}
-
-function _talariaM25ArmingAttributionEnabled() {
-    try {
-        return typeof window !== 'undefined'
-            && window.__TALARIA_ENABLE_M25_ARMING_ATTRIBUTION_V1 === true;
-    } catch (_e) {
-        return false;
-    }
-}
-
-/**
- * Wrap — never edit — the renderPending accessor so truthy writes are attributed.
- * Returns true only when attribution is live on this instance.
- */
-function _talariaM25InstallArmingAttribution(chart) {
-    if (!chart || !_talariaM25ArmingAttributionEnabled()) return false;
-    const descriptor = Object.getOwnPropertyDescriptor(chart, 'renderPending');
-    // __TALARIA_DISABLE_M25_RENDER_PENDING_ACCESSOR_V1 leaves a plain data
-    // property behind. Attribution must not resurrect an accessor that the kill
-    // switch was set to remove, so it stands down instead.
-    if (!descriptor || typeof descriptor.get !== 'function' || typeof descriptor.set !== 'function') {
-        return false;
-    }
-    const diag = chart._mcDiag;
-    if (!diag) return false;
-    const innerGet = descriptor.get;
-    const innerSet = descriptor.set;
-    // Null-prototype: keys come from stack text, so `__proto__` and `toString`
-    // must behave as ordinary keys.
-    if (!diag.m25ArmingSites) diag.m25ArmingSites = Object.create(null);
-    Object.defineProperty(chart, 'renderPending', {
-        enumerable: descriptor.enumerable,
-        configurable: descriptor.configurable,
-        get: innerGet,
-        set(value) {
-            // Every truthy write, not only falsy→true: the true→true writes are
-            // exactly the ones m25FramesArmed cannot see.
-            if (value) _talariaM25RecordArmingSite(this, new Error().stack);
-            innerSet.call(this, value);
-        },
-    });
-    return true;
-}
 
 function _talariaMcDiagPanelIdForWindow(win) {
     try {
@@ -966,20 +835,6 @@ function _talariaMcDiagZeroCounters(diag) {
     for (const field of MC_DIAG_COUNTER_FIELDS) {
         diag[field] = 0;
     }
-    // m25ArmingSites is a map, not a counter, so it cannot ride the list above —
-    // that would replace it with 0. Emptied in place instead, so __mcDiagReset()
-    // really does start a fresh attribution window and the identity the setter
-    // captured stays valid.
-    if (diag.m25ArmingSites) {
-        for (const key of Object.keys(diag.m25ArmingSites)) delete diag.m25ArmingSites[key];
-    }
-}
-
-function _talariaM25RenderPendingAccessorDisabled(chart) {
-    const diag = chart?._mcDiag;
-    if (!diag || !Object.prototype.hasOwnProperty.call(diag, 'm25FramesArmed')) return false;
-    const descriptor = Object.getOwnPropertyDescriptor(chart, 'renderPending');
-    return !descriptor || typeof descriptor.get !== 'function' || typeof descriptor.set !== 'function';
 }
 
 function _talariaMcDiagSnapshot(chart) {
@@ -994,41 +849,7 @@ function _talariaMcDiagSnapshot(chart) {
     for (const field of MC_DIAG_COUNTER_FIELDS) {
         row[field] = Number(diag?.[field]) || 0;
     }
-    if (_talariaM25RenderPendingAccessorDisabled(chart)) {
-        row.m25FramesArmed = null;
-    }
-    if (diag?.m25ArmingSites) {
-        row.sites = Object.assign(Object.create(null), diag.m25ArmingSites);
-    }
     return row;
-}
-
-function _talariaMcDiagTableRows(rows) {
-    return rows.map((row) => {
-        if (!row || !Object.prototype.hasOwnProperty.call(row, 'sites')) return row;
-        const tableRow = {};
-        for (const key of Object.keys(row)) {
-            if (key !== 'sites') tableRow[key] = row[key];
-        }
-        return tableRow;
-    });
-}
-
-function _talariaMcDiagSiteRows(rows) {
-    const out = [];
-    for (const row of rows) {
-        if (!row?.sites) continue;
-        for (const site of Object.keys(row.sites)) {
-            out.push({
-                panelId: row.panelId,
-                fileId: row.fileId,
-                tf: row.tf,
-                site,
-                count: row.sites[site],
-            });
-        }
-    }
-    return out;
 }
 
 function _talariaMcDiagCollectCharts(win, out, seen) {
@@ -1065,25 +886,20 @@ function _talariaInstallMcDiagReporter() {
     }
     if (target.__mcDiagReporterInstalled) return;
     target.__mcDiagReporterInstalled = true;
-    target.__mcDiagCollect = function __mcDiagCollect() {
+    target.__mcDiagReport = function __mcDiagReport() {
         const charts = [];
         _talariaMcDiagCollectCharts(target, charts, new Set());
-        return charts;
-    };
-    target.__mcDiagReport = function __mcDiagReport() {
-        const charts = target.__mcDiagCollect();
         const rows = charts.map((chart) => _talariaMcDiagSnapshot(chart));
         if (target.console && typeof target.console.table === 'function') {
-            target.console.table(_talariaMcDiagTableRows(rows));
-            const siteRows = _talariaMcDiagSiteRows(rows);
-            if (siteRows.length) target.console.table(siteRows);
+            target.console.table(rows);
         } else if (target.console && typeof target.console.log === 'function') {
             target.console.log(rows);
         }
         return rows;
     };
     target.__mcDiagReset = function __mcDiagReset() {
-        const charts = target.__mcDiagCollect();
+        const charts = [];
+        _talariaMcDiagCollectCharts(target, charts, new Set());
         for (const chart of charts) {
             _talariaMcDiagZeroCounters(chart._mcDiag);
         }
@@ -1407,56 +1223,7 @@ class Chart {
         this.chunkSize = 5000; // Load data in chunks
         this.bufferSize = 1000; // Buffer size for smooth scrolling
         this.isLoadingChunk = false;
-        // M25 — `renderPending` is instrumentation-only from here: a per-instance
-        // accessor over `_m25RenderPendingBacking` that counts frame demands in
-        // `_mcDiag.m25FramesArmed`. Nothing about render behaviour changes; animate()
-        // still runs unconditionally and reads the same value it always did.
-        //
-        // PER-INSTANCE ON PURPOSE — do not "simplify" this onto Chart.prototype.
-        // This site creates an OWN property, which shadows any prototype accessor, and
-        // chart-indicators-full.js / chart-notifications.js / the chart-indicators-*
-        // family patch Chart.prototype, so prototype state here is the fragile choice.
-        //
-        // Only a falsy→true transition counts. `renderPending = false` is written 17
-        // times in this file alone (plus chart-indicators-full.js, both sync-bridge.js
-        // copies, panel-cmd-bridge.js and replay-system.js); counting those, or
-        // counting true→true, would make the counter meaningless.
-        //
-        // The backing field is non-enumerable so `Object.keys`, `JSON.stringify`
-        // and spread of the Chart see exactly what they saw before. The counter
-        // itself is NOT hidden: it lives on `_mcDiag`, a diagnostics bag whose job
-        // is to gain counters, as an ordinary enumerable field initialised in
-        // _ensureMcDiag() and listed in MC_DIAG_COUNTER_FIELDS — which is what
-        // makes __mcDiagReport() show it and __mcDiagReset() zero it.
-        //
-        // Kill-switch: window.__TALARIA_DISABLE_M25_RENDER_PENDING_ACCESSOR_V1 = true
-        // restores the plain data property with no counter at all.
-        if (typeof window !== 'undefined'
-            && window.__TALARIA_DISABLE_M25_RENDER_PENDING_ACCESSOR_V1 === true) {
-            this.renderPending = false;
-        } else {
-            Object.defineProperty(this, '_m25RenderPendingBacking', {
-                value: false, writable: true, enumerable: false, configurable: true,
-            });
-            Object.defineProperty(this, 'renderPending', {
-                enumerable: true,
-                configurable: true,
-                get() { return this._m25RenderPendingBacking; },
-                set(value) {
-                    if (value && !this._m25RenderPendingBacking) {
-                        const diag = this._mcDiag;
-                        if (diag) diag.m25FramesArmed = (diag.m25FramesArmed || 0) + 1;
-                    }
-                    this._m25RenderPendingBacking = value;
-                },
-            });
-        }
-        // Per-site attribution for the counter above. A no-op — the accessor is
-        // not touched and nothing is added to this instance or to _mcDiag —
-        // unless window.__TALARIA_ENABLE_M25_ARMING_ATTRIBUTION_V1 === true.
-        // Also runs on the kill-switch arm on purpose, where it stands down
-        // rather than resurrecting an accessor.
-        _talariaM25InstallArmingAttribution(this);
+        this.renderPending = false;
         this.renderThrottleTimer = null;
         /** Coalesce crosshair + tooltip to one paint per rAF during hover (reduces INP on chartCanvas). */
         this._crosshairTooltipRaf = null;
@@ -2845,11 +2612,6 @@ class Chart {
             fullResamples: 0,
             incrementalResamples: 0,
             renders: 0,
-            // M25 attribution (Manager A, packet m25-attribution). Initialised
-            // here, alongside its siblings, so it is a plain enumerable field of
-            // the diagnostics bag from the first frame — no late shape change
-            // the first time __mcDiagReset() runs.
-            m25FramesArmed: 0,
             seams: 0,
             ownerFetches: 0,
             ownerBars: 0,
