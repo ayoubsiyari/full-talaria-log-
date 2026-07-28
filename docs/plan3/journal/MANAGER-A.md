@@ -1233,3 +1233,134 @@ if either packet comes back wrong.
 Still to route cheap when their turn comes: the §A8 mechanical presence pass, `_mcDiag` log tabulation on
 the next replay run, and evidence-folder assembly for the session-calendar packet. Not dispatched now —
 none is blocking, and I would rather see how the first two cheap packets land before widening.
+
+---
+
+## 2026-07-28T02:32 · DISPATCH · overnight authority accepted, four packets out
+
+Per §A13.3b every dispatch is journalled with role, tier, model, and a named trigger row for top-tier
+authoring.
+
+| Packet | role | tier | model | §A13.2 trigger row |
+|---|---|---|---|---|
+| `tal01918-red` | author | top | claude-opus-5-thinking-high | "Numeric correctness: … anything painted as a value" **and** "Any edit to `chart.js` shared paths" |
+| `mcdiag-tabulation` | author | cheap | composer-2.5-fast | n/a — row 2, "Log parsing, counter tabulation" |
+| `legacy-deroute` | author | cheap | cursor-grok-4.5-medium-fast | n/a — row 1, "Audits, greps, file:line inventories" |
+| `a10-residue` | author | cheap | composer-2.5-fast | n/a — row 1, "control enumeration" |
+
+All four carry an explicit `model` parameter. Per the correction I logged at 02:22 an omitted model is
+now a defect in my brief, because this tool inherits the parent model on omission and my parent model is
+top tier — omission routes upward silently, so there is no such thing as a neutral non-choice here.
+
+Three of the four cheap briefs explicitly forbid the subagent from classifying or issuing a verdict, per
+§A13.2's bar on cheap-tier judgement entering the record. They return facts; I classify. That constraint
+is what makes cheap dispatch safe on these tasks, and it is the first thing to check if one comes back
+wrong.
+
+**Write-packet accounting.** `tal01918-red` takes my third and last write slot. In flight:
+`session-calendar-red` (r3, under review), `indicator-lag-data-effect` (under review), `tal01918-red`
+(dispatched). The three cheap packets are read-only or evidence-only and are uncapped. Consequences,
+stated rather than discovered later:
+
+- **The `drawing-tools-manager.js` hand-off from Manager B is queued, not dropped.** It is a write
+  packet and I am at the cap. It boards the moment the first of the three merges. B has the proven
+  two-line fix against the same registry, so it is cheap tier and short — it is waiting on budget, not
+  on difficulty.
+- **The legacy de-route is deliberately split.** Phase 1 is read-only evidence plus an exact unified
+  diff; the apply is held for a slot. This also makes the change safer, because of the dependency below.
+
+---
+
+## 2026-07-28T02:34 · DECISION · three of tonight's instructions are already discharged, and I am not re-running them
+
+Recording this rather than silently complying, because re-running completed work would look like progress
+and produce none.
+
+**The lag experiment is done.** The Director asks me to test whether the lag is a data effect — absent on
+1m, worse as timeframes coarsen, independent of render cadence — and says the single experiment either
+collapses two rows or kills a hypothesis. That experiment ran tonight and is under adversarial review.
+Absent on 1m held. Present above 1m held. Independent of render cadence held, with zero spread across
+four cadences including a zero-frame cell and a positive control proving the instrument can see
+cadence-tracking lag when it is present. "Worse as timeframe coarsens" **split**: the live gap is flat
+across resampled timeframes — which matches the PO's own flat table and would have been contradicted by a
+monotonic result — while the monotonic growth lives in the truncation error at 1.47 / 5.50 / 10.53 /
+17.95 / 19.07 pips for 5m through 1d. So the collapse the Director hoped for has provisionally happened.
+
+Rather than repeat it, I have given `tal01918-red` the **join** as its deliverable: does the window error
+it measures reproduce both the PO's 0 / −0.6 / +13 / +72 series *and* the sibling's monotonic series? If
+one quantity explains both, the rows collapse and I treat them as one fix. The brief says explicitly that
+a forced unification is worse than two honest rows.
+
+**The session-calendar design is done and accepted**, at r2 by independent top-tier review, with r3
+delivering the memo-poisoning fix and a standing differential against the server's existing FX weekend
+rule — 156 closes and 156 reopens over three years, both directions, zero disagreement. It is
+per-instrument-class via `MarketCalculationEngine.isRegistered()`, not a constant swap, as required. What
+remains is wiring, and wiring is blocked on two things below, neither of which is design.
+
+**§1.2 is answered**, in writing, at `docs/plan3/ANSWER-A1.2-RESIDENCY-CAP-20260728.md`. Do not build the
+panel-side cap. Expected mixed-4 effect ≈ 0, cost 4–6 days to establish that. Two of the question's three
+premises are false: the named modules are reference/test-only rather than shippable, and panels hold
+references rather than bars, so there is nothing per-panel to cap. The measured cost is host-side — 2.000
+full resamples per tick scaling with total history — which is consistent with 3.5 GB on a **single**-panel
+1m layout, a figure no per-panel duplication story explains.
+
+---
+
+## 2026-07-28T02:36 · ASSUMPTION · §A14.2 not found in the ruling I can read
+
+Logged per tonight's instruction to record a default and proceed rather than idle.
+
+The dispatch cites §A14.2 for the legacy de-route. The copy of `DIRECTOR-RULINGS-20260727.md` at commit
+`9d0453094` contains no §A14 section that I can locate. Either it landed in a commit I have not fetched,
+or it is being applied ahead of publication.
+
+**Default I am proceeding on:** the de-route is exactly as the dispatch describes it — remove the
+allowlist entry, remove the Dockerfile copy, prove the route 404s, retain only the chart-root source —
+and nothing in the unpublished §A14.2 changes that scope. I have de-risked the assumption by making
+phase 1 read-only, so if §A14.2 turns out to say something different, I have spent evidence-gathering
+effort and applied nothing.
+
+This is the second time tonight a governing document has not been where it should be; the earlier
+instance was the gitignored rulings that failed to propagate into worktrees. Recording the pattern.
+
+---
+
+## 2026-07-28T02:38 · OPEN · the de-route target is the redirect chain's destination
+
+Found while writing the brief, before dispatch.
+
+`api_server.py:26923` is `"legacy-index.html"` in the `CHART_ROOT_FILES` allowlist. **Line 26924 is
+`"index.v9.html"`, and its inline comment reads `redirect stub → legacy-index.html (no second
+monolith)`.** So the page being de-routed is the *target* of a redirect stub two lines below it in the
+same allowlist, and `index.html` at 26921 is itself described as a stub pointing at V9.
+
+Removing the target without following the chain converts a working page into a redirect to a 404. That
+is the §A4c failure class applied to a route rather than to a global: the request succeeds, the user
+lands nowhere useful, and nothing logs. The brief requires the full `index.html` → `index.v9.html` →
+`legacy-index.html` chain mapped with file:line before any diff is proposed.
+
+One interaction worth noting: `legacy-index.html` is the shell the session-calendar sweep flagged for
+loading `chart.js` **before** `modules/market-calculations.js`, inverted relative to every other shell
+and working today only by `defer` timing. If the de-route lands, that hazard disappears with the page. If
+the de-route stalls, it stays live and needs covering separately. Two rows that partially cancel — worth
+sequencing deliberately rather than fixing both.
+
+---
+
+## 2026-07-28T02:40 · STATUS · wiring blockers for the session-calendar canary gate
+
+Neither is design work, so neither is addressed by dispatching more design.
+
+1. **The fix is inert on a live multichart surface.** `multichart-shell.html` is served and embeds two
+   `chart-host.html` iframes, both executing `chart.js` with no module registry at all. Wiring the
+   calendar leaves those two panels showing the phantom Saturday while the single-chart surface is
+   correct. Two surfaces disagreeing is worse than the fix being absent everywhere, because it is the
+   harder bug to report and the harder one to believe.
+2. **The vendor-native question is unruled.** Switching to 1D refetches a vendor-native daily dataset
+   rather than resampling from 1m. If the vendor already stamps at 22:00Z the bucket function is the
+   identity and there is nothing to do; if it stamps 00:00Z, re-bucketing reproduces the defect in the
+   opposite direction, and the OHLC still looks plausible so it is unfalsifiable from the chart. A
+   read-only probe is out attempting to settle the empirical half without spending PO minutes, per
+   §A12.4.
+
+Outstanding `PO-REQ` count: **1** — `fullRawData.length` on a real session, which gates C3a scope.
