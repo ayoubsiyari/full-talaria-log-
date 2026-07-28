@@ -4430,3 +4430,76 @@ train. **No runtime switch is possible for an absent file, which is why this was
   P4 stranded ON->OFF by init-time sampling. **It is a family, not three incidents**, and FLAG-02 is the only rule
   that catches all three shapes.
 Both are now mandatory acceptance items in every switch brief I write.
+
+---
+
+## 2026-07-28 21:19 — SHELL-REPAIR (chart-host.html / multichart-shell.html): PREMISE REFUTED, packet not dispatched
+
+**VERDICT: the order's motivating premise is FALSE.** surface=`manager-a/critical-path` @ `186ee3ab3`, coverage=static (git grep + shipped bundle) corroborated by a prior live Playwright run against b75.
+
+### The claim, and what is actually true
+Order: *"this is why indicator performance was never loaded in panels ... module-presence-runtime.js is also missing
+from the same file."* **Product panels do not load `chart-host.html`.** They load
+`multichart-prod/chart-embed.html`, which **already carries both modules**.
+
+| | `indicator-performance.js` | `module-presence-runtime.js` |
+|---|---|---|
+| `multichart-prod/chart-embed.html` (panels actually use this) | 1 | 1 |
+| `multichart/chart-host.html` (the order's target) | 0 | 0 |
+
+Panel iframe URL is built in exactly one place, `MultichartGrid.jsx:1081`, returning
+`/chart/multichart-prod/chart-embed.html?...`. **I verified this in the shipped artefact myself, not just in source:**
+`dist-v9/assets/talaria-v9-live.js` contains `chart-embed.html` **once** and `chart-host.html` **zero times**.
+`chart-host.html` is the **sandbox** panel, reachable only via `multichart-shell.html`, and its own header declares the
+gap as deliberate: *"engine (no modules - minimum surface)"*.
+
+So the `IndicatorPerf` gap is real **only on the sandbox surface**, and closing it changes nothing a user sees.
+
+### Two further premise corrections (TREE-01, all at `186ee3ab3`)
+- **Paths.** Files are under `multichart/`, not `multichart-prod/`, and **each has an enforced mirror — four files, not two.**
+- **`multichart-shell.html` is not frozen at a10.** It carries `?v=20260509T1755` / `?v=20260509T2030` — **9 May, two
+  weeks older than the stated 24 May**. Nothing in that file is at `20260524a10`. Only `chart-host.html` is.
+
+### Why I did not dispatch the parity work
+Not a pin correction. `chart-embed.html`'s list is **53 modules built dynamically** via `document.write`, so parity is
+~1 MB per panel plus five structural hazards:
+1. **`m22` pins the gap by value.** `expectEqual('M4','shells-with-registry-ABSENT', ...)` at
+   `m22-session-calendar-bucketing.red.test.mjs:1497` **lists both `chart-host.html` mirrors as the expected set.**
+   Adding modules fails that assertion — and **that suite is the one that mutates a tracked evidence file**, so the
+   change cannot even be validated without running the file I am avoiding.
+2. **The tripwire would draw a false "Degraded" on a working panel.** `tripwirePasses()` requires a
+   `chart-indicators-full.js` tag to exist; adding the presence runtime without 989 KB of consumer fails `orderOk`.
+3. **Classic vs `defer`** — `chart-host.html`'s inline stub block and bootstrap IIFE are classic; copying `defer` tags
+   reorders execution silently.
+4. **Stub/real collision** — the shell installs no-op Proxies over eight subsystems before `chart.js`.
+5. **`chart-window-limit.js`** would introduce a window claim into the sandbox's only data path.
+
+**Kill-switch coverage is 2 of ~53** (`__TALARIA_DISABLE_INDICATOR_PERF_BRIDGE_V1`,
+`__TALARIA_DISABLE_MODULE_PRESENCE_TRIPWIRE_V1`, both present, `e0cb3103f` confirmed ancestor). I will not sign
+"the switches cover this".
+
+### Stamping is cosmetic here — demonstrated, not asserted
+**No build step writes these stamps; they are hand-edited.** `chart-shell-audit.mjs` strips them, the runtime probe
+only reads them. And the two `chart-host.html` mirrors **both carry `?v=20260524a10` while being different files**
+(53,609 vs 52,302 bytes, differing SHA-256). One identical token, two different files — a self-contained proof the
+token does not track deploys. Neither file appears in `module-contracts.json`'s 8-row inventory, so **no gate would
+observe a new stamp.** Trap for anyone who greps: that inventory *does* have an id `chart-host`, but it points at
+`dist-v9/index.html`.
+
+### GENUINE FIND, and the only item here with real value: unpinned third-party script on the chart surface
+`chart-host.html` fetches d3 from `cdnjs.cloudflare.com`, **no SRI, no fallback**. The repo has **zero real
+`integrity=` attributes anywhere.** The vendored `chart/vendor/d3.min.js` is the **same version 7.8.5, byte-identical
+across both trees** — a verified drop-in `src` swap at zero behavioural cost. The iframe carries no `sandbox`
+attribute by design, so a compromised CDN executes with full same-origin access.
+
+### Mirror drift (new row)
+`chart-host.html` is **not** byte-mirrored (3 insertions / 26 deletions); `multichart-shell.html` is. The homepage
+copy is **behind** source, missing `_captureTfSwitchViewport`/`_restoreTfSwitchViewport`.
+
+### DIRECTOR-Q — governance conflict I cannot adjudicate
+The order says *"Ruling A14.3 does not apply."* But this journal records A14.3 firing **twice, on these exact two
+files**, with the remedy being de-route and **"wiring modules in is forbidden"** — and a prior packet proposing
+precisely this module addition was **held** on those grounds. The Director's exemption was granted on the stated
+ground that *panels resolve to it*, **which is the premise I have just refuted.** I default to: **cancel the parity
+work, ship nothing to these files in this train**, and treat the d3 swap as a security row for the next train.
+Proceeding on the pre-push switch sweep meanwhile.
