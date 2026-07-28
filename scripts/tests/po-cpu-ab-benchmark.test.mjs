@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import vm from 'node:vm';
 
 import {
   DEFAULT_PO_CPU_AB_TIMEOUT_MS,
@@ -8,6 +9,7 @@ import {
   PO_CPU_AB_STATUS_SHORT,
   assertPoCpuAbBenchmarkReport,
   mutatePoCpuAbReplaySystemForPauseTeardownNC,
+  poCpuAbReplayArmingHelpersSource,
   poCpuAbHostHtml,
   runPoCpuAbBenchmarkGate,
   runPoCpuAbBenchmarkPreflight,
@@ -88,6 +90,16 @@ function report({
         advancedCount: 4,
         requestedSpeed: 10,
         armingFailure: null,
+        topology: {
+          gridPresent: true,
+          gridHasGetPanelIds: true,
+          gridIds: ['A', 'B', 'C', 'D'],
+          gridMissingIds: [],
+          gridComplete: true,
+          managerIds: ['A', 'B', 'C', 'D'],
+          managerComplete: true,
+          windowIds: ['A', 'B', 'C', 'D'],
+        },
         rows: ['A', 'B', 'C', 'D'].map((id) => ({
           id,
           ok: true,
@@ -96,6 +108,7 @@ function report({
           advancedObserved: true,
           indexDelta: 5,
           timestampDelta: 300_000,
+          advanceContradiction: false,
           state: { isActive: true, isPlaying: true, speed: 10 },
         })),
         ...p4Replay,
@@ -138,6 +151,7 @@ test('unit: oracle accepts P1/P2/P4/P6/P7 report and records replay observables'
   assert.equal(p4.replay.panelCount, 4);
   assert.equal(p4.probeWindowCount, 4);
   assert.equal(p4.advancedCount, 4);
+  assert.equal(p4.topologyOk, true);
   const p6 = cells.find((cell) => cell.name === 'P6-REPLAY-10X-OR-NEAREST-OBSERVED');
   assert.equal(p6.replay.nearestSpeed, 10);
 });
@@ -159,14 +173,14 @@ test('fault-injection: P4 cannot green on playing flags without four advancing p
       panelCount: 4,
       playingCount: 4,
       advancedCount: 2,
-      armingFailure: 'UNPROVEN: four-panel replay did not arm and advance on every panel',
+      armingFailure: 'four-panel replay did not arm and advance on every panel',
       rows,
     },
   }));
   const p4 = cells.find((cell) => cell.name === 'P4-FOUR-PANEL-REPLAY-RUNNING-OBSERVED');
   assert.equal(p4.status, 'RED');
   assert.equal(p4.advancedCount, 2);
-  assert.match(p4.detail, /UNPROVEN/);
+  assert.match(p4.detail, /four-panel replay did not arm/);
 });
 
 test('fault-injection: P4 requires panel count, playing count, and probes', () => {
@@ -176,7 +190,18 @@ test('fault-injection: P4 requires panel count, playing count, and probes', () =
       panelCount: 4,
       playingCount: 3,
       advancedCount: 4,
-      armingFailure: 'UNPROVEN: panel C did not keep playing',
+      armingFailure: 'panel C did not keep playing',
+      rows: ['A', 'B', 'C', 'D'].map((id, index) => ({
+        id,
+        ok: true,
+        activeObserved: true,
+        playingObserved: index !== 2,
+        advancedObserved: true,
+        indexDelta: 5,
+        timestampDelta: 300_000,
+        advanceContradiction: false,
+        state: { isActive: true, isPlaying: index !== 2, speed: 10 },
+      })),
     },
   }));
   assert.equal(threePlaying.find((cell) => cell.name === 'P4-FOUR-PANEL-REPLAY-RUNNING-OBSERVED').status, 'RED');
@@ -187,7 +212,28 @@ test('fault-injection: P4 requires panel count, playing count, and probes', () =
       panelCount: 3,
       playingCount: 3,
       advancedCount: 3,
-      armingFailure: 'UNPROVEN: topology did not expose four panels',
+      armingFailure: 'topology did not expose four panels',
+      topology: {
+        gridPresent: true,
+        gridHasGetPanelIds: true,
+        gridIds: ['A', 'B', 'C'],
+        gridMissingIds: ['D'],
+        gridComplete: false,
+        managerIds: ['A', 'B', 'C', 'D'],
+        managerComplete: true,
+        windowIds: ['A', 'B', 'C'],
+      },
+      rows: ['A', 'B', 'C'].map((id) => ({
+        id,
+        ok: true,
+        activeObserved: true,
+        playingObserved: true,
+        advancedObserved: true,
+        indexDelta: 5,
+        timestampDelta: 300_000,
+        advanceContradiction: false,
+        state: { isActive: true, isPlaying: true, speed: 10 },
+      })),
     },
   });
   staleTopology.phases.P4.probe.windowCount = 3;
@@ -195,6 +241,8 @@ test('fault-injection: P4 requires panel count, playing count, and probes', () =
   const p4 = cells.find((cell) => cell.name === 'P4-FOUR-PANEL-REPLAY-RUNNING-OBSERVED');
   assert.equal(p4.status, 'RED');
   assert.equal(p4.probeWindowCount, 3);
+  assert.equal(p4.topologyOk, false);
+  assert.match(p4.detail, /gridIds=A,B,C/);
 });
 
 test('fault-injection: pause negative control requires mutation marker and P7 state red', () => {
@@ -257,6 +305,72 @@ test('fault-injection: P6 requires advancedObserved and concrete playhead advanc
     },
   }));
   assert.equal(noDelta.find((cell) => cell.name === 'P6-REPLAY-10X-OR-NEAREST-OBSERVED').status, 'RED');
+});
+
+test('fault-injection: P4/P6 require forward timestamp movement', () => {
+  const p4ContradictionRows = ['A', 'B', 'C', 'D'].map((id) => ({
+    id,
+    ok: true,
+    activeObserved: true,
+    playingObserved: true,
+    advancedObserved: true,
+    indexDelta: 8,
+    timestampDelta: -300_000,
+    advanceContradiction: true,
+    state: { isActive: true, isPlaying: true, speed: 10 },
+  }));
+  const p4Cells = assertPoCpuAbBenchmarkReport(report({
+    p4Replay: {
+      ok: true,
+      panelCount: 4,
+      playingCount: 4,
+      advancedCount: 4,
+      rows: p4ContradictionRows,
+    },
+  }));
+  const p4 = p4Cells.find((cell) => cell.name === 'P4-FOUR-PANEL-REPLAY-RUNNING-OBSERVED');
+  assert.equal(p4.status, 'RED');
+  assert.equal(p4.advancedCount, 0);
+
+  const p6Cells = assertPoCpuAbBenchmarkReport(report({
+    p6Replay: {
+      advancedObserved: true,
+      indexDelta: 8,
+      timestampDelta: -300_000,
+      advanceContradiction: true,
+      beforeState: { currentIndex: 10, currentTimestamp: 1_000_000 },
+      state: { isActive: true, isPlaying: true, currentIndex: 18, currentTimestamp: 700_000, speed: 10 },
+    },
+  }));
+  const p6 = p6Cells.find((cell) => cell.name === 'P6-REPLAY-10X-OR-NEAREST-OBSERVED');
+  assert.equal(p6.status, 'RED');
+  assert.equal(p6.advanceContradiction, true);
+});
+
+test('unit: replay arming guard does not self-cancel deferred start', () => {
+  const context = {};
+  vm.runInNewContext(`${poCpuAbReplayArmingHelpersSource()}; this.attemptReplayStart = attemptReplayStart;`, context);
+  const playCalls = [];
+  const rs = {
+    isPlaying: false,
+    isPlayStarting: false,
+    getPlaybackLoopKind() {
+      return this.isPlayStarting ? 'tick' : null;
+    },
+    play() {
+      playCalls.push('play');
+      this.isPlayStarting = true;
+    },
+  };
+  const toggleState = { usedToggle: false };
+  assert.equal(context.attemptReplayStart(rs, toggleState), true);
+  assert.equal(context.attemptReplayStart(rs, toggleState), false);
+  assert.deepEqual(playCalls, ['play']);
+
+  rs.isPlayStarting = false;
+  rs.isPlaying = true;
+  assert.equal(context.attemptReplayStart(rs, toggleState), false);
+  assert.deepEqual(playCalls, ['play']);
 });
 
 test('fault-injection: high P1 cannot absorb idle and pause ceilings', () => {
