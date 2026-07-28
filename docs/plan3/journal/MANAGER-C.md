@@ -280,3 +280,6 @@ Exactly five ` | `-separated fields after the list marker. Absent fields are wri
 
 2026-07-28T12:29Z | C | REVIEW | packet=R-M6-6 | role=reviewer | tier=top | model=claude-opus-5-thinking-high | result=REJECT | attr=author-defect | "Falsy own serviceWorker seed; bare typeof indexedDB; element-access/Object.assign/splice consumer freezes. W46."
 2026-07-28T12:29Z | C | DISPATCH | packet=W46 | role=author | tier=top | model=claude-opus-5-thinking-high | trigger="Escalate on repeat rejection" | "Close R-M6-6: dual-environment temporal + no falsy SW seed + broader reassignment AST + M13."
+
+2026-07-28T12:35Z | C | REVIEW | packet=R-M6-6 | role=reviewer | tier=top | model=claude-opus-5-thinking-high | result=REJECT | attr=author-defect | "Falsy own serviceWorker seed; bare typeof indexedDB; element-access/Object.assign/splice consumer freezes. W46."
+2026-07-28T12:35Z | C | DISPATCH | packet=W46 | role=author | tier=top | model=claude-opus-5-thinking-high | trigger="Escalate on repeat rejection" | "Close R-M6-6: dual-environment temporal + no falsy SW seed + broader reassignment AST + M13."
