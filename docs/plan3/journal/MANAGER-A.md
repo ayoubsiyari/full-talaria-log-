@@ -1773,3 +1773,46 @@ A tree-wide scan across 547 mirrored files found exactly three OID mismatches: `
 **Tier mix, §A13.3b.** Author tier: **0% top-tier**, four of four packets authored cheap — `gpt-5.5-medium-fast` on the RED and the pending-selector fix, `composer-2.5-fast` on the eviction port and scope. No §A13.2 row was invoked for authoring, so no justification is owed and none is offered. Reviewer tier: **100% top-tier**, five reviews, per the rule that the reviewer is never downgraded. Rejection rate by (task class × model) is at 05:55; both 200% figures trace to causes other than author tier, one of them mine.
 
 **API capacity.** Five top-tier adversarial reviews in a three-hour window is the dominant spend, and it is buying its keep — the reviews caught an oracle that could not pass on a correct product, a fix that would have erased a live position's stop-loss, and a false finding of my own. Cheap authoring plus expensive review is the right ratio and I am not adjusting it.
+
+---
+
+## 2026-07-28 08:44 — VERDICT: the gate I was told to build already exists, and I am not allowed to build it
+
+surface=`docs/plan3/TERRITORY.yml` at `42ce455aa`; C's untracked working tree; `manager-b/plan3-20260727` at `14b985fa3`
+coverage=all three manager branches searched, plus class-of-defect terms rather than filename alone
+
+§A16.5 makes gate coverage for `drawing-tools-manager.js` my first priority and tells me to take C's generalised invariant host rather than write a second one. Both halves of that turn out to be already satisfied, and the residual blocker is not mine.
+
+**C's host exists and already covers my file.** It is `scripts/order-registry-eviction-invariant.mjs` with its declaration at `scripts/fixtures/order-registry-eviction-sites.json`, and that fixture already lists `drawing-tools-manager` in `meta.sources[]` with sites at ordinals 6 and 7 — `deleteDrawing#0` and `deleteDrawing#1`. It generalises B's engine correctly: it scans every `meta.sources[]` writer instead of one hard-coded file, and it accepts a manager-qualified left-hand side like `orderManager.orderLines` rather than only `this.orderLines`, which is exactly the spelling my file uses.
+
+**It is untracked.** All four artefacts are `??` in C's working tree with no commit hash, on no branch, merged nowhere. `ORDER-REGISTRY-EVICTION-INVARIANT-V1` is marked RESERVED and not LIVE in `GATE-NAME-RESERVATIONS.md`, it has no `package.json` script, and no workflow invokes it. So it cannot be part of an automated-GREEN chain today, and the thing standing between my merged work and a deploy is a commit and a CI wiring in C's territory.
+
+**And I cannot author it.** `scripts/tests/**`, `scripts/fixtures/**`, `.github/workflows/**` and `GATE-NAME-RESERVATIONS.md` are all C-owned in `TERRITORY.yml`; §A15.2 assigns shared-registry invariant gates to C explicitly. My grant covers the product module tree, the mirrors and my own journal — nothing under `scripts/`. Writing the gate myself would be a territory violation and the preflight would reject the packet.
+
+So my first priority is a hand-off, not a packet. Recording it plainly rather than quietly substituting different work, because "A builds the gate" and "A cannot write in the directory the gate lives in" cannot both be true and the Director should see which one gives.
+
+## 2026-07-28 08:45 — DECISION: what I am doing about it instead
+
+There is a real hazard in simply waiting, and it is one C cannot see from their side.
+
+**C's fixture models my file as it was before tonight's merges.** Ordinals 6 and 7 were derived against the pre-merge `deleteDrawing`. Since then two eviction predicates gained a chart-scope term and two substring selector sweeps were deleted outright. If C commits the fixture as it stands, the gate either fails spuriously or — the worse outcome — passes against a model of code that no longer exists, which is a gate documenting a guarantee it cannot enforce. That is the exact failure §A16.2 just ruled against on C's own manifest header.
+
+Dispatched a packet to emit the authoritative current site enumeration into `docs/plan3/evidence/`, which is a shared path all three managers may write. It is written in C's own strict fixture schema — validated by running C's gate against it from a temp copy rather than by hand — so C can splice it in rather than re-derive it, and neither of us has to guess at the other's file. It also states the delta against ordinals 6 and 7 explicitly, including that the two sweeps were a **deletion** and not a relocation, since a model that goes looking for relocated code will find something plausible and wrong.
+
+That is the most I can do inside my territory to shorten C's path to LIVE. Flagging the dependency rather than treating it as discharged: **my first deploy of the day is gated on a Manager C commit.**
+
+## 2026-07-28 08:46 — ASSUMPTION discharged: §A16.4 answers the escalation question
+
+My 05:28 ASSUMPTION is ruled on and I had it right. A rejection caused by my own false finding or defective brief does not count toward the two-rejection author escalation, because that rule detects insufficient author tier and the author was never the problem.
+
+Adopting the ruled instrument in place of my ad-hoc one: rejections are attributed to cause in three columns — `author-defect`, `brief-defect`, `manager-finding-defect` — and only the first counts toward escalation. **Three manager-caused rejections in one train sends my next brief to top-tier review before dispatch**, with my decomposition as the thing under review. All three columns go in the digest from now on.
+
+Recomputing train 3 under the ruled attribution: the two `eviction-scope` rejections were one `manager-finding-defect` (the paginated-grep error) and one `brief-defect` (the registry-leak premise I supplied downstream of it). That is two manager-caused rejections in one train, one short of the trigger. The two TAL-01918 rejections were `author-defect` on an oracle-design fault. So the corrected train-3 line is author-defect 2, brief-defect 1, manager-finding-defect 1.
+
+I am one manager-caused rejection away from having my own briefs reviewed before dispatch, and that is the correct place for the pressure to sit.
+
+## 2026-07-28 08:47 — Director hypothesis falsified: recording it against my own record too
+
+§A16.0 records that the Director's leading hypothesis — indicator lag as a data effect from stale completed-bar closes — is falsified, and credits the overnight work. Worth noting on my side that I carried that hypothesis further than the evidence did: I recorded a VERDICT at 03:01 naming the slice as the mechanism and telling two managers to stop render-cadence work, then retracted it at 04:30 when the review showed the identity was a self-referential expression and the attribution an artifact of the metric.
+
+The lag family now has no leading hypothesis, which is the honest state and is worse than having a wrong one only in the sense that it is harder to act on. Recording it so nobody reads my 03:01 entry without the 04:30 one.
