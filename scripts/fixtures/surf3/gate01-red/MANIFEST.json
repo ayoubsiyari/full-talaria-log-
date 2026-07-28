@@ -1,0 +1,21 @@
+{
+  "schema": "talaria.surf3.gate01-red-fixture.v1",
+  "sealedAt": "2026-07-28T23:55:21.001Z",
+  "purpose": "GATE-01 real defect: V9 shell BUILD_ID disagreement",
+  "urls": {
+    "http://31.97.192.82:3000/chart/index.html": {
+      "fixtureFile": "chart-index.html",
+      "buildId": "20260726b75",
+      "provenance": "Director-asserted live stamp before host restart. Unauthenticated GET returned 307 Location=/login/?next=%2Fchart%2Findex.html at capture; host FS still held ?v=20260726b75 on homepage/public/chart/legacy-index.html (1.4MB pulled to docs/plan3/evidence/SURF-3/host-legacy-index.html)."
+    },
+    "http://31.97.192.82:3000/chart/dist-v9/index.html": {
+      "fixtureFile": "chart-dist-v9-index.html",
+      "buildId": "20260728b82",
+      "provenance": "Live HTTP 200 + host FS scrape of /opt/talaria/homepage/public/chart/dist-v9/index.html at capture (sha256 matches HTTP body)."
+    }
+  },
+  "sha256": {
+    "chart-index.html": "49982e1a71acc7cf52c3dd1c80edbd938af4798989c5394cfff9393748c0bcae",
+    "chart-dist-v9-index.html": "625705f5aa684cbd2d447de2593f6eef6c87ef5c505681f7e1759528073f4f8c"
+  }
+}
