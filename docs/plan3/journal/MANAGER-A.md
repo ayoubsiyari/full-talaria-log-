@@ -3691,3 +3691,53 @@ Plus two withdrawals: the mirror escalation (premise false — the mirror is gen
 **M23 host-listener-leak:** three commits, canonical and mirror hash-identical, mutant killed, in top-tier review. Held on the `CHART_ENGINE_BUILD` question — the stamp is fourteen builds stale and if it drives cache invalidation the merge could be cosmetic.
 
 **Outstanding PO-REQ count: 4** — lag at 5x, `REPLAY_SPEED_DEFAULT=5` ratification, instrumented real-browser residue session, and the new idle-CPU profile on the PO's machine.
+
+---
+
+## 2026-07-28 16:48 — CORRECTION: I was comparing the wrong quantity. The harness reproduces ~79%, not ~38%.
+
+The 7.79% I reported at 16:14 as "untraced idle CPU" was **CDP `Performance.getMetrics` `TaskDuration`** — a renderer-**main-thread busy proxy**, not whole-process CPU. Measured properly with `SystemInfo.getProcessInfo`:
+
+| dpr 1, untraced | |
+|---|---|
+| **Whole Chrome** | **16.25%** of one core |
+| renderer | 11.93% (73.4%) |
+| GPU | 3.64% (22.4%) |
+| browser | 0.57% |
+| network | 0.11% |
+| main-thread `TaskDuration` proxy | 6.90% |
+
+**Against the PO's 20.6% that is roughly 79% reproduction.** My 16:14 downgrade — "we reproduce ~38%, majority unexplained" — was wrong, and it was wrong because I compared a main-thread proxy against a whole-tab figure without checking what the counter measured.
+
+**This is the same error I made this morning** and logged as a category error then: comparing JS heap against working set and declaring a 78× scaling crisis that was really 3.3×. Two counter-comparison mistakes in one day, in both directions — once inventing a crisis, once dismissing a reproduction. **The rule I should have written this morning and am writing now: before comparing any two performance numbers, state what each counter measures and confirm they measure the same thing.** I wrote a digest an hour ago concluding my failures were all unverified premises in briefs. This is a fifth instance of exactly that, in my own arithmetic.
+
+The instrument-overhead finding still stands — 14.11% traced against ~6.9% untraced on the *same* counter — so tracing does roughly double the main-thread proxy. That comparison was like-for-like and survives.
+
+## 2026-07-28 16:49 — dpr REFUTED, cleanly
+
+Three runs at `deviceScaleFactor: 2`: **14.28% mean, spread 0.55** — *lower* than dpr 1's 16.25%, with the process shape essentially unchanged at ~75% renderer / ~22% GPU. Environment pinned and recorded for every run: `devicePixelRatio` 2, `visibilityState: visible`, `hidden: false`, canvas 2798×1698 backing store against 1399×849 CSS, so the scaling genuinely applied.
+
+**Quadrupling the pixel work did not increase idle CPU.** That was the leading remaining explanation — mine, promoted from the loaded-protocol review at 15:45 — and it is dead. I asked for it framed as a hypothesis to refute and said a null result would be worth having; it is, because it removes the last candidate that was not the rAF loop.
+
+It also weakens the dpr-2 hypothesis I offered for the PO's 154 MB GPU figure. That was always untested speculation and it should now be treated as unsupported rather than pending.
+
+## 2026-07-28 16:50 — What the split actually says, and the experiment it points to
+
+**The renderer process burns 11.93% while our JavaScript is doing essentially nothing.** All seven interval callbacks total 0.17%. The largest single JS frame is 0.12%. `renders` delta is zero. No countdown region paint. So the renderer is busy on work that is **neither running our code nor painting our chart**, and the GPU process is carrying another 3.64% alongside it.
+
+There is one mechanism in our territory that produces exactly that shape. **`Chart.animate` re-requests `requestAnimationFrame` unconditionally as its first statement, with no idle guard** (`chart.js:28677` at base `8f78c9ffa`). An outstanding rAF request obliges the compositor to run a full frame lifecycle — `BeginMainFrame`, commit, GPU handoff — **whether or not anything paints.** A busy renderer, a busy GPU, an idle main thread and zero repaints is precisely what that predicts.
+
+**The 2.16% I measured for rAF is the callback's own duration. It never included the pipeline the callback obliges.** That is the third distinct thing I have got wrong about this loop today, and the pattern in all three is the same: I kept measuring the JavaScript and the cost was never in the JavaScript.
+
+**Ablation experiment dispatched** — neutralise the re-request at idle by injection, no product change, measure whole-process CPU both arms, three runs each, untraced. Refutation criterion stated up front and binding: **if killing the loop does not materially move whole-process CPU, rAF is exonerated and the cost is somewhere nobody has named**, and that leads the report.
+
+Two guards on believing any drop, both of which I have learned to require the hard way today:
+
+1. **Confirm the chart still works.** If ablation also kills zoom animation, pan or the countdown, the saving is bought by breaking the product and the number is worthless as a fix estimate.
+2. **Headless runs rAF at ~142 fps, not 60.** If the loop is the driver, any saving here is inflated by ~2.4× against a real display. I required the delta reported **both raw and normalised to 60 Hz**, and the normalised figure is the honest estimate.
+
+If it lands, this is finally the shape the CPU finding hoped for: an idle guard on one function. I asked for the guard **described, not implemented** — where it sits, what must be true to skip the re-request, and what re-arms it so zoom, pan, replay and the countdown are unaffected. That is a separate packet with its own review, and the re-arm set is where the risk lives.
+
+Source maps: neither `vite.config.live.js` nor `vite.config.js` sets `build.sourcemap`, and no `*.map` exists in the tree. **A config gap rather than a deliberate exclusion** — worth closing so minified frames resolve, but not today and not in this packet.
+
+One honest limitation carried forward: Windows thread CPU deltas were captured but the lightweight API exposes only PID/TID and CPU time, with no Chrome role names. So "renderer and GPU processes" is supported; "compositor versus raster versus tile-worker" is not, and the author declined to label them rather than guessing. Settling that needs ETW or Chrome thread-name metadata, and the ablation experiment may make it unnecessary.
