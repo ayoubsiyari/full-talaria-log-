@@ -39,11 +39,20 @@ Land if ready; do not hold the canary for any of them. In priority order: **repl
 
 Owner: **A** (replay scheduler). Non-blocking for the canary.
 
-**Why this is worth more than its CPU saving.** Above ~60x the replay switches to a separate rendering path (`updateChartDataFast` → `_renderReplayChartUpdate`), a second implementation of "draw the chart". Every serious defect this week traces to two implementations of one thing that were never proven to agree — two indicator maths, two shells, two copies of the rulebook. A hard 10x ceiling makes that path **unreachable, so it can be retired rather than maintained.** Confirm the fast-mode threshold sits above 10x before deleting anything.
+**WITHDRAWN — the payoff claim was false and is retracted (Director, 09:55, on A's measurement).** I wrote that a 10x ceiling makes `updateChartDataFast` unreachable and therefore retirable. Measurement destroys the premise in both directions:
+
+- **Single-chart:** the fast-mode threshold is **1875x**, and `normalizeSpeed()` already clamps to 100. The path is **already unreachable on single-chart today at any speed the product offers** — cap or no cap.
+- **Multichart** with two or more panels including a finer peer: the 1D host engages fast mode above roughly **1.30x**. It therefore runs at 10x, at 5x and at **2x**. The cap is irrelevant to its only live reachability.
+
+**Also correcting my own figure:** the "~60x" above is accurate only for the *legacy* branch, which runs solely when the coherence kill-switch is disabled. The default branch is the `realTimeCandleDuration < 32` one.
+
+**Ruling:** the cap ships on its own merits; `updateChartDataFast` **stays**. Retiring a reachable renderer would change multichart 1D replay behaviour rather than delete dead code — a new risk, 46 hours from a canary, on the surface we can least afford to destabilise. Declining a new risk under deadline is the same discipline as declining to weaken a gate under deadline. The duplicate-implementation risk becomes a **named open row**, re-planned on multichart finest-TF cadence grounds, which is where it actually lives.
 
 **Three requirements that decide whether the cap is real or cosmetic:**
 
-1. **Cap the work, not the label.** The V5 finding was that daily tick playback was subdivided by 1,440. If that subdivision is independent of the speed multiplier, then 1D at 10x may still generate vastly more work per second than 1m at 10x, and the ceiling is cosmetic on coarse timeframes. **Measure actual tick and render rate at 10x on both 1m and 1D.** This is the acceptance criterion, not the UI change.
+1. **Cap the work, not the label — SATISFIED on the default deployment, by measurement (A, 09:52).** My concern was that the 1,440 daily subdivision would keep 1D far more expensive than 1m. **It does not.** Over 12-second windows, single-chart 1m and 1D are *identical* — 50 paints, 50 renders, 2 commits each — and multichart 1D in fast mode does **less** work, 2 renders against 50.
+
+   **The real mechanism, and it is a defect in its own right:** subdivisions divide `realTimeCandleDuration`, which **selects the mode**, while `fastModeInterval` is computed from `rawCandlesPerSecond`, which **ignores subdivisions**. One input picks the renderer; a different input sets the pace. Opened as a row — it is a better candidate for genuine multichart 1D cost than speed is, and unlike the retirement question it can be characterised without changing replay behaviour.
 2. **Clamp every entry point, not just the picker** — restored sessions, saved preferences, URL parameters and internal setters. A stored 60x that survives restore defeats the ceiling silently, which is this project's signature failure mode.
 3. **Measure the CPU claim rather than assume it.** Before/after on the same replay. The PO suspects high speed drives CPU cost; every performance figure we hold was taken on a broken build, so take the real number.
 
