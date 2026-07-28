@@ -1454,16 +1454,27 @@ export function poCpuAbHostHtml({ timings = DEFAULT_PHASE_TIMINGS, mutant = fals
           && lagFourCapture.medianP95FrameMs > 0
           ? lagSingleCapture.medianP95FrameMs / lagFourCapture.medianP95FrameMs
           : null;
-        // Zero single long-task rate is a vacuous baseline (0/x); keep p95 as the carrier.
-        const longTaskRetention = Number.isFinite(lagSingleCapture.medianLongTaskPerSec)
+        // FIX1 grades frame cadence. Shared process longtasks must not drive the ratio
+        // or be credited as independent per-panel smoothness.
+        const ltPanels = Array.isArray(lagFourCapture.panels) ? lagFourCapture.panels : [];
+        const longTaskSharedAcrossPanels = ltPanels.length >= 2
+          && Number(ltPanels[0] && ltPanels[0].longTaskCount) > 0
+          && ltPanels.every((panel) => panel
+            && Number(panel.longTaskCount) === Number(ltPanels[0].longTaskCount)
+            && Number(panel.longTaskDurationMs) === Number(ltPanels[0].longTaskDurationMs));
+        const longTaskRetention = !longTaskSharedAcrossPanels
+          && Number.isFinite(lagSingleCapture.medianLongTaskPerSec)
           && Number.isFinite(lagFourCapture.medianLongTaskPerSec)
           && lagSingleCapture.medianLongTaskPerSec > 0
           && lagFourCapture.medianLongTaskPerSec > 0
           ? lagSingleCapture.medianLongTaskPerSec / lagFourCapture.medianLongTaskPerSec
           : null;
-        const smoothnessRetention = [p95Retention, longTaskRetention]
-          .filter((value) => Number.isFinite(value))
-          .reduce((min, value) => (min == null || value < min ? value : min), null);
+        // Smoothness retention is p95-only — never min(LT, p95).
+        const smoothnessRetention = Number.isFinite(p95Retention) ? p95Retention : null;
+        lagFourCapture.longTaskSharedAcrossPanels = longTaskSharedAcrossPanels;
+        lagFourCapture.longTaskAttribution = longTaskSharedAcrossPanels
+          ? 'host-shared'
+          : (longTaskRetention != null ? 'per-panel' : 'absent');
         lag = {
           content: {
             single: contentSingle,
@@ -1477,6 +1488,7 @@ export function poCpuAbHostHtml({ timings = DEFAULT_PHASE_TIMINGS, mutant = fals
             smoothnessRetention,
             p95Retention,
             longTaskRetention,
+            smoothnessSource: 'p95FrameMs',
             mechanismHint: lagMechanismHint(throughputRetention, smoothnessRetention)
           }
         };
@@ -1675,10 +1687,28 @@ function lagPanelThroughputEmitted(panel) {
 }
 
 function lagPanelSmoothnessEmitted(panel) {
+  // Frame samples are mandatory — longtask-only payloads cannot mint smoothness.
   return !!panel
     && finiteNumberOrNull(panel.p95FrameMs) != null
     && finiteNumberOrNull(panel.longTaskCount) != null
     && Number(panel.frameIntervalCount) > 0;
+}
+
+/** True when A/B/C/D report identical long-task totals (host/process signal ×N). */
+export function lagLongTaskSharedAcrossPanels(panels, { countTolerance = 0, durationToleranceMs = 0 } = {}) {
+  const rows = (Array.isArray(panels) ? panels : [])
+    .filter((panel) => panel && finiteNumberOrNull(panel.longTaskCount) != null);
+  if (rows.length < 2) return false;
+  const baseCount = Number(rows[0].longTaskCount);
+  const baseDuration = finiteNumberOrNull(rows[0].longTaskDurationMs);
+  if (!(baseCount > 0)) return false;
+  return rows.every((panel) => {
+    const count = Number(panel.longTaskCount);
+    const duration = finiteNumberOrNull(panel.longTaskDurationMs);
+    if (!Number.isFinite(count) || Math.abs(count - baseCount) > countTolerance) return false;
+    if (baseDuration == null || duration == null) return baseDuration == null && duration == null;
+    return Math.abs(duration - baseDuration) <= durationToleranceMs;
+  });
 }
 
 export function lagMechanismHintFromRetentions(throughputRetention, smoothnessRetention, margin = PO_CPU_AB_LAG_MECHANISM_MARGIN) {
@@ -1686,6 +1716,18 @@ export function lagMechanismHintFromRetentions(throughputRetention, smoothnessRe
   if (throughputRetention + margin < smoothnessRetention) return 'throughput';
   if (smoothnessRetention + margin < throughputRetention) return 'smoothness';
   return 'ambiguous';
+}
+
+function recomputeLagP95Retention(singlePanel, fourPanels) {
+  const singleP95 = finiteNumberOrNull(singlePanel?.p95FrameMs);
+  const fourP95Values = (Array.isArray(fourPanels) ? fourPanels : [])
+    .map((panel) => finiteNumberOrNull(panel?.p95FrameMs))
+    .filter((value) => value != null && value > 0);
+  if (singleP95 == null || fourP95Values.length === 0) return null;
+  const sorted = fourP95Values.slice().sort((a, b) => a - b);
+  const medianFour = sorted[Math.min(sorted.length - 1, Math.max(0, Math.ceil(0.5 * sorted.length) - 1))];
+  if (!(medianFour > 0)) return null;
+  return singleP95 / medianFour;
 }
 
 export function evaluateLagDualMetric(report) {
@@ -1700,28 +1742,53 @@ export function evaluateLagDualMetric(report) {
   const throughputSingleOk = lagPanelThroughputEmitted(singlePanel);
   const throughputFourOk = fourRequired.every((panel) => lagPanelThroughputEmitted(panel));
   const smoothnessSingleOk = lagPanelSmoothnessEmitted(singlePanel);
-  const smoothnessFourOk = fourRequired.every((panel) => lagPanelSmoothnessEmitted(panel));
+  const framesFourOk = fourRequired.every((panel) => lagPanelSmoothnessEmitted(panel));
+  const sharedLt = lagLongTaskSharedAcrossPanels(fourRequired);
+  const reportedShared = lag?.four?.longTaskSharedAcrossPanels === true
+    || lag?.four?.longTaskAttribution === 'host-shared';
+  // Shared LT credited as independent per-panel smoothness is RED unless attributed.
+  const sharedLtHonest = !sharedLt || reportedShared;
+  const smoothnessFourOk = framesFourOk && sharedLtHonest;
   const throughputRetention = finiteNumberOrNull(lag?.ratios?.throughputRetention);
+  const p95RetentionReported = finiteNumberOrNull(lag?.ratios?.p95Retention);
+  const p95RetentionRecomputed = recomputeLagP95Retention(singlePanel, fourRequired);
+  const p95Retention = p95RetentionReported != null ? p95RetentionReported : p95RetentionRecomputed;
   const smoothnessRetention = finiteNumberOrNull(lag?.ratios?.smoothnessRetention);
-  const ratiosOk = throughputRetention != null && smoothnessRetention != null;
+  const smoothnessSource = lag?.ratios?.smoothnessSource;
+  // FIX1-facing smoothness ratio must be the frame p95 retention, never LT-only/min(LT,p95).
+  const framePrimaryOk = smoothnessRetention != null
+    && p95Retention != null
+    && Math.abs(smoothnessRetention - p95Retention) <= 1e-9
+    && (smoothnessSource == null || smoothnessSource === 'p95FrameMs');
+  const ratiosOk = throughputRetention != null && smoothnessRetention != null && framePrimaryOk;
   const hint = lag?.ratios?.mechanismHint;
   const hintOk = hint === 'throughput' || hint === 'smoothness' || hint === 'ambiguous';
-  const recomputedHint = lagMechanismHintFromRetentions(throughputRetention, smoothnessRetention);
+  // Hint must be graded from frame-primary smoothness, not a contaminated LT blend.
+  const recomputedHint = lagMechanismHintFromRetentions(throughputRetention, p95Retention);
+  const hintConsistent = hintOk
+    && hint === recomputedHint
+    && (hint !== 'smoothness' || (p95Retention != null && framePrimaryOk));
   return {
     contentOk,
     throughputSingleOk,
     throughputFourOk,
     smoothnessSingleOk,
     smoothnessFourOk,
+    framesFourOk,
+    sharedLongTaskAcrossPanels: sharedLt,
+    sharedLongTaskHonest: sharedLtHonest,
+    framePrimaryOk,
     ratiosOk,
     hintOk,
     hint,
     recomputedHint,
-    hintConsistent: hintOk && hint === recomputedHint,
+    hintConsistent,
     singlePanel,
     fourPanels: fourRequired,
     throughputRetention,
     smoothnessRetention,
+    p95Retention,
+    p95RetentionRecomputed,
   };
 }
 
@@ -2150,28 +2217,45 @@ export function assertPoCpuAbBenchmarkReport(report, { mutant = false } = {}) {
     'LAG-SMOOTHNESS-FOUR-EMITTED',
     lagEval.smoothnessFourOk,
     lagEval.smoothnessFourOk
-      ? 'A/B/C/D frame timing + long-task counts emitted'
-      : 'four-panel frame timing + long-task count missing',
-    { panels: lagEval.fourPanels },
+      ? (lagEval.sharedLongTaskAcrossPanels
+        ? 'A/B/C/D frame timing emitted; longTask host-shared (not per-panel credit)'
+        : 'A/B/C/D frame timing + long-task counts emitted')
+      : (!lagEval.framesFourOk
+        ? 'four-panel frame timing + long-task count missing'
+        : 'shared long-task totals credited per panel without host-shared attribution'),
+    {
+      panels: lagEval.fourPanels,
+      sharedLongTaskAcrossPanels: lagEval.sharedLongTaskAcrossPanels,
+      sharedLongTaskHonest: lagEval.sharedLongTaskHonest,
+    },
   ));
   cells.push(cell(
     'LAG-SINGLE-TO-FOUR-RATIO-EMITTED',
     lagEval.ratiosOk,
     lagEval.ratiosOk
-      ? `throughputRetention=${lagEval.throughputRetention.toFixed(4)} smoothnessRetention=${lagEval.smoothnessRetention.toFixed(4)}`
-      : 'single→four throughput/smoothness retention ratios missing',
+      ? `throughputRetention=${lagEval.throughputRetention.toFixed(4)} smoothnessRetention=${lagEval.smoothnessRetention.toFixed(4)} (p95FrameMs)`
+      : (lagEval.framePrimaryOk === false
+        ? 'smoothnessRetention not frame-primary (p95FrameMs); host-longtask-only/contaminated ratio rejected'
+        : 'single→four throughput/smoothness retention ratios missing'),
     {
       throughputRetention: lagEval.throughputRetention,
       smoothnessRetention: lagEval.smoothnessRetention,
+      p95Retention: lagEval.p95Retention,
+      framePrimaryOk: lagEval.framePrimaryOk,
     },
   ));
   cells.push(cell(
     'LAG-MECHANISM-HINT-EMITTED',
     lagEval.hintOk && lagEval.hintConsistent,
     lagEval.hintOk && lagEval.hintConsistent
-      ? `mechanismHint=${lagEval.hint} (throughput→FIX2, smoothness→FIX1)`
-      : `mechanismHint missing or inconsistent (got=${lagEval.hint}, recomputed=${lagEval.recomputedHint})`,
-    { hint: lagEval.hint, recomputedHint: lagEval.recomputedHint },
+      ? `mechanismHint=${lagEval.hint} (throughput→FIX2, smoothness→FIX1 via p95FrameMs)`
+      : `mechanismHint missing, LT-contaminated, or inconsistent (got=${lagEval.hint}, recomputed=${lagEval.recomputedHint}, framePrimary=${lagEval.framePrimaryOk})`,
+    {
+      hint: lagEval.hint,
+      recomputedHint: lagEval.recomputedHint,
+      framePrimaryOk: lagEval.framePrimaryOk,
+      p95Retention: lagEval.p95Retention,
+    },
   ));
 
   if (mutant || report.meta?.mutant) {

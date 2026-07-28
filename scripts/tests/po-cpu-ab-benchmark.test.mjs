@@ -9,6 +9,7 @@ import {
   PO_CPU_AB_STATUS_SHORT,
   SHORT_PHASE_TIMINGS,
   assertPoCpuAbBenchmarkReport,
+  lagLongTaskSharedAcrossPanels,
   lagMechanismHintFromRetentions,
   mutatePoCpuAbReplaySystemForPauseTeardownNC,
   poCpuAbReplayArmingHelpersSource,
@@ -74,20 +75,24 @@ function lagEvidence({
     },
     four: {
       label: 'four',
-      panels: ['A', 'B', 'C', 'D'].map((id) => lagPanel(id, {
+      panels: ['A', 'B', 'C', 'D'].map((id, index) => lagPanel(id, {
         throughputRatio: fourRatio,
         p95FrameMs: fourP95,
-        longTaskCount: Math.max(1, Math.round(2 / Math.max(0.01, smoothnessRetention))),
+        // Distinct LT counts so fixtures default to per-panel attribution.
+        longTaskCount: Math.max(1, Math.round(2 / Math.max(0.01, smoothnessRetention))) + index,
       })),
       medianThroughputRatio: fourRatio,
       medianP95FrameMs: fourP95,
       medianLongTaskPerSec: (2 / Math.max(0.01, smoothnessRetention)) / 3,
+      longTaskSharedAcrossPanels: false,
+      longTaskAttribution: 'per-panel',
     },
     ratios: {
       throughputRetention,
       smoothnessRetention,
       p95Retention: smoothnessRetention,
-      longTaskRetention: smoothnessRetention,
+      longTaskRetention: null,
+      smoothnessSource: 'p95FrameMs',
       mechanismHint: hint,
     },
   };
@@ -1327,4 +1332,59 @@ test('unit: lag mechanism hint helper is order-stable', () => {
   assert.equal(lagMechanismHintFromRetentions(0.5, 0.9), 'throughput');
   assert.equal(lagMechanismHintFromRetentions(0.9, 0.5), 'smoothness');
   assert.equal(lagMechanismHintFromRetentions(0.7, 0.72), 'ambiguous');
+});
+
+test('fault-injection: host-longtask-only smoothness cannot mint FIX1 hint', () => {
+  const lag = lagEvidence({ throughputRetention: 0.95, smoothnessRetention: 0.4 });
+  // Contaminate: claim LT-driven smoothness while p95 shows no degradation.
+  lag.ratios.p95Retention = 0.95;
+  lag.ratios.smoothnessRetention = 0.4;
+  lag.ratios.longTaskRetention = 0.4;
+  delete lag.ratios.smoothnessSource;
+  lag.ratios.mechanismHint = 'smoothness';
+  const cells = assertPoCpuAbBenchmarkReport(report({ lag }));
+  assert.equal(cells.find((cell) => cell.name === 'LAG-SINGLE-TO-FOUR-RATIO-EMITTED')?.status, 'RED');
+  assert.equal(cells.find((cell) => cell.name === 'LAG-MECHANISM-HINT-EMITTED')?.status, 'RED');
+});
+
+test('fault-injection: shared long-tasks credited per panel RED unless host-shared', () => {
+  const lag = lagEvidence({ throughputRetention: 1, smoothnessRetention: 0.2 });
+  lag.four.panels = ['A', 'B', 'C', 'D'].map((id) => lagPanel(id, {
+    throughputRatio: 0.9,
+    p95FrameMs: 90,
+    longTaskCount: 26,
+  }));
+  for (const panel of lag.four.panels) {
+    panel.longTaskDurationMs = 1604;
+  }
+  lag.four.longTaskSharedAcrossPanels = false;
+  lag.four.longTaskAttribution = 'per-panel';
+  assert.equal(lagLongTaskSharedAcrossPanels(lag.four.panels), true);
+  const redCells = assertPoCpuAbBenchmarkReport(report({ lag }));
+  assert.equal(redCells.find((cell) => cell.name === 'LAG-SMOOTHNESS-FOUR-EMITTED')?.status, 'RED');
+
+  lag.four.longTaskSharedAcrossPanels = true;
+  lag.four.longTaskAttribution = 'host-shared';
+  lag.ratios.smoothnessSource = 'p95FrameMs';
+  lag.ratios.p95Retention = 0.2;
+  lag.ratios.smoothnessRetention = 0.2;
+  lag.ratios.longTaskRetention = null;
+  lag.ratios.mechanismHint = lagMechanismHintFromRetentions(1, 0.2);
+  const greenCells = assertPoCpuAbBenchmarkReport(report({ lag }));
+  assert.equal(greenCells.find((cell) => cell.name === 'LAG-SMOOTHNESS-FOUR-EMITTED')?.status, 'GREEN');
+  assert.equal(greenCells.find((cell) => cell.name === 'LAG-MECHANISM-HINT-EMITTED')?.status, 'GREEN');
+  assert.equal(greenCells.find((cell) => cell.name === 'LAG-MECHANISM-HINT-EMITTED')?.hint, 'smoothness');
+});
+
+test('fault-injection: longtask-only panel payload cannot mint smoothness emit', () => {
+  const lag = lagEvidence();
+  for (const panel of [lag.single.panels[0], ...lag.four.panels]) {
+    panel.frameIntervalCount = 0;
+    panel.p95FrameMs = null;
+    panel.p50FrameMs = null;
+    panel.maxFrameMs = null;
+  }
+  const cells = assertPoCpuAbBenchmarkReport(report({ lag }));
+  assert.equal(cells.find((cell) => cell.name === 'LAG-SMOOTHNESS-SINGLE-EMITTED')?.status, 'RED');
+  assert.equal(cells.find((cell) => cell.name === 'LAG-SMOOTHNESS-FOUR-EMITTED')?.status, 'RED');
 });

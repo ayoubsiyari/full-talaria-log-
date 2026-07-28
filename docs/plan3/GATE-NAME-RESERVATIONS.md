@@ -526,10 +526,11 @@ Cells:
 | LAG-CONTENT-ARMED | SMA/EMA/WMA period 20 confirmed on single-with-content and four-with-content lag windows; bare replay cannot satisfy | LIVE — W64 |
 | LAG-THROUGHPUT-SINGLE-EMITTED | host panel emits achieved vs configured bars/sec (tick throughput) during LAG-SINGLE | LIVE — W64; grades FIX2 |
 | LAG-THROUGHPUT-FOUR-EMITTED | panels A/B/C/D each emit achieved vs configured bars/sec during content-armed P4 | LIVE — W64; grades FIX2 |
-| LAG-SMOOTHNESS-SINGLE-EMITTED | host panel emits rAF frame timing (p95) plus long-task count during LAG-SINGLE | LIVE — W64; grades FIX1 |
-| LAG-SMOOTHNESS-FOUR-EMITTED | panels A/B/C/D each emit frame timing plus long-task count during content-armed P4 | LIVE — W64; grades FIX1 |
-| LAG-SINGLE-TO-FOUR-RATIO-EMITTED | throughputRetention and smoothnessRetention (four vs single) are finite; PO ~50% is descriptive, not a hard gate | LIVE — W64 |
-| LAG-MECHANISM-HINT-EMITTED | mechanismHint ∈ {throughput,smoothness,ambiguous} consistent with retentions (throughput→FIX2, smoothness→FIX1) | LIVE — W64 |
+| LAG-SMOOTHNESS-SINGLE-EMITTED | host panel emits rAF frame timing (p95) plus long-task count during LAG-SINGLE; frame samples mandatory (longtask-only RED) | LIVE — W64b; grades FIX1 via p95FrameMs |
+| LAG-SMOOTHNESS-FOUR-EMITTED | panels A/B/C/D each emit frame timing; identical long-task totals across panels require longTaskAttribution=host-shared (shared LT credited per-panel is RED) | LIVE — W64b; grades FIX1 via p95FrameMs |
+| LAG-SINGLE-TO-FOUR-RATIO-EMITTED | throughputRetention and smoothnessRetention finite; smoothnessRetention must equal p95Retention (frame-primary; LT-contaminated ratios RED); PO ~50% descriptive, not a hard gate | LIVE — W64b |
+| LAG-MECHANISM-HINT-EMITTED | mechanismHint ∈ {throughput,smoothness,ambiguous} consistent with throughputRetention + p95Retention (smoothness→FIX1 only via frame p95, never host-longtask-only) | LIVE — W64b |
+| M19-E-HOTPATH-CONSOLE-EXEMPTIONS | Named admit-list for soak `e_hotpathConsole`; warn/error remain counted unless listed; GATE-01 injected console.log and unlisted console.warn must each RED | LIVE — soak unblock; exemption B_W16_DURABLE_JOURNAL_UNHYDRATED_HARNESS_ARTEFACT (HARNESS_ARTEFACT) |
 | NC-P4-NO-FANOUT-MUST-RED | served P4 no-fan-out mode neuters `replayPlay` peer sends, serializes peer-row `productReplayPlayFanout.noFanoutControl`, and must make P4 RED | LIVE |
 | NC-P7-REPLAY-PAUSE-TEARDOWN-MUST-RED | served `replay-system.js` pause teardown reversal marks itself applied and makes the P7 state cell RED | LIVE |
 
