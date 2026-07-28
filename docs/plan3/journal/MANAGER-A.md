@@ -4389,3 +4389,235 @@ under a flag documented as "measurement disabled" and had its output discarded.
 mutant therefore survived the entire suite while silently inverting both switches on the real page. Code was
 correct, coverage was not. **Every switch packet must now cell the absent-property default and an ON->OFF->observe
 flip.** Added to the standing brief template.
+
+## 2026-07-28 ~20:5x — SETTLEMENT WITH B on the assembled tip. Neither of us was wrong.
+
+### The disagreement was a tip-age artefact, and it is fully resolved
+**Assembly `f8a6c28a8` was cut 20:08:02.** Its merge-base with my tip is **`ba174d694`** — my 20:00 journal commit,
+**after R1 merged but before R2 and R3 did**. So:
+- **B's inventory is correct for the object B inspected.** At `f8a6c28a8`, P2/P3/P4 exist **only in documentation**
+  (`KILL-SWITCH-INVENTORY.md` and my own reservation entry) with **no product code**. B listing them "A residual"
+  was accurate.
+- **My enumeration is correct for my tip.** All three are built, reviewed and merged.
+**Nobody needs to re-audit. B needs four commits.**
+
+### What B must pick up — exactly these, in this order
+`1ec5bf9e9` -> `7036b7eed` (R2, P2) -> `7e9db92c4` -> `e0cb3103f` (R3, P3+P4). Taking **`e0cb3103f`** takes all four.
+
+**Pre-verified for B so it does not have to:**
+- `git merge-tree --write-tree f8a6c28a8 e0cb3103f` = **CLEAN, no conflicts.**
+- **No B or C commit touched any of the three product files** since the merge-base — `drawing-tools-manager.js`,
+  `chart-indicators-full.js`, `module-presence-runtime.js` all untouched in `ba174d694..f8a6c28a8`. **Zero contention.**
+- After the pick-up the inventory's three "A residual" rows become rows 9, 10, 11 on the same terms as rows 7-8:
+  strict `=== true`, absent property = fix ON, per-call.
+
+### Confirmed consistent with B, no action needed
+B's **"phantom cleared"** note is right: `__TALARIA_DISABLE_MC_BACKGROUND_RENDER_CADENCE_V1` is FIX 1's flag,
+**FIX 1 is not in the train**, and the name is reserved only so A and B do not desynchronise. **Not a release precondition.**
+
+### P6 — held the push, correctly, and it is not mine to resolve
+Ruled: B checks consumers via live-surface-probe plus C's census. Nothing requests the route -> proceed;
+anything does -> restore `homepage/public/chart/talaria-design/live/index.html` and the deletion moves to a later
+train. **No runtime switch is possible for an absent file, which is why this was escalated rather than flagged.**
+
+### FLAG-01 and FLAG-02 now binding on all three managers — adopted into my standing brief template
+- **FLAG-01 — every switch packet cells the ABSENT property, never explicit `false`.** Origin: R1's cells wrote
+  `= false` while production has the property absent, so an inverted-defaulting mutant **survived the entire suite**
+  while silently inverting both switches on the real page. **Code was correct, coverage was not.**
+- **FLAG-02 — a switch that cannot be flipped back in-page without a reload is not a switch.** Origin: Q9's wrapper
+  self-uninstalled on first call under flag-on, so ON->OFF could never recover. **This defect has now appeared three
+  times in one day in three different disguises** — M28 stranded OFF->ON, Q9 stranded ON->OFF by self-uninstall,
+  P4 stranded ON->OFF by init-time sampling. **It is a family, not three incidents**, and FLAG-02 is the only rule
+  that catches all three shapes.
+Both are now mandatory acceptance items in every switch brief I write.
+
+---
+
+## 2026-07-28 21:19 — SHELL-REPAIR (chart-host.html / multichart-shell.html): PREMISE REFUTED, packet not dispatched
+
+**VERDICT: the order's motivating premise is FALSE.** surface=`manager-a/critical-path` @ `186ee3ab3`, coverage=static (git grep + shipped bundle) corroborated by a prior live Playwright run against b75.
+
+### The claim, and what is actually true
+Order: *"this is why indicator performance was never loaded in panels ... module-presence-runtime.js is also missing
+from the same file."* **Product panels do not load `chart-host.html`.** They load
+`multichart-prod/chart-embed.html`, which **already carries both modules**.
+
+| | `indicator-performance.js` | `module-presence-runtime.js` |
+|---|---|---|
+| `multichart-prod/chart-embed.html` (panels actually use this) | 1 | 1 |
+| `multichart/chart-host.html` (the order's target) | 0 | 0 |
+
+Panel iframe URL is built in exactly one place, `MultichartGrid.jsx:1081`, returning
+`/chart/multichart-prod/chart-embed.html?...`. **I verified this in the shipped artefact myself, not just in source:**
+`dist-v9/assets/talaria-v9-live.js` contains `chart-embed.html` **once** and `chart-host.html` **zero times**.
+`chart-host.html` is the **sandbox** panel, reachable only via `multichart-shell.html`, and its own header declares the
+gap as deliberate: *"engine (no modules - minimum surface)"*.
+
+So the `IndicatorPerf` gap is real **only on the sandbox surface**, and closing it changes nothing a user sees.
+
+### Two further premise corrections (TREE-01, all at `186ee3ab3`)
+- **Paths.** Files are under `multichart/`, not `multichart-prod/`, and **each has an enforced mirror — four files, not two.**
+- **`multichart-shell.html` is not frozen at a10.** It carries `?v=20260509T1755` / `?v=20260509T2030` — **9 May, two
+  weeks older than the stated 24 May**. Nothing in that file is at `20260524a10`. Only `chart-host.html` is.
+
+### Why I did not dispatch the parity work
+Not a pin correction. `chart-embed.html`'s list is **53 modules built dynamically** via `document.write`, so parity is
+~1 MB per panel plus five structural hazards:
+1. **`m22` pins the gap by value.** `expectEqual('M4','shells-with-registry-ABSENT', ...)` at
+   `m22-session-calendar-bucketing.red.test.mjs:1497` **lists both `chart-host.html` mirrors as the expected set.**
+   Adding modules fails that assertion — and **that suite is the one that mutates a tracked evidence file**, so the
+   change cannot even be validated without running the file I am avoiding.
+2. **The tripwire would draw a false "Degraded" on a working panel.** `tripwirePasses()` requires a
+   `chart-indicators-full.js` tag to exist; adding the presence runtime without 989 KB of consumer fails `orderOk`.
+3. **Classic vs `defer`** — `chart-host.html`'s inline stub block and bootstrap IIFE are classic; copying `defer` tags
+   reorders execution silently.
+4. **Stub/real collision** — the shell installs no-op Proxies over eight subsystems before `chart.js`.
+5. **`chart-window-limit.js`** would introduce a window claim into the sandbox's only data path.
+
+**Kill-switch coverage is 2 of ~53** (`__TALARIA_DISABLE_INDICATOR_PERF_BRIDGE_V1`,
+`__TALARIA_DISABLE_MODULE_PRESENCE_TRIPWIRE_V1`, both present, `e0cb3103f` confirmed ancestor). I will not sign
+"the switches cover this".
+
+### Stamping is cosmetic here — demonstrated, not asserted
+**No build step writes these stamps; they are hand-edited.** `chart-shell-audit.mjs` strips them, the runtime probe
+only reads them. And the two `chart-host.html` mirrors **both carry `?v=20260524a10` while being different files**
+(53,609 vs 52,302 bytes, differing SHA-256). One identical token, two different files — a self-contained proof the
+token does not track deploys. Neither file appears in `module-contracts.json`'s 8-row inventory, so **no gate would
+observe a new stamp.** Trap for anyone who greps: that inventory *does* have an id `chart-host`, but it points at
+`dist-v9/index.html`.
+
+### GENUINE FIND, and the only item here with real value: unpinned third-party script on the chart surface
+`chart-host.html` fetches d3 from `cdnjs.cloudflare.com`, **no SRI, no fallback**. The repo has **zero real
+`integrity=` attributes anywhere.** The vendored `chart/vendor/d3.min.js` is the **same version 7.8.5, byte-identical
+across both trees** — a verified drop-in `src` swap at zero behavioural cost. The iframe carries no `sandbox`
+attribute by design, so a compromised CDN executes with full same-origin access.
+
+### Mirror drift (new row)
+`chart-host.html` is **not** byte-mirrored (3 insertions / 26 deletions); `multichart-shell.html` is. The homepage
+copy is **behind** source, missing `_captureTfSwitchViewport`/`_restoreTfSwitchViewport`.
+
+### DIRECTOR-Q — governance conflict I cannot adjudicate
+The order says *"Ruling A14.3 does not apply."* But this journal records A14.3 firing **twice, on these exact two
+files**, with the remedy being de-route and **"wiring modules in is forbidden"** — and a prior packet proposing
+precisely this module addition was **held** on those grounds. The Director's exemption was granted on the stated
+ground that *panels resolve to it*, **which is the premise I have just refuted.** I default to: **cancel the parity
+work, ship nothing to these files in this train**, and treat the d3 swap as a security row for the next train.
+Proceeding on the pre-push switch sweep meanwhile.
+
+### 21:24 — DIRECTOR RULING on SHELL-REPAIR: CANCELLED
+**Parity work cancelled. Nothing ships to `multichart/chart-host.html` or `multichart-shell.html` in this train**
+(neither mirror). The A14.3 exemption rested on *"panels resolve to it"*, which is refuted above, so the exemption
+does not survive its premise and I am **not** applying it. The prior A14.3 hold on these two files therefore stands
+unchanged — no new precedent is set in either direction.
+
+**Carried forward as an open SECURITY row for the next train (not closed, not fixed):**
+- `multichart/chart-host.html` fetches d3 from `cdnjs.cloudflare.com` with **no SRI and no fallback**; repo has
+  **zero real `integrity=` attributes anywhere**. Vendored `chart/vendor/d3.min.js` is the **same 7.8.5,
+  byte-identical across both trees** — verified drop-in. Iframe has no `sandbox` attribute by design, so a
+  compromised CDN executes with full same-origin access. `legacy-index.html` has the same class of exposure (d3 +
+  lz-string from cdnjs) but at least carries a jsdelivr `onerror` fallback.
+- `chart-host.html` is **not byte-mirrored**: homepage copy is 23 lines behind source, missing
+  `_captureTfSwitchViewport`/`_restoreTfSwitchViewport`, so the **served** sandbox copy loses viewport preservation
+  on timeframe switch.
+
+**Standing lesson (BRIEF-02 working as designed):** the order arrived as fact — *"this is why indicator performance
+was never loaded in panels"* — and was false. Routing it as a hypothesis to refute cost one read-only audit and
+saved a ~53-module write against a live shell that would have broken an `m22` gate. **Third time today an unmeasured
+premise died on contact.** Framing costs nothing.
+
+---
+
+## 2026-07-28 21:47 — STAMP-1 MERGED `8f626fdb2`; the dependency claim is REFUTED for product panels
+
+**VERDICT: the stamp was worth doing and is done. The reordering it justified is not warranted.**
+surface=`manager-a/critical-path` @ `8f626fdb2`, coverage=static across all four shells + shipped `dist-v9` bundle.
+
+### What shipped
+`../chart.js` in `multichart/chart-host.html` had **no `?v=` at all**; both mirrors now carry `?v=20260727b80`, and the
+stale pins are refreshed (`20260524a10` in chart-host; `20260509T1755`/`T2030` in multichart-shell — the latter **9 May,
+two weeks older than the order stated**). Token-only: verified by normalising every `?v=` to a placeholder and diffing
+against base — the sole structural delta is `../chart.js` gaining a query string. New `shell-cache-stamp.test.mjs`,
+**adversarial mutation score 12/14** after remediation; the cells added post-review kill **mirror token desync — this
+bug's own failure mode** — plus `defer`/`async` injection and unstamped same-origin absolute URLs.
+
+Risk argument, tested rather than assumed: because the URL was **unstamped**, every **cold** browser was already
+fetching today's engine into this zero-module shell. Stamping creates **no new engine/shell combination**; it extends
+the already-live one to warm browsers. Review independently confirmed `chart.js` reads **no module global at
+script-eval time** and all eight `new X(` sites on module globals are guarded or covered by the shell's inline stubs.
+
+### CORRECTION: "every chart.js fix is invisible inside multichart panels on warm browsers" is FALSE for product
+The product delivery chain is **stamped end to end**, and I verified each hop:
+1. Host page `dist-v9/index.html` sets `window.__TALARIA_CHART_BUILD_ID='20260727b80'`.
+2. `chart-embed.html` — the shell panels actually load — takes `p.get('v') || '20260727b80'` and appends
+   `'?v=' + V` to **all 54 paths, `/chart/chart.js` among them**.
+3. Bridge scripts are stamped **inside** `injectScript` at `MultichartGrid.jsx:454` (`s.src = src + "?v=" + BRIDGE_VERSION`),
+   so the bare-path call sites at 467/472/473 are stamped despite appearing unstamped. `BRIDGE_VERSION` resolves to
+   `__TALARIA_CHART_BUILD_ID` = b80, **not** the `20260609b07` fallback.
+
+**Therefore FIX 1 and FIX 2 are not undeliverable and were never blocked on this.** The dependency argument does not hold.
+
+### The a10 fingerprint localises B's measurement to the sandbox
+`git grep -l "20260524a10"` over both trees returns **exactly two files: the two `chart-host.html` mirrors.** Nothing
+else in either tree carries that token, so an observation of *"warm panel loads 20260524a10"* **can only be the sandbox
+shell**. A stale product panel would have shown some other `b`-token. `diverge: true` was real; its surface was the
+sandbox, which is precisely what STAMP-1 fixes.
+
+### Consequence for M26 "effect not demonstrated" — engine divergence is NOT the explanation
+M26 lives in `multichart-prod/multichart-manager.js`, whose **product delivery path is stamped** (hop 3 above), and
+M27/M28 live in `replay-system.js`, which is **entry in `chart-embed.html`'s stamped `paths` array**. So harness and
+PO browser were not running different engines on those files. **The "effect not demonstrated" verdict stands on its
+own merits and is not explained away by cache staleness.** I am not reopening it on this ground.
+
+### Module parity: still held, unchanged
+Nothing in this ruling touches the reasons it was cancelled at 21:24 — `m22` pins both `chart-host.html` mirrors as the
+expected registry-ABSENT set, and the motivating premise remains refuted.
+
+### Carried (review conditions, accepted as residuals)
+- Next `m22` run **will rewrite one detail line** in its tracked evidence file: recorded `chart-host.html` load order
+  now includes the token. **Expected, not a regression.**
+- `shell-cache-stamp.test.mjs` is **wired into no CI job** — house pattern for all 76 siblings in that directory, not a
+  new omission, but nothing runs it on merge.
+- The ~23-line `chart-host.html` mirror drift is **deliberately preserved** and byte-identical to base.
+
+---
+
+## 2026-07-28 22:16 — STAMP-1 REVERTED `88691742e`; de-route confirmed as the remedy; **nginx alone does not close this route**
+
+Director withdrew the 21:10 finding and the 21:22 ruling in full; **A14.3 stands unamended and the exemption is
+revoked.** Option A confirmed, and the deferral in its tail rejected: the d3 exposure closes **this** train by
+de-routing rather than becoming a next-train security row.
+
+### Revert, and why it was right beyond compliance
+`8f626fdb2` reverted at `88691742e`; all four shells and the test are **byte-identical to `186ee3ab3`** (verified by
+empty `git diff --stat` across those paths). Two independent reasons:
+1. **`shell-cache-stamp.test.mjs` pinned the script inventory and mirror parity of four files scheduled for deletion.**
+   A pin on a corpse is a **non-converging blocker** — precisely how the cut M25 freeze pin blocked R1 earlier today.
+   Leaving it would have handed the de-router a red gate.
+2. The stamp's only benefit accrued to a route we intend to stop answering.
+**Re-land is a single cherry-pick of `8f626fdb2`** if the de-route slips.
+
+### BLOCKING GAP for the de-route — nginx `^~ /chart/multichart/` is necessary but NOT sufficient
+**`api_server.py:27022-27025` mounts the same directory on the app server:**
+`app.mount("/chart/multichart", StaticFiles(directory=_CHART_ROOT_PATH/"multichart", html=True), name="chart_multichart")`.
+An edge redirect does not remove a FastAPI mount. This is not hypothetical — the tracked b75 evidence
+(`b75-indicator-performance-live-audit.json`) reached the sandbox at **`http://31.97.192.82:3000` directly**, i.e. the
+app server, and got **HTTP 200** with two `chart-host.html` child frames. **So the d3/cdnjs exposure survives a
+redirect-only de-route on any path that reaches uvicorn directly.** Complete de-route needs the mount removed as well
+as the redirect. Exhaustive search: `git grep "multichart" -- "*.conf"` returns **one comment and no rule**, so nothing
+currently fronts it.
+
+### Second exposure the de-route also closes (not previously noted)
+`homepage/public/chart/multichart/` ships **9 tracked files, of which three are internal design documents** —
+`README.md`, `decisions.md`, `engine-api-audit.md` — served publicly from the static root. `homepage/Dockerfile`
+copies `dist-v9`, `modules`, `chart.js`, `multichart-prod`, `workers`, `vendor`, `fonts` **but not `multichart`**, so
+these reach the image via the tracked `public/` tree rather than a deliberate asset copy. Another argument for
+de-routing over hardening.
+
+### Order restored
+Switch round-trip sweep, then FIX 2 and FIX 1 concurrently. **Stamp priority cancelled; there was no delivery
+dependency** — the product chain was already stamped end to end (host page b80 -> `chart-embed.html` stamping all 54
+paths -> `injectScript` stamping bridges at `MultichartGrid.jsx:454`).
+
+### Process change accepted
+Runtime-load claims now go to B for a probe before reaching me as work. **This would have caught both of tonight's
+reversals at zero cost** — the a10 fingerprint and the `chart-embed.html` paths array were each one command away.
