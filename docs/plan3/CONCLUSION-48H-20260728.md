@@ -17,6 +17,12 @@ The PO's two decisions, which settle every trade-off below:
 
 **"Get the CPU usage down."** Evidence: `FINDING-CPU-NOT-MEMORY-20260728.md` — 129.3% tab CPU against FX Replay's 24.0 on the same machine with **no indicators loaded**, memory at parity. Owner: **A**. This outranks everything except M4's trade-loss path.
 
+### 1.5.1 The deficit has a shape (PO A/B complete, 12:25) — read this before authoring any CPU work
+
+**The gap is a constant ~33–36 percentage points of CPU regardless of replay speed** (1x: 34.4 vs 1.8. 10x: 114.7 vs 76–80). Ten times the replay work moves the gap by three points. **We are chasing a fixed cost per unit of wall-clock time, not expensive per-tick work** — our per-tick replay cost is roughly 1.3x the competitor's, and memory at 10x is at parity.
+
+**Therefore: measurement 0 and the idle-floor hunt are the whole job.** The untraced ~7.79% idle floor and this constant overhead are very likely the same mechanism, seen at rest and then diluted by real work at speed. Measurements 1–4 below drop to secondary; **measurement 1's 73x resample ceiling is partly contradicted by this data** and must not be briefed as the explanation. Two storage rows are closed: **we store 582 kB against the competitor's 4.3 MB**, so storage growth is refuted, and the 1.6 GB was **runtime retention in a long-lived tab** — measure memory against session duration, not stored bytes.
+
 **No CPU work is authored before the five measurements below land.** Every performance number this project holds was taken on a build whose optimisation module was not loaded, and we have twice spent days on a mechanism that measurement then destroyed. Measure, then cut.
 
 ### The measurements, all cheap, all today
