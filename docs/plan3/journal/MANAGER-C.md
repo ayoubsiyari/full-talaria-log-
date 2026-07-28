@@ -274,3 +274,6 @@ Exactly five ` | `-separated fields after the list marker. Absent fields are wri
 
 2026-07-28T12:11Z | C | REVIEW | packet=R-M6-4 | role=reviewer | tier=top | model=claude-opus-5-thinking-high | result=REJECT | attr=author-defect | "Unmodelled API class (sessionStorage/visibilityState/performance.now); consumer pin proves call not value-flow. W44."
 2026-07-28T12:11Z | C | DISPATCH | packet=W44 | role=author | tier=top | model=claude-opus-5-thinking-high | trigger="Escalate on repeat rejection" | "Close R-M6-4: Proxy fidelity + modelled storage/perf/visibility + value-flow pin; mutants M8-M10."
+
+2026-07-28T12:22Z | C | REVIEW | packet=R-M6-5 | role=reviewer | tier=top | model=claude-opus-5-thinking-high | result=REJECT | attr=author-defect | "Depth-1 Proxy; tracker call-scoped; performance.timeOrigin; body.dataset; payload.context reassignment. W45."
+2026-07-28T12:22Z | C | DISPATCH | packet=W45 | role=author | tier=top | model=claude-opus-5-thinking-high | trigger="Escalate on repeat rejection" | "Close R-M6-5: recursive Proxy + globalThis + module-eval track + timeOrigin/dataset + context reassignment NC; mutants M11-M12."

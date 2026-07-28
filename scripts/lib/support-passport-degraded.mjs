@@ -151,21 +151,81 @@ export function createMemoryStorage() {
 }
 
 /**
- * Own-property Proxy that records reads of missing keys while `tracker.enabled`.
- * Used so an unmodelled browser API cannot stay behaviourally silent inside the gate.
+ * DOMStringMap stand-in: arbitrary string keys are defined behaviour, not unmodelled APIs.
+ * Must not go through the missing-key tracker (R-M6-5 body.dataset carrier).
  */
-export function createTrackedRealmObject(seed, tracker, label) {
-  const target = { ...seed };
-  return new Proxy(target, {
+export function createDatasetMap() {
+  const map = Object.create(null);
+  return new Proxy(map, {
+    get(obj, prop) {
+      if (prop === 'constructor' || prop === 'toString' || typeof prop === 'symbol') {
+        return Reflect.get(Object.prototype, prop);
+      }
+      return Object.prototype.hasOwnProperty.call(obj, prop) ? obj[prop] : undefined;
+    },
+    set(obj, prop, value) {
+      obj[prop] = value == null ? String(value) : String(value);
+      return true;
+    },
+    has: () => true,
+    ownKeys: (obj) => Reflect.ownKeys(obj),
+    getOwnPropertyDescriptor: (obj, prop) => {
+      if (!Object.prototype.hasOwnProperty.call(obj, prop)) {
+        return { configurable: true, enumerable: true, writable: true, value: undefined };
+      }
+      return Reflect.getOwnPropertyDescriptor(obj, prop);
+    },
+  });
+}
+
+function isPlainTrackableObject(value) {
+  if (value === null || typeof value !== 'object') return false;
+  if (Array.isArray(value)) return false;
+  const proto = Object.getPrototypeOf(value);
+  return proto === Object.prototype || proto === null;
+}
+
+/**
+ * Depth-N own-property Proxy (W45). Records missing-key reads while `tracker.enabled`,
+ * and wraps plain nested objects so `performance.timeOrigin` / `document.body.dataset`
+ * cannot hide behind a modelled parent key. Functions are wrapped so their plain-object
+ * returns are also tracked (querySelector / createElement / getElementById).
+ */
+export function createTrackedRealmObject(seed, tracker, label, proxyCache = new WeakMap()) {
+  if (seed !== null && typeof seed === 'object' && proxyCache.has(seed)) {
+    return proxyCache.get(seed);
+  }
+  const target = isPlainTrackableObject(seed) ? { ...seed } : seed;
+  const proxy = new Proxy(target, {
     get(obj, prop, receiver) {
       if (tracker.enabled && (typeof prop === 'string' || typeof prop === 'symbol')) {
         const key = String(prop);
-        if (!Object.prototype.hasOwnProperty.call(obj, prop)
-          && !Object.prototype.hasOwnProperty.call(Object.getPrototypeOf(obj) ?? {}, prop)) {
+        if (!Object.prototype.hasOwnProperty.call(obj, prop)) {
           tracker.unknownReads.push(`${label}.${key}`);
         }
       }
-      return Reflect.get(obj, prop, receiver);
+      const value = Reflect.get(obj, prop, receiver);
+      if (value !== null && typeof value === 'object' && proxyCache.has(value)) {
+        return proxyCache.get(value);
+      }
+      if (typeof value === 'function') {
+        return (...args) => {
+          const result = value.apply(obj, args);
+          if (result !== null && typeof result === 'object' && proxyCache.has(result)) {
+            return proxyCache.get(result);
+          }
+          if (isPlainTrackableObject(result)) {
+            return createTrackedRealmObject(result, tracker, `${label}.${String(prop)}()`, proxyCache);
+          }
+          return result;
+        };
+      }
+      // dataset maps intentionally allow arbitrary keys — do not re-wrap into a tracker.
+      if (prop === 'dataset') return value;
+      if (isPlainTrackableObject(value)) {
+        return createTrackedRealmObject(value, tracker, `${label}.${String(prop)}`, proxyCache);
+      }
+      return value;
     },
     set(obj, prop, value, receiver) {
       return Reflect.set(obj, prop, value, receiver);
@@ -180,6 +240,14 @@ export function createTrackedRealmObject(seed, tracker, label) {
       return Reflect.getOwnPropertyDescriptor(obj, prop);
     },
   });
+  if (seed !== null && typeof seed === 'object') {
+    proxyCache.set(seed, proxy);
+    proxyCache.set(proxy, proxy);
+  }
+  if (target !== seed && target !== null && typeof target === 'object') {
+    proxyCache.set(target, proxy);
+  }
+  return proxy;
 }
 
 function escapeRegExp(literal) {
@@ -302,39 +370,79 @@ export function createSupportPassportRealm(opts) {
     static now() { return nowMs; }
   };
   const events = [];
+  const proxyCache = new WeakMap();
   const sessionStorage = createMemoryStorage();
   const localStorage = createMemoryStorage();
-  const performance = {
+  // timeOrigin is the R-M6-5 sibling of performance.now — must advance with the same clock
+  // base so a warm-up keyed on Date.now() - performance.timeOrigin is live in the gate.
+  const performance = createTrackedRealmObject({
+    timeOrigin: perfOrigin,
     now: () => Math.max(0, nowMs - perfOrigin),
+  }, accessTracker, 'performance', proxyCache);
+  const navigator = createTrackedRealmObject({
+    userAgent: opts.userAgent ?? 'TalariaSupportPassportGate/1.0',
+    hardwareConcurrency: 4,
+    onLine: true,
+    serviceWorker: undefined,
+    storage: undefined,
+  }, accessTracker, 'navigator', proxyCache);
+  const body = {
+    appendChild: (node) => badges.push(node),
+    dataset: createDatasetMap(),
+    setAttribute() {},
+    getAttribute: () => null,
   };
-  const navigator = { userAgent: opts.userAgent ?? 'TalariaSupportPassportGate/1.0' };
+  const documentElement = {
+    appendChild: (node) => badges.push(node),
+    dataset: createDatasetMap(),
+    setAttribute() {},
+    getAttribute: () => null,
+  };
   const document = createTrackedRealmObject({
     readyState: 'loading',
     visibilityState: 'visible',
-    body: { appendChild: (node) => badges.push(node) },
-    documentElement: { appendChild: (node) => badges.push(node) },
+    body,
+    documentElement,
+    cookie: '',
     addEventListener: (name, fn) => { listeners[name] = fn; },
     getElementById: (id) => badges.find((node) => node.id === id) ?? null,
-    createElement: () => ({ style: {}, setAttribute() {} }),
+    createElement: () => ({
+      style: {},
+      dataset: createDatasetMap(),
+      setAttribute() {},
+      getAttribute: () => null,
+    }),
     querySelector: (selector) => (selector.includes('indicator-performance') ? provider : consumer),
-  }, accessTracker, 'document');
+  }, accessTracker, 'document', proxyCache);
+  const location = createTrackedRealmObject({
+    href,
+    protocol: 'https:',
+    host: 'app.talaria.test',
+    pathname: '/dashboard/support',
+  }, accessTracker, 'location', proxyCache);
   const window = createTrackedRealmObject({
     document,
     dispatchEvent: (event) => events.push(event),
     console: { error() {} },
-    location: { href },
+    location,
     navigator,
     sessionStorage,
     localStorage,
     performance,
-  }, accessTracker, 'window');
+  }, accessTracker, 'window', proxyCache);
+  // Browser identity: globalThis === window. A gate where they differ hides globalThis.indexedDB.
+  window.globalThis = window;
+  window.window = window;
+  window.self = window;
   const moduleObj = { exports: {} };
   const context = vm.createContext({
     window,
     self: window,
+    globalThis: window,
     document,
     navigator,
     performance,
+    location,
     console: window.console,
     Date: RealmDate,
     CustomEvent: class { constructor(type, init) { this.type = type; this.detail = init?.detail; } },
@@ -348,6 +456,7 @@ export function createSupportPassportRealm(opts) {
     },
   });
 
+  // Runtime boot may touch many host keys; fidelity tracking starts at supportUi eval.
   vm.runInContext(opts.runtimeSource, context, { filename: MODULE_PRESENCE_RUNTIME_RELATIVE_PATH });
   if (providerPresent) {
     vm.runInContext(opts.indicatorPerfSource, context, { filename: INDICATOR_PERFORMANCE_RELATIVE_PATH });
@@ -368,17 +477,24 @@ export function createSupportPassportRealm(opts) {
     }
   }
 
-  vm.runInContext(
-    transpileSupportUi({ typescript: opts.typescript, supportUiSource: opts.supportUiSource }),
-    context,
-    { filename: SUPPORT_UI_RELATIVE_PATH },
-  );
+  // Module-scope caches (R-M6-5 C1) run during eval — tracker must be armed here too.
+  accessTracker.unknownReads.length = 0;
+  accessTracker.enabled = true;
+  try {
+    vm.runInContext(
+      transpileSupportUi({ typescript: opts.typescript, supportUiSource: opts.supportUiSource }),
+      context,
+      { filename: SUPPORT_UI_RELATIVE_PATH },
+    );
+  } finally {
+    accessTracker.enabled = false;
+  }
+  const moduleEvalUnknownReads = [...accessTracker.unknownReads];
 
   const rawBuildSupportContext = moduleObj.exports?.buildSupportContext;
   if (typeof rawBuildSupportContext !== 'function') {
     throw new Error('supportUi.tsx did not export buildSupportContext');
   }
-  // Track only passport reads — runtime boot may touch many undeclared keys.
   const buildSupportContext = (...args) => {
     accessTracker.unknownReads.length = 0;
     accessTracker.enabled = true;
@@ -399,6 +515,7 @@ export function createSupportPassportRealm(opts) {
     sessionStorage,
     localStorage,
     performance,
+    moduleEvalUnknownReads,
   };
 }
 
@@ -515,7 +632,7 @@ export function runPassportDegradedTemporalCell(deps) {
     const runtimeSeen = [];
     const observed = [];
     const clockMarks = [];
-    const unknownReads = [];
+    const unknownReads = [...(realm.moduleEvalUnknownReads ?? [])];
     const observe = () => {
       clockMarks.push(realm.clock.now());
       runtimeSeen.push(readRuntime());
@@ -588,14 +705,24 @@ export function runPassportDegradedRealmFidelityCell(deps) {
   const cell = 'PASSPORT-DEGRADED-REALM-FIDELITY';
   try {
     const realm = createSupportPassportRealm({ ...deps, providerPresent: true });
+    // Run the temporal sequence so cache-hit-path reads are observed (R-M6-5).
+    const unknownReads = [...(realm.moduleEvalUnknownReads ?? [])];
     realm.buildSupportContext();
-    const unknownReads = [...(realm.accessTracker?.unknownReads ?? [])];
-    // Non-vacuity: the modelled surfaces the R-M6-4 carriers used must actually exist.
+    unknownReads.push(...(realm.accessTracker?.unknownReads ?? []));
+    realm.clock.advance(TEMPORAL_CLOCK_ADVANCE_MS);
+    realm.window.__talariaMarkMissingModule('OrderOverlay');
+    realm.buildSupportContext();
+    unknownReads.push(...(realm.accessTracker?.unknownReads ?? []));
+    // Non-vacuity: the modelled surfaces R-M6-4/5 carriers used must actually exist.
     const modelledSurfacesPresent = realm.window.sessionStorage != null
       && realm.window.localStorage != null
       && typeof realm.window.performance?.now === 'function'
+      && Number.isFinite(realm.window.performance?.timeOrigin)
       && realm.document.visibilityState === 'visible'
-      && realm.document.readyState === 'complete';
+      && realm.document.readyState === 'complete'
+      && realm.document.body?.dataset != null
+      && realm.window.globalThis === realm.window
+      && realm.window.location?.protocol === 'https:';
     const pass = unknownReads.length === 0 && modelledSurfacesPresent;
     return cellResult(cell, pass, {
       unknownReads,
@@ -603,6 +730,8 @@ export function runPassportDegradedRealmFidelityCell(deps) {
       readyState: realm.document.readyState,
       visibilityState: realm.document.visibilityState,
       performanceNow: realm.window.performance.now(),
+      performanceTimeOrigin: realm.window.performance.timeOrigin,
+      globalThisIsWindow: realm.window.globalThis === realm.window,
     });
   } catch (error) {
     return redCell(cell, String(error?.message ?? error));
@@ -874,6 +1003,55 @@ export const SUPPORT_PASSPORT_BEHAVIORAL_MUTANTS = [
       );
     },
   },
+  {
+    id: 'M11',
+    name: 'NC-MUTANT-PERFORMANCE-TIMEORIGIN-WARMUP',
+    describes:
+      'warm-up keyed on performance.timeOrigin — the R-M6-5 sibling of the modelled performance.now',
+    apply: (src) => {
+      if (!src.includes(MEMOIZED_PASSPORT_HEADER) || !src.includes(MEMOIZED_PASSPORT_TAIL)) {
+        return null;
+      }
+      return src
+        .replace(
+          MEMOIZED_PASSPORT_HEADER,
+          'let __passportCache: Record<string, string | string[]> | null = null;\n'
+          + `${MEMOIZED_PASSPORT_HEADER}\n`
+          + '  if (__passportCache !== null && Date.now() - performance.timeOrigin > 30_000) '
+          + 'return __passportCache;',
+        )
+        .replace(MEMOIZED_PASSPORT_TAIL, '  __passportCache = ctx;\n  return ctx;\n}');
+    },
+  },
+  {
+    id: 'M12',
+    name: 'NC-MUTANT-BODY-DATASET-CACHE',
+    describes:
+      'passport stashed on document.body.dataset — depth-2 store that hid behind modelled body',
+    apply: (src) => {
+      if (!src.includes(MEMOIZED_PASSPORT_HEADER) || !src.includes(MEMOIZED_PASSPORT_TAIL)) {
+        return null;
+      }
+      return src
+        .replace(
+          MEMOIZED_PASSPORT_HEADER,
+          `${MEMOIZED_PASSPORT_HEADER}\n`
+          + '  try {\n'
+          + '    const __raw = document.body?.dataset?.talariaSupportCtx;\n'
+          + '    if (__raw) return JSON.parse(__raw);\n'
+          + '  } catch { /* ignore */ }\n',
+        )
+        .replace(
+          MEMOIZED_PASSPORT_TAIL,
+          '  try {\n'
+          + '    if (document.body?.dataset) {\n'
+          + '      document.body.dataset.talariaSupportCtx = JSON.stringify(ctx);\n'
+          + '    }\n'
+          + '  } catch { /* ignore */ }\n'
+          + '  return ctx;\n}',
+        );
+    },
+  },
 ];
 
 /**
@@ -1138,6 +1316,34 @@ export function callResultReachesContextPayload(ts, callNode) {
 }
 
 /**
+ * True when the enclosing submit handler reassigns `*.context` or `*.degradedModules`
+ * after the passport call — the R-M6-5 carrier that left the pin GREEN while overwriting
+ * the payload one statement later.
+ */
+export function hasContextReassignmentAfterCall(ts, callNode) {
+  const scope = enclosingFunctionNode(ts, callNode);
+  if (!scope) return false;
+  const callPos = callNode.getStart();
+  let found = false;
+  const visit = (node) => {
+    if (found) return;
+    if (ts.isBinaryExpression(node)
+      && node.operatorToken.kind === ts.SyntaxKind.EqualsToken
+      && node.getStart() > callPos
+      && ts.isPropertyAccessExpression(node.left)) {
+      const name = node.left.name.text;
+      if (name === 'context' || name === 'degradedModules') {
+        found = true;
+        return;
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(scope);
+  return found;
+}
+
+/**
  * Counts real call sites of `buildSupportContext` by walking the TypeScript AST. A pin on
  * the AST cannot be paid by a comment, a string, a template literal, a regex literal or
  * JSX text, because none of those parse to a CallExpression — the decoy classes that a
@@ -1181,12 +1387,14 @@ export function inspectConsumerCallPath({ typescript: ts, relativePath, source }
         const onSubmitHandler = SUPPORT_PASSPORT_SUBMIT_HANDLER_NAMES.includes(enclosingFunction)
           && !insideUseMemo;
         const valueReachesContext = callResultReachesContextPayload(ts, node);
+        const contextReassignedAfter = hasContextReassignmentAfterCall(ts, node);
         callSites.push({
           line: sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile)).line + 1,
           enclosingFunction,
           insideUseMemo,
           onSubmitHandler,
           valueReachesContext,
+          contextReassignedAfter,
         });
       }
     }
@@ -1197,7 +1405,7 @@ export function inspectConsumerCallPath({ typescript: ts, relativePath, source }
   const callLines = callSites.map((site) => site.line);
   const submitHandlerCallCount = callSites.filter((site) => site.onSubmitHandler).length;
   const valueFlowCallCount = callSites.filter(
-    (site) => site.onSubmitHandler && site.valueReachesContext,
+    (site) => site.onSubmitHandler && site.valueReachesContext && !site.contextReassignedAfter,
   ).length;
 
   return {
@@ -1458,6 +1666,90 @@ export function runNcConsumerValueFrozenCell(deps) {
 }
 
 /**
+ * Leaves `context: buildSupportContext()` byte-identical, then overwrites the payload
+ * field one statement later — the R-M6-5 carrier.
+ * @param {string} source
+ */
+export function reassignConsumerContextAfterPayload(source) {
+  if (source.includes('context: buildSupportContext()')) {
+    const marker = 'context: buildSupportContext(),';
+    if (!source.includes(marker)) return null;
+    // Insert reassignment after the payload object closes — match the SupportInbox shape.
+    const replaced = source.replace(
+      /(context: buildSupportContext\(\),[\s\S]*?\n\s*\};)/,
+      '$1\n    if (!(globalThis as any).__talariaSupportSnap) {\n'
+      + '      (globalThis as any).__talariaSupportSnap = (payload as { context: unknown }).context;\n'
+      + '    }\n'
+      + '    (payload as { context: unknown }).context = (globalThis as any).__talariaSupportSnap;',
+    );
+    return replaced === source ? null : replaced;
+  }
+  if (source.includes('const ctx = buildSupportContext();')) {
+    const replaced = source.replace(
+      /const ctx = buildSupportContext\(\);/,
+      'const ctx = buildSupportContext();\n'
+      + '    if (!(globalThis as any).__talariaSupportSnap) {\n'
+      + '      (globalThis as any).__talariaSupportSnap = ctx.degradedModules;\n'
+      + '    }\n'
+      + '    ctx.degradedModules = (globalThis as any).__talariaSupportSnap;',
+    );
+    return replaced === source ? null : replaced;
+  }
+  return null;
+}
+
+/**
+ * @param {Parameters<typeof runConsumerCallPathCell>[0]} deps
+ */
+export function runNcConsumerContextReassignedCell(deps) {
+  const cell = 'NC-CONSUMER-CONTEXT-REASSIGNED';
+  try {
+    const results = SUPPORT_PASSPORT_CONSUMERS.map((consumer) => {
+      const source = consumerSource(deps, consumer);
+      if (source === null) {
+        return { id: consumer.id, applied: false, wentRed: false, reason: 'consumer source unreadable' };
+      }
+      const mutated = reassignConsumerContextAfterPayload(source);
+      if (mutated === null) {
+        return { id: consumer.id, applied: false, wentRed: false, reason: 'reassignment could not be applied' };
+      }
+      const baseline = inspectConsumerCallPath({
+        typescript: deps.typescript,
+        relativePath: consumer.relativePath,
+        source,
+      });
+      const facts = inspectConsumerCallPath({
+        typescript: deps.typescript,
+        relativePath: consumer.relativePath,
+        source: mutated,
+      });
+      const mutatedCell = runConsumerCallPathCell({
+        ...deps,
+        consumerSources: { ...deps.consumerSources, [consumer.relativePath]: mutated },
+      });
+      const reassigned = facts.callSites?.some((site) => site.contextReassignedAfter === true);
+      return {
+        id: consumer.id,
+        applied: true,
+        callCountSurvived: facts.callCount >= baseline.callCount && facts.callCount >= 1,
+        submitHandlerSurvived: facts.submitHandlerCallCount >= 1,
+        importSurvived: facts.importsFromSupportUi === true,
+        reassignmentDetected: reassigned === true,
+        valueFlowLost: facts.valueFlowCallCount === 0 && baseline.valueFlowCallCount >= 1,
+        wentRed: mutatedCell.pass === false && reassigned === true && facts.valueFlowCallCount === 0,
+      };
+    });
+    const pass = results.length > 0 && results.every(
+      (r) => r.applied && r.wentRed && r.callCountSurvived && r.submitHandlerSurvived
+        && r.importSurvived && r.reassignmentDetected && r.valueFlowLost,
+    );
+    return cellResult(cell, pass, { results }, 'wiring');
+  } catch (error) {
+    return redCell(cell, String(error?.message ?? error), 'wiring');
+  }
+}
+
+/**
  * The decoy classes a substring pin has to survive, including the two R-M6-2 named: a
  * regex literal and JSX text. Each is appended to the consumer twice — once to a source
  * whose real call has been deleted (the decoy must not pay the pin) and once to the intact
@@ -1623,6 +1915,7 @@ export function runSupportPassportDegradedGate(opts) {
     runNcConsumerCallDeletedCell(deps),
     runNcConsumerCallHoistedUseMemoCell(deps),
     runNcConsumerValueFrozenCell(deps),
+    runNcConsumerContextReassignedCell(deps),
     runNcConsumerPinDecoysCell(deps),
     probeServerContextCoercionFinding(opts.apiServerSource ?? null),
   ];
