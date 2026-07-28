@@ -63,6 +63,24 @@ I am not choosing between these unilaterally: option 1 changes what A's consumer
 
 **Mine either way, and I will proceed on these:** the three writers, `_m19DockNowTs` tier ordering, and `_m19DockTimeLabel`. RED first, and the RED must fail on **all three** sources — a gate that only catches the margin stamp would certify the partial fix.
 
+## Appendix — line anchors, re-verified at HEAD after the B-W14 revert
+
+B-R8's citations were taken against the modified tree; the +176 lines are gone, so they no longer resolve. These are the **HEAD** anchors, and they are the ones a rebuild should use.
+
+| What | HEAD line |
+|---|---|
+| `const barTime = Number(bar.t) \|\| undefined;` — only source of `bgCloseTime`, destroys a legitimate `0` | `order-manager.js:2584` |
+| `const holdingTimeMs = closeTime - position.openTime;` — unguarded | `order-manager.js:30920` **and** `:33680` |
+| `_m19DockNowTs()` | `order-manager.js:32904` |
+| `current_time = activeCandle.t` — the only bar-time writer | `order-manager.js:31960` |
+| `session_current_time:` — persistence builders | `order-manager.js:4153`, `:7333`, `:8380` |
+| `current_time = Date.now()` — margin stamp | `order-service.js:446` |
+| `current_time: now` — construction seed | `order-service.js:38-49` |
+
+**The unguarded duration computation is duplicated at two sites** (`:30920`, `:33680`), not one. B-R8 cited only the first. A fix that guards one and not the other would pass a gate built from that report — which is precisely how a partial fix gets certified.
+
+**Correction to B-R8's E-1, in the rejected packet's favour:** E-1 describes `closePosition()` as "still writing the original defect". The magnitude is right (a garbage `openTime` yields ~464592 hours) but the label is not. `closeTime = currentCandle.t` (`:30849` in the modified tree) is a **bar time**, so the manual-close path carries no wall-clock contamination. Its 53-year figure comes from an unguarded `openTime`. That is a different defect from the one M10 was raised for, and conflating the two would send a rebuild hunting a clock bug that is not in that function.
+
 ## Not claimed
 
 - I have not reproduced this in a browser. The chain is established by reading code, and every link is cited above.
