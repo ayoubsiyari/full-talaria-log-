@@ -9,6 +9,8 @@ import {
   installRenderCounter,
   assertAtRest,
   assertNoRenderWithoutDataChange,
+  installIdleObserveProbe,
+  assertIdleMainThreadBudget,
   HERMETIC_REST_PINNED_ALLOWLIST,
 } from './teardown-census-probe.mjs';
 
@@ -52,6 +54,7 @@ export function createHermeticHost() {
  * @typedef {{
  *   restOrphanInterval?: boolean,
  *   idleRenderWithoutData?: boolean,
+ *   idlePeriodicRafWithoutCommit?: boolean,
  * }} RestMutationFlags
  */
 
@@ -140,6 +143,7 @@ export function openIdleRestSim(renderCounter, global, flags = {}) {
     listener: () => {},
     interval: null,
     idleRenderInterval: null,
+    stopIdleRaf: null,
   };
 
   global.window.addEventListener('resize', handles.listener);
@@ -155,7 +159,20 @@ export function openIdleRestSim(renderCounter, global, flags = {}) {
     }, 16);
   }
 
+  if (flags.idlePeriodicRafWithoutCommit) {
+    let rafActive = true;
+    const loop = () => {
+      if (!rafActive) return;
+      global.requestAnimationFrame(loop);
+    };
+    global.requestAnimationFrame(loop);
+    handles.stopIdleRaf = () => {
+      rafActive = false;
+    };
+  }
+
   function cleanup() {
+    handles.stopIdleRaf?.();
     if (handles.interval != null) global.clearInterval(handles.interval);
     if (handles.idleRenderInterval != null) global.clearInterval(handles.idleRenderInterval);
     global.window.removeEventListener('resize', handles.listener);
@@ -175,6 +192,7 @@ export async function runHermeticRestStateCycle(mutationFlags = {}, options = {}
   const allowlist = options.allowlist ?? HERMETIC_REST_PINNED_ALLOWLIST;
   const host = createHermeticHost();
   const census = installCensus(host);
+  const idleProbe = installIdleObserveProbe(host);
   const renderCounter = installRenderCounter(host);
   let sim;
   try {
@@ -187,31 +205,53 @@ export async function runHermeticRestStateCycle(mutationFlags = {}, options = {}
     });
 
     const beforeObserve = renderCounter.read();
+    const beforeIdle = idleProbe.read();
     await waitSettle(observeMs);
     const afterObserve = renderCounter.read();
+    const afterIdle = idleProbe.read();
     const renderVerdict = assertNoRenderWithoutDataChange({
       rendersBefore: beforeObserve.renderCount,
       rendersAfter: afterObserve.renderCount,
       commitsBefore: beforeObserve.commitCount,
       commitsAfter: afterObserve.commitCount,
     });
+    const idleBudgetVerdict = assertIdleMainThreadBudget({
+      commitsBefore: beforeObserve.commitCount,
+      commitsAfter: afterObserve.commitCount,
+      rafTicksBefore: beforeIdle.rafTicks,
+      rafTicksAfter: afterIdle.rafTicks,
+      intervalCallbacksBefore: beforeIdle.intervalCallbacks,
+      intervalCallbacksAfter: afterIdle.intervalCallbacks,
+      longTasksBefore: beforeIdle.longTasks,
+      longTasksAfter: afterIdle.longTasks,
+    });
 
     const status =
-      atRestVerdict.status === 'GREEN' && renderVerdict.status === 'GREEN' ? 'GREEN' : 'RED';
-    const violations = [...atRestVerdict.violations, ...renderVerdict.violations];
+      atRestVerdict.status === 'GREEN' &&
+      renderVerdict.status === 'GREEN' &&
+      idleBudgetVerdict.status === 'GREEN'
+        ? 'GREEN'
+        : 'RED';
+    const violations = [
+      ...atRestVerdict.violations,
+      ...renderVerdict.violations,
+      ...idleBudgetVerdict.violations,
+    ];
 
     return {
       status,
       ok: status === 'GREEN',
       atRestVerdict,
       renderVerdict,
+      idleBudgetVerdict,
       violations,
-      phases: { atRestSnapshot, beforeObserve, afterObserve },
+      phases: { atRestSnapshot, beforeObserve, afterObserve, beforeIdle, afterIdle },
       mutationFlags,
       allowlist: allowlist.name,
     };
   } finally {
     sim?.cleanup?.();
+    idleProbe.uninstall();
     census.uninstall();
   }
 }
@@ -249,4 +289,12 @@ export async function runHermeticTeardownCycle(mutationFlags = {}, options = {})
   }
 }
 
-export { installCensus, assertReturnedToBaseline, installRenderCounter, assertAtRest, assertNoRenderWithoutDataChange };
+export {
+  installCensus,
+  assertReturnedToBaseline,
+  installRenderCounter,
+  assertAtRest,
+  assertNoRenderWithoutDataChange,
+  installIdleObserveProbe,
+  assertIdleMainThreadBudget,
+};

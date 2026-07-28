@@ -257,3 +257,11 @@ Exactly five ` | `-separated fields after the list marker. Absent fields are wri
 2026-07-28T11:50Z | C | DISPATCH | packet=W38 | role=author | tier=mid | model=composer-2.5-fast | "Storage-growth census per FINDING controlled-ladder Correction 1."
 2026-07-28T11:50Z | C | DISPATCH | packet=W39 | role=author | tier=mid | model=composer-2.5-fast | "Extend rest-state with idle CPU/main-thread budget; reinforce no-render-without-data for D1."
 2026-07-28T11:50Z | C | HYGIENE | ref=Manager-trailer | "Every C commit must carry Manager:/Row:/Packet:/Tier: trailers."
+
+2026-07-28T12:05Z | C | REVIEW | packet=R-M6 | role=reviewer | tier=top | model=claude-opus-5-thinking-high | result=REJECT | attr=author-defect | "Vacuous mirror; substring pins; tautological NC; api_server str coerce out-of-band."
+2026-07-28T12:05Z | C | REVIEW | packet=R-M5 | role=reviewer | tier=top | model=claude-opus-5-thinking-high | result=REJECT | attr=author-defect | "comparedCount missing; all-null GREEN; EMA/DEMA clone reference."
+2026-07-28T12:10Z | C | DISPATCH | packet=W40 | role=author | tier=top | model=claude-opus-5-thinking-high | trigger="Escalate on repeat rejection" | "Close R-M6."
+2026-07-28T12:10Z | C | DISPATCH | packet=W41 | role=author | tier=top | model=claude-opus-5-thinking-high | trigger="Escalate on repeat rejection" | "Close R-M5."
+2026-07-28T12:20Z | C | REVIEW | packet=R-M5-2 | role=reviewer | tier=top | model=claude-opus-5-thinking-high | result=ACCEPT | "All-null UNPROVEN; inject 1e-6 RED all families; drift ratchet intact. Non-blocking: wire CI workflow; worker EMA/DEMA ungraded."
+2026-07-28T12:20Z | C | REVIEW | packet=R-M6-2 | role=reviewer | tier=top | model=claude-opus-5-thinking-high | result=REJECT | attr=author-defect | "Memoization/temporal hole: per-call cache keeps gate GREEN while second ticket loses modules. Source pin prefix unfalsifiable; regex/JSX pay pin. W42."
+2026-07-28T12:20Z | C | DISPATCH | packet=W42 | role=author | tier=top | model=claude-opus-5-thinking-high | trigger="Escalate on repeat rejection" | "Temporal passport cell + kill memoization; behavioral alias boot."

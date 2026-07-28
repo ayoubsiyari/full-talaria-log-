@@ -15,6 +15,8 @@
       installRenderCounter,
       assertAtRest,
       assertNoRenderWithoutDataChange,
+      installIdleObserveProbe,
+      assertIdleMainThreadBudget,
       TEARDOWN_CENSUS_PROBE_SIGNATURE,
       REST_STATE_CENSUS_PROBE_SIGNATURE,
       HERMETIC_REST_PINNED_ALLOWLIST,
@@ -113,6 +115,7 @@
 
     async function runRestState() {
       const census = installCensus(globalThis);
+      const idleProbe = installIdleObserveProbe(globalThis);
       const renderCounter = installRenderCounter(globalThis);
       let sim;
       try {
@@ -124,16 +127,32 @@
           extraLimits: { listeners: 2, messageChannelPorts: 0, broadcastChannels: 0 },
         });
         const beforeObserve = renderCounter.read();
+        const beforeIdle = idleProbe.read();
         await new Promise((r) => setTimeout(r, settleMs));
         const afterObserve = renderCounter.read();
+        const afterIdle = idleProbe.read();
         const renderVerdict = assertNoRenderWithoutDataChange({
           rendersBefore: beforeObserve.renderCount,
           rendersAfter: afterObserve.renderCount,
           commitsBefore: beforeObserve.commitCount,
           commitsAfter: afterObserve.commitCount,
         });
+        const idleBudgetVerdict = assertIdleMainThreadBudget({
+          commitsBefore: beforeObserve.commitCount,
+          commitsAfter: afterObserve.commitCount,
+          rafTicksBefore: beforeIdle.rafTicks,
+          rafTicksAfter: afterIdle.rafTicks,
+          intervalCallbacksBefore: beforeIdle.intervalCallbacks,
+          intervalCallbacksAfter: afterIdle.intervalCallbacks,
+          longTasksBefore: beforeIdle.longTasks,
+          longTasksAfter: afterIdle.longTasks,
+        });
         const status =
-          atRestVerdict.status === 'GREEN' && renderVerdict.status === 'GREEN' ? 'GREEN' : 'RED';
+          atRestVerdict.status === 'GREEN' &&
+          renderVerdict.status === 'GREEN' &&
+          idleBudgetVerdict.status === 'GREEN'
+            ? 'GREEN'
+            : 'RED';
         document.getElementById('status').textContent = status;
         await fetch('/report', {
           method: 'POST',
@@ -145,11 +164,13 @@
             settleMs,
             atRestVerdict,
             renderVerdict,
+            idleBudgetVerdict,
             cell: 'BROWSER-REST-STATE-CYCLE',
           }),
         });
       } finally {
         sim?.cleanup?.();
+        idleProbe.uninstall();
         census.uninstall();
       }
     }

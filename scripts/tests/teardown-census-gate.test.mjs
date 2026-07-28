@@ -8,6 +8,10 @@ import {
   assertReturnedToBaseline,
   assertAtRest,
   assertNoRenderWithoutDataChange,
+  installIdleObserveProbe,
+  assertIdleMainThreadBudget,
+  REST_IDLE_RAF_TICKS_MAX,
+  REST_IDLE_LONGTASK_MAX,
   installCensus,
   installRenderCounter,
   HERMETIC_REST_PINNED_ALLOWLIST,
@@ -170,7 +174,44 @@ test('NC-IDLE-RENDER-WITHOUT-DATA: idle timer render RED', async () => {
     { settleMs: 20, observeMs: 30 },
   );
   assert.equal(result.status, 'RED');
-  assert.ok(result.violations.some((v) => v.includes('idle-render')));
+  assert.ok(
+    result.violations.some((v) => v.includes('idle-render') || v.includes('idle-interval-callbacks')),
+  );
+});
+
+test('NC-IDLE-PERIODIC-RAF-WITHOUT-COMMIT: standing rAF cadence RED', async () => {
+  const result = await runHermeticRestStateCycle(
+    { idlePeriodicRafWithoutCommit: true },
+    { settleMs: 20, observeMs: 40 },
+  );
+  assert.equal(result.status, 'RED');
+  assert.ok(result.violations.some((v) => v.includes('idle-raf-ticks')));
+});
+
+test('REST-IDLE-MAIN-THREAD-BUDGET: pinned rAF tick max is zero', () => {
+  assert.equal(REST_IDLE_RAF_TICKS_MAX, 0);
+  assert.equal(REST_IDLE_LONGTASK_MAX, 0);
+});
+
+test('assertIdleMainThreadBudget GREEN when no rAF ticks without commits', () => {
+  const verdict = assertIdleMainThreadBudget({
+    commitsBefore: 0,
+    commitsAfter: 0,
+    rafTicksBefore: 0,
+    rafTicksAfter: 0,
+  });
+  assert.equal(verdict.status, 'GREEN');
+});
+
+test('assertIdleMainThreadBudget RED on rAF cadence without commits', () => {
+  const verdict = assertIdleMainThreadBudget({
+    commitsBefore: 0,
+    commitsAfter: 0,
+    rafTicksBefore: 0,
+    rafTicksAfter: 4,
+  });
+  assert.equal(verdict.status, 'RED');
+  assert.ok(verdict.violations.some((v) => v.includes('idle-raf-ticks')));
 });
 
 test('REST-ALLOWLIST-PINNED: permissive limit cannot silence undeclared interval', () => {
@@ -227,9 +268,11 @@ test('gate: runHermeticRestStateCensusGate aggregates GREEN', async () => {
   assert.equal(gate.ok, true);
   const cellNames = gate.cells.map((c) => c.cell);
   assert.ok(cellNames.includes('REST-SCHEDULED-WORK-ZERO'));
+  assert.ok(cellNames.includes('REST-IDLE-MAIN-THREAD-BUDGET'));
   assert.ok(cellNames.includes('REST-ALLOWLIST-PINNED'));
   assert.ok(cellNames.includes('NC-REST-ORPHAN-INTERVAL'));
   assert.ok(cellNames.includes('NC-IDLE-RENDER-WITHOUT-DATA'));
+  assert.ok(cellNames.includes('NC-IDLE-PERIODIC-RAF-WITHOUT-COMMIT'));
 });
 
 test('fault-injection: rest browser missing returns UNPROVEN not GREEN', async () => {

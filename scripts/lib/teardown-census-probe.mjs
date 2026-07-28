@@ -32,6 +32,14 @@ export const HERMETIC_REST_PINNED_ALLOWLIST = {
   declaredScheduled: { timeouts: 0, intervals: 0, animationFrames: 0 },
 };
 
+/**
+ * Pinned idle observe budgets (hermetic window — not fitted to Task Manager CPU%).
+ * Zero data commits during observe ⇒ no self-sustaining rAF/interval cadence or long tasks.
+ */
+export const REST_IDLE_RAF_TICKS_MAX = 0;
+export const REST_IDLE_INTERVAL_CALLBACKS_MAX = 0;
+export const REST_IDLE_LONGTASK_MAX = 0;
+
 /** @typedef {{
  *   timeouts: number,
  *   intervals: number,
@@ -372,6 +380,129 @@ export function assertNoRenderWithoutDataChange(window) {
     ok: status === 'GREEN',
     commitDelta,
     renderDelta,
+    violations,
+  };
+}
+
+/**
+ * Count scheduled callback invocations during rest observe (install after installCensus).
+ * @param {object} global
+ */
+export function installIdleObserveProbe(global) {
+  let rafTicks = 0;
+  let intervalCallbacks = 0;
+
+  const origRaf = global.requestAnimationFrame?.bind(global);
+  const origSetInterval = global.setInterval?.bind(global);
+
+  if (origRaf) {
+    global.requestAnimationFrame = (cb) =>
+      origRaf((ts) => {
+        rafTicks += 1;
+        return cb(ts);
+      });
+  }
+
+  if (origSetInterval) {
+    global.setInterval = (fn, delay, ...rest) => {
+      const wrapped = (...args) => {
+        intervalCallbacks += 1;
+        return fn(...args);
+      };
+      return origSetInterval(wrapped, delay, ...rest);
+    };
+  }
+
+  let longTasks = 0;
+  /** @type {PerformanceObserver | null} */
+  let longTaskObserver = null;
+  if (typeof global.PerformanceObserver !== 'undefined') {
+    try {
+      longTaskObserver = new global.PerformanceObserver((list) => {
+        longTasks += list.getEntries().length;
+      });
+      longTaskObserver.observe({ entryTypes: ['longtask'] });
+    } catch {
+      longTaskObserver = null;
+    }
+  }
+
+  /** @returns {{ rafTicks: number, intervalCallbacks: number, longTasks: number }} */
+  function read() {
+    return { rafTicks, intervalCallbacks, longTasks };
+  }
+
+  function uninstall() {
+    if (origRaf) global.requestAnimationFrame = origRaf;
+    if (origSetInterval) global.setInterval = origSetInterval;
+    longTaskObserver?.disconnect();
+  }
+
+  return { read, uninstall };
+}
+
+/**
+ * @param {{
+ *   commitsBefore: number,
+ *   commitsAfter: number,
+ *   rafTicksBefore: number,
+ *   rafTicksAfter: number,
+ *   intervalCallbacksBefore?: number,
+ *   intervalCallbacksAfter?: number,
+ *   longTasksBefore?: number,
+ *   longTasksAfter?: number,
+ *   budgets?: {
+ *     rafTicksMax?: number,
+ *     intervalCallbacksMax?: number,
+ *     longTasksMax?: number,
+ *   },
+ * }} window
+ */
+export function assertIdleMainThreadBudget(window) {
+  const commitDelta = window.commitsAfter - window.commitsBefore;
+  const rafTickDelta = window.rafTicksAfter - window.rafTicksBefore;
+  const intervalCbDelta =
+    (window.intervalCallbacksAfter ?? 0) - (window.intervalCallbacksBefore ?? 0);
+  const longTaskDelta = (window.longTasksAfter ?? 0) - (window.longTasksBefore ?? 0);
+
+  const rafTicksMax = window.budgets?.rafTicksMax ?? REST_IDLE_RAF_TICKS_MAX;
+  const intervalCallbacksMax =
+    window.budgets?.intervalCallbacksMax ?? REST_IDLE_INTERVAL_CALLBACKS_MAX;
+  const longTasksMax = window.budgets?.longTasksMax ?? REST_IDLE_LONGTASK_MAX;
+
+  const violations = [];
+  if (commitDelta === 0) {
+    if (rafTickDelta > rafTicksMax) {
+      violations.push(
+        `idle-raf-ticks:delta=${rafTickDelta}:max=${rafTicksMax}:commitDelta=${commitDelta}`,
+      );
+    }
+    if (intervalCbDelta > intervalCallbacksMax) {
+      violations.push(
+        `idle-interval-callbacks:delta=${intervalCbDelta}:max=${intervalCallbacksMax}:commitDelta=${commitDelta}`,
+      );
+    }
+    if (longTaskDelta > longTasksMax) {
+      violations.push(
+        `idle-longtask:delta=${longTaskDelta}:max=${longTasksMax}:commitDelta=${commitDelta}`,
+      );
+    }
+  }
+
+  const status = violations.length === 0 ? 'GREEN' : 'RED';
+  return {
+    status,
+    signature: REST_STATE_CENSUS_PROBE_SIGNATURE,
+    ok: status === 'GREEN',
+    commitDelta,
+    rafTickDelta,
+    intervalCbDelta,
+    longTaskDelta,
+    budgets: {
+      rafTicksMax,
+      intervalCallbacksMax,
+      longTasksMax,
+    },
     violations,
   };
 }

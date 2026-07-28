@@ -7,8 +7,9 @@
  * chart.js wiring for census-before/after real MC open/teardown is documented follow-up.
  *
  * Header: product idle loop diagnosis (Q2 countdown etc.) is chart authoring; this gate
- * catches the class (standing timers/rAF + render-without-commit). CPU magnitude claims
- * still require PO-PROTOCOL-CPU-AB phases.
+ * catches the class (standing timers/rAF + render-without-commit + idle main-thread budget).
+ * Absolute tab CPU% acceptance remains PO-PROTOCOL-CPU-AB P1; REST-IDLE-MAIN-THREAD-BUDGET
+ * keeps D1 fixed once periodic idle work is removed.
  *
  * REAL-SETTLE cell: browser soak may use 60s settle; hermetic CI default settleMs 50–200ms
  * (configurable via --settle-ms=).
@@ -159,6 +160,11 @@ export async function runHermeticRestStateCensusGate(options = {}) {
       status: green.renderVerdict.status,
       ...green.renderVerdict,
     },
+    {
+      cell: 'REST-IDLE-MAIN-THREAD-BUDGET',
+      status: green.idleBudgetVerdict.status,
+      ...green.idleBudgetVerdict,
+    },
   ];
 
   const allowlistPinned = await runHermeticRestStateCycle(
@@ -182,6 +188,10 @@ export async function runHermeticRestStateCensusGate(options = {}) {
   const mutations = [
     { cell: 'NC-REST-ORPHAN-INTERVAL', flags: { restOrphanInterval: true } },
     { cell: 'NC-IDLE-RENDER-WITHOUT-DATA', flags: { idleRenderWithoutData: true } },
+    {
+      cell: 'NC-IDLE-PERIODIC-RAF-WITHOUT-COMMIT',
+      flags: { idlePeriodicRafWithoutCommit: true },
+    },
   ];
 
   for (const { cell, flags } of mutations) {
@@ -194,7 +204,7 @@ export async function runHermeticRestStateCensusGate(options = {}) {
     });
   }
 
-  const ncOk = cells.slice(2).every((c) => c.status === 'GREEN');
+  const ncOk = cells.slice(3).every((c) => c.status === 'GREEN');
   const ok = green.status === 'GREEN' && ncOk;
 
   return {

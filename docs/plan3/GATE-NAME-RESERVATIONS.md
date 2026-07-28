@@ -72,24 +72,45 @@ Status vocabulary, fixed by the manager: `owned-stamped`, `image-verified`, `exc
 
 | Name | Signature token | Status |
 |---|---|---|
-| DIFFERENTIAL-PARITY-ORACLE-V1 | `TALARIA_DIFFERENTIAL_PARITY_ORACLE_V1` | LIVE — `docs/plan3/oracles/differential-parity-oracle-v1.mjs`, `scripts/tests/differential-parity-oracle.test.mjs` (W29 drift + W37 M5 canary parity) |
+| DIFFERENTIAL-PARITY-ORACLE-V1 | `TALARIA_DIFFERENTIAL_PARITY_ORACLE_V1` | LIVE — `docs/plan3/oracles/differential-parity-oracle-v1.mjs`, `scripts/tests/differential-parity-oracle.test.mjs` (W29 drift + W37 M5 canary parity + W41 fail-closed rebuild) |
+
+Verdict vocabulary for every cell below, fixed by the manager so a cell cannot report
+absence of evidence as evidence: `GREEN` (compared over the full expected span, agreed within
+epsilon), `RED` (compared, disagreed), `UNPROVEN` (nothing trustworthy compared — zero
+compared values, length mismatch, one-sided null, non-finite compared value, short compared
+population, or a compare that discriminated nothing where the reference claims independence).
+`UNPROVEN` is never counted as parity evidence and never aggregates to a ship-gate GREEN.
+
+Reference-independence classes, declared per family in `PARITY_FAMILY_INDEPENDENCE` and
+reproduced on every emitted cell: `independent-algorithm` (SMA — stateless resum vs the
+product's incremental running sum), `independent-numerics` (EMA/DEMA — closed-form geometric
+expansion vs the product's recurrence; the definition itself is shared spec),
+`code-clone` (WMA — same algorithm written twice; divergence is identically zero by
+construction and is **not** evidence about WMA numerics).
 
 Cells:
 
 | Cell | Asserts | Status |
 |---|---|---|
 | PARITY-ROLLING-SUBTRACTION | optimized vs fallback for Bollinger/Donchian/stochastic within per-family epsilon | RESERVED (full rolling-subtraction matrix post-M5) |
-| PARITY-SMA-SHORT / PARITY-SMA-MEDIUM | `rollingSmaFast` vs naive rolling SMA within `EPS-ROLLING-NONRECURSIVE` | LIVE (W37 M5 canary; short may GREEN while DRIFT-SMA ladder RED) |
-| PARITY-WMA-SHORT / PARITY-WMA-MEDIUM | `rollingWmaFast` vs naive rolling WMA within `EPS-ROLLING-NONRECURSIVE` | LIVE (W37 M5 canary) |
-| PARITY-EMA-SHORT / PARITY-EMA-MEDIUM | chart-indicators `calculateEMA` (read-only extract) vs naive EMA reference within `EPS-ROLLING-NONRECURSIVE` — IndicatorPerf has no fast EMA | LIVE (W37 M5 canary) |
-| PARITY-DEMA-SHORT / PARITY-DEMA-MEDIUM | chart-indicators `calculateDEMA` (read-only extract) vs naive DEMA reference within `EPS-ROLLING-NONRECURSIVE` | LIVE (W37 M5 canary) |
+| PARITY-SMA-SHORT / PARITY-SMA-MEDIUM | `rollingSmaFast` vs stateless resum reference within `EPS-ROLLING-NONRECURSIVE`, UNIT scale | LIVE (W37 M5 canary; short may GREEN while DRIFT-SMA ladder RED. UNIT-scale window sums are exactly representable, so this pair is bit-exact — structural agreement, not numeric evidence; the `-JPY` cell carries the numeric claim) |
+| PARITY-WMA-SHORT / PARITY-WMA-MEDIUM | `rollingWmaFast` vs weighted resum reference within `EPS-ROLLING-NONRECURSIVE`, UNIT scale | LIVE (W37 M5 canary; `code-clone` — divergence identically zero by construction) |
+| PARITY-EMA-SHORT / PARITY-EMA-MEDIUM | chart-indicators `calculateEMA` (read-only extract) vs closed-form EMA expansion within `EPS-ROLLING-NONRECURSIVE` — IndicatorPerf has no fast EMA | LIVE (W37 M5 canary; W41 reference re-derived independently) |
+| PARITY-DEMA-SHORT / PARITY-DEMA-MEDIUM | chart-indicators `calculateDEMA` (read-only extract) vs closed-form DEMA reference within `EPS-ROLLING-NONRECURSIVE` | LIVE (W37 M5 canary; W41 reference re-derived independently) |
+| PARITY-{SMA,WMA,EMA,DEMA}-{SHORT,MEDIUM}-JPY | same compares on the 1e6-magnitude fixture, where window sums round and the compare has bit patterns to discriminate | LIVE (W41) — a cell whose family claims reference independence fails closed to UNPROVEN if every compared pair was bit-identical |
 | PARITY-RECURSIVE | MACD/RSI/ATR/ADX within per-family epsilon, seed and warm-up declared | RESERVED |
 | PARITY-CUMULATIVE | VWAP/OBV over long ranges | RESERVED |
 | DRIFT-SMA-100K / DRIFT-SMA-500K / DRIFT-SMA-1M | divergence does not grow with series length on the running-sum path (`rollingSmaFast`) | LIVE (W29 drift ladder; SMA may RED — EXPECTED-RED on uncompensated sum) |
-| DRIFT-WMA-CONTROL | `rollingWmaFast` recomputes its window and must show no length-dependent drift — the control that proves the drift cells measure drift | LIVE |
+| DRIFT-WMA-CONTROL | `rollingWmaFast` recomputes its window and must show no length-dependent drift | LIVE — but `code-clone`: reference and product are the same algorithm, so this measures identically zero and only shows the ladder is not unconditionally RED. The load-bearing attribution control is DRIFT-SMA-REFERENCE-SELF-ERROR |
+| DRIFT-SMA-REFERENCE-SELF-ERROR | at every ladder rung, the reference's own error (stateless resum vs compensated resum) must not grow with length (`REF_SELF_ERROR_GROWTH_CAP`) and must sit at least `REF_SELF_ERROR_DOMINANCE_MIN`× below the measured divergence — otherwise the DRIFT-SMA growth is harness noise, not product drift | LIVE (W41) |
 | PAINTED-SUBPIXEL-MAXZOOM | painted divergence is sub-pixel at maximum zoom on the fixture's price scale | RESERVED |
 | BUCKET-IMMUTABILITY-5M / -15M / -1H / -4H | a finalised bucket's OHLC never changes for the remainder of a replay | RESERVED |
 | NC-PARITY-EPSILON-INVERTED | with the epsilon comparison inverted, every parity cell must go RED | LIVE (short SMA sanity path in W29 oracle) |
+| NC-PARITY-{family}-{tier}-INJECTED-REL-ERROR | one compared value of the optimized output is scaled by `NC_INJECTED_RELATIVE_ERROR` (1e-6, 1000× epsilon) — the cell must go RED | LIVE (W41; every canary family × tier, injected into the same pair the positive cell graded) |
+| NC-PARITY-{family}-{tier}-ALL-NULL-OPTIMIZED | an all-null optimized output must fail closed to UNPROVEN, never GREEN | LIVE (W41) |
+| NC-PARITY-{family}-{tier}-NONFINITE-OPTIMIZED | a NaN/±Infinity compared value must fail closed to UNPROVEN, not be skipped | LIVE (W41) |
+| NC-PARITY-{family}-{tier}-LENGTH-MISMATCH | a shorter optimized span must fail closed to UNPROVEN, not compare the overlap | LIVE (W41) |
+| NC-PARITY-{family}-{tier}-ZERO-COMPARED | `comparedCount === 0` must fail closed to UNPROVEN — an empty compare is never a divergence of 0 | LIVE (W41) |
 
 Fixtures:
 
@@ -102,11 +123,20 @@ Fixtures:
 | FIX-SCALE-JPY | JPY-quoted pair, large magnitude, few decimals | RESERVED |
 | FIX-SCALE-INDEX-FUTURES | index futures, large magnitude | RESERVED |
 | FIX-SCALE-CRYPTO-MANYDEC | crypto, small magnitude, many decimals | RESERVED |
+| FIX-A7-PRNG-UNIT | deterministic PRNG walk, unit scale — prices are multiples of 2⁻³¹ below 2⁹ so every 20-bar window sum is exactly representable; parity there is structural, labelled `exactly-representable` | LIVE (`docs/plan3/fixtures/a7-prng-series.mjs`) |
+| FIX-A7-PRNG-JPY | same walk at 1e6 magnitude — window sums round, so the compare discriminates bit patterns; labelled `rounding-exercised` and used for the drift ladder and every negative control | LIVE (`docs/plan3/fixtures/a7-prng-series.mjs`) |
 
 Epsilon constants are declared and justified in the packet, per family, and are **reserved
 names too** so that a later widening is visible as a diff: `EPS-ROLLING-NONRECURSIVE`,
 `EPS-RECURSIVE-EMA`, `EPS-RECURSIVE-MACD`, `EPS-RECURSIVE-RSI`, `EPS-RECURSIVE-ATR`,
 `EPS-RECURSIVE-ADX`, `EPS-CUMULATIVE-VWAP`, `EPS-CUMULATIVE-OBV`.
+
+The other numeric thresholds this oracle gates on are reserved for the same reason — loosening
+any of them must show up as a diff, not as a quieter gate: `LENGTH_GROWTH_FACTOR` (ladder growth
+cap), `GROWTH_BASE_NOISE_FLOOR` (growth baseline floor, never the parity epsilon),
+`DIVERGENCE_DENOM_FLOOR` (relative-divergence denominator floor),
+`REF_SELF_ERROR_GROWTH_CAP` and `REF_SELF_ERROR_DOMINANCE_MIN` (drift attribution control), and
+`NC_INJECTED_RELATIVE_ERROR` (negative-control value defect, pinned far above epsilon).
 
 ## Queue item 4 — reachability, negative controls, staleness (A8, A5)
 
@@ -205,14 +235,24 @@ Follow-up hang point (not in this packet’s write set): product multichart open
 
 ### Queue item 7 extension — rest-state census (W35, FINDING-CPU-NOT-MEMORY-20260728)
 
-Standing gate: **no scheduled work at idle rest** and **no render without a data commit** on the
-hermetic host and browser fixture. Catches the class of idle CPU loops (standing intervals/rAF,
-render-without-commit); product root-cause (Q2 countdown etc.) remains chart authoring (Manager A).
-CPU magnitude acceptance still requires `PO-PROTOCOL-CPU-AB` phases — not this gate.
+Standing gate: **no scheduled work at idle rest**, **no render without a data commit**, and
+**idle main-thread budget** (zero-commit observe window) on the hermetic host and browser fixture.
+Catches the class of idle CPU loops (standing intervals/rAF, render-without-commit, periodic rAF
+cadence without commits); product root-cause (Q2 countdown etc.) remains chart authoring (Manager A).
+Absolute tab CPU% acceptance remains **PO-PROTOCOL-CPU-AB P1**; `REST-IDLE-MAIN-THREAD-BUDGET`
+keeps D1 fixed once periodic idle work is removed.
 
 | Name | Signature token | Status |
 |---|---|---|
 | REST-STATE-CENSUS-V1 | `TALARIA_REST_STATE_CENSUS_V1` | LIVE — extends `scripts/lib/teardown-census-probe.mjs`, `scripts/lib/teardown-census-harness.mjs`, `scripts/teardown-census-gate.mjs` (`--rest-state`), `scripts/fixtures/teardown-census/host.html?mode=rest` |
+
+Pinned idle observe budgets (hermetic window — structural, not fitted to Task Manager CPU%):
+
+| Constant | Value | Justification |
+|---|---|---|
+| `REST_IDLE_RAF_TICKS_MAX` | `0` | True idle rest has no self-sustaining rAF chain during zero-commit observe |
+| `REST_IDLE_INTERVAL_CALLBACKS_MAX` | `0` | No interval firings without data commits at pinned zero-interval rest |
+| `REST_IDLE_LONGTASK_MAX` | `0` | Browser fixture: no sustained main-thread long tasks during zero-commit observe |
 
 Cells:
 
@@ -220,10 +260,12 @@ Cells:
 |---|---|---|
 | REST-SCHEDULED-WORK-ZERO | at rest, timeouts/intervals/rAF are zero or pinned allowlist (`HERMETIC-REST-PINNED-ZERO-V1`) | LIVE |
 | REST-NO-RENDER-WITHOUT-DATA | render counter stable across settle window when commit count unchanged | LIVE |
+| REST-IDLE-MAIN-THREAD-BUDGET | zero-commit observe: rAF tick / interval callback / longtask deltas within pinned budgets | LIVE (W39) |
 | REST-ALLOWLIST-PINNED | raised allowlist limit alone cannot silence undeclared standing interval | LIVE |
-| BROWSER-REST-STATE-CYCLE | browser fixture idle rest census (REAL browser; else UNPROVEN) | LIVE |
+| BROWSER-REST-STATE-CYCLE | browser fixture idle rest census incl. idle budget (REAL browser; else UNPROVEN) | LIVE |
 | NC-REST-ORPHAN-INTERVAL | orphan interval while at rest → RED | LIVE |
 | NC-IDLE-RENDER-WITHOUT-DATA | idle timer calling render without commit → RED | LIVE |
+| NC-IDLE-PERIODIC-RAF-WITHOUT-COMMIT | self-sustaining rAF loop with zero commits during observe → RED | LIVE (W39) |
 
 ## Queue item 8 — support passport degraded modules (W36, CONCLUSION-48H M6)
 
@@ -233,9 +275,75 @@ Cells:
 
 Cells:
 
+**W40 re-authoring (R-M6 REJECT closed).** The gate no longer contains a hand-copied mirror of
+`buildSupportContext()`. `supportUi.tsx` is transpiled with the TypeScript compiler API and the
+**real exported function** is executed inside a `vm` realm whose `window` is the one published by
+`module-presence-runtime.js` (with `indicator-performance.js` as the provider). A mirror can only
+prove that the mirror agrees with itself, so it is gone: `extractDegradedModulesForPassport` and
+`passportDegradedModulesSlice` are withdrawn names and must not be reintroduced. The compiler is
+taken from the **homepage** workspace, which owns `supportUi.tsx` and pins the version that file is
+written against, so the gate adds no dependency and no lockfile churn at the workspace root. It is
+a hard dependency all the same: when it cannot be resolved the gate reports RED via
+`SUPPORT-PASSPORT-REALM-BOOT` rather than degrading to a re-implementation.
+
+CI: `.github/workflows/support-passport-degraded.yml` (gate self-test, then preflight, then
+evidence artifact).
+
 | Cell | Asserts | Coverage (VER-01) | Status |
 |---|---|---|---|
-| PASSPORT-DEGRADED-KEY-ALWAYS | passport slice always includes `degradedModules: string[]` (empty when runtime clean) | soundness | LIVE |
-| PASSPORT-DEGRADED-ROUND-TRIP | `__TALARIA_DEGRADED_STATE.degradedModules` (or runtime `__talariaMarkMissingModule`) surfaces in passport extractor bounded like production | soundness | LIVE |
-| SUPPORT-UI-SOURCE-CONTRACT | `supportUi.tsx` retains degraded-state tokens, bounded-id regex, and `.slice(0, 32)` | wiring | LIVE |
-| NC-PASSPORT-DEGRADED-MUTATION | with `ctx.degradedModules` assignment stripped, source contract goes RED | wiring | LIVE |
+| PASSPORT-DEGRADED-KEY-ALWAYS | real `buildSupportContext()` on a healthy runtime returns `degradedModules` as a present, empty **array** — never an absent key, never a scalar | soundness | LIVE |
+| PASSPORT-DEGRADED-ROUND-TRIP | runtime degrades itself (absent provider trips the tripwire) plus one `__talariaMarkMissingModule` call; the expectation is **read back from the runtime's own published list**, never injected | soundness | LIVE |
+| PASSPORT-DEGRADED-BOUNDING-PROPERTIES | against the real function: output ⊆ input, no duplicates, junk ids rejected, bounded-id pattern held, and the cap binds **exactly** at 32 when more valid ids are offered | soundness | LIVE (W40) |
+| SUPPORT-UI-SOURCE-CONTRACT | the three degraded-state aliases survive in `supportUi.tsx`, scanned with comments **and string literals stripped**. Scope deliberately narrowed to tokens execution cannot observe: all three aliases point at one object today, so their loss is behaviourally silent. The cap, regex, dedupe and always-array key are no longer pinned — they are executed | wiring | LIVE (W40) |
+| NC-ALIAS-PIN-REMOVAL | deleting the trailing alias turns the pin RED **while every behavioural cell stays GREEN** — the asymmetry that justifies keeping a source pin at all | wiring | LIVE (W40) |
+| NC-COMMENT-DOES-NOT-SATISFY-PIN | the deleted alias re-added as a line comment, a block comment, or a string literal must **not** pay the pin | wiring | LIVE (W40) |
+| NC-PASSPORT-DEGRADED-MUTATION | — | WITHDRAWN (W40) — tautological substring delete; superseded by the M1–M5 behavioural mutants below |
+
+Behavioural mutants. Each edits `supportUi.tsx` into a plausible regression, re-runs the whole
+behavioural suite against the mutated product source, and is RED unless a named cell kills it. A
+mutant whose target no longer exists is RED, not a silent pass.
+
+| Mutant | Cell | Mutation | Killed by | Status |
+|---|---|---|---|---|
+| M1 | NC-MUTANT-CAP-ZERO | `.slice(0, 32)` → `.slice(0, 0)` | ROUND-TRIP, BOUNDING-PROPERTIES | LIVE (W40) |
+| M2 | NC-MUTANT-DECOY-REGEX | bounded-id regex → permissive decoy `/[A-Za-z]/` | BOUNDING-PROPERTIES | LIVE (W40) |
+| M3 | NC-MUTANT-POST-ASSIGNMENT-CLEAR | passport built correctly, then cleared before `return ctx` | ROUND-TRIP, BOUNDING-PROPERTIES | LIVE (W40) |
+| M4 | NC-MUTANT-DEDUPE-DROP | `new Set(` dropped, so a repeated id is reported twice | BOUNDING-PROPERTIES | LIVE (W40) |
+| M5 | NC-MUTANT-ARRAY-STRING-COERCION | array `.join(",")` — the client-side twin of the server finding below | KEY-ALWAYS, ROUND-TRIP, BOUNDING-PROPERTIES | LIVE (W40) |
+
+### FINDING-SUPPORT-CONTEXT-STR-COERCION-20260728 — escalate to A / Director
+
+**Out of Manager C territory. Not fixed here; `chart v 1.4/chart/api_server.py` is product.**
+
+This gate proves the *client* passport: `buildSupportContext()` emits `degradedModules` as a
+`string[]`. The *server* persistence path then does
+`extra["context"] = {str(k)[:64]: str(v)[:500] for k, v in list(context_in.items())[:20]}`
+at `chart v 1.4/chart/api_server.py:15595`, so the array is stored as its Python repr —
+`"['IndicatorPerf']"` — and support tooling cannot read it back as a list. The degraded-module
+evidence the passport was built to carry survives the client and dies in the database.
+
+Reported by the non-blocking cell `FINDING-SERVER-CONTEXT-STR-COERCION` (`coverage: boundary`,
+`blocking: false`, `pass: null`, excluded from `allPass`), with states `OPEN` / `RESOLVED` /
+`UNPROVEN`. It is deliberately non-blocking: C may not edit product code, and a gate that goes RED
+over a defect its owner is forbidden to fix teaches people to ignore it. The escalation, not the
+red light, is the mechanism. A hard cell can be promoted once A or the Director takes the fix.
+
+## Queue item 9 — storage growth census (W38, FINDING-CPU-NOT-MEMORY Correction 1)
+
+Measurement infra for bounded-retention policy evidence. Product retention fixes remain A/B
+territory. Memory magnitude claims must declare browser storage profile (clean vs uncleared).
+
+| Name | Signature token | Status |
+|---|---|---|
+| STORAGE-GROWTH-CENSUS-V1 | `TALARIA_STORAGE_GROWTH_CENSUS_V1` | LIVE — `scripts/storage-growth-census-gate.mjs`, `scripts/lib/storage-growth-census.mjs`, `scripts/lib/storage-growth-harness.mjs`, `scripts/fixtures/storage-growth/` |
+
+Cells:
+
+| Cell | Asserts | Coverage (VER-01) | Status |
+|---|---|---|---|
+| STORAGE-GROWTH-PER-SESSION | hermetic ladder open → replay → N sessions yields per-step deltas and avgBytesPerSession within pinned budget when bounded retention sim enabled | soundness | LIVE |
+| NC-STORAGE-UNBOUNDED-MUTATION | unbounded session/cache growth exceeds `HERMETIC_STORAGE_BUDGET_V1` → RED; bounded baseline stays GREEN | soundness | LIVE |
+| BOUNDARY-STORAGE-PROFILE-ON-MEMORY-CLAIMS | evidence documents clean vs dirty storage profile requirement on idle memory comparisons | boundary | LIVE |
+| BROWSER-STORAGE-GROWTH-LADDER | browser fixture runs hermetic-in-page storage ladder (REAL browser; else UNPROVEN) | soundness | LIVE |
+
+Pinned budget name (hermetic): `HERMETIC_STORAGE_BUDGET_V1` — changing limits is a visible diff.
