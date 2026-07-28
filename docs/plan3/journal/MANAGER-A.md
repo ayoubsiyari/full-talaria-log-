@@ -2320,3 +2320,32 @@ Blocked on four accuracy defects in the report around it.
 **`table.txt` omits its own controls, which I rate above the truncation I flagged.** The truncated command line at `:7` is real and self-correcting from two siblings. The larger defect is that the harness produces **twelve** cells and both companions present only the 24 A/B rows. Cells `D1` and `D2` show `fullResamples=0, incrementalResamples=300` — **the control proving the counter can register incremental hits at all**, which is exactly what gives the headline `fullResamples=300, incrementalResamples=0` its meaning. Publishing the headline without the control is selective even with the data preserved in the raw JSON.
 
 **Contradiction #1 is struck.** Two exhaustive searches settle it: `git ls-tree -r` over C's entire tracked tree returns zero paths matching `mcdiag`, and a full recursive filesystem walk finds no generator on C's disk. The author tested A's pin, where the generator is trivially expected. The provenance reasoning stands. I was right to route it as a question rather than assert it, and right not to claim more than that.
+
+---
+
+## 2026-07-28 09:56 — Speed entry-point enumeration returned. The label question is settled and a hidden unlock already exists
+
+surface=`chart v 1.4/chart/` product tree plus V9 sources in `chart v 1.4/talaria-design/`
+coverage=**lower bound, stated as such** — 18 confident product entry points, 6 confident playback bypass reads; method recorded per negative claim
+
+**Q1 settled: the label is the multiplier.** `Nx` is stored verbatim in `replaySystem.speed`. The `:5278` comment I was suspicious of describes semantics — market-seconds per real-second — not a second numbering. So "cap at 10x" means clamp stored `speed` to ≤ 10, with no translation layer. That was the question that had to be answered before anyone could write the change, and it is answered.
+
+**A shared write clamp already exists.** `normalizeSpeed()` at `:6836-6839` clamps every formal setter to 1–100. Changing `Math.min(100, n)` to `Math.min(10, n)` catches every path that goes through `setSpeed`, `applyPersistedState`, or `_pendingReplaySpeed` — which is most of them, including all three session-backup tiers and the server `state.replay.speed` restore. The clamp-every-entry-point requirement is far cheaper than I expected.
+
+**Three findings that change what the cap has to do.**
+
+**1. A hidden flag that doubles speed already exists, and the PO's requirement forbids exactly this.** `getEffectivePlaybackSpeed()` at `:6843-6848` returns `normalizeSpeed(this.speed)` under the default, but with `window.__TALARIA_DISABLE_M19I_TICK_SPEED_COHERENCE_V1 === true` it returns `min(200, base × 2)`. So today the label can read 100 while playback runs at 200, and under a 10x cap the same switch yields **20x from a labelled 10x**. §3.1 says "Hard ceiling — no hidden flag, no user unlock." **A cap that clamps the stored value and leaves this multiplier in place is not a hard ceiling**, and this is the single most important thing the enumeration found.
+
+**2. The constructor default is above the new cap.** `replay-system.js:30` sets `this.speed = 60`. V9 React initialises to 30, the dashboard modal to 30. All three exceed 10, so there is a window before UI sync where the engine holds an out-of-range speed. The defaults move with the cap or the cap has a hole at startup.
+
+**3. `getEffectivePlaybackSpeed()` is not a playback chokepoint** — it governs tick-animation cadence only. Six product sites read `speed` directly: candle cadence at `replay-system.js:4667`, pan-load chunk sizing at `chart.js:24813-24826`, the replay draw throttle at `drawing-tools-manager.js:12749-12751`, plus multichart broadcast, session backup and the persist patch. The clamp handles correctness of the stored value; these sites determine whether the *work* actually falls, which is §3.1's acceptance criterion and why the measurement packet matters more than the clamp.
+
+One of those six is a latent behaviour change worth naming: the drawing throttle branches on `speed >= 50`, choosing 750 ms over 250 ms. Under a 10x cap that branch becomes **unreachable**, so replay always takes the 250 ms path. Less total work at lower speed, but it is a second dead branch created by the cap and it should be decided deliberately rather than discovered later.
+
+**A scope question the cap creates.** Two incompatible ladders exist. V9 production offers 1, 2, 3, 5, 10, 15, 20, 25, 30, 50, 60, 70, 80, 90, 100. Legacy offers 1, 2, 5, 10, 30, 60, … 86400, and `normalizeSpeed` silently collapses everything above 100 — so legacy's top nine labels have been lying for some time. Applying §3.1 to V9 means keeping 1, 2, 3, 5, 10 and removing nine options. **But legacy is the shell §A14.2 ruled must be de-routed and removed**, and I have just reverted a packet for improving it. Editing its ladder would repeat that error in a smaller way. My position: **do not touch the legacy ladder; let de-routing remove it**, and note that its labels above 100 are already cosmetic.
+
+**Dead code the enumeration surfaced**, none of it urgent: `#speedSelectBar` has no matching element anywhere in the repo so `attachSpeedButtonEvents()` is inert; `setSpeedFromSlider` is never defined so the clone-slider listener is permanently guarded off; the `#replaySpeed` select is hidden with a single option. And `backtestingSession.replaySpeed` is written at session creation and read by nothing in the chart engine — a persistence path that looks live and is not.
+
+**Not dispatching implementation.** §7.1 holds: nothing new until the chain clears. The remaining unknown is the work-rate measurement, which decides whether the cap is real on 1D and whether the fast path can be retired at all. I would rather write one correct spec against both results than a clamp now and a correction later.
+
+**Method note, recorded because I asked for it.** Every negative claim came back with the search behind it — the URL-parameter, IndexedDB, `speedSelectBar` and `setSpeedFromSlider` negatives each name the pattern and scope searched, and the bypass inventory is explicitly given as a lower bound of 6 confident behaviours out of 10 raw matches rather than as a total. That is the standard I have been failing at all week, and it is the first packet today that met it without being corrected.
