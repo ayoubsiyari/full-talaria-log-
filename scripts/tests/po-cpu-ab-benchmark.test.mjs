@@ -53,6 +53,7 @@ function report({
   p6WorkRatio = 0.18,
   p7WorkRatio = 0.025,
   p2MemoryDelta = 0,
+  p4Replay = {},
   p6Replay = {},
   p7Replay = {},
   shortened = false,
@@ -84,8 +85,20 @@ function report({
         ok: true,
         panelCount: 4,
         playingCount: 4,
+        advancedCount: 4,
         requestedSpeed: 10,
-        rows: ['A', 'B', 'C', 'D'].map((id) => ({ id, ok: true, state: { isPlaying: true, speed: 10 } })),
+        armingFailure: null,
+        rows: ['A', 'B', 'C', 'D'].map((id) => ({
+          id,
+          ok: true,
+          activeObserved: true,
+          playingObserved: true,
+          advancedObserved: true,
+          indexDelta: 5,
+          timestampDelta: 300_000,
+          state: { isActive: true, isPlaying: true, speed: 10 },
+        })),
+        ...p4Replay,
       },
       p6: replayP6,
       p7: { ok: true, state: { isPlaying: false, speed: 10 }, ...p7Replay },
@@ -114,6 +127,8 @@ test('unit: host HTML records shortened meta for CI P2', () => {
   assert.match(html, /PerformanceObserver longtask/);
   assert.match(html, /const workMs = Math\.max\(callbackBusyMs, longTaskDurationMs\)/);
   assert.match(html, /phaseCallbackSamples/);
+  assert.match(html, /_m20Q6LifecycleState/);
+  assert.match(html, /advancedCount/);
 });
 
 test('unit: oracle accepts P1/P2/P4/P6/P7 report and records replay observables', () => {
@@ -122,8 +137,64 @@ test('unit: oracle accepts P1/P2/P4/P6/P7 report and records replay observables'
   const p4 = cells.find((cell) => cell.name === 'P4-FOUR-PANEL-REPLAY-RUNNING-OBSERVED');
   assert.equal(p4.replay.panelCount, 4);
   assert.equal(p4.probeWindowCount, 4);
+  assert.equal(p4.advancedCount, 4);
   const p6 = cells.find((cell) => cell.name === 'P6-REPLAY-10X-OR-NEAREST-OBSERVED');
   assert.equal(p6.replay.nearestSpeed, 10);
+});
+
+test('fault-injection: P4 cannot green on playing flags without four advancing panels', () => {
+  const rows = ['A', 'B', 'C', 'D'].map((id, index) => ({
+    id,
+    ok: index < 2,
+    activeObserved: true,
+    playingObserved: true,
+    advancedObserved: index < 2,
+    indexDelta: index < 2 ? 4 : 0,
+    timestampDelta: index < 2 ? 240_000 : 0,
+    state: { isActive: true, isPlaying: true, speed: 10 },
+  }));
+  const cells = assertPoCpuAbBenchmarkReport(report({
+    p4Replay: {
+      ok: false,
+      panelCount: 4,
+      playingCount: 4,
+      advancedCount: 2,
+      armingFailure: 'UNPROVEN: four-panel replay did not arm and advance on every panel',
+      rows,
+    },
+  }));
+  const p4 = cells.find((cell) => cell.name === 'P4-FOUR-PANEL-REPLAY-RUNNING-OBSERVED');
+  assert.equal(p4.status, 'RED');
+  assert.equal(p4.advancedCount, 2);
+  assert.match(p4.detail, /UNPROVEN/);
+});
+
+test('fault-injection: P4 requires panel count, playing count, and probes', () => {
+  const threePlaying = assertPoCpuAbBenchmarkReport(report({
+    p4Replay: {
+      ok: false,
+      panelCount: 4,
+      playingCount: 3,
+      advancedCount: 4,
+      armingFailure: 'UNPROVEN: panel C did not keep playing',
+    },
+  }));
+  assert.equal(threePlaying.find((cell) => cell.name === 'P4-FOUR-PANEL-REPLAY-RUNNING-OBSERVED').status, 'RED');
+
+  const staleTopology = report({
+    p4Replay: {
+      ok: false,
+      panelCount: 3,
+      playingCount: 3,
+      advancedCount: 3,
+      armingFailure: 'UNPROVEN: topology did not expose four panels',
+    },
+  });
+  staleTopology.phases.P4.probe.windowCount = 3;
+  const cells = assertPoCpuAbBenchmarkReport(staleTopology);
+  const p4 = cells.find((cell) => cell.name === 'P4-FOUR-PANEL-REPLAY-RUNNING-OBSERVED');
+  assert.equal(p4.status, 'RED');
+  assert.equal(p4.probeWindowCount, 3);
 });
 
 test('fault-injection: pause negative control requires mutation marker and P7 state red', () => {
