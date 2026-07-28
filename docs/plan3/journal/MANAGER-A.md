@@ -2651,3 +2651,45 @@ Two gaps measured against the PO's table:
 **The unknown-symbol fallback is silent, and the ruling requires it to be loud.** `detectMarketType()` returns `'forex'` with no log for anything it cannot classify (`market-calculations.js:923-959`), and `getSpecs()` returns a `_genericFallback` without announcing it. §A16.3b requires unknown symbols to fall back to FX **while logging loudly per §A4c**. The contract names an intended `'SessionCalendar.unresolved-instrument'` announcement, but no product caller exists to make it. As written today the product would take an unrecognised futures symbol, silently call it forex, and bucket it on a calendar that is wrong by an hour — which is the silent-degradation class §A4c exists to prevent.
 
 **Still gated.** No mechanism proposed and nothing authored until the timezone audit reports, per the Director's instruction. What these two audits have bought is that the mechanism space is now much smaller: not count-forward, not the classifier, and — for weekly — not client-side at all.
+
+---
+
+## 2026-07-28 11:26 — §1.2 correction landed at `cd5a7b136`; both corrections reproduced before writing
+
+surface=`docs/plan3/ANSWER-A1.2-RESIDENCY-CAP-20260728.md` on `manager-a/a12-correction`, base `6f616779c`, +13/−5, one file
+coverage=both corrections re-derived by command before being written; SHA-256 before `B1A4DDD3…` after `F90A21D9…`
+
+`git ls-tree -r manager-a/critical-path -- "chart v 1.4/chart/modules/m21-w6-fixtures/"` returns **empty**, which is the whole basis of the correction and it was reproduced rather than taken from my report. The ruling document was not edited and its SHA-256 is unchanged — §A1's drift goes to the Director as a note, which is the right side of that line. The three-part answer still reads **No / ≈ 0 / 4–6 days**, and the corrections are worded to tighten it: with no audited artifact in the branch, the cost is building from scratch rather than finishing reference code. Queued for the mandatory §A13.1 review with the A2 packet.
+
+## 2026-07-28 11:27 — A2 re-baseline HELD: the numbers are too good and I do not yet believe them
+
+surface=`manager-a/a2-rebaseline` @ `61e62c3f5`, base `9c5d55e4e`
+coverage=measurement executed and committed with harness and two evidence files; **comparability unestablished**
+
+| Cell | Fallback baseline in §A2 | This packet |
+|---|---|---|
+| mixed-4 working set | 2.5–2.7 GB | **786.6 MiB** |
+| CPU | 128–140% | **25.1%** |
+| teardown residual | ~230 MB | **20.4 MiB** |
+| cycle staircase | 302 → 442 → 465 → **988** → 530 MB | **13.5 → 13.6 → 13.6 → 13.5 MiB** |
+| mixed-4 JS heap peak | — | **33.1 MiB** |
+
+**The JS heap figure is the one I cannot get past.** A 33 MiB JavaScript heap cannot hold the bar data of a workload that previously produced multi-gigabyte working sets. The cycle cell is roughly forty times smaller than before and the 988 MB outlier — which §A2 specifically flags as requiring explanation and as *not noise if it recurs at the same index* — simply vanished. Either M19-I is a three-to-five-fold improvement on every axis at once, or **the harness is measuring a smaller scenario than the one that produced the original numbers.** I am not willing to guess which, and a wrong guess in the optimistic direction is the more expensive one because it would be used to size C3a.
+
+**The proximate cause is a brief-defect that I own.** I told the author to find and reuse the existing baseline harness rather than write a new measurement approach. They wrote a new one, `m21-a2-rebaseline-runner.mjs`. I stated the instruction but did not make it an acceptance condition, so nothing in the packet's gate caught it — and a new instrument produces numbers that are not comparable to the old ones by construction, which defeats §A2's entire stated purpose. §A2 says the delta between baselines is our first real measurement of M19-I's value on the product surface; **this packet has no delta.** The review will run both harnesses on the same tip, which settles it in one comparison: if the old harness still yields gigabytes where the new one yields megabytes, the instrument is the anomaly rather than the build.
+
+**A thing I checked before writing it down, and did not find.** My brief for this packet did not prohibit `npm ci`, unlike my read-only briefs. The author ran it inside their own worktree. That is **not** a violation and I am recording it as clean, because writing it up as one would be exactly the manager-finding-defect I have already triggered §A16.4 with today.
+
+## 2026-07-28 11:28 — CORRECTION to my own correction: the 1.000 figure was never wrong
+
+The `_mcDiag` cross-check pinned to A's tip reports **2.000 full resamples per tick in all four cells** — 1m and 1H, kill-switch on and off — and separately reports **tick-only rows at 1.000**.
+
+Earlier in this sprint I reported 1.000, then corrected myself to 2.000 and logged the first figure as an arithmetic defect that halved the real number. That correction now looks **wrong in its reasoning even though 2.000 is the right headline**. Both figures appear to have been real and measuring different things: 1.000 on the tick-only path, 2.000 once the render path is included. So the original measurement was not defective, it was narrower than the question. I have asked the reviewer to confirm this reading independently before I let it stand, because a correction to a correction is exactly where I should be slowest.
+
+## 2026-07-28 11:29 — The larger finding hiding inside the counter: the incremental branch never fires
+
+`incrementalResamples` is **zero in all four cells**, and the M20-Q9 kill-switch changes nothing — 2.000 with it on, 2.000 with it off, on both 1m and 1H.
+
+That is a bigger result than the resample count. The original hypothesis was that `_installPlayheadPrefix()` dropping the consumer cache defeats the pipeline's incremental branch, and that the kill-switch would therefore move the number. **It moves nothing.** If incremental is structurally always zero on this route, the incremental path is dead on the replay path regardless of the switch, and the switch is not controlling what we believed it controlled. I have asked the reviewer to establish whether the branch is genuinely unreachable or merely never taken under this harness's conditions — the distinction decides whether this is a code finding or another instrument artifact, and given the packet's other numbers I am not assuming.
+
+**Write packets now at the cap of three:** speed-cap, a12-correction, a2-rebaseline. No further write dispatches until one clears.
