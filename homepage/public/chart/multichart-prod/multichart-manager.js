@@ -54,6 +54,15 @@
         }
     }
 
+    /** M26: panel ReplaySystem owns its listener/timer teardown. Default ON. */
+    function m26PanelReplayDestroyEnabled() {
+        try {
+            return !(global && global.__TALARIA_DISABLE_M26_PANEL_REPLAY_DESTROY_V1);
+        } catch (_) {
+            return true;
+        }
+    }
+
     /** panel-cmd `loadFile` / heavy ops: iframes may still be parsing dist-v9 after bridge-ready. */
     var PANEL_CMD_TIMEOUT_MS = 25000;
 
@@ -518,7 +527,16 @@
         }
         try {
             const panelChart = c.frame && c.frame.contentWindow && c.frame.contentWindow.chart;
-            if (panelChart
+            const replaySystem = panelChart && panelChart.replaySystem;
+            let _m26PanelReplayDestroyed = false;
+            if (m26PanelReplayDestroyEnabled()
+                && replaySystem
+                && typeof replaySystem.destroy === 'function') {
+                replaySystem.destroy();
+                _m26PanelReplayDestroyed = true;
+            }
+            if (!_m26PanelReplayDestroyed
+                && panelChart
                 && typeof panelChart._b70ShadowDisposeIndicatorGeneration === 'function') {
                 panelChart._b70ShadowDisposeIndicatorGeneration();
             }
