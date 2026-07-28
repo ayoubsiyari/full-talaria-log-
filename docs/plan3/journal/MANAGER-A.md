@@ -3059,3 +3059,54 @@ Confirmed on four independent grounds, and I am routing it rather than re-briefi
 The harness's lag detector has **never demonstrated sensitivity** — 16.7 ms p95 in all four conditions including a 5× replay with four MAs — and under headless with `--disable-gpu`, a whole-browser stall is exactly the class of effect that pipeline does not surface. The data volume that plausibly causes the symptom is never loaded, hard-capped at 2,000 bars by the stub API. The build and world are both wrong: b61 with `IndicatorPerf` present against deployed b75 with it undefined. And **the harness navigates between single and multichart where production stays in one document** — `page.goto` destroys the JS context, so it cannot see anything accumulated by the PO's Steps 1 and 2, and its +4 conflates boot configuration with teardown residue.
 
 **PO-REQ:** an instrumented real-browser session following the PO's own protocol. What headless remains good for, and what I am keeping, is the handle ledger plus a forced-GC retained-size measurement — both are session-history-independent structural facts, and the ledger is how this leak surfaced at all.
+
+---
+
+## 2026-07-28 13:48 — Speed cap ACCEPTED, block cleared, proven by byte-identical rebuild
+
+surface=`manager-a/speed-cap` @ `b96ad1bba`
+coverage=all acceptance clauses independently reproduced; **the artifact was rebuilt from committed source with the pinned toolchain and produced a byte-identical blob OID** (`1e51164f5…`)
+
+That rebuild answers three of my questions at once and does it better than clause-checking could. The non-cap delta question, the reproducibility question and the reset-residue question all collapse into it: if a clean rebuild from committed source reproduces the committed bytes exactly, then nothing unrelated rode along, the build is reproducible, and no residue from the abandoned attempt survived into the artifact.
+
+**My "a rebuild carries more than the intended change" hazard is refuted.** A raw diff was useless because esbuild reallocated identifiers globally, so the reviewer wrote a lexer and compared skeletons plus sorted multisets of string, numeric, property and regex literals. Long identifiers: **identical multiset, 37,532 entries.** Regex literals: identical, 215. The entire semantic delta across 1.7 MB is the ladder constants and the slider bound, mapping 1:1 onto the source diff with nothing left over. `index.html` is 100% a cache-id bump; `sw.js` is a one-line version bump.
+
+**My reproducibility concern is refuted twice.** The pre-existing `node_modules` matched the tracked lockfile exactly — 63 packages, zero drift — and both Dockerfiles run `npm ci` in a clean image and rebuild from source regardless.
+
+## 2026-07-28 13:49 — CORRECTION: I said the mirrors "ship" pre-cap behaviour. They do not ship at all.
+
+I restated the block as *"two committed mirrors in A's grant still ship pre-cap behaviour."* **"Ship" is wrong.** Both containerised deploy paths overwrite the committed artifacts from freshly built source — `homepage/Dockerfile` under a comment reading "Fresh chart bundle (overwrites committed homepage/public/chart/*)", and `Dockerfile.local` under "Overwrite committed dist-v9". Since `homepage/public/chart/modules/replay-system.js` is overwritten from the capped source, **the unclamped mirror could not have reached a user through either image.**
+
+The remediation was still right — committed state should be honest, and a non-Docker path serving `homepage/public/` directly would have used the stale copy — but **the live-correctness severity was not what I asserted.** I had the mechanism right earlier in the day and then let the language drift when I restated it. That matters because "ships pre-cap behaviour" reads as a user-facing capability gap, and this was a repository-hygiene gap.
+
+## 2026-07-28 13:50 — CORRECTION: I feared the unclamped mirror had siblings. It has none.
+
+I wrote that the sync spill was "the real finding" and might be "a second correctness gap". Quantified from committed trees: **24 files, and exactly one genuine stale-content divergence — a test file.**
+
+`modules/m19-h-timeframe-switch.test.mjs` has drifted (the source carries a flake fix and a kill-switch flag the mirror predates). One further file differs **by design**, being the sole entry in `HOMEPAGE_FORWARDING_CONTRACTS` which the sync deliberately rewrites. Seventeen are missing from the mirror and all are non-runtime harnesses, contracts and evidence. Five are mirror-only `.log` files, all tracked, so nothing was lost to the sync's `rm -rf`.
+
+**Not one runtime module, worker, vendor file, font, `chart.js` or `legacy-index.html` diverges.** The unclamped engine was a singleton. My instinct to quantify rather than assume was right; the alarm I attached to it was not, and the row is worth about one test file rather than a second correctness gap.
+
+## 2026-07-28 13:51 — Reset residue answered positively, which is the harder and better answer
+
+I flagged this as the thing I could least check myself. The per-worktree reflog shows the reset moved `f802a66fa` → `f802a66fa` — **the same commit** — so nothing was orphaned and no committed work was lost; only uncommitted content was discarded. Then, rather than resting on that, the reviewer searched the object store directly: 128 unreachable blobs, the ten largest signature-checked, and **no unreachable blob anywhere in the repository contains `[1,2,3,5,10]`.** No capped variant was ever thrown away.
+
+The reviewer also discarded one of their own negatives on method grounds — a loose-object search that could not have found anything because the relevant blobs are packed — and said so instead of banking it. That is the standard I want and it is worth naming.
+
+## 2026-07-28 13:52 — Third brief-defect confirmed, and it left a real skew in the tree
+
+**My three-path writable set was too narrow.** `bump-dist-v9-cache.mjs --dist` legitimately writes nine further files — `live/index.html`, three `sw.js` copies, `chart.js` in both trees, `legacy-index.html`, and `chart-embed.html` and `harness/serve.mjs` in both trees. Reverting them was correct under my brief and **introduced a build-id skew that did not previously exist**: the dist shell now stamps `b83` while the legacy and embed shells still stamp `b80` on the same `/chart/modules/*` URLs, so those surfaces can serve a cached copy the dist shell has already busted.
+
+Severity is low and I am not blocking on it — both Dockerfiles re-run the bump and emit a coherent set, so the skew exists in the committed tree only and never in a deployed image. Two further files were already skewed at `b61` before this packet, which is pre-existing and separately owned. **Open row, not a block.** Notably the guard that would catch this, `uniqueCacheIds`, is exercised only against synthetic HTML in a script test, so no existing gate fails on a real skew — which is its own small §A16.5 instance.
+
+That is three brief-defects from me on this one packet: a file path that did not exist, a writable set missing two territory paths, and now a writable set missing the bump's nine. All three share a cause — **I wrote file sets from what the change appeared to need rather than from what the tooling actually writes.**
+
+## 2026-07-28 13:53 — Merge decision: HOLD, and the reason is a measurement that becomes impossible afterwards
+
+Both halves of the cap are now accepted. Two things stand between it and merge.
+
+`REPLAY_SPEED_DEFAULT = 5` is unratified and the code says so in its own comments. It changes what a speed means and is reserved to the PO. **PO-REQ stands; the cap does not depend on it.**
+
+Requirement 3 — CPU at 100x versus 10x on the same replay — is still owed, and **once the cap merges, 100x is unreachable and that comparison cannot be run without a revert.** So I am holding the merge rather than dispatching the measurement, and that is a deliberate prioritisation rather than a delay: PRIORITY ZERO already has two write packets in flight on the CPU deficit and the residue leak, and the Director stated Req 3 is non-blocking and must not displace chain work. Adding a third writer to a non-blocking item would be poor discipline.
+
+Holding costs nothing and preserves the option. It is also worth recording that **Req 3's value has fallen sharply**: its purpose was to test the PO's suspicion that high speed drives cost, and that suspicion has now been refuted twice — once by the 10x measurement showing 1m and 1D identical, and once by the residue finding showing a 1x session lagging where a 5x session did not. I will run it before merging, but as debt discharge rather than as a live hypothesis.
