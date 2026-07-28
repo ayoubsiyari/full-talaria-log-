@@ -499,4 +499,6 @@ Cells:
 | M6-PO-WORKLOAD-ARMED | four panels, ≥3 indicators each, host order placed, replay observed playing | LIVE (arm) |
 | M6-REPLAY-LIVE-COUNT-RETURNS-TO-ONE | after N PO-workload cycles back to single-chart, live Q6 instances === 1 | UNPROVEN (cannot go RED on today's unfixed code) |
 | M6-DETACHED-IFRAME-COUNT-NOT-GROWN | after return to single: connected iframes 0 and detachedLive 0 | UNPROVEN (same) |
+| M6-SCHEDULER-CENSUS-RETURNS-TO-BASELINE | after PO-workload cycles return to single-chart and 60s soak, harness + open-panel scheduling residue stays within baseline + `M6_SCHEDULER_CENSUS_EPSILON` | LIVE as blocking instrument; if flat with live=1, verdict remains UNPROVEN / ESCALATE |
 | NC-M6-TEARDOWN-REVERSAL | served mutant no-ops `m20Q6DrainState` + `destroy()`; acceptance cells must go RED | LIVE (machinery; not ship credit while UNPROVEN) |
+| NC-M6-SCHEDULER-ORPHAN-INTERVAL | synthetic unclosed interval in scheduler census makes `M6-SCHEDULER-CENSUS-RETURNS-TO-BASELINE` RED while Q6 live may return to 1 | LIVE (unit fault-injection) |

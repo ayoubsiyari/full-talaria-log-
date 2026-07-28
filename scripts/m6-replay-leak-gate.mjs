@@ -12,6 +12,9 @@ import {
   M6_REPLAY_LEAK_SIGNATURE,
   applyM6ReplayTeardownReversal,
   assertM6ReplayLeakCounts,
+  aggregateM6SchedulingCensus,
+  installM6SchedulingCensus,
+  summarizeM6SchedulingCensus,
 } from './lib/m6-replay-leak-probe.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -19,7 +22,8 @@ const REPLAY_SYSTEM_PATH = path.resolve(__dirname, '..', 'chart v 1.4', 'chart',
 
 export const M6_REPLAY_LEAK_STATUS_SKIP = 'SKIP';
 export const DEFAULT_M6_CYCLES = 5;
-export const DEFAULT_M6_TIMEOUT_MS = 180_000;
+export const DEFAULT_M6_TIMEOUT_MS = 240_000;
+export const M6_SCHEDULER_SOAK_MS = 60_000;
 export const M6_PANEL_IDS = ['B', 'C', 'D'];
 export const M6_PO_INDICATORS = [
   ['sma', { period: 20 }],
@@ -81,7 +85,10 @@ export function m6ReplayLeakHostHtml({ cycles = DEFAULT_M6_CYCLES } = {}) {
     import {
       findM20Q6ReplaySystems,
       connectedIframeCount,
-      isLiveM20Q6ReplaySystem
+      isLiveM20Q6ReplaySystem,
+      aggregateM6SchedulingCensus,
+      installM6SchedulingCensus,
+      summarizeM6SchedulingCensus
     } from '/m6-probe.mjs';
 
     const cycles = ${safeCycles};
@@ -96,8 +103,31 @@ export function m6ReplayLeakHostHtml({ cycles = DEFAULT_M6_CYCLES } = {}) {
       return document.getElementById('harness').contentWindow;
     }
 
+    function installHarnessCensus() {
+      installM6SchedulingCensus(harnessWindow(), 'A-harness');
+    }
+
+    function installAllSchedulingCensus() {
+      installHarnessCensus();
+      for (const entry of chartWindows()) {
+        installM6SchedulingCensus(entry.win, entry.id === 'A' ? 'A-harness' : 'panel-' + entry.id);
+      }
+    }
+
+    function collectSchedulingCensus() {
+      const rows = [];
+      for (const entry of chartWindows()) {
+        rows.push(summarizeM6SchedulingCensus(entry.win, entry.id === 'A' ? 'A-harness' : 'panel-' + entry.id));
+      }
+      return {
+        rows,
+        totals: aggregateM6SchedulingCensus(rows)
+      };
+    }
+
     function snapshot(label) {
       const win = harnessWindow();
+      installAllSchedulingCensus();
       const connectedLive = findM20Q6ReplaySystems(win).filter(isLiveM20Q6ReplaySystem);
       const seen = new WeakSet(connectedLive);
       const orphanLive = countTrackedLiveOrphans(seen);
@@ -109,7 +139,8 @@ export function m6ReplayLeakHostHtml({ cycles = DEFAULT_M6_CYCLES } = {}) {
         trackedIframes: trackedPanels.length,
         q6States: collectQ6States(win),
         replayPlaying: collectReplayPlaying(win),
-        panelCount: countManagedPanels(win)
+        panelCount: countManagedPanels(win),
+        schedulingCensus: collectSchedulingCensus()
       };
     }
 
@@ -479,13 +510,16 @@ export function m6ReplayLeakHostHtml({ cycles = DEFAULT_M6_CYCLES } = {}) {
       const startedAt = new Date().toISOString();
       let workload = null;
       try {
+        installHarnessCensus();
         await waitFor(() => {
           const win = harnessWindow();
+          installM6SchedulingCensus(win, 'A-harness');
           return win && win.__harnessManager && win.chart && win.chart.replaySystem
             && win.chart.replaySystem._m20Q6LifecycleState === 'active'
             && !win.__harnessBootError;
         }, 'host chart active replay system', 60000);
         await waitFor(() => {
+          installAllSchedulingCensus();
           const m = manager();
           return PANEL_IDS.every((id) => {
             const entry = m && m.charts && m.charts.get(id);
@@ -517,7 +551,9 @@ export function m6ReplayLeakHostHtml({ cycles = DEFAULT_M6_CYCLES } = {}) {
           cycleSnapshots.push(snapshot('cycle-' + (index + 1) + '-closed'));
         }
         await sleep(1000);
-        const final = snapshot('final');
+        const finalImmediate = snapshot('final-immediate');
+        await sleep(${M6_SCHEDULER_SOAK_MS});
+        const final = snapshot('final-after-60s');
         await postReport({
           ok: true,
           startedAt,
@@ -526,6 +562,8 @@ export function m6ReplayLeakHostHtml({ cycles = DEFAULT_M6_CYCLES } = {}) {
           workload,
           baseline,
           final,
+          finalImmediate,
+          schedulerSoakMs: ${M6_SCHEDULER_SOAK_MS},
           cycleSnapshots
         });
       } catch (error) {
