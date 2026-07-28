@@ -239,6 +239,42 @@ test('cell 13: a shell with no build id is UNDETERMINED, not a build id of nothi
     });
 });
 
+// These two cells exist because of a real false finding on 2026-07-28. The probe
+// followed a 307 from /chart/index.html to /login/, read the login page, found no
+// build id in it, and reported "served, but carries no recognisable build id".
+// The shell was gated, not unstamped. A gate and a missing stamp need opposite
+// responses, so the probe must never resolve one into the other.
+
+test('cell 13b: an auth-gated shell reports the gate, not a missing build id', async () => {
+    await withServer({
+        '/chart/index.html': { status: 307, headers: { location: '/login/?next=%2Fchart%2Findex.html' }, body: '' },
+        '/login/': { type: 'text/html', body: '<html><body>Sign in to Talaria</body></html>' },
+    }, async (base) => {
+        const f = (await probe(OPTS(base, { shells: ['/chart/index.html'] }))).findings.find((x) => x.kind === 'build-id');
+        const shell = f.perShell[0];
+        assert.equal(shell.state, UNDETERMINED);
+        assert.equal(shell.status, 307);
+        assert.equal(shell.redirectedTo, '/login/?next=%2Fchart%2Findex.html');
+        assert.match(shell.reason, /authentication gate/i);
+        // The exact wording of the false finding must not be reachable from a redirect.
+        assert.doesNotMatch(shell.reason, /no recognisable build id/i);
+    });
+});
+
+test('cell 13c: the probe does not follow a redirect, so the destination is never described', async () => {
+    await withServer({
+        '/chart/index.html': { status: 302, headers: { location: '/login/' }, body: '' },
+        '/login/': { type: 'text/html', body: '<script src="/chart/modules/order-manager.js?v=99999999b1"></script>' },
+    }, async (base, requests) => {
+        const f = (await probe(OPTS(base, { shells: ['/chart/index.html'] }))).findings.find((x) => x.kind === 'build-id');
+        // The login page carries a stamp. If the probe followed the redirect it would
+        // report that stamp as this shell's build id, which would be a lie about which
+        // artifact is deployed -- worse than reporting nothing.
+        assert.equal(f.distinctBuildIds.length, 0);
+        assert.ok(!requests.some((r) => r.url.startsWith('/login/')), 'probe must not request the redirect destination');
+    });
+});
+
 // ---------------------------------------------------------------------------
 // Safety, redaction, EVID-01
 // ---------------------------------------------------------------------------

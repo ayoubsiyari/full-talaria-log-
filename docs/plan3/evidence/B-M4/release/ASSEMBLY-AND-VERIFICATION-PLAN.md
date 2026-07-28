@@ -34,11 +34,31 @@ snapshot is simply from the same era. **The mirror ruling stands and my B-0116
 blocker stays withdrawn** — but note that byte identity alone could never have
 separated these two explanations, and on a future build it will not be a coincidence.
 
-**(b) `/chart/index.html` is unstamped.** This is the shell the PO actually loaded for
-today's heap and CPU sessions. An unstamped shell cannot be named and cannot be
-cache-busted, which means *we still cannot say which build any PO session ran on,
-even after this push* unless it gets a stamp. This is a DEPLOY-01 failure found by
-observation, and it is an acceptance criterion on C's cache-stamp gate (§5).
+**(b) ~~`/chart/index.html` is unstamped.~~ WITHDRAWN 16:02 — it is auth-gated, and the
+defect was in my probe.** Corrected finding below; the original is struck rather than
+deleted because the 15:39 ruling assigned an owner to fix it.
+
+`/chart/index.html` returns **HTTP 307 to `/login/?next=…`**. My probe was running
+`redirect: 'follow'`, so it silently landed on the login page, found no build id in
+that page, and reported "served, but carries no recognisable build id". The shell was
+never unstamped; the probe described a different page and attributed it to the shell.
+
+The source file `chart v 1.4/chart/index.html` is a 1,384-byte developer stub whose own
+text says *"This file is not the live Talaria UI"* and that production
+`/chart/index.html` is served from `dist-v9/index.html` — which is stamped
+`20260726b75`, observed. So a signed-in user on that URL is served a stamped shell.
+
+**There is nothing here for an owner to fix, and no stamping work is owed by anyone.**
+What remains genuinely unknown is what the *authenticated* response carries, and that
+needs a session cookie (§7.3) — it is CANNOT DETERMINE, which is not the same as a
+missing stamp and must not be booked as one.
+
+**(b-2) Three chart shells are served with no authentication at all.**
+`dist-v9/index.html`, `legacy-index.html` (1.4 MB, the full monolith) and
+`multichart-prod/chart-embed.html` all return 200 with complete chart content to an
+unauthenticated client, while `/chart/index.html` redirects to login. I am reporting
+the asymmetry, not judging it — it may be deliberate. But it means any conclusion of
+the form "the chart is behind auth" is false for three of the four shells.
 
 **(c) There is no Cloudflare in front of the test server.** No `cf-cache-status` on
 any response. The test surface therefore **cannot** exercise the edge-cache path, so
@@ -74,7 +94,7 @@ train with no way to disable it short of shipping again.
 I merged all four branches in a scratch worktree rather than reasoning about the
 diffs. Results:
 
-**2.1 `chart v 1.4/chart/api_server.py` — the deconfliction being held: it is clean.**
+**2.1 `chart v 1.4/chart/api_server.py` — RELEASED as a non-issue by the Director, 16:52.**
 My I-7.1 hunks are lines **12356–12522**, entirely inside
 `_sync_trading_session_journal_trades`. C's W56 hunk is a single 3→1 line change at
 **26922** in `CHART_ROOT_FILES`. Roughly 14,400 lines apart, different functions,
@@ -101,11 +121,10 @@ be reporting on a broken stamper.
 > module-presence-contract addition. Do not hand-merge hunks.
 
 **2.3 `docs/plan3/journal/MANAGER-B.md` — C's branch carries a copy of my journal.**
-C's `7472228d5` (28 Jul 00:52) added a 559-line snapshot of my journal. It is an early
-copy, my live journal is far past it, and journals are append-only per-manager.
-**Resolve to B's side, always, without inspection.** Flagging as a process matter, not
-resolving it myself: journals should not be cross-written, or the append-only
-guarantee is only as good as the last merge.
+C's `7472228d5` (28 Jul 00:52) added a 559-line snapshot of my journal.
+**Ruled 16:52: journal conflicts always resolve to the owner's side, and no manager
+writes another's journal, ever.** Applied here without inspection — B's side wins.
+The Director records this as the second journal-integrity incident today.
 
 **2.4** No collision found on `order-manager.js`, `chart.js`, or any module in the
 guards' path.
@@ -176,10 +195,12 @@ All five must hold. Any one failing means the push is not verified:
    as the module* — a PRESENT on an unidentified body is not a pass.
 2. **Served bytes differ from `ff6e9df1…`.** If they match, we shipped and the surface
    is still serving the 25 July file — a cache or build-path failure, not a code failure.
-3. **Every shell reports a build id, and all report `20260728b81`.** Today
-   `/chart/index.html` reports none; **that shell going from UNDETERMINED to PRESENT is
-   the acceptance test for C's cache-stamp gate.** If it is still unstamped, the gate
-   did not do its job regardless of what the other three shells say.
+3. **Every shell the probe can read reports `20260728b81`**, and they agree with each
+   other. The three unauthenticated shells (`dist-v9/index.html`, `legacy-index.html`,
+   `multichart-prod/chart-embed.html`) must all be PRESENT at b81.
+   `/chart/index.html` will report UNDETERMINED behind its auth gate unless a cookie is
+   supplied; **that is a pass, not a failure** — see §0(b). With a cookie it must also
+   report b81, since it resolves to `dist-v9/index.html`.
 4. **`GET /api/sessions/{id}` returns 2xx with a token.** A 401 is UNDETERMINED, not a
    pass — it means reachable-but-unread, and it is the state we are in today.
 5. **Exit code 0.** Exit 1 is ABSENT (shipped without the fix); exit 3 is UNDETERMINED
@@ -219,19 +240,21 @@ thing that protects data already on disk.
 
 ## 7. Gaps I cannot close as release owner
 
-**7.1 A's render-path fix has no kill-switch, and it is now in the train.** Every other
-item is either runtime-switchable or build-time-only. A change to how the chart draws,
-shipping to a canary with no way to disable it short of Tier 2, sets the rollback floor
-for the whole push at one build cycle. **Request:** either A adds a runtime switch on
-the same fail-closed pattern as §3 (default on, explicit vocabulary to disable), or the
-Director accepts a one-build-cycle rollback floor on canary with that written down. I
-am not able to decide which.
+**7.1 ~~A's render-path fix has no kill-switch~~ — RULED 16:52. A adds the switch and it
+blocks the train.** The Director did not accept the one-build-cycle rollback floor: the
+switch is the precondition for A's fast-shooting authority, and a render-path change
+with no runtime rollback inverts that trade. **The train does not assemble until A's
+switch exists**, built on the §3 pattern — default on, explicit disabling vocabulary,
+anything unrecognised leaves the change active. Item 4 in §1 is blocked until then.
 
-**7.2 The edge clause cannot be verified before production.** §0c. First real edge
-observation will be on the canary itself.
+**7.2 The edge clause cannot be verified before production.** §0c — no Cloudflare on
+test. **Ruled 16:52:** cache verification is a **post-push production step, executed
+before testers are released.** It is a release gate, not an observation, and it is the
+last thing between the push and the testers.
 
-**7.3 I need a QA token** for the session endpoint, or check 5.4 stays UNDETERMINED and
-the endpoint half of the verification is unproven.
+**7.3 I need a QA session credential** — a cookie for the gated shell, a token for the
+endpoint. Without them, check 5.4 and the authenticated half of check 5.3 stay
+UNDETERMINED. This is now the only unresolved input I am waiting on.
 
 **7.4 A's render-path fix is not yet delivered.** Assembly order is fixed but the
 content is not in hand; the trial merge in §2 covered the other three only.

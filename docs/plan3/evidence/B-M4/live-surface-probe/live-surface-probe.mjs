@@ -69,6 +69,7 @@ live-surface-probe — report what the running deployment serves. Read-only.
   --shell=PATH          HTML shell to read the build id from (repeatable)
   --session-id=ID       also probe GET /api/sessions/{ID}
   --token=TOKEN         bearer token; or set LIVE_PROBE_TOKEN. Never printed.
+  --cookie=COOKIE       session cookie for auth-gated shells; or LIVE_PROBE_COOKIE. Never printed.
   --out=DIR             write an immutable JSON record here (EVID-01)
   --timeout-ms=N        per-request timeout, default 10000
   --json                machine-readable output only
@@ -95,6 +96,7 @@ function parseArgs(argv) {
         else if (k === 'shell') out.shells.push(v);
         else if (k === 'session-id') out.sessionId = v;
         else if (k === 'token') out.token = v;
+        else if (k === 'cookie') out.cookie = v;
         else if (k === 'out') out.out = v;
         else if (k === 'timeout-ms') out.timeoutMs = Number(v);
         else if (k === 'json') out.json = true;
@@ -107,6 +109,7 @@ function parseArgs(argv) {
             '/chart/multichart-prod/chart-embed.html'];
     }
     out.token = out.token || process.env.LIVE_PROBE_TOKEN || null;
+    out.cookie = out.cookie || process.env.LIVE_PROBE_COOKIE || null;
     return out;
 }
 
@@ -122,21 +125,26 @@ function redact(s, token) {
  * place rather than trusted across call sites. A non-GET/HEAD method is a
  * programming error and throws rather than being sent.
  */
-async function readOnlyFetch(url, { method = 'GET', token, timeoutMs }) {
+async function readOnlyFetch(url, { method = 'GET', token, cookie, timeoutMs }) {
     if (method !== 'GET' && method !== 'HEAD') {
         throw new Error(`live-surface-probe is read-only; refusing method ${method}`);
     }
     const headers = { 'cache-control': 'no-cache' };
     if (token) headers.authorization = `Bearer ${token}`;
+    if (cookie) headers.cookie = cookie;
     const ac = new AbortController();
     const timer = setTimeout(() => ac.abort(), timeoutMs);
     const startedAt = Date.now();
     try {
-        const res = await fetch(url, { method, headers, redirect: 'follow', signal: ac.signal });
+        // 'manual', never 'follow'. A redirect is a statement about the surface and
+        // must reach the report intact. Following one lets an auth gate answer for the
+        // shell: the probe describes the login page and calls it an unstamped build.
+        const res = await fetch(url, { method, headers, redirect: 'manual', signal: ac.signal });
         const body = method === 'HEAD' ? '' : await res.text();
         return {
             ok: true,
             status: res.status,
+            location: res.headers.get('location'),
             finalUrl: res.url || url,
             contentType: res.headers.get('content-type') || null,
             bytes: Buffer.byteLength(body, 'utf8'),
@@ -163,6 +171,26 @@ async function readOnlyFetch(url, { method = 'GET', token, timeoutMs }) {
     }
 }
 
+const LOGIN_LIKE = /\/(login|signin|sign-in|auth|account)\b/i;
+
+/**
+ * A redirect is never followed, so it always has to be explained rather than
+ * silently resolved. A redirect to a login route is the specific case that
+ * produced a false "unstamped build" reading on 2026-07-28: the shell is gated,
+ * not unstamped, and the two demand completely different responses.
+ */
+function describeRedirect(res) {
+    const to = res.location || '(no location header)';
+    if (res.location && LOGIN_LIKE.test(res.location)) {
+        return `HTTP ${res.status} to ${to} — this path is behind an authentication gate. `
+            + 'The probe did not follow it, because the page on the other side is not this '
+            + 'shell and must not be described as if it were. Supply --cookie or --token to '
+            + 'see what a signed-in user is actually served. This is CANNOT DETERMINE, not absent.';
+    }
+    return `HTTP ${res.status} to ${to} — redirect not followed. Re-point the probe at the `
+        + 'destination if that is the surface you meant to inspect.';
+}
+
 function looksLikeHtml(contentType, body) {
     if (contentType && /text\/html/i.test(contentType)) return true;
     return /^\s*(<!doctype html|<html[\s>])/i.test(body.slice(0, 400));
@@ -183,7 +211,7 @@ function establishModuleIdentity(res) {
         return { identified: false, reason: 'HTTP 404: nothing served at this path — the path may be wrong, not the build' };
     }
     if (res.status >= 400) return { identified: false, reason: `HTTP ${res.status}` };
-    if (res.status >= 300) return { identified: false, reason: `HTTP ${res.status}: unresolved redirect` };
+    if (res.status >= 300) return { identified: false, reason: describeRedirect(res) };
     if (looksLikeHtml(res.contentType, res.body)) {
         return {
             identified: false,
@@ -209,7 +237,7 @@ function establishModuleIdentity(res) {
 
 async function probeModule(base, modulePath, markers, opts) {
     const url = new URL(modulePath, base).toString();
-    const res = await readOnlyFetch(url, { token: opts.token, timeoutMs: opts.timeoutMs });
+    const res = await readOnlyFetch(url, { token: opts.token, cookie: opts.cookie, timeoutMs: opts.timeoutMs });
     const identity = establishModuleIdentity(res);
     const finding = {
         kind: 'module',
@@ -241,11 +269,11 @@ async function probeModule(base, modulePath, markers, opts) {
  */
 async function probeSessionEndpoint(base, sessionId, opts) {
     const url = new URL(`/api/sessions/${encodeURIComponent(sessionId)}`, base).toString();
-    const res = await readOnlyFetch(url, { token: opts.token, timeoutMs: opts.timeoutMs });
+    const res = await readOnlyFetch(url, { token: opts.token, cookie: opts.cookie, timeoutMs: opts.timeoutMs });
     const finding = {
         kind: 'session-endpoint',
         url: redact(url, opts.token),
-        credentialSupplied: Boolean(opts.token),
+        credentialSupplied: Boolean(opts.token || opts.cookie),
         status: res.ok ? res.status : null,
         transportError: res.ok ? null : res.transportError,
         state: UNDETERMINED,
@@ -297,9 +325,16 @@ async function probeBuildIds(base, shells, opts) {
     const perShell = [];
     for (const shell of shells) {
         const url = new URL(shell, base).toString();
-        const res = await readOnlyFetch(url, { token: opts.token, timeoutMs: opts.timeoutMs });
+        const res = await readOnlyFetch(url, { token: opts.token, cookie: opts.cookie, timeoutMs: opts.timeoutMs });
         if (!res.ok) {
             perShell.push({ shell, state: UNDETERMINED, reason: `transport failure: ${res.transportError}` });
+            continue;
+        }
+        if (res.status >= 300 && res.status < 400) {
+            perShell.push({
+                shell, status: res.status, state: UNDETERMINED,
+                redirectedTo: res.location, reason: describeRedirect(res),
+            });
             continue;
         }
         if (res.status !== 200) {
@@ -431,7 +466,7 @@ export async function probe(opts) {
             + 'UNDETERMINED = could not identify, with a reason. ABSENT is never inferred from a failure.',
         startedAtUtc,
         baseUrl: redact(opts.baseUrl, opts.token),
-        credentialSupplied: Boolean(opts.token),
+        credentialSupplied: Boolean(opts.token || opts.cookie),
         readOnly: true,
         findings,
     };

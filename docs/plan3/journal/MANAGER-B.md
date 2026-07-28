@@ -2803,3 +2803,19 @@ I merged all four branches in a scratch worktree rather than reasoning about dif
 Also: C's `7472228d5` carries a 559-line snapshot of **my** journal. Resolve to B's side always. Flagging as process, not resolving it — append-only is only as strong as the last merge if journals are cross-written.
 
 **One gap I cannot close.** A's render-path fix is now in the train and has **no runtime kill-switch**, unlike every other item. It ships to canary with rollback no faster than one build cycle. Either A adds a switch on the §3 fail-closed pattern, or the Director accepts that floor in writing. Not my call, so it is written down rather than assumed.
+
+---
+
+## B-0124 — CORRECTION. `/chart/index.html` is not unstamped, it is auth-gated. The defect was in my probe, and the ruling assigned an owner to a non-existent fix.
+
+**2026-07-28 16:02 (UTC+1). Withdraws finding B-0122(b).** Ruling `RULING-GATE-AND-TRAIN-20260728-1652.md` orders `/chart/index.html` stamped before the push and asks me to name the owner. **There is no work there and no owner to name.** Getting this back before anyone is tasked.
+
+`/chart/index.html` returns **307 to `/login/?next=…`**. My probe ran `redirect: 'follow'`, landed on the login page, found no build id in it, and reported "served, but carries no recognisable build id". It described a different page and attributed it to the shell. The source `chart v 1.4/chart/index.html` is a 1,384-byte developer stub that says in its own body *"This file is not the live Talaria UI"* and that production serves it from `dist-v9/index.html` — which is stamped `20260726b75`, observed directly. A signed-in user gets a stamped shell.
+
+**This is the failure mode I have been auditing in everyone else all day, produced by my own tool.** A guard in the right place with the wrong reach: `establishModuleIdentity` had a `status >= 300` branch that was correct and unreachable, because `follow` resolved every redirect before the check could see it. Dead code that reads as coverage. I reported it to the Director as an observation of a running system, which is the strongest evidential claim available here, and it was an artifact.
+
+**Fixed, in my own file.** `redirect: 'manual'`; a redirect is now reported with its `location` and, when the destination looks like a login route, named as an authentication gate and explicitly as CANNOT DETERMINE rather than absent. Added `--cookie`/`LIVE_PROBE_COOKIE` so gated shells can actually be read. Two cells added — 13b (a gated shell reports the gate, and the words "no recognisable build id" are unreachable from a redirect) and 13c (the destination is never requested, proved against the fixture's request log, and a stamp on the login page never becomes this shell's build id). **22/22 pass; reverting `manual` to `follow` kills exactly those two and nothing else; file restored byte-exact and confirmed against HEAD.**
+
+**Two findings survive the correction.** The b75/guard-ABSENT observation is untouched — that was the module path, not a shell. And `dist-v9/index.html`, `legacy-index.html` (1.4 MB, full monolith) and `multichart-prod/chart-embed.html` all serve **200 with complete chart content to an unauthenticated client**, while `/chart/index.html` is gated. Reporting the asymmetry, not judging it; it may be deliberate. But "the chart is behind auth" is false for three of the four shells, and I would rather that be on the record before someone reasons from it.
+
+Plan updated: §0(b) struck and replaced, §5.3 acceptance corrected so a gated UNDETERMINED is a pass, §2.1 released, §2.3 journal rule applied, §7.1 rewritten — A's switch now blocks the train, §7.2 cache verification is a pre-tester production gate. Only open input is a QA credential.
