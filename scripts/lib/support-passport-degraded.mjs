@@ -379,10 +379,54 @@ export function createSupportPassportRealm(opts) {
   const consumer = {};
   const accessTracker = { enabled: false, unknownReads: [] };
   let nowMs = Number.isFinite(opts.nowMs) ? opts.nowMs : 1_700_000_000_000;
+  /** @type {{ due: number, fn: Function }[]} */
+  const timerQueue = [];
+  let nextTimerId = 1;
+  const drainTimers = () => {
+    timerQueue.sort((a, b) => a.due - b.due);
+    while (timerQueue.length > 0 && timerQueue[0].due <= nowMs) {
+      const job = timerQueue.shift();
+      try { job.fn(); } catch { /* ignore timer errors */ }
+      timerQueue.sort((a, b) => a.due - b.due);
+    }
+  };
   const clock = {
     now: () => nowMs,
-    advance: (ms) => { nowMs += ms; return nowMs; },
-    set: (ms) => { nowMs = ms; return nowMs; },
+    // Step through timer due-times so a callback that schedules +25ms from "now"
+    // still fires inside a larger advance (presence tripwire chain).
+    advance: (ms) => {
+      const target = nowMs + ms;
+      while (nowMs < target) {
+        timerQueue.sort((a, b) => a.due - b.due);
+        const next = timerQueue[0];
+        if (!next || next.due > target) {
+          nowMs = target;
+          break;
+        }
+        nowMs = next.due;
+        const job = timerQueue.shift();
+        try { job.fn(); } catch { /* ignore timer errors */ }
+      }
+      drainTimers();
+      return nowMs;
+    },
+    set: (ms) => { nowMs = ms; drainTimers(); return nowMs; },
+  };
+  const realmSetTimeout = (fn, delay = 0) => {
+    const id = nextTimerId++;
+    const ms = Math.max(0, Number(delay) || 0);
+    // Zero-delay stays synchronous so runtime boot helpers that schedule microtasks keep working.
+    // Positive delays are deferred onto clock.advance (R-M6-9 TTL-cache carrier).
+    if (ms === 0) {
+      try { fn(); } catch { /* ignore */ }
+      return id;
+    }
+    timerQueue.push({ due: nowMs + ms, fn, id });
+    return id;
+  };
+  const realmClearTimeout = (id) => {
+    const idx = timerQueue.findIndex((job) => job.id === id);
+    if (idx >= 0) timerQueue.splice(idx, 1);
   };
   const perfOrigin = nowMs;
   // Product (and mutants) call Date.now(); host Date must not leak a frozen wall clock.
@@ -537,10 +581,10 @@ export function createSupportPassportRealm(opts) {
     Date: RealmDate,
     CustomEvent: class { constructor(type, init) { this.type = type; this.detail = init?.detail; } },
     Node: { DOCUMENT_POSITION_FOLLOWING: 4 },
-    setTimeout: (fn) => fn(),
-    clearTimeout: () => {},
-    setInterval: (fn) => { fn(); return 0; },
-    clearInterval: () => {},
+    setTimeout: realmSetTimeout,
+    clearTimeout: realmClearTimeout,
+    setInterval: (fn, delay = 0) => realmSetTimeout(fn, delay),
+    clearInterval: realmClearTimeout,
     module: moduleObj,
     exports: moduleObj.exports,
     require: (id) => {
@@ -607,6 +651,10 @@ export function createSupportPassportRealm(opts) {
   }
   listeners.DOMContentLoaded?.();
   document.readyState = postBootReadyState;
+  // module-presence-runtime retries the tripwire 20× at +25ms each. Settle the full
+  // chain so absent-provider degradation is visible before any passport call (was free
+  // when setTimeout ignored delay and ran synchronously).
+  clock.advance(25 * 21);
 
   if (aliasOnly !== null) {
     const known = SUPPORT_PASSPORT_ALIASES.map((alias) => alias.global);
@@ -1296,6 +1344,31 @@ export const SUPPORT_PASSPORT_BEHAVIORAL_MUTANTS = [
         .replace(MEMOIZED_PASSPORT_TAIL, '  __passportCache = ctx;\n  return ctx;\n}');
     },
   },
+  {
+    id: 'M16',
+    name: 'NC-MUTANT-SETTIMEOUT-TTL-CACHE',
+    describes:
+      'module-scope cache cleared by setTimeout(60s) — dead when setTimeout fires synchronously '
+      + '(R-M6-9), live when timers are deferred onto the realm clock',
+    apply: (src) => {
+      if (!src.includes(MEMOIZED_PASSPORT_HEADER) || !src.includes(MEMOIZED_PASSPORT_TAIL)) {
+        return null;
+      }
+      return src
+        .replace(
+          MEMOIZED_PASSPORT_HEADER,
+          'let __passportCache: Record<string, string | string[]> | null = null;\n'
+          + `${MEMOIZED_PASSPORT_HEADER}\n`
+          + '  if (__passportCache !== null) return __passportCache;',
+        )
+        .replace(
+          MEMOIZED_PASSPORT_TAIL,
+          '  __passportCache = ctx;\n'
+          + '  setTimeout(() => { __passportCache = null; }, 60_000);\n'
+          + '  return ctx;\n}',
+        );
+    },
+  },
 ];
 
 /**
@@ -1673,24 +1746,12 @@ export function hasHelperIndirectionFreeze(ts, sourceFile, callNode) {
           helperFreezes = true;
         }
       }
-      // return { ...p, context: snap } — R-M6-8 return-style freeze
+      // Any context/degradedModules property in the helper body — including concise-body
+      // arrows `p => ({ ...p, context: snap })` that have no ReturnStatement (R-M6-9).
       if ((ts.isPropertyAssignment(node) || ts.isShorthandPropertyAssignment(node))
-        && propertyNameText(ts, node.name) === 'context'
-        && ts.isReturnStatement(node.parent?.parent)) {
+        && (propertyNameText(ts, node.name) === 'context'
+          || propertyNameText(ts, node.name) === 'degradedModules')) {
         helperFreezes = true;
-      }
-      if (ts.isPropertyAssignment(node) && propertyNameText(ts, node.name) === 'context') {
-        // Any helper that builds a new object with a context field is a freeze risk
-        // when called from createThread after the passport call.
-        let cur = node.parent;
-        while (cur && cur !== fn) {
-          if (ts.isReturnStatement(cur) || ts.isArrowFunction(cur) || ts.isFunctionExpression(cur)
-            || ts.isFunctionDeclaration(cur)) {
-            if (ts.isReturnStatement(cur) || cur === fn) helperFreezes = true;
-            break;
-          }
-          cur = cur.parent;
-        }
       }
       ts.forEachChild(node, visit);
     };
