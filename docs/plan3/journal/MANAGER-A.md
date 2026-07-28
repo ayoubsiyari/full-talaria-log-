@@ -4169,3 +4169,61 @@ Left `multichart/multichart-manager.js` (identical defect at :201-202) alone. Re
 - **PO-REQ: M-6 on the PO's real browser.** Headless self-heals via pagehide; the PO's Chrome shows 3 orphans. The environments disagree and only the PO's side has the defect.
 - Census wrote full heap snapshots then **deleted** them (heapDeleted:true), counting node names only — it had the data to answer "what retains this" and discarded it.
 - Ordering mutant survived initial oracle (two separate call arrays); killed in 08d024b02.
+
+## 2026-07-28 ~16:0x — M26 MERGED per RULING-MEMORY-FIX-DISPOSITION-20260728
+
+merge=a9c7e34c9 branch=manager-a/critical-path (from manager-a/orphan-replay-destroy@08d024b02)
+
+**DISPOSITION (Director's words, not mine): "code-correct, effect not demonstrated." Kill-switch on.**
+Per **EVID-01** the pending demonstration is **Manager C's M-6 gate on the live browser runner**.
+**This is NOT reported as a fixed leak.** It is not reported as closing the lag complaint.
+
+My proposed "hygiene grounds" label is **withdrawn as too weak** and the Director is right that it was.
+The distinction I failed to draw: **confidence in the fix** and **an instrument able to observe its effect**
+are different deficiencies. Only the second is missing here. Conflating them is how a real fix gets
+discarded as unproven.
+
+Green at merge tip: m26 5/5, b70-multichart-manager-mirrors 1/1, b70-indicator-generation-shadow 37/37,
+m10-runtime-pnl-replay-frame 9/9, m23-host-listener-leak 12/12, m25-render-pending-accessor 33/33 = **97/97**.
+
+### FINDING (Director instructed this be recorded): my harness measures a smaller scenario
+The census cannot reproduce a leak the PO caught by hand in ten minutes. **That is not an obstacle, it is an answer.**
+It settles my own earlier open doubt — I refused to say whether a 33 MiB heap meant a fivefold improvement or a
+harness measuring a smaller scenario. **It is the smaller scenario.** Every byte total this harness has produced
+is now suspect for that reason, not merely "unvalidated".
+Mechanism of the under-reproduction: `frame.remove()` fires `pagehide` 0-7 ms after removal in headless, so the
+pre-existing drain hook self-heals before the defect can manifest. Plus no open-state sample and an uncalibrated
+detached-div detector reading 0 in every arm.
+
+### Director's new PO numbers supersede parts of my census
+- **4 -> 17 engines, unbounded**, ~7.5 MB retained each (my census: constant 1 — instrument, not reality)
+- **~15 leaked panel documents** — so the Document question is answered **affirmatively by PO data**. My census
+  read 0 and the earlier retraction is superseded. My 0 was an uncalibrated instrument, not evidence of absence.
+- **compiled code 45 -> 137 MB**
+- heap names the retaining edge as **the instance being a key in a strong Map** — consistent with review's finding
+  that `page.states` is a strong `Set` (replay-system.js:9528) released by `m20Q6ReleasePageState` (:9811).
+
+### Routing decisions I did NOT get to make (ruled)
+- **Not** "hold for the PO's reading" — that makes the PO our first instrument again after four hand-run snapshot
+  rounds today, and blocks the train on one person under a 3-4h standby canary.
+- **Not** "rebuild my harness" — C's browser runner already exists and the M-6 gate is already dispatched to C.
+  Two managers building two instruments for one measurement is the waste being called out.
+
+### HAND-OFF TO C (M-6 gate) — carry these or the gate repeats my failure
+1. **Suppress or account for the `pagehide` self-heal.** replay-system.js:9563-9579 drains on pagehide/beforeunload
+   of the panel window; `frame.remove()` fires it 0-7 ms later. A runner that does not handle this **cannot** show
+   the defect and will read green on broken code — the M-5 failure mode again.
+2. **Sample while panels are OPEN.** Count must be shown to rise above 1, or "1 after" is unfalsifiable.
+   `beforeOpen` is already 1 (the host chart), so criterion 1 is satisfied by the host alone.
+3. **Calibrate the detached-div detector against a known-detached node** before trusting a 0.
+4. **Run BOTH arms** via `__TALARIA_DISABLE_M26_PANEL_REPLAY_DESTROY_V1`; assert the arms **differ**.
+   My census collected the control arm and then discarded it — `buildAcceptance` read only the enabled arm.
+5. **Mutant = real fix-reversal** per C's W55 precedent, since the gate is the sole evidence the fix works.
+6. **Do not delete the heap snapshots.** Mine wrote them then set `heapDeleted:true` and counted node names only —
+   it had the data to answer "what retains this" and threw it away.
+
+### STANDING WARNING attached to this row
+**Do not patch `multichart/multichart-manager.js`** (non-prod), despite the identical defect at :201-202.
+`multichart/chart-host.html:281-283` installs a no-op **Proxy** whose `.destroy` is truthy, so the guard would
+pass, the real `_b70ShadowDisposeIndicatorGeneration` would be **skipped**, and it is a **strict regression**.
+The scope decision is load-bearing for correctness, not tidiness.
