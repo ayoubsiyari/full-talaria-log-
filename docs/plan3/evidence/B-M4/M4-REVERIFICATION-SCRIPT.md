@@ -81,7 +81,9 @@ Nothing below counts until these four hold. Any NO ends the run.
 
 Record: build tag, digest, environment, account id, Phase 1a real session id, Phase 1b disposable session id, Phase 2/3 session id, UTC start time, operator name.
 
-**0.3 exists because Phase 1b and Phases 2–3 write trades.** Writing them into the PO's verification surface while M24's migration is live would corrupt the very thing this gate protects. Phase 1b must use a disposable session id different from Phase 1a's real ledger session id.
+**0.3 exists because Phases 2–3 write trades** (Phase 1b is quarantined). Writing them into the PO's verification surface while M24's migration is live would corrupt the very thing this gate protects.
+
+~~Phase 1b must use a disposable session id different from Phase 1a's real ledger session id.~~ **That instruction is not sufficient and is withdrawn** — "different from" is exactly what a transposition of the two flags satisfies. See the Phase 1b quarantine notice.
 
 > **CORRECTION — this line previously read "the harness itself does not delete trades." That was false.**
 >
