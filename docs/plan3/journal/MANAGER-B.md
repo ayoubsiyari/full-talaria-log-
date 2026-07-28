@@ -658,3 +658,75 @@ So the gate as written **encodes a convention (`must carry isPending`) rather th
 **Status: accepted into review, blocked from integration** — like every packet I hold, by Manager C's `TERRITORY.yml` and ownership preflight, and additionally by the top-tier adversarial review that has not yet run on anything.
 
 Write packets in flight: **1 of 3** (B-W1). Read-only in flight: **0**. Packets awaiting review: **2** (B-W1+B-W2 as one; B-W4). Packets rejected pending supersede: **0** — B-W3 superseded by the rename in B-W4. Outstanding `PO-REQ`: **0**. Outstanding `NEEDS-PO-CLARIFY`: **1**. Cross-territory/unowned files affecting my rows: **9**.
+
+---
+
+## B-0039 — SELF-CORRECTION · my verification of B-W4 was the weakest possible check, and B-0038 contains two errors of my own
+
+B-R1's adversarial review landed and I verified its headline myself before acting. **Both of my errors are errors of verification method, not of luck.**
+
+**Error 1 — I verified the gate with the one test that could not fail.** I ran the gate against a reverted copy, saw red, and recorded in B-0038 that this "is the check that matters" because it proves coupling to the product file. It proves coupling and nothing more. B-R1 built nineteen wrong variants of the real 49k-line file; **the gate accepted thirteen at 6 passed, 0 failed.** I reproduced the worst one myself: replacing the discriminator with `(ol.isPending || true)` — dead, behaviourally **byte-for-byte the original bug** — returns **6/6 PASS, exit 0**. My "independent" check was the variant the author had already tested and reported. I re-ran their strongest evidence and called it my own scrutiny. The correct method, which B-R1 used and I did not, is to attack the gate with *plausible wrong code* rather than with *the absence of the fix*.
+
+**Error 2 — I cited evidence I had not actually read.** B-0038 states `isPending: true` appears at "exactly two registry pushes (38085, 39041), both pending". I ran a grep for `isPending:`, got two hits, and inferred both were pushes. **Line 39041 is not a push** — it is an options object passed to `_syncOrderLevelGraphicsAfterStructureChange`. The real executed push is at **36409** and omits the key, which I never cited. I have now read both windows directly and confirmed B-R1 is right. The conclusion in B-0038 survives — the partition is sound — but the audit trail behind it did not, and for a claim of the form "no executed row ever acquires `isPending: true`" the trail *is* the claim. Corrected citations: pending push **38083–38085** sets it; executed push **36409** omits it.
+
+Both errors have the same shape as B-0027 and B-0031: I checked that a thing was *present* rather than that it was *sound*. Three instances in one session is a pattern in how I verify, not three accidents, and I am recording it as such.
+
+---
+
+## B-0040 — VERDICT (B-R1) · surface=B-W4 packet, coverage=gate attacked with 19 variants, fix traced to all insertion points. **Supersedes B-0038's acceptance.**
+
+**The fix ships. The gate does not, under its current claim.** B-R1 split the packet exactly where the evidence splits, and reached the opposite conclusion on each half.
+
+**On the fix — my provisional position was wrong and I am abandoning it.** I said the `isPending` form was an acceptable compromise with a residual hole (same-class duplicates evicted in pairs while one is disposed), and that the strictly minimal `(ol) => ol !== olEntry` was better. B-R1 attacked that and settled it on the merits: **same-class duplicates are unreachable.** There are exactly two registry insertion points, and each is immediately preceded — in the same synchronous straight-line block, with zero `await`, `setTimeout`, `requestAnimationFrame` or `.then(` between guard and push — by an existence guard on **precisely the (orderId, class, chart) triple the shipped predicate uses**. Single-threaded, so the guard cannot be invalidated before the push. The two fix forms therefore select the same single row on every reachable state. My "residual hole" does not exist, so the follow-up I queued against the fix is not a loose end at all. One suspected gap remains, honestly flagged: the proof covers `order-manager.js`'s own insertions, and `drawing-tools-manager.js` — unowned, out of scope — was not traced.
+
+**On the gate — worse than incomplete.** It decides "discriminated" by testing whether the substring `<param>.isPending` occurs in the *first* filter predicate, and polarity by whether a `!` sits next to it. It never evaluates the predicate, never inspects its position in the boolean tree, and never looks past the first `.filter(`. So it accepts a dead discriminator (`|| true`), a widened predicate that evicts every row on the chart, a chained second filter carrying the original bug, an inverted polarity via `!!` or a ternary, `ol.isPending === false` (which evicts *nothing*, since the key is only ever `true` or absent, stranding the disposed row as a permanent zombie), a dropped chart-identity clause, and eviction via `splice`, `length = 0`, a local alias, or `Object.assign` — none of which trip the count tripwire, because the five declared sites remain present and correct. It also **rejects three correct rewrites**, including the minimal `ol !== olEntry` and the computed access `ol['isPending']`.
+
+**Cell 06, the one cell expressing the real property, is defeated by a one-line edit.** Its evidence test finds an earlier orderId-keyed filter and then checks only that the substring `.forEach(` appears somewhere between it and the eviction — no link between the collected array's binding and the loop's receiver. Adding `if (orderLine.isPending) return;` at the top of `removeOrderLine`'s genuine disposal loop makes the disposal set a strict subset of the removal set and the gate stays green. My concession in B-0038 understated this: the false positive needs no coincidental decoy pair, just one plausible maintenance line inside the real loop.
+
+**Ruling, and I am taking B-R1's framing over my own.** I had planned "ship the improvement, strengthen the gate in a follow-up". That framing assumes the gate's current value is positive but partial. It is not: thirteen wrong sources at 6/6, one of them the original bug verbatim, means a green light from this gate carries close to zero information about the invariant it names — and it is committed, green, and sitting in the tree where the next author will cite it. **A misleading gate is a worse artefact than no gate**, because it launders the next mistake. Narrowing the claim is therefore **in-packet, not follow-up**.
+
+Also noted for the record: the gate's coverage claim overreaches beyond one file. The same registry is evicted, undiscriminated and keyed on orderId, from `drawing-tools-manager.js` at 12088 and 12133 — the ninth-file problem from B-0034, now with the added consequence that any invariant scoped to `order-manager.js` is unenforceable in principle. And `order-manager.js:2070` performs a mass eviction with no orderId at all, outside the fixture's key.
+
+---
+
+## B-0041 — DISPATCH · B-W5, narrow the gate's claim and repair cell 06
+
+Taking one write slot (B-W1 is the only other in flight). Row V6-P1, packet **B-W5**, **Tier 2**, model **`claude-opus-5-thinking-high`** — §A13.2 escalation trigger met for the same reason as B-W4, plus the specific fact that the last agent to touch this artefact produced something that looked rigorous and was not, so the cost of a plausible-but-wrong result here is now demonstrated rather than hypothetical.
+
+Two changes, both to artefacts I already own, and no product change: (1) rewrite the gate's header and the fixture's `invariant` field to state only what is enforced, and enumerate every bypass class B-R1 proved, so the artefact is self-describing about its own blind spots; (2) repair cell 06 by linking the collected array's binding name to the `forEach` receiver, which is the single cheapest step toward `removal set equals disposal set` — the property that actually matters and that the gate currently applies only to exemptions.
+
+Acceptance is defined by the attack, not by the author's say-so: **B-R1's thirteen accepted variants become required negative-control cases.** The brief carries all of them. A rewrite that cannot reject `(ol.isPending || true)` and cannot reject the one-line disposal-loop edit is not accepted, regardless of how it reads.
+
+I am **not** asking for a full behavioural gate. That needs a browser harness, it is Manager C's territory, and it is already escalated in B-0036. What I am refusing to leave in the tree is an artefact that overstates what it proves.
+
+Write packets in flight: **2 of 3** (B-W1, B-W5). Read-only in flight: **0**. Packets awaiting review: **1** (B-W1+B-W2 as one). Packets reviewed, fix accepted / gate remediating: **1** (B-W4 → B-W5). Outstanding `PO-REQ`: **0**. Outstanding `NEEDS-PO-CLARIFY`: **1**. Cross-territory/unowned files affecting my rows: **9**.
+
+---
+
+## B-0042 — VERDICT (B-W5) · surface=eviction gate, coverage=17 required variants + 2 of my own, semantic not textual. Accepted, pending independent review.
+
+B-W5 replaced the substring heuristic with something categorically different: the gate now **parses each eviction predicate in a restricted grammar and evaluates it** as a boolean function over a closed universe of synthetic rows, then compares the resulting removal set against a disposal set read out of the source. Nothing from the product file is executed — it is a hand-written parser and interpreter — and anything outside the grammar fails closed.
+
+**I verified three cases myself, then attacked it with one of my own rather than re-running its evidence, which was precisely my failure in B-0039:**
+
+| Check | Result |
+|---|---|
+| V01, dead discriminator `(ol.isPending \|\| true)` — the original bug verbatim | **rejected**, exit 1 |
+| C01, minimal fix `(ol) => ol !== olEntry` | **accepted**, 6/6 |
+| Real unmodified tree | **accepted**, 6/6 |
+| **My own attack:** loose equality `ol.orderId == orderId` | **rejected**, exit 1 |
+| G8, its self-disclosed blind spot | **accepted**, exactly as disclosed |
+
+The loose-equality attack is the one that convinced me. It was not in the brief and not in its acceptance suite, and it is a genuine defect — a numeric-twin id would be evicted without being disposed. The gate caught it because it *evaluates* the predicate rather than recognising it. That is the difference between this artefact and the one it replaces, and it is the difference I could not have established by re-running the author's own table.
+
+**The V01/C01 pair was the real design constraint and it is now satisfied.** Rejecting a dead `isPending` while accepting a correct predicate that never mentions `isPending` is impossible by substring presence in either direction — which is why the previous gate both accepted the bug and rejected the best fix. The claim is no longer decided textually, so both fall out correctly.
+
+**Two blind spots it found in itself, after the required set already passed, and reported rather than buried.** G8: dropping the `|| this.chart` fallback is accepted, because the world that catches it is the same world in which the *shipped* predicate also over-removes — so it cannot be modelled without rejecting the real source. G9: narrowing both the collect filter and the eviction consistently is accepted, since removal genuinely still equals disposal; the gate cannot infer intent. G10: two legitimate refactors (`for...of` disposal, disposal behind an `if`) are rejected because the grammar fails closed, so this will need extending rather than silencing when someone touches that code.
+
+**G8 carries a correction to my own understanding of the fix.** It means the shipped predicate is not "removes exactly the disposed row" but "removes every row resolving to the same (orderId, pending, chart) triple" — and those diverge exactly when the registry holds duplicates, which is the premise the entire bug rests on. B-R1 proved duplicates unreachable through this file's two insertion paths, so the two formulations coincide today. But they coincide *contingently*, on a property proven in one file, with `drawing-tools-manager.js` explicitly untraced. I am recording that as the standing assumption it is rather than treating the equivalence as structural.
+
+**Two structural changes I am signing off, both forced by C01.** The inventory key changed from "assignments keyed on `orderId`" to "every `this.orderLines = <filter chain>` assignment", because `ol !== olEntry` mentions no `orderId` and would otherwise vanish from the inventory — the exact mechanism by which the old gate turned into a trap. That pulls in the mass eviction at `order-manager.js:2070` as a modelled site rather than an out-of-scope footnote. And the exemption mechanism is **gone** entirely: `mustDiscriminate`, `expectedPolarity` and the exemption codes are deleted, and the fixture schema rejects unknown keys, so buying an exemption now fails on the schema rather than on evidence. It also added a fixture-tamper cell I had not asked for, closing the one field that could have silently bought a wrong verdict.
+
+**The false claim is withdrawn in the artefact itself.** The header no longer describes a registry-wide invariant; it states what is enforced and names the bypass classes, including that `drawing-tools-manager.js:12088` and `12133` mutate this same registry and are unreachable to any gate scoped to one file.
+
+**Status: accepted, and it still needs independent adversarial review.** I attacked it once and B-W5 attacked itself; neither substitutes for a reviewer who did not author it, and the last round is exactly why. That review is queued behind the B-W1+B-W2 one. Until both run, nothing here is integration-ready — and integration remains blocked on Manager C's `TERRITORY.yml` and ownership preflight regardless.
