@@ -244,3 +244,5 @@ Exactly five ` | `-separated fields after the list marker. Absent fields are wri
 2026-07-28T11:30Z | C | PACKET-LANDED | packet=C-026-rest-state-census | "TALARIA_REST_STATE_CENSUS_V1 LIVE — no scheduled work at rest; no render without data change."
 2026-07-28T11:30Z | C | PACKET-LANDED | packet=C-027-m6-support-passport | "M6 ship gate LIVE — degradedModules[] in support passport."
 2026-07-28T11:30Z | C | DISPATCH | packet=W37 | role=author | tier=mid | model=composer-2.5-fast | writes=docs/plan3/oracles/**,docs/plan3/fixtures/a7-*.mjs,scripts/tests/differential-parity-oracle.test.mjs,docs/plan3/GATE-NAME-RESERVATIONS.md,package.json | "A13.2 row: Harness authoring. M5 narrowed to canary families SMA/EMA/WMA/DEMA (PO idle+indicator protocol); keep DRIFT-SMA 100k/500k/1M; no vacuous GREEN/RED; header cites PO-PROTOCOL-CPU-AB-20260728 as acceptance for any CPU claim (not this oracle)."
+
+2026-07-28T11:35Z | C | FIX | packet=C-026-rest-m6 | attr=manager-finding-defect | "ac1d0ac0e accidentally staged chart modules preferences-init.js and preferences-sync.js — outside C territory. Restoring both to pre-commit tree. Self-attributed."
