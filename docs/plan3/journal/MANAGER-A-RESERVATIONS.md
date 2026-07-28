@@ -149,3 +149,11 @@ would imply a design decision I have not made.
 | `m22-residue-census.mjs` | harness | residue-census | new; instrumentation only, injects nothing into product files |
 | `m22-residue-census-20260728.json` | evidence file | residue-census | written inside the packet worktree only |
 | `__TALARIA_RESIDUE_CENSUS_V1` | global symbol | residue-census | injected at page-init by the harness; must never appear in product source |
+
+## 2026-07-28 13:10 — reservations for the CPU attribution probe (PRIORITY ZERO, §1.5)
+
+| Name | Kind | Packet | Note |
+|---|---|---|---|
+| `m23-cpu-attribution-probe.mjs` | harness | cpu-attribution | new; instrumentation only, no product edits |
+| `m23-cpu-attribution-20260728.json` | evidence file | cpu-attribution | written inside the packet worktree only |
+| `__TALARIA_CPU_PROBE_V1` | global symbol | cpu-attribution | injected at page-init; must never appear in product source |
