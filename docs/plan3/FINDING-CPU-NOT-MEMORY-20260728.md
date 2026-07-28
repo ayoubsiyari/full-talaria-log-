@@ -1,5 +1,43 @@
 # FINDING — the competitive deficit is CPU, not memory, and it predates Plan 3
 
+> ## ✅ CONTROLLED LADDER (2026-07-28 11:39) — supersedes both blocks below. Read this one.
+>
+> PO ran `PO-PROTOCOL-CPU-AB-20260728.md` in a **fresh private window with browser data cleared**, EURUSD 1m, 3 years, one pair.
+>
+> | Phase | Memory | CPU | TradeZella equivalent |
+> |---|---|---|---|
+> | **P1 idle**, no indicators, not playing | 447 MB → settles **303 MB** | 25.4 → **12.3, oscillating up to 29.5** | 280 MB, **0.4–5.1** |
+> | **P3/P4 idle**, +3 indicators (SMA/EMA/WMA 20) | **331 MB** | **14.0** | — |
+> | **P5 replay 1x** | 365 MB | **34.4** | 0.4–5.1 at 1x |
+> | **P6 replay 10x** | 460 MB | **114.7** | not captured |
+> | **P8 10x + 8 trades, 7 open, 1 pending** | 536 MB | 95.1 | — |
+> | **P7 pause** | returns to baseline | **returns to baseline** | — |
+>
+> ### Correction 1 — memory is at parity on clean storage. The 1.62 GB was accumulated client-side state.
+>
+> Idle memory on a **cleared** profile is **303 MB against TradeZella's 280 MB — parity.** The earlier 1.62 GB reading was the same idle configuration on an **uncleared** profile. **Clearing browser data cut idle memory by 5x.**
+>
+> **This is not good news and must not be reported as parity.** No user clears their browser storage, so **1.62 GB is the real user experience and 303 MB is the laboratory one.** The defect is restated: *we start at parity and degrade roughly 5x with accumulated use, and the growth lives in client-side storage rather than in the runtime.* New row — establish what grows: IndexedDB stores, localStorage keys, service-worker caches, per-session records (the PO's sessions ran 882, 883 …), and the ~160 MB of `accounts.google.com` / `hcaptcha` subframes seen earlier. Growth per session and a bounded-retention policy are the deliverables.
+>
+> **I have now been wrong twice in one hour on memory parity — once by comparing against FX Replay, which is itself heavy, and once by not controlling storage state. Every future memory claim states the storage condition it was measured under.**
+>
+> ### Correction 2 — speed does drive CPU, and my earlier retraction was too broad
+>
+> **1x costs 34.4; 10x costs 114.7.** Speed materially drives CPU on the product's real surface. My retraction at `f990eb4b5` was correct about the *fast-renderer retirement* premise and **too broad in implying speed is not a CPU driver.** The PO's original suspicion was better than my correction of it. **The 10x cap therefore does have a CPU rationale after all** — restore that to its disposition, measured rather than asserted, and capture TradeZella at 10x to complete the comparison.
+>
+> ### What is now clean, and stops being investigated
+>
+> 1. **Pause returns to baseline.** Replay leaves **no** work running after it stops. P7 refuted — drop that hypothesis.
+> 2. **Indicators are nearly free at idle:** 303 → 331 MB and 12 → 14% for three MAs. Indicator *calculation* is not the resting cost, which is consistent with A's finding that idle cost exists with no indicators at all.
+>
+> ### The two defects that remain, both real, ranked
+>
+> **D1 — the idle floor. Nothing is playing, no indicators, one pair, and CPU sits at 12–30% while TradeZella sits at 0.4–5%.** Still 3–6x worse, and **it oscillates**, which means periodic work with no input change. This remains the cleanest, cheapest, most confined defect on the board and the suspect list is unchanged: the M20-Q2 countdown idle-render path first, then any surviving `setInterval` poll, the forming-candle updater, autosave, and time-driven cache invalidation.
+>
+> **D2 — replay cost. 34.4% at 1x against TradeZella's 0.4–5.1% at 1x — roughly 7x worse at the same speed.** A's measurement of **2.000 full resamples per tick with a 73x ceiling and three optimisation defeats** is the leading explanation and is already in hand. Note D1 is a floor *underneath* D2: 12–30% of the 34.4% is present before replay starts.
+>
+> **Ordering: fix D1 first.** It is smaller, better isolated, requires no architectural change, and it lowers D2 by the same amount for free.
+
 > ## ⚠ SUPERSEDING OBSERVATION (2026-07-28 11:13) — IDLE CPU. Read this first.
 >
 > **Talaria: one pair, 1m, NOTHING PLAYING, immediately after refresh, no indicators, no orders — 1.62 GB, CPU 20.6 with periodic spikes to ~120 falling back to 10–30.**
