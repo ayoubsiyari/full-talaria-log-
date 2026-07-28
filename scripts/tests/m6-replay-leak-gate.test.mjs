@@ -450,6 +450,31 @@ test('fault-injection: small worker growth is RED but not reproduced PO defect c
   assert.match(preflight.error, /worker-only growth delta 1 below attribution threshold 5/);
 });
 
+test('fault-injection: shape-invalid null snapshots preserve UNPROVEN escalation', async () => {
+  const invalidReport = {
+    ok: false,
+    cycles: 5,
+    workload: { armed: true, panels: 4, indicatorsOk: true, order: { ok: true }, stillPlaying: 4 },
+    error: 'browser error report before snapshots',
+    baseline: null,
+    final: null,
+  };
+  const preflight = await runM6ReplayLeakPreflight({
+    findBrowser: () => '/fixture/chrome',
+    runBrowser: async () => ({
+      report: invalidReport,
+      timedOut: false,
+      stderrTail: '',
+    }),
+  });
+
+  assert.equal(preflight.ok, false);
+  assert.equal(preflight.status, 'UNPROVEN');
+  assert.equal(preflight.acceptance.report, invalidReport);
+  assert.equal(preflight.acceptance.error, 'report must include baseline and final snapshots');
+  assert.match(preflight.error, /M6 defect unproven/);
+});
+
 test('fault-injection: cycle-scale worker growth receives attributable defect credit', async () => {
   const preflight = await runM6ReplayLeakPreflight({
     findBrowser: () => '/fixture/chrome',

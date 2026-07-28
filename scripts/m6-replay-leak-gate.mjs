@@ -810,6 +810,7 @@ export async function runM6ReplayLeakGate({
 }
 
 export async function runM6ReplayLeakPreflight(options = {}) {
+  const preflightCycles = options.cycles ?? DEFAULT_M6_CYCLES;
   const acceptance = await runM6ReplayLeakGate({ ...options, mutant: false });
   // Director 1652 / charter: a gate that cannot reproduce the PO-confirmed
   // defect (4→17) must not mint GREEN. live=1 after the PO workload is
@@ -835,7 +836,7 @@ export async function runM6ReplayLeakPreflight(options = {}) {
     if (!acceptance.ok && !defectReproduced) {
       if (acceptance.report) {
         const workerDelta = Number(schedulerCell?.metrics?.deltas?.workers) || 0;
-        const workerCreditThreshold = Number(schedulerCell?.metrics?.workerCreditThreshold) || cycles;
+        const workerCreditThreshold = Number(schedulerCell?.metrics?.workerCreditThreshold) || preflightCycles;
         const workerCreditText = workerBelowCredit
           ? `worker-only growth delta ${workerDelta} below attribution threshold ${workerCreditThreshold} is RED residue but not PO defect reproduced`
           : `worker-only growth requires magnitude >= cycles for PO defect credit (threshold ${workerCreditThreshold})`;
