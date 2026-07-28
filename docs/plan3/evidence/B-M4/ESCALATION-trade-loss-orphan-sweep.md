@@ -82,13 +82,29 @@ Line 25107 runs the sweep using the **two**-alias vocabulary. Line 25116 then re
 - **Repeating.** The sweep runs on every journal sync, so a vulnerable trade is deleted again after any re-add.
 - **Exactly the canary-halting condition.** M4 Phase 4 names trade loss as an outright halt.
 
-## What I have NOT established — read before acting
+## UPDATE 10:57 — the deletion has now been executed, not merely reasoned about
 
-**Reachability is unproven.** I verified the mechanism, not that any live producer emits a journal row carrying only `trade_id`/`client_trade_id`. If no producer does, this is a latent trap rather than an active bug — dangerous the moment a payload shape changes, but not currently losing data.
+This section originally said the mechanism was verified only by reading. That is no longer true.
 
-That question is the whole difference between "halt the canary" and "fix before the next payload change", and it is the first thing the owning manager should settle. I am flagging it as unproven rather than implying urgency I have not earned — but note that the very existence of the four-alias resolver, and its docstring calling those aliases canonical, is evidence that someone expected those shapes to arrive.
+During adversarial review of the M4 harness (B-R6), a pre-existing row of exactly this shape — payload carrying `trade_id`/`client_trade_id`, not `tradeId`/`id` — was placed in a session, and an ordinary journal POST **permanently deleted it**:
 
-Reported by source reading only. Nothing executed against a live server, no product change made.
+```
+sql before = [real-1, vuln-9]
+sql after  = [real-1, m4-43c14960-01, m4-43c14960-02, m4-43c14960-03]
+DESTROYED  = [vuln-9]
+```
+
+No adversarial input was required. A normal write to an unrelated trade destroyed a bystander row. **The mechanism is confirmed end to end against a server implementing these semantics.**
+
+## What is still NOT established
+
+**Producer reachability.** What is proven is that *if* such a row exists, an ordinary write deletes it. What is still unproven is whether any live producer emits a journal row carrying only `trade_id`/`client_trade_id`. The row in the reproduction was planted deliberately.
+
+So the honest framing is: **the trap is armed and confirmed lethal; whether anything currently walks into it is open.** That remains the owning manager's first question, and it is the difference between halting the canary and scheduling a fix.
+
+Two things bear on it. The four-alias resolver exists and its docstring calls those aliases canonical, which suggests someone expected those shapes. And any future producer, migration, import path or third-party payload adopting `client_trade_id` — the name the column itself uses — walks straight in.
+
+No product change made. `api_server.py` untouched.
 
 ## Recommendation
 

@@ -1717,3 +1717,48 @@ B-W11 reports 18 designed / 0 survived, 22/22 tests. Verified directly rather th
 So I **re-fenced the runbook**: run Phase 1 only against a throwaway session until review returns, and treat a green as a hypothesis. Removing my own DO-NOT-RUN banner on the strength of the author's report would repeat the error that produced three rejections — accepting a claim about the thing rather than testing the thing.
 
 B-R6 dispatched, second adversarial pass, with the destructiveness test first and the corpus gate second. **My named suspicion for the fourth form: the corpus gate is the runId filter wearing a hat.** A session could satisfy "contains a foreign trade" while every check still effectively inspects only self-written rows. If the defect recurs, that is where I expect it.
+
+---
+
+## B-0093 — M4 rejected a FOURTH time. The escalated deletion is now demonstrated, not reasoned. My suspicion was right.
+
+B-R6, **21 designed / 12 survived**, measured against the real CLI on the shipped default configuration.
+
+### The escalation is upgraded: the deletion has been executed
+
+The most important thing in this review is not about the harness. A pre-existing row of the vulnerable shape was placed in a session, and **an ordinary journal POST permanently deleted it**:
+
+```
+sql before = [real-1, vuln-9]
+sql after  = [real-1, m4-43c14960-01, m4-43c14960-02, m4-43c14960-03]
+DESTROYED  = [vuln-9]
+```
+
+No adversarial input. A normal write to an *unrelated* trade destroyed a bystander row. B-0088 is updated: the mechanism is confirmed end to end, and what remains open is **producer reachability** only. The honest framing is now *the trap is armed and confirmed lethal; whether anything currently walks into it is open.* I have kept that distinction sharp rather than let a successful reproduction inflate the claim.
+
+### My named suspicion was correct, which is small comfort
+
+I predicted the fourth form would be *"the corpus gate is the runId filter wearing a hat."* It is, and more cheaply than I imagined: `foreignTradeCount` excludes only **this** run's `m4-<runId>-` prefix, and the harness never cleans up. **Run it twice on an empty session and the second run certifies itself**, satisfied by `m4-1141a2c8-01..03` — its own prior output. It also accepts a junk row `{tradeId:'placeholder'}` as the declared corpus, and it **fails open**: one 503 on the first GET leaves `initialBackendRows = null`, the catch swallows it, and both the corpus gate and the preservation check silently switch off.
+
+Predicting a defect is not preventing it. I should have written the prediction into the brief as a required mutation rather than into a report as a hunch.
+
+### Two findings I did not anticipate at all
+
+1. **L5 compares one table with itself.** On `SESSION_JOURNAL_SQL_PRIMARY=true` — the shipped default — `resolve_session_journal` returns the SQL rows and those *become* `state["journal"]`. So "browser" and "backend" are the same table through two serialisers. A lost trade disappears from both sides simultaneously and L5 prints PASS. It is a real cross-store check only under the configuration nobody runs. **A session that has already lost a real trade scores `pass=5 nonpass=1` — the best score this harness can produce.**
+2. **Phase 1 is unsatisfiable by construction.** L6 calls `plantLegacyAliasProbe`, which exists only on the fixture adapter and never on the HTTP one, so on any real deployment it returns before touching the network. Phase 4 requires all six green. **The procedure I pre-registered cannot pass**, which under time pressure means someone waives L6 verbally and the waiver never reaches the document — training the operator to discount non-PASS lines. That is the worst possible property for this instrument and I built it in.
+
+### And my runbook asked an operator to verify a string literal
+
+`MUTATION_DESIGNED = 18` / `MUTATION_SURVIVED = 0` are module constants printed unconditionally; no mutation runs in the CLI. My acceptance item told the operator to confirm a value the program cannot fail to print. I demanded a mutation count as evidence and then accepted a printed claim of one — **the exact substitution of presence for soundness that VER-01 exists to prevent, committed by me, in the document that cites VER-01.**
+
+### Actions
+
+- **Runbook re-fenced hard.** Phase 1 marked not fit to gate, with the three reasons. Phases 0, 2 and 3 remain valid and are what actually carries M4 right now.
+- **Deleted my false safety sentence.** The runbook said *"the harness itself does not delete trades."* It does. Anyone who chose a session on the strength of that sentence chose it on false information, so the correction is left visible in place rather than quietly edited out.
+- **B-W12 dispatched** with all eight fixes, and one question I need answered honestly: after removing L6 and making L5 skip on the default configuration, **how much is left?** I would rather ship three checks that mean something than six that do not, and I need the answer to tell the Director whether M4's automated phase is viable at all inside the clock.
+
+### Commit hygiene
+
+The reviewer noted my commit `13aba4fcb` swept all three M4 files into a commit labelled for the M3 gate. That violates one packet / one row and it made the M4 rebuild land under the wrong label. Cause: I staged by listing paths while three agents were writing to one tree. Same root as B-0090's drive-by finding, and the second time today the shared tree has cost me. Recorded, not amended — rewriting history to hide a hygiene error is worse than the error.
+
+**A16.4:** author-defect **7**, brief-defect **3**, manager-finding-defect **6**. Manager-caused **9**.

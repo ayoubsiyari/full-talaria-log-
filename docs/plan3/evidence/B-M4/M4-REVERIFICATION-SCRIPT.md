@@ -1,12 +1,16 @@
 # M4 — M23/M24 re-verification on the deployed build
 
-> ## ⚠️ NOT YET CLEARED FOR A LEDGER YOU CARE ABOUT
+> # ⛔ PHASE 1 IS NOT FIT TO GATE. DO NOT RUN IT ON A LEDGER YOU CARE ABOUT.
 >
-> Phase 1 was rebuilt after the 2026-07-28 rejection. The harness now scans the whole session ledger for L2-L5, refuses to certify self-only sessions, and makes L6 PASS only on an observed unmigrated-legacy transition. `SKIP-LOUD` is a non-pass.
+> Rejected a **fourth** time, 2026-07-28 10:57, on measured evidence. Three findings decide it:
 >
-> **The rebuild is unreviewed.** The previous version silently deleted two pre-existing trades during its own `--write` run and reported six PASS. The rebuild claims to verify that pre-existing trades survive, but that claim has not been independently tested against a live server, and it is the claim that matters most. Until adversarial review returns, run Phase 1 **only** against a throwaway session.
+> 1. **Phase 1 cannot pass.** L6 calls `plantLegacyAliasProbe`, which exists only on the fixture adapter — never on the HTTP one. On any real deployment L6 returns `SKIP-LOUD` before touching the network. Since Phase 4 requires all six green, **the procedure below is unsatisfiable by construction.** Do not "waive L6 and proceed": that is how an operator learns to discount non-PASS lines.
+> 2. **A green does not mean the ledger is intact.** On the shipped default (`SESSION_JOURNAL_SQL_PRIMARY=true`), L5's two "stores" are the same SQL table read through two serialisers, so a lost trade disappears from both sides at once. A session that has **already lost a real trade** scores `pass=5 nonpass=1` — the best score this harness can produce.
+> 3. **It can permanently destroy a trade** of the shape described in `ESCALATION-trade-loss-orphan-sweep.md`. It reports the loss; it cannot reverse it.
 >
-> This harness has been rejected three times, each for a different form of the same defect: certifying something it never looked at. Treat a green from it as a hypothesis until the review lands. — Manager B
+> **Phases 0, 2, 3 remain valid and are the ones that actually carry M4 right now.** Phase 2 (PO rollback) and Phase 3 (Rayan re-verification) are manual and unaffected.
+>
+> — Manager B
 
 **Ship gate M4.** Owner: Manager B. Authored 2026-07-28 ahead of the candidate, so it is executed rather than improvised.
 
@@ -34,7 +38,13 @@ Nothing below counts until these four hold. Any NO ends the run.
 
 Record: build tag, digest, environment, account id, Phase 1 session id, Phase 2/3 session id, UTC start time, operator name.
 
-**0.3 exists because Phases 1–3 write trades.** Writing them into the PO's verification surface while M24's migration is live would corrupt the very thing this gate protects. Phase 1 and Phase 2 must use different QA session ids unless Phase 1 cleanup is independently verified; the harness itself does not delete trades.
+**0.3 exists because Phases 1–3 write trades.** Writing them into the PO's verification surface while M24's migration is live would corrupt the very thing this gate protects. Phase 1 and Phase 2 must use different QA session ids.
+
+> **CORRECTION — this line previously read "the harness itself does not delete trades." That was false.**
+>
+> Measured under review: the harness's own `--write` POST triggers `_sync_trading_session_journal_trades`, whose orphan sweep **permanently deleted a pre-existing trade** carrying `trade_id`/`client_trade_id` but not `tradeId`/`id`. The harness now *detects and reports* the loss — it cannot undo it. See `ESCALATION-trade-loss-orphan-sweep.md`.
+>
+> Anyone who chose a session on the strength of the old sentence chose it on false information.
 
 ---
 
