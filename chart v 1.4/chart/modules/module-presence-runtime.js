@@ -60,7 +60,7 @@
         degraded.degradedModules = degraded.degradedModules.slice(0, MAX_MODULES);
         degradedCompat.degradedModules = degraded.degradedModules;
         try {
-            console.error('[TALARIA][CORRECTNESS-DEGRADED] Required module absent:', id);
+            console.error('[TALARIA][CORRECTNESS-DEGRADED] Required module missing or non-conforming:', id);
             global.dispatchEvent(new CustomEvent('talaria:correctness-degraded', {
                 detail: { module: id, class: 'correctness' }
             }));
