@@ -1108,3 +1108,54 @@ I am ruling **absent**. The natural feature detect a future consumer writes is `
 This is a design choice inside my own file, so I am deciding it as technical author rather than escalating; it is not policy. Queued as a one-line change with the harness re-run, not dispatched tonight.
 
 Also carried from B-W1, both out of scope and both recorded so they are not lost: `homepage/public/chart/multichart/chart-host.html:219` replaces `window.userStorage` with an in-memory Proxy, so pins cannot persist in that sandbox host at all; and `getLocalItem` at 256 treats a falsy stored string as missing, so a legitimately stored `'0'` or `''` reads as its default — a real C3-shaped bug in pre-existing behaviour that I am not fixing inside a V8 packet.
+
+---
+
+## B-0066 — §A16 ingested (Train-3, 08:35). Two rulings bind me directly.
+
+**A16.4 — rejection attribution in three columns.** Restating my table in the required form. Only `author-defect` counts toward §A13.2 escalation.
+
+| Packet | Outcome | Column | Why |
+|---|---|---|---|
+| B-W3 (V6 drag-follow RED) | rejected as a gate | **brief-defect** | I commissioned a Node RED for DOM/D3/rAF-bound code. The artefact could not have existed as specified; the author's tier was never the problem. |
+| B-W4 (eviction gate v1) | rejected by B-R1 | **author-defect** | Built a substring-matching gate that accepted 13 of 19 wrong variants including the original bug. Attributed to the author, though honestly my brief did not state the semantic-evaluation standard — that standard did not exist until B-W5 created it. |
+| B-W6 attempt 1 | aborted in a loop | **not a rejection** | Infrastructure. Counting it would push harness authoring toward an upgrade it does not need. |
+
+**Author-defect: 1. Brief-defect: 1. Manager-finding-defect: 0.** Below A16.4's three-manager-caused threshold, so no top-tier review of my next brief is triggered. For completeness and because it is the same failure class the ruling is aimed at: B-0058's wrong mechanism was a manager-finding defect, but it caused no rejection, so it does not enter the table. I am not going to let it disappear on that technicality.
+
+**A16.5 — review confidence is not gate coverage.** This lands squarely on my territory. `order-manager.js` carries the two-line `isPending` fix from B-W4 and, per this ruling, cannot be part of an automated-GREEN chain on the strength of review. What it has is the rebuilt eviction-invariant gate — which is real coverage of *that invariant only*, is stamped not-behaviour-covering, and is now C's. So my honest position is: one invariant gated structurally, no behavioural gate, and per A16.5 that is not an automated-GREEN chain. With C's runner landed the cure is now available rather than theoretical.
+
+Also noting **A5.5** against my own work: oracles need provenance and staleness stamping — build authored against, mechanism row, and "last proven RED on <build>". The B-M15 matrix has none. It carries a mutation proof (B-0061) but not the four-state page or the different-clock/host run A5.3–A5.4 require. Queued rather than claimed.
+
+---
+
+## B-0067 — VERDICT (selector id collisions) · **Class: S (soundness — producer sites read directly). I contradict A's amendment: the three are NOT dead, and my own first pass got this wrong in the dangerous direction.**
+
+A escalated five interpolated substring-selector id collisions, then amended that three are dead code with no producer. The Director's instruction is to check producer existence before narrowing each one, because some may be deletable.
+
+**The five, all in `order-manager.js`:**
+
+| # | Line | Selector |
+|---|---|---|
+| 1 | 39148 | `` [class*="pending-tp-pct"][class*="pending-tp-${orderId}"] `` |
+| 2 | 41707 | `` [class*="open-tp-pct"][class*="tp-${oid}"] `` |
+| 3 | 41708 | `` [class*="pending-tp-pct"][class*="pending-tp-${oid}"] `` |
+| 4 | 41709 | `` [class*="pending-tp-delete"][class*="pending-tp-${oid}"] `` |
+| 5 | 41712 | `` [class*="multi-tp-avg-"][class*="-${oid}"] `` |
+
+**My first producer census said four of five had no producer. It was wrong, and it was wrong in the direction that deletes live code.** I filtered for the token and an assignment idiom (`attr('class'`, `classed(`, `class=`) on the *same line*. These producers pass the class string as a bare argument to a helper, so every one of them was invisible to that filter. I caught it only because I had flagged the false-dead risk before running it. Recording the method error as prominently as the result: a producer census that recognises one assignment idiom is a census of that idiom, not of producers.
+
+**Actual producers, read directly:**
+
+| Token | Producer | Live? |
+|---|---|---|
+| `pending-tp-pct` | 38558 `` `pending-tp-pct-control pending-tp-pct-stepper pending-tp-${poId}` `` passed to `_createTpPctStepperOnChart`, gated by `showPctArrows` (38550) | **yes** |
+| `open-tp-pct` | 42589 and 44047, same stepper shape | **yes** |
+| `pending-tp-delete` | 38586 `` `pending-tp-delete pending-tp-${id}` `` | **yes** |
+| `multi-tp-avg-` | 37012, 37020, 37026, 37034 | **yes** |
+
+**So all five have textual producers and none is deletable on the evidence I have.** Before anyone acts on "three are dead": deleting the removal calls at 39148/41707/41708/41709 would leave live stepper and delete-badge elements with no cleanup path, which is a leak of exactly the kind that produces the stale-artefact symptoms this family is already chasing.
+
+**What I have NOT proven, stated so this does not become the next false certainty:** whether those producers are *reachable*. `showPctArrows` may be permanently false; a containing method may have no caller. A may have meant reachability rather than textual presence, in which case we are not in conflict and A is answering a harder question than I have. **That reachability check is the cheap dispatch, and it must run before any deletion.** I am not narrowing or deleting anything until it reports.
+
+**One finding that makes the eventual fix trivial and low-risk: the correct idiom is already in the file, two lines from the defect.** 39146 uses `` `.pending-tp-delete.pending-tp-${orderId}` `` — a class-token selector, which matches the exact token and cannot collide — while 39148 immediately below uses the substring form. So the narrowing is a mechanical rewrite of `[class*="X"]` to `.X`, with an in-file precedent rather than a new convention. That also bounds the collision precisely: `[class*="pending-tp-1"]` matches `pending-tp-12` and `pending-tp-100`; `.pending-tp-1` does not. Site 5 is the worst of them, since `[class*="-${oid}"]` matches any class ending in that digit run, and it is also the one whose producer is most clearly live.
