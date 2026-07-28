@@ -1088,3 +1088,148 @@ already splits on `/ - _ .`, so `EURUSD.a`, `EURUSD-ECN` and `EURUSD_i` resolve 
 `EURUSDm` and `EURUSD` are the same instrument for pip size, P&L and session alike, and putting it in
 `classFromRegistry` would give the calendar a symbol vocabulary the money path does not share. That is a
 divergence I would rather not create on a money-adjacent surface.
+
+---
+
+## 2026-07-28T02:20 · DISPATCH-REGISTER · §A13.3b compliance, train 1 — backfilled
+
+§A13.3b requires a `DISPATCH` entry per dispatch carrying `role`, `tier`, `model`, and for top-tier
+authors a named `trigger` clause. It also says a dispatch absent from the journal is an unaccepted
+packet. None of my dispatches this train carried one, so I am backfilling the whole register rather than
+starting the count from now — starting from now would quietly launder the trains under audit.
+
+### Author-tier dispatches
+
+| # | Packet | role | tier | model | §A13.2 trigger row |
+|---|---|---|---|---|---|
+| 1 | `mcdiag-resample-measurement` | author | top | opus-5-high | **none nameable** — row is "Test, oracle and harness authoring", mid |
+| 2 | `session-calendar-red` | author | top | opus-5-high | "Architecture design (… session-calendar design)" |
+| 3 | `indicator-lag-data-effect` | author | top | opus-5-high | "Numeric correctness: … anything painted as a value" |
+| 4 | `shell-control-inventory` | author | top | opus-5-high | **none nameable** — row is "control enumeration", cheap |
+| 5 | `residency-cap-answer` | author | top | opus-5-high | "Architecture design (C3a shapes …)" |
+| 6 | `freeze-triage` | author | top | opus-5-high | "Root-cause triage of any surprise or new regression" |
+| 7 | `anchor-audit` | author | top | opus-5-high | **none nameable** — row is "Audits, greps, file:line inventories", cheap |
+| 8 | `raw-cap-verification` | author | top | opus-5-high | **none nameable** — verification of a stated claim, cheap |
+| 9 | `vendor-anchor-probe` | author | mid | gpt-5.5-medium-fast | n/a |
+| 10 | `a6-servable-surfaces` | author | cheap | composer-2.5-fast | n/a |
+| 11 | `a4c-guard-sites` | author | cheap | cursor-grok-4.5-medium-fast | n/a |
+
+**Author tier: 8 top / 1 mid / 2 cheap = 73% top.** Above the 40% reporting threshold, so it requires
+justification, and the honest justification is that **half of it has none**. Four of the eight can name a
+row. Four cannot, and of those, three sit on rows the table marks explicitly cheap — including
+`shell-control-inventory`, which §A13.3b names by name as work that must be dispatched cheap. Had those
+four routed correctly the figure would be 4/11, or 36%, under the threshold without special pleading.
+
+### Reviewer-tier dispatches — reported separately, not under audit
+
+| # | Packet | role | tier | model |
+|---|---|---|---|---|
+| R1 | `session-calendar-red` r1 | reviewer | top | opus-5-high |
+| R2 | `session-calendar-red` r2 | reviewer | top | opus-5-high |
+| R3 | `session-calendar-red` r3 delta | reviewer | top | opus-5-high |
+| R4 | `indicator-lag-data-effect` | reviewer | top | opus-5-high |
+
+**Reviewer tier: 4 top / 0 mid / 0 cheap = 100% top.** Correct and non-negotiable per §A13.1. I am
+stating it separately because a blended figure would have read 12/15 = 80% and hidden the fact that the
+reviewer half is policy working exactly as written while the author half is the violation.
+
+---
+
+## 2026-07-28T02:22 · CORRECTION · why I was routing top, and it is not the reason the ruling assumes
+
+§A13.3b diagnoses the drift as escalation under uncertainty — a verifiability judgement quietly converted
+into a comfort judgement. For Managers B and C I cannot speak. For me that diagnosis is **too generous**,
+and recording the real mechanism matters more than accepting the stated one, because the fix is
+different.
+
+**I was not choosing top tier. I was not choosing at all.** The dispatch tool inherits the parent model
+when no model is specified, and my own model is top tier. In eight of eleven authoring dispatches I
+passed no model parameter. So "default to cheap" required an affirmative act I was not performing, and
+every unspecified dispatch silently resolved upward. There was no comfort judgement to interrogate,
+because there was no judgement in the path at all.
+
+This is the same failure the Director names one line earlier in the ruling — a contract with no machine
+check is a suggestion — but one degree worse. §A13.2 was not merely unchecked; the tooling **defaulted
+against it**. An unstated preference lost to an unstated default, silently, eleven times, and I did not
+notice because the outputs were good. That is precisely the shape of the loader defect and of TB-6:
+capability loss with no failure signal. I have been writing about that class all night in other people's
+code.
+
+Concretely, from now on: **no dispatch leaves without an explicit `model` parameter**, cheap or
+otherwise, including the ones I intend to be top. An omitted model is now a defect in my brief, not a
+neutral choice, because omission is not neutral in this tool. The named-trigger requirement is the
+second gate, not the first — naming a row cannot catch a dispatch where I never considered tier at all.
+
+The four correctly-triggered top dispatches I stand behind and would repeat: session-calendar is named in
+the architecture row verbatim, the indicator-lag verdict turns on painted values at the fifth decimal,
+the freeze work was root-cause triage of a surprise, and the residency-cap answer was a C3a shape
+question. The other four I would now route cheap or mid, and I expect the outputs would have been
+identical — which is the ruling's actual claim, and I have no evidence against it.
+
+---
+
+## 2026-07-28T02:24 · METRIC · rejection rate by (task class × model), train 1
+
+Reported per §A13.3b part 4 and Part 4. Adjudicated means a top-tier review returned ACCEPT or BLOCK.
+
+| Task class | Model | Dispatched | Adjudicated | Rejected | Rate |
+|---|---|---|---|---|---|
+| Oracle / harness authoring | opus-5-high | 1 | 2 | 1 | **50%** |
+| Measurement harness | opus-5-high | 1 | 1 | 0 | 0% |
+| Diagnostic harness | opus-5-high | 1 | 0 | — | pending |
+| Read-only audit / inventory | opus-5-high | 4 | 0 | 0 | 0% (unreviewed) |
+| Architecture answer | opus-5-high | 1 | 0 | 0 | 0% (unreviewed) |
+| Evidence probe | gpt-5.5-medium-fast | 1 | 0 | — | pending |
+| Enumeration | composer-2.5-fast | 1 | 0 | — | pending |
+| Enumeration | cursor-grok-4.5-medium-fast | 1 | 0 | — | pending |
+
+Three things this table says that the numbers alone do not.
+
+**The only measured rejection rate in the train belongs to the top tier**, at 50% on oracle authoring —
+`session-calendar-red` r1 was blocked outright because the wiring patch read properties that do not exist
+on `chart.js`, so the GREEN half proved a fact about the harness and not about the product. Top tier is
+not buying immunity; it bought one blocked packet out of two adjudications. That is a data point against
+the assumption I was implicitly running on.
+
+**The cheap and mid rows are empty, and that is the finding.** §A13.3b says the measurement is what makes
+cheap tier safe to use. The converse is what actually happened to me: I never dispatched cheap, so no
+evidence about cheap accumulated, so there was never a moment where cheap looked demonstrably safe, so I
+kept not dispatching cheap. The absence of the metric was not a reporting lapse downstream of the routing
+problem — it was **load-bearing in causing it**. Part 4 required this from the outset and my not
+producing it is a substantive failure, not a paperwork one.
+
+**Four audit dispatches show 0% rejection against zero reviews.** That number is not evidence of anything
+and I will not present it as though it were. §A13.2 bars cheap-tier judgement from the record; it does
+not exempt top-tier evidence-gathering from review. Two of those four produced classifications I have
+already acted on — the anchor audit's seven-calendar finding and the freeze triage's mechanism — with no
+independent pass. I am not opening that as a new row tonight, but it is a gap and I am naming it before
+someone else does.
+
+---
+
+## 2026-07-28T02:26 · DISPATCH · cheap tier, effective immediately
+
+Dispatched on receipt of the ruling rather than at the next train boundary, since §A13.3b names both of
+these as work currently on the board.
+
+- **`a6-servable-surfaces`** — cheap, `composer-2.5-fast`, read-only, no writable files. §A6 enumeration
+  across the HTML surfaces. Not a re-run for its own sake: the previous top-tier pass said six shells
+  execute `chart.js` and the r3 sweep found eight, because `chart-embed.html` builds its script list in
+  JavaScript and is invisible to a tag-only scan, and because `chart-host.html` is reachable only as an
+  iframe child of `multichart-shell.html`. The brief hands it both misses so it searches for dynamic
+  loads and iframe reachability edges, and asks for tree drift as a fourth table. A top-tier model would
+  have produced the same table more slowly.
+- **`a4c-guard-sites`** — cheap, `cursor-grok-4.5-medium-fast`, read-only, no writable files. Guard-site
+  enumeration for the `global.X &&` class, grouped by **failing-branch behaviour** rather than by file,
+  because silent-skip and silent-fallback are the two groups that matter and grouping by file hides them.
+  Also asked to find any other guard that **memoises a negative result**, since that is exactly the defect
+  just fixed in `_sessionInstrumentClass` and I have no reason to think it occurs only once.
+
+Both briefs state explicitly that the subagent must not classify or issue verdicts, per §A13.2's bar on
+cheap-tier judgement entering the record. They report guards, fallbacks and observable consequences; I
+classify. That constraint is what makes the cheap dispatch safe here, and it is the first thing to check
+if either packet comes back wrong.
+
+Still to route cheap when their turn comes: the §A8 mechanical presence pass, `_mcDiag` log tabulation on
+the next replay run, and evidence-folder assembly for the session-calendar packet. Not dispatched now —
+none is blocking, and I would rather see how the first two cheap packets land before widening.
