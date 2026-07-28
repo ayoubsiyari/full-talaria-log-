@@ -2819,3 +2819,29 @@ Also: C's `7472228d5` carries a 559-line snapshot of **my** journal. Resolve to 
 **Two findings survive the correction.** The b75/guard-ABSENT observation is untouched — that was the module path, not a shell. And `dist-v9/index.html`, `legacy-index.html` (1.4 MB, full monolith) and `multichart-prod/chart-embed.html` all serve **200 with complete chart content to an unauthenticated client**, while `/chart/index.html` is gated. Reporting the asymmetry, not judging it; it may be deliberate. But "the chart is behind auth" is false for three of the four shells, and I would rather that be on the record before someone reasons from it.
 
 Plan updated: §0(b) struck and replaced, §5.3 acceptance corrected so a gated UNDETERMINED is a pass, §2.1 released, §2.3 journal rule applied, §7.1 rewritten — A's switch now blocks the train, §7.2 cache verification is a pre-tester production gate. Only open input is a QA credential.
+
+---
+
+## B-0125 — CHARTER RECEIVED. Standing authority. Queue was empty of unblocked work; never-idle list taken up immediately.
+
+**2026-07-28 17:15 (UTC+1).** Read `talaria-director/docs/plan3/CHARTER-B-AND-C-20260728.md`. Standing goal: every change we believe we shipped is present and working in what the user's browser loads, proven by observation. Standing authority: build and ship without asking; escalate only for no-clean-kill-switch, another manager's territory, contradicting the PO, or trading safety for schedule. Never-idle list is now the default when the packet queue has no unblocked item.
+
+**Current packet queue.** D-5 assembly is correctly blocked on A's render kill-switch (ruling 16:52). That is not idling. Never-idle taken up in parallel.
+
+**Never-idle #4 — CLOSED, and the charter still carries the withdrawn finding.** `/chart/index.html` is auth-gated, not unstamped (B-0124). No stamp work is owed; no owner to name. Escalating under condition 3 only as a documentation conflict: the charter's never-idle item 4 and its closing note still list "an unstamped shell" as a catch. The corrected observation stands. No further work from me on that item unless the Director reopens it.
+
+**Never-idle #1 — second live observation.** Probe at 16:17Z against the test server: served `order-manager.js` has `journalVouchedFor` ABSENT, `_bW16HydrationGuardEnabled` ABSENT, `__TALARIA_DISABLE_B_W16_HYDRATION_GUARD_V1` ABSENT. Neither the guard nor its kill-switch is on the running surface. Stamps still `20260726b75`. Evidence sealed under `live-surface-probe/observations/`.
+
+**Never-idle #2 — kill-switch inventory.** Written at `docs/plan3/evidence/B-M4/release/KILL-SWITCH-INVENTORY.md`. Rehearsal of B-W18 mutants just now: 6/0 survived, VER-04 both halves, byte-exact restore. Item 5 (A's render switch) remains the train blocker.
+
+---
+
+## B-0126 — ESCALATION. The D-2 client guard does not stop the trade-loss path. Hot autosave still reaches the wipe.
+
+**Charter conditions 3 and 4.** Finding: `docs/plan3/evidence/B-M4/FINDING-HOT-PATH-BYPASSES-HYDRATION-GUARD-20260728.md`.
+
+`persistJournal` queues `scheduleSessionStateSave({ journal })` at `:7184–7196` *before* the B-W16 guard at `:7211`. Cell 6 of the B-W16 acceptance asserts hot still runs while durable is suppressed — the hole is in the ratified spec. Hot and durable both PATCH `/api/sessions/{id}/state`, which calls `_sync_trading_session_journal_trades` whenever `payload.journal is not None`. `prefer_richer_heavy` does not skip the sweep. `journal=[]` produces `incoming_ids=∅`, B-W17's parse guard does not fire, and every row is deleted. chart.js's `_sessionStatePatchAllowedBeforeHydrate` returns true for journal patches, so the chart layer does not refuse either.
+
+**What this means for the release.** The train must not be described as closing the trade-loss incident until one of: (1) authority to extend B-W16 onto journal-bearing hot writes (withdraws cell 6 for that case), (2) authority to refuse the sweep when `incoming_ids` is empty and `rows_before > 0`, or (3) explicit residual-risk acceptance in writing. I am not widening against the brief and I am not touching replace semantics under I-7.1 without a fresh ruling. Assembly of other items can continue; the release note cannot say the loss path is closed.
+
+This is SAFE-01 on the loss, not on the writer: a correct predicate on one of two doors into the same room.

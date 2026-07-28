@@ -258,3 +258,10 @@ UNDETERMINED. This is now the only unresolved input I am waiting on.
 
 **7.4 A's render-path fix is not yet delivered.** Assembly order is fixed but the
 content is not in hand; the trial merge in §2 covered the other three only.
+
+---
+
+## 8. OPEN ESCALATION — hot path bypasses the hydration guard (B-0126)
+
+See `docs/plan3/evidence/B-M4/FINDING-HOT-PATH-BYPASSES-HYDRATION-GUARD-20260728.md`.
+Until the Director picks option 1, 2, or 3 in that finding, **the release note must not claim the trade-loss path is closed.** Other train items may still assemble.
