@@ -120,3 +120,21 @@ names too** so that a later widening is visible as a diff: `EPS-ROLLING-NONRECUR
 | PO-QUEUE-GENERATOR-V1 | `TALARIA_PO_QUEUE_V1` | RESERVED — generates `docs/plan3/PO-QUEUE.md` from `PO-REQ` entries, rejecting any that fails A12.2 |
 | TRAIN-DIGEST-GENERATOR-V1 | `TALARIA_TRAIN_DIGEST_V1` | RESERVED |
 | UI-CONTROL-INVENTORY-DIFF-V1 | `TALARIA_UI_CONTROL_INVENTORY_V1` | RESERVED — enumerates interactive controls in `legacy-index.html` and diffs against the current shell (A10) |
+
+## Wave-2 reservations — manifest split and evidence derivation
+
+The Director ruled one compromise manifest into two internally consistent ones. Both names are reserved, and the name they replace is retired rather than reused, so a stale import fails loudly instead of reading a file that means something else.
+
+| Name | Kind | Status |
+|---|---|---|
+| `scripts/servable-surface-inventory.json` | manifest, schema `talaria.servable-surface-inventory.v1` | RESERVED — broad: every HTML file under the three roots |
+| `scripts/chart-shell-inventory.json` | manifest, schema `talaria.chart-shell-inventory.v1` | RESERVED — narrow: only chart-referencing shells, carrying roles and module contracts |
+| `scripts/servable-shell-inventory.json` | manifest | RETIRED — superseded by the two above; the name must not be reused |
+
+**`status` vocabulary — fixed and closed.** `owned-stamped`, `image-verified`, `removal-pending`, `denied-route-pending`, `removed`, `no-routing-evidence`. `excluded` is **abolished** by Director ruling; encountering it in a manifest is RED with kind `status-abolished`.
+
+**`routingEvidence` channels — fixed and closed.** `fastapiAllowlist`, `fastapiMount`, `dockerCopy`, `nginxRoot`. `servable` is derived as the OR of the four `present` flags and is never asserted; a declared value that disagrees is RED with kind `servable-not-derived`.
+
+**Violation kinds reserved for the shell gate.** `servable-not-derived`, `routing-evidence-uncited`, `retained-file-missing`, `status-abolished`, alongside the existing `undeclared-shell`, `required-module-count` and the `NC-SHELL-UNDECLARED` negative control.
+
+**`retainFile` / `retainReason`.** Reserved as the machine-readable form of the A10 retention dependency. A row with `retainFile: true` whose path is absent from disk is RED with kind `retained-file-missing`. This is what stops `legacy-index.html` being tidied away before the A10 control inventory has harvested its magnet-mode controls.
