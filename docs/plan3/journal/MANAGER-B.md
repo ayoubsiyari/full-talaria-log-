@@ -960,3 +960,89 @@ The bar now exists: expected stamp confirmed by tripwire, host and panel both pa
 **The condition under which I reverse this, pre-registered so it is not a judgement I re-litigate later:** if C's runner has not landed by the end of the next train, I emit both — V6-P1's ignition first, since it is one console filter on an existing log line and gates a P0.
 
 Write packets in flight: **1 of 3** (B-W1). Read-only in flight: **0**. Packets awaiting review: **2** (B-W1+B-W2 as one; B-W5). Handed to C: **1** (eviction-invariant gate). Outstanding `PO-REQ`: **0**, with a pre-registered trigger. Outstanding `NEEDS-PO-CLARIFY`: **1**. Author-tier mix: **9 cheap (60%), 2 mid (13%), 4 top (27%)** across 15 authoring dispatches. Reviewer-tier: **1 of 1 top**.
+
+---
+
+## B-0058 — VERDICT (V8 RED harness) · **Class: S (soundness — behaviour of the loader, proven by isolating a single variable). The B-M15 RED has never loaded the product. Its RED status is a harness artefact.**
+
+Overnight started with V8. B-W1 has landed **591 lines** into `preferences-sync.js`, the facade is assigned at line 1026, and `preferences-init.js` calls it — yet the RED still reported *"window.TalariaPreferences is absent"* on eleven of twelve cells. I chased that rather than assuming B-W1 was incomplete, and the answer is not in the product.
+
+**Root cause, isolated to one variable and reproducible.** The repo's root `package.json` has **no `"type": "module"`**, so `.js` files are CommonJS. The RED's loader cache-busts each cell with a query string:
+
+```js
+const href = `${pathToFileURL(absolute).href}?b_m15=${importSerial++}`;
+await import(href);
+```
+
+Under CJS, `await import()` **with** that query **does not execute the module and does not throw**. I proved it by importing the identical absolute path twice in one process, changing nothing but the query:
+
+| Specifier | Result |
+|---|---|
+| `file:///…/preferences-sync.js` | facade installed — `typeof === 'object'` |
+| `file:///…/preferences-sync.js?b_m15=0` | **facade `undefined`, no error** |
+
+So the module's side effects never run, nothing is thrown, and every cell falls through to the generic assertion message.
+
+**What this means, and it is worse than a broken test.** The RED was never exercising the product. Its twelve cells have been reporting a harness defect in the vocabulary of a product defect — *"the facade is absent"* — when the facade is present and simply never loaded. Under VER-01 this is the inverse of the pattern the Director named: not a presence check mistaken for soundness, but **a harness failure mistaken for a product finding**. It is also a lying gate in the direction that is hardest to catch, because red looks like diligence. Had B-W1's implementation been finished and correct tonight, this RED would still have printed eleven failures, and the obvious next move would have been to "fix" a product that was already right.
+
+**Compounding it, the loader discards its own diagnosis.** `context.loadErrors` is written at line 175 and **never read anywhere in the file** — I grepped. So even a genuine import failure would surface as "absent" rather than as its own error. Two defects stacked: a loader that silently no-ops, and an error channel that is wired to nothing.
+
+**Correction to my own earlier entry.** In B-0027 I attributed a changed cell-1 message to B-W1 writing concurrently, and I recorded that as a read-time coupling I had created. The coupling was real and the standing rule I drew from it stands, but I now cannot support that specific attribution — with the query bug present, the facade could not have been observed at all by that path. I am not able to reconstruct that moment's cause and I am marking the B-0027 attribution **unproven** rather than quietly leaving it as established.
+
+**Status of V8, stated precisely:** B-W1's implementation is **unevaluated**, not failing. There is currently **no evidence either way** about whether the persistence contract is correct, because the only instrument pointed at it has never run it. V8 cannot be reported as progressing until the harness is repaired and the cells are re-proven against the real module.
+
+---
+
+## B-0059 — DISPATCH · B-W6, repair the B-M15 loader and re-prove the matrix
+
+`role=author tier=mid model=gpt-5.5-medium-fast`, §A13.2 row *"test, oracle and harness authoring against stated criteria"* — the criteria are stated, and running the harness verifies the harness, which is the stated reason to stay off top tier. No `trigger=`; not a top-tier author.
+
+Scope: fix per-cell module isolation under CommonJS without the query string (the fixture-clean options are a child process per cell, or clearing the CJS require cache, or a documented single-load with explicit state reset — the agent picks and justifies); surface `context.loadErrors` in the failure output instead of discarding it; and make the "absent" assertion distinguish *facade truly missing* from *module never executed*, since conflating those is what cost tonight. Then re-run all twelve cells against B-W1's real implementation and report the **actual** per-cell results, which are currently unknown to me.
+
+Acceptance is explicitly **not** "the RED goes red". It is that each cell's verdict is caused by the product. A cell that passes because B-W1 implemented it correctly is a correct outcome and must be reported as such, not engineered back to red.
+
+Writable set: `b-m15-owner-scoped-pins.red.mjs` and, only if a fixture key is genuinely required, `b-fixtures/m15-pin-lifecycle-matrix.json`. **No product files** — `preferences-sync.js` and `preferences-init.js` are out of bounds for this packet even if a bug is found in them; the agent reports instead. Partition per B-0031: tree named, agent confirms which tree it read.
+
+Also carried: the same CJS-plus-query trap may exist in any other harness in the tree that cache-busts imports this way. The brief asks for a one-line grep sweep and a report, not a fix.
+
+Write packets in flight: **2 of 3** (B-W1, B-W6). Read-only in flight: **0**. Author-tier mix: **9 cheap (56%), 3 mid (19%), 4 top (25%)** across 16 authoring dispatches. Reviewer-tier: **1 of 1 top**.
+
+---
+
+## B-0060 — ROUTING · B-W6 took two attempts at mid tier and I did not escalate
+
+First dispatch (`gpt-5.5-medium-fast`) aborted in a loop. Second (`claude-fable-5-thinking-medium`, the other mid model §A13.2 lists for leaf-file specced work) was **unavailable** — its data-retention policy is unacknowledged. Per §A13.2's availability rule I did not silently substitute.
+
+I retried at **mid** rather than escalating. Reasoning, recorded because this is exactly the decision §A13.3b.2 is about: the escalate-on-repeat clause is *two rejections of the same packet*, and I had one infrastructure abort plus one unavailable model — **neither is a rejection on quality**. Escalating there would have been a comfort judgement wearing a policy citation. I re-dispatched to `gpt-5.5-medium-fast` with a brief cut to roughly a third of its length, on the theory that the loop was brief-length-induced. It completed.
+
+For the rejection table these are a distinct category — **aborted (infrastructure)**, not rejected — because conflating them would wrongly push the harness-authoring combination toward an upgrade it does not need.
+
+---
+
+## B-0061 — VERDICT (V8-P1) · **Class: S (soundness — proven by two mutations of the product, both outside the harness's acceptance suite). Surface: harness only; host and panel NOT covered.**
+
+**All twelve cells pass against B-W1's real implementation.** A test that went from 1/12 to 12/12 on a harness change authored by the same agent that made the change is the least trustworthy signal available, so I did not accept it. I committed B-W1's work first — so a mutation test would be reversible via git rather than risking 591 uncommitted lines — and then attacked the product.
+
+| Mutation | Expectation | Result |
+|---|---|---|
+| Publish the facade under a different name, so the module executes but exposes nothing | must fail, and must say *executed but no facade* | **FAIL, exit 1**, message: *"product modules executed but published no facade; executed=preferences-sync.js, preferences-init.js"* |
+| Leave the facade intact; make `writeRaw` write through raw `localStorage` instead of the owner-scoped store | must fail on owner-scoping-dependent cells | **8 passed, 4 failed, exit 1** |
+| Restore product after each | working tree clean | **verified clean both times** |
+
+The second is the one that matters. It leaves the facade present and every symbol in place, and breaks only *semantics* — and the harness catches it. That is the difference between a wiring check and a soundness check, and it is the VER-02 standard applied to my own packet by an attack the harness's author never ran. The first mutation additionally proves the new diagnostic classification is real: it distinguishes *executed-but-no-facade* from *never-executed*, which is precisely the distinction whose absence hid this defect for hours.
+
+I did not record which four cells failed under mutation 2 and I am not going to guess; the claim I can support is that four are owner-scoping-sensitive and eight are not.
+
+**What is now established:** the twelve-cell matrix genuinely exercises the product, and the product satisfies it. **What is not:** anything on a real browser. Per §A4b this verdict carries **COVERAGE: Node harness with a synthetic storage/window double; no browser, no React, no real `userStorage`, no login/logout** and **SURFACE: harness only — not host, not panel**. The V8 lifecycle check on a real surface remains outstanding and becomes agent-executable once C's runner lands, per §A15.4's convergence.
+
+**Status: NOT accepted.** Committed explicitly as UNREVIEWED and not proposed for integration. §A13.1's top-tier adversarial review has not run on this packet, and B-R1 destroyed the last artefact I personally inspected and approved. That review is my next action, and until it returns V8-P1 is "implemented and self-attacked", not "done".
+
+---
+
+## B-0062 — OVERNIGHT QUEUE, in order, with what each is blocked on
+
+1. **V8-P1 adversarial review** — top tier, `claude-opus-5-thinking-high`, `role=reviewer` (mandatory, not counted in author mix). Next action. Ready.
+2. **V6-P1 restoration design** — `updateOrderLines` has no creation path, so restoration must be *built*, not repaired. This is a design task with no existing spec, so §A13.2 row *"architecture design"* applies and it is a **named top-tier trigger** — the first legitimate one on my board since B-T1. Output is a specification plus structural gates stamped not-behaviour-covering, staged behind C's runner. Ready.
+3. **Duration clock** — the PO's new repro (*duration wrong and far too large after a rollback followed by a new order*) is **new information** that my existing mechanism note does not obviously explain: B-A3 found a wall-clock/bar-time mix, but "far too large specifically after a rollback" suggests a start anchor surviving a time rewind. Cheap-tier first, to test the new repro against the known mechanism before anyone calls it triage. Ready.
+4. **M25's four REDs and M26's two** — I have not yet read these rows and will not spec them from memory. Cheap-tier read of the board rows first.
+5. **V6-P2 specification for A** — the ownership answer is settled (B-0054); what remains is writing the spec and evidence pack for A to dispatch, with me reserved as reviewer, and keeping the placement move separate from the staleness cure.
