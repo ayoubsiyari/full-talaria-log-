@@ -6,13 +6,18 @@ import {
   EPS_ROLLING_NONRECURSIVE,
   GROWTH_BASE_NOISE_FLOOR,
   LENGTH_GROWTH_FACTOR,
+  M5_CANARY_FAMILIES,
+  PARITY_MEDIUM_LENGTH,
+  PARITY_SHORT_LENGTH,
   assertNoLengthDependentGrowth,
   loadIndicatorPerf,
   runAllCells,
   runDriftSmaLadder,
   runDriftWmaControl,
+  runM5CanaryParity,
   runSanityRollingShort,
 } from '../../docs/plan3/oracles/differential-parity-oracle-v1.mjs';
+import { loadChartIndicatorsEmaDema } from '../../docs/plan3/fixtures/a7-chart-indicators-ema-dema-loader.mjs';
 
 test('DIFFERENTIAL-PARITY-ORACLE-V1 loads IndicatorPerf read-only exports', () => {
   const perf = loadIndicatorPerf();
@@ -132,4 +137,33 @@ test('oracle signature token is stable', () => {
   assert.equal(DIFFERENTIAL_PARITY_ORACLE_SIGNATURE, 'TALARIA_DIFFERENTIAL_PARITY_ORACLE_V1');
   const report = runAllCells();
   assert.equal(report.signature, 'TALARIA_DIFFERENTIAL_PARITY_ORACLE_V1');
+  assert.equal(report.cpuAcceptanceDoc, 'docs/plan3/PO-PROTOCOL-CPU-AB-20260728.md');
+});
+
+test('M5 canary: chart-indicators EMA/DEMA calculators load read-only', () => {
+  const { calculateEMA, calculateDEMA } = loadChartIndicatorsEmaDema();
+  assert.equal(typeof calculateEMA, 'function');
+  assert.equal(typeof calculateDEMA, 'function');
+});
+
+test('M5 canary parity: SMA/WMA/EMA/DEMA short + medium within EPS (no fake GREEN)', () => {
+  const perf = loadIndicatorPerf();
+  const { cells, chartCalcsError } = runM5CanaryParity(perf);
+  assert.equal(cells.length, M5_CANARY_FAMILIES.length * 2);
+  assert.equal(chartCalcsError, null, `EMA/DEMA loader failed: ${chartCalcsError}`);
+
+  for (const family of M5_CANARY_FAMILIES) {
+    const short = cells.find((c) => c.cell === `PARITY-${family}-SHORT`);
+    const medium = cells.find((c) => c.cell === `PARITY-${family}-MEDIUM`);
+    assert.ok(short, `missing PARITY-${family}-SHORT`);
+    assert.ok(medium, `missing PARITY-${family}-MEDIUM`);
+    assert.equal(short.length, PARITY_SHORT_LENGTH);
+    assert.equal(medium.length, PARITY_MEDIUM_LENGTH);
+    assert.notEqual(short.status, 'UNPROVEN', short.unprovenReason);
+    assert.notEqual(medium.status, 'UNPROVEN', medium.unprovenReason);
+    assert.equal(short.status, 'GREEN', `${short.cell} maxRel=${short.maxRel}`);
+    assert.equal(medium.status, 'GREEN', `${medium.cell} maxRel=${medium.maxRel}`);
+    assert.ok(short.maxRel <= EPS_ROLLING_NONRECURSIVE);
+    assert.ok(medium.maxRel <= EPS_ROLLING_NONRECURSIVE);
+  }
 });

@@ -2,10 +2,13 @@
  * DIFFERENTIAL-PARITY-ORACLE-V1
  * Signature: TALARIA_DIFFERENTIAL_PARITY_ORACLE_V1
  *
- * Coverage (W29 / A7 drift slice only): running-sum SMA drift ladder vs naive
- * fallback reference; WMA full-recompute control; short parity sanity;
- * NC-PARITY-EPSILON-INVERTED. PARITY-ROLLING-SUBTRACTION full family matrix
- * and painted tier are follow-up packets — not in this oracle.
+ * Coverage (W37 / M5 canary slice): optimized-vs-naive parity for SMA, WMA, EMA, DEMA
+ * (period DRIFT_PERIOD, typically 20 for PO lag/CPU protocols) on short + medium fixtures;
+ * DRIFT-SMA-100K/500K/1M length-growth ladder; DRIFT-WMA-CONTROL; NC-PARITY-EPSILON-INVERTED.
+ * Bollinger / Donchian / stochastic and full PARITY-ROLLING-SUBTRACTION matrix are post-conclusion.
+ *
+ * CPU performance claims are NOT covered here — acceptance for any CPU claim is
+ * docs/plan3/PO-PROTOCOL-CPU-AB-20260728.md. This oracle is value correctness (parity + drift).
  *
  * EXPECTED-RED: DRIFT-SMA-* cells may RED on live product because
  * rollingSmaFast uses uncompensated running sum (sum -= leaving; sum += entering).
@@ -20,6 +23,8 @@
  *
  * Fallback reference (naive O(n·p)) always executes in CI alongside optimized path
  * loaded read-only from chart v 1.4/chart/modules/indicator-performance.js.
+ * EMA/DEMA use chart-indicators calculateEMA/calculateDEMA extracted read-only (IndicatorPerf
+ * has no rollingEmaFast / rollingDemaFast).
  */
 
 import fs from 'node:fs';
@@ -27,7 +32,16 @@ import path from 'node:path';
 import vm from 'node:vm';
 import { fileURLToPath } from 'node:url';
 import { buildDriftLadderSeries } from '../fixtures/a7-prng-series.mjs';
-import { naiveRollingSma, naiveRollingWma } from './naive-rolling-reference.mjs';
+import {
+  loadChartIndicatorsEmaDema,
+  seriesToCloseBars,
+} from '../fixtures/a7-chart-indicators-ema-dema-loader.mjs';
+import {
+  naiveRollingDema,
+  naiveRollingEma,
+  naiveRollingSma,
+  naiveRollingWma,
+} from './naive-rolling-reference.mjs';
 
 export const DIFFERENTIAL_PARITY_ORACLE_SIGNATURE = 'TALARIA_DIFFERENTIAL_PARITY_ORACLE_V1';
 
@@ -47,6 +61,12 @@ export const DRIFT_PERIOD = 20;
 export const DRIFT_SEED = 0xa7_2026_07;
 /** Large-magnitude stress (JPY-scale) applied to all drift-ladder runs. */
 export const DRIFT_SCALE = 1e6;
+
+/** M5 canary parity fixture lengths (deterministic PRNG series). */
+export const PARITY_SHORT_LENGTH = 512;
+export const PARITY_MEDIUM_LENGTH = 8192;
+
+export const M5_CANARY_FAMILIES = ['SMA', 'WMA', 'EMA', 'DEMA'];
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, '../../..');
@@ -254,21 +274,127 @@ export function runDriftWmaControl(perf, lengths = [100_000, 500_000]) {
   return { cells, growth, absolute, maxByLength, status };
 }
 
+/**
+ * @param {object} perf IndicatorPerf from loadIndicatorPerf
+ * @param {{ calculateEMA?: Function, calculateDEMA?: Function } | null} chartCalcs
+ * @param {'SMA'|'WMA'|'EMA'|'DEMA'} family
+ * @param {number} length
+ * @param {'SHORT'|'MEDIUM'} tier
+ */
+export function runM5ParityCell(perf, chartCalcs, family, length, tier) {
+  const period = DRIFT_PERIOD;
+  const series = buildDriftLadderSeries(length, DRIFT_SEED, { scale: 1 });
+  const cell = `PARITY-${family}-${tier}`;
+
+  let naive;
+  /** @type {ArrayLike<number>|null} */
+  let optimized = null;
+  let unprovenReason = null;
+
+  switch (family) {
+    case 'SMA':
+      naive = naiveRollingSma(series, period);
+      optimized = perf.rollingSmaFast(series, period);
+      break;
+    case 'WMA':
+      naive = naiveRollingWma(series, period);
+      optimized = perf.rollingWmaFast(series, period);
+      break;
+    case 'EMA':
+      if (!chartCalcs?.calculateEMA) {
+        unprovenReason =
+          'IndicatorPerf has no rollingEmaFast; chart-indicators calculateEMA not loaded';
+        break;
+      }
+      naive = naiveRollingEma(series, period);
+      optimized = chartCalcs.calculateEMA(seriesToCloseBars(series), period, 'close');
+      break;
+    case 'DEMA':
+      if (!chartCalcs?.calculateDEMA) {
+        unprovenReason =
+          'IndicatorPerf has no rollingDemaFast; chart-indicators calculateDEMA not loaded';
+        break;
+      }
+      naive = naiveRollingDema(series, period);
+      optimized = chartCalcs.calculateDEMA(seriesToCloseBars(series), period, 'close');
+      break;
+    default:
+      throw new Error(`DIFFERENTIAL-PARITY-ORACLE-V1: unknown M5 family ${family}`);
+  }
+
+  if (unprovenReason) {
+    return {
+      cell,
+      family,
+      length,
+      tier,
+      status: 'UNPROVEN',
+      pass: false,
+      unprovenReason,
+      epsilon: EPS_ROLLING_NONRECURSIVE,
+    };
+  }
+
+  const maxRel = maxRelativeDivergence(naive, optimized, period);
+  const within = maxRel <= EPS_ROLLING_NONRECURSIVE;
+  return {
+    cell,
+    family,
+    length,
+    tier,
+    maxRel,
+    withinAbsoluteEpsilon: within,
+    status: within ? 'GREEN' : 'RED',
+    pass: within,
+    epsilon: EPS_ROLLING_NONRECURSIVE,
+    optimizedPath:
+      family === 'SMA' || family === 'WMA'
+        ? 'IndicatorPerf'
+        : 'chart-indicators (read-only extract)',
+  };
+}
+
+/** @param {object} perf @param {string} [root] */
+export function runM5CanaryParity(perf, root = REPO_ROOT) {
+  let chartCalcs = null;
+  let chartCalcsError = null;
+  try {
+    chartCalcs = loadChartIndicatorsEmaDema(root);
+  } catch (err) {
+    chartCalcsError = err instanceof Error ? err.message : String(err);
+  }
+
+  const cells = [];
+  for (const family of M5_CANARY_FAMILIES) {
+    for (const [tier, length] of [
+      ['SHORT', PARITY_SHORT_LENGTH],
+      ['MEDIUM', PARITY_MEDIUM_LENGTH],
+    ]) {
+      cells.push(runM5ParityCell(perf, chartCalcs, family, length, tier));
+    }
+  }
+  return { cells, chartCalcsError, chartCalcsSource: chartCalcs?.sourceRel ?? null };
+}
+
 /** @param {object} [opts] @param {string} [opts.root] */
 export function runAllCells(opts = {}) {
-  const perf = loadIndicatorPerf(opts.root ?? REPO_ROOT);
+  const root = opts.root ?? REPO_ROOT;
+  const perf = loadIndicatorPerf(root);
   const sanity = runSanityRollingShort(perf);
   const ncInverted = runSanityRollingShort(perf, { invertEpsilon: true });
   const smaLadder = runDriftSmaLadder(perf);
   const wmaControl = runDriftWmaControl(perf);
+  const m5Parity = runM5CanaryParity(perf, root);
   return {
     signature: DIFFERENTIAL_PARITY_ORACLE_SIGNATURE,
     indicatorPerfPath: INDICATOR_PERF_REL,
     epsRollingNonRecursive: EPS_ROLLING_NONRECURSIVE,
+    cpuAcceptanceDoc: 'docs/plan3/PO-PROTOCOL-CPU-AB-20260728.md',
     sanity,
     ncInverted,
     smaLadder,
     wmaControl,
+    m5Parity,
   };
 }
 
@@ -286,6 +412,17 @@ export function formatReport(report) {
   }
   for (const c of report.wmaControl.cells) {
     lines.push(`${c.cell}: ${c.status} maxRel=${c.maxRel}`);
+  }
+  if (report.m5Parity?.cells) {
+    lines.push('');
+    lines.push('M5 canary parity (values only; CPU → PO-PROTOCOL-CPU-AB-20260728.md):');
+    for (const c of report.m5Parity.cells) {
+      if (c.status === 'UNPROVEN') {
+        lines.push(`${c.cell}: UNPROVEN (${c.unprovenReason})`);
+      } else {
+        lines.push(`${c.cell}: ${c.status} maxRel=${c.maxRel}`);
+      }
+    }
   }
   if (!report.smaLadder.growth.ok) {
     lines.push(`SMA ladder growth violations: ${JSON.stringify(report.smaLadder.growth.violations)}`);

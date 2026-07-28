@@ -72,14 +72,18 @@ Status vocabulary, fixed by the manager: `owned-stamped`, `image-verified`, `exc
 
 | Name | Signature token | Status |
 |---|---|---|
-| DIFFERENTIAL-PARITY-ORACLE-V1 | `TALARIA_DIFFERENTIAL_PARITY_ORACLE_V1` | LIVE — `docs/plan3/oracles/differential-parity-oracle-v1.mjs`, `scripts/tests/differential-parity-oracle.test.mjs` (W29 drift slice) |
+| DIFFERENTIAL-PARITY-ORACLE-V1 | `TALARIA_DIFFERENTIAL_PARITY_ORACLE_V1` | LIVE — `docs/plan3/oracles/differential-parity-oracle-v1.mjs`, `scripts/tests/differential-parity-oracle.test.mjs` (W29 drift + W37 M5 canary parity) |
 
 Cells:
 
 | Cell | Asserts | Status |
 |---|---|---|
-| PARITY-ROLLING-SUBTRACTION | optimized vs fallback for SMA/WMA/Bollinger/Donchian/stochastic within per-family epsilon | RESERVED |
-| PARITY-RECURSIVE | EMA/MACD/RSI/ATR/ADX within per-family epsilon, seed and warm-up declared | RESERVED |
+| PARITY-ROLLING-SUBTRACTION | optimized vs fallback for Bollinger/Donchian/stochastic within per-family epsilon | RESERVED (full rolling-subtraction matrix post-M5) |
+| PARITY-SMA-SHORT / PARITY-SMA-MEDIUM | `rollingSmaFast` vs naive rolling SMA within `EPS-ROLLING-NONRECURSIVE` | LIVE (W37 M5 canary; short may GREEN while DRIFT-SMA ladder RED) |
+| PARITY-WMA-SHORT / PARITY-WMA-MEDIUM | `rollingWmaFast` vs naive rolling WMA within `EPS-ROLLING-NONRECURSIVE` | LIVE (W37 M5 canary) |
+| PARITY-EMA-SHORT / PARITY-EMA-MEDIUM | chart-indicators `calculateEMA` (read-only extract) vs naive EMA reference within `EPS-ROLLING-NONRECURSIVE` — IndicatorPerf has no fast EMA | LIVE (W37 M5 canary) |
+| PARITY-DEMA-SHORT / PARITY-DEMA-MEDIUM | chart-indicators `calculateDEMA` (read-only extract) vs naive DEMA reference within `EPS-ROLLING-NONRECURSIVE` | LIVE (W37 M5 canary) |
+| PARITY-RECURSIVE | MACD/RSI/ATR/ADX within per-family epsilon, seed and warm-up declared | RESERVED |
 | PARITY-CUMULATIVE | VWAP/OBV over long ranges | RESERVED |
 | DRIFT-SMA-100K / DRIFT-SMA-500K / DRIFT-SMA-1M | divergence does not grow with series length on the running-sum path (`rollingSmaFast`) | LIVE (W29 drift ladder; SMA may RED — EXPECTED-RED on uncompensated sum) |
 | DRIFT-WMA-CONTROL | `rollingWmaFast` recomputes its window and must show no length-dependent drift — the control that proves the drift cells measure drift | LIVE |

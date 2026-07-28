@@ -50,3 +50,72 @@ export function naiveRollingWma(arr, period) {
   }
   return out;
 }
+
+/**
+ * EMA with SMA seed at bar (period-1), matching chart-indicators calculateEMA on close-only bars.
+ * Independent loop structure from product (parity reference, not IndicatorPerf — no fast EMA there).
+ * @param {ArrayLike<number>} arr @param {number} period
+ */
+export function naiveRollingEma(arr, period) {
+  const p = Math.max(1, period | 0);
+  const mult = 2 / (p + 1);
+  const n = arr.length;
+  const out = new Array(n);
+  for (let i = 0; i < n; i++) out[i] = null;
+  let ema = null;
+
+  for (let i = 0; i < n; i++) {
+    if (i < p - 1) {
+      continue;
+    }
+    if (i === p - 1) {
+      let sum = 0;
+      let ok = true;
+      for (let j = 0; j < p; j++) {
+        const v = arr[j];
+        if (!Number.isFinite(v)) {
+          ok = false;
+          break;
+        }
+        sum += v;
+      }
+      if (!ok) {
+        ema = null;
+      } else {
+        ema = sum / p;
+        out[i] = ema;
+      }
+      continue;
+    }
+    const v = arr[i];
+    if (!Number.isFinite(v) || ema == null) {
+      out[i] = null;
+    } else {
+      ema = (v - ema) * mult + ema;
+      out[i] = ema;
+    }
+  }
+  return out;
+}
+
+/** DEMA = 2·EMA₁ − EMA(EMA₁), same structure as chart-indicators calculateDEMA. */
+export function naiveRollingDema(arr, period) {
+  const p = Math.max(1, period | 0);
+  const ema1 = naiveRollingEma(arr, p);
+  const n = arr.length;
+  const pseudo = new Array(n);
+  for (let i = 0; i < n; i++) {
+    const v = ema1[i];
+    pseudo[i] = v != null ? v : arr[i];
+  }
+  const ema2 = naiveRollingEma(pseudo, p);
+  const out = new Array(n);
+  for (let i = 0; i < n; i++) out[i] = null;
+  for (let i = 0; i < n; i++) {
+    const e1 = ema1[i];
+    const e2 = ema2[i];
+    if (e1 == null || e2 == null) continue;
+    out[i] = 2 * e1 - e2;
+  }
+  return out;
+}
