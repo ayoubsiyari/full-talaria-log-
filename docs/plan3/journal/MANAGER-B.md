@@ -730,3 +730,154 @@ The loose-equality attack is the one that convinced me. It was not in the brief 
 **The false claim is withdrawn in the artefact itself.** The header no longer describes a registry-wide invariant; it states what is enforced and names the bypass classes, including that `drawing-tools-manager.js:12088` and `12133` mutate this same registry and are unreachable to any gate scoped to one file.
 
 **Status: accepted, and it still needs independent adversarial review.** I attacked it once and B-W5 attacked itself; neither substitutes for a reviewer who did not author it, and the last round is exactly why. That review is queued behind the B-W1+B-W2 one. Until both run, nothing here is integration-ready — and integration remains blocked on Manager C's `TERRITORY.yml` and ownership preflight regardless.
+
+---
+
+## B-0043 — POLICY READ · §A13.3b ingested from `9d0453094` (file now 349 lines, §A13.3b at 260–278)
+
+Read in the tree, not from the Director's message, and §A13.2's table re-read verbatim at 227–239 so I am naming rows rather than recalling them. Binding on me: `DISPATCH` entries carry `role=`, `tier=`, `model=`, and `trigger=<clause>` for any top-tier author; a dispatch absent from the journal is an unaccepted packet; author-tier and reviewer-tier mixes are reported separately; rejection rate per (task class × model) every train; top-tier authoring above 40% of authoring dispatches needs written justification.
+
+---
+
+## B-0044 — SELF-AUDIT · author-tier mix, and three top-tier authoring dispatches I cannot justify
+
+Reconstructed from the journal rather than from memory. **Eleven dispatches: ten authoring, one review.**
+
+| # | Role | Tier | Model | §A13.2 row cited | Verdict |
+|---|---|---|---|---|---|
+| B-A1 | author | cheap | `composer-2.5-fast` | audits, file:line inventories | OK |
+| B-A2 | author | cheap | `composer-2.5-fast` | audits, file:line inventories | OK |
+| B-A3 | author | cheap | `composer-2.5-fast` | inventories; timer/listener census | OK |
+| B-A4 | author | cheap | `composer-2.5-fast` | audits, file:line inventories | OK |
+| B-T1 | author | **top** | `claude-opus-5-thinking-high` | *"Root-cause triage of any surprise or new regression"* | **OK — row named** |
+| B-W1 | author | **top** | `claude-opus-5-thinking-high` | none — I wrote "expensive plus unverified" and "Tier 3 ceremony (data durability)" | **VIOLATION** |
+| B-W2 | author | mid | `gpt-5.5-medium-fast` | test/oracle/harness authoring | OK |
+| B-W3 | author | mid | `gpt-5.5-medium-fast` | test/oracle/harness authoring | OK |
+| B-W4 | author | **top** | `claude-opus-5-thinking-high` | none — I cited **§B3**, not an §A13.2 row | **VIOLATION** |
+| B-W5 | author | **top** | `claude-opus-5-thinking-high` | none — "same reason as B-W4", plus demonstrated risk | **VIOLATION** |
+| B-R1 | **reviewer** | top | `claude-opus-5-thinking-high` | §A13.1 mandatory | Not under audit |
+
+**Author-tier mix: 4 cheap (40%), 2 mid (20%), 4 top (40%).** Exactly at the reporting threshold, not above it — so the letter of §A13.3b.3 does not require a digest justification. **I am not taking that shelter**, because the percentage is the least interesting number here: three of the four top-tier authoring dispatches have no nameable row, so the honest figure is **one justified top-tier author out of ten, and three violations**.
+
+**Reviewer-tier mix: 1 of 1 top (100%)**, as §A13.1 mandates. Reported separately and not blended.
+
+**Each violation, named, with the row I should have used:**
+
+- **B-W1** — I called `preferences-sync.js` "data durability". The row is *"Money-path and data-durability code (ledger, migrations, IndexedDB, session backup)"*. Preference writes to local storage are none of those four. My reasoning was that the module is loaded by nine shells and no preference oracle exists — which is a blast-radius argument, and blast radius is not the §A13.2 test. Correct row: *"Implementing an already-specced fix"* → **mid**. Aggravating rather than mitigating: **I had specced it myself**, which is precisely the condition that row describes.
+- **B-W4** — I cited §B3 and wrote that §B3 "routes order-state-adjacent correctness to top tier". §B3 is the change-tier ladder governing ceremony; it is not the model-routing table, and "order-state-adjacent" is not a row in either. The work was a two-line specced fix plus harness authoring: **mid** on either row.
+- **B-W5** — my stated reason was that the previous agent's output looked rigorous and was not. That is the strongest of the three and it is still not a row. The escalate-on-repeat clause is *two* rejections of the same packet; B-W4's gate had **one**. So the clause I was reaching for explicitly did not fire yet. Correct: **mid**.
+
+**Had I followed the rule: 1 top (10%), 5 mid, 4 cheap.** The drift is exactly the mechanism §A13.3b.2 describes — in all three cases I reasoned from *cost of being wrong* and never asked the actual question, which is whether an automatic verifier catches the error. For B-W4 and B-W5 the answer was plainly yes: the gate is the verifier, and a mandatory top-tier adversarial reviewer sits behind it. I paid for certainty I was already buying twice.
+
+**The evidence against my own reasoning is in this session's results.** B-W4 was authored at top tier and its central artefact was a rubber stamp that accepted thirteen wrong sources including the original bug verbatim. Top tier did not prevent that; **the review caught it**. That is §A13.2's thesis demonstrated at my own expense — the gate and the reviewer do the quality work, so the author tier is where the money should not go.
+
+---
+
+## B-0045 — MEASUREMENT · rejection rate per (task class × model), train 1
+
+Definitions used, stated so the number is comparable next train: **rejected** = not accepted as delivered and superseded or rebuilt; **held** = accepted into review with substantive unresolved concerns; **partial** = accepted with part of the deliverable discarded.
+
+| Task class | Model | Tier | Dispatched | Rejected | Held | Partial | Rejection rate |
+|---|---|---|---|---|---|---|---|
+| Audits / file:line inventories | `composer-2.5-fast` | cheap | 4 | 0 | 0 | 1 | **0%** |
+| Test / oracle / harness authoring | `gpt-5.5-medium-fast` | mid | 2 | 1 | 1 | 0 | **50%** |
+| Root-cause triage | `claude-opus-5-thinking-high` | top | 1 | 0 | 0 | 0 | **0%** |
+| Implementation + gate authoring | `claude-opus-5-thinking-high` | top | 2 (1 in flight) | 1 | 0 | 0 | **50%** |
+| Adversarial review | `claude-opus-5-thinking-high` | top | 1 | 0 | 0 | 0 | **0%** |
+
+**The finding that should drive tuning: cheap tier did not bounce, and top tier bounced at the same rate as mid.** Four cheap audits, zero rejections. Top-tier authoring rejected one of two completed — the same 50% as mid-tier authoring. On this train's evidence there is no signal that paying for top-tier *authoring* reduces rejection at all, which is the empirical case for §A13.3b that I was not producing.
+
+Three caveats, because the numbers are small and a misread here would push routing the wrong way:
+
+1. **The one cheap partial was my fault, not the model's.** B-A4's citations were discarded because it audited the wrong tree — and my brief named a path without requiring the agent to confirm which tree it read (B-0031). The mechanism findings were sound. Fixing the brief, not the tier, is the correction.
+2. **The mid-tier 50% is not a capability signal and must not trigger an upgrade.** B-W3 was rejected because the drag code is DOM/D3/rAF-bound and cannot be loaded in Node — a top-tier model hits the identical wall. The rejection is attributable to task infeasibility, and the fix is a browser harness (B-0036), not a better model. Upgrading this combination would spend more and bounce identically.
+3. **The top-tier 50% is a real signal.** B-W4's gate was a genuine quality failure at the most expensive tier available, caught by review rather than by authoring spend.
+
+**Routing changes I am making on this evidence, effective now:** keep `composer-2.5-fast` for all audits, inventories, censuses, enumerations and evidence assembly, and widen its use per B-0046; keep `gpt-5.5-medium-fast` for test and harness authoring rather than upgrading it; and stop routing specced fixes and gate authoring to top tier — B-W4 and B-W5 are the cases that would now be mid. Top-tier authoring is reserved for a named row, which on my board means root-cause triage and nothing else currently queued.
+
+---
+
+## B-0046 — DISPATCH · four cheap authoring dispatches, `role=author tier=cheap`
+
+Per §A13.3b's actionable list, scoped to rows that are mine. All read-only, so uncapped under §A13.3 and carrying no review debt. All four: `role=author`, `tier=cheap`, `model=composer-2.5-fast`, §A13.2 rows 1–2 (*audits, greps, file:line inventories, guard-site and control enumeration, timer/listener census*; *log parsing, counter tabulation, provenance and digest checks, evidence assembly*). No `trigger=` field, because none is a top-tier author. Writable file set for every one: **NONE**.
+
+Each brief carries the B-0031 partition fix — tree named, agent required to confirm which tree it actually read before reporting — since that, not tier, caused this train's only cheap-tier partial.
+
+- **B-C1** — plot-bounds / `yScale` range alignment. Closes the gap B-A4 flagged and B-0032 named as blocking the V6-P2 RED. Mechanical: compare the pixel range against the layout bounds at every site and report disagreements.
+- **B-C2** — guard-site enumeration, the §A4c/Q2 `global.X &&` pattern, across my six territory files: every optional-guard call site, whether the guard is a presence check or a capability check, and every site where absence is silently tolerated.
+- **B-C3** — order-side teardown presence sweep. Completes B-A3's census as a full mechanical inventory: every timer, listener, observer, cache and back-reference created in my territory, paired against its release site, listing unpaired ones. Feeds the teardown-residual row.
+- **B-C4** — order-side UI control inventory (§A10 shape): every user-actionable control the order overlay creates, its class, its owning draw path, and whether it has a disposal path — cross-checked against the sixteen element keys `_disposeOrderLineElements` handles.
+
+Author-tier mix after these four land: **8 cheap (57%), 2 mid (14%), 4 top (29%)** across fourteen authoring dispatches — below the 40% trigger, and with the only justified top-tier author being B-T1's root-cause triage.
+
+Write packets in flight: **1 of 3** (B-W1). Read-only in flight: **4** (B-C1–B-C4). Packets awaiting review: **2** (B-W1+B-W2 as one; B-W5). Outstanding `PO-REQ`: **0**. Outstanding `NEEDS-PO-CLARIFY`: **1**. Cross-territory/unowned files affecting my rows: **9**.
+
+---
+
+## B-0047 — CORRECTION to B-0046 · B-C4 deferred, not dropped
+
+B-0046 committed to four cheap dispatches. I ran three (B-C1, B-C2, B-C3) and am **deferring B-C4** (order-side UI control inventory) to the next train. Reason: the three returns carry more reconciliation than I can do well in one pass, and B-C4's likely content overlaps B-C3's DOM findings, so it is the lowest marginal value of the four. Recorded because silently dropping a journalled dispatch is the untracked drift I have been complaining about in others. Author-tier arithmetic below uses three, not four.
+
+---
+
+## B-0048 — VERDICT (B-C1) · surface=plot bounds vs yScale range, coverage=all vertical terms compared. **Supersedes B-0032's mechanism for V6-P2. Third revision of this defect.**
+
+**My premise was wrong and cheap tier proved it in one pass.** I have been chasing a numeric disagreement between the visibility predicate and the clip rect. There is none: both are `top = m.t`, `bottom = this.h - m.b - (separateIndicatorPanelHeight || 0)`, and `yScale.range([plotBottom, m.t])` uses the **identical** expression. Term by term — `margin.t`, `margin.b`, `separateIndicatorPanelHeight` — all three agree, volume-overlay height enters none of them, and the adaptive price axis touches horizontal margins only.
+
+**The real hazard is staleness, not arithmetic.** `plotBottom` is recomputed live on every call by `_getMainPricePlotLayout`, but `yScale` is **cached on the instance** until `calculateScales` rebuilds it. The pan fast path calls `_syncSeparateIndicatorPanelHeightEstimate` and can then **early-return without touching `yScale`**. So the height moves while the range stays frozen — for many frames during a pan. Separately, `renderSeparatePanelIndicators` writes `separateIndicatorPanelHeight` *after* `calculateScales` has already run in the same frame, and order overlays update after that again.
+
+So a row's pixel Y comes from a stale scale while the hide/clip thresholds come from a live height, and they disagree — which is exactly "not fully visible" without any formula mismatch.
+
+**Consequence for ownership, and it is worse than B-0032's.** Both the early-return and the ordering live in `chart.js` `calculateScales` and in `chart-indicators-full.js`. Neither is mine. B-0032 already escalated that V6-P2's predicate is out of territory; this narrows it further — the defect is not in the predicate at all, it is in **when the scale is recomputed relative to the layout**, which is wholly Manager A's. I can no longer identify any part of V6-P2 that I can fix inside my territory beyond the ungated badge elements. **Recommend the row moves to A**, with my audits attached.
+
+Marked inference, not observation, by the agent and by me: it did not prove a frame in which the two panel-height totals actually differ. The staleness path is proven; a concrete divergent frame is not. Worth one console check when a smoke route exists.
+
+---
+
+## B-0049 — VERDICT (B-C3) · surface=order-side allocation/release pairing, coverage=4 territory files, all seven allocation kinds. **Supersedes B-0024's "unmeasured" status with a mechanical inventory.**
+
+I verified the five headline claims myself before recording them, and **all five hold exactly**:
+
+| Claim | Verified |
+|---|---|
+| No `destroy`/`dispose`/`teardown`/`cleanup` on `OrderManager` | **confirmed, none** |
+| `this.eventBus.on(...)` registrations | **8** |
+| `eventBus.off(...)` anywhere in the file | **0** |
+| `new ResizeObserver` / `.disconnect()` | **1 / 0** |
+| d3 `.on(evt, null)` unregistrations | **0** |
+
+The inventory: roughly **40 unpaired `setTimeout`** handles discarded at allocation, **30 unpaired `requestAnimationFrame`**, **17 long-lived `window`/`document` listeners** that are never removed — many of them **inline closures**, which cannot be removed even by a later attempt, since `removeEventListener` needs the same reference. All **8** `eventBus` subscriptions are inline and unpaired. A `BroadcastChannel` is opened and never closed. `__m20A1PersistSeq` grows per owner|session with no delete. `this.chart` and `this.replaySystem` are never nulled.
+
+The only teardown that exists, `_m20A1Teardown`, covers the A1 screenshot subsystem's timers and caches — and **does not** clear `priceMonitorInterval`, the kill-transition timer, the event-bus subscriptions, or any of the window/document listeners.
+
+Two honest limits I am keeping attached to this number. First, `order-service.js`, `order-event-bus.js` and `indicator-persist-rehydrate.js` are **clean** — this is an `order-manager.js` finding, not an order-side one, and my earlier framing was too broad. Second, and per §A9 rule 3: **this is a presence inventory, not a measurement.** Nothing here establishes how much memory is retained or that any of it explains the reopened row. I asked for no severity ranking and got none, which is what makes the number usable.
+
+**What it does establish, and this is a correctness claim rather than a memory one:** a class with no disposal path, holding a chart back-reference and 8 unremovable bus subscriptions, cannot be torn down at all. That is worth fixing whether or not it is the memory row's cause.
+
+---
+
+## B-0050 — VERDICT (B-C2) · surface=guard sites, coverage=cross-module and persistence guards enumerated, self-method guards counted only
+
+343 `typeof … === 'function'` guards in `order-manager.js`. The agent correctly declined to classify all of them and enumerated the cross-module and persistence subset instead — the right call, and it said so rather than padding.
+
+**The finding I did not expect: silently skipped durable writes.** Six guard sites wrap session-state and journal persistence (`scheduleSessionStateSave`, `queueCriticalSessionStateSave`, `addJournalEntries`) and **SILENT-SKIP** when the collaborator is absent — no log, no throw, no fallback. One returns a resolved promise with `reason: 'no-critical-queue'`, so the caller cannot distinguish "persisted" from "silently did not persist". A skipped repaint is cosmetic; a skipped durable write loses data and looks identical to success. That is §A4c's exact concern and it lands on data durability, which is the row I *wrongly* claimed for B-W1's tier — the real instance of it was here all along, in code I had not audited.
+
+**Six collaborators are guarded with inconsistent strictness**, and the looser sites are the dangerous ones: `recomputeSharedMarginState` is checked with `typeof` alone at three sites with no null-check on `orderService`, so a null service **throws** there while merely skipping elsewhere. `chart.render` is truthy-checked at one site and `typeof`-checked at three. `window.marketCalcEngine` is truthy-checked and then has `getCalculator()` called unguarded. Inconsistent strictness on one collaborator means the failure mode depends on which site runs first, which is the kind of defect that presents as irreproducible.
+
+Not yet actionable as a fix — it needs a decision on whether absence should be loud, and that is a design question I will spec before dispatching anything. Queued, not dispatched.
+
+---
+
+## B-0051 — MEASUREMENT UPDATE · author-tier mix and rejection rate after the cheap batch
+
+Authoring dispatches now **13**: **7 cheap (54%)**, **2 mid (15%)**, **4 top (31%)**. Below the §A13.3b.3 40% trigger, so no digest justification is owed — but three of the four top-tier authors remain the unjustifiable ones from B-0044 and I am not counting them as retroactively fine. Reviewer-tier: **1 of 1 top (100%)**, reported separately.
+
+Updated rejection rate, cheap row only (others unchanged from B-0045):
+
+| Task class | Model | Tier | Dispatched | Rejected | Partial | Rejection rate |
+|---|---|---|---|---|---|---|
+| Audits / inventories / enumerations | `composer-2.5-fast` | cheap | **7** | **0** | 1 (B-A4, my brief's fault) | **0%** |
+
+**Seven cheap audits, zero rejections, and three of them corrected me on substance** — B-C1 overturned my V6-P2 mechanism, B-C3 replaced an unmeasured assumption with a verified inventory whose five headline claims I re-checked and found exact, B-C2 found silently-skipped durable writes I had not looked for. Against that, my four top-tier authoring dispatches produced one rejection and one artefact that had to be rebuilt.
+
+On this train's evidence the cheap tier is not a compromise on my board — it is where the corrections came from. I was defaulting upward to buy confidence I was already getting from the gate and the reviewer, and paying for it in the one currency that is actually scarce, which is review capacity.
