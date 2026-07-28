@@ -1400,3 +1400,23 @@ Because `homepage/Dockerfile` copies `chart v 1.4/chart` **wholesale** into the 
 Reverted the two product files to their pre-B-W1 state (`ba68aebee`). The harness and fixture are kept as the starting point for the rebuild, and the implementation is preserved at `2cc6e7298`, restorable with one checkout. M3's fix is confirmed intact — zero interpolated substring selectors remain.
 
 The general lesson, and it is the same one as B-0078: **I reasoned about deployment from the contents of the repository without ever reading how the repository becomes a deployment.** One direction produced a false alarm, the other produced a real hazard I would have shipped. Both came from the same missing step.
+
+---
+
+## B-0080 — Runner fidelity flagged to C. Half the flag was stale; I checked before relaying.
+
+Director asked me to pass C two things: the runner is uncommitted, and its acceptance suite uses a stubbed browser. VER-01 says presence is not soundness, and relaying is not verification, so I read both before writing anything.
+
+**"Uncommitted" is stale.** `scripts/order-overlay-browser-runner.mjs` is **tracked**. C committed it since the note was written. Reported as resolved rather than passed along, which would have wasted C's time.
+
+**"Stubbed acceptance suite" is confirmed and live.** `scripts/tests/order-overlay-browser-runner.test.mjs` injects `findBrowser: () => '/fixture/chrome'` at lines 64, 83, 97 and 113 — a path that cannot exist. Every acceptance test covers report parsing and process plumbing; **none** covers finding, launching or talking to a real Chromium. The one that matters is line 109, `three consecutive stubbed green instrument runs are stable`: three-run stability is precisely the property three managers will lean on when binding survival numbers to runner output, and it is proven against a stub.
+
+I gave C the evidence that cuts in its favour too — I drove the real path in real Edge for M3, and it found the browser, rendered synthetic SVG, returned a well-formed report, and produced a genuine RED before the fix and GREEN after. The real path works. Nothing *guards* it. Recommended one uninjected test that fails loudly rather than skipping, since a skip is how this returns.
+
+**Third item, mine not the Director's:** my gate imports the runner by absolute path across worktrees (`RUNNER_PATH` at line 42), which works here and breaks everywhere else. That is a CI portability blocker and the resolution should be C's and uniform, not three private guesses. Asked for a ruling on the location and undertook to conform.
+
+Written to `b-fixtures/B-HANDOFF-runner-fidelity.md`.
+
+**Ordering admission:** I dispatched B-W10 *before* journaling that A16.4's threshold had been reached, so it went out without the top-tier pre-review I had just concluded I owed. I am not recalling it — its brief is the reviewer's own six named fixes, which is a stronger specification than a pre-review would produce — but the sequence was wrong and the threshold applies from here.
+
+**Queue state:** three ship-gate threads in flight — B-W8 on M4 ledger invariants, B-W9 on the duration clock, B-W10 on the M3 gate. M3's product fix is merged and confirmed intact. PO-REQ outstanding: **0**.
