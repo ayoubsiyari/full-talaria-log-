@@ -439,6 +439,12 @@ export function formatCacheStampCoherenceReport(report) {
     if (c.reason) lines.push(`    ${c.reason}`);
     if (c.conflictCount) lines.push(`    conflicts: ${c.conflictCount}`);
     if (c.driftCount) lines.push(`    drifts: ${c.driftCount}`);
+    if (c.stampMismatchCount) lines.push(`    stamp mismatches: ${c.stampMismatchCount}`);
+    if (Array.isArray(c.stampMismatches) && c.stampMismatches.length) {
+      for (const m of c.stampMismatches.slice(0, 5)) {
+        lines.push(`    - ${m.modulePath} baseline=${m.baselineStamp} observed=${m.observedStamp}`);
+      }
+    }
     if (Array.isArray(c.drifts) && c.drifts.length) {
       for (const d of c.drifts.slice(0, 5)) {
         lines.push(`    - ${d.modulePath} stamp=${d.stamp}`);
