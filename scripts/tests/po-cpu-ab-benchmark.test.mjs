@@ -70,8 +70,8 @@ function report({
     advancedObserved: true,
     indexDelta: 5,
     timestampDelta: 300_000,
-    beforeState: { isActive: true, isPlaying: false, currentIndex: 10, currentTimestamp: 1_000_000, speed: 10 },
-    state: { isActive: true, isPlaying: true, currentIndex: 15, currentTimestamp: 1_300_000, speed: 10 },
+    beforeState: { isActive: true, isPlaying: false, currentIndex: 10, currentTimestamp: 1_000_000, currentTimestampSource: 'replayTimestamp', speed: 10 },
+    state: { isActive: true, isPlaying: true, currentIndex: 15, currentTimestamp: 1_300_000, currentTimestampSource: 'replayTimestamp', speed: 10 },
     ...p6Replay,
   };
   return {
@@ -112,8 +112,8 @@ function report({
           indexDelta: 5,
           timestampDelta: 300_000,
           advanceContradiction: false,
-          beforeState: { isActive: true, isPlaying: false, currentIndex: 10, currentTimestamp: 1_000_000, speed: 10 },
-          state: { isActive: true, isPlaying: true, currentIndex: 15, currentTimestamp: 1_300_000, speed: 10 },
+          beforeState: { isActive: true, isPlaying: false, currentIndex: 10, currentTimestamp: 1_000_000, currentTimestampSource: 'replayTimestamp', speed: 10 },
+          state: { isActive: true, isPlaying: true, currentIndex: 15, currentTimestamp: 1_300_000, currentTimestampSource: 'replayTimestamp', speed: 10 },
         })),
         ...p4Replay,
       },
@@ -146,6 +146,8 @@ test('unit: host HTML records shortened meta for CI P2', () => {
   assert.match(html, /phaseCallbackSamples/);
   assert.match(html, /_m20Q6LifecycleState/);
   assert.match(html, /advancedCount/);
+  assert.match(html, /rs\.replayTimestamp != null/);
+  assert.match(html, /currentTimestampSource/);
 });
 
 test('unit: oracle accepts P1/P2/P4/P6/P7 report and records replay observables', () => {
@@ -349,6 +351,65 @@ test('fault-injection: P4/P6 require forward timestamp movement', () => {
   const p6 = p6Cells.find((cell) => cell.name === 'P6-REPLAY-10X-OR-NEAREST-OBSERVED');
   assert.equal(p6.status, 'RED');
   assert.equal(p6.advanceContradiction, true);
+});
+
+test('fault-injection: null pre-arm timestamp source cannot mint advanced GREEN', () => {
+  const fabricatedBefore = {
+    isActive: true,
+    isPlaying: false,
+    currentIndex: 10,
+    currentTimestamp: 0,
+    currentTimestampSource: 'replayTimestamp',
+    speed: 10,
+  };
+  const rawAfter = {
+    isActive: true,
+    isPlaying: true,
+    currentIndex: 15,
+    currentTimestamp: 1_700_000_000_000,
+    currentTimestampSource: 'fullRawData[currentIndex]',
+    speed: 10,
+  };
+  const p4Rows = ['A', 'B', 'C', 'D'].map((id) => ({
+    id,
+    ok: true,
+    activeObserved: true,
+    playingObserved: true,
+    advancedObserved: true,
+    indexDelta: 5,
+    timestampDelta: 1_700_000_000_000,
+    advanceContradiction: false,
+    beforeState: fabricatedBefore,
+    state: rawAfter,
+  }));
+  const p4Cells = assertPoCpuAbBenchmarkReport(report({
+    p4Replay: {
+      ok: true,
+      panelCount: 4,
+      playingCount: 4,
+      advancedCount: 4,
+      rows: p4Rows,
+    },
+  }));
+  const p4 = p4Cells.find((cell) => cell.name === 'P4-FOUR-PANEL-REPLAY-RUNNING-OBSERVED');
+  assert.equal(p4.status, 'RED');
+  assert.equal(p4.advancedCount, 0);
+  assert.equal(p4.rowAdvances.every((advance) => advance.sourceChanged), true);
+
+  const p6Cells = assertPoCpuAbBenchmarkReport(report({
+    p6Replay: {
+      advancedObserved: true,
+      indexDelta: 5,
+      timestampDelta: 1_700_000_000_000,
+      advanceContradiction: false,
+      beforeState: fabricatedBefore,
+      state: rawAfter,
+    },
+  }));
+  const p6 = p6Cells.find((cell) => cell.name === 'P6-REPLAY-10X-OR-NEAREST-OBSERVED');
+  assert.equal(p6.status, 'RED');
+  assert.equal(p6.timestampSourceChanged, true);
+  assert.equal(p6.playheadAdvanced, false);
 });
 
 test('fault-injection: P4 recomputes advance contradiction instead of trusting row flag', () => {

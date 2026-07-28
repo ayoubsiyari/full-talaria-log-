@@ -535,10 +535,12 @@ export function poCpuAbHostHtml({ timings = DEFAULT_PHASE_TIMINGS, mutant = fals
     function replayStateForChart(ch) {
       const rs = ch && ch.replaySystem;
       if (!rs) return { present: false };
-      const replayTimestamp = Number(rs.replayTimestamp);
+      const replayTimestamp = rs.replayTimestamp != null ? Number(rs.replayTimestamp) : null;
       const rawCurrentTimestamp = Array.isArray(rs.fullRawData) && rs.fullRawData[rs.currentIndex] && rs.fullRawData[rs.currentIndex].t != null
         ? Number(rs.fullRawData[rs.currentIndex].t)
         : null;
+      const hasReplayTimestamp = Number.isFinite(replayTimestamp);
+      const hasRawCurrentTimestamp = Number.isFinite(rawCurrentTimestamp);
       return {
         present: true,
         lifecycleState: Object.prototype.hasOwnProperty.call(rs, '_m20Q6LifecycleState')
@@ -548,9 +550,9 @@ export function poCpuAbHostHtml({ timings = DEFAULT_PHASE_TIMINGS, mutant = fals
         isPlaying: !!rs.isPlaying,
         passivePlayActive: !!(ch && ch._multichartPassivePlayActive),
         currentIndex: Number.isFinite(Number(rs.currentIndex)) ? Number(rs.currentIndex) : null,
-        currentTimestamp: Number.isFinite(replayTimestamp) ? replayTimestamp : rawCurrentTimestamp,
-        rawCurrentTimestamp: Number.isFinite(rawCurrentTimestamp) ? rawCurrentTimestamp : null,
-        currentTimestampSource: Number.isFinite(replayTimestamp) ? 'replayTimestamp' : 'fullRawData[currentIndex]',
+        currentTimestamp: hasReplayTimestamp ? replayTimestamp : (hasRawCurrentTimestamp ? rawCurrentTimestamp : null),
+        rawCurrentTimestamp: hasRawCurrentTimestamp ? rawCurrentTimestamp : null,
+        currentTimestampSource: hasReplayTimestamp ? 'replayTimestamp' : (hasRawCurrentTimestamp ? 'fullRawData[currentIndex]' : null),
         speed: Number(rs.speed),
         playbackMode: typeof rs.getPlaybackMode === 'function' ? rs.getPlaybackMode() : String(rs.playbackMode || '')
       };
@@ -588,6 +590,17 @@ export function poCpuAbHostHtml({ timings = DEFAULT_PHASE_TIMINGS, mutant = fals
       return replayStateForChart(chart());
     }
 
+    function timestampSourceChanged(beforeState, afterState) {
+      const beforeSource = beforeState && beforeState.currentTimestampSource;
+      const afterSource = afterState && afterState.currentTimestampSource;
+      return beforeState && afterState
+        && beforeState.currentTimestamp != null
+        && afterState.currentTimestamp != null
+        && beforeSource != null
+        && afterSource != null
+        && String(beforeSource) !== String(afterSource);
+    }
+
     function replayAdvance(beforeState, afterState) {
       const beforeIndex = beforeState && beforeState.currentIndex;
       const afterIndex = afterState && afterState.currentIndex;
@@ -595,13 +608,16 @@ export function poCpuAbHostHtml({ timings = DEFAULT_PHASE_TIMINGS, mutant = fals
       const afterTimestamp = afterState && afterState.currentTimestamp;
       const indexDelta = beforeIndex != null && afterIndex != null ? afterIndex - beforeIndex : null;
       const timestampDelta = beforeTimestamp != null && afterTimestamp != null ? afterTimestamp - beforeTimestamp : null;
-      const contradiction = Number.isFinite(indexDelta) && Number.isFinite(timestampDelta)
-        && ((indexDelta > 0 && timestampDelta <= 0) || (indexDelta < 0 && timestampDelta > 0));
+      const sourceChanged = timestampSourceChanged(beforeState, afterState);
+      const contradiction = sourceChanged
+        || (Number.isFinite(indexDelta) && Number.isFinite(timestampDelta)
+          && ((indexDelta > 0 && timestampDelta <= 0) || (indexDelta < 0 && timestampDelta > 0)));
       return {
         indexDelta,
         timestampDelta,
+        sourceChanged,
         contradiction,
-        advanced: Number.isFinite(timestampDelta) && timestampDelta > 0 && !contradiction
+        advanced: Number.isFinite(timestampDelta) && timestampDelta > 0 && !sourceChanged && !contradiction
       };
     }
 
@@ -1036,6 +1052,7 @@ function phaseMemoryDelta(phase) {
 const REQUIRED_P4_PANEL_IDS = Object.freeze(['A', 'B', 'C', 'D']);
 
 function finiteNumberOrNull(value) {
+  if (value == null) return null;
   const number = Number(value);
   return Number.isFinite(number) ? number : null;
 }
@@ -1064,6 +1081,16 @@ function sameRequiredPanelIds(left, right) {
   return normalize(left) === required && normalize(left) === normalize(right);
 }
 
+function replayTimestampSourceChanged(beforeState, afterState) {
+  const beforeSource = beforeState?.currentTimestampSource;
+  const afterSource = afterState?.currentTimestampSource;
+  return beforeState?.currentTimestamp != null
+    && afterState?.currentTimestamp != null
+    && beforeSource != null
+    && afterSource != null
+    && String(beforeSource) !== String(afterSource);
+}
+
 function rowReplayAdvanceEvidence(row) {
   const indexDelta = finiteNumberOrNull(row?.indexDelta);
   const timestampDelta = finiteNumberOrNull(row?.timestampDelta);
@@ -1073,9 +1100,11 @@ function rowReplayAdvanceEvidence(row) {
   const stateTimestampDelta = row?.beforeState?.currentTimestamp != null && row?.state?.currentTimestamp != null
     ? finiteNumberOrNull(Number(row.state.currentTimestamp) - Number(row.beforeState.currentTimestamp))
     : null;
+  const sourceChanged = replayTimestampSourceChanged(row?.beforeState, row?.state);
   const contradicts = (idx, ts) => Number.isFinite(idx) && Number.isFinite(ts)
     && ((idx > 0 && ts <= 0) || (idx < 0 && ts > 0));
   const advanceContradiction = row?.advanceContradiction === true
+    || sourceChanged
     || contradicts(indexDelta, timestampDelta)
     || contradicts(stateIndexDelta, stateTimestampDelta);
   const forwardTimestamp = (Number.isFinite(timestampDelta) && timestampDelta > 0)
@@ -1085,6 +1114,7 @@ function rowReplayAdvanceEvidence(row) {
     timestampDelta,
     stateIndexDelta,
     stateTimestampDelta,
+    sourceChanged,
     advanceContradiction,
     advanced: forwardTimestamp && !advanceContradiction,
   };
@@ -1198,15 +1228,17 @@ export function assertPoCpuAbBenchmarkReport(report, { mutant = false } = {}) {
     && replay.state?.isActive === true
     && replay.state?.isPlaying === true;
   const p6SpeedKnown = replay.nearestSpeed != null && Number.isFinite(Number(replay.nearestSpeed));
-  const p6IndexDelta = Number(replay.indexDelta);
-  const p6TimestampDelta = Number(replay.timestampDelta);
+  const p6IndexDelta = finiteNumberOrNull(replay.indexDelta);
+  const p6TimestampDelta = finiteNumberOrNull(replay.timestampDelta);
   const p6StateIndexDelta = replay.beforeState?.currentIndex != null && replay.state?.currentIndex != null
     ? Number(replay.state.currentIndex) - Number(replay.beforeState.currentIndex)
     : null;
   const p6StateTimestampDelta = replay.beforeState?.currentTimestamp != null && replay.state?.currentTimestamp != null
     ? Number(replay.state.currentTimestamp) - Number(replay.beforeState.currentTimestamp)
     : null;
+  const p6TimestampSourceChanged = replayTimestampSourceChanged(replay.beforeState, replay.state);
   const p6AdvanceContradiction = replay.advanceContradiction === true
+    || p6TimestampSourceChanged
     || (Number.isFinite(p6IndexDelta) && Number.isFinite(p6TimestampDelta)
       && ((p6IndexDelta > 0 && p6TimestampDelta <= 0) || (p6IndexDelta < 0 && p6TimestampDelta > 0)))
     || (Number.isFinite(p6StateIndexDelta) && Number.isFinite(p6StateTimestampDelta)
@@ -1223,7 +1255,7 @@ export function assertPoCpuAbBenchmarkReport(report, { mutant = false } = {}) {
     'P6-REPLAY-10X-OR-NEAREST-OBSERVED',
     replayObserved,
     `requested 10x; nearest=${replay.nearestSpeed ?? 'unknown'} via ${replay.method || 'unknown'}; playing=${replay.playingObserved === true}; advanced=${p6PlayheadAdvanced}; workDeltaVsP1=${Number.isFinite(p6Ratio) && Number.isFinite(p1Ratio) ? (p6Ratio - p1Ratio).toFixed(4) : 'n/a'}`,
-    { phase: 'P6', replay, workRatio: p6Ratio, p1Ratio, workMargin: PO_CPU_AB_P6_REPLAY_WORK_RATIO_MARGIN, workExceedsP1: p6WorkExceedsP1, playheadAdvanced: p6PlayheadAdvanced, advanceContradiction: p6AdvanceContradiction },
+    { phase: 'P6', replay, workRatio: p6Ratio, p1Ratio, workMargin: PO_CPU_AB_P6_REPLAY_WORK_RATIO_MARGIN, workExceedsP1: p6WorkExceedsP1, playheadAdvanced: p6PlayheadAdvanced, advanceContradiction: p6AdvanceContradiction, timestampSourceChanged: p6TimestampSourceChanged },
   ));
 
   const pause = report.replay?.p7 || {};
