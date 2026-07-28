@@ -19,7 +19,9 @@ import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-import { ABSENT, PRESENT, UNDETERMINED, probe, readOnlyFetch, redact, summarise } from './live-surface-probe.mjs';
+import {
+    ABSENT, DEFAULT_SHELLS, PRESENT, UNDETERMINED, parseArgs, probe, readOnlyFetch, redact, summarise,
+} from './live-surface-probe.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const TOOL = path.join(HERE, 'live-surface-probe.mjs');
@@ -34,12 +36,19 @@ function server(routes) {
     const requests = [];
     const srv = http.createServer((req, res) => {
         requests.push({ method: req.method, url: req.url });
-        const route = routes[req.url.split('?')[0]];
+        const pathOnly = req.url.split('?')[0];
+        const route = routes[req.url] || routes[pathOnly];
         if (!route) { res.writeHead(404, { 'content-type': 'text/plain' }); return res.end('nope'); }
         const r = typeof route === 'function' ? route(req) : route;
         if (r.hang) return; // never responds; exercises the timeout path
+        let body = r.body ?? '';
+        // Opt-in: append the ?v= value so dual-stamp checks see distinct bytes (effective stamp).
+        if (r.varyByV) {
+            const v = new URL(req.url, 'http://local.test').searchParams.get('v');
+            if (v) body = `${body}\n// stamp-variant:${v}\n`;
+        }
         res.writeHead(r.status ?? 200, { 'content-type': r.type ?? 'application/javascript', ...(r.headers ?? {}) });
-        res.end(r.body ?? '');
+        res.end(body);
     });
     return { srv, requests };
 }
@@ -58,6 +67,8 @@ const OPTS = (base, over = {}) => ({
     shells: [],
     timeoutMs: 2000,
     token: null,
+    // Existing cells assert marker tri-state; stamp-inert has dedicated cells.
+    stampInertCheck: false,
     ...over,
 });
 
@@ -316,7 +327,8 @@ test('cell 17: EVID-01 — an existing record is never overwritten', async () =>
             '/a.html': { type: 'text/html', body: '<script src="/chart/modules/order-manager.js?v=20260728b81"></script>' },
         }, async (base) => {
             const run = (extra = []) => new Promise((res) => execFile('node',
-                [TOOL, `--base-url=${base}`, `--out=${dir}`, '--json', '--shell=/a.html', ...extra],
+                [TOOL, `--base-url=${base}`, `--out=${dir}`, '--json', '--shell=/a.html',
+                    '--no-stamp-inert-check', ...extra],
                 (err, stdout, stderr) => res({ code: err?.code ?? 0, stdout, stderr })));
 
             const first = await run();
@@ -341,7 +353,8 @@ test('cell 17: EVID-01 — an existing record is never overwritten', async () =>
 
 test('cell 18: the PO runs one command, and exit codes separate the three states', async () => {
     const SHELL = { type: 'text/html', body: '<script src="/chart/modules/order-manager.js?v=20260728b81"></script>' };
-    const cli = (base) => new Promise((res) => execFile('node', [TOOL, `--base-url=${base}`, '--shell=/a.html'],
+    const cli = (base) => new Promise((res) => execFile('node',
+        [TOOL, `--base-url=${base}`, '--shell=/a.html', '--no-stamp-inert-check'],
         (err, stdout, stderr) => res({ code: err?.code ?? 0, stdout: String(stdout), stderr: String(stderr) })));
 
     await withServer({ '/chart/modules/order-manager.js': { body: REAL_MODULE_WITH_FIX }, '/a.html': SHELL }, async (base) => {
@@ -367,4 +380,168 @@ test('cell 19: summarise never promotes UNDETERMINED to a pass', async () => {
     assert.notEqual(summarise(mixed).exitCode, 0);
     const withAbsent = [{ kind: 'module', markers: { m: { state: UNDETERMINED }, n: { state: ABSENT } } }];
     assert.equal(summarise(withAbsent).verdict, ABSENT, 'ABSENT outranks UNDETERMINED');
+});
+
+// ---------------------------------------------------------------------------
+// Inert ?v= + deploy-gate (DEPLOY-01 teeth)
+// ---------------------------------------------------------------------------
+
+test('cell 20: inert ?v= is detected when two stamps return byte-identical bodies', async () => {
+    await withServer({
+        '/chart/modules/order-manager.js': { body: REAL_MODULE_WITH_FIX },
+    }, async (base) => {
+        const r = await probe(OPTS(base, { stampInertCheck: true, shells: [] }));
+        const f = r.findings.find((x) => x.kind === 'stamp-inert');
+        assert.ok(f);
+        assert.equal(f.stampInert, true);
+        assert.equal(f.variants[0].sha256, f.variants[1].sha256);
+        // Must NOT flip the guard marker — module stays PRESENT.
+        assert.equal(markerOf(r).state, PRESENT);
+        assert.equal(r.findings[0].identified, true);
+        assert.equal(r.summary.verdict, UNDETERMINED);
+        assert.equal(r.summary.exitCode, 3);
+        assert.equal(r.summary.stampInert, true);
+    });
+});
+
+test('cell 20b: effective ?v= yields stampInert false when bodies differ', async () => {
+    await withServer({
+        '/chart/modules/order-manager.js': { body: REAL_MODULE_WITH_FIX, varyByV: true },
+    }, async (base) => {
+        const r = await probe(OPTS(base, { stampInertCheck: true, shells: [] }));
+        const f = r.findings.find((x) => x.kind === 'stamp-inert');
+        assert.equal(f.stampInert, false);
+        assert.notEqual(f.variants[0].sha256, f.variants[1].sha256);
+        assert.equal(markerOf(r).state, PRESENT);
+        assert.equal(r.summary.exitCode, 0);
+    });
+});
+
+test('cell 20c: inert stamp does not rewrite ABSENT marker to PRESENT or UNDETERMINED-as-absent', async () => {
+    await withServer({
+        '/chart/modules/order-manager.js': { body: REAL_MODULE_NO_FIX },
+    }, async (base) => {
+        const r = await probe(OPTS(base, { stampInertCheck: true, shells: [] }));
+        assert.equal(markerOf(r).state, ABSENT, 'inert stamp must not touch marker state');
+        assert.equal(r.summary.exitCode, 1, 'ABSENT outranks inert-stamp UNDETERMINED');
+        const f = r.findings.find((x) => x.kind === 'stamp-inert');
+        assert.equal(f.stampInert, true);
+    });
+});
+
+test('cell 21: deploy-gate fails (exit 2) when 200 shells disagree on build id', async () => {
+    await withServer({
+        '/chart/modules/order-manager.js': { body: REAL_MODULE_WITH_FIX, varyByV: true },
+        '/chart/dist-v9/index.html': {
+            type: 'text/html',
+            body: '<script src="/chart/modules/order-manager.js?v=20260728b81"></script>',
+        },
+        '/chart/talaria-design/live/index.html': {
+            type: 'text/html',
+            body: '<script src="/chart/modules/order-manager.js?v=20260723b12"></script>',
+        },
+    }, async (base) => {
+        const r = await probe(OPTS(base, {
+            stampInertCheck: true,
+            deployGate: true,
+            shells: ['/chart/dist-v9/index.html', '/chart/talaria-design/live/index.html'],
+        }));
+        const bid = r.findings.find((x) => x.kind === 'build-id');
+        assert.equal(bid.coherent, false);
+        assert.equal(markerOf(r).state, PRESENT);
+        assert.equal(r.summary.exitCode, 2);
+        assert.ok(r.summary.deployHazards.includes('incoherentShells'));
+    });
+});
+
+test('cell 22: deploy-gate fails (exit 2) when stamp is inert', async () => {
+    await withServer({
+        '/chart/modules/order-manager.js': { body: REAL_MODULE_WITH_FIX },
+        '/a.html': {
+            type: 'text/html',
+            body: '<script src="/chart/modules/order-manager.js?v=20260728b81"></script>',
+        },
+    }, async (base) => {
+        const r = await probe(OPTS(base, {
+            stampInertCheck: true,
+            deployGate: true,
+            shells: ['/a.html'],
+        }));
+        assert.equal(markerOf(r).state, PRESENT);
+        assert.equal(r.findings.find((x) => x.kind === 'stamp-inert').stampInert, true);
+        assert.equal(r.summary.exitCode, 2);
+        assert.ok(r.summary.deployHazards.includes('stampInert'));
+    });
+});
+
+test('cell 22b: deploy-gate passes when markers PRESENT, shells coherent, stamp effective', async () => {
+    await withServer({
+        '/chart/modules/order-manager.js': { body: REAL_MODULE_WITH_FIX, varyByV: true },
+        '/chart/dist-v9/index.html': {
+            type: 'text/html',
+            body: '<script src="/chart/modules/order-manager.js?v=20260728b81"></script>',
+        },
+        '/chart/talaria-design/live/index.html': {
+            type: 'text/html',
+            body: '<script src="/chart/chart.js?v=20260728b81"></script>',
+        },
+    }, async (base) => {
+        const r = await probe(OPTS(base, {
+            stampInertCheck: true,
+            deployGate: true,
+            shells: ['/chart/dist-v9/index.html', '/chart/talaria-design/live/index.html'],
+        }));
+        assert.equal(r.summary.exitCode, 0);
+        assert.equal(r.summary.verdict, PRESENT);
+        assert.equal(r.summary.stampInert, false);
+        assert.equal(r.findings.find((x) => x.kind === 'build-id').coherent, true);
+    });
+});
+
+test('cell 23: auth-gated shell does not poison coherence under deploy-gate', async () => {
+    await withServer({
+        '/chart/modules/order-manager.js': { body: REAL_MODULE_WITH_FIX, varyByV: true },
+        '/chart/dist-v9/index.html': {
+            type: 'text/html',
+            body: '<script src="/chart/modules/order-manager.js?v=20260728b81"></script>',
+        },
+        '/chart/index.html': { status: 307, headers: { location: '/login/?next=%2Fchart%2Findex.html' }, body: '' },
+        '/chart/legacy-index.html': { status: 404, body: 'gone' },
+        '/login/': { type: 'text/html', body: '<script src="/x.js?v=99999999b1"></script>' },
+    }, async (base, requests) => {
+        const r = await probe(OPTS(base, {
+            stampInertCheck: true,
+            deployGate: true,
+            shells: ['/chart/dist-v9/index.html', '/chart/index.html', '/chart/legacy-index.html'],
+        }));
+        const bid = r.findings.find((x) => x.kind === 'build-id');
+        assert.equal(bid.coherent, true, '307 + 404 must not invent a second build id');
+        assert.equal(bid.presentShellCount, 1);
+        assert.ok(bid.perShell.find((s) => s.shell === '/chart/index.html').ignoredForCoherence);
+        assert.ok(bid.perShell.find((s) => s.shell === '/chart/legacy-index.html').ignoredForCoherence);
+        assert.equal(r.summary.exitCode, 0);
+        assert.ok(!requests.some((req) => req.url.startsWith('/login/')));
+    });
+});
+
+test('cell 24: default shells include talaria-design/live', () => {
+    const opts = parseArgs(['--base-url=http://example.test']);
+    assert.ok(opts.shells.includes('/chart/talaria-design/live/index.html'));
+    assert.ok(DEFAULT_SHELLS.includes('/chart/talaria-design/live/index.html'));
+    assert.equal(opts.deployGate, false);
+    assert.equal(opts.stampInertCheck, true);
+});
+
+test('cell 25: deploy-gate CLI exits 2 on inert stamp', async () => {
+    const SHELL = { type: 'text/html', body: '<script src="/chart/modules/order-manager.js?v=20260728b81"></script>' };
+    await withServer({
+        '/chart/modules/order-manager.js': { body: REAL_MODULE_WITH_FIX },
+        '/a.html': SHELL,
+    }, async (base) => {
+        const r = await new Promise((res) => execFile('node',
+            [TOOL, `--base-url=${base}`, '--shell=/a.html', '--deploy-gate'],
+            (err, stdout, stderr) => res({ code: err?.code ?? 0, stdout: String(stdout), stderr: String(stderr) })));
+        assert.equal(r.code, 2);
+        assert.match(r.stdout, /stampInert|DEPLOY-GATE FAIL/i);
+    });
 });

@@ -65,8 +65,8 @@ const MUTANTS = [
     },
     {
         name: 'summarise treats UNDETERMINED as a pass',
-        find: '    if (states.includes(UNDETERMINED)) return { verdict: UNDETERMINED, exitCode: 3 };',
-        replace: '    if (false) return { verdict: UNDETERMINED, exitCode: 3 };',
+        find: '    if (states.includes(UNDETERMINED)) {\n        return { verdict: UNDETERMINED, exitCode: 3, deployGate: false, stampInert, incoherent };\n    }',
+        replace: '    if (false) {\n        return { verdict: UNDETERMINED, exitCode: 3, deployGate: false, stampInert, incoherent };\n    }',
     },
     {
         name: 'an unauthenticated 401 on the session endpoint is reported ABSENT',
@@ -87,6 +87,11 @@ const MUTANTS = [
         name: 'the size floor is removed, so a stub reply is identified as the module',
         find: '    if (res.bytes < MIN_PLAUSIBLE_MODULE_BYTES) {',
         replace: '    if (false) {',
+    },
+    {
+        name: 'inert-stamp check dropped — identical ?v= bodies never flagged',
+        find: '    const identical = ok200[0].sha256 === ok200[1].sha256;',
+        replace: '    const identical = false;',
     },
 ];
 
@@ -155,26 +160,66 @@ try {
     return { identified: true };
 }
 `;
-        const summariseStart = src.indexOf('function summarise(findings) {');
+        const summariseStart = src.indexOf('function summarise(findings, opts = {}) {');
         const summariseEnd = src.indexOf('\nfunction render(report)');
-        const reimplSummarise = `function summarise(findings) {
-    const seen = new Set();
+        // Contract-shaped reimpl: precedence table + deploy-gate hazards, not a copy of the chain.
+        const reimplSummarise = `function summarise(findings, opts = {}) {
+    const markerStates = [];
+    const sessionStates = [];
+    let stampInert = null;
+    let stampInertChecked = false;
+    let stampInertWaived = Boolean(opts.waiveStampInert);
+    let buildId = null;
     for (const f of findings) {
-        if (f.kind === 'module') Object.values(f.markers).forEach((m) => seen.add(m.state));
-        if (f.kind === 'session-endpoint') seen.add(f.state);
-        if (f.kind === 'build-id' && f.perShell.length) {
-            seen.add(f.perShell.filter((s) => s.state !== PRESENT).length ? UNDETERMINED : PRESENT);
+        if (f.kind === 'module') Object.values(f.markers).forEach((m) => markerStates.push(m.state));
+        else if (f.kind === 'session-endpoint') sessionStates.push(f.state);
+        else if (f.kind === 'build-id') buildId = f;
+        else if (f.kind === 'stamp-inert') {
+            stampInertChecked = true;
+            stampInert = f.stampInert;
+            stampInertWaived = stampInertWaived || Boolean(f.waived);
         }
     }
-    const precedence = [[ABSENT, 1], [UNDETERMINED, 3], [PRESENT, 0]];
-    for (const [verdict, exitCode] of precedence) {
-        if (seen.has(verdict)) return { verdict, exitCode };
+    const deployGate = Boolean(opts.deployGate);
+    const incoherent = Boolean(buildId && buildId.presentShellCount >= 1 && buildId.coherent === false);
+    const noPresentShell = Boolean(buildId && buildId.perShell.length && buildId.presentShellCount === 0);
+    const inertHazard = stampInertChecked && stampInert === true && !stampInertWaived;
+    const inertUndetermined = stampInertChecked && stampInert === null;
+    const base = { deployGate, stampInert, incoherent };
+    if (markerStates.includes(ABSENT) || sessionStates.includes(ABSENT)) {
+        return { ...base, verdict: ABSENT, exitCode: 1, deployHazards: [] };
     }
-    return { verdict: PRESENT, exitCode: 0 };
+    if (deployGate) {
+        const hazards = [];
+        if (inertHazard) hazards.push('stampInert');
+        if (incoherent) hazards.push('incoherentShells');
+        if (markerStates.includes(UNDETERMINED) || sessionStates.includes(UNDETERMINED)
+            || inertUndetermined || noPresentShell) {
+            return { ...base, verdict: UNDETERMINED, exitCode: 3, deployHazards: hazards };
+        }
+        if (hazards.length) {
+            return { ...base, verdict: UNDETERMINED, exitCode: 2, deployHazards: hazards,
+                reason: 'deploy-gate hazard' };
+        }
+        return { ...base, verdict: PRESENT, exitCode: 0, deployHazards: [],
+            stampInert: stampInertChecked ? stampInert : null, incoherent: false };
+    }
+    const seen = new Set([...markerStates, ...sessionStates]);
+    if (buildId && buildId.perShell.length) {
+        const judged = buildId.perShell.filter((s) => !s.ignoredForCoherence);
+        if (judged.length) {
+            seen.add(judged.every((s) => s.state === PRESENT) && !incoherent ? PRESENT : UNDETERMINED);
+        }
+    }
+    if (inertHazard || inertUndetermined) seen.add(UNDETERMINED);
+    for (const [verdict, exitCode] of [[ABSENT, 1], [UNDETERMINED, 3], [PRESENT, 0]]) {
+        if (seen.has(verdict)) return { ...base, verdict, exitCode };
+    }
+    return { ...base, verdict: PRESENT, exitCode: 0 };
 }
 `;
         const rebuilt = src.slice(0, identityStart) + reimplIdentity + src.slice(identityEnd);
-        const s2 = rebuilt.indexOf('function summarise(findings) {');
+        const s2 = rebuilt.indexOf('function summarise(findings, opts = {}) {');
         const e2 = rebuilt.indexOf('\nfunction render(report)');
         if (identityStart < 0 || identityEnd < 0 || summariseStart < 0 || summariseEnd < 0 || s2 < 0 || e2 < 0) {
             throw new Error('VER-04 half (b): could not locate both functions to replace');

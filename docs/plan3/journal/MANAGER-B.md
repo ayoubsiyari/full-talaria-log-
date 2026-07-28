@@ -2899,3 +2899,9 @@ Blocked on A's render kill-switch for the train — not idle. Four streams that 
 3. **Live-surface probe.** Hardening for inert `?v=` + deploy-gate still in flight (separate writable set).
 
 4. **FIX 3 delivery path.** [FIX3 replay-system delivery map](bcabc655-1c24-446b-b7fe-ea599d96e909): `release/FIX3-REPLAY-SYSTEM-DELIVERY-PATH.md`. A edits only `chart v 1.4/chart/modules/replay-system.js`. Homepage twin discarded at image build (Dockerfile L77–79). Stamps move via blanket shell bump, not a per-module stamp. Post-deploy proof = byte identity (`?v=` inert on test host).
+
+---
+
+## B-0132 — Live-surface probe finished: --deploy-gate gives DEPLOY-01 teeth.
+
+[Harden live-surface probe](38506c78-12ec-4097-bb63-cb39b12cc07a) landed. Fourth of the four parallel streams. Inert `?v=` dual-fetch reported separately (`stampInert`); default shells include `talaria-design/live`; `--deploy-gate` requires markers PRESENT + coherent 200-shells + effective stamps (307/404 ignored); exit 2 for deploy hazards. 31/0 tests, 10/0 mutants, VER-04 both halves. Post-push: `--deploy-gate --base-url=<host>`.

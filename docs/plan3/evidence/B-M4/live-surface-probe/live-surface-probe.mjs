@@ -20,12 +20,20 @@
  * incident; reporting them as PRESENT would hide one. Both are worse than "I could
  * not tell you", which is why that is a first-class result rather than an error.
  *
+ * DEPLOY-GATE (--deploy-gate). Post-push mode with teeth: markers must be PRESENT,
+ * shells that returned 200 must agree on one build id (auth-gated 307 and legacy
+ * 404 are ignored, not treated as incoherence), and ?v= must not be inert. Exit 2
+ * is reserved for those deploy hazards; it does not rewrite ABSENT↔PRESENT.
+ *
  * SAFETY. Read-only by construction: GET and HEAD only, enforced in the one function
  * that issues requests. Safe to point at production. Sends no credential unless one
  * is explicitly supplied, and never writes one to output.
  *
  * USAGE (one command, per the PO constraint):
  *   node live-surface-probe.mjs --base-url=https://host
+ *
+ * Post-push deploy gate:
+ *   node live-surface-probe.mjs --base-url=https://host --deploy-gate --out=./probe-evidence
  *
  * Optional:
  *   --module=/chart/modules/order-manager.js   (default; repeatable)
@@ -36,6 +44,7 @@
  *   --timeout-ms=10000
  */
 
+import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
@@ -54,6 +63,16 @@ const UNDETERMINED = 'UNDETERMINED';
 const MODULE_IDENTITY_ANCHORS = ['class OrderManager', 'persistJournal'];
 const MIN_PLAUSIBLE_MODULE_BYTES = 2048;
 
+/** Two deliberately different stamps used to detect inert ?v= (same bytes under every query). */
+const STAMP_INERT_VARIANTS = ['20260728b81', '99999999z99'];
+
+const DEFAULT_SHELLS = [
+    '/chart/dist-v9/index.html',
+    '/chart/legacy-index.html',
+    '/chart/multichart-prod/chart-embed.html',
+    '/chart/talaria-design/live/index.html',
+];
+
 function usage(msg) {
     if (msg) console.error(`\n${msg}`);
     console.error(`
@@ -67,24 +86,40 @@ live-surface-probe — report what the running deployment serves. Read-only.
   --marker=STRING       string to look for in the module (repeatable)
                         default: journalVouchedFor
   --shell=PATH          HTML shell to read the build id from (repeatable)
+                        default: dist-v9, legacy-index, multichart-prod embed,
+                                 talaria-design/live
   --session-id=ID       also probe GET /api/sessions/{ID}
   --token=TOKEN         bearer token; or set LIVE_PROBE_TOKEN. Never printed.
   --cookie=COOKIE       session cookie for auth-gated shells; or LIVE_PROBE_COOKIE. Never printed.
   --out=DIR             write an immutable JSON record here (EVID-01)
   --timeout-ms=N        per-request timeout, default 10000
   --json                machine-readable output only
+  --deploy-gate         post-push gate: markers PRESENT + coherent 200 shells
+                        + stampInert false (unless waived). Exit 2 on deploy hazard.
+  --waive-stamp-inert   allow stampInert:true under --deploy-gate (explicit only)
+  --no-stamp-inert-check  skip the dual-?v= byte-identity check (default: on)
 
 Exit codes:
-  0  every finding was PRESENT
+  0  every finding was PRESENT (and deploy-gate hazards cleared, if enabled)
   1  at least one finding was ABSENT   (the surface lacks the fix)
+  2  deploy-gate failure (inert ?v= and/or incoherent 200 shells)
   3  at least one finding was UNDETERMINED and none were ABSENT
-  2  the probe could not run at all (bad arguments)
+  64 the probe could not run at all (bad arguments)
 `);
     process.exit(msg ? 64 : 0);
 }
 
 function parseArgs(argv) {
-    const out = { modules: [], markers: [], shells: [], timeoutMs: 10000, json: false };
+    const out = {
+        modules: [],
+        markers: [],
+        shells: [],
+        timeoutMs: 10000,
+        json: false,
+        deployGate: false,
+        waiveStampInert: false,
+        stampInertCheck: true,
+    };
     for (const a of argv) {
         const m = /^--([a-z-]+)(?:=(.*))?$/.exec(a);
         if (!m) usage(`Unrecognised argument: ${a}`);
@@ -100,24 +135,29 @@ function parseArgs(argv) {
         else if (k === 'out') out.out = v;
         else if (k === 'timeout-ms') out.timeoutMs = Number(v);
         else if (k === 'json') out.json = true;
+        else if (k === 'deploy-gate') out.deployGate = true;
+        else if (k === 'waive-stamp-inert') out.waiveStampInert = true;
+        else if (k === 'no-stamp-inert-check') out.stampInertCheck = false;
         else usage(`Unrecognised option: --${k}`);
     }
     if (!out.modules.length) out.modules = ['/chart/modules/order-manager.js'];
     if (!out.markers.length) out.markers = ['journalVouchedFor'];
-    if (!out.shells.length) {
-        out.shells = ['/chart/dist-v9/index.html', '/chart/legacy-index.html',
-            '/chart/multichart-prod/chart-embed.html'];
-    }
+    if (!out.shells.length) out.shells = [...DEFAULT_SHELLS];
     out.token = out.token || process.env.LIVE_PROBE_TOKEN || null;
     out.cookie = out.cookie || process.env.LIVE_PROBE_COOKIE || null;
     return out;
 }
 
 /** A credential must never reach stdout or the evidence file. */
-function redact(s, token) {
+function redact(s, token, cookie) {
     let v = String(s ?? '');
     if (token) v = v.split(token).join('«redacted»');
+    if (cookie) v = v.split(cookie).join('«redacted»');
     return v.replace(/\/\/[^/@\s]+:[^/@\s]+@/g, '//«redacted»@');
+}
+
+function sha256Hex(body) {
+    return createHash('sha256').update(body, 'utf8').digest('hex');
 }
 
 /**
@@ -241,7 +281,7 @@ async function probeModule(base, modulePath, markers, opts) {
     const identity = establishModuleIdentity(res);
     const finding = {
         kind: 'module',
-        url: redact(url, opts.token),
+        url: redact(url, opts.token, opts.cookie),
         status: res.ok ? res.status : null,
         transportError: res.ok ? null : res.transportError,
         bytes: res.ok ? res.bytes : null,
@@ -263,6 +303,75 @@ async function probeModule(base, modulePath, markers, opts) {
 }
 
 /**
+ * Dual-?v= fetch: if identical asset bytes are served under every query string,
+ * the stamp is a cache key only and does not select content. That is a deploy
+ * hazard (stale clients can hold the wrong module) but it must NEVER flip the
+ * guard marker between ABSENT and PRESENT — those stay grounded in one identified body.
+ */
+async function probeStampInert(base, modulePath, opts) {
+    const pathname = modulePath.split('?')[0];
+    const variants = [];
+    for (const v of STAMP_INERT_VARIANTS) {
+        const u = new URL(pathname, base);
+        u.searchParams.set('v', v);
+        const url = u.toString();
+        const res = await readOnlyFetch(url, { token: opts.token, cookie: opts.cookie, timeoutMs: opts.timeoutMs });
+        if (!res.ok) {
+            variants.push({
+                v,
+                url: redact(url, opts.token, opts.cookie),
+                status: null,
+                transportError: res.transportError,
+                sha256: null,
+                bytes: null,
+            });
+            continue;
+        }
+        variants.push({
+            v,
+            url: redact(url, opts.token, opts.cookie),
+            status: res.status,
+            location: res.location || null,
+            transportError: null,
+            sha256: res.status === 200 ? sha256Hex(res.body) : null,
+            bytes: res.status === 200 ? res.bytes : null,
+        });
+    }
+
+    const finding = {
+        kind: 'stamp-inert',
+        path: pathname,
+        variants,
+        stampInert: null,
+        state: UNDETERMINED,
+        reason: null,
+        waived: Boolean(opts.waiveStampInert),
+    };
+
+    const ok200 = variants.filter((x) => x.status === 200 && x.sha256);
+    if (ok200.length < 2) {
+        const sample = variants.find((x) => x.transportError) || variants.find((x) => x.status !== 200) || variants[0];
+        finding.reason = sample?.transportError
+            ? `could not complete dual-?v= check: ${sample.transportError}`
+            : `could not complete dual-?v= check (need two HTTP 200 bodies; got `
+              + `${variants.map((x) => x.status ?? 'transport-fail').join(', ')})`;
+        return finding;
+    }
+
+    const identical = ok200[0].sha256 === ok200[1].sha256;
+    finding.stampInert = identical;
+    if (identical) {
+        finding.state = UNDETERMINED;
+        finding.reason = `identical sha256 under ?v=${ok200[0].v} and ?v=${ok200[1].v} `
+            + `(${ok200[0].sha256.slice(0, 12)}…) — stamp does not select bytes; cache-key-only hazard`;
+    } else {
+        finding.state = PRESENT;
+        finding.reason = null;
+    }
+    return finding;
+}
+
+/**
  * GET /api/sessions/{id}. An unauthenticated 401 is a perfectly good answer to
  * "is this endpoint reachable" and is NOT evidence the endpoint is missing —
  * it is reported as UNDETERMINED with the reason, never as ABSENT.
@@ -272,7 +381,7 @@ async function probeSessionEndpoint(base, sessionId, opts) {
     const res = await readOnlyFetch(url, { token: opts.token, cookie: opts.cookie, timeoutMs: opts.timeoutMs });
     const finding = {
         kind: 'session-endpoint',
-        url: redact(url, opts.token),
+        url: redact(url, opts.token, opts.cookie),
         credentialSupplied: Boolean(opts.token || opts.cookie),
         status: res.ok ? res.status : null,
         transportError: res.ok ? null : res.transportError,
@@ -320,7 +429,13 @@ async function probeSessionEndpoint(base, sessionId, opts) {
     return finding;
 }
 
-/** Build ids the surface reports, per shell, plus whether the shells agree. */
+function buildIdsFromShell(s) {
+    const ids = [...(s.stamps || [])];
+    if (s.declaredBuildId) ids.push(s.declaredBuildId);
+    return ids;
+}
+
+/** Build ids the surface reports, per shell, plus whether the 200 shells agree. */
 async function probeBuildIds(base, shells, opts) {
     const perShell = [];
     for (const shell of shells) {
@@ -334,6 +449,15 @@ async function probeBuildIds(base, shells, opts) {
             perShell.push({
                 shell, status: res.status, state: UNDETERMINED,
                 redirectedTo: res.location, reason: describeRedirect(res),
+                ignoredForCoherence: true,
+            });
+            continue;
+        }
+        if (res.status === 404) {
+            perShell.push({
+                shell, status: 404, state: UNDETERMINED,
+                reason: 'HTTP 404',
+                ignoredForCoherence: true,
             });
             continue;
         }
@@ -354,35 +478,129 @@ async function probeBuildIds(base, shells, opts) {
         }
         perShell.push({ shell, status: 200, state: PRESENT, stamps, declaredBuildId: declared });
     }
-    const seen = [...new Set(perShell.flatMap((s) => s.stamps || []).concat(
-        perShell.map((s) => s.declaredBuildId).filter(Boolean),
-    ))];
+
+    // Coherence is decided only from shells that returned a stamped 200.
+    // Auth-gated 307 and legacy 404 are ignored so they cannot poison agreement.
+    const coherentShells = perShell.filter((s) => s.state === PRESENT && s.status === 200);
+    const seen = [...new Set(coherentShells.flatMap(buildIdsFromShell))];
     return {
         kind: 'build-id',
         perShell,
         distinctBuildIds: seen,
         coherent: seen.length <= 1,
+        presentShellCount: coherentShells.length,
         coherenceNote: seen.length > 1
-            ? 'Shells disagree. They share /chart/modules/* URLs, so one surface can serve a module '
-              + 'another has already cache-busted.'
+            ? 'Shells that returned 200 disagree on build id. They share /chart/modules/* URLs, so one '
+              + 'surface can serve a module another has already cache-busted.'
             : null,
     };
 }
 
-function summarise(findings) {
-    const states = [];
+/**
+ * Summarise findings into a verdict and exit code.
+ *
+ * Deploy-gate mode (--deploy-gate):
+ *   0  markers PRESENT, 200-shells coherent, stampInert false (or waived)
+ *   1  marker ABSENT
+ *   2  deploy hazard (inert stamp / incoherent 200 shells) with markers otherwise clear
+ *   3  UNDETERMINED transport/auth / no stamped 200 shell to judge
+ *
+ * Without deploy-gate, inert stamp and incoherence contribute UNDETERMINED (exit 3),
+ * never rewrite ABSENT↔PRESENT on the guard marker.
+ */
+function summarise(findings, opts = {}) {
+    const markerStates = [];
+    const sessionStates = [];
+    let stampInert = null;
+    let stampInertChecked = false;
+    let stampInertWaived = false;
+    let buildId = null;
+
     for (const f of findings) {
-        if (f.kind === 'module') states.push(...Object.values(f.markers).map((m) => m.state));
-        else if (f.kind === 'session-endpoint') states.push(f.state);
-        // A shell list that was never probed contributes nothing. Treating "we asked
-        // about no shells" as UNDETERMINED would make every verdict undetermined.
-        else if (f.kind === 'build-id' && f.perShell.length) {
-            states.push(f.perShell.every((s) => s.state === PRESENT) ? PRESENT : UNDETERMINED);
+        if (f.kind === 'module') markerStates.push(...Object.values(f.markers).map((m) => m.state));
+        else if (f.kind === 'session-endpoint') sessionStates.push(f.state);
+        else if (f.kind === 'build-id') buildId = f;
+        else if (f.kind === 'stamp-inert') {
+            stampInertChecked = true;
+            stampInert = f.stampInert;
+            stampInertWaived = Boolean(f.waived || opts.waiveStampInert);
         }
     }
-    if (states.includes(ABSENT)) return { verdict: ABSENT, exitCode: 1 };
-    if (states.includes(UNDETERMINED)) return { verdict: UNDETERMINED, exitCode: 3 };
-    return { verdict: PRESENT, exitCode: 0 };
+
+    const deployGate = Boolean(opts.deployGate);
+    const incoherent = Boolean(buildId && buildId.presentShellCount >= 1 && buildId.coherent === false);
+    const noPresentShell = Boolean(buildId && buildId.perShell.length && buildId.presentShellCount === 0);
+    const inertHazard = stampInertChecked && stampInert === true && !stampInertWaived;
+    const inertUndetermined = stampInertChecked && stampInert === null;
+
+    if (markerStates.includes(ABSENT) || sessionStates.includes(ABSENT)) {
+        return {
+            verdict: ABSENT,
+            exitCode: 1,
+            deployGate,
+            stampInert,
+            incoherent,
+            deployHazards: [],
+        };
+    }
+
+    if (deployGate) {
+        const hazards = [];
+        if (inertHazard) hazards.push('stampInert');
+        if (incoherent) hazards.push('incoherentShells');
+
+        if (markerStates.includes(UNDETERMINED) || sessionStates.includes(UNDETERMINED)
+            || inertUndetermined || noPresentShell) {
+            return {
+                verdict: UNDETERMINED,
+                exitCode: 3,
+                deployGate,
+                stampInert,
+                incoherent,
+                deployHazards: hazards,
+            };
+        }
+        if (hazards.length) {
+            return {
+                verdict: UNDETERMINED,
+                exitCode: 2,
+                deployGate,
+                stampInert,
+                incoherent,
+                deployHazards: hazards,
+                reason: hazards.includes('stampInert') && hazards.includes('incoherentShells')
+                    ? 'deploy-gate: inert ?v= and incoherent 200 shells'
+                    : hazards.includes('stampInert')
+                        ? 'deploy-gate: ?v= is inert (identical bytes under distinct stamps)'
+                        : 'deploy-gate: 200 shells disagree on build id',
+            };
+        }
+        return {
+            verdict: PRESENT,
+            exitCode: 0,
+            deployGate,
+            stampInert: stampInertChecked ? stampInert : null,
+            incoherent: false,
+            deployHazards: [],
+        };
+    }
+
+    // Non-gate mode: preserve three-state exit codes; inert/incoherent warn as UNDETERMINED.
+    // Auth-gated 307 / legacy 404 are ignored for coherence and do not force UNDETERMINED alone.
+    const states = [...markerStates, ...sessionStates];
+    if (buildId && buildId.perShell.length) {
+        const judged = buildId.perShell.filter((s) => !s.ignoredForCoherence);
+        if (judged.length) {
+            states.push(judged.every((s) => s.state === PRESENT) && !incoherent ? PRESENT : UNDETERMINED);
+        }
+    }
+    if (inertHazard || inertUndetermined) states.push(UNDETERMINED);
+
+    if (states.includes(ABSENT)) return { verdict: ABSENT, exitCode: 1, deployGate: false, stampInert, incoherent };
+    if (states.includes(UNDETERMINED)) {
+        return { verdict: UNDETERMINED, exitCode: 3, deployGate: false, stampInert, incoherent };
+    }
+    return { verdict: PRESENT, exitCode: 0, deployGate: false, stampInert, incoherent };
 }
 
 function render(report) {
@@ -390,6 +608,7 @@ function render(report) {
     L.push('');
     L.push(`LIVE SURFACE PROBE  ${report.baseUrl}`);
     L.push(`${report.startedAtUtc}   read-only: GET/HEAD only, no writes issued`);
+    if (report.deployGate) L.push('mode: --deploy-gate (post-push)');
     L.push('');
     for (const f of report.findings) {
         if (f.kind === 'module') {
@@ -406,6 +625,20 @@ function render(report) {
                 if (r.reason) L.push(`      why undetermined: ${r.reason}`);
             }
             L.push('');
+        } else if (f.kind === 'stamp-inert') {
+            L.push('STAMP INERT CHECK  (dual ?v= byte identity)');
+            L.push(`  path ${f.path}`);
+            for (const v of f.variants) {
+                L.push(`  ?v=${v.v}  http ${v.status ?? '—'}  sha256=${v.sha256 ? `${v.sha256.slice(0, 16)}…` : '—'}  bytes=${v.bytes ?? '—'}`);
+            }
+            if (f.stampInert === true) {
+                L.push(`  stampInert: true${f.waived ? '  (waived)' : ''}  — ${f.reason}`);
+            } else if (f.stampInert === false) {
+                L.push('  stampInert: false  — distinct stamps selected distinct bytes');
+            } else {
+                L.push(`  stampInert: undetermined  — ${f.reason}`);
+            }
+            L.push('');
         } else if (f.kind === 'session-endpoint') {
             L.push(`SESSION ENDPOINT  ${f.url}`);
             L.push(`  http ${f.status ?? '—'}   credential supplied: ${f.credentialSupplied ? 'yes' : 'no'}`);
@@ -418,7 +651,8 @@ function render(report) {
                 const val = s.state === PRESENT
                     ? `${(s.stamps || []).join(', ') || '—'}${s.declaredBuildId ? `  declared=${s.declaredBuildId}` : ''}`
                     : s.reason;
-                L.push(`  ${s.state.padEnd(13)} ${s.shell}`);
+                const ignore = s.ignoredForCoherence ? '  [ignored for coherence]' : '';
+                L.push(`  ${s.state.padEnd(13)} ${s.shell}${ignore}`);
                 L.push(`      ${val}`);
             }
             if (f.coherenceNote) L.push(`  INCOHERENT: ${f.coherenceNote}`);
@@ -426,7 +660,10 @@ function render(report) {
         }
     }
     L.push(`VERDICT: ${report.summary.verdict}`);
-    if (report.summary.verdict === UNDETERMINED) {
+    if (report.summary.exitCode === 2) {
+        L.push(`  DEPLOY-GATE FAIL (exit 2): ${(report.summary.deployHazards || []).join(', ') || report.summary.reason || 'deploy hazard'}`);
+    }
+    if (report.summary.verdict === UNDETERMINED && report.summary.exitCode !== 2) {
         L.push('  "Undetermined" is a result, not a failure of the probe. It means the running');
         L.push('  system did not give us enough to answer. Do NOT read it as "the fix is absent".');
     }
@@ -439,16 +676,16 @@ function render(report) {
 }
 
 /** EVID-01: written once, never overwritten by a later run. */
-function writeEvidence(dir, report, token) {
+function writeEvidence(dir, report, token, cookie) {
     fs.mkdirSync(dir, { recursive: true });
     const host = (() => { try { return new URL(report.baseUrl).host.replace(/[^\w.-]/g, '_'); } catch { return 'unknown-host'; } })();
     const stamp = report.startedAtUtc.replace(/[:.]/g, '-');
     const file = path.join(dir, `probe-${stamp}-${host}.json`);
     if (fs.existsSync(file)) {
         console.error(`REFUSED: ${file} already exists. EVID-01: a probe record is written once.`);
-        process.exit(2);
+        process.exit(64);
     }
-    const serialised = redact(JSON.stringify(report, null, 2), token);
+    const serialised = redact(JSON.stringify(report, null, 2), token, cookie);
     fs.writeFileSync(file, `${serialised}\n`, { flag: 'wx' });
     try { fs.chmodSync(file, 0o444); } catch { /* best effort; the wx flag is the real guard */ }
     return file;
@@ -458,19 +695,24 @@ export async function probe(opts) {
     const startedAtUtc = new Date().toISOString();
     const findings = [];
     for (const m of opts.modules) findings.push(await probeModule(opts.baseUrl, m, opts.markers, opts));
+    if (opts.stampInertCheck !== false && opts.modules.length) {
+        findings.push(await probeStampInert(opts.baseUrl, opts.modules[0], opts));
+    }
     if (opts.sessionId != null) findings.push(await probeSessionEndpoint(opts.baseUrl, opts.sessionId, opts));
     findings.push(await probeBuildIds(opts.baseUrl, opts.shells, opts));
     const report = {
         tool: 'live-surface-probe',
         contract: 'PRESENT = identified and found. ABSENT = identified and not found. '
-            + 'UNDETERMINED = could not identify, with a reason. ABSENT is never inferred from a failure.',
+            + 'UNDETERMINED = could not identify, with a reason. ABSENT is never inferred from a failure. '
+            + 'stampInert is a separate deploy hazard and never rewrites ABSENT↔PRESENT.',
         startedAtUtc,
-        baseUrl: redact(opts.baseUrl, opts.token),
+        baseUrl: redact(opts.baseUrl, opts.token, opts.cookie),
         credentialSupplied: Boolean(opts.token || opts.cookie),
         readOnly: true,
+        deployGate: Boolean(opts.deployGate),
         findings,
     };
-    report.summary = summarise(findings);
+    report.summary = summarise(findings, opts);
     return report;
 }
 
@@ -481,8 +723,8 @@ async function main() {
     if (!Number.isFinite(opts.timeoutMs) || opts.timeoutMs <= 0) usage('--timeout-ms must be a positive number.');
 
     const report = await probe(opts);
-    if (opts.out) report.evidenceFile = writeEvidence(opts.out, report, opts.token);
-    console.log(opts.json ? redact(JSON.stringify(report, null, 2), opts.token) : render(report));
+    if (opts.out) report.evidenceFile = writeEvidence(opts.out, report, opts.token, opts.cookie);
+    console.log(opts.json ? redact(JSON.stringify(report, null, 2), opts.token, opts.cookie) : render(report));
     if (report.evidenceFile) console.log(`evidence: ${report.evidenceFile}\n`);
 
     // Set the code and let the loop drain. Calling process.exit() here races
@@ -502,4 +744,15 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     main();
 }
 
-export { ABSENT, PRESENT, UNDETERMINED, establishModuleIdentity, parseArgs, readOnlyFetch, redact, summarise };
+export {
+    ABSENT,
+    PRESENT,
+    UNDETERMINED,
+    DEFAULT_SHELLS,
+    establishModuleIdentity,
+    parseArgs,
+    probeStampInert,
+    readOnlyFetch,
+    redact,
+    summarise,
+};
