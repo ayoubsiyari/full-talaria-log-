@@ -2201,3 +2201,206 @@ The **"session that has already lost 49 trades"** line in B-0103 was **hypotheti
 ### Verdict
 
 **Q2 is YES on the public build.** The path exists, the trigger does not require an exotic state, and it has been shippable since 3 July. Whether it has fired is unknown and, given the missing logging, may stay unknown.
+
+---
+
+## B-0109 — Incident acknowledged. B-2 dispatched as B-W16. And the I-7 grant names a directory that may not contain the code it is meant to fix.
+
+**In:** `INCIDENT-TRADE-LOSS-PUBLIC-20260728.md`, `DIRECTOR-DISPATCH-B-20260728-1245.md`. B-0108 ratified, incident OPEN, PO D-2 standalone hotfix train, I-1 makes B-2 the top engineering item, I-7 grants scoped `journal-backend/` ownership.
+
+### 1. B-2 dispatched — packet B-W16
+
+Brief: `docs/plan3/evidence/B-M4/BRIEF-B-W16-hydration-guard.md`. Authority confirmed against `TERRITORY.yml:174` — `order-manager.js` is mine, no grant needed.
+
+**The design got smaller once I found the seam.** I expected to need a signal from `chart.js` (Manager A's) to know whether hydration succeeded. I do not. `_m19CommitJournalArray(next, reason)` at `order-manager.js:39750` is a single four-line funnel through which the journal array is replaced, **it is in my file**, and `chart.js` already tags the two outcomes with distinct reasons:
+
+| Reason | Call site | Meaning |
+|---|---|---|
+| `'session-state-hydrate'` | `chart.js:11982` | server fetch **succeeded** |
+| `'local-backup-hydrate'` | `chart.js:11732` | reached from the **failed-fetch** branch |
+
+So provenance is derivable entirely inside my own territory. No cross-manager dependency, and A stays on CPU.
+
+**Placement is the load-bearing decision.** The durable block has **two** exits to `queueCriticalSessionStateSave`, not one: the M20-A1 rehydrate exit at `:7238` and the legacy unmarked exit at `:7255`. My own B-0108 chain cited only `:7256`. A guard placed there would have been **incomplete**: hydration fails, local backup yields rows that carry screenshot refs, `rowsHaveRefs` is true, and the write leaves through the A1 exit unguarded. Guarding at the top of the block — after `:7171`, before `rowsHaveRefs` at `:7172` — covers both with one branch. It also sits **after** the hot-autosave block at `:7157-7170`, so "hot autosave unaffected" is proven by the insertion point rather than by a test.
+
+**One flag, one branch**, per the constraint. `length > 0` is named in the brief as an instant reject, and I added a mutant that substitutes it precisely so the acceptance has to demonstrate cell 4 (legitimate clear) killing it.
+
+**Two things I refused to decide by guessing**, both handed to the packet as facts to establish before coding:
+
+- **0a.** Is `'session-state-hydrate'` reachable only on `res.ok`? The whole design rests on it. If not, stop.
+- **0b.** Is `OrderManager` per-session or reused across a session switch? If reused, there is a bypass I would otherwise have shipped: hydrate session A successfully, switch to session B whose fetch fails, and the stale `'hydrated'` opens the guard and wipes B. The fix is to bind the flag to the session it was established for — one extra field, same branch. **I am flagging this as a deliberate named addition, not silent scope creep**, and it is conditional on the fact coming back that way.
+
+**On `'locally-authored'`:** the Director requires a tri-state and the guard admits the state, but I instructed the packet **not** to wire a setter for it unless it finds an unambiguous local-creation signal. "No fetch happened" is not such a signal — it is exactly the *we do not know* state, and setting it there reopens the whole defect. A genuinely empty session that hydrated successfully is already covered by `'hydrated'`, so spec cell 4 does not depend on it. If no safe setter exists the state ships declared and unset, and I will report that rather than invent one.
+
+Mutation set of 8 is specified, including the **over-blocking mutant** (provenance never set to `'hydrated'`, guard suppresses forever). A guard that blocks everything is not a passing guard, and without that mutant the acceptance would score it green. VER-04 is required in both halves.
+
+### 2. ESCALATION — I-7 grants `journal-backend/`, but the deletion I escalated is not in `journal-backend/`
+
+Incident §5.1 grants scoped ownership of `journal-backend/` and refers to "the `api_server.py` orphan-sweep deletion" as the thing that went into a void. **Those are two different places.** `api_server.py` is at **`chart v 1.4/chart/api_server.py`** (27,112 lines), not under `journal-backend/`. It holds `GET /api/sessions/{session_id}/state` at `:24620`, `PATCH` at `:25146`, and the sweep with `db.delete(orphan)` at `:12454-12455`.
+
+`TERRITORY.yml` has **no row** for `chart v 1.4/chart/api_server.py`. It is not matched by `modules/**` (`:122`, A's), not by `chart.js` (`:119`), not by `*.html` (`:125`). Under TB-3 (`:295`) unenumerated paths are **RED for every manager by fail-closed default**.
+
+**So as written, I-7 may authorise me to edit a directory that does not contain the code, and leave the code that does contain it still unowned.** I am not going to resolve that by locally interpreting the grant's intent as "wherever the deletion turns out to be" — that is exactly the kind of quiet scope expansion I have rejected in my own packets, and the grant is deliberately narrow.
+
+**What I have done instead:** dispatched a **read-only** audit (no grant required to read) to establish, with citations, which backend actually serves the public deployment, where the replace-delete physically occurs, whether `journal-backend/` implements these routes at all, and whether the sweep deletes on an id it failed to parse. I will bring the Director a specific file and line range to grant against rather than a request to widen the grant in the abstract.
+
+**PO-REQ outstanding: 1** — I-7 scope confirmation once the audit reports: does the grant extend to the two named changes wherever the served deletion path lives, including `chart v 1.4/chart/api_server.py`? No backend write goes out until that is answered.
+
+**Not blocking B-2.** The client guard is the half that stops the data loss and it is entirely inside my territory.
+
+### 3. Addendum (13:32) — I verified 0a myself rather than waiting, and it changed the brief
+
+TREE-02 in practice: I read `chart.js` in my own worktree instead of waiting for the packet's answer. 0a holds — `'session-state-hydrate'` at `:11982` is unreachable on a failed fetch — but there are **two** early returns into the local-backup path, not the one my B-0108 chain cited:
+
+- `:11901-11904` — `!res.ok`. The server could not be reached. *We do not know.*
+- `:11907-11910` — `res.ok` but `payload.state` is null. **The server answered and said it has nothing.** A brand-new session.
+
+Both call `_applyTradingSessionFromLocalBackupOnly()`, so both reach my funnel as the same reason. **`order-manager.js` cannot distinguish them**, and the consequence is that a brand-new session stays `'unhydrated'` and its durable writes are suppressed.
+
+I considered this the guard's first real cost and checked whether it is survivable before accepting it. It is, for a structural reason: the hot autosave block at `:7157-7170` runs **before** the guard and its patch carries `journal: hotJournal` (`:7159`). So a new session's journal still reaches the server; on the next load hydration succeeds and durable writes resume. The residual exposure is the newest trades of a first-visit session closed before hot autosave fires — spec §5's stated trade, and strictly better than deleting every older row.
+
+**This is exactly the hole `'locally-authored'` was meant to fill, and the signal that would fill it safely exists** — "the server answered and has nothing" is categorically different from "we could not ask". But it is distinguishable only in `chart.js`, which is Manager A's. So `'locally-authored'` ships declared and unset, and I have added cell 10 (brand-new session → durable suppressed, hot autosave still queued) so the cost is asserted rather than assumed.
+
+**Follow-up for A, not a blocker:** have the server-said-nothing arm pass a distinct reason to `_m19CommitJournalArray`. That is a one-argument change and it would let me set `'locally-authored'` and restore durable writes for new sessions. It pairs naturally with A's existing follow-up (the `:11701-11708` mark-hydrated-on-failure repair) and should ride the same change.
+
+---
+
+## B-0110 — I-7 is pointed at the wrong directory, and the sweep is worse than "replace semantics". Verified in my own worktree.
+
+**Audit:** read-only, dispatched 13:15. **Every claim below I re-verified myself by reading the files** — TREE-02. Where I am relying on the audit rather than my own eyes I say so.
+
+### 1. The grant does not cover the code
+
+| Claim | How verified |
+|---|---|
+| `GET/PATCH /api/sessions/{id}/state` exist **only** in `chart v 1.4/chart/api_server.py` (`:24620`, `:25146`) | read |
+| `journal-backend/` implements **no** `/api/sessions` route at all | searched its whole route tree — zero hits |
+| nginx sends `^~ /api/sessions` to `trading-chart:8000`, i.e. `gunicorn api_server:app` | read `homepage/nginx.local.conf` |
+| `journal-backend` serves `/journal/api/*` only, on port 5000 | read |
+| `journal-backend/audit_log_service.py` defines `append_audit_event` and **nothing imports it** | searched — the only hit is its own definition |
+
+So `journal-backend/` neither serves the route nor contains the deletion, and its audit-log service is dead code. **I-7 as written authorises me to edit a directory where neither of the two mandated changes can be made.** The code is in `api_server.py`, which `TERRITORY.yml` does not enumerate and TB-3 therefore holds RED.
+
+### 2. It is not "replace semantics". It is an unguarded delete-all with a parse-shaped trigger.
+
+```12451:12455:chart v 1.4/chart/api_server.py
+    q = db.query(TradingSessionJournalTrade).filter(TradingSessionJournalTrade.session_id == session_id)
+    if incoming_ids:
+        q = q.filter(~TradingSessionJournalTrade.client_trade_id.in_(incoming_ids))
+    for orphan in q.all():
+        db.delete(orphan)
+```
+
+**`if incoming_ids:` is the whole defect.** When the set is empty the `NOT IN` narrowing is *skipped* and the query degrades to *every row for this session* — which are then deleted one by one. The empty case does not delete "rows not in the array"; it deletes **everything**, unconditionally.
+
+And `incoming_ids` is built by a resolver that accepts **two** keys:
+
+```12359:chart v 1.4/chart/api_server.py
+        tid = str(raw.get("tradeId") or raw.get("id") or "").strip()
+```
+
+### 3. The alias trap is real, and it is two resolvers disagreeing inside one codebase
+
+`session_journal_store.journal_trade_client_id` — docstring **"Canonical client trade id"** — accepts **four**:
+
+```159:165:chart v 1.4/chart/session_journal_store.py
+    return str(
+        raw.get("tradeId")
+        or raw.get("trade_id")
+        or raw.get("client_trade_id")
+        or raw.get("id")
+        or ""
+    ).strip()
+```
+
+It is not dead: `api_server.py:25116`, `session_journal_store.py:65, :253, :565, :570`.
+
+**So a row keyed `trade_id` or `client_trade_id` is canonical by the codebase's own declared canonical resolver, and invisible to the sweep's.** Consequences, in order of severity:
+
+1. Such a row is absent from `incoming_ids` → its existing DB row matches `NOT IN` → **swept as an orphan while being present in the payload.**
+2. If *every* row uses the alias keys, `incoming_ids` is empty → §2 fires → **the entire session is deleted while the payload is full of trades.**
+
+This is the latent alias trap I logged in `SPEC-persistjournal-hydration-guard.md` §5 and B-0088's rule, and it is no longer latent-looking: the divergence is in shipping source on a live route. **I have not traced which client shapes reach `:25116` versus the PATCH sweep, so I am not yet claiming a specific reachable trigger** — but the two resolvers disagreeing on a delete path is itself the defect I-7(b) exists to close.
+
+**This also means the hydration guard does not cover it.** B-W16 stops *this* client writing an unhydrated array. It does nothing about a full, correct payload whose keys the sweep cannot parse. Different cause, same outcome, and the backend half is the only place it can be fixed.
+
+### 4. The fix I would write, if granted
+
+Both changes land in `_sync_trading_session_journal_trades`:
+
+- **(b) never delete on a failed parse.** Count entries whose id would not resolve. If any entry failed to parse, **do not sweep at all** — retain and report. Additionally, refuse the delete-all degradation: if `journal` was non-empty but `incoming_ids` is empty, sweep nothing and log loudly. A genuinely empty `journal == []` still clears, so a real journal clear keeps working.
+- **(a) log every deletion** — session id, row count before and after, the ids removed, and which resolver produced them, per I-2.
+
+**On appearances:** the `len(journal) > 0 and not incoming_ids` discriminator is *not* the banned `length > 0` fix. The ban is on the **client** using emptiness as a proxy for provenance. This is a backend parse-failure signal — "we were handed rows and could resolve none of them" — which is a different predicate with a different meaning. I am flagging it explicitly so it is not mistaken for the pattern the Director rejected on sight.
+
+### PO-REQ outstanding: 1 (unchanged, now specific)
+
+**Does I-7 extend to `chart v 1.4/chart/api_server.py`, function `_sync_trading_session_journal_trades` (`:12337-12455`), for exactly the two named changes?** `TERRITORY.yml` has no row for that path; TB-3 holds it RED; the granted directory cannot host the fix. I am not reading the grant's intent as "wherever the code turns out to be". **No backend write until answered.**
+
+**B-2 unaffected and still running** — the client guard is entirely within `order-manager.js` and needs nothing from this.
+
+---
+
+## B-0111 — B-W16 ACCEPTED (9 designed / 0 survived) with one manager correction. The client half of the hotfix train is done.
+
+**Verified by me, in my own worktree, not read off the report** (TREE-02). Every number below I reproduced myself.
+
+| Check | Result |
+|---|---|
+| RED against unmodified `HEAD` source | 20/35 — cell 1's four assertions failing, server journal replaced with `["new-1"]`, nothing logged |
+| GREEN | **35/35** |
+| Mutation | **9 designed / 0 survived** |
+| VER-04 (a) no-op stub | **DIES** |
+| VER-04 (b) faithful independent reimplementation | **PASSES** |
+| Regressions `m19-d-marker-delta.green`, `m19-d-journal-write-gate` | exit 0 |
+| Lints | clean |
+
+Diff is 32 insertions / 1 deletion in `order-manager.js` and nothing else. No `chart.js`, no backend, no `.length` anywhere in the guard. Two test-only files added.
+
+### 1. I nearly recorded a false negative against my own packet
+
+My first VER-04 run reported the reimplementation half **failing** on a missing anchor. It was my error, not the packet's: I extracted the pre-fix baseline with `git show | Set-Content`, which rewrote 4,322 LF line endings as CRLF and broke the exact-string anchors. Byte-exact re-extraction gave 0 CRLF, matching the live file, and the reimplementation passes.
+
+Worth recording because it cuts the other way from the failures I usually catch: **a verification tool that is itself broken produces a false rejection, and a false rejection of a correct hotfix during an open incident is expensive.** I checked the tool before believing its verdict on the packet. TREE-02 says a report is not evidence; this is the corollary — my own reproduction is not evidence either until I have checked the harness that produced it.
+
+### 2. One real defect, disclosed by the packet and corrected by me
+
+The packet shipped the guard as a **deny-list**: `this._journalProvenance === 'unhydrated'`. It disclosed, unprompted, that this **does not suppress when the field is `undefined`** — and correctly noted cell 7 only required no-throw there, so the acceptance did not catch it.
+
+That is the fix contradicting its own premise. `undefined` is *maximally* "we do not know", and this entire packet exists because the system treated "we do not know" as "there is nothing". A guard that fails open on unknown provenance is the same defect one layer up.
+
+Corrected to an **admit-list** — only `'hydrated'` bound to the current session, or `'locally-authored'`, may proceed; anything else, including `undefined` and any unrecognised value, suppresses:
+
+```js
+const journalVouchedFor = this._journalProvenance === 'locally-authored'
+    || (this._journalProvenance === 'hydrated'
+        && this._journalProvenanceSession === (sessionId != null ? String(sessionId) : null));
+if (!journalVouchedFor) {
+```
+
+Same size, same one branch. **I did not take this on trust either** — I made the property load-bearing rather than incidental:
+
+- **New cell 7b:** provenance `undefined` *and* provenance set to an unrecognised string → **suppressed**, server rows intact. Both fail against unmodified source.
+- **New mutant 9:** revert to the deny-list → **DIED** on cell 7b.
+
+Without the mutant the correction would be untested decoration. Note the packet's own VER-04 reimplementation had independently chosen the admit-list form and passed the same acceptance — two implementations disagreeing on a safety property, with the acceptance blind to the difference, is exactly the gap VER-04 is supposed to surface, and here it did.
+
+### 3. The packet's 0b finding changed the design, and it was right to
+
+`OrderManager` is constructed **once** (`chart.js:13004`, via `initReplaySystem` at `:12933`) and is **never** reassigned, while `activeTradingSessionId` mutates freely (`chart.js:990, 2117, 2138`, plus two multichart bridges). So the instance outlives a session switch and a stale `'hydrated'` from session A would have opened the guard for session B. `persistJournal` already assumes this — it has a `'session-switched-mid-flight'` drop at `:7218-7228`. Session-binding was added, cell 8 proves it, and cell 8 fails against unmodified source.
+
+`'locally-authored'` ships **declared and unset**: the packet searched for a local-session-creation signal in `order-manager.js` and found none, which matches my §3.2 instruction not to invent one. The guard admits the state for when A's follow-up makes it settable.
+
+### 4. New governance finding — GREEN evidence rewrites itself on every run
+
+`git status` showed `docs/plan3/evidence/L2-M19-AE-20260723b04-D-GREEN.json` modified. The packet flagged it and explicitly declined to claim it. It is not contamination: **`m19-d-marker-delta.green.test.mjs` regenerates its own evidence file when run**, overwriting `headSha`, `elapsedMs`, and the recorded `order-manager.js` / `replay-system.js` / `chart.js` hashes.
+
+The consequence is not cosmetic. The stored pin was `c9700ebc8` — the exact commit the incident names as the durable-write half's last touch — and running the regression **replaced it with the current dirty tree's SHA and the hash of a modified, then-unreviewed `order-manager.js`.** The artifact would then assert that M19-D-GREEN was verified against a tree that had never been verified.
+
+I restored both files. **Recording it as a candidate row alongside DEPLOY-01**, since it is the same class of defect: we cannot say what was verified, for the same reason we cannot say what is deployed. An evidence file that any later test run silently re-pins is not evidence.
+
+### Status
+
+**B-2 is done and green.** It is the half that stops the data loss and it is ready for the D-2 hotfix train.
+
+**PO-REQ outstanding: 1** — unchanged from B-0110. The train's other half (I-2 delete logging, I-7 sweep parse-guard) cannot start until the I-7 scope question is answered, because the code is in `chart v 1.4/chart/api_server.py`, not the granted `journal-backend/`.

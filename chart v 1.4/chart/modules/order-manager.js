@@ -718,7 +718,16 @@ class OrderManager {
         this._oiProvisionalDragCtx = null;
         this._oiProvisionalCancelHandlersInstalled = false;
         this._runtimeOrderPersistenceBootstrapped = false;
-        
+
+        /**
+         * B-W16 journal provenance tri-state: 'unhydrated' | 'hydrated' | 'locally-authored'.
+         * Fails closed — "we do not know" must never be treated as "there is nothing",
+         * because a durable write replaces the server journal wholesale.
+         */
+        this._journalProvenance = 'unhydrated';
+        /** Session id 'hydrated' was established for; this instance outlives a session switch. */
+        this._journalProvenanceSession = null;
+
         this.init();
     }
 
@@ -7169,6 +7178,18 @@ class OrderManager {
             hotQueued = true;
         }
         if (this.chart && typeof this.chart.queueCriticalSessionStateSave === 'function') {
+            // B-W16: guard BOTH durable exits (A1 rehydrate + legacy unmarked) with one
+            // branch. Admit-list, not a deny-list: an unset or unrecognised provenance
+            // is "we do not know", which must never open a durable write. 'hydrated'
+            // only vouches for the session it was established for — this instance
+            // outlives a session switch (see _m19CommitJournalArray).
+            const journalVouchedFor = this._journalProvenance === 'locally-authored'
+                || (this._journalProvenance === 'hydrated'
+                    && this._journalProvenanceSession === (sessionId != null ? String(sessionId) : null));
+            if (!journalVouchedFor) {
+                console.warn("📔 durable journal write suppressed: this session's journal was never hydrated from the server; the in-memory journal may be incomplete and writing it would delete server-side trades. Keeping last durable state.");
+                return Promise.resolve({ hotQueued, durableQueued: false, reason: 'journal-unhydrated' });
+            }
             const rowsHaveRefs = this._m20A1RowsHaveScreenshotRefs(durableJournal);
             // M20-A1 runtime-kill transition: kill flipped AFTER rows were
             // externalized. Durable must NEVER replace the server journal
@@ -39749,6 +39770,19 @@ class OrderManager {
     /** Replace the journal array (restore / truncate / reorder / filter / hydrate / project). */
     _m19CommitJournalArray(next, reason) {
         this.tradeJournal = Array.isArray(next) ? next : []; // M19-D-JOURNAL-WRITE:commit
+        // B-W16 provenance allowlist: only a successful server hydrate vouches for
+        // completeness. Every other reason (including 'local-backup-hydrate', the
+        // failed-fetch path) leaves provenance untouched — no upgrade, no downgrade.
+        if (reason === 'session-state-hydrate') {
+            this._journalProvenance = 'hydrated';
+            let hydratedSession = null;
+            try {
+                hydratedSession = this.chart && typeof this.chart.getActiveTradingSessionId === 'function'
+                    ? this.chart.getActiveTradingSessionId()
+                    : null;
+            } catch (_) { hydratedSession = null; }
+            this._journalProvenanceSession = hydratedSession != null ? String(hydratedSession) : null;
+        }
         this._m19NoteJournalStructuralMutation(reason || 'journal-replace');
         return this.tradeJournal;
     }
