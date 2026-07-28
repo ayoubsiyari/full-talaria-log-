@@ -2584,3 +2584,37 @@ That is now three times in one day that changing the spec silently invalidated a
 The packet had to repair `b-w16-hydration-guard.mutants.mjs` — its `GUARD` anchor no longer matched after the §2 edit and the harness threw before running anything. Anchors updated, semantics unchanged, set re-verified. It disclosed this as unrequested rather than folding it in silently, which is the right call: a harness edit inside a packet is exactly where a mutation set gets quietly weakened.
 
 Next: seal the train, then hand the Director the build instruction.
+
+---
+
+## B-0116 — B-4 BLOCKED. The train is sealed and verified and it reaches ZERO users. DEPLOY-01, third and worst instance.
+
+**Commit SHA for the train (DEPLOY-01 record): `b6d94c767892c7134cd1e4b45c9f85a18e5bbb95`.** Sealed manifest verifies clean, and I confirmed the seal is not decorative by flipping a single byte in a sealed file and watching `verify` report `DRIFTED` with both hashes, then pass again on restore. Superseded seal `c22c3a9a7` retained rather than deleted, with its reason in `SUPERSEDED.md`.
+
+**No build id, because there is no build.** `record-build` refused without `--build-id`, which is DEPLOY-01 working as designed, and I did not work around it.
+
+### The blocker
+
+`chart v 1.4/chart/modules/order-manager.js` **is not the file the public deployment serves.** A second checked-in copy exists at `homepage/public/chart/modules/order-manager.js`, and `homepage/public/chart/dist-v9/index.html` loads *that* one via `/chart/modules/order-manager.js?v=20260724b61`. The served copy has **zero** occurrences of `journalVouchedFor`.
+
+**Every cell, every mutant and both VER-04 halves ran against a file no user loads.** The client half of D-2 protects nobody. The backend half is fine — `api_server.py` has exactly one copy and no mirror.
+
+By git blob hash the mirror is byte-identical to the territory file at `f38333b95`, so it is a clean stale snapshot with no independent drift. It is four commits behind, and **two of those four are not mine** (`9133fd9e0` registry-eviction discrimination, `bb0858bb5` selector narrowing). Whoever shipped those has had no signal that they never landed.
+
+### Why I stopped
+
+`homepage/` is not my territory and no grant covers it. This morning's I-7 lesson was that a grant written from where code *appears* to belong is not a grant for where it *lives*; I am not going to make the mirror image of that error by reading "ship the train" as authority over whatever tree turns out to serve it. The refresh would also carry two other managers' changes into production under my commit — a release decision about someone else's code. And the mirror is partial, 157 files against 166, so even the mechanical copy has a reconciliation rule I do not get to choose.
+
+Written up in full at `docs/plan3/evidence/B-M4/hotfix-train-D2/SHIP-BLOCKER-mirror-drift.md`, including the exact post-refresh verification.
+
+### What this costs us as a lesson
+
+I was one step from reporting "train assembled, ready to ship." **The seal, the mutation score and the VER-04 argument would all have been true, and the fix would still have reached nobody.** That is the cleanest demonstration I have that verification evidence and deployment evidence are different claims, and that we have been treating the first as if it implied the second all day. DEPLOY-01 should grow the clause: *a fix is not shipped until the artifact the user loads has been shown to contain it* — by inspecting the served file, not by inferring from the build.
+
+I did not deliberately go looking for this. I went to run the build, found the build writes into `homepage/`, and checked why a tree I do not own was in the path of my own file.
+
+### Open request to the Director
+
+One of: a scoped grant for `homepage/public/chart/modules/order-manager.js` with an explicit ruling that carrying `9133fd9e0` and `bb0858bb5` is accepted; or the deploy owner refreshes the mirror and I verify; or a ruling that the mirror is not the production surface, in which case my model of the deployment is wrong and I need the correct one.
+
+B-5 (the PO verification check) is written and sealed, and it is **safe to hand over now** — it was designed to run against a defective build, which is exactly what production still is.
