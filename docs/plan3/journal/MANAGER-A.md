@@ -2999,3 +2999,63 @@ What the restatement *does* change is where the foundation increment should aim,
 The measurement is dated 2026-07-25 — before b74, before b75, before every Plan 3 change under discussion. No regression is established and none is claimed. What I will produce is the largest contributors, the measured delta from cutting them, and an explicit statement of what remains. A description of work done is not a result; every change reports a before/after pair on the PO's protocol.
 
 One consequence I want on the record now: if the render path is confirmed as the third defeat of incrementality, then the fix touches shared `chart.js` render paths — which is a §A13.2 top-tier authoring trigger by name, and one of the few places today where I will be authoring above cheap tier on the row rather than the ratio.
+
+---
+
+## 2026-07-28 13:32 — CORRECTION: my "two harnesses, orders of magnitude" escalation was partly my own counter confusion
+
+This morning I escalated a systemic finding — two harnesses returning figures one-and-a-half to three orders of magnitude below product. **The framing does not survive a like-for-like comparison, and the error was in my table.**
+
+The A2 runner implements `browserWorkingSet()`, a Windows process-tree `WorkingSet64` sum — almost certainly the same category as the PO's Task Manager gigabytes. Compared properly:
+
+| Comparison | Ratio |
+|---|---|
+| a2 mixed-4 **working set** 786 MiB vs §A2's 2.5–2.7 GiB | **~3.3×** |
+| a2 mixed-4 **JS heap** 33 MiB vs §A2's 2.5–2.7 GiB | 78× |
+
+**The 78× exists only because I set a JS-heap number against a working-set baseline.** I built that table, I put a heap figure and a working-set figure in adjacent rows, and I drew a systemic conclusion from the gap between two different quantities. That is the same category error I criticised the A2 packet for making in its own cycle cell, committed by me in the entry that criticised it.
+
+The genuine gap is real but smaller and different in kind: **workload**. Both harnesses hold roughly **2,000 bars per panel** — measured directly, not inferred — against a product path allowing 100,000 per timeframe and capping at 200,000. That is a 50–100× data-volume gap, on synthetic mulberry32 candles, over 12-second windows against multi-minute human sessions.
+
+So the conclusion becomes: **not systemic invalidity.** One systemic *reporting* defect — mixing JS heap with process working set, present in both packets and in my own analysis — plus one quantified workload gap. **Figures already acted on are not void; they need a stated counter and a stated bar count.** The conversion rule is compare working set to working set, and scale the bar count before comparing absolute magnitudes at all.
+
+I am glad I escalated it. I am recording plainly that the alarming number in my escalation was mine.
+
+## 2026-07-28 13:33 — PRODUCT LEAK FOUND, in my own territory, by the census I called non-decisive
+
+`chart.js:4234-4252`, `_installFinerPanelSelfOwnerHostCommitListener()`, called unconditionally from the `Chart` constructor for any multichart embed panel:
+
+```js
+const parentWin = window.parent;
+parentWin.addEventListener('talariaMcHostDataCommit', this._mcFinerPanelHostCommitHandler);
+```
+
+**There is no `removeEventListener` for that event anywhere in the product** — a full-tree search returns exactly two hits, this registration and the matching dispatch. So every multichart panel that ever boots leaves a permanent listener on the **host** window, and its closure retains the destroyed panel's entire `Chart`: `rawData`, indicator caches, canvases. It accumulates per panel boot per session, and it is **invisible to any test that starts from a fresh window** — which is precisely the session-history-dependent shape §2 of the residue finding predicted.
+
+Measured, not inferred: the listener survived teardown and was still registered 79.5 s later. It is consistent with the one quantitative signal in the census — heap 15.4 → 28.3 → 32.4 MB against a 16.6 MB fresh control, never recovering.
+
+**It is in `chart.js`. That is mine, and I have dispatched the fix RED-first** at top tier, citing the §A13.2 row by name: *any edit to chart.js shared paths*. The red assertion is available today and — the part that matters — **it does not require the lag to be reproduced.** It is a structural claim about listener counts after teardown, which sidesteps the entire problem that made the census non-decisive.
+
+## 2026-07-28 13:34 — Two more corrections to my reading of the census
+
+**My instrument-versus-product suspicion was wrong.** I said the harness's own listeners probably inflated the +4 and the real product residue was smaller. The two harness listeners appear once in *both* documents and cancel exactly in the delta — instrument contribution to the +4 is **zero**, and all four survivors are product. Of the four, one is the genuine leak above, one is a `{once:true}` IndexedDB hook on the host's own window that is lazy initialisation rather than residue, and two are ledger artifacts on a removed iframe element that the census can never see garbage-collected.
+
+**My "a census of a session that never lagged cannot explain a lag mechanism" was wrong too.** It conflates two jobs. A census can rule mechanisms out and discover residue independently of whether the symptom fires, and this one did both. My central claim — that the run never lagged, so the refutation criterion was never tested — stands, and is if anything understated: `decide()` has no branch at all for "the symptom was never produced", so any non-lagging run returns `undetermined` by construction. The evidence should say the criterion was **untestable in this configuration** rather than that the test was inconclusive. Those read very differently downstream.
+
+## 2026-07-28 13:35 — What this eliminates, and why it matters for PRIORITY ZERO
+
+Within the host realm and this scenario: `intervals: 0`, `animationFrames: exactly 1`, `workers: exactly 1`, `broadcastChannels: exactly 1` at all four census points. **Four of the five candidates in the residue hypothesis are eliminated** — orphaned intervals, duplicated rAF render loops, leaked workers, leaked BroadcastChannels. My "timeouts actually fell below baseline" observation was a boot transient; the two that vanished were only live in a sample taken about six seconds after boot.
+
+**And the survivors cost nothing per frame.** `_emitMultichartHostDataCommit` fires on load, timeframe switch, `chartDataLoaded` and smart-window commit — never from a rAF or a replay tick. Per-frame or per-tick budget consumers among the survivors: **zero**.
+
+That is a significant negative for PRIORITY ZERO and I want it stated rather than buried. The Director raised the residue census to serve the CPU row on the reasoning that orphaned rAF loops are CPU by definition. **They would be, but there are none.** The leak explains a memory staircase and cannot explain frame starvation, so **the residue is not the CPU story.** CPU attribution now rests entirely on the per-tick resample result already in hand and on the attribution probe in flight.
+
+One caveat that argues for expecting more rather than fewer leaks: the census patches `EventTarget.prototype` **per realm**, so a cross-realm registration written as `EventTarget.prototype.addEventListener.call(parentWin, …)` would never have been seen. Cross-realm registration is exactly the class this finding belongs to, so the instrument has a known blind spot for its own discovery. I have asked the fix packet to enumerate sibling cross-realm registrations and report without fixing them.
+
+## 2026-07-28 13:36 — PO-REQ: the decisive residue test cannot be run headless
+
+Confirmed on four independent grounds, and I am routing it rather than re-briefing a third harness author.
+
+The harness's lag detector has **never demonstrated sensitivity** — 16.7 ms p95 in all four conditions including a 5× replay with four MAs — and under headless with `--disable-gpu`, a whole-browser stall is exactly the class of effect that pipeline does not surface. The data volume that plausibly causes the symptom is never loaded, hard-capped at 2,000 bars by the stub API. The build and world are both wrong: b61 with `IndicatorPerf` present against deployed b75 with it undefined. And **the harness navigates between single and multichart where production stays in one document** — `page.goto` destroys the JS context, so it cannot see anything accumulated by the PO's Steps 1 and 2, and its +4 conflates boot configuration with teardown residue.
+
+**PO-REQ:** an instrumented real-browser session following the PO's own protocol. What headless remains good for, and what I am keeping, is the handle ledger plus a forced-GC retained-size measurement — both are session-history-independent structural facts, and the ledger is how this leak surfaced at all.
