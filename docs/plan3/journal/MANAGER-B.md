@@ -2853,3 +2853,14 @@ This is SAFE-01 on the loss, not on the writer: a correct predicate on one of tw
 The SAFE-01 audit's second hazard was inside the I-7.1 grant and did not need a new ruling: the parse guard ran *after* the upsert loop, so a refuse still left payload refreshes and new rows sitting in the session for the PATCH handler to commit. Reordered to classify every incoming id first; refuse returns with zero writes; upserts and the sweep run only after the guard has cleared. Kill-switch unchanged. New cell 6b: a mixed payload that used to refresh parseable rows now leaves every payload and user_trade_id byte-identical. `rows_added=0` asserted on the refusal record. 45/0 on `test_b_w17_journal_sweep_guard.py`.
 
 Also corrected the B-0126 escalation: option 2 (refuse empty `incoming_ids`) is withdrawn — B-W17 cell 3 requires empty journal to remain a legitimate clear. Viable Director choices are now (1) extend B-W16 onto hot journal writes, or (2) written residual acceptance.
+
+---
+
+## B-0128 — SAFE-01 audit sealed. Hazard #2 already shipped; #1 nuanced; #3 escalated to A.
+
+[SAFE-01 ordering audit](1228f446-62a3-4c9e-b49c-3abca12028de) completed. Full disposition at `docs/plan3/evidence/B-M4/SAFE-01-AUDIT-20260728.md`.
+
+- **#2 parse-guard after upserts** — already fixed under standing authority (B-0127).
+- **#1 hot path** — still open, but **blanket-blocking hot is withdrawn**. B-W16 brief §8a accepts brand-new sessions staying `'unhydrated'` and relying on hot for the first journal. The wipe arm (`!res.ok`) and the brand-new arm (`res.ok`, null state) are indistinguishable to `order-manager.js` today. Director choices narrowed to: A ships distinct reasons + B gates hot only on unreachable, or written residual acceptance.
+- **#3 chart.js enabler** — Manager A's territory (charter condition 2). Escalated in the audit §A: distinct hydrate reasons, and stop allow-listing journal patches on the unreachable arm. B wires the hot vouch the same hour the signal lands.
+- **#10 `'locally-authored'` never assigned** — accepted residual per §8a; must not widen the admit-list. Cell 10 from the brief was never added — open B follow-up, not a train blocker.

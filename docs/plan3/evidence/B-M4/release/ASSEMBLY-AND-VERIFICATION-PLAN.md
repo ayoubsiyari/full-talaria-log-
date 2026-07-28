@@ -263,5 +263,9 @@ content is not in hand; the trial merge in §2 covered the other three only.
 
 ## 8. OPEN ESCALATION — hot path bypasses the hydration guard (B-0126)
 
-See `docs/plan3/evidence/B-M4/FINDING-HOT-PATH-BYPASSES-HYDRATION-GUARD-20260728.md`.
-Until the Director picks option 1, 2, or 3 in that finding, **the release note must not claim the trade-loss path is closed.** Other train items may still assemble.
+See `docs/plan3/evidence/B-M4/FINDING-HOT-PATH-BYPASSES-HYDRATION-GUARD-20260728.md`
+and the disposition in `docs/plan3/evidence/B-M4/SAFE-01-AUDIT-20260728.md`.
+Until the Director picks (1) A distinct-reason + B hot-gate on the unreachable arm,
+or (2) written residual acceptance, **the release note must not claim the trade-loss
+path is closed.** Other train items may still assemble. Do not blanket-block hot —
+brand-new sessions depend on it (B-W16 §8a).
