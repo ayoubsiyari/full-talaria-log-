@@ -1301,3 +1301,32 @@ That detail also raises L6's stakes: a migration that executes on every read mea
 **Keeping B-W8's ledger-surface findings, which were good work and contain a real contradiction with the plan.** M24 is described as a "canonical trade-ID grammar"; the implementation has **no regex**. `session_journal_store.py:155-165` picks an id by precedence — `tradeId || trade_id || client_trade_id || id` — `:244-260` normalises manual payloads into all aliases, storage is `String(128)`, and deterministic duplicate merge keys on `client_trade_id`. Also, the ledger that matters is in `chart v 1.4/chart/api_server.py`, not `journal-backend`, where I would have looked first. So **L3 verifies alias-resolution consistency and stability, not conformance to a canonical pattern** — recorded in the M4 script so the gate is never read as proving something stronger than it does. The gap between M24's description and its implementation is the Director's to weigh; I am reporting it, not resolving it.
 
 **A16.4 attribution:** author-defect (the silent-pass exit path and the mis-scoped mutation set). Running totals this train — author-defect **3**, brief-defect **1**, manager-finding-defect **1**. Manager-caused remains **2**, below A16.4's threshold of three.
+
+---
+
+## B-0075 — Duration clock: my hypothesis REFUTED, my "no wall-clock" claim was FALSE, and the real candidate is in my territory
+
+B-C7 refuted B-0073's unit-mixing hypothesis and I accept the refutation. Resurrection does **not** write normalised timestamps — it shallow-copies the position, sets `status = 'OPEN'` and deletes the close fields (`order-manager.js:39433-39439`) — and bar `t` is **milliseconds** everywhere it checked, on both sides of the wire (`api_server.py:8329-8332`, `8207-8227`; `chart.js:9604-9612`, `17988-17992`). There is no seconds-vs-milliseconds meeting point on the rollback path. Good: I asked for a refutation if one was available and I got one, which is worth more than a confirmation I would have had to walk back later.
+
+**Two errors of mine, both worse than the wrong hypothesis.**
+
+**First, I asserted there is no `Date.now()` contamination in any duration path. That was false**, and the way it was false matters. I searched for `Date\.now\(\)\s*-\s*\w*([Oo]pen|[Ee]ntry)` — a pattern that can only find a *subtraction written on one line*. The actual contamination is `Date.now()` **assigned to a variable** which is subtracted 350 lines later. My search could not have found it under any circumstances, yet I reported the absence of a result as evidence of absence. That is the fourth method error today and the same shape as the producer census: **I designed a search that could only confirm, then treated its silence as proof.**
+
+**Second, my enumeration of duration sites was incomplete** — I said four, there are seven: `7836, 12411, 30920, 33680, 33700, 33817, 48394`. I told B-W9 not to trust my list and to re-enumerate.
+
+**The real leading candidate, and it is mine.** `order-manager.js:33329-33330`, in `closePositionAtPrice`:
+
+```js
+const closeTime = (Number.isFinite(bgCloseTime) ? bgCloseTime : null)
+    || (evalCandle ? evalCandle.t : Date.now());
+```
+
+flowing into `holdingTimeMs = closeTime - position.openTime` at ~33680. With no eval candle, close time is **wall clock** and open time is a **historical bar time**; in replay that difference is years — about 26,000 hours. That is precisely the reported shape.
+
+**B-C7 found this and dismissed it on a flawed premise**, which I am recording because the reasoning error is instructive: it argued the fallback cannot explain the sequence because "for the reported replay order placement path, `currentCandle` is required" (`order-manager.js:28739-28742`). But that guard is on **placement**; the fallback is on **close**. A precondition enforced when an order is opened says nothing about the state when it later closes — and the PO's sequence ends in a close. Dismissing a candidate using a guard from a different code path is exactly the kind of near-miss that leaves a defect in the tree.
+
+**A second bug on the same two lines:** `Number.isFinite(bgCloseTime) ? bgCloseTime : null` correctly admits `0`, and then `0 || …` discards it, because `||` tests truthiness rather than presence. A legitimate zero timestamp silently falls through.
+
+**Dispatched as B-W9** with the resolution order specified so the agent does not invent semantics: `bgCloseTime` when finite including zero, then `evalCandle.t`, then `currentCandle.t`, then the last known bar time from chart data, then wall clock **only** outside replay, and if nothing yields a finite value then **record the duration as unknown rather than fabricate one**. A missing duration is recoverable; a fabricated 26,000-hour duration is a corrupted trade record, and this is a money-adjacent journal.
+
+**Stated plainly so it is not overclaimed: the trigger is not proven.** That `evalCandle` is genuinely absent after a rollback is my leading candidate, not an established fact. The fix is correct defensively regardless — differencing wall clock against bar time is wrong on any path that can reach it — but I have not established that this is what the PO hit, and B-W9 is instructed to tell me if `evalCandle` can never be null here.
