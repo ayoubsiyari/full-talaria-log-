@@ -1859,3 +1859,56 @@ The instrument is correct and I want to say so plainly rather than grudgingly. E
 What I need: either a territory grant covering the server bucketing path, or a ruling assigning it to whoever owns it. Until then daily and weekly both stay blocked, and I have moved the freed write slot to the loader STOP-THE-LINE.
 
 Per §A12.2 this is a Director question and not a PO-REQ — no PO time is required, the convention is already ruled, and the open item is ownership rather than product judgement.
+
+---
+
+## 2026-07-28 09:12 — CORRECTION: I meant reachability, it still stands, and it does not rescue my claim
+
+surface=`chart v 1.4/chart/modules/order-manager.js` at `manager-a/critical-path`
+coverage=every `_createPlusBadge` call site and every producer of the five class tokens named on the three lines; verified by me directly, not relayed
+
+**Which sense I meant: reachability**, and specifically constructive reachability. `pending-tp-tp-plus-badge` can only be built by `_createPlusBadge`, whose class expression at `:35586` is `${prefix}-${label.toLowerCase().replace('+','-plus')}-badge`. Producing that token needs `prefix='pending-tp'`. There are exactly two call sites — `:36403` passing `'order'` and `:38080` passing `'pending'` — so no call path constructs it.
+
+**That claim survives B's check**, and I have now verified it myself rather than relaying it. B proved textual presence of producers for *other* tokens. We do not disagree.
+
+**But the distinction does not rescue what I wrote, and I am not going to hide behind the out.** My error was unit of analysis, not sense of existence. I wrote "the three removal selectors at `:1987, 38411, 39147` are dead code", naming **lines** as though each were a single selector. Line 1987 is one `.selectAll()` carrying **five** comma-separated selectors, and only the first is dead:
+
+| selector on line 1987 | producer | status |
+|---|---|---|
+| `[class*="pending-tp-tp-plus-badge"]` | none — no call path | dead (reachable-false) |
+| `[class*="pending-tp-delete"]` | `:38586` | **live** (textual + reachable) |
+| `[class*="pending-tp-split"]` | `:38622` | **live** |
+| `[class*="pending-sl-badge"]` | `:38017` | **live** |
+| `[class*="pending-tp-badge"]` | `:38047` | **live** |
+
+So the corrected finding, per statement rather than per line:
+
+- **`:38411`** — `ch.svg.selectAll('[class*="pending-tp-tp-plus-badge"]').remove();` is a standalone statement whose only selector is dead. Deletable. But `:38412` and `:38413` immediately below it target `pending-tp-delete` and `pending-tp-split`, both live. **The statement is dead; the block is not.**
+- **`:39147`** — `.pending-tp-tp-plus-badge.pending-tp-${orderId}` is a compound requiring the dead class, so it can never match. Deletable as a statement. `:39146` and `:39148` around it are live.
+- **`:1987` — NOT deletable.** Deleting it strands the delete badge, the split badge and both pending SL/TP badges with no cleanup path. This is the Director's point and it is correct.
+
+The pct-control steppers B cites at `:38558`, `:42589` and `:44047`, and the `multi-tp-avg-` producer at `:37012`, are all live and all sit under selectors I never claimed were dead.
+
+**Per VER-01, restating both claims in the required form.** Mine: `pending-tp-tp-plus-badge` is **reachable-false** — no call path constructs it — and I did not check textual presence, which was the gap. B's: the five tokens above are **textually present with named producers**, and on the evidence of those producer sites they are reachable too. Neither claim was wrong; mine was applied at the wrong granularity.
+
+## 2026-07-28 09:13 — ADDENDUM supersedes 06:16: nothing in the B escalation is retired
+
+Correcting the record for B, because a wrongly-widened "dead code" note is more dangerous than no note.
+
+One thing to correct in the other direction too. The withdrawal is described as covering "three of the five substring selectors". My 06:16 entry did not say that — it named `:1987, 38411, 39147`, which are **not** among the five I escalated at 06:02, and it said in terms that `:41707`, `:41708`, `:41709`, `:41712` and the id term at `:39148` "still interpolate ids into substring matches against families that do have producers". **All five escalated sites were live when I escalated them and are live now.** I want that unambiguous so B does not deprioritise five real id collisions on the strength of a note about three different lines.
+
+Net position for B, stated per statement and with the claim type attached:
+
+- The five escalated collision sites stand, unchanged, all reachable-true.
+- Of the three lines in my addendum, two are dead statements (`:38411`, `:39147`, reachable-false) and one is not (`:1987`, four of five selectors reachable-true).
+- **Nothing gets deleted until the reachability dispatch reports.** That includes the two I still believe are dead — my confidence there is exactly the kind that has been wrong three times today.
+
+## 2026-07-28 09:14 — Does the hold apply to the deletion I already merged? No, and here is why
+
+Stating this before anyone conflates the two, because "Manager A deleted selectors" is true of both and they are not the same act.
+
+The merged `pending-selector` packet deleted `[class*="pending-${orderId}"]` at two sites in `drawing-tools-manager.js`. That was **not** a dead-code deletion. Those selectors matched plenty — that was the defect. They were deleted because they were proven **redundant** against an adjacent surviving `.pending-${orderId}` on the same block: 1008 correct-id equivalence checks, zero mismatches, and a byte-identical removal set for the cancelled order at parent and packet. The deletion removed over-match, not coverage.
+
+The distinction that matters: those were **live selectors proven equivalent to a survivor**, whereas `:38411` and `:39147` are **selectors proven to match nothing**. Different evidence standard, different risk. The hold is on the second class, and correctly so.
+
+One thing that falls out of re-reading it. Neither the deleted sweep nor the surviving `.pending-${id}` ever matched `pending-tp-*`, `pending-sl-*` or `pending-be-*` tokens, because none of those contain `pending-${id}` as a substring or as a whole token. So the cancel path in my file never cleaned that family up — the same gap I opened at 06:15 for `pending-be-*`, now known to extend to the pending TP and SL badges as well. Widening that row rather than opening a second one.
