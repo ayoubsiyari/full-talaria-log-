@@ -1,0 +1,36 @@
+{
+  "observedAt": "2026-07-28T21:27:14.202Z",
+  "ruling": "RULING-DEROUTE-INCOMPLETE-AND-RETRAIN-20260728-2225",
+  "baseUrl": "http://31.97.192.82:3000",
+  "rows": [
+    {
+      "route": "/chart/multichart/chart-host.html",
+      "status": 200,
+      "location": null,
+      "server": "nginx",
+      "contentType": "text/html",
+      "bytes": 0,
+      "looksLikeHost": false
+    },
+    {
+      "route": "/chart/multichart/multichart-shell.html",
+      "status": 200,
+      "location": null,
+      "server": "nginx",
+      "contentType": "text/html",
+      "bytes": 0,
+      "looksLikeHost": false
+    },
+    {
+      "route": "/chart/multichart-prod/chart-embed.html",
+      "status": 200,
+      "location": null,
+      "server": "nginx",
+      "contentType": "text/html",
+      "bytes": 0,
+      "looksLikeHost": false
+    }
+  ],
+  "pass": false,
+  "verdict": "FAIL — prototype still reachable (or embed broken) on this surface"
+}

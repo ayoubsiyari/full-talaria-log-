@@ -3100,3 +3100,23 @@ credited; defect class absent in production panel shell.
 
 Evidence: `CLOSURE-ACK-PANEL-EMBED-FALLBACK-20260728-2208.md` +
 `embed-fallback-bump-check-…json`. Residual **closed** on tip.
+
+---
+
+## B-0144 — Retrain to b82; FastAPI mount de-routed. Host acceptance still RED.
+
+Director `RULING-DEROUTE-INCOMPLETE-AND-RETRAIN-20260728-2225.md`. TIP-01 —
+artifact moved; my b81 tip lacked A's thirteen commits (R2/R3/P6/STAMP-1 revert).
+
+**1. Re-assemble.** Merged `manager-a/critical-path` (13 commits). Re-stamped
+**`20260728b82`**. Cache-stamp gate GREEN after baseline reseal. P2/P3/P4
+switches present; P6 live shell restored.
+
+**2. Second door.** `api_server.py` mount of `/chart/multichart` now requires
+`TALARIA_MOUNT_MULTICHART_SANDBOX=1` (was: mount whenever dir exists). Nginx
+302 kept. Artifact smoke PASS. **Host acceptance FAIL** as of this writing —
+`31.97.192.82:3000` still serves chart-host 200 (tip not on that surface;
+no SSH from this agent). Push blocked until
+`deroute-multichart-acceptance.mjs` exits 0 on that host after deploy.
+
+Evidence: `TRAIN-REASSEMBLE-20260728-2228.md`.

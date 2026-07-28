@@ -27094,9 +27094,17 @@ if _STATIC_OOPS_DIR.is_dir():
 # and orchestrate sync between them via postMessage. Same pattern as the
 # /chart/modules and /chart/image mounts above.
 _MULTICHART_DIR_PATH = _CHART_ROOT_PATH / "multichart"
-if _MULTICHART_DIR_PATH.is_dir():
+# A14.3 de-route (Director RULING-DEROUTE-INCOMPLETE 2026-07-28 22:25):
+# /chart/multichart/ is a dead prototype (chart-host / shell). Directory may
+# still exist in the tree; must not be served. nginx redirect alone is not
+# enough — this host (and 31.97.192.82:3000) is FastAPI directly.
+# Opt-in only for local archaeology: TALARIA_MOUNT_MULTICHART_SANDBOX=1.
+_MOUNT_MULTICHART_SANDBOX = os.environ.get("TALARIA_MOUNT_MULTICHART_SANDBOX", "").strip() == "1"
+if _MOUNT_MULTICHART_SANDBOX and _MULTICHART_DIR_PATH.is_dir():
     app.mount("/chart/multichart", StaticFiles(directory=str(_MULTICHART_DIR_PATH), html=True), name="chart_multichart")
     print(f"✅ Multichart sandbox mounted at /chart/multichart/ from {_MULTICHART_DIR_PATH}")
+elif _MULTICHART_DIR_PATH.is_dir():
+    print("⛔ Multichart sandbox NOT mounted (de-routed; set TALARIA_MOUNT_MULTICHART_SANDBOX=1 to override)")
 
 # Multichart PRODUCTION foundation (Phase 7.2.1).
 # Static asset mount only — no entry route. The bridge files in this folder
