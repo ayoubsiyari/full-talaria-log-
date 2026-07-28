@@ -84,6 +84,10 @@ COPY --from=chart_assets /build/chart/vendor ./public/chart/vendor
 COPY --from=chart_assets /build/chart/fonts ./public/chart/fonts
 COPY --from=chart_assets /build/chart/legacy-index.html ./public/chart/legacy-index.html
 COPY --from=chart_assets /build/chart/sw.js ./public/chart/sw.js
+# Design-live shell is a PO-reachable URL (/chart/talaria-design/live/). Without this
+# overwrite, committed homepage/public/chart/talaria-design/live keeps stale ?v= stamps
+# while dist-v9 advances (FIX-ABSENT path 12).
+COPY --from=chart_assets /build/talaria-design/live ./public/chart/talaria-design/live
 
 # V16 dashboard monolith + score engine (imported by TalariaV16.jsx)
 COPY ["Sources Handoff/TalariaV16.jsx", "/app/Sources Handoff/TalariaV16.jsx"]

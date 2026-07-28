@@ -2917,3 +2917,13 @@ Blocked on A's render kill-switch for the train — not idle. Four streams that 
 **Item 3.** A's render kill-switch still not on tips checked 17:59 — train still waits on A.
 
 **Items 2+charter enumeration** in parallel (docs stream).
+
+---
+
+## B-0134 — Items 2+6 sealed. Design-live Docker gap closed. Item 3 still waits on A.
+
+**Item 2.** Meet-point with C: `STAMP-OWNERSHIP-MEET-C.md`. **C owns enforcement** (`CACHE-STAMP-COHERENCE-V1`). **B owns** mechanical bump + `--deploy-gate` + provenance layout. B will not fork a second coherence gate. `replay-system.js` is in C's baseline; `chart.js` is shell-id/uniformity only (not module content-hash).
+
+**Item 6 (charter).** `FIX-ABSENT-FROM-PO-PATHS.md` — 14 paths. Closed path 12 this entry: Dockerfile now overwrites `public/chart/talaria-design/live` from chart_assets; bump stamps the homepage twin. Handoff to C (optional shell list): `HANDOFF-C-DESIGN-LIVE-SHELL.md`. Remaining OPEN: CF/TTL warm cache, ordinary auto-increment behind live, PO browser/SW residual.
+
+**Item 3.** Polled A tips 18:06 — `__TALARIA_DISABLE_MC_BACKGROUND_RENDER_CADENCE_V1` still absent from product trees. Train remains correctly blocked.

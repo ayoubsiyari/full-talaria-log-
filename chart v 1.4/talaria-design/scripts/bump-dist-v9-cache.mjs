@@ -21,6 +21,11 @@ const repoRoot = path.resolve(__dirname, "../../..");
 const liveIndexPath = path.resolve(__dirname, "../live/index.html");
 const distIndexPath = path.resolve(__dirname, "../../chart/dist-v9/index.html");
 const homepageDistIndexPath = path.resolve(repoRoot, "homepage/public/chart/dist-v9/index.html");
+/** Homepage twin of design-live; Docker overwrites from chart_assets, but local sync/bump must move stamps too. */
+const homepageLiveIndexPath = path.resolve(
+  repoRoot,
+  "homepage/public/chart/talaria-design/live/index.html",
+);
 const legacyIndexPath = path.resolve(__dirname, "../../chart/legacy-index.html");
 /** Fallback stub served as /chart/index.html only when dist-v9 is absent. */
 const chartIndexStubPath = path.resolve(__dirname, "../../chart/index.html");
@@ -286,6 +291,10 @@ function main() {
         buildId: distBuildId,
       }).touched;
       touched += bumpChartScriptsInHtml(homepageDistIndexPath, {
+        required: false,
+        buildId: distBuildId,
+      }).touched;
+      touched += bumpChartScriptsInHtml(homepageLiveIndexPath, {
         required: false,
         buildId: distBuildId,
       }).touched;
