@@ -4524,3 +4524,57 @@ unchanged — no new precedent is set in either direction.
 was never loaded in panels"* — and was false. Routing it as a hypothesis to refute cost one read-only audit and
 saved a ~53-module write against a live shell that would have broken an `m22` gate. **Third time today an unmeasured
 premise died on contact.** Framing costs nothing.
+
+---
+
+## 2026-07-28 21:47 — STAMP-1 MERGED `8f626fdb2`; the dependency claim is REFUTED for product panels
+
+**VERDICT: the stamp was worth doing and is done. The reordering it justified is not warranted.**
+surface=`manager-a/critical-path` @ `8f626fdb2`, coverage=static across all four shells + shipped `dist-v9` bundle.
+
+### What shipped
+`../chart.js` in `multichart/chart-host.html` had **no `?v=` at all**; both mirrors now carry `?v=20260727b80`, and the
+stale pins are refreshed (`20260524a10` in chart-host; `20260509T1755`/`T2030` in multichart-shell — the latter **9 May,
+two weeks older than the order stated**). Token-only: verified by normalising every `?v=` to a placeholder and diffing
+against base — the sole structural delta is `../chart.js` gaining a query string. New `shell-cache-stamp.test.mjs`,
+**adversarial mutation score 12/14** after remediation; the cells added post-review kill **mirror token desync — this
+bug's own failure mode** — plus `defer`/`async` injection and unstamped same-origin absolute URLs.
+
+Risk argument, tested rather than assumed: because the URL was **unstamped**, every **cold** browser was already
+fetching today's engine into this zero-module shell. Stamping creates **no new engine/shell combination**; it extends
+the already-live one to warm browsers. Review independently confirmed `chart.js` reads **no module global at
+script-eval time** and all eight `new X(` sites on module globals are guarded or covered by the shell's inline stubs.
+
+### CORRECTION: "every chart.js fix is invisible inside multichart panels on warm browsers" is FALSE for product
+The product delivery chain is **stamped end to end**, and I verified each hop:
+1. Host page `dist-v9/index.html` sets `window.__TALARIA_CHART_BUILD_ID='20260727b80'`.
+2. `chart-embed.html` — the shell panels actually load — takes `p.get('v') || '20260727b80'` and appends
+   `'?v=' + V` to **all 54 paths, `/chart/chart.js` among them**.
+3. Bridge scripts are stamped **inside** `injectScript` at `MultichartGrid.jsx:454` (`s.src = src + "?v=" + BRIDGE_VERSION`),
+   so the bare-path call sites at 467/472/473 are stamped despite appearing unstamped. `BRIDGE_VERSION` resolves to
+   `__TALARIA_CHART_BUILD_ID` = b80, **not** the `20260609b07` fallback.
+
+**Therefore FIX 1 and FIX 2 are not undeliverable and were never blocked on this.** The dependency argument does not hold.
+
+### The a10 fingerprint localises B's measurement to the sandbox
+`git grep -l "20260524a10"` over both trees returns **exactly two files: the two `chart-host.html` mirrors.** Nothing
+else in either tree carries that token, so an observation of *"warm panel loads 20260524a10"* **can only be the sandbox
+shell**. A stale product panel would have shown some other `b`-token. `diverge: true` was real; its surface was the
+sandbox, which is precisely what STAMP-1 fixes.
+
+### Consequence for M26 "effect not demonstrated" — engine divergence is NOT the explanation
+M26 lives in `multichart-prod/multichart-manager.js`, whose **product delivery path is stamped** (hop 3 above), and
+M27/M28 live in `replay-system.js`, which is **entry in `chart-embed.html`'s stamped `paths` array**. So harness and
+PO browser were not running different engines on those files. **The "effect not demonstrated" verdict stands on its
+own merits and is not explained away by cache staleness.** I am not reopening it on this ground.
+
+### Module parity: still held, unchanged
+Nothing in this ruling touches the reasons it was cancelled at 21:24 — `m22` pins both `chart-host.html` mirrors as the
+expected registry-ABSENT set, and the motivating premise remains refuted.
+
+### Carried (review conditions, accepted as residuals)
+- Next `m22` run **will rewrite one detail line** in its tracked evidence file: recorded `chart-host.html` load order
+  now includes the token. **Expected, not a regression.**
+- `shell-cache-stamp.test.mjs` is **wired into no CI job** — house pattern for all 76 siblings in that directory, not a
+  new omission, but nothing runs it on merge.
+- The ~23-line `chart-host.html` mirror drift is **deliberately preserved** and byte-identical to base.
