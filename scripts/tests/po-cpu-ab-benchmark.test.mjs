@@ -57,11 +57,11 @@ function lagEvidence({
   return {
     content: {
       ok: contentOk,
-      single: { ok: contentOk, reason: contentOk ? null : 'content-missing', panels: [{ id: 'A', ok: contentOk, types: ['SMA', 'EMA', 'WMA'] }] },
+      single: { ok: contentOk, reason: contentOk ? null : 'content-missing', panels: [{ id: 'A', ok: contentOk, types: ['sma', 'ema', 'wma'] }] },
       four: {
         ok: contentOk,
         reason: contentOk ? null : 'content-missing',
-        panels: ['A', 'B', 'C', 'D'].map((id) => ({ id, ok: contentOk, types: ['SMA', 'EMA', 'WMA'] })),
+        panels: ['A', 'B', 'C', 'D'].map((id) => ({ id, ok: contentOk, types: ['sma', 'ema', 'wma'] })),
       },
     },
     single: {

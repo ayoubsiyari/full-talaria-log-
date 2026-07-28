@@ -1258,15 +1258,15 @@ export function poCpuAbHostHtml({ timings = DEFAULT_PHASE_TIMINGS, mutant = fals
     }
 
     const LAG_CONTENT_SPECS = [
-      { type: 'SMA', params: { period: 20 } },
-      { type: 'EMA', params: { period: 20 } },
-      { type: 'WMA', params: { period: 20 } }
+      { type: 'sma', params: { period: 20 } },
+      { type: 'ema', params: { period: 20 } },
+      { type: 'wma', params: { period: 20 } }
     ];
     const LAG_BAR_INTERVAL_MS = 60000;
 
     function indicatorTypesOnChart(ch) {
       const active = ch && ch.indicators && Array.isArray(ch.indicators.active) ? ch.indicators.active : [];
-      return active.map((row) => String(row && row.type || '').toUpperCase()).filter(Boolean);
+      return active.map((row) => String(row && row.type || '').toLowerCase()).filter(Boolean);
     }
 
     function armContentOnChart(ch) {
@@ -1286,7 +1286,7 @@ export function poCpuAbHostHtml({ timings = DEFAULT_PHASE_TIMINGS, mutant = fals
         }
       }
       const types = indicatorTypesOnChart(ch);
-      const ok = ['SMA', 'EMA', 'WMA'].every((type) => types.includes(type));
+      const ok = ['sma', 'ema', 'wma'].every((type) => types.includes(type));
       return { ok, reason: ok ? null : 'content-missing', types, detail: ok ? null : 'required MA types absent' };
     }
 
