@@ -2814,3 +2814,40 @@ Rows 2 and 3 point at multichart bridge and drawing-tool code that is very likel
 I expect the structural finding to survive, because a leak does not depend on which indicator implementation runs, and I expect every magnitude to move. The census brief therefore requires `typeof window.IndicatorPerf` to be reported **at each census point**, so the run states which world it measured rather than leaving it to be inferred later — which is the failure §A2 was written to stop, and which the finding itself notes nearly cost the PO another cycle chasing speed.
 
 **Write-packet accounting, stated rather than quietly exceeded.** Three packets are nominally in flight — speed-cap mirrors, a2-rebaseline, a12-correction — but only the first is still writing; the other two are authored and awaiting review. I am treating the §A13 cap as a concurrency limit on *active writes*, since its purpose is preventing two subagents on one file, and the census touches a disjoint new path. Two active writers, no file overlap.
+
+---
+
+## 2026-07-28 12:22 — CORRECTION: "the failed dispatch did nothing at all" was wrong, and my check was the reason
+
+I stated — here and to the Director — that the API-limited mirror dispatch left nothing behind, and I based that on `git worktree list` showing `manager-a/speed-cap` still at `48aba47bc` with no `-mirrors` worktree present.
+
+**That check was insufficient and the claim was false.** The author found the existing `manager-a-speed-cap` worktree **dirty from a prior partial attempt** and had to reset it to clean HEAD before working. I verified the branch tip and the absence of a new worktree; I did not verify working-tree cleanliness, which is the only thing that would actually have answered the question I was asking. A commit SHA tells you what was committed, not what was written.
+
+This is the same failure shape I have been catching in others all day — a check that looks like it establishes a negative but only covers part of the space. I asserted a clean state from a partial observation, which is precisely the practice I made a standing rule against this morning. **Rule extended: a "nothing was left behind" claim requires `git status --porcelain` in the specific worktree, not a branch-tip comparison.**
+
+The consequence is not severe — the residue was uncommitted work in a scratch worktree and the author reset it — but I have asked the reviewer to establish whether the reset discarded anything of value, and whether the committed result is consistent with a clean rebuild rather than carrying residue from the abandoned attempt. That is the one thing here I cannot check myself.
+
+## 2026-07-28 12:23 — Mirror gap closed at `b96ad1bba` — rebuilt from source, not patched
+
+surface=`manager-a/speed-cap` @ `b96ad1bba`, parent `48aba47bc`; seven files across both `dist-v9` trees plus the homepage engine mirror
+coverage=acceptance greps executed; **non-cap bundle delta not yet characterised**
+
+Built through the real entry chain — `build:live:chart` → `vite.config.live.js` (`root: live/`, `outDir: ../chart/dist-v9`) → `live/main.jsx` → `../src/TalariaV8bLive.jsx` — so the artifacts derive from the reviewed source rather than from a string replacement in minified output, which was the failure mode I most wanted excluded. `homepage/public/chart/modules/replay-system.js` now hashes identically to the capped source, closing the unclamped committed engine.
+
+Two details the author handled correctly rather than papering over. Vite emits `max:KM.length-1` rather than a literal `max:"4"`, so my acceptance clause could not match textually and they said so instead of declaring it met. And `Math.min(100, progress * 100)` survives in the engine — correctly identified as a progress-bar width rather than a speed clamp, which my grep would have flagged as a failure. Both are the kind of thing a less careful author reports as green.
+
+## 2026-07-28 12:24 — The sync spill is the real finding, and it may be a live correctness gap
+
+`scripts/sync-v9-to-homepage.mjs` copies far more than `dist-v9`: modules, workers, `chart.js`, vendor, fonts, `multichart-prod`, `legacy-index` and PWA assets. Running it produced changes across all of that, and the author **reverted everything outside my writable set** before committing.
+
+That was the right call under the brief I wrote. But it means something I want quantified rather than left as an impression: **if the sync script wanted to update those files, then `homepage/public/chart/**` is stale against source in more places than the one this packet fixed.** The defect this entire packet exists to close was an unclamped engine mirror. I now have direct evidence that mirror may have siblings, and I do not know how many or what they contain.
+
+I have asked the review to enumerate exactly which files the sync would have changed and how each diverges from its `chart v 1.4/chart/**` source. That list is either a housekeeping row or a second correctness gap, and I am not guessing which. Note the shape of the discovery: **the sync spill was surfaced only because the writable set was narrow enough to force a revert.** A wider grant would have swallowed the whole sync into this commit and we would have learned nothing.
+
+## 2026-07-28 12:25 — The question I sent to review that the packet cannot answer about itself
+
+A Vite rebuild regenerates the **entire** bundle from current source. The previously committed bundle was built at some earlier point, so **any source drift accumulated between that build and now rides along in this diff, silently.** The commit message says speed cap; the artifact may contain considerably more.
+
+That is a larger risk than whether the ladder is correct, and it is invisible to every acceptance clause I wrote — all of mine test for the presence or absence of cap-related strings, and none would notice an unrelated component changing. Characterising a minified diff is genuinely hard, so I asked for the technique to be stated along with what it can and cannot see.
+
+Related and also unverified by the packet: **no `npm ci` was run** — the build used pre-existing `node_modules`. So I do not know whether a clean CI install reproduces this artifact byte-for-byte. If it does not, we have committed a build output that nobody else can regenerate, which is a poor thing to have on a deploy path.
