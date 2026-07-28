@@ -3021,3 +3021,25 @@ Doc: `P6-REMEDY-REDIRECT.md`. Lands with A's restore — redirect alone is the
 edge headers + PO badge = one motion after push.
 
 **Still no push** until A clears the 20:12 hold.
+
+---
+
+## B-0140 — Hold multichart 404. Live panels resolve to a10 host. Escalate.
+
+Director `RULING-DO-NOT-404-MULTICHART-20260728-2100.md`. Same standard as the
+P6 push hold: do not block a 200 route without consumer evidence.
+
+**Consumer check (test host, unauth):**
+- `/chart/multichart/multichart-shell.html` → 200; `new MultichartManager({…})`
+  with **no** `iframeSrcBuilder`.
+- Default `frame.src = 'chart-host.html?'` → **`/chart/multichart/chart-host.html`**.
+- Host → 200, bridges `?v=20260524a10`, loads `../chart.js`.
+- `/chart/multichart-prod/{shell,host}` → 307 login (not the 200 surface).
+
+**Corrected remedy:** removed `location ^~ /chart/multichart/ { return 404 }` from
+`nginx.conf` + `nginx.local.conf`. P6 design-live **302 kept**. Harness **404 kept**.
+Rule accepted: redirect by default; 404 only where proven unused.
+
+**Escalation:** `ESCALATE-MULTICHART-A10-20260728-2105.md` — a10 on the live
+panel loader is the critical stamp finding; needs product bring-current / cutover,
+not an edge block.
