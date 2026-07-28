@@ -400,7 +400,32 @@ A must not idle on this. **Whether our daily bars are native provider bars or lo
 3. **The futures maintenance hour is a real gap and must not be filled.** No bar may be synthesised for 17:00–18:00 ET. A bar that exists there is the same class of fiction as the phantom Saturday.
 4. **Re-derive the phantom-Saturday mechanism against this spec rather than carrying the earlier guess.** FX closes Friday 17:00 ET, which is Friday 21:00 or 22:00 UTC depending on DST — so there is no Saturday trading to bucket at all, and UTC-midnight flooring alone does not obviously produce a Saturday bar. Something else is contributing, most likely a mismatch between the timezone used to *bucket* and the timezone used to *label*. Per BRIEF-02 this is briefed as a hypothesis with a refutation criterion, not as a finding.
 
-**One product decision to surface rather than assume:** for futures, does the chart display electronic hours (nearly 23h) or regular trading hours (E-mini S&P 09:30–16:00 ET, crude 09:00–14:30 ET)? Replay tools conventionally default to electronic for continuity. **A must raise this as a PO question rather than choosing** — it changes what a daily bar contains, not merely where it starts. The PO has offered per-contract session times for specific instruments; ask for the ones the canary cohort will actually load (gold, Nasdaq, ES) rather than the general case.
+### A16.3b PO answers, and the design they force (2026-07-28 10:08)
+
+**Settled by the PO:** daily bars show **ETH (electronic hours)**, not regular trading hours. Canary instruments are **NQ, ES and GC** — all CME futures — alongside the existing forex symbols. **The product carries both classes, so classification is not optional.**
+
+**The PO adds a fact that decides the architecture: futures bank holidays produce sessions far shorter than 23 hours**, including early closes and full closures.
+
+**Therefore: sessions are anchored by rule and their existence is determined by data, never by duration.**
+
+1. **Boundaries come from the rule** — FX 17:00 ET, futures 18:00 ET, crypto 00:00 UTC, resolved through a timezone database so DST is handled rather than approximated.
+2. **Session existence and length come from the observed data.** If the feed has no ticks in a window, there is no session and **no bar is emitted.** This single rule handles the futures maintenance hour, early closes, full bank-holiday closures and weekends **with no holiday calendar to source, ship or maintain** — which matters when the deadline is 46 hours away and a CME holiday table for three contracts is data we do not currently hold.
+3. **Standing invariant: never synthesise a bar with no underlying ticks.** This is the assertion that kills the phantom Saturday regardless of which mechanism produced it, and it is cheap and testable. It is also the general form of the defect class: our chart has repeatedly asserted the existence of things it had not observed.
+
+**Symbol classification, with a named trap.** Class must be derived per symbol, and **spot versus futures gold is the trap that will catch us**: `XAUUSD` is spot and rolls at **17:00 ET**, while `GC` is a CME future and rolls at **18:00 ET**. Both are "gold" and they are one careless mapping away from being treated alike. Unknown symbols fall back to the FX calendar — the larger population — but the fallback **logs loudly** rather than degrading silently, per §A4c.
+
+### A16.3c The PO's drift hypothesis — briefed per BRIEF-02, with the discriminating test named
+
+The PO's hypothesis: because the code assumes a 24-hour day while the real session is shorter, each day takes a bite of the next day's hours, drift accumulates through the week, Friday is left with too few hours and gets dropped.
+
+**Partly right, and right about the thing that matters.** The substance — an assumed 24-hour day against a session that is not 24 hours — is exactly the defect. But the mechanism depends on how bars are bucketed, and the two possibilities give different symptoms:
+
+- **If bars are bucketed by flooring** (`Math.floor(t / 86400000) * 86400000`, which is what `_resampleDataFull` and `_tryIncrementalResample` do), **drift cannot accumulate** — every bucket lands exactly on UTC midnight regardless of session length. The PO's mechanism does not apply to this path.
+- **If any path builds bars by counting forward** from a first bar ("every 1440 minutes from the start"), **the PO's mechanism is exactly correct** and drift accumulates precisely as described. **Confirm no count-forward path exists** — this is a cheap, decisive audit and it must be run rather than assumed.
+
+**The single fact that determines everything, and it must be established before any mechanism is proposed: what timezone are the raw feed timestamps in?** Forex feeds commonly arrive on broker server time (UTC+2 or UTC+3), not UTC. If timestamps are broker-time while the flooring treats them as UTC, then Friday 17:00 ET — 21:00 UTC — becomes **Saturday 00:00 in broker time** and the last hours of Friday's session floor into a Saturday bucket. **That would produce a small phantom Saturday bar as a direct arithmetic consequence**, and it is currently the leading candidate. It is a hypothesis with a refutation criterion, not a finding: establish the timestamp timezone first, then derive the symptom, then check it against the observed chart.
+
+**Refutation criteria, stated in advance:** the broker-time hypothesis is refuted if raw timestamps are UTC and the phantom Saturday still appears. The count-forward hypothesis is refuted if every bucketing path floors. If both are refuted, the mechanism is in labelling rather than bucketing, and the next probe is the display timezone.
 
 **Weekly boards now.** Daily boards as soon as the provenance audit reports; if the bars are native, we match the provider's stamping and disclose it, and if they are derived, we bucket to the class calendar above. DST is handled by the calendar, never by a fixed millisecond offset — that is the defect being removed.
 
