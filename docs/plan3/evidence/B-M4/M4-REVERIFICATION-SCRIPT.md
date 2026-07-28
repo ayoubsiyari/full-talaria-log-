@@ -95,9 +95,9 @@ Record: build tag, digest, environment, account id, Phase 1a real session id, Ph
 
 Packet **B-W11**, in `docs/plan3/evidence/B-M4/`. Run before calling any human. Phase 1 is split to satisfy HARNESS-01.
 
-### Phase 1a — verify-only, real ledger, zero writes
+### Phase 1a — verify-only, real ledger — 🛑 QUARANTINED, DO NOT RUN
 
-Safe on any ledger. The harness constructs a read-only HTTP adapter with no POST/PUT/DELETE path and must print `mode=verify-only writes_issued=0`.
+**~~Safe on any ledger. The harness constructs a read-only HTTP adapter with no POST/PUT/DELETE path and must print `mode=verify-only writes_issued=0`.~~ WITHDRAWN — see the banner at the top of this document.** The no-write-verbs argument is about the client, not the server, and `writes_issued=0` is a hardcoded literal in this mode. On the shipped deployment the only check with content is L7, whose failure condition no enumerated writer can produce. **A green here means nothing. Do not run it and do not record its output as evidence.**
 
 ```powershell
 node "docs/plan3/evidence/B-M4/m4-ledger-invariants.mjs" --verify-only --base-url="[DEPLOYED_BASE_URL]" --account-id="[QA_ACCOUNT_ID]" --session-id="[REAL_LEDGER_SESSION_ID]" --expect-digest="[SEALED_BUILD_DIGEST_OR_BUILD_ID]" --expect-foreign-id="[KNOWN_PRE_EXISTING_TRADE_ID]"
@@ -105,11 +105,13 @@ node "docs/plan3/evidence/B-M4/m4-ledger-invariants.mjs" --verify-only --base-ur
 
 Checks: L2 id-multiset stability across refetch, L3 identity of record and canonical column grammar, L5 cross-store agreement (`SKIP-LOUD` on `journal_storage=sql`), L7 orphan-sweep vulnerability detector, L8 expected real-ledger presence.
 
-L7 is load-bearing: it fails rows whose payload lacks `tradeId` and `id`, reporting `vulnerableCount` and `vulnerableIds`. That is the exact shape exposed to the escalated deletion path.
+**~~L7 is load-bearing.~~ WITHDRAWN.** L7 detects the alias-divergence shape that the escalation later **withdrew as unproducible** — every enumerated writer sets the aliases. Its failure condition is unreachable on a real ledger, so a green L7 carries no information. It also uses `??`, meaning a `payload.tradeId` of `0` reads as *present* while the server treats it as falsy and sweeps the row.
 
-### Phase 1b — write-probe, disposable session only
+### Phase 1b — write-probe — 🛑 QUARANTINED, DO NOT RUN. CAN DESTROY THE PO'S LEDGER.
 
-Not safe on a real ledger. This mode issues POSTs and must use a disposable session id different from Phase 1a's real session id. Startup prints a warning that the server orphan sweep can delete vulnerable pre-existing rows and the harness cannot undo it.
+**The disposable-session guard does not work.** It is a *symmetric* string inequality, so it cannot tell which of the two session ids is the real one. The write client is built from `--disposable-session-id`. **Transpose the two adjacent flags below and every guard passes while the POSTs and the orphan sweep hit your live ledger.** Phase 1a will already have handed you a real-ledger id to paste. This must not be run until the guard is made asymmetric — an explicit allowlist or a server-side disposable flag.
+
+Also note the preservation delta compares only **13 named fields**, so `rMultiple`, `netPnL`, `stopLoss`, `takeProfit`, `partialCloses`, screenshots, notes, tags and commissions can be wiped on every pre-existing row while L1 prints PASS. And the run permanently consumes numbers from the **account-wide** trade-id sequence, which no delta can see.
 
 ```powershell
 node "docs/plan3/evidence/B-M4/m4-ledger-invariants.mjs" --write-probe --base-url="[DEPLOYED_BASE_URL]" --account-id="[QA_ACCOUNT_ID]" --qa-account-id="[QA_ACCOUNT_ID]" --session-id="[REAL_LEDGER_SESSION_ID_FROM_1A]" --disposable-session-id="[DISPOSABLE_QA_SESSION_ID]" --expect-digest="[SEALED_BUILD_DIGEST_OR_BUILD_ID]" --expect-foreign-id="[KNOWN_COLLATERAL_TRADE_ID_IN_DISPOSABLE_SESSION]" --n=3
@@ -126,7 +128,7 @@ The first build of this harness **printed nothing and exited 0 when pointed at a
 1. It **printed a header and one line per check.** A silent run is a bug, never a pass.
 2. The **number of checks executed equals the number expected.** An empty or short run is a FAIL.
 3. **Transport failures are loud FAILs** — connection refused, timeout, 401/403, or an HTML login page returned instead of JSON. This is the failure that will actually happen against a candidate that is not up yet or is behind auth.
-4. Phase 1a printed `writes_issued=0`; Phase 1b printed a positive write count and used the disposable session id.
+4. ~~Phase 1a printed `writes_issued=0`~~ **— DELETED. Unfalsifiable.** `writesIssued: 0` is a hardcoded literal on the read adapter and nothing in verify-only can increment it, so this criterion checked a constant. It also says nothing about *server-side* writes: `GET /state` commits a session-state row when none exists. Replacing it requires instrumenting server commits, not interrogating the client.
 5. No unexpected line says `SKIP-LOUD`. For the shipped SQL-primary deployment, L5 `SKIP-LOUD` is expected and means cross-store agreement is not covered.
 
 **Legacy-alias migration idempotence is NOT COVERED by Phase 1.** The legacy backfill is one-time and gated on an empty SQL table; once SQL contains rows, later reads do not re-run it. Proving the transition requires DB attachment to plant or observe an unmigrated `legacy:` alias with empty SQL, so it cannot be soundly implemented in this HTTP-only harness.
