@@ -3997,3 +3997,65 @@ Two additive changes, neither touching the accessor: allow-list plus `_ensureMcD
 This train's manager-caused defects now include: a brief pinning line numbers and a file hash to a different branch than the one I told the author to base on; a clearing-site itemisation six short; repeating a reviewer's RED-oracle claim that holds only for the mirror copy; a criterion that penalised the correct implementation; a warning generalised from an unrelated incident; and — the substantive one — **specifying a scalar to answer a 28-way question.**
 
 The §A16.4 pre-dispatch review caught eight defects and missed this one. That is not an argument against the rule; it caught a scheduling hole that would have cost a full packet. But it does mean pre-dispatch review is not a substitute for asking, of every instrument I specify, **the question I asked too late here: can this measurement, in principle, express the answer I need?**
+
+---
+
+## 2026-07-28 18:41 — M25 ACCEPTED and merged at `751cc38d6`. The instrument now answers its own question.
+
+Remediation reviewed top-tier and accepted, **verified by execution in real Blink rather than under `node --test`** — the reviewer sliced the 3,246 product helper bytes out of `chart.js` and ran them in HeadlessChrome 150 loaded as its own `<script src="…?v=…">`, the same shape as deployment.
+
+Merged tip: 41/41 across M25 and M23, canonical and mirror sharing blob `13fc6ced3`, `animate()` byte-identical at 2,404 bytes with sha256 prefix `2da0ed5db403f0df` at both parent and head.
+
+**Direct answer to the question the packet exists for: yes, one real session now yields a defensible per-site list.**
+
+### Why the attribution works where the scalar could not
+
+It records on **every truthy write**, not on the falsy→true transition. That is the whole fix: the true→true writes the scalar structurally cannot see are exactly the ones that were being erased. No sampling, no per-frame de-duplication, no rate limit.
+
+Verified against every hazard I named, by execution:
+
+- **Frame 1 is the caller, not the setter.** Raw Blink stack confirms `at Object.set` as frame 0 and the arming site as frame 1; the `?v=` cache-buster is stripped and the path collapses to a basename.
+- **Two arming sites on one line** separate by column (`:65:67` vs `:65:116`).
+- **Callbacks, `.then()`, post-`await`, `setTimeout`, `Array.forEach`** all attribute to the assignment's own position. Location-less native frames are filtered, so frame 1 is the nearest JS frame that could have performed the write — the right answer, not a lucky one.
+- **V8 inlining**, which I pushed hardest on: 200k hot iterations gave one stable key at count exactly 200000, and under `--allow-natives-syntax` with TurboFan confirmed on the outer function and the inner ones inlined, the key still resolved to the inlined innermost assignment line.
+- **Degraded stacks** yield a visible `(stack unavailable)` key rather than a silent drop — same "incompleteness announces itself" principle as the overflow key.
+
+The reviewer wrote 22 adversarial mutants of their own and killed 18. The four survivors are defensive or behaviourally equivalent, **except one worth recording: a mutant that moves the flag read onto the per-write path survives.** The shipped code is correct — the flag is read once at construction — but no cell guards that regression, and it only affects the on-path.
+
+### Cost, measured rather than argued
+
+I demanded a measurement and got one. Blink: **off 118 ns, on 7,277 ns per truthy write, so +7.16 µs.** Flat across stack depths of 2, 10 and 30 because `stackTraceLimit` is 10.
+
+| truthy writes/frame | @60 fps | cost |
+|---|---|---|
+| 1 | 60/s | 0.043% of a core |
+| 3 | 180/s | 0.13% |
+| 28 (ceiling) | 1,680/s | 1.2% |
+
+**At genuine idle it is ~one truthy write per second** — the countdown branch at 1 Hz — so about 0.0007% of a core. Critically, the loop-shaped sites like `pc.renderPending = true` in `replay-system.js` iterate over *different chart instances*, each with its own `_mcDiag`, so they do not multiply the per-instance count. This cannot threaten the idle-CPU measurement it exists to support.
+
+Off is genuinely zero, not merely small: the setter is the same function object the parent installed (`.toString()` equality against `ba2d30e57`), and the flag is read in exactly one function, called from one place, called from one place — the constructor.
+
+### My cost tension was not real
+
+I put it to the reviewer that "one capture per frame" and "records on every truthy write" were in tension and demanded it resolved by measurement. **There is no such claim in the committed artefact.** The commit message and the `COST` block both say per truthy write. I was reconciling the submission prose against the code and treating the discrepancy as the code's problem. The artefact was self-consistent all along.
+
+### The author overstated two things; neither is a defect
+
+- **"Criterion 7 was unsatisfiable" is overstated.** The reviewer patched the parent to add only the allow-list entry, keeping the non-enumerable property, and the reporter emitted the column with the right value while `__mcDiagReset()` zeroed it and `JSON.stringify` still excluded it. **The reporter reads by name, and a non-enumerable property is readable by name.** So it was unsatisfiable alongside *this implementation*, not alongside Change 1 as such. The author's stated *reason* survives though: that minimal route leaves `_mcDiag` at 15 keys until the first reset under the kill switch, which then creates the property enumerably at 16 — the late nondeterministic shape change the commit warns about. Design right, word wrong.
+- **"The region cell is strictly stronger" is false.** The parent elided 46 lines; the new cell elides three regions totalling **321** — 275 more, including the entire 248-line reporter block. It is stronger in two other respects (two bases instead of one, anchor uniqueness), so it is a **trade, not an upgrade**. The reviewer closed the gap for this commit directly: `_talariaMcDiagPanelIdForWindow`, `_talariaMcDiagSnapshot`, `_talariaMcDiagCollectCharts` and `_talariaInstallMcDiagReporter` are **byte-identical across all three commits**, so nothing hid in the widened exemption. Carry-forward for the next packet in this family: anchor the helper region to end at `function _talariaMcDiagPanelIdForWindow` instead of `class Chart {`, handing ~100 lines back to line-for-line comparison at no cost.
+
+### Two residues recorded, neither blocking
+
+- **Kill-switch-on is indistinguishable from a genuinely idle session in the report** — both emit `m25FramesArmed: 0`. Same silent-zero shape as the erasure bug, but materially less severe: it requires an operator to deliberately set a switch whose purpose is to remove the instrument, and the accessor's absence is directly observable. With attribution on there is a partial disambiguator: kill-switch-on leaves `m25ArmingSites` **absent**, a real idle session leaves it **present and empty**.
+- **`m25FramesArmed` was inserted mid-list**, after `renders` and before `seams`, so the row goes 17→18 keys and `console.table` column order shifts. Every consumer is key-based so nothing breaks, and no stored row digest exists — but any future evidence comparison that digests `JSON.stringify(row)` must be regenerated.
+
+## 2026-07-28 18:42 — Closing the last trap before it costs a session
+
+The reviewer flagged a session-protocol hazard I am treating as a defect instead, because it is a smaller version of exactly what got the parent blocked.
+
+**`m25ArmingSites` is not among the 18 columns `__mcDiagReport()` emits.** The saturated scalar *is*. So an operator who runs the product's own reporter and stops **gets the misleading number and thinks they have their answer** — while the useful map sits one property away, reachable only as `chart._mcDiag.m25ArmingSites` per instance. And `_talariaMcDiagCollectCharts`, the function that walks host and iframes, is module-scope and unexposed, so for multichart the operator must walk `document.querySelectorAll('iframe')` by hand — and **3 of the 28 sites live in `panel-cmd-bridge.js` and fire only on panel charts inside iframes.**
+
+I blocked the parent for shipping an instrument that reads plausibly and answers wrongly. Relying on protocol discipline to stop someone reading the saturated scalar is a weaker control than putting the right number where they will look. Dispatching a small follow-up to surface the map through the reporter and expose the collector, rather than writing a note and hoping.
+
+M25 is merged and correct as it stands; this is additive.
