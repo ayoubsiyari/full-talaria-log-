@@ -133,3 +133,72 @@ I searched `chart.js`, `settings-panel.js`, `drawing-tools-ui.js`, `drawing-tool
 **Nothing in §1–§6 is affected.** The count, the idle-presence conclusion, and rulings M-1 through M-4 stand on the snapshot pair and are independent of which component builds the elements.
 
 **One refinement to the hypothesis in §4:** the leaked families are **HTML controls — icon buttons and progress bars — not canvas or chart primitives.** The idle loop''s per-frame churn includes `createElementNS`, which is **SVG**, so the `Detached SVGRectElement` / `SVGAnimatedLength` / `SVGSVGElement` rows are the ones plausibly attributable to it. **The 28 px HTML squares are more likely a UI-panel lifecycle defect than a render-loop artefact** — which would mean **two independent leaks, not one.** Hypothesis, per BRIEF-02.
+
+---
+
+## 8. RETAINER PATHS RESOLVED (PO, 14:12) — the leak is whole detached DOCUMENTS retained by React roots
+
+**This supersedes §7.2 and my "icon-button lifecycle" framing. I was wrong about the scale and the kind.** The 28 px squares are not the leak; they are merely the most numerous element *inside* the leak.
+
+### 8.1 What the retainer chains show
+
+Selecting a single 28 px div and expanding its retainers gives a chain in which **every link is itself `Detached`**:
+
+```
+Detached <div style="width: 28px; height: 28px; …">
+  ← [16] in Detached SVGSVGElement @122425
+  ← [160] in Detached blink::HeapHashTableBacking<…SVGSVGElement…>
+  ← [2]  in Detached blink::SVGDocumentExtensions @74326
+  ← [47] in Detached HTMLDocument @7042015
+  ← [5]  in Detached Window @9668347
+  ← global_proxy_object in system / NativeContext @78560
+  ← (Micro tasks) → (GC roots)
+```
+
+**`Detached Window` and `Detached HTMLDocument` are the finding.** A detached `Window`/`Document` is an entire browsing context that was torn down but is still referenced — **and retaining a document retains every node inside it.** That is where 19,811 divs come from: not 19,811 leaked buttons, but a handful of leaked *pages*.
+
+**At least four distinct leaked documents are visible** — `HTMLDocument` `@7042015`, `@7042013`, `@7042042`, `@7042073` — alongside `Detached <html lang="ar" dir="rtl">` **and** `Detached <html lang="ar" dir="ltr">`, i.e. leaked root elements in two different text directions.
+
+### 8.2 The retaining root is a React root that was never unmounted
+
+The most specific named link in any chain is:
+
+```
+containerInfo in ce @5000775
+```
+
+**`containerInfo` is the property React stores on a `FiberRoot`, pointing at the DOM container it renders into.** A `FiberRoot` retains its whole fiber tree and every DOM node associated with it. **So a React root exists whose container has been removed from the page and which was never unmounted** — and it is holding a complete document tree alive.
+
+The retainer set for one element offers **`Show all 39,293`**.
+
+### 8.3 The leaked documents are the app shell, not the chart
+
+The markup inside them identifies the owner unambiguously:
+
+- `class="tlr-session-nav-item" role="button"`, `tlr-session-nav-rail`, `tlr-session-nav-spacer`, `tlr-scroll`
+- `<body class="__variable_200ed2 font-sans antialiased">` — **`__variable_` is Next.js font optimisation**
+- `<link rel="preload" href="https://www.googletagmanager.com/gtag/js?id=G-2SBB19HFJE" as="script">`
+- `<meta name="application-name" content="talaria-log">`
+- dozens of `Detached CSSTransition` objects
+
+**This is the Next.js application shell** — the session navigation rail and page chrome — **not `chart.js` and not the canvas.** The 28 px squares are nav-rail icon buttons (`background: rgba(255,255,255,0.07); border: 1px solid rgba(140,160,255,0.05)`).
+
+### 8.4 What is established, and what is not
+
+**Established by the PO''s snapshot, no inference required:** multiple `Detached HTMLDocument` and `Detached Window` objects coexist in one heap; a React `FiberRoot.containerInfo` appears in the retaining chain; the leaked documents contain app-shell markup; every link from the leaked div up to the native context is itself detached.
+
+**NOT established, and not to be acted on yet (BRIEF-02):** *why* the roots survive. The two candidates are **client-side navigation** (each Next.js route change leaving an unmounted root) and **language/direction switching** — the two `<html>` elements differ only in `dir`, which is suggestive of the second, and the Arabic `lang="ar"` on both is consistent with a locale toggle. **A third possibility is that the chart is iframed inside the shell and panel teardown orphans the frame''s document.** These are distinguishable by one experiment and must not be guessed at.
+
+### 8.5 Consequences — three of them, and each changes a decision
+
+**1. My §7.2 assignment to A is WITHDRAWN.** I sent A to hunt for the code that constructs 28 px divs. **That search would have found a nav-rail component and taught us nothing**, because the elements are innocent — the document holding them is the defect. **Cancel it before A spends time on it.**
+
+**2. Ownership: this is not in any manager''s territory.** The defect is in the Next.js application shell. `TERRITORY.yml:295` records `homepage` outside `chart` as **RED for every manager by fail-closed default** — **the same structural hole that left the backend trade-loss path unowned for hours today.** That is now twice in one day that the highest-value finding landed in unowned ground. **A grant is required before any fix, and the territory model needs a standing answer rather than a third ad-hoc grant.**
+
+**3. It explains the multichart residue directly.** The PO''s original complaint — a single chart staying slow *after* a multichart session, and lag surviving a return to 1x — is exactly what leaked documents produce. **Teardown residue and this leak are very likely one row, not two.** Test 3 becomes a confirmation rather than an exploration: if the detached document count rises by one per multichart open/close cycle, the mechanism is settled.
+
+### 8.6 Ruling M-5 — the metric changes again
+
+**`Detached HTMLDocument` and `Detached Window` counts are now the headline memory metrics, above `Detached <div>`.** Rationale: a detached document is a **single, unambiguous, low-cardinality** defect — the correct value is exactly zero, it cannot be confounded by legitimate data volume, and **one leaked document accounts for thousands of leaked nodes**, so the div count is a downstream symptom that will move on its own once the document count does.
+
+**Acceptance: zero detached documents after a session involving navigation, language switching, and multichart open/close.** M-1''s 30-minute-session requirement stands and is now easier to satisfy, because document count is countable rather than statistical.
