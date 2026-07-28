@@ -3194,3 +3194,46 @@ The census covered `chart.js` and `modules/*.js` well. It did **not** map the sh
 **That is the surface the PO actually measured.** The PO's 20.6% was taken on the product, and the product is the V9 shell — so periodic work in the React host counts against us identically to periodic work in `chart.js`, and a **24 ms interval** in particular is a ~40 Hz timer that would sit right alongside the rAF loop in cost. I am dispatching that mapping cheap and read-only rather than leaving it as a footnote, because an unattributed 24 ms interval on the shipped bundle is exactly the kind of thing that survives a confident-looking report.
 
 One citation defect to note against the census: it cites `animate()`'s countdown call as `chart.js:286705–28706`, which cannot exist in a 41,860-line file. The real site is 28705. Harmless here because I verified the code directly, but it is the second transcription-quality issue this week and I am not treating cited line numbers as reliable without opening them.
+
+---
+
+## 2026-07-28 14:36 — host-listener-leak authored. Its most valuable output is the finding that lowers its own priority.
+
+Packet on `manager-a/host-listener-leak`, base `manager-a/critical-path` @ `8f78c9ffa`, HEAD `9ad391084`. Two commits, RED at `c9050af81` then fix, 349 insertions across exactly the two files in the writable set. Suite red 4/11 on base, green 11/11 on the fix, and the patched product methods verified in real Chromium: host listener census 1 → 0 across `frame.remove()` with live commits still delivering.
+
+**The finding that matters most is not the fix.** The author resolved the question the residue census left open: after `frame.remove()` the orphaned handler **never executes again** — commits dispatched at 0 ms, +100 ms and +800 ms all failed to reach it, while the same handler received them while the panel was alive.
+
+So this is **pure retention with zero post-teardown CPU cost**. That has two consequences I would rather state than let sit implied:
+
+1. **This leak is not part of the CPU story**, and the CPU story is our priority-zero problem. It retains bytes; it does not burn cycles. Its urgency drops accordingly and it should not displace idle-CPU work.
+2. It also means the residue hypothesis for the lag — *teardown leaves live work running* — gets no support from the one concrete leak we found. Four of five residue candidates returned to baseline, and the fifth turns out to be inert. **The residue model is now substantially weaker than when the Director promoted it to leading hypothesis**, and I should say so rather than let a merged leak fix read as corroboration. The frame-starvation mechanism remains unevidenced.
+
+Two things the author correctly refused to overclaim: it could not prove *retention* in-browser, because no browser API exposes a listener census outside DevTools, so the structural argument (registration never removed) plus the review's 79.5 s survival measurement is what we have; and it only tested Chromium.
+
+## 2026-07-28 14:37 — Brief-defect, and this one is a repeat, so I am treating it as a pattern rather than an incident
+
+The packet breaks two enforced tests — `m10-trade-marker-projection.test.mjs` and one cell of `m22-session-calendar-bucketing.red.test.mjs` — both purely on **canonical↔mirror byte parity** between `chart v 1.4/chart/chart.js` and `homepage/public/chart/chart.js`. The author was instructed not to touch the mirror and correctly did not.
+
+**That is my defect, not the author's.** I wrote a writable set of two files for a change to a file the repo enforces as one half of a byte-identical pair. The fix was never completable inside the set I granted.
+
+**And I have now made this exact mistake three times today.** The cap packet was blocked because two mirrors in my grant shipped pre-cap behaviour. I logged a brief-defect for a writable set of two files where territory needed four. Now this. Three instances of one error is not three incidents — it is a missing step in how I write briefs.
+
+**Standing correction, effective now: before granting a writable set, for every file in it I check whether a mirror or built artefact of that file is enforced anywhere, and either include the mirror in the grant or state in the brief why it is deliberately excluded and what will fail as a result.** "Deliberately excluded" is a legitimate choice — splitting the mirror into its own packet is often right — but it must be a stated decision with its consequence named, not a silent omission that the author discovers at test time.
+
+Counted as `brief-defect` in the digest per §A16.4, and it does not count toward the author's two-rejection escalation, because the author was never the problem.
+
+## 2026-07-28 14:38 — Escalating the duplication itself, because the pattern is in the repo and not only in me
+
+Three separate packets this train have been blocked or damaged by `homepage/public/chart/**` divergence. Manager C has now also modified `homepage/public/chart/chart.js` on their branch, so **the mirror is diverging from two directions at once** while an enforced test demands byte identity.
+
+I am raising this as a row rather than absorbing it packet by packet. A duplicated file with a byte-parity gate means **every edit to `chart.js` is structurally a two-territory change**, which collides directly with the standing rule that no commit spans two territories. Those two rules cannot both hold. Either the mirror is generated (and the gate checks generation, not bytes), or it is owned by one manager, or the parity gate is wrong. I have no authority to pick, so it goes up.
+
+## 2026-07-28 14:39 — Sibling audit result, recorded because it was a negative I expected to be positive
+
+I briefed the author to enumerate cross-realm registrations expecting more unpaired siblings. There is exactly one other cross-realm registration in the product — `chart.js:27148–27154`, the drag-end guard — and **it is already correctly paired** with `_removeDragEndGuard`. The high-count `addEventListener` receivers in `sync-bridge.js`, `panel-cmd-bridge.js`, `embed-bridge.js` and `multichart-manager.js` all bind their own realm's `window` through the `(function (global) {...})(window)` idiom and are not cross-realm at all.
+
+So the leak is a one-off, not a class. I was wrong to expect a family, and the correct disposition is a single fix rather than a sweep.
+
+One structural fact worth carrying forward: **`Chart` has no `destroy()` method at all.** The only teardown-shaped method, `_teardownV9TimeControlsSync()`, is dead code whose own comment describes it as a helper for a future `Chart.destroy`. That is why the fix had to hang off the document lifecycle rather than a destructor, and it is the reason any future panel-teardown cleanup will face the same problem.
+
+Top-tier adversarial review dispatched per §A13.1, aimed at the four things the author could not close: the bfcache-evicted-without-restore path that the `persisted === true` early return skips, the unexercised `frame.src = 'about:blank'` teardown path at `multichart-manager.js:442`, whether storing `_mcFinerPanelHostCommitTarget` creates a **new** panel→host retention edge, and whether the `pagehide` handler added to fix a listener leak leaks itself. Merge is held pending that review and the mirror question regardless — per §A16.5, two failing enforced parity tests means this cannot be part of an automated-GREEN chain in its current shape.
