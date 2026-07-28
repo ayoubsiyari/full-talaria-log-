@@ -2004,3 +2004,33 @@ Runbook rewritten: hard quarantine on both modes; the two false claims struck th
 **Position on M4:** Phase 1 as an HTTP harness cannot reach the confirmed loss path, so I will not spend the remaining hours making it green. **M4 rests on Phases 0, 2 and 3.** Recommend the asymmetric-guard fix before any write-probe run ever happens.
 
 **A16.4:** manager-caused **12** (the B-0102 category error and premature banner lift). Manager-finding-defect **8**.
+
+## B-0104 — V8 gap closed. M10 fixed but does not fix the PO's bug. B-W14's "better lead" is not reachable.
+
+### V8 — surface=IDs-only validation, coverage=1 cell + 1 mutant, VER-01 class: **S**
+
+B-W16 closed the gap. Verified by re-applying **the exact mutation that survived my earlier probe** rather than re-running the suite: gutting the `sanitizeIdList` type check now takes it from 16/16 to 14 pass / 2 fail. Baseline 16/16, `9 designed / 0 survived`, and `preferences-sync.js` byte-identical afterwards. Declared count and true count now agree. **V8 accepted at the standard I set.**
+
+### M10 — fix accepted, row stays OPEN
+
+B-W14 reports 22 designed / 0 survived across 15 cells, three identical runs, and the two mutants that reinstate the *rejected* attempt's own code (`Number.isFinite(Number(x))` and the `|| Date.now()` tail) both die. The shape is right: one shared `isFiniteBarTime` predicate, type-gated so `null` never reaches a coercion, applied at every duration site. Awaiting B-R8 (top tier, money-path trigger) before I accept it as sound — the last M10 attempt passed its own harness while reproducing the bug, so its successor's self-report earns no credit.
+
+**The important part is what B-W14 volunteered: it does not fix the PO's case.** `forceCloseAllOrders` never calls `closePositionAtPrice` — it partitions positions around a cutoff and preserves, drops or resurrects them, computing no duration at all. So a rollback-produced absurd duration cannot originate in the changed code. **M10 stays open.** An agent that finishes a packet to 22/0 and then says the packet does not close the row is doing the job properly, and I want that recorded as clearly as the rejections are.
+
+### Reachability: B-W14's "better lead" is a latent trap, not a fire
+
+B-W14 proposed the next packet target `_replayCutoffMs`, whose guard is `!Number.isFinite(Number(cutoffTime))`. The coercion is real and the consequence is severe — I confirmed the whole chain by execution:
+
+`Number('')`, `Number(null)`, `Number(false)`, `Number([])` are all `0` and finite → guard passes → `_normalizeMarkerTimestamp('')` returns `0` → `selective = (0 != null)` is **true** → `_classifyTradeAtReplayCutoff(trade, 0)` hits `entry >= cutoffMs` for every real trade → **`'remove'` for the entire ledger.**
+
+But per the Director's standing rule I established reachability before proposing any edit, and **it is not reachable.** Both call sites are outside my territory and both are clean: `chart.js:6165` gates on `Number.isFinite`, and `replay-system.js:2841` derives `orderCutoff = ts + 1` from a `ts` that line **2800** has already proven finite (`if (!Number.isFinite(ts)) return false;`). The only cross-panel sender, `MultichartGrid.jsx:4065`, forwards that same finite number. An absent `orderCutoff` becomes `NaN`, which routes to `cutoffMs = null` and the *documented* legacy full-wipe branch, not to the `0` branch.
+
+So this is **the same shape as the alias divergence in B-0100**: a genuine loaded mechanism with no current producer. I am recording it as a hardening item and **downgrading B-W14's recommendation** — it is not the P0 its framing implied, and spending the next packet there would repeat the mistake of chasing an unproducible shape that I just rejected the M4 harness for.
+
+That is now twice in one day that a plausible-looking trade-loss finding turned out to need a producer that does not exist. The lesson is holding: **a dangerous mechanism and a live defect are different claims, and the difference is a caller.**
+
+### Also recorded, not actioned
+
+B-W14 reports the `_m19DockTimeLabel` over-a-year clamp is effectively dead — it reads `this.replaySystem` while `_m19DockNowTs` falls through to `chart.replaySystem`, so in the one scenario the third tier exists for, the clamp reads a stale instance; and when it *can* fire, `nowTs` is already sane. Plus `normalizeEpochMs` rejecting `raw <= 0`, treating a legitimate epoch-`0` open as absent — the same `||`/falsy-zero family this packet fixed. Both are display-path, both unverified by me, neither blocking.
+
+**A16.4:** manager-finding-defect **9** (V8 IDs-only gap, found by my own out-of-set probe). Manager-caused **12**, unchanged.
