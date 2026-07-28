@@ -2275,3 +2275,48 @@ This is not answerable in code. The symptom is the PO's — replay with drawings
 **Why it cannot wait:** it is pre-registered in §3.1 as gating the mitigation claim, and it is cheap to take at the same sitting as everything else on that build.
 
 **Default in force if unanswered**, logged per §7.3 so I do not idle: I will record the lag row as **"bounded by product cap, mitigation unverified at 5x"** and will not claim mitigation. The disposition already states that raising the cap reopens the row with no test guarding the higher range.
+
+---
+
+## 2026-07-28 09:50 — REVERTED: slice (a) violated §A14.3. I merged a change a standing ruling forbids
+
+surface=`manager-a/critical-path`; merge `8bda25481` reverted at `c94a0a406`
+coverage=ruling text read directly by me at `DIRECTOR-RULINGS-20260727.md:294-310` before acting
+
+§A14.3:306, verbatim:
+
+> **Invert the assertion instead of deleting it.** Do not assert *legacy must contain these modules* (a demand to fix a shell we have ruled must die). Assert the exposure conditional:
+> > **for any shell: if it does not reference the correctness-class required modules, then `routed` must be false.**
+
+And §A14.2:298:
+
+> **the chart-root source is retained; every routed copy is de-routed and removed, with no retain obligation.**
+
+Slice (a) added `module-presence-runtime.js` and `indicator-performance.js` to both copies of `legacy-index.html`. That is precisely the demand §A14.3 forbids. **And it is worse than merely redundant: by making legacy compliant it silences the exposure RED the Director wanted preserved.** The gate is supposed to fire on legacy *because it is routed while lacking the modules*. I removed the condition that makes it fire, in a packet I described as improving coverage. Corroborating: `scripts/module-contracts.json:95-109` already carries both legacy paths as `status: excluded`, `servable: false`, reason "stale public source shell; route-removal debt". The presence gate should never have iterated them, and I should have asked why it did not rather than treating the gap as mine to fill.
+
+Reverted in full at `c94a0a406`. The error-string change rode along in the revert; it was harmless and independent and can re-land on its own if it is worth a packet, which I doubt.
+
+**How this got through, since the failure is procedural and not just factual.** The top-tier review of `677cb7db2` explicitly blessed this slice — "acceptable as-is today, trivially" — and I verified the subset property myself and merged on that basis. So a top-tier reviewer missed the ruling too. That does not transfer the accountability: reviewers check the packet in front of them, and **knowing which standing rulings govern a surface is the manager's job, not the reviewer's.** I have read §A14 before. I did not re-read it when I touched the exact file it names.
+
+The concrete lesson is narrower than "read the rulings." It is: **before touching a file, grep the rulings for that filename.** `legacy-index.html` appears by name in §A14.2 and §A14.3. Thirty seconds would have caught this. I am adding it to my pre-dispatch checklist rather than resolving to remember.
+
+**This also corrects my reading of M1.** I have been treating M1's "every servable surface" as including legacy and reporting the gap as mine to close. Legacy is ruled must-die and declared non-servable; it is **out of M1's scope**, and the work I have been queuing against it was never M1 work. What M1 actually needs is the §A14.3 exposure conditional implemented as a live gate — which is C's, per §A14.3's "reserve it under a gate name and apply it across the narrow inventory" — plus confirmation on the genuinely servable surfaces. My 15:15 chain item is therefore smaller than I thought and depends more on C than I thought.
+
+## 2026-07-28 09:51 — VERDICT: evidence-rescue BLOCKED on report accuracy; the counter evidence itself holds
+
+surface=`manager-a/evidence-rescue` `69dfab6d5`
+coverage=regeneration independently reproduced in an isolated four-blob tree at the pin, every differing leaf key enumerated across all 1800 leaves
+
+**The core result is confirmed exactly and is the packet's real value.** An independent run in a hermetic temp tree reproduced 96 advisory wall-clock diffs, one output-path field, and **zero counter-field differences** — every A cell at `replayTicks=300, fullResamples=300, incrementalResamples=0`, every B cell at 600, determinism IDENTICAL across all repeats in all twelve cells. Not a classifier's opinion about which fields are counters; a full leaf-key enumeration.
+
+Blocked on four accuracy defects in the report around it.
+
+**My contract was broken, invisibly.** `m21-b-mcdiag-tabulation-raw-output.json` in C's checkout was **overwritten by the author's own verification run** — its `config.jsonOut` is an absolute path into C's tree, and nobody would document that path. So "both external trees unchanged" is false. The content is provably benign, and the original is preserved in the commit, but the mechanism is the finding: **the file already existed and was already untracked, so porcelain and untracked counts never moved.** Every count-based hygiene check I have relied on today — mine and my reviewers' — would pass this while another manager's evidence sat silently modified. Count-based isolation checks are necessary and not sufficient; content hashes of the specific files at risk are what actually prove non-interference. That is the second time today a `git status` count has told me something weaker than I read into it.
+
+**`refs.tsv` claims a total it does not have.** REPORT describes it as "Every `legacy-index.html` reference"; an exhaustive `git grep` finds **172 hits across 49 files** against roughly 56 real rows, with 62 of its 118 rows citing the packet's own artifacts — 52% self-portrait. The omissions are material rather than cosmetic: `m22-session-calendar-harness.mjs:923-924`, `m22-session-calendar-bucketing.red.test.mjs:1490-1491`, `session-calendar.contract.json:46` and `bump-dist-v9-cache-legacy.test.mjs:2` all hard-code a **two-copy existence invariant** for the very file the de-route proposes to delete. None appears in the breakage table. The de-route stays correct per §A14.2; its impact analysis has a hole, and the curated list concealed it.
+
+**`proposed.diff` is not a patch.** `git apply --check` rejects it — "corrupt patch at line 35." A hunk header declares ten lines and supplies nine; the deletion hunk declares 61146 lines and contains seven lines of prose. Yet it ships an "Apply checklist." That is the worst combination: it invites mechanical application, fails, and whoever inherits it hand-repairs hunks against a tree that has since moved two lines. This repo already carries a `chart.js.rej` under a `.scratch/` directory from exactly that workflow. It gets renamed so no tool and no human treats it as appliable, and regenerated for real in the apply slot.
+
+**`table.txt` omits its own controls, which I rate above the truncation I flagged.** The truncated command line at `:7` is real and self-correcting from two siblings. The larger defect is that the harness produces **twelve** cells and both companions present only the 24 A/B rows. Cells `D1` and `D2` show `fullResamples=0, incrementalResamples=300` — **the control proving the counter can register incremental hits at all**, which is exactly what gives the headline `fullResamples=300, incrementalResamples=0` its meaning. Publishing the headline without the control is selective even with the data preserved in the raw JSON.
+
+**Contradiction #1 is struck.** Two exhaustive searches settle it: `git ls-tree -r` over C's entire tracked tree returns zero paths matching `mcdiag`, and a full recursive filesystem walk finds no generator on C's disk. The author tested A's pin, where the generator is trivially expected. The provenance reasoning stands. I was right to route it as a question rather than assert it, and right not to claim more than that.
