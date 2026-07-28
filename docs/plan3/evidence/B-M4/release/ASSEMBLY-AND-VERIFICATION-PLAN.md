@@ -76,16 +76,17 @@ commit and can be reverted by itself without disturbing the data-loss guards ben
 |---|---|---|---|---|
 | 1 | **B — D-2 hotfix train.** Client hydration guard, backend parse guard, deletion logging | `manager-b/plan3-20260727` | Two files, both guards fail-closed | **Yes, both** |
 | 2 | **C — cache-stamp gate, deploy-path preflights, legacy de-route** | `manager-c/verification-infra` | Build-time gates + routing | Build-time only |
-| 3 | **A — orphan replay teardown (memory fix)** | `manager-a/orphan-replay-destroy` | Lifecycle teardown | **None known** |
-| 4 | **A — render-path lag fix** | *not yet delivered* | **How the chart draws** | **None — see §7.1** |
+| 3 | **A — M26/M27/M28 + R1** (orphan destroy, engine release, hidden-pause, M23/Q9 switches) | `manager-a/critical-path` @ `ba174d694` | Lifecycle + measurement | **Yes — see KILL-SWITCH-INVENTORY** |
 
-Rationale for the order. B first because it is the only item that stops live user
-data loss, it is already sealed, and both halves can be switched off at runtime — so
-if anything later in the stack misbehaves, the guards are not what you have to remove.
-C second because its gates must be in the tree **before** the build runs or the stamp
-is not enforced on the artifact this push produces. A's memory fix third. A's render
-change **last and alone in its own merge commit**, because it is the only item in the
-train with no way to disable it short of shipping again.
+**Assembled tip:** `39caf89ad` (B→C→A). **GO evidence:** `TRAIN-SHIP-GO-20260728-2000.md`.
+
+~~Item 4 render-path lag / FIX 1 cadence switch~~ — **phantom gate, cleared
+2026-07-28 19:58.** `__TALARIA_DISABLE_MC_BACKGROUND_RENDER_CADENCE_V1` belongs to
+FIX 1 (A's fifth/last), which is **not in the train**. Do not wait for it.
+
+Rationale for the order. B first (data-loss guards, runtime switches). C second
+(gates must be in the tree before the ship build). A third (memory + FIX 3 + R1
+switches already on critical-path).
 
 ---
 

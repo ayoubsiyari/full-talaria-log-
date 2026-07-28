@@ -2951,3 +2951,22 @@ FIX 1 (A's fifth/last), which is unbuilt. Confirmed on `manager-a/critical-path`
 
 Train render/lifecycle items each carry a runtime switch (B-W16/17, M26, M27, M28,
 R1 M23, R1 Q9). Evidence: `TRAIN-SHIP-GO-20260728-2000.md`. Assembling B→C→A now.
+
+---
+
+## B-0137 — Train assembled. Phantom gate cleared. Stamps at 20260728b81. Ready to ship.
+
+**Unblock accepted.** Confirmed FIX 1 absent on `manager-a/critical-path` / assembled tip
+(`backgroundRender` / `renderCadence` / `BACKGROUND_RENDER` / cadence flag — all ABSENT).
+
+**Assembled:** B → C → A on `manager-b/plan3-20260727`.
+- `61f363525` merge C (stamper=C, journal=B, shells b80+badge then bumped)
+- `39caf89ad` merge A critical-path (product clean; docs per owner rules)
+- Ship bump + baseline reseal → **`20260728b81`**. Cache-stamp gate **GREEN**.
+  R1 killswitches 11/0. Provenance 15/0.
+
+**Tip for image build:** current HEAD after stamp commit. Params:
+`CHECKPOINT_BUILD=1 CHART_BUILD_ID=20260728b81`. Post-push:
+`live-surface-probe --deploy-gate`.
+
+**Not waiting on FIX 1.** Residuals P2/P3/P4 remain A's continuing work, not a hold.

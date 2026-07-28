@@ -40,7 +40,12 @@ test('extractStampedModuleRefs normalizes /chart/modules and relative modules', 
 test('SHELL-BUILD-ID-UNIFORM [soundness VER-01]: all shells share one stamp family', () => {
   const cell = runShellBuildIdUniformCell(root);
   assert.equal(cell.status, 'GREEN', JSON.stringify(cell, null, 2));
-  assert.equal(cell.buildId, '20260727b80');
+  // Build id moves with every ship bump; pin to the sealed baseline, not a literal.
+  const baseline = loadBaseline(root);
+  const sealed = baseline?.modules?.['modules/order-manager.js']?.stamp;
+  assert.equal(typeof cell.buildId, 'string');
+  assert.match(cell.buildId, /^\d{8}[ab]\d+$/);
+  assert.equal(cell.buildId, sealed);
 });
 
 test('CROSS-SHELL-MODULE-STAMP-COHERENCE [soundness VER-01]: shared modules agree', () => {

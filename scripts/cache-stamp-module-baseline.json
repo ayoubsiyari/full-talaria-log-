@@ -1,271 +1,271 @@
 {
   "schema": "talaria.cache-stamp-module-baseline.v1",
   "signature": "TALARIA_CACHE_STAMP_COHERENCE_V1",
-  "generatedAt": "2026-07-28T14:38:32.243Z",
+  "generatedAt": "2026-07-28T19:06:47.065Z",
   "modules": {
     "modules/chart-window-limit.js": {
-      "stamp": "20260727b80",
+      "stamp": "20260728b81",
       "sha256": "d77ae2b12168cc0a39659a1b9f6bb47bb22a324cac88eb237f3152e718583865"
     },
     "modules/preferences-sync.js": {
-      "stamp": "20260727b80",
-      "sha256": "daea2e2271b328d55a7b1ce35f4de6a992b36a3f2ec77d24a8ec20f7765a650b"
+      "stamp": "20260728b81",
+      "sha256": "22a7d686b1f05736e88500bf5c4822655f8f422ba8d9a9686b63bd1a97176ffb"
     },
     "modules/preferences-init.js": {
-      "stamp": "20260727b80",
+      "stamp": "20260728b81",
       "sha256": "ca51d65e5d0a9654e502833356a87aec8957adc48bf2e71399f8624de4c0951e"
     },
     "modules/market-calculations.js": {
-      "stamp": "20260727b80",
+      "stamp": "20260728b81",
       "sha256": "22b71d97ee7ecc3bb7cd6ef98e0c3d2ecfc76ba33bfdbad4c55af10207caf21b"
     },
     "modules/chart-env.defaults.js": {
-      "stamp": "20260727b80",
+      "stamp": "20260728b81",
       "sha256": "c97df3a0b8bfa5483f61218684776a030f8a38bea53e2da0c60951df7b9eafaf"
     },
     "modules/chart-env.generated.js": {
-      "stamp": "20260727b80",
+      "stamp": "20260728b81",
       "sha256": "217ed4972d774fba70c0c14cd229cceca10620ff4955d108653673024d7798dc"
     },
     "modules/drawing-tools-base.js": {
-      "stamp": "20260727b80",
+      "stamp": "20260728b81",
       "sha256": "e0d1ca04785ac186040d404480e963b2972d3be9fe0db19ea46b7b2084c91bd4"
     },
     "modules/drawing-tools-lines.js": {
-      "stamp": "20260727b80",
+      "stamp": "20260728b81",
       "sha256": "58400ccae4100cff239de864579e63905b3e45a2bfab96b0b704cefa8cb589dc"
     },
     "modules/drawing-tools-shapes.js": {
-      "stamp": "20260727b80",
+      "stamp": "20260728b81",
       "sha256": "88e5f965134b6d11bc96788141238c1142871401f93b852d116d5dc5c6dddab7"
     },
     "modules/drawing-tools-fibonacci.js": {
-      "stamp": "20260727b80",
+      "stamp": "20260728b81",
       "sha256": "b67b5d47fa937f8afbff8538dc56d60fa3514bacc4de88c4bf7738e5f6b319ea"
     },
     "modules/drawing-tools-text.js": {
-      "stamp": "20260727b80",
+      "stamp": "20260728b81",
       "sha256": "3a2e7f7fe08d9a2eefc1afbf8abc0203754a4365c185984e8ec5574004748176"
     },
     "modules/drawing-tools-emoji.js": {
-      "stamp": "20260727b80",
+      "stamp": "20260728b81",
       "sha256": "2fc402fc724ac0be93d149c9ebf0df2404a3598bddcd8f481f2c1c25e47ceadd"
     },
     "modules/drawing-tools-image.js": {
-      "stamp": "20260727b80",
+      "stamp": "20260728b81",
       "sha256": "22e5753d17aed8186270b23fa76315e4a5bbc25e39e5d2dfa7047825fc8c0c4b"
     },
     "modules/emoji-picker.js": {
-      "stamp": "20260727b80",
+      "stamp": "20260728b81",
       "sha256": "7acf8cdfb61ee8cfb1fc5cdbc29bac732d594319f4bb96e9ab32aaebec063574"
     },
     "modules/emoji-picker-simple.js": {
-      "stamp": "20260727b80",
+      "stamp": "20260728b81",
       "sha256": "3980016eef705a0695ac8e4c1cb02cf7f353fdac5c1e2d8218f6c4e43fdb4b6b"
     },
     "modules/drawing-tools-advanced-volume.js": {
-      "stamp": "20260727b80",
+      "stamp": "20260728b81",
       "sha256": "c96486d34c3b502e902296d4dab076a135dcc4c23472f99855341c26b7b71540"
     },
     "modules/drawing-tools-advanced.js": {
-      "stamp": "20260727b80",
+      "stamp": "20260728b81",
       "sha256": "5271b3a67d0b8bb9cc23bbdbb500a7eca57ca9d0ad7292256a2f71423082bf90"
     },
     "modules/drawing-tools-extended.js": {
-      "stamp": "20260727b80",
+      "stamp": "20260728b81",
       "sha256": "62fe18c628039e677ccc9dd0e9dfc086229c352dd5cfbb376cef51a0ac3ba051"
     },
     "modules/drawing-tools-patterns.js": {
-      "stamp": "20260727b80",
+      "stamp": "20260728b81",
       "sha256": "40def40e762368d7e4530bdf1ff761d1779f4f99d854bbce2e5c9771331b70b5"
     },
     "modules/drawing-tools-fib-gann.js": {
-      "stamp": "20260727b80",
+      "stamp": "20260728b81",
       "sha256": "263af94dce0beb1c58c5f2f956ac096a825d597c2eedd9c13a1f7d4a242b8e25"
     },
     "modules/drawing-tools-channels.js": {
-      "stamp": "20260727b80",
+      "stamp": "20260728b81",
       "sha256": "4e875cd9a1ecfd3b7440945c5b3a8484328db587c67a7672deed679877e5b1af"
     },
     "modules/drawing-tools-ui.js": {
-      "stamp": "20260727b80",
+      "stamp": "20260728b81",
       "sha256": "3aedd96a19f419820ceaeb212ec81eb232ccc001e828d18ebb8f2a27c01eae7e"
     },
     "modules/color-picker.js": {
-      "stamp": "20260727b80",
+      "stamp": "20260728b81",
       "sha256": "d4223a954706d408618419a3baabf0721195acc3ec891bf64fd3585dda865499"
     },
     "modules/drawing-toolbar.js": {
-      "stamp": "20260727b80",
+      "stamp": "20260728b81",
       "sha256": "ca205c5bfa5509e81f3ed1ee7d2a7b8297244bde2828d86ba3433e82bfd176e1"
     },
     "modules/undo-redo-manager.js": {
-      "stamp": "20260727b80",
+      "stamp": "20260728b81",
       "sha256": "4b4a258d692cd92bc6b43082209fefbe518d612843d7e2c33d5eb86a500b6810"
     },
     "modules/tool-lifecycle-store.js": {
-      "stamp": "20260727b80",
+      "stamp": "20260728b81",
       "sha256": "6a644def60a0aafd12c80f21bf6966ea938968bf24d715d9b4b48fcf4e329eca"
     },
     "modules/drawing-tools-manager.js": {
-      "stamp": "20260727b80",
-      "sha256": "8bb8c7626d81d47e188e2825803d73d4c55ca1d39ff399eeb872c546907d14d5"
+      "stamp": "20260728b81",
+      "sha256": "8777e37dbc78d43b05a689bc86a29735aba4ed1ce39c6b36b93b41f0c8039801"
     },
     "modules/chart-regression-cases.js": {
-      "stamp": "20260727b80",
+      "stamp": "20260728b81",
       "sha256": "0c3c9e8f5fc17c8cf8a5531814446aba4261213a913ad61cd79cec35bb5b49e5"
     },
     "modules/chart-regression-smoke.js": {
-      "stamp": "20260727b80",
+      "stamp": "20260728b81",
       "sha256": "852f1718cf5016e09680cbe68ad160e1fa83b0b5a5ade4fa9ada0b3539c26479"
     },
     "modules/favorites-manager.js": {
-      "stamp": "20260727b80",
+      "stamp": "20260728b81",
       "sha256": "5a93659bb7ce4d7d01f768f6c62b4e644a1dd1616cd30ed26df95366cdeed922"
     },
     "modules/keyboard-shortcuts.js": {
-      "stamp": "20260727b80",
+      "stamp": "20260728b81",
       "sha256": "55364e2151416f8fa17ec4f961de11222f655cfbceaf4a6e6ab23c3e8970b33d"
     },
     "modules/timezone-manager.js": {
-      "stamp": "20260727b80",
+      "stamp": "20260728b81",
       "sha256": "94ae7fa26e3455923f40f3ae337100d696da51fd513881394917ca9ca0e692c4"
     },
     "modules/viewport-data-manager.js": {
-      "stamp": "20260727b80",
+      "stamp": "20260728b81",
       "sha256": "425b29cb585785f6639b38a0e699e0e9765b55d02ba0fce82714b13b13bdf102"
     },
     "modules/chart-data-pipeline.js": {
-      "stamp": "20260727b80",
-      "sha256": "2bf874ebbfaf1c071a278955b622b3ac735e49b1ec57f8c437aa9c36bd31d724"
+      "stamp": "20260728b81",
+      "sha256": "51b117bf9050d725ce0df1c240f43d3610a3fe97b8a4329628ec3652fd8f0161"
     },
     "modules/talaria-toast-stack.js": {
-      "stamp": "20260727b80",
+      "stamp": "20260728b81",
       "sha256": "8c847334a41b6487e3f2f474fc90a3f4416c010c136cb0c3ed38cfecd9e69628"
     },
     "modules/module-presence-runtime.js": {
-      "stamp": "20260727b80",
+      "stamp": "20260728b81",
       "sha256": "3fe83c5088f3ceb31729855242ea0fc1eec2be7359aa235c05d63ad68675c1f6"
     },
     "modules/v9-theme-bridge.js": {
-      "stamp": "20260727b80",
+      "stamp": "20260728b81",
       "sha256": "93df1e4afacd108abd319dbdc69dd54fa1060d7f8397b515f93e1faa2afe1d60"
     },
     "modules/replay-system.js": {
-      "stamp": "20260727b80",
-      "sha256": "17fad1ef06c90bdb5ad481c3919a8098ce65fa6d0630585815ab3476dd4e9d9f"
+      "stamp": "20260728b81",
+      "sha256": "2b77f3c3b7e3d75102959a95f70941b803655779fd837430d09c541120e15a18"
     },
     "modules/replay-dashboard-sync.js": {
-      "stamp": "20260727b80",
+      "stamp": "20260728b81",
       "sha256": "50698b2d543890e2b90a80bf687530bf3d1e31cc86c93b21a9778ae180c048c6"
     },
     "modules/order-event-bus.js": {
-      "stamp": "20260727b80",
+      "stamp": "20260728b81",
       "sha256": "5f2ee3611607ba49eff296820cf17ba05e9b8a41e2d648a32cf8ced2cea0d32c"
     },
     "modules/order-service.js": {
-      "stamp": "20260727b80",
+      "stamp": "20260728b81",
       "sha256": "f75f63eb8e78ff61f4cdfee3803113a498463e3086e3c6b97c9b95064ebc054b"
     },
     "modules/order-manager.js": {
-      "stamp": "20260727b80",
-      "sha256": "eb70d1a5f7396e05843f4e6c6c05c8eb76945a16e8d3de81de496dbccf797b4d"
+      "stamp": "20260728b81",
+      "sha256": "9524e0d22b40609124b360da8fbe73186511d528363daa816618f19802d75c31"
     },
     "modules/indicator-persist-rehydrate.js": {
-      "stamp": "20260727b80",
+      "stamp": "20260728b81",
       "sha256": "ae0192f1caa404982850d8a178ecbac869ecf316bed5768b989603c43e2b5712"
     },
     "modules/indicator-settings-apply.js": {
-      "stamp": "20260727b80",
+      "stamp": "20260728b81",
       "sha256": "0cf2fda912e1e749e659bf6fdd1e0293bc9f5c6667dabfdf5dad412af7a24352"
     },
     "modules/indicator-visibility.js": {
-      "stamp": "20260727b80",
+      "stamp": "20260728b81",
       "sha256": "d9a8b6ede4beececb682cc7ad74c85a75fcc90dcb2b75b6c9d72dda2e2618ded"
     },
     "modules/indicator-lifecycle-store.js": {
-      "stamp": "20260727b80",
+      "stamp": "20260728b81",
       "sha256": "96d764747b3284ef436c707bc3f1ea8c2fe0441fa11aa41a76f7e8d7f4076e86"
     },
     "modules/talaria-fvg-indicator.js": {
-      "stamp": "20260727b80",
+      "stamp": "20260728b81",
       "sha256": "bcc54c9c421ee768fa4ea12ce40e9cb9065f3378b4dc0331a165f9176fef4c84"
     },
     "modules/talaria-ratio-gap-indicator.js": {
-      "stamp": "20260727b80",
+      "stamp": "20260728b81",
       "sha256": "ff5dc26e9249fb801062b98758456ee7ce307df885472f4efabd4e2b2eaf2bc0"
     },
     "modules/talaria-weekly-map-indicator.js": {
-      "stamp": "20260727b80",
+      "stamp": "20260728b81",
       "sha256": "796b9e5db11146392796c07c0bbe83b98dc5fcaf5743b0d183e72267289a6fd6"
     },
     "modules/talaria-simple-smc-indicator.js": {
-      "stamp": "20260727b80",
+      "stamp": "20260728b81",
       "sha256": "4ffa29a108c8ae1ee95ebd9110dbf47387a00770ac85da411b66371c25597ff3"
     },
     "modules/indicator-performance.js": {
-      "stamp": "20260727b80",
+      "stamp": "20260728b81",
       "sha256": "5d01c696c11a6d16016a953b77424e9c9aa3d53b294807a0187e90c0756eb20f"
     },
     "modules/chart-indicators-full.js": {
-      "stamp": "20260727b80",
+      "stamp": "20260728b81",
       "sha256": "7169223a7e8280a8bf9be79cfc237719b835e202bd27fbb42e716f08b7d4d52d"
     },
     "modules/indicator-ui.js": {
-      "stamp": "20260727b80",
+      "stamp": "20260728b81",
       "sha256": "7a552806f3b82df51a9bc39d8c4bace420560397b64cf7417ff97e91da1fc74e"
     },
     "modules/economic-news-sidebar.js": {
-      "stamp": "20260727b80",
+      "stamp": "20260728b81",
       "sha256": "a1abaf44b6e91c407a29b4cf9e91508325bab07edb030be1d007ce9861e921d2"
     },
     "modules/timeframe-favorites.js": {
-      "stamp": "20260727b80",
+      "stamp": "20260728b81",
       "sha256": "7440cdfad27c6886591330b1cc31fb48503001de006dbfc02b58bd11d78378f8"
     },
     "modules/propfirm-tracker.js": {
-      "stamp": "20260727b80",
+      "stamp": "20260728b81",
       "sha256": "9e1fad242a25145b8f68d5dabe46604962e8cb2d5a36a2034869d8f833282ecc"
     },
     "modules/compare-overlay.js": {
-      "stamp": "20260727b80",
+      "stamp": "20260728b81",
       "sha256": "bad2ba38e01463788604ad2e3e3a137d4fb2bf8f5eac28cca7255cd809a31f7d"
     },
     "modules/screenshot-manager.js": {
-      "stamp": "20260727b80",
+      "stamp": "20260728b81",
       "sha256": "bcea062d54d9667e2ce99428ee8f81dc2b0157b077afbaf15e663c823684a592"
     },
     "modules/alert-system.js": {
-      "stamp": "20260727b80",
+      "stamp": "20260728b81",
       "sha256": "76c1c0f365571d32d43358fff90274a2e736c8ee3d3dea21a90e63d1201af95c"
     },
     "modules/custom-indicators-runtime.js": {
-      "stamp": "20260727b80",
+      "stamp": "20260728b81",
       "sha256": "e3b9cb0a1b2f9bb2eb83e6faf014470ceb193476bcef64b5c7cfb089153a9dcc"
     },
     "modules/indicator-replay-ui-sync.js": {
-      "stamp": "20260727b80",
+      "stamp": "20260728b81",
       "sha256": "d233cd6f6b119f80c539945cbac902e2c38c202ce911b75321c958cd2a573424"
     }
   },
   "shellStamps": {
     "dist-v9-canonical": [
-      "20260727b80"
+      "20260728b81"
     ],
     "dist-v9-homepage": [
-      "20260727b80"
+      "20260728b81"
     ],
     "live-source": [
-      "20260727b80"
+      "20260728b81"
     ],
     "legacy-canonical": [
-      "20260727b80"
+      "20260728b81"
     ],
     "embed-canonical": [
-      "20260727b80"
+      "20260728b81"
     ],
     "embed-homepage": [
-      "20260727b80"
+      "20260728b81"
     ]
   }
 }
