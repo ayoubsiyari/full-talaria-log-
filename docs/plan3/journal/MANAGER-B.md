@@ -2864,3 +2864,16 @@ Also corrected the B-0126 escalation: option 2 (refuse empty `incoming_ids`) is 
 - **#1 hot path** — still open, but **blanket-blocking hot is withdrawn**. B-W16 brief §8a accepts brand-new sessions staying `'unhydrated'` and relying on hot for the first journal. The wipe arm (`!res.ok`) and the brand-new arm (`res.ok`, null state) are indistinguishable to `order-manager.js` today. Director choices narrowed to: A ships distinct reasons + B gates hot only on unreachable, or written residual acceptance.
 - **#3 chart.js enabler** — Manager A's territory (charter condition 2). Escalated in the audit §A: distinct hydrate reasons, and stop allow-listing journal patches on the unreachable arm. B wires the hot vouch the same hour the signal lands.
 - **#10 `'locally-authored'` never assigned** — accepted residual per §8a; must not widen the admit-list. Cell 10 from the brief was never added — open B follow-up, not a train blocker.
+
+---
+
+## B-0129 — PAR-01 received. Three §4 streams launched in parallel; stream 1 rehearsal proves B+C product-clean and A docs-only.
+
+**2026-07-28 17:26 (UTC+1).** Read `RULING-PARALLELISM-20260728-1722.md`. Parallel is the default; serial needs a reason. Kill-switches / GATE-01 / escalation unchanged.
+
+**§4 streams, concurrent:**
+1. **Release assembly / conflict resolution** (this entry) — writable set: `docs/plan3/evidence/B-M4/release/*` + scratch worktree only.
+2. **SAFE-01 deepen / A handoff** — read-only subagent, disjoint by construction.
+3. **Further live-surface verifications** — read-only subagent, disjoint by construction.
+
+**Stream 1 result.** Scratch merge of C onto B: `api_server.py` clean; `checkpoint-provenance.mjs` resolved by taking C in full — blob matches C tip; delta vs `51b6e0da1` is exactly the +6-line module-contract preflight. Journal took B. `lib/checkpoint-provenance.mjs` auto-merged C's legacy de-route (`legacyStatus: 404`). Dry-run of A/orphan-replay and A/critical-path onto B+C: **product files clean**; conflicts only in `docs/plan3/DIRECTOR-RULINGS-20260727.md`, one FINDING, and `MANAGER-A.md`. Journal rule for A's journal fixed in advance (owner's side). DIRECTOR-RULINGS flagged as Director-owned, not a manager-side pick. Post-push probe criterion updated: legacy 404 is a pass. A's render kill-switch still absent — final assembly still blocked on that alone. Rehearsal doc: `docs/plan3/evidence/B-M4/release/CONFLICT-RESOLUTION-REHEARSAL.md`.

@@ -195,12 +195,13 @@ All five must hold. Any one failing means the push is not verified:
    as the module* — a PRESENT on an unidentified body is not a pass.
 2. **Served bytes differ from `ff6e9df1…`.** If they match, we shipped and the surface
    is still serving the 25 July file — a cache or build-path failure, not a code failure.
-3. **Every shell the probe can read reports `20260728b81`**, and they agree with each
-   other. The three unauthenticated shells (`dist-v9/index.html`, `legacy-index.html`,
-   `multichart-prod/chart-embed.html`) must all be PRESENT at b81.
-   `/chart/index.html` will report UNDETERMINED behind its auth gate unless a cookie is
-   supplied; **that is a pass, not a failure** — see §0(b). With a cookie it must also
-   report b81, since it resolves to `dist-v9/index.html`.
+3. **Build-id coherence on the shells that remain live after C's legacy de-route.**
+   `dist-v9/index.html` and `multichart-prod/chart-embed.html` must both be PRESENT at
+   `20260728b81` and agree. `/chart/legacy-index.html` is **de-routed by C** — the
+   stamper now expects `legacyStatus: 404` (see conflict rehearsal §3). A 404 or
+   UNDETERMINED on legacy is a **pass**, not a missing stamp. `/chart/index.html`
+   stays UNDETERMINED behind its auth gate without a cookie — also a pass; with a
+   cookie it must report b81 (it resolves to dist-v9).
 4. **`GET /api/sessions/{id}` returns 2xx with a token.** A 401 is UNDETERMINED, not a
    pass — it means reachable-but-unread, and it is the state we are in today.
 5. **Exit code 0.** Exit 1 is ABSENT (shipped without the fix); exit 3 is UNDETERMINED
