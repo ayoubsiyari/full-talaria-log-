@@ -1330,3 +1330,23 @@ flowing into `holdingTimeMs = closeTime - position.openTime` at ~33680. With no 
 **Dispatched as B-W9** with the resolution order specified so the agent does not invent semantics: `bgCloseTime` when finite including zero, then `evalCandle.t`, then `currentCandle.t`, then the last known bar time from chart data, then wall clock **only** outside replay, and if nothing yields a finite value then **record the duration as unknown rather than fabricate one**. A missing duration is recoverable; a fabricated 26,000-hour duration is a corrupted trade record, and this is a money-adjacent journal.
 
 **Stated plainly so it is not overclaimed: the trigger is not proven.** That `evalCandle` is genuinely absent after a rollback is my leading candidate, not an established fact. The fix is correct defensively regardless — differencing wall clock against bar time is wrong on any path that can reach it — but I have not established that this is what the PO hit, and B-W9 is instructed to tell me if `evalCandle` can never be null here.
+
+---
+
+## B-0076 — M4 Phase 1 round 2: silent pass fixed, verified; a second vacuity found in L6
+
+B-W8 returned with the transport defects fixed and the mutation count raised from 6 to **15 designed, 0 survived**. I verified rather than accepted, and both halves check out: the two commands that previously printed nothing and exited 0 now exit **1** with a full header and one line per check, naming the URL and the failure — `missing required arguments: --session-id, --qa-account-id` in one case, `Transport failure for http://127.0.0.1:1/... fetch failed` in the other. SKIP-LOUD correctly counts toward `nonpass`, so a skipped check cannot be mistaken for a passing one. L6 is reimplemented as two consecutive `GET /state` reads compared byte-for-byte, which is the mechanism I established in B-0074.
+
+**Then I attacked it with a case outside its mutation set, and found a second vacuous pass — in the one invariant I personally rescued.** Against a stub returning `{"state":{"journal":[]}}`:
+
+```
+L6 PASS {"first":{"trades":[],"snapshot":"[]"},"second":{"trades":[],"snapshot":"[]"}}
+```
+
+Two identical **empty** snapshots satisfy idempotence trivially, because there is nothing to migrate. On a fresh candidate whose QA session has no trades yet — entirely plausible tonight — L6 reports PASS having exercised nothing.
+
+**The generalisation is the valuable part, and I had not seen it before today.** All 15 of B-W8's mutations are *corruption*-class: take something valid and break it. This defect is *absence*-class: supply input that is valid, well-shaped, reachable, and **empty**. A corruption-class mutation budget, however large, cannot find it — the two failures are orthogonal, and both are ways for a gate to pass while proving nothing. Today's three vacuity findings now sort cleanly: V8's harness never loaded the product (wrong instrument), M4's first build could not reach the server (absent transport), and L6 had nothing to examine (absent data). **My binding rule from B-0069 needs the amendment: a mutation-survival count is only meaningful if the set spans both corruption and absence.** I have added that to the standing rule rather than treating it as a one-off.
+
+Sent back with the fix — an empty first snapshot is a precondition failure, never a pass — plus a requirement to state, for every check, what its non-vacuity precondition is and how it is enforced, and to extend the mutation set with the absence class: empty ledger, single-trade ledger, non-empty array of null-valued fields, and identical-but-wrong reads.
+
+One point of method worth keeping: I found this by pointing the harness at a stub I wrote in thirty seconds, not by reading it. Reading found none of today's three vacuities; **running the thing against inputs its author did not anticipate found all three.**
