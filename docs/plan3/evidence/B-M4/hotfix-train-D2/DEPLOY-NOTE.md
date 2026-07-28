@@ -70,9 +70,23 @@ Required at build:
 
 ```
 CHECKPOINT_BUILD=1
-CHART_BUILD_ID=<assigned by the checkpoint build>
+CHART_BUILD_ID=20260728b81
 SOURCE_COMMIT_SHA=e996842b2270cb4ffd6e0515cf7dd4c3b840a4fd
 ```
+
+**The build id is not free-choice, and it is part of this train.** `order-manager.js`
+changed while its `?v=` stamp did not, so shipping under a stamp that is not ahead
+of everything already served means Cloudflare and warm browsers answer from cache
+and the fix never arrives. Worse, `bump-dist-v9-cache.mjs:73` derives the id by
+**incrementing the committed stamp** when `BUILD_ID` is unset — and this branch's
+committed stamp is `20260724b61`, so an ordinary build yields `b62`, *behind* the
+`20260727b80` already in the field.
+
+`20260728b81` is pinned in `BUILD-PARAMS.json` and enforced: `record-build` refuses
+any id at or below the `20260727b80` floor. Passing it as a build arg needs **no
+source edit** — `homepage/Dockerfile:17` sets `ENV BUILD_ID=${CHART_BUILD_ID}` and
+`resolveBuildId` prefers it over the committed value, which matters because all four
+shells that load the module belong to Manager A.
 
 **After the build, record the assigned build id and the image digests** in
 `BUILD-RECORD.json` beside this note (use `seal-evidence.mjs`, which refuses to

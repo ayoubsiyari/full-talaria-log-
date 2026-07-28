@@ -43,6 +43,7 @@ const EVIDENCE = [
     'chart v 1.4/chart/modules/b-w18-killswitch.mutants.mjs',
     'chart v 1.4/chart/tests/test_b_w17_journal_sweep_guard.py',
     'docs/plan3/evidence/B-M4/hotfix-train-D2/DEPLOY-NOTE.md',
+    'docs/plan3/evidence/B-M4/hotfix-train-D2/BUILD-PARAMS.json',
     'docs/plan3/evidence/B-M4/hotfix-train-D2/PO-VERIFICATION.md',
 ];
 
@@ -124,6 +125,8 @@ if (cmd === 'seal') {
             const m = /const CHART_ENGINE_BUILD = '([^']+)'/.exec(js.toString('utf8'));
             return m ? m[1] : null;
         })(),
+        buildIdFloor: '20260727b80',
+        requiredBuildArgs: JSON.parse(fs.readFileSync(path.join(HERE, 'BUILD-PARAMS.json'), 'utf8')).required_build_args,
         buildId: null,
         buildIdNote:
             'null by design: the shipped build id does not exist until the image is '
@@ -188,6 +191,33 @@ if (cmd === 'record-build') {
     if (!buildId) {
         console.error('record-build requires --build-id=<id> (DEPLOY-01).');
         console.error('If the build produced no id, the build is not shippable — that is the point of DEPLOY-01.');
+        process.exit(2);
+    }
+
+    // The stamp is part of the train, not a follow-up. `order-manager.js` changed
+    // without its ?v= changing, so a build id that is not strictly ahead of every
+    // stamp already served ships correct bytes at a URL Cloudflare answers from
+    // cache. bump-dist-v9-cache.mjs derives the id by INCREMENTING the committed
+    // stamp when BUILD_ID is unset, so an ordinary build of this branch yields
+    // b62 — behind the b80 already in the field. Refuse it here rather than
+    // document it: a build parameter that is only written down is not enforced.
+    const STAMP_FLOOR = '20260727b80';
+    const parseStamp = (s) => {
+        const m = /^(\d{8})b(\d+)$/.exec(String(s).trim());
+        return m ? { date: m[1], n: parseInt(m[2], 10) } : null;
+    };
+    const got = parseStamp(buildId);
+    const floor = parseStamp(STAMP_FLOOR);
+    if (!got) {
+        console.error(`REFUSED: build id ${JSON.stringify(buildId)} is not of the form YYYYMMDDbN.`);
+        console.error('checkpoint-build-assert.mjs enforces the same shape at build time.');
+        process.exit(2);
+    }
+    if (got.n <= floor.n || got.date < floor.date) {
+        console.error(`REFUSED: build id ${buildId} is not ahead of ${STAMP_FLOOR}, the highest stamp known to have been served.`);
+        console.error('Recording it would claim a cache-bust that did not happen: browsers and');
+        console.error('Cloudflare holding that URL keep serving the pre-guard module.');
+        console.error('Rebuild with --build-arg CHART_BUILD_ID set ahead of the floor.');
         process.exit(2);
     }
     const rec = {
