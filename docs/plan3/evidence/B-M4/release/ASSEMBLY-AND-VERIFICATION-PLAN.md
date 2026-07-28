@@ -183,12 +183,16 @@ only, safe on a defective build:
 
 ```
 node docs/plan3/evidence/B-M4/live-surface-probe/live-surface-probe.mjs \
-  --base-url=<surface> --session-id=<id> --token=<qa-token> \
+  --base-url=<surface> --deploy-gate --session-id=<id> --token=<qa-token> \
+  --cookie=<session-cookie> \
   --shell=/chart/index.html --shell=/chart/dist-v9/index.html \
   --shell=/chart/legacy-index.html --shell=/chart/multichart-prod/chart-embed.html \
   --shell=/chart/talaria-design/live/index.html \
   --out=docs/plan3/evidence/B-M4/live-surface-probe/observations
 ```
+
+`--deploy-gate` fails closed on inert `?v=`, incoherent 200 shells, and
+`CHART_ENGINE_BUILD` ≠ shell build id. Exit 2 = deploy hazard, not a product ABSENT.
 
 All must hold. Any one failing means the push is not verified:
 

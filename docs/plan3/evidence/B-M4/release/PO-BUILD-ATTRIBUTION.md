@@ -30,3 +30,9 @@ On load the page also logs `[Talaria] chart build <id>` to the console.
 
 Record: **URL + `window.__TALARIA_CHART_BUILD_ID` + wall-clock time**. Without the
 build id, the session is not evidence about a fix.
+
+## Before trusting a retest (cache residuals)
+
+1. Confirm the corner badge / `window.__TALARIA_CHART_BUILD_ID` is the **new** id from the ship note.
+2. If it is the old id: hard reload (Ctrl+Shift+R), or private window, or unregister the service worker for the origin — then re-check the badge.
+3. If the badge is new but behaviour looks old: tell B — that is a deploy-gate / byte-identity problem, not a product judgment.
