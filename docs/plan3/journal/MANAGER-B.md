@@ -2970,3 +2970,23 @@ R1 M23, R1 Q9). Evidence: `TRAIN-SHIP-GO-20260728-2000.md`. Assembling B→C→A
 `live-surface-probe --deploy-gate`.
 
 **Not waiting on FIX 1.** Residuals P2/P3/P4 remain A's continuing work, not a hold.
+
+---
+
+## B-0138 — PUSH HELD. P6 has consumers; P2/P3/P4 present+unflagged on tip. A was right.
+
+Director `RULING-SHIP-GO-P6-HOLD-20260728-2012.md`. Assembly/stamp untouched.
+
+**P6.** Probe `31.97.192.82:3000`: `/chart/talaria-design/live/` and `…/index.html` both
+**HTTP 200** (stamps b12/b50). Nginx `try_files` under `/chart/`. Tip has the homepage
+twin **deleted** (`d071c858f`). Route has consumers → P6 does **not** clear. A restores;
+deletion later. Evidence: `P6-P234-HOLD-20260728-2016.md`, probe JSON sealed.
+
+**P2/P3/P4 on tip `f8a6c28a8` vs baseline `39152ca7b`:** all three product changes are
+**in the artifact** (eviction rescope in `drawing-tools-manager.js`; IndicatorPerf script
+tags; `module-presence-runtime.js` + Degraded badge). All three reserved switches
+**ABSENT**. My "continuing work" reading was wrong — I described A's queue, not the tip.
+They **block**.
+
+**No push.** Handoff: `HANDOFF-A-P6-P234-HOLD.md`. Waiting on A; not idle — will re-verify
+the tip the hour those land.

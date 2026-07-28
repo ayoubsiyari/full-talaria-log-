@@ -1,0 +1,84 @@
+{
+  "tool": "live-surface-probe",
+  "contract": "PRESENT = identified and found. ABSENT = identified and not found. UNDETERMINED = could not identify, with a reason. ABSENT is never inferred from a failure. stampInert is a separate deploy hazard and never rewrites ABSENT↔PRESENT.",
+  "startedAtUtc": "2026-07-28T19:16:45.747Z",
+  "baseUrl": "http://31.97.192.82:3000",
+  "credentialSupplied": false,
+  "readOnly": true,
+  "deployGate": false,
+  "findings": [
+    {
+      "kind": "module",
+      "url": "http://31.97.192.82:3000/chart/modules/order-manager.js",
+      "status": 200,
+      "transportError": null,
+      "bytes": 2419821,
+      "contentType": "application/javascript",
+      "cache": {
+        "cfCacheStatus": null,
+        "age": null,
+        "etag": "W/\"6a66a9e1-24ec6d\"",
+        "lastModified": "Mon, 27 Jul 2026 00:44:17 GMT",
+        "cacheControl": "max-age=3600, public, must-revalidate"
+      },
+      "stampInUrl": null,
+      "identified": true,
+      "markers": {
+        "journalVouchedFor": {
+          "state": "ABSENT",
+          "occurrences": 0
+        }
+      }
+    },
+    {
+      "kind": "build-id",
+      "perShell": [
+        {
+          "shell": "/chart/talaria-design/live/index.html",
+          "status": 200,
+          "state": "PRESENT",
+          "stamps": [
+            "20260723b12",
+            "20260723b50"
+          ],
+          "declaredBuildId": "20260723b12"
+        },
+        {
+          "shell": "/chart/talaria-design/live/",
+          "status": 200,
+          "state": "PRESENT",
+          "stamps": [
+            "20260723b12",
+            "20260723b50"
+          ],
+          "declaredBuildId": "20260723b12"
+        },
+        {
+          "shell": "/chart/dist-v9/index.html",
+          "status": 200,
+          "state": "PRESENT",
+          "stamps": [
+            "20260726b75"
+          ],
+          "declaredBuildId": "20260726b75"
+        }
+      ],
+      "distinctBuildIds": [
+        "20260723b12",
+        "20260723b50",
+        "20260726b75"
+      ],
+      "coherent": false,
+      "presentShellCount": 3,
+      "coherenceNote": "Shells that returned 200 disagree on build id. They share /chart/modules/* URLs, so one surface can serve a module another has already cache-busted."
+    }
+  ],
+  "summary": {
+    "verdict": "ABSENT",
+    "exitCode": 1,
+    "deployGate": false,
+    "stampInert": null,
+    "incoherent": true,
+    "deployHazards": []
+  }
+}
