@@ -38,8 +38,9 @@ export const SHORT_PHASE_TIMINGS = Object.freeze({
   p1ObserveMs: 3_000,
   p2IdleMs: 10_000,
   p2ObserveMs: 3_000,
-  lagSingleObserveMs: 3_000,
-  p4ObserveMs: 3_000,
+  // 10x on 1m ≈ 0.167 bars/sec; 15s yields ~2.5 expected bars for lag ratios.
+  lagSingleObserveMs: 15_000,
+  p4ObserveMs: 15_000,
   p6ObserveMs: 3_000,
   p7SettleMs: 1_000,
   p7ObserveMs: 3_000,
@@ -1396,11 +1397,18 @@ export function poCpuAbHostHtml({ timings = DEFAULT_PHASE_TIMINGS, mutant = fals
 
         const contentSingle = armContentOnWindows([{ id: 'A', win: harnessWindow() }]);
         const preparedSingle = await prepareReplay10xForChart(chart());
-        const lagSingleBefore = { A: preparedSingle && preparedSingle.beforeState || replayStateForChart(chart()) };
         const lagSingleToggle = { usedToggle: false };
         if (preparedSingle && preparedSingle.ok === true) {
-          attemptReplayStart(preparedSingle.rs, lagSingleToggle);
+          const armDeadline = Date.now() + 4000;
+          while (Date.now() < armDeadline) {
+            attemptReplayStart(preparedSingle.rs, lagSingleToggle);
+            const armedState = replayStateForChart(chart());
+            if (armedState.isPlaying === true || armedState.passivePlayActive === true) break;
+            await sleep(50);
+          }
         }
+        // Snapshot immediately before the observe window so indexDelta matches wall time.
+        const lagSingleBefore = { A: replayStateForChart(chart()) };
         phases.LAG_SINGLE = await collectPhase(
           'LAG-SINGLE-content-replay-10x-or-nearest',
           CONFIG.timings.lagSingleObserveMs || CONFIG.timings.p4ObserveMs
@@ -1446,8 +1454,10 @@ export function poCpuAbHostHtml({ timings = DEFAULT_PHASE_TIMINGS, mutant = fals
           && lagFourCapture.medianP95FrameMs > 0
           ? lagSingleCapture.medianP95FrameMs / lagFourCapture.medianP95FrameMs
           : null;
+        // Zero single long-task rate is a vacuous baseline (0/x); keep p95 as the carrier.
         const longTaskRetention = Number.isFinite(lagSingleCapture.medianLongTaskPerSec)
           && Number.isFinite(lagFourCapture.medianLongTaskPerSec)
+          && lagSingleCapture.medianLongTaskPerSec > 0
           && lagFourCapture.medianLongTaskPerSec > 0
           ? lagSingleCapture.medianLongTaskPerSec / lagFourCapture.medianLongTaskPerSec
           : null;

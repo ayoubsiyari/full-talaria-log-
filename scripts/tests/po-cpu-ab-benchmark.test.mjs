@@ -7,6 +7,7 @@ import {
   PO_CPU_AB_SIGNATURE,
   PO_CPU_AB_STATUS_SKIP,
   PO_CPU_AB_STATUS_SHORT,
+  SHORT_PHASE_TIMINGS,
   assertPoCpuAbBenchmarkReport,
   lagMechanismHintFromRetentions,
   mutatePoCpuAbReplaySystemForPauseTeardownNC,
@@ -1275,6 +1276,11 @@ test('unit: CLI args expose require-browser and short P2 override', () => {
 
 test('unit: default full protocol timeout covers unshortened phases', () => {
   assert.ok(DEFAULT_PO_CPU_AB_TIMEOUT_MS >= 600_000);
+});
+
+test('unit: short lag observe windows can accumulate 10x 1m bars', () => {
+  assert.ok(SHORT_PHASE_TIMINGS.lagSingleObserveMs >= 15_000);
+  assert.ok(SHORT_PHASE_TIMINGS.p4ObserveMs >= 15_000);
 });
 
 test('unit: lag dual-metric cells GREEN when content + throughput + smoothness emitted', () => {
