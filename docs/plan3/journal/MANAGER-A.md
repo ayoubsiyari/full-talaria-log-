@@ -2498,3 +2498,51 @@ The bounded branch is now `Math.min(REPLAY_SPEED_MAX, base * 2)`. Because `base`
 **Boundary inputs nobody exercised.** The demonstration used 60 throughout. I asked the reviewer to drive `10.5`, a negative, `NaN`, the string `"60"` and `Infinity` — `normalizeSpeed` coerces with `Number()` and has a `Number.isFinite` guard, so these should be fine, and that is precisely why nobody tested them.
 
 **Reported and correctly not acted on:** the `speed >= 50` draw throttle branch is now unreachable, the six direct `speed` readers outside the writable set are untouched, and `backtestingSession.replaySpeed` remains write-only. Requirement 3 — CPU at 100x versus 10x — is still owed and **must be measured before this packet merges**, because afterwards 100x is unreachable and the comparison needs a revert to run at all.
+
+---
+
+## 2026-07-28 10:34 — M1: A's half is green; the gate that closes it is not on A's branch
+
+surface=`manager-a/critical-path` @ `f802a66`, with C-territory infra read at `manager-c/verification-infra` @ `ab44afe`
+coverage=all five owned-stamped shells checked this run for presence and ordering; `module-contract-preflight.mjs` executed green (10 checks); §A14.3 gate executed on C's branch
+
+**The direct answer to my own question — M1 cannot close by 15:15 on A's work alone.** It is not blocked on anything A still owes.
+
+The surviving production chart runtime is smaller than I had been carrying: **two public URLs** (`/chart/index.html`, `/chart/multichart-prod/chart-embed.html`) across **five stamped file paths**, plus `talaria-design/live/index.html` as the Vite source that regenerates two of them. All five have `indicator-performance.js` present and ordered before `chart-indicators-full.js`, every tag is `defer` so document order is execution order, the panel surfaces preserve order through sequential `document.write` of a `paths[]` array, and the rebuild path is guarded because `build:chart-v9` runs `preflight:module-contracts` first. The runtime tripwire tests pass. A owes nothing further here.
+
+What is missing is the gate, and it is entirely in C's territory: `shell-inventory-preflight.mjs` and `servable-shell-discovery.mjs` are **absent from A's branch** and CI-wired only on C's. So on A's branch the §A14.3 assertion does not exist to run.
+
+## 2026-07-28 10:35 — §A14.3 fires on `chart-host.html`, and it vindicates the hold rather than the packet
+
+Executed on C's branch: the exposure conditional is implemented as violation kind `conditional-exposure` at `shell-inventory-preflight.mjs:710-723`, and it fires **twice** — on `chart v 1.4/chart/multichart/chart-host.html` and its `homepage/public` mirror. Both load the chart engine and carry neither `indicator-performance.js` nor `module-presence-runtime.js`.
+
+This settles the held `tripwire` row and it settles it against the packet. The loader packet proposed adding `chart-indicators-full.js` to `chart-host.html` — a 989 KB undeclared expansion — to silence what it read as a tripwire false positive. **§A14.3's remedy for a shell in that state is the opposite one: de-route it, do not wire modules into it.** I held the packet on the grounds that a megabyte of unmeasured JS is not a way to quiet a tripwire; the ruling's own conditional says the tripwire was not false at all, and the correct discharge is removing the route. That work is C's.
+
+Legacy fires `removal-pending` rather than a missing-module violation, which is the §A14.3 inversion behaving as written — legacy is not an M1 module gap and must not be counted as one.
+
+## 2026-07-28 10:36 — CORRECTION: I over-generalised the module-contract gate's blindness
+
+When I blocked the loader packet I wrote that `module-contract-preflight.mjs` produced byte-identical output before and after the changed files and therefore did not observe them. **The fact was right and my generalisation was wrong.**
+
+The gate skips any inventory row whose status is not `owned-stamped` (`:71-77`). Fault injection on A's branch shows it goes RED on missing, duplicated and misordered tags for surfaces it does observe. So it is not a gate that fails to notice edits — it is a gate with a **documented exclusion list**, and the loader packet happened to edit an excluded surface (legacy). My block stands on its evidence; the sentence generalising it to the gate's owned-stamped checks is withdrawn.
+
+## 2026-07-28 10:37 — Two scope figures I had wrong, and a cross-link to the cap review
+
+The §A6 enumeration figure I have been repeating as "114 HTML files" does not describe this tree. The independent walk of `chart v 1.4`, `homepage/public` and `homepage/out` found **31**, because `homepage/out` does not exist. Two of the 31 are undeclared in C's 29-row inventory (`maintenance.html` and design mockups) and neither references the chart engine, so the inventory's coverage of chart shells is complete even though its file count is not.
+
+Separately, `backtesting.html` and `propfirm-backtest.html` are routed and allowlisted but load no `chart.js` and no `/chart/modules/*` — routed is not the same as in-scope for the indicator stack, and I should stop treating the allowlist as the scope boundary.
+
+**Cross-link worth passing on:** the M1 walk shows `dist-v9/index.html` carrying script tags at the same line numbers as `talaria-design/live/index.html`, which means the built shell is close to a copy of the source shell and the React application is bundled into separate assets. That is directly relevant to the `dist-v9` hazard I sent to the cap review — if the speed ladder rides in a bundled asset rather than in the shell HTML, checking the committed `index.html` would not reveal a stale ladder. The reviewer should look at the assets, not the shell.
+
+## 2026-07-28 10:38 — ESCALATION to C and the Director: M1's remainder is four C-owned items
+
+M1 is a 15:15 chain item and A cannot deliver it. The remainder, in the order it must land:
+
+1. **Land and CI-wire** `shell-inventory-preflight.mjs` and `servable-shell-discovery.mjs` onto the integration branch. Today they exist only on C's branch, so §A14.3 is unenforced everywhere else.
+2. **De-route sandbox `chart-host.html`** on both the FastAPI mount and the nginx public copy. This clears both `conditional-exposure` violations, and per §A14.3 it is the only permitted remedy — wiring modules in is forbidden.
+3. **Integrate both preflights into the deploy gate path**, not just `multichart-harness.yml`. M1 cites §A4c at build *and* runtime.
+4. **Merge the branches** so A's green HTML state and C's gate infra ship together. Neither is sufficient alone.
+
+The shell preflight is currently RED overall at 63 budgeted violations — 45 `proof-of-derouting-unsatisfied` and 13 `shell-parse-incomplete` beyond the two above — so item 3 has a precondition that is C's to size, not mine to assert.
+
+**There is a narrower M1 the PO could accept today**, and I want it ruled rather than assumed: *§A4c module-contract preflight plus runtime tripwire, on the five owned-stamped production shells only.* That slice is green on A's branch right now, verified by execution this run. It is a real guarantee about the surfaces users actually reach, and it is **not** the §A14.3 retirement primitive — it says nothing about shells that should not be routed at all. Per §A16.5, review confidence is not gate coverage; I am not going to quietly redefine M1 down to the part I can pass.
