@@ -125,19 +125,24 @@ function toPointSeries(series) {
  *              the displayed close is already correct there and LIMB 1 cannot see
  *              the defect however its subject is chosen.
  *   'coarse' — product-default candle-mode stepping: the playhead advances one
- *              DISPLAY period per step, landing at a fixed phase offset inside each
- *              bucket. The bucket then leaves the last slot holding the close as of
- *              that offset. This is the mode the PO and the adversarial reviewer
- *              drove, and it is the only mode in which the completed-bar mutation
- *              is observable.
+ *              DISPLAY period per step at a FIXED phase offset. This is a synthetic
+ *              stepping law, retained only as a contrast case. It is NOT what the
+ *              product does — see 'product' below — and no verdict is drawn from it.
+ *   'product'— the real thing: each step calls the product's own
+ *              `ReplaySystem.calculateNextIndex()`, which re-anchors to
+ *              `_replayBucketStart(ts, tfMs) + tfMs` and then takes
+ *              `_firstRawIndexAtOrAfter(...)`. That lands the playhead on the FIRST
+ *              raw bar of the next bucket, so any starting phase collapses to phase
+ *              0 within one step and the newest display candle holds exactly one raw
+ *              bar. Landing phases are recorded per run rather than assumed.
  *
  * @param {object} opts
  * @param {Array} opts.pointRows      integer-point 1m corpus
  * @param {string} opts.timeframe
  * @param {boolean} opts.killSwitchOn true = M20-Q9 fix DISABLED (legacy slice)
- * @param {'raw'|'coarse'} [opts.stepMode]
+ * @param {'raw'|'coarse'|'product'} [opts.stepMode]
  * @param {number} [opts.stride]           raw-mode tick stride
- * @param {number} [opts.phaseOffsetBars]  coarse-mode offset into each bucket
+ * @param {number} [opts.phaseOffsetBars]  coarse-mode offset / product-mode START phase
  * @param {number} [opts.startIdx]
  */
 export function runReplay({
@@ -149,7 +154,7 @@ export function runReplay({
     const barsPerBucket = tfMs / MINUTE_MS;
     let effStride = stride;
     let effStart = startIdx;
-    if (stepMode === 'coarse') {
+    if (stepMode === 'coarse' || stepMode === 'product') {
         effStride = barsPerBucket;
         effStart = phaseOffsetBars;
     }
@@ -172,6 +177,19 @@ export function runReplay({
     const { chart, counters } = makeProductChart(timeframe);
     chart.replaySystem = rs;
     rs.chart = chart;
+
+    // 'product' mode drives the REAL calculateNextIndex / _replayBucketStart /
+    // _firstRawIndexAtOrAfter / _getLocalRawBarPeriodMs off ReplaySystem.prototype.
+    // The single resolver stubbed is _resolveReplayStepTimeframeForStep, which in
+    // the product reaches into DOM-backed interval controls; it is pinned to the
+    // chart's display timeframe, i.e. the candle-mode branch. Recorded as a stub in
+    // the returned evidence rather than passed off as product behaviour.
+    const stubbedResolvers = [];
+    if (stepMode === 'product') {
+        rs._resolveReplayStepTimeframeForStep = () => timeframe;
+        stubbedResolvers.push('_resolveReplayStepTimeframeForStep -> chart.currentTimeframe');
+    }
+    const landingPhases = [];
 
     // Cite: under coarse stepping the source grows by more than one bar per
     // install, so ChartDataPipeline's `sourceLen === source.length - 1`
@@ -214,14 +232,26 @@ export function runReplay({
 
     const helperReadings = new Set();
 
+    /** Real product advance. Returns master.length to terminate at the tail. */
+    function nextProductIndex(idx) {
+        rs.currentIndex = idx;
+        rs.replayTimestamp = master[idx].t;
+        const next = rs.calculateNextIndex();
+        return next <= idx ? master.length : next;
+    }
+
     try {
         withQ9KillSwitch(killSwitchOn, () => {
             const fixEnabled = rs._m20Q9PrefixSliceFixEnabled();
             helperReadings.add(fixEnabled);
 
-            for (let idx = effStart; idx < master.length; idx += effStride) {
+            for (let idx = effStart; idx < master.length;
+                idx = (stepMode === 'product' ? nextProductIndex(idx) : idx + effStride)) {
                 rs.currentIndex = idx;
                 rs.replayTimestamp = master[idx].t;
+                if (stepMode === 'product') {
+                    landingPhases.push((master[idx].t - Math.floor(master[idx].t / tfMs) * tfMs) / MINUTE_MS);
+                }
 
                 // ── transcribed product sequence ─────────────────────────
                 const sliceEnd = Math.max(rs.currentIndex + 1, 1);
@@ -256,8 +286,17 @@ export function runReplay({
                 const rawViewComplete = master[sliceEnd - 1].t >= bucketLastRawT;
                 const masterComplete = masterLastT >= bucketLastRawT;
 
+                const formingMarker = findFormingMarker(postTrimRef);
+
                 // ── limb 1 ──
-                immut.observe(toPointSeries(chart.data), idx, rs.replayTimestamp);
+                immut.observe({
+                    series: toPointSeries(chart.data),
+                    tick: idx,
+                    playheadMs: rs.replayTimestamp,
+                    rawViewComplete,
+                    formingMarker,
+                    refByT,
+                });
 
                 // ── limb 2 ──
                 window.observe({
@@ -266,7 +305,7 @@ export function runReplay({
                     fullBucket: ref,
                     rawViewComplete,
                     masterComplete,
-                    formingMarker: findFormingMarker(postTrimRef),
+                    formingMarker,
                     playheadMs: rs.replayTimestamp,
                 });
 
@@ -325,7 +364,15 @@ export function runReplay({
     return {
         timeframe,
         stepMode,
-        phaseOffsetBars: stepMode === 'coarse' ? phaseOffsetBars : null,
+        phaseOffsetBars: stepMode === 'raw' ? null : phaseOffsetBars,
+        stubbedResolvers,
+        landingPhaseMinutes: landingPhases.slice(0, 12),
+        distinctLandingPhases: [...new Set(landingPhases)].sort((a, b) => a - b).slice(0, 8),
+        // Excludes the seeded first tick (we choose its phase deliberately) and the
+        // last (`_firstRawIndexAtOrAfter` clamps to fullRawData.length - 1 at the
+        // tail, which can land at any phase). What remains is the steady state.
+        distinctSteadyStateLandingPhases: [...new Set(landingPhases.slice(1, -1))]
+            .sort((a, b) => a - b).slice(0, 8),
         killSwitchOn,
         productHelperReadings: [...helperReadings],
         fullResampleCalls: counters.fullResample,
@@ -566,9 +613,9 @@ export function settlingDiagnostic({ pointRows, timeframe, killSwitchOn, maxBoun
     return {
         timeframe,
         killSwitchOn,
-        subject: 'chart.data[length-2] — STRUCTURALLY UNTOUCHABLE BY THE TRIM; '
-            + 'this diagnostic cannot see the completed-bar mutation and must not be '
-            + 'read as evidence about it',
+        subject: 'chart.data[length-2] — beyond the trim\'s reach, but NOT beyond the '
+            + 'resample\'s: the pipeline rebuilds the entire series from the growing '
+            + 'prefix every tick, so this is a genuine differential over _resampleDataFull',
         boundaries: rows.length,
         finalisedBucketDiffersFromSameImplementationResample: anyProductVsClean,
         finalisedBucketDiffersFromIndependentFullBucket: anyProductVsFull,
@@ -632,6 +679,83 @@ export function probeTrimDivergenceOnInconsistentBar({ pointRows, timeframe, tar
         trimChangedLow: pre.lP !== post.lP,
         trimChangedClose: pre.cP !== post.cP,
         highDeltaPoints: post.hP - pre.hP,
+    };
+}
+
+/* ───────── the trim's CLOSE contribution, via the _btTfDataCache branch ───────── */
+
+/**
+ * Bounds the trim's contribution to the field that actually matters. The previous
+ * revision's "trim contributes 0%" was measured on the close but bounded only by a
+ * fault injection that moved the HIGH — a claim about one field standing in for
+ * another. This drives the branch that was the acknowledged gap.
+ *
+ * Setup is the scenario the product method exists for: a coarse master (1h bars)
+ * displayed at its own native period, with `_btTfDataCache` holding the finer 1m
+ * series saved before a timeframe switch. `currentFileId` is set, so
+ * `_getWalkForwardOhlcToPlayhead` takes the cache branch (chart.js:8908-8926) and
+ * aggregates 1m bars over [bucketStart, playhead] instead of returning null.
+ *
+ * The resample of the coarse prefix yields the FULL 1h bar; the trim overwrites it
+ * with the walk-forward value. The difference is the trim's own close error.
+ */
+export function probeTrimCloseContributionViaBtCache({ pointRows, timeframe = '1h' }) {
+    const tfMs = TF_MS[timeframe];
+    const coarsePoints = referenceBucketsPoints(pointRows, tfMs);
+    const coarseMaster = toProductBars(coarsePoints);
+    const finerMaster = toProductBars(pointRows);
+
+    const ReplaySystem = loadReplaySystem();
+    const rs = Object.create(ReplaySystem.prototype);
+    rs.isActive = true;
+    rs.fullRawData = coarseMaster;
+    rs.rawTimeframe = timeframe;
+
+    const { chart } = makeProductChart(timeframe, { countFullResamples: false });
+    chart.replaySystem = rs;
+    rs.chart = chart;
+
+    // Enable the cache branch. `_getBtTfDataCache` is a data-source accessor the
+    // product calls; supplying it here is what populating the cache would do.
+    chart.currentFileId = 'm21-b-tal01918-fixture';
+    chart._getBtTfDataCache = (fileId, tf) => (tf === '1m' ? { rawData: finerMaster } : null);
+
+    const rows = [];
+    for (const idx of [10, 20, 30, 40]) {
+        if (idx >= coarseMaster.length) continue;
+        rs.currentIndex = idx;
+        rs.replayTimestamp = coarseMaster[idx].t;
+        const sliced = coarseMaster.slice(0, idx + 1);
+        chart.rawData = sliced;
+        chart.data = chart.resampleData(sliced, timeframe);
+        const lastIdx = chart.data.length - 1;
+        const preTrim = toPointBar(chart.data[lastIdx]);
+        chart._trimLastDataBarToReplayPlayhead();
+        const postTrim = toPointBar(chart.data[lastIdx]);
+        const walk = chart._getWalkForwardOhlcToPlayhead(postTrim.t, rs.replayTimestamp, tfMs);
+        rows.push({
+            tick: idx,
+            walkForwardReturnedNull: walk === null,
+            preTrimClosePoints: preTrim.cP,
+            postTrimClosePoints: postTrim.cP,
+            closeDeltaPoints: postTrim.cP - preTrim.cP,
+            closeDeltaPips: Math.round((postTrim.cP - preTrim.cP) / 10 * 100) / 100,
+            highDeltaPoints: postTrim.hP - preTrim.hP,
+            lowDeltaPoints: postTrim.lP - preTrim.lP,
+        });
+        chart.bumpDataVersion();
+    }
+
+    const changed = rows.filter((r) => r.closeDeltaPoints !== 0);
+    const maxAbs = rows.reduce((m, r) => Math.max(m, Math.abs(r.closeDeltaPoints)), 0);
+    return {
+        timeframe,
+        cacheBranchTaken: rows.every((r) => !r.walkForwardReturnedNull),
+        ticksWithCloseChange: changed.length,
+        ticksChecked: rows.length,
+        maxAbsCloseDeltaPoints: maxAbs,
+        maxAbsCloseDeltaPips: Math.round(maxAbs / 10 * 100) / 100,
+        rows,
     };
 }
 

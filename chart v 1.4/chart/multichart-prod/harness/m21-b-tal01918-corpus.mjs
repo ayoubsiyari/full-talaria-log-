@@ -105,6 +105,21 @@ export function verifyLosslessGrid(pointRows) {
 }
 
 /**
+ * A perfectly flat corpus: every bar identical, zero volatility.
+ *
+ * Its whole job is to separate structural findings from fixture artefacts. Any
+ * clause that still fails here is fixture-independent; any clause that goes quiet
+ * here was measuring the price process rather than the product.
+ */
+export function buildFlatCorpusPoints(n, price = 130_000, t0 = 0) {
+    const out = [];
+    for (let i = 0; i < n; i++) {
+        out.push({ t: t0 + i * MINUTE_MS, oP: price, hP: price, lP: price, cP: price });
+    }
+    return out;
+}
+
+/**
  * Bucket-start conventions, kept SEPARATE from the aggregation so the two can be
  * differentially tested against each other.
  *

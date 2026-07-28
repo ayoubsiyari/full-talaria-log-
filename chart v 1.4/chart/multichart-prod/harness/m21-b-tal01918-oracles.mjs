@@ -1,9 +1,21 @@
 /**
  * TAL-01918 RED — the two limbs, kept deliberately independent.
  *
- *   m21-b-bar-immutability-oracle   once a display bucket is finalised (a later
- *                                   bucket exists), its OHLC never changes again
- *                                   for the rest of the replay.
+ *   m21-b-bar-immutability-oracle   a bar the product PRESENTS AS FINISHED never
+ *                                   changes afterwards, and a bar whose window is
+ *                                   incomplete is not presented as finished in the
+ *                                   first place.
+ *
+ *                                   Stated this way on purpose. The previous
+ *                                   revision asserted that the bar occupying the
+ *                                   last slot must already equal its full bucket.
+ *                                   No chart that draws a live candle can satisfy
+ *                                   that, so the oracle could not pass on a correct
+ *                                   product and its verdict tracked corpus
+ *                                   volatility rather than product behaviour. The
+ *                                   clauses below are marker-aware and
+ *                                   completeness-gated, and clause A fails on a
+ *                                   flat corpus, so no clause is a volatility meter.
  *
  *   m21-b-last-bar-window-oracle    the last bar's OHLC equals an independently
  *                                   computed aggregation over the FULL bucket
@@ -49,110 +61,152 @@ export function findFormingMarker(bar) {
 /* ────────────────────────── limb 1 ────────────────────────── */
 
 /**
- * SUBJECT (stated explicitly, because the wrong subject is what blocked the
- * sibling packet):
+ * SUBJECTS, stated explicitly — one per clause, each counted separately, because
+ * a single blended verdict is how the two blocked packets went wrong.
  *
- *   PRIMARY subject — `chart.data[length - 1]`, sampled at the LAST tick on which
- *   that bucket still occupies the last slot. That is the bar the trim writes
- *   (chart.js: `const lastIdx = this.data.length - 1; … this.data[lastIdx] = trimmed;`)
- *   and, under candle-mode stepping, the bar a human sees holding a static value
- *   for a whole step and reads as finished. Its close is then compared against the
- *   independent full-bucket reference and against the value the same bucket holds
- *   once it is historical.
+ *   CLAUSE A — presentation. Subject `chart.data[length - 1]` at EVERY tick at
+ *   which its window is incomplete. Violation: no forming marker, i.e. the bar is
+ *   bit-indistinguishable from a finished one. Structural and FIXTURE-INDEPENDENT:
+ *   it fails identically on a flat corpus, so it is not a volatility meter.
  *
- *   CONTROL subject — `chart.data[length - 2]`, i.e. any bar already historical
- *   when first sampled. The trim can structurally never write that slot, so this
- *   sub-check is a TAUTOLOGY. It is retained and reported ONLY to demonstrate the
- *   tautology numerically: it passes in exactly the cells where the primary
- *   subject records a double-digit pip move.
+ *   CLAUSE B — mutation after a finished presentation. Subject: the value the
+ *   product last showed for a bucket WHILE PRESENTING IT AS FINISHED (no marker).
+ *   Violation: that value later differs. Marker-aware — a bar carrying a forming
+ *   marker is never enrolled, so an aggregator that labels its live candle passes
+ *   this clause, and the fix recommended in the report can turn this RED green.
+ *
+ *   CLAUSE C — settled immutability and settled exactness. Subject
+ *   `chart.data[length - 2]` and beyond: every bucket once historical, on every
+ *   subsequent tick. Violation: it changes, or it disagrees with the independent
+ *   full-bucket reference. NOT a tautology — the pipeline full-resamples the whole
+ *   series from the growing prefix on every tick (fullResampleCalls === ticks,
+ *   incrementalHits === 0), so each historical bar is recomputed from scratch every
+ *   time it is compared. This is the packet's genuine differential.
+ *
+ * The oracle passes iff A and B and C all pass. Behaviour on reference models:
+ *   ideal aggregator, omits the partial bucket   → PASS (A,B,C)
+ *   ideal aggregator, marks it isForming         → PASS (A,B,C)
+ *   ideal aggregator, unmarked partial           → FAIL A and B
+ *   flat corpus, unmarked partial                → FAIL A, pass B (magnitude zero)
  */
 export class BarImmutabilityOracle {
     constructor(label) {
         this.label = label;
         this.oracle = ORACLE_IMMUTABILITY;
-        this.subject = 'chart.data[length-1] at the last tick the bucket occupies the last slot';
-        this.controlSubject = 'chart.data[length-2] (structurally untouchable by the trim)';
+        this.subjects = {
+            A: 'chart.data[length-1] at every tick its window is incomplete — presentation',
+            B: 'the value last shown for a bucket while presenting it as finished (no marker)',
+            C: 'every bucket once historical, on every subsequent tick — settled differential',
+        };
 
-        // primary
-        this.lastSlot = new Map();    // bucketT -> { packed, cP, tick, playheadMs }
-        this.settled = new Map();     // bucketT -> { packed, cP, tick }
-        this.primaryChecked = 0;
-        this.primaryViolations = [];
-        this.primaryViolationCount = 0;
-        this.movementPoints = [];     // settled.c - lastSlot.c, per bucket
+        // clause A
+        this.aChecked = 0;
+        this.aViolations = 0;
+        this.aBuckets = new Set();
 
-        // control (tautology demonstrator)
-        this.historicalFirstSeen = new Map();
-        this.controlComparisons = 0;
-        this.controlViolationCount = 0;
+        // clause B
+        this.presentedFinished = new Map(); // bucketT -> { packed, cP, tick, playheadMs, complete }
+        this.bChecked = 0;
+        this.bViolations = 0;
+        this.bSamples = [];
+        this.movementPoints = [];
+
+        // clause C
+        this.settled = new Map();           // bucketT -> packed at first historical sighting
+        this.cStabilityChecked = 0;
+        this.cStabilityViolations = 0;
+        this.cExactChecked = 0;
+        this.cExactViolations = 0;
+        this.cSamples = [];
 
         this.ticks = 0;
     }
 
     /**
-     * @param {Array<{t,oP,hP,lP,cP}>} series integer-point display series
-     * @param {number} tick
-     * @param {number} playheadMs
+     * @param {object} o
+     * @param {Array<{t,oP,hP,lP,cP}>} o.series      integer-point display series
+     * @param {number} o.tick
+     * @param {number} o.playheadMs
+     * @param {boolean} o.rawViewComplete            is the last bucket's window complete now
+     * @param {{key:string,value:string}|null} o.formingMarker  marker on the last bar, if any
+     * @param {Map<number,object>} o.refByT          independent full-bucket reference
      */
-    observe(series, tick, playheadMs) {
+    observe({ series, tick, playheadMs, rawViewComplete, formingMarker, refByT }) {
         this.ticks += 1;
         const lastIdx = series.length - 1;
         if (lastIdx < 0) return;
-
-        // PRIMARY: overwrite each tick, so the map always holds the value at the
-        // most recent tick this bucket occupied the last slot.
         const last = series[lastIdx];
-        this.lastSlot.set(last.t, {
-            packed: packOhlc(last), cP: last.cP, tick, playheadMs,
-        });
 
-        // PRIMARY: the moment a bucket stops being last, freeze what it settled to.
-        for (let i = 0; i < lastIdx; i++) {
-            const bar = series[i];
-            if (this.settled.has(bar.t)) continue;
-            this.settled.set(bar.t, { packed: packOhlc(bar), cP: bar.cP, tick });
+        // ── clause A ──
+        if (!rawViewComplete) {
+            this.aChecked += 1;
+            if (!formingMarker) {
+                this.aViolations += 1;
+                this.aBuckets.add(last.t);
+            }
         }
 
-        // CONTROL: first-seen-while-historical, then re-checked forever.
+        // ── clause B enrolment ──
+        if (!formingMarker) {
+            this.presentedFinished.set(last.t, {
+                packed: packOhlc(last), cP: last.cP, tick, playheadMs, complete: !!rawViewComplete,
+            });
+        }
+
+        // ── clause C ──
         for (let i = 0; i < lastIdx; i++) {
             const bar = series[i];
             const packed = packOhlc(bar);
-            const prior = this.historicalFirstSeen.get(bar.t);
-            if (!prior) {
-                this.historicalFirstSeen.set(bar.t, packed);
+            const prior = this.settled.get(bar.t);
+            if (prior === undefined) {
+                this.settled.set(bar.t, packed);
+                const ref = refByT.get(bar.t);
+                if (ref) {
+                    this.cExactChecked += 1;
+                    if (packed !== packOhlc(ref)) {
+                        this.cExactViolations += 1;
+                        if (this.cSamples.length < 10) {
+                            this.cSamples.push({
+                                bucketT: bar.t, kind: 'exactness', tick,
+                                product: packed, independentReference: packOhlc(ref),
+                                closeDeltaPoints: bar.cP - ref.cP,
+                            });
+                        }
+                    }
+                }
                 continue;
             }
-            this.controlComparisons += 1;
-            if (prior !== packed) this.controlViolationCount += 1;
+            this.cStabilityChecked += 1;
+            if (prior !== packed) {
+                this.cStabilityViolations += 1;
+                if (this.cSamples.length < 10) {
+                    this.cSamples.push({ bucketT: bar.t, kind: 'stability', tick, was: prior, now: packed });
+                }
+            }
         }
     }
 
-    /**
-     * @param {Map<number, {cP:number, oP:number, hP:number, lP:number, t:number}>} refByT
-     *        independent full-bucket reference (NOT product code)
-     */
+    /** @param {Map<number,object>} refByT independent full-bucket reference */
     finalize(refByT) {
-        for (const [bucketT, settledRec] of this.settled) {
-            const lastSlotRec = this.lastSlot.get(bucketT);
-            if (!lastSlotRec) continue;
-            const ref = refByT.get(bucketT) || null;
-            this.primaryChecked += 1;
-            const movement = settledRec.cP - lastSlotRec.cP;
+        for (const [bucketT, rec] of this.presentedFinished) {
+            const ref = refByT.get(bucketT);
+            if (!ref) continue;                    // bucket never completed in the corpus
+            this.bChecked += 1;
+            const finalPacked = packOhlc(ref);
+            const movement = ref.cP - rec.cP;
             this.movementPoints.push(movement);
-            const vsReference = ref ? lastSlotRec.cP - ref.cP : null;
-            if (lastSlotRec.packed !== settledRec.packed
-                || (ref && lastSlotRec.packed !== packOhlc(ref))) {
-                this.primaryViolationCount += 1;
-                if (this.primaryViolations.length < 20) {
-                    this.primaryViolations.push({
+            if (rec.packed !== finalPacked) {
+                this.bViolations += 1;
+                if (this.bSamples.length < 10) {
+                    this.bSamples.push({
                         bucketT,
-                        lastOccupiedLastSlotAtTick: lastSlotRec.tick,
-                        playheadMsAtThatTick: lastSlotRec.playheadMs,
-                        displayedThen: lastSlotRec.packed,
-                        settledTo: settledRec.packed,
-                        independentFullBucket: ref ? packOhlc(ref) : null,
-                        movementPoints: movement,
-                        errorVsIndependentReferencePoints: vsReference,
+                        presentedAsFinishedAtTick: rec.tick,
+                        playheadMsAtThatTick: rec.playheadMs,
+                        windowCompleteAtThatTick: rec.complete,
+                        remainderUnelapsedMs: rec.complete ? 0 : null,
+                        displayedThen: rec.packed,
+                        settledTo: finalPacked,
+                        closeMovementPoints: movement,
                     });
                 }
             }
@@ -160,7 +214,7 @@ export class BarImmutabilityOracle {
     }
 
     movementStats() {
-        const a = this.movementPoints.filter((x) => x !== null);
+        const a = this.movementPoints;
         if (!a.length) return { n: 0, meanAbsPips: null, maxAbsPips: null };
         let sumAbs = 0;
         let maxAbs = 0;
@@ -177,23 +231,24 @@ export class BarImmutabilityOracle {
     }
 
     result() {
+        const clauseA = { checked: this.aChecked, violations: this.aViolations, pass: this.aViolations === 0 };
+        const clauseB = {
+            checked: this.bChecked, violations: this.bViolations, pass: this.bViolations === 0,
+            movement: this.movementStats(), samples: this.bSamples.slice(0, 4),
+        };
+        const clauseC = {
+            stabilityChecked: this.cStabilityChecked, stabilityViolations: this.cStabilityViolations,
+            exactnessChecked: this.cExactChecked, exactnessViolations: this.cExactViolations,
+            pass: this.cStabilityViolations === 0 && this.cExactViolations === 0,
+            samples: this.cSamples.slice(0, 4),
+        };
         return {
             oracle: this.oracle,
             label: this.label,
-            subject: this.subject,
-            controlSubject: this.controlSubject,
-            pass: this.primaryViolationCount === 0,
+            subjects: this.subjects,
+            pass: clauseA.pass && clauseB.pass && clauseC.pass,
             ticks: this.ticks,
-            bucketsChecked: this.primaryChecked,
-            violationCount: this.primaryViolationCount,
-            movement: this.movementStats(),
-            violations: this.primaryViolations.slice(0, 6),
-            tautologyControl: {
-                subject: this.controlSubject,
-                comparisons: this.controlComparisons,
-                violationCount: this.controlViolationCount,
-                pass: this.controlViolationCount === 0,
-            },
+            clauseA, clauseB, clauseC,
         };
     }
 }
