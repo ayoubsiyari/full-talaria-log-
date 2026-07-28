@@ -1,5 +1,16 @@
 /**
  * Deterministic price-like series for A7 differential parity fixtures.
+ *
+ * SCALE MATTERS, and not only for magnitude coverage. `createPrng` returns k/2³², so each
+ * price increment is `(k/2³² − ½)·0.02·scale·base`. At scale = 1 every price is an integer
+ * multiple of 2⁻³¹ and stays below 2⁹, so every 20-bar window sum is representable exactly:
+ * an incremental running sum and a full-window resum then produce bit-identical output, and
+ * an SMA parity cell measured there is structural agreement rather than numeric evidence.
+ * At scale = 1e6 (JPY magnitude) the window sums no longer land on representable values, the
+ * two paths round differently, and the comparison has bit patterns to discriminate.
+ *
+ * DIFFERENTIAL-PARITY-ORACLE-V1 therefore runs every canary family at both scales and labels
+ * each cell `exactly-representable` or `rounding-exercised` accordingly.
  */
 
 /** @param {number} seed */
