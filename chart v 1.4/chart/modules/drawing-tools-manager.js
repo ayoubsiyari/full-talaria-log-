@@ -12085,7 +12085,7 @@ class DrawingToolsManager {
                             
                             // Remove from orderLines array
                             if (orderManager.orderLines) {
-                                orderManager.orderLines = orderManager.orderLines.filter(l => l.orderId !== order.id);
+                                orderManager.orderLines = orderManager.orderLines.filter(l => !(l.orderId === order.id && !l.isPending));
                             }
                             // [debug removed]
                         });
