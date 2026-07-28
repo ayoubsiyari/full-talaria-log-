@@ -146,3 +146,6 @@ The Director ruled one compromise manifest into two internally consistent ones. 
 | CONDITIONAL-EXPOSURE-ASSERTION-V1 | `TALARIA_CONDITIONAL_EXPOSURE_V1` | RESERVED — A14.3: if a shell lacks correctness-class required modules then routed must be false |
 | `retainPath` | inventory field | RESERVED — A14.2: retain-file assertion keys on declared retainPath, not original location |
 | NC-EXPOSURE-REROUTE | — | RESERVED — re-routing a shell that lacks correctness modules must go RED |
+
+| STATUS-EVIDENCE-CONSISTENCY-V1 | `TALARIA_STATUS_EVIDENCE_V1` | RESERVED — A14.1: status must derive from same evidence as servable; RED on divergence |
+| LIVE-ROUTE-PROBE-V1 | `TALARIA_LIVE_ROUTE_PROBE_V1` | RESERVED — A14.1 tiebreaker: HTTP GET against built image; record status and final URL |
