@@ -1221,3 +1221,40 @@ The cell named UNKNOWN-KEY PRESERVATION does not test `mergePos` at all: its "un
 **Status: V8-P1 is REJECTED, not merged, and must not reach the mirror.** Do not sync `homepage/public/chart/modules/preferences-sync.js`. Note the served copy has no facade at all, so none of these defects is live for users today — the only live effect would be `init()` stamping a schema key, and that cannot happen on served pages because the mirror lacks the code. The rejection is therefore cheap, which is exactly what a gate is for.
 
 **Remediation, specified by the reviewer and adopted in full:** cells that drive `getPins`/`setPin` rather than only the raw accessors; a cell that writes before the owner resolves and asserts queue, flush, drop *and* owner binding; a `mergePos` cell seeding unknown **members** inside `pinbar.pos`; monotonicity cells for both a v7 store and a throwing version read; one cell per cap asserting the cap's real value; cell 06 rewritten so it does not swallow its own reads; cell 11 asserting a full storage snapshot; and a mutation-survival budget reported next to the pass count, since the pass count alone has now twice meant nothing.
+
+---
+
+## B-0070 — M4 verification authored ahead of the candidate
+
+`docs/plan3/evidence/B-M4/M4-REVERIFICATION-SCRIPT.md`. Written now so it is executed rather than improvised at hour 40, with pass/fail **pre-registered** so it cannot be renegotiated under clock pressure.
+
+Four phases. **Phase 0** provenance and safety, blocking: build tag and digest match the sealed candidate, tripwire matches, target DB is not TEST-1's, account is a dedicated QA id. Phase 0.3 exists because Phases 1-3 write trades, and writing them into the PO's verification surface while M24's migration is live would corrupt the exact thing this gate protects. **Phase 1** is agent-executable (packet B-W8): six invariants — count conservation, id stability, grammar conformance, no-duplicates plus deterministic merge, browser/backend agreement, migration idempotence — run before any human is called, because humans are the scarce resource and should not be spent confirming what a script catches. **Phase 2** is the PO's rollback script, ~4 minutes. **Phase 3** is Rayan's own re-verification, which cannot be substituted by ours since he filed the scenarios.
+
+The four FAIL conditions are fixed: a trade lost, a trade duplicated, an id unstable, or a rollback that fails to permanently cancel. Partial results do not average — five of six green is a FAIL.
+
+**Step 2.10 records the open-trade duration after the rollback-then-new-order sequence.** The PO reproduced the duration reading wildly wrong in exactly that sequence, so the observation is nearly free while a human is already there. I have deliberately kept it **out of M4's pass/fail**: it is a separate defect, and letting a ship gate quietly absorb an unrelated bug is how a gate stops meaning one thing.
+
+I also required B-W8 to report its own **mutation-survival count** next to its result. After B-0069 a green pass count is not evidence on its own, and M4 is the gate where that matters most.
+
+---
+
+## B-0071 — HANDOFF to A · mirror sync is A's, and my side does not wait for it
+
+Per the Director's ruling and `TERRITORY.yml`, `homepage/public/chart/**` is A's territory ("product surface", provenance: ruling) and forbidden to me. I was right to stop, and I am not reaching across.
+
+**For A, mechanical and cheap:** the served shells load `homepage/public/chart/modules/order-manager.js`, which does **not** carry tonight's five-site narrowing. A's own commits already sync both copies for `drawing-tools-manager.js`, so the pattern is established. The change is the five selector rewrites in commit `bb0858bb5`, each replacing an interpolated `[class*=...]` with a class-token selector; the correct idiom already exists in-file at 39146. My gate parses selectors out of the `chart v 1.4` copy, so **it will not detect drift in the mirror** — that blind spot is worth a line in A's packet.
+
+**Explicitly: M3 closure on my side does not wait for this.** My territory's fix is done and reviewed; the mirror is a separate deliverable with a separate owner.
+
+Also outstanding for A on the same mirror mechanism, and worse: `homepage/public/chart/modules/preferences-sync.js` is 17,969 bytes against my 39,491 and contains no `TalariaPreferences` at all. **Do not sync that one** — V8 is REJECTED per B-0069 and must not reach a served surface until rebuilt.
+
+---
+
+## B-0072 — HANDOFF to C · the runner is uncommitted, and its own suite uses a stub
+
+Two problems with `scripts/order-overlay-browser-runner.mjs`, reported because three managers are about to depend on it.
+
+1. **It is uncommitted.** Untracked working-tree files on `manager-c/verification-infra`, reported landed at 04:12 but present in no commit. It cannot be merged or cherry-picked and would not survive a clean. My M3 gate imports it by absolute path from another worktree and is therefore **not CI-portable**; I did not vendor a copy, because vendoring an untracked instrument is how mirror drift starts.
+2. **Its acceptance suite passes 7/7 against a *stubbed* browser** — its own cells say "stubbed browser plus structured report succeeds". That establishes report-shape handling, not browser capability. I verified a real launch separately and it does drive Edge correctly, so the instrument is good; the **evidence for it** is what is thin.
+
+Point 2 matters more than it looks. It is the same vacuity class that just cost me V8 — a suite that passes without exercising the thing it names. I am not asserting C's runner is hollow; I used it tonight and it produced a real, falsifiable result. I am saying its suite would not have told us either way, and I would rather flag that now than have it discovered at hour 40 by three dependent managers.
