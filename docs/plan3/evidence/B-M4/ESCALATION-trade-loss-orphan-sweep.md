@@ -1,117 +1,66 @@
-# ESCALATION — live trade-loss path in `api_server.py`
+# ESCALATION — silent, permanent journal loss on the state-PATCH path
 
-**From:** Manager B. **Found:** 2026-07-28 during adversarial review of the M4 harness (B-R5).
-**Territory:** `chart v 1.4/chart/api_server.py` — **not mine.** I have made no change to it and will not.
-**Class:** M24 trade loss. This is the condition ship gate M4 exists to detect, and the M4 harness is structurally blind to it.
-**Status:** verified by source reading, end to end. **Not** executed against a live server.
+**From:** Manager B. Raised 2026-07-28 10:2x, **substantially rewritten 11:35** after reachability triage (B-A7).
+**Verdict: REACHABLE in normal product use, by an authenticated ordinary paid user, with no malicious input.**
+**Territory:** `api_server.py` and `chart.js` — **neither is mine.** No change made to either.
+
+> **This document replaces an earlier version. Two things I previously reported were wrong, and both are corrected below in §5. The mechanism I originally escalated is real but NOT the reachable one.**
 
 ---
 
-## The defect
+## 1. The reachable defect, in one paragraph
 
-Two functions resolve a trade's identity with **different alias precedence**, and a `DELETE` sits between them.
+The client's in-memory `tradeJournal` is populated **only** by `GET /state`. If that GET fails once, there is **no retry**, and the client **deliberately marks the session hydrated with an empty journal** so that later saves are not dropped. The next trade close then PATCHes a `journal` array containing only that one trade. The server treats a `journal` PATCH as an authoritative **replace**, so every other row in the session is deleted — silently, permanently, in one committed transaction.
 
-**Resolver A** — `api_server.py:12359`, inside `_sync_trading_session_journal_trades`, builds the keep-set:
+**A user with 50 trades can lose 49 of them because one HTTP request returned 503.**
 
-```python
-tid = str(raw.get("tradeId") or raw.get("id") or "").strip()
-if not tid:
-    continue
-incoming_ids.add(tid)
-```
+## 2. The chain, with citations
 
-Two aliases: `tradeId`, `id`.
+| # | Step | Location |
+|---|---|---|
+| 1 | `tradeJournal` starts empty; loaded only from the API, never localStorage | `order-manager.js:8182-8183` |
+| 2 | `GET /state` failure has three entries into local-backup-only mode: non-2xx, missing `state`, or any throw | `chart.js:11901-11903`, `:11907-11909`, `:12267-12269` |
+| 3 | **No retry.** `loadTradingSessionStateIfNeeded` early-returns forever after | `chart.js:11876` |
+| 4 | With no local backup, the client **deliberately** marks the session hydrated while the journal is empty — the comment says so: *"Mark the session as hydrated (empty) anyway so later order saves are NOT dropped by the pre-hydrate guard."* | `chart.js:11698-11709` |
+| 5 | The pre-hydrate guard would not have helped: it **explicitly whitelists journal patches**, and `patch.journal != null` is true for `[]` | `chart.js:12363-12366`, `:12353` |
+| 6 | The durable path has **no hydrate guard at all** | `chart.js:12635-12651` |
+| 7 | Next trade close PATCHes the whole in-memory array — now one trade | `order-manager.js:7133`, bodies `:7159`, `:7239`, `:7256` |
+| 8 | Server accepts, builds a one-element keep-set, sweeps the rest | `api_server.py:25207`, `:12451-12455` |
 
-**Resolver B** — `session_journal_store.py:155-165`, the declared canonical resolver:
+Confirmed by execution against a model mirroring `TradingSessionJournalTrade`: with rows `a`, `b`, `vuln-9` and a keep-set of `{a}`, the query selects `b` and `vuln-9` for deletion.
 
-```python
-def journal_trade_client_id(raw: dict) -> str:
-    """Canonical client trade id used in trading_session_journal_trades."""
-    return str(
-        raw.get("tradeId") or raw.get("trade_id")
-        or raw.get("client_trade_id") or raw.get("id") or ""
-    ).strip()
-```
+## 3. The user sequence — nothing unusual in it
 
-Four aliases. Its docstring states it is *the* canonical id for this exact table.
+1. A session holds 50 trades.
+2. The user opens the chart where **no local backup exists** — a second machine, a cleared or incognito profile, or after a `QuotaExceededError` forced a `minimal` backup that omits the journal (`chart.js:11388-11397`, `:11490-11492`).
+3. `GET /state` returns 502/503/504 or 429 **once**. Not speculative: the client carries dedicated backoff handling for exactly these statuses on this endpoint (`chart.js:12684-12699`).
+4. Session is silently marked hydrated with an empty journal. The Journal tab shows nothing. No retry will occur for the life of the page.
+5. The user places and closes one trade.
+6. All 50 prior rows are deleted in one committed transaction.
 
-**The delete** — `api_server.py:12451-12455`:
+## 4. Blast radius and detectability
 
-```python
-q = db.query(TradingSessionJournalTrade).filter(TradingSessionJournalTrade.session_id == session_id)
-if incoming_ids:
-    q = q.filter(~TradingSessionJournalTrade.client_trade_id.in_(incoming_ids))
-for orphan in q.all():
-    db.delete(orphan)
-```
+- **One session per incident, one account.** The sweep filters on `session_id` only, and access is strictly owner-only (`_can_access_trading_session`, `api_server.py:11883`). **No cross-tenant exposure.** But the trigger is per-page-load, so a user opening several sessions in one bad window can lose each in turn.
+- **Four of the twelve call sites can delete**: CSV import (`:24780`), demo seeding (`:24910`), dashboard upsert (`:25107`), state PATCH (`:25212`). All gate on `_require_paid_journal_user` — **none requires admin.** The other seven reach `_sync` only via backfill, which runs only when SQL is empty, so the sweep always operates on an empty table.
+- **No feature flag, no row-count floor, no soft delete, no shadow table.** Deletes commit with the state write in one transaction — no partial corruption, but no partial survival either.
+- **Nothing is logged.** No logger or audit call anywhere in `12337-12455`. The loss is entirely silent server-side; the user just sees a short journal.
 
-Every row for the session whose `client_trade_id` is absent from `incoming_ids` is deleted.
+## 5. CORRECTIONS to my earlier reports — read these
 
-## Why that loses trades
+**Correction 1: the `if incoming_ids:` guard is NOT a bug, and I should not have reported it as one.** I claimed that an empty keep-set skips the exclusion filter and therefore wipes the session as a distinct second defect. Behaviourally the wipe is real, but the guard is not the cause: SQLAlchemy renders an empty `IN` as a false expression, so `~client_trade_id.in_(set())` matches every row anyway. Verified by execution — with and without the guard, the same three rows are selected. Delete-all-on-empty is simply the **"replace" semantics the docstring describes** (`:12340-12343`), and it is what makes a legitimate journal clear work. Withdrawn as a separate finding.
 
-A journal row carrying **`trade_id` or `client_trade_id` but not `tradeId` or `id`**:
+**Correction 2: the alias-vocabulary divergence is a latent trap, NOT the active fire.** My original escalation centred on `_sync` building its keep-set from `tradeId or id` (two aliases) while `journal_trade_client_id` resolves four. That divergence is real and execution-confirmed — `{trade_id}` and `{client_trade_id}` resolve under the canonical helper but yield `''` in the sweep. **But no current writer produces such a row.** Every producer was checked: the dashboard/manual normalizer sets all four aliases (`session_journal_store.py:257-260`); the CSV importer always emits `tradeId` with a `csv-N` fallback (`csv_journal.py:763`, `:797`); the read-then-write cycle I flagged as the classic source is safe, because rows store the originating ids inside `payload_json` and the read-back only adds keys without renaming; the backfill script skips empty journals.
 
-1. Resolver B accepts it, so a row exists in `trading_session_journal_trades` with a valid `client_trade_id`.
-2. Resolver A returns `""`, hits `continue`, and the id is **never added to `incoming_ids`**.
-3. The orphan sweep sees a row whose `client_trade_id` is not in the keep-set and **deletes it**.
+So the vulnerable-row deletion I reproduced this morning required a **planted** row. It remains worth fixing as a trap for the next writer, but **it is not what is losing data today**, and I would rather correct that now than have the canary decision rest on it.
 
-The row is written under one identity vocabulary and deleted for not existing under a narrower one.
+## 6. Recommendation, split by owner
 
-## The part that makes this unambiguous
+**The root cause is that nothing anywhere asserts a `journal` array is complete.** The severity comes from that absence, not from any single line.
 
-Both resolvers are used **eleven lines apart in the same request handler**:
+**Backend owner — the durable fix.** A `journal` PATCH should not be an unconditional authoritative replace. Either require an explicit intent flag for destructive replacement, or refuse a sync whose incoming set is drastically smaller than the stored set without that flag. **At minimum, log the deletion with the before/after counts** — today the single most damaging property is that this is invisible.
 
-```25107:25123:chart v 1.4/chart/api_server.py
-        _sync_trading_session_journal_trades(db, session_id=s.id, user_id=s.user_id, journal=merged)
-...
-        client_trade_id = sjs.journal_trade_client_id(trade)
-        sql_row = (
-            db.query(TradingSessionJournalTrade)
-            .filter(
-                TradingSessionJournalTrade.session_id == session_id,
-                TradingSessionJournalTrade.client_trade_id == client_trade_id,
-            )
-            .first()
-```
+**Manager A (`chart.js`).** Step 4 is the decision that arms the whole chain: marking a session hydrated with an empty journal after a *failed* load conflates "this session has no trades" with "we could not find out". Those need to be distinguishable, and the journal-patch whitelist at `:12363-12366` should not apply when hydration failed.
 
-Line 25107 runs the sweep using the **two**-alias vocabulary. Line 25116 then resolves the same trade with the **four**-alias vocabulary and queries for the row — which, for a vulnerable payload shape, the preceding line has just deleted. The code disagrees with itself inside a single function about what a trade's identity is.
+**Manager B (me), in territory.** `persistJournal()` in `order-manager.js` should refuse to send a journal array it cannot vouch for. I am authoring that guard: it is the narrowest fix that breaks the chain, and it does not depend on either of the above landing.
 
-## Severity
-
-- **Silent.** The sweep logs nothing. The trade disappears from the SQL journal with no error surfaced.
-- **Repeating.** The sweep runs on every journal sync, so a vulnerable trade is deleted again after any re-add.
-- **Exactly the canary-halting condition.** M4 Phase 4 names trade loss as an outright halt.
-
-## UPDATE 10:57 — the deletion has now been executed, not merely reasoned about
-
-This section originally said the mechanism was verified only by reading. That is no longer true.
-
-During adversarial review of the M4 harness (B-R6), a pre-existing row of exactly this shape — payload carrying `trade_id`/`client_trade_id`, not `tradeId`/`id` — was placed in a session, and an ordinary journal POST **permanently deleted it**:
-
-```
-sql before = [real-1, vuln-9]
-sql after  = [real-1, m4-43c14960-01, m4-43c14960-02, m4-43c14960-03]
-DESTROYED  = [vuln-9]
-```
-
-No adversarial input was required. A normal write to an unrelated trade destroyed a bystander row. **The mechanism is confirmed end to end against a server implementing these semantics.**
-
-## What is still NOT established
-
-**Producer reachability.** What is proven is that *if* such a row exists, an ordinary write deletes it. What is still unproven is whether any live producer emits a journal row carrying only `trade_id`/`client_trade_id`. The row in the reproduction was planted deliberately.
-
-So the honest framing is: **the trap is armed and confirmed lethal; whether anything currently walks into it is open.** That remains the owning manager's first question, and it is the difference between halting the canary and scheduling a fix.
-
-Two things bear on it. The four-alias resolver exists and its docstring calls those aliases canonical, which suggests someone expected those shapes. And any future producer, migration, import path or third-party payload adopting `client_trade_id` — the name the column itself uses — walks straight in.
-
-No product change made. `api_server.py` untouched.
-
-## Recommendation
-
-Make `_sync_trading_session_journal_trades` use `journal_trade_client_id` — the function already declared canonical for this table — so the keep-set and the write path share one vocabulary. That is a one-line change and it removes the class, not the instance.
-
-Additionally: the orphan sweep should not delete on an id it failed to parse. A row it cannot identify should be **retained and reported**, never silently removed. Deleting on a parse failure means any future alias becomes a data-loss bug.
-
-## Consequence for ship gate M4
-
-The M4 harness **cannot detect this**, and could not have. Every check but one filters the ledger to trades the harness itself wrote, using its own four-alias helper — so it only ever inspects rows immune to the defect. A gate blind to the exact failure it exists to catch is worse than no gate, because it converts absence of evidence into a green light. That is being rebuilt separately.
+**Also fix the latent trap** (§5, correction 2): have `_sync` use `journal_trade_client_id`, the helper already declared canonical for this table, so the keep-set and the write path share one vocabulary. And a sweep should never delete on an id it failed to parse — an unidentifiable row should be retained and reported.

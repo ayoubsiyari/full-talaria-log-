@@ -1874,3 +1874,43 @@ I added one piece of operational ordering the split implies but did not state: *
 **Not yet reviewed.** B-R7 dispatched, and I have pointed it at the violation I think most likely: `resolve_session_journal` performs a one-time backfill **when SQL is empty**, so in this codebase a *read* can cause a server-side write. A read-only client is not the same as a read-only effect, and clause 1 is about the ledger, not about the HTTP verb. If that fires, my "safe on any ledger" statement is wrong and I would rather find out from a reviewer than from the PO.
 
 Four of the five vacuity forms found so far were in checks that looked fine to me. I have asked B-R7 to assume a fifth exists, and named L7 and L8 as the likeliest hosts because they are new — L7 in particular could pass while vulnerable rows exist, if the endpoint reconstructs `payload` or fills `tradeId` in from the column on the way out. That would make it blind to the exact defect it was built for.
+
+---
+
+## B-0100 — REACHABILITY: CONFIRMED. But the reachable path is not the one I escalated, and two of my claims were wrong.
+
+B-A7 returns **yes — reachable in normal product use, by an authenticated ordinary paid user, with no malicious input.** It also corrected me twice, and both corrections matter more than the confirmation.
+
+### The two things I got wrong
+
+**1. The `if incoming_ids:` guard is not a bug. I reported it as one.** I claimed at B-0095 that an empty keep-set skips the exclusion filter and therefore wipes the session, and I presented that as a newly found second defect. The wipe is real; **the guard is not its cause.** SQLAlchemy renders an empty `IN` as a false expression, so `~client_trade_id.in_(set())` matches every row anyway — verified by execution, identical rows selected with and without the guard. Delete-all-on-empty is the documented "replace" semantics that makes a legitimate journal clear work. **Withdrawn.** I read a guard, imagined its absence, and never checked what the ORM does with an empty set. Reporting a second bug that is not one would have cost the Director's attention at exactly the wrong moment.
+
+**2. The alias divergence is a latent trap, not the active fire.** My original escalation centred on `_sync` resolving two aliases while the canonical helper resolves four. That divergence is real and execution-confirmed — but **no current writer produces such a row.** Every producer was enumerated and closed: the dashboard normalizer sets all four aliases; the CSV importer always emits `tradeId` with a `csv-N` fallback; the read-then-write cycle I called the classic source is safe because rows store originating ids inside `payload_json` and the read-back only adds keys; the backfill skips empty journals. The vulnerable row I reproduced this morning was **planted**.
+
+**This is exactly why I kept "mechanism confirmed" and "reachability unproven" as separate lines.** Had I let the successful reproduction inflate the claim, I would now be telling the Director to halt a canary over a trap nothing walks into.
+
+### The real defect, which is worse than the one I was chasing
+
+`tradeJournal` is populated **only** by `GET /state`. On failure there is **no retry**, and the client **deliberately marks the session hydrated with an empty journal** — the comment says so outright: *"Mark the session as hydrated (empty) anyway so later order saves are NOT dropped by the pre-hydrate guard."* The pre-hydrate guard would not have helped: it **explicitly whitelists journal patches**, and the durable path has no hydrate guard at all. The next trade close durably PATCHes a one-element journal, and the server's replace semantics delete the rest.
+
+**A user with 50 trades loses 49 because one HTTP request returned 503.** Silent — nothing in `12337-12455` logs a deletion. Permanent. One committed transaction. Owner-scoped, one session per incident, no cross-tenant exposure — but the trigger is per-page-load, so a user opening several sessions in a bad window loses each in turn. Four of twelve call sites can delete and **none requires admin.**
+
+The severity comes from an absence, not a line: **nothing anywhere asserts that a `journal` array is complete.**
+
+### In-territory fix specified, and it turns out to be idiomatic
+
+The client is the **last place that can know** the array is incomplete — the server cannot distinguish a one-trade journal from a user with one trade from a one-trade journal from a user whose hydration failed. They are byte-identical.
+
+Reading `persistJournal` to spec the guard, I found **the same guard already exists in that function for a different cause**:
+
+> *"Durable must NEVER replace the server journal with ref-only/null-blob rows (fail closed, keep last durable state)"* — the M20-A1 check at `:7196-7201`.
+
+So the fix is not new machinery on the durable path; it extends an accepted invariant to a second way the array can be untrustworthy. That materially lowers its risk, and I would not have known it without reading the function rather than patching from the report.
+
+Spec at `SPEC-persistjournal-hydration-guard.md`: a tri-state provenance flag defaulting to **`'unhydrated'`** — because the entire defect is a system treating "we do not know" as "there is nothing" — guarding **only** the durable path, with loud specific logging, and recovery on later successful hydration. The named trap for the implementer is the tempting wrong fix, `length > 0`, which passes the defect cell by accident and breaks a legitimate journal clear.
+
+**Not implemented yet:** `order-manager.js` is held by B-W14. I am not editing a file under another packet again today.
+
+**Escalation rewritten** with the corrected mechanism and an explicit note that it supersedes the earlier version. Ownership split recorded: backend owns the durable fix (replace semantics, and at minimum *logging the deletion*), A owns the `chart.js` decision to call a failed hydration hydrated, I own the client guard.
+
+**A16.4:** manager-finding-defect **7** (the withdrawn `if incoming_ids:` claim). Manager-caused **10**.
