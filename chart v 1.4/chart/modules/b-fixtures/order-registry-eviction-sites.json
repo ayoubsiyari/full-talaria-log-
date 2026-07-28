@@ -4,63 +4,98 @@
     "product": "chart v 1.4/chart/modules/order-manager.js",
     "registryExpression": "this.orderLines",
     "discriminatorProperty": "isPending",
-    "invariant": "Every site in order-manager.js that evicts entries from the this.orderLines registry using a predicate keyed on orderId must discriminate between pending and executed rows, UNLESS the site is an intentional remove-all whose disposal loop covers exactly the same set it removes.",
-    "hazard": "A pending order row and an executed order row can carry the same orderId (order-manager.js removeOrderLine: 'could be both active and pending'). An eviction keyed on orderId alone therefore removes BOTH rows from the registry while only one of them was resolved and disposed. updateOrderLines never creates order lines (it contains no drawOrderLine / drawPendingOrderLine / append call), so the frame loop can never restore the row it dropped.",
+    "singleRowDisposalCall": "this._disposeOrderLineElements",
     "gateKind": "structural",
-    "gateKindReason": "The eviction sites live inside DOM/D3/rAF-bound methods that cannot be loaded in Node. This fixture and its gate inspect source text.",
-    "siteKey": "ordinal = index of the site among all orderId-keyed this.orderLines eviction assignments, in source order. Deliberately NOT a line number.",
-    "exemptionCodes": [
-      "remove-all-with-set-wide-disposal"
-    ],
-    "exemptionCodeMeanings": {
-      "remove-all-with-set-wide-disposal": "The method intentionally removes every row carrying the orderId, and the same method first disposes every row it matched with an equivalently-keyed filter feeding a forEach. Removal set equals disposal set, so no live row is orphaned."
-    }
+    "gateKindReason": "The eviction sites live inside DOM/D3/rAF-bound methods that cannot be loaded in Node. The gate therefore reads source text — but it EVALUATES each eviction predicate as a boolean function over an enumerated universe of row objects rather than pattern-matching it.",
+
+    "enforcedProperty": "For each `this.orderLines = <filter chain over this.orderLines>` assignment that this gate finds in order-manager.js AND can parse in its restricted expression grammar, the set of rows the chain removes equals the set of rows the enclosing code disposes. The disposal set is taken from the source in one of two verified shapes: a collect-filter whose result array is the actual receiver of a `.forEach` disposal loop, or a single row named by the disposal call immediately preceding the eviction. Nothing is decided by the presence, absence or negation of any substring; `isPending` is never searched for.",
+
+    "invariant": "SCOPE-LIMITED. This is NOT a registry-wide invariant and must not be cited as one. It covers one grammar (`this.orderLines = <filter chain>`) in one file (order-manager.js). The same registry is mutated elsewhere, and other mutation grammars are invisible to the gate. See meta.notEnforced.",
+
+    "hazard": "A pending order row and an executed order row can carry the same orderId (order-manager.js removeOrderLine: 'could be both active and pending'). An eviction keyed on orderId alone therefore removes BOTH rows from the registry while only one of them was resolved and disposed. updateOrderLines never creates order lines (it contains no drawOrderLine / drawPendingOrderLine / append call), so the frame loop can never restore the row it dropped. The dual hazard is a disposed row left IN the registry: a permanent zombie the frame loop keeps trying to lay out.",
+
+    "siteKey": "ordinal = index among all `this.orderLines = <filter chain>` assignments in source order, cross-checked against the enclosing method name and the site's ordinal within that method. Deliberately NOT a line number.",
+
+    "wholesaleResetCount": 5,
+
+    "notEnforced": [
+      "G1 ONE FILE ONLY. drawing-tools-manager.js assigns `orderManager.orderLines = orderManager.orderLines.filter(...)` at (currently) lines 12088 and 12133. Line 12133 is keyed on a `removedIds` array built earlier in that block. Neither site is reachable by this gate, and neither has been analysed by it. An earlier version of this fixture claimed to cover 'all five orderId-keyed eviction sites'; that claim was false and has been withdrawn.",
+      "G2 ONE GRAMMAR ONLY. Only whole-array reassignment through `.filter()` is inventoried. `splice`, `pop`, `shift`, `delete`, `length = n`, reassignment from `map`/`reduce`/`concat`/`slice`, and mutation through a local alias of the array are not detected at all — they will not even show up as an un-modelled shape.",
+      "G3 WHOLESALE RESETS ARE COUNTED, NOT CHECKED. `this.orderLines = []` (currently 5 occurrences) drops the entire registry with no disposal analysis. Only the count is pinned, so that a new one cannot appear silently. Note that order-manager.js:2070 is NOT in this class: it is a chart-scoped mass eviction with no orderId in its key, and this fixture DOES model it (ordinal 0) because its strip loop and its eviction are provably the same set.",
+      "G4 NO EXECUTION. Nothing observes a real frame, a real row, or the reachability of any branch. A predicate can be removal-set-correct under this model and still be unreachable, or reached with bindings other than the ones the gate assumes.",
+      "G5 DISPOSAL IS ASSUMED, NOT OBSERVED. The gate matches the NAME of the disposal call and the SHAPE of the disposal loop. It does not know whether either actually detaches DOM, and it does not model a `try/catch` swallowing a mid-row throw.",
+      "G6 FINITE ROW UNIVERSE. 3 order ids (the target, a numeric twin of the target so that `==` and `===` are distinguishable, and an unrelated id) x 2 pending-states x 4 chart slots x 2 encodings of 'not pending'. A predicate wrong only outside that universe is accepted: a fourth chart identity, a truthy non-`true` `isPending` (the product only ever writes the literal `true`, so a predicate written as `isPending === true` would be accepted here), or duplicate rows. In particular the gate cannot distinguish 'removes exactly the disposed row' from 'removes every row sharing the disposed row's three modelled attributes'; for the currently shipped predicates those differ only if the registry holds duplicate rows.",
+      "G7 PREMISED BINDINGS. The meanings of the free identifiers `orderId` and `ch` at each site are premises, not derivations. The `pending` component of each single-row site's disposed row IS derived from the source (enclosing `if (isPending)` / `else` over a binding destructured from the disposal binding), and the `orderId`/`chart` components are checked by requiring the declared row to be produced by the site's iteration source — but nothing verifies that the declared iteration source is the only one.",
+      "G8 THE `ol.chart || this.chart` FALLBACK IS NOT COVERED. Demonstrated by experiment: the gate ACCEPTS rewriting the updateOrderLines predicates to plain `ol.chart === ch`. The gate's worlds always place the disposed row on an explicit chart distinct from `this.chart`, because the world where `this.chart === ch` and the disposed row carries no `chart` property is exactly the world in which the SHIPPED predicates also remove a row they did not dispose. Modelling that world would reject the shipped fix, so it is excluded and named here instead. Changes to the chart clause of those two predicates get no protection from this gate.",
+      "G9 CONSISTENCY, NOT INTENT. Demonstrated by experiment: narrowing BOTH the collect filter and the eviction of removeOrderLine by `&& ol.isPending` is ACCEPTED, because removal still equals disposal. The gate proves the two sets agree; it never proves the agreed set is the one the caller wanted.",
+      "G10 DELIBERATELY OVER-STRICT IN PLACES. A `for...of` disposal loop, a disposal call behind an `if`, a statement inserted between the disposal and the eviction, a block-bodied predicate, or any function call inside a predicate all make the gate FAIL even when the code is correct. Unverifiable shapes fail rather than pass; expect to extend the gate rather than silence it.",
+      "G11 NO EXEMPTIONS, BY DESIGN. There is no field in this fixture that can mark a site as exempt, and the gate rejects unknown keys in `meta`, in a site, and in a site's `disposal` block. A site can only be described by a disposal model the gate knows how to verify, or the gate fails."
+    ]
   },
   "sites": [
     {
       "ordinal": 0,
-      "enclosingMethod": "removePendingOrderLine",
+      "enclosingMethod": "_dropOrderVisualsNotOnMainChart",
       "ordinalInMethod": 0,
-      "mustDiscriminate": true,
-      "expectedPolarity": "pending",
-      "exemption": null,
-      "note": "Sibling convention reference. Disposes the pending rows it matched, then removes exactly those. Executed rows sharing the orderId survive."
+      "disposal": {
+        "kind": "collected-set",
+        "arrayBinding": null
+      },
+      "note": "Chart-scoped mass eviction, no orderId in the key. `(this.orderLines || []).filter((ol) => ol.chart && ol.chart !== this.chart).forEach(stripOl)` strips every off-main row, and the eviction keeps exactly the complement. Removal set equals strip set, proven by evaluation."
     },
     {
       "ordinal": 1,
-      "enclosingMethod": "_refreshOpenPositionSlTpAfterPartialTpClose",
+      "enclosingMethod": "removePendingOrderLine",
       "ordinalInMethod": 0,
-      "mustDiscriminate": true,
-      "expectedPolarity": "executed",
-      "exemption": null,
-      "note": "Sibling convention reference. Disposes the executed rows it matched, then removes exactly those. Pending rows sharing the orderId survive."
+      "disposal": {
+        "kind": "collected-set",
+        "arrayBinding": "lineDatas"
+      },
+      "note": "Collects the pending rows for the orderId into `lineDatas`, disposes each in a forEach on that same binding, then removes exactly that set. Executed rows sharing the orderId survive."
     },
     {
       "ordinal": 2,
-      "enclosingMethod": "removeOrderLine",
+      "enclosingMethod": "_refreshOpenPositionSlTpAfterPartialTpClose",
       "ordinalInMethod": 0,
-      "mustDiscriminate": false,
-      "expectedPolarity": null,
-      "exemption": "remove-all-with-set-wide-disposal",
-      "note": "Documented as 'handles both active and pending orders'. It collects orderLinesToRemove with an equivalently-keyed filter, disposes every matched row in a forEach, and only then removes all rows with that orderId. Undiscriminated on purpose and internally consistent."
+      "disposal": {
+        "kind": "collected-set",
+        "arrayBinding": null
+      },
+      "note": "Collect-filter chained straight into the disposal forEach, so the receiver linkage is structural. Disposes the executed rows for the orderId, then removes exactly those. Pending rows sharing the orderId survive."
     },
     {
       "ordinal": 3,
-      "enclosingMethod": "updateOrderLines",
+      "enclosingMethod": "removeOrderLine",
       "ordinalInMethod": 0,
-      "mustDiscriminate": true,
-      "expectedPolarity": "pending",
-      "exemption": null,
-      "note": "Pending branch: _findPendingOrderById missed, so a single PENDING row (olEntry) is disposed. The eviction must therefore remove pending rows only."
+      "disposal": {
+        "kind": "collected-set",
+        "arrayBinding": "orderLinesToRemove"
+      },
+      "note": "Documented as 'handles both active and pending orders'. Undiscriminated on purpose: it collects every row with the orderId into `orderLinesToRemove`, disposes each one in a forEach on that binding, then removes exactly that set. The gate requires the array binding to be the actual forEach receiver and requires the loop body to contain no return/break/continue, because either would make the disposal set a strict subset of the removal set."
     },
     {
       "ordinal": 4,
       "enclosingMethod": "updateOrderLines",
+      "ordinalInMethod": 0,
+      "disposal": {
+        "kind": "single-row",
+        "binding": "olEntry",
+        "iterationBinding": "lines",
+        "disposedRow": { "orderId": "target", "pending": true, "chart": "ch" }
+      },
+      "note": "Pending branch: _findPendingOrderById missed, so the single row `olEntry` is disposed. The eviction must remove that row and nothing else. `pending: true` is cross-checked against the enclosing `if (isPending)` branch derived from the source."
+    },
+    {
+      "ordinal": 5,
+      "enclosingMethod": "updateOrderLines",
       "ordinalInMethod": 1,
-      "mustDiscriminate": true,
-      "expectedPolarity": "executed",
-      "exemption": null,
-      "note": "Executed branch: _findOpenPositionById missed, so a single EXECUTED row (olEntry) is disposed. The eviction must therefore remove executed rows only."
+      "disposal": {
+        "kind": "single-row",
+        "binding": "olEntry",
+        "iterationBinding": "lines",
+        "disposedRow": { "orderId": "target", "pending": false, "chart": "ch" }
+      },
+      "note": "Executed branch: _findOpenPositionById missed, so the single row `olEntry` is disposed. The eviction must remove that row and nothing else. `pending: false` is cross-checked against the enclosing `else` branch derived from the source."
     }
   ]
 }
