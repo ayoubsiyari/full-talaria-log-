@@ -132,3 +132,12 @@ pass on the first be read as a pass on the second.
 **Not reserved and deliberately so:** no kill-switch name for the trim-overlay fix. The fix shape is not
 decided — it depends on whether the review upholds one defect or two — and reserving a name for it now
 would imply a design decision I have not made.
+
+## 2026-07-28 10:40 — reservations for the 15:15 chain measurements
+
+| Name | Kind | Packet | Note |
+|---|---|---|---|
+| `m21-a2-rebaseline-runner.mjs` | harness | a2-rebaseline | new, A worktree only |
+| `m21-a2-rebaseline-20260728.json` | evidence file | a2-rebaseline | written inside the packet worktree, never the main checkout |
+| `m20-q9-mcdiag-atip-20260728.json` | evidence file | a2-rebaseline | `_mcDiag` cross-check pinned to A tip |
+| `__TALARIA_A2_REBASELINE_PROBE_V1` | global symbol | a2-rebaseline | probe only, must not ship |
