@@ -85,8 +85,17 @@ export function countDetachedIframes(trackedIframes = []) {
   return trackedIframes.filter((frame) => frame && frame.isConnected === false).length;
 }
 
-export function assertM6ReplayLeakCounts({ baseline, final, mutant = false } = {}) {
+export function assertM6ReplayLeakCounts({ baseline, final, mutant = false, workload = null } = {}) {
+  const workloadArmed = !workload || workload.armed === true;
   const cells = [
+    {
+      name: 'M6-PO-WORKLOAD-ARMED',
+      blocking: true,
+      pass: workloadArmed,
+      detail: workload
+        ? `armed=${workload.armed}; panels=${workload.panels}; indicatorsOk=${workload.indicatorsOk}; orderOk=${workload.order && workload.order.ok}; stillPlaying=${workload.stillPlaying}`
+        : 'workload missing (injected fixture may omit)',
+    },
     {
       name: 'M6-REPLAY-LIVE-COUNT-RETURNS-TO-ONE',
       blocking: true,
@@ -96,17 +105,19 @@ export function assertM6ReplayLeakCounts({ baseline, final, mutant = false } = {
     {
       name: 'M6-DETACHED-IFRAME-COUNT-NOT-GROWN',
       blocking: true,
-      // detachedTrackedIframes = strongly-tracked panels that are detached AND
-      // still hold a live Q6 replay instance (not a WeakRef/GC soft metric).
-      pass: !!baseline && !!final
-        && final.connectedIframes === baseline.connectedIframes
-        && final.detachedTrackedIframes <= baseline.detachedTrackedIframes,
-      detail: `connected ${baseline?.connectedIframes}->${final?.connectedIframes}; detachedLive ${baseline?.detachedTrackedIframes}->${final?.detachedTrackedIframes}`,
+      // After return to single-chart: no connected iframe panels, and no
+      // strongly-tracked detached panels still holding a live Q6 replay.
+      pass: !!final
+        && final.connectedIframes === 0
+        && final.detachedTrackedIframes === 0,
+      detail: `connected=${final?.connectedIframes}; detachedLive=${final?.detachedTrackedIframes}; baselineDetachedLive=${baseline?.detachedTrackedIframes}`,
     },
   ];
 
   if (mutant) {
-    const acceptanceWentRed = cells.some((cell) => cell.pass === false);
+    const acceptanceWentRed = cells
+      .filter((cell) => cell.name !== 'M6-PO-WORKLOAD-ARMED')
+      .some((cell) => cell.pass === false);
     cells.push({
       name: 'NC-M6-TEARDOWN-REVERSAL',
       blocking: true,

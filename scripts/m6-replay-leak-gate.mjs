@@ -19,7 +19,14 @@ const REPLAY_SYSTEM_PATH = path.resolve(__dirname, '..', 'chart v 1.4', 'chart',
 
 export const M6_REPLAY_LEAK_STATUS_SKIP = 'SKIP';
 export const DEFAULT_M6_CYCLES = 5;
-export const DEFAULT_M6_TIMEOUT_MS = 60_000;
+export const DEFAULT_M6_TIMEOUT_MS = 180_000;
+export const M6_PANEL_IDS = ['B', 'C', 'D'];
+export const M6_PO_INDICATORS = [
+  ['sma', { period: 20 }],
+  ['ema', { period: 50 }],
+  ['rsi', { period: 14 }],
+  ['macd', { fast: 12, slow: 26, signal: 9 }],
+];
 
 const CSP = [
   "default-src 'self'",
@@ -57,17 +64,19 @@ function escapeHtmlAttr(value) {
 
 export function m6ReplayLeakHostHtml({ cycles = DEFAULT_M6_CYCLES } = {}) {
   const safeCycles = Math.max(1, Math.min(20, Number(cycles) || DEFAULT_M6_CYCLES));
+  const indicatorJson = JSON.stringify(M6_PO_INDICATORS);
+  const panelIdsJson = JSON.stringify(M6_PANEL_IDS);
   return `<!doctype html>
 <html>
 <head>
   <meta charset="utf-8">
-  <title>M6 replay leak live gate</title>
+  <title>M6 replay leak PO-workload gate</title>
   <style>
     html, body, iframe { margin:0; width:100%; height:100%; border:0; background:#07080e; }
   </style>
 </head>
 <body>
-  <iframe id="harness" src="/harness/host.html?panels=1&tf=1m&pair=same"></iframe>
+  <iframe id="harness" src="/harness/host.html?panels=4&tf=1m&pair=same&hostFile=25"></iframe>
   <script type="module">
     import {
       findM20Q6ReplaySystems,
@@ -76,6 +85,8 @@ export function m6ReplayLeakHostHtml({ cycles = DEFAULT_M6_CYCLES } = {}) {
     } from '/m6-probe.mjs';
 
     const cycles = ${safeCycles};
+    const PANEL_IDS = ${panelIdsJson};
+    const INDICATORS = ${indicatorJson};
     // Strong {frame, replay} pairs only. WeakRef / contentWindow-null prune
     // would hide detached panel documents (W55-class soft pass on the PO leak).
     const trackedPanels = [];
@@ -96,7 +107,9 @@ export function m6ReplayLeakHostHtml({ cycles = DEFAULT_M6_CYCLES } = {}) {
         connectedIframes: connectedIframeCount(win),
         detachedTrackedIframes: countDetachedLivePanels(),
         trackedIframes: trackedPanels.length,
-        q6States: collectQ6States(win)
+        q6States: collectQ6States(win),
+        replayPlaying: collectReplayPlaying(win),
+        panelCount: countManagedPanels(win)
       };
     }
 
@@ -169,7 +182,36 @@ export function m6ReplayLeakHostHtml({ cycles = DEFAULT_M6_CYCLES } = {}) {
       return states;
     }
 
-    async function waitFor(predicate, label, timeoutMs = 30000) {
+    function collectReplayPlaying(win) {
+      const out = [];
+      function push(rs, where) {
+        if (!rs) return;
+        out.push({ where, isActive: !!rs.isActive, isPlaying: !!rs.isPlaying });
+      }
+      try { push(win.chart && win.chart.replaySystem, 'host'); } catch (_) {}
+      try {
+        const mgr = win.__harnessManager || win.__multichartManagerRef;
+        if (mgr && mgr.charts) {
+          mgr.charts.forEach((entry, id) => {
+            try {
+              push(entry.frame && entry.frame.contentWindow && entry.frame.contentWindow.chart && entry.frame.contentWindow.chart.replaySystem, 'panel-' + id);
+            } catch (_) {}
+          });
+        }
+      } catch (_) {}
+      return out;
+    }
+
+    function countManagedPanels(win) {
+      try {
+        const mgr = win.__harnessManager || win.__multichartManagerRef;
+        return mgr && mgr.charts ? mgr.charts.size : 0;
+      } catch (_) {
+        return 0;
+      }
+    }
+
+    async function waitFor(predicate, label, timeoutMs = 45000) {
       const started = Date.now();
       let lastError = null;
       while (Date.now() - started < timeoutMs) {
@@ -188,82 +230,315 @@ export function m6ReplayLeakHostHtml({ cycles = DEFAULT_M6_CYCLES } = {}) {
       return win.__harnessManager || win.__multichartManagerRef;
     }
 
-    async function openPanelB() {
+    function chartWindows() {
+      const win = harnessWindow();
+      const out = [{ id: 'A', win }];
+      const mgr = manager();
+      if (mgr && mgr.charts) {
+        for (const id of PANEL_IDS) {
+          const entry = mgr.charts.get(id);
+          try {
+            if (entry && entry.frame && entry.frame.contentWindow) {
+              out.push({ id, win: entry.frame.contentWindow, frame: entry.frame });
+            }
+          } catch (_) {}
+        }
+      }
+      return out;
+    }
+
+    function trackAllManagedPanels() {
+      const mgr = manager();
+      if (!mgr || !mgr.charts) return;
+      for (const id of PANEL_IDS) {
+        const entry = mgr.charts.get(id);
+        if (!entry || !entry.frame) continue;
+        trackPanel(entry.frame, frameReplaySystem(entry.frame));
+      }
+    }
+
+    function armIndicators(chart) {
+      const added = [];
+      if (!chart || typeof chart.addIndicator !== 'function') {
+        return { ok: false, reason: 'addIndicator missing', added };
+      }
+      for (const [type, params] of INDICATORS) {
+        try {
+          const ind = chart.addIndicator(type, params);
+          added.push({ type, id: ind && ind.id || null, ok: true });
+        } catch (error) {
+          added.push({ type, id: null, ok: false, error: String(error && error.message || error) });
+        }
+      }
+      const active = (chart.indicators && chart.indicators.active) || [];
+      const ok = added.filter((row) => row.ok).length >= 3 && active.length >= 3;
+      return { ok, added, activeCount: active.length };
+    }
+
+    function ensureReplayActive(chart) {
+      const rs = chart && chart.replaySystem;
+      if (!rs) return { ok: false, reason: 'no replaySystem' };
+      try {
+        if (!rs.isActive && typeof rs.enterReplayMode === 'function') {
+          rs.enterReplayMode({ startAtBeginning: true, userInitiated: true });
+        }
+      } catch (error) {
+        return { ok: false, reason: 'enterReplayMode failed: ' + String(error && error.message || error) };
+      }
+      return { ok: !!rs.isActive, isActive: !!rs.isActive };
+    }
+
+    async function startReplayPlaying(chart) {
+      const rs = chart && chart.replaySystem;
+      if (!rs || !rs.isActive) return { ok: false, reason: 'replay not active' };
+      try {
+        // Seek off session end so play() is not a no-op.
+        if (typeof rs.goToReplayTimestamp === 'function' && Array.isArray(chart.data) && chart.data.length > 50) {
+          const mid = chart.data[Math.floor(chart.data.length * 0.2)];
+          if (mid && mid.t != null) rs.goToReplayTimestamp(Number(mid.t));
+        }
+        if (!rs.isPlaying && typeof rs.play === 'function') rs.play();
+        else if (!rs.isPlaying && typeof rs.togglePlay === 'function') rs.togglePlay();
+      } catch (error) {
+        return { ok: false, reason: 'play failed: ' + String(error && error.message || error) };
+      }
+      // play() arms isPlaying on a double-rAF; wait for the real flag.
+      const started = Date.now();
+      while (Date.now() - started < 3000) {
+        if (rs.isPlaying) return { ok: true, isPlaying: true };
+        await sleep(50);
+      }
+      return { ok: !!rs.isPlaying, isPlaying: !!rs.isPlaying };
+    }
+
+    function placeHostOrder(hostWin) {
+      try { hostWin.alert = () => {}; } catch (_) {}
+      const chart = hostWin.chart;
+      const om = chart && (chart.orderManager || hostWin.orderManager);
+      const service = om && om.orderService;
+      const candle = chart && Array.isArray(chart.data) && chart.data.length
+        ? chart.data[chart.data.length - 1]
+        : null;
+      const price = candle && Number(candle.c);
+      if (!service || typeof service.submitOrder !== 'function' || !Number.isFinite(price)) {
+        return { ok: false, reason: 'orderService.submitOrder unavailable', openCount: 0 };
+      }
+      // Real placed market order via the product order service (PO session had an order).
+      const submitted = service.submitOrder({
+        orderType: 'market',
+        direction: 'BUY',
+        side: 'BUY',
+        quantity: 1,
+        entryPrice: price,
+        timestamp: candle && candle.t != null ? Number(candle.t) : Date.now(),
+        stopLoss: price * 0.99,
+        takeProfit: price * 1.01,
+      });
+      const openCount = Array.isArray(service.openPositions) ? service.openPositions.length
+        : (Array.isArray(service.orders) ? service.orders.length : 0);
+      return {
+        ok: !!(submitted && submitted.id) || openCount > 0,
+        result: submitted ? { id: submitted.id, status: submitted.status } : null,
+        openCount,
+        via: 'orderService.submitOrder'
+      };
+    }
+
+    async function armPoWorkload() {
+      const win = harnessWindow();
+      try { win.alert = () => {}; } catch (_) {}
+      const perPanel = [];
+      for (const entry of chartWindows()) {
+        const chart = entry.win.chart;
+        await waitFor(() => {
+          return chart && Array.isArray(chart.data) && chart.data.length > 0
+            && chart.replaySystem
+            && chart.replaySystem._m20Q6LifecycleState === 'active';
+        }, 'panel ' + entry.id + ' chart+replay ready', 60000);
+        const replay = ensureReplayActive(chart);
+        const indicators = armIndicators(chart);
+        perPanel.push({
+          id: entry.id,
+          replay,
+          indicators,
+          indicatorCount: indicators.activeCount || 0
+        });
+        if (entry.frame) trackPanel(entry.frame, frameReplaySystem(entry.frame));
+      }
+      const hostReplay = ensureReplayActive(win.chart);
+      if (!hostReplay.ok) throw new Error('host replay not active for order placement');
+      const order = placeHostOrder(win);
+      const playing = [];
+      for (const entry of chartWindows()) {
+        let row = { id: entry.id, ...(await startReplayPlaying(entry.win.chart)) };
+        if (!row.ok) {
+          // One retry — panel D occasionally misses the first double-rAF arm.
+          await sleep(100);
+          row = { id: entry.id, ...(await startReplayPlaying(entry.win.chart)) };
+        }
+        playing.push(row);
+      }
+      // Hold a short live-play window (PO session had replay running). Do not
+      // require play to still be true after a long idle — cadence can settle.
+      let observedPlaying = 0;
+      const playWindowStarted = Date.now();
+      while (Date.now() - playWindowStarted < 800) {
+        observedPlaying = Math.max(
+          observedPlaying,
+          collectReplayPlaying(win).filter((row) => row.isPlaying).length
+        );
+        if (observedPlaying >= 3) break;
+        await sleep(50);
+      }
+      const stillPlaying = collectReplayPlaying(win).filter((row) => row.isPlaying).length;
+      const indicatorsOk = perPanel.every((row) => row.indicators && row.indicators.ok);
+      const replayOk = perPanel.every((row) => row.replay && row.replay.ok);
+      const playingArmed = playing.filter((row) => row.ok).length >= 3 || observedPlaying >= 3;
+      const armed = indicatorsOk && replayOk && order.ok && playingArmed && perPanel.length >= 4;
+      return {
+        armed,
+        panels: perPanel.length,
+        indicatorsOk,
+        replayOk,
+        order,
+        playing,
+        stillPlaying,
+        observedPlaying,
+        perPanel
+      };
+    }
+
+    function setGridLayout(panelCount) {
+      const win = harnessWindow();
+      const grid = win.document.getElementById('grid');
+      if (!grid) return;
+      if (panelCount <= 1) {
+        grid.style.gridTemplateColumns = 'repeat(1, 1fr)';
+        grid.style.gridTemplateRows = 'repeat(1, 1fr)';
+      } else if (panelCount === 2) {
+        grid.style.gridTemplateColumns = 'repeat(2, 1fr)';
+        grid.style.gridTemplateRows = 'repeat(1, 1fr)';
+      } else {
+        grid.style.gridTemplateColumns = 'repeat(2, 1fr)';
+        grid.style.gridTemplateRows = 'repeat(2, 1fr)';
+      }
+    }
+
+    async function expandToFourPanels() {
       const win = harnessWindow();
       const mgr = manager();
       if (!mgr || typeof mgr.addChart !== 'function') throw new Error('multichart manager missing addChart');
-      let cell = win.document.querySelector('[data-cell="B"]');
-      if (!cell) {
-        cell = win.document.createElement('div');
-        cell.className = 'cell';
-        cell.setAttribute('data-cell', 'B');
-        win.document.getElementById('grid').appendChild(cell);
+      setGridLayout(4);
+      for (const id of PANEL_IDS) {
+        if (mgr.charts && mgr.charts.has(id)) continue;
+        let cell = win.document.querySelector('[data-cell="' + id + '"]');
+        if (!cell) {
+          cell = win.document.createElement('div');
+          cell.className = 'cell';
+          cell.setAttribute('data-cell', id);
+          win.document.getElementById('grid').appendChild(cell);
+        }
+        mgr.addChart({ id, tf: '1m', fileId: 25 }, cell);
       }
-      try {
-        win.document.getElementById('grid').style.gridTemplateColumns = 'repeat(2, 1fr)';
-        win.document.getElementById('grid').style.gridTemplateRows = 'repeat(1, 1fr)';
-      } catch (_) {}
-      mgr.addChart({ id: 'B', tf: '1m', fileId: 25 }, cell);
       await waitFor(() => {
-        const entry = manager().charts && manager().charts.get('B');
-        return entry && entry.frame && entry.frame.contentWindow && entry.frame.contentWindow.chart
-          && entry.frame.contentWindow.chart.replaySystem
-          && entry.frame.contentWindow.chart.replaySystem._m20Q6LifecycleState === 'active';
-      }, 'panel B active replay system');
-      try {
-        const entry = manager().charts && manager().charts.get('B');
-        trackPanel(entry && entry.frame, entry && entry.frame && frameReplaySystem(entry.frame));
-      } catch (_) {}
-      await sleep(250);
+        const m = manager();
+        return PANEL_IDS.every((id) => {
+          const entry = m.charts && m.charts.get(id);
+          return entry && entry.frame && entry.frame.contentWindow && entry.frame.contentWindow.chart
+            && entry.frame.contentWindow.chart.replaySystem
+            && entry.frame.contentWindow.chart.replaySystem._m20Q6LifecycleState === 'active';
+        });
+      }, 'panels B/C/D active replay systems', 60000);
+      trackAllManagedPanels();
     }
 
-    async function closePanelB() {
+    async function collapseToSingle() {
       const win = harnessWindow();
       const mgr = manager();
       if (!mgr || typeof mgr.removeChart !== 'function') throw new Error('multichart manager missing removeChart');
-      try {
-        const entry = mgr.charts && mgr.charts.get('B');
-        trackPanel(entry && entry.frame, entry && entry.frame && frameReplaySystem(entry.frame));
-      } catch (_) {}
-      mgr.removeChart('B');
-      try {
-        const cell = win.document.querySelector('[data-cell="B"]');
-        if (cell) cell.remove();
-        win.document.getElementById('grid').style.gridTemplateColumns = 'repeat(1, 1fr)';
-      } catch (_) {}
-      await waitFor(() => !(manager().charts && manager().charts.has('B')), 'panel B removed');
+      trackAllManagedPanels();
+      for (const id of PANEL_IDS) {
+        if (mgr.charts && mgr.charts.has(id)) mgr.removeChart(id);
+        try {
+          const cell = win.document.querySelector('[data-cell="' + id + '"]');
+          if (cell) cell.remove();
+        } catch (_) {}
+      }
+      setGridLayout(1);
+      await waitFor(() => {
+        const m = manager();
+        return PANEL_IDS.every((id) => !(m.charts && m.charts.has(id)));
+      }, 'panels B/C/D removed', 30000);
       if (window.gc) { try { window.gc(); } catch (_) {} }
       if (win.gc) { try { win.gc(); } catch (_) {} }
-      await sleep(750);
+      await sleep(900);
       pruneDrainedPanels(win);
     }
 
     async function run() {
       const startedAt = new Date().toISOString();
+      let workload = null;
       try {
         await waitFor(() => {
           const win = harnessWindow();
           return win && win.__harnessManager && win.chart && win.chart.replaySystem
             && win.chart.replaySystem._m20Q6LifecycleState === 'active'
             && !win.__harnessBootError;
-        }, 'single chart active replay system');
-        await sleep(500);
-        const baseline = snapshot('baseline');
-        if (baseline.liveReplaySystems !== 1) {
-          throw new Error('M20 Q6 replay lifecycle unavailable or not single-owner at baseline: live=' + baseline.liveReplaySystems);
+        }, 'host chart active replay system', 60000);
+        await waitFor(() => {
+          const m = manager();
+          return PANEL_IDS.every((id) => {
+            const entry = m && m.charts && m.charts.get(id);
+            return entry && entry.frame && entry.frame.contentWindow && entry.frame.contentWindow.chart
+              && entry.frame.contentWindow.chart.replaySystem
+              && entry.frame.contentWindow.chart.replaySystem._m20Q6LifecycleState === 'active';
+          });
+        }, 'boot four-panel B/C/D active', 60000);
+        trackAllManagedPanels();
+        workload = await armPoWorkload();
+        if (!workload.armed) {
+          throw new Error('PO workload arm failed: ' + JSON.stringify(workload));
         }
-        const cycleSnapshots = [];
+        const armed = snapshot('armed-four-panel');
+        if (armed.liveReplaySystems < 4) {
+          throw new Error('armed four-panel live count below 4: live=' + armed.liveReplaySystems);
+        }
+        await collapseToSingle();
+        const baseline = snapshot('baseline-single');
+        const cycleSnapshots = [armed];
         for (let index = 0; index < cycles; index += 1) {
-          await openPanelB();
+          await expandToFourPanels();
+          const rearm = await armPoWorkload();
+          if (!rearm.armed) throw new Error('PO workload re-arm failed at cycle ' + (index + 1));
+          workload = rearm;
+          await sleep(800);
           cycleSnapshots.push(snapshot('cycle-' + (index + 1) + '-open'));
-          await closePanelB();
+          await collapseToSingle();
           cycleSnapshots.push(snapshot('cycle-' + (index + 1) + '-closed'));
         }
         await sleep(1000);
         const final = snapshot('final');
-        await postReport({ ok: true, startedAt, finishedAt: new Date().toISOString(), cycles, baseline, final, cycleSnapshots });
+        await postReport({
+          ok: true,
+          startedAt,
+          finishedAt: new Date().toISOString(),
+          cycles,
+          workload,
+          baseline,
+          final,
+          cycleSnapshots
+        });
       } catch (error) {
-        await postReport({ ok: false, startedAt, finishedAt: new Date().toISOString(), cycles, error: String(error && error.message || error), baseline: safeSnapshot('baseline-error'), final: safeSnapshot('final-error') });
+        await postReport({
+          ok: false,
+          startedAt,
+          finishedAt: new Date().toISOString(),
+          cycles,
+          workload,
+          error: String(error && error.message || error),
+          baseline: safeSnapshot('baseline-error'),
+          final: safeSnapshot('final-error')
+        });
       }
     }
 
@@ -422,7 +697,12 @@ export async function runM6ReplayLeakGate({
         meta: { startedAt, finishedAt: new Date().toISOString(), browserPath, url },
       };
     }
-    const cells = assertM6ReplayLeakCounts({ baseline: report.baseline, final: report.final, mutant });
+    const cells = assertM6ReplayLeakCounts({
+      baseline: report.baseline,
+      final: report.final,
+      mutant,
+      workload: report.workload || null,
+    });
     const ok = report.ok === true && cells.every((cell) => cell.pass === true);
     return {
       ok,
@@ -450,6 +730,38 @@ export async function runM6ReplayLeakGate({
 
 export async function runM6ReplayLeakPreflight(options = {}) {
   const acceptance = await runM6ReplayLeakGate({ ...options, mutant: false });
+  // Director 1652 / charter: a gate that cannot reproduce the PO-confirmed
+  // defect (4→17) must not mint GREEN. live=1 after the PO workload is
+  // UNPROVEN escalate — not ship credit. Opt in only after the defect is
+  // first shown RED, then fixed: TALARIA_M6_LEAK_FIXED=1.
+  const finalLive = acceptance.report?.final?.liveReplaySystems;
+  const defectReproduced = acceptance.status === 'RED' && Number(finalLive) > 1;
+  if (process.env.TALARIA_M6_LEAK_FIXED !== '1') {
+    if (acceptance.ok && finalLive === 1) {
+      return {
+        ok: false,
+        status: 'UNPROVEN',
+        signature: M6_REPLAY_LEAK_SIGNATURE,
+        acceptance,
+        mutant: null,
+        error: 'ESCALATE-TO-DIRECTOR: PO workload (4 panels+indicators+order+live replay) returned live=1; defect not reproduced; not a pass',
+      };
+    }
+    if (!acceptance.ok && !defectReproduced) {
+      return { ok: false, status: acceptance.status, signature: M6_REPLAY_LEAK_SIGNATURE, acceptance, mutant: null };
+    }
+    if (defectReproduced) {
+      // Instrument is pointed at the defect. Ship stays blocked until fix + FIXED=1.
+      return {
+        ok: false,
+        status: 'RED',
+        signature: M6_REPLAY_LEAK_SIGNATURE,
+        acceptance,
+        mutant: null,
+        error: `PO defect reproduced (final live=${finalLive}); ship blocked until fix (TALARIA_M6_LEAK_FIXED=1)`,
+      };
+    }
+  }
   if (!acceptance.ok) {
     return { ok: false, status: acceptance.status, signature: M6_REPLAY_LEAK_SIGNATURE, acceptance, mutant: null };
   }
