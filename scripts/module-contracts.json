@@ -101,6 +101,22 @@
       "servable": true
     },
     {
+      "id": "multichart-panel-shell-source",
+      "surface": "panel",
+      "path": "chart v 1.4/chart/multichart/chart-host.html",
+      "status": "owned-stamped",
+      "servable": true,
+      "reason": "Routed /chart/multichart/ panel shell; GATE-01 defective input until ModulePresenceRuntime + IndicatorPerf load and stamp is current (FINDING-MULTICHART-HOST-SHELL-STALE-20260728-2110)."
+    },
+    {
+      "id": "multichart-panel-shell-public",
+      "surface": "panel",
+      "path": "homepage/public/chart/multichart/chart-host.html",
+      "status": "owned-stamped",
+      "servable": true,
+      "reason": "Homepage mirror of /chart/multichart/chart-host.html; same GATE-01 obligation as source."
+    },
+    {
       "id": "accidental-public-live-copy",
       "surface": "host",
       "path": "homepage/public/chart/talaria-design/live/index.html",

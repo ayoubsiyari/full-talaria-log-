@@ -7,6 +7,8 @@ import test from 'node:test';
 import {
   CACHE_STAMP_BASELINE_RELATIVE,
   CACHE_STAMP_COHERENCE_GATE_NAME,
+  CACHE_STAMP_SHELLS,
+  CACHE_STAMP_SHELLS_WITHOUT_MULTICHART,
   TALARIA_CACHE_STAMP_COHERENCE_V1,
   buildBaselineFromTree,
   extractStampedModuleRefs,
@@ -26,6 +28,13 @@ test('signature and gate name are stable', () => {
   assert.equal(CACHE_STAMP_COHERENCE_GATE_NAME, 'CACHE-STAMP-COHERENCE-V1');
 });
 
+test('CACHE_STAMP_SHELLS covers /chart/multichart/ chart-host paths', () => {
+  const paths = CACHE_STAMP_SHELLS.map((shell) => shell.relativePath.replace(/\\/g, '/'));
+  assert.ok(paths.includes('chart v 1.4/chart/multichart/chart-host.html'));
+  assert.ok(paths.includes('homepage/public/chart/multichart/chart-host.html'));
+  assert.equal(CACHE_STAMP_SHELLS_WITHOUT_MULTICHART.length, CACHE_STAMP_SHELLS.length - 2);
+});
+
 test('extractStampedModuleRefs normalizes /chart/modules and relative modules', () => {
   const refs = extractStampedModuleRefs(`
     <script src="/chart/modules/order-manager.js?v=20260727b80"></script>
@@ -37,8 +46,16 @@ test('extractStampedModuleRefs normalizes /chart/modules and relative modules', 
   ]);
 });
 
-test('SHELL-BUILD-ID-UNIFORM [soundness VER-01]: all shells share one stamp family', () => {
+test('GATE-01: SHELL-BUILD-ID-UNIFORM REDs May stamp on /chart/multichart/chart-host.html', () => {
   const cell = runShellBuildIdUniformCell(root);
+  assert.equal(cell.status, 'RED', JSON.stringify(cell, null, 2));
+  assert.ok(cell.allIds.includes('20260524a10'), JSON.stringify(cell.allIds));
+  assert.ok(cell.allIds.includes('20260727b80'), JSON.stringify(cell.allIds));
+});
+
+test('coverage hole: excluding /chart/multichart/ wrongly GREENs stamp uniformity', () => {
+  // Proves the pre-W63 shell list could not see the May stamp survival.
+  const cell = runShellBuildIdUniformCell(root, CACHE_STAMP_SHELLS_WITHOUT_MULTICHART);
   assert.equal(cell.status, 'GREEN', JSON.stringify(cell, null, 2));
   assert.equal(cell.buildId, '20260727b80');
 });
@@ -64,6 +81,14 @@ test('NC-STALE-STAMP-CONTENT-DRIFT [wiring VER-01]: content change under sealed 
   assert.equal(cell.status, 'GREEN', JSON.stringify(cell, null, 2));
   assert.equal(cell.detectorWentRed, true);
   assert.equal(cell.driftHit, true);
+});
+
+test('full cache-stamp gate is RED while multichart May stamp survives', () => {
+  const report = runCacheStampCoherenceGate({ root });
+  assert.equal(report.status, 'RED');
+  assert.equal(report.allPass, false);
+  const uniform = report.cells.find((c) => c.cell === 'SHELL-BUILD-ID-UNIFORM');
+  assert.equal(uniform?.status, 'RED');
 });
 
 test('CROSS-SHELL conflict: dist b83 vs legacy b80 is RED', () => {
@@ -96,6 +121,13 @@ test('CROSS-SHELL conflict: dist b83 vs legacy b80 is RED', () => {
   write('homepage/public/chart/multichart-prod/chart-embed.html', `
     window.__TALARIA_CHART_BUILD_ID = p.get('v') || '20260727b80';
     <script src="/chart/modules/order-manager.js?v=20260727b80"></script>
+  `);
+  // Multichart panel shells are in CACHE_STAMP_SHELLS; fixtures must be readable.
+  write('chart v 1.4/chart/multichart/chart-host.html', `
+    <script src="./sync-bridge.js?v=20260727b80"></script>
+  `);
+  write('homepage/public/chart/multichart/chart-host.html', `
+    <script src="./sync-bridge.js?v=20260727b80"></script>
   `);
   write('chart v 1.4/chart/modules/order-manager.js', 'export default 1;\n');
 
@@ -157,6 +189,8 @@ test('R-W55: stamp bump without baseline re-seal is RED', () => {
     'chart v 1.4/chart/legacy-index.html',
     'chart v 1.4/chart/multichart-prod/chart-embed.html',
     'homepage/public/chart/multichart-prod/chart-embed.html',
+    'chart v 1.4/chart/multichart/chart-host.html',
+    'homepage/public/chart/multichart/chart-host.html',
   ]) {
     write(shell, shellBody('20260727b83'));
   }
@@ -170,10 +204,15 @@ test('R-W55: stamp bump without baseline re-seal is RED', () => {
   assert.ok(cell.stampMismatches.some((m) => m.modulePath === modulePath));
 });
 
-test('gate aggregate is GREEN on the sealed repo tree', () => {
+test('gate aggregate signature stable; sealed tree stays RED until multichart stamp is current', () => {
   const report = runCacheStampCoherenceGate({ root });
   assert.equal(report.signature, TALARIA_CACHE_STAMP_COHERENCE_V1);
-  assert.equal(report.status, 'GREEN', JSON.stringify(report.cells, null, 2));
-  assert.equal(report.allPass, true);
   assert.ok(fs.existsSync(path.join(root, CACHE_STAMP_BASELINE_RELATIVE)));
+  assert.equal(report.status, 'RED', JSON.stringify(report.cells, null, 2));
+  // Pre-multichart shell set remains coherent — the RED is the new coverage, not a baseline break.
+  const without = runCacheStampCoherenceGate({
+    root,
+    shells: CACHE_STAMP_SHELLS_WITHOUT_MULTICHART,
+  });
+  assert.equal(without.status, 'GREEN', JSON.stringify(without.cells, null, 2));
 });

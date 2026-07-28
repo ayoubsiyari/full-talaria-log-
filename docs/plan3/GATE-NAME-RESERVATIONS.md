@@ -21,8 +21,8 @@ Status vocabulary: `RESERVED` (name taken, not yet authored) · `LIVE` (authored
 
 | Name | Signature token | Implementation | Status |
 |---|---|---|---|
-| MODULE-CONTRACT-PREFLIGHT-V1 | `TALARIA_MODULE_CONTRACT_PREFLIGHT_V1` | `scripts/module-contract-preflight.mjs` | LIVE (landed 90e0e0cf8, pre-dates this registry) |
-| CACHE-STAMP-COHERENCE-V1 | `TALARIA_CACHE_STAMP_COHERENCE_V1` | `scripts/cache-stamp-coherence-gate.mjs`, `scripts/lib/cache-stamp-coherence.mjs`, `scripts/cache-stamp-module-baseline.json` | LIVE (W55) — content-hash vs sealed `?v=` stamp + cross-shell module stamp coherence |
+| MODULE-CONTRACT-PREFLIGHT-V1 | `TALARIA_MODULE_CONTRACT_PREFLIGHT_V1` | `scripts/module-contract-preflight.mjs`, `scripts/module-contracts.json` | LIVE — W63 GATE-01: inventory includes `/chart/multichart/chart-host.html` (source+public); today's May-stamp shell missing ModulePresenceRuntime + IndicatorPerf must RED (GREEN on that file = GATE-WRONG) |
+| CACHE-STAMP-COHERENCE-V1 | `TALARIA_CACHE_STAMP_COHERENCE_V1` | `scripts/cache-stamp-coherence-gate.mjs`, `scripts/lib/cache-stamp-coherence.mjs`, `scripts/cache-stamp-module-baseline.json` | LIVE (W55/W63) — content-hash vs sealed `?v=` + cross-shell stamps; `CACHE_STAMP_SHELLS` covers `/chart/multichart/chart-host.html` so May `20260524a10` cannot survive outside the gate (FINDING-MULTICHART-HOST-SHELL-STALE) |
 
 ## Queue item 1 — territory and journal (A11.2 item 1)
 
