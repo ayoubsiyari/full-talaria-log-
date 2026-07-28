@@ -126,3 +126,8 @@ docs/plan3/fixtures/*
 
 
 
+
+# Local deploy scratch archives (must never enter the tree)
+.scratch-*.tar
+.scratch-*.tar.gz
+
