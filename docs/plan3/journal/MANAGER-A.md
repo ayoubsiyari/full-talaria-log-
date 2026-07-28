@@ -4126,3 +4126,46 @@ The silence is forced by the byte-equality requirement, **which I imposed**. I a
 3. Read `__mcDiagCollect()` for host plus panels, not `__mcDiagReport()` alone.
 4. **Never quote `m25FramesArmed` as a path count.** It saturates at one per frame by construction. The per-site map is the answer; the scalar is a frame count wearing a counter's name.
 5. Read nothing from a chart constructed before step 1.
+
+## 2026-07-28 ~15:5x — M26 orphaned ReplaySystems (FINDING-ORPHANED-REPLAY-SYSTEMS-20260728)
+
+branch=manager-a/orphan-replay-destroy base=manager-a/critical-path@4cf6bf14e tip=08d024b02 (NOT merged)
+
+**VERDICT: code ACCEPT-WITH-CONDITIONS (conditions closed). M-6 BLOCKED — UNTESTED, not green.**
+surface=multichart-prod/multichart-manager.js (+enforced homepage mirror) coverage=node oracles 5/5; browser M-6 non-discriminating
+
+### Two premises in the Director's finding REFUTED before dispatch
+1. Cited multichart-manager.js:583-588. Real site is **519-528** on my base, and **522-523 on the finding author's own branch**. Content, not numbers.
+2. "A fourth entry in a list of three — the teardown already destroys the Q7/Q5 bridges, each kill-switched." **No such list exists.** Zero occurrences of `destroy` in that file on **any** ref; `backlog/lane3-bridge-teardown-q5q7` is unmerged and lacks it too. The pattern was established, not matched.
+   - Cause of the illusion: the manager's own teardown is named **`dispose`** (:189), so a `destroy` search misses it. `dispose()` does `for (id of charts.keys()) this.removeChart(id)` (:201), reached from `MultichartGrid.jsx:2805` on unmount — so the fix IS on the PO's back-to-single-chart path. Chain independently confirmed by review.
+
+### Mechanism CONFIRMED, and stronger than reported
+`destroy()` (replay-system.js:10179) is two statements; the teardown inlined the first and dropped `m20Q6DrainState`. **Stronger: `destroy()`/`dispose()` are called from nowhere in the product** — the sole reference is the :10187 self-call.
+
+### M-6 is UNTESTED — do not report the enabled arm as green
+The A/B used the kill switch on one build. **The control arm (today's shipping behaviour) also passed both criteria: 1 replay system before and after, delta 0.** A criterion the defect arm passes is not evidence. Reporting it green would repeat exactly the error that got **M-5 withdrawn**.
+Reviewer confirmed and found it worse than I argued:
+- `frame.remove()` fires **pagehide 0–7 ms after removal**, so the pre-existing hook (replay-system.js:9563-9579) drains first. **The harness is structurally incapable of exhibiting the defect.**
+- No open-state sample: never shows the count rising above 1, so "1 after" is unfalsifiable. `beforeOpen` is already 1 (host chart).
+- Detached-div detector reads **0 in every sample of every arm** against a PO baseline of 19,852 — uncalibrated, no positive control.
+- `buildAcceptance` reads only the enabled arm; the control was collected and discarded.
+
+### MY HYPOTHESIS REFUTED (mine, not an author's)
+I briefed that `destroy()` drains but never nulls the reference, so M-6 #1 was structurally unmeetable. **False.** The clean path nulls `chart.replaySystem`, deletes the chart-owner entry, and releases the state from a strong `Set` (replay-system.js:9814-9822, :9811). Conclusion survives on other grounds only: both arms already sit at 1, so the fix cannot be shown to move criterion 1 on this path.
+**Real gap instead:** partial drain sets `destroy-pending` and **throws** (:9824, :9846-9851), leaving `chart.replaySystem` intact — and `removeChart` swallowed it silently. Now logged (condition 2).
+
+### brief-defect (mine, 4th of the same class this train)
+Writable set omitted the **enforced** homepage mirror; `b70-multichart-manager-mirrors.test.mjs` gates it. First author correctly **refused the packet** rather than widening scope. I have a standing rule to check every writable file for an enforced mirror and I broke it again.
+
+### Scope decision is load-bearing for CORRECTNESS, not tidiness
+Left `multichart/multichart-manager.js` (identical defect at :201-202) alone. Reviewer found `multichart/chart-host.html:281-283` installs a **no-op Proxy** whose `.destroy` is truthy — so patching the non-prod twin would set the guard, skip the real `_b70Shadow…` dispose, and be a **strict regression**. Recorded so the obvious follow-up does not land.
+
+### Director follow-ups
+- **#3 orphan liveness — partial, limits stated.** Control arm: 32 registrations, 28 pending event registrations, **0 pending timers/rAFs**, 3 pagehide executions during removal. "Registered" ≠ "firing"; executions were during frame removal, not steady state. Probe instrumentation itself alters retention. **Does not close the lag question.**
+- **#4 Document filter — 0 in both arms**, filtered by class not by size-sorted scan. But the same snapshot instrument reads 0 detached divs everywhere, so **the null is not yet trustworthy**.
+- **Baseline caveat honoured:** 19,852 predates multichart; this addresses growth, not baseline. Flat delta not reported as a fixed leak.
+
+### OPEN
+- **PO-REQ: M-6 on the PO's real browser.** Headless self-heals via pagehide; the PO's Chrome shows 3 orphans. The environments disagree and only the PO's side has the defect.
+- Census wrote full heap snapshots then **deleted** them (heapDeleted:true), counting node names only — it had the data to answer "what retains this" and discarded it.
+- Ordering mutant survived initial oracle (two separate call arrays); killed in 08d024b02.
