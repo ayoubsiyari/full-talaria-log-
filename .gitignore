@@ -110,8 +110,10 @@ docs/plan3/*
 !docs/plan3/PO-QUEUE.md
 !docs/plan3/oracles/
 !docs/plan3/oracles/**
+# A7 fixture modules only — other local evidence under fixtures/ stays ignored.
 !docs/plan3/fixtures/
-!docs/plan3/fixtures/**
+docs/plan3/fixtures/*
+!docs/plan3/fixtures/a7-*.mjs
 !docs/plan3/journal/
 !docs/plan3/journal/*.md
 # Director ruling TB-6: standing policy and PO-sweep findings must carry history,
