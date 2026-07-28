@@ -84,6 +84,14 @@ function round2(x) { return Math.round(x * 100) / 100; }
 const corpusMatrix = buildCorpusPoints(MATRIX_BARS, 130_000, 0);
 const corpusJoin = buildCorpusPoints(JOIN_BARS, 130_000, 0);
 
+/**
+ * Precondition for any clause that scores a partial bar against the full bucket:
+ * such a clause is legitimately silent when the price never moves inside a bucket,
+ * and asserting it regardless would re-import the r1 error.
+ */
+const corpusHasIntraBucketTravel = corpusMatrix
+    .some((r, i) => i > 0 && r.cP !== corpusMatrix[i - 1].cP);
+
 /** Reviewer's phase: 20 minutes into a 1H bucket → one third of the bucket. */
 function thirdPhase(tf) {
     return Math.max(1, Math.floor((TF_MS[tf] / MINUTE_MS) / 3));
@@ -314,9 +322,9 @@ test('negative control: LIMB 2 passes on a conforming model and fails on a parti
 /* ──────────────────────── the matrix run ──────────────────────── */
 
 const matrix = [];
-test('drive product replay matrix (5m/15m/1h/4h × raw+coarse+product stepping × kill ON/OFF)', () => {
+test('drive product replay matrix (5m/15m/1h/4h × raw+coarse+legacy+product × kill ON/OFF)', () => {
     for (const tf of MATRIX_TFS) {
-        for (const stepMode of ['raw', 'coarse', 'product']) {
+        for (const stepMode of ['raw', 'coarse', 'legacy', 'product']) {
             for (const killSwitchOn of [false, true]) {
                 matrix.push(runReplay({
                     pointRows: corpusMatrix,
@@ -376,6 +384,64 @@ test('drive product replay matrix (5m/15m/1h/4h × raw+coarse+product stepping �
         + '_firstRawIndexAtOrAfter, so the newest candle holds exactly one raw bar');
     assert.equal(allPhaseZero, true);
 
+    // The legacy law, driven for real. It advances by currentTimestamp + tfMs
+    // rather than re-anchoring, so it PRESERVES the starting phase — the opposite
+    // of calculateNextIndex, and the reason the fixed-phase 'coarse' mode was a
+    // model of it all along rather than a synthetic invention.
+    const legacyCells = matrix.filter((r) => r.stepMode === 'legacy');
+    assert.ok(legacyCells.length > 0, 'legacy cells must exist');
+    const legacyPreserves = legacyCells.every((r) => r.distinctSteadyStateLandingPhases.length === 1
+        && r.distinctSteadyStateLandingPhases[0] === r.phaseOffsetBars);
+    section('legacyStepping', legacyCells.map((r) => ({
+        timeframe: r.timeframe, startPhaseBars: r.phaseOffsetBars,
+        landingPhaseMinutes: r.landingPhaseMinutes,
+        distinctSteadyStateLandingPhases: r.distinctSteadyStateLandingPhases,
+        stubbedResolvers: r.stubbedResolvers,
+        clauseA: r.immutability.clauseA,
+        clauseB: r.immutability.clauseB,
+    })));
+    for (const r of legacyCells.filter((c) => !c.killSwitchOn)) {
+        observe('LEGACY', `${r.timeframe} _advanceCoarseLegacyCandleBucket`,
+            `started at phase +${r.phaseOffsetBars}; steady-state landing phases `
+            + `{${r.distinctSteadyStateLandingPhases.join(',')}} — PRESERVED; `
+            + `clause A ${r.immutability.clauseA.violations}/${r.immutability.clauseA.checked}, `
+            + `clause B ${r.immutability.clauseB.violations}/${r.immutability.clauseB.checked} `
+            + `at ${r.immutability.clauseB.movement.meanAbsPips}pip`);
+    }
+    note('LEGACY', 'legacy-path-is-phase-preserving-unlike-calculateNextIndex', legacyPreserves,
+        '_advanceCoarseLegacyCandleBucket advances by currentTimestamp + tfMs; it is checked '
+        + 'FIRST at all three step sites, so when its gate is on it is the dominant path');
+    assert.equal(legacyPreserves, true);
+
+    // And it agrees with the fixed-phase model, which is what retires the
+    // "synthetic contrast case" label. Compared on clause A, which is exact: the
+    // two laws visit the same phases and publish the same set of incomplete bars.
+    const pairs = MATRIX_TFS.map((tf) => {
+        const l = matrix.find((r) => r.timeframe === tf && r.stepMode === 'legacy' && !r.killSwitchOn);
+        const c = matrix.find((r) => r.timeframe === tf && r.stepMode === 'coarse' && !r.killSwitchOn);
+        return {
+            timeframe: tf,
+            phasesMatch: l.distinctSteadyStateLandingPhases.join() === c.phaseOffsetBars.toString(),
+            clauseAMatch: l.immutability.clauseA.checked === c.immutability.clauseA.checked
+                && l.immutability.clauseA.violations === c.immutability.clauseA.violations,
+            legacyClauseB: `${l.immutability.clauseB.violations}/${l.immutability.clauseB.checked}`,
+            coarseClauseB: `${c.immutability.clauseB.violations}/${c.immutability.clauseB.checked}`,
+            clauseBViolationDelta: c.immutability.clauseB.violations - l.immutability.clauseB.violations,
+        };
+    });
+    section('legacyVsFixedPhaseModel', pairs);
+    const clauseAAgrees = pairs.every((p) => p.clauseAMatch && p.phasesMatch);
+    note('LEGACY', 'fixed-phase-coarse-mode-reproduces-the-real-legacy-law-exactly-on-clause-A',
+        clauseAAgrees,
+        pairs.map((p) => `${p.timeframe}:${p.clauseAMatch}`).join(' '));
+    observe('LEGACY', 'clause-B-tail-difference',
+        `clause B differs by exactly ${[...new Set(pairs.map((p) => p.clauseBViolationDelta))].join('/')} `
+        + 'bucket per cell (' + pairs.map((p) => `${p.timeframe} ${p.legacyClauseB} vs ${p.coarseClauseB}`).join(', ')
+        + '). Cause: _advanceCoarseLegacyCandleBucket clamps its final step to '
+        + 'fullRawData.length - 1, so the real law visits one tail tick the fixed-stride loop '
+        + 'exits before. Not a disagreement about the stepping law.');
+    assert.equal(clauseAAgrees, true);
+
     const rawOn = matrix.find((r) => r.stepMode === 'raw' && !r.killSwitchOn);
     const rawOff = matrix.find((r) => r.stepMode === 'raw' && r.killSwitchOn);
     note('CTRL', 'fixON-single-prefix-identity', rawOn.distinctPrefixIdentities === 1,
@@ -401,7 +467,10 @@ test('mechanism: under real product stepping the newest candle holds ONE raw bar
             barsPerBucket,
             rawBarsInNewestCandle: 1,
             unelapsedRemainderMinutes: barsPerBucket - 1,
-            fractionOfBucketMissing: round2((barsPerBucket - 1) / barsPerBucket),
+            // Exact ratio, not a rounded one: one raw bar IS present, so this can
+            // never be 100% and must not be rendered as such.
+            bucketMissingRatio: `${barsPerBucket - 1}/${barsPerBucket}`,
+            percentOfBucketMissing: Math.floor(((barsPerBucket - 1) / barsPerBucket) * 10000) / 100,
             presentationViolations: r.immutability.clauseA.violations,
             presentationChecked: r.immutability.clauseA.checked,
             meanAbsMovementPips: r.immutability.clauseB.movement.meanAbsPips,
@@ -412,8 +481,8 @@ test('mechanism: under real product stepping the newest candle holds ONE raw bar
     for (const r of rows) {
         observe('STUB', r.timeframe,
             `newest candle = 1 raw bar of ${r.barsPerBucket} (${r.unelapsedRemainderMinutes} min `
-            + `un-elapsed, ${Math.round(r.fractionOfBucketMissing * 100)}% of the bucket missing); `
-            + `markers found=${r.formingMarkersSeen}; subsequent movement `
+            + `un-elapsed, ${r.bucketMissingRatio} = ${r.percentOfBucketMissing}% of the bucket `
+            + `missing); markers found=${r.formingMarkersSeen}; subsequent movement `
             + `${r.meanAbsMovementPips}pip`);
     }
     const allStub = rows.every((r) => r.presentationViolations === r.presentationChecked
@@ -431,10 +500,15 @@ test('proposed row name', () => {
             'LIMB 2 value clause: 0 failures across every reachable check',
             'LIMB 1 clause C: 0 stability and 0 exactness violations once historical',
         ],
-        proposed: 'TAL-01918 — newest coarse candle is an unmarked partial bucket',
-        shortName: 'unmarked-forming-coarse-candle',
+        proposed: 'TAL-01918 — newest candle is an unmarked partial bucket',
+        shortName: 'unmarked-forming-candle',
+        whyNotCoarse:
+            'An earlier draft said "coarse candle". Dropped: the marker is missing at every tick '
+            + 'the window is incomplete in EVERY stepping mode, including raw — clause A fails '
+            + '2,304/2,304 at 5m and 2,832/2,832 at 1H under raw stepping. Coarse stepping '
+            + 'determines the severity (1 raw bar of 60), not the existence.',
         rationale:
-            'Nothing completed mutates. What the product does is publish the newest coarse bucket '
+            'Nothing completed mutates. What the product does is publish the newest bucket '
             + 'as an ordinary finished bar while it holds only the raw bars elapsed so far — one '
             + 'single raw bar under the product\'s own stepping — with no forming marker in any of '
             + '15 searched spellings. The value a user reads is correct for the window it covers '
@@ -445,6 +519,19 @@ test('proposed row name', () => {
     section('rowRename', proposal);
     observe('RENAME', 'proposal', `${proposal.proposed} (short: ${proposal.shortName})`);
     observe('RENAME', 'why-the-current-name-is-wrong', proposal.contradictedBy.join('; '));
+    observe('RENAME', 'why-not-coarse', proposal.whyNotCoarse);
+    // The rename rests on clause A failing under RAW stepping too. Verified here
+    // rather than asserted in prose.
+    const rawCells = matrix.filter((r) => r.stepMode === 'raw');
+    assert.ok(rawCells.length > 0);
+    const rawAllFail = rawCells.every((r) => r.immutability.clauseA.checked > 0
+        && r.immutability.clauseA.violations === r.immutability.clauseA.checked);
+    note('RENAME', 'marker-missing-under-raw-stepping-too-so-the-name-is-not-coarse-specific',
+        rawAllFail,
+        rawCells.filter((r) => !r.killSwitchOn)
+            .map((r) => `${r.timeframe}:${r.immutability.clauseA.violations}/${r.immutability.clauseA.checked}`)
+            .join(' '));
+    assert.equal(rawAllFail, true);
     assert.ok(proposal.proposed.length > 0);
 });
 
@@ -453,6 +540,10 @@ test('proposed row name', () => {
 test('cited: nothing can bake in under coarse stepping — the incremental branch never matches', () => {
     const coarse = matrix.filter((r) => r.stepMode === 'coarse');
     const raw = matrix.filter((r) => r.stepMode === 'raw');
+    // Guard first: `[].every(...)` is true, so without this the claim below would
+    // emit pass:true into the evidence on zero data.
+    assert.ok(coarse.length > 0 && coarse.every((r) => r.incrementalAttempts >= 0 && r.attribution.ticks > 0),
+        'bake-in claim requires a non-empty set of coarse cells that actually ran');
     const coarseNoHits = coarse.every((r) => r.incrementalHits === 0);
     section('bakeIn', {
         coarse: coarse.map((r) => ({
@@ -565,7 +656,10 @@ test('LIMB 1 mechanism signature: the movement vanishes exactly at the bucket fi
     }
     const finalBar = rows.find((r) => r.isBucketFinalRawBar);
     const others = rows.filter((r) => !r.isBucketFinalRawBar);
-    const vanishes = finalBar.clauseBViolations === 0 && finalBar.meanAbsMovementPips === 0;
+    // The integer violation count carries the claim. The pip figure is rounded to
+    // hundredths, so testing it for equality with 0 would be a 0.005 pip tolerance
+    // in disguise (§A5). It is reported, not asserted.
+    const vanishes = finalBar.clauseBViolations === 0;
     const presentElsewhere = others.every((r) => r.clauseBViolations > 0);
     note('SIGNATURE', 'value-movement-is-zero-only-at-the-bucket-final-raw-bar',
         vanishes && presentElsewhere,
@@ -620,14 +714,23 @@ test(`LIMB 2 — ${ORACLE_LAST_BAR_WINDOW}: last bar is the full bucket, or is m
         + `unreachable in ${unreachable.length} cells because the playhead never lands on a `
         + "bucket's final raw bar there. LIMB 1 clause C supplies the numeric assertion in those "
         + 'cells instead.');
+    // The masterComplete clause scores a partial bar against a reference holding
+    // data the playhead has not reached, so on a fixture with no intra-bucket
+    // travel it is legitimately 0 while the product is unchanged. Asserting it
+    // unconditionally would re-import the r1 error one level down. It is reported
+    // as a measurement, and asserted only under the precondition that makes it
+    // meaningful.
     const masterChecked = rows.reduce((a, r) => a + r.masterCompleteChecked, 0);
     const masterFail = rows.reduce((a, r) => a + r.masterCompleteValueFailureCount, 0);
-    note('LIMB2', 'master-complete-value-clause-asserted', masterFail > 0,
+    observe('LIMB2', 'master-complete-value-clause',
         `${masterFail}/${masterChecked} — the presented bar differs from the full bucket whenever `
-        + 'the master holds the whole window. Previously recorded but never asserted.');
+        + 'the master holds the whole window. Fixture-dependent by construction: it is 0 on a '
+        + 'zero-travel corpus with the product byte-identical, so it is a measurement, not a verdict.');
     assert.ok(masterChecked > 0, 'the masterComplete clause must be evaluated somewhere');
-    assert.ok(masterFail > 0,
-        'masterCompleteValueFailureCount was recorded but never asserted in the prior revision');
+    if (corpusHasIntraBucketTravel) {
+        assert.ok(masterFail > 0,
+            'on a fixture with non-zero intra-bucket travel the master-complete clause must bite');
+    }
 
     assert.equal(allPass, true,
         `LIMB 2 (${ORACLE_LAST_BAR_WINDOW}) RED: the last display bar is aggregated over `
@@ -664,6 +767,10 @@ test('attribution: which of slice / trim carries the error', () => {
         fullResampleCalls: r.fullResampleCalls,
     }));
     section('attribution', rows);
+    // Guard first: every aggregate below is `[].every(...)`-vacuous on an empty
+    // matrix and would emit pass:true rows into the evidence on zero data.
+    assert.ok(rows.length > 0 && rows.every((r) => r.ticks > 0),
+        'attribution claims require a non-empty matrix in which every cell ran ticks');
     for (const r of rows) {
         note('ATTR', `${r.timeframe}/${r.stepMode}/${r.killSwitchOn ? 'kill-ON' : 'kill-OFF'}`, true,
             `slice=${r.meanAbsSliceErrorPips}pip(${r.sliceSharePct}%) `
@@ -704,8 +811,11 @@ test('attribution bound: the trim moves the CLOSE once the _btTfDataCache branch
     section('trimCloseBound', r);
     for (const row of r.rows) {
         observe('TRIM-CLOSE', `tick ${row.tick}`,
-            `walkForwardNull=${row.walkForwardReturnedNull} preTrimClose=${row.preTrimClosePoints}pts `
-            + `postTrimClose=${row.postTrimClosePoints}pts delta=${row.closeDeltaPips}pip`);
+            `pre-trim=${row.preTrimClosePoints}pts (independent FULL bucket `
+            + `${row.independentFullBucketClosePoints}pts, match=${row.preTrimEqualsFullBucket}) → `
+            + `post-trim=${row.postTrimClosePoints}pts (independent TO-PLAYHEAD `
+            + `${row.independentToPlayheadClosePoints}pts, match=${row.postTrimEqualsToPlayhead}); `
+            + `delta=${row.closeDeltaPips}pip`);
     }
     note('TRIM-CLOSE', 'bt-cache-branch-taken-so-walkforward-is-NOT-a-noop-at-native-tf',
         r.cacheBranchTaken,
@@ -714,14 +824,34 @@ test('attribution bound: the trim moves the CLOSE once the _btTfDataCache branch
     note('TRIM-CLOSE', 'trim-changes-the-close-in-this-configuration',
         r.ticksWithCloseChange === r.ticksChecked,
         `${r.ticksWithCloseChange}/${r.ticksChecked} ticks, max ${r.maxAbsCloseDeltaPips}pip`);
+
+    // DIRECTION. This is the half the prior revision left unmeasured.
+    const preIsFuture = r.ticksWherePreTrimHeldTheFullBucket === r.ticksChecked;
+    const postIsRight = r.ticksWhereTrimWroteTheToPlayheadValue === r.ticksChecked;
+    note('TRIM-CLOSE', 'pre-trim-value-is-the-FULL-bucket-i.e.-future-data', preIsFuture,
+        `${r.ticksWherePreTrimHeldTheFullBucket}/${r.ticksChecked} — on this path the RESAMPLE is `
+        + 'the one holding data the playhead has not reached');
+    note('TRIM-CLOSE', 'trim-writes-the-CORRECT-to-playhead-value', postIsRight,
+        `${r.ticksWhereTrimWroteTheToPlayheadValue}/${r.ticksChecked} against an independent 1m `
+        + 'aggregation over [bucketStart, playhead]');
+    observe('TRIM-CLOSE', 'direction',
+        `the ${r.maxAbsCloseDeltaPips} pip is the size of the CORRECTION the trim applies, not an `
+        + 'error it introduces. Consequence for the corrective packet: narrowing or removing the '
+        + `trim on this path re-introduces up to ${r.maxAbsCloseDeltaPips} pip of future data into `
+        + 'a live candle.');
+    observe('TRIM-CLOSE', 'reachability-scope',
+        `branch execution only. This probe replaces _getBtTfDataCache wholesale and bypasses `
+        + `${r.bypassedGates.length} gates the shipped accessor applies: ${r.bypassedGates.join('; ')}. `
+        + 'None are extracted. It does not show that a shipped cache entry satisfies its own '
+        + 'validity gates.');
     observe('TRIM-CLOSE', 'withdrawal',
-        'the prior revision reported a 100/0 slice/trim split with the 0 bounded only by a '
-        + 'fault injection that moved the HIGH. That bound did not speak to the close. On the '
-        + 'close, with the backtest finer-timeframe cache populated, the trim moves it by up to '
-        + `${r.maxAbsCloseDeltaPips} pip. The 100/0 split is withdrawn; it holds only for `
-        + 'currentFileId === null.');
+        'the prior revision reported a 100/0 slice/trim split with the 0 bounded only by a fault '
+        + 'injection that moved the HIGH. The 100/0 split stays withdrawn — but the correct '
+        + 'reading is that the trim is the corrective term here, not an additional error term.');
     assert.equal(r.cacheBranchTaken, true);
     assert.equal(r.ticksWithCloseChange, r.ticksChecked);
+    assert.equal(preIsFuture, true);
+    assert.equal(postIsRight, true);
 });
 
 test('ill-formed-bar divergence: a real normalisation difference, not an attribution bound', () => {

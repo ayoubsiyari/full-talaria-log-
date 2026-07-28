@@ -105,6 +105,28 @@ export function verifyLosslessGrid(pointRows) {
 }
 
 /**
+ * Independent OHLC aggregation over an arbitrary half-open time range.
+ * Harness-owned, shares no implementation with the product. Used to establish
+ * which of two disagreeing product values is the correct one for a given window.
+ */
+export function referenceRangeAggregate(pointRows, startMs, endMsInclusive) {
+    let out = null;
+    for (const r of pointRows) {
+        if (r.t < startMs) continue;
+        if (r.t > endMsInclusive) break;
+        if (!out) {
+            out = { t: startMs, oP: r.oP, hP: r.hP, lP: r.lP, cP: r.cP, n: 1 };
+            continue;
+        }
+        if (r.hP > out.hP) out.hP = r.hP;
+        if (r.lP < out.lP) out.lP = r.lP;
+        out.cP = r.cP;
+        out.n += 1;
+    }
+    return out;
+}
+
+/**
  * A perfectly flat corpus: every bar identical, zero volatility.
  *
  * Its whole job is to separate structural findings from fixture artefacts. Any

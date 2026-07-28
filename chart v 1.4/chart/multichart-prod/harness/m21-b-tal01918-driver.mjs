@@ -27,7 +27,7 @@ import {
     DIAG_GLOBAL,
 } from './m21-b-tal01918-product-loader.mjs';
 import {
-    toProductBars, toPoints, MINUTE_MS, referenceBucketsPoints,
+    toProductBars, toPoints, MINUTE_MS, referenceBucketsPoints, referenceRangeAggregate,
     epochFloorBucketStart, calendarBucketStart,
 } from './m21-b-tal01918-corpus.mjs';
 import {
@@ -125,10 +125,15 @@ function toPointSeries(series) {
  *              the displayed close is already correct there and LIMB 1 cannot see
  *              the defect however its subject is chosen.
  *   'coarse' — product-default candle-mode stepping: the playhead advances one
- *              DISPLAY period per step at a FIXED phase offset. This is a synthetic
- *              stepping law, retained only as a contrast case. It is NOT what the
- *              product does — see 'product' below — and no verdict is drawn from it.
- *   'product'— the real thing: each step calls the product's own
+ *              DISPLAY period per step at a FIXED phase offset. This MODELS the
+ *              product's legacy phase-preserving law (`_advanceCoarseLegacyCandleBucket`,
+ *              which advances by `currentTimestamp + tfMs` rather than re-anchoring).
+ *              'legacy' below drives that method for real and confirms the two agree.
+ *   'legacy' — the real `_advanceCoarseLegacyCandleBucket`, with its gate
+ *              `_isFinestTfCoarseLegacyCandleStep()` stubbed true. That method is
+ *              checked FIRST at all three step sites, so when its gate is on it is
+ *              the dominant path, and it is phase-preserving.
+ *   'product'— the other real law: each step calls the product's own
  *              `ReplaySystem.calculateNextIndex()`, which re-anchors to
  *              `_replayBucketStart(ts, tfMs) + tfMs` and then takes
  *              `_firstRawIndexAtOrAfter(...)`. That lands the playhead on the FIRST
@@ -140,7 +145,7 @@ function toPointSeries(series) {
  * @param {Array} opts.pointRows      integer-point 1m corpus
  * @param {string} opts.timeframe
  * @param {boolean} opts.killSwitchOn true = M20-Q9 fix DISABLED (legacy slice)
- * @param {'raw'|'coarse'|'product'} [opts.stepMode]
+ * @param {'raw'|'coarse'|'legacy'|'product'} [opts.stepMode]
  * @param {number} [opts.stride]           raw-mode tick stride
  * @param {number} [opts.phaseOffsetBars]  coarse-mode offset / product-mode START phase
  * @param {number} [opts.startIdx]
@@ -154,7 +159,7 @@ export function runReplay({
     const barsPerBucket = tfMs / MINUTE_MS;
     let effStride = stride;
     let effStart = startIdx;
-    if (stepMode === 'coarse' || stepMode === 'product') {
+    if (stepMode === 'coarse' || stepMode === 'product' || stepMode === 'legacy') {
         effStride = barsPerBucket;
         effStart = phaseOffsetBars;
     }
@@ -188,6 +193,12 @@ export function runReplay({
     if (stepMode === 'product') {
         rs._resolveReplayStepTimeframeForStep = () => timeframe;
         stubbedResolvers.push('_resolveReplayStepTimeframeForStep -> chart.currentTimeframe');
+    }
+    if (stepMode === 'legacy') {
+        // Symmetric single stub: the gate only. The advance arithmetic
+        // (_advanceCoarseLegacyCandleBucket, _firstRawIndexAtOrAfter) is real.
+        rs._isFinestTfCoarseLegacyCandleStep = () => true;
+        stubbedResolvers.push('_isFinestTfCoarseLegacyCandleStep -> true (gate only)');
     }
     const landingPhases = [];
 
@@ -240,16 +251,29 @@ export function runReplay({
         return next <= idx ? master.length : next;
     }
 
+    /**
+     * Real legacy advance. `_advanceCoarseLegacyCandleBucket` mutates
+     * currentIndex/replayTimestamp itself and returns a boolean.
+     */
+    function nextLegacyIndex(idx) {
+        rs.currentIndex = idx;
+        rs.replayTimestamp = master[idx].t;
+        const advanced = rs._advanceCoarseLegacyCandleBucket();
+        if (!advanced || rs.currentIndex <= idx) return master.length;
+        return rs.currentIndex;
+    }
+
     try {
         withQ9KillSwitch(killSwitchOn, () => {
             const fixEnabled = rs._m20Q9PrefixSliceFixEnabled();
             helperReadings.add(fixEnabled);
 
-            for (let idx = effStart; idx < master.length;
-                idx = (stepMode === 'product' ? nextProductIndex(idx) : idx + effStride)) {
+            const advance = stepMode === 'product' ? nextProductIndex
+                : (stepMode === 'legacy' ? nextLegacyIndex : (i) => i + effStride);
+            for (let idx = effStart; idx < master.length; idx = advance(idx)) {
                 rs.currentIndex = idx;
                 rs.replayTimestamp = master[idx].t;
-                if (stepMode === 'product') {
+                if (stepMode === 'product' || stepMode === 'legacy') {
                     landingPhases.push((master[idx].t - Math.floor(master[idx].t / tfMs) * tfMs) / MINUTE_MS);
                 }
 
@@ -696,8 +720,16 @@ export function probeTrimDivergenceOnInconsistentBar({ pointRows, timeframe, tar
  * `_getWalkForwardOhlcToPlayhead` takes the cache branch (chart.js:8908-8926) and
  * aggregates 1m bars over [bucketStart, playhead] instead of returning null.
  *
- * The resample of the coarse prefix yields the FULL 1h bar; the trim overwrites it
- * with the walk-forward value. The difference is the trim's own close error.
+ * DIRECTION is measured, not just magnitude. Each tick is scored against two
+ * independent harness-owned aggregations: the FULL bucket, and the bucket up to
+ * the playhead. That says which of the two disagreeing product values is right.
+ *
+ * REACHABILITY IS NOT CLAIMED. This replaces the whole `_getBtTfDataCache` method
+ * and therefore bypasses four gates the shipped accessor applies — the
+ * `_btTfDataCache` Map, the per-file Map, `entry.anchorKey === _btTfCacheAnchorKey(...)`
+ * and `_btTfCacheEntryValidForTimeframe` — none of which are extracted. What is
+ * demonstrated is the branch EXECUTING and what it computes when it does, not that
+ * a shipped cache entry satisfies its own validity gates.
  */
 export function probeTrimCloseContributionViaBtCache({ pointRows, timeframe = '1h' }) {
     const tfMs = TF_MS[timeframe];
@@ -715,10 +747,17 @@ export function probeTrimCloseContributionViaBtCache({ pointRows, timeframe = '1
     chart.replaySystem = rs;
     rs.chart = chart;
 
-    // Enable the cache branch. `_getBtTfDataCache` is a data-source accessor the
-    // product calls; supplying it here is what populating the cache would do.
+    // Enable the cache branch by replacing the accessor outright. This bypasses
+    // the four validity gates listed above; it is a branch-execution probe, not a
+    // claim that the shipped cache would reach here.
     chart.currentFileId = 'm21-b-tal01918-fixture';
     chart._getBtTfDataCache = (fileId, tf) => (tf === '1m' ? { rawData: finerMaster } : null);
+    const bypassedGates = [
+        '_btTfDataCache Map presence',
+        'per-file Map presence',
+        'entry.anchorKey === _btTfCacheAnchorKey(...)',
+        '_btTfCacheEntryValidForTimeframe(...)',
+    ];
 
     const rows = [];
     for (const idx of [10, 20, 30, 40]) {
@@ -733,11 +772,20 @@ export function probeTrimCloseContributionViaBtCache({ pointRows, timeframe = '1
         chart._trimLastDataBarToReplayPlayhead();
         const postTrim = toPointBar(chart.data[lastIdx]);
         const walk = chart._getWalkForwardOhlcToPlayhead(postTrim.t, rs.replayTimestamp, tfMs);
+
+        // Independent, harness-owned: the full bucket, and the bucket to playhead.
+        const fullBucket = referenceRangeAggregate(pointRows, postTrim.t, postTrim.t + tfMs - MINUTE_MS);
+        const toPlayhead = referenceRangeAggregate(pointRows, postTrim.t, rs.replayTimestamp);
+
         rows.push({
             tick: idx,
             walkForwardReturnedNull: walk === null,
             preTrimClosePoints: preTrim.cP,
             postTrimClosePoints: postTrim.cP,
+            independentFullBucketClosePoints: fullBucket ? fullBucket.cP : null,
+            independentToPlayheadClosePoints: toPlayhead ? toPlayhead.cP : null,
+            preTrimEqualsFullBucket: !!fullBucket && preTrim.cP === fullBucket.cP,
+            postTrimEqualsToPlayhead: !!toPlayhead && postTrim.cP === toPlayhead.cP,
             closeDeltaPoints: postTrim.cP - preTrim.cP,
             closeDeltaPips: Math.round((postTrim.cP - preTrim.cP) / 10 * 100) / 100,
             highDeltaPoints: postTrim.hP - preTrim.hP,
@@ -750,9 +798,14 @@ export function probeTrimCloseContributionViaBtCache({ pointRows, timeframe = '1
     const maxAbs = rows.reduce((m, r) => Math.max(m, Math.abs(r.closeDeltaPoints)), 0);
     return {
         timeframe,
+        bypassedGates,
+        reachabilityClaim: 'branch execution only; the four gates above are bypassed',
         cacheBranchTaken: rows.every((r) => !r.walkForwardReturnedNull),
         ticksWithCloseChange: changed.length,
         ticksChecked: rows.length,
+        // Direction, not just magnitude.
+        ticksWherePreTrimHeldTheFullBucket: rows.filter((r) => r.preTrimEqualsFullBucket).length,
+        ticksWhereTrimWroteTheToPlayheadValue: rows.filter((r) => r.postTrimEqualsToPlayhead).length,
         maxAbsCloseDeltaPoints: maxAbs,
         maxAbsCloseDeltaPips: Math.round(maxAbs / 10 * 100) / 100,
         rows,

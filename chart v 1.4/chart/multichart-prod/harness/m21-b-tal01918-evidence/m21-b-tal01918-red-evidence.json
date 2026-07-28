@@ -188,6 +188,50 @@
       "detail": "calculateNextIndex re-anchors to _replayBucketStart(ts,tf)+tf then takes _firstRawIndexAtOrAfter, so the newest candle holds exactly one raw bar"
     },
     {
+      "limb": "LEGACY",
+      "name": "5m _advanceCoarseLegacyCandleBucket",
+      "kind": "measurement",
+      "detail": "started at phase +1; steady-state landing phases {1} — PRESERVED; clause A 576/576, clause B 575/576 at 1.48pip"
+    },
+    {
+      "limb": "LEGACY",
+      "name": "15m _advanceCoarseLegacyCandleBucket",
+      "kind": "measurement",
+      "detail": "started at phase +5; steady-state landing phases {5} — PRESERVED; clause A 192/192, clause B 191/192 at 2.53pip"
+    },
+    {
+      "limb": "LEGACY",
+      "name": "1h _advanceCoarseLegacyCandleBucket",
+      "kind": "measurement",
+      "detail": "started at phase +20; steady-state landing phases {20} — PRESERVED; clause A 48/48, clause B 47/48 at 4.8pip"
+    },
+    {
+      "limb": "LEGACY",
+      "name": "4h _advanceCoarseLegacyCandleBucket",
+      "kind": "measurement",
+      "detail": "started at phase +80; steady-state landing phases {80} — PRESERVED; clause A 12/12, clause B 11/12 at 9.71pip"
+    },
+    {
+      "limb": "LEGACY",
+      "name": "legacy-path-is-phase-preserving-unlike-calculateNextIndex",
+      "kind": "assertion",
+      "pass": true,
+      "detail": "_advanceCoarseLegacyCandleBucket advances by currentTimestamp + tfMs; it is checked FIRST at all three step sites, so when its gate is on it is the dominant path"
+    },
+    {
+      "limb": "LEGACY",
+      "name": "fixed-phase-coarse-mode-reproduces-the-real-legacy-law-exactly-on-clause-A",
+      "kind": "assertion",
+      "pass": true,
+      "detail": "5m:true 15m:true 1h:true 4h:true"
+    },
+    {
+      "limb": "LEGACY",
+      "name": "clause-B-tail-difference",
+      "kind": "measurement",
+      "detail": "clause B differs by exactly 1 bucket per cell (5m 575/576 vs 576/576, 15m 191/192 vs 192/192, 1h 47/48 vs 48/48, 4h 11/12 vs 12/12). Cause: _advanceCoarseLegacyCandleBucket clamps its final step to fullRawData.length - 1, so the real law visits one tail tick the fixed-stride loop exits before. Not a disagreement about the stepping law."
+    },
+    {
       "limb": "CTRL",
       "name": "fixON-single-prefix-identity",
       "kind": "assertion",
@@ -205,25 +249,25 @@
       "limb": "STUB",
       "name": "5m",
       "kind": "measurement",
-      "detail": "newest candle = 1 raw bar of 5 (4 min un-elapsed, 80% of the bucket missing); markers found=0; subsequent movement 1.65pip"
+      "detail": "newest candle = 1 raw bar of 5 (4 min un-elapsed, 4/5 = 80% of the bucket missing); markers found=0; subsequent movement 1.65pip"
     },
     {
       "limb": "STUB",
       "name": "15m",
       "kind": "measurement",
-      "detail": "newest candle = 1 raw bar of 15 (14 min un-elapsed, 93% of the bucket missing); markers found=0; subsequent movement 3.05pip"
+      "detail": "newest candle = 1 raw bar of 15 (14 min un-elapsed, 14/15 = 93.33% of the bucket missing); markers found=0; subsequent movement 3.05pip"
     },
     {
       "limb": "STUB",
       "name": "1h",
       "kind": "measurement",
-      "detail": "newest candle = 1 raw bar of 60 (59 min un-elapsed, 98% of the bucket missing); markers found=0; subsequent movement 4.79pip"
+      "detail": "newest candle = 1 raw bar of 60 (59 min un-elapsed, 59/60 = 98.33% of the bucket missing); markers found=0; subsequent movement 4.79pip"
     },
     {
       "limb": "STUB",
       "name": "4h",
       "kind": "measurement",
-      "detail": "newest candle = 1 raw bar of 240 (239 min un-elapsed, 100% of the bucket missing); markers found=0; subsequent movement 9.45pip"
+      "detail": "newest candle = 1 raw bar of 240 (239 min un-elapsed, 239/240 = 99.58% of the bucket missing); markers found=0; subsequent movement 9.45pip"
     },
     {
       "limb": "STUB",
@@ -236,13 +280,26 @@
       "limb": "RENAME",
       "name": "proposal",
       "kind": "measurement",
-      "detail": "TAL-01918 — newest coarse candle is an unmarked partial bucket (short: unmarked-forming-coarse-candle)"
+      "detail": "TAL-01918 — newest candle is an unmarked partial bucket (short: unmarked-forming-candle)"
     },
     {
       "limb": "RENAME",
       "name": "why-the-current-name-is-wrong",
       "kind": "measurement",
       "detail": "LIMB 2 value clause: 0 failures across every reachable check; LIMB 1 clause C: 0 stability and 0 exactness violations once historical"
+    },
+    {
+      "limb": "RENAME",
+      "name": "why-not-coarse",
+      "kind": "measurement",
+      "detail": "An earlier draft said \"coarse candle\". Dropped: the marker is missing at every tick the window is incomplete in EVERY stepping mode, including raw — clause A fails 2,304/2,304 at 5m and 2,832/2,832 at 1H under raw stepping. Coarse stepping determines the severity (1 raw bar of 60), not the existence."
+    },
+    {
+      "limb": "RENAME",
+      "name": "marker-missing-under-raw-stepping-too-so-the-name-is-not-coarse-specific",
+      "kind": "assertion",
+      "pass": true,
+      "detail": "5m:2304/2304 15m:2688/2688 1h:2832/2832 4h:2868/2868"
     },
     {
       "limb": "BAKE",
@@ -293,6 +350,20 @@
     },
     {
       "limb": "LIMB1",
+      "name": "5m/legacy/kill-OFF",
+      "kind": "assertion",
+      "pass": false,
+      "detail": "A(presentation)=576/576 B(moved-after-finished)=575/576 [1.48pip mean] C(settled)=0/165600 stability, 0/575 exactness"
+    },
+    {
+      "limb": "LIMB1",
+      "name": "5m/legacy/kill-ON",
+      "kind": "assertion",
+      "pass": false,
+      "detail": "A(presentation)=576/576 B(moved-after-finished)=575/576 [1.48pip mean] C(settled)=0/165600 stability, 0/575 exactness"
+    },
+    {
+      "limb": "LIMB1",
       "name": "5m/product/kill-OFF",
       "kind": "assertion",
       "pass": false,
@@ -332,6 +403,20 @@
       "kind": "assertion",
       "pass": false,
       "detail": "A(presentation)=192/192 B(moved-after-finished)=192/192 [2.53pip mean] C(settled)=0/18145 stability, 0/191 exactness"
+    },
+    {
+      "limb": "LIMB1",
+      "name": "15m/legacy/kill-OFF",
+      "kind": "assertion",
+      "pass": false,
+      "detail": "A(presentation)=192/192 B(moved-after-finished)=191/192 [2.53pip mean] C(settled)=0/18336 stability, 0/191 exactness"
+    },
+    {
+      "limb": "LIMB1",
+      "name": "15m/legacy/kill-ON",
+      "kind": "assertion",
+      "pass": false,
+      "detail": "A(presentation)=192/192 B(moved-after-finished)=191/192 [2.53pip mean] C(settled)=0/18336 stability, 0/191 exactness"
     },
     {
       "limb": "LIMB1",
@@ -377,6 +462,20 @@
     },
     {
       "limb": "LIMB1",
+      "name": "1h/legacy/kill-OFF",
+      "kind": "assertion",
+      "pass": false,
+      "detail": "A(presentation)=48/48 B(moved-after-finished)=47/48 [4.8pip mean] C(settled)=0/1128 stability, 0/47 exactness"
+    },
+    {
+      "limb": "LIMB1",
+      "name": "1h/legacy/kill-ON",
+      "kind": "assertion",
+      "pass": false,
+      "detail": "A(presentation)=48/48 B(moved-after-finished)=47/48 [4.8pip mean] C(settled)=0/1128 stability, 0/47 exactness"
+    },
+    {
+      "limb": "LIMB1",
       "name": "1h/product/kill-OFF",
       "kind": "assertion",
       "pass": false,
@@ -419,6 +518,20 @@
     },
     {
       "limb": "LIMB1",
+      "name": "4h/legacy/kill-OFF",
+      "kind": "assertion",
+      "pass": false,
+      "detail": "A(presentation)=12/12 B(moved-after-finished)=11/12 [9.71pip mean] C(settled)=0/66 stability, 0/11 exactness"
+    },
+    {
+      "limb": "LIMB1",
+      "name": "4h/legacy/kill-ON",
+      "kind": "assertion",
+      "pass": false,
+      "detail": "A(presentation)=12/12 B(moved-after-finished)=11/12 [9.71pip mean] C(settled)=0/66 stability, 0/11 exactness"
+    },
+    {
+      "limb": "LIMB1",
       "name": "4h/product/kill-OFF",
       "kind": "assertion",
       "pass": false,
@@ -436,7 +549,7 @@
       "name": "settled-buckets-are-stable-AND-exact",
       "kind": "assertion",
       "pass": true,
-      "detail": "0/3110344 stability violations, 0/4944 exactness violations against the independent reference. NOT a tautology: the pipeline full-resamples the entire series from the growing prefix on every tick, so each of these bars is recomputed from scratch before every comparison."
+      "detail": "0/3480604 stability violations, 0/6592 exactness violations against the independent reference. NOT a tautology: the pipeline full-resamples the entire series from the growing prefix on every tick, so each of these bars is recomputed from scratch before every comparison."
     },
     {
       "limb": "LIMB1",
@@ -524,6 +637,20 @@
     },
     {
       "limb": "LIMB2",
+      "name": "5m/legacy/kill-OFF",
+      "kind": "assertion",
+      "pass": false,
+      "detail": "subject=data[len-1]@every-tick valueFail=0/1 presentationFail=576/576 meanAbsCloseErr=1.48pip"
+    },
+    {
+      "limb": "LIMB2",
+      "name": "5m/legacy/kill-ON",
+      "kind": "assertion",
+      "pass": false,
+      "detail": "subject=data[len-1]@every-tick valueFail=0/1 presentationFail=576/576 meanAbsCloseErr=1.48pip"
+    },
+    {
+      "limb": "LIMB2",
       "name": "5m/product/kill-OFF",
       "kind": "assertion",
       "pass": false,
@@ -563,6 +690,20 @@
       "kind": "assertion",
       "pass": false,
       "detail": "subject=data[len-1]@every-tick valueFail=0/0 presentationFail=192/192 meanAbsCloseErr=2.53pip"
+    },
+    {
+      "limb": "LIMB2",
+      "name": "15m/legacy/kill-OFF",
+      "kind": "assertion",
+      "pass": false,
+      "detail": "subject=data[len-1]@every-tick valueFail=0/1 presentationFail=192/192 meanAbsCloseErr=2.52pip"
+    },
+    {
+      "limb": "LIMB2",
+      "name": "15m/legacy/kill-ON",
+      "kind": "assertion",
+      "pass": false,
+      "detail": "subject=data[len-1]@every-tick valueFail=0/1 presentationFail=192/192 meanAbsCloseErr=2.52pip"
     },
     {
       "limb": "LIMB2",
@@ -608,6 +749,20 @@
     },
     {
       "limb": "LIMB2",
+      "name": "1h/legacy/kill-OFF",
+      "kind": "assertion",
+      "pass": false,
+      "detail": "subject=data[len-1]@every-tick valueFail=0/1 presentationFail=48/48 meanAbsCloseErr=4.86pip"
+    },
+    {
+      "limb": "LIMB2",
+      "name": "1h/legacy/kill-ON",
+      "kind": "assertion",
+      "pass": false,
+      "detail": "subject=data[len-1]@every-tick valueFail=0/1 presentationFail=48/48 meanAbsCloseErr=4.86pip"
+    },
+    {
+      "limb": "LIMB2",
       "name": "1h/product/kill-OFF",
       "kind": "assertion",
       "pass": false,
@@ -650,6 +805,20 @@
     },
     {
       "limb": "LIMB2",
+      "name": "4h/legacy/kill-OFF",
+      "kind": "assertion",
+      "pass": false,
+      "detail": "subject=data[len-1]@every-tick valueFail=0/1 presentationFail=12/12 meanAbsCloseErr=9.8pip"
+    },
+    {
+      "limb": "LIMB2",
+      "name": "4h/legacy/kill-ON",
+      "kind": "assertion",
+      "pass": false,
+      "detail": "subject=data[len-1]@every-tick valueFail=0/1 presentationFail=12/12 meanAbsCloseErr=9.8pip"
+    },
+    {
+      "limb": "LIMB2",
       "name": "4h/product/kill-OFF",
       "kind": "assertion",
       "pass": false,
@@ -673,14 +842,13 @@
       "limb": "LIMB2",
       "name": "value-clause-reachability",
       "kind": "measurement",
-      "detail": "reachable in 16 cells (1664 checks, 0 failures); structurally unreachable in 8 cells because the playhead never lands on a bucket's final raw bar there. LIMB 1 clause C supplies the numeric assertion in those cells instead."
+      "detail": "reachable in 24 cells (1672 checks, 0 failures); structurally unreachable in 8 cells because the playhead never lands on a bucket's final raw bar there. LIMB 1 clause C supplies the numeric assertion in those cells instead."
     },
     {
       "limb": "LIMB2",
-      "name": "master-complete-value-clause-asserted",
-      "kind": "assertion",
-      "pass": true,
-      "detail": "24582/26360 — the presented bar differs from the full bucket whenever the master holds the whole window. Previously recorded but never asserted."
+      "name": "master-complete-value-clause",
+      "kind": "measurement",
+      "detail": "26238/28024 — the presented bar differs from the full bucket whenever the master holds the whole window. Fixture-dependent by construction: it is 0 on a zero-travel corpus with the product byte-identical, so it is a measurement, not a verdict."
     },
     {
       "limb": "LIMB2-CTRL",
@@ -719,6 +887,20 @@
     },
     {
       "limb": "ATTR",
+      "name": "5m/legacy/kill-OFF",
+      "kind": "assertion",
+      "pass": true,
+      "detail": "slice=1.48pip(100%) trim=0pip(0%) trimSlotWrites=577/577 trimValueChanges=0/577"
+    },
+    {
+      "limb": "ATTR",
+      "name": "5m/legacy/kill-ON",
+      "kind": "assertion",
+      "pass": true,
+      "detail": "slice=1.48pip(100%) trim=0pip(0%) trimSlotWrites=577/577 trimValueChanges=0/577"
+    },
+    {
+      "limb": "ATTR",
       "name": "5m/product/kill-OFF",
       "kind": "assertion",
       "pass": true,
@@ -758,6 +940,20 @@
       "kind": "assertion",
       "pass": true,
       "detail": "slice=2.53pip(100%) trim=0pip(0%) trimSlotWrites=192/192 trimValueChanges=0/192"
+    },
+    {
+      "limb": "ATTR",
+      "name": "15m/legacy/kill-OFF",
+      "kind": "assertion",
+      "pass": true,
+      "detail": "slice=2.52pip(100%) trim=0pip(0%) trimSlotWrites=193/193 trimValueChanges=0/193"
+    },
+    {
+      "limb": "ATTR",
+      "name": "15m/legacy/kill-ON",
+      "kind": "assertion",
+      "pass": true,
+      "detail": "slice=2.52pip(100%) trim=0pip(0%) trimSlotWrites=193/193 trimValueChanges=0/193"
     },
     {
       "limb": "ATTR",
@@ -803,6 +999,20 @@
     },
     {
       "limb": "ATTR",
+      "name": "1h/legacy/kill-OFF",
+      "kind": "assertion",
+      "pass": true,
+      "detail": "slice=4.86pip(100%) trim=0pip(0%) trimSlotWrites=49/49 trimValueChanges=0/49"
+    },
+    {
+      "limb": "ATTR",
+      "name": "1h/legacy/kill-ON",
+      "kind": "assertion",
+      "pass": true,
+      "detail": "slice=4.86pip(100%) trim=0pip(0%) trimSlotWrites=49/49 trimValueChanges=0/49"
+    },
+    {
+      "limb": "ATTR",
       "name": "1h/product/kill-OFF",
       "kind": "assertion",
       "pass": true,
@@ -842,6 +1052,20 @@
       "kind": "assertion",
       "pass": true,
       "detail": "slice=10.62pip(100%) trim=0pip(0%) trimSlotWrites=12/12 trimValueChanges=0/12"
+    },
+    {
+      "limb": "ATTR",
+      "name": "4h/legacy/kill-OFF",
+      "kind": "assertion",
+      "pass": true,
+      "detail": "slice=9.8pip(100%) trim=0pip(0%) trimSlotWrites=13/13 trimValueChanges=0/13"
+    },
+    {
+      "limb": "ATTR",
+      "name": "4h/legacy/kill-ON",
+      "kind": "assertion",
+      "pass": true,
+      "detail": "slice=9.8pip(100%) trim=0pip(0%) trimSlotWrites=13/13 trimValueChanges=0/13"
     },
     {
       "limb": "ATTR",
@@ -895,25 +1119,25 @@
       "limb": "TRIM-CLOSE",
       "name": "tick 10",
       "kind": "measurement",
-      "detail": "walkForwardNull=false preTrimClose=130237pts postTrimClose=130134pts delta=-10.3pip"
+      "detail": "pre-trim=130237pts (independent FULL bucket 130237pts, match=true) → post-trim=130134pts (independent TO-PLAYHEAD 130134pts, match=true); delta=-10.3pip"
     },
     {
       "limb": "TRIM-CLOSE",
       "name": "tick 20",
       "kind": "measurement",
-      "detail": "walkForwardNull=false preTrimClose=130147pts postTrimClose=130248pts delta=10.1pip"
+      "detail": "pre-trim=130147pts (independent FULL bucket 130147pts, match=true) → post-trim=130248pts (independent TO-PLAYHEAD 130248pts, match=true); delta=10.1pip"
     },
     {
       "limb": "TRIM-CLOSE",
       "name": "tick 30",
       "kind": "measurement",
-      "detail": "walkForwardNull=false preTrimClose=129921pts postTrimClose=129886pts delta=-3.5pip"
+      "detail": "pre-trim=129921pts (independent FULL bucket 129921pts, match=true) → post-trim=129886pts (independent TO-PLAYHEAD 129886pts, match=true); delta=-3.5pip"
     },
     {
       "limb": "TRIM-CLOSE",
       "name": "tick 40",
       "kind": "measurement",
-      "detail": "walkForwardNull=false preTrimClose=129894pts postTrimClose=129892pts delta=-0.2pip"
+      "detail": "pre-trim=129894pts (independent FULL bucket 129894pts, match=true) → post-trim=129892pts (independent TO-PLAYHEAD 129892pts, match=true); delta=-0.2pip"
     },
     {
       "limb": "TRIM-CLOSE",
@@ -931,9 +1155,35 @@
     },
     {
       "limb": "TRIM-CLOSE",
+      "name": "pre-trim-value-is-the-FULL-bucket-i.e.-future-data",
+      "kind": "assertion",
+      "pass": true,
+      "detail": "4/4 — on this path the RESAMPLE is the one holding data the playhead has not reached"
+    },
+    {
+      "limb": "TRIM-CLOSE",
+      "name": "trim-writes-the-CORRECT-to-playhead-value",
+      "kind": "assertion",
+      "pass": true,
+      "detail": "4/4 against an independent 1m aggregation over [bucketStart, playhead]"
+    },
+    {
+      "limb": "TRIM-CLOSE",
+      "name": "direction",
+      "kind": "measurement",
+      "detail": "the 10.3 pip is the size of the CORRECTION the trim applies, not an error it introduces. Consequence for the corrective packet: narrowing or removing the trim on this path re-introduces up to 10.3 pip of future data into a live candle."
+    },
+    {
+      "limb": "TRIM-CLOSE",
+      "name": "reachability-scope",
+      "kind": "measurement",
+      "detail": "branch execution only. This probe replaces _getBtTfDataCache wholesale and bypasses 4 gates the shipped accessor applies: _btTfDataCache Map presence; per-file Map presence; entry.anchorKey === _btTfCacheAnchorKey(...); _btTfCacheEntryValidForTimeframe(...). None are extracted. It does not show that a shipped cache entry satisfies its own validity gates."
+    },
+    {
+      "limb": "TRIM-CLOSE",
       "name": "withdrawal",
       "kind": "measurement",
-      "detail": "the prior revision reported a 100/0 slice/trim split with the 0 bounded only by a fault injection that moved the HIGH. That bound did not speak to the close. On the close, with the backtest finer-timeframe cache populated, the trim moves it by up to 10.3 pip. The 100/0 split is withdrawn; it holds only for currentFileId === null."
+      "detail": "the prior revision reported a 100/0 slice/trim split with the 0 bounded only by a fault injection that moved the HIGH. The 100/0 split stays withdrawn — but the correct reading is that the trim is the corrective term here, not an additional error term."
     },
     {
       "limb": "NORM",
@@ -1105,7 +1355,7 @@
       "name": "every-matrix-cell-actually-drove-product-code",
       "kind": "assertion",
       "pass": true,
-      "detail": "24 cells, all with ticks > 0 and fullResampleCalls > 0"
+      "detail": "32 cells, all with ticks > 0 and fullResampleCalls > 0"
     },
     {
       "limb": "PO1",
@@ -2210,6 +2460,414 @@
     },
     {
       "timeframe": "5m",
+      "stepMode": "legacy",
+      "phaseOffsetBars": 1,
+      "landingPhaseMinutes": [
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "distinctLandingPhases": [
+        1,
+        4
+      ],
+      "stubbedResolvers": [
+        "_isFinestTfCoarseLegacyCandleStep -> true (gate only)"
+      ],
+      "killSwitchOn": false,
+      "productHelperReadings": [
+        true
+      ],
+      "fullResampleCalls": 577,
+      "incrementalAttempts": 0,
+      "incrementalHits": 0,
+      "distinctPrefixIdentities": 1,
+      "immutability": {
+        "oracle": "m21-b-bar-immutability-oracle",
+        "label": "5m/legacy/kill-OFF",
+        "subjects": {
+          "A": "chart.data[length-1] at every tick its window is incomplete — presentation",
+          "B": "the value last shown for a bucket while presenting it as finished (no marker)",
+          "C": "every bucket once historical, on every subsequent tick — settled differential"
+        },
+        "pass": false,
+        "ticks": 577,
+        "clauseA": {
+          "checked": 576,
+          "violations": 576,
+          "pass": false
+        },
+        "clauseB": {
+          "checked": 576,
+          "violations": 575,
+          "pass": false,
+          "movement": {
+            "n": 576,
+            "meanAbsPips": 1.48,
+            "maxAbsPips": 4.5
+          },
+          "samples": [
+            {
+              "bucketT": 0,
+              "presentedAsFinishedAtTick": 1,
+              "playheadMsAtThatTick": 60000,
+              "windowCompleteAtThatTick": false,
+              "remainderUnelapsedMs": null,
+              "displayedThen": "0|130000|130008|129978|129986",
+              "settledTo": "0|130000|130008|129978|130003",
+              "closeMovementPoints": 17
+            },
+            {
+              "bucketT": 300000,
+              "presentedAsFinishedAtTick": 6,
+              "playheadMsAtThatTick": 360000,
+              "windowCompleteAtThatTick": false,
+              "remainderUnelapsedMs": null,
+              "displayedThen": "300000|130003|130028|129998|130027",
+              "settledTo": "300000|130003|130041|129998|130022",
+              "closeMovementPoints": -5
+            },
+            {
+              "bucketT": 600000,
+              "presentedAsFinishedAtTick": 11,
+              "playheadMsAtThatTick": 660000,
+              "windowCompleteAtThatTick": false,
+              "remainderUnelapsedMs": null,
+              "displayedThen": "600000|130022|130035|130018|130028",
+              "settledTo": "600000|130022|130064|130018|130056",
+              "closeMovementPoints": 28
+            },
+            {
+              "bucketT": 900000,
+              "presentedAsFinishedAtTick": 16,
+              "playheadMsAtThatTick": 960000,
+              "windowCompleteAtThatTick": false,
+              "remainderUnelapsedMs": null,
+              "displayedThen": "900000|130056|130064|130038|130044",
+              "settledTo": "900000|130056|130068|130038|130065",
+              "closeMovementPoints": 21
+            }
+          ]
+        },
+        "clauseC": {
+          "stabilityChecked": 165600,
+          "stabilityViolations": 0,
+          "exactnessChecked": 575,
+          "exactnessViolations": 0,
+          "pass": true,
+          "samples": []
+        }
+      },
+      "lastBarWindow": {
+        "oracle": "m21-b-last-bar-window-oracle",
+        "label": "5m/legacy/kill-OFF",
+        "pass": false,
+        "ticks": 577,
+        "valueChecked": 1,
+        "valueFailureCount": 0,
+        "presentationChecked": 576,
+        "presentationFailureCount": 576,
+        "masterCompleteChecked": 577,
+        "masterCompleteValueFailureCount": 576,
+        "formingMarkersSeen": {},
+        "errorStats": {
+          "n": 577,
+          "meanAbsPips": 1.48,
+          "maxAbsPips": 4.5,
+          "signedSumPips": 23.6
+        },
+        "firstFailure": {
+          "kind": "presentation",
+          "tick": 1,
+          "bucketT": 0,
+          "playheadMs": 60000,
+          "presented": "0|130000|130008|129978|129986",
+          "expectedFullBucket": "0|130000|130008|129978|130003",
+          "closeErrorPoints": -17,
+          "markerKeysSearched": 15
+        },
+        "valueFailures": [],
+        "presentationFailures": [
+          {
+            "kind": "presentation",
+            "tick": 1,
+            "bucketT": 0,
+            "playheadMs": 60000,
+            "presented": "0|130000|130008|129978|129986",
+            "expectedFullBucket": "0|130000|130008|129978|130003",
+            "closeErrorPoints": -17,
+            "markerKeysSearched": 15
+          },
+          {
+            "kind": "presentation",
+            "tick": 6,
+            "bucketT": 300000,
+            "playheadMs": 360000,
+            "presented": "300000|130003|130028|129998|130027",
+            "expectedFullBucket": "300000|130003|130041|129998|130022",
+            "closeErrorPoints": 5,
+            "markerKeysSearched": 15
+          },
+          {
+            "kind": "presentation",
+            "tick": 11,
+            "bucketT": 600000,
+            "playheadMs": 660000,
+            "presented": "600000|130022|130035|130018|130028",
+            "expectedFullBucket": "600000|130022|130064|130018|130056",
+            "closeErrorPoints": -28,
+            "markerKeysSearched": 15
+          },
+          {
+            "kind": "presentation",
+            "tick": 16,
+            "bucketT": 900000,
+            "playheadMs": 960000,
+            "presented": "900000|130056|130064|130038|130044",
+            "expectedFullBucket": "900000|130056|130068|130038|130065",
+            "closeErrorPoints": -21,
+            "markerKeysSearched": 15
+          },
+          {
+            "kind": "presentation",
+            "tick": 21,
+            "bucketT": 1200000,
+            "playheadMs": 1260000,
+            "presented": "1200000|130065|130072|130056|130061",
+            "expectedFullBucket": "1200000|130065|130078|130053|130064",
+            "closeErrorPoints": -3,
+            "markerKeysSearched": 15
+          }
+        ]
+      },
+      "attribution": {
+        "ticks": 577,
+        "trimReplacedSlotTicks": 577,
+        "trimChangedValueTicks": 0,
+        "meanAbsSliceErrorPips": 1.48,
+        "meanAbsTrimErrorPips": 0,
+        "meanAbsTotalErrorPips": 1.48,
+        "maxAbsSliceErrorPips": 4.5,
+        "maxAbsTrimErrorPips": 0,
+        "sliceSharePct": 100,
+        "trimSharePct": 0
+      }
+    },
+    {
+      "timeframe": "5m",
+      "stepMode": "legacy",
+      "phaseOffsetBars": 1,
+      "landingPhaseMinutes": [
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "distinctLandingPhases": [
+        1,
+        4
+      ],
+      "stubbedResolvers": [
+        "_isFinestTfCoarseLegacyCandleStep -> true (gate only)"
+      ],
+      "killSwitchOn": true,
+      "productHelperReadings": [
+        false
+      ],
+      "fullResampleCalls": 577,
+      "incrementalAttempts": 0,
+      "incrementalHits": 0,
+      "distinctPrefixIdentities": 577,
+      "immutability": {
+        "oracle": "m21-b-bar-immutability-oracle",
+        "label": "5m/legacy/kill-ON",
+        "subjects": {
+          "A": "chart.data[length-1] at every tick its window is incomplete — presentation",
+          "B": "the value last shown for a bucket while presenting it as finished (no marker)",
+          "C": "every bucket once historical, on every subsequent tick — settled differential"
+        },
+        "pass": false,
+        "ticks": 577,
+        "clauseA": {
+          "checked": 576,
+          "violations": 576,
+          "pass": false
+        },
+        "clauseB": {
+          "checked": 576,
+          "violations": 575,
+          "pass": false,
+          "movement": {
+            "n": 576,
+            "meanAbsPips": 1.48,
+            "maxAbsPips": 4.5
+          },
+          "samples": [
+            {
+              "bucketT": 0,
+              "presentedAsFinishedAtTick": 1,
+              "playheadMsAtThatTick": 60000,
+              "windowCompleteAtThatTick": false,
+              "remainderUnelapsedMs": null,
+              "displayedThen": "0|130000|130008|129978|129986",
+              "settledTo": "0|130000|130008|129978|130003",
+              "closeMovementPoints": 17
+            },
+            {
+              "bucketT": 300000,
+              "presentedAsFinishedAtTick": 6,
+              "playheadMsAtThatTick": 360000,
+              "windowCompleteAtThatTick": false,
+              "remainderUnelapsedMs": null,
+              "displayedThen": "300000|130003|130028|129998|130027",
+              "settledTo": "300000|130003|130041|129998|130022",
+              "closeMovementPoints": -5
+            },
+            {
+              "bucketT": 600000,
+              "presentedAsFinishedAtTick": 11,
+              "playheadMsAtThatTick": 660000,
+              "windowCompleteAtThatTick": false,
+              "remainderUnelapsedMs": null,
+              "displayedThen": "600000|130022|130035|130018|130028",
+              "settledTo": "600000|130022|130064|130018|130056",
+              "closeMovementPoints": 28
+            },
+            {
+              "bucketT": 900000,
+              "presentedAsFinishedAtTick": 16,
+              "playheadMsAtThatTick": 960000,
+              "windowCompleteAtThatTick": false,
+              "remainderUnelapsedMs": null,
+              "displayedThen": "900000|130056|130064|130038|130044",
+              "settledTo": "900000|130056|130068|130038|130065",
+              "closeMovementPoints": 21
+            }
+          ]
+        },
+        "clauseC": {
+          "stabilityChecked": 165600,
+          "stabilityViolations": 0,
+          "exactnessChecked": 575,
+          "exactnessViolations": 0,
+          "pass": true,
+          "samples": []
+        }
+      },
+      "lastBarWindow": {
+        "oracle": "m21-b-last-bar-window-oracle",
+        "label": "5m/legacy/kill-ON",
+        "pass": false,
+        "ticks": 577,
+        "valueChecked": 1,
+        "valueFailureCount": 0,
+        "presentationChecked": 576,
+        "presentationFailureCount": 576,
+        "masterCompleteChecked": 577,
+        "masterCompleteValueFailureCount": 576,
+        "formingMarkersSeen": {},
+        "errorStats": {
+          "n": 577,
+          "meanAbsPips": 1.48,
+          "maxAbsPips": 4.5,
+          "signedSumPips": 23.6
+        },
+        "firstFailure": {
+          "kind": "presentation",
+          "tick": 1,
+          "bucketT": 0,
+          "playheadMs": 60000,
+          "presented": "0|130000|130008|129978|129986",
+          "expectedFullBucket": "0|130000|130008|129978|130003",
+          "closeErrorPoints": -17,
+          "markerKeysSearched": 15
+        },
+        "valueFailures": [],
+        "presentationFailures": [
+          {
+            "kind": "presentation",
+            "tick": 1,
+            "bucketT": 0,
+            "playheadMs": 60000,
+            "presented": "0|130000|130008|129978|129986",
+            "expectedFullBucket": "0|130000|130008|129978|130003",
+            "closeErrorPoints": -17,
+            "markerKeysSearched": 15
+          },
+          {
+            "kind": "presentation",
+            "tick": 6,
+            "bucketT": 300000,
+            "playheadMs": 360000,
+            "presented": "300000|130003|130028|129998|130027",
+            "expectedFullBucket": "300000|130003|130041|129998|130022",
+            "closeErrorPoints": 5,
+            "markerKeysSearched": 15
+          },
+          {
+            "kind": "presentation",
+            "tick": 11,
+            "bucketT": 600000,
+            "playheadMs": 660000,
+            "presented": "600000|130022|130035|130018|130028",
+            "expectedFullBucket": "600000|130022|130064|130018|130056",
+            "closeErrorPoints": -28,
+            "markerKeysSearched": 15
+          },
+          {
+            "kind": "presentation",
+            "tick": 16,
+            "bucketT": 900000,
+            "playheadMs": 960000,
+            "presented": "900000|130056|130064|130038|130044",
+            "expectedFullBucket": "900000|130056|130068|130038|130065",
+            "closeErrorPoints": -21,
+            "markerKeysSearched": 15
+          },
+          {
+            "kind": "presentation",
+            "tick": 21,
+            "bucketT": 1200000,
+            "playheadMs": 1260000,
+            "presented": "1200000|130065|130072|130056|130061",
+            "expectedFullBucket": "1200000|130065|130078|130053|130064",
+            "closeErrorPoints": -3,
+            "markerKeysSearched": 15
+          }
+        ]
+      },
+      "attribution": {
+        "ticks": 577,
+        "trimReplacedSlotTicks": 577,
+        "trimChangedValueTicks": 0,
+        "meanAbsSliceErrorPips": 1.48,
+        "meanAbsTrimErrorPips": 0,
+        "meanAbsTotalErrorPips": 1.48,
+        "maxAbsSliceErrorPips": 4.5,
+        "maxAbsTrimErrorPips": 0,
+        "sliceSharePct": 100,
+        "trimSharePct": 0
+      }
+    },
+    {
+      "timeframe": "5m",
       "stepMode": "product",
       "phaseOffsetBars": 1,
       "landingPhaseMinutes": [
@@ -3274,6 +3932,414 @@
         "meanAbsSliceErrorPips": 2.53,
         "meanAbsTrimErrorPips": 0,
         "meanAbsTotalErrorPips": 2.53,
+        "maxAbsSliceErrorPips": 8.5,
+        "maxAbsTrimErrorPips": 0,
+        "sliceSharePct": 100,
+        "trimSharePct": 0
+      }
+    },
+    {
+      "timeframe": "15m",
+      "stepMode": "legacy",
+      "phaseOffsetBars": 5,
+      "landingPhaseMinutes": [
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5
+      ],
+      "distinctLandingPhases": [
+        5,
+        14
+      ],
+      "stubbedResolvers": [
+        "_isFinestTfCoarseLegacyCandleStep -> true (gate only)"
+      ],
+      "killSwitchOn": false,
+      "productHelperReadings": [
+        true
+      ],
+      "fullResampleCalls": 193,
+      "incrementalAttempts": 0,
+      "incrementalHits": 0,
+      "distinctPrefixIdentities": 1,
+      "immutability": {
+        "oracle": "m21-b-bar-immutability-oracle",
+        "label": "15m/legacy/kill-OFF",
+        "subjects": {
+          "A": "chart.data[length-1] at every tick its window is incomplete — presentation",
+          "B": "the value last shown for a bucket while presenting it as finished (no marker)",
+          "C": "every bucket once historical, on every subsequent tick — settled differential"
+        },
+        "pass": false,
+        "ticks": 193,
+        "clauseA": {
+          "checked": 192,
+          "violations": 192,
+          "pass": false
+        },
+        "clauseB": {
+          "checked": 192,
+          "violations": 191,
+          "pass": false,
+          "movement": {
+            "n": 192,
+            "meanAbsPips": 2.53,
+            "maxAbsPips": 8.5
+          },
+          "samples": [
+            {
+              "bucketT": 0,
+              "presentedAsFinishedAtTick": 5,
+              "playheadMsAtThatTick": 300000,
+              "windowCompleteAtThatTick": false,
+              "remainderUnelapsedMs": null,
+              "displayedThen": "0|130000|130011|129978|130011",
+              "settledTo": "0|130000|130064|129978|130056",
+              "closeMovementPoints": 45
+            },
+            {
+              "bucketT": 900000,
+              "presentedAsFinishedAtTick": 20,
+              "playheadMsAtThatTick": 1200000,
+              "windowCompleteAtThatTick": false,
+              "remainderUnelapsedMs": null,
+              "displayedThen": "900000|130056|130072|130038|130059",
+              "settledTo": "900000|130056|130078|130038|130073",
+              "closeMovementPoints": 14
+            },
+            {
+              "bucketT": 1800000,
+              "presentedAsFinishedAtTick": 35,
+              "playheadMsAtThatTick": 2100000,
+              "windowCompleteAtThatTick": false,
+              "remainderUnelapsedMs": null,
+              "displayedThen": "1800000|130073|130089|130059|130077",
+              "settledTo": "1800000|130073|130097|130040|130040",
+              "closeMovementPoints": -37
+            },
+            {
+              "bucketT": 2700000,
+              "presentedAsFinishedAtTick": 50,
+              "playheadMsAtThatTick": 3000000,
+              "windowCompleteAtThatTick": false,
+              "remainderUnelapsedMs": null,
+              "displayedThen": "2700000|130040|130067|130012|130022",
+              "settledTo": "2700000|130040|130067|130004|130035",
+              "closeMovementPoints": 13
+            }
+          ]
+        },
+        "clauseC": {
+          "stabilityChecked": 18336,
+          "stabilityViolations": 0,
+          "exactnessChecked": 191,
+          "exactnessViolations": 0,
+          "pass": true,
+          "samples": []
+        }
+      },
+      "lastBarWindow": {
+        "oracle": "m21-b-last-bar-window-oracle",
+        "label": "15m/legacy/kill-OFF",
+        "pass": false,
+        "ticks": 193,
+        "valueChecked": 1,
+        "valueFailureCount": 0,
+        "presentationChecked": 192,
+        "presentationFailureCount": 192,
+        "masterCompleteChecked": 193,
+        "masterCompleteValueFailureCount": 192,
+        "formingMarkersSeen": {},
+        "errorStats": {
+          "n": 193,
+          "meanAbsPips": 2.52,
+          "maxAbsPips": 8.5,
+          "signedSumPips": -12.1
+        },
+        "firstFailure": {
+          "kind": "presentation",
+          "tick": 5,
+          "bucketT": 0,
+          "playheadMs": 300000,
+          "presented": "0|130000|130011|129978|130011",
+          "expectedFullBucket": "0|130000|130064|129978|130056",
+          "closeErrorPoints": -45,
+          "markerKeysSearched": 15
+        },
+        "valueFailures": [],
+        "presentationFailures": [
+          {
+            "kind": "presentation",
+            "tick": 5,
+            "bucketT": 0,
+            "playheadMs": 300000,
+            "presented": "0|130000|130011|129978|130011",
+            "expectedFullBucket": "0|130000|130064|129978|130056",
+            "closeErrorPoints": -45,
+            "markerKeysSearched": 15
+          },
+          {
+            "kind": "presentation",
+            "tick": 20,
+            "bucketT": 900000,
+            "playheadMs": 1200000,
+            "presented": "900000|130056|130072|130038|130059",
+            "expectedFullBucket": "900000|130056|130078|130038|130073",
+            "closeErrorPoints": -14,
+            "markerKeysSearched": 15
+          },
+          {
+            "kind": "presentation",
+            "tick": 35,
+            "bucketT": 1800000,
+            "playheadMs": 2100000,
+            "presented": "1800000|130073|130089|130059|130077",
+            "expectedFullBucket": "1800000|130073|130097|130040|130040",
+            "closeErrorPoints": 37,
+            "markerKeysSearched": 15
+          },
+          {
+            "kind": "presentation",
+            "tick": 50,
+            "bucketT": 2700000,
+            "playheadMs": 3000000,
+            "presented": "2700000|130040|130067|130012|130022",
+            "expectedFullBucket": "2700000|130040|130067|130004|130035",
+            "closeErrorPoints": -13,
+            "markerKeysSearched": 15
+          },
+          {
+            "kind": "presentation",
+            "tick": 65,
+            "bucketT": 3600000,
+            "playheadMs": 3900000,
+            "presented": "3600000|130035|130063|130030|130045",
+            "expectedFullBucket": "3600000|130035|130078|130029|130044",
+            "closeErrorPoints": 1,
+            "markerKeysSearched": 15
+          }
+        ]
+      },
+      "attribution": {
+        "ticks": 193,
+        "trimReplacedSlotTicks": 193,
+        "trimChangedValueTicks": 0,
+        "meanAbsSliceErrorPips": 2.52,
+        "meanAbsTrimErrorPips": 0,
+        "meanAbsTotalErrorPips": 2.52,
+        "maxAbsSliceErrorPips": 8.5,
+        "maxAbsTrimErrorPips": 0,
+        "sliceSharePct": 100,
+        "trimSharePct": 0
+      }
+    },
+    {
+      "timeframe": "15m",
+      "stepMode": "legacy",
+      "phaseOffsetBars": 5,
+      "landingPhaseMinutes": [
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5
+      ],
+      "distinctLandingPhases": [
+        5,
+        14
+      ],
+      "stubbedResolvers": [
+        "_isFinestTfCoarseLegacyCandleStep -> true (gate only)"
+      ],
+      "killSwitchOn": true,
+      "productHelperReadings": [
+        false
+      ],
+      "fullResampleCalls": 193,
+      "incrementalAttempts": 0,
+      "incrementalHits": 0,
+      "distinctPrefixIdentities": 193,
+      "immutability": {
+        "oracle": "m21-b-bar-immutability-oracle",
+        "label": "15m/legacy/kill-ON",
+        "subjects": {
+          "A": "chart.data[length-1] at every tick its window is incomplete — presentation",
+          "B": "the value last shown for a bucket while presenting it as finished (no marker)",
+          "C": "every bucket once historical, on every subsequent tick — settled differential"
+        },
+        "pass": false,
+        "ticks": 193,
+        "clauseA": {
+          "checked": 192,
+          "violations": 192,
+          "pass": false
+        },
+        "clauseB": {
+          "checked": 192,
+          "violations": 191,
+          "pass": false,
+          "movement": {
+            "n": 192,
+            "meanAbsPips": 2.53,
+            "maxAbsPips": 8.5
+          },
+          "samples": [
+            {
+              "bucketT": 0,
+              "presentedAsFinishedAtTick": 5,
+              "playheadMsAtThatTick": 300000,
+              "windowCompleteAtThatTick": false,
+              "remainderUnelapsedMs": null,
+              "displayedThen": "0|130000|130011|129978|130011",
+              "settledTo": "0|130000|130064|129978|130056",
+              "closeMovementPoints": 45
+            },
+            {
+              "bucketT": 900000,
+              "presentedAsFinishedAtTick": 20,
+              "playheadMsAtThatTick": 1200000,
+              "windowCompleteAtThatTick": false,
+              "remainderUnelapsedMs": null,
+              "displayedThen": "900000|130056|130072|130038|130059",
+              "settledTo": "900000|130056|130078|130038|130073",
+              "closeMovementPoints": 14
+            },
+            {
+              "bucketT": 1800000,
+              "presentedAsFinishedAtTick": 35,
+              "playheadMsAtThatTick": 2100000,
+              "windowCompleteAtThatTick": false,
+              "remainderUnelapsedMs": null,
+              "displayedThen": "1800000|130073|130089|130059|130077",
+              "settledTo": "1800000|130073|130097|130040|130040",
+              "closeMovementPoints": -37
+            },
+            {
+              "bucketT": 2700000,
+              "presentedAsFinishedAtTick": 50,
+              "playheadMsAtThatTick": 3000000,
+              "windowCompleteAtThatTick": false,
+              "remainderUnelapsedMs": null,
+              "displayedThen": "2700000|130040|130067|130012|130022",
+              "settledTo": "2700000|130040|130067|130004|130035",
+              "closeMovementPoints": 13
+            }
+          ]
+        },
+        "clauseC": {
+          "stabilityChecked": 18336,
+          "stabilityViolations": 0,
+          "exactnessChecked": 191,
+          "exactnessViolations": 0,
+          "pass": true,
+          "samples": []
+        }
+      },
+      "lastBarWindow": {
+        "oracle": "m21-b-last-bar-window-oracle",
+        "label": "15m/legacy/kill-ON",
+        "pass": false,
+        "ticks": 193,
+        "valueChecked": 1,
+        "valueFailureCount": 0,
+        "presentationChecked": 192,
+        "presentationFailureCount": 192,
+        "masterCompleteChecked": 193,
+        "masterCompleteValueFailureCount": 192,
+        "formingMarkersSeen": {},
+        "errorStats": {
+          "n": 193,
+          "meanAbsPips": 2.52,
+          "maxAbsPips": 8.5,
+          "signedSumPips": -12.1
+        },
+        "firstFailure": {
+          "kind": "presentation",
+          "tick": 5,
+          "bucketT": 0,
+          "playheadMs": 300000,
+          "presented": "0|130000|130011|129978|130011",
+          "expectedFullBucket": "0|130000|130064|129978|130056",
+          "closeErrorPoints": -45,
+          "markerKeysSearched": 15
+        },
+        "valueFailures": [],
+        "presentationFailures": [
+          {
+            "kind": "presentation",
+            "tick": 5,
+            "bucketT": 0,
+            "playheadMs": 300000,
+            "presented": "0|130000|130011|129978|130011",
+            "expectedFullBucket": "0|130000|130064|129978|130056",
+            "closeErrorPoints": -45,
+            "markerKeysSearched": 15
+          },
+          {
+            "kind": "presentation",
+            "tick": 20,
+            "bucketT": 900000,
+            "playheadMs": 1200000,
+            "presented": "900000|130056|130072|130038|130059",
+            "expectedFullBucket": "900000|130056|130078|130038|130073",
+            "closeErrorPoints": -14,
+            "markerKeysSearched": 15
+          },
+          {
+            "kind": "presentation",
+            "tick": 35,
+            "bucketT": 1800000,
+            "playheadMs": 2100000,
+            "presented": "1800000|130073|130089|130059|130077",
+            "expectedFullBucket": "1800000|130073|130097|130040|130040",
+            "closeErrorPoints": 37,
+            "markerKeysSearched": 15
+          },
+          {
+            "kind": "presentation",
+            "tick": 50,
+            "bucketT": 2700000,
+            "playheadMs": 3000000,
+            "presented": "2700000|130040|130067|130012|130022",
+            "expectedFullBucket": "2700000|130040|130067|130004|130035",
+            "closeErrorPoints": -13,
+            "markerKeysSearched": 15
+          },
+          {
+            "kind": "presentation",
+            "tick": 65,
+            "bucketT": 3600000,
+            "playheadMs": 3900000,
+            "presented": "3600000|130035|130063|130030|130045",
+            "expectedFullBucket": "3600000|130035|130078|130029|130044",
+            "closeErrorPoints": 1,
+            "markerKeysSearched": 15
+          }
+        ]
+      },
+      "attribution": {
+        "ticks": 193,
+        "trimReplacedSlotTicks": 193,
+        "trimChangedValueTicks": 0,
+        "meanAbsSliceErrorPips": 2.52,
+        "meanAbsTrimErrorPips": 0,
+        "meanAbsTotalErrorPips": 2.52,
         "maxAbsSliceErrorPips": 8.5,
         "maxAbsTrimErrorPips": 0,
         "sliceSharePct": 100,
@@ -4354,6 +5420,414 @@
     },
     {
       "timeframe": "1h",
+      "stepMode": "legacy",
+      "phaseOffsetBars": 20,
+      "landingPhaseMinutes": [
+        20,
+        20,
+        20,
+        20,
+        20,
+        20,
+        20,
+        20,
+        20,
+        20,
+        20,
+        20
+      ],
+      "distinctLandingPhases": [
+        20,
+        59
+      ],
+      "stubbedResolvers": [
+        "_isFinestTfCoarseLegacyCandleStep -> true (gate only)"
+      ],
+      "killSwitchOn": false,
+      "productHelperReadings": [
+        true
+      ],
+      "fullResampleCalls": 49,
+      "incrementalAttempts": 0,
+      "incrementalHits": 0,
+      "distinctPrefixIdentities": 1,
+      "immutability": {
+        "oracle": "m21-b-bar-immutability-oracle",
+        "label": "1h/legacy/kill-OFF",
+        "subjects": {
+          "A": "chart.data[length-1] at every tick its window is incomplete — presentation",
+          "B": "the value last shown for a bucket while presenting it as finished (no marker)",
+          "C": "every bucket once historical, on every subsequent tick — settled differential"
+        },
+        "pass": false,
+        "ticks": 49,
+        "clauseA": {
+          "checked": 48,
+          "violations": 48,
+          "pass": false
+        },
+        "clauseB": {
+          "checked": 48,
+          "violations": 47,
+          "pass": false,
+          "movement": {
+            "n": 48,
+            "meanAbsPips": 4.8,
+            "maxAbsPips": 18.3
+          },
+          "samples": [
+            {
+              "bucketT": 0,
+              "presentedAsFinishedAtTick": 20,
+              "playheadMsAtThatTick": 1200000,
+              "windowCompleteAtThatTick": false,
+              "remainderUnelapsedMs": null,
+              "displayedThen": "0|130000|130072|129978|130059",
+              "settledTo": "0|130000|130097|129978|130035",
+              "closeMovementPoints": -24
+            },
+            {
+              "bucketT": 3600000,
+              "presentedAsFinishedAtTick": 80,
+              "playheadMsAtThatTick": 4800000,
+              "windowCompleteAtThatTick": false,
+              "remainderUnelapsedMs": null,
+              "displayedThen": "3600000|130035|130078|130029|130064",
+              "settledTo": "3600000|130035|130108|130029|130051",
+              "closeMovementPoints": -13
+            },
+            {
+              "bucketT": 7200000,
+              "presentedAsFinishedAtTick": 140,
+              "playheadMsAtThatTick": 8400000,
+              "windowCompleteAtThatTick": false,
+              "remainderUnelapsedMs": null,
+              "displayedThen": "7200000|130051|130090|130025|130073",
+              "settledTo": "7200000|130051|130111|130025|130074",
+              "closeMovementPoints": 1
+            },
+            {
+              "bucketT": 10800000,
+              "presentedAsFinishedAtTick": 200,
+              "playheadMsAtThatTick": 12000000,
+              "windowCompleteAtThatTick": false,
+              "remainderUnelapsedMs": null,
+              "displayedThen": "10800000|130074|130094|130026|130076",
+              "settledTo": "10800000|130074|130105|130002|130008",
+              "closeMovementPoints": -68
+            }
+          ]
+        },
+        "clauseC": {
+          "stabilityChecked": 1128,
+          "stabilityViolations": 0,
+          "exactnessChecked": 47,
+          "exactnessViolations": 0,
+          "pass": true,
+          "samples": []
+        }
+      },
+      "lastBarWindow": {
+        "oracle": "m21-b-last-bar-window-oracle",
+        "label": "1h/legacy/kill-OFF",
+        "pass": false,
+        "ticks": 49,
+        "valueChecked": 1,
+        "valueFailureCount": 0,
+        "presentationChecked": 48,
+        "presentationFailureCount": 48,
+        "masterCompleteChecked": 49,
+        "masterCompleteValueFailureCount": 48,
+        "formingMarkersSeen": {},
+        "errorStats": {
+          "n": 49,
+          "meanAbsPips": 4.86,
+          "maxAbsPips": 18.3,
+          "signedSumPips": -9.3
+        },
+        "firstFailure": {
+          "kind": "presentation",
+          "tick": 20,
+          "bucketT": 0,
+          "playheadMs": 1200000,
+          "presented": "0|130000|130072|129978|130059",
+          "expectedFullBucket": "0|130000|130097|129978|130035",
+          "closeErrorPoints": 24,
+          "markerKeysSearched": 15
+        },
+        "valueFailures": [],
+        "presentationFailures": [
+          {
+            "kind": "presentation",
+            "tick": 20,
+            "bucketT": 0,
+            "playheadMs": 1200000,
+            "presented": "0|130000|130072|129978|130059",
+            "expectedFullBucket": "0|130000|130097|129978|130035",
+            "closeErrorPoints": 24,
+            "markerKeysSearched": 15
+          },
+          {
+            "kind": "presentation",
+            "tick": 80,
+            "bucketT": 3600000,
+            "playheadMs": 4800000,
+            "presented": "3600000|130035|130078|130029|130064",
+            "expectedFullBucket": "3600000|130035|130108|130029|130051",
+            "closeErrorPoints": 13,
+            "markerKeysSearched": 15
+          },
+          {
+            "kind": "presentation",
+            "tick": 140,
+            "bucketT": 7200000,
+            "playheadMs": 8400000,
+            "presented": "7200000|130051|130090|130025|130073",
+            "expectedFullBucket": "7200000|130051|130111|130025|130074",
+            "closeErrorPoints": -1,
+            "markerKeysSearched": 15
+          },
+          {
+            "kind": "presentation",
+            "tick": 200,
+            "bucketT": 10800000,
+            "playheadMs": 12000000,
+            "presented": "10800000|130074|130094|130026|130076",
+            "expectedFullBucket": "10800000|130074|130105|130002|130008",
+            "closeErrorPoints": 68,
+            "markerKeysSearched": 15
+          },
+          {
+            "kind": "presentation",
+            "tick": 260,
+            "bucketT": 14400000,
+            "playheadMs": 15600000,
+            "presented": "14400000|130008|130049|129995|130045",
+            "expectedFullBucket": "14400000|130008|130233|129995|130228",
+            "closeErrorPoints": -183,
+            "markerKeysSearched": 15
+          }
+        ]
+      },
+      "attribution": {
+        "ticks": 49,
+        "trimReplacedSlotTicks": 49,
+        "trimChangedValueTicks": 0,
+        "meanAbsSliceErrorPips": 4.86,
+        "meanAbsTrimErrorPips": 0,
+        "meanAbsTotalErrorPips": 4.86,
+        "maxAbsSliceErrorPips": 18.3,
+        "maxAbsTrimErrorPips": 0,
+        "sliceSharePct": 100,
+        "trimSharePct": 0
+      }
+    },
+    {
+      "timeframe": "1h",
+      "stepMode": "legacy",
+      "phaseOffsetBars": 20,
+      "landingPhaseMinutes": [
+        20,
+        20,
+        20,
+        20,
+        20,
+        20,
+        20,
+        20,
+        20,
+        20,
+        20,
+        20
+      ],
+      "distinctLandingPhases": [
+        20,
+        59
+      ],
+      "stubbedResolvers": [
+        "_isFinestTfCoarseLegacyCandleStep -> true (gate only)"
+      ],
+      "killSwitchOn": true,
+      "productHelperReadings": [
+        false
+      ],
+      "fullResampleCalls": 49,
+      "incrementalAttempts": 0,
+      "incrementalHits": 0,
+      "distinctPrefixIdentities": 49,
+      "immutability": {
+        "oracle": "m21-b-bar-immutability-oracle",
+        "label": "1h/legacy/kill-ON",
+        "subjects": {
+          "A": "chart.data[length-1] at every tick its window is incomplete — presentation",
+          "B": "the value last shown for a bucket while presenting it as finished (no marker)",
+          "C": "every bucket once historical, on every subsequent tick — settled differential"
+        },
+        "pass": false,
+        "ticks": 49,
+        "clauseA": {
+          "checked": 48,
+          "violations": 48,
+          "pass": false
+        },
+        "clauseB": {
+          "checked": 48,
+          "violations": 47,
+          "pass": false,
+          "movement": {
+            "n": 48,
+            "meanAbsPips": 4.8,
+            "maxAbsPips": 18.3
+          },
+          "samples": [
+            {
+              "bucketT": 0,
+              "presentedAsFinishedAtTick": 20,
+              "playheadMsAtThatTick": 1200000,
+              "windowCompleteAtThatTick": false,
+              "remainderUnelapsedMs": null,
+              "displayedThen": "0|130000|130072|129978|130059",
+              "settledTo": "0|130000|130097|129978|130035",
+              "closeMovementPoints": -24
+            },
+            {
+              "bucketT": 3600000,
+              "presentedAsFinishedAtTick": 80,
+              "playheadMsAtThatTick": 4800000,
+              "windowCompleteAtThatTick": false,
+              "remainderUnelapsedMs": null,
+              "displayedThen": "3600000|130035|130078|130029|130064",
+              "settledTo": "3600000|130035|130108|130029|130051",
+              "closeMovementPoints": -13
+            },
+            {
+              "bucketT": 7200000,
+              "presentedAsFinishedAtTick": 140,
+              "playheadMsAtThatTick": 8400000,
+              "windowCompleteAtThatTick": false,
+              "remainderUnelapsedMs": null,
+              "displayedThen": "7200000|130051|130090|130025|130073",
+              "settledTo": "7200000|130051|130111|130025|130074",
+              "closeMovementPoints": 1
+            },
+            {
+              "bucketT": 10800000,
+              "presentedAsFinishedAtTick": 200,
+              "playheadMsAtThatTick": 12000000,
+              "windowCompleteAtThatTick": false,
+              "remainderUnelapsedMs": null,
+              "displayedThen": "10800000|130074|130094|130026|130076",
+              "settledTo": "10800000|130074|130105|130002|130008",
+              "closeMovementPoints": -68
+            }
+          ]
+        },
+        "clauseC": {
+          "stabilityChecked": 1128,
+          "stabilityViolations": 0,
+          "exactnessChecked": 47,
+          "exactnessViolations": 0,
+          "pass": true,
+          "samples": []
+        }
+      },
+      "lastBarWindow": {
+        "oracle": "m21-b-last-bar-window-oracle",
+        "label": "1h/legacy/kill-ON",
+        "pass": false,
+        "ticks": 49,
+        "valueChecked": 1,
+        "valueFailureCount": 0,
+        "presentationChecked": 48,
+        "presentationFailureCount": 48,
+        "masterCompleteChecked": 49,
+        "masterCompleteValueFailureCount": 48,
+        "formingMarkersSeen": {},
+        "errorStats": {
+          "n": 49,
+          "meanAbsPips": 4.86,
+          "maxAbsPips": 18.3,
+          "signedSumPips": -9.3
+        },
+        "firstFailure": {
+          "kind": "presentation",
+          "tick": 20,
+          "bucketT": 0,
+          "playheadMs": 1200000,
+          "presented": "0|130000|130072|129978|130059",
+          "expectedFullBucket": "0|130000|130097|129978|130035",
+          "closeErrorPoints": 24,
+          "markerKeysSearched": 15
+        },
+        "valueFailures": [],
+        "presentationFailures": [
+          {
+            "kind": "presentation",
+            "tick": 20,
+            "bucketT": 0,
+            "playheadMs": 1200000,
+            "presented": "0|130000|130072|129978|130059",
+            "expectedFullBucket": "0|130000|130097|129978|130035",
+            "closeErrorPoints": 24,
+            "markerKeysSearched": 15
+          },
+          {
+            "kind": "presentation",
+            "tick": 80,
+            "bucketT": 3600000,
+            "playheadMs": 4800000,
+            "presented": "3600000|130035|130078|130029|130064",
+            "expectedFullBucket": "3600000|130035|130108|130029|130051",
+            "closeErrorPoints": 13,
+            "markerKeysSearched": 15
+          },
+          {
+            "kind": "presentation",
+            "tick": 140,
+            "bucketT": 7200000,
+            "playheadMs": 8400000,
+            "presented": "7200000|130051|130090|130025|130073",
+            "expectedFullBucket": "7200000|130051|130111|130025|130074",
+            "closeErrorPoints": -1,
+            "markerKeysSearched": 15
+          },
+          {
+            "kind": "presentation",
+            "tick": 200,
+            "bucketT": 10800000,
+            "playheadMs": 12000000,
+            "presented": "10800000|130074|130094|130026|130076",
+            "expectedFullBucket": "10800000|130074|130105|130002|130008",
+            "closeErrorPoints": 68,
+            "markerKeysSearched": 15
+          },
+          {
+            "kind": "presentation",
+            "tick": 260,
+            "bucketT": 14400000,
+            "playheadMs": 15600000,
+            "presented": "14400000|130008|130049|129995|130045",
+            "expectedFullBucket": "14400000|130008|130233|129995|130228",
+            "closeErrorPoints": -183,
+            "markerKeysSearched": 15
+          }
+        ]
+      },
+      "attribution": {
+        "ticks": 49,
+        "trimReplacedSlotTicks": 49,
+        "trimChangedValueTicks": 0,
+        "meanAbsSliceErrorPips": 4.86,
+        "meanAbsTrimErrorPips": 0,
+        "meanAbsTotalErrorPips": 4.86,
+        "maxAbsSliceErrorPips": 18.3,
+        "maxAbsTrimErrorPips": 0,
+        "sliceSharePct": 100,
+        "trimSharePct": 0
+      }
+    },
+    {
+      "timeframe": "1h",
       "stepMode": "product",
       "phaseOffsetBars": 20,
       "landingPhaseMinutes": [
@@ -5426,6 +6900,414 @@
     },
     {
       "timeframe": "4h",
+      "stepMode": "legacy",
+      "phaseOffsetBars": 80,
+      "landingPhaseMinutes": [
+        80,
+        80,
+        80,
+        80,
+        80,
+        80,
+        80,
+        80,
+        80,
+        80,
+        80,
+        80
+      ],
+      "distinctLandingPhases": [
+        80,
+        239
+      ],
+      "stubbedResolvers": [
+        "_isFinestTfCoarseLegacyCandleStep -> true (gate only)"
+      ],
+      "killSwitchOn": false,
+      "productHelperReadings": [
+        true
+      ],
+      "fullResampleCalls": 13,
+      "incrementalAttempts": 0,
+      "incrementalHits": 0,
+      "distinctPrefixIdentities": 1,
+      "immutability": {
+        "oracle": "m21-b-bar-immutability-oracle",
+        "label": "4h/legacy/kill-OFF",
+        "subjects": {
+          "A": "chart.data[length-1] at every tick its window is incomplete — presentation",
+          "B": "the value last shown for a bucket while presenting it as finished (no marker)",
+          "C": "every bucket once historical, on every subsequent tick — settled differential"
+        },
+        "pass": false,
+        "ticks": 13,
+        "clauseA": {
+          "checked": 12,
+          "violations": 12,
+          "pass": false
+        },
+        "clauseB": {
+          "checked": 12,
+          "violations": 11,
+          "pass": false,
+          "movement": {
+            "n": 12,
+            "meanAbsPips": 9.71,
+            "maxAbsPips": 28.2
+          },
+          "samples": [
+            {
+              "bucketT": 0,
+              "presentedAsFinishedAtTick": 80,
+              "playheadMsAtThatTick": 4800000,
+              "windowCompleteAtThatTick": false,
+              "remainderUnelapsedMs": null,
+              "displayedThen": "0|130000|130097|129978|130064",
+              "settledTo": "0|130000|130111|129978|130008",
+              "closeMovementPoints": -56
+            },
+            {
+              "bucketT": 14400000,
+              "presentedAsFinishedAtTick": 320,
+              "playheadMsAtThatTick": 19200000,
+              "windowCompleteAtThatTick": false,
+              "remainderUnelapsedMs": null,
+              "displayedThen": "14400000|130008|130268|129995|130235",
+              "settledTo": "14400000|130008|130268|129995|130175",
+              "closeMovementPoints": -60
+            },
+            {
+              "bucketT": 28800000,
+              "presentedAsFinishedAtTick": 560,
+              "playheadMsAtThatTick": 33600000,
+              "windowCompleteAtThatTick": false,
+              "remainderUnelapsedMs": null,
+              "displayedThen": "28800000|130175|130229|130102|130183",
+              "settledTo": "28800000|130175|130331|130102|130303",
+              "closeMovementPoints": 120
+            },
+            {
+              "bucketT": 43200000,
+              "presentedAsFinishedAtTick": 800,
+              "playheadMsAtThatTick": 48000000,
+              "windowCompleteAtThatTick": false,
+              "remainderUnelapsedMs": null,
+              "displayedThen": "43200000|130303|130324|130166|130174",
+              "settledTo": "43200000|130303|130341|130092|130319",
+              "closeMovementPoints": 145
+            }
+          ]
+        },
+        "clauseC": {
+          "stabilityChecked": 66,
+          "stabilityViolations": 0,
+          "exactnessChecked": 11,
+          "exactnessViolations": 0,
+          "pass": true,
+          "samples": []
+        }
+      },
+      "lastBarWindow": {
+        "oracle": "m21-b-last-bar-window-oracle",
+        "label": "4h/legacy/kill-OFF",
+        "pass": false,
+        "ticks": 13,
+        "valueChecked": 1,
+        "valueFailureCount": 0,
+        "presentationChecked": 12,
+        "presentationFailureCount": 12,
+        "masterCompleteChecked": 13,
+        "masterCompleteValueFailureCount": 12,
+        "formingMarkersSeen": {},
+        "errorStats": {
+          "n": 13,
+          "meanAbsPips": 9.8,
+          "maxAbsPips": 28.2,
+          "signedSumPips": -9.2
+        },
+        "firstFailure": {
+          "kind": "presentation",
+          "tick": 80,
+          "bucketT": 0,
+          "playheadMs": 4800000,
+          "presented": "0|130000|130097|129978|130064",
+          "expectedFullBucket": "0|130000|130111|129978|130008",
+          "closeErrorPoints": 56,
+          "markerKeysSearched": 15
+        },
+        "valueFailures": [],
+        "presentationFailures": [
+          {
+            "kind": "presentation",
+            "tick": 80,
+            "bucketT": 0,
+            "playheadMs": 4800000,
+            "presented": "0|130000|130097|129978|130064",
+            "expectedFullBucket": "0|130000|130111|129978|130008",
+            "closeErrorPoints": 56,
+            "markerKeysSearched": 15
+          },
+          {
+            "kind": "presentation",
+            "tick": 320,
+            "bucketT": 14400000,
+            "playheadMs": 19200000,
+            "presented": "14400000|130008|130268|129995|130235",
+            "expectedFullBucket": "14400000|130008|130268|129995|130175",
+            "closeErrorPoints": 60,
+            "markerKeysSearched": 15
+          },
+          {
+            "kind": "presentation",
+            "tick": 560,
+            "bucketT": 28800000,
+            "playheadMs": 33600000,
+            "presented": "28800000|130175|130229|130102|130183",
+            "expectedFullBucket": "28800000|130175|130331|130102|130303",
+            "closeErrorPoints": -120,
+            "markerKeysSearched": 15
+          },
+          {
+            "kind": "presentation",
+            "tick": 800,
+            "bucketT": 43200000,
+            "playheadMs": 48000000,
+            "presented": "43200000|130303|130324|130166|130174",
+            "expectedFullBucket": "43200000|130303|130341|130092|130319",
+            "closeErrorPoints": -145,
+            "markerKeysSearched": 15
+          },
+          {
+            "kind": "presentation",
+            "tick": 1040,
+            "bucketT": 57600000,
+            "playheadMs": 62400000,
+            "presented": "57600000|130319|130326|130171|130244",
+            "expectedFullBucket": "57600000|130319|130326|130169|130256",
+            "closeErrorPoints": -12,
+            "markerKeysSearched": 15
+          }
+        ]
+      },
+      "attribution": {
+        "ticks": 13,
+        "trimReplacedSlotTicks": 13,
+        "trimChangedValueTicks": 0,
+        "meanAbsSliceErrorPips": 9.8,
+        "meanAbsTrimErrorPips": 0,
+        "meanAbsTotalErrorPips": 9.8,
+        "maxAbsSliceErrorPips": 28.2,
+        "maxAbsTrimErrorPips": 0,
+        "sliceSharePct": 100,
+        "trimSharePct": 0
+      }
+    },
+    {
+      "timeframe": "4h",
+      "stepMode": "legacy",
+      "phaseOffsetBars": 80,
+      "landingPhaseMinutes": [
+        80,
+        80,
+        80,
+        80,
+        80,
+        80,
+        80,
+        80,
+        80,
+        80,
+        80,
+        80
+      ],
+      "distinctLandingPhases": [
+        80,
+        239
+      ],
+      "stubbedResolvers": [
+        "_isFinestTfCoarseLegacyCandleStep -> true (gate only)"
+      ],
+      "killSwitchOn": true,
+      "productHelperReadings": [
+        false
+      ],
+      "fullResampleCalls": 13,
+      "incrementalAttempts": 0,
+      "incrementalHits": 0,
+      "distinctPrefixIdentities": 13,
+      "immutability": {
+        "oracle": "m21-b-bar-immutability-oracle",
+        "label": "4h/legacy/kill-ON",
+        "subjects": {
+          "A": "chart.data[length-1] at every tick its window is incomplete — presentation",
+          "B": "the value last shown for a bucket while presenting it as finished (no marker)",
+          "C": "every bucket once historical, on every subsequent tick — settled differential"
+        },
+        "pass": false,
+        "ticks": 13,
+        "clauseA": {
+          "checked": 12,
+          "violations": 12,
+          "pass": false
+        },
+        "clauseB": {
+          "checked": 12,
+          "violations": 11,
+          "pass": false,
+          "movement": {
+            "n": 12,
+            "meanAbsPips": 9.71,
+            "maxAbsPips": 28.2
+          },
+          "samples": [
+            {
+              "bucketT": 0,
+              "presentedAsFinishedAtTick": 80,
+              "playheadMsAtThatTick": 4800000,
+              "windowCompleteAtThatTick": false,
+              "remainderUnelapsedMs": null,
+              "displayedThen": "0|130000|130097|129978|130064",
+              "settledTo": "0|130000|130111|129978|130008",
+              "closeMovementPoints": -56
+            },
+            {
+              "bucketT": 14400000,
+              "presentedAsFinishedAtTick": 320,
+              "playheadMsAtThatTick": 19200000,
+              "windowCompleteAtThatTick": false,
+              "remainderUnelapsedMs": null,
+              "displayedThen": "14400000|130008|130268|129995|130235",
+              "settledTo": "14400000|130008|130268|129995|130175",
+              "closeMovementPoints": -60
+            },
+            {
+              "bucketT": 28800000,
+              "presentedAsFinishedAtTick": 560,
+              "playheadMsAtThatTick": 33600000,
+              "windowCompleteAtThatTick": false,
+              "remainderUnelapsedMs": null,
+              "displayedThen": "28800000|130175|130229|130102|130183",
+              "settledTo": "28800000|130175|130331|130102|130303",
+              "closeMovementPoints": 120
+            },
+            {
+              "bucketT": 43200000,
+              "presentedAsFinishedAtTick": 800,
+              "playheadMsAtThatTick": 48000000,
+              "windowCompleteAtThatTick": false,
+              "remainderUnelapsedMs": null,
+              "displayedThen": "43200000|130303|130324|130166|130174",
+              "settledTo": "43200000|130303|130341|130092|130319",
+              "closeMovementPoints": 145
+            }
+          ]
+        },
+        "clauseC": {
+          "stabilityChecked": 66,
+          "stabilityViolations": 0,
+          "exactnessChecked": 11,
+          "exactnessViolations": 0,
+          "pass": true,
+          "samples": []
+        }
+      },
+      "lastBarWindow": {
+        "oracle": "m21-b-last-bar-window-oracle",
+        "label": "4h/legacy/kill-ON",
+        "pass": false,
+        "ticks": 13,
+        "valueChecked": 1,
+        "valueFailureCount": 0,
+        "presentationChecked": 12,
+        "presentationFailureCount": 12,
+        "masterCompleteChecked": 13,
+        "masterCompleteValueFailureCount": 12,
+        "formingMarkersSeen": {},
+        "errorStats": {
+          "n": 13,
+          "meanAbsPips": 9.8,
+          "maxAbsPips": 28.2,
+          "signedSumPips": -9.2
+        },
+        "firstFailure": {
+          "kind": "presentation",
+          "tick": 80,
+          "bucketT": 0,
+          "playheadMs": 4800000,
+          "presented": "0|130000|130097|129978|130064",
+          "expectedFullBucket": "0|130000|130111|129978|130008",
+          "closeErrorPoints": 56,
+          "markerKeysSearched": 15
+        },
+        "valueFailures": [],
+        "presentationFailures": [
+          {
+            "kind": "presentation",
+            "tick": 80,
+            "bucketT": 0,
+            "playheadMs": 4800000,
+            "presented": "0|130000|130097|129978|130064",
+            "expectedFullBucket": "0|130000|130111|129978|130008",
+            "closeErrorPoints": 56,
+            "markerKeysSearched": 15
+          },
+          {
+            "kind": "presentation",
+            "tick": 320,
+            "bucketT": 14400000,
+            "playheadMs": 19200000,
+            "presented": "14400000|130008|130268|129995|130235",
+            "expectedFullBucket": "14400000|130008|130268|129995|130175",
+            "closeErrorPoints": 60,
+            "markerKeysSearched": 15
+          },
+          {
+            "kind": "presentation",
+            "tick": 560,
+            "bucketT": 28800000,
+            "playheadMs": 33600000,
+            "presented": "28800000|130175|130229|130102|130183",
+            "expectedFullBucket": "28800000|130175|130331|130102|130303",
+            "closeErrorPoints": -120,
+            "markerKeysSearched": 15
+          },
+          {
+            "kind": "presentation",
+            "tick": 800,
+            "bucketT": 43200000,
+            "playheadMs": 48000000,
+            "presented": "43200000|130303|130324|130166|130174",
+            "expectedFullBucket": "43200000|130303|130341|130092|130319",
+            "closeErrorPoints": -145,
+            "markerKeysSearched": 15
+          },
+          {
+            "kind": "presentation",
+            "tick": 1040,
+            "bucketT": 57600000,
+            "playheadMs": 62400000,
+            "presented": "57600000|130319|130326|130171|130244",
+            "expectedFullBucket": "57600000|130319|130326|130169|130256",
+            "closeErrorPoints": -12,
+            "markerKeysSearched": 15
+          }
+        ]
+      },
+      "attribution": {
+        "ticks": 13,
+        "trimReplacedSlotTicks": 13,
+        "trimChangedValueTicks": 0,
+        "meanAbsSliceErrorPips": 9.8,
+        "meanAbsTrimErrorPips": 0,
+        "meanAbsTotalErrorPips": 9.8,
+        "maxAbsSliceErrorPips": 28.2,
+        "maxAbsTrimErrorPips": 0,
+        "sliceSharePct": 100,
+        "trimSharePct": 0
+      }
+    },
+    {
+      "timeframe": "4h",
       "stepMode": "product",
       "phaseOffsetBars": 80,
       "landingPhaseMinutes": [
@@ -6069,13 +7951,698 @@
       ]
     }
   ],
+  "legacyStepping": [
+    {
+      "timeframe": "5m",
+      "startPhaseBars": 1,
+      "landingPhaseMinutes": [
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "distinctSteadyStateLandingPhases": [
+        1
+      ],
+      "stubbedResolvers": [
+        "_isFinestTfCoarseLegacyCandleStep -> true (gate only)"
+      ],
+      "clauseA": {
+        "checked": 576,
+        "violations": 576,
+        "pass": false
+      },
+      "clauseB": {
+        "checked": 576,
+        "violations": 575,
+        "pass": false,
+        "movement": {
+          "n": 576,
+          "meanAbsPips": 1.48,
+          "maxAbsPips": 4.5
+        },
+        "samples": [
+          {
+            "bucketT": 0,
+            "presentedAsFinishedAtTick": 1,
+            "playheadMsAtThatTick": 60000,
+            "windowCompleteAtThatTick": false,
+            "remainderUnelapsedMs": null,
+            "displayedThen": "0|130000|130008|129978|129986",
+            "settledTo": "0|130000|130008|129978|130003",
+            "closeMovementPoints": 17
+          },
+          {
+            "bucketT": 300000,
+            "presentedAsFinishedAtTick": 6,
+            "playheadMsAtThatTick": 360000,
+            "windowCompleteAtThatTick": false,
+            "remainderUnelapsedMs": null,
+            "displayedThen": "300000|130003|130028|129998|130027",
+            "settledTo": "300000|130003|130041|129998|130022",
+            "closeMovementPoints": -5
+          },
+          {
+            "bucketT": 600000,
+            "presentedAsFinishedAtTick": 11,
+            "playheadMsAtThatTick": 660000,
+            "windowCompleteAtThatTick": false,
+            "remainderUnelapsedMs": null,
+            "displayedThen": "600000|130022|130035|130018|130028",
+            "settledTo": "600000|130022|130064|130018|130056",
+            "closeMovementPoints": 28
+          },
+          {
+            "bucketT": 900000,
+            "presentedAsFinishedAtTick": 16,
+            "playheadMsAtThatTick": 960000,
+            "windowCompleteAtThatTick": false,
+            "remainderUnelapsedMs": null,
+            "displayedThen": "900000|130056|130064|130038|130044",
+            "settledTo": "900000|130056|130068|130038|130065",
+            "closeMovementPoints": 21
+          }
+        ]
+      }
+    },
+    {
+      "timeframe": "5m",
+      "startPhaseBars": 1,
+      "landingPhaseMinutes": [
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "distinctSteadyStateLandingPhases": [
+        1
+      ],
+      "stubbedResolvers": [
+        "_isFinestTfCoarseLegacyCandleStep -> true (gate only)"
+      ],
+      "clauseA": {
+        "checked": 576,
+        "violations": 576,
+        "pass": false
+      },
+      "clauseB": {
+        "checked": 576,
+        "violations": 575,
+        "pass": false,
+        "movement": {
+          "n": 576,
+          "meanAbsPips": 1.48,
+          "maxAbsPips": 4.5
+        },
+        "samples": [
+          {
+            "bucketT": 0,
+            "presentedAsFinishedAtTick": 1,
+            "playheadMsAtThatTick": 60000,
+            "windowCompleteAtThatTick": false,
+            "remainderUnelapsedMs": null,
+            "displayedThen": "0|130000|130008|129978|129986",
+            "settledTo": "0|130000|130008|129978|130003",
+            "closeMovementPoints": 17
+          },
+          {
+            "bucketT": 300000,
+            "presentedAsFinishedAtTick": 6,
+            "playheadMsAtThatTick": 360000,
+            "windowCompleteAtThatTick": false,
+            "remainderUnelapsedMs": null,
+            "displayedThen": "300000|130003|130028|129998|130027",
+            "settledTo": "300000|130003|130041|129998|130022",
+            "closeMovementPoints": -5
+          },
+          {
+            "bucketT": 600000,
+            "presentedAsFinishedAtTick": 11,
+            "playheadMsAtThatTick": 660000,
+            "windowCompleteAtThatTick": false,
+            "remainderUnelapsedMs": null,
+            "displayedThen": "600000|130022|130035|130018|130028",
+            "settledTo": "600000|130022|130064|130018|130056",
+            "closeMovementPoints": 28
+          },
+          {
+            "bucketT": 900000,
+            "presentedAsFinishedAtTick": 16,
+            "playheadMsAtThatTick": 960000,
+            "windowCompleteAtThatTick": false,
+            "remainderUnelapsedMs": null,
+            "displayedThen": "900000|130056|130064|130038|130044",
+            "settledTo": "900000|130056|130068|130038|130065",
+            "closeMovementPoints": 21
+          }
+        ]
+      }
+    },
+    {
+      "timeframe": "15m",
+      "startPhaseBars": 5,
+      "landingPhaseMinutes": [
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5
+      ],
+      "distinctSteadyStateLandingPhases": [
+        5
+      ],
+      "stubbedResolvers": [
+        "_isFinestTfCoarseLegacyCandleStep -> true (gate only)"
+      ],
+      "clauseA": {
+        "checked": 192,
+        "violations": 192,
+        "pass": false
+      },
+      "clauseB": {
+        "checked": 192,
+        "violations": 191,
+        "pass": false,
+        "movement": {
+          "n": 192,
+          "meanAbsPips": 2.53,
+          "maxAbsPips": 8.5
+        },
+        "samples": [
+          {
+            "bucketT": 0,
+            "presentedAsFinishedAtTick": 5,
+            "playheadMsAtThatTick": 300000,
+            "windowCompleteAtThatTick": false,
+            "remainderUnelapsedMs": null,
+            "displayedThen": "0|130000|130011|129978|130011",
+            "settledTo": "0|130000|130064|129978|130056",
+            "closeMovementPoints": 45
+          },
+          {
+            "bucketT": 900000,
+            "presentedAsFinishedAtTick": 20,
+            "playheadMsAtThatTick": 1200000,
+            "windowCompleteAtThatTick": false,
+            "remainderUnelapsedMs": null,
+            "displayedThen": "900000|130056|130072|130038|130059",
+            "settledTo": "900000|130056|130078|130038|130073",
+            "closeMovementPoints": 14
+          },
+          {
+            "bucketT": 1800000,
+            "presentedAsFinishedAtTick": 35,
+            "playheadMsAtThatTick": 2100000,
+            "windowCompleteAtThatTick": false,
+            "remainderUnelapsedMs": null,
+            "displayedThen": "1800000|130073|130089|130059|130077",
+            "settledTo": "1800000|130073|130097|130040|130040",
+            "closeMovementPoints": -37
+          },
+          {
+            "bucketT": 2700000,
+            "presentedAsFinishedAtTick": 50,
+            "playheadMsAtThatTick": 3000000,
+            "windowCompleteAtThatTick": false,
+            "remainderUnelapsedMs": null,
+            "displayedThen": "2700000|130040|130067|130012|130022",
+            "settledTo": "2700000|130040|130067|130004|130035",
+            "closeMovementPoints": 13
+          }
+        ]
+      }
+    },
+    {
+      "timeframe": "15m",
+      "startPhaseBars": 5,
+      "landingPhaseMinutes": [
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5
+      ],
+      "distinctSteadyStateLandingPhases": [
+        5
+      ],
+      "stubbedResolvers": [
+        "_isFinestTfCoarseLegacyCandleStep -> true (gate only)"
+      ],
+      "clauseA": {
+        "checked": 192,
+        "violations": 192,
+        "pass": false
+      },
+      "clauseB": {
+        "checked": 192,
+        "violations": 191,
+        "pass": false,
+        "movement": {
+          "n": 192,
+          "meanAbsPips": 2.53,
+          "maxAbsPips": 8.5
+        },
+        "samples": [
+          {
+            "bucketT": 0,
+            "presentedAsFinishedAtTick": 5,
+            "playheadMsAtThatTick": 300000,
+            "windowCompleteAtThatTick": false,
+            "remainderUnelapsedMs": null,
+            "displayedThen": "0|130000|130011|129978|130011",
+            "settledTo": "0|130000|130064|129978|130056",
+            "closeMovementPoints": 45
+          },
+          {
+            "bucketT": 900000,
+            "presentedAsFinishedAtTick": 20,
+            "playheadMsAtThatTick": 1200000,
+            "windowCompleteAtThatTick": false,
+            "remainderUnelapsedMs": null,
+            "displayedThen": "900000|130056|130072|130038|130059",
+            "settledTo": "900000|130056|130078|130038|130073",
+            "closeMovementPoints": 14
+          },
+          {
+            "bucketT": 1800000,
+            "presentedAsFinishedAtTick": 35,
+            "playheadMsAtThatTick": 2100000,
+            "windowCompleteAtThatTick": false,
+            "remainderUnelapsedMs": null,
+            "displayedThen": "1800000|130073|130089|130059|130077",
+            "settledTo": "1800000|130073|130097|130040|130040",
+            "closeMovementPoints": -37
+          },
+          {
+            "bucketT": 2700000,
+            "presentedAsFinishedAtTick": 50,
+            "playheadMsAtThatTick": 3000000,
+            "windowCompleteAtThatTick": false,
+            "remainderUnelapsedMs": null,
+            "displayedThen": "2700000|130040|130067|130012|130022",
+            "settledTo": "2700000|130040|130067|130004|130035",
+            "closeMovementPoints": 13
+          }
+        ]
+      }
+    },
+    {
+      "timeframe": "1h",
+      "startPhaseBars": 20,
+      "landingPhaseMinutes": [
+        20,
+        20,
+        20,
+        20,
+        20,
+        20,
+        20,
+        20,
+        20,
+        20,
+        20,
+        20
+      ],
+      "distinctSteadyStateLandingPhases": [
+        20
+      ],
+      "stubbedResolvers": [
+        "_isFinestTfCoarseLegacyCandleStep -> true (gate only)"
+      ],
+      "clauseA": {
+        "checked": 48,
+        "violations": 48,
+        "pass": false
+      },
+      "clauseB": {
+        "checked": 48,
+        "violations": 47,
+        "pass": false,
+        "movement": {
+          "n": 48,
+          "meanAbsPips": 4.8,
+          "maxAbsPips": 18.3
+        },
+        "samples": [
+          {
+            "bucketT": 0,
+            "presentedAsFinishedAtTick": 20,
+            "playheadMsAtThatTick": 1200000,
+            "windowCompleteAtThatTick": false,
+            "remainderUnelapsedMs": null,
+            "displayedThen": "0|130000|130072|129978|130059",
+            "settledTo": "0|130000|130097|129978|130035",
+            "closeMovementPoints": -24
+          },
+          {
+            "bucketT": 3600000,
+            "presentedAsFinishedAtTick": 80,
+            "playheadMsAtThatTick": 4800000,
+            "windowCompleteAtThatTick": false,
+            "remainderUnelapsedMs": null,
+            "displayedThen": "3600000|130035|130078|130029|130064",
+            "settledTo": "3600000|130035|130108|130029|130051",
+            "closeMovementPoints": -13
+          },
+          {
+            "bucketT": 7200000,
+            "presentedAsFinishedAtTick": 140,
+            "playheadMsAtThatTick": 8400000,
+            "windowCompleteAtThatTick": false,
+            "remainderUnelapsedMs": null,
+            "displayedThen": "7200000|130051|130090|130025|130073",
+            "settledTo": "7200000|130051|130111|130025|130074",
+            "closeMovementPoints": 1
+          },
+          {
+            "bucketT": 10800000,
+            "presentedAsFinishedAtTick": 200,
+            "playheadMsAtThatTick": 12000000,
+            "windowCompleteAtThatTick": false,
+            "remainderUnelapsedMs": null,
+            "displayedThen": "10800000|130074|130094|130026|130076",
+            "settledTo": "10800000|130074|130105|130002|130008",
+            "closeMovementPoints": -68
+          }
+        ]
+      }
+    },
+    {
+      "timeframe": "1h",
+      "startPhaseBars": 20,
+      "landingPhaseMinutes": [
+        20,
+        20,
+        20,
+        20,
+        20,
+        20,
+        20,
+        20,
+        20,
+        20,
+        20,
+        20
+      ],
+      "distinctSteadyStateLandingPhases": [
+        20
+      ],
+      "stubbedResolvers": [
+        "_isFinestTfCoarseLegacyCandleStep -> true (gate only)"
+      ],
+      "clauseA": {
+        "checked": 48,
+        "violations": 48,
+        "pass": false
+      },
+      "clauseB": {
+        "checked": 48,
+        "violations": 47,
+        "pass": false,
+        "movement": {
+          "n": 48,
+          "meanAbsPips": 4.8,
+          "maxAbsPips": 18.3
+        },
+        "samples": [
+          {
+            "bucketT": 0,
+            "presentedAsFinishedAtTick": 20,
+            "playheadMsAtThatTick": 1200000,
+            "windowCompleteAtThatTick": false,
+            "remainderUnelapsedMs": null,
+            "displayedThen": "0|130000|130072|129978|130059",
+            "settledTo": "0|130000|130097|129978|130035",
+            "closeMovementPoints": -24
+          },
+          {
+            "bucketT": 3600000,
+            "presentedAsFinishedAtTick": 80,
+            "playheadMsAtThatTick": 4800000,
+            "windowCompleteAtThatTick": false,
+            "remainderUnelapsedMs": null,
+            "displayedThen": "3600000|130035|130078|130029|130064",
+            "settledTo": "3600000|130035|130108|130029|130051",
+            "closeMovementPoints": -13
+          },
+          {
+            "bucketT": 7200000,
+            "presentedAsFinishedAtTick": 140,
+            "playheadMsAtThatTick": 8400000,
+            "windowCompleteAtThatTick": false,
+            "remainderUnelapsedMs": null,
+            "displayedThen": "7200000|130051|130090|130025|130073",
+            "settledTo": "7200000|130051|130111|130025|130074",
+            "closeMovementPoints": 1
+          },
+          {
+            "bucketT": 10800000,
+            "presentedAsFinishedAtTick": 200,
+            "playheadMsAtThatTick": 12000000,
+            "windowCompleteAtThatTick": false,
+            "remainderUnelapsedMs": null,
+            "displayedThen": "10800000|130074|130094|130026|130076",
+            "settledTo": "10800000|130074|130105|130002|130008",
+            "closeMovementPoints": -68
+          }
+        ]
+      }
+    },
+    {
+      "timeframe": "4h",
+      "startPhaseBars": 80,
+      "landingPhaseMinutes": [
+        80,
+        80,
+        80,
+        80,
+        80,
+        80,
+        80,
+        80,
+        80,
+        80,
+        80,
+        80
+      ],
+      "distinctSteadyStateLandingPhases": [
+        80
+      ],
+      "stubbedResolvers": [
+        "_isFinestTfCoarseLegacyCandleStep -> true (gate only)"
+      ],
+      "clauseA": {
+        "checked": 12,
+        "violations": 12,
+        "pass": false
+      },
+      "clauseB": {
+        "checked": 12,
+        "violations": 11,
+        "pass": false,
+        "movement": {
+          "n": 12,
+          "meanAbsPips": 9.71,
+          "maxAbsPips": 28.2
+        },
+        "samples": [
+          {
+            "bucketT": 0,
+            "presentedAsFinishedAtTick": 80,
+            "playheadMsAtThatTick": 4800000,
+            "windowCompleteAtThatTick": false,
+            "remainderUnelapsedMs": null,
+            "displayedThen": "0|130000|130097|129978|130064",
+            "settledTo": "0|130000|130111|129978|130008",
+            "closeMovementPoints": -56
+          },
+          {
+            "bucketT": 14400000,
+            "presentedAsFinishedAtTick": 320,
+            "playheadMsAtThatTick": 19200000,
+            "windowCompleteAtThatTick": false,
+            "remainderUnelapsedMs": null,
+            "displayedThen": "14400000|130008|130268|129995|130235",
+            "settledTo": "14400000|130008|130268|129995|130175",
+            "closeMovementPoints": -60
+          },
+          {
+            "bucketT": 28800000,
+            "presentedAsFinishedAtTick": 560,
+            "playheadMsAtThatTick": 33600000,
+            "windowCompleteAtThatTick": false,
+            "remainderUnelapsedMs": null,
+            "displayedThen": "28800000|130175|130229|130102|130183",
+            "settledTo": "28800000|130175|130331|130102|130303",
+            "closeMovementPoints": 120
+          },
+          {
+            "bucketT": 43200000,
+            "presentedAsFinishedAtTick": 800,
+            "playheadMsAtThatTick": 48000000,
+            "windowCompleteAtThatTick": false,
+            "remainderUnelapsedMs": null,
+            "displayedThen": "43200000|130303|130324|130166|130174",
+            "settledTo": "43200000|130303|130341|130092|130319",
+            "closeMovementPoints": 145
+          }
+        ]
+      }
+    },
+    {
+      "timeframe": "4h",
+      "startPhaseBars": 80,
+      "landingPhaseMinutes": [
+        80,
+        80,
+        80,
+        80,
+        80,
+        80,
+        80,
+        80,
+        80,
+        80,
+        80,
+        80
+      ],
+      "distinctSteadyStateLandingPhases": [
+        80
+      ],
+      "stubbedResolvers": [
+        "_isFinestTfCoarseLegacyCandleStep -> true (gate only)"
+      ],
+      "clauseA": {
+        "checked": 12,
+        "violations": 12,
+        "pass": false
+      },
+      "clauseB": {
+        "checked": 12,
+        "violations": 11,
+        "pass": false,
+        "movement": {
+          "n": 12,
+          "meanAbsPips": 9.71,
+          "maxAbsPips": 28.2
+        },
+        "samples": [
+          {
+            "bucketT": 0,
+            "presentedAsFinishedAtTick": 80,
+            "playheadMsAtThatTick": 4800000,
+            "windowCompleteAtThatTick": false,
+            "remainderUnelapsedMs": null,
+            "displayedThen": "0|130000|130097|129978|130064",
+            "settledTo": "0|130000|130111|129978|130008",
+            "closeMovementPoints": -56
+          },
+          {
+            "bucketT": 14400000,
+            "presentedAsFinishedAtTick": 320,
+            "playheadMsAtThatTick": 19200000,
+            "windowCompleteAtThatTick": false,
+            "remainderUnelapsedMs": null,
+            "displayedThen": "14400000|130008|130268|129995|130235",
+            "settledTo": "14400000|130008|130268|129995|130175",
+            "closeMovementPoints": -60
+          },
+          {
+            "bucketT": 28800000,
+            "presentedAsFinishedAtTick": 560,
+            "playheadMsAtThatTick": 33600000,
+            "windowCompleteAtThatTick": false,
+            "remainderUnelapsedMs": null,
+            "displayedThen": "28800000|130175|130229|130102|130183",
+            "settledTo": "28800000|130175|130331|130102|130303",
+            "closeMovementPoints": 120
+          },
+          {
+            "bucketT": 43200000,
+            "presentedAsFinishedAtTick": 800,
+            "playheadMsAtThatTick": 48000000,
+            "windowCompleteAtThatTick": false,
+            "remainderUnelapsedMs": null,
+            "displayedThen": "43200000|130303|130324|130166|130174",
+            "settledTo": "43200000|130303|130341|130092|130319",
+            "closeMovementPoints": 145
+          }
+        ]
+      }
+    }
+  ],
+  "legacyVsFixedPhaseModel": [
+    {
+      "timeframe": "5m",
+      "phasesMatch": true,
+      "clauseAMatch": true,
+      "legacyClauseB": "575/576",
+      "coarseClauseB": "576/576",
+      "clauseBViolationDelta": 1
+    },
+    {
+      "timeframe": "15m",
+      "phasesMatch": true,
+      "clauseAMatch": true,
+      "legacyClauseB": "191/192",
+      "coarseClauseB": "192/192",
+      "clauseBViolationDelta": 1
+    },
+    {
+      "timeframe": "1h",
+      "phasesMatch": true,
+      "clauseAMatch": true,
+      "legacyClauseB": "47/48",
+      "coarseClauseB": "48/48",
+      "clauseBViolationDelta": 1
+    },
+    {
+      "timeframe": "4h",
+      "phasesMatch": true,
+      "clauseAMatch": true,
+      "legacyClauseB": "11/12",
+      "coarseClauseB": "12/12",
+      "clauseBViolationDelta": 1
+    }
+  ],
   "stubMechanism": [
     {
       "timeframe": "5m",
       "barsPerBucket": 5,
       "rawBarsInNewestCandle": 1,
       "unelapsedRemainderMinutes": 4,
-      "fractionOfBucketMissing": 0.8,
+      "bucketMissingRatio": "4/5",
+      "percentOfBucketMissing": 80,
       "presentationViolations": 576,
       "presentationChecked": 576,
       "meanAbsMovementPips": 1.65,
@@ -6086,7 +8653,8 @@
       "barsPerBucket": 15,
       "rawBarsInNewestCandle": 1,
       "unelapsedRemainderMinutes": 14,
-      "fractionOfBucketMissing": 0.93,
+      "bucketMissingRatio": "14/15",
+      "percentOfBucketMissing": 93.33,
       "presentationViolations": 192,
       "presentationChecked": 192,
       "meanAbsMovementPips": 3.05,
@@ -6097,7 +8665,8 @@
       "barsPerBucket": 60,
       "rawBarsInNewestCandle": 1,
       "unelapsedRemainderMinutes": 59,
-      "fractionOfBucketMissing": 0.98,
+      "bucketMissingRatio": "59/60",
+      "percentOfBucketMissing": 98.33,
       "presentationViolations": 48,
       "presentationChecked": 48,
       "meanAbsMovementPips": 4.79,
@@ -6108,7 +8677,8 @@
       "barsPerBucket": 240,
       "rawBarsInNewestCandle": 1,
       "unelapsedRemainderMinutes": 239,
-      "fractionOfBucketMissing": 1,
+      "bucketMissingRatio": "239/240",
+      "percentOfBucketMissing": 99.58,
       "presentationViolations": 12,
       "presentationChecked": 12,
       "meanAbsMovementPips": 9.45,
@@ -6121,9 +8691,10 @@
       "LIMB 2 value clause: 0 failures across every reachable check",
       "LIMB 1 clause C: 0 stability and 0 exactness violations once historical"
     ],
-    "proposed": "TAL-01918 — newest coarse candle is an unmarked partial bucket",
-    "shortName": "unmarked-forming-coarse-candle",
-    "rationale": "Nothing completed mutates. What the product does is publish the newest coarse bucket as an ordinary finished bar while it holds only the raw bars elapsed so far — one single raw bar under the product's own stepping — with no forming marker in any of 15 searched spellings. The value a user reads is correct for the window it covers and wrong for the candle it is drawn as. The apparent \"mutation\" is that bar filling in, which is expected behaviour for a live candle and only surprising because nothing labels it as one."
+    "proposed": "TAL-01918 — newest candle is an unmarked partial bucket",
+    "shortName": "unmarked-forming-candle",
+    "whyNotCoarse": "An earlier draft said \"coarse candle\". Dropped: the marker is missing at every tick the window is incomplete in EVERY stepping mode, including raw — clause A fails 2,304/2,304 at 5m and 2,832/2,832 at 1H under raw stepping. Coarse stepping determines the severity (1 raw bar of 60), not the existence.",
+    "rationale": "Nothing completed mutates. What the product does is publish the newest bucket as an ordinary finished bar while it holds only the raw bars elapsed so far — one single raw bar under the product's own stepping — with no forming marker in any of 15 searched spellings. The value a user reads is correct for the window it covers and wrong for the candle it is drawn as. The apparent \"mutation\" is that bar filling in, which is expected behaviour for a live candle and only surprising because nothing labels it as one."
   },
   "bakeIn": {
     "coarse": [
@@ -6448,6 +9019,148 @@
     },
     {
       "timeframe": "5m",
+      "stepMode": "legacy",
+      "killSwitchOn": false,
+      "pass": false,
+      "clauseA": {
+        "checked": 576,
+        "violations": 576,
+        "pass": false
+      },
+      "clauseB": {
+        "checked": 576,
+        "violations": 575,
+        "pass": false,
+        "movement": {
+          "n": 576,
+          "meanAbsPips": 1.48,
+          "maxAbsPips": 4.5
+        },
+        "samples": [
+          {
+            "bucketT": 0,
+            "presentedAsFinishedAtTick": 1,
+            "playheadMsAtThatTick": 60000,
+            "windowCompleteAtThatTick": false,
+            "remainderUnelapsedMs": null,
+            "displayedThen": "0|130000|130008|129978|129986",
+            "settledTo": "0|130000|130008|129978|130003",
+            "closeMovementPoints": 17
+          },
+          {
+            "bucketT": 300000,
+            "presentedAsFinishedAtTick": 6,
+            "playheadMsAtThatTick": 360000,
+            "windowCompleteAtThatTick": false,
+            "remainderUnelapsedMs": null,
+            "displayedThen": "300000|130003|130028|129998|130027",
+            "settledTo": "300000|130003|130041|129998|130022",
+            "closeMovementPoints": -5
+          },
+          {
+            "bucketT": 600000,
+            "presentedAsFinishedAtTick": 11,
+            "playheadMsAtThatTick": 660000,
+            "windowCompleteAtThatTick": false,
+            "remainderUnelapsedMs": null,
+            "displayedThen": "600000|130022|130035|130018|130028",
+            "settledTo": "600000|130022|130064|130018|130056",
+            "closeMovementPoints": 28
+          },
+          {
+            "bucketT": 900000,
+            "presentedAsFinishedAtTick": 16,
+            "playheadMsAtThatTick": 960000,
+            "windowCompleteAtThatTick": false,
+            "remainderUnelapsedMs": null,
+            "displayedThen": "900000|130056|130064|130038|130044",
+            "settledTo": "900000|130056|130068|130038|130065",
+            "closeMovementPoints": 21
+          }
+        ]
+      },
+      "clauseC": {
+        "stabilityChecked": 165600,
+        "stabilityViolations": 0,
+        "exactnessChecked": 575,
+        "exactnessViolations": 0,
+        "pass": true,
+        "samples": []
+      }
+    },
+    {
+      "timeframe": "5m",
+      "stepMode": "legacy",
+      "killSwitchOn": true,
+      "pass": false,
+      "clauseA": {
+        "checked": 576,
+        "violations": 576,
+        "pass": false
+      },
+      "clauseB": {
+        "checked": 576,
+        "violations": 575,
+        "pass": false,
+        "movement": {
+          "n": 576,
+          "meanAbsPips": 1.48,
+          "maxAbsPips": 4.5
+        },
+        "samples": [
+          {
+            "bucketT": 0,
+            "presentedAsFinishedAtTick": 1,
+            "playheadMsAtThatTick": 60000,
+            "windowCompleteAtThatTick": false,
+            "remainderUnelapsedMs": null,
+            "displayedThen": "0|130000|130008|129978|129986",
+            "settledTo": "0|130000|130008|129978|130003",
+            "closeMovementPoints": 17
+          },
+          {
+            "bucketT": 300000,
+            "presentedAsFinishedAtTick": 6,
+            "playheadMsAtThatTick": 360000,
+            "windowCompleteAtThatTick": false,
+            "remainderUnelapsedMs": null,
+            "displayedThen": "300000|130003|130028|129998|130027",
+            "settledTo": "300000|130003|130041|129998|130022",
+            "closeMovementPoints": -5
+          },
+          {
+            "bucketT": 600000,
+            "presentedAsFinishedAtTick": 11,
+            "playheadMsAtThatTick": 660000,
+            "windowCompleteAtThatTick": false,
+            "remainderUnelapsedMs": null,
+            "displayedThen": "600000|130022|130035|130018|130028",
+            "settledTo": "600000|130022|130064|130018|130056",
+            "closeMovementPoints": 28
+          },
+          {
+            "bucketT": 900000,
+            "presentedAsFinishedAtTick": 16,
+            "playheadMsAtThatTick": 960000,
+            "windowCompleteAtThatTick": false,
+            "remainderUnelapsedMs": null,
+            "displayedThen": "900000|130056|130064|130038|130044",
+            "settledTo": "900000|130056|130068|130038|130065",
+            "closeMovementPoints": 21
+          }
+        ]
+      },
+      "clauseC": {
+        "stabilityChecked": 165600,
+        "stabilityViolations": 0,
+        "exactnessChecked": 575,
+        "exactnessViolations": 0,
+        "pass": true,
+        "samples": []
+      }
+    },
+    {
+      "timeframe": "5m",
       "stepMode": "product",
       "killSwitchOn": false,
       "pass": false,
@@ -6792,6 +9505,148 @@
     },
     {
       "timeframe": "15m",
+      "stepMode": "legacy",
+      "killSwitchOn": false,
+      "pass": false,
+      "clauseA": {
+        "checked": 192,
+        "violations": 192,
+        "pass": false
+      },
+      "clauseB": {
+        "checked": 192,
+        "violations": 191,
+        "pass": false,
+        "movement": {
+          "n": 192,
+          "meanAbsPips": 2.53,
+          "maxAbsPips": 8.5
+        },
+        "samples": [
+          {
+            "bucketT": 0,
+            "presentedAsFinishedAtTick": 5,
+            "playheadMsAtThatTick": 300000,
+            "windowCompleteAtThatTick": false,
+            "remainderUnelapsedMs": null,
+            "displayedThen": "0|130000|130011|129978|130011",
+            "settledTo": "0|130000|130064|129978|130056",
+            "closeMovementPoints": 45
+          },
+          {
+            "bucketT": 900000,
+            "presentedAsFinishedAtTick": 20,
+            "playheadMsAtThatTick": 1200000,
+            "windowCompleteAtThatTick": false,
+            "remainderUnelapsedMs": null,
+            "displayedThen": "900000|130056|130072|130038|130059",
+            "settledTo": "900000|130056|130078|130038|130073",
+            "closeMovementPoints": 14
+          },
+          {
+            "bucketT": 1800000,
+            "presentedAsFinishedAtTick": 35,
+            "playheadMsAtThatTick": 2100000,
+            "windowCompleteAtThatTick": false,
+            "remainderUnelapsedMs": null,
+            "displayedThen": "1800000|130073|130089|130059|130077",
+            "settledTo": "1800000|130073|130097|130040|130040",
+            "closeMovementPoints": -37
+          },
+          {
+            "bucketT": 2700000,
+            "presentedAsFinishedAtTick": 50,
+            "playheadMsAtThatTick": 3000000,
+            "windowCompleteAtThatTick": false,
+            "remainderUnelapsedMs": null,
+            "displayedThen": "2700000|130040|130067|130012|130022",
+            "settledTo": "2700000|130040|130067|130004|130035",
+            "closeMovementPoints": 13
+          }
+        ]
+      },
+      "clauseC": {
+        "stabilityChecked": 18336,
+        "stabilityViolations": 0,
+        "exactnessChecked": 191,
+        "exactnessViolations": 0,
+        "pass": true,
+        "samples": []
+      }
+    },
+    {
+      "timeframe": "15m",
+      "stepMode": "legacy",
+      "killSwitchOn": true,
+      "pass": false,
+      "clauseA": {
+        "checked": 192,
+        "violations": 192,
+        "pass": false
+      },
+      "clauseB": {
+        "checked": 192,
+        "violations": 191,
+        "pass": false,
+        "movement": {
+          "n": 192,
+          "meanAbsPips": 2.53,
+          "maxAbsPips": 8.5
+        },
+        "samples": [
+          {
+            "bucketT": 0,
+            "presentedAsFinishedAtTick": 5,
+            "playheadMsAtThatTick": 300000,
+            "windowCompleteAtThatTick": false,
+            "remainderUnelapsedMs": null,
+            "displayedThen": "0|130000|130011|129978|130011",
+            "settledTo": "0|130000|130064|129978|130056",
+            "closeMovementPoints": 45
+          },
+          {
+            "bucketT": 900000,
+            "presentedAsFinishedAtTick": 20,
+            "playheadMsAtThatTick": 1200000,
+            "windowCompleteAtThatTick": false,
+            "remainderUnelapsedMs": null,
+            "displayedThen": "900000|130056|130072|130038|130059",
+            "settledTo": "900000|130056|130078|130038|130073",
+            "closeMovementPoints": 14
+          },
+          {
+            "bucketT": 1800000,
+            "presentedAsFinishedAtTick": 35,
+            "playheadMsAtThatTick": 2100000,
+            "windowCompleteAtThatTick": false,
+            "remainderUnelapsedMs": null,
+            "displayedThen": "1800000|130073|130089|130059|130077",
+            "settledTo": "1800000|130073|130097|130040|130040",
+            "closeMovementPoints": -37
+          },
+          {
+            "bucketT": 2700000,
+            "presentedAsFinishedAtTick": 50,
+            "playheadMsAtThatTick": 3000000,
+            "windowCompleteAtThatTick": false,
+            "remainderUnelapsedMs": null,
+            "displayedThen": "2700000|130040|130067|130012|130022",
+            "settledTo": "2700000|130040|130067|130004|130035",
+            "closeMovementPoints": 13
+          }
+        ]
+      },
+      "clauseC": {
+        "stabilityChecked": 18336,
+        "stabilityViolations": 0,
+        "exactnessChecked": 191,
+        "exactnessViolations": 0,
+        "pass": true,
+        "samples": []
+      }
+    },
+    {
+      "timeframe": "15m",
       "stepMode": "product",
       "killSwitchOn": false,
       "pass": false,
@@ -7136,6 +9991,148 @@
     },
     {
       "timeframe": "1h",
+      "stepMode": "legacy",
+      "killSwitchOn": false,
+      "pass": false,
+      "clauseA": {
+        "checked": 48,
+        "violations": 48,
+        "pass": false
+      },
+      "clauseB": {
+        "checked": 48,
+        "violations": 47,
+        "pass": false,
+        "movement": {
+          "n": 48,
+          "meanAbsPips": 4.8,
+          "maxAbsPips": 18.3
+        },
+        "samples": [
+          {
+            "bucketT": 0,
+            "presentedAsFinishedAtTick": 20,
+            "playheadMsAtThatTick": 1200000,
+            "windowCompleteAtThatTick": false,
+            "remainderUnelapsedMs": null,
+            "displayedThen": "0|130000|130072|129978|130059",
+            "settledTo": "0|130000|130097|129978|130035",
+            "closeMovementPoints": -24
+          },
+          {
+            "bucketT": 3600000,
+            "presentedAsFinishedAtTick": 80,
+            "playheadMsAtThatTick": 4800000,
+            "windowCompleteAtThatTick": false,
+            "remainderUnelapsedMs": null,
+            "displayedThen": "3600000|130035|130078|130029|130064",
+            "settledTo": "3600000|130035|130108|130029|130051",
+            "closeMovementPoints": -13
+          },
+          {
+            "bucketT": 7200000,
+            "presentedAsFinishedAtTick": 140,
+            "playheadMsAtThatTick": 8400000,
+            "windowCompleteAtThatTick": false,
+            "remainderUnelapsedMs": null,
+            "displayedThen": "7200000|130051|130090|130025|130073",
+            "settledTo": "7200000|130051|130111|130025|130074",
+            "closeMovementPoints": 1
+          },
+          {
+            "bucketT": 10800000,
+            "presentedAsFinishedAtTick": 200,
+            "playheadMsAtThatTick": 12000000,
+            "windowCompleteAtThatTick": false,
+            "remainderUnelapsedMs": null,
+            "displayedThen": "10800000|130074|130094|130026|130076",
+            "settledTo": "10800000|130074|130105|130002|130008",
+            "closeMovementPoints": -68
+          }
+        ]
+      },
+      "clauseC": {
+        "stabilityChecked": 1128,
+        "stabilityViolations": 0,
+        "exactnessChecked": 47,
+        "exactnessViolations": 0,
+        "pass": true,
+        "samples": []
+      }
+    },
+    {
+      "timeframe": "1h",
+      "stepMode": "legacy",
+      "killSwitchOn": true,
+      "pass": false,
+      "clauseA": {
+        "checked": 48,
+        "violations": 48,
+        "pass": false
+      },
+      "clauseB": {
+        "checked": 48,
+        "violations": 47,
+        "pass": false,
+        "movement": {
+          "n": 48,
+          "meanAbsPips": 4.8,
+          "maxAbsPips": 18.3
+        },
+        "samples": [
+          {
+            "bucketT": 0,
+            "presentedAsFinishedAtTick": 20,
+            "playheadMsAtThatTick": 1200000,
+            "windowCompleteAtThatTick": false,
+            "remainderUnelapsedMs": null,
+            "displayedThen": "0|130000|130072|129978|130059",
+            "settledTo": "0|130000|130097|129978|130035",
+            "closeMovementPoints": -24
+          },
+          {
+            "bucketT": 3600000,
+            "presentedAsFinishedAtTick": 80,
+            "playheadMsAtThatTick": 4800000,
+            "windowCompleteAtThatTick": false,
+            "remainderUnelapsedMs": null,
+            "displayedThen": "3600000|130035|130078|130029|130064",
+            "settledTo": "3600000|130035|130108|130029|130051",
+            "closeMovementPoints": -13
+          },
+          {
+            "bucketT": 7200000,
+            "presentedAsFinishedAtTick": 140,
+            "playheadMsAtThatTick": 8400000,
+            "windowCompleteAtThatTick": false,
+            "remainderUnelapsedMs": null,
+            "displayedThen": "7200000|130051|130090|130025|130073",
+            "settledTo": "7200000|130051|130111|130025|130074",
+            "closeMovementPoints": 1
+          },
+          {
+            "bucketT": 10800000,
+            "presentedAsFinishedAtTick": 200,
+            "playheadMsAtThatTick": 12000000,
+            "windowCompleteAtThatTick": false,
+            "remainderUnelapsedMs": null,
+            "displayedThen": "10800000|130074|130094|130026|130076",
+            "settledTo": "10800000|130074|130105|130002|130008",
+            "closeMovementPoints": -68
+          }
+        ]
+      },
+      "clauseC": {
+        "stabilityChecked": 1128,
+        "stabilityViolations": 0,
+        "exactnessChecked": 47,
+        "exactnessViolations": 0,
+        "pass": true,
+        "samples": []
+      }
+    },
+    {
+      "timeframe": "1h",
       "stepMode": "product",
       "killSwitchOn": false,
       "pass": false,
@@ -7480,6 +10477,148 @@
     },
     {
       "timeframe": "4h",
+      "stepMode": "legacy",
+      "killSwitchOn": false,
+      "pass": false,
+      "clauseA": {
+        "checked": 12,
+        "violations": 12,
+        "pass": false
+      },
+      "clauseB": {
+        "checked": 12,
+        "violations": 11,
+        "pass": false,
+        "movement": {
+          "n": 12,
+          "meanAbsPips": 9.71,
+          "maxAbsPips": 28.2
+        },
+        "samples": [
+          {
+            "bucketT": 0,
+            "presentedAsFinishedAtTick": 80,
+            "playheadMsAtThatTick": 4800000,
+            "windowCompleteAtThatTick": false,
+            "remainderUnelapsedMs": null,
+            "displayedThen": "0|130000|130097|129978|130064",
+            "settledTo": "0|130000|130111|129978|130008",
+            "closeMovementPoints": -56
+          },
+          {
+            "bucketT": 14400000,
+            "presentedAsFinishedAtTick": 320,
+            "playheadMsAtThatTick": 19200000,
+            "windowCompleteAtThatTick": false,
+            "remainderUnelapsedMs": null,
+            "displayedThen": "14400000|130008|130268|129995|130235",
+            "settledTo": "14400000|130008|130268|129995|130175",
+            "closeMovementPoints": -60
+          },
+          {
+            "bucketT": 28800000,
+            "presentedAsFinishedAtTick": 560,
+            "playheadMsAtThatTick": 33600000,
+            "windowCompleteAtThatTick": false,
+            "remainderUnelapsedMs": null,
+            "displayedThen": "28800000|130175|130229|130102|130183",
+            "settledTo": "28800000|130175|130331|130102|130303",
+            "closeMovementPoints": 120
+          },
+          {
+            "bucketT": 43200000,
+            "presentedAsFinishedAtTick": 800,
+            "playheadMsAtThatTick": 48000000,
+            "windowCompleteAtThatTick": false,
+            "remainderUnelapsedMs": null,
+            "displayedThen": "43200000|130303|130324|130166|130174",
+            "settledTo": "43200000|130303|130341|130092|130319",
+            "closeMovementPoints": 145
+          }
+        ]
+      },
+      "clauseC": {
+        "stabilityChecked": 66,
+        "stabilityViolations": 0,
+        "exactnessChecked": 11,
+        "exactnessViolations": 0,
+        "pass": true,
+        "samples": []
+      }
+    },
+    {
+      "timeframe": "4h",
+      "stepMode": "legacy",
+      "killSwitchOn": true,
+      "pass": false,
+      "clauseA": {
+        "checked": 12,
+        "violations": 12,
+        "pass": false
+      },
+      "clauseB": {
+        "checked": 12,
+        "violations": 11,
+        "pass": false,
+        "movement": {
+          "n": 12,
+          "meanAbsPips": 9.71,
+          "maxAbsPips": 28.2
+        },
+        "samples": [
+          {
+            "bucketT": 0,
+            "presentedAsFinishedAtTick": 80,
+            "playheadMsAtThatTick": 4800000,
+            "windowCompleteAtThatTick": false,
+            "remainderUnelapsedMs": null,
+            "displayedThen": "0|130000|130097|129978|130064",
+            "settledTo": "0|130000|130111|129978|130008",
+            "closeMovementPoints": -56
+          },
+          {
+            "bucketT": 14400000,
+            "presentedAsFinishedAtTick": 320,
+            "playheadMsAtThatTick": 19200000,
+            "windowCompleteAtThatTick": false,
+            "remainderUnelapsedMs": null,
+            "displayedThen": "14400000|130008|130268|129995|130235",
+            "settledTo": "14400000|130008|130268|129995|130175",
+            "closeMovementPoints": -60
+          },
+          {
+            "bucketT": 28800000,
+            "presentedAsFinishedAtTick": 560,
+            "playheadMsAtThatTick": 33600000,
+            "windowCompleteAtThatTick": false,
+            "remainderUnelapsedMs": null,
+            "displayedThen": "28800000|130175|130229|130102|130183",
+            "settledTo": "28800000|130175|130331|130102|130303",
+            "closeMovementPoints": 120
+          },
+          {
+            "bucketT": 43200000,
+            "presentedAsFinishedAtTick": 800,
+            "playheadMsAtThatTick": 48000000,
+            "windowCompleteAtThatTick": false,
+            "remainderUnelapsedMs": null,
+            "displayedThen": "43200000|130303|130324|130166|130174",
+            "settledTo": "43200000|130303|130341|130092|130319",
+            "closeMovementPoints": 145
+          }
+        ]
+      },
+      "clauseC": {
+        "stabilityChecked": 66,
+        "stabilityViolations": 0,
+        "exactnessChecked": 11,
+        "exactnessViolations": 0,
+        "pass": true,
+        "samples": []
+      }
+    },
+    {
+      "timeframe": "4h",
       "stepMode": "product",
       "killSwitchOn": false,
       "pass": false,
@@ -7622,9 +10761,9 @@
     }
   ],
   "settledDifferential": {
-    "stabilityChecked": 3110344,
+    "stabilityChecked": 3480604,
     "stabilityViolations": 0,
-    "exactnessChecked": 4944,
+    "exactnessChecked": 6592,
     "exactnessViolations": 0
   },
   "mechanismSignature": {
@@ -7805,6 +10944,64 @@
     },
     {
       "timeframe": "5m",
+      "stepMode": "legacy",
+      "killSwitchOn": false,
+      "pass": false,
+      "valueChecked": 1,
+      "valueFailureCount": 0,
+      "presentationChecked": 576,
+      "presentationFailureCount": 576,
+      "masterCompleteChecked": 577,
+      "masterCompleteValueFailureCount": 576,
+      "formingMarkersSeen": {},
+      "errorStats": {
+        "n": 577,
+        "meanAbsPips": 1.48,
+        "maxAbsPips": 4.5,
+        "signedSumPips": 23.6
+      },
+      "firstFailure": {
+        "kind": "presentation",
+        "tick": 1,
+        "bucketT": 0,
+        "playheadMs": 60000,
+        "presented": "0|130000|130008|129978|129986",
+        "expectedFullBucket": "0|130000|130008|129978|130003",
+        "closeErrorPoints": -17,
+        "markerKeysSearched": 15
+      }
+    },
+    {
+      "timeframe": "5m",
+      "stepMode": "legacy",
+      "killSwitchOn": true,
+      "pass": false,
+      "valueChecked": 1,
+      "valueFailureCount": 0,
+      "presentationChecked": 576,
+      "presentationFailureCount": 576,
+      "masterCompleteChecked": 577,
+      "masterCompleteValueFailureCount": 576,
+      "formingMarkersSeen": {},
+      "errorStats": {
+        "n": 577,
+        "meanAbsPips": 1.48,
+        "maxAbsPips": 4.5,
+        "signedSumPips": 23.6
+      },
+      "firstFailure": {
+        "kind": "presentation",
+        "tick": 1,
+        "bucketT": 0,
+        "playheadMs": 60000,
+        "presented": "0|130000|130008|129978|129986",
+        "expectedFullBucket": "0|130000|130008|129978|130003",
+        "closeErrorPoints": -17,
+        "markerKeysSearched": 15
+      }
+    },
+    {
+      "timeframe": "5m",
       "stepMode": "product",
       "killSwitchOn": false,
       "pass": false,
@@ -7979,6 +11176,64 @@
     },
     {
       "timeframe": "15m",
+      "stepMode": "legacy",
+      "killSwitchOn": false,
+      "pass": false,
+      "valueChecked": 1,
+      "valueFailureCount": 0,
+      "presentationChecked": 192,
+      "presentationFailureCount": 192,
+      "masterCompleteChecked": 193,
+      "masterCompleteValueFailureCount": 192,
+      "formingMarkersSeen": {},
+      "errorStats": {
+        "n": 193,
+        "meanAbsPips": 2.52,
+        "maxAbsPips": 8.5,
+        "signedSumPips": -12.1
+      },
+      "firstFailure": {
+        "kind": "presentation",
+        "tick": 5,
+        "bucketT": 0,
+        "playheadMs": 300000,
+        "presented": "0|130000|130011|129978|130011",
+        "expectedFullBucket": "0|130000|130064|129978|130056",
+        "closeErrorPoints": -45,
+        "markerKeysSearched": 15
+      }
+    },
+    {
+      "timeframe": "15m",
+      "stepMode": "legacy",
+      "killSwitchOn": true,
+      "pass": false,
+      "valueChecked": 1,
+      "valueFailureCount": 0,
+      "presentationChecked": 192,
+      "presentationFailureCount": 192,
+      "masterCompleteChecked": 193,
+      "masterCompleteValueFailureCount": 192,
+      "formingMarkersSeen": {},
+      "errorStats": {
+        "n": 193,
+        "meanAbsPips": 2.52,
+        "maxAbsPips": 8.5,
+        "signedSumPips": -12.1
+      },
+      "firstFailure": {
+        "kind": "presentation",
+        "tick": 5,
+        "bucketT": 0,
+        "playheadMs": 300000,
+        "presented": "0|130000|130011|129978|130011",
+        "expectedFullBucket": "0|130000|130064|129978|130056",
+        "closeErrorPoints": -45,
+        "markerKeysSearched": 15
+      }
+    },
+    {
+      "timeframe": "15m",
       "stepMode": "product",
       "killSwitchOn": false,
       "pass": false,
@@ -8153,6 +11408,64 @@
     },
     {
       "timeframe": "1h",
+      "stepMode": "legacy",
+      "killSwitchOn": false,
+      "pass": false,
+      "valueChecked": 1,
+      "valueFailureCount": 0,
+      "presentationChecked": 48,
+      "presentationFailureCount": 48,
+      "masterCompleteChecked": 49,
+      "masterCompleteValueFailureCount": 48,
+      "formingMarkersSeen": {},
+      "errorStats": {
+        "n": 49,
+        "meanAbsPips": 4.86,
+        "maxAbsPips": 18.3,
+        "signedSumPips": -9.3
+      },
+      "firstFailure": {
+        "kind": "presentation",
+        "tick": 20,
+        "bucketT": 0,
+        "playheadMs": 1200000,
+        "presented": "0|130000|130072|129978|130059",
+        "expectedFullBucket": "0|130000|130097|129978|130035",
+        "closeErrorPoints": 24,
+        "markerKeysSearched": 15
+      }
+    },
+    {
+      "timeframe": "1h",
+      "stepMode": "legacy",
+      "killSwitchOn": true,
+      "pass": false,
+      "valueChecked": 1,
+      "valueFailureCount": 0,
+      "presentationChecked": 48,
+      "presentationFailureCount": 48,
+      "masterCompleteChecked": 49,
+      "masterCompleteValueFailureCount": 48,
+      "formingMarkersSeen": {},
+      "errorStats": {
+        "n": 49,
+        "meanAbsPips": 4.86,
+        "maxAbsPips": 18.3,
+        "signedSumPips": -9.3
+      },
+      "firstFailure": {
+        "kind": "presentation",
+        "tick": 20,
+        "bucketT": 0,
+        "playheadMs": 1200000,
+        "presented": "0|130000|130072|129978|130059",
+        "expectedFullBucket": "0|130000|130097|129978|130035",
+        "closeErrorPoints": 24,
+        "markerKeysSearched": 15
+      }
+    },
+    {
+      "timeframe": "1h",
       "stepMode": "product",
       "killSwitchOn": false,
       "pass": false,
@@ -8311,6 +11624,64 @@
       "errorStats": {
         "n": 12,
         "meanAbsPips": 10.62,
+        "maxAbsPips": 28.2,
+        "signedSumPips": -9.2
+      },
+      "firstFailure": {
+        "kind": "presentation",
+        "tick": 80,
+        "bucketT": 0,
+        "playheadMs": 4800000,
+        "presented": "0|130000|130097|129978|130064",
+        "expectedFullBucket": "0|130000|130111|129978|130008",
+        "closeErrorPoints": 56,
+        "markerKeysSearched": 15
+      }
+    },
+    {
+      "timeframe": "4h",
+      "stepMode": "legacy",
+      "killSwitchOn": false,
+      "pass": false,
+      "valueChecked": 1,
+      "valueFailureCount": 0,
+      "presentationChecked": 12,
+      "presentationFailureCount": 12,
+      "masterCompleteChecked": 13,
+      "masterCompleteValueFailureCount": 12,
+      "formingMarkersSeen": {},
+      "errorStats": {
+        "n": 13,
+        "meanAbsPips": 9.8,
+        "maxAbsPips": 28.2,
+        "signedSumPips": -9.2
+      },
+      "firstFailure": {
+        "kind": "presentation",
+        "tick": 80,
+        "bucketT": 0,
+        "playheadMs": 4800000,
+        "presented": "0|130000|130097|129978|130064",
+        "expectedFullBucket": "0|130000|130111|129978|130008",
+        "closeErrorPoints": 56,
+        "markerKeysSearched": 15
+      }
+    },
+    {
+      "timeframe": "4h",
+      "stepMode": "legacy",
+      "killSwitchOn": true,
+      "pass": false,
+      "valueChecked": 1,
+      "valueFailureCount": 0,
+      "presentationChecked": 12,
+      "presentationFailureCount": 12,
+      "masterCompleteChecked": 13,
+      "masterCompleteValueFailureCount": 12,
+      "formingMarkersSeen": {},
+      "errorStats": {
+        "n": 13,
+        "meanAbsPips": 9.8,
         "maxAbsPips": 28.2,
         "signedSumPips": -9.2
       },
@@ -8468,6 +11839,34 @@
     },
     {
       "timeframe": "5m",
+      "stepMode": "legacy",
+      "killSwitchOn": false,
+      "ticks": 577,
+      "trimReplacedSlotTicks": 577,
+      "trimChangedValueTicks": 0,
+      "meanAbsSliceErrorPips": 1.48,
+      "meanAbsTrimErrorPips": 0,
+      "sliceSharePct": 100,
+      "trimSharePct": 0,
+      "chartDataIsPipelineCacheResultTicks": 577,
+      "fullResampleCalls": 577
+    },
+    {
+      "timeframe": "5m",
+      "stepMode": "legacy",
+      "killSwitchOn": true,
+      "ticks": 577,
+      "trimReplacedSlotTicks": 577,
+      "trimChangedValueTicks": 0,
+      "meanAbsSliceErrorPips": 1.48,
+      "meanAbsTrimErrorPips": 0,
+      "sliceSharePct": 100,
+      "trimSharePct": 0,
+      "chartDataIsPipelineCacheResultTicks": 577,
+      "fullResampleCalls": 577
+    },
+    {
+      "timeframe": "5m",
       "stepMode": "product",
       "killSwitchOn": false,
       "ticks": 577,
@@ -8552,6 +11951,34 @@
     },
     {
       "timeframe": "15m",
+      "stepMode": "legacy",
+      "killSwitchOn": false,
+      "ticks": 193,
+      "trimReplacedSlotTicks": 193,
+      "trimChangedValueTicks": 0,
+      "meanAbsSliceErrorPips": 2.52,
+      "meanAbsTrimErrorPips": 0,
+      "sliceSharePct": 100,
+      "trimSharePct": 0,
+      "chartDataIsPipelineCacheResultTicks": 193,
+      "fullResampleCalls": 193
+    },
+    {
+      "timeframe": "15m",
+      "stepMode": "legacy",
+      "killSwitchOn": true,
+      "ticks": 193,
+      "trimReplacedSlotTicks": 193,
+      "trimChangedValueTicks": 0,
+      "meanAbsSliceErrorPips": 2.52,
+      "meanAbsTrimErrorPips": 0,
+      "sliceSharePct": 100,
+      "trimSharePct": 0,
+      "chartDataIsPipelineCacheResultTicks": 193,
+      "fullResampleCalls": 193
+    },
+    {
+      "timeframe": "15m",
       "stepMode": "product",
       "killSwitchOn": false,
       "ticks": 193,
@@ -8636,6 +12063,34 @@
     },
     {
       "timeframe": "1h",
+      "stepMode": "legacy",
+      "killSwitchOn": false,
+      "ticks": 49,
+      "trimReplacedSlotTicks": 49,
+      "trimChangedValueTicks": 0,
+      "meanAbsSliceErrorPips": 4.86,
+      "meanAbsTrimErrorPips": 0,
+      "sliceSharePct": 100,
+      "trimSharePct": 0,
+      "chartDataIsPipelineCacheResultTicks": 49,
+      "fullResampleCalls": 49
+    },
+    {
+      "timeframe": "1h",
+      "stepMode": "legacy",
+      "killSwitchOn": true,
+      "ticks": 49,
+      "trimReplacedSlotTicks": 49,
+      "trimChangedValueTicks": 0,
+      "meanAbsSliceErrorPips": 4.86,
+      "meanAbsTrimErrorPips": 0,
+      "sliceSharePct": 100,
+      "trimSharePct": 0,
+      "chartDataIsPipelineCacheResultTicks": 49,
+      "fullResampleCalls": 49
+    },
+    {
+      "timeframe": "1h",
       "stepMode": "product",
       "killSwitchOn": false,
       "ticks": 49,
@@ -8720,6 +12175,34 @@
     },
     {
       "timeframe": "4h",
+      "stepMode": "legacy",
+      "killSwitchOn": false,
+      "ticks": 13,
+      "trimReplacedSlotTicks": 13,
+      "trimChangedValueTicks": 0,
+      "meanAbsSliceErrorPips": 9.8,
+      "meanAbsTrimErrorPips": 0,
+      "sliceSharePct": 100,
+      "trimSharePct": 0,
+      "chartDataIsPipelineCacheResultTicks": 13,
+      "fullResampleCalls": 13
+    },
+    {
+      "timeframe": "4h",
+      "stepMode": "legacy",
+      "killSwitchOn": true,
+      "ticks": 13,
+      "trimReplacedSlotTicks": 13,
+      "trimChangedValueTicks": 0,
+      "meanAbsSliceErrorPips": 9.8,
+      "meanAbsTrimErrorPips": 0,
+      "sliceSharePct": 100,
+      "trimSharePct": 0,
+      "chartDataIsPipelineCacheResultTicks": 13,
+      "fullResampleCalls": 13
+    },
+    {
+      "timeframe": "4h",
       "stepMode": "product",
       "killSwitchOn": false,
       "ticks": 13,
@@ -8762,9 +12245,18 @@
   },
   "trimCloseBound": {
     "timeframe": "1h",
+    "bypassedGates": [
+      "_btTfDataCache Map presence",
+      "per-file Map presence",
+      "entry.anchorKey === _btTfCacheAnchorKey(...)",
+      "_btTfCacheEntryValidForTimeframe(...)"
+    ],
+    "reachabilityClaim": "branch execution only; the four gates above are bypassed",
     "cacheBranchTaken": true,
     "ticksWithCloseChange": 4,
     "ticksChecked": 4,
+    "ticksWherePreTrimHeldTheFullBucket": 4,
+    "ticksWhereTrimWroteTheToPlayheadValue": 4,
     "maxAbsCloseDeltaPoints": 103,
     "maxAbsCloseDeltaPips": 10.3,
     "rows": [
@@ -8773,6 +12265,10 @@
         "walkForwardReturnedNull": false,
         "preTrimClosePoints": 130237,
         "postTrimClosePoints": 130134,
+        "independentFullBucketClosePoints": 130237,
+        "independentToPlayheadClosePoints": 130134,
+        "preTrimEqualsFullBucket": true,
+        "postTrimEqualsToPlayhead": true,
         "closeDeltaPoints": -103,
         "closeDeltaPips": -10.3,
         "highDeltaPoints": -117,
@@ -8783,6 +12279,10 @@
         "walkForwardReturnedNull": false,
         "preTrimClosePoints": 130147,
         "postTrimClosePoints": 130248,
+        "independentFullBucketClosePoints": 130147,
+        "independentToPlayheadClosePoints": 130248,
+        "preTrimEqualsFullBucket": true,
+        "postTrimEqualsToPlayhead": true,
         "closeDeltaPoints": 101,
         "closeDeltaPips": 10.1,
         "highDeltaPoints": 0,
@@ -8793,6 +12293,10 @@
         "walkForwardReturnedNull": false,
         "preTrimClosePoints": 129921,
         "postTrimClosePoints": 129886,
+        "independentFullBucketClosePoints": 129921,
+        "independentToPlayheadClosePoints": 129886,
+        "preTrimEqualsFullBucket": true,
+        "postTrimEqualsToPlayhead": true,
         "closeDeltaPoints": -35,
         "closeDeltaPips": -3.5,
         "highDeltaPoints": -59,
@@ -8803,6 +12307,10 @@
         "walkForwardReturnedNull": false,
         "preTrimClosePoints": 129894,
         "postTrimClosePoints": 129892,
+        "independentFullBucketClosePoints": 129894,
+        "independentToPlayheadClosePoints": 129892,
+        "preTrimEqualsFullBucket": true,
+        "postTrimEqualsToPlayhead": true,
         "closeDeltaPoints": -2,
         "closeDeltaPips": -0.2,
         "highDeltaPoints": -21,
@@ -9204,7 +12712,7 @@
   "productLivenessGuard": {
     "methodsExtracted": 14,
     "chartJsSha256": "8e7390b7965f5782b2b173c9b3332141940638c0a3f33bf4863cea2b6e28afd3",
-    "matrixCells": 24,
+    "matrixCells": 32,
     "everyCellDroveProductCode": true
   },
   "poJoin": [
