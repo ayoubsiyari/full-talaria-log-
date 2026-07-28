@@ -3237,3 +3237,45 @@ So the leak is a one-off, not a class. I was wrong to expect a family, and the c
 One structural fact worth carrying forward: **`Chart` has no `destroy()` method at all.** The only teardown-shaped method, `_teardownV9TimeControlsSync()`, is dead code whose own comment describes it as a helper for a future `Chart.destroy`. That is why the fix had to hang off the document lifecycle rather than a destructor, and it is the reason any future panel-teardown cleanup will face the same problem.
 
 Top-tier adversarial review dispatched per §A13.1, aimed at the four things the author could not close: the bfcache-evicted-without-restore path that the `persisted === true` early return skips, the unexercised `frame.src = 'about:blank'` teardown path at `multichart-manager.js:442`, whether storing `_mcFinerPanelHostCommitTarget` creates a **new** panel→host retention edge, and whether the `pagehide` handler added to fix a listener leak leaks itself. Merge is held pending that review and the mirror question regardless — per §A16.5, two failing enforced parity tests means this cannot be part of an automated-GREEN chain in its current shape.
+
+---
+
+## 2026-07-28 14:48 — V9 bundle mapped. Six clock-driven React pumps run on an idle single-panel chart, and two of them are unconditional.
+
+Source-first mapping of `dist-v9/assets/talaria-v9-live.js` back to `talaria-design/src/`. **14 `setInterval` sites, every one attributed to source, no bundle period without a source match.**
+
+**Correction to what I reported at 14:24, and I raised it prominently so I am correcting it prominently.** I flagged the **24 ms** interval as "a ~40 Hz timer sitting right alongside the rAF loop in cost". **It does not run on the PO's protocol.** It is at `TalariaV8bLive.jsx:19408` and its `useEffect` returns early at 18949 when `!orderPanelOpen`. The PO's measurement was taken with no orders. It is real, it is shipped, it has correct cleanup, and it is irrelevant to the idle floor. My concern was misplaced.
+
+The related correction: the earlier regex pass that produced `24, 300, 800, 1000, 1500` **missed more than it found** — the real set adds 100, 250, 500, 150, 2500 and 30000. A regex over a 3.4 MB single-line blob is not an enumeration, and I should not have carried its output forward as one. Source-first was the right call and it is the method for this class from now on.
+
+**What actually runs on a quiet single-panel authenticated chart, order panel closed, news closed, not playing:**
+
+| ms | Site | What it does at rest |
+|---|---|---|
+| 250 | `TalariaV8bLive.jsx:13687` | polls `replaySystem` for play state / mode / speed |
+| 300 | `TalariaV8bLive.jsx:13830` | syncs replay nav-integrity badge DOM |
+| 500 | `TalariaV8bLive.jsx:15836` | `setAccountBalance` / `setAccountEquity` from chart/OM |
+| 800 | `TalariaV8bLive.jsx:12577` | `setOmTradeRev(n+1)` fallback poll |
+| 800 | `TalariaV8bLive.jsx:12650` | multichart snapshot poll → `setOmTradeRev` |
+| 1500 | `TalariaV8bLive.jsx:22774` | re-hooks drawing toolbars |
+
+## 2026-07-28 14:49 — The specific mechanism, and why I rate it above the rAF loop
+
+`setOmTradeRev(n + 1)` is a **monotonically incrementing revision counter**. React cannot bail out of a state update whose value always changes. So **two independent 800 ms timers each force a re-render of the trades and bottom-panel subtree, roughly 2.5 times a second, on a chart with no orders and no trades to display.**
+
+Worse, the second one is unconditional in the way that matters: at `12650`, when `__multichartGrid` is **missing or unmounted** — which is the normal state of a single-panel chart — it still falls through to `12631–12632` and calls `setOmTradeRev` every 800 ms anyway. It is polling for a grid that does not exist and bumping a revision counter to announce that nothing changed. The host-aggregation flag that governs it defaults **on** (`orderManagerTradeRows.js:9–10`).
+
+This is a better fit for the observation than the bare rAF loop. **`animate()`'s unconditional 60 Hz wakeup is real and I am not withdrawing it** — but at rest it mostly early-exits, and a wakeup that does nothing is cheap. Clock-driven React re-renders of a large subtree are not cheap, and "a loop is executing with no input change" describes `setOmTradeRev` more exactly than it describes `animate()`. It also matches the *shape* of the signature: a steady floor from the 250/300/500 ms pumps, with periodic heavier work as the 800 ms re-render chains land.
+
+**Both remain hypotheses.** The trace decides which, and the two are cleanly separable in a flame chart — rAF frames attribute to `Chart.animate`, React re-renders attribute to the reconciler. I am holding the fix packet until the trace returns rather than authoring against the more attractive of two unmeasured candidates, because the Director requires a measured before/after on the PO's protocol and the trace **is** the before. That is minutes, not hours, and picking wrong costs a write slot and a day.
+
+## 2026-07-28 14:50 — hcaptcha and Google: the honest answer is a discrepancy, not a finding
+
+Asked whether these belong on an authenticated chart surface, the factual answer from this tree is that **they are not on it at all**.
+
+- **`hcaptcha`: zero matches anywhere in the repo**, case-insensitive, across `chart v 1.4`, `homepage` and `dist-v9`. Not gated, not disabled — absent.
+- **`accounts.google.com/gsi/client`** appears once, at `homepage/src/components/ui/GoogleAuthButton.tsx:31`, reached only through `auth-fuse.tsx:1244` which is wrapped in `SHOW_GOOGLE_AUTH`, and that constant is **`false`** at `auth-fuse.tsx:41`. Nothing in the chart shell references it; `live/index.html` authenticates via `/api/auth/me` alone.
+
+**So I cannot answer the question as asked, and I am not going to pretend the absence is the answer.** The PO observed roughly 160 MB of these subframes on the product. This tree cannot produce them. One of three things is true: the deployed build differs from this tree, the subframes belong to another tab or an extension in the PO's browser rather than to the chart, or they are injected by a hosting layer outside the repo. **That is a provenance discrepancy and it goes up rather than being closed as "not our code"** — the same failure mode as concluding a document is absent because ripgrep skipped it. Settling it needs the deployed surface inspected, not the tree.
+
+One real defect found in passing, unrelated to idle CPU: `MultichartGrid.jsx:7746–7754` starts a 100 ms poll whose id is never cleared by the unmount cleanup at `8168–8179`, so unmounting inside its ~5 s window strands an interval. Bounded and not the floor, but it is a genuine leak and it is mine. Logging as an open row.
