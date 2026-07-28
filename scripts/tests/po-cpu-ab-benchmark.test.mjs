@@ -8,6 +8,7 @@ import {
   PO_CPU_AB_STATUS_SKIP,
   PO_CPU_AB_STATUS_SHORT,
   assertPoCpuAbBenchmarkReport,
+  lagMechanismHintFromRetentions,
   mutatePoCpuAbReplaySystemForPauseTeardownNC,
   poCpuAbReplayArmingHelpersSource,
   poCpuAbHostHtml,
@@ -15,6 +16,81 @@ import {
   runPoCpuAbBenchmarkPreflight,
 } from '../lib/po-cpu-ab-benchmark.mjs';
 import { parsePoCpuAbBenchmarkArgs } from '../po-cpu-ab-benchmark-gate.mjs';
+
+function lagPanel(id, {
+  throughputRatio = 0.9,
+  p95FrameMs = 18,
+  longTaskCount = 2,
+  observedMs = 3000,
+  speed = 10,
+} = {}) {
+  const configuredBarsPerSec = (speed * 1000) / 60_000;
+  const achievedBarsPerSec = throughputRatio * configuredBarsPerSec;
+  return {
+    id,
+    observedMs,
+    indexDelta: Math.max(1, Math.round(achievedBarsPerSec * (observedMs / 1000))),
+    speed,
+    achievedBarsPerSec,
+    configuredBarsPerSec,
+    throughputRatio,
+    frameIntervalCount: 48,
+    p50FrameMs: p95FrameMs * 0.7,
+    p95FrameMs,
+    maxFrameMs: p95FrameMs * 1.3,
+    longTaskCount,
+    longTaskDurationMs: longTaskCount * 40,
+    longTaskPerSec: longTaskCount / (observedMs / 1000),
+  };
+}
+
+function lagEvidence({
+  throughputRetention = 0.5,
+  smoothnessRetention = 0.92,
+  contentOk = true,
+} = {}) {
+  const singleRatio = 0.9;
+  const fourRatio = singleRatio * throughputRetention;
+  const singleP95 = 18;
+  const fourP95 = singleP95 / Math.max(0.01, smoothnessRetention);
+  const hint = lagMechanismHintFromRetentions(throughputRetention, smoothnessRetention);
+  return {
+    content: {
+      ok: contentOk,
+      single: { ok: contentOk, reason: contentOk ? null : 'content-missing', panels: [{ id: 'A', ok: contentOk, types: ['SMA', 'EMA', 'WMA'] }] },
+      four: {
+        ok: contentOk,
+        reason: contentOk ? null : 'content-missing',
+        panels: ['A', 'B', 'C', 'D'].map((id) => ({ id, ok: contentOk, types: ['SMA', 'EMA', 'WMA'] })),
+      },
+    },
+    single: {
+      label: 'single',
+      panels: [lagPanel('A', { throughputRatio: singleRatio, p95FrameMs: singleP95 })],
+      medianThroughputRatio: singleRatio,
+      medianP95FrameMs: singleP95,
+      medianLongTaskPerSec: 2 / 3,
+    },
+    four: {
+      label: 'four',
+      panels: ['A', 'B', 'C', 'D'].map((id) => lagPanel(id, {
+        throughputRatio: fourRatio,
+        p95FrameMs: fourP95,
+        longTaskCount: Math.max(1, Math.round(2 / Math.max(0.01, smoothnessRetention))),
+      })),
+      medianThroughputRatio: fourRatio,
+      medianP95FrameMs: fourP95,
+      medianLongTaskPerSec: (2 / Math.max(0.01, smoothnessRetention)) / 3,
+    },
+    ratios: {
+      throughputRetention,
+      smoothnessRetention,
+      p95Retention: smoothnessRetention,
+      longTaskRetention: smoothnessRetention,
+      mechanismHint: hint,
+    },
+  };
+}
 
 function phase({
   label,
@@ -118,6 +194,7 @@ function report({
   p6Replay = {},
   p7Replay = {},
   shortened = false,
+  lag = undefined,
 } = {}) {
   const replayP6 = {
     ok: true,
@@ -186,9 +263,18 @@ function report({
       p6: replayP6,
       p7: { ok: true, state: { isPlaying: false, speed: 10 }, ...p7Replay },
     },
+    lag: lag === null ? undefined : (lag || lagEvidence()),
     phases: {
       P1: phase({ label: 'P1', workRatio: p1WorkRatio }),
       P2: phase({ label: 'P2', workRatio: p2WorkRatio, memoryDelta: p2MemoryDelta }),
+      LAG_SINGLE: {
+        ...phase({ label: 'LAG_SINGLE', workRatio: 0.16, timerCallbacks: 12, longTaskCount: 2 }),
+        frameIntervalCount: 48,
+        p50FrameMs: 12,
+        p95FrameMs: 18,
+        maxFrameMs: 24,
+        probe: { windowCount: 1, windows: [{ id: 'A', ...phase({ label: 'LAG_SINGLE:A', workRatio: 0.16, timerCallbacks: 12, longTaskCount: 2 }), frameIntervalCount: 48, p50FrameMs: 12, p95FrameMs: 18, maxFrameMs: 24 }] },
+      },
       P4: {
         ...phase({ label: 'P4', workRatio: 0.22, timerCallbacks: 24 }),
         probe: { windowCount: 4, windows: p4WorkWindows() },
@@ -205,7 +291,10 @@ test('unit: host HTML records shortened meta for CI P2', () => {
     mutant: false,
   });
   assert.match(html, /P2-idle-soak/);
+  assert.match(html, /LAG-SINGLE-content-replay-10x-or-nearest/);
   assert.match(html, /P4-four-panel-replay-10x-or-nearest/);
+  assert.match(html, /armContentOnWindows/);
+  assert.match(html, /rafFrameIntervalSamples/);
   assert.match(html, /"shortened":true/);
   assert.match(html, /PerformanceObserver longtask/);
   assert.match(html, /const workMs = Math\.max\(callbackBusyMs, longTaskDurationMs\)/);
@@ -218,7 +307,9 @@ test('unit: host HTML records shortened meta for CI P2', () => {
   assert.match(html, /observedAfterP4Window/);
   assert.match(html, /p4NoFanout/);
   assert.match(html, /markP4ObserveBaselines/);
-  assert.match(html, /replay4 = await startFourPanelReplay10x\(\);\s+replay4 = markP4ObserveBaselines\(replay4\);\s+phases\.P4 = await collectPhase/s);
+  assert.match(html, /replay4 = await startFourPanelReplay10x\(\);\s+replay4 = markP4ObserveBaselines\(replay4\);[\s\S]*phases\.P4 = await collectPhase/s);
+  assert.match(html, /phases\.LAG_SINGLE = await collectPhase/);
+  assert.match(html, /buildLagConfigCapture/);
   assert.match(html, /if \(CONFIG\.p4NoFanout\) \{\s+return \{[\s\S]*noFanoutControl: true/);
 });
 
@@ -1184,4 +1275,50 @@ test('unit: CLI args expose require-browser and short P2 override', () => {
 
 test('unit: default full protocol timeout covers unshortened phases', () => {
   assert.ok(DEFAULT_PO_CPU_AB_TIMEOUT_MS >= 600_000);
+});
+
+test('unit: lag dual-metric cells GREEN when content + throughput + smoothness emitted', () => {
+  const cells = assertPoCpuAbBenchmarkReport(report());
+  for (const name of [
+    'LAG-CONTENT-ARMED',
+    'LAG-THROUGHPUT-SINGLE-EMITTED',
+    'LAG-THROUGHPUT-FOUR-EMITTED',
+    'LAG-SMOOTHNESS-SINGLE-EMITTED',
+    'LAG-SMOOTHNESS-FOUR-EMITTED',
+    'LAG-SINGLE-TO-FOUR-RATIO-EMITTED',
+    'LAG-MECHANISM-HINT-EMITTED',
+  ]) {
+    const row = cells.find((cell) => cell.name === name);
+    assert.equal(row?.status, 'GREEN', name);
+  }
+  assert.equal(cells.find((cell) => cell.name === 'LAG-MECHANISM-HINT-EMITTED')?.hint, 'throughput');
+});
+
+test('unit: lag content-missing and missing metrics RED', () => {
+  const missingContent = assertPoCpuAbBenchmarkReport(report({
+    lag: lagEvidence({ contentOk: false }),
+  }));
+  assert.equal(missingContent.find((cell) => cell.name === 'LAG-CONTENT-ARMED')?.status, 'RED');
+
+  const bare = report({ lag: null });
+  delete bare.lag;
+  const missingLag = assertPoCpuAbBenchmarkReport(bare);
+  assert.equal(missingLag.find((cell) => cell.name === 'LAG-THROUGHPUT-SINGLE-EMITTED')?.status, 'RED');
+  assert.equal(missingLag.find((cell) => cell.name === 'LAG-SMOOTHNESS-FOUR-EMITTED')?.status, 'RED');
+  assert.equal(missingLag.find((cell) => cell.name === 'LAG-SINGLE-TO-FOUR-RATIO-EMITTED')?.status, 'RED');
+});
+
+test('unit: lag mechanism hint selects smoothness when only frame/long-task degrades', () => {
+  const cells = assertPoCpuAbBenchmarkReport(report({
+    lag: lagEvidence({ throughputRetention: 0.95, smoothnessRetention: 0.4 }),
+  }));
+  const hint = cells.find((cell) => cell.name === 'LAG-MECHANISM-HINT-EMITTED');
+  assert.equal(hint?.status, 'GREEN');
+  assert.equal(hint?.hint, 'smoothness');
+});
+
+test('unit: lag mechanism hint helper is order-stable', () => {
+  assert.equal(lagMechanismHintFromRetentions(0.5, 0.9), 'throughput');
+  assert.equal(lagMechanismHintFromRetentions(0.9, 0.5), 'smoothness');
+  assert.equal(lagMechanismHintFromRetentions(0.7, 0.72), 'ambiguous');
 });

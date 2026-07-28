@@ -15,12 +15,17 @@ export const PO_CPU_AB_P2_IDLE_WORK_RATIO_MAX = 0.14;
 export const PO_CPU_AB_P7_IDLE_WORK_RATIO_MAX = 0.12;
 export const PO_CPU_AB_P6_REPLAY_WORK_RATIO_MARGIN = 0.03;
 export const PO_CPU_AB_P4_PEER_WORK_RATIO_MARGIN = 0.003;
+/** 1m bar interval used for configured bars/sec under tick-mode speed. */
+export const PO_CPU_AB_LAG_BAR_INTERVAL_MS = 60_000;
+/** Relative gap required to pick throughput vs smoothness mechanism hint. */
+export const PO_CPU_AB_LAG_MECHANISM_MARGIN = 0.08;
 
 export const DEFAULT_PHASE_TIMINGS = Object.freeze({
   p1SettleMs: 10_000,
   p1ObserveMs: 30_000,
   p2IdleMs: 120_000,
   p2ObserveMs: 30_000,
+  lagSingleObserveMs: 30_000,
   p4ObserveMs: 30_000,
   p6ObserveMs: 30_000,
   p7SettleMs: 30_000,
@@ -33,6 +38,7 @@ export const SHORT_PHASE_TIMINGS = Object.freeze({
   p1ObserveMs: 3_000,
   p2IdleMs: 10_000,
   p2ObserveMs: 3_000,
+  lagSingleObserveMs: 3_000,
   p4ObserveMs: 3_000,
   p6ObserveMs: 3_000,
   p7SettleMs: 1_000,
@@ -81,6 +87,10 @@ export function poCpuAbProbeScript() {
     intervalCallbacks: 0,
     timeoutCallbacks: 0,
     rafCallbacks: 0,
+    rafFrameSequence: 0,
+    rafLastFrameAt: null,
+    rafFrameIntervalSamples: [],
+    rafFrameIntervalSamplesTruncated: false,
     callbackBusyMs: 0,
     maxCallbackMs: 0,
     callbackSequence: 0,
@@ -116,9 +126,32 @@ export function poCpuAbProbeScript() {
   window.setTimeout = function (fn, delay) {
     return nativeSetTimeout(wrap('timeout', fn), delay);
   };
+  function pushRafFrameInterval(timestamp) {
+    var at = Number(timestamp);
+    if (!Number.isFinite(at)) at = performance.now();
+    if (Number.isFinite(state.rafLastFrameAt)) {
+      var dt = Math.max(0, at - state.rafLastFrameAt);
+      state.rafFrameSequence += 1;
+      if (state.rafFrameIntervalSamples.length < 5000) {
+        state.rafFrameIntervalSamples.push({ sequence: state.rafFrameSequence, intervalMs: dt });
+      } else {
+        state.rafFrameIntervalSamplesTruncated = true;
+      }
+    }
+    state.rafLastFrameAt = at;
+  }
   if (nativeRequestAnimationFrame) {
     window.requestAnimationFrame = function (fn) {
-      return nativeRequestAnimationFrame(wrap('raf', fn));
+      if (typeof fn !== 'function') return nativeRequestAnimationFrame(fn);
+      return nativeRequestAnimationFrame(function () {
+        var startedAt = performance.now();
+        try {
+          pushRafFrameInterval(arguments[0]);
+          return fn.apply(this, arguments);
+        } finally {
+          account('raf', startedAt);
+        }
+      });
     };
   }
   try {
@@ -141,6 +174,9 @@ export function poCpuAbProbeScript() {
         intervalCallbacks: state.intervalCallbacks,
         timeoutCallbacks: state.timeoutCallbacks,
         rafCallbacks: state.rafCallbacks,
+        rafFrameSequence: state.rafFrameSequence,
+        rafFrameIntervalSamples: state.rafFrameIntervalSamples.slice(),
+        rafFrameIntervalSamplesTruncated: state.rafFrameIntervalSamplesTruncated,
         callbackBusyMs: state.callbackBusyMs,
         maxCallbackMs: state.maxCallbackMs,
         callbackSequence: state.callbackSequence,
@@ -436,6 +472,18 @@ export function poCpuAbHostHtml({ timings = DEFAULT_PHASE_TIMINGS, mutant = fals
         const duration = Number(sample && sample.durationMs);
         return Number.isFinite(duration) ? Math.max(max, duration) : max;
       }, 0);
+      const startRafSequence = Number(start.rafFrameSequence) || 0;
+      const endRafSequence = Number(end.rafFrameSequence) || 0;
+      const phaseFrameIntervals = Array.isArray(end.rafFrameIntervalSamples)
+        ? end.rafFrameIntervalSamples
+          .filter((sample) => {
+            const sequence = Number(sample && sample.sequence);
+            return Number.isFinite(sequence) && sequence > startRafSequence && sequence <= endRafSequence;
+          })
+          .map((sample) => Number(sample && sample.intervalMs))
+          .filter((value) => Number.isFinite(value) && value >= 0)
+        : [];
+      const frameTiming = summarizeFrameIntervals(phaseFrameIntervals);
       const observedMs = Math.max(1, durationMs);
       const workMs = Math.max(callbackBusyMs, longTaskDurationMs);
       return {
@@ -452,6 +500,10 @@ export function poCpuAbHostHtml({ timings = DEFAULT_PHASE_TIMINGS, mutant = fals
         timerCallbacks: intervalCallbacks + timeoutCallbacks + rafCallbacks,
         longTaskCount,
         maxCallbackMs,
+        frameIntervalCount: phaseFrameIntervals.length,
+        p50FrameMs: frameTiming.p50FrameMs,
+        p95FrameMs: frameTiming.p95FrameMs,
+        maxFrameMs: frameTiming.maxFrameMs,
         memory: {
           start: startMemory,
           end: endMemory,
@@ -464,6 +516,22 @@ export function poCpuAbHostHtml({ timings = DEFAULT_PHASE_TIMINGS, mutant = fals
           start,
           end
         }
+      };
+    }
+
+    function summarizeFrameIntervals(values) {
+      if (!Array.isArray(values) || values.length === 0) {
+        return { p50FrameMs: null, p95FrameMs: null, maxFrameMs: null };
+      }
+      const sorted = values.slice().sort((a, b) => a - b);
+      const at = (q) => {
+        const index = Math.min(sorted.length - 1, Math.max(0, Math.ceil(q * sorted.length) - 1));
+        return sorted[index];
+      };
+      return {
+        p50FrameMs: at(0.5),
+        p95FrameMs: at(0.95),
+        maxFrameMs: sorted[sorted.length - 1]
       };
     }
 
@@ -506,6 +574,13 @@ export function poCpuAbHostHtml({ timings = DEFAULT_PHASE_TIMINGS, mutant = fals
       }
       const observedMs = Math.max(1, durationMs);
       const workMs = Math.max(callbackBusyMs, longTaskDurationMs);
+      const frameIntervalCount = perWindow.reduce((sum, row) => sum + (Number(row.frameIntervalCount) || 0), 0);
+      const p50FrameMs = percentile(perWindow.map((row) => Number(row.p50FrameMs)).filter((value) => Number.isFinite(value)), 0.5);
+      const p95FrameMs = percentile(perWindow.map((row) => Number(row.p95FrameMs)).filter((value) => Number.isFinite(value)), 0.5);
+      const maxFrameMs = perWindow.reduce((max, row) => {
+        const value = Number(row.maxFrameMs);
+        return Number.isFinite(value) ? Math.max(max, value) : max;
+      }, 0) || null;
       return {
         label,
         durationMs,
@@ -520,9 +595,20 @@ export function poCpuAbHostHtml({ timings = DEFAULT_PHASE_TIMINGS, mutant = fals
         timerCallbacks: intervalCallbacks + timeoutCallbacks + rafCallbacks,
         longTaskCount,
         maxCallbackMs,
+        frameIntervalCount,
+        p50FrameMs,
+        p95FrameMs,
+        maxFrameMs,
         memory: { start: null, end: null, usedDeltaBytes: memoryExposed ? memoryDelta : null },
         probe: { windowCount: perWindow.length, windows: perWindow }
       };
+    }
+
+    function percentile(values, q) {
+      if (!Array.isArray(values) || values.length === 0) return null;
+      const sorted = values.slice().sort((a, b) => a - b);
+      const index = Math.min(sorted.length - 1, Math.max(0, Math.ceil(q * sorted.length) - 1));
+      return sorted[index];
     }
 
     async function collectPhase(label, durationMs) {
@@ -1171,6 +1257,121 @@ export function poCpuAbHostHtml({ timings = DEFAULT_PHASE_TIMINGS, mutant = fals
       return null;
     }
 
+    const LAG_CONTENT_SPECS = [
+      { type: 'SMA', params: { period: 20 } },
+      { type: 'EMA', params: { period: 20 } },
+      { type: 'WMA', params: { period: 20 } }
+    ];
+    const LAG_BAR_INTERVAL_MS = 60000;
+
+    function indicatorTypesOnChart(ch) {
+      const active = ch && ch.indicators && Array.isArray(ch.indicators.active) ? ch.indicators.active : [];
+      return active.map((row) => String(row && row.type || '').toUpperCase()).filter(Boolean);
+    }
+
+    function armContentOnChart(ch) {
+      if (!ch || typeof ch.addIndicator !== 'function') {
+        return { ok: false, reason: 'content-missing', types: [], detail: 'addIndicator unavailable' };
+      }
+      for (const spec of LAG_CONTENT_SPECS) {
+        try {
+          ch.addIndicator(spec.type, spec.params || {});
+        } catch (error) {
+          return {
+            ok: false,
+            reason: 'content-missing',
+            types: indicatorTypesOnChart(ch),
+            detail: String(error && error.message || error)
+          };
+        }
+      }
+      const types = indicatorTypesOnChart(ch);
+      const ok = ['SMA', 'EMA', 'WMA'].every((type) => types.includes(type));
+      return { ok, reason: ok ? null : 'content-missing', types, detail: ok ? null : 'required MA types absent' };
+    }
+
+    function armContentOnWindows(entries) {
+      const panels = [];
+      for (const entry of entries) {
+        const ch = entry.win && entry.win.chart ? entry.win.chart : (entry.id === 'A' ? chart() : null);
+        const armed = armContentOnChart(ch);
+        panels.push({ id: entry.id, ...armed });
+      }
+      const ok = panels.length > 0 && panels.every((row) => row.ok === true);
+      return { ok, reason: ok ? null : 'content-missing', panels };
+    }
+
+    function lagPanelFromStates(id, beforeState, afterState, windowRow, observedMs) {
+      const beforeIndex = Number(beforeState && beforeState.currentIndex);
+      const afterIndex = Number(afterState && afterState.currentIndex);
+      const indexDelta = Number.isFinite(beforeIndex) && Number.isFinite(afterIndex) ? afterIndex - beforeIndex : null;
+      const speed = Number(afterState && afterState.speed);
+      const resolvedSpeed = Number.isFinite(speed) && speed > 0 ? speed : 10;
+      const wallSec = Math.max(0.001, (Number(observedMs) || 1) / 1000);
+      const achievedBarsPerSec = Number.isFinite(indexDelta) ? indexDelta / wallSec : null;
+      const configuredBarsPerSec = (resolvedSpeed * 1000) / LAG_BAR_INTERVAL_MS;
+      const throughputRatio = Number.isFinite(achievedBarsPerSec) && configuredBarsPerSec > 0
+        ? achievedBarsPerSec / configuredBarsPerSec
+        : null;
+      const p50FrameMs = windowRow && Number.isFinite(Number(windowRow.p50FrameMs)) ? Number(windowRow.p50FrameMs) : null;
+      const p95FrameMs = windowRow && Number.isFinite(Number(windowRow.p95FrameMs)) ? Number(windowRow.p95FrameMs) : null;
+      const maxFrameMs = windowRow && Number.isFinite(Number(windowRow.maxFrameMs)) ? Number(windowRow.maxFrameMs) : null;
+      const frameIntervalCount = windowRow && Number.isFinite(Number(windowRow.frameIntervalCount))
+        ? Number(windowRow.frameIntervalCount)
+        : 0;
+      const longTaskCount = windowRow && Number.isFinite(Number(windowRow.longTaskCount)) ? Number(windowRow.longTaskCount) : null;
+      const longTaskDurationMs = windowRow && Number.isFinite(Number(windowRow.longTaskDurationMs))
+        ? Number(windowRow.longTaskDurationMs)
+        : null;
+      const longTaskPerSec = longTaskCount != null ? longTaskCount / wallSec : null;
+      return {
+        id,
+        observedMs: Number(observedMs) || null,
+        indexDelta,
+        speed: resolvedSpeed,
+        achievedBarsPerSec,
+        configuredBarsPerSec,
+        throughputRatio,
+        frameIntervalCount,
+        p50FrameMs,
+        p95FrameMs,
+        maxFrameMs,
+        longTaskCount,
+        longTaskDurationMs,
+        longTaskPerSec
+      };
+    }
+
+    function buildLagConfigCapture(label, panelIds, beforeById, afterById, phase) {
+      const windowsById = new Map((phase && phase.probe && Array.isArray(phase.probe.windows) ? phase.probe.windows : [])
+        .map((row) => [String(row.id), row]));
+      const panels = panelIds.map((id) => lagPanelFromStates(
+        id,
+        beforeById[id],
+        afterById[id],
+        windowsById.get(id) || (panelIds.length === 1 ? phase : null),
+        phase && phase.durationMs
+      ));
+      const throughputRatios = panels.map((row) => row.throughputRatio).filter((value) => Number.isFinite(value));
+      const p95Values = panels.map((row) => row.p95FrameMs).filter((value) => Number.isFinite(value));
+      const longTaskRates = panels.map((row) => row.longTaskPerSec).filter((value) => Number.isFinite(value));
+      return {
+        label,
+        observedMs: phase && phase.durationMs || null,
+        panels,
+        medianThroughputRatio: percentile(throughputRatios, 0.5),
+        medianP95FrameMs: percentile(p95Values, 0.5),
+        medianLongTaskPerSec: percentile(longTaskRates, 0.5)
+      };
+    }
+
+    function lagMechanismHint(throughputRetention, smoothnessRetention) {
+      if (!Number.isFinite(throughputRetention) || !Number.isFinite(smoothnessRetention)) return 'ambiguous';
+      if (throughputRetention + 0.08 < smoothnessRetention) return 'throughput';
+      if (smoothnessRetention + 0.08 < throughputRetention) return 'smoothness';
+      return 'ambiguous';
+    }
+
     async function run() {
       const startedAt = new Date().toISOString();
       const phases = {};
@@ -1178,6 +1379,7 @@ export function poCpuAbHostHtml({ timings = DEFAULT_PHASE_TIMINGS, mutant = fals
       let replay10x = null;
       let pause = null;
       let mutantInterval = null;
+      let lag = null;
       try {
         await waitFor(() => {
           const win = harnessWindow();
@@ -1192,11 +1394,82 @@ export function poCpuAbHostHtml({ timings = DEFAULT_PHASE_TIMINGS, mutant = fals
         await sleep(CONFIG.timings.p2IdleMs);
         phases.P2 = await collectPhase('P2-idle-soak', CONFIG.timings.p2ObserveMs);
 
+        const contentSingle = armContentOnWindows([{ id: 'A', win: harnessWindow() }]);
+        const preparedSingle = await prepareReplay10xForChart(chart());
+        const lagSingleBefore = { A: preparedSingle && preparedSingle.beforeState || replayStateForChart(chart()) };
+        const lagSingleToggle = { usedToggle: false };
+        if (preparedSingle && preparedSingle.ok === true) {
+          attemptReplayStart(preparedSingle.rs, lagSingleToggle);
+        }
+        phases.LAG_SINGLE = await collectPhase(
+          'LAG-SINGLE-content-replay-10x-or-nearest',
+          CONFIG.timings.lagSingleObserveMs || CONFIG.timings.p4ObserveMs
+        );
+        const lagSingleAfter = { A: replayStateForChart(chart()) };
+        const lagSingleCapture = buildLagConfigCapture(
+          'single',
+          ['A'],
+          lagSingleBefore,
+          lagSingleAfter,
+          phases.LAG_SINGLE
+        );
+        pauseAllReplay();
+
         await expandToFourPanels();
+        const contentFour = armContentOnWindows(chartWindows().filter((entry) => ['A', 'B', 'C', 'D'].includes(entry.id)));
         replay4 = await startFourPanelReplay10x();
         replay4 = markP4ObserveBaselines(replay4);
+        const lagFourBefore = {};
+        for (const row of (replay4 && Array.isArray(replay4.rows) ? replay4.rows : [])) {
+          lagFourBefore[String(row.id)] = row.advanceStartState || row.beforeState || null;
+        }
         phases.P4 = await collectPhase('P4-four-panel-replay-10x-or-nearest', CONFIG.timings.p4ObserveMs);
         replay4 = refreshFourPanelReplayObservation(replay4);
+        const lagFourAfter = {};
+        for (const row of (replay4 && Array.isArray(replay4.rows) ? replay4.rows : [])) {
+          lagFourAfter[String(row.id)] = row.advanceEndState || row.state || null;
+        }
+        const lagFourCapture = buildLagConfigCapture(
+          'four',
+          ['A', 'B', 'C', 'D'],
+          lagFourBefore,
+          lagFourAfter,
+          phases.P4
+        );
+        const throughputRetention = Number.isFinite(lagSingleCapture.medianThroughputRatio)
+          && Number.isFinite(lagFourCapture.medianThroughputRatio)
+          && lagSingleCapture.medianThroughputRatio > 0
+          ? lagFourCapture.medianThroughputRatio / lagSingleCapture.medianThroughputRatio
+          : null;
+        const p95Retention = Number.isFinite(lagSingleCapture.medianP95FrameMs)
+          && Number.isFinite(lagFourCapture.medianP95FrameMs)
+          && lagFourCapture.medianP95FrameMs > 0
+          ? lagSingleCapture.medianP95FrameMs / lagFourCapture.medianP95FrameMs
+          : null;
+        const longTaskRetention = Number.isFinite(lagSingleCapture.medianLongTaskPerSec)
+          && Number.isFinite(lagFourCapture.medianLongTaskPerSec)
+          && lagFourCapture.medianLongTaskPerSec > 0
+          ? lagSingleCapture.medianLongTaskPerSec / lagFourCapture.medianLongTaskPerSec
+          : null;
+        const smoothnessRetention = [p95Retention, longTaskRetention]
+          .filter((value) => Number.isFinite(value))
+          .reduce((min, value) => (min == null || value < min ? value : min), null);
+        lag = {
+          content: {
+            single: contentSingle,
+            four: contentFour,
+            ok: contentSingle.ok === true && contentFour.ok === true
+          },
+          single: lagSingleCapture,
+          four: lagFourCapture,
+          ratios: {
+            throughputRetention,
+            smoothnessRetention,
+            p95Retention,
+            longTaskRetention,
+            mechanismHint: lagMechanismHint(throughputRetention, smoothnessRetention)
+          }
+        };
         await collapseToSingle();
 
         replay10x = await startReplay10x();
@@ -1222,9 +1495,16 @@ export function poCpuAbHostHtml({ timings = DEFAULT_PHASE_TIMINGS, mutant = fals
             mutant: !!CONFIG.mutant,
             p4NoFanout: !!CONFIG.p4NoFanout,
             harness: 'multichart serve.mjs single-chart host',
-            observables: ['performance.now callback timing', 'PerformanceObserver longtask', 'performance.memory when exposed']
+            observables: [
+              'performance.now callback timing',
+              'PerformanceObserver longtask',
+              'rAF frame intervals',
+              'replay index throughput',
+              'performance.memory when exposed'
+            ]
           },
           replay: { p4: replay4, p6: replay10x, p7: pause },
+          lag,
           phases,
           measures: performance.getEntriesByType('measure').slice(-12).map((m) => ({
             name: m.name,
@@ -1374,6 +1654,65 @@ function finiteNumberOrNull(value) {
   if (value == null) return null;
   const number = Number(value);
   return Number.isFinite(number) ? number : null;
+}
+
+function lagPanelThroughputEmitted(panel) {
+  return !!panel
+    && finiteNumberOrNull(panel.achievedBarsPerSec) != null
+    && finiteNumberOrNull(panel.configuredBarsPerSec) != null
+    && finiteNumberOrNull(panel.throughputRatio) != null
+    && finiteNumberOrNull(panel.indexDelta) != null;
+}
+
+function lagPanelSmoothnessEmitted(panel) {
+  return !!panel
+    && finiteNumberOrNull(panel.p95FrameMs) != null
+    && finiteNumberOrNull(panel.longTaskCount) != null
+    && Number(panel.frameIntervalCount) > 0;
+}
+
+export function lagMechanismHintFromRetentions(throughputRetention, smoothnessRetention, margin = PO_CPU_AB_LAG_MECHANISM_MARGIN) {
+  if (!Number.isFinite(throughputRetention) || !Number.isFinite(smoothnessRetention)) return 'ambiguous';
+  if (throughputRetention + margin < smoothnessRetention) return 'throughput';
+  if (smoothnessRetention + margin < throughputRetention) return 'smoothness';
+  return 'ambiguous';
+}
+
+export function evaluateLagDualMetric(report) {
+  const lag = report?.lag && typeof report.lag === 'object' ? report.lag : null;
+  const contentOk = lag?.content?.ok === true
+    && lag?.content?.single?.ok === true
+    && lag?.content?.four?.ok === true;
+  const singlePanels = Array.isArray(lag?.single?.panels) ? lag.single.panels : [];
+  const fourPanels = Array.isArray(lag?.four?.panels) ? lag.four.panels : [];
+  const singlePanel = singlePanels.find((row) => String(row?.id) === 'A') || singlePanels[0] || null;
+  const fourRequired = ['A', 'B', 'C', 'D'].map((id) => fourPanels.find((row) => String(row?.id) === id) || null);
+  const throughputSingleOk = lagPanelThroughputEmitted(singlePanel);
+  const throughputFourOk = fourRequired.every((panel) => lagPanelThroughputEmitted(panel));
+  const smoothnessSingleOk = lagPanelSmoothnessEmitted(singlePanel);
+  const smoothnessFourOk = fourRequired.every((panel) => lagPanelSmoothnessEmitted(panel));
+  const throughputRetention = finiteNumberOrNull(lag?.ratios?.throughputRetention);
+  const smoothnessRetention = finiteNumberOrNull(lag?.ratios?.smoothnessRetention);
+  const ratiosOk = throughputRetention != null && smoothnessRetention != null;
+  const hint = lag?.ratios?.mechanismHint;
+  const hintOk = hint === 'throughput' || hint === 'smoothness' || hint === 'ambiguous';
+  const recomputedHint = lagMechanismHintFromRetentions(throughputRetention, smoothnessRetention);
+  return {
+    contentOk,
+    throughputSingleOk,
+    throughputFourOk,
+    smoothnessSingleOk,
+    smoothnessFourOk,
+    ratiosOk,
+    hintOk,
+    hint,
+    recomputedHint,
+    hintConsistent: hintOk && hint === recomputedHint,
+    singlePanel,
+    fourPanels: fourRequired,
+    throughputRetention,
+    smoothnessRetention,
+  };
 }
 
 function uniquePanelIds(ids) {
@@ -1764,6 +2103,65 @@ export function assertPoCpuAbBenchmarkReport(report, { mutant = false } = {}) {
     Number.isFinite(p7Ratio) && p7Ratio <= floorRatio,
     `P7 workRatio=${Number.isFinite(p7Ratio) ? p7Ratio.toFixed(4) : 'n/a'} floor=${floorRatio.toFixed(4)} absoluteMax=${PO_CPU_AB_P7_IDLE_WORK_RATIO_MAX.toFixed(4)}`,
     { phase: 'P7', workRatio: p7Ratio, floorRatio, absoluteMaxRatio: PO_CPU_AB_P7_IDLE_WORK_RATIO_MAX, p1Ratio },
+  ));
+
+  const lagEval = evaluateLagDualMetric(report);
+  cells.push(cell(
+    'LAG-CONTENT-ARMED',
+    lagEval.contentOk,
+    lagEval.contentOk ? 'SMA/EMA/WMA period 20 armed on single and four-panel configs' : 'content-missing on lag configs',
+    { lag: report.lag?.content || null },
+  ));
+  cells.push(cell(
+    'LAG-THROUGHPUT-SINGLE-EMITTED',
+    lagEval.throughputSingleOk,
+    lagEval.throughputSingleOk
+      ? `A achieved/configured=${Number(lagEval.singlePanel.throughputRatio).toFixed(4)}`
+      : 'single-panel achieved vs configured tick rate missing',
+    { panel: lagEval.singlePanel },
+  ));
+  cells.push(cell(
+    'LAG-THROUGHPUT-FOUR-EMITTED',
+    lagEval.throughputFourOk,
+    lagEval.throughputFourOk
+      ? `A/B/C/D throughput ratios emitted`
+      : 'four-panel per-panel achieved vs configured tick rate missing',
+    { panels: lagEval.fourPanels },
+  ));
+  cells.push(cell(
+    'LAG-SMOOTHNESS-SINGLE-EMITTED',
+    lagEval.smoothnessSingleOk,
+    lagEval.smoothnessSingleOk
+      ? `A p95FrameMs=${Number(lagEval.singlePanel.p95FrameMs).toFixed(2)} longTaskCount=${lagEval.singlePanel.longTaskCount}`
+      : 'single-panel frame timing + long-task count missing',
+    { panel: lagEval.singlePanel },
+  ));
+  cells.push(cell(
+    'LAG-SMOOTHNESS-FOUR-EMITTED',
+    lagEval.smoothnessFourOk,
+    lagEval.smoothnessFourOk
+      ? 'A/B/C/D frame timing + long-task counts emitted'
+      : 'four-panel frame timing + long-task count missing',
+    { panels: lagEval.fourPanels },
+  ));
+  cells.push(cell(
+    'LAG-SINGLE-TO-FOUR-RATIO-EMITTED',
+    lagEval.ratiosOk,
+    lagEval.ratiosOk
+      ? `throughputRetention=${lagEval.throughputRetention.toFixed(4)} smoothnessRetention=${lagEval.smoothnessRetention.toFixed(4)}`
+      : 'single→four throughput/smoothness retention ratios missing',
+    {
+      throughputRetention: lagEval.throughputRetention,
+      smoothnessRetention: lagEval.smoothnessRetention,
+    },
+  ));
+  cells.push(cell(
+    'LAG-MECHANISM-HINT-EMITTED',
+    lagEval.hintOk && lagEval.hintConsistent,
+    lagEval.hintOk && lagEval.hintConsistent
+      ? `mechanismHint=${lagEval.hint} (throughput→FIX2, smoothness→FIX1)`
+      : `mechanismHint missing or inconsistent (got=${lagEval.hint}, recomputed=${lagEval.recomputedHint})`,
+    { hint: lagEval.hint, recomputedHint: lagEval.recomputedHint },
   ));
 
   if (mutant || report.meta?.mutant) {

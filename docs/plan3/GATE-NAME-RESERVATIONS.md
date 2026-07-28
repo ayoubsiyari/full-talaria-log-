@@ -519,10 +519,17 @@ Cells:
 | P1-IDLE-SINGLE-CHART-OBSERVED | single-chart idle workRatio is finite and below absolute `PO_CPU_AB_P1_IDLE_WORK_RATIO_MAX` | LIVE |
 | P2-IDLE-STABLE-NO-UNBOUNDED-WORK | idle soak workRatio is below both P1-relative and absolute `PO_CPU_AB_P2_IDLE_WORK_RATIO_MAX`; high P1 cannot absorb high P2 | LIVE |
 | P2-IDLE-MEMORY-NOT-GROWING | exposed heap delta during P2 stays bounded | LIVE |
-| P4-FOUR-PANEL-REPLAY-RUNNING-OBSERVED | four panels armed, playing, advancing within the P4 observe window by oracle-measured while-playing forward timestamp (rate ceiling + idx/ts coherence), and showing per-peer B/C/D callback/timer work above the P1 floor; product `replayPlay` fan-out peers may use `passivePlayActive` only under that sample rule | LIVE — W62k: W62g/W62i GREEN credit held; no aggregate/longtask-only peer work; B/C/D near-shared delta spreads plus near-identical absolute baselines are RED independent of which peer carries the middle jitter value; observe-window baselines are mandatory for GREEN; no-fan-out NC requires serialized peer-row neuter evidence; live short remains honest RED on sharedMirrorOnly |
+| P4-FOUR-PANEL-REPLAY-RUNNING-OBSERVED | four panels armed, playing, advancing within the P4 observe window by oracle-measured while-playing forward timestamp (rate ceiling + idx/ts coherence), and showing per-peer B/C/D callback/timer work above the P1 floor; product `replayPlay` fan-out peers may use `passivePlayActive` only under that sample rule | LIVE — W62k mirror/peer-work/baseline/NC rules; W64 lag dual-metric is mandatory sibling FIX1/FIX2 grading evidence (not a substitute for this honesty cell) |
 | P6-REPLAY-10X-OR-NEAREST-OBSERVED | real replay activation succeeds, `isPlaying` is observed, nearest speed is known, playhead advances, and P6 work exceeds P1 by the pinned 0.03 margin | LIVE instrument — RED expected until FIX1/FIX2; do not recalibrate margin to mint GREEN |
 | P7-PAUSE-STATE-NOT-PLAYING | product pause path leaves replay not playing | LIVE |
 | P7-WORK-RETURNS-TO-P1-FLOOR | post-pause workRatio is below both P1-relative and absolute `PO_CPU_AB_P7_IDLE_WORK_RATIO_MAX` | LIVE |
+| LAG-CONTENT-ARMED | SMA/EMA/WMA period 20 confirmed on single-with-content and four-with-content lag windows; bare replay cannot satisfy | LIVE — W64 |
+| LAG-THROUGHPUT-SINGLE-EMITTED | host panel emits achieved vs configured bars/sec (tick throughput) during LAG-SINGLE | LIVE — W64; grades FIX2 |
+| LAG-THROUGHPUT-FOUR-EMITTED | panels A/B/C/D each emit achieved vs configured bars/sec during content-armed P4 | LIVE — W64; grades FIX2 |
+| LAG-SMOOTHNESS-SINGLE-EMITTED | host panel emits rAF frame timing (p95) plus long-task count during LAG-SINGLE | LIVE — W64; grades FIX1 |
+| LAG-SMOOTHNESS-FOUR-EMITTED | panels A/B/C/D each emit frame timing plus long-task count during content-armed P4 | LIVE — W64; grades FIX1 |
+| LAG-SINGLE-TO-FOUR-RATIO-EMITTED | throughputRetention and smoothnessRetention (four vs single) are finite; PO ~50% is descriptive, not a hard gate | LIVE — W64 |
+| LAG-MECHANISM-HINT-EMITTED | mechanismHint ∈ {throughput,smoothness,ambiguous} consistent with retentions (throughput→FIX2, smoothness→FIX1) | LIVE — W64 |
 | NC-P4-NO-FANOUT-MUST-RED | served P4 no-fan-out mode neuters `replayPlay` peer sends, serializes peer-row `productReplayPlayFanout.noFanoutControl`, and must make P4 RED | LIVE |
 | NC-P7-REPLAY-PAUSE-TEARDOWN-MUST-RED | served `replay-system.js` pause teardown reversal marks itself applied and makes the P7 state cell RED | LIVE |
 
