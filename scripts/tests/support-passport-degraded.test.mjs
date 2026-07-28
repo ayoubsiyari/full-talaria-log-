@@ -176,7 +176,10 @@ test('PASSPORT-DEGRADED-TEMPORAL-RECOMPUTE [soundness VER-01]: later calls see l
   assert.deepEqual(cell.unknownReads, []);
   assert.equal(cell.environmentsAgree, true);
   assert.equal(cell.browserProfileArmed, true);
+  assert.equal(cell.productionProfileArmed, true);
+  assert.equal(cell.productionHost, 'app.talaria.io');
   assert.deepEqual(cell.browserObserved, cell.observed);
+  assert.deepEqual(cell.productionObserved, cell.observed);
   assert.ok(cell.clockMarks.every((mark, i) => (
     i === 0 || mark - cell.clockMarks[i - 1] >= TEMPORAL_CLOCK_ADVANCE_MS
   )));
@@ -543,11 +546,15 @@ const EXPECTED_MUTANT_KILLS = {
     name: 'NC-MUTANT-BARE-SESSION-STORAGE-CACHE',
     killedBy: ['PASSPORT-DEGRADED-TEMPORAL-RECOMPUTE'],
   },
+  M15: {
+    name: 'NC-MUTANT-HOST-GATED-CACHE',
+    killedBy: ['PASSPORT-DEGRADED-TEMPORAL-RECOMPUTE'],
+  },
 };
 
-test('behavioural mutants M1-M14 are each applied and each killed by a named cell', () => {
+test('behavioural mutants M1-M15 are each applied and each killed by a named cell', () => {
   const cells = runBehavioralMutantCells(deps);
-  assert.equal(cells.length, 14);
+  assert.equal(cells.length, 15);
   for (const cell of cells) {
     const expected = EXPECTED_MUTANT_KILLS[cell.mutant];
     assert.ok(expected, `unexpected mutant ${cell.mutant}`);
@@ -617,7 +624,7 @@ test('every mutant really edits supportUi.tsx — none is a no-op that fakes a k
 
 test('a mutant that no longer applies is RED, not a silent pass', () => {
   const cells = runBehavioralMutantCells({ ...deps, supportUiSource: 'export const nothing = 1;\n' });
-  assert.equal(cells.length, 14);
+  assert.equal(cells.length, 15);
   for (const cell of cells) {
     assert.equal(cell.status, 'RED');
     assert.match(cell.reason, /did not apply/);
@@ -683,8 +690,8 @@ test('gate aggregate is GREEN on the repo sources and excludes findings from all
   assert.equal(report.allPass, true);
   assert.equal(report.findings.length, 1);
   assert.equal(report.findings[0].cell, 'FINDING-SERVER-CONTEXT-STR-COERCION');
-  // 8 behavioural + 14 mutants + 3 alias drops + 6 consumer wiring cells.
-  assert.equal(report.cells.filter((c) => typeof c.pass === 'boolean').length, 31);
+  // 8 behavioural + 15 mutants + 3 alias drops + 6 consumer wiring cells.
+  assert.equal(report.cells.filter((c) => typeof c.pass === 'boolean').length, 32);
 });
 
 test('gate refuses GREEN when no TypeScript compiler is available', () => {

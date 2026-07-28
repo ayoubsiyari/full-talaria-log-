@@ -286,3 +286,6 @@ Exactly five ` | `-separated fields after the list marker. Absent fields are wri
 
 2026-07-28T12:41Z | C | REVIEW | packet=R-M6-7 | role=reviewer | tier=top | model=claude-opus-5-thinking-high | result=REJECT | attr=author-defect | "Bare sessionStorage bypassed window Proxy; helper-indirection consumer freeze. W47."
 2026-07-28T12:41Z | C | DISPATCH | packet=W47 | role=author | tier=top | model=claude-opus-5-thinking-high | trigger="Escalate on repeat rejection" | "Close R-M6-7: fail-closed bare-global Proxy + bare sessionStorage alias + helper-indirection freeze; M14."
+
+2026-07-28T12:47Z | C | REVIEW | packet=R-M6-8 | role=reviewer | tier=top | model=claude-opus-5-thinking-high | result=REJECT | attr=author-defect | "Identity-gated cache on .test host / Gate UA; return-style helper freeze. W48."
+2026-07-28T12:47Z | C | DISPATCH | packet=W48 | role=author | tier=top | model=claude-opus-5-thinking-high | trigger="Escalate on repeat rejection" | "Close R-M6-8: productionShaped temporal profile + return-style helper freeze; M15."

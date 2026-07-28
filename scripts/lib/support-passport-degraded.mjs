@@ -339,18 +339,40 @@ function reactStub() {
  *   nowMs?: number,
  *   postBootReadyState?: 'loading' | 'interactive' | 'complete',
  *   browserRealistic?: boolean,
+ *   productionShaped?: boolean,
+ *   userAgent?: string,
  * }} opts
  */
 export function createSupportPassportRealm(opts) {
   const {
     providerPresent = true,
     aliasOnly = null,
-    href = 'https://app.talaria.test/dashboard/support',
     // Support tickets are filed after load. A permanently-"loading" document made any
     // readyState==="complete" cache dead inside the gate and live in every real browser.
     postBootReadyState = 'complete',
     browserRealistic = false,
+    // R-M6-8: a third profile with production host/UA so caches gated on
+    // `!host.endsWith(".test")` or `!/Gate/.test(userAgent)` cannot hide.
+    productionShaped = false,
   } = opts;
+  const href = opts.href
+    ?? (productionShaped
+      ? 'https://app.talaria.io/dashboard/support'
+      : 'https://app.talaria.test/dashboard/support');
+  let locationHost;
+  let locationPathname;
+  try {
+    const parsed = new URL(href);
+    locationHost = parsed.host;
+    locationPathname = parsed.pathname;
+  } catch {
+    locationHost = productionShaped ? 'app.talaria.io' : 'app.talaria.test';
+    locationPathname = '/dashboard/support';
+  }
+  const userAgent = opts.userAgent
+    ?? (productionShaped
+      ? 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36'
+      : 'TalariaSupportPassportGate/1.0');
   const listeners = {};
   const badges = [];
   const provider = { compareDocumentPosition: () => 4 };
@@ -386,10 +408,10 @@ export function createSupportPassportRealm(opts) {
   // stays dead in the gate and live in every HTTPS browser. Browser-realistic values
   // are injected by the dual-environment temporal cell instead.
   const navigatorSeed = {
-    userAgent: opts.userAgent ?? 'TalariaSupportPassportGate/1.0',
+    userAgent,
     hardwareConcurrency: 4,
     onLine: true,
-    ...(opts.browserRealistic
+    ...((browserRealistic || productionShaped)
       ? {
           serviceWorker: { ready: Promise.resolve(null) },
           storage: { estimate: async () => ({ usage: 0, quota: 1 }) },
@@ -428,8 +450,8 @@ export function createSupportPassportRealm(opts) {
   const location = createTrackedRealmObject({
     href,
     protocol: 'https:',
-    host: 'app.talaria.test',
-    pathname: '/dashboard/support',
+    host: locationHost,
+    pathname: locationPathname,
   }, accessTracker, 'location', proxyCache);
   const window = createTrackedRealmObject({
     document,
@@ -449,7 +471,7 @@ export function createSupportPassportRealm(opts) {
   // Bare identifiers resolve against the vm context, not window. Under browserRealistic,
   // install the APIs a dashboard page actually has so `typeof indexedDB !== "undefined"`
   // (R-M6-6) cannot discriminate the gate from production.
-  const contextGlobals = browserRealistic
+  const contextGlobals = (browserRealistic || productionShaped)
     ? {
         indexedDB: { open() { return null; } },
         caches: { open: async () => ({}) },
@@ -458,7 +480,7 @@ export function createSupportPassportRealm(opts) {
         BroadcastChannel: class { constructor() {} postMessage() {} close() {} addEventListener() {} },
       }
     : {};
-  if (browserRealistic) {
+  if (browserRealistic || productionShaped) {
     Object.assign(window, contextGlobals);
   }
   // Bare sessionStorage/localStorage must resolve to the same modelled stores as
@@ -746,8 +768,8 @@ export const TEMPORAL_DEGRADATION_SEQUENCE = ['OrderOverlay', 'AlertSystem'];
  *
  * @param {Parameters<typeof createSupportPassportRealm>[0]} deps
  */
-function runTemporalSequence(deps, { browserRealistic }) {
-  const realm = createSupportPassportRealm({ ...deps, providerPresent: true, browserRealistic });
+function runTemporalSequence(deps, profile) {
+  const realm = createSupportPassportRealm({ ...deps, providerPresent: true, ...profile });
   const readRuntime = () => Array.from(realm.window.__TALARIA_DEGRADED_STATE.degradedModules);
   const runtimeSeen = [];
   const observed = [];
@@ -773,7 +795,8 @@ function runTemporalSequence(deps, { browserRealistic }) {
     clockMarks,
     unknownReads,
     readyStateAtTicket,
-    browserRealistic,
+    host: realm.window.location.host,
+    userAgent: realm.window.navigator.userAgent,
     hasServiceWorker: realm.window.navigator.serviceWorker != null,
     hasIndexedDB: realm.window.indexedDB != null,
   };
@@ -781,11 +804,12 @@ function runTemporalSequence(deps, { browserRealistic }) {
 
 export function runPassportDegradedTemporalCell(deps) {
   try {
-    // Dual environment (R-M6-6): a cache gated on a falsy-modelled own key or a bare
-    // `typeof indexedDB` stays dead under the sparse realm and live under a browser-shaped
-    // one. Both profiles must produce the same passport sequence.
-    const sparse = runTemporalSequence(deps, { browserRealistic: false });
-    const browser = runTemporalSequence(deps, { browserRealistic: true });
+    // Multi-environment (R-M6-6 / R-M6-8): sparse + browserRealistic + productionShaped
+    // must all produce the same passport sequence. Production uses a non-.test host and a
+    // real Chrome UA so identity-gated caches cannot hide behind gate branding.
+    const sparse = runTemporalSequence(deps, { browserRealistic: false, productionShaped: false });
+    const browser = runTemporalSequence(deps, { browserRealistic: true, productionShaped: false });
+    const production = runTemporalSequence(deps, { browserRealistic: true, productionShaped: true });
 
     const runtimeAdvanced = sparse.runtimeSeen.every((list, i) => list.length === i)
       && TEMPORAL_DEGRADATION_SEQUENCE.every((id, i) => sparse.runtimeSeen[i + 1].includes(id));
@@ -800,13 +824,17 @@ export function runPassportDegradedTemporalCell(deps) {
         i === 0 || mark - sparse.clockMarks[i - 1] >= TEMPORAL_CLOCK_ADVANCE_MS
       ));
     const realmLooksLikePostLoad = sparse.readyStateAtTicket === 'complete'
-      && browser.readyStateAtTicket === 'complete';
+      && browser.readyStateAtTicket === 'complete'
+      && production.readyStateAtTicket === 'complete';
     const noUnmodelledReads = sparse.unknownReads.length === 0;
-    // Browser profile may touch more keys during eval of injected APIs; require the
-    // passport *observations* match, not identical unknown-read sets.
     const environmentsAgree = JSON.stringify(sparse.observed) === JSON.stringify(browser.observed)
-      && JSON.stringify(sparse.runtimeSeen) === JSON.stringify(browser.runtimeSeen);
+      && JSON.stringify(sparse.observed) === JSON.stringify(production.observed)
+      && JSON.stringify(sparse.runtimeSeen) === JSON.stringify(browser.runtimeSeen)
+      && JSON.stringify(sparse.runtimeSeen) === JSON.stringify(production.runtimeSeen);
     const browserProfileArmed = browser.hasServiceWorker === true;
+    const productionProfileArmed = production.host === 'app.talaria.io'
+      && !production.host.endsWith('.test')
+      && !/Gate|HeadlessChrome|jsdom/i.test(production.userAgent);
     const pass = runtimeAdvanced
       && trackedRuntime
       && laterCallsSawNewModules
@@ -814,13 +842,15 @@ export function runPassportDegradedTemporalCell(deps) {
       && realmLooksLikePostLoad
       && noUnmodelledReads
       && environmentsAgree
-      && browserProfileArmed;
+      && browserProfileArmed
+      && productionProfileArmed;
 
     return cellResult('PASSPORT-DEGRADED-TEMPORAL-RECOMPUTE', pass, {
       calls: sparse.observed.length,
       runtimeSeen: sparse.runtimeSeen,
       observed: sparse.observed,
       browserObserved: browser.observed,
+      productionObserved: production.observed,
       runtimeAdvanced,
       trackedRuntime,
       laterCallsSawNewModules,
@@ -833,6 +863,8 @@ export function runPassportDegradedTemporalCell(deps) {
       noUnmodelledReads,
       environmentsAgree,
       browserProfileArmed,
+      productionProfileArmed,
+      productionHost: production.host,
     });
   } catch (error) {
     return redCell('PASSPORT-DEGRADED-TEMPORAL-RECOMPUTE', String(error?.message ?? error));
@@ -1243,6 +1275,27 @@ export const SUPPORT_PASSPORT_BEHAVIORAL_MUTANTS = [
         );
     },
   },
+  {
+    id: 'M15',
+    name: 'NC-MUTANT-HOST-GATED-CACHE',
+    describes:
+      'cache armed when location.host does not end with .test — dead under gate branding, '
+      + 'live under productionShaped (R-M6-8 primary carrier)',
+    apply: (src) => {
+      if (!src.includes(MEMOIZED_PASSPORT_HEADER) || !src.includes(MEMOIZED_PASSPORT_TAIL)) {
+        return null;
+      }
+      return src
+        .replace(
+          MEMOIZED_PASSPORT_HEADER,
+          'let __passportCache: Record<string, string | string[]> | null = null;\n'
+          + `${MEMOIZED_PASSPORT_HEADER}\n`
+          + '  if (__passportCache !== null && !window.location.host.endsWith(".test")) '
+          + 'return __passportCache;',
+        )
+        .replace(MEMOIZED_PASSPORT_TAIL, '  __passportCache = ctx;\n  return ctx;\n}');
+    },
+  },
 ];
 
 /**
@@ -1618,6 +1671,25 @@ export function hasHelperIndirectionFreeze(ts, sourceFile, callNode) {
           && (node.left.argumentExpression.text === 'context'
             || node.left.argumentExpression.text === 'degradedModules')) {
           helperFreezes = true;
+        }
+      }
+      // return { ...p, context: snap } — R-M6-8 return-style freeze
+      if ((ts.isPropertyAssignment(node) || ts.isShorthandPropertyAssignment(node))
+        && propertyNameText(ts, node.name) === 'context'
+        && ts.isReturnStatement(node.parent?.parent)) {
+        helperFreezes = true;
+      }
+      if (ts.isPropertyAssignment(node) && propertyNameText(ts, node.name) === 'context') {
+        // Any helper that builds a new object with a context field is a freeze risk
+        // when called from createThread after the passport call.
+        let cur = node.parent;
+        while (cur && cur !== fn) {
+          if (ts.isReturnStatement(cur) || ts.isArrowFunction(cur) || ts.isFunctionExpression(cur)
+            || ts.isFunctionDeclaration(cur)) {
+            if (ts.isReturnStatement(cur) || cur === fn) helperFreezes = true;
+            break;
+          }
+          cur = cur.parent;
         }
       }
       ts.forEachChild(node, visit);
