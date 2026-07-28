@@ -2405,3 +2405,55 @@ It changes nothing about the measurement: `replay-system.js` is the same blob on
 **What I need ruled** is whether the second-renderer retirement is still wanted on the different ground the measurement exposes: not "no user can reach it" but "only multichart 1D reaches it, via a finest-TF cadence path whose mode selector and cadence disagree." That is a real duplicate-implementation risk of exactly the kind §3.1 argues against — two implementations of drawing the chart, never proven to agree — but retiring it now would change multichart 1D replay behaviour rather than delete dead code, which is a different risk and a different packet.
 
 **Default in force if unanswered**, per §7.3: I implement the cap, leave `updateChartDataFast` in place, and record the duplicate-renderer risk as an open row rather than closing it. I will not delete a reachable renderer on a precondition that measurement has falsified.
+
+---
+
+## 2026-07-28 10:12 — Director ratification logged. Cap proceeds on product grounds; retirement withdrawn
+
+The DIRECTOR-Q is answered as I defaulted it: implement the cap, leave `updateChartDataFast` in place, carry the duplicate-implementation risk as an open row. §3.1's payoff claim and the "~60x" figure are retracted at `f990eb4b5`, and the document now carries the measured thresholds — 1875x single-chart against a `normalizeSpeed()` clamp of 100, ~1.30x on multichart.
+
+Worth recording what changed underneath the decision: the cap survives, but **the reason it survives is not the reason it was ordered.** The architectural justification is withdrawn; the PO confirms it on product grounds — fewer offered speeds, less surface to test before Thursday, competitor parity. Same change, different warrant. I am noting that because a future reader finding "cap at 10x" in the tree should not reconstruct the architectural argument from §3.1's original text.
+
+**Requirement 1 is marked satisfied with the measurement behind it**, and my withdrawn prediction is recorded as prominently as the result. That is the right way round.
+
+Two new project rules came out of today and both are now binding on me:
+
+**BRIEF-02** — route an unmeasured premise as a hypothesis to refute, never as briefed background. Today produced three dead premises: the Director's data-effect lag theory, the Director's fast-path retirement ground, and my own 1D work-rate prediction. Any one briefed as fact would have bought an authored packet against a false premise. Framing costs nothing.
+
+**TREE-01** — every presence or absence claim names the branch it concerns and the branch the working tree is on. This came from my correction and it has already caught three agents today.
+
+## 2026-07-28 10:13 — Cap dispatched. Four changes, all measured, and the hidden unlock is the one that matters
+
+Packet on `manager-a/speed-cap`, based at pinned `f802a66fa`. Writable set is exactly `replay-system.js` and `TalariaV8bLive.jsx`; V9 sources are confirmed A's at `TERRITORY.yml:138`.
+
+Reserved: `REPLAY_SPEED_MAX`, `REPLAY_SPEED_DEFAULT`.
+
+The four changes are the write clamp at `normalizeSpeed():6836-6839`, bounding the doubled kill-switch branch in `getEffectivePlaybackSpeed():6843-6848`, moving both defaults onto a named constant, and truncating the V9 ladder to 1, 2, 3, 5, 10.
+
+**The hidden unlock is the requirement most likely to be skipped and the one §3.1 names explicitly.** With `__TALARIA_DISABLE_M19I_TICK_SPEED_COHERENCE_V1 === true` the effective speed becomes `min(200, base × 2)`, so a labelled 10x plays at 20x. A packet that clamps the stored value and stops there would look complete, pass a naive check, and leave a hard ceiling that is not hard. It is called out as its own numbered change with its own acceptance clause.
+
+**One product-visible decision I am surfacing rather than burying.** Both defaults exceed the new cap — engine 60, V9 React 30 — so they must move. I specified `REPLAY_SPEED_DEFAULT = 5` with the reasoning stated in the brief so the PO can overrule it cheaply: defaulting to 10 would start every user at maximum, which neither old default did, and 5 is the nearest mid-ladder option and an existing offered speed. Because it is one named constant, reversal is a one-line change. **This is a product choice I am making by default, not a technical necessity, and it should be confirmed.**
+
+**Explicitly excluded, with reasons in the brief so the author does not helpfully widen:** no touching `updateChartDataFast` or `_renderReplayChartUpdate`, since measurement proved them reachable; no touching either `legacy-index.html`, since §A14.2/§A14.3 rule it de-routed and I reverted a packet this morning for exactly that; and no touching the six direct `speed` readers outside my writable set, including the `speed >= 50` draw throttle that the cap renders unreachable.
+
+Acceptance requires the clamp be **executed**, not read — a stored 60, a restored 60 and the doubled branch all demonstrated ≤ 10 in a VM — with CWD pinned inside the packet's own worktree, because one of these harnesses leaked a `--json` file into another manager's checkout this week.
+
+## 2026-07-28 10:14 — M1 scoping dispatched, because I have already been wrong about this gate once today
+
+M1 is due 15:15 and I do not trust my own model of it. This morning I merged assertions onto `legacy-index.html` believing I was closing an M1 gap, and reverted them because §A14.3 forbids exactly that — legacy is out of M1 scope entirely, not a gap in it.
+
+So before authoring anything further I am buying an enumeration: the routed surfaces minus the ruled-retired ones, per-surface runtime presence and ordering of `indicator-performance.js`, and — the part I keep underweighting — **whether the build gate observes each surface at all**, since a prior review proved `module-contract-preflight.mjs` emits byte-identical output with and without a change because it skips anything not `owned-stamped`. A surface with correct HTML that no gate watches is not covered, and M1 demands build **and** runtime.
+
+Also asked: does the §A14.3 exposure conditional exist as a live gate anywhere, and do C's new `scripts/lib/servable-shell-discovery.mjs` and `scripts/tests/servable-shell-discovery.test.mjs` implement it? If C is already building it, the residual for M1 is smaller than it looks and my job is to hand off rather than duplicate.
+
+The deliverable I actually need is the last line of that report: **can M1 close by 15:15 on A's work alone, or does it require C?** My current expectation, held loosely and flagged as such per BRIEF-02, is that it requires C — but I have been wrong about this gate's shape once already today, so it is a question and not a finding.
+
+## 2026-07-28 10:15 — Queued, not dispatched, so the chain is not displaced
+
+Three items are owed and none of them may take capacity from M1, the §A2 re-measurement or the §1.2 answer:
+
+**Requirement 3, CPU at 100x versus 10x.** The last remaining test of the PO's original suspicion that high speed drives cost, and now the only part of §3.1 still unmeasured. Non-blocking. Note it must be taken **before** the cap lands or on a build with the cap disabled, since afterwards 100x is unreachable — if the cap merges first, the comparison becomes impossible without reverting. That sequencing constraint is not in §3.1 and I am recording it before it bites.
+
+**The `realTimeCandleDuration` versus `rawCandlesPerSecond` investigation**, promoted by the Director ahead of anything about retirement. Subdivisions divide the quantity that selects the renderer but not the quantity that sets the cadence, so one input picks the mode and a different input paces it. It is characterisable without changing replay behaviour, which is what makes it a better next step than the retirement question.
+
+**Re-running the `_mcDiag` measurement pinned to my tip**, so the product counters and the bespoke ones can be cross-checked. The original ran in the main checkout on C's branch where the counters and the harness are genuinely absent; on `manager-a/critical-path` there are 13 counter references in `chart.js`, one in `chart-data-pipeline.js`, and the harness is present. Same blob for `replay-system.js` on both branches, so the measurement stands — but the cross-check is cheap and TREE-01 exists because this class of confusion keeps recurring.
