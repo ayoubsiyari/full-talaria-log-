@@ -461,7 +461,47 @@ export function createSupportPassportRealm(opts) {
   if (browserRealistic) {
     Object.assign(window, contextGlobals);
   }
-  const context = vm.createContext({
+  // Bare sessionStorage/localStorage must resolve to the same modelled stores as
+  // window.sessionStorage — otherwise M8 (qualified) is killed while the idiomatic
+  // bare spelling walks through (R-M6-7).
+  const hostBuiltins = {
+    Object,
+    Array,
+    String,
+    Number,
+    Boolean,
+    JSON,
+    Math,
+    Error,
+    TypeError,
+    RangeError,
+    SyntaxError,
+    RegExp,
+    Promise,
+    Map,
+    Set,
+    WeakMap,
+    WeakSet,
+    Symbol,
+    Reflect,
+    Proxy,
+    parseInt,
+    parseFloat,
+    isNaN,
+    isFinite,
+    encodeURIComponent,
+    decodeURIComponent,
+    encodeURI,
+    decodeURI,
+    URIError,
+    eval: undefined,
+    Function,
+    Infinity,
+    NaN,
+    undefined,
+  };
+  const contextBase = {
+    ...hostBuiltins,
     window,
     self: window,
     globalThis: window,
@@ -469,11 +509,16 @@ export function createSupportPassportRealm(opts) {
     navigator,
     performance,
     location,
+    sessionStorage,
+    localStorage,
     console: window.console,
     Date: RealmDate,
     CustomEvent: class { constructor(type, init) { this.type = type; this.detail = init?.detail; } },
     Node: { DOCUMENT_POSITION_FOLLOWING: 4 },
     setTimeout: (fn) => fn(),
+    clearTimeout: () => {},
+    setInterval: (fn) => { fn(); return 0; },
+    clearInterval: () => {},
     module: moduleObj,
     exports: moduleObj.exports,
     require: (id) => {
@@ -481,7 +526,57 @@ export function createSupportPassportRealm(opts) {
       throw new Error(`supportUi.tsx required an unexpected module: ${id}`);
     },
     ...contextGlobals,
+  };
+  // Fail-closed bare-global Proxy (R-M6-7): any identifier outside the modelled set is
+  // recorded while the tracker is armed. `has` returns true so `typeof x` never throws.
+  const modelledBare = new Set(Object.keys(contextBase));
+  // TypeScript CommonJS emit helpers — written during module eval, not product reads.
+  const tsEmitHelpers = new Set([
+    '__importDefault',
+    '__importStar',
+    '__createBinding',
+    '__exportStar',
+    '__esModule',
+    '__awaiter',
+    '__generator',
+    '__spreadArray',
+    '__assign',
+  ]);
+  const isTsEmitHelper = (prop) => typeof prop === 'string' && tsEmitHelpers.has(prop);
+  const contextSandbox = new Proxy(contextBase, {
+    has(target, prop) {
+      if (typeof prop === 'string'
+        && !modelledBare.has(prop)
+        && !Object.prototype.hasOwnProperty.call(target, prop)
+        && !isTsEmitHelper(prop)
+        && accessTracker.enabled) {
+        accessTracker.unknownReads.push(`global.${prop}`);
+      }
+      // Own/modelled keys behave normally; unknown keys still `has === true` for typeof.
+      if (typeof prop === 'string'
+        && (modelledBare.has(prop)
+          || Object.prototype.hasOwnProperty.call(target, prop)
+          || isTsEmitHelper(prop))) {
+        return true;
+      }
+      return typeof prop === 'string';
+    },
+    get(target, prop, receiver) {
+      if (typeof prop === 'string'
+        && !modelledBare.has(prop)
+        && !Object.prototype.hasOwnProperty.call(target, prop)
+        && !isTsEmitHelper(prop)) {
+        if (accessTracker.enabled) accessTracker.unknownReads.push(`global.${prop}`);
+        return undefined;
+      }
+      return Reflect.get(target, prop, receiver);
+    },
+    set(target, prop, value, receiver) {
+      if (typeof prop === 'string') modelledBare.add(prop);
+      return Reflect.set(target, prop, value, receiver);
+    },
   });
+  const context = vm.createContext(contextSandbox);
 
   // Runtime boot may touch many host keys; fidelity tracking starts at supportUi eval.
   vm.runInContext(opts.runtimeSource, context, { filename: MODULE_PRESENCE_RUNTIME_RELATIVE_PATH });
@@ -1122,6 +1217,32 @@ export const SUPPORT_PASSPORT_BEHAVIORAL_MUTANTS = [
         .replace(MEMOIZED_PASSPORT_TAIL, '  __passportCache = ctx;\n  return ctx;\n}');
     },
   },
+  {
+    id: 'M14',
+    name: 'NC-MUTANT-BARE-SESSION-STORAGE-CACHE',
+    describes:
+      'context cached via bare sessionStorage — the R-M6-7 spelling that bypassed window.sessionStorage',
+    apply: (src) => {
+      if (!src.includes(MEMOIZED_PASSPORT_HEADER) || !src.includes(MEMOIZED_PASSPORT_TAIL)) {
+        return null;
+      }
+      return src
+        .replace(
+          MEMOIZED_PASSPORT_HEADER,
+          `${MEMOIZED_PASSPORT_HEADER}\n`
+          + '  const __sk = "__talaria_support_ctx";\n'
+          + '  try {\n'
+          + '    const __raw = sessionStorage.getItem(__sk);\n'
+          + '    if (__raw) return JSON.parse(__raw);\n'
+          + '  } catch { /* ignore */ }\n',
+        )
+        .replace(
+          MEMOIZED_PASSPORT_TAIL,
+          '  try { sessionStorage.setItem(__sk, JSON.stringify(ctx)); } catch { /* ignore */ }\n'
+          + '  return ctx;\n}',
+        );
+    },
+  },
 ];
 
 /**
@@ -1446,6 +1567,67 @@ export function hasContextReassignmentAfterCall(ts, callNode) {
 }
 
 /**
+ * True when createThread calls a module-scope helper that mutates `.context` /
+ * `.degradedModules` — the R-M6-7 helper-indirection carrier that stopped the
+ * walk at the enclosing-function boundary.
+ */
+export function hasHelperIndirectionFreeze(ts, sourceFile, callNode) {
+  const scope = enclosingFunctionNode(ts, callNode);
+  if (!scope) return false;
+  const callPos = callNode.getStart();
+  const helperNames = new Set();
+  const collectCalls = (node) => {
+    if (node.getStart && node.getStart() > callPos && ts.isCallExpression(node)
+      && ts.isIdentifier(node.expression)) {
+      helperNames.add(node.expression.text);
+    }
+    ts.forEachChild(node, collectCalls);
+  };
+  collectCalls(scope);
+  if (helperNames.size === 0) return false;
+
+  let helperFreezes = false;
+  for (const stmt of sourceFile.statements) {
+    let fn = null;
+    let name = null;
+    if (ts.isFunctionDeclaration(stmt) && stmt.name) {
+      fn = stmt;
+      name = stmt.name.text;
+    } else if (ts.isVariableStatement(stmt)) {
+      for (const decl of stmt.declarationList.declarations) {
+        if (ts.isIdentifier(decl.name)
+          && decl.initializer
+          && (ts.isArrowFunction(decl.initializer) || ts.isFunctionExpression(decl.initializer))) {
+          if (helperNames.has(decl.name.text)) {
+            fn = decl.initializer;
+            name = decl.name.text;
+          }
+        }
+      }
+    }
+    if (!fn || !name || !helperNames.has(name)) continue;
+    const visit = (node) => {
+      if (helperFreezes) return;
+      if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.EqualsToken) {
+        if (ts.isPropertyAccessExpression(node.left)) {
+          const n = node.left.name.text;
+          if (n === 'context' || n === 'degradedModules') helperFreezes = true;
+        }
+        if (ts.isElementAccessExpression(node.left)
+          && ts.isStringLiteral(node.left.argumentExpression)
+          && (node.left.argumentExpression.text === 'context'
+            || node.left.argumentExpression.text === 'degradedModules')) {
+          helperFreezes = true;
+        }
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(fn);
+  }
+  return helperFreezes;
+}
+
+/**
  * Counts real call sites of `buildSupportContext` by walking the TypeScript AST. A pin on
  * the AST cannot be paid by a comment, a string, a template literal, a regex literal or
  * JSX text, because none of those parse to a CallExpression — the decoy classes that a
@@ -1489,7 +1671,8 @@ export function inspectConsumerCallPath({ typescript: ts, relativePath, source }
         const onSubmitHandler = SUPPORT_PASSPORT_SUBMIT_HANDLER_NAMES.includes(enclosingFunction)
           && !insideUseMemo;
         const valueReachesContext = callResultReachesContextPayload(ts, node);
-        const contextReassignedAfter = hasContextReassignmentAfterCall(ts, node);
+        const contextReassignedAfter = hasContextReassignmentAfterCall(ts, node)
+          || hasHelperIndirectionFreeze(ts, sourceFile, node);
         callSites.push({
           line: sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile)).line + 1,
           enclosingFunction,

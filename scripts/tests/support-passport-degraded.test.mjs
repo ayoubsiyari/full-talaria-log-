@@ -539,11 +539,15 @@ const EXPECTED_MUTANT_KILLS = {
       'PASSPORT-DEGRADED-REALM-FIDELITY',
     ],
   },
+  M14: {
+    name: 'NC-MUTANT-BARE-SESSION-STORAGE-CACHE',
+    killedBy: ['PASSPORT-DEGRADED-TEMPORAL-RECOMPUTE'],
+  },
 };
 
-test('behavioural mutants M1-M13 are each applied and each killed by a named cell', () => {
+test('behavioural mutants M1-M14 are each applied and each killed by a named cell', () => {
   const cells = runBehavioralMutantCells(deps);
-  assert.equal(cells.length, 13);
+  assert.equal(cells.length, 14);
   for (const cell of cells) {
     const expected = EXPECTED_MUTANT_KILLS[cell.mutant];
     assert.ok(expected, `unexpected mutant ${cell.mutant}`);
@@ -613,7 +617,7 @@ test('every mutant really edits supportUi.tsx — none is a no-op that fakes a k
 
 test('a mutant that no longer applies is RED, not a silent pass', () => {
   const cells = runBehavioralMutantCells({ ...deps, supportUiSource: 'export const nothing = 1;\n' });
-  assert.equal(cells.length, 13);
+  assert.equal(cells.length, 14);
   for (const cell of cells) {
     assert.equal(cell.status, 'RED');
     assert.match(cell.reason, /did not apply/);
@@ -679,8 +683,8 @@ test('gate aggregate is GREEN on the repo sources and excludes findings from all
   assert.equal(report.allPass, true);
   assert.equal(report.findings.length, 1);
   assert.equal(report.findings[0].cell, 'FINDING-SERVER-CONTEXT-STR-COERCION');
-  // 8 behavioural + 13 mutants + 3 alias drops + 6 consumer wiring cells.
-  assert.equal(report.cells.filter((c) => typeof c.pass === 'boolean').length, 30);
+  // 8 behavioural + 14 mutants + 3 alias drops + 6 consumer wiring cells.
+  assert.equal(report.cells.filter((c) => typeof c.pass === 'boolean').length, 31);
 });
 
 test('gate refuses GREEN when no TypeScript compiler is available', () => {
