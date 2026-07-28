@@ -1687,3 +1687,33 @@ So my B-0081 reasoning was **right about the asymmetry and wrong about the conse
 B-R4 found **four drive-by files** in the diff it was asked to review: the V6 gate, its fixture, and two M4 evidence files. None are M10. They are the working state of **two other agents I had running in the same tree at the same time**. The reviewer was right to call it: reviewing one packet against a tree dirty with two others is not a clean measurement, and the M4 files being uncommitted mattered because §1c put that very gate at risk. I gained parallelism and paid for it in review integrity. Concurrent packets need separate worktrees or serialised review windows.
 
 **A16.4:** author-defect **6**, brief-defect **2**, manager-finding-defect **5**. Manager-caused **7**.
+
+---
+
+## B-0091 — M3 gate lands. Cross-delete half CLOSED. I checked the allowlist rather than trust it.
+
+B-W10 closed the evasions: identifier-name matching replaced with a **closed exact-literal allowlist** of the 20 `[class*=` arguments legitimately present today. All seven forms I demonstrated are now caught and are permanent mutants. **31 designed / 1 survived**, pure stub only, three identical runs, split browser oracle 10 / static ban 9 / parse health 11.
+
+**An allowlist is only as good as what is on it**, so I read all 20 before accepting. Two are broad enough to be alarming — `[class*="multi-tp-avg-"]` and `[class*="split-avg-"]` match every order's elements, not one order's. Had they sat in a per-order removal path, my gate would have permanently *sanctioned* a defect worse than the one it catches. They do not: both live in `_stripOrderDrawingLayersFromChart` (1981-1994), a whole-chart teardown where removing everything is the intent. Legitimate.
+
+**Residual I am recording rather than hiding:** the allowlist is keyed on *argument text*, not *call site*. Moving one of those broad teardown literals into a per-order path would pass. Narrower than the identifier hole it replaced, and it needs a deliberate relocation rather than a plausible slip — but it is not closed, and it is in the closure stamp.
+
+**M3's cross-delete half is CLOSED.** The vanish half is not, and the stamp says so twice: this fix removes a cause of loss without adding recovery, because `updateOrderLines` still has no creation path. Stamped not-behaviour-covering per §A4b — for a source regression the static allowlist fails before the browser, so the barrier is structural in practice.
+
+---
+
+## B-0092 — M4 rebuilt. Real progress, unreviewed, and I have re-fenced it.
+
+B-W11 reports 18 designed / 0 survived, 22/22 tests. Verified directly rather than by re-running its suite:
+
+- Parser accepts `--key=value` — the defect that produced six false FAILs in every shell.
+- The header now prints `mutation_survival designed=18 survived=0`, so the runbook's thrice-demanded count exists and Phase 4's pass condition is dischargeable.
+- Dead server: L2-L5 loud FAIL with transport errors, non-zero exit.
+- **L6 now says `SKIP-LOUD - no unmigrated alias available`** instead of passing on a tautology. That is the honest answer to my false premise.
+- Runbook carries a verbatim command, `SKIP-LOUD` = FAIL in Phase 4, and the corrected one-time-backfill fact.
+
+**But the claim that matters most is untested.** The previous version silently deleted two pre-existing trades during its own `--write` run and printed six PASS. The rebuild claims pre-existing trades survive. I cannot test that without a live server, and it is precisely the claim I would most like to be wrong about.
+
+So I **re-fenced the runbook**: run Phase 1 only against a throwaway session until review returns, and treat a green as a hypothesis. Removing my own DO-NOT-RUN banner on the strength of the author's report would repeat the error that produced three rejections — accepting a claim about the thing rather than testing the thing.
+
+B-R6 dispatched, second adversarial pass, with the destructiveness test first and the corpus gate second. **My named suspicion for the fourth form: the corpus gate is the runId filter wearing a hat.** A session could satisfy "contains a foreign trade" while every check still effectively inspects only self-written rows. If the defect recurs, that is where I expect it.

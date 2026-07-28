@@ -41,11 +41,12 @@
       return el;
     }
 
-    function runSite(state, site) {
+    function runSite(state, site, orderPair) {
+      const [primaryOrderId, collisionOrderId] = orderPair;
       const svg = createSvg(`${state.id}:${site.id}`);
       const before = [];
-      for (const orderId of ['1', '12']) {
-        let y = orderId === '1' ? 24 : 72;
+      for (const orderId of orderPair) {
+        let y = orderId === primaryOrderId ? 24 : 72;
         for (const element of site.elements) {
           const className = element.classesByOrder[orderId];
           addElement(svg, site.id, orderId, element.part, className, y);
@@ -68,8 +69,13 @@
       const removedLabels = before
         .map((entry) => `${site.id}:order-${entry.orderId}:${entry.part}`)
         .filter((label) => !remainingLabels.includes(label));
-      const removedOrder12 = removedLabels.filter((label) => label.includes(':order-12:'));
-      const assertionPass = !selectorError && removedOrder12.length === 0;
+      const removedPrimaryOrder = removedLabels.filter((label) => label.includes(`:order-${primaryOrderId}:`));
+      const removedCollisionOrder = removedLabels.filter((label) => label.includes(`:order-${collisionOrderId}:`));
+      const sitePreconditionPass = Array.isArray(site.elements) && site.elements.length > 0;
+      const assertionPass = sitePreconditionPass
+        && !selectorError
+        && removedPrimaryOrder.length === site.elements.length
+        && removedCollisionOrder.length === 0;
 
       return {
         id: site.id,
@@ -78,9 +84,12 @@
         producerEvidence: site.producerEvidence,
         matchedLabels,
         removedLabels,
-        removedOrder12,
+        removedPrimaryOrder,
+        removedCollisionOrder,
+        removedOrder12: removedCollisionOrder,
         remainingLabels,
         selectorError,
+        sitePreconditionPass,
         verdict: assertionPass ? 'SAFE' : 'COLLIDES',
         assertionPass,
       };
@@ -88,10 +97,11 @@
 
     async function main() {
       const payload = await fetch('/case-data.json', { cache: 'no-store' }).then((response) => response.json());
+      const orderPair = payload.orderPair || ['1', '12'];
       const states = payload.states.map((state) => ({
         id: state.id,
         name: state.name,
-        sites: state.sites.map((site) => runSite(state, site)),
+        sites: state.sites.map((site) => runSite(state, site, orderPair)),
       }));
       const report = {
         stampObserved: payload.stampObserved,

@@ -4,9 +4,12 @@ import test from 'node:test';
 
 import {
   CHECK_IDS,
+  MUTATION_DESIGNED,
+  MUTATION_SURVIVED,
   createHttpAdapter,
   createFixtureAdapter,
   makeTrade,
+  parseArgs,
   runChecks,
   validateOptions,
 } from './m4-ledger-invariants.mjs';
@@ -15,8 +18,19 @@ const RUN_ID = 'proof';
 
 async function seededAdapter(mutate = null) {
   const adapter = createFixtureAdapter({ mutate });
-  await adapter.seed([makeTrade(RUN_ID, 1), makeTrade(RUN_ID, 2), makeTrade(RUN_ID, 3)]);
+  await adapter.seed([realTrade(1), makeTrade(RUN_ID, 1), makeTrade(RUN_ID, 2), makeTrade(RUN_ID, 3)]);
   return adapter;
+}
+
+function realTrade(index, override = {}) {
+  return {
+    tradeId: `real-${index}`,
+    id: `real-${index}`,
+    client_trade_id: `real-${index}`,
+    symbol: 'EURUSD',
+    pnl: index,
+    ...override,
+  };
 }
 
 function status(results, id) {
@@ -36,6 +50,24 @@ async function withServer(handler, fn) {
 
 function anyFail(results) {
   return results.some((row) => row.status === 'FAIL');
+}
+
+function staticAdapter({ backend, browser = backend, legacyTransition = null }) {
+  return {
+    async fetchBackendTrades() { return JSON.parse(JSON.stringify(backend)); },
+    async fetchBrowserTrades() { return JSON.parse(JSON.stringify(browser)); },
+    async plantLegacyAliasProbe() {
+      return legacyTransition ?? {
+        available: true,
+        aliasId: 'legacy:probe',
+        canonicalId: 'probe',
+        beforeSqlRows: [],
+        beforeReadRows: [{ tradeId: 'legacy:probe', id: 'legacy:probe' }],
+        firstReadRows: [{ tradeId: 'probe', id: 'probe' }],
+        secondReadRows: [{ tradeId: 'probe', id: 'probe' }],
+      };
+    },
+  };
 }
 
 test('fixture proves non-write read checks on healthy ledger', async () => {
@@ -101,6 +133,33 @@ test('write safety refuses missing QA account id', async () => {
 test('CLI validation reports all missing required arguments', () => {
   assert.deepEqual(validateOptions({ write: false, n: 3 }), ['--base-url', '--account-id', '--session-id']);
   assert.deepEqual(validateOptions({ write: true, baseUrl: 'http://x', accountId: 'acct', sessionId: 1, n: 3 }), ['--qa-account-id']);
+});
+
+test('CLI parser splits inline values before camelising and rejects unknown flags', () => {
+  assert.deepEqual(parseArgs([
+    '--base-url=http://x',
+    '--account-id=acct',
+    '--session-id',
+    's1',
+    '--qa-account-id=acct',
+    '--n=10',
+    '--run-id=abc',
+    '--expect-digest=sha256:test',
+    '--write',
+  ]), {
+    write: true,
+    dryRun: false,
+    n: 10,
+    headers: {},
+    baseUrl: 'http://x',
+    accountId: 'acct',
+    sessionId: 's1',
+    qaAccountId: 'acct',
+    runId: 'abc',
+    expectDigest: 'sha256:test',
+  });
+  assert.throws(() => parseArgs(['--unknown=1']), /Unknown flag --unknown/);
+  assert.throws(() => parseArgs(['--n']), /requires a value/);
 });
 
 test('transport mutation is caught: server is down', async () => {
@@ -193,3 +252,144 @@ test('empty-after-write mutation is caught: no trades returned when writes were 
   });
   assert.equal(status(results, 'L1'), 'FAIL');
 });
+
+test('absence mutation is caught: L6 empty ledger is SKIP-LOUD, not PASS', async () => {
+  const adapter = {
+    async fetchBackendTrades() { return []; },
+    async fetchBrowserTrades() { return []; },
+  };
+  const results = await runChecks(adapter, { runId: RUN_ID, write: false });
+  assert.equal(status(results, 'L6'), 'SKIP-LOUD');
+  assert.match(JSON.stringify(results.find((row) => row.id === 'L6')), /no unmigrated alias available/);
+});
+
+test('absence mutation is covered: single-trade ledger does not require N greater than one', async () => {
+  const adapter = createFixtureAdapter();
+  await adapter.seed([realTrade(1), makeTrade(RUN_ID, 1)]);
+  const results = await runChecks(adapter, { runId: RUN_ID, write: false });
+  assert.equal(status(results, 'L2'), 'PASS');
+  assert.equal(status(results, 'L3'), 'PASS');
+  assert.equal(status(results, 'L5'), 'PASS');
+  assert.equal(status(results, 'L6'), 'PASS');
+  assert.equal(status(results, 'L4'), 'SKIP-LOUD');
+});
+
+test('absence mutation is caught: non-empty null rows have no identifiable ids', async () => {
+  const nullRow = { tradeId: null, id: null, client_trade_id: null, payload: { tradeId: null } };
+  const adapter = {
+    async fetchBackendTrades() { return [nullRow]; },
+    async fetchBrowserTrades() { return [nullRow]; },
+    async plantLegacyAliasProbe() {
+      return {
+        available: true,
+        aliasId: 'legacy:null',
+        canonicalId: 'canon-null',
+        beforeSqlRows: [],
+        beforeReadRows: [nullRow],
+        firstReadRows: [nullRow],
+        secondReadRows: [nullRow],
+      };
+    },
+  };
+  const results = await runChecks(adapter, { runId: RUN_ID, write: false });
+  assert.equal(status(results, 'L2'), 'FAIL');
+  assert.equal(status(results, 'L3'), 'FAIL');
+  assert.equal(status(results, 'L5'), 'FAIL');
+  assert.equal(status(results, 'L6'), 'FAIL');
+});
+
+test('absence mutation is caught: identical-but-wrong snapshots do not pass L6', async () => {
+  const wrong = [{ tradeId: 'legacy:still-present', id: 'legacy:still-present' }];
+  const adapter = {
+    async fetchBackendTrades() { return wrong; },
+    async fetchBrowserTrades() { return wrong; },
+    async plantLegacyAliasProbe() {
+      return {
+        available: true,
+        aliasId: 'legacy:still-present',
+        canonicalId: 'still-present',
+        beforeSqlRows: [],
+        beforeReadRows: wrong,
+        firstReadRows: wrong,
+        secondReadRows: wrong,
+      };
+    },
+  };
+  const results = await runChecks(adapter, { runId: null, write: false });
+  assert.equal(status(results, 'L3'), 'FAIL');
+  assert.equal(status(results, 'L6'), 'FAIL');
+  assert.match(JSON.stringify(results.find((row) => row.id === 'L6')), /expected canonical id/);
+});
+
+test('reviewer mutation matrix reports 18 designed and 0 survived', async () => {
+  const nullRows = Array.from({ length: 40 }, (_, index) => ({ tradeId: null, id: null, payload: { index } }));
+  const deletingDuplicateAdapter = createFixtureAdapter();
+  await deletingDuplicateAdapter.seed([realTrade(1), makeTrade(RUN_ID, 1), makeTrade(RUN_ID, 2), makeTrade(RUN_ID, 3)]);
+  deletingDuplicateAdapter.registerTrade = async (trade) => {
+    deletingDuplicateAdapter._deleted = true;
+    deletingDuplicateAdapter._backend = trade;
+    return { trade };
+  };
+
+  const cases = [
+    async () => runChecks(await seededAdapter('L1'), { runId: RUN_ID, write: true, accountId: 'qa-b-m4', qaAccountId: 'qa-b-m4', sessionId: 'fixture-session', n: 3 }),
+    async () => runChecks(await seededAdapter('L2'), { runId: RUN_ID, write: false }),
+    async () => runChecks(staticAdapter({ backend: [realTrade(1, { tradeId: 'legacy:real-1', id: 'legacy:real-1' })] }), { runId: RUN_ID, write: false }),
+    async () => runChecks(staticAdapter({ backend: [realTrade(1), realTrade(1)] }), { runId: RUN_ID, write: false }),
+    async () => runChecks(staticAdapter({ backend: [realTrade(1)], browser: [realTrade(1), realTrade(2)] }), { runId: RUN_ID, write: false }),
+    async () => runChecks(staticAdapter({ backend: [realTrade(1), realTrade(2)], browser: [realTrade(1), realTrade(2), realTrade(2)] }), { runId: RUN_ID, write: false }),
+    async () => runChecks(staticAdapter({ backend: nullRows, browser: [] }), { runId: RUN_ID, write: false }),
+    async () => runChecks(await seededAdapter('L6'), { runId: RUN_ID, write: false }),
+    async () => runChecks(await seededAdapter('L6-not-empty-sql'), { runId: RUN_ID, write: false }),
+    async () => runChecks(await seededAdapter('L6-unresolved'), { runId: RUN_ID, write: false }),
+    async () => runChecks(await seededAdapter('L6-legacy-leak'), { runId: RUN_ID, write: false }),
+    async () => {
+      const adapter = createFixtureAdapter();
+      await adapter.seed([makeTrade(RUN_ID, 1), makeTrade(RUN_ID, 2), makeTrade(RUN_ID, 3)]);
+      return runChecks(adapter, { runId: RUN_ID, write: false });
+    },
+    async () => runChecks(await seededAdapter('L4-submit'), { runId: RUN_ID, write: true, accountId: 'qa-b-m4', qaAccountId: 'qa-b-m4', sessionId: 'fixture-session', n: 3 }),
+    async () => {
+      let backend = [realTrade(1), makeTrade(RUN_ID, 1), makeTrade(RUN_ID, 2), makeTrade(RUN_ID, 3)];
+      return runChecks({
+        async fetchBackendTrades() { return JSON.parse(JSON.stringify(backend)); },
+        async fetchBrowserTrades() { return JSON.parse(JSON.stringify(backend)); },
+        async registerTrade(trade) {
+          if (trade.tradeId === makeTrade(RUN_ID, 1).tradeId && backend.some((row) => tradeIdForTest(row) === trade.tradeId)) {
+            backend = backend.filter((row) => tradeIdForTest(row) !== 'real-1');
+          }
+          const idx = backend.findIndex((row) => tradeIdForTest(row) === trade.tradeId);
+          if (idx >= 0) backend[idx] = { ...backend[idx], ...trade };
+          else backend.push(trade);
+        },
+        async plantLegacyAliasProbe() {
+          return {
+            available: true,
+            aliasId: 'legacy:probe',
+            canonicalId: 'probe',
+            beforeSqlRows: [],
+            beforeReadRows: [{ tradeId: 'legacy:probe', id: 'legacy:probe' }],
+            firstReadRows: [{ tradeId: 'probe', id: 'probe' }],
+            secondReadRows: [{ tradeId: 'probe', id: 'probe' }],
+          };
+        },
+      }, { runId: RUN_ID, write: true, accountId: 'qa-b-m4', qaAccountId: 'qa-b-m4', sessionId: 'fixture-session', n: 3 });
+    },
+    async () => runChecks(staticAdapter({ backend: [realTrade(1, { tradeId: 'bad id', id: 'bad id' })] }), { runId: RUN_ID, write: false }),
+    async () => runChecks(staticAdapter({ backend: [realTrade(1), realTrade(1)], browser: [realTrade(1)] }), { runId: RUN_ID, write: false }),
+    async () => runChecks(staticAdapter({ backend: [realTrade(1)], browser: [{ tradeId: null, id: null }] }), { runId: RUN_ID, write: false }),
+    async () => runChecks({
+      async fetchBackendTrades() { throw new Error('mutated transport failure'); },
+      async fetchBrowserTrades() { return []; },
+    }, { runId: RUN_ID, write: false }),
+  ];
+
+  assert.equal(cases.length, MUTATION_DESIGNED);
+  const outcomes = await Promise.all(cases.map(async (fn) => fn()));
+  const survived = outcomes.filter((results) => results.every((row) => row.status === 'PASS')).length;
+  assert.equal(survived, MUTATION_SURVIVED);
+});
+
+function tradeIdForTest(row) {
+  return row?.tradeId ?? row?.trade_id ?? row?.client_trade_id ?? row?.id ?? '';
+}

@@ -48,7 +48,13 @@ Independently verified at top tier (B-R3), by reading rather than by re-running 
 
 ## 4. What this does NOT cover — read this before treating M3 as closed
 
-1. **No working regression gate.** The gate I built was **rejected** at review: 13 of 31 mutations survived, a 30-line stub scored 6/6, one cell was a tautology that passed while the source genuinely collided, and — decisively — re-adding a broad substring selector *alongside* the narrow one went green. **Nothing currently prevents this defect being reintroduced.** Rebuild in flight as B-W10. Under §A16.5 M3 cannot join an automated-GREEN chain until that lands.
+1. **The gate covers reintroduction, with one known residual.** The first attempt was rejected — 13 of 31 mutations survived, a stub scored 6/6, one cell was a tautology that passed while the source collided, and re-adding a broad selector *beside* the narrow one went green. It was rebuilt three times and now stands at **31 designed / 1 survived**, the survivor being a pure stub, over three identical runs.
+
+   Its barrier is a **closed exact-literal allowlist**: any `[class*=` in a `selectAll` argument fails unless it is one of the 20 literal arguments legitimately present today. That replaced an allowlist of *identifier names*, which I attacked and found leaked 5 of 7 regression forms — including `${ol.orderId}`, where `ol` is the variable name this file uses in its own eviction predicates. All seven forms are now permanent mutants.
+
+   I verified the 20 blessed literals are legitimate rather than taking that on trust. The broad ones — `[class*="multi-tp-avg-"]`, `[class*="split-avg-"]` — live in `_stripOrderDrawingLayersFromChart`, a **whole-chart teardown** where removing every order's elements is the intended behaviour, not a per-order path.
+
+   **Residual, stated because it is real:** the allowlist is keyed on *argument text*, not on the *call site*. Relocating one of the 20 broad teardown literals into a per-order removal path would pass. That is a narrower hole than the one it replaced and it requires a deliberate move rather than a plausible slip, but it is not closed.
 2. **`drawing-tools-manager.js` is out of scope.** A's deletions there are separate work. My contradiction does not apply to them and this closure makes no claim about them. That file is a **second writer** of the `orderLines` registry carrying the same undiscriminated-eviction bug; it is covered by the eviction-invariant hand-off to C, not by this.
 3. **This is not all of V6-P1.** `updateOrderLines` contains **no creation path**, so once a line is gone, absence is the steady state — restoration must be built, not repaired. This fix stops lines being *wrongly removed*; it does not restore lines already lost. That work is specified separately and still open.
 4. **Only the five listed sites.** Other substring selectors elsewhere in the file were not surveyed for this gate.
@@ -60,6 +66,13 @@ Independently verified at top tier (B-R3), by reading rather than by re-running 
 
 **Repo hygiene caveat:** the committed `homepage/public/chart/modules/order-manager.js` still carries all five original substring selectors at identical line numbers. It is inert at runtime, but anyone serving `homepage/public` directly, or grepping the repo later, will hit the stale copy and reach the wrong conclusion — as I did.
 
-## 6. Closure condition
+## 6. Closure
 
-M3 closes when the rebuilt gate demonstrates a declared mutation-survival count with no survivor other than a pure stub, **and** catches the re-added-broad-selector case that defeated the first attempt. Until then: **fix shipped, barrier absent.**
+The condition set when this document was written was: a declared mutation-survival count with no survivor other than a pure stub, **and** the re-added-broad-selector case caught. Both are met — 31 designed / 1 survived, stub only, and the re-added case dies on the exact-literal allowlist.
+
+**M3's cross-delete half is closed.** Fix shipped, barrier in place, coverage boundary stated in §4.
+
+Two things a reader should carry away rather than infer:
+
+- **The "vanish" half of M3 is not closed** (§4.3). This fix removes a *cause* of loss; it does not add *recovery*. `updateOrderLines` still has no creation path, so a line already lost stays lost.
+- **A green from this gate is a statement about `order-manager.js` selector shapes**, not about order-line behaviour in general. The browser oracle carries real product-shaped collision evidence, but for a source regression the static allowlist fails first — so in practice the barrier is structural. Stamped not-behaviour-covering per §A4b.

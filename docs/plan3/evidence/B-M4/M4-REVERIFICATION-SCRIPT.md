@@ -1,16 +1,12 @@
 # M4 — M23/M24 re-verification on the deployed build
 
-> # ⛔ DO NOT RUN — 2026-07-28 10:27
+> ## ⚠️ NOT YET CLEARED FOR A LEDGER YOU CARE ABOUT
 >
-> **Phase 1's harness destroys real trades and then reports six PASS.** Under adversarial review it deleted two pre-existing trades during its own run and exited 0. Do not execute Phase 1 against any ledger you care about, including the QA account, until this banner is removed.
+> Phase 1 was rebuilt after the 2026-07-28 rejection. The harness now scans the whole session ledger for L2-L5, refuses to certify self-only sessions, and makes L6 PASS only on an observed unmigrated-legacy transition. `SKIP-LOUD` is a non-pass.
 >
-> The harness is also **vacuous**: every check except L6 filters the ledger to the three synthetic trades the harness itself just wrote, so a ledger with a real trade duplicated and another lost passes six of six. 12 of 18 designed mutations survive.
+> **The rebuild is unreviewed.** The previous version silently deleted two pre-existing trades during its own `--write` run and reported six PASS. The rebuild claims to verify that pre-existing trades survive, but that claim has not been independently tested against a live server, and it is the claim that matters most. Until adversarial review returns, run Phase 1 **only** against a throwaway session.
 >
-> **Line 50 of this document is factually wrong** and is corrected in §Phase 1. The legacy backfill is a *one-time* migration gated on an empty SQL table, not a per-read operation.
->
-> Phases 0, 2, 3 and 4 are unaffected as written, but Phase 4's pass condition depends on Phase 1 and cannot be discharged yet.
->
-> Rebuild in progress. — Manager B
+> This harness has been rejected three times, each for a different form of the same defect: certifying something it never looked at. Treat a green from it as a hypothesis until the review lands. — Manager B
 
 **Ship gate M4.** Owner: Manager B. Authored 2026-07-28 ahead of the candidate, so it is executed rather than improvised.
 
@@ -36,30 +32,39 @@ Nothing below counts until these four hold. Any NO ends the run.
 | 0.3 | **Target DB is not TEST-1's.** TEST-2 must have its own database, or its own schema with QA-only account ids | confirmed isolated |
 | 0.4 | Account in use is a **dedicated QA account id** — never admin, never a real user | confirmed QA |
 
-Record: build tag, digest, environment, account id, UTC start time, operator name.
+Record: build tag, digest, environment, account id, Phase 1 session id, Phase 2/3 session id, UTC start time, operator name.
 
-**0.3 exists because Phases 1–3 write trades.** Writing them into the PO's verification surface while M24's migration is live would corrupt the very thing this gate protects.
+**0.3 exists because Phases 1–3 write trades.** Writing them into the PO's verification surface while M24's migration is live would corrupt the very thing this gate protects. Phase 1 and Phase 2 must use different QA session ids unless Phase 1 cleanup is independently verified; the harness itself does not delete trades.
 
 ---
 
 ## Phase 1 — automated ledger invariants (agent-executable, no human judgement)
 
-Packet **B-W8**, in `docs/plan3/evidence/B-M4/`. Run before calling any human. Six invariants: L1 count conservation, L2 id stability, L3 grammar conformance, L4 no duplicates plus deterministic merge, L5 browser/backend agreement, L6 migration idempotence.
+Packet **B-W11**, in `docs/plan3/evidence/B-M4/`. Run before calling any human. Six invariants: L1 count conservation plus pre-existing-row preservation, L2 id stability, L3 grammar conformance, L4 no duplicates plus deterministic duplicate no-op, L5 browser/backend row and id-multiset agreement, L6 legacy-alias transition idempotence.
 
-Requires an explicit QA account id; refuses to run write checks without one. Exits non-zero on any failure. Its own mutation-survival count is reported alongside its result — a green from a harness with surviving mutations is not evidence, which this project has now learned three times.
+Requires an explicit QA account id; refuses to run write checks without one. Exits non-zero on any failure or `SKIP-LOUD`. Its own mutation-survival count is reported alongside its result — a green from a harness with surviving mutations is not evidence, which this project has now learned three times.
+
+Use this verbatim command, filling only the bracketed values:
+
+```powershell
+node "docs/plan3/evidence/B-M4/m4-ledger-invariants.mjs" --write --base-url="[DEPLOYED_BASE_URL]" --account-id="[QA_ACCOUNT_ID]" --qa-account-id="[QA_ACCOUNT_ID]" --session-id="[PHASE1_QA_SESSION_ID_WITH_AT_LEAST_ONE_PRE_EXISTING_TRADE]" --expect-digest="[SEALED_BUILD_DIGEST_OR_BUILD_ID]" --n=3
+```
+
+The Phase 1 session must already contain at least one trade not written by this harness. If it contains only the three `m4-<runId>-NN` rows the harness writes, the result is `SKIP-LOUD`, not evidence.
 
 **If Phase 1 fails, do not proceed.** Humans are the scarce resource; do not spend them confirming what a script already caught.
 
 ### Phase 1 acceptance — read this before trusting a green
 
-The first build of this harness **printed nothing and exited 0 when pointed at an unreachable server**, because an empty result set trivially satisfies "no result is non-PASS". Rejected and being rebuilt. Before accepting any Phase 1 green tonight, confirm all four:
+The first build of this harness **printed nothing and exited 0 when pointed at an unreachable server**, because an empty result set trivially satisfies "no result is non-PASS". Rejected and rebuilt. Before accepting any Phase 1 green tonight, confirm all five:
 
 1. It **printed a header and one line per check.** A silent run is a bug, never a pass.
 2. The **number of checks executed equals the number expected.** An empty or short run is a FAIL.
 3. **Transport failures are loud FAILs** — connection refused, timeout, 401/403, or an HTML login page returned instead of JSON. This is the failure that will actually happen against a candidate that is not up yet or is behind auth.
-4. Its **mutation-survival count is zero**, and the mutation set includes the unreachable-server class, not only fixture corruption.
+4. The header says `mutation_survival designed=18 survived=0`, and the mutation set includes the unreachable-server class, real-trade loss/duplication, destroyed ids, legacy aliases, UI/backend divergence, and duplicate-submit collateral deletion.
+5. No line says `SKIP-LOUD`. `SKIP-LOUD` is not a pass and does not satisfy Phase 4.
 
-**L6 is provable on the deployed build and must not be skipped.** `GET /api/sessions/{session_id}/state` (`api_server.py:24620`) calls `resolve_session_journal(...)` with the SQL sync at `:24633` — the legacy backfill runs **on every read**. So two consecutive GETs of session state run the migration twice: snapshot the trade set, GET again, and assert the set is identical with no new rows. No special endpoint is needed. Because the backfill runs on every read, non-idempotence would compound on every page load, which makes L6 more load-bearing than it first appeared, not less.
+**L6 is a transition proof, not a repeated-read proof.** The legacy backfill is one-time and gated on an empty SQL table; once SQL contains rows, later reads do not re-run it. L6 may PASS only if the harness can plant or observe an unmigrated `legacy:` alias, confirm SQL is empty for that alias before the read, read once, read again, and compare the before/first/second states. If no unmigrated alias can be planted or observed, L6 prints `SKIP-LOUD` with `no unmigrated alias available`; that is honest, but it is not a Phase 4 pass.
 
 ### Note on what L3 can actually mean
 
@@ -69,7 +74,7 @@ M24 is described as a "canonical trade-ID grammar". The implementation is **not*
 
 ## Phase 2 — PO script, M23 rollback (~4 min, PO)
 
-Confirm the build id on screen first. Perform in order and do not skip.
+Confirm the build id on screen first. Use a different QA session id than Phase 1 unless Phase 1 cleanup has been independently verified. Perform in order and do not skip.
 
 | Step | Action | Record |
 |---|---|---|
@@ -100,7 +105,7 @@ Give him the build tag and digest from Phase 0 so his report is anchored to a sp
 
 ## Phase 4 — verdict (pre-registered, not negotiated)
 
-**PASS** requires all of: Phase 0 four-for-four; Phase 1 all six green with zero surviving mutations; Phase 2 no FAIL condition; Phase 3 every scenario re-verified by Rayan.
+**PASS** requires all of: Phase 0 four-for-four; Phase 1 all six green with `mutation_survival designed=18 survived=0` and no `SKIP-LOUD`; Phase 2 no FAIL condition; Phase 3 every scenario re-verified by Rayan.
 
 **FAIL — and the canary does not proceed — on any one of:**
 
@@ -111,7 +116,7 @@ Give him the build tag and digest from Phase 0 so his report is anchored to a sp
 
 These four are the gate. Anything else observed is a finding to file, not a reason to hold or to pass.
 
-**Partial results do not average.** Five of six green is a FAIL, not "mostly passing".
+**Partial results do not average.** Five of six green is a FAIL, not "mostly passing". `SKIP-LOUD` is also a FAIL for this ship gate; it means the harness did not have the declared corpus or migration transition needed to establish the claim.
 
 ---
 
