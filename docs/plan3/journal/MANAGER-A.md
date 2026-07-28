@@ -1983,3 +1983,52 @@ One open question of substance for the reviewer: supported degraded mode here is
 **Hygiene check I ran myself:** the author ran `npm ci` to install puppeteer for C's browser gate. Main checkout is unchanged at 161 entries with no new lockfile or `node_modules` drift, so whatever it touched, it was not C's tracked tree. The one modified `package.json` there is pre-existing and not mine.
 
 **Hand-off to C, not actionable by me:** `scripts/module-contracts.json` still marks legacy as excluded and does not inventory `multichart/chart-host.html`, though both are servable and now conform. C either updates the inventory or explicitly retires those routes. I did not touch `scripts/**`.
+
+---
+
+## 2026-07-28 09:42 — CORRECTION: the §A16.4 pre-dispatch review caught four false premises in my own brief
+
+surface=`manager-a/critical-path`, main checkout on `manager-c/verification-infra` at `b290e7ec1`
+coverage=`git ls-files --others --exclude-standard` across every path pattern TERRITORY.yml grants A, plus `git log --all` per file, plus blob-hash comparison across three tree states
+
+This is the fourth partial-list defect I have produced today and the first one that never reached a subagent. That is the entire argument for §A16.4 and I want it on the record that the ruling paid for itself within an hour of my hitting its trigger.
+
+**False premise 1 — I sent the brief to the wrong location.** The `legacy-deroute` artifacts are not in Manager C's checkout. They are not in the main checkout in any form: not on disk, not tracked, not in history, not in a dangling object. All five are sitting untracked in **my own `manager-a-critical-path` worktree**, and they are that worktree's entire dirty state. I have now confirmed this directly. The brief told the subagent to enumerate untracked files *in the main checkout*; an obedient subagent would have found nothing named `legacy-deroute`, reported that accurately, and I would have read the accurate report as "already handled." The reviewer's point that a five-entry dirty state is in **more** danger than a 161-entry one is correct and uncomfortable — five stray files look like debris anyone would sweep without thinking.
+
+**False premise 2 — my file set was 9 of 464.** Under the harness path alone there are 162 untracked files. Across all A-granted patterns there are 464: 60 under `modules/`, 174 under `multichart-prod/`, 230 under `homepage/public/chart/`. Repo-wide there are 505, so about 92% of everything untracked in that checkout is my territory.
+
+**The mechanism matters more than the number, because it will fool me again.** `git status --porcelain` collapses a wholly-untracked directory to a single entry. My nine files sit loose in an otherwise-tracked directory so they enumerate individually; `frozen/` and `m21-w6-fixtures/` are whole untracked trees and collapse to one line each. That is how 505 files present as 161 entries. **`git status` is a change detector, not an enumeration.** Every completeness claim I have made from a `git status` count today was unsound, including my own hygiene check an hour ago. The invariance checks my reviewers ran — 161 before, 161 after — remain valid, because detecting *change* is what that command is actually good for. Enumeration needs `git ls-files --others --exclude-standard`.
+
+**False premise 3 — the 161 entries are not "someone else's."** They are the complete dirty state: 54 modified tracked files plus 107 untracked entries, and my nine are among them. My brief said "~161 pre-existing entries that are not mine or yours" while also demanding byte-identity. Harmless in effect, wrong in fact, same overconfident negative.
+
+**False premise 4 — the contamination risk is inverted.** I worried the artifacts were measured against C's tree. For the mcdiag set the opposite is provable: `m21-b-mcdiag-tabulation-results.json` self-declares it ran from A's worktree, and the reviewer corroborated it independently rather than trusting the field — the generator `m20-q9-mcdiag-resample-measurement.mjs` is tracked on `manager-a/critical-path` and is **absent from C's branch and C's checkout entirely**, so it could not have run there. Those three files are clean.
+
+**My acceptance criterion was a tautology.** "Every artifact either reproducible at tip or explicitly flagged unreproducible" — every artifact is one or the other by definition. Flag all nine unreproducible and the packet passes. No threshold, no requirement that the reproducible ones match, no defined failure state. I have been writing acceptance criteria that describe an outcome space rather than select within it.
+
+**"At tip" is unusable as written.** `critical-path` advanced three times during the review — `79310288e`, `965cd533a`, `7a3a8f55e`, roughly one commit every four minutes, all of them mine. Every brief from here pins a SHA.
+
+**A supply-chain hazard my corrected scope would have created.** Had a subagent taken the real 464-file enumeration and obeyed "copy them into the rescue worktree," it would have committed vendored minified third-party JavaScript (`d3.min.js`, `lz-string.min.js`), binary `.woff2` fonts, and a full `runtime/chart/` product snapshot. Landing vendored minified bundles as "evidence" is a supply-chain problem whatever the intent, and it would have been produced by *fixing* the scope error rather than by leaving it. Also inside my declared writable path: `frozen/m21-vy-ab-baseline-v2.2/.scratch/chart v 1.4/chart/chart.js.rej`, a failed-patch reject in a directory named `.scratch`. My suspicion that some of this is deliberate scratch was right and my brief had no filter for it.
+
+## 2026-07-28 09:43 — OPEN: the §A10 residue evidence summarises inputs that are on no ancestor of critical-path
+
+`m21-b-a10-residue-manifest.json` declares its sources as `docs/plan3/SHELL-CONTROL-INVENTORY-20260728.md` and `scripts/shell-control-verdicts.json`, with the note that evidence was gathered from the main workspace and "line numbers match current tree." **Neither input exists there.** Both are tracked only on `manager-a/shell-control-inventory`, which `git merge-base --is-ancestor` confirms is not an ancestor of `critical-path`. The manifest's own provenance note is false on its face.
+
+So committing those six files to `critical-path` would land derived analysis on a branch where the underlying inventory has never existed — the exact failure TB-6 was ruled on. They stay off `critical-path` until the inputs are there or the artifacts are rescued onto a branch based on `shell-control-inventory` instead.
+
+One narrower finding inside it, only reachable by hashing rather than reading. Of the five surfaces the a10 work searched, four are byte-identical across A's tip, C's HEAD and C's working tree. But `chart v 1.4/chart/chart.js` is **three different blobs** — `8c5f365f` at A's tip, `e1c7a2de` at C's HEAD, `4408ae8a` in C's working tree. Whatever the a10 work concluded about `chart.js` was concluded against a file state that exists on no branch anywhere, and needs re-derivation. My §A10 residue closure is withdrawn to the extent it rests on `chart.js` line citations.
+
+## 2026-07-28 09:44 — DIRECTOR-Q: two territory questions the evidence work surfaced
+
+**Q1. I produced work product on a row assigned to Manager C.** `TERRITORY.yml:212` lists `A10-ui-control-inventory` under C's `owned_rows`. The a10 manifest self-declares `worker: m21-b-a10-residue (Manager A §A13.4 cheap tier)`. The path gate passes because the output landed in an A-owned path; the row assignment does not. My `Row: evidence-provenance` trailer would have papered over that, which is why I am raising it instead. Does the row assignment or the path grant govern, and does C's §A10 work now have a duplicate?
+
+**Q2. A's grant over the harness tree is inferred, not ruled.** `TERRITORY.yml:136` grants A `chart v 1.4/chart/multichart-prod/**` with `provenance: inferred`. It is operative under fail-closed default, but a 464-file untracked population in a path whose ownership was never explicitly ruled is not something I should resolve by acting. Related and larger: whether the 230-file `homepage/public/chart/**` mirror should be tracked at all is a triage decision above my tier, and I am not dispatching it.
+
+## 2026-07-28 09:45 — DECISION: rescue splits into three, and only the clean third is dispatching
+
+Taking the reviewer's decomposition rather than my own, and recording that it is the reviewer's — the corrected shape is not mine and should not be credited to me.
+
+**Dispatching now:** the three mcdiag files, which have a versioned generator on A's tip and a verbatim recorded command line. Not a rescue — pin the SHA, re-run, commit the output, use the stranded copies only as a determinism check. Plus provenance determination for the five legacy-deroute files in my own worktree, which the brief must name by their actual location. Both are small and I am naming both worktrees explicitly, since pointing at the wrong tree is what failed last time.
+
+**Held:** the six a10 files, pending the input-branch question above.
+
+**Not dispatched:** the remaining ~455 untracked A-territory files. That is triage, not rescue, and per Q2 it is not mine to settle.
