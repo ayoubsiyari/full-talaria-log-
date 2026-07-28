@@ -1949,3 +1949,22 @@ So the honest figure is **9 designed / 1 survived**, not 8/0. The declared count
 **A16.4:** manager-caused **11** (wrong-tree dispatch, and the CRLF salvage artifact). Manager-finding-defect **8** (the IDs-only coverage gap).
 
 **A16.5 gate coverage:** V8 harness covers 13 of 15 declared contract items behaviourally; IDs-only validation and per-key cloud reconcile ordering are asserted only structurally.
+
+## B-0102 — HARNESS-01 clause 1 proven, not read. Quarantine narrows to write-probe only.
+
+Verified the M4 harness myself rather than on B-W13's report, per VER-01.
+
+**Clause 1 (no harness may mutate the ledger it verifies) — HOLDS, structurally.** `createHttpAdapter` returns a *read* adapter unless `mode === 'write-probe'`, and the read adapter has **no `registerTrade` method at all**. Verify-only cannot write because the capability is absent from the object, not because an `if` branches around it. I proved this by instantiating rather than reading:
+
+| mode | `typeof registerTrade` |
+|---|---|
+| `verify-only` | `undefined` |
+| default (no mode) | `undefined` |
+| `WRITE-PROBE` (case variant) | `undefined` |
+| `write-probe` | `function` |
+
+The case-variant row matters: an unrecognised mode string **fails closed** into read-only, which is the correct direction for a harness that previously destroyed real trades.
+
+**Clause 2 (no check filters to rows the harness itself wrote) — holds in verify-only, qualified in write-probe.** Verify-only runs L2/L3/L5/L7/L8 and writes nothing, so there are no self-written rows to filter to; the clause is satisfied rather than dodged. `foreignTradeCount` at `:215` explicitly counts **non**-harness rows and is the deliberate remedy. Write-probe's L1 does still filter to `m4-<runId>-` ids for its id-stability assertion, but it is paired with a collateral check over pre-existing rows that fails L1 with *"write run deleted or changed pre-existing trades"* — so the filter narrows one assertion, it does not blind the check.
+
+**Banner ruling:** quarantine **lifts for `--verify-only`** (the default) and **stays for `--write-probe`**. Write-probe still POSTs into a real ledger, and the harness's own warning at `:754` is the honest reason to keep it: the server orphan sweep can delete vulnerable pre-existing rows and *this harness can report that loss but cannot undo it*. That is not a harness defect any more — it is the product defect from B-0100 — but it is not something to hand to the PO or Rayan tonight. Final lift pending B-R7.
