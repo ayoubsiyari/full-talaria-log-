@@ -837,3 +837,254 @@ or silently clamps lower, is not establishable from source.
    on an upper bound verified in source but never observed live.
 
 Outstanding `PO-REQ` count: **1**.
+
+---
+
+## 2026-07-28T01:52 · VERDICT · indicator lag is a data effect — render-cadence work stops for this symptom
+
+surface= headless `node:vm`, single chart, backtest+replay, real `chart.js` / `chart-data-pipeline.js` /
+`replay-system.js` / `chart-indicators-full.js` / `indicator-performance.js`; 7 timeframes; SMA(20),
+WMA(20), EMA(20), RSI(14); both M20-Q9 kill-switch states; 3 identical repeats plus a variation run at a
+different playhead and animation granularity.
+
+coverage= no browser and no canvas, so the painted and sub-pixel limb of §A7.1 is unmeasured. No panels,
+no multichart, no trades — per §A9.1 this does **not** close the memory row. Fast mode only, in its real
+no-forming-candle configuration. The `_btTfDataCache` walk-forward branch is not exercised. §A7
+optimized-versus-fallback parity is **not addressed at all**: both sides of the oracle use the same
+implementation by design, which means this packet cannot detect an error where the shared implementation
+is itself wrong. One host, so §A5.4's different-clock limb is unmet. Literal D3/D2 values are not
+reproduced — signature only.
+
+**Verdict: DATA EFFECT CONFIRMED.** The discriminator is the part worth keeping. `1.41477` is the close
+of the last raw bar at or before the playhead, **not** a stale cache — and the rival is refuted rather
+than merely unsupported. The author's first probe was worthless and they said so: priming the pipeline at
+the same playhead made both candidates the *same number*, so the check could not discriminate at all. The
+rebuilt probe primes 45 minutes earlier, so a reused cache would paint `1.46909` where the playhead close
+is `1.46981`; every resampled timeframe painted `1.46981`. A second, independent probe switched
+timeframes on one chart with the cache deliberately holding the earlier result and agreed on all six
+steps. The harness now refuses to answer unless the two candidates are verified distinct first, which is
+the correct shape for this class of probe and I want it copied.
+
+**My stated mechanism was wrong in its route, right in its conclusion.** I wrote that 1m is clean because
+there is no remainder to exclude. The real reason is that `_getWalkForwardOhlcToPlayhead` is a **no-op on
+the native timeframe** — it only aggregates from a series finer than the display period, so a 1m master
+on a 1m display has nothing finer and the trim returns null. On 5m and above the same 1m master always
+qualifies, so all six timeframes run **one shared aggregation to one shared instant**. That is the actual
+explanation of six-way agreement to the last digit, and it is a better one than mine.
+
+Predictions: **P1 held** (0.0 pips on 1m at every cadence and repeat). **P2 held** (5m 0.69, 1h 1.14, 4h
+1.14 pips). **P4 held**, with the strongest evidence in the packet.
+
+**P3 split, and the author flagged it rather than smoothing it.** The live frozen-playhead gap is *flat*
+across resampled timeframes. I had predicted monotonic worsening. The author is right that flat is the
+correct result here, and the reason is that it matches the PO's own D3 table — which reports one shared
+value and one shared 2.3-pip gap on all six timeframes. A monotonic D3 would have *contradicted* the PO
+data. The monotonic behaviour lives instead in the truncation error, sampled at 16 bucket positions per
+timeframe: **1.47 / 5.50 / 10.53 / 17.95 / 19.07** mean absolute pips for 5m / 15m / 1h / 4h / 1d,
+strictly monotonic on every repeat. Two quantities, one flat and one monotonic; I had conflated them.
+
+**P4 is why render-cadence work stops.** Four render cadences — 12 frames, 2, 1, and **zero** — over 12
+ticks gave a spread of `0.000000` pips on all three repeats. A null result from a blind instrument is
+worth nothing, so the cadence axis carries a positive control that feeds it a deliberately stale painted
+frame: it reads 1.14 → 3.65 → 5.73 pips at 0, 2 and 8 ticks of staleness. The instrument can see
+cadence-tracking lag. It sees none here.
+
+**Stop render-cadence work on this symptom.** Two limits I am not dropping. It says nothing about cadence
+work aimed at frame smoothness or four-panel starvation, which is §A4b's second mechanism and stays
+live. And "render cadence" in this instrument means display-pipeline invocation frequency, not real frame
+timing — an effect mediated by rAF ordering or worker coalescing would not appear. The author puts
+*medium*, not high, confidence on this mechanism accounting for the **entire** residual symptom, and I am
+carrying that qualifier forward rather than rounding it up.
+
+---
+
+## 2026-07-28T01:54 · CORRECTION · TAL-01918 is probably not the defect we filed
+
+Supersedes the framing in `FINDING-COMPLETED-BAR-CLOSE-MUTATION-20260727.md`, pending review.
+
+The finding records a completed 1H candle's close moving 13 pips **after** finalisation. The diagnostic
+above reports that a genuinely historical bucket moved **0 pips** on 5m/15m/1h/4h/1d with the M20-Q9
+kill-switch in both states — and the control really controlled, the product helper was observed returning
+both `true` and `false`. Those two statements cannot both be plain descriptions of the same event.
+
+The author's reading, which I find plausible and have sent for adversarial review rather than adopting:
+this is a **wrong-window** defect, not a staleness defect, and there is only one of them. The coarse
+reading is computed correctly over `[bucketStart, playhead]` instead of `[bucketStart, bucketEnd]` and
+rebuilt from scratch each tick. The bar that moves is the one that was **last when read** — which, under
+candle-mode stepping, looks complete to a human for a whole step. S2 is excluded; S1's "baked in at
+finalization" limb does not reproduce on this build.
+
+If that holds, the consequence is the thing I am most afraid of in this row: **the bucket-immutability
+assertion I ordered would pass while the product is still wrong.** It asserts that a finalised bucket
+never changes, and on this build finalised buckets never change. The defect lives one bar earlier. An
+oracle that passes on a broken product is worse than no oracle, because it converts an open question into
+a closed one. I have made this the first attack in the review brief.
+
+Not yet actioned: the finding needs rewriting if the review agrees. I am not rewriting a PO-authored
+finding on one unreviewed diagnostic.
+
+---
+
+## 2026-07-28T01:56 · CORRECTION · the trim is not the whole fix — the slice is the other half
+
+Supersedes my item-4 framing, which said the fix is to make `_trimLastDataBarToReplayPlayhead()`
+non-destructive.
+
+Two findings break that scope. The live mirror path **skips the trim mid-animation**, verified
+byte-level. And the D2 truncation error — the monotonic 1.47 → 19.07 pip series — comes from the playhead
+**slice**, not the trim. So a corrective packet that only makes the trim non-destructive leaves the
+larger and timeframe-scaling half of the error in place, and would report success against an oracle
+watching the trim.
+
+The unification thesis survives; its scope does not. Trim-as-overlay still plausibly resolves the
+cache-drop and the per-tick full resample. It does not by itself resolve the wrong-window error. I will
+not dispatch the trim redesign until the review above returns, because the design depends on whether the
+defect is one thing or two, and I would be specifying against the wrong shape.
+
+---
+
+## 2026-07-28T01:58 · VERDICT · anchor audit — cost is near zero, and that is the bad news
+
+surface= read-only source audit across both trees, persisted-state consumers of daily and weekly bar
+timestamps: drawings, orders, journal entries, saved layouts, indicator caches.
+
+coverage= source-level only. No runtime confirmation of which datasets are live, no migration executed,
+no PO surface observation. The vendor-native question below is explicitly unresolved and is the audit's
+own largest gap.
+
+The migration cost is close to zero because almost every persisted anchor is an **absolute epoch-ms
+timestamp**, not a bar index or a bucket key. Nothing needs rewriting on disk. I asked for this
+enumeration expecting it to be the real cost of the session-calendar fix, per the PO's scope guidance. It
+is not.
+
+What the audit found instead is worse and I am recording it as the headline. **The codebase already
+contains six mutually inconsistent definitions of "a day" and "a week", and the chart's bucketing is a
+seventh.** The fix aligns the chart with two of them and makes it newly disagree with four. One of those
+four is ICT PDH/PDL versus chart daily bars, which agree *today* — and agree only because both are wrong
+in the same way. Fixing one breaks a visible agreement that users currently rely on. That is a class of
+regression no oracle in the tree would catch, because both sides would be individually defensible.
+
+The audit also named a **third** epoch-flooring bucket site that the finding missed:
+`talaria-fvg-indicator.js:68-70`, `periodStart(t, tfMs)`, used at line 294, with `tfToMs` supporting `d`
+and `w`. The PO's scope guidance said there are two sites and they must share one helper. There are
+three. The third is not being wired in this packet, and I have had the author add a census assertion so
+that the count is pinned rather than assumed.
+
+Twelve silent-shift items, ordered by consequence. The two I am carrying up: the **propfirm daily-loss
+rule** and **anchored volume profile**, both of which change meaning when the day boundary moves, and
+neither of which fails loudly. And a gate hazard — **caches are not keyed on calendar version**, so the
+§A5 negative control will lie unless every affected cache is invalidated on flip. A kill-switch that does
+not actually switch is a worse artifact than no kill-switch.
+
+`parseTimeframe` must **not** change its return value; roughly 90 consumers depend on the current flat
+86400000 / 604800000. Estimate for the full row, 12 to 14.5 days.
+
+---
+
+## 2026-07-28T02:00 · DIRECTOR-Q · vendor-native daily datasets — the question that decides the fix
+
+Not a `PO-REQ`; it is a design ruling, not an observation. Raising it as the audit's highest-value
+output.
+
+When the chart switches to 1D, it does not resample from 1m. It **refetches a vendor-native `1d`
+dataset** and then re-floors it through `Math.floor(t / 86400000) * 86400000`. So the question is: **does
+the session calendar re-bucket a vendor-native daily series, pass it through, or refuse it?**
+
+- **Pass through** is correct if the vendor already stamps at 22:00Z / 21:00Z, i.e. anchors to 17:00 New
+  York — the bucket function is then the identity and there is nothing to do.
+- **Re-bucket** is correct if the vendor stamps at 00:00Z.
+- Choosing re-bucket when the vendor is already session-anchored **reproduces the exact defect being
+  fixed, in the opposite direction**: each bar gets re-stamped two hours earlier and wears a session date
+  it does not contain. The OHLC still looks plausible, so this is **unfalsifiable from the chart**. That
+  property is what makes it worth the Director's time rather than mine.
+
+I have dispatched a read-only probe to settle the empirical half from the repository, the API server or a
+local dataset before spending any PO minutes, per §A12.4 — a request that could have been an assertion is
+a defect in the gate system. The ruling is still needed either way; the probe only removes the guesswork
+about which branch we are ruling on.
+
+---
+
+## 2026-07-28T02:03 · VERDICT · session-calendar RED accepted at r2, finished at r3
+
+surface= second independent top-tier adversarial review, author not involved; oracle landed in-memory and
+executed against real product code, all 44 symbol shapes and all registry rows swept, sixteen
+break-attempts on the W5 guard. Then r3 re-verified against a live-origin capture of nginx responses and
+per-frame executed scripts.
+
+coverage= no browser paint, no deploy, no product wiring merged. Crypto weekly remains unratified. The
+`chart-host.html` surface named below is captured but not fixed.
+
+**ACCEPT at r2.** The reviewer's own words for why: the GREEN half now proves something about the
+product, not about the harness. They landed the wiring in memory, ran with only `currentSymbol`
+populated, got 20 buckets with Friday present, then re-introduced the r1 defect and confirmed the effect
+clause catches it. `TESTDXY` does not match `DXY`, `NZDUSDX` does not match `NZDUSD`, and
+`isRegistered`/`getSpecs` share a resolver so there is no normalisation gap. The
+`MarketCalculationEngine.isRegistered()` choice — which the author made in response to my re-brief — was
+endorsed explicitly.
+
+**One defect I required fixed before boarding, and it was the right call.** `_sessionInstrumentClass`
+memoised a `null`, so a registry transiently absent at first call became **permanently** absent for that
+symbol and the chart never recovered. Capability loss without failure, §A4c's exact class. Cell N could
+never have caught it: cell N tests *permanent* absence, never *recovery*. The r3 fix is better than the
+one I specified — it separates `symbol-not-registered` (settled, cacheable) from `registry-unavailable`
+(not an answer at all, never cacheable), and keys the cache on the engine instance. Recovery is now
+covered by a cell that installs the registry mid-test and asserts the output *moves*.
+
+**FX anchor versus the server's existing weekend filter: zero disagreement**, and now a standing
+differential rather than a one-off. 156 closes and 156 reopens over 2013–2015 at minute resolution, both
+directions, every close a daily session open and every reopen both a daily and a weekly open, converse
+checked for spurious opens, one distinct local anchor across three years. It also pins five exact strings
+from the Python source so an edit there fails the cell rather than drifting against a stale
+transcription. Since `api_server.py` already implements this rule DST-aware, matching it was the
+difference between six calendars and eight.
+
+---
+
+## 2026-07-28T02:05 · OPEN · the session-calendar fix is inert on a live multichart surface
+
+Escalating this above the packet it came from.
+
+I asked whether `multichart/chart-host.html` was still servable, expecting a yes-or-no. The answer is
+worse than orphaned-but-served: **`multichart-shell.html` is live and embeds two `chart-host.html`
+iframes**, both captured executing `/chart/chart.js` with **no module registry at all** — the file's own
+comment says "engine (no modules — minimum surface)". So the session-calendar fix, once wired, is inert
+on a reachable user-facing surface with two panels, and those panels keep the phantom Saturday while the
+single-chart surface is correct. A fix that is silently absent on one surface and present on another is
+worse than a fix that is absent everywhere, because it makes the two surfaces disagree.
+
+`legacy-index.html` is HTTP 200 and loads the registry **after** `chart.js` — not merely declared after,
+*executed* after, exec index 38 versus 46. It works today by `defer` timing rather than by declaration.
+Combined with the memo-poisoning bug, that was the realistic path to a permanent null.
+
+Two things the sweep turned up beyond what I asked. There are **eight** shells executing `chart.js`, not
+six — `multichart-prod/chart-embed.html` builds its script list in JS and is invisible to a tag-only
+scan, and is correctly ordered. And `chart-host.html` has **drifted between trees**: the source tree
+carries 26 lines of TF-switch viewport handling the served tree lacks. The author did not reconcile it
+and was right not to — copying an unmirrored feature onto the served tree to make a hash match is exactly
+the kind of quiet change that should never happen inside an unrelated packet.
+
+Blocks the session-calendar wiring change, not the RED packet.
+
+---
+
+## 2026-07-28T02:07 · OPEN · four registry rows are mis-typed, and the fix will trust them
+
+New defect, found by the r3 sweep, and it is created *by* the session-calendar fix rather than merely
+revealed by it.
+
+`DXY`, `USDX`, `XTIUSD` and `XNGUSD` are all registered as `forex`. None is spot FX. WTI and natural gas
+open **18:00 ET**, not 17:00. After wiring, each gets a confident one-hour-wrong session boundary — and
+`isRegistered()` will not catch it, because the row exists. The degraded-passport announcement I relied
+on as the acceptable-inertness argument only fires on *unresolved* symbols; a mis-typed row resolves
+cleanly and silently.
+
+The registry has **120** rows, not 119. The G10 cross matrix is missing exactly two, `EURNZD` and
+`GBPNZD` (26 of 28), plus the SGD crosses and `XPTUSD`/`XPDUSD`.
+
+On broker suffixes, the author's placement argument is correct and I am adopting it: `_resolveRegistryKey`
+already splits on `/ - _ .`, so `EURUSD.a`, `EURUSD-ECN` and `EURUSD_i` resolve while `EURUSDm`,
+`EURUSDpro` and `EURUSD#` do not. The rule belongs in the **resolver**, not in the class mapping —
+`EURUSDm` and `EURUSD` are the same instrument for pip size, P&L and session alike, and putting it in
+`classFromRegistry` would give the calendar a symbol vocabulary the money path does not share. That is a
+divergence I would rather not create on a money-adjacent surface.
