@@ -1858,15 +1858,65 @@ export function callResultReachesContextPayload(ts, callNode) {
 }
 
 /**
+ * Wiring-only envelope integrity (R-W51b): after the call binds into the request, a later
+ * write to `.context` / `["context"]` / `Object.assign(..., { context })` on the payload
+ * blanks the ticket while the frozen passport object itself stays pristine. Deep-freeze
+ * cannot see this — it is value-flow at the transport envelope, not consumer mutation AST
+ * of the returned object (helper-indirection freeze walks stay withdrawn).
+ */
+export function hasContextReassignmentAfterCall(ts, callNode) {
+  const scope = enclosingFunctionNode(ts, callNode);
+  if (!scope) return false;
+  const callPos = callNode.getStart();
+  let found = false;
+  const visit = (node) => {
+    if (found) return;
+    if (node.getStart && node.getStart() > callPos) {
+      if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.EqualsToken) {
+        if (ts.isPropertyAccessExpression(node.left)
+          && (node.left.name.text === 'context' || node.left.name.text === 'degradedModules')) {
+          found = true;
+          return;
+        }
+        if (ts.isElementAccessExpression(node.left)
+          && ts.isStringLiteral(node.left.argumentExpression)
+          && (node.left.argumentExpression.text === 'context'
+            || node.left.argumentExpression.text === 'degradedModules')) {
+          found = true;
+          return;
+        }
+      }
+      if (ts.isCallExpression(node) && calleeName(ts, node.expression) === 'assign'
+        && node.arguments.length >= 2) {
+        const patch = node.arguments[1];
+        if (ts.isObjectLiteralExpression(patch)
+          && patch.properties.some((prop) => {
+            if (ts.isPropertyAssignment(prop) || ts.isShorthandPropertyAssignment(prop)) {
+              return propertyNameText(ts, prop.name) === 'context';
+            }
+            return false;
+          })) {
+          found = true;
+          return;
+        }
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(scope);
+  return found;
+}
+
+/**
  * Counts real call sites of `buildSupportContext` by walking the TypeScript AST. A pin on
  * the AST cannot be paid by a comment, a string, a template literal, a regex literal or
  * JSX text, because none of those parse to a CallExpression — the decoy classes that a
  * substring scanner has to chase are structurally excluded here, and
  * NC-CONSUMER-PIN-DECOYS demonstrates it rather than asserting it.
  *
- * W51/W51b: import + createThread call + value-flow to the request `context` field.
- * Mutation after publication is enforced by deepFreeze at runtime, not by AST reassignment
- * walks (those were withdrawn under Director C-4).
+ * W51/W51b/W52: import + createThread call + value-flow to request `context` that is not
+ * overwritten on the payload envelope afterwards. Publication immutability of the returned
+ * object is deepFreeze (runtime); envelope overwrite is a separate wiring pin (R-W51b).
  *
  * @param {{ typescript: any, relativePath: string, source: string }} opts
  */
@@ -1899,12 +1949,14 @@ export function inspectConsumerCallPath({ typescript: ts, relativePath, source }
         const onSubmitHandler = SUPPORT_PASSPORT_SUBMIT_HANDLER_NAMES.includes(enclosingFunction)
           && !insideUseMemo;
         const valueReachesContext = callResultReachesContextPayload(ts, node);
+        const contextReassignedAfter = hasContextReassignmentAfterCall(ts, node);
         callSites.push({
           line: sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile)).line + 1,
           enclosingFunction,
           insideUseMemo,
           onSubmitHandler,
           valueReachesContext,
+          contextReassignedAfter,
         });
       }
     }
@@ -1915,7 +1967,7 @@ export function inspectConsumerCallPath({ typescript: ts, relativePath, source }
   const callLines = callSites.map((site) => site.line);
   const submitHandlerCallCount = callSites.filter((site) => site.onSubmitHandler).length;
   const valueFlowCallCount = callSites.filter(
-    (site) => site.onSubmitHandler && site.valueReachesContext,
+    (site) => site.onSubmitHandler && site.valueReachesContext && !site.contextReassignedAfter,
   ).length;
 
   return {
@@ -2109,6 +2161,95 @@ export function runNcConsumerContextDiscardedCell(deps) {
     const pass = results.length > 0 && results.every(
       (r) => r.applied && r.wentRed && r.callCountSurvived
         && r.submitHandlerSurvived && r.valueFlowLost,
+    );
+    return cellResult(cell, pass, { results }, 'wiring');
+  } catch (error) {
+    return redCell(cell, String(error?.message ?? error), 'wiring');
+  }
+}
+
+/**
+ * R-W51b carrier: overwrite `payload.context` after the frozen passport is attached.
+ * Deep-freeze of the builder return stays intact; the ticket ships empty modules.
+ *
+ * @param {string} source
+ * @returns {string | null}
+ */
+export function reassignConsumerContextAfterPayload(source) {
+  if (source.includes('context: buildSupportContext()')) {
+    const replaced = source.replace(
+      /(context: buildSupportContext\(\),[\s\S]*?\n\s*\};)/,
+      '$1\n    payload.context = { ...(payload.context as Record<string, unknown>), degradedModules: [] };',
+    );
+    return replaced === source ? null : replaced;
+  }
+  if (source.includes('const ctx = buildSupportContext();')) {
+    const replaced = source.replace(
+      /const ctx = buildSupportContext\(\);/,
+      'const ctx = buildSupportContext();\n'
+      + '      const __passportEnvelope = { context: ctx as Record<string, unknown> };\n'
+      + '      __passportEnvelope.context = { ...__passportEnvelope.context, degradedModules: [] };\n'
+      + '      void __passportEnvelope;',
+    );
+    // Force the send sites to use the overwritten envelope context.
+    const wired = replaced
+      .replace(
+        /fd\.append\(\s*["']context["']\s*,\s*JSON\.stringify\(\s*ctx\s*\)\s*\)/g,
+        'fd.append("context", JSON.stringify(__passportEnvelope.context))',
+      )
+      .replace(
+        /body:\s*JSON\.stringify\(\s*\{\s*subject,\s*category:\s*newCategory,\s*body,\s*context:\s*ctx\s*\}\s*\)/g,
+        'body: JSON.stringify({ subject, category: newCategory, body, context: __passportEnvelope.context })',
+      );
+    return wired === source ? null : wired;
+  }
+  return null;
+}
+
+/**
+ * @param {Parameters<typeof runConsumerCallPathCell>[0]} deps
+ */
+export function runNcConsumerContextReassignedCell(deps) {
+  const cell = 'NC-CONSUMER-CONTEXT-REASSIGNED';
+  try {
+    const results = SUPPORT_PASSPORT_CONSUMERS.map((consumer) => {
+      const source = consumerSource(deps, consumer);
+      if (source === null) {
+        return { id: consumer.id, applied: false, wentRed: false, reason: 'consumer source unreadable' };
+      }
+      const mutated = reassignConsumerContextAfterPayload(source);
+      if (mutated === null) {
+        return { id: consumer.id, applied: false, wentRed: false, reason: 'reassignment could not be applied' };
+      }
+      const baseline = inspectConsumerCallPath({
+        typescript: deps.typescript,
+        relativePath: consumer.relativePath,
+        source,
+      });
+      const facts = inspectConsumerCallPath({
+        typescript: deps.typescript,
+        relativePath: consumer.relativePath,
+        source: mutated,
+      });
+      const mutatedCell = runConsumerCallPathCell({
+        ...deps,
+        consumerSources: { ...deps.consumerSources, [consumer.relativePath]: mutated },
+      });
+      const reassigned = facts.callSites?.some((site) => site.contextReassignedAfter === true);
+      return {
+        id: consumer.id,
+        applied: true,
+        callCountSurvived: facts.callCount >= baseline.callCount && facts.callCount >= 1,
+        submitHandlerSurvived: facts.submitHandlerCallCount >= 1,
+        importSurvived: facts.importsFromSupportUi === true,
+        reassignmentDetected: reassigned === true,
+        valueFlowLost: facts.valueFlowCallCount === 0 && baseline.valueFlowCallCount >= 1,
+        wentRed: mutatedCell.pass === false && reassigned === true && facts.valueFlowCallCount === 0,
+      };
+    });
+    const pass = results.length > 0 && results.every(
+      (r) => r.applied && r.wentRed && r.callCountSurvived && r.submitHandlerSurvived
+        && r.importSurvived && r.reassignmentDetected && r.valueFlowLost,
     );
     return cellResult(cell, pass, { results }, 'wiring');
   } catch (error) {
@@ -2334,6 +2475,7 @@ export function runSupportPassportDegradedGate(opts) {
     runNcConsumerCallDeletedCell(deps),
     runNcConsumerCallHoistedUseMemoCell(deps),
     runNcConsumerContextDiscardedCell(deps),
+    runNcConsumerContextReassignedCell(deps),
     runNcConsumerPinDecoysCell(deps),
     runNcMutantNoDeepFreezeCell(deps),
     probeServerContextCoercionFinding(opts.apiServerSource ?? null),

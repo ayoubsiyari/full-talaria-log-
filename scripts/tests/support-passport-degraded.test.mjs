@@ -33,9 +33,11 @@ import {
   runConsumerCallPathCell,
   runNcAliasDropCells,
   discardConsumerContextPayload,
+  reassignConsumerContextAfterPayload,
   runNcConsumerCallDeletedCell,
   runNcConsumerCallHoistedUseMemoCell,
   runNcConsumerContextDiscardedCell,
+  runNcConsumerContextReassignedCell,
   runNcConsumerPinDecoysCell,
   runNcMutantNoDeepFreezeCell,
   runPassportContextDeepFrozenCell,
@@ -91,13 +93,15 @@ test('the W40 substring source pins are gone, not renamed', () => {
   assert.equal(passportLib.runNcCommentDoesNotSatisfyPinCell, undefined);
 });
 
-test('W51 withdrawn consumer mutation detectors are gone from the public gate surface', () => {
-  assert.equal(passportLib.hasContextReassignmentAfterCall, undefined);
+test('W51 withdrawn helper-freeze mutation detectors stay gone; envelope overwrite wiring is live', () => {
+  // Director C-4 withdrew unbounded consumer mutation AST (helper indirection / value freeze).
+  // W52 restores envelope overwrite as wiring value-flow (R-W51b), not that family.
   assert.equal(passportLib.hasHelperIndirectionFreeze, undefined);
   assert.equal(passportLib.freezeConsumerValueAfterCall, undefined);
-  assert.equal(passportLib.reassignConsumerContextAfterPayload, undefined);
-  assert.equal(passportLib.runNcConsumerContextReassignedCell, undefined);
   assert.equal(passportLib.runNcConsumerValueFrozenCell, undefined);
+  assert.equal(typeof passportLib.hasContextReassignmentAfterCall, 'function');
+  assert.equal(typeof passportLib.reassignConsumerContextAfterPayload, 'function');
+  assert.equal(typeof passportLib.runNcConsumerContextReassignedCell, 'function');
 });
 
 test('the realm evaluates the real supportUi.tsx export over the real runtime window', () => {
@@ -425,6 +429,26 @@ test('NC-CONSUMER-CONTEXT-DISCARDED [wiring VER-01]: call without context payloa
   }
 });
 
+test('NC-CONSUMER-CONTEXT-REASSIGNED [wiring VER-01]: payload.context overwrite goes RED', () => {
+  // R-W51b: freeze holds on the builder return; envelope overwrite blanks the ticket.
+  const cell = runNcConsumerContextReassignedCell(deps);
+  assert.equal(cell.coverage, 'wiring');
+  assert.equal(cell.status, 'GREEN', JSON.stringify(cell, null, 2));
+  for (const result of cell.results) {
+    assert.equal(result.applied, true);
+    assert.equal(result.reassignmentDetected, true);
+    assert.equal(result.valueFlowLost, true);
+    assert.equal(result.wentRed, true);
+  }
+  const inbox = 'homepage/src/app/dashboard/support/SupportInbox.tsx';
+  const mutated = reassignConsumerContextAfterPayload(consumerSources[inbox]);
+  assert.ok(mutated);
+  assert.match(mutated, /payload\.context\s*=/);
+  const facts = inspectConsumerCallPath({ typescript, relativePath: inbox, source: mutated });
+  assert.equal(facts.valueFlowCallCount, 0);
+  assert.ok(facts.callSites.some((site) => site.contextReassignedAfter === true));
+});
+
 test('NC-CONSUMER-CALL-HOISTED-USEMEMO [wiring VER-01]: mount-time freeze goes RED', () => {
   // R-M6-3: callCount stays ≥1 with the import intact, but the submit handler no longer
   // evaluates the passport — every later ticket carries the mount-time snapshot.
@@ -750,8 +774,8 @@ test('gate aggregate is GREEN on the repo sources and excludes findings from all
   assert.equal(report.allPass, true);
   assert.equal(report.findings.length, 1);
   assert.equal(report.findings[0].cell, 'FINDING-SERVER-CONTEXT-STR-COERCION');
-  // 10 behavioural + 17 mutants + 3 alias drops + 5 consumer wiring cells + W51 freeze mutant.
-  assert.equal(report.cells.filter((c) => typeof c.pass === 'boolean').length, 36);
+  // 10 behavioural + 17 mutants + 3 alias drops + 6 consumer wiring cells + W51 freeze mutant.
+  assert.equal(report.cells.filter((c) => typeof c.pass === 'boolean').length, 37);
 });
 
 test('gate refuses GREEN when no TypeScript compiler is available', () => {

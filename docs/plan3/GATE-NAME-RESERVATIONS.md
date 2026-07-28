@@ -378,6 +378,7 @@ evidence artifact). W42 added both consumer `.tsx` paths to the trigger set.
 | NC-CONSUMER-CALL-DELETED | the `buildSupportContext()` call removed from a consumer while the **import stays** turns the consumer cell RED — the pin keys on the call, not on the import | wiring | LIVE (W42) |
 | NC-CONSUMER-CALL-HOISTED-USEMEMO | `React.useMemo(() => buildSupportContext(), [])` hoist at component body with submit-handler call replaced by the frozen binding: `callCount` stays ≥1 and import intact, but `submitHandlerCallCount` drops to 0 and the consumer cell goes RED | wiring | LIVE (W43) |
 | NC-CONSUMER-CONTEXT-DISCARDED | call remains on `createThread` but payload `context` is emptied / discarded; `valueFlowCallCount` drops to 0 and the consumer cell goes RED (R-W51 Break 2) | wiring | LIVE (W51b) |
+| NC-CONSUMER-CONTEXT-REASSIGNED | after bind, `payload.context = …` / `Object.assign(..., { context })` blanks the ticket while the frozen builder return stays pristine; wiring pin goes RED (R-W51b / W52) | wiring | LIVE (W52) |
 | NC-CONSUMER-PIN-DECOYS | line comment, block comment, string literal, template literal, **regex literal** and **JSX text** each containing `buildSupportContext()` must not pay the pin, on both consumers; the same decoy appended to the intact file must leave the real call site still counted | wiring | LIVE (W42) |
 | NC-MUTANT-NO-DEEP-FREEZE | strip the publication deep-freeze from `supportUi.tsx`; the runtime-freeze cells must go RED while round-trip/temporal extraction cells stay GREEN | soundness | LIVE (W51) |
 | SUPPORT-UI-SOURCE-CONTRACT | — | WITHDRAWN (W42) — substring pin on `window.__TALARIA_DEGRADED_STATE`, a prefix of `..._STATE__`, therefore unfalsifiable; superseded by the alias boot cells |
@@ -386,8 +387,8 @@ evidence artifact). W42 added both consumer `.tsx` paths to the trigger set.
 | NC-PASSPORT-DEGRADED-MUTATION | — | WITHDRAWN (W40) — tautological substring delete; superseded by the M1–M6 behavioural mutants below |
 | hasContextReassignmentAfterCall | — | WITHDRAWN (W51) — consumer reassignment AST detector retired; publication deep-freeze is the blocking mechanism |
 | hasHelperIndirectionFreeze | — | WITHDRAWN (W51) — helper-indirection mutation AST detector retired; publication deep-freeze is the blocking mechanism |
-| NC-CONSUMER-CONTEXT-REASSIGNED | — | WITHDRAWN (W51) — downstream context overwrite detector retired; covered by returned-context immutability instead of consumer AST growth |
-| valueFlow requiring `!contextReassignedAfter` | — | WITHDRAWN (W51) — reassignment coupling retired; W51b restores **wiring-only** value-flow (reaches `context`) without mutation AST |
+| hasHelperIndirectionFreeze / value-freeze AST family | — | WITHDRAWN (W51) — unbounded helper-indirection mutation AST stays retired under Director C-4 |
+| valueFlow without envelope overwrite check | — | SUPERSEDED (W52) — W51b restored reaches-`context`; W52 adds `!contextReassignedAfter` for payload envelope integrity |
 
 Behavioural mutants. Each edits `supportUi.tsx` into a plausible regression, re-runs the whole
 behavioural suite against the mutated product source, and is RED unless a named cell kills it. A
