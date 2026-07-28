@@ -74,6 +74,8 @@ function p4AdvanceEvidence({
     currentTimestamp: startTimestamp + timestampDelta,
   };
   return {
+    p4ObserveBaselineRequired: true,
+    p4ObserveBaselineCaptured: true,
     advanceStartState: startState,
     advanceEndState: endState,
     advanceElapsedMs: elapsedMs,
@@ -145,6 +147,7 @@ function report({
         panelCount: 4,
         playingCount: 4,
         advancedCount: 4,
+        p4ObserveBaselineRequired: true,
         requestedSpeed: 10,
         armingFailure: null,
         topology: {
@@ -215,6 +218,8 @@ test('unit: host HTML records shortened meta for CI P2', () => {
   assert.match(html, /observedAfterP4Window/);
   assert.match(html, /p4NoFanout/);
   assert.match(html, /markP4ObserveBaselines/);
+  assert.match(html, /replay4 = await startFourPanelReplay10x\(\);\s+replay4 = markP4ObserveBaselines\(replay4\);\s+phases\.P4 = await collectPhase/s);
+  assert.match(html, /if \(CONFIG\.p4NoFanout\) \{\s+return \{[\s\S]*noFanoutControl: true/);
 });
 
 test('unit: host HTML arms replay from settled fullRawData replayTimestamp baselines', () => {
@@ -329,6 +334,46 @@ test('fault-injection: P4 requires per-peer work above the P1 floor', () => {
   assert.match(p4.detail, /peerWork=missing-or-idle/);
 });
 
+test('fault-injection: P4 peer work ignores shared host longtask and aggregate fallback', () => {
+  const sharedLongTaskOnly = report({ p1WorkRatio: 0.02 });
+  sharedLongTaskOnly.phases.P4 = {
+    ...sharedLongTaskOnly.phases.P4,
+    workRatio: 0.40,
+    workMs: 1200,
+    timerCallbacks: 40,
+    probe: {
+      windowCount: 4,
+      windows: ['A', 'B', 'C', 'D'].map((id) => ({
+        id,
+        ...phase({ label: `P4:${id}`, workRatio: 0.30, timerCallbacks: id === 'A' ? 12 : 0 }),
+        callbackBusyMs: id === 'A' ? 900 : 0,
+        longTaskDurationMs: 900,
+        workMs: 900,
+        workRatio: 0.30,
+        timerCallbacks: id === 'A' ? 12 : 0,
+      })),
+    },
+  };
+  const p4 = assertPoCpuAbBenchmarkReport(sharedLongTaskOnly)
+    .find((cell) => cell.name === 'P4-FOUR-PANEL-REPLAY-RUNNING-OBSERVED');
+  assert.equal(p4.status, 'RED');
+  assert.equal(p4.peerWorkOk, false);
+  assert.deepEqual(p4.peerWorkRows.map((row) => row.callbackBusyMs), [0, 0, 0]);
+
+  const aggregateFallback = report({ p1WorkRatio: 0.02 });
+  aggregateFallback.phases.P4 = {
+    ...aggregateFallback.phases.P4,
+    workRatio: 0.40,
+    workMs: 1200,
+    timerCallbacks: 40,
+    probe: { windowCount: 4, windows: [] },
+  };
+  const fallbackP4 = assertPoCpuAbBenchmarkReport(aggregateFallback)
+    .find((cell) => cell.name === 'P4-FOUR-PANEL-REPLAY-RUNNING-OBSERVED');
+  assert.equal(fallbackP4.status, 'RED');
+  assert.deepEqual(fallbackP4.peerWorkRows.map((row) => row.present), [false, false, false]);
+});
+
 test('fault-injection: P4 no-fan-out negative control must turn P4 red', () => {
   const noFanout = report({ p1WorkRatio: 0.02 });
   noFanout.meta.p4NoFanout = true;
@@ -338,6 +383,10 @@ test('fault-injection: P4 no-fan-out negative control must turn P4 red', () => {
     noFanoutControl: true,
     noFanoutMutationApplied: true,
     armingFailure: 'no replayPlay fan-out to peers',
+    rows: noFanout.replay.p4.rows.map((row) => ({
+      ...row,
+      productReplayPlayFanout: { ok: false, sent: [], noFanoutControl: true },
+    })),
   };
   noFanout.phases.P4 = {
     ...noFanout.phases.P4,
@@ -353,6 +402,20 @@ test('fault-injection: P4 no-fan-out negative control must turn P4 red', () => {
   assert.equal(p4.status, 'RED');
   assert.equal(nc.status, 'GREEN');
   assert.equal(nc.mutationApplied, true);
+
+  const selfReportOnly = report({ p1WorkRatio: 0.02 });
+  selfReportOnly.meta.p4NoFanout = true;
+  selfReportOnly.replay.p4 = {
+    ...selfReportOnly.replay.p4,
+    ok: false,
+    noFanoutControl: true,
+    noFanoutMutationApplied: true,
+    armingFailure: 'no replayPlay fan-out to peers',
+  };
+  selfReportOnly.phases.P4 = noFanout.phases.P4;
+  const selfReportCells = assertPoCpuAbBenchmarkReport(selfReportOnly);
+  assert.equal(selfReportCells.find((cell) => cell.name === 'P4-FOUR-PANEL-REPLAY-RUNNING-OBSERVED').status, 'RED');
+  assert.equal(selfReportCells.find((cell) => cell.name === 'NC-P4-NO-FANOUT-MUST-RED').status, 'RED');
 });
 
 test('fault-injection: P4 rejects byte-identical shared-mirror advance', () => {
@@ -380,17 +443,66 @@ test('fault-injection: P4 rejects byte-identical shared-mirror advance', () => {
   assert.match(p4.detail, /sharedMirrorOnly=true/);
 });
 
+test('fault-injection: P4 rejects B/C/D shared mirror even when host differs or jitters 1ms', () => {
+  const rows = ['A', 'B', 'C', 'D'].map((id, index) => ({
+    id,
+    ok: true,
+    activeObserved: true,
+    playingObserved: true,
+    advancedObserved: true,
+    indexDelta: id === 'A' ? 7 : 5,
+    timestampDelta: id === 'D' ? 300_001 : (id === 'A' ? 420_000 : 300_000),
+    advanceContradiction: false,
+    beforeState: { isActive: true, isPlaying: false, currentIndex: 100 + index, currentTimestamp: 10_000_000 + (index * 1000), currentTimestampSource: 'replayTimestamp', speed: 10 },
+    state: { isActive: true, isPlaying: true, currentIndex: 107 + index, currentTimestamp: 10_420_000 + (index * 1000), currentTimestampSource: 'replayTimestamp', speed: 10 },
+    ...p4AdvanceEvidence({
+      startIndex: id === 'A' ? 100 : 200,
+      indexDelta: id === 'A' ? 7 : 5,
+      startTimestamp: id === 'A' ? 10_000_000 : 20_000_000,
+      timestampDelta: id === 'D' ? 300_001 : (id === 'A' ? 420_000 : 300_000),
+    }),
+  }));
+  const p4 = assertPoCpuAbBenchmarkReport(report({
+    p4Replay: {
+      ok: true,
+      rows,
+    },
+  })).find((cell) => cell.name === 'P4-FOUR-PANEL-REPLAY-RUNNING-OBSERVED');
+  assert.equal(p4.status, 'RED');
+  assert.equal(p4.sharedMirrorOnly, true);
+});
+
 test('fault-injection: P4 observe-window baseline requirement survives report normalization', () => {
   const p4 = assertPoCpuAbBenchmarkReport(report({
     p4Replay: {
       ok: true,
       p4ObserveBaselineRequired: true,
+      rows: report().replay.p4.rows.map((row) => ({
+        ...row,
+        p4ObserveBaselineCaptured: false,
+      })),
     },
   })).find((cell) => cell.name === 'P4-FOUR-PANEL-REPLAY-RUNNING-OBSERVED');
   assert.equal(p4.status, 'RED');
   assert.equal(p4.advancedCount, 0);
   assert.equal(p4.rowAdvances.every((advance) => advance.observeBaselineRequired), true);
   assert.equal(p4.rowAdvances.every((advance) => advance.observeBaselineOk === false), true);
+});
+
+test('fault-injection: P4 cannot green when observe-window baseline call output is stripped', () => {
+  const stripped = report();
+  delete stripped.replay.p4.p4ObserveBaselineRequired;
+  stripped.replay.p4.rows = stripped.replay.p4.rows.map((row) => {
+    const out = { ...row };
+    delete out.p4ObserveBaselineRequired;
+    delete out.p4ObserveBaselineCaptured;
+    return out;
+  });
+  const p4 = assertPoCpuAbBenchmarkReport(stripped)
+    .find((cell) => cell.name === 'P4-FOUR-PANEL-REPLAY-RUNNING-OBSERVED');
+  assert.equal(p4.status, 'RED');
+  assert.equal(p4.observeBaselinesCaptured, false);
+  assert.equal(p4.rowAdvances.every((advance) => advance.observeBaselineRequired), true);
 });
 
 test('fault-injection: P4 cannot green on playing flags without four advancing panels', () => {
@@ -973,6 +1085,10 @@ test('fault-injection: injected preflight requires mutant P7 red', async () => {
       noFanoutControl: true,
       noFanoutMutationApplied: true,
       armingFailure: 'no replayPlay fan-out to peers',
+      rows: out.replay.p4.rows.map((row) => ({
+        ...row,
+        productReplayPlayFanout: { ok: false, sent: [], noFanoutControl: true },
+      })),
     };
     out.phases.P4 = {
       ...out.phases.P4,

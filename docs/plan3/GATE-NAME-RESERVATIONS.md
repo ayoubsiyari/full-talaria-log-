@@ -519,11 +519,11 @@ Cells:
 | P1-IDLE-SINGLE-CHART-OBSERVED | single-chart idle workRatio is finite and below absolute `PO_CPU_AB_P1_IDLE_WORK_RATIO_MAX` | LIVE |
 | P2-IDLE-STABLE-NO-UNBOUNDED-WORK | idle soak workRatio is below both P1-relative and absolute `PO_CPU_AB_P2_IDLE_WORK_RATIO_MAX`; high P1 cannot absorb high P2 | LIVE |
 | P2-IDLE-MEMORY-NOT-GROWING | exposed heap delta during P2 stays bounded | LIVE |
-| P4-FOUR-PANEL-REPLAY-RUNNING-OBSERVED | four panels armed, playing, advancing within the P4 observe window by oracle-measured while-playing forward timestamp (rate ceiling + idx/ts coherence), and showing per-peer B/C/D work above the P1 floor; product `replayPlay` fan-out peers may use `passivePlayActive` only under that sample rule | LIVE — W62i: W62g GREEN credit held; no aggregate-only work, no shared host-mirror advance, and no-fan-out NC can satisfy this cell; live short should stay honest RED until 4/4 playing+advanced+per-peer work is real |
+| P4-FOUR-PANEL-REPLAY-RUNNING-OBSERVED | four panels armed, playing, advancing within the P4 observe window by oracle-measured while-playing forward timestamp (rate ceiling + idx/ts coherence), and showing per-peer B/C/D callback/timer work above the P1 floor; product `replayPlay` fan-out peers may use `passivePlayActive` only under that sample rule | LIVE — W62j: W62g/W62i GREEN credit held; no aggregate/longtask-only peer work, no B/C/D shared-mirror advance even with host A differing or 1ms jitter, observe-window baselines are mandatory for GREEN, and no-fan-out NC requires serialized peer-row neuter evidence; live short remains honest RED on sharedMirrorOnly |
 | P6-REPLAY-10X-OR-NEAREST-OBSERVED | real replay activation succeeds, `isPlaying` is observed, nearest speed is known, playhead advances, and P6 work exceeds P1 by the pinned 0.03 margin | LIVE instrument — RED expected until FIX1/FIX2; do not recalibrate margin to mint GREEN |
 | P7-PAUSE-STATE-NOT-PLAYING | product pause path leaves replay not playing | LIVE |
 | P7-WORK-RETURNS-TO-P1-FLOOR | post-pause workRatio is below both P1-relative and absolute `PO_CPU_AB_P7_IDLE_WORK_RATIO_MAX` | LIVE |
-| NC-P4-NO-FANOUT-MUST-RED | served P4 no-fan-out mode neuters `replayPlay` peer sends and must make P4 RED | LIVE |
+| NC-P4-NO-FANOUT-MUST-RED | served P4 no-fan-out mode neuters `replayPlay` peer sends, serializes peer-row `productReplayPlayFanout.noFanoutControl`, and must make P4 RED | LIVE |
 | NC-P7-REPLAY-PAUSE-TEARDOWN-MUST-RED | served `replay-system.js` pause teardown reversal marks itself applied and makes the P7 state cell RED | LIVE |
 
 ## Queue item 11 — Hidden-tab replay regression (W59 / GATE-01)

@@ -876,6 +876,7 @@ export function poCpuAbHostHtml({ timings = DEFAULT_PHASE_TIMINGS, mutant = fals
           advanceEndAt: row.advanceEndAt || null,
           advanceElapsedMs: evidenceAdvance && evidenceAdvance.elapsedMs,
           advanceEvidence: evidenceAdvance || null,
+          productReplayPlayFanout: row.productReplayPlayFanout || null,
           p4ObserveBaselineRequired: row.p4ObserveBaselineRequired === true,
           p4ObserveBaselineCaptured: row.p4ObserveBaselineCaptured === true,
           beforeState: row.beforeState,
@@ -1572,11 +1573,14 @@ export function assertPoCpuAbBenchmarkReport(report, { mutant = false } = {}) {
   const p4PanelCount = p4Rows.length;
   const p4RowIds = p4Rows.map((row) => row?.id).filter((id) => id != null).map((id) => String(id));
   const p4RowsDistinctRequired = panelIdsHaveDistinctRequired(p4RowIds);
-  const p4ObserveBaselineRequired = replay4.p4ObserveBaselineRequired === true;
+  const p4ObserveBaselineRequired = true;
   const p4RowAdvances = p4Rows.map((row) => rowReplayAdvanceEvidence(row, {
     observeMs: p4.durationMs,
     requireObserveBaseline: p4ObserveBaselineRequired,
   }));
+  const p4ObserveBaselinesCaptured = replay4.p4ObserveBaselineRequired === true
+    && p4Rows.length >= 4
+    && p4Rows.every((row) => row?.p4ObserveBaselineRequired === true && row?.p4ObserveBaselineCaptured === true);
   const p4RowsEveryOk = p4Rows.length > 0 && p4Rows.every((row, index) => row.ok === true
     && row.advancedObserved === true
     && p4RowAdvances[index].advanced === true);
@@ -1586,43 +1590,61 @@ export function assertPoCpuAbBenchmarkReport(report, { mutant = false } = {}) {
   const p4WorkById = phaseWindowsById(p4);
   const p4PeerWorkRows = ['B', 'C', 'D'].map((id) => {
     const row = p4WorkById.get(id) || null;
-    const workRatio = finiteNumberOrNull(row?.workRatio);
-    const workMs = finiteNumberOrNull(row?.workMs);
+    const observedMs = Math.max(1, finiteNumberOrNull(row?.observedMs) ?? finiteNumberOrNull(row?.durationMs) ?? finiteNumberOrNull(p4.durationMs) ?? 1);
+    const callbackBusyMs = finiteNumberOrNull(row?.callbackBusyMs);
+    const callbackWorkRatio = callbackBusyMs != null ? callbackBusyMs / observedMs : null;
     const timerCallbacks = finiteNumberOrNull(row?.timerCallbacks);
     const minWorkRatio = Number.isFinite(p1Ratio) ? p1Ratio + PO_CPU_AB_P4_PEER_WORK_RATIO_MARGIN : null;
     return {
       id,
       present: !!row,
-      workRatio,
-      workMs,
+      callbackWorkRatio,
+      callbackBusyMs,
       timerCallbacks,
       minWorkRatio,
       pass: !!row
         && minWorkRatio != null
-        && workRatio != null
-        && workRatio >= minWorkRatio
-        && ((workMs != null && workMs > 0) || (timerCallbacks != null && timerCallbacks > 0)),
+        && callbackWorkRatio != null
+        && callbackWorkRatio >= minWorkRatio
+        && callbackBusyMs != null
+        && callbackBusyMs > 0
+        && timerCallbacks != null
+        && timerCallbacks > 0,
     };
   });
   const p4PeerWorkOk = p4PeerWorkRows.every((row) => row.pass === true);
-  const p4MirrorSignatures = p4Rows.map((row, index) => {
+  const p4MirrorVectors = p4Rows.map((row, index) => {
     const advance = p4RowAdvances[index];
     const before = advance.sampleBeforeState;
     const after = advance.sampleAfterState;
     if (!advance.advanced || !before || !after) return null;
-    return [
-      advance.oracleIndexDelta,
-      advance.oracleTimestampDelta,
-      before.currentIndex,
-      before.currentTimestamp,
-      after.currentIndex,
-      after.currentTimestamp,
-    ].map((value) => value == null ? 'null' : String(value)).join('|');
+    return {
+      id: row?.id != null ? String(row.id) : '',
+      values: [
+        advance.oracleIndexDelta,
+        advance.oracleTimestampDelta,
+        before.currentIndex,
+        before.currentTimestamp,
+        after.currentIndex,
+        after.currentTimestamp,
+      ].map((value) => finiteNumberOrNull(value)),
+    };
   });
+  const sameMirrorVector = (left, right) => {
+    if (!left || !right || left.values.length !== right.values.length) return false;
+    return left.values.every((value, index) => {
+      const other = right.values[index];
+      if (value == null || other == null) return value == null && other == null;
+      return Math.abs(value - other) <= 1;
+    });
+  };
+  const allMirrorVectorsNearEqual = (vectors) => vectors.length > 0
+    && vectors.every((vector) => vector && sameMirrorVector(vector, vectors[0]));
+  const p4PeerMirrorVectors = ['B', 'C', 'D']
+    .map((id) => p4MirrorVectors.find((vector) => vector?.id === id) || null);
   const p4SharedMirrorOnly = p4RowsDistinctRequired
     && p4Rows.length >= 4
-    && p4MirrorSignatures.every((signature) => typeof signature === 'string' && signature.length > 0)
-    && new Set(p4MirrorSignatures).size === 1;
+    && (allMirrorVectorsNearEqual(p4MirrorVectors) || allMirrorVectorsNearEqual(p4PeerMirrorVectors));
   const p4Topology = replay4.topology || {};
   const p4GridIds = Array.isArray(p4Topology.gridIds) ? p4Topology.gridIds.map((id) => String(id)) : [];
   const p4ManagerIds = Array.isArray(p4Topology.managerIds) ? p4Topology.managerIds.map((id) => String(id)) : [];
@@ -1645,6 +1667,7 @@ export function assertPoCpuAbBenchmarkReport(report, { mutant = false } = {}) {
     && p4WindowCount >= 4
     && p4PeerWorkOk
     && !p4SharedMirrorOnly
+    && p4ObserveBaselinesCaptured
     && (Number(p4.timerCallbacks) > 0 || Number(p4.workMs) > 0);
   const p4ArmingDetail = replay4.armingFailure
     ? `${replay4.armingFailure}; `
@@ -1652,14 +1675,19 @@ export function assertPoCpuAbBenchmarkReport(report, { mutant = false } = {}) {
   const p4Cell = cell(
     'P4-FOUR-PANEL-REPLAY-RUNNING-OBSERVED',
     p4ReplayObserved,
-    `${p4ArmingDetail}panels=${p4PanelCount} playing=${p4PlayingCount} advanced=${p4AdvancedCount} probeWindows=${p4WindowCount} gridIds=${p4GridIds.length ? p4GridIds.join(',') : 'missing'} managerIds=${p4ManagerIds.length ? p4ManagerIds.join(',') : 'missing'} windowIds=${p4WindowIds.length ? p4WindowIds.join(',') : (p4RowIds.length ? p4RowIds.join(',') : 'missing')} peerWork=${p4PeerWorkOk ? 'ok' : 'missing-or-idle'} sharedMirrorOnly=${p4SharedMirrorOnly} workRatio=${Number.isFinite(phaseWorkRatio(p4)) ? phaseWorkRatio(p4).toFixed(4) : 'n/a'}`,
-    { phase: 'P4', replay: replay4, probeWindowCount: p4WindowCount, playingCount: p4PlayingCount, advancedCount: p4AdvancedCount, panelCount: p4PanelCount, rowsEveryOk: p4RowsEveryOk, rowsDistinctRequired: p4RowsDistinctRequired, topologyOk: p4TopologyOk, workRatio: phaseWorkRatio(p4), rowAdvances: p4RowAdvances, peerWorkOk: p4PeerWorkOk, peerWorkRows: p4PeerWorkRows, sharedMirrorOnly: p4SharedMirrorOnly },
+    `${p4ArmingDetail}panels=${p4PanelCount} playing=${p4PlayingCount} advanced=${p4AdvancedCount} probeWindows=${p4WindowCount} gridIds=${p4GridIds.length ? p4GridIds.join(',') : 'missing'} managerIds=${p4ManagerIds.length ? p4ManagerIds.join(',') : 'missing'} windowIds=${p4WindowIds.length ? p4WindowIds.join(',') : (p4RowIds.length ? p4RowIds.join(',') : 'missing')} peerWork=${p4PeerWorkOk ? 'ok' : 'missing-or-idle'} observeBaselines=${p4ObserveBaselinesCaptured ? 'captured' : 'missing'} sharedMirrorOnly=${p4SharedMirrorOnly} workRatio=${Number.isFinite(phaseWorkRatio(p4)) ? phaseWorkRatio(p4).toFixed(4) : 'n/a'}`,
+    { phase: 'P4', replay: replay4, probeWindowCount: p4WindowCount, playingCount: p4PlayingCount, advancedCount: p4AdvancedCount, panelCount: p4PanelCount, rowsEveryOk: p4RowsEveryOk, rowsDistinctRequired: p4RowsDistinctRequired, topologyOk: p4TopologyOk, workRatio: phaseWorkRatio(p4), rowAdvances: p4RowAdvances, peerWorkOk: p4PeerWorkOk, peerWorkRows: p4PeerWorkRows, observeBaselinesCaptured: p4ObserveBaselinesCaptured, sharedMirrorOnly: p4SharedMirrorOnly },
   );
   cells.push(p4Cell);
 
   if (report.meta?.p4NoFanout || replay4.noFanoutControl === true) {
-    const mutationApplied = replay4.noFanoutMutationApplied === true
-      || p4Rows.some((row) => row?.productReplayPlayFanout?.noFanoutControl === true);
+    const noFanoutRows = p4Rows.filter((row) => row?.productReplayPlayFanout?.noFanoutControl === true);
+    const noFanoutPeerRows = noFanoutRows
+      .map((row) => row?.id != null ? String(row.id) : '')
+      .filter((id) => ['B', 'C', 'D'].includes(id));
+    const mutationApplied = replay4.noFanoutControl === true
+      && replay4.noFanoutMutationApplied === true
+      && noFanoutPeerRows.length >= 3;
     const ncKilledP4 = mutationApplied && p4Cell.status === 'RED';
     cells.push(cell(
       'NC-P4-NO-FANOUT-MUST-RED',
@@ -1667,7 +1695,7 @@ export function assertPoCpuAbBenchmarkReport(report, { mutant = false } = {}) {
       ncKilledP4
         ? 'neutered replayPlay fan-out made P4 RED'
         : 'neutered replayPlay fan-out did not prove P4 goes RED',
-      { ncExpect: 'RED on P4 when replayPlay peer fan-out is neutered', mutationApplied, p4Status: p4Cell.status, peerWorkRows: p4PeerWorkRows },
+      { ncExpect: 'RED on P4 when replayPlay peer fan-out is neutered', mutationApplied, p4Status: p4Cell.status, peerWorkRows: p4PeerWorkRows, noFanoutPeerRows },
     ));
   }
 
