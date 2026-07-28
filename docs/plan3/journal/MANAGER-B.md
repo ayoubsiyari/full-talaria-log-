@@ -1046,3 +1046,65 @@ I did not record which four cells failed under mutation 2 and I am not going to 
 3. **Duration clock** — the PO's new repro (*duration wrong and far too large after a rollback followed by a new order*) is **new information** that my existing mechanism note does not obviously explain: B-A3 found a wall-clock/bar-time mix, but "far too large specifically after a rollback" suggests a start anchor surviving a time rewind. Cheap-tier first, to test the new repro against the known mechanism before anyone calls it triage. Ready.
 4. **M25's four REDs and M26's two** — I have not yet read these rows and will not spec them from memory. Cheap-tier read of the board rows first.
 5. **V6-P2 specification for A** — the ownership answer is settled (B-0054); what remains is writing the spec and evidence pack for A to dispatch, with me reserved as reviewer, and keeping the placement move separate from the staleness cure.
+
+---
+
+## B-0063 — CORRECTION (supersedes the mechanism in B-0058; restores B-0027)
+
+B-W1's report landed late and contradicts me on the mechanism. It is right and I was wrong.
+
+I claimed `import()` with a query string *"silently does not execute the module"*. The truth is narrower: **Node's CommonJS require cache ignores the query string**, so the module executes **exactly once per process** and every later mount sees a fresh fake `window` with no facade. Proven in a fresh process where the query-string load was the first thing to happen:
+
+| mount | facade |
+|---|---|
+| `?b_m15=0` | **object** — the module *did* execute |
+| `?b_m15=1` | undefined |
+| `?b_m15=2` | undefined |
+
+My earlier probe reached the opposite conclusion because I imported the path **without** the query first, which populated the cache, and then read the query load as proof that the query itself suppressed execution. I mistook a cache I had warmed myself for a property of the loader. That is an ordering error in my own experiment, and I should have run the query load first in a clean process before publishing a mechanism.
+
+**What survives:** cells 2–12 were never exercising the product, the "absent" message was a harness artefact, and the repair and both mutation proofs (B-0061) are unaffected — they were run against the fixed harness.
+
+**What must be withdrawn:** in B-0058 I marked B-0027's attribution **unproven** on the reasoning that the facade *could not have been observed at all*. That reasoning is now dead — cell 1 executes the module and genuinely sees the facade. So cell 1's original *"getItem must exist"* was a **real product observation**, and B-0027's account of B-W1's concurrent writes being visible to B-W2 at read time is **restored as the standing record**. I withdraw the "unproven" mark I placed on it.
+
+Two corrections in two entries, in opposite directions, on the same question. Noting the pattern rather than the individual slips: both came from asserting a mechanism when I had only established an outcome. The outcome — *this harness is not exercising the product* — was correct and sufficient to act on. The mechanism was not needed for any decision I made, and I published it anyway.
+
+Also of record: B-W1 diagnosed this independently, named the CJS cache correctly, and said the fix was one line on the harness side. It stayed in bounds and reported rather than reaching into a file it did not own, which is the behaviour I want.
+
+---
+
+## B-0064 — VERDICT (V8-P1 reach) · **Class: S (soundness — file hashes and shell references, directly read). This contract reaches no served surface and nothing consumes it.**
+
+B-W1 flagged a mirrored copy of my territory files. I verified it myself rather than taking it:
+
+| Path | Size | SHA-256 (12) |
+|---|---|---|
+| `chart v 1.4/chart/modules/preferences-sync.js` | 39,491 | `2304798BFED1` |
+| `homepage/public/chart/modules/preferences-sync.js` | **17,969** | `DAEA2E2271B3` |
+
+Different content, different hash. Four served shells under `homepage/public/chart/` — `dist-v9/index.html`, `legacy-index.html`, `talaria-design/live/index.html`, `multichart-prod/chart-embed.html` — load the **mirror**, not my copy.
+
+**So the V8 contract, however well proven in Node, is not present on any surface a user or a PO can reach.** My B-0061 coverage stamp said "harness only, not host, not panel". That was true but too gentle: it reads as *not yet verified there*, when the accurate statement is *not present there at all*.
+
+**Second and independent: nothing calls it.** The pin state still lives in `talaria-design/src/TalariaV8bLive.jsx` as React `useState` with hardcoded defaults. B-W1 could not wire it — that file is not my territory. So the storage contract exists, is correct against twelve cells and 59 additional checks, and has **zero consumers**.
+
+Consequences I will not paper over. The Director asked for this contract "end to end". **The two ends are both outside my territory** — the served copy under `homepage/public/chart/`, and the React component that would call the facade. What I can deliver in-territory is the middle: a proven store with no producer and no reader. Reporting V8-P1 as "built" without that sentence attached would be the exact presence-for-soundness substitution VER-01 names.
+
+**ESCALATION — two ownership questions, neither of which I will decide.**
+
+1. **Who owns `homepage/public/chart/modules/preferences-sync.js`?** My territory is named by path under `chart v 1.4/chart/modules/`. This mirror is a byte-for-byte deployment copy of *my* file living under what is otherwise Manager A's servable-shell space. It is either (a) mine, because it is my module and the mirror is a build artefact, (b) A's, because everything under `homepage/public/chart/` is A's, or (c) a build step nobody owns and the duplication is itself the defect. I have not touched it. **If the answer is (c), that is the more valuable finding**, because every module in my territory has the same exposure and any fix any manager lands in `chart v 1.4/chart/modules/` may be invisible in production by the same mechanism. I have not checked whether the other mirrored modules diverge; that is a cheap sweep I will run on ruling.
+2. **Who wires the pin UI to the facade?** `TalariaV8bLive.jsx` is not mine. Without it V8 cannot satisfy the PO's spec no matter how good the store is.
+
+**ASSUMPTION** (flagged, unverified): that the mirror is generated by a build step rather than hand-copied. B-W1 observed both copies were last touched in the same commit `c5a219ef`, which is consistent with either. I have not looked for the build script.
+
+---
+
+## B-0065 — RULING (in-territory, technical) · kill-switch publishes an inert facade; I am changing it to absent
+
+B-W1 asked me to choose. With `__TALARIA_DISABLE_PREF_OWNER_SCOPED_PINS_V1 === true` it currently still publishes `window.TalariaPreferences`, wholly inert: reads return in-memory defaults, writes return false.
+
+I am ruling **absent**. The natural feature detect a future consumer writes is `if (window.TalariaPreferences)`, and under the current shape that is **true while the store silently discards every write** — the failure mode is a user pinning things all session and losing them with no signal. Absent makes the detect correct by default and matches §A4's "reverts to prior behaviour", where prior behaviour is no global. The `isEnabled()` accessor stays for callers that want the distinction, but correctness must not depend on reading the manual.
+
+This is a design choice inside my own file, so I am deciding it as technical author rather than escalating; it is not policy. Queued as a one-line change with the harness re-run, not dispatched tonight.
+
+Also carried from B-W1, both out of scope and both recorded so they are not lost: `homepage/public/chart/multichart/chart-host.html:219` replaces `window.userStorage` with an in-memory Proxy, so pins cannot persist in that sandbox host at all; and `getLocalItem` at 256 treats a falsy stored string as missing, so a legitimately stored `'0'` or `''` reads as its default — a real C3-shaped bug in pre-existing behaviour that I am not fixing inside a V8 packet.
