@@ -2927,3 +2927,13 @@ Blocked on A's render kill-switch for the train — not idle. Four streams that 
 **Item 6 (charter).** `FIX-ABSENT-FROM-PO-PATHS.md` — 14 paths. Closed path 12 this entry: Dockerfile now overwrites `public/chart/talaria-design/live` from chart_assets; bump stamps the homepage twin. Handoff to C (optional shell list): `HANDOFF-C-DESIGN-LIVE-SHELL.md`. Remaining OPEN: CF/TTL warm cache, ordinary auto-increment behind live, PO browser/SW residual.
 
 **Item 3.** Polled A tips 18:06 — `__TALARIA_DISABLE_MC_BACKGROUND_RENDER_CADENCE_V1` still absent from product trees. Train remains correctly blocked.
+
+---
+
+## B-0135 — Engine↔shell deploy-gate cell; path 11 closed for train ship. Item 3 still waits.
+
+**Never-idle while blocked on A.** `--deploy-gate` now fetches `/chart/chart.js` and fails (exit 2, `engineShellMismatch`) when `CHART_ENGINE_BUILD` ≠ coherent shell id — closes the chart.js content gap C's module baseline does not cover. 33/0 tests, 10/0 mutants, VER-04 reimpl PASSES.
+
+**Path 11.** `RELEASE-SHIP-REQUIREMENTS.md` — train image must use `CHECKPOINT_BUILD=1` + ahead-of-live `CHART_BUILD_ID`. Marked CLOSED for the ship path.
+
+**Item 3.** A tip `manager-a-m28-replay-hidden-pause` advanced (`1be73e796` hidden-pause) — still **no** `__TALARIA_DISABLE_MC_BACKGROUND_RENDER_CADENCE_V1` in product trees. Train correctly blocked.

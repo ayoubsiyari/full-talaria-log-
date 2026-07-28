@@ -170,10 +170,12 @@ try {
     let stampInertChecked = false;
     let stampInertWaived = Boolean(opts.waiveStampInert);
     let buildId = null;
+    let engine = null;
     for (const f of findings) {
         if (f.kind === 'module') Object.values(f.markers).forEach((m) => markerStates.push(m.state));
         else if (f.kind === 'session-endpoint') sessionStates.push(f.state);
         else if (f.kind === 'build-id') buildId = f;
+        else if (f.kind === 'engine-build') engine = f;
         else if (f.kind === 'stamp-inert') {
             stampInertChecked = true;
             stampInert = f.stampInert;
@@ -185,6 +187,7 @@ try {
     const noPresentShell = Boolean(buildId && buildId.perShell.length && buildId.presentShellCount === 0);
     const inertHazard = stampInertChecked && stampInert === true && !stampInertWaived;
     const inertUndetermined = stampInertChecked && stampInert === null;
+    const engineMismatch = Boolean(engine && engine.engineChecked && engine.match === false);
     const base = { deployGate, stampInert, incoherent };
     if (markerStates.includes(ABSENT) || sessionStates.includes(ABSENT)) {
         return { ...base, verdict: ABSENT, exitCode: 1, deployHazards: [] };
@@ -193,6 +196,7 @@ try {
         const hazards = [];
         if (inertHazard) hazards.push('stampInert');
         if (incoherent) hazards.push('incoherentShells');
+        if (engineMismatch) hazards.push('engineShellMismatch');
         if (markerStates.includes(UNDETERMINED) || sessionStates.includes(UNDETERMINED)
             || inertUndetermined || noPresentShell) {
             return { ...base, verdict: UNDETERMINED, exitCode: 3, deployHazards: hazards };
@@ -227,8 +231,11 @@ try {
         const final = rebuilt.slice(0, s2) + reimplSummarise + rebuilt.slice(e2);
         fs.writeFileSync(SRC, Buffer.from(final, 'utf8'));
         const r = runSuite();
-        console.log(`independent reimplementation: ${r.pass ? 'PASSES' : '*** FAILS ***'} (as required)`);
-        if (!r.pass) console.log(`    failing: ${r.failing.join(', ')}`);
+        console.log(`independent reimplementation: ${r.pass ? 'PASSES' : '*** FAILS ***'} (must PASS)`);
+        if (!r.pass) {
+            console.log(`    failing: ${r.failing.join(', ')}`);
+            process.exitCode = 2;
+        }
     } finally {
         fs.writeFileSync(SRC, original);
     }

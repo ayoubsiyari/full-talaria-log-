@@ -98,11 +98,15 @@ live-surface-probe — report what the running deployment serves. Read-only.
                         + stampInert false (unless waived). Exit 2 on deploy hazard.
   --waive-stamp-inert   allow stampInert:true under --deploy-gate (explicit only)
   --no-stamp-inert-check  skip the dual-?v= byte-identity check (default: on)
+  --engine-build-check    fetch /chart/chart.js and require CHART_ENGINE_BUILD
+                          to match the coherent shell build id (default: on
+                          under --deploy-gate; off otherwise)
+  --no-engine-build-check skip that check
 
 Exit codes:
   0  every finding was PRESENT (and deploy-gate hazards cleared, if enabled)
   1  at least one finding was ABSENT   (the surface lacks the fix)
-  2  deploy-gate failure (inert ?v= and/or incoherent 200 shells)
+  2  deploy-gate failure (inert ?v= / incoherent shells / engine≠shell)
   3  at least one finding was UNDETERMINED and none were ABSENT
   64 the probe could not run at all (bad arguments)
 `);
@@ -119,6 +123,7 @@ function parseArgs(argv) {
         deployGate: false,
         waiveStampInert: false,
         stampInertCheck: true,
+        engineBuildCheck: null, // null → follow deployGate default
     };
     for (const a of argv) {
         const m = /^--([a-z-]+)(?:=(.*))?$/.exec(a);
@@ -138,11 +143,14 @@ function parseArgs(argv) {
         else if (k === 'deploy-gate') out.deployGate = true;
         else if (k === 'waive-stamp-inert') out.waiveStampInert = true;
         else if (k === 'no-stamp-inert-check') out.stampInertCheck = false;
+        else if (k === 'engine-build-check') out.engineBuildCheck = true;
+        else if (k === 'no-engine-build-check') out.engineBuildCheck = false;
         else usage(`Unrecognised option: --${k}`);
     }
     if (!out.modules.length) out.modules = ['/chart/modules/order-manager.js'];
     if (!out.markers.length) out.markers = ['journalVouchedFor'];
     if (!out.shells.length) out.shells = [...DEFAULT_SHELLS];
+    if (out.engineBuildCheck === null) out.engineBuildCheck = out.deployGate;
     out.token = out.token || process.env.LIVE_PROBE_TOKEN || null;
     out.cookie = out.cookie || process.env.LIVE_PROBE_COOKIE || null;
     return out;
@@ -435,6 +443,69 @@ function buildIdsFromShell(s) {
     return ids;
 }
 
+/**
+ * Runtime close for chart.js (C's module baseline does not hash the engine file).
+ * When chart.js is identified, CHART_ENGINE_BUILD must equal the coherent shell id.
+ * Missing/unidentified chart.js is skipped (engineChecked:false) so fixture hosts
+ * without an engine route do not invent a deploy hazard.
+ */
+async function probeEngineBuildCoherence(base, shellBuildFinding, opts) {
+    const finding = {
+        kind: 'engine-build',
+        url: null,
+        engineChecked: false,
+        engineBuildId: null,
+        shellBuildId: null,
+        match: null,
+        state: UNDETERMINED,
+        reason: null,
+    };
+    const shellIds = shellBuildFinding?.distinctBuildIds ?? [];
+    const shellBuildId = shellIds.length === 1 ? shellIds[0] : null;
+    finding.shellBuildId = shellBuildId;
+
+    const url = new URL('/chart/chart.js', base).toString();
+    finding.url = redact(url, opts.token, opts.cookie);
+    const res = await readOnlyFetch(url, { token: opts.token, cookie: opts.cookie, timeoutMs: opts.timeoutMs });
+    // chart.js is large JS, not the order-manager class shape — use a lighter check.
+    if (!res.ok) {
+        finding.reason = `transport failure: ${res.transportError}`;
+        return finding;
+    }
+    if (res.status >= 300 && res.status < 400) {
+        finding.reason = describeRedirect(res);
+        return finding;
+    }
+    if (res.status !== 200 || looksLikeHtml(res.contentType, res.body)) {
+        finding.reason = res.status !== 200
+            ? `HTTP ${res.status}`
+            : 'HTTP 200 but body is HTML — not chart.js';
+        return finding;
+    }
+    const m = /const\s+CHART_ENGINE_BUILD\s*=\s*'([^']+)'/.exec(res.body);
+    if (!m) {
+        finding.reason = 'chart.js served but CHART_ENGINE_BUILD constant not found';
+        return finding;
+    }
+    finding.engineChecked = true;
+    finding.engineBuildId = m[1];
+    if (!shellBuildId) {
+        finding.reason = 'engine build found, but no single coherent shell build id to compare';
+        finding.state = UNDETERMINED;
+        finding.match = null;
+        return finding;
+    }
+    finding.match = finding.engineBuildId === shellBuildId;
+    if (finding.match) {
+        finding.state = PRESENT;
+        finding.reason = null;
+    } else {
+        finding.state = ABSENT;
+        finding.reason = `CHART_ENGINE_BUILD=${finding.engineBuildId} ≠ shell build ${shellBuildId}`;
+    }
+    return finding;
+}
+
 /** Build ids the surface reports, per shell, plus whether the 200 shells agree. */
 async function probeBuildIds(base, shells, opts) {
     const perShell = [];
@@ -515,11 +586,13 @@ function summarise(findings, opts = {}) {
     let stampInertChecked = false;
     let stampInertWaived = false;
     let buildId = null;
+    let engine = null;
 
     for (const f of findings) {
         if (f.kind === 'module') markerStates.push(...Object.values(f.markers).map((m) => m.state));
         else if (f.kind === 'session-endpoint') sessionStates.push(f.state);
         else if (f.kind === 'build-id') buildId = f;
+        else if (f.kind === 'engine-build') engine = f;
         else if (f.kind === 'stamp-inert') {
             stampInertChecked = true;
             stampInert = f.stampInert;
@@ -532,6 +605,7 @@ function summarise(findings, opts = {}) {
     const noPresentShell = Boolean(buildId && buildId.perShell.length && buildId.presentShellCount === 0);
     const inertHazard = stampInertChecked && stampInert === true && !stampInertWaived;
     const inertUndetermined = stampInertChecked && stampInert === null;
+    const engineMismatch = Boolean(engine?.engineChecked && engine.match === false);
 
     if (markerStates.includes(ABSENT) || sessionStates.includes(ABSENT)) {
         return {
@@ -548,6 +622,7 @@ function summarise(findings, opts = {}) {
         const hazards = [];
         if (inertHazard) hazards.push('stampInert');
         if (incoherent) hazards.push('incoherentShells');
+        if (engineMismatch) hazards.push('engineShellMismatch');
 
         if (markerStates.includes(UNDETERMINED) || sessionStates.includes(UNDETERMINED)
             || inertUndetermined || noPresentShell) {
@@ -561,6 +636,10 @@ function summarise(findings, opts = {}) {
             };
         }
         if (hazards.length) {
+            const reasonBits = [];
+            if (hazards.includes('stampInert')) reasonBits.push('inert ?v=');
+            if (hazards.includes('incoherentShells')) reasonBits.push('incoherent 200 shells');
+            if (hazards.includes('engineShellMismatch')) reasonBits.push('CHART_ENGINE_BUILD ≠ shell build id');
             return {
                 verdict: UNDETERMINED,
                 exitCode: 2,
@@ -568,11 +647,7 @@ function summarise(findings, opts = {}) {
                 stampInert,
                 incoherent,
                 deployHazards: hazards,
-                reason: hazards.includes('stampInert') && hazards.includes('incoherentShells')
-                    ? 'deploy-gate: inert ?v= and incoherent 200 shells'
-                    : hazards.includes('stampInert')
-                        ? 'deploy-gate: ?v= is inert (identical bytes under distinct stamps)'
-                        : 'deploy-gate: 200 shells disagree on build id',
+                reason: `deploy-gate: ${reasonBits.join(' and ')}`,
             };
         }
         return {
@@ -693,13 +768,19 @@ function writeEvidence(dir, report, token, cookie) {
 
 export async function probe(opts) {
     const startedAtUtc = new Date().toISOString();
+    // Match parseArgs: engine check follows deploy-gate unless explicitly set.
+    if (opts.engineBuildCheck == null) opts.engineBuildCheck = Boolean(opts.deployGate);
     const findings = [];
     for (const m of opts.modules) findings.push(await probeModule(opts.baseUrl, m, opts.markers, opts));
     if (opts.stampInertCheck !== false && opts.modules.length) {
         findings.push(await probeStampInert(opts.baseUrl, opts.modules[0], opts));
     }
     if (opts.sessionId != null) findings.push(await probeSessionEndpoint(opts.baseUrl, opts.sessionId, opts));
-    findings.push(await probeBuildIds(opts.baseUrl, opts.shells, opts));
+    const buildIdFinding = await probeBuildIds(opts.baseUrl, opts.shells, opts);
+    findings.push(buildIdFinding);
+    if (opts.engineBuildCheck) {
+        findings.push(await probeEngineBuildCoherence(opts.baseUrl, buildIdFinding, opts));
+    }
     const report = {
         tool: 'live-surface-probe',
         contract: 'PRESENT = identified and found. ABSENT = identified and not found. '
@@ -751,6 +832,7 @@ export {
     DEFAULT_SHELLS,
     establishModuleIdentity,
     parseArgs,
+    probeEngineBuildCoherence,
     probeStampInert,
     readOnlyFetch,
     redact,

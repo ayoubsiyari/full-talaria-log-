@@ -14,11 +14,11 @@ Status key: **CLOSED** | **PARTIAL** | **OPEN**.
 
 | Status | Count |
 |---|---|
-| CLOSED | 6 |
+| CLOSED | 7 |
 | PARTIAL | 5 |
-| OPEN | 3 |
+| OPEN | 2 |
 
-**OPEN residual paths (3):** Cloudflare / `max-age=3600` warm cache; auto-increment stamp behind live; client browser holding a prior stamp URL / old SW after SW bump.
+**OPEN residual paths (2):** Cloudflare / `max-age=3600` warm cache; client browser holding a prior stamp URL / old SW after SW bump.
 
 ---
 
@@ -120,8 +120,8 @@ Status key: **CLOSED** | **PARTIAL** | **OPEN**.
 |---|---|
 | **Mechanism** | `bump-dist-v9-cache.mjs` resolves `BUILD_ID` env, else increments the committed stamp. Committed `b61` → `b62` while production already served `b75`/`b80` → new fix ships under a **past** cache key; warm entries for newer keys keep old behaviour. |
 | **Detect** | Compare chosen `CHART_BUILD_ID` to live shell / probe; release `BUILD-PARAMS.json` pin. |
-| **Close owner** | **B** release discipline: `CHECKPOINT_BUILD=1` + explicit ahead-of-live `CHART_BUILD_ID`. |
-| **Status** | **OPEN** as a process residual whenever ordinary builds are used for ship. |
+| **Close owner** | **B** — `RELEASE-SHIP-REQUIREMENTS.md`: train image **must** use `CHECKPOINT_BUILD=1` + ahead-of-live `CHART_BUILD_ID`. Ordinary local builds remain a footgun and must not be the ship artifact. |
+| **Status** | **CLOSED** for the train push path. Ordinary/non-checkpoint builds are out of scope for ship. |
 
 ### 12. Homepage design-shell twin not in overwrite / not in C shells
 
@@ -159,7 +159,7 @@ Status key: **CLOSED** | **PARTIAL** | **OPEN**.
 | **C** `CACHE-STAMP-COHERENCE-V1` | Build-time: cross-shell module `?v=`, module content-hash vs sealed stamp, shell build-id uniformity (after train merge). |
 | **B** bump + checkpoint | Mechanical stamp movement + engine `CHART_ENGINE_BUILD` + stub/embed/SW/harness. |
 | **B** `--deploy-gate` | Post-push: marker PRESENT, 200-shell coherence, inert `?v=`. |
-| **Neither fully** | CF/TTL warm cache; homepage design-shell twin; ordinary auto-increment behind live; PO browser/SW residual. |
+| **Neither fully** | CF/TTL warm cache; PO browser/SW residual. |
 
 ---
 

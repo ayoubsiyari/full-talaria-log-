@@ -524,6 +524,56 @@ test('cell 23: auth-gated shell does not poison coherence under deploy-gate', as
     });
 });
 
+test('cell 24b: deploy-gate fails when CHART_ENGINE_BUILD disagrees with shell id', async () => {
+    await withServer({
+        '/chart/modules/order-manager.js': { body: REAL_MODULE_WITH_FIX, varyByV: true },
+        '/chart/chart.js': {
+            body: "const CHART_ENGINE_BUILD = '20260720b01';\n",
+        },
+        '/chart/dist-v9/index.html': {
+            type: 'text/html',
+            body: "<script>window.__TALARIA_CHART_BUILD_ID='20260728b81'</script>"
+                + '<script src="/chart/modules/order-manager.js?v=20260728b81"></script>',
+        },
+    }, async (base) => {
+        const r = await probe(OPTS(base, {
+            stampInertCheck: true,
+            deployGate: true,
+            engineBuildCheck: true,
+            shells: ['/chart/dist-v9/index.html'],
+        }));
+        const eng = r.findings.find((x) => x.kind === 'engine-build');
+        assert.equal(eng.engineChecked, true);
+        assert.equal(eng.match, false);
+        assert.equal(r.summary.exitCode, 2);
+        assert.ok(r.summary.deployHazards.includes('engineShellMismatch'));
+    });
+});
+
+test('cell 24c: deploy-gate passes when engine build matches shell id', async () => {
+    await withServer({
+        '/chart/modules/order-manager.js': { body: REAL_MODULE_WITH_FIX, varyByV: true },
+        '/chart/chart.js': {
+            body: "const CHART_ENGINE_BUILD = '20260728b81';\n",
+        },
+        '/chart/dist-v9/index.html': {
+            type: 'text/html',
+            body: "<script>window.__TALARIA_CHART_BUILD_ID='20260728b81'</script>"
+                + '<script src="/chart/modules/order-manager.js?v=20260728b81"></script>',
+        },
+    }, async (base) => {
+        const r = await probe(OPTS(base, {
+            stampInertCheck: true,
+            deployGate: true,
+            engineBuildCheck: true,
+            shells: ['/chart/dist-v9/index.html'],
+        }));
+        const eng = r.findings.find((x) => x.kind === 'engine-build');
+        assert.equal(eng.match, true);
+        assert.equal(r.summary.exitCode, 0);
+    });
+});
+
 test('cell 24: default shells include talaria-design/live', () => {
     const opts = parseArgs(['--base-url=http://example.test']);
     assert.ok(opts.shells.includes('/chart/talaria-design/live/index.html'));

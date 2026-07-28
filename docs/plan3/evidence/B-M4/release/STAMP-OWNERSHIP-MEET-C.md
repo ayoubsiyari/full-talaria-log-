@@ -99,7 +99,7 @@ Ordinary builds without `CHECKPOINT_BUILD=1` can still auto-increment from a com
 | A file | Stamp mechanism | Covered by C? |
 |---|---|---|
 | `chart v 1.4/chart/modules/replay-system.js` | Shell tags `modules/replay-system.js?v=…` (absolute or relative) | **Yes — both cells.** Cross-shell coherence on the module path; content-hash vs sealed baseline (**baseline already includes** `modules/replay-system.js`). |
-| `chart v 1.4/chart/chart.js` | `CHART_ENGINE_BUILD` inside the engine file + shell refs (`chart.js?v=…`, `__TALARIA_CHART_BUILD_ID`, embed default) | **Stamp/id path: yes. Content-hash path: no.** `BUILD_ID_RES` includes `/const CHART_ENGINE_BUILD = '([^']+)'/`, `__TALARIA_CHART_BUILD_ID`, and all `[?&]v=` — these feed `SHELL-BUILD-ID-UNIFORM` from **shell HTML** (and any shell that inlines the constant). The **module baseline map does not include `chart.js`**; engine drift is therefore covered by build-id / shell-stamp uniformity, **not** by `MODULE-CONTENT-STAMP-BASELINE`. Checkpoint bump must still rewrite `CHART_ENGINE_BUILD` in the same build so shell ids and engine constant stay aligned. |
+| `chart v 1.4/chart/chart.js` | `CHART_ENGINE_BUILD` inside the engine file + shell refs (`chart.js?v=…`, `__TALARIA_CHART_BUILD_ID`, embed default) | **Stamp/id path: yes (C). Content-hash path: no (C).** B closes the runtime gap: `--deploy-gate` fetches `/chart/chart.js` and requires `CHART_ENGINE_BUILD` == coherent shell id (`engineShellMismatch` → exit 2). Checkpoint bump must still rewrite `CHART_ENGINE_BUILD` in the same build. |
 
 ---
 
