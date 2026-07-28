@@ -18,6 +18,7 @@ const M6_SOUND_DEFECT_CHANNELS = [
   'broadcastChannels',
   'workers',
 ];
+const M6_DEFAULT_WORKER_CREDIT_CYCLES = 5;
 const M6_CALLBACK_OBSERVATION_MARGIN = 2;
 
 function isObject(value) {
@@ -669,25 +670,47 @@ function schedulerChannelDeltas(baselineScheduler, finalScheduler) {
   return deltas;
 }
 
-function schedulerDeltaEvaluation(baselineScheduler, finalScheduler) {
+function schedulerDeltaEvaluation(baselineScheduler, finalScheduler, { cycles = M6_DEFAULT_WORKER_CREDIT_CYCLES } = {}) {
   const deltas = schedulerChannelDeltas(baselineScheduler, finalScheduler);
   const zeroToleranceOk = M6_ZERO_TOLERANCE_CHANNELS.every((key) => deltas[key] <= 0);
   const soakedTimerOk = M6_SOAKED_TIMER_CHANNELS.every((key) => deltas[key] <= 0);
   const soundChannelRed = M6_SOUND_DEFECT_CHANNELS.some((key) => deltas[key] > 0);
-  const soundAttributableRed = ['pendingIntervals', 'messageChannels', 'broadcastChannels']
-    .some((key) => deltas[key] > 0);
+  const workerCreditThreshold = Math.max(1, Number(cycles) || M6_DEFAULT_WORKER_CREDIT_CYCLES);
+  const workerAttributableRed = deltas.workers >= workerCreditThreshold;
+  const nonWorkerAttributableChannels = ['pendingIntervals', 'messageChannels', 'broadcastChannels']
+    .filter((key) => deltas[key] > 0);
+  const soundAttributableRed = nonWorkerAttributableChannels.length > 0 || workerAttributableRed;
+  const attributableCreditChannels = [
+    ...nonWorkerAttributableChannels,
+    ...(workerAttributableRed ? ['workers'] : []),
+  ];
+  const workerOnlyRed = deltas.workers > 0 && nonWorkerAttributableChannels.length === 0;
+  const workerResidueWithoutCredit = workerOnlyRed && !workerAttributableRed;
+  const attributableCreditStatus = soundAttributableRed
+    ? 'ATTRIBUTABLE'
+    : workerResidueWithoutCredit
+      ? 'WORKER-BELOW-THRESHOLD'
+      : soundChannelRed
+        ? 'NON_ATTRIBUTABLE'
+        : 'NONE';
   return {
     deltas,
     zeroToleranceOk,
     soakedTimerOk,
     soundChannelRed,
     soundAttributableRed,
-    workerOnlyRed: deltas.workers > 0 && !soundAttributableRed,
+    attributableDefectCredit: soundAttributableRed,
+    attributableCreditStatus,
+    attributableCreditChannels,
+    workerAttributableRed,
+    workerCreditThreshold,
+    workerOnlyRed,
+    workerResidueWithoutCredit,
     pass: zeroToleranceOk && soakedTimerOk,
   };
 }
 
-export function assertM6ReplayLeakCounts({ baseline, final, mutant = false, workload = null } = {}) {
+export function assertM6ReplayLeakCounts({ baseline, final, mutant = false, workload = null, cycles = M6_DEFAULT_WORKER_CREDIT_CYCLES } = {}) {
   const workloadArmed = !workload || workload.armed === true;
   const baselineScheduler = baseline?.schedulingCensus?.totals || null;
   const finalScheduler = final?.schedulingCensus?.totals || null;
@@ -700,7 +723,7 @@ export function assertM6ReplayLeakCounts({ baseline, final, mutant = false, work
   const schedulerInstrumented = baselineInstrumented && finalInstrumented
     && schedulerEpochs.pass
     && schedulerCallbacks.pass;
-  const schedulerDeltas = schedulerDeltaEvaluation(baselineScheduler, finalScheduler);
+  const schedulerDeltas = schedulerDeltaEvaluation(baselineScheduler, finalScheduler, { cycles });
   const cells = [
     {
       name: 'M6-PO-WORKLOAD-ARMED',
@@ -746,7 +769,7 @@ export function assertM6ReplayLeakCounts({ baseline, final, mutant = false, work
       name: 'M6-SCHEDULER-CENSUS-RETURNS-TO-BASELINE',
       blocking: true,
       pass: schedulerInstrumented && schedulerDeltas.pass,
-      detail: `baselineTotal=${baselineScheduler?.totalResidue}; finalTotal=${finalScheduler?.totalResidue}; deltas=${JSON.stringify(schedulerDeltas.deltas)}; zeroToleranceOk=${schedulerDeltas.zeroToleranceOk}; soakedTimerOk=${schedulerDeltas.soakedTimerOk}; soundChannelRed=${schedulerDeltas.soundChannelRed}`,
+      detail: `baselineTotal=${baselineScheduler?.totalResidue}; finalTotal=${finalScheduler?.totalResidue}; deltas=${JSON.stringify(schedulerDeltas.deltas)}; zeroToleranceOk=${schedulerDeltas.zeroToleranceOk}; soakedTimerOk=${schedulerDeltas.soakedTimerOk}; soundChannelRed=${schedulerDeltas.soundChannelRed}; attributableDefectCredit=${schedulerDeltas.attributableDefectCredit}; creditStatus=${schedulerDeltas.attributableCreditStatus}; workerCreditThreshold=${schedulerDeltas.workerCreditThreshold}`,
       metrics: schedulerDeltas,
     },
   ];

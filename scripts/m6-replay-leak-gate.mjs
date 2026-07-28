@@ -767,6 +767,7 @@ export async function runM6ReplayLeakGate({
       final: report.final,
       mutant,
       workload: report.workload || null,
+      cycles: Number(report.cycles) || cycles,
     });
     if (schedulerOrphanInterval) {
       const instrumented = cells.find((cell) => cell.name === 'M6-SCHEDULER-CENSUS-INSTRUMENTED');
@@ -817,8 +818,9 @@ export async function runM6ReplayLeakPreflight(options = {}) {
   const finalLive = acceptance.report?.final?.liveReplaySystems;
   const censusInstrumented = acceptance.cells?.some((cell) => cell.name === 'M6-SCHEDULER-CENSUS-INSTRUMENTED' && cell.pass === true);
   const schedulerCell = acceptance.cells?.find((cell) => cell.name === 'M6-SCHEDULER-CENSUS-RETURNS-TO-BASELINE');
-  const soundSchedulerRed = schedulerCell?.pass === false && schedulerCell?.metrics?.soundAttributableRed === true;
-  const defectReproduced = censusInstrumented === true && (finalLive > 1 || soundSchedulerRed);
+  const attributableSchedulerRed = schedulerCell?.pass === false && schedulerCell?.metrics?.attributableDefectCredit === true;
+  const workerBelowCredit = schedulerCell?.pass === false && schedulerCell?.metrics?.workerResidueWithoutCredit === true;
+  const defectReproduced = censusInstrumented === true && (finalLive > 1 || attributableSchedulerRed);
   if (process.env.TALARIA_M6_LEAK_FIXED !== '1') {
     if (acceptance.ok && finalLive === 1) {
       return {
@@ -832,13 +834,18 @@ export async function runM6ReplayLeakPreflight(options = {}) {
     }
     if (!acceptance.ok && !defectReproduced) {
       if (acceptance.report) {
+        const workerDelta = Number(schedulerCell?.metrics?.deltas?.workers) || 0;
+        const workerCreditThreshold = Number(schedulerCell?.metrics?.workerCreditThreshold) || cycles;
+        const workerCreditText = workerBelowCredit
+          ? `worker-only growth delta ${workerDelta} below attribution threshold ${workerCreditThreshold} is RED residue but not PO defect reproduced`
+          : `worker-only growth requires magnitude >= cycles for PO defect credit (threshold ${workerCreditThreshold})`;
         return {
           ok: false,
           status: 'UNPROVEN',
           signature: M6_REPLAY_LEAK_SIGNATURE,
           acceptance,
           mutant: null,
-          error: 'M6 defect unproven: requires instrumented census plus live growth or attributable scheduler-channel RED; absent/blind census is not PO defect reproduced; listener-only drift is not PO defect reproduced; one-shot worker allocation is not PO defect reproduced',
+          error: `M6 defect unproven: requires instrumented census plus live growth or attributable scheduler-channel RED; absent/blind census is not PO defect reproduced; listener-only drift is not PO defect reproduced; ${workerCreditText}`,
         };
       }
       return { ok: false, status: acceptance.status, signature: M6_REPLAY_LEAK_SIGNATURE, acceptance, mutant: null };
@@ -851,7 +858,7 @@ export async function runM6ReplayLeakPreflight(options = {}) {
         signature: M6_REPLAY_LEAK_SIGNATURE,
         acceptance,
         mutant: null,
-        error: `PO defect reproduced (final live=${finalLive}; soundSchedulerRed=${soundSchedulerRed === true}); ship blocked until fix (TALARIA_M6_LEAK_FIXED=1)`,
+        error: `PO defect reproduced (final live=${finalLive}; attributableSchedulerRed=${attributableSchedulerRed === true}; creditStatus=${schedulerCell?.metrics?.attributableCreditStatus || 'NONE'}); ship blocked until fix (TALARIA_M6_LEAK_FIXED=1)`,
       };
     }
   }

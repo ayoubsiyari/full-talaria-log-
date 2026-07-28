@@ -26,15 +26,15 @@ test('reproduce: PO workload must stay RED on unfixed product (not a pass if liv
   const finalLive = acceptance.report.final?.liveReplaySystems;
   const censusCell = acceptance.cells.find((cell) => cell.name === 'M6-SCHEDULER-CENSUS-INSTRUMENTED');
   const schedulerCell = acceptance.cells.find((cell) => cell.name === 'M6-SCHEDULER-CENSUS-RETURNS-TO-BASELINE');
-  const soundSchedulerRed = schedulerCell && schedulerCell.pass === false && schedulerCell.metrics?.soundChannelRed === true;
-  if (finalLive === 1 && !soundSchedulerRed) {
+  const attributableSchedulerRed = schedulerCell && schedulerCell.pass === false && schedulerCell.metrics?.attributableDefectCredit === true;
+  if (finalLive === 1 && !attributableSchedulerRed) {
     assert.equal(result.status, 'UNPROVEN', result.error || JSON.stringify(acceptance.cells, null, 2));
     return;
   }
 
   assert.equal(result.status, 'RED', result.error || JSON.stringify(acceptance.cells, null, 2));
   assert.ok(
-    censusCell?.pass === true && (finalLive > 1 || soundSchedulerRed),
-    `expected instrumented census plus live growth or sound scheduler RED, got live=${finalLive}, census=${JSON.stringify(censusCell)}, scheduler=${JSON.stringify(schedulerCell)}`,
+    censusCell?.pass === true && (finalLive > 1 || attributableSchedulerRed),
+    `expected instrumented census plus live growth or attributable scheduler RED, got live=${finalLive}, census=${JSON.stringify(censusCell)}, scheduler=${JSON.stringify(schedulerCell)}`,
   );
 });

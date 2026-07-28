@@ -422,7 +422,7 @@ test('fault-injection: listener-only drift is not a reproduced PO defect', async
   assert.match(preflight.error, /listener-only drift is not PO defect reproduced/);
 });
 
-test('fault-injection: one-shot worker growth is RED but not reproduced PO defect credit', async () => {
+test('fault-injection: small worker growth is RED but not reproduced PO defect credit', async () => {
   const preflight = await runM6ReplayLeakPreflight({
     findBrowser: () => '/fixture/chrome',
     runBrowser: async () => ({
@@ -443,7 +443,69 @@ test('fault-injection: one-shot worker growth is RED but not reproduced PO defec
 
   assert.equal(preflight.ok, false);
   assert.equal(preflight.status, 'UNPROVEN');
-  assert.match(preflight.error, /one-shot worker allocation is not PO defect reproduced/);
+  assert.equal(
+    preflight.acceptance.cells.find((cell) => cell.name === 'M6-SCHEDULER-CENSUS-RETURNS-TO-BASELINE')?.metrics?.attributableDefectCredit,
+    false,
+  );
+  assert.match(preflight.error, /worker-only growth delta 1 below attribution threshold 5/);
+});
+
+test('fault-injection: cycle-scale worker growth receives attributable defect credit', async () => {
+  const preflight = await runM6ReplayLeakPreflight({
+    findBrowser: () => '/fixture/chrome',
+    runBrowser: async () => ({
+      report: {
+        ok: true,
+        cycles: 5,
+        workload: { armed: true, panels: 4, indicatorsOk: true, order: { ok: true }, stillPlaying: 4 },
+        baseline: withScheduler({ liveReplaySystems: 1, connectedIframes: 0, detachedTrackedIframes: 0 }),
+        final: withScheduler(
+          { liveReplaySystems: 1, connectedIframes: 0, detachedTrackedIframes: 0 },
+          observedTotals({ workers: 5, totalResidue: 5 }),
+        ),
+      },
+      timedOut: false,
+      stderrTail: '',
+    }),
+  });
+
+  const schedulerCell = preflight.acceptance.cells.find((cell) => cell.name === 'M6-SCHEDULER-CENSUS-RETURNS-TO-BASELINE');
+  assert.equal(preflight.ok, false);
+  assert.equal(preflight.status, 'RED');
+  assert.equal(schedulerCell?.metrics?.attributableDefectCredit, true);
+  assert.deepEqual(schedulerCell?.metrics?.attributableCreditChannels, ['workers']);
+  assert.match(preflight.error, /attributableSchedulerRed=true/);
+});
+
+test('fault-injection: FIXED mode cannot mint GREEN on worker growth', async () => {
+  const prev = process.env.TALARIA_M6_LEAK_FIXED;
+  process.env.TALARIA_M6_LEAK_FIXED = '1';
+  try {
+    const preflight = await runM6ReplayLeakPreflight({
+      findBrowser: () => '/fixture/chrome',
+      runBrowser: async () => ({
+        report: {
+          ok: true,
+          cycles: 5,
+          workload: { armed: true, panels: 4, indicatorsOk: true, order: { ok: true }, stillPlaying: 4 },
+          baseline: withScheduler({ liveReplaySystems: 1, connectedIframes: 0, detachedTrackedIframes: 0 }),
+          final: withScheduler(
+            { liveReplaySystems: 1, connectedIframes: 0, detachedTrackedIframes: 0 },
+            observedTotals({ workers: 1, totalResidue: 1 }),
+          ),
+        },
+        timedOut: false,
+        stderrTail: '',
+      }),
+    });
+
+    assert.equal(preflight.ok, false);
+    assert.equal(preflight.status, 'RED');
+    assert.match(preflight.acceptance.error, /M6-SCHEDULER-CENSUS-RETURNS-TO-BASELINE/);
+  } finally {
+    if (prev === undefined) delete process.env.TALARIA_M6_LEAK_FIXED;
+    else process.env.TALARIA_M6_LEAK_FIXED = prev;
+  }
 });
 
 test('fault-injection: displaced Worker wrapper cannot mint FIXED GREEN', async () => {
@@ -606,7 +668,7 @@ test('fault-injection: preflight treats scheduler census RED as reproduced PO de
 
   assert.equal(preflight.ok, false);
   assert.equal(preflight.status, 'RED');
-  assert.match(preflight.error, /soundSchedulerRed=true/);
+  assert.match(preflight.error, /attributableSchedulerRed=true/);
 });
 
 test('fault-injection: preflight treats live replay growth as reproduced PO defect with instrumented census', async () => {
