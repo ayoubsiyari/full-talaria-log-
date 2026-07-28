@@ -2116,3 +2116,41 @@ Mine: all three writers, `_m19DockNowTs`, `_m19DockTimeLabel`. **A's:** the `cha
 **ASSUMPTION standing from B-0105** (pause → no tick → stale stamp persists) is unchanged and still unverified end to end.
 
 **A16.4:** manager-finding-defect **11**. Manager-caused **12**. Self-correction on B-0105's scope logged here rather than as a new defect, since it was my analysis narrowing, not a subagent's error.
+
+## B-0107 — B-W14 REJECTED (73 designed / 26 survived). Reverted. And a new vacuity form that is subtler than the five before it.
+
+B-R8, top tier, money-path trigger. **REJECT both artifacts** — product (S), harness (P). `order-manager.js` reverted to HEAD; the diff is preserved at `evidence/B-M10/B-W14-rejected-fix.patch`; the harness is renamed `.b-w14-rejected-notgate.mjs` and stamped per VER-03. I verified the decisive findings myself rather than accepting the report.
+
+### The sixth vacuity form: a suite a faithful reimplementation can satisfy
+
+The previous five were about empty observations or an empty population. This one is different and it caught me out, because **the harness passes every test I would have thought to apply.** It writes a mutated copy of the real product to a temp dir, `require`s it, drives the real `closePositionAtPrice`, and a no-op stub dies. Its 22/0 is honest.
+
+And a **51-line reimplementation containing zero product code passes all 15 cells.**
+
+The mechanism: every mutant is anchored on an exact product source string, so the mutation set can only ever probe territory the cells already see. The score measures how thoroughly 22 string edits break 15 cells — not how tightly the cells bind the product.
+
+> **"A no-op stub dies" is not the same claim as "only the product passes."** I have been treating the first as evidence for the second all day, including in my own V8 acceptance.
+
+That is a standard I need to apply retroactively. V8's stub-death cell proves a no-op dies; it does not prove a faithful reimplementation fails. I am not reopening V8 on that basis today — it is non-blocking and its cells are behavioural — but I am recording that its acceptance rests on the weaker claim.
+
+### The finding that actually rejects the packet
+
+**The packet introduces a durable regression on a reachable path.** A cross-pair `STOP_OUT` (line 2279, the one caller passing no `bgCloseTime`) finds no chart for its instrument, falls through to the focused chart's replay system, and dates the close from **another pair's bars**. B-R8 executed it: an AUDUSD row written with `holdingTimeMs: -29820000` and an **exit timestamp preceding its own entry**. Nothing in the packet's guards is about ordering — they are all about type. Trading a wall-clock defect for a negative-duration defect is not progress.
+
+Plus **19 persisted fields lost** (`savedAt`, `trading_session_id`, cost basis, excursion storage, and `ticker` — losing `ticker` gets the row relabelled `UNKNOWN`) for `false`, `true`, `Date` and ISO-string `openTime`. For the `Date` case HEAD produced a *correct* row. That is the exact regression class that killed B-W9. Reachability is unproven for all four, and B-R8 said so plainly rather than inflating it.
+
+**And tier 1's zero-preservation is decoration.** `order-manager.js:2608` — `const barTime = Number(bar.t) || undefined;` — is the only source of `bgCloseTime` for every background close, and the `||` destroys a legitimate `0`. The packet carefully preserves a zero that its own caller can never deliver. I confirmed the line.
+
+### A correction I owe, in B-W14's favour
+
+B-R8's E-1 says `closePosition()` "still writes the original defect". The magnitude is right — a garbage `openTime` yields 464592 hours — but **the label is wrong, and the difference matters.** I read the function: `closeTime = currentCandle.t` (`:30849`), a **bar time**. So the manual-close path has no wall-clock contamination at all. Its 53-year figure comes from an unguarded `openTime`, which is E-2's defect, not M10's.
+
+That distinction decides scope. M10 was raised for wall-clock mixing; `closePosition` is a *garbage-openTime* gap. Both want fixing, but conflating them would have had the rebuild chasing a clock defect that isn't there, in a function that needs a different guard.
+
+### Rejection attribution and what I take from it
+
+Two consecutive M10 packets rejected for introducing new durable defects while fixing the named one. That is not bad luck. **The close path is too coupled to patch safely from a spec written off a symptom** — seven tiers of fallback were invented to make a resolver total, and the totality itself produced the negative-duration write. The next attempt must be smaller than the last, not larger.
+
+Given M10 does not fix the PO's reported symptom anyway (B-0104) and the real mechanism is the session-clock invariant (B-0105/0106), **I am not re-dispatching the close-path rewrite before the ship gates.** M10 stays open with a precise, evidenced writeup.
+
+**A16.4:** manager-finding-defect **12** (the E-1 mislabel, found by me against my own reviewer). Manager-caused **12**. Rejection rate, M10 fix authoring: **2 of 2**.
