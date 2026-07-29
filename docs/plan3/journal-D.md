@@ -264,3 +264,4 @@
 - RED: `node --test "chart v 1.4/chart/modules/m17-di2-completed-bar-close-mutation.red.test.mjs"` fails today on both `last.c/h/l` mutation sites.
 - PO check written at `docs/plan3/PO-M17-DI2-COMPLETED-BAR-MUTATION-CHECK-20260729.md`. It is visually observable if a same-symbol multichart panel's closed candle shape or OHLC readout changes after the host price moves; if the PO cannot reproduce the visible change, use the RED gate as the engineering blocker.
 - Ticket status ledger written at `docs/plan3/TICKET-STATUS-LEDGER-20260729.md`.
+- Follow-up inventory correction: `TAL-01696`, `TAL-01698`, and `TAL-01617` are unknown, not fixed, because no dedicated accepted D-tip product gate exists; `TAL-01941` is not-fixed because it is instrumentation only. Added omitted M23/M6/paired-ticket unknown rows.
