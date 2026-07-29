@@ -3884,3 +3884,66 @@ PO freeze on b88 (four-panel, no click, play → only host moves). Default `__TA
 | b83–b84, b87–b89 | digests gone | not rebuilt unless requested |
 
 Live floor remains **`20260729b90`**. Handoff: `HANDOFF-C-PINNED-CANARY-IMAGES-20260729.md`. Do not `docker image prune -a` on canary.
+
+## B-0169 — b91 LIVE (orphans + D). Incomplete vs Director ask.
+
+Assembled ORPHAN-L1–L4 + D TAL-01933/01809/SEL-01. Draft reset already on tip. Stamp `20260729b91`. Missing at that stamp: LAG-SETINTERVAL-TICK + FIX1-VISIBILITY (still in A's queue relative to B).
+
+## B-0170 — b92 LIVE. Lag + FIX1-VISIBILITY default ON.
+
+| Packet | Source | Notes |
+|---|---|---|
+| LAG-SETINTERVAL-TICK | `cf8f0b6a3` | 9/9 oracle |
+| FIX1-VISIBILITY | `fe9ec1332` + B default-ON restore | replaces b90 ABSENT⇒DISABLED; 25/25 |
+| ORPHAN-L1–L4 + D three | already on tip from b91 | draft reset prior |
+
+Tip `798e07dd4`. Pin + tar. SURF-3 live GREEN. Stale-bundle check: STAND DOWN (BRIDGE_VERSION matches).
+
+## B-0171 — b93 LIVE. PURGE-2 kill-switch still re-primes.
+
+PO: `__TALARIA_DISABLE_MC_GRID_STATE_PURGE_V1=true` on b90 → 3/4 panels black + No fullRawData. Off-path now always clears clone/order sync sets on layout removal. FLAG-03 added to bisect protocol; purge2 harness has kill-switch product cell.
+
+
+## B-0172 — ESCALATION: PURGE-2 kill-switch persistent poison. Ship b94 self-heal.
+
+PO: delete `__TALARIA_DISABLE_MC_GRID_STATE_PURGE_V1` + reload → only 1/3 panels recovered; `clearActiveDrawingTool` timeouts; thrash loads across fileIds. Root: `sessionStorage talaria_mc_panel_files_v1` + skip-reprime left bad state that survived the flag.
+
+Fix on `20260729b94`:
+- clear persisted fileId on layout remove / boot fail / retry
+- sanitize map to live iframe ids on boot
+- self-heal: empty tile after 4.5s → drop persist, forget clone/order, `loadFile` host pair
+
+Product pack (lag / FIX1-VIS / orphans / D) was already live on b92–b93; b94 is the heal.
+
+
+## B-0173 — Recycled-id heal on re-add. Ship b95.
+
+PO: single→4 recovers (fresh MultichartGrid); recycled B/C/D stay dead. Self-heal moved to retire-on-remove + heal-on-re-add before `addChart` (host fileId, clear persist/prime sets). Delayed empty-tile heal kept as backup. Stamp `20260729b95`.
+
+
+
+## B-0174 — b99 LIVE. Tier protocol restored. Fallback-window ship-gate reviews named.
+
+**2026-07-29T16:12Z.** Stamp `20260729b99` from tip `0affbd697`. Key-auth ship (`TALARIA_TEST_HOST_PASS` absent after routing restore; `ssh -p 443 -o BatchMode=yes root@31.97.192.82` works). Runner: `docs/plan3/evidence/B-M4/release/observations/_run-ship-b99-key.sh`. `CANARY_CHECKPOINT_OK`; pin `PINNED-20260729b99.txt` + tar.
+
+Carries: ORPHAN-L1-L4, LAG-SETINTERVAL-TICK, FIX1-VISIBILITY default ON, M23 rollback cancel, SPLITTER hairlines, D pack incl. timezone (`ed2a183f3`), PURGE-2 heals (b94/b95).
+
+**Live regressed to b85 after tagging** (someone bringup'd pinned images). Re-brought up from immutable tags `talaria-{homepage,trading-chart}:canary-20260729b99` with `up -d --no-build`; on-wire `__TALARIA_CHART_BUILD_ID='20260729b99'` and both containers report the b99 tag. Re-verify before any grading claim — the wire, not this journal, is the source of truth.
+
+### TIER-01 restored (per RULING-RESTORE-MODEL-TIERS-20260729-1705)
+TOP = reviewer on ship-gate / money-path (this train is ship-gate). MID = default author. LOW = mechanical. `tier=`/`model=` on every packet from here. This packet: `tier=low model=cursor-grok-4.5` (mechanical deploy + bringup).
+
+### Ship-gate reviews performed during the Grok fallback window — BELOW POLICY, owe TOP re-review before canary
+No `B-R*` adversarial subagent ran in the window; all of the below were **manager acceptances at fallback tier**:
+
+| # | Stamp | Ship-gate judgement made below policy |
+|---|---|---|
+| 1 | b90 | FIX1 kill-switch polarity: ABSENT => DISABLED (default OFF) |
+| 2 | b91 | ORPHAN-L1-L4 + D pack admitted to train |
+| 3 | b92 | LAG-SETINTERVAL-TICK + FIX1-VISIBILITY default-ON restore |
+| 4 | b93 | PURGE-2 off-path clear + FLAG-03 kill-switch semantics |
+| 5 | b94 | PURGE-2 persisted-state self-heal (sessionStorage sanitise) |
+| 6 | b95 | recycled-panel-id heal on re-add before `addChart` |
+| 7 | b96 | A M23 rollback-cancel + SPLITTER-BORDERS admitted to train |
+
+b97/b98/b99 are re-ships of the same tip: no new review, but they inherit every item above. Kill-switch semantics (1, 3, 4) are named money-path-adjacent by the ruling and rank first for TOP re-review.
