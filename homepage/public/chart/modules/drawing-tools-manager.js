@@ -86,6 +86,23 @@ function multichartQuickbarSettingsFixEnabled() {
     return true;
 }
 
+function m14FibSettingsLevelsPersistV1Enabled() {
+    if (typeof window === 'undefined') return true;
+    const flagSet = (w) => {
+        try {
+            return !!(w && w.__TALARIA_DISABLE_M14_FIB_SETTINGS_LEVELS_PERSIST_V1);
+        } catch (_) {
+            return false;
+        }
+    };
+    try {
+        if (flagSet(window)) return false;
+        if (window.parent && window.parent !== window && flagSet(window.parent)) return false;
+        if (window.top && window.top !== window && flagSet(window.top)) return false;
+    } catch (_) { /* ignore */ }
+    return true;
+}
+
 /** M19-H: coalesce replay-TF drawing work and release superseded caches. */
 function m19hTimeframeCoalesceEnabled() {
     return typeof window === 'undefined'
@@ -17754,6 +17771,29 @@ class DrawingToolsManager {
                 drawing.style.stroke = _sc;
             }
             // [debug removed]
+        }
+
+        if (savedStyle && Array.isArray(savedStyle.levels) && m14FibSettingsLevelsPersistV1Enabled()) {
+            const isFibLevelTool = drawing.type === 'fibonacci-retracement'
+                || drawing.type === 'fibonacci-extension'
+                || drawing.type === 'trend-fib-extension'
+                || drawing.type === 'fib-channel'
+                || drawing.type === 'fib-timezone'
+                || drawing.type === 'fib-speed-fan'
+                || drawing.type === 'fib-circles'
+                || drawing.type === 'fib-spiral'
+                || drawing.type === 'fib-arcs'
+                || drawing.type === 'fib-wedge';
+            if (isFibLevelTool) {
+                const restoredLevels = JSON.parse(JSON.stringify(savedStyle.levels));
+                drawing.levels = restoredLevels;
+                if (!drawing.style) drawing.style = {};
+                drawing.style.levels = restoredLevels;
+                if (drawing.type === 'fib-timezone') {
+                    drawing.fibNumbers = restoredLevels;
+                    drawing.style.fibNumbers = restoredLevels;
+                }
+            }
         }
 
         // Apply persisted risk inputs for long/short position tools
