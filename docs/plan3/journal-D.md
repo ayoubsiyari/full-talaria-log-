@@ -274,3 +274,9 @@
 - Rebased `manager-d/trade-correctness` onto B's accepted train `manager-b/reconcile-d-20260729` before continuing ledger work.
 - Evidence-only sweep closed rows only where the rebased train had a commit and a direct gate/cross-link: M24/TAL-01926 (`95adb8285` + `56b773b90`), M23/TAL-01937 and Rayan #1/#3/#6b (`f127d25dd`), M10/TAL-01800/TAL-01798/TAL-01815 (`c0a0d7620`), and Rayan #11 (`b21d236d3` + `f1ddb2e64`). Current ledger count is 41 fixed / 6 not-fixed / 97 unknown.
 - Expanded `docs/plan3/PO-CHECK-FULL-INTAKE-UNKNOWN-CLUSTERS-20260729.md` into one PO script per surviving cluster with row-closing counts. Added `docs/plan3/UNKNOWN-RISK-LABELS-20260729.md`: 47 remaining unknowns are canary-blocking and 50 are cosmetic/non-blocking disclosure items.
+
+## 2026-07-29 — Ruling 8ba4d7a8b / Tier review discipline
+
+- TIER-01 compliance acknowledged: D authors bounded packets at tier=mid on gpt-5.5 and escalates money-path review to TOP.
+- TIER-02 recorded: budget pressure reduces the number of concurrent TOP reviews and serializes them; reviewer tier is not downgraded to save budget, and manager tier does not drop without Director ruling.
+- Standing journal practice: every future TOP review entry needs one clause naming why TOP is required, e.g. money-path orders/positions/balance/SL-TP execution/trade journal, live proxy config adjacent to money-path, or another explicit Director-approved trigger.
