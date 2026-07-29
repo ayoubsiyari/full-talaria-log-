@@ -77,9 +77,12 @@ om._orderProvisionalEdit = {
 om._oiResolveProvisionalPreviewPrice = OrderManager.prototype._oiResolveProvisionalPreviewPrice;
 om._resolveLivePreviewPanelPrices = OrderManager.prototype._resolveLivePreviewPanelPrices;
 om.calculatePositionFromRisk = OrderManager.prototype.calculatePositionFromRisk;
+om._oiCancelActiveProvisionalEdit = OrderManager.prototype._oiCancelActiveProvisionalEdit;
 om.calculateAdvancedRiskReward = () => {};
 om.updatePlaceButtonText = () => {};
 om.updatePreviewLines = () => {};
+om._multichartPostDraftDragBusy = () => {};
+om._multichartIsEmbedIframe = () => false;
 om.syncPipFromActiveSymbol = () => {};
 om._enginePositionSize = (riskAmount, entryPrice, slPrice) => riskAmount / Math.abs(entryPrice - slPrice);
 om._roundQtyToStep = (qty) => qty;
@@ -92,6 +95,17 @@ om.calculatePositionFromRisk();
 
 assert.equal(elements.orderQuantity.value, '5.00', 'fixed-risk quantity uses live provisional SL distance');
 assert.equal(elements.slPrice.value, '95', 'apply-on-release still withholds hidden SL input commit');
+
+om._orderProvisionalEdit = {
+  phase: 'preview',
+  lineKind: 'sl',
+  provisionalPrice: 90,
+  committedPrice: 95,
+};
+om._oiProvisionalDragCtx = null;
+om.isDraggingPreviewLine = true;
+om._oiCancelActiveProvisionalEdit('escape');
+assert.equal(elements.orderQuantity.value, '10.00', 'cancel re-sizes fixed risk back to committed SL distance');
 
 console.log(disabled
   ? 'RED — switch OFF sizes fixed risk from stale committed SL input'

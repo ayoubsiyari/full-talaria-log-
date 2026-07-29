@@ -914,6 +914,10 @@ class OrderManager {
         if (!st || st.phase === 'idle') return;
         const revert = st.committedPrice;
         const ctx = this._oiProvisionalDragCtx;
+        const recalcRiskAfterPreviewSlCancel = _orderRiskQtyLivePreviewSlV1Enabled()
+            && st.phase === 'preview'
+            && st.lineKind === 'sl'
+            && (this.positionSizeMode === 'risk-usd' || this.positionSizeMode === 'risk-percent');
         this._orderProvisionalEdit = _oiCreateProvisionalEditState();
         this._oiProvisionalDragCtx = null;
         this.isDraggingPreviewLine = false;
@@ -945,6 +949,9 @@ class OrderManager {
             try { this.updateOrderLines(); } catch (e) { /* ignore */ }
         } else if (st.phase === 'preview') {
             try { this.updatePreviewLines(); } catch (e) { /* ignore */ }
+        }
+        if (recalcRiskAfterPreviewSlCancel && typeof this.calculatePositionFromRisk === 'function') {
+            try { this.calculatePositionFromRisk(); } catch (e) { /* ignore */ }
         }
         if (reason) console.log(`↩️ Provisional SL/TP edit cancelled (${reason})`);
         if (this._multichartIsEmbedIframe() && (reason === 'focus-loss' || reason === 'iframe-blur')) {
