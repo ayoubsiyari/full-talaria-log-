@@ -3822,3 +3822,16 @@ Align chart.js from A → cherry-pick LEAK-C `f5ee11780` → stamp **b85**.
 | Flags on wire | PANEL + CLEARFILE + BAR_STORE_REALM (+ GRID via dist) |
 
 Ship script 4d SSH quote flake after PURGE_FLAGS_REACHABLE — remainder verify closed green; script quote hardened for next stamp.
+
+## B-0163 — b86 LIVE. FIX1 + LEAK-B/A/D shipped for PO live measure.
+
+**2026-07-29.** Assembled A's tip four product commits; stamped `20260729b86`.
+
+| Packet | SHA | Flag |
+|---|---|---|
+| FIX 1 | `ca5c9e203` | `__TALARIA_DISABLE_MC_BACKGROUND_RENDER_CADENCE_V1` |
+| LEAK-B | `ade68f2c2` | `__TALARIA_DISABLE_RAW_RESPONSE_TEXT_DROP_V1` |
+| LEAK-A | `7ae34db86` | `__TALARIA_DISABLE_MC_HOST_CACHE_RELEASE_V1` |
+| LEAK-D | `6e9593497` | `__TALARIA_DISABLE_MC_RAWDATA_COPY_V1` |
+
+Tip `9b81b89fd`. FLAG harnesses all PASS (do not hold). SURF-3 GREEN, holes=0, deploy-gate PRESENT, four flags on `/chart/chart.js`.
