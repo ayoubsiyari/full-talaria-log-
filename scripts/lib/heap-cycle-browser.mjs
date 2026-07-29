@@ -810,6 +810,8 @@ async function runMultichartCycles({
   recoverPage = null,
   /** Match PO hand: longer soak; baseline soft GC; cycle samples without GC. */
   poHandSample = false,
+  /** Take one heap snapshot after the final floor so retainers can be named. */
+  finalRetainerSnapshot = false,
 } = {}) {
   // PO workload: CDP heap snapshots grow past V8's ~512MB string limit and also
   // detach the React shell mid-run. Floor calibration uses usedJSHeapSize only.
@@ -830,7 +832,9 @@ async function runMultichartCycles({
     + `playHoldMs=${effectivePlayHold}`,
   );
   const baseline = await sampleHeap(page, cdp, {
-    snapshot: snapshotPolicy !== 'floor-only',
+    // Naming the growing mass needs a baseline to diff the final snapshot against;
+    // the absolute top of a single snapshot is dominated by static script text.
+    snapshot: snapshotPolicy !== 'floor-only' || finalRetainerSnapshot,
     poHandSample: snapshotPolicy === 'floor-only' && poHandSample,
     softGc: snapshotPolicy === 'floor-only' && poHandSample,
     label: 'baseline',
@@ -881,6 +885,7 @@ async function runMultichartCycles({
   const cycleRows = [];
   let prevDetached = baseline.detachedDivCount;
   let lastSnapshot = null;
+  let finalAggregates = null;
   const workloadArms = [];
 
   const datasetAssessments = [];
@@ -967,6 +972,36 @@ async function runMultichartCycles({
     if (isFinal && returnSingle._snapshot) {
       lastSnapshot = returnSingle._snapshot || null;
       delete returnSingle._snapshot;
+    }
+    // Floor-only runs skip snapshots because a ~500MB mid-run CDP snapshot
+    // destabilizes the React shell. One snapshot *after* the last floor is
+    // measured costs nothing that still matters, and it is the only way to name
+    // what the distinct-dataset configuration is retaining.
+    if (isFinal && !takeSnap && finalRetainerSnapshot) {
+      logHeapCycle('final cycle: taking end-of-run snapshot for retainer paths');
+      try {
+        const retainerSample = await sampleHeap(page, cdp, {
+          snapshot: true,
+          keepSnapshot: true,
+          label: 'final-retainer-snapshot',
+        });
+        lastSnapshot = retainerSample._snapshot || null;
+        finalAggregates = retainerSample.constructorAggregates || null;
+        logHeapCycle(`end-of-run snapshot captured: nodes=${lastSnapshot?.nodes?.length ?? 'n/a'}`);
+      } catch (error) {
+        const message = String(error?.message || error);
+        logHeapCycle(`end-of-run snapshot failed: ${message}`);
+        if (/string longer than/i.test(message)) {
+          // A snapshot serializes to roughly 2.3x usedJSHeapSize, so heaps much
+          // over ~220MB exceed V8's max string length when parsed. Growth here is
+          // monotonic from cycle 1, so fewer cycles retains the same structure at
+          // a parseable size.
+          logHeapCycle(
+            'snapshot exceeded V8 max string length — rerun with fewer --cycles '
+            + 'to keep the heap under ~220MB at snapshot time',
+          );
+        }
+      }
     }
 
     const detachedDivDelta = (returnSingle.detachedDivCount != null && prevDetached != null)
@@ -1055,7 +1090,13 @@ async function runMultichartCycles({
     })),
   };
   let growthCensus;
-  if (snapshotPolicy === 'floor-only') {
+  if (snapshotPolicy === 'floor-only' && baseline.constructorAggregates && finalAggregates) {
+    // Floor-only run with an end-of-run snapshot: diff baseline vs final so the
+    // per-constructor growth is attributable even though mid-run snapshots are off.
+    growthCensus = buildGrowthCensus([baseline.constructorAggregates, finalAggregates]);
+    growthCensus.snapshotPolicy = 'baseline-and-final';
+    growthCensus.note = 'baseline vs end-of-run snapshot (mid-run snapshots disabled under PO workload)';
+  } else if (snapshotPolicy === 'floor-only') {
     growthCensus = {
       signature: HEAP_GROWTH_CENSUS_SIGNATURE,
       ok: false,
@@ -1103,7 +1144,7 @@ async function runMultichartCycles({
       growthCensus.snapshotPolicy = snapshotPolicy;
     }
   }
-  const retainerPaths = snapshotPolicy === 'floor-only'
+  const retainerPaths = (snapshotPolicy === 'floor-only' && !lastSnapshot)
     ? {
       signature: HEAP_RETAINER_PATHS_SIGNATURE,
       ok: false,
@@ -1421,6 +1462,7 @@ async function runDeployedSession({
   playHoldMs = 6_000,
   datasetMode = HEAP_CYCLE_DATASET_MODE_DISTINCT,
   timeframes = HEAP_CYCLE_DISTINCT_TIMEFRAMES,
+  finalRetainerSnapshot = false,
 }) {
   const email = String(process.env.TEST_EMAIL || process.env.L2_M1_TEST_EMAIL || '').trim();
   const password = String(process.env.TEST_PASSWORD || process.env.L2_M1_TEST_PASSWORD || '').trim();
@@ -1593,6 +1635,7 @@ async function runDeployedSession({
       fileIdsForCycle: () => fileIds.slice(0, 4),
       datasetMode,
       timeframes,
+      finalRetainerSnapshot,
       poWorkload: true,
       playHoldMs: Number.isFinite(playHoldMs) && playHoldMs > 0 ? playHoldMs : 6_000,
       replaySpeed: 60,
@@ -1661,6 +1704,7 @@ export async function runHeapCycleBrowserSession({
   playHoldMs = null,
   datasetMode = HEAP_CYCLE_DATASET_MODE_DISTINCT,
   timeframes = HEAP_CYCLE_DISTINCT_TIMEFRAMES,
+  finalRetainerSnapshot = false,
 } = {}) {
   const puppeteer = await loadPuppeteer();
   if (surface === HEAP_CYCLE_SURFACE_THIN_HOST) {
@@ -1678,6 +1722,7 @@ export async function runHeapCycleBrowserSession({
       playHoldMs: Number.isFinite(playHoldMs) && playHoldMs > 0 ? playHoldMs : 6_000,
       datasetMode,
       timeframes,
+      finalRetainerSnapshot,
     });
   }
   return runDistV9Session({ cycles, timeoutMs, settleMs, puppeteer, datasetMode, timeframes });

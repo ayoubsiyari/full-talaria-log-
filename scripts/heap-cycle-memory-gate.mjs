@@ -34,6 +34,7 @@ export function parseHeapCycleMemoryArgs(argv = process.argv.slice(2)) {
     playHoldMs: null,
     datasetMode: null,
     timeframes: null,
+    finalRetainerSnapshot: false,
   };
   for (const arg of argv) {
     if (arg === '--fixture' || arg === '--gate01-fixture') {
@@ -50,6 +51,8 @@ export function parseHeapCycleMemoryArgs(argv = process.argv.slice(2)) {
       options.poHandSample = false;
     } else if (arg.startsWith('--dataset-mode=')) {
       options.datasetMode = arg.slice('--dataset-mode='.length).trim().toLowerCase();
+    } else if (arg === '--final-retainer-snapshot') {
+      options.finalRetainerSnapshot = true;
     } else if (arg.startsWith('--timeframes=')) {
       options.timeframes = arg.slice('--timeframes='.length)
         .split(',')
@@ -110,6 +113,7 @@ export async function runHeapCycleMemoryGate({
   playHoldMs = null,
   datasetMode = null,
   timeframes = null,
+  finalRetainerSnapshot = false,
   runBrowser = null,
 } = {}) {
   const startedAt = new Date().toISOString();
@@ -130,6 +134,7 @@ export async function runHeapCycleMemoryGate({
         }
         if (datasetMode) browserOpts.datasetMode = datasetMode;
         if (Array.isArray(timeframes) && timeframes.length) browserOpts.timeframes = timeframes;
+        if (finalRetainerSnapshot) browserOpts.finalRetainerSnapshot = true;
         if (Number.isFinite(cycles) && cycles > 0) browserOpts.cycles = cycles;
         if (Number.isFinite(playHoldMs) && playHoldMs > 0) browserOpts.playHoldMs = playHoldMs;
         report = await browserRunner(browserOpts);
@@ -235,6 +240,7 @@ if (isMain) {
       playHoldMs: options.playHoldMs,
       datasetMode: options.datasetMode,
       timeframes: options.timeframes,
+      finalRetainerSnapshot: options.finalRetainerSnapshot,
     });
   } catch (error) {
     report = {
