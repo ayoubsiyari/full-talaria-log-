@@ -180,3 +180,13 @@
 - Ownership note: TAL-01896 still points at `chart v 1.4/talaria-design/src/orderManagerTradeRows.js`, outside Manager D's grant. I did not edit it.
 - RED: `TALARIA_TEST_DISABLE_ORDER_SL_TRIGGER_DIAG=1 node "chart v 1.4/chart/modules/order-sl-trigger-diagnostics.test.mjs"` fails because diagnostics are disabled.
 - GREEN: both `node "chart v 1.4/chart/modules/order-sl-trigger-diagnostics.test.mjs"` and `node "homepage/public/chart/modules/order-sl-trigger-diagnostics.test.mjs"` pass.
+
+## 2026-07-29 — Timezone / V9 theme CST override (narrow grant)
+
+- Grant: `chart v 1.4/chart/modules/v9-theme-bridge.js` only. No `chart.js` edits.
+- Root cause confirmed in bridge: `talariaApplyV9ThemeSettings` wrote `settings.timezone` into `chartSettings` and called `timezoneManager.setTimezone(resolveV9Tz(...))`, so a V9/session `America/Chicago` snapshot could replace persisted `chartTimezone=America/New_York` on reload (including after the manager boot guard released).
+- Fix: bridge honors persisted `chartTimezone` over a disagreeing V9 timezone during theme apply, behind `__TALARIA_DISABLE_V9_THEME_TZ_HONOR_CHART_V1` (default ON). Rejected `setTimezone` results no longer leave Chicago on `chartSettings.timezone`. Homepage mirror aligned.
+- Escalations (not edited): `docs/plan3/PATCH-REQUEST-V9-THEME-TZ-FOLLOWUPS-20260729.md` — `chart.js` `applySessionTimezone` ~1799 and DOM sync ~32040; Live `v9ThemeSync.js` duplicate replace of the bridge global; V9 confirm write-through must `setTimezone` before apply for intentional TZ changes.
+- Symbol persist: not implemented. Patch request for A at `docs/plan3/PATCH-REQUEST-A-SYMBOL-PERSIST-20260729.md` (boot read ~2370; pair-switch writes ~5420 / ~10115 / ~10509 / symbol switcher ~17318).
+- RED: `TALARIA_TEST_DISABLE_V9_THEME_TZ_HONOR_CHART=1 node v9-theme-tz-honor-chart.test.mjs` fails (Chicago overwrites New_York).
+- GREEN: both canonical and homepage `v9-theme-tz-honor-chart.test.mjs` pass.
