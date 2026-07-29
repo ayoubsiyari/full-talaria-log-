@@ -243,3 +243,9 @@
 - TOP review: tier=top reviewer model=claude-opus-5-thinking-high result=ACCEPT. Reviewer verified RED/GREEN, mutation coverage for the prior rejection, sibling source tests, `node --check`, and lints. Material residuals: canary will not observe the fix until `dist-v9` bundles are rebuilt by the bundle owner; `holdingTimeMs` remains a separate unresolved canonical-duration source; alternate timestamp keys (`exitDate`, snake_case close fields) remain outside this packet.
 - RED: `node "chart v 1.4/talaria-design/src/orderManagerTradeRows.test.mjs"` failed with `139271h 0m !== —` and `0h 0m !== 2h 30m`.
 - GREEN: `orderManagerTradeRows.test.mjs` passes with ON-path and kill-switch OFF legacy coverage; `node --test tests/evidence/b70-stage5/b75-tal-01896-duration-oracle.test.mjs` and `node --check orderManagerTradeRows.js` pass.
+
+## 2026-07-29 — TOP re-review queue cleared
+
+- tier=audit model=gpt-5.5; reviewer tier=top model=claude-opus-5-thinking-high result=ACCEPT for all queued money-path commits in `docs/plan3/TOP-REVIEW-REQUEUE-D-20260729.md`.
+- Queue result: 13/13 ACCEPT, 0 REJECT. Accepted commits: `b21d236d3`, `f1ddb2e64`, `b3f6cd6de`, `5f3e68368`, `a8d887db1`, `7a2871f24`, `864c2446c`, `c0a0d7620`, `e9d9f7594`, `379394fc0`, `b1196e79c`, `adaffe58e`, `93c842bc8`.
+- Residual routed: `c0a0d7620` changed `timezone-manager.js` and broke a non-money-path M20-A sha256 pin; M20-A owner should re-pin/re-review that gate. TIER-01 money-path queue is clear for canary.
