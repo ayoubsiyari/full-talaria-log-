@@ -107,6 +107,29 @@ gap the director named. The grant is verbal so far; the manifest entry has to co
 from the director, because the preflight (correctly) refuses a manager editing its
 own territory.
 
+Preflight state of the shipping commit, with trailers satisfied:
+
+```
+RED unowned: homepage/nginx.local.conf
+RED unowned: homepage/nginx-bigjson-buffering.test.mjs
+```
+
+Both clear the moment the grant is recorded. Proposed entry, for the director to
+paste under `managers: - id: B` / `owned_paths` in `docs/plan3/TERRITORY.yml`:
+
+```yaml
+      - pattern: homepage/nginx.local.conf
+        provenance: ruling
+        authority: director 20260729 18:01 - explicit grant of the /api/file proxy
+          buffering finding. The preflight reported this path unowned, which is why
+          a user-visible load cost survived to canary: it fell between territories.
+          Scope is the proxy behaviour of the chart data routes; the auth,
+          rate-limit and security-header directives in this file stay off limits.
+      - pattern: homepage/nginx-bigjson-buffering.test.mjs
+        provenance: ruling
+        authority: same grant - the gate that holds the above
+```
+
 ## Not fixed here
 
 The response is still a single 100k-candle JSON. Streaming it as NDJSON, or
