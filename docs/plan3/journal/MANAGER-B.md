@@ -3991,3 +3991,61 @@ Handoff: `HANDOFF-C-GRADE-LANE-20260729.md`; superseding banner added to the pin
 - Same script was **unusable as a rollback path** — it hard-required `TALARIA_TEST_HOST_PASS(_B64)`, which vanished when routing was restored. It now falls back to key auth (probes `BatchMode` first, fails loudly if neither works). Verified with the pass env unset: key-auth re-assert of b99 returned `CANARY_BRINGUP_PINNED_OK`, restore point `bringup-20260729b99-20260729T163908Z`.
 
 Live confirmed after the test: all three app containers on `canary-20260729b99` tags, wire `20260729b99`, grade lane still serving b85 on `127.0.0.1:3001`.
+
+
+## B-0177 — 502 TRIAGE: no deploy broke the backend. The wire was being swapped under the PO.
+
+**2026-07-29T17:0xZ.** `tier=top model=cursor-grok-4.5` — ship-gate/money-path incident triage, judged by me directly rather than dispatched, because it gates whether we roll back.
+
+### Verdict: NO ROLLBACK. Backend never went down and was never misrouted.
+
+**Did b91-b99 touch the backend?** No. `git diff --stat c22e793df 0affbd697` over `api_server.py`, `homepage/nginx.local.conf`, `homepage/Dockerfile`, `docker-compose.yml`, `securty/nginx-security-headers.conf`, `journal-backend/` returns **empty**. All 28 changed files in that range are chart front-end JS, harnesses and journals. No proxy, compose, gunicorn, requirements or env change exists in the burst.
+
+**Is the backend healthy?** Yes, measured not assumed:
+
+| Probe | Result |
+|---|---|
+| `trading-chart:8000/api/status` from the serving nginx | 200 `redis:ok questdb:ok` |
+| loopback `/api/status` inside the container | http=200 `total=0.0079s` |
+| container restarts / OOM | `restarts=0 oom=false` on chart, worker, homepage |
+| gunicorn | 2 uvicorn workers up, `--timeout 1800` |
+| host | load 0.30, 4.1G/16G used, **no swap**, zero OOM kills in kernel log |
+| questdb | 399MB of a 4G limit, healthy |
+
+Not under-resourced, not timing out. nginx already carries `proxy_read_timeout 1800s` on the `/api/file/` and `/api/` locations, so the PO console's "extend proxy_read_timeout" advice does not apply.
+
+### Actual cause of the 502s: the live stack was recreated under the PO's open session
+
+**28 recreate points on the live stack today** (`/root/talaria-restore/{canary,bringup}-20260729*`). Every `docker compose up` replaces `trading-chart`, and for the ~6-10s until it is healthy nginx 502s **every in-flight request**. The PO's three failing calls — `/api/file/25/candles`, `/api/file/29/bars`, `PATCH /api/sessions/903/state` — are exactly what an open session retries across that window.
+
+The last recreate before the report was `bringup-20260729b85-20260729T164251Z` at **16:42:51Z**. The report arrived at **16:43Z**. One minute.
+
+### Worse, and this is the finding that matters: the PO was not testing b99
+
+Live flipped repeatedly, and I only caught it because I probed the wire rather than trusting my own ship log:
+
+| Time (UTC) | Wire became |
+|---|---|
+| 15:43:49 | b90 (bringup) |
+| 16:06:02 | b85 (bringup) |
+| 16:08:41 | **b99 shipped** |
+| 16:13:21 | b85 (bringup, displaced b99) |
+| 16:27:16 | b85 (bringup) |
+| 16:36:04 / 16:39:08 | b99 (my restores) |
+| **16:42:51** | **b85 — what the PO's "b99 test" actually loaded** |
+
+b85 predates ORPHAN-L1-L4, the lag setInterval tick fix, FIX1-VISIBILITY, M23 rollback cancel, the splitter and D's pack. **Triple load time, panels loading one by one, replay pausing and jumping, jitter until clicked are pre-fix-build observations taken through a 502 retry storm.** They do not describe b99 and they do not indict our render path. Every performance and leak number from this evening is void.
+
+### One real latency finding, separate from the 502
+`nginx [warn] an upstream response is buffered to a temporary file` for `GET /api/file/25/smart?timeframe=1m&limit=100000&anchor=end` — a 100k-candle response spooling to disk before the client sees it. Genuine load-time contributor, not a 502, not caused by any build in the burst. Owner: whoever holds nginx tuning (not in my write set) — escalating rather than editing.
+
+### Actions taken
+1. **Live restored to b99** and re-pinned by explicit tag: all three app containers report `canary-20260729b99`; wire `20260729b99`; backend 200 immediately after.
+2. **Live-pin watchdog installed** — `/opt/talaria/canary-live-pin-watchdog.sh` + `/etc/cron.d/talaria-live-pin`, once a minute: compares the wire to `/root/talaria-restore/LIVE-PIN.txt`, logs to `LIVE-DRIFT.log`, re-asserts the pinned tags on drift. Off switches: `WATCHDOG-OFF`, `WATCHDOG-DETECT-ONLY`. **Proven end to end:** `17:06:01Z DRIFT served=b90 intended=b99` -> `17:06:24Z REPAIRED -> 20260729b99`, 23 seconds.
+3. **Ship path updated** to touch `DEPLOY-IN-PROGRESS` before build and write `LIVE-PIN.txt` after up, so a ship declares its own intent and the watchdog cannot fight it. Stale markers older than 20 minutes are ignored so a crashed ship cannot disable the watchdog permanently.
+
+### My own defect inside the watchdog, found by testing it rather than shipping it
+First version skipped when `pgrep -f "docker compose"` matched anything — which included the SSH session running the test harness, because the pattern matched a substring of its argv. It therefore skipped every tick for 150s and repaired nothing while reporting no drift. A guard that silently never fires is worse than no guard, and it is the same presence-not-soundness failure this project keeps hitting: I would have believed it worked if I had not tried to break it. Replaced with an explicit marker file.
+
+### What the PO needs to do
+Hard-reload `http://31.97.192.82:3000/chart/dist-v9/index.html` and confirm the console prints `[Talaria] chart build 20260729b99` **before** taking any measurement. If it says anything else, the measurement is void and the drift log will say who took the wire.
