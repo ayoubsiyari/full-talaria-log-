@@ -1372,6 +1372,22 @@
         return null;
     }
 
+    function rawDataCopyDisabledForBridge() {
+        try {
+            return !!(global && global.__TALARIA_DISABLE_MC_RAWDATA_COPY_V1);
+        } catch (_) {
+            return false;
+        }
+    }
+
+    function copySamePairFullRawDataForBridge(ch, source) {
+        if (!Array.isArray(source)) return source;
+        if (ch && typeof ch._mcCopySamePairFullRawData === 'function') {
+            try { return ch._mcCopySamePairFullRawData(source); } catch (_) {}
+        }
+        return rawDataCopyDisabledForBridge() ? source : source.slice();
+    }
+
     function applyParentReplayMirror(ch, seekTs, isPlayingOverride) {
         var rs = ch && ch.replaySystem;
         if (!rs || !rs.isActive || typeof rs.applyMultichartMirrorFrame !== 'function') {
@@ -1677,7 +1693,7 @@
                 ch.data = pc.data;
                 if (prs) {
                     if (Array.isArray(prs.fullRawData) && prs.fullRawData.length) {
-                        rs.fullRawData = prs.fullRawData;
+                        rs.fullRawData = copySamePairFullRawDataForBridge(ch, prs.fullRawData);
                         rs.rawTimeframe = prs.rawTimeframe || '1m';
                         rs._fullRawDataMatchesTF = prs._fullRawDataMatchesTF;
                     }
@@ -1711,7 +1727,7 @@
                     }
                 }
                 if (Array.isArray(pc._panelFullRawData) && pc._panelFullRawData.length) {
-                    ch._panelFullRawData = pc._panelFullRawData;
+                    ch._panelFullRawData = copySamePairFullRawDataForBridge(ch, pc._panelFullRawData);
                 }
                 if (mirrorPrependCompensation) {
                     ch._chartViewRestored = true;
@@ -2738,7 +2754,7 @@
                 if (Number.isFinite(pc.totalCandles)) ch.totalCandles = pc.totalCandles;
                 var prs = pc.replaySystem;
                 if (prs && ch.replaySystem && Array.isArray(prs.fullRawData) && prs.fullRawData.length) {
-                    ch.replaySystem.fullRawData = prs.fullRawData;
+                    ch.replaySystem.fullRawData = copySamePairFullRawDataForBridge(ch, prs.fullRawData);
                     ch.replaySystem.rawTimeframe = prs.rawTimeframe || '1m';
                     ch.replaySystem.replayTimestamp = Number.isFinite(Number(ts)) ? Number(ts) : prs.replayTimestamp;
                     if (Number.isFinite(prs.currentIndex)) ch.replaySystem.currentIndex = prs.currentIndex;

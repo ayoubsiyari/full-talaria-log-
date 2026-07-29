@@ -3402,6 +3402,52 @@ class Chart {
     // Inspect with window.__talariaBarStoreStats().
     // ─────────────────────────────────────────────────────────────────────
 
+    _mcRawDataCopyDisabled() {
+        try {
+            return !!(typeof window !== 'undefined' && window.__TALARIA_DISABLE_MC_RAWDATA_COPY_V1);
+        } catch (_e) {
+            return false;
+        }
+    }
+
+    _mcRawDataCopyLimit() {
+        return 200000;
+    }
+
+    _mcScalarCloneRawBar(value) {
+        if (!value || typeof value !== 'object') return null;
+        const out = {};
+        for (const k of Object.keys(value)) {
+            const v = value[k];
+            if (v == null || typeof v !== 'object') out[k] = v;
+        }
+        return out;
+    }
+
+    _mcCloneRawDataBars(source) {
+        if (!Array.isArray(source)) return source;
+        const limit = this._mcRawDataCopyLimit();
+        const start = Number.isFinite(limit) && limit > 0
+            ? Math.max(0, source.length - limit)
+            : 0;
+        const out = [];
+        for (let i = start; i < source.length; i += 1) {
+            const cloned = this._mcScalarCloneRawBar(source[i]);
+            if (cloned && Number.isFinite(Number(cloned.t))) out.push(cloned);
+        }
+        return out;
+    }
+
+    _mcCopySamePairFullRawData(source) {
+        if (!Array.isArray(source)) return source;
+        return this._mcRawDataCopyDisabled() ? source : this._mcCloneRawDataBars(source);
+    }
+
+    _mcDetachFullRawDataCopy(source) {
+        if (!Array.isArray(source)) return source;
+        return this._mcRawDataCopyDisabled() ? source.slice() : this._mcCloneRawDataBars(source);
+    }
+
     _mcBarStoreRealmSwitchEnabled() {
         try {
             return !!(typeof window !== 'undefined' && window.__TALARIA_DISABLE_MC_BAR_STORE_REALM_V1);
@@ -4372,9 +4418,9 @@ class Chart {
 
         const prs = parent.replaySystem;
         if (Array.isArray(parent._panelFullRawData)) {
-            this._panelFullRawData = parent._panelFullRawData;
+            this._panelFullRawData = this._mcCopySamePairFullRawData(parent._panelFullRawData);
         } else if (prs && Array.isArray(prs.fullRawData) && prs.fullRawData.length > 0) {
-            this._panelFullRawData = prs.fullRawData;
+            this._panelFullRawData = this._mcCopySamePairFullRawData(prs.fullRawData);
         }
 
         this._commitTimeframeChange(tf);
@@ -4389,7 +4435,7 @@ class Chart {
             replay.tickElapsedMs = prs.tickElapsedMs;
             replay.animatingCandle = prs.animatingCandle;
             if (Array.isArray(prs.fullRawData) && prs.fullRawData.length > 0) {
-                replay.fullRawData = prs.fullRawData;
+                replay.fullRawData = this._mcCopySamePairFullRawData(prs.fullRawData);
                 replay.rawTimeframe = prs.rawTimeframe || '1m';
                 replay._fullRawDataMatchesTF = prs._fullRawDataMatchesTF;
             }
@@ -5294,15 +5340,15 @@ class Chart {
                 replay.tickElapsedMs = prs.tickElapsedMs;
                 replay.animatingCandle = prs.animatingCandle;
                 if (Array.isArray(prs.fullRawData) && prs.fullRawData.length > 0) {
-                    replay.fullRawData = prs.fullRawData;
+                    replay.fullRawData = this._mcCopySamePairFullRawData(prs.fullRawData);
                 }
             }
         }
 
         if (Array.isArray(parent._panelFullRawData)) {
-            this._panelFullRawData = parent._panelFullRawData;
+            this._panelFullRawData = this._mcCopySamePairFullRawData(parent._panelFullRawData);
         } else if (Array.isArray(prs.fullRawData) && prs.fullRawData.length > 0) {
-            this._panelFullRawData = prs.fullRawData;
+            this._panelFullRawData = this._mcCopySamePairFullRawData(prs.fullRawData);
         }
 
         // Range/Date sync OFF + this panel already booted its own view: it must
@@ -5459,11 +5505,11 @@ class Chart {
             this.rawData = this.rawData.slice();
         }
         if (Array.isArray(this._panelFullRawData) && this._panelFullRawData.length > 0) {
-            this._panelFullRawData = this._panelFullRawData.slice();
+            this._panelFullRawData = this._mcDetachFullRawDataCopy(this._panelFullRawData);
         }
         const replay = this.replaySystem;
         if (replay && Array.isArray(replay.fullRawData) && replay.fullRawData.length > 0) {
-            replay.fullRawData = replay.fullRawData.slice();
+            replay.fullRawData = this._mcDetachFullRawDataCopy(replay.fullRawData);
         }
     }
 
@@ -5548,14 +5594,15 @@ class Chart {
                 ? prs.fullRawData
                 : null;
             if (!masterRaw || masterRaw.length === 0) return null;
-            this._panelFullRawData = masterRaw;
+            const copiedMasterRaw = this._mcCopySamePairFullRawData(masterRaw);
+            this._panelFullRawData = copiedMasterRaw;
             const pc = parent._serverCursors || {};
             return {
-                candles: masterRaw,
-                total: Number.isFinite(parent.totalCandles) ? parent.totalCandles : masterRaw.length,
-                returned: masterRaw.length,
-                first_cursor: masterRaw[0]?.t ?? (pc.firstTs ?? null),
-                last_cursor: masterRaw[masterRaw.length - 1]?.t ?? (pc.lastTs ?? null),
+                candles: copiedMasterRaw,
+                total: Number.isFinite(parent.totalCandles) ? parent.totalCandles : copiedMasterRaw.length,
+                returned: copiedMasterRaw.length,
+                first_cursor: copiedMasterRaw[0]?.t ?? (pc.firstTs ?? null),
+                last_cursor: copiedMasterRaw[copiedMasterRaw.length - 1]?.t ?? (pc.lastTs ?? null),
                 has_more_left: pc.hasMoreLeft !== false,
                 has_more_right: pc.hasMoreRight === true,
                 source: 'parent-native-master',
@@ -7272,9 +7319,9 @@ class Chart {
             if (!this._replayRawHasWallClockPrefix(master, ts)) return false;
 
             if (Array.isArray(parent._panelFullRawData) && parent._panelFullRawData.length > 0) {
-                this._panelFullRawData = parent._panelFullRawData;
+                this._panelFullRawData = this._mcCopySamePairFullRawData(parent._panelFullRawData);
             } else {
-                this._panelFullRawData = master.slice();
+                this._panelFullRawData = this._mcCopySamePairFullRawData(master);
             }
             this._nativeRawFetchTf = parent._nativeRawFetchTf || '1m';
 
