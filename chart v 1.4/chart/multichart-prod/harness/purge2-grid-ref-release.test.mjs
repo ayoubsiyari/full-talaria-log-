@@ -451,7 +451,7 @@ async function exerciseRetryRemoveReadd(source = SOURCE) {
   };
   installGridHelpers(source, retrySandbox, `
     ${extractFunction(source, 'bumpPanelLoadGeneration')}
-    const retryClick = ${extractArrowAround(source, 'primedPanelsRef.current.delete(tile.id);', 'onClick={() =>')};
+    const retryClick = ${extractArrowAround(source, 'Retry must not re-apply poisoned sessionStorage fileIds.', 'onClick={() =>')};
     this.retryClick = retryClick;
   `);
 
@@ -478,6 +478,7 @@ function exercisePg5(source = SOURCE, { killSwitch = false } = {}) {
     primedPanelsRef: { current: new Set(['B']) },
     orderSyncedPanelsRef: { current: new Set(['B']) },
     clonedPanelsRef: { current: new Set(['B']) },
+    retiredPanelIdsRef: { current: new Set() },
     panelLoadGenerationRef: { current: Object.create(null) },
     overlayHoldTimersRef: { current: Object.create(null) },
     clearTimeout: () => {},
@@ -503,6 +504,7 @@ function exercisePg5(source = SOURCE, { killSwitch = false } = {}) {
   assert.equal(sandbox.orderSyncedPanelsRef.current.has('B'), false, 'order-sync id is purged on removal');
   assert.equal(sandbox.clonedPanelsRef.current.has('B'), false, 'clone id is purged on removal');
   assert.deepEqual(sandbox.clearedPersist, ['B'], 'persisted panel fileId cleared on removal');
+  assert.equal(sandbox.retiredPanelIdsRef.current.has('B'), true, 'removed id is marked retired for recycle heal');
   // Generation bump is purge-gated; kill-switch on ⇒ still 0, but re-prime sets clear.
   if (!killSwitch) {
     assert.equal(sandbox.panelLoadGenerationRef.current.B, 1, 'removal bumps load generation');

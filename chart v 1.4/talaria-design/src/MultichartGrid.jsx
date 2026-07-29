@@ -2420,6 +2420,13 @@ export default function MultichartGrid({
     useEffect(() => { dataReadyPanelsRef.current = dataReadyPanels; }, [dataReadyPanels]);
     /** Panels that already received the one-time host file/replay sync — avoid re-syncing B when C loads. */
     const hostSyncedPanelsRef = useRef(new Set());
+    /**
+     * Panel ids removed from the live layout in this MultichartGrid lifetime.
+     * Re-adding the same id is a recycle (PO: single→4 recovers via fresh
+     * MultichartGrid remount; recycled B/C/D stay dead). Self-heal belongs on
+     * the re-add/addChart path for these ids — not only a delayed empty check.
+     */
+    const retiredPanelIdsRef = useRef(new Set());
     /** Full boot align / reveal runs once when all panels first have bars. */
     const bootAlignDoneRef = useRef(false);
 
@@ -2918,6 +2925,7 @@ export default function MultichartGrid({
                 // Drop persisted pair for this id — otherwise a broken kill-switch
                 // session leaves sessionStorage fileIds that survive flag removal + F5.
                 clearPersistedPanelFileId(existingId);
+                retiredPanelIdsRef.current.add(existingId);
                 bumpPanelLoadGeneration(existingId);
                 try { mgr.removeChart(existingId); } catch (_) {}
                 if (overlayHoldTimersRef.current[existingId]) {
@@ -3018,10 +3026,33 @@ export default function MultichartGrid({
                 next.delete(tile.id);
                 return next;
             });
+            // Recycled-id heal (PO): fresh MultichartGrid remount (layout 1→4)
+            // works; re-using B/C/D after remove stays dead. Before addChart,
+            // drop poisoned persist + in-memory prime marks and boot the host
+            // pair — do not trust resolveBootFileIdForPanel for retired ids.
+            let bootFileId = resolveBootFileIdForPanel(tile.id, effFile);
+            if (retiredPanelIdsRef.current.has(tile.id)) {
+                try { clearPersistedPanelFileId(tile.id); } catch (_) {}
+                try { hostSyncedPanelsRef.current.delete(tile.id); } catch (_) {}
+                try { primedPanelsRef.current.delete(tile.id); } catch (_) {}
+                try { orderSyncedPanelsRef.current.delete(tile.id); } catch (_) {}
+                try { clonedPanelsRef.current.delete(tile.id); } catch (_) {}
+                bumpPanelLoadGeneration(tile.id);
+                bootFileId = effFile;
+                retiredPanelIdsRef.current.delete(tile.id);
+                try {
+                    console.warn(
+                        "[MultichartGrid] recycled-panel heal: re-adding",
+                        tile.id,
+                        "from host fileId",
+                        bootFileId,
+                    );
+                } catch (_) {}
+            }
             const cfg = {
                 id:        tile.id,
                 tf:        effTf,
-                fileId:    resolveBootFileIdForPanel(tile.id, effFile),
+                fileId:    bootFileId,
                 sessionId: sessId,
                 mode:      effMode,
             };

@@ -98,4 +98,17 @@ test('layout-removal path clears persisted fileId (source contract)', () => {
   assert.ok(window.includes('clearPersistedPanelFileId(existingId)'));
   assert.ok(window.includes('orderSyncedPanelsRef.current.delete(existingId)'));
   assert.ok(window.includes('clonedPanelsRef.current.delete(existingId)'));
+  assert.ok(window.includes('retiredPanelIdsRef.current.add(existingId)'));
+});
+
+test('recycled-id heal belongs on re-add/addChart path (PO single→4 vs recycle)', () => {
+  assert.ok(SOURCE.includes('retiredPanelIdsRef'));
+  assert.ok(SOURCE.includes('recycled-panel heal'));
+  assert.ok(SOURCE.includes('retiredPanelIdsRef.current.has(tile.id)'));
+  // Must force host fileId for retired ids — not trust resolveBootFileIdForPanel alone.
+  const spawn = SOURCE.indexOf('retiredPanelIdsRef.current.has(tile.id)');
+  assert.notEqual(spawn, -1);
+  const window = SOURCE.slice(spawn, spawn + 900);
+  assert.ok(window.includes('bootFileId = effFile'));
+  assert.ok(window.includes('clearPersistedPanelFileId(tile.id)'));
 });
