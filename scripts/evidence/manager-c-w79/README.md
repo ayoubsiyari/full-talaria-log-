@@ -1,5 +1,11 @@
 # MANAGER-C-W79 — which peer realm survives
 
+**tier=MID model=gpt-5.5** — instrument authoring and heap-graph analysis, no
+money path and no ship gate in the diff, so MID is the need rather than the
+reflex. No TOP escalation claimed for this packet. Subagents: none; the work is
+one serial browser instrument and cannot be fanned out, so PAR-01 does not
+apply here. No budget pressure to report.
+
 One assignment, one answer.
 
 **Panel B — the first peer — is retained on every cycle.** Measured in two

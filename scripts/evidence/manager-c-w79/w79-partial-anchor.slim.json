@@ -30,7 +30,24 @@
     "control": { "floorsMB": [105.37, 132.30, 151.09], "deltasMB": [26.93, 18.79], "survivors": { "1": ["B"], "2": ["B", "C", "D"], "3": ["B"] } },
     "workerTerminationAblation": { "floorsMB": [103.60, 133.84, 154.70], "deltasMB": [30.24, 20.86], "terminatedPerCycle": [4, 3, 3], "survivors": { "1": ["B"], "2": ["B", "C", "D"], "3": ["B", "C"] } },
     "consoleRelease": { "floorsMB": [105.30, 131.83, 152.61], "deltasMB": [26.53, 20.78], "survivors": { "1": ["B"], "2": ["B", "C", "D"], "3": ["B"] } },
-    "datasetRotation": "IN FLIGHT — panel slots given different files (rotate=1) to separate 'the survivor is the slot' from 'the survivor is the data'"
+    "datasetRotation": {
+      "manipulation": "--dataset-rotate=1 — every panel slot gets a different dataset (A:673 HOG, B:670 ETHBTC, C:669 BTCEUR, D:677 XAUUSD), verified in the tags",
+      "floorsMB": [101.26, 127.20, 150.57],
+      "deltasMB": [25.94, 23.37],
+      "survivors": { "1": ["B"], "2": ["B", "D"], "3": ["B", "D"] },
+      "verdict": "SLOT-NOT-DATA",
+      "reading": "B survives all three cycles while holding ETHBTC/670 instead of HOG/673. Retention follows the panel slot — the first peer — not the dataset. Fourth consecutive run with B at 3/3."
+    }
+  },
+  "constantOrRace": {
+    "verdict": "CONSTANT for B, RACE for the later peers",
+    "evidence": "B retained 3/3 cycles in four independent runs (control, worker-termination, console-release, dataset-rotation). C and D differ run to run and cycle to cycle: control {C:1,D:1}, worker-termination {C:2,D:1}, console-release {C:1,D:1}, rotation {D:2,C:0}.",
+    "forA": "one deterministic code path to cut for the first peer; the later peers need the same cut plus whatever ordering makes them sometimes escape it."
+  },
+  "tier": {
+    "packet": "MID",
+    "model": "gpt-5.5",
+    "justification": "instrument authoring and heap-graph analysis, no money path and no ship gate in the diff — MID is the need, not the reflex. No TOP escalation claimed for W79."
   },
   "snapshotCeiling": {
     "held": "3 cycles",
