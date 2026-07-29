@@ -85,6 +85,23 @@ Applied by overwriting the mounted config and `nginx -s reload`. Verified:
 not 502). Four reloads across deploy plus the switch test left
 `.State.StartedAt` at `17:06:11Z`.
 
+## Live before/after — real traffic, not the harness
+
+Reload landed 18:18:18Z. Live error log, same container generation:
+
+```
+17:56:16 [warn] ... temporary file ... "GET /api/file/25/smart?timeframe=1m&limit=100000  client 160.90.31.98
+18:05:45 [warn] ... temporary file ... "GET /api/file/25/smart?timeframe=1m&limit=100000  client 196.69.45.59
+18:14:37 [warn] ... temporary file ... "GET /api/file/25/smart?timeframe=1m&limit=100000  client 196.69.45.59
+--- reload 18:18:18Z ---
+(none)
+```
+
+Three multi-MB disk writes in the 22 minutes before the change, all on the exact
+reported URL, all from real client IPs; **zero in the 10 minutes and 2125 requests
+after.** The symptom was real and recurring under the PO's own traffic, even though
+the first version of my A/B could not reproduce it.
+
 ## Kill-switch, proven both ways
 
 nginx has no runtime flag for this, so the switch is the config block itself.

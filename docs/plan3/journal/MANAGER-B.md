@@ -4150,3 +4150,8 @@ Live at 18:25Z, read over HTTP rather than assumed: `served=20260729b99`, `pin=2
 
 ### Pins for C — item 3
 Tags and tars present for b85, b86, b90–b99, including **b99 (16:12Z)**. Grade lane isolated on `127.0.0.1:3001`, currently b85, live untouched on 3000. Handoff updated with MEAS-01 as binding and with a scheduling constraint I had missed: both lanes share one host, so a browser runner on `:3001` competes for CPU with a heap or lag measurement on `:3000`. Grading and PO measurement must not overlap. Disk 81% used, 38G free, twelve ~320MB tars — a retention cap is needed before it becomes urgent.
+
+### B-0181 addendum — live before/after on real traffic
+Reload landed 18:18:18Z. The live error log shows the spool three times in the 22 minutes before it (17:56:16, 18:05:45, 18:14:37), every one on the exact reported URL `GET /api/file/25/smart?timeframe=1m&limit=100000`, from real client IPs including the PO's. **Zero in the 10 minutes and 2125 requests after.** So the symptom was genuinely recurring under the PO's own traffic even though my first A/B stimulus could not reproduce it — which is the reminder that failing to reproduce is not evidence of absence, only of a wrong stimulus.
+
+MEAS-01 at 18:28Z: `served=20260729b99 pin=20260729b99 shell_http=200 watchdog=armed watchdog_fresh=true`, 502s in the last 20 minutes: 0.
