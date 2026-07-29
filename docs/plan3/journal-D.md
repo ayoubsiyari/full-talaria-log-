@@ -286,3 +286,10 @@
 - Read binding canary plan `ad40cbc6b` / `docs/plan3/PLAN-CANARY-24H-20260729-2230.md`. D phase: collapse the remaining unknowns from commits and gates, zero PO time.
 - No additional commit+gate closures found after `06d9dea90`; therefore every remaining `unknown` row was converted to `not-fixed` / open rather than left ambiguous. Ledger now has 41 fixed / 103 not-fixed / 0 unknown.
 - Updated open-row labels in `docs/plan3/UNKNOWN-RISK-LABELS-20260729.md` to cover every `not-fixed` row: 52 canary-blocking, 51 cosmetic/non-blocking disclosure items.
+
+## 2026-07-29 — Director correction / restore three evidence states
+
+- Director correction accepted: absence of a D-tip commit/gate is not evidence that a row is broken. The ledger must distinguish current-stamp failures from unmeasured rows.
+- Restored the three states: `fixed` = commit plus gate; `broken` = RED gate or PO failure on today's build; `unverified` = no evidence either way.
+- Reclassified the former open rows accordingly: ledger now has 41 fixed / 1 broken / 102 unverified. `M17-DI2 / TAL-01918` is the only broken row because its RED gate fails today. `TAL-01617` and other no-gate rows are unverified, not broken.
+- Reworked `docs/plan3/UNKNOWN-RISK-LABELS-20260729.md` into a blast-radius order for the 102 unverified rows: money path / trade state first, data integrity second, replay/session/stability third, severe visual interaction fourth, cosmetic/current-surface disclosure last.
