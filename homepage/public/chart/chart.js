@@ -2908,17 +2908,25 @@ class Chart {
         return null;
     }
 
-    // Truthiness, not `=== true`, to match every sibling kill switch in this file.
-    // Own realm first, then the parent window, so a host-only set reaches an iframe
-    // panel. Read per call — never sampled at init — so the switch round-trips live.
+    // Truthiness when the switch is PRESENT. Own realm first, then parent.
+    // Read per call — never sampled at init — so the switch round-trips live.
+    //
+    // URGENT 2026-07-29 canary default: ABSENT ⇒ DISABLED (feature off).
+    // Unfocused panels were freezing under FIX 1 when no tile had been clicked.
+    // Explicit false re-enables cadence for bisect; true / truthy keeps it off.
     _isMultichartBackgroundRenderCadenceDisabled() {
         try {
-            if (typeof window === 'undefined') return false;
-            if (window[MC_BACKGROUND_RENDER_CADENCE_DISABLE_SWITCH]) return true;
+            if (typeof window === 'undefined') return true;
+            if (Object.prototype.hasOwnProperty.call(window, MC_BACKGROUND_RENDER_CADENCE_DISABLE_SWITCH)) {
+                return !!window[MC_BACKGROUND_RENDER_CADENCE_DISABLE_SWITCH];
+            }
             const host = window.parent && window.parent !== window ? window.parent : null;
-            return !!(host && host[MC_BACKGROUND_RENDER_CADENCE_DISABLE_SWITCH]);
+            if (host && Object.prototype.hasOwnProperty.call(host, MC_BACKGROUND_RENDER_CADENCE_DISABLE_SWITCH)) {
+                return !!host[MC_BACKGROUND_RENDER_CADENCE_DISABLE_SWITCH];
+            }
+            return true;
         } catch (_e) {
-            return false;
+            return true;
         }
     }
 

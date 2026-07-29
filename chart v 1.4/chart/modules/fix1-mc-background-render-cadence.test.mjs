@@ -91,9 +91,11 @@ function sha256(text) {
 function makeChart({
   panelId = 'B',
   focusedPanelId = 'A',
-  ownSwitchOn = false,
+  // Product default is now ABSENT ⇒ cadence DISABLED. Behavioral cells that
+  // exercise the throttle must opt in with explicit false (feature on).
+  ownSwitchOn = true,
   hostSwitchOn = false,
-  ownSwitchValue = true,
+  ownSwitchValue = false,
   hostSwitchValue = true,
   livePanelIds = ['A', 'B', 'C', 'D'],
   source = SOURCE,
@@ -520,8 +522,8 @@ test('FIX1-C1b-R1: resize clears the backing store, so the next background frame
 });
 
 test('FIX1-C2: switch restores full-cadence paint for every panel', () => {
-  const focused = makeChart({ panelId: 'A', focusedPanelId: 'A', ownSwitchOn: true });
-  const background = makeChart({ panelId: 'B', focusedPanelId: 'A', ownSwitchOn: true });
+  const focused = makeChart({ panelId: 'A', focusedPanelId: 'A', ownSwitchOn: true, ownSwitchValue: true });
+  const background = makeChart({ panelId: 'B', focusedPanelId: 'A', ownSwitchOn: true, ownSwitchValue: true });
 
   focused.warmFirstPaint();
   background.warmFirstPaint();
@@ -534,33 +536,34 @@ test('FIX1-C2: switch restores full-cadence paint for every panel', () => {
   assert.equal(backgroundAfter.paints, 1);
 });
 
-test('FIX1-C3: absent to true to delete round trip returns to absent baseline without reload', () => {
-  const baseline = makeChart({ panelId: 'B', focusedPanelId: 'A' });
-  const roundTrip = makeChart({ panelId: 'B', focusedPanelId: 'A' });
+test('FIX1-C3: absent defaults DISABLED; false enables; delete returns to disabled', () => {
+  // ABSENT (canary default) ⇒ feature off ⇒ background paints.
+  const baseline = makeChart({ panelId: 'B', focusedPanelId: 'A', ownSwitchOn: false });
+  const roundTrip = makeChart({ panelId: 'B', focusedPanelId: 'A', ownSwitchOn: false });
 
   baseline.warmFirstPaint();
   roundTrip.warmFirstPaint();
   const absentBaseline = baseline.render();
   const absentStart = roundTrip.render();
-  roundTrip.setOwnSwitch(true);
-  const enabled = roundTrip.render();
+  roundTrip.setOwnSwitch(false); // explicit false re-enables cadence
+  const throttled = roundTrip.render();
   roundTrip.clearOwnSwitch();
   const absentAgain = roundTrip.render();
 
-  const ok = absentBaseline.paints === 0
-    && absentStart.paints === 0
-    && enabled.paints === 1
-    && absentAgain.paints === 1;
-  note('FIX1-C3', ok, `baseline=${absentBaseline.paints} absentStart=${absentStart.paints} true=${enabled.paints} delete=${absentAgain.paints}`);
-  assert.equal(absentBaseline.paints, 0);
+  const ok = absentBaseline.paints === 1
+    && absentStart.paints === 1
+    && throttled.paints === 1
+    && absentAgain.paints === 2;
+  note('FIX1-C3', ok, `absent=${absentBaseline.paints} false=${throttled.paints} delete=${absentAgain.paints}`);
+  assert.equal(absentBaseline.paints, 1, 'ABSENT defaults cadence DISABLED');
   assert.equal(absentStart.paints, absentBaseline.paints);
-  assert.equal(enabled.paints, 1);
-  assert.equal(absentAgain.paints, enabled.paints);
+  assert.equal(throttled.paints, 1, 'explicit false arms throttle — no new background paint');
+  assert.equal(absentAgain.paints, 2, 'delete returns to disabled default and paints');
 });
 
-test('FIX1-C4: boot under switch true then delete reaches absent baseline', () => {
-  const baseline = makeChart({ panelId: 'B', focusedPanelId: 'A' });
-  const bootOn = makeChart({ panelId: 'B', focusedPanelId: 'A', ownSwitchOn: true });
+test('FIX1-C4: boot under switch true then delete stays disabled (canary default)', () => {
+  const baseline = makeChart({ panelId: 'B', focusedPanelId: 'A', ownSwitchOn: false });
+  const bootOn = makeChart({ panelId: 'B', focusedPanelId: 'A', ownSwitchOn: true, ownSwitchValue: true });
 
   baseline.warmFirstPaint();
   bootOn.warmFirstPaint();
@@ -569,15 +572,15 @@ test('FIX1-C4: boot under switch true then delete reaches absent baseline', () =
   bootOn.clearOwnSwitch();
   const afterDelete = bootOn.render();
 
-  const ok = absentBaseline.paints === 0 && firstPaint.paints === 1 && afterDelete.paints === 1;
+  const ok = absentBaseline.paints === 1 && firstPaint.paints === 1 && afterDelete.paints === 2;
   note('FIX1-C4', ok, `baseline=${absentBaseline.paints} bootTrue=${firstPaint.paints} delete=${afterDelete.paints}`);
-  assert.equal(absentBaseline.paints, 0);
+  assert.equal(absentBaseline.paints, 1);
   assert.equal(firstPaint.paints, 1);
-  assert.equal(afterDelete.paints, firstPaint.paints);
+  assert.equal(afterDelete.paints, 2);
 });
 
 test('FIX1-C5: parent-realm switch reaches an iframe panel behaviorally', () => {
-  const panel = makeChart({ panelId: 'B', focusedPanelId: 'A', hostSwitchOn: true });
+  const panel = makeChart({ panelId: 'B', focusedPanelId: 'A', ownSwitchOn: false, hostSwitchOn: true, hostSwitchValue: true });
 
   panel.warmFirstPaint();
   const after = panel.render();
@@ -798,15 +801,16 @@ test('FIX1-C12-B3: pagehide on the panel own window releases all three capture l
 });
 
 test('FIX1-C13-FLAG02: the catch-up listener installs unconditionally and only its effect is gated', () => {
-  const bootOn = makeChart({ panelId: 'B', focusedPanelId: 'A', ownSwitchOn: true });
+  // Boot disabled (true), then flip to explicit false to arm throttle for catch-up check.
+  const bootOn = makeChart({ panelId: 'B', focusedPanelId: 'A', ownSwitchOn: true, ownSwitchValue: true });
 
   const installedUnderFlag = bootOn.docListenerCount();
   bootOn.warmFirstPaint();
   const paintedUnderFlag = bootOn.render();
 
-  bootOn.clearOwnSwitch();
-  const suppressedAfterDelete = bootOn.render();
-  bootOn.pushClose('after-delete');
+  bootOn.setOwnSwitch(false);
+  const suppressedAfterEnable = bootOn.render();
+  bootOn.pushClose('after-enable');
   bootOn.dispatchPanelFocusEvent('pointerdown');
   const stillBackground = bootOn.runAnimationFrame(1);
   bootOn.focus('B');
@@ -814,24 +818,24 @@ test('FIX1-C13-FLAG02: the catch-up listener installs unconditionally and only i
 
   const ok = installedUnderFlag === 3
     && paintedUnderFlag.paints === 1
-    && suppressedAfterDelete.paints === 1
+    && suppressedAfterEnable.paints === 1
     && stillBackground.paints === 1
     && caughtUp.paints === 2
-    && caughtUp.renderedClose === 'after-delete';
+    && caughtUp.renderedClose === 'after-enable';
   note('FIX1-C13-FLAG02-UNCONDITIONAL-INSTALL', ok,
-    `installedUnderFlag=${installedUnderFlag} underFlagPaints=${paintedUnderFlag.paints} afterDeletePaints=${suppressedAfterDelete.paints} stillBackground=${stillBackground.paints} caughtUp=${caughtUp.paints}`);
+    `installedUnderFlag=${installedUnderFlag} underFlagPaints=${paintedUnderFlag.paints} afterEnablePaints=${suppressedAfterEnable.paints} stillBackground=${stillBackground.paints} caughtUp=${caughtUp.paints}`);
   assert.equal(installedUnderFlag, 3, 'listeners must install even when the kill switch is on at boot');
   assert.equal(paintedUnderFlag.paints, 1, 'the flag disables the throttle, so the panel paints');
-  assert.equal(suppressedAfterDelete.paints, 1, 'deleting the flag re-arms the throttle with no reload');
+  assert.equal(suppressedAfterEnable.paints, 1, 'explicit false arms the throttle with no reload');
   assert.equal(stillBackground.paints, 1, 'the armed catch-up must not paint while unfocused');
   assert.equal(caughtUp.paints, 2, 'the catch-up paints once focus lands');
-  assert.equal(caughtUp.renderedClose, 'after-delete');
+  assert.equal(caughtUp.renderedClose, 'after-enable');
 });
 
 test('FIX1-C14-FLAG: the switch reads truthy, not strictly true, in both realms', () => {
   const ownTruthyNumber = makeChart({ panelId: 'B', focusedPanelId: 'A', ownSwitchOn: true, ownSwitchValue: 1 });
   const ownTruthyString = makeChart({ panelId: 'B', focusedPanelId: 'A', ownSwitchOn: true, ownSwitchValue: 'yes' });
-  const hostTruthyNumber = makeChart({ panelId: 'B', focusedPanelId: 'A', hostSwitchOn: true, hostSwitchValue: 1 });
+  const hostTruthyNumber = makeChart({ panelId: 'B', focusedPanelId: 'A', ownSwitchOn: false, hostSwitchOn: true, hostSwitchValue: 1 });
   const ownFalsyZero = makeChart({ panelId: 'B', focusedPanelId: 'A', ownSwitchOn: true, ownSwitchValue: 0 });
   const ownFalsyFalse = makeChart({ panelId: 'B', focusedPanelId: 'A', ownSwitchOn: true, ownSwitchValue: false });
 
