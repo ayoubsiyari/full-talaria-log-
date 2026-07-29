@@ -3841,3 +3841,7 @@ Tip `9b81b89fd`. FLAG harnesses all PASS (do not hold). SURF-3 GREEN, holes=0, d
 **2026-07-29.** Banned `a4f388296` / `8a17b05c6` on `manager-c/verification-infra` (~18k CRLF churn). Canonical: `manager-d/trade-correctness` `95adb8285` + `42d01a1dc`. C assemble stop: `00547509b`.
 
 Assembled clean D + B api_server M24 hook. Stamp `20260729b87`.
+
+## B-0165 — Support WS ping immortal timer fixed. Class sweep filed. Ship b88.
+
+**2026-07-29.** `TalariaV8bLive.jsx` + V16 twin: readyState OPEN guard, clear interval when not open, `onclose` → disconnect. Flag `__TALARIA_DISABLE_SUPPORT_WS_PING_CLEANUP_V1`. FLAG harness PASS. Sweep: `SWEEP-TIMER-OUTLIVES-SERVICE-20260729.md`. **Not** idle-CPU.
