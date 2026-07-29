@@ -31,6 +31,31 @@ function _m28ReplayHiddenPauseV1Enabled() {
         || window.__TALARIA_DISABLE_REPLAY_HIDDEN_PAUSE_V1 !== true;
 }
 
+/**
+ * CPU-CEILING-60X — single-chart high-speed replay paint cadence (default ON).
+ * Kill-switch: window.__TALARIA_DISABLE_SC_REPLAY_PAINT_CADENCE_V1 = <truthy>
+ * restores legacy per-forming-tick sync paint. Absent / falsy ⇒ mitigation on.
+ * Read per call (never sampled at init). Multichart is out of scope (FIX 1).
+ */
+function _scReplayPaintCadenceV1Enabled() {
+    return typeof window === 'undefined'
+        || !window.__TALARIA_DISABLE_SC_REPLAY_PAINT_CADENCE_V1;
+}
+
+/**
+ * LAG-SETINTERVAL-TICK — bound candle-mode setInterval handler (default ON).
+ * Advances playhead inside the interval; coalesces chart paint onto rAF so the
+ * setInterval callback cannot become an unbounded sync unit of work (PO:
+ * `[Violation] 'setInterval' handler took 55–95ms` at 60x).
+ * Kill-switch: window.__TALARIA_DISABLE_LAG_SETINTERVAL_TICK_V1 = <truthy>
+ * restores legacy sync full tick (advance + paint inside setInterval).
+ * Absent / falsy ⇒ mitigation on. Read per call (never sampled at init).
+ */
+function _lagSetIntervalTickV1Enabled() {
+    return typeof window === 'undefined'
+        || !window.__TALARIA_DISABLE_LAG_SETINTERVAL_TICK_V1;
+}
+
 class ReplaySystem {
     constructor(chart) {
         this.chart = chart;
@@ -53,6 +78,10 @@ class ReplaySystem {
         this._activeTickLoop = 0;
         /** Bumped to invalidate stale candle-by-candle setInterval chains. */
         this._activeCandleLoop = 0;
+        /** LAG-SETINTERVAL-TICK: coalesced rAF paint for candle-mode play. */
+        this._candlePaintRaf = null;
+        this._candlePaintPending = false;
+        this._candlePaintAutoScroll = true;
 
         // === VIRTUAL TIME SYNC: Track replay position by timestamp, not index ===
         // This ensures all timeframes stay in sync when switching
@@ -380,6 +409,7 @@ class ReplaySystem {
         this._activeTickLoop = (this._activeTickLoop || 0) + 1;
         this._activeCandleLoop = (this._activeCandleLoop || 0) + 1;
         this._cancelDeferredPlayStart();
+        this._cancelCandlePlaybackPaint({ flush: false });
         if (this._nextCandleTimer) {
             clearTimeout(this._nextCandleTimer);
             this._nextCandleTimer = null;
@@ -4600,6 +4630,7 @@ class ReplaySystem {
      * Stop all playback intervals and animations
      */
     stopAllPlayback() {
+        this._cancelCandlePlaybackPaint({ flush: true });
         this._activeTickLoop = (this._activeTickLoop || 0) + 1;
         this._activeCandleLoop = (this._activeCandleLoop || 0) + 1;
         if (this._nextCandleTimer) {
@@ -4831,22 +4862,89 @@ class ReplaySystem {
         return false;
     }
 
+    /**
+     * LAG-SETINTERVAL-TICK kill-switch gate (per call).
+     * Absent / falsy ⇒ bound path ON; truthy ⇒ legacy sync full tick.
+     */
+    _lagSetIntervalTickBoundEnabled() {
+        return _lagSetIntervalTickV1Enabled();
+    }
+
+    /** Cancel coalesced candle-mode rAF paint; optionally flush latest state sync. */
+    _cancelCandlePlaybackPaint({ flush = false } = {}) {
+        if (this._candlePaintRaf != null) {
+            if (typeof cancelAnimationFrame === 'function') {
+                try { cancelAnimationFrame(this._candlePaintRaf); } catch (_) { /* ignore */ }
+            } else {
+                try { clearTimeout(this._candlePaintRaf); } catch (_) { /* ignore */ }
+            }
+            this._candlePaintRaf = null;
+        }
+        const pending = this._candlePaintPending === true;
+        this._candlePaintPending = false;
+        if (flush && pending && this.isActive && Array.isArray(this.fullRawData) && this.fullRawData.length) {
+            try {
+                this.updateChartData(this._candlePaintAutoScroll !== false);
+            } catch (_) { /* ignore */ }
+        }
+    }
+
+    /**
+     * Coalesce candle-mode chart paint onto rAF (~display refresh).
+     * Interval handlers only advance playhead; paint is not an unbounded
+     * synchronous unit inside setInterval.
+     */
+    _scheduleCandlePlaybackPaint(autoScroll = true) {
+        this._candlePaintAutoScroll = autoScroll !== false;
+        this._candlePaintPending = true;
+        if (this._candlePaintRaf != null) return;
+        const loopId = this._activeCandleLoop;
+        const run = () => {
+            this._candlePaintRaf = null;
+            if (loopId !== this._activeCandleLoop) {
+                this._candlePaintPending = false;
+                return;
+            }
+            if (!this._candlePaintPending) return;
+            this._candlePaintPending = false;
+            if (!this.isActive || !this.isPlaying) return;
+            try {
+                this.updateChartData(this._candlePaintAutoScroll !== false);
+            } catch (_) { /* ignore */ }
+        };
+        if (typeof requestAnimationFrame === 'function') {
+            this._candlePaintRaf = requestAnimationFrame(run);
+        } else {
+            this._candlePaintRaf = setTimeout(run, 0);
+        }
+    }
+
     /** Advance one candle-mode timer tick (1..N steps, single chart paint). */
     _runCandlePlaybackTick() {
         const { stepsPerTick, orderMoneyPath } = this.getCandlePlaybackCadence();
         const n = Math.max(1, stepsPerTick | 0);
         const evaluateSkippedMoneyPath = orderMoneyPath === true
             && this._isOrderMoneyPathBatchEnabled();
+        // Bound path: advance all steps with skipChartUpdate, paint on rAF.
+        // Kill-switch restores legacy: paint sync on the final step inside the
+        // setInterval handler (unbounded; PO Violation source).
+        const deferPaint = this._lagSetIntervalTickBoundEnabled();
+        let lastAutoScroll = !!this.autoScrollEnabled;
         for (let i = 0; i < n; i++) {
             if (!this.isPlaying || !this.isActive) break;
             if (this._nextCandleTimer) break;
-            const skipChartUpdate = i < n - 1;
+            const skipChartUpdate = deferPaint || i < n - 1;
+            const prevIdx = this.currentIndex;
             this.simpleStepForward({
                 skipChartUpdate,
                 evaluateOrderMoneyPath: evaluateSkippedMoneyPath,
             });
+            lastAutoScroll = this._shouldAutoScrollChartUpdate(prevIdx);
             // Stop batching if playback ended / waiting on forward edge.
             if (!this.isPlaying || this._nextCandleTimer) break;
+        }
+        if (deferPaint && this.isPlaying && this.isActive && !this._nextCandleTimer) {
+            this._scheduleCandlePlaybackPaint(lastAutoScroll);
         }
     }
     
@@ -6655,6 +6753,10 @@ class ReplaySystem {
     pause() {
         this._cancelDeferredPlayStart();
         this._viewportLockForPlayback = null;
+
+        // Flush coalesced candle paint before invalidating the loop id so the
+        // paused frame matches the advanced playhead (LAG-SETINTERVAL-TICK).
+        this._cancelCandlePlaybackPaint({ flush: true });
 
         // Set state first
         this.isPlaying = false;
