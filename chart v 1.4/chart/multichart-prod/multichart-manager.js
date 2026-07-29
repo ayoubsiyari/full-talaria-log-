@@ -81,6 +81,32 @@
         }
     }
 
+    /**
+     * ORPHAN-L2: removeChart always releases the iframe `load` listener for
+     * iframe panels (independent of PURGE-1). Default ON by absent property.
+     * Kill: window.__TALARIA_DISABLE_MC_IFRAME_LOAD_LISTENER_RELEASE_V1 — truthiness; per call.
+     */
+    function mcIframeLoadListenerReleaseV1Enabled() {
+        try {
+            return !(global && global.__TALARIA_DISABLE_MC_IFRAME_LOAD_LISTENER_RELEASE_V1);
+        } catch (_) {
+            return true;
+        }
+    }
+
+    /**
+     * ORPHAN-L3: removeChart always releases the iframe `error` listener for
+     * iframe panels (independent of PURGE-1). Default ON by absent property.
+     * Kill: window.__TALARIA_DISABLE_MC_IFRAME_ERROR_LISTENER_RELEASE_V1 — truthiness; per call.
+     */
+    function mcIframeErrorListenerReleaseV1Enabled() {
+        try {
+            return !(global && global.__TALARIA_DISABLE_MC_IFRAME_ERROR_LISTENER_RELEASE_V1);
+        } catch (_) {
+            return true;
+        }
+    }
+
     /** panel-cmd `loadFile` / heavy ops: iframes may still be parsing dist-v9 after bridge-ready. */
     var PANEL_CMD_TIMEOUT_MS = 25000;
 
@@ -596,6 +622,25 @@
             this._log('info', 'removeChart ' + id + ' (host — DOM left intact)');
             return;
         }
+        // ORPHAN-L2 / ORPHAN-L3: release iframe load/error listeners even when
+        // PURGE-1 is off or its try-path is missed. Each family has its own
+        // kill-switch for independent bisect. Host charts never reach here.
+        try {
+            var releaseFrame = null;
+            try { releaseFrame = c.frame; } catch (_) { releaseFrame = null; }
+            if (mcIframeLoadListenerReleaseV1Enabled()
+                && releaseFrame
+                && c._mcFrameLoadListener) {
+                try { releaseFrame.removeEventListener('load', c._mcFrameLoadListener); } catch (_) {}
+                c._mcFrameLoadListener = null;
+            }
+            if (mcIframeErrorListenerReleaseV1Enabled()
+                && releaseFrame
+                && c._mcFrameErrorListener) {
+                try { releaseFrame.removeEventListener('error', c._mcFrameErrorListener); } catch (_) {}
+                c._mcFrameErrorListener = null;
+            }
+        } catch (_) {}
         if (mcPanelStatePurgeV1Enabled()) {
             try {
                 c._mcPanelRemoved = true;
@@ -610,16 +655,6 @@
                         try { clearTimeout(c._mcBridgeReadyTimeouts[i]); } catch (_) {}
                     }
                     c._mcBridgeReadyTimeouts.length = 0;
-                }
-                var frame = null;
-                try { frame = c.frame; } catch (_) { frame = null; }
-                if (frame && c._mcFrameLoadListener) {
-                    try { frame.removeEventListener('load', c._mcFrameLoadListener); } catch (_) {}
-                    c._mcFrameLoadListener = null;
-                }
-                if (frame && c._mcFrameErrorListener) {
-                    try { frame.removeEventListener('error', c._mcFrameErrorListener); } catch (_) {}
-                    c._mcFrameErrorListener = null;
                 }
             } catch (_) {}
         }
