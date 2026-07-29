@@ -184,6 +184,75 @@
         }
     }
 
+    /**
+     * STASHED-PANEL-HANDLE: keep panel contentWindow/chart handles on the
+     * manager entry so removeChart can still release the realm after React
+     * detaches the iframe (contentWindow becomes null). Default ON.
+     * Kill: window.__TALARIA_DISABLE_MC_STASHED_PANEL_HANDLE_V1 — truthiness; per call.
+     */
+    function mcStashedPanelHandleV1Enabled() {
+        try {
+            return !(global && global.__TALARIA_DISABLE_MC_STASHED_PANEL_HANDLE_V1);
+        } catch (_) {
+            return true;
+        }
+    }
+
+    /** Record live panel handles while the iframe realm is still reachable. */
+    function mcStashPanelHandles(entry, win, chart) {
+        if (!mcStashedPanelHandleV1Enabled() || !entry) return;
+        try {
+            if (win) entry.panelWinStash = win;
+            if (chart) entry.panelChartStash = chart;
+        } catch (_) { /* ignore */ }
+    }
+
+    /** LIVE first, STASH second. Never prefer a stale stash over a live handle. */
+    function mcResolvePanelWin(c) {
+        var live = null;
+        try {
+            live = c && c.frame && c.frame.contentWindow;
+        } catch (_) {
+            live = null;
+        }
+        if (live) {
+            try {
+                mcStashPanelHandles(c, live, live.chart);
+            } catch (_) { /* ignore */ }
+            return live;
+        }
+        if (!mcStashedPanelHandleV1Enabled()) return null;
+        try {
+            return (c && c.panelWinStash) || null;
+        } catch (_) {
+            return null;
+        }
+    }
+
+    /** LIVE first, STASH second. Never prefer a stale stash over a live handle. */
+    function mcResolvePanelChart(c) {
+        var live = null;
+        try {
+            live = c && c.frame && c.frame.contentWindow && c.frame.contentWindow.chart;
+        } catch (_) {
+            live = null;
+        }
+        if (live) {
+            try {
+                var liveWin = null;
+                try { liveWin = c.frame && c.frame.contentWindow; } catch (_) { liveWin = null; }
+                mcStashPanelHandles(c, liveWin, live);
+            } catch (_) { /* ignore */ }
+            return live;
+        }
+        if (!mcStashedPanelHandleV1Enabled()) return null;
+        try {
+            return (c && c.panelChartStash) || null;
+        } catch (_) {
+            return null;
+        }
+    }
+
     /** panel-cmd `loadFile` / heavy ops: iframes may still be parsing dist-v9 after bridge-ready. */
     var PANEL_CMD_TIMEOUT_MS = 25000;
 
@@ -537,8 +606,7 @@
 
     function releasePanelSharedBarStoreRefsOnRemove(entry) {
         if (!mcClearFileOnRemoveV1Enabled()) return;
-        const frame = entry && entry.frame;
-        const panelChart = frame && frame.contentWindow && frame.contentWindow.chart;
+        const panelChart = mcResolvePanelChart(entry);
         if (panelChart && typeof panelChart._releaseSharedBarStoreFileRefs === 'function') {
             panelChart._releaseSharedBarStoreFileRefs();
         }
@@ -637,6 +705,8 @@
             _mcFrameLoadListener: null,
             _mcFrameErrorListener: null,
             _mcPanelRemoved: false,
+            panelWinStash: null,
+            panelChartStash: null,
         };
         const onFrameLoad = function () {
             scheduleIframeBrandSuppression(frame, entry);
@@ -695,6 +765,10 @@
         if (c.host) {
             // Host charts are not iframes — never tear down their DOM.
             // The parent owns the chartWrapper element.
+            try {
+                c.panelWinStash = null;
+                c.panelChartStash = null;
+            } catch (_) { /* ignore */ }
             this.charts.delete(id);
             this._log('info', 'removeChart ' + id + ' (host — DOM left intact)');
             return;
@@ -742,7 +816,7 @@
             this._log('error', 'removeChart ' + id + ' shared bar-store release failed' + message);
         }
         try {
-            const panelChart = c.frame && c.frame.contentWindow && c.frame.contentWindow.chart;
+            const panelChart = mcResolvePanelChart(c);
             // ORPHAN-L1: sever parent-window host-commit listener BEFORE iframe
             // death. pagehide (M23) remains a backup; manager teardown is the
             // reliable path when pagehide does not run or runs too late.
@@ -773,7 +847,7 @@
         // or prevent frame.remove / charts.delete.
         var panelChartRelease = null;
         try {
-            panelChartRelease = c.frame && c.frame.contentWindow && c.frame.contentWindow.chart;
+            panelChartRelease = mcResolvePanelChart(c);
         } catch (_) {
             panelChartRelease = null;
         }
@@ -841,7 +915,7 @@
             if (mcReleaseBlobWorkerV1Enabled()) {
                 var panelWinRelease = null;
                 try {
-                    panelWinRelease = c.frame && c.frame.contentWindow;
+                    panelWinRelease = mcResolvePanelWin(c);
                 } catch (_) {
                     panelWinRelease = null;
                 }
@@ -850,6 +924,12 @@
                     customIndApi.disposeWorker();
                 }
             }
+        } catch (_) { /* ignore */ }
+        // Drop stashed realm handles before the entry is deleted so the stash
+        // itself cannot outlive removeChart as a retainer.
+        try {
+            c.panelWinStash = null;
+            c.panelChartStash = null;
         } catch (_) { /* ignore */ }
         try { c.frame.remove(); } catch (_) {}
         this.charts.delete(id);
@@ -1335,11 +1415,15 @@
                     }
                     if (sourceChart.mountEl) sourceChart.mountEl.classList.add('ready');
                     this._log('info', 'bridge ready: ' + sourceId);
+                    // STASHED-PANEL-HANDLE: bridge-ready proves the panel realm is
+                    // reachable — stash contentWindow / chart for detach-time teardown.
+                    try {
+                        const bridgeWin = sourceChart.frame && sourceChart.frame.contentWindow;
+                        mcStashPanelHandles(sourceChart, bridgeWin, bridgeWin && bridgeWin.chart);
+                    } catch (_) { /* ignore */ }
                     if (global.__TALARIA_ENABLE_B70_SINGLE_INDICATOR_OWNER_V1 === true) {
                         try {
-                            const panelChart = sourceChart.frame
-                                && sourceChart.frame.contentWindow
-                                && sourceChart.frame.contentWindow.chart;
+                            const panelChart = mcResolvePanelChart(sourceChart);
                             const connector = global.__TALARIA_B70_CONNECT_INDICATOR_PANEL_V1;
                             if (panelChart && global.chart && typeof connector === 'function') {
                                 connector(panelChart, global.chart);
@@ -1650,6 +1734,10 @@
                 return;
             }
             const win = chartEntry.frame && chartEntry.frame.contentWindow;
+            // Refresh stashed panel handles whenever a live contentWindow is observed.
+            if (win) {
+                try { mcStashPanelHandles(chartEntry, win, win.chart); } catch (_) { /* ignore */ }
+            }
             if (win && typeof win.__multichartSyncApply === 'function') {
                 if (msg && msg.panSync && msg.type === 'visibleRange') {
                     win.__multichartSyncApply(msg);

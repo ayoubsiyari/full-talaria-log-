@@ -60,6 +60,7 @@ const FLAGS = {
     indWorker: '__TALARIA_DISABLE_MC_RELEASE_INDICATOR_WORKER_V1',
     blobWorker: '__TALARIA_DISABLE_MC_RELEASE_BLOB_WORKER_V1',
 };
+const STASH_FLAG = '__TALARIA_DISABLE_MC_STASHED_PANEL_HANDLE_V1';
 const ALL_FLAGS = Object.values(FLAGS);
 const OM_KEYS = [
     'orderLines', 'slLines', 'tpLines', 'beLines',
@@ -86,6 +87,21 @@ class FakeElement {
         this.attributes = {};
         this.className = '';
         this.textContent = '';
+        const tokens = new Set();
+        const el = this;
+        this.classList = {
+            add(...names) {
+                for (const t of names) tokens.add(String(t));
+                el.className = Array.from(tokens).join(' ');
+            },
+            remove(...names) {
+                for (const t of names) tokens.delete(String(t));
+                el.className = Array.from(tokens).join(' ');
+            },
+            contains(name) {
+                return tokens.has(String(name));
+            },
+        };
     }
 
     appendChild(child) {
@@ -164,6 +180,7 @@ function makeReleaseProbe(stats) {
     const panelChart = {
         _removeDragEndGuardCalls: 0,
         _disposeIndicatorWorkerCalls: 0,
+        _releaseSharedBarStoreFileRefsCalls: 0,
         _timeframeFetchAbort: abortController,
         _abortCalls: abortCalls,
         replaySystem: {
@@ -178,6 +195,9 @@ function makeReleaseProbe(stats) {
             panelChart._pendingCleared = true;
             panelChart._workerTerminated = true;
             if (panelChart._throwIndWorker) throw new Error('ind worker boom');
+        },
+        _releaseSharedBarStoreFileRefs() {
+            panelChart._releaseSharedBarStoreFileRefsCalls += 1;
         },
         _throwDrag: false,
         _throwIndWorker: false,
@@ -263,6 +283,24 @@ function makeHostOrderManager(hostChart, panelChart) {
 
 function clearAllFlags(sandbox) {
     for (const flag of ALL_FLAGS) delete sandbox[flag];
+    delete sandbox[STASH_FLAG];
+}
+
+function stashViaBridgeReady(harness, entry, id) {
+    harness.manager._onWindowMessage({
+        data: { type: 'bridge-ready', source: id },
+    });
+    assert.ok(entry.panelWinStash, 'bridge-ready must stash panelWin');
+    assert.ok(entry.panelChartStash, 'bridge-ready must stash panelChart');
+    return entry;
+}
+
+function detachFrame(entry) {
+    const liveWin = entry.frame.contentWindow;
+    const liveChart = liveWin && liveWin.chart;
+    entry.frame.contentWindow = null;
+    assert.equal(entry.frame.contentWindow, null, 'contentWindow must be null (detached)');
+    return { liveWin, liveChart };
 }
 
 function createHarness(opts = {}) {
@@ -1020,4 +1058,178 @@ test('flag-polarity: falsy values keep cut ON (not === true sampling)', () => {
         assertCut1Ran(probe);
     }
     note('flag-polarity', true);
+});
+
+// ── STASHED-PANEL-HANDLE (detached-collapse path) ─────────────────────────
+
+test('stash-detached-collapse: contentWindow null + stash ⇒ five cuts + bar-store fire', () => {
+    const h = createHarness();
+    clearAllFlags(h.sandbox);
+    const entry = addLoadedPanel(h, 'B');
+    const probe = probeOf(entry);
+    const om = seedHostOmForPanel(h, probe.panelChart);
+    stashViaBridgeReady(h, entry, 'B');
+    detachFrame(entry);
+    h.manager.removeChart('B');
+    assertAllCutsRan(probe, om, h.hostChart);
+    assert.equal(probe.panelChart._releaseSharedBarStoreFileRefsCalls, 1,
+        'bar-store release must fire via stash');
+    assert.equal(h.stats.replayDestroyed, 1,
+        'ORPHAN/replay site must resolve panelChart via stash when detached');
+    assertRemoveCompleted(h, entry, 'B');
+    note('stash-detached-collapse', true);
+});
+
+test('stash-detached-flag-OFF: contentWindow null + stash + kill-switch ⇒ releases skip', () => {
+    const h = createHarness();
+    clearAllFlags(h.sandbox);
+    const entry = addLoadedPanel(h, 'B');
+    const probe = probeOf(entry);
+    const om = seedHostOmForPanel(h, probe.panelChart);
+    stashViaBridgeReady(h, entry, 'B');
+    h.sandbox[STASH_FLAG] = true;
+    detachFrame(entry);
+    h.manager.removeChart('B');
+    assertCut1Skipped(probe);
+    assertCut2Skipped(om, probe.panelChart, h.hostChart);
+    assertCut3Skipped(probe);
+    assertCut4Skipped(probe);
+    assertCut5Skipped(probe);
+    assert.equal(probe.panelChart._releaseSharedBarStoreFileRefsCalls, 0,
+        'bar-store must skip when stash kill-switch is on');
+    assertRemoveCompleted(h, entry, 'B');
+    note('stash-detached-flag-OFF', true);
+});
+
+test('stash-live-preferred: live handle used when live and stash differ', () => {
+    const h = createHarness();
+    clearAllFlags(h.sandbox);
+    const entry = addLoadedPanel(h, 'B');
+    const probe = probeOf(entry);
+    const liveChart = probe.panelChart;
+    const liveWin = entry.frame.contentWindow;
+    const om = seedHostOmForPanel(h, liveChart);
+
+    const stashAbort = { abort() { stashAbort.count += 1; }, count: 0 };
+    const stashChart = {
+        _removeDragEndGuardCalls: 0,
+        _disposeIndicatorWorkerCalls: 0,
+        _releaseSharedBarStoreFileRefsCalls: 0,
+        _timeframeFetchAbort: stashAbort,
+        _removeDragEndGuard() { stashChart._removeDragEndGuardCalls += 1; },
+        _disposeIndicatorWorker() { stashChart._disposeIndicatorWorkerCalls += 1; },
+        _releaseSharedBarStoreFileRefs() { stashChart._releaseSharedBarStoreFileRefsCalls += 1; },
+        replaySystem: { destroy() {} },
+    };
+    const stashCustom = {
+        disposeCalls: 0,
+        disposeWorker() { stashCustom.disposeCalls += 1; },
+    };
+    const stashWin = {
+        chart: stashChart,
+        TalariaCustomIndicators: stashCustom,
+    };
+    entry.panelWinStash = stashWin;
+    entry.panelChartStash = stashChart;
+
+    assert.notEqual(liveChart, stashChart, 'live and stash chart must differ');
+    assert.notEqual(liveWin, stashWin, 'live and stash win must differ');
+
+    h.manager.removeChart('B');
+    assertAllCutsRan(probe, om, h.hostChart);
+    assert.equal(liveChart._releaseSharedBarStoreFileRefsCalls, 1, 'live bar-store used');
+    assert.equal(stashChart._removeDragEndGuardCalls, 0, 'stash cut1 NOT used');
+    assert.equal(stashChart._disposeIndicatorWorkerCalls, 0, 'stash cut4 NOT used');
+    assert.equal(stashAbort.count, 0, 'stash cut3 NOT used');
+    assert.equal(stashCustom.disposeCalls, 0, 'stash cut5 NOT used');
+    assert.equal(stashChart._releaseSharedBarStoreFileRefsCalls, 0, 'stash bar-store NOT used');
+    assertRemoveCompleted(h, entry, 'B');
+    note('stash-live-preferred', true);
+});
+
+test('stash-cleared: removeChart nulls panelWinStash/panelChartStash on entry', () => {
+    const h = createHarness();
+    clearAllFlags(h.sandbox);
+    const entry = addLoadedPanel(h, 'B');
+    const probe = probeOf(entry);
+    seedHostOmForPanel(h, probe.panelChart);
+    stashViaBridgeReady(h, entry, 'B');
+    assert.ok(entry.panelWinStash);
+    assert.ok(entry.panelChartStash);
+    h.manager.removeChart('B');
+    assert.equal(entry.panelWinStash, null, 'panelWinStash must be nulled');
+    assert.equal(entry.panelChartStash, null, 'panelChartStash must be nulled');
+    assertRemoveCompleted(h, entry, 'B');
+    note('stash-cleared', true);
+});
+
+test('stash-never-stashed: no live handle, no stash ⇒ removeChart completes cleanly', () => {
+    const h = createHarness();
+    clearAllFlags(h.sandbox);
+    const entry = addLoadedPanel(h, 'B');
+    const probe = probeOf(entry);
+    seedHostOmForPanel(h, probe.panelChart);
+    entry.panelWinStash = null;
+    entry.panelChartStash = null;
+    detachFrame(entry);
+    const om = h.hostOm;
+    assert.doesNotThrow(() => h.manager.removeChart('B'));
+    assertCut1Skipped(probe);
+    assertCut2Skipped(om, probe.panelChart, h.hostChart);
+    assertCut3Skipped(probe);
+    assertCut4Skipped(probe);
+    assertCut5Skipped(probe);
+    assert.equal(probe.panelChart._releaseSharedBarStoreFileRefsCalls, 0);
+    assertRemoveCompleted(h, entry, 'B');
+    note('stash-never-stashed', true);
+});
+
+test('stash-flag-flip-per-call: truthy→absent restores stash fallback without reload', () => {
+    const h = createHarness();
+    clearAllFlags(h.sandbox);
+
+    // First removal: stash kill-switch ON ⇒ detached path skips.
+    const entryOff = addLoadedPanel(h, 'OFF');
+    const probeOff = probeOf(entryOff);
+    const omOff = seedHostOmForPanel(h, probeOff.panelChart);
+    stashViaBridgeReady(h, entryOff, 'OFF');
+    h.sandbox[STASH_FLAG] = true;
+    detachFrame(entryOff);
+    h.manager.removeChart('OFF');
+    assertCut1Skipped(probeOff);
+    assertCut5Skipped(probeOff);
+    assert.equal(probeOff.panelChart._releaseSharedBarStoreFileRefsCalls, 0);
+
+    // Second removal: kill-switch cleared mid-session ⇒ stash fallback works.
+    delete h.sandbox[STASH_FLAG];
+    const entryOn = addLoadedPanel(h, 'ON');
+    const probeOn = probeOf(entryOn);
+    const omOn = seedHostOmForPanel(h, probeOn.panelChart);
+    stashViaBridgeReady(h, entryOn, 'ON');
+    detachFrame(entryOn);
+    h.manager.removeChart('ON');
+    assertAllCutsRan(probeOn, omOn, h.hostChart);
+    assert.equal(probeOn.panelChart._releaseSharedBarStoreFileRefsCalls, 1);
+    assertRemoveCompleted(h, entryOn, 'ON');
+    note('stash-flag-flip-per-call', true);
+    void omOff;
+});
+
+test('stash-flag-polarity: falsy values keep stash ON (not === true sampling)', () => {
+    const h = createHarness();
+    for (const falsy of [false, 0, '', null, undefined]) {
+        clearAllFlags(h.sandbox);
+        h.sandbox[STASH_FLAG] = falsy;
+        const id = `SF${String(falsy)}`;
+        const entry = addLoadedPanel(h, id);
+        const probe = probeOf(entry);
+        const om = seedHostOmForPanel(h, probe.panelChart);
+        stashViaBridgeReady(h, entry, id);
+        detachFrame(entry);
+        h.manager.removeChart(id);
+        assertAllCutsRan(probe, om, h.hostChart);
+        assert.equal(probe.panelChart._releaseSharedBarStoreFileRefsCalls, 1,
+            `stash ON for falsy=${String(falsy)}`);
+    }
+    note('stash-flag-polarity', true);
 });
