@@ -102,6 +102,17 @@ function _m24OrderIdAllocatorV1Enabled() {
         || !window.__TALARIA_DISABLE_M24_ORDER_ID_ALLOCATOR_V1;
 }
 
+/**
+ * M23 REPLAY ROLLBACK TRADE-STATE — default ON.
+ * Kill-switch: window.__TALARIA_DISABLE_M23_ROLLBACK_TRADE_CANCEL_V1 = <truthy>
+ * restores tip resurrectOpen / no-confirm cut behaviour. Absent / falsy ⇒
+ * confirm + permanent cancel (no auto-reactivate). Read per call.
+ */
+function _m23RollbackTradeCancelV1Enabled() {
+    return typeof window === 'undefined'
+        || !window.__TALARIA_DISABLE_M23_ROLLBACK_TRADE_CANCEL_V1;
+}
+
 
 /** M19-D: marker redraw processes newly-visible/delta trades only — default ON. */
 function _m19MarkerDeltaV1Enabled() {
@@ -39582,6 +39593,8 @@ class OrderManager {
     /**
      * keepClosed — finished before cut; resurrectOpen — started before cut, still open at cut;
      * remove — started on/after cut (only the trade(s) you cut forward).
+     * Under M23 rollback-trade-cancel (default ON), callers must not resurrect —
+     * treat resurrectOpen as permanent cancel (remove).
      */
     _classifyTradeAtReplayCutoff(trade, cutoffMs) {
         if (cutoffMs == null || !Number.isFinite(cutoffMs)) return 'remove';
@@ -39591,6 +39604,28 @@ class OrderManager {
         if (exit != null && exit < cutoffMs) return 'keepClosed';
         if (entry != null && entry < cutoffMs) return 'resurrectOpen';
         return 'remove';
+    }
+
+    /** True when M23 permanent-cancel path is active (kill absent/falsy). */
+    _m23RollbackTradeCancelV1Enabled() {
+        return _m23RollbackTradeCancelV1Enabled();
+    }
+
+    /**
+     * True when a selective cut at cutoffMs would permanently cancel executed
+     * trades under M23 (default ON). Kill path always returns false (no confirm).
+     */
+    _replayCutWouldCancelExecutedTrades(cutoffTime) {
+        if (!_m23RollbackTradeCancelV1Enabled()) return false;
+        const cutoffMs = this._replayCutoffMs(cutoffTime);
+        if (cutoffMs == null) {
+            return ((this.openPositions || []).length + (this.closedPositions || []).length) > 0;
+        }
+        if ((this.openPositions || []).length > 0) return true;
+        for (const pos of (this.closedPositions || [])) {
+            if (this._classifyTradeAtReplayCutoff(pos, cutoffMs) !== 'keepClosed') return true;
+        }
+        return false;
     }
 
     /** Re-open a closed leg at the replay cut (strip close fields; keep partials before cut). */
@@ -39626,12 +39661,15 @@ class OrderManager {
      * Close/cancel orders and remove trade visuals on rewind ("Go back").
      * @param {number} [cutoffTime] - If provided, only remove trades that
      *   started on/after this timestamp; trades fully completed before it are
-     *   preserved; trades that were still open at the cut are restored as open.
+     *   preserved; trades that were still open at the cut are restored as open
+     *   only when M23 rollback-trade-cancel is killed. Default ON permanently
+     *   cancels mid-cut executed trades (no resurrect / auto-reactivate).
      *   If omitted, ALL trades and visuals are wiped (legacy behaviour).
      */
     forceCloseAllOrders(cutoffTime) {
         const cutoffMs = this._replayCutoffMs(cutoffTime);
         const selective = cutoffMs != null;
+        const permanentCancel = _m23RollbackTradeCancelV1Enabled();
 
         const allPending = [
             ...(this.pendingOrders || []),
@@ -39651,16 +39689,17 @@ class OrderManager {
                 const kind = this._classifyTradeAtReplayCutoff(pos, cutoffMs);
                 if (kind === 'keepClosed') {
                     preservedClosed.push(pos);
-                } else if (kind === 'resurrectOpen') {
+                } else if (kind === 'resurrectOpen' && !permanentCancel) {
                     resurrectedOpen.push(this._resurrectClosedPositionForReplayCut(pos, cutoffMs));
                     removedClosedIds.add(pos.id);
                 } else {
+                    // remove, or resurrectOpen under M23 permanent-cancel (default ON)
                     removedClosedIds.add(pos.id);
                 }
             });
             (this.openPositions || []).forEach(pos => {
                 const entry = this._effectiveTradeEntryMs(pos);
-                if (entry != null && entry < cutoffMs) {
+                if (!permanentCancel && entry != null && entry < cutoffMs) {
                     preservedOpen.push(pos);
                 } else {
                     removedOpen.push(pos);

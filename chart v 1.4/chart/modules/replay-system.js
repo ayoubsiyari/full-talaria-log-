@@ -2902,9 +2902,12 @@ class ReplaySystem {
     }
     
     /**
-     * Rewind replay to a wall-clock cut point and notify multichart panels.
+     * Rewind replay to a bar-timestamp cut point and notify multichart panels.
+     * Order cutoff uses candle.t / replay bar times (not wall-clock Date.now()
+     * or insertion order). M23: when the cut would permanently cancel executed
+     * trades, confirm first unless already confirmed or kill-switch is on.
      * @param {number|string|Date} targetTimestamp
-     * @param {{ sourceChart?: object, candleIndex?: number }} options
+     * @param {{ sourceChart?: object, candleIndex?: number, confirmedTradeCancel?: boolean, onTradeCancelConfirmed?: function }} options
      * @returns {boolean}
      */
     applyReplayCutToWallClock(targetTimestamp, options = {}) {
@@ -2958,8 +2961,36 @@ class ReplaySystem {
             newRawIndex = Math.max(goBackFloor, Math.min(idx, this.fullRawData.length - 1));
         }
 
-        if (this.chart.orderManager && typeof this.chart.orderManager.forceCloseAllOrders === 'function') {
-            this.chart.orderManager.forceCloseAllOrders(orderCutoff);
+        const om = this.chart && this.chart.orderManager;
+        if (om && typeof om._replayCutWouldCancelExecutedTrades === 'function'
+            && om._replayCutWouldCancelExecutedTrades(orderCutoff)
+            && !options.confirmedTradeCancel) {
+            if (typeof om._confirmInChart === 'function') {
+                om._confirmInChart({
+                    title: 'Cancel executed trades?',
+                    message: 'Going back past executed trades permanently cancels them. '
+                        + 'They will not reopen. Place a new order manually to trade again.',
+                    confirmLabel: 'Cancel trades & go back',
+                    cancelLabel: 'Keep trades',
+                    danger: true,
+                    onConfirm: () => {
+                        const ok = this.applyReplayCutToWallClock(targetTimestamp, {
+                            ...options,
+                            confirmedTradeCancel: true,
+                        });
+                        if (ok && typeof options.onTradeCancelConfirmed === 'function') {
+                            try { options.onTradeCancelConfirmed(); } catch (_) { /* ignore */ }
+                        }
+                    },
+                });
+                return false;
+            }
+            // Headless / no dialog: require explicit confirm flag (fail closed).
+            return false;
+        }
+
+        if (om && typeof om.forceCloseAllOrders === 'function') {
+            om.forceCloseAllOrders(orderCutoff);
         }
 
         this.currentIndex = Math.max(newRawIndex, goBackFloor);
@@ -3056,13 +3087,21 @@ class ReplaySystem {
         flashCutLines();
 
         setTimeout(() => {
-            this.applyReplayCutToWallClock(timestamp, { sourceChart, candleIndex });
-            this.exitGoBackMode();
-            try {
-                if (typeof window !== 'undefined') {
-                    window.dispatchEvent(new CustomEvent('talariaReplayRollbackDone'));
-                }
-            } catch (_) { /* ignore */ }
+            const finishGoBack = () => {
+                this.exitGoBackMode();
+                try {
+                    if (typeof window !== 'undefined') {
+                        window.dispatchEvent(new CustomEvent('talariaReplayRollbackDone'));
+                    }
+                } catch (_) { /* ignore */ }
+            };
+            const applied = this.applyReplayCutToWallClock(timestamp, {
+                sourceChart,
+                candleIndex,
+                onTradeCancelConfirmed: finishGoBack,
+            });
+            // Pending confirm returns false — stay in go-back until user confirms/cancels.
+            if (applied) finishGoBack();
         }, 150);
     }
     
