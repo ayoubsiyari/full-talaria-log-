@@ -12335,12 +12335,20 @@ def _next_user_trade_id(db, user_id: int) -> int:
 
 
 def _sync_trading_session_journal_trades(
-    db, session_id: int, user_id: int, journal: list, *, prefer_richer_heavy: bool = False
+    db,
+    session_id: int,
+    user_id: int,
+    journal: list,
+    *,
+    prefer_richer_heavy: bool = False,
+    explicit_replace: bool = False,
 ) -> None:
-    """Upsert one DB row per chart journal trade; remove rows no longer present in the canonical journal array.
+    """Upsert one DB row per chart journal trade.
 
     prefer_richer_heavy=True only for explicitly marked M19-C slim hot patches.
-    Full / kill journal updates keep B-era replace semantics.
+    Full / kill journal updates keep B-era row replace semantics.
+    M24: chart PATCH journals are not a delete authority; import/seed replace
+    callers pass explicit_replace=True when absent rows should be pruned.
     """
     if not isinstance(journal, list):
         return
@@ -12448,11 +12456,12 @@ def _sync_trading_session_journal_trades(
         db.add(new_row)
         by_client[tid] = new_row
 
-    q = db.query(TradingSessionJournalTrade).filter(TradingSessionJournalTrade.session_id == session_id)
-    if incoming_ids:
-        q = q.filter(~TradingSessionJournalTrade.client_trade_id.in_(incoming_ids))
-    for orphan in q.all():
-        db.delete(orphan)
+    if sjs.should_prune_absent_journal_trades(explicit_replace=explicit_replace):
+        q = db.query(TradingSessionJournalTrade).filter(TradingSessionJournalTrade.session_id == session_id)
+        if incoming_ids:
+            q = q.filter(~TradingSessionJournalTrade.client_trade_id.in_(incoming_ids))
+        for orphan in q.all():
+            db.delete(orphan)
 
 
 def _google_sheets_service():
@@ -24777,7 +24786,13 @@ async def import_trading_session_journal_csv(
             sjs.enforce_journal_trade_limit(merged)
         except sjs.JournalTradeLimitExceeded as exc:
             raise HTTPException(status_code=413, detail=str(exc)) from exc
-        _sync_trading_session_journal_trades(db, session_id=s.id, user_id=s.user_id, journal=merged)
+        _sync_trading_session_journal_trades(
+            db,
+            session_id=s.id,
+            user_id=s.user_id,
+            journal=merged,
+            explicit_replace=(mode_clean == "replace"),
+        )
         if sjs.strip_journal_from_state_json_enabled():
             sjs.strip_journal_from_persisted_state(state)
         else:
@@ -24907,7 +24922,13 @@ async def seed_trading_session_demo_trades(
             sjs.enforce_journal_trade_limit(merged)
         except sjs.JournalTradeLimitExceeded as exc:
             raise HTTPException(status_code=413, detail=str(exc)) from exc
-        _sync_trading_session_journal_trades(db, session_id=s.id, user_id=s.user_id, journal=merged)
+        _sync_trading_session_journal_trades(
+            db,
+            session_id=s.id,
+            user_id=s.user_id,
+            journal=merged,
+            explicit_replace=(mode_clean == "replace"),
+        )
         if sjs.strip_journal_from_state_json_enabled():
             sjs.strip_journal_from_persisted_state(state)
         else:
@@ -25104,7 +25125,13 @@ async def upsert_trading_session_journal_trade(
         except sjs.JournalTradeLimitExceeded as exc:
             raise HTTPException(status_code=413, detail=str(exc)) from exc
 
-        _sync_trading_session_journal_trades(db, session_id=s.id, user_id=s.user_id, journal=merged)
+        _sync_trading_session_journal_trades(
+            db,
+            session_id=s.id,
+            user_id=s.user_id,
+            journal=merged,
+            explicit_replace=True,
+        )
         if sjs.strip_journal_from_state_json_enabled():
             sjs.strip_journal_from_persisted_state(state)
         else:
