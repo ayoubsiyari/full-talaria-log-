@@ -3845,3 +3845,17 @@ Assembled clean D + B api_server M24 hook. Stamp `20260729b87`.
 ## B-0165 — Support WS ping immortal timer fixed. Class sweep filed. Ship b88.
 
 **2026-07-29.** `TalariaV8bLive.jsx` + V16 twin: readyState OPEN guard, clear interval when not open, `onclose` → disconnect. Flag `__TALARIA_DISABLE_SUPPORT_WS_PING_CLEANUP_V1`. FLAG harness PASS. Sweep: `SWEEP-TIMER-OUTLIVES-SERVICE-20260729.md`. **Not** idle-CPU.
+
+## B-0166 — D five-pack complete on train (prune/api already on b87). Ship b89.
+
+**2026-07-29.** From `manager-d/trade-correctness` ONLY (banned C tip `a4f388296`/`8a17b05c6`).
+
+| Fix | Source | Status |
+|---|---|---|
+| journal prune guard | `95adb8285` + B api_server patch | on tip since b87 |
+| order-id allocator | `b21d236d3` + `f1ddb2e64` | cherry-picked now |
+| fibonacci persistence | `42d01a1dc` | on tip since b87 |
+| one-tick order classification | `b3f6cd6de` | cherry-picked now |
+| new-order draft reset | `5f3e68368` | cherry-picked now |
+
+Stamp `20260729b89`. Harnesses GREEN. Not taking D tip `a8d887db1`/`7a2871f24` (beyond the five).
