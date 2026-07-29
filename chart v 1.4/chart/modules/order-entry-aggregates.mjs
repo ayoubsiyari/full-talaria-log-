@@ -14,12 +14,18 @@ export function orderTypeReclassifyV2Enabled() {
     return true;
 }
 
+export function orderTypeOneTickPendingV1Enabled() {
+    if (typeof window !== 'undefined' && window.__TALARIA_DISABLE_ORDER_TYPE_ONE_TICK_PENDING_V1) return false;
+    if (typeof process !== 'undefined' && process.env?.TALARIA_ORDER_TYPE_ONE_TICK_PENDING_V1 === '0') return false;
+    return true;
+}
+
 export function classifyOrderTypeForPrice(side, price, currentPrice, opts = {}) {
     const market = Number(currentPrice);
     const entry = Number(price);
     if (!(market > 0) || !(entry > 0)) return opts.mainOrderType || opts.fallback || 'limit';
     const tickSize = Number(opts.tickSize || opts.pipSize || 0.0001);
-    const tolerance = tickSize * ORDER_TYPE_AT_MARKET_TOLERANCE_TICKS;
+    const tolerance = tickSize * (orderTypeOneTickPendingV1Enabled() ? 0.25 : ORDER_TYPE_AT_MARKET_TOLERANCE_TICKS);
     if (Math.abs(entry - market) <= tolerance) return 'market';
     const s = String(side || 'BUY').toUpperCase();
     if (s === 'BUY') return entry < market ? 'limit' : 'stop';

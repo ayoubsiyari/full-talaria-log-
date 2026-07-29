@@ -23,3 +23,10 @@
 - Fix: `order-manager.js` now allocates order ids through `_allocateOrderId()`, behind `__TALARIA_DISABLE_M24_ORDER_ID_ALLOCATOR_V1` (default ON). The allocator reconciles the next numeric id against loaded pending orders, open positions, closed positions, journal rows, local `orders`, and `orderService` mirrors before reserving an id. Runtime restore also reconciles immediately after applying persisted counters. Homepage and canonical chart mirrors are aligned.
 - RED: `TALARIA_TEST_DISABLE_M24_ORDER_ID_ALLOCATOR=1 node m24-order-id-allocator.test.mjs` fails with stale counter `4 !== 62`, reproducing the duplicate-id condition without user data.
 - GREEN: both `node "chart v 1.4/chart/modules/m24-order-id-allocator.test.mjs"` and `node "homepage/public/chart/modules/m24-order-id-allocator.test.mjs"` pass.
+
+## 2026-07-29 — Cluster G / TAL-01904
+
+- Root cause found: the order-type classifier treated any entry within one tick of market as `market`. A BUY entry exactly one tick above current price therefore remained a market order instead of becoming a stop order; SELL one tick below had the same defect.
+- Fix: one full tick away now classifies as pending (BUY above/SELL below = stop, BUY below/SELL above = limit), behind `TALARIA_ORDER_TYPE_ONE_TICK_PENDING_V1` / `__TALARIA_DISABLE_ORDER_TYPE_ONE_TICK_PENDING_V1` (default ON). Exact market remains `market`; homepage and canonical mirrors are aligned.
+- RED: `TALARIA_ORDER_TYPE_ONE_TICK_PENDING_V1=0 node order-type-one-tick-pending.test.mjs` fails with `'market' !== 'stop'` for BUY one tick above market.
+- GREEN: both `node "chart v 1.4/chart/modules/order-type-one-tick-pending.test.mjs"` and `node "homepage/public/chart/modules/order-type-one-tick-pending.test.mjs"` pass.
