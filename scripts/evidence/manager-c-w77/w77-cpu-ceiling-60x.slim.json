@@ -1,0 +1,59 @@
+{
+  "packet": "W77-P3-SINGLE-CHART-CPU-CEILING",
+  "tier": "mid",
+  "model": "cursor-grok-4.5",
+  "question": "Characterise the 111% single-chart CPU ceiling at 60x. Fourth assignment, previously zero commits.",
+  "verdict": "REPRODUCED on the deployed product and attributed. 134-140% of a core, of which the main thread is 74-76% and 60-64 percentage points are off the main thread. The claim is real and it is NOT main-thread JavaScript alone — which is why every prior callback probe read ~7% and missed it.",
+  "build": "20260729b99",
+  "surface": "deployed http://31.97.192.82:3000, dist-v9 shell, single panel (mcLayout=1), replay playing at 60x, 2011 bars",
+  "instrument": {
+    "gate": "scripts/cpu-thread-census-gate.mjs",
+    "lib": "scripts/lib/cpu-thread-census.mjs",
+    "tests": "scripts/tests/cpu-thread-census.test.mjs (13 unit)",
+    "method": "CDP Tracing over devtools.timeline + toplevel + blink + cc + gpu for a 10s window; per-thread busy time is the UNION of event intervals so nested slices cannot be double counted; the total is deliberately allowed to exceed one core."
+  },
+  "runs": [
+    { "run": 1, "totalPercent": 133.88, "mainThreadPercent": 73.71, "offCorePercent": 60.17, "traceEvents": 802134 },
+    { "run": 2, "totalPercent": 139.53, "mainThreadPercent": 75.56, "offCorePercent": 63.97, "traceEvents": null },
+    { "run": 3, "totalPercent": 134.47, "mainThreadPercent": 74.42, "offCorePercent": 60.05, "traceEvents": null }
+  ],
+  "summary": {
+    "totalPercentMean": 135.96,
+    "mainThreadPercentMean": 74.56,
+    "offCorePercentMean": 61.4,
+    "claimedPercent": 111,
+    "status": "CEILING-REPRODUCED (measured above the claim, multi-thread)"
+  },
+  "whereTheOffMainCostLives": [
+    { "thread": "CrGpuMain", "percent": 23.87 },
+    { "thread": "Compositor", "percent": 12.5 },
+    { "thread": "ThreadPoolForegroundWorker (all)", "percent": 10.49 },
+    { "thread": "VizCompositorThread", "percent": 4.06 },
+    { "thread": "ThreadPoolSingleThreadForegroundBlocking6", "percent": 2.31 },
+    { "thread": "Chrome_ChildIOThread (all)", "percent": 2.96 }
+  ],
+  "instrumentCorrection": {
+    "problem": "The first live reading was 266% because GpuVSyncThread emits ONE trace slice covering the entire window. That slice is a block on vsync, not CPU, and by interval-coverage it looks like 100% of a core.",
+    "fix": "Threads are excluded from the total only by documented name (GpuVSyncThread, Chrome_IOThread, MemoryInfra), and every exclusion is reported in `waitDominatedThreads` so it is auditable.",
+    "whyNotAHeuristic": "I first excluded any thread whose busy time was a single window-spanning run. That rule would silently discard one enormous main-thread task, which is the exact pathology this census exists to catch. Such threads are now FLAGGED (`singleRunSpansWindow`) and still counted; a unit test pins that behaviour."
+  },
+  "whyPriorProbesRead7Percent": "The existing PO-CPU profile samples main-thread scheduled callbacks on the hermetic harness. Two structural misses: it never drove the deployed product (74% of a core there), and 61 percentage points of the cost is off the main thread, where a callback probe cannot see it by construction.",
+  "supersedes": "W75's attribution of this ceiling to m20Q6InertableScheduledCallback, retracted in W76 as an instrumentation wrapper artefact. This packet replaces it with a per-thread measurement.",
+  "idleFloor": {
+    "note": "Same instrument, chart loaded, replay NOT started (--idle).",
+    "totalPercent": 22.68,
+    "mainThreadPercent": 10.17,
+    "offCorePercent": 12.51,
+    "threads": [
+      { "thread": "CrRendererMain", "percent": 10.17 },
+      { "thread": "Compositor", "percent": 4.06 },
+      { "thread": "ThreadPoolSingleThreadForegroundBlocking6", "percent": 2.33 },
+      { "thread": "CrGpuMain", "percent": 1.38 },
+      { "thread": "VizCompositorThread", "percent": 0.82 },
+      { "thread": "ThreadPoolForegroundWorker (all)", "percent": 1.39 },
+      { "thread": "StackSamplingProfiler", "percent": 0.28 }
+    ],
+    "readingForP4": "The PO's idle floor of ~7.79% is the same order as the 10.17% main-thread figure here. A's ablation (13.12% measured, 6.3pp instrument, 0.17% React pumps) only ever examined the main thread, and 12.51pp of the idle cost is off it — over half. That is where the unexplained remainder should be looked for. Not closed; located.",
+    "instrumentOverheadCaveat": "Tracing is active during these readings; StackSamplingProfiler at 0.28% is mine, and trace machinery inflates the thread-pool rows somewhat. Treat idle numbers as an upper bound."
+  }
+}

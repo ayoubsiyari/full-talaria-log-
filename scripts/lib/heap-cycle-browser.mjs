@@ -85,7 +85,7 @@ function logHeapCycle(...args) {
   console.error(`[heap-cycle ${new Date().toISOString()}]`, ...args);
 }
 
-async function loadPuppeteer() {
+export async function loadPuppeteer() {
   try {
     return require('puppeteer');
   } catch (error) {
@@ -93,7 +93,7 @@ async function loadPuppeteer() {
   }
 }
 
-async function takeHeapSnapshotObject(cdp, { timeoutMs = 180_000 } = {}) {
+async function takeHeapSnapshotObject(cdp, { timeoutMs = 180_000, dumpPath = null } = {}) {
   // Buffer chunks — string concat hits V8 max string length (~512MB) under PO workload.
   const chunks = [];
   let partialBytes = 0;
@@ -117,6 +117,12 @@ async function takeHeapSnapshotObject(cdp, { timeoutMs = 180_000 } = {}) {
   }
   const payload = Buffer.concat(chunks);
   logHeapCycle(`snapshot bytes=${payload.length}`);
+  if (dumpPath) {
+    // Write the raw buffer: no string is materialized, so this survives snapshots
+    // that JSON.parse cannot handle, and allows repeat analysis without re-running.
+    fs.writeFileSync(dumpPath, payload);
+    logHeapCycle(`snapshot written to ${dumpPath}`);
+  }
   // JSON.parse(Buffer) avoids materializing one giant JS string.
   return JSON.parse(payload);
 }
@@ -196,6 +202,7 @@ async function sampleHeap(page, cdp, {
   snapshot = true,
   poHandSample = false,
   softGc = false,
+  snapshotDumpPath = null,
 } = {}) {
   if (snapshot === false) {
     return sampleHeapFloor(page, cdp, { label, poHandSample, softGc });
@@ -230,7 +237,7 @@ async function sampleHeap(page, cdp, {
   );
 
   logHeapCycle(`${label}: takeHeapSnapshot aggregates=${includeAggregates}`);
-  const snap = await takeHeapSnapshotObject(cdp);
+  const snap = await takeHeapSnapshotObject(cdp, { dumpPath: snapshotDumpPath });
   const detached = countDetachedDivsFromHeapSnapshot(snap);
   const aggregates = includeAggregates
     ? aggregateHeapSnapshotByConstructor(snap)
@@ -298,7 +305,7 @@ async function waitForHostReady(page, timeoutMs = 60_000) {
   throw new Error('timeout waiting for harness host ready');
 }
 
-async function waitForDistV9SingleReady(page, timeoutMs = 180_000) {
+export async function waitForDistV9SingleReady(page, timeoutMs = 180_000) {
   // Poll evaluate — waitForFunction throws "frame got detached" across layout swaps.
   const started = Date.now();
   while (Date.now() - started < timeoutMs) {
@@ -812,6 +819,8 @@ async function runMultichartCycles({
   poHandSample = false,
   /** Take one heap snapshot after the final floor so retainers can be named. */
   finalRetainerSnapshot = false,
+  /** Write that raw snapshot here for repeat offline analysis. */
+  snapshotOutPath = null,
 } = {}) {
   // PO workload: CDP heap snapshots grow past V8's ~512MB string limit and also
   // detach the React shell mid-run. Floor calibration uses usedJSHeapSize only.
@@ -984,6 +993,7 @@ async function runMultichartCycles({
           snapshot: true,
           keepSnapshot: true,
           label: 'final-retainer-snapshot',
+          snapshotDumpPath: snapshotOutPath,
         });
         lastSnapshot = retainerSample._snapshot || null;
         finalAggregates = retainerSample.constructorAggregates || null;
@@ -1306,7 +1316,7 @@ async function runThinHostSession({
   }
 }
 
-async function dismissCookieBanner(page) {
+export async function dismissCookieBanner(page) {
   // Deployed login shows a cookie notice that blocks the form until dismissed.
   for (let attempt = 0; attempt < 10; attempt += 1) {
     const clicked = await page.evaluate(() => {
@@ -1330,7 +1340,7 @@ async function dismissCookieBanner(page) {
   return null;
 }
 
-async function uiLoginDeployed(page, origin, email, password) {
+export async function uiLoginDeployed(page, origin, email, password) {
   await page.goto(`${origin}/login/`, { waitUntil: 'domcontentloaded', timeout: 180_000 });
   await dismissCookieBanner(page);
   await page.waitForSelector('#email', { visible: true, timeout: 90_000 });
@@ -1463,6 +1473,7 @@ async function runDeployedSession({
   datasetMode = HEAP_CYCLE_DATASET_MODE_DISTINCT,
   timeframes = HEAP_CYCLE_DISTINCT_TIMEFRAMES,
   finalRetainerSnapshot = false,
+  snapshotOutPath = null,
 }) {
   const email = String(process.env.TEST_EMAIL || process.env.L2_M1_TEST_EMAIL || '').trim();
   const password = String(process.env.TEST_PASSWORD || process.env.L2_M1_TEST_PASSWORD || '').trim();
@@ -1636,6 +1647,7 @@ async function runDeployedSession({
       datasetMode,
       timeframes,
       finalRetainerSnapshot,
+      snapshotOutPath,
       poWorkload: true,
       playHoldMs: Number.isFinite(playHoldMs) && playHoldMs > 0 ? playHoldMs : 6_000,
       replaySpeed: 60,
@@ -1705,6 +1717,7 @@ export async function runHeapCycleBrowserSession({
   datasetMode = HEAP_CYCLE_DATASET_MODE_DISTINCT,
   timeframes = HEAP_CYCLE_DISTINCT_TIMEFRAMES,
   finalRetainerSnapshot = false,
+  snapshotOutPath = null,
 } = {}) {
   const puppeteer = await loadPuppeteer();
   if (surface === HEAP_CYCLE_SURFACE_THIN_HOST) {
@@ -1723,6 +1736,7 @@ export async function runHeapCycleBrowserSession({
       datasetMode,
       timeframes,
       finalRetainerSnapshot,
+      snapshotOutPath,
     });
   }
   return runDistV9Session({ cycles, timeoutMs, settleMs, puppeteer, datasetMode, timeframes });

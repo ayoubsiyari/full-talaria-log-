@@ -1,0 +1,62 @@
+{
+  "packet": "W77-P2C-SCRIPT-REALM-RETENTION",
+  "tier": "mid",
+  "model": "cursor-grok-4.5",
+  "question": "Name WHY each panel realm holds its own script source: re-fetched and re-compiled per iframe, retained after teardown, or both.",
+  "answer": "BOTH, and the split is now measured. Four realms each compile their own copy (61.74 MB redundant of 86.78 MB held), and the copies of destroyed realms are still reachable after a forced GC. One generation of dead realms is retained, NOT one per cycle.",
+  "build": "20260729b99",
+  "config": "deployed, PO workload, 4 DISTINCT symbols @1m, forced-GC floors, 3 cycles",
+  "cycleCountIsThreeOnPurpose": "A heap snapshot serializes to ~2.3x usedJSHeapSize and JSON.parse dies above V8 max string length (0x1fffffe8). 3 cycles -> 305 MB snapshot, parses. 6 cycles -> ~560 MB, parse failure. All numbers below are 3 cycles; nothing is truncated.",
+  "instrument": {
+    "name": "SCRIPT-REALM-CENSUS-V1",
+    "lib": "scripts/lib/script-realm-census.mjs",
+    "tests": "scripts/tests/script-realm-census.test.mjs (10 unit)",
+    "whyNeeded": "aggregateRetainerPaths() normalizes `system / Script / <url>` down to `system / Script`, so it can report that script source retains mass but cannot say whether a file is held once or once per realm. Copy count per URL is the measurement that separates 'compiled once and shared' from 'compiled per iframe and kept'.",
+    "snapshotReuse": "--snapshot-out=<path> writes the raw CDP snapshot buffer to disk (no JS string is materialized), so one 7-minute run can be re-analyzed offline without re-driving the browser."
+  },
+  "measured": {
+    "scriptNodes": 278,
+    "distinctUrls": 74,
+    "sourceHeldMb": 86.78,
+    "redundantMb": 61.74,
+    "liveRealmsAtSnapshot": 1,
+    "copiesHistogram": { "1": 12, "2": 2, "3": 5, "4": 53, "12": 1, "23": 1 },
+    "verdict": "ONE-DEAD-GENERATION-RETAINED",
+    "topFiles": [
+      { "url": "/chart/modules/order-manager.js", "copies": 4, "sourceMb": 18.49, "redundantMb": 13.87 },
+      { "url": "/chart/chart.js", "copies": 4, "sourceMb": 15.11, "redundantMb": 11.33 },
+      { "url": "/chart/modules/chart-indicators-full.js", "copies": 4, "sourceMb": 7.55, "redundantMb": 5.66 },
+      { "url": "/chart/modules/drawing-tools-ui.js", "copies": 4, "sourceMb": 6.79, "redundantMb": 5.09 },
+      { "url": "/chart/modules/drawing-tools-manager.js", "copies": 4, "sourceMb": 6.22, "redundantMb": 4.66 },
+      { "url": "/chart/modules/replay-system.js", "copies": 4, "sourceMb": 3.42, "redundantMb": 2.56 },
+      { "url": "/chart/vendor/d3.min.js", "copies": 4, "sourceMb": 2.13, "redundantMb": 1.6 },
+      { "url": "/chart/multichart-prod/panel-cmd-bridge.js", "copies": 3, "sourceMb": 1.48, "redundantMb": 0.99 }
+    ]
+  },
+  "partA_compiledPerRealm": {
+    "finding": "53 shared module URLs are present EXACTLY 4 times — one per panel iframe. 5 more are present 3 times.",
+    "whyNotACacheBustingBug": "All four copies carry the identical URL including ?v=20260729b99. HTTP may well serve three of them from cache; V8 still compiles the source once per realm and holds its own source string. Re-fetch is not the cost, per-realm compilation is.",
+    "corroboration": "The compiled-code family grows with it: InstructionStream +10.51 MB / +5207 objects, BytecodeArray +2.22 MB, FeedbackVector +1.42 MB, ScopeInfo +0.49 MB, (script line ends) +2.07 MB.",
+    "peerOnlyScripts": "panel-cmd-bridge.js and sync-bridge.js only ever execute inside peer iframes, which is why they read 3 and not 4."
+  },
+  "partB_retainedAfterTeardown": {
+    "finding": "The run ends collapsed to a single chart, so ONE live realm — yet 4 copies of every shared module and 3 copies of both peer-only scripts survive the forced GC that precedes the snapshot.",
+    "cleanestProof": "sync-bridge.js runs ONLY inside a chart iframe. Every peer iframe had been destroyed. All 3 copies are still reachable.",
+    "corroboration": "detachedDiv 523 at end of run: detached DOM from the same destroyed panels is also still reachable."
+  },
+  "partC_theReferenceThatHoldsThem": {
+    "howObtained": "Raw retainer walk (no path normalization) over the 12 largest ExternalStringData nodes.",
+    "dominantChain": "system / ExternalStringData <- string(source text) <- system / Script / <url> <- system / SharedFunctionInfo / <fn> <- closure <fn> <- Window [JSGlobalObject] (own property <fn>) <- system / NativeContext <- closure DOMTokenList (context) <- system / FunctionTemplateInfo (WeakMap value) <- (Eternal handles)",
+    "namedCut": "Each destroyed realm's global object still carries own properties naming module-level functions, which makes that module's Script — and therefore its whole source string — reachable from the realm's global. Observed property names, one per top file: `_resolveSltpStepperSeedPrice` (order-manager.js), `cb01MountSigV1Enabled` (chart.js), `talariaBuildOverlayBandLegendTokens` (chart-indicators-full.js), `__rebuildObjectsTree` (talaria-v9-live.js). The realm's NativeContext is itself pinned from (Eternal handles) through FunctionTemplateInfo -> WeakMap -> a DOMTokenList closure.",
+    "instrumentAttributableChains": "2 of the 12 route through `(Global handles) / DevTools console` and through Error.stack (ErrorStackData -> StackTraceInfo -> StackFrameInfo -> Script). Those are my own CDP session and retained Error objects. A should NOT chase those two; they are mine, not the product's.",
+    "forManagerA": "The killable thing named here is the window-property -> closure -> SharedFunctionInfo -> Script edge inside a torn-down panel realm, plus whatever keeps that realm's NativeContext alive. This is a different mechanism from the four orphan listeners already shipped."
+  },
+  "correctionToW76": {
+    "whatIClaimed": "W76-P2B read the baseline-to-end-of-run growth census and reported script source + compiled code as the attribution for the ~23 MB/cycle leak.",
+    "whyThatWasWrong": "That diff spans a 1-realm baseline against a 4-realm end state, so the one-time cost of standing up four panel realms was counted as if it were per-cycle retention.",
+    "theDisproof": "Copies do not accumulate. After 3 cycles the shared modules read x4, not the x10 that retaining every generation would produce. Per-realm script source is therefore a BOUNDED ~62 MB, not a per-cycle term.",
+    "whatStands": "The 61.74 MB of redundant per-realm source is real, measured, and worth fixing for peak memory. Cache-shaped retention is still refuted (cache-suspect 65 bytes).",
+    "whatIsNowOpenAgain": "The monotonic ~23 MB/cycle is NOT attributed. Do not let A cut for it on the strength of W76-P2B.",
+    "nextMeasurement": "Diff two snapshots taken at the SAME collapsed state — after cycle N and after cycle N+1 — instead of baseline vs final. That removes the warm-up term by construction, exactly as the steady-state retention split did for the floors."
+  }
+}

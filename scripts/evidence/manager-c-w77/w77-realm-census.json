@@ -1,0 +1,149 @@
+{
+  "census": {
+    "signature": "TALARIA_SCRIPT_REALM_CENSUS_V1",
+    "liveRealms": 1,
+    "scriptNodes": 278,
+    "distinctUrls": 74,
+    "totalSourceBytes": 90995792,
+    "redundantBytes": 64740006,
+    "maxCopies": 23,
+    "largestFile": {
+      "url": "http://31.97.192.82:3000/chart/modules/order-manager.js",
+      "copies": 4,
+      "sourceBytes": 19388760,
+      "redundantBytes": 14541570
+    },
+    "copiesOfLargestFile": 4,
+    "duplicatedUrls": 62,
+    "copiesHistogram": {
+      "1": 12,
+      "2": 2,
+      "3": 5,
+      "4": 53,
+      "12": 1,
+      "23": 1
+    },
+    "retainsDeadRealms": true,
+    "topUrls": [
+      {
+        "url": "http://31.97.192.82:3000/chart/modules/order-manager.js",
+        "copies": 4,
+        "sourceBytes": 19388760,
+        "redundantBytes": 14541570
+      },
+      {
+        "url": "http://31.97.192.82:3000/chart/chart.js",
+        "copies": 4,
+        "sourceBytes": 15846384,
+        "redundantBytes": 11884788
+      },
+      {
+        "url": "http://31.97.192.82:3000/chart/modules/chart-indicators-full.js",
+        "copies": 4,
+        "sourceBytes": 7912632,
+        "redundantBytes": 5934474
+      },
+      {
+        "url": "http://31.97.192.82:3000/chart/modules/drawing-tools-ui.js",
+        "copies": 4,
+        "sourceBytes": 7120208,
+        "redundantBytes": 5340156
+      },
+      {
+        "url": "http://31.97.192.82:3000/chart/modules/drawing-tools-manager.js",
+        "copies": 4,
+        "sourceBytes": 6519392,
+        "redundantBytes": 4889544
+      },
+      {
+        "url": "http://31.97.192.82:3000/chart/modules/replay-system.js",
+        "copies": 4,
+        "sourceBytes": 3583728,
+        "redundantBytes": 2687796
+      },
+      {
+        "url": "http://31.97.192.82:3000/chart/modules/indicator-ui.js",
+        "copies": 4,
+        "sourceBytes": 2682936,
+        "redundantBytes": 2012202
+      },
+      {
+        "url": "http://31.97.192.82:3000/chart/vendor/d3.min.js",
+        "copies": 4,
+        "sourceBytes": 2237392,
+        "redundantBytes": 1678044
+      },
+      {
+        "url": "http://31.97.192.82:3000/chart/modules/drawing-tools-text.js",
+        "copies": 4,
+        "sourceBytes": 1808064,
+        "redundantBytes": 1356048
+      },
+      {
+        "url": "http://31.97.192.82:3000/chart/modules/drawing-tools-advanced.js",
+        "copies": 4,
+        "sourceBytes": 1750544,
+        "redundantBytes": 1312908
+      },
+      {
+        "url": "http://31.97.192.82:3000/chart/modules/drawing-tools-fib-gann.js",
+        "copies": 4,
+        "sourceBytes": 1746880,
+        "redundantBytes": 1310160
+      },
+      {
+        "url": "http://31.97.192.82:3000/chart/multichart-prod/panel-cmd-bridge.js",
+        "copies": 3,
+        "sourceBytes": 1551198,
+        "redundantBytes": 1034132
+      },
+      {
+        "url": "http://31.97.192.82:3000/chart/modules/drawing-tools-base.js",
+        "copies": 4,
+        "sourceBytes": 1261792,
+        "redundantBytes": 946344
+      },
+      {
+        "url": "http://31.97.192.82:3000/chart/modules/drawing-tools-lines.js",
+        "copies": 4,
+        "sourceBytes": 1141088,
+        "redundantBytes": 855816
+      },
+      {
+        "url": "http://31.97.192.82:3000/chart/modules/drawing-tools-advanced-volume.js",
+        "copies": 4,
+        "sourceBytes": 969240,
+        "redundantBytes": 726930
+      },
+      {
+        "url": "http://31.97.192.82:3000/chart/modules/drawing-toolbar.js",
+        "copies": 4,
+        "sourceBytes": 884784,
+        "redundantBytes": 663588
+      },
+      {
+        "url": "http://31.97.192.82:3000/chart/modules/drawing-tools-patterns.js",
+        "copies": 4,
+        "sourceBytes": 861288,
+        "redundantBytes": 645966
+      },
+      {
+        "url": "http://31.97.192.82:3000/chart/modules/drawing-tools-extended.js",
+        "copies": 4,
+        "sourceBytes": 746336,
+        "redundantBytes": 559752
+      }
+    ]
+  },
+  "verdict": {
+    "verdict": "ONE-DEAD-GENERATION-RETAINED",
+    "reading": "copies (4) exceed live realms (1) but fall short of the all-generations expectation (10), so roughly one generation of destroyed realms is retained rather than every cycle's",
+    "maxCopies": 4,
+    "maxCopiesAnyUrl": 23,
+    "largestFileUrl": "http://31.97.192.82:3000/chart/modules/order-manager.js",
+    "liveRealms": 1,
+    "accumulatingExpectation": 10,
+    "redundantBytes": 64740006,
+    "perCycleAccumulation": false
+  }
+}
