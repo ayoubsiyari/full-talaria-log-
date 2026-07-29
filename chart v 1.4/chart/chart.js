@@ -7374,7 +7374,29 @@ class Chart {
         return this._getSmartCachedPayload(fileId, params, true);
     }
 
+    /**
+     * LEAK-F: suppress idle smart prefetch-others under multichart by default.
+     * Kill switch window.__TALARIA_DISABLE_MC_SMART_PREFETCH_OTHERS_V1 — truthy
+     * restores prefetch-others. Fix default ON when flag absent; !! truthiness;
+     * read per call.
+     */
+    _mcSmartPrefetchOthersGateEnabled() {
+        try {
+            return !(typeof window !== 'undefined'
+                && !!window.__TALARIA_DISABLE_MC_SMART_PREFETCH_OTHERS_V1);
+        } catch (_e) {
+            return true;
+        }
+    }
+
     _scheduleSmartPrefetchOthers(activeFileId, timeframe, session) {
+        // MC-only gate: skip fill-before-spill warming of other session symbols.
+        // Single-chart keeps prior behaviour (schedule still runs).
+        try {
+            const inMc = (typeof this._isMultichartEmbedPanel === 'function' && this._isMultichartEmbedPanel())
+                || (typeof this._isMultichartHostPanel === 'function' && this._isMultichartHostPanel());
+            if (inMc && this._mcSmartPrefetchOthersGateEnabled()) return;
+        } catch (_e) { /* fall through — schedule */ }
         const ric = window.requestIdleCallback || ((cb) => setTimeout(cb, 250));
         ric(() => {
             if (!this._smartPrefetchCache) this._smartPrefetchCache = new Map();
