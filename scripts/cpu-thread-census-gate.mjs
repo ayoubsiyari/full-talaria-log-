@@ -278,7 +278,12 @@ async function main() {
     if (report.census) {
       console.log(`total=${report.census.totalCpuPercent}% main=${report.census.mainThreadPercent}%`);
       for (const t of report.census.threads || []) {
-        console.log(`  ${String(t.threadName || `tid${t.tid}`).padEnd(28)} ${String(t.busyMs).padStart(10)}ms ${((t.ratioOfCore || 0) * 100).toFixed(1)}%`);
+        const flag = t.waitDominated ? ' [wait, excluded]' : '';
+        console.log(`  ${String(t.threadName || `tid${t.tid}`).padEnd(28)} ${String(t.busyMs).padStart(10)}ms ${((t.ratioOfCore || 0) * 100).toFixed(1)}%${flag}`);
+        if (t.waitDominated) continue;
+        for (const e of (t.topEvents || []).slice(0, 6)) {
+          console.log(`      ${String(e.name).padEnd(34)} ${String(e.percentOfCore).padStart(6)}%  x${e.count}`);
+        }
       }
     }
     if (report.error) console.log(`error: ${report.error}`);

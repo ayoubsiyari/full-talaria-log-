@@ -36,6 +36,7 @@ export function parseHeapCycleMemoryArgs(argv = process.argv.slice(2)) {
     timeframes: null,
     finalRetainerSnapshot: false,
     snapshotOutPath: null,
+    steadyStateDiff: false,
   };
   for (const arg of argv) {
     if (arg === '--fixture' || arg === '--gate01-fixture') {
@@ -55,6 +56,10 @@ export function parseHeapCycleMemoryArgs(argv = process.argv.slice(2)) {
     } else if (arg.startsWith('--snapshot-out=')) {
       options.snapshotOutPath = path.resolve(arg.slice('--snapshot-out='.length));
       options.finalRetainerSnapshot = true;
+    } else if (arg === '--steady-state-diff') {
+      // Snapshot the last two collapsed states instead of baseline-vs-final, so
+      // per-cycle growth is not inflated by the one-time realm warm-up.
+      options.steadyStateDiff = true;
     } else if (arg === '--final-retainer-snapshot') {
       options.finalRetainerSnapshot = true;
     } else if (arg.startsWith('--timeframes=')) {
@@ -119,6 +124,7 @@ export async function runHeapCycleMemoryGate({
   timeframes = null,
   finalRetainerSnapshot = false,
   snapshotOutPath = null,
+  steadyStateDiff = false,
   runBrowser = null,
 } = {}) {
   const startedAt = new Date().toISOString();
@@ -141,6 +147,7 @@ export async function runHeapCycleMemoryGate({
         if (Array.isArray(timeframes) && timeframes.length) browserOpts.timeframes = timeframes;
         if (finalRetainerSnapshot) browserOpts.finalRetainerSnapshot = true;
         if (snapshotOutPath) browserOpts.snapshotOutPath = snapshotOutPath;
+        if (steadyStateDiff) browserOpts.steadyStateDiff = true;
         if (Number.isFinite(cycles) && cycles > 0) browserOpts.cycles = cycles;
         if (Number.isFinite(playHoldMs) && playHoldMs > 0) browserOpts.playHoldMs = playHoldMs;
         report = await browserRunner(browserOpts);
@@ -248,6 +255,7 @@ if (isMain) {
       timeframes: options.timeframes,
       finalRetainerSnapshot: options.finalRetainerSnapshot,
       snapshotOutPath: options.snapshotOutPath,
+      steadyStateDiff: options.steadyStateDiff,
     });
   } catch (error) {
     report = {

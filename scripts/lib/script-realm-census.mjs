@@ -181,34 +181,90 @@ export function assessScriptRealmRetention(census, opts = {}) {
   const max = Number.isFinite(census.copiesOfLargestFile) && census.copiesOfLargestFile > 0
     ? census.copiesOfLargestFile
     : census.maxCopies;
-  // If every generation of realms were retained, copies would reach this.
-  const accumulatingExpectation = live + (realmsPerCycle - live) * cycles;
+  // Leaking ONE realm per cycle produces live + cycles copies. Leaking every
+  // realm the cycle creates produces live + (realmsPerCycle - live) * cycles.
+  // W77 tested only the second and wrongly cleared the first.
+  const onePerCycleExpectation = live + cycles;
+  const allRealmsExpectation = live + Math.max(0, realmsPerCycle - live) * cycles;
 
   let verdict;
   let reading;
   if (max <= live) {
     verdict = 'SHARED-OR-COLLECTED';
     reading = 'no script is held more times than there are live realms';
-  } else if (max >= accumulatingExpectation) {
-    verdict = 'ACCUMULATES-PER-CYCLE';
-    reading = `copies (${max}) reach the all-generations-retained expectation `
-      + `(${accumulatingExpectation}) for ${cycles} cycles`;
+  } else if (max >= allRealmsExpectation && allRealmsExpectation > onePerCycleExpectation) {
+    verdict = 'ACCUMULATES-EVERY-REALM-PER-CYCLE';
+    reading = `copies (${max}) reach the every-realm-retained expectation `
+      + `(${allRealmsExpectation}) for ${cycles} cycles`;
+  } else if (max >= onePerCycleExpectation) {
+    verdict = 'ACCUMULATES-ONE-REALM-PER-CYCLE';
+    reading = `copies (${max}) match live realms plus one per cycle `
+      + `(${onePerCycleExpectation}): exactly one realm's script set is retained `
+      + 'each cycle, and the rest are collected';
   } else {
-    verdict = 'ONE-DEAD-GENERATION-RETAINED';
-    reading = `copies (${max}) exceed live realms (${live}) but fall short of the `
-      + `all-generations expectation (${accumulatingExpectation}), so roughly one `
-      + 'generation of destroyed realms is retained rather than every cycle\'s';
+    verdict = 'RETAINS-SOME-DEAD-REALMS';
+    reading = `copies (${max}) exceed live realms (${live}) but fall short of one `
+      + `per cycle (${onePerCycleExpectation})`;
   }
   return {
     verdict,
     reading,
     maxCopies: max,
+    onePerCycleExpectation,
+    allRealmsExpectation,
     maxCopiesAnyUrl: census.maxCopies,
     largestFileUrl: census.largestFile ? census.largestFile.url : null,
     liveRealms: live,
-    accumulatingExpectation,
     redundantBytes: census.redundantBytes,
-    perCycleAccumulation: verdict === 'ACCUMULATES-PER-CYCLE',
+    perCycleAccumulation: verdict === 'ACCUMULATES-ONE-REALM-PER-CYCLE'
+      || verdict === 'ACCUMULATES-EVERY-REALM-PER-CYCLE',
+  };
+}
+
+/**
+ * Model-free growth test: diff two censuses taken one cycle apart at the same
+ * collapsed state. This needs no assumption about how many realms a cycle
+ * creates, which is where the single-snapshot verdict went wrong in W77.
+ *
+ * @param {object} before census at cycle N
+ * @param {object} after census at cycle N+1
+ */
+export function assessScriptRealmGrowth(before, after) {
+  if (!before?.topUrls || !after?.topUrls) {
+    return { verdict: 'NO-DATA', reason: 'two censuses required' };
+  }
+  const beforeByUrl = new Map(before.topUrls.map((r) => [r.url, r]));
+  const grew = [];
+  for (const row of after.topUrls) {
+    const prev = beforeByUrl.get(row.url);
+    const prevCopies = prev ? prev.copies : 0;
+    if (row.copies > prevCopies) {
+      grew.push({
+        url: row.url,
+        copiesBefore: prevCopies,
+        copiesAfter: row.copies,
+        copiesAdded: row.copies - prevCopies,
+        bytesAdded: row.sourceBytes - (prev ? prev.sourceBytes : 0),
+      });
+    }
+  }
+  const copiesAdded = grew.reduce((s, r) => s + r.copiesAdded, 0);
+  const bytesAdded = grew.reduce((s, r) => s + r.bytesAdded, 0);
+  const scriptNodesAdded = (after.scriptNodes || 0) - (before.scriptNodes || 0);
+  const sourceBytesAdded = (after.totalSourceBytes || 0) - (before.totalSourceBytes || 0);
+  // Every tracked file gaining exactly one copy is one whole realm retained.
+  const uniformSingleCopy = grew.length > 0 && grew.every((r) => r.copiesAdded === 1);
+  return {
+    verdict: grew.length === 0
+      ? 'NO-GROWTH-BETWEEN-CYCLES'
+      : (uniformSingleCopy ? 'ONE-REALM-RETAINED-PER-CYCLE' : 'UNEVEN-GROWTH'),
+    urlsThatGrew: grew.length,
+    copiesAdded,
+    bytesAdded,
+    scriptNodesAdded,
+    sourceBytesAdded,
+    perCycleSourceMb: +(sourceBytesAdded / 1048576).toFixed(2),
+    detail: grew.sort((a, b) => b.bytesAdded - a.bytesAdded).slice(0, 15),
   };
 }
 

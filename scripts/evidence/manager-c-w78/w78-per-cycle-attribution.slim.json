@@ -1,0 +1,71 @@
+{
+  "packet": "W78-P1-PER-CYCLE-ATTRIBUTION",
+  "tier": "mid",
+  "model": "cursor-grok-4.5",
+  "question": "Attribute the ~23 MB/cycle by diffing two snapshots taken at the SAME collapsed state, one cycle apart.",
+  "verdict": "Each multichart cycle permanently retains ONE panel realm's entire script set: +20.87 MB of script source and +63 Script objects per cycle, which is 89% of the 23.53 MB/cycle floor growth. Two of the three peer realms are collected; one is not.",
+  "build": "20260729b99",
+  "config": "deployed, PO workload, 4 DISTINCT symbols @1m, forced-GC floors, 3 cycles",
+  "cycleCountIsThreeOnPurpose": "Snapshots serialize to ~2.3x usedJSHeapSize and JSON.parse dies above V8 max string length. The two snapshots here are 304 MB (cycle 2) and 353 MB (cycle 3) and both parse. 6 cycles (~560 MB) dies. Nothing is truncated.",
+  "instrument": {
+    "flag": "--steady-state-diff",
+    "what": "Takes a heap snapshot after the collapse of each of the last two cycles, so both readings sit at the same collapsed state (single chart, one live realm) with the same forced-GC treatment. The 1-realm-to-4-realm warm-up cancels instead of being counted as recurring.",
+    "whyNeeded": "W76-P2B and W77 both read a baseline-vs-final diff, which spans the warm-up. This is the measurement W77 named as the next step.",
+    "alsoAdded": "assessScriptRealmGrowth() diffs two censuses directly, so the verdict needs no assumption about how many realms a cycle creates — which is exactly where W77 went wrong."
+  },
+  "floors": {
+    "allCyclesMb": [103.0, 126.73, 152.7],
+    "steadyStatePairMb": [128.59, 152.12],
+    "perCycleDeltaMb": 23.53,
+    "detachedDivs": [655, 665],
+    "note": "The pair is measured one cycle apart at identical state, so 23.53 MB is a true per-cycle figure, not a mean that includes warm-up."
+  },
+  "constructorDeltaCycle2ToCycle3": {
+    "positiveTotalMb": 33.11,
+    "top": [
+      { "constructor": "system / ExternalStringData", "deltaMb": 20.87, "countDelta": 174 },
+      { "constructor": "system / InstructionStream", "deltaMb": 3.48, "countDelta": 1640 },
+      { "constructor": "heap number", "deltaMb": 1.51, "countDelta": 131797 },
+      { "constructor": "Object", "deltaMb": 1.06, "countDelta": 31466 },
+      { "constructor": "system / TrustedByteArray", "deltaMb": 0.79, "countDelta": 4063 },
+      { "constructor": "(script line ends)", "deltaMb": 0.66, "countDelta": 21 },
+      { "constructor": "system / BytecodeArray", "deltaMb": 0.63, "countDelta": 2061 },
+      { "constructor": "system / FeedbackVector", "deltaMb": 0.46, "countDelta": 1895 },
+      { "constructor": "system / ScopeInfo", "deltaMb": 0.15, "countDelta": 3181 },
+      { "constructor": "(constant pool)", "deltaMb": 0.14, "countDelta": 2006 }
+    ]
+  },
+  "theDecisiveEvidence": {
+    "externalStringDataSplit": {
+      "cycle2": { "scriptSourceMb": 66.94, "scriptSourceCount": 598, "otherMb": 0.5, "otherCount": 2292 },
+      "cycle3": { "scriptSourceMb": 87.81, "scriptSourceCount": 721, "otherMb": 0.5, "otherCount": 2343 },
+      "reading": "All 20.87 MB of the ExternalStringData growth is script source. The non-script external strings are FLAT at 0.50 MB. Whatever else is suspected, it is not growing."
+    },
+    "perUrlCopyCounts": {
+      "cycle2Histogram": { "1": 24, "2": 8, "3": 52, "15": 1, "23": 1 },
+      "cycle3Histogram": { "1": 24, "2": 3, "3": 5, "4": 53, "17": 1, "23": 1 },
+      "reading": "The histogram shifts wholesale: 52 URLs held 3x become 53 URLs held 4x. Every shared module gains exactly one copy per cycle.",
+      "examples": [
+        { "url": "/chart/modules/order-manager.js", "copies": "3 -> 4", "sourceMb": "13.87 -> 18.49" },
+        { "url": "/chart/chart.js", "copies": "3 -> 4", "sourceMb": "11.33 -> 15.11" },
+        { "url": "/chart/modules/chart-indicators-full.js", "copies": "3 -> 4", "sourceMb": "5.66 -> 7.55" },
+        { "url": "/chart/vendor/d3.min.js", "copies": "3 -> 4", "sourceMb": "1.6 -> 2.13" }
+      ]
+    },
+    "scriptObjectCount": "234 -> 297 (+63 per cycle), source held 66.98 -> 87.86 MB"
+  },
+  "correctionToW77": {
+    "whatIClaimed": "W77 said per-realm script source is a BOUNDED ~62 MB and not the per-cycle term, on the falsifier 'x4 after three cycles, not x10'.",
+    "whyThatWasWrong": "The x10 expectation assumed that leaking would mean retaining all three peer realms every cycle (1 + 3*3). The actual rate is ONE realm per cycle, which produces 1 + 3 = 4 copies at three cycles — indistinguishable from bounded retention in a single snapshot, and only separable by diffing two snapshots.",
+    "howItWasCaught": "The cycle-2 vs cycle-3 histograms: 52 URLs at x3 become 53 at x4. A single end-of-run snapshot cannot see that shift, which is why the model-free two-census diff now exists.",
+    "netEffect": "W76-P2B's original attribution — script source and compiled code — was RIGHT. My W77 retraction of it was wrong, for a different reason than the original was uncertain. The rate is now measured rather than inferred: 20.87 of 23.53 MB per cycle.",
+    "whatStandsFromW77": "The x4-per-URL duplication, the 61.7 MB of redundancy at any moment, the retainer chain naming, and the refutation of cache-shaped retention (non-script external strings flat at 0.50 MB) all hold."
+  },
+  "mechanismForManagerA": {
+    "statement": "Every cycle expands four panels as four iframes, each its own realm compiling the full chart bundle (~21 MB of source). On collapse all three peer iframes are destroyed. Two of those realms are collected; ONE is retained permanently, with its complete script set plus the compiled-code family (InstructionStream +3.48 MB, BytecodeArray, FeedbackVector, ScopeInfo, constant pool).",
+    "rate": "20.87 MB/cycle of source + ~5.5 MB/cycle of compiled artefacts and other objects = 23.53 MB/cycle measured at the floor.",
+    "retainerChainFromW77": "ExternalStringData <- source string <- system / Script / <url> <- SharedFunctionInfo / <fn> <- closure <- Window [JSGlobalObject] own property <fn> <- system / NativeContext, with the realm context pinned from (Eternal handles) via FunctionTemplateInfo -> WeakMap -> DOMTokenList.",
+    "whatIsStillUnnamed": "WHICH of the three peer realms survives, and what distinguishes it. Candidates worth one run each: the last-focused panel, the panel that received the order placement, or the panel holding the indicator worker. Narrowing that names the specific teardown path that fails to release.",
+    "whyDatasetCountMattered": "With four identical panels the four iframes share one resource identity and the configuration plateaus; with four distinct symbols each realm is distinct and one is retained per cycle. That is why the leak scales with distinct dataset count, as the Director's ~67 MB vs ~367 MB observation predicted."
+  }
+}

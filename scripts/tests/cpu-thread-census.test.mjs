@@ -161,3 +161,42 @@ test('unit: a named wait thread is excluded even when its slices are short', () 
   assert.equal(census.totalCpuPercent, 50);
   assert.equal(census.waitDominatedThreads.length, 1);
 });
+
+test('unit: self time credits the child, not the wrapper that contains it', () => {
+  // RunTask 0-1000 containing FunctionCall 100-900: the wrapper owns 200us.
+  const census = summarizeTraceThreadCpu([
+    meta(1, 1, 'CrRendererMain'),
+    span(1, 1, 0, 1_000, 'RunTask'),
+    span(1, 1, 100, 800, 'FunctionCall'),
+  ], { wallMs: 1 });
+  const top = census.threads[0].topEvents;
+  assert.deepEqual(top.map((r) => [r.name, r.selfMs]), [['FunctionCall', 0.8], ['RunTask', 0.2]]);
+  // Busy time is still the union of the outer interval, not the sum.
+  assert.equal(census.threads[0].busyMs, 1);
+});
+
+test('unit: sibling events each keep their own self time', () => {
+  const census = summarizeTraceThreadCpu([
+    meta(1, 1, 'Compositor'),
+    span(1, 1, 0, 1_000, 'RunTask'),
+    span(1, 1, 0, 400, 'RasterTask'),
+    span(1, 1, 500, 300, 'RasterTask'),
+  ], { wallMs: 1 });
+  const byName = new Map(census.threads[0].topEvents.map((r) => [r.name, r]));
+  assert.equal(byName.get('RasterTask').selfMs, 0.7);
+  assert.equal(byName.get('RasterTask').count, 2);
+  assert.equal(byName.get('RunTask').selfMs, 0.3);
+});
+
+test('unit: partially overlapping events are not treated as nested', () => {
+  // 0-1000 and 500-1500 overlap without containment; neither is debited.
+  const census = summarizeTraceThreadCpu([
+    meta(1, 1, 'CrGpuMain'),
+    span(1, 1, 0, 1_000, 'A'),
+    span(1, 1, 500, 1_000, 'B'),
+  ], { wallMs: 2 });
+  const byName = new Map(census.threads[0].topEvents.map((r) => [r.name, r]));
+  assert.equal(byName.get('A').selfMs, 1);
+  assert.equal(byName.get('B').selfMs, 1);
+  assert.equal(census.threads[0].busyMs, 1.5, 'union coverage is still 1.5ms');
+});

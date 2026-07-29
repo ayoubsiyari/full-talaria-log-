@@ -3,6 +3,7 @@ import test from 'node:test';
 
 import { indexHeapSnapshotGraph } from '../lib/heap-retainer-paths.mjs';
 import {
+  assessScriptRealmGrowth,
   assessScriptRealmRetention,
   normalizeScriptUrl,
   scriptUrlFromNodeName,
@@ -112,17 +113,18 @@ test('unit: copies matching live realms are shared-or-collected, not a leak', ()
   assert.equal(verdict.verdict, 'SHARED-OR-COLLECTED');
 });
 
-test('unit: one retained generation is distinguished from per-cycle accumulation', () => {
-  // 4 copies after 3 cycles: dead realms retained, but not every generation
-  // (all-generations retention would be 1 + 3*3 = 10).
+test('unit: one retained realm per cycle is graded as accumulation, not bounded', () => {
   const census = censusOf(
     Array.from({ length: 4 }, () => ({ url: 'http://h/a.js', sourceBytes: 1000 })),
     { liveRealms: 1 },
   );
   const verdict = assessScriptRealmRetention(census, { realmsPerCycle: 4, cycles: 3 });
-  assert.equal(verdict.verdict, 'ONE-DEAD-GENERATION-RETAINED');
-  assert.equal(verdict.accumulatingExpectation, 10);
-  assert.equal(verdict.perCycleAccumulation, false);
+  // 4 copies at 3 cycles is live(1) + one retained realm per cycle. W77 read
+  // this as bounded because it only tested the every-realm expectation of 10.
+  assert.equal(verdict.verdict, 'ACCUMULATES-ONE-REALM-PER-CYCLE');
+  assert.equal(verdict.onePerCycleExpectation, 4);
+  assert.equal(verdict.allRealmsExpectation, 10);
+  assert.equal(verdict.perCycleAccumulation, true);
 });
 
 test('unit: copies reaching the all-generations count grade as per-cycle accumulation', () => {
@@ -131,7 +133,7 @@ test('unit: copies reaching the all-generations count grade as per-cycle accumul
     { liveRealms: 1 },
   );
   const verdict = assessScriptRealmRetention(census, { realmsPerCycle: 4, cycles: 3 });
-  assert.equal(verdict.verdict, 'ACCUMULATES-PER-CYCLE');
+  assert.equal(verdict.verdict, 'ACCUMULATES-EVERY-REALM-PER-CYCLE');
   assert.equal(verdict.perCycleAccumulation, true);
 });
 
@@ -152,6 +154,30 @@ test('unit: the verdict follows the file carrying the mass, not a tiny inline sc
   assert.equal(census.copiesOfLargestFile, 4);
   assert.equal(census.largestFile.url, 'http://h/chart.js');
   const verdict = assessScriptRealmRetention(census, { realmsPerCycle: 4, cycles: 3 });
-  assert.equal(verdict.verdict, 'ONE-DEAD-GENERATION-RETAINED');
+  assert.equal(verdict.verdict, 'ACCUMULATES-ONE-REALM-PER-CYCLE');
   assert.equal(verdict.maxCopiesAnyUrl, 23);
+});
+
+test('unit: diffing two censuses one cycle apart needs no realm-count model', () => {
+  // Every file goes from 3 copies to 4: one whole realm retained in one cycle.
+  const at2 = censusOf([
+    ...Array.from({ length: 3 }, () => ({ url: 'http://h/chart.js', sourceBytes: 1_000_000 })),
+    ...Array.from({ length: 3 }, () => ({ url: 'http://h/order.js', sourceBytes: 500_000 })),
+  ], { liveRealms: 1 });
+  const at3 = censusOf([
+    ...Array.from({ length: 4 }, () => ({ url: 'http://h/chart.js', sourceBytes: 1_000_000 })),
+    ...Array.from({ length: 4 }, () => ({ url: 'http://h/order.js', sourceBytes: 500_000 })),
+  ], { liveRealms: 1 });
+  const growth = assessScriptRealmGrowth(at2, at3);
+  assert.equal(growth.verdict, 'ONE-REALM-RETAINED-PER-CYCLE');
+  assert.equal(growth.urlsThatGrew, 2);
+  assert.equal(growth.copiesAdded, 2);
+  assert.equal(growth.sourceBytesAdded, 1_500_000);
+});
+
+test('unit: identical censuses one cycle apart report no growth', () => {
+  const scripts = Array.from({ length: 4 }, () => ({ url: 'http://h/a.js', sourceBytes: 100 }));
+  const growth = assessScriptRealmGrowth(censusOf(scripts, {}), censusOf(scripts, {}));
+  assert.equal(growth.verdict, 'NO-GROWTH-BETWEEN-CYCLES');
+  assert.equal(growth.sourceBytesAdded, 0);
 });

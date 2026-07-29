@@ -71,6 +71,43 @@ function mergedCoverage(intervals) {
 }
 
 /**
+ * Self time per event name on one thread.
+ *
+ * Trace 'X' events on a thread nest strictly, so a parent's own cost is its
+ * duration minus the durations of its direct children. Summing raw durations
+ * per name instead would credit `RunTask` with everything it contains and name
+ * nothing useful.
+ *
+ * @param {{ts:number,dur:number,name:string}[]} events
+ * @returns {Map<string, {selfUs:number, count:number, totalUs:number}>}
+ */
+export function selfTimeByEventName(events) {
+  const sorted = events.slice().sort((a, b) => (a.ts - b.ts) || (b.dur - a.dur));
+  /** @type {Map<string, {selfUs:number, count:number, totalUs:number}>} */
+  const byName = new Map();
+  const bump = (name, selfUs, totalUs, counts) => {
+    const row = byName.get(name) || { selfUs: 0, count: 0, totalUs: 0 };
+    row.selfUs += selfUs;
+    row.totalUs += totalUs;
+    row.count += counts;
+    byName.set(name, row);
+  };
+  /** @type {{end:number,name:string}[]} */
+  const stack = [];
+  for (const ev of sorted) {
+    const end = ev.ts + ev.dur;
+    while (stack.length && stack[stack.length - 1].end <= ev.ts) stack.pop();
+    const parent = stack[stack.length - 1];
+    // Only subtract from a parent that fully contains this event; partial
+    // overlaps are not a nesting relationship and are left alone.
+    if (parent && end <= parent.end) bump(parent.name, -ev.dur, 0, 0);
+    bump(ev.name, ev.dur, ev.dur, 1);
+    stack.push({ end, name: ev.name });
+  }
+  return byName;
+}
+
+/**
  * Threads whose trace slices measure blocking, not computation. Counting these
  * manufactures ~100% of a core per thread out of an idle browser.
  */
@@ -93,11 +130,12 @@ const LONG_RUN_FRACTION = 0.9;
  * @param {object[]} events raw Tracing.dataCollected events
  * @param {{wallMs?: number}} [opts] observation wall time; defaults to trace span
  */
-export function summarizeTraceThreadCpu(events, { wallMs = null } = {}) {
+export function summarizeTraceThreadCpu(events, { wallMs = null, topEventsPerThread = 10 } = {}) {
   const rows = Array.isArray(events) ? events : [];
   const threadNames = new Map();
   const processNames = new Map();
   const intervalsByThread = new Map();
+  const eventsByThread = new Map();
   let minTs = Infinity;
   let maxTs = -Infinity;
 
@@ -119,6 +157,8 @@ export function summarizeTraceThreadCpu(events, { wallMs = null } = {}) {
     const key = threadKey(ev.pid, ev.tid);
     if (!intervalsByThread.has(key)) intervalsByThread.set(key, []);
     intervalsByThread.get(key).push([ts, ts + dur]);
+    if (!eventsByThread.has(key)) eventsByThread.set(key, []);
+    eventsByThread.get(key).push({ ts, dur, name: String(ev.name || '(unnamed)') });
     if (ts < minTs) minTs = ts;
     if (ts + dur > maxTs) maxTs = ts + dur;
   }
@@ -150,6 +190,23 @@ export function summarizeTraceThreadCpu(events, { wallMs = null } = {}) {
       runs,
       waitDominated,
       singleRunSpansWindow,
+      // What the thread actually spent its time on, by self time so a wrapper
+      // like RunTask cannot absorb the credit for its children.
+      topEvents: topEventsPerThread > 0
+        ? [...selfTimeByEventName(eventsByThread.get(key) || [])]
+          .map(([name, row]) => ({
+            name,
+            selfMs: +(row.selfUs / 1000).toFixed(3),
+            totalMs: +(row.totalUs / 1000).toFixed(3),
+            count: row.count,
+            percentOfCore: effectiveWallMs > 0
+              ? +((row.selfUs / 1000 / effectiveWallMs) * 100).toFixed(2)
+              : null,
+          }))
+          .filter((r) => r.selfMs > 0)
+          .sort((a, b) => b.selfMs - a.selfMs)
+          .slice(0, topEventsPerThread)
+        : [],
     });
   }
   threads.sort((a, b) => b.busyMs - a.busyMs);

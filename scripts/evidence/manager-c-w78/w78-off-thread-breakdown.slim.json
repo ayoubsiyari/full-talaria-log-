@@ -1,0 +1,67 @@
+{
+  "packet": "W78-P2-OFF-THREAD-BREAKDOWN",
+  "tier": "mid",
+  "model": "cursor-grok-4.5",
+  "question": "Break down the off-thread 61pp far enough for A to aim at it. GPU 23.9 and compositor 12.5 on a canvas chart smells like raster or layer promotion.",
+  "verdict": "It is raster, and there is no evidence of a cached/promoted layer. The chart re-rasters and re-presents every frame while producing ~124 frames/sec, and every frame also costs a full style recalc and layout. 11.0 ms of CPU per presented frame across all threads, 6.0 ms of it on the main thread.",
+  "build": "20260729b99",
+  "surface": "deployed, dist-v9 shell, single panel (mcLayout=1), replay playing at 60x, 10s trace",
+  "totals": { "totalPercentOfCore": 137.27, "mainThreadPercent": 74.83, "offThreadPercent": 62.44 },
+  "instrument": {
+    "added": "Per-thread top events by SELF time (selfTimeByEventName). Trace 'X' events nest strictly, so a parent's own cost is its duration minus its direct children's. Summing raw durations would have credited RunTask with everything it contains and named nothing — the same class of error as the m20Q6 wrapper in W75.",
+    "tests": "scripts/tests/cpu-thread-census.test.mjs, 16 unit, including nested/sibling/partial-overlap self time"
+  },
+  "frameRate": {
+    "presentsIn10s": 1244,
+    "framesPerSecond": 124.4,
+    "evidence": "DXGISwapChainImageBacking::Present x1244, MainFrame.Draw x1244, LocalFrameView::performLayout x1245, DawnSharedContext::FlushD3D11Commands x1244, GpuChannelHost::VerifyFlush x1244 — all one per frame.",
+    "caveat": "Headless Chrome may not be vsync-capped, so treat 124 fps as an upper bound rather than what the PO's display does. The per-frame COMPOSITION below is the structural finding and does not depend on the absolute rate.",
+    "consistencyCheck": "Frame-proportional costs at 60 Hz instead of 124 would put the total near ~105% of a core, which brackets the PO's 111%."
+  },
+  "perFrameCost": {
+    "totalCpuMsPerFrame": 11.03,
+    "mainThreadMsPerFrame": 6.02,
+    "breakdown": [
+      { "work": "LocalFrameView::performLayout", "thread": "CrRendererMain", "percentOfCore": 4.91, "count": 1245, "msPerFrame": 0.394, "note": "a full layout every frame" },
+      { "work": "Document::recalcStyle", "thread": "CrRendererMain", "percentOfCore": 3.98, "count": 1946, "msPerFrame": 0.32, "note": "1.56 style recalcs per frame" },
+      { "work": "PaintArtifactCompositor::Update", "thread": "CrRendererMain", "percentOfCore": 4.17, "count": 1245, "msPerFrame": 0.335, "note": "compositor layer tree rebuilt every frame" },
+      { "work": "Paint", "thread": "CrRendererMain", "percentOfCore": 3.95, "count": 25408, "msPerFrame": 0.317, "note": "20.4 paint records per frame" },
+      { "work": "StyleEngine::scheduleInvalidationsForRuleSets", "thread": "CrRendererMain", "percentOfCore": 1.87, "count": 624, "msPerFrame": 0.15, "note": "62 stylesheet rule-set invalidations per second" },
+      { "work": "RasterDecoderImpl::DoRasterCHROMIUM::Deserializing", "thread": "CrGpuMain", "percentOfCore": 6.85, "count": 4660, "msPerFrame": 0.551, "note": "3.75 raster command buffers per frame" },
+      { "work": "RasterDecoderImpl::DoEndRasterCHROMIUM::Flush", "thread": "CrGpuMain", "percentOfCore": 3.91, "count": 4660, "msPerFrame": 0.314 },
+      { "work": "RasterImplementation::RasterCHROMIUM", "thread": "ThreadPoolForegroundWorker", "percentOfCore": 1.91, "count": 3330, "msPerFrame": 0.154 },
+      { "work": "GpuChannelHost::VerifyFlush", "thread": "Compositor", "percentOfCore": 1.52, "count": 1244, "msPerFrame": 0.122, "note": "a synchronous flush verify per frame" },
+      { "work": "DawnSharedContext::FlushD3D11Commands", "thread": "CrGpuMain", "percentOfCore": 1.7, "count": 1244, "msPerFrame": 0.137 },
+      { "work": "DXGISwapChainImageBacking::Present", "thread": "CrGpuMain", "percentOfCore": 1.39, "count": 1244, "msPerFrame": 0.112 },
+      { "work": "TreeSynchronizer::PushLayerPropertiesTo.Active", "thread": "Compositor", "percentOfCore": 0.81, "count": 1244, "msPerFrame": 0.065 },
+      { "work": "DiscardableImageMap::Generate", "thread": "Compositor", "percentOfCore": 0.46, "count": 1942, "msPerFrame": 0.037 }
+    ]
+  },
+  "mainThreadShape": {
+    "FunctionCall": { "percentOfCore": 37.78, "count": 3685, "reading": "product JavaScript — half the main-thread cost, 3.0 calls per frame at ~1.0 ms each" },
+    "renderingRemainder": "~17pp of the main thread is style + layout + paint + compositor-update, all frame-proportional."
+  },
+  "namedTargetsForManagerA": [
+    {
+      "target": "Frame production is not coalesced",
+      "evidence": "1244 presents in 10 s (~124/s) with one layout, one compositor-tree update and one present each.",
+      "cut": "Coalesce replay-driven redraws into one rAF per frame. Roughly half of the 62pp off-thread cost is directly proportional to frame count."
+    },
+    {
+      "target": "Per-frame style recalc and layout on a canvas chart",
+      "evidence": "Document::recalcStyle x1946 and LocalFrameView::performLayout x1245 in 10 s; a canvas redraw needs neither.",
+      "cut": "Find the DOM/CSS mutated every frame (price-axis labels, legend, crosshair readouts are the usual suspects) and write them without invalidating style or layout."
+    },
+    {
+      "target": "62 stylesheet rule-set invalidations per second",
+      "evidence": "StyleEngine::scheduleInvalidationsForRuleSets 1.87% x624.",
+      "cut": "Something inserts or edits a stylesheet roughly every second frame. A rule-set change invalidates style globally, which is why recalcStyle runs more than once per frame."
+    },
+    {
+      "target": "Re-raster instead of composite",
+      "evidence": "GPU cost is raster command deserialize + flush (4660 each per 10 s), not shader work; PaintArtifactCompositor::Update runs every frame and 20.4 paint records are produced per frame.",
+      "cut": "This is the raster answer to the Director's question, and the absence of a stable promoted layer is the reason. Promote the chart canvas so unchanged content composites instead of re-rastering."
+    }
+  ],
+  "notClaimed": "This is one 10 s window on one machine, headless. The thread shares were stable across the three W77 runs (total 133.88/139.53/134.47), but the absolute frame rate should be re-checked on a vsync-capped display before sizing any fix."
+}

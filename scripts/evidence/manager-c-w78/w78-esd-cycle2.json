@@ -1,0 +1,206 @@
+{
+  "snapshot": ".scratch-w78-steady.cycle2.heapsnapshot",
+  "nodeCount": 5797024,
+  "esdCount": 2890,
+  "esdTotalMb": 67.44,
+  "sizeBuckets": {
+    "<1KB": {
+      "count": 2681,
+      "mb": 0.1
+    },
+    "1-16KB": {
+      "count": 56,
+      "mb": 0.35
+    },
+    "16-256KB": {
+      "count": 108,
+      "mb": 9.33
+    },
+    "256KB-1MB": {
+      "count": 29,
+      "mb": 13.77
+    },
+    ">1MB": {
+      "count": 16,
+      "mb": 43.89
+    }
+  },
+  "byClass": {
+    "other": {
+      "count": 2292,
+      "mb": 0.5
+    },
+    "script-source": {
+      "count": 598,
+      "mb": 66.94
+    }
+  },
+  "topNonScriptHolders": [
+    {
+      "holder": "string \" /* ── ORDER PANEL SHELL ─────────────────────────────\" via 1 / backing_store",
+      "count": 1,
+      "mb": 0.28,
+      "sampleChain": "string:\n                /* ── ORDER PANEL SHELL ───────────────────<1 / backing_store> <- code:(constant pool)<[17]> <- code:system / BytecodeArray<[3]> <- code:system / SharedFunctionInfo / createOrderPanel<trusted_function_data> <- closure:createOrderPanel<shared> <- object:Object<createOrderPanel>"
+    },
+    {
+      "holder": "string \" <!-- Left-edge close handle (mirrors settings panel) --> \" via 1 / backing_store",
+      "count": 1,
+      "mb": 0.07,
+      "sampleChain": "string:\n            <!-- Left-edge close handle (mirrors settings p<1 / backing_store> <- code:(constant pool)<[21]> <- code:system / BytecodeArray<[3]> <- code:system / SharedFunctionInfo / createOrderPanel<trusted_function_data> <- closure:createOrderPanel<shared> <- object:Object<createOrderPanel>"
+    },
+    {
+      "holder": "string \"{\"@context\":\"https://schema.org\",\"@graph\":[{\"@type\":\"Organization\",\"@i\" via 1 / backing_store",
+      "count": 2,
+      "mb": 0.02,
+      "sampleChain": "string:{\"@context\":\"https://schema.org\",\"@graph\":[{\"@type\":\"Organiz<1 / backing_store> <- object:Object<__html> <- object:Object<dangerouslySetInnerHTML> <- object:rn<pendingProps> <- object:rn<child> <- object:rn<child>"
+    },
+    {
+      "holder": "string \" /* Full-button hit targets (not just SVG ink). Portals render\" via 1 / backing_store",
+      "count": 1,
+      "mb": 0.02,
+      "sampleChain": "string:\n        /* Full-button hit targets (not just SVG ink). Port<1 / backing_store> <- object:Object<children> <- native:<style><__reactProps$hl49c2pl6mh> <- native:<div data-v9-chrome=\"1\" data-v9-topbar=\"1\" style=\"height: 36<[10]> <- native:<button type=\"button\" data-v9-utility=\"layout\" style=\"width:<[9]> <- synthetic:(Global handles)<12 / DevTools console>"
+    },
+    {
+      "holder": "string \" .alert-settings-popup.overlay-settings-popup, .alert-settings-popup {\" via 1 / backing_store",
+      "count": 1,
+      "mb": 0.01,
+      "sampleChain": "string:\n.alert-settings-popup.overlay-settings-popup,\n.alert-settin<1 / backing_store> <- code:(constant pool)<[6]> <- code:system / BytecodeArray<[2]> <- code:system / SharedFunctionInfo / injectAlertSystemStyles<trusted_function_data> <- closure:injectAlertSystemStyles<shared> <- object:Window [JSGlobalObject] / http://31.97.192.82:3000<injectAlertSystemStyles>"
+    },
+    {
+      "holder": "string \" @keyframes tlrMultichartDot { 0%, 80%, 100% { opacity: 0.28; transf\" via 1 / backing_store",
+      "count": 1,
+      "mb": 0.01,
+      "sampleChain": "string:\n@keyframes tlrMultichartDot {\n  0%, 80%, 100% { opacity: 0.<1 / backing_store> <- object:system / Context<_R> <- closure:<context> <- object:Window [JSGlobalObject] / http://31.97.192.82:3000<__v9RestoreDrawingLevelsAfterBuiltinDefault> <- hidden:system / NativeContext / http://31.97.192.82:3000<global_object> <- synthetic:<2>"
+    },
+    {
+      "holder": "string \"19:{\"metadata\":[[\"$\",\"title\",\"0\",{\"children\":\"Sign in | Talaria-Log\"}]\" via 1 / backing_store",
+      "count": 1,
+      "mb": 0.01,
+      "sampleChain": "string:19:{\"metadata\":[[\"$\",\"title\",\"0\",{\"children\":\"Sign in | Tala<1 / backing_store> <- object:Array<[1]> <- object:Array<[9]> <- object:Window [JSGlobalObject]<__next_f> <- hidden:system / NativeContext<global_object> <- synthetic:<5>"
+    },
+    {
+      "holder": "string \" @keyframes tlrChartCmIn { from { opacity: 0; tran\" via 1 / backing_store",
+      "count": 1,
+      "mb": 0,
+      "sampleChain": "string:\n        @keyframes tlrChartCmIn {\n            from { opacit<1 / backing_store> <- code:(constant pool)<[7]> <- code:system / BytecodeArray<[2]> <- code:system / SharedFunctionInfo / installChartContextMenuStyles<trusted_function_data> <- closure:installChartContextMenuStyles<shared> <- object:Window [JSGlobalObject] / http://31.97.192.82:3000<installChartContextMenuStyles>"
+    },
+    {
+      "holder": "string \" .drawing-toolbar { position: absolute; \" via 1 / backing_store",
+      "count": 1,
+      "mb": 0,
+      "sampleChain": "string:\n            .drawing-toolbar {\n                position: ab<1 / backing_store> <- code:(constant pool)<[6]> <- code:system / BytecodeArray<[2]> <- code:system / SharedFunctionInfo / injectToolbarStyles<trusted_function_data> <- closure:injectToolbarStyles<shared> <- object:Object<injectToolbarStyles>"
+    },
+    {
+      "holder": "string \" /* Base (dark / theme-aware) */ .tv-context\" via 1 / backing_store",
+      "count": 1,
+      "mb": 0,
+      "sampleChain": "string:\n\n            /* Base (dark / theme-aware) */\n\n            .<1 / backing_store> <- code:(constant pool)<[6]> <- code:system / BytecodeArray<[2]> <- code:system / SharedFunctionInfo / injectStyles<trusted_function_data> <- closure:injectStyles<shared> <- object:Object<injectStyles>"
+    },
+    {
+      "holder": "string \"a:I[41402,[\"7177\",\"static/chunks/app/layout-4a4f5819a1acb441.js\"],\"\"] \" via 1 / backing_store",
+      "count": 1,
+      "mb": 0,
+      "sampleChain": "string:a:I[41402,[\"7177\",\"static/chunks/app/layout-4a4f5819a1acb441<1 / backing_store> <- object:Array<[1]> <- object:Array<[4]> <- object:Window [JSGlobalObject]<__next_f> <- hidden:system / NativeContext<global_object> <- synthetic:<5>"
+    },
+    {
+      "holder": "string \" .custom-color-picker input[type=\"range\"] { \" via 1 / backing_store",
+      "count": 1,
+      "mb": 0,
+      "sampleChain": "string:\n            .custom-color-picker input[type=\"range\"] {\n    <1 / backing_store> <- code:(constant pool)<[6]> <- code:system / BytecodeArray<[2]> <- code:system / SharedFunctionInfo / addStyles<trusted_function_data> <- closure:addStyles<shared> <- object:Object<addStyles>"
+    },
+    {
+      "holder": "string \"<svg width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"cu\" via 1 / backing_store",
+      "count": 2,
+      "mb": 0,
+      "sampleChain": "string:<svg width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" <1 / backing_store> <- code:system / InstructionStream<[77]> <- code:system / Code<instruction_stream> <- code:system / SharedFunctionInfo<trusted_function_data> <- code:system / InstructionStream<[53]> <- code:system / Code<instruction_stream>"
+    },
+    {
+      "holder": "string \" .talaria-ind-swatch { display: inline-flex; align-items: center; \" via 1 / backing_store",
+      "count": 1,
+      "mb": 0,
+      "sampleChain": "string:\n.talaria-ind-swatch {\n  display: inline-flex;\n  align-items<1 / backing_store> <- code:(constant pool)<[6]> <- code:system / BytecodeArray<[2]> <- code:system / SharedFunctionInfo / ensureTalariaIndSwatchCss<trusted_function_data> <- closure:ensureTalariaIndSwatchCss<shared> <- object:Window [JSGlobalObject] / http://31.97.192.82:3000<ensureTalariaIndSwatchCss>"
+    },
+    {
+      "holder": "string \"$\",\"$L11\",null,{}]]}]}] 6:[\"$\",\"$1\",\"c\",{\"children\":[null,[\"$\",\"$Le\",n\" via 1 / backing_store",
+      "count": 1,
+      "mb": 0,
+      "sampleChain": "string:$\",\"$L11\",null,{}]]}]}]\n6:[\"$\",\"$1\",\"c\",{\"children\":[null,[\"<1 / backing_store> <- object:Array<[1]> <- object:Array<[5]> <- object:Window [JSGlobalObject]<__next_f> <- hidden:system / NativeContext<global_object> <- synthetic:<5>"
+    }
+  ],
+  "realmCensus": {
+    "scriptNodes": 234,
+    "distinctUrls": 86,
+    "sourceMb": 66.98,
+    "redundantMb": 40.88,
+    "maxCopies": 23,
+    "copiesHistogram": {
+      "1": 24,
+      "2": 8,
+      "3": 52,
+      "15": 1,
+      "23": 1
+    },
+    "topUrls": [
+      {
+        "url": "http://31.97.192.82:3000/chart/modules/order-manager.js",
+        "copies": 3,
+        "sourceMb": 13.87
+      },
+      {
+        "url": "http://31.97.192.82:3000/chart/chart.js",
+        "copies": 3,
+        "sourceMb": 11.33
+      },
+      {
+        "url": "http://31.97.192.82:3000/chart/modules/chart-indicators-full.js",
+        "copies": 3,
+        "sourceMb": 5.66
+      },
+      {
+        "url": "http://31.97.192.82:3000/chart/modules/drawing-tools-ui.js",
+        "copies": 3,
+        "sourceMb": 5.09
+      },
+      {
+        "url": "http://31.97.192.82:3000/chart/modules/drawing-tools-manager.js",
+        "copies": 3,
+        "sourceMb": 4.66
+      },
+      {
+        "url": "http://31.97.192.82:3000/chart/modules/replay-system.js",
+        "copies": 3,
+        "sourceMb": 2.56
+      },
+      {
+        "url": "http://31.97.192.82:3000/chart/modules/indicator-ui.js",
+        "copies": 3,
+        "sourceMb": 1.92
+      },
+      {
+        "url": "http://31.97.192.82:3000/chart/vendor/d3.min.js",
+        "copies": 3,
+        "sourceMb": 1.6
+      },
+      {
+        "url": "http://31.97.192.82:3000/chart/modules/drawing-tools-text.js",
+        "copies": 3,
+        "sourceMb": 1.29
+      },
+      {
+        "url": "http://31.97.192.82:3000/chart/modules/drawing-tools-advanced.js",
+        "copies": 3,
+        "sourceMb": 1.25
+      },
+      {
+        "url": "http://31.97.192.82:3000/chart/modules/drawing-tools-fib-gann.js",
+        "copies": 3,
+        "sourceMb": 1.25
+      },
+      {
+        "url": "http://31.97.192.82:3000/chart/modules/drawing-tools-base.js",
+        "copies": 3,
+        "sourceMb": 0.9
+      }
+    ]
+  }
+}

@@ -1,0 +1,779 @@
+{
+  "signature": "CPU-THREAD-CENSUS-V1",
+  "ok": true,
+  "status": "CEILING-REPRODUCED",
+  "startedAt": "2026-07-29T20:44:10.407Z",
+  "finishedAt": "2026-07-29T20:44:42.870Z",
+  "meta": {
+    "surface": "deployed",
+    "origin": "http://31.97.192.82:3000",
+    "url": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&mcLayout=1",
+    "buildId": "20260729b99",
+    "panels": 1,
+    "speed": 60,
+    "idle": false,
+    "observeMs": 10000,
+    "wallMs": 10000,
+    "traceCategories": [
+      "devtools.timeline",
+      "disabled-by-default-devtools.timeline",
+      "toplevel",
+      "blink",
+      "cc",
+      "gpu"
+    ],
+    "traceEventCount": 801573
+  },
+  "replay": {
+    "ok": true,
+    "isActive": true,
+    "isPlaying": true,
+    "speed": 60,
+    "bars": 2011
+  },
+  "stillPlayingAfterTrace": {
+    "isPlaying": true,
+    "speed": 60
+  },
+  "ceiling": {
+    "signature": "CPU-THREAD-CENSUS-V1",
+    "claimedPercent": 111,
+    "measuredPercent": 137.27,
+    "mainThreadPercent": 74.83,
+    "offCoreThreadPercent": 62.44,
+    "exceedsOneCore": true,
+    "reproducesCeiling": true,
+    "verdict": "CEILING-REPRODUCED-MULTITHREAD",
+    "note": null
+  },
+  "census": {
+    "signature": "CPU-THREAD-CENSUS-V1",
+    "wallMs": 10000,
+    "traceSpanMs": 10003.878,
+    "threadCount": 43,
+    "countedThreadCount": 40,
+    "waitDominatedThreads": [
+      {
+        "threadName": "GpuVSyncThread",
+        "tid": 2988,
+        "busyMs": 9988.672
+      },
+      {
+        "threadName": "Chrome_IOThread",
+        "tid": 24124,
+        "busyMs": 4.406
+      },
+      {
+        "threadName": "MemoryInfra",
+        "tid": 26084,
+        "busyMs": 0.125
+      }
+    ],
+    "totalBusyMs": 13726.808,
+    "busyMsIncludingWaits": 23720.011,
+    "totalPercentIncludingWaits": 237.2,
+    "totalCpuRatio": 1.372681,
+    "totalCpuPercent": 137.27,
+    "mainThreadBusyMs": 7483.171,
+    "mainThreadPercent": 74.83,
+    "threads": [
+      {
+        "pid": 28604,
+        "tid": 2988,
+        "threadName": "GpuVSyncThread",
+        "processName": "GPU Process",
+        "busyMs": 9988.672,
+        "ratioOfCore": 0.998867,
+        "events": 4318,
+        "longestRunMs": 7.33,
+        "runs": 1440,
+        "waitDominated": true,
+        "singleRunSpansWindow": false,
+        "topEvents": [
+          {
+            "name": "ThreadControllerImpl::RunTask",
+            "selfMs": 9966.496,
+            "totalMs": 9983.56,
+            "count": 1439,
+            "percentOfCore": 99.66
+          },
+          {
+            "name": "VSyncProviderWinDComp::GetVSyncParametersIfAvailable",
+            "selfMs": 17.085,
+            "totalMs": 17.085,
+            "count": 1440,
+            "percentOfCore": 0.17
+          },
+          {
+            "name": "RunTask",
+            "selfMs": 5.091,
+            "totalMs": 9988.651,
+            "count": 1439,
+            "percentOfCore": 0.05
+          }
+        ]
+      },
+      {
+        "pid": 27244,
+        "tid": 28168,
+        "threadName": "CrRendererMain",
+        "processName": "Renderer",
+        "busyMs": 7483.171,
+        "ratioOfCore": 0.748317,
+        "events": 192409,
+        "longestRunMs": 18.391,
+        "runs": 12289,
+        "waitDominated": false,
+        "singleRunSpansWindow": false,
+        "topEvents": [
+          {
+            "name": "FunctionCall",
+            "selfMs": 3778.171,
+            "totalMs": 4951.647,
+            "count": 3685,
+            "percentOfCore": 37.78
+          },
+          {
+            "name": "LocalFrameView::performLayout",
+            "selfMs": 490.969,
+            "totalMs": 533.792,
+            "count": 1245,
+            "percentOfCore": 4.91
+          },
+          {
+            "name": "PaintArtifactCompositor::Update",
+            "selfMs": 417.156,
+            "totalMs": 422.332,
+            "count": 1245,
+            "percentOfCore": 4.17
+          },
+          {
+            "name": "Document::recalcStyle",
+            "selfMs": 397.991,
+            "totalMs": 398.227,
+            "count": 1946,
+            "percentOfCore": 3.98
+          },
+          {
+            "name": "Paint",
+            "selfMs": 395.294,
+            "totalMs": 597.323,
+            "count": 25408,
+            "percentOfCore": 3.95
+          },
+          {
+            "name": "StyleEngine::scheduleInvalidationsForRuleSets",
+            "selfMs": 186.965,
+            "totalMs": 186.965,
+            "count": 624,
+            "percentOfCore": 1.87
+          },
+          {
+            "name": "Blink.PrePaint.UpdateTime",
+            "selfMs": 177.9,
+            "totalMs": 177.938,
+            "count": 1433,
+            "percentOfCore": 1.78
+          },
+          {
+            "name": "StyleEngine::updateActiveStyleSheets",
+            "selfMs": 128.752,
+            "totalMs": 315.876,
+            "count": 624,
+            "percentOfCore": 1.29
+          },
+          {
+            "name": "WebFrameWidgetImpl::UpdateLifecycle",
+            "selfMs": 116.472,
+            "totalMs": 1747.174,
+            "count": 1433,
+            "percentOfCore": 1.16
+          },
+          {
+            "name": "ThreadControllerImpl::RunTask",
+            "selfMs": 116.037,
+            "totalMs": 7390.644,
+            "count": 12311,
+            "percentOfCore": 1.16
+          }
+        ]
+      },
+      {
+        "pid": 28604,
+        "tid": 32440,
+        "threadName": "CrGpuMain",
+        "processName": "GPU Process",
+        "busyMs": 2385.057,
+        "ratioOfCore": 0.238506,
+        "events": 94639,
+        "longestRunMs": 2.858,
+        "runs": 9023,
+        "waitDominated": false,
+        "singleRunSpansWindow": false,
+        "topEvents": [
+          {
+            "name": "RasterDecoderImpl::DoRasterCHROMIUM::Deserializing",
+            "selfMs": 685.384,
+            "totalMs": 685.384,
+            "count": 4660,
+            "percentOfCore": 6.85
+          },
+          {
+            "name": "Scheduler::RunTask",
+            "selfMs": 427.468,
+            "totalMs": 2318.528,
+            "count": 8095,
+            "percentOfCore": 4.27
+          },
+          {
+            "name": "RasterDecoderImpl::DoEndRasterCHROMIUM::Flush",
+            "selfMs": 391.439,
+            "totalMs": 391.439,
+            "count": 4660,
+            "percentOfCore": 3.91
+          },
+          {
+            "name": "DawnSharedContext::FlushD3D11Commands",
+            "selfMs": 169.63,
+            "totalMs": 169.63,
+            "count": 1244,
+            "percentOfCore": 1.7
+          },
+          {
+            "name": "CommandBufferService:PutChanged",
+            "selfMs": 148.398,
+            "totalMs": 1594.9,
+            "count": 4346,
+            "percentOfCore": 1.48
+          },
+          {
+            "name": "DXGISwapChainImageBacking::Present",
+            "selfMs": 139.341,
+            "totalMs": 139.341,
+            "count": 1244,
+            "percentOfCore": 1.39
+          },
+          {
+            "name": "RasterDecoderImpl::DoFlushTileRasterGraphiteCommandsCHROMIUM",
+            "selfMs": 75.455,
+            "totalMs": 75.455,
+            "count": 1142,
+            "percentOfCore": 0.75
+          },
+          {
+            "name": "RasterDecoderImpl::DoBeginRasterCHROMIUM",
+            "selfMs": 71.021,
+            "totalMs": 71.021,
+            "count": 4660,
+            "percentOfCore": 0.71
+          },
+          {
+            "name": "GPUTask",
+            "selfMs": 53.043,
+            "totalMs": 1682.874,
+            "count": 4348,
+            "percentOfCore": 0.53
+          },
+          {
+            "name": "RasterDecoderImpl::DoEndRasterCHROMIUM",
+            "selfMs": 36.827,
+            "totalMs": 428.266,
+            "count": 4660,
+            "percentOfCore": 0.37
+          }
+        ]
+      },
+      {
+        "pid": 27244,
+        "tid": 9424,
+        "threadName": "Compositor",
+        "processName": "Renderer",
+        "busyMs": 1226.314,
+        "ratioOfCore": 0.122631,
+        "events": 165422,
+        "longestRunMs": 0.925,
+        "runs": 20713,
+        "waitDominated": false,
+        "singleRunSpansWindow": false,
+        "topEvents": [
+          {
+            "name": "GpuChannelHost::VerifyFlush",
+            "selfMs": 151.859,
+            "totalMs": 151.859,
+            "count": 1244,
+            "percentOfCore": 1.52
+          },
+          {
+            "name": "MainFrame.Draw",
+            "selfMs": 133.147,
+            "totalMs": 337.85,
+            "count": 1244,
+            "percentOfCore": 1.33
+          },
+          {
+            "name": "TreeSynchronizer::PushLayerPropertiesTo.Active",
+            "selfMs": 80.574,
+            "totalMs": 83.484,
+            "count": 1244,
+            "percentOfCore": 0.81
+          },
+          {
+            "name": "ThreadControllerImpl::RunTask",
+            "selfMs": 53.619,
+            "totalMs": 1002.898,
+            "count": 17765,
+            "percentOfCore": 0.54
+          },
+          {
+            "name": "DiscardableImageMap::Generate",
+            "selfMs": 46.355,
+            "totalMs": 46.355,
+            "count": 1942,
+            "percentOfCore": 0.46
+          },
+          {
+            "name": "RunTask",
+            "selfMs": 44.635,
+            "totalMs": 1047.533,
+            "count": 17890,
+            "percentOfCore": 0.45
+          },
+          {
+            "name": "TileManager::ScheduleTasks",
+            "selfMs": 43.416,
+            "totalMs": 85.02,
+            "count": 1436,
+            "percentOfCore": 0.43
+          },
+          {
+            "name": "Receive mojo message",
+            "selfMs": 42.164,
+            "totalMs": 111.589,
+            "count": 3928,
+            "percentOfCore": 0.42
+          },
+          {
+            "name": "IOHandler::OnIOCompleted",
+            "selfMs": 35.852,
+            "totalMs": 178.764,
+            "count": 3927,
+            "percentOfCore": 0.36
+          },
+          {
+            "name": "Scheduler::BeginImplFrame",
+            "selfMs": 35.311,
+            "totalMs": 60.765,
+            "count": 1440,
+            "percentOfCore": 0.35
+          }
+        ]
+      },
+      {
+        "pid": 27244,
+        "tid": 24584,
+        "threadName": "ThreadPoolForegroundWorker",
+        "processName": "Renderer",
+        "busyMs": 596.855,
+        "ratioOfCore": 0.059686,
+        "events": 36838,
+        "longestRunMs": 19.767,
+        "runs": 1973,
+        "waitDominated": false,
+        "singleRunSpansWindow": false,
+        "topEvents": [
+          {
+            "name": "RasterImplementation::RasterCHROMIUM",
+            "selfMs": 190.894,
+            "totalMs": 190.894,
+            "count": 3330,
+            "percentOfCore": 1.91
+          },
+          {
+            "name": "ThreadPool_RunTask",
+            "selfMs": 173.107,
+            "totalMs": 596.855,
+            "count": 1973,
+            "percentOfCore": 1.73
+          },
+          {
+            "name": "V8.GC_SCAVENGER_BACKGROUND_SCAVENGE_PARALLEL",
+            "selfMs": 72.936,
+            "totalMs": 72.936,
+            "count": 26,
+            "percentOfCore": 0.73
+          },
+          {
+            "name": "V8.GC_MC_BACKGROUND_MARKING",
+            "selfMs": 38.148,
+            "totalMs": 38.183,
+            "count": 16,
+            "percentOfCore": 0.38
+          },
+          {
+            "name": "TaskGraphRunner::RunTask",
+            "selfMs": 17.587,
+            "totalMs": 287.17,
+            "count": 6981,
+            "percentOfCore": 0.18
+          },
+          {
+            "name": "TaskSetFinishedTaskImpl::RunOnWorkerThread",
+            "selfMs": 15.872,
+            "totalMs": 15.872,
+            "count": 2433,
+            "percentOfCore": 0.16
+          },
+          {
+            "name": "GpuRasterBuffer::Playback",
+            "selfMs": 15.775,
+            "totalMs": 217.454,
+            "count": 3330,
+            "percentOfCore": 0.16
+          },
+          {
+            "name": "RasterizerTaskImpl::RunOnWorkerThread",
+            "selfMs": 15.289,
+            "totalMs": 244.866,
+            "count": 3330,
+            "percentOfCore": 0.15
+          },
+          {
+            "name": "RasterTask",
+            "selfMs": 12.123,
+            "totalMs": 229.577,
+            "count": 3330,
+            "percentOfCore": 0.12
+          },
+          {
+            "name": "V8.GC_MC_BACKGROUND_SWEEPING",
+            "selfMs": 11.252,
+            "totalMs": 11.272,
+            "count": 5,
+            "percentOfCore": 0.11
+          }
+        ]
+      },
+      {
+        "pid": 28604,
+        "tid": 14220,
+        "threadName": "VizCompositorThread",
+        "processName": "GPU Process",
+        "busyMs": 399.783,
+        "ratioOfCore": 0.039978,
+        "events": 24088,
+        "longestRunMs": 0.796,
+        "runs": 11689,
+        "waitDominated": false,
+        "singleRunSpansWindow": false,
+        "topEvents": [
+          {
+            "name": "ThreadControllerImpl::RunTask",
+            "selfMs": 255.688,
+            "totalMs": 263.151,
+            "count": 5293,
+            "percentOfCore": 2.56
+          },
+          {
+            "name": "IOHandler::OnIOCompleted",
+            "selfMs": 52.076,
+            "totalMs": 121.933,
+            "count": 6396,
+            "percentOfCore": 0.52
+          },
+          {
+            "name": "Receive mojo message",
+            "selfMs": 46.918,
+            "totalMs": 46.918,
+            "count": 1440,
+            "percentOfCore": 0.47
+          },
+          {
+            "name": "SimpleWatcher::OnHandleReady",
+            "selfMs": 22.939,
+            "totalMs": 69.857,
+            "count": 1440,
+            "percentOfCore": 0.23
+          },
+          {
+            "name": "RunTask",
+            "selfMs": 14.699,
+            "totalMs": 277.85,
+            "count": 5293,
+            "percentOfCore": 0.15
+          },
+          {
+            "name": "Scheduler::ScheduleTask",
+            "selfMs": 4.995,
+            "totalMs": 4.995,
+            "count": 3016,
+            "percentOfCore": 0.05
+          },
+          {
+            "name": "SyncToken::Wait",
+            "selfMs": 2.468,
+            "totalMs": 2.468,
+            "count": 1210,
+            "percentOfCore": 0.02
+          }
+        ]
+      },
+      {
+        "pid": 11616,
+        "tid": 19360,
+        "threadName": "ThreadPoolSingleThreadForegroundBlocking6",
+        "processName": "Browser",
+        "busyMs": 238.753,
+        "ratioOfCore": 0.023875,
+        "events": 117,
+        "longestRunMs": 7.234,
+        "runs": 58,
+        "waitDominated": false,
+        "singleRunSpansWindow": false,
+        "topEvents": [
+          {
+            "name": "Receive mojo message",
+            "selfMs": 237.629,
+            "totalMs": 237.629,
+            "count": 58,
+            "percentOfCore": 2.38
+          },
+          {
+            "name": "ThreadPool_RunTask",
+            "selfMs": 1.076,
+            "totalMs": 238.753,
+            "count": 58,
+            "percentOfCore": 0.01
+          },
+          {
+            "name": "SimpleWatcher::OnHandleReady",
+            "selfMs": 0.048,
+            "totalMs": 7.214,
+            "count": 1,
+            "percentOfCore": 0
+          }
+        ]
+      },
+      {
+        "pid": 28604,
+        "tid": 32112,
+        "threadName": "Chrome_ChildIOThread",
+        "processName": "GPU Process",
+        "busyMs": 165.362,
+        "ratioOfCore": 0.016536,
+        "events": 21333,
+        "longestRunMs": 0.322,
+        "runs": 5769,
+        "waitDominated": false,
+        "singleRunSpansWindow": false,
+        "topEvents": [
+          {
+            "name": "IOHandler::OnIOCompleted",
+            "selfMs": 49.208,
+            "totalMs": 165.362,
+            "count": 5769,
+            "percentOfCore": 0.49
+          },
+          {
+            "name": "Receive mojo message",
+            "selfMs": 40.543,
+            "totalMs": 80.369,
+            "count": 4558,
+            "percentOfCore": 0.41
+          },
+          {
+            "name": "SimpleWatcher::OnHandleReady",
+            "selfMs": 35.778,
+            "totalMs": 116.154,
+            "count": 4559,
+            "percentOfCore": 0.36
+          },
+          {
+            "name": "Scheduler::ScheduleTask",
+            "selfMs": 20.764,
+            "totalMs": 20.764,
+            "count": 3133,
+            "percentOfCore": 0.21
+          },
+          {
+            "name": "GpuChannelMessageFilter::FlushDeferredRequests",
+            "selfMs": 19.069,
+            "totalMs": 39.826,
+            "count": 3314,
+            "percentOfCore": 0.19
+          }
+        ]
+      },
+      {
+        "pid": 27244,
+        "tid": 7540,
+        "threadName": "ThreadPoolForegroundWorker",
+        "processName": "Renderer",
+        "busyMs": 161.779,
+        "ratioOfCore": 0.016178,
+        "events": 831,
+        "longestRunMs": 19.331,
+        "runs": 229,
+        "waitDominated": false,
+        "singleRunSpansWindow": false,
+        "topEvents": [
+          {
+            "name": "V8.GC_SCAVENGER_BACKGROUND_SCAVENGE_PARALLEL",
+            "selfMs": 81.053,
+            "totalMs": 81.053,
+            "count": 29,
+            "percentOfCore": 0.81
+          },
+          {
+            "name": "V8.GC_MC_BACKGROUND_MARKING",
+            "selfMs": 38.037,
+            "totalMs": 38.066,
+            "count": 12,
+            "percentOfCore": 0.38
+          },
+          {
+            "name": "ThreadPool_RunTask",
+            "selfMs": 17.691,
+            "totalMs": 161.779,
+            "count": 229,
+            "percentOfCore": 0.18
+          },
+          {
+            "name": "V8.GC_MC_BACKGROUND_SWEEPING",
+            "selfMs": 11.198,
+            "totalMs": 11.221,
+            "count": 4,
+            "percentOfCore": 0.11
+          },
+          {
+            "name": "V8.GC_SCAVENGER_BACKGROUND_TRACED_HANDLES_RESET_PARALLEL",
+            "selfMs": 3.837,
+            "totalMs": 3.837,
+            "count": 30,
+            "percentOfCore": 0.04
+          },
+          {
+            "name": "V8.GC_SCAVENGER_BACKGROUND_TRACED_HANDLES_COMPUTE_WEAKNESS_PARALLEL",
+            "selfMs": 3.792,
+            "totalMs": 3.792,
+            "count": 29,
+            "percentOfCore": 0.04
+          },
+          {
+            "name": "RasterImplementation::RasterCHROMIUM",
+            "selfMs": 2.659,
+            "totalMs": 2.659,
+            "count": 46,
+            "percentOfCore": 0.03
+          },
+          {
+            "name": "V8.GC_MC_BACKGROUND_EVACUATE_UPDATE_POINTERS",
+            "selfMs": 0.963,
+            "totalMs": 0.963,
+            "count": 2,
+            "percentOfCore": 0.01
+          },
+          {
+            "name": "V8.GC_MC_BACKGROUND_EVACUATE_COPY",
+            "selfMs": 0.913,
+            "totalMs": 0.926,
+            "count": 2,
+            "percentOfCore": 0.01
+          },
+          {
+            "name": "TaskGraphRunner::RunTask",
+            "selfMs": 0.238,
+            "totalMs": 3.984,
+            "count": 94,
+            "percentOfCore": 0
+          }
+        ]
+      },
+      {
+        "pid": 27244,
+        "tid": 27780,
+        "threadName": "ThreadPoolForegroundWorker",
+        "processName": "Renderer",
+        "busyMs": 150.344,
+        "ratioOfCore": 0.015034,
+        "events": 155,
+        "longestRunMs": 22.218,
+        "runs": 62,
+        "waitDominated": false,
+        "singleRunSpansWindow": false,
+        "topEvents": [
+          {
+            "name": "V8.GC_SCAVENGER_BACKGROUND_SCAVENGE_PARALLEL",
+            "selfMs": 81.73,
+            "totalMs": 81.73,
+            "count": 30,
+            "percentOfCore": 0.82
+          },
+          {
+            "name": "ThreadPool_RunTask",
+            "selfMs": 46.54,
+            "totalMs": 150.344,
+            "count": 62,
+            "percentOfCore": 0.47
+          },
+          {
+            "name": "V8.GC_MC_BACKGROUND_MARKING",
+            "selfMs": 19.454,
+            "totalMs": 19.474,
+            "count": 5,
+            "percentOfCore": 0.19
+          },
+          {
+            "name": "V8.GC_MC_BACKGROUND_EVACUATE_COPY",
+            "selfMs": 1.101,
+            "totalMs": 1.108,
+            "count": 2,
+            "percentOfCore": 0.01
+          },
+          {
+            "name": "V8.GC_MC_BACKGROUND_EVACUATE_UPDATE_POINTERS",
+            "selfMs": 0.886,
+            "totalMs": 0.886,
+            "count": 2,
+            "percentOfCore": 0.01
+          },
+          {
+            "name": "RasterImplementation::RasterCHROMIUM",
+            "selfMs": 0.33,
+            "totalMs": 0.33,
+            "count": 5,
+            "percentOfCore": 0
+          },
+          {
+            "name": "V8.GC_MC_CLEAR_STRING_TABLE",
+            "selfMs": 0.149,
+            "totalMs": 0.149,
+            "count": 3,
+            "percentOfCore": 0
+          },
+          {
+            "name": "GpuRasterBuffer::Playback",
+            "selfMs": 0.024,
+            "totalMs": 0.371,
+            "count": 5,
+            "percentOfCore": 0
+          },
+          {
+            "name": "RasterizerTaskImpl::RunOnWorkerThread",
+            "selfMs": 0.021,
+            "totalMs": 0.413,
+            "count": 5,
+            "percentOfCore": 0
+          },
+          {
+            "name": "RasterTask",
+            "selfMs": 0.021,
+            "totalMs": 0.392,
+            "count": 5,
+            "percentOfCore": 0
+          }
+        ]
+      }
+    ],
+    "threadCountTotal": 43
+  }
+}

@@ -745,6 +745,7 @@ async function runDistV9Session({
 
     const {
       growthCensus,
+      steadyStateCensus,
       retainerPaths,
       baselineOut,
       cycleRows,
@@ -783,6 +784,7 @@ async function runDistV9Session({
       baseline: baselineOut,
       cycles: cycleRows,
       growthCensus,
+      steadyStateCensus,
       retainerPaths,
       poWorkload,
       poHandShape,
@@ -821,10 +823,19 @@ async function runMultichartCycles({
   finalRetainerSnapshot = false,
   /** Write that raw snapshot here for repeat offline analysis. */
   snapshotOutPath = null,
+  /** Snapshot the last two collapsed states so per-cycle growth excludes warm-up. */
+  steadyStateDiff = false,
 } = {}) {
   // PO workload: CDP heap snapshots grow past V8's ~512MB string limit and also
   // detach the React shell mid-run. Floor calibration uses usedJSHeapSize only.
   const snapshotPolicy = poWorkload ? 'floor-only' : 'every-return';
+  // 1-based cycle numbers to snapshot at the collapsed state: the last two, so
+  // both readings sit in steady state rather than spanning the warm-up.
+  const steadyStateCycles = new Set(
+    steadyStateDiff && cycles >= 2 ? [cycles - 1, cycles] : [],
+  );
+  /** @type {{cycle:number,usedJSHeapSize:number|null,aggregates:Map|null}[]} */
+  const steadyStateSamples = [];
   const effectivePlayHold = poHandSample
     ? Math.max(playHoldMs, 20_000)
     : playHoldMs;
@@ -982,11 +993,52 @@ async function runMultichartCycles({
       lastSnapshot = returnSingle._snapshot || null;
       delete returnSingle._snapshot;
     }
+    // Per-cycle attribution needs two snapshots taken at the SAME collapsed
+    // state, one cycle apart. A baseline-vs-final diff spans the 1-realm →
+    // 4-realm warm-up and reports that one-time expansion as if it recurred.
+    if (!takeSnap && steadyStateCycles.has(index + 1)) {
+      logHeapCycle(`cycle ${index + 1}: steady-state snapshot (collapsed state)`);
+      try {
+        const dumpPath = snapshotOutPath
+          ? snapshotOutPath.replace(/(\.[^.]+)?$/, `.cycle${index + 1}$1`)
+          : null;
+        const steadySample = await sampleHeap(page, cdp, {
+          snapshot: true,
+          keepSnapshot: true,
+          label: `cycle${index + 1}-steadyState`,
+          snapshotDumpPath: dumpPath,
+        });
+        steadyStateSamples.push({
+          cycle: index + 1,
+          usedJSHeapSize: steadySample.usedJSHeapSize ?? null,
+          detachedDivCount: steadySample.detachedDivCount ?? null,
+          aggregates: steadySample.constructorAggregates || null,
+          dumpPath,
+        });
+        // Keep only the newest raw snapshot: two 300MB graphs at once is a
+        // needless risk, and retainer paths only ever read the latest.
+        lastSnapshot = steadySample._snapshot || null;
+        finalAggregates = steadySample.constructorAggregates || finalAggregates;
+        logHeapCycle(
+          `cycle ${index + 1}: steady-state snapshot captured `
+          + `nodes=${lastSnapshot?.nodes?.length ?? 'n/a'}`,
+        );
+      } catch (error) {
+        const message = String(error?.message || error);
+        logHeapCycle(`cycle ${index + 1}: steady-state snapshot failed: ${message}`);
+        if (/string longer than/i.test(message)) {
+          logHeapCycle(
+            'snapshot exceeded V8 max string length — rerun with fewer --cycles '
+            + 'to keep the heap under ~220MB at snapshot time',
+          );
+        }
+      }
+    }
     // Floor-only runs skip snapshots because a ~500MB mid-run CDP snapshot
     // destabilizes the React shell. One snapshot *after* the last floor is
     // measured costs nothing that still matters, and it is the only way to name
     // what the distinct-dataset configuration is retaining.
-    if (isFinal && !takeSnap && finalRetainerSnapshot) {
+    if (isFinal && !takeSnap && finalRetainerSnapshot && !steadyStateCycles.size) {
       logHeapCycle('final cycle: taking end-of-run snapshot for retainer paths');
       try {
         const retainerSample = await sampleHeap(page, cdp, {
@@ -1154,6 +1206,32 @@ async function runMultichartCycles({
       growthCensus.snapshotPolicy = snapshotPolicy;
     }
   }
+  // True per-cycle growth: two collapsed states one cycle apart, so the 1-realm
+  // → 4-realm warm-up cancels instead of being counted as recurring.
+  let steadyStateCensus = null;
+  if (steadyStateSamples.length === 2
+    && steadyStateSamples[0].aggregates && steadyStateSamples[1].aggregates) {
+    steadyStateCensus = buildGrowthCensus([
+      steadyStateSamples[0].aggregates,
+      steadyStateSamples[1].aggregates,
+    ]);
+    steadyStateCensus.snapshotPolicy = 'steady-state-cycle-diff';
+    steadyStateCensus.fromCycle = steadyStateSamples[0].cycle;
+    steadyStateCensus.toCycle = steadyStateSamples[1].cycle;
+    steadyStateCensus.floorsMb = steadyStateSamples.map((s) => (
+      s.usedJSHeapSize != null ? +(s.usedJSHeapSize / (1024 * 1024)).toFixed(2) : null
+    ));
+    steadyStateCensus.detachedDivCounts = steadyStateSamples.map((s) => s.detachedDivCount);
+    steadyStateCensus.note = 'both readings taken collapsed to a single chart, one cycle '
+      + 'apart, after a CDP snapshot forced GC — the warm-up term cancels';
+  } else if (steadyStateCycles.size) {
+    steadyStateCensus = {
+      signature: HEAP_GROWTH_CENSUS_SIGNATURE,
+      ok: false,
+      snapshotPolicy: 'steady-state-cycle-diff',
+      error: `steady-state diff needs 2 snapshots, captured ${steadyStateSamples.length}`,
+    };
+  }
   const retainerPaths = (snapshotPolicy === 'floor-only' && !lastSnapshot)
     ? {
       signature: HEAP_RETAINER_PATHS_SIGNATURE,
@@ -1203,6 +1281,7 @@ async function runMultichartCycles({
 
   return {
     growthCensus,
+    steadyStateCensus,
     retainerPaths,
     baselineOut,
     cycleRows,
@@ -1474,6 +1553,7 @@ async function runDeployedSession({
   timeframes = HEAP_CYCLE_DISTINCT_TIMEFRAMES,
   finalRetainerSnapshot = false,
   snapshotOutPath = null,
+  steadyStateDiff = false,
 }) {
   const email = String(process.env.TEST_EMAIL || process.env.L2_M1_TEST_EMAIL || '').trim();
   const password = String(process.env.TEST_PASSWORD || process.env.L2_M1_TEST_PASSWORD || '').trim();
@@ -1627,6 +1707,7 @@ async function runDeployedSession({
     };
     const {
       growthCensus,
+      steadyStateCensus,
       retainerPaths,
       baselineOut,
       cycleRows,
@@ -1648,6 +1729,7 @@ async function runDeployedSession({
       timeframes,
       finalRetainerSnapshot,
       snapshotOutPath,
+      steadyStateDiff,
       poWorkload: true,
       playHoldMs: Number.isFinite(playHoldMs) && playHoldMs > 0 ? playHoldMs : 6_000,
       replaySpeed: 60,
@@ -1695,6 +1777,7 @@ async function runDeployedSession({
       baseline: baselineOut,
       cycles: cycleRows,
       growthCensus,
+      steadyStateCensus,
       retainerPaths,
       poWorkload,
       poHandShape,
@@ -1718,6 +1801,7 @@ export async function runHeapCycleBrowserSession({
   timeframes = HEAP_CYCLE_DISTINCT_TIMEFRAMES,
   finalRetainerSnapshot = false,
   snapshotOutPath = null,
+  steadyStateDiff = false,
 } = {}) {
   const puppeteer = await loadPuppeteer();
   if (surface === HEAP_CYCLE_SURFACE_THIN_HOST) {
@@ -1737,6 +1821,7 @@ export async function runHeapCycleBrowserSession({
       timeframes,
       finalRetainerSnapshot,
       snapshotOutPath,
+      steadyStateDiff,
     });
   }
   return runDistV9Session({ cycles, timeoutMs, settleMs, puppeteer, datasetMode, timeframes });
