@@ -148,6 +148,14 @@ managers:
         authority: A16.1 - each manager holds a positive grant to its own journal; the
           journals block alone conferred no write right, so A and B were unowned
     denied_paths:
+      - pattern: chart v 1.4/talaria-design/src/**
+        reason: granted to B on specificity - live host source and its sweeps
+        provenance: ruling
+        authority: director 20260729 20:20
+      - pattern: chart v 1.4/chart/modules/order-manager.js
+        reason: order mechanics belong to B and D, not A
+        provenance: ruling
+        authority: TB-1 default plus the 20260729 20:20 D grant
       - pattern: docs/plan3/journal/MANAGER-B.md
         reason: another manager's journal
         provenance: ruling
@@ -186,7 +194,30 @@ managers:
       - pattern: docs/plan3/journal/MANAGER-B.md
         provenance: ruling
         authority: A16.1
+      - pattern: homepage/nginx.local.conf
+        provenance: ruling
+        authority: director 20260729 18:01 - explicit grant of the /api/file proxy
+          buffering finding. The preflight reported this path unowned, which is why
+          a user-visible load cost survived to canary: it fell between territories.
+          Scope is the proxy behaviour of the chart data routes; the auth,
+          rate-limit and security-header directives in this file stay off limits.
+      - pattern: homepage/nginx-bigjson-buffering.test.mjs
+        provenance: ruling
+        authority: same grant - the gate that holds the above
+      - pattern: chart v 1.4/talaria-design/src/**
+        provenance: ruling
+        authority: director 20260729 20:20 - recording a grant B has been working
+          under since the splitter-borders and ws-ping-cleanup packets. Wins on
+          specificity over A's talaria-design/** template grant. B authors the
+          live host source and its sweeps; A retains the rest of the template tree.
+      - pattern: homepage/public/chart/talaria-design/**
+        provenance: ruling
+        authority: same grant - generated mirror of the above
     denied_paths:
+      - pattern: chart v 1.4/talaria-design/src/orderManagerTradeRows.js
+        reason: carved out to D for TAL-01896; order trade-row rendering is D's subject matter
+        provenance: ruling
+        authority: director 20260729 20:20
       - pattern: chart v 1.4/chart/chart.js
         reason: A11.3 - V6 order-line paint and drag preview must not be authored in chart.js by B until the ownership audit reports
         provenance: ruling
@@ -277,6 +308,87 @@ managers:
         reason: another manager's journal
         provenance: ruling
       - pattern: docs/plan3/journal/MANAGER-B.md
+        reason: another manager's journal
+        provenance: ruling
+
+  # D was stood up on 20260729 and shipped money-path code all day with no entry in
+  # this file. Every D packet was therefore unowned to the preflight, and the B/D
+  # overlap on order-manager.js went unrecorded until the Director found it by trial
+  # merge at 20:20. Recording it late does not make it safe retroactively; the merge
+  # reconciliation named in the B and D dispatches is the control that does.
+  - id: D
+    role: trade correctness, order mechanics, preference and timezone persistence
+    deploy_surface: none - D merges through B's train and deploys nowhere itself
+    provenance: ruling
+    authority: CHARTER-D-TRADE-CORRECTNESS-20260729-1310.md
+    owned_rows:
+      - M24
+      - M14
+      - Cluster-G
+      - Cluster-E
+    owned_paths:
+      - pattern: chart v 1.4/chart/modules/order-manager.js
+        provenance: ruling
+        authority: director 20260729 20:20 - CO-OWNED WITH B and the only such path in
+          this file. D authors order mechanics (Cluster G); B's remaining interest is
+          the shipped M23 replay-rollback cancel. Neither may author here without
+          reading the other's branch first. Reconciliation duty sits with B as release
+          manager. Co-ownership is a transitional state, not a design - it collapses to
+          D alone once B's M23 change is merged into the train.
+      - pattern: chart v 1.4/chart/modules/timezone-manager.js
+        provenance: ruling
+        authority: director 20260729 20:20 - TAL-01865/01747 timezone persistence
+      - pattern: chart v 1.4/chart/modules/v9-theme-bridge.js
+        provenance: ruling
+        authority: same - the V9 snapshot path that overwrote persisted timezone
+      - pattern: chart v 1.4/chart/modules/drawing-tools-manager.js
+        provenance: ruling
+        authority: same - M14 Fibonacci settings
+      - pattern: chart v 1.4/chart/modules/favorites-manager.js
+        provenance: ruling
+        authority: same
+      - pattern: chart v 1.4/talaria-design/src/orderManagerTradeRows.js
+        provenance: ruling
+        authority: director 20260729 20:20 - TAL-01896 carve-out from A's template
+          grant and B's src grant. This one file only.
+      - pattern: homepage/public/chart/modules/order-manager.js
+        provenance: ruling
+        authority: generated mirror; same co-ownership terms as the canonical file
+      - pattern: homepage/public/chart/modules/timezone-manager.js
+        provenance: ruling
+      - pattern: homepage/public/chart/modules/v9-theme-bridge.js
+        provenance: ruling
+      - pattern: homepage/public/chart/modules/drawing-tools-manager.js
+        provenance: ruling
+      - pattern: homepage/public/chart/modules/favorites-manager.js
+        provenance: ruling
+      - pattern: docs/plan3/journal-D.md
+        provenance: ruling
+        authority: A16.1 - D's journal predates the journal/ convention and keeps its path
+    denied_paths:
+      - pattern: chart v 1.4/chart/chart.js
+        reason: A11.3 applied to D - order mechanics are not authored in chart.js
+        provenance: ruling
+        authority: CHARTER-D - explicitly written to avoid collision with A's chart.js work
+      - pattern: chart v 1.4/chart/modules/replay-system.js
+        reason: A's engine
+        provenance: ruling
+        authority: CHARTER-D
+      - pattern: chart v 1.4/chart/modules/preferences-sync.js
+        reason: B's A4 preference persistence contract; D's 20260729 writes here were
+          outside grant and are reconciled through B's merge, not ratified
+        provenance: ruling
+        authority: director 20260729 20:20
+      - pattern: chart v 1.4/chart/modules/preferences-init.js
+        reason: same
+        provenance: ruling
+      - pattern: docs/plan3/journal/MANAGER-A.md
+        reason: another manager's journal
+        provenance: ruling
+      - pattern: docs/plan3/journal/MANAGER-B.md
+        reason: another manager's journal
+        provenance: ruling
+      - pattern: docs/plan3/journal/MANAGER-C.md
         reason: another manager's journal
         provenance: ruling
 
