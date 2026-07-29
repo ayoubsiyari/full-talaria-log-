@@ -1242,6 +1242,10 @@ class Chart {
         this._mcFinerPanelHostCommitTarget = null;
         this._mcFinerPanelHostCommitUnloadHandler = null;
         this._installFinerPanelSelfOwnerHostCommitListener();
+        this._mcHostCacheClientId = null;
+        this._mcHostCacheFileRefs = new Map();
+        this._mcHostCacheReleaseUnloadHandler = null;
+        this._installMcHostCacheReleaseHook();
         this._sharedBarStoreClientId = null;
         this._sharedBarStoreFileRefs = new Set();
         this._sharedBarStoreReleaseUnloadHandler = null;
@@ -3629,6 +3633,130 @@ class Chart {
         return this._sharedBarStoreClientId;
     }
 
+    _mcHostCacheReleaseEnabled() {
+        return !(typeof window !== 'undefined' && window.__TALARIA_DISABLE_MC_HOST_CACHE_RELEASE_V1);
+    }
+
+    _mcHostCacheOwnerId() {
+        if (!this._mcHostCacheClientId) {
+            const rand = Math.random().toString(36).slice(2);
+            this._mcHostCacheClientId = `chart-cache-${Date.now().toString(36)}-${rand}`;
+        }
+        return this._mcHostCacheClientId;
+    }
+
+    _installMcHostCacheReleaseHook() {
+        try {
+            if (typeof window === 'undefined' || this._mcHostCacheReleaseUnloadHandler) return;
+            const self = this;
+            this._mcHostCacheReleaseUnloadHandler = function mcHostCacheReleaseOnPagehide(ev) {
+                if (ev && ev.persisted === true) return;
+                self._releaseMcHostCacheFileRefs();
+            };
+            window.addEventListener('pagehide', this._mcHostCacheReleaseUnloadHandler);
+        } catch (_e) { /* ignore */ }
+    }
+
+    _retainMcHostCacheFile(cacheOwner, kind, fileId) {
+        try {
+            const owner = cacheOwner || this;
+            const id = String(fileId || '');
+            const cacheKind = String(kind || '');
+            if (!owner || !id || !cacheKind) return;
+            const clientId = this._mcHostCacheOwnerId();
+            if (!owner._mcHostCacheFileRefOwners) owner._mcHostCacheFileRefOwners = new Map();
+            const refKey = `${cacheKind}|${id}`;
+            let owners = owner._mcHostCacheFileRefOwners.get(refKey);
+            if (!owners) {
+                owners = new Set();
+                owner._mcHostCacheFileRefOwners.set(refKey, owners);
+            }
+            owners.add(clientId);
+            if (!this._mcHostCacheFileRefs) this._mcHostCacheFileRefs = new Map();
+            this._mcHostCacheFileRefs.set(refKey, { cacheOwner: owner, kind: cacheKind, fileId: id });
+        } catch (_e) { /* best-effort cache ownership only */ }
+    }
+
+    _mcHostCacheSharedWriteOwner(kind) {
+        try {
+            if (typeof this._isMultichartEmbedPanel !== 'function' || !this._isMultichartEmbedPanel()) return null;
+            const host = typeof this._multichartGetHostChart === 'function'
+                ? this._multichartGetHostChart()
+                : null;
+            if (!host || host === this) return null;
+            const cacheKind = String(kind || '');
+            if (cacheKind === 'tf' && this._tfDataCache && this._tfDataCache === host._tfDataCache) return host;
+            if (cacheKind === 'bt' && this._btTfDataCache && this._btTfDataCache === host._btTfDataCache) return host;
+            if (cacheKind === 'smart' && this._smartPrefetchCache && this._smartPrefetchCache === host._smartPrefetchCache) return host;
+            return null;
+        } catch (_e) {
+            return null;
+        }
+    }
+
+    _forgetMcHostCacheFileRefSet(kind, fileId) {
+        try {
+            if (!this._mcHostCacheFileRefOwners) return;
+            this._mcHostCacheFileRefOwners.delete(`${String(kind || '')}|${String(fileId || '')}`);
+        } catch (_e) { /* ignore */ }
+    }
+
+    _smartPrefetchCacheHasFileId(fileId) {
+        const id = String(fileId || '');
+        if (!id || !this._smartPrefetchCache) return false;
+        for (const [key, entry] of this._smartPrefetchCache) {
+            if (entry && String(entry.fileId || '') === id) return true;
+            if (String(key || '').startsWith(`${id}|`)) return true;
+        }
+        return false;
+    }
+
+    _dropMcHostCacheFileRef(ownerId, kind, fileId) {
+        const cacheKind = String(kind || '');
+        const id = String(fileId || '');
+        if (!ownerId || !cacheKind || !id) return;
+        const refKey = `${cacheKind}|${id}`;
+        const owners = this._mcHostCacheFileRefOwners && this._mcHostCacheFileRefOwners.get(refKey);
+        if (owners) {
+            owners.delete(ownerId);
+            if (owners.size > 0) return;
+            this._mcHostCacheFileRefOwners.delete(refKey);
+        }
+        if (cacheKind === 'tf' && this._tfDataCache) {
+            this._tfDataCache.delete(id);
+        } else if (cacheKind === 'bt' && this._btTfDataCache) {
+            this._btTfDataCache.delete(id);
+        } else if (cacheKind === 'smart' && this._smartPrefetchCache) {
+            for (const [key, entry] of Array.from(this._smartPrefetchCache.entries())) {
+                if ((entry && String(entry.fileId || '') === id) || String(key || '').startsWith(`${id}|`)) {
+                    this._smartPrefetchCache.delete(key);
+                }
+            }
+        }
+    }
+
+    _releaseMcHostCacheFileRefs() {
+        if (!this._mcHostCacheReleaseEnabled()) return;
+        const refs = this._mcHostCacheFileRefs;
+        const ownerId = this._mcHostCacheOwnerId();
+        if (refs && refs.size > 0) {
+            for (const ref of refs.values()) {
+                try {
+                    if (ref && ref.cacheOwner && typeof ref.cacheOwner._dropMcHostCacheFileRef === 'function') {
+                        ref.cacheOwner._dropMcHostCacheFileRef(ownerId, ref.kind, ref.fileId);
+                    }
+                } catch (_e) { /* ignore */ }
+            }
+            refs.clear();
+        }
+        try {
+            if (typeof window !== 'undefined' && this._mcHostCacheReleaseUnloadHandler) {
+                window.removeEventListener('pagehide', this._mcHostCacheReleaseUnloadHandler);
+            }
+        } catch (_e) { /* ignore */ }
+        this._mcHostCacheReleaseUnloadHandler = null;
+    }
+
     _retainSharedBarStoreFile(store, fileId) {
         try {
             const id = String(fileId || '');
@@ -5356,6 +5484,7 @@ class Chart {
         if (typeof parent._getBtTfDataCache !== 'function') return false;
         const entry = parent._getBtTfDataCache(this.currentFileId, timeframe);
         if (!entry) return false;
+        this._retainMcHostCacheFile(parent, 'bt', this.currentFileId);
         return this._applyBacktestTimeframeCacheEntry(timeframe, entry, 'parent-bt-cache');
     }
 
@@ -5382,6 +5511,7 @@ class Chart {
             if (!normalized || this._getBtTfDataCache(fid, normalized)) return;
             const entry = parent._getBtTfDataCache(fid, normalized);
             if (!entry) return;
+            this._retainMcHostCacheFile(parent, 'bt', fid);
             this._storeBtTfDataCacheEntry(fid, normalized, entry.rawData, {
                 totalCandles: entry.totalCandles,
                 serverCursors: entry.serverCursors,
@@ -6196,6 +6326,7 @@ class Chart {
             const oldest = cache.keys().next().value;
             if (oldest === undefined) break;
             cache.delete(oldest);
+            this._forgetMcHostCacheFileRefSet(cache === this._btTfDataCache ? 'bt' : 'tf', oldest);
         }
     }
 
@@ -7794,6 +7925,10 @@ class Chart {
         if (!this._smartPrefetchCache) this._smartPrefetchCache = new Map();
         const key = this._smartCacheKeyFromParams(fileId, params);
         this._setSmartPrefetchCacheEntry(fileId, key, payload);
+        try {
+            const mcCacheOwner = this._mcHostCacheSharedWriteOwner('smart');
+            if (mcCacheOwner) this._retainMcHostCacheFile(mcCacheOwner, 'smart', fileId);
+        } catch (_e) { /* best-effort cache ownership only */ }
         this._trimSmartPrefetchCache();
     }
 
@@ -7842,7 +7977,12 @@ class Chart {
         const max = Number(this._smartCacheMaxEntries) > 0 ? Number(this._smartCacheMaxEntries) : 48;
         while (this._smartPrefetchCache.size > max) {
             const first = this._smartPrefetchCache.keys().next().value;
+            const entry = this._smartPrefetchCache.get(first);
+            const fid = entry && entry.fileId != null ? String(entry.fileId) : '';
             this._smartPrefetchCache.delete(first);
+            if (fid && !this._smartPrefetchCacheHasFileId(fid)) {
+                this._forgetMcHostCacheFileRefSet('smart', fid);
+            }
         }
     }
 
@@ -7900,6 +8040,10 @@ class Chart {
                         // prefetched pairs, so switching to the 4th/5th session symbol
                         // still hit the network. delete+set keeps this entry "newest".
                         this._setSmartPrefetchCacheEntry(e.fileId, key, data);
+                        try {
+                            const mcCacheOwner = this._mcHostCacheSharedWriteOwner('smart');
+                            if (mcCacheOwner) this._retainMcHostCacheFile(mcCacheOwner, 'smart', e.fileId);
+                        } catch (_e) { /* best-effort cache ownership only */ }
                         this._trimSmartPrefetchCache();
                     })
                     .catch(() => {});
@@ -8082,6 +8226,10 @@ class Chart {
                 }
                 if (this._smartPrefetchCache) {
                     this._setSmartPrefetchCacheEntry(fileId, cacheKey, result);
+                    try {
+                        const mcCacheOwner = this._mcHostCacheSharedWriteOwner('smart');
+                        if (mcCacheOwner) this._retainMcHostCacheFile(mcCacheOwner, 'smart', fileId);
+                    } catch (_e) { /* best-effort cache ownership only */ }
                     this._trimSmartPrefetchCache();
                 }
                 return result;
@@ -8171,6 +8319,10 @@ class Chart {
                 }
                 if (this._smartPrefetchCache) {
                     this._setSmartPrefetchCacheEntry(fileId, cacheKey, payload);
+                    try {
+                        const mcCacheOwner = this._mcHostCacheSharedWriteOwner('smart');
+                        if (mcCacheOwner) this._retainMcHostCacheFile(mcCacheOwner, 'smart', fileId);
+                    } catch (_e) { /* best-effort cache ownership only */ }
                     this._trimSmartPrefetchCache();
                 }
                 return payload;
@@ -8830,6 +8982,8 @@ class Chart {
             nativeRawFetchTf: this._nativeRawFetchTf || tf,
             ...extra,
         });
+        const mcCacheOwner = this._mcHostCacheSharedWriteOwner('tf');
+        if (mcCacheOwner) this._retainMcHostCacheFile(mcCacheOwner, 'tf', fid);
         while (perFile.size > (this._tfDataCacheMaxPerFile || 5)) {
             const first = perFile.keys().next().value;
             perFile.delete(first);
@@ -9035,6 +9189,8 @@ class Chart {
             } : null,
             nativeRawFetchTf: normalized,
         });
+        const mcCacheOwner = this._mcHostCacheSharedWriteOwner('tf');
+        if (mcCacheOwner) this._retainMcHostCacheFile(mcCacheOwner, 'tf', fid);
         while (perFile.size > (this._tfDataCacheMaxPerFile || 5)) {
             const first = perFile.keys().next().value;
             perFile.delete(first);
@@ -9530,6 +9686,8 @@ class Chart {
             serverCursors: meta.serverCursors ? { ...meta.serverCursors } : null,
             nativeRawFetchTf: meta.nativeRawFetchTf || tf,
         });
+        const mcCacheOwner = this._mcHostCacheSharedWriteOwner('bt');
+        if (mcCacheOwner) this._retainMcHostCacheFile(mcCacheOwner, 'bt', fid);
         while (perFile.size > (this._btTfDataCacheMaxPerFile || 8)) {
             const first = perFile.keys().next().value;
             perFile.delete(first);
