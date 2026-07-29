@@ -60,12 +60,21 @@ const HOST_WRAPPER_ID = "chartWrapper";
 const MULTICHART_GLOBAL_SETTINGS_ROOT_ID = "multichart-global-settings-root";
 const HOST_CONTAINER_ID = "chart-container";
 const MC_GRID_STATE_PURGE_SWITCH = "__TALARIA_DISABLE_MC_GRID_STATE_PURGE_V1";
+const MC_HOST_BUS_RETRY_TIMER_CLEANUP_SWITCH = "__TALARIA_DISABLE_MC_HOST_BUS_RETRY_TIMER_CLEANUP_V1";
 // SPLITTER-BORDERS-B90 hairlines: see ./mc-splitter-hairline.mjs
 // Kill: window.__TALARIA_DISABLE_MC_SPLITTER_HAIRLINE_V1 (truthy → transparent).
 
 function mcGridStatePurgeV1Enabled() {
     try {
         return !(typeof window !== "undefined" && window[MC_GRID_STATE_PURGE_SWITCH]);
+    } catch (_) {
+        return true;
+    }
+}
+
+function mcHostBusRetryTimerCleanupV1Enabled() {
+    try {
+        return !(typeof window !== "undefined" && window[MC_HOST_BUS_RETRY_TIMER_CLEANUP_SWITCH]);
     } catch (_) {
         return true;
     }
@@ -8357,7 +8366,10 @@ export default function MultichartGrid({
 
         return () => {
             orderMirrorDisposed = true;
-            if (mcGridStatePurgeV1Enabled() && hostBusRetryInterval) {
+            // Own switch only. The disjunction this replaced could not be
+            // observed on its own — clearing still happened unless PURGE-2 was
+            // also set — which is the welded switch the flag protocol blocks.
+            if (hostBusRetryInterval && mcHostBusRetryTimerCleanupV1Enabled()) {
                 clearInterval(hostBusRetryInterval);
                 hostBusRetryInterval = null;
             }
