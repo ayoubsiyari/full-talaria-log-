@@ -1,0 +1,41 @@
+{
+  "packet": "MANAGER-C-W79-PARTIAL",
+  "ruling": "cb483aaea",
+  "pushedBeforeWriteup": true,
+  "answer": {
+    "whichRealm": "PANEL-B (first peer), the SAME panel every cycle",
+    "constantNotRace": "Constant for B: retained on cycles 1, 2 and 3 in three independent 3-cycle runs (control, worker-termination ablation, console-release run). C and D vary between runs and cycles — so B is one code path, and the later peers additionally show a race.",
+    "notTheCandidatesAsStated": {
+      "lastFocusedPanel": "NO — manager focusedPanelId is the host 'A' throughout",
+      "orderReceivingPanel": "NO — the PO workload places its order on the host chart",
+      "indicatorWorkerPanel": "PARTLY — retention tracks having initialised the indicator subsystem (_indicatorWorkerSingleton present in 6/6 and 7/7 retained realms, absent in every collected one), but terminating every panel worker before collapse left the rate and B's retention unchanged. terminate() is NOT the cut."
+    }
+  },
+  "productAnchorNamed": {
+    "chain": "window.mainChart (host Chart) --_mcHostCacheFileRefOwners--> Map --__proto__--> Map.prototype --constructor--> closure Map --context--> <panel realm> NativeContext --global_object--> <panel realm> Window",
+    "meaning": "The host Chart's cache-file-ref-owner registry holds a Map that was CONSTRUCTED INSIDE a panel realm. Because the instance's prototype chain reaches that realm's Map constructor and therefore its NativeContext, holding the Map pins the panel's entire realm — and with it that realm's ~21 MB script set.",
+    "shape": "cross-realm container leak: a host-side registry storing an object built in the child realm",
+    "cutForA": "construct the registry's containers in the host realm and copy primitive keys across, and clear the entry on panel removal. The registry survives the panel, so anything realm-bound inside it is permanent.",
+    "howFound": "shortest-path BFS from GC roots over STRONG edges only — excluding 'weak' edges AND WeakMap key/value pairs, which the snapshot encodes as ordinary 'internal' edges. W77/W78's root path ((Eternal handles) -> FunctionTemplateInfo -> WeakMap) was such a non-retaining edge and is retracted as a retainer path."
+  },
+  "instrumentCaveatMustBeRead": {
+    "finding": "In every snapshot examined (W78's and all three W79 runs), only 4 of the 12 peer realms are reachable from GC roots by product references: 2 are live root shortcuts and 2 go through _mcHostCacheFileRefOwners. The other 8 are reachable ONLY through '(Global handles) / DevTools console' — the inspector holding an Error whose 'get stack' accessor closes over that realm's context.",
+    "consequence": "Part of the per-cycle accumulation may be my own CDP session rather than the product. W78's 'one realm retained per cycle, 20.87 MB' is therefore NOT safe as stated: the mechanism (a whole realm's script set retained) is confirmed, the per-cycle RATE is now in question.",
+    "attemptedRelease": "Runtime.discardConsoleEntries + Runtime.releaseObjectGroup('console') before each floor sample. Both returned ok on all three cycles.",
+    "result": "NO EFFECT. Floors 105.30 / 131.83 / 152.61 (deltas +26.53, +20.78) against the control's 105.37 / 132.30 / 151.09 (+26.93, +18.79), and the snapshot still shows 4 product-held vs 8 console-only realms — identical to the control. The handles are not console entries and are not in the 'console' object group, so this ablation neither freed them nor settled the question.",
+    "whyItMayExplainTheOvershoot": "My rate is ~23 MB/cycle where the PO measures ~13 MB/cycle by hand with no automation. Inspector-held dead realms are a candidate explanation for exactly that ~10 MB/cycle overshoot. The PO's ~13 is unaffected by this and remains the product number.",
+    "nextTestNamed": "drive the cycles without evaluate-held exception objects (or with the Runtime domain torn down before the floor GC) and re-measure. If the rate falls toward the PO's ~13, the overshoot is mine and the product rate is the PO's."
+  },
+  "runs": {
+    "control": { "floorsMB": [105.37, 132.30, 151.09], "deltasMB": [26.93, 18.79], "survivors": { "1": ["B"], "2": ["B", "C", "D"], "3": ["B"] } },
+    "workerTerminationAblation": { "floorsMB": [103.60, 133.84, 154.70], "deltasMB": [30.24, 20.86], "terminatedPerCycle": [4, 3, 3], "survivors": { "1": ["B"], "2": ["B", "C", "D"], "3": ["B", "C"] } },
+    "consoleRelease": { "floorsMB": [105.30, 131.83, 152.61], "deltasMB": [26.53, 20.78], "survivors": { "1": ["B"], "2": ["B", "C", "D"], "3": ["B"] } },
+    "datasetRotation": "IN FLIGHT — panel slots given different files (rotate=1) to separate 'the survivor is the slot' from 'the survivor is the data'"
+  },
+  "snapshotCeiling": {
+    "held": "3 cycles",
+    "parsed": ["308.3", "336.7", "308.9", "356.8", "309.8", "338.0"],
+    "unit": "MB",
+    "fails": "6 cycles ~560 MB, above V8 max string length, unparseable"
+  }
+}

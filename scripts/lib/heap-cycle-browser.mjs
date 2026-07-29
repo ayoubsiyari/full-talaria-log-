@@ -528,6 +528,30 @@ async function applyHostDataset(page, { fileId, timeframe }) {
  * host tag surviving is a control showing overwritten tags do get collected.
  */
 /**
+ * Drop the inspector's hold on page objects before a floor sample.
+ *
+ * With the Runtime domain enabled, the inspector keeps console message
+ * arguments and thrown Errors alive as 'DevTools console' global handles. An
+ * Error created in a panel realm closes over that realm's context through its
+ * stack accessor, so a single logged error can pin an entire dead realm — a leak
+ * of the instrument, not the product. Discarding console entries and releasing
+ * the console object group frees them.
+ */
+async function releaseConsoleHandles(cdp, cycle) {
+  const results = {};
+  for (const method of ['Runtime.discardConsoleEntries', 'Runtime.releaseObjectGroup']) {
+    try {
+      await cdp.send(method, method.endsWith('releaseObjectGroup') ? { objectGroup: 'console' } : undefined);
+      results[method] = 'ok';
+    } catch (error) {
+      results[method] = String(error?.message || error);
+    }
+  }
+  logHeapCycle(`cycle ${cycle}: released console handles ${JSON.stringify(results)}`);
+  return results;
+}
+
+/**
  * Diagnostic ablation: terminate every Worker a panel realm created, just
  * before that realm is torn down.
  *
@@ -797,6 +821,8 @@ async function runDistV9Session({
   puppeteer,
   datasetMode = HEAP_CYCLE_DATASET_MODE_DISTINCT,
   timeframes = HEAP_CYCLE_DISTINCT_TIMEFRAMES,
+  datasetRotate = 0,
+  releaseConsole = false,
 }) {
   if (!fs.existsSync(DIST_INDEX)) {
     throw new Error(`dist-v9 missing at ${DIST_INDEX} — run npm run build:live in talaria-design`);
@@ -847,7 +873,10 @@ async function runDistV9Session({
       cycles,
       settleMs,
       // Residue tracks distinct (symbol, timeframe) datasets, not panel count.
-      fileIdsForCycle: () => HEAP_CYCLE_DISTINCT_FILE_IDS.slice(0, 4),
+      // Rotation permutes which panel slot gets which dataset, so `the survivor is
+      // the slot` can be told apart from `the survivor is the data`.
+      fileIdsForCycle: () => HEAP_CYCLE_DISTINCT_FILE_IDS.slice(0, 4)
+        .map((_, i) => HEAP_CYCLE_DISTINCT_FILE_IDS[(i + (((datasetRotate % 4) + 4) % 4)) % 4]),
       datasetMode,
       timeframes,
       poWorkload: true,
@@ -918,6 +947,8 @@ async function runMultichartCycles({
   steadyStateDiff = false,
   /** Ablation: terminate panel workers before each collapse. */
   ablateTerminateWorkers = false,
+  /** Ablation: drop inspector console handles before each floor sample. */
+  releaseConsole = false,
 } = {}) {
   // PO workload: CDP heap snapshots grow past V8's ~512MB string limit and also
   // detach the React shell mid-run. Floor calibration uses usedJSHeapSize only.
@@ -1078,6 +1109,7 @@ async function runMultichartCycles({
     // PO-hand: short settle, no GC — match DevTools/console read timing.
     await sleep(poHandSample ? Math.min(settleMs, 800) : settleMs);
     const isFinal = index === cycles - 1;
+    if (releaseConsole) await releaseConsoleHandles(cdp, index + 1);
     const takeSnap = snapshotPolicy === 'every-return';
     const returnSingle = await sampleHeap(page, cdp, {
       snapshot: takeSnap,
@@ -1662,6 +1694,8 @@ async function runDeployedSession({
   snapshotOutPath = null,
   steadyStateDiff = false,
   ablateTerminateWorkers = false,
+  releaseConsole = false,
+  datasetRotate = 0,
 }) {
   const email = String(process.env.TEST_EMAIL || process.env.L2_M1_TEST_EMAIL || '').trim();
   const password = String(process.env.TEST_PASSWORD || process.env.L2_M1_TEST_PASSWORD || '').trim();
@@ -1834,13 +1868,21 @@ async function runDeployedSession({
       settleMs,
       // Residue is governed by distinct (symbol, timeframe) dataset count: four
       // identical panels share one pipeline and under-read the PO's session.
-      fileIdsForCycle: () => fileIds.slice(0, 4),
+      // Rotation permutes which panel slot gets which dataset, so `the survivor
+      // is the slot` can be told apart from `the survivor is the data`.
+      fileIdsForCycle: () => {
+        const four = fileIds.slice(0, 4);
+        const shift = ((datasetRotate % four.length) + four.length) % four.length;
+        return four.map((_, i) => four[(i + shift) % four.length]);
+      },
       datasetMode,
       timeframes,
       finalRetainerSnapshot,
       snapshotOutPath,
       steadyStateDiff,
       ablateTerminateWorkers,
+      releaseConsole,
+      datasetRotate,
       poWorkload: true,
       playHoldMs: Number.isFinite(playHoldMs) && playHoldMs > 0 ? playHoldMs : 6_000,
       replaySpeed: 60,
@@ -1916,6 +1958,8 @@ export async function runHeapCycleBrowserSession({
   snapshotOutPath = null,
   steadyStateDiff = false,
   ablateTerminateWorkers = false,
+  releaseConsole = false,
+  datasetRotate = 0,
 } = {}) {
   const puppeteer = await loadPuppeteer();
   if (surface === HEAP_CYCLE_SURFACE_THIN_HOST) {
@@ -1937,6 +1981,8 @@ export async function runHeapCycleBrowserSession({
       snapshotOutPath,
       steadyStateDiff,
       ablateTerminateWorkers,
+      releaseConsole,
+      datasetRotate,
     });
   }
   return runDistV9Session({ cycles, timeoutMs, settleMs, puppeteer, datasetMode, timeframes });

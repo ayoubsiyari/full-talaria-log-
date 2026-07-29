@@ -38,6 +38,8 @@ export function parseHeapCycleMemoryArgs(argv = process.argv.slice(2)) {
     snapshotOutPath: null,
     steadyStateDiff: false,
     ablateTerminateWorkers: false,
+    datasetRotate: 0,
+    releaseConsole: false,
   };
   for (const arg of argv) {
     if (arg === '--fixture' || arg === '--gate01-fixture') {
@@ -57,6 +59,10 @@ export function parseHeapCycleMemoryArgs(argv = process.argv.slice(2)) {
     } else if (arg.startsWith('--snapshot-out=')) {
       options.snapshotOutPath = path.resolve(arg.slice('--snapshot-out='.length));
       options.finalRetainerSnapshot = true;
+    } else if (arg === '--release-console-handles') {
+      options.releaseConsole = true;
+    } else if (arg.startsWith('--dataset-rotate=')) {
+      options.datasetRotate = Number(arg.split('=')[1]) || 0;
     } else if (arg === '--ablate-terminate-workers') {
       // Experiment: terminate panel workers before collapse to test whether the
       // unterminated indicator Worker is what pins the retained realm.
@@ -131,6 +137,8 @@ export async function runHeapCycleMemoryGate({
   snapshotOutPath = null,
   steadyStateDiff = false,
   ablateTerminateWorkers = false,
+  datasetRotate = 0,
+  releaseConsole = false,
   runBrowser = null,
 } = {}) {
   const startedAt = new Date().toISOString();
@@ -155,6 +163,8 @@ export async function runHeapCycleMemoryGate({
         if (snapshotOutPath) browserOpts.snapshotOutPath = snapshotOutPath;
         if (steadyStateDiff) browserOpts.steadyStateDiff = true;
         if (ablateTerminateWorkers) browserOpts.ablateTerminateWorkers = true;
+        if (datasetRotate) browserOpts.datasetRotate = datasetRotate;
+        if (releaseConsole) browserOpts.releaseConsole = true;
         if (Number.isFinite(cycles) && cycles > 0) browserOpts.cycles = cycles;
         if (Number.isFinite(playHoldMs) && playHoldMs > 0) browserOpts.playHoldMs = playHoldMs;
         report = await browserRunner(browserOpts);
@@ -264,6 +274,8 @@ if (isMain) {
       snapshotOutPath: options.snapshotOutPath,
       steadyStateDiff: options.steadyStateDiff,
       ablateTerminateWorkers: options.ablateTerminateWorkers,
+      datasetRotate: options.datasetRotate,
+      releaseConsole: options.releaseConsole,
     });
   } catch (error) {
     report = {
