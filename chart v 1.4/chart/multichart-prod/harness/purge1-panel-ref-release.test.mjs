@@ -476,17 +476,21 @@ test('kill switch round trip: absent, false, undefined purge; true restores lega
     const disabledBrandTimers = disabled._mcBrandSuppressionTimers.slice();
     const disabledBridgeTimers = disabled._mcBridgeReadyTimeouts.slice();
     h.manager.removeChart('E');
+    // ORPHAN-L2/L3 own iframe load/error release (not PURGE-gated).
+    assert.equal(disabled.frame.listenerCount('load'), 0,
+        'PURGE-off still releases load listener (owned by ORPHAN-L2)');
+    assert.equal(disabled.frame.listenerCount('error'), 0,
+        'PURGE-off still releases error listener (owned by ORPHAN-L3)');
     const beforeLegacyTick = h.stats.timers.length;
     disabledBrandTimers[0].callback();
-    const legacyRestored = disabled.frame.listenerCount('load') === 1
-        && disabled.frame.listenerCount('error') === 1
-        && disabledBrandTimers.every((t) => t.cleared === false)
+    const timerLeakRestored = disabledBrandTimers.every((t) => t.cleared === false)
         && disabledBridgeTimers.every((t) => t.cleared === false)
         && h.stats.timers.length === beforeLegacyTick + 1;
-    note('switch-present-restores-legacy-live-handles', legacyRestored,
+    note('switch-present-restores-legacy-timer-leak', timerLeakRestored,
         `listeners=${disabled.frame.listenerCount('load')}/${disabled.frame.listenerCount('error')} `
         + `timersBefore=${beforeLegacyTick} timersAfter=${h.stats.timers.length}`);
-    assert.equal(legacyRestored, true, 'present switch restores pre-PURGE-1 teardown behaviour');
+    assert.equal(timerLeakRestored, true,
+        'PURGE-off still leaks brand/bridge timers (PURGE-1 ownership); listeners owned by L2/L3');
 
     delete h.sandbox[SWITCH];
     const removedAgain = addLoadedPanel(h, 'F');
