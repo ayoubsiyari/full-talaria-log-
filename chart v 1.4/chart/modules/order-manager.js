@@ -205,7 +205,30 @@ function _orderEntryCloseHitTargetFixEnabled() {
     return typeof window === 'undefined' || !window.__TALARIA_DISABLE_ORDER_ENTRY_CLOSE_HITTARGET_FIX;
 }
 
+/** Cluster G / TAL-01861: cancel badge press blocks a trailing recreated place click. */
+function _orderCancelBeforeConfirmV1Enabled() {
+    return typeof window === 'undefined' || !window.__TALARIA_DISABLE_ORDER_CANCEL_BEFORE_CONFIRM_V1;
+}
+
+/** Cluster G / TAL-01885: keep edge SL/TP rows visible instead of hiding at plot seams. */
+function _orderLineEdgeVisibilityV1Enabled() {
+    return typeof window === 'undefined' || !window.__TALARIA_DISABLE_ORDER_LINE_EDGE_VISIBILITY_V1;
+}
+
+/** Cluster G / TAL-01905: omitted seek guard tick must block current candle OHLC. */
+function _orderSeekGuardInfinityV1Enabled() {
+    return typeof window === 'undefined' || !window.__TALARIA_DISABLE_ORDER_SEEK_GUARD_INFINITY_V1;
+}
+
+/** Cluster G / TAL-01750: hover/micro-drags on split handles must not add entries. */
+function _orderSplitEntryHoverStickV1Enabled() {
+    return typeof window === 'undefined' || !window.__TALARIA_DISABLE_ORDER_SPLIT_ENTRY_HOVER_STICK_V1;
+}
+
 const ENTRY_STACK_OFFSET_PX = 16;
+const ORDER_CANCEL_PLACE_SUPPRESS_MS = 450;
+const ORDER_LINE_EDGE_VISIBILITY_PAD_PX = 24;
+const ORDER_SPLIT_HANDLE_MIN_DRAG_PX = 4;
 const DEFAULT_SLTP_STEPPER_OFFSET_PIPS = 10;
 
 /** T4 step 9: default ON — lot stepper full recalc + SL/TP stepper seed from entry; own kill-switch. */
@@ -252,6 +275,36 @@ function _orderEntryCancelCleanupFixEnabled() {
 function _orderEntryNewDraftLevelsResetV1Enabled() {
     return typeof window === 'undefined'
         || !window.__TALARIA_DISABLE_ORDER_ENTRY_NEW_DRAFT_LEVELS_RESET_V1;
+}
+
+/** Cluster G / TP-SL drag family: Make-new-order also clears stale drag constraints. */
+function _orderNewDraftConstraintResetV1Enabled() {
+    return typeof window === 'undefined'
+        || !window.__TALARIA_DISABLE_ORDER_NEW_DRAFT_CONSTRAINT_RESET_V1;
+}
+
+/** Cluster E / TAL-01927: entry screenshots are one-shot per trade across restore. */
+function _orderEntryScreenshotIdempotentV1Enabled() {
+    return typeof window === 'undefined'
+        || !window.__TALARIA_DISABLE_ORDER_ENTRY_SCREENSHOT_IDEMPOTENT_V1;
+}
+
+/** Cluster G / TAL-01932: full-size opposing pending orders close, not hedge-open. */
+function _orderPendingCloseNettingV1Enabled() {
+    return typeof window === 'undefined'
+        || !window.__TALARIA_DISABLE_ORDER_PENDING_CLOSE_NETTING_V1;
+}
+
+/** Cluster E / TAL-01903: restored journal rows are the balance/PnL authority. */
+function _orderPnlRestoreStableV1Enabled() {
+    return typeof window === 'undefined'
+        || !window.__TALARIA_DISABLE_ORDER_PNL_RESTORE_STABLE_V1;
+}
+
+/** Cluster G / TAL-01777: pair switches discard drafts from the previous symbol. */
+function _orderPairSwitchDraftRebindV1Enabled() {
+    return typeof window === 'undefined'
+        || !window.__TALARIA_DISABLE_ORDER_PAIR_SWITCH_DRAFT_REBIND_V1;
 }
 
 /** Cluster G / TAL-01933: a single TP stays executable after SL trails past it. */
@@ -2186,6 +2239,7 @@ class OrderManager {
     syncOrderVisualsToActiveChart() {
         if (!this.chart || !this.chart.svg) return;
         try {
+            this._cleanupDraftForActiveTickerChange();
             if (this._isMultiPanelLayout()) {
                 this._syncOrderVisualsMultiPanel();
                 return;
@@ -3283,7 +3337,9 @@ class OrderManager {
      */
     _refreshAllGuardsToTimestamp(t, tick) {
         if (!t) return;
-        if (tick === undefined) tick = -1;
+        if (tick === undefined) {
+            tick = _orderSeekGuardInfinityV1Enabled() ? Infinity : -1;
+        }
 
         for (const pos of (this.openPositions || [])) {
             this._seedOrderLifecycleEvent(pos, { t });
@@ -17369,6 +17425,10 @@ class OrderManager {
                 levelPrice: lineData.price,
                 onClick: (event) => {
                     event.stopPropagation();
+                    if (self._shouldSuppressEntryPlaceAfterCancel()) {
+                        console.warn('🟦OM-DIAG place ✓ suppressed after cancel badge press');
+                        return;
+                    }
                     console.log('🟦OM-DIAG place ✓ clicked', {
                         label: lineData.label,
                         isMultiEntryMode: self.isMultiEntryMode,
@@ -17387,6 +17447,7 @@ class OrderManager {
                 levelPrice: lineData.price,
                 onClick: (event) => {
                     event.stopPropagation();
+                    self._markEntryCancelBadgePress();
                     self.closeOrderRailFromChartCancel();
                 },
             });
@@ -17849,6 +17910,23 @@ class OrderManager {
         }
     }
 
+    _orderInteractionNowMs() {
+        return (typeof performance !== 'undefined' && performance.now)
+            ? performance.now()
+            : Date.now();
+    }
+
+    _markEntryCancelBadgePress(now = this._orderInteractionNowMs()) {
+        if (!_orderCancelBeforeConfirmV1Enabled()) return;
+        this._entryCancelPlaceSuppressUntilMs = now + ORDER_CANCEL_PLACE_SUPPRESS_MS;
+    }
+
+    _shouldSuppressEntryPlaceAfterCancel(now = this._orderInteractionNowMs()) {
+        if (!_orderCancelBeforeConfirmV1Enabled()) return false;
+        const until = Number(this._entryCancelPlaceSuppressUntilMs);
+        return Number.isFinite(until) && now <= until;
+    }
+
     /**
      * Chart preview ✕: close V9 React rail when running in a multichart iframe — toggleOrderPanel()
      * only sees a hidden #orderPanel (never .visible), so it would wrongly take the "open" branch.
@@ -17894,6 +17972,35 @@ class OrderManager {
             const backdrop = document.getElementById('orderPanelBackdrop');
             if (backdrop) backdrop.classList.remove('visible');
         }
+    }
+
+    _cleanupDraftForActiveTickerChange() {
+        const activeTicker = this._normalizeTicker(this._getActiveTicker?.() || '');
+        const previousTicker = this._lastOrderVisualSyncTicker || null;
+        this._lastOrderVisualSyncTicker = activeTicker || previousTicker;
+        if (!_orderPairSwitchDraftRebindV1Enabled()) return false;
+        if (!previousTicker || !activeTicker || previousTicker === activeTicker) return false;
+
+        const panel = typeof document !== 'undefined' ? document.getElementById('orderPanel') : null;
+        const draftOpen = !!(
+            this.previewLines
+            || this._isDraftOrderPreviewActive?.()
+            || panel?.classList?.contains?.('visible')
+            || (typeof window !== 'undefined' && window.__talariaV9OrderRailOpen)
+            || (typeof window !== 'undefined' && window.__talariaMultichartDraftActive)
+        );
+        if (!draftOpen) return false;
+
+        this._draftCancelCleanupFromChart();
+        this._discardUnplacedOrderDraftLevels({ notifyReactRail: true });
+        return true;
+    }
+
+    _shouldIgnoreSplitHandleDrag(dragDeltaPx, priceDistance) {
+        if (!_orderSplitEntryHoverStickV1Enabled()) return false;
+        const px = Math.abs(Number(dragDeltaPx) || 0);
+        const dist = Math.abs(Number(priceDistance) || 0);
+        return px < ORDER_SPLIT_HANDLE_MIN_DRAG_PX || dist < 0.00001;
     }
 
     /**
@@ -24454,6 +24561,18 @@ class OrderManager {
         this.setEntryMode(false);
     }
 
+    _resetNewDraftConstraintState() {
+        if (!_orderNewDraftConstraintResetV1Enabled()) return;
+        this._orderProvisionalEdit = _oiCreateProvisionalEditState();
+        this._oiProvisionalDragCtx = null;
+        this.isDraggingPreviewLine = false;
+        this._previewEntryDecoupledFromRR = false;
+        this._previewEntryLinkedToRiskReward = false;
+        this._rrExecuteArmed = false;
+        this.tpManuallyPositioned = false;
+        this.slManuallyPositioned = false;
+    }
+
     /**
      * Zero stop/target draft inputs (and multi-TP / multi-entry) when the Place Order
      * panel closes so the next open starts clean. Optionally notifies the V9 React
@@ -24461,6 +24580,7 @@ class OrderManager {
      */
     _discardUnplacedOrderDraftLevels({ notifyReactRail = false } = {}) {
         this.tpTargets = [];
+        this._resetNewDraftConstraintState();
         const tpIn = document.getElementById('tpPrice');
         const slIn = document.getElementById('slPrice');
         if (tpIn) tpIn.value = '0';
@@ -24485,6 +24605,43 @@ class OrderManager {
                 window.dispatchEvent(new CustomEvent('talaria:order-rail-reset-draft'));
             } catch (_e) { /* ignore */ }
         }
+    }
+
+    _orderHasEntryScreenshot(order) {
+        if (!order || typeof order !== 'object') return false;
+        if (order.entryScreenshot) return true;
+        if (order.entryScreenshotRef && order.entryScreenshotRef.refId) return true;
+        if (Array.isArray(order.entryScreenshots) && order.entryScreenshots.length > 0) return true;
+        if (Array.isArray(order.entryScreenshotRefs) && order.entryScreenshotRefs.length > 0) return true;
+        return false;
+    }
+
+    _captureEntryScreenshotOnce(order, label = 'order') {
+        const screenshotMgr = (typeof window !== 'undefined' && window.screenshotManager)
+            || this.screenshotManager;
+        if (!screenshotMgr || typeof screenshotMgr.captureChartSnapshot !== 'function') return null;
+        if (_orderEntryScreenshotIdempotentV1Enabled()) {
+            if (this._orderHasEntryScreenshot(order)) return order?.screenshotPromise || null;
+            if (order?.screenshotPromise) return order.screenshotPromise;
+        }
+        const promise = screenshotMgr.captureChartSnapshot().then((screenshot) => {
+            if (screenshot) {
+                if (!_orderEntryScreenshotIdempotentV1Enabled() || !this._orderHasEntryScreenshot(order)) {
+                    order.entryScreenshot = screenshot;
+                }
+                console.log(`✅ Entry screenshot captured for ${label} #${order.id}`);
+                if (_orderEntryScreenshotIdempotentV1Enabled()
+                    && typeof this._schedulePersistAfterOrderMutation === 'function') {
+                    this._schedulePersistAfterOrderMutation({ critical: true });
+                }
+            }
+            return screenshot;
+        }).catch((err) => {
+            console.error('❌ Failed to capture entry screenshot:', err);
+            return null;
+        });
+        if (order && typeof order === 'object') order.screenshotPromise = promise;
+        return promise;
     }
 
     /**
@@ -26465,9 +26622,9 @@ class OrderManager {
                 const isTpLine = label === 'TP' || /^TP\d+$/.test(label);
                 const isEntryLine = label === 'Entry' || /^Entry#/.test(label) || /^Entry\s*\(/.test(label);
                 
-                // Only create split if actually moved (no minimum distance requirement)
+                // Only create split if the handle was intentionally dragged.
                 const distance = Math.abs(newPrice - lineData.price);
-                if (distance < 0.00001) {
+                if (self._shouldIgnoreSplitHandleDrag(dragDelta, distance)) {
                     // Didn't move, ignore
                     return;
                 }
@@ -29949,19 +30106,8 @@ class OrderManager {
             this.drawEntryMarker(order);
         }, 100);
         
-        // Start screenshot capture immediately and store promise for later await
-        if (window.screenshotManager) {
-            order.screenshotPromise = window.screenshotManager.captureChartSnapshot().then(screenshot => {
-                if (screenshot) {
-                    order.entryScreenshot = screenshot;
-                    console.log('✅ Entry screenshot captured for order #' + order.id);
-                }
-                return screenshot;
-            }).catch(err => {
-                console.error('❌ Failed to capture entry screenshot:', err);
-                return null;
-            });
-        }
+        // Start screenshot capture immediately and store promise for later await.
+        this._captureEntryScreenshotOnce(order, 'order');
         
         this.updatePositionsPanel();
         this.showPositionsPanel();
@@ -30366,10 +30512,7 @@ class OrderManager {
                     
                     if (finalScreenshotMgr) {
                         console.log('📸 Capturing screenshot for drawing tool order #' + order.id);
-                        finalScreenshotMgr.captureChartSnapshot().then(imageData => {
-                            order.entryScreenshot = imageData;
-                            console.log('✅ Entry screenshot captured for drawing tool order #' + order.id);
-                            
+                        this._captureEntryScreenshotOnce(order, 'drawing tool order')?.then(() => {
                             // IMPORTANT: Show journal modal AFTER screenshot is captured
                             this.showTradeJournalModal(order, false, null);
                         }).catch(err => {
@@ -31732,6 +31875,64 @@ class OrderManager {
         });
         return lifecycleEventEvaluated;
     }
+
+    _findFullSizeOpposingPendingClosePosition(pendingOrder) {
+        if (!_orderPendingCloseNettingV1Enabled()) return null;
+        if (!pendingOrder || pendingOrder.isSplitEntry || pendingOrder.scaleWithExisting) return null;
+
+        const direction = String(pendingOrder.direction || '').toUpperCase();
+        if (direction !== 'BUY' && direction !== 'SELL') return null;
+
+        const pendingQty = Number(pendingOrder.quantity);
+        if (!(pendingQty > 0)) return null;
+
+        const pendingTicker = this._normalizeTicker(pendingOrder.ticker || pendingOrder.symbol || this._getActiveTicker());
+        const pendingSource = pendingOrder.sourceFileId != null ? String(pendingOrder.sourceFileId) : null;
+        const candidates = [
+            ...(Array.isArray(this.openPositions) ? this.openPositions : []),
+            ...(Array.isArray(this.orderService?.openPositions) ? this.orderService.openPositions : []),
+        ];
+        const seen = new Set();
+        return candidates.find((position) => {
+            if (!position || seen.has(position.id)) return false;
+            seen.add(position.id);
+            const side = String(position.type || position.direction || '').toUpperCase();
+            if ((direction === 'SELL' && side !== 'BUY') || (direction === 'BUY' && side !== 'SELL')) return false;
+            const positionTicker = this._normalizeTicker(position.ticker || position.symbol || pendingTicker);
+            if (pendingTicker && positionTicker && pendingTicker !== positionTicker) return false;
+            if (pendingSource != null && position.sourceFileId != null && String(position.sourceFileId) !== pendingSource) return false;
+            const positionQty = Number(position.quantity);
+            return Math.abs(positionQty - pendingQty) <= 1e-9;
+        }) || null;
+    }
+
+    _cleanupPendingCloseOrderVisuals(pendingOrder) {
+        if (!pendingOrder || pendingOrder.id == null) return;
+        const oid = pendingOrder.id;
+        this.removePendingOrderLine(oid);
+        this.removePendingSLTPLines(oid);
+        if (pendingOrder.isSplitEntry && pendingOrder.splitGroupId) {
+            this._removeSplitGroupTPAvgIfEmpty(pendingOrder.splitGroupId, oid);
+        } else {
+            this.removeMultiTPAvgLine(oid);
+        }
+        (this._collectLayoutCharts() || [this.chart]).forEach((c) => {
+            if (!c?.svg) return;
+            c.svg.selectAll(`.pending-${oid}`).remove();
+            c.svg.selectAll(`.pending-tp-${oid}`).remove();
+            c.svg.selectAll(`.pending-sl-${oid}`).remove();
+            c.svg.selectAll(`.pending-be-${oid}`).remove();
+        });
+    }
+
+    _executePendingCloseIfNeeded(pendingOrder, closeLevel, currentCandle) {
+        const target = this._findFullSizeOpposingPendingClosePosition(pendingOrder);
+        if (!target) return false;
+        this._cleanupPendingCloseOrderVisuals(pendingOrder);
+        this.closePositionAtPrice(target.id, closeLevel, 'PENDING_CLOSE', null, null, currentCandle?.t);
+        this.showNotification?.(`✅ ${pendingOrder.direction} ${pendingOrder.orderType?.toUpperCase?.() || 'PENDING'} close filled for Order #${target.id} @ ${this.formatPrice(closeLevel)}`, 'success');
+        return true;
+    }
     
     /**
      * Execute a pending order
@@ -31793,6 +31994,10 @@ class OrderManager {
 
         const gapInfo = hadGap ? ` (GAP: ${pendingOrder.entryPrice.toFixed(5)} → ${executionPrice.toFixed(5)})` : '';
         console.log(`✅ Executing ${pendingOrder.orderType.toUpperCase()} ${pendingOrder.direction} Order #${pendingOrder.id} @ ${executionPrice.toFixed(5)}${gapInfo}`);
+
+        if (this._executePendingCloseIfNeeded(pendingOrder, executionPrice, currentCandle)) {
+            return;
+        }
         
         // Create market order from pending order
         const order = {
@@ -32014,19 +32219,8 @@ class OrderManager {
             this.drawEntryMarker(order);
         }, 100);
         
-        // Start screenshot capture immediately and store promise for later await
-        if (window.screenshotManager) {
-            order.screenshotPromise = window.screenshotManager.captureChartSnapshot().then(screenshot => {
-                if (screenshot) {
-                    order.entryScreenshot = screenshot;
-                    console.log('✅ Entry screenshot captured for executed pending order #' + order.id);
-                }
-                return screenshot;
-            }).catch(err => {
-                console.error('❌ Failed to capture entry screenshot:', err);
-                return null;
-            });
-        }
+        // Start screenshot capture immediately and store promise for later await.
+        this._captureEntryScreenshotOnce(order, 'executed pending order');
 
         this._pauseReplayIfPlaying('pending order filled');
         
@@ -38536,8 +38730,11 @@ class OrderManager {
         this.pendingTargetLines.forEach((entry) => {
             if (entry.chart !== ch) return;
             entry.targets.forEach((target) => {
-                const y = ch.scales.yScale(target.price);
-                if (!Number.isFinite(y)) return;
+                const rawY = ch.scales.yScale(target.price);
+                if (!Number.isFinite(rawY)) return;
+                const edgeVisibleY = this._orderLineEdgeVisibleY(ch, rawY, target.type);
+                const forceEdgeVisible = Number.isFinite(edgeVisibleY) && edgeVisibleY !== rawY;
+                const y = Number.isFinite(edgeVisibleY) ? edgeVisibleY : rawY;
                 const isDraggable = (target.type === 'TP' || target.type === 'SL' || target.type === 'BE');
 
                 target.line
@@ -38755,7 +38952,7 @@ class OrderManager {
 
                 if (target._tpPlusBadge) { try { target._tpPlusBadge.remove(); } catch (_) {} target._tpPlusBadge = null; }
 
-                const inPlot = this._isOrderYInMainPlot(ch, y);
+                const inPlot = forceEdgeVisible || this._isOrderYInMainPlot(ch, y);
                 if (!inPlot) {
                     target.line.style('display', 'none');
                     labelGroup.style('display', 'none');
@@ -39869,6 +40066,9 @@ class OrderManager {
     _m19CommitJournalArray(next, reason) {
         this.tradeJournal = Array.isArray(next) ? next : []; // M19-D-JOURNAL-WRITE:commit
         this._m19NoteJournalStructuralMutation(reason || 'journal-replace');
+        if (_orderPnlRestoreStableV1Enabled() && typeof this.recomputeAccountFromJournal === 'function') {
+            this.recomputeAccountFromJournal();
+        }
         return this.tradeJournal;
     }
 
@@ -44587,6 +44787,33 @@ class OrderManager {
         const m = ch.margin || { t: 0, b: 0 };
         const plotBottom = ch.h - m.b - (ch.separateIndicatorPanelHeight || 0);
         return y >= m.t && y <= plotBottom;
+    }
+
+    _orderMainPlotYBounds(ch) {
+        if (!ch) return null;
+        const m = ch.margin || { t: 0, b: 0 };
+        const layout = typeof ch._getMainPricePlotLayout === 'function'
+            ? ch._getMainPricePlotLayout()
+            : null;
+        const top = Number.isFinite(m.t) ? m.t : 0;
+        const bottom = layout && Number.isFinite(layout.plotBottom)
+            ? layout.plotBottom
+            : (ch.h - (m.b || 0) - (ch.separateIndicatorPanelHeight || 0));
+        if (!Number.isFinite(top) || !Number.isFinite(bottom) || bottom < top) return null;
+        return { top, bottom };
+    }
+
+    _orderLineEdgeVisibleY(ch, y, type) {
+        if (!_orderLineEdgeVisibilityV1Enabled()) return null;
+        if (!Number.isFinite(y)) return null;
+        const t = String(type || '').toUpperCase();
+        if (t !== 'SL' && t !== 'TP' && t !== 'BE') return null;
+        if (this._isOrderYInMainPlot(ch, y)) return y;
+        const bounds = this._orderMainPlotYBounds(ch);
+        if (!bounds) return null;
+        if (y < bounds.top && y >= bounds.top - ORDER_LINE_EDGE_VISIBILITY_PAD_PX) return bounds.top;
+        if (y > bounds.bottom && y <= bounds.bottom + ORDER_LINE_EDGE_VISIBILITY_PAD_PX) return bounds.bottom;
+        return null;
     }
 
     /** Hide order row when its Y maps into the indicator stack; clip when inside main plot. */

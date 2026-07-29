@@ -23,6 +23,7 @@ global.window = {};
 const ReplaySystem = require('./replay-system.js');
 const KILL_SWITCH = process.env.TALARIA_DISABLE_ORDER_LIFECYCLE_EVENT_OWNERSHIP_V1 === '1';
 const MONEY_PATH_BATCH_KILL = process.env.TALARIA_DISABLE_ORDER_MONEY_PATH_BATCH_V1 === '1';
+const SEEK_GUARD_KILL = process.env.TALARIA_DISABLE_ORDER_SEEK_GUARD_INFINITY_V1 === '1';
 
 function defaultWindow() {
     const out = KILL_SWITCH
@@ -30,6 +31,9 @@ function defaultWindow() {
         : {};
     if (MONEY_PATH_BATCH_KILL) {
         out.__TALARIA_DISABLE_ORDER_MONEY_PATH_BATCH_V1 = true;
+    }
+    if (SEEK_GUARD_KILL) {
+        out.__TALARIA_DISABLE_ORDER_SEEK_GUARD_INFINITY_V1 = true;
     }
     return out;
 }
@@ -163,6 +167,36 @@ test('viewport and timeframe recomputes cannot replay one market event', () => {
     manager._refreshAllGuardsToTimestamp(replay.replayTimestamp, Infinity);
     assert.equal(manager._claimOrderLifecycleEvent(position, { t: replay.replayTimestamp }), false,
         'TF/seek guard refresh rebases ownership instead of executing the destination OHLC');
+});
+
+test('omitted seek guard tick defaults to strict current-candle barrier', () => {
+    global.window = defaultWindow();
+    const barT = 1_721_600_000_000;
+    const replay = {
+        isActive: true,
+        playbackMode: 'candle',
+        getPlaybackMode: () => 'candle',
+        replayTimestamp: barT,
+        currentIndex: 0,
+        fullRawData: [{ t: barT }],
+        animatingCandle: null,
+    };
+    const manager = orderManagerFor(replay);
+    manager.replaySystem = replay;
+    manager._resolveTickAnimReplaySystem = () => replay;
+    const position = { id: 1, type: 'BUY' };
+    manager.openPositions = [position];
+    manager.pendingOrders = [];
+
+    manager._refreshAllGuardsToTimestamp(barT);
+
+    assert.equal(position._slNoTriggerBeforeTick, Infinity,
+        'seek/panel guard refresh without tick must not default to -1');
+    assert.equal(
+        manager._tickAnimOverridesGuard(position._slNoTriggerBeforeTick, { t: barT, h: 115, l: 95 }, 110, 'above', position),
+        false,
+        'destination candle high/low cannot instantly close a re-armed order',
+    );
 });
 
 test('1m order execution candle survives a 1D display switch', () => {
