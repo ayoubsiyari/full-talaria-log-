@@ -34552,6 +34552,41 @@ class Chart {
     }
 
     /**
+     * Right-edge TF-switch anchor timestamp for the follow-latest (playhead) path.
+     *
+     * Legacy pinned bar START (`bar.t`). On a downshift that leaves the viewport
+     * up to one OLD bar-duration behind the series edge when remapped onto NEW
+     * bar widths (1H→1m ≈ 59 fine bars). With the fix ON, pin the last inclusive
+     * ms of the bar period so the closest new-TF bar is near the right edge.
+     *
+     * Kill-switch: window.__TALARIA_DISABLE_TF_DOWNSHIFT_ANCHOR_FIX_V1
+     *   Absent/falsy => fix ON (period-end). Truthy => byte-faithful bar-start.
+     * Does NOT alter viewportLeft (user-panned) anchors.
+     */
+    _resolveTfSwitchRightEdgeAnchorTs(bar, barIdx) {
+        if (!bar || !Number.isFinite(bar.t)) return null;
+        // TF-DOWNSHIFT-ANCHOR kill: truthy => legacy bar-start anchor.
+        let tfDownshiftAnchorFixOn = true;
+        try {
+            if (typeof window !== 'undefined'
+                && window.__TALARIA_DISABLE_TF_DOWNSHIFT_ANCHOR_FIX_V1) {
+                tfDownshiftAnchorFixOn = false;
+            }
+        } catch (_tfDsKill) { tfDownshiftAnchorFixOn = true; }
+        if (!tfDownshiftAnchorFixOn) return bar.t;
+        const periodMs = typeof this._estimateTimeframeStepMs === 'function'
+            ? this._estimateTimeframeStepMs()
+            : null;
+        const endMs = typeof this._getBarPeriodEndMs === 'function'
+            ? this._getBarPeriodEndMs(bar.t, this.data, barIdx, periodMs)
+            : (Number.isFinite(periodMs) && periodMs > 0 ? bar.t + periodMs : null);
+        // Inclusive last ms: prefer final fine bar of the old period over the
+        // first bar of the next period when both exist at an exclusive seam.
+        if (Number.isFinite(endMs) && endMs > bar.t) return endMs - 1;
+        return bar.t;
+    }
+
+    /**
      * Snapshot viewport state before a timeframe switch (old TF still on screen).
      * Preserve the on-screen candle count (e.g. 200 bars on 1m → 200 bars on 1h)
      * and anchor the playhead / last candle at the same pixel X on the new TF.
@@ -34602,7 +34637,8 @@ class Chart {
             const lastIdx = Math.max(0, this.data.length - 1);
             const lastBar = this.data[lastIdx];
             if (lastBar && Number.isFinite(lastBar.t)) {
-                anchorTs = lastBar.t;
+                // TF-DOWNSHIFT-ANCHOR: right-edge playhead uses period-end (not bar start).
+                anchorTs = this._resolveTfSwitchRightEdgeAnchorTs(lastBar, lastIdx);
             }
             const spacing = this.getCandleSpacing();
             anchorScreenX = this.dataIndexToPixel(lastIdx) + spacing / 2;
@@ -34610,7 +34646,10 @@ class Chart {
         if (!Number.isFinite(anchorTs)) {
             const rightBarIdx = Math.max(0, Math.min(this.data.length - 1, Math.floor(rightIdx)));
             const rightBar = this.data[rightBarIdx];
-            if (rightBar && Number.isFinite(rightBar.t)) anchorTs = rightBar.t;
+            if (rightBar && Number.isFinite(rightBar.t)) {
+                // TF-DOWNSHIFT-ANCHOR: live follow-latest right-edge period-end pin.
+                anchorTs = this._resolveTfSwitchRightEdgeAnchorTs(rightBar, rightBarIdx);
+            }
             anchorMode = 'playhead';
         }
         if (Number.isFinite(anchorTs) && !Number.isFinite(anchorScreenX)) {
