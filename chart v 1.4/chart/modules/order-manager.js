@@ -235,6 +235,11 @@ function _orderBePlaceAnchorV1Enabled() {
     return typeof window === 'undefined' || !window.__TALARIA_DISABLE_ORDER_BE_PLACE_ANCHOR_V1;
 }
 
+/** Cluster G / TAL-01941: bounded SL trigger diagnostics; no behavior changes. */
+function _orderSlTriggerDiagV1Enabled() {
+    return typeof window === 'undefined' || !window.__TALARIA_DISABLE_ORDER_SL_TRIGGER_DIAG_V1;
+}
+
 const ENTRY_STACK_OFFSET_PX = 16;
 const ORDER_CANCEL_PLACE_SUPPRESS_MS = 450;
 const ORDER_LINE_EDGE_VISIBILITY_PAD_PX = 24;
@@ -2631,6 +2636,50 @@ class OrderManager {
         return isTP
             ? (candleOpen < level ? candleOpen : level)       // SELL TP: open gapped below TP
             : (candleOpen > level ? candleOpen : level);      // SELL SL: open gapped above SL
+    }
+
+    _recordSlTriggerDiag(position, detail = {}) {
+        if (!_orderSlTriggerDiagV1Enabled()) return false;
+        if (!position || typeof position !== 'object') return false;
+        const row = {
+            at: Date.now(),
+            reason: detail.reason || 'unknown',
+            orderId: position.id,
+            side: position.type,
+            ticker: position.ticker || position.symbol || this._getActiveTicker?.(),
+            sourceFileId: position.sourceFileId ?? position.source_file_id ?? null,
+            stopLoss: Number(position.stopLoss),
+            openPrice: Number(position.openPrice),
+            barTime: detail.barTime ?? detail.t ?? null,
+            guarded: !!detail.guarded,
+            guardTime: position._slNoTriggerBeforeTime ?? null,
+            guardTick: position._slNoTriggerBeforeTick ?? null,
+            skipReason: detail.skipReason || null,
+            rawTouched: !!detail.rawTouched,
+            effectiveExtreme: Number(detail.effectiveExtreme),
+            bidLow: Number(detail.bidLow),
+            bidHigh: Number(detail.bidHigh),
+            askLow: Number(detail.askLow),
+            askHigh: Number(detail.askHigh),
+            midOpen: Number(detail.midOpen),
+            fillPrice: detail.fillPrice != null ? Number(detail.fillPrice) : null,
+        };
+        if (!Array.isArray(this._slTriggerDiag)) this._slTriggerDiag = [];
+        this._slTriggerDiag.push(row);
+        if (this._slTriggerDiag.length > 80) this._slTriggerDiag.splice(0, this._slTriggerDiag.length - 80);
+        try {
+            if (typeof window !== 'undefined') {
+                if (!Array.isArray(window.__talariaOrderSlTriggerDiag)) window.__talariaOrderSlTriggerDiag = [];
+                window.__talariaOrderSlTriggerDiag.push(row);
+                if (window.__talariaOrderSlTriggerDiag.length > 80) {
+                    window.__talariaOrderSlTriggerDiag.splice(0, window.__talariaOrderSlTriggerDiag.length - 80);
+                }
+                if (window.__TALARIA_ORDER_SL_TRIGGER_DIAG_LOGS === true && typeof console !== 'undefined') {
+                    console.info('[TAL-01941 SL diag]', row);
+                }
+            }
+        } catch (_) { /* diagnostics must never affect trading */ }
+        return true;
     }
 
     /**
@@ -32770,6 +32819,7 @@ class OrderManager {
                     const effLowForSl = (position._trailSlAccLow != null && Number.isFinite(position._trailSlAccLow))
                         ? this._bidFromMid(position._trailSlAccLow, position, (high + low) / 2)
                         : barQ.bidLow;
+                    const rawBuySlTouched = !!(position.stopLoss && effLowForSl <= position.stopLoss);
                     if (!position.tpTargets || position.tpTargets.length === 0) {
                         const slHit = buySLGuarded
                             ? (position.stopLoss && this._tickAnimOverridesGuard(position._slNoTriggerBeforeTick, currentCandle, position.stopLoss, 'below', position))
@@ -32784,6 +32834,19 @@ class OrderManager {
                             position._slNoTriggerBeforeTick = undefined;
                             const lowFill = position._trailSlAccLow != null ? position._trailSlAccLow : low;
                             const fillPx = this._stopLossFillPrice(position.stopLoss, open, high, lowFill, true, position, currentCandle.t);
+                            this._recordSlTriggerDiag(position, {
+                                reason: 'hit',
+                                barTime: currentCandle.t,
+                                guarded: buySLGuarded,
+                                rawTouched: rawBuySlTouched,
+                                effectiveExtreme: effLowForSl,
+                                bidLow: barQ.bidLow,
+                                bidHigh: barQ.bidHigh,
+                                askLow: barQ.askLow,
+                                askHigh: barQ.askHigh,
+                                midOpen: open,
+                                fillPrice: fillPx,
+                            });
                             const _slBuy = this._slCloseHitType(position);
                             console.log(`   ${_slBuy === 'BE' ? '⚖️ BREAKEVEN' : '🛑 STOP LOSS'} HIT! Closing BUY #${position.id} at ${fillPx.toFixed(5)}${fillPx !== position.stopLoss ? ' (gap fill, SL was ' + position.stopLoss.toFixed(5) + ')' : ''}`);
                             this._pushSplitGroupSlClosesFromHit(position, fillPx, positionsToClose, queuedSplitSlGroupIds);
@@ -32796,6 +32859,19 @@ class OrderManager {
                                 : this._gapFill(position.takeProfit, open, true, true);
                             console.log(`   🎯 TAKE PROFIT HIT! Closing BUY #${position.id} at ${fillPx.toFixed(5)}${fillPx !== position.takeProfit ? ' (gap fill, TP was ' + position.takeProfit.toFixed(5) + ')' : ''}`);
                             positionsToClose.push({ id: position.id, closePrice: fillPx, type: 'TP' });
+                        } else if (buySLGuarded && rawBuySlTouched) {
+                            this._recordSlTriggerDiag(position, {
+                                reason: 'guarded-touch-miss',
+                                barTime: currentCandle.t,
+                                guarded: true,
+                                rawTouched: true,
+                                effectiveExtreme: effLowForSl,
+                                bidLow: barQ.bidLow,
+                                bidHigh: barQ.bidHigh,
+                                askLow: barQ.askLow,
+                                askHigh: barQ.askHigh,
+                                midOpen: open,
+                            });
                         }
                     } else {
                         // For multiple TPs, still check SL
@@ -32807,12 +32883,53 @@ class OrderManager {
                             position._slNoTriggerBeforeTick = undefined;
                             const lowFillM = position._trailSlAccLow != null ? position._trailSlAccLow : low;
                             const fillPx = this._stopLossFillPrice(position.stopLoss, open, high, lowFillM, true, position, currentCandle.t);
+                            this._recordSlTriggerDiag(position, {
+                                reason: 'hit',
+                                barTime: currentCandle.t,
+                                guarded: buySLGuarded,
+                                rawTouched: rawBuySlTouched,
+                                effectiveExtreme: effLowForSl,
+                                bidLow: barQ.bidLow,
+                                bidHigh: barQ.bidHigh,
+                                askLow: barQ.askLow,
+                                askHigh: barQ.askHigh,
+                                midOpen: open,
+                                fillPrice: fillPx,
+                            });
                             const _slT = this._slCloseHitType(position);
                             console.log(`   ${_slT === 'BE' ? '⚖️ BREAKEVEN' : '🛑 STOP LOSS'} HIT! Closing remaining position BUY #${position.id} at ${fillPx.toFixed(5)}${fillPx !== position.stopLoss ? ' (gap fill)' : ''}`);
                             this._pushSplitGroupSlClosesFromHit(position, fillPx, positionsToClose, queuedSplitSlGroupIds);
+                        } else if (buySLGuarded && rawBuySlTouched) {
+                            this._recordSlTriggerDiag(position, {
+                                reason: 'guarded-touch-miss',
+                                barTime: currentCandle.t,
+                                guarded: true,
+                                rawTouched: true,
+                                effectiveExtreme: effLowForSl,
+                                bidLow: barQ.bidLow,
+                                bidHigh: barQ.bidHigh,
+                                askLow: barQ.askLow,
+                                askHigh: barQ.askHigh,
+                                midOpen: open,
+                            });
                         }
                     }
                 } else {
+                    const rawBuySkipTouched = !!(position.stopLoss && barQ.bidLow <= position.stopLoss);
+                    if (rawBuySkipTouched) {
+                        this._recordSlTriggerDiag(position, {
+                            reason: 'skipped-touch',
+                            skipReason: this._shouldSkipSlTpAfterBeThisBar(position, currentCandle.t) ? 'auto-be-same-bar' : 'fill-candle',
+                            barTime: currentCandle.t,
+                            rawTouched: true,
+                            effectiveExtreme: barQ.bidLow,
+                            bidLow: barQ.bidLow,
+                            bidHigh: barQ.bidHigh,
+                            askLow: barQ.askLow,
+                            askHigh: barQ.askHigh,
+                            midOpen: open,
+                        });
+                    }
                     if (this._shouldSkipSlTpAfterBeThisBar(position, currentCandle.t)) {
                         console.log(`   ⏭️ Skipping SL checks for BUY #${position.id} - AUTO_BE on this bar (no same-bar stop-out from new SL)`);
                     } else {
@@ -33085,6 +33202,7 @@ class OrderManager {
                     const effHighForSl = (position._trailSlAccHigh != null && Number.isFinite(position._trailSlAccHigh))
                         ? this._askFromMid(position._trailSlAccHigh, position, (high + low) / 2)
                         : barQ.askHigh;
+                    const rawSellSlTouched = !!(position.stopLoss && effHighForSl >= position.stopLoss);
                     if (!position.tpTargets || position.tpTargets.length === 0) {
                         const slHitSell = sellSLGuarded
                             ? (position.stopLoss && this._tickAnimOverridesGuard(position._slNoTriggerBeforeTick, currentCandle, position.stopLoss, 'above', position))
@@ -33099,6 +33217,19 @@ class OrderManager {
                             position._slNoTriggerBeforeTick = undefined;
                             const highFill = position._trailSlAccHigh != null ? position._trailSlAccHigh : high;
                             const fillPx = this._stopLossFillPrice(position.stopLoss, open, highFill, low, false, position, currentCandle.t);
+                            this._recordSlTriggerDiag(position, {
+                                reason: 'hit',
+                                barTime: currentCandle.t,
+                                guarded: sellSLGuarded,
+                                rawTouched: rawSellSlTouched,
+                                effectiveExtreme: effHighForSl,
+                                bidLow: barQ.bidLow,
+                                bidHigh: barQ.bidHigh,
+                                askLow: barQ.askLow,
+                                askHigh: barQ.askHigh,
+                                midOpen: open,
+                                fillPrice: fillPx,
+                            });
                             const _slSell = this._slCloseHitType(position);
                             console.log(`   ${_slSell === 'BE' ? '⚖️ BREAKEVEN' : '🛑 STOP LOSS'} HIT! Closing SELL #${position.id} at ${fillPx.toFixed(5)}${fillPx !== position.stopLoss ? ' (gap fill, SL was ' + position.stopLoss.toFixed(5) + ')' : ''}`);
                             this._pushSplitGroupSlClosesFromHit(position, fillPx, positionsToClose, queuedSplitSlGroupIds);
@@ -33111,6 +33242,19 @@ class OrderManager {
                                 : this._gapFill(position.takeProfit, open, false, true);
                             console.log(`   🎯 TAKE PROFIT HIT! Closing SELL #${position.id} at ${fillPx.toFixed(5)}${fillPx !== position.takeProfit ? ' (gap fill, TP was ' + position.takeProfit.toFixed(5) + ')' : ''}`);
                             positionsToClose.push({ id: position.id, closePrice: fillPx, type: 'TP' });
+                        } else if (sellSLGuarded && rawSellSlTouched) {
+                            this._recordSlTriggerDiag(position, {
+                                reason: 'guarded-touch-miss',
+                                barTime: currentCandle.t,
+                                guarded: true,
+                                rawTouched: true,
+                                effectiveExtreme: effHighForSl,
+                                bidLow: barQ.bidLow,
+                                bidHigh: barQ.bidHigh,
+                                askLow: barQ.askLow,
+                                askHigh: barQ.askHigh,
+                                midOpen: open,
+                            });
                         }
                     } else {
                         // For multiple TPs, still check SL
@@ -33122,12 +33266,53 @@ class OrderManager {
                             position._slNoTriggerBeforeTick = undefined;
                             const highFillM = position._trailSlAccHigh != null ? position._trailSlAccHigh : high;
                             const fillPx = this._stopLossFillPrice(position.stopLoss, open, highFillM, low, false, position, currentCandle.t);
+                            this._recordSlTriggerDiag(position, {
+                                reason: 'hit',
+                                barTime: currentCandle.t,
+                                guarded: sellSLGuarded,
+                                rawTouched: rawSellSlTouched,
+                                effectiveExtreme: effHighForSl,
+                                bidLow: barQ.bidLow,
+                                bidHigh: barQ.bidHigh,
+                                askLow: barQ.askLow,
+                                askHigh: barQ.askHigh,
+                                midOpen: open,
+                                fillPrice: fillPx,
+                            });
                             const _slSellM = this._slCloseHitType(position);
                             console.log(`   ${_slSellM === 'BE' ? '⚖️ BREAKEVEN' : '🛑 STOP LOSS'} HIT! Closing remaining position SELL #${position.id} at ${fillPx.toFixed(5)}${fillPx !== position.stopLoss ? ' (gap fill)' : ''}`);
                             this._pushSplitGroupSlClosesFromHit(position, fillPx, positionsToClose, queuedSplitSlGroupIds);
+                        } else if (sellSLGuarded && rawSellSlTouched) {
+                            this._recordSlTriggerDiag(position, {
+                                reason: 'guarded-touch-miss',
+                                barTime: currentCandle.t,
+                                guarded: true,
+                                rawTouched: true,
+                                effectiveExtreme: effHighForSl,
+                                bidLow: barQ.bidLow,
+                                bidHigh: barQ.bidHigh,
+                                askLow: barQ.askLow,
+                                askHigh: barQ.askHigh,
+                                midOpen: open,
+                            });
                         }
                     }
                 } else {
+                    const rawSellSkipTouched = !!(position.stopLoss && barQ.askHigh >= position.stopLoss);
+                    if (rawSellSkipTouched) {
+                        this._recordSlTriggerDiag(position, {
+                            reason: 'skipped-touch',
+                            skipReason: this._shouldSkipSlTpAfterBeThisBar(position, currentCandle.t) ? 'auto-be-same-bar' : 'fill-candle',
+                            barTime: currentCandle.t,
+                            rawTouched: true,
+                            effectiveExtreme: barQ.askHigh,
+                            bidLow: barQ.bidLow,
+                            bidHigh: barQ.bidHigh,
+                            askLow: barQ.askLow,
+                            askHigh: barQ.askHigh,
+                            midOpen: open,
+                        });
+                    }
                     if (this._shouldSkipSlTpAfterBeThisBar(position, currentCandle.t)) {
                         console.log(`   ⏭️ Skipping SL checks for SELL #${position.id} - AUTO_BE on this bar (no same-bar stop-out from new SL)`);
                     } else {

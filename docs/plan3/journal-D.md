@@ -172,3 +172,11 @@
 - Fix: `_captureEntryScreenshotOnce()` now copies a late entry screenshot/ref into the matching journal row and calls `persistJournal()`, behind `__TALARIA_DISABLE_ORDER_ENTRY_SCREENSHOT_JOURNAL_RETENTION_V1` (default ON). Existing duplicate-capture idempotency remains behind `__TALARIA_DISABLE_ORDER_ENTRY_SCREENSHOT_IDEMPOTENT_V1`.
 - RED: `TALARIA_TEST_DISABLE_ORDER_ENTRY_SCREENSHOT_JOURNAL_RETENTION=1 node "chart v 1.4/chart/modules/order-entry-screenshot-idempotent.test.mjs"` fails because the journal row remains screenshot-empty.
 - GREEN: both `node "chart v 1.4/chart/modules/order-entry-screenshot-idempotent.test.mjs"` and `node "homepage/public/chart/modules/order-entry-screenshot-idempotent.test.mjs"` pass.
+
+## 2026-07-29 — Cluster G / TAL-01941
+
+- Scope decision: no speculative SL fill change. Report lacks pair/timeframe/repro, so this batch adds bounded decision evidence only.
+- Instrumentation: local BUY/SELL SL paths now record `hit`, `guarded-touch-miss`, and `skipped-touch` rows into `window.__talariaOrderSlTriggerDiag` and `orderManager._slTriggerDiag`, capped at 80 rows, behind `__TALARIA_DISABLE_ORDER_SL_TRIGGER_DIAG_V1` (default ON). Rows include order id, side, ticker/sourceFileId, stop, bid/ask extremes, effective extreme, guard time/tick, skip reason, bar time, and fill price when applicable. Console output remains quiet unless `window.__TALARIA_ORDER_SL_TRIGGER_DIAG_LOGS === true`.
+- Ownership note: TAL-01896 still points at `chart v 1.4/talaria-design/src/orderManagerTradeRows.js`, outside Manager D's grant. I did not edit it.
+- RED: `TALARIA_TEST_DISABLE_ORDER_SL_TRIGGER_DIAG=1 node "chart v 1.4/chart/modules/order-sl-trigger-diagnostics.test.mjs"` fails because diagnostics are disabled.
+- GREEN: both `node "chart v 1.4/chart/modules/order-sl-trigger-diagnostics.test.mjs"` and `node "homepage/public/chart/modules/order-sl-trigger-diagnostics.test.mjs"` pass.
