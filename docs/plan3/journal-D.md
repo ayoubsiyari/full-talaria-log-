@@ -256,3 +256,11 @@
 - Flagged post-merge D gates that must pass after B resolves conflicts: new-draft constraint reset, live preview PnL, live risk quantity, block-place-during-preview-drag, and coincident multi-TP hit rows.
 - Disclosed out-of-grant preferences writes from `6ad9f48ec`: `preferences-sync.js` / `preferences-init.js` add user-level drawing-tool pins, preserve non-empty local timeframe/tool pins over empty cloud arrays, queue them back to API, and expose `save/loadDrawingToolFavorites`. These are not D-ratified and should come through B's merge only if B accepts them.
 - Routed residuals again: M20-A owner must re-pin/re-review the `timezone-manager.js` sha256 gate; B must rebuild `dist-v9` bundles before PO can see TAL-01896 in the app.
+
+## 2026-07-29 — M17-DI2 / TAL-01918 completed-bar close mutation
+
+- Read-only diagnosis complete; no product code edited before grant.
+- Root cause found: same-symbol multichart replay current-price synchronization writes a host canonical mark into `chart.data[chart.data.length - 1]`. Primary sites are `chart.js` `resolveEffectiveCurrentPrice()`, `replay-system.js` `_applyCanonicalReplayMarkFromDetail()`, and fallback `panel-cmd-bridge.js` `applyCanonicalReplayMarkToPanel()`. Trigger: host replay mark is resolved/broadcast into a same-symbol embed panel; if no forming candle is active, the panel's last display bar is already completed and its `c/h/l` are mutated by a read/render path.
+- RED: `node --test "chart v 1.4/chart/modules/m17-di2-completed-bar-close-mutation.red.test.mjs"` fails today on both `last.c/h/l` mutation sites.
+- PO check written at `docs/plan3/PO-M17-DI2-COMPLETED-BAR-MUTATION-CHECK-20260729.md`. It is visually observable if a same-symbol multichart panel's closed candle shape or OHLC readout changes after the host price moves; if the PO cannot reproduce the visible change, use the RED gate as the engineering blocker.
+- Ticket status ledger written at `docs/plan3/TICKET-STATUS-LEDGER-20260729.md`.
