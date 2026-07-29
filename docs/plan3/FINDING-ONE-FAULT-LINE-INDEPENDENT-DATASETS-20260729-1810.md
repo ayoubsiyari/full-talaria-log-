@@ -49,10 +49,11 @@ produces 5.5x the memory residue.
   of those shots capped caches. **Capping caches did not change the leak**, which argues the
   residual is not cache-shaped.
 - `workers: +1` per multichart cycle, still unattributed, still holding its own invisible heap.
-- Whether restoring aggressive prefetch changes the diverse-symbol lag. The PO ran a console command
-  during this test; which one is unconfirmed. If the four hoarding flags were set and the lag
-  persisted, the cache-starvation theory is refuted and the independent-dataset pipeline is the
-  whole story.
+- ~~Whether restoring aggressive prefetch changes the diverse-symbol lag.~~ **SETTLED 18:07.** The
+  PO confirms the four hoarding flags **were** set for this test —
+  `__TALARIA_DISABLE_MC_SMART_PREFETCH_OTHERS_V1`, `__TALARIA_DISABLE_MC_BT_TF_PREFETCH_V1`,
+  `__TALARIA_DISABLE_MC_HIGH_LIMIT_BULK_V1`, `__TALARIA_DISABLE_MC_BAR_STORE_TIGHT_CAP_V1`. Old
+  aggressive hoarding was restored and **the diverse-symbol lag persisted.** See below.
 
 ## Consequence for priority
 
@@ -62,6 +63,24 @@ the correct probe.
 
 The right next question is not "which cache leaks" but **"what does the independent-dataset pipeline
 allocate and retain per dataset, and why does its cover promise stall."**
+
+## The caps are free — cache-starvation refuted by experiment
+
+The PO's test at 18:04 was run with all four hoarding gates **disabled**, i.e. with the original
+aggressive prefetch and uncapped bar store restored. The diverse-symbol lag **persisted unchanged**.
+Same-symbol panels still played nicely; distinct-symbol panels still stalled.
+
+Two conclusions, both useful:
+
+1. **The caps did not cause the lag.** LEAK-F/G/H/I/J can stay on. We are not trading smoothness for
+   memory, which was the live risk in the PO's theory and the reason the experiment was worth ten
+   minutes.
+2. **The independent-dataset pipeline is the whole story for lag.** With hoarding at maximum, four
+   distinct datasets still stall. That removes data availability as an explanation and leaves the
+   cover-promise / paint-arm path A is already probing.
+
+This is a clean negative result obtained in ten minutes, and it was the PO's own hypothesis being
+tested honestly rather than argued about.
 
 ## Note on the PO's architectural theory
 
