@@ -9900,6 +9900,49 @@ class Chart {
         }
     }
 
+    /**
+     * M17-DI2 / TAL-01918: stamp canonical replay mark onto the FORMING last bar only.
+     * Same complete-vs-forming comparison as `_trimBarOhlcToReplayPlayhead`:
+     *   playhead >= periodEnd - 1 → COMPLETE → leave alone.
+     * Indeterminate (non-finite playhead / null periodEnd) preserves tip write.
+     * Kill-switch: window.__TALARIA_DISABLE_COMPLETED_BAR_CLOSE_GUARD_V1
+     * Absent/falsy = guard ON; truthy = unguarded write. Read per call.
+     */
+    _applyCanonicalMarkToFormingBar(mark) {
+        if (!Number.isFinite(mark)) return;
+        if (!Array.isArray(this.data) || !this.data.length) return;
+        const last = this.data[this.data.length - 1];
+        if (!last || typeof last !== 'object') return;
+
+        const guardDisabled = typeof window !== 'undefined'
+            && window.__TALARIA_DISABLE_COMPLETED_BAR_CLOSE_GUARD_V1;
+        if (!guardDisabled) {
+            const playhead = typeof this._getReplayPlayheadMs === 'function'
+                ? this._getReplayPlayheadMs()
+                : null;
+            const lastIdx = this.data.length - 1;
+            const barT = Number(last.t);
+            const periodMs = typeof this.parseTimeframe === 'function'
+                ? this.parseTimeframe(this.currentTimeframe)
+                : null;
+            const periodEnd = (typeof this._getBarPeriodEndMs === 'function' && Number.isFinite(barT))
+                ? this._getBarPeriodEndMs(barT, this.data, lastIdx, periodMs)
+                : null;
+            if (Number.isFinite(playhead)
+                && periodEnd != null
+                && Number.isFinite(periodEnd)
+                && playhead >= periodEnd - 1) {
+                return;
+            }
+        }
+
+        last.c = mark;
+        const h = Number(last.h ?? last.high);
+        const l = Number(last.l ?? last.low);
+        if (Number.isFinite(h)) last.h = Math.max(h, mark);
+        if (Number.isFinite(l)) last.l = Math.min(l, mark);
+    }
+
     _measureRawDataStepMs(rawData) {
         if (!Array.isArray(rawData) || rawData.length < 2) return NaN;
         const step = Number(rawData[1].t) - Number(rawData[0].t);
@@ -32388,16 +32431,8 @@ class Chart {
                             if (Number.isFinite(live)) {
                                 this._mcCanonicalReplayMark = live;
                                 // Keep forming-candle close on the same source of truth as the label.
-                                if (Array.isArray(this.data) && this.data.length) {
-                                    const last = this.data[this.data.length - 1];
-                                    if (last && typeof last === 'object') {
-                                        last.c = live;
-                                        const h = Number(last.h ?? last.high);
-                                        const l = Number(last.l ?? last.low);
-                                        if (Number.isFinite(h)) last.h = Math.max(h, live);
-                                        if (Number.isFinite(l)) last.l = Math.min(l, live);
-                                    }
-                                }
+                                // M17-DI2 / TAL-01918: only mutate the forming bar (completed bars untouched).
+                                this._applyCanonicalMarkToFormingBar(live);
                                 return live;
                             }
                         }

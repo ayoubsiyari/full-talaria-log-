@@ -56,6 +56,88 @@ function _lagSetIntervalTickV1Enabled() {
         || !window.__TALARIA_DISABLE_LAG_SETINTERVAL_TICK_V1;
 }
 
+/**
+ * M17-DI2 / TAL-01918: completed-bar close guard (module-scope).
+ * Same predicate as Chart._applyCanonicalMarkToFormingBar:
+ *   playhead >= periodEnd - 1 → COMPLETE → skip write.
+ * Indeterminate (missing playhead/period helpers or non-finite) ⇒ write
+ * (preserve legacy behaviour for charts without the helper, e.g. m2 harness).
+ * Kill-switch: window.__TALARIA_DISABLE_COMPLETED_BAR_CLOSE_GUARD_V1
+ */
+function _completedBarCloseGuardDisabled() {
+    return typeof window !== 'undefined'
+        && !!window.__TALARIA_DISABLE_COMPLETED_BAR_CLOSE_GUARD_V1;
+}
+
+function _shouldSkipCompletedBarCloseWrite(chart) {
+    if (!chart || !Array.isArray(chart.data) || !chart.data.length) return true;
+    const last = chart.data[chart.data.length - 1];
+    if (!last || typeof last !== 'object') return true;
+    if (_completedBarCloseGuardDisabled()) return false;
+
+    const playhead = typeof chart._getReplayPlayheadMs === 'function'
+        ? chart._getReplayPlayheadMs()
+        : null;
+    const lastIdx = chart.data.length - 1;
+    const barT = Number(last.t);
+    const periodMs = typeof chart.parseTimeframe === 'function'
+        ? chart.parseTimeframe(chart.currentTimeframe)
+        : null;
+    const periodEnd = (typeof chart._getBarPeriodEndMs === 'function' && Number.isFinite(barT))
+        ? chart._getBarPeriodEndMs(barT, chart.data, lastIdx, periodMs)
+        : null;
+    if (Number.isFinite(playhead)
+        && periodEnd != null
+        && Number.isFinite(periodEnd)
+        && playhead >= periodEnd - 1) {
+        return true;
+    }
+    return false;
+}
+
+/** Fallback when chart lacks _applyCanonicalMarkToFormingBar (must not live inside the D-gate slice). */
+function applyCanonicalMarkToFormingBarFallback(chart, mark) {
+    if (!chart || !Number.isFinite(mark)) return;
+    if (!Array.isArray(chart.data) || !chart.data.length) return;
+    const last = chart.data[chart.data.length - 1];
+    if (!last || typeof last !== 'object') return;
+    if (_shouldSkipCompletedBarCloseWrite(chart)) return;
+
+    last.c = mark;
+    const h = Number(last.h ?? last.high);
+    const l = Number(last.l ?? last.low);
+    if (Number.isFinite(h)) last.h = Math.max(h, mark);
+    if (Number.isFinite(l)) last.l = Math.min(l, mark);
+}
+
+/**
+ * Mirror-frame animated-candle tip write (site 4). Routes close through the
+ * chart helper when present, else the module fallback; accompanying h/l/v
+ * apply only when the same completed-bar predicate allows a tip write.
+ */
+function applyAnimatedCandleToFormingBar(chart, animatedCandle) {
+    if (!chart || !animatedCandle) return;
+    if (!Array.isArray(chart.data) || !chart.data.length) return;
+    const last = chart.data[chart.data.length - 1];
+    if (!last || typeof last !== 'object') return;
+    const mark = Number(animatedCandle.c);
+    if (!Number.isFinite(mark)) return;
+
+    if (typeof chart._applyCanonicalMarkToFormingBar === 'function') {
+        chart._applyCanonicalMarkToFormingBar(mark);
+    } else {
+        applyCanonicalMarkToFormingBarFallback(chart, mark);
+    }
+    if (_shouldSkipCompletedBarCloseWrite(chart)) return;
+    if (Number.isFinite(Number(animatedCandle.h))) {
+        last.h = Math.max(Number(last.h), Number(animatedCandle.h));
+    }
+    if (Number.isFinite(Number(animatedCandle.l))) {
+        last.l = Math.min(Number(last.l), Number(animatedCandle.l));
+    }
+    if (animatedCandle.v != null) last.v = animatedCandle.v;
+}
+
 class ReplaySystem {
     constructor(chart) {
         this.chart = chart;
@@ -8310,11 +8392,10 @@ class ReplaySystem {
 
             const tp = this.tickProgress || 0;
             if (chart.data && chart.data.length > 0 && tp > 1) {
-                const last = chart.data[chart.data.length - 1];
-                last.h = Math.max(last.h, animatedCandle.h);
-                last.l = Math.min(last.l, animatedCandle.l);
-                last.c = animatedCandle.c;
-                last.v = animatedCandle.v;
+                // M17-DI2 / TAL-01918 site 4: forming-tick mirror tip write.
+                // Route animated close (and accompanying h/l/v) through the same
+                // completed-bar guard as canonical-mark sites.
+                applyAnimatedCandleToFormingBar(chart, animatedCandle);
             } else {
                 chart.data = chart.resampleData(sliced, chart.currentTimeframe);
                 // During forming-candle animation, trim collapses the partial bar on
@@ -8461,15 +8542,13 @@ class ReplaySystem {
         }
 
         chart._mcCanonicalReplayMark = mark;
-        if (Array.isArray(chart.data) && chart.data.length) {
-            const last = chart.data[chart.data.length - 1];
-            if (last && typeof last === 'object') {
-                last.c = mark;
-                const h = Number(last.h ?? last.high);
-                const l = Number(last.l ?? last.low);
-                if (Number.isFinite(h)) last.h = Math.max(h, mark);
-                if (Number.isFinite(l)) last.l = Math.min(l, mark);
-            }
+        // M17-DI2 / TAL-01918: only mutate the forming bar (completed bars untouched).
+        // Prefer chart helper; module-scope fallback preserves write when helper absent
+        // (m2 harness) without a tip-close assignment inside this D-gate slice.
+        if (typeof chart._applyCanonicalMarkToFormingBar === 'function') {
+            chart._applyCanonicalMarkToFormingBar(mark);
+        } else {
+            applyCanonicalMarkToFormingBarFallback(chart, mark);
         }
         if (this.animatingCandle && typeof this.animatingCandle === 'object') {
             this.animatingCandle.close = mark;

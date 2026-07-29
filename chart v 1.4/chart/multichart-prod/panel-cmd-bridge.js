@@ -2470,12 +2470,39 @@
                 return;
             }
             ch._mcCanonicalReplayMark = mark;
-            if (Array.isArray(ch.data) && ch.data.length) {
+            // M17-DI2 / TAL-01918: only mutate the forming bar (completed bars untouched).
+            if (typeof ch._applyCanonicalMarkToFormingBar === 'function') {
+                ch._applyCanonicalMarkToFormingBar(mark);
+            } else if (Array.isArray(ch.data) && ch.data.length) {
                 var last = ch.data[ch.data.length - 1];
                 if (last && typeof last === 'object') {
-                    last.c = mark;
-                    if (Number.isFinite(Number(last.h))) last.h = Math.max(Number(last.h), mark);
-                    if (Number.isFinite(Number(last.l))) last.l = Math.min(Number(last.l), mark);
+                    var guardOff = typeof global !== 'undefined'
+                        && global.__TALARIA_DISABLE_COMPLETED_BAR_CLOSE_GUARD_V1;
+                    var skipWrite = false;
+                    if (!guardOff
+                        && typeof ch._getReplayPlayheadMs === 'function'
+                        && typeof ch._getBarPeriodEndMs === 'function') {
+                        var playhead = ch._getReplayPlayheadMs();
+                        var periodMs = typeof ch.parseTimeframe === 'function'
+                            ? ch.parseTimeframe(ch.currentTimeframe)
+                            : null;
+                        var lastIdx = ch.data.length - 1;
+                        var barT = Number(last.t);
+                        var periodEnd = Number.isFinite(barT)
+                            ? ch._getBarPeriodEndMs(barT, ch.data, lastIdx, periodMs)
+                            : null;
+                        if (Number.isFinite(playhead)
+                            && periodEnd != null
+                            && Number.isFinite(periodEnd)
+                            && playhead >= periodEnd - 1) {
+                            skipWrite = true;
+                        }
+                    }
+                    if (!skipWrite) {
+                        last.c = mark;
+                        if (Number.isFinite(Number(last.h))) last.h = Math.max(Number(last.h), mark);
+                        if (Number.isFinite(Number(last.l))) last.l = Math.min(Number(last.l), mark);
+                    }
                 }
             }
         } catch (_) { /* ignore */ }
