@@ -537,6 +537,30 @@ async function applyHostDataset(page, { fileId, timeframe }) {
  * of the instrument, not the product. Discarding console entries and releasing
  * the console object group frees them.
  */
+/** Kill-switch: set to '1' to restore the old behaviour of leaving them held. */
+export const CONSOLE_RELEASE_DISABLE_ENV = 'TALARIA_DISABLE_CONSOLE_RELEASE_V1';
+
+/**
+ * Resolve the console-release mode for a run.
+ *
+ * Deep release is the DEFAULT because leaving it off makes the harness over-read
+ * the leak. Measured on deployed b99, distinct datasets, 3 cycles: floors
+ * 105.37/132.30/151.09 (+26.93,+18.79) with the inspector holding dead realms,
+ * against 102.77/124.83/121.17 (+22.06,-3.66) with them released — and the realm
+ * census drops from 4 inspector-retained realms to 2. A harness that pins the
+ * object it is measuring cannot grade a fix to it.
+ *
+ * Absent env means enabled, so the switch is testable against ABSENT.
+ */
+export function resolveConsoleRelease(requested, env = process.env) {
+  if (String(env?.[CONSOLE_RELEASE_DISABLE_ENV] || '') === '1') return false;
+  if (requested === 'deep') return 'deep';
+  if (requested === 'shallow') return 'shallow';
+  // true (bare --release-console-handles) and the unset default both mean deep:
+  // the shallow release was measured to free nothing.
+  return 'deep';
+}
+
 async function releaseConsoleHandles(cdp, cycle, mode = 'shallow') {
   const results = {};
   const send = async (method, params) => {
@@ -1120,7 +1144,8 @@ async function runMultichartCycles({
     // PO-hand: short settle, no GC — match DevTools/console read timing.
     await sleep(poHandSample ? Math.min(settleMs, 800) : settleMs);
     const isFinal = index === cycles - 1;
-    if (releaseConsole) await releaseConsoleHandles(cdp, index + 1, releaseConsole === 'deep' ? 'deep' : 'shallow');
+    const consoleReleaseMode = resolveConsoleRelease(releaseConsole);
+    if (consoleReleaseMode) await releaseConsoleHandles(cdp, index + 1, consoleReleaseMode);
     const takeSnap = snapshotPolicy === 'every-return';
     const returnSingle = await sampleHeap(page, cdp, {
       snapshot: takeSnap,

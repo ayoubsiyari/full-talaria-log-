@@ -8,6 +8,7 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
+import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 import {
@@ -124,6 +125,103 @@ function loadFixtureReport(fixtureDir) {
   return JSON.parse(fs.readFileSync(reportPath, 'utf8'));
 }
 
+/**
+ * Newest steady-state snapshot written by a run, given the --snapshot-out base.
+ *
+ * The browser writes one file per graded cycle as `<base>.cycleN<ext>`, so the
+ * highest N that exists is the collapsed state to grade.
+ */
+export function newestCycleSnapshot(snapshotOutPath, { existsSync = fs.existsSync } = {}) {
+  if (!snapshotOutPath) return null;
+  const ext = path.extname(snapshotOutPath);
+  const base = ext ? snapshotOutPath.slice(0, -ext.length) : snapshotOutPath;
+  for (let cycle = 12; cycle >= 1; cycle -= 1) {
+    const candidate = `${base}.cycle${cycle}${ext}`;
+    if (existsSync(candidate)) return candidate;
+  }
+  return existsSync(snapshotOutPath) ? snapshotOutPath : null;
+}
+
+/**
+ * Turn a REALM-SURVIVAL-V1 grade into a gate cell.
+ *
+ * Kept pure and separate from the spawn so the grading policy can be tested
+ * without a 340 MB snapshot: a product-retained peer realm is a blocking leak,
+ * the kill switch is a non-blocking SKIP, and inspector-retained realms are
+ * reported but never graded because they are ours, not the product's.
+ */
+export function buildRealmSurvivalCell(grade) {
+  if (!grade) return null;
+  if (grade.status === 'SKIPPED') {
+    return {
+      name: 'REALM-SURVIVAL-V1',
+      pass: true,
+      status: 'SKIPPED',
+      detail: grade.reason || 'disabled by kill switch',
+      nonBlocking: true,
+    };
+  }
+  const counts = grade.census?.counts || {};
+  const survivors = grade.census?.survivors || [];
+  const inspector = counts['inspector-retained'] ?? 0;
+  const detail = grade.ok
+    ? `no product-retained peer realm (live=${counts.live ?? '?'} `
+      + `inspector-retained=${inspector} not graded)`
+    : `${survivors.length} torn-down peer realm(s) still reachable from product references: `
+      + `${survivors.map((s) => s.label).join(', ')} `
+      + `[${survivors[0]?.path?.slice(0, 200) || 'no path'}]`;
+  return {
+    name: 'REALM-SURVIVAL-V1',
+    pass: grade.ok === true,
+    status: grade.status || (grade.ok ? 'GREEN' : 'RED'),
+    detail: grade.reason ? `${detail} — ${grade.reason}` : detail,
+    blocking: true,
+    survivors: survivors.map((s) => ({ label: s.label, panel: s.panel, cycle: s.cycle })),
+    inspectorRetainedNotGraded: inspector,
+  };
+}
+
+/**
+ * Whether this process can afford to grade in-line.
+ *
+ * Measured the hard way: grading spawned a ~3.3 GB child while this process was
+ * still holding parsed steady-state snapshots, and the run died with no output
+ * after 4.5 minutes of browser work. A grade is never worth losing the run that
+ * produced it, so above the threshold we report the command instead of running it.
+ */
+export function shouldGradeInProcess(heapUsedBytes, limitBytes = 1_500_000_000) {
+  return Number.isFinite(heapUsedBytes) && heapUsedBytes < limitBytes;
+}
+
+/** The standalone command to grade a snapshot, so a skip is still actionable. */
+export function realmSurvivalCommandFor(snapshot) {
+  return `node --max-old-space-size=10240 scripts/realm-survival-gate.mjs --snapshot=${snapshot} --json`;
+}
+
+/**
+ * Grade a snapshot in a child process, because parsing ~340 MB of snapshot needs
+ * a larger old-space than this gate is normally launched with.
+ */
+function gradeRealmSurvivalSnapshot(snapshot) {
+  const gateScript = path.join(path.dirname(fileURLToPath(import.meta.url)), 'realm-survival-gate.mjs');
+  const child = spawnSync(
+    process.execPath,
+    ['--max-old-space-size=6144', gateScript, `--snapshot=${snapshot}`, '--json'],
+    { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 },
+  );
+  const stdout = String(child.stdout || '').trim();
+  try {
+    return JSON.parse(stdout);
+  } catch (_) {
+    return {
+      status: 'RED',
+      ok: false,
+      reason: `realm-survival grade did not return JSON (exit ${child.status}): `
+        + `${String(child.stderr || stdout).slice(0, 300)}`,
+    };
+  }
+}
+
 export async function runHeapCycleMemoryGate({
   fixtureDir = null,
   requireBrowser = false,
@@ -189,6 +287,24 @@ export async function runHeapCycleMemoryGate({
     }
 
     const cells = assertHeapCycleMemoryReport(report);
+    // Grade realm survival whenever a run wrote a snapshot to disk. A leak that
+    // retains a whole panel realm does not always show in a floor delta, and a
+    // floor delta cannot say whether the product or our inspector holds it.
+    const gradedSnapshot = newestCycleSnapshot(snapshotOutPath);
+    if (gradedSnapshot) {
+      const affordable = shouldGradeInProcess(process.memoryUsage().heapUsed);
+      const cell = affordable
+        ? buildRealmSurvivalCell(gradeRealmSurvivalSnapshot(gradedSnapshot))
+        : {
+          name: 'REALM-SURVIVAL-V1',
+          pass: true,
+          status: 'SKIPPED-LOWMEM',
+          detail: 'not graded in-process — this run is holding parsed snapshots and an '
+            + `in-line grade has killed a run before. Grade it with: ${realmSurvivalCommandFor(gradedSnapshot)}`,
+          nonBlocking: true,
+        };
+      if (cell) cells.push({ ...cell, snapshot: gradedSnapshot });
+    }
     if (requireBuild) {
       const got = report?.meta?.buildId || null;
       const pinOk = got === requireBuild;

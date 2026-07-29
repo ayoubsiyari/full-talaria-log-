@@ -1,0 +1,81 @@
+{
+  "packet": "MANAGER-C-W81",
+  "phase": "PHASE-1 memory kill (plan ad40cbc6b)",
+  "tier": "MID",
+  "model": "gpt-5.5",
+  "tierJustification": "harness instrument correction and gate wiring; no money path and no product code in the diff, so MID is the need. No TOP claimed.",
+  "headline": "A LARGE PART OF THE PER-CYCLE HEAP GROWTH I HAVE BEEN REPORTING WAS MY OWN CDP SESSION. Releasing the inspector's hold before each floor sample flattens the steady-state delta from +18.79 MB to -3.66 MB, and the product still holds exactly one panel realm.",
+  "whatChanged": {
+    "cut": "deep console release is now the DEFAULT before every floor sample in the heap-cycle harness",
+    "why": "With the Runtime domain enabled the inspector holds page objects as '(Global handles) / DevTools console'. An Error created inside a panel realm closes over that realm through its stack accessor, so our own session pins dead realms. A harness that pins the object it measures cannot grade a fix to it.",
+    "shallowReleaseDoesNothing": "Runtime.discardConsoleEntries + releaseObjectGroup('console') both returned ok on every cycle and freed nothing: 4 product-held vs 8 console-held realms, identical to the control.",
+    "deepReleaseWorks": "Runtime.setAsyncCallStackDepth(0) + Runtime.disable + HeapProfiler.collectGarbage + Runtime.enable",
+    "killSwitch": {
+      "env": "TALARIA_DISABLE_CONSOLE_RELEASE_V1=1",
+      "effect": "restores the old behaviour of releasing nothing",
+      "testableAgainstAbsent": "absent env means enabled; verified absent=deep, '1'=false, '0'/'true'=deep",
+      "flippableWithoutReload": "read per run, no build step"
+    }
+  },
+  "measurement": {
+    "surface": "deployed b99, distinct datasets (4/4 observed every cycle), PO workload armed playing=4 every cycle, 3 cycles",
+    "runs": {
+      "control_inspectorHolding": { "floorsMB": [105.37, 132.30, 151.09], "deltasMB": [26.93, 18.79] },
+      "shallowRelease": { "floorsMB": [105.30, 131.83, 152.61], "deltasMB": [26.53, 20.78] },
+      "workerTermination": { "floorsMB": [103.60, 133.84, 154.70], "deltasMB": [30.24, 20.86] },
+      "datasetRotation": { "floorsMB": [101.26, 127.20, 150.57], "deltasMB": [25.94, 23.37] },
+      "deepRelease": { "floorsMB": [102.77, 124.83, 121.17], "deltasMB": [22.06, -3.66] },
+      "deepReleaseAsDefaultNoFlag": { "floorsMB": [101.34, 124.95, 134.23], "deltasMB": [23.61, 9.28] }
+    },
+    "steadyStateDeltaSummary": {
+      "inspectorHolding": { "samples": [18.79, 20.78, 20.86, 23.37], "meanMB": 20.95 },
+      "inspectorReleased": { "samples": [-3.66, 9.28], "meanMB": 2.81 },
+      "honestLimit": "n=2 with a 13 MB spread. The drop is about an order of magnitude and the direction is consistent, but I cannot put a tight number on the residual product rate from two cycles-pairs. Do not quote 2.81 as a rate.",
+      "corroboration": "snapshot sizes move the same way without going through usedJSHeapSize at all: control 308.3 -> 356.8 MB across the two graded cycles, deep release 289.1 -> 266.8 MB and 271.4 -> 269.9 MB."
+    },
+    "realmCensus": {
+      "control": { "realms": 6, "live": 1, "productRetained": 1, "inspectorRetained": 4, "collected": 0 },
+      "shallowRelease": { "realms": 6, "live": 1, "productRetained": 1, "inspectorRetained": 4, "collected": 0 },
+      "deepRelease": { "realms": 4, "live": 1, "productRetained": 1, "inspectorRetained": 2, "collected": 0 },
+      "deepReleaseAsDefaultNoFlag": { "realms": 4, "live": 1, "productRetained": 1, "inspectorRetained": 2, "collected": 0 }
+    },
+    "constantAcrossAllRuns": "product-retained is 1 in every run graded, always cycle1/panelB, always by the same _mcHostCacheFileRefOwners path. The product leak is unaffected by the instrument fix, which is why W79's answer stands.",
+    "reading": "The warm-up delta survives (+22.06 from cycle 1 to 2) but the steady-state delta goes to zero and slightly negative once the inspector lets go. The snapshot shrank with it, 289.1 MB at cycle 2 to 266.8 MB at cycle 3 — the heap really got smaller."
+  },
+  "correctionsToOurOwnRecord": {
+    "W78": "the 20.87 MB/cycle attributed to one retained panel realm per cycle is INSTRUMENT-INFLATED. The mechanism is real — a retained realm carries its whole ~21 MB script set — but the per-cycle RATE was substantially our inspector holding dead realms, not the product retaining a new one each cycle.",
+    "W76": "the 23.28 +/- 2.73 MB/cycle that was said to close the calibration gap against the PO's ~13 carries the same inflation. It was measured with the inspector holding realms.",
+    "whatSurvivesUnchanged": "W79's answer to which realm survives: panel B, constant across four runs, slot-bound not data-bound, product-anchored by host Chart._mcHostCacheFileRefOwners. The deep-release run still shows product-retained=1 naming cycle1/panelB by the same path, so the product leak is real and is NOT an artifact.",
+    "revisedShape": "one panel realm pinned permanently by a host registry (bounded, ~21 MB), not one realm per cycle. The unbounded-growth claim does not survive this measurement."
+  },
+  "openDiscrepancy": {
+    "statement": "The PO measures ~13 MB/cycle by hand with no automation, so his number cannot be inspector inflation. After removing our artifact our steady-state delta is ~0, so we now UNDER-read him where we used to over-read him.",
+    "candidates": [
+      "the PO's session runs longer and touches more distinct datasets than a 3-cycle harness run",
+      "the PO reads process memory (Task Manager / Memory panel), which includes GPU, canvas and renderer overhead that usedJSHeapSize never sees",
+      "a product mechanism the harness workload does not reach"
+    ],
+    "notClaimed": "I am not claiming the PO's leak is unreal. DECL-01: an instrument or the PO says so, and neither has said so.",
+    "nextTest": "same 3-cycle deep-release run with the PO's own reading method side by side, so both numbers come off one session."
+  },
+  "gateWiring": {
+    "cell": "REALM-SURVIVAL-V1 now runs inside the heap-cycle memory gate whenever a run writes a snapshot",
+    "policy": "a product-retained torn-down peer realm is a BLOCKING failure naming the panel and the retainer path; inspector-retained realms are reported and never graded; the kill switch reports SKIPPED non-blocking; a grade that cannot run FAILS rather than silently passing",
+    "childProcess": "grading spawns node --max-old-space-size=10240 because a ~340 MB snapshot needs more old-space than the gate is launched with",
+    "gate01": "RED on known-defective input: b99 today, naming cycle1/panelB and the full _mcHostCacheFileRefOwners path",
+    "forManagerA": "grade a cut in one command: node --max-old-space-size=10240 scripts/realm-survival-gate.mjs --snapshot=<run>.cycle3.heapsnapshot --json — GREEN means no torn-down peer realm is product-reachable",
+    "defectFoundAndFixedInMyOwnWiring": {
+      "what": "the first in-line grade killed the run that produced it. The child took ~3.3 GB while the gate process was still holding parsed steady-state snapshots, and the gate died with no stdout after 4.5 minutes of browser work.",
+      "fix": "child capped at 6144 MB, and the gate refuses to grade in-process when its own heapUsed is above 1.5 GB — emitting SKIPPED-LOWMEM with the exact standalone command instead. An unmeasurable heap counts as unaffordable rather than assumed safe.",
+      "rule": "a grade is never worth losing the run that produced it; a skip that names its command is honest, a dead run is not.",
+      "tests": "4 unit tests on the guard and command, 36 passing in the memory/realm suites"
+    }
+  },
+  "escalation": "BLOCKER: the product source for Chart._mcHostCacheFileRefOwners is not in this repo (searched every file, all extensions, including ignored paths — only my own test and heap snapshots match). Deployed b99 is ahead of the tree. Manager A or B unblocks by pointing me at the tree that builds b99, or A takes the cut with the path and gate I have handed over.",
+  "snapshotCeiling": {
+    "held": "3 cycles",
+    "parsedThisPacket": ["289.1 MB", "266.8 MB"],
+    "note": "the deep-release snapshots are SMALLER than the control's 308-357 MB because the released realms are genuinely gone",
+    "fails": "6 cycles ~560 MB, above V8's max string length, unparseable"
+  }
+}
