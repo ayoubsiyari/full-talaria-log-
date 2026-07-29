@@ -1984,7 +1984,7 @@ class OrderManager {
         (this.entryMarkers || []).forEach((m) => {
             if (hostChart(m) !== ch) return;
             const ref = m.order || this._orderRefForMarkerOrderId(m.orderId);
-            if (!belongsOnChart(ref)) removeMarkerDom(m);
+            if (!belongsOnChart(ref)) this._disposeEntryMarkerRecord(m);
         });
         this.entryMarkers = (this.entryMarkers || []).filter((m) => {
             if (hostChart(m) !== ch) return true;
@@ -2041,6 +2041,9 @@ class OrderManager {
         this.multiTPAvgLines = (this.multiTPAvgLines || []).filter((g) => g.chart !== chart);
         s.selectAll('.exec-order-connector').remove();
         s.selectAll('.y-axis-pending-highlight,.y-axis-entry-highlight,.y-axis-sl-highlight,.y-axis-tp-highlight,.y-axis-pending-sl-highlight,.y-axis-pending-tp-highlight,.y-axis-pending-be-highlight,.y-axis-price-highlight').remove();
+        // ORPHAN-L4: drop d3 mouseenter/mouseleave before DOM strip so CDP cannot
+        // count detached entry-marker <g> listeners across chart/panel teardown.
+        this._releaseEntryMarkerListenersForChart(chart);
         s.selectAll('g[class*="entry-marker-"], g.entry-marker, .entry-marker').remove();
         s.selectAll('.mfe-mae-marker-root').remove();
         s.selectAll('.exit-marker, [class*="exit-marker-"], .partial-close-marker, [class*="partial-close-marker-"]').remove();
@@ -2136,7 +2139,7 @@ class OrderManager {
         if (this.entryMarkers && this.entryMarkers.length) {
             this.entryMarkers.forEach((m) => {
                 try {
-                    if (m.marker) m.marker.remove();
+                    this._disposeEntryMarkerRecord(m);
                 } catch (e) { /* ignore */ }
             });
             this.entryMarkers = [];
@@ -39910,7 +39913,7 @@ class OrderManager {
         if (this.entryMarkers?.length) {
             this.entryMarkers = this.entryMarkers.filter((m) => {
                 if (openIds.has(String(m.orderId))) return true;
-                removeDom(m);
+                this._disposeEntryMarkerRecord(m);
                 return false;
             });
         }
@@ -40922,6 +40925,45 @@ class OrderManager {
     }
 
     /**
+     * ORPHAN-L4 — default ON. Kill-switch:
+     *   window.__TALARIA_DISABLE_OM_ENTRY_MARKER_LISTENER_RELEASE_V1 = <truthy>
+     * restores legacy orphan mouseenter/mouseleave across entry-marker dispose.
+     * Absent / falsy ⇒ release on. Read per call (never sampled at init).
+     */
+    _omEntryMarkerListenerReleaseEnabled() {
+        return !(typeof window !== 'undefined'
+            && !!window.__TALARIA_DISABLE_OM_ENTRY_MARKER_LISTENER_RELEASE_V1);
+    }
+
+    /** Drop d3 hover listeners from an entry-marker group (when release gate ON). */
+    _releaseEntryMarkerHoverListeners(marker) {
+        if (!this._omEntryMarkerListenerReleaseEnabled()) return;
+        if (!marker || typeof marker.on !== 'function') return;
+        try { marker.on('mouseenter', null); } catch (_) { /* ignore */ }
+        try { marker.on('mouseleave', null); } catch (_) { /* ignore */ }
+    }
+
+    /** Release hover listeners then remove entry-marker DOM for a registry row. */
+    _disposeEntryMarkerRecord(markerData) {
+        if (!markerData) return;
+        this._releaseEntryMarkerHoverListeners(markerData.marker);
+        try {
+            if (markerData.marker?.remove) markerData.marker.remove();
+            else if (markerData.line?.remove) markerData.line.remove();
+        } catch (_) { /* ignore */ }
+    }
+
+    /** Release listeners for all entry markers hosted on `chart` (strip/teardown). */
+    _releaseEntryMarkerListenersForChart(chart) {
+        const ch = chart || this.chart;
+        if (!ch || !this.entryMarkers?.length) return;
+        for (const m of this.entryMarkers) {
+            if ((m.chart || this.chart) !== ch) continue;
+            this._releaseEntryMarkerHoverListeners(m.marker);
+        }
+    }
+
+    /**
      * Draw entry marker on chart (TradingView style — arrow + tick + hover tooltip)
      */
     drawEntryMarker(order, targetChart = null) {
@@ -41489,7 +41531,7 @@ class OrderManager {
             const orderRef = order || this._orderRefForMarkerOrderId(markerData.orderId);
             // No resolvable order → cannot prove it belongs here; hide it.
             if (!orderRef || !this._positionTickerMatchesChartSymbol(orderRef, ch)) {
-                try { if (marker?.remove) marker.remove(); } catch (_) {}
+                try { this._disposeEntryMarkerRecord(markerData); } catch (_) {}
                 return;
             }
 
@@ -44335,7 +44377,7 @@ class OrderManager {
             this.entryMarkers = this.entryMarkers.filter((m) => {
                 const ch = m.chart || this.chart;
                 if (!isHidden(m.time, ch)) return true;
-                removeDom(m);
+                this._disposeEntryMarkerRecord(m);
                 return false;
             });
         }
