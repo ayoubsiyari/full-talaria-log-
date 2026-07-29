@@ -152,3 +152,15 @@
 - Fix: place now persists the preview BE trigger as `breakevenSettings.triggerPrice`, and pending/open rendering plus trigger evaluation prefer that frozen trigger, behind `__TALARIA_DISABLE_ORDER_BE_PLACE_ANCHOR_V1` (default ON). Manual BE drags update the persisted trigger so later redraws do not revert.
 - RED: `TALARIA_TEST_DISABLE_ORDER_BE_PLACE_ANCHOR=1 node "chart v 1.4/chart/modules/order-be-place-anchor.test.mjs"` fails because BE recomputes from the moved fallback anchor (`1.115 !== 1.1125`).
 - GREEN: both `node "chart v 1.4/chart/modules/order-be-place-anchor.test.mjs"` and `node "homepage/public/chart/modules/order-be-place-anchor.test.mjs"` pass.
+
+## 2026-07-29 — TAL-01895 / TAL-01792
+
+- Root cause found: timeframe pins had a preference bridge, but empty cloud preference fields could overwrite non-empty local user pins during preference load. Drawing-tool pins were worse: `FavoritesManager` only persisted `chart_favorite_tools` locally and never entered the user-level preferences payload, so pins could not appear in a new session.
+- Fix: pinned timeframes and pinned drawing tools are now user-level preferences, behind `__TALARIA_DISABLE_PINS_USER_PREFS_V1` (default ON). Preference load preserves non-empty local pin arrays when the server field is empty and queues that merge for sync; drawing-tool pin save/load now uses the preferences bridge while keeping the scoped local key in sync.
+- RED: `TALARIA_TEST_DISABLE_PINS_USER_PREFS=1 node "chart v 1.4/chart/modules/pins-user-preferences.test.mjs"` fails because empty cloud pins erase local pins.
+- GREEN: both `node "chart v 1.4/chart/modules/pins-user-preferences.test.mjs"` and `node "homepage/public/chart/modules/pins-user-preferences.test.mjs"` pass.
+
+## 2026-07-29 — TAL-01865 / TAL-01747
+
+- Owner finding: symbol refresh persistence lives in `chart v 1.4/chart/chart.js`, not in the newly granted preferences modules. Boot uses `urlParams.get('fileId') || this.getPrimarySessionFileId(session)` before loading data, so refresh falls back to the session's primary instrument unless the URL carries the switched `fileId`.
+- Pair-switch code later mutates `this.currentFileId` and `this.currentSymbol` inside `chart.js`, but I found no granted-module persistence site that writes the switched file/symbol back to session state. Fix requires a grant for `chart.js` or routing to Manager A.

@@ -386,6 +386,11 @@ class FavoritesManager {
         
         this.init();
     }
+
+    pinsUserPreferenceV1Enabled() {
+        return typeof window === 'undefined'
+            || window.__TALARIA_DISABLE_PINS_USER_PREFS_V1 !== true;
+    }
     
     init() {
         // Load favorites from localStorage
@@ -414,8 +419,18 @@ class FavoritesManager {
     
     loadFavorites() {
         try {
-            const stored = userStorage.getItem(this.storageKey);
-            this.favorites = stored ? JSON.parse(stored) : [];
+            if (this.pinsUserPreferenceV1Enabled()
+                && typeof window !== 'undefined'
+                && typeof window.loadDrawingToolFavorites === 'function') {
+                const synced = window.loadDrawingToolFavorites();
+                if (Array.isArray(synced) && synced.length > 0) {
+                    this.favorites = synced;
+                }
+            }
+            if (!Array.isArray(this.favorites) || this.favorites.length === 0) {
+                const stored = userStorage.getItem(this.storageKey);
+                this.favorites = stored ? JSON.parse(stored) : [];
+            }
             if (Array.isArray(this.favorites)) {
                 const filtered = this.favorites.filter(id => this.toolDefinitions && this.toolDefinitions[id]);
                 if (filtered.length !== this.favorites.length) {
@@ -433,6 +448,11 @@ class FavoritesManager {
     saveFavorites() {
         try {
             userStorage.setItem(this.storageKey, JSON.stringify(this.favorites));
+            if (this.pinsUserPreferenceV1Enabled()
+                && typeof window !== 'undefined'
+                && typeof window.saveDrawingToolFavorites === 'function') {
+                window.saveDrawingToolFavorites(this.favorites);
+            }
             console.log('💾 Saved favorites:', this.favorites);
         } catch (error) {
             console.error('❌ Error saving favorites:', error);

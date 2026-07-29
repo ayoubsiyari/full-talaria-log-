@@ -16,6 +16,11 @@ class PreferencesSyncManager {
         this._cloudSubscriptionNoticeShown = false;
     }
 
+    pinsUserPreferenceV1Enabled() {
+        return typeof window === 'undefined'
+            || window.__TALARIA_DISABLE_PINS_USER_PREFS_V1 !== true;
+    }
+
     /**
      * Load all preferences from API (cloud) or localStorage (fallback)
      */
@@ -77,6 +82,7 @@ class PreferencesSyncManager {
         const fields = [
             'tool_defaults',
             'timeframe_favorites',
+            'drawing_tool_favorites',
             'chart_templates',
             'keyboard_shortcuts',
             'drawing_tool_styles',
@@ -107,6 +113,7 @@ class PreferencesSyncManager {
         return {
             tool_defaults: this.getLocalItem('toolDefaults', {}),
             timeframe_favorites: this.getLocalItem('chart_timeframe_favorites', []),
+            drawing_tool_favorites: this.getLocalItem('chart_favorite_tools', []),
             chart_templates: this.getLocalItem('chart_user_templates', {}),
             keyboard_shortcuts: this.getLocalItem('chart_custom_shortcuts', {}),
             drawing_tool_styles: this.getLocalItem('drawingToolStyles', {}),
@@ -139,7 +146,24 @@ class PreferencesSyncManager {
             serverPrefs && serverPrefs.v9_chart_templates,
             localPrefs && localPrefs.v9_chart_templates
         );
+        if (this.pinsUserPreferenceV1Enabled()) {
+            merged.timeframe_favorites = this.preferServerArrayUnlessEmpty(
+                serverPrefs && serverPrefs.timeframe_favorites,
+                localPrefs && localPrefs.timeframe_favorites
+            );
+            merged.drawing_tool_favorites = this.preferServerArrayUnlessEmpty(
+                serverPrefs && serverPrefs.drawing_tool_favorites,
+                localPrefs && localPrefs.drawing_tool_favorites
+            );
+        }
         return merged;
+    }
+
+    preferServerArrayUnlessEmpty(serverVal, localVal) {
+        const serverArr = Array.isArray(serverVal) ? serverVal : [];
+        const localArr = Array.isArray(localVal) ? localVal : [];
+        if (serverArr.length > 0) return [...serverArr];
+        return [...localArr];
     }
 
     mergeJsonObjects(serverVal, localVal) {
@@ -183,6 +207,8 @@ class PreferencesSyncManager {
 
     queueMergedFieldsForSync(serverPrefs, mergedPrefs) {
         const fields = [
+            'timeframe_favorites',
+            'drawing_tool_favorites',
             'chart_templates',
             'drawing_tool_templates',
             'indicator_settings_templates',
@@ -318,6 +344,9 @@ class PreferencesSyncManager {
                     break;
                 case 'timeframe_favorites':
                     userStorage.setItem('chart_timeframe_favorites', JSON.stringify(value));
+                    break;
+                case 'drawing_tool_favorites':
+                    userStorage.setItem('chart_favorite_tools', JSON.stringify(value || []));
                     break;
                 case 'chart_templates':
                     userStorage.setItem('chart_user_templates', JSON.stringify(value));
