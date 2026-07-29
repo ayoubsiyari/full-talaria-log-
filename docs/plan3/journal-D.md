@@ -164,3 +164,11 @@
 
 - Owner finding: symbol refresh persistence lives in `chart v 1.4/chart/chart.js`, not in the newly granted preferences modules. Boot uses `urlParams.get('fileId') || this.getPrimarySessionFileId(session)` before loading data, so refresh falls back to the session's primary instrument unless the URL carries the switched `fileId`.
 - Pair-switch code later mutates `this.currentFileId` and `this.currentSymbol` inside `chart.js`, but I found no granted-module persistence site that writes the switched file/symbol back to session state. Fix requires a grant for `chart.js` or routing to Manager A.
+
+## 2026-07-29 — Cluster E / TAL-01927 changed shape
+
+- Root cause found: the earlier duplicate-screenshot fix made entry capture idempotent and critical-persisted runtime order state after a fresh screenshot attached, but if the matching trade was already in `tradeJournal`, the late screenshot mutated only the live order object. The visible card could therefore show the in-memory screenshot while the durable journal row stayed screenshot-empty and came back empty after refresh.
+- This was not the M24 prune guard deleting the row; the server-side prefer-richer merge already preserves screenshot fields from marked slim patches. The missing edge was client-side journal row propagation after a late capture.
+- Fix: `_captureEntryScreenshotOnce()` now copies a late entry screenshot/ref into the matching journal row and calls `persistJournal()`, behind `__TALARIA_DISABLE_ORDER_ENTRY_SCREENSHOT_JOURNAL_RETENTION_V1` (default ON). Existing duplicate-capture idempotency remains behind `__TALARIA_DISABLE_ORDER_ENTRY_SCREENSHOT_IDEMPOTENT_V1`.
+- RED: `TALARIA_TEST_DISABLE_ORDER_ENTRY_SCREENSHOT_JOURNAL_RETENTION=1 node "chart v 1.4/chart/modules/order-entry-screenshot-idempotent.test.mjs"` fails because the journal row remains screenshot-empty.
+- GREEN: both `node "chart v 1.4/chart/modules/order-entry-screenshot-idempotent.test.mjs"` and `node "homepage/public/chart/modules/order-entry-screenshot-idempotent.test.mjs"` pass.

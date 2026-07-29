@@ -299,6 +299,12 @@ function _orderEntryScreenshotIdempotentV1Enabled() {
         || !window.__TALARIA_DISABLE_ORDER_ENTRY_SCREENSHOT_IDEMPOTENT_V1;
 }
 
+/** Cluster E / TAL-01927: late entry screenshots must update persisted journal rows. */
+function _orderEntryScreenshotJournalRetentionV1Enabled() {
+    return typeof window === 'undefined'
+        || !window.__TALARIA_DISABLE_ORDER_ENTRY_SCREENSHOT_JOURNAL_RETENTION_V1;
+}
+
 /** Cluster G / TAL-01932: full-size opposing pending orders close, not hedge-open. */
 function _orderPendingCloseNettingV1Enabled() {
     return typeof window === 'undefined'
@@ -24648,6 +24654,30 @@ class OrderManager {
         return false;
     }
 
+    _attachEntryScreenshotToJournalRow(order, screenshot) {
+        if (!_orderEntryScreenshotJournalRetentionV1Enabled()) return false;
+        if (!order || typeof order !== 'object' || !screenshot) return false;
+        const journal = Array.isArray(this.tradeJournal) ? this.tradeJournal : [];
+        if (!journal.length) return false;
+
+        const orderId = order.tradeId != null ? order.tradeId : order.id;
+        if (orderId == null) return false;
+        const row = journal.find((trade) => {
+            if (!trade || typeof trade !== 'object') return false;
+            const tradeId = trade.tradeId != null ? trade.tradeId : trade.id;
+            return tradeId != null && String(tradeId) === String(orderId);
+        });
+        if (!row || this._orderHasEntryScreenshot(row)) return false;
+
+        if (order.entryScreenshotRef && order.entryScreenshotRef.refId) {
+            row.entryScreenshotRef = { ...order.entryScreenshotRef };
+        } else {
+            row.entryScreenshot = screenshot;
+        }
+        row.savedAt = Date.now();
+        return true;
+    }
+
     _captureEntryScreenshotOnce(order, label = 'order') {
         const screenshotMgr = (typeof window !== 'undefined' && window.screenshotManager)
             || this.screenshotManager;
@@ -24661,10 +24691,14 @@ class OrderManager {
                 if (!_orderEntryScreenshotIdempotentV1Enabled() || !this._orderHasEntryScreenshot(order)) {
                     order.entryScreenshot = screenshot;
                 }
+                const journalUpdated = this._attachEntryScreenshotToJournalRow(order, screenshot);
                 console.log(`✅ Entry screenshot captured for ${label} #${order.id}`);
                 if (_orderEntryScreenshotIdempotentV1Enabled()
                     && typeof this._schedulePersistAfterOrderMutation === 'function') {
                     this._schedulePersistAfterOrderMutation({ critical: true });
+                }
+                if (journalUpdated && typeof this.persistJournal === 'function') {
+                    this.persistJournal();
                 }
             }
             return screenshot;

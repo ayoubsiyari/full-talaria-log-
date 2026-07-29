@@ -7,10 +7,12 @@ import { createRequire } from 'node:module';
 import assert from 'node:assert/strict';
 
 const disabled = process.env.TALARIA_TEST_DISABLE_ORDER_ENTRY_SCREENSHOT_IDEMPOTENT === '1';
+const retentionDisabled = process.env.TALARIA_TEST_DISABLE_ORDER_ENTRY_SCREENSHOT_JOURNAL_RETENTION === '1';
 
 let captureCount = 0;
 global.window = {
     __TALARIA_DISABLE_ORDER_ENTRY_SCREENSHOT_IDEMPOTENT_V1: disabled,
+    __TALARIA_DISABLE_ORDER_ENTRY_SCREENSHOT_JOURNAL_RETENTION_V1: retentionDisabled,
     screenshotManager: {
         captureChartSnapshot() {
             captureCount += 1;
@@ -28,8 +30,12 @@ const OrderManager = require('./order-manager.js');
 function makeOrderManager() {
     const om = Object.create(OrderManager.prototype);
     om.persistCalls = [];
+    om.journalPersistCalls = 0;
     om._schedulePersistAfterOrderMutation = (opts = {}) => {
         om.persistCalls.push(opts);
+    };
+    om.persistJournal = () => {
+        om.journalPersistCalls += 1;
     };
     return om;
 }
@@ -59,6 +65,18 @@ assert.equal(captureCount, 1, 'fresh order captures exactly once');
 assert.equal(freshOrder.entryScreenshot, 'data:image/png;base64,shot-1', 'fresh capture attaches entryScreenshot');
 assert.deepEqual(om.persistCalls, [{ critical: true }], 'fresh capture critical-persists after attach');
 
-console.log(disabled
-    ? 'RED — switch OFF recaptures restored entry screenshots'
-    : 'GREEN — restored entry screenshots are idempotent and fresh shots persist critically');
+const lateJournalOrder = { id: 30 };
+om = makeOrderManager();
+om.tradeJournal = [{ tradeId: 30, pnl: 12 }];
+promise = om._captureEntryScreenshotOnce(lateJournalOrder, 'late journal row');
+await promise;
+assert.equal(
+    om.tradeJournal[0].entryScreenshot,
+    'data:image/png;base64,shot-2',
+    'late screenshot capture must update the existing journal row before refresh',
+);
+assert.equal(om.journalPersistCalls, 1, 'late journal screenshot update must persist the journal');
+
+console.log(disabled || retentionDisabled
+    ? 'RED — switch OFF recaptures or fails to retain entry screenshots'
+    : 'GREEN — restored entry screenshots are idempotent and late shots persist to journal');
