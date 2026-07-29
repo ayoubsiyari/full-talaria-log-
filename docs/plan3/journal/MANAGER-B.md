@@ -3519,3 +3519,29 @@ reference `indicator-performance.js`; prod `order-manager.js` `journalVouchedFor
 `api_server.py` (+ optional client-guard module) hotfix without the full canary
 shell train. **PO decides.** Evidence: `REPORT-PROD-B56-VS-B82-20260728.md` +
 `observations/prod-stamp-report-2026-07-29T00-34-19-931Z.json`.
+
+---
+
+## B-0152 — Canary runbook final pass. Trade-loss hotfix standing by. Footprint correction.
+
+Director: dual-build/SURF-3/checkpoint credit; next = runbook + stand by + instrument note.
+
+### 1. Canary runbook (`POST-PUSH-VERIFICATION-RUNBOOK.md`)
+
+- Ship floor → **b82**.
+- **§2e SURF-3** post-deploy: live GREEN + `--fixture` must stay RED.
+- **stampInert** spelled out: `?v=` never selects bytes; stale shell can silently
+  omit newly-added modules while loading current bytes for old tags.
+- Phantom Q4 lever unchanged (§3 / `KILL-SWITCH-INVENTORY` §1b).
+- **§4 disclosure:** no absolute Task Manager footprint MB; TradeZella 3–5×
+  memory claim **withdrawn** (~2.9× over-report of heap).
+
+### 2. Production trade-loss hotfix
+
+`PROD-TRADE-LOSS-HOTFIX-STANDING-BY.md` — ready packet (server parse-guard
+minimum; optional client B-W16). **Do not ship until authorised.** No prod contact.
+
+### 3. Instrument correction (absorbed)
+
+Footprint ≈ 2.9× live JS heap (231 vs 670 MB example). Upper bound only. Will not
+quote absolute footprint numbers in canary disclosure.
