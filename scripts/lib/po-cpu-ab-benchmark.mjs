@@ -114,34 +114,89 @@ export function poCpuAbProbeScript() {
     callbackMaxSamples: [],
     callbackMaxSamplesTruncated: false,
     longTaskCount: 0,
-    longTaskDurationMs: 0
+    longTaskDurationMs: 0,
+    // Ceiling-profile: aggregate expensive callback stacks + canvas paint proxies.
+    stackMsByKey: Object.create(null),
+    canvasPaintMs: 0,
+    canvasPaintCalls: 0
   };
-  function account(kind, startedAt) {
+  function stackKeyFromError() {
+    try {
+      var err = new Error('po-cpu-ab-stack');
+      var raw = String(err.stack || '');
+      var lines = raw.split('\\n').map(function (line) { return line.trim(); }).filter(Boolean);
+      // Drop Error message + this wrapper frames; keep first 4 product frames.
+      var product = [];
+      for (var i = 0; i < lines.length; i += 1) {
+        var line = lines[i];
+        if (/po-cpu-ab-stack|poCpuAbProbe|stackKeyFromError|account\\(|wrap\\(|window\\.setTimeout|window\\.setInterval|window\\.requestAnimationFrame|nativeSetTimeout|nativeSetInterval|nativeRequestAnimationFrame/.test(line)) continue;
+        if (/harness\\/host\\.html/.test(line) && !/chart\\.js|replay-system|drawing-tools|modules\\//.test(line)) continue;
+        product.push(line.replace(/^at\\s+/, ''));
+        if (product.length >= 4) break;
+      }
+      return product.length ? product.join(' | ') : '(unknown)';
+    } catch (_) {
+      return '(unknown)';
+    }
+  }
+  function account(kind, startedAt, pathKey) {
     var dt = Math.max(0, performance.now() - startedAt);
     state.callbackBusyMs += dt;
     state.callbackSequence += 1;
     state.maxCallbackMs = Math.max(state.maxCallbackMs, dt);
-    state.callbackMaxSamples.push({ sequence: state.callbackSequence, durationMs: dt });
+    if (state.callbackMaxSamples.length < 5000) {
+      state.callbackMaxSamples.push({ sequence: state.callbackSequence, durationMs: dt });
+    } else {
+      state.callbackMaxSamplesTruncated = true;
+    }
+    // Path key is captured at schedule-time (who requested the timer/rAF).
+    if (dt >= 0.5) {
+      var key = pathKey || (kind + ' :: (unknown)');
+      state.stackMsByKey[key] = (state.stackMsByKey[key] || 0) + dt;
+    }
     if (kind === 'interval') state.intervalCallbacks += 1;
     else if (kind === 'timeout') state.timeoutCallbacks += 1;
     else if (kind === 'raf') state.rafCallbacks += 1;
   }
-  function wrap(kind, fn) {
+  function wrapCanvasMethod(proto, name) {
+    if (!proto || typeof proto[name] !== 'function') return;
+    var native = proto[name];
+    proto[name] = function () {
+      var startedAt = performance.now();
+      try {
+        return native.apply(this, arguments);
+      } finally {
+        var dt = Math.max(0, performance.now() - startedAt);
+        state.canvasPaintMs += dt;
+        state.canvasPaintCalls += 1;
+      }
+    };
+  }
+  try {
+    wrapCanvasMethod(CanvasRenderingContext2D && CanvasRenderingContext2D.prototype, 'fillRect');
+    wrapCanvasMethod(CanvasRenderingContext2D && CanvasRenderingContext2D.prototype, 'fill');
+    wrapCanvasMethod(CanvasRenderingContext2D && CanvasRenderingContext2D.prototype, 'stroke');
+    wrapCanvasMethod(CanvasRenderingContext2D && CanvasRenderingContext2D.prototype, 'drawImage');
+    wrapCanvasMethod(CanvasRenderingContext2D && CanvasRenderingContext2D.prototype, 'putImageData');
+  } catch (_) {}
+  function wrap(kind, fn, scheduledStack) {
     if (typeof fn !== 'function') return fn;
+    var fnLabel = fn.name || 'anonymous';
+    var pathKey = kind + ' :: ' + fnLabel + ' << ' + (scheduledStack || '(no-schedule-stack)');
     return function () {
       var startedAt = performance.now();
       try {
         return fn.apply(this, arguments);
       } finally {
-        account(kind, startedAt);
+        account(kind, startedAt, pathKey);
       }
     };
   }
   window.setInterval = function (fn, delay) {
-    return nativeSetInterval(wrap('interval', fn), delay);
+    return nativeSetInterval(wrap('interval', fn, stackKeyFromError()), delay);
   };
   window.setTimeout = function (fn, delay) {
-    return nativeSetTimeout(wrap('timeout', fn), delay);
+    return nativeSetTimeout(wrap('timeout', fn, stackKeyFromError()), delay);
   };
   function pushRafFrameInterval(timestamp) {
     var at = Number(timestamp);
@@ -160,14 +215,11 @@ export function poCpuAbProbeScript() {
   if (nativeRequestAnimationFrame) {
     window.requestAnimationFrame = function (fn) {
       if (typeof fn !== 'function') return nativeRequestAnimationFrame(fn);
-      return nativeRequestAnimationFrame(function () {
-        var startedAt = performance.now();
-        try {
-          pushRafFrameInterval(arguments[0]);
-          return fn.apply(this, arguments);
-        } finally {
-          account('raf', startedAt);
-        }
+      var scheduledStack = stackKeyFromError();
+      var wrapped = wrap('raf', fn, scheduledStack);
+      return nativeRequestAnimationFrame(function (ts) {
+        pushRafFrameInterval(ts);
+        return wrapped.apply(this, arguments);
       });
     };
   }
@@ -186,6 +238,9 @@ export function poCpuAbProbeScript() {
   window.__poCpuAbProbe = {
     signature: '${PO_CPU_AB_SIGNATURE}',
     snapshot: function () {
+      var stackRows = Object.keys(state.stackMsByKey).map(function (key) {
+        return { key: key, selfMs: state.stackMsByKey[key] };
+      }).sort(function (a, b) { return b.selfMs - a.selfMs; }).slice(0, 40);
       return {
         at: performance.now(),
         intervalCallbacks: state.intervalCallbacks,
@@ -201,7 +256,10 @@ export function poCpuAbProbeScript() {
         callbackMaxSamplesTruncated: state.callbackMaxSamplesTruncated,
         longTaskCount: state.longTaskCount,
         longTaskDurationMs: state.longTaskDurationMs,
-        longTaskObserver: state.longTaskObserver
+        longTaskObserver: state.longTaskObserver,
+        canvasPaintMs: state.canvasPaintMs,
+        canvasPaintCalls: state.canvasPaintCalls,
+        stackRows: stackRows
       };
     }
   };

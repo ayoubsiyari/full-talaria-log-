@@ -512,6 +512,7 @@ Cells:
 | Name | Signature token | Implementation | Status |
 |---|---|---|---|
 | PO-CPU-AB-BENCHMARK-V1 | `TALARIA_PO_CPU_AB_BENCHMARK_V1` | `scripts/po-cpu-ab-benchmark-gate.mjs`, `scripts/lib/po-cpu-ab-benchmark.mjs`, `scripts/tests/po-cpu-ab-benchmark.test.mjs` | LIVE instrument — measures honestly; RED on unfixed product (FIX1/FIX2 not built) is expected GATE-01. GREEN is the precondition for claiming CPU work succeeded, not for shipping the instrument. P6 margin pinned at `PO_CPU_AB_P6_REPLAY_WORK_RATIO_MARGIN=0.03` (Director 2026-07-28: do not lower to soft-pass). Observables are main-thread callback/longtask work, not process CPU% |
+| PO-CPU-CEILING-PROFILE-V1 | `TALARIA_PO_CPU_CEILING_PROFILE_V1` | `scripts/lib/po-cpu-ceiling-profile.mjs`, `--ceiling-profile` on `po-cpu-ab-benchmark-gate.mjs`, `scripts/tests/po-cpu-ceiling-profile.test.mjs` | LIVE — W70; single-chart **60×** CDP Timeline donut (Scripting/Rendering/Painting/System) + sampled CPU profile top calls. Extends PO-CPU-AB; does not replace workRatio cells. |
 
 Cells:
 
@@ -538,11 +539,12 @@ Cells:
 | NC-P4-NO-FANOUT-MUST-RED | served P4 no-fan-out mode neuters `replayPlay` peer sends, serializes peer-row `productReplayPlayFanout.noFanoutControl`, and must make P4 RED | LIVE |
 | NC-P7-REPLAY-PAUSE-TEARDOWN-MUST-RED | served `replay-system.js` pause teardown reversal marks itself applied and makes the P7 state cell RED | LIVE |
 
-## Queue item 10 extension — Heap-cycle memory gate (W67)
+## Queue item 10 extension — Heap-cycle memory gate (W67) + growth census (W68)
 
 | Name | Signature token | Implementation | Status |
 |---|---|---|---|
-| HEAP-CYCLE-MEMORY-V1 | `TALARIA_HEAP_CYCLE_MEMORY_V1` | `scripts/heap-cycle-memory-gate.mjs`, `scripts/lib/heap-cycle-memory.mjs`, `scripts/lib/heap-cycle-browser.mjs`, `scripts/lib/heap-snapshot-detached.mjs`, `scripts/tests/heap-cycle-memory.test.mjs`, `scripts/fixtures/heap-cycle/gate01-red/` | LIVE instrument — GATE-01 sealed PO-leak fixture RED; Detached `<div>` count is mandatory superior gate; footprint non-grading. Regrades M26/FIX3 (expected INSUFFICIENT while leak remains). |
+| HEAP-CYCLE-MEMORY-V1 | `TALARIA_HEAP_CYCLE_MEMORY_V1` | `scripts/heap-cycle-memory-gate.mjs`, `scripts/lib/heap-cycle-memory.mjs`, `scripts/lib/heap-cycle-browser.mjs`, `scripts/lib/heap-snapshot-detached.mjs`, `scripts/tests/heap-cycle-memory.test.mjs`, `scripts/fixtures/heap-cycle/gate01-red/` | LIVE instrument — GATE-01 sealed PO-leak fixture RED; Detached `<div>` count is mandatory superior gate; footprint non-grading. Regrades M26/FIX3 (expected INSUFFICIENT while leak remains). Default live surface: **dist-v9 MultichartGrid** (thin `host.html` opt-in `--thin-host` only). |
+| HEAP-GROWTH-CENSUS-V1 | `TALARIA_HEAP_GROWTH_CENSUS_V1` | `scripts/lib/heap-growth-census.mjs`, `scripts/lib/heap-snapshot-aggregates.mjs` (emitted by heap-cycle browser + graded in HEAP-CYCLE-MEMORY-V1) | LIVE — full per-constructor tables; rank by **monotonic growth across all three cycles** (not single-comparison size). |
 
 Cells:
 
@@ -552,10 +554,23 @@ Cells:
 | HEAP-CYCLE-DISTINCT-FILEIDS | each cycle expands with distinct harness fileIds 25/27/28/29 | LIVE |
 | HEAP-CYCLE-DETACHED-DIV-STABLE | mean per-cycle Detached HTMLDivElement delta (CDP `detachedness`) or retained `HTMLDivElement` growth after return-to-single ≤ `HEAP_CYCLE_DETACHED_STABLE_MAX=1` (PO leak ≈ +21699/cycle) | LIVE — superior/mandatory |
 | HEAP-CYCLE-HEAP-FLOOR-BOUNDED | mean return-to-single heap floor growth ≤ 8 MiB (PO leak ≈ +50 MB/cycle; R1/R2/R3 = 106/152/204 from 54 MB) | LIVE |
+| HEAP-GROWTH-CENSUS-EMITTED | report includes full constructor delta tables ×3 + A-list + B-list | LIVE — W68 |
+| HEAP-GROWTH-MONOTONIC-HOARDERS | A-list = constructors with sizeDelta>0 in all three cycles, ranked by total bytes | LIVE — W68; triage surface |
+| HEAP-GROWTH-TOP40-CONTEXT | B-list = top ≤40 by total size delta (context only) | LIVE — W68 |
+| HEAP-GROWTH-SURFACE-CALIBRATION | when leak-shaped, require ≥2/4 PO pins (Detached `<div>` ≳5k, UniqueElementData ≳10k, CSSBacking ≳10k, heap ≳28 MB); else report HARNESS-NOT-REAL-PRODUCT first | LIVE — W68; report-first when RED |
+| HEAP-RETAINER-PATHS-AGGREGATED | A-list tops (ExternalStringData, heap number, Object): walk retainer/dominator paths, aggregate identical paths, rank by total self bytes; flag `_tfDataCache`/`_btTfDataCache`/`_smartPrefetchCache` | LIVE — W69 |
 | M26-REGRADE-ON-HEAP-CYCLE | footprint verdict void; INSUFFICIENT while leak remains (M26 correct but insufficient) | LIVE |
 | FIX3-REGRADE-ON-HEAP-CYCLE | footprint verdict void; INSUFFICIENT while leak remains | LIVE |
 
+| Name | Signature token | Implementation | Status |
+|---|---|---|---|
+| HEAP-RETAINER-PATHS-V1 | `TALARIA_HEAP_RETAINER_PATHS_V1` | `scripts/lib/heap-retainer-paths.mjs` (emitted by heap-cycle browser) | LIVE — W69; one line per distinct path |
+| HEAP-CYCLE surface `deployed` | — | `--deployed` / `--surface=deployed` against `TEST_VPS_URL` (default `http://31.97.192.82:3000`) with `TEST_EMAIL`/`TEST_PASSWORD` | LIVE — W69 secondary; PO measurement surface |
+
+W70 retainer harden: path normalize collapses WeakMapPair + script-source; application-preferred reverse climb so ExternalStringData can surface cache holders when present.
+
 Pinned constants: `HEAP_CYCLE_PO_DETACHED_DIVS_PER_CYCLE=21699`, `HEAP_CYCLE_PO_FLOOR_MB=[106,152,204]`, `HEAP_CYCLE_PO_BASELINE_MB=54`.
+PO census pins: UniqueElementData +30565/cycle, HeapVectorBacking\<CSSPropertyValue\> +22209/cycle, ~29 MB comparison total.
 
 ## Queue item 11 — Hidden-tab replay regression (W59 / GATE-01)
 

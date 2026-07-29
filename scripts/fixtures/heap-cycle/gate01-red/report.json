@@ -2,16 +2,22 @@
   "signature": "TALARIA_HEAP_CYCLE_MEMORY_V1",
   "ok": true,
   "meta": {
-    "cycles": 3,
+    "cycles": 6,
+    "surface": "dist-v9",
     "memoryInstrument": "usedJSHeapSize+forcedGc",
     "footprintNonGrading": true,
     "detachedGateMandatory": true,
+    "growthCensus": true,
+    "retainerPaths": true,
     "poCalibration": {
       "baselineMb": 54,
       "floorsMb": [
         106,
         152,
-        204
+        204,
+        254,
+        304,
+        354
       ],
       "detachedDivsPerCycle": 21699
     },
@@ -24,7 +30,8 @@
     "forcedGcAttempted": true,
     "forcedGcAvailable": true,
     "detachedDivCount": 1200,
-    "htmlDivElementCount": 4000
+    "htmlDivElementCount": 4000,
+    "hasConstructorAggregates": true
   },
   "cycles": [
     {
@@ -50,7 +57,8 @@
         "usedJSHeapSize": 111149056,
         "forcedGcAttempted": true,
         "forcedGcAvailable": true,
-        "htmlDivElementCount": 25699
+        "htmlDivElementCount": 25699,
+        "hasConstructorAggregates": true
       },
       "detachedDivCount": 22899,
       "detachedDivDelta": 21699,
@@ -80,7 +88,8 @@
         "usedJSHeapSize": 159383552,
         "forcedGcAttempted": true,
         "forcedGcAvailable": true,
-        "htmlDivElementCount": 47398
+        "htmlDivElementCount": 47398,
+        "hasConstructorAggregates": true
       },
       "detachedDivCount": 44598,
       "detachedDivDelta": 21699,
@@ -110,12 +119,785 @@
         "usedJSHeapSize": 213909504,
         "forcedGcAttempted": true,
         "forcedGcAvailable": true,
-        "htmlDivElementCount": 69097
+        "htmlDivElementCount": 69097,
+        "hasConstructorAggregates": true
       },
       "detachedDivCount": 66297,
       "detachedDivDelta": 21699,
       "htmlDivElementCount": 69097,
       "retainedHtmlDivDelta": 21699
+    },
+    {
+      "index": 4,
+      "fileIds": [
+        25,
+        27,
+        28,
+        29
+      ],
+      "distinctSymbols": true,
+      "fourPeak": {
+        "exposed": true,
+        "metric": "usedJSHeapSize",
+        "usedJSHeapSize": 350224384,
+        "forcedGcAttempted": true,
+        "forcedGcAvailable": true,
+        "htmlDivElementCount": 95796
+      },
+      "returnSingle": {
+        "exposed": true,
+        "metric": "usedJSHeapSize",
+        "usedJSHeapSize": 266338304,
+        "forcedGcAttempted": true,
+        "forcedGcAvailable": true,
+        "htmlDivElementCount": 90796,
+        "hasConstructorAggregates": true
+      },
+      "detachedDivCount": 87996,
+      "detachedDivDelta": 21699,
+      "htmlDivElementCount": 90796,
+      "retainedHtmlDivDelta": 21699
+    },
+    {
+      "index": 5,
+      "fileIds": [
+        25,
+        27,
+        28,
+        29
+      ],
+      "distinctSymbols": true,
+      "fourPeak": {
+        "exposed": true,
+        "metric": "usedJSHeapSize",
+        "usedJSHeapSize": 402653184,
+        "forcedGcAttempted": true,
+        "forcedGcAvailable": true,
+        "htmlDivElementCount": 117495
+      },
+      "returnSingle": {
+        "exposed": true,
+        "metric": "usedJSHeapSize",
+        "usedJSHeapSize": 318767104,
+        "forcedGcAttempted": true,
+        "forcedGcAvailable": true,
+        "htmlDivElementCount": 112495,
+        "hasConstructorAggregates": true
+      },
+      "detachedDivCount": 109695,
+      "detachedDivDelta": 21699,
+      "htmlDivElementCount": 112495,
+      "retainedHtmlDivDelta": 21699
+    },
+    {
+      "index": 6,
+      "fileIds": [
+        25,
+        27,
+        28,
+        29
+      ],
+      "distinctSymbols": true,
+      "fourPeak": {
+        "exposed": true,
+        "metric": "usedJSHeapSize",
+        "usedJSHeapSize": 455081984,
+        "forcedGcAttempted": true,
+        "forcedGcAvailable": true,
+        "htmlDivElementCount": 139194
+      },
+      "returnSingle": {
+        "exposed": true,
+        "metric": "usedJSHeapSize",
+        "usedJSHeapSize": 371195904,
+        "forcedGcAttempted": true,
+        "forcedGcAvailable": true,
+        "htmlDivElementCount": 134194,
+        "hasConstructorAggregates": true
+      },
+      "detachedDivCount": 131394,
+      "detachedDivDelta": 21699,
+      "htmlDivElementCount": 134194,
+      "retainedHtmlDivDelta": 21699
     }
-  ]
+  ],
+  "growthCensus": {
+    "signature": "TALARIA_HEAP_GROWTH_CENSUS_V1",
+    "cycleComparisons": [
+      {
+        "cycle": 1,
+        "rowCount": 5,
+        "rows": [
+          {
+            "constructor": "UniqueElementData",
+            "countBefore": 2000,
+            "countAfter": 32565,
+            "countDelta": 30565,
+            "sizeBefore": 96000,
+            "sizeAfter": 1563120,
+            "sizeDelta": 1467120
+          },
+          {
+            "constructor": "Detached HTMLDivElement",
+            "countBefore": 1200,
+            "countAfter": 22899,
+            "countDelta": 21699,
+            "sizeBefore": 76800,
+            "sizeAfter": 1465536,
+            "sizeDelta": 1388736
+          },
+          {
+            "constructor": "HeapVectorBacking<CSSPropertyValue>",
+            "countBefore": 1500,
+            "countAfter": 23709,
+            "countDelta": 22209,
+            "sizeBefore": 48000,
+            "sizeAfter": 758688,
+            "sizeDelta": 710688
+          },
+          {
+            "constructor": "Detached HTMLSpanElement",
+            "countBefore": 60,
+            "countAfter": 1144,
+            "countDelta": 1084,
+            "sizeBefore": 2400,
+            "sizeAfter": 45760,
+            "sizeDelta": 43360
+          },
+          {
+            "constructor": "(system)",
+            "countBefore": 100,
+            "countAfter": 100,
+            "countDelta": 0,
+            "sizeBefore": 1000000,
+            "sizeAfter": 1001000,
+            "sizeDelta": 1000
+          }
+        ]
+      },
+      {
+        "cycle": 2,
+        "rowCount": 5,
+        "rows": [
+          {
+            "constructor": "UniqueElementData",
+            "countBefore": 32565,
+            "countAfter": 63130,
+            "countDelta": 30565,
+            "sizeBefore": 1563120,
+            "sizeAfter": 3030240,
+            "sizeDelta": 1467120
+          },
+          {
+            "constructor": "Detached HTMLDivElement",
+            "countBefore": 22899,
+            "countAfter": 44598,
+            "countDelta": 21699,
+            "sizeBefore": 1465536,
+            "sizeAfter": 2854272,
+            "sizeDelta": 1388736
+          },
+          {
+            "constructor": "HeapVectorBacking<CSSPropertyValue>",
+            "countBefore": 23709,
+            "countAfter": 45918,
+            "countDelta": 22209,
+            "sizeBefore": 758688,
+            "sizeAfter": 1469376,
+            "sizeDelta": 710688
+          },
+          {
+            "constructor": "Detached HTMLSpanElement",
+            "countBefore": 1144,
+            "countAfter": 2229,
+            "countDelta": 1085,
+            "sizeBefore": 45760,
+            "sizeAfter": 89160,
+            "sizeDelta": 43400
+          },
+          {
+            "constructor": "(system)",
+            "countBefore": 100,
+            "countAfter": 100,
+            "countDelta": 0,
+            "sizeBefore": 1001000,
+            "sizeAfter": 1002000,
+            "sizeDelta": 1000
+          }
+        ]
+      },
+      {
+        "cycle": 3,
+        "rowCount": 5,
+        "rows": [
+          {
+            "constructor": "UniqueElementData",
+            "countBefore": 63130,
+            "countAfter": 93695,
+            "countDelta": 30565,
+            "sizeBefore": 3030240,
+            "sizeAfter": 4497360,
+            "sizeDelta": 1467120
+          },
+          {
+            "constructor": "Detached HTMLDivElement",
+            "countBefore": 44598,
+            "countAfter": 66297,
+            "countDelta": 21699,
+            "sizeBefore": 2854272,
+            "sizeAfter": 4243008,
+            "sizeDelta": 1388736
+          },
+          {
+            "constructor": "HeapVectorBacking<CSSPropertyValue>",
+            "countBefore": 45918,
+            "countAfter": 68127,
+            "countDelta": 22209,
+            "sizeBefore": 1469376,
+            "sizeAfter": 2180064,
+            "sizeDelta": 710688
+          },
+          {
+            "constructor": "Detached HTMLSpanElement",
+            "countBefore": 2229,
+            "countAfter": 3314,
+            "countDelta": 1085,
+            "sizeBefore": 89160,
+            "sizeAfter": 132560,
+            "sizeDelta": 43400
+          },
+          {
+            "constructor": "(system)",
+            "countBefore": 100,
+            "countAfter": 100,
+            "countDelta": 0,
+            "sizeBefore": 1002000,
+            "sizeAfter": 1003000,
+            "sizeDelta": 1000
+          }
+        ]
+      },
+      {
+        "cycle": 4,
+        "rowCount": 5,
+        "rows": [
+          {
+            "constructor": "UniqueElementData",
+            "countBefore": 93695,
+            "countAfter": 124260,
+            "countDelta": 30565,
+            "sizeBefore": 4497360,
+            "sizeAfter": 5964480,
+            "sizeDelta": 1467120
+          },
+          {
+            "constructor": "Detached HTMLDivElement",
+            "countBefore": 66297,
+            "countAfter": 87996,
+            "countDelta": 21699,
+            "sizeBefore": 4243008,
+            "sizeAfter": 5631744,
+            "sizeDelta": 1388736
+          },
+          {
+            "constructor": "HeapVectorBacking<CSSPropertyValue>",
+            "countBefore": 68127,
+            "countAfter": 90336,
+            "countDelta": 22209,
+            "sizeBefore": 2180064,
+            "sizeAfter": 2890752,
+            "sizeDelta": 710688
+          },
+          {
+            "constructor": "Detached HTMLSpanElement",
+            "countBefore": 3314,
+            "countAfter": 4399,
+            "countDelta": 1085,
+            "sizeBefore": 132560,
+            "sizeAfter": 175960,
+            "sizeDelta": 43400
+          },
+          {
+            "constructor": "(system)",
+            "countBefore": 100,
+            "countAfter": 100,
+            "countDelta": 0,
+            "sizeBefore": 1003000,
+            "sizeAfter": 1004000,
+            "sizeDelta": 1000
+          }
+        ]
+      },
+      {
+        "cycle": 5,
+        "rowCount": 5,
+        "rows": [
+          {
+            "constructor": "UniqueElementData",
+            "countBefore": 124260,
+            "countAfter": 154825,
+            "countDelta": 30565,
+            "sizeBefore": 5964480,
+            "sizeAfter": 7431600,
+            "sizeDelta": 1467120
+          },
+          {
+            "constructor": "Detached HTMLDivElement",
+            "countBefore": 87996,
+            "countAfter": 109695,
+            "countDelta": 21699,
+            "sizeBefore": 5631744,
+            "sizeAfter": 7020480,
+            "sizeDelta": 1388736
+          },
+          {
+            "constructor": "HeapVectorBacking<CSSPropertyValue>",
+            "countBefore": 90336,
+            "countAfter": 112545,
+            "countDelta": 22209,
+            "sizeBefore": 2890752,
+            "sizeAfter": 3601440,
+            "sizeDelta": 710688
+          },
+          {
+            "constructor": "Detached HTMLSpanElement",
+            "countBefore": 4399,
+            "countAfter": 5484,
+            "countDelta": 1085,
+            "sizeBefore": 175960,
+            "sizeAfter": 219360,
+            "sizeDelta": 43400
+          },
+          {
+            "constructor": "(system)",
+            "countBefore": 100,
+            "countAfter": 100,
+            "countDelta": 0,
+            "sizeBefore": 1004000,
+            "sizeAfter": 1005000,
+            "sizeDelta": 1000
+          }
+        ]
+      },
+      {
+        "cycle": 6,
+        "rowCount": 5,
+        "rows": [
+          {
+            "constructor": "UniqueElementData",
+            "countBefore": 154825,
+            "countAfter": 185390,
+            "countDelta": 30565,
+            "sizeBefore": 7431600,
+            "sizeAfter": 8898720,
+            "sizeDelta": 1467120
+          },
+          {
+            "constructor": "Detached HTMLDivElement",
+            "countBefore": 109695,
+            "countAfter": 131394,
+            "countDelta": 21699,
+            "sizeBefore": 7020480,
+            "sizeAfter": 8409216,
+            "sizeDelta": 1388736
+          },
+          {
+            "constructor": "HeapVectorBacking<CSSPropertyValue>",
+            "countBefore": 112545,
+            "countAfter": 134754,
+            "countDelta": 22209,
+            "sizeBefore": 3601440,
+            "sizeAfter": 4312128,
+            "sizeDelta": 710688
+          },
+          {
+            "constructor": "Detached HTMLSpanElement",
+            "countBefore": 5484,
+            "countAfter": 6569,
+            "countDelta": 1085,
+            "sizeBefore": 219360,
+            "sizeAfter": 262760,
+            "sizeDelta": 43400
+          },
+          {
+            "constructor": "(system)",
+            "countBefore": 100,
+            "countAfter": 100,
+            "countDelta": 0,
+            "sizeBefore": 1005000,
+            "sizeAfter": 1006000,
+            "sizeDelta": 1000
+          }
+        ]
+      }
+    ],
+    "fullBaselineToFinal": [
+      {
+        "constructor": "UniqueElementData",
+        "countBefore": 2000,
+        "countAfter": 185390,
+        "countDelta": 183390,
+        "sizeBefore": 96000,
+        "sizeAfter": 8898720,
+        "sizeDelta": 8802720
+      },
+      {
+        "constructor": "Detached HTMLDivElement",
+        "countBefore": 1200,
+        "countAfter": 131394,
+        "countDelta": 130194,
+        "sizeBefore": 76800,
+        "sizeAfter": 8409216,
+        "sizeDelta": 8332416
+      },
+      {
+        "constructor": "HeapVectorBacking<CSSPropertyValue>",
+        "countBefore": 1500,
+        "countAfter": 134754,
+        "countDelta": 133254,
+        "sizeBefore": 48000,
+        "sizeAfter": 4312128,
+        "sizeDelta": 4264128
+      },
+      {
+        "constructor": "Detached HTMLSpanElement",
+        "countBefore": 60,
+        "countAfter": 6569,
+        "countDelta": 6509,
+        "sizeBefore": 2400,
+        "sizeAfter": 262760,
+        "sizeDelta": 260360
+      },
+      {
+        "constructor": "(system)",
+        "countBefore": 100,
+        "countAfter": 100,
+        "countDelta": 0,
+        "sizeBefore": 1000000,
+        "sizeAfter": 1006000,
+        "sizeDelta": 6000
+      }
+    ],
+    "monotonicHoarders": [
+      {
+        "constructor": "UniqueElementData",
+        "countDeltas": [
+          30565,
+          30565,
+          30565,
+          30565,
+          30565,
+          30565
+        ],
+        "sizeDeltas": [
+          1467120,
+          1467120,
+          1467120,
+          1467120,
+          1467120,
+          1467120
+        ],
+        "totalCountDelta": 183390,
+        "totalSizeDelta": 8802720
+      },
+      {
+        "constructor": "Detached HTMLDivElement",
+        "countDeltas": [
+          21699,
+          21699,
+          21699,
+          21699,
+          21699,
+          21699
+        ],
+        "sizeDeltas": [
+          1388736,
+          1388736,
+          1388736,
+          1388736,
+          1388736,
+          1388736
+        ],
+        "totalCountDelta": 130194,
+        "totalSizeDelta": 8332416
+      },
+      {
+        "constructor": "HeapVectorBacking<CSSPropertyValue>",
+        "countDeltas": [
+          22209,
+          22209,
+          22209,
+          22209,
+          22209,
+          22209
+        ],
+        "sizeDeltas": [
+          710688,
+          710688,
+          710688,
+          710688,
+          710688,
+          710688
+        ],
+        "totalCountDelta": 133254,
+        "totalSizeDelta": 4264128
+      },
+      {
+        "constructor": "Detached HTMLSpanElement",
+        "countDeltas": [
+          1084,
+          1085,
+          1085,
+          1085,
+          1085,
+          1085
+        ],
+        "sizeDeltas": [
+          43360,
+          43400,
+          43400,
+          43400,
+          43400,
+          43400
+        ],
+        "totalCountDelta": 6509,
+        "totalSizeDelta": 260360
+      },
+      {
+        "constructor": "(system)",
+        "countDeltas": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "sizeDeltas": [
+          1000,
+          1000,
+          1000,
+          1000,
+          1000,
+          1000
+        ],
+        "totalCountDelta": 0,
+        "totalSizeDelta": 6000
+      }
+    ],
+    "topBySizeDelta": [
+      {
+        "constructor": "UniqueElementData",
+        "countDeltas": [
+          30565,
+          30565,
+          30565,
+          30565,
+          30565,
+          30565
+        ],
+        "sizeDeltas": [
+          1467120,
+          1467120,
+          1467120,
+          1467120,
+          1467120,
+          1467120
+        ],
+        "totalCountDelta": 183390,
+        "totalSizeDelta": 8802720
+      },
+      {
+        "constructor": "Detached HTMLDivElement",
+        "countDeltas": [
+          21699,
+          21699,
+          21699,
+          21699,
+          21699,
+          21699
+        ],
+        "sizeDeltas": [
+          1388736,
+          1388736,
+          1388736,
+          1388736,
+          1388736,
+          1388736
+        ],
+        "totalCountDelta": 130194,
+        "totalSizeDelta": 8332416
+      },
+      {
+        "constructor": "HeapVectorBacking<CSSPropertyValue>",
+        "countDeltas": [
+          22209,
+          22209,
+          22209,
+          22209,
+          22209,
+          22209
+        ],
+        "sizeDeltas": [
+          710688,
+          710688,
+          710688,
+          710688,
+          710688,
+          710688
+        ],
+        "totalCountDelta": 133254,
+        "totalSizeDelta": 4264128
+      },
+      {
+        "constructor": "Detached HTMLSpanElement",
+        "countDeltas": [
+          1084,
+          1085,
+          1085,
+          1085,
+          1085,
+          1085
+        ],
+        "sizeDeltas": [
+          43360,
+          43400,
+          43400,
+          43400,
+          43400,
+          43400
+        ],
+        "totalCountDelta": 6509,
+        "totalSizeDelta": 260360
+      },
+      {
+        "constructor": "(system)",
+        "countDeltas": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "sizeDeltas": [
+          1000,
+          1000,
+          1000,
+          1000,
+          1000,
+          1000
+        ],
+        "totalCountDelta": 0,
+        "totalSizeDelta": 6000
+      }
+    ],
+    "meta": {
+      "topN": 40,
+      "cycleCount": 6,
+      "ranking": "monotonic-growth-across-all-6-cycles",
+      "note": "One-off growth is noise; A-list is the hoarder signature."
+    },
+    "ok": true,
+    "calibration": {
+      "surfaceExercisesRealProduct": true,
+      "pinsMatched": 4,
+      "detachedOrderOk": true,
+      "uniqueOrderOk": true,
+      "cssOrderOk": true,
+      "heapOrderOk": true,
+      "detachedDivCountDeltaCycle1": 21699,
+      "uniqueElementDataDeltaCycle1": 30565,
+      "cssPropertyValueBackingDeltaCycle1": 22209,
+      "detachedRowGrowthCountCycle1": 2,
+      "meanHeapFloorDeltaBytes": 52428800,
+      "po": {
+        "detachedDivPerCycle": 21699,
+        "uniqueElementDataPerCycle": 30565,
+        "cssPropertyValueBackingPerCycle": 22209,
+        "approxFurtherDetachedRows": 20,
+        "approxTotalMbPerCycle": 29,
+        "minDetachedDivOrder": 5000,
+        "minHeapFloorOrderBytes": 29360128
+      },
+      "finding": null
+    }
+  },
+  "retainerPaths": {
+    "signature": "TALARIA_HEAP_RETAINER_PATHS_V1",
+    "meta": {
+      "ranking": "aggregated-identical-paths-by-total-self-bytes",
+      "note": "One line per distinct retainer path; element indices collapsed to []. Dominator approx via BFS spanning tree from GC roots.",
+      "maxDepth": 18,
+      "topPaths": 40,
+      "samplePerCtor": 25000,
+      "cacheSuspectTokens": [
+        "_tfDataCache",
+        "_btTfDataCache",
+        "_smartPrefetchCache",
+        "_btTfCache",
+        "smartPrefetch",
+        "__talariaBarStore",
+        "fullRawData",
+        "rawData"
+      ]
+    },
+    "byConstructor": [
+      {
+        "constructor": "system / ExternalStringData",
+        "instanceCount": 3,
+        "sampledCount": 3,
+        "totalSelfBytes": 3500,
+        "pathCount": 2,
+        "paths": [
+          {
+            "path": "Window → Object[_tfDataCache] → Object[bag] → system / ExternalStringData[]",
+            "instanceCount": 2,
+            "totalSelfBytes": 3000,
+            "suspectTokens": [
+              "_tfDataCache"
+            ],
+            "class": "cache-suspect"
+          },
+          {
+            "path": "Window → Object[_tfDataCache] → Object[other] → system / ExternalStringData[data]",
+            "instanceCount": 1,
+            "totalSelfBytes": 500,
+            "suspectTokens": [
+              "_tfDataCache"
+            ],
+            "class": "cache-suspect"
+          }
+        ],
+        "classBytes": {
+          "script-source": 0,
+          "cache-suspect": 3500,
+          "network-ish": 0,
+          "application": 0
+        },
+        "cacheSuspectHits": [
+          {
+            "path": "Window → Object[_tfDataCache] → Object[bag] → system / ExternalStringData[]",
+            "instanceCount": 2,
+            "totalSelfBytes": 3000,
+            "suspectTokens": [
+              "_tfDataCache"
+            ],
+            "class": "cache-suspect"
+          },
+          {
+            "path": "Window → Object[_tfDataCache] → Object[other] → system / ExternalStringData[data]",
+            "instanceCount": 1,
+            "totalSelfBytes": 500,
+            "suspectTokens": [
+              "_tfDataCache"
+            ],
+            "class": "cache-suspect"
+          }
+        ]
+      }
+    ],
+    "ok": true,
+    "summaryText": "TALARIA_HEAP_RETAINER_PATHS_V1\n## system / ExternalStringData instances=3 sampled=3 selfBytes=3500 distinctPaths=2\n  classBytes={\"script-source\":0,\"cache-suspect\":3500,\"network-ish\":0,\"application\":0}\n  3000B ×2 [cache-suspect]  [SUSPECT:_tfDataCache]  Window → Object[_tfDataCache] → Object[bag] → system / ExternalStringData[]\n  500B ×1 [cache-suspect]  [SUSPECT:_tfDataCache]  Window → Object[_tfDataCache] → Object[other] → system / ExternalStringData[data]\n  → cache-suspect path lines: 2"
+  }
 }

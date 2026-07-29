@@ -1,0 +1,221 @@
+{
+  "signature": "TALARIA_HEAP_CYCLE_B85_FLAG_BISECT_V1",
+  "buildExpected": "20260729b85",
+  "rows": [
+    {
+      "id": "ALL_ON",
+      "outPath": "C:\\Users\\user\\Desktop\\talaria1\\full-talaria-log--main\\.scratch-w71-b85-ALL_ON.json",
+      "status": "RED",
+      "build": "20260729b85",
+      "disableFlags": [],
+      "floorsMb": [
+        75.38,
+        76.95,
+        76.77,
+        77.44
+      ],
+      "heapDeltasMb": [
+        1.57,
+        -0.18,
+        0.67
+      ],
+      "meanHeapDeltaMb": 0.69,
+      "meanHeapDeltaBytes": 720793.3333333334,
+      "detachedDeltas": [
+        93,
+        0,
+        0
+      ],
+      "meanDetachedDelta": 31,
+      "m26": "INSUFFICIENT",
+      "fix3": "INSUFFICIENT",
+      "detachedCell": "RED",
+      "heapCell": "GREEN",
+      "error": "HEAP-GROWTH-SURFACE-CALIBRATION: HARNESS-NOT-REAL-PRODUCT: PO pins matched 0/4 (Detached<div>Δ=93, UniqueElementDataΔ=null, CSSPropertyBackingΔ=null, heapMeanBytes=720793.3333333334). Need ≥2 of {Detached<div>≳5k, UniqueElementData≳10k, CSSBacking≳10k, heap≳28MB}. PO manual: +21699 Detached <div>, +30565 UniqueElementData, +22209 CSSBacking, ~29 MB.; HEAP-CYCLE-DETACHED-DIV-STABLE: gradedDetachedDelta=31 signal=cdp-detachedness cdpDetachedMean=31 retainedHtmlDivMean=31.333333333333332 maxStable=1 poPerCycle=21699"
+    },
+    {
+      "id": "ALL_OFF",
+      "outPath": "C:\\Users\\user\\Desktop\\talaria1\\full-talaria-log--main\\.scratch-w71-b85-ALL_OFF.json",
+      "status": "RED",
+      "build": "20260729b85",
+      "disableFlags": [
+        "__TALARIA_DISABLE_MC_PANEL_STATE_PURGE_V1",
+        "__TALARIA_DISABLE_MC_GRID_STATE_PURGE_V1",
+        "__TALARIA_DISABLE_MC_BAR_STORE_REALM_V1",
+        "__TALARIA_DISABLE_MC_CLEARFILE_ON_REMOVE_V1"
+      ],
+      "floorsMb": [
+        75.85,
+        77.69,
+        88.36,
+        100.57
+      ],
+      "heapDeltasMb": [
+        1.84,
+        10.68,
+        12.21
+      ],
+      "meanHeapDeltaMb": 8.24,
+      "meanHeapDeltaBytes": 8640451.333333334,
+      "detachedDeltas": [
+        93,
+        0,
+        0
+      ],
+      "meanDetachedDelta": 31,
+      "m26": "INSUFFICIENT",
+      "fix3": "INSUFFICIENT",
+      "detachedCell": "RED",
+      "heapCell": "RED",
+      "error": "HEAP-GROWTH-SURFACE-CALIBRATION: HARNESS-NOT-REAL-PRODUCT: PO pins matched 0/4 (Detached<div>Δ=93, UniqueElementDataΔ=null, CSSPropertyBackingΔ=null, heapMeanBytes=8640451.333333334). Need ≥2 of {Detached<div>≳5k, UniqueElementData≳10k, CSSBacking≳10k, heap≳28MB}. PO manual: +21699 Detached <div>, +30565 UniqueElementData, +22209 CSSBacking, ~29 MB.; HEAP-CYCLE-DETACHED-DIV-STABLE: gradedDetachedDelta=31 signal=cdp-detachedness cdpDetachedMean=31 retainedHtmlDivMean=33.666666666666664 maxStable=1 poPerCycle=21699; HEAP-CYCLE-HEAP-FLOOR-BOUNDED: meanHeapFloorDelta=8640451.333333334 max=8388608 po≈50MB/cycle"
+    },
+    {
+      "id": "OFF_MC_PANEL_STATE_PURGE_V1",
+      "outPath": "C:\\Users\\user\\Desktop\\talaria1\\full-talaria-log--main\\.scratch-w71-b85-OFF_MC_PANEL_STATE_PURGE_V1.json",
+      "status": "RED",
+      "build": null,
+      "disableFlags": [],
+      "floorsMb": [],
+      "heapDeltasMb": [],
+      "meanHeapDeltaMb": null,
+      "meanHeapDeltaBytes": null,
+      "detachedDeltas": [],
+      "meanDetachedDelta": null,
+      "m26": null,
+      "fix3": null,
+      "detachedCell": null,
+      "heapCell": null,
+      "error": "waitForFunction failed: frame got detached."
+    },
+    {
+      "id": "OFF_MC_GRID_STATE_PURGE_V1",
+      "outPath": "C:\\Users\\user\\Desktop\\talaria1\\full-talaria-log--main\\.scratch-w71-b85-OFF_MC_GRID_STATE_PURGE_V1.json",
+      "status": "RED",
+      "build": "20260729b86",
+      "disableFlags": [
+        "__TALARIA_DISABLE_MC_GRID_STATE_PURGE_V1"
+      ],
+      "floorsMb": [
+        75.78,
+        92.96,
+        92.96,
+        93.67
+      ],
+      "heapDeltasMb": [
+        17.18,
+        -0.01,
+        0.71
+      ],
+      "meanHeapDeltaMb": 5.96,
+      "meanHeapDeltaBytes": 6252237,
+      "detachedDeltas": [
+        93,
+        0,
+        0
+      ],
+      "meanDetachedDelta": 31,
+      "m26": "INSUFFICIENT",
+      "fix3": "INSUFFICIENT",
+      "detachedCell": "RED",
+      "heapCell": "GREEN",
+      "error": "HEAP-GROWTH-SURFACE-CALIBRATION: HARNESS-NOT-REAL-PRODUCT: PO pins matched 0/4 (Detached<div>Δ=93, UniqueElementDataΔ=null, CSSPropertyBackingΔ=null, heapMeanBytes=6252237). Need ≥2 of {Detached<div>≳5k, UniqueElementData≳10k, CSSBacking≳10k, heap≳28MB}. PO manual: +21699 Detached <div>, +30565 UniqueElementData, +22209 CSSBacking, ~29 MB.; HEAP-CYCLE-DETACHED-DIV-STABLE: gradedDetachedDelta=31 signal=cdp-detachedness cdpDetachedMean=31 retainedHtmlDivMean=166.33333333333334 maxStable=1 poPerCycle=21699"
+    },
+    {
+      "id": "OFF_MC_BAR_STORE_REALM_V1",
+      "outPath": "C:\\Users\\user\\Desktop\\talaria1\\full-talaria-log--main\\.scratch-w71-b85-OFF_MC_BAR_STORE_REALM_V1.json",
+      "status": "RED",
+      "build": "20260729b86",
+      "disableFlags": [
+        "__TALARIA_DISABLE_MC_BAR_STORE_REALM_V1"
+      ],
+      "floorsMb": [
+        75.35,
+        104.3,
+        115.96,
+        116.7
+      ],
+      "heapDeltasMb": [
+        28.95,
+        11.66,
+        0.74
+      ],
+      "meanHeapDeltaMb": 13.78,
+      "meanHeapDeltaBytes": 14452104.666666666,
+      "detachedDeltas": [
+        93,
+        0,
+        0
+      ],
+      "meanDetachedDelta": 31,
+      "m26": "INSUFFICIENT",
+      "fix3": "INSUFFICIENT",
+      "detachedCell": "RED",
+      "heapCell": "RED",
+      "error": "HEAP-GROWTH-SURFACE-CALIBRATION: HARNESS-NOT-REAL-PRODUCT: PO pins matched 0/4 (Detached<div>Δ=93, UniqueElementDataΔ=null, CSSPropertyBackingΔ=null, heapMeanBytes=14452104.666666666). Need ≥2 of {Detached<div>≳5k, UniqueElementData≳10k, CSSBacking≳10k, heap≳28MB}. PO manual: +21699 Detached <div>, +30565 UniqueElementData, +22209 CSSBacking, ~29 MB.; HEAP-CYCLE-DETACHED-DIV-STABLE: gradedDetachedDelta=31 signal=cdp-detachedness cdpDetachedMean=31 retainedHtmlDivMean=164.33333333333334 maxStable=1 poPerCycle=21699; HEAP-CYCLE-HEAP-FLOOR-BOUNDED: meanHeapFloorDelta=14452104.666666666 max=8388608 po≈50MB/cycle"
+    },
+    {
+      "id": "OFF_MC_CLEARFILE_ON_REMOVE_V1",
+      "outPath": "C:\\Users\\user\\Desktop\\talaria1\\full-talaria-log--main\\.scratch-w71-b85-OFF_MC_CLEARFILE_ON_REMOVE_V1.json",
+      "status": "RED",
+      "build": "20260729b87",
+      "disableFlags": [
+        "__TALARIA_DISABLE_MC_CLEARFILE_ON_REMOVE_V1"
+      ],
+      "floorsMb": [
+        75.05,
+        92.85,
+        94.04,
+        94.62
+      ],
+      "heapDeltasMb": [
+        17.8,
+        1.19,
+        0.58
+      ],
+      "meanHeapDeltaMb": 6.52,
+      "meanHeapDeltaBytes": 6841369.333333333,
+      "detachedDeltas": [
+        94,
+        1030,
+        0
+      ],
+      "meanDetachedDelta": 374.6666666666667,
+      "m26": "INSUFFICIENT",
+      "fix3": "INSUFFICIENT",
+      "detachedCell": "RED",
+      "heapCell": "GREEN",
+      "error": "HEAP-GROWTH-SURFACE-CALIBRATION: HARNESS-NOT-REAL-PRODUCT: PO pins matched 0/4 (Detached<div>Δ=94, UniqueElementDataΔ=null, CSSPropertyBackingΔ=null, heapMeanBytes=6841369.333333333). Need ≥2 of {Detached<div>≳5k, UniqueElementData≳10k, CSSBacking≳10k, heap≳28MB}. PO manual: +21699 Detached <div>, +30565 UniqueElementData, +22209 CSSBacking, ~29 MB.; HEAP-CYCLE-DETACHED-DIV-STABLE: gradedDetachedDelta=375 signal=cdp-detachedness cdpDetachedMean=374.6666666666667 retainedHtmlDivMean=164 maxStable=1 poPerCycle=21699"
+    }
+  ],
+  "effect": {
+    "ok": true,
+    "allOnMeanMb": 0.69,
+    "allOffMeanMb": 8.24,
+    "allOffWorsenMb": 7.55,
+    "carriers": [
+      {
+        "flag": "__TALARIA_DISABLE_MC_GRID_STATE_PURGE_V1",
+        "meanHeapDeltaMb": 5.96,
+        "worsenVsAllOnMb": 5.27,
+        "carriesEffect": true
+      },
+      {
+        "flag": "__TALARIA_DISABLE_MC_BAR_STORE_REALM_V1",
+        "meanHeapDeltaMb": 13.78,
+        "worsenVsAllOnMb": 13.09,
+        "carriesEffect": true
+      },
+      {
+        "flag": "__TALARIA_DISABLE_MC_CLEARFILE_ON_REMOVE_V1",
+        "meanHeapDeltaMb": 6.52,
+        "worsenVsAllOnMb": 5.83,
+        "carriesEffect": true
+      }
+    ],
+    "namedCarriers": [
+      "__TALARIA_DISABLE_MC_GRID_STATE_PURGE_V1",
+      "__TALARIA_DISABLE_MC_BAR_STORE_REALM_V1",
+      "__TALARIA_DISABLE_MC_CLEARFILE_ON_REMOVE_V1"
+    ]
+  }
+}

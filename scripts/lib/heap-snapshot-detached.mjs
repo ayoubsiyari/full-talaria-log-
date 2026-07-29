@@ -4,7 +4,11 @@
  *
  * Superior mechanism gate vs raw usedJSHeapSize: immune to unrelated heap noise.
  * PO calibration magnitude: +21_699 detached divs per multichart cycle.
+ *
+ * Chromium often names nodes `Detached <div style="...">` — those count too.
  */
+
+import { normalizeConstructorKey } from './heap-snapshot-aggregates.mjs';
 
 export const DETACHED_DIV_NAME_EXACT = Object.freeze([
   'HTMLDivElement',
@@ -17,6 +21,10 @@ export function isDetachedDivName(name) {
   if (DETACHED_DIV_NAME_EXACT.includes(text)) return true;
   if (/^Detached\s+HTMLDivElement$/i.test(text)) return true;
   if (/^Detached\s*<div>$/i.test(text)) return true;
+  // Serialized form from modern Chromium heap snapshots
+  if (/^Detached\s*<div\b/i.test(text)) return true;
+  const norm = normalizeConstructorKey(text, true);
+  if (norm === 'Detached <div>' || norm === 'Detached HTMLDivElement') return true;
   return false;
 }
 

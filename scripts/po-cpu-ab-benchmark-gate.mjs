@@ -7,6 +7,11 @@ import {
   runPoCpuAbBenchmarkGate,
   runPoCpuAbBenchmarkPreflight,
 } from './lib/po-cpu-ab-benchmark.mjs';
+import {
+  PO_CPU_CEILING_DEFAULT_OBSERVE_MS,
+  PO_CPU_CEILING_DEFAULT_SPEED,
+  runPoCpuCeilingProfile,
+} from './lib/po-cpu-ceiling-profile.mjs';
 
 export function parsePoCpuAbBenchmarkArgs(argv = process.argv.slice(2)) {
   const options = {
@@ -15,13 +20,21 @@ export function parsePoCpuAbBenchmarkArgs(argv = process.argv.slice(2)) {
     short: false,
     mutant: false,
     acceptanceOnly: false,
+    ceilingProfile: false,
+    ceilingSpeed: PO_CPU_CEILING_DEFAULT_SPEED,
+    ceilingObserveMs: PO_CPU_CEILING_DEFAULT_OBSERVE_MS,
   };
   for (const arg of argv) {
     if (arg === '--require-browser') options.requireBrowser = true;
     else if (arg === '--short' || arg === '--ci-short') options.short = true;
     else if (arg === '--mutant') options.mutant = true;
     else if (arg === '--acceptance-only') options.acceptanceOnly = true;
-    else if (arg.startsWith('--timeout-ms=')) options.timeoutMs = Number(arg.slice('--timeout-ms='.length));
+    else if (arg === '--ceiling-profile') options.ceilingProfile = true;
+    else if (arg.startsWith('--ceiling-speed=')) {
+      options.ceilingSpeed = Number(arg.slice('--ceiling-speed='.length));
+    } else if (arg.startsWith('--ceiling-observe-ms=')) {
+      options.ceilingObserveMs = Number(arg.slice('--ceiling-observe-ms='.length));
+    } else if (arg.startsWith('--timeout-ms=')) options.timeoutMs = Number(arg.slice('--timeout-ms='.length));
     else if (arg.startsWith('--p2-ms=')) {
       const p2IdleMs = Number(arg.slice('--p2-ms='.length));
       options.timings = { ...(options.timings || {}), p2IdleMs, p2Override: true };
@@ -42,9 +55,18 @@ if (isMain) {
   let result;
   try {
     const options = parsePoCpuAbBenchmarkArgs();
-    result = options.acceptanceOnly || options.mutant
-      ? await runPoCpuAbBenchmarkGate(options)
-      : await runPoCpuAbBenchmarkPreflight(options);
+    if (options.ceilingProfile) {
+      result = await runPoCpuCeilingProfile({
+        requireBrowser: options.requireBrowser,
+        speed: options.ceilingSpeed,
+        observeMs: options.ceilingObserveMs,
+        timeoutMs: options.timeoutMs,
+      });
+    } else {
+      result = options.acceptanceOnly || options.mutant
+        ? await runPoCpuAbBenchmarkGate(options)
+        : await runPoCpuAbBenchmarkPreflight(options);
+    }
   } catch (error) {
     result = {
       ok: false,
