@@ -3947,3 +3947,37 @@ No `B-R*` adversarial subagent ran in the window; all of the below were **manage
 | 7 | b96 | A M23 rollback-cancel + SPLITTER-BORDERS admitted to train |
 
 b97/b98/b99 are re-ships of the same tip: no new review, but they inherit every item above. Kill-switch semantics (1, 3, 4) are named money-path-adjacent by the ruling and rank first for TOP re-review.
+
+
+## B-0175 — Live displacement root cause: MY handoff. Grade lane built. b99 re-pinned.
+
+**2026-07-29T16:4xZ.** `tier=low model=cursor-grok-4.5` (release mechanics + doc correction).
+
+### Why live kept reading b85/b90 all afternoon — it was my instruction, not C's grading
+`HANDOFF-C-PINNED-CANARY-IMAGES-20260729.md` told C to grade a pin with `canary-bringup-pinned.sh`, which runs `docker compose up` on the **live** project. C followed it correctly. Restore points on the host prove three displacements:
+
+| Restore point | Effect |
+|---|---|
+| `bringup-20260729b85-20260729T160602Z` | live -> b85 |
+| `bringup-20260729b85-20260729T161321Z` | live -> b85, displacing b99 shipped 16:12Z |
+| `bringup-20260729b85-20260729T162716Z` | live -> b85 again (after my first b99 restore) |
+
+So "you have not deployed since b90" was partly true on the wire and entirely false about the ship. **A deploy is not done when `CANARY_CHECKPOINT_OK` prints; it is done when nothing else can quietly take the wire back.** That is the lesson, and it is mine.
+
+### Fix: grade lane (`canary-grade-lane.sh`, shipped to /opt/talaria)
+Second homepage container from the immutable `canary-<id>` tag, own name `talaria-grade-homepage`, joined to `talaria_default`, bound `127.0.0.1:3001` (no new public port; SSH `-L` tunnel documented). Loads from the tar if the tag is gone. **Fails closed** — exits non-zero if the container serves a build id other than the one requested. Proven simultaneous:
+
+`curl :3000 -> 20260729b99` and `curl :3001 -> 20260729b85`.
+
+Scope limit stated in the handoff and required in any grading claim: only the **front-end bundle** is pinned; API/worker/DBs are live and shared. Sound for listener/timer/worker/heap census; not sound for server-side build state.
+
+Own defect found and fixed in that script: `grep -o ... | head -1` SIGPIPEs grep, tripping the `|| echo UNKNOWN` fallback and appending a bogus second line, which made the first run report `GRADE_LANE_FAIL` on a lane that was working. Now `grep -m1 -o` with empty-on-miss so callers fail closed instead of comparing against a sentinel.
+
+### Live provenance hardened
+Live re-pinned via explicit `HOMEPAGE_IMAGE`/`TRADING_CHART_IMAGE` rather than retagging `:latest`. `docker inspect -f '{{.Config.Image}}'` now returns `talaria-{homepage,trading-chart}:canary-20260729b99`, so it is a valid provenance source for C's grading label. Wire: `20260729b99`. b99 tar `gzip -t` OK. Disk 81% used, 38G free, twelve ~320MB tars.
+
+Handoff: `HANDOFF-C-GRADE-LANE-20260729.md`; superseding banner added to the pinned-images handoff.
+
+### In flight
+- **B-R9** `role=reviewer tier=top model=claude-opus-5-thinking-high` — re-review of the three fallback-window kill-switch decisions (b90 polarity, b92 default-ON restore, b93 FLAG-03). Named question: whether b92's revert reintroduced the b88 panel freeze, and what was lost when the FIX1 harness halved from 98176 to 49103 bytes in `798e07dd4`.
+- **B-W20** `role=author tier=mid model=gpt-5.5-medium-fast` — finish the TIMER-OUTLIVES-OWNER sweep. Existing census was inspection-only and `setInterval`-only. Seed lead for the worker relatives C's census reports (workers +1 per multichart cycle, never terminated): `chart-indicators-full.js:8004-8035` caches `_indicatorWorkerSingleton` per realm with no `.terminate()` anywhere in the file; each panel is its own realm. That file is A's territory -> escalation with proof, not a B edit.
