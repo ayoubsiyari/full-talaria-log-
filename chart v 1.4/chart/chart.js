@@ -31624,9 +31624,30 @@ class Chart {
     }
 
     /** Replay-mode bar-close countdown (progress through forming candle). */
+    /**
+     * COUNTDOWN-NULL-GUARD — default ON. Kill-switch (truthy):
+     *   window.__TALARIA_DISABLE_COUNTDOWN_NULL_GUARD_V1
+     * restores tip behaviour (unguarded fullRawData[i] dereference that
+     * throws when the bar series is null). Read per call; never sampled
+     * at init. Absent / falsy = guarded degrade to "".
+     */
+    _countdownNullGuardEnabled() {
+        return typeof window === 'undefined'
+            || !window.__TALARIA_DISABLE_COUNTDOWN_NULL_GUARD_V1;
+    }
+
     _getReplayBarCloseCountdownText() {
         const rs = this.replaySystem;
         if (!rs || !rs.isActive) return '';
+        // COUNTDOWN-NULL-GUARD: absent/empty bar series (null/non-array/empty
+        // fullRawData) must degrade to no-countdown rather than throw in
+        // animate() via rs.fullRawData[currentIndex] when currentIndex is
+        // stale (PO b99), or invent a full-length countdown for a zero-bar
+        // series (COUNTDOWN-EMPTY-ARRAY — same 502 empty-spread path).
+        if (this._countdownNullGuardEnabled()
+            && (!Array.isArray(rs.fullRawData) || rs.fullRawData.length === 0)) {
+            return '';
+        }
         const timeframe = this.currentTimeframe || '1m';
         const totalSeconds = this.getTimeframeSeconds(timeframe);
         const displayTfMs = totalSeconds * 1000;
