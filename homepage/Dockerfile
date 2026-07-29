@@ -39,6 +39,10 @@ COPY ["homepage/public/chart/modules/module-presence-runtime.js", "/contract-roo
 COPY ["homepage/public/chart/modules/indicator-performance.js", "/contract-root/homepage/public/chart/modules/indicator-performance.js"]
 COPY ["homepage/public/chart/dist-v9", "/contract-root/homepage/public/chart/dist-v9"]
 COPY ["homepage/public/chart/multichart-prod", "/contract-root/homepage/public/chart/multichart-prod"]
+# Public mirror of the routed /chart/multichart/ panel shell — required by
+# module-contracts.json rows multichart-panel-shell-{source,public}. Without
+# this COPY the Docker preflight fails closed on a missing owned-stamped surface.
+COPY ["homepage/public/chart/multichart/chart-host.html", "/contract-root/homepage/public/chart/multichart/chart-host.html"]
 RUN mkdir -p "/contract-root/chart v 1.4" \
   && ln -sfn /build/chart "/contract-root/chart v 1.4/chart" \
   && ln -sfn /build/talaria-design "/contract-root/chart v 1.4/talaria-design" \

@@ -167,6 +167,13 @@
     <!-- d3 (chart.js hard-requires d3) -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"
             crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+
+    <!-- GATE-01 / MODULE-CONTRACT: owned-stamped panel shell must load
+         ModulePresenceRuntime before chart.js, IndicatorPerf after, and carry a
+         build stamp. Same obligations as multichart-prod/chart-embed.html.
+         Release-manager unblock 2026-07-29 — A's territory; mechanical contract
+         only so the train can cut an image for the PO. -->
+    <script>window.__TALARIA_CHART_BUILD_ID='20260729b100';try{console.info('[Talaria] chart build',window.__TALARIA_CHART_BUILD_ID);}catch(_){}</script>
 </head>
 <body>
     <div id="chart-container">
@@ -290,8 +297,12 @@
         window.ScreenshotManager   = function () { return makeNoopProxy({}); };
     </script>
 
-    <!-- engine -->
-    <script src="../chart.js"></script>
+    <!-- engine — absolute /chart/ paths so MODULE-CONTRACT sees the same script
+         identities as every other owned-stamped panel surface. -->
+    <script src="/chart/modules/module-presence-runtime.js?v=20260729b100"></script>
+    <script src="/chart/chart.js"></script>
+    <script src="/chart/modules/indicator-performance.js?v=20260729b100"></script>
+    <script src="/chart/modules/chart-indicators-full.js?v=20260729b100"></script>
 
     <!-- sandbox-only modules. Cache-busting query string — bump on any sandbox change.
          sample-data.js was deleted in v10 — the sandbox always fetches real
@@ -430,7 +441,20 @@
             chart.currentSymbol = sym;
             chart.currentTimeframe = tf;
             chart.totalCandles = candles.length;
-            try { chart.fitToView && chart.fitToView(); } catch (_) {}
+            // TradingView parity: when this load is a TF switch, loadDataInto()
+            // captured the previous visible window onto chart._tfSwitchViewport.
+            // Re-center the new TF on it; fall back to fitToView for file/symbol/
+            // initial loads and when the captured center isn't in the fetched
+            // (end-anchored) window — so loading is never broken.
+            var __viewRestored = false;
+            try {
+                if (chart._tfSwitchViewport && typeof chart._restoreTfSwitchViewport === 'function') {
+                    __viewRestored = chart._restoreTfSwitchViewport();
+                }
+            } catch (_) {}
+            if (!__viewRestored) {
+                try { chart.fitToView && chart.fitToView(); } catch (_) {}
+            }
             try { chart.scheduleRender ? chart.scheduleRender() : chart.render(); } catch (_) {}
             try {
                 // v10.5.0: include `fileId` so the shell can persist it
@@ -475,7 +499,17 @@
          * in the per-chart badge and the parent shell log instead of silently
          * showing fake data.
          */
-        function loadDataInto(chart, fid, tf) {
+        function loadDataInto(chart, fid, tf, preserveViewport) {
+            // Snapshot the current visible window only for TF switches (the tf
+            // <select> handler passes preserveViewport=true). File/symbol/initial
+            // loads clear it so applyCandles fits to the latest candle.
+            try {
+                if (preserveViewport && typeof chart._captureTfSwitchViewport === 'function') {
+                    chart._captureTfSwitchViewport();
+                } else {
+                    chart._tfSwitchViewport = null;
+                }
+            } catch (_) { chart._tfSwitchViewport = null; }
             if (!fid) {
                 setBars(0, true);
                 reportToShell('warn', 'no file selected — pick one from the per-panel dropdown');
@@ -876,7 +910,7 @@
             // never broadcast as a sync event.
             tfSel.addEventListener('change', function (e) {
                 const newTf = e.target.value;
-                loadDataInto(chart, currentFileId, newTf);
+                loadDataInto(chart, currentFileId, newTf, true);
                 try {
                     window.dispatchEvent(new CustomEvent('timeframeChanged', {
                         detail: { chart: chart, timeframe: newTf },
