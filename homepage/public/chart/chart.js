@@ -1229,6 +1229,10 @@ class Chart {
         this._mcFinerPanelHostCommitTarget = null;
         this._mcFinerPanelHostCommitUnloadHandler = null;
         this._installFinerPanelSelfOwnerHostCommitListener();
+        this._sharedBarStoreClientId = null;
+        this._sharedBarStoreFileRefs = new Set();
+        this._sharedBarStoreReleaseUnloadHandler = null;
+        this._installSharedBarStoreReleaseHook();
         /** Coalesce high-frequency pan sync broadcasts to ~1/frame. */
         this._scrollSyncRaf = null;
         this._lastScrollSyncAt = 0;
@@ -3188,10 +3192,28 @@ class Chart {
     // Inspect with window.__talariaBarStoreStats().
     // ─────────────────────────────────────────────────────────────────────
 
+    _mcBarStoreRealmSwitchEnabled() {
+        try {
+            return !!(typeof window !== 'undefined' && window.__TALARIA_DISABLE_MC_BAR_STORE_REALM_V1);
+        } catch (_e) {
+            return false;
+        }
+    }
+
+    _makeBarStoreStatsFn() {
+        return function __talariaBarStoreStats() {
+            return window.__talariaBarStore ? window.__talariaBarStore.stats() : null;
+        };
+    }
+
     /** Resolve the ONE shared store (lazily created on the top same-origin window). */
     _sharedBarStore() {
         if (typeof window === 'undefined') return null;
         if (window.__TALARIA_DISABLE_SHARED_BAR_STORE) return null;
+        // __TALARIA_DISABLE_MC_BAR_STORE_REALM_V1 reverts realm selection only.
+        // Payload cloning and refcount ownership remain active; current normalized
+        // bars/cursors are scalar data, so those guards are safe under flag-on.
+        const legacyRealm = this._mcBarStoreRealmSwitchEnabled();
         let host = window;
         try {
             const top = window.top || window;
@@ -3202,12 +3224,29 @@ class Chart {
             host = window;
         }
         try {
+            if (legacyRealm) {
+                if (!host.__talariaBarStore) {
+                    host.__talariaBarStore = this._createSharedBarStore();
+                    try {
+                        host.__talariaBarStoreStats = function () {
+                            return host.__talariaBarStore ? host.__talariaBarStore.stats() : null;
+                        };
+                    } catch (_s) { /* ignore */ }
+                }
+                return host.__talariaBarStore;
+            }
             if (!host.__talariaBarStore) {
-                host.__talariaBarStore = this._createSharedBarStore();
+                if (host !== window) {
+                    if (!host.chart || typeof host.chart._createSharedBarStore !== 'function') return null;
+                    host.__talariaBarStore = host.chart._createSharedBarStore();
+                } else {
+                    host.__talariaBarStore = this._createSharedBarStore();
+                }
                 try {
-                    host.__talariaBarStoreStats = function () {
-                        return host.__talariaBarStore ? host.__talariaBarStore.stats() : null;
-                    };
+                    const statsOwner = (host.chart && typeof host.chart._makeBarStoreStatsFn === 'function')
+                        ? host.chart
+                        : this;
+                    host.__talariaBarStoreStats = statsOwner._makeBarStoreStatsFn();
                 } catch (_s) { /* ignore */ }
             }
             return host.__talariaBarStore;
@@ -3223,7 +3262,7 @@ class Chart {
     _createSharedBarStore() {
         const MAX_FILES = 12;
         const MAX_BARS_PER_TF = 200000;
-        const files = new Map(); // fileId -> { tfs:Map(tf->{bars,cursors,updatedAt}), lru }
+        const files = new Map(); // fileId -> { tfs:Map(tf->{bars,cursors,updatedAt}), refs:Set(clientId), lru }
         let lruSeq = 0;
 
         const parseTfMs = (tf) => {
@@ -3245,6 +3284,28 @@ class Chart {
             if (oldestId != null) files.delete(oldestId);
         };
 
+        const scalarClone = (value) => {
+            if (!value || typeof value !== 'object') return null;
+            const out = {};
+            for (const k of Object.keys(value)) {
+                const v = value[k];
+                if (v == null || typeof v !== 'object') out[k] = v;
+            }
+            return out;
+        };
+
+        const cloneBarsForStore = (bars) => {
+            const start = Math.max(0, bars.length - MAX_BARS_PER_TF);
+            const out = [];
+            for (let i = start; i < bars.length; i += 1) {
+                const cloned = scalarClone(bars[i]);
+                if (cloned && Number.isFinite(Number(cloned.t))) out.push(cloned);
+            }
+            return out;
+        };
+
+        const cloneCursorsForStore = (cursors) => scalarClone(cursors);
+
         const unionByTime = (existing, incoming) => {
             if (!existing || !existing.length) return incoming.slice();
             if (!incoming || !incoming.length) return existing;
@@ -3265,16 +3326,34 @@ class Chart {
                 if (!id || !key || !Array.isArray(bars) || bars.length === 0) return;
                 if (!parseTfMs(key)) return;
                 let f = files.get(id);
-                if (!f) { f = { tfs: new Map(), lru: ++lruSeq }; files.set(id, f); }
+                if (!f) { f = { tfs: new Map(), refs: new Set(), lru: ++lruSeq }; files.set(id, f); }
                 f.lru = ++lruSeq;
                 const prev = f.tfs.get(key);
-                const mergedBars = prev ? unionByTime(prev.bars, bars) : bars.slice();
+                const storeBars = cloneBarsForStore(bars);
+                if (!storeBars.length) return;
+                const mergedBars = prev ? unionByTime(prev.bars, storeBars) : storeBars;
                 f.tfs.set(key, {
                     bars: mergedBars,
-                    cursors: cursors || (prev && prev.cursors) || null,
+                    cursors: cloneCursorsForStore(cursors) || (prev && prev.cursors) || null,
                     updatedAt: Date.now(),
                 });
                 evict();
+            },
+            retainFile(fileId, clientId) {
+                const id = String(fileId || '');
+                const owner = String(clientId || '');
+                const f = files.get(id);
+                if (!id || !owner || !f) return;
+                f.refs.add(owner);
+                f.lru = ++lruSeq;
+            },
+            releaseFile(fileId, clientId) {
+                const id = String(fileId || '');
+                const owner = String(clientId || '');
+                const f = files.get(id);
+                if (!id || !owner || !f) return;
+                f.refs.delete(owner);
+                if (f.refs.size === 0) files.delete(id);
             },
             /**
              * Best cached window for `wantedTf`: the entry whose resolution is
@@ -3298,7 +3377,7 @@ class Chart {
                     const score = span > 0 ? span / wantMs : e.bars.length;
                     if (score > bestScore) {
                         bestScore = score;
-                        best = { bars: e.bars, tf: tf, cursors: e.cursors };
+                        best = { bars: e.bars.slice(), tf: tf, cursors: e.cursors };
                     }
                 }
                 if (best) f.lru = ++lruSeq;
@@ -3311,7 +3390,13 @@ class Chart {
                 for (const [tf, e] of f.tfs) out[tf] = e.bars.length;
                 return out;
             },
-            clearFile(fileId) { files.delete(String(fileId || '')); },
+            clearFile(fileId, clientId) {
+                if (clientId != null) {
+                    this.releaseFile(fileId, clientId);
+                    return;
+                }
+                files.delete(String(fileId || ''));
+            },
             stats() {
                 const out = { files: files.size, detail: {} };
                 for (const [id, f] of files) {
@@ -3328,6 +3413,57 @@ class Chart {
                 return out;
             },
         };
+    }
+
+    _sharedBarStoreOwnerId() {
+        if (!this._sharedBarStoreClientId) {
+            const rand = Math.random().toString(36).slice(2);
+            this._sharedBarStoreClientId = `chart-${Date.now().toString(36)}-${rand}`;
+        }
+        return this._sharedBarStoreClientId;
+    }
+
+    _retainSharedBarStoreFile(store, fileId) {
+        try {
+            const id = String(fileId || '');
+            if (!id || !store || typeof store.retainFile !== 'function') return;
+            const owner = this._sharedBarStoreOwnerId();
+            store.retainFile(id, owner);
+            this._sharedBarStoreFileRefs.add(id);
+        } catch (_e) { /* best-effort cache ownership only */ }
+    }
+
+    _installSharedBarStoreReleaseHook() {
+        try {
+            if (typeof window === 'undefined' || this._sharedBarStoreReleaseUnloadHandler) return;
+            const self = this;
+            this._sharedBarStoreReleaseUnloadHandler = function sharedBarStoreReleaseOnPagehide(ev) {
+                if (ev && ev.persisted === true) return;
+                self._releaseSharedBarStoreFileRefs();
+            };
+            window.addEventListener('pagehide', this._sharedBarStoreReleaseUnloadHandler);
+        } catch (_e) { /* ignore */ }
+    }
+
+    _releaseSharedBarStoreFileRefs() {
+        if (this._mcBarStoreRealmSwitchEnabled()) return;
+        const refs = this._sharedBarStoreFileRefs;
+        if (!refs || refs.size === 0) return;
+        let store = null;
+        try { store = this._sharedBarStore(); } catch (_e) { store = null; }
+        if (store && typeof store.clearFile === 'function') {
+            const owner = this._sharedBarStoreOwnerId();
+            for (const fileId of refs) {
+                try { store.clearFile(fileId, owner); } catch (_e) { /* ignore */ }
+            }
+        }
+        refs.clear();
+        try {
+            if (typeof window !== 'undefined' && this._sharedBarStoreReleaseUnloadHandler) {
+                window.removeEventListener('pagehide', this._sharedBarStoreReleaseUnloadHandler);
+            }
+        } catch (_e) { /* ignore */ }
+        this._sharedBarStoreReleaseUnloadHandler = null;
     }
 
     /** Publish just-ingested native bars into the shared store (called from ingest). */
@@ -3349,6 +3485,7 @@ class Chart {
                 ? Object.assign({}, this._serverCursors, { total: this.totalCandles })
                 : { total: this.totalCandles };
             store.put(fileId, tf, bars, cursors);
+            this._retainSharedBarStoreFile(store, fileId);
         } catch (_e) { /* best-effort cache only */ }
     }
 
@@ -3365,6 +3502,7 @@ class Chart {
             if (!store) return null;
             const picked = store.pick(String(fileId), requestTimeframe || this.currentTimeframe || '1m');
             if (!picked || !Array.isArray(picked.bars) || picked.bars.length === 0) return null;
+            this._retainSharedBarStoreFile(store, fileId);
             const bars = picked.bars;
             this._panelFullRawData = bars.slice();
             const c = picked.cursors || {};
@@ -3410,6 +3548,7 @@ class Chart {
                 : 0;
             const pickSpan = Number(picked.bars[picked.bars.length - 1].t) - Number(picked.bars[0].t);
             if (!(pickSpan > localSpan)) return false;
+            this._retainSharedBarStoreFile(store, this.currentFileId);
             this._panelFullRawData = picked.bars.slice();
             if (picked.tf) this._nativeRawFetchTf = picked.tf;
             return true;
