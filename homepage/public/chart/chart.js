@@ -442,7 +442,7 @@ const TV_CANDLE_BODY_SLOT_RATIO = 0.8;
 /** Zoomed-out horizontal slot: 1px body + 1px gutter between bars (TradingView-style). */
 const TV_ZOOMED_OUT_SLOT_PX = 2;
 /** Bump with bump-dist-v9-cache / build:live:chart — check DevTools console on load. */
-const CHART_ENGINE_BUILD = '20260728b82';
+const CHART_ENGINE_BUILD = '20260724b61';
 
 /**
  * CB-01 mount/symbol diagnostic signature logger.
@@ -2660,7 +2660,12 @@ class Chart {
         // legacy `resamples` wrapper never covered. replayTicks counts both entry
         // points so "per tick" is well defined at every playback speed; `resamples`
         // is deliberately NOT incremented here (its semantics stay unchanged).
-        if (!_talariaM20Q9McDiagCountersDisabled() && typeof replay.updateChartDataFast === 'function') {
+        //
+        // Install unconditionally. The Q9 kill-switch is read per call inside the
+        // wrapper; that read is the entire switch. Gating installation here strands
+        // a panel that booted under the switch for the life of the page — delete
+        // cannot re-enter an install-time gate (FLAG-02 / M23 pagehide precedent).
+        if (typeof replay.updateChartDataFast === 'function') {
             const originalUpdateChartDataFast = replay.updateChartDataFast;
             replay.updateChartDataFast = function mcDiagUpdateChartDataFastWrapper(...args) {
                 if (!_talariaM20Q9McDiagCountersDisabled()) {
@@ -4411,10 +4416,6 @@ class Chart {
             };
             parentWin.addEventListener('talariaMcHostDataCommit', this._mcFinerPanelHostCommitHandler);
             this._mcFinerPanelHostCommitListenerInstalled = true;
-            if (typeof window !== 'undefined'
-                && window.__TALARIA_DISABLE_M23_HOST_COMMIT_TEARDOWN_V1 === true) {
-                return;
-            }
             // Remove from the window we actually registered on. `window.parent`
             // is deliberately not re-read at teardown: a removal aimed at the
             // wrong window would silently succeed and look like a fix.
@@ -4425,6 +4426,16 @@ class Chart {
             // pagehide here while parentWin is still reachable. A persisted
             // pagehide is bfcache: the panel is coming back and must keep
             // receiving commits, so leave the registration in place.
+            //
+            // Installed unconditionally. The M23 kill-switch is read at the
+            // teardown site, on every call, and that read is the entire switch.
+            // This hook is the only thing that ever reaches teardown — Chart
+            // has no destroy() path — so gating it here would strand a panel
+            // that booted under the switch for the life of the page, in every
+            // later switch state. It costs one listener on the panel's own
+            // window, which dies with this document and adds no panel→host
+            // retention edge; severing that edge is what M23 is for. pagehide,
+            // unlike unload, leaves the document bfcache-eligible.
             this._mcFinerPanelHostCommitUnloadHandler = function finerPanelHostCommitUnload(ev) {
                 if (ev && ev.persisted === true) return;
                 self._removeFinerPanelSelfOwnerHostCommitListener();
