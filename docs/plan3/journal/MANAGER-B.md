@@ -3794,3 +3794,31 @@ Writable set: deploy, build, api_server, train. Leak shots needing `chart.js` �
 
 ### Next
 Align chart.js from A → cherry-pick LEAK-C `f5ee11780` → stamp **b85**.
+
+
+## B-0162 — b85 LIVE. A's chart.js canonical. LEAK-C shipped.
+
+**2026-07-29 ~12:06Z.** Confirmed both Director items; continued train.
+
+### Confirmations
+1. **P3 dup:** region byte-identical; B tip only lagged Q9/M23 unstrand + local `CHART_ENGINE_BUILD`. Aligned to A blob `5094522056…` (`0454ab069`). No B P3 behavior beyond A's.
+2. **Stay out of chart.js:** standing. Writable = deploy/build/api_server/train. Leak→chart.js escalates to A.
+
+### Ship
+| | |
+|---|---|
+| Tip | `294fef744` (LEAK-C `ab747bb5c` + align + docs) |
+| Stamp | **`20260729b85`** → `31.97.192.82` |
+| Product | LEAK-C `__TALARIA_DISABLE_MC_CLEARFILE_ON_REMOVE_V1` (multichart only) |
+| FLAG-01/02 | **PASS** — harness 6/6 four-state round-trip |
+
+### Verify
+| Gate | Result |
+|---|---|
+| SURF-3 fixture | RED |
+| SURF-3 live | GREEN `20260729b85` |
+| stamp-census | holes=0 max=b85 |
+| deploy-gate / journalVouchedFor | PRESENT |
+| Flags on wire | PANEL + CLEARFILE + BAR_STORE_REALM (+ GRID via dist) |
+
+Ship script 4d SSH quote flake after PURGE_FLAGS_REACHABLE — remainder verify closed green; script quote hardened for next stamp.

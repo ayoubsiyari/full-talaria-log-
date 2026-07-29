@@ -27,5 +27,6 @@ Whenever `manager-a/critical-path` advances with product merges:
 
 ## Current floor
 
-**`20260729b84` live** — includes PURGE-1/2 + `MC_BAR_STORE_REALM_V1`.  
+**`20260729b85` live** — PURGE-1/2 + A's canonical `chart.js` (P3) + LEAK-C (`MC_CLEARFILE_ON_REMOVE_V1`).  
+B does **not** write `chart.js`; escalate leak shots that need it.
 
