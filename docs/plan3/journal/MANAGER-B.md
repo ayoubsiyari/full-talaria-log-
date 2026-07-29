@@ -4317,3 +4317,8 @@ Director confirmed B-0185: host-only kill-switch ⇒ "flag off, no change" false
 Shared `_talariaDisableFlagTruthy(flag)` (self→parent→top, truthy, cross-origin fails toward shipped default). All replay module/method kill predicates that were host-only/`!== true` now use it, including M28. LAG rewritten onto the shared helper (existing realm cells still green). M20-Q6 *install-time* descriptor reader left alone this cut — different shape; next.
 
 Gates: lag 16/16, M28 12/12, mirror byte-identical.
+
+## B-0190 — 2026-07-29T23:00Z — SHIP 20260729b102
+
+**PO_SHOULD_READ=20260729b102**
+MEAS-01 HTTP: shell=200, stamp matches, both images `canary-20260729b102`. dist-v9 has `__TALARIA_DISABLE_TRADE_DURATION_NORM_V1` (1); served `replay-system.js` has `_talariaDisableFlagTruthy` (16). Tip `4d7dbbafc` = D train + realm-climb sweep.
