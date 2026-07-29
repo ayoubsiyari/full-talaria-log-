@@ -61,3 +61,34 @@ the failure we just experienced, and it was invisible for hours.
 
 B remains the critical path. A's orphan-listener kills and lag tick fix have been finished for two
 hours and are still not live, so the leak is fixed in code and unfixed in the product.
+
+---
+
+## ADDENDUM 2026-07-29 22:20 — where the cost actually is, and the rule that follows
+
+**TIER-01 is being followed.** Checked against the journals rather than assumed:
+D authors at `tier=mid model=gpt-5.5` and escalates only money-path review to
+`tier=top`; C runs packets at `tier=mid` on gpt-5.5 and cursor-grok-4.5; A
+dispatched the COVER-LOOP remediation MID; B went TOP for the nginx packet and
+justified it in the entry as money-path-adjacent live proxy config. That is
+routing by need, not tier inflation. Recorded because compliance should be
+noticed as explicitly as violation.
+
+**Correction to the Director's own cost model.** I had treated the manager's own
+model as the lever. It is not. A manager loop is triage and journaling; the
+subagents are many, parallel, and run long tool loops. Concurrent TOP subagents
+are where the budget goes — D's thirteen back-to-back money-path reviews were the
+single largest spend of the evening, and also the last thing anyone should
+cheapen.
+
+**TIER-02 — the rule that follows.** If limits tighten, the Director reduces the
+NUMBER of concurrent TOP reviews and serializes them. Nobody downgrades a
+reviewer to save budget, and no manager drops its own tier without a Director
+ruling. Parallel remains the default for MID and LOW work (PAR-01 unchanged).
+
+**Justify TOP in the journal entry, as B does.** One clause naming why the packet
+needs it. A tier claimed by reflex is indistinguishable from a tier claimed by
+need once it is in the log, and the log is what we audit.
+
+Standing context: limits ran dry once today and every manager silently fell back
+to a single model. If that recurs during the memory kill we lose the session.
