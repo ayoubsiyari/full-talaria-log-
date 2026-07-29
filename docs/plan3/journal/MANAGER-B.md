@@ -4335,3 +4335,17 @@ Landed A's `94ba5e0d5` (from `manager-a/realm-teardown-on-train` / `c289c05c1`) 
 MEAS-01 HTTP: stamp + both canary images + LIVE_PIN agree. Five independent release kill-switches on the wire for heap bisect.
 
 B-0185 self-catches (phantom mirror ROOT; blind stash pop) and M28→A routing noted as confirmed.
+
+## B-0192 — 2026-07-30T00:2xZ — M17-DI2 STAGED, WIRE HELD (DEPLOY-02)
+
+**Row:** M4-release | **Packet:** M17-DI2-SHIP | **Tier:** mid
+
+PO symptom: entry price 1.06487 on 1H vs 1.06492 on 1m/5m/15m/1D — one TF disagreeing is the completed-bar close mutation signature. Guard was sitting in A's transplant unshipped.
+
+Landed A's `db3546e8e` (`manager-a/train-transplant-20260729`) as `6ae251982`. It auto-merged with my realm-climb sweep in `replay-system.js`; verified the climb survived (16 `_talariaDisableFlagTruthy` sites, canonical and mirror) and all three touched files are byte-identical to their `homepage/public` mirrors.
+
+Gates at this tip: M17-DI2 13/13, lag 16/16, M28 12/12, realm-teardown 28/28.
+
+**Stamp reserved: `20260729b104`.** Build is staged (tar at tip `6ae251982`, runner `_run-ship-b104-key.sh`) and NOT deployed. Wire verified still `20260729b103` — pin, both images and served stamp — so the PO's heap run is measuring b103 undisturbed.
+
+DEPLOY-02 made mechanical rather than a promise: b104's runner opens with a measurement interlock and exits 9 if `/root/talaria-restore/MEASUREMENT-IN-PROGRESS` exists, so a mistimed ship aborts instead of displacing a measurement. Ship on the director's word that the heap run is finished; one command, ~5 minutes to stamp.
