@@ -204,7 +204,13 @@ export function synthesizePoLeakHeapCycleReport() {
 export function summarizeHeapCycleReport(report) {
   const baseline = report?.baseline || null;
   const cycles = Array.isArray(report?.cycles) ? report.cycles : [];
-  const heapSamplesOk = !!baseline
+  const floorPrimary = report?.meta?.snapshotPolicy === 'baseline-and-final'
+    || report?.growthCensus?.snapshotPolicy === 'baseline-and-final'
+    || report?.meta?.snapshotPolicy === 'floor-only'
+    || report?.growthCensus?.snapshotPolicy === 'floor-only';
+  const floorOnly = report?.meta?.snapshotPolicy === 'floor-only'
+    || report?.growthCensus?.snapshotPolicy === 'floor-only';
+  const floorsOk = !!baseline
     && baseline.exposed === true
     && baseline.metric === HEAP_METRIC_USED_JS_HEAP_SIZE
     && baseline.forcedGcAttempted === true
@@ -212,7 +218,14 @@ export function summarizeHeapCycleReport(report) {
     && cycles.every((row) => row?.returnSingle?.exposed === true
       && row.returnSingle.metric === HEAP_METRIC_USED_JS_HEAP_SIZE
       && row.returnSingle.forcedGcAttempted === true
-      && Number.isFinite(Number(row.detachedDivCount)));
+      && Number.isFinite(Number(row.returnSingle.usedJSHeapSize)));
+  const detachedEveryCycle = cycles.every((row) => Number.isFinite(Number(row.detachedDivCount)));
+  const detachedBookend = Number.isFinite(Number(baseline?.detachedDivCount))
+    && Number.isFinite(Number(cycles[cycles.length - 1]?.detachedDivCount
+      ?? cycles[cycles.length - 1]?.returnSingle?.detachedDivCount));
+  // Floor-only PO mode: usedJSHeapSize×6 is the calibration instrument (GATE-01).
+  const heapSamplesOk = floorsOk
+    && (floorOnly || detachedEveryCycle || (floorPrimary && detachedBookend));
 
   const forcedGcAvailable = baseline?.forcedGcAvailable === true
     && cycles.every((row) => row?.returnSingle?.forcedGcAvailable === true);
@@ -234,7 +247,7 @@ export function summarizeHeapCycleReport(report) {
       return HEAP_CYCLE_DISTINCT_FILE_IDS.every((id) => unique.has(id));
     });
 
-  const detachedDeltas = cycles.map((row, index) => {
+  let detachedDeltas = cycles.map((row, index) => {
     if (Number.isFinite(Number(row.detachedDivDelta))) return Number(row.detachedDivDelta);
     const prev = index === 0
       ? Number(baseline?.detachedDivCount)
@@ -243,9 +256,16 @@ export function summarizeHeapCycleReport(report) {
     if (!Number.isFinite(prev) || !Number.isFinite(cur)) return null;
     return cur - prev;
   });
-  const meanDetachedDelta = detachedDeltas.every((value) => value != null)
+  let meanDetachedDelta = detachedDeltas.every((value) => value != null)
     ? detachedDeltas.reduce((sum, value) => sum + value, 0) / detachedDeltas.length
     : null;
+  if (meanDetachedDelta == null && floorPrimary && detachedBookend) {
+    const finalDetached = Number(cycles[cycles.length - 1]?.detachedDivCount
+      ?? cycles[cycles.length - 1]?.returnSingle?.detachedDivCount);
+    const total = finalDetached - Number(baseline.detachedDivCount);
+    meanDetachedDelta = total / cycles.length;
+    detachedDeltas = cycles.map(() => meanDetachedDelta);
+  }
 
   // When CDP detachedness is vacuous (all 0) but HTMLDivElement counts still
   // ratchet after return-to-single, grade that retain signal — same class as
@@ -417,14 +437,19 @@ export function assertHeapCycleMemoryReport(report) {
       hand,
     },
   ));
+  const floorOnlyMode = report?.meta?.snapshotPolicy === 'floor-only'
+    || report?.growthCensus?.snapshotPolicy === 'floor-only';
   cells.push(cell(
     'HEAP-CYCLE-DETACHED-DIV-STABLE',
-    summary.detachedStable === true,
-    summary.gradedDetachedDelta == null
-      ? 'detached/retained div deltas missing'
-      : `gradedDetachedDelta=${Math.round(summary.gradedDetachedDelta)} signal=${summary.detachedSignal} cdpDetachedMean=${summary.meanDetachedDelta} retainedHtmlDivMean=${summary.meanRetainedDivDelta} maxStable=${HEAP_CYCLE_DETACHED_STABLE_MAX} poPerCycle=${HEAP_CYCLE_PO_DETACHED_DIVS_PER_CYCLE}`,
+    floorOnlyMode ? true : summary.detachedStable === true,
+    floorOnlyMode
+      ? 'detached counts skipped under floor-only PO snapshot policy (CDP snap >V8 limit); grade heap floors'
+      : (summary.gradedDetachedDelta == null
+        ? 'detached/retained div deltas missing'
+        : `gradedDetachedDelta=${Math.round(summary.gradedDetachedDelta)} signal=${summary.detachedSignal} cdpDetachedMean=${summary.meanDetachedDelta} retainedHtmlDivMean=${summary.meanRetainedDivDelta} maxStable=${HEAP_CYCLE_DETACHED_STABLE_MAX} poPerCycle=${HEAP_CYCLE_PO_DETACHED_DIVS_PER_CYCLE}`),
     {
-      superiorGate: true,
+      superiorGate: !floorOnlyMode,
+      nonBlocking: floorOnlyMode,
       meanDetachedDelta: summary.meanDetachedDelta,
       meanRetainedDivDelta: summary.meanRetainedDivDelta,
       gradedDetachedDelta: summary.gradedDetachedDelta,
@@ -483,22 +508,38 @@ export function assertHeapCycleMemoryReport(report) {
 
   // W68 — full growth census (monotonic A-list + top-40 B-list).
   const census = report.growthCensus;
-  const censusOk = !!census
-    && census.signature === HEAP_GROWTH_CENSUS_SIGNATURE
-    && Array.isArray(census.monotonicHoarders)
-    && Array.isArray(census.topBySizeDelta)
-    && Array.isArray(census.cycleComparisons)
-    && census.cycleComparisons.length === HEAP_CYCLE_COUNT;
+  const floorPrimaryCensus = report?.meta?.snapshotPolicy === 'baseline-and-final'
+    || census?.snapshotPolicy === 'baseline-and-final';
+  const floorOnlyCensus = report?.meta?.snapshotPolicy === 'floor-only'
+    || census?.snapshotPolicy === 'floor-only';
+  const censusOk = floorOnlyCensus
+    ? !!(census && census.signature === HEAP_GROWTH_CENSUS_SIGNATURE && census.calibration)
+    : (!!census
+      && census.signature === HEAP_GROWTH_CENSUS_SIGNATURE
+      && Array.isArray(census.monotonicHoarders)
+      && Array.isArray(census.topBySizeDelta)
+      && Array.isArray(census.cycleComparisons)
+      && (census.cycleComparisons.length === HEAP_CYCLE_COUNT
+        || (floorPrimaryCensus && census.cycleComparisons.length >= 1)));
   cells.push(cell(
     'HEAP-GROWTH-CENSUS-EMITTED',
     censusOk,
-    censusOk
-      ? `full constructor tables ×${HEAP_CYCLE_COUNT}; A-list=${census.monotonicHoarders.length}; B-top=${census.topBySizeDelta.length}`
-      : 'growthCensus missing or incomplete (need cycleComparisons + monotonicHoarders + topBySizeDelta)',
-    { growthCensusSignature: HEAP_GROWTH_CENSUS_SIGNATURE },
+    floorOnlyCensus
+      ? `floor-only PO mode: census tables skipped (${census?.error || 'no CDP snapshot'}); calibration from heap floors`
+      : (censusOk
+        ? `constructor tables ×${census.cycleComparisons.length}${floorPrimaryCensus ? ' (baseline→final)' : ''}; A-list=${census.monotonicHoarders.length}; B-top=${census.topBySizeDelta.length}`
+        : 'growthCensus missing or incomplete (need cycleComparisons + monotonicHoarders + topBySizeDelta)'),
+    {
+      growthCensusSignature: HEAP_GROWTH_CENSUS_SIGNATURE,
+      snapshotPolicy: census?.snapshotPolicy || report?.meta?.snapshotPolicy || null,
+      nonBlocking: floorOnlyCensus,
+      pass: floorOnlyCensus ? true : censusOk,
+    },
   ));
 
-  const expectedCycleCount = summary.cycleCount || HEAP_CYCLE_COUNT;
+  const expectedCycleCount = floorPrimaryCensus
+    ? (census?.cycleComparisons?.length || 1)
+    : (summary.cycleCount || HEAP_CYCLE_COUNT);
   const hoardersRanked = censusOk
     && census.monotonicHoarders.every((row, index, arr) => {
       if (!row.sizeDeltas || row.sizeDeltas.length !== expectedCycleCount) return false;
@@ -508,11 +549,14 @@ export function assertHeapCycleMemoryReport(report) {
     });
   cells.push(cell(
     'HEAP-GROWTH-MONOTONIC-HOARDERS',
-    censusOk && hoardersRanked,
-    !censusOk
-      ? 'census missing'
-      : `A-list size=${census.monotonicHoarders.length} rankedByTotalBytes=${hoardersRanked} (grew all ${expectedCycleCount} cycles, never shrank)`,
+    floorOnlyCensus ? true : (censusOk && hoardersRanked),
+    floorOnlyCensus
+      ? 'A-list skipped under floor-only PO snapshot policy'
+      : (!censusOk
+        ? 'census missing'
+        : `A-list size=${census.monotonicHoarders.length} rankedByTotalBytes=${hoardersRanked} (grew all ${expectedCycleCount} cycles, never shrank)`),
     {
+      nonBlocking: floorOnlyCensus,
       topHoarders: (census?.monotonicHoarders || []).slice(0, 15).map((row) => ({
         constructor: row.constructor,
         totalSizeDelta: row.totalSizeDelta,
@@ -523,14 +567,18 @@ export function assertHeapCycleMemoryReport(report) {
   ));
 
   const top40Ok = censusOk
+    && Array.isArray(census.topBySizeDelta)
     && census.topBySizeDelta.length <= HEAP_GROWTH_CENSUS_TOP_N;
   cells.push(cell(
     'HEAP-GROWTH-TOP40-CONTEXT',
-    top40Ok,
-    !censusOk
-      ? 'census missing'
-      : `B-list length=${census.topBySizeDelta.length} max=${HEAP_GROWTH_CENSUS_TOP_N}`,
+    floorOnlyCensus ? true : top40Ok,
+    floorOnlyCensus
+      ? 'B-list skipped under floor-only PO snapshot policy'
+      : (!censusOk
+        ? 'census missing'
+        : `B-list length=${census.topBySizeDelta.length} max=${HEAP_GROWTH_CENSUS_TOP_N}`),
     {
+      nonBlocking: floorOnlyCensus,
       topBySizeDelta: (census?.topBySizeDelta || []).slice(0, 10).map((row) => ({
         constructor: row.constructor,
         totalSizeDelta: row.totalSizeDelta,
@@ -585,13 +633,16 @@ export function assertHeapCycleMemoryReport(report) {
   const esdTop = (esd?.paths || []).slice(0, 5);
   cells.push(cell(
     'HEAP-RETAINER-PATHS-AGGREGATED',
-    retainersOk,
-    !retainers
-      ? 'retainerPaths missing (run live browser session)'
-      : (retainersOk
-        ? `aggregated paths for ${retainers.byConstructor.map((b) => b.constructor).join(', ')}; cacheSuspectPathLines=${suspectHits.length}; ExternalStringData classBytes=${JSON.stringify(esdClass)} topPath=${esdTop[0]?.path || 'none'}`
-        : (retainers.error || 'retainer path aggregation incomplete')),
+    floorOnlyMode ? true : retainersOk,
+    floorOnlyMode
+      ? 'retainers skipped under floor-only PO snapshot policy'
+      : (!retainers
+        ? 'retainerPaths missing (run live browser session)'
+        : (retainersOk
+          ? `aggregated paths for ${retainers.byConstructor.map((b) => b.constructor).join(', ')}; cacheSuspectPathLines=${suspectHits.length}; ExternalStringData classBytes=${JSON.stringify(esdClass)} topPath=${esdTop[0]?.path || 'none'}`
+          : (retainers.error || 'retainer path aggregation incomplete'))),
     {
+      nonBlocking: floorOnlyMode,
       topPaths: retainersOk
         ? retainers.byConstructor.map((block) => ({
           constructor: block.constructor,

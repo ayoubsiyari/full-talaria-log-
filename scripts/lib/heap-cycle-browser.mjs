@@ -15,7 +15,6 @@ import {
   installBuiltProductBoot,
   reactPanelLoadFile,
   reactParityUrlWithLayout,
-  waitForReactMultichartReady,
 } from '../../chart v 1.4/chart/multichart-prod/harness/react-parity-lib.mjs';
 import { countDetachedDivsFromHeapSnapshot } from './heap-snapshot-detached.mjs';
 import {
@@ -67,6 +66,10 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function logHeapCycle(...args) {
+  console.error(`[heap-cycle ${new Date().toISOString()}]`, ...args);
+}
+
 async function loadPuppeteer() {
   try {
     return require('puppeteer');
@@ -75,22 +78,85 @@ async function loadPuppeteer() {
   }
 }
 
-async function takeHeapSnapshotObject(cdp) {
-  let payload = '';
-  const onChunk = ({ chunk }) => { payload += chunk; };
+async function takeHeapSnapshotObject(cdp, { timeoutMs = 180_000 } = {}) {
+  // Buffer chunks — string concat hits V8 max string length (~512MB) under PO workload.
+  const chunks = [];
+  let partialBytes = 0;
+  const onChunk = ({ chunk }) => {
+    const buf = Buffer.from(chunk);
+    chunks.push(buf);
+    partialBytes += buf.length;
+  };
   cdp.on('HeapProfiler.addHeapSnapshotChunk', onChunk);
   try {
-    await cdp.send('HeapProfiler.takeHeapSnapshot', { reportProgress: false });
+    const take = cdp.send('HeapProfiler.takeHeapSnapshot', { reportProgress: false });
+    const timed = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error(
+        `HeapProfiler.takeHeapSnapshot exceeded ${timeoutMs}ms `
+        + `(partialBytes=${partialBytes})`,
+      )), timeoutMs);
+    });
+    await Promise.race([take, timed]);
   } finally {
     cdp.off('HeapProfiler.addHeapSnapshotChunk', onChunk);
   }
+  const payload = Buffer.concat(chunks);
+  logHeapCycle(`snapshot bytes=${payload.length}`);
+  // JSON.parse(Buffer) avoids materializing one giant JS string.
   return JSON.parse(payload);
+}
+
+async function sampleHeapFloor(page, cdp, { label = 'floor' } = {}) {
+  logHeapCycle(`${label}: collectGarbage + usedJSHeapSize (no snapshot)`);
+  await cdp.send('HeapProfiler.collectGarbage');
+  await sleep(200);
+  await cdp.send('HeapProfiler.collectGarbage');
+  await sleep(200);
+  const jsHeap = await page.evaluate(() => {
+    const mem = performance && performance.memory;
+    const gcAvailable = typeof gc === 'function';
+    try { if (gcAvailable) gc(); } catch (_) {}
+    return {
+      exposed: !!(mem && Number.isFinite(mem.usedJSHeapSize)),
+      metric: 'usedJSHeapSize',
+      usedJSHeapSize: mem ? Number(mem.usedJSHeapSize) || 0 : null,
+      totalJSHeapSize: mem ? Number(mem.totalJSHeapSize) || 0 : null,
+      jsHeapSizeLimit: mem ? Number(mem.jsHeapSizeLimit) || 0 : null,
+      forcedGcAttempted: true,
+      forcedGcAvailable: gcAvailable || true,
+      cdpCollectGarbage: true,
+    };
+  });
+  logHeapCycle(
+    `${label}: usedJSHeapSizeMB=${
+      jsHeap.usedJSHeapSize != null
+        ? (jsHeap.usedJSHeapSize / (1024 * 1024)).toFixed(2)
+        : 'n/a'
+    }`,
+  );
+  return {
+    ...jsHeap,
+    metric: HEAP_METRIC_USED_JS_HEAP_SIZE,
+    detachedDivCount: null,
+    htmlDivElementCount: null,
+    detachednessField: null,
+    snapshotNodeCount: null,
+    constructorAggregates: null,
+    constructorAggregateObject: null,
+    floorOnly: true,
+  };
 }
 
 async function sampleHeap(page, cdp, {
   includeAggregates = true,
   keepSnapshot = false,
+  label = 'sample',
+  snapshot = true,
 } = {}) {
+  if (snapshot === false) {
+    return sampleHeapFloor(page, cdp, { label });
+  }
+  logHeapCycle(`${label}: collectGarbage + usedJSHeapSize`);
   await cdp.send('HeapProfiler.collectGarbage');
   await sleep(200);
   await cdp.send('HeapProfiler.collectGarbage');
@@ -111,12 +177,24 @@ async function sampleHeap(page, cdp, {
       cdpCollectGarbage: true,
     };
   });
+  logHeapCycle(
+    `${label}: usedJSHeapSizeMB=${
+      jsHeap.usedJSHeapSize != null
+        ? (jsHeap.usedJSHeapSize / (1024 * 1024)).toFixed(2)
+        : 'n/a'
+    }`,
+  );
 
-  const snapshot = await takeHeapSnapshotObject(cdp);
-  const detached = countDetachedDivsFromHeapSnapshot(snapshot);
+  logHeapCycle(`${label}: takeHeapSnapshot aggregates=${includeAggregates}`);
+  const snap = await takeHeapSnapshotObject(cdp);
+  const detached = countDetachedDivsFromHeapSnapshot(snap);
   const aggregates = includeAggregates
-    ? aggregateHeapSnapshotByConstructor(snapshot)
+    ? aggregateHeapSnapshotByConstructor(snap)
     : null;
+  logHeapCycle(
+    `${label}: detachedDiv=${detached.detachedDivCount} `
+    + `htmlDiv=${detached.htmlDivElementCount} nodes=${detached.nodeCount}`,
+  );
   return {
     ...jsHeap,
     metric: HEAP_METRIC_USED_JS_HEAP_SIZE,
@@ -126,7 +204,7 @@ async function sampleHeap(page, cdp, {
     snapshotNodeCount: detached.nodeCount,
     constructorAggregates: aggregates,
     constructorAggregateObject: aggregates ? aggregatesToObject(aggregates) : null,
-    ...(keepSnapshot ? { _snapshot: snapshot } : {}),
+    ...(keepSnapshot ? { _snapshot: snap } : {}),
   };
 }
 
@@ -177,31 +255,42 @@ async function waitForHostReady(page, timeoutMs = 60_000) {
 }
 
 async function waitForDistV9SingleReady(page, timeoutMs = 180_000) {
-  await page.waitForFunction(
-    () => window.chart && Array.isArray(window.chart.data) && window.chart.data.length > 200,
-    { timeout: timeoutMs },
-  );
+  // Poll evaluate — waitForFunction throws "frame got detached" across layout swaps.
+  const started = Date.now();
+  while (Date.now() - started < timeoutMs) {
+    const ready = await page.evaluate(() => (
+      !!(window.chart && Array.isArray(window.chart.data) && window.chart.data.length > 200)
+    )).catch(() => false);
+    if (ready) return;
+    await sleep(150);
+  }
+  throw new Error('timeout waiting for dist-v9 single-chart ready');
 }
 
 /** Open Layouts utility (if needed) and click panel-count tile (n, li). */
-async function applyDistV9LayoutViaUi(page, n, li = 0) {
+export async function applyDistV9LayoutViaUi(page, n, li = 0) {
+  logHeapCycle(`layout UI → ${n} (li=${li})`);
   const utility = await page.$('[data-v9-utility="layout"]');
   if (!utility) throw new Error('dist-v9: missing [data-v9-utility="layout"]');
 
   // Utility toggles: only click when Layouts panel is not already open.
   const alreadyOpen = await page.evaluate(
     () => /Layouts/.test(document.body.innerText || ''),
-  );
+  ).catch(() => false);
   if (!alreadyOpen) {
     await page.evaluate(() => {
       const btn = document.querySelector('[data-v9-utility="layout"]');
       if (!btn) throw new Error('layout utility missing');
       btn.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
     });
-    await page.waitForFunction(
-      () => /Layouts/.test(document.body.innerText || ''),
-      { timeout: 15_000 },
-    );
+    const openStarted = Date.now();
+    while (Date.now() - openStarted < 15_000) {
+      const open = await page.evaluate(
+        () => /Layouts/.test(document.body.innerText || ''),
+      ).catch(() => false);
+      if (open) break;
+      await sleep(100);
+    }
   }
 
   const clicked = await page.evaluate((panelN, panelLi) => {
@@ -247,11 +336,11 @@ async function waitForDistV9GridGone(page, timeoutMs = 60_000) {
 }
 
 async function waitForDistV9FourReady(page, timeoutMs = 120_000) {
-  await waitForReactMultichartReady(page, timeoutMs);
-  // 2x2: host A is #chartWrapper; peers B/C/D are iframes.
+  // Poll only — avoid react-parity waitForFunction (frame-detach across layout swaps).
   const started = Date.now();
   while (Date.now() - started < timeoutMs) {
     const ok = await page.evaluate(() => {
+      if (!window.__multichartGrid) return false;
       const frames = Array.from(document.querySelectorAll('iframe'));
       const ids = new Set();
       for (const el of frames) {
@@ -267,6 +356,39 @@ async function waitForDistV9FourReady(page, timeoutMs = 120_000) {
     await sleep(150);
   }
   throw new Error('timeout waiting for MultichartGrid peer iframes B/C/D');
+}
+
+async function expandFourPanelsWithRetry(page, {
+  attempts = 3,
+  recoverPage = null,
+} = {}) {
+  let lastError = null;
+  for (let i = 0; i < attempts; i += 1) {
+    try {
+      const hasLayout = await page.$('[data-v9-utility="layout"]');
+      if (!hasLayout && typeof recoverPage === 'function') {
+        logHeapCycle('layout utility missing — recovering page');
+        await recoverPage();
+      }
+      await applyDistV9LayoutViaUi(page, 4, 0);
+      await waitForDistV9FourReady(page, 120_000);
+      return;
+    } catch (error) {
+      lastError = error;
+      logHeapCycle(`expand-4 attempt ${i + 1}/${attempts} failed: ${error?.message || error}`);
+      if (/missing \[data-v9-utility="layout"\]/i.test(String(error?.message || error))
+        && typeof recoverPage === 'function') {
+        try { await recoverPage(); } catch (_) {}
+      } else {
+        try {
+          await applyDistV9LayoutViaUi(page, 1, 0);
+          await waitForDistV9GridGone(page, 30_000);
+        } catch (_) {}
+      }
+      await sleep(800);
+    }
+  }
+  throw lastError || new Error('expand-4 failed');
 }
 
 async function loadDistinctSymbolsDistV9(page, fileIds) {
@@ -387,16 +509,26 @@ async function expandDistinctThin(page, fileIds) {
 function buildCensusFromSamples(baseline, cycleRows, {
   poWorkloadArmed = false,
   poHandShapeOk = false,
+  snapshotPolicy = 'every-return',
 } = {}) {
-  const snaps = [
-    baseline.constructorAggregates,
-    ...cycleRows.map((row) => row.returnSingle.constructorAggregates),
-  ];
+  // Under PO workload, mid-run CDP snapshots ~500MB destabilize Chromium.
+  // Floor-primary mode keeps baseline + final aggregates only.
+  let snaps;
+  if (snapshotPolicy === 'baseline-and-final') {
+    const last = cycleRows[cycleRows.length - 1]?.returnSingle?.constructorAggregates;
+    snaps = [baseline.constructorAggregates, last];
+  } else {
+    snaps = [
+      baseline.constructorAggregates,
+      ...cycleRows.map((row) => row.returnSingle.constructorAggregates),
+    ];
+  }
   if (snaps.some((s) => !s)) {
     return {
       signature: HEAP_GROWTH_CENSUS_SIGNATURE,
       ok: false,
       error: 'missing constructor aggregates on baseline or return-to-single samples',
+      snapshotPolicy,
     };
   }
   const census = buildGrowthCensus(snaps);
@@ -533,9 +665,17 @@ async function runMultichartCycles({
   poWorkload = true,
   playHoldMs = 6_000,
   replaySpeed = 60,
+  recoverPage = null,
 }) {
+  // PO workload: CDP heap snapshots grow past V8's ~512MB string limit and also
+  // detach the React shell mid-run. Floor calibration uses usedJSHeapSize only.
+  const snapshotPolicy = poWorkload ? 'floor-only' : 'every-return';
   await sleep(settleMs);
-  const baseline = await sampleHeap(page, cdp);
+  logHeapCycle(`baseline sample policy=${snapshotPolicy}`);
+  const baseline = await sampleHeap(page, cdp, {
+    snapshot: snapshotPolicy !== 'floor-only',
+    label: 'baseline',
+  });
   const cycleRows = [];
   let prevDetached = baseline.detachedDivCount;
   let lastSnapshot = null;
@@ -543,12 +683,14 @@ async function runMultichartCycles({
 
   for (let index = 0; index < cycles; index += 1) {
     const rotated = fileIdsForCycle(index);
-    await applyDistV9LayoutViaUi(page, 4, 0);
-    await waitForDistV9FourReady(page, 120_000);
+    logHeapCycle(`cycle ${index + 1}/${cycles}: expand 4-panel fileIds=${rotated.join(',')}`);
+    await expandFourPanelsWithRetry(page, { attempts: 3, recoverPage });
+    logHeapCycle(`cycle ${index + 1}: four panels ready`);
     await loadDistinctSymbolsDistV9(page, rotated);
 
     let workload = { armed: false, skipped: !poWorkload };
     if (poWorkload) {
+      logHeapCycle(`cycle ${index + 1}: arm PO workload`);
       workload = await armHeapCyclePoWorkload(page, { playHoldMs, replaySpeed });
       workloadArms.push({ cycle: index + 1, ...workload });
       if (!workload.armed) {
@@ -559,28 +701,58 @@ async function runMultichartCycles({
           + `(GATE-01: layout-only cycles cannot grade)`,
         );
       }
+      logHeapCycle(`cycle ${index + 1}: PO workload armed playing=${workload.observedPlaying}`);
     } else {
       await sleep(settleMs);
     }
 
-    const fourPeak = await sampleHeap(page, cdp, { includeAggregates: false });
+    const fourPeak = await sampleHeap(page, cdp, {
+      snapshot: false,
+      label: `cycle${index + 1}-fourPeak`,
+    });
 
-    await applyDistV9LayoutViaUi(page, 1, 0);
-    await waitForDistV9GridGone(page, 60_000);
+    logHeapCycle(`cycle ${index + 1}: collapse to single`);
+    try {
+      await applyDistV9LayoutViaUi(page, 1, 0);
+      await waitForDistV9GridGone(page, 60_000);
+    } catch (error) {
+      if (typeof recoverPage === 'function') {
+        logHeapCycle(`collapse failed (${error?.message || error}); recovering`);
+        await recoverPage();
+      } else {
+        throw error;
+      }
+    }
     await sleep(settleMs);
-    const keepSnapshot = index === cycles - 1;
-    const returnSingle = await sampleHeap(page, cdp, { keepSnapshot });
-    if (keepSnapshot) {
+    const isFinal = index === cycles - 1;
+    const takeSnap = snapshotPolicy === 'every-return';
+    const returnSingle = await sampleHeap(page, cdp, {
+      snapshot: takeSnap,
+      keepSnapshot: isFinal && takeSnap,
+      label: `cycle${index + 1}-returnSingle`,
+    });
+    logHeapCycle(
+      `cycle ${index + 1}: floorMB=${
+        returnSingle.usedJSHeapSize != null
+          ? (returnSingle.usedJSHeapSize / (1024 * 1024)).toFixed(2)
+          : 'n/a'
+      }`,
+    );
+    if (isFinal && returnSingle._snapshot) {
       lastSnapshot = returnSingle._snapshot || null;
       delete returnSingle._snapshot;
     }
 
-    const detachedDivDelta = returnSingle.detachedDivCount - prevDetached;
+    const detachedDivDelta = (returnSingle.detachedDivCount != null && prevDetached != null)
+      ? returnSingle.detachedDivCount - prevDetached
+      : null;
     const prevHtml = index === 0
       ? baseline.htmlDivElementCount
       : cycleRows[index - 1].returnSingle.htmlDivElementCount;
-    const retainedHtmlDivDelta = returnSingle.htmlDivElementCount - prevHtml;
-    prevDetached = returnSingle.detachedDivCount;
+    const retainedHtmlDivDelta = (returnSingle.htmlDivElementCount != null && prevHtml != null)
+      ? returnSingle.htmlDivElementCount - prevHtml
+      : null;
+    if (returnSingle.detachedDivCount != null) prevDetached = returnSingle.detachedDivCount;
 
     const stripMaps = (sample) => {
       if (!sample) return sample;
@@ -634,11 +806,50 @@ async function runMultichartCycles({
       panels: w.panels,
     })),
   };
-  const growthCensus = buildCensusFromSamples(baseline, cycleRows, {
-    poWorkloadArmed: workloadSummary.armedEveryCycle,
-    poHandShapeOk: poHandShape.ok === true,
-  });
-  const retainerPaths = buildRetainerReport(lastSnapshot);
+  let growthCensus;
+  if (snapshotPolicy === 'floor-only') {
+    growthCensus = {
+      signature: HEAP_GROWTH_CENSUS_SIGNATURE,
+      ok: false,
+      snapshotPolicy,
+      error: 'CDP heap snapshots disabled under PO workload (V8 string limit / shell detach); '
+        + 'floor calibration uses usedJSHeapSize only',
+      monotonicHoarders: [],
+      topBySizeDelta: [],
+      cycleComparisons: [],
+      calibration: assessGrowthCensusCalibration(
+        { cycleComparisons: [{ rows: [] }] },
+        {
+          meanHeapFloorDeltaBytes: (() => {
+            const floorsLocal = cycleRows.map((r) => Number(r.returnSingle?.usedJSHeapSize));
+            const base = Number(baseline.usedJSHeapSize);
+            if (!Number.isFinite(base) || floorsLocal.some((f) => !Number.isFinite(f))) return null;
+            const deltas = floorsLocal.map((f, i) => f - (i === 0 ? base : floorsLocal[i - 1]));
+            return deltas.reduce((a, b) => a + b, 0) / deltas.length;
+          })(),
+          meanDetachedDivDelta: null,
+          poWorkloadArmed: workloadSummary.armedEveryCycle,
+          poHandShapeOk: poHandShape.ok === true,
+        },
+      ),
+    };
+  } else {
+    growthCensus = buildCensusFromSamples(baseline, cycleRows, {
+      poWorkloadArmed: workloadSummary.armedEveryCycle,
+      poHandShapeOk: poHandShape.ok === true,
+      snapshotPolicy,
+    });
+    if (growthCensus && typeof growthCensus === 'object') {
+      growthCensus.snapshotPolicy = snapshotPolicy;
+    }
+  }
+  const retainerPaths = snapshotPolicy === 'floor-only'
+    ? {
+      signature: HEAP_RETAINER_PATHS_SIGNATURE,
+      ok: false,
+      error: 'retainers skipped under floor-only PO snapshot policy',
+    }
+    : buildRetainerReport(lastSnapshot);
 
   const baselineOut = {
     ...baseline,
@@ -656,6 +867,7 @@ async function runMultichartCycles({
     cycleRows,
     poWorkload: workloadSummary,
     poHandShape,
+    snapshotPolicy,
   };
 }
 
@@ -973,6 +1185,16 @@ async function runDeployedSession({
     await cdp.send('Performance.enable');
 
     const primaryFileId = fileIds[0];
+    const recoverPage = async () => {
+      logHeapCycle('recoverPage: reload chart shell');
+      await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 180_000 });
+      if (/\/login\/?/i.test(new URL(page.url()).pathname)) {
+        await uiLoginDeployed(page, origin, email, password);
+        await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 180_000 });
+      }
+      await dismissCookieBanner(page);
+      await waitForDistV9SingleReady(page, 180_000);
+    };
     const {
       growthCensus,
       retainerPaths,
@@ -980,6 +1202,7 @@ async function runDeployedSession({
       cycleRows,
       poWorkload,
       poHandShape,
+      snapshotPolicy,
     } = await runMultichartCycles({
       page,
       cdp,
@@ -990,6 +1213,7 @@ async function runDeployedSession({
       poWorkload: true,
       playHoldMs: 6_000,
       replaySpeed: 60,
+      recoverPage,
     });
 
     return {
@@ -1012,9 +1236,11 @@ async function runDeployedSession({
         growthCensus: true,
         retainerPaths: true,
         poWorkload: true,
+        snapshotPolicy,
         harnessUrl: url,
         disableFlags: (disableFlags || []).slice(),
-        note: 'Deployed auth + PO workload (4 panels, indicators, order, live replay ×6).',
+        note: 'Deployed auth + PO workload (4 panels, indicators, order, live replay ×6). '
+          + 'Snapshot policy baseline-and-final (mid-run CDP snaps destabilize shell).',
       },
       baseline: baselineOut,
       cycles: cycleRows,

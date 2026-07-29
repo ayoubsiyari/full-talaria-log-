@@ -554,7 +554,11 @@ Cells:
 | HEAP-CYCLE-INSTRUMENT-COMPLETE | baseline + 3 cycles emit `usedJSHeapSize` after forced GC and `detachedDivCount` from heap snapshot | LIVE |
 | HEAP-CYCLE-DISTINCT-FILEIDS | each cycle expands with distinct harness fileIds 25/27/28/29 | LIVE |
 | HEAP-CYCLE-DETACHED-DIV-STABLE | mean per-cycle Detached HTMLDivElement delta (CDP `detachedness`) or retained `HTMLDivElement` growth after return-to-single ≤ `HEAP_CYCLE_DETACHED_STABLE_MAX=1` (PO leak ≈ +21699/cycle) | LIVE — superior/mandatory |
-| HEAP-CYCLE-HEAP-FLOOR-BOUNDED | mean return-to-single heap floor growth ≤ 8 MiB (PO leak ≈ +50 MB/cycle; R1/R2/R3 = 106/152/204 from 54 MB) | LIVE |
+| HEAP-CYCLE-HEAP-FLOOR-BOUNDED | mean return-to-single heap floor growth ≤ 8 MiB (PO hand ≈ +13 MB/cycle on canary; sealed fixture still ~50 MB/cycle) | LIVE |
+| HEAP-CYCLE-PO-WORKLOAD-ARMED | live MultichartGrid cycles must arm 4 panels + ≥3 indicators/panel + host order + live replay playing; layout-only is GATE-01 decorative | LIVE (W74) |
+| HEAP-CYCLE-PO-HAND-SHAPE | report cell: mean≈13 MB/cycle + late jump ≥25 MB on cycle≥4 (PO hand 75/80/72/90/96/141/155) | LIVE (W74) |
+| HEAP-CYCLE-BUILD-PIN | `--require-build=` fail-closed if `meta.buildId` mismatches | LIVE (W74) |
+| REPLAY-INTERVAL-BUDGET-V1 | `TALARIA_REPLAY_INTERVAL_BUDGET_V1` | no `setInterval` callback >50ms during armed replay (PO console 55/82/95ms) | LIVE (W74) |
 | HEAP-GROWTH-CENSUS-EMITTED | report includes full constructor delta tables ×3 + A-list + B-list | LIVE — W68 |
 | HEAP-GROWTH-MONOTONIC-HOARDERS | A-list = constructors with sizeDelta>0 in all three cycles, ranked by total bytes | LIVE — W68; triage surface |
 | HEAP-GROWTH-TOP40-CONTEXT | B-list = top ≤40 by total size delta (context only) | LIVE — W68 |

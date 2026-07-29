@@ -12,10 +12,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
 
-import {
-  reactParityUrlWithLayout,
-  waitForReactMultichartReady,
-} from '../chart v 1.4/chart/multichart-prod/harness/react-parity-lib.mjs';
+import { reactParityUrlWithLayout } from '../chart v 1.4/chart/multichart-prod/harness/react-parity-lib.mjs';
+import { applyDistV9LayoutViaUi } from './lib/heap-cycle-browser.mjs';
 import { armHeapCyclePoWorkload } from './lib/heap-cycle-po-workload.mjs';
 import {
   REPLAY_INTERVAL_BUDGET_SIGNATURE,
@@ -100,18 +98,6 @@ async function uiLogin(page, origin, email, password) {
   return { url: page.url() };
 }
 
-async function applyLayout4(page) {
-  await page.evaluate(async () => {
-    const grid = window.__multichartGrid;
-    if (grid && typeof grid.setLayout === 'function') {
-      try { await grid.setLayout(4); return; } catch (_) {}
-    }
-    const btn = document.querySelector('[data-layout="4"], [data-mc-layout="4"], button[aria-label*="2x2"]');
-    if (btn) btn.click();
-  });
-  await sleep(800);
-}
-
 export async function runReplayIntervalBudgetGate(options = {}) {
   const startedAt = new Date().toISOString();
   const email = String(process.env.TEST_EMAIL || '').trim();
@@ -173,9 +159,21 @@ export async function runReplayIntervalBudgetGate(options = {}) {
       await uiLogin(page, origin, email, password);
       await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 180_000 });
     }
-    await waitForReactMultichartReady(page, 180_000).catch(() => {});
-    await applyLayout4(page);
-    await waitForReactMultichartReady(page, 120_000);
+    await page.waitForFunction(
+      () => !!(window.chart && Array.isArray(window.chart.data) && window.chart.data.length > 20),
+      { timeout: 180_000 },
+    );
+    await applyDistV9LayoutViaUi(page, 4, 0);
+    await page.waitForFunction(() => {
+      const ids = new Set();
+      for (const el of document.querySelectorAll('iframe')) {
+        try {
+          const pid = new URL(el.src, location.href).searchParams.get('panelId');
+          if (pid) ids.add(pid);
+        } catch (_) {}
+      }
+      return !!(window.__multichartGrid && ids.has('B') && ids.has('C') && ids.has('D'));
+    }, { timeout: 120_000 });
 
     // Re-install probe on host after nav (evaluateOnNewDocument covers future docs;
     // host may already be live).
@@ -219,7 +217,7 @@ export async function runReplayIntervalBudgetGate(options = {}) {
         blocking: true,
       });
     }
-    const ok = cells.every((c) => c.pass === true);
+    const ok = cells.every((c) => c.pass === true || c.nonBlocking === true);
     return {
       ok,
       status: ok ? 'GREEN' : 'RED',

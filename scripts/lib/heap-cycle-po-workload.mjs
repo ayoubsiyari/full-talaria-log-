@@ -28,9 +28,15 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function resolvePanelFrame(page, panelId) {
+function logPoWorkload(...args) {
+  console.error(`[heap-cycle-po-workload ${new Date().toISOString()}]`, ...args);
+}
+
+async function resolvePanelFrame(page, panelId, timeoutMs = 45_000) {
   if (panelId === 'A') return page.mainFrame();
-  return waitForPanelFrame(page, panelId, 120_000);
+  const existing = chartTarget(page, panelId);
+  if (existing && typeof existing.evaluate === 'function') return existing;
+  return waitForPanelFrame(page, panelId, timeoutMs);
 }
 
 /**
@@ -46,6 +52,18 @@ async function armPanelChart(frame, {
     try { window.alert = () => {}; } catch (_) {}
     const chart = window.chart;
     if (!chart) return { ok: false, reason: 'no chart' };
+
+    // Avoid stacking indicators across cycles (would inflate floors vs PO hand).
+    try {
+      const active0 = (chart.indicators && chart.indicators.active) || [];
+      if (active0.length && typeof chart.removeIndicator === 'function') {
+        for (const ind of [...active0]) {
+          try { chart.removeIndicator(ind.id || ind); } catch (_) {}
+        }
+      } else if (chart.indicators && Array.isArray(chart.indicators.active)) {
+        chart.indicators.active.length = 0;
+      }
+    } catch (_) {}
 
     const added = [];
     if (typeof chart.addIndicator === 'function') {
@@ -145,19 +163,26 @@ async function placeHostOrder(page) {
   });
 }
 
-async function waitPanelChartReady(page, panelId, timeoutMs = 90_000) {
-  const frame = await resolvePanelFrame(page, panelId);
+async function waitPanelChartReady(page, panelId, timeoutMs = 45_000) {
   const started = Date.now();
+  let frame = null;
   while (Date.now() - started < timeoutMs) {
-    const ready = await frame.evaluate(() => {
-      const chart = window.chart;
-      return !!(chart
-        && Array.isArray(chart.data)
-        && chart.data.length > 20
-        && chart.replaySystem);
-    }).catch(() => false);
-    if (ready) return frame;
-    await sleep(100);
+    try {
+      frame = await resolvePanelFrame(page, panelId, Math.min(5_000, timeoutMs));
+    } catch (_) {
+      frame = null;
+    }
+    if (frame) {
+      const ready = await frame.evaluate(() => {
+        const chart = window.chart;
+        return !!(chart
+          && Array.isArray(chart.data)
+          && chart.data.length > 20
+          && chart.replaySystem);
+      }).catch(() => false);
+      if (ready) return frame;
+    }
+    await sleep(150);
   }
   throw new Error(`timeout waiting for panel ${panelId} chart+replay ready`);
 }
@@ -172,12 +197,11 @@ export async function armHeapCyclePoWorkload(page, {
   replaySpeed = 60,
 } = {}) {
   const perPanel = [];
+  const frameById = new Map();
   for (const id of panelIds) {
-    // Ensure peer frames exist before evaluate.
-    if (id !== 'A') {
-      try { await waitForPanelFrame(page, id, 60_000); } catch (_) {}
-    }
-    const frame = await waitPanelChartReady(page, id, 90_000);
+    logPoWorkload(`arm panel ${id}: wait ready`);
+    const frame = await waitPanelChartReady(page, id, 45_000);
+    frameById.set(id, frame);
     // Prefer chartTarget when available (handles A host vs iframe).
     const target = chartTarget(page, id) || frame;
     let row = await armPanelChart(target, { replaySpeed });
@@ -185,10 +209,15 @@ export async function armHeapCyclePoWorkload(page, {
       await sleep(200);
       row = await armPanelChart(target, { replaySpeed });
     }
+    logPoWorkload(
+      `arm panel ${id}: ok=${row.ok} ind=${row.indicatorCount} `
+      + `replay=${row.replay?.ok} playing=${row.playing?.ok}`,
+    );
     perPanel.push({ id, ...row });
   }
 
   const order = await placeHostOrder(page);
+  logPoWorkload(`order ok=${order.ok} openCount=${order.openCount}`);
 
   let observedPlaying = 0;
   const playStarted = Date.now();
@@ -196,20 +225,27 @@ export async function armHeapCyclePoWorkload(page, {
     let playingNow = 0;
     for (const id of panelIds) {
       try {
-        const target = chartTarget(page, id) || await resolvePanelFrame(page, id);
-        const isPlaying = await target.evaluate(() => {
+        const target = chartTarget(page, id) || frameById.get(id);
+        if (!target || typeof target.evaluate !== 'function') continue;
+        const isPlaying = await target.evaluate((speed) => {
           const rs = window.chart && window.chart.replaySystem;
-          return !!(rs && rs.isPlaying);
-        });
+          if (!rs) return false;
+          if (!rs.isPlaying) {
+            try {
+              if (typeof rs.setSpeed === 'function') rs.setSpeed(speed);
+              if (typeof rs.play === 'function') rs.play();
+              else if (typeof rs.togglePlay === 'function') rs.togglePlay();
+            } catch (_) {}
+          }
+          return !!rs.isPlaying;
+        }, replaySpeed);
         if (isPlaying) playingNow += 1;
       } catch (_) {}
     }
     observedPlaying = Math.max(observedPlaying, playingNow);
-    if (observedPlaying >= 3 && Date.now() - playStarted >= Math.min(1500, playHoldMs)) {
-      // Keep holding for residual accumulation; don't break early on first green.
-    }
     await sleep(100);
   }
+  logPoWorkload(`play hold done observedPlaying=${observedPlaying}`);
 
   const indicatorsOk = perPanel.every((row) => row.indicatorsOk);
   const replayOk = perPanel.every((row) => row.replay && row.replay.ok);

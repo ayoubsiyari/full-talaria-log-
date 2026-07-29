@@ -141,5 +141,21 @@ export function assertReplayIntervalBudget(summary) {
     blocking: true,
     metrics: summary,
   });
+  // Corroboration: PO's 55/82/95ms console lines may be longtasks even when
+  // wrapped setInterval callbacks are short (rAF / microtask / unwrapped timers).
+  const longMax = Number(summary?.maxLongTaskMs) || 0;
+  const longOk = longMax <= budgetFrom(summary);
+  cells.push({
+    name: 'REPLAY-LONGTASK-CORROBORATION',
+    pass: longOk,
+    status: longOk ? 'GREEN' : 'RED',
+    detail: `maxLongTask=${longMax.toFixed?.(1) ?? longMax}ms count=${summary?.longTaskCount ?? 0} budget=${budgetFrom(summary)}ms`,
+    blocking: false,
+    nonBlocking: true,
+  });
   return cells;
+}
+
+function budgetFrom(summary) {
+  return Number(summary?.budgetMs) || REPLAY_INTERVAL_CALLBACK_BUDGET_MS;
 }
