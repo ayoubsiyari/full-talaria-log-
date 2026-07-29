@@ -7793,13 +7793,47 @@ class Chart {
         if (!ok) return;
         if (!this._smartPrefetchCache) this._smartPrefetchCache = new Map();
         const key = this._smartCacheKeyFromParams(fileId, params);
+        this._setSmartPrefetchCacheEntry(fileId, key, payload);
+        this._trimSmartPrefetchCache();
+    }
+
+    _rawResponseTextDropEnabled() {
+        try {
+            return typeof window === 'undefined'
+                || !window.__TALARIA_DISABLE_RAW_RESPONSE_TEXT_DROP_V1;
+        } catch (_) {
+            return true;
+        }
+    }
+
+    _dropRawResponseTextRetainers(payload, normalizedBars = null) {
+        if (!this._rawResponseTextDropEnabled()) return payload;
+        if (!payload || typeof payload !== 'object') return payload;
+        const bars = Array.isArray(normalizedBars) && normalizedBars.length
+            ? normalizedBars
+            : (Array.isArray(payload.candles) && payload.candles.length ? payload.candles : null);
+        if (typeof payload.data === 'string' && bars) {
+            if (bars && (!Array.isArray(payload.candles) || payload.candles.length === 0)) {
+                payload.candles = bars;
+                if (payload.returned == null) payload.returned = bars.length;
+            }
+            payload.data = null;
+        }
+        ['rawJson', 'rawJSON', 'rawText', 'responseText', 'responseBody', 'bodyText'].forEach((key) => {
+            if (typeof payload[key] === 'string') payload[key] = null;
+        });
+        return payload;
+    }
+
+    _setSmartPrefetchCacheEntry(fileId, key, payload) {
+        if (!this._smartPrefetchCache || !key || !payload) return;
+        this._dropRawResponseTextRetainers(payload);
         this._smartPrefetchCache.delete(key);
         this._smartPrefetchCache.set(key, {
             at: Date.now(),
             payload,
             fileId: String(fileId),
         });
-        this._trimSmartPrefetchCache();
     }
 
     /** Bound the /smart|/bars|/candles payload cache (oldest-used dropped first). */
@@ -7865,8 +7899,7 @@ class Chart {
                         // LRU), not a hardcoded 4 — that old cap silently evicted most
                         // prefetched pairs, so switching to the 4th/5th session symbol
                         // still hit the network. delete+set keeps this entry "newest".
-                        this._smartPrefetchCache.delete(key);
-                        this._smartPrefetchCache.set(key, { at: Date.now(), payload: data, fileId: String(e.fileId) });
+                        this._setSmartPrefetchCacheEntry(e.fileId, key, data);
                         this._trimSmartPrefetchCache();
                     })
                     .catch(() => {});
@@ -8048,8 +8081,7 @@ class Chart {
                     console.info(`[chart] file ${fileId} bar loads via: ${src}`);
                 }
                 if (this._smartPrefetchCache) {
-                    this._smartPrefetchCache.delete(cacheKey);
-                    this._smartPrefetchCache.set(cacheKey, { at: Date.now(), payload: result, fileId: String(fileId) });
+                    this._setSmartPrefetchCacheEntry(fileId, cacheKey, result);
                     this._trimSmartPrefetchCache();
                 }
                 return result;
@@ -8138,8 +8170,7 @@ class Chart {
                     console.info(`[chart] file ${fileId} pan loads via: ${src}`);
                 }
                 if (this._smartPrefetchCache) {
-                    this._smartPrefetchCache.delete(cacheKey);
-                    this._smartPrefetchCache.set(cacheKey, { at: Date.now(), payload, fileId: String(fileId) });
+                    this._setSmartPrefetchCacheEntry(fileId, cacheKey, payload);
                     this._trimSmartPrefetchCache();
                 }
                 return payload;
@@ -10270,6 +10301,9 @@ class Chart {
         }
         if (result.data) {
             this.parseCSVChunk(result.data, 0, options);
+            if (Array.isArray(this.rawData) && this.rawData.length) {
+                this._dropRawResponseTextRetainers(result, this.rawData.slice());
+            }
             return true;
         }
         return false;
