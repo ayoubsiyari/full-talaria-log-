@@ -132,6 +132,47 @@ function persistPanelFileId(panelId, fileId) {
     } catch (_) { /* ignore */ }
 }
 
+/** Drop a tile's persisted pair so the next boot/heal can fall back to the host. */
+function clearPersistedPanelFileId(panelId) {
+    if (!mcPanelFilePersistV1Enabled()) return;
+    const pid = panelId != null ? String(panelId) : "";
+    if (!pid || pid === HOST_PANEL_ID) return;
+    try {
+        const map = readPersistedPanelFileMap();
+        if (!Object.prototype.hasOwnProperty.call(map, pid)) return;
+        delete map[pid];
+        const key = mcPanelFilePersistStorageKey();
+        if (Object.keys(map).length === 0) sessionStorage.removeItem(key);
+        else sessionStorage.setItem(key, JSON.stringify(map));
+    } catch (_) { /* ignore */ }
+}
+
+/**
+ * Keep sessionStorage panel-file map aligned with live iframe tiles.
+ * Orphan / recycled ids left by a broken kill-switch path otherwise survive
+ * F5 and re-poison boots after the switch is removed (PO: 2/3 panels stay dead).
+ */
+function sanitizePersistedPanelFileMap(activeIframeIds) {
+    if (!mcPanelFilePersistV1Enabled()) return;
+    try {
+        const map = readPersistedPanelFileMap();
+        const active = activeIframeIds instanceof Set
+            ? activeIframeIds
+            : new Set(activeIframeIds || []);
+        let changed = false;
+        for (const key of Object.keys(map)) {
+            if (key === HOST_PANEL_ID || !active.has(key)) {
+                delete map[key];
+                changed = true;
+            }
+        }
+        if (!changed) return;
+        const storageKey = mcPanelFilePersistStorageKey();
+        if (Object.keys(map).length === 0) sessionStorage.removeItem(storageKey);
+        else sessionStorage.setItem(storageKey, JSON.stringify(map));
+    } catch (_) { /* ignore */ }
+}
+
 /** Boot iframe tiles on their last independent pair (else host/fallback fileId). */
 function resolveBootFileIdForPanel(panelId, fallbackFileId) {
     const fb = fallbackFileId != null ? String(fallbackFileId).trim() : "";
@@ -2658,6 +2699,7 @@ export default function MultichartGrid({
                     }
                 },
                 onChartBootFailed: function (id, reason, src) {
+                    try { clearPersistedPanelFileId(id); } catch (_) {}
                     setFailedPanels((prev) => {
                         const next = new Map(prev);
                         next.set(id, { reason: reason || "boot failed", src: src || null });
@@ -2873,6 +2915,9 @@ export default function MultichartGrid({
                 // (PO: three panels black + "No fullRawData available" with switch on).
                 orderSyncedPanelsRef.current.delete(existingId);
                 clonedPanelsRef.current.delete(existingId);
+                // Drop persisted pair for this id — otherwise a broken kill-switch
+                // session leaves sessionStorage fileIds that survive flag removal + F5.
+                clearPersistedPanelFileId(existingId);
                 bumpPanelLoadGeneration(existingId);
                 try { mgr.removeChart(existingId); } catch (_) {}
                 if (overlayHoldTimersRef.current[existingId]) {
@@ -3010,6 +3055,71 @@ export default function MultichartGrid({
             if (chainTimer) clearTimeout(chainTimer);
         };
     }, [layout.tiles, managerReady]);
+
+    // ─── Boot self-heal for persisted panel poison (PURGE-2 FLAG-03) ───────
+    // A kill-switch session can write sessionStorage panel fileIds + skip
+    // re-prime such that deleting the flag and reloading still leaves tiles
+    // black (PO: only 1/3 recovered; clearActiveDrawingTool timeouts; thrash
+    // loads across many fileIds). Heal once per tile: if still no bars after
+    // settle, drop persisted pair, forget clone/order, load host fileId.
+    const dataReadyPanelsRef = useRef(dataReadyPanels);
+    dataReadyPanelsRef.current = dataReadyPanels;
+    const panelBootHealAttemptedRef = useRef(new Set());
+    useEffect(() => {
+        if (!managerReady) return;
+        const iframeIds = layout.tiles
+            .map((t) => t.id)
+            .filter((id) => id !== HOST_PANEL_ID);
+        if (!iframeIds.length) {
+            panelBootHealAttemptedRef.current.clear();
+            return undefined;
+        }
+        try { sanitizePersistedPanelFileMap(new Set(iframeIds)); } catch (_) {}
+
+        const HEAL_WAIT_MS = 4500;
+        const timers = iframeIds.map((pid) => setTimeout(() => {
+            if (dataReadyPanelsRef.current.has(pid)) return;
+            if (panelBootHealAttemptedRef.current.has(pid)) return;
+            panelBootHealAttemptedRef.current.add(pid);
+
+            const hostNt = readHostChartFileAndTf();
+            const hostFid = (initialFileIdRef.current && String(initialFileIdRef.current).trim())
+                || (hostNt.fileId && String(hostNt.fileId).trim())
+                || "";
+            if (!hostFid) return;
+
+            try { clearPersistedPanelFileId(pid); } catch (_) {}
+            try { hostSyncedPanelsRef.current.delete(pid); } catch (_) {}
+            try { primedPanelsRef.current.delete(pid); } catch (_) {}
+            try { orderSyncedPanelsRef.current.delete(pid); } catch (_) {}
+            try { clonedPanelsRef.current.delete(pid); } catch (_) {}
+            bumpPanelLoadGeneration(pid);
+
+            const mgr = managerRef.current;
+            if (!mgr || typeof mgr.sendCommand !== "function") return;
+            if (!mgr.charts || !mgr.charts.has(pid)) return;
+            try {
+                console.warn(
+                    "[MultichartGrid] boot self-heal: panel",
+                    pid,
+                    "had no bars — clearing persisted fileId and loading host",
+                    hostFid,
+                );
+            } catch (_) {}
+            try {
+                mgr.sendCommand(pid, "loadFile", { fileId: hostFid, force: true })
+                    .then(() => {
+                        try { persistPanelFileId(pid, hostFid); } catch (_) {}
+                    })
+                    .catch(() => {});
+            } catch (_) {}
+        }, HEAL_WAIT_MS));
+
+        return () => {
+            timers.forEach((t) => clearTimeout(t));
+        };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [managerReady, layout.tiles]);
 
     // D-016 finest-TF cadence: re-derive min(TF) when panels mount or TF/data settles.
     useEffect(() => {
@@ -8715,6 +8825,11 @@ export default function MultichartGrid({
                                             if (!mgr) return;
                                             const cellEl = cellRefs.current[tile.id];
                                             primedPanelsRef.current.delete(tile.id);
+                                            orderSyncedPanelsRef.current.delete(tile.id);
+                                            clonedPanelsRef.current.delete(tile.id);
+                                            hostSyncedPanelsRef.current.delete(tile.id);
+                                            // Retry must not re-apply poisoned sessionStorage fileIds.
+                                            clearPersistedPanelFileId(tile.id);
                                             bumpPanelLoadGeneration(tile.id);
                                             try { mgr.removeChart(tile.id); } catch (_) {}
                                             setReadyPanels((prev) => {
@@ -8734,15 +8849,13 @@ export default function MultichartGrid({
                                                 const n = new Map(prev); n.delete(tile.id); return n;
                                             });
                                             const hostNt = readHostChartFileAndTf();
+                                            const hostFid = initialFileIdRef.current || hostNt.fileId || null;
                                             if (cellEl) {
                                                 try {
                                                     mgr.addChart({
                                                         id:        tile.id,
                                                         tf:        (initialTimeframeRef.current || hostNt.tf || "1m"),
-                                                        fileId:    resolveBootFileIdForPanel(
-                                                            tile.id,
-                                                            initialFileIdRef.current || hostNt.fileId || null
-                                                        ),
+                                                        fileId:    hostFid,
                                                         sessionId: initialSessionIdRef.current || null,
                                                         mode:      initialModeRef.current || readUrlChartMode(),
                                                     }, cellEl);

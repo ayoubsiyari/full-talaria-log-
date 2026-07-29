@@ -425,7 +425,7 @@ async function exerciseRetryRemoveReadd(source = SOURCE) {
           sandbox.setCharts({});
         },
         addChart(opts) {
-          sandbox.events.push(['addChart', opts.id]);
+          sandbox.events.push(['addChart', opts.id, opts.fileId]);
           sandbox.setCharts({ B: replacementChart });
         },
       },
@@ -433,6 +433,10 @@ async function exerciseRetryRemoveReadd(source = SOURCE) {
     tile: { id: 'B' },
     cellRefs: { current: { B: {} } },
     primedPanelsRef: { current: new Set(['B']) },
+    orderSyncedPanelsRef: { current: new Set(['B']) },
+    clonedPanelsRef: { current: new Set(['B']) },
+    hostSyncedPanelsRef: { current: new Set(['B']) },
+    clearPersistedPanelFileId: (id) => { sandbox.events.push(['clearPersist', id]); },
     setReadyPanels: makeSetter(),
     setDataReadyPanels: makeSetter(),
     setOverlayFallbackPanels: makeSetter(),
@@ -482,6 +486,10 @@ function exercisePg5(source = SOURCE, { killSwitch = false } = {}) {
     setOverlayFallbackPanels: makeSetter(),
     setFailedPanels: (updater) => updater(new Map([['B', {}]])),
   };
+  sandbox.clearedPersist = [];
+  sandbox.clearPersistedPanelFileId = (panelId) => {
+    sandbox.clearedPersist.push(panelId);
+  };
   installGridHelpers(source, sandbox, `
     ${extractFunction(source, 'bumpPanelLoadGeneration')}
     function runRemovalLoop() {
@@ -494,6 +502,7 @@ function exercisePg5(source = SOURCE, { killSwitch = false } = {}) {
   assert.equal(sandbox.primedPanelsRef.current.has('B'), false, 'prime id is purged on removal');
   assert.equal(sandbox.orderSyncedPanelsRef.current.has('B'), false, 'order-sync id is purged on removal');
   assert.equal(sandbox.clonedPanelsRef.current.has('B'), false, 'clone id is purged on removal');
+  assert.deepEqual(sandbox.clearedPersist, ['B'], 'persisted panel fileId cleared on removal');
   // Generation bump is purge-gated; kill-switch on ⇒ still 0, but re-prime sets clear.
   if (!killSwitch) {
     assert.equal(sandbox.panelLoadGenerationRef.current.B, 1, 'removal bumps load generation');

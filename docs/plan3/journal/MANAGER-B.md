@@ -3863,3 +3863,24 @@ Stamp `20260729b89`. Harnesses GREEN. Not taking D tip `a8d887db1`/`7a2871f24` (
 ## B-0167 — URGENT: FIX1 default DISABLED. Ship b90.
 
 PO freeze on b88 (four-panel, no click, play → only host moves). Default `__TALARIA_DISABLE_MC_BACKGROUND_RENDER_CADENCE_V1` ABSENT ⇒ feature OFF. Explicit false re-enables. Stamp `20260729b90`. Everything else retained.
+
+## B-0168 — Immutable canary image pins. Unblocks C on b85/b86.
+
+**2026-07-29.** C could not grade b85/b86 after canary moved to b88+ — only `:latest` existed; intermediate digests pruned. Correct refusal.
+
+### Mechanism (forward)
+- Ship tags `talaria-{homepage,trading-chart}:canary-<BUILD_ID>` after every checkpoint build.
+- `docker save` → `/root/talaria-restore/images/canary-<BUILD_ID>.tar.gz`
+- Pin file `/root/talaria-restore/PINNED-<BUILD_ID>.txt`
+- Bringup: `canary-bringup-pinned.sh` (`up --no-build` from tags)
+- Historical rebuild without displacing live: `canary-rebuild-pinned.sh` (restores `:latest` to live pin; no up)
+
+### Recovery (this session)
+| Pin | How | Tar |
+|---|---|---|
+| b90 | already tagged at ship; tar saved | YES |
+| b85 | rebuild tip `294fef744` (no up; live stayed b90) | YES |
+| b86 | rebuild tip `9b81b89fd` (no up; live stayed b90) | YES |
+| b83–b84, b87–b89 | digests gone | not rebuilt unless requested |
+
+Live floor remains **`20260729b90`**. Handoff: `HANDOFF-C-PINNED-CANARY-IMAGES-20260729.md`. Do not `docker image prune -a` on canary.
