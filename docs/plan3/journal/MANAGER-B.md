@@ -4307,3 +4307,13 @@ Ship runner: `docs/plan3/evidence/B-M4/release/observations/_run-ship-b101-key.s
 ### B-0185 catch — director confirmation recorded
 
 A kill-switch that is host-only does not reach the panel realms where the defect lives. Operator flips the flag on the page they see, the host reports "disabled", panels keep the fix ON — negative control reads as "flag off, no change", and we conclude the cure did nothing. That is FLAG-01 (switch must actually disable the cure) and FLAG-02 (NC must be a real NC) failing in one motion. Caught against myself on LAG-SETINTERVAL-TICK; climb shipped in `6e7fb51e6` and is on this stamp. Sweep of other switches for the same host-only reach follows this entry.
+
+## B-0189 — 2026-07-29 — FLAG-01/02 sweep: replay kill-switches climb realms
+
+**Row:** M4-release | **Packet:** W64-SWITCH-REALM-SWEEP-20260729 | **Tier:** top
+
+Director confirmed B-0185: host-only kill-switch ⇒ "flag off, no change" false negative. Cut in the same packet.
+
+Shared `_talariaDisableFlagTruthy(flag)` (self→parent→top, truthy, cross-origin fails toward shipped default). All replay module/method kill predicates that were host-only/`!== true` now use it, including M28. LAG rewritten onto the shared helper (existing realm cells still green). M20-Q6 *install-time* descriptor reader left alone this cut — different shape; next.
+
+Gates: lag 16/16, M28 12/12, mirror byte-identical.

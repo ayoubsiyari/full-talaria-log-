@@ -3,43 +3,74 @@
  * Implements TradingView-style candle-by-candle replay with draggable toolbar
  */
 
+/**
+ * Truthy kill-switch read across self → parent → top.
+ *
+ * Replay (and most panel work) runs inside multichart panel realms — each is
+ * its own window. An operator flipping a switch types into the page they see,
+ * which is the host. A predicate that reads only its own window leaves the
+ * cure running in every panel while truthfully reporting "disabled" on the
+ * host: FLAG-01 and FLAG-02 fail together (B-0185). FIX 1's cadence switch
+ * already climbed; LAG followed in W64; this helper is the shared climb for
+ * the rest of the replay switches. Unreadable cross-origin realms are "no
+ * instruction for us" — fail towards the shipped default, not away from it.
+ * There is no per-realm switch propagation in the tree (A's d7a228725 is not
+ * merged), so the climb has to live in the predicate.
+ */
+function _talariaDisableFlagTruthy(flagName) {
+    if (typeof window === 'undefined') return false;
+    const killed = (w) => {
+        try {
+            return !!(w && w[flagName]);
+        } catch (_e) {
+            return false;
+        }
+    };
+    if (killed(window)) return true;
+    try {
+        const parent = window.parent && window.parent !== window ? window.parent : null;
+        if (killed(parent)) return true;
+        const top = window.top && window.top !== window && window.top !== parent
+            ? window.top
+            : null;
+        if (killed(top)) return true;
+    } catch (_e) {
+        // Parent chain unreachable; the own-window read above already stands.
+    }
+    return false;
+}
+
 /** L2-M2 / TAL-01798: same-symbol panels share one host market mark (default ON). */
 function _mcCanonicalReplayMarkV1Enabled() {
-    return typeof window === 'undefined'
-        || !window.__TALARIA_MC_DISABLE_CANONICAL_REPLAY_MARK_V1;
+    return !_talariaDisableFlagTruthy('__TALARIA_MC_DISABLE_CANONICAL_REPLAY_MARK_V1');
 }
 
 /** M19-H: one replay loop and one heavy refresh per committed TF generation. */
 function _m19hTimeframeCoalesceEnabled() {
-    return typeof window === 'undefined'
-        || window.__TALARIA_DISABLE_M19_H_TF_COALESCE_V1 !== true;
+    return !_talariaDisableFlagTruthy('__TALARIA_DISABLE_M19_H_TF_COALESCE_V1');
 }
 
 /** M19-I-g2: slider speed is literal and 1–100x tick play keeps forming-candle paints. */
 function _m19iTickSpeedCoherenceEnabled() {
-    return typeof window === 'undefined'
-        || window.__TALARIA_DISABLE_M19I_TICK_SPEED_COHERENCE_V1 !== true;
+    return !_talariaDisableFlagTruthy('__TALARIA_DISABLE_M19I_TICK_SPEED_COHERENCE_V1');
 }
 
 function _m27EngineReleaseV1Enabled() {
-    return typeof window === 'undefined'
-        || window.__TALARIA_DISABLE_M27_ENGINE_RELEASE_V1 !== true;
+    return !_talariaDisableFlagTruthy('__TALARIA_DISABLE_M27_ENGINE_RELEASE_V1');
 }
 
 function _m28ReplayHiddenPauseV1Enabled() {
-    return typeof window === 'undefined'
-        || window.__TALARIA_DISABLE_REPLAY_HIDDEN_PAUSE_V1 !== true;
+    return !_talariaDisableFlagTruthy('__TALARIA_DISABLE_REPLAY_HIDDEN_PAUSE_V1');
 }
 
 /**
  * CPU-CEILING-60X — single-chart high-speed replay paint cadence (default ON).
  * Kill-switch: window.__TALARIA_DISABLE_SC_REPLAY_PAINT_CADENCE_V1 = <truthy>
  * restores legacy per-forming-tick sync paint. Absent / falsy ⇒ mitigation on.
- * Read per call (never sampled at init). Multichart is out of scope (FIX 1).
+ * Read per call (never sampled at init).
  */
 function _scReplayPaintCadenceV1Enabled() {
-    return typeof window === 'undefined'
-        || !window.__TALARIA_DISABLE_SC_REPLAY_PAINT_CADENCE_V1;
+    return !_talariaDisableFlagTruthy('__TALARIA_DISABLE_SC_REPLAY_PAINT_CADENCE_V1');
 }
 
 /**
@@ -50,42 +81,9 @@ function _scReplayPaintCadenceV1Enabled() {
  * Kill-switch: window.__TALARIA_DISABLE_LAG_SETINTERVAL_TICK_V1 = <truthy>
  * restores legacy sync full tick (advance + paint inside setInterval).
  * Absent / falsy ⇒ mitigation on. Read per call (never sampled at init).
- *
- * Read ACROSS REALMS, not just from this window. Replay also runs inside
- * multichart panels, and each panel is its own window; an operator flipping
- * this switch is typing into the page they are looking at, which is the host.
- * A predicate that reads only its own window therefore leaves the fix running
- * in every panel while truthfully reporting itself disabled on the host — a
- * revert path that reverts the realm nobody was measuring. FIX 1's cadence
- * switch already climbs for this reason; this one did not until W64.
- *
- * There is no per-realm switch propagation in the tree (A's d7a228725 is not
- * merged), so the climb has to live in the predicate.
  */
 function _lagSetIntervalTickV1Enabled() {
-    if (typeof window === 'undefined') return true;
-    const killed = (w) => {
-        try {
-            return !!(w && w.__TALARIA_DISABLE_LAG_SETINTERVAL_TICK_V1);
-        } catch (_e) {
-            // Unreadable realm (cross-origin). It cannot be carrying an
-            // instruction meant for us, so it is not a reason to turn the
-            // mitigation off: fail towards the shipped default, not away.
-            return false;
-        }
-    };
-    if (killed(window)) return false;
-    try {
-        const parent = window.parent && window.parent !== window ? window.parent : null;
-        if (killed(parent)) return false;
-        const top = window.top && window.top !== window && window.top !== parent
-            ? window.top
-            : null;
-        if (killed(top)) return false;
-    } catch (_e) {
-        // Parent chain unreachable; the own-window read above already stands.
-    }
-    return true;
+    return !_talariaDisableFlagTruthy('__TALARIA_DISABLE_LAG_SETINTERVAL_TICK_V1');
 }
 
 class ReplaySystem {
@@ -871,23 +869,22 @@ class ReplaySystem {
 
     /** TAL-01612 residual: Auto/sync interval owner = chart TF only (ignore stale #replayTimeframe). */
     _isReplayIntervalOwnerFixEnabled() {
-        return typeof window === 'undefined' || window.__TALARIA_DISABLE_REPLAY_INTERVAL_OWNER_V1 !== true;
+        return !_talariaDisableFlagTruthy('__TALARIA_DISABLE_REPLAY_INTERVAL_OWNER_V1');
     }
 
     /** D-016 V1: candle PLAY uses finest sub-step when host is coarser than a peer. */
     _isFinestTfCandleCadenceFixEnabled() {
-        return typeof window === 'undefined' || window.__TALARIA_DISABLE_FINEST_TF_CANDLE_CADENCE_V1 !== true;
+        return !_talariaDisableFlagTruthy('__TALARIA_DISABLE_FINEST_TF_CANDLE_CADENCE_V1');
     }
 
     /** M19-F: batch chart paints without batching away exact order-lifecycle evaluation. */
     _isOrderMoneyPathBatchEnabled() {
-        return typeof window === 'undefined'
-            || window.__TALARIA_DISABLE_ORDER_MONEY_PATH_BATCH_V1 !== true;
+        return !_talariaDisableFlagTruthy('__TALARIA_DISABLE_ORDER_MONEY_PATH_BATCH_V1');
     }
 
     /** D-016 MC-STEPFWD: manual step uses finest sub-step (replay-system; Grid snap deferred). */
     _isFinestTfStepForwardCadenceFixEnabled() {
-        return typeof window === 'undefined' || window.__TALARIA_DISABLE_FINEST_TF_STEP_FORWARD_CADENCE_V1 !== true;
+        return !_talariaDisableFlagTruthy('__TALARIA_DISABLE_FINEST_TF_STEP_FORWARD_CADENCE_V1');
     }
 
     /** D-009 (A): tick persists when an explicit interval is set; interval bounds step size only. */
@@ -1530,8 +1527,9 @@ class ReplaySystem {
      * restores legacy accumulation of document mousemove/mouseup per float cycle.
      */
     _m20Q6ReplayFloatListenerTeardownEnabled() {
-        return typeof window === 'undefined'
-            || window.__TALARIA_DISABLE_M20_Q6_REPLAY_FLOAT_LISTENER_TEARDOWN_V1 !== true;
+        return !_talariaDisableFlagTruthy(
+            '__TALARIA_DISABLE_M20_Q6_REPLAY_FLOAT_LISTENER_TEARDOWN_V1',
+        );
     }
 
     /** M20-Q6 — drop document mousemove/mouseup pairs registered for floating clones. */
@@ -3998,8 +3996,7 @@ class ReplaySystem {
      * every static playhead install (normal, fast, panel-sync, static-mirror paths).
      */
     _m20Q9PrefixSliceFixEnabled() {
-        return typeof window === 'undefined'
-            || window.__TALARIA_DISABLE_M20_PREFIX_SLICE_V1 !== true;
+        return !_talariaDisableFlagTruthy('__TALARIA_DISABLE_M20_PREFIX_SLICE_V1');
     }
 
     /**
@@ -4832,8 +4829,9 @@ class ReplaySystem {
 
         let honorExplicit = true;
         try {
-            honorExplicit = !(typeof window !== 'undefined'
-                && window.__TALARIA_DISABLE_REPLAY_EXPLICIT_INTERVAL_STEP_V1 === true);
+            honorExplicit = !_talariaDisableFlagTruthy(
+                '__TALARIA_DISABLE_REPLAY_EXPLICIT_INTERVAL_STEP_V1',
+            );
         } catch (_) { honorExplicit = true; }
         if (honorExplicit && this._hasExplicitReplayStepInterval()) {
             return tf;
@@ -6185,8 +6183,7 @@ class ReplaySystem {
     
     /** M19-G: bound deterministic replay paths unless the diagnostic kill is set. */
     _isTickPathCacheBoundEnabled() {
-        return typeof window === 'undefined'
-            || window.__TALARIA_DISABLE_M19_TICK_PATH_BOUND_V1 !== true;
+        return !_talariaDisableFlagTruthy('__TALARIA_DISABLE_M19_TICK_PATH_BOUND_V1');
     }
 
     _tickPathCacheMaxEntries() {

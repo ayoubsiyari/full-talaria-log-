@@ -552,8 +552,8 @@ test('M28 mutation checks require passing unmutated oracles first', () => {
 
   const noKillSwitch = replaceOnce(
     source,
-    "    return typeof window === 'undefined'\n        || window.__TALARIA_DISABLE_REPLAY_HIDDEN_PAUSE_V1 !== true;",
-    '    return true;',
+    "function _m28ReplayHiddenPauseV1Enabled() {\n    return !_talariaDisableFlagTruthy('__TALARIA_DISABLE_REPLAY_HIDDEN_PAUSE_V1');\n}",
+    'function _m28ReplayHiddenPauseV1Enabled() {\n    return true;\n}',
   );
   assert.throws(() => killSwitchOracle(noKillSwitch));
 
