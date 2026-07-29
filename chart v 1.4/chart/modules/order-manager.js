@@ -230,6 +230,11 @@ function _orderRiskQtyOnSlCommitV1Enabled() {
     return typeof window === 'undefined' || !window.__TALARIA_DISABLE_ORDER_RISK_QTY_ON_SL_COMMIT_V1;
 }
 
+/** Cluster G / TAL-01751: BE trigger keeps the preview/place anchor. */
+function _orderBePlaceAnchorV1Enabled() {
+    return typeof window === 'undefined' || !window.__TALARIA_DISABLE_ORDER_BE_PLACE_ANCHOR_V1;
+}
+
 const ENTRY_STACK_OFFSET_PX = 16;
 const ORDER_CANCEL_PLACE_SUPPRESS_MS = 450;
 const ORDER_LINE_EDGE_VISIBILITY_PAD_PX = 24;
@@ -1003,6 +1008,18 @@ class OrderManager {
         if (typeof this.calculatePositionFromRisk === 'function') {
             this.calculatePositionFromRisk();
         }
+    }
+
+    _breakevenFrozenTriggerPrice(settings) {
+        if (!_orderBePlaceAnchorV1Enabled()) return NaN;
+        const n = Number(settings?.triggerPrice);
+        return Number.isFinite(n) && n > 0 ? n : NaN;
+    }
+
+    _resolveBreakevenTriggerPrice(settings, computeFallback) {
+        const frozen = this._breakevenFrozenTriggerPrice(settings);
+        if (Number.isFinite(frozen)) return frozen;
+        return typeof computeFallback === 'function' ? computeFallback() : NaN;
     }
 
     /** A6-4 Step 4: iframe open-leg commits route to host store. */
@@ -29107,6 +29124,10 @@ class OrderManager {
                         : parseFloat(document.getElementById('breakevenAmount')?.value || 50),
                 pipOffset: parseFloat(document.getElementById('breakevenPipOffset')?.value || 0)
             };
+            const beTriggerPrice = this._computeBreakevenTriggerPriceFromPanelReadonly();
+            if (_orderBePlaceAnchorV1Enabled() && Number.isFinite(beTriggerPrice) && beTriggerPrice > 0) {
+                breakevenSettings.triggerPrice = beTriggerPrice;
+            }
         }
         
         // Get trailing stop settings (step-based system with activation).
@@ -32466,8 +32487,11 @@ class OrderManager {
                     const posPipSize = this._getBreakevenUnitSize(position);
                     const triggerEntry = this._beTriggerAnchorEntry(position);
                     const placementEntry = this._getSplitGroupAvgEntry(position);
+                    const frozenTriggerPrice = this._breakevenFrozenTriggerPrice(position.breakevenSettings);
 
-                    if (position.breakevenSettings.mode === 'rr') {
+                    if (Number.isFinite(frozenTriggerPrice)) {
+                        shouldTrigger = barQ.bidHigh >= frozenTriggerPrice;
+                    } else if (position.breakevenSettings.mode === 'rr') {
                         const riskDist = Math.abs(triggerEntry - position.stopLoss);
                         const triggerDist = position.breakevenSettings.value * riskDist;
                         shouldTrigger = (barQ.bidHigh - triggerEntry) >= triggerDist;
@@ -32783,8 +32807,11 @@ class OrderManager {
                     const posPipSize = this._getBreakevenUnitSize(position);
                     const triggerEntry = this._beTriggerAnchorEntry(position);
                     const placementEntry = this._getSplitGroupAvgEntry(position);
+                    const frozenTriggerPrice = this._breakevenFrozenTriggerPrice(position.breakevenSettings);
 
-                    if (position.breakevenSettings.mode === 'rr') {
+                    if (Number.isFinite(frozenTriggerPrice)) {
+                        shouldTrigger = barQ.askLow <= frozenTriggerPrice;
+                    } else if (position.breakevenSettings.mode === 'rr') {
                         const riskDist = Math.abs(triggerEntry - position.stopLoss);
                         const triggerDist = position.breakevenSettings.value * riskDist;
                         shouldTrigger = (triggerEntry - barQ.askLow) >= triggerDist;
@@ -34918,11 +34945,17 @@ class OrderManager {
                             order.breakevenSettings.value = parseFloat((pips * qUse * bePipVal).toFixed(2));
                         }
                     }
+                    if (_orderBePlaceAnchorV1Enabled()) {
+                        order.breakevenSettings.triggerPrice = newPrice;
+                    }
                     if (order.isSplitEntry && order.splitGroupId) {
                         self._getSplitGroupOpenPositions(order).forEach((sib) => {
                             if (!sib.breakevenSettings || sib.id === order.id) return;
                             sib.breakevenSettings.mode = order.breakevenSettings.mode;
                             sib.breakevenSettings.value = order.breakevenSettings.value;
+                            if (_orderBePlaceAnchorV1Enabled()) {
+                                sib.breakevenSettings.triggerPrice = newPrice;
+                            }
                         });
                     }
                     // Update stored trigger price
@@ -38659,9 +38692,11 @@ class OrderManager {
                 ? this._getSplitGroupPendingOrders(pendingOrder)
                 : [pendingOrder];
             const beQtyPend = membersBe.reduce((s, m) => s + (Number(m.quantity) || 0), 0) || (Number(pendingOrder.quantity) || 0);
-            let beTriggerPrice = 0;
+            let beTriggerPrice = this._resolveBreakevenTriggerPrice(pendingOrder.breakevenSettings, () => NaN);
             
-            if (pendingOrder.breakevenSettings.mode === 'rr') {
+            if (Number.isFinite(beTriggerPrice)) {
+                // Place-time preview anchor wins over pending split/average recomputation.
+            } else if (pendingOrder.breakevenSettings.mode === 'rr') {
                 const riskDist = Math.abs(entryPrice - pendingOrder.stopLoss);
                 const profitDistance = pendingOrder.breakevenSettings.value * riskDist;
                 beTriggerPrice = pendingOrder.direction === 'BUY' 
@@ -43141,9 +43176,11 @@ class OrderManager {
             const beQty = this._beChartBreakevenQtyOpen(order);
             const beUnit = this._getBreakevenUnitSize(order);
             const bePipVal = this._getBreakevenPipValue(order);
-            let beTriggerPrice = 0;
+            let beTriggerPrice = this._resolveBreakevenTriggerPrice(order.breakevenSettings, () => NaN);
             
-            if (order.breakevenSettings.mode === 'rr') {
+            if (Number.isFinite(beTriggerPrice)) {
+                // Place-time preview anchor wins over post-fill entry/average recomputation.
+            } else if (order.breakevenSettings.mode === 'rr') {
                 const riskDist = Math.abs(entryPrice - order.stopLoss);
                 const profitDistance = order.breakevenSettings.value * riskDist;
                 beTriggerPrice = order.type === 'BUY'

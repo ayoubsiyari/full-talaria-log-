@@ -145,3 +145,10 @@
 - Fix: SL preview drag commit now recalculates position size for `risk-usd` and `risk-percent` modes, behind `__TALARIA_DISABLE_ORDER_RISK_QTY_ON_SL_COMMIT_V1` (default ON). Lot-size mode is unchanged.
 - RED: `TALARIA_TEST_DISABLE_ORDER_RISK_QTY_ON_SL_COMMIT=1 node "chart v 1.4/chart/modules/order-risk-qty-on-sl-commit.test.mjs"` fails because SL commits but sizing is not recalculated.
 - GREEN: both `node "chart v 1.4/chart/modules/order-risk-qty-on-sl-commit.test.mjs"` and `node "homepage/public/chart/modules/order-risk-qty-on-sl-commit.test.mjs"` pass.
+
+## 2026-07-29 — Cluster G / TAL-01751
+
+- Root cause found: preview BE trigger, pending BE line, open BE line, and BE trigger evaluation could use different anchors. Place-time tick snap, split/pending average entry, or open first-leg anchor could therefore move the BE level after the user clicked Place.
+- Fix: place now persists the preview BE trigger as `breakevenSettings.triggerPrice`, and pending/open rendering plus trigger evaluation prefer that frozen trigger, behind `__TALARIA_DISABLE_ORDER_BE_PLACE_ANCHOR_V1` (default ON). Manual BE drags update the persisted trigger so later redraws do not revert.
+- RED: `TALARIA_TEST_DISABLE_ORDER_BE_PLACE_ANCHOR=1 node "chart v 1.4/chart/modules/order-be-place-anchor.test.mjs"` fails because BE recomputes from the moved fallback anchor (`1.115 !== 1.1125`).
+- GREEN: both `node "chart v 1.4/chart/modules/order-be-place-anchor.test.mjs"` and `node "homepage/public/chart/modules/order-be-place-anchor.test.mjs"` pass.
