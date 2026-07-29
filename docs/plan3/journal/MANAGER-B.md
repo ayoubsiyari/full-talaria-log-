@@ -3545,3 +3545,252 @@ minimum; optional client B-W16). **Do not ship until authorised.** No prod conta
 
 Footprint ≈ 2.9× live JS heap (231 vs 670 MB example). Upper bound only. Will not
 quote absolute footprint numbers in canary disclosure.
+
+
+## B-0153 — Production trade-loss AUTHORISED; ACCESS-BLOCKED. Kill-switch readiness. Runbook confirm.
+
+**2026-07-29.** Director `RETRACTION-BAR-STORE-AND-SWEEP-ORDER-20260729-0350.md` §5 + PO: ship scoped `api_server.py` fix to `talaria-log.com`, independent of canary. Destroy nothing.
+
+### 1. Journal-before-execute (this entry)
+
+Non-negotiables accepted: restore point first; scoped bytes only (no schema / migration / row cleanup); same-session `journalVouchedFor` PRESENT; destroy nothing. PO "sessions irrelevant" = disruption tolerance, **not** delete permission.
+
+### 2. Execute — BLOCKED
+
+| Probe | Result |
+|---|---|
+| Origin | `51.20.190.169` (not test `31.97.192.82`) |
+| `ssh -p 22` | Permission denied (publickey) — password auth not offered |
+| `ssh -p 443` | closed |
+| Local `~/.ssh` | empty |
+| Env | test-host pass only; no prod credentials |
+
+Escalate: `docs/plan3/evidence/B-M4/release/ESCALATE-PROD-SSH-ACCESS-20260729.md`.
+Packet: `PROD-TRADE-LOSS-HOTFIX-STANDING-BY.md` → **AUTHORISED / ACCESS-BLOCKED**.
+
+Scoped ship when access lands: `api_server.py` + `order-manager.js` (marker is client-side; verify cannot pass on server-only). Restore archive under `/root/talaria-restore/trade-loss-hotfix-<utc>/`. No DB ops.
+
+### 3. Kill-switch readiness (A's incoming)
+
+`KILL-SWITCH-READINESS-A-INCOMING-20260729.md`:
+
+| Flag | Now |
+|---|---|
+| `MC_PANEL_STATE_PURGE_V1` | reserved — not landed; verify on land |
+| `MC_BACKGROUND_RENDER_CADENCE_V1` | HELD `da961151e` only — FLAG-01/02 **PASS** on that commit; re-verify on merge |
+| Bar-store Shots 1–3 | not landed; verify each as it arrives |
+| `SHARED_BAR_STORE` (existing) | tip FLAG-01/02 **PASS** |
+
+Will not wait for the set.
+
+### 4. Canary runbook
+
+Already had §2e SURF-3 + stampInert + §4 footprint. Strengthened stampInert note: `?v=` never selects bytes — that is how a b75 shell with holes shipped while cold gates stayed green. No absolute footprint MB; TradeZella 3–5× memory claim withdrawn (~2.9× over-report).
+
+### 5. Waiting on
+
+Production SSH/key for `51.20.190.169`. Then restore → scoped cp → restart → `journalVouchedFor` PRESENT on `https://talaria-log.com`.
+
+
+## B-0154 — Deploy-path: SSH required. One-action rehearsed. Purge FLAG-01/02 PASS.
+
+**2026-07-29.** Director/PO: check for non-SSH path before the key; script one action; verify landed purge flags; runbook unchanged.
+
+### 1. Deploy-path enumeration
+
+`FINDING-PROD-DEPLOY-PATH-ENUMERATION-20260729.md`:
+
+- `build-images.yml` → GHCR only (`CHECKPOINT_BUILD=0`); no SSH to origin.
+- `scripts/deploy.sh` runs on a host that already has compose + digest pins — not a remote CI deploy.
+- No GitHub Environment / self-hosted runner / workflow targets `51.20.190.169`.
+- **Verdict: SSH (or equivalent host shell) is genuinely required** for the scoped hotfix.
+- Credential refusal (no guess / no test-pass reuse) remains correct.
+
+### 2. One-action script + test rehearsal
+
+Scripts: `trade-loss-hotfix-one-action.sh` + `trade-loss-hotfix-remote.sh`.
+
+Test host `TARGET=test` end-to-end:
+
+| Step | Result |
+|---|---|
+| Restore | `/root/talaria-restore/trade-loss-hotfix-20260729T104701Z` |
+| Ship | `api_server.py` + `order-manager.js` (chart/worker/homepage) |
+| Restart | trading-chart + trading-chart-worker |
+| Verify | `journalVouchedFor` **PRESENT** (2x) |
+| Line | **`ONE_ACTION_OK`** |
+
+Destroy nothing. Prod: `TARGET=prod TALARIA_PROD_SSH_KEY=...` (same script).
+
+### 3. Kill-switch — landed purge flags
+
+`manager-a/critical-path` @ `3e75ed996`:
+
+| Flag | FLAG-01 | FLAG-02 |
+|---|---|---|
+| `MC_PANEL_STATE_PURGE_V1` | PASS | PASS (purge1 11/11, round-trip) |
+| `MC_GRID_STATE_PURGE_V1` | PASS | PASS (purge2 10/10) |
+
+Evidence: `KILL-SWITCH-FLAG-VERIFY-PURGE-20260729.md`. Next expect chart.js data-cache flags; bar-store demoted.
+
+### 4. Runbook
+
+Accepted as current. No edits.
+
+### 5. Waiting on
+
+Production SSH for `51.20.190.169` only. Director packet: `STATUS-TO-DIRECTOR-20260729-B.md`.
+
+
+## B-0155 — STAND DOWN production. Auth WITHDRAWN. Canary = 31.97.192.82 only.
+
+**2026-07-29.** Director/PO: production authorisation withdrawn (Director error, not B's). Canary runs on `31.97.192.82`. `talaria-log.com` OUT OF SCOPE for Plan 3.
+
+### Closed
+
+| Item | Disposition |
+|---|---|
+| Prod SSH escalation | **CLOSED** — request/accept no prod credential |
+| Prod trade-loss hotfix | **WITHDRAWN** — no further deploy work |
+| Trade-loss on canary | Already live — `journalVouchedFor` PRESENT on b82 since ~00:07 |
+
+Credential refusal (no guess / no test-pass reuse) was correct. PO ""sessions irrelevant"" = data has no value on that surface, not disruption tolerance.
+
+### Kept (not wasted)
+
+1. `FINDING-PROD-DEPLOY-PATH-ENUMERATION-20260729.md` — remains filed.
+2. One-action rehearse path → **canary deploy mechanism**:
+   - `canary-deploy-one-action.sh` / `canary-deploy-remote.sh`
+   - `TARGET=test|canary` only; `TARGET=prod` refused
+   - Old `trade-loss-hotfix-*.sh` stub/forward to canary; prod branch dropped
+   - Post-deploy: marker PRESENT; SURF-3 fixture RED; live GREEN when `SURF3_COOKIE` set
+
+### Next
+
+3. Canary train assembly on `31.97.192.82`, ship floor **b82**. Land A's merges via canary one-action. SURF-3 live GREEN + fixture RED.
+4. Continue kill-switch FLAG-01/02 as A's flags land (expect chart.js data-cache; bar-store demoted).
+
+Packets: `ESCALATE-PROD-SSH-ACCESS-20260729.md` (CLOSED), `PROD-TRADE-LOSS-HOTFIX-STANDING-BY.md` (WITHDRAWN), `STATUS-TO-DIRECTOR-20260729-STANDDOWN.md`.
+
+
+## B-0156 — ASSEMBLE checkpoint b83: PURGE-1 + PURGE-2 to canary (journal-before-execute)
+
+**2026-07-29.** Director: ship A's PURGE-1 (`b034b33d3`) + PURGE-2 (`c2ad645f3`) to `31.97.192.82`. Not leak fixes — mid-drag + sessionStorage pair. Prod closed.
+
+### Plan
+1. Cherry-pick PURGE-1 then PURGE-2 onto `manager-b/plan3-20260727`.
+2. Stamp `CHART_BUILD_ID=20260729b83` via CHECKPOINT_BUILD compose on canary host.
+3. Verify: SURF-3 live GREEN + fixture RED; stamp-census holes=0; deploy-gate markers PRESENT; both purge flag strings reachable on deployed surface.
+4. Parallel: C calibration handoff; canary disclosure draft; kill-switch poll.
+
+Restore point before host touch. Destroy nothing.
+
+
+## B-0157 — CHECKPOINT b83 LIVE on canary. PURGE-1/2 shipped. C handoff + disclosure draft.
+
+**2026-07-29 ~11:22Z.** Assembled A's PURGE-1 (`b034b33d3` → `3e8ab6f96`) + PURGE-2 (`c2ad645f3` → `8d9e65c11`). Stamp `20260729b83`. Host `31.97.192.82` only. Not claimed as leak fixes.
+
+### Deploy
+
+| | |
+|---|---|
+| SHA | `8d9e65c11977f0c2230f747a44529e0c9c3459a8` |
+| Restore | `/root/talaria-restore/canary-20260729b83-20260729T111651Z` |
+| Build | `BUILD_DONE=2026-07-29T11:21:16Z` `UP_DONE=11:21:33Z` |
+| Mechanism | `canary-checkpoint-one-action.sh` (compose CHECKPOINT; prod refused) |
+
+### Same-session verify
+
+| Gate | Result |
+|---|---|
+| `journalVouchedFor` | PRESENT |
+| deploy-gate | PRESENT (stampInert waived) — dist-v9 + embed = **b83** |
+| stamp-census | `holeCount=0`, `currentObservedMax=20260729b83` |
+| SURF-3 fixture | RED (sealed disagreement holds) |
+| SURF-3 live (auth) | **GREEN** `agreedBuildId=20260729b83` (index + dist-v9) |
+| PANEL flag on wire | PRESENT in `multichart-manager.js` |
+| GRID flag on wire | PRESENT in `dist-v9/assets/talaria-v9-live.js` |
+
+### Also landed this turn
+
+1. `HANDOFF-C-HEAP-CENSUS-LIVE-CANARY-20260729.md` (+ note in MANAGER-C journal) — live canary access for +93 vs +21699 calibration.
+2. `CANARY-DISCLOSURE-DRAFT-20260729.md` — memory/CPU limits; no footprint MB; TradeZella withdrawn.
+3. Kill-switch poll: A's tip has `MC_BAR_STORE_REALM_V1` (P3) not in b83; chart.js data-cache named disables still pending.
+
+Runbook ship floor → b83.
+
+
+## B-0158 — STANDING ORDER accepted. Ship b84: MC_BAR_STORE_REALM_V1 (journal-before-execute)
+
+**2026-07-29.** Director standing order: auto-assemble/stamp/ship A's merges to canary without asking. Exceptions: talaria-log.com (closed); route/public-URL removal/change.
+
+### This ship
+- Cherry-pick `ff5149c64` P3 host-realm bar store + `__TALARIA_DISABLE_MC_BAR_STORE_REALM_V1`
+- Stamp `20260729b84` → `31.97.192.82`
+- Full verify set. Not a leak fix (PO refuted bar store as dominant).
+
+
+## B-0159 — b84 LIVE. MC_BAR_STORE_REALM_V1 shipped. Standing order armed.
+
+**2026-07-29 ~11:34Z.** Standing order accepted (`STANDING-ORDER-CANARY-AUTO-SHIP-20260729.md`).
+
+### Ship
+| | |
+|---|---|
+| Packet | P3 `ff5149c64` → tip `cdbef640c` |
+| Stamp | `20260729b84` |
+| Flag | `__TALARIA_DISABLE_MC_BAR_STORE_REALM_V1` — FLAG four-state round-trip **PASS** (16/16 harness) |
+| Claim | Correctness (host-realm store); **not** the ~50MB leak |
+
+### Verify
+| Gate | Result |
+|---|---|
+| SURF-3 fixture | RED |
+| SURF-3 live | GREEN agreedBuildId=`20260729b84` |
+| stamp-census | holes=0 max=b84 |
+| deploy-gate / journalVouchedFor | PRESENT |
+| Flags on wire | PANEL + GRID + BAR_STORE_REALM |
+
+### Gap work
+- C cookie jar script: `c-canary-login-cookie.mjs`; handoff updated.
+- A tip poll: no further product commits beyond P3 on critical-path vs B tip.
+
+
+## B-0160 — Standing order reaffirmed (no wait). FLAG bisect blocking. Gap work.
+
+**2026-07-29 ~11:38Z.** Director: stop waiting between deploys; b83 green; b84 was the next ship (done). Burst expected — FLAG-01/02 **blocking** per flag (independent runtime toggle, no reload).
+
+### Already executed
+- **b84 live** — `MC_BAR_STORE_REALM_V1` / tip `cdbef640c` — full verify set green (B-0159).
+
+### Armed
+- `STANDING-ORDER-CANARY-AUTO-SHIP-20260729.md` — no-ask assemble/stamp/ship + full verify
+- `FLAG-BISECT-VERIFY-PROTOCOL-20260729.md` — fail = block the bisect lever
+- Exceptions unchanged: talaria-log.com closed; route/public-URL remove/change needs Director
+
+### Gap (A quiet — tip `df2e24ed2` docs-only after P3; no ONLY_ON_A product)
+- C handoff → **b84** floor; disposable session **909** (`QA-DISPOSABLE-CENSUS-2026-07-29T1138`); mint script fixed (`session_type` + clone config)
+- Disclosure draft notes active bisect (not a single claimed leak fix)
+- Kill-switch tracker: next expect chart.js data-cache flags; FLAG fail = blocking
+
+### Next auto-ship
+When A merges product to `manager-a/critical-path` → **b85+** without asking.
+
+
+## B-0161 — Confirm: A's chart.js canonical; B stays out. P3 dup inspected.
+
+**2026-07-29.** Director items before next train.
+
+### 1. Duplicate P3 — inspected, not argued
+- A `ff5149c64` vs B `cdbef640c` — same message/paths; test blob identical; **chart.js blobs differ**.
+- **P3 bar-store region byte-identical.** Divergence is pre-P3 base drift only:
+  - B has `CHART_ENGINE_BUILD=20260728b82` (A: `20260724b61`)
+  - B still install-gates Q9 counters + M23 teardown (A unstranded both for FLAG-02)
+- **B has no P3 behavior A lacks.** Align tip to A's `chart.js` blob `5094522056…`.
+- Packet: `FINDING-P3-DUPLICATE-CHARTJS-20260729.md`
+
+### 2. Stay out of chart.js — confirmed
+Writable set: deploy, build, api_server, train. Leak shots needing `chart.js` → escalate to A. No more B-authored chart.js (P3 was the mistake).
+
+### Next
+Align chart.js from A → cherry-pick LEAK-C `f5ee11780` → stamp **b85**.
