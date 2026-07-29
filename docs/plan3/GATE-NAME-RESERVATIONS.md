@@ -538,6 +538,25 @@ Cells:
 | NC-P4-NO-FANOUT-MUST-RED | served P4 no-fan-out mode neuters `replayPlay` peer sends, serializes peer-row `productReplayPlayFanout.noFanoutControl`, and must make P4 RED | LIVE |
 | NC-P7-REPLAY-PAUSE-TEARDOWN-MUST-RED | served `replay-system.js` pause teardown reversal marks itself applied and makes the P7 state cell RED | LIVE |
 
+## Queue item 10 extension — Heap-cycle memory gate (W67)
+
+| Name | Signature token | Implementation | Status |
+|---|---|---|---|
+| HEAP-CYCLE-MEMORY-V1 | `TALARIA_HEAP_CYCLE_MEMORY_V1` | `scripts/heap-cycle-memory-gate.mjs`, `scripts/lib/heap-cycle-memory.mjs`, `scripts/lib/heap-cycle-browser.mjs`, `scripts/lib/heap-snapshot-detached.mjs`, `scripts/tests/heap-cycle-memory.test.mjs`, `scripts/fixtures/heap-cycle/gate01-red/` | LIVE instrument — GATE-01 sealed PO-leak fixture RED; Detached `<div>` count is mandatory superior gate; footprint non-grading. Regrades M26/FIX3 (expected INSUFFICIENT while leak remains). |
+
+Cells:
+
+| Cell | Asserts | Status |
+|---|---|---|
+| HEAP-CYCLE-INSTRUMENT-COMPLETE | baseline + 3 cycles emit `usedJSHeapSize` after forced GC and `detachedDivCount` from heap snapshot | LIVE |
+| HEAP-CYCLE-DISTINCT-FILEIDS | each cycle expands with distinct harness fileIds 25/27/28/29 | LIVE |
+| HEAP-CYCLE-DETACHED-DIV-STABLE | mean per-cycle Detached HTMLDivElement delta (CDP `detachedness`) or retained `HTMLDivElement` growth after return-to-single ≤ `HEAP_CYCLE_DETACHED_STABLE_MAX=1` (PO leak ≈ +21699/cycle) | LIVE — superior/mandatory |
+| HEAP-CYCLE-HEAP-FLOOR-BOUNDED | mean return-to-single heap floor growth ≤ 8 MiB (PO leak ≈ +50 MB/cycle; R1/R2/R3 = 106/152/204 from 54 MB) | LIVE |
+| M26-REGRADE-ON-HEAP-CYCLE | footprint verdict void; INSUFFICIENT while leak remains (M26 correct but insufficient) | LIVE |
+| FIX3-REGRADE-ON-HEAP-CYCLE | footprint verdict void; INSUFFICIENT while leak remains | LIVE |
+
+Pinned constants: `HEAP_CYCLE_PO_DETACHED_DIVS_PER_CYCLE=21699`, `HEAP_CYCLE_PO_FLOOR_MB=[106,152,204]`, `HEAP_CYCLE_PO_BASELINE_MB=54`.
+
 ## Queue item 11 — Hidden-tab replay regression (W59 / GATE-01)
 
 | Name | Signature token | Implementation | Status |
