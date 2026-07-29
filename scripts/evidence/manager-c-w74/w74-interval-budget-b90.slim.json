@@ -1,0 +1,26 @@
+{
+  "source": ".scratch-w74-interval-b90.json",
+  "packet": "W74",
+  "status": "RED",
+  "ok": false,
+  "buildId": "20260729b90",
+  "pin": "talaria-homepage:canary-20260729b90 (bringup verified)",
+  "budgetMs": 50,
+  "setInterval": {
+    "callbacks": 580,
+    "maxCallbackMs": 312.3,
+    "p95CallbackMs": 18.1,
+    "violations": 2,
+    "topViolations": [
+      { "ms": 312.3, "name": "m20Q6InertableScheduledCallback", "delay": 16 },
+      { "ms": 56.0, "name": "m20Q6InertableScheduledCallback", "delay": 16 }
+    ],
+    "verdict": "RED — reproduces PO setInterval defect band on pinned b90"
+  },
+  "longtaskCorroboration": {
+    "count": 76,
+    "maxLongTaskMs": 377,
+    "verdict": "RED (non-blocking)"
+  },
+  "workload": { "armed": true, "observedPlaying": 4, "orderOk": true }
+}
