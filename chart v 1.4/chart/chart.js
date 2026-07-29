@@ -7863,7 +7863,40 @@ class Chart {
         const wasActive = !!(replay && replay.isActive);
         const wasPlaying = !!(replay && replay.isPlaying);
 
-        this._ensureReplayDataInflight = (async () => {
+        // COVER-INFLIGHT-WEDGE: the slot below was installed AFTER the body had already
+        // run (`this._ensureReplayDataInflight = (async () => { … })()`). Every exit the
+        // body can take BEFORE its first await — generation superseded /
+        // _timeframeSwitching / _pairSwitchLoading, a parent master that already covers
+        // ts, or any synchronous throw — settles the promise first, so the body's finally
+        // cleared the slot and the assignment then RE-INSTALLED an already-settled
+        // promise. Nothing cleared it again (the only other writers are
+        // _beginTimeframeSwitching / _evictPanelMasterData and the constructor/reset
+        // sites; _endTimeframeSwitching and _endPairSwitchLoading clear nothing), so
+        // every later cover short-circuited on the truthy slot and got that stale
+        // result: replay data acquisition never fetched again. Invariant restored here —
+        // the slot never holds a settled promise, and only the call that installed a
+        // promise may clear it.
+        // Kill-switch: window.__TALARIA_DISABLE_COVER_INFLIGHT_WEDGE_V1 — truthy restores
+        // the unconditional re-install (wedge included). Absent ⇒ fix ON; truthiness (not
+        // === true). Read per call, then held for the whole call so this install and its
+        // own finally always agree even if the flag flips while the cover is in flight.
+        let wedgeGuardOn = true;
+        try {
+            wedgeGuardOn = typeof window === 'undefined'
+                || !window.__TALARIA_DISABLE_COVER_INFLIGHT_WEDGE_V1;
+        } catch (_e) { /* ignore */ }
+        // Set by the finally below; read after the IIFE returns to tell a body that
+        // suspended at its first await (publish it — concurrent callers must coalesce
+        // onto it) from one that already settled (publishing it wedges the slot with a
+        // stale result forever).
+        let coverSettled = false;
+        let coverInflight = null;
+
+        coverInflight = (async () => {
+            // COVER-RESUME-GUARD: true only while THIS call owns a pause it has not
+            // handed back yet, so the finally can never double-play a replay that
+            // the success path already resumed.
+            let pausedByCover = false;
             try {
                 if (captureGeneration !== (this._ensureReplayDataGeneration || 0)
                     || this._timeframeSwitching
@@ -8038,7 +8071,30 @@ class Chart {
 
                 return hasWallClockPrefix(this.rawData);
             } finally {
-                this._ensureReplayDataInflight = null;
+                // COVER-RESUME-GUARD: whatever exit path we left by, hand back the
+                // pause this call took (no payload / generation abort / empty rawData
+                // / throw all used to leave replay paused forever).
+                if (this._coverResumeGuardEnabled()
+                    && pausedByCover
+                    && replay
+                    && typeof replay.play === 'function') {
+                    try { replay.play(); pausedByCover = false; } catch (_rp) { /* ignore */ }
+                }
+                // COVER-INFLIGHT-WEDGE: clear only the promise THIS call published.
+                // coverInflight is still null when the body settled before its first
+                // await (nothing was published yet, and the assignment after the IIFE
+                // keeps the slot clear), and a slot already re-armed by a later call
+                // belongs to that call's finally — clearing it there orphaned a live
+                // cover and made the next caller open a redundant fetch.
+                if (wedgeGuardOn) {
+                    coverSettled = true;
+                    if (coverInflight !== null
+                        && this._ensureReplayDataInflight === coverInflight) {
+                        this._ensureReplayDataInflight = null;
+                    }
+                } else {
+                    this._ensureReplayDataInflight = null;
+                }
                 const ahead = this._ensureReplayDataTargetTs;
                 this._ensureReplayDataTargetTs = null;
                 const master = this._isIndependentMultichartPair()
@@ -8055,7 +8111,15 @@ class Chart {
             }
         })();
 
-        return this._ensureReplayDataInflight;
+        // COVER-INFLIGHT-WEDGE: publish only a cover that is genuinely in flight. The
+        // returned promise is the local one either way, so an early exit still reports
+        // its own result (and still rejects when the resume guard is off) — only the
+        // coalescing slot is left clear.
+        if (!wedgeGuardOn || !coverSettled) {
+            this._ensureReplayDataInflight = coverInflight;
+        }
+
+        return coverInflight;
     }
     
     /**
