@@ -7666,6 +7666,115 @@ class Chart {
     }
 
     /**
+     * COVER-REDISPATCH-BOUND: cap the self-re-dispatch chain that
+     * ensureReplayDataCoversTimestamp arms from its finally block. A cover that
+     * finished short of the forward target re-armed itself on a microtask with no
+     * limit, no cooldown and no generation check, and _fetchIndependentReplayBridge
+     * caps its walk at 24 sequential /bars chunks — so any target the walk cannot
+     * reach (or that the server has no bars for) spawned an endless fetch storm.
+     * Kill-switch: window.__TALARIA_DISABLE_COVER_REDISPATCH_BOUND_V1 — truthy
+     * restores the unbounded re-dispatch. Absent ⇒ fix ON; truthiness (not === true);
+     * read per call, never sampled at init.
+     */
+    _coverRedispatchBoundEnabled() {
+        try {
+            return typeof window === 'undefined'
+                || !window.__TALARIA_DISABLE_COVER_REDISPATCH_BOUND_V1;
+        } catch (_e) {
+            return true;
+        }
+    }
+
+    /**
+     * Consecutive self-re-dispatches allowed for ONE forward target that is making
+     * no progress. Genuine progress resets the budget, so a legitimately advancing
+     * cover chain is never capped by this number.
+     */
+    _coverRedispatchMaxAttempts() {
+        return 6;
+    }
+
+    _resetCoverRedispatchBudget() {
+        this._coverRedispatchWasted = 0;
+        this._coverRedispatchGeneration = null;
+        this._coverRedispatchTargetTs = null;
+        this._coverRedispatchBaselineT = null;
+    }
+
+    /**
+     * Budget gate for one self-re-dispatch of ensureReplayDataCoversTimestamp.
+     *  - superseded generation / timeframe switch / pair switch ⇒ never re-arm
+     *  - master moved closer to the target ⇒ genuine progress, budget resets
+     *  - a different forward target only RE-KEYS the budget; it does not refill it,
+     *    because the host playhead bumps the target inside almost every inflight
+     *    cover (panel-cmd-bridge scheduleMirrorCatchUp fires per mirror frame) and
+     *    refilling on that alone left the bound inert in the one regime it exists
+     *    for: an independent-symbol panel catching up during Play
+     *  - otherwise consume one attempt and stop at _coverRedispatchMaxAttempts()
+     * Stopping clears the budget so a later externally-driven cover for the same
+     * target starts fresh instead of being permanently starved.
+     * @param {number} captureGeneration generation captured by the finishing call
+     * @param {number} ahead forward target that is still uncovered
+     * @param {number} lastMasterT last master bar t observed by the finishing call
+     * @returns {boolean} true when the chain may re-arm
+     */
+    _coverRedispatchShouldRearm(captureGeneration, ahead, lastMasterT) {
+        const currentGeneration = this._ensureReplayDataGeneration || 0;
+        if (captureGeneration !== currentGeneration
+            || this._timeframeSwitching
+            || this._pairSwitchLoading) {
+            this._resetCoverRedispatchBudget();
+            return false;
+        }
+        const sameTarget = this._coverRedispatchGeneration === currentGeneration
+            && this._coverRedispatchTargetTs === ahead;
+        if (!sameTarget) {
+            // A target that only moved forward is not progress: re-key the budget to
+            // it and re-baseline the frontier, but refill the attempts solely when the
+            // master frontier itself moved (or has never been observed).
+            if (!Number.isFinite(this._coverRedispatchBaselineT)
+                || (Number.isFinite(lastMasterT)
+                    && lastMasterT > this._coverRedispatchBaselineT)) {
+                this._coverRedispatchWasted = 0;
+            }
+            this._coverRedispatchGeneration = currentGeneration;
+            this._coverRedispatchTargetTs = ahead;
+            this._coverRedispatchBaselineT = lastMasterT;
+        } else if (Number.isFinite(lastMasterT)
+            && (!Number.isFinite(this._coverRedispatchBaselineT)
+                || lastMasterT > this._coverRedispatchBaselineT)) {
+            this._coverRedispatchWasted = 0;
+            this._coverRedispatchBaselineT = lastMasterT;
+        }
+        if ((this._coverRedispatchWasted || 0) >= this._coverRedispatchMaxAttempts()) {
+            this._resetCoverRedispatchBudget();
+            return false;
+        }
+        this._coverRedispatchWasted = (this._coverRedispatchWasted || 0) + 1;
+        return true;
+    }
+
+    /**
+     * COVER-RESUME-GUARD: ensureReplayDataCoversTimestamp pauses a playing replay
+     * before its /bars fetch but only resumed it on the single success path — no
+     * payload, generation/timeframe/pair abort, empty rawData and any throw all
+     * left replay paused for good (a freeze on the host tile / single chart), and
+     * the throw also rejected the returned promise because the body is try/finally
+     * with no catch.
+     * Kill-switch: window.__TALARIA_DISABLE_COVER_RESUME_GUARD_V1 — truthy restores
+     * the pause-without-resume tip (throw rejects again). Absent ⇒ fix ON;
+     * truthiness (not === true); read per call, never sampled at init.
+     */
+    _coverResumeGuardEnabled() {
+        try {
+            return typeof window === 'undefined'
+                || !window.__TALARIA_DISABLE_COVER_RESUME_GUARD_V1;
+        } catch (_e) {
+            return true;
+        }
+    }
+
+    /**
      * Multichart hard guard: refetch a playhead-centered window when the
      * currently loaded rawData does not contain targetTs. Without this,
      * goToReplayTimestamp clamps to the nearest loaded bar (often session
