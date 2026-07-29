@@ -3859,3 +3859,7 @@ Assembled clean D + B api_server M24 hook. Stamp `20260729b87`.
 | new-order draft reset | `5f3e68368` | cherry-picked now |
 
 Stamp `20260729b89`. Harnesses GREEN. Not taking D tip `a8d887db1`/`7a2871f24` (beyond the five).
+
+## B-0167 — URGENT: FIX1 default DISABLED. Ship b90.
+
+PO freeze on b88 (four-panel, no click, play → only host moves). Default `__TALARIA_DISABLE_MC_BACKGROUND_RENDER_CADENCE_V1` ABSENT ⇒ feature OFF. Explicit false re-enables. Stamp `20260729b90`. Everything else retained.
