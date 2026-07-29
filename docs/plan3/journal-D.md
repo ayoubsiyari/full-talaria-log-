@@ -37,3 +37,10 @@
 - Fix: `beginNewOrderDraft()` now uses the same draft-level discard helper, behind `__TALARIA_DISABLE_ORDER_ENTRY_NEW_DRAFT_LEVELS_RESET_V1` (default ON). Homepage and canonical mirrors are aligned.
 - RED: `TALARIA_TEST_DISABLE_ORDER_ENTRY_NEW_DRAFT_LEVELS_RESET=1 node order-entry-new-draft-reset.test.mjs` fails with previous `slPrice` still present (`'1.09500' !== '0'`).
 - GREEN: both `node "chart v 1.4/chart/modules/order-entry-new-draft-reset.test.mjs"` and `node "homepage/public/chart/modules/order-entry-new-draft-reset.test.mjs"` pass.
+
+## 2026-07-29 — Cluster G / TAL-01933
+
+- Root cause found: single-TP close checks required TP to remain on the original side of the current SL (`tp > sl` for BUY, `tp < sl` for SELL). After BE/trailing moved SL past the TP, a later bar could touch the TP but keep the trade open because the TP was treated as non-executable.
+- Fix: single-TP executable checks now ignore the current SL side once a valid TP exists, behind `__TALARIA_DISABLE_ORDER_SINGLE_TP_AFTER_TRAIL_V1` (default ON). Foreground and background single-TP paths share the same helper. Multi-TP rung gating remains unchanged.
+- RED: `TALARIA_TEST_DISABLE_ORDER_SINGLE_TP_AFTER_TRAIL=1 node order-single-tp-after-trail.test.mjs` fails with `false !== true` for BUY TP after SL has trailed above it.
+- GREEN: both `node "chart v 1.4/chart/modules/order-single-tp-after-trail.test.mjs"` and `node "homepage/public/chart/modules/order-single-tp-after-trail.test.mjs"` pass.

@@ -254,6 +254,12 @@ function _orderEntryNewDraftLevelsResetV1Enabled() {
         || !window.__TALARIA_DISABLE_ORDER_ENTRY_NEW_DRAFT_LEVELS_RESET_V1;
 }
 
+/** Cluster G / TAL-01933: a single TP stays executable after SL trails past it. */
+function _orderSingleTpAfterTrailV1Enabled() {
+    return typeof window === 'undefined'
+        || !window.__TALARIA_DISABLE_ORDER_SINGLE_TP_AFTER_TRAIL_V1;
+}
+
 /** T4 step 10: default ON — SL/TP panel steppers run full recalc path (TAL-00752 #15). */
 function _orderEntryPanelSltpFixEnabled() {
     return typeof window === 'undefined' || !window.__TALARIA_DISABLE_ORDER_ENTRY_PANEL_SLTP_FIX;
@@ -2640,8 +2646,7 @@ class OrderManager {
                     this._pushSplitGroupSlClosesFromHit(position, fillPx, positionsToClose, queuedSplitSlGroupIds, barTime);
                 } else {
                     const tp = Number.parseFloat(position.takeProfit);
-                    const slBgBuy1 = Number.parseFloat(position.stopLoss);
-                    if (Number.isFinite(tp) && barQ.bidHigh >= tp && (!Number.isFinite(slBgBuy1) || tp > slBgBuy1)) {
+                    if (this._singleTakeProfitExecutable(position, tp, position.stopLoss) && barQ.bidHigh >= tp) {
                         const fillPx = hasOpen ? this._gapFill(tp, bgOpen, true, true) : tp;
                         positionsToClose.push({ id: position.id, closePrice: fillPx, type: 'TP', bgCloseTime: barTime });
                     }
@@ -2676,8 +2681,7 @@ class OrderManager {
                     this._pushSplitGroupSlClosesFromHit(position, fillPx, positionsToClose, queuedSplitSlGroupIds, barTime);
                 } else {
                     const tp = Number.parseFloat(position.takeProfit);
-                    const slBgSell1 = Number.parseFloat(position.stopLoss);
-                    if (Number.isFinite(tp) && barQ.askLow <= tp && (!Number.isFinite(slBgSell1) || tp < slBgSell1)) {
+                    if (this._singleTakeProfitExecutable(position, tp, position.stopLoss) && barQ.askLow <= tp) {
                         const fillPx = hasOpen ? this._gapFill(tp, bgOpen, false, true) : tp;
                         positionsToClose.push({ id: position.id, closePrice: fillPx, type: 'TP', bgCloseTime: barTime });
                     }
@@ -6230,6 +6234,15 @@ class OrderManager {
     /** SL fill → journal / exports use BE when stop was last set by auto-BE (not trail/manual). */
     _slCloseHitType(position) {
         return position && position._slIsBreakevenPlacement ? 'BE' : 'SL';
+    }
+
+    _singleTakeProfitExecutable(position, takeProfit, stopLoss) {
+        const tp = Number(takeProfit);
+        if (!Number.isFinite(tp) || tp <= 0) return false;
+        if (_orderSingleTpAfterTrailV1Enabled()) return true;
+        const sl = Number(stopLoss);
+        if (!Number.isFinite(sl)) return true;
+        return position && position.type === 'SELL' ? tp < sl : tp > sl;
     }
 
     /**
@@ -32471,9 +32484,8 @@ class OrderManager {
                         const slHit = buySLGuarded
                             ? (position.stopLoss && this._tickAnimOverridesGuard(position._slNoTriggerBeforeTick, currentCandle, position.stopLoss, 'below', position))
                             : (position.stopLoss && effLowForSl <= position.stopLoss);
-                        const _slBuy1 = Number(position.stopLoss);
                         const _tpBuy1 = Number(position.takeProfit);
-                        const tpOkBuy = Number.isFinite(_tpBuy1) && _tpBuy1 > 0 && (!Number.isFinite(_slBuy1) || _tpBuy1 > _slBuy1);
+                        const tpOkBuy = this._singleTakeProfitExecutable(position, _tpBuy1, position.stopLoss);
                         const tpHit = buyTPGuarded
                             ? (position.takeProfit && tpOkBuy && this._tickAnimOverridesGuard(position._tpNoTriggerBeforeTick, currentCandle, position.takeProfit, 'above', position))
                             : (position.takeProfit && tpOkBuy && barQ.bidHigh >= position.takeProfit);
@@ -32784,9 +32796,8 @@ class OrderManager {
                         const slHitSell = sellSLGuarded
                             ? (position.stopLoss && this._tickAnimOverridesGuard(position._slNoTriggerBeforeTick, currentCandle, position.stopLoss, 'above', position))
                             : (position.stopLoss && effHighForSl >= position.stopLoss);
-                        const _slSell1 = Number(position.stopLoss);
                         const _tpSell1 = Number(position.takeProfit);
-                        const tpOkSell = Number.isFinite(_tpSell1) && _tpSell1 > 0 && (!Number.isFinite(_slSell1) || _tpSell1 < _slSell1);
+                        const tpOkSell = this._singleTakeProfitExecutable(position, _tpSell1, position.stopLoss);
                         const tpHitSell = sellTPGuarded
                             ? (position.takeProfit && tpOkSell && this._tickAnimOverridesGuard(position._tpNoTriggerBeforeTick, currentCandle, position.takeProfit, 'below', position))
                             : (position.takeProfit && tpOkSell && barQ.askLow <= position.takeProfit);
