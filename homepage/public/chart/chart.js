@@ -6815,7 +6815,25 @@ class Chart {
         return stepMs < rawMs * 0.92;
     }
 
+    /**
+     * LEAK-I (wave-2 retainer): default-ON gate that suppresses ~100k-bar
+     * high-limit bulk / lazy replay master hydrates.
+     * Kill-switch: window.__TALARIA_DISABLE_MC_HIGH_LIMIT_BULK_V1 — truthy
+     * restores the legacy 100k path. Fix default ON when absent; !! truthiness;
+     * read per call.
+     */
+    _mcHighLimitBulkGateEnabled() {
+        try {
+            return !(typeof window !== 'undefined'
+                && !!window.__TALARIA_DISABLE_MC_HIGH_LIMIT_BULK_V1);
+        } catch (_e) {
+            return true;
+        }
+    }
+
     _lazyReplayMasterSmartLimit() {
+        // LEAK-I: clamp lazy master windows to the normal smart page size.
+        if (this._mcHighLimitBulkGateEnabled()) return 2000;
         const fallback = 100000;
         try {
             const w = Number(window.__TALARIA_MC_LAZY_REPLAY_MASTER_LIMIT);
@@ -6828,14 +6846,19 @@ class Chart {
 
     _highLimitBulkHistoryDisabled() {
         try {
+            // V1 product switch: fix ON (absent/falsy kill) forces high-limit bulk off.
+            if (this._mcHighLimitBulkGateEnabled()) return true;
+            // Kill path: informal disable remains an additional disable (already wired).
             return typeof window !== 'undefined'
                 && !!window.__TALARIA_MC_DISABLE_HIGH_LIMIT_BULK;
         } catch (_e) {
-            return false;
+            return true;
         }
     }
 
     _highLimitBulkHistorySmartLimit() {
+        // LEAK-I: clamp even if a caller bypasses _shouldUseHighLimitBulkHistory.
+        if (this._mcHighLimitBulkGateEnabled()) return 2000;
         const fallback = 100000;
         try {
             const w = Number(window.__TALARIA_MC_HIGH_LIMIT_BULK_LIMIT);
