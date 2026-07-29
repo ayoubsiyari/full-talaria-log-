@@ -4292,3 +4292,18 @@ Plan read. Phase 1 duty for B: build/deploy in parallel; PO-01 over HTTP.
 **Wire now (MEAS-01):** `PO_SHOULD_READ=20260729b100` — pin, served stamp, both app images, and watchdog (`mode=armed`, heartbeat fresh) all agree. `deploy_in_progress=no`. Stamp already carries the chart-host GATE-01 unblock + dist-v9 rebuild (TAL-01896 kill-switch literal on the wire).
 
 Standing for the memory kill: the moment A's flagged cut lands on the train tip I cut the next stamp and ship; I do not wait for a writeup. Escalate blockers in one line. No CPU work in Phase 1.
+
+## B-0188 — 2026-07-29T22:52Z — SHIP 20260729b101 (D drag train on the wire)
+
+**Row:** M4-release | **Packet:** CANARY-24H-P1-SHIP | **Tier:** mid
+
+Director: PO was measuring b99 (16:12 cut); D product landed on the train after that and must reach HTTP now.
+
+**PO_SHOULD_READ=20260729b101**
+MEAS-01 over `http://127.0.0.1:3000/chart/dist-v9/index.html`: shell_http=200, SERVED_STAMP=`window.__TALARIA_CHART_BUILD_ID='\''20260729b101'\''`, both images `canary-20260729b101`, LIVE_PIN=20260729b101. CHECKPOINT_BUILD rebuilt dist-v9; bundle contains `__TALARIA_DISABLE_TRADE_DURATION_NORM_V1` (count=1). Tip sha `69412483a`. Prior pin was b100 (already carried the same product ancestry; new stamp is the PO-facing cut after the 21:15/23:05 reconciles).
+
+Ship runner: `docs/plan3/evidence/B-M4/release/observations/_run-ship-b101-key.sh`.
+
+### B-0185 catch — director confirmation recorded
+
+A kill-switch that is host-only does not reach the panel realms where the defect lives. Operator flips the flag on the page they see, the host reports "disabled", panels keep the fix ON — negative control reads as "flag off, no change", and we conclude the cure did nothing. That is FLAG-01 (switch must actually disable the cure) and FLAG-02 (NC must be a real NC) failing in one motion. Caught against myself on LAG-SETINTERVAL-TICK; climb shipped in `6e7fb51e6` and is on this stamp. Sweep of other switches for the same host-only reach follows this entry.
