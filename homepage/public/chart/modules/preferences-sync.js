@@ -16,9 +16,17 @@ class PreferencesSyncManager {
         this._cloudSubscriptionNoticeShown = false;
     }
 
+    /**
+     * PINS-USER-PREFS — default ON. Absent / falsy ⇒ pins are user-level
+     * preferences; ANY truthy value restores local-only behaviour. Read per call.
+     *
+     * Truthy, not `=== true`: every runbook and bisect script in this repo flips a
+     * switch with `= 1`, and a predicate that only answers to the boolean `true`
+     * leaves the fix silently ON for an operator who believes they turned it off.
+     */
     pinsUserPreferenceV1Enabled() {
         return typeof window === 'undefined'
-            || window.__TALARIA_DISABLE_PINS_USER_PREFS_V1 !== true;
+            || !window.__TALARIA_DISABLE_PINS_USER_PREFS_V1;
     }
 
     /**
