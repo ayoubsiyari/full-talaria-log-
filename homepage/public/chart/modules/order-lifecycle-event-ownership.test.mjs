@@ -391,7 +391,7 @@ function batchedMoneyPathReplay({ stopAtStep = null } = {}) {
     };
 }
 
-test('batched order playback evaluates every hidden fine step and paints once', () => {
+test('batched order playback evaluates every hidden fine step and paints once', async () => {
     global.window = defaultWindow();
     const run = batchedMoneyPathReplay();
 
@@ -399,6 +399,15 @@ test('batched order playback evaluates every hidden fine step and paints once', 
 
     assert.deepEqual(run.evaluated, [1, 2, 3, 4].map((step) => run.t0 + step * 60_000),
         'every retained 1m bar must reach pending/active order evaluation');
+    // LAG-SETINTERVAL-TICK coalesces the tick's single paint onto the next frame
+    // (requestAnimationFrame in the browser, setTimeout(0) here), so the paint lands
+    // after this tick returns. Flush before counting: the invariant this cell owns is
+    // one paint per tick, not whether the paint is synchronous. Counting without the
+    // flush grades the scheduling mode instead, and would go red under the fix while
+    // staying green under __TALARIA_DISABLE_LAG_SETINTERVAL_TICK_V1 — a cell that
+    // only holds in one switch position. Deferral-vs-dropped is pinned where it
+    // belongs, in lag-setinterval-tick.test.mjs.
+    await new Promise((resolve) => setTimeout(resolve, 0));
     assert.equal(run.getPaints(), 1,
         'four money-path evaluations should produce one chart paint, not four');
 });

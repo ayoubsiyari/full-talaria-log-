@@ -257,6 +257,60 @@ test('default ON keeps interval-handler work bounded (synthetic Violation oracle
   note('bounded-handler', true, `max=${maxHandler.toFixed(2)}ms steps=${rs.currentIndex - startIdx}`);
 });
 
+// The three cells below close a hole this gate shipped with: it proved the paint
+// leaves the interval handler, and never proved the paint still ARRIVES. D's
+// order-lifecycle-event-ownership cell caught that by accident (it counted paints
+// synchronously and saw zero) during the 07-29 reconciliation.
+
+test('coalesced paint is deferred, not dropped — exactly one lands per tick', () => {
+  const { rs, chart, flushRaf, pendingRaf } = makeCandleInstance({ kill: false, speed: 60 });
+  const before = chart.updateCalls;
+  rs._runCandlePlaybackTick();
+  assert.equal(chart.updateCalls, before, 'bound path must not paint inside the handler');
+  assert.equal(pendingRaf(), 1, 'exactly one coalesced paint queued, not one per step');
+  flushRaf();
+  assert.equal(chart.updateCalls, before + 1, 'the deferred paint must arrive, once');
+  assert.equal(pendingRaf(), 0, 'and must not requeue itself');
+  note('deferred-paint-arrives', true, `paints=${chart.updateCalls - before}`);
+});
+
+test('pause between tick and frame flushes the pending paint', () => {
+  const { rs, chart, flushRaf, pendingRaf } = makeCandleInstance({ kill: false, speed: 60 });
+  rs._runCandlePlaybackTick();
+  const advancedIdx = rs.currentIndex;
+  const painted = chart.updateCalls;
+  assert.equal(pendingRaf(), 1, 'a paint is owed for the steps just advanced');
+
+  // User hits pause in the gap between the interval handler and the frame.
+  rs.isPlaying = false;
+  rs._cancelCandlePlaybackPaint({ flush: true });
+
+  assert.equal(chart.updateCalls, painted + 1,
+    'the paused frame must show the playhead the tick already advanced');
+  assert.equal(rs.currentIndex, advancedIdx, 'flushing must not move the playhead');
+  flushRaf();
+  assert.equal(chart.updateCalls, painted + 1, 'and the cancelled frame must not double-paint');
+  note('pause-flushes-paint', true, `idx=${advancedIdx}`);
+});
+
+test('mutant: pausing without the flush leaves the chart a tick behind', () => {
+  const { rs, chart, flushRaf } = makeCandleInstance({ kill: false, speed: 60 });
+  const startIdx = rs.currentIndex;
+  rs._runCandlePlaybackTick();
+  const painted = chart.updateCalls;
+
+  // Mutant = the pause path forgets _cancelCandlePlaybackPaint({ flush: true }).
+  // The scheduled callback guards on isPlaying, so the owed paint is discarded and
+  // the chart sits behind the playhead until some later interaction repaints it —
+  // the "jitter until clicked" shape. This is why the flush call is load-bearing.
+  rs.isPlaying = false;
+  flushRaf();
+
+  assert.equal(chart.updateCalls, painted, 'unflushed pause drops the owed paint');
+  assert.ok(rs.currentIndex > startIdx, 'while the playhead did advance');
+  note('mutant-unflushed-pause', true, `advanced=${rs.currentIndex - startIdx} painted=0`);
+});
+
 test('kill-switch restores sync full tick inside handler', () => {
   const PAINT_MS = 40;
   const { rs, chart, pendingRaf } = makeCandleInstance({
