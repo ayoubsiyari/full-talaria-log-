@@ -63,6 +63,18 @@
         }
     }
 
+    /**
+     * ORPHAN-L1: removeChart unregisters panel talariaMcHostDataCommit on parent
+     * before iframe death. Default ON when absent; truthiness kills (per call).
+     */
+    function mcFinerHostCommitUnregisterV1Enabled() {
+        try {
+            return !(global && global.__TALARIA_DISABLE_MC_FINER_HOST_COMMIT_UNREGISTER_V1);
+        } catch (_) {
+            return true;
+        }
+    }
+
     /** PURGE-1: removeChart releases manager-held panel references. Default ON by absent property. */
     function mcPanelStatePurgeV1Enabled() {
         try {
@@ -666,6 +678,14 @@
         }
         try {
             const panelChart = c.frame && c.frame.contentWindow && c.frame.contentWindow.chart;
+            // ORPHAN-L1: sever parent-window host-commit listener BEFORE iframe
+            // death. pagehide (M23) remains a backup; manager teardown is the
+            // reliable path when pagehide does not run or runs too late.
+            if (mcFinerHostCommitUnregisterV1Enabled()
+                && panelChart
+                && typeof panelChart._removeFinerPanelSelfOwnerHostCommitListener === 'function') {
+                panelChart._removeFinerPanelSelfOwnerHostCommitListener();
+            }
             const replaySystem = panelChart && panelChart.replaySystem;
             let _m26PanelReplayDestroyed = false;
             if (m26PanelReplayDestroyEnabled()
