@@ -260,6 +260,12 @@ function _orderSingleTpAfterTrailV1Enabled() {
         || !window.__TALARIA_DISABLE_ORDER_SINGLE_TP_AFTER_TRAIL_V1;
 }
 
+/** Cluster G / TAL-01809: realized losses cannot drive displayed account balance below zero. */
+function _orderBalanceFloorV1Enabled() {
+    return typeof window === 'undefined'
+        || !window.__TALARIA_DISABLE_ORDER_BALANCE_FLOOR_V1;
+}
+
 /** T4 step 10: default ON — SL/TP panel steppers run full recalc path (TAL-00752 #15). */
 function _orderEntryPanelSltpFixEnabled() {
     return typeof window === 'undefined' || !window.__TALARIA_DISABLE_ORDER_ENTRY_PANEL_SLTP_FIX;
@@ -7479,7 +7485,7 @@ class OrderManager {
             const equity = Number.parseFloat(accountRuntime.equity);
             const initialBalance = Number.parseFloat(accountRuntime.initialBalance);
             const sessionCurrentTime = Number.parseFloat(accountRuntime.session_current_time);
-            if (Number.isFinite(balance)) this.balance = balance;
+            if (Number.isFinite(balance)) this.balance = this._floorAccountBalance(balance);
             if (Number.isFinite(equity)) this.equity = equity;
             if (Number.isFinite(initialBalance)) this.initialBalance = initialBalance;
             if (Number.isFinite(sessionCurrentTime) && this.orderService?.multiInstrumentSession) {
@@ -7603,8 +7609,22 @@ class OrderManager {
             }, 0)
             : 0;
 
-        this.balance = startingBalance + realizedPnL;
+        this.balance = this._floorAccountBalance(startingBalance + realizedPnL);
         this._syncReplayHeaderStatsFromAccount();
+    }
+
+    _floorAccountBalance(value) {
+        const n = Number.parseFloat(value);
+        if (!Number.isFinite(n)) return value;
+        return _orderBalanceFloorV1Enabled() ? Math.max(0, n) : n;
+    }
+
+    _applyRealizedPnLToBalance(pnl) {
+        const current = Number.parseFloat(this.balance);
+        const delta = Number.parseFloat(pnl);
+        const next = (Number.isFinite(current) ? current : 0) + (Number.isFinite(delta) ? delta : 0);
+        this.balance = this._floorAccountBalance(next);
+        return this.balance;
     }
 
     _computeAdvancedAnalytics() {
@@ -30916,7 +30936,7 @@ class OrderManager {
         position.status = 'CLOSED';
         
         // Update balance
-        this.balance += pnl;
+        this._applyRealizedPnLToBalance(pnl);
         this.equity = this.balance;
         
         // Track prop firm progress
@@ -33457,7 +33477,7 @@ class OrderManager {
         }
         
         // Update balance
-        this.balance += pnl;
+        this._applyRealizedPnLToBalance(pnl);
         this.equity = this.balance;
         
         // Track prop firm progress (for both partial and full closes)

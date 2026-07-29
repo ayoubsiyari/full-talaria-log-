@@ -44,3 +44,10 @@
 - Fix: single-TP executable checks now ignore the current SL side once a valid TP exists, behind `__TALARIA_DISABLE_ORDER_SINGLE_TP_AFTER_TRAIL_V1` (default ON). Foreground and background single-TP paths share the same helper. Multi-TP rung gating remains unchanged.
 - RED: `TALARIA_TEST_DISABLE_ORDER_SINGLE_TP_AFTER_TRAIL=1 node order-single-tp-after-trail.test.mjs` fails with `false !== true` for BUY TP after SL has trailed above it.
 - GREEN: both `node "chart v 1.4/chart/modules/order-single-tp-after-trail.test.mjs"` and `node "homepage/public/chart/modules/order-single-tp-after-trail.test.mjs"` pass.
+
+## 2026-07-29 — Cluster G / TAL-01809
+
+- Root cause found: close paths applied realized losses with raw `this.balance += pnl`, journal recompute assigned `initialBalance + realizedPnL`, and runtime restore trusted persisted balance directly. A loss larger than the current balance could therefore display and persist a negative account balance.
+- Fix: balance mutations now route through a shared zero-floor helper, behind `__TALARIA_DISABLE_ORDER_BALANCE_FLOOR_V1` (default ON). Manual closes, SL/TP closes, journal recompute, and runtime restore use the same floor. Homepage and canonical mirrors are aligned.
+- RED: `TALARIA_TEST_DISABLE_ORDER_BALANCE_FLOOR=1 node order-balance-floor.test.mjs` fails with `-50 !== 0`.
+- GREEN: both `node "chart v 1.4/chart/modules/order-balance-floor.test.mjs"` and `node "homepage/public/chart/modules/order-balance-floor.test.mjs"` pass.
