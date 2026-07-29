@@ -61,3 +61,26 @@ morning must be the wire the pack describes.
 - **C** — which peer realm survives teardown. One thing, nothing else.
 - **D** — rebase onto the train rather than running parallel (B's proposal,
   accepted); extend the ledger across the full intake; assemble the morning pack.
+
+---
+
+## RESCINDED 2026-07-29 22:05 — PO is available for approximately five hours
+
+The PO is not offline. This ruling is withdrawn in full except for two clauses
+that were good regardless of PO availability and are hereby promoted to stand on
+their own:
+
+- **PO-01 stands.** A build the PO cannot open is not a deliverable. B verifies
+  over HTTP per MEAS-01 and the pack states the stamp the PO should read on
+  screen. Mismatch voids the session.
+- **DEPLOY-02 tightening stands.** The live wire moves for a shipped build and
+  nothing else while the PO is measuring. C grades on `:3001`.
+
+The morning pack is cancelled. PO-facing requests go to the Director as they
+become ready, and the Director spends the PO's time.
+
+**Priority set by the PO at 22:05, in order: A and C, then B.** The memory kill is
+the objective for this session. C names which peer realm survives teardown; A cuts
+it. B builds and deploys in parallel because a build costs A and C nothing, but B
+does not get Director attention ahead of the memory work. The four CPU cuts are
+explicitly allowed to slip.
