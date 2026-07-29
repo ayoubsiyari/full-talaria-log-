@@ -8034,6 +8034,25 @@
         }
     }
 
+    /**
+     * REALM-TEARDOWN-RELEASE CUT 4: terminate the per-realm indicator worker
+     * singleton and reject/clear _workerPending (continuations capture chart).
+     */
+    Chart.prototype._disposeIndicatorWorker = function() {
+        try {
+            if (_indicatorWorkerSingleton) {
+                try { _indicatorWorkerSingleton.terminate(); } catch (_) {}
+            }
+        } catch (_) {}
+        _indicatorWorkerSingleton = null;
+        try {
+            _workerPending.forEach(function(p) {
+                try { p.reject(new Error('worker disposed')); } catch (_) {}
+            });
+            _workerPending.clear();
+        } catch (_) {}
+    };
+
     function recalcMultiPassOverlayMa(chart, indicator) {
         if (!chart || !indicator || !Array.isArray(chart.data) || !chart.data.length) return;
         if (!chart.indicators.data) chart.indicators.data = {};

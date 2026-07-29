@@ -119,6 +119,71 @@
         }
     }
 
+    /**
+     * REALM-TEARDOWN-RELEASE CUT 1: removeChart drops panel drag-end guard on
+     * the host window. Default ON by absent property.
+     * Kill: window.__TALARIA_DISABLE_MC_RELEASE_DRAG_GUARD_V1 — truthiness; per call.
+     */
+    function mcReleaseDragGuardV1Enabled() {
+        try {
+            return !(global && global.__TALARIA_DISABLE_MC_RELEASE_DRAG_GUARD_V1);
+        } catch (_) {
+            return true;
+        }
+    }
+
+    /**
+     * REALM-TEARDOWN-RELEASE CUT 2: removeChart strips host orderManager
+     * registry entries that point at the removed panel chart. Default ON.
+     * Kill: window.__TALARIA_DISABLE_MC_RELEASE_ORDER_REGISTRY_V1 — truthiness; per call.
+     */
+    function mcReleaseOrderRegistryV1Enabled() {
+        try {
+            return !(global && global.__TALARIA_DISABLE_MC_RELEASE_ORDER_REGISTRY_V1);
+        } catch (_) {
+            return true;
+        }
+    }
+
+    /**
+     * REALM-TEARDOWN-RELEASE CUT 3: removeChart aborts in-flight timeframe
+     * fetch AbortController on the panel chart. Default ON.
+     * Kill: window.__TALARIA_DISABLE_MC_RELEASE_TF_ABORT_V1 — truthiness; per call.
+     */
+    function mcReleaseTfAbortV1Enabled() {
+        try {
+            return !(global && global.__TALARIA_DISABLE_MC_RELEASE_TF_ABORT_V1);
+        } catch (_) {
+            return true;
+        }
+    }
+
+    /**
+     * REALM-TEARDOWN-RELEASE CUT 4: removeChart disposes the panel indicator
+     * worker singleton + pending map. Default ON.
+     * Kill: window.__TALARIA_DISABLE_MC_RELEASE_INDICATOR_WORKER_V1 — truthiness; per call.
+     */
+    function mcReleaseIndicatorWorkerV1Enabled() {
+        try {
+            return !(global && global.__TALARIA_DISABLE_MC_RELEASE_INDICATOR_WORKER_V1);
+        } catch (_) {
+            return true;
+        }
+    }
+
+    /**
+     * REALM-TEARDOWN-RELEASE CUT 5: removeChart disposes the panel custom-
+     * indicator blob worker URL. Default ON.
+     * Kill: window.__TALARIA_DISABLE_MC_RELEASE_BLOB_WORKER_V1 — truthiness; per call.
+     */
+    function mcReleaseBlobWorkerV1Enabled() {
+        try {
+            return !(global && global.__TALARIA_DISABLE_MC_RELEASE_BLOB_WORKER_V1);
+        } catch (_) {
+            return true;
+        }
+    }
+
     /** panel-cmd `loadFile` / heavy ops: iframes may still be parsing dist-v9 after bridge-ready. */
     var PANEL_CMD_TIMEOUT_MS = 25000;
 
@@ -703,6 +768,89 @@
             const message = err && err.message ? ': ' + err.message : '';
             this._log('error', 'removeChart ' + id + ' panel replay teardown failed' + message);
         }
+        // REALM-TEARDOWN-RELEASE: five independent realm-release cuts. Each has
+        // its own kill-switch and try/catch so one failure cannot skip the rest
+        // or prevent frame.remove / charts.delete.
+        var panelChartRelease = null;
+        try {
+            panelChartRelease = c.frame && c.frame.contentWindow && c.frame.contentWindow.chart;
+        } catch (_) {
+            panelChartRelease = null;
+        }
+        // CUT 1 — drag-end guard registered on host window from inside panel.
+        try {
+            if (mcReleaseDragGuardV1Enabled()
+                && panelChartRelease
+                && typeof panelChartRelease._removeDragEndGuard === 'function') {
+                panelChartRelease._removeDragEndGuard();
+            }
+        } catch (_) { /* ignore */ }
+        // CUT 2 — host orderManager graphic registries holding the peer chart.
+        try {
+            if (mcReleaseOrderRegistryV1Enabled() && panelChartRelease) {
+                var hostOm = null;
+                try {
+                    hostOm = global.chart && global.chart.orderManager;
+                } catch (_) {
+                    hostOm = null;
+                }
+                if (hostOm) {
+                    if (typeof hostOm._stripOrderDrawingLayersFromChart === 'function') {
+                        try {
+                            hostOm._stripOrderDrawingLayersFromChart(panelChartRelease);
+                        } catch (_) { /* ignore */ }
+                    }
+                    var omKeys = [
+                        'orderLines', 'slLines', 'tpLines', 'beLines',
+                        'entryMarkers', 'exitMarkers', 'splitGroupAvgLines',
+                        'multiTPAvgLines', 'pendingTargetLines', 'tradeConnectors',
+                        'partialCloseMarkers', 'mfeMaeMarkers'
+                    ];
+                    for (var omi = 0; omi < omKeys.length; omi++) {
+                        var omArr = hostOm[omKeys[omi]];
+                        if (!Array.isArray(omArr)) continue;
+                        hostOm[omKeys[omi]] = omArr.filter(function (entry) {
+                            return !(entry && entry.chart === panelChartRelease);
+                        });
+                    }
+                }
+            }
+        } catch (_) { /* ignore */ }
+        // CUT 3 — abort in-flight timeframe fetch on the removed panel.
+        try {
+            if (mcReleaseTfAbortV1Enabled() && panelChartRelease) {
+                var tfAbort = panelChartRelease._timeframeFetchAbort;
+                if (tfAbort) {
+                    if (typeof tfAbort.abort === 'function') {
+                        try { tfAbort.abort(); } catch (_) { /* ignore */ }
+                    }
+                    panelChartRelease._timeframeFetchAbort = null;
+                }
+            }
+        } catch (_) { /* ignore */ }
+        // CUT 4 — terminate panel indicator worker singleton + clear pending.
+        try {
+            if (mcReleaseIndicatorWorkerV1Enabled()
+                && panelChartRelease
+                && typeof panelChartRelease._disposeIndicatorWorker === 'function') {
+                panelChartRelease._disposeIndicatorWorker();
+            }
+        } catch (_) { /* ignore */ }
+        // CUT 5 — terminate + revoke panel custom-indicator blob worker URL.
+        try {
+            if (mcReleaseBlobWorkerV1Enabled()) {
+                var panelWinRelease = null;
+                try {
+                    panelWinRelease = c.frame && c.frame.contentWindow;
+                } catch (_) {
+                    panelWinRelease = null;
+                }
+                var customIndApi = panelWinRelease && panelWinRelease.TalariaCustomIndicators;
+                if (customIndApi && typeof customIndApi.disposeWorker === 'function') {
+                    customIndApi.disposeWorker();
+                }
+            }
+        } catch (_) { /* ignore */ }
         try { c.frame.remove(); } catch (_) {}
         this.charts.delete(id);
         this._log('info', 'removeChart ' + id);
