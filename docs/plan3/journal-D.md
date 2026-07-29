@@ -51,3 +51,10 @@
 - Fix: balance mutations now route through a shared zero-floor helper, behind `__TALARIA_DISABLE_ORDER_BALANCE_FLOOR_V1` (default ON). Manual closes, SL/TP closes, journal recompute, and runtime restore use the same floor. Homepage and canonical mirrors are aligned.
 - RED: `TALARIA_TEST_DISABLE_ORDER_BALANCE_FLOOR=1 node order-balance-floor.test.mjs` fails with `-50 !== 0`.
 - GREEN: both `node "chart v 1.4/chart/modules/order-balance-floor.test.mjs"` and `node "homepage/public/chart/modules/order-balance-floor.test.mjs"` pass.
+
+## 2026-07-29 — Cluster G / SEL-01
+
+- Root cause found: per-order pending TP teardown used substring selectors such as `[class*="pending-tp-pct"][class*="pending-tp-1"]`. Those selectors can match other orders with the same prefix, e.g. `pending-tp-12`, causing unrelated pending TP controls/lines to disappear when order `1` is redrawn or removed.
+- Fix: per-order pending TP percentage/delete teardown now uses exact compound class selectors, behind `__TALARIA_DISABLE_ORDER_SEL01_EXACT_TEARDOWN_V1` (default ON). Whole-chart sweeps remain intentionally broad; per-order cleanup is exact. Homepage and canonical mirrors are aligned.
+- RED: `TALARIA_TEST_DISABLE_ORDER_SEL01_EXACT_TEARDOWN=1 node order-sel01-exact-teardown.test.mjs` fails because the selector still contains `[class*=...]`.
+- GREEN: both `node "chart v 1.4/chart/modules/order-sel01-exact-teardown.test.mjs"` and `node "homepage/public/chart/modules/order-sel01-exact-teardown.test.mjs"` pass.
