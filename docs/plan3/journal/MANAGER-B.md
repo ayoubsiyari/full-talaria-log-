@@ -4049,3 +4049,61 @@ First version skipped when `pgrep -f "docker compose"` matched anything — whic
 
 ### What the PO needs to do
 Hard-reload `http://31.97.192.82:3000/chart/dist-v9/index.html` and confirm the console prints `[Talaria] chart build 20260729b99` **before** taking any measurement. If it says anything else, the measurement is void and the drift log will say who took the wire.
+
+---
+
+## B-0178 — TOP re-review of the three kill-switch items. Two ACCEPT, one REJECT-not-live, six findings.
+
+tier=TOP model=claude-opus-5-thinking-high packet=B-R9
+Report: `docs/plan3/evidence/B-M4/release/observations/B-R9-kill-switch-rereview.md` (34KB, plus five runnable probes).
+
+| Item | Verdict |
+|---|---|
+| b90 FIX1 polarity | **REJECT** — the original gate made ABSENT mean DISABLED, a FLAG-01 violation. Superseded by b92 and never on the live wire, so this is a record correction, not a rollback. |
+| b92 default-ON restore | **ACCEPT (S)** — soundness-class. Predicate at `chart.js:2916` / `:3029` is correct as shipped. |
+| b93 FLAG-03 | **ACCEPT (S)** — the meta-gate has teeth: four mutation rows on the rule itself, all killed. |
+
+Confirmed independently: the b88 focus-as-background-for-life freeze is not reintroduced (mutant M2 turns 10 cells red). The "halved FIX1 harness" in `798e07dd4` was a UTF-16 to UTF-8 re-encode, not lost coverage — byte count fell, cell count did not. No `chart.js` defect found, so nothing to escalate to A from this packet.
+
+**The finding that matters most (D3).** Mutant M6 flips the visibility probe's error path from fail-open to fail-closed, and **survived all 25 green cells**. That path is the anti-freeze guarantee the whole FIX1 item exists to protect: a probe failure must never classify an on-screen tile as background. A refactor could have flipped it and shipped the freeze back with a green board. `FIX1-C1d` now defends it; the battery is 6/6 killed.
+
+Also found and fixed: D1, PG-3 anchored on a literal product line that the concurrent sweep packet rewrote, so PURGE-2 and FLAG-03 were both RED in the working tree and I would have shipped against red gates. Re-anchored, and the sandbox now extracts the real switch predicate instead of assuming one exists — the failure mode is now "missing product function", loud, not "missing string", ambiguous. D4, the FLAG-03 meta-gate harness was untracked: a rule nobody else could run. Committed.
+
+While re-anchoring I found a hole of my own: `expectRejectsCell` counts *any* throw as a red cell, so a neutering row whose needle had gone stale scored as a kill instead of failing. `replaceOnce` now tags missing-target errors and they propagate. One such row was already stale — the PG-3 neuter row, stale from the same product edit as D1.
+
+D5 is a decision for the director, below. D6 (the FLAG-03 clause living only in the working tree) is committed.
+
+Commits: `4255dc625`, `1467276ee`.
+
+---
+
+## B-0179 — TIMER-OUTLIVES-OWNER sweep: executable gate, one fix, one escalation. Class NOT closed.
+
+tier=MID model=gpt-5.5-medium-fast packet=B-W20
+Evidence: `docs/plan3/evidence/B-M4/release/SWEEP-TIMER-OUTLIVES-SERVICE-20260729.md`
+
+The sweep is now a source-reading gate (`timer-outlives-owner-sweep.mjs` + `.test.mjs`) instead of an inspection verdict: it reads product files off disk, fails closed on a missing file, and carries 8 designed mutants, 0 survivors.
+
+**Honest coverage: 1349 start sites, 8 with a proved verdict, 1342 UNPROVEN.** Nothing was rounded up to CLEAN. The director asked me to finish this sweep and I am not claiming it is finished. What is true: the two WebSocket ping timers that opened the class are proved dead, four more retainers are proved clean, one in-set defect is fixed, one out-of-set defect is escalated. What is not true: that the class is empty below those eight rows.
+
+**In-set fix.** `MultichartGrid.jsx` cleared `hostBusRetryInterval` on unmount only when the *unrelated* PURGE-2 switch was enabled, so disabling PURGE-2 left the retry interval alive past unmount — a fix whose correctness depended on another fix being on.
+
+**And the first version of that fix was welded**, caught by B-R9 (D2) working the same tree: the clear was gated on `ownSwitch || purgeSwitch`, which is behaviourally a safe superset but cannot be reached by flipping its own switch alone. Independence exists precisely so a bisect can move one lever at a time. Now gated on its own switch only, with a mutant that goes RED on the disjunction and a `PG-3 FLAG-01` cell asserting both directions. Two packets running concurrently caught each other's defect — worth keeping as a pattern.
+
+**Escalated to A:** `docs/plan3/evidence/B-M4/release/ESCALATE-A-INDICATOR-WORKER-TERMINATE-20260729.md`. `chart-indicators-full.js:8009` creates a module-scope indicator worker singleton and the module never calls `.terminate()`. Each panel iframe is its own realm, so each panel gets its own worker and panel removal terminates nothing. This is the mechanism behind C's census line "workers +1 per multichart cycle, never terminated" — source reading and browser counting arrived at the same number independently, which is the strongest evidence this project has produced on the leak class. Reserved switch `__TALARIA_DISABLE_INDICATOR_WORKER_SINGLETON_TERMINATE_V1`. The gate holds a cell that goes RED if the leak evidence is edited away without a fix, so the escalation cannot be closed by deleting the note.
+
+---
+
+## B-0180 — Post-restore backend census: zero 502s. Pins current through b99.
+
+The 502 probe I ran during the triage hung twice and returned nothing, both times for the same reason: inside that nginx image `/var/log/nginx/access.log` is a symlink to `/dev/stdout`, so grepping it blocks forever. The access log is the container's stdout; `docker logs` is the only readable source. Recording it because I burned five minutes on it twice.
+
+Census on the live stack (`_502-census.sh`), current container generation, since the 17:06 restore: **2032 log lines, 502 = 0, 200 = 2000, 499 = 0, 504 = 0.** Live serves `20260729b99`; all three app containers on `canary-20260729b99`; `LIVE-PIN.txt` = b99. **Scope limit: this covers only the current container, because recreation destroyed the earlier generations' logs — which is itself consistent with the churn the triage identified.** The 502-window evidence stays in `observations/502-evidence.log` and `triage-502.log`.
+
+Watchdog is live and has now repaired real drift once (`17:06:01Z DRIFT served=b90` → `17:06:24Z REPAIRED`).
+
+Pinned images for C, item 3 of the standing order: tarballs and daemon tags present for b85, b86, b90 through b99, including **b99 saved 16:12**. Grade lane is up on `127.0.0.1:3001` serving b85, isolated from the live wire on 3000 — the isolation is working as designed. Disk is 81% used with 38G free at ~322MB per saved build; not urgent, but the pin directory needs a retention cap before it becomes one.
+
+### Decision for the director — D5, `.gitignore:106`
+
+`docs/plan3/*` is ignored, with narrow negations for the top-level governance `.md` files and the journals. Per the comment on that rule, `evidence/` staying local is deliberate (director ruling TB-6). The consequence: **B-R9's 34KB TOP re-review — the gate evidence justifying two ACCEPTs and one REJECT — cannot be committed, and lives in one worktree only.** That is the exact failure mode TB-6 was written to prevent, applied to ship-gate reviews rather than policy files. I am not widening a governance rule on my own initiative. Proposal: negate ship-gate review reports specifically, e.g. `!docs/plan3/evidence/**/observations/*-rereview.md`, leaving probes, logs and worker reports local. Awaiting a ruling.

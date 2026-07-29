@@ -59,7 +59,9 @@ All raw start-site rows not listed above remain UNPROVEN. I did not round any in
 
 `chart v 1.4/talaria-design/src/MultichartGrid.jsx` had an in-set defect: `hostBusRetryInterval` was cleared on effect teardown only when the unrelated `__TALARIA_DISABLE_MC_GRID_STATE_PURGE_V1` fix was enabled. With that switch truthy, unmount could leave the retry interval alive until its own 5s ceiling.
 
-Fix: added default-on cleanup switch `__TALARIA_DISABLE_MC_HOST_BUS_RETRY_TIMER_CLEANUP_V1`. The cleanup path now clears the retry interval when this fix is enabled, or when the legacy grid-purge cleanup path is enabled. Truthy switch restores legacy behavior without breaking order-bus install, and the timer still self-clears on bus ready or max attempts.
+Fix: added default-on cleanup switch `__TALARIA_DISABLE_MC_HOST_BUS_RETRY_TIMER_CLEANUP_V1`. The cleanup clears the retry interval unless that switch is truthy, and reads nothing else. The timer still self-clears on bus ready or max attempts.
+
+**Correction after TOP re-review (B-R9, packet D2).** The first form of this fix gated the clear on `mcHostBusRetryTimerCleanupV1Enabled() || mcGridStatePurgeV1Enabled()`. That is a safe superset behaviourally, but the OFF path cannot be reached by flipping the new switch alone — PURGE-2 has to be disabled too. That is a welded switch, which the flag-bisect protocol blocks under Independence. The gate now carries a cell that goes RED on that exact disjunction, and `purge2-grid-ref-release.test.mjs` carries `PG-3 FLAG-01`, which asserts both directions: the new switch alone suppresses the clear, and disabling PURGE-2 alone does not.
 
 ## Escalated
 
@@ -81,18 +83,27 @@ Output:
 ✔ mutation: reintroducing Talaria live WS ping immortality goes RED (238.2906ms)
 ✔ mutation: reintroducing V16 WS ping immortality goes RED (175.1198ms)
 ✔ mutation: removing replayAlignGuard cleanup goes RED (187.6333ms)
-✔ mutation: reverting host bus retry timer cleanup fix goes RED (193.3329ms)
-✔ mutation: removing preferences sync debounce cleanup goes RED (297.6336ms)
-✔ mutation: removing owner watch interval cleanup goes RED (204.557ms)
-✔ mutation: removing indicator-worker leak evidence goes RED (188.8984ms)
-ℹ tests 9
+✔ mutation: reverting host bus retry timer cleanup fix goes RED (194.7827ms)
+✔ mutation: welding the host bus switch to the purge switch goes RED (177.7872ms)
+✔ mutation: removing preferences sync debounce cleanup goes RED (188.0668ms)
+✔ mutation: removing owner watch interval cleanup goes RED (188.3493ms)
+✔ mutation: removing indicator-worker leak evidence goes RED (178.1995ms)
+ℹ tests 10
 ℹ suites 0
-ℹ pass 9
+ℹ pass 10
 ℹ fail 0
-ℹ cancelled 0
-ℹ skipped 0
-ℹ todo 0
-ℹ duration_ms 2806.751
 ```
 
-Designed mutants: 7. Survived: 0. Survivors: none.
+Designed mutants: 8. Survived: 0. Survivors: none. (The eighth is the anti-weld
+mutant added when B-R9's D2 was applied.)
+
+## What This Sweep Does Not Close
+
+1349 start sites; 8 carry a proved verdict. The other 1342 are UNPROVEN, not CLEAN — no
+row was rounded up. The class this packet was opened for (a serviced resource whose timer
+or worker outlives its owner) is **not closed**, and the honest state is: the two WebSocket
+ping timers that opened the class are proved dead, four more retainers are proved clean,
+one in-set defect is fixed, and one out-of-set defect is escalated with a browser-side
+count that agrees with the source reading. Closing the remaining 1342 needs either
+per-site work or a stronger automatic rule than "does the owning module contain a matching
+release call".
