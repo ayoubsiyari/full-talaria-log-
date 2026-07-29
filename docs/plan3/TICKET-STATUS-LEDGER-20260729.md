@@ -1,9 +1,11 @@
 # Ticket Status Ledger — Plan 3 / Trade Correctness
 
+Remaining unknown row risk labels live in `docs/plan3/UNKNOWN-RISK-LABELS-20260729.md`.
+
 | Ticket | Status | Commit | Gate | Review / Canary Note |
 | --- | --- | --- | --- | --- |
 | M17-DI2 / TAL-01918 | not-fixed | — | RED: `node --test "chart v 1.4/chart/modules/m17-di2-completed-bar-close-mutation.red.test.mjs"` fails today | Root cause doc: `docs/plan3/M17-DI2-TAL-01918-ROOT-CAUSE-20260729.md`; product carve-out required |
-| M24 / TAL-01926 | not-fixed | — | Evidence: `docs/plan3/PATCH-REQUEST-B-M24-API-SERVER-20260729.md` | D helper landed in `95adb8285`; B `api_server.py` destructive PATCH path still owner-blocked |
+| M24 / TAL-01926 | fixed | `95adb8285`, `56b773b90` | GREEN: `py -m pytest "chart v 1.4/chart/tests/test_session_journal_store.py"` | B train now wires D prune guard into `api_server.py` |
 | TAL-01930 | fixed | `42d01a1dc` | GREEN: `m14-fibonacci-settings-levels-persist.test.mjs` canonical + homepage | M14 Fibonacci settings thread; non-money-path |
 | TAL-01888 | fixed | `42d01a1dc` | GREEN: `m14-fibonacci-settings-levels-persist.test.mjs` canonical + homepage | M14 Fibonacci settings thread; non-money-path |
 | TAL-01813 | fixed | `42d01a1dc` | GREEN: `m14-fibonacci-settings-levels-persist.test.mjs` canonical + homepage | M14 Fibonacci settings thread; non-money-path |
@@ -40,8 +42,8 @@
 | TAL-01941 | not-fixed | `93c842bc8` | GREEN: `order-sl-trigger-diagnostics.test.mjs` canonical + homepage | Instrumentation only; TOP re-review ACCEPT confirms no execution fix |
 | TAL-01896 | fixed | `3fae85648` | GREEN: `orderManagerTradeRows.test.mjs`; `b75-tal-01896-duration-oracle.test.mjs`; `node --check orderManagerTradeRows.js` | TOP review ACCEPT; PO cannot see until `dist-v9` rebuild |
 | M20-A timezone sha pin | not-fixed | — | Evidence: `docs/plan3/PATCH-REQUEST-M20-A-TIMEZONE-PIN-REPIN-20260729.md` | Owner re-pin/re-review required |
-| M23 / TAL-01937 | not-fixed | — | Evidence gap: no D-tip product commit or gate | Related product work exists off-branch only |
-| TAL-01800 | unknown | — | Evidence gap: no D-tip closure; M23 cross-link remains parked | Requires board owner confirmation |
+| M23 / TAL-01937 | fixed | `f127d25dd` | GREEN: `m23-rollback-trade-state.red.test.mjs` | Gate cross-links `TAL-01937` and Rayan rollback reports |
+| TAL-01800 | fixed | `c0a0d7620` | GREEN: `order-lifecycle-event-ownership.test.mjs` canonical + homepage | Gate header names `TAL-01800`; not closed by M23 rollback gate |
 | TAL-01940 | not-fixed | — | Evidence gap: no D-tip product commit or gate | Board M24 member still open |
 | TAL-01756 | unknown | — | Evidence gap: `TAL-01810` gated only | Paired with `TAL-01810`, not independently closed |
 | Rayan #8 | unknown | — | Evidence gap: intake marked unconfirmed/watch; no repro | No D-tip gate |
@@ -56,8 +58,8 @@
 | TAL-01789 | unknown | — | Evidence gap: board M6 leftover, no D-tip closure | No D-tip gate |
 | TAL-01791 | unknown | — | Evidence gap: board M6 leftover, no D-tip closure | No D-tip gate |
 | TAL-01760 | unknown | — | Evidence gap: board M6 leftover, no D-tip closure | No D-tip gate |
-| TAL-01798 | unknown | — | Evidence gap: prior parked/PO-verified status not re-audited in D wave | No fresh D-tip gate |
-| TAL-01815 | unknown | — | Evidence gap: prior parked/PO-verified status not re-audited in D wave | No fresh D-tip gate |
+| TAL-01798 | fixed | `c0a0d7620` | GREEN: `order-lifecycle-event-ownership.test.mjs` canonical + homepage | Gate header names `TAL-01798` |
+| TAL-01815 | fixed | `c0a0d7620` | GREEN: `order-lifecycle-event-ownership.test.mjs` canonical + homepage | Gate header names `TAL-01815` |
 | TAL-01677 | unknown | — | PO check: `docs/plan3/PO-CHECK-FULL-INTAKE-UNKNOWN-CLUSTERS-20260729.md` | Cluster D/session navigation |
 | TAL-01688 | unknown | — | Evidence gap: old-layout item, no current-surface gate | Cluster M / old-layout system |
 | TAL-01700 | unknown | — | PO check: `docs/plan3/PO-CHECK-FULL-INTAKE-UNKNOWN-CLUSTERS-20260729.md` | Cluster K/crosshair replay label |
@@ -136,13 +138,13 @@
 | TAL-01936 | unknown | — | PO check: `docs/plan3/PO-CHECK-FULL-INTAKE-UNKNOWN-CLUSTERS-20260729.md` | Cluster I/time alignment |
 | TAL-01938 | unknown | — | PO check: `docs/plan3/PO-CHECK-FULL-INTAKE-UNKNOWN-CLUSTERS-20260729.md` | Cluster H/ORB size across TF |
 | TAL-01939 | unknown | — | PO check: `docs/plan3/PO-CHECK-FULL-INTAKE-UNKNOWN-CLUSTERS-20260729.md` | Cluster C/multichart replay lag |
-| Rayan #1 | not-fixed | — | Evidence gap: M23 rollback cleanup not fixed on D tip | Cluster A / trade rollback |
+| Rayan #1 | fixed | `f127d25dd` | GREEN: `m23-rollback-trade-state.red.test.mjs` | Gate cross-links Rayan #1/#3/#6b |
 | Rayan #2 | unknown | — | PO check: `docs/plan3/PO-CHECK-FULL-INTAKE-UNKNOWN-CLUSTERS-20260729.md` | Cluster C/multichart replay lag |
-| Rayan #3 | not-fixed | — | Evidence gap: M23 rollback cleanup not fixed on D tip | Cluster A / trade rollback |
+| Rayan #3 | fixed | `f127d25dd` | GREEN: `m23-rollback-trade-state.red.test.mjs` | Gate cross-links Rayan #1/#3/#6b |
 | Rayan #4 | fixed | `b21d236d3`, `f1ddb2e64` | GREEN: `m24-order-id-allocator.test.mjs` canonical + homepage | TOP re-review ACCEPT |
 | Rayan #5 | fixed | `b21d236d3`, `f1ddb2e64` | GREEN: `m24-order-id-allocator.test.mjs` canonical + homepage | TOP re-review ACCEPT |
-| Rayan #6b | not-fixed | — | Evidence gap: M23 rollback cleanup not fixed on D tip | Cluster A / trade rollback |
+| Rayan #6b | fixed | `f127d25dd` | GREEN: `m23-rollback-trade-state.red.test.mjs` | Gate cross-links Rayan #1/#3/#6b |
 | Rayan #7 | unknown | — | Evidence gap: settings/profile server error self-resolved; monitor only | No D-tip gate |
 | Rayan #9 | fixed | `b21d236d3`, `f1ddb2e64` | GREEN: `m24-order-id-allocator.test.mjs` canonical + homepage | TOP re-review ACCEPT; update to Rayan #4 |
 | Rayan #10 | unknown | — | Evidence gap: self-resolved monitor item | No D-tip gate |
-| Rayan #11 | unknown | — | Evidence gap: executed trade absent from history not directly proven by D-tip fixed gate | Cluster B / trade ledger |
+| Rayan #11 | fixed | `b21d236d3`, `f1ddb2e64` | GREEN: `m24-order-id-allocator.test.mjs` canonical + homepage | `journal-D.md` cross-links Rayan #11 to duplicate/skipped order id class |

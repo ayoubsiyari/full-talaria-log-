@@ -2,7 +2,44 @@
 
 Use one current accepted TEST build. Record the build id once, then mark each check PASS / FAIL / NOT RUN. Screenshots only on FAIL.
 
-## 1. Cluster C - Two-Chart Replay Keeps Moving
+## Row-Closing Budget
+
+Run in this order if time is short: Cluster G/M6 (15), Cluster I (8), Cluster C (6), Cluster D (6), Cluster L (7), Cluster N (2), Cluster B (1), then the cosmetic/current-surface groups.
+
+- Cluster B trade ledger: 1 row.
+- Cluster C multichart replay: 6 rows.
+- Cluster D session resume / Go To: 6 rows.
+- Cluster E refresh state: 1 row.
+- Cluster G/M6 order drag and marker leftovers: 15 rows.
+- Cluster H indicator/daily-open/ORB labels: 6 rows.
+- Cluster I candle/history/data integrity: 8 rows.
+- Cluster J zoom/scale/grid/toolbar: 11 rows.
+- Cluster K crosshair replay/settings: 3 rows.
+- Cluster L replay controls: 7 rows.
+- Cluster M old-layout/current-surface sanity: 16 rows.
+- Cluster N memory/idle lag: 2 rows.
+- Cluster O feature requests: 9 rows.
+- M10 residual trade marker: 1 row.
+- Rayan monitor/self-resolved: 3 rows.
+- Recurrence watch: 1 row.
+- Scratched intake row: 1 row.
+
+## 1. Cluster B - Trade Reaches History
+
+Closes 1 row: representative `TAL-01911`.
+
+1. Open a saved backtest session with at least one visible trade setup.
+2. Place a small market or limit trade, let it close, then open All Trades / history.
+3. Refresh the browser and re-enter the same session.
+4. Check the trade count and the newest closed trade in both the chart panel and history view.
+
+Pass: the executed trade is present in history after refresh, the count does not go down, and the chart marker matches the history row.
+
+Fail: the chart shows the trade but history does not, the count drops after refresh, or the newest closed trade disappears.
+
+## 2. Cluster C - Two-Chart Replay Keeps Moving
+
+Closes 6 rows: representative `TAL-01733`.
 
 Covers the reports where a second chart freezes, shakes, lags, or stops at the last candle.
 
@@ -16,7 +53,9 @@ Pass: both panels keep advancing, the second panel does not freeze until pause/r
 
 Fail: either panel stops while the other continues, shakes tick-by-tick, catches up only after pause/resume, or loses visible order state.
 
-## 2. Cluster D - Session Resume And Go To
+## 3. Cluster D - Session Resume And Go To
+
+Closes 6 rows: representative `TAL-01909`.
 
 Covers the reports where re-entering a session returns to the wrong date, step-forward jumps days, or Go To skips sessions.
 
@@ -31,7 +70,9 @@ Pass: re-entry restores the same date/time, Go To lands on the intended session,
 
 Fail: the chart returns to an earlier point, Go To errors or skips sessions, or step-forward jumps multiple days from the restored point.
 
-## 3. Cluster E - Refresh Keeps User State
+## 4. Cluster E - Refresh Keeps User State
+
+Closes 1 row: representative `TAL-01759`.
 
 Covers reports about session layouts leaking, symbol/pins reverting, PnL changing after refresh, and duplicate trade screenshots.
 
@@ -45,7 +86,26 @@ Pass: the symbol, pins, and intended layout are stable; the first session's layo
 
 Fail: symbol or pins reset, a previous session's layout appears in a new session, PnL/history changes without a trade event, or the same trade receives a second screenshot.
 
-## 4. Cluster H - Indicator Labels Stay Visible
+## 5. Cluster G/M6 - Order Drag And Markers Stay Literal
+
+Closes 15 rows: representative `TAL-01696`.
+
+Covers the leftover order-drag reports where SL/TP/entry lines disappear, lag behind the cursor, inherit stale draft state, or markers fail to match the order being edited.
+
+1. Open the order panel and prepare a multi-TP draft with entry, SL, and at least two TP rows.
+2. Drag the entry line; watch whether SL/TP rows follow only when the tool says they should.
+3. Drag SL and TP lines, then release; check that visible fields, labels, and risk/reward numbers agree.
+4. Put two TP rows at or near the same price, pan/zoom, then drag each row separately.
+5. Cancel one drag with Escape, then start a fresh order and confirm no old hidden level reappears.
+6. Place and cancel a small pending order, then check that its entry/SL/TP markers do not stick or vanish incorrectly.
+
+Pass: lines remain visible and individually draggable, visible values match the line positions while and after dragging, Escape leaves no stale hidden state, and markers belong to the correct order.
+
+Fail: a line disappears, a stale SL/TP returns after clear/cancel, two TP rows cannot be grabbed separately, values update only after release, or markers stick to the wrong order.
+
+## 6. Cluster H - Indicator Labels Stay Visible
+
+Closes 6 rows: representative `TAL-01914`.
 
 Covers reports where indicator labels or daily-open/ORB labels vanish while stepping or switching timeframe.
 
@@ -59,7 +119,9 @@ Pass: labels remain readable while paused, while stepping, while playing, and af
 
 Fail: labels appear only during Play, become white-on-white/invisible, daily-open lines vanish, or ORB size changes after a timeframe switch.
 
-## 5. Cluster I - Candle History Does Not Change Shape
+## 7. Cluster I - Candle History Does Not Change Shape
+
+Closes 8 rows: representative `TAL-01802`.
 
 Covers reports about phantom daily candles, completed-bar mutation, cross-timeframe price differences, and weekly-to-lower-timeframe date jumps.
 
@@ -72,7 +134,9 @@ Pass: the chart stays near the analyzed area, timeframe switches actually change
 
 Fail: the chart jumps away in date, candles do not redraw for the selected timeframe, price differs across timeframes at the same frozen playhead, or a completed candle changes close/high/low after the next candle opens.
 
-## 6. Cluster J - Zoom, Scale, Grid, And Toolbar
+## 8. Cluster J - Zoom, Scale, Grid, And Toolbar
+
+Closes 11 rows: representative `TAL-01821`.
 
 Covers reports where zoom direction reverses, gridlines return after reset, custom timeframe labels spread days apart, news flags scale with zoom, or toolbar buttons overlap.
 
@@ -87,7 +151,9 @@ Pass: toolbar buttons remain usable, scroll directions are correct, gridlines an
 
 Fail: buttons overlap, both scroll directions zoom the same way, grid/time labels separate by days, reset reintroduces bad gridlines, news flags grow/shrink with zoom, or the chart runs away/disappears.
 
-## 7. Cluster K - Crosshair During Replay
+## 9. Cluster K - Crosshair During Replay
+
+Closes 3 rows: representative `TAL-01700`.
 
 Covers reports where the crosshair time label freezes or crosshair behavior differs between layouts/tablet.
 
@@ -101,7 +167,9 @@ Pass: the crosshair time label updates as candles advance, settings apply consis
 
 Fail: the time label stays frozen while candles advance, settings apply to only one layout when they should sync, or cursor drag moves the chart instead.
 
-## 8. Cluster L - Replay Controls Behave Literally
+## 10. Cluster L - Replay Controls Behave Literally
+
+Closes 7 rows: representative `TAL-01931`.
 
 Covers reports about step-forward batching, interval substeps, weekend clock drift, tick wick/body order, auto-follow, and drawings lag.
 
@@ -117,7 +185,23 @@ Pass: one step is one visible step, lower replay interval advances as selected, 
 
 Fail: steps are silent then batch, interval advances only a few substeps, clock moves while price is frozen, wick draws before body in a visible wrong order, replay does not follow the last candle, or drawings lag behind the chart.
 
-## 9. Intake Watch - Memory And Idle Lag
+## 11. Cluster M - Old-Layout Reports On The Current Surface
+
+Closes 16 rows: representative `TAL-01709`.
+
+Covers old-layout or stale-surface reports that may no longer apply to the current V9 TEST build.
+
+1. In the current TEST build, try the same workflow from the old report if the report is clear: open layout, switch chart, pan/zoom, click the described control.
+2. If the exact old control no longer exists, try the equivalent current control once.
+3. Do not hunt for a new bug; this check only decides whether the old report still reproduces on the current surface.
+
+Pass: the old control is gone with no current equivalent, or the equivalent current workflow behaves normally.
+
+Fail: the same user-visible problem reproduces on the current surface.
+
+## 12. Intake Watch - Memory And Idle Lag
+
+Closes 2 rows: representative `TAL-01891`.
 
 Covers reports where idle return lags, memory climbs to multi-GB, or Chrome risks crashing.
 
@@ -131,14 +215,80 @@ Pass: interaction remains responsive after idle, memory remains bounded and does
 
 Fail: the tab becomes laggy after idle, memory climbs toward multi-GB, Chrome warns/crashes, or the app stalls for a long period before resuming.
 
+## 13. Cluster O - Feature Requests Are Not Regressions
+
+Closes 9 rows: representative `TAL-01849`.
+
+Covers rows that read as requested new behavior rather than a broken current behavior.
+
+1. Open the related current feature if it exists.
+2. Check whether the requested behavior is already present.
+3. If it is absent, mark it as "feature not implemented", not as a failed regression.
+
+Pass: the feature exists and works, or the PO agrees the row is a feature request outside canary-fix scope.
+
+Fail: an existing feature that should already work is broken.
+
+## 14. M10 Residual - Trade Marker Projection
+
+Closes 1 row: representative `TAL-01796`.
+
+1. Place a small trade on `1m` replay.
+2. Switch to a higher timeframe and pan around the same time window.
+3. Return to `1m`.
+
+Pass: the trade marker remains attached to the correct candle/time and does not duplicate or drift.
+
+Fail: the marker moves to the wrong candle, disappears, or duplicates after timeframe changes.
+
+## 15. Rayan Monitor Rows
+
+Closes 3 rows: representative `Rayan #8`.
+
+1. Open the monitor item named by the row owner.
+2. Try the reported action once on the current TEST build.
+3. If it was previously called self-resolved, verify only that it is still not reproducing.
+
+Pass: the issue does not reproduce on the current TEST build.
+
+Fail: the same visible issue reproduces and can be described in one sentence.
+
+## 16. Recurrence Watch
+
+Closes 1 row: representative `TAL-01723`.
+
+1. Re-run the recurrence workflow from the original note once on the current TEST build.
+2. Do not broaden the scope; this is only a stale-surface recurrence check.
+
+Pass: the old recurrence does not reproduce.
+
+Fail: the same recurrence reproduces.
+
+## 17. Scratched Intake Row
+
+Closes 1 row: representative `TAL-01920`.
+
+1. Confirm with the PO that the row is still scratched / withdrawn.
+2. If withdrawn, no product clicking is needed.
+
+Pass: PO confirms the row is scratched or no longer a defect report.
+
+Fail: PO says it is still an active defect; move it to the closest cluster above and run that script.
+
 ## Coverage Inventory
 
+- Cluster B: history registration for executed trades.
 - Cluster C: multichart replay lag, shaking, stale second chart, and loaded tester layouts.
 - Cluster D: session resume, Go To, re-entry position, and step-forward jumps from restored points.
 - Cluster E: refresh persistence, session isolation, stable symbols/pins/layouts, PnL/history stability, and duplicate screenshots.
+- Cluster G/M6: remaining order drag, line persistence, draft-state, marker, and entry/SL/TP interaction rows.
 - Cluster H: indicator labels, daily-open lines, and ORB label/size stability.
 - Cluster I: cross-timeframe price, candle history shape, completed candles, weekly-to-lower-timeframe jumps, and calendar correctness.
 - Cluster J: zoom, scale, grid, time-label drag, news flag scale, and responsive toolbar overlap.
 - Cluster K: crosshair replay label and crosshair setting behavior.
 - Cluster L: replay controls, tick draw order, weekend clock, auto-follow, and drawing lag.
-- Intake watch: sustained memory and idle lag on loaded replay.
+- Cluster M: old-layout reports checked only against the current surface.
+- Cluster N: sustained memory and idle lag on loaded replay.
+- Cluster O: feature-request disposition.
+- M10 residual: trade-marker projection under timeframe changes.
+- Rayan monitor / recurrence / scratched rows: one-pass current-surface disposition.
