@@ -36,6 +36,16 @@ COPY ["scripts/lib/m19-e-hotpath-console-exemptions.mjs", "/scripts/lib/m19-e-ho
 COPY ["chart v 1.4/talaria-design", "./talaria-design/"]
 COPY ["chart v 1.4/chart", "./chart/"]
 COPY ["homepage/public/chart/modules/m20-q6-replay-lifecycle-binding.test.mjs", "/homepage/public/chart/modules/m20-q6-replay-lifecycle-binding.test.mjs"]
+# module-contract-preflight is COPY'd to /scripts (repoRoot would be /). Point it at
+# a reconstructed tree that matches contract inventory/mirror paths.
+COPY ["homepage/public/chart/modules/module-presence-runtime.js", "/contract-root/homepage/public/chart/modules/module-presence-runtime.js"]
+COPY ["homepage/public/chart/modules/indicator-performance.js", "/contract-root/homepage/public/chart/modules/indicator-performance.js"]
+COPY ["homepage/public/chart/dist-v9", "/contract-root/homepage/public/chart/dist-v9"]
+COPY ["homepage/public/chart/multichart-prod", "/contract-root/homepage/public/chart/multichart-prod"]
+RUN mkdir -p "/contract-root/chart v 1.4" \
+  && ln -sfn /build/chart "/contract-root/chart v 1.4/chart" \
+  && ln -sfn /build/talaria-design "/contract-root/chart v 1.4/talaria-design"
+ENV TALARIA_MODULE_CONTRACT_ROOT=/contract-root
 WORKDIR /build/talaria-design
 ENV NODE_ENV=production
 RUN if [ "$CHECKPOINT_BUILD" = "1" ]; then \
