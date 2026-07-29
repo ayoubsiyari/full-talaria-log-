@@ -1,0 +1,43 @@
+{
+  "source": ".scratch-w73-heap-6cycle-b88-retry.json",
+  "status": "RED",
+  "ok": false,
+  "buildId": "20260729b89",
+  "cycles": 6,
+  "heap": {
+    "baselineMB": 75.64,
+    "floorsMB": [
+      93.33,
+      93.68,
+      93.92,
+      93.91,
+      94.15,
+      94.06
+    ],
+    "deltasMB": [
+      17.69,
+      0.35,
+      0.24,
+      0,
+      0.24,
+      -0.09
+    ],
+    "meanDeltaMB": 3.07
+  },
+  "detachedDeltas": [
+    93,
+    0,
+    0,
+    0,
+    0,
+    0
+  ],
+  "lateJump": {
+    "status": "ABSENT",
+    "detail": "NO late jump of PO magnitude (+45MB on cycle≥4): earlyMean=6.09MB lateMax=0.24MB deltasMb=17.69,0.35,0.24,0,0.24,-0.09"
+  },
+  "m26": "INSUFFICIENT",
+  "fix3": "INSUFFICIENT",
+  "heapFloor": "GREEN",
+  "detached": "RED"
+}
