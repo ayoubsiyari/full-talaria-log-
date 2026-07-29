@@ -3476,3 +3476,46 @@ Finding: `FINDING-DUAL-BUILD-PATH-RESOLVE-20260728.md` + host RO logs under
 scoped server (+ optional client-guard module) hotfix independent of the full b82
 canary shell train**, if the PO orders that path. Shell stamp / indicator-performance
 / SURF-3 remain separate. **PO decides.**
+
+---
+
+## B-0151 — CHECKPOINT_BUILD b82 landed. Dual-build closed. SURF-3 live GREEN.
+
+**2026-07-29 ~00:45Z.** C soak exemption + SURF-3 already in tree. Restart hold lifted.
+
+### Build / deploy
+
+| | |
+|---|---|
+| Params | `CHECKPOINT_BUILD=1` `CHART_BUILD_ID=20260728b82` `SOURCE_COMMIT_SHA=044d1b6474cc6bd6b60ab62d73df734a59caee64` |
+| Host | `http://31.97.192.82:3000` only |
+| Images | `talaria-trading-chart:latest` + `talaria-homepage:latest` Built; chart/homepage Recreated |
+| Wall | `BUILD_DONE=2026-07-29T00:44:49Z` |
+
+Commits on the path: `a58ce65a9` (exemption+SURF-3+COPY), `4c5e77270` (contract root),
+`044d1b647` (dist-v9 seed). In-image soak **M19-GREEN** (FixE `consoleCalls:0`).
+
+### Same-session verify
+
+| Gate | Result |
+|---|---|
+| Auth index vs dist-v9 | **both `20260728b82`**, same bytes 91048, `dualBuild:false` |
+| stamp-census | exit 0, `holes:0`, observed max b82 |
+| deploy-gate | markers **PRESENT**; shells coherent b82; `stampInert` true → **waived** (`--waive-stamp-inert`); exit 0 PRESENT |
+| SURF-3 live | **GREEN** agreedBuildId=`20260728b82` |
+| SURF-3 GATE-01 fixture | still **RED** (b75 vs b82) — instrument holds |
+
+### Two-builds defect
+
+Rebuild+restart **fixed it outright**. Mechanism was split FS (homepage nginx dist-v9
+b82 vs chart-container `/app/dist-v9` b75). Fresh checkpoint images put one b82 tree
+behind both URLs. Confirmed by auth probe + SURF-3.
+
+### Production (report only — no deploy)
+
+Re-probe `https://talaria-log.com`: dist-v9 **`20260723b56`**; shell does not
+reference `indicator-performance.js`; prod `order-manager.js` `journalVouchedFor`
+**ABSENT**. Engineering: trade-loss fix **can travel alone** as scoped
+`api_server.py` (+ optional client-guard module) hotfix without the full canary
+shell train. **PO decides.** Evidence: `REPORT-PROD-B56-VS-B82-20260728.md` +
+`observations/prod-stamp-report-2026-07-29T00-34-19-931Z.json`.
