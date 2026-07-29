@@ -131,3 +131,10 @@
 - Fix: split-entry handle drag-end now requires an intentional pixel movement as well as a non-zero price movement, behind `__TALARIA_DISABLE_ORDER_SPLIT_ENTRY_HOVER_STICK_V1` (default ON). The threshold is 4px; larger drags still add split entries/TPs normally. Homepage and canonical mirrors are aligned.
 - RED: `TALARIA_TEST_DISABLE_ORDER_SPLIT_ENTRY_HOVER_STICK=1 node "chart v 1.4/chart/modules/order-split-entry-hover-stick.test.mjs"` fails because a 2px micro-drag is accepted.
 - GREEN: both `node "chart v 1.4/chart/modules/order-split-entry-hover-stick.test.mjs"` and `node "homepage/public/chart/modules/order-split-entry-hover-stick.test.mjs"` pass.
+
+## 2026-07-29 — Cluster G / TAL-01810
+
+- Root cause confirmed: legacy exit marker price-refinement can drift a spread-side SL/TP exit back toward the entry candle when mid OHLC does not contain the spread-adjusted close price. This is separate from the draft/restore tickets.
+- Fix status: no new production code needed in this batch. Existing canonical trade-marker projection (`__TALARIA_DISABLE_TRADE_MARKER_CANONICAL_PROJECTION_V1`, default ON) maps exit markers by immutable hit time instead of rescanning by mid-price containment, which covers the spread-column failure.
+- RED: `TALARIA_DISABLE_TRADE_MARKER_CANONICAL_PROJECTION_V1=1 node "chart v 1.4/chart/modules/order-exit-marker-spread-column.test.mjs"` fails with legacy marker index `0 !== 2`.
+- GREEN: both `node "chart v 1.4/chart/modules/order-exit-marker-spread-column.test.mjs"` and `node "homepage/public/chart/modules/order-exit-marker-spread-column.test.mjs"` pass.
