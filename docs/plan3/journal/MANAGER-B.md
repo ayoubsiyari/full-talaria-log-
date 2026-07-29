@@ -4322,3 +4322,16 @@ Gates: lag 16/16, M28 12/12, mirror byte-identical.
 
 **PO_SHOULD_READ=20260729b102**
 MEAS-01 HTTP: shell=200, stamp matches, both images `canary-20260729b102`. dist-v9 has `__TALARIA_DISABLE_TRADE_DURATION_NORM_V1` (1); served `replay-system.js` has `_talariaDisableFlagTruthy` (16). Tip `4d7dbbafc` = D train + realm-climb sweep.
+
+## B-0191 — 2026-07-30 — Ruling ack; SHIP 20260729b103 (REALM-TEARDOWN memory cut alone)
+
+**Row:** M4-release | **Packet:** REALM-TEARDOWN-SHIP | **Tier:** mid
+
+Ruling: no a-critical reconcile tonight; A cherry-picks memory + M17-DI2 as fresh packets. Duty: ship memory the moment it lands, alone.
+
+Landed A's `94ba5e0d5` (from `manager-a/realm-teardown-on-train` / `c289c05c1`) as `153c835e2`. Gate 28/28. Not batched with M17-DI2 or anything else.
+
+**PO_SHOULD_READ=20260729b103**
+MEAS-01 HTTP: stamp + both canary images + LIVE_PIN agree. Five independent release kill-switches on the wire for heap bisect.
+
+B-0185 self-catches (phantom mirror ROOT; blind stash pop) and M28→A routing noted as confirmed.
