@@ -51,7 +51,10 @@
     "preflight:heap-growth-census": "node scripts/heap-cycle-memory-gate.mjs --require-browser --surface=dist-v9 --json",
     "preflight:heap-retainer-paths": "node scripts/heap-cycle-memory-gate.mjs --require-browser --surface=dist-v9 --json",
     "preflight:heap-cycle-deployed": "node scripts/heap-cycle-memory-gate.mjs --require-browser --deployed --json",
-    "test:heap-cycle-memory": "node --test scripts/tests/heap-cycle-memory.test.mjs scripts/tests/heap-retainer-paths.test.mjs",
+    "preflight:heap-cycle-deployed:b90": "node scripts/heap-cycle-memory-gate.mjs --require-browser --deployed --require-build=20260729b90 --cycles=6 --json",
+    "preflight:replay-interval-budget": "node scripts/replay-interval-budget-gate.mjs --require-browser --deployed --json",
+    "test:heap-cycle-memory": "node --test scripts/tests/heap-cycle-memory.test.mjs scripts/tests/heap-retainer-paths.test.mjs scripts/tests/heap-cycle-po-workload.test.mjs",
+    "test:replay-interval-budget": "node --test scripts/tests/replay-interval-budget.test.mjs",
     "preflight:hidden-tab-replay": "node scripts/hidden-tab-replay-gate.mjs --require-browser",
     "test:hidden-tab-replay": "node --test scripts/tests/hidden-tab-replay-gate.test.mjs"
   },

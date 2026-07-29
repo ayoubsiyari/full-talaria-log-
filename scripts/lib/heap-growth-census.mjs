@@ -20,14 +20,15 @@ export const HEAP_GROWTH_PO_CALIBRATION = Object.freeze({
   uniqueElementDataPerCycle: 30_565,
   cssPropertyValueBackingPerCycle: 22_209,
   approxFurtherDetachedRows: 20,
-  approxTotalMbPerCycle: 29,
+  /** PO canary hand 2026-07-29: ~13 MB/cycle (75→…→155 over 6 cycles). */
+  approxTotalMbPerCycle: 13,
   /** Fail closed if mean Detached <div>/HTMLDivElement growth is below this. */
   minDetachedDivOrder: 5_000,
   /**
    * Fail closed if mean heap floor growth is below this (bytes).
-   * Thin host ~20 MB/cycle must NOT pass; PO ~29–50 MB/cycle must.
+   * Layout-only under-read (~0.7 MB) must NOT pass; PO hand ~13 MB/cycle must.
    */
-  minHeapFloorOrderBytes: 28 * 1024 * 1024,
+  minHeapFloorOrderBytes: 10 * 1024 * 1024,
 });
 
 /**
@@ -128,6 +129,8 @@ function findCtorDelta(rows, predicates) {
 export function assessGrowthCensusCalibration(census, {
   meanHeapFloorDeltaBytes = null,
   meanDetachedDivDelta = null,
+  poWorkloadArmed = false,
+  poHandShapeOk = false,
 } = {}) {
   const cycle1 = census?.cycleComparisons?.[0]?.rows || [];
   const detached = findCtorDelta(cycle1, [
@@ -159,10 +162,10 @@ export function assessGrowthCensusCalibration(census, {
 
   const pinsMatched = [detachedOrderOk, uniqueOrderOk, cssOrderOk, heapOrderOk]
     .filter(Boolean).length;
-  // PO named four order-of-magnitude pins; require ≥2 before calling the
-  // surface "real product". Heap alone (~20–30 MB) is necessary but not
-  // sufficient — thin host also grew ~20 MB without Detached DOM residue.
-  const surfaceExercisesRealProduct = pinsMatched >= 2;
+  // Real product: classic DOM pins (≥2), OR PO workload armed with heap-order
+  // / hand-shape (layout-only ~0.7 MB/cycle is decorative — GATE-01).
+  const surfaceExercisesRealProduct = pinsMatched >= 2
+    || (poWorkloadArmed === true && (heapOrderOk || poHandShapeOk));
 
   return {
     surfaceExercisesRealProduct,
@@ -171,6 +174,8 @@ export function assessGrowthCensusCalibration(census, {
     uniqueOrderOk,
     cssOrderOk,
     heapOrderOk,
+    poWorkloadArmed: poWorkloadArmed === true,
+    poHandShapeOk: poHandShapeOk === true,
     detachedDivCountDeltaCycle1: detachedDelta,
     uniqueElementDataDeltaCycle1: uniqueElement?.countDelta ?? null,
     cssPropertyValueBackingDeltaCycle1: cssBacking?.countDelta ?? null,
@@ -179,7 +184,7 @@ export function assessGrowthCensusCalibration(census, {
     po: HEAP_GROWTH_PO_CALIBRATION,
     finding: surfaceExercisesRealProduct
       ? null
-      : `HARNESS-NOT-REAL-PRODUCT: PO pins matched ${pinsMatched}/4 (Detached<div>Δ=${detachedDelta}, UniqueElementDataΔ=${uniqueElement?.countDelta ?? null}, CSSPropertyBackingΔ=${cssBacking?.countDelta ?? null}, heapMeanBytes=${meanHeapFloorDeltaBytes}). Need ≥2 of {Detached<div>≳5k, UniqueElementData≳10k, CSSBacking≳10k, heap≳28MB}. PO manual: +${HEAP_GROWTH_PO_CALIBRATION.detachedDivPerCycle} Detached <div>, +${HEAP_GROWTH_PO_CALIBRATION.uniqueElementDataPerCycle} UniqueElementData, +${HEAP_GROWTH_PO_CALIBRATION.cssPropertyValueBackingPerCycle} CSSBacking, ~${HEAP_GROWTH_PO_CALIBRATION.approxTotalMbPerCycle} MB.`,
+      : `HARNESS-NOT-REAL-PRODUCT: PO pins matched ${pinsMatched}/4 (Detached<div>Δ=${detachedDelta}, UniqueElementDataΔ=${uniqueElement?.countDelta ?? null}, CSSPropertyBackingΔ=${cssBacking?.countDelta ?? null}, heapMeanBytes=${meanHeapFloorDeltaBytes}, poWorkloadArmed=${poWorkloadArmed}, poHandShapeOk=${poHandShapeOk}). Need ≥2 DOM pins OR (PO workload armed ∧ heap≳10MB/cycle or PO hand late-jump shape). PO hand ~${HEAP_GROWTH_PO_CALIBRATION.approxTotalMbPerCycle} MB/cycle.`,
   };
 }
 

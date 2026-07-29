@@ -29,6 +29,7 @@ export function parseHeapCycleMemoryArgs(argv = process.argv.slice(2)) {
     outPath: null,
     disableFlags: [],
     cycles: null,
+    requireBuild: null,
   };
   for (const arg of argv) {
     if (arg === '--fixture' || arg === '--gate01-fixture') {
@@ -43,6 +44,8 @@ export function parseHeapCycleMemoryArgs(argv = process.argv.slice(2)) {
       options.timeoutMs = Number(arg.slice('--timeout-ms='.length));
     } else if (arg.startsWith('--cycles=')) {
       options.cycles = Number(arg.slice('--cycles='.length));
+    } else if (arg.startsWith('--require-build=')) {
+      options.requireBuild = arg.slice('--require-build='.length).trim();
     } else if (arg.startsWith('--surface=')) {
       options.surface = arg.slice('--surface='.length);
     } else if (arg === '--thin-host') {
@@ -85,6 +88,7 @@ export async function runHeapCycleMemoryGate({
   surface = 'dist-v9',
   disableFlags = [],
   cycles = null,
+  requireBuild = null,
   runBrowser = null,
 } = {}) {
   const startedAt = new Date().toISOString();
@@ -115,18 +119,36 @@ export async function runHeapCycleMemoryGate({
     }
 
     const cells = assertHeapCycleMemoryReport(report);
+    if (requireBuild) {
+      const got = report?.meta?.buildId || null;
+      const pinOk = got === requireBuild;
+      cells.unshift({
+        name: 'HEAP-CYCLE-BUILD-PIN',
+        pass: pinOk,
+        status: pinOk ? 'GREEN' : 'RED',
+        detail: pinOk
+          ? `buildId=${got} matches --require-build`
+          : `buildId=${got || 'MISSING'} ≠ required ${requireBuild}`,
+        blocking: true,
+        expected: requireBuild,
+        actual: got,
+      });
+    }
     // Ship GREEN requires leak-stable + census cells; regrade INSUFFICIENT non-blocking.
     // Calibration RED (harness not real product) is reported first in error string.
     const cellsOk = cells.every((row) => {
       if (row.name === 'M26-REGRADE-ON-HEAP-CYCLE' || row.name === 'FIX3-REGRADE-ON-HEAP-CYCLE') {
         return row.pass === true;
       }
+      if (row.nonBlocking === true) return true;
       return row.pass === true;
     });
-    const failed = cells.filter((cell) => !cell.pass);
+    const failed = cells.filter((cell) => !cell.pass && cell.nonBlocking !== true);
     failed.sort((a, b) => {
       if (a.name === 'HEAP-GROWTH-SURFACE-CALIBRATION') return -1;
       if (b.name === 'HEAP-GROWTH-SURFACE-CALIBRATION') return 1;
+      if (a.name === 'HEAP-CYCLE-PO-WORKLOAD-ARMED') return -1;
+      if (b.name === 'HEAP-CYCLE-PO-WORKLOAD-ARMED') return 1;
       return 0;
     });
     return {
@@ -141,7 +163,9 @@ export async function runHeapCycleMemoryGate({
         finishedAt: new Date().toISOString(),
         fixtureDir: fixtureDir || null,
         requireBrowser,
+        requireBuild: requireBuild || null,
         surface: report?.meta?.surface || surface,
+        buildId: report?.meta?.buildId || null,
       },
     };
   } catch (error) {
@@ -175,6 +199,7 @@ if (isMain) {
       surface: options.surface,
       disableFlags: options.disableFlags,
       cycles: options.cycles,
+      requireBuild: options.requireBuild,
     });
   } catch (error) {
     report = {

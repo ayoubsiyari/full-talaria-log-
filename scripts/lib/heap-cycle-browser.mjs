@@ -44,6 +44,10 @@ import {
   HEAP_FOOTPRINT_NON_GRADING,
   HEAP_METRIC_USED_JS_HEAP_SIZE,
 } from './heap-memory-instrument.mjs';
+import {
+  armHeapCyclePoWorkload,
+  assessPoHandHeapShape,
+} from './heap-cycle-po-workload.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const HARNESS_PKG = path.resolve(
@@ -380,7 +384,10 @@ async function expandDistinctThin(page, fileIds) {
   throw new Error('timeout expanding distinct-symbol four-panel layout');
 }
 
-function buildCensusFromSamples(baseline, cycleRows) {
+function buildCensusFromSamples(baseline, cycleRows, {
+  poWorkloadArmed = false,
+  poHandShapeOk = false,
+} = {}) {
   const snaps = [
     baseline.constructorAggregates,
     ...cycleRows.map((row) => row.returnSingle.constructorAggregates),
@@ -410,6 +417,8 @@ function buildCensusFromSamples(baseline, cycleRows) {
   const calibration = assessGrowthCensusCalibration(census, {
     meanHeapFloorDeltaBytes: meanHeap,
     meanDetachedDivDelta: meanDetached,
+    poWorkloadArmed,
+    poHandShapeOk,
   });
   return {
     ...census,
@@ -457,17 +466,26 @@ async function runDistV9Session({
     await cdp.send('HeapProfiler.enable');
     await cdp.send('Performance.enable');
 
-    const { growthCensus, retainerPaths, baselineOut, cycleRows } = await runMultichartCycles({
+    const {
+      growthCensus,
+      retainerPaths,
+      baselineOut,
+      cycleRows,
+      poWorkload,
+      poHandShape,
+    } = await runMultichartCycles({
       page,
       cdp,
       cycles,
       settleMs,
-      fileIdsForCycle: (index) => [
-        HEAP_CYCLE_DISTINCT_FILE_IDS[(index + 0) % 4],
-        HEAP_CYCLE_DISTINCT_FILE_IDS[(index + 1) % 4],
-        HEAP_CYCLE_DISTINCT_FILE_IDS[(index + 2) % 4],
-        HEAP_CYCLE_DISTINCT_FILE_IDS[(index + 3) % 4],
+      // Same symbol on all panels (PO session); distinct-symbol rotation under-read.
+      fileIdsForCycle: () => [
+        HEAP_CYCLE_DISTINCT_FILE_IDS[0],
+        HEAP_CYCLE_DISTINCT_FILE_IDS[0],
+        HEAP_CYCLE_DISTINCT_FILE_IDS[0],
+        HEAP_CYCLE_DISTINCT_FILE_IDS[0],
       ],
+      poWorkload: true,
     });
 
     return {
@@ -483,12 +501,15 @@ async function runDistV9Session({
         detachedGateMandatory: true,
         growthCensus: true,
         retainerPaths: true,
+        poWorkload: true,
         harnessUrl: url,
       },
       baseline: baselineOut,
       cycles: cycleRows,
       growthCensus,
       retainerPaths,
+      poWorkload,
+      poHandShape,
     };
   } finally {
     await browser.close().catch(() => {});
@@ -497,8 +518,11 @@ async function runDistV9Session({
 }
 
 /**
- * Shared 3-cycle expand/collapse + census + retainer aggregation.
+ * Shared expand/collapse + PO workload + census + retainer aggregation.
  * Used by local dist-v9 and deployed authenticated surfaces.
+ *
+ * PO calibration requires: 4 panels + indicators + open order + live replay
+ * playing each cycle (layout-only cycles under-read ~20× vs PO hand).
  */
 async function runMultichartCycles({
   page,
@@ -506,19 +530,39 @@ async function runMultichartCycles({
   cycles,
   settleMs,
   fileIdsForCycle,
+  poWorkload = true,
+  playHoldMs = 6_000,
+  replaySpeed = 60,
 }) {
   await sleep(settleMs);
   const baseline = await sampleHeap(page, cdp);
   const cycleRows = [];
   let prevDetached = baseline.detachedDivCount;
   let lastSnapshot = null;
+  const workloadArms = [];
 
   for (let index = 0; index < cycles; index += 1) {
     const rotated = fileIdsForCycle(index);
     await applyDistV9LayoutViaUi(page, 4, 0);
     await waitForDistV9FourReady(page, 120_000);
     await loadDistinctSymbolsDistV9(page, rotated);
-    await sleep(settleMs);
+
+    let workload = { armed: false, skipped: !poWorkload };
+    if (poWorkload) {
+      workload = await armHeapCyclePoWorkload(page, { playHoldMs, replaySpeed });
+      workloadArms.push({ cycle: index + 1, ...workload });
+      if (!workload.armed) {
+        throw new Error(
+          `HEAP-CYCLE PO workload not armed on cycle ${index + 1}: `
+          + `indicatorsOk=${workload.indicatorsOk} replayOk=${workload.replayOk} `
+          + `order=${workload.order?.ok} playing=${workload.observedPlaying} `
+          + `(GATE-01: layout-only cycles cannot grade)`,
+        );
+      }
+    } else {
+      await sleep(settleMs);
+    }
+
     const fourPeak = await sampleHeap(page, cdp, { includeAggregates: false });
 
     await applyDistV9LayoutViaUi(page, 1, 0);
@@ -551,6 +595,12 @@ async function runMultichartCycles({
       index: index + 1,
       fileIds: rotated,
       distinctSymbols: true,
+      poWorkload: {
+        armed: workload.armed === true,
+        indicatorsOk: workload.indicatorsOk === true,
+        orderOk: workload.order?.ok === true,
+        observedPlaying: workload.observedPlaying ?? 0,
+      },
       fourPeak: stripMaps(fourPeak),
       returnSingle: {
         ...stripMaps(returnSingle),
@@ -565,7 +615,29 @@ async function runMultichartCycles({
     });
   }
 
-  const growthCensus = buildCensusFromSamples(baseline, cycleRows);
+  const floors = cycleRows.map((row) => row.returnSingle?.usedJSHeapSize);
+  const poHandShape = assessPoHandHeapShape({
+    baselineBytes: baseline.usedJSHeapSize,
+    floorBytes: floors,
+  });
+  const workloadSummary = {
+    required: poWorkload === true,
+    armedEveryCycle: poWorkload
+      ? workloadArms.length === cycles && workloadArms.every((w) => w.armed === true)
+      : false,
+    arms: workloadArms.map((w) => ({
+      cycle: w.cycle,
+      armed: w.armed,
+      indicatorsOk: w.indicatorsOk,
+      orderOk: w.order?.ok,
+      observedPlaying: w.observedPlaying,
+      panels: w.panels,
+    })),
+  };
+  const growthCensus = buildCensusFromSamples(baseline, cycleRows, {
+    poWorkloadArmed: workloadSummary.armedEveryCycle,
+    poHandShapeOk: poHandShape.ok === true,
+  });
   const retainerPaths = buildRetainerReport(lastSnapshot);
 
   const baselineOut = {
@@ -577,7 +649,14 @@ async function runMultichartCycles({
     if (row.returnSingle) delete row.returnSingle.constructorAggregates;
   }
 
-  return { growthCensus, retainerPaths, baselineOut, cycleRows };
+  return {
+    growthCensus,
+    retainerPaths,
+    baselineOut,
+    cycleRows,
+    poWorkload: workloadSummary,
+    poHandShape,
+  };
 }
 
 async function runThinHostSession({
@@ -893,17 +972,24 @@ async function runDeployedSession({
     await cdp.send('HeapProfiler.enable');
     await cdp.send('Performance.enable');
 
-    const { growthCensus, retainerPaths, baselineOut, cycleRows } = await runMultichartCycles({
+    const primaryFileId = fileIds[0];
+    const {
+      growthCensus,
+      retainerPaths,
+      baselineOut,
+      cycleRows,
+      poWorkload,
+      poHandShape,
+    } = await runMultichartCycles({
       page,
       cdp,
       cycles,
       settleMs,
-      fileIdsForCycle: (index) => [
-        fileIds[(index + 0) % 4],
-        fileIds[(index + 1) % 4],
-        fileIds[(index + 2) % 4],
-        fileIds[(index + 3) % 4],
-      ],
+      // Same symbol all panels — matches PO session; distinct rotation was under-reading.
+      fileIdsForCycle: () => [primaryFileId, primaryFileId, primaryFileId, primaryFileId],
+      poWorkload: true,
+      playHoldMs: 6_000,
+      replaySpeed: 60,
     });
 
     return {
@@ -917,6 +1003,7 @@ async function runDeployedSession({
         deployedOrigin: origin,
         loginUrl: login.url,
         fileIds,
+        primaryFileId,
         buildId: bootMeta.buildId,
         flagProbe: bootMeta.flags,
         memoryInstrument: 'usedJSHeapSize+forcedGc',
@@ -924,14 +1011,17 @@ async function runDeployedSession({
         detachedGateMandatory: true,
         growthCensus: true,
         retainerPaths: true,
+        poWorkload: true,
         harnessUrl: url,
         disableFlags: (disableFlags || []).slice(),
-        note: 'Real deployed app with authenticated session — PO measurement surface.',
+        note: 'Deployed auth + PO workload (4 panels, indicators, order, live replay ×6).',
       },
       baseline: baselineOut,
       cycles: cycleRows,
       growthCensus,
       retainerPaths,
+      poWorkload,
+      poHandShape,
     };
   } finally {
     await browser.close().catch(() => {});

@@ -1,0 +1,289 @@
+/**
+ * HEAP-CYCLE PO workload — arm the product the way the PO measures:
+ * 4 panels + ≥3 indicators each + one open order + live replay playing.
+ *
+ * Shared constants with M6; MultichartGrid iframe walk (not thin host.html).
+ */
+
+import { chartTarget } from '../../chart v 1.4/chart/multichart-prod/harness/interactive-helpers.mjs';
+import { waitForPanelFrame } from '../../chart v 1.4/chart/multichart-prod/harness/react-parity-lib.mjs';
+
+export const HEAP_CYCLE_PO_INDICATORS = Object.freeze([
+  ['sma', { period: 20 }],
+  ['ema', { period: 50 }],
+  ['rsi', { period: 14 }],
+  ['macd', { fast: 12, slow: 26, signal: 9 }],
+]);
+
+export const HEAP_CYCLE_PO_PANEL_IDS = Object.freeze(['A', 'B', 'C', 'D']);
+
+/** PO canary hand floors (MB): baseline 75 then six return-to-single samples. */
+export const HEAP_CYCLE_PO_HAND_FLOORS_MB = Object.freeze([80, 72, 90, 96, 141, 155]);
+export const HEAP_CYCLE_PO_HAND_BASELINE_MB = 75;
+/** Mean Δ ≈ +13.3 MB/cycle; late jump +45 on cycle 5. */
+export const HEAP_CYCLE_PO_HAND_MEAN_MB = 13;
+export const HEAP_CYCLE_PO_HAND_LATE_JUMP_MB = 45;
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function resolvePanelFrame(page, panelId) {
+  if (panelId === 'A') return page.mainFrame();
+  return waitForPanelFrame(page, panelId, 120_000);
+}
+
+/**
+ * Arm one panel chart: indicators + enter replay + play at high speed.
+ * Runs inside the panel frame (or host for A).
+ */
+async function armPanelChart(frame, {
+  indicators = HEAP_CYCLE_PO_INDICATORS,
+  replaySpeed = 60,
+} = {}) {
+  return frame.evaluate(async (indicatorList, speed) => {
+    const sleepLocal = (ms) => new Promise((r) => setTimeout(r, ms));
+    try { window.alert = () => {}; } catch (_) {}
+    const chart = window.chart;
+    if (!chart) return { ok: false, reason: 'no chart' };
+
+    const added = [];
+    if (typeof chart.addIndicator === 'function') {
+      for (const [type, params] of indicatorList) {
+        try {
+          const ind = chart.addIndicator(type, params);
+          added.push({ type, id: ind && ind.id || null, ok: true });
+        } catch (error) {
+          added.push({ type, ok: false, error: String(error?.message || error) });
+        }
+      }
+    }
+    const active = (chart.indicators && chart.indicators.active) || [];
+    const indicatorsOk = added.filter((r) => r.ok).length >= 3 && active.length >= 3;
+
+    const rs = chart.replaySystem;
+    let replay = { ok: false, reason: 'no replaySystem' };
+    if (rs) {
+      try {
+        if (!rs.isActive && typeof rs.enterReplayMode === 'function') {
+          rs.enterReplayMode({ startAtBeginning: true, userInitiated: true });
+        }
+        if (typeof rs.setSpeed === 'function') {
+          try { rs.setSpeed(speed); } catch (_) {}
+        } else if (rs.speed != null) {
+          try { rs.speed = speed; } catch (_) {}
+        }
+        replay = { ok: !!rs.isActive, isActive: !!rs.isActive };
+      } catch (error) {
+        replay = { ok: false, reason: String(error?.message || error) };
+      }
+    }
+
+    let playing = { ok: false, isPlaying: false };
+    if (rs && rs.isActive) {
+      try {
+        if (typeof rs.goToReplayTimestamp === 'function' && Array.isArray(chart.data) && chart.data.length > 50) {
+          const mid = chart.data[Math.floor(chart.data.length * 0.2)];
+          if (mid && mid.t != null) rs.goToReplayTimestamp(Number(mid.t));
+        }
+        if (!rs.isPlaying && typeof rs.play === 'function') rs.play();
+        else if (!rs.isPlaying && typeof rs.togglePlay === 'function') rs.togglePlay();
+        const started = Date.now();
+        while (Date.now() - started < 3000) {
+          if (rs.isPlaying) break;
+          await sleepLocal(50);
+        }
+        playing = { ok: !!rs.isPlaying, isPlaying: !!rs.isPlaying };
+      } catch (error) {
+        playing = { ok: false, reason: String(error?.message || error) };
+      }
+    }
+
+    return {
+      ok: indicatorsOk && replay.ok && playing.ok,
+      indicatorsOk,
+      indicatorCount: active.length,
+      added,
+      replay,
+      playing,
+      dataBars: Array.isArray(chart.data) ? chart.data.length : 0,
+    };
+  }, indicators, replaySpeed);
+}
+
+async function placeHostOrder(page) {
+  return page.evaluate(() => {
+    try { window.alert = () => {}; } catch (_) {}
+    const chart = window.chart;
+    const om = chart && (chart.orderManager || window.orderManager);
+    const service = om && om.orderService;
+    const candle = chart && Array.isArray(chart.data) && chart.data.length
+      ? chart.data[chart.data.length - 1]
+      : null;
+    const price = candle && Number(candle.c);
+    if (!service || typeof service.submitOrder !== 'function' || !Number.isFinite(price)) {
+      return { ok: false, reason: 'orderService.submitOrder unavailable', openCount: 0 };
+    }
+    const submitted = service.submitOrder({
+      orderType: 'market',
+      direction: 'BUY',
+      side: 'BUY',
+      quantity: 1,
+      entryPrice: price,
+      timestamp: candle && candle.t != null ? Number(candle.t) : Date.now(),
+      stopLoss: price * 0.99,
+      takeProfit: price * 1.01,
+    });
+    const openCount = Array.isArray(service.openPositions) ? service.openPositions.length
+      : (Array.isArray(service.orders) ? service.orders.length : 0);
+    return {
+      ok: !!(submitted && submitted.id) || openCount > 0,
+      result: submitted ? { id: submitted.id, status: submitted.status } : null,
+      openCount,
+      via: 'orderService.submitOrder',
+    };
+  });
+}
+
+async function waitPanelChartReady(page, panelId, timeoutMs = 90_000) {
+  const frame = await resolvePanelFrame(page, panelId);
+  const started = Date.now();
+  while (Date.now() - started < timeoutMs) {
+    const ready = await frame.evaluate(() => {
+      const chart = window.chart;
+      return !!(chart
+        && Array.isArray(chart.data)
+        && chart.data.length > 20
+        && chart.replaySystem);
+    }).catch(() => false);
+    if (ready) return frame;
+    await sleep(100);
+  }
+  throw new Error(`timeout waiting for panel ${panelId} chart+replay ready`);
+}
+
+/**
+ * Arm PO workload on MultichartGrid (host A + peer iframes B/C/D).
+ * @returns {{ armed: boolean, panels: number, indicatorsOk: boolean, replayOk: boolean, order: object, playing: object[], observedPlaying: number, perPanel: object[] }}
+ */
+export async function armHeapCyclePoWorkload(page, {
+  panelIds = HEAP_CYCLE_PO_PANEL_IDS,
+  playHoldMs = 6_000,
+  replaySpeed = 60,
+} = {}) {
+  const perPanel = [];
+  for (const id of panelIds) {
+    // Ensure peer frames exist before evaluate.
+    if (id !== 'A') {
+      try { await waitForPanelFrame(page, id, 60_000); } catch (_) {}
+    }
+    const frame = await waitPanelChartReady(page, id, 90_000);
+    // Prefer chartTarget when available (handles A host vs iframe).
+    const target = chartTarget(page, id) || frame;
+    let row = await armPanelChart(target, { replaySpeed });
+    if (!row.ok) {
+      await sleep(200);
+      row = await armPanelChart(target, { replaySpeed });
+    }
+    perPanel.push({ id, ...row });
+  }
+
+  const order = await placeHostOrder(page);
+
+  let observedPlaying = 0;
+  const playStarted = Date.now();
+  while (Date.now() - playStarted < playHoldMs) {
+    let playingNow = 0;
+    for (const id of panelIds) {
+      try {
+        const target = chartTarget(page, id) || await resolvePanelFrame(page, id);
+        const isPlaying = await target.evaluate(() => {
+          const rs = window.chart && window.chart.replaySystem;
+          return !!(rs && rs.isPlaying);
+        });
+        if (isPlaying) playingNow += 1;
+      } catch (_) {}
+    }
+    observedPlaying = Math.max(observedPlaying, playingNow);
+    if (observedPlaying >= 3 && Date.now() - playStarted >= Math.min(1500, playHoldMs)) {
+      // Keep holding for residual accumulation; don't break early on first green.
+    }
+    await sleep(100);
+  }
+
+  const indicatorsOk = perPanel.every((row) => row.indicatorsOk);
+  const replayOk = perPanel.every((row) => row.replay && row.replay.ok);
+  const playingArmed = perPanel.filter((row) => row.playing && row.playing.ok).length >= 3
+    || observedPlaying >= 3;
+  const armed = indicatorsOk && replayOk && order.ok === true && playingArmed && perPanel.length >= 4;
+
+  return {
+    armed,
+    panels: perPanel.length,
+    indicatorsOk,
+    replayOk,
+    order,
+    playing: perPanel.map((row) => ({ id: row.id, ...(row.playing || {}) })),
+    observedPlaying,
+    stillPlaying: observedPlaying,
+    perPanel,
+    playHoldMs,
+    replaySpeed,
+  };
+}
+
+/**
+ * Assess whether heap-floor series matches PO hand shape
+ * (≈13 MB/cycle mean, late climb with a ≥30 MB jump on cycle ≥4).
+ */
+export function assessPoHandHeapShape({
+  baselineBytes = null,
+  floorBytes = [],
+} = {}) {
+  const floors = (Array.isArray(floorBytes) ? floorBytes : [])
+    .map((b) => Number(b))
+    .filter((b) => Number.isFinite(b));
+  const baseline = Number(baselineBytes);
+  if (!Number.isFinite(baseline) || floors.length < 6) {
+    return {
+      ok: false,
+      reason: `need baseline+6 floors (got baseline=${baselineBytes} floors=${floors.length})`,
+      meanDeltaMb: null,
+      lateJumpMb: null,
+      deltasMb: [],
+    };
+  }
+  const deltas = floors.map((f, i) => f - (i === 0 ? baseline : floors[i - 1]));
+  const meanDelta = deltas.reduce((a, b) => a + b, 0) / deltas.length;
+  const early = deltas.slice(0, 3);
+  const late = deltas.slice(3);
+  const earlyMean = early.reduce((a, b) => a + b, 0) / early.length;
+  const lateMax = Math.max(...late);
+  const mb = (b) => b / (1024 * 1024);
+  const meanDeltaMb = mb(meanDelta);
+  const lateJumpMb = mb(lateMax);
+  const earlyMeanMb = mb(earlyMean);
+  // PO: mean ~13; late jump ~45 on c5. Accept order-of-magnitude.
+  const meanOk = meanDeltaMb >= 8 && meanDeltaMb <= 40;
+  const lateOk = lateJumpMb >= 25 && lateJumpMb >= earlyMeanMb + 15;
+  return {
+    ok: meanOk && lateOk,
+    meanOk,
+    lateOk,
+    meanDeltaMb,
+    lateJumpMb,
+    earlyMeanMb,
+    deltasMb: deltas.map(mb),
+    floorsMb: floors.map(mb),
+    baselineMb: mb(baseline),
+    poHand: {
+      baselineMb: HEAP_CYCLE_PO_HAND_BASELINE_MB,
+      floorsMb: HEAP_CYCLE_PO_HAND_FLOORS_MB.slice(),
+      meanMb: HEAP_CYCLE_PO_HAND_MEAN_MB,
+      lateJumpMb: HEAP_CYCLE_PO_HAND_LATE_JUMP_MB,
+    },
+    reason: (meanOk && lateOk)
+      ? null
+      : `PO-HAND-SHAPE miss: meanΔ=${meanDeltaMb.toFixed(2)}MB (want ~${HEAP_CYCLE_PO_HAND_MEAN_MB}) lateMax=${lateJumpMb.toFixed(2)}MB (want ~${HEAP_CYCLE_PO_HAND_LATE_JUMP_MB}) earlyMean=${earlyMeanMb.toFixed(2)}MB`,
+  };
+}

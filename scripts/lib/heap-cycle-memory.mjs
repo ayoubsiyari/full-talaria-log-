@@ -41,7 +41,8 @@ export const HEAP_CYCLE_DISTINCT_FILE_IDS = Object.freeze([25, 27, 28, 29]);
 /** PO reference floor after each return-to-single (MB) — extended to 6 cycles. */
 export const HEAP_CYCLE_PO_FLOOR_MB = Object.freeze([106, 152, 204, 254, 304, 354]);
 export const HEAP_CYCLE_PO_BASELINE_MB = 54;
-export const HEAP_CYCLE_PO_PER_CYCLE_MB = 50;
+/** PO canary hand mean ≈13 MB/cycle (2026-07-29). Legacy ~50 was Task Manager / denser residue. */
+export const HEAP_CYCLE_PO_PER_CYCLE_MB = 13;
 /** PO exact expected detached HTMLDivElement growth per cycle. */
 export const HEAP_CYCLE_PO_DETACHED_DIVS_PER_CYCLE = 21_699;
 
@@ -217,13 +218,19 @@ export function summarizeHeapCycleReport(report) {
     && cycles.every((row) => row?.returnSingle?.forcedGcAvailable === true);
 
   const surface = report?.meta?.surface || null;
+  const poWorkloadArmed = report?.poWorkload?.armedEveryCycle === true
+    || (Array.isArray(cycles) && cycles.length > 0
+      && cycles.every((row) => row?.poWorkload?.armed === true));
+  // PO session uses the same symbol on all four panels. Distinct-fileId
+  // rotation was an earlier under-reading harness habit — accept either.
   const distinctOk = cycles.length === HEAP_CYCLE_COUNT
     && cycles.every((row) => {
       const ids = Array.isArray(row.fileIds) ? row.fileIds.map(Number) : [];
+      if (ids.length !== 4 || !ids.every((id) => Number.isFinite(id))) return false;
       const unique = new Set(ids);
-      if (!(ids.length === 4 && unique.size === 4)) return false;
-      // Deployed product may use a different fileId inventory than harness stubs.
-      if (surface === 'deployed') return ids.every((id) => Number.isFinite(id));
+      if (unique.size === 1) return true; // PO same-symbol mode
+      if (unique.size !== 4) return false;
+      if (surface === 'deployed') return true;
       return HEAP_CYCLE_DISTINCT_FILE_IDS.every((id) => unique.has(id));
     });
 
@@ -364,9 +371,51 @@ export function assertHeapCycleMemoryReport(report) {
     'HEAP-CYCLE-DISTINCT-FILEIDS',
     summary.distinctOk === true,
     summary.distinctOk
-      ? `each cycle used distinct fileIds ${HEAP_CYCLE_DISTINCT_FILE_IDS.join(',')}`
-      : 'cycle fileIds must be the four distinct harness symbols',
+      ? 'each cycle loaded four panel fileIds (same-symbol PO mode or four distinct)'
+      : 'cycle fileIds must be four finite ids (same-symbol or four distinct)',
     { fileIds: HEAP_CYCLE_DISTINCT_FILE_IDS.slice() },
+  ));
+
+  const workload = report.poWorkload;
+  const workloadArmed = workload?.armedEveryCycle === true
+    || (Array.isArray(report.cycles)
+      && report.cycles.length > 0
+      && report.cycles.every((row) => row?.poWorkload?.armed === true));
+  // Live MultichartGrid surfaces must arm PO workload. Sealed fixtures skip.
+  const workloadRequired = report.meta?.fixture == null
+    && (report.meta?.poWorkload === true
+      || report.meta?.surface === 'deployed'
+      || report.meta?.surface === 'dist-v9');
+  cells.push(cell(
+    'HEAP-CYCLE-PO-WORKLOAD-ARMED',
+    !workloadRequired || workloadArmed,
+    !workloadRequired
+      ? 'PO workload not required on this surface'
+      : (workloadArmed
+        ? `PO workload armed every cycle (indicators+order+live replay); arms=${workload?.arms?.length || report.cycles?.length}`
+        : 'PO workload NOT armed — layout-only cycles cannot grade (GATE-01)'),
+    {
+      blocking: workloadRequired,
+      workload,
+    },
+  ));
+
+  const hand = report.poHandShape;
+  cells.push(cell(
+    'HEAP-CYCLE-PO-HAND-SHAPE',
+    hand?.ok === true || !workloadRequired,
+    !workloadRequired
+      ? 'PO hand shape not required'
+      : (hand?.ok
+        ? `PO-HAND matched: meanΔ=${hand.meanDeltaMb?.toFixed?.(2) ?? hand.meanDeltaMb}MB lateJump=${hand.lateJumpMb?.toFixed?.(2) ?? hand.lateJumpMb}MB`
+        : (hand?.reason || 'PO hand shape missing — cannot reproduce ~13 MB/cycle late-climb')),
+    {
+      status: !workloadRequired ? 'SKIP' : (hand?.ok ? 'PO-LIKE' : 'MISS'),
+      // Non-blocking report cell: calibration/workload cells block ship.
+      nonBlocking: true,
+      pass: true,
+      hand,
+    },
   ));
   cells.push(cell(
     'HEAP-CYCLE-DETACHED-DIV-STABLE',
@@ -494,6 +543,8 @@ export function assertHeapCycleMemoryReport(report) {
       ? assessGrowthCensusCalibration(census, {
         meanHeapFloorDeltaBytes: summary.meanHeapDelta,
         meanDetachedDivDelta: summary.gradedDetachedDelta,
+        poWorkloadArmed: workloadArmed,
+        poHandShapeOk: hand?.ok === true,
       })
       : null);
   const leakCleared = summary.detachedStable === true && summary.heapBounded === true;
