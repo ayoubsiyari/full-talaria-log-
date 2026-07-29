@@ -1,13 +1,17 @@
-# Unknown Row Canary Risk Labels — 2026-07-29
+# Open Row Canary Risk Labels — 2026-07-29
 
-Scope: remaining `unknown` rows in `docs/plan3/TICKET-STATUS-LEDGER-20260729.md` after the evidence-only sweep on `manager-d/trade-correctness` rebased onto `manager-b/reconcile-d-20260729`.
+Scope: every `not-fixed` row in `docs/plan3/TICKET-STATUS-LEDGER-20260729.md` after the evidence-only sweep on `manager-d/trade-correctness` rebased onto `manager-b/reconcile-d-20260729`.
 
-Counts: 97 unknown rows remain. 47 are canary-blocking. 50 are cosmetic / non-blocking disclosure items.
+Counts: 103 open rows remain. 52 are canary-blocking. 51 are cosmetic / non-blocking disclosure items. Zero rows remain `unknown`.
 
 Rule: this label does not mark a row fixed. A row still needs a commit and a gate to move to `fixed`.
 
 ## Canary-Blocking
 
+- M17-DI2 / completed-bar mutation: `M17-DI2 / TAL-01918`.
+- Symbol persistence: `TAL-01865`, `TAL-01747`.
+- M20-A timezone sha pin: `M20-A timezone sha pin`.
+- M24 residual board member: `TAL-01940`.
 - Cluster B / trade ledger: `TAL-01911`.
 - Cluster C / multichart replay correctness: `TAL-01717`, `TAL-01733`, `TAL-01887`, `TAL-01910`, `TAL-01939`, `Rayan #2`.
 - Cluster D / session navigation correctness: `TAL-01677`, `TAL-01732`, `TAL-01893`, `TAL-01909`, `TAL-01929`.
@@ -22,6 +26,7 @@ Rule: this label does not mark a row fixed. A row still needs a commit and a gat
 
 ## Cosmetic / Non-Blocking Disclosure
 
+- Instrumentation-only row: `TAL-01941`.
 - Cluster D / scratched or user-confusion navigation row: `TAL-01912`.
 - Cluster H / labels and scratched settings-label row: `TAL-01894`, `TAL-01914`, `TAL-01921`, `TAL-01935`.
 - Cluster J / zoom, scale, grid, news flag, and toolbar polish: `TAL-01724`, `TAL-01734`, `TAL-01755`, `TAL-01768`, `TAL-01821`, `TAL-01823`, `TAL-01838`, `TAL-01862`, `TAL-01916`, `TAL-01928`.

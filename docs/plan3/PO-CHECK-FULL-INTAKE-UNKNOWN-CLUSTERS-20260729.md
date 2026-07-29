@@ -1,4 +1,4 @@
-# PO Check - Unknown Intake Clusters
+# PO Check - Open Intake Clusters
 
 Use one current accepted TEST build. Record the build id once, then mark each check PASS / FAIL / NOT RUN. Screenshots only on FAIL.
 

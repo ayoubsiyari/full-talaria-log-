@@ -280,3 +280,9 @@
 - TIER-01 compliance acknowledged: D authors bounded packets at tier=mid on gpt-5.5 and escalates money-path review to TOP.
 - TIER-02 recorded: budget pressure reduces the number of concurrent TOP reviews and serializes them; reviewer tier is not downgraded to save budget, and manager tier does not drop without Director ruling.
 - Standing journal practice: every future TOP review entry needs one clause naming why TOP is required, e.g. money-path orders/positions/balance/SL-TP execution/trade journal, live proxy config adjacent to money-path, or another explicit Director-approved trigger.
+
+## 2026-07-29 — Canary 24h Phase 1 / zero-unknown ledger collapse
+
+- Read binding canary plan `ad40cbc6b` / `docs/plan3/PLAN-CANARY-24H-20260729-2230.md`. D phase: collapse the remaining unknowns from commits and gates, zero PO time.
+- No additional commit+gate closures found after `06d9dea90`; therefore every remaining `unknown` row was converted to `not-fixed` / open rather than left ambiguous. Ledger now has 41 fixed / 103 not-fixed / 0 unknown.
+- Updated open-row labels in `docs/plan3/UNKNOWN-RISK-LABELS-20260729.md` to cover every `not-fixed` row: 52 canary-blocking, 51 cosmetic/non-blocking disclosure items.
