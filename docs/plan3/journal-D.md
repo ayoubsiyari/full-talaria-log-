@@ -249,3 +249,10 @@
 - tier=audit model=gpt-5.5; reviewer tier=top model=claude-opus-5-thinking-high result=ACCEPT for all queued money-path commits in `docs/plan3/TOP-REVIEW-REQUEUE-D-20260729.md`.
 - Queue result: 13/13 ACCEPT, 0 REJECT. Accepted commits: `b21d236d3`, `f1ddb2e64`, `b3f6cd6de`, `5f3e68368`, `a8d887db1`, `7a2871f24`, `864c2446c`, `c0a0d7620`, `e9d9f7594`, `379394fc0`, `b1196e79c`, `adaffe58e`, `93c842bc8`.
 - Residual routed: `c0a0d7620` changed `timezone-manager.js` and broke a non-money-path M20-A sha256 pin; M20-A owner should re-pin/re-review that gate. TIER-01 money-path queue is clear for canary.
+
+## 2026-07-29 — Merge handoff to B / on-call
+
+- Wrote `docs/plan3/HANDOFF-D-TO-B-MERGE-20260729.md` for B's merge: D is on call to review every `order-manager.js` conflict hunk before money-path canary.
+- Flagged post-merge D gates that must pass after B resolves conflicts: new-draft constraint reset, live preview PnL, live risk quantity, block-place-during-preview-drag, and coincident multi-TP hit rows.
+- Disclosed out-of-grant preferences writes from `6ad9f48ec`: `preferences-sync.js` / `preferences-init.js` add user-level drawing-tool pins, preserve non-empty local timeframe/tool pins over empty cloud arrays, queue them back to API, and expose `save/loadDrawingToolFavorites`. These are not D-ratified and should come through B's merge only if B accepts them.
+- Routed residuals again: M20-A owner must re-pin/re-review the `timezone-manager.js` sha256 gate; B must rebuild `dist-v9` bundles before PO can see TAL-01896 in the app.
