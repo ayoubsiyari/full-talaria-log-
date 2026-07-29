@@ -243,6 +243,11 @@ function _orderRiskQtyLivePreviewSlV1Enabled() {
     return typeof window === 'undefined' || !window.__TALARIA_DISABLE_ORDER_RISK_QTY_LIVE_PREVIEW_SL_V1;
 }
 
+/** Cluster G / drag family: placement waits until preview drag commits or cancels. */
+function _orderBlockPlaceDuringPreviewDragV1Enabled() {
+    return typeof window === 'undefined' || !window.__TALARIA_DISABLE_ORDER_BLOCK_PLACE_DURING_PREVIEW_DRAG_V1;
+}
+
 /** Cluster G / TAL-01751: BE trigger keeps the preview/place anchor. */
 function _orderBePlaceAnchorV1Enabled() {
     return typeof window === 'undefined' || !window.__TALARIA_DISABLE_ORDER_BE_PLACE_ANCHOR_V1;
@@ -850,6 +855,12 @@ class OrderManager {
     _oiIsProvisionalEditActive() {
         const st = this._orderProvisionalEdit;
         return !!(st && st.phase !== 'idle');
+    }
+
+    _shouldBlockPlaceDuringPreviewDrag() {
+        if (!_orderBlockPlaceDuringPreviewDragV1Enabled()) return false;
+        const st = this._orderProvisionalEdit;
+        return !!this.isDraggingPreviewLine || !!(st && st.phase === 'preview');
     }
 
     _oiBeginProvisionalEdit(opts = {}) {
@@ -29185,6 +29196,10 @@ class OrderManager {
     placeAdvancedOrder(options = {}) {
         console.log('🟦OM-DIAG placeAdvancedOrder() CALLED', options);
         const keepPanelOpen = options.keepPanelOpen === true;
+        if (this._shouldBlockPlaceDuringPreviewDrag()) {
+            console.warn('🟦OM-DIAG place blocked while preview drag is active');
+            return { ok: false, reason: 'preview_drag_active' };
+        }
         if (!this.replaySystem || !this.replaySystem.isActive) {
             alert('Replay mode must be active to place orders');
             return { ok: false, reason: 'replay_not_active' };
