@@ -1,0 +1,29 @@
+{
+  "packet": "W76-P1-WORKER-PLUS-ONE-RESOLVED",
+  "tier": "mid",
+  "model": "cursor-grok-4.5",
+  "verdict": "CLOSED — 'workers +1 per multichart cycle' does not exist. It is +1 once, on the first cycle only.",
+  "build": "20260729b99",
+  "surface": "deployed + PO workload, 6 cycles, measured in BOTH dataset configurations",
+  "attribution": {
+    "worker": "indicator-worker.js",
+    "createdBy": "chart-indicators-full.js :: _getIndicatorWorker",
+    "perPanel": "one per panel chart that runs indicators",
+    "terminateCalled": false,
+    "whySurvivorsDoNotAccumulate": "peer panels live in iframes; when the grid collapses, each iframe is destroyed and takes its Worker with it. Termination is by frame teardown, not by an explicit terminate() call, so the missing terminate() is untidy but not a leak."
+  },
+  "liveEvidence": {
+    "returnFloorLiveDeltas": [1, 0, 0, 0, 0, 0],
+    "meanLiveDeltaPerCycle": 0.167,
+    "plusOnePerCycle": false,
+    "cdpCumulative": { "created": 19, "destroyed": 18, "surviving": 1 },
+    "peakDeltas": "+3 to +4 at the four-panel peak of cycle 1, then 0 for every later cycle",
+    "reading": "The host singleton is created once and lives for the session. Peers are created and destroyed with their iframes every cycle, which is why cumulative CDP creates climb to 19 while live count stays pinned at 1."
+  },
+  "whyItLookedLikePlusOnePerCycle": "The same warm-up artefact that inflated the heap figure: cycle 1 pays a one-time cost (+1 worker, +130..350 MB) and it was read as a per-cycle rate. Cycles 2..6 add exactly zero workers.",
+  "consequenceForTheDirectorsConcern": {
+    "concern": "A Worker holds its own heap, invisible to usedJSHeapSize, so the PO's figures may UNDERSTATE the leak.",
+    "answer": "Valid mechanism, but it is not active here. Worker count is constant at 1 from cycle 1 onward in both configurations, so no Worker-private heap is accumulating and usedJSHeapSize is not blind to a growing mass. The 23.28 MB/cycle measured in the distinct config is main-thread heap and is not understated by hidden Worker heaps.",
+    "residualRisk": "A single long-lived worker could still grow internally. Not measured here — that needs a per-target heap read against the worker target, which CDP can do. Flagged, not claimed."
+  }
+}

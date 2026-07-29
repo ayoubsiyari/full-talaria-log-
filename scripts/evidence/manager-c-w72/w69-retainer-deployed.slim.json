@@ -1,0 +1,508 @@
+{
+  "source": ".scratch-w69-retainer-deployed.json",
+  "status": "RED",
+  "ok": false,
+  "error": "HEAP-GROWTH-SURFACE-CALIBRATION: HARNESS-NOT-REAL-PRODUCT: PO pins matched 0/4 (Detached<div>Δ=93, UniqueElementDataΔ=null, CSSPropertyBackingΔ=null, heapMeanBytes=27053111). Need ≥2 of {Detached<div>≳5k, UniqueElementData≳10k, CSSBacking≳10k, heap≳28MB}. PO manual: +21699 Detached <div>, +30565 UniqueElementData, +22209 CSSBacking, ~29 MB.; HEAP-CYCLE-DETACHED-DIV-STABLE: gradedDetachedDelta=31 signal=cdp-detachedness cdpDetachedMean=31 retainedHtmlDivMean=679.6666666666666 maxStable=1 poPerCycle=21699; HEAP-CYCLE-HEAP-FLOOR-BOUNDED: meanHeapFloorDelta=27053111 max=8388608 po≈50MB/cycle",
+  "meta": {
+    "surface": "deployed",
+    "buildId": null,
+    "cycles": 3,
+    "disableFlags": null
+  },
+  "heap": {
+    "baselineMB": 64.35,
+    "floorsMB": [
+      97.588,
+      128.153,
+      141.749
+    ],
+    "deltasMB": [
+      33.238,
+      30.565,
+      13.596
+    ],
+    "meanDeltaMB": 25.8
+  },
+  "detachedDeltas": [
+    93,
+    0,
+    0
+  ],
+  "detachedCounts": [
+    450,
+    450,
+    450
+  ],
+  "topHoarders": [
+    {
+      "constructor": "system / ExternalStringData",
+      "totalSizeDeltaMB": 62.408,
+      "sizeDeltasMB": [
+        20.911,
+        20.762,
+        20.735
+      ],
+      "countDeltas": [
+        351,
+        138,
+        115
+      ]
+    },
+    {
+      "constructor": "heap number",
+      "totalSizeDeltaMB": 15.7,
+      "sizeDeltasMB": [
+        8.223,
+        7.458,
+        0.018
+      ],
+      "countDeltas": [
+        718554,
+        651718,
+        1610
+      ]
+    },
+    {
+      "constructor": "Object",
+      "totalSizeDeltaMB": 10.077,
+      "sizeDeltasMB": [
+        5.363,
+        4.647,
+        0.067
+      ],
+      "countDeltas": [
+        157675,
+        136157,
+        1994
+      ]
+    },
+    {
+      "constructor": "system / InstructionStream",
+      "totalSizeDeltaMB": 4.218,
+      "sizeDeltasMB": [
+        1.591,
+        1.582,
+        1.045
+      ],
+      "countDeltas": [
+        874,
+        809,
+        611
+      ]
+    },
+    {
+      "constructor": "(script line ends)",
+      "totalSizeDeltaMB": 1.612,
+      "sizeDeltasMB": [
+        0.542,
+        0.535,
+        0.535
+      ],
+      "countDeltas": [
+        20,
+        18,
+        18
+      ]
+    },
+    {
+      "constructor": "system / BytecodeArray",
+      "totalSizeDeltaMB": 1.537,
+      "sizeDeltasMB": [
+        0.598,
+        0.477,
+        0.462
+      ],
+      "countDeltas": [
+        2062,
+        1546,
+        1511
+      ]
+    },
+    {
+      "constructor": "(object elements)",
+      "totalSizeDeltaMB": 1.342,
+      "sizeDeltasMB": [
+        0.357,
+        0.977,
+        0.008
+      ],
+      "countDeltas": [
+        2304,
+        1483,
+        155
+      ]
+    },
+    {
+      "constructor": "system / DescriptorArray",
+      "totalSizeDeltaMB": 0.87,
+      "sizeDeltasMB": [
+        0.531,
+        0.339,
+        0.001
+      ],
+      "countDeltas": [
+        3643,
+        2233,
+        10
+      ]
+    },
+    {
+      "constructor": "system / TrustedByteArray",
+      "totalSizeDeltaMB": 0.842,
+      "sizeDeltasMB": [
+        0.335,
+        0.317,
+        0.19
+      ],
+      "countDeltas": [
+        2481,
+        2093,
+        1646
+      ]
+    },
+    {
+      "constructor": "system / Map",
+      "totalSizeDeltaMB": 0.842,
+      "sizeDeltasMB": [
+        0.509,
+        0.331,
+        0.001
+      ],
+      "countDeltas": [
+        13355,
+        8685,
+        34
+      ]
+    },
+    {
+      "constructor": "system / FeedbackVector",
+      "totalSizeDeltaMB": 0.638,
+      "sizeDeltasMB": [
+        0.38,
+        0.25,
+        0.009
+      ],
+      "countDeltas": [
+        1639,
+        1093,
+        65
+      ]
+    },
+    {
+      "constructor": "system / ScopeInfo",
+      "totalSizeDeltaMB": 0.374,
+      "sizeDeltasMB": [
+        0.146,
+        0.115,
+        0.113
+      ],
+      "countDeltas": [
+        3119,
+        2447,
+        2388
+      ]
+    }
+  ],
+  "topBySize": [
+    {
+      "constructor": "system / ExternalStringData",
+      "totalSizeDeltaMB": 62.408,
+      "sizeDeltasMB": [
+        20.911,
+        20.762,
+        20.735
+      ]
+    },
+    {
+      "constructor": "heap number",
+      "totalSizeDeltaMB": 15.7,
+      "sizeDeltasMB": [
+        8.223,
+        7.458,
+        0.018
+      ]
+    },
+    {
+      "constructor": "Object",
+      "totalSizeDeltaMB": 10.077,
+      "sizeDeltasMB": [
+        5.363,
+        4.647,
+        0.067
+      ]
+    },
+    {
+      "constructor": "system / InstructionStream",
+      "totalSizeDeltaMB": 4.218,
+      "sizeDeltasMB": [
+        1.591,
+        1.582,
+        1.045
+      ]
+    },
+    {
+      "constructor": "(script line ends)",
+      "totalSizeDeltaMB": 1.612,
+      "sizeDeltasMB": [
+        0.542,
+        0.535,
+        0.535
+      ]
+    },
+    {
+      "constructor": "system / BytecodeArray",
+      "totalSizeDeltaMB": 1.537,
+      "sizeDeltasMB": [
+        0.598,
+        0.477,
+        0.462
+      ]
+    },
+    {
+      "constructor": "(object elements)",
+      "totalSizeDeltaMB": 1.342,
+      "sizeDeltasMB": [
+        0.357,
+        0.977,
+        0.008
+      ]
+    },
+    {
+      "constructor": "system / DescriptorArray",
+      "totalSizeDeltaMB": 0.87,
+      "sizeDeltasMB": [
+        0.531,
+        0.339,
+        0.001
+      ]
+    },
+    {
+      "constructor": "system / TrustedByteArray",
+      "totalSizeDeltaMB": 0.842,
+      "sizeDeltasMB": [
+        0.335,
+        0.317,
+        0.19
+      ]
+    },
+    {
+      "constructor": "system / Map",
+      "totalSizeDeltaMB": 0.842,
+      "sizeDeltasMB": [
+        0.509,
+        0.331,
+        0.001
+      ]
+    },
+    {
+      "constructor": "system / FeedbackVector",
+      "totalSizeDeltaMB": 0.638,
+      "sizeDeltasMB": [
+        0.38,
+        0.25,
+        0.009
+      ]
+    },
+    {
+      "constructor": "system / FeedbackCell",
+      "totalSizeDeltaMB": 0.633,
+      "sizeDeltasMB": [
+        0.384,
+        0.248,
+        0
+      ]
+    },
+    {
+      "constructor": "(object properties)",
+      "totalSizeDeltaMB": 0.615,
+      "sizeDeltasMB": [
+        0.378,
+        0.237,
+        0
+      ]
+    },
+    {
+      "constructor": "system / ScopeInfo",
+      "totalSizeDeltaMB": 0.374,
+      "sizeDeltasMB": [
+        0.146,
+        0.115,
+        0.113
+      ]
+    },
+    {
+      "constructor": "system / UncompiledDataWithoutPreparseData",
+      "totalSizeDeltaMB": 0.35,
+      "sizeDeltasMB": [
+        0.118,
+        0.116,
+        0.116
+      ]
+    }
+  ],
+  "externalStringData": {
+    "totalSelfBytes": 92121080,
+    "topPaths": [
+      {
+        "bytes": 14488998,
+        "n": 3,
+        "path": "(Eternal handles) → system / FunctionTemplateInfo[] → DOMTokenList[WeakMapPair] → system / NativeContext[context] → Window [JSGlobalObject][global_object] → _resolveSltpStepperSeedPrice → system / SharedFunctionInfo / _resolveSltpStepperSeedPrice[shared] → system / Script → /**\n * Order Management System for Backtesting\n * Handles order placement, tracking, and P&L calculation\n */\n\nconst MAX_TP_TARGETS = 5;\nconst MAX_ENTRY_LEVELS = 4;\n\n// localStorage key for the no-session runtime order fallback (must match chart.js).\nconst ORDER_MANAGER_LOCAL_RUNTIME_KEY = 'chart_orders_runtime_local_v1';\n/** sessionStorage key prefix for A6-2 session-scoped runtime orders (D-019). */\nconst ORDER_RUNTIME_SESSION_STORAGE_KEY = 'chart_orders_runtime_session_v1';\n\n/** A6-2 order persistence across F5 — default ON. */\nfunction _orderPersistenceV1Enabled() {\n    return typeof window === 'undefined' || !window.__TALARIA_DISABLE_ORDER_PERSISTENCE_V1;\n}\n\n/**\n * B-W18 rollback lever for the B-W16 durable-journal hydration guard — default ON.\n *\n * Fail-safe, not a feature flag: ONLY an explicitly recognised affirmative value\n * disables the guard. Unset, null, '', 0, 'false', 'off' or any typo leaves the\n * guard ACTIVE, as does an absent `window`. The failure directions are not\n * symmetric — a guard [source] → system / ExternalStringData[2 / backing_store]",
+        "suspect": []
+      },
+      {
+        "bytes": 11667006,
+        "n": 3,
+        "path": "(Eternal handles) → system / FunctionTemplateInfo[] → DOMTokenList[WeakMapPair] → system / NativeContext[context] → Window [JSGlobalObject][global_object] → cb01MountSigV1Enabled → system / SharedFunctionInfo / cb01MountSigV1Enabled[shared] → system / Script\n// Install-once helpers. Pure no-op unless window.__TALARIA_BL2B_PRICE_PROBE is\n// truthy. Never throw (wrapped in try/catch) so hot paths are unaffected.\n// Snap: capture Y-scale state. Mark: record which BUS delivered the frame.\n// Log: compare before/after on embed panels and warn on the first change.\nif (typeof window !== 'undefined' && !window.__talariaBl2bSnap) {\n    window.__talariaBl2bSnap = function (ch) {\n        try {\n            if (!window.__TALARIA_BL2B_PRICE_PROBE || !ch) return null;\n            var ys = null;\n            try {\n                if (ch.yScale && typeof ch.yScale.domain === 'function') ys = ch.yScale.domain();\n            } catch (_e) { ys = null; }\n            return {\n                priceZoom: ch.priceZoom,\n                priceOffset: ch.priceOffset,\n                autoScale: ch.autoScale,\n                priceScaleAutoScale: ch.priceScale ? ch.priceScale.autoScale : undefined,\n                [source] → system / ExternalStringData[2 / backing_store]",
+        "suspect": []
+      },
+      {
+        "bytes": 5934246,
+        "n": 3,
+        "path": "(Eternal handles) → system / FunctionTemplateInfo[] → DOMTokenList[WeakMapPair] → system / NativeContext[context] → Window [JSGlobalObject][global_object] → buildOverlayBandLegendTokens[talariaBuildOverlayBandLegendTokens] → system / SharedFunctionInfo / buildOverlayBandLegendTokens[shared] → system / Script\n(function(global) {\n    \n    // Wait for Chart class to be defined\n    function initIndicatorsModule() {\n        if (typeof global.Chart === 'undefined') {\n            setTimeout(initIndicatorsModule, 100);\n            return;\n        }\n        attachIndicatorMethods();\n    }\n    \n    function attachIndicatorMethods() {\n        const Chart = global.Chart;\n\n        (function ensureIndLegendHoverCss() {\n            if (typeof document === 'undefined') return;\n            const css = [\n                '@media (hover: hover) and (pointer: fine) {',\n                '  .talaria-ind-legend-row .talaria-ind-actions {',\n                '    opacity: 0;',\n                '    transition: opacity 0.12s ease;',\n                '    pointer-events: none;',\n                '  }',\n                '  .talaria-ind-legend-row:hover .talaria-ind-actions {',\n                '    opacity: 1;',\n                '    pointer-events: auto;',\n                '  }',\n            [source] → system / ExternalStringData[2 / backing_store]",
+        "suspect": []
+      },
+      {
+        "bytes": 5339928,
+        "n": 3,
+        "path": "(Eternal handles) → system / FunctionTemplateInfo[] → DOMTokenList[WeakMapPair] → system / NativeContext[context] → Window [JSGlobalObject][global_object] → formatTvNumberInputValue → system / SharedFunctionInfo / formatTvNumberInputValue[shared] → system / Script → 3/**\n\n * Drawing Tools - UI Module\n\n * Implements: Settings Panel, Toolbar, Context Menu, Text Editor\n\n */\n\n\n\n// ============================================================================\n\n// Shared Color Palette Utilities\n\n// ============================================================================\n\n\n\nconst DRAWING_COLOR_UTILS = (() => {\n\n    const ROWS = [\n\n        ['#FFFFFF', '#EBEBEB', '#D6D6D6', '#BFBFBF', '#A8A8A8', '#8F8F8F', '#757575', '#5C5C5C', '#434343', '#000000'],\n\n        ['#FF4444', '#FF9500', '#FFEB3B', '#4CAF50', '#00BCD4', '#00E5FF', '#787b86', '#7B68EE', '#E040FB', '#FF4081'],\n\n        ['#FFCDD2', '#FFE0B2', '#FFF9C4', '#C8E6C9', '#B2EBF2', '#B2F5FF', '#BBDEFB', '#D1C4E9', '#E1BEE7', '#F8BBD0'],\n\n        ['#FFAB91', '#FFCC80', '#FFF59D', '#A5D6A7', '#80DEEA', '#80E5FF', '#90CAF9', '#B39DDB', '#CE93D8', '#F48FB1'],\n\n        ['#FF8A65', '#FFB74D', '#FFF176', '#81C784', '#4DD0E1', '#4DD5FF', '#64B5F6', '#9575CD', '#BA68C8', '#F06292'],\n\n        ['#FF5252', '#FFA726', '#FFEE58', '#66BB6A',[source] → system / ExternalStringData[2 / backing_store]",
+        "suspect": []
+      },
+      {
+        "bytes": 4878978,
+        "n": 3,
+        "path": "(Eternal handles) → system / FunctionTemplateInfo[] → DOMTokenList[WeakMapPair] → system / NativeContext[context] → Window [JSGlobalObject][global_object] → resolveV9OpenDrawingSettings → system / SharedFunctionInfo / resolveV9OpenDrawingSettings[shared] → system / Script → /**\n * Drawing Tools Manager\n * Main coordinator for all drawing tools\n * Handles drawing lifecycle, event management, and persistence\n * \n * @version 1.5.11\n * @updated 2026-03-28\n * @changelog\n *   - Drawing titles: same tool type is numbered when multiple exist (e.g. Path 1, Path 2); single instance shows base name only. Custom names stored in meta.customDisplayName.\n *   - Fixed: Selecting another panel’s chart deselects drawings and hides the floating toolbar from the previous panel\n *   - Fixed: Magnet mode now disabled when resizing shapes - allows free resizing outside chart area\n *   - Fixed: Shapes behind Y-axis can no longer be detected/moved when mouse is over axis\n *   - Added boundary check in findDrawingsAtPoint() to exclude axis regions from hit detection\n *   - Previous fixes:\n *     - Text dropdown live preview not working when typing\n *     - Font size changes in text dropdown now update drawing in real-time\n *     - Changed text input handler to use queryAll for proper external dropdown su[source] → system / ExternalStringData[2 / backing_store]",
+        "suspect": []
+      },
+      {
+        "bytes": 4829666,
+        "n": 1,
+        "path": "synthetic → system / NativeContext / http://31.97.192.82:3000[] → Window [JSGlobalObject] / http://31.97.192.82:3000[global_object] → _resolveSltpStepperSeedPrice → system / SharedFunctionInfo / _resolveSltpStepperSeedPrice[shared] → system / Script → /**\n * Order Management System for Backtesting\n * Handles order placement, tracking, and P&L calculation\n */\n\nconst MAX_TP_TARGETS = 5;\nconst MAX_ENTRY_LEVELS = 4;\n\n// localStorage key for the no-session runtime order fallback (must match chart.js).\nconst ORDER_MANAGER_LOCAL_RUNTIME_KEY = 'chart_orders_runtime_local_v1';\n/** sessionStorage key prefix for A6-2 session-scoped runtime orders (D-019). */\nconst ORDER_RUNTIME_SESSION_STORAGE_KEY = 'chart_orders_runtime_session_v1';\n\n/** A6-2 order persistence across F5 — default ON. */\nfunction _orderPersistenceV1Enabled() {\n    return typeof window === 'undefined' || !window.__TALARIA_DISABLE_ORDER_PERSISTENCE_V1;\n}\n\n/**\n * B-W18 rollback lever for the B-W16 durable-journal hydration guard — default ON.\n *\n * Fail-safe, not a feature flag: ONLY an explicitly recognised affirmative value\n * disables the guard. Unset, null, '', 0, 'false', 'off' or any typo leaves the\n * guard ACTIVE, as does an absent `window`. The failure directions are not\n * symmetric — a guard [source] → system / ExternalStringData[2 / backing_store]",
+        "suspect": []
+      },
+      {
+        "bytes": 3889002,
+        "n": 1,
+        "path": "(Global handles) → Chart[DevTools] → closure[_handleViewportRefresh] → system / SharedFunctionInfo[shared] → system / Script\n// Install-once helpers. Pure no-op unless window.__TALARIA_BL2B_PRICE_PROBE is\n// truthy. Never throw (wrapped in try/catch) so hot paths are unaffected.\n// Snap: capture Y-scale state. Mark: record which BUS delivered the frame.\n// Log: compare before/after on embed panels and warn on the first change.\nif (typeof window !== 'undefined' && !window.__talariaBl2bSnap) {\n    window.__talariaBl2bSnap = function (ch) {\n        try {\n            if (!window.__TALARIA_BL2B_PRICE_PROBE || !ch) return null;\n            var ys = null;\n            try {\n                if (ch.yScale && typeof ch.yScale.domain === 'function') ys = ch.yScale.domain();\n            } catch (_e) { ys = null; }\n            return {\n                priceZoom: ch.priceZoom,\n                priceOffset: ch.priceOffset,\n                autoScale: ch.autoScale,\n                priceScaleAutoScale: ch.priceScale ? ch.priceScale.autoScale : undefined,\n                [source] → system / ExternalStringData[2 / backing_store]",
+        "suspect": []
+      },
+      {
+        "bytes": 3430576,
+        "n": 1,
+        "path": "synthetic → system / NativeContext / http://31.97.192.82:3000[] → Window [JSGlobalObject] / http://31.97.192.82:3000[global_object] → u[__rebuildObjectsTree] → system / SharedFunctionInfo / u[shared] → system / Script → (function(){const n=document.createElement(\"link\").relList;if(n&&n.supports&&n.supports(\"modulepreload\"))return;for(const l of document.querySelectorAll('link[rel=\"modulepreload\"]'))o(l);new MutationObserver(l=>{for(const c of l)if(c.type===\"childList\")for(const g of c.addedNodes)g.tagName===\"LINK\"&&g.rel===\"modulepreload\"&&o(g)}).observe(document,{childList:!0,subtree:!0});function i(l){const c={};return l.integrity&&(c.integrity=l.integrity),l.referrerPolicy&&(c.referrerPolicy=l.referrerPolicy),l.crossOrigin===\"use-credentials\"?c.credentials=\"include\":l.crossOrigin===\"anonymous\"?c.credentials=\"omit\":c.credentials=\"same-origin\",c}function o(l){if(l.ep)return;l.ep=!0;const c=i(l);fetch(l.href,c)}})();function LD(t){return t&&t.__esModule&&Object.prototype.hasOwnProperty.call(t,\"default\")?t.default:t}var j8={exports:{}},J1={},T8={exports:{}},Hn={};/**\n * @license React\n * react.production.min.js\n *\n * Copyright (c) Facebook, Inc. and its affiliates.\n *\n * This source code is licensed under the MIT license foun[source] → system / ExternalStringData[2 / backing_store]",
+        "suspect": []
+      }
+    ]
+  },
+  "smartPrefetch": [
+    {
+      "ctor": "heap number",
+      "bytes": 47964,
+      "n": 3997,
+      "path": "(Global handles) → Chart[DevTools] → Map[_smartPrefetchCache] → array[table] → Object[] → Object[payload] → Array[candles] → Object[] → heap number[c]"
+    },
+    {
+      "ctor": "heap number",
+      "bytes": 47964,
+      "n": 3997,
+      "path": "(Global handles) → Chart[DevTools] → Map[_smartPrefetchCache] → array[table] → Object[] → Object[payload] → Array[candles] → Object[] → heap number[h]"
+    },
+    {
+      "ctor": "Object",
+      "bytes": 564408,
+      "n": 15678,
+      "path": "(Global handles) → Chart[DevTools] → Map[_smartPrefetchCache] → array[table] → Object[] → Object[payload] → Array[candles] → Object[]"
+    },
+    {
+      "ctor": "Object",
+      "bytes": 1496,
+      "n": 35,
+      "path": "(Eternal handles) → system / FunctionTemplateInfo[] → DOMTokenList[WeakMapPair] → system / NativeContext[context] → Window [JSGlobalObject][global_object] → Chart[mainChart] → Map[_smartPrefetchCache] → array[table] → Object[] → Object[payload]"
+    }
+  ],
+  "cells": [
+    {
+      "name": "HEAP-CYCLE-REPORT-SHAPE",
+      "status": "GREEN",
+      "pass": true,
+      "detail": "signature=TALARIA_HEAP_CYCLE_MEMORY_V1"
+    },
+    {
+      "name": "HEAP-CYCLE-INSTRUMENT-COMPLETE",
+      "status": "GREEN",
+      "pass": true,
+      "detail": "usedJSHeapSize+forcedGc samples for baseline+3 cycles; detached counts present"
+    },
+    {
+      "name": "HEAP-CYCLE-DISTINCT-FILEIDS",
+      "status": "GREEN",
+      "pass": true,
+      "detail": "each cycle used distinct fileIds 25,27,28,29"
+    },
+    {
+      "name": "HEAP-CYCLE-DETACHED-DIV-STABLE",
+      "status": "RED",
+      "pass": false,
+      "detail": "gradedDetachedDelta=31 signal=cdp-detachedness cdpDetachedMean=31 retainedHtmlDivMean=679.6666666666666 maxStable=1 poPerCycle=21699",
+      "gradedDetachedDelta": 31,
+      "detachedDeltas": [
+        93,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "HEAP-CYCLE-HEAP-FLOOR-BOUNDED",
+      "status": "RED",
+      "pass": false,
+      "detail": "meanHeapFloorDelta=27053111 max=8388608 po≈50MB/cycle",
+      "meanHeapDelta": 27053111,
+      "heapDeltas": [
+        34852412,
+        32049966,
+        14256955
+      ]
+    },
+    {
+      "name": "M26-REGRADE-ON-HEAP-CYCLE",
+      "status": "INSUFFICIENT",
+      "pass": true,
+      "detail": "INSUFFICIENT: leak remains on usedJSHeapSize+detached-div instrument (M26 correct but insufficient; footprint fail void)"
+    },
+    {
+      "name": "FIX3-REGRADE-ON-HEAP-CYCLE",
+      "status": "INSUFFICIENT",
+      "pass": true,
+      "detail": "INSUFFICIENT: leak remains on usedJSHeapSize+detached-div instrument (FIX3 footprint fail void)"
+    },
+    {
+      "name": "HEAP-GROWTH-CENSUS-EMITTED",
+      "status": "GREEN",
+      "pass": true,
+      "detail": "full constructor tables ×3; A-list=6297; B-top=40"
+    },
+    {
+      "name": "HEAP-GROWTH-MONOTONIC-HOARDERS",
+      "status": "GREEN",
+      "pass": true,
+      "detail": "A-list size=6297 rankedByTotalBytes=true (grew all 3 cycles, never shrank)"
+    },
+    {
+      "name": "HEAP-GROWTH-TOP40-CONTEXT",
+      "status": "GREEN",
+      "pass": true,
+      "detail": "B-list length=40 max=40"
+    },
+    {
+      "name": "HEAP-GROWTH-SURFACE-CALIBRATION",
+      "status": "RED",
+      "pass": false,
+      "detail": "HARNESS-NOT-REAL-PRODUCT: PO pins matched 0/4 (Detached<div>Δ=93, UniqueElementDataΔ=null, CSSPropertyBackingΔ=null, heapMeanBytes=27053111). Need ≥2 of {Detached<div>≳5k, UniqueElementData≳10k, CSSBacking≳10k, heap≳28MB}. PO manual: +21699 Detached <div>, +30565 UniqueElementData, +22209 CSSBacking, ~29 MB."
+    },
+    {
+      "name": "HEAP-RETAINER-PATHS-AGGREGATED",
+      "status": "GREEN",
+      "pass": true,
+      "detail": "aggregated paths for system / ExternalStringData, heap number, Object; cacheSuspectPathLines=8"
+    }
+  ]
+}

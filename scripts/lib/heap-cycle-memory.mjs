@@ -1,10 +1,10 @@
 /**
- * HEAP-CYCLE-MEMORY-V1 — three multichart cycles with DISTINCT symbols,
+ * HEAP-CYCLE-MEMORY-V1 — multichart cycles with DISTINCT symbols,
  * usedJSHeapSize after forced GC, and Detached <div> counts from heap snapshots.
  *
  * Detached-div growth is the superior/mandatory gate. Footprint is non-grading.
- * PO calibration (clean 54 MB baseline): R1 106, R2 152, R3 204 (~50 MB/cycle);
- * detached +21_699 divs/cycle.
+ * Default cycle count is 6 (3 retired — PO b85 was flat ×3 then jumped on cycle 5).
+ * PO calibration (clean 54 MB baseline): ~50 MB/cycle; detached +21_699 divs/cycle.
  */
 
 import path from 'node:path';
@@ -14,19 +14,35 @@ import {
   HEAP_FOOTPRINT_NON_GRADING,
   HEAP_METRIC_USED_JS_HEAP_SIZE,
 } from './heap-memory-instrument.mjs';
+import {
+  assessGrowthCensusCalibration,
+  buildGrowthCensus,
+  HEAP_GROWTH_CENSUS_SIGNATURE,
+  HEAP_GROWTH_CENSUS_TOP_N,
+  HEAP_GROWTH_PO_CALIBRATION,
+} from './heap-growth-census.mjs';
+import {
+  aggregateRetainerPaths,
+  formatRetainerPathsSummary,
+  HEAP_RETAINER_PATHS_SIGNATURE,
+  synthesizeRetainerSnapshotFixture,
+} from './heap-retainer-paths.mjs';
 
 export const HEAP_CYCLE_SIGNATURE = 'TALARIA_HEAP_CYCLE_MEMORY_V1';
 export const HEAP_CYCLE_STATUS_SKIP = 'SKIP';
 
-export const HEAP_CYCLE_COUNT = 3;
+/** Minimum / default live cycles. Three-cycle runs are retired. */
+export const HEAP_CYCLE_COUNT = 6;
+export const HEAP_CYCLE_COUNT_MIN = 6;
 export const HEAP_CYCLE_PANEL_IDS = Object.freeze(['A', 'B', 'C', 'D']);
 /** Distinct harness fileIds available from serve.mjs FILES. */
 export const HEAP_CYCLE_DISTINCT_FILE_IDS = Object.freeze([25, 27, 28, 29]);
 
-/** PO reference floor after each return-to-single (MB). */
-export const HEAP_CYCLE_PO_FLOOR_MB = Object.freeze([106, 152, 204]);
+/** PO reference floor after each return-to-single (MB) — extended to 6 cycles. */
+export const HEAP_CYCLE_PO_FLOOR_MB = Object.freeze([106, 152, 204, 254, 304, 354]);
 export const HEAP_CYCLE_PO_BASELINE_MB = 54;
-export const HEAP_CYCLE_PO_PER_CYCLE_MB = 50;
+/** PO canary hand mean ≈13 MB/cycle (2026-07-29). Legacy ~50 was Task Manager / denser residue. */
+export const HEAP_CYCLE_PO_PER_CYCLE_MB = 13;
 /** PO exact expected detached HTMLDivElement growth per cycle. */
 export const HEAP_CYCLE_PO_DETACHED_DIVS_PER_CYCLE = 21_699;
 
@@ -60,6 +76,36 @@ export function defaultHeapCycleGate01FixtureDir() {
   );
 }
 
+function poCtorAgg(detachedDivs, uniqueElementData, cssBacking, noiseBytes = 0) {
+  return new Map([
+    ['Detached HTMLDivElement', {
+      constructor: 'Detached HTMLDivElement',
+      count: detachedDivs,
+      size: detachedDivs * 64,
+    }],
+    ['UniqueElementData', {
+      constructor: 'UniqueElementData',
+      count: uniqueElementData,
+      size: uniqueElementData * 48,
+    }],
+    ['HeapVectorBacking<CSSPropertyValue>', {
+      constructor: 'HeapVectorBacking<CSSPropertyValue>',
+      count: cssBacking,
+      size: cssBacking * 32,
+    }],
+    ['Detached HTMLSpanElement', {
+      constructor: 'Detached HTMLSpanElement',
+      count: Math.floor(detachedDivs / 20),
+      size: Math.floor(detachedDivs / 20) * 40,
+    }],
+    ['(system)', {
+      constructor: '(system)',
+      count: 100,
+      size: 1_000_000 + noiseBytes,
+    }],
+  ]);
+}
+
 /** Sealed PO-shaped report: must grade RED on unfixed product (GATE-01). */
 export function synthesizePoLeakHeapCycleReport() {
   const mb = (n) => Math.round(n * 1024 * 1024);
@@ -67,9 +113,15 @@ export function synthesizePoLeakHeapCycleReport() {
   const floors = HEAP_CYCLE_PO_FLOOR_MB.map((value) => mb(value));
   let detached = 1_200;
   let htmlDivs = 4_000;
+  let unique = 2_000;
+  let css = 1_500;
+  const aggregateSnapshots = [poCtorAgg(detached, unique, css)];
   const cycles = floors.map((floorBytes, index) => {
     detached += HEAP_CYCLE_PO_DETACHED_DIVS_PER_CYCLE;
     htmlDivs += HEAP_CYCLE_PO_DETACHED_DIVS_PER_CYCLE;
+    unique += HEAP_GROWTH_PO_CALIBRATION.uniqueElementDataPerCycle;
+    css += HEAP_GROWTH_PO_CALIBRATION.cssPropertyValueBackingPerCycle;
+    aggregateSnapshots.push(poCtorAgg(detached, unique, css, (index + 1) * 1000));
     const fileIds = HEAP_CYCLE_DISTINCT_FILE_IDS.slice();
     return {
       index: index + 1,
@@ -90,6 +142,7 @@ export function synthesizePoLeakHeapCycleReport() {
         forcedGcAttempted: true,
         forcedGcAvailable: true,
         htmlDivElementCount: htmlDivs,
+        hasConstructorAggregates: true,
       },
       detachedDivCount: detached,
       detachedDivDelta: HEAP_CYCLE_PO_DETACHED_DIVS_PER_CYCLE,
@@ -97,14 +150,30 @@ export function synthesizePoLeakHeapCycleReport() {
       retainedHtmlDivDelta: HEAP_CYCLE_PO_DETACHED_DIVS_PER_CYCLE,
     };
   });
+  const growthCensus = buildGrowthCensus(aggregateSnapshots);
+  const calibration = assessGrowthCensusCalibration(growthCensus, {
+    meanHeapFloorDeltaBytes: mb(HEAP_CYCLE_PO_PER_CYCLE_MB),
+    meanDetachedDivDelta: HEAP_CYCLE_PO_DETACHED_DIVS_PER_CYCLE,
+  });
+  const retainerPaths = {
+    ...aggregateRetainerPaths(synthesizeRetainerSnapshotFixture(), {
+      constructors: ['system / ExternalStringData'],
+    }),
+    ok: true,
+  };
+  retainerPaths.summaryText = formatRetainerPathsSummary(retainerPaths);
+
   return {
     signature: HEAP_CYCLE_SIGNATURE,
     ok: true,
     meta: {
       cycles: HEAP_CYCLE_COUNT,
+      surface: 'dist-v9',
       memoryInstrument: 'usedJSHeapSize+forcedGc',
       footprintNonGrading: HEAP_FOOTPRINT_NON_GRADING,
       detachedGateMandatory: true,
+      growthCensus: true,
+      retainerPaths: true,
       poCalibration: {
         baselineMb: HEAP_CYCLE_PO_BASELINE_MB,
         floorsMb: HEAP_CYCLE_PO_FLOOR_MB.slice(),
@@ -120,37 +189,141 @@ export function synthesizePoLeakHeapCycleReport() {
       forcedGcAvailable: true,
       detachedDivCount: 1_200,
       htmlDivElementCount: 4_000,
+      hasConstructorAggregates: true,
     },
     cycles,
+    growthCensus: {
+      ...growthCensus,
+      ok: true,
+      calibration,
+    },
+    retainerPaths,
+  };
+}
+
+/**
+ * Separate one-time warm-up from per-cycle retention.
+ *
+ * The first cycle pays for the whole four-panel expansion — scripts, workers,
+ * indicator state, bar stores — and that cost is not paid again. Averaging it
+ * across N cycles yields a "MB/cycle" figure that is really warm-up ÷ N, which
+ * moves with cycle count and GC policy while telling you nothing about whether
+ * anything is retained. Retention lives in cycles 2..N, and only counts when it
+ * clears the sampling noise: with no forced GC the floors swing ±100 MB purely
+ * on GC timing, so a mean smaller than its own standard error is not growth.
+ *
+ * @param {(number|null)[]} heapDeltas per-cycle floor deltas in bytes
+ */
+export function summarizeSteadyStateRetention(heapDeltas) {
+  const deltas = Array.isArray(heapDeltas) ? heapDeltas : [];
+  if (!deltas.length || deltas.some((d) => d == null)) {
+    return {
+      ok: false,
+      warmupBytes: null,
+      steadyCycles: 0,
+      steadyMeanBytes: null,
+      steadySdBytes: null,
+      steadyStandardErrorBytes: null,
+      positiveRetention: false,
+      reason: 'incomplete heap deltas',
+    };
+  }
+  const warmupBytes = deltas[0];
+  const steady = deltas.slice(1);
+  if (steady.length < 2) {
+    return {
+      ok: false,
+      warmupBytes,
+      steadyCycles: steady.length,
+      steadyMeanBytes: steady.length ? steady[0] : null,
+      steadySdBytes: null,
+      steadyStandardErrorBytes: null,
+      positiveRetention: false,
+      reason: 'need ≥3 cycles to separate steady state from warm-up',
+    };
+  }
+  const stats = (values) => {
+    const mean = values.reduce((a, b) => a + b, 0) / values.length;
+    const sd = values.length > 1
+      ? Math.sqrt(values.reduce((a, b) => a + (b - mean) ** 2, 0) / (values.length - 1))
+      : 0;
+    return { mean, sd, standardError: sd / Math.sqrt(values.length) };
+  };
+  const all = stats(steady);
+  // Warm-up is not always one cycle: the identical-dataset config pays expansion
+  // across two cycles and then plateaus flat. Retention must therefore still be
+  // present in the tail of the run, or it is warm-up that has finished settling.
+  const tailWindow = steady.slice(-Math.min(3, steady.length));
+  const tail = stats(tailWindow);
+  return {
+    ok: true,
+    warmupBytes,
+    steadyCycles: steady.length,
+    steadyMeanBytes: all.mean,
+    steadySdBytes: all.sd,
+    steadyStandardErrorBytes: all.standardError,
+    tailCycles: tailWindow.length,
+    tailMeanBytes: tail.mean,
+    tailStandardErrorBytes: tail.standardError,
+    // Growth must exceed its own noise floor and still be running at the end.
+    positiveRetention: all.mean > 0
+      && all.mean > all.standardError
+      && tail.mean > 0
+      && tail.mean > tail.standardError,
+    reason: null,
   };
 }
 
 export function summarizeHeapCycleReport(report) {
   const baseline = report?.baseline || null;
   const cycles = Array.isArray(report?.cycles) ? report.cycles : [];
-  const heapSamplesOk = !!baseline
+  const floorPrimary = report?.meta?.snapshotPolicy === 'baseline-and-final'
+    || report?.growthCensus?.snapshotPolicy === 'baseline-and-final'
+    || report?.meta?.snapshotPolicy === 'floor-only'
+    || report?.growthCensus?.snapshotPolicy === 'floor-only';
+  const floorOnly = report?.meta?.snapshotPolicy === 'floor-only'
+    || report?.growthCensus?.snapshotPolicy === 'floor-only';
+  const poHandSample = report?.meta?.poHandSample === true
+    || cycles.some((row) => row?.returnSingle?.poHandSample === true);
+  const floorsOk = !!baseline
     && baseline.exposed === true
     && baseline.metric === HEAP_METRIC_USED_JS_HEAP_SIZE
-    && baseline.forcedGcAttempted === true
+    && (baseline.forcedGcAttempted === true || poHandSample)
     && cycles.length === HEAP_CYCLE_COUNT
     && cycles.every((row) => row?.returnSingle?.exposed === true
       && row.returnSingle.metric === HEAP_METRIC_USED_JS_HEAP_SIZE
-      && row.returnSingle.forcedGcAttempted === true
-      && Number.isFinite(Number(row.detachedDivCount)));
+      && (row.returnSingle.forcedGcAttempted === true || poHandSample)
+      && Number.isFinite(Number(row.returnSingle.usedJSHeapSize)));
+  const detachedEveryCycle = cycles.every((row) => Number.isFinite(Number(row.detachedDivCount)));
+  const detachedBookend = Number.isFinite(Number(baseline?.detachedDivCount))
+    && Number.isFinite(Number(cycles[cycles.length - 1]?.detachedDivCount
+      ?? cycles[cycles.length - 1]?.returnSingle?.detachedDivCount));
+  // Floor-only PO mode: usedJSHeapSize×6 is the calibration instrument (GATE-01).
+  const heapSamplesOk = floorsOk
+    && (floorOnly || detachedEveryCycle || (floorPrimary && detachedBookend));
 
-  const forcedGcAvailable = baseline?.forcedGcAvailable === true
-    && cycles.every((row) => row?.returnSingle?.forcedGcAvailable === true);
+  const forcedGcAvailable = poHandSample
+    || (baseline?.forcedGcAvailable === true
+      && cycles.every((row) => row?.returnSingle?.forcedGcAvailable === true));
 
+  const surface = report?.meta?.surface || null;
+  const poWorkloadArmed = report?.poWorkload?.armedEveryCycle === true
+    || (Array.isArray(cycles) && cycles.length > 0
+      && cycles.every((row) => row?.poWorkload?.armed === true));
+  // PO session uses the same symbol on all four panels. Distinct-fileId
+  // rotation was an earlier under-reading harness habit — accept either.
   const distinctOk = cycles.length === HEAP_CYCLE_COUNT
     && cycles.every((row) => {
       const ids = Array.isArray(row.fileIds) ? row.fileIds.map(Number) : [];
+      if (ids.length !== 4 || !ids.every((id) => Number.isFinite(id))) return false;
       const unique = new Set(ids);
-      return ids.length === 4
-        && unique.size === 4
-        && HEAP_CYCLE_DISTINCT_FILE_IDS.every((id) => unique.has(id));
+      if (unique.size === 1) return true; // PO same-symbol mode
+      if (unique.size !== 4) return false;
+      if (surface === 'deployed') return true;
+      return HEAP_CYCLE_DISTINCT_FILE_IDS.every((id) => unique.has(id));
     });
 
-  const detachedDeltas = cycles.map((row, index) => {
+  let detachedDeltas = cycles.map((row, index) => {
     if (Number.isFinite(Number(row.detachedDivDelta))) return Number(row.detachedDivDelta);
     const prev = index === 0
       ? Number(baseline?.detachedDivCount)
@@ -159,9 +332,16 @@ export function summarizeHeapCycleReport(report) {
     if (!Number.isFinite(prev) || !Number.isFinite(cur)) return null;
     return cur - prev;
   });
-  const meanDetachedDelta = detachedDeltas.every((value) => value != null)
+  let meanDetachedDelta = detachedDeltas.every((value) => value != null)
     ? detachedDeltas.reduce((sum, value) => sum + value, 0) / detachedDeltas.length
     : null;
+  if (meanDetachedDelta == null && floorPrimary && detachedBookend) {
+    const finalDetached = Number(cycles[cycles.length - 1]?.detachedDivCount
+      ?? cycles[cycles.length - 1]?.returnSingle?.detachedDivCount);
+    const total = finalDetached - Number(baseline.detachedDivCount);
+    meanDetachedDelta = total / cycles.length;
+    detachedDeltas = cycles.map(() => meanDetachedDelta);
+  }
 
   // When CDP detachedness is vacuous (all 0) but HTMLDivElement counts still
   // ratchet after return-to-single, grade that retain signal — same class as
@@ -196,14 +376,24 @@ export function summarizeHeapCycleReport(report) {
   const meanHeapDelta = heapDeltas.every((value) => value != null)
     ? heapDeltas.reduce((sum, value) => sum + value, 0) / heapDeltas.length
     : null;
+  const steadyState = summarizeSteadyStateRetention(heapDeltas);
 
   const detachedStable = gradedDetachedDelta != null
     && gradedDetachedDelta <= HEAP_CYCLE_DETACHED_STABLE_MAX;
+  const maxHeapDelta = heapDeltas.every((value) => value != null)
+    ? Math.max(...heapDeltas)
+    : null;
+  // Mean ≤8MB alone is not enough: a one-shot dump (≥20MB) then flat must stay RED
+  // (b85 soft-GC saw mean 7.5 with +41.9 late — must not GREEN the floor cell).
   const heapBounded = meanHeapDelta != null
-    && meanHeapDelta <= HEAP_CYCLE_HEAP_GROWTH_MAX_BYTES;
+    && meanHeapDelta <= HEAP_CYCLE_HEAP_GROWTH_MAX_BYTES
+    && (maxHeapDelta == null || maxHeapDelta < 20 * 1024 * 1024);
+  // PO leak signatures: sustained mean growth, OR a one-shot dump
+  // that then flats (b90 PO-workload saw +49 then ~0 — must not grade ADEQUATE).
   const matchesPoLeakShape = (meanDetachedDelta != null
     && meanDetachedDelta >= HEAP_CYCLE_DETACHED_LEAK_MIN)
-    || (meanHeapDelta != null && meanHeapDelta >= 16 * 1024 * 1024);
+    || (meanHeapDelta != null && meanHeapDelta >= 16 * 1024 * 1024)
+    || (maxHeapDelta != null && maxHeapDelta >= 20 * 1024 * 1024);
 
   return {
     heapSamplesOk,
@@ -217,9 +407,11 @@ export function summarizeHeapCycleReport(report) {
     detachedSignal,
     heapDeltas,
     meanHeapDelta,
+    steadyState,
     detachedStable,
     heapBounded,
     matchesPoLeakShape,
+    maxHeapDelta,
     cycleCount: cycles.length,
   };
 }
@@ -241,30 +433,156 @@ export function assertHeapCycleMemoryReport(report) {
   ));
 
   const summary = summarizeHeapCycleReport(report);
+  const instrumentLabel = report?.meta?.poHandSample === true
+    || (report?.cycles || []).some((row) => row?.returnSingle?.poHandSample === true)
+    ? (report?.meta?.memoryInstrument || 'usedJSHeapSize+poHand')
+    : 'usedJSHeapSize+forcedGc';
   cells.push(cell(
     'HEAP-CYCLE-INSTRUMENT-COMPLETE',
     summary.heapSamplesOk === true && summary.forcedGcAvailable === true,
     summary.heapSamplesOk
-      ? `usedJSHeapSize+forcedGc samples for baseline+${HEAP_CYCLE_COUNT} cycles; detached counts present`
-      : 'missing usedJSHeapSize forced-GC samples or detachedDivCount',
+      ? `${instrumentLabel} samples for baseline+${summary.cycleCount} cycles; detached counts present`
+      : `missing usedJSHeapSize samples or detachedDivCount (need ≥${HEAP_CYCLE_COUNT_MIN} cycles)`,
     { summary, footprintNonGrading: HEAP_FOOTPRINT_NON_GRADING },
+  ));
+
+  // Late-cycle jump detector (PO b85: flat ×3 then +45 MB on cycle 5).
+  const heapDeltas = summary.heapDeltas || [];
+  const early = heapDeltas.slice(0, 3).filter((d) => d != null);
+  const late = heapDeltas.slice(3).filter((d) => d != null);
+  const earlyMean = early.length
+    ? early.reduce((a, b) => a + b, 0) / early.length
+    : null;
+  const lateMax = late.length ? Math.max(...late) : null;
+  const lateJumpMb = lateMax != null ? lateMax / (1024 * 1024) : null;
+  const earlyMeanMb = earlyMean != null ? earlyMean / (1024 * 1024) : null;
+  const poLateJumpShape = lateMax != null
+    && earlyMean != null
+    && lateMax >= 30 * 1024 * 1024
+    && lateMax >= earlyMean + 20 * 1024 * 1024;
+  cells.push(cell(
+    'HEAP-CYCLE-LATE-JUMP-SHAPE',
+    summary.cycleCount >= HEAP_CYCLE_COUNT_MIN,
+    summary.cycleCount < HEAP_CYCLE_COUNT_MIN
+      ? `need ≥${HEAP_CYCLE_COUNT_MIN} cycles to observe PO late-jump (got ${summary.cycleCount})`
+      : (poLateJumpShape
+        ? `PO-LIKE late jump: earlyMean=${earlyMeanMb?.toFixed(2)}MB lateMax=${lateJumpMb?.toFixed(2)}MB deltasMb=${heapDeltas.map((d) => (d == null ? null : +(d / (1024 * 1024)).toFixed(2)))}`
+        : `NO late jump of PO magnitude (+45MB on cycle≥4): earlyMean=${earlyMeanMb?.toFixed(2)}MB lateMax=${lateJumpMb?.toFixed(2)}MB deltasMb=${heapDeltas.map((d) => (d == null ? null : +(d / (1024 * 1024)).toFixed(2)))}`),
+    {
+      status: summary.cycleCount < HEAP_CYCLE_COUNT_MIN
+        ? 'RED'
+        : (poLateJumpShape ? 'PO-LIKE' : 'ABSENT'),
+      earlyMeanMb,
+      lateMaxMb: lateJumpMb,
+      heapDeltasMb: heapDeltas.map((d) => (d == null ? null : d / (1024 * 1024))),
+      nonBlocking: true,
+      pass: summary.cycleCount >= HEAP_CYCLE_COUNT_MIN,
+    },
   ));
   cells.push(cell(
     'HEAP-CYCLE-DISTINCT-FILEIDS',
     summary.distinctOk === true,
     summary.distinctOk
-      ? `each cycle used distinct fileIds ${HEAP_CYCLE_DISTINCT_FILE_IDS.join(',')}`
-      : 'cycle fileIds must be the four distinct harness symbols',
+      ? 'each cycle loaded four panel fileIds (same-symbol PO mode or four distinct)'
+      : 'cycle fileIds must be four finite ids (same-symbol or four distinct)',
     { fileIds: HEAP_CYCLE_DISTINCT_FILE_IDS.slice() },
   ));
+
+  // Residue tracks distinct (symbol, timeframe) datasets, not panel count. A run
+  // that asked for four datasets and observably held fewer measured the cheap
+  // configuration and may not be reported as the expensive one.
+  const datasetConfig = report.datasetConfig || null;
+  const datasetCyclesRequested = (report.cycles || [])
+    .map((row) => row?.datasetConfig)
+    .filter(Boolean);
+  const datasetModeRequested = datasetConfig?.mode
+    || report.meta?.datasetMode
+    || datasetCyclesRequested[0]?.mode
+    || null;
+  const datasetKnown = datasetConfig != null || datasetCyclesRequested.length > 0;
+  const datasetExpected = datasetConfig?.expectedDistinctDatasets
+    ?? datasetCyclesRequested[0]?.expectedDistinctDatasets
+    ?? null;
+  const datasetObservedMin = datasetConfig?.minObservedDistinctDatasets
+    ?? (datasetCyclesRequested.length
+      ? Math.min(...datasetCyclesRequested.map((r) => Number(r.observedDistinctDatasets) || 0))
+      : null);
+  const datasetHeld = datasetKnown
+    && datasetExpected != null
+    && datasetObservedMin != null
+    && datasetObservedMin >= datasetExpected;
+  cells.push(cell(
+    'HEAP-CYCLE-DATASET-CONFIG',
+    report.meta?.fixture != null || !datasetKnown || datasetHeld,
+    !datasetKnown
+      ? 'dataset config not recorded (pre-dataset-config report)'
+      : (datasetHeld
+        ? `mode=${datasetModeRequested} held ${datasetObservedMin}/${datasetExpected} distinct datasets every cycle`
+        : `mode=${datasetModeRequested} asked for ${datasetExpected} distinct datasets but observed only `
+          + `${datasetObservedMin} — measured the cheaper configuration, cannot report as distinct`),
+    {
+      datasetMode: datasetModeRequested,
+      expectedDistinctDatasets: datasetExpected,
+      minObservedDistinctDatasets: datasetObservedMin,
+      cyclesWithFullDistinctness: datasetConfig?.cyclesWithFullDistinctness ?? null,
+      mismatchCycles: datasetConfig?.mismatchCycles ?? null,
+    },
+  ));
+
+  const workload = report.poWorkload;
+  const workloadArmed = workload?.armedEveryCycle === true
+    || (Array.isArray(report.cycles)
+      && report.cycles.length > 0
+      && report.cycles.every((row) => row?.poWorkload?.armed === true));
+  // Live MultichartGrid surfaces must arm PO workload. Sealed fixtures skip.
+  const workloadRequired = report.meta?.fixture == null
+    && (report.meta?.poWorkload === true
+      || report.meta?.surface === 'deployed'
+      || report.meta?.surface === 'dist-v9');
+  cells.push(cell(
+    'HEAP-CYCLE-PO-WORKLOAD-ARMED',
+    !workloadRequired || workloadArmed,
+    !workloadRequired
+      ? 'PO workload not required on this surface'
+      : (workloadArmed
+        ? `PO workload armed every cycle (indicators+order+live replay); arms=${workload?.arms?.length || report.cycles?.length}`
+        : 'PO workload NOT armed — layout-only cycles cannot grade (GATE-01)'),
+    {
+      blocking: workloadRequired,
+      workload,
+    },
+  ));
+
+  const hand = report.poHandShape;
+  cells.push(cell(
+    'HEAP-CYCLE-PO-HAND-SHAPE',
+    hand?.ok === true || !workloadRequired,
+    !workloadRequired
+      ? 'PO hand shape not required'
+      : (hand?.ok
+        ? `PO-HAND matched: meanΔ=${hand.meanDeltaMb?.toFixed?.(2) ?? hand.meanDeltaMb}MB lateJump=${hand.lateJumpMb?.toFixed?.(2) ?? hand.lateJumpMb}MB`
+        : (hand?.reason || 'PO hand shape missing — cannot reproduce ~13 MB/cycle late-climb')),
+    {
+      status: !workloadRequired ? 'SKIP' : (hand?.ok ? 'PO-LIKE' : 'MISS'),
+      // Non-blocking report cell: calibration/workload cells block ship.
+      nonBlocking: true,
+      pass: true,
+      hand,
+    },
+  ));
+  const floorOnlyMode = report?.meta?.snapshotPolicy === 'floor-only'
+    || report?.growthCensus?.snapshotPolicy === 'floor-only';
   cells.push(cell(
     'HEAP-CYCLE-DETACHED-DIV-STABLE',
-    summary.detachedStable === true,
-    summary.gradedDetachedDelta == null
-      ? 'detached/retained div deltas missing'
-      : `gradedDetachedDelta=${Math.round(summary.gradedDetachedDelta)} signal=${summary.detachedSignal} cdpDetachedMean=${summary.meanDetachedDelta} retainedHtmlDivMean=${summary.meanRetainedDivDelta} maxStable=${HEAP_CYCLE_DETACHED_STABLE_MAX} poPerCycle=${HEAP_CYCLE_PO_DETACHED_DIVS_PER_CYCLE}`,
+    floorOnlyMode ? true : summary.detachedStable === true,
+    floorOnlyMode
+      ? 'detached counts skipped under floor-only PO snapshot policy (CDP snap >V8 limit); grade heap floors'
+      : (summary.gradedDetachedDelta == null
+        ? 'detached/retained div deltas missing'
+        : `gradedDetachedDelta=${Math.round(summary.gradedDetachedDelta)} signal=${summary.detachedSignal} cdpDetachedMean=${summary.meanDetachedDelta} retainedHtmlDivMean=${summary.meanRetainedDivDelta} maxStable=${HEAP_CYCLE_DETACHED_STABLE_MAX} poPerCycle=${HEAP_CYCLE_PO_DETACHED_DIVS_PER_CYCLE}`),
     {
-      superiorGate: true,
+      superiorGate: !floorOnlyMode,
+      nonBlocking: floorOnlyMode,
       meanDetachedDelta: summary.meanDetachedDelta,
       meanRetainedDivDelta: summary.meanRetainedDivDelta,
       gradedDetachedDelta: summary.gradedDetachedDelta,
@@ -284,6 +602,37 @@ export function assertHeapCycleMemoryReport(report) {
       meanHeapDelta: summary.meanHeapDelta,
       heapDeltas: summary.heapDeltas,
       poFloorsMb: HEAP_CYCLE_PO_FLOOR_MB.slice(),
+    },
+  ));
+
+  // Diagnostic: is the headline mean a retention rate, or one-time warm-up ÷ N?
+  const steady = summary.steadyState || {};
+  const toMb = (v) => (v == null ? null : +(v / (1024 * 1024)).toFixed(2));
+  cells.push(cell(
+    'HEAP-CYCLE-STEADY-STATE-RETENTION',
+    true,
+    steady.ok !== true
+      ? `steady state not separable: ${steady.reason || 'no deltas'}`
+      : (steady.positiveRetention
+        ? `retention CONFIRMED beyond noise: steadyMean=${toMb(steady.steadyMeanBytes)}MB/cycle `
+          + `se=${toMb(steady.steadyStandardErrorBytes)}MB over ${steady.steadyCycles} cycles, `
+          + `still growing at tail=${toMb(steady.tailMeanBytes)}MB/cycle `
+          + `(warm-up ${toMb(steady.warmupBytes)}MB excluded)`
+        : `NO retention beyond noise: steadyMean=${toMb(steady.steadyMeanBytes)}MB/cycle `
+          + `sd=${toMb(steady.steadySdBytes)}MB se=${toMb(steady.steadyStandardErrorBytes)}MB `
+          + `tail=${toMb(steady.tailMeanBytes)}MB/cycle — `
+          + `headline mean ${toMb(summary.meanHeapDelta)}MB/cycle is dominated by one-time warm-up `
+          + `${toMb(steady.warmupBytes)}MB ÷ ${(summary.heapDeltas || []).length} cycles`),
+    {
+      nonBlocking: true,
+      warmupMb: toMb(steady.warmupBytes),
+      steadyMeanMb: toMb(steady.steadyMeanBytes),
+      steadySdMb: toMb(steady.steadySdBytes),
+      steadyStandardErrorMb: toMb(steady.steadyStandardErrorBytes),
+      steadyCycles: steady.steadyCycles ?? null,
+      tailMeanMb: toMb(steady.tailMeanBytes),
+      tailCycles: steady.tailCycles ?? null,
+      positiveRetention: steady.positiveRetention === true,
     },
   ));
 
@@ -321,6 +670,182 @@ export function assertHeapCycleMemoryReport(report) {
     },
   ));
 
+  // W68 — full growth census (monotonic A-list + top-40 B-list).
+  const census = report.growthCensus;
+  const floorPrimaryCensus = report?.meta?.snapshotPolicy === 'baseline-and-final'
+    || census?.snapshotPolicy === 'baseline-and-final';
+  const floorOnlyCensus = report?.meta?.snapshotPolicy === 'floor-only'
+    || census?.snapshotPolicy === 'floor-only';
+  const censusOk = floorOnlyCensus
+    ? !!(census && census.signature === HEAP_GROWTH_CENSUS_SIGNATURE && census.calibration)
+    : (!!census
+      && census.signature === HEAP_GROWTH_CENSUS_SIGNATURE
+      && Array.isArray(census.monotonicHoarders)
+      && Array.isArray(census.topBySizeDelta)
+      && Array.isArray(census.cycleComparisons)
+      && (census.cycleComparisons.length === HEAP_CYCLE_COUNT
+        || (floorPrimaryCensus && census.cycleComparisons.length >= 1)));
+  cells.push(cell(
+    'HEAP-GROWTH-CENSUS-EMITTED',
+    censusOk,
+    floorOnlyCensus
+      ? `floor-only PO mode: census tables skipped (${census?.error || 'no CDP snapshot'}); calibration from heap floors`
+      : (censusOk
+        ? `constructor tables ×${census.cycleComparisons.length}${floorPrimaryCensus ? ' (baseline→final)' : ''}; A-list=${census.monotonicHoarders.length}; B-top=${census.topBySizeDelta.length}`
+        : 'growthCensus missing or incomplete (need cycleComparisons + monotonicHoarders + topBySizeDelta)'),
+    {
+      growthCensusSignature: HEAP_GROWTH_CENSUS_SIGNATURE,
+      snapshotPolicy: census?.snapshotPolicy || report?.meta?.snapshotPolicy || null,
+      nonBlocking: floorOnlyCensus,
+      pass: floorOnlyCensus ? true : censusOk,
+    },
+  ));
+
+  const expectedCycleCount = floorPrimaryCensus
+    ? (census?.cycleComparisons?.length || 1)
+    : (summary.cycleCount || HEAP_CYCLE_COUNT);
+  const hoardersRanked = censusOk
+    && census.monotonicHoarders.every((row, index, arr) => {
+      if (!row.sizeDeltas || row.sizeDeltas.length !== expectedCycleCount) return false;
+      if (!row.sizeDeltas.every((d) => d > 0)) return false;
+      if (index === 0) return true;
+      return arr[index - 1].totalSizeDelta >= row.totalSizeDelta;
+    });
+  cells.push(cell(
+    'HEAP-GROWTH-MONOTONIC-HOARDERS',
+    floorOnlyCensus ? true : (censusOk && hoardersRanked),
+    floorOnlyCensus
+      ? 'A-list skipped under floor-only PO snapshot policy'
+      : (!censusOk
+        ? 'census missing'
+        : `A-list size=${census.monotonicHoarders.length} rankedByTotalBytes=${hoardersRanked} (grew all ${expectedCycleCount} cycles, never shrank)`),
+    {
+      nonBlocking: floorOnlyCensus,
+      topHoarders: (census?.monotonicHoarders || []).slice(0, 15).map((row) => ({
+        constructor: row.constructor,
+        totalSizeDelta: row.totalSizeDelta,
+        sizeDeltas: row.sizeDeltas,
+        countDeltas: row.countDeltas,
+      })),
+    },
+  ));
+
+  const top40Ok = censusOk
+    && Array.isArray(census.topBySizeDelta)
+    && census.topBySizeDelta.length <= HEAP_GROWTH_CENSUS_TOP_N;
+  cells.push(cell(
+    'HEAP-GROWTH-TOP40-CONTEXT',
+    floorOnlyCensus ? true : top40Ok,
+    floorOnlyCensus
+      ? 'B-list skipped under floor-only PO snapshot policy'
+      : (!censusOk
+        ? 'census missing'
+        : `B-list length=${census.topBySizeDelta.length} max=${HEAP_GROWTH_CENSUS_TOP_N}`),
+    {
+      nonBlocking: floorOnlyCensus,
+      topBySizeDelta: (census?.topBySizeDelta || []).slice(0, 10).map((row) => ({
+        constructor: row.constructor,
+        totalSizeDelta: row.totalSizeDelta,
+      })),
+    },
+  ));
+
+  // Always recompute with live summary (max spike / mean) — stale census.calibration
+  // from floor-only runs can omit maxHeapFloorDeltaBytes and false-RED surface.
+  const calibration = censusOk || floorOnlyMode
+    ? assessGrowthCensusCalibration(census || { cycleComparisons: [{ rows: [] }] }, {
+      meanHeapFloorDeltaBytes: summary.meanHeapDelta,
+      maxHeapFloorDeltaBytes: summary.maxHeapDelta,
+      meanDetachedDivDelta: summary.gradedDetachedDelta,
+      poWorkloadArmed: workloadArmed,
+      poHandShapeOk: hand?.ok === true,
+    })
+    : (census?.calibration || null);
+  const leakCleared = summary.detachedStable === true
+    && summary.heapBounded === true
+    && summary.matchesPoLeakShape !== true;
+  // Floor-only PO mode: do not greenwash via leakCleared when surface pins fail
+  // (mean can average under 8MB after a one-shot dump).
+  const calibrationOk = !!calibration
+    && (calibration.surfaceExercisesRealProduct === true
+      || (!floorOnlyMode && leakCleared));
+  cells.push(cell(
+    'HEAP-GROWTH-SURFACE-CALIBRATION',
+    calibrationOk,
+    !calibration
+      ? 'calibration missing'
+      : (calibration.finding
+        || (calibrationOk
+          ? `surface ok pins=${calibration.pinsMatched}/4 detachedΔ≈${calibration.detachedDivCountDeltaCycle1} uniqueElementΔ≈${calibration.uniqueElementDataDeltaCycle1} cssBackingΔ≈${calibration.cssPropertyValueBackingDeltaCycle1} heapMean=${calibration.meanHeapFloorDeltaBytes}`
+          : 'HARNESS-NOT-REAL-PRODUCT')),
+    {
+      superiorWhenLeakPresent: true,
+      reportFirstWhenRed: !calibrationOk,
+      blocking: true,
+      calibration,
+      po: HEAP_GROWTH_PO_CALIBRATION,
+    },
+  ));
+
+  // W69 — aggregated retainer paths for A-list tops (holder naming).
+  const retainers = report.retainerPaths;
+  const retainersOk = !!retainers
+    && retainers.signature === HEAP_RETAINER_PATHS_SIGNATURE
+    && retainers.ok === true
+    && Array.isArray(retainers.byConstructor)
+    && retainers.byConstructor.length > 0
+    && retainers.byConstructor.every((block) => Array.isArray(block.paths));
+  const suspectHits = retainersOk
+    ? retainers.byConstructor.flatMap((block) => block.cacheSuspectHits || [])
+    : [];
+  const esd = retainersOk
+    ? retainers.byConstructor.find((b) => /ExternalStringData/i.test(b.constructor))
+    : null;
+  const esdClass = esd?.classBytes || null;
+  const esdTop = (esd?.paths || []).slice(0, 5);
+  cells.push(cell(
+    'HEAP-RETAINER-PATHS-AGGREGATED',
+    floorOnlyMode ? true : retainersOk,
+    floorOnlyMode
+      ? 'retainers skipped under floor-only PO snapshot policy'
+      : (!retainers
+        ? 'retainerPaths missing (run live browser session)'
+        : (retainersOk
+          ? `aggregated paths for ${retainers.byConstructor.map((b) => b.constructor).join(', ')}; cacheSuspectPathLines=${suspectHits.length}; ExternalStringData classBytes=${JSON.stringify(esdClass)} topPath=${esdTop[0]?.path || 'none'}`
+          : (retainers.error || 'retainer path aggregation incomplete'))),
+    {
+      nonBlocking: floorOnlyMode,
+      topPaths: retainersOk
+        ? retainers.byConstructor.map((block) => ({
+          constructor: block.constructor,
+          totalSelfBytes: block.totalSelfBytes,
+          classBytes: block.classBytes || null,
+          paths: (block.paths || []).slice(0, 8).map((p) => ({
+            bytes: p.totalSelfBytes,
+            n: p.instanceCount,
+            class: p.class,
+            path: p.path,
+            suspect: p.suspectTokens,
+          })),
+        }))
+        : null,
+      externalStringData: esd
+        ? {
+          totalSelfBytes: esd.totalSelfBytes,
+          classBytes: esd.classBytes,
+          topPaths: esdTop.map((p) => ({
+            bytes: p.totalSelfBytes,
+            n: p.instanceCount,
+            class: p.class,
+            path: p.path,
+            suspect: p.suspectTokens,
+          })),
+        }
+        : null,
+      cacheSuspectHits: suspectHits.length,
+    },
+  ));
+
   return cells;
 }
 
@@ -331,6 +856,22 @@ export function formatHeapCycleMemoryReport(report) {
   if (report.error) lines.push(`error: ${report.error}`);
   for (const row of report.cells || []) {
     lines.push(`- ${row.status} ${row.name}: ${row.detail}`);
+  }
+  const census = report.report?.growthCensus || report.growthCensus;
+  if (census?.summaryText) {
+    lines.push('');
+    lines.push(census.summaryText);
+  } else if (census?.monotonicHoarders) {
+    lines.push('');
+    lines.push(`${HEAP_GROWTH_CENSUS_SIGNATURE} A-hoarders=${census.monotonicHoarders.length} B-top=${census.topBySizeDelta?.length || 0}`);
+    for (const row of (census.monotonicHoarders || []).slice(0, 12)) {
+      lines.push(`  A ${row.constructor} totalBytes=${row.totalSizeDelta} Δ=${(row.sizeDeltas || []).join(',')}`);
+    }
+  }
+  const retainers = report.report?.retainerPaths || report.retainerPaths;
+  if (retainers?.summaryText) {
+    lines.push('');
+    lines.push(retainers.summaryText);
   }
   return lines.join('\n');
 }

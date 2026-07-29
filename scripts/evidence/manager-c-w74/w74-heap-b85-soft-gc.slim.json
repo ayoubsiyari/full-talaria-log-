@@ -1,0 +1,55 @@
+{
+  "source": ".scratch-w74-heap-b85-soft2.json",
+  "packet": "W74-P1",
+  "tier": "mid",
+  "model": "cursor-grok-4.5",
+  "status": "RED",
+  "ok": false,
+  "buildId": "20260729b85",
+  "pin": "talaria-homepage:canary-20260729b85",
+  "memoryInstrument": "usedJSHeapSize+poHand(softGc×1)",
+  "poHandSample": true,
+  "heap": {
+    "baselineMB": 76.02,
+    "floorsMB": [
+      83.48,
+      108.8,
+      108.17,
+      84.74,
+      79.11,
+      121.01
+    ],
+    "deltasMB": [
+      7.46,
+      25.32,
+      -0.63,
+      -23.43,
+      -5.63,
+      41.9
+    ],
+    "meanDeltaMB": 7.5,
+    "maxDeltaMB": 41.9
+  },
+  "poHand": {
+    "status": "MISS",
+    "meanDeltaMB": 7.497949441274007,
+    "lateJumpMB": 41.90237331390381,
+    "poMeanMB": 13,
+    "poLateJumpMB": 45,
+    "note": "Soft GC×1 + 20s play + retain indicators. Mean 7.5 still under PO ~13, but late jump +41.9 ≈ PO +45. Calibration GREEN. Floor cell RED after one-shot dump fix."
+  },
+  "bracket": {
+    "forcedGcMeanMB": 5.76,
+    "softGcMeanMB": 7.5,
+    "noGcMeanMB": 21.14,
+    "poMeanMB": 13,
+    "note": "Instrument bracket around PO: forced under / soft under / raw over. Late-jump family matches on soft+noGC."
+  },
+  "calibration": "GREEN",
+  "heapFloorBounded": "RED",
+  "lateJump": "PO-LIKE",
+  "m26": "INSUFFICIENT",
+  "failedCells": [
+    "HEAP-CYCLE-HEAP-FLOOR-BOUNDED"
+  ]
+}

@@ -1,0 +1,93 @@
+{
+  "packet": "W75-P3-CPU-CEILING",
+  "tier": "mid",
+  "model": "cursor-grok-4.5",
+  "source": ".scratch-w75-cpu-ceiling.json",
+  "signature": "TALARIA_PO_CPU_CEILING_PROFILE_V1",
+  "status": "GREEN",
+  "ok": true,
+  "speed": 60,
+  "observeMs": 8000,
+  "harness": "po-cpu-ab-host.html",
+  "workRatio": 0.06909413198108245,
+  "callbackBusyMs": 561.299999974668,
+  "wallMs": 8123.699999999255,
+  "canvasPaintMs": 9.200000002980232,
+  "canvasPaintCalls": 10512,
+  "longtaskMs": 674,
+  "timelineCategories": {
+    "scripting": {
+      "ms": 561.3,
+      "ratio": 0.0691
+    },
+    "rendering": {
+      "ms": 0,
+      "ratio": 0
+    },
+    "painting": {
+      "ms": 9.2,
+      "ratio": 0.0011
+    },
+    "system": {
+      "ms": 7553.2,
+      "ratio": 0.9298
+    },
+    "other": {
+      "ms": 0,
+      "ratio": 0
+    }
+  },
+  "topCalls": [
+    {
+      "name": "raf :: m20Q6InertableScheduledCallback << m20Q6TrackScheduler (http://127.0.0.1:51289/chart/modules/replay-system.js:937",
+      "selfMs": 310,
+      "ratio": 0.5523
+    },
+    {
+      "name": "timeout :: m20Q6InertableScheduledCallback << m20Q6TrackScheduler (http://127.0.0.1:51289/chart/modules/replay-system.js",
+      "selfMs": 108.6,
+      "ratio": 0.1935
+    },
+    {
+      "name": "raf :: bound animate << Chart.animate (http://127.0.0.1:51289/chart/chart.js:29109:9)",
+      "selfMs": 49.1,
+      "ratio": 0.0875
+    },
+    {
+      "name": "timeout :: m20Q6InertableScheduledCallback << m20Q6TrackScheduler (http://127.0.0.1:51289/chart/modules/replay-system.js",
+      "selfMs": 28.7,
+      "ratio": 0.0511
+    },
+    {
+      "name": "timeout :: run << attempt (http://127.0.0.1:51289/chart/modules/drawing-tools-manager.js:14332:17) | DrawingToolsManager",
+      "selfMs": 3.9,
+      "ratio": 0.0069
+    },
+    {
+      "name": "timeout :: m20Q6InertableScheduledCallback << m20Q6TrackScheduler (http://127.0.0.1:51289/chart/modules/replay-system.js",
+      "selfMs": 2.7,
+      "ratio": 0.0048
+    },
+    {
+      "name": "timeout :: run << MultichartManager._scheduleInitialSyncToChart (http://127.0.0.1:51289/chart/multichart-prod/multichart",
+      "selfMs": 1,
+      "ratio": 0.0018
+    },
+    {
+      "name": "timeout :: anonymous << OrderManager._m20A1ScheduleRetentionSweep (http://127.0.0.1:51289/chart/modules/order-manager.js",
+      "selfMs": 0.7,
+      "ratio": 0.0012
+    },
+    {
+      "name": "raf :: m20Q6InertableScheduledCallback << m20Q6TrackScheduler (http://127.0.0.1:51289/chart/modules/replay-system.js:937",
+      "selfMs": 0.5,
+      "ratio": 0.0009
+    }
+  ],
+  "characterisation": {
+    "poClaim": "single-chart 60x ~111% CPU",
+    "instrument": "PO-CPU-CEILING-PROFILE-V1 (probe stacks + canvas paint; not OS Task Manager %)",
+    "dominant": "raf :: m20Q6InertableScheduledCallback << m20Q6TrackScheduler (http://127.0.0.1:51289/chart/modules/replay-system.js:937",
+    "note": "Characterises WHERE the 60x budget goes on the hermetic harness. OS 111% is Process Explorer/Task Manager; this gate reports callback workRatio + ranked stacks. Top stacks name the render/replay path ownership for A."
+  }
+}

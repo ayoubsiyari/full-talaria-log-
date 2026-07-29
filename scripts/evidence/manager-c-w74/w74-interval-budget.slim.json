@@ -1,0 +1,25 @@
+{
+  "source": ".scratch-w74-interval-budget-b95.json",
+  "packet": "W74",
+  "status": "GREEN",
+  "ok": true,
+  "buildId": "20260729b95",
+  "budgetMs": 50,
+  "setInterval": {
+    "callbacks": 678,
+    "maxCallbackMs": 1.5,
+    "p95CallbackMs": 0.4,
+    "violations": 0,
+    "verdict": "GREEN — no setInterval handler over 50ms"
+  },
+  "longtaskCorroboration": {
+    "count": 100,
+    "maxLongTaskMs": 521,
+    "verdict": "RED (non-blocking) — main-thread longtasks still present; PO 55/82/95 may be longtask/rAF path not wrapped setInterval"
+  },
+  "workload": {
+    "armed": true,
+    "observedPlaying": 4,
+    "orderOk": true
+  }
+}

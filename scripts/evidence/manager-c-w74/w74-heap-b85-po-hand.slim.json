@@ -1,0 +1,66 @@
+{
+  "source": ".scratch-w74-heap-b85-pohand.json",
+  "packet": "W74-P1",
+  "tier": "mid",
+  "model": "cursor-grok-4.5",
+  "status": "RED",
+  "ok": false,
+  "buildId": "20260729b85",
+  "pin": "talaria-homepage:canary-20260729b85",
+  "memoryInstrument": "usedJSHeapSize+poHand(noForcedGc)",
+  "poHandSample": true,
+  "snapshotPolicy": "floor-only",
+  "poWorkloadArmedEveryCycle": true,
+  "heap": {
+    "baselineMB": 116.59,
+    "floorsMB": [
+      209.3,
+      141.3,
+      300.32,
+      108.7,
+      125.17,
+      243.45
+    ],
+    "deltasMB": [
+      92.71,
+      -68,
+      159.02,
+      -191.62,
+      16.47,
+      118.28
+    ],
+    "meanDeltaMB": 21.14,
+    "maxDeltaMB": 159.02
+  },
+  "poHand": {
+    "status": "MATCH",
+    "meanDeltaMB": 21.143455028533936,
+    "lateJumpMB": 118.27972507476807,
+    "poMeanMB": 13,
+    "poFloorsMB": [
+      80,
+      72,
+      90,
+      96,
+      141,
+      155
+    ],
+    "note": "No forced GC + 20s play. Mean 21.1 vs PO ~13 (1.6x over). Prior forcedGc on same pin mean 5.76 (2x under). Gap closed from 20x (layout-only +0.69) to order-of-magnitude. Calibration GREEN. Gate RED on HEAP-FLOOR-BOUNDED (correct for defective b85)."
+  },
+  "contrastForcedGc": {
+    "source": ".scratch-w74-heap-b85-po.json",
+    "meanDeltaMB": 5.76,
+    "floorsMB": [
+      86.59,
+      86.81,
+      85.42,
+      84.64,
+      106.57,
+      110
+    ],
+    "note": "Double CDP GC + page gc() systematically under-reads vs PO hand"
+  },
+  "calibration": "GREEN",
+  "heapFloorBounded": "RED",
+  "m26": "INSUFFICIENT"
+}

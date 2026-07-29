@@ -1,0 +1,68 @@
+{
+  "source": ".scratch-rw57d-live-control.json",
+  "status": "RED",
+  "ok": false,
+  "error": "M6-SCHEDULER-CENSUS-RETURNS-TO-BASELINE: baselineTotal=317; finalTotal=326; deltas={\"pendingIntervals\":0,\"messageChannels\":0,\"broadcastChannels\":0,\"workers\":0,\"eventListeners\":9,\"pendingTimeouts\":0,\"pendingRafs\":0}; zeroToleranceOk=false; soakedTimerOk=true; soundChannelRed=false",
+  "cells": [
+    {
+      "name": "M6-PO-WORKLOAD-ARMED",
+      "pass": true,
+      "detail": "armed=true; panels=4; indicatorsOk=true; orderOk=true; stillPlaying=4",
+      "metrics": null
+    },
+    {
+      "name": "M6-REPLAY-LIVE-COUNT-RETURNS-TO-ONE",
+      "pass": true,
+      "detail": "baseline=1; final=1",
+      "metrics": null
+    },
+    {
+      "name": "M6-DETACHED-IFRAME-COUNT-NOT-GROWN",
+      "pass": true,
+      "detail": "connected=0; detachedLive=0; baselineDetachedLive=0",
+      "metrics": null
+    },
+    {
+      "name": "M6-SCHEDULER-CENSUS-INSTRUMENTED",
+      "pass": true,
+      "detail": "baselineInstalled=1/1; finalInstalled=1/1; baselineErrors=none; finalErrors=none",
+      "metrics": {
+        "baselineInstalledWindows": 1,
+        "baselineWindowCount": 1,
+        "finalInstalledWindows": 1,
+        "finalWindowCount": 1,
+        "baselineErrorCount": 0,
+        "finalErrorCount": 0
+      }
+    },
+    {
+      "name": "M6-SCHEDULER-CENSUS-RETURNS-TO-BASELINE",
+      "pass": false,
+      "detail": "baselineTotal=317; finalTotal=326; deltas={\"pendingIntervals\":0,\"messageChannels\":0,\"broadcastChannels\":0,\"workers\":0,\"eventListeners\":9,\"pendingTimeouts\":0,\"pendingRafs\":0}; zeroToleranceOk=false; soakedTimerOk=true; soundChannelRed=false",
+      "metrics": {
+        "deltas": {
+          "pendingIntervals": 0,
+          "messageChannels": 0,
+          "broadcastChannels": 0,
+          "workers": 0,
+          "eventListeners": 9,
+          "pendingTimeouts": 0,
+          "pendingRafs": 0
+        },
+        "zeroToleranceOk": false,
+        "soakedTimerOk": true,
+        "soundChannelRed": false,
+        "pass": false
+      }
+    }
+  ],
+  "schedulerDeltas": {
+    "pendingIntervals": 0,
+    "messageChannels": 0,
+    "broadcastChannels": 0,
+    "workers": 0,
+    "eventListeners": 9,
+    "pendingTimeouts": 0,
+    "pendingRafs": 0
+  }
+}

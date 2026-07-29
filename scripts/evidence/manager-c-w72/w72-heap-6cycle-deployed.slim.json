@@ -1,0 +1,705 @@
+{
+  "source": ".scratch-w72-heap-6cycle-deployed.json",
+  "status": "RED",
+  "ok": false,
+  "error": "HEAP-GROWTH-SURFACE-CALIBRATION: HARNESS-NOT-REAL-PRODUCT: PO pins matched 0/4 (Detached<div>Δ=93, UniqueElementDataΔ=null, CSSPropertyBackingΔ=null, heapMeanBytes=3845030.3333333335). Need ≥2 of {Detached<div>≳5k, UniqueElementData≳10k, CSSBacking≳10k, heap≳28MB}. PO manual: +21699 Detached <div>, +30565 UniqueElementData, +22209 CSSBacking, ~29 MB.; HEAP-CYCLE-DETACHED-DIV-STABLE: gradedDetachedDelta=193 signal=cdp-detachedness cdpDetachedMean=192.66666666666666 retainedHtmlDivMean=82 maxStable=1 poPerCycle=21699",
+  "meta": {
+    "surface": "deployed",
+    "buildId": "20260729b87",
+    "cycles": 6,
+    "disableFlags": []
+  },
+  "heap": {
+    "baselineMB": 69.936,
+    "floorsMB": [
+      93.268,
+      93.45,
+      93.647,
+      93.772,
+      93.515,
+      91.937
+    ],
+    "deltasMB": [
+      23.332,
+      0.181,
+      0.197,
+      0.125,
+      -0.257,
+      -1.577
+    ],
+    "meanDeltaMB": 3.667
+  },
+  "detachedDeltas": [
+    93,
+    0,
+    0,
+    0,
+    1063,
+    0
+  ],
+  "detachedCounts": [
+    417,
+    417,
+    417,
+    417,
+    1480,
+    1480
+  ],
+  "topHoarders": [
+    {
+      "constructor": "system / InstructionStream",
+      "totalSizeDeltaMB": 1.953,
+      "sizeDeltasMB": [
+        1.516,
+        0.113,
+        0.128,
+        0.094,
+        0.077,
+        0.025
+      ],
+      "countDeltas": [
+        794,
+        107,
+        83,
+        47,
+        68,
+        16
+      ]
+    },
+    {
+      "constructor": "system / FeedbackVector",
+      "totalSizeDeltaMB": 0.176,
+      "sizeDeltasMB": [
+        0.136,
+        0.015,
+        0.011,
+        0.006,
+        0.006,
+        0.003
+      ],
+      "countDeltas": [
+        628,
+        86,
+        72,
+        36,
+        53,
+        11
+      ]
+    },
+    {
+      "constructor": "system / Code",
+      "totalSizeDeltaMB": 0.068,
+      "sizeDeltasMB": [
+        0.048,
+        0.007,
+        0.005,
+        0.003,
+        0.004,
+        0.001
+      ],
+      "countDeltas": [
+        794,
+        107,
+        83,
+        47,
+        68,
+        16
+      ]
+    },
+    {
+      "constructor": "system / WeakArrayList",
+      "totalSizeDeltaMB": 0.053,
+      "sizeDeltasMB": [
+        0.04,
+        0.004,
+        0.002,
+        0.002,
+        0.003,
+        0.003
+      ],
+      "countDeltas": [
+        799,
+        11,
+        12,
+        34,
+        44,
+        10
+      ]
+    },
+    {
+      "constructor": "system / LoadHandler",
+      "totalSizeDeltaMB": 0.031,
+      "sizeDeltasMB": [
+        0.023,
+        0.003,
+        0.001,
+        0.002,
+        0.001,
+        0
+      ],
+      "countDeltas": [
+        1493,
+        167,
+        86,
+        96,
+        76,
+        31
+      ]
+    },
+    {
+      "constructor": "PerformanceResourceTiming",
+      "totalSizeDeltaMB": 0.018,
+      "sizeDeltasMB": [
+        0.012,
+        0.001,
+        0.001,
+        0.001,
+        0.001,
+        0.001
+      ],
+      "countDeltas": [
+        91,
+        8,
+        9,
+        9,
+        9,
+        9
+      ]
+    },
+    {
+      "constructor": "PerformanceLongAnimationFrameTiming",
+      "totalSizeDeltaMB": 0.014,
+      "sizeDeltasMB": [
+        0.002,
+        0.002,
+        0.003,
+        0.002,
+        0.003,
+        0.003
+      ],
+      "countDeltas": [
+        14,
+        14,
+        19,
+        14,
+        20,
+        18
+      ]
+    },
+    {
+      "constructor": "StorageEvent",
+      "totalSizeDeltaMB": 0.01,
+      "sizeDeltasMB": [
+        0.002,
+        0.002,
+        0.001,
+        0.001,
+        0.002,
+        0.002
+      ],
+      "countDeltas": [
+        14,
+        10,
+        8,
+        7,
+        11,
+        12
+      ]
+    },
+    {
+      "constructor": "system / AllocationSite",
+      "totalSizeDeltaMB": 0.01,
+      "sizeDeltasMB": [
+        0.008,
+        0.001,
+        0,
+        0.001,
+        0,
+        0
+      ],
+      "countDeltas": [
+        285,
+        25,
+        12,
+        23,
+        7,
+        11
+      ]
+    },
+    {
+      "constructor": "system / CodeWrapper",
+      "totalSizeDeltaMB": 0.009,
+      "sizeDeltasMB": [
+        0.006,
+        0.001,
+        0.001,
+        0,
+        0.001,
+        0
+      ],
+      "countDeltas": [
+        794,
+        107,
+        83,
+        47,
+        68,
+        16
+      ]
+    },
+    {
+      "constructor": "PerformanceScriptTiming",
+      "totalSizeDeltaMB": 0.008,
+      "sizeDeltasMB": [
+        0.001,
+        0.001,
+        0.001,
+        0.001,
+        0.001,
+        0.002
+      ],
+      "countDeltas": [
+        10,
+        8,
+        14,
+        7,
+        13,
+        22
+      ]
+    },
+    {
+      "constructor": "system / TrustedWeakFixedArray",
+      "totalSizeDeltaMB": 0.007,
+      "sizeDeltasMB": [
+        0.005,
+        0,
+        0,
+        0.001,
+        0,
+        0
+      ],
+      "countDeltas": [
+        136,
+        16,
+        10,
+        15,
+        11,
+        6
+      ]
+    }
+  ],
+  "topBySize": [
+    {
+      "constructor": "system / ExternalStringData",
+      "totalSizeDeltaMB": 20.94,
+      "sizeDeltasMB": [
+        20.951,
+        0,
+        0,
+        0,
+        0,
+        -0.012
+      ]
+    },
+    {
+      "constructor": "heap number",
+      "totalSizeDeltaMB": 3.679,
+      "sizeDeltasMB": [
+        3.677,
+        0.005,
+        0.001,
+        0,
+        0,
+        -0.003
+      ]
+    },
+    {
+      "constructor": "Object",
+      "totalSizeDeltaMB": 2.673,
+      "sizeDeltasMB": [
+        2.671,
+        -0.004,
+        -0.006,
+        0.007,
+        0.006,
+        0
+      ]
+    },
+    {
+      "constructor": "system / InstructionStream",
+      "totalSizeDeltaMB": 1.953,
+      "sizeDeltasMB": [
+        1.516,
+        0.113,
+        0.128,
+        0.094,
+        0.077,
+        0.025
+      ]
+    },
+    {
+      "constructor": "(script line ends)",
+      "totalSizeDeltaMB": 0.544,
+      "sizeDeltasMB": [
+        0.544,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "constructor": "system / TrustedByteArray",
+      "totalSizeDeltaMB": 0.4,
+      "sizeDeltasMB": [
+        0.33,
+        0.01,
+        0.026,
+        0.02,
+        0.037,
+        -0.022
+      ]
+    },
+    {
+      "constructor": "(object elements)",
+      "totalSizeDeltaMB": 0.292,
+      "sizeDeltasMB": [
+        0.29,
+        0,
+        -0.007,
+        0.002,
+        0.006,
+        0.001
+      ]
+    },
+    {
+      "constructor": "system / DescriptorArray",
+      "totalSizeDeltaMB": 0.189,
+      "sizeDeltasMB": [
+        0.192,
+        0.001,
+        0,
+        0.001,
+        0.004,
+        -0.009
+      ]
+    },
+    {
+      "constructor": "system / Map",
+      "totalSizeDeltaMB": 0.182,
+      "sizeDeltasMB": [
+        0.179,
+        0.001,
+        0.001,
+        0.002,
+        0,
+        0
+      ]
+    },
+    {
+      "constructor": "system / FeedbackVector",
+      "totalSizeDeltaMB": 0.176,
+      "sizeDeltasMB": [
+        0.136,
+        0.015,
+        0.011,
+        0.006,
+        0.006,
+        0.003
+      ]
+    },
+    {
+      "constructor": "(object properties)",
+      "totalSizeDeltaMB": 0.138,
+      "sizeDeltasMB": [
+        0.146,
+        0,
+        -0.001,
+        0.001,
+        -0.007,
+        0
+      ]
+    },
+    {
+      "constructor": "system / FeedbackCell",
+      "totalSizeDeltaMB": 0.136,
+      "sizeDeltasMB": [
+        0.136,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "constructor": "Detached <div>",
+      "totalSizeDeltaMB": 0.132,
+      "sizeDeltasMB": [
+        0.011,
+        0,
+        0,
+        0,
+        0.122,
+        0
+      ]
+    },
+    {
+      "constructor": "system / UncompiledDataWithoutPreparseData",
+      "totalSizeDeltaMB": 0.13,
+      "sizeDeltasMB": [
+        0.118,
+        0,
+        0,
+        0,
+        0,
+        0.012
+      ]
+    },
+    {
+      "constructor": "system / ScopeInfo",
+      "totalSizeDeltaMB": 0.126,
+      "sizeDeltasMB": [
+        0.148,
+        0,
+        0,
+        0,
+        0,
+        -0.022
+      ]
+    }
+  ],
+  "externalStringData": {
+    "totalSelfBytes": 48707376,
+    "classBytes": {
+      "script-source": 48520181,
+      "cache-suspect": 15,
+      "network-ish": 305,
+      "application": 186875
+    },
+    "topPaths": [
+      {
+        "class": "script-source",
+        "bytes": 48520181,
+        "n": 387,
+        "path": "system / Script → (script-source) → system / ExternalStringData[backing_store]",
+        "suspect": []
+      },
+      {
+        "class": "application",
+        "bytes": 71482,
+        "n": 1,
+        "path": "DrawingToolsManager → (object properties)[properties] → ToolLifecycleStore[] → system / Map[map] → Object[prototype] → _reduce → system / Context[context] → Window[global] → Window [JSGlobalObject][global_object] → Chart[mainChart] → OrderManager[orderManager] → system / Map[map] → Object[prototype] → createOrderPanel → system / SharedFunctionInfo / createOrderPanel[shared] → system / BytecodeArray[trusted_function_data] → (constant pool)[] → (large-string-label)→ system / ExternalStringData[1 / backing_store]",
+        "suspect": []
+      },
+      {
+        "class": "application",
+        "bytes": 20523,
+        "n": 5,
+        "path": "synthetic → system / NativeContext[] → Window [JSGlobalObject][global_object] → Array[__next_f] → Array[] → (large-string-label)→ system / ExternalStringData[1 / backing_store]",
+        "suspect": []
+      },
+      {
+        "class": "application",
+        "bytes": 10774,
+        "n": 1,
+        "path": "C++ Persistent roots → Window[void blink::EventTarget::EnqueueEvent(Event &, TaskType)@..\\..\\third_party\\blink\\renderer\\core\\dom\\events\\event_target.cc:1140] → Detached HTMLDocument[] → Detached <html>[] → rn[__reactFiber$468qm8dyx8a] → rn[child] → rn[child] → Object[pendingProps] → Object[dangerouslySetInnerHTML] → (large-string-label)→ system / ExternalStringData[1 / backing_store]",
+        "suspect": []
+      },
+      {
+        "class": "application",
+        "bytes": 6847,
+        "n": 2,
+        "path": "synthetic → system / NativeContext / http://31.97.192.82:3000[] → Window [JSGlobalObject] / http://31.97.192.82:3000[global_object] → closure[__v9RestoreDrawingLevelsAfterBuiltinDefault] → system / Context[context] → (large-string-label)→ system / ExternalStringData[1 / backing_store]",
+        "suspect": []
+      },
+      {
+        "class": "application",
+        "bytes": 4439,
+        "n": 1,
+        "path": "ChartDataPipeline → Chart[chart] → DrawingToolsManager[drawingManager] → (object properties)[properties] → ToolLifecycleStore[] → system / Map[map] → Object[prototype] → _reduce → system / Context[context] → Window[global] → Window [JSGlobalObject][global_object] → installChartContextMenuStyles → system / SharedFunctionInfo / installChartContextMenuStyles[shared] → system / BytecodeArray[trusted_function_data] → (constant pool)[] → (large-string-label)→ system / ExternalStringData[1 / backing_store]",
+        "suspect": []
+      },
+      {
+        "class": "application",
+        "bytes": 4353,
+        "n": 1,
+        "path": "Chart → DrawingToolsManager[drawingManager] → (object properties)[properties] → ToolLifecycleStore[] → system / Map[map] → Object[prototype] → _reduce → system / Context[context] → Window[global] → Window [JSGlobalObject][global_object] → DrawingToolbar[drawingToolbar] → system / Map[map] → Object[prototype] → injectToolbarStyles → system / SharedFunctionInfo / injectToolbarStyles[shared] → system / BytecodeArray[trusted_function_data] → (constant pool)[] → (large-string-label)→ system / ExternalStringData[1 / backing_store]",
+        "suspect": []
+      },
+      {
+        "class": "application",
+        "bytes": 2137,
+        "n": 8,
+        "path": "(Global handles) → Detached HTMLDocument[DevTools] → InternalNode[] → InternalNode[] → Detached SVGSVGElement[] → Detached SVGPathElement[] → Object[__reactProps$jh4gx00mg99] → (large-string-label)→ system / ExternalStringData[1 / backing_store]",
+        "suspect": []
+      }
+    ]
+  },
+  "smartPrefetch": [
+    {
+      "ctor": "heap number",
+      "bytes": 47964,
+      "n": 3997,
+      "path": "synthetic → system / NativeContext / http://31.97.192.82:3000[] → Window [JSGlobalObject] / http://31.97.192.82:3000[global_object] → Chart[mainChart] → Map[_smartPrefetchCache] → array[table] → Object[] → Object[payload] → Array[candles] → Object[] → heap number[c]"
+    },
+    {
+      "ctor": "heap number",
+      "bytes": 47964,
+      "n": 3997,
+      "path": "synthetic → system / NativeContext / http://31.97.192.82:3000[] → Window [JSGlobalObject] / http://31.97.192.82:3000[global_object] → Chart[mainChart] → Map[_smartPrefetchCache] → array[table] → Object[] → Object[payload] → Array[candles] → Object[] → heap number[h]"
+    },
+    {
+      "ctor": "Object",
+      "bytes": 634428,
+      "n": 17623,
+      "path": "synthetic → system / NativeContext / http://31.97.192.82:3000[] → Window [JSGlobalObject] / http://31.97.192.82:3000[global_object] → Chart[mainChart] → Map[_smartPrefetchCache] → array[table] → Object[] → Object[payload] → Array[candles] → Object[]"
+    }
+  ],
+  "cells": [
+    {
+      "name": "HEAP-CYCLE-REPORT-SHAPE",
+      "status": "GREEN",
+      "pass": true,
+      "detail": "signature=TALARIA_HEAP_CYCLE_MEMORY_V1"
+    },
+    {
+      "name": "HEAP-CYCLE-INSTRUMENT-COMPLETE",
+      "status": "GREEN",
+      "pass": true,
+      "detail": "usedJSHeapSize+forcedGc samples for baseline+6 cycles; detached counts present"
+    },
+    {
+      "name": "HEAP-CYCLE-LATE-JUMP-SHAPE",
+      "status": "ABSENT",
+      "pass": true,
+      "detail": "NO late jump of PO magnitude (+45MB on cycle≥4): earlyMean=7.90MB lateMax=0.13MB deltasMb=23.33,0.18,0.2,0.13,-0.26,-1.58",
+      "earlyMeanMb": 7.903589248657227,
+      "lateMaxMb": 0.12549972534179688
+    },
+    {
+      "name": "HEAP-CYCLE-DISTINCT-FILEIDS",
+      "status": "GREEN",
+      "pass": true,
+      "detail": "each cycle used distinct fileIds 25,27,28,29"
+    },
+    {
+      "name": "HEAP-CYCLE-DETACHED-DIV-STABLE",
+      "status": "RED",
+      "pass": false,
+      "detail": "gradedDetachedDelta=193 signal=cdp-detachedness cdpDetachedMean=192.66666666666666 retainedHtmlDivMean=82 maxStable=1 poPerCycle=21699",
+      "gradedDetachedDelta": 192.66666666666666,
+      "detachedDeltas": [
+        93,
+        0,
+        0,
+        0,
+        1063,
+        0
+      ]
+    },
+    {
+      "name": "HEAP-CYCLE-HEAP-FLOOR-BOUNDED",
+      "status": "GREEN",
+      "pass": true,
+      "detail": "meanHeapFloorDelta=3845030.3333333335 max=8388608 po≈50MB/cycle",
+      "meanHeapDelta": 3845030.3333333335,
+      "heapDeltas": [
+        24465659,
+        190243,
+        206640,
+        131596,
+        -269837,
+        -1654119
+      ]
+    },
+    {
+      "name": "M26-REGRADE-ON-HEAP-CYCLE",
+      "status": "INSUFFICIENT",
+      "pass": true,
+      "detail": "INSUFFICIENT: leak remains on usedJSHeapSize+detached-div instrument (M26 correct but insufficient; footprint fail void)"
+    },
+    {
+      "name": "FIX3-REGRADE-ON-HEAP-CYCLE",
+      "status": "INSUFFICIENT",
+      "pass": true,
+      "detail": "INSUFFICIENT: leak remains on usedJSHeapSize+detached-div instrument (FIX3 footprint fail void)"
+    },
+    {
+      "name": "HEAP-GROWTH-CENSUS-EMITTED",
+      "status": "GREEN",
+      "pass": true,
+      "detail": "full constructor tables ×6; A-list=20; B-top=40"
+    },
+    {
+      "name": "HEAP-GROWTH-MONOTONIC-HOARDERS",
+      "status": "GREEN",
+      "pass": true,
+      "detail": "A-list size=20 rankedByTotalBytes=true (grew all 6 cycles, never shrank)"
+    },
+    {
+      "name": "HEAP-GROWTH-TOP40-CONTEXT",
+      "status": "GREEN",
+      "pass": true,
+      "detail": "B-list length=40 max=40"
+    },
+    {
+      "name": "HEAP-GROWTH-SURFACE-CALIBRATION",
+      "status": "RED",
+      "pass": false,
+      "detail": "HARNESS-NOT-REAL-PRODUCT: PO pins matched 0/4 (Detached<div>Δ=93, UniqueElementDataΔ=null, CSSPropertyBackingΔ=null, heapMeanBytes=3845030.3333333335). Need ≥2 of {Detached<div>≳5k, UniqueElementData≳10k, CSSBacking≳10k, heap≳28MB}. PO manual: +21699 Detached <div>, +30565 UniqueElementData, +22209 CSSBacking, ~29 MB."
+    },
+    {
+      "name": "HEAP-RETAINER-PATHS-AGGREGATED",
+      "status": "GREEN",
+      "pass": true,
+      "detail": "aggregated paths for system / ExternalStringData, heap number, Object; cacheSuspectPathLines=6; ExternalStringData classBytes={\"script-source\":48520181,\"cache-suspect\":15,\"network-ish\":305,\"application\":186875} topPath=system / Script → (script-source) → system / ExternalStringData[backing_store]",
+      "externalStringData": {
+        "totalSelfBytes": 48707376,
+        "classBytes": {
+          "script-source": 48520181,
+          "cache-suspect": 15,
+          "network-ish": 305,
+          "application": 186875
+        },
+        "topPaths": [
+          {
+            "bytes": 48520181,
+            "n": 387,
+            "class": "script-source",
+            "path": "system / Script → (script-source) → system / ExternalStringData[backing_store]",
+            "suspect": []
+          },
+          {
+            "bytes": 71482,
+            "n": 1,
+            "class": "application",
+            "path": "DrawingToolsManager → (object properties)[properties] → ToolLifecycleStore[] → system / Map[map] → Object[prototype] → _reduce → system / Context[context] → Window[global] → Window [JSGlobalObject][global_object] → Chart[mainChart] → OrderManager[orderManager] → system / Map[map] → Object[prototype] → createOrderPanel → system / SharedFunctionInfo / createOrderPanel[shared] → system / BytecodeArray[trusted_function_data] → (constant pool)[] → (large-string-label)→ system / ExternalStringData[1 / backing_store]",
+            "suspect": []
+          },
+          {
+            "bytes": 20523,
+            "n": 5,
+            "class": "application",
+            "path": "synthetic → system / NativeContext[] → Window [JSGlobalObject][global_object] → Array[__next_f] → Array[] → (large-string-label)→ system / ExternalStringData[1 / backing_store]",
+            "suspect": []
+          },
+          {
+            "bytes": 10774,
+            "n": 1,
+            "class": "application",
+            "path": "C++ Persistent roots → Window[void blink::EventTarget::EnqueueEvent(Event &, TaskType)@..\\..\\third_party\\blink\\renderer\\core\\dom\\events\\event_target.cc:1140] → Detached HTMLDocument[] → Detached <html>[] → rn[__reactFiber$468qm8dyx8a] → rn[child] → rn[child] → Object[pendingProps] → Object[dangerouslySetInnerHTML] → (large-string-label)→ system / ExternalStringData[1 / backing_store]",
+            "suspect": []
+          },
+          {
+            "bytes": 6847,
+            "n": 2,
+            "class": "application",
+            "path": "synthetic → system / NativeContext / http://31.97.192.82:3000[] → Window [JSGlobalObject] / http://31.97.192.82:3000[global_object] → closure[__v9RestoreDrawingLevelsAfterBuiltinDefault] → system / Context[context] → (large-string-label)→ system / ExternalStringData[1 / backing_store]",
+            "suspect": []
+          }
+        ]
+      }
+    }
+  ]
+}

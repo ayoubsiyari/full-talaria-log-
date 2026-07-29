@@ -1,0 +1,55 @@
+{
+  "packet": "W76-P2B-GROWTH-ATTRIBUTION-DISTINCT",
+  "tier": "mid",
+  "model": "cursor-grok-4.5",
+  "verdict": "The growing mass is SCRIPT SOURCE + COMPILED CODE per panel realm. It is not a data cache.",
+  "build": "20260729b99",
+  "config": "deployed, PO workload, 4 DISTINCT symbols @1m, forced-GC floors, 3 cycles",
+  "whyThisRunWasNeeded": "Every prior retainer/ExternalStringData reading was taken in the identical-dataset config, which W76 shows retains ~0/cycle. Those paths were aimed at a mass that does not grow.",
+  "floorsMb": [104.04, 130.46, 153.37],
+  "instrumentUnblock": {
+    "problem": "snapshotPolicy was 'floor-only' whenever the PO workload was armed, so retainer paths and the growth census were ALWAYS skipped on the deployed surface. A ~500MB mid-run CDP snapshot destabilizes the React shell.",
+    "fix": "--final-retainer-snapshot takes one snapshot after the last floor is measured, plus a baseline snapshot to diff against. Mid-run snapshots stay off.",
+    "sizeCeiling": "A snapshot serializes to ~2.3x usedJSHeapSize and JSON.parse dies above V8's max string length (0x1fffffe8). At 6 cycles the heap hit 238MB -> 560MB snapshot -> parse failure. 3 cycles (154MB -> 371MB) parses. The harness now logs this and says to reduce cycles."
+  },
+  "growthBaselineToEndOfRun": {
+    "totalMb": 100.97,
+    "top": [
+      { "constructor": "system / ExternalStringData", "deltaMb": 62.76, "countDelta": 911 },
+      { "constructor": "system / InstructionStream", "deltaMb": 10.51, "countDelta": 5207 },
+      { "constructor": "heap number", "deltaMb": 4.78, "countDelta": 417357 },
+      { "constructor": "Object", "deltaMb": 3.33, "countDelta": 99827 },
+      { "constructor": "system / TrustedByteArray", "deltaMb": 2.29, "countDelta": 12930 },
+      { "constructor": "system / BytecodeArray", "deltaMb": 2.22, "countDelta": 7225 },
+      { "constructor": "(script line ends)", "deltaMb": 2.07, "countDelta": 66 },
+      { "constructor": "system / FeedbackVector", "deltaMb": 1.42, "countDelta": 6164 },
+      { "constructor": "system / Map", "deltaMb": 1.12, "countDelta": 29288 },
+      { "constructor": "system / DescriptorArray", "deltaMb": 1.09, "countDelta": 7573 },
+      { "constructor": "system / ScopeInfo", "deltaMb": 0.49, "countDelta": 10755 },
+      { "constructor": "(constant pool)", "deltaMb": 0.47, "countDelta": 7019 },
+      { "constructor": "system / UncompiledDataWithoutPreparseData", "deltaMb": 0.34, "countDelta": 17739 }
+    ],
+    "reading": "ExternalStringData is 62% of all growth. Behind it sits an entire script-compilation family — InstructionStream, BytecodeArray, FeedbackVector, ScopeInfo, (script line ends), (constant pool), UncompiledData. That is the signature of script text being re-held and re-compiled, not of a data structure filling up."
+  },
+  "retainerPathAtEndOfRun": {
+    "constructor": "system / ExternalStringData",
+    "instances": 3084,
+    "selfBytes": 92602932,
+    "classBytes": { "script-source": 92389513, "cache-suspect": 65, "network-ish": 357, "application": 212997 },
+    "dominantPath": "system / Script -> (script-source) -> system / ExternalStringData[backing_store]",
+    "dominantPathBytes": 92389513,
+    "dominantPathInstances": 642
+  },
+  "cacheShapedQuestion": {
+    "answer": "NO, definitively, and now measured in the configuration that actually leaks.",
+    "evidence": "cache-suspect retains 65 bytes out of 92.6 MB. The growing classes are script source and compiled-code artefacts. Capping caches could not have moved this rate, which matches b85 ~13.3 -> b99 ~12.8 across ten shots including caps.",
+    "implication": "Stop shipping cache caps for this leak. The retained thing is per-realm script/compilation state."
+  },
+  "leadingMechanism": {
+    "statement": "Each cycle expands four panels as four iframes; each iframe is its own realm and compiles the chart bundle. On collapse the iframes are destroyed, but ~21 MB/cycle of script source plus compiled-code artefacts stays reachable — 642 Script objects holding 92 MB at the end of only 3 cycles.",
+    "whyDatasetCountMatters": "CANDIDATE, not proven: with four identical panels the iframe resource URLs coincide, so Chromium can share one copy of the source per URL and the config plateaus. With four distinct symbols each panel realm is a distinct resource and retains its own copy, so residue scales with the number of distinct datasets.",
+    "corroboration": "detachedDiv 598-711 at end of run — detached DOM is still reachable too, consistent with destroyed realms being retained rather than collected.",
+    "notProven": "Which reference holds the destroyed realm alive. That is the next measurement: retainer paths for the Script/realm objects themselves, not for ExternalStringData."
+  },
+  "forManagerA": "The four orphan listener kills targeted listeners; this evidence says the retained mass is realm/script state behind destroyed panel iframes. Any further cache-sizing or listener work should wait until the realm retention question above is answered."
+}

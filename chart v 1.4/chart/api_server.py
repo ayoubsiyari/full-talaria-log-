@@ -12512,6 +12512,12 @@ def _sync_trading_session_journal_trades(
     rows_present = rows_before + rows_added
 
     # M24: stale/partial chart PATCH journals must not prune omitted SQL rows.
+    # C's branch implemented this same guard independently, in the shorter form
+    # `if should_prune(...): <delete loop>`. Not taken: the [JOURNAL-DELETE] audit
+    # record below reads `orphans`, `deleted_ids`, `rows_present` and `rows_added`,
+    # none of which that form binds, so it would raise NameError on the very path
+    # that is supposed to explain a journal deletion. Same guard call, same
+    # semantics, kept in the shape the surrounding code is written against.
     if not sjs.should_prune_absent_journal_trades(explicit_replace=explicit_replace):
         return
 

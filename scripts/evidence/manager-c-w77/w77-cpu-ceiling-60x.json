@@ -1,0 +1,278 @@
+{
+  "signature": "CPU-THREAD-CENSUS-V1",
+  "ok": true,
+  "status": "CEILING-REPRODUCED",
+  "startedAt": "2026-07-29T19:53:21.571Z",
+  "finishedAt": "2026-07-29T19:53:53.753Z",
+  "meta": {
+    "surface": "deployed",
+    "origin": "http://31.97.192.82:3000",
+    "url": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&mcLayout=1",
+    "buildId": "20260729b99",
+    "panels": 1,
+    "speed": 60,
+    "idle": false,
+    "observeMs": 10000,
+    "wallMs": 10001,
+    "traceCategories": [
+      "devtools.timeline",
+      "disabled-by-default-devtools.timeline",
+      "toplevel",
+      "blink",
+      "cc",
+      "gpu"
+    ],
+    "traceEventCount": 802134
+  },
+  "replay": {
+    "ok": true,
+    "isActive": true,
+    "isPlaying": true,
+    "speed": 60,
+    "bars": 2011
+  },
+  "stillPlayingAfterTrace": {
+    "isPlaying": true,
+    "speed": 60
+  },
+  "ceiling": {
+    "signature": "CPU-THREAD-CENSUS-V1",
+    "claimedPercent": 111,
+    "measuredPercent": 133.88,
+    "mainThreadPercent": 73.71,
+    "offCoreThreadPercent": 60.17,
+    "exceedsOneCore": true,
+    "reproducesCeiling": true,
+    "verdict": "CEILING-REPRODUCED-MULTITHREAD",
+    "note": null
+  },
+  "census": {
+    "signature": "CPU-THREAD-CENSUS-V1",
+    "wallMs": 10001,
+    "traceSpanMs": 10004.016,
+    "threadCount": 43,
+    "countedThreadCount": 40,
+    "waitDominatedThreads": [
+      {
+        "threadName": "GpuVSyncThread",
+        "tid": 26572,
+        "busyMs": 9988.801
+      },
+      {
+        "threadName": "Chrome_IOThread",
+        "tid": 31224,
+        "busyMs": 4.486
+      },
+      {
+        "threadName": "MemoryInfra",
+        "tid": 30416,
+        "busyMs": 0.111
+      }
+    ],
+    "totalBusyMs": 13389.547,
+    "busyMsIncludingWaits": 23382.945,
+    "totalPercentIncludingWaits": 233.81,
+    "totalCpuRatio": 1.338821,
+    "totalCpuPercent": 133.88,
+    "mainThreadBusyMs": 7371.297,
+    "mainThreadPercent": 73.71,
+    "threads": [
+      {
+        "pid": 31368,
+        "tid": 26572,
+        "threadName": "GpuVSyncThread",
+        "processName": "GPU Process",
+        "busyMs": 9988.801,
+        "ratioOfCore": 0.99878,
+        "events": 4318,
+        "longestRunMs": 7.31,
+        "runs": 1440,
+        "waitDominated": true,
+        "singleRunSpansWindow": false
+      },
+      {
+        "pid": 21696,
+        "tid": 28556,
+        "threadName": "CrRendererMain",
+        "processName": "Renderer",
+        "busyMs": 7371.297,
+        "ratioOfCore": 0.737056,
+        "events": 193142,
+        "longestRunMs": 12.773,
+        "runs": 12432,
+        "waitDominated": false,
+        "singleRunSpansWindow": false
+      },
+      {
+        "pid": 31368,
+        "tid": 18752,
+        "threadName": "CrGpuMain",
+        "processName": "GPU Process",
+        "busyMs": 2356.232,
+        "ratioOfCore": 0.2356,
+        "events": 94488,
+        "longestRunMs": 2.075,
+        "runs": 8969,
+        "waitDominated": false,
+        "singleRunSpansWindow": false
+      },
+      {
+        "pid": 21696,
+        "tid": 32540,
+        "threadName": "Compositor",
+        "processName": "Renderer",
+        "busyMs": 1221.859,
+        "ratioOfCore": 0.122174,
+        "events": 165587,
+        "longestRunMs": 0.728,
+        "runs": 20660,
+        "waitDominated": false,
+        "singleRunSpansWindow": false
+      },
+      {
+        "pid": 21696,
+        "tid": 2956,
+        "threadName": "ThreadPoolForegroundWorker",
+        "processName": "Renderer",
+        "busyMs": 565.578,
+        "ratioOfCore": 0.056552,
+        "events": 36478,
+        "longestRunMs": 19.423,
+        "runs": 1701,
+        "waitDominated": false,
+        "singleRunSpansWindow": false
+      },
+      {
+        "pid": 31368,
+        "tid": 27664,
+        "threadName": "VizCompositorThread",
+        "processName": "GPU Process",
+        "busyMs": 398.748,
+        "ratioOfCore": 0.039871,
+        "events": 24048,
+        "longestRunMs": 0.842,
+        "runs": 11659,
+        "waitDominated": false,
+        "singleRunSpansWindow": false
+      },
+      {
+        "pid": 18016,
+        "tid": 25804,
+        "threadName": "ThreadPoolSingleThreadForegroundBlocking6",
+        "processName": "Browser",
+        "busyMs": 239.65,
+        "ratioOfCore": 0.023963,
+        "events": 117,
+        "longestRunMs": 7.208,
+        "runs": 58,
+        "waitDominated": false,
+        "singleRunSpansWindow": false
+      },
+      {
+        "pid": 31368,
+        "tid": 23152,
+        "threadName": "Chrome_ChildIOThread",
+        "processName": "GPU Process",
+        "busyMs": 162.76,
+        "ratioOfCore": 0.016274,
+        "events": 21310,
+        "longestRunMs": 0.287,
+        "runs": 5754,
+        "waitDominated": false,
+        "singleRunSpansWindow": false
+      },
+      {
+        "pid": 21696,
+        "tid": 25272,
+        "threadName": "ThreadPoolForegroundWorker",
+        "processName": "Renderer",
+        "busyMs": 157.898,
+        "ratioOfCore": 0.015788,
+        "events": 887,
+        "longestRunMs": 21.828,
+        "runs": 187,
+        "waitDominated": false,
+        "singleRunSpansWindow": false
+      },
+      {
+        "pid": 21696,
+        "tid": 27872,
+        "threadName": "Chrome_ChildIOThread",
+        "processName": "Renderer",
+        "busyMs": 131.343,
+        "ratioOfCore": 0.013133,
+        "events": 18814,
+        "longestRunMs": 0.387,
+        "runs": 11630,
+        "waitDominated": false,
+        "singleRunSpansWindow": false
+      },
+      {
+        "pid": 21696,
+        "tid": 32000,
+        "threadName": "ThreadPoolForegroundWorker",
+        "processName": "Renderer",
+        "busyMs": 121.063,
+        "ratioOfCore": 0.012105,
+        "events": 96,
+        "longestRunMs": 18.85,
+        "runs": 43,
+        "waitDominated": false,
+        "singleRunSpansWindow": false
+      },
+      {
+        "pid": 21696,
+        "tid": 14320,
+        "threadName": "ThreadPoolForegroundWorker",
+        "processName": "Renderer",
+        "busyMs": 110.504,
+        "ratioOfCore": 0.011049,
+        "events": 343,
+        "longestRunMs": 18.5,
+        "runs": 76,
+        "waitDominated": false,
+        "singleRunSpansWindow": false
+      },
+      {
+        "pid": 21696,
+        "tid": 21624,
+        "threadName": "ThreadPoolForegroundWorker",
+        "processName": "Renderer",
+        "busyMs": 108.635,
+        "ratioOfCore": 0.010862,
+        "events": 177,
+        "longestRunMs": 18.494,
+        "runs": 51,
+        "waitDominated": false,
+        "singleRunSpansWindow": false
+      },
+      {
+        "pid": 21696,
+        "tid": 9244,
+        "threadName": "ThreadPoolForegroundWorker",
+        "processName": "Renderer",
+        "busyMs": 106.838,
+        "ratioOfCore": 0.010683,
+        "events": 143,
+        "longestRunMs": 19.19,
+        "runs": 50,
+        "waitDominated": false,
+        "singleRunSpansWindow": false
+      },
+      {
+        "pid": 21696,
+        "tid": 32520,
+        "threadName": "ThreadPoolForegroundWorker",
+        "processName": "Renderer",
+        "busyMs": 78.818,
+        "ratioOfCore": 0.007881,
+        "events": 149,
+        "longestRunMs": 18.435,
+        "runs": 56,
+        "waitDominated": false,
+        "singleRunSpansWindow": false
+      }
+    ],
+    "threadCountTotal": 43
+  }
+}

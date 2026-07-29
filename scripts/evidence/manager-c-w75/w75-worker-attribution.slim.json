@@ -1,0 +1,70 @@
+{
+  "packet": "W75-P1-WORKERS",
+  "tier": "mid",
+  "model": "cursor-grok-4.5",
+  "source": ".scratch-w75-heap-b85-workers.json",
+  "buildId": "20260729b85",
+  "status": "ATTRIBUTED",
+  "finding": "Worker is indicator-worker.js from _getIndicatorWorker (per-realm singleton). Each 4-panel expand creates +3/+4 Workers. terminate() is never called. On collapse, CDP destroys the 3 peer workers with the iframes; host singleton survives (live=1). Cumulative created grows ~+3/cycle but survivingNeverDestroyed stays 1 — NOT an accumulating orphan Worker leak on this pin. Director +1/cycle claim not reproduced as live survivors; reproduced as +3 creates/cycle that browser tears down with the iframe.",
+  "scriptUrl": "/chart/workers/indicator-worker.js",
+  "createSite": "chart v 1.4/chart/modules/chart-indicators-full.js::_getIndicatorWorker (~L7996)",
+  "whyNoTerminate": "Singleton path never calls worker.terminate() on panel remove / iframe unmount",
+  "cdpCreatedDeltasPerReturn": [
+    4,
+    3,
+    3
+  ],
+  "meanCdpCreatedDelta": 3.3333333333333335,
+  "snapshots": [
+    {
+      "label": "baseline",
+      "cdpLive": 0,
+      "cdpCreated": 0,
+      "cdpDestroyed": 0,
+      "surviving": 0
+    },
+    {
+      "label": "cycle1-fourPeak",
+      "cdpLive": 4,
+      "cdpCreated": 4,
+      "cdpDestroyed": 0,
+      "surviving": 4
+    },
+    {
+      "label": "cycle1-returnSingle",
+      "cdpLive": 1,
+      "cdpCreated": 4,
+      "cdpDestroyed": 3,
+      "surviving": 1
+    },
+    {
+      "label": "cycle2-fourPeak",
+      "cdpLive": 4,
+      "cdpCreated": 7,
+      "cdpDestroyed": 3,
+      "surviving": 4
+    },
+    {
+      "label": "cycle2-returnSingle",
+      "cdpLive": 1,
+      "cdpCreated": 7,
+      "cdpDestroyed": 6,
+      "surviving": 1
+    },
+    {
+      "label": "cycle3-fourPeak",
+      "cdpLive": 4,
+      "cdpCreated": 10,
+      "cdpDestroyed": 6,
+      "surviving": 4
+    },
+    {
+      "label": "cycle3-returnSingle",
+      "cdpLive": 1,
+      "cdpCreated": 10,
+      "cdpDestroyed": 9,
+      "surviving": 1
+    }
+  ],
+  "implicationForCalib": "Worker private heaps are short-lived with iframe teardown on this surface; they do not explain a sustained +13 MB/cycle main-thread under-read vs PO Task Manager. Main-thread usedJSHeapSize still the grading metric."
+}

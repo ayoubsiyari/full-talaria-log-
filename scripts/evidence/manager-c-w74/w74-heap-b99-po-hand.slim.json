@@ -1,0 +1,51 @@
+{
+  "source": ".scratch-w74-heap-b85-soft.json",
+  "packet": "W74-P2",
+  "tier": "mid",
+  "model": "cursor-grok-4.5",
+  "note": "Measured while CLI required b85; shell boot stamp was b99 (B ship). Regraded with pin b99.",
+  "status": "RED",
+  "ok": false,
+  "buildId": "20260729b99",
+  "pin": "talaria-homepage:canary-20260729b99",
+  "shipSha": "0affbd6976df464140f1520ad6d02505ba816b82",
+  "memoryInstrument": "usedJSHeapSize+poHand(softGc×1)",
+  "poHandSample": true,
+  "snapshotPolicy": "floor-only",
+  "poWorkloadArmedEveryCycle": true,
+  "heap": {
+    "baselineMB": 75.71,
+    "floorsMB": [
+      125.18,
+      221.73,
+      224.34,
+      219.55,
+      129.07,
+      193.17
+    ],
+    "deltasMB": [
+      49.47,
+      96.55,
+      2.61,
+      -4.79,
+      -90.48,
+      64.1
+    ],
+    "meanDeltaMB": 19.58,
+    "maxDeltaMB": 96.55
+  },
+  "poHand": {
+    "status": "MISS",
+    "meanDeltaMB": 19.5763103167216,
+    "lateJumpMB": 64.09893608093262,
+    "poMeanMB": 13
+  },
+  "m26": "INSUFFICIENT",
+  "fix3": "INSUFFICIENT",
+  "calibration": "GREEN",
+  "heapFloorBounded": "RED",
+  "failedCells": [
+    "HEAP-CYCLE-HEAP-FLOOR-BOUNDED"
+  ],
+  "orphanListenerKills": "ship tip includes A orphan L4 pack (grade vs PO)"
+}

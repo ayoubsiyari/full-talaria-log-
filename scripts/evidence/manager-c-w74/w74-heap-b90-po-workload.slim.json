@@ -1,0 +1,45 @@
+{
+  "source": ".scratch-w74-heap-b90-po.json",
+  "packet": "W74",
+  "tier": "mid",
+  "model": "cursor-grok-4.5",
+  "status": "RED",
+  "ok": false,
+  "buildId": "20260729b90",
+  "pin": "talaria-homepage:canary-20260729b90",
+  "snapshotPolicy": "floor-only",
+  "poWorkloadArmedEveryCycle": true,
+  "heap": {
+    "baselineMB": 75.56,
+    "floorsMB": [
+      125.02,
+      124.96,
+      128.64,
+      126.98,
+      121.16,
+      120.42
+    ],
+    "deltasMB": [
+      49.46,
+      -0.06,
+      3.68,
+      -1.66,
+      -5.82,
+      -0.74
+    ],
+    "meanDeltaMB": 7.48,
+    "maxDeltaMB": 49.46
+  },
+  "poHand": {
+    "status": "MISS",
+    "poMeanMB": 13,
+    "note": "Baseline matches PO (~75). Shape is +49 then flat — NOT PO late-climb 80/72/90/96/141/155. Mean 7.5 under-reads PO ~13 sustained climb."
+  },
+  "m26": "INSUFFICIENT",
+  "fix3": "INSUFFICIENT",
+  "calibration": "RED",
+  "heapFloorBounded": "GREEN",
+  "failedCells": [
+    "HEAP-GROWTH-SURFACE-CALIBRATION"
+  ]
+}

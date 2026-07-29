@@ -9,6 +9,7 @@ import {
   connectedIframeCount,
   countDetachedIframes,
   countLiveM20Q6ReplaySystems,
+  diffM6OrphanListeners,
   installM6SchedulingCensus,
   summarizeM6SchedulingCensus,
 } from '../lib/m6-replay-leak-probe.mjs';
@@ -241,6 +242,107 @@ test('unit: scheduler census reports Worker, channel, and listener wrapper displ
   assert.match(errors, /wrapper-displaced:MessageChannel/);
   assert.match(errors, /wrapper-displaced:BroadcastChannel/);
   assert.match(errors, /wrapper-displaced:EventTarget\.prototype\.addEventListener/);
+});
+
+test('unit: orphan listener attribution names type/target/listener/callSite', () => {
+  const win = {
+    performance: { now: () => 1 },
+    setTimeout() { return 1; },
+    clearTimeout() {},
+    setInterval() { return 2; },
+    clearInterval() {},
+    requestAnimationFrame() { return 3; },
+    cancelAnimationFrame() {},
+    EventTarget: function EventTarget() {},
+  };
+  win.EventTarget.prototype.addEventListener = function addEventListener() {};
+  win.EventTarget.prototype.removeEventListener = function removeEventListener() {};
+  installM6SchedulingCensus(win, 'A-harness');
+  function onPanelSync() {}
+  const target = { tagName: 'IFRAME', id: 'panel-B', className: 'mc-panel' };
+  win.EventTarget.prototype.addEventListener.call(target, 'message', onPanelSync);
+
+  const baselineListeners = summarizeM6SchedulingCensus(win, 'A-harness').activeListeners.slice();
+  function onOrphanPointer() {}
+  function onOrphanVisibility() {}
+  win.EventTarget.prototype.addEventListener.call(win, 'pointerdown', onOrphanPointer);
+  win.EventTarget.prototype.addEventListener.call(win.document || win, 'visibilitychange', onOrphanVisibility);
+  // document may be missing on fixture window — register second on Window with distinct type
+  win.EventTarget.prototype.addEventListener.call(win, 'visibilitychange', onOrphanVisibility);
+  const finalSummary = summarizeM6SchedulingCensus(win, 'A-harness');
+  const orphans = diffM6OrphanListeners(baselineListeners, finalSummary.activeListeners);
+  assert.ok(orphans.length >= 2);
+  assert.ok(orphans.every((row) => row.type && row.target && row.listener));
+  assert.ok(orphans.some((row) => row.listener === 'onOrphanPointer'));
+  assert.ok(orphans.some((row) => row.type === 'pointerdown' && row.target === 'Window'));
+
+  const cells = assertM6ReplayLeakCounts({
+    baseline: {
+      liveReplaySystems: 1,
+      connectedIframes: 0,
+      detachedTrackedIframes: 0,
+      schedulingCensus: {
+        rows: [{
+          label: 'A-harness',
+          installed: true,
+          installedAt: 1,
+          pendingTimeouts: 0,
+          pendingIntervals: 0,
+          pendingRafs: 0,
+          eventListeners: baselineListeners.length,
+          messageChannels: 0,
+          broadcastChannels: 0,
+          workers: 0,
+          timerCallbacks: 0,
+          intervalCallbacks: 0,
+          rafCallbacks: 0,
+          activeListeners: baselineListeners,
+          errors: [],
+        }],
+        totals: aggregateM6SchedulingCensus([{
+          label: 'A-harness',
+          installed: true,
+          installedAt: 1,
+          pendingTimeouts: 0,
+          pendingIntervals: 0,
+          pendingRafs: 0,
+          eventListeners: baselineListeners.length,
+          messageChannels: 0,
+          broadcastChannels: 0,
+          workers: 0,
+          timerCallbacks: 4,
+          intervalCallbacks: 0,
+          rafCallbacks: 0,
+          activeListeners: baselineListeners,
+          errors: [],
+        }]),
+      },
+    },
+    final: {
+      liveReplaySystems: 1,
+      connectedIframes: 0,
+      detachedTrackedIframes: 0,
+      schedulingCensus: {
+        rows: [{
+          ...finalSummary,
+          installed: true,
+          installedAt: 1,
+          timerCallbacks: 8,
+          rafCallbacks: 4,
+        }],
+        totals: aggregateM6SchedulingCensus([{
+          ...finalSummary,
+          installed: true,
+          installedAt: 1,
+          timerCallbacks: 8,
+          rafCallbacks: 4,
+        }]),
+      },
+    },
+  });
+  const named = cells.find((cell) => cell.name === 'M6-ORPHAN-LISTENERS-NAMED');
+  assert.equal(named?.pass, true);
+  assert.ok((named?.metrics?.orphanCount || 0) >= 2);
 });
 
 test('unit: scheduler census listeners are identity keyed', () => {

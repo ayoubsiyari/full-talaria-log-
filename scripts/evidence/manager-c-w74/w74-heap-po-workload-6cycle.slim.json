@@ -1,0 +1,35 @@
+{
+  "source": ".scratch-w74-heap-b91-po-workload.json",
+  "packet": "W74",
+  "status": "RED",
+  "ok": false,
+  "buildId": "20260729b95",
+  "requireBuildAttempted": "20260729b91",
+  "surface": "deployed",
+  "snapshotPolicy": "floor-only",
+  "poWorkloadArmedEveryCycle": true,
+  "cycles": 6,
+  "heap": {
+    "baselineMB": 75.2,
+    "floorsMB": [130.95, 199.65, 193.89, 221.21, 216.23, 216.35],
+    "deltasMB": [55.75, 68.7, -5.76, 27.33, -4.98, 0.11],
+    "meanDeltaMB": 23.53
+  },
+  "poHand": {
+    "status": "MISS",
+    "poFloorsMB": [80, 72, 90, 96, 141, 155],
+    "poMeanMB": 13,
+    "poLateJumpMB": 45,
+    "note": "Baseline matches PO (~75). Mean Δ ~23.5 MB/cycle is PO-order (not layout-only +0.69). Shape hotter early, plateaus late — no +45 late jump."
+  },
+  "calibration": "GREEN (surfaceExercisesRealProduct via PO workload + heap≳10MB/cycle)",
+  "heapFloorBounded": "RED",
+  "m26": "INSUFFICIENT",
+  "fix3": "INSUFFICIENT",
+  "findings": [
+    "Prior +0.69 MB/cycle was layout-only decorative (GATE-01 on own instrument).",
+    "CDP heap snapshots under PO workload exceed V8 ~512MB string limit / detach React shell — floor-only policy.",
+    "Canary moved b91→b95 mid-wave; b90 not on canary.",
+    "Listener kills (if present on b95) did NOT bound the heap floor — mean +23.5 MB/cycle remains."
+  ]
+}
