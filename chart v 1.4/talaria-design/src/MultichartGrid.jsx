@@ -40,6 +40,10 @@ import {
     fanOutHostOrderSnapshotToIframes,
     primeReadyPanelsWithHostOrders,
 } from "../../chart/modules/order-host-store.mjs";
+import {
+    MC_SPLITTER_HOVER_BG,
+    mcSplitterRestingBackground,
+} from "./mc-splitter-hairline.mjs";
 
 // Phase 7.2.5: tile id "A" is the HOST tile — it does NOT spawn an iframe.
 // Instead, the parent's existing #chartWrapper (the original main chart with
@@ -56,6 +60,8 @@ const HOST_WRAPPER_ID = "chartWrapper";
 const MULTICHART_GLOBAL_SETTINGS_ROOT_ID = "multichart-global-settings-root";
 const HOST_CONTAINER_ID = "chart-container";
 const MC_GRID_STATE_PURGE_SWITCH = "__TALARIA_DISABLE_MC_GRID_STATE_PURGE_V1";
+// SPLITTER-BORDERS-B90 hairlines: see ./mc-splitter-hairline.mjs
+// Kill: window.__TALARIA_DISABLE_MC_SPLITTER_HAIRLINE_V1 (truthy → transparent).
 
 function mcGridStatePurgeV1Enabled() {
     try {
@@ -8749,10 +8755,11 @@ export default function MultichartGrid({
                 display: "grid",
                 gridTemplateColumns: colsTemplate,
                 gridTemplateRows:    rowsTemplate,
-                // Wider gap (was 1px, now 4px) so the divider line
-                // between panels is unmistakable. Use chart black for the
+                // Wider gap (was 1px, now 4px). Keep chart black for the
                 // gutter — a lighter #2a2e3a flashed as a grey column whenever
                 // host/iframe bitmaps lagged one frame behind CSS reflow.
+                // Visible resting dividers are painted on the splitter hit
+                // targets (SPLITTER-BORDERS-B90 hairlines), not via gutter colour.
                 gap: `${MULTICHART_GRID_GAP_PX}px`,
                 background: "#000000",
                 zIndex: 12,
@@ -8933,8 +8940,10 @@ export default function MultichartGrid({
                 straddles the 4px gap with ±3px overlap into the
                 cells for a forgiving click target.
 
-                Hover state paints the gap a soft blue so the user
-                sees what they're about to grab. */}
+                Resting state: 1px #2a2e3a hairline (SPLITTER-BORDERS-B90)
+                so dividers stay visible over the black gutter. Kill-switch
+                __TALARIA_DISABLE_MC_SPLITTER_HAIRLINE_V1 → transparent.
+                Hover paints the full hit strip soft blue. */}
             {columnSplittersToRender.map((s) => (
                 <div
                     key={s.key}
@@ -8948,10 +8957,12 @@ export default function MultichartGrid({
                         height: `${s.height}px`,
                         cursor: "col-resize",
                         zIndex: 30,
-                        background: "transparent",
+                        background: mcSplitterRestingBackground("col"),
                     }}
-                    onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(41,98,255,0.45)"; }}
-                    onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+                    onMouseEnter={(e) => { e.currentTarget.style.background = MC_SPLITTER_HOVER_BG; }}
+                    onMouseLeave={(e) => {
+                        e.currentTarget.style.background = mcSplitterRestingBackground("col");
+                    }}
                 />
             ))}
 
@@ -8971,10 +8982,12 @@ export default function MultichartGrid({
                         height: "10px",
                         cursor: "row-resize",
                         zIndex: 30,
-                        background: "transparent",
+                        background: mcSplitterRestingBackground("row"),
                     }}
-                    onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(41,98,255,0.45)"; }}
-                    onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+                    onMouseEnter={(e) => { e.currentTarget.style.background = MC_SPLITTER_HOVER_BG; }}
+                    onMouseLeave={(e) => {
+                        e.currentTarget.style.background = mcSplitterRestingBackground("row");
+                    }}
                 />
             ))}
         </div>
