@@ -31,6 +31,26 @@ function makeManager() {
     return om;
 }
 
+function stubSplitPlacement(om) {
+    om.orderSide = 'BUY';
+    om.orderType = 'limit';
+    om.positionSizeMode = 'risk-usd';
+    om._getActiveTicker = () => 'EURUSD';
+    om._getActiveInstrumentSettings = () => ({});
+    om._chartSourceFileId = () => 'synthetic';
+    om._getCurrentTickSnapshot = () => ({ tick: 1 });
+    om.getCurrentCandle = () => ({ t: 1000 });
+    om._consumeV9RailDraftForOrder = () => {};
+    om._applyPreTradeVariablesFromOrderPanel = () => {};
+    om._freezePlannedRRAtEntry = () => {};
+    om._seedOrderLifecycleEvent = () => {};
+    om.drawPendingOrderLine = () => {};
+    om.drawPendingOrderTargets = () => {};
+    om.drawMultiTPAvgLine = () => {};
+    om.positionPendingOrderTargets = () => {};
+    om.updatePositionsPanel = () => {};
+}
+
 const om = makeManager();
 const allocated = om._allocateOrderId();
 assert.equal(allocated, 62, 'allocator advances past all restored pending/open/journal ids');
@@ -39,6 +59,28 @@ assert.equal(om.orderIdCounter, 63, 'counter advances after reserving the reconc
 const upsert = om.upsertJournalEntry({ id: allocated, tradeId: allocated, ticker: 'EURUSD' }, { skipIfExists: true });
 assert.equal(upsert.inserted, true, 'newly allocated trade is not skipped as duplicate journal id');
 assert.equal(om.tradeJournal.length, 3, 'closed trade reaches history instead of disappearing');
+
+const splitOm = makeManager();
+stubSplitPlacement(splitOm);
+splitOm.orderService = null;
+const splitId = splitOm.placePendingOrderWithSplit(
+    1.101,
+    0.1,
+    1.111,
+    1.091,
+    10,
+    false,
+    null,
+    null,
+    [],
+    1000,
+    77,
+    1,
+    2,
+    'limit'
+);
+assert.equal(splitId, 43, 'split pending placement returns the reconciled allocated id');
+assert.equal(splitOm.pendingOrders.at(-1).id, splitId, 'split pending row stores the same allocated id');
 
 console.log(disableAllocator
     ? 'RED — switch OFF reproduced stale-counter duplicate trade loss'

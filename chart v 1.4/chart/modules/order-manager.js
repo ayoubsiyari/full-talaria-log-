@@ -29384,8 +29384,7 @@ class OrderManager {
                     lotsSum += qtyRounded;
                     placedCount++;
                 } else {
-                    const pendingId = this.orderIdCounter; // will be used by placePendingOrderWithSplit
-                    this.placePendingOrderWithSplit(
+                    const pendingId = this.placePendingOrderWithSplit(
                         level.price,
                         qtyRounded,
                         tpEnabled && tpPrice > 0 ? tpPrice : 0,
@@ -30132,6 +30131,7 @@ class OrderManager {
         this.updatePositionsPanel();
         
         // Don't show panel or close order panel here - that happens in the main function
+        return pendingOrder.id;
     }
     
     /**
