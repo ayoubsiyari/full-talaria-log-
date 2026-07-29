@@ -4239,3 +4239,28 @@ Not a theory: C already hit this and routed around it. C's branch holds `scripts
 **So when I reported in B-0183 that I had filed the chart-host blocker to A and handoffs to C and D, those files were written but not committed. As far as any other branch was concerned they did not exist.** I have force-added 25 files — every `.md` communication plus the `canary-*` operational scripts — onto the train, and left one-off `host-ssh-*` probes, `soak-*.json` and build logs untracked, since those are scratch. `.gitignore` itself is untouched; the ruling request is in `FINDING-NEW-EVIDENCE-DOCS-SILENTLY-UNTRACKED-20260729.md`. My assembly routine now ends with `git ls-files` on every doc I claim to have filed.
 
 Handoff to C: `HANDOFF-C-RECONCILE-C-BRANCH-20260729.md` — renormalise line endings, confirm intent on D's duplicated packets, flip the hidden-tab gate to guard mode, re-anchor the dist-v9 mutants, plus the three-way `Tier:` trailer inconsistency (C's gate wants `/^[123]$/`, 46 of 49 commits use words, A's M28 commit says `Tier: gpt-5.5`).
+
+## B-0185 — 2026-07-29 — a-critical/tip containment: 12 of 13 in; the missing one is the switch revert path
+
+Packet `RECONCILE-C-20260729` (containment audit). tier=top model=claude-opus-5-thinking-high.
+
+`a-critical/tip` is 57 commits ahead of the train and 367 behind, diverging at `b56bdb40a` (07-28 22:18). Commit hashes are useless for this question because A's packets reach the train through other branches under different shas, so I audited **by symbol**: for each code commit, pull the identifiers it introduces and ask whether the train's product tree contains them.
+
+**44 of the 57 are `docs(A)` and carry no product change. 13 are code. 12 are IN TRAIN**, verified by symbol: leak-a, leak-b, leak-c, leak-d, FIX 1 (paint-only background cadence), P3 (shared bar store host-realm), PURGE-1, PURGE-2, the m23 host-commit teardown unstranding, and three switch-hygiene fixes. So the premise for grading b99 holds — A's leak shots really are in the train, not merely claimed.
+
+**The thirteenth is not, and it is the one that matters to me.** `d7a228725 feat(mc): generic per-realm kill-switch propagation` adds 372 lines to `multichart-prod/multichart-manager.js` (canonical + mirror) plus a 601-line harness, and the train has **no equivalent under any name** — `git grep` for `ApplySwitchAllRealms|PropagateSwitch|CollectSwitchRealms|allRealms|propagateSwitch` across the product tree returns nothing. Nine helper symbols absent.
+
+Panels are separate realms. Without propagation, a flag set on the host window only reaches panel code if the predicate itself climbs to `parent`/`top`. So I checked the four switches that actually carry my revert path, by reading them rather than trusting a census:
+
+| Switch | Reach | Polarity |
+|---|---|---|
+| FIX 1 `_isMultichartBackgroundRenderCadenceDisabled` | **own window + `window.parent`** — reaches panels | truthy disables |
+| PURGE-2 `mcGridStatePurgeV1Enabled` | own window only — but `MultichartGrid.jsx` is host-realm, so correct | truthy disables |
+| **LAG-SETINTERVAL-TICK `_lagSetIntervalTickV1Enabled` (mine)** | **own window only** — replay also runs inside panels, so a host-side flip does not disable it there | truthy disables |
+| A's M28 `_m28ReplayHiddenPauseV1Enabled` | own window only | **`!== true`** — only the boolean disables, so `= 1` leaves it on |
+
+So the revert path is partial and one of the partial ones is mine. A's FIX 1 got this right; my lag tick fix did not, and I reviewed my own switch three times tonight without noticing that "read per call" is not the same as "readable from where the operator sets it". That is the same failure shape as the b90 polarity finding: a switch that looks correct in isolation and does not answer the operator.
+
+I ran a repo-wide census as well — 208 predicates appearing host-only against 7 that climb — but I am **not** reporting those numbers as fact: the heuristic splits nested helper arrows into separate functions, and it put C's M14 fib predicate in the host-only bucket when that predicate demonstrably checks `window`, `window.parent` and `window.top`. The count is inflated by an unknown amount. What is established is the four above, read directly, and that no propagation mechanism exists in the train.
+
+Not fixed tonight and deliberately not merged on my own initiative: `d7a228725` is 372 lines of A's product code in A's territory, arriving through a branch that is also 367 commits behind the train. Merging it is a packet, not a merge resolution. Two things follow, both for the director to sequence: A's realm propagation wants a proper reconciliation of `a-critical/tip`, and separately the M28 polarity (`!== true`) is A's to normalise. My own lag switch is mine and I will make it climb to `parent`, with a mutant proving a host-side flip disables the fix inside a panel.
