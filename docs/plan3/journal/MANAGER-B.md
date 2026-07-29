@@ -4272,3 +4272,13 @@ Closed the item I opened against myself above. `_lagSetIntervalTickV1Enabled()` 
 Two process notes against myself. My mirroring step **created** `homepage/public/chart/modules/lag-setinterval-tick.test.mjs`, a file that never existed; from that location its `ROOT` resolution points at `homepage/`, so the copy could not have found the source it reads. Deleted, canonical only. And `git stash push` refused because one pathspec was untracked, which meant the `git stash pop` I ran next targeted somebody's pre-existing `b91-journal-wip` entry and left `MANAGER-B.md` in a `UU` conflict with old WIP merged into it. Restored from HEAD, all three of B-0183/0184/0185 verified intact, and the stash left in place — a blind `stash pop` after a failed `stash push` is how you silently commit another packet's half-finished work.
 
 A's M28 hidden-pause switch still has the same host-only reach *and* `!== true` polarity. A's to fix; recorded here so it is not lost.
+
+## B-0186 — 2026-07-29 — Director 8ba4d7a8b / TIER-02: compliance recorded; TOP stays justified by need
+
+**Row:** M4-release | **Packet:** TIER-02-ACK-20260729 | **Tier:** mid | **Model:** cursor-grok-4.5 (journaling)
+
+Director checked journals and recorded TIER-01 compliance across A/B/C/D — routing by need, not inflation. My nginx TOP claim (money-path-adjacent live proxy) is the pattern to keep: **one clause in the journal naming why the packet needs TOP**, so audit cannot confuse reflex with need.
+
+**Cost model correction (director's, accepted):** the budget lever is concurrent TOP *subagents*, not the manager model. If limits tighten, director serializes TOP reviews and cuts scope — nobody downgrades a reviewer, and I do not drop my own tier without a ruling. If I feel budget pressure I tell the director and park a sweep rather than cheapen a review. PAR-01 unchanged: parallel for MID/LOW.
+
+**Standing practice for me:** default author MID; TOP only when ship-gate / money-path / live canary config warrants it, with the why written in the same entry. Fallback to a single model during the memory kill is a session-loss risk — escalate immediately if routing collapses again.
