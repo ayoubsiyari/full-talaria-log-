@@ -293,3 +293,8 @@
 - Restored the three states: `fixed` = commit plus gate; `broken` = RED gate or PO failure on today's build; `unverified` = no evidence either way.
 - Reclassified the former open rows accordingly: ledger now has 41 fixed / 1 broken / 102 unverified. `M17-DI2 / TAL-01918` is the only broken row because its RED gate fails today. `TAL-01617` and other no-gate rows are unverified, not broken.
 - Reworked `docs/plan3/UNKNOWN-RISK-LABELS-20260729.md` into a blast-radius order for the 102 unverified rows: money path / trade state first, data integrity second, replay/session/stability third, severe visual interaction fourth, cosmetic/current-surface disclosure last.
+
+## 2026-07-29 — PO Band 1 / money-path b99 scripts
+
+- Wrote `docs/plan3/PO-BAND1-MONEY-PATH-B99-20260729.md` as the first PO-ready Band 1 packet, not a complete pack. All four scripts are marked `TESTABLE ON b99` and require MEAS-01 build-stamp capture before results.
+- Coverage: 18 Band 1 rows across trade-history registration, order-line/drag visibility, stale order-state cancel/clear, and trade-marker projection. Validation found 18 unique row IDs and no duplicates.
