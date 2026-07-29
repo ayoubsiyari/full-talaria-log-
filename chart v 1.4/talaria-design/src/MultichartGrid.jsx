@@ -2867,13 +2867,13 @@ export default function MultichartGrid({
             if (!desiredIframeIds.has(existingId)) {
                 hostSyncedPanelsRef.current.delete(existingId);
                 primedPanelsRef.current.delete(existingId);
-                if (mcGridStatePurgeV1Enabled()) {
-                    orderSyncedPanelsRef.current.delete(existingId);
-                    clonedPanelsRef.current.delete(existingId);
-                    // Fresh iframes for a recycled id need host clone/order priming again;
-                    // legacy skipped both because these id sets survived layout removal.
-                    bumpPanelLoadGeneration(existingId);
-                }
+                // Always forget clone/order sync so a recycled panel id re-primes.
+                // Not gated by PURGE-2: the kill-switch restores listener/manager
+                // retainers, but must not revive the legacy "skip re-prime" defect
+                // (PO: three panels black + "No fullRawData available" with switch on).
+                orderSyncedPanelsRef.current.delete(existingId);
+                clonedPanelsRef.current.delete(existingId);
+                bumpPanelLoadGeneration(existingId);
                 try { mgr.removeChart(existingId); } catch (_) {}
                 if (overlayHoldTimersRef.current[existingId]) {
                     clearTimeout(overlayHoldTimersRef.current[existingId]);

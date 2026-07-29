@@ -461,10 +461,10 @@ async function exerciseRetryRemoveReadd(source = SOURCE) {
   assert.deepEqual(sandbox.events.filter((event) => event[0] === 'finalize-replacement'), [], 'stale pre-retry load must not finalize the replacement panel');
 }
 
-function exercisePg5(source = SOURCE) {
+function exercisePg5(source = SOURCE, { killSwitch = false } = {}) {
   const removalLoop = extractBlockFrom(source, 'for (const existingId of Array.from(mgr.charts.keys())) {');
   const sandbox = {
-    window: {},
+    window: killSwitch ? { [SWITCH]: true } : {},
     desiredIframeIds: new Set(),
     mgr: {
       charts: new Map([['B', {}]]),
@@ -494,7 +494,10 @@ function exercisePg5(source = SOURCE) {
   assert.equal(sandbox.primedPanelsRef.current.has('B'), false, 'prime id is purged on removal');
   assert.equal(sandbox.orderSyncedPanelsRef.current.has('B'), false, 'order-sync id is purged on removal');
   assert.equal(sandbox.clonedPanelsRef.current.has('B'), false, 'clone id is purged on removal');
-  assert.equal(sandbox.panelLoadGenerationRef.current.B, 1, 'removal bumps load generation');
+  // Generation bump is purge-gated; kill-switch on ⇒ still 0, but re-prime sets clear.
+  if (!killSwitch) {
+    assert.equal(sandbox.panelLoadGenerationRef.current.B, 1, 'removal bumps load generation');
+  }
   assert.equal(sandbox.removed, 'B', 'manager chart is removed');
 }
 
@@ -543,6 +546,11 @@ test('PG-5: reconcile removal purges id-only per-panel sets for correctness', ()
   note('pg5-id-only-sets', true, 'id-only state purged; not a document-retainer fix');
 });
 
+test('PG-5 FLAG-03: kill-switch ON still re-primes recycled panel ids', () => {
+  exercisePg5(SOURCE, { killSwitch: true });
+  note('pg5-kill-switch-still-reprimes', true, 'order/clone sets cleared even when purge disabled');
+});
+
 test('neutering table: PG-1 through PG-5 and B3 go red when guards are disabled', async () => {
   await expectRejectsCell('neuter-pg1', () => exercisePg1(replaceOnce(
     SOURCE,
@@ -566,8 +574,8 @@ test('neutering table: PG-1 through PG-5 and B3 go red when guards are disabled'
   )));
   await expectRejectsCell('neuter-pg5', () => exercisePg5(replaceOnce(
     SOURCE,
-    'if (mcGridStatePurgeV1Enabled()) {\n                    orderSyncedPanelsRef.current.delete(existingId);',
-    'if (false && mcGridStatePurgeV1Enabled()) {\n                    orderSyncedPanelsRef.current.delete(existingId);',
+    'orderSyncedPanelsRef.current.delete(existingId);\n                clonedPanelsRef.current.delete(existingId);',
+    '/* neutered: orderSyncedPanelsRef.current.delete(existingId);\n                clonedPanelsRef.current.delete(existingId); */',
   )));
   await expectRejectsCell('neuter-b3-legacy-null-check', () => exerciseB3FlagOnExactness(replaceOnce(
     SOURCE,
