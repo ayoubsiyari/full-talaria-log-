@@ -173,6 +173,20 @@ def test_is_hot_persist_trim_marked():
     assert sjs.is_hot_persist_trim_marked({"journal": []}) is False
 
 
+def test_m24_chart_patch_journal_is_not_delete_authority(monkeypatch):
+    """TAL-01926: stale shorter chart PATCH must not decrement SQL history."""
+    monkeypatch.delenv("SESSION_JOURNAL_PATCH_DELETE_GUARD", raising=False)
+    assert sjs.journal_patch_delete_guard_enabled() is True
+    assert sjs.should_prune_absent_journal_trades(explicit_replace=False) is False
+    assert sjs.should_prune_absent_journal_trades(explicit_replace=True) is True
+
+
+def test_m24_kill_switch_restores_legacy_patch_prune(monkeypatch):
+    monkeypatch.setenv("SESSION_JOURNAL_PATCH_DELETE_GUARD", "0")
+    assert sjs.journal_patch_delete_guard_enabled() is False
+    assert sjs.should_prune_absent_journal_trades(explicit_replace=False) is True
+
+
 def test_merge_order_rows_prefer_richer_by_id():
     prev = [{"id": 1, "bar_close_r": [1, 2, 3], "entryScreenshot": "data:x"}]
     incoming = [{"id": 1, "unrealizedPnL": 4.5}]
