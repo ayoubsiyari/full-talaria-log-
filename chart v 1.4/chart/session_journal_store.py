@@ -36,6 +36,16 @@ def strip_journal_from_state_json_enabled() -> bool:
     }
 
 
+def journal_patch_delete_guard_enabled() -> bool:
+    """M24: chart PATCH journals are additive unless an explicit replace path prunes."""
+    return os.getenv("SESSION_JOURNAL_PATCH_DELETE_GUARD", "true").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
+
 def max_journal_trades_per_session() -> int:
     return max(100, int(os.getenv("MAX_JOURNAL_TRADES_PER_SESSION", "5000")))
 
@@ -565,6 +575,8 @@ def upsert_trade_in_journal(journal: list, trade: dict, *, prefer_richer: bool =
     tid = journal_trade_client_id(trade)
     if not tid:
         raise ValueError("trade id is required")
+    if "tradeId" not in trade:
+        trade = {**trade, "tradeId": tid}
     idx = -1
     for i, row in enumerate(merged):
         if isinstance(row, dict) and journal_trade_client_id(row) == tid:
@@ -585,3 +597,15 @@ def is_hot_persist_trim_marked(payload: dict | None) -> bool:
     if not isinstance(payload, dict):
         return False
     return payload.get("m19_hot_persist_trim_v1") is True or payload.get("_m19_hot_persist_trim_v1") is True
+
+
+def should_prune_absent_journal_trades(*, explicit_replace: bool) -> bool:
+    """Return whether a sync may delete DB trades absent from the incoming journal.
+
+    Chart autosaves can be stale/partial after refresh or replay races. They may
+    upsert rows they mention, but must not delete rows they omitted unless the
+    caller is an explicit replace/import/delete workflow.
+    """
+    if explicit_replace:
+        return True
+    return not journal_patch_delete_guard_enabled()
