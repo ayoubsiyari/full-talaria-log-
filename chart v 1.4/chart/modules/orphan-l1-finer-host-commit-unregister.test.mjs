@@ -12,8 +12,9 @@
  *
  * Kill-switch (frozen): __TALARIA_DISABLE_MC_FINER_HOST_COMMIT_UNREGISTER_V1
  *   - absent / falsy → fix ON (default)
- *   - truthy → kill (legacy orphan may survive)
- *   - read per call
+ *   - truthy → kill (legacy orphan may survive removeChart)
+ *   - read per call on the manager realm only
+ *   - MUST NOT gate `_removeFinerPanelSelfOwnerHostCommitListener` (pagehide)
  */
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
@@ -25,6 +26,7 @@ import { fileURLToPath } from 'node:url';
 
 const EV = 'talariaMcHostDataCommit';
 const SWITCH = '__TALARIA_DISABLE_MC_FINER_HOST_COMMIT_UNREGISTER_V1';
+const M23_SWITCH = '__TALARIA_DISABLE_M23_HOST_COMMIT_TEARDOWN_V1';
 
 function findRoot(start) {
   let cursor = path.resolve(start);
@@ -272,19 +274,23 @@ test('ORPHAN-L1: kill is truthiness (not === true only)', () => {
   }
 });
 
-test('ORPHAN-L1: kill is read per call (panel ON→OFF resumes unregister)', () => {
-  const env = makePanel();
-  assert.equal(env.hostCount(), 1);
+test('ORPHAN-L1: manager kill ON + pagehide still clears host listener to 0', () => {
+  // Manager kill must not strand pagehide: L1 gate lives on removeChart only.
+  const env = makePanel({ panelKill: true });
+  assert.equal(env.hostCount(), 1, 'precondition: panel registered');
+  assert.equal(!!env.panel[SWITCH], true, 'precondition: panel-realm L1 kill truthy');
 
-  env.panel[SWITCH] = true;
-  env.chart._removeFinerPanelSelfOwnerHostCommitListener();
-  note('per-call-on-noops', env.hostCount() === 1, `host=${env.hostCount()}`);
-  assert.equal(env.hostCount(), 1, 'panel kill must no-op teardown');
+  const manager = makeManager({ kill: true });
+  const { hostCount } = installPanel(manager, env.chart);
+  manager.removeChart('B');
+  note('manager-kill-leaves-orphan-after-removeChart', hostCount() === 1, `host=${hostCount()}`);
+  assert.equal(hostCount(), 1, 'manager kill must skip removeChart unregister');
 
-  delete env.panel[SWITCH];
-  env.chart._removeFinerPanelSelfOwnerHostCommitListener();
-  note('per-call-off-unregisters', env.hostCount() === 0, `host=${env.hostCount()}`);
-  assert.equal(env.hostCount(), 0);
+  // pagehide backup must still sever — panel SWITCH must not gate the helper.
+  env.panel.dispatchEvent({ type: 'pagehide', persisted: false });
+  note('pagehide-clears-under-manager-kill', env.hostCount() === 0, `host=${env.hostCount()}`);
+  assert.equal(env.hostCount(), 0, 'pagehide must clear host listener even when L1 kill is ON');
+  assert.equal(env.chart._mcFinerPanelHostCommitHandler, null);
 });
 
 test('ORPHAN-L1: manager kill is read per removeChart call', () => {
@@ -341,9 +347,17 @@ test('ORPHAN-L1: structural — removeChart calls _removeFinerPanelSelfOwnerHost
     MANAGER_SOURCE.includes(SWITCH),
     'manager must mention the frozen kill-switch name',
   );
+
+  const removeHelper = methodSource(CHART_SOURCE, '_removeFinerPanelSelfOwnerHostCommitListener');
+  note('helper-no-l1-kill-gate', !removeHelper.includes(SWITCH));
+  assert.equal(
+    removeHelper.includes(SWITCH),
+    false,
+    'panel helper must not gate on L1 kill (would no-op pagehide)',
+  );
   assert.ok(
-    CHART_SOURCE.includes(SWITCH),
-    'chart.js remove path must mention the frozen kill-switch name',
+    removeHelper.includes(M23_SWITCH),
+    'panel helper must still honor M23 teardown kill',
   );
 });
 

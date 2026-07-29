@@ -4835,21 +4835,17 @@ class Chart {
      *   - pagehide backup (M23) — panel document unload
      *   - MultichartManager.removeChart (ORPHAN-L1) — before iframe death
      *
-     * Kill-switches (read per call):
+     * Kill-switch (read per call):
      *   - __TALARIA_DISABLE_M23_HOST_COMMIT_TEARDOWN_V1 === true → no-op (M23)
-     *   - __TALARIA_DISABLE_MC_FINER_HOST_COMMIT_UNREGISTER_V1 truthy → no-op
-     *     (ORPHAN-L1; absent/falsy = fix ON; kill restores legacy orphan)
+     *
+     * ORPHAN-L1 kill (__TALARIA_DISABLE_MC_FINER_HOST_COMMIT_UNREGISTER_V1)
+     * gates MultichartManager.removeChart only — never this helper — so a
+     * truthy panel-realm flag cannot no-op pagehide backup.
      */
     _removeFinerPanelSelfOwnerHostCommitListener() {
         try {
             if (typeof window !== 'undefined'
                 && window.__TALARIA_DISABLE_M23_HOST_COMMIT_TEARDOWN_V1 === true) {
-                return;
-            }
-        } catch (_e) { /* ignore */ }
-        try {
-            if (typeof window !== 'undefined'
-                && window.__TALARIA_DISABLE_MC_FINER_HOST_COMMIT_UNREGISTER_V1) {
                 return;
             }
         } catch (_e) { /* ignore */ }
