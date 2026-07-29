@@ -11,7 +11,7 @@ Whenever `manager-a/critical-path` advances with product merges:
 2. Stamp next `20260729bNN` (monotonic)  
 3. Ship to **`31.97.192.82` only** via `canary-checkpoint-one-action.sh`  
 4. Full verify: SURF-3 live GREEN + fixture RED; stamp-census holes=0; deploy-gate markers PRESENT; new flags reachable at runtime  
-5. **FLAG-01 + FLAG-02 on every new switch** per `FLAG-BISECT-VERIFY-PROTOCOL-20260729.md` — fail = **blocking defect**, not a footnote (bisect depends on independent runtime toggle without reload)  
+5. **FLAG-01 + FLAG-02 + FLAG-03 on every new switch** per `FLAG-BISECT-VERIFY-PROTOCOL-20260729.md` — fail = **blocking defect**, not a footnote (bisect depends on independent runtime toggle without reload; FLAG-03 = OFF-path still a working product)  
 6. Journal and continue — **do not wait / ask between deploys**
 
 ## Exceptions (still need Director)

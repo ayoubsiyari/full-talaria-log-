@@ -15,6 +15,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const WORKTREE_ROOT = path.resolve(__dirname, '..', '..', '..', '..');
 const GRID_SRC = path.resolve(WORKTREE_ROOT, 'chart v 1.4', 'talaria-design', 'src', 'MultichartGrid.jsx');
 const SWITCH = '__TALARIA_DISABLE_MC_GRID_STATE_PURGE_V1';
+const HOST_BUS_SWITCH = '__TALARIA_DISABLE_MC_HOST_BUS_RETRY_TIMER_CLEANUP_V1';
 
 const SOURCE = fs.readFileSync(GRID_SRC, 'utf8');
 
@@ -59,7 +60,12 @@ function extractBlockFrom(source, needle, from = 0) {
 }
 
 function replaceOnce(source, needle, replacement) {
-  assert.ok(source.includes(needle), `missing mutation target: ${needle}`);
+  if (!source.includes(needle)) {
+    // Tagged so expectRejectsCell cannot read a stale needle as a red cell.
+    const err = new Error(`missing mutation target: ${needle}`);
+    err.mutationTargetMissing = true;
+    throw err;
+  }
   return source.replace(needle, replacement);
 }
 
@@ -72,7 +78,9 @@ function runVm(code, sandbox) {
 function installGridHelpers(source, sandbox, extra = '') {
   return runVm(`
     const MC_GRID_STATE_PURGE_SWITCH = '${SWITCH}';
+    const MC_HOST_BUS_RETRY_TIMER_CLEANUP_SWITCH = '${HOST_BUS_SWITCH}';
     ${extractFunction(source, 'mcGridStatePurgeV1Enabled')}
+    ${extractFunction(source, 'mcHostBusRetryTimerCleanupV1Enabled')}
     ${extra}
   `, sandbox);
 }
@@ -137,7 +145,8 @@ async function expectRejectsCell(name, fn) {
   let failed = false;
   try {
     await fn();
-  } catch (_) {
+  } catch (err) {
+    if (err && err.mutationTargetMissing) throw err;
     failed = true;
   }
   note(name, failed, failed ? 'red under neutered guard' : 'unexpectedly green');
@@ -257,7 +266,7 @@ function exercisePg2(source = SOURCE) {
   assert.equal(sandbox.window.__multichartRealData, 'old', 'cleanup restores previous real-data root');
 }
 
-function exercisePg3(source = SOURCE) {
+function exercisePg3(source = SOURCE, switches = {}) {
   const hostBusAnchor = source.indexOf('let hostBusRetryInterval = null;');
   const retryBlock = extractBlockFrom(source, 'if (!tryInstallHostBus()) {', hostBusAnchor);
   let intervalCallback = null;
@@ -281,6 +290,8 @@ function exercisePg3(source = SOURCE) {
     broadcastOrderRemoval: () => {},
     broadcastClearDraftPreview: () => {},
   };
+  if (switches.hostBusOff) sandbox.window[HOST_BUS_SWITCH] = true;
+  if (switches.purgeOff) sandbox.window[SWITCH] = true;
   installGridHelpers(source, sandbox, `
     function startOrderMirrorRetryHarness() {
       let hostOffOpened = null;
@@ -292,7 +303,7 @@ function exercisePg3(source = SOURCE) {
       let orderMirrorDisposed = false;
       ${extractFunction(source, 'tryInstallHostBus', hostBusAnchor)}
       ${retryBlock}
-      const cleanup = ${extractArrowAround(source, 'if (mcGridStatePurgeV1Enabled() && hostBusRetryInterval)', 'return () =>')};
+      const cleanup = ${extractArrowAround(source, 'orderMirrorDisposed = true;', 'return () =>')};
       return {
         cleanup,
         tryInstallHostBus,
@@ -305,8 +316,16 @@ function exercisePg3(source = SOURCE) {
   const harness = sandbox.startOrderMirrorRetryHarness();
   assert.equal(harness.getInterval(), 99, 'host bus retry interval is saved');
   harness.cleanup();
+  if (switches.hostBusOff) {
+    assert.equal(sandbox.cleared, undefined, 'its own kill-switch alone suppresses the clear');
+    assert.equal(harness.getInterval(), 99, 'its own kill-switch alone leaves the interval in place');
+    return;
+  }
   assert.equal(sandbox.cleared, 99, 'cleanup clears the saved retry interval');
   assert.equal(harness.getInterval(), null, 'cleanup nulls the saved retry interval');
+  // PURGE-2 off restores the legacy disposed-retry guard below, so stop here:
+  // the clear above is the whole claim for that variant.
+  if (switches.purgeOff) return;
 
   sandbox.window.chart = {
     orderManager: {
@@ -537,6 +556,12 @@ test('PG-3: host order bus retry interval is cleared and cannot reinstall after 
   note('pg3-host-bus-interval', true, 'retry interval no longer outlives cleanup');
 });
 
+test('PG-3 FLAG-01: the retry cleanup switch is observable without the purge switch', () => {
+  exercisePg3(SOURCE, { hostBusOff: true });
+  exercisePg3(SOURCE, { purgeOff: true });
+  note('pg3-host-bus-switch-independent', true, 'cleanup answers to its own switch, not to PURGE-2');
+});
+
 test('PG-4: stale load continuations cannot act on replacement panels', async () => {
   await exercisePg4StaleGeneration();
   note('pg4-load-continuation', true, 'generation gate blocks stale load finish');
@@ -575,8 +600,8 @@ test('neutering table: PG-1 through PG-5 and B3 go red when guards are disabled'
   )));
   await expectRejectsCell('neuter-pg3', () => exercisePg3(replaceOnce(
     SOURCE,
-    'if (mcGridStatePurgeV1Enabled() && hostBusRetryInterval)',
-    'if (false && mcGridStatePurgeV1Enabled() && hostBusRetryInterval)',
+    'if (hostBusRetryInterval && mcHostBusRetryTimerCleanupV1Enabled())',
+    'if (false && hostBusRetryInterval && mcHostBusRetryTimerCleanupV1Enabled())',
   )));
   await expectRejectsCell('neuter-pg4', () => exercisePg4StaleGeneration(replaceOnce(
     SOURCE,

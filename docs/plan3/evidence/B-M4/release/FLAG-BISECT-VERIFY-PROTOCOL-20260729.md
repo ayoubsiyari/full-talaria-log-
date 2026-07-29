@@ -11,6 +11,7 @@
 |---|---|---|
 | **FLAG-01** | Testable against **ABSENT** — unset property ⇒ fix/path **ON** (production default). Never require explicit `false`. | Init-time `=== false` strand, or presence-at-any-value disable |
 | **FLAG-02** | Flippable **without reload** — read at each decision point (own realm then host). Mid-session `true` → OFF; `delete` → ON again. | Sampled once at init/closure; cannot bisect live |
+| **FLAG-03** | Kill-switch **OFF-path is a working product** — boot/`= true` must still load, paint, and have data (or the equivalent product assertion for that path). Verifying only that the feature is inactive is **not enough**. | Disable restores a latent defect (e.g. PURGE-2 black panels); one-way switches marked in the canary runbook |
 
 **Independence:** flipping flag X must not require flipping flag Y. Welded switches break the bisect — **block**.
 
@@ -22,11 +23,12 @@
 2. **`= true`** → disabled / legacy path (no reload).  
 3. **`= false`** / **`= undefined`** → still active (not treated as disable).  
 4. **`delete` property** → active again without reload (FLAG-02).  
-5. **On-wire** after deploy: `grep` / fetch confirms the flag string is in the served bytes that execute the path.
+5. **FLAG-03:** with **`= true`**, assert a **working product** outcome (chart loads / paints / has data, or path-specific equivalent). Not merely “feature inactive”.  
+6. **On-wire** after deploy: `grep` / fetch confirms the flag string is in the served bytes that execute the path.
 
-Harness preferred (A’s packet tests). If none: a minimal vm/browser cell exercising the reader helper through the four states in one realm.
+Harness preferred (A’s packet tests). If none: a minimal vm/browser cell exercising the reader helper through the four states in one realm **plus** an OFF-path product assertion.
 
-**Verdict:** PASS both → ship with stamp. FAIL either → **BLOCKING**; journal + notify A; do not treat the canary as carrying a usable bisect lever for that suspect.
+**Verdict:** PASS FLAG-01/02/03 → ship with stamp. FAIL any → **BLOCKING**; journal + notify A; do not treat the canary as carrying a usable bisect lever for that suspect. If FLAG-03 is truly impossible, mark the switch **ONE-WAY** in the canary runbook — repair preferred.
 
 ---
 

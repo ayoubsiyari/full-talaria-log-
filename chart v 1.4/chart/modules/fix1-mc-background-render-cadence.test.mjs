@@ -133,6 +133,7 @@ function makeChart({
   hostSwitchOn = false,
   ownSwitchValue = true,
   hostSwitchValue = true,
+  probeThrows = false,
   livePanelIds = ['A', 'B', 'C', 'D'],
   source = SOURCE,
 } = {}) {
@@ -240,6 +241,7 @@ globalThis.__host = host;
 globalThis.__panel = panel;
 globalThis.__frameEl = frameEl;
 globalThis.__visible = ${visible ? 'true' : 'false'};
+globalThis.__probeThrows = ${probeThrows ? 'true' : 'false'};
 globalThis.window = ${isHost ? 'host' : 'panel'};
 if (${hostSwitchOn ? 'true' : 'false'}) host[MC_BACKGROUND_RENDER_CADENCE_DISABLE_SWITCH] = ${JSON.stringify(hostSwitchValue)};
 if (${ownSwitchOn ? 'true' : 'false'}) globalThis.window[MC_BACKGROUND_RENDER_CADENCE_DISABLE_SWITCH] = ${JSON.stringify(ownSwitchValue)};
@@ -292,6 +294,7 @@ class TestChart {
         this.canvas = {
             __style: { display: 'block', visibility: 'visible' },
             getBoundingClientRect() {
+                if (globalThis.__probeThrows) throw new Error('visibility probe failure');
                 if (!globalThis.__visible) return { width: 0, height: 0 };
                 if (this.__style.display === 'none' || this.__style.visibility === 'hidden') {
                     return { width: 0, height: 0 };
@@ -703,6 +706,25 @@ test('FIX1-C1c: resize surface-reset escape still repaints a hidden panel once',
   assert.equal(frozen.paints, 0);
   assert.equal(afterResize.paints, 1);
   assert.equal(frozenAgain.paints, 1);
+});
+
+test('FIX1-C1d: a throwing visibility probe fails open, so a probe failure never freezes a tile', () => {
+  const panel = makeChart({ panelId: 'B', focusedPanelId: 'A', probeThrows: true });
+  panel.warmFirstPaint();
+  const first = panel.render();
+  const second = panel.render();
+
+  const ok = panel.chart._isMultichartPanelVisibleForPaint() === true
+    && panel.chart._shouldSkipMultichartBackgroundRender() === false
+    && first.paints === 1 && second.paints === 2;
+  note('FIX1-C1d-PROBE-FAIL-OPEN', ok,
+    `probeVisible=${panel.chart._isMultichartPanelVisibleForPaint()} paints=${second.paints}`);
+  assert.equal(panel.chart._isMultichartPanelVisibleForPaint(), true,
+    'probe must fail open on error');
+  assert.equal(panel.chart._shouldSkipMultichartBackgroundRender(), false,
+    'a probe failure must not classify a tile as background');
+  assert.equal(first.paints, 1);
+  assert.equal(second.paints, 2);
 });
 
 test('FIX1-C2: switch restores full-cadence paint for a hidden panel', () => {
