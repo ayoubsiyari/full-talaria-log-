@@ -204,3 +204,12 @@
 ## 2026-07-29 — Tier / fallback review audit
 
 - tier=audit model=gpt-5.5. I found no explicit `API fallback window` marker in `docs/plan3` or the prior transcript. During the resumed fallback-routing window, no money-path packet was accepted as TOP-reviewed: timezone was non-money-path and committed; TAL-01697 live-recalc remained uncommitted and is being TOP-reviewed before commit. Standing action: any money-path commit without a recorded `tier=top reviewer model=... result=ACCEPT` is not canary-ready and must be re-reviewed at TOP.
+
+## 2026-07-29 — Cluster G / Drag-family residual: risk quantity live SL
+
+- tier=mid author model=gpt-5.5; TOP review required before canary because this writes `#orderQuantity`, a placement input.
+- Root cause found: TAL-01697 live panel PnL fixed panel math during apply-on-release preview drag, but `calculatePositionFromRisk()` still read committed `#slPrice`. In fixed-risk modes, quantity therefore used the stale SL distance during drag and corrected only at mouseup commit.
+- Fix: `calculatePositionFromRisk()` now reads the live preview/provisional SL from `_resolveLivePreviewPanelPrices()` behind `__TALARIA_DISABLE_ORDER_RISK_QTY_LIVE_PREVIEW_SL_V1` (default ON). `#slPrice` still remains uncommitted until release.
+- TOP review: tier=top reviewer model=claude-opus-5-thinking-high result=ACCEPT. Reviewer verified mirror hash parity, RED/GREEN, full order sweeps, switch composition, and no placement / execution / journal leakage. Residual follow-up: cancelling a preview SL drag can leave `#orderQuantity` sized from the abandoned provisional SL until recalculated.
+- RED: `TALARIA_TEST_DISABLE_ORDER_RISK_QTY_LIVE_PREVIEW_SL=1 node "chart v 1.4/chart/modules/order-risk-qty-live-preview-sl.test.mjs"` fails with quantity `10.00` instead of live-distance `5.00`.
+- GREEN: canonical and homepage `order-risk-qty-live-preview-sl.test.mjs` pass; adjacent `order-preview-live-recalc.test.mjs` and `order-risk-qty-on-sl-commit.test.mjs` pass.

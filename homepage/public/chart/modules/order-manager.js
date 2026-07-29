@@ -238,6 +238,11 @@ function _orderPreviewLiveRecalcV1Enabled() {
     return typeof window === 'undefined' || !window.__TALARIA_DISABLE_ORDER_PREVIEW_LIVE_RECALC_V1;
 }
 
+/** Cluster G / drag family residual: fixed-risk quantity follows live preview SL. */
+function _orderRiskQtyLivePreviewSlV1Enabled() {
+    return typeof window === 'undefined' || !window.__TALARIA_DISABLE_ORDER_RISK_QTY_LIVE_PREVIEW_SL_V1;
+}
+
 /** Cluster G / TAL-01751: BE trigger keeps the preview/place anchor. */
 function _orderBePlaceAnchorV1Enabled() {
     return typeof window === 'undefined' || !window.__TALARIA_DISABLE_ORDER_BE_PLACE_ANCHOR_V1;
@@ -20147,7 +20152,12 @@ class OrderManager {
         } else {
             entryPrice = parseFloat(document.getElementById('orderEntryPrice')?.value || 0);
         }
-        const slPrice = parseFloat(document.getElementById('slPrice')?.value || 0);
+        const liveRiskSl = _orderRiskQtyLivePreviewSlV1Enabled()
+            ? this._resolveLivePreviewPanelPrices().slPrice
+            : 0;
+        const slPrice = liveRiskSl > 0
+            ? liveRiskSl
+            : parseFloat(document.getElementById('slPrice')?.value || 0);
         const enableSL = document.getElementById('enableSL')?.checked;
         
         // For lot-size mode, we don't need SL to set position size
