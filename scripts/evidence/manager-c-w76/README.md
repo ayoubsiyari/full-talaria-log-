@@ -5,6 +5,7 @@ Dataset-count calibration + CPU attribution correction. tier=mid model=cursor-gr
 | File | What |
 |---|---|
 | `w76-dataset-count-calibration.slim.json` | **P0** Director's hypothesis CONFIRMED. 1 dataset plateaus (~0/cycle); 4 distinct datasets retain **23.28 ± 2.73 MB/cycle**, monotonic, forced-GC. Gap closed |
+| `w76-worker-plus-one-resolved.slim.json` | **P1** CLOSED. Workers are +1 **once** (cycle 1), then 0/cycle. CDP created 19 / destroyed 18 / live 1. No hidden Worker heap growth |
 | `w76-cpu-ceiling-attribution-correction.slim.json` | **P3** W75's ceiling attribution retracted (named an M20-Q6 wrapper, not product code). CPU-THREAD-CENSUS-V1 landed; 111% run still OPEN |
 
 ## The one-line answer to the 20x gap
