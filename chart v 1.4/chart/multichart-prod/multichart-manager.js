@@ -72,6 +72,15 @@
         }
     }
 
+    /** Leak shot (c): removeChart releases panel-held shared bar-store refs. Default ON. */
+    function mcClearFileOnRemoveV1Enabled() {
+        try {
+            return !(global && global.__TALARIA_DISABLE_MC_CLEARFILE_ON_REMOVE_V1);
+        } catch (_) {
+            return true;
+        }
+    }
+
     /** panel-cmd `loadFile` / heavy ops: iframes may still be parsing dist-v9 after bridge-ready. */
     var PANEL_CMD_TIMEOUT_MS = 25000;
 
@@ -423,6 +432,15 @@
         tick();
     }
 
+    function releasePanelSharedBarStoreRefsOnRemove(entry) {
+        if (!mcClearFileOnRemoveV1Enabled()) return;
+        const frame = entry && entry.frame;
+        const panelChart = frame && frame.contentWindow && frame.contentWindow.chart;
+        if (panelChart && typeof panelChart._releaseSharedBarStoreFileRefs === 'function') {
+            panelChart._releaseSharedBarStoreFileRefs();
+        }
+    }
+
     /**
      * Add a chart by spawning an iframe.
      * @param {{id:string, symbol:string, tf:string, days?:number}} cfg
@@ -604,6 +622,12 @@
                     c._mcFrameErrorListener = null;
                 }
             } catch (_) {}
+        }
+        try {
+            releasePanelSharedBarStoreRefsOnRemove(c);
+        } catch (err) {
+            const message = err && err.message ? ': ' + err.message : '';
+            this._log('error', 'removeChart ' + id + ' shared bar-store release failed' + message);
         }
         try {
             const panelChart = c.frame && c.frame.contentWindow && c.frame.contentWindow.chart;
