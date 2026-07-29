@@ -3981,3 +3981,13 @@ Handoff: `HANDOFF-C-GRADE-LANE-20260729.md`; superseding banner added to the pin
 ### In flight
 - **B-R9** `role=reviewer tier=top model=claude-opus-5-thinking-high` — re-review of the three fallback-window kill-switch decisions (b90 polarity, b92 default-ON restore, b93 FLAG-03). Named question: whether b92's revert reintroduced the b88 panel freeze, and what was lost when the FIX1 harness halved from 98176 to 49103 bytes in `798e07dd4`.
 - **B-W20** `role=author tier=mid model=gpt-5.5-medium-fast` — finish the TIMER-OUTLIVES-OWNER sweep. Existing census was inspection-only and `setInterval`-only. Seed lead for the worker relatives C's census reports (workers +1 per multichart cycle, never terminated): `chart-indicators-full.js:8004-8035` caches `_indicatorWorkerSingleton` per realm with no `.terminate()` anywhere in the file; each panel is its own realm. That file is A's territory -> escalation with proof, not a B edit.
+
+
+## B-0176 — Displacement guard + key-auth rollback path. Wrong path is now hard.
+
+**2026-07-29T16:39Z.** `tier=low model=cursor-grok-4.5`. Documenting the hazard was not enough; the script that caused it stayed easy to run.
+
+- `canary-bringup-pinned.sh` now **refuses by default** (exit 2) with a pointer to the grade lane. Moving the live wire needs `ALLOW_LIVE_DISPLACEMENT=1` and a journal note. Verified both branches: refusal exit=2; flagged run proceeds.
+- Same script was **unusable as a rollback path** — it hard-required `TALARIA_TEST_HOST_PASS(_B64)`, which vanished when routing was restored. It now falls back to key auth (probes `BatchMode` first, fails loudly if neither works). Verified with the pass env unset: key-auth re-assert of b99 returned `CANARY_BRINGUP_PINNED_OK`, restore point `bringup-20260729b99-20260729T163908Z`.
+
+Live confirmed after the test: all three app containers on `canary-20260729b99` tags, wire `20260729b99`, grade lane still serving b85 on `127.0.0.1:3001`.
