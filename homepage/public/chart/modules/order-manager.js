@@ -189,6 +189,12 @@ function _orderTypeReclassifyV2Enabled() {
     return typeof window === 'undefined' || !window.__TALARIA_DISABLE_ORDER_TYPE_RECLASSIFY_V2;
 }
 
+/** Cluster G / TAL-01904: one full tick away is pending, not market. */
+function _orderTypeOneTickPendingV1Enabled() {
+    return typeof window === 'undefined'
+        || !window.__TALARIA_DISABLE_ORDER_TYPE_ONE_TICK_PENDING_V1;
+}
+
 /** T4 step 6: default ON — live-refresh order type labels during drag; own kill-switch. */
 function _orderTypeLiveLabelFixEnabled() {
     return typeof window === 'undefined' || !window.__TALARIA_DISABLE_ORDERTYPE_LIVE_LABEL_FIX;
@@ -336,7 +342,7 @@ function _classifyOrderTypeForPrice(side, price, currentPrice, opts = {}) {
     const entry = Number(price);
     if (!(market > 0) || !(entry > 0)) return opts.fallback || opts.mainOrderType || 'limit';
     const tickSize = Number(opts.tickSize || opts.pipSize || 0.0001);
-    const tolerance = tickSize * ORDER_TYPE_AT_MARKET_TOLERANCE_TICKS;
+    const tolerance = tickSize * (_orderTypeOneTickPendingV1Enabled() ? 0.25 : ORDER_TYPE_AT_MARKET_TOLERANCE_TICKS);
     if (Math.abs(entry - market) <= tolerance) return 'market';
     const s = String(side || 'BUY').toUpperCase();
     if (s === 'BUY') return entry < market ? 'limit' : 'stop';
