@@ -4107,3 +4107,46 @@ Pinned images for C, item 3 of the standing order: tarballs and daemon tags pres
 ### Decision for the director — D5, `.gitignore:106`
 
 `docs/plan3/*` is ignored, with narrow negations for the top-level governance `.md` files and the journals. Per the comment on that rule, `evidence/` staying local is deliberate (director ruling TB-6). The consequence: **B-R9's 34KB TOP re-review — the gate evidence justifying two ACCEPTs and one REJECT — cannot be committed, and lives in one worktree only.** That is the exact failure mode TB-6 was written to prevent, applied to ship-gate reviews rather than policy files. I am not widening a governance rule on my own initiative. Proposal: negate ship-gate review reports specifically, e.g. `!docs/plan3/evidence/**/observations/*-rereview.md`, leaving probes, logs and worker reports local. Awaiting a ruling.
+
+---
+
+## B-0181 — NGINX big-JSON temp-file spool: granted, measured, premise corrected, shipped by reload.
+
+tier=TOP model=claude-opus-5-thinking-high (money-path-adjacent: live proxy config)
+Evidence: `docs/plan3/evidence/B-M4/release/NGINX-BIGJSON-TEMP-FILE-20260729.md`
+Gate: `homepage/nginx-bigjson-buffering.test.mjs` — 7 cells, 6 mutants, 0 survivors.
+
+**The escalated premise was wrong and I am recording that before the fix.** The finding was "spools to a temp file before the client sees a byte". `proxy_buffering on` does not delay the first byte — nginx forwards as it reads. A/B on the real config with a trickling upstream: ttfb 0.0021s buffered vs 0.0017s unbuffered, totals 6.396s vs 6.395s, and **zero temp-file warns in either arm**. My first stimulus could not reproduce the reported warn at all, which means my first fix (`proxy_buffering off`) would have shipped against a symptom I had never once observed.
+
+The spool happens when the backend produces faster than the client consumes. With a fast upstream and a 1MB/s client the warn appears on every request. So the real cost is **one multi-MB disk write per request on an 81%-full disk that also holds the pinned canary images** — not latency. And `$is_tile` is 1 for everything except `/tile/`, so these routes were never cached either: the buffering bought nothing whatsoever here.
+
+`proxy_buffering off` would have removed the write while handing slow-client backpressure straight to the uvicorn workers — trading a disk write for backend worker occupancy, which is the worse failure. Shipped instead: keep buffering, 1MB of memory buffers so a normal candle response fits, `proxy_max_temp_file_size 0` so nothing reaches disk.
+
+**Result, per route:** 3 × `/smart` produced 3 warns before and **0 after**. `/meta` still spools in the fixed arm, which is the proof the scoping is exact rather than a blanket change to `/api/file/`. Tile cache still MISS-then-HIT. Identical bytes and status. Cost is ~3% of total transfer time for a throttled client, first byte unchanged.
+
+**Shipped by config reload only** — `RECREATED=no`, stamp b99 before and after, `.State.StartedAt` unchanged across four reloads. The wire did not move while the PO is measuring, which was the constraint.
+
+Kill-switch `/opt/talaria/canary-nginx-bigjson-switch.sh` flipped live in both directions and verified in `nginx -T`, not just in the file. Both directions run `nginx -t` in the container first and restore the previous file if it fails, so a bad flip cannot take the site down.
+
+Two nested-location traps the gate now holds: `proxy_pass` is **not** inherited into a nested location (without it the route loses its handler and serves static 404s), and any `add_header` at that level would drop every inherited `add_header` including the security headers. Both are silent, both look harmless in review.
+
+While writing the gate I tripped my own rule: the negative assertions matched the word `add_header` inside my own explanatory comment. A gate that reads comments as code is not reading the product. Fixed by stripping comment lines first.
+
+### Governance findings — not mine to fix
+1. `scripts/territory-preflight.mjs` reports `homepage/nginx.local.conf` **unowned**, which is precisely why a user-visible cost survived to canary. It confirms the director's diagnosis mechanically.
+2. I drafted the manifest entry for the grant and the preflight blocked me: `TERRITORY.yml` is **director-only**, on the grounds that a manager who can edit its own territory has no territory. Correct, and I reverted. The entry needs a director hand — proposed text in `NGINX-BIGJSON-TEMP-FILE-20260729.md`.
+3. The manifest does not list the `talaria-design/src/**` grant B has been working under all evening, so the preflight would call most of B's committed work unowned. Stale manifest, not stale work.
+4. The `Manager:` commit trailer the preflight requires is **absent from my three commits and from every commit before them on this branch**. The convention has never been met here. I am not rewriting history to add it — the journal cites those SHAs — but I am recording it and using the trailer from now on.
+
+---
+
+## B-0182 — b99 confirmed stable on the wire; MEAS-01 given teeth.
+
+Live at 18:25Z, read over HTTP rather than assumed: `served=20260729b99`, `pin=20260729b99`, shell 200, no drift entry since the 17:06:24Z repair. Both app images report `canary-20260729b99`.
+
+**My watchdog had the exact defect I criticised earlier today.** It logged only on drift, so silence in `LIVE-DRIFT.log` was ambiguous: "nothing drifted" and "the watchdog is dead" looked identical — and this morning a bad guard did make it skip every tick while reporting nothing. It now writes `/root/talaria-restore/WATCHDOG-HEARTBEAT` on every tick, before any early exit, **including its mode**, so a fresh heartbeat reading `mode=off` cannot be misread as protection. Proven firing on its own schedule, not just when I run it by hand: heartbeat advanced `18:24:06Z` → `18:25:01Z` under cron with no intervention.
+
+**MEAS-01 tooling:** `/opt/talaria/canary-meas01-stamp.sh`. `once` reads the stamp from the served bundle over HTTP the way a browser does — not from the image, not from the pin file. `watch <dur> <interval>` samples a whole run to JSONL, flags a change the moment it happens, and prints `verdict=STABLE|VOID` at the end. Each sample records the watchdog heartbeat and its freshness, so a measurement cannot claim protection from a watchdog that was off. For the six-cycle heap run: `canary-meas01-stamp.sh watch 1800 15`, and attach the JSONL to the result.
+
+### Pins for C — item 3
+Tags and tars present for b85, b86, b90–b99, including **b99 (16:12Z)**. Grade lane isolated on `127.0.0.1:3001`, currently b85, live untouched on 3000. Handoff updated with MEAS-01 as binding and with a scheduling constraint I had missed: both lanes share one host, so a browser runner on `:3001` competes for CPU with a heap or lag measurement on `:3000`. Grading and PO measurement must not overlap. Disk 81% used, 38G free, twelve ~320MB tars — a retention cap is needed before it becomes urgent.
