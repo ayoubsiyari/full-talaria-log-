@@ -3280,6 +3280,15 @@ class Chart {
         };
     }
 
+    /**
+     * LEAK-G: under multichart, suppress BT TF prefetch fill (default ON).
+     * Kill-switch: window.__TALARIA_DISABLE_MC_BT_TF_PREFETCH_V1 — truthy restores prefetch.
+     * Distinct from __TALARIA_DISABLE_BT_TF_CACHE_PLAYHEAD_COVER.
+     */
+    _mcBtTfPrefetchGateEnabled() {
+        return !(typeof window !== 'undefined' && window.__TALARIA_DISABLE_MC_BT_TF_PREFETCH_V1);
+    }
+
     /** Publish just-ingested native bars into the shared store (called from ingest). */
     _publishMasterToSharedStore(bars, result) {
         try {
@@ -9097,6 +9106,13 @@ class Chart {
     }
 
     _scheduleBacktestTimeframePrefetch(fileId, session) {
+        // LEAK-G: fill-before-spill — host can warm 6 fileIds × 8 TFs × 12k bars.
+        // Default-ON under MC: no-op schedule. Kill restores prefetch. Store path untouched (LEAK-A).
+        if (this._mcBtTfPrefetchGateEnabled()
+            && typeof this._usesMultichartReplayMaster === 'function'
+            && this._usesMultichartReplayMaster()) {
+            return;
+        }
         if (!this.isBacktestMode || !fileId) return;
         if (this._btTfPrefetchScheduled === fileId) return;
         this._btTfPrefetchScheduled = fileId;
