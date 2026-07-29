@@ -3062,8 +3062,6 @@ export default function MultichartGrid({
     // black (PO: only 1/3 recovered; clearActiveDrawingTool timeouts; thrash
     // loads across many fileIds). Heal once per tile: if still no bars after
     // settle, drop persisted pair, forget clone/order, load host fileId.
-    const dataReadyPanelsRef = useRef(dataReadyPanels);
-    dataReadyPanelsRef.current = dataReadyPanels;
     const panelBootHealAttemptedRef = useRef(new Set());
     useEffect(() => {
         if (!managerReady) return;
