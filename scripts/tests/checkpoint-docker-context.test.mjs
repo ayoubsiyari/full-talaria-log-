@@ -107,6 +107,7 @@ test('checkpoint Docker stages explicitly copy their complete local import graph
       '/scripts/lib/homepage-forwarding-contracts.mjs',
       '/scripts/module-contract-preflight.mjs',
       '/scripts/module-contracts.json',
+      '/scripts/lib/m19-e-hotpath-console-exemptions.mjs',
       wrapperDestination,
     ]) {
       assert.ok(copies.get(destination).index < syncRunIndex, `${destination} must precede sync`);

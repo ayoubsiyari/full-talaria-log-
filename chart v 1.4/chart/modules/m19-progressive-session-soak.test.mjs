@@ -33,6 +33,11 @@ import { spawnSync } from 'node:child_process';
 import { performance } from 'node:perf_hooks';
 import { fileURLToPath } from 'node:url';
 
+import {
+  classifyM19EHotpathConsoleCall,
+  M19_E_HOTPATH_CONSOLE_EXEMPTIONS,
+} from '../../../scripts/lib/m19-e-hotpath-console-exemptions.mjs';
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const ROOT = path.resolve(__dirname, '../../..');
@@ -114,6 +119,8 @@ const consoleSink = {
   calls: 0,
   argBytes: 0,
   byPrefix: Object.create(null),
+  exemptCalls: 0,
+  exemptById: Object.create(null),
 };
 
 function estimateArgsBytes(args) {
@@ -128,11 +135,22 @@ function estimateArgsBytes(args) {
 }
 
 function installConsoleSink() {
+  // Named exemptions only (see M19_E_HOTPATH_CONSOLE_EXEMPTIONS). warn/error stay
+  // in the hotpath counter unless admit-listed — do not drop levels globally.
   const wrap = (level) => (...args) => {
-    consoleSink.calls += 1;
-    consoleSink.argBytes += estimateArgsBytes(args);
     const head = typeof args[0] === 'string' ? args[0].slice(0, 48) : level;
     consoleSink.byPrefix[head] = (consoleSink.byPrefix[head] || 0) + 1;
+    const classified = classifyM19EHotpathConsoleCall(level, args);
+    if (!classified.countsTowardHotpath) {
+      consoleSink.exemptCalls += 1;
+      if (classified.exemptionId) {
+        consoleSink.exemptById[classified.exemptionId] =
+          (consoleSink.exemptById[classified.exemptionId] || 0) + 1;
+      }
+      return;
+    }
+    consoleSink.calls += 1;
+    consoleSink.argBytes += estimateArgsBytes(args);
   };
   console.log = wrap('log');
   console.warn = wrap('warn');
@@ -862,6 +880,8 @@ async function runSoak({
   consoleSink.calls = 0;
   consoleSink.argBytes = 0;
   consoleSink.byPrefix = Object.create(null);
+  consoleSink.exemptCalls = 0;
+  consoleSink.exemptById = Object.create(null);
 
   const totalCandles = warmup + measured + 80;
   const candles = makeCandles(totalCandles);
@@ -1259,6 +1279,9 @@ async function runSoak({
     endSessionBytes: endPayloads.sessionBytes,
     consoleCalls: consoleSink.calls,
     consoleCallsMeasured,
+    consoleExemptCalls: consoleSink.exemptCalls,
+    consoleExemptById: { ...consoleSink.exemptById },
+    consoleHotpathExemptions: M19_E_HOTPATH_CONSOLE_EXEMPTIONS.map((row) => row.id),
     consoleArgBytes: consoleSink.argBytes,
     base64PersistBytes: chart._base64PersistBytes,
     base64InnerHtmlBytes: chart._base64InnerHtmlBytes,

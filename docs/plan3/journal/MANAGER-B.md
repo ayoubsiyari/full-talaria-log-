@@ -3400,3 +3400,79 @@ Still blocked on **C's soak FixE exemption**. Tip soak remains `M19-FAIL` /
 `fixEAllPass=false` with the same warn prefix. COPY fix is already on tip
 (`078f46cfd`). When C lands, B runs `CHECKPOINT_BUILD=1` `CHART_BUILD_ID=20260728b82`,
 deploys, same-session verify — no further instruction needed for that sequence.
+
+---
+
+## B-0148 — ESCALATION. Warm `/chart/` SW pins old shells. Canary delivery broken.
+
+PO: browser showed `20260726b75` while host cold-served `20260728b82`. Asked whether
+`talaria-version-reload.js` is on real shells, whether it acts on the worker (not
+mere reload), and whether a warm client transitions unaided.
+
+### Probe (live origin + tip source)
+
+`node docs/plan3/evidence/B-M4/release/sw-warm-client-delivery-probe.mjs \
+  --base-url=http://31.97.192.82:3000 --expect=20260728b82` → exit 3,
+**`CANARY_DELIVERY_BROKEN`**.
+
+| Question | Answer |
+|---|---|
+| Loaded on user shells? | **No** — not on live/tree `dist-v9` or `chart-embed` |
+| Acts on worker vs reload? | Module default **OFF**; `check()` only toasts; unregister+cache clear **only on Reload click** |
+| Unaided warm → new build? | **No** — no product path tears down SW / busts cached shell |
+
+Cold origin confirmed b82 (`dist-v9` + `sw.js`). Shells: `Cache-Control: max-age=3600`.
+`dist-v9` loads `pwa-install.js` → registers `/chart/sw.js` scope `/chart/`.
+Embed loads neither version-reload nor pwa-install.
+
+### Escalation
+
+`docs/plan3/evidence/B-M4/release/ESCALATE-SW-WARM-CLIENT-DELIVERY-20260728.md`
++ `FINDING-SW-WARM-CLIENT-DELIVERY-20260728.md`.
+
+**Consequence:** tonight's census-green and probe-PRESENT describe the origin only.
+No server-side census repairs a returning user stuck on b75. DEPLOY-01 / canary needs
+an explicit warm-client clause before we claim ship delivery. No product fix authored
+in this entry — waiting on Director path.
+
+---
+
+## B-0149 — Dual-build path resolved. Shell-sync STOPPED. Prod b56 report-only.
+
+Director `RULING-ONE-CANONICAL-ENTRY…0055` + prod finding. Priority above other work.
+**No restart, no rebuild, no deploy.** C's RED fixture preserved.
+
+### 1. STOP `/chart/index.html` shell-sync
+
+Confirmed: homepage container has **no** `/usr/share/nginx/html/chart/index.html`.
+That URL does not read a homepage index file. Syncing/patching one would miss the
+bytes the PO loads. Stopped; no shell-sync executed.
+
+### 2. What the two URLs resolve to (read-only container FS)
+
+| URL | Responder | File | Build |
+|---|---|---|---|
+| `/chart/dist-v9/index.html` | homepage nginx hit | `…/html/chart/dist-v9/index.html` | **b82** |
+| `/chart/index.html` | miss → `@chart_upstream` → chart gunicorn | `/app/dist-v9/index.html` | **b75** |
+
+Auth probe: index `20260726b75` / dist-v9 `20260728b82` (`dualBuild:true`).
+Tip source agrees with itself (both paths → same `dist-v9`); live edge does not —
+homepage static was hot-patched to b82; chart-container `dist-v9/index.html` left
+at Jul 27 **b75**. Hot-patched on chart disk: `api_server.py`, `chart.js` (engine
+`b82`), `modules/order-manager.js`. Process **StartedAt 2026-07-28T21:59Z** (restart
+in hot-patch window); container **Created 2026-07-27** on image `f6c26409bd1e`.
+Not an unreloaded pre-patch Python — a **split filesystem** across nginx vs chart.
+
+Finding: `FINDING-DUAL-BUILD-PATH-RESOLVE-20260728.md` + host RO logs under
+`observations/host-ro-dual-build-*.log`.
+
+### 3. Production report only (no deploy)
+
+`https://talaria-log.com` dist-v9 = **`20260723b56`**; shell does **not** reference
+`indicator-performance.js` (module URL 200 but unused); prod `order-manager.js`
+`journalVouchedFor` **ABSENT**. Report: `REPORT-PROD-B56-VS-B82-20260728.md`.
+
+**Trade-loss vs canary:** engineering answer — **yes, can reach production as a
+scoped server (+ optional client-guard module) hotfix independent of the full b82
+canary shell train**, if the PO orders that path. Shell stamp / indicator-performance
+/ SURF-3 remain separate. **PO decides.**

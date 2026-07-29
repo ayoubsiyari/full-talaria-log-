@@ -21,8 +21,9 @@ Status vocabulary: `RESERVED` (name taken, not yet authored) · `LIVE` (authored
 
 | Name | Signature token | Implementation | Status |
 |---|---|---|---|
-| MODULE-CONTRACT-PREFLIGHT-V1 | `TALARIA_MODULE_CONTRACT_PREFLIGHT_V1` | `scripts/module-contract-preflight.mjs` | LIVE (landed 90e0e0cf8, pre-dates this registry) |
-| CACHE-STAMP-COHERENCE-V1 | `TALARIA_CACHE_STAMP_COHERENCE_V1` | `scripts/cache-stamp-coherence-gate.mjs`, `scripts/lib/cache-stamp-coherence.mjs`, `scripts/cache-stamp-module-baseline.json` | LIVE (W55) — content-hash vs sealed `?v=` stamp + cross-shell module stamp coherence |
+| MODULE-CONTRACT-PREFLIGHT-V1 | `TALARIA_MODULE_CONTRACT_PREFLIGHT_V1` | `scripts/module-contract-preflight.mjs`, `scripts/module-contracts.json` | LIVE — W63e GATE-01: inventory includes `/chart/multichart/chart-host.html` (source+public); missing ModulePresenceRuntime + IndicatorPerf RED is collected independently of build-stamp RED; path/engine-load evidence prevents harness/servable relabels from dropping contracts; correctness module presence credits executable static `<script src>` tags outside `noscript`/`template`/`title`/`textarea`/`xmp`, plus only the named `MULTICHART_PROD_CHART_EMBED_DOCUMENT_WRITE_V1` owned panel bootstrap; pinned real `dist-v9` mutants prove `nomodule/`, raw-text inert wrappers, dead-control loader calls, string-literal loader tokens, and immediate loader calls do not satisfy presence |
+| CACHE-STAMP-COHERENCE-V1 | `TALARIA_CACHE_STAMP_COHERENCE_V1` | `scripts/cache-stamp-coherence-gate.mjs`, `scripts/lib/cache-stamp-coherence.mjs`, `scripts/cache-stamp-module-baseline.json` | LIVE (W55/W63b) — content-hash vs sealed `?v=` + cross-shell stamps; `CACHE_STAMP_SHELLS` covers `/chart/multichart/chart-host.html` and `/chart/multichart/multichart-shell.html` source+public paths so stale multichart shell stamps cannot survive outside the gate (FINDING-MULTICHART-HOST-SHELL-STALE) |
+| SURF3-BUILD-AGREEMENT-V1 | `TALARIA_SURF3_BUILD_AGREEMENT_V1` | `scripts/surf3-build-agreement-gate.mjs`, `scripts/lib/surf3-build-agreement.mjs`, `scripts/fixtures/surf3/gate01-red/` | LIVE — fetch every V9 shell URL, extract `window.__TALARIA_CHART_BUILD_ID`, RED unless all identical; GATE-01 sealed fixture pins Director-asserted live disagreement `…/chart/index.html`=20260726b75 vs `…/chart/dist-v9/index.html`=20260728b82 (dist-v9 body live-captured from 31.97.192.82 before restart) |
 
 ## Queue item 1 — territory and journal (A11.2 item 1)
 
@@ -490,7 +491,7 @@ Pinned budget name (hermetic): `HERMETIC_STORAGE_BUDGET_V1` — changing limits 
 
 | Name | Signature token | Implementation | Status |
 |---|---|---|---|
-| M6-REPLAY-LEAK-GATE-V1 | `TALARIA_M6_REPLAY_LEAK_V1` | `scripts/m6-replay-leak-gate.mjs`, `scripts/lib/m6-replay-leak-probe.mjs`, `scripts/tests/m6-replay-leak-gate.test.mjs` | ESCALATED / UNPROVEN — PO workload armed (4 panels + indicators + order + live replay) still returns live=1 on unfixed HEAD unless live Q6 grows or an attributable scheduler channel goes RED; preflight mints UNPROVEN not GREEN; R-W57 ACCEPT is not the acceptance instrument |
+| M6-REPLAY-LEAK-GATE-V1 | `TALARIA_M6_REPLAY_LEAK_V1` | `scripts/m6-replay-leak-gate.mjs`, `scripts/lib/m6-replay-leak-probe.mjs`, `scripts/tests/m6-replay-leak-gate.test.mjs` | ESCALATED / UNPROVEN — PO workload armed (4 panels + indicators + order + live replay) still returns live=1 on unfixed HEAD unless live Q6 grows or an attributable scheduler channel goes RED; preflight mints UNPROVEN not GREEN; worker residue always blocks FIXED GREEN, but worker-only PO defect credit requires magnitude at least the cycle count; R-W57 ACCEPT is not the acceptance instrument |
 
 Cells:
 
@@ -500,7 +501,7 @@ Cells:
 | M6-REPLAY-LIVE-COUNT-RETURNS-TO-ONE | after N PO-workload cycles back to single-chart, live Q6 instances === 1 | UNPROVEN (cannot go RED on today's unfixed code) |
 | M6-DETACHED-IFRAME-COUNT-NOT-GROWN | after return to single: connected iframes 0 and detachedLive 0 | UNPROVEN (same) |
 | M6-SCHEDULER-CENSUS-INSTRUMENTED | baseline and final scheduler census both have `installedWindows>=1`, `windowCount>=1`, no wrapper errors, observed per-window `timerCallbacks` or `rafCallbacks` growth above the pinned margin for every stable installed window, no auto-installed final-only windows, unchanged `installedAt` epoch per window label, and snapshot-time identity for timer/rAF, Worker, MessageChannel, BroadcastChannel, and `EventTarget.prototype` listener wrappers; blind/all-zero, reset/reinstall, displaced-wrapper, or aggregate-only observation is RED and cannot count as PO defect reproduced | LIVE (W57f hardened) |
-| M6-SCHEDULER-CENSUS-RETURNS-TO-BASELINE | after PO-workload cycles return to single-chart and equal 60s baseline/final soaks, per-channel deltas must return to baseline: intervals/message channels/broadcast channels/workers/listener registration set `<=0`, timeout/rAF compared only soaked-vs-soaked | LIVE as blocking instrument; attributable scheduler RED is intervals/message channels/broadcast channels. Worker-only singleton growth is RED residue but not PO defect reproduced credit |
+| M6-SCHEDULER-CENSUS-RETURNS-TO-BASELINE | after PO-workload cycles return to single-chart and equal 60s baseline/final soaks, per-channel deltas must return to baseline: intervals/message channels/broadcast channels/workers/listener registration set `<=0`, timeout/rAF compared only soaked-vs-soaked | LIVE as blocking instrument; attributable scheduler RED is intervals/message channels/broadcast channels, plus worker-only growth whose delta is at least the PO cycle count. Smaller worker-only growth is RED residue but not PO defect reproduced credit |
 | NC-M6-TEARDOWN-REVERSAL | served mutant no-ops `m20Q6DrainState` + `destroy()`; acceptance cells must go RED | LIVE (machinery; not ship credit while UNPROVEN) |
 | NC-M6-SCHEDULER-ORPHAN-INTERVAL | live browser mutant installs one uncleared interval through the wrapped harness-window `setInterval` after the soaked baseline; `M6-SCHEDULER-CENSUS-RETURNS-TO-BASELINE` must RED on pending-interval delta even when Q6 live returns to 1 | LIVE |
 | NC-M6-WRAPPER-DISPLACED-WORKER | unit/fault probe: displaced `Worker` wrapper makes `M6-SCHEDULER-CENSUS-INSTRUMENTED` RED and cannot mint FIXED GREEN | LIVE (W57f) |
@@ -510,7 +511,7 @@ Cells:
 
 | Name | Signature token | Implementation | Status |
 |---|---|---|---|
-| PO-CPU-AB-BENCHMARK-V1 | `TALARIA_PO_CPU_AB_BENCHMARK_V1` | `scripts/po-cpu-ab-benchmark-gate.mjs`, `scripts/lib/po-cpu-ab-benchmark.mjs`, `scripts/tests/po-cpu-ab-benchmark.test.mjs` | LIVE — browser-hosted PO protocol benchmark; observables are main-thread callback and longtask work, not process CPU% |
+| PO-CPU-AB-BENCHMARK-V1 | `TALARIA_PO_CPU_AB_BENCHMARK_V1` | `scripts/po-cpu-ab-benchmark-gate.mjs`, `scripts/lib/po-cpu-ab-benchmark.mjs`, `scripts/tests/po-cpu-ab-benchmark.test.mjs` | LIVE instrument — measures honestly; RED on unfixed product (FIX1/FIX2 not built) is expected GATE-01. GREEN is the precondition for claiming CPU work succeeded, not for shipping the instrument. P6 margin pinned at `PO_CPU_AB_P6_REPLAY_WORK_RATIO_MARGIN=0.03` (Director 2026-07-28: do not lower to soft-pass). Observables are main-thread callback/longtask work, not process CPU% |
 
 Cells:
 
@@ -519,10 +520,19 @@ Cells:
 | P1-IDLE-SINGLE-CHART-OBSERVED | single-chart idle workRatio is finite and below absolute `PO_CPU_AB_P1_IDLE_WORK_RATIO_MAX` | LIVE |
 | P2-IDLE-STABLE-NO-UNBOUNDED-WORK | idle soak workRatio is below both P1-relative and absolute `PO_CPU_AB_P2_IDLE_WORK_RATIO_MAX`; high P1 cannot absorb high P2 | LIVE |
 | P2-IDLE-MEMORY-NOT-GROWING | exposed heap delta during P2 stays bounded | LIVE |
-| P4-FOUR-PANEL-REPLAY-RUNNING-OBSERVED | W62 four-panel replay phase remains armed and observed | LIVE |
-| P6-REPLAY-10X-OR-NEAREST-OBSERVED | real replay activation succeeds, `isPlaying` is observed, nearest speed is known, playhead index/timestamp advances, and P6 work exceeds P1 by the pinned margin | LIVE (W58d hardening) |
+| P4-FOUR-PANEL-REPLAY-RUNNING-OBSERVED | four panels armed, playing, advancing within the P4 observe window by oracle-measured while-playing forward timestamp (rate ceiling + idx/ts coherence), and showing per-peer B/C/D callback/timer work above the P1 floor; product `replayPlay` fan-out peers may use `passivePlayActive` only under that sample rule | LIVE — W62k: W62g/W62i GREEN credit held; no aggregate/longtask-only peer work; B/C/D near-shared delta spreads plus near-identical absolute baselines are RED independent of which peer carries the middle jitter value; observe-window baselines are mandatory for GREEN; no-fan-out NC requires serialized peer-row neuter evidence; live short remains honest RED on sharedMirrorOnly; W64 lag dual-metric is mandatory sibling FIX1/FIX2 grading evidence (not a substitute for this honesty cell) |
+| P6-REPLAY-10X-OR-NEAREST-OBSERVED | real replay activation succeeds, `isPlaying` is observed, nearest speed is known, playhead advances, and P6 work exceeds P1 by the pinned 0.03 margin | LIVE instrument — RED expected until FIX1/FIX2; do not recalibrate margin to mint GREEN |
 | P7-PAUSE-STATE-NOT-PLAYING | product pause path leaves replay not playing | LIVE |
 | P7-WORK-RETURNS-TO-P1-FLOOR | post-pause workRatio is below both P1-relative and absolute `PO_CPU_AB_P7_IDLE_WORK_RATIO_MAX` | LIVE |
+| LAG-CONTENT-ARMED | SMA/EMA/WMA period 20 confirmed on single-with-content and four-with-content lag windows; bare replay cannot satisfy | LIVE — W64 |
+| LAG-THROUGHPUT-SINGLE-EMITTED | host panel emits achieved vs configured bars/sec (tick throughput) during LAG-SINGLE | LIVE — W64; grades FIX2 |
+| LAG-THROUGHPUT-FOUR-EMITTED | panels A/B/C/D each emit achieved vs configured bars/sec during content-armed P4 | LIVE — W64; grades FIX2 |
+| LAG-SMOOTHNESS-SINGLE-EMITTED | host panel emits rAF frame timing (p95) plus long-task count during LAG-SINGLE; frame samples mandatory (longtask-only RED) | LIVE — W64b; grades FIX1 via p95FrameMs |
+| LAG-SMOOTHNESS-FOUR-EMITTED | panels A/B/C/D each emit frame timing; identical long-task totals across panels require longTaskAttribution=host-shared (shared LT credited per-panel is RED) | LIVE — W64b; grades FIX1 via p95FrameMs |
+| LAG-SINGLE-TO-FOUR-RATIO-EMITTED | throughputRetention and smoothnessRetention finite; smoothnessRetention must equal p95Retention (frame-primary; LT-contaminated ratios RED); PO ~50% descriptive, not a hard gate | LIVE — W64b |
+| LAG-MECHANISM-HINT-EMITTED | mechanismHint ∈ {throughput,smoothness,ambiguous} consistent with throughputRetention + p95Retention (smoothness→FIX1 only via frame p95, never host-longtask-only) | LIVE — W64b |
+| M19-E-HOTPATH-CONSOLE-EXEMPTIONS | Named admit-list for soak `e_hotpathConsole`; warn/error remain counted unless listed; GATE-01 injected console.log and unlisted console.warn must each RED | LIVE — soak unblock; exemption B_W16_DURABLE_JOURNAL_UNHYDRATED_HARNESS_ARTEFACT (HARNESS_ARTEFACT) |
+| NC-P4-NO-FANOUT-MUST-RED | served P4 no-fan-out mode neuters `replayPlay` peer sends, serializes peer-row `productReplayPlayFanout.noFanoutControl`, and must make P4 RED | LIVE |
 | NC-P7-REPLAY-PAUSE-TEARDOWN-MUST-RED | served `replay-system.js` pause teardown reversal marks itself applied and makes the P7 state cell RED | LIVE |
 
 ## Queue item 11 — Hidden-tab replay regression (W59 / GATE-01)
