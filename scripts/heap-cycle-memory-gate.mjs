@@ -30,6 +30,8 @@ export function parseHeapCycleMemoryArgs(argv = process.argv.slice(2)) {
     disableFlags: [],
     cycles: null,
     requireBuild: null,
+    poHandSample: null,
+    playHoldMs: null,
   };
   for (const arg of argv) {
     if (arg === '--fixture' || arg === '--gate01-fixture') {
@@ -40,6 +42,12 @@ export function parseHeapCycleMemoryArgs(argv = process.argv.slice(2)) {
       options.requireBrowser = true;
     } else if (arg === '--json') {
       options.json = true;
+    } else if (arg === '--po-hand-sample') {
+      options.poHandSample = true;
+    } else if (arg === '--no-po-hand-sample') {
+      options.poHandSample = false;
+    } else if (arg.startsWith('--play-hold-ms=')) {
+      options.playHoldMs = Number(arg.slice('--play-hold-ms='.length));
     } else if (arg.startsWith('--timeout-ms=')) {
       options.timeoutMs = Number(arg.slice('--timeout-ms='.length));
     } else if (arg.startsWith('--cycles=')) {
@@ -89,6 +97,8 @@ export async function runHeapCycleMemoryGate({
   disableFlags = [],
   cycles = null,
   requireBuild = null,
+  poHandSample = false,
+  playHoldMs = null,
   runBrowser = null,
 } = {}) {
   const startedAt = new Date().toISOString();
@@ -99,8 +109,16 @@ export async function runHeapCycleMemoryGate({
     } else {
       const browserRunner = runBrowser || (await import('./lib/heap-cycle-browser.mjs')).runHeapCycleBrowserSession;
       try {
-        const browserOpts = { timeoutMs, surface, disableFlags };
+        const browserOpts = {
+          timeoutMs,
+          surface,
+          disableFlags,
+        };
+        if (poHandSample !== null && poHandSample !== undefined) {
+          browserOpts.poHandSample = poHandSample === true;
+        }
         if (Number.isFinite(cycles) && cycles > 0) browserOpts.cycles = cycles;
+        if (Number.isFinite(playHoldMs) && playHoldMs > 0) browserOpts.playHoldMs = playHoldMs;
         report = await browserRunner(browserOpts);
       } catch (error) {
         if (!requireBrowser && /puppeteer unavailable|no Chromium|Browser/i.test(String(error?.message || error))) {
@@ -200,6 +218,8 @@ if (isMain) {
       disableFlags: options.disableFlags,
       cycles: options.cycles,
       requireBuild: options.requireBuild,
+      poHandSample: options.poHandSample,
+      playHoldMs: options.playHoldMs,
     });
   } catch (error) {
     report = {

@@ -1,0 +1,28 @@
+{
+  "source": ".scratch-w74-interval-b99.json",
+  "packet": "W74-P2",
+  "tier": "mid",
+  "model": "cursor-grok-4.5",
+  "status": "GREEN",
+  "ok": true,
+  "buildId": "20260729b99",
+  "pin": "talaria-homepage:canary-20260729b99",
+  "budgetMs": 50,
+  "setInterval": {
+    "callbacks": 468,
+    "maxCallbackMs": 1.4,
+    "p95CallbackMs": 0.5,
+    "violations": 0,
+    "verdict": "GREEN — lag fix holds on ship tip (contrast b90 RED max 312ms)"
+  },
+  "longtaskCorroboration": {
+    "count": 54,
+    "maxLongTaskMs": 587,
+    "verdict": "RED (non-blocking) — main-thread longtasks remain"
+  },
+  "contrastB90": {
+    "maxCallbackMs": 312.3,
+    "status": "RED",
+    "note": "GATE-01 known-bad pin"
+  }
+}

@@ -1,0 +1,89 @@
+{
+  "packet": "W75-P2",
+  "tier": "mid",
+  "model": "cursor-grok-4.5",
+  "source": "scripts/evidence/manager-c-w72/w72-heap-6cycle-deployed.slim.json",
+  "buildId": "20260729b87",
+  "finding": "ExternalStringData retainer path PRODUCED (not inferred). Dominant class is script-source backing_store; cache-suspect bytes were tiny on this pin. LEAK-B (_tfDataCache) was aim-by-inference — this census does not confirm cache holders as the growing ExternalStringData mass.",
+  "classBytes": {
+    "script-source": 48520181,
+    "cache-suspect": 15,
+    "network-ish": 305,
+    "application": 186875
+  },
+  "topPath": {
+    "bytes": 48520181,
+    "n": 387,
+    "class": "script-source",
+    "path": "system / Script → (script-source) → system / ExternalStringData[backing_store]",
+    "suspect": []
+  },
+  "nonScriptSourcePaths": [
+    {
+      "bytes": 71482,
+      "n": 1,
+      "class": "application",
+      "path": "DrawingToolsManager → (object properties)[properties] → ToolLifecycleStore[] → system / Map[map] → Object[prototype] → _reduce → system / Context[context] → Window[global] → Window [JSGlobalObject][global_object] → Chart[mainChart] → OrderManager[orderManager] → system / Map[map] → Object[prototype] → createOrderPanel → system / SharedFunctionInfo / createOrderPanel[shared] → system / BytecodeArray[trusted_function_data] → (constant pool)[] → (large-string-label)→ system / ExternalStringData[1 / backing_store]",
+      "suspect": []
+    },
+    {
+      "bytes": 20523,
+      "n": 5,
+      "class": "application",
+      "path": "synthetic → system / NativeContext[] → Window [JSGlobalObject][global_object] → Array[__next_f] → Array[] → (large-string-label)→ system / ExternalStringData[1 / backing_store]",
+      "suspect": []
+    },
+    {
+      "bytes": 10774,
+      "n": 1,
+      "class": "application",
+      "path": "C++ Persistent roots → Window[void blink::EventTarget::EnqueueEvent(Event &, TaskType)@..\\..\\third_party\\blink\\renderer\\core\\dom\\events\\event_target.cc:1140] → Detached HTMLDocument[] → Detached <html>[] → rn[__reactFiber$468qm8dyx8a] → rn[child] → rn[child] → Object[pendingProps] → Object[dangerouslySetInnerHTML] → (large-string-label)→ system / ExternalStringData[1 / backing_store]",
+      "suspect": []
+    },
+    {
+      "bytes": 6847,
+      "n": 2,
+      "class": "application",
+      "path": "synthetic → system / NativeContext / http://31.97.192.82:3000[] → Window [JSGlobalObject] / http://31.97.192.82:3000[global_object] → closure[__v9RestoreDrawingLevelsAfterBuiltinDefault] → system / Context[context] → (large-string-label)→ system / ExternalStringData[1 / backing_store]",
+      "suspect": []
+    }
+  ],
+  "allTopPaths": [
+    {
+      "bytes": 48520181,
+      "n": 387,
+      "class": "script-source",
+      "path": "system / Script → (script-source) → system / ExternalStringData[backing_store]",
+      "suspect": []
+    },
+    {
+      "bytes": 71482,
+      "n": 1,
+      "class": "application",
+      "path": "DrawingToolsManager → (object properties)[properties] → ToolLifecycleStore[] → system / Map[map] → Object[prototype] → _reduce → system / Context[context] → Window[global] → Window [JSGlobalObject][global_object] → Chart[mainChart] → OrderManager[orderManager] → system / Map[map] → Object[prototype] → createOrderPanel → system / SharedFunctionInfo / createOrderPanel[shared] → system / BytecodeArray[trusted_function_data] → (constant pool)[] → (large-string-label)→ system / ExternalStringData[1 / backing_store]",
+      "suspect": []
+    },
+    {
+      "bytes": 20523,
+      "n": 5,
+      "class": "application",
+      "path": "synthetic → system / NativeContext[] → Window [JSGlobalObject][global_object] → Array[__next_f] → Array[] → (large-string-label)→ system / ExternalStringData[1 / backing_store]",
+      "suspect": []
+    },
+    {
+      "bytes": 10774,
+      "n": 1,
+      "class": "application",
+      "path": "C++ Persistent roots → Window[void blink::EventTarget::EnqueueEvent(Event &, TaskType)@..\\..\\third_party\\blink\\renderer\\core\\dom\\events\\event_target.cc:1140] → Detached HTMLDocument[] → Detached <html>[] → rn[__reactFiber$468qm8dyx8a] → rn[child] → rn[child] → Object[pendingProps] → Object[dangerouslySetInnerHTML] → (large-string-label)→ system / ExternalStringData[1 / backing_store]",
+      "suspect": []
+    },
+    {
+      "bytes": 6847,
+      "n": 2,
+      "class": "application",
+      "path": "synthetic → system / NativeContext / http://31.97.192.82:3000[] → Window [JSGlobalObject] / http://31.97.192.82:3000[global_object] → closure[__v9RestoreDrawingLevelsAfterBuiltinDefault] → system / Context[context] → (large-string-label)→ system / ExternalStringData[1 / backing_store]",
+      "suspect": []
+    }
+  ],
+  "note": "Path instrument: HEAP-RETAINER-PATHS-AGGREGATED / scripts/lib/heap-retainer-paths.mjs. Re-run under PO-workload floor-only cannot take CDP snaps; next confirmation needs a snapshot-capable pin or mid-cycle snap before V8 limit."
+}

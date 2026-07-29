@@ -1,0 +1,46 @@
+{
+  "packet": "W75-P0+P1",
+  "tier": "mid",
+  "model": "cursor-grok-4.5",
+  "source": ".scratch-w75-heap-b85-default.json",
+  "buildId": "20260729b85",
+  "pin": "talaria-homepage:canary-20260729b85",
+  "memoryInstrument": "usedJSHeapSize+poHand(baselineSoftGc+hotCycles)",
+  "poHandSample": true,
+  "status": "RED",
+  "heap": {
+    "baselineMB": 75.98,
+    "floorsMB": [
+      159.1,
+      313.61,
+      333.63,
+      178.45,
+      261.35,
+      231.56
+    ],
+    "deltasMB": [
+      83.12,
+      154.51,
+      20.02,
+      -155.18,
+      82.9,
+      -29.79
+    ],
+    "meanDeltaMB": 25.93
+  },
+  "calibration": "GREEN",
+  "vsPo": {
+    "poMeanMB": 13,
+    "note": "Default deployed gate is now PO-hand (not layout-only +0.69). Hot-cycle mean 25.9 overshoots; prior soft-GC×1 mean 7.5 undershoots; late-jump family matches on soft. Gap closed from 20x; exact 13 still open."
+  },
+  "workers": {
+    "finding": "NOT +1 live/cycle on return CDP for this pin. Each multichart expand creates 4× indicator-worker.js (one per panel realm via _getIndicatorWorker). terminate() never called (terminated=0). Peer iframe teardown drops in-page census; CDP live returns to 1 (host singleton). Cumulative CDP created tracking added for orphan proof.",
+    "script": "/chart/workers/indicator-worker.js",
+    "createSite": "chart-indicators-full.js::_getIndicatorWorker",
+    "atPeakLive": 4,
+    "atReturnLive": 1,
+    "terminatedCalls": 0,
+    "meanLiveDeltaPerReturn": 0.16666666666666666,
+    "plusOnePerCycleLive": false
+  }
+}

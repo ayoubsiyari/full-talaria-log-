@@ -214,6 +214,21 @@ test('unit: CLI exposes fixture, require-browser, and dist-v9 surface', () => {
   assert.equal(args.surface, 'dist-v9');
 });
 
+test('unit: CLI exposes --po-hand-sample and --play-hold-ms', () => {
+  const args = parseHeapCycleMemoryArgs([
+    '--deployed',
+    '--po-hand-sample',
+    '--play-hold-ms=20000',
+    '--require-build=20260729b85',
+  ]);
+  assert.equal(args.surface, 'deployed');
+  assert.equal(args.poHandSample, true);
+  assert.equal(args.playHoldMs, 20_000);
+  assert.equal(args.requireBuild, '20260729b85');
+  const off = parseHeapCycleMemoryArgs(['--deployed', '--no-po-hand-sample']);
+  assert.equal(off.poHandSample, false);
+});
+
 test('fault-injection: injected browser leak report stays RED', async () => {
   const result = await runHeapCycleMemoryGate({
     requireBrowser: true,

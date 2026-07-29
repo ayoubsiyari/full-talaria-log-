@@ -210,14 +210,16 @@ export function summarizeHeapCycleReport(report) {
     || report?.growthCensus?.snapshotPolicy === 'floor-only';
   const floorOnly = report?.meta?.snapshotPolicy === 'floor-only'
     || report?.growthCensus?.snapshotPolicy === 'floor-only';
+  const poHandSample = report?.meta?.poHandSample === true
+    || cycles.some((row) => row?.returnSingle?.poHandSample === true);
   const floorsOk = !!baseline
     && baseline.exposed === true
     && baseline.metric === HEAP_METRIC_USED_JS_HEAP_SIZE
-    && baseline.forcedGcAttempted === true
+    && (baseline.forcedGcAttempted === true || poHandSample)
     && cycles.length === HEAP_CYCLE_COUNT
     && cycles.every((row) => row?.returnSingle?.exposed === true
       && row.returnSingle.metric === HEAP_METRIC_USED_JS_HEAP_SIZE
-      && row.returnSingle.forcedGcAttempted === true
+      && (row.returnSingle.forcedGcAttempted === true || poHandSample)
       && Number.isFinite(Number(row.returnSingle.usedJSHeapSize)));
   const detachedEveryCycle = cycles.every((row) => Number.isFinite(Number(row.detachedDivCount)));
   const detachedBookend = Number.isFinite(Number(baseline?.detachedDivCount))
@@ -227,8 +229,9 @@ export function summarizeHeapCycleReport(report) {
   const heapSamplesOk = floorsOk
     && (floorOnly || detachedEveryCycle || (floorPrimary && detachedBookend));
 
-  const forcedGcAvailable = baseline?.forcedGcAvailable === true
-    && cycles.every((row) => row?.returnSingle?.forcedGcAvailable === true);
+  const forcedGcAvailable = poHandSample
+    || (baseline?.forcedGcAvailable === true
+      && cycles.every((row) => row?.returnSingle?.forcedGcAvailable === true));
 
   const surface = report?.meta?.surface || null;
   const poWorkloadArmed = report?.poWorkload?.armedEveryCycle === true
@@ -303,17 +306,20 @@ export function summarizeHeapCycleReport(report) {
 
   const detachedStable = gradedDetachedDelta != null
     && gradedDetachedDelta <= HEAP_CYCLE_DETACHED_STABLE_MAX;
-  const heapBounded = meanHeapDelta != null
-    && meanHeapDelta <= HEAP_CYCLE_HEAP_GROWTH_MAX_BYTES;
   const maxHeapDelta = heapDeltas.every((value) => value != null)
     ? Math.max(...heapDeltas)
     : null;
-  // PO leak signatures: sustained mean growth, OR a one-shot dump (≥25MB in one cycle)
+  // Mean ≤8MB alone is not enough: a one-shot dump (≥20MB) then flat must stay RED
+  // (b85 soft-GC saw mean 7.5 with +41.9 late — must not GREEN the floor cell).
+  const heapBounded = meanHeapDelta != null
+    && meanHeapDelta <= HEAP_CYCLE_HEAP_GROWTH_MAX_BYTES
+    && (maxHeapDelta == null || maxHeapDelta < 20 * 1024 * 1024);
+  // PO leak signatures: sustained mean growth, OR a one-shot dump
   // that then flats (b90 PO-workload saw +49 then ~0 — must not grade ADEQUATE).
   const matchesPoLeakShape = (meanDetachedDelta != null
     && meanDetachedDelta >= HEAP_CYCLE_DETACHED_LEAK_MIN)
     || (meanHeapDelta != null && meanHeapDelta >= 16 * 1024 * 1024)
-    || (maxHeapDelta != null && maxHeapDelta >= 25 * 1024 * 1024);
+    || (maxHeapDelta != null && maxHeapDelta >= 20 * 1024 * 1024);
 
   return {
     heapSamplesOk,
@@ -352,12 +358,16 @@ export function assertHeapCycleMemoryReport(report) {
   ));
 
   const summary = summarizeHeapCycleReport(report);
+  const instrumentLabel = report?.meta?.poHandSample === true
+    || (report?.cycles || []).some((row) => row?.returnSingle?.poHandSample === true)
+    ? (report?.meta?.memoryInstrument || 'usedJSHeapSize+poHand')
+    : 'usedJSHeapSize+forcedGc';
   cells.push(cell(
     'HEAP-CYCLE-INSTRUMENT-COMPLETE',
     summary.heapSamplesOk === true && summary.forcedGcAvailable === true,
     summary.heapSamplesOk
-      ? `usedJSHeapSize+forcedGc samples for baseline+${summary.cycleCount} cycles; detached counts present`
-      : `missing usedJSHeapSize forced-GC samples or detachedDivCount (need ≥${HEAP_CYCLE_COUNT_MIN} cycles)`,
+      ? `${instrumentLabel} samples for baseline+${summary.cycleCount} cycles; detached counts present`
+      : `missing usedJSHeapSize samples or detachedDivCount (need ≥${HEAP_CYCLE_COUNT_MIN} cycles)`,
     { summary, footprintNonGrading: HEAP_FOOTPRINT_NON_GRADING },
   ));
 

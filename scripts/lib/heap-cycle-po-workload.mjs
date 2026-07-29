@@ -46,27 +46,34 @@ async function resolvePanelFrame(page, panelId, timeoutMs = 45_000) {
 async function armPanelChart(frame, {
   indicators = HEAP_CYCLE_PO_INDICATORS,
   replaySpeed = 60,
+  /** PO hand leaves indicators; clearing/re-adding each cycle under-reads. */
+  retainIndicators = false,
 } = {}) {
-  return frame.evaluate(async (indicatorList, speed) => {
+  return frame.evaluate(async (indicatorList, speed, retain) => {
     const sleepLocal = (ms) => new Promise((r) => setTimeout(r, ms));
     try { window.alert = () => {}; } catch (_) {}
     const chart = window.chart;
     if (!chart) return { ok: false, reason: 'no chart' };
 
-    // Avoid stacking indicators across cycles (would inflate floors vs PO hand).
-    try {
-      const active0 = (chart.indicators && chart.indicators.active) || [];
-      if (active0.length && typeof chart.removeIndicator === 'function') {
-        for (const ind of [...active0]) {
-          try { chart.removeIndicator(ind.id || ind); } catch (_) {}
+    const active0 = (chart.indicators && chart.indicators.active) || [];
+    if (!retain) {
+      // Forced-GC floor mode: avoid stacking across cycles.
+      try {
+        if (active0.length && typeof chart.removeIndicator === 'function') {
+          for (const ind of [...active0]) {
+            try { chart.removeIndicator(ind.id || ind); } catch (_) {}
+          }
+        } else if (chart.indicators && Array.isArray(chart.indicators.active)) {
+          chart.indicators.active.length = 0;
         }
-      } else if (chart.indicators && Array.isArray(chart.indicators.active)) {
-        chart.indicators.active.length = 0;
-      }
-    } catch (_) {}
+      } catch (_) {}
+    }
 
     const added = [];
-    if (typeof chart.addIndicator === 'function') {
+    const needAdd = retain
+      ? active0.length < 3
+      : true;
+    if (needAdd && typeof chart.addIndicator === 'function') {
       for (const [type, params] of indicatorList) {
         try {
           const ind = chart.addIndicator(type, params);
@@ -77,7 +84,9 @@ async function armPanelChart(frame, {
       }
     }
     const active = (chart.indicators && chart.indicators.active) || [];
-    const indicatorsOk = added.filter((r) => r.ok).length >= 3 && active.length >= 3;
+    const indicatorsOk = retain
+      ? active.length >= 3
+      : (added.filter((r) => r.ok).length >= 3 && active.length >= 3);
 
     const rs = chart.replaySystem;
     let replay = { ok: false, reason: 'no replaySystem' };
@@ -125,8 +134,9 @@ async function armPanelChart(frame, {
       replay,
       playing,
       dataBars: Array.isArray(chart.data) ? chart.data.length : 0,
+      retainedIndicators: !!retain,
     };
-  }, indicators, replaySpeed);
+  }, indicators, replaySpeed, retainIndicators === true);
 }
 
 async function placeHostOrder(page) {
@@ -195,6 +205,7 @@ export async function armHeapCyclePoWorkload(page, {
   panelIds = HEAP_CYCLE_PO_PANEL_IDS,
   playHoldMs = 6_000,
   replaySpeed = 60,
+  retainIndicators = false,
 } = {}) {
   const perPanel = [];
   const frameById = new Map();
@@ -204,10 +215,10 @@ export async function armHeapCyclePoWorkload(page, {
     frameById.set(id, frame);
     // Prefer chartTarget when available (handles A host vs iframe).
     const target = chartTarget(page, id) || frame;
-    let row = await armPanelChart(target, { replaySpeed });
+    let row = await armPanelChart(target, { replaySpeed, retainIndicators });
     if (!row.ok) {
       await sleep(200);
-      row = await armPanelChart(target, { replaySpeed });
+      row = await armPanelChart(target, { replaySpeed, retainIndicators });
     }
     logPoWorkload(
       `arm panel ${id}: ok=${row.ok} ind=${row.indicatorCount} `

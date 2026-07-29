@@ -1,0 +1,16 @@
+{
+  "packet": "W75-P4-IDLE-FLOOR",
+  "tier": "mid",
+  "model": "cursor-grok-4.5",
+  "status": "OPEN",
+  "poAccounting": {
+    "measuredPct": 13.12,
+    "instrumentPp": 6.3,
+    "reactPumpsPct": 0.17,
+    "untracedRemainderPct": 7.79
+  },
+  "attempt": ".scratch-w75-idle-ab.json",
+  "attemptError": "no valid /report POST within 300000ms",
+  "finding": "7.79% untraced idle remainder still unexplained. Short PO-CPU-AB did not emit /report (harness timeout). 60x ceiling stacks name m20Q6InertableScheduledCallback + Chart.animate as replay-path owners — idle soak with the same probe is the next measurement.",
+  "next": "Idle observe (speed=0, not playing) using PO-CPU-CEILING-PROFILE stack probe; subtract instrument overhead; name remaining call sites."
+}

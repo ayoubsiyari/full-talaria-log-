@@ -47,6 +47,13 @@ import {
   armHeapCyclePoWorkload,
   assessPoHandHeapShape,
 } from './heap-cycle-po-workload.mjs';
+import {
+  installCdpWorkerTargetTracker,
+  installWorkerCensusOnPage,
+  snapshotCdpWorkerTargets,
+  snapshotWorkerCensus,
+  summarizeWorkerCycleDeltas,
+} from './heap-cycle-worker-census.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const HARNESS_PKG = path.resolve(
@@ -106,27 +113,51 @@ async function takeHeapSnapshotObject(cdp, { timeoutMs = 180_000 } = {}) {
   return JSON.parse(payload);
 }
 
-async function sampleHeapFloor(page, cdp, { label = 'floor' } = {}) {
-  logHeapCycle(`${label}: collectGarbage + usedJSHeapSize (no snapshot)`);
-  await cdp.send('HeapProfiler.collectGarbage');
-  await sleep(200);
-  await cdp.send('HeapProfiler.collectGarbage');
-  await sleep(200);
-  const jsHeap = await page.evaluate(() => {
+async function sampleHeapFloor(page, cdp, {
+  label = 'floor',
+  /** PO hand samples performance.memory without double+js GC. */
+  poHandSample = false,
+  /** One CDP collectGarbage (baseline only under PO-hand). */
+  softGc = false,
+} = {}) {
+  let didCdpGc = false;
+  if (poHandSample) {
+    // Mid-cycle soft GC under-reads vs PO (~7.5); raw hot overshoots (~21).
+    // Baseline softGc×1 anchors near PO ~75MB start.
+    if (softGc) {
+      logHeapCycle(`${label}: usedJSHeapSize (PO-hand soft GC ×1)`);
+      await cdp.send('HeapProfiler.collectGarbage');
+      await sleep(400);
+      didCdpGc = true;
+    } else {
+      logHeapCycle(`${label}: usedJSHeapSize (PO-hand, no forced GC)`);
+      await sleep(500);
+    }
+  } else {
+    logHeapCycle(`${label}: collectGarbage + usedJSHeapSize (no snapshot)`);
+    await cdp.send('HeapProfiler.collectGarbage');
+    await sleep(200);
+    await cdp.send('HeapProfiler.collectGarbage');
+    await sleep(200);
+    didCdpGc = true;
+  }
+  const forcePageGc = !poHandSample;
+  const jsHeap = await page.evaluate((forceGc) => {
     const mem = performance && performance.memory;
     const gcAvailable = typeof gc === 'function';
-    try { if (gcAvailable) gc(); } catch (_) {}
+    if (forceGc) {
+      try { if (gcAvailable) gc(); } catch (_) {}
+    }
     return {
       exposed: !!(mem && Number.isFinite(mem.usedJSHeapSize)),
       metric: 'usedJSHeapSize',
       usedJSHeapSize: mem ? Number(mem.usedJSHeapSize) || 0 : null,
       totalJSHeapSize: mem ? Number(mem.totalJSHeapSize) || 0 : null,
       jsHeapSizeLimit: mem ? Number(mem.jsHeapSizeLimit) || 0 : null,
-      forcedGcAttempted: true,
+      forcedGcAttempted: forceGc === true,
       forcedGcAvailable: gcAvailable || true,
-      cdpCollectGarbage: true,
     };
-  });
+  }, forcePageGc);
   logHeapCycle(
     `${label}: usedJSHeapSizeMB=${
       jsHeap.usedJSHeapSize != null
@@ -136,6 +167,7 @@ async function sampleHeapFloor(page, cdp, { label = 'floor' } = {}) {
   );
   return {
     ...jsHeap,
+    cdpCollectGarbage: didCdpGc,
     metric: HEAP_METRIC_USED_JS_HEAP_SIZE,
     detachedDivCount: null,
     htmlDivElementCount: null,
@@ -144,6 +176,8 @@ async function sampleHeapFloor(page, cdp, { label = 'floor' } = {}) {
     constructorAggregates: null,
     constructorAggregateObject: null,
     floorOnly: true,
+    poHandSample: poHandSample === true,
+    softGc: softGc === true,
   };
 }
 
@@ -152,9 +186,11 @@ async function sampleHeap(page, cdp, {
   keepSnapshot = false,
   label = 'sample',
   snapshot = true,
+  poHandSample = false,
+  softGc = false,
 } = {}) {
   if (snapshot === false) {
-    return sampleHeapFloor(page, cdp, { label });
+    return sampleHeapFloor(page, cdp, { label, poHandSample, softGc });
   }
   logHeapCycle(`${label}: collectGarbage + usedJSHeapSize`);
   await cdp.send('HeapProfiler.collectGarbage');
@@ -659,6 +695,7 @@ async function runDistV9Session({
 async function runMultichartCycles({
   page,
   cdp,
+  browser = null,
   cycles,
   settleMs,
   fileIdsForCycle,
@@ -666,16 +703,76 @@ async function runMultichartCycles({
   playHoldMs = 6_000,
   replaySpeed = 60,
   recoverPage = null,
-}) {
+  /** Match PO hand: longer soak; baseline soft GC; cycle samples without GC. */
+  poHandSample = false,
+} = {}) {
   // PO workload: CDP heap snapshots grow past V8's ~512MB string limit and also
   // detach the React shell mid-run. Floor calibration uses usedJSHeapSize only.
   const snapshotPolicy = poWorkload ? 'floor-only' : 'every-return';
+  const effectivePlayHold = poHandSample
+    ? Math.max(playHoldMs, 20_000)
+    : playHoldMs;
+  await installWorkerCensusOnPage(page).catch(() => []);
+  let cdpWorkerTracker = null;
+  try {
+    cdpWorkerTracker = await installCdpWorkerTargetTracker(page);
+  } catch (error) {
+    logHeapCycle(`CDP worker tracker unavailable: ${error?.message || error}`);
+  }
   await sleep(settleMs);
-  logHeapCycle(`baseline sample policy=${snapshotPolicy}`);
+  logHeapCycle(
+    `baseline sample policy=${snapshotPolicy} poHandSample=${poHandSample} `
+    + `playHoldMs=${effectivePlayHold}`,
+  );
   const baseline = await sampleHeap(page, cdp, {
     snapshot: snapshotPolicy !== 'floor-only',
+    poHandSample: snapshotPolicy === 'floor-only' && poHandSample,
+    softGc: snapshotPolicy === 'floor-only' && poHandSample,
     label: 'baseline',
   });
+  const workerSnapshots = [];
+  const pushWorkerSnap = async (label) => {
+    await installWorkerCensusOnPage(page).catch(() => []);
+    const snap = await snapshotWorkerCensus(page);
+    let cdpCount = null;
+    let cdpCreatedTotal = null;
+    let cdpDestroyedTotal = null;
+    let cdpSurviving = null;
+    let cdpByUrl = null;
+    try {
+      const cdpSnap = await snapshotCdpWorkerTargets(browser, cdpWorkerTracker);
+      cdpCount = cdpSnap.count;
+      cdpCreatedTotal = cdpSnap.createdTotal;
+      cdpDestroyedTotal = cdpSnap.destroyedTotal;
+      cdpSurviving = cdpSnap.survivingNeverDestroyed;
+      cdpByUrl = cdpSnap.createdByUrl || null;
+      snap.cdp = cdpSnap;
+    } catch (_) {
+      cdpCount = null;
+    }
+    const row = {
+      label,
+      liveTotal: snap.liveTotal,
+      createdTotal: snap.createdTotal,
+      terminatedTotal: snap.terminatedTotal,
+      surviving: snap.surviving,
+      cdpCount,
+      cdpCreatedTotal,
+      cdpDestroyedTotal,
+      cdpSurviving,
+      cdpByUrl,
+      byScript: snap.byScript,
+      perFrame: snap.perFrame,
+    };
+    workerSnapshots.push(row);
+    logHeapCycle(
+      `${label}: workers live=${row.liveTotal} created=${row.createdTotal} `
+      + `terminated=${row.terminatedTotal} cdpLive=${cdpCount ?? 'n/a'} `
+      + `cdpCreated=${cdpCreatedTotal ?? 'n/a'} cdpDestroyed=${cdpDestroyedTotal ?? 'n/a'}`,
+    );
+    return row;
+  };
+  await pushWorkerSnap('baseline');
   const cycleRows = [];
   let prevDetached = baseline.detachedDivCount;
   let lastSnapshot = null;
@@ -685,13 +782,18 @@ async function runMultichartCycles({
     const rotated = fileIdsForCycle(index);
     logHeapCycle(`cycle ${index + 1}/${cycles}: expand 4-panel fileIds=${rotated.join(',')}`);
     await expandFourPanelsWithRetry(page, { attempts: 3, recoverPage });
+    await installWorkerCensusOnPage(page).catch(() => []);
     logHeapCycle(`cycle ${index + 1}: four panels ready`);
     await loadDistinctSymbolsDistV9(page, rotated);
 
     let workload = { armed: false, skipped: !poWorkload };
     if (poWorkload) {
       logHeapCycle(`cycle ${index + 1}: arm PO workload`);
-      workload = await armHeapCyclePoWorkload(page, { playHoldMs, replaySpeed });
+      workload = await armHeapCyclePoWorkload(page, {
+        playHoldMs: effectivePlayHold,
+        replaySpeed,
+        retainIndicators: poHandSample === true,
+      });
       workloadArms.push({ cycle: index + 1, ...workload });
       if (!workload.armed) {
         throw new Error(
@@ -708,8 +810,11 @@ async function runMultichartCycles({
 
     const fourPeak = await sampleHeap(page, cdp, {
       snapshot: false,
+      poHandSample,
+      softGc: false,
       label: `cycle${index + 1}-fourPeak`,
     });
+    const workersAtPeak = await pushWorkerSnap(`cycle${index + 1}-fourPeak`);
 
     logHeapCycle(`cycle ${index + 1}: collapse to single`);
     try {
@@ -719,24 +824,29 @@ async function runMultichartCycles({
       if (typeof recoverPage === 'function') {
         logHeapCycle(`collapse failed (${error?.message || error}); recovering`);
         await recoverPage();
+        await installWorkerCensusOnPage(page).catch(() => []);
       } else {
         throw error;
       }
     }
-    await sleep(settleMs);
+    // PO-hand: short settle, no GC — match DevTools/console read timing.
+    await sleep(poHandSample ? Math.min(settleMs, 800) : settleMs);
     const isFinal = index === cycles - 1;
     const takeSnap = snapshotPolicy === 'every-return';
     const returnSingle = await sampleHeap(page, cdp, {
       snapshot: takeSnap,
       keepSnapshot: isFinal && takeSnap,
+      poHandSample: !takeSnap && poHandSample,
+      softGc: false,
       label: `cycle${index + 1}-returnSingle`,
     });
+    const workersAtReturn = await pushWorkerSnap(`cycle${index + 1}-returnSingle`);
     logHeapCycle(
       `cycle ${index + 1}: floorMB=${
         returnSingle.usedJSHeapSize != null
           ? (returnSingle.usedJSHeapSize / (1024 * 1024)).toFixed(2)
           : 'n/a'
-      }`,
+      } workersLive=${workersAtReturn.liveTotal}`,
     );
     if (isFinal && returnSingle._snapshot) {
       lastSnapshot = returnSingle._snapshot || null;
@@ -784,6 +894,20 @@ async function runMultichartCycles({
       htmlDivElementCount: returnSingle.htmlDivElementCount,
       retainedHtmlDivDelta,
       fourPeakDetachedDivCount: fourPeak.detachedDivCount,
+      workers: {
+        atPeak: {
+          live: workersAtPeak.liveTotal,
+          created: workersAtPeak.createdTotal,
+          terminated: workersAtPeak.terminatedTotal,
+          cdp: workersAtPeak.cdpCount,
+        },
+        atReturn: {
+          live: workersAtReturn.liveTotal,
+          created: workersAtReturn.createdTotal,
+          terminated: workersAtReturn.terminatedTotal,
+          cdp: workersAtReturn.cdpCount,
+        },
+      },
     });
   }
 
@@ -872,6 +996,36 @@ async function runMultichartCycles({
     if (row.returnSingle) delete row.returnSingle.constructorAggregates;
   }
 
+  const returnSnaps = workerSnapshots.filter((s) => /returnSingle$|^baseline$/.test(s.label));
+  const peakSnaps = workerSnapshots.filter((s) => /fourPeak$|^baseline$/.test(s.label));
+  const cdpCreatedSeries = returnSnaps.map((s) => s.cdpCreatedTotal).filter((n) => Number.isFinite(n));
+  const cdpCreatedDeltas = [];
+  for (let i = 1; i < cdpCreatedSeries.length; i += 1) {
+    cdpCreatedDeltas.push(cdpCreatedSeries[i] - cdpCreatedSeries[i - 1]);
+  }
+  const meanCdpCreatedDelta = cdpCreatedDeltas.length
+    ? cdpCreatedDeltas.reduce((a, b) => a + b, 0) / cdpCreatedDeltas.length
+    : null;
+  const workerCensus = {
+    ...summarizeWorkerCycleDeltas(returnSnaps),
+    peakDeltas: summarizeWorkerCycleDeltas(peakSnaps),
+    cdpCreatedDeltas,
+    meanCdpCreatedDeltaPerReturn: meanCdpCreatedDelta,
+    plusOneCreatedPerCycle: meanCdpCreatedDelta != null && meanCdpCreatedDelta >= 0.9,
+    snapshots: workerSnapshots,
+    attribution: {
+      script: '/chart/workers/indicator-worker.js',
+      createSite: 'chart-indicators-full.js::_getIndicatorWorker (module singleton per JS realm)',
+      whySurvives: 'terminate() never called; peer iframe teardown drops the document but '
+        + 'CDP cumulative createdTotal grades whether worker targets accumulate across cycles',
+    },
+    note: 'Workers hold private heaps invisible to main usedJSHeapSize. '
+      + 'Grade CDP createdΔ (survives iframe teardown); in-page live counts reset with frames.',
+  };
+  if (cdpWorkerTracker) {
+    await cdpWorkerTracker.dispose().catch(() => {});
+  }
+
   return {
     growthCensus,
     retainerPaths,
@@ -880,6 +1034,7 @@ async function runMultichartCycles({
     poWorkload: workloadSummary,
     poHandShape,
     snapshotPolicy,
+    workerCensus,
   };
 }
 
@@ -1107,6 +1262,9 @@ async function runDeployedSession({
   settleMs,
   puppeteer,
   disableFlags = [],
+  /** Default ON for deployed — layout-only / forced-GC under-reads vs PO ~13. */
+  poHandSample = true,
+  playHoldMs = 6_000,
 }) {
   const email = String(process.env.TEST_EMAIL || process.env.L2_M1_TEST_EMAIL || '').trim();
   const password = String(process.env.TEST_PASSWORD || process.env.L2_M1_TEST_PASSWORD || '').trim();
@@ -1142,6 +1300,51 @@ async function runDeployedSession({
     page.setDefaultTimeout(Math.min(180_000, timeoutMs));
     await page.setCacheEnabled(false);
     await installDisableFlags(page, disableFlags);
+    // Wrap Worker before any chart script runs (host + peer iframes).
+    await page.evaluateOnNewDocument(() => {
+      const key = '__TALARIA_HEAP_CYCLE_WORKER_CENSUS__';
+      if (window[key]?.installed) return;
+      const Original = window.Worker;
+      if (typeof Original !== 'function') return;
+      const state = {
+        installed: true,
+        created: [],
+        live: new Set(),
+        terminated: 0,
+      };
+      function WrappedWorker(...args) {
+        const scriptUrl = String(args[0] || '');
+        const err = new Error('worker-create');
+        const stack = String(err.stack || '')
+          .split('\n')
+          .map((l) => l.trim())
+          .filter(Boolean)
+          .slice(1, 8);
+        const worker = new Original(...args);
+        const rec = {
+          scriptUrl,
+          stack,
+          createdAt: Date.now(),
+          terminated: false,
+        };
+        state.created.push(rec);
+        state.live.add(worker);
+        const origTerm = worker.terminate.bind(worker);
+        worker.terminate = function wrappedTerminate(...tArgs) {
+          if (!rec.terminated) {
+            rec.terminated = true;
+            state.terminated += 1;
+            state.live.delete(worker);
+          }
+          return origTerm(...tArgs);
+        };
+        return worker;
+      }
+      WrappedWorker.prototype = Original.prototype;
+      WrappedWorker.__talariaHeapCycleWrapped = true;
+      window.Worker = WrappedWorker;
+      window[key] = state;
+    });
     const login = await uiLoginDeployed(page, origin, email, password);
 
     // Seed a backtest session on the real product (same origin as login).
@@ -1215,17 +1418,20 @@ async function runDeployedSession({
       poWorkload,
       poHandShape,
       snapshotPolicy,
+      workerCensus,
     } = await runMultichartCycles({
       page,
       cdp,
+      browser,
       cycles,
       settleMs,
       // Same symbol all panels — matches PO session; distinct rotation was under-reading.
       fileIdsForCycle: () => [primaryFileId, primaryFileId, primaryFileId, primaryFileId],
       poWorkload: true,
-      playHoldMs: 6_000,
+      playHoldMs: Number.isFinite(playHoldMs) && playHoldMs > 0 ? playHoldMs : 6_000,
       replaySpeed: 60,
       recoverPage,
+      poHandSample: poHandSample === true,
     });
 
     return {
@@ -1242,17 +1448,24 @@ async function runDeployedSession({
         primaryFileId,
         buildId: bootMeta.buildId,
         flagProbe: bootMeta.flags,
-        memoryInstrument: 'usedJSHeapSize+forcedGc',
+        memoryInstrument: poHandSample
+          ? 'usedJSHeapSize+poHand(baselineSoftGc+hotCycles)'
+          : 'usedJSHeapSize+forcedGc',
         footprintNonGrading: HEAP_FOOTPRINT_NON_GRADING,
         detachedGateMandatory: true,
         growthCensus: true,
         retainerPaths: true,
         poWorkload: true,
+        poHandSample: poHandSample === true,
+        playHoldMs: Number.isFinite(playHoldMs) && playHoldMs > 0 ? playHoldMs : 6_000,
         snapshotPolicy,
         harnessUrl: url,
         disableFlags: (disableFlags || []).slice(),
+        workerCensus: true,
         note: 'Deployed auth + PO workload (4 panels, indicators, order, live replay ×6). '
-          + 'Snapshot policy baseline-and-final (mid-run CDP snaps destabilize shell).',
+          + (poHandSample
+            ? 'PO-hand default: baseline soft GC×1, hot cycle floors, ≥20s play, retain indicators, Worker census.'
+            : 'Snapshot policy floor-only under PO workload (CDP snaps destabilize shell).'),
       },
       baseline: baselineOut,
       cycles: cycleRows,
@@ -1260,6 +1473,7 @@ async function runDeployedSession({
       retainerPaths,
       poWorkload,
       poHandShape,
+      workerCensus,
     };
   } finally {
     await browser.close().catch(() => {});
@@ -1272,13 +1486,24 @@ export async function runHeapCycleBrowserSession({
   settleMs = 1_500,
   surface = HEAP_CYCLE_SURFACE_DIST_V9,
   disableFlags = [],
+  poHandSample = null,
+  playHoldMs = null,
 } = {}) {
   const puppeteer = await loadPuppeteer();
   if (surface === HEAP_CYCLE_SURFACE_THIN_HOST) {
     return runThinHostSession({ cycles, timeoutMs, settleMs, puppeteer });
   }
   if (surface === HEAP_CYCLE_SURFACE_DEPLOYED) {
-    return runDeployedSession({ cycles, timeoutMs, settleMs, puppeteer, disableFlags });
+    return runDeployedSession({
+      cycles,
+      timeoutMs,
+      settleMs,
+      puppeteer,
+      disableFlags,
+      // Deployed defaults to PO-hand; explicit false opts out.
+      poHandSample: poHandSample === null ? true : poHandSample === true,
+      playHoldMs: Number.isFinite(playHoldMs) && playHoldMs > 0 ? playHoldMs : 6_000,
+    });
   }
   return runDistV9Session({ cycles, timeoutMs, settleMs, puppeteer });
 }
