@@ -593,16 +593,17 @@ export function assertHeapCycleMemoryReport(report) {
     },
   ));
 
-  const calibration = census?.calibration
-    || (censusOk
-      ? assessGrowthCensusCalibration(census, {
-        meanHeapFloorDeltaBytes: summary.meanHeapDelta,
-        maxHeapFloorDeltaBytes: summary.maxHeapDelta,
-        meanDetachedDivDelta: summary.gradedDetachedDelta,
-        poWorkloadArmed: workloadArmed,
-        poHandShapeOk: hand?.ok === true,
-      })
-      : null);
+  // Always recompute with live summary (max spike / mean) — stale census.calibration
+  // from floor-only runs can omit maxHeapFloorDeltaBytes and false-RED surface.
+  const calibration = censusOk || floorOnlyMode
+    ? assessGrowthCensusCalibration(census || { cycleComparisons: [{ rows: [] }] }, {
+      meanHeapFloorDeltaBytes: summary.meanHeapDelta,
+      maxHeapFloorDeltaBytes: summary.maxHeapDelta,
+      meanDetachedDivDelta: summary.gradedDetachedDelta,
+      poWorkloadArmed: workloadArmed,
+      poHandShapeOk: hand?.ok === true,
+    })
+    : (census?.calibration || null);
   const leakCleared = summary.detachedStable === true
     && summary.heapBounded === true
     && summary.matchesPoLeakShape !== true;
