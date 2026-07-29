@@ -138,3 +138,10 @@
 - Fix status: no new production code needed in this batch. Existing canonical trade-marker projection (`__TALARIA_DISABLE_TRADE_MARKER_CANONICAL_PROJECTION_V1`, default ON) maps exit markers by immutable hit time instead of rescanning by mid-price containment, which covers the spread-column failure.
 - RED: `TALARIA_DISABLE_TRADE_MARKER_CANONICAL_PROJECTION_V1=1 node "chart v 1.4/chart/modules/order-exit-marker-spread-column.test.mjs"` fails with legacy marker index `0 !== 2`.
 - GREEN: both `node "chart v 1.4/chart/modules/order-exit-marker-spread-column.test.mjs"` and `node "homepage/public/chart/modules/order-exit-marker-spread-column.test.mjs"` pass.
+
+## 2026-07-29 — Cluster G / TAL-01683
+
+- Root cause found: with SL/TP apply-on-release active, dragging preview SL commits the new value to `#slPrice` only on drag end. The commit path updated the hidden SL input but did not rerun risk-based sizing, so fixed-dollar / percent-risk quantity could remain sized from the previous SL distance.
+- Fix: SL preview drag commit now recalculates position size for `risk-usd` and `risk-percent` modes, behind `__TALARIA_DISABLE_ORDER_RISK_QTY_ON_SL_COMMIT_V1` (default ON). Lot-size mode is unchanged.
+- RED: `TALARIA_TEST_DISABLE_ORDER_RISK_QTY_ON_SL_COMMIT=1 node "chart v 1.4/chart/modules/order-risk-qty-on-sl-commit.test.mjs"` fails because SL commits but sizing is not recalculated.
+- GREEN: both `node "chart v 1.4/chart/modules/order-risk-qty-on-sl-commit.test.mjs"` and `node "homepage/public/chart/modules/order-risk-qty-on-sl-commit.test.mjs"` pass.

@@ -225,6 +225,11 @@ function _orderSplitEntryHoverStickV1Enabled() {
     return typeof window === 'undefined' || !window.__TALARIA_DISABLE_ORDER_SPLIT_ENTRY_HOVER_STICK_V1;
 }
 
+/** Cluster G / TAL-01683: risk-based qty updates after apply-on-release SL commit. */
+function _orderRiskQtyOnSlCommitV1Enabled() {
+    return typeof window === 'undefined' || !window.__TALARIA_DISABLE_ORDER_RISK_QTY_ON_SL_COMMIT_V1;
+}
+
 const ENTRY_STACK_OFFSET_PX = 16;
 const ORDER_CANCEL_PLACE_SUPPRESS_MS = 450;
 const ORDER_LINE_EDGE_VISIBILITY_PAD_PX = 24;
@@ -991,6 +996,15 @@ class OrderManager {
         } catch (_e) { /* ignore */ }
     }
 
+    _recalculateRiskQuantityAfterSlCommit() {
+        if (!_orderRiskQtyOnSlCommitV1Enabled()) return;
+        const mode = this.positionSizeMode || 'risk-usd';
+        if (mode !== 'risk-usd' && mode !== 'risk-percent') return;
+        if (typeof this.calculatePositionFromRisk === 'function') {
+            this.calculatePositionFromRisk();
+        }
+    }
+
     /** A6-4 Step 4: iframe open-leg commits route to host store. */
     _postHostOrderCommand(cmd, payload) {
         if (typeof window === 'undefined' || !window.parent || window.parent === window) return;
@@ -1013,6 +1027,7 @@ class OrderManager {
             lineData.price = committed;
             const slInput = document.getElementById('slPrice');
             if (slInput) slInput.value = formatted;
+            this._recalculateRiskQuantityAfterSlCommit();
         } else if (lineData.label === 'TP') {
             lineData.price = committed;
             const tpInput = document.getElementById('tpPrice');
