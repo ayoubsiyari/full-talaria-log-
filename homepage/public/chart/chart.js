@@ -2962,18 +2962,82 @@ class Chart {
         return null;
     }
 
-    // TRUE => this panel is in the background and render() must skip DRAWING for
-    // this frame. It must never be read as "skip the frame": the frame's state is
-    // still computed, or a background panel holds stale scales and time ticks while
-    // the focused panel advances. See the paint boundary in render().
+    /**
+     * TRUE when this multichart panel is on-screen for paint purposes.
+     *
+     * Visibility signal (not focus): a tile the user can see must keep painting
+     * whether or not it was ever clicked. `focusedPanelId` defaults to host `A`
+     * and only changes on click — that must not classify never-clicked B/C/D as
+     * "background for life".
+     *
+     * Probe (fail-open → visible on error, so a probe failure never freezes an
+     * on-screen tile):
+     *   - `document.hidden` (tab occluded)
+     *   - canvas `getBoundingClientRect()` non-zero + computed `display` /
+     *     `visibility` not none/hidden
+     *   - embed iframe: `window.frameElement` parent-layout rect + computed
+     *     display/visibility/opacity (display:none / zero-size / opacity:0 ⇒
+     *     not visible)
+     *
+     * Deliberately does NOT use `this.w`/`this.h`: those are internal chart
+     * layout numbers that can remain non-zero while the iframe is display:none,
+     * and zeroing them would trip render()'s min-size early-return before the
+     * paint-only boundary (breaking state compute for hidden tiles).
+     */
+    _isMultichartPanelVisibleForPaint() {
+        try {
+            if (typeof document !== 'undefined' && document.hidden === true) return false;
+
+            const canvas = this.canvas;
+            if (canvas && typeof canvas.getBoundingClientRect === 'function') {
+                const rect = canvas.getBoundingClientRect();
+                if (!(rect && rect.width > 0 && rect.height > 0)) return false;
+                if (typeof window !== 'undefined' && typeof window.getComputedStyle === 'function') {
+                    const cs = window.getComputedStyle(canvas);
+                    if (cs && (cs.display === 'none' || cs.visibility === 'hidden')) return false;
+                }
+            }
+
+            if (typeof this._isMultichartEmbedPanel === 'function' && this._isMultichartEmbedPanel()) {
+                const frame = typeof window !== 'undefined' ? window.frameElement : null;
+                if (frame) {
+                    try {
+                        const parentWin = frame.ownerDocument && frame.ownerDocument.defaultView;
+                        if (parentWin && typeof parentWin.getComputedStyle === 'function') {
+                            const fcs = parentWin.getComputedStyle(frame);
+                            if (fcs) {
+                                if (fcs.display === 'none' || fcs.visibility === 'hidden') return false;
+                                const opacity = Number(fcs.opacity);
+                                if (Number.isFinite(opacity) && opacity <= 0) return false;
+                            }
+                        }
+                    } catch (_styleErr) { /* cross-origin / detached — fall through to rect */ }
+                    if (typeof frame.getBoundingClientRect === 'function') {
+                        const fr = frame.getBoundingClientRect();
+                        if (!(fr && fr.width > 0 && fr.height > 0)) return false;
+                    }
+                }
+            }
+
+            return true;
+        } catch (_e) {
+            return true;
+        }
+    }
+
+    // TRUE => this panel is not visible and render() must skip DRAWING for this
+    // frame. It must never be read as "skip the frame": the frame's state is
+    // still computed, or a hidden panel holds stale scales and time ticks while
+    // a visible panel advances. See the paint boundary in render().
+    //
+    // Predicate is visibility, not focus. Never-clicked on-screen B/C/D must
+    // keep painting; only truly hidden / zero-size / display:none tiles throttle.
     _shouldSkipMultichartBackgroundRender() {
         if (this._isMultichartBackgroundRenderCadenceDisabled()) return false;
         const ownId = this._getMultichartPanelId();
         if (!ownId) return false;
-        const focusedId = this._getFocusedMultichartPanelId();
-        if (!focusedId) return false;
-        if (String(ownId) === String(focusedId)) return false;
-        return this._isLiveMultichartPanelId(focusedId);
+        if (this._isMultichartPanelVisibleForPaint()) return false;
+        return true;
     }
 
     /**
@@ -3087,7 +3151,7 @@ class Chart {
         if (budget <= 0) return;
         this._mcBackgroundRenderCatchupFrames = budget - 1;
         if (!this._mcBackgroundRenderDirty) return;
-        // Still in the background: keep waiting for focus rather than painting early.
+        // Still not visible for paint: keep waiting rather than painting early.
         if (this._shouldSkipMultichartBackgroundRender()) return;
         this._mcBackgroundRenderCatchupFrames = 0;
         this.render();
@@ -29423,24 +29487,25 @@ class Chart {
     render() {
         this._frameDisplaySeries = null;
 
-        // ── FIX 1: PAINT-ONLY throttle for background multichart panels ──────────
+        // ── FIX 1: PAINT-ONLY throttle for non-visible multichart panels ─────────
         //
-        // This must not short-circuit render(). A backgrounded panel still computes
+        // This must not short-circuit render(). A hidden panel still computes
         // the entire frame — calculateScales(), the _timeTicks rebuild and its
         // caches, the adaptive price-axis margin, visible-bar resolution — because
         // that state is read from outside render(): order-manager.js and
         // chart-indicators-full.js both call calculateScales() and read
         // getDisplaySeries(), and _timeTicks is render-built, so a panel that
-        // skipped the frame would hold a stale time axis while the focused panel
+        // skipped the frame would hold a stale time axis while a visible panel
         // advanced. Only the drawing below the paint boundary is suppressed.
         //
-        // FIRST-PAINT ESCAPE (load-bearing): `focusedPanelId` starts on the host tile
-        // and is only ever written by a pointerdown, so every other tile counts as a
-        // background panel from birth. Suppressing its FIRST paint too leaves it a
-        // blank canvas until the user clicks it. A panel therefore keeps painting
-        // until it has drawn data once, and re-arms whenever resize() rebuilds the
-        // backing store — assigning canvas.width clears the bitmap, and a suppressed
-        // panel would never redraw what was just wiped.
+        // Skip predicate is visibility (`_isMultichartPanelVisibleForPaint`), not
+        // focus. On-screen never-clicked tiles keep painting every frame.
+        //
+        // FIRST-PAINT / SURFACE-RESET ESCAPE: still arms when `hasRenderedData` is
+        // false or resize() cleared the bitmap (`_mcRepaintAfterSurfaceReset`).
+        // Visible panels already paint continuously via the visibility predicate;
+        // the escape covers cold boot before layout settles and a wiped canvas on
+        // a tile that is momentarily classified not-visible.
         const mcFirstPaintPending = !this.hasRenderedData || this._mcRepaintAfterSurfaceReset === true;
         const mcPaintSuppressed = !mcFirstPaintPending && this._shouldSkipMultichartBackgroundRender();
         // `renders` keeps counting every render() entry — see MC_DIAG_COUNTER_FIELDS.
@@ -31310,8 +31375,8 @@ class Chart {
             && this._isMultichartEmbedPanel();
         if (isEmbedPanel) return;
         // FIX 1: the HOST tile is not an embed panel, so the guard above misses it.
-        // With focus on another tile the host's render() paint is suppressed while
-        // this countdown would keep region-painting drawCurrentPriceLabel() onto the
+        // When the host is not visible its render() paint is suppressed while this
+        // countdown would keep region-painting drawCurrentPriceLabel() onto the
         // frozen canvas — a moving badge on a stale frame.
         if (typeof this._shouldSkipMultichartBackgroundRender === 'function'
             && this._shouldSkipMultichartBackgroundRender()) return;
