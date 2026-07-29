@@ -128,6 +128,7 @@ function findCtorDelta(rows, predicates) {
  */
 export function assessGrowthCensusCalibration(census, {
   meanHeapFloorDeltaBytes = null,
+  maxHeapFloorDeltaBytes = null,
   meanDetachedDivDelta = null,
   poWorkloadArmed = false,
   poHandShapeOk = false,
@@ -155,6 +156,9 @@ export function assessGrowthCensusCalibration(census, {
     && detachedDelta >= HEAP_GROWTH_PO_CALIBRATION.minDetachedDivOrder;
   const heapOrderOk = meanHeapFloorDeltaBytes != null
     && meanHeapFloorDeltaBytes >= HEAP_GROWTH_PO_CALIBRATION.minHeapFloorOrderBytes;
+  /** One-shot dump (≥25MB) also proves PO workload hit the product (not layout-only). */
+  const heapSpikeOk = maxHeapFloorDeltaBytes != null
+    && maxHeapFloorDeltaBytes >= 25 * 1024 * 1024;
   const uniqueOrderOk = uniqueElement?.countDelta != null
     && uniqueElement.countDelta >= 10_000;
   const cssOrderOk = cssBacking?.countDelta != null
@@ -163,9 +167,9 @@ export function assessGrowthCensusCalibration(census, {
   const pinsMatched = [detachedOrderOk, uniqueOrderOk, cssOrderOk, heapOrderOk]
     .filter(Boolean).length;
   // Real product: classic DOM pins (≥2), OR PO workload armed with heap-order
-  // / hand-shape (layout-only ~0.7 MB/cycle is decorative — GATE-01).
+  // / hand-shape / one-shot dump (layout-only ~0.7 MB/cycle is decorative — GATE-01).
   const surfaceExercisesRealProduct = pinsMatched >= 2
-    || (poWorkloadArmed === true && (heapOrderOk || poHandShapeOk));
+    || (poWorkloadArmed === true && (heapOrderOk || poHandShapeOk || heapSpikeOk));
 
   return {
     surfaceExercisesRealProduct,
@@ -174,6 +178,7 @@ export function assessGrowthCensusCalibration(census, {
     uniqueOrderOk,
     cssOrderOk,
     heapOrderOk,
+    heapSpikeOk,
     poWorkloadArmed: poWorkloadArmed === true,
     poHandShapeOk: poHandShapeOk === true,
     detachedDivCountDeltaCycle1: detachedDelta,
@@ -181,10 +186,11 @@ export function assessGrowthCensusCalibration(census, {
     cssPropertyValueBackingDeltaCycle1: cssBacking?.countDelta ?? null,
     detachedRowGrowthCountCycle1: detachedRows.length,
     meanHeapFloorDeltaBytes,
+    maxHeapFloorDeltaBytes,
     po: HEAP_GROWTH_PO_CALIBRATION,
     finding: surfaceExercisesRealProduct
       ? null
-      : `HARNESS-NOT-REAL-PRODUCT: PO pins matched ${pinsMatched}/4 (Detached<div>Δ=${detachedDelta}, UniqueElementDataΔ=${uniqueElement?.countDelta ?? null}, CSSPropertyBackingΔ=${cssBacking?.countDelta ?? null}, heapMeanBytes=${meanHeapFloorDeltaBytes}, poWorkloadArmed=${poWorkloadArmed}, poHandShapeOk=${poHandShapeOk}). Need ≥2 DOM pins OR (PO workload armed ∧ heap≳10MB/cycle or PO hand late-jump shape). PO hand ~${HEAP_GROWTH_PO_CALIBRATION.approxTotalMbPerCycle} MB/cycle.`,
+      : `HARNESS-NOT-REAL-PRODUCT: PO pins matched ${pinsMatched}/4 (Detached<div>Δ=${detachedDelta}, UniqueElementDataΔ=${uniqueElement?.countDelta ?? null}, CSSPropertyBackingΔ=${cssBacking?.countDelta ?? null}, heapMeanBytes=${meanHeapFloorDeltaBytes}, maxHeapDeltaBytes=${maxHeapFloorDeltaBytes}, poWorkloadArmed=${poWorkloadArmed}, poHandShapeOk=${poHandShapeOk}). Need ≥2 DOM pins OR (PO workload armed ∧ (heap≳10MB/cycle or spike≥25MB or PO hand late-jump)). PO hand ~${HEAP_GROWTH_PO_CALIBRATION.approxTotalMbPerCycle} MB/cycle.`,
   };
 }
 

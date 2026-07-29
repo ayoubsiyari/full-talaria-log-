@@ -305,9 +305,15 @@ export function summarizeHeapCycleReport(report) {
     && gradedDetachedDelta <= HEAP_CYCLE_DETACHED_STABLE_MAX;
   const heapBounded = meanHeapDelta != null
     && meanHeapDelta <= HEAP_CYCLE_HEAP_GROWTH_MAX_BYTES;
+  const maxHeapDelta = heapDeltas.every((value) => value != null)
+    ? Math.max(...heapDeltas)
+    : null;
+  // PO leak signatures: sustained mean growth, OR a one-shot dump (≥25MB in one cycle)
+  // that then flats (b90 PO-workload saw +49 then ~0 — must not grade ADEQUATE).
   const matchesPoLeakShape = (meanDetachedDelta != null
     && meanDetachedDelta >= HEAP_CYCLE_DETACHED_LEAK_MIN)
-    || (meanHeapDelta != null && meanHeapDelta >= 16 * 1024 * 1024);
+    || (meanHeapDelta != null && meanHeapDelta >= 16 * 1024 * 1024)
+    || (maxHeapDelta != null && maxHeapDelta >= 25 * 1024 * 1024);
 
   return {
     heapSamplesOk,
@@ -324,6 +330,7 @@ export function summarizeHeapCycleReport(report) {
     detachedStable,
     heapBounded,
     matchesPoLeakShape,
+    maxHeapDelta,
     cycleCount: cycles.length,
   };
 }
@@ -590,14 +597,20 @@ export function assertHeapCycleMemoryReport(report) {
     || (censusOk
       ? assessGrowthCensusCalibration(census, {
         meanHeapFloorDeltaBytes: summary.meanHeapDelta,
+        maxHeapFloorDeltaBytes: summary.maxHeapDelta,
         meanDetachedDivDelta: summary.gradedDetachedDelta,
         poWorkloadArmed: workloadArmed,
         poHandShapeOk: hand?.ok === true,
       })
       : null);
-  const leakCleared = summary.detachedStable === true && summary.heapBounded === true;
+  const leakCleared = summary.detachedStable === true
+    && summary.heapBounded === true
+    && summary.matchesPoLeakShape !== true;
+  // Floor-only PO mode: do not greenwash via leakCleared when surface pins fail
+  // (mean can average under 8MB after a one-shot dump).
   const calibrationOk = !!calibration
-    && (calibration.surfaceExercisesRealProduct === true || leakCleared);
+    && (calibration.surfaceExercisesRealProduct === true
+      || (!floorOnlyMode && leakCleared));
   cells.push(cell(
     'HEAP-GROWTH-SURFACE-CALIBRATION',
     calibrationOk,
@@ -610,6 +623,7 @@ export function assertHeapCycleMemoryReport(report) {
     {
       superiorWhenLeakPresent: true,
       reportFirstWhenRed: !calibrationOk,
+      blocking: true,
       calibration,
       po: HEAP_GROWTH_PO_CALIBRATION,
     },

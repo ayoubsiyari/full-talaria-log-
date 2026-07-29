@@ -817,21 +817,33 @@ async function runMultichartCycles({
       monotonicHoarders: [],
       topBySizeDelta: [],
       cycleComparisons: [],
-      calibration: assessGrowthCensusCalibration(
-        { cycleComparisons: [{ rows: [] }] },
-        {
-          meanHeapFloorDeltaBytes: (() => {
-            const floorsLocal = cycleRows.map((r) => Number(r.returnSingle?.usedJSHeapSize));
-            const base = Number(baseline.usedJSHeapSize);
-            if (!Number.isFinite(base) || floorsLocal.some((f) => !Number.isFinite(f))) return null;
-            const deltas = floorsLocal.map((f, i) => f - (i === 0 ? base : floorsLocal[i - 1]));
-            return deltas.reduce((a, b) => a + b, 0) / deltas.length;
-          })(),
-          meanDetachedDivDelta: null,
-          poWorkloadArmed: workloadSummary.armedEveryCycle,
-          poHandShapeOk: poHandShape.ok === true,
-        },
-      ),
+      calibration: (() => {
+        const floorsLocal = cycleRows.map((r) => Number(r.returnSingle?.usedJSHeapSize));
+        const base = Number(baseline.usedJSHeapSize);
+        if (!Number.isFinite(base) || floorsLocal.some((f) => !Number.isFinite(f))) {
+          return assessGrowthCensusCalibration(
+            { cycleComparisons: [{ rows: [] }] },
+            {
+              meanHeapFloorDeltaBytes: null,
+              maxHeapFloorDeltaBytes: null,
+              meanDetachedDivDelta: null,
+              poWorkloadArmed: workloadSummary.armedEveryCycle,
+              poHandShapeOk: poHandShape.ok === true,
+            },
+          );
+        }
+        const deltas = floorsLocal.map((f, i) => f - (i === 0 ? base : floorsLocal[i - 1]));
+        return assessGrowthCensusCalibration(
+          { cycleComparisons: [{ rows: [] }] },
+          {
+            meanHeapFloorDeltaBytes: deltas.reduce((a, b) => a + b, 0) / deltas.length,
+            maxHeapFloorDeltaBytes: Math.max(...deltas),
+            meanDetachedDivDelta: null,
+            poWorkloadArmed: workloadSummary.armedEveryCycle,
+            poHandShapeOk: poHandShape.ok === true,
+          },
+        );
+      })(),
     };
   } else {
     growthCensus = buildCensusFromSamples(baseline, cycleRows, {
