@@ -1307,10 +1307,13 @@ export function poCpuAbHostHtml({ timings = DEFAULT_PHASE_TIMINGS, mutant = fals
       const afterIndex = Number(afterState && afterState.currentIndex);
       const indexDelta = Number.isFinite(beforeIndex) && Number.isFinite(afterIndex) ? afterIndex - beforeIndex : null;
       const speed = Number(afterState && afterState.speed);
-      const resolvedSpeed = Number.isFinite(speed) && speed > 0 ? speed : 10;
+      // No speed-10 vacuity: missing/non-positive speed leaves configured rate null.
+      const resolvedSpeed = Number.isFinite(speed) && speed > 0 ? speed : null;
       const wallSec = Math.max(0.001, (Number(observedMs) || 1) / 1000);
       const achievedBarsPerSec = Number.isFinite(indexDelta) ? indexDelta / wallSec : null;
-      const configuredBarsPerSec = (resolvedSpeed * 1000) / LAG_BAR_INTERVAL_MS;
+      const configuredBarsPerSec = resolvedSpeed != null
+        ? (resolvedSpeed * 1000) / LAG_BAR_INTERVAL_MS
+        : null;
       const throughputRatio = Number.isFinite(achievedBarsPerSec) && configuredBarsPerSec > 0
         ? achievedBarsPerSec / configuredBarsPerSec
         : null;
@@ -1670,7 +1673,14 @@ function phaseWindowsById(phase) {
 const REQUIRED_P4_PANEL_IDS = Object.freeze(['A', 'B', 'C', 'D']);
 const PO_CPU_AB_P4_ADVANCE_RATE_CEILING_MULTIPLIER = 12;
 const PO_CPU_AB_P4_MIN_TIMESTAMP_MS_PER_INDEX = 1000;
-const PO_CPU_AB_P4_MIRROR_COMPONENT_SPREAD_TOLERANCE = 2;
+/** @deprecated absolute ±2 floor retained for analysis; W62l grades via relative epsilon + ceiling. */
+export const PO_CPU_AB_P4_MIRROR_COMPONENT_SPREAD_TOLERANCE = 2;
+/** Relative epsilon for near-shared mirror spreads (max-min vs component magnitude). */
+export const PO_CPU_AB_P4_MIRROR_REL_EPSILON = 1e-4;
+/** Absolute floor so tiny magnitudes still need near-exact equality. */
+export const PO_CPU_AB_P4_MIRROR_ABS_FLOOR = 1;
+/** Hard ceiling — mutants that widen tolerance to soft-pass 2ms staggers must fail pins. */
+export const PO_CPU_AB_P4_MIRROR_ABS_CEILING = 8;
 
 function finiteNumberOrNull(value) {
   if (value == null) return null;
@@ -1679,11 +1689,52 @@ function finiteNumberOrNull(value) {
 }
 
 function lagPanelThroughputEmitted(panel) {
+  const indexDelta = finiteNumberOrNull(panel?.indexDelta);
+  const speed = finiteNumberOrNull(panel?.speed);
+  const configured = finiteNumberOrNull(panel?.configuredBarsPerSec);
+  const expectedConfigured = speed != null && speed > 0 ? (speed * 1000) / PO_CPU_AB_LAG_BAR_INTERVAL_MS : null;
   return !!panel
+    && indexDelta != null
+    && indexDelta > 0
+    && speed != null
+    && speed > 0
+    && configured != null
+    && expectedConfigured != null
+    && Math.abs(configured - expectedConfigured) <= 1e-9
     && finiteNumberOrNull(panel.achievedBarsPerSec) != null
-    && finiteNumberOrNull(panel.configuredBarsPerSec) != null
-    && finiteNumberOrNull(panel.throughputRatio) != null
-    && finiteNumberOrNull(panel.indexDelta) != null;
+    && finiteNumberOrNull(panel.throughputRatio) != null;
+}
+
+const REQUIRED_LAG_CONTENT_TYPES = Object.freeze(['sma', 'ema', 'wma']);
+
+function lagContentPanelCovered(panel) {
+  if (!panel || panel.ok !== true) return false;
+  const types = Array.isArray(panel.types)
+    ? panel.types.map((type) => String(type || '').toLowerCase()).filter(Boolean)
+    : [];
+  return REQUIRED_LAG_CONTENT_TYPES.every((type) => types.includes(type));
+}
+
+function lagContentCoverageOk(lag) {
+  const singlePanels = Array.isArray(lag?.content?.single?.panels) ? lag.content.single.panels : [];
+  const fourPanels = Array.isArray(lag?.content?.four?.panels) ? lag.content.four.panels : [];
+  const singleA = singlePanels.find((row) => String(row?.id) === 'A') || singlePanels[0] || null;
+  const fourRequired = ['A', 'B', 'C', 'D'].map((id) => fourPanels.find((row) => String(row?.id) === id) || null);
+  return lagContentPanelCovered(singleA) && fourRequired.every((panel) => lagContentPanelCovered(panel));
+}
+
+export function mirrorSpreadTolerance(magnitude, {
+  relEpsilon = PO_CPU_AB_P4_MIRROR_REL_EPSILON,
+  absFloor = PO_CPU_AB_P4_MIRROR_ABS_FLOOR,
+  absCeiling = PO_CPU_AB_P4_MIRROR_ABS_CEILING,
+} = {}) {
+  const mag = Math.max(1, Math.abs(Number(magnitude) || 0));
+  return Math.min(absCeiling, Math.max(absFloor, relEpsilon * mag));
+}
+
+export function mirrorComponentNearShared(spread, magnitude, options) {
+  if (!Number.isFinite(spread)) return false;
+  return spread <= mirrorSpreadTolerance(magnitude, options);
 }
 
 function lagPanelSmoothnessEmitted(panel) {
@@ -1730,17 +1781,34 @@ function recomputeLagP95Retention(singlePanel, fourPanels) {
   return singleP95 / medianFour;
 }
 
-export function evaluateLagDualMetric(report) {
+function recomputeLagThroughputRetention(singlePanel, fourPanels) {
+  const singleRatio = finiteNumberOrNull(singlePanel?.throughputRatio);
+  const fourRatios = (Array.isArray(fourPanels) ? fourPanels : [])
+    .map((panel) => finiteNumberOrNull(panel?.throughputRatio))
+    .filter((value) => value != null);
+  if (!(singleRatio > 0) || fourRatios.length === 0) return null;
+  const sorted = fourRatios.slice().sort((a, b) => a - b);
+  const medianFour = sorted[Math.min(sorted.length - 1, Math.max(0, Math.ceil(0.5 * sorted.length) - 1))];
+  if (!(Number.isFinite(medianFour))) return null;
+  return medianFour / singleRatio;
+}
+
+export function evaluateLagDualMetric(report, { sharedMirrorOnly = false } = {}) {
   const lag = report?.lag && typeof report.lag === 'object' ? report.lag : null;
-  const contentOk = lag?.content?.ok === true
+  const contentFlagsOk = lag?.content?.ok === true
     && lag?.content?.single?.ok === true
     && lag?.content?.four?.ok === true;
+  const contentTypesOk = lagContentCoverageOk(lag);
+  const contentOk = contentFlagsOk && contentTypesOk;
   const singlePanels = Array.isArray(lag?.single?.panels) ? lag.single.panels : [];
   const fourPanels = Array.isArray(lag?.four?.panels) ? lag.four.panels : [];
   const singlePanel = singlePanels.find((row) => String(row?.id) === 'A') || singlePanels[0] || null;
   const fourRequired = ['A', 'B', 'C', 'D'].map((id) => fourPanels.find((row) => String(row?.id) === id) || null);
   const throughputSingleOk = lagPanelThroughputEmitted(singlePanel);
-  const throughputFourOk = fourRequired.every((panel) => lagPanelThroughputEmitted(panel));
+  const throughputFourEmitted = fourRequired.every((panel) => lagPanelThroughputEmitted(panel));
+  // Four-panel lag credit is not independent when P4 grades sharedMirrorOnly.
+  const p4HonestyOk = sharedMirrorOnly !== true;
+  const throughputFourOk = throughputFourEmitted && p4HonestyOk;
   const smoothnessSingleOk = lagPanelSmoothnessEmitted(singlePanel);
   const framesFourOk = fourRequired.every((panel) => lagPanelSmoothnessEmitted(panel));
   const sharedLt = lagLongTaskSharedAcrossPanels(fourRequired);
@@ -1748,11 +1816,19 @@ export function evaluateLagDualMetric(report) {
     || lag?.four?.longTaskAttribution === 'host-shared';
   // Shared LT credited as independent per-panel smoothness is RED unless attributed.
   const sharedLtHonest = !sharedLt || reportedShared;
-  const smoothnessFourOk = framesFourOk && sharedLtHonest;
-  const throughputRetention = finiteNumberOrNull(lag?.ratios?.throughputRetention);
+  const smoothnessFourOk = framesFourOk && sharedLtHonest && p4HonestyOk;
+  const throughputRetentionReported = finiteNumberOrNull(lag?.ratios?.throughputRetention);
+  const throughputRetentionRecomputed = recomputeLagThroughputRetention(singlePanel, fourRequired);
+  const throughputRetentionMatch = throughputRetentionReported != null
+    && throughputRetentionRecomputed != null
+    && Math.abs(throughputRetentionReported - throughputRetentionRecomputed) <= 1e-9;
+  const throughputRetention = throughputRetentionMatch ? throughputRetentionReported : null;
   const p95RetentionReported = finiteNumberOrNull(lag?.ratios?.p95Retention);
   const p95RetentionRecomputed = recomputeLagP95Retention(singlePanel, fourRequired);
-  const p95Retention = p95RetentionReported != null ? p95RetentionReported : p95RetentionRecomputed;
+  const p95RetentionMatch = p95RetentionReported != null
+    && p95RetentionRecomputed != null
+    && Math.abs(p95RetentionReported - p95RetentionRecomputed) <= 1e-9;
+  const p95Retention = p95RetentionMatch ? p95RetentionReported : null;
   const smoothnessRetention = finiteNumberOrNull(lag?.ratios?.smoothnessRetention);
   const smoothnessSource = lag?.ratios?.smoothnessSource;
   // FIX1-facing smoothness ratio must be the frame p95 retention, never LT-only/min(LT,p95).
@@ -1760,7 +1836,10 @@ export function evaluateLagDualMetric(report) {
     && p95Retention != null
     && Math.abs(smoothnessRetention - p95Retention) <= 1e-9
     && (smoothnessSource == null || smoothnessSource === 'p95FrameMs');
-  const ratiosOk = throughputRetention != null && smoothnessRetention != null && framePrimaryOk;
+  const ratiosOk = throughputRetention != null
+    && smoothnessRetention != null
+    && framePrimaryOk
+    && p4HonestyOk;
   const hint = lag?.ratios?.mechanismHint;
   const hintOk = hint === 'throughput' || hint === 'smoothness' || hint === 'ambiguous';
   // Hint must be graded from frame-primary smoothness, not a contaminated LT blend.
@@ -1770,11 +1849,15 @@ export function evaluateLagDualMetric(report) {
     && (hint !== 'smoothness' || (p95Retention != null && framePrimaryOk));
   return {
     contentOk,
+    contentTypesOk,
     throughputSingleOk,
     throughputFourOk,
+    throughputFourEmitted,
     smoothnessSingleOk,
     smoothnessFourOk,
     framesFourOk,
+    p4HonestyOk,
+    sharedMirrorOnly: sharedMirrorOnly === true,
     sharedLongTaskAcrossPanels: sharedLt,
     sharedLongTaskHonest: sharedLtHonest,
     framePrimaryOk,
@@ -1786,8 +1869,11 @@ export function evaluateLagDualMetric(report) {
     singlePanel,
     fourPanels: fourRequired,
     throughputRetention,
+    throughputRetentionReported,
+    throughputRetentionRecomputed,
     smoothnessRetention,
     p95Retention,
+    p95RetentionReported,
     p95RetentionRecomputed,
   };
 }
@@ -2060,21 +2146,48 @@ export function assertPoCpuAbBenchmarkReport(report, { mutant = false } = {}) {
   const spreadsWithinTolerance = (spreads) => Array.isArray(spreads)
     && spreads.length > 0
     && spreads.every((spread) => Number.isFinite(spread) && spread <= PO_CPU_AB_P4_MIRROR_COMPONENT_SPREAD_TOLERANCE);
+  const mirrorComponentMagnitudes = (vectors, componentIndexes) => {
+    if (!Array.isArray(vectors) || vectors.length === 0 || vectors.some((vector) => !vector)) return null;
+    return componentIndexes.map((componentIndex) => {
+      const values = vectors.map((vector) => Math.abs(Number(vector.values[componentIndex])));
+      if (values.some((value) => !Number.isFinite(value))) return null;
+      return Math.max(...values, 1);
+    });
+  };
+  const spreadsNearSharedRelative = (spreads, magnitudes) => Array.isArray(spreads)
+    && Array.isArray(magnitudes)
+    && spreads.length > 0
+    && spreads.length === magnitudes.length
+    && spreads.every((spread, index) => mirrorComponentNearShared(spread, magnitudes[index]));
   const p4PeerDeltaSpreads = mirrorComponentSpreads(p4PeerMirrorVectors, [0, 1]);
   const p4PeerAbsoluteBaselineSpreads = mirrorComponentSpreads(p4PeerMirrorVectors, [2, 3, 4, 5]);
-  const p4PeerDeltasNearShared = spreadsWithinTolerance(p4PeerDeltaSpreads);
-  const p4PeerAbsoluteBaselinesNearShared = spreadsWithinTolerance(p4PeerAbsoluteBaselineSpreads);
+  const p4PeerDeltaMagnitudes = mirrorComponentMagnitudes(p4PeerMirrorVectors, [0, 1]);
+  const p4PeerAbsoluteBaselineMagnitudes = mirrorComponentMagnitudes(p4PeerMirrorVectors, [2, 3, 4, 5]);
+  // W62l: either fingerprint is sufficient (OR). Relative epsilon + absolute floor/ceiling.
+  const p4PeerDeltasNearShared = spreadsNearSharedRelative(p4PeerDeltaSpreads, p4PeerDeltaMagnitudes);
+  const p4PeerAbsoluteBaselinesNearShared = spreadsNearSharedRelative(
+    p4PeerAbsoluteBaselineSpreads,
+    p4PeerAbsoluteBaselineMagnitudes,
+  );
   const p4SharedMirrorOnly = p4RowsDistinctRequired
     && p4Rows.length >= 4
-    && p4PeerDeltasNearShared
-    && p4PeerAbsoluteBaselinesNearShared;
+    && (p4PeerDeltasNearShared || p4PeerAbsoluteBaselinesNearShared);
   const p4MirrorAnalysis = {
     peerIds: ['B', 'C', 'D'],
+    rule: 'either-fingerprint',
     tolerance: PO_CPU_AB_P4_MIRROR_COMPONENT_SPREAD_TOLERANCE,
+    relEpsilon: PO_CPU_AB_P4_MIRROR_REL_EPSILON,
+    absFloor: PO_CPU_AB_P4_MIRROR_ABS_FLOOR,
+    absCeiling: PO_CPU_AB_P4_MIRROR_ABS_CEILING,
     deltaSpreads: p4PeerDeltaSpreads,
     absoluteBaselineSpreads: p4PeerAbsoluteBaselineSpreads,
+    deltaMagnitudes: p4PeerDeltaMagnitudes,
+    absoluteBaselineMagnitudes: p4PeerAbsoluteBaselineMagnitudes,
     deltasNearShared: p4PeerDeltasNearShared,
     absoluteBaselinesNearShared: p4PeerAbsoluteBaselinesNearShared,
+    // Legacy absolute±2 kept for analysis only; not the grading conjunction.
+    legacyAbsoluteAndWouldMatch: spreadsWithinTolerance(p4PeerDeltaSpreads)
+      && spreadsWithinTolerance(p4PeerAbsoluteBaselineSpreads),
   };
   const p4Topology = replay4.topology || {};
   const p4GridIds = Array.isArray(p4Topology.gridIds) ? p4Topology.gridIds.map((id) => String(id)) : [];
@@ -2182,19 +2295,23 @@ export function assertPoCpuAbBenchmarkReport(report, { mutant = false } = {}) {
     { phase: 'P7', workRatio: p7Ratio, floorRatio, absoluteMaxRatio: PO_CPU_AB_P7_IDLE_WORK_RATIO_MAX, p1Ratio },
   ));
 
-  const lagEval = evaluateLagDualMetric(report);
+  const lagEval = evaluateLagDualMetric(report, { sharedMirrorOnly: p4SharedMirrorOnly });
   cells.push(cell(
     'LAG-CONTENT-ARMED',
     lagEval.contentOk,
-    lagEval.contentOk ? 'SMA/EMA/WMA period 20 armed on single and four-panel configs' : 'content-missing on lag configs',
-    { lag: report.lag?.content || null },
+    lagEval.contentOk
+      ? 'SMA/EMA/WMA period 20 armed on single and four-panel configs (types[] coverage)'
+      : (lagEval.contentTypesOk === false
+        ? 'content types[] missing sma/ema/wma coverage on single or four-panel panels'
+        : 'content-missing on lag configs'),
+    { lag: report.lag?.content || null, contentTypesOk: lagEval.contentTypesOk },
   ));
   cells.push(cell(
     'LAG-THROUGHPUT-SINGLE-EMITTED',
     lagEval.throughputSingleOk,
     lagEval.throughputSingleOk
       ? `A achieved/configured=${Number(lagEval.singlePanel.throughputRatio).toFixed(4)}`
-      : 'single-panel achieved vs configured tick rate missing',
+      : 'single-panel achieved vs configured tick rate missing (requires forward indexDelta + real speed)',
     { panel: lagEval.singlePanel },
   ));
   cells.push(cell(
@@ -2202,8 +2319,10 @@ export function assertPoCpuAbBenchmarkReport(report, { mutant = false } = {}) {
     lagEval.throughputFourOk,
     lagEval.throughputFourOk
       ? `A/B/C/D throughput ratios emitted`
-      : 'four-panel per-panel achieved vs configured tick rate missing',
-    { panels: lagEval.fourPanels },
+      : (!lagEval.p4HonestyOk
+        ? 'P4 sharedMirrorOnly blocks independent four-panel lag throughput credit'
+        : 'four-panel per-panel achieved vs configured tick rate missing (requires forward indexDelta + real speed)'),
+    { panels: lagEval.fourPanels, p4HonestyOk: lagEval.p4HonestyOk, sharedMirrorOnly: lagEval.sharedMirrorOnly },
   ));
   cells.push(cell(
     'LAG-SMOOTHNESS-SINGLE-EMITTED',
@@ -2220,13 +2339,17 @@ export function assertPoCpuAbBenchmarkReport(report, { mutant = false } = {}) {
       ? (lagEval.sharedLongTaskAcrossPanels
         ? 'A/B/C/D frame timing emitted; longTask host-shared (not per-panel credit)'
         : 'A/B/C/D frame timing + long-task counts emitted')
-      : (!lagEval.framesFourOk
-        ? 'four-panel frame timing + long-task count missing'
-        : 'shared long-task totals credited per panel without host-shared attribution'),
+      : (!lagEval.p4HonestyOk
+        ? 'P4 sharedMirrorOnly blocks independent four-panel lag smoothness credit'
+        : (!lagEval.framesFourOk
+          ? 'four-panel frame timing + long-task count missing'
+          : 'shared long-task totals credited per panel without host-shared attribution')),
     {
       panels: lagEval.fourPanels,
       sharedLongTaskAcrossPanels: lagEval.sharedLongTaskAcrossPanels,
       sharedLongTaskHonest: lagEval.sharedLongTaskHonest,
+      p4HonestyOk: lagEval.p4HonestyOk,
+      sharedMirrorOnly: lagEval.sharedMirrorOnly,
     },
   ));
   cells.push(cell(
@@ -2234,27 +2357,35 @@ export function assertPoCpuAbBenchmarkReport(report, { mutant = false } = {}) {
     lagEval.ratiosOk,
     lagEval.ratiosOk
       ? `throughputRetention=${lagEval.throughputRetention.toFixed(4)} smoothnessRetention=${lagEval.smoothnessRetention.toFixed(4)} (p95FrameMs)`
-      : (lagEval.framePrimaryOk === false
-        ? 'smoothnessRetention not frame-primary (p95FrameMs); host-longtask-only/contaminated ratio rejected'
-        : 'single→four throughput/smoothness retention ratios missing'),
+      : (!lagEval.p4HonestyOk
+        ? 'P4 sharedMirrorOnly blocks independent single→four lag retention credit'
+        : (lagEval.framePrimaryOk === false
+          ? 'smoothnessRetention not frame-primary (p95FrameMs); host-longtask-only/contaminated ratio rejected'
+          : 'single→four retentions missing or disagree with panel recompute')),
     {
       throughputRetention: lagEval.throughputRetention,
+      throughputRetentionRecomputed: lagEval.throughputRetentionRecomputed,
       smoothnessRetention: lagEval.smoothnessRetention,
       p95Retention: lagEval.p95Retention,
+      p95RetentionRecomputed: lagEval.p95RetentionRecomputed,
       framePrimaryOk: lagEval.framePrimaryOk,
+      p4HonestyOk: lagEval.p4HonestyOk,
     },
   ));
   cells.push(cell(
     'LAG-MECHANISM-HINT-EMITTED',
-    lagEval.hintOk && lagEval.hintConsistent,
-    lagEval.hintOk && lagEval.hintConsistent
+    lagEval.hintOk && lagEval.hintConsistent && lagEval.p4HonestyOk,
+    lagEval.hintOk && lagEval.hintConsistent && lagEval.p4HonestyOk
       ? `mechanismHint=${lagEval.hint} (throughput→FIX2, smoothness→FIX1 via p95FrameMs)`
-      : `mechanismHint missing, LT-contaminated, or inconsistent (got=${lagEval.hint}, recomputed=${lagEval.recomputedHint}, framePrimary=${lagEval.framePrimaryOk})`,
+      : (!lagEval.p4HonestyOk
+        ? 'P4 sharedMirrorOnly blocks independent lag mechanismHint credit'
+        : `mechanismHint missing, LT-contaminated, or inconsistent (got=${lagEval.hint}, recomputed=${lagEval.recomputedHint}, framePrimary=${lagEval.framePrimaryOk})`),
     {
       hint: lagEval.hint,
       recomputedHint: lagEval.recomputedHint,
       framePrimaryOk: lagEval.framePrimaryOk,
       p95Retention: lagEval.p95Retention,
+      p4HonestyOk: lagEval.p4HonestyOk,
     },
   ));
 

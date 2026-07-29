@@ -4,6 +4,9 @@ import vm from 'node:vm';
 
 import {
   DEFAULT_PO_CPU_AB_TIMEOUT_MS,
+  PO_CPU_AB_P4_MIRROR_ABS_CEILING,
+  PO_CPU_AB_P4_MIRROR_ABS_FLOOR,
+  PO_CPU_AB_P4_MIRROR_REL_EPSILON,
   PO_CPU_AB_SIGNATURE,
   PO_CPU_AB_STATUS_SKIP,
   PO_CPU_AB_STATUS_SHORT,
@@ -11,6 +14,8 @@ import {
   assertPoCpuAbBenchmarkReport,
   lagLongTaskSharedAcrossPanels,
   lagMechanismHintFromRetentions,
+  mirrorComponentNearShared,
+  mirrorSpreadTolerance,
   mutatePoCpuAbReplaySystemForPauseTeardownNC,
   poCpuAbReplayArmingHelpersSource,
   poCpuAbHostHtml,
@@ -548,7 +553,8 @@ test('fault-injection: P4 rejects B/C/D shared mirror even when host differs or 
     playingObserved: true,
     advancedObserved: true,
     indexDelta: id === 'A' ? 7 : 5,
-    timestampDelta: id === 'D' ? 300_001 : (id === 'A' ? 420_000 : 300_000),
+    // Host A stays within rate ceiling (360_000); peers remain near-shared with 1ms jitter.
+    timestampDelta: id === 'D' ? 300_001 : (id === 'A' ? 300_000 : 300_000),
     advanceContradiction: false,
     beforeState: { isActive: true, isPlaying: false, currentIndex: 100 + index, currentTimestamp: 10_000_000 + (index * 1000), currentTimestampSource: 'replayTimestamp', speed: 10 },
     state: { isActive: true, isPlaying: true, currentIndex: 107 + index, currentTimestamp: 10_420_000 + (index * 1000), currentTimestampSource: 'replayTimestamp', speed: 10 },
@@ -556,7 +562,7 @@ test('fault-injection: P4 rejects B/C/D shared mirror even when host differs or 
       startIndex: id === 'A' ? 100 : 200,
       indexDelta: id === 'A' ? 7 : 5,
       startTimestamp: id === 'A' ? 10_000_000 : 20_000_000,
-      timestampDelta: id === 'D' ? 300_001 : (id === 'A' ? 420_000 : 300_000),
+      timestampDelta: id === 'D' ? 300_001 : (id === 'A' ? 300_000 : 300_000),
     }),
   }));
   const p4 = assertPoCpuAbBenchmarkReport(report({
@@ -567,13 +573,15 @@ test('fault-injection: P4 rejects B/C/D shared mirror even when host differs or 
   })).find((cell) => cell.name === 'P4-FOUR-PANEL-REPLAY-RUNNING-OBSERVED');
   assert.equal(p4.status, 'RED');
   assert.equal(p4.sharedMirrorOnly, true);
+  assert.equal(p4.advancedCount, 4);
 });
 
 test('fault-injection: P4 shared mirror detection is peer-order independent for staggered jitter', () => {
   function rowsForPeerTimestampDeltas(peerDeltas) {
     return ['A', 'B', 'C', 'D'].map((id) => {
       const peerDelta = peerDeltas[id];
-      const timestampDelta = id === 'A' ? 420_000 : peerDelta;
+      // Host A must be rate-coherent (elapsed 3s × speed 10 × 12 = 360_000) — not a decorative RED.
+      const timestampDelta = id === 'A' ? 300_000 : peerDelta;
       const startIndex = id === 'A' ? 100 : 200;
       const indexDelta = id === 'A' ? 7 : 5;
       const startTimestamp = id === 'A' ? 10_000_000 : 20_000_000;
@@ -613,7 +621,9 @@ test('fault-injection: P4 shared mirror detection is peer-order independent for 
   assert.deepEqual(verdicts.map((p4) => p4.status), ['RED', 'RED', 'RED']);
   assert.deepEqual(verdicts.map((p4) => p4.sharedMirrorOnly), [true, true, true]);
   assert.deepEqual(verdicts.map((p4) => p4.mirrorAnalysis.deltaSpreads), [[0, 2], [0, 2], [0, 2]]);
-  assert.equal(verdicts.every((p4) => p4.mirrorAnalysis.absoluteBaselinesNearShared), true);
+  assert.equal(verdicts.every((p4) => p4.mirrorAnalysis.deltasNearShared), true);
+  assert.equal(verdicts.every((p4) => p4.advancedCount === 4), true);
+  assert.equal(verdicts.every((p4) => p4.mirrorAnalysis.rule === 'either-fingerprint'), true);
 });
 
 test('fault-injection: P4 observe-window baseline requirement survives report normalization', () => {
@@ -1387,4 +1397,110 @@ test('fault-injection: longtask-only panel payload cannot mint smoothness emit',
   const cells = assertPoCpuAbBenchmarkReport(report({ lag }));
   assert.equal(cells.find((cell) => cell.name === 'LAG-SMOOTHNESS-SINGLE-EMITTED')?.status, 'RED');
   assert.equal(cells.find((cell) => cell.name === 'LAG-SMOOTHNESS-FOUR-EMITTED')?.status, 'RED');
+});
+
+test('fault-injection: W64c couples four-panel lag credit to P4 sharedMirrorOnly', () => {
+  const mirroredRows = ['A', 'B', 'C', 'D'].map((id) => ({
+    id,
+    ok: true,
+    activeObserved: true,
+    playingObserved: true,
+    advancedObserved: true,
+    indexDelta: 5,
+    timestampDelta: 300_000,
+    advanceContradiction: false,
+    beforeState: { isActive: true, isPlaying: false, currentIndex: 10, currentTimestamp: 1_000_000, currentTimestampSource: 'replayTimestamp', speed: 10 },
+    state: { isActive: true, isPlaying: true, currentIndex: 15, currentTimestamp: 1_300_000, currentTimestampSource: 'replayTimestamp', speed: 10 },
+    ...p4AdvanceEvidence(),
+  }));
+  const cells = assertPoCpuAbBenchmarkReport(report({
+    p4Replay: { ok: true, rows: mirroredRows },
+    lag: lagEvidence({ throughputRetention: 0.95, smoothnessRetention: 0.4 }),
+  }));
+  assert.equal(cells.find((cell) => cell.name === 'P4-FOUR-PANEL-REPLAY-RUNNING-OBSERVED')?.sharedMirrorOnly, true);
+  assert.equal(cells.find((cell) => cell.name === 'LAG-THROUGHPUT-FOUR-EMITTED')?.status, 'RED');
+  assert.equal(cells.find((cell) => cell.name === 'LAG-SMOOTHNESS-FOUR-EMITTED')?.status, 'RED');
+  assert.equal(cells.find((cell) => cell.name === 'LAG-SINGLE-TO-FOUR-RATIO-EMITTED')?.status, 'RED');
+  assert.equal(cells.find((cell) => cell.name === 'LAG-MECHANISM-HINT-EMITTED')?.status, 'RED');
+  assert.equal(cells.find((cell) => cell.name === 'LAG-THROUGHPUT-SINGLE-EMITTED')?.status, 'GREEN');
+});
+
+test('fault-injection: W64c rejects zero indexDelta throughput and speed-10 vacuity', () => {
+  const lag = lagEvidence();
+  lag.single.panels[0].indexDelta = 0;
+  lag.single.panels[0].achievedBarsPerSec = 0;
+  lag.single.panels[0].throughputRatio = 0;
+  const zeroDelta = assertPoCpuAbBenchmarkReport(report({ lag }));
+  assert.equal(zeroDelta.find((cell) => cell.name === 'LAG-THROUGHPUT-SINGLE-EMITTED')?.status, 'RED');
+
+  const lagSpeed = lagEvidence();
+  lagSpeed.single.panels[0].speed = null;
+  lagSpeed.single.panels[0].configuredBarsPerSec = (10 * 1000) / 60_000;
+  const vacuousSpeed = assertPoCpuAbBenchmarkReport(report({ lag: lagSpeed }));
+  assert.equal(vacuousSpeed.find((cell) => cell.name === 'LAG-THROUGHPUT-SINGLE-EMITTED')?.status, 'RED');
+});
+
+test('fault-injection: W64c recomputes retentions from panels and requires types[] coverage', () => {
+  const lag = lagEvidence({ throughputRetention: 0.5, smoothnessRetention: 0.92 });
+  lag.ratios.throughputRetention = 0.99;
+  const lied = assertPoCpuAbBenchmarkReport(report({ lag }));
+  assert.equal(lied.find((cell) => cell.name === 'LAG-SINGLE-TO-FOUR-RATIO-EMITTED')?.status, 'RED');
+
+  const lagTypes = lagEvidence();
+  lagTypes.content.four.panels[1].types = ['sma'];
+  const missingTypes = assertPoCpuAbBenchmarkReport(report({ lag: lagTypes }));
+  assert.equal(missingTypes.find((cell) => cell.name === 'LAG-CONTENT-ARMED')?.status, 'RED');
+});
+
+test('fault-injection: W62l either fingerprint catches baseline-skew escape', () => {
+  // Byte-identical B/C/D deltas; absolute baselines skewed beyond relative near-shared.
+  const rows = ['A', 'B', 'C', 'D'].map((id, index) => {
+    const startIndex = id === 'A' ? 100 : 200 + (id === 'D' ? 50 : 0);
+    const startTimestamp = id === 'A' ? 10_000_000 : 20_000_000 + (id === 'D' ? 50_000 : 0);
+    const indexDelta = id === 'A' ? 7 : 5;
+    const timestampDelta = id === 'A' ? 300_000 : 300_000;
+    return {
+      id,
+      ok: true,
+      activeObserved: true,
+      playingObserved: true,
+      advancedObserved: true,
+      indexDelta,
+      timestampDelta,
+      advanceContradiction: false,
+      beforeState: { isActive: true, isPlaying: false, currentIndex: startIndex, currentTimestamp: startTimestamp, currentTimestampSource: 'replayTimestamp', speed: 10 },
+      state: { isActive: true, isPlaying: true, currentIndex: startIndex + indexDelta, currentTimestamp: startTimestamp + timestampDelta, currentTimestampSource: 'replayTimestamp', speed: 10 },
+      ...p4AdvanceEvidence({
+        startIndex,
+        indexDelta,
+        startTimestamp,
+        timestampDelta,
+      }),
+    };
+  });
+  const p4 = assertPoCpuAbBenchmarkReport(report({
+    p4Replay: { ok: true, rows },
+  })).find((cell) => cell.name === 'P4-FOUR-PANEL-REPLAY-RUNNING-OBSERVED');
+  assert.equal(p4.status, 'RED');
+  assert.equal(p4.sharedMirrorOnly, true);
+  assert.equal(p4.mirrorAnalysis.deltasNearShared, true);
+  assert.equal(p4.mirrorAnalysis.absoluteBaselinesNearShared, false);
+  assert.equal(p4.mirrorAnalysis.legacyAbsoluteAndWouldMatch, false);
+  assert.equal(p4.advancedCount, 4);
+});
+
+test('unit: W62l mirror tolerance pins relative epsilon and absolute ceiling', () => {
+  assert.equal(mirrorSpreadTolerance(31_200), Math.min(
+    PO_CPU_AB_P4_MIRROR_ABS_CEILING,
+    Math.max(PO_CPU_AB_P4_MIRROR_ABS_FLOOR, PO_CPU_AB_P4_MIRROR_REL_EPSILON * 31_200),
+  ));
+  assert.equal(mirrorComponentNearShared(2, 31_200), true);
+  assert.equal(mirrorComponentNearShared(100, 31_200), false);
+  // Ceiling pin: mutants that widen absCeiling by ×1000 would soft-pass this spread.
+  assert.equal(mirrorComponentNearShared(100, 1_000_000, {
+    absCeiling: PO_CPU_AB_P4_MIRROR_ABS_CEILING,
+  }), false);
+  assert.equal(mirrorComponentNearShared(100, 1_000_000, {
+    absCeiling: PO_CPU_AB_P4_MIRROR_ABS_CEILING * 1000,
+  }), true);
 });
