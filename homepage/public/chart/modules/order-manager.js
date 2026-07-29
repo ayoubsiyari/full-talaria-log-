@@ -78,6 +78,12 @@ function _orderLifecycleEventOwnershipV1Enabled() {
         || !window.__TALARIA_DISABLE_ORDER_LIFECYCLE_EVENT_OWNERSHIP_V1;
 }
 
+/** M24: reconcile order ids before minting, so restored stale counters cannot collide. */
+function _m24OrderIdAllocatorV1Enabled() {
+    return typeof window === 'undefined'
+        || !window.__TALARIA_DISABLE_M24_ORDER_ID_ALLOCATOR_V1;
+}
+
 
 /** M19-D: marker redraw processes newly-visible/delta trades only — default ON. */
 function _m19MarkerDeltaV1Enabled() {
@@ -7463,6 +7469,7 @@ class OrderManager {
             if (Number.isFinite(orderIdCounter) && orderIdCounter > 0) this.orderIdCounter = orderIdCounter;
             if (Number.isFinite(tradeGroupIdCounter) && tradeGroupIdCounter > 0) this.tradeGroupIdCounter = tradeGroupIdCounter;
         }
+        this._m24ReconcileOrderIdCounter();
 
         // Remove old runtime visuals before rebuilding from restored state.
         this.orderLines = [];
@@ -8126,6 +8133,45 @@ class OrderManager {
         if (filtered.length < originalLength) {
             console.log(`🧹 Cleaned ${originalLength - filtered.length} duplicate(s) from journal`);
         }
+    }
+
+    _m24ScanOrderIdentityRows(rows, visit) {
+        if (!Array.isArray(rows)) return;
+        rows.forEach((row) => {
+            if (!row || typeof row !== 'object') return;
+            visit(row.id);
+            visit(row.tradeId);
+            visit(row.client_trade_id);
+            if (Array.isArray(row.scaledEntries)) row.scaledEntries.forEach((entry) => visit(entry && entry.id));
+            if (Array.isArray(row.splitEntries)) row.splitEntries.forEach((entry) => visit(entry && entry.id));
+        });
+    }
+
+    _m24ReconcileOrderIdCounter() {
+        if (!_m24OrderIdAllocatorV1Enabled()) return this.orderIdCounter;
+        let maxOrderId = 0;
+        const visit = (id) => {
+            if (typeof id === 'number' && Number.isFinite(id) && id > maxOrderId) {
+                maxOrderId = id;
+            }
+        };
+        this._m24ScanOrderIdentityRows(this.pendingOrders, visit);
+        this._m24ScanOrderIdentityRows(this.openPositions, visit);
+        this._m24ScanOrderIdentityRows(this.closedPositions, visit);
+        this._m24ScanOrderIdentityRows(this.orders, visit);
+        this._m24ScanOrderIdentityRows(this.tradeJournal, visit);
+        this._m24ScanOrderIdentityRows(this.orderService && this.orderService.pendingOrders, visit);
+        this._m24ScanOrderIdentityRows(this.orderService && this.orderService.openPositions, visit);
+        const current = Number.parseInt(this.orderIdCounter, 10);
+        this.orderIdCounter = Math.max(Number.isFinite(current) && current > 0 ? current : 1, maxOrderId + 1);
+        return this.orderIdCounter;
+    }
+
+    _allocateOrderId() {
+        if (!_m24OrderIdAllocatorV1Enabled()) return this.orderIdCounter++;
+        const id = this._m24ReconcileOrderIdCounter();
+        this.orderIdCounter = id + 1;
+        return id;
     }
 
     /**
@@ -29219,7 +29265,7 @@ class OrderManager {
                         { instrument_settings: activeInstrumentSettings, ticker: activeTicker }
                     );
                     const order = {
-                        id: this.orderIdCounter++,
+                        id: this._allocateOrderId(),
                         symbol: activeTicker,
                         ticker: activeTicker,
                         sourceFileId: this._chartSourceFileId(),
@@ -29706,7 +29752,7 @@ class OrderManager {
         const fillInstRef = { instrument_settings: activeInstrumentSettings, ticker: activeTicker };
         entryPrice = this._applyHalfSpreadEntryPrice(entryPrice, this.orderSide, fillInstRef);
         const order = {
-            id: this.orderIdCounter++,
+            id: this._allocateOrderId(),
             symbol: activeTicker,
             ticker: activeTicker,
             sourceFileId: this._chartSourceFileId(),
@@ -29905,7 +29951,7 @@ class OrderManager {
         const activeTicker = this._getActiveTicker();
         const activeInstrumentSettings = this._getActiveInstrumentSettings();
         const pendingOrder = {
-            id: this.orderIdCounter++,
+            id: this._allocateOrderId(),
             symbol: activeTicker,
             ticker: activeTicker,
             sourceFileId: this._chartSourceFileId(),
@@ -29977,7 +30023,7 @@ class OrderManager {
         const activeInstrumentSettings = this._getActiveInstrumentSettings();
         
         const pendingOrder = {
-            id: this.orderIdCounter++,
+            id: this._allocateOrderId(),
             symbol: activeTicker,
             ticker: activeTicker,
             sourceFileId: this._chartSourceFileId(),
@@ -30137,7 +30183,7 @@ class OrderManager {
         if (orderType === 'limit' || orderType === 'stop') {
             // Create PENDING order
             const pendingOrder = {
-                id: this.orderIdCounter++,
+                id: this._allocateOrderId(),
                 symbol: activeTicker,
                 ticker: activeTicker,
                 sourceFileId: this._chartSourceFileId(),
@@ -30180,7 +30226,7 @@ class OrderManager {
         } else {
             // Create MARKET order (immediate execution)
             const order = {
-                id: this.orderIdCounter++,
+                id: this._allocateOrderId(),
                 symbol: activeTicker,
                 ticker: activeTicker,
                 sourceFileId: this._chartSourceFileId(),
@@ -30347,7 +30393,7 @@ class OrderManager {
         
         const act = this._getActiveTicker();
         const order = {
-            id: this.orderIdCounter++,
+            id: this._allocateOrderId(),
             symbol: act,
             ticker: act,
             sourceFileId: this._chartSourceFileId(),
@@ -30439,7 +30485,7 @@ class OrderManager {
         
         const act = this._getActiveTicker();
         const order = {
-            id: this.orderIdCounter++,
+            id: this._allocateOrderId(),
             symbol: act,
             ticker: act,
             sourceFileId: this._chartSourceFileId(),
@@ -30519,7 +30565,7 @@ class OrderManager {
         const defaultTP = price + (100 * pipSize);
         
         const order = {
-            id: this.orderIdCounter++,
+            id: this._allocateOrderId(),
             symbol: act,
             ticker: act,
             sourceFileId: this._chartSourceFileId(),
@@ -30589,7 +30635,7 @@ class OrderManager {
         const defaultTP = price - (100 * pipSize);
         
         const order = {
-            id: this.orderIdCounter++,
+            id: this._allocateOrderId(),
             symbol: act,
             ticker: act,
             sourceFileId: this._chartSourceFileId(),
@@ -35909,7 +35955,7 @@ class OrderManager {
         const newLegTP = this._collapsedTakeProfitForNewSplitLeg(po);
 
         const newPO = {
-            id: this.orderIdCounter++,
+            id: this._allocateOrderId(),
             symbol: po.symbol || po.ticker,
             ticker: po.ticker || po.symbol,
             sourceFileId: po.sourceFileId,
