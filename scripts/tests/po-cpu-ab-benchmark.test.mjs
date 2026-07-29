@@ -4,6 +4,7 @@ import vm from 'node:vm';
 
 import {
   DEFAULT_PO_CPU_AB_TIMEOUT_MS,
+  HEAP_COLLAPSE_MIN_EXPAND_BYTES,
   PO_CPU_AB_P4_MIRROR_ABS_CEILING,
   PO_CPU_AB_P4_MIRROR_ABS_FLOOR,
   PO_CPU_AB_P4_MIRROR_REL_EPSILON,
@@ -21,6 +22,7 @@ import {
   poCpuAbHostHtml,
   runPoCpuAbBenchmarkGate,
   runPoCpuAbBenchmarkPreflight,
+  summarizeCollapseHeap,
 } from '../lib/po-cpu-ab-benchmark.mjs';
 import { parsePoCpuAbBenchmarkArgs } from '../po-cpu-ab-benchmark-gate.mjs';
 
@@ -178,6 +180,37 @@ function p4AdvanceEvidence({
   };
 }
 
+function heapEvidence({
+  singleBytes = 120_000_000,
+  fourBytes = 220_000_000,
+  postBytes = 130_000_000,
+  forcedGcAvailable = true,
+} = {}) {
+  const sample = (usedJSHeapSize) => ({
+    exposed: true,
+    metric: 'usedJSHeapSize',
+    usedJSHeapSize,
+    totalJSHeapSize: usedJSHeapSize + 20_000_000,
+    jsHeapSizeLimit: 4_000_000_000,
+    forcedGcAttempted: true,
+    forcedGcAvailable,
+  });
+  return {
+    instrument: {
+      metric: 'usedJSHeapSize',
+      forcedGc: true,
+      footprintNonGrading: true,
+      note: 'Task Manager / process RSS must not grade M26 or FIX3',
+    },
+    singleBaseline: sample(singleBytes),
+    fourPeak: sample(fourBytes),
+    postCollapse: sample(postBytes),
+    expandDeltaBytes: fourBytes - singleBytes,
+    collapseReleaseBytes: fourBytes - postBytes,
+    retentionBytes: postBytes - singleBytes,
+  };
+}
+
 function p4WorkWindows({
   peerWorkRatio = 0.08,
   hostWorkRatio = 0.20,
@@ -206,6 +239,7 @@ function report({
   p7Replay = {},
   shortened = false,
   lag = undefined,
+  heap = undefined,
 } = {}) {
   const replayP6 = {
     ok: true,
@@ -275,6 +309,7 @@ function report({
       p7: { ok: true, state: { isPlaying: false, speed: 10 }, ...p7Replay },
     },
     lag: lag === null ? undefined : (lag || lagEvidence()),
+    heap: heap === null ? undefined : (heap || heapEvidence()),
     phases: {
       P1: phase({ label: 'P1', workRatio: p1WorkRatio }),
       P2: phase({ label: 'P2', workRatio: p2WorkRatio, memoryDelta: p2MemoryDelta }),
@@ -1503,4 +1538,53 @@ test('unit: W62l mirror tolerance pins relative epsilon and absolute ceiling', (
   assert.equal(mirrorComponentNearShared(100, 1_000_000, {
     absCeiling: PO_CPU_AB_P4_MIRROR_ABS_CEILING * 1000,
   }), true);
+});
+
+test('unit: heap instrument grades usedJSHeapSize after forced GC for M26/FIX3', () => {
+  const cells = assertPoCpuAbBenchmarkReport(report());
+  assert.equal(cells.find((cell) => cell.name === 'HEAP-INSTRUMENT-USED-JS-HEAP')?.status, 'GREEN');
+  assert.equal(cells.find((cell) => cell.name === 'HEAP-FORCED-GC-AVAILABLE')?.status, 'GREEN');
+  assert.equal(cells.find((cell) => cell.name === 'M26-FIX3-COLLAPSE-HEAP-RELEASE')?.status, 'GREEN');
+  assert.equal(cells.find((cell) => cell.name === 'M26-FIX3-COLLAPSE-HEAP-RELEASE')?.regrades?.join(','), 'M26,FIX3');
+});
+
+test('fault-injection: footprint-shaped heap without forced GC cannot grade M26/FIX3', () => {
+  const heap = heapEvidence();
+  delete heap.instrument.footprintNonGrading;
+  heap.instrument.metric = 'taskManagerFootprint';
+  for (const key of ['singleBaseline', 'fourPeak', 'postCollapse']) {
+    heap[key].forcedGcAttempted = false;
+    heap[key].forcedGcAvailable = false;
+  }
+  const cells = assertPoCpuAbBenchmarkReport(report({ heap }));
+  assert.equal(cells.find((cell) => cell.name === 'HEAP-INSTRUMENT-USED-JS-HEAP')?.status, 'RED');
+  assert.equal(cells.find((cell) => cell.name === 'HEAP-FORCED-GC-AVAILABLE')?.status, 'RED');
+  assert.equal(cells.find((cell) => cell.name === 'M26-FIX3-COLLAPSE-HEAP-RELEASE')?.status, 'RED');
+});
+
+test('fault-injection: collapse heap residue RED; tiny expand UNPROVEN non-blocking', () => {
+  const residue = assertPoCpuAbBenchmarkReport(report({
+    heap: heapEvidence({ singleBytes: 100_000_000, fourBytes: 250_000_000, postBytes: 240_000_000 }),
+  }));
+  const residueCell = residue.find((cell) => cell.name === 'M26-FIX3-COLLAPSE-HEAP-RELEASE');
+  assert.equal(residueCell?.status, 'RED');
+  assert.equal(residueCell?.blocking, true);
+  assert.equal(residueCell?.pass, false);
+
+  const tiny = HEAP_COLLAPSE_MIN_EXPAND_BYTES - 1;
+  const unproven = assertPoCpuAbBenchmarkReport(report({
+    heap: heapEvidence({
+      singleBytes: 100_000_000,
+      fourBytes: 100_000_000 + tiny,
+      postBytes: 100_000_000 + tiny,
+    }),
+  }));
+  const unprovenCell = unproven.find((cell) => cell.name === 'M26-FIX3-COLLAPSE-HEAP-RELEASE');
+  assert.equal(unprovenCell?.status, 'UNPROVEN');
+  assert.equal(unprovenCell?.blocking, false);
+  assert.equal(summarizeCollapseHeap(heapEvidence({
+    singleBytes: 100_000_000,
+    fourBytes: 100_000_000 + tiny,
+    postBytes: 100_000_000 + tiny,
+  })).collapseStatus, 'UNPROVEN');
 });

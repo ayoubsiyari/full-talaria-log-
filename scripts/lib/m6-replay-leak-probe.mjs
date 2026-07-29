@@ -724,6 +724,15 @@ export function assertM6ReplayLeakCounts({ baseline, final, mutant = false, work
     && schedulerEpochs.pass
     && schedulerCallbacks.pass;
   const schedulerDeltas = schedulerDeltaEvaluation(baselineScheduler, finalScheduler, { cycles });
+  const baselineHeap = baseline?.heap || null;
+  const finalHeap = final?.heap || null;
+  const heapPresent = !!(baselineHeap || finalHeap);
+  const heapInstrumented = !heapPresent || (
+    baselineHeap?.metric === 'usedJSHeapSize'
+    && baselineHeap?.forcedGcAttempted === true
+    && finalHeap?.metric === 'usedJSHeapSize'
+    && finalHeap?.forcedGcAttempted === true
+  );
   const cells = [
     {
       name: 'M6-PO-WORKLOAD-ARMED',
@@ -732,6 +741,20 @@ export function assertM6ReplayLeakCounts({ baseline, final, mutant = false, work
       detail: workload
         ? `armed=${workload.armed}; panels=${workload.panels}; indicatorsOk=${workload.indicatorsOk}; orderOk=${workload.order && workload.order.ok}; stillPlaying=${workload.stillPlaying}`
         : 'workload missing (injected fixture may omit)',
+    },
+    {
+      name: 'M6-HEAP-INSTRUMENT-USED-JS-HEAP',
+      // Non-blocking until M26/FIX3 collapse-release cell owns the grade (po-cpu-ab).
+      blocking: false,
+      pass: heapInstrumented,
+      detail: heapPresent
+        ? `metric=usedJSHeapSize forcedGc; baseline=${baselineHeap?.usedJSHeapSize}; final=${finalHeap?.usedJSHeapSize}; footprintNonGrading=true`
+        : 'heap samples absent (fixture); Task Manager footprint must not grade M26/FIX3',
+      metrics: {
+        baselineHeap,
+        finalHeap,
+        footprintNonGrading: true,
+      },
     },
     {
       name: 'M6-REPLAY-LIVE-COUNT-RETURNS-TO-ONE',

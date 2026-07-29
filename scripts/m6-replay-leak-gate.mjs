@@ -138,6 +138,40 @@ export function m6ReplayLeakHostHtml({ cycles = DEFAULT_M6_CYCLES, schedulerOrph
       return { installed: true, reused: false };
     }
 
+    function forceGcBestEffort(win) {
+      let available = false;
+      try {
+        if (win && typeof win.gc === 'function') { win.gc(); available = true; }
+      } catch (_) {}
+      try {
+        if (typeof window.gc === 'function') { window.gc(); available = true; }
+      } catch (_) {}
+      return available;
+    }
+
+    function heapSample(win) {
+      const availableA = forceGcBestEffort(win);
+      const availableB = forceGcBestEffort(win);
+      const mem = win && win.performance && win.performance.memory;
+      if (!mem) {
+        return {
+          exposed: false,
+          metric: 'usedJSHeapSize',
+          forcedGcAttempted: true,
+          forcedGcAvailable: availableA || availableB
+        };
+      }
+      return {
+        exposed: true,
+        metric: 'usedJSHeapSize',
+        usedJSHeapSize: Number(mem.usedJSHeapSize) || 0,
+        totalJSHeapSize: Number(mem.totalJSHeapSize) || 0,
+        jsHeapSizeLimit: Number(mem.jsHeapSizeLimit) || 0,
+        forcedGcAttempted: true,
+        forcedGcAvailable: availableA || availableB
+      };
+    }
+
     function snapshot(label) {
       const win = harnessWindow();
       installAllSchedulingCensus();
@@ -153,7 +187,9 @@ export function m6ReplayLeakHostHtml({ cycles = DEFAULT_M6_CYCLES, schedulerOrph
         q6States: collectQ6States(win),
         replayPlaying: collectReplayPlaying(win),
         panelCount: countManagedPanels(win),
-        schedulingCensus: collectSchedulingCensus()
+        schedulingCensus: collectSchedulingCensus(),
+        // Diagnostic + M26/FIX3 regrade channel — never Task Manager footprint.
+        heap: heapSample(win)
       };
     }
 
@@ -513,8 +549,8 @@ export function m6ReplayLeakHostHtml({ cycles = DEFAULT_M6_CYCLES, schedulerOrph
         const m = manager();
         return PANEL_IDS.every((id) => !(m.charts && m.charts.has(id)));
       }, 'panels B/C/D removed', 30000);
-      if (window.gc) { try { window.gc(); } catch (_) {} }
-      if (win.gc) { try { win.gc(); } catch (_) {} }
+      forceGcBestEffort(window);
+      forceGcBestEffort(win);
       await sleep(900);
       pruneDrainedPanels(win);
     }
@@ -737,6 +773,7 @@ export async function runM6ReplayLeakGate({
       reportPromise,
       timeoutMs,
       profilePrefix: mutant ? 'talaria-m6-replay-mutant-' : 'talaria-m6-replay-',
+      preciseMemory: true,
     });
     const report = browserRun.report || null;
     if (!report || browserRun.timedOut) {
@@ -784,7 +821,7 @@ export async function runM6ReplayLeakGate({
         detail: `installed=${report.schedulerOrphan?.installed === true}; pendingIntervalDelta=${orphanDelta}; soundChannelRed=${scheduler?.metrics?.soundChannelRed === true}; schedulerPass=${scheduler?.pass === true}`,
       });
     }
-    const ok = report.ok === true && cells.every((cell) => cell.pass === true);
+    const ok = report.ok === true && cells.every((cell) => cell.blocking === false || cell.pass === true);
     return {
       ok,
       status: ok ? 'GREEN' : 'RED',

@@ -5,6 +5,14 @@ import {
   runHeadlessUrl,
 } from '../../chart v 1.4/chart/modules/m21-w6-fixtures/browser-cli.mjs';
 import { startServer as startHarnessServer } from '../../chart v 1.4/chart/multichart-prod/harness/serve.mjs';
+import {
+  HEAP_COLLAPSE_MIN_EXPAND_BYTES,
+  HEAP_COLLAPSE_RELEASE_FRACTION,
+  HEAP_COLLAPSE_RETENTION_MAX_BYTES,
+  HEAP_FOOTPRINT_NON_GRADING,
+  HEAP_METRIC_USED_JS_HEAP_SIZE,
+  summarizeCollapseHeap,
+} from './heap-memory-instrument.mjs';
 
 export const PO_CPU_AB_SIGNATURE = 'TALARIA_PO_CPU_AB_BENCHMARK_V1';
 export const PO_CPU_AB_STATUS_SKIP = 'SKIP';
@@ -19,6 +27,14 @@ export const PO_CPU_AB_P4_PEER_WORK_RATIO_MARGIN = 0.003;
 export const PO_CPU_AB_LAG_BAR_INTERVAL_MS = 60_000;
 /** Relative gap required to pick throughput vs smoothness mechanism hint. */
 export const PO_CPU_AB_LAG_MECHANISM_MARGIN = 0.08;
+export {
+  HEAP_COLLAPSE_MIN_EXPAND_BYTES,
+  HEAP_COLLAPSE_RELEASE_FRACTION,
+  HEAP_COLLAPSE_RETENTION_MAX_BYTES,
+  HEAP_FOOTPRINT_NON_GRADING,
+  HEAP_METRIC_USED_JS_HEAP_SIZE,
+  summarizeCollapseHeap,
+};
 
 export const DEFAULT_PHASE_TIMINGS = Object.freeze({
   p1SettleMs: 10_000,
@@ -431,12 +447,38 @@ export function poCpuAbHostHtml({ timings = DEFAULT_PHASE_TIMINGS, mutant = fals
 
     function memorySnapshot(win) {
       const mem = win && win.performance && win.performance.memory;
-      if (!mem) return { exposed: false };
+      if (!mem) return { exposed: false, metric: 'usedJSHeapSize' };
       return {
         exposed: true,
+        metric: 'usedJSHeapSize',
         usedJSHeapSize: Number(mem.usedJSHeapSize) || 0,
         totalJSHeapSize: Number(mem.totalJSHeapSize) || 0,
         jsHeapSizeLimit: Number(mem.jsHeapSizeLimit) || 0
+      };
+    }
+
+    async function forceGcBestEffort(win) {
+      const target = win || window;
+      let available = false;
+      try {
+        if (typeof target.gc === 'function') { target.gc(); available = true; }
+      } catch (_) {}
+      try {
+        if (win !== window && typeof window.gc === 'function') { window.gc(); available = true; }
+      } catch (_) {}
+      await sleep(80);
+      return available;
+    }
+
+    /** Canonical heap sample: forced GC then performance.memory.usedJSHeapSize. */
+    async function memorySnapshotForced(win) {
+      const availableA = await forceGcBestEffort(win);
+      const availableB = await forceGcBestEffort(win);
+      const snap = memorySnapshot(win);
+      return {
+        ...snap,
+        forcedGcAttempted: true,
+        forcedGcAvailable: availableA === true || availableB === true
       };
     }
 
@@ -536,12 +578,12 @@ export function poCpuAbHostHtml({ timings = DEFAULT_PHASE_TIMINGS, mutant = fals
       };
     }
 
-    function collectProbeRows() {
+    async function collectProbeRows() {
       const rows = [];
       for (const entry of chartWindows()) {
         const p = probe(entry.win);
         if (!p || typeof p.snapshot !== 'function') continue;
-        rows.push({ id: entry.id, snapshot: p.snapshot(), memory: memorySnapshot(entry.win) });
+        rows.push({ id: entry.id, snapshot: p.snapshot(), memory: await memorySnapshotForced(entry.win) });
       }
       return rows;
     }
@@ -615,9 +657,9 @@ export function poCpuAbHostHtml({ timings = DEFAULT_PHASE_TIMINGS, mutant = fals
     async function collectPhase(label, durationMs) {
       if (!probe() || typeof probe().snapshot !== 'function') throw new Error('PO CPU probe missing in harness window');
       performance.mark(label + ':start');
-      const startRows = collectProbeRows();
+      const startRows = await collectProbeRows();
       await sleep(durationMs);
-      const endRows = collectProbeRows();
+      const endRows = await collectProbeRows();
       performance.mark(label + ':end');
       performance.measure(label, label + ':start', label + ':end');
       return aggregateProbeRows(label, durationMs, startRows, endRows);
@@ -1251,6 +1293,8 @@ export function poCpuAbHostHtml({ timings = DEFAULT_PHASE_TIMINGS, mutant = fals
       }
       setGridLayout(1);
       await waitFor(() => chartWindows().length === 1, 'return to single chart', 30000);
+      await forceGcBestEffort(win);
+      await forceGcBestEffort(win);
     }
 
     function armPauseMutant() {
@@ -1384,6 +1428,7 @@ export function poCpuAbHostHtml({ timings = DEFAULT_PHASE_TIMINGS, mutant = fals
       let pause = null;
       let mutantInterval = null;
       let lag = null;
+      let heap = null;
       try {
         await waitFor(() => {
           const win = harnessWindow();
@@ -1426,6 +1471,7 @@ export function poCpuAbHostHtml({ timings = DEFAULT_PHASE_TIMINGS, mutant = fals
         );
         pauseAllReplay();
 
+        const heapSingleBaseline = await memorySnapshotForced(harnessWindow());
         await expandToFourPanels();
         const contentFour = armContentOnWindows(chartWindows().filter((entry) => ['A', 'B', 'C', 'D'].includes(entry.id)));
         replay4 = await startFourPanelReplay10x();
@@ -1495,7 +1541,29 @@ export function poCpuAbHostHtml({ timings = DEFAULT_PHASE_TIMINGS, mutant = fals
             mechanismHint: lagMechanismHint(throughputRetention, smoothnessRetention)
           }
         };
+        const heapFourPeak = await memorySnapshotForced(harnessWindow());
         await collapseToSingle();
+        const heapPostCollapse = await memorySnapshotForced(harnessWindow());
+        heap = {
+          instrument: {
+            metric: 'usedJSHeapSize',
+            forcedGc: true,
+            footprintNonGrading: true,
+            note: 'Task Manager / process RSS must not grade M26 or FIX3'
+          },
+          singleBaseline: heapSingleBaseline,
+          fourPeak: heapFourPeak,
+          postCollapse: heapPostCollapse,
+          expandDeltaBytes: heapFourPeak.exposed && heapSingleBaseline.exposed
+            ? heapFourPeak.usedJSHeapSize - heapSingleBaseline.usedJSHeapSize
+            : null,
+          collapseReleaseBytes: heapFourPeak.exposed && heapPostCollapse.exposed
+            ? heapFourPeak.usedJSHeapSize - heapPostCollapse.usedJSHeapSize
+            : null,
+          retentionBytes: heapPostCollapse.exposed && heapSingleBaseline.exposed
+            ? heapPostCollapse.usedJSHeapSize - heapSingleBaseline.usedJSHeapSize
+            : null
+        };
 
         replay10x = await startReplay10x();
         phases.P6 = await collectPhase('P6-replay-10x-or-nearest', CONFIG.timings.p6ObserveMs);
@@ -1520,16 +1588,18 @@ export function poCpuAbHostHtml({ timings = DEFAULT_PHASE_TIMINGS, mutant = fals
             mutant: !!CONFIG.mutant,
             p4NoFanout: !!CONFIG.p4NoFanout,
             harness: 'multichart serve.mjs single-chart host',
+            memoryInstrument: 'usedJSHeapSize+forcedGc',
             observables: [
               'performance.now callback timing',
               'PerformanceObserver longtask',
               'rAF frame intervals',
               'replay index throughput',
-              'performance.memory when exposed'
+              'performance.memory.usedJSHeapSize after forced GC (not Task Manager footprint)'
             ]
           },
           replay: { p4: replay4, p6: replay10x, p7: pause },
           lag,
+          heap,
           phases,
           measures: performance.getEntriesByType('measure').slice(-12).map((m) => ({
             name: m.name,
@@ -1545,8 +1615,9 @@ export function poCpuAbHostHtml({ timings = DEFAULT_PHASE_TIMINGS, mutant = fals
           ok: false,
           startedAt,
           finishedAt: new Date().toISOString(),
-          meta: { shortened: !!CONFIG.timings.shortened, timings: CONFIG.timings, mutant: !!CONFIG.mutant, p4NoFanout: !!CONFIG.p4NoFanout },
+          meta: { shortened: !!CONFIG.timings.shortened, timings: CONFIG.timings, mutant: !!CONFIG.mutant, p4NoFanout: !!CONFIG.p4NoFanout, memoryInstrument: 'usedJSHeapSize+forcedGc' },
           replay: { p4: replay4, p6: replay10x, p7: pause },
+          heap,
           phases,
           error: String(error && error.message || error)
         });
@@ -2013,10 +2084,11 @@ function rowReplayAdvanceEvidence(row, { observeMs = null, requireObserveBaselin
 }
 
 function cell(name, pass, detail, extra = {}) {
+  const status = extra.status || (pass === true ? 'GREEN' : 'RED');
   return {
     name,
     pass: pass === true,
-    status: pass === true ? 'GREEN' : 'RED',
+    status,
     detail,
     ...extra,
   };
@@ -2066,8 +2138,55 @@ export function assertPoCpuAbBenchmarkReport(report, { mutant = false } = {}) {
   cells.push(cell(
     'P2-IDLE-MEMORY-NOT-GROWING',
     p2MemoryDelta == null || p2MemoryDelta <= 64 * 1024 * 1024,
-    p2MemoryDelta == null ? 'performance.memory not exposed' : `usedJSHeapSize delta=${p2MemoryDelta}`,
-    { phase: 'P2', usedDeltaBytes: p2MemoryDelta },
+    p2MemoryDelta == null
+      ? 'performance.memory.usedJSHeapSize not exposed'
+      : `usedJSHeapSize delta=${p2MemoryDelta} (forced-GC samples; Task Manager footprint non-grading)`,
+    { phase: 'P2', usedDeltaBytes: p2MemoryDelta, metric: HEAP_METRIC_USED_JS_HEAP_SIZE },
+  ));
+
+  const heapSummary = summarizeCollapseHeap(report.heap);
+  cells.push(cell(
+    'HEAP-INSTRUMENT-USED-JS-HEAP',
+    heapSummary.instrumentOk,
+    heapSummary.instrumentOk
+      ? 'usedJSHeapSize samples present after forced GC; footprint non-grading'
+      : 'heap instrument missing usedJSHeapSize+forcedGc samples (cannot grade M26/FIX3)',
+    {
+      metric: HEAP_METRIC_USED_JS_HEAP_SIZE,
+      footprintNonGrading: HEAP_FOOTPRINT_NON_GRADING,
+      heap: report.heap || null,
+      summary: heapSummary,
+    },
+  ));
+  cells.push(cell(
+    'HEAP-FORCED-GC-AVAILABLE',
+    heapSummary.forcedGcAvailable === true,
+    heapSummary.forcedGcAvailable
+      ? 'window.gc available (--js-flags=--expose-gc)'
+      : 'window.gc unavailable — launch with preciseMemory / --js-flags=--expose-gc',
+    { forcedGcAvailable: heapSummary.forcedGcAvailable },
+  ));
+  const collapsePass = heapSummary.collapseStatus === 'GREEN';
+  const collapseUnproven = heapSummary.collapseStatus === 'UNPROVEN';
+  cells.push(cell(
+    'M26-FIX3-COLLAPSE-HEAP-RELEASE',
+    collapsePass,
+    collapseUnproven
+      ? `UNPROVEN: expandDelta=${heapSummary.expandDeltaBytes} < minExpand=${HEAP_COLLAPSE_MIN_EXPAND_BYTES} (cannot grade release)`
+      : (collapsePass
+        ? `heap release demonstrated release=${heapSummary.releaseBytes} retention=${heapSummary.retentionBytes}`
+        : `heap residue after collapse release=${heapSummary.releaseBytes} retention=${heapSummary.retentionBytes} expand=${heapSummary.expandDeltaBytes}`),
+    {
+      status: heapSummary.collapseStatus,
+      // UNPROVEN must not mint ship GREEN or false RED for M26/FIX3.
+      blocking: !collapseUnproven,
+      regrades: ['M26', 'FIX3'],
+      expandDeltaBytes: heapSummary.expandDeltaBytes,
+      releaseBytes: heapSummary.releaseBytes,
+      retentionBytes: heapSummary.retentionBytes,
+      releaseFraction: HEAP_COLLAPSE_RELEASE_FRACTION,
+      retentionMaxBytes: HEAP_COLLAPSE_RETENTION_MAX_BYTES,
+    },
   ));
 
   const replay4 = report.replay?.p4 || {};
@@ -2449,6 +2568,7 @@ export async function runPoCpuAbBenchmarkGate({
       reportPromise,
       timeoutMs,
       profilePrefix: mutant ? 'talaria-po-cpu-ab-mutant-' : 'talaria-po-cpu-ab-',
+      preciseMemory: true,
     });
     const report = browserRun.report || null;
     if (!report || browserRun.timedOut) {
@@ -2463,7 +2583,7 @@ export async function runPoCpuAbBenchmarkGate({
       };
     }
     const cells = assertPoCpuAbBenchmarkReport(report, { mutant });
-    const cellsOk = report.ok === true && cells.every((row) => row.pass === true);
+    const cellsOk = report.ok === true && cells.every((row) => row.blocking === false || row.pass === true);
     const shortened = resolvedTimings.shortened === true || report.meta?.shortened === true;
     const ok = cellsOk && !shortened;
     const status = cellsOk ? (shortened ? PO_CPU_AB_STATUS_SHORT : 'GREEN') : 'RED';

@@ -8,7 +8,12 @@
 - **EURUSD**, **1-minute** timeframe, roughly **3 years** of data available.
 - **Same browser window size**, maximised. Canvas area is a cost input; a different window size invalidates the comparison.
 - **No other heavy tabs.** Note anything unavoidable.
-- Measurement tool: **`Shift+Esc`** (browser Task Manager). Sort by **CPU** so the chart tab stays at the top.
+- Measurement tool for **CPU**: **`Shift+Esc`** (browser Task Manager). Sort by **CPU** so the chart tab stays at the top.
+- Measurement tool for **memory (M26 / FIX3 / collapse / residue)**: DevTools console
+  `performance.memory.usedJSHeapSize` **after forced GC** (`window.gc()` when launched with
+  `--js-flags=--expose-gc`, or CDP `HeapProfiler.collectGarbage`). **Do not grade memory
+  claims from the Task Manager Memory / footprint column** — it over-reports (~2.9× vs JS
+  heap tonight) and cannot show tens-of-MB releases. Footprint may be noted as diagnostic only.
 
 ## The critical measurement discipline
 
@@ -35,7 +40,7 @@ CPU updates about once per second and **fluctuates**. A single screenshot captur
 | **P6** | Raise to **10x** (or TradeZella's nearest equivalent — record which). | **Does speed actually drive CPU?** The PO's step-4 test suggests it may not. |
 | **P7** | **Pause** replay. Wait 30s. | Does CPU return to the P4 level? If not, **replay leaves work running after it stops.** |
 | **P8** | Add **20 orders** with SL/TP. Not playing. | The July 25 run reached 1.6 GB with 20 orders. |
-| **P9** | *(Talaria only, optional)* Open a **second panel**, then close it and return to a single chart. Record all three states. | Quantifies the teardown ratchet already evidenced in `FINDING-LAG-IS-RESIDUE-20260728.md`. |
+| **P9** | *(Talaria only, optional)* Open a **second panel**, then close it and return to a single chart. Record all three states with **`usedJSHeapSize` after forced GC** (not Task Manager footprint). | Grades M26 / FIX3 collapse release. Prior footprint “effect not demonstrated” verdicts are **UNGRADED**. |
 
 **If time is short, P1, P2, P6 and P7 are the four that carry the most information.** P1 and P2 locate the idle defect; P6 settles the speed question; P7 settles whether stopping actually stops.
 
@@ -60,8 +65,10 @@ performance.getEntriesByType('measure').slice(-20)
 A short table is enough — no prose needed:
 
 ```
-PHASE | TALARIA mem | TALARIA cpu (min-max, spike period) | TZ mem | TZ cpu (min-max)
-P1    | 1.62 GB     | 20-120, spikes ~every 2s            | 280 MB | 0.4-5
+PHASE | TALARIA usedJSHeapSize (after GC) | TALARIA cpu (min-max, spike period) | TZ heap | TZ cpu (min-max)
+P1    | 231 MB                            | 20-120, spikes ~every 2s            | …      | 0.4-5
 ```
+
+If you also capture Task Manager Memory, label it `footprint (non-grading)` — never as the M26/FIX3 verdict.
 
 **Report what you see, including anything that contradicts the expectations above.** Three hypotheses have already died this week on measurements like these, and a result that breaks the pattern is worth more than one that confirms it.

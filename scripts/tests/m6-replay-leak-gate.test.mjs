@@ -126,9 +126,11 @@ test('unit: acceptance and mutant cells encode director-required verdicts', () =
   );
   const workload = { armed: true, panels: 4, indicatorsOk: true, order: { ok: true }, stillPlaying: 4 };
 
-  assert.deepEqual(
-    assertM6ReplayLeakCounts({ baseline, final: greenFinal, workload }).map((cell) => cell.pass),
-    [true, true, true, true, true],
+  const greenCells = assertM6ReplayLeakCounts({ baseline, final: greenFinal, workload });
+  assert.equal(greenCells.find((cell) => cell.name === 'M6-HEAP-INSTRUMENT-USED-JS-HEAP')?.pass, true);
+  assert.equal(
+    greenCells.filter((cell) => cell.blocking !== false).every((cell) => cell.pass === true),
+    true,
   );
 
   const mutantCells = assertM6ReplayLeakCounts({ baseline, final: redFinal, mutant: true, workload });
