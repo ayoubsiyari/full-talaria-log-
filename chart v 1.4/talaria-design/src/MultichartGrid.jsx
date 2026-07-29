@@ -55,6 +55,15 @@ const HOST_PANEL_ID = "A";
 const HOST_WRAPPER_ID = "chartWrapper";
 const MULTICHART_GLOBAL_SETTINGS_ROOT_ID = "multichart-global-settings-root";
 const HOST_CONTAINER_ID = "chart-container";
+const MC_GRID_STATE_PURGE_SWITCH = "__TALARIA_DISABLE_MC_GRID_STATE_PURGE_V1";
+
+function mcGridStatePurgeV1Enabled() {
+    try {
+        return !(typeof window !== "undefined" && window[MC_GRID_STATE_PURGE_SWITCH]);
+    } catch (_) {
+        return true;
+    }
+}
 
 /** CB-01 diagnostic-only bridge into chart.js's default-off ring logger. */
 function cb01MountSigGridRecord(ch, source, schedule, extra) {
@@ -2431,11 +2440,24 @@ export default function MultichartGrid({
     const [rowFractions, setRowFractions] = useState(initialRowFracs);
     const isDraggingRef = useRef(false);
     const liveDragRef = useRef(null); // { axis: 'col'|'row', fracs: number[] }
+    const activeSplitterDragCleanupRef = useRef(new Set());
+    const panelLoadGenerationRef = useRef(Object.create(null));
+    function bumpPanelLoadGeneration(panelId) {
+        if (!mcGridStatePurgeV1Enabled()) return;
+        panelLoadGenerationRef.current[panelId] =
+            (panelLoadGenerationRef.current[panelId] || 0) + 1;
+    }
+    useEffect(() => () => {
+        const cleanups = Array.from(activeSplitterDragCleanupRef.current);
+        cleanups.reverse().forEach((cleanup) => cleanup());
+    }, []);
     // Reset fractions whenever the layout changes. Must key on layoutId —
     // many layouts share identical cols/rows strings (3l, 3r, 4 all use
     // "1fr 1fr" × "1fr 1fr"); without layoutId, uneven splits from a
     // prior layout persist and squash the right-hand panels in 4-up view.
     useEffect(() => {
+        const cleanups = Array.from(activeSplitterDragCleanupRef.current);
+        cleanups.reverse().forEach((cleanup) => cleanup());
         const cols = parseFrTemplate(layout.cols);
         const rows = parseFrTemplate(layout.rows);
         liveDragRef.current = null;
@@ -2800,6 +2822,9 @@ export default function MultichartGrid({
             cancelled = true;
             if (typeof window !== "undefined") {
                 window.__multichartRealData = prevMultichartRealData;
+                if (mcGridStatePurgeV1Enabled() && window.__mcManager === managerRef.current) {
+                    try { delete window.__mcManager; } catch (_) { window.__mcManager = null; }
+                }
             }
             if (managerRef.current) {
                 try { managerRef.current.dispose(); } catch (_) {}
@@ -2842,6 +2867,13 @@ export default function MultichartGrid({
             if (!desiredIframeIds.has(existingId)) {
                 hostSyncedPanelsRef.current.delete(existingId);
                 primedPanelsRef.current.delete(existingId);
+                if (mcGridStatePurgeV1Enabled()) {
+                    orderSyncedPanelsRef.current.delete(existingId);
+                    clonedPanelsRef.current.delete(existingId);
+                    // Fresh iframes for a recycled id need host clone/order priming again;
+                    // legacy skipped both because these id sets survived layout removal.
+                    bumpPanelLoadGeneration(existingId);
+                }
                 try { mgr.removeChart(existingId); } catch (_) {}
                 if (overlayHoldTimersRef.current[existingId]) {
                     clearTimeout(overlayHoldTimersRef.current[existingId]);
@@ -5761,12 +5793,16 @@ export default function MultichartGrid({
             }
 
             const ch = getChartForPanelId(pid);
+            const loadGeneration = panelLoadGenerationRef.current[pid] || 0;
+            const panelLoadStillCurrent = () => !mcGridStatePurgeV1Enabled()
+                || (panelLoadGenerationRef.current[pid] || 0) === loadGeneration;
             if (!ch) {
                 const mgr = managerRef.current;
                 if (!mgr || typeof mgr.sendCommand !== "function") {
                     return Promise.reject(new Error("panel chart not ready"));
                 }
                 return mgr.sendCommand(pid, "loadFile", { fileId: fid, force: true }).then((data) => {
+                    if (!panelLoadStillCurrent()) return data;
                     const ch2 = getChartForPanelId(pid);
                     if (ch2 && typeof ch2._finalizeMultichartPanelAfterPairLoad === "function") {
                         try { ch2._finalizeMultichartPanelAfterPairLoad(); } catch (_) {}
@@ -5810,9 +5846,12 @@ export default function MultichartGrid({
             }
 
             const finish = () => {
+                if (!panelLoadStillCurrent()) return null;
+                const currentChart = mcGridStatePurgeV1Enabled() ? getChartForPanelId(pid) : ch;
+                if (mcGridStatePurgeV1Enabled() && !currentChart) return null;
                 try {
-                    if (typeof ch._finalizeMultichartPanelAfterPairLoad === "function") {
-                        ch._finalizeMultichartPanelAfterPairLoad();
+                    if (typeof currentChart._finalizeMultichartPanelAfterPairLoad === "function") {
+                        currentChart._finalizeMultichartPanelAfterPairLoad();
                     }
                 } catch (_) {}
                 try { persistPanelFileId(pid, fid); } catch (_) {}
@@ -7709,7 +7748,10 @@ export default function MultichartGrid({
         let hostOffPendingUpdated = null;
         let hostOffClosed = null;
         let hostOffPendingRemoved = null;
+        let hostBusRetryInterval = null;
+        let orderMirrorDisposed = false;
         function tryInstallHostBus() {
+            if (orderMirrorDisposed && mcGridStatePurgeV1Enabled()) return true;
             const ch = window.chart;
             const svc = ch && ch.orderManager && ch.orderManager.orderService;
             const bus = svc && svc.eventBus;
@@ -7747,9 +7789,12 @@ export default function MultichartGrid({
             // chart.orderManager.orderService may not exist yet (chart
             // boots async). Poll for ~5s, then give up.
             let tries = 0;
-            const id = setInterval(() => {
+            hostBusRetryInterval = setInterval(() => {
                 tries += 1;
-                if (tryInstallHostBus() || tries > 50) clearInterval(id);
+                if (tryInstallHostBus() || tries > 50) {
+                    clearInterval(hostBusRetryInterval);
+                    hostBusRetryInterval = null;
+                }
             }, 100);
         }
 
@@ -8166,6 +8211,11 @@ export default function MultichartGrid({
         document.addEventListener("click", onPlaceOrderClickCapture, true);
 
         return () => {
+            orderMirrorDisposed = true;
+            if (mcGridStatePurgeV1Enabled() && hostBusRetryInterval) {
+                clearInterval(hostBusRetryInterval);
+                hostBusRetryInterval = null;
+            }
             _broadcastClearDraftPreviewImpl = null;
             document.removeEventListener("click", onPlaceOrderClickCapture, true);
             window.removeEventListener("multichart-clear-preview", onMultichartClearPreviewHost);
@@ -8311,7 +8361,31 @@ export default function MultichartGrid({
                 raf = requestAnimationFrame(flush);
             }
             function onPointerMove(e) { onMove(e); }
+            let released = false;
+            function releaseSplitterDragReferences() {
+                if (!mcGridStatePurgeV1Enabled()) return;
+                if (released) return;
+                released = true;
+                if (raf) {
+                    cancelAnimationFrame(raf);
+                    raf = 0;
+                }
+                document.removeEventListener("mousemove", onMove);
+                document.removeEventListener("mouseup", onUp);
+                document.removeEventListener("pointermove", onPointerMove);
+                document.removeEventListener("pointerup", onUp);
+                document.removeEventListener("pointercancel", onUp);
+                document.body.style.cursor = "";
+                document.body.style.userSelect = "";
+                isDraggingRef.current = false;
+                liveDragRef.current = null;
+                try {
+                    thawPanelSurfaces(lockedSurfaces, cellRefs.current[HOST_PANEL_ID], container);
+                } catch (_) {}
+                activeSplitterDragCleanupRef.current.delete(releaseSplitterDragReferences);
+            }
             function onUp(e) {
+                if (released) return;
                 if (captureEl && captureEl.releasePointerCapture && e && e.pointerId != null) {
                     try { captureEl.releasePointerCapture(e.pointerId); } catch (_) {}
                 }
@@ -8324,6 +8398,8 @@ export default function MultichartGrid({
                 document.removeEventListener("pointermove", onPointerMove);
                 document.removeEventListener("pointerup", onUp);
                 document.removeEventListener("pointercancel", onUp);
+                released = true;
+                activeSplitterDragCleanupRef.current.delete(releaseSplitterDragReferences);
                 document.body.style.cursor = "";
                 document.body.style.userSelect = "";
                 isDraggingRef.current = false;
@@ -8357,6 +8433,7 @@ export default function MultichartGrid({
                     });
                 });
             }
+            activeSplitterDragCleanupRef.current.add(releaseSplitterDragReferences);
             document.addEventListener("mousemove", onMove);
             document.addEventListener("mouseup", onUp);
             document.addEventListener("pointermove", onPointerMove);
@@ -8638,6 +8715,7 @@ export default function MultichartGrid({
                                             if (!mgr) return;
                                             const cellEl = cellRefs.current[tile.id];
                                             primedPanelsRef.current.delete(tile.id);
+                                            bumpPanelLoadGeneration(tile.id);
                                             try { mgr.removeChart(tile.id); } catch (_) {}
                                             setReadyPanels((prev) => {
                                                 if (!prev.has(tile.id)) return prev;
