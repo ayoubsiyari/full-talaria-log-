@@ -50,10 +50,42 @@ function _scReplayPaintCadenceV1Enabled() {
  * Kill-switch: window.__TALARIA_DISABLE_LAG_SETINTERVAL_TICK_V1 = <truthy>
  * restores legacy sync full tick (advance + paint inside setInterval).
  * Absent / falsy ⇒ mitigation on. Read per call (never sampled at init).
+ *
+ * Read ACROSS REALMS, not just from this window. Replay also runs inside
+ * multichart panels, and each panel is its own window; an operator flipping
+ * this switch is typing into the page they are looking at, which is the host.
+ * A predicate that reads only its own window therefore leaves the fix running
+ * in every panel while truthfully reporting itself disabled on the host — a
+ * revert path that reverts the realm nobody was measuring. FIX 1's cadence
+ * switch already climbs for this reason; this one did not until W64.
+ *
+ * There is no per-realm switch propagation in the tree (A's d7a228725 is not
+ * merged), so the climb has to live in the predicate.
  */
 function _lagSetIntervalTickV1Enabled() {
-    return typeof window === 'undefined'
-        || !window.__TALARIA_DISABLE_LAG_SETINTERVAL_TICK_V1;
+    if (typeof window === 'undefined') return true;
+    const killed = (w) => {
+        try {
+            return !!(w && w.__TALARIA_DISABLE_LAG_SETINTERVAL_TICK_V1);
+        } catch (_e) {
+            // Unreadable realm (cross-origin). It cannot be carrying an
+            // instruction meant for us, so it is not a reason to turn the
+            // mitigation off: fail towards the shipped default, not away.
+            return false;
+        }
+    };
+    if (killed(window)) return false;
+    try {
+        const parent = window.parent && window.parent !== window ? window.parent : null;
+        if (killed(parent)) return false;
+        const top = window.top && window.top !== window && window.top !== parent
+            ? window.top
+            : null;
+        if (killed(top)) return false;
+    } catch (_e) {
+        // Parent chain unreachable; the own-window read above already stands.
+    }
+    return true;
 }
 
 class ReplaySystem {
