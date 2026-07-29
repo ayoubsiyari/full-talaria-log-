@@ -41,7 +41,11 @@ COPY ["homepage/public/chart/dist-v9", "/contract-root/homepage/public/chart/dis
 COPY ["homepage/public/chart/multichart-prod", "/contract-root/homepage/public/chart/multichart-prod"]
 RUN mkdir -p "/contract-root/chart v 1.4" \
   && ln -sfn /build/chart "/contract-root/chart v 1.4/chart" \
-  && ln -sfn /build/talaria-design "/contract-root/chart v 1.4/talaria-design"
+  && ln -sfn /build/talaria-design "/contract-root/chart v 1.4/talaria-design" \
+  # chart/dist-v9 is .dockerignored (rebuilt by vite); seed from committed public mirror
+  # so module-contract-preflight's chart-host inventory exists before build:live:chart.
+  && rm -rf /build/chart/dist-v9 \
+  && cp -a /contract-root/homepage/public/chart/dist-v9 /build/chart/dist-v9
 ENV TALARIA_MODULE_CONTRACT_ROOT=/contract-root
 WORKDIR /build/talaria-design
 ENV NODE_ENV=production
