@@ -265,3 +265,9 @@
 - PO check written at `docs/plan3/PO-M17-DI2-COMPLETED-BAR-MUTATION-CHECK-20260729.md`. It is visually observable if a same-symbol multichart panel's closed candle shape or OHLC readout changes after the host price moves; if the PO cannot reproduce the visible change, use the RED gate as the engineering blocker.
 - Ticket status ledger written at `docs/plan3/TICKET-STATUS-LEDGER-20260729.md`.
 - Follow-up inventory correction: `TAL-01696`, `TAL-01698`, and `TAL-01617` are unknown, not fixed, because no dedicated accepted D-tip product gate exists; `TAL-01941` is not-fixed because it is instrumentation only. Added omitted M23/M6/paired-ticket unknown rows.
+
+## 2026-07-29 — Whole-intake ledger extension and PO checks
+
+- Extended `docs/plan3/TICKET-STATUS-LEDGER-20260729.md` against the raw 2026-07-27 intake blob and Rayan reports. Fixed remains restricted to rows with a product commit and gate; missing current-surface proof is `unknown`.
+- Wrote `docs/plan3/PO-CHECK-FULL-INTAKE-UNKNOWN-CLUSTERS-20260729.md` as the single PO checklist for genuinely unknown intake clusters: multichart replay, session resume/Go To, refresh persistence, indicator labels, candle/data integrity, zoom/scale/grid, crosshair, replay controls, and memory/idle lag.
+- No product code edited.
