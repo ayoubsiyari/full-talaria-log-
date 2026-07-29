@@ -230,6 +230,14 @@ function _orderRiskQtyOnSlCommitV1Enabled() {
     return typeof window === 'undefined' || !window.__TALARIA_DISABLE_ORDER_RISK_QTY_ON_SL_COMMIT_V1;
 }
 
+/**
+ * Cluster G / TAL-01697 (+ drag family): feed provisional/preview SL/TP prices into
+ * panel PnL / R:R while apply-on-release withholds input commits until mouseup.
+ */
+function _orderPreviewLiveRecalcV1Enabled() {
+    return typeof window === 'undefined' || !window.__TALARIA_DISABLE_ORDER_PREVIEW_LIVE_RECALC_V1;
+}
+
 /** Cluster G / TAL-01751: BE trigger keeps the preview/place anchor. */
 function _orderBePlaceAnchorV1Enabled() {
     return typeof window === 'undefined' || !window.__TALARIA_DISABLE_ORDER_BE_PLACE_ANCHOR_V1;
@@ -7034,6 +7042,43 @@ class OrderManager {
     }
 
     /**
+     * Live entry/SL/TP for panel math during preview drag.
+     * Apply-on-release withholds #tpPrice/#slPrice until mouseup; provisional +
+     * preview line geometry still move every frame — feed those into PnL/R:R.
+     * Only overrides inputs while a provisional edit or preview-line drag is active
+     * so typed panel values still win at rest.
+     */
+    _resolveLivePreviewPanelPrices() {
+        let entryPrice = parseFloat(document.getElementById('orderEntryPrice')?.value || 0);
+        let slPrice = parseFloat(document.getElementById('slPrice')?.value || 0);
+        let tpPrice = this._parseSltpInputPrice(document.getElementById('tpPrice')?.value, 0);
+        if (!_orderPreviewLiveRecalcV1Enabled()) {
+            return { entryPrice, slPrice, tpPrice };
+        }
+        const st = this._orderProvisionalEdit;
+        const previewProvisional = !!(st && st.phase === 'preview');
+        const dragging = !!this.isDraggingPreviewLine || previewProvisional;
+        const provSl = this._oiResolveProvisionalPreviewPrice('sl');
+        const provTp = this._oiResolveProvisionalPreviewPrice('tp');
+        if (Number.isFinite(provSl) && provSl > 0) slPrice = provSl;
+        else if (dragging) {
+            const slLine = Number(this.previewLines?.sl?.price);
+            if (Number.isFinite(slLine) && slLine > 0) slPrice = slLine;
+        }
+        const singlePreviewTp = !(st && st.phase === 'preview' && st.lineKind === 'tp' && st.tpTargetIndex != null);
+        if (singlePreviewTp && Number.isFinite(provTp) && provTp > 0) tpPrice = provTp;
+        else if (singlePreviewTp && dragging) {
+            const tpLine = Number(this.previewLines?.tp?.price);
+            if (Number.isFinite(tpLine) && tpLine > 0) tpPrice = tpLine;
+        }
+        if (dragging) {
+            const entryLine = Number(this.previewLines?.entry?.price);
+            if (Number.isFinite(entryLine) && entryLine > 0) entryPrice = entryLine;
+        }
+        return { entryPrice, slPrice, tpPrice };
+    }
+
+    /**
      * Valid SL vs entry + risk USD (same rules as calculateAdvancedRiskReward).
      * @param {number} entryPrice
      * @param {number} quantity
@@ -7044,7 +7089,10 @@ class OrderManager {
         const slEnabled = document.getElementById('enableSL')?.checked;
         let slPrice = 0;
         if (slEnabled) {
-            const slIn = parseFloat(document.getElementById('slPrice')?.value || 0);
+            const live = _orderPreviewLiveRecalcV1Enabled()
+                ? this._resolveLivePreviewPanelPrices().slPrice
+                : 0;
+            const slIn = live > 0 ? live : parseFloat(document.getElementById('slPrice')?.value || 0);
             if (slIn > 0) slPrice = slIn;
         }
         const slDistance = Math.abs(entryPrice - slPrice);
@@ -20292,7 +20340,10 @@ class OrderManager {
 
         this._syncPipFromActiveSymbolIfNeeded();
         const quantity = parseFloat(document.getElementById('orderQuantity')?.value || 1);
-        const entryPrice = parseFloat(document.getElementById('orderEntryPrice')?.value || 0);
+        const livePrices = this._resolveLivePreviewPanelPrices();
+        const entryPrice = livePrices.entryPrice > 0
+            ? livePrices.entryPrice
+            : parseFloat(document.getElementById('orderEntryPrice')?.value || 0);
         const multiAvg = (this.isMultiEntryMode && this.multiEntryLevels && this.multiEntryLevels.length > 0)
             ? this._calcMultiEntryAvgPrice()
             : 0;
@@ -20329,14 +20380,19 @@ class OrderManager {
         
         let tpPrice = 0;
         
-        // Calculate TP price (use the first non-zero value)
+        // Prefer live provisional/preview TP during apply-on-release drag (TAL-01697).
         if (tpEnabled) {
-            const tpPriceInput = this._parseSltpInputPrice(document.getElementById('tpPrice')?.value, 0);
+            const tpPriceInput = livePrices.tpPrice > 0
+                ? livePrices.tpPrice
+                : this._parseSltpInputPrice(document.getElementById('tpPrice')?.value, 0);
             
             if (tpPriceInput > 0) {
                 tpPrice = tpPriceInput;
             }
         }
+        const liveSlPrice = livePrices.slPrice > 0
+            ? livePrices.slPrice
+            : 0;
 
         // Multi-entry: TP/SL distances, profit $, and R:R are measured from weighted Avg Entry (not a single leg).
         let effectiveEntryForReward = entryPrice > 0 ? entryPrice : multiAvg;
@@ -20374,7 +20430,9 @@ class OrderManager {
         let { hasValidSL, slDistance, risk } = this._getOrderPanelSlRiskContext(slContextEntry, quantity, minDistance);
 
         if (this.isMultiEntryMode && this.multiEntryLevels && this.multiEntryLevels.length > 0) {
-            const slPx = parseFloat(document.getElementById('slPrice')?.value || 0);
+            const slPx = liveSlPrice > 0
+                ? liveSlPrice
+                : parseFloat(document.getElementById('slPrice')?.value || 0);
             const slEn = document.getElementById('enableSL')?.checked;
             const refEntry = multiAvg > 0 ? multiAvg : (entryPrice || 0);
 
@@ -20406,8 +20464,11 @@ class OrderManager {
             }
         }
 
-        if (hasValidSL && slContextEntry > 0 && slPrice > 0 && quantity > 0 && this.positionSizeMode === 'lot-size') {
-            const netAtSl = this._estimateNetPnLPreview(this.orderSide, slContextEntry, slPrice, quantity);
+        const legacyNamedSlPrice = (typeof slPrice !== 'undefined' && Number.isFinite(Number(slPrice)))
+            ? Number(slPrice)
+            : 0;
+        if (hasValidSL && slContextEntry > 0 && legacyNamedSlPrice > 0 && quantity > 0 && this.positionSizeMode === 'lot-size') {
+            const netAtSl = this._estimateNetPnLPreview(this.orderSide, slContextEntry, legacyNamedSlPrice, quantity);
             if (Number.isFinite(netAtSl) && netAtSl < 0) risk = Math.abs(netAtSl);
         }
         
@@ -20452,7 +20513,9 @@ class OrderManager {
                 if (priceDiff > 0) {
                     // Multi-entry: sum individual level P&Ls for accurate reward
                     if (this.isMultiEntryMode && this.multiEntryLevels && this.multiEntryLevels.length > 0) {
-                        const slPx = parseFloat(document.getElementById('slPrice')?.value || 0);
+                        const slPx = liveSlPrice > 0
+                            ? liveSlPrice
+                            : parseFloat(document.getElementById('slPrice')?.value || 0);
                         const ps = this.pipSize || 0.0001;
                         const pv = this.pipValuePerLot || 10;
                         const minLotR = this.getMarketConfig()?.minSize ?? 0.01;
@@ -23995,10 +24058,11 @@ class OrderManager {
                 
                 // Throttled live calculations - show R:R ratio and dollar amounts
                 throttledCalculate(() => {
-                    // Get fresh values from the just-updated inputs
-                    const entryPrice = parseFloat(document.getElementById('orderEntryPrice')?.value || 0);
-                    const slPrice = parseFloat(document.getElementById('slPrice')?.value || 0);
-                    const tpPrice = parseFloat(document.getElementById('tpPrice')?.value || 0);
+                    // Prefer provisional/preview geometry when apply-on-release withholds inputs.
+                    const live = self._resolveLivePreviewPanelPrices();
+                    const entryPrice = live.entryPrice || parseFloat(document.getElementById('orderEntryPrice')?.value || 0);
+                    const slPrice = live.slPrice || parseFloat(document.getElementById('slPrice')?.value || 0);
+                    const tpPrice = live.tpPrice || parseFloat(document.getElementById('tpPrice')?.value || 0);
                     const quantity = parseFloat(document.getElementById('orderQuantity')?.value || 1);
                     
                     if (entryPrice && slPrice && tpPrice) {

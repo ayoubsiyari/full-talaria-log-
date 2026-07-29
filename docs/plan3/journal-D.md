@@ -190,3 +190,17 @@
 - Symbol persist: not implemented. Patch request for A at `docs/plan3/PATCH-REQUEST-A-SYMBOL-PERSIST-20260729.md` (boot read ~2370; pair-switch writes ~5420 / ~10115 / ~10509 / symbol switcher ~17318).
 - RED: `TALARIA_TEST_DISABLE_V9_THEME_TZ_HONOR_CHART=1 node v9-theme-tz-honor-chart.test.mjs` fails (Chicago overwrites New_York).
 - GREEN: both canonical and homepage `v9-theme-tz-honor-chart.test.mjs` pass.
+
+## 2026-07-29 — Cluster G / TAL-01697 TP-SL drag live panel PnL
+
+- tier=mid author model=gpt-5.5; TOP review required before canary because this is money-path panel PnL / order sizing context.
+- Root cause found: apply-on-release drag intentionally withholds `#tpPrice` / `#slPrice` input commits until mouseup, but `calculateAdvancedRiskReward()` and the throttled drag R:R path read those inputs. During a TP/SL drag, panel reward/R:R can therefore stay stale/zero until release even though provisional/preview line geometry has already moved.
+- Fix: `order-manager.js` now resolves live preview panel prices from preview-phase provisional SL/TP state or active preview-line geometry, behind `__TALARIA_DISABLE_ORDER_PREVIEW_LIVE_RECALC_V1` (default ON). At rest, typed panel values still win. Homepage mirror aligned.
+- TOP review 1: tier=top reviewer model=claude-opus-5-thinking-high result=REJECT. Blocking findings fixed before commit: avoid making the old lot-size `netAtSl` risk branch live by introducing a local `slPrice`; restrict geometry fallback to preview-phase provisional edits (not open-position drags); avoid feeding multi-TP rung provisional prices into single-TP panel price; align mirror test bytes.
+- TOP review 2: tier=top reviewer model=claude-opus-5-thinking-high result=ACCEPT. Reviewer verified the prior blockers closed, mirror SHA parity, `node --check`, RED/GREEN, full order sweeps, and no placement / persistence / journal leakage. Residuals recorded: risk-mode quantity still self-corrects on commit rather than live; Escape-cancel can leave display stale until drag end; multi-TP rung PnL remains intentionally out of scope.
+- RED: `TALARIA_TEST_DISABLE_ORDER_PREVIEW_LIVE_RECALC=1 node "chart v 1.4/chart/modules/order-preview-live-recalc.test.mjs"` fails because provisional TP is not visible to panel math.
+- GREEN: canonical and homepage `order-preview-live-recalc.test.mjs` pass; full canonical and homepage `order-*.test.mjs` sweeps pass with `ALL_ORDER_TESTS_PASS`.
+
+## 2026-07-29 — Tier / fallback review audit
+
+- tier=audit model=gpt-5.5. I found no explicit `API fallback window` marker in `docs/plan3` or the prior transcript. During the resumed fallback-routing window, no money-path packet was accepted as TOP-reviewed: timezone was non-money-path and committed; TAL-01697 live-recalc remained uncommitted and is being TOP-reviewed before commit. Standing action: any money-path commit without a recorded `tier=top reviewer model=... result=ACCEPT` is not canary-ready and must be re-reviewed at TOP.
