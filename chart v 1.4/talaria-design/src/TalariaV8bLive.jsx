@@ -15084,8 +15084,24 @@ const TalariaV8bLive = () => {
     } catch {}
   };
 
+  const supportClearPingTimer = () => {
+    if (supportPingTimerRef.current) {
+      clearInterval(supportPingTimerRef.current);
+      supportPingTimerRef.current = null;
+    }
+  };
+
+  /** Kill-switch: window.__TALARIA_DISABLE_SUPPORT_WS_PING_CLEANUP_V1 = true → legacy immortal ping. */
+  const supportWsPingCleanupV1Enabled = () => {
+    try {
+      return !(typeof window !== "undefined" && window.__TALARIA_DISABLE_SUPPORT_WS_PING_CLEANUP_V1);
+    } catch (_e) {
+      return true;
+    }
+  };
+
   const supportDisconnectWs = () => {
-    if (supportPingTimerRef.current) { clearInterval(supportPingTimerRef.current); supportPingTimerRef.current = null; }
+    supportClearPingTimer();
     if (supportWsRef.current) { try { supportWsRef.current.close(); } catch {} supportWsRef.current = null; }
   };
 
@@ -15099,7 +15115,18 @@ const TalariaV8bLive = () => {
           ws.send(JSON.stringify({ type: "subscribe_inbox" }));
           if (threadId) ws.send(JSON.stringify({ type: "subscribe", thread_id: threadId }));
         } catch {}
-        supportPingTimerRef.current = setInterval(() => { try { ws.send(JSON.stringify({ type: "ping" })); } catch {} }, 30000);
+        supportClearPingTimer();
+        supportPingTimerRef.current = setInterval(() => {
+          if (!supportWsPingCleanupV1Enabled()) {
+            try { ws.send(JSON.stringify({ type: "ping" })); } catch {}
+            return;
+          }
+          if (ws.readyState !== WebSocket.OPEN) {
+            supportClearPingTimer();
+            return;
+          }
+          try { ws.send(JSON.stringify({ type: "ping" })); } catch {}
+        }, 30000);
       };
       ws.onmessage = (ev) => {
         try {
@@ -15134,7 +15161,16 @@ const TalariaV8bLive = () => {
           }
         } catch {}
       };
-      ws.onclose = () => { if (supportWsRef.current === ws) supportWsRef.current = null; };
+      ws.onclose = () => {
+        // Stale close after reconnect must not touch the live socket/timer.
+        if (supportWsRef.current !== ws) return;
+        if (!supportWsPingCleanupV1Enabled()) {
+          supportWsRef.current = null;
+          return;
+        }
+        // Browser/tab close never called supportDisconnectWs — clear the ping here.
+        supportDisconnectWs();
+      };
     } catch (e) { console.warn("[Support] WS connect failed", e); }
   };
 
