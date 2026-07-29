@@ -921,13 +921,20 @@ export async function runM6ReplayLeakPreflight(options = {}) {
 }
 
 export function parseM6ReplayLeakArgs(argv = process.argv.slice(2)) {
-  const options = { cycles: DEFAULT_M6_CYCLES, timeoutMs: DEFAULT_M6_TIMEOUT_MS, requireBrowser: false };
+  const options = {
+    cycles: DEFAULT_M6_CYCLES,
+    timeoutMs: DEFAULT_M6_TIMEOUT_MS,
+    requireBrowser: false,
+    outPath: null,
+  };
   for (const arg of argv) {
     if (arg === '--require-browser') options.requireBrowser = true;
     else if (arg === '--mutant') options.mutant = true;
     else if (arg === '--acceptance-only') options.acceptanceOnly = true;
+    else if (arg === '--json') options.json = true; // always JSON on stdout; accepted for CLI parity
     else if (arg.startsWith('--cycles=')) options.cycles = Number(arg.slice('--cycles='.length));
     else if (arg.startsWith('--timeout-ms=')) options.timeoutMs = Number(arg.slice('--timeout-ms='.length));
+    else if (arg.startsWith('--out=')) options.outPath = path.resolve(arg.slice('--out='.length));
     else throw new Error(`unknown argument: ${arg}`);
   }
   if (!Number.isFinite(options.cycles) || options.cycles <= 0) throw new Error('invalid --cycles');
@@ -938,15 +945,22 @@ export function parseM6ReplayLeakArgs(argv = process.argv.slice(2)) {
 const isMain = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 if (isMain) {
   let result;
+  let outPath = null;
   try {
     const options = parseM6ReplayLeakArgs();
+    outPath = options.outPath;
     result = options.acceptanceOnly || options.mutant
       ? await runM6ReplayLeakGate(options)
       : await runM6ReplayLeakPreflight(options);
   } catch (error) {
     result = { ok: false, status: 'RED', signature: M6_REPLAY_LEAK_SIGNATURE, error: String(error?.message || error) };
   }
-  console.log(JSON.stringify(result, null, 2));
+  const text = JSON.stringify(result, null, 2);
+  if (outPath) {
+    fs.writeFileSync(outPath, text);
+    console.error(`wrote ${outPath}`);
+  }
+  console.log(text);
   process.exit(result.ok ? 0 : 1);
 }
 

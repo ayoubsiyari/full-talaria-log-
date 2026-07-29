@@ -25,6 +25,178 @@ function isObject(value) {
   return value !== null && (typeof value === 'object' || typeof value === 'function');
 }
 
+/** Serialize EventTarget for orphan-listener naming (no object refs in JSON). */
+export function describeM6EventTarget(target, win = null) {
+  if (target == null) return 'null';
+  try {
+    if (win && target === win) return 'Window';
+    if (win && win.document && target === win.document) return 'Document';
+    if (win && win.document && target === win.document.documentElement) return 'HTMLHtmlElement';
+    if (win && win.document && target === win.document.body) return 'HTMLBodyElement';
+  } catch (_) {}
+  try {
+    const tag = target.tagName || target.nodeName;
+    if (tag) {
+      const id = target.id ? `#${String(target.id)}` : '';
+      let cls = '';
+      const className = target.className;
+      if (typeof className === 'string' && className.trim()) {
+        cls = `.${className.trim().split(/\s+/).slice(0, 3).join('.')}`;
+      }
+      return `${String(tag)}${id}${cls}`.slice(0, 160);
+    }
+  } catch (_) {}
+  try {
+    if (typeof target.url === 'string' && /Worker|SharedWorker/i.test(target.constructor?.name || '')) {
+      return `${target.constructor.name}(${String(target.url).slice(0, 80)})`;
+    }
+  } catch (_) {}
+  try {
+    const name = target.constructor && target.constructor.name;
+    if (name && name !== 'Object') return String(name);
+  } catch (_) {}
+  return 'EventTarget';
+}
+
+export function describeM6Listener(listener) {
+  if (typeof listener === 'function') {
+    return listener.name && listener.name !== 'bound ' ? listener.name : (listener.name || 'anonymous');
+  }
+  if (listener && typeof listener.handleEvent === 'function') {
+    const host = listener.constructor?.name || 'object';
+    const fn = listener.handleEvent.name || 'handleEvent';
+    return `${host}.${fn}`;
+  }
+  return typeof listener;
+}
+
+/** Capture product call sites; drop census wrapper frames. */
+export function captureM6ListenerCallSite() {
+  let stack = '';
+  try {
+    // Intentionally anonymous — named helpers pollute callSiteTop in Chromium.
+    stack = String(new Error('m6-listener').stack || '');
+  } catch (_) {
+    return [];
+  }
+  return stack
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .filter((line) => !/^Error\b/i.test(line))
+    .filter((line) => !/m6-listener|captureM6ListenerCallSite|registerListener|m6AddEventListener|m6OnceEventListener|errorFactory|m6-probe\.mjs/i.test(line))
+    .slice(0, 10);
+}
+
+/** Collapse orphan rows into killable families for Manager A. */
+export function aggregateM6OrphanListenerFamilies(orphans = []) {
+  const byKey = new Map();
+  for (const row of orphans || []) {
+    const productFrame = (row.callSite || []).find((line) => !/m6-host\.html|m6-probe\.mjs|node:internal/i.test(line))
+      || row.callSiteTop
+      || '(unknown)';
+    const key = [row.type, row.target, row.listener, productFrame].join('||');
+    let entry = byKey.get(key);
+    if (!entry) {
+      entry = {
+        type: row.type,
+        target: row.target,
+        listener: row.listener,
+        callSiteTop: productFrame,
+        callSite: row.callSite || [],
+        count: 0,
+        ids: [],
+        windows: new Set(),
+      };
+      byKey.set(key, entry);
+    }
+    entry.count += 1;
+    if (Number.isFinite(row.id)) entry.ids.push(row.id);
+    if (row.windowLabel) entry.windows.add(row.windowLabel);
+  }
+  return [...byKey.values()]
+    .map((entry) => ({
+      type: entry.type,
+      target: entry.target,
+      listener: entry.listener,
+      callSiteTop: entry.callSiteTop,
+      callSite: entry.callSite.slice(0, 6),
+      count: entry.count,
+      ids: entry.ids.slice(0, 24),
+      windows: [...entry.windows],
+    }))
+    .sort((a, b) => b.count - a.count
+      || String(a.callSiteTop).localeCompare(String(b.callSiteTop)));
+}
+
+export function serializeM6ListenerRecord(record, win = null) {
+  if (!record) return null;
+  return {
+    id: record.id,
+    type: record.type,
+    capture: !!record.capture,
+    target: describeM6EventTarget(record.target, win),
+    listener: describeM6Listener(record.listener),
+    callSite: Array.isArray(record.callSite) ? record.callSite.slice(0, 8) : [],
+    callSiteTop: Array.isArray(record.callSite) && record.callSite[0] ? record.callSite[0] : null,
+    registeredAt: record.registeredAt ?? null,
+    once: !!record.once,
+    hasSignal: !!record.signal,
+  };
+}
+
+export function listM6ActiveListeners(win) {
+  const state = censusState(win);
+  if (!state) return [];
+  const rows = [];
+  for (const record of state.listenerRegistrations.values()) {
+    if (!record || record.active !== true) continue;
+    rows.push(serializeM6ListenerRecord(record, win));
+  }
+  rows.sort((a, b) => (a.id - b.id) || String(a.type).localeCompare(String(b.type)));
+  return rows;
+}
+
+/**
+ * Name listeners present in final but absent from baseline (same census epoch).
+ * Prefers registration id; falls back to type|target|listener|callSiteTop fingerprint.
+ */
+export function diffM6OrphanListeners(baselineRows = [], finalRows = []) {
+  const baseline = Array.isArray(baselineRows) ? baselineRows : [];
+  const final = Array.isArray(finalRows) ? finalRows : [];
+  const baselineIds = new Set(baseline.map((row) => row && row.id).filter((id) => Number.isFinite(id)));
+  const baselineKeys = new Set(baseline.map((row) => listenerFingerprint(row)));
+  const orphans = [];
+  for (const row of final) {
+    if (!row) continue;
+    if (Number.isFinite(row.id) && baselineIds.has(row.id)) continue;
+    if (!Number.isFinite(row.id) && baselineKeys.has(listenerFingerprint(row))) continue;
+    orphans.push(row);
+  }
+  return orphans;
+}
+
+function listenerFingerprint(row) {
+  if (!row) return '';
+  return [row.type, row.capture ? '1' : '0', row.target, row.listener, row.callSiteTop || ''].join('|');
+}
+
+export function collectM6OrphanListenersFromSnapshots(baseline, final) {
+  const baselineRows = schedulingRows(baseline).flatMap((row) => (
+    Array.isArray(row?.activeListeners) ? row.activeListeners.map((listener) => ({
+      ...listener,
+      windowLabel: row.label || null,
+    })) : []
+  ));
+  const finalRows = schedulingRows(final).flatMap((row) => (
+    Array.isArray(row?.activeListeners) ? row.activeListeners.map((listener) => ({
+      ...listener,
+      windowLabel: row.label || null,
+    })) : []
+  ));
+  return diffM6OrphanListeners(baselineRows, finalRows);
+}
+
 function replayStateOf(value) {
   if (!isObject(value) || !Object.hasOwn(value, '_m20Q6LifecycleState')) return null;
   return String(value._m20Q6LifecycleState || '');
@@ -351,8 +523,11 @@ export function installM6SchedulingCensus(win, label = 'window') {
           signal,
           abortHandler: null,
           active: true,
+          once: onceOf(options),
+          registeredAt: safeNow(win),
+          callSite: captureM6ListenerCallSite(),
         };
-        if (onceOf(options)) {
+        if (record.once) {
           record.wrapped = function m6OnceEventListener(...args) {
             unregisterRecord(record);
             return invokeListener(listener, this, args);
@@ -488,6 +663,7 @@ export function summarizeM6SchedulingCensus(win, label = 'window') {
   const chart = (() => {
     try { return win && win.chart ? win.chart : null; } catch (_) { return null; }
   })();
+  const activeListeners = listM6ActiveListeners(win);
   return {
     label: state ? state.label : label,
     installed: !!state,
@@ -502,6 +678,7 @@ export function summarizeM6SchedulingCensus(win, label = 'window') {
     timerCallbacks: state ? state.timerCallbacks : 0,
     intervalCallbacks: state ? state.intervalCallbacks : 0,
     rafCallbacks: state ? state.rafCallbacks : 0,
+    activeListeners,
     hasMultichartCmdBridge: !!(() => {
       try { return win && win.MultichartCmdBridge; } catch (_) { return null; }
     })(),
@@ -559,6 +736,14 @@ export function aggregateM6SchedulingCensus(rows = []) {
     totals.errors.push(...errors.map((error) => `${row.label || 'window'}:${error}`));
   }
   totals.totalResidue = totalM6SchedulingResidue(totals);
+  totals.activeListeners = windows.flatMap((row) => (
+    Array.isArray(row?.activeListeners)
+      ? row.activeListeners.map((listener) => ({
+        ...listener,
+        windowLabel: row.label || null,
+      }))
+      : []
+  ));
   return totals;
 }
 
@@ -796,6 +981,38 @@ export function assertM6ReplayLeakCounts({ baseline, final, mutant = false, work
       metrics: schedulerDeltas,
     },
   ];
+
+  const orphanListeners = collectM6OrphanListenersFromSnapshots(baseline, final);
+  const orphanFamilies = aggregateM6OrphanListenerFamilies(orphanListeners);
+  const listenerDelta = Number(schedulerDeltas.deltas?.eventListeners) || 0;
+  const cyclesUsed = Math.max(1, Number(cycles) || M6_DEFAULT_WORKER_CREDIT_CYCLES);
+  const perCycleListeners = listenerDelta / cyclesUsed;
+  const namedOk = listenerDelta <= 0
+    ? orphanListeners.length === 0
+    : orphanListeners.length >= listenerDelta;
+  cells.push({
+    name: 'M6-ORPHAN-LISTENERS-NAMED',
+    // Blocking when listener residue is the defect signal — A cannot kill unnamed orphans.
+    blocking: listenerDelta > 0,
+    pass: namedOk,
+    detail: listenerDelta <= 0
+      ? `no listener delta (Δ=${listenerDelta}); orphansListed=${orphanListeners.length}`
+      : `ΔeventListeners=${listenerDelta} (~${perCycleListeners.toFixed(2)}/cycle ×${cyclesUsed}); named=${orphanListeners.length}; families=${orphanFamilies.length}; top=${JSON.stringify(orphanFamilies.slice(0, 12).map((row) => ({
+        n: row.count,
+        type: row.type,
+        target: row.target,
+        listener: row.listener,
+        callSiteTop: row.callSiteTop,
+      })))}`,
+    metrics: {
+      listenerDelta,
+      cycles: cyclesUsed,
+      perCycleListeners,
+      orphanCount: orphanListeners.length,
+      families: orphanFamilies,
+      orphans: orphanListeners,
+    },
+  });
 
   if (mutant) {
     const acceptanceWentRed = cells

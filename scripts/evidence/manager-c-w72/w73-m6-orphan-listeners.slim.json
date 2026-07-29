@@ -1,0 +1,79 @@
+{
+  "source": ".scratch-w73-m6-orphan-named.json",
+  "status": "RED",
+  "deltas": {
+    "pendingIntervals": 0,
+    "messageChannels": 0,
+    "broadcastChannels": 0,
+    "workers": 1,
+    "eventListeners": 53,
+    "pendingTimeouts": 0,
+    "pendingRafs": 0
+  },
+  "listenerDelta": 53,
+  "perCycleListeners": 10.6,
+  "families": [
+    {
+      "n": 15,
+      "type": "talariaMcHostDataCommit",
+      "target": "Window",
+      "listener": "finerPanelHostCommit",
+      "callSiteTop": "at Chart._installFinerPanelSelfOwnerHostCommitListener (http://127.0.0.1:53750/chart/chart.js?v=20260727b80:4253:23)",
+      "callSite": [
+        "at Chart._installFinerPanelSelfOwnerHostCommitListener (http://127.0.0.1:53750/chart/chart.js?v=20260727b80:4253:23)",
+        "at new Chart (http://127.0.0.1:53750/chart/chart.js?v=20260727b80:1230:14)",
+        "at HTMLDocument._talariaInitializeChart (http://127.0.0.1:53750/chart/chart.js?v=20260727b80:42125:27)"
+      ]
+    },
+    {
+      "n": 15,
+      "type": "load",
+      "target": "IFRAME",
+      "listener": "anonymous",
+      "callSiteTop": "at MultichartManager.addChart (http://127.0.0.1:53750/chart/multichart-prod/multichart-manager.js:483:15)",
+      "callSite": [
+        "at MultichartManager.addChart (http://127.0.0.1:53750/chart/multichart-prod/multichart-manager.js:483:15)",
+        "at expandToFourPanels (http://127.0.0.1:53750/m6-host.html:448:13)",
+        "at run (http://127.0.0.1:53750/m6-host.html:522:17)"
+      ]
+    },
+    {
+      "n": 15,
+      "type": "error",
+      "target": "IFRAME",
+      "listener": "anonymous",
+      "callSiteTop": "at MultichartManager.addChart (http://127.0.0.1:53750/chart/multichart-prod/multichart-manager.js:516:15)",
+      "callSite": [
+        "at MultichartManager.addChart (http://127.0.0.1:53750/chart/multichart-prod/multichart-manager.js:516:15)",
+        "at expandToFourPanels (http://127.0.0.1:53750/m6-host.html:448:13)",
+        "at run (http://127.0.0.1:53750/m6-host.html:522:17)"
+      ]
+    },
+    {
+      "n": 4,
+      "type": "mouseenter",
+      "target": "g",
+      "listener": "anonymous",
+      "callSiteTop": "at SVGGElement.<anonymous> (http://127.0.0.1:53750/chart/vendor/d3.min.js:2:20934)",
+      "callSite": [
+        "at SVGGElement.<anonymous> (http://127.0.0.1:53750/chart/vendor/d3.min.js:2:20934)",
+        "at Vn.each (http://127.0.0.1:53750/chart/vendor/d3.min.js:2:25660)",
+        "at Vn.on (http://127.0.0.1:53750/chart/vendor/d3.min.js:2:27495)",
+        "at OrderManager.drawEntryMarker (http://127.0.0.1:53750/chart/modules/order-manager.js:40897:14)"
+      ]
+    },
+    {
+      "n": 4,
+      "type": "mouseleave",
+      "target": "g",
+      "listener": "anonymous",
+      "callSiteTop": "at SVGGElement.<anonymous> (http://127.0.0.1:53750/chart/vendor/d3.min.js:2:20934)",
+      "callSite": [
+        "at SVGGElement.<anonymous> (http://127.0.0.1:53750/chart/vendor/d3.min.js:2:20934)",
+        "at Vn.each (http://127.0.0.1:53750/chart/vendor/d3.min.js:2:25660)",
+        "at Vn.on (http://127.0.0.1:53750/chart/vendor/d3.min.js:2:27495)",
+        "at OrderManager.drawEntryMarker (http://127.0.0.1:53750/chart/modules/order-manager.js:40912:14)"
+      ]
+    }
+  ]
+}
