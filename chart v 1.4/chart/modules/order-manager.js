@@ -248,6 +248,12 @@ function _orderEntryCancelCleanupFixEnabled() {
     return typeof window === 'undefined' || !window.__TALARIA_DISABLE_ORDER_ENTRY_CANCEL_CLEANUP_FIX;
 }
 
+/** Cluster G / TAL-01897: Make-new-order resets stale draft SL/TP levels. */
+function _orderEntryNewDraftLevelsResetV1Enabled() {
+    return typeof window === 'undefined'
+        || !window.__TALARIA_DISABLE_ORDER_ENTRY_NEW_DRAFT_LEVELS_RESET_V1;
+}
+
 /** T4 step 10: default ON — SL/TP panel steppers run full recalc path (TAL-00752 #15). */
 function _orderEntryPanelSltpFixEnabled() {
     return typeof window === 'undefined' || !window.__TALARIA_DISABLE_ORDER_ENTRY_PANEL_SLTP_FIX;
@@ -18111,7 +18117,11 @@ class OrderManager {
         this.slManuallyPositioned = false;
         this._previewEntryDecoupledFromRR = false;
         this._previewEntryLinkedToRiskReward = false;
-        this._resetMultiEntryStateForNewOrder();
+        if (_orderEntryNewDraftLevelsResetV1Enabled()) {
+            this._discardUnplacedOrderDraftLevels();
+        } else {
+            this._resetMultiEntryStateForNewOrder();
+        }
 
         this.orderType = 'market';
         document.querySelectorAll('.order-type-btn').forEach((b) => {

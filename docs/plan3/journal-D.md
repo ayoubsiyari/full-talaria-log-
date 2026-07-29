@@ -30,3 +30,10 @@
 - Fix: one full tick away now classifies as pending (BUY above/SELL below = stop, BUY below/SELL above = limit), behind `TALARIA_ORDER_TYPE_ONE_TICK_PENDING_V1` / `__TALARIA_DISABLE_ORDER_TYPE_ONE_TICK_PENDING_V1` (default ON). Exact market remains `market`; homepage and canonical mirrors are aligned.
 - RED: `TALARIA_ORDER_TYPE_ONE_TICK_PENDING_V1=0 node order-type-one-tick-pending.test.mjs` fails with `'market' !== 'stop'` for BUY one tick above market.
 - GREEN: both `node "chart v 1.4/chart/modules/order-type-one-tick-pending.test.mjs"` and `node "homepage/public/chart/modules/order-type-one-tick-pending.test.mjs"` pass.
+
+## 2026-07-29 — Cluster G / TAL-01897
+
+- Root cause found: the panel-close path used `_discardUnplacedOrderDraftLevels()` to zero draft SL/TP and clear TP targets, but `beginNewOrderDraft()` only reset flags and multi-entry rows. Pressing "Make new order" after a placed trade could therefore keep previous `#slPrice`, `#tpPrice`, or TP ladder state.
+- Fix: `beginNewOrderDraft()` now uses the same draft-level discard helper, behind `__TALARIA_DISABLE_ORDER_ENTRY_NEW_DRAFT_LEVELS_RESET_V1` (default ON). Homepage and canonical mirrors are aligned.
+- RED: `TALARIA_TEST_DISABLE_ORDER_ENTRY_NEW_DRAFT_LEVELS_RESET=1 node order-entry-new-draft-reset.test.mjs` fails with previous `slPrice` still present (`'1.09500' !== '0'`).
+- GREEN: both `node "chart v 1.4/chart/modules/order-entry-new-draft-reset.test.mjs"` and `node "homepage/public/chart/modules/order-entry-new-draft-reset.test.mjs"` pass.
