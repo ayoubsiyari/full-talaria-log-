@@ -1,0 +1,103 @@
+{
+  "packet": "W76-P0-DATASET-COUNT-CALIBRATION",
+  "tier": "mid",
+  "model": "cursor-grok-4.5",
+  "verdict": "DIRECTOR'S HYPOTHESIS CONFIRMED — calibration gap closed and explained",
+  "build": "20260729b99",
+  "origin": "http://31.97.192.82:3000",
+  "surface": "deployed + PO workload (4 panels, >=3 indicators each, open order, live replay 60x)",
+  "cycles": 6,
+  "whatWasWrong": {
+    "harness": "runDeployedSession pinned all four panels to primaryFileId, and the local dist-v9 path used DISTINCT_FILE_IDS[0] x4 — four panels sharing ONE dataset pipeline",
+    "comment_that_justified_it": "'Same symbol all panels — matches PO session; distinct rotation was under-reading'",
+    "why_it_under_read": "residue is governed by the number of independent (symbol, timeframe) dataset pipelines, not by panel count"
+  },
+  "instrumentNote": "usedJSHeapSize floors. Forced-GC floors are the only gradable instrument here: without a forced collection the floors swing +-80..94 MB purely on GC timing and no rate can be recovered from them.",
+  "arms": [
+    {
+      "arm": "identical (4 panels, 1 dataset) — the configuration the harness had been measuring",
+      "instrument": "PO-hand (no forced GC)",
+      "observedDistinctDatasets": 1,
+      "floorsMb": [429.60, 463.73, 298.13, 279.34, 275.38, 298.07],
+      "deltasMb": [353.74, 34.13, -165.60, -18.79, -3.96, 22.69],
+      "warmupMb": 353.74,
+      "meanInclWarmupMbPerCycle": 37.03,
+      "steadyMeanMbPerCycle": -26.31,
+      "steadySdMb": 80.64,
+      "tailMeanMbPerCycle": -0.02,
+      "verdict": "UNGRADABLE — noise (sd 80.64) exceeds any signal; deltas include -165 MB"
+    },
+    {
+      "arm": "distinct by timeframe (4 datasets, mixed 1m/5m/15m/1h)",
+      "instrument": "PO-hand (no forced GC)",
+      "observedDistinctDatasets": 4,
+      "floorsMb": [249.24, 229.64, 252.27, 166.91, 288.47, 171.50],
+      "deltasMb": [173.51, -19.60, 22.63, -85.37, 121.56, -116.96],
+      "warmupMb": 173.51,
+      "meanInclWarmupMbPerCycle": 15.96,
+      "steadyMeanMbPerCycle": -15.55,
+      "steadySdMb": 94.12,
+      "tailMeanMbPerCycle": -26.92,
+      "confound": "coarse timeframes hold far fewer bars (15m=183, 1h=34..495 vs 1m=2011) so this arm is four pipelines but LESS data — it is not the PO's expensive configuration",
+      "verdict": "UNGRADABLE — noise (sd 94.12) exceeds any signal"
+    },
+    {
+      "arm": "distinct symbols @1m (4 datasets, full bar sets) — XAUUSD/HOG/ETHBTC/BTCEUR",
+      "instrument": "PO-hand (no forced GC)",
+      "observedDistinctDatasets": 4,
+      "barsPerPanel": [2011, 2001, 2001, 2001],
+      "floorsMb": [202.70, 278.98, 335.34, 322.32, 362.36, 346.09],
+      "deltasMb": [127.08, 76.28, 56.35, -13.02, 40.05, -16.28],
+      "warmupMb": 127.08,
+      "meanInclWarmupMbPerCycle": 45.08,
+      "steadyMeanMbPerCycle": 28.68,
+      "steadySdMb": 41.60,
+      "tailMeanMbPerCycle": 3.58,
+      "verdict": "GROWTH VISIBLE but tail is inside the noise — directional only, not a rate"
+    },
+    {
+      "arm": "distinct symbols @1m (4 datasets, full bar sets) — DECISIVE",
+      "instrument": "forced GC floors",
+      "observedDistinctDatasets": 4,
+      "floorsMb": [103.20, 136.63, 155.78, 176.29, 200.77, 219.58],
+      "deltasMb": [27.92, 33.43, 19.16, 20.50, 24.49, 18.81],
+      "warmupMb": 27.92,
+      "meanInclWarmupMbPerCycle": 24.05,
+      "steadyMeanMbPerCycle": 23.28,
+      "steadyStandardErrorMb": 2.73,
+      "steadySdMb": 6.11,
+      "tailMeanMbPerCycle": 21.27,
+      "leastSquaresSlopeMbPerCycle": 22.71,
+      "verdict": "RETENTION CONFIRMED — every delta positive, strictly monotonic floors, still growing at the tail, survives forced GC"
+    },
+    {
+      "arm": "identical (4 panels, 1 dataset) — CONTROL at the same build and instrument",
+      "instrument": "forced GC floors",
+      "observedDistinctDatasets": 1,
+      "floorsMb": [128.72, 220.09, 221.80, 220.74, 226.41, 220.94],
+      "deltasMb": [53.66, 91.37, 1.71, -1.06, 5.66, -5.46],
+      "warmupMb": "53.66 + 91.37 (expansion spans two cycles)",
+      "meanInclWarmupMbPerCycle": 24.31,
+      "tailMeanMbPerCycle": -0.29,
+      "verdict": "BOUNDED — plateaus hard at ~221 MB and stops growing"
+    }
+  ],
+  "headline": {
+    "onePipeline": "plateaus at ~221 MB, tail -0.29 MB/cycle — BOUNDED",
+    "fourPipelines": "23.28 +- 2.73 MB/cycle, monotonic, still climbing after 6 cycles — LEAK",
+    "poComparison": "PO measures ~13 MB/cycle. The harness now reads 23.3, i.e. it OVERSHOOTS the PO by ~1.8x instead of under-reading by 20x. The 20x disagreement was the dataset configuration, exactly as the Director predicted.",
+    "priorNumbersRetired": "+0.69 MB/cycle (layout-only) and the identical-config forced-GC figures cannot grade this leak: they were measuring the cheap configuration."
+  },
+  "mechanismEvidence": {
+    "observation": "1 shared dataset retains ~0/cycle; 4 independent datasets retain ~23/cycle and never plateau, with the same panel count, same workload, same build, same instrument.",
+    "implication": "Retention is per independent dataset pipeline, not per panel and not proportional to cache size. It is deduplicated when panels share a dataset, which is why capping caches moved nothing (b85 ~13.3 -> b99 ~12.8).",
+    "cacheShaped": "NOT cache-sizing-shaped. Ten deployed shots including caps did not move the rate; the rate instead tracks how many independent pipelines exist.",
+    "notYetDone": "retainer-path snapshot has never been taken in the DISTINCT configuration — all prior retainer/ExternalStringData work was done in the identical config and so aimed at the wrong mass."
+  },
+  "gateChanges": [
+    "HEAP-CYCLE-DATASET-CONFIG (new, blocking): reads back per-panel (fileId, timeframe) and refuses to let a run that asked for four datasets report as distinct when it observably held fewer. A host timeframe pick fans out to all panels when Interval sync is on, which silently collapses the plan.",
+    "HEAP-CYCLE-STEADY-STATE-RETENTION (new, diagnostic): separates one-time warm-up from per-cycle retention and requires growth to clear its own standard error AND still be present in the tail. This is what distinguishes the plateauing identical config from the climbing distinct config.",
+    "--dataset-mode=distinct|identical and --timeframes= CLI so the two configurations are explicit and re-runnable."
+  ],
+  "harnessHonesty": "The headline 'mean MB/cycle' the gate has been reporting is net growth / N, and net growth is dominated by one-time four-panel expansion. That is why the figure could be dialled from 0.69 to 45 by changing GC policy, hold time and cycle count without any change to the product. Only forced-GC floors with warm-up excluded and a tail check produce a defensible rate."
+}

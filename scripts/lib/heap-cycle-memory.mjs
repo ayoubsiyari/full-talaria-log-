@@ -201,6 +201,79 @@ export function synthesizePoLeakHeapCycleReport() {
   };
 }
 
+/**
+ * Separate one-time warm-up from per-cycle retention.
+ *
+ * The first cycle pays for the whole four-panel expansion — scripts, workers,
+ * indicator state, bar stores — and that cost is not paid again. Averaging it
+ * across N cycles yields a "MB/cycle" figure that is really warm-up ÷ N, which
+ * moves with cycle count and GC policy while telling you nothing about whether
+ * anything is retained. Retention lives in cycles 2..N, and only counts when it
+ * clears the sampling noise: with no forced GC the floors swing ±100 MB purely
+ * on GC timing, so a mean smaller than its own standard error is not growth.
+ *
+ * @param {(number|null)[]} heapDeltas per-cycle floor deltas in bytes
+ */
+export function summarizeSteadyStateRetention(heapDeltas) {
+  const deltas = Array.isArray(heapDeltas) ? heapDeltas : [];
+  if (!deltas.length || deltas.some((d) => d == null)) {
+    return {
+      ok: false,
+      warmupBytes: null,
+      steadyCycles: 0,
+      steadyMeanBytes: null,
+      steadySdBytes: null,
+      steadyStandardErrorBytes: null,
+      positiveRetention: false,
+      reason: 'incomplete heap deltas',
+    };
+  }
+  const warmupBytes = deltas[0];
+  const steady = deltas.slice(1);
+  if (steady.length < 2) {
+    return {
+      ok: false,
+      warmupBytes,
+      steadyCycles: steady.length,
+      steadyMeanBytes: steady.length ? steady[0] : null,
+      steadySdBytes: null,
+      steadyStandardErrorBytes: null,
+      positiveRetention: false,
+      reason: 'need ≥3 cycles to separate steady state from warm-up',
+    };
+  }
+  const stats = (values) => {
+    const mean = values.reduce((a, b) => a + b, 0) / values.length;
+    const sd = values.length > 1
+      ? Math.sqrt(values.reduce((a, b) => a + (b - mean) ** 2, 0) / (values.length - 1))
+      : 0;
+    return { mean, sd, standardError: sd / Math.sqrt(values.length) };
+  };
+  const all = stats(steady);
+  // Warm-up is not always one cycle: the identical-dataset config pays expansion
+  // across two cycles and then plateaus flat. Retention must therefore still be
+  // present in the tail of the run, or it is warm-up that has finished settling.
+  const tailWindow = steady.slice(-Math.min(3, steady.length));
+  const tail = stats(tailWindow);
+  return {
+    ok: true,
+    warmupBytes,
+    steadyCycles: steady.length,
+    steadyMeanBytes: all.mean,
+    steadySdBytes: all.sd,
+    steadyStandardErrorBytes: all.standardError,
+    tailCycles: tailWindow.length,
+    tailMeanBytes: tail.mean,
+    tailStandardErrorBytes: tail.standardError,
+    // Growth must exceed its own noise floor and still be running at the end.
+    positiveRetention: all.mean > 0
+      && all.mean > all.standardError
+      && tail.mean > 0
+      && tail.mean > tail.standardError,
+    reason: null,
+  };
+}
+
 export function summarizeHeapCycleReport(report) {
   const baseline = report?.baseline || null;
   const cycles = Array.isArray(report?.cycles) ? report.cycles : [];
@@ -303,6 +376,7 @@ export function summarizeHeapCycleReport(report) {
   const meanHeapDelta = heapDeltas.every((value) => value != null)
     ? heapDeltas.reduce((sum, value) => sum + value, 0) / heapDeltas.length
     : null;
+  const steadyState = summarizeSteadyStateRetention(heapDeltas);
 
   const detachedStable = gradedDetachedDelta != null
     && gradedDetachedDelta <= HEAP_CYCLE_DETACHED_STABLE_MAX;
@@ -333,6 +407,7 @@ export function summarizeHeapCycleReport(report) {
     detachedSignal,
     heapDeltas,
     meanHeapDelta,
+    steadyState,
     detachedStable,
     heapBounded,
     matchesPoLeakShape,
@@ -413,6 +488,47 @@ export function assertHeapCycleMemoryReport(report) {
     { fileIds: HEAP_CYCLE_DISTINCT_FILE_IDS.slice() },
   ));
 
+  // Residue tracks distinct (symbol, timeframe) datasets, not panel count. A run
+  // that asked for four datasets and observably held fewer measured the cheap
+  // configuration and may not be reported as the expensive one.
+  const datasetConfig = report.datasetConfig || null;
+  const datasetCyclesRequested = (report.cycles || [])
+    .map((row) => row?.datasetConfig)
+    .filter(Boolean);
+  const datasetModeRequested = datasetConfig?.mode
+    || report.meta?.datasetMode
+    || datasetCyclesRequested[0]?.mode
+    || null;
+  const datasetKnown = datasetConfig != null || datasetCyclesRequested.length > 0;
+  const datasetExpected = datasetConfig?.expectedDistinctDatasets
+    ?? datasetCyclesRequested[0]?.expectedDistinctDatasets
+    ?? null;
+  const datasetObservedMin = datasetConfig?.minObservedDistinctDatasets
+    ?? (datasetCyclesRequested.length
+      ? Math.min(...datasetCyclesRequested.map((r) => Number(r.observedDistinctDatasets) || 0))
+      : null);
+  const datasetHeld = datasetKnown
+    && datasetExpected != null
+    && datasetObservedMin != null
+    && datasetObservedMin >= datasetExpected;
+  cells.push(cell(
+    'HEAP-CYCLE-DATASET-CONFIG',
+    report.meta?.fixture != null || !datasetKnown || datasetHeld,
+    !datasetKnown
+      ? 'dataset config not recorded (pre-dataset-config report)'
+      : (datasetHeld
+        ? `mode=${datasetModeRequested} held ${datasetObservedMin}/${datasetExpected} distinct datasets every cycle`
+        : `mode=${datasetModeRequested} asked for ${datasetExpected} distinct datasets but observed only `
+          + `${datasetObservedMin} — measured the cheaper configuration, cannot report as distinct`),
+    {
+      datasetMode: datasetModeRequested,
+      expectedDistinctDatasets: datasetExpected,
+      minObservedDistinctDatasets: datasetObservedMin,
+      cyclesWithFullDistinctness: datasetConfig?.cyclesWithFullDistinctness ?? null,
+      mismatchCycles: datasetConfig?.mismatchCycles ?? null,
+    },
+  ));
+
   const workload = report.poWorkload;
   const workloadArmed = workload?.armedEveryCycle === true
     || (Array.isArray(report.cycles)
@@ -486,6 +602,37 @@ export function assertHeapCycleMemoryReport(report) {
       meanHeapDelta: summary.meanHeapDelta,
       heapDeltas: summary.heapDeltas,
       poFloorsMb: HEAP_CYCLE_PO_FLOOR_MB.slice(),
+    },
+  ));
+
+  // Diagnostic: is the headline mean a retention rate, or one-time warm-up ÷ N?
+  const steady = summary.steadyState || {};
+  const toMb = (v) => (v == null ? null : +(v / (1024 * 1024)).toFixed(2));
+  cells.push(cell(
+    'HEAP-CYCLE-STEADY-STATE-RETENTION',
+    true,
+    steady.ok !== true
+      ? `steady state not separable: ${steady.reason || 'no deltas'}`
+      : (steady.positiveRetention
+        ? `retention CONFIRMED beyond noise: steadyMean=${toMb(steady.steadyMeanBytes)}MB/cycle `
+          + `se=${toMb(steady.steadyStandardErrorBytes)}MB over ${steady.steadyCycles} cycles, `
+          + `still growing at tail=${toMb(steady.tailMeanBytes)}MB/cycle `
+          + `(warm-up ${toMb(steady.warmupBytes)}MB excluded)`
+        : `NO retention beyond noise: steadyMean=${toMb(steady.steadyMeanBytes)}MB/cycle `
+          + `sd=${toMb(steady.steadySdBytes)}MB se=${toMb(steady.steadyStandardErrorBytes)}MB `
+          + `tail=${toMb(steady.tailMeanBytes)}MB/cycle — `
+          + `headline mean ${toMb(summary.meanHeapDelta)}MB/cycle is dominated by one-time warm-up `
+          + `${toMb(steady.warmupBytes)}MB ÷ ${(summary.heapDeltas || []).length} cycles`),
+    {
+      nonBlocking: true,
+      warmupMb: toMb(steady.warmupBytes),
+      steadyMeanMb: toMb(steady.steadyMeanBytes),
+      steadySdMb: toMb(steady.steadySdBytes),
+      steadyStandardErrorMb: toMb(steady.steadyStandardErrorBytes),
+      steadyCycles: steady.steadyCycles ?? null,
+      tailMeanMb: toMb(steady.tailMeanBytes),
+      tailCycles: steady.tailCycles ?? null,
+      positiveRetention: steady.positiveRetention === true,
     },
   ));
 

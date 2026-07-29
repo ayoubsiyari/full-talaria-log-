@@ -1,0 +1,31 @@
+{
+  "packet": "W76-P3-CPU-CEILING-CORRECTION",
+  "tier": "mid",
+  "model": "cursor-grok-4.5",
+  "supersedes": "scripts/evidence/manager-c-w75/w75-cpu-ceiling-60x.slim.json",
+  "verdict": "W75's ceiling attribution was invalid. Corrected instrument landed; the 111% itself is still not reproduced.",
+  "whatW75GotWrong": {
+    "claim": "W75 named 'raf :: m20Q6InertableScheduledCallback << m20Q6TrackScheduler' as the dominant CPU consumer at 55%, plus 19% and 5% on the same name.",
+    "problem": "m20Q6InertableScheduledCallback is not product code. It is the M20-Q6 lifecycle wrapper installed around EVERY setTimeout/rAF callback so they can be made inert on teardown (replay-system.js m20Q6TrackScheduler). The profiler's stack filter did not skip those frames, so ~79% of busy time collapsed into a single bucket named after the instrumentation shim.",
+    "consequence": "That evidence would have sent A to optimise a wrapper. It names no product call site.",
+    "fix": "po-cpu-ab-benchmark.mjs stack filter now skips m20Q6InertableScheduledCallback / m20Q6TrackScheduler / m20Q6CapturedScheduler / m20Q6CaptureEffects so the real scheduling call site surfaces."
+  },
+  "secondErrorInThePremise": {
+    "issue": "W75 also reported canvasPaintCalls=10512 over 8.1s and I was about to read that as ~21 repaints per frame.",
+    "correction": "The probe wraps fillRect/fill/stroke/drawImage individually, so one candlestick repaint of ~300-600 candles issues hundreds of calls. 1300 calls/s is a handful of repaints per second, not paint amplification. Total canvasPaintMs was 9.2ms in 8.1s — drawing is negligible on that surface."
+  },
+  "whyTheHarnessCannotSeeTheCeiling": {
+    "measured": "workRatio 0.069 — the hermetic single-chart harness at 60x spends ~7% of one core in callbacks, with 93% of the timeline in 'system' (idle wait).",
+    "structuralReason": "The PO's figure is ~111% of a core. Anything above 100% cannot be main-thread JavaScript by definition. A setTimeout/rAF callback probe only ever samples CrRendererMain, so it can never account for the excess — that work is on compositor, raster, GPU or worker threads.",
+    "conclusion": "W75 did not characterise the ceiling; it characterised a 7% main-thread budget on a surface that is not pegged. Marking P3 characterised was wrong."
+  },
+  "newInstrument": {
+    "name": "CPU-THREAD-CENSUS-V1",
+    "path": "scripts/lib/cpu-thread-census.mjs",
+    "what": "Sums Chrome trace event durations per thread (pid/tid -> thread_name), so the total is allowed to exceed one core — the shape that has to be reproduced.",
+    "correctnessGuard": "Per-thread busy time is the UNION of event intervals, not the sum: nested trace events (a parent RunTask containing FunctionCall children) would otherwise double count and manufacture a >100% reading out of an idle browser. Unit tests cover nesting, partial overlap, instant/async events, and the empty-trace case (which returns NO-DATA rather than a 0% pass).",
+    "assessment": "assessCpuCeiling() reports BELOW-CLAIM rather than treating a low main-thread reading as a refutation of the PO."
+  },
+  "status": "OPEN — instrument committed and unit-tested, but not yet pointed at the deployed canary single-chart 60x surface. That run is the next step and was not done in this packet because the memory calibration A/B had the browser and a concurrent CPU load would have contaminated the heap floors.",
+  "note": "Reported as OPEN deliberately. The honest state is 'wrong attribution retracted, correct instrument built, measurement pending', not 'characterised'."
+}

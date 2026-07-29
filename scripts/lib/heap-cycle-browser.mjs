@@ -16,6 +16,14 @@ import {
   reactPanelLoadFile,
   reactParityUrlWithLayout,
 } from '../../chart v 1.4/chart/multichart-prod/harness/react-parity-lib.mjs';
+import { chartTarget } from '../../chart v 1.4/chart/multichart-prod/harness/interactive-helpers.mjs';
+import {
+  assessDatasetDistinctness,
+  buildDatasetPlan,
+  HEAP_CYCLE_DATASET_MODE_DISTINCT,
+  HEAP_CYCLE_DISTINCT_TIMEFRAMES,
+  summarizeDatasetConfig,
+} from './heap-cycle-dataset-config.mjs';
 import { countDetachedDivsFromHeapSnapshot } from './heap-snapshot-detached.mjs';
 import {
   aggregateHeapSnapshotByConstructor,
@@ -427,33 +435,125 @@ async function expandFourPanelsWithRetry(page, {
   throw lastError || new Error('expand-4 failed');
 }
 
-async function loadDistinctSymbolsDistV9(page, fileIds) {
-  const mapping = {
-    A: fileIds[0],
-    B: fileIds[1],
-    C: fileIds[2],
-    D: fileIds[3],
-  };
-  // Host A via chart API when available.
-  await page.evaluate(async (fid) => {
-    const ch = window.chart;
-    if (!ch) return false;
-    if (typeof ch.loadFile === 'function') {
-      try { await ch.loadFile(fid); return true; } catch (_) {}
-    }
-    if (typeof ch.setFileId === 'function') {
-      try { ch.setFileId(fid); return true; } catch (_) {}
-    }
-    try { ch.currentFileId = fid; } catch (_) {}
-    return false;
-  }, mapping.A);
+function panelTarget(page, panelId) {
+  if (panelId === 'A') return page.mainFrame();
+  return chartTarget(page, panelId) || null;
+}
 
-  for (const pid of ['A', 'B', 'C', 'D']) {
-    try {
-      await reactPanelLoadFile(page, pid, mapping[pid]);
-    } catch (_) {}
+/** Read what each panel is *actually* holding — never trust the commands. */
+async function readPanelDatasets(page, panelIds = HEAP_CYCLE_PANEL_IDS) {
+  const rows = [];
+  for (const panelId of panelIds) {
+    const target = panelTarget(page, panelId);
+    if (!target) {
+      rows.push({ panelId, fileId: null, timeframe: null, bars: null, reason: 'no frame' });
+      continue;
+    }
+    const row = await target.evaluate(() => {
+      const ch = window.chart;
+      if (!ch) return { fileId: null, timeframe: null, bars: null, reason: 'no chart' };
+      return {
+        fileId: ch.currentFileId != null ? String(ch.currentFileId) : null,
+        timeframe: ch.currentTimeframe != null ? String(ch.currentTimeframe) : null,
+        bars: Array.isArray(ch.data) ? ch.data.length : null,
+        rawBars: Array.isArray(ch.rawData) ? ch.rawData.length : null,
+      };
+    }).catch((error) => ({
+      fileId: null, timeframe: null, bars: null, reason: String(error?.message || error),
+    }));
+    rows.push({ panelId, ...row });
   }
-  await sleep(800);
+  return rows;
+}
+
+async function panelRunCommand(page, panelId, cmd, args) {
+  return page.evaluate(async (pid, c, a) => {
+    const grid = window.__multichartGrid;
+    if (!grid || typeof grid.runCommand !== 'function') return false;
+    try {
+      await grid.runCommand(c, a, { panelId: pid });
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }, panelId, cmd, args).catch(() => false);
+}
+
+async function applyHostDataset(page, { fileId, timeframe }) {
+  return page.evaluate(async (fid, tf) => {
+    const ch = window.chart;
+    if (!ch) return { loaded: false, tfSet: false };
+    let loaded = false;
+    if (typeof ch.loadFile === 'function') {
+      try { await ch.loadFile(fid); loaded = true; } catch (_) {}
+    }
+    if (!loaded && typeof ch.setFileId === 'function') {
+      try { ch.setFileId(fid); loaded = true; } catch (_) {}
+    }
+    if (!loaded) { try { ch.currentFileId = fid; } catch (_) {} }
+    let tfSet = false;
+    if (tf && typeof ch.setTimeframe === 'function' && ch.currentTimeframe !== tf) {
+      try { await ch.setTimeframe(tf); tfSet = true; } catch (_) {}
+    } else if (tf && ch.currentTimeframe === tf) {
+      tfSet = true;
+    }
+    return { loaded, tfSet };
+  }, fileId, timeframe).catch(() => ({ loaded: false, tfSet: false }));
+}
+
+/**
+ * Drive every panel onto its planned (symbol, timeframe) dataset, then wait for
+ * the product to converge and report the datasets it observably holds.
+ *
+ * Host A is driven first: with Interval sync on, a host timeframe pick fans out
+ * to every peer, so the per-panel sets must land after it to survive.
+ */
+async function applyDatasetPlan(page, plan, { settleMs = 800, timeoutMs = 45_000 } = {}) {
+  const hostPlan = plan.panels.find((p) => p.panelId === 'A');
+  if (hostPlan) await applyHostDataset(page, hostPlan);
+
+  for (const panel of plan.panels) {
+    try {
+      await reactPanelLoadFile(page, panel.panelId, panel.fileId);
+    } catch (_) { /* peer may still be mounting; convergence wait below decides */ }
+    if (panel.panelId !== 'A') {
+      await panelRunCommand(page, panel.panelId, 'setTimeframe', { tf: panel.timeframe });
+    }
+  }
+
+  const deadline = Date.now() + timeoutMs;
+  let observed = await readPanelDatasets(page, plan.panels.map((p) => p.panelId));
+  let assessment = assessDatasetDistinctness(plan, observed);
+  // Converge on the *planned* assignment, not merely on a distinct-enough count:
+  // four timeframes of one symbol also counts as four datasets, which would hide
+  // a per-panel loadFile that never landed.
+  while ((!assessment.ok || assessment.mismatches.length > 0) && Date.now() < deadline) {
+    await sleep(500);
+    // Re-assert any panel that drifted (late fan-out can steal a timeframe).
+    for (const miss of assessment.mismatches) {
+      const want = plan.panels.find((p) => p.panelId === miss.panelId);
+      if (!want) continue;
+      if (String(miss.gotFileId) !== String(want.fileId)) {
+        await reactPanelLoadFile(page, want.panelId, want.fileId).catch(() => {});
+      }
+      if (String(miss.gotTimeframe) !== String(want.timeframe)) {
+        if (want.panelId === 'A') await applyHostDataset(page, want);
+        else await panelRunCommand(page, want.panelId, 'setTimeframe', { tf: want.timeframe });
+      }
+    }
+    observed = await readPanelDatasets(page, plan.panels.map((p) => p.panelId));
+    assessment = assessDatasetDistinctness(plan, observed);
+  }
+
+  await sleep(settleMs);
+  observed = await readPanelDatasets(page, plan.panels.map((p) => p.panelId));
+  assessment = assessDatasetDistinctness(plan, observed);
+  logHeapCycle(
+    `datasets mode=${plan.mode} observed=${assessment.observedDistinctDatasets}/`
+    + `${assessment.expectedDistinctDatasets} `
+    + `[${observed.map((r) => `${r.panelId}:${r.fileId}@${r.timeframe}(${r.bars ?? 'n/a'})`).join(' ')}]`,
+  );
+  return { plan, observed, assessment };
 }
 
 // ─── thin-host path (legacy; opt-in) ───────────────────────────────────────
@@ -601,6 +701,8 @@ async function runDistV9Session({
   timeoutMs,
   settleMs,
   puppeteer,
+  datasetMode = HEAP_CYCLE_DATASET_MODE_DISTINCT,
+  timeframes = HEAP_CYCLE_DISTINCT_TIMEFRAMES,
 }) {
   if (!fs.existsSync(DIST_INDEX)) {
     throw new Error(`dist-v9 missing at ${DIST_INDEX} — run npm run build:live in talaria-design`);
@@ -641,18 +743,16 @@ async function runDistV9Session({
       cycleRows,
       poWorkload,
       poHandShape,
+      datasetConfig,
     } = await runMultichartCycles({
       page,
       cdp,
       cycles,
       settleMs,
-      // Same symbol on all panels (PO session); distinct-symbol rotation under-read.
-      fileIdsForCycle: () => [
-        HEAP_CYCLE_DISTINCT_FILE_IDS[0],
-        HEAP_CYCLE_DISTINCT_FILE_IDS[0],
-        HEAP_CYCLE_DISTINCT_FILE_IDS[0],
-        HEAP_CYCLE_DISTINCT_FILE_IDS[0],
-      ],
+      // Residue tracks distinct (symbol, timeframe) datasets, not panel count.
+      fileIdsForCycle: () => HEAP_CYCLE_DISTINCT_FILE_IDS.slice(0, 4),
+      datasetMode,
+      timeframes,
       poWorkload: true,
     });
 
@@ -670,6 +770,7 @@ async function runDistV9Session({
         growthCensus: true,
         retainerPaths: true,
         poWorkload: true,
+        datasetMode: datasetConfig?.mode || datasetMode,
         harnessUrl: url,
       },
       baseline: baselineOut,
@@ -678,6 +779,7 @@ async function runDistV9Session({
       retainerPaths,
       poWorkload,
       poHandShape,
+      datasetConfig,
     };
   } finally {
     await browser.close().catch(() => {});
@@ -699,6 +801,9 @@ async function runMultichartCycles({
   cycles,
   settleMs,
   fileIdsForCycle,
+  /** Dataset count, not panel count, governs residue — see dataset-config. */
+  datasetMode = HEAP_CYCLE_DATASET_MODE_DISTINCT,
+  timeframes = HEAP_CYCLE_DISTINCT_TIMEFRAMES,
   poWorkload = true,
   playHoldMs = 6_000,
   replaySpeed = 60,
@@ -778,13 +883,24 @@ async function runMultichartCycles({
   let lastSnapshot = null;
   const workloadArms = [];
 
+  const datasetAssessments = [];
   for (let index = 0; index < cycles; index += 1) {
     const rotated = fileIdsForCycle(index);
-    logHeapCycle(`cycle ${index + 1}/${cycles}: expand 4-panel fileIds=${rotated.join(',')}`);
+    const plan = buildDatasetPlan({
+      mode: datasetMode,
+      panelIds: HEAP_CYCLE_PANEL_IDS,
+      fileIds: rotated,
+      timeframes,
+    });
+    logHeapCycle(
+      `cycle ${index + 1}/${cycles}: expand 4-panel mode=${plan.mode} `
+      + `datasets=${plan.panels.map((p) => `${p.fileId}@${p.timeframe}`).join(',')}`,
+    );
     await expandFourPanelsWithRetry(page, { attempts: 3, recoverPage });
     await installWorkerCensusOnPage(page).catch(() => []);
     logHeapCycle(`cycle ${index + 1}: four panels ready`);
-    await loadDistinctSymbolsDistV9(page, rotated);
+    const datasetConfig = await applyDatasetPlan(page, plan, { settleMs: 800 });
+    datasetAssessments.push({ cycle: index + 1, ...datasetConfig.assessment });
 
     let workload = { armed: false, skipped: !poWorkload };
     if (poWorkload) {
@@ -876,7 +992,15 @@ async function runMultichartCycles({
     cycleRows.push({
       index: index + 1,
       fileIds: rotated,
-      distinctSymbols: true,
+      datasetConfig: {
+        mode: plan.mode,
+        expectedDistinctDatasets: datasetConfig.assessment.expectedDistinctDatasets,
+        observedDistinctDatasets: datasetConfig.assessment.observedDistinctDatasets,
+        observedDistinctTimeframes: datasetConfig.assessment.observedDistinctTimeframes,
+        datasets: datasetConfig.assessment.datasets,
+        ok: datasetConfig.assessment.ok,
+        panels: datasetConfig.observed,
+      },
       poWorkload: {
         armed: workload.armed === true,
         indicatorsOk: workload.indicatorsOk === true,
@@ -1035,6 +1159,7 @@ async function runMultichartCycles({
     poHandShape,
     snapshotPolicy,
     workerCensus,
+    datasetConfig: summarizeDatasetConfig(datasetAssessments),
   };
 }
 
@@ -1210,26 +1335,55 @@ async function uiLoginDeployed(page, origin, email, password) {
   return { url, submit: clicked };
 }
 
+/**
+ * Pick four files, preferring four *distinct symbols*: four uploads of the same
+ * symbol would share the dataset pipeline and reproduce the cheap configuration
+ * even with a distinct plan.
+ *
+ * @returns {{ fileIds: number[], symbols: (string|null)[], distinctSymbols: number }}
+ */
 async function resolveDeployedFileIds(page, fallback = HEAP_CYCLE_DISTINCT_FILE_IDS) {
-  const ids = await page.evaluate(async () => {
+  const picked = await page.evaluate(async () => {
     try {
       const res = await fetch('/api/files', { credentials: 'include' });
       if (!res.ok) return null;
       const body = await res.json();
       const list = Array.isArray(body) ? body
         : (Array.isArray(body?.files) ? body.files : []);
-      const out = [];
+      const rows = [];
       for (const row of list) {
         const id = Number(row?.id ?? row?.fileId ?? row?.file_id);
-        if (Number.isFinite(id)) out.push(id);
-        if (out.length >= 4) break;
+        if (!Number.isFinite(id)) continue;
+        const symbol = String(
+          row?.symbol ?? row?.pair ?? row?.ticker ?? row?.name ?? row?.filename ?? '',
+        ).trim().toUpperCase() || null;
+        rows.push({ id, symbol });
       }
+      const bySymbol = [];
+      const seen = new Set();
+      for (const row of rows) {
+        const key = row.symbol || `__id${row.id}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        bySymbol.push(row);
+        if (bySymbol.length >= 4) break;
+      }
+      const out = bySymbol.length >= 4 ? bySymbol : rows.slice(0, 4);
       return out.length >= 4 ? out : null;
     } catch (_) {
       return null;
     }
   }).catch(() => null);
-  return ids && ids.length === 4 ? ids : fallback.slice();
+
+  if (!picked || picked.length < 4) {
+    return { fileIds: fallback.slice(0, 4), symbols: [null, null, null, null], distinctSymbols: 0 };
+  }
+  const symbols = picked.map((r) => r.symbol);
+  return {
+    fileIds: picked.map((r) => r.id),
+    symbols,
+    distinctSymbols: new Set(symbols.filter(Boolean)).size,
+  };
 }
 
 /**
@@ -1265,6 +1419,8 @@ async function runDeployedSession({
   /** Default ON for deployed — layout-only / forced-GC under-reads vs PO ~13. */
   poHandSample = true,
   playHoldMs = 6_000,
+  datasetMode = HEAP_CYCLE_DATASET_MODE_DISTINCT,
+  timeframes = HEAP_CYCLE_DISTINCT_TIMEFRAMES,
 }) {
   const email = String(process.env.TEST_EMAIL || process.env.L2_M1_TEST_EMAIL || '').trim();
   const password = String(process.env.TEST_PASSWORD || process.env.L2_M1_TEST_PASSWORD || '').trim();
@@ -1393,7 +1549,13 @@ async function runDeployedSession({
         flags,
       };
     }, HEAP_CYCLE_B85_FIX_DISABLE_FLAGS).catch(() => ({ buildId: null, flags: {} }));
-    const fileIds = await resolveDeployedFileIds(page);
+    const fileChoice = await resolveDeployedFileIds(page);
+    const fileIds = fileChoice.fileIds;
+    logHeapCycle(
+      `deployed files: ids=${fileIds.join(',')} symbols=${
+        fileChoice.symbols.map((s) => s || '?').join(',')
+      } distinctSymbols=${fileChoice.distinctSymbols}`,
+    );
 
     const cdp = await page.createCDPSession();
     await cdp.send('HeapProfiler.enable');
@@ -1419,14 +1581,18 @@ async function runDeployedSession({
       poHandShape,
       snapshotPolicy,
       workerCensus,
+      datasetConfig,
     } = await runMultichartCycles({
       page,
       cdp,
       browser,
       cycles,
       settleMs,
-      // Same symbol all panels — matches PO session; distinct rotation was under-reading.
-      fileIdsForCycle: () => [primaryFileId, primaryFileId, primaryFileId, primaryFileId],
+      // Residue is governed by distinct (symbol, timeframe) dataset count: four
+      // identical panels share one pipeline and under-read the PO's session.
+      fileIdsForCycle: () => fileIds.slice(0, 4),
+      datasetMode,
+      timeframes,
       poWorkload: true,
       playHoldMs: Number.isFinite(playHoldMs) && playHoldMs > 0 ? playHoldMs : 6_000,
       replaySpeed: 60,
@@ -1445,6 +1611,8 @@ async function runDeployedSession({
         deployedOrigin: origin,
         loginUrl: login.url,
         fileIds,
+        fileSymbols: fileChoice.symbols,
+        distinctSymbolsAvailable: fileChoice.distinctSymbols,
         primaryFileId,
         buildId: bootMeta.buildId,
         flagProbe: bootMeta.flags,
@@ -1462,6 +1630,8 @@ async function runDeployedSession({
         harnessUrl: url,
         disableFlags: (disableFlags || []).slice(),
         workerCensus: true,
+        datasetMode: datasetConfig?.mode || datasetMode,
+        distinctDatasets: datasetConfig?.minObservedDistinctDatasets ?? null,
         note: 'Deployed auth + PO workload (4 panels, indicators, order, live replay ×6). '
           + (poHandSample
             ? 'PO-hand default: baseline soft GC×1, hot cycle floors, ≥20s play, retain indicators, Worker census.'
@@ -1474,6 +1644,7 @@ async function runDeployedSession({
       poWorkload,
       poHandShape,
       workerCensus,
+      datasetConfig,
     };
   } finally {
     await browser.close().catch(() => {});
@@ -1488,6 +1659,8 @@ export async function runHeapCycleBrowserSession({
   disableFlags = [],
   poHandSample = null,
   playHoldMs = null,
+  datasetMode = HEAP_CYCLE_DATASET_MODE_DISTINCT,
+  timeframes = HEAP_CYCLE_DISTINCT_TIMEFRAMES,
 } = {}) {
   const puppeteer = await loadPuppeteer();
   if (surface === HEAP_CYCLE_SURFACE_THIN_HOST) {
@@ -1503,7 +1676,9 @@ export async function runHeapCycleBrowserSession({
       // Deployed defaults to PO-hand; explicit false opts out.
       poHandSample: poHandSample === null ? true : poHandSample === true,
       playHoldMs: Number.isFinite(playHoldMs) && playHoldMs > 0 ? playHoldMs : 6_000,
+      datasetMode,
+      timeframes,
     });
   }
-  return runDistV9Session({ cycles, timeoutMs, settleMs, puppeteer });
+  return runDistV9Session({ cycles, timeoutMs, settleMs, puppeteer, datasetMode, timeframes });
 }

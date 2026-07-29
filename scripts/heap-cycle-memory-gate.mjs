@@ -32,6 +32,8 @@ export function parseHeapCycleMemoryArgs(argv = process.argv.slice(2)) {
     requireBuild: null,
     poHandSample: null,
     playHoldMs: null,
+    datasetMode: null,
+    timeframes: null,
   };
   for (const arg of argv) {
     if (arg === '--fixture' || arg === '--gate01-fixture') {
@@ -46,6 +48,13 @@ export function parseHeapCycleMemoryArgs(argv = process.argv.slice(2)) {
       options.poHandSample = true;
     } else if (arg === '--no-po-hand-sample') {
       options.poHandSample = false;
+    } else if (arg.startsWith('--dataset-mode=')) {
+      options.datasetMode = arg.slice('--dataset-mode='.length).trim().toLowerCase();
+    } else if (arg.startsWith('--timeframes=')) {
+      options.timeframes = arg.slice('--timeframes='.length)
+        .split(',')
+        .map((t) => t.trim().toLowerCase())
+        .filter(Boolean);
     } else if (arg.startsWith('--play-hold-ms=')) {
       options.playHoldMs = Number(arg.slice('--play-hold-ms='.length));
     } else if (arg.startsWith('--timeout-ms=')) {
@@ -99,6 +108,8 @@ export async function runHeapCycleMemoryGate({
   requireBuild = null,
   poHandSample = false,
   playHoldMs = null,
+  datasetMode = null,
+  timeframes = null,
   runBrowser = null,
 } = {}) {
   const startedAt = new Date().toISOString();
@@ -117,6 +128,8 @@ export async function runHeapCycleMemoryGate({
         if (poHandSample !== null && poHandSample !== undefined) {
           browserOpts.poHandSample = poHandSample === true;
         }
+        if (datasetMode) browserOpts.datasetMode = datasetMode;
+        if (Array.isArray(timeframes) && timeframes.length) browserOpts.timeframes = timeframes;
         if (Number.isFinite(cycles) && cycles > 0) browserOpts.cycles = cycles;
         if (Number.isFinite(playHoldMs) && playHoldMs > 0) browserOpts.playHoldMs = playHoldMs;
         report = await browserRunner(browserOpts);
@@ -220,6 +233,8 @@ if (isMain) {
       requireBuild: options.requireBuild,
       poHandSample: options.poHandSample,
       playHoldMs: options.playHoldMs,
+      datasetMode: options.datasetMode,
+      timeframes: options.timeframes,
     });
   } catch (error) {
     report = {

@@ -126,10 +126,13 @@ export function poCpuAbProbeScript() {
       var raw = String(err.stack || '');
       var lines = raw.split('\\n').map(function (line) { return line.trim(); }).filter(Boolean);
       // Drop Error message + this wrapper frames; keep first 4 product frames.
+      // M20-Q6 wraps *every* scheduled callback for teardown inertness, so its
+      // frames must be skipped too or all stacks collapse into one bucket named
+      // after the shim instead of the product code that scheduled the work.
       var product = [];
       for (var i = 0; i < lines.length; i += 1) {
         var line = lines[i];
-        if (/po-cpu-ab-stack|poCpuAbProbe|stackKeyFromError|account\\(|wrap\\(|window\\.setTimeout|window\\.setInterval|window\\.requestAnimationFrame|nativeSetTimeout|nativeSetInterval|nativeRequestAnimationFrame/.test(line)) continue;
+        if (/po-cpu-ab-stack|poCpuAbProbe|stackKeyFromError|account\\(|wrap\\(|window\\.setTimeout|window\\.setInterval|window\\.requestAnimationFrame|nativeSetTimeout|nativeSetInterval|nativeRequestAnimationFrame|m20Q6InertableScheduledCallback|m20Q6TrackScheduler|m20Q6CapturedScheduler|m20Q6CaptureEffects/.test(line)) continue;
         if (/harness\\/host\\.html/.test(line) && !/chart\\.js|replay-system|drawing-tools|modules\\//.test(line)) continue;
         product.push(line.replace(/^at\\s+/, ''));
         if (product.length >= 4) break;
