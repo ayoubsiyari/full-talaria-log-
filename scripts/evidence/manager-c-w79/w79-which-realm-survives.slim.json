@@ -1,0 +1,91 @@
+{
+  "packet": "MANAGER-C-W79",
+  "tier": "MID",
+  "model": "author=MID (default); no TOP escalation required",
+  "assignment": "WHICH PEER REALM SURVIVES — name the panel whose realm is retained each cycle, so the failing teardown path is named.",
+  "answer": {
+    "verdict": "PANEL-B-EVERY-CYCLE",
+    "statement": "Panel B — the first peer — is retained on every cycle. C and D are retained only when they get far enough before the collapse; the youngest generation of C/D is still present at snapshot time and gone by the next cycle's snapshot, so they are collected lazily, B never.",
+    "measuredIn": "two independent 3-cycle deployed runs (control + worker-termination ablation), both distinct-dataset PO workload"
+  },
+  "method": {
+    "instrument": "REALM-TAG-V1 (new)",
+    "why": "A destroyed iframe's Window loses its URL in the heap snapshot: every dead peer realm reads as a bare 'Window [JSGlobalObject]' and cannot be told from any other. 12 such nodes at 3 cycles, only the live host keeps its origin. Identity had to be written in before teardown.",
+    "how": "After the PO workload is armed, each panel frame gets window.__TALARIA_REALM_TAG__ = 'REALMTAG|cycle=N|panel=X|host=..|file=..|tf=..|t=..'. A retained realm carries its own name into the snapshot.",
+    "cannotCauseRetention": "The realm's Window holds the string, not the reverse; a string cannot keep its own realm alive.",
+    "builtInControl": "The host realm is tagged too. The top page is never reloaded, so its tag is overwritten each cycle. Exactly 1 host tag survives in both runs — proof that overwritten tags do get collected, so a surviving tag means a surviving realm.",
+    "tagWriteRate": "4/4 panels tagged on every cycle of both runs"
+  },
+  "controlRun": {
+    "artifact": ".scratch-w79-tagged.{json,log}",
+    "cycles": 3,
+    "floorsMB": [105.37, 132.30, 151.09],
+    "floorDeltasMB": [26.93, 18.79],
+    "survivingTags": {
+      "cycle1": ["B"],
+      "cycle2": ["B", "C", "D"],
+      "cycle3": ["B"],
+      "host": ["cycle3/A only (control satisfied)"]
+    },
+    "reading": "B from all three cycles. C and D only from cycle 2 — the generation whose collapse immediately preceded a snapshot. Cycle 1's C/D are gone by the cycle-2 snapshot, cycle 3's C/D are absent at the cycle-3 snapshot."
+  },
+  "ablationRun": {
+    "artifact": ".scratch-w79-ablate.{json,log}",
+    "manipulation": "every Worker each panel realm created is terminate()d immediately before that realm's collapse (--ablate-terminate-workers)",
+    "terminatedPerCycle": [4, 3, 3],
+    "workersLiveAfter": 0,
+    "floorsMB": [103.60, 133.84, 154.70],
+    "floorDeltasMB": [30.24, 20.86],
+    "survivingTags": {
+      "cycle1": ["B"],
+      "cycle2": ["B", "C", "D"],
+      "cycle3": ["B", "C"]
+    },
+    "verdict": "WORKER-NOT-CAUSAL",
+    "reading": "Terminating the workers did not reduce the per-cycle floor delta (+30.24/+20.86 against the control's +26.93/+18.79, inside the ±2.73 MB/cycle run-to-run band from W76) and left panel B retained on all three cycles. terminate() is not the fix."
+  },
+  "discriminator": {
+    "correlation": "A peer realm is retained if and only if it holds an _indicatorWorkerSingleton — i.e. if and only if its indicator subsystem reached the point of creating a worker.",
+    "controlRun": "6 retained realms, 6 contexts holding _indicatorWorkerSingleton, mapped 6/6 to tagged realms: cycle3/A(HOST), cycle1/B, cycle2/B, cycle3/B, cycle2/C, cycle2/D",
+    "ablationRun": "7 retained realms, 7 singleton contexts, mapped 7/7: cycle3/A(HOST), cycle1/B, cycle2/B, cycle3/B, cycle2/C, cycle3/C, cycle2/D",
+    "negativeCases": "Every collected peer realm holds no singleton context. No retained realm lacks one. No exception in either run.",
+    "butNotTheAnchor": "The singleton and its Worker live INSIDE the realm, so they cannot anchor it from outside, and the ablation proves worker liveness is not what holds it. The correlation says the realm is retained because its indicator subsystem initialised, not because the worker is running.",
+    "retentionFrequencyFollowsPanelOrder": {
+      "control": { "B": "3/3", "C": "1/3", "D": "1/3" },
+      "ablation": { "B": "3/3", "C": "2/3", "D": "1/3" },
+      "reading": "Monotone in panel creation order, not in dataset identity — B(673), C(670), D(669) all differ in file and all share tf=1m. The likely distinguishing property is that the first peer reliably completes indicator initialisation before the collapse, and the later peers race it."
+    }
+  },
+  "candidatesFromDirector": {
+    "lastFocusedPanel": "NO — the manager's focusedPanelId is 'A' (the host) throughout; B is never the focused panel.",
+    "panelThatReceivedAnOrder": "NO — the PO workload places its order on the host chart (panel A).",
+    "panelHoldingTheIndicatorWorker": "PARTLY — all four panels create an indicator worker when they compute. Retention tracks having initialised the indicator subsystem, not holding a live worker; terminating the worker changes nothing."
+  },
+  "forManagerA": {
+    "teardownPathThatFails": "Panel realm release after indicator initialisation. The multichart collapse path destroys the iframe, but a realm whose indicator subsystem has initialised is never collected — B every cycle, C and D when they get there in time.",
+    "notTheFix": "worker.terminate() on teardown — measured, no effect on the rate",
+    "cost": "one retained realm per cycle = 20.87 MB of the 23.53 MB floor delta (W78), 89%"
+  },
+  "openNext": {
+    "namedButNotFound": "the out-of-realm reference itself. Inbound enumeration on the retained Window and NativeContext returns only intra-realm Blink internals (InternalNode, Viewport, Scheduler, CustomElementRegistry, HTMLDocument of the same dead realm) and the realm's own closures — a circular cluster with no product-side holder at 2 levels. The spanning tree's root path is the generic V8 (Eternal handles) → FunctionTemplateInfo → WeakMap chain, which is not a product reference.",
+    "oneLineFalsifier": "permute the dataset assignment (give B's file to D). If B still survives, retention is the panel slot / initialisation order, not the data."
+  },
+  "snapshotCeiling": {
+    "stated": "Runs held at 3 cycles, said out loud rather than silently truncated.",
+    "parsedThisPacket": ["control cycle2 308.3 MB", "control cycle3 336.7 MB", "ablation cycle2 308.9 MB", "ablation cycle3 356.8 MB"],
+    "fails": "6 cycles produces ~560 MB, above V8's max string length; the snapshot cannot be parsed at all.",
+    "mitigation": "--snapshot-out writes the raw buffer to disk so the parse happens out of the browser process, but the max-string-length ceiling still binds at 6 cycles."
+  },
+  "artifacts": {
+    "instrumentCode": [
+      "scripts/lib/heap-cycle-browser.mjs (tagPanelRealms, readActivePanel, terminatePanelWorkers)",
+      "scripts/heap-cycle-memory-gate.mjs (--ablate-terminate-workers)"
+    ],
+    "probes": [
+      ".scratch-w79-tags.mjs (read tags out of a snapshot)",
+      ".scratch-w79-singleton.mjs (map _indicatorWorkerSingleton contexts to tagged realms)",
+      ".scratch-w79-holders.mjs, .scratch-w79-native.mjs, .scratch-w79-frames.mjs (inbound-reference searches)"
+    ],
+    "tagReadouts": [".scratch-w79-tags-c2.json", ".scratch-w79-tags-c3.json", ".scratch-w79-tags-ablate.json"]
+  }
+}

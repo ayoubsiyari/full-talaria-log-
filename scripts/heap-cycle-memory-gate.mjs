@@ -37,6 +37,7 @@ export function parseHeapCycleMemoryArgs(argv = process.argv.slice(2)) {
     finalRetainerSnapshot: false,
     snapshotOutPath: null,
     steadyStateDiff: false,
+    ablateTerminateWorkers: false,
   };
   for (const arg of argv) {
     if (arg === '--fixture' || arg === '--gate01-fixture') {
@@ -56,6 +57,10 @@ export function parseHeapCycleMemoryArgs(argv = process.argv.slice(2)) {
     } else if (arg.startsWith('--snapshot-out=')) {
       options.snapshotOutPath = path.resolve(arg.slice('--snapshot-out='.length));
       options.finalRetainerSnapshot = true;
+    } else if (arg === '--ablate-terminate-workers') {
+      // Experiment: terminate panel workers before collapse to test whether the
+      // unterminated indicator Worker is what pins the retained realm.
+      options.ablateTerminateWorkers = true;
     } else if (arg === '--steady-state-diff') {
       // Snapshot the last two collapsed states instead of baseline-vs-final, so
       // per-cycle growth is not inflated by the one-time realm warm-up.
@@ -125,6 +130,7 @@ export async function runHeapCycleMemoryGate({
   finalRetainerSnapshot = false,
   snapshotOutPath = null,
   steadyStateDiff = false,
+  ablateTerminateWorkers = false,
   runBrowser = null,
 } = {}) {
   const startedAt = new Date().toISOString();
@@ -148,6 +154,7 @@ export async function runHeapCycleMemoryGate({
         if (finalRetainerSnapshot) browserOpts.finalRetainerSnapshot = true;
         if (snapshotOutPath) browserOpts.snapshotOutPath = snapshotOutPath;
         if (steadyStateDiff) browserOpts.steadyStateDiff = true;
+        if (ablateTerminateWorkers) browserOpts.ablateTerminateWorkers = true;
         if (Number.isFinite(cycles) && cycles > 0) browserOpts.cycles = cycles;
         if (Number.isFinite(playHoldMs) && playHoldMs > 0) browserOpts.playHoldMs = playHoldMs;
         report = await browserRunner(browserOpts);
@@ -256,6 +263,7 @@ if (isMain) {
       finalRetainerSnapshot: options.finalRetainerSnapshot,
       snapshotOutPath: options.snapshotOutPath,
       steadyStateDiff: options.steadyStateDiff,
+      ablateTerminateWorkers: options.ablateTerminateWorkers,
     });
   } catch (error) {
     report = {

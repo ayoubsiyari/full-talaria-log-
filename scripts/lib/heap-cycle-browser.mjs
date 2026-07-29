@@ -515,6 +515,93 @@ async function applyHostDataset(page, { fileId, timeframe }) {
  * Host A is driven first: with Interval sync on, a host timeframe pick fans out
  * to every peer, so the per-panel sets must land after it to survive.
  */
+/**
+ * Write a unique identity string into each panel realm's global.
+ *
+ * A destroyed iframe's Window loses its URL in the heap snapshot, so every dead
+ * realm reads as a bare `Window [JSGlobalObject]` and cannot be told apart. The
+ * tag survives inside whichever realm is retained and names it.
+ *
+ * The tag cannot itself cause retention: the realm's window holds the string,
+ * not the other way round. The host realm is tagged too, and because the top
+ * page is never reloaded its tag is overwritten each cycle — so exactly one
+ * host tag surviving is a control showing overwritten tags do get collected.
+ */
+/**
+ * Diagnostic ablation: terminate every Worker a panel realm created, just
+ * before that realm is torn down.
+ *
+ * A Worker that is never terminated keeps its owning realm's context alive, so
+ * if the retained realms are retained *because* of their indicator Worker, this
+ * should drive the per-cycle floor delta to ~0. It is an experiment, not a fix —
+ * the product fix belongs in the panel teardown path.
+ */
+async function terminatePanelWorkers(page, cycle) {
+  const results = [];
+  for (const panelId of HEAP_CYCLE_PANEL_IDS) {
+    const target = panelTarget(page, panelId);
+    if (!target) continue;
+    const n = await target.evaluate(() => {
+      const state = window.__TALARIA_HEAP_CYCLE_WORKER_CENSUS__;
+      if (!state || !state.live) return { terminated: 0, reason: 'no census in frame' };
+      let terminated = 0;
+      for (const worker of [...state.live]) {
+        try {
+          worker.terminate();
+          terminated += 1;
+        } catch (_) { /* already gone */ }
+      }
+      return { terminated, remaining: state.live.size };
+    }).catch((error) => ({ terminated: 0, reason: String(error?.message || error) }));
+    results.push({ panelId, ...n });
+  }
+  const total = results.reduce((s, r) => s + (r.terminated || 0), 0);
+  logHeapCycle(`cycle ${cycle}: ABLATION terminated ${total} panel workers before collapse`);
+  return { cycle, total, results };
+}
+
+/** Which panel the manager considers focused — one of the survivor candidates. */
+async function readActivePanel(page) {
+  return page.evaluate(() => {
+    const mgr = window.__multichartManagerRef || window.__harnessManager;
+    if (!mgr) return { focusedPanelId: null, reason: 'no manager' };
+    let gridFocus = null;
+    try {
+      const grid = mgr.grid;
+      if (grid && typeof grid.getFocusedPanelId === 'function') gridFocus = grid.getFocusedPanelId();
+    } catch (_) { /* grid may be mid-teardown */ }
+    return {
+      focusedPanelId: mgr.focusedPanelId ?? null,
+      gridFocusedPanelId: gridFocus,
+    };
+  }).catch((error) => ({ focusedPanelId: null, reason: String(error?.message || error) }));
+}
+
+async function tagPanelRealms(page, cycle, observedRows = []) {
+  const byPanel = new Map(observedRows.map((r) => [r.panelId, r]));
+  const tags = [];
+  for (const panelId of HEAP_CYCLE_PANEL_IDS) {
+    const target = panelTarget(page, panelId);
+    if (!target) continue;
+    const row = byPanel.get(panelId) || {};
+    const tag = `REALMTAG|cycle=${cycle}|panel=${panelId}|host=${panelId === 'A'}`
+      + `|file=${row.fileId ?? 'na'}|tf=${row.timeframe ?? 'na'}|t=${Date.now()}`;
+    const ok = await target.evaluate((value) => {
+      try {
+        window.__TALARIA_REALM_TAG__ = value;
+        return window.__TALARIA_REALM_TAG__ === value;
+      } catch (_) {
+        return false;
+      }
+    }, tag).catch(() => false);
+    tags.push({ panelId, tag, ok });
+  }
+  logHeapCycle(
+    `cycle ${cycle}: realm tags written ${tags.filter((t) => t.ok).length}/${tags.length}`,
+  );
+  return tags;
+}
+
 async function applyDatasetPlan(page, plan, { settleMs = 800, timeoutMs = 45_000 } = {}) {
   const hostPlan = plan.panels.find((p) => p.panelId === 'A');
   if (hostPlan) await applyHostDataset(page, hostPlan);
@@ -746,6 +833,8 @@ async function runDistV9Session({
     const {
       growthCensus,
       steadyStateCensus,
+      realmTags,
+      workerAblations,
       retainerPaths,
       baselineOut,
       cycleRows,
@@ -785,6 +874,8 @@ async function runDistV9Session({
       cycles: cycleRows,
       growthCensus,
       steadyStateCensus,
+      realmTags,
+      workerAblations,
       retainerPaths,
       poWorkload,
       poHandShape,
@@ -825,6 +916,8 @@ async function runMultichartCycles({
   snapshotOutPath = null,
   /** Snapshot the last two collapsed states so per-cycle growth excludes warm-up. */
   steadyStateDiff = false,
+  /** Ablation: terminate panel workers before each collapse. */
+  ablateTerminateWorkers = false,
 } = {}) {
   // PO workload: CDP heap snapshots grow past V8's ~512MB string limit and also
   // detach the React shell mid-run. Floor calibration uses usedJSHeapSize only.
@@ -836,6 +929,9 @@ async function runMultichartCycles({
   );
   /** @type {{cycle:number,usedJSHeapSize:number|null,aggregates:Map|null}[]} */
   const steadyStateSamples = [];
+  /** Realm identity tags per cycle, so a retained realm can name itself. */
+  const realmTags = [];
+  const workerAblations = [];
   const effectivePlayHold = poHandSample
     ? Math.max(playHoldMs, 20_000)
     : playHoldMs;
@@ -945,6 +1041,12 @@ async function runMultichartCycles({
         );
       }
       logHeapCycle(`cycle ${index + 1}: PO workload armed playing=${workload.observedPlaying}`);
+      // Tag after arming so the tag records the fully-armed identity of each realm.
+      realmTags.push({
+        cycle: index + 1,
+        tags: await tagPanelRealms(page, index + 1, datasetConfig?.observed || []),
+        activePanel: await readActivePanel(page),
+      });
     } else {
       await sleep(settleMs);
     }
@@ -957,6 +1059,9 @@ async function runMultichartCycles({
     });
     const workersAtPeak = await pushWorkerSnap(`cycle${index + 1}-fourPeak`);
 
+    if (ablateTerminateWorkers) {
+      workerAblations.push(await terminatePanelWorkers(page, index + 1));
+    }
     logHeapCycle(`cycle ${index + 1}: collapse to single`);
     try {
       await applyDistV9LayoutViaUi(page, 1, 0);
@@ -1282,6 +1387,8 @@ async function runMultichartCycles({
   return {
     growthCensus,
     steadyStateCensus,
+    realmTags,
+    workerAblations,
     retainerPaths,
     baselineOut,
     cycleRows,
@@ -1554,6 +1661,7 @@ async function runDeployedSession({
   finalRetainerSnapshot = false,
   snapshotOutPath = null,
   steadyStateDiff = false,
+  ablateTerminateWorkers = false,
 }) {
   const email = String(process.env.TEST_EMAIL || process.env.L2_M1_TEST_EMAIL || '').trim();
   const password = String(process.env.TEST_PASSWORD || process.env.L2_M1_TEST_PASSWORD || '').trim();
@@ -1708,6 +1816,8 @@ async function runDeployedSession({
     const {
       growthCensus,
       steadyStateCensus,
+      realmTags,
+      workerAblations,
       retainerPaths,
       baselineOut,
       cycleRows,
@@ -1730,6 +1840,7 @@ async function runDeployedSession({
       finalRetainerSnapshot,
       snapshotOutPath,
       steadyStateDiff,
+      ablateTerminateWorkers,
       poWorkload: true,
       playHoldMs: Number.isFinite(playHoldMs) && playHoldMs > 0 ? playHoldMs : 6_000,
       replaySpeed: 60,
@@ -1778,6 +1889,8 @@ async function runDeployedSession({
       cycles: cycleRows,
       growthCensus,
       steadyStateCensus,
+      realmTags,
+      workerAblations,
       retainerPaths,
       poWorkload,
       poHandShape,
@@ -1802,6 +1915,7 @@ export async function runHeapCycleBrowserSession({
   finalRetainerSnapshot = false,
   snapshotOutPath = null,
   steadyStateDiff = false,
+  ablateTerminateWorkers = false,
 } = {}) {
   const puppeteer = await loadPuppeteer();
   if (surface === HEAP_CYCLE_SURFACE_THIN_HOST) {
@@ -1822,6 +1936,7 @@ export async function runHeapCycleBrowserSession({
       finalRetainerSnapshot,
       snapshotOutPath,
       steadyStateDiff,
+      ablateTerminateWorkers,
     });
   }
   return runDistV9Session({ cycles, timeoutMs, settleMs, puppeteer, datasetMode, timeframes });
