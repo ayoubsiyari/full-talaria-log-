@@ -812,7 +812,12 @@ const MC_DIAG_COUNTER_FIELDS = [
     'replayTicks',
     'fullResamples',
     'incrementalResamples',
+    // `renders` counts every render() entry and has meant that since it was
+    // introduced. FIX 1's paint throttle must NOT narrow it to "frames that
+    // painted", or no cadence number recorded before FIX 1 is comparable with
+    // any number recorded after it. Suppressed frames get their own counter.
     'renders',
+    'backgroundPaintsSuppressed',
     'seams',
     'ownerFetches',
     'ownerBars',
@@ -825,6 +830,14 @@ const M20_Q9_MCDIAG_COUNTER_FIELDS = new Set([
     'replayTicks',
     'fullResamples',
 ]);
+
+const MC_BACKGROUND_RENDER_CADENCE_DISABLE_SWITCH = '__TALARIA_DISABLE_MC_BACKGROUND_RENDER_CADENCE_V1';
+
+// Frames a background panel keeps re-checking focus after a local pointer/focus
+// event before it gives up on the catch-up paint. The parent only learns about the
+// click via a setTimeout(0) postMessage and then a React commit, so focus lands
+// several frames later; ~1s at 60Hz is generous and still bounded.
+const MC_BACKGROUND_RENDER_CATCHUP_FRAME_BUDGET = 60;
 
 function _talariaM20Q9McDiagCountersDisabled() {
     try {
@@ -1233,6 +1246,16 @@ class Chart {
         this._sharedBarStoreFileRefs = new Set();
         this._sharedBarStoreReleaseUnloadHandler = null;
         this._installSharedBarStoreReleaseHook();
+        this._mcBackgroundRenderDirty = false;
+        this._mcBackgroundRenderCatchupListenerInstalled = false;
+        this._mcBackgroundRenderCatchupHandler = null;
+        /** Document the capture listeners were registered on (removal target). */
+        this._mcBackgroundRenderCatchupListenerTarget = null;
+        this._mcBackgroundRenderCatchupReleaseHandler = null;
+        this._mcBackgroundRenderCatchupFrames = 0;
+        /** Set by resize(): the backing store was cleared, so one paint must escape. */
+        this._mcRepaintAfterSurfaceReset = false;
+        this._installMultichartBackgroundRenderCatchupListener();
         /** Coalesce high-frequency pan sync broadcasts to ~1/frame. */
         this._scrollSyncRaf = null;
         this._lastScrollSyncAt = 0;
@@ -2633,6 +2656,7 @@ class Chart {
             fullResamples: 0,
             incrementalResamples: 0,
             renders: 0,
+            backgroundPaintsSuppressed: 0,
             seams: 0,
             ownerFetches: 0,
             ownerBars: 0,
@@ -2878,6 +2902,183 @@ class Chart {
             }
         } catch (_e) { /* ignore */ }
         return null;
+    }
+
+    // Truthiness, not `=== true`, to match every sibling kill switch in this file.
+    // Own realm first, then the parent window, so a host-only set reaches an iframe
+    // panel. Read per call — never sampled at init — so the switch round-trips live.
+    _isMultichartBackgroundRenderCadenceDisabled() {
+        try {
+            if (typeof window === 'undefined') return false;
+            if (window[MC_BACKGROUND_RENDER_CADENCE_DISABLE_SWITCH]) return true;
+            const host = window.parent && window.parent !== window ? window.parent : null;
+            return !!(host && host[MC_BACKGROUND_RENDER_CADENCE_DISABLE_SWITCH]);
+        } catch (_e) {
+            return false;
+        }
+    }
+
+    _getMultichartHostWindowForFocus() {
+        try {
+            if (typeof window === 'undefined') return null;
+            if (window.parent && window.parent !== window) return window.parent;
+            return window;
+        } catch (_e) {
+            return null;
+        }
+    }
+
+    _getFocusedMultichartPanelId() {
+        const host = this._getMultichartHostWindowForFocus();
+        if (!host) return null;
+        try {
+            const grid = host.__multichartGrid;
+            if (grid && typeof grid.getFocusedPanelId === 'function') {
+                const id = grid.getFocusedPanelId();
+                if (id != null && id !== '') return String(id);
+            }
+            if (grid && grid.focusedPanelId != null && grid.focusedPanelId !== '') {
+                return String(grid.focusedPanelId);
+            }
+        } catch (_e) { /* ignore */ }
+        try {
+            const mgr = host.__multichartManagerRef || host.__harnessManager || host.__mcManager;
+            if (mgr && mgr.focusedPanelId != null && mgr.focusedPanelId !== '') {
+                return String(mgr.focusedPanelId);
+            }
+        } catch (_e) { /* ignore */ }
+        return null;
+    }
+
+    // TRUE => this panel is in the background and render() must skip DRAWING for
+    // this frame. It must never be read as "skip the frame": the frame's state is
+    // still computed, or a background panel holds stale scales and time ticks while
+    // the focused panel advances. See the paint boundary in render().
+    _shouldSkipMultichartBackgroundRender() {
+        if (this._isMultichartBackgroundRenderCadenceDisabled()) return false;
+        const ownId = this._getMultichartPanelId();
+        if (!ownId) return false;
+        const focusedId = this._getFocusedMultichartPanelId();
+        if (!focusedId) return false;
+        if (String(ownId) === String(focusedId)) return false;
+        return this._isLiveMultichartPanelId(focusedId);
+    }
+
+    /**
+     * TRUE when `id` is a panel the grid currently has mounted.
+     *
+     * Nothing resets focusedPanelId when the focused tile goes away (layout shrink,
+     * tile close), and every surviving tile — the host included — would then see
+     * ownId !== focusedId and freeze forever, with no way back except clicking a tile
+     * body. A focus id matching no live panel is not a focus at all. Unknown counts as
+     * live (no grid / no getPanelIds / empty list), so this can only ever UNDO
+     * suppression, never create it.
+     */
+    _isLiveMultichartPanelId(id) {
+        try {
+            const host = this._getMultichartHostWindowForFocus();
+            const grid = host && host.__multichartGrid;
+            if (!grid || typeof grid.getPanelIds !== 'function') return true;
+            const ids = grid.getPanelIds();
+            if (!Array.isArray(ids) || ids.length === 0) return true;
+            const wanted = String(id);
+            for (const pid of ids) {
+                if (String(pid) === wanted) return true;
+            }
+            return false;
+        } catch (_e) {
+            return true;
+        }
+    }
+
+    // FLAG-02: install unconditionally and gate only the EFFECT. Installing behind
+    // the kill switch would mean a boot with the switch on could never reach the
+    // throttled behaviour after the switch is deleted, without a reload.
+    _installMultichartBackgroundRenderCatchupListener() {
+        if (this._mcBackgroundRenderCatchupListenerInstalled) return;
+        this._mcBackgroundRenderCatchupListenerInstalled = true;
+        if (typeof document === 'undefined' || typeof document.addEventListener !== 'function') return;
+        const self = this;
+        this._mcBackgroundRenderCatchupHandler = function mcBackgroundRenderCatchupFromFocus() {
+            self._requestMultichartBackgroundRenderCatchup();
+        };
+        try {
+            document.addEventListener('pointerdown', this._mcBackgroundRenderCatchupHandler, { capture: true, passive: true });
+            document.addEventListener('mousedown', this._mcBackgroundRenderCatchupHandler, { capture: true, passive: true });
+            document.addEventListener('focusin', this._mcBackgroundRenderCatchupHandler, { capture: true, passive: true });
+            this._mcBackgroundRenderCatchupListenerTarget = document;
+        } catch (_e) { /* ignore */ }
+        this._installMultichartBackgroundRenderCatchupReleaseHook();
+    }
+
+    // Chart has no destroy(); a multichart panel is just an iframe removed from the
+    // DOM. `pagehide` on the panel's OWN window is the event that actually fires in
+    // that case — `unload` does not. Same pattern as
+    // _installSharedBarStoreReleaseHook(), which was verified in a real browser.
+    _installMultichartBackgroundRenderCatchupReleaseHook() {
+        try {
+            if (typeof window === 'undefined') return;
+            if (this._mcBackgroundRenderCatchupReleaseHandler) return;
+            if (typeof window.addEventListener !== 'function') return;
+            const self = this;
+            this._mcBackgroundRenderCatchupReleaseHandler = function mcBackgroundRenderCatchupReleaseOnPagehide(ev) {
+                if (ev && ev.persisted === true) return;
+                self._releaseMultichartBackgroundRenderCatchupListener();
+            };
+            window.addEventListener('pagehide', this._mcBackgroundRenderCatchupReleaseHandler);
+        } catch (_e) { /* ignore */ }
+    }
+
+    _releaseMultichartBackgroundRenderCatchupListener() {
+        const target = this._mcBackgroundRenderCatchupListenerTarget;
+        const handler = this._mcBackgroundRenderCatchupHandler;
+        if (target && handler && typeof target.removeEventListener === 'function') {
+            try {
+                target.removeEventListener('pointerdown', handler, { capture: true });
+                target.removeEventListener('mousedown', handler, { capture: true });
+                target.removeEventListener('focusin', handler, { capture: true });
+            } catch (_e) { /* ignore */ }
+        }
+        this._mcBackgroundRenderCatchupListenerTarget = null;
+        this._mcBackgroundRenderCatchupHandler = null;
+        this._mcBackgroundRenderCatchupFrames = 0;
+        try {
+            if (typeof window !== 'undefined'
+                && this._mcBackgroundRenderCatchupReleaseHandler
+                && typeof window.removeEventListener === 'function') {
+                window.removeEventListener('pagehide', this._mcBackgroundRenderCatchupReleaseHandler);
+            }
+        } catch (_e) { /* ignore */ }
+        this._mcBackgroundRenderCatchupReleaseHandler = null;
+    }
+
+    // ARM ONLY — deliberately does not paint.
+    //
+    // panel-cmd-bridge.js posts `panel-focus` to the parent on a setTimeout(0), and
+    // these are capture-phase listeners, so this runs FIRST: the parent still
+    // reports the panel the user just left. Painting here would paint a panel that
+    // is still in the background, which is the exact work FIX 1 exists to avoid.
+    // Arm a bounded frame budget instead and let animate() paint on the first frame
+    // where focus has actually landed on us.
+    _requestMultichartBackgroundRenderCatchup() {
+        try {
+            if (!this._getMultichartPanelId()) return;
+        } catch (_e) {
+            return;
+        }
+        this._mcBackgroundRenderCatchupFrames = MC_BACKGROUND_RENDER_CATCHUP_FRAME_BUDGET;
+    }
+
+    // Driven by the rAF loop that already runs, so there is no timer to own or leak.
+    _tickMultichartBackgroundRenderCatchup() {
+        const budget = this._mcBackgroundRenderCatchupFrames | 0;
+        if (budget <= 0) return;
+        this._mcBackgroundRenderCatchupFrames = budget - 1;
+        if (!this._mcBackgroundRenderDirty) return;
+        // Still in the background: keep waiting for focus rather than painting early.
+        if (this._shouldSkipMultichartBackgroundRender()) return;
+        this._mcBackgroundRenderCatchupFrames = 0;
+        this.render();
     }
 
     /**
@@ -18851,6 +19052,12 @@ class Chart {
 
         this._lastResizeDpr = dpr;
 
+        // FIX 1: the canvas.width / canvas.height assignments below reset the backing
+        // store, which CLEARS it. A background multichart panel whose paint is
+        // suppressed would be left blank, so re-arm one unsuppressed paint; the
+        // this.render() at the end of this method spends it.
+        this._mcRepaintAfterSurfaceReset = true;
+
         // Multichart host: remember which bar sits at the right axis BEFORE the
         // width changes. A layout/splitter resize otherwise runs the pixel-based
         // right-edge nudge below, which drifts and shifts panel A out of
@@ -28917,6 +29124,11 @@ class Chart {
             }
         }
 
+        // FIX 1: a background panel the user just clicked repaints from here, on the
+        // first frame where the parent actually reports us as focused. The click
+        // itself cannot do it — see _requestMultichartBackgroundRenderCatchup().
+        this._tickMultichartBackgroundRenderCatchup();
+
         // Keep bar-close countdown on the price axis ticking (TradingView-style).
         // Multichart embed panels are PASSIVE mirrors of host tile A — the host
         // drives the playhead and they only repaint on incoming frames. Running
@@ -28951,11 +29163,41 @@ class Chart {
     }
 
     render() {
+        this._frameDisplaySeries = null;
+
+        // ── FIX 1: PAINT-ONLY throttle for background multichart panels ──────────
+        //
+        // This must not short-circuit render(). A backgrounded panel still computes
+        // the entire frame — calculateScales(), the _timeTicks rebuild and its
+        // caches, the adaptive price-axis margin, visible-bar resolution — because
+        // that state is read from outside render(): order-manager.js and
+        // chart-indicators-full.js both call calculateScales() and read
+        // getDisplaySeries(), and _timeTicks is render-built, so a panel that
+        // skipped the frame would hold a stale time axis while the focused panel
+        // advanced. Only the drawing below the paint boundary is suppressed.
+        //
+        // FIRST-PAINT ESCAPE (load-bearing): `focusedPanelId` starts on the host tile
+        // and is only ever written by a pointerdown, so every other tile counts as a
+        // background panel from birth. Suppressing its FIRST paint too leaves it a
+        // blank canvas until the user clicks it. A panel therefore keeps painting
+        // until it has drawn data once, and re-arms whenever resize() rebuilds the
+        // backing store — assigning canvas.width clears the bitmap, and a suppressed
+        // panel would never redraw what was just wiped.
+        const mcFirstPaintPending = !this.hasRenderedData || this._mcRepaintAfterSurfaceReset === true;
+        const mcPaintSuppressed = !mcFirstPaintPending && this._shouldSkipMultichartBackgroundRender();
+        // `renders` keeps counting every render() entry — see MC_DIAG_COUNTER_FIELDS.
         this._mcDiag && this._mcDiag.renders++;
+        if (mcPaintSuppressed) {
+            this._mcBackgroundRenderDirty = true;
+            this._mcDiag && this._mcDiag.backgroundPaintsSuppressed++;
+        } else if (this._mcBackgroundRenderDirty) {
+            this._mcBackgroundRenderDirty = false;
+        }
         if (this.isLoading && !this._canBypassLoadingRenderFreeze()) {
             // Tab discard / slow load can wipe the canvas while isLoading is still true.
             // Paint a loading placeholder instead of leaving a blank white pane.
-            if ((!this.data || this.data.length === 0)
+            if (!mcPaintSuppressed
+                && (!this.data || this.data.length === 0)
                 && this.w >= 200 && this.h >= 150
                 && typeof this._paintEmptyChartPlaceholder === 'function') {
                 try { this._paintEmptyChartPlaceholder(); } catch (_) { /* ignore */ }
@@ -28972,7 +29214,8 @@ class Chart {
         // committed and the currentTimeframe matches the destination TF.
         if ((this._timeframeSwitching || this._pairSwitchLoading)
             && !this._canBypassDataSwitchRenderFreeze()) {
-            if ((!this.data || this.data.length === 0)
+            if (!mcPaintSuppressed
+                && (!this.data || this.data.length === 0)
                 && this.w >= 200 && this.h >= 150
                 && typeof this._paintEmptyChartPlaceholder === 'function') {
                 const parent = this.canvas && this.canvas.parentElement;
@@ -28985,24 +29228,27 @@ class Chart {
             return;
         }
 
-        this._frameDisplaySeries = null;
-        
         // Ensure minimum dimensions to prevent rendering issues
         if (this.w < 200 || this.h < 150) {
             // Chart is too small to render properly
-            this.ctx.clearRect(0, 0, this.w, this.h);
-            this.ctx.fillStyle = '#050028';
-            this.ctx.fillRect(0, 0, this.w, this.h);
-            // Show message for very small size
-            this.ctx.fillStyle = '#787b86';
-            this.ctx.font = '12px Roboto';
-            this.ctx.textAlign = 'center';
-            this.ctx.fillText('Chart too small', this.w / 2, this.h / 2);
+            if (!mcPaintSuppressed) {
+                this.ctx.clearRect(0, 0, this.w, this.h);
+                this.ctx.fillStyle = '#050028';
+                this.ctx.fillRect(0, 0, this.w, this.h);
+                // Show message for very small size
+                this.ctx.fillStyle = '#787b86';
+                this.ctx.font = '12px Roboto';
+                this.ctx.textAlign = 'center';
+                this.ctx.fillText('Chart too small', this.w / 2, this.h / 2);
+            }
             return;
         }
         
-        // Clear canvas
-        this.ctx.clearRect(0, 0, this.w, this.h);
+        // Clear canvas. Load-bearing under suppression: clearing and then not
+        // redrawing would blank the background panel instead of freezing it.
+        if (!mcPaintSuppressed) {
+            this.ctx.clearRect(0, 0, this.w, this.h);
+        }
         
         const chartViewPanning = this._isChartViewPanning();
         const axisZoomDragging = this._isAxisZoomDragging() && !this._axisZoomFinalizePass;
@@ -29010,7 +29256,7 @@ class Chart {
 
         // If no data: session/file loads → "Loading chart…"; idle → CSV prompt
         if (!this.data || this.data.length === 0) {
-            this._paintEmptyChartPlaceholder();
+            if (!mcPaintSuppressed) this._paintEmptyChartPlaceholder();
             return;
         }
         try {
@@ -29027,8 +29273,12 @@ class Chart {
         if (typeof this._syncAdaptivePriceAxisMargin === 'function' && !skipHeavyChrome) {
             this._syncAdaptivePriceAxisMargin();
         }
+        // NO margin-floor hoist here: _syncAdaptivePriceAxisMargin() already enforces
+        // the floor on both of its exit paths, so a suppressed panel gets it above the
+        // paint boundary anyway. Hoisting it would also fire under skipHeavyChrome,
+        // where pre-FIX-1 single-chart never ran it.
         // Keep separate-panel stack opaque even during lite pan (prevents candle bleed + legend drift).
-        if (typeof this._paintSeparatePanelStackBackground === 'function') {
+        if (!mcPaintSuppressed && typeof this._paintSeparatePanelStackBackground === 'function') {
             this._paintSeparatePanelStackBackground();
         }
 
@@ -29096,12 +29346,13 @@ class Chart {
         
         // Better check: Only show empty placeholder if we truly have no data
         if (visible.length === 0 && this.data.length === 0) {
-            this._paintEmptyChartPlaceholder();
+            if (!mcPaintSuppressed) this._paintEmptyChartPlaceholder();
             return;
         }
         
         // If we have data but chart is scrolled beyond visible range
         if (visible.length === 0 && this.data.length > 0) {
+            if (mcPaintSuppressed) return;
             // Still draw grid, axes, and drawings even when no candles are visible
             // This ensures drawings remain visible when scrolling past chart edges
             this.drawGrid();
@@ -29133,6 +29384,18 @@ class Chart {
         if (!this.hasRenderedData) {
             this.hasRenderedData = true;
         }
+        // The post-resize escape is spent only on a frame that reaches the paint
+        // below; a suppressed frame must never consume it.
+        if (this._mcRepaintAfterSurfaceReset === true && !mcPaintSuppressed) {
+            this._mcRepaintAfterSurfaceReset = false;
+        }
+
+        // ── FIX 1 PAINT BOUNDARY ─────────────────────────────────────────────────
+        // Everything ABOVE this line computes frame state and runs on every panel,
+        // focused or not. Everything BELOW draws to the canvas or positions DOM/SVG
+        // overlays, and is what a background panel skips. Nothing below may mutate
+        // state that a later frame — or an external caller — depends on.
+        if (mcPaintSuppressed) return;
 
         // Fast path while panning, wheel-zooming, or axis-dragging: LOD candles + skip heavy overlays.
         if (interactionFast) {
@@ -30788,6 +31051,12 @@ class Chart {
         const isEmbedPanel = typeof this._isMultichartEmbedPanel === 'function'
             && this._isMultichartEmbedPanel();
         if (isEmbedPanel) return;
+        // FIX 1: the HOST tile is not an embed panel, so the guard above misses it.
+        // With focus on another tile the host's render() paint is suppressed while
+        // this countdown would keep region-painting drawCurrentPriceLabel() onto the
+        // frozen canvas — a moving badge on a stale frame.
+        if (typeof this._shouldSkipMultichartBackgroundRender === 'function'
+            && this._shouldSkipMultichartBackgroundRender()) return;
         if (!this.chartSettings || this.chartSettings.showCountdownToBarClose === false) return;
         const now = Number.isFinite(nowCd) ? nowCd : performance.now();
         if (this._lastCountdownRender && now - this._lastCountdownRender <= 1000) return;
