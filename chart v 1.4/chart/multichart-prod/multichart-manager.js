@@ -63,6 +63,15 @@
         }
     }
 
+    /** PURGE-1: removeChart releases manager-held panel references. Default ON by absent property. */
+    function mcPanelStatePurgeV1Enabled() {
+        try {
+            return !(global && global.__TALARIA_DISABLE_MC_PANEL_STATE_PURGE_V1);
+        } catch (_) {
+            return true;
+        }
+    }
+
     /** panel-cmd `loadFile` / heavy ops: iframes may still be parsing dist-v9 after bridge-ready. */
     var PANEL_CMD_TIMEOUT_MS = 25000;
 
@@ -378,12 +387,38 @@
         } catch (_) {}
     }
 
-    function scheduleIframeBrandSuppression(frame) {
+    function mcPanelEntryStillLive(entry) {
+        if (!entry || entry._mcPanelRemoved) return false;
+        var frame = null;
+        try { frame = entry.frame; } catch (_) { return false; }
+        if (!frame) return false;
+        try {
+            if (frame.isConnected === false) return false;
+        } catch (_) {}
+        return true;
+    }
+
+    function scheduleIframeBrandSuppression(frame, entry) {
         if (!frame) return;
         var n = 0;
-        var tick = function () {
+        var tick = function (activeHandle) {
+            if (entry && activeHandle && Array.isArray(entry._mcBrandSuppressionTimers)) {
+                var activeIdx = entry._mcBrandSuppressionTimers.indexOf(activeHandle);
+                if (activeIdx >= 0) entry._mcBrandSuppressionTimers.splice(activeIdx, 1);
+            }
+            if (mcPanelStatePurgeV1Enabled() && !mcPanelEntryStillLive(entry)) {
+                return;
+            }
             suppressIframeChartBrand(frame);
-            if (++n < 48) setTimeout(tick, 250);
+            if (++n < 48) {
+                if (mcPanelStatePurgeV1Enabled() && !mcPanelEntryStillLive(entry)) {
+                    return;
+                }
+                var handle = setTimeout(function () { tick(handle); }, 250);
+                if (entry && Array.isArray(entry._mcBrandSuppressionTimers)) {
+                    entry._mcBrandSuppressionTimers.push(handle);
+                }
+            }
         };
         tick();
     }
@@ -468,15 +503,36 @@
         // can push `window.chart` well past 5s after the iframe `load` event
         // even though init is still healthy — embed-bridge polls up to 30s.
         var BRIDGE_READY_TIMEOUT_MS = 30000;
-        frame.addEventListener('load', function () {
-            scheduleIframeBrandSuppression(frame);
+        const entry = {
+            id:      cfg.id,
+            cfg:     cfg,
+            frame:   frame,
+            overlay: overlay,
+            ready:   false,
+            state:   { symbol: '—', timeframe: cfg.tf, candleCount: 0 },
+            mountEl: mountEl,
+            _mcBrandSuppressionTimers: [],
+            _mcBridgeReadyTimeouts: [],
+            _mcFrameLoadListener: null,
+            _mcFrameErrorListener: null,
+            _mcPanelRemoved: false,
+        };
+        const onFrameLoad = function () {
+            scheduleIframeBrandSuppression(frame, entry);
             self._log('info', 'iframe loaded: ' + cfg.id + ' (waiting for bridge-ready…)');
             if (overlay) {
                 const small = overlay.querySelector('small');
                 if (small) small.textContent = 'iframe: LOADED — bridge: pending (up to '
                     + Math.round(BRIDGE_READY_TIMEOUT_MS / 1000) + 's)';
             }
-            setTimeout(function () {
+            if (mcPanelStatePurgeV1Enabled() && !mcPanelEntryStillLive(entry)) {
+                return;
+            }
+            var bridgeReadyTimeout = setTimeout(function () {
+                if (entry && Array.isArray(entry._mcBridgeReadyTimeouts)) {
+                    var idx = entry._mcBridgeReadyTimeouts.indexOf(bridgeReadyTimeout);
+                    if (idx >= 0) entry._mcBridgeReadyTimeouts.splice(idx, 1);
+                }
                 const c = self.charts.get(cfg.id);
                 if (c && !c.ready) {
                     const reason = 'bridge never reported ready within '
@@ -492,26 +548,23 @@
                     try { self.onChartBootFailed(cfg.id, reason, frame.src); } catch (_) {}
                 }
             }, BRIDGE_READY_TIMEOUT_MS);
-        });
-        frame.addEventListener('error', function () {
+            entry._mcBridgeReadyTimeouts.push(bridgeReadyTimeout);
+        };
+        const onFrameError = function () {
             self._log('error', 'iframe FAILED to load: ' + cfg.id + ' src=' + frame.src);
             if (overlay) {
                 const small = overlay.querySelector('small');
                 if (small) small.textContent = 'iframe: LOAD FAILED';
             }
             try { self.onChartBootFailed(cfg.id, 'iframe failed to load', frame.src); } catch (_) {}
-        });
+        };
+        entry._mcFrameLoadListener = onFrameLoad;
+        entry._mcFrameErrorListener = onFrameError;
+        frame.addEventListener('load', onFrameLoad);
+        frame.addEventListener('error', onFrameError);
         mountEl.appendChild(frame);
 
-        this.charts.set(cfg.id, {
-            id:      cfg.id,
-            cfg:     cfg,
-            frame:   frame,
-            overlay: overlay,
-            ready:   false,
-            state:   { symbol: '—', timeframe: cfg.tf, candleCount: 0 },
-            mountEl: mountEl,
-        });
+        this.charts.set(cfg.id, entry);
         this._log('info', 'addChart ' + cfg.id + ' (tf=' + (cfg.tf || '?') + ')');
     };
 
@@ -524,6 +577,33 @@
             this.charts.delete(id);
             this._log('info', 'removeChart ' + id + ' (host — DOM left intact)');
             return;
+        }
+        if (mcPanelStatePurgeV1Enabled()) {
+            try {
+                c._mcPanelRemoved = true;
+                if (Array.isArray(c._mcBrandSuppressionTimers)) {
+                    for (var bt = 0; bt < c._mcBrandSuppressionTimers.length; bt++) {
+                        try { clearTimeout(c._mcBrandSuppressionTimers[bt]); } catch (_) {}
+                    }
+                    c._mcBrandSuppressionTimers.length = 0;
+                }
+                if (Array.isArray(c._mcBridgeReadyTimeouts)) {
+                    for (var i = 0; i < c._mcBridgeReadyTimeouts.length; i++) {
+                        try { clearTimeout(c._mcBridgeReadyTimeouts[i]); } catch (_) {}
+                    }
+                    c._mcBridgeReadyTimeouts.length = 0;
+                }
+                var frame = null;
+                try { frame = c.frame; } catch (_) { frame = null; }
+                if (frame && c._mcFrameLoadListener) {
+                    try { frame.removeEventListener('load', c._mcFrameLoadListener); } catch (_) {}
+                    c._mcFrameLoadListener = null;
+                }
+                if (frame && c._mcFrameErrorListener) {
+                    try { frame.removeEventListener('error', c._mcFrameErrorListener); } catch (_) {}
+                    c._mcFrameErrorListener = null;
+                }
+            } catch (_) {}
         }
         try {
             const panelChart = c.frame && c.frame.contentWindow && c.frame.contentWindow.chart;
