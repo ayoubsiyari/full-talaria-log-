@@ -224,3 +224,12 @@
 - TOP review: tier=top reviewer model=claude-opus-5-thinking-high result=ACCEPT. Reviewer verified predicate scope matches `_resolveLivePreviewPanelPrices()`, open-position drags are untouched, mirrors match, RED/GREEN and full order sweeps pass. Strengthened test after review to prove idle placement reaches the next guard and both predicate clauses are covered separately.
 - RED: `TALARIA_TEST_DISABLE_ORDER_BLOCK_PLACE_DURING_PREVIEW_DRAG=1 node "chart v 1.4/chart/modules/order-block-place-during-preview-drag.test.mjs"` fails because preview drag does not block placement.
 - GREEN: canonical and homepage `order-block-place-during-preview-drag.test.mjs` pass; adjacent `order-risk-qty-live-preview-sl.test.mjs` and `order-cancel-before-confirm.test.mjs` pass.
+
+## 2026-07-29 — Cluster G / TAL-01699 coincident multi-TP hit rows
+
+- tier=mid author model=gpt-5.5; TOP review required before canary because this changes TP drag hit-testing.
+- Root cause found: this sibling is not another committed-input read site. Priced multi-TP preview rungs at the same visual price are drawn with identical line/hit-line Y, so the front rung can swallow drags and the stacked TP1/TP2 rungs cannot be separated.
+- Fix: coincident priced multi-TP preview rungs now get a small visual/hit-row Y offset behind `__TALARIA_DISABLE_ORDER_MULTI_TP_COINCIDENT_STACK_V1` (default ON). TP1 stays on the true price row; later coincident rungs offset only for interaction, and pan/zoom refresh preserves the offset.
+- TOP review: tier=top reviewer model=claude-opus-5-thinking-high result=ACCEPT. Reviewer verified RED/GREEN, full canonical/homepage order sweeps, mirror parity, kill-switch behavior, and the strengthened pan/zoom geometry assertion. Material residuals: dragging an offset rung converts the visual offset into a small real price delta until the rung separates; wiring from `updatePreviewLines()` to `drawPreviewLine()` is not directly mutation-covered; y-axis pill can jump on first refresh.
+- RED: `TALARIA_TEST_DISABLE_ORDER_MULTI_TP_COINCIDENT_STACK=1 node "chart v 1.4/chart/modules/order-multi-tp-coincident-stack.test.mjs"` fails because the second coincident rung offset is `0`.
+- GREEN: canonical and homepage `order-multi-tp-coincident-stack.test.mjs` pass, including pan/zoom line/hit-line/label geometry; adjacent `multi-tp-preview-drag-sync.test.mjs` and `order-preview-live-recalc.test.mjs` pass; full canonical/homepage `order-*.test.mjs` sweeps pass.

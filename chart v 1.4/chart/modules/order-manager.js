@@ -248,6 +248,11 @@ function _orderBlockPlaceDuringPreviewDragV1Enabled() {
     return typeof window === 'undefined' || !window.__TALARIA_DISABLE_ORDER_BLOCK_PLACE_DURING_PREVIEW_DRAG_V1;
 }
 
+/** Cluster G / TAL-01699: coincident multi-TP preview rungs must be separately hittable. */
+function _orderMultiTpCoincidentStackV1Enabled() {
+    return typeof window === 'undefined' || !window.__TALARIA_DISABLE_ORDER_MULTI_TP_COINCIDENT_STACK_V1;
+}
+
 /** Cluster G / TAL-01751: BE trigger keeps the preview/place anchor. */
 function _orderBePlaceAnchorV1Enabled() {
     return typeof window === 'undefined' || !window.__TALARIA_DISABLE_ORDER_BE_PLACE_ANCHOR_V1;
@@ -262,6 +267,7 @@ const ENTRY_STACK_OFFSET_PX = 16;
 const ORDER_CANCEL_PLACE_SUPPRESS_MS = 450;
 const ORDER_LINE_EDGE_VISIBILITY_PAD_PX = 24;
 const ORDER_SPLIT_HANDLE_MIN_DRAG_PX = 4;
+const MULTI_TP_COINCIDENT_STACK_OFFSET_PX = 14;
 const DEFAULT_SLTP_STEPPER_OFFSET_PIPS = 10;
 
 /** T4 step 9: default ON — lot stepper full recalc + SL/TP stepper seed from entry; own kill-switch. */
@@ -22532,7 +22538,7 @@ class OrderManager {
         if (this.previewLines.multipleTPs && Array.isArray(this.previewLines.multipleTPs)) {
             this.previewLines.multipleTPs.forEach(tpLine => {
                 if (tpLine && tpLine.price) {
-                    const tpY = yScale(tpLine.price);
+                    const tpY = yScale(tpLine.price) + (tpLine._stackOffsetY || 0);
                     
                     // Update line
                     if (tpLine.line) {
@@ -22879,8 +22885,18 @@ class OrderManager {
                 if (target.price > 0) {
                     const color = tpColors[Math.min(index, tpColors.length - 1)];
                     const label = `TP${previewTpRank.get(index) ?? index + 1}`;
+                    const stackOffsetY = this._multiTpCoincidentStackYOffsetPx(index);
                     
-                    const tpLine = this.drawPreviewLine(target.price, color, label, null, true, index, target.id);
+                    const tpLine = this.drawPreviewLine(
+                        target.price,
+                        color,
+                        label,
+                        null,
+                        true,
+                        index,
+                        target.id,
+                        stackOffsetY ? { _stackOffsetY: stackOffsetY } : null
+                    );
                     if (tpLine) {
                         this.previewLines.multipleTPs.push(tpLine);
                     }
@@ -25830,6 +25846,21 @@ class OrderManager {
         );
         const idx = map.get(levelId) ?? 0;
         return idx * ENTRY_STACK_OFFSET_PX;
+    }
+
+    _multiTpCoincidentStackYOffsetPx(targetIndex) {
+        if (!_orderMultiTpCoincidentStackV1Enabled()) return 0;
+        if (!this.tpTargets || targetIndex == null || targetIndex < 0 || targetIndex >= this.tpTargets.length) return 0;
+        const target = this.tpTargets[targetIndex];
+        if (!(target && target.price > 0)) return 0;
+        const precision = Math.max(0, Math.min(10, this.getPricePrecision ? this.getPricePrecision(target.price) : 5));
+        const key = Number(target.price).toFixed(precision);
+        const coincident = this.tpTargets
+            .map((t, idx) => ({ t, idx }))
+            .filter(({ t }) => t && t.price > 0 && Number(t.price).toFixed(precision) === key)
+            .map(({ idx }) => idx);
+        const stackIndex = coincident.indexOf(targetIndex);
+        return stackIndex > 0 ? stackIndex * MULTI_TP_COINCIDENT_STACK_OFFSET_PX : 0;
     }
 
     /**
