@@ -266,6 +266,12 @@ function _orderBalanceFloorV1Enabled() {
         || !window.__TALARIA_DISABLE_ORDER_BALANCE_FLOOR_V1;
 }
 
+/** Cluster G / SEL-01: per-order teardown uses exact classes, not substring prefixes. */
+function _orderSel01ExactTeardownV1Enabled() {
+    return typeof window === 'undefined'
+        || !window.__TALARIA_DISABLE_ORDER_SEL01_EXACT_TEARDOWN_V1;
+}
+
 /** T4 step 10: default ON — SL/TP panel steppers run full recalc path (TAL-00752 #15). */
 function _orderEntryPanelSltpFixEnabled() {
     return typeof window === 'undefined' || !window.__TALARIA_DISABLE_ORDER_ENTRY_PANEL_SLTP_FIX;
@@ -39178,6 +39184,26 @@ class OrderManager {
         );
     }
 
+    _pendingTpPctControlsSelector(orderId) {
+        const oid = String(orderId);
+        if (!_orderSel01ExactTeardownV1Enabled()) {
+            return `[class*="pending-tp-pct"][class*="pending-tp-${oid}"]`;
+        }
+        return [
+            `.pending-tp-pct-control.pending-tp-${oid}`,
+            `.pending-tp-pct-dec.pending-tp-${oid}`,
+            `.pending-tp-pct-inc.pending-tp-${oid}`,
+        ].join(',');
+    }
+
+    _pendingTpDeleteSelector(orderId) {
+        const oid = String(orderId);
+        if (!_orderSel01ExactTeardownV1Enabled()) {
+            return `[class*="pending-tp-delete"][class*="pending-tp-${oid}"]`;
+        }
+        return `.pending-tp-delete.pending-tp-${oid}`;
+    }
+
     removePendingSLTPLines(orderId) {
         if (!this.pendingTargetLines) return;
         const records = this.pendingTargetLines.filter(entry => entry.orderId === orderId);
@@ -39238,7 +39264,7 @@ class OrderManager {
             c.svg.selectAll(`.pending-order-close-btn.pending-${orderId}`).remove();
             c.svg.selectAll(`.pending-tp-delete.pending-tp-${orderId}`).remove();
             c.svg.selectAll(`.pending-tp-tp-plus-badge.pending-tp-${orderId}`).remove();
-            c.svg.selectAll(`[class*="pending-tp-pct"][class*="pending-tp-${orderId}"]`).remove();
+            c.svg.selectAll(this._pendingTpPctControlsSelector(orderId)).remove();
         });
     }
     
@@ -41798,8 +41824,8 @@ class OrderManager {
             svg.selectAll(`.pending-be-${oid}`).remove();
             svg.selectAll(`.pending-${oid}`).remove();
             svg.selectAll(`[class*="open-tp-pct"][class*="tp-${oid}"]`).remove();
-            svg.selectAll(`[class*="pending-tp-pct"][class*="pending-tp-${oid}"]`).remove();
-            svg.selectAll(`[class*="pending-tp-delete"][class*="pending-tp-${oid}"]`).remove();
+            svg.selectAll(this._pendingTpPctControlsSelector(oid)).remove();
+            svg.selectAll(this._pendingTpDeleteSelector(oid)).remove();
             svg.selectAll(`.order-${oid}`).remove();
             svg.selectAll(`.exec-order-connector[data-order-id="${oid}"]`).remove();
             svg.selectAll(`[class*="multi-tp-avg-"][class*="-${oid}"]`).remove();
