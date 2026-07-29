@@ -4282,3 +4282,13 @@ Director checked journals and recorded TIER-01 compliance across A/B/C/D — rou
 **Cost model correction (director's, accepted):** the budget lever is concurrent TOP *subagents*, not the manager model. If limits tighten, director serializes TOP reviews and cuts scope — nobody downgrades a reviewer, and I do not drop my own tier without a ruling. If I feel budget pressure I tell the director and park a sweep rather than cheapen a review. PAR-01 unchanged: parallel for MID/LOW.
 
 **Standing practice for me:** default author MID; TOP only when ship-gate / money-path / live canary config warrants it, with the why written in the same entry. Fallback to a single model during the memory kill is a session-loss risk — escalate immediately if routing collapses again.
+
+## B-0187 — 2026-07-29 — Phase 1 standing under PLAN-CANARY-24H (ad40cbc6b)
+
+**Row:** M4-release | **Packet:** CANARY-24H-P1 | **Tier:** mid | **Model:** cursor-grok-4.5
+
+Plan read. Phase 1 duty for B: build/deploy in parallel; PO-01 over HTTP.
+
+**Wire now (MEAS-01):** `PO_SHOULD_READ=20260729b100` — pin, served stamp, both app images, and watchdog (`mode=armed`, heartbeat fresh) all agree. `deploy_in_progress=no`. Stamp already carries the chart-host GATE-01 unblock + dist-v9 rebuild (TAL-01896 kill-switch literal on the wire).
+
+Standing for the memory kill: the moment A's flagged cut lands on the train tip I cut the next stamp and ship; I do not wait for a writeup. Escalate blockers in one line. No CPU work in Phase 1.
