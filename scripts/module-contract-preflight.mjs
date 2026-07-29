@@ -14,19 +14,131 @@ const repoRoot = process.env.TALARIA_MODULE_CONTRACT_ROOT
 const defaultManifest = process.env.TALARIA_MODULE_CONTRACTS_JSON
   ? path.resolve(process.env.TALARIA_MODULE_CONTRACTS_JSON)
   : path.join(scriptDir, 'module-contracts.json');
+const SURFACE_CONTRACT_CLASS_ALLOWLIST = Object.freeze({
+  host: ['correctness'],
+  panel: ['correctness'],
+  harness: [],
+});
+const PINNED_JS_LOADER_ALLOWLIST = Object.freeze([
+  {
+    name: 'MULTICHART_PROD_CHART_EMBED_DOCUMENT_WRITE_V1',
+    surfacePath: /^(?:chart v 1\.4\/chart|homepage\/public\/chart)\/multichart-prod\/chart-embed\.html$/,
+    bodyPattern: /\(function\s*\(\)\s*\{\s*var V = window\.__TALARIA_CHART_BUILD_ID \|\| '';\s*var q = V \? \('\?v=' \+ V\) : '';\s*var paths = \[([\s\S]*?)\];\s*for \(var i = 0; i < paths\.length; i\+\+\) \{\s*document\.write\('<script defer src="' \+ paths\[i\] \+ q \+ '"><\\\/script>'\);\s*\}\s*\}\)\(\);/,
+  },
+]);
+const EXECUTABLE_SCRIPT_TYPES = new Set([
+  '',
+  'application/ecmascript',
+  'application/javascript',
+  'module',
+  'text/ecmascript',
+  'text/javascript',
+]);
 
-function scriptPaths(html) {
+function stripHtmlComments(source) {
+  return source.replace(/<!--[\s\S]*?-->/g, '');
+}
+
+function maskRange(source, from, to) {
+  return source.slice(0, from) + ' '.repeat(Math.max(0, to - from)) + source.slice(to);
+}
+
+function stripInertHtmlBlocks(source) {
+  const ranges = [];
+  const stack = [];
+  const tagPattern = /<\/?(noscript|template|title|textarea|xmp)\b[^>]*>/gi;
+  for (const match of source.matchAll(tagPattern)) {
+    const [tag, tagName] = match;
+    const normalized = tagName.toLowerCase();
+    if (!tag.startsWith('</')) {
+      stack.push({ tagName: normalized, index: match.index });
+      continue;
+    }
+    for (let i = stack.length - 1; i >= 0; i -= 1) {
+      if (stack[i].tagName !== normalized) continue;
+      const open = stack[i];
+      stack.length = i;
+      if (stack.length === 0) ranges.push([open.index, match.index + tag.length]);
+      break;
+    }
+  }
+  for (const open of stack) ranges.push([open.index, source.length]);
+  return ranges
+    .sort((a, b) => b[0] - a[0])
+    .reduce((out, [from, to]) => maskRange(out, from, to), source);
+}
+
+function readAttribute(attrs, name) {
+  const match = attrs.match(new RegExp(`\\b${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s>]+))`, 'i'));
+  return match ? (match[1] ?? match[2] ?? match[3] ?? '') : '';
+}
+
+function hasAttribute(attrs, name) {
+  return new RegExp(`\\b${name}(?:\\s*=|[\\s/]|$)`, 'i').test(attrs);
+}
+
+function isExecutableScript(attrs) {
+  if (hasAttribute(attrs, 'nomodule')) return false;
+  return EXECUTABLE_SCRIPT_TYPES.has(readAttribute(attrs, 'type').trim().toLowerCase());
+}
+
+function pinnedImmediateLoaderPaths(uncommentedHtml, surfacePath) {
+  const normalizedPath = String(surfacePath || '').replaceAll('\\', '/');
+  const allowlist = PINNED_JS_LOADER_ALLOWLIST.filter((entry) => entry.surfacePath.test(normalizedPath));
+  if (allowlist.length === 0) return [];
+
   const values = [];
-  for (const match of html.matchAll(/<script\b[^>]*\bsrc\s*=\s*["']([^"']+)["'][^>]*>/gi)) {
-    values.push(match[1].split('?')[0]);
-  }
-  for (const match of html.matchAll(/(?:inject|__loadHostOnlyScript)\(\s*["']([^"']+\.js)["']\s*\)/g)) {
-    values.push(match[1].split('?')[0]);
-  }
-  for (const block of html.matchAll(/(?:var|const|let)\s+paths\s*=\s*\[([\s\S]*?)\]/g)) {
-    for (const match of block[1].matchAll(/["']([^"']+\.js)["']/g)) values.push(match[1]);
+  for (const script of uncommentedHtml.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi)) {
+    if (!isExecutableScript(script[1]) || readAttribute(script[1], 'src')) continue;
+    for (const allow of allowlist) {
+      const match = script[2].match(allow.bodyPattern);
+      if (!match) continue;
+      for (const pathMatch of match[1].matchAll(/["']([^"']+\.js)["']/g)) values.push(pathMatch[1].split('?')[0]);
+    }
   }
   return values;
+}
+
+function scriptPaths(html, surfacePath) {
+  const values = [];
+  const uncommented = stripInertHtmlBlocks(stripHtmlComments(html));
+  for (const script of uncommented.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi)) {
+    if (!isExecutableScript(script[1])) continue;
+    const src = readAttribute(script[1], 'src');
+    if (src) values.push(src.split('?')[0]);
+  }
+  values.push(...pinnedImmediateLoaderPaths(uncommented, surfacePath));
+  return values;
+}
+
+function inferSurfaceFromEvidence(surface, scripts) {
+  const normalizedPath = String(surface.path || '').replaceAll('\\', '/');
+  if (/\/chart-embed\.html$/.test(normalizedPath) || /\/multichart\/chart-host\.html$/.test(normalizedPath)) {
+    return 'panel';
+  }
+  if (/\/dist-v9\/index\.html$/.test(normalizedPath) || /\/talaria-design\/live\/index\.html$/.test(normalizedPath)) {
+    return 'host';
+  }
+  if (
+    scripts.includes('/chart/chart.js') &&
+    scripts.some((script) => script.startsWith('/chart/multichart-prod/'))
+  ) {
+    return 'panel';
+  }
+  return null;
+}
+
+function requiredContractsForSurface(manifest, surfaceName) {
+  const contracts = manifest.modules.filter((item) => item.requiredSurfaces.includes(surfaceName));
+  const requiredClasses = SURFACE_CONTRACT_CLASS_ALLOWLIST[surfaceName] || [];
+  return {
+    contracts,
+    requiredContracts: contracts.filter((item) => requiredClasses.includes(item.class)),
+  };
+}
+
+function assertBooleanIfPresent(object, key, label) {
+  if (Object.hasOwn(object, key)) assert.equal(typeof object[key], 'boolean', `${label}: ${key} must be boolean`);
 }
 
 function assertBoundedIdentifier(value, label, { allowLeadingDigit = false } = {}) {
@@ -68,11 +180,18 @@ export function validateModuleContracts({
 
   const inventoryIds = new Set();
   const checked = [];
+  const failures = [];
   for (const surface of manifest.inventory) {
     assertBoundedIdentifier(surface.id, 'surface id');
     assert.ok(!inventoryIds.has(surface.id), `${surface.id}: duplicate inventory entry`);
     inventoryIds.add(surface.id);
+    assertBoundedIdentifier(surface.surface, `${surface.id} surface`);
+    assert.ok(
+      Object.hasOwn(SURFACE_CONTRACT_CLASS_ALLOWLIST, surface.surface),
+      `${surface.id}: invalid surface ${surface.surface}`,
+    );
     assert.ok(['owned-stamped', 'excluded', 'removed', 'removal-pending'].includes(surface.status), `${surface.id}: invalid status`);
+    assertBooleanIfPresent(surface, 'servable', surface.id);
     if (surface.status === 'removal-pending') {
       assert.fail(`${surface.id}: deploy blocked until accidental public surface is removed`);
     }
@@ -87,23 +206,40 @@ export function validateModuleContracts({
     const absolute = path.resolve(root, surface.path);
     assert.ok(fs.existsSync(absolute), `${surface.id}: owned surface missing`);
     const html = readFile(absolute);
-    assert.match(html, /\d{8}b\d+/, `${surface.id}: build stamp absent`);
-    const scripts = scriptPaths(html);
-    for (const contract of manifest.modules.filter((item) => item.requiredSurfaces.includes(surface.surface))) {
+    const scripts = scriptPaths(html, surface.path);
+    const evidenceSurface = inferSurfaceFromEvidence(surface, scripts);
+    if (evidenceSurface && evidenceSurface !== surface.surface) {
+      failures.push(`${surface.id}: declared surface ${surface.surface} conflicts with ${evidenceSurface} evidence`);
+    }
+    const effectiveSurface = evidenceSurface || surface.surface;
+    const { contracts, requiredContracts } = requiredContractsForSurface(manifest, effectiveSurface);
+    if (surface.servable === true && requiredContracts.length === 0) {
+      failures.push(`${surface.id}: owned-stamped servable surface ${surface.surface} has no correctness contracts`);
+    }
+    for (const contract of contracts) {
       const positions = scripts.flatMap((value, index) => value === contract.script ? [index] : []);
-      assert.equal(positions.length, 1, `${surface.id}: ${contract.id} required script count ${positions.length}`);
+      if (positions.length !== 1) {
+        failures.push(`${surface.id}: ${contract.id} required script count ${positions.length}`);
+        continue;
+      }
       const at = positions[0];
       for (const predecessor of contract.order.after) {
         const predecessorAt = scripts.indexOf(predecessor);
-        assert.ok(predecessorAt >= 0 && predecessorAt < at, `${surface.id}: ${contract.id} must follow ${predecessor}`);
+        if (!(predecessorAt >= 0 && predecessorAt < at)) {
+          failures.push(`${surface.id}: ${contract.id} must follow ${predecessor}`);
+        }
       }
       for (const successor of contract.order.before) {
         const successorAt = scripts.indexOf(successor);
-        assert.ok(successorAt > at, `${surface.id}: ${contract.id} must precede ${successor}`);
+        if (!(successorAt > at)) {
+          failures.push(`${surface.id}: ${contract.id} must precede ${successor}`);
+        }
       }
       checked.push({ surface: surface.id, module: contract.id, index: at });
     }
+    if (!/\d{8}b\d+/.test(html)) failures.push(`${surface.id}: build stamp absent`);
   }
+  assert.equal(failures.length, 0, failures.join('; '));
   return { signature: 'TALARIA_MODULE_CONTRACT_PREFLIGHT_V1', ok: true, checked };
 }
 

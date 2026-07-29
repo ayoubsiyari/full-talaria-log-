@@ -16,10 +16,94 @@ function mutateSurface(id, transform) {
   };
 }
 
-test('owned servable inventory satisfies contracts', () => {
-  const result = validateModuleContracts({ manifest, root });
+const MULTICHART_PANEL_SHELL_IDS = [
+  'multichart-panel-shell-source',
+  'multichart-panel-shell-public',
+];
+
+const DEFECTIVE_MULTICHART_HOST_HTML = `
+<!DOCTYPE html>
+<html>
+<head>
+  <title>frozen defective multichart host</title>
+  <script src="../chart.js"></script>
+  <script src="./engine-api-guards.js?v=20260524a10"></script>
+  <script src="./sync-bridge.js?v=20260524a10"></script>
+</head>
+<body></body>
+</html>
+`;
+
+const DIST_V9_RUNTIME_TAG = '<script defer src="/chart/modules/module-presence-runtime.js?v=20260727b80"></script>';
+const DIST_V9_INDICATOR_TAG = '<script defer src="/chart/modules/indicator-performance.js?v=20260727b80"></script>';
+
+function manifestWithoutMultichartPanelShells() {
+  const next = structuredClone(manifest);
+  next.inventory = next.inventory.filter((entry) => !MULTICHART_PANEL_SHELL_IDS.includes(entry.id));
+  return next;
+}
+
+function manifestWithOnlySurface(surface) {
+  const next = structuredClone(manifest);
+  next.inventory = [surface];
+  return next;
+}
+
+function replaceDistV9RequiredTags(html, { runtime, indicator }) {
+  assert.match(html, /chart\/dist-v9\/index\.html|module-presence-runtime\.js/);
+  assert.ok(html.includes(DIST_V9_RUNTIME_TAG), 'dist-v9 runtime tag fixture drifted');
+  assert.ok(html.includes(DIST_V9_INDICATOR_TAG), 'dist-v9 indicator tag fixture drifted');
+  return html
+    .replace(DIST_V9_RUNTIME_TAG, runtime)
+    .replace(DIST_V9_INDICATOR_TAG, indicator);
+}
+
+function assertChartHostMutationRed(transform) {
+  const surface = structuredClone(manifest.inventory.find((entry) => entry.id === 'chart-host'));
+  assert.throws(
+    () => validateModuleContracts({
+      manifest: manifestWithOnlySurface(surface),
+      root,
+      readFile: mutateSurface(surface.id, transform),
+    }),
+    /ModulePresenceRuntime required script count 0.*IndicatorPerf required script count 0/,
+  );
+}
+
+test('GATE-01: frozen defective /chart/multichart/chart-host.html is RED for presence independent of stamp', () => {
+  const surface = structuredClone(manifest.inventory.find((entry) => entry.id === 'multichart-panel-shell-source'));
+  assert.throws(
+    () => validateModuleContracts({
+      manifest: manifestWithOnlySurface(surface),
+      root,
+      readFile: mutateSurface(surface.id, () => DEFECTIVE_MULTICHART_HOST_HTML),
+    }),
+    /ModulePresenceRuntime required script count 0.*IndicatorPerf required script count 0.*build stamp absent/i,
+  );
+});
+
+test('known-good owned surfaces (excluding multichart panel shells) satisfy contracts', () => {
+  const result = validateModuleContracts({
+    manifest: manifestWithoutMultichartPanelShells(),
+    root,
+  });
   assert.equal(result.ok, true);
   assert.equal(result.checked.length, 10);
+});
+
+test('multichart embed JS loader credit is pinned to the owned immediate document-write shape', () => {
+  const surface = structuredClone(manifest.inventory.find((entry) => entry.id === 'chart-panel'));
+  assert.throws(
+    () => validateModuleContracts({
+      manifest: manifestWithOnlySurface(surface),
+      root,
+      readFile: mutateSurface(surface.id, (html) => html
+        .replace('var paths = [', 'var panelPaths = [')
+        .replaceAll('paths.length', 'panelPaths.length')
+        .replaceAll('paths[i]', 'panelPaths[i]')),
+    }),
+    /ModulePresenceRuntime required script count 0.*IndicatorPerf required script count 0/,
+  );
 });
 
 test('permanent fault injection proves missing duplicate and order RED', () => {
@@ -40,16 +124,278 @@ test('permanent fault injection proves missing duplicate and order RED', () => {
   }), /must precede/);
 });
 
+test('surface vocabulary is closed and servable shells cannot relabel out of correctness contracts', () => {
+  const relabelled = manifestWithoutMultichartPanelShells();
+  relabelled.inventory.find((entry) => entry.id === 'chart-host').surface = 'harness';
+  assert.throws(
+    () => validateModuleContracts({ manifest: relabelled, root }),
+    /chart-host: declared surface harness conflicts with host evidence/,
+  );
+
+  const invalid = manifestWithoutMultichartPanelShells();
+  invalid.inventory.find((entry) => entry.id === 'chart-host').surface = 'free-text';
+  assert.throws(() => validateModuleContracts({ manifest: invalid, root }), /chart-host: invalid surface free-text/);
+});
+
+test('path and engine-load evidence cannot be relabelled away from contracts', () => {
+  for (const servable of [false, undefined]) {
+    const relabelled = manifestWithoutMultichartPanelShells();
+    const row = relabelled.inventory.find((entry) => entry.id === 'chart-host');
+    row.surface = 'harness';
+    if (servable === undefined) {
+      delete row.servable;
+    } else {
+      row.servable = servable;
+    }
+    assert.throws(
+      () => validateModuleContracts({ manifest: relabelled, root }),
+      /chart-host: declared surface harness conflicts with host evidence/,
+    );
+  }
+
+  const stringServable = manifestWithoutMultichartPanelShells();
+  const host = stringServable.inventory.find((entry) => entry.id === 'chart-host');
+  host.surface = 'harness';
+  host.servable = 'true';
+  assert.throws(() => validateModuleContracts({ manifest: stringServable, root }), /chart-host: servable must be boolean/);
+
+  const sneakyPanel = manifestWithoutMultichartPanelShells();
+  const panel = sneakyPanel.inventory.find((entry) => entry.id === 'chart-panel');
+  panel.surface = 'harness';
+  panel.servable = false;
+  assert.throws(
+    () => validateModuleContracts({ manifest: sneakyPanel, root }),
+    /chart-panel: declared surface harness conflicts with panel evidence/,
+  );
+});
+
+test('commented script tags and dead paths arrays do not satisfy module presence', () => {
+  const surface = structuredClone(manifest.inventory.find((entry) => entry.id === 'chart-host'));
+  const decoyHtml = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <script src="/chart/chart.js?v=20260727b80"></script>
+      <!-- <script src="/chart/modules/module-presence-runtime.js?v=20260727b80"></script> -->
+      <script>
+        const paths = [
+          "/chart/modules/module-presence-runtime.js",
+          "/chart/modules/indicator-performance.js"
+        ];
+        // __loadHostOnlyScript("/chart/modules/module-presence-runtime.js")
+        /* inject("/chart/modules/indicator-performance.js") */
+      </script>
+      <script src="/chart/modules/chart-indicators-full.js?v=20260727b80"></script>
+    </head>
+    <body></body>
+    </html>
+  `;
+  assert.throws(
+    () => validateModuleContracts({
+      manifest: manifestWithOnlySurface(surface),
+      root,
+      readFile: mutateSurface(surface.id, () => decoyHtml),
+    }),
+    /ModulePresenceRuntime required script count 0.*IndicatorPerf required script count 0/,
+  );
+});
+
+test('inert script containers and non-executable script types do not satisfy module presence', () => {
+  const surface = structuredClone(manifest.inventory.find((entry) => entry.id === 'chart-host'));
+  const decoyHtml = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <script src="/chart/chart.js?v=20260727b80"></script>
+      <noscript><script src="/chart/modules/module-presence-runtime.js?v=20260727b80"></script></noscript>
+      <template><script src="/chart/modules/indicator-performance.js?v=20260727b80"></script></template>
+      <title><script src="/chart/modules/module-presence-runtime.js?v=20260727b80"></script></title>
+      <textarea><script src="/chart/modules/indicator-performance.js?v=20260727b80"></script></textarea>
+      <xmp><script src="/chart/modules/module-presence-runtime.js?v=20260727b80"></script></xmp>
+      <script type="text/template">inject("/chart/modules/module-presence-runtime.js");</script>
+      <script type="application/json">{"src":"/chart/modules/indicator-performance.js"}</script>
+      <script src="/chart/modules/chart-indicators-full.js?v=20260727b80"></script>
+    </head>
+    <body></body>
+    </html>
+  `;
+  assert.throws(
+    () => validateModuleContracts({
+      manifest: manifestWithOnlySurface(surface),
+      root,
+      readFile: mutateSurface(surface.id, () => decoyHtml),
+    }),
+    /ModulePresenceRuntime required script count 0.*IndicatorPerf required script count 0/,
+  );
+});
+
+test('real dist-v9 nomodule required scripts do not satisfy module presence', () => {
+  assertChartHostMutationRed((html) => replaceDistV9RequiredTags(html, {
+    runtime: '<script nomodule/ defer src="/chart/modules/module-presence-runtime.js?v=20260727b80"></script>',
+    indicator: '<script defer src="/chart/modules/indicator-performance.js?v=20260727b80" nomodule/></script>',
+  }));
+});
+
+test('real dist-v9 nested inert wrappers do not satisfy module presence', () => {
+  assertChartHostMutationRed((html) => replaceDistV9RequiredTags(html, {
+    runtime: `<title><template>
+${DIST_V9_RUNTIME_TAG}
+</template></title>`,
+    indicator: `<textarea><noscript>
+${DIST_V9_INDICATOR_TAG}
+</noscript></textarea>`,
+  }));
+});
+
+test('never-executed loader calls do not satisfy module presence', () => {
+  const surface = structuredClone(manifest.inventory.find((entry) => entry.id === 'chart-host'));
+  const decoyHtml = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <script src="/chart/chart.js?v=20260727b80"></script>
+      <script>
+        function neverCalled() {
+          inject("/chart/modules/module-presence-runtime.js");
+        }
+        (function () {
+          return;
+          __loadHostOnlyScript("/chart/modules/indicator-performance.js");
+        })();
+      </script>
+      <script src="/chart/modules/chart-indicators-full.js?v=20260727b80"></script>
+    </head>
+    <body></body>
+    </html>
+  `;
+  assert.throws(
+    () => validateModuleContracts({
+      manifest: manifestWithOnlySurface(surface),
+      root,
+      readFile: mutateSurface(surface.id, () => decoyHtml),
+    }),
+    /ModulePresenceRuntime required script count 0.*IndicatorPerf required script count 0/,
+  );
+});
+
+test('real dist-v9 dead false controls do not satisfy module presence', () => {
+  assertChartHostMutationRed((html) => replaceDistV9RequiredTags(html, {
+    runtime: '<script>if (false && true) { inject("/chart/modules/module-presence-runtime.js"); }</script>',
+    indicator: '<script>false && (function () { __loadHostOnlyScript("/chart/modules/indicator-performance.js"); })();</script>',
+  }));
+});
+
+test('real dist-v9 string-literal loader tokens do not satisfy module presence', () => {
+  assertChartHostMutationRed((html) => replaceDistV9RequiredTags(html, {
+    runtime: '<script>"inject(\\"/chart/modules/module-presence-runtime.js\\")";</script>',
+    indicator: '<script>"__loadHostOnlyScript(\\"/chart/modules/indicator-performance.js\\")";</script>',
+  }));
+});
+
+test('real dist-v9 never-called arrow loaders do not satisfy module presence', () => {
+  assertChartHostMutationRed((html) => replaceDistV9RequiredTags(html, {
+    runtime: '<script>const loadRuntime = () => { inject("/chart/modules/module-presence-runtime.js"); };</script>',
+    indicator: '<script>const loadIndicator = () => __loadHostOnlyScript("/chart/modules/indicator-performance.js");</script>',
+  }));
+});
+
+test('paths arrays consumed only by unreachable loops do not satisfy module presence', () => {
+  const surface = structuredClone(manifest.inventory.find((entry) => entry.id === 'chart-host'));
+  const decoyHtml = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <script src="/chart/chart.js?v=20260727b80"></script>
+      <script>
+        (function () {
+          var paths = [
+            "/chart/modules/module-presence-runtime.js",
+            "/chart/modules/indicator-performance.js"
+          ];
+          if (!1) {
+            for (var i = 0; i < paths.length; i++) {
+              document.write('<script defer src="' + paths[i] + '"><\\/script>');
+            }
+          }
+          while (0) {
+            document.write('<script defer src="' + paths[0] + '"><\\/script>');
+          }
+        })();
+      </script>
+      <script src="/chart/modules/chart-indicators-full.js?v=20260727b80"></script>
+    </head>
+    <body></body>
+    </html>
+  `;
+  assert.throws(
+    () => validateModuleContracts({
+      manifest: manifestWithOnlySurface(surface),
+      root,
+      readFile: mutateSurface(surface.id, () => decoyHtml),
+    }),
+    /ModulePresenceRuntime required script count 0.*IndicatorPerf required script count 0/,
+  );
+});
+
+test('executed loader calls do not satisfy static module presence', () => {
+  const surface = structuredClone(manifest.inventory.find((entry) => entry.id === 'chart-host'));
+  const loaderHtml = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <script>__loadHostOnlyScript("/chart/modules/module-presence-runtime.js");</script>
+      <script src="/chart/chart.js?v=20260727b80"></script>
+      <script>inject("/chart/modules/indicator-performance.js");</script>
+      <script src="/chart/modules/chart-indicators-full.js?v=20260727b80"></script>
+    </head>
+    <body></body>
+    </html>
+  `;
+  assert.throws(
+    () => validateModuleContracts({
+      manifest: manifestWithOnlySurface(surface),
+      root,
+      readFile: mutateSurface(surface.id, () => loaderHtml),
+    }),
+    /ModulePresenceRuntime required script count 0.*IndicatorPerf required script count 0/,
+  );
+});
+
+test('immediately invoked loader functions and arrows do not satisfy static module presence', () => {
+  const surface = structuredClone(manifest.inventory.find((entry) => entry.id === 'chart-host'));
+  const loaderHtml = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <script>(() => { inject("/chart/modules/module-presence-runtime.js"); })();</script>
+      <script src="/chart/chart.js?v=20260727b80"></script>
+      <script>(function () { __loadHostOnlyScript("/chart/modules/indicator-performance.js"); })();</script>
+      <script src="/chart/modules/chart-indicators-full.js?v=20260727b80"></script>
+    </head>
+    <body></body>
+    </html>
+  `;
+  assert.throws(
+    () => validateModuleContracts({
+      manifest: manifestWithOnlySurface(surface),
+      root,
+      readFile: mutateSurface(surface.id, () => loaderHtml),
+    }),
+    /ModulePresenceRuntime required script count 0.*IndicatorPerf required script count 0/,
+  );
+});
+
 test('servable inventory mutation and exclusion controls RED', () => {
-  const missing = structuredClone(manifest);
+  const goodManifest = manifestWithoutMultichartPanelShells();
+  const missing = structuredClone(goodManifest);
   missing.inventory.find((entry) => entry.id === 'chart-host').path = 'missing.html';
   assert.throws(() => validateModuleContracts({ manifest: missing, root }), /owned surface missing/);
-  const falseExclusion = structuredClone(manifest);
+  const falseExclusion = structuredClone(goodManifest);
   const row = falseExclusion.inventory.find((entry) => entry.id === 'chart-host');
   row.status = 'excluded';
   row.reason = 'fault';
   assert.throws(() => validateModuleContracts({ manifest: falseExclusion, root }), /cannot be servable/);
-  const removalPending = structuredClone(manifest);
+  const removalPending = structuredClone(goodManifest);
   const removed = removalPending.inventory.find((entry) => entry.id === 'accidental-public-live-copy');
   removed.status = 'removal-pending';
   removed.servable = true;
@@ -57,20 +403,20 @@ test('servable inventory mutation and exclusion controls RED', () => {
     () => validateModuleContracts({ manifest: removalPending, root }),
     /deploy blocked until accidental public surface is removed/,
   );
-  const reappeared = structuredClone(manifest);
+  const reappeared = structuredClone(goodManifest);
   reappeared.inventory.find((entry) => entry.id === 'accidental-public-live-copy').path =
     'chart v 1.4/talaria-design/live/index.html';
   assert.throws(() => validateModuleContracts({ manifest: reappeared, root }), /removed surface still exists/);
 });
-
 test('alternate host path and clock remain deterministic', () => {
+  const goodManifest = manifestWithoutMultichartPanelShells();
   const alternateRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'talaria-contract-'));
-  for (const entry of manifest.inventory.filter((item) => item.status === 'owned-stamped')) {
+  for (const entry of goodManifest.inventory.filter((item) => item.status === 'owned-stamped')) {
     const destination = path.join(alternateRoot, entry.path);
     fs.mkdirSync(path.dirname(destination), { recursive: true });
     fs.copyFileSync(path.join(root, entry.path), destination);
   }
-  for (const contract of manifest.modules) {
+  for (const contract of goodManifest.modules) {
     for (const relative of [contract.source, ...(contract.mirrors || [])]) {
       const destination = path.join(alternateRoot, relative);
       fs.mkdirSync(path.dirname(destination), { recursive: true });
@@ -81,8 +427,8 @@ test('alternate host path and clock remain deterministic', () => {
   Date.now = () => 1;
   try {
     assert.deepEqual(
-      validateModuleContracts({ manifest, root: alternateRoot }).checked,
-      validateModuleContracts({ manifest, root: alternateRoot }).checked,
+      validateModuleContracts({ manifest: goodManifest, root: alternateRoot }).checked,
+      validateModuleContracts({ manifest: goodManifest, root: alternateRoot }).checked,
     );
   } finally {
     Date.now = before;
@@ -90,11 +436,14 @@ test('alternate host path and clock remain deterministic', () => {
   }
 });
 
-test('four-state anti-lying proof', () => {
-  const green = () => validateModuleContracts({ manifest, root }).ok;
+test('four-state anti-lying proof (known-good surfaces)', () => {
+  const goodManifest = manifestWithoutMultichartPanelShells();
+  const green = () => validateModuleContracts({ manifest: goodManifest, root }).ok;
   assert.equal(green(), true, 'fixed state passes');
   assert.throws(() => validateModuleContracts({
-    manifest, root, readFile: mutateSurface('chart-panel', (html) => html.replace('/chart/modules/indicator-performance.js', '/chart/modules/missing.js')),
+    manifest: goodManifest,
+    root,
+    readFile: mutateSurface('chart-panel', (html) => html.replace('/chart/modules/indicator-performance.js', '/chart/modules/missing.js')),
   }), /required script count 0|must precede/, 'broken/corrupted state fails');
   assert.throws(() => assert.equal(green(), false), /true !== false/, 'inverted assertion flips');
 });

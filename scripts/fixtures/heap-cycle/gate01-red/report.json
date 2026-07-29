@@ -1,0 +1,121 @@
+{
+  "signature": "TALARIA_HEAP_CYCLE_MEMORY_V1",
+  "ok": true,
+  "meta": {
+    "cycles": 3,
+    "memoryInstrument": "usedJSHeapSize+forcedGc",
+    "footprintNonGrading": true,
+    "detachedGateMandatory": true,
+    "poCalibration": {
+      "baselineMb": 54,
+      "floorsMb": [
+        106,
+        152,
+        204
+      ],
+      "detachedDivsPerCycle": 21699
+    },
+    "fixture": "gate01-red-po-leak"
+  },
+  "baseline": {
+    "exposed": true,
+    "metric": "usedJSHeapSize",
+    "usedJSHeapSize": 56623104,
+    "forcedGcAttempted": true,
+    "forcedGcAvailable": true,
+    "detachedDivCount": 1200,
+    "htmlDivElementCount": 4000
+  },
+  "cycles": [
+    {
+      "index": 1,
+      "fileIds": [
+        25,
+        27,
+        28,
+        29
+      ],
+      "distinctSymbols": true,
+      "fourPeak": {
+        "exposed": true,
+        "metric": "usedJSHeapSize",
+        "usedJSHeapSize": 195035136,
+        "forcedGcAttempted": true,
+        "forcedGcAvailable": true,
+        "htmlDivElementCount": 30699
+      },
+      "returnSingle": {
+        "exposed": true,
+        "metric": "usedJSHeapSize",
+        "usedJSHeapSize": 111149056,
+        "forcedGcAttempted": true,
+        "forcedGcAvailable": true,
+        "htmlDivElementCount": 25699
+      },
+      "detachedDivCount": 22899,
+      "detachedDivDelta": 21699,
+      "htmlDivElementCount": 25699,
+      "retainedHtmlDivDelta": 21699
+    },
+    {
+      "index": 2,
+      "fileIds": [
+        25,
+        27,
+        28,
+        29
+      ],
+      "distinctSymbols": true,
+      "fourPeak": {
+        "exposed": true,
+        "metric": "usedJSHeapSize",
+        "usedJSHeapSize": 243269632,
+        "forcedGcAttempted": true,
+        "forcedGcAvailable": true,
+        "htmlDivElementCount": 52398
+      },
+      "returnSingle": {
+        "exposed": true,
+        "metric": "usedJSHeapSize",
+        "usedJSHeapSize": 159383552,
+        "forcedGcAttempted": true,
+        "forcedGcAvailable": true,
+        "htmlDivElementCount": 47398
+      },
+      "detachedDivCount": 44598,
+      "detachedDivDelta": 21699,
+      "htmlDivElementCount": 47398,
+      "retainedHtmlDivDelta": 21699
+    },
+    {
+      "index": 3,
+      "fileIds": [
+        25,
+        27,
+        28,
+        29
+      ],
+      "distinctSymbols": true,
+      "fourPeak": {
+        "exposed": true,
+        "metric": "usedJSHeapSize",
+        "usedJSHeapSize": 297795584,
+        "forcedGcAttempted": true,
+        "forcedGcAvailable": true,
+        "htmlDivElementCount": 74097
+      },
+      "returnSingle": {
+        "exposed": true,
+        "metric": "usedJSHeapSize",
+        "usedJSHeapSize": 213909504,
+        "forcedGcAttempted": true,
+        "forcedGcAvailable": true,
+        "htmlDivElementCount": 69097
+      },
+      "detachedDivCount": 66297,
+      "detachedDivDelta": 21699,
+      "htmlDivElementCount": 69097,
+      "retainedHtmlDivDelta": 21699
+    }
+  ]
+}

@@ -18,6 +18,7 @@ const M6_SOUND_DEFECT_CHANNELS = [
   'broadcastChannels',
   'workers',
 ];
+const M6_DEFAULT_WORKER_CREDIT_CYCLES = 5;
 const M6_CALLBACK_OBSERVATION_MARGIN = 2;
 
 function isObject(value) {
@@ -669,25 +670,47 @@ function schedulerChannelDeltas(baselineScheduler, finalScheduler) {
   return deltas;
 }
 
-function schedulerDeltaEvaluation(baselineScheduler, finalScheduler) {
+function schedulerDeltaEvaluation(baselineScheduler, finalScheduler, { cycles = M6_DEFAULT_WORKER_CREDIT_CYCLES } = {}) {
   const deltas = schedulerChannelDeltas(baselineScheduler, finalScheduler);
   const zeroToleranceOk = M6_ZERO_TOLERANCE_CHANNELS.every((key) => deltas[key] <= 0);
   const soakedTimerOk = M6_SOAKED_TIMER_CHANNELS.every((key) => deltas[key] <= 0);
   const soundChannelRed = M6_SOUND_DEFECT_CHANNELS.some((key) => deltas[key] > 0);
-  const soundAttributableRed = ['pendingIntervals', 'messageChannels', 'broadcastChannels']
-    .some((key) => deltas[key] > 0);
+  const workerCreditThreshold = Math.max(1, Number(cycles) || M6_DEFAULT_WORKER_CREDIT_CYCLES);
+  const workerAttributableRed = deltas.workers >= workerCreditThreshold;
+  const nonWorkerAttributableChannels = ['pendingIntervals', 'messageChannels', 'broadcastChannels']
+    .filter((key) => deltas[key] > 0);
+  const soundAttributableRed = nonWorkerAttributableChannels.length > 0 || workerAttributableRed;
+  const attributableCreditChannels = [
+    ...nonWorkerAttributableChannels,
+    ...(workerAttributableRed ? ['workers'] : []),
+  ];
+  const workerOnlyRed = deltas.workers > 0 && nonWorkerAttributableChannels.length === 0;
+  const workerResidueWithoutCredit = workerOnlyRed && !workerAttributableRed;
+  const attributableCreditStatus = soundAttributableRed
+    ? 'ATTRIBUTABLE'
+    : workerResidueWithoutCredit
+      ? 'WORKER-BELOW-THRESHOLD'
+      : soundChannelRed
+        ? 'NON_ATTRIBUTABLE'
+        : 'NONE';
   return {
     deltas,
     zeroToleranceOk,
     soakedTimerOk,
     soundChannelRed,
     soundAttributableRed,
-    workerOnlyRed: deltas.workers > 0 && !soundAttributableRed,
+    attributableDefectCredit: soundAttributableRed,
+    attributableCreditStatus,
+    attributableCreditChannels,
+    workerAttributableRed,
+    workerCreditThreshold,
+    workerOnlyRed,
+    workerResidueWithoutCredit,
     pass: zeroToleranceOk && soakedTimerOk,
   };
 }
 
-export function assertM6ReplayLeakCounts({ baseline, final, mutant = false, workload = null } = {}) {
+export function assertM6ReplayLeakCounts({ baseline, final, mutant = false, workload = null, cycles = M6_DEFAULT_WORKER_CREDIT_CYCLES } = {}) {
   const workloadArmed = !workload || workload.armed === true;
   const baselineScheduler = baseline?.schedulingCensus?.totals || null;
   const finalScheduler = final?.schedulingCensus?.totals || null;
@@ -700,7 +723,16 @@ export function assertM6ReplayLeakCounts({ baseline, final, mutant = false, work
   const schedulerInstrumented = baselineInstrumented && finalInstrumented
     && schedulerEpochs.pass
     && schedulerCallbacks.pass;
-  const schedulerDeltas = schedulerDeltaEvaluation(baselineScheduler, finalScheduler);
+  const schedulerDeltas = schedulerDeltaEvaluation(baselineScheduler, finalScheduler, { cycles });
+  const baselineHeap = baseline?.heap || null;
+  const finalHeap = final?.heap || null;
+  const heapPresent = !!(baselineHeap || finalHeap);
+  const heapInstrumented = !heapPresent || (
+    baselineHeap?.metric === 'usedJSHeapSize'
+    && baselineHeap?.forcedGcAttempted === true
+    && finalHeap?.metric === 'usedJSHeapSize'
+    && finalHeap?.forcedGcAttempted === true
+  );
   const cells = [
     {
       name: 'M6-PO-WORKLOAD-ARMED',
@@ -709,6 +741,20 @@ export function assertM6ReplayLeakCounts({ baseline, final, mutant = false, work
       detail: workload
         ? `armed=${workload.armed}; panels=${workload.panels}; indicatorsOk=${workload.indicatorsOk}; orderOk=${workload.order && workload.order.ok}; stillPlaying=${workload.stillPlaying}`
         : 'workload missing (injected fixture may omit)',
+    },
+    {
+      name: 'M6-HEAP-INSTRUMENT-USED-JS-HEAP',
+      // Non-blocking until M26/FIX3 collapse-release cell owns the grade (po-cpu-ab).
+      blocking: false,
+      pass: heapInstrumented,
+      detail: heapPresent
+        ? `metric=usedJSHeapSize forcedGc; baseline=${baselineHeap?.usedJSHeapSize}; final=${finalHeap?.usedJSHeapSize}; footprintNonGrading=true`
+        : 'heap samples absent (fixture); Task Manager footprint must not grade M26/FIX3',
+      metrics: {
+        baselineHeap,
+        finalHeap,
+        footprintNonGrading: true,
+      },
     },
     {
       name: 'M6-REPLAY-LIVE-COUNT-RETURNS-TO-ONE',
@@ -746,7 +792,7 @@ export function assertM6ReplayLeakCounts({ baseline, final, mutant = false, work
       name: 'M6-SCHEDULER-CENSUS-RETURNS-TO-BASELINE',
       blocking: true,
       pass: schedulerInstrumented && schedulerDeltas.pass,
-      detail: `baselineTotal=${baselineScheduler?.totalResidue}; finalTotal=${finalScheduler?.totalResidue}; deltas=${JSON.stringify(schedulerDeltas.deltas)}; zeroToleranceOk=${schedulerDeltas.zeroToleranceOk}; soakedTimerOk=${schedulerDeltas.soakedTimerOk}; soundChannelRed=${schedulerDeltas.soundChannelRed}`,
+      detail: `baselineTotal=${baselineScheduler?.totalResidue}; finalTotal=${finalScheduler?.totalResidue}; deltas=${JSON.stringify(schedulerDeltas.deltas)}; zeroToleranceOk=${schedulerDeltas.zeroToleranceOk}; soakedTimerOk=${schedulerDeltas.soakedTimerOk}; soundChannelRed=${schedulerDeltas.soundChannelRed}; attributableDefectCredit=${schedulerDeltas.attributableDefectCredit}; creditStatus=${schedulerDeltas.attributableCreditStatus}; workerCreditThreshold=${schedulerDeltas.workerCreditThreshold}`,
       metrics: schedulerDeltas,
     },
   ];

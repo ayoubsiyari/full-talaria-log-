@@ -58,3 +58,178 @@
 - Fix: per-order pending TP percentage/delete teardown now uses exact compound class selectors, behind `__TALARIA_DISABLE_ORDER_SEL01_EXACT_TEARDOWN_V1` (default ON). Whole-chart sweeps remain intentionally broad; per-order cleanup is exact. Homepage and canonical mirrors are aligned.
 - RED: `TALARIA_TEST_DISABLE_ORDER_SEL01_EXACT_TEARDOWN=1 node order-sel01-exact-teardown.test.mjs` fails because the selector still contains `[class*=...]`.
 - GREEN: both `node "chart v 1.4/chart/modules/order-sel01-exact-teardown.test.mjs"` and `node "homepage/public/chart/modules/order-sel01-exact-teardown.test.mjs"` pass.
+
+## 2026-07-29 — Timezone Refresh / EST to CST
+
+- Root cause found: `timezone-manager.js` does not fall back to CST. It loads `chartTimezone` and otherwise falls back to `UTC`, as expected. The CST comes from a later V9 settings sync path: `v9-theme-bridge.js` applies `settings.timezone` through `timezoneManager.setTimezone(resolveV9Tz(...))`, and `America/Chicago` is a valid IANA id that overwrites a previously loaded `America/New_York` chart timezone during boot.
+- The userStorage-timing hypothesis is refuted as the primary mechanism: the reproduced failure still happens when `userStorage.getItem('chartTimezone')` returns `America/New_York` before the external V9 boot push.
+- Fix: `timezone-manager.js` now preserves a valid persisted `chartTimezone` during boot until the first pointer/key user interaction, behind `__TALARIA_DISABLE_TIMEZONE_PERSISTED_BOOT_GUARD_V1` (default ON). External pre-interaction pushes that disagree with the stored chart timezone are rejected; post-interaction user timezone changes still apply.
+- Residual non-owned hole: V9/session stores can retain stale `America/Chicago` and re-apply it after the boot guard releases. Patch request written at `docs/plan3/PATCH-REQUEST-V9-TIMEZONE-DUAL-STORE-20260729.md`; Manager D did not edit V9 settings, `chart.js`, or `replay-system.js`.
+- RED: `TALARIA_TEST_DISABLE_TIMEZONE_PERSISTED_BOOT_GUARD=1 node timezone-persisted-boot-guard.test.mjs` fails because the old behavior accepts `America/Chicago` and overwrites stored `America/New_York`.
+- GREEN: both `node "chart v 1.4/chart/modules/timezone-persisted-boot-guard.test.mjs"` and `node "homepage/public/chart/modules/timezone-persisted-boot-guard.test.mjs"` pass.
+
+## 2026-07-29 — Cluster G / TAL-01861
+
+- Root cause found: the chart preview place/cancel badges fire on `pointerdown` and `click` with debounce stored on the individual badge DOM instance. Market drafts are live-refreshed and can recreate those badges between cancel press and trailing click; a recreated place badge has a fresh debounce and can call `placeAdvancedOrder`, immediately opening a market order after the user pressed cancel.
+- Fix: cancel badge press now sets an instance-level short suppression window that blocks recreated place-badge clicks, behind `__TALARIA_DISABLE_ORDER_CANCEL_BEFORE_CONFIRM_V1` (default ON). Later intentional place clicks still work after the suppression window.
+- RED: `TALARIA_TEST_DISABLE_ORDER_CANCEL_BEFORE_CONFIRM=1 node order-cancel-before-confirm.test.mjs` fails with the recreated-place click not suppressed.
+- GREEN: both `node "chart v 1.4/chart/modules/order-cancel-before-confirm.test.mjs"` and `node "homepage/public/chart/modules/order-cancel-before-confirm.test.mjs"` pass.
+
+## 2026-07-29 — Cluster G / TAL-01885
+
+- Root cause found: pending limit/stop SL rows are created, but `positionPendingOrderTargets()` hides the line/label/hitLine when the row Y falls just outside the computed main plot. Indicator-stack plot bounds and clip paths can therefore make a valid pending SL look missing at the edge.
+- Fix: pending SL/TP/BE target rows now clamp just-beyond-edge Y coordinates back to the main price plot edge instead of hiding them, behind `__TALARIA_DISABLE_ORDER_LINE_EDGE_VISIBILITY_V1` (default ON). Far outside prices remain hidden; entry rows are not edge-clamped.
+- RED: `TALARIA_TEST_DISABLE_ORDER_LINE_EDGE_VISIBILITY=1 node order-line-edge-visibility.test.mjs` fails with `null !== 270` for a pending SL just below the plot.
+- GREEN: both `node "chart v 1.4/chart/modules/order-line-edge-visibility.test.mjs"` and `node "homepage/public/chart/modules/order-line-edge-visibility.test.mjs"` pass.
+
+## 2026-07-29 — Cluster G / TAL-01905
+
+- Root cause found: `_refreshAllGuardsToTimestamp(t)` defaulted an omitted tick argument to `-1`. In candle replay, that allows `_tickAnimOverridesGuard()` to inspect the destination candle's full high/low immediately after a seek/panel re-arm, recreating the TAL-01815 instant-close class without needing a fresh price event.
+- Fix: omitted guard ticks now default to strict `Infinity`, behind `__TALARIA_DISABLE_ORDER_SEEK_GUARD_INFINITY_V1` (default ON). Explicit `-1` callers still get legacy same-candle evaluation when intentionally passed.
+- RED: `TALARIA_DISABLE_ORDER_SEEK_GUARD_INFINITY_V1=1 node --test order-lifecycle-event-ownership.test.mjs` fails with `-1 !== Infinity`.
+- GREEN: both `node --test "chart v 1.4/chart/modules/order-lifecycle-event-ownership.test.mjs"` and `node --test "homepage/public/chart/modules/order-lifecycle-event-ownership.test.mjs"` pass 14/14.
+- TAL-01932 is separate: manual opposing SELL LIMIT is currently a new pending short, not close-by/netting against open BUY size. Do not merge it with this guard-lifecycle fix.
+
+## 2026-07-29 — Cluster G / TP-SL Drag Family
+
+- Root cause found: yes, the `beginNewOrderDraft()` fix for TAL-01897 could cause the reported symptom. It cleared visible draft SL/TP fields via `_discardUnplacedOrderDraftLevels()`, but that helper did not clear hidden draft constraint state: provisional SL/TP drag baseline, RR Execute/tool coupling, manual-position flags, and preview drag flags. The next SL drag could therefore start from an old committed SL even though `#slPrice` displayed empty.
+- Fix: `_discardUnplacedOrderDraftLevels()` now also clears hidden new-draft constraint state, behind `__TALARIA_DISABLE_ORDER_NEW_DRAFT_CONSTRAINT_RESET_V1` (default ON). The visible no-inheritance fix remains intact.
+- RED: `TALARIA_TEST_DISABLE_ORDER_NEW_DRAFT_CONSTRAINT_RESET=1 node order-new-draft-constraint-reset.test.mjs` fails because `_rrExecuteArmed` and stale provisional drag state survive while fields clear.
+- GREEN: both `node "chart v 1.4/chart/modules/order-new-draft-constraint-reset.test.mjs"` and `node "homepage/public/chart/modules/order-new-draft-constraint-reset.test.mjs"` pass. Existing `order-entry-new-draft-reset.test.mjs` still passes in both mirrors.
+
+## 2026-07-29 — Cluster E / TAL-01927
+
+- Root cause found: entry screenshot capture was not idempotent. Market placement, drawing-tool market placement, and pending fill always called `captureChartSnapshot()` even when a restored order already had `entryScreenshot` or `entryScreenshotRef`. After play/refresh, that could attach a second PRE image for the same trade.
+- Fix: entry screenshot capture now routes through `_captureEntryScreenshotOnce()`, behind `__TALARIA_DISABLE_ORDER_ENTRY_SCREENSHOT_IDEMPOTENT_V1` (default ON). Existing entry screenshots/refs suppress recapture; fresh captures still attach once and critical-persist after the screenshot lands. Homepage and canonical mirrors are aligned.
+- RED: `TALARIA_TEST_DISABLE_ORDER_ENTRY_SCREENSHOT_IDEMPOTENT=1 node "chart v 1.4/chart/modules/order-entry-screenshot-idempotent.test.mjs"` fails because a restored entry screenshot recaptures.
+- GREEN: both `node "chart v 1.4/chart/modules/order-entry-screenshot-idempotent.test.mjs"` and `node "homepage/public/chart/modules/order-entry-screenshot-idempotent.test.mjs"` pass.
+
+## 2026-07-29 — Cluster G / TAL-01932
+
+- Root cause found: pending fill conversion always treated a touched pending order as a new open position. A full-size opposing SELL LIMIT against an existing BUY therefore opened a hedge/short instead of closing the long, so the intended 5-contract close did not trigger.
+- Fix: exact full-size opposing pending fills now resolve to the existing `closePositionAtPrice()` path before new-position conversion, behind `__TALARIA_DISABLE_ORDER_PENDING_CLOSE_NETTING_V1` (default ON). Scope is intentionally narrow: same symbol/source, opposite side, exact quantity, non-split, non-scale orders only. Partial-size opposing orders keep legacy behavior until a separate partial-close design is requested.
+- RED: `TALARIA_TEST_DISABLE_ORDER_PENDING_CLOSE_NETTING=1 node "chart v 1.4/chart/modules/order-pending-close-netting.test.mjs"` fails because the opposing pending fill is not handled as a close.
+- GREEN: both `node "chart v 1.4/chart/modules/order-pending-close-netting.test.mjs"` and `node "homepage/public/chart/modules/order-pending-close-netting.test.mjs"` pass.
+
+## 2026-07-29 — Cluster E / TAL-01903
+
+- Root cause found: journal restore/hydrate replaced `tradeJournal` via `_m19CommitJournalArray()`, but did not recompute account state at the same authority boundary. The UI could therefore keep a stale `account_runtime.balance`/header PnL from an earlier hot patch until another path later recomputed from closed rows, producing a PnL jump after refresh.
+- Fix: structural journal replacement now immediately recomputes balance, equity, and header realized PnL from the restored journal, behind `__TALARIA_DISABLE_ORDER_PNL_RESTORE_STABLE_V1` (default ON). Hot runtime state remains the fallback when no journal rows have been restored.
+- RED: `TALARIA_TEST_DISABLE_ORDER_PNL_RESTORE_STABLE=1 node "chart v 1.4/chart/modules/order-pnl-refresh-stable.test.mjs"` fails with stale `12000 !== 10075`.
+- GREEN: both `node "chart v 1.4/chart/modules/order-pnl-refresh-stable.test.mjs"` and `node "homepage/public/chart/modules/order-pnl-refresh-stable.test.mjs"` pass.
+
+## 2026-07-29 — Cluster G / TAL-01777
+
+- Root cause found: pair/symbol visual sync removed placed-order drawings that did not belong to the active ticker, but left an unplaced order draft alive. The old pair's draft SL/TP fields and preview state could therefore remain attached after switching to another pair.
+- Fix: `syncOrderVisualsToActiveChart()` now detects active ticker changes and discards any open unplaced draft state, behind `__TALARIA_DISABLE_ORDER_PAIR_SWITCH_DRAFT_REBIND_V1` (default ON). The cleanup closes/removes the draft panel/preview and clears hidden draft SL/TP stores; ordinary same-ticker redraws do not discard drafts.
+- RED: `TALARIA_TEST_DISABLE_ORDER_PAIR_SWITCH_DRAFT_REBIND=1 node "chart v 1.4/chart/modules/order-pair-switch-draft-rebind.test.mjs"` fails because the old pair draft remains.
+- GREEN: both `node "chart v 1.4/chart/modules/order-pair-switch-draft-rebind.test.mjs"` and `node "homepage/public/chart/modules/order-pair-switch-draft-rebind.test.mjs"` pass.
+
+## 2026-07-29 — Cluster G / TAL-01750
+
+- Root cause found: split-entry handles treated any non-zero price movement as an intentional split. A hover or micro-drag with a tiny pointer movement could therefore add a second entry even though the user did not deliberately drag the handle.
+- Fix: split-entry handle drag-end now requires an intentional pixel movement as well as a non-zero price movement, behind `__TALARIA_DISABLE_ORDER_SPLIT_ENTRY_HOVER_STICK_V1` (default ON). The threshold is 4px; larger drags still add split entries/TPs normally. Homepage and canonical mirrors are aligned.
+- RED: `TALARIA_TEST_DISABLE_ORDER_SPLIT_ENTRY_HOVER_STICK=1 node "chart v 1.4/chart/modules/order-split-entry-hover-stick.test.mjs"` fails because a 2px micro-drag is accepted.
+- GREEN: both `node "chart v 1.4/chart/modules/order-split-entry-hover-stick.test.mjs"` and `node "homepage/public/chart/modules/order-split-entry-hover-stick.test.mjs"` pass.
+
+## 2026-07-29 — Cluster G / TAL-01810
+
+- Root cause confirmed: legacy exit marker price-refinement can drift a spread-side SL/TP exit back toward the entry candle when mid OHLC does not contain the spread-adjusted close price. This is separate from the draft/restore tickets.
+- Fix status: no new production code needed in this batch. Existing canonical trade-marker projection (`__TALARIA_DISABLE_TRADE_MARKER_CANONICAL_PROJECTION_V1`, default ON) maps exit markers by immutable hit time instead of rescanning by mid-price containment, which covers the spread-column failure.
+- RED: `TALARIA_DISABLE_TRADE_MARKER_CANONICAL_PROJECTION_V1=1 node "chart v 1.4/chart/modules/order-exit-marker-spread-column.test.mjs"` fails with legacy marker index `0 !== 2`.
+- GREEN: both `node "chart v 1.4/chart/modules/order-exit-marker-spread-column.test.mjs"` and `node "homepage/public/chart/modules/order-exit-marker-spread-column.test.mjs"` pass.
+
+## 2026-07-29 — Cluster G / TAL-01683
+
+- Root cause found: with SL/TP apply-on-release active, dragging preview SL commits the new value to `#slPrice` only on drag end. The commit path updated the hidden SL input but did not rerun risk-based sizing, so fixed-dollar / percent-risk quantity could remain sized from the previous SL distance.
+- Fix: SL preview drag commit now recalculates position size for `risk-usd` and `risk-percent` modes, behind `__TALARIA_DISABLE_ORDER_RISK_QTY_ON_SL_COMMIT_V1` (default ON). Lot-size mode is unchanged.
+- RED: `TALARIA_TEST_DISABLE_ORDER_RISK_QTY_ON_SL_COMMIT=1 node "chart v 1.4/chart/modules/order-risk-qty-on-sl-commit.test.mjs"` fails because SL commits but sizing is not recalculated.
+- GREEN: both `node "chart v 1.4/chart/modules/order-risk-qty-on-sl-commit.test.mjs"` and `node "homepage/public/chart/modules/order-risk-qty-on-sl-commit.test.mjs"` pass.
+
+## 2026-07-29 — Cluster G / TAL-01751
+
+- Root cause found: preview BE trigger, pending BE line, open BE line, and BE trigger evaluation could use different anchors. Place-time tick snap, split/pending average entry, or open first-leg anchor could therefore move the BE level after the user clicked Place.
+- Fix: place now persists the preview BE trigger as `breakevenSettings.triggerPrice`, and pending/open rendering plus trigger evaluation prefer that frozen trigger, behind `__TALARIA_DISABLE_ORDER_BE_PLACE_ANCHOR_V1` (default ON). Manual BE drags update the persisted trigger so later redraws do not revert.
+- RED: `TALARIA_TEST_DISABLE_ORDER_BE_PLACE_ANCHOR=1 node "chart v 1.4/chart/modules/order-be-place-anchor.test.mjs"` fails because BE recomputes from the moved fallback anchor (`1.115 !== 1.1125`).
+- GREEN: both `node "chart v 1.4/chart/modules/order-be-place-anchor.test.mjs"` and `node "homepage/public/chart/modules/order-be-place-anchor.test.mjs"` pass.
+
+## 2026-07-29 — TAL-01895 / TAL-01792
+
+- Root cause found: timeframe pins had a preference bridge, but empty cloud preference fields could overwrite non-empty local user pins during preference load. Drawing-tool pins were worse: `FavoritesManager` only persisted `chart_favorite_tools` locally and never entered the user-level preferences payload, so pins could not appear in a new session.
+- Fix: pinned timeframes and pinned drawing tools are now user-level preferences, behind `__TALARIA_DISABLE_PINS_USER_PREFS_V1` (default ON). Preference load preserves non-empty local pin arrays when the server field is empty and queues that merge for sync; drawing-tool pin save/load now uses the preferences bridge while keeping the scoped local key in sync.
+- RED: `TALARIA_TEST_DISABLE_PINS_USER_PREFS=1 node "chart v 1.4/chart/modules/pins-user-preferences.test.mjs"` fails because empty cloud pins erase local pins.
+- GREEN: both `node "chart v 1.4/chart/modules/pins-user-preferences.test.mjs"` and `node "homepage/public/chart/modules/pins-user-preferences.test.mjs"` pass.
+
+## 2026-07-29 — TAL-01865 / TAL-01747
+
+- Owner finding: symbol refresh persistence lives in `chart v 1.4/chart/chart.js`, not in the newly granted preferences modules. Boot uses `urlParams.get('fileId') || this.getPrimarySessionFileId(session)` before loading data, so refresh falls back to the session's primary instrument unless the URL carries the switched `fileId`.
+- Pair-switch code later mutates `this.currentFileId` and `this.currentSymbol` inside `chart.js`, but I found no granted-module persistence site that writes the switched file/symbol back to session state. Fix requires a grant for `chart.js` or routing to Manager A.
+
+## 2026-07-29 — Cluster E / TAL-01927 changed shape
+
+- Root cause found: the earlier duplicate-screenshot fix made entry capture idempotent and critical-persisted runtime order state after a fresh screenshot attached, but if the matching trade was already in `tradeJournal`, the late screenshot mutated only the live order object. The visible card could therefore show the in-memory screenshot while the durable journal row stayed screenshot-empty and came back empty after refresh.
+- This was not the M24 prune guard deleting the row; the server-side prefer-richer merge already preserves screenshot fields from marked slim patches. The missing edge was client-side journal row propagation after a late capture.
+- Fix: `_captureEntryScreenshotOnce()` now copies a late entry screenshot/ref into the matching journal row and calls `persistJournal()`, behind `__TALARIA_DISABLE_ORDER_ENTRY_SCREENSHOT_JOURNAL_RETENTION_V1` (default ON). Existing duplicate-capture idempotency remains behind `__TALARIA_DISABLE_ORDER_ENTRY_SCREENSHOT_IDEMPOTENT_V1`.
+- RED: `TALARIA_TEST_DISABLE_ORDER_ENTRY_SCREENSHOT_JOURNAL_RETENTION=1 node "chart v 1.4/chart/modules/order-entry-screenshot-idempotent.test.mjs"` fails because the journal row remains screenshot-empty.
+- GREEN: both `node "chart v 1.4/chart/modules/order-entry-screenshot-idempotent.test.mjs"` and `node "homepage/public/chart/modules/order-entry-screenshot-idempotent.test.mjs"` pass.
+
+## 2026-07-29 — Cluster G / TAL-01941
+
+- Scope decision: no speculative SL fill change. Report lacks pair/timeframe/repro, so this batch adds bounded decision evidence only.
+- Instrumentation: local BUY/SELL SL paths now record `hit`, `guarded-touch-miss`, and `skipped-touch` rows into `window.__talariaOrderSlTriggerDiag` and `orderManager._slTriggerDiag`, capped at 80 rows, behind `__TALARIA_DISABLE_ORDER_SL_TRIGGER_DIAG_V1` (default ON). Rows include order id, side, ticker/sourceFileId, stop, bid/ask extremes, effective extreme, guard time/tick, skip reason, bar time, and fill price when applicable. Console output remains quiet unless `window.__TALARIA_ORDER_SL_TRIGGER_DIAG_LOGS === true`.
+- Ownership note: TAL-01896 still points at `chart v 1.4/talaria-design/src/orderManagerTradeRows.js`, outside Manager D's grant. I did not edit it.
+- RED: `TALARIA_TEST_DISABLE_ORDER_SL_TRIGGER_DIAG=1 node "chart v 1.4/chart/modules/order-sl-trigger-diagnostics.test.mjs"` fails because diagnostics are disabled.
+- GREEN: both `node "chart v 1.4/chart/modules/order-sl-trigger-diagnostics.test.mjs"` and `node "homepage/public/chart/modules/order-sl-trigger-diagnostics.test.mjs"` pass.
+
+## 2026-07-29 — Timezone / V9 theme CST override (narrow grant)
+
+- Grant: `chart v 1.4/chart/modules/v9-theme-bridge.js` only. No `chart.js` edits.
+- Root cause confirmed in bridge: `talariaApplyV9ThemeSettings` wrote `settings.timezone` into `chartSettings` and called `timezoneManager.setTimezone(resolveV9Tz(...))`, so a V9/session `America/Chicago` snapshot could replace persisted `chartTimezone=America/New_York` on reload (including after the manager boot guard released).
+- Fix: bridge honors persisted `chartTimezone` over a disagreeing V9 timezone during theme apply, behind `__TALARIA_DISABLE_V9_THEME_TZ_HONOR_CHART_V1` (default ON). Rejected `setTimezone` results no longer leave Chicago on `chartSettings.timezone`. Homepage mirror aligned.
+- Escalations (not edited): `docs/plan3/PATCH-REQUEST-V9-THEME-TZ-FOLLOWUPS-20260729.md` — `chart.js` `applySessionTimezone` ~1799 and DOM sync ~32040; Live `v9ThemeSync.js` duplicate replace of the bridge global; V9 confirm write-through must `setTimezone` before apply for intentional TZ changes.
+- Symbol persist: not implemented. Patch request for A at `docs/plan3/PATCH-REQUEST-A-SYMBOL-PERSIST-20260729.md` (boot read ~2370; pair-switch writes ~5420 / ~10115 / ~10509 / symbol switcher ~17318).
+- RED: `TALARIA_TEST_DISABLE_V9_THEME_TZ_HONOR_CHART=1 node v9-theme-tz-honor-chart.test.mjs` fails (Chicago overwrites New_York).
+- GREEN: both canonical and homepage `v9-theme-tz-honor-chart.test.mjs` pass.
+
+## 2026-07-29 — Cluster G / TAL-01697 TP-SL drag live panel PnL
+
+- tier=mid author model=gpt-5.5; TOP review required before canary because this is money-path panel PnL / order sizing context.
+- Root cause found: apply-on-release drag intentionally withholds `#tpPrice` / `#slPrice` input commits until mouseup, but `calculateAdvancedRiskReward()` and the throttled drag R:R path read those inputs. During a TP/SL drag, panel reward/R:R can therefore stay stale/zero until release even though provisional/preview line geometry has already moved.
+- Fix: `order-manager.js` now resolves live preview panel prices from preview-phase provisional SL/TP state or active preview-line geometry, behind `__TALARIA_DISABLE_ORDER_PREVIEW_LIVE_RECALC_V1` (default ON). At rest, typed panel values still win. Homepage mirror aligned.
+- TOP review 1: tier=top reviewer model=claude-opus-5-thinking-high result=REJECT. Blocking findings fixed before commit: avoid making the old lot-size `netAtSl` risk branch live by introducing a local `slPrice`; restrict geometry fallback to preview-phase provisional edits (not open-position drags); avoid feeding multi-TP rung provisional prices into single-TP panel price; align mirror test bytes.
+- TOP review 2: tier=top reviewer model=claude-opus-5-thinking-high result=ACCEPT. Reviewer verified the prior blockers closed, mirror SHA parity, `node --check`, RED/GREEN, full order sweeps, and no placement / persistence / journal leakage. Residuals recorded: risk-mode quantity still self-corrects on commit rather than live; Escape-cancel can leave display stale until drag end; multi-TP rung PnL remains intentionally out of scope.
+- RED: `TALARIA_TEST_DISABLE_ORDER_PREVIEW_LIVE_RECALC=1 node "chart v 1.4/chart/modules/order-preview-live-recalc.test.mjs"` fails because provisional TP is not visible to panel math.
+- GREEN: canonical and homepage `order-preview-live-recalc.test.mjs` pass; full canonical and homepage `order-*.test.mjs` sweeps pass with `ALL_ORDER_TESTS_PASS`.
+
+## 2026-07-29 — Tier / fallback review audit
+
+- tier=audit model=gpt-5.5. I found no explicit `API fallback window` marker in `docs/plan3` or the prior transcript. During the resumed fallback-routing window, no money-path packet was accepted as TOP-reviewed: timezone was non-money-path and committed; TAL-01697 live-recalc remained uncommitted and is being TOP-reviewed before commit. Standing action: any money-path commit without a recorded `tier=top reviewer model=... result=ACCEPT` is not canary-ready and must be re-reviewed at TOP.
+
+## 2026-07-29 — Cluster G / Drag-family residual: risk quantity live SL
+
+- tier=mid author model=gpt-5.5; TOP review required before canary because this writes `#orderQuantity`, a placement input.
+- Root cause found: TAL-01697 live panel PnL fixed panel math during apply-on-release preview drag, but `calculatePositionFromRisk()` still read committed `#slPrice`. In fixed-risk modes, quantity therefore used the stale SL distance during drag and corrected only at mouseup commit.
+- Fix: `calculatePositionFromRisk()` now reads the live preview/provisional SL from `_resolveLivePreviewPanelPrices()` behind `__TALARIA_DISABLE_ORDER_RISK_QTY_LIVE_PREVIEW_SL_V1` (default ON). `#slPrice` still remains uncommitted until release.
+- TOP review 1: tier=top reviewer model=claude-opus-5-thinking-high result=ACCEPT. Reviewer verified mirror hash parity, RED/GREEN, full order sweeps, switch composition, and no placement / execution / journal leakage. Residual follow-up identified: cancelling a preview SL drag could leave `#orderQuantity` sized from the abandoned provisional SL until recalculated.
+- Follow-up folded into packet before final commit: `_oiCancelActiveProvisionalEdit()` now recalculates risk-mode quantity after preview SL cancel/escape/focus-loss while the same kill-switch is ON, so quantity returns to the committed SL distance.
+- TOP review 2: tier=top reviewer model=claude-opus-5-thinking-high result=ACCEPT. Reviewer verified cancel ordering, blast-radius guards, kill-switch parity, mirror SHA, RED/GREEN, and full order sweeps. Residuals recorded: mid-drag place mismatch window if placement could fire without pointer release; host mirrored draft can lag until another snapshot; multi-entry risk-mode branch remains separate.
+- RED: `TALARIA_TEST_DISABLE_ORDER_RISK_QTY_LIVE_PREVIEW_SL=1 node "chart v 1.4/chart/modules/order-risk-qty-live-preview-sl.test.mjs"` fails with quantity `10.00` instead of live-distance `5.00`.
+- GREEN: canonical and homepage `order-risk-qty-live-preview-sl.test.mjs` pass, including cancel re-size back to committed SL; adjacent `order-preview-live-recalc.test.mjs` and `order-risk-qty-on-sl-commit.test.mjs` pass.
+
+## 2026-07-29 — Cluster G / Drag-family residual: block place during preview drag
+
+- tier=mid author model=gpt-5.5; TOP review required before canary because this blocks a placement path.
+- Root cause found: after live preview SL sizing, `#orderQuantity` can reflect provisional SL distance while `placeAdvancedOrder()` still reads committed `#slPrice`. A place call during a preview drag would therefore mix live quantity with stale committed SL.
+- Fix: `placeAdvancedOrder()` now exits early while `isDraggingPreviewLine` or preview provisional state is active, behind `__TALARIA_DISABLE_ORDER_BLOCK_PLACE_DURING_PREVIEW_DRAG_V1` (default ON). Placement resumes after drag commit or cancel.
+- TOP review: tier=top reviewer model=claude-opus-5-thinking-high result=ACCEPT. Reviewer verified predicate scope matches `_resolveLivePreviewPanelPrices()`, open-position drags are untouched, mirrors match, RED/GREEN and full order sweeps pass. Strengthened test after review to prove idle placement reaches the next guard and both predicate clauses are covered separately.
+- RED: `TALARIA_TEST_DISABLE_ORDER_BLOCK_PLACE_DURING_PREVIEW_DRAG=1 node "chart v 1.4/chart/modules/order-block-place-during-preview-drag.test.mjs"` fails because preview drag does not block placement.
+- GREEN: canonical and homepage `order-block-place-during-preview-drag.test.mjs` pass; adjacent `order-risk-qty-live-preview-sl.test.mjs` and `order-cancel-before-confirm.test.mjs` pass.
+
+## 2026-07-29 — Cluster G / TAL-01699 coincident multi-TP hit rows
+
+- tier=mid author model=gpt-5.5; TOP review required before canary because this changes TP drag hit-testing.
+- Root cause found: this sibling is not another committed-input read site. Priced multi-TP preview rungs at the same visual price are drawn with identical line/hit-line Y, so the front rung can swallow drags and the stacked TP1/TP2 rungs cannot be separated.
+- Fix: coincident priced multi-TP preview rungs now get a small visual/hit-row Y offset behind `__TALARIA_DISABLE_ORDER_MULTI_TP_COINCIDENT_STACK_V1` (default ON). TP1 stays on the true price row; later coincident rungs offset only for interaction, and pan/zoom refresh preserves the offset.
+- TOP review: tier=top reviewer model=claude-opus-5-thinking-high result=ACCEPT. Reviewer verified RED/GREEN, full canonical/homepage order sweeps, mirror parity, kill-switch behavior, and the strengthened pan/zoom geometry assertion. Material residuals: dragging an offset rung converts the visual offset into a small real price delta until the rung separates; wiring from `updatePreviewLines()` to `drawPreviewLine()` is not directly mutation-covered; y-axis pill can jump on first refresh.
+- RED: `TALARIA_TEST_DISABLE_ORDER_MULTI_TP_COINCIDENT_STACK=1 node "chart v 1.4/chart/modules/order-multi-tp-coincident-stack.test.mjs"` fails because the second coincident rung offset is `0`.
+- GREEN: canonical and homepage `order-multi-tp-coincident-stack.test.mjs` pass, including pan/zoom line/hit-line/label geometry; adjacent `multi-tp-preview-drag-sync.test.mjs` and `order-preview-live-recalc.test.mjs` pass; full canonical/homepage `order-*.test.mjs` sweeps pass.

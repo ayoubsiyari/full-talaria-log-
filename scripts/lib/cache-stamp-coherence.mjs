@@ -50,7 +50,34 @@ export const CACHE_STAMP_SHELLS = [
     relativePath: 'homepage/public/chart/multichart-prod/chart-embed.html',
     role: 'embed',
   },
+  // /chart/multichart/ panel shells — FINDING-MULTICHART-HOST-SHELL-STALE: May stamp
+  // (20260524a10) survived because these paths were outside CACHE_STAMP_SHELLS.
+  {
+    id: 'multichart-host-canonical',
+    relativePath: 'chart v 1.4/chart/multichart/chart-host.html',
+    role: 'multichart-panel',
+  },
+  {
+    id: 'multichart-host-homepage',
+    relativePath: 'homepage/public/chart/multichart/chart-host.html',
+    role: 'multichart-panel',
+  },
+  {
+    id: 'multichart-shell-canonical',
+    relativePath: 'chart v 1.4/chart/multichart/multichart-shell.html',
+    role: 'multichart-shell',
+  },
+  {
+    id: 'multichart-shell-homepage',
+    relativePath: 'homepage/public/chart/multichart/multichart-shell.html',
+    role: 'multichart-shell',
+  },
 ];
+
+/** Shells that historically formed the gate before /chart/multichart/ coverage. */
+export const CACHE_STAMP_SHELLS_WITHOUT_MULTICHART = CACHE_STAMP_SHELLS.filter(
+  (shell) => !shell.role.startsWith('multichart-'),
+);
 
 const MODULE_REF_RE = /(?:\/chart\/|["'(]|\s)((?:modules\/)[^"'?\s]+\.js)\?v=([^"'&#\s]+)/g;
 const BUILD_ID_RES = [

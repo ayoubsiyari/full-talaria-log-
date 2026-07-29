@@ -234,7 +234,69 @@ function _orderEntryCloseHitTargetFixEnabled() {
     return typeof window === 'undefined' || !window.__TALARIA_DISABLE_ORDER_ENTRY_CLOSE_HITTARGET_FIX;
 }
 
+/** Cluster G / TAL-01861: cancel badge press blocks a trailing recreated place click. */
+function _orderCancelBeforeConfirmV1Enabled() {
+    return typeof window === 'undefined' || !window.__TALARIA_DISABLE_ORDER_CANCEL_BEFORE_CONFIRM_V1;
+}
+
+/** Cluster G / TAL-01885: keep edge SL/TP rows visible instead of hiding at plot seams. */
+function _orderLineEdgeVisibilityV1Enabled() {
+    return typeof window === 'undefined' || !window.__TALARIA_DISABLE_ORDER_LINE_EDGE_VISIBILITY_V1;
+}
+
+/** Cluster G / TAL-01905: omitted seek guard tick must block current candle OHLC. */
+function _orderSeekGuardInfinityV1Enabled() {
+    return typeof window === 'undefined' || !window.__TALARIA_DISABLE_ORDER_SEEK_GUARD_INFINITY_V1;
+}
+
+/** Cluster G / TAL-01750: hover/micro-drags on split handles must not add entries. */
+function _orderSplitEntryHoverStickV1Enabled() {
+    return typeof window === 'undefined' || !window.__TALARIA_DISABLE_ORDER_SPLIT_ENTRY_HOVER_STICK_V1;
+}
+
+/** Cluster G / TAL-01683: risk-based qty updates after apply-on-release SL commit. */
+function _orderRiskQtyOnSlCommitV1Enabled() {
+    return typeof window === 'undefined' || !window.__TALARIA_DISABLE_ORDER_RISK_QTY_ON_SL_COMMIT_V1;
+}
+
+/**
+ * Cluster G / TAL-01697 (+ drag family): feed provisional/preview SL/TP prices into
+ * panel PnL / R:R while apply-on-release withholds input commits until mouseup.
+ */
+function _orderPreviewLiveRecalcV1Enabled() {
+    return typeof window === 'undefined' || !window.__TALARIA_DISABLE_ORDER_PREVIEW_LIVE_RECALC_V1;
+}
+
+/** Cluster G / drag family residual: fixed-risk quantity follows live preview SL. */
+function _orderRiskQtyLivePreviewSlV1Enabled() {
+    return typeof window === 'undefined' || !window.__TALARIA_DISABLE_ORDER_RISK_QTY_LIVE_PREVIEW_SL_V1;
+}
+
+/** Cluster G / drag family: placement waits until preview drag commits or cancels. */
+function _orderBlockPlaceDuringPreviewDragV1Enabled() {
+    return typeof window === 'undefined' || !window.__TALARIA_DISABLE_ORDER_BLOCK_PLACE_DURING_PREVIEW_DRAG_V1;
+}
+
+/** Cluster G / TAL-01699: coincident multi-TP preview rungs must be separately hittable. */
+function _orderMultiTpCoincidentStackV1Enabled() {
+    return typeof window === 'undefined' || !window.__TALARIA_DISABLE_ORDER_MULTI_TP_COINCIDENT_STACK_V1;
+}
+
+/** Cluster G / TAL-01751: BE trigger keeps the preview/place anchor. */
+function _orderBePlaceAnchorV1Enabled() {
+    return typeof window === 'undefined' || !window.__TALARIA_DISABLE_ORDER_BE_PLACE_ANCHOR_V1;
+}
+
+/** Cluster G / TAL-01941: bounded SL trigger diagnostics; no behavior changes. */
+function _orderSlTriggerDiagV1Enabled() {
+    return typeof window === 'undefined' || !window.__TALARIA_DISABLE_ORDER_SL_TRIGGER_DIAG_V1;
+}
+
 const ENTRY_STACK_OFFSET_PX = 16;
+const ORDER_CANCEL_PLACE_SUPPRESS_MS = 450;
+const ORDER_LINE_EDGE_VISIBILITY_PAD_PX = 24;
+const ORDER_SPLIT_HANDLE_MIN_DRAG_PX = 4;
+const MULTI_TP_COINCIDENT_STACK_OFFSET_PX = 14;
 const DEFAULT_SLTP_STEPPER_OFFSET_PIPS = 10;
 
 /** T4 step 9: default ON — lot stepper full recalc + SL/TP stepper seed from entry; own kill-switch. */
@@ -281,6 +343,42 @@ function _orderEntryCancelCleanupFixEnabled() {
 function _orderEntryNewDraftLevelsResetV1Enabled() {
     return typeof window === 'undefined'
         || !window.__TALARIA_DISABLE_ORDER_ENTRY_NEW_DRAFT_LEVELS_RESET_V1;
+}
+
+/** Cluster G / TP-SL drag family: Make-new-order also clears stale drag constraints. */
+function _orderNewDraftConstraintResetV1Enabled() {
+    return typeof window === 'undefined'
+        || !window.__TALARIA_DISABLE_ORDER_NEW_DRAFT_CONSTRAINT_RESET_V1;
+}
+
+/** Cluster E / TAL-01927: entry screenshots are one-shot per trade across restore. */
+function _orderEntryScreenshotIdempotentV1Enabled() {
+    return typeof window === 'undefined'
+        || !window.__TALARIA_DISABLE_ORDER_ENTRY_SCREENSHOT_IDEMPOTENT_V1;
+}
+
+/** Cluster E / TAL-01927: late entry screenshots must update persisted journal rows. */
+function _orderEntryScreenshotJournalRetentionV1Enabled() {
+    return typeof window === 'undefined'
+        || !window.__TALARIA_DISABLE_ORDER_ENTRY_SCREENSHOT_JOURNAL_RETENTION_V1;
+}
+
+/** Cluster G / TAL-01932: full-size opposing pending orders close, not hedge-open. */
+function _orderPendingCloseNettingV1Enabled() {
+    return typeof window === 'undefined'
+        || !window.__TALARIA_DISABLE_ORDER_PENDING_CLOSE_NETTING_V1;
+}
+
+/** Cluster E / TAL-01903: restored journal rows are the balance/PnL authority. */
+function _orderPnlRestoreStableV1Enabled() {
+    return typeof window === 'undefined'
+        || !window.__TALARIA_DISABLE_ORDER_PNL_RESTORE_STABLE_V1;
+}
+
+/** Cluster G / TAL-01777: pair switches discard drafts from the previous symbol. */
+function _orderPairSwitchDraftRebindV1Enabled() {
+    return typeof window === 'undefined'
+        || !window.__TALARIA_DISABLE_ORDER_PAIR_SWITCH_DRAFT_REBIND_V1;
 }
 
 /** Cluster G / TAL-01933: a single TP stays executable after SL trails past it. */
@@ -803,6 +901,12 @@ class OrderManager {
         return !!(st && st.phase !== 'idle');
     }
 
+    _shouldBlockPlaceDuringPreviewDrag() {
+        if (!_orderBlockPlaceDuringPreviewDragV1Enabled()) return false;
+        const st = this._orderProvisionalEdit;
+        return !!this.isDraggingPreviewLine || !!(st && st.phase === 'preview');
+    }
+
     _oiBeginProvisionalEdit(opts = {}) {
         const st = this._orderProvisionalEdit || _oiCreateProvisionalEditState();
         const committed = Number(opts.committedPrice);
@@ -865,6 +969,10 @@ class OrderManager {
         if (!st || st.phase === 'idle') return;
         const revert = st.committedPrice;
         const ctx = this._oiProvisionalDragCtx;
+        const recalcRiskAfterPreviewSlCancel = _orderRiskQtyLivePreviewSlV1Enabled()
+            && st.phase === 'preview'
+            && st.lineKind === 'sl'
+            && (this.positionSizeMode === 'risk-usd' || this.positionSizeMode === 'risk-percent');
         this._orderProvisionalEdit = _oiCreateProvisionalEditState();
         this._oiProvisionalDragCtx = null;
         this.isDraggingPreviewLine = false;
@@ -896,6 +1004,9 @@ class OrderManager {
             try { this.updateOrderLines(); } catch (e) { /* ignore */ }
         } else if (st.phase === 'preview') {
             try { this.updatePreviewLines(); } catch (e) { /* ignore */ }
+        }
+        if (recalcRiskAfterPreviewSlCancel && typeof this.calculatePositionFromRisk === 'function') {
+            try { this.calculatePositionFromRisk(); } catch (e) { /* ignore */ }
         }
         if (reason) console.log(`↩️ Provisional SL/TP edit cancelled (${reason})`);
         if (this._multichartIsEmbedIframe() && (reason === 'focus-loss' || reason === 'iframe-blur')) {
@@ -976,6 +1087,27 @@ class OrderManager {
         } catch (_e) { /* ignore */ }
     }
 
+    _recalculateRiskQuantityAfterSlCommit() {
+        if (!_orderRiskQtyOnSlCommitV1Enabled()) return;
+        const mode = this.positionSizeMode || 'risk-usd';
+        if (mode !== 'risk-usd' && mode !== 'risk-percent') return;
+        if (typeof this.calculatePositionFromRisk === 'function') {
+            this.calculatePositionFromRisk();
+        }
+    }
+
+    _breakevenFrozenTriggerPrice(settings) {
+        if (!_orderBePlaceAnchorV1Enabled()) return NaN;
+        const n = Number(settings?.triggerPrice);
+        return Number.isFinite(n) && n > 0 ? n : NaN;
+    }
+
+    _resolveBreakevenTriggerPrice(settings, computeFallback) {
+        const frozen = this._breakevenFrozenTriggerPrice(settings);
+        if (Number.isFinite(frozen)) return frozen;
+        return typeof computeFallback === 'function' ? computeFallback() : NaN;
+    }
+
     /** A6-4 Step 4: iframe open-leg commits route to host store. */
     _postHostOrderCommand(cmd, payload) {
         if (typeof window === 'undefined' || !window.parent || window.parent === window) return;
@@ -998,6 +1130,7 @@ class OrderManager {
             lineData.price = committed;
             const slInput = document.getElementById('slPrice');
             if (slInput) slInput.value = formatted;
+            this._recalculateRiskQuantityAfterSlCommit();
         } else if (lineData.label === 'TP') {
             lineData.price = committed;
             const tpInput = document.getElementById('tpPrice');
@@ -2227,6 +2360,7 @@ class OrderManager {
     syncOrderVisualsToActiveChart() {
         if (!this.chart || !this.chart.svg) return;
         try {
+            this._cleanupDraftForActiveTickerChange();
             if (this._isMultiPanelLayout()) {
                 this._syncOrderVisualsMultiPanel();
                 return;
@@ -2580,6 +2714,50 @@ class OrderManager {
         return isTP
             ? (candleOpen < level ? candleOpen : level)       // SELL TP: open gapped below TP
             : (candleOpen > level ? candleOpen : level);      // SELL SL: open gapped above SL
+    }
+
+    _recordSlTriggerDiag(position, detail = {}) {
+        if (!_orderSlTriggerDiagV1Enabled()) return false;
+        if (!position || typeof position !== 'object') return false;
+        const row = {
+            at: Date.now(),
+            reason: detail.reason || 'unknown',
+            orderId: position.id,
+            side: position.type,
+            ticker: position.ticker || position.symbol || this._getActiveTicker?.(),
+            sourceFileId: position.sourceFileId ?? position.source_file_id ?? null,
+            stopLoss: Number(position.stopLoss),
+            openPrice: Number(position.openPrice),
+            barTime: detail.barTime ?? detail.t ?? null,
+            guarded: !!detail.guarded,
+            guardTime: position._slNoTriggerBeforeTime ?? null,
+            guardTick: position._slNoTriggerBeforeTick ?? null,
+            skipReason: detail.skipReason || null,
+            rawTouched: !!detail.rawTouched,
+            effectiveExtreme: Number(detail.effectiveExtreme),
+            bidLow: Number(detail.bidLow),
+            bidHigh: Number(detail.bidHigh),
+            askLow: Number(detail.askLow),
+            askHigh: Number(detail.askHigh),
+            midOpen: Number(detail.midOpen),
+            fillPrice: detail.fillPrice != null ? Number(detail.fillPrice) : null,
+        };
+        if (!Array.isArray(this._slTriggerDiag)) this._slTriggerDiag = [];
+        this._slTriggerDiag.push(row);
+        if (this._slTriggerDiag.length > 80) this._slTriggerDiag.splice(0, this._slTriggerDiag.length - 80);
+        try {
+            if (typeof window !== 'undefined') {
+                if (!Array.isArray(window.__talariaOrderSlTriggerDiag)) window.__talariaOrderSlTriggerDiag = [];
+                window.__talariaOrderSlTriggerDiag.push(row);
+                if (window.__talariaOrderSlTriggerDiag.length > 80) {
+                    window.__talariaOrderSlTriggerDiag.splice(0, window.__talariaOrderSlTriggerDiag.length - 80);
+                }
+                if (window.__TALARIA_ORDER_SL_TRIGGER_DIAG_LOGS === true && typeof console !== 'undefined') {
+                    console.info('[TAL-01941 SL diag]', row);
+                }
+            }
+        } catch (_) { /* diagnostics must never affect trading */ }
+        return true;
     }
 
     /**
@@ -3324,7 +3502,9 @@ class OrderManager {
      */
     _refreshAllGuardsToTimestamp(t, tick) {
         if (!t) return;
-        if (tick === undefined) tick = -1;
+        if (tick === undefined) {
+            tick = _orderSeekGuardInfinityV1Enabled() ? Infinity : -1;
+        }
 
         for (const pos of (this.openPositions || [])) {
             this._seedOrderLifecycleEvent(pos, { t });
@@ -6932,6 +7112,43 @@ class OrderManager {
     }
 
     /**
+     * Live entry/SL/TP for panel math during preview drag.
+     * Apply-on-release withholds #tpPrice/#slPrice until mouseup; provisional +
+     * preview line geometry still move every frame — feed those into PnL/R:R.
+     * Only overrides inputs while a provisional edit or preview-line drag is active
+     * so typed panel values still win at rest.
+     */
+    _resolveLivePreviewPanelPrices() {
+        let entryPrice = parseFloat(document.getElementById('orderEntryPrice')?.value || 0);
+        let slPrice = parseFloat(document.getElementById('slPrice')?.value || 0);
+        let tpPrice = this._parseSltpInputPrice(document.getElementById('tpPrice')?.value, 0);
+        if (!_orderPreviewLiveRecalcV1Enabled()) {
+            return { entryPrice, slPrice, tpPrice };
+        }
+        const st = this._orderProvisionalEdit;
+        const previewProvisional = !!(st && st.phase === 'preview');
+        const dragging = !!this.isDraggingPreviewLine || previewProvisional;
+        const provSl = this._oiResolveProvisionalPreviewPrice('sl');
+        const provTp = this._oiResolveProvisionalPreviewPrice('tp');
+        if (Number.isFinite(provSl) && provSl > 0) slPrice = provSl;
+        else if (dragging) {
+            const slLine = Number(this.previewLines?.sl?.price);
+            if (Number.isFinite(slLine) && slLine > 0) slPrice = slLine;
+        }
+        const singlePreviewTp = !(st && st.phase === 'preview' && st.lineKind === 'tp' && st.tpTargetIndex != null);
+        if (singlePreviewTp && Number.isFinite(provTp) && provTp > 0) tpPrice = provTp;
+        else if (singlePreviewTp && dragging) {
+            const tpLine = Number(this.previewLines?.tp?.price);
+            if (Number.isFinite(tpLine) && tpLine > 0) tpPrice = tpLine;
+        }
+        if (dragging) {
+            const entryLine = Number(this.previewLines?.entry?.price);
+            if (Number.isFinite(entryLine) && entryLine > 0) entryPrice = entryLine;
+        }
+        return { entryPrice, slPrice, tpPrice };
+    }
+
+    /**
      * Valid SL vs entry + risk USD (same rules as calculateAdvancedRiskReward).
      * @param {number} entryPrice
      * @param {number} quantity
@@ -6942,7 +7159,10 @@ class OrderManager {
         const slEnabled = document.getElementById('enableSL')?.checked;
         let slPrice = 0;
         if (slEnabled) {
-            const slIn = parseFloat(document.getElementById('slPrice')?.value || 0);
+            const live = _orderPreviewLiveRecalcV1Enabled()
+                ? this._resolveLivePreviewPanelPrices().slPrice
+                : 0;
+            const slIn = live > 0 ? live : parseFloat(document.getElementById('slPrice')?.value || 0);
             if (slIn > 0) slPrice = slIn;
         }
         const slDistance = Math.abs(entryPrice - slPrice);
@@ -17426,6 +17646,10 @@ class OrderManager {
                 levelPrice: lineData.price,
                 onClick: (event) => {
                     event.stopPropagation();
+                    if (self._shouldSuppressEntryPlaceAfterCancel()) {
+                        console.warn('🟦OM-DIAG place ✓ suppressed after cancel badge press');
+                        return;
+                    }
                     console.log('🟦OM-DIAG place ✓ clicked', {
                         label: lineData.label,
                         isMultiEntryMode: self.isMultiEntryMode,
@@ -17444,6 +17668,7 @@ class OrderManager {
                 levelPrice: lineData.price,
                 onClick: (event) => {
                     event.stopPropagation();
+                    self._markEntryCancelBadgePress();
                     self.closeOrderRailFromChartCancel();
                 },
             });
@@ -17906,6 +18131,23 @@ class OrderManager {
         }
     }
 
+    _orderInteractionNowMs() {
+        return (typeof performance !== 'undefined' && performance.now)
+            ? performance.now()
+            : Date.now();
+    }
+
+    _markEntryCancelBadgePress(now = this._orderInteractionNowMs()) {
+        if (!_orderCancelBeforeConfirmV1Enabled()) return;
+        this._entryCancelPlaceSuppressUntilMs = now + ORDER_CANCEL_PLACE_SUPPRESS_MS;
+    }
+
+    _shouldSuppressEntryPlaceAfterCancel(now = this._orderInteractionNowMs()) {
+        if (!_orderCancelBeforeConfirmV1Enabled()) return false;
+        const until = Number(this._entryCancelPlaceSuppressUntilMs);
+        return Number.isFinite(until) && now <= until;
+    }
+
     /**
      * Chart preview ✕: close V9 React rail when running in a multichart iframe — toggleOrderPanel()
      * only sees a hidden #orderPanel (never .visible), so it would wrongly take the "open" branch.
@@ -17951,6 +18193,35 @@ class OrderManager {
             const backdrop = document.getElementById('orderPanelBackdrop');
             if (backdrop) backdrop.classList.remove('visible');
         }
+    }
+
+    _cleanupDraftForActiveTickerChange() {
+        const activeTicker = this._normalizeTicker(this._getActiveTicker?.() || '');
+        const previousTicker = this._lastOrderVisualSyncTicker || null;
+        this._lastOrderVisualSyncTicker = activeTicker || previousTicker;
+        if (!_orderPairSwitchDraftRebindV1Enabled()) return false;
+        if (!previousTicker || !activeTicker || previousTicker === activeTicker) return false;
+
+        const panel = typeof document !== 'undefined' ? document.getElementById('orderPanel') : null;
+        const draftOpen = !!(
+            this.previewLines
+            || this._isDraftOrderPreviewActive?.()
+            || panel?.classList?.contains?.('visible')
+            || (typeof window !== 'undefined' && window.__talariaV9OrderRailOpen)
+            || (typeof window !== 'undefined' && window.__talariaMultichartDraftActive)
+        );
+        if (!draftOpen) return false;
+
+        this._draftCancelCleanupFromChart();
+        this._discardUnplacedOrderDraftLevels({ notifyReactRail: true });
+        return true;
+    }
+
+    _shouldIgnoreSplitHandleDrag(dragDeltaPx, priceDistance) {
+        if (!_orderSplitEntryHoverStickV1Enabled()) return false;
+        const px = Math.abs(Number(dragDeltaPx) || 0);
+        const dist = Math.abs(Number(priceDistance) || 0);
+        return px < ORDER_SPLIT_HANDLE_MIN_DRAG_PX || dist < 0.00001;
     }
 
     /**
@@ -19962,7 +20233,12 @@ class OrderManager {
         } else {
             entryPrice = parseFloat(document.getElementById('orderEntryPrice')?.value || 0);
         }
-        const slPrice = parseFloat(document.getElementById('slPrice')?.value || 0);
+        const liveRiskSl = _orderRiskQtyLivePreviewSlV1Enabled()
+            ? this._resolveLivePreviewPanelPrices().slPrice
+            : 0;
+        const slPrice = liveRiskSl > 0
+            ? liveRiskSl
+            : parseFloat(document.getElementById('slPrice')?.value || 0);
         const enableSL = document.getElementById('enableSL')?.checked;
         
         // For lot-size mode, we don't need SL to set position size
@@ -20155,7 +20431,10 @@ class OrderManager {
 
         this._syncPipFromActiveSymbolIfNeeded();
         const quantity = parseFloat(document.getElementById('orderQuantity')?.value || 1);
-        const entryPrice = parseFloat(document.getElementById('orderEntryPrice')?.value || 0);
+        const livePrices = this._resolveLivePreviewPanelPrices();
+        const entryPrice = livePrices.entryPrice > 0
+            ? livePrices.entryPrice
+            : parseFloat(document.getElementById('orderEntryPrice')?.value || 0);
         const multiAvg = (this.isMultiEntryMode && this.multiEntryLevels && this.multiEntryLevels.length > 0)
             ? this._calcMultiEntryAvgPrice()
             : 0;
@@ -20192,14 +20471,19 @@ class OrderManager {
         
         let tpPrice = 0;
         
-        // Calculate TP price (use the first non-zero value)
+        // Prefer live provisional/preview TP during apply-on-release drag (TAL-01697).
         if (tpEnabled) {
-            const tpPriceInput = this._parseSltpInputPrice(document.getElementById('tpPrice')?.value, 0);
+            const tpPriceInput = livePrices.tpPrice > 0
+                ? livePrices.tpPrice
+                : this._parseSltpInputPrice(document.getElementById('tpPrice')?.value, 0);
             
             if (tpPriceInput > 0) {
                 tpPrice = tpPriceInput;
             }
         }
+        const liveSlPrice = livePrices.slPrice > 0
+            ? livePrices.slPrice
+            : 0;
 
         // Multi-entry: TP/SL distances, profit $, and R:R are measured from weighted Avg Entry (not a single leg).
         let effectiveEntryForReward = entryPrice > 0 ? entryPrice : multiAvg;
@@ -20237,7 +20521,9 @@ class OrderManager {
         let { hasValidSL, slDistance, risk } = this._getOrderPanelSlRiskContext(slContextEntry, quantity, minDistance);
 
         if (this.isMultiEntryMode && this.multiEntryLevels && this.multiEntryLevels.length > 0) {
-            const slPx = parseFloat(document.getElementById('slPrice')?.value || 0);
+            const slPx = liveSlPrice > 0
+                ? liveSlPrice
+                : parseFloat(document.getElementById('slPrice')?.value || 0);
             const slEn = document.getElementById('enableSL')?.checked;
             const refEntry = multiAvg > 0 ? multiAvg : (entryPrice || 0);
 
@@ -20269,8 +20555,11 @@ class OrderManager {
             }
         }
 
-        if (hasValidSL && slContextEntry > 0 && slPrice > 0 && quantity > 0 && this.positionSizeMode === 'lot-size') {
-            const netAtSl = this._estimateNetPnLPreview(this.orderSide, slContextEntry, slPrice, quantity);
+        const legacyNamedSlPrice = (typeof slPrice !== 'undefined' && Number.isFinite(Number(slPrice)))
+            ? Number(slPrice)
+            : 0;
+        if (hasValidSL && slContextEntry > 0 && legacyNamedSlPrice > 0 && quantity > 0 && this.positionSizeMode === 'lot-size') {
+            const netAtSl = this._estimateNetPnLPreview(this.orderSide, slContextEntry, legacyNamedSlPrice, quantity);
             if (Number.isFinite(netAtSl) && netAtSl < 0) risk = Math.abs(netAtSl);
         }
         
@@ -20315,7 +20604,9 @@ class OrderManager {
                 if (priceDiff > 0) {
                     // Multi-entry: sum individual level P&Ls for accurate reward
                     if (this.isMultiEntryMode && this.multiEntryLevels && this.multiEntryLevels.length > 0) {
-                        const slPx = parseFloat(document.getElementById('slPrice')?.value || 0);
+                        const slPx = liveSlPrice > 0
+                            ? liveSlPrice
+                            : parseFloat(document.getElementById('slPrice')?.value || 0);
                         const ps = this.pipSize || 0.0001;
                         const pv = this.pipValuePerLot || 10;
                         const minLotR = this.getMarketConfig()?.minSize ?? 0.01;
@@ -22304,7 +22595,7 @@ class OrderManager {
         if (this.previewLines.multipleTPs && Array.isArray(this.previewLines.multipleTPs)) {
             this.previewLines.multipleTPs.forEach(tpLine => {
                 if (tpLine && tpLine.price) {
-                    const tpY = yScale(tpLine.price);
+                    const tpY = yScale(tpLine.price) + (tpLine._stackOffsetY || 0);
                     
                     // Update line
                     if (tpLine.line) {
@@ -22651,8 +22942,18 @@ class OrderManager {
                 if (target.price > 0) {
                     const color = tpColors[Math.min(index, tpColors.length - 1)];
                     const label = `TP${previewTpRank.get(index) ?? index + 1}`;
+                    const stackOffsetY = this._multiTpCoincidentStackYOffsetPx(index);
                     
-                    const tpLine = this.drawPreviewLine(target.price, color, label, null, true, index, target.id);
+                    const tpLine = this.drawPreviewLine(
+                        target.price,
+                        color,
+                        label,
+                        null,
+                        true,
+                        index,
+                        target.id,
+                        stackOffsetY ? { _stackOffsetY: stackOffsetY } : null
+                    );
                     if (tpLine) {
                         this.previewLines.multipleTPs.push(tpLine);
                     }
@@ -23858,10 +24159,11 @@ class OrderManager {
                 
                 // Throttled live calculations - show R:R ratio and dollar amounts
                 throttledCalculate(() => {
-                    // Get fresh values from the just-updated inputs
-                    const entryPrice = parseFloat(document.getElementById('orderEntryPrice')?.value || 0);
-                    const slPrice = parseFloat(document.getElementById('slPrice')?.value || 0);
-                    const tpPrice = parseFloat(document.getElementById('tpPrice')?.value || 0);
+                    // Prefer provisional/preview geometry when apply-on-release withholds inputs.
+                    const live = self._resolveLivePreviewPanelPrices();
+                    const entryPrice = live.entryPrice || parseFloat(document.getElementById('orderEntryPrice')?.value || 0);
+                    const slPrice = live.slPrice || parseFloat(document.getElementById('slPrice')?.value || 0);
+                    const tpPrice = live.tpPrice || parseFloat(document.getElementById('tpPrice')?.value || 0);
                     const quantity = parseFloat(document.getElementById('orderQuantity')?.value || 1);
                     
                     if (entryPrice && slPrice && tpPrice) {
@@ -24511,6 +24813,18 @@ class OrderManager {
         this.setEntryMode(false);
     }
 
+    _resetNewDraftConstraintState() {
+        if (!_orderNewDraftConstraintResetV1Enabled()) return;
+        this._orderProvisionalEdit = _oiCreateProvisionalEditState();
+        this._oiProvisionalDragCtx = null;
+        this.isDraggingPreviewLine = false;
+        this._previewEntryDecoupledFromRR = false;
+        this._previewEntryLinkedToRiskReward = false;
+        this._rrExecuteArmed = false;
+        this.tpManuallyPositioned = false;
+        this.slManuallyPositioned = false;
+    }
+
     /**
      * Zero stop/target draft inputs (and multi-TP / multi-entry) when the Place Order
      * panel closes so the next open starts clean. Optionally notifies the V9 React
@@ -24518,6 +24832,7 @@ class OrderManager {
      */
     _discardUnplacedOrderDraftLevels({ notifyReactRail = false } = {}) {
         this.tpTargets = [];
+        this._resetNewDraftConstraintState();
         const tpIn = document.getElementById('tpPrice');
         const slIn = document.getElementById('slPrice');
         if (tpIn) tpIn.value = '0';
@@ -24542,6 +24857,71 @@ class OrderManager {
                 window.dispatchEvent(new CustomEvent('talaria:order-rail-reset-draft'));
             } catch (_e) { /* ignore */ }
         }
+    }
+
+    _orderHasEntryScreenshot(order) {
+        if (!order || typeof order !== 'object') return false;
+        if (order.entryScreenshot) return true;
+        if (order.entryScreenshotRef && order.entryScreenshotRef.refId) return true;
+        if (Array.isArray(order.entryScreenshots) && order.entryScreenshots.length > 0) return true;
+        if (Array.isArray(order.entryScreenshotRefs) && order.entryScreenshotRefs.length > 0) return true;
+        return false;
+    }
+
+    _attachEntryScreenshotToJournalRow(order, screenshot) {
+        if (!_orderEntryScreenshotJournalRetentionV1Enabled()) return false;
+        if (!order || typeof order !== 'object' || !screenshot) return false;
+        const journal = Array.isArray(this.tradeJournal) ? this.tradeJournal : [];
+        if (!journal.length) return false;
+
+        const orderId = order.tradeId != null ? order.tradeId : order.id;
+        if (orderId == null) return false;
+        const row = journal.find((trade) => {
+            if (!trade || typeof trade !== 'object') return false;
+            const tradeId = trade.tradeId != null ? trade.tradeId : trade.id;
+            return tradeId != null && String(tradeId) === String(orderId);
+        });
+        if (!row || this._orderHasEntryScreenshot(row)) return false;
+
+        if (order.entryScreenshotRef && order.entryScreenshotRef.refId) {
+            row.entryScreenshotRef = { ...order.entryScreenshotRef };
+        } else {
+            row.entryScreenshot = screenshot;
+        }
+        row.savedAt = Date.now();
+        return true;
+    }
+
+    _captureEntryScreenshotOnce(order, label = 'order') {
+        const screenshotMgr = (typeof window !== 'undefined' && window.screenshotManager)
+            || this.screenshotManager;
+        if (!screenshotMgr || typeof screenshotMgr.captureChartSnapshot !== 'function') return null;
+        if (_orderEntryScreenshotIdempotentV1Enabled()) {
+            if (this._orderHasEntryScreenshot(order)) return order?.screenshotPromise || null;
+            if (order?.screenshotPromise) return order.screenshotPromise;
+        }
+        const promise = screenshotMgr.captureChartSnapshot().then((screenshot) => {
+            if (screenshot) {
+                if (!_orderEntryScreenshotIdempotentV1Enabled() || !this._orderHasEntryScreenshot(order)) {
+                    order.entryScreenshot = screenshot;
+                }
+                const journalUpdated = this._attachEntryScreenshotToJournalRow(order, screenshot);
+                console.log(`✅ Entry screenshot captured for ${label} #${order.id}`);
+                if (_orderEntryScreenshotIdempotentV1Enabled()
+                    && typeof this._schedulePersistAfterOrderMutation === 'function') {
+                    this._schedulePersistAfterOrderMutation({ critical: true });
+                }
+                if (journalUpdated && typeof this.persistJournal === 'function') {
+                    this.persistJournal();
+                }
+            }
+            return screenshot;
+        }).catch((err) => {
+            console.error('❌ Failed to capture entry screenshot:', err);
+            return null;
+        });
+        if (order && typeof order === 'object') order.screenshotPromise = promise;
+        return promise;
     }
 
     /**
@@ -25523,6 +25903,21 @@ class OrderManager {
         );
         const idx = map.get(levelId) ?? 0;
         return idx * ENTRY_STACK_OFFSET_PX;
+    }
+
+    _multiTpCoincidentStackYOffsetPx(targetIndex) {
+        if (!_orderMultiTpCoincidentStackV1Enabled()) return 0;
+        if (!this.tpTargets || targetIndex == null || targetIndex < 0 || targetIndex >= this.tpTargets.length) return 0;
+        const target = this.tpTargets[targetIndex];
+        if (!(target && target.price > 0)) return 0;
+        const precision = Math.max(0, Math.min(10, this.getPricePrecision ? this.getPricePrecision(target.price) : 5));
+        const key = Number(target.price).toFixed(precision);
+        const coincident = this.tpTargets
+            .map((t, idx) => ({ t, idx }))
+            .filter(({ t }) => t && t.price > 0 && Number(t.price).toFixed(precision) === key)
+            .map(({ idx }) => idx);
+        const stackIndex = coincident.indexOf(targetIndex);
+        return stackIndex > 0 ? stackIndex * MULTI_TP_COINCIDENT_STACK_OFFSET_PX : 0;
     }
 
     /**
@@ -26522,9 +26917,9 @@ class OrderManager {
                 const isTpLine = label === 'TP' || /^TP\d+$/.test(label);
                 const isEntryLine = label === 'Entry' || /^Entry#/.test(label) || /^Entry\s*\(/.test(label);
                 
-                // Only create split if actually moved (no minimum distance requirement)
+                // Only create split if the handle was intentionally dragged.
                 const distance = Math.abs(newPrice - lineData.price);
-                if (distance < 0.00001) {
+                if (self._shouldIgnoreSplitHandleDrag(dragDelta, distance)) {
                     // Didn't move, ignore
                     return;
                 }
@@ -28889,6 +29284,10 @@ class OrderManager {
     placeAdvancedOrder(options = {}) {
         console.log('🟦OM-DIAG placeAdvancedOrder() CALLED', options);
         const keepPanelOpen = options.keepPanelOpen === true;
+        if (this._shouldBlockPlaceDuringPreviewDrag()) {
+            console.warn('🟦OM-DIAG place blocked while preview drag is active');
+            return { ok: false, reason: 'preview_drag_active' };
+        }
         if (!this.replaySystem || !this.replaySystem.isActive) {
             alert('Replay mode must be active to place orders');
             return { ok: false, reason: 'replay_not_active' };
@@ -28992,6 +29391,10 @@ class OrderManager {
                         : parseFloat(document.getElementById('breakevenAmount')?.value || 50),
                 pipOffset: parseFloat(document.getElementById('breakevenPipOffset')?.value || 0)
             };
+            const beTriggerPrice = this._computeBreakevenTriggerPriceFromPanelReadonly();
+            if (_orderBePlaceAnchorV1Enabled() && Number.isFinite(beTriggerPrice) && beTriggerPrice > 0) {
+                breakevenSettings.triggerPrice = beTriggerPrice;
+            }
         }
         
         // Get trailing stop settings (step-based system with activation).
@@ -30006,19 +30409,8 @@ class OrderManager {
             this.drawEntryMarker(order);
         }, 100);
         
-        // Start screenshot capture immediately and store promise for later await
-        if (window.screenshotManager) {
-            order.screenshotPromise = window.screenshotManager.captureChartSnapshot().then(screenshot => {
-                if (screenshot) {
-                    order.entryScreenshot = screenshot;
-                    console.log('✅ Entry screenshot captured for order #' + order.id);
-                }
-                return screenshot;
-            }).catch(err => {
-                console.error('❌ Failed to capture entry screenshot:', err);
-                return null;
-            });
-        }
+        // Start screenshot capture immediately and store promise for later await.
+        this._captureEntryScreenshotOnce(order, 'order');
         
         this.updatePositionsPanel();
         this.showPositionsPanel();
@@ -30423,10 +30815,7 @@ class OrderManager {
                     
                     if (finalScreenshotMgr) {
                         console.log('📸 Capturing screenshot for drawing tool order #' + order.id);
-                        finalScreenshotMgr.captureChartSnapshot().then(imageData => {
-                            order.entryScreenshot = imageData;
-                            console.log('✅ Entry screenshot captured for drawing tool order #' + order.id);
-                            
+                        this._captureEntryScreenshotOnce(order, 'drawing tool order')?.then(() => {
                             // IMPORTANT: Show journal modal AFTER screenshot is captured
                             this.showTradeJournalModal(order, false, null);
                         }).catch(err => {
@@ -31789,6 +32178,64 @@ class OrderManager {
         });
         return lifecycleEventEvaluated;
     }
+
+    _findFullSizeOpposingPendingClosePosition(pendingOrder) {
+        if (!_orderPendingCloseNettingV1Enabled()) return null;
+        if (!pendingOrder || pendingOrder.isSplitEntry || pendingOrder.scaleWithExisting) return null;
+
+        const direction = String(pendingOrder.direction || '').toUpperCase();
+        if (direction !== 'BUY' && direction !== 'SELL') return null;
+
+        const pendingQty = Number(pendingOrder.quantity);
+        if (!(pendingQty > 0)) return null;
+
+        const pendingTicker = this._normalizeTicker(pendingOrder.ticker || pendingOrder.symbol || this._getActiveTicker());
+        const pendingSource = pendingOrder.sourceFileId != null ? String(pendingOrder.sourceFileId) : null;
+        const candidates = [
+            ...(Array.isArray(this.openPositions) ? this.openPositions : []),
+            ...(Array.isArray(this.orderService?.openPositions) ? this.orderService.openPositions : []),
+        ];
+        const seen = new Set();
+        return candidates.find((position) => {
+            if (!position || seen.has(position.id)) return false;
+            seen.add(position.id);
+            const side = String(position.type || position.direction || '').toUpperCase();
+            if ((direction === 'SELL' && side !== 'BUY') || (direction === 'BUY' && side !== 'SELL')) return false;
+            const positionTicker = this._normalizeTicker(position.ticker || position.symbol || pendingTicker);
+            if (pendingTicker && positionTicker && pendingTicker !== positionTicker) return false;
+            if (pendingSource != null && position.sourceFileId != null && String(position.sourceFileId) !== pendingSource) return false;
+            const positionQty = Number(position.quantity);
+            return Math.abs(positionQty - pendingQty) <= 1e-9;
+        }) || null;
+    }
+
+    _cleanupPendingCloseOrderVisuals(pendingOrder) {
+        if (!pendingOrder || pendingOrder.id == null) return;
+        const oid = pendingOrder.id;
+        this.removePendingOrderLine(oid);
+        this.removePendingSLTPLines(oid);
+        if (pendingOrder.isSplitEntry && pendingOrder.splitGroupId) {
+            this._removeSplitGroupTPAvgIfEmpty(pendingOrder.splitGroupId, oid);
+        } else {
+            this.removeMultiTPAvgLine(oid);
+        }
+        (this._collectLayoutCharts() || [this.chart]).forEach((c) => {
+            if (!c?.svg) return;
+            c.svg.selectAll(`.pending-${oid}`).remove();
+            c.svg.selectAll(`.pending-tp-${oid}`).remove();
+            c.svg.selectAll(`.pending-sl-${oid}`).remove();
+            c.svg.selectAll(`.pending-be-${oid}`).remove();
+        });
+    }
+
+    _executePendingCloseIfNeeded(pendingOrder, closeLevel, currentCandle) {
+        const target = this._findFullSizeOpposingPendingClosePosition(pendingOrder);
+        if (!target) return false;
+        this._cleanupPendingCloseOrderVisuals(pendingOrder);
+        this.closePositionAtPrice(target.id, closeLevel, 'PENDING_CLOSE', null, null, currentCandle?.t);
+        this.showNotification?.(`✅ ${pendingOrder.direction} ${pendingOrder.orderType?.toUpperCase?.() || 'PENDING'} close filled for Order #${target.id} @ ${this.formatPrice(closeLevel)}`, 'success');
+        return true;
+    }
     
     /**
      * Execute a pending order
@@ -31850,6 +32297,10 @@ class OrderManager {
 
         const gapInfo = hadGap ? ` (GAP: ${pendingOrder.entryPrice.toFixed(5)} → ${executionPrice.toFixed(5)})` : '';
         console.log(`✅ Executing ${pendingOrder.orderType.toUpperCase()} ${pendingOrder.direction} Order #${pendingOrder.id} @ ${executionPrice.toFixed(5)}${gapInfo}`);
+
+        if (this._executePendingCloseIfNeeded(pendingOrder, executionPrice, currentCandle)) {
+            return;
+        }
         
         // Create market order from pending order
         const order = {
@@ -32071,19 +32522,8 @@ class OrderManager {
             this.drawEntryMarker(order);
         }, 100);
         
-        // Start screenshot capture immediately and store promise for later await
-        if (window.screenshotManager) {
-            order.screenshotPromise = window.screenshotManager.captureChartSnapshot().then(screenshot => {
-                if (screenshot) {
-                    order.entryScreenshot = screenshot;
-                    console.log('✅ Entry screenshot captured for executed pending order #' + order.id);
-                }
-                return screenshot;
-            }).catch(err => {
-                console.error('❌ Failed to capture entry screenshot:', err);
-                return null;
-            });
-        }
+        // Start screenshot capture immediately and store promise for later await.
+        this._captureEntryScreenshotOnce(order, 'executed pending order');
 
         this._pauseReplayIfPlaying('pending order filled');
         
@@ -32314,8 +32754,11 @@ class OrderManager {
                     const posPipSize = this._getBreakevenUnitSize(position);
                     const triggerEntry = this._beTriggerAnchorEntry(position);
                     const placementEntry = this._getSplitGroupAvgEntry(position);
+                    const frozenTriggerPrice = this._breakevenFrozenTriggerPrice(position.breakevenSettings);
 
-                    if (position.breakevenSettings.mode === 'rr') {
+                    if (Number.isFinite(frozenTriggerPrice)) {
+                        shouldTrigger = barQ.bidHigh >= frozenTriggerPrice;
+                    } else if (position.breakevenSettings.mode === 'rr') {
                         const riskDist = Math.abs(triggerEntry - position.stopLoss);
                         const triggerDist = position.breakevenSettings.value * riskDist;
                         shouldTrigger = (barQ.bidHigh - triggerEntry) >= triggerDist;
@@ -32560,6 +33003,7 @@ class OrderManager {
                     const effLowForSl = (position._trailSlAccLow != null && Number.isFinite(position._trailSlAccLow))
                         ? this._bidFromMid(position._trailSlAccLow, position, (high + low) / 2)
                         : barQ.bidLow;
+                    const rawBuySlTouched = !!(position.stopLoss && effLowForSl <= position.stopLoss);
                     if (!position.tpTargets || position.tpTargets.length === 0) {
                         const slHit = buySLGuarded
                             ? (position.stopLoss && this._tickAnimOverridesGuard(position._slNoTriggerBeforeTick, currentCandle, position.stopLoss, 'below', position))
@@ -32574,6 +33018,19 @@ class OrderManager {
                             position._slNoTriggerBeforeTick = undefined;
                             const lowFill = position._trailSlAccLow != null ? position._trailSlAccLow : low;
                             const fillPx = this._stopLossFillPrice(position.stopLoss, open, high, lowFill, true, position, currentCandle.t);
+                            this._recordSlTriggerDiag(position, {
+                                reason: 'hit',
+                                barTime: currentCandle.t,
+                                guarded: buySLGuarded,
+                                rawTouched: rawBuySlTouched,
+                                effectiveExtreme: effLowForSl,
+                                bidLow: barQ.bidLow,
+                                bidHigh: barQ.bidHigh,
+                                askLow: barQ.askLow,
+                                askHigh: barQ.askHigh,
+                                midOpen: open,
+                                fillPrice: fillPx,
+                            });
                             const _slBuy = this._slCloseHitType(position);
                             console.log(`   ${_slBuy === 'BE' ? '⚖️ BREAKEVEN' : '🛑 STOP LOSS'} HIT! Closing BUY #${position.id} at ${fillPx.toFixed(5)}${fillPx !== position.stopLoss ? ' (gap fill, SL was ' + position.stopLoss.toFixed(5) + ')' : ''}`);
                             this._pushSplitGroupSlClosesFromHit(position, fillPx, positionsToClose, queuedSplitSlGroupIds);
@@ -32586,6 +33043,19 @@ class OrderManager {
                                 : this._gapFill(position.takeProfit, open, true, true);
                             console.log(`   🎯 TAKE PROFIT HIT! Closing BUY #${position.id} at ${fillPx.toFixed(5)}${fillPx !== position.takeProfit ? ' (gap fill, TP was ' + position.takeProfit.toFixed(5) + ')' : ''}`);
                             positionsToClose.push({ id: position.id, closePrice: fillPx, type: 'TP' });
+                        } else if (buySLGuarded && rawBuySlTouched) {
+                            this._recordSlTriggerDiag(position, {
+                                reason: 'guarded-touch-miss',
+                                barTime: currentCandle.t,
+                                guarded: true,
+                                rawTouched: true,
+                                effectiveExtreme: effLowForSl,
+                                bidLow: barQ.bidLow,
+                                bidHigh: barQ.bidHigh,
+                                askLow: barQ.askLow,
+                                askHigh: barQ.askHigh,
+                                midOpen: open,
+                            });
                         }
                     } else {
                         // For multiple TPs, still check SL
@@ -32597,12 +33067,53 @@ class OrderManager {
                             position._slNoTriggerBeforeTick = undefined;
                             const lowFillM = position._trailSlAccLow != null ? position._trailSlAccLow : low;
                             const fillPx = this._stopLossFillPrice(position.stopLoss, open, high, lowFillM, true, position, currentCandle.t);
+                            this._recordSlTriggerDiag(position, {
+                                reason: 'hit',
+                                barTime: currentCandle.t,
+                                guarded: buySLGuarded,
+                                rawTouched: rawBuySlTouched,
+                                effectiveExtreme: effLowForSl,
+                                bidLow: barQ.bidLow,
+                                bidHigh: barQ.bidHigh,
+                                askLow: barQ.askLow,
+                                askHigh: barQ.askHigh,
+                                midOpen: open,
+                                fillPrice: fillPx,
+                            });
                             const _slT = this._slCloseHitType(position);
                             console.log(`   ${_slT === 'BE' ? '⚖️ BREAKEVEN' : '🛑 STOP LOSS'} HIT! Closing remaining position BUY #${position.id} at ${fillPx.toFixed(5)}${fillPx !== position.stopLoss ? ' (gap fill)' : ''}`);
                             this._pushSplitGroupSlClosesFromHit(position, fillPx, positionsToClose, queuedSplitSlGroupIds);
+                        } else if (buySLGuarded && rawBuySlTouched) {
+                            this._recordSlTriggerDiag(position, {
+                                reason: 'guarded-touch-miss',
+                                barTime: currentCandle.t,
+                                guarded: true,
+                                rawTouched: true,
+                                effectiveExtreme: effLowForSl,
+                                bidLow: barQ.bidLow,
+                                bidHigh: barQ.bidHigh,
+                                askLow: barQ.askLow,
+                                askHigh: barQ.askHigh,
+                                midOpen: open,
+                            });
                         }
                     }
                 } else {
+                    const rawBuySkipTouched = !!(position.stopLoss && barQ.bidLow <= position.stopLoss);
+                    if (rawBuySkipTouched) {
+                        this._recordSlTriggerDiag(position, {
+                            reason: 'skipped-touch',
+                            skipReason: this._shouldSkipSlTpAfterBeThisBar(position, currentCandle.t) ? 'auto-be-same-bar' : 'fill-candle',
+                            barTime: currentCandle.t,
+                            rawTouched: true,
+                            effectiveExtreme: barQ.bidLow,
+                            bidLow: barQ.bidLow,
+                            bidHigh: barQ.bidHigh,
+                            askLow: barQ.askLow,
+                            askHigh: barQ.askHigh,
+                            midOpen: open,
+                        });
+                    }
                     if (this._shouldSkipSlTpAfterBeThisBar(position, currentCandle.t)) {
                         console.log(`   ⏭️ Skipping SL checks for BUY #${position.id} - AUTO_BE on this bar (no same-bar stop-out from new SL)`);
                     } else {
@@ -32631,8 +33142,11 @@ class OrderManager {
                     const posPipSize = this._getBreakevenUnitSize(position);
                     const triggerEntry = this._beTriggerAnchorEntry(position);
                     const placementEntry = this._getSplitGroupAvgEntry(position);
+                    const frozenTriggerPrice = this._breakevenFrozenTriggerPrice(position.breakevenSettings);
 
-                    if (position.breakevenSettings.mode === 'rr') {
+                    if (Number.isFinite(frozenTriggerPrice)) {
+                        shouldTrigger = barQ.askLow <= frozenTriggerPrice;
+                    } else if (position.breakevenSettings.mode === 'rr') {
                         const riskDist = Math.abs(triggerEntry - position.stopLoss);
                         const triggerDist = position.breakevenSettings.value * riskDist;
                         shouldTrigger = (triggerEntry - barQ.askLow) >= triggerDist;
@@ -32872,6 +33386,7 @@ class OrderManager {
                     const effHighForSl = (position._trailSlAccHigh != null && Number.isFinite(position._trailSlAccHigh))
                         ? this._askFromMid(position._trailSlAccHigh, position, (high + low) / 2)
                         : barQ.askHigh;
+                    const rawSellSlTouched = !!(position.stopLoss && effHighForSl >= position.stopLoss);
                     if (!position.tpTargets || position.tpTargets.length === 0) {
                         const slHitSell = sellSLGuarded
                             ? (position.stopLoss && this._tickAnimOverridesGuard(position._slNoTriggerBeforeTick, currentCandle, position.stopLoss, 'above', position))
@@ -32886,6 +33401,19 @@ class OrderManager {
                             position._slNoTriggerBeforeTick = undefined;
                             const highFill = position._trailSlAccHigh != null ? position._trailSlAccHigh : high;
                             const fillPx = this._stopLossFillPrice(position.stopLoss, open, highFill, low, false, position, currentCandle.t);
+                            this._recordSlTriggerDiag(position, {
+                                reason: 'hit',
+                                barTime: currentCandle.t,
+                                guarded: sellSLGuarded,
+                                rawTouched: rawSellSlTouched,
+                                effectiveExtreme: effHighForSl,
+                                bidLow: barQ.bidLow,
+                                bidHigh: barQ.bidHigh,
+                                askLow: barQ.askLow,
+                                askHigh: barQ.askHigh,
+                                midOpen: open,
+                                fillPrice: fillPx,
+                            });
                             const _slSell = this._slCloseHitType(position);
                             console.log(`   ${_slSell === 'BE' ? '⚖️ BREAKEVEN' : '🛑 STOP LOSS'} HIT! Closing SELL #${position.id} at ${fillPx.toFixed(5)}${fillPx !== position.stopLoss ? ' (gap fill, SL was ' + position.stopLoss.toFixed(5) + ')' : ''}`);
                             this._pushSplitGroupSlClosesFromHit(position, fillPx, positionsToClose, queuedSplitSlGroupIds);
@@ -32898,6 +33426,19 @@ class OrderManager {
                                 : this._gapFill(position.takeProfit, open, false, true);
                             console.log(`   🎯 TAKE PROFIT HIT! Closing SELL #${position.id} at ${fillPx.toFixed(5)}${fillPx !== position.takeProfit ? ' (gap fill, TP was ' + position.takeProfit.toFixed(5) + ')' : ''}`);
                             positionsToClose.push({ id: position.id, closePrice: fillPx, type: 'TP' });
+                        } else if (sellSLGuarded && rawSellSlTouched) {
+                            this._recordSlTriggerDiag(position, {
+                                reason: 'guarded-touch-miss',
+                                barTime: currentCandle.t,
+                                guarded: true,
+                                rawTouched: true,
+                                effectiveExtreme: effHighForSl,
+                                bidLow: barQ.bidLow,
+                                bidHigh: barQ.bidHigh,
+                                askLow: barQ.askLow,
+                                askHigh: barQ.askHigh,
+                                midOpen: open,
+                            });
                         }
                     } else {
                         // For multiple TPs, still check SL
@@ -32909,12 +33450,53 @@ class OrderManager {
                             position._slNoTriggerBeforeTick = undefined;
                             const highFillM = position._trailSlAccHigh != null ? position._trailSlAccHigh : high;
                             const fillPx = this._stopLossFillPrice(position.stopLoss, open, highFillM, low, false, position, currentCandle.t);
+                            this._recordSlTriggerDiag(position, {
+                                reason: 'hit',
+                                barTime: currentCandle.t,
+                                guarded: sellSLGuarded,
+                                rawTouched: rawSellSlTouched,
+                                effectiveExtreme: effHighForSl,
+                                bidLow: barQ.bidLow,
+                                bidHigh: barQ.bidHigh,
+                                askLow: barQ.askLow,
+                                askHigh: barQ.askHigh,
+                                midOpen: open,
+                                fillPrice: fillPx,
+                            });
                             const _slSellM = this._slCloseHitType(position);
                             console.log(`   ${_slSellM === 'BE' ? '⚖️ BREAKEVEN' : '🛑 STOP LOSS'} HIT! Closing remaining position SELL #${position.id} at ${fillPx.toFixed(5)}${fillPx !== position.stopLoss ? ' (gap fill)' : ''}`);
                             this._pushSplitGroupSlClosesFromHit(position, fillPx, positionsToClose, queuedSplitSlGroupIds);
+                        } else if (sellSLGuarded && rawSellSlTouched) {
+                            this._recordSlTriggerDiag(position, {
+                                reason: 'guarded-touch-miss',
+                                barTime: currentCandle.t,
+                                guarded: true,
+                                rawTouched: true,
+                                effectiveExtreme: effHighForSl,
+                                bidLow: barQ.bidLow,
+                                bidHigh: barQ.bidHigh,
+                                askLow: barQ.askLow,
+                                askHigh: barQ.askHigh,
+                                midOpen: open,
+                            });
                         }
                     }
                 } else {
+                    const rawSellSkipTouched = !!(position.stopLoss && barQ.askHigh >= position.stopLoss);
+                    if (rawSellSkipTouched) {
+                        this._recordSlTriggerDiag(position, {
+                            reason: 'skipped-touch',
+                            skipReason: this._shouldSkipSlTpAfterBeThisBar(position, currentCandle.t) ? 'auto-be-same-bar' : 'fill-candle',
+                            barTime: currentCandle.t,
+                            rawTouched: true,
+                            effectiveExtreme: barQ.askHigh,
+                            bidLow: barQ.bidLow,
+                            bidHigh: barQ.bidHigh,
+                            askLow: barQ.askLow,
+                            askHigh: barQ.askHigh,
+                            midOpen: open,
+                        });
+                    }
                     if (this._shouldSkipSlTpAfterBeThisBar(position, currentCandle.t)) {
                         console.log(`   ⏭️ Skipping SL checks for SELL #${position.id} - AUTO_BE on this bar (no same-bar stop-out from new SL)`);
                     } else {
@@ -34766,11 +35348,17 @@ class OrderManager {
                             order.breakevenSettings.value = parseFloat((pips * qUse * bePipVal).toFixed(2));
                         }
                     }
+                    if (_orderBePlaceAnchorV1Enabled()) {
+                        order.breakevenSettings.triggerPrice = newPrice;
+                    }
                     if (order.isSplitEntry && order.splitGroupId) {
                         self._getSplitGroupOpenPositions(order).forEach((sib) => {
                             if (!sib.breakevenSettings || sib.id === order.id) return;
                             sib.breakevenSettings.mode = order.breakevenSettings.mode;
                             sib.breakevenSettings.value = order.breakevenSettings.value;
+                            if (_orderBePlaceAnchorV1Enabled()) {
+                                sib.breakevenSettings.triggerPrice = newPrice;
+                            }
                         });
                     }
                     // Update stored trigger price
@@ -38507,9 +39095,11 @@ class OrderManager {
                 ? this._getSplitGroupPendingOrders(pendingOrder)
                 : [pendingOrder];
             const beQtyPend = membersBe.reduce((s, m) => s + (Number(m.quantity) || 0), 0) || (Number(pendingOrder.quantity) || 0);
-            let beTriggerPrice = 0;
+            let beTriggerPrice = this._resolveBreakevenTriggerPrice(pendingOrder.breakevenSettings, () => NaN);
             
-            if (pendingOrder.breakevenSettings.mode === 'rr') {
+            if (Number.isFinite(beTriggerPrice)) {
+                // Place-time preview anchor wins over pending split/average recomputation.
+            } else if (pendingOrder.breakevenSettings.mode === 'rr') {
                 const riskDist = Math.abs(entryPrice - pendingOrder.stopLoss);
                 const profitDistance = pendingOrder.breakevenSettings.value * riskDist;
                 beTriggerPrice = pendingOrder.direction === 'BUY' 
@@ -38593,8 +39183,11 @@ class OrderManager {
         this.pendingTargetLines.forEach((entry) => {
             if (entry.chart !== ch) return;
             entry.targets.forEach((target) => {
-                const y = ch.scales.yScale(target.price);
-                if (!Number.isFinite(y)) return;
+                const rawY = ch.scales.yScale(target.price);
+                if (!Number.isFinite(rawY)) return;
+                const edgeVisibleY = this._orderLineEdgeVisibleY(ch, rawY, target.type);
+                const forceEdgeVisible = Number.isFinite(edgeVisibleY) && edgeVisibleY !== rawY;
+                const y = Number.isFinite(edgeVisibleY) ? edgeVisibleY : rawY;
                 const isDraggable = (target.type === 'TP' || target.type === 'SL' || target.type === 'BE');
 
                 target.line
@@ -38812,7 +39405,7 @@ class OrderManager {
 
                 if (target._tpPlusBadge) { try { target._tpPlusBadge.remove(); } catch (_) {} target._tpPlusBadge = null; }
 
-                const inPlot = this._isOrderYInMainPlot(ch, y);
+                const inPlot = forceEdgeVisible || this._isOrderYInMainPlot(ch, y);
                 if (!inPlot) {
                     target.line.style('display', 'none');
                     labelGroup.style('display', 'none');
@@ -39967,6 +40560,9 @@ class OrderManager {
             this._journalProvenanceSession = hydratedSession != null ? String(hydratedSession) : null;
         }
         this._m19NoteJournalStructuralMutation(reason || 'journal-replace');
+        if (_orderPnlRestoreStableV1Enabled() && typeof this.recomputeAccountFromJournal === 'function') {
+            this.recomputeAccountFromJournal();
+        }
         return this.tradeJournal;
     }
 
@@ -43063,9 +43659,11 @@ class OrderManager {
             const beQty = this._beChartBreakevenQtyOpen(order);
             const beUnit = this._getBreakevenUnitSize(order);
             const bePipVal = this._getBreakevenPipValue(order);
-            let beTriggerPrice = 0;
+            let beTriggerPrice = this._resolveBreakevenTriggerPrice(order.breakevenSettings, () => NaN);
             
-            if (order.breakevenSettings.mode === 'rr') {
+            if (Number.isFinite(beTriggerPrice)) {
+                // Place-time preview anchor wins over post-fill entry/average recomputation.
+            } else if (order.breakevenSettings.mode === 'rr') {
                 const riskDist = Math.abs(entryPrice - order.stopLoss);
                 const profitDistance = order.breakevenSettings.value * riskDist;
                 beTriggerPrice = order.type === 'BUY'
@@ -44724,6 +45322,33 @@ class OrderManager {
         const m = ch.margin || { t: 0, b: 0 };
         const plotBottom = ch.h - m.b - (ch.separateIndicatorPanelHeight || 0);
         return y >= m.t && y <= plotBottom;
+    }
+
+    _orderMainPlotYBounds(ch) {
+        if (!ch) return null;
+        const m = ch.margin || { t: 0, b: 0 };
+        const layout = typeof ch._getMainPricePlotLayout === 'function'
+            ? ch._getMainPricePlotLayout()
+            : null;
+        const top = Number.isFinite(m.t) ? m.t : 0;
+        const bottom = layout && Number.isFinite(layout.plotBottom)
+            ? layout.plotBottom
+            : (ch.h - (m.b || 0) - (ch.separateIndicatorPanelHeight || 0));
+        if (!Number.isFinite(top) || !Number.isFinite(bottom) || bottom < top) return null;
+        return { top, bottom };
+    }
+
+    _orderLineEdgeVisibleY(ch, y, type) {
+        if (!_orderLineEdgeVisibilityV1Enabled()) return null;
+        if (!Number.isFinite(y)) return null;
+        const t = String(type || '').toUpperCase();
+        if (t !== 'SL' && t !== 'TP' && t !== 'BE') return null;
+        if (this._isOrderYInMainPlot(ch, y)) return y;
+        const bounds = this._orderMainPlotYBounds(ch);
+        if (!bounds) return null;
+        if (y < bounds.top && y >= bounds.top - ORDER_LINE_EDGE_VISIBILITY_PAD_PX) return bounds.top;
+        if (y > bounds.bottom && y <= bounds.bottom + ORDER_LINE_EDGE_VISIBILITY_PAD_PX) return bounds.bottom;
+        return null;
     }
 
     /** Hide order row when its Y maps into the indicator stack; clip when inside main plot. */

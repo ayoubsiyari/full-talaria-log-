@@ -104,6 +104,40 @@
     return resolveV9Tz(tzLabel);
   }
 
+  /**
+   * When ON (default), V9 theme sync must not replace a persisted user/chart
+   * timezone (chartTimezone) with a disagreeing settings.timezone (e.g. session
+   * / V9 snapshot America/Chicago overwriting America/New_York on reload).
+   * Kill-switch: window.__TALARIA_DISABLE_V9_THEME_TZ_HONOR_CHART_V1 = true
+   */
+  function v9ThemeTimezoneHonorChartEnabled() {
+    try {
+      return window.__TALARIA_DISABLE_V9_THEME_TZ_HONOR_CHART_V1 !== true;
+    } catch (_) {
+      return true;
+    }
+  }
+
+  function readPersistedChartTimezoneId() {
+    try {
+      var raw = null;
+      if (typeof userStorage !== 'undefined' && userStorage && typeof userStorage.getItem === 'function') {
+        raw = userStorage.getItem('chartTimezone');
+      }
+      if ((raw == null || raw === '') && typeof window !== 'undefined'
+          && window.userStorage && typeof window.userStorage.getItem === 'function') {
+        raw = window.userStorage.getItem('chartTimezone');
+      }
+      if ((raw == null || raw === '') && typeof localStorage !== 'undefined') {
+        raw = localStorage.getItem('chartTimezone');
+      }
+      if (raw == null || String(raw).trim() === '') return null;
+      return resolveV9Tz(raw);
+    } catch (_) {
+      return null;
+    }
+  }
+
   function v9CandleBorderColorsDistinct(settings) {
     if (!settings) return false;
     var norm = function (c) { return String(c == null ? '' : c).trim().toLowerCase(); };
@@ -171,6 +205,12 @@
     var cs = chart.chartSettings;
     // Auto-flip axis/OHLC text when background and text share the same lightness.
     var axisTextColor = resolveAxisTextColor(settings);
+    var v9TzId = (settings.timezone != null && String(settings.timezone).trim() !== '')
+      ? resolveV9Tz(settings.timezone)
+      : null;
+    var persistedTzId = v9ThemeTimezoneHonorChartEnabled() ? readPersistedChartTimezoneId() : null;
+    var honorChartTz = !!(persistedTzId && v9TzId && persistedTzId !== v9TzId);
+    var timezoneForChart = honorChartTz ? persistedTzId : settings.timezone;
     var map = {
       bodyUpColor: settings.bullBody,
       candleUpColor: settings.bullBody,
@@ -189,7 +229,7 @@
       symbolTextColor: axisTextColor,
       scaleLinesColor: settings.scaleLineColor,
       timeFormat: settings.timeFormat,
-      timezone: settings.timezone
+      timezone: timezoneForChart
     };
     var changed = false;
     var k;
@@ -230,12 +270,17 @@
     if (applyCanvasTheme(cs, settings)) changed = true;
     try {
       var tm = typeof window !== 'undefined' ? window.timezoneManager : null;
-      var tzId = resolveV9Tz(settings.timezone);
-      if (tm && typeof tm.setTimezone === 'function') {
+      var tzId = honorChartTz ? persistedTzId : v9TzId;
+      if (tm && typeof tm.setTimezone === 'function' && tzId) {
         var cur = tm.getTimezone && tm.getTimezone();
         if (!cur || cur.id !== tzId) {
-          tm.setTimezone(tzId);
-          changed = true;
+          var applied = tm.setTimezone(tzId);
+          if (applied === false) {
+            var keep = tm.getTimezone && tm.getTimezone();
+            if (keep && keep.id) cs.timezone = keep.id;
+          } else {
+            changed = true;
+          }
         }
       }
     } catch (e0) {}

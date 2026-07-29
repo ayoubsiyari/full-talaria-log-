@@ -1158,12 +1158,34 @@ function hostPageHtml(query) {
           return null;
         }
       }
+      function livePanelIds() {
+        var ids = [];
+        function add(id) {
+          id = id != null ? String(id) : '';
+          if (id && ids.indexOf(id) < 0) ids.push(id);
+        }
+        if (mgr && mgr.charts && typeof mgr.charts.keys === 'function') {
+          try { mgr.charts.forEach(function (_entry, id) { add(id); }); } catch (_) {}
+        }
+        if (ids.indexOf('A') < 0 && (window.chart || window.__harnessCells.A)) ids.unshift('A');
+        try { window.__harnessPanelIds = ids.filter(function (id) { return id !== 'A'; }); } catch (_) {}
+        return ids;
+      }
+      function enumerateCharts() {
+        var out = [];
+        livePanelIds().forEach(function (id) {
+          var ch = getChartForPanelId(id);
+          if (ch) out.push(ch);
+        });
+        return out;
+      }
       window.__multichartGrid = {
         hostPanelId: 'A',
-        getPanelIds: function () { return ['A'].concat(iframeIds); },
+        getPanelIds: livePanelIds,
         getFocusedPanelId: function () { return window.__harnessFocusedPanelId || 'A'; },
         getChartForPanelId: getChartForPanelId,
         getChartForPanel: getChartForPanelId,
+        enumerateCharts: enumerateCharts,
         getFinestReplayCadenceMs: finestReplayCadenceMs,
         refreshFinestReplayCadence: refreshFinestReplayCadence,
         cancelScheduledPeerDeselect: cancelScheduledPeerDeselect,

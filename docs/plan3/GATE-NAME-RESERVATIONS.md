@@ -519,21 +519,43 @@ Cells:
 |---|---|---|
 | P1-IDLE-SINGLE-CHART-OBSERVED | single-chart idle workRatio is finite and below absolute `PO_CPU_AB_P1_IDLE_WORK_RATIO_MAX` | LIVE |
 | P2-IDLE-STABLE-NO-UNBOUNDED-WORK | idle soak workRatio is below both P1-relative and absolute `PO_CPU_AB_P2_IDLE_WORK_RATIO_MAX`; high P1 cannot absorb high P2 | LIVE |
-| P2-IDLE-MEMORY-NOT-GROWING | exposed heap delta during P2 stays bounded | LIVE |
-| P4-FOUR-PANEL-REPLAY-RUNNING-OBSERVED | four panels armed, playing, advancing within the P4 observe window by oracle-measured while-playing forward timestamp (rate ceiling + idx/ts coherence), and showing per-peer B/C/D callback/timer work above the P1 floor; product `replayPlay` fan-out peers may use `passivePlayActive` only under that sample rule | LIVE — W62k: W62g/W62i GREEN credit held; no aggregate/longtask-only peer work; B/C/D near-shared delta spreads plus near-identical absolute baselines are RED independent of which peer carries the middle jitter value; observe-window baselines are mandatory for GREEN; no-fan-out NC requires serialized peer-row neuter evidence; live short remains honest RED on sharedMirrorOnly; W64 lag dual-metric is mandatory sibling FIX1/FIX2 grading evidence (not a substitute for this honesty cell) |
+| P2-IDLE-MEMORY-NOT-GROWING | `performance.memory.usedJSHeapSize` delta during P2 stays bounded (forced-GC samples; Task Manager footprint non-grading) | LIVE |
+| HEAP-INSTRUMENT-USED-JS-HEAP | report.heap samples use `usedJSHeapSize` after forced GC; `footprintNonGrading=true` | LIVE — W66; regrades M26/FIX3 instrument |
+| HEAP-FORCED-GC-AVAILABLE | `window.gc` available via `--js-flags=--expose-gc` / preciseMemory launch | LIVE — W66 |
+| M26-FIX3-COLLAPSE-HEAP-RELEASE | 4→1 collapse releases ≥`HEAP_COLLAPSE_RELEASE_FRACTION` of expand delta on usedJSHeapSize; UNPROVEN if expand below min; footprint grades void | LIVE — W66; prior footprint “effect not demonstrated” → UNGRADED |
+| P4-FOUR-PANEL-REPLAY-RUNNING-OBSERVED | four panels armed, playing, advancing within the P4 observe window by oracle-measured while-playing forward timestamp (rate ceiling + idx/ts coherence), and showing per-peer B/C/D callback/timer work above the P1 floor; product `replayPlay` fan-out peers may use `passivePlayActive` only under that sample rule | LIVE — W62l: either B/C/D fingerprint sufficient (`deltasNearShared` OR `absoluteBaselinesNearShared`) under relative epsilon (`PO_CPU_AB_P4_MIRROR_REL_EPSILON`) with absolute floor/ceiling (`ABS_FLOOR`/`ABS_CEILING`); AND conjunction and ceiling×1000 mutants must fail pins; staggered peer jitter remains RED with rate-coherent host A (non-decorative); observe-window baselines mandatory for GREEN; no-fan-out NC requires serialized peer-row neuter evidence; live short remains honest RED on sharedMirrorOnly; W64 lag dual-metric is sibling FIX1/FIX2 grading evidence (not a substitute for this honesty cell) |
 | P6-REPLAY-10X-OR-NEAREST-OBSERVED | real replay activation succeeds, `isPlaying` is observed, nearest speed is known, playhead advances, and P6 work exceeds P1 by the pinned 0.03 margin | LIVE instrument — RED expected until FIX1/FIX2; do not recalibrate margin to mint GREEN |
 | P7-PAUSE-STATE-NOT-PLAYING | product pause path leaves replay not playing | LIVE |
 | P7-WORK-RETURNS-TO-P1-FLOOR | post-pause workRatio is below both P1-relative and absolute `PO_CPU_AB_P7_IDLE_WORK_RATIO_MAX` | LIVE |
-| LAG-CONTENT-ARMED | SMA/EMA/WMA period 20 confirmed on single-with-content and four-with-content lag windows; bare replay cannot satisfy | LIVE — W64 |
-| LAG-THROUGHPUT-SINGLE-EMITTED | host panel emits achieved vs configured bars/sec (tick throughput) during LAG-SINGLE | LIVE — W64; grades FIX2 |
-| LAG-THROUGHPUT-FOUR-EMITTED | panels A/B/C/D each emit achieved vs configured bars/sec during content-armed P4 | LIVE — W64; grades FIX2 |
+| LAG-CONTENT-ARMED | SMA/EMA/WMA period 20 confirmed via content `types[]` coverage on single A and four A/B/C/D; booleans alone insufficient; bare replay cannot satisfy | LIVE — W64c |
+| LAG-THROUGHPUT-SINGLE-EMITTED | host panel emits achieved vs configured bars/sec during LAG-SINGLE; requires forward `indexDelta>0` and real positive speed (no speed-10 configured vacuity) | LIVE — W64c; grades FIX2 |
+| LAG-THROUGHPUT-FOUR-EMITTED | panels A/B/C/D each emit achieved vs configured bars/sec; RED when P4 `sharedMirrorOnly` (not independent four-panel credit) | LIVE — W64c; grades FIX2 |
 | LAG-SMOOTHNESS-SINGLE-EMITTED | host panel emits rAF frame timing (p95) plus long-task count during LAG-SINGLE; frame samples mandatory (longtask-only RED) | LIVE — W64b; grades FIX1 via p95FrameMs |
-| LAG-SMOOTHNESS-FOUR-EMITTED | panels A/B/C/D each emit frame timing; identical long-task totals across panels require longTaskAttribution=host-shared (shared LT credited per-panel is RED) | LIVE — W64b; grades FIX1 via p95FrameMs |
-| LAG-SINGLE-TO-FOUR-RATIO-EMITTED | throughputRetention and smoothnessRetention finite; smoothnessRetention must equal p95Retention (frame-primary; LT-contaminated ratios RED); PO ~50% descriptive, not a hard gate | LIVE — W64b |
-| LAG-MECHANISM-HINT-EMITTED | mechanismHint ∈ {throughput,smoothness,ambiguous} consistent with throughputRetention + p95Retention (smoothness→FIX1 only via frame p95, never host-longtask-only) | LIVE — W64b |
+| LAG-SMOOTHNESS-FOUR-EMITTED | panels A/B/C/D each emit frame timing; identical long-task totals require longTaskAttribution=host-shared; RED when P4 `sharedMirrorOnly` | LIVE — W64c; grades FIX1 via p95FrameMs |
+| LAG-SINGLE-TO-FOUR-RATIO-EMITTED | throughputRetention and smoothnessRetention must match panel recomputes; smoothnessRetention equals p95Retention (frame-primary); RED when P4 `sharedMirrorOnly`; PO ~50% descriptive, not a hard gate | LIVE — W64c |
+| LAG-MECHANISM-HINT-EMITTED | mechanismHint ∈ {throughput,smoothness,ambiguous} consistent with recomputed retentions; RED when P4 `sharedMirrorOnly`; smoothness→FIX1 only via frame p95 | LIVE — W64c |
 | M19-E-HOTPATH-CONSOLE-EXEMPTIONS | Named admit-list for soak `e_hotpathConsole`; warn/error remain counted unless listed; GATE-01 injected console.log and unlisted console.warn must each RED | LIVE — soak unblock; exemption B_W16_DURABLE_JOURNAL_UNHYDRATED_HARNESS_ARTEFACT (HARNESS_ARTEFACT) |
 | NC-P4-NO-FANOUT-MUST-RED | served P4 no-fan-out mode neuters `replayPlay` peer sends, serializes peer-row `productReplayPlayFanout.noFanoutControl`, and must make P4 RED | LIVE |
 | NC-P7-REPLAY-PAUSE-TEARDOWN-MUST-RED | served `replay-system.js` pause teardown reversal marks itself applied and makes the P7 state cell RED | LIVE |
+
+## Queue item 10 extension — Heap-cycle memory gate (W67)
+
+| Name | Signature token | Implementation | Status |
+|---|---|---|---|
+| HEAP-CYCLE-MEMORY-V1 | `TALARIA_HEAP_CYCLE_MEMORY_V1` | `scripts/heap-cycle-memory-gate.mjs`, `scripts/lib/heap-cycle-memory.mjs`, `scripts/lib/heap-cycle-browser.mjs`, `scripts/lib/heap-snapshot-detached.mjs`, `scripts/tests/heap-cycle-memory.test.mjs`, `scripts/fixtures/heap-cycle/gate01-red/` | LIVE instrument — GATE-01 sealed PO-leak fixture RED; Detached `<div>` count is mandatory superior gate; footprint non-grading. Regrades M26/FIX3 (expected INSUFFICIENT while leak remains). |
+
+Cells:
+
+| Cell | Asserts | Status |
+|---|---|---|
+| HEAP-CYCLE-INSTRUMENT-COMPLETE | baseline + 3 cycles emit `usedJSHeapSize` after forced GC and `detachedDivCount` from heap snapshot | LIVE |
+| HEAP-CYCLE-DISTINCT-FILEIDS | each cycle expands with distinct harness fileIds 25/27/28/29 | LIVE |
+| HEAP-CYCLE-DETACHED-DIV-STABLE | mean per-cycle Detached HTMLDivElement delta (CDP `detachedness`) or retained `HTMLDivElement` growth after return-to-single ≤ `HEAP_CYCLE_DETACHED_STABLE_MAX=1` (PO leak ≈ +21699/cycle) | LIVE — superior/mandatory |
+| HEAP-CYCLE-HEAP-FLOOR-BOUNDED | mean return-to-single heap floor growth ≤ 8 MiB (PO leak ≈ +50 MB/cycle; R1/R2/R3 = 106/152/204 from 54 MB) | LIVE |
+| M26-REGRADE-ON-HEAP-CYCLE | footprint verdict void; INSUFFICIENT while leak remains (M26 correct but insufficient) | LIVE |
+| FIX3-REGRADE-ON-HEAP-CYCLE | footprint verdict void; INSUFFICIENT while leak remains | LIVE |
+
+Pinned constants: `HEAP_CYCLE_PO_DETACHED_DIVS_PER_CYCLE=21699`, `HEAP_CYCLE_PO_FLOOR_MB=[106,152,204]`, `HEAP_CYCLE_PO_BASELINE_MB=54`.
 
 ## Queue item 11 — Hidden-tab replay regression (W59 / GATE-01)
 
