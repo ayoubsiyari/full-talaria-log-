@@ -61,6 +61,9 @@ export function parseHeapCycleMemoryArgs(argv = process.argv.slice(2)) {
       options.finalRetainerSnapshot = true;
     } else if (arg === '--release-console-handles') {
       options.releaseConsole = true;
+    } else if (arg === '--release-console-handles=deep') {
+      // Deep mode also drops async stack capture and cycles the Runtime domain.
+      options.releaseConsole = 'deep';
     } else if (arg.startsWith('--dataset-rotate=')) {
       options.datasetRotate = Number(arg.split('=')[1]) || 0;
     } else if (arg === '--ablate-terminate-workers') {
@@ -164,7 +167,8 @@ export async function runHeapCycleMemoryGate({
         if (steadyStateDiff) browserOpts.steadyStateDiff = true;
         if (ablateTerminateWorkers) browserOpts.ablateTerminateWorkers = true;
         if (datasetRotate) browserOpts.datasetRotate = datasetRotate;
-        if (releaseConsole) browserOpts.releaseConsole = true;
+        // Preserve the mode ('deep' vs true): coercing to true silently downgrades it.
+        if (releaseConsole) browserOpts.releaseConsole = releaseConsole;
         if (Number.isFinite(cycles) && cycles > 0) browserOpts.cycles = cycles;
         if (Number.isFinite(playHoldMs) && playHoldMs > 0) browserOpts.playHoldMs = playHoldMs;
         report = await browserRunner(browserOpts);

@@ -537,17 +537,28 @@ async function applyHostDataset(page, { fileId, timeframe }) {
  * of the instrument, not the product. Discarding console entries and releasing
  * the console object group frees them.
  */
-async function releaseConsoleHandles(cdp, cycle) {
+async function releaseConsoleHandles(cdp, cycle, mode = 'shallow') {
   const results = {};
-  for (const method of ['Runtime.discardConsoleEntries', 'Runtime.releaseObjectGroup']) {
+  const send = async (method, params) => {
     try {
-      await cdp.send(method, method.endsWith('releaseObjectGroup') ? { objectGroup: 'console' } : undefined);
+      await cdp.send(method, params);
       results[method] = 'ok';
     } catch (error) {
       results[method] = String(error?.message || error);
     }
+  };
+  await send('Runtime.discardConsoleEntries');
+  await send('Runtime.releaseObjectGroup', { objectGroup: 'console' });
+  if (mode === 'deep') {
+    // Shallow release leaves the handles in place (measured: 4 product-held vs
+    // 8 console-held realms, unchanged). Async stack capture and the Runtime
+    // domain's own wrappers are the remaining holders, so drop both.
+    await send('Runtime.setAsyncCallStackDepth', { maxDepth: 0 });
+    await send('Runtime.disable');
+    await send('HeapProfiler.collectGarbage');
+    await send('Runtime.enable');
   }
-  logHeapCycle(`cycle ${cycle}: released console handles ${JSON.stringify(results)}`);
+  logHeapCycle(`cycle ${cycle}: released console handles mode=${mode} ${JSON.stringify(results)}`);
   return results;
 }
 
@@ -1109,7 +1120,7 @@ async function runMultichartCycles({
     // PO-hand: short settle, no GC — match DevTools/console read timing.
     await sleep(poHandSample ? Math.min(settleMs, 800) : settleMs);
     const isFinal = index === cycles - 1;
-    if (releaseConsole) await releaseConsoleHandles(cdp, index + 1);
+    if (releaseConsole) await releaseConsoleHandles(cdp, index + 1, releaseConsole === 'deep' ? 'deep' : 'shallow');
     const takeSnap = snapshotPolicy === 'every-return';
     const returnSingle = await sampleHeap(page, cdp, {
       snapshot: takeSnap,
