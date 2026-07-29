@@ -3835,3 +3835,9 @@ Ship script 4d SSH quote flake after PURGE_FLAGS_REACHABLE — remainder verify 
 | LEAK-D | `6e9593497` | `__TALARIA_DISABLE_MC_RAWDATA_COPY_V1` |
 
 Tip `9b81b89fd`. FLAG harnesses all PASS (do not hold). SURF-3 GREEN, holes=0, deploy-gate PRESENT, four flags on `/chart/chart.js`.
+
+## B-0164 — TRAIN HAZARD. Assemble D clean only. b87 ship.
+
+**2026-07-29.** Banned `a4f388296` / `8a17b05c6` on `manager-c/verification-infra` (~18k CRLF churn). Canonical: `manager-d/trade-correctness` `95adb8285` + `42d01a1dc`. C assemble stop: `00547509b`.
+
+Assembled clean D + B api_server M24 hook. Stamp `20260729b87`.
