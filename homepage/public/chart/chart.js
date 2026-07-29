@@ -1198,6 +1198,14 @@ class Chart {
         this._mcFinerPanelHostCommitListenerInstalled = false;
         this._mcFinerPanelHostCommitHandler = null;
         this._installFinerPanelSelfOwnerHostCommitListener();
+        this._mcHostCacheClientId = null;
+        this._mcHostCacheFileRefs = new Map();
+        this._mcHostCacheReleaseUnloadHandler = null;
+        this._installMcHostCacheReleaseHook();
+        this._sharedBarStoreClientId = null;
+        this._sharedBarStoreFileRefs = new Set();
+        this._sharedBarStoreReleaseUnloadHandler = null;
+        this._installSharedBarStoreReleaseHook();
         /** Coalesce high-frequency pan sync broadcasts to ~1/frame. */
         this._scrollSyncRaf = null;
         this._lastScrollSyncAt = 0;
@@ -3280,6 +3288,18 @@ class Chart {
         };
     }
 
+    _sharedBarStoreOwnerId() {
+        if (!this._sharedBarStoreClientId) {
+            const rand = Math.random().toString(36).slice(2);
+            this._sharedBarStoreClientId = `chart-${Date.now().toString(36)}-${rand}`;
+        }
+        return this._sharedBarStoreClientId;
+    }
+
+    _mcHostCacheReleaseEnabled() {
+        return !(typeof window !== 'undefined' && window.__TALARIA_DISABLE_MC_HOST_CACHE_RELEASE_V1);
+    }
+
     /**
      * LEAK-G: under multichart, suppress BT TF prefetch fill (default ON).
      * Kill-switch: window.__TALARIA_DISABLE_MC_BT_TF_PREFETCH_V1 — truthy restores prefetch.
@@ -3287,6 +3307,169 @@ class Chart {
      */
     _mcBtTfPrefetchGateEnabled() {
         return !(typeof window !== 'undefined' && window.__TALARIA_DISABLE_MC_BT_TF_PREFETCH_V1);
+    }
+
+    _mcHostCacheOwnerId() {
+        if (!this._mcHostCacheClientId) {
+            const rand = Math.random().toString(36).slice(2);
+            this._mcHostCacheClientId = `chart-cache-${Date.now().toString(36)}-${rand}`;
+        }
+        return this._mcHostCacheClientId;
+    }
+
+    _installMcHostCacheReleaseHook() {
+        try {
+            if (typeof window === 'undefined' || this._mcHostCacheReleaseUnloadHandler) return;
+            const self = this;
+            this._mcHostCacheReleaseUnloadHandler = function mcHostCacheReleaseOnPagehide(ev) {
+                if (ev && ev.persisted === true) return;
+                self._releaseMcHostCacheFileRefs();
+            };
+            window.addEventListener('pagehide', this._mcHostCacheReleaseUnloadHandler);
+        } catch (_e) { /* ignore */ }
+    }
+
+    _retainMcHostCacheFile(cacheOwner, kind, fileId) {
+        try {
+            const owner = cacheOwner || this;
+            const id = String(fileId || '');
+            const cacheKind = String(kind || '');
+            if (!owner || !id || !cacheKind) return;
+            const clientId = this._mcHostCacheOwnerId();
+            if (!owner._mcHostCacheFileRefOwners) owner._mcHostCacheFileRefOwners = new Map();
+            const refKey = `${cacheKind}|${id}`;
+            let owners = owner._mcHostCacheFileRefOwners.get(refKey);
+            if (!owners) {
+                owners = new Set();
+                owner._mcHostCacheFileRefOwners.set(refKey, owners);
+            }
+            owners.add(clientId);
+            if (!this._mcHostCacheFileRefs) this._mcHostCacheFileRefs = new Map();
+            this._mcHostCacheFileRefs.set(refKey, { cacheOwner: owner, kind: cacheKind, fileId: id });
+        } catch (_e) { /* best-effort cache ownership only */ }
+    }
+
+    _mcHostCacheSharedWriteOwner(kind) {
+        try {
+            if (typeof this._isMultichartEmbedPanel !== 'function' || !this._isMultichartEmbedPanel()) return null;
+            const host = typeof this._multichartGetHostChart === 'function'
+                ? this._multichartGetHostChart()
+                : null;
+            if (!host || host === this) return null;
+            const cacheKind = String(kind || '');
+            if (cacheKind === 'tf' && this._tfDataCache && this._tfDataCache === host._tfDataCache) return host;
+            if (cacheKind === 'bt' && this._btTfDataCache && this._btTfDataCache === host._btTfDataCache) return host;
+            if (cacheKind === 'smart' && this._smartPrefetchCache && this._smartPrefetchCache === host._smartPrefetchCache) return host;
+            return null;
+        } catch (_e) {
+            return null;
+        }
+    }
+
+    _forgetMcHostCacheFileRefSet(kind, fileId) {
+        try {
+            if (!this._mcHostCacheFileRefOwners) return;
+            this._mcHostCacheFileRefOwners.delete(`${String(kind || '')}|${String(fileId || '')}`);
+        } catch (_e) { /* ignore */ }
+    }
+
+    _smartPrefetchCacheHasFileId(fileId) {
+        const id = String(fileId || '');
+        if (!id || !this._smartPrefetchCache) return false;
+        for (const [key, entry] of this._smartPrefetchCache) {
+            if (entry && String(entry.fileId || '') === id) return true;
+            if (String(key || '').startsWith(`${id}|`)) return true;
+        }
+        return false;
+    }
+
+    _dropMcHostCacheFileRef(ownerId, kind, fileId) {
+        const cacheKind = String(kind || '');
+        const id = String(fileId || '');
+        if (!ownerId || !cacheKind || !id) return;
+        const refKey = `${cacheKind}|${id}`;
+        const owners = this._mcHostCacheFileRefOwners && this._mcHostCacheFileRefOwners.get(refKey);
+        if (owners) {
+            owners.delete(ownerId);
+            if (owners.size > 0) return;
+            this._mcHostCacheFileRefOwners.delete(refKey);
+        }
+        if (cacheKind === 'tf' && this._tfDataCache) {
+            this._tfDataCache.delete(id);
+        } else if (cacheKind === 'bt' && this._btTfDataCache) {
+            this._btTfDataCache.delete(id);
+        } else if (cacheKind === 'smart' && this._smartPrefetchCache) {
+            for (const [key, entry] of Array.from(this._smartPrefetchCache.entries())) {
+                if ((entry && String(entry.fileId || '') === id) || String(key || '').startsWith(`${id}|`)) {
+                    this._smartPrefetchCache.delete(key);
+                }
+            }
+        }
+    }
+
+    _releaseMcHostCacheFileRefs() {
+        if (!this._mcHostCacheReleaseEnabled()) return;
+        const refs = this._mcHostCacheFileRefs;
+        const ownerId = this._mcHostCacheOwnerId();
+        if (refs && refs.size > 0) {
+            for (const ref of refs.values()) {
+                try {
+                    if (ref && ref.cacheOwner && typeof ref.cacheOwner._dropMcHostCacheFileRef === 'function') {
+                        ref.cacheOwner._dropMcHostCacheFileRef(ownerId, ref.kind, ref.fileId);
+                    }
+                } catch (_e) { /* ignore */ }
+            }
+            refs.clear();
+        }
+        try {
+            if (typeof window !== 'undefined' && this._mcHostCacheReleaseUnloadHandler) {
+                window.removeEventListener('pagehide', this._mcHostCacheReleaseUnloadHandler);
+            }
+        } catch (_e) { /* ignore */ }
+        this._mcHostCacheReleaseUnloadHandler = null;
+    }
+
+    _retainSharedBarStoreFile(store, fileId) {
+        try {
+            const id = String(fileId || '');
+            if (!id || !store || typeof store.retainFile !== 'function') return;
+            const owner = this._sharedBarStoreOwnerId();
+            store.retainFile(id, owner);
+            this._sharedBarStoreFileRefs.add(id);
+        } catch (_e) { /* best-effort cache ownership only */ }
+    }
+
+    _installSharedBarStoreReleaseHook() {
+        try {
+            if (typeof window === 'undefined' || this._sharedBarStoreReleaseUnloadHandler) return;
+            const self = this;
+            this._sharedBarStoreReleaseUnloadHandler = function sharedBarStoreReleaseOnPagehide(ev) {
+                if (ev && ev.persisted === true) return;
+                self._releaseSharedBarStoreFileRefs();
+            };
+            window.addEventListener('pagehide', this._sharedBarStoreReleaseUnloadHandler);
+        } catch (_e) { /* ignore */ }
+    }
+
+    _releaseSharedBarStoreFileRefs() {
+        if (this._mcBarStoreRealmSwitchEnabled()) return;
+        const refs = this._sharedBarStoreFileRefs;
+        if (!refs || refs.size === 0) return;
+        let store = null;
+        try { store = this._sharedBarStore(); } catch (_e) { store = null; }
+        if (store && typeof store.clearFile === 'function') {
+            const owner = this._sharedBarStoreOwnerId();
+            for (const fileId of refs) {
+                try { store.clearFile(fileId, owner); } catch (_e) { /* ignore */ }
+            }
+        }
+        refs.clear();
+        try {
+            if (typeof window !== 'undefined' && this._sharedBarStoreReleaseUnloadHandler) {
+                window.removeEventListener('pagehide', this._sharedBarStoreReleaseUnloadHandler);
+            }
+        } catch (_e) { /* ignore */ }
+        this._sharedBarStoreReleaseUnloadHandler = null;
     }
 
     /** Publish just-ingested native bars into the shared store (called from ingest). */
@@ -4914,6 +5097,7 @@ class Chart {
         if (typeof parent._getBtTfDataCache !== 'function') return false;
         const entry = parent._getBtTfDataCache(this.currentFileId, timeframe);
         if (!entry) return false;
+        this._retainMcHostCacheFile(parent, 'bt', this.currentFileId);
         return this._applyBacktestTimeframeCacheEntry(timeframe, entry, 'parent-bt-cache');
     }
 
@@ -4940,6 +5124,7 @@ class Chart {
             if (!normalized || this._getBtTfDataCache(fid, normalized)) return;
             const entry = parent._getBtTfDataCache(fid, normalized);
             if (!entry) return;
+            this._retainMcHostCacheFile(parent, 'bt', fid);
             this._storeBtTfDataCacheEntry(fid, normalized, entry.rawData, {
                 totalCandles: entry.totalCandles,
                 serverCursors: entry.serverCursors,
@@ -5754,6 +5939,7 @@ class Chart {
             const oldest = cache.keys().next().value;
             if (oldest === undefined) break;
             cache.delete(oldest);
+            this._forgetMcHostCacheFileRefSet(cache === this._btTfDataCache ? 'bt' : 'tf', oldest);
         }
     }
 
@@ -7380,6 +7566,8 @@ class Chart {
             payload,
             fileId: String(fileId),
         });
+        const mcCacheOwner = this._mcHostCacheSharedWriteOwner('smart');
+        if (mcCacheOwner) this._retainMcHostCacheFile(mcCacheOwner, 'smart', fileId);
         this._trimSmartPrefetchCache();
     }
 
@@ -7389,7 +7577,12 @@ class Chart {
         const max = Number(this._smartCacheMaxEntries) > 0 ? Number(this._smartCacheMaxEntries) : 48;
         while (this._smartPrefetchCache.size > max) {
             const first = this._smartPrefetchCache.keys().next().value;
+            const entry = this._smartPrefetchCache.get(first);
+            const fid = entry && entry.fileId != null ? String(entry.fileId) : '';
             this._smartPrefetchCache.delete(first);
+            if (fid && !this._smartPrefetchCacheHasFileId(fid)) {
+                this._forgetMcHostCacheFileRefSet('smart', fid);
+            }
         }
     }
 
@@ -7470,6 +7663,8 @@ class Chart {
                         // still hit the network. delete+set keeps this entry "newest".
                         this._smartPrefetchCache.delete(key);
                         this._smartPrefetchCache.set(key, { at: Date.now(), payload: data, fileId: String(e.fileId) });
+                        const mcCacheOwner = this._mcHostCacheSharedWriteOwner('smart');
+                        if (mcCacheOwner) this._retainMcHostCacheFile(mcCacheOwner, 'smart', e.fileId);
                         this._trimSmartPrefetchCache();
                     })
                     .catch(() => {});
@@ -7653,6 +7848,8 @@ class Chart {
                 if (this._smartPrefetchCache) {
                     this._smartPrefetchCache.delete(cacheKey);
                     this._smartPrefetchCache.set(cacheKey, { at: Date.now(), payload: result, fileId: String(fileId) });
+                    const mcCacheOwner = this._mcHostCacheSharedWriteOwner('smart');
+                    if (mcCacheOwner) this._retainMcHostCacheFile(mcCacheOwner, 'smart', fileId);
                     this._trimSmartPrefetchCache();
                 }
                 return result;
@@ -7743,6 +7940,8 @@ class Chart {
                 if (this._smartPrefetchCache) {
                     this._smartPrefetchCache.delete(cacheKey);
                     this._smartPrefetchCache.set(cacheKey, { at: Date.now(), payload, fileId: String(fileId) });
+                    const mcCacheOwner = this._mcHostCacheSharedWriteOwner('smart');
+                    if (mcCacheOwner) this._retainMcHostCacheFile(mcCacheOwner, 'smart', fileId);
                     this._trimSmartPrefetchCache();
                 }
                 return payload;
@@ -8402,6 +8601,8 @@ class Chart {
             nativeRawFetchTf: this._nativeRawFetchTf || tf,
             ...extra,
         });
+        const mcCacheOwner = this._mcHostCacheSharedWriteOwner('tf');
+        if (mcCacheOwner) this._retainMcHostCacheFile(mcCacheOwner, 'tf', fid);
         while (perFile.size > (this._tfDataCacheMaxPerFile || 5)) {
             const first = perFile.keys().next().value;
             perFile.delete(first);
@@ -8607,6 +8808,8 @@ class Chart {
             } : null,
             nativeRawFetchTf: normalized,
         });
+        const mcCacheOwner = this._mcHostCacheSharedWriteOwner('tf');
+        if (mcCacheOwner) this._retainMcHostCacheFile(mcCacheOwner, 'tf', fid);
         while (perFile.size > (this._tfDataCacheMaxPerFile || 5)) {
             const first = perFile.keys().next().value;
             perFile.delete(first);
@@ -9102,6 +9305,8 @@ class Chart {
             serverCursors: meta.serverCursors ? { ...meta.serverCursors } : null,
             nativeRawFetchTf: meta.nativeRawFetchTf || tf,
         });
+        const mcCacheOwner = this._mcHostCacheSharedWriteOwner('bt');
+        if (mcCacheOwner) this._retainMcHostCacheFile(mcCacheOwner, 'bt', fid);
         while (perFile.size > (this._btTfDataCacheMaxPerFile || 8)) {
             const first = perFile.keys().next().value;
             perFile.delete(first);
