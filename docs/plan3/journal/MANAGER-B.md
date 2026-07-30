@@ -5264,3 +5264,23 @@ C's duration gate reads process private memory by type, not `performance.memory`
 flat. Trap 3 withdrew the old 131-192 MB figures and the PO's console readings only.
 
 Ping D and E: wire is `20260730b114` — re-run TEST-02 / money probes / INDICATOR-EVICT.
+
+## B-0212 — E payload bound by SHA `71c4c1b0e`; orphan `9b0a1e0ea` rejected
+
+Director addendum: take E by SHA `71c4c1b0e` on `manager-e/indicator-eviction`, not by
+message. There is an orphaned duplicate `9b0a1e0ea` with identical subject, timestamp and
+199-line diff, attached to no branch.
+
+**What tip actually carried.** Neither named SHA nor orphan is an ancestor of the b114 tip.
+The tip carrier is a third commit, `767211a93431739d19e5a435e7b3fea3e456539f`, authored by
+the B release rehearsal onto the train merge parent — same patch-id
+(`dc4359285609dc2ce1d0c5d67353ccb6de67b72d`) for the indicator hunks, identical eviction
+function bytes (fn sha256 prefix `ee92fb16c551d88f5c55`). Resolving by message would have
+accepted the orphan as readily as the named SHA; that is the failure mode the addendum names.
+
+**Wire.** Live b114 serves `_evictClearedIndicatorSettingsV1` ×3 and
+`__TALARIA_DISABLE_INDICATOR_EVICT_V1` ×1 over HTTP. b113 lacked the symbol. E can grade.
+
+**Manifest.** Every payload row for this train is recorded by introducing SHA in
+`docs/plan3/TRAIN-MANIFEST-b114-20260730.md`. E's row is bound to
+`71c4c1b0ea0d8b91d525b2da2992c5f5b27ac934` only; `9b0a1e0ea` is listed as rejected.
