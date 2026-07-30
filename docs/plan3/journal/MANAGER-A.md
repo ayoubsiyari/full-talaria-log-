@@ -2131,3 +2131,88 @@ other people''s flags all day, sitting in a shipped one. Needs an owner BEFORE a
 ablate M20-Q9 in a measurement, or the ablation arm will silently be the treatment arm.
 
 Doc: FINDING-A-THE-ZERO-TRADE-COLLAPSE-HAS-A-SUPERLINEAR-PER-TICK-RESAMPLE-20260730-2345.md
+
+## 00:05 - CORRECTION: THE PER-TRADE READING IS BACK. C WAS RIGHT, I WAS NOT.
+
+Two read-only source sweeps of talaria-design/src came back and one of them overturns my
+own 23:15 dispute. Correcting promptly because C is designing a re-run on my objection.
+
+**WHAT I CLAIMED AT 23:15 (e4544ba1b):** C''s "+28.7 elements per closed trade" is
+confounded - a 4x swing in trades moved the React writer 89->86, corr -0.9042, while a
+genuine per-trade d3 writer on the same intervals scaled +0.6678. I attached a bound in
+the same document: "does NOT prove time-driven - A LAGGED PER-TRADE WRITER WOULD
+DECORRELATE TOO." That caveat is now the live explanation. My dispute does not stand.
+
+**THE WRITER, NAMED FROM SOURCE.** Bottom trades table, one row per closed trade,
+TalariaV8bLive.jsx:38241 `key={r.id}`. Row region = 188 lines, 50 host tag sites (28 div,
+19 span, 1 svg, 1 path, 1 img), ~28-31 rendering for a closed row with dropdowns shut.
+VERIFIED BY ME textually with the method limit stated: a static count sees tag SITES not
+runtime instances, so this corroborates magnitude and does not measure it. List is
+UNBOUNDED and NOT VIRTUALISED. Panel stays MOUNTED when collapsed - :37948
+`height: btmOpen ? btmHeight : 0` with overflow hidden - so closing the drawer releases
+nothing.
+
+**THE RECONCILIATION I COULD NOT PRODUCE AT 23:15, and it is the whole thing.** I read
+"87 elements per interval, flat across trade bins" as evidence AGAINST per-trade. It is
+the opposite: trades closed at ~3/min steady x ~29 elements/row = 87 per interval. THE
+CONSTANT I TREATED AS THE ANOMALY IS THE PER-TRADE PRODUCT. Rate was stable, so the
+response was smooth.
+
+**WHY THE CORRELATION WENT NEGATIVE.** Rows do not appear when the counter increments.
+Re-render is polled: :12577 setInterval(bump, 800), plus a bump on the order:closed bus
+event (:12573-12574). A row lands up to 800ms after the close that incremented C''s
+counter, so a close near an interval boundary is COUNTED in one sample and RENDERED in the
+next. The d3 defs/filter control IS synchronous with the close - which is exactly why it
+stayed positively correlated while the React writer did not. Two writers, same predictor,
+one lagged. The negative correlation is an artifact of my differencing, not a property of
+the product.
+
+**THE DIRECTOR''S STATED FAILURE MODE IS REFUTED FOR THE ELEMENT CLIMB.** "React
+reconciling and re-mounting rather than updating, leaving previous nodes attached" is not
+what this is. The trade table key is stable; rows UPDATE. The climb is a plainly unbounded
+list with CORRECT keys. The remount pattern does exist - :38931
+`key={item.id}-s${layersSelectionRevision}` remounts every visible Objects Tree row on
+every drawingSelectionChanged - but a remount DESTROYS AND RECREATES, so an ATTACHED
+element census reads it flat. Same for the nav-badge tooltip: ~3.3 createElement/sec during
+replay but replaceChildren() first, so ~7,200/h created and none accumulated. Both are
+CPU/GC churn, NOT attached growth.
+
+**MY OWN LEADING HYPOTHESIS IS DEAD TOO,** and I want it recorded as such rather than
+quietly dropped. I expected a ref/Map keyed by trade or panel id storing DOM with no
+delete. The one id-keyed DOM map - cellRefs in MultichartGrid.jsx - DOES delete on unmount
+(:8556-8559) with matching per-panel-id cleanup at :2843-2872. Positive control that the
+absences are real: MutationObserver/IntersectionObserver = 0 against 166 useEffect in the
+same file.
+
+**WHAT DOES NOT CHANGE, and the second is STRENGTHENED by the correction.** (1) Elements
+are 1-3% of the renderer slope: 735.0 MB/h over 1333.5 elements/h = 564 KB per element,
+and the most favourable corner of both CIs still needs 51.9 KB. That is arithmetic and is
+independent of what drives the elements - expect the gate to stay RED after any element
+fix. (2) NOT THE PO''S RUN. 15 min at 60x with ZERO trades hit progressive collapse; if
+the writer is per-trade, which is now the better-supported reading, it contributed exactly
+zero to that run. The correction makes the foreclosure firmer. BINDING ON ME: I will not
+report this fix as fixing the PO''s collapse. The zero-trade segment I asked C for is
+still worth running - no longer a discriminator, now a cheap confirmation.
+
+**THE FIX IS LOW-RISK BECAUSE THE CAP ALREADY EXISTS FOR THIS DATA.** MultichartGrid bounds
+peer trade sync at slice(-50)/slice(-100); the host render path simply has no equivalent.
+Bound the RENDERED window, not what is stored. Switch
+__TALARIA_DISABLE_V9_TRADE_ROW_WINDOW_V1, truthy-disabling, read per call. FLAG-03 bites
+here because it is the visual path and PURGE-2 turned three panels black behind an OFF
+state that satisfied "the feature is inactive" - the OFF assertion must be that a closed
+trade STILL PRODUCES A VISIBLE ROW carrying its id and P&L text. Routes to B:
+talaria-v9-live.js is build output of talaria-design/src (vite.config.live.js:142,
+emptyOutDir), so editing the bundle in my tree would be erased by the next build.
+
+**ROWS RAISED:** Objects Tree forced remount (CPU row, not memory); nav-badge tooltip
+churn; collapsed panel stays mounted; tryInstallHostBus poll at MultichartGrid.js:7750-7753
+not cleared on early unmount (bounded <=5s); tlChkLastActRef unbounded but NOT DOM.
+
+**WHAT I GOT WRONG, PLAINLY.** I applied the differencing correctly and reached the wrong
+conclusion, because I weighted a decorrelation I had MYSELF named as non-diagnostic. The
+lesson is not "do not difference" - it is that when I write down a bound that makes my own
+result non-diagnostic, I must go looking for that mechanism before I let the result
+travel. C measured; I inferred against the measurement and should have gone to source
+first. Two hours.
+
+Doc: CORRECTION-A-THE-PER-TRADE-READING-IS-BACK-AND-C-WAS-RIGHT-20260731-0005.md
