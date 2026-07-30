@@ -99,7 +99,7 @@ async function churnTrades(page, { closedTarget = 30 } = {}) {
   const before = await readTradeState(page);
   const closed = before.managerClosed ?? before.serviceClosed ?? 0;
   const batch = closed < closedTarget ? Math.min(8, closedTarget - closed) : 1;
-  const result = await cycleTrades(page, { open: batch, close: batch });
+  const result = await cycleTrades(page, { open: batch, close: batch, holdMs: 12_000 });
   const after = await readTradeState(page);
   return {
     ...result,
@@ -138,6 +138,9 @@ async function sampleOnce(page, cdp, browserCdp, { cpuWindowMs = 8_000 } = {}) {
   const elements = await countElements(page);
   const state = await readConf01State(page, { advanceWindowMs: 3_000 });
   const trades = await readTradeState(page);
+  // Re-hook: a re-armed replay can hand us a fresh order manager, and the
+  // install is a no-op on one already timed.
+  await installOrderLoopTimer(page).catch(() => null);
   const orderLoop = await measureOrderLoopCost(page, { windowMs: 6_000 });
   const heavyFields = await measureHeavyFieldBytes(page);
 
@@ -181,7 +184,7 @@ function buildTrends(samples) {
     gpuCpuPercent: mk('GPU process CPU (% of one core)', (s) => s.cpu?.gpuPercent, 3),
     // CONF-02: the time leak. Per-tick order-loop cost is expected to grow with the
     // number of closed trades, so it is graded as a series in its own right.
-    orderLoopMsPerTick: mk('order loop ms per replay tick', (s) => s.orderLoop?.host?.msPerCall, 0.2),
+    orderLoopMsPerTick: mk('order loop ms per replay tick', (s) => s.orderLoop?.measured?.msPerCall, 0.2),
     orderLoopPercentOfMainThread: mk('order loop, % of main thread', (s) => s.orderLoop?.totalPercentOfMainThread, 2),
     heavyFieldMB: mk('retained screenshot/base64 MB', (s) => s.heavyFields?.heavyMB, 1),
     excursionSamples: mk('excursion samples retained', (s) => s.heavyFields?.excursionSamples, 2_000),
@@ -261,7 +264,7 @@ export async function runConf01DurationGate({
       report.verdict = gradeDurationSeries(report.trends, { minSpanHours: Math.min(2, hours) });
       report.conf02 = assessConf02(samples, { closedTarget });
       save();
-      console.error(`[dur] #${n} ${hoursNow.toFixed(2)}h gcHeap=${s.collected.heapMB} live=${s.live.heapMB} footprint=${s.footprint.totalPrivateMB} elements=${s.elements} bars=${s.state.totalBars} advancing=${s.state.advancingPanels}/4 renderer=${s.cpu.rendererPercent}% closed=${s.trades?.managerClosed ?? s.trades?.serviceClosed} loop=${s.orderLoop?.host?.msPerCall}ms/tick heavy=${s.heavyFields?.heavyMB}MB status=${report.verdict?.status}`);
+      console.error(`[dur] #${n} ${hoursNow.toFixed(2)}h gcHeap=${s.collected.heapMB} live=${s.live.heapMB} footprint=${s.footprint.totalPrivateMB} elements=${s.elements} bars=${s.state.totalBars} advancing=${s.state.advancingPanels}/4 renderer=${s.cpu.rendererPercent}% closed=${s.trades?.managerClosed ?? s.trades?.serviceClosed} loop=${s.orderLoop?.measured?.msPerCall}ms/tick(book=${s.orderLoop?.measured?.closedHere ?? 0}) excursion=${s.heavyFields?.excursionSamples} heavy=${s.heavyFields?.heavyMB}MB status=${report.verdict?.status}`);
       const spent = Date.now() - startedAt;
       const nextAt = n * intervalMs;
       if (nextAt > spent) await sleep(nextAt - spent);

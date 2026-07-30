@@ -443,8 +443,8 @@ export async function keepConf01Playing(page, replaySpeed = 60, { reseekFraction
  * Closing goes through closePositionAtPrice rather than closePosition, because the
  * latter is the path a confirm modal calls and would stall an unattended run.
  */
-export async function cycleTrades(page, { open = 1, close = 1 } = {}) {
-  return page.evaluate(async (toOpen, toClose) => {
+export async function cycleTrades(page, { open = 1, close = 1, holdMs = 0 } = {}) {
+  return page.evaluate(async (toOpen, toClose, hold) => {
     try { window.alert = () => {}; } catch (_) {}
     try { window.confirm = () => true; } catch (_) {}
     const chart = window.chart;
@@ -458,16 +458,28 @@ export async function cycleTrades(page, { open = 1, close = 1 } = {}) {
 
     for (let i = 0; i < toOpen; i += 1) {
       try {
+        const dir = i % 2 ? 'SELL' : 'BUY';
+        const sl = dir === 'SELL' ? price * 1.01 : price * 0.99;
+        // openPrice/array_base_price and initialStopLoss are what
+        // _calculateExcursionRValues reads (order-manager.js:3913). Without them
+        // plannedRiskPrice is NaN, sampling returns null, and a harness would
+        // accumulate closed trades that cost nothing - measuring the cheap
+        // configuration for a third time.
         const r = svc && typeof svc.submitOrder === 'function' ? svc.submitOrder({
-          orderType: 'market', direction: i % 2 ? 'SELL' : 'BUY', side: i % 2 ? 'SELL' : 'BUY',
-          quantity: 1, entryPrice: price,
+          orderType: 'market', direction: dir, side: dir, type: dir,
+          quantity: 1, entryPrice: price, openPrice: price, array_base_price: price,
           timestamp: candle.t != null ? Number(candle.t) : Date.now(),
-          stopLoss: i % 2 ? price * 1.01 : price * 0.99,
-          takeProfit: i % 2 ? price * 0.99 : price * 1.01,
+          stopLoss: sl, initialStopLoss: sl,
+          takeProfit: dir === 'SELL' ? price * 0.99 : price * 1.01,
         }) : null;
         if (r && r.id) out.opened += 1;
       } catch (error) { out.errors.push(String(error?.message || error)); }
     }
+
+    // A trade closed in the same bar it opened accumulates NO excursion samples, so
+    // measuring per-tick cost against such trades tests nothing. Hold them open
+    // across bar closes first.
+    if (hold > 0) await new Promise((r) => setTimeout(r, hold));
 
     const openList = (Array.isArray(om.openPositions) && om.openPositions.length ? om.openPositions
       : (svc && Array.isArray(svc.openPositions) ? svc.openPositions : []));
@@ -483,8 +495,24 @@ export async function cycleTrades(page, { open = 1, close = 1 } = {}) {
         out.closed += 1;
       } catch (error) { out.errors.push(String(error?.message || error)); break; }
     }
+
+    // Closing a position surfaces the trade-details modal, which stops replay and
+    // would silently void every subsequent measurement. Dismiss it the way the user
+    // does, and report what was dismissed rather than hiding the interaction.
+    out.dismissed = [];
+    const closeBtn = document.getElementById('closeTradeDetails');
+    if (closeBtn) {
+      try { closeBtn.click(); out.dismissed.push('#closeTradeDetails'); } catch (_) {}
+    }
+    for (const sel of ['#tradeDetailsModal', '.trade-details-modal', '.modal-overlay']) {
+      for (const el of document.querySelectorAll(sel)) {
+        try { el.remove(); out.dismissed.push(sel); } catch (_) {}
+      }
+    }
+    const rs = chart && chart.replaySystem;
+    out.replayAfter = rs ? { isActive: !!rs.isActive, isPlaying: !!rs.isPlaying, idx: rs.currentIndex } : null;
     return out;
-  }, open, close).catch((error) => ({ opened: 0, closed: 0, errors: [String(error?.message || error)] }));
+  }, open, close, holdMs).catch((error) => ({ opened: 0, closed: 0, errors: [String(error?.message || error)] }));
 }
 
 /** Open and closed trade counts, wherever the product keeps them. */
@@ -617,6 +645,9 @@ export async function measureOrderLoopCost(page, { windowMs = 10_000 } = {}) {
       const s = window.__conf02OrderLoop;
       if (!s) return null;
       const wallMs = performance.now() - s.since;
+      const ch = window.chart;
+      const om = ch && (ch.orderManager || window.orderManager);
+      const len = (v) => (Array.isArray(v) ? v.length : 0);
       return {
         calls: s.calls,
         totalMs: +s.totalMs.toFixed(2),
@@ -625,14 +656,30 @@ export async function measureOrderLoopCost(page, { windowMs = 10_000 } = {}) {
         msPerCall: s.calls ? +(s.totalMs / s.calls).toFixed(3) : null,
         callsPerSec: wallMs ? +(s.calls / (wallMs / 1000)).toFixed(2) : null,
         percentOfMainThread: wallMs ? +((s.totalMs / wallMs) * 100).toFixed(2) : null,
+        // Which frame this is, so cost is attributed to the frame that actually
+        // holds the trades: a panel with no orders ticks cheaply and would
+        // otherwise be read as the cost of a loaded book.
+        isHost: window.top === window,
+        timeframe: ch?.currentTimeframe || null,
+        closedHere: len(om?.closedPositions),
+        openHere: len(om?.openPositions),
+        excursionSamplesHere: (om?.closedPositions || []).concat(om?.openPositions || [])
+          .reduce((t, p) => t + (Array.isArray(p?.bar_close_r) ? p.bar_close_r.length : 0), 0),
       };
     }).catch(() => null);
     if (got) rows.push(got);
   }
-  const host = rows[0] || null;
+  // The frame with the book is the one whose cost answers the question; among
+  // ticking frames prefer the one holding the most closed trades.
+  const ticking = rows.filter((r) => r.calls > 0);
+  const withBook = [...rows].sort((a, b) => (b.closedHere || 0) - (a.closedHere || 0))[0] || null;
+  const bookAndTicking = [...ticking].sort((a, b) => (b.closedHere || 0) - (a.closedHere || 0))[0] || null;
   return {
     perFrame: rows,
-    host,
+    host: rows.find((r) => r.isHost) || rows[0] || null,
+    bookFrame: withBook,
+    measured: bookAndTicking,
+    bookFrameTicking: !!(bookAndTicking && bookAndTicking.closedHere > 0),
     totalPercentOfMainThread: +rows.reduce((s, r) => s + (r.percentOfMainThread || 0), 0).toFixed(2),
   };
 }

@@ -29,7 +29,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 /** Slope of cost against closed-trade count, with a CI, reusing the DUR-01 fitter. */
 export function fitCostAgainstClosedCount(levels) {
   const points = levels
-    .filter((l) => Number.isFinite(l.closed) && Number.isFinite(l.msPerCall))
+    .filter((l) => l.valid !== false && Number.isFinite(l.closed) && Number.isFinite(l.msPerCall))
     .map((l) => ({ hours: l.closed, value: l.msPerCall }));
   const fit = fitTrend(points, { label: 'order-loop ms per tick vs closed trades', flatBandPerHour: 0, minSpanHours: 0 });
   return {
@@ -42,6 +42,7 @@ export function fitCostAgainstClosedCount(levels) {
 export async function runOrderAccumulationCensus({
   levels = [0, 10, 20, 30, 45],
   windowMs = 12_000,
+  holdMs = 12_000,
   speed = 60,
   outPath = null,
 } = {}) {
@@ -70,7 +71,7 @@ export async function runOrderAccumulationCensus({
       let guard = 0;
       while (closedSoFar < target && guard < 200) {
         const batch = Math.min(5, target - closedSoFar);
-        const r = await cycleTrades(page, { open: batch, close: batch });
+        const r = await cycleTrades(page, { open: batch, close: batch, holdMs });
         closedSoFar += r.closed;
         guard += 1;
         if (r.closed === 0) {
@@ -79,11 +80,20 @@ export async function runOrderAccumulationCensus({
         }
         await sleep(400);
       }
-      // Playback must be alive or the loop never ticks.
-      await keepConf01Playing(page, speed);
+      // Playback must be alive or the loop never ticks and the level is void. Re-arm,
+      // verify by measured advance, and retry once before accepting a dead level.
+      let armed = await keepConf01Playing(page, speed);
       await sleep(2_000);
+      let advanceCheck = await probePanelAdvanceRates(page, { windowMs: 3_000, replaySpeed: speed });
+      if (!(advanceCheck[0]?.barsPerSec > 0)) {
+        armed = await keepConf01Playing(page, speed);
+        await sleep(3_000);
+        advanceCheck = await probePanelAdvanceRates(page, { windowMs: 3_000, replaySpeed: speed });
+      }
+      const playbackAlive = advanceCheck[0]?.barsPerSec > 0;
 
       const trades = await readTradeState(page);
+      await installOrderLoopTimer(page).catch(() => null);
       const cost = await measureOrderLoopCost(page, { windowMs });
       const heavy = await measureHeavyFieldBytes(page);
       const advance = await probePanelAdvanceRates(page, { windowMs: 4_000, replaySpeed: speed });
@@ -93,10 +103,16 @@ export async function runOrderAccumulationCensus({
         closed,
         open: trades.managerOpen ?? trades.serviceOpen ?? null,
         trades,
-        msPerCall: cost.host?.msPerCall ?? null,
-        callsPerSec: cost.host?.callsPerSec ?? null,
+        msPerCall: cost.measured?.msPerCall ?? null,
+        callsPerSec: cost.measured?.callsPerSec ?? null,
         percentOfMainThread: cost.totalPercentOfMainThread,
-        maxMs: cost.host?.maxMs ?? null,
+        maxMs: cost.measured?.maxMs ?? null,
+        // The cost only answers the question if the timed frame is the one
+        // carrying the closed trades; a ticking empty panel reads ~0.01 ms.
+        measuredFrameClosed: cost.measured?.closedHere ?? null,
+        measuredFrameExcursionSamples: cost.measured?.excursionSamplesHere ?? null,
+        bookFrameTicking: cost.bookFrameTicking ?? false,
+        perFrame: cost.perFrame,
         heavyFieldChars: heavy?.totalChars ?? null,
         heavyMB: heavy?.heavyMB ?? null,
         heavyCharsPerRow: heavy?.heavyCharsPerRow ?? null,
@@ -104,10 +120,18 @@ export async function runOrderAccumulationCensus({
         excursionSamples: heavy?.excursionSamples ?? null,
         hostBarsPerSec: advance[0]?.barsPerSec ?? null,
         hostFps: advance[0]?.framesPerSec ?? null,
+        // A level measured with dead playback is void, and says so rather than
+        // contributing a zero to the fit.
+        playbackAlive,
+        valid: playbackAlive
+          && (cost.measured?.callsPerSec || 0) > 0
+          && (cost.measured?.closedHere || 0) > 0
+          && (heavy?.excursionSamples || 0) > 0,
+        reArm: armed,
       };
       report.levels.push(level);
       save();
-      console.error(`[orders] closed=${level.closed} open=${level.open} loop=${level.msPerCall}ms/tick x${level.callsPerSec}/s = ${level.percentOfMainThread}% of main | heavy=${level.heavyMB}MB (${level.heavyCharsPerRow} chars/row, ${level.rowsWithHeavy} rows) excursion=${level.excursionSamples} | bars/s=${level.hostBarsPerSec} fps=${level.hostFps}`);
+      console.error(`[orders] closed=${level.closed} open=${level.open} timedFrameClosed=${level.measuredFrameClosed} valid=${level.valid} loop=${level.msPerCall}ms/tick x${level.callsPerSec}/s = ${level.percentOfMainThread}% of main | heavy=${level.heavyMB}MB (${level.heavyCharsPerRow} chars/row, ${level.rowsWithHeavy} rows) excursion=${level.excursionSamples} | bars/s=${level.hostBarsPerSec} fps=${level.hostFps}`);
     }
 
     report.fit = fitCostAgainstClosedCount(report.levels);
@@ -142,6 +166,7 @@ if (invokedDirectly) {
     else if (k === 'window-ms') opts.windowMs = Number(v);
     else if (k === 'levels') opts.levels = v.split(',').map(Number);
     else if (k === 'speed') opts.speed = Number(v);
+    else if (k === 'hold-ms') opts.holdMs = Number(v);
   }
   const report = await runOrderAccumulationCensus(opts);
   console.error(`[orders] conclusion=${JSON.stringify(report.conclusion)}`);

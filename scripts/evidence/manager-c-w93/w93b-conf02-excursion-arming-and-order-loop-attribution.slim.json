@@ -1,0 +1,66 @@
+{
+ "packet": "W93b",
+ "tier": "mid",
+ "model": "claude-opus-5-thinking",
+ "tierJustification": "instrument repair on my own harness, no money path and no product change; reviewer tier not claimed",
+ "rulings": ["CONF-02", "DUR-01", "CKPT-01"],
+ "headline": "CONF-02's cost mechanism was never armed by my harness: API-placed orders collect zero excursion samples, and my order-loop timer was reading a frame with no book. Both fixed; the running duration gate now reads 14,652 excursion samples and attributes loop cost to the frame that holds the trades.",
+
+ "finding1_excursion_sampling_was_silent": {
+  "claim": "Every order my harness placed through orderService.submitOrder was excursion-free, so a run could accumulate closed trades that cost nothing to carry.",
+  "instrument": "CONF-02 duration gate (scripts/conf01-duration-gate.mjs) heavy-field reader, plus source reading of order-manager.js",
+  "mechanism": "order-manager.js:3916-3920 _calculateExcursionRValues reads array_base_price ?? openPrice and initialStopLoss ?? initial_sl ?? stopLoss. If either is not finite it returns null and _appendExcursionSnapshot (5943) no-ops, so the per-bar sample arrays are never created. Sampling is otherwise driven per closed bar from updatePositions (32133, entry bar excluded) and post-exit (31377, 31406).",
+  "before": { "excursionSamples": 0, "rowsMeasured": 88, "note": "order-accumulation census W93 and the first CONF-02 gate launch" },
+  "after": {
+   "excursionSamples": 14652,
+   "rows": 88,
+   "closedRows": 24,
+   "closedRowSamples": 4524,
+   "samplesPerClosedTrade": 188,
+   "openRows": 8,
+   "openRowSamples": 540,
+   "source": ".scratch-w93-conf02-2h-gate.json sample 4, 0.25h into the live run"
+  },
+  "fix": "cycleTrades now sends openPrice, array_base_price and initialStopLoss with the market order (scripts/lib/conf01-session.mjs)",
+  "consequence": "The per-tick cost of carrying closed trades could not have been measured before this fix. Any earlier per-tick figure of mine is a measurement of the cheap configuration - the third time this campaign has done that, and the second time I did it to myself."
+ },
+
+ "finding2_order_loop_attribution_defect": {
+  "claim": "My order-loop timer reported the cost of the wrong frame.",
+  "evidence": {
+   "perFrameAtSample4": [
+    { "frame": "page.frames()[0]", "calls": 0, "msPerCall": null, "note": "holds all 24 closed trades; updatePositions does not tick" },
+    { "frame": "panel", "calls": 80, "msPerCall": 0.012, "callsPerSec": 13.09, "percentOfMainThread": 0.02 },
+    { "frame": "panel", "calls": 78, "msPerCall": 0.012, "callsPerSec": 12.71, "percentOfMainThread": 0.01 },
+    { "frame": "panel", "calls": 82, "msPerCall": 0.016, "callsPerSec": 13.25, "percentOfMainThread": 0.02 }
+   ],
+   "why": "the frame I place orders into exhausts its resident replay window and stalls (replayAfter.isPlaying=false at idx 2011), while peer panels keep ticking with empty books"
+  },
+  "fix": "measureOrderLoopCost now reports isHost, timeframe, closedHere, openHere and excursionSamplesHere per frame, and exposes measured = the ticking frame with the largest book. A level is valid only if that frame ticks, holds closed trades, and excursion samples exist.",
+  "voids": "scripts/order-accumulation-census.mjs results from W93 (0.5-0.74 ms/tick, flat to 42 closed trades). Do not quote them. Re-runs after the duration gate finishes.",
+  "openQuestion": "with the book frame ticking and ~188 samples per closed trade, the per-tick cost may be materially higher than 0.012 ms; the number A needs for POST-EXIT-SAMPLING-CUT is not yet measured"
+ },
+
+ "finding3_element_count_climbs_with_closed_trades": {
+  "status": "flagged, not claimed",
+  "series": [
+   { "hours": 0.0, "elements": 5552, "closed": 5 },
+   { "hours": 0.08, "elements": 5979, "closed": 14 },
+   { "hours": 0.17, "elements": 6349, "closed": 15 },
+   { "hours": 0.25, "elements": 6336, "closed": 24 }
+  ],
+  "note": "n=4 and not monotonic at sample 4; a slope with confidence follows from the full run under DUR-01 rather than an eyeball on four points"
+ },
+
+ "liveRunState": {
+  "gate": "TALARIA_FREEZE_GATE default -> CONF-01 duration gate via scripts/freeze-gate.mjs",
+  "hours": 2.2,
+  "intervalMinutes": 5,
+  "closedTarget": 30,
+  "compliance": "four panels, four symbols, four timeframes, indicators loaded, orders accumulating; advancing 4/4 at samples 1, 2 and 4",
+  "caveat": "sample 3 read advancing=0/4 and renderer 29.3%; peer panels exhaust their resident window and are re-seeked between samples, so the CPU series carries stall points that must be excluded, not averaged"
+ },
+
+ "instrumentScope": "Renderer JS heap is ~21% of the page renderer and ~10% of all Chrome (INSTRUMENT-SCOPE-V1). Footprint figures in this run are OS PrivateMemorySize64 across all Chrome processes and do see the rest.",
+ "unitTests": "19 pass (duration-trend, freeze-gate)"
+}
