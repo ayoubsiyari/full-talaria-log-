@@ -1,5 +1,12 @@
 # Manager D Journal
 
+## 2026-07-30 — TEST-01 wire audit of all 50 fixed (b113)
+
+- Ruling `RULING-THREE-STRIKES-…-1540` copied. HONEST_FIXED=50 accepted; Director’s 53 was bad grep.
+- Generalised D3: `scripts/wire-audit-fixed.mjs` + `WIRE-AUDIT-FIXED-20260730b113.json/.md`.
+- MEAS-01 live stamp `20260730b113`. **Strict on-wire: 43/50.** Weak 3, partial 1 (Rayan #8), off-wire 2 (TAL-01896 path, TAL-01807b), backend 1 (01926).
+- Five CONF-01 packs rewritten under TEST-01: declare markers, mechanical proof before PO clicks; #8 / 01807b / 01896 skipped on b113 until a later stamp proves them. Not standing by for B.
+
 ## 2026-07-30 — D3 M24 wire read
 
 - **Outcome A** for PO `#5→#942` on b103. Stamp source: B journal `PO_SHOULD_READ=20260729b103` tip `153c835e2` (00:05); M24 display fix `2cc949399` (11:59) not an ancestor; OM at that SHA has zero `_resolveJournalDisplayTradeId` / `DISPLAY_ID_STABILITY`; restore-stability test absent.
