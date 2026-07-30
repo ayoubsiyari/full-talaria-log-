@@ -199,12 +199,12 @@
     }
 
     /**
-     * XFRAME-REF-RELEASE: after realm-release cuts, drop every host-held
-     * cross-frame entry field (frame/overlay/mountEl/cfg) and navigate the
-     * iframe to about:blank so the child document is torn down rather than
-     * merely detached. Must run AFTER the five REALM-TEARDOWN cuts, bar-store
-     * release, replay destroy, and stash clear — those paths read child
-     * handles. Default ON by absent property.
+     * XFRAME-REF-RELEASE: after realm-release cuts, null host-held entry
+     * fields that can point at the child iframe / its mount surface
+     * (frame/overlay/mountEl/cfg). Teardown hygiene only — releases host
+     * references to child-realm objects at destroy. Must run AFTER the five
+     * REALM-TEARDOWN cuts, bar-store release, replay destroy, and stash
+     * clear — those paths read child handles. Default ON by absent property.
      * Kill: window.__TALARIA_DISABLE_MC_XFRAME_REF_RELEASE_V1 — truthiness; per call.
      */
     function mcXframeRefReleaseV1Enabled() {
@@ -948,24 +948,18 @@
             c.panelWinStash = null;
             c.panelChartStash = null;
         } catch (_) { /* ignore */ }
+        try { c.frame.remove(); } catch (_) {}
         // XFRAME-REF-RELEASE: AFTER all child-handle reads (five cuts, bar-store,
-        // replay destroy, stash clear). about:blank tears down the child document;
-        // nulling frame/overlay/mountEl/cfg drops host-side retainers on the entry.
+        // replay destroy, stash clear, frame.remove). Null host-held entry fields
+        // that can retain the child iframe / mount surface. No iframe lifecycle
+        // change (no about:blank) — field nulling on an entry about to be deleted.
         if (mcXframeRefReleaseV1Enabled()) {
-            try {
-                if (c.frame) {
-                    try { c.frame.src = 'about:blank'; } catch (_) { /* ignore */ }
-                    try { c.frame.remove(); } catch (_) { /* ignore */ }
-                }
-            } catch (_) { /* ignore */ }
             try {
                 c.frame = null;
                 c.overlay = null;
                 c.mountEl = null;
                 c.cfg = null;
             } catch (_) { /* ignore */ }
-        } else {
-            try { c.frame.remove(); } catch (_) {}
         }
         this.charts.delete(id);
         this._log('info', 'removeChart ' + id);

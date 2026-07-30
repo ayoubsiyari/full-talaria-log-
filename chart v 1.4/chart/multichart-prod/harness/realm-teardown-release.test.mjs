@@ -224,35 +224,16 @@ class FakeFrame extends FakeElement {
         this.stats = stats;
         this.listeners = new Map();
         this.removeCalls = 0;
-        this.aboutBlankCalls = 0;
         this.contentDocument = new FakePanelDocument(stats);
         const probe = makeReleaseProbe(stats);
         this._probe = probe;
-        this._src = 'http://example.test/chart-host.html';
+        this.src = 'http://example.test/chart-host.html';
         this.contentWindow = {
-            location: { href: this._src },
+            location: { href: this.src },
             document: this.contentDocument,
             chart: probe.panelChart,
             TalariaCustomIndicators: probe.customApi,
         };
-        Object.defineProperty(this, 'src', {
-            configurable: true,
-            enumerable: true,
-            get: () => this._src,
-            set: (value) => {
-                this._src = String(value);
-                if (this._src === 'about:blank') {
-                    this.aboutBlankCalls += 1;
-                    // Navigate tears down the child realm — live chart handle gone.
-                    this.contentWindow = {
-                        location: { href: 'about:blank' },
-                        document: this.contentDocument,
-                        chart: null,
-                        TalariaCustomIndicators: null,
-                    };
-                }
-            },
-        });
     }
 
     addEventListener(type, listener) {
@@ -1264,7 +1245,6 @@ test('stash-flag-polarity: falsy values keep stash ON (not === true sampling)', 
 // ── XFRAME-REF-RELEASE ────────────────────────────────────────────────────
 
 function assertXframeReleaseRan(entry, frame) {
-    assert.ok(frame.aboutBlankCalls >= 1, 'xframe: about:blank navigated');
     assert.equal(frame.removeCalls, 1, 'xframe: frame.remove() ran');
     assert.equal(entry.frame, null, 'xframe: c.frame nulled');
     assert.equal(entry.overlay, null, 'xframe: c.overlay nulled');
@@ -1273,14 +1253,13 @@ function assertXframeReleaseRan(entry, frame) {
 }
 
 function assertXframeReleaseSkipped(entry, frame) {
-    assert.equal(frame.aboutBlankCalls, 0, 'xframe OFF: about:blank NOT set');
     assert.equal(frame.removeCalls, 1, 'xframe OFF: legacy frame.remove() still ran');
     assert.ok(entry.frame === frame, 'xframe OFF: c.frame retained (legacy)');
     assert.ok(entry.cfg != null, 'xframe OFF: c.cfg retained (legacy)');
     assert.ok(entry.mountEl != null, 'xframe OFF: c.mountEl retained (legacy)');
 }
 
-test('xframe-ON: FLAG absent ⇒ about:blank + null frame/overlay/mountEl/cfg', () => {
+test('xframe-ON: FLAG absent ⇒ null frame/overlay/mountEl/cfg after remove', () => {
     const h = createHarness();
     clearAllFlags(h.sandbox);
     const entry = addLoadedPanel(h, 'B');
@@ -1294,7 +1273,7 @@ test('xframe-ON: FLAG absent ⇒ about:blank + null frame/overlay/mountEl/cfg', 
     note('xframe-ON', true);
 });
 
-test('xframe-OFF: FLAG truthy ⇒ legacy exactly (no about:blank, fields retained)', () => {
+test('xframe-OFF: FLAG truthy ⇒ legacy exactly (fields retained after remove)', () => {
     const h = createHarness();
     clearAllFlags(h.sandbox);
     h.sandbox[XFRAME_FLAG] = true;
@@ -1309,7 +1288,7 @@ test('xframe-OFF: FLAG truthy ⇒ legacy exactly (no about:blank, fields retaine
     note('xframe-OFF', true);
 });
 
-test('xframe-ordering: nulling/about:blank AFTER five cuts (source + behaviour)', () => {
+test('xframe-ordering: field nulling AFTER five cuts (source + behaviour)', () => {
     const src = fs.readFileSync(MANAGER_SRC, 'utf8');
     const cut5Marker = '// CUT 5 — terminate + revoke panel custom-indicator blob worker URL.';
     const xframeMarker = '// XFRAME-REF-RELEASE: AFTER all child-handle reads';
@@ -1318,26 +1297,26 @@ test('xframe-ordering: nulling/about:blank AFTER five cuts (source + behaviour)'
     assert.ok(iCut5 >= 0, 'CUT 5 marker present');
     assert.ok(iXframe >= 0, 'XFRAME-REF-RELEASE marker present');
     assert.ok(iXframe > iCut5, 'xframe nulling must appear after CUT 5 in source');
+    assert.equal(src.includes("c.frame.src = 'about:blank'"), false,
+        'about:blank navigation must not be present in removeChart path');
 
-    // Behavioural ordering probe: about:blank must still be 0 when cut5 runs.
-    // A mutant that moves XFRAME-REF-RELEASE before the five cuts fails here
-    // even if stash keeps the cut callbacks firing.
+    // Behavioural ordering: c.frame must still be reachable when cut5 runs.
+    // A mutant that moves XFRAME-REF-RELEASE nulling before the five cuts fails.
     const h = createHarness();
     clearAllFlags(h.sandbox);
     const entry = addLoadedPanel(h, 'B');
     const frame = entry.frame;
     const probe = probeOf(entry);
     const om = seedHostOmForPanel(h, probe.panelChart);
-    let aboutBlankAtCut5 = null;
+    let frameAtCut5 = undefined;
     const origDispose = probe.customApi.disposeWorker;
     probe.customApi.disposeWorker = function () {
-        aboutBlankAtCut5 = frame.aboutBlankCalls;
+        frameAtCut5 = entry.frame;
         return origDispose.apply(this, arguments);
     };
     h.manager.removeChart('B');
-    assert.equal(aboutBlankAtCut5, 0,
-        'about:blank must not run before cut5 disposeWorker');
-    assert.ok(frame.aboutBlankCalls >= 1, 'about:blank must run after the five cuts');
+    assert.ok(frameAtCut5, 'c.frame must still be set when cut5 disposeWorker runs');
+    assert.equal(frameAtCut5, frame, 'cut5 must see the live frame before nulling');
     assertAllCutsRan(probe, om, h.hostChart);
     assertXframeReleaseRan(entry, frame);
     note('xframe-ordering', true);
