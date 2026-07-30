@@ -1447,3 +1447,83 @@ bounding the base series does not beat viewport windowing, I want that sentence 
 landing that measures well on its own instrument and moves nothing in production.
 
 A2 does not start until A1 is measured and graded, and never batches with it.
+
+## 2026-07-30 16:00 — The alias trap I made the headline of the A1 brief is inert under CONF-01
+
+### Oracle amendment `ae992af95` — ACCEPTED
+
+Verified myself: clean tree, two commits from base, diff is still only the two added oracle files,
+**zero** product bytes touched in either `chart.js` or either `replay-system.js`, mirrors identical
+`8DC917ABEE51B4B3`, 16/16 green. The three new rows behave as claimed on my own run, not on report:
+
+- `SHRINK_PANEL_LEAVE_REPLAY_FULL` → RED via `CHK_TOTAL_RETAINED` **and nothing else**
+- `chk-total-retained` → CONF-01 bars **1440 → 1440**; aliased slots **1440 → 1920**
+- `chk-alias-invariant` → wide window RED (slots 1440→1800 while bars 1440→900), narrow GREEN
+
+### My row was wrong, and I verified the correction rather than accepting it
+
+I have been carrying, and put at the top of the A1 fix brief, that
+`_tryExtendReplayMasterFromParent` L7441-7445 assigns one array to both slots and therefore slicing
+sends peak memory up. **That site cannot execute on a different-symbol panel.** The method opens at
+L7395 and its *first* statement-level guard is:
+
+```js
+L7401  if (!this._multichartSamePairAsHost(this.currentFileId)) return false;
+```
+
+Same for the other two aliasing sites — L4922 behind `_multichartFinerSamePairPanelSelfOwns` at
+L4899, L6364 inside `if (finerPanelSelfOwner)` at L6362 where `finerPanelSelfOwner = samePairAsHost
+&& …`. The CONF-01-reachable path is instead **L6943, `replay.fullRawData = [...this._panelFullRawData]`**,
+in `_independentPanelTimeframeSwitch` — a method whose name is literal and which contains **zero**
+same-pair predicates between its open at L6904 and that line. A shallow copy, not an alias.
+
+**My own re-check was the sloppy one.** It reported the guard as L7402 rather than L7401 because it
+walked backwards and took the *nearest* match, stopping one line early. That is the fourth
+take-the-nearest-match failure I have caught in myself today, and the second where my own tooling
+disagreed with an author who turned out to be right.
+
+### The severity inverts, and it makes A1 harder rather than easier
+
+Under CONF-01 the two slots are two separate **pointer arrays over the same bar objects**. The only
+path that deep-clones bars is `_mcCloneRawDataBars`, which lives in the same-pair family and is
+inert here. So:
+
+> **Bounding `_panelFullRawData` alone recovers nothing.** Retained bar objects go 1440 → 1440,
+> measured. The window keeps the very objects `replay.fullRawData` still pins in full. The saving is
+> one pointer array — about 8 bytes per bar — and zero bar objects.
+
+That is the same pathology I warned about, arriving by a different route and with a worse ending:
+not a regression that a careful instrument would catch, but a **complete no-op that a length-based
+instrument reports as a large win**. My own brief, followed faithfully, would have produced exactly
+that fix. Eleventh sighting of the family, and the first where I authored the trap myself.
+
+The memory-goes-up version is real, but only in the **host-symbol** topology, where the slots do
+alias: slots 1440 → 1920, measured. That topology is production too — tile A is the host and holds
+one of the four symbols — which is why the amendment carries a second scene rather than only
+hardening the first. Both must be covered and now are.
+
+### Correction queued for the fix author, deliberately not interrupted
+
+The fix packet is mid-flight. I chose not to interrupt it because the safety net is already in place
+and I checked that rather than assuming: my original brief required retention accounting across both
+arrays de-duplicated by identity, and required pulling the amended oracle before reporting — and
+`SHRINK_PANEL_LEAVE_REPLAY_FULL` fails precisely the one-slot fix. The correction goes the moment it
+reports, before any grading.
+
+### Two things the author did that I want to keep
+
+`CHK_ALIAS_INVARIANT` **nearly failed to earn its place** and the author said so unprompted: at the
+default 421-bar window it is arithmetically implied by `CHK_TOTAL_RETAINED` and cannot be killed
+independently, because the retention ceiling (2 × window = 842) is already below the 1440-bar master.
+It only becomes independently killable at a wide window, so a 900-bar variant was added where it
+fires alone. Same shape as the glow equivalent-mutant finding this afternoon: a check that cannot
+fire on its own is not a check.
+
+And it corrected its own first implementation of the in-place truncation, which used `splice(0, n)`
+and therefore also tripped `CHK_ALLOC_BEFORE_TRIM` — misleading coverage, since that check is a
+read-count proxy for allocation order and was firing incidentally. Switching to `copyWithin` +
+`length =` gives the cheapest correct in-place truncation, which now fires only the mutation check.
+That is the difference between a tooth and a coincidence.
+
+It also independently confirmed **zero in-place mutations on the alias side** across all receivers,
+which I re-ran: 0 in `chart.js` against a positive control of 8 on `this.drawings`.
