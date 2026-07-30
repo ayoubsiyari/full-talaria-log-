@@ -1996,3 +1996,71 @@ b113, first build in which they can act) and unanswered, and it depends on the s
 boot path CKPT-01 just found it cannot currently measure.
 
 Doc: HEARTBEAT-A-CKPT01-ROLLBACK-IS-EXERCISED-THE-GRADER-WAS-THE-RED-20260730-2320.md
+
+---
+
+## 23:15 — Element writer: I confirm React, I dispute per-trade, and elements cannot be the 730 MB/h
+
+**Static only. No browser started (constraint 1 respected).** Everything is a regrade of artifacts
+already on disk. Reproducer committed as scripts/ewa-regrade-drivers.mjs.
+
+**CONFIRMED C INDEPENDENTLY, AND C''S IS BETTER.** I resolved the three frames before reading C''s
+23:00 finding and reached the same structure - all three are React vendor code, so the attribution
+names the MECHANISM not a component. My evidence was line-40 CONTENT, not names: memoizedState x90,
+stateNode x78, flags x127, alternate x36, plus React''s insertion primitive uk(), against document
+x0 and useState x0, with function x302 as the positive control proving the matcher worked. But C
+demangled against the DEPLOYED bundle (1,720,325 B) and I read the LOCAL one (1,716,061 B), where
+O_ and R_ bind to unrelated .click() dispatchers at line 143. SIXTH-ISH SIGHTING of my own
+local-tree-is-behind-deployment row, and this time C checked the byte count and I did not. C''s
+naming supersedes mine; my structural conclusion stands because it rests on content.
+
+**DISPUTED, WITH C''S OWN CONTROL: "+28.7 per closed trade" IS CONFOUNDED.** Trades closed at a
+near-constant ~3/min and NO interval had zero closes, so levels are collinear - which is why the
+fit reports R2 0.9995 vs trades and 0.99998 vs time at the same time. First differences separate
+them, and the artifact carries a natural positive control (d3 defs/filter, genuinely per-trade):
+
+  trades/interval:   1      2      3      4
+  React elements:  89.00  88.00  87.00  86.00   corr -0.9042
+  d3 defs CONTROL:  4.00   4.50   5.94   7.33   corr +0.6678
+
+A 4x predictor swing moves the React writer 3.5% DOWNWARD while the control scales upward on the
+same intervals with the same sampling noise. HONEST BOUND I AM PUTTING ON MY OWN RESULT: this does
+NOT prove time-driven - a lagged per-trade writer would also decorrelate, and a smooth response
+against a phase-noisy counter reproduces this exactly. It proves the per-trade figure is UNPROVEN,
+which is enough to unseat three inferences resting on it: C''s "the rewind hypothesis is retired"
+(premise is the thing in question - REWIND IS BACK ON THE TABLE), C''s "unbounded list, not a
+teardown bug", and the Director''s re-mount-per-trade dispatch premise. Decisive test is trivial
+and unrun: ONE SEGMENT WITH REPLAY ADVANCING AND NO TRADES CLOSING. Asked C to fold it into the
+already-planned --no-synthetic re-run rather than spend a new run.
+
+**THE NUMBER THAT MATTERS MOST, AND IT IS ARITHMETIC NOT STATISTICS: ELEMENTS ARE ~1-3% OF THE
+SLOPE.** The duration gate pairs +735.0 MB/h renderer with +1333.5 elements/h and calls elements
+the leading candidate for the same slope. Dividing: 564 KB PER ELEMENT. The CI corner most
+favourable to the hypothesis still needs 51.9 KB; C''s faster host figure needs 144 KB. A DOM
+element costs single-digit KB. At a generous 4 KB the gate''s own slope is 5.2 MB/h = 0.71% of 735,
+and C''s faster figure is 20.4 MB/h = 2.78%. So the element hunt CANNOT be the memory answer and
+the gate should be expected to stay RED after any element fix. Told the Director plainly rather
+than working the dispatch as given. Also noted unresolved: the two instruments disagree 4x on the
+element slope itself (1,333/h vs 5,224/h, different runs).
+
+**INSTRUMENT GAP THAT RELOCATES THE REMAINING 97%.** The census is querySelectorAll('*')
+(element-writer-attribution.mjs:171) so it counts ATTACHED elements only. C''s "live" label is
+therefore accurate. But DETACHED-BUT-RETAINED nodes are invisible to it - the Director''s stated
+failure mode (re-mount leaving nodes attached) would show, E''s finding (a removal misses DETACHED
+nodes) would not. Since attached growth is 1-3% of the slope, detached retention is where the rest
+would hide and NOTHING CURRENTLY MEASURES IT. That is a heap-snapshot retainer-path question, not
+an element census.
+
+**WITHDRAWING HALF OF MY OWN 22:10 ANSWER.** ANSWER-A-ELEMENT-CLIMB-IS-HISTORY-MARKERS-PLUS-
+UNSHIPPED-GLOW attributed the climb to history markers + glow. NO order-manager writer appears in
+C''s climber list at all. That half was inference; C measured. Withdrawn. The glow half is
+corroborated exactly (defs and filter at ~2.0/trade each, always equal = the defs+filter pair
+shape) and is the ONLY part of the element climb with a shipped fix (fdda39a3b, routed on its own
+base).
+
+**OWNERSHIP, SETTLED BEFORE BUILDING ANYTHING:** talaria-v9-live.js exists ONLY under dist-v9/
+assets/ and is build output of talaria-design/src (vite.config.live.js:142, emptyOutDir true). Any
+fix lands in talaria-design/src = B''s tree; editing the bundle in mine would be erased by the next
+build. I produce the diagnosis and the FLAG-01/02/03 kill-switch design, B lands it.
+
+Doc: ANSWER-A-ELEMENTS-ARE-1-PERCENT-OF-THE-SLOPE-AND-PER-TRADE-IS-CONFOUNDED-20260730-2315.md
