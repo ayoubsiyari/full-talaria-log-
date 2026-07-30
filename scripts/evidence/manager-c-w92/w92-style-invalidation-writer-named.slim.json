@@ -1,0 +1,60 @@
+{
+  "packet": "W92",
+  "manager": "C",
+  "tier": "mid",
+  "model": "claude-opus-5-thinking",
+  "deadline": "15:00 cutoff met at 14:55",
+  "title": "The invalidations are not style writes. They are per-frame SVG teardown and rebuild, plus three layout-reading helpers — and cutting the 35 chart.js setProperty sites would cut nothing.",
+
+  "headline_for_A": {
+    "do_not_cut_the_35_setProperty_sites": "ZERO chart.js setProperty sites fired in either the idle window or the 60x replay window. The flag would be a no-op against this symptom.",
+    "the_actual_per_frame_writer": "SVG subtrees are added to and removed from layout every frame (svg 155/s, path 145/s, line 93/s, circle 36/s, rect 26/s under tracking), driven through d3, plus an attribute write on rect.chart-clip-rect at 123/s",
+    "the_layout_readers_that_force_it": [
+      "chart.js:32067 _syncAdaptivePriceAxisMargin -> chart.js:32060 measure — the single largest contributor, 23,548 invalidation records",
+      "talaria-v9-live.js:40:25794 zc -> :40:26107 __ — 23,520 records, V9 bundle side",
+      "replay-system.js:7701 _isReplayFollowDomSurfaceVisible and :7756 _isReplayFollowChartSurfaceVisible — visibility checks that read layout every frame",
+      "chart.js:42245 updateOHLCFromCandle — 51/s"
+    ],
+    "aim": "fewer SVG nodes recreated per frame (reuse instead of remove/append), and hoist the three layout reads out of the frame path. Neither is a stylesheet change."
+  },
+
+  "instrument": {
+    "signature": "STYLE-WRITER-CENSUS-V1",
+    "file": "scripts/style-writer-census.mjs",
+    "how": "CSSStyleDeclaration.setProperty/removeProperty/cssText, Element.setAttribute('style'), CSSStyleSheet.insertRule/deleteRule all hooked via evaluateOnNewDocument BEFORE any app script, in host and every frame; aggregated in-page by call site + property + target so the recorder cannot itself become the leak",
+    "canSee": "every JS-originated style write with its call site, property and target, plus Chrome's own recalc/layout counts and invalidation reasons over the same workload",
+    "cannotSee": "CSS animations and transitions, which need no JavaScript and appear only in the recalc figures; and minified frames beyond file:line:col",
+    "caveat_stated_because_it_matters": "the invalidation-tracking arm is expensive — a 15s window took 47.2s of wall time — so its ABSOLUTE per-second rates are inflated by its own overhead. Use it for attribution shares. Rates come from the clean arm."
+  },
+
+  "the_62_per_second_reconciled": {
+    "director_figure": "62 stylesheet invalidations per second",
+    "my_clean_window_at_60x_replay": {
+      "LocalFrameView::performLayout": { "count": 1151, "perSecond": 60.3, "selfMs": 1122.7, "percentOfCore": 5.88 },
+      "Document::recalcStyle": { "count": 1788, "perSecond": 93.6, "selfMs": 669.9, "percentOfCore": 3.51 },
+      "Document::rebuildLayoutTree": { "count": 1298, "perSecond": 68.0, "selfMs": 208.0, "percentOfCore": 1.09 }
+    },
+    "reading": "60.3 layouts per second matches the 62/s figure almost exactly, so the number is real and reproduces. What it is NOT is stylesheet writes: JS style writes ran at 6.76/s in the same window, 14x below the recalc rate. An invalidation rate above the write rate can only come from DOM mutation or layout reads, and the invalidation reasons confirm it is both.",
+    "cost_in_context": "style plus layout is about 11.5% of a core, against a 76.7% main thread. Real, but W91 still stands: JavaScript and GC dominate, and this is the next tier down."
+  },
+
+  "the_only_steady_js_style_writer": {
+    "site": "talaria-v9-live.js:143:418774 setProperty('color') and :143:418886 removeProperty('color')",
+    "target": "div#navBadgeTooltip.nav-badge-tooltip",
+    "rate": "3.35 writes/s each, 6.7/s combined",
+    "identical_idle_and_replay": "idle 6.67/s, replay-60x 6.76/s — it is a timer-driven colour pulse, unrelated to charting, and it never stops",
+    "blast_radius": "single element, so each write is cheap",
+    "why_it_is_still_worth_naming": "it is a permanent idle cost on a nav tooltip nobody is looking at, and it belongs on the P4 idle-CPU-floor row rather than this one",
+    "document_wide_writes": "ZERO in idle and in replay. 42 at boot only. No insertRule or deleteRule fired at all — consistent with the earlier finding that insertRule was eliminated."
+  },
+
+  "ownership_answer": {
+    "director_framing": "setProperty sites are chart.js 35, toast-stack 7, screenshot-manager 5, drawing-tools-ui 4, order-manager 3, V9 bundle 3 — so ownership is the engine, not the design layer",
+    "my_finding": "ownership is still the engine, but through a different mechanism than site counts imply. The engine's cost is chart.js:32067 _syncAdaptivePriceAxisMargin reading layout and d3 recreating SVG nodes — not its setProperty sites, none of which fire at runtime. Static site counts and runtime writers are different populations, and this is the second time this week that distinction has moved a conclusion."
+  },
+
+  "also_closes_a_row_of_mine": {
+    "row": "reflow-parentage — confirm or deny forced reflow versus per-frame layout by naming the JS call site",
+    "answer": "same mechanism, and the call sites are now named: _syncAdaptivePriceAxisMargin -> measure, _isReplayFollowDomSurfaceVisible, _isReplayFollowChartSurfaceVisible. The PO's 30ms forced-reflow violation and my per-frame layout census are one phenomenon."
+  }
+}
