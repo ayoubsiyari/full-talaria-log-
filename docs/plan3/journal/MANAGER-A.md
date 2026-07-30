@@ -1527,3 +1527,58 @@ That is the difference between a tooth and a coincidence.
 
 It also independently confirmed **zero in-place mutations on the alias side** across all receivers,
 which I re-ran: 0 in `chart.js` against a positive control of 8 on `this.drawings`.
+
+---
+
+## 16:20 — A1 measured: it does not pay, and the same number impeaches A2
+
+The A1 fix reported. **Bounding `_panelFullRawData` frees ZERO bar objects** — at 1,440, 10,000,
+50,000 and 200,000 bars per panel. 23.7 KB of array spine across four panels, 0.004% of 586 MB.
+Bounding both slots, which the amended oracle demands, recovers ~324 KB, 0.05%.
+
+This is the answer I told the author not to shade, and it came back against the task it was given.
+
+**It also caps A2, which is the part that matters.** A2 compacts bar storage, so A2 can only recover
+a fraction of whatever bar data weighs. Two independent methods now say bar data is not the mass:
+my direct measurement (586 MB of `_panelFullRawData` would need 6.4 M bar objects = 3.04 years of 1m
+data per panel), and the PO's own 1.52x-across-100-1000x scaling test, which implies a
+data-proportional share of 0.05–0.53% = **0.3 to 3.1 MB of 586 MB**. Both my assigned landings are
+aimed at the same sub-1% term. Sent as FINDING-A-A1-MEASURED-DOES-NOT-PAY-AND-CAPS-A2.
+
+Best explanation for `_panelFullRawData` being named the dominant retained structure: a
+**shared-retention artifact**. Both slots point at the same bars, so the bars are attributed to the
+nearest common dominator rather than to either array — exactly what a retainer census does when two
+arrays alias one object graph.
+
+**I OVERTURNED MY OWN AUTHOR, by reading guard bodies instead of guard names.** It reported L4922 and
+L6364 as NOT same-pair gated and used that as its reason to refuse truncation. Verified false:
+`_multichartFinerSamePairPanelSelfOwns` L4739 requires `_multichartSamePairAsHost` at L4743 and
+excludes `_isIndependentMultichartPair` at L4744-4747, and L6364 is doubly gated —
+`const finerPanelSelfOwner = samePairAsHost && this._multichartFinerSamePairPanelSelfOwns({...})`.
+The name does not lie. The oracle author and my 16:00 entry stand. Headline is unaffected: the zero
+result rests on the reachable shallow copy, not on those sites. Note the symmetry — this morning I
+was the one taking guard NAMES on trust; today my author did it and I caught it because I had already
+been burned. My own grep for the guard also came back matching `_mcFinerPanelSelfOwner`, a different
+instance field, and empty-result-is-unproven is what made me re-read rather than report.
+
+Three of its four corrections HOLD, and one is load-bearing against the ruling's premise:
+`_buildIndependentHybridInitialMaster` (L6112-6114, gated `independentPair && displayTf !== '1m'`)
+already builds coarse native history spliced with 1m only from the playhead bucket, fetches capped at
+2,000 bars. Under CONF-01 that covers three of four panels. **Viewport windowing already took most of
+what A1 was dispatched to take** — the direct answer to "does A1 remove anything beyond existing
+windowing". Site count is 25 not 24 (`panel-cmd-bridge.js` L1761, inert same-pair family).
+
+**Landed but HELD, not routed.** `62b6afcc9` routes all 24 assignments through
+`_setPanelFullRawData(bars, reason)`; verified by me, exactly ONE bare write left per mirror (the
+accessor's own, L7219) and 24 routed sites, both mirrors identical. 26/26 (oracle 16/16 with the seam
+swapped onto the real implementation, residency 10/10), 8/8 mutants on disk both mirrors, 0
+NOT_APPLIED. The choke point deliberately does not truncate. I am not routing it: shipping a
+behaviour-preserving refactor with zero measured benefit spends a CKPT-01 checkpoint to buy nothing,
+on a data path, at 107% CPU. Its only value is as the A2 seam and A2 is what is now in question.
+
+Unmeasured cost if anyone forces the bound: `_independentMasterCoversReplayTimestamp` (L7386) uses
+master depth to avoid a refetch that "would wipe the chart and show loading". Bounding both slots to
+480 bars pushes it false and trades 0.05% of heap for refetch churn.
+
+Not starting A2. The retention census, dispatched before either landing was built precisely to settle
+this, is still running and will name where the mass actually is.
