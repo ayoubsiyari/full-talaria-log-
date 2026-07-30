@@ -5062,13 +5062,15 @@
         let dayHigh = null;
         let dayLow = null;
         let settledStartIdx = null;
+        let settledEndIdx = null;
         let settledHigh = null;
         let settledLow = null;
-        let dayEndIdx = -1;
+        let rangeEndIdx = null;
 
-        function flushDayExtension(endIdx) {
+        function flushRangeWindow() {
             if (settledStartIdx == null || settledHigh == null || settledLow == null) return;
             const mid = (settledHigh + settledLow) / 2;
+            const endIdx = settledEndIdx != null ? settledEndIdx : settledStartIdx;
             for (let j = settledStartIdx; j <= endIdx; j++) {
                 upper[j] = settledHigh;
                 lower[j] = settledLow;
@@ -5080,20 +5082,22 @@
             const dk = dayKeyInTimezone(data[i].t, tz);
             const dec = sessionWallDecimal(data[i].t, tz);
             if (dk !== dayKey) {
-                if (dayKey != null) flushDayExtension(dayEndIdx);
+                if (dayKey != null) flushRangeWindow();
                 dayKey = dk;
                 rangeStartIdx = null;
                 dayHigh = null;
                 dayLow = null;
                 settledStartIdx = null;
+                settledEndIdx = null;
                 settledHigh = null;
                 settledLow = null;
+                rangeEndIdx = null;
             }
-            dayEndIdx = i;
 
             const inWin = isInSessionDecimal(dec, session);
             if (inWin) {
                 if (rangeStartIdx == null) rangeStartIdx = i;
+                rangeEndIdx = i;
                 if (dayHigh == null) {
                     dayHigh = data[i].h;
                     dayLow = data[i].l;
@@ -5105,9 +5109,11 @@
                 settledHigh = dayHigh;
                 settledLow = dayLow;
                 settledStartIdx = rangeStartIdx;
+                settledEndIdx = rangeEndIdx != null ? rangeEndIdx : Math.max(rangeStartIdx, i - 1);
+                flushRangeWindow();
             }
         }
-        if (dayKey != null) flushDayExtension(dayEndIdx);
+        if (dayKey != null) flushRangeWindow();
 
         return { upper: upper, lower: lower, middle: middle };
     }
