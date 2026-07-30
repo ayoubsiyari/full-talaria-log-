@@ -55,3 +55,15 @@ exists — eviction deletes the redundant hot copy, it does not invent a new sto
 - TAL-01896 named: **needs a build** (kill-switch in tip source; not served on canary).
 - Runtime probes re-run on b113: Rayan #2 on-wire; Rayan #8 off-wire; 01896 delivery-unserved.
 - #8 / 01807b / 01896 remain B next-train; skip register stays armed.
+
+## 2026-07-30 — Director correction 5d1684b02 (cap / excursion hygiene)
+
+- Cap-breach claim withdrawn by Director (`BRIEF-02`). Excursion closed as hygiene; 191 KB
+  figure accepted; **not** progress against 730 MB/h.
+- TRADE-EVICT CONF-02 reconfirmed: 30 closed `63,753,000 → 0`, **4 opens retained** (`6,371,552`).
+- Closed the 7 TEST-02 unproven rows → **wire_unproven: 0**, on-wire **46**. Cause: missing
+  `PATH_HINTS` + wrong M23 seed SHAs + thin wire corpus. Docs:
+  `TEST02-SEVEN-UNPROVEN-CLOSED-20260730.md`.
+- **Handed to B as build-blocked** (not waiting): Rayan #8 off-wire (money freeze gate),
+  TAL-01896 needs a build. Handoff:
+  `HANDOFF-D-TO-B-BUILD-BLOCKED-RAYAN8-01896-20260730.md`.
