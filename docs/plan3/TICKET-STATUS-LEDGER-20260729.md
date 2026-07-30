@@ -58,7 +58,7 @@ Open row disposition and unverified blast-radius order live in `docs/plan3/UNKNO
 | TAL-01789 | superseded | — | M6 leftover | No dedicated D-tip gate |
 | TAL-01791 | superseded | — | M6 leftover | No dedicated D-tip gate |
 | TAL-01760 | superseded | — | M6 leftover | No dedicated D-tip gate |
-| TAL-01798 | fixed | `c0a0d7620` | GREEN: `order-lifecycle-event-ownership.test.mjs` canonical + homepage | Gate header names `TAL-01798` |
+| TAL-01798 | fixed | CONF-01 peer-TF cell | GREEN: `order-lifecycle-event-ownership.test.mjs` (+ peer GBPUSD TF≠host close); RED under lifecycle kill | Class-3 reshaped: other-layout TF must not close host |
 | TAL-01815 | fixed | `c0a0d7620` | GREEN: `order-lifecycle-event-ownership.test.mjs` canonical + homepage | Gate header names `TAL-01815` |
 | TAL-01677 | owner-blocked | — | Go-To session London→NY error (Cluster D / M8 nav) | Owner A — `chart.js` session nav; not D money-path |
 | TAL-01688 | superseded | — | Old-layout Cluster M | No current-surface gate |

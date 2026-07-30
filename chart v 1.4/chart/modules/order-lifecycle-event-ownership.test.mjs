@@ -549,6 +549,76 @@ test('pending activation also requires a future canonical event', () => {
     assert.equal(manager.pendingOrders.length, 0, 'activation removes the pending record exactly once');
 });
 
+test('TAL-01798 CONF-01: peer-panel TF change does not close host open', () => {
+    // Intake: order CLOSED by changing TF in another layout (PO A=1m / B=5m).
+    // Shared OM; host EURUSD 1m open; peer GBPUSD TF recompute must not mint a new
+    // lifecycle event that executes the host row.
+    global.window = defaultWindow();
+    const t0 = 1_721_600_000_000;
+    const hostReplay = {
+        isActive: true,
+        playbackMode: 'candle',
+        getPlaybackMode: () => 'candle',
+        replayTimestamp: t0,
+        currentIndex: 10,
+        fullRawData: [{ t: t0 }],
+        animatingCandle: null,
+    };
+    const manager = orderManagerFor(hostReplay);
+    manager.replaySystem = hostReplay;
+    manager.chart = {
+        currentSymbol: 'EURUSD',
+        currentFileId: 'file-eur',
+        currentTimeframe: '1m',
+    };
+    const peerChart = {
+        currentSymbol: 'GBPUSD',
+        currentFileId: 'file-gbp',
+        currentTimeframe: '1m',
+    };
+    const hostOpen = {
+        id: 77,
+        ticker: 'EURUSD',
+        symbol: 'EURUSD',
+        type: 'BUY',
+        status: 'OPEN',
+        openPrice: 1.1,
+        takeProfit: 1.2,
+    };
+    manager.openPositions = [hostOpen];
+    manager.pendingOrders = [];
+
+    const hostBar1m = { t: t0, o: 1.1, h: 1.11, l: 1.09, c: 1.105 };
+    manager._seedOrderLifecycleEvent(hostOpen, hostBar1m);
+    assert.equal(manager._claimOrderLifecycleEvent(hostOpen, hostBar1m), false,
+        'host placement/seed blocks same-bar close');
+
+    // Peer switches 1m → 5m; resampled display candle has a different `t` than host 1m.
+    peerChart.currentTimeframe = '5m';
+    const peerResampled5m = { t: t0 - 240_000, o: 1.25, h: 1.26, l: 1.24, c: 1.255 };
+    assert.equal(
+        new Set(['EURUSD', 'GBPUSD', 'USDJPY', 'XAUUSD']).has(peerChart.currentSymbol)
+            && peerChart.currentSymbol !== manager.chart.currentSymbol,
+        true,
+        'CONF-01: peer is a different symbol than host',
+    );
+    assert.equal(
+        manager._claimOrderLifecycleEvent(hostOpen, peerResampled5m),
+        false,
+        'TAL-01798: peer TF resample timestamp must not create a host market event',
+    );
+    assert.equal(hostOpen.status, 'OPEN', 'host open stays OPEN after peer TF change');
+    assert.equal(manager.openPositions.length, 1, 'host open row not removed by peer TF change');
+
+    // Real host replay advance still owns exactly one future opportunity.
+    hostReplay.replayTimestamp += 60_000;
+    assert.equal(
+        manager._claimOrderLifecycleEvent(hostOpen, { t: hostReplay.replayTimestamp }),
+        true,
+        'host remains eligible on its own future replay event',
+    );
+});
+
 test('kill-switch reconstructs the stale-candle failure class', () => {
     global.window = { __TALARIA_DISABLE_ORDER_LIFECYCLE_EVENT_OWNERSHIP_V1: true };
     const replay = {
