@@ -1582,3 +1582,57 @@ master depth to avoid a refetch that "would wipe the chart and show loading". Bo
 
 Not starting A2. The retention census, dispatched before either landing was built precisely to settle
 this, is still running and will name where the mass actually is.
+
+---
+
+## 16:50 — the board moved under me; two of the Director's five mechanisms are mine and measured at 0.05%
+
+Checked the tree before starting anything and found my scope had changed at 16:20, twelve
+minutes before my A1 finding landed. PLAN-FULL-EVICTION-CANARY-SUNDAY-1800 §4 now gives me
+THREE mechanisms — A1, A2, and **multichart eviction on close + a capped warm room** — and §6
+budgets Fri 02:00-08:00 for "the first two duration grades, A's landings".
+
+Those two landings are the two I have just measured at **0.05% combined**. So the plan spends
+six hours of C — the resource the Director himself named the critical path — grading nothing,
+and puts two inert mechanisms into a five-way integration risk class he correctly flagged as a
+different risk class from anything we have shipped. Sent ANSWER-A-TWO-OF-YOUR-FIVE-MECHANISMS-
+ARE-MEASURED-AT-0.05-PERCENT under his own §7 rule that bad news travels at the speed of good.
+
+**THIRD INDEPENDENT LINE ARRIVED WITHOUT ME.** The Director's own 15:55 finding names per-order
+base64 screenshots and O(all orders ever opened) per-tick sampling. That is the same conclusion
+as mine from the opposite direction: the mass is not bar data. Three methods now agree — my
+direct measurement, the PO's 1.52x scaling test, and his screenshot/order term. I am no longer
+asking anyone to take my number alone, which matters because my number contradicts the ruling
+that assigned me the work.
+
+CONF-02 STRENGTHENS the result rather than qualifying it, and I want that on the record before
+someone uses it to dismiss the measurement: accumulating 30+ closed positions adds screenshots
+and order state to the DENOMINATOR, so bar data's share shrinks. A1's result is structural —
+shared bar objects — so it does not move with trade count.
+
+**The new third assignment is the one worth having, and the arithmetic is already in hand.** A
+panel realm is ~10.476 MB UTF-8 / ~20.95 MB UTF-16 of script source alone (C's 10.469 MB/realm
+and mine agree within 0.4%), so ONE retained dead realm is 30-65x what A1 and A2 recover
+together, before its ~12.8k-node document and its data. Right unit, right order of magnitude.
+
+**BOUND I PUT ON MY OWN CLAIM IN THE ANSWER, because I have been burned by exactly this shape:**
+I retracted the "six realms retained" inference earlier today (clean ratio, wrong baseline), so
+I am NOT asserting closed panels are retained today. That is what EVICT-01's bytes-down proof
+has to establish and it is the first thing I measure rather than assume. If closed panels
+already release cleanly the mechanism does not exist, and I will say so as fast as I said it
+about A1.
+
+On the capped room I agree with his resolution and sharpened one thing: a CI-asserted cap is
+necessary, not sufficient. Eleven sightings today of green-suite-zero-effect all had passing
+tests. The cap needs a cell proving eviction HAPPENED UNDER PRESSURE, not that a constant is
+<= another constant. ACQUIT-01 on a number nobody exercises is the exact failure mode I keep
+finding.
+
+CKPT-01 for the lane is in flight, not graded: manager-a/ckpt01-artifact-20260730 committed
+2500c0331 at 16:35 with a retained b113 manifest (1,615 lines), scripts/ckpt01-artifact.mjs and
+a test file. It has NOT reported to me. Standing rule cuts both ways — a commit is not a
+completion signal any more than a completion signal is a commit — so I am leaving it mid-flight
+rather than grading a packet that may still be exercising its rollback.
+
+Not starting A2. Taking the eviction lane and measuring the retention question first, because
+it decides whether the mechanism exists at all.
