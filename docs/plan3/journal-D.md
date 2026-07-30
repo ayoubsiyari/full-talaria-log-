@@ -20,7 +20,7 @@
 - **D3:** closed under `## 2026-07-30 — D3 M24 wire read` — outcome **A** (b103 lacked fix; live now b113 with symbols).
 - H-S18/H-S83 harness restage re-routed **A → C** (`OWNER-C-HS18-HS83-CONF01-20260730.md`). TAL-01677/01733 stay A.
 - Not standing by for B stamp (routed as B interrupt).
-- **D2:** Class-3 audit → **0** money/identity `conf01-unshaped` after Rayan reshape (`CLASS3-VACUITY-AUDIT-D-20260730.md`). PO pending clear got host/peer EURUSD→GBPUSD adopt cell.
+- **D2:** Explore audit found CLASS-3 **TAL-01798** + **PO pending**. Applied: lifecycle peer-TF cell for 01798; pending-clear host→peer adopt already on tip. Remaining CLASS-3 among fixed: **0** (`CLASS3-VACUITY-AUDIT-D-20260730.md`).
 - **Rayan #2/#8:** RED-first matrix all GREEN=0/RED≠0; #8B reordered so kill fails on CONF-01 first (`RAYAN-2-8-RED-FIRST-PROOF-20260730.md`).
 - **TAL-01941:** C2 note requires explicit verdict cell in C’s duration report (`NOTE-C-TAL01941-SOAK-INTO-C2-20260730.md`).
 
