@@ -833,6 +833,11 @@ const M20_Q9_MCDIAG_COUNTER_FIELDS = new Set([
 
 const MC_BACKGROUND_RENDER_CADENCE_DISABLE_SWITCH = '__TALARIA_DISABLE_MC_BACKGROUND_RENDER_CADENCE_V1';
 
+// CPU-CUT-RAF-COALESCE: at most one full canvas paint per animation frame.
+// Absent / falsy ⇒ coalesce ON (default). Truthy ⇒ legacy sync paints.
+// Read per call — never sampled at load.
+const RAF_PAINT_COALESCE_DISABLE_SWITCH = '__TALARIA_DISABLE_RAF_PAINT_COALESCE_V1';
+
 // Frames a background panel keeps re-checking focus after a local pointer/focus
 // event before it gives up on the catch-up paint. The parent only learns about the
 // click via a setTimeout(0) postMessage and then a React commit, so focus lands
@@ -2957,6 +2962,33 @@ class Chart {
         }
     }
 
+    /**
+     * CPU-CUT-RAF-COALESCE: absent/falsy ⇒ ON; truthy ⇒ legacy OFF.
+     * Read per call (never sampled at load) so mid-session flips apply.
+     */
+    _rafPaintCoalesceEnabled() {
+        try {
+            if (typeof window === 'undefined') return true;
+            return !window[RAF_PAINT_COALESCE_DISABLE_SWITCH];
+        } catch (_e) {
+            return true;
+        }
+    }
+
+    /**
+     * Request a coalesced paint (mark dirty; animate() paints once per frame).
+     * Sync escape hatch: pass `{ flush: true }` or call `render()` directly.
+     */
+    _requestRafPaint(opts) {
+        const flush = !!(opts && opts.flush);
+        if (flush || !this._rafPaintCoalesceEnabled()) {
+            this.renderPending = false;
+            this.render();
+            return;
+        }
+        this.renderPending = true;
+    }
+
     _getMultichartHostWindowForFocus() {
         try {
             if (typeof window === 'undefined') return null;
@@ -3181,7 +3213,9 @@ class Chart {
         // Still not visible for paint: keep waiting rather than painting early.
         if (this._shouldSkipMultichartBackgroundRender()) return;
         this._mcBackgroundRenderCatchupFrames = 0;
-        this.render();
+        // Per-frame catch-up: coalesce when ON so this paint merges with any other
+        // dirty mark already queued for the same animation frame.
+        this._requestRafPaint();
     }
 
     /**
@@ -5247,12 +5281,12 @@ class Chart {
                 if (host && !host._panLoading && typeof host.checkViewportLoadMore === 'function') {
                     try { host.checkViewportLoadMore('backward', true); } catch (_) { /* ignore */ }
                 }
-                if (extended && typeof self.render === 'function') self.render();
+                if (extended) self._requestRafPaint();
                 self._mcHostMasterSyncRaf = requestAnimationFrame(poll);
             } else if (self._multichartPendingMasterResample) {
                 self._flushMultichartPendingMasterResample();
-            } else if (extended && typeof self.render === 'function') {
-                self.render();
+            } else if (extended) {
+                self._requestRafPaint();
             }
         };
         this._mcHostMasterSyncRaf = requestAnimationFrame(poll);
@@ -26934,7 +26968,11 @@ class Chart {
 
     /**
      * Schedule a render using requestAnimationFrame for throttling (see animate()).
-     * Immediate render for replay playback and inertia. Wheel zoom and axis zoom coalesce to one paint per frame.
+     * CPU-CUT-RAF-COALESCE (default ON): replay playback and inertia mark dirty and
+     * paint once on the next animation frame (latest state wins). Kill-switch
+     * __TALARIA_DISABLE_RAF_PAINT_COALESCE_V1 restores legacy synchronous paint.
+     * Sync escape: scheduleRender({ flush: true }) or call render() directly.
+     * Wheel zoom and axis zoom coalesce to one paint per frame.
      */
     _isChartViewPanning() {
         // Uncommitted finger-down (click candidate) is not a pan — keep idle ticks/grid.
@@ -29283,7 +29321,13 @@ class Chart {
         this._stopChartPanRenderLoop();
     }
 
-    scheduleRender() {
+    scheduleRender(opts) {
+        const flush = !!(opts && opts.flush);
+        if (flush) {
+            this.renderPending = false;
+            this.render();
+            return;
+        }
         if (this._isAxisZoomDragging()) {
             this._scheduleAxisZoomRender();
             return;
@@ -29299,7 +29343,13 @@ class Chart {
             typeof this._panSyncBurstUntil === 'number' &&
             performance.now() < this._panSyncBurstUntil;
 
+        // RAF coalesce ON: mark dirty; animate() paints once per frame with latest state.
+        // Kill-switch OFF: legacy synchronous paint for replay/inertia.
         if (replayPlaying || inertialPan) {
+            if (this._rafPaintCoalesceEnabled()) {
+                this.renderPending = true;
+                return;
+            }
             this.renderPending = false;
             this.render();
             return;
@@ -29504,8 +29554,13 @@ class Chart {
         this.animateZoom();
 
         if (this.renderPending) {
-            this.render();
-            this.renderPending = false;
+            // Clear pending in finally so a throwing render() cannot stall the
+            // coalescer permanently (next scheduleRender can mark dirty again).
+            try {
+                this.render();
+            } finally {
+                this.renderPending = false;
+            }
 
             // Update follow button visibility after each render (throttled).
             if (this.replaySystem && typeof this.replaySystem.updateAutoScrollIndicator === 'function') {
@@ -33136,7 +33191,13 @@ class Chart {
     
     updatePriceHoverLine() {
         if (this.isZooming) return;
-        
+
+        // Coalesce ON: merge into the shared per-frame dirty flag (animate paints).
+        if (this._rafPaintCoalesceEnabled()) {
+            this.renderPending = true;
+            return;
+        }
+
         if (this.priceHoverThrottle) return;
         
         this.priceHoverThrottle = requestAnimationFrame(() => {
