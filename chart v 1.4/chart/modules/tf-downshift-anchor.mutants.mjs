@@ -3,10 +3,6 @@
  *
  *   cd "chart v 1.4/chart/modules"
  *   node tf-downshift-anchor.mutants.mjs
- *
- * Each mutant needle must occur EXACTLY ONCE per file. Mutate BOTH mirrors
- * (mirror-byte-identity cell would otherwise inflate every kill). Restore +
- * SHA-verify after each mutant. TAP suite parsed for real cell failures.
  */
 import crypto from 'node:crypto';
 import fs from 'node:fs';
@@ -50,9 +46,28 @@ function applyOnce(source, needle, replacement, label) {
   return { ok: true, source: source.replace(needle, replacement), reason: null };
 }
 
+function writeRetry(file, buf, attempts = 12) {
+  let lastErr;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      fs.writeFileSync(file, buf);
+      return;
+    } catch (err) {
+      lastErr = err;
+      if (err && (err.code === 'EBUSY' || err.code === 'EPERM' || err.code === 'EACCES')) {
+        const start = Date.now();
+        while (Date.now() - start < 50 * (i + 1)) { /* spin */ }
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw lastErr;
+}
+
 function restoreAll() {
-  fs.writeFileSync(CANON, CANON_BYTES);
-  fs.writeFileSync(MIRROR, MIRROR_BYTES);
+  writeRetry(CANON, CANON_BYTES);
+  writeRetry(MIRROR, MIRROR_BYTES);
   const a = sha(fs.readFileSync(CANON));
   const b = sha(fs.readFileSync(MIRROR));
   if (a !== CANON_SHA || b !== MIRROR_SHA) {
@@ -70,7 +85,6 @@ function runSuite() {
   const out = `${r.stdout || ''}${r.stderr || ''}`;
   const failed = [];
   for (const line of out.split('\n')) {
-    // TAP: "not ok N - title"
     const m = /^not ok \d+ - (.+)$/.exec(line);
     if (m) failed.push(m[1].trim());
   }
@@ -80,98 +94,133 @@ function runSuite() {
 const mutants = [
   {
     id: 'M1',
-    name: 'force fix OFF at init (always legacy bar-start)',
-    needle: 'let tfDownshiftAnchorFixOn = true;',
-    replacement: 'let tfDownshiftAnchorFixOn = false;',
-    behavioural: true,
+    name: 'kill-switch gate always returns false (fix forced OFF)',
+    needle: `    _tfDownshiftAnchorFixEnabled() {
+        try {
+            if (typeof window !== 'undefined'
+                && window.__TALARIA_DISABLE_TF_DOWNSHIFT_ANCHOR_FIX_V1) {
+                return false;
+            }
+        } catch (_tfDsKill) { /* ignore */ }
+        return true;
+    }`,
+    replacement: `    _tfDownshiftAnchorFixEnabled() {
+        try {
+            if (typeof window !== 'undefined'
+                && window.__TALARIA_DISABLE_TF_DOWNSHIFT_ANCHOR_FIX_V1) {
+                return false;
+            }
+        } catch (_tfDsKill) { /* ignore */ }
+        return false;
+    }`,
   },
   {
     id: 'M2',
-    name: 'invert kill-switch polarity (flag enables fix instead of disabling)',
-    needle: `            if (typeof window !== 'undefined'
+    name: 'invert kill-switch polarity (flag enables fix)',
+    needle: `    _tfDownshiftAnchorFixEnabled() {
+        try {
+            if (typeof window !== 'undefined'
                 && window.__TALARIA_DISABLE_TF_DOWNSHIFT_ANCHOR_FIX_V1) {
-                tfDownshiftAnchorFixOn = false;
-            }`,
-    replacement: `            if (typeof window !== 'undefined'
+                return false;
+            }
+        } catch (_tfDsKill) { /* ignore */ }
+        return true;
+    }`,
+    replacement: `    _tfDownshiftAnchorFixEnabled() {
+        try {
+            if (typeof window !== 'undefined'
                 && window.__TALARIA_DISABLE_TF_DOWNSHIFT_ANCHOR_FIX_V1) {
-                tfDownshiftAnchorFixOn = true;
-            }`,
-    // Also need default false — applied as second replace via needle2
-    needle2: 'let tfDownshiftAnchorFixOn = true;',
-    replacement2: 'let tfDownshiftAnchorFixOn = false;',
-    behavioural: true,
+                return true;
+            }
+        } catch (_tfDsKill) { /* ignore */ }
+        return false;
+    }`,
   },
   {
     id: 'M3',
     name: 'period-end branch returns bar.t (legacy start)',
     needle: '        if (Number.isFinite(endMs) && endMs > bar.t) return endMs - 1;',
     replacement: '        if (Number.isFinite(endMs) && endMs > bar.t) return bar.t;',
-    behavioural: true,
   },
   {
     id: 'M4',
     name: 'live follow-latest site uses rightBar.t (skips helper)',
     needle: '                anchorTs = this._resolveTfSwitchRightEdgeAnchorTs(rightBar, rightBarIdx);',
     replacement: '                anchorTs = rightBar.t;',
-    behavioural: true,
   },
   {
     id: 'M5',
     name: 'replay follow-latest site uses lastBar.t (skips helper)',
     needle: '                anchorTs = this._resolveTfSwitchRightEdgeAnchorTs(lastBar, lastIdx);',
     replacement: '                anchorTs = lastBar.t;',
-    behavioural: true,
   },
   {
     id: 'M6',
-    name: 'drop userOwnsViewport gate (panned users forced onto playhead/right-edge path)',
+    name: 'drop userOwnsViewport gate (panned forced onto playhead path)',
     needle: '        if (userOwnsViewport) {\n            // Panned / manual zoom: keep the left edge pinned at the same screen X.\n            anchorMode = \'viewportLeft\';',
     replacement: '        if (false && userOwnsViewport) {\n            // Panned / manual zoom: keep the left edge pinned at the same screen X.\n            anchorMode = \'viewportLeft\';',
-    behavioural: true,
+  },
+  {
+    id: 'M7',
+    name: 'empty recovery reverts to unforced sync + always-return (lock blocks forever)',
+    needle: `                    const _tfDsFix = typeof this._tfDownshiftAnchorFixEnabled === 'function'
+                        && this._tfDownshiftAnchorFixEnabled();
+                    const _userOwnsVp = !!(rs.userHasPanned || rs.autoScrollEnabled === false);
+                    if (_tfDsFix && !_userOwnsVp && this._tfSwitchAnchorLock) {
+                        this._clearTfSwitchAnchorLock();
+                    }
+                    const _syncedEmpty = rs.syncReplayViewportToPlayhead(this, {
+                        centerPlayhead: true,
+                        resetPriceScale: true,
+                        forceRecenter: (_tfDsFix && !_userOwnsVp) ? true : undefined,
+                        render: true,
+                    });
+                    if (_syncedEmpty) {
+                        window.__talariaBl2bLog && window.__talariaBl2bLog('chart.js:_scheduleViewportEmptyRecovery', this, __bl2bBefore, { path: 'syncReplayViewportToPlayhead' });
+                        return;
+                    }
+                    if (!_tfDsFix || _userOwnsVp) {
+                        window.__talariaBl2bLog && window.__talariaBl2bLog('chart.js:_scheduleViewportEmptyRecovery', this, __bl2bBefore, { path: 'syncReplayViewportToPlayhead' });
+                        return;
+                    }
+                    // Fix ON + follow-latest: fall through to jumpToLatest.`,
+    replacement: `                    rs.syncReplayViewportToPlayhead(this, {
+                        centerPlayhead: true,
+                        resetPriceScale: true,
+                        render: true,
+                    });
+                    window.__talariaBl2bLog && window.__talariaBl2bLog('chart.js:_scheduleViewportEmptyRecovery', this, __bl2bBefore, { path: 'syncReplayViewportToPlayhead' });
+                    return;`,
   },
 ];
 
 console.log('=== TF-DOWNSHIFT-ANCHOR mutation set ===');
 console.log(`baseline sha256=${CANON_SHA.slice(0, 16)}…`);
 
-// Baseline must be green.
 {
   const base = runSuite();
   if (base.code !== 0) {
     console.error('FATAL: baseline suite not green');
-    console.error(base.failed.join('\n'));
+    console.error(base.failed.join('\n') || base.out.slice(-2000));
     process.exit(2);
   }
-  console.log(`baseline: PASS (${base.failed.length} fails)`);
+  console.log('baseline: PASS');
 }
 
 let survived = 0;
-const rows = [];
-
 for (const m of mutants) {
   let src = CANON_BYTES.toString('utf8');
   const a1 = applyOnce(src, m.needle, m.replacement, m.id);
   if (!a1.ok) {
     console.log(`MUTANT ${m.id} — ${a1.reason} — ${m.name}`);
     survived += 1;
-    rows.push({ id: m.id, status: 'NOT_APPLIED', killedBy: [], name: m.name });
     continue;
   }
   src = a1.source;
-  if (m.needle2) {
-    const a2 = applyOnce(src, m.needle2, m.replacement2, `${m.id}.b`);
-    if (!a2.ok) {
-      console.log(`MUTANT ${m.id} — ${a2.reason} — ${m.name}`);
-      survived += 1;
-      rows.push({ id: m.id, status: 'NOT_APPLIED', killedBy: [], name: m.name });
-      continue;
-    }
-    src = a2.source;
-  }
 
   const mutBuf = Buffer.from(src, 'utf8');
-  fs.writeFileSync(CANON, mutBuf);
-  fs.writeFileSync(MIRROR, mutBuf);
+  writeRetry(CANON, mutBuf);
+  writeRetry(MIRROR, mutBuf);
   let result;
   try {
     result = runSuite();
@@ -179,24 +228,14 @@ for (const m of mutants) {
     restoreAll();
   }
 
-  const died = result.code !== 0 && result.failed.length > 0;
-  // Also treat non-zero with no parsed fails as died (suite crash).
   const diedHard = result.code !== 0;
   if (!diedHard) survived += 1;
-  const status = diedHard ? 'DIED' : 'SURVIVED';
-  console.log(`MUTANT ${m.id} — ${status} — ${m.name}`);
+  console.log(`MUTANT ${m.id} — ${diedHard ? 'DIED' : 'SURVIVED'} — ${m.name}`);
   if (result.failed.length) {
     for (const f of result.failed) console.log(`    killed by cell: ${f}`);
   } else if (diedHard) {
-    console.log('    killed by suite non-zero exit (no TAP not-ok parsed)');
+    console.log('    killed by suite non-zero exit (parse/syntax)');
   }
-  rows.push({
-    id: m.id,
-    status,
-    killedBy: result.failed,
-    name: m.name,
-    behavioural: m.behavioural,
-  });
 }
 
 console.log(`\n${mutants.length} designed / ${survived} survived`);

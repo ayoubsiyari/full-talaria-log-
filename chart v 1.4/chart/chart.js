@@ -4900,6 +4900,21 @@ class Chart {
             }
         }
         if (options && options.commitTimeframe) {
+            // TF-DOWNSHIFT-ANCHOR: mirror `_loadTimeframeFromServer`'s immediate
+            // fitToView before restore when the new (often short) window is not
+            // under the stale offsetX — otherwise intermediate paints flood
+            // "No candles drawn! All N candles are outside viewport".
+            try {
+                if (typeof this._tfDownshiftAnchorFixEnabled === 'function'
+                    && this._tfDownshiftAnchorFixEnabled()
+                    && Array.isArray(this.data) && this.data.length > 0
+                    && typeof this._viewportHasLoadedBarsOnScreen === 'function'
+                    && !this._viewportHasLoadedBarsOnScreen()
+                    && typeof this.fitToView === 'function') {
+                    this._chartViewRestored = false;
+                    this.fitToView();
+                }
+            } catch (_fitDs) { /* ignore */ }
             try { this._finishTfSwitchViewportRestore(); } catch (_vp) { /* ignore */ }
             this._endTimeframeSwitching();
         }
@@ -20514,13 +20529,35 @@ class Chart {
                     return;
                 }
                 if (rs.isActive && typeof rs.syncReplayViewportToPlayhead === 'function') {
-                    rs.syncReplayViewportToPlayhead(this, {
+                    // TF-DOWNSHIFT-ANCHOR: `_tfSwitchAnchorLock` makes
+                    // syncReplayViewportToPlayhead no-op unless forceRecenter
+                    // (replay-system.js). Empty-draw recovery used to call the
+                    // unforced sync then `return`, so a lock that parked the
+                    // plot off a short destination window (PO: "All 13 candles
+                    // are outside viewport") flooded warnings forever and never
+                    // reached jumpToLatest. Clear the lock + force recenter for
+                    // follow-latest; leave viewportLeft / user-panned alone.
+                    const _tfDsFix = typeof this._tfDownshiftAnchorFixEnabled === 'function'
+                        && this._tfDownshiftAnchorFixEnabled();
+                    const _userOwnsVp = !!(rs.userHasPanned || rs.autoScrollEnabled === false);
+                    if (_tfDsFix && !_userOwnsVp && this._tfSwitchAnchorLock) {
+                        this._clearTfSwitchAnchorLock();
+                    }
+                    const _syncedEmpty = rs.syncReplayViewportToPlayhead(this, {
                         centerPlayhead: true,
                         resetPriceScale: true,
+                        forceRecenter: (_tfDsFix && !_userOwnsVp) ? true : undefined,
                         render: true,
                     });
-                    window.__talariaBl2bLog && window.__talariaBl2bLog('chart.js:_scheduleViewportEmptyRecovery', this, __bl2bBefore, { path: 'syncReplayViewportToPlayhead' });
-                    return;
+                    if (_syncedEmpty) {
+                        window.__talariaBl2bLog && window.__talariaBl2bLog('chart.js:_scheduleViewportEmptyRecovery', this, __bl2bBefore, { path: 'syncReplayViewportToPlayhead' });
+                        return;
+                    }
+                    if (!_tfDsFix || _userOwnsVp) {
+                        window.__talariaBl2bLog && window.__talariaBl2bLog('chart.js:_scheduleViewportEmptyRecovery', this, __bl2bBefore, { path: 'syncReplayViewportToPlayhead' });
+                        return;
+                    }
+                    // Fix ON + follow-latest: fall through to jumpToLatest.
                 }
             }
             this.jumpToLatest();
@@ -34552,6 +34589,21 @@ class Chart {
     }
 
     /**
+     * TF-DOWNSHIFT-ANCHOR kill-switch gate.
+     * Kill-switch: window.__TALARIA_DISABLE_TF_DOWNSHIFT_ANCHOR_FIX_V1
+     *   Absent/falsy => fix ON. Truthy => byte-faithful legacy.
+     */
+    _tfDownshiftAnchorFixEnabled() {
+        try {
+            if (typeof window !== 'undefined'
+                && window.__TALARIA_DISABLE_TF_DOWNSHIFT_ANCHOR_FIX_V1) {
+                return false;
+            }
+        } catch (_tfDsKill) { /* ignore */ }
+        return true;
+    }
+
+    /**
      * Right-edge TF-switch anchor timestamp for the follow-latest (playhead) path.
      *
      * Legacy pinned bar START (`bar.t`). On a downshift that leaves the viewport
@@ -34566,14 +34618,11 @@ class Chart {
     _resolveTfSwitchRightEdgeAnchorTs(bar, barIdx) {
         if (!bar || !Number.isFinite(bar.t)) return null;
         // TF-DOWNSHIFT-ANCHOR kill: truthy => legacy bar-start anchor.
-        let tfDownshiftAnchorFixOn = true;
-        try {
-            if (typeof window !== 'undefined'
-                && window.__TALARIA_DISABLE_TF_DOWNSHIFT_ANCHOR_FIX_V1) {
-                tfDownshiftAnchorFixOn = false;
-            }
-        } catch (_tfDsKill) { tfDownshiftAnchorFixOn = true; }
-        if (!tfDownshiftAnchorFixOn) return bar.t;
+        if (typeof this._tfDownshiftAnchorFixEnabled === 'function'
+            ? !this._tfDownshiftAnchorFixEnabled()
+            : false) {
+            return bar.t;
+        }
         const periodMs = typeof this._estimateTimeframeStepMs === 'function'
             ? this._estimateTimeframeStepMs()
             : null;
@@ -34784,7 +34833,22 @@ class Chart {
                     const onScreen = typeof _replay._isReplayPlayheadOnScreen === 'function'
                         ? _replay._isReplayPlayheadOnScreen(this)
                         : true;
-                    if (!onScreen) {
+                    // TF-DOWNSHIFT-ANCHOR: also require loaded bars in the plot.
+                    // `_isReplayPlayheadOnScreen` only probes the LAST candle; a
+                    // short destination window can still paint drawn===0 when the
+                    // preserve-viewport lock is wrong. Drop the lock + recenter.
+                    const barsOnScreen = typeof this._viewportHasLoadedBarsOnScreen === 'function'
+                        ? this._viewportHasLoadedBarsOnScreen()
+                        : true;
+                    const _tfDsFix = typeof this._tfDownshiftAnchorFixEnabled === 'function'
+                        && this._tfDownshiftAnchorFixEnabled();
+                    const needsRecenter = vp.userHasPanned
+                        ? !onScreen
+                        : (_tfDsFix ? (!onScreen || !barsOnScreen) : !onScreen);
+                    if (needsRecenter) {
+                        if (_tfDsFix && !vp.userHasPanned) {
+                            this._clearTfSwitchAnchorLock();
+                        }
                         _replay.userHasPanned = false;
                         _replay.autoScrollEnabled = true;
                         _replay.syncReplayViewportToPlayhead(this, {
