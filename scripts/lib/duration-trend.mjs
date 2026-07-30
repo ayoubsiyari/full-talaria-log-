@@ -125,7 +125,20 @@ export function gradeDurationSeries(trends, { minSpanHours = 2 } = {}) {
   const rows = Object.entries(trends || {}).map(([key, t]) => ({ key, ...t }));
   const decisive = rows.filter((r) => !r.advisory);
   const longEnough = (r) => r.durationOk !== false;
-  const climbing = decisive.filter((r) => r.verdict === 'CLIMBS' && longEnough(r));
+  // A band chosen by taste must not produce a RED. Either the band comes from a
+  // measurement (bandCalibrated), or the climb is so far outside it that no
+  // plausible calibration would rescue it - a CI floor at ten times the band.
+  // W87 demoted my own DOM counter cell for exactly this, and the rule belongs in
+  // the arithmetic rather than in my judgement each time.
+  const OVERWHELMING = 10;
+  const bandDefensible = (r) => {
+    if (r.bandCalibrated !== false) return true;
+    const band = Math.abs(r.flatBandPerHour) || 0;
+    const ciLow = r.slopeCi95?.[0];
+    return band > 0 && Number.isFinite(ciLow) && ciLow >= OVERWHELMING * band;
+  };
+  const climbing = decisive.filter((r) => r.verdict === 'CLIMBS' && longEnough(r) && bandDefensible(r));
+  const thresholdDependent = decisive.filter((r) => r.verdict === 'CLIMBS' && longEnough(r) && !bandDefensible(r));
   const provisionalClimbing = rows.filter((r) => r.verdict === 'CLIMBS' && !longEnough(r));
   const advisoryClimbing = rows.filter((r) => r.advisory && r.verdict === 'CLIMBS');
   const unresolved = decisive.filter((r) => r.verdict === 'INDETERMINATE' || r.verdict === 'INSUFFICIENT');
@@ -139,14 +152,17 @@ export function gradeDurationSeries(trends, { minSpanHours = 2 } = {}) {
   if (climbing.length) {
     status = 'RED';
     reason = `climbing beyond the flat band: ${climbing.map(fmt).join('; ')}`;
-  } else if (unresolved.length || shortRuns.length || provisionalClimbing.length) {
+  } else if (unresolved.length || shortRuns.length || provisionalClimbing.length || thresholdDependent.length) {
     status = 'UNRESOLVED';
     const provisional = provisionalClimbing.length
       ? ` PROVISIONAL climb, span too short to rule: ${provisionalClimbing.map(fmt).join('; ')}.`
       : '';
+    const taste = thresholdDependent.length
+      ? ` MEASURED CLIMB on an uncalibrated band, reported without a verdict: ${thresholdDependent.map(fmt).join('; ')}.`
+      : '';
     reason = `not enough duration or precision to call flat: ${[...new Set([
       ...unresolved.map((r) => r.key), ...shortRuns.map((r) => r.key),
-    ])].join(', ')} (DUR-01 needs >= ${minSpanHours}h and a CI inside the flat band).${provisional}`;
+    ])].join(', ') || 'none'} (DUR-01 needs >= ${minSpanHours}h and a CI inside the flat band).${provisional}${taste}`;
   } else {
     status = 'GREEN';
     reason = `all decisive series bounded within their flat bands over >= ${minSpanHours}h`;
@@ -156,6 +172,9 @@ export function gradeDurationSeries(trends, { minSpanHours = 2 } = {}) {
     status,
     reason,
     climbing: climbing.map((r) => r.key),
+    // Real climbs whose acceptance threshold is not measured: the number stands,
+    // the verdict does not.
+    thresholdDependent: thresholdDependent.map((r) => r.key),
     provisionalClimbing: provisionalClimbing.map((r) => r.key),
     // Expected to climb under CONF-02; carried so the design cost is visible.
     advisoryClimbing: advisoryClimbing.map((r) => r.key),

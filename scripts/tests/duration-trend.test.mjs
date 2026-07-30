@@ -88,6 +88,24 @@ test('advisory series are reported but never the RED reason', () => {
   assert.deepEqual(graded.climbing, []);
 });
 
+test('a climb against an uncalibrated band is reported without a verdict', () => {
+  const climb = fitTrend(series([100, 112, 124, 136, 148, 160, 172, 184, 196]), { flatBandPerHour: 5 });
+  assert.equal(climb.verdict, 'CLIMBS');
+  const graded = gradeDurationSeries({ footprint: { ...climb, bandCalibrated: false } });
+  assert.equal(graded.status, 'UNRESOLVED', 'a threshold I chose must not produce a RED');
+  assert.deepEqual(graded.thresholdDependent, ['footprint']);
+  assert.match(graded.reason, /uncalibrated band/);
+});
+
+test('a climb ten times outside even an uncalibrated band is decisive', () => {
+  // No plausible calibration rescues a slope whose CI floor is 10x the band, and
+  // withholding a verdict there would be its own kind of dishonesty.
+  const huge = fitTrend(series([100, 600, 1100, 1600, 2100, 2600, 3100, 3600, 4100]), { flatBandPerHour: 5 });
+  const graded = gradeDurationSeries({ footprint: { ...huge, bandCalibrated: false } });
+  assert.equal(graded.status, 'RED');
+  assert.deepEqual(graded.climbing, ['footprint']);
+});
+
 test('a slope fitted against trade count is reported in trades, not per hour', () => {
   const perTrade = fitTrend(
     [5, 10, 15, 20, 25, 30].map((closed, i) => ({ hours: closed, value: 5000 + i * 150 })),

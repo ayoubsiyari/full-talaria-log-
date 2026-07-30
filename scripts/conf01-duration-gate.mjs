@@ -51,6 +51,21 @@ export const CONF01_FLAT_BANDS = Object.freeze({
   listeners: 200,
 });
 
+/**
+ * Which of those bands rests on a measurement, and which is a number I chose.
+ * Only a calibrated band may produce a RED (or a climb ten times outside it) —
+ * the same standard that demoted my own DOM-counter cell in W87.
+ */
+export const CONF01_BAND_BASIS = Object.freeze({
+  heapAfterGcMB: { calibrated: true, basis: 'W88 CRITERION 0 / FRESH-LOAD-CENSUS-V1, n=10: cross-frame spread 0.73 MB, sd 0.21' },
+  liveHeapMB: { calibrated: false, basis: 'live heap is pre-collection and its within-run sd was 4.1 MB per delta (W84); band not derived from a duration measurement' },
+  footprintTotalMB: { calibrated: false, basis: 'no measured OS-footprint noise floor over hours; W90 measured absolutes, not drift' },
+  pageRendererFootprintMB: { calibrated: false, basis: 'as footprintTotalMB' },
+  elements: { calibrated: true, basis: 'W89 DOM-NODE-CENSUS-V1: element count invariant (spread 0) across zoom and 60s idle replay' },
+  nodesAfterGc: { calibrated: false, basis: 'W91b measured 7,317-7,415 after forced GC on an unchanged page (1.3%), which is a static spread, not a per-hour band' },
+  listeners: { calibrated: false, basis: 'no measured listener noise floor' },
+});
+
 async function processCpuSample(browserCdp) {
   const info = await browserCdp.send('SystemInfo.getProcessInfo').catch(() => ({ processInfo: [] }));
   const map = new Map();
@@ -177,6 +192,14 @@ export function buildTrends(samples, { minSpanHours = 2 } = {}) {
     .filter((p) => Number.isFinite(p.value));
   const mk = (label, pick, band, opts = {}) => ({
     ...fitTrend(series(pick), { label, flatBandPerHour: band, minSpanHours }),
+    // Default to uncalibrated: a band without stated evidence does not get to
+    // decide anything, and silence about provenance is how thresholds harden.
+    bandCalibrated: false,
+    ...opts,
+  });
+  const banded = (key, label, pick, opts = {}) => mk(label, pick, CONF01_FLAT_BANDS[key], {
+    bandCalibrated: CONF01_BAND_BASIS[key]?.calibrated === true,
+    bandBasis: CONF01_BAND_BASIS[key]?.basis || null,
     ...opts,
   });
   const closedOf = (s) => s.trades?.managerClosed ?? s.trades?.serviceClosed ?? null;
@@ -213,14 +236,14 @@ export function buildTrends(samples, { minSpanHours = 2 } = {}) {
     return legacyHost && legacyHost.calls > 0 ? legacyHost.msPerCall : null;
   };
   return {
-    heapAfterGcMB: mk('JS heap after forced collection (MB)', (s) => s.collected?.heapMB, CONF01_FLAT_BANDS.heapAfterGcMB),
-    liveHeapMB: mk('JS heap live, pre-collection (MB)', (s) => s.live?.heapMB, CONF01_FLAT_BANDS.liveHeapMB),
-    footprintTotalMB: mk('all-Chrome OS footprint (MB)', (s) => s.footprint?.totalPrivateMB, CONF01_FLAT_BANDS.footprintTotalMB),
-    pageRendererFootprintMB: mk('page renderer OS footprint (MB)', (s) => s.footprint?.pageRendererPrivateMB, CONF01_FLAT_BANDS.pageRendererFootprintMB),
+    heapAfterGcMB: banded('heapAfterGcMB', 'JS heap after forced collection (MB)', (s) => s.collected?.heapMB),
+    liveHeapMB: banded('liveHeapMB', 'JS heap live, pre-collection (MB)', (s) => s.live?.heapMB),
+    footprintTotalMB: banded('footprintTotalMB', 'all-Chrome OS footprint (MB)', (s) => s.footprint?.totalPrivateMB),
+    pageRendererFootprintMB: banded('pageRendererFootprintMB', 'page renderer OS footprint (MB)', (s) => s.footprint?.pageRendererPrivateMB),
     // Advisory: CONF-02 accumulates trades, and trade markers are elements, so an
     // absolute climb here is the design cost the ruling asked us to expose rather
     // than evidence of a leak. The per-trade series below is what decides.
-    elements: mk('attached elements, all frames', (s) => s.elements, CONF01_FLAT_BANDS.elements, { advisory: true }),
+    elements: banded('elements', 'attached elements, all frames', (s) => s.elements, { advisory: true }),
     elementsPerClosedTrade: {
       ...vsClosed('attached elements per additional closed trade', (s) => s.elements, 5),
       xUnit: 'closedTrade',
@@ -230,9 +253,13 @@ export function buildTrends(samples, { minSpanHours = 2 } = {}) {
       // than a taste threshold. Stated because I demoted my own DOM counter cell in
       // W87 for carrying an uncalibrated constant.
       bandBasis: 'W89 DOM-NODE-CENSUS-V1: elements invariant (spread 0) on a fixed configuration',
+      // The invariance is measured; the ALLOWANCE per trade is not. A trade marker
+      // legitimately costs a few elements, so this band stays uncalibrated and the
+      // number is reported without a verdict attached to it.
+      bandCalibrated: false,
     },
-    nodesAfterGc: mk('nodes after forced collection', (s) => s.collected?.nodes, CONF01_FLAT_BANDS.nodesAfterGc),
-    listeners: mk('JS event listeners', (s) => s.collected?.listeners, CONF01_FLAT_BANDS.listeners),
+    nodesAfterGc: banded('nodesAfterGc', 'nodes after forced collection', (s) => s.collected?.nodes),
+    listeners: banded('listeners', 'JS event listeners', (s) => s.collected?.listeners),
     rendererCpuPercent: mk('renderer CPU (% of one core)', (s) => s.cpu?.rendererPercent, 3),
     gpuCpuPercent: mk('GPU process CPU (% of one core)', (s) => s.cpu?.gpuPercent, 3),
     // CONF-02: the time leak. Per-tick order-loop cost is expected to grow with the
@@ -251,6 +278,8 @@ export function buildTrends(samples, { minSpanHours = 2 } = {}) {
       // ceiling per closed trade is ~1,024. A marginal cost above that is the bound
       // failing; below it, the bound is holding and the figure is a design cost.
       ...vsClosed('excursion samples per additional closed trade', excursionSamplesOf, 1_024),
+      // Calibrated: the ceiling is the product's own documented bound, not a taste.
+      bandCalibrated: true,
       xUnit: 'closedTrade',
       ceilingRationale: '4 arrays x 256-value M19-B tail bound',
     },

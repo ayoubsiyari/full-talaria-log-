@@ -23,6 +23,19 @@ export function regradeDurationRun(report, { closedTarget = 30, minSpanHours = D
   const trends = buildTrends(samples, { minSpanHours });
   const verdict = gradeDurationSeries(trends, { minSpanHours });
   const spanHours = +(samples[samples.length - 1].hours - samples[0].hours).toFixed(3);
+
+  // STRATIFICATION, and it is a correction for a known product defect rather than
+  // a convenience. Peer panels stop closing bars once their resident window is
+  // exhausted (W93), so a sample taken mid-stall reads a different machine: with
+  // four panels advancing this run reads ~1,950 MB footprint and ~134% renderer,
+  // and while stalled ~1,060 MB and ~30%. Fitting both together measures the
+  // stall pattern, not the trend. The advancing stratum is the CONF-01
+  // configuration as specified, so it carries the verdict; the mixed fit is
+  // reported beside it and the stalled count is stated, never dropped silently.
+  const advancing = samples.filter((s) => s.state?.advancingPanels === 4);
+  const stalled = samples.length - advancing.length;
+  const advancingTrends = advancing.length >= 4 ? buildTrends(advancing, { minSpanHours }) : null;
+  const advancingVerdict = advancingTrends ? gradeDurationSeries(advancingTrends, { minSpanHours }) : null;
   return {
     signature: 'CONF01-DURATION-REGRADE-V1',
     graderSignature: DURATION_TREND_SIGNATURE,
@@ -42,8 +55,23 @@ export function regradeDurationRun(report, { closedTarget = 30, minSpanHours = D
     satisfiesDur01: spanHours >= minSpanHours,
     conf01: report.conf01?.compliant ?? null,
     conf02: assessConf02(samples, { closedTarget }),
+    strata: {
+      allSamples: samples.length,
+      fullyAdvancing: advancing.length,
+      stalledOrPartial: stalled,
+      advancingSpanHours: advancing.length
+        ? +(advancing[advancing.length - 1].hours - advancing[0].hours).toFixed(3)
+        : 0,
+      note: 'peer panels exhaust their resident replay window (W93 product defect); samples taken mid-stall measure a different machine',
+    },
     trends,
-    verdict,
+    verdictAllSamples: verdict,
+    trendsFullyAdvancing: advancingTrends,
+    verdictFullyAdvancing: advancingVerdict,
+    // The stratum that matches the specified configuration decides, when it has
+    // enough samples to fit at all.
+    verdict: advancingVerdict || verdict,
+    verdictBasis: advancingVerdict ? 'fullyAdvancing' : 'allSamples',
   };
 }
 
@@ -57,8 +85,10 @@ if (import.meta.url === `file://${process.argv[1]?.replace(/\\/g, '/')}` || proc
   const report = JSON.parse(fs.readFileSync(inPath, 'utf8'));
   const out = regradeDurationRun(report);
   if (outPath) fs.writeFileSync(outPath, JSON.stringify(out, null, 1));
-  const dec = Object.entries(out.trends).filter(([, t]) => !t.advisory);
+  const graded = out.trendsFullyAdvancing || out.trends;
+  const dec = Object.entries(graded).filter(([, t]) => !t.advisory);
   console.log(`[regrade] ${inPath}: n=${out.sampleCount} span=${out.spanHours}h satisfiesDur01=${out.satisfiesDur01}`);
+  console.log(`[regrade] strata: ${out.strata.fullyAdvancing} fully advancing over ${out.strata.advancingSpanHours}h, ${out.strata.stalledOrPartial} stalled/partial; verdict from ${out.verdictBasis}`);
   console.log(`[regrade] ${out.source.priorVerdict} -> ${out.verdict.status}: ${out.verdict.reason}`);
   for (const [key, t] of dec) {
     const unit = t.xUnit && t.xUnit !== 'hour' ? `/${t.xUnit}` : '/h';
