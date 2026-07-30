@@ -1,0 +1,65 @@
+{
+  "packet": "W91b",
+  "manager": "C",
+  "tier": "mid",
+  "model": "claude-opus-5-thinking",
+  "title": "The session-reload test is BLOCKED by a hard hang on the second chart load; the node counter's noise floor is now measured and it is 2.2x before collection versus 1.3% after",
+
+  "instrument": {
+    "signature": "SESSION-RELOAD-CENSUS-V1",
+    "file": "scripts/session-reload-census.mjs",
+    "tests": "scripts/tests/session-reload-census.test.mjs",
+    "protocol": "one tab, one fixed session, one fixed range, headless, 8s settle, every reading taken after two forced collections",
+    "canSee": "attached elements per frame, Chrome's Nodes/Documents/Listeners counters, JS heap before AND after forced collection, renderer allocator composition (web_cache, blink_gc, v8, malloc, partition_alloc), renderer pid per load",
+    "cannotSee": "the GPU process, and the PO's route or machine"
+  },
+
+  "blocker_one_line": "Every chart load after the FIRST hangs on my harness against deployed — I need B or the PO to say in 60 seconds whether reloading the chart tab hangs for a real user, because if it does it outranks everything in the memory plan.",
+
+  "the_hang_characterised": {
+    "reproduction": "4 independent runs, 12 attempted loads: load 1 always succeeds, loads 2..5 always exceed a 150s deadline",
+    "not_a_slow_load": "the renderer answers NOTHING — page.evaluate times out at 10s and CDP Performance.getMetrics, which is served off the renderer main thread, times out at 15s",
+    "not_a_crash": "no target-crash and no page-error events; page.isClosed() is false",
+    "not_the_browser": "the browser process answers CDP throughout and reports 10 live Chrome processes",
+    "not_this_tab_s_history": "a FRESH TAB opened in the same browser while the first was wedged could not load the chart either",
+    "not_session-id-bound": "a run with a DISTINCT session id per load (--distinct-sessions) hung identically at load 2, so it is not a same-session claim",
+    "server_recovers": "immediately after the browser exits, /chart/dist-v9/index.html returns 200 in 313ms and /login in 134ms from the same machine",
+    "leading_hypothesis": "a shared claim or gated fetch held by the live first session blocks subsequent document loads, and the blocked request stalls the new renderer's main thread during parse — that is the shape of today's B-0197 fix ('the window claim could hang every gated fetch, and said nothing when it failed', 9fc8763f0)",
+    "competing_hypothesis_not_excluded": "my harness seeds a synthetic session_id that does not exist server-side; a claim path on a non-existent session could hang for me and not for a real user. Load 1 uses the same synthetic id and always works, which weakens this but does not kill it.",
+    "what_decides_it": "B says whether 9fc8763f0 is in the deployed build, or the PO opens the chart, reloads the tab, and reports whether it comes back"
+  },
+
+  "node_counter_noise_floor": {
+    "why_this_matters": "the 11:20 hypothesis rests on 51,303 -> 97,488 -> 137,834 nodes across session loads. Those were read live. This is the same counter read on the SAME page five times, and it varies by 2.2x depending only on collection state.",
+    "five_independent_load_1_readings": [
+      { "run": "A", "nodesBeforeGc": 13792, "nodesAfterGc": 7412 },
+      { "run": "B", "nodesBeforeGc": 6640, "nodesAfterGc": 7320 },
+      { "run": "C", "nodesBeforeGc": 6351, "nodesAfterGc": 7415 },
+      { "run": "D", "nodesBeforeGc": 12554, "nodesAfterGc": 7414 },
+      { "run": "E", "nodesBeforeGc": 10799, "nodesAfterGc": 7317 }
+    ],
+    "before_collection": { "min": 6351, "max": 13792, "spreadRatio": 2.17 },
+    "after_collection": { "min": 7317, "max": 7415, "spread": 98, "spreadPercent": 1.3 },
+    "attached_elements": { "everyRun": 2483, "spread": 0 },
+    "reading": "the Nodes counter's variance on an unchanged page is dominated by detached-uncollected nodes. After a forced collection it is one of the most stable counters I have (1.3%); before one it is nearly useless for comparison.",
+    "consequence_for_the_11_20_hypothesis": "a 51k -> 137k climb read live cannot be separated from collection timing by inspection. It is 2.7x, and the counter's own live spread is 2.2x on a page that did not change. NOT refuted — the PO's climb may well be real, and my own runs cannot yet test it because of the hang — but it cannot be confirmed on live readings.",
+    "how_to_take_it_properly": "in DevTools: Performance Monitor is live, so use the Memory panel's Collect Garbage button (or console gc() with --js-flags=--expose-gc) immediately before each reading, at a fixed settle delay, same range"
+  },
+
+  "load_1_baseline_five_runs": {
+    "elements": 2483,
+    "documents": 4,
+    "listeners": [1504, 1504, 1500, 1499],
+    "jsHeapAfterGcMB": [64.71, 65.06, 65.34, 65.33, 64.05],
+    "webCacheMB": [28.15, 28.14, 28.0, 28.13],
+    "blinkGcMB": [22.75, 24.5, 23.63, 24.38],
+    "uncollectedJsAtReadMB": [33.9, -0.21, -1.81, 15.87, 17.97],
+    "reading": "web_cache is 28 MB and stable on a first load, so the 11:00 observation of image cache 63 -> 85.8 MB and script cache 32 -> 64.7 MB is growth across loads that I cannot yet reach. The JS uncollected-at-read figure swings 0 to 34 MB run to run, which is the 11:20 Finding 1 mechanism at my surface's scale: a live heap reading carries up to 34 MB of garbage on a 65 MB heap."
+  },
+
+  "instrument_fixes_made_this_packet": [
+    "per-load deadline: a wedged renderer used to block for the full 300s protocol timeout per poll, silently. Wedges are now recorded as data and the run continues.",
+    "wedge probe: separates 'main thread busy in a long task' (CDP answers, JS does not) from 'tab dead' (neither answers) from 'browser-wide stall', and attempts a fresh tab to test whether the wedge is tab-bound.",
+    "process picking: scoring dumps by v8 alone selected a spare renderer with 1.25 MB of Blink GC and no web_cache. Scoring on v8 + blink_gc + web_cache + partition_alloc selects the page renderer, which is why cache figures appear at all in this packet."
+  ]
+}

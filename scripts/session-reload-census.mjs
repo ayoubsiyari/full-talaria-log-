@@ -38,6 +38,113 @@ const DEFAULT_ORIGIN = 'http://31.97.192.82:3000';
 const MB = 1048576;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+class DeadlineError extends Error {}
+
+/**
+ * A wedged renderer makes page.evaluate hang until the protocol timeout, which
+ * silently costs five minutes per poll. Every page-side step gets its own
+ * deadline so a wedge is recorded as data instead of stalling the run.
+ */
+function withDeadline(promise, ms, label) {
+  let timer;
+  return Promise.race([
+    Promise.resolve(promise).finally(() => clearTimeout(timer)),
+    new Promise((_, reject) => {
+      timer = setTimeout(() => reject(new DeadlineError(`${label} exceeded ${ms}ms`)), ms);
+    }),
+  ]);
+}
+
+/**
+ * Distinguishes the two things a hang can mean. CDP's Performance domain is
+ * served off the renderer's main thread, so metrics that still arrive while
+ * page.evaluate hangs mean the main thread is BUSY IN A LONG TASK, not dead.
+ */
+async function probeWedge(page, cdp, browserCdp = null, browser = null, url = null) {
+  const out = { pageEvaluateResponds: false, cdpMetricsRespond: false };
+  try {
+    const { metrics } = await withDeadline(cdp.send('Performance.getMetrics'), 15_000, 'wedge metrics');
+    out.cdpMetricsRespond = true;
+    const g = (n) => { const r = metrics.find((m) => m.name === n); return r ? Number(r.value) : null; };
+    out.metrics = {
+      nodes: g('Nodes'),
+      documents: g('Documents'),
+      frames: g('Frames'),
+      jsHeapUsedMB: g('JSHeapUsedSize') != null ? +(g('JSHeapUsedSize') / MB).toFixed(2) : null,
+      taskDuration: g('TaskDuration'),
+    };
+  } catch (error) {
+    out.metricsError = String(error?.message || error);
+  }
+  try {
+    await withDeadline(page.evaluate(() => 1), 10_000, 'wedge evaluate');
+    out.pageEvaluateResponds = true;
+  } catch (error) {
+    out.evaluateError = String(error?.message || error);
+  }
+  out.pageClosed = typeof page.isClosed === 'function' ? page.isClosed() : null;
+  // The browser process answering while the tab does not separates a dead tab
+  // from a dead browser, which is the difference between a product defect and a
+  // harness one.
+  if (browserCdp) {
+    try {
+      const info = await withDeadline(browserCdp.send('SystemInfo.getProcessInfo'), 15_000, 'wedge browser');
+      out.browserProcessResponds = true;
+      out.chromeProcessCount = (info.processInfo || []).length;
+    } catch (error) {
+      out.browserProcessResponds = false;
+      out.browserError = String(error?.message || error);
+    }
+  }
+  // A fresh tab loading the same URL while the first is wedged says the wedge is
+  // bound to that tab's history, not to the build or the machine.
+  if (browser && url && out.browserProcessResponds) {
+    let fresh = null;
+    try {
+      fresh = await withDeadline(browser.newPage(), 20_000, 'wedge fresh tab');
+      await withDeadline(fresh.goto(url, { waitUntil: 'domcontentloaded', timeout: 45_000 }), 50_000, 'wedge fresh goto');
+      const ready = await withDeadline(waitForDistV9SingleReady(fresh, 60_000), 65_000, 'wedge fresh ready')
+        .then(() => true).catch(() => false);
+      out.freshTabLoads = ready;
+      out.freshTabElements = ready
+        ? await fresh.evaluate(() => document.querySelectorAll('*').length).catch(() => null)
+        : null;
+    } catch (error) {
+      out.freshTabLoads = false;
+      out.freshTabError = String(error?.message || error);
+    } finally {
+      if (fresh) await fresh.close().catch(() => {});
+    }
+  }
+  if (out.cdpMetricsRespond && !out.pageEvaluateResponds) {
+    out.interpretation = 'renderer alive, main thread occupied by a long task';
+  } else if (!out.cdpMetricsRespond && out.browserProcessResponds && out.freshTabLoads) {
+    out.interpretation = 'this tab is dead while the browser and a fresh tab are healthy';
+  } else if (!out.cdpMetricsRespond && out.browserProcessResponds) {
+    out.interpretation = 'tab dead, and a fresh tab could not load either';
+  } else if (!out.cdpMetricsRespond) {
+    out.interpretation = 'browser-wide stall, cannot attribute to the page';
+  } else {
+    out.interpretation = 'responsive at probe time';
+  }
+  return out;
+}
+
+/**
+ * The page renderer, not a spare one. Picking by v8 alone chose a process with
+ * 1.25 MB of Blink GC and no web_cache in the first run; the page's renderer is
+ * the one carrying DOM and caches, so score on those together.
+ */
+export function pickPageRenderer(dumpsByPid) {
+  let best = null;
+  for (const [pid, alloc] of dumpsByPid || []) {
+    if (!alloc) continue;
+    const score = (alloc.v8 || 0) + (alloc.blink_gc || 0) + (alloc.web_cache || 0) + (alloc.partition_alloc || 0);
+    if (!best || score > best.score) best = { pid, score, alloc };
+  }
+  return best ? { pid: best.pid, ...best.alloc } : null;
+}
+
 /** Monotonic climb with load count is the whole question; say it in one field. */
 export function classifyLoadSeries(series, { tolerance = 0.05 } = {}) {
   const xs = (series || []).filter((v) => Number.isFinite(v));
@@ -94,16 +201,19 @@ async function readCounters(page, cdp) {
 }
 
 function parseArgs(argv) {
-  const o = { loads: 5, out: null, settleMs: 8_000 };
+  const o = { loads: 5, out: null, settleMs: 8_000, distinctSessions: false };
   for (const a of argv) {
     if (a.startsWith('--loads=')) o.loads = Number(a.split('=')[1]) || 5;
     else if (a.startsWith('--out=')) o.out = a.slice(6);
     else if (a.startsWith('--settle-ms=')) o.settleMs = Number(a.split('=')[1]) || 8_000;
+    else if (a === '--distinct-sessions') o.distinctSessions = true;
   }
   return o;
 }
 
-export async function runSessionReloadCensus({ loads = 5, settleMs = 8_000, outPath = null } = {}) {
+export async function runSessionReloadCensus({
+  loads = 5, settleMs = 8_000, outPath = null, loadDeadlineMs = 150_000, distinctSessions = false,
+} = {}) {
   const origin = String(process.env.TEST_VPS_URL || DEFAULT_ORIGIN).replace(/\/$/, '');
   const email = String(process.env.TEST_EMAIL || '').trim();
   const password = String(process.env.TEST_PASSWORD || '').trim();
@@ -141,18 +251,40 @@ export async function runSessionReloadCensus({ loads = 5, settleMs = 8_000, outP
     const cdp = await page.createCDPSession();
     await cdp.send('Performance.enable');
     await cdp.send('HeapProfiler.enable');
+    // "Aw, Snap" and uncaught page errors are the difference between a hang and a
+    // crash, and neither shows up in a timeout message.
+    const crashEvents = [];
+    page.on('error', (e) => crashEvents.push({ kind: 'target-crash', message: String(e?.message || e) }));
+    page.on('pageerror', (e) => crashEvents.push({ kind: 'page-error', message: String(e?.message || e).slice(0, 300) }));
 
     for (let i = 1; i <= loads; i += 1) {
       const row = { load: i };
-      try {
-        await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 180_000 });
+      // One deadline around the whole load: a wedge can surface in navigation,
+      // in readiness, or in any later page.evaluate, and per-step deadlines let
+      // the later ones hang for the full protocol timeout.
+      const measureOneLoad = async () => {
+        if (distinctSessions && i > 1) {
+          // Same tab, same range, new session id: separates "reloading a session"
+          // from "loading any session again in this browser".
+          await page.evaluate((sid) => {
+            const raw = localStorage.getItem('u1_backtestingSession');
+            const parsed = raw ? JSON.parse(raw) : {};
+            parsed.session_id = sid;
+            localStorage.setItem('u1_backtestingSession', JSON.stringify(parsed));
+          }, `${sessionId}-${i}`);
+        }
+        await withDeadline(
+          page.goto(url, { waitUntil: 'domcontentloaded', timeout: 90_000 }),
+          100_000,
+          `load ${i} navigation`,
+        );
         if (/\/login\/?/i.test(new URL(page.url()).pathname)) {
           await dismissCookieBanner(page);
           await uiLoginDeployed(page, origin, email, password);
-          await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 180_000 });
+          await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 90_000 });
         }
-        await dismissCookieBanner(page);
-        await waitForDistV9SingleReady(page, 180_000);
+        await dismissCookieBanner(page).catch(() => {});
+        await withDeadline(waitForDistV9SingleReady(page, 90_000), 100_000, `load ${i} readiness`);
         await sleep(settleMs);
 
         row.rendererPid = await page.evaluate(() => null).then(async () => {
@@ -176,15 +308,17 @@ export async function runSessionReloadCensus({ loads = 5, settleMs = 8_000, outP
         ).catch(() => null);
 
         const dumps = await collectMemoryDump(browserCdp).catch(() => new Map());
-        // The page renderer is the process with the largest v8 allocation.
-        let best = null;
-        for (const [pid, alloc] of dumps) {
-          if (!alloc) continue;
-          if (!best || (alloc.v8 || 0) > (best.alloc.v8 || 0)) best = { pid, alloc };
-        }
-        row.rendererAllocators = best ? { pid: best.pid, ...best.alloc } : null;
+        row.rendererAllocators = pickPageRenderer(dumps);
+      };
+      try {
+        await withDeadline(measureOneLoad(), loadDeadlineMs, `load ${i}`);
       } catch (error) {
         row.error = String(error?.message || error);
+        // A wedge is a measurement, not the end of the run: probe it, then keep
+        // loading so the load-count series still has points after it.
+        row.wedge = await probeWedge(page, cdp, browserCdp, browser, url)
+          .catch((e) => ({ probeError: String(e?.message || e) }));
+        row.crashEvents = crashEvents.slice();
       }
       rows.push(row);
       save();
