@@ -4511,3 +4511,49 @@ Backend log census on `/api/chart/preferences`:
 The absent POSTs before the repair are the tell: the client only POSTs from a queue that a *successful* GET merge fills, so the read failure suppressed the write path entirely — dead in both directions, silently, with a localStorage fallback covering for it. **67 real saves have since succeeded and nothing on that route has failed.** `UndefinedColumn` occurrences after the repair: **0** (last at 23:33:05Z, repair 23:59:05Z). Column present in `information_schema` now: yes.
 
 That is the measurement the V8/M15 ruling should be revisited against — not my say-so.
+
+---
+
+## B-0197 — 2026-07-30 — the advisor's mechanism was real and pointed at the wrong endpoint: the window claim could hang every gated fetch forever, silently
+
+Shipped **`20260730b107`**. The Director asked whether panel construction is gated on the failing `/api/chart/preferences` response, on the advisor's theory that this explains the nondeterministic document count (13 on one fresh load, 18 on another). **Prefs is not it, and I can show that. But the mechanism the advisor described — construction gated on a fallible response — exists, on a different endpoint, and it was worse than a gate.**
+
+### 1. Prefs does not gate construction, and this is checkable rather than arguable
+
+Three reads of the running canary, not the tree. Exactly three served files mention `preferencesLoaded`, the only prefs-readiness signal: the dispatcher, `drawing-tools-manager.js` (styles merge), and the bundled React app (V9 template merge). **None creates an iframe** — I counted iframe-creation sites per file rather than trusting the names. `MultichartGrid` is rendered with `layoutId` and `panelCount`, **no `key`**, and no prefs-derived prop; the template listener sets `customTemplates`, which is not passed to the grid, so a late prefs resolution reconciles the grid in place and cannot mount or unmount a panel. And the fetch patch's gate list is two entries — `/api/file/*` and `/api/sessions/{id}/state` — so prefs takes the passthrough at **line 374**, which is precisely the line the PO's stack trace showed. That frame is the wrapper forwarding the call, not a retry loop.
+
+I also killed two of my own theories on the way, which is why they are not in the note to C as findings: panels do **not** create a transient `about:blank` document each (`frame.src` is set before insertion; the `about:blank` at line 675 is the `catch` branch when `iframeSrcBuilder` throws), and the `document.write` in `chart-embed.html` writes script tags into the existing document rather than making a new one.
+
+### 2. What the claim path was actually doing
+
+`chart-window-limit.js` makes those two gated paths **wait on the window-claim promise**, and when the claim has not succeeded it answers them with a **synthetic 409 that never touches the network**. So a claim problem presents as "the chart has no data" — no console line, no server log, nothing. Two defects lived there.
+
+**The release-race retry could never settle.** It called `claim(true)`, which hit the single-flight guard — `claimInFlight` is still true while we are inside the response handler — and returned `claimPromise`, *the chained promise whose resolution that handler was computing*. A promise awaiting its own descendant never settles, and because it is not the self-resolution case the spec detects, **it does not even reject**. `ensureClaimed()` then handed that permanently-pending promise to the fetch patch, so **every `/api/file/*` and every `/api/sessions/{id}/state` request hung forever**: no error, no timeout, no data, no layout restore. The trigger is a 409 with a kicked detail on the *first* claim, which is what a reload or a second window produces before the previous window's `release` lands — so **it fires on some loads and not others, from the same URL, with nothing visible to distinguish them.**
+
+That is a load-dependent, silent blocker sitting on the layout-restore path, and it was on the wire for every measurement anyone took before b107. I am not claiming it is C's 13-vs-18 — I have no frame-count instrument and DECL-01 means I do not get to assert it. I am saying it is a live candidate with the right shape, and re-running the disagreeing A/Bs on b107 is cheap.
+
+**And a 401 claim fails closed and silently.** `if (res.status === 401) return false;` — an expired or not-yet-attached session blocks chart data and layout restore for the whole page, where 404/405 by contrast fail *open*.
+
+### 3. How I found it: the gate hung, and the hang was the product
+
+Two cells timed out at 10s on first run. The tempting read was a bad harness — my `setTimeout` stub did run callbacks synchronously, which was a real harness bug and I fixed it. **But the timeout survived the fix, because the promise genuinely never settles.** If I had written those two cells more loosely, or assumed the fixture, this ships again tonight and the next A/B disagrees for reasons nobody can name.
+
+### 4. What landed
+
+`sendClaim()` split from the single-flight cache so the retry issues a **fresh request** instead of awaiting its own descendant. The 401/405/5xx/no-response branches now count into the failed-write ledger from B-0196 — the claim is a POST, so a non-OK claim genuinely *is* a failed server write, and it lands in the passport the Director asked for. **I count the claim and not the reads it blocks**, deliberately: one failed claim blocks every gated fetch for the life of the page, so counting reads would report one cause as dozens. There is a cell asserting exactly that.
+
+Both cuts kill-switched and climbing: `__TALARIA_DISABLE_CLAIM_RETRY_DEADLOCK_FIX_V1` and `__TALARIA_DISABLE_CLAIM_FAILURE_LEDGER_V1`. **The deadlock switch is a real negative control in the FLAG-02 sense — the gate asserts that flipping it makes the promise stay pending, i.e. it reproduces the defect.** A switch that cannot restore the bug is not a control, and this one can.
+
+One trap avoided: a successful claim must **not** clear the ledger. That record is shared with the preferences write path, so clearing on a healthy claim would erase evidence of failed *saves*. Asserted as its own cell.
+
+Gate **26/26 with three mutants** (own-realm predicate blind to a host flip; 401 count removed goes silent again; counting blocked reads storms the counter). Neighbouring gates re-run clean: ledger + prefs cap **41/41**.
+
+### 5. On the wire, not in the tree
+
+b107 verified over HTTP: served stamp `20260730b107`, both images `canary-20260730b107`, `sendClaimRequest` present, retry routed through the callback, seven count sites, both switches and the climb helper present, ledger still loading in the shell at line 1544. A's `STASHED-PANEL-HANDLE` still present (`mcStashPanelHandles` × 5). Retention: b103, b104, b105, b106 and b107 all hold tarballs and images, with b106 held as `prior-pin-under-grading`.
+
+### 6. The 500 is closed, time-bounded
+
+Not "should be fixed": **261 `UndefinedColumn` before the repair, zero since.** Since the repair the route is 86 × `GET 200` and 71 × `POST 200` with no 5xx; before it, 259 × `GET 500` and **zero successful POSTs at all**. The four 422s in the window are my own curl probes, not user traffic. Column present in `information_schema`.
+
+Routed to C in `ROUTE-TO-C-PREFS-DOES-NOT-GATE-CONSTRUCTION-20260730.md`, including the two theories I killed, so C does not spend the night re-running them.
