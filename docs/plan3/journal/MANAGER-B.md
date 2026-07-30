@@ -4930,3 +4930,15 @@ Deployed by config reload: `nginx -t` inside the container first with restore-on
 `RECREATED=no`, `STAMP_BEFORE=STAMP_AFTER=20260730b113`, bigjson block and tile cache both still
 present, shell 200, `/api/sessions` and `/api/file` 401 (auth enforced, not 502). The wire did not
 move — DEPLOY-02 intact.
+
+**Instrument regression check.** Ran the harness scenarios that exercise the modes I touched:
+H-S2 (same-pair), H-S8 (same-pair, and the scenario whose `data fetches during play == 0` cell
+would catch a broken API log), H-S5 and H-S15 (both `pair=independent`, so the per-panel fileId
+branch). All four PASS with the change. A first attempt ran four scenarios in one browser session
+and reported H-S5/H-S15 FAIL — that was a `ConnectionClosedError` browser crash inside H-S45
+cascading through the session, not the change: both pass pre-change and post-change when run as
+the same pair. Recording it because the failure looked like mine and was not.
+
+`gate.mjs` could not ratchet: its `expectedTests` baseline is already adrift from the tree
+(`H-A1-B`, `H-S85`, `H-S86` exist as scenarios but are not in `known-failing.json`), and updating
+that baseline is a deliberate act in A's territory. Named for A rather than edited.
