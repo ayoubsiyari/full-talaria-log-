@@ -164,6 +164,9 @@ function sessionsLocation(source) {
   throw new Error('unbalanced braces in location ^~ /api/sessions');
 }
 
+const SS_BEGIN = 'TALARIA-SESSION-STATE-BODY-BUFFER BEGIN';
+const SS_END = 'TALARIA-SESSION-STATE-BODY-BUFFER END';
+
 export function assertSessionStateBodyBufferContract(source = readConf()) {
   const loc = sessionsLocation(source);
   const block = directivesOnly(source.slice(loc.start, loc.end));
@@ -187,6 +190,18 @@ export function assertSessionStateBodyBufferContract(source = readConf()) {
   assert.match(block, /proxy_pass\s+http:\/\/trading-chart:8000;/,
     '/api/sessions must still proxy to the chart backend');
   assert.match(block, /limit_req\s+zone=/, '/api/sessions must keep its rate limits');
+
+  // The markers ARE the kill-switch, so their absence is not cosmetic: without them the
+  // switch script has nothing to strip and the landing has no rollback. Checked last so a
+  // missing or mis-sized directive is reported as that, not as a marker problem.
+  const begin = source.indexOf(SS_BEGIN);
+  const end = source.indexOf(SS_END, begin === -1 ? 0 : begin);
+  assert.notEqual(begin, -1, `missing ${SS_BEGIN} — the kill-switch has nothing to strip`);
+  assert.notEqual(end, -1, `missing ${SS_END} — the kill-switch has nothing to strip`);
+  assert.ok(begin > loc.start && end < loc.end,
+    'the marked region must sit inside location ^~ /api/sessions');
+  assert.ok(source.slice(begin, end).includes('client_body_buffer_size'),
+    'client_body_buffer_size must sit INSIDE the marked region, or the switch cannot remove it');
   return true;
 }
 
@@ -215,4 +230,19 @@ test('mutation: losing the rate limit on /api/sessions goes RED', () => {
   const block = source.slice(loc.start, loc.end);
   const mutated = source.replace(block, block.replace(/\n\s*limit_req\s+zone=[^\n]*/g, ''));
   assert.throws(() => assertSessionStateBodyBufferContract(mutated), /must keep its rate limits/);
+});
+
+test('mutation: dropping the kill-switch markers goes RED', () => {
+  const mutated = readConf().replace(`# ${SS_BEGIN}`, '# (markers removed)');
+  assert.throws(() => assertSessionStateBodyBufferContract(mutated), /nothing to strip/);
+});
+
+test('mutation: moving the directive outside the marked region goes RED', () => {
+  // Directive still present and correctly sized, but the switch could no longer remove it —
+  // a rollback that silently does nothing is worse than no switch at all.
+  const source = readConf();
+  const mutated = source
+    .replace(/\n\s*client_body_buffer_size 1m;/, '')
+    .replace(`        # ${SS_END}`, `        # ${SS_END}\n        client_body_buffer_size 1m;`);
+  assert.throws(() => assertSessionStateBodyBufferContract(mutated), /INSIDE the marked region/);
 });

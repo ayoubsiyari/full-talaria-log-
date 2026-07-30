@@ -177,3 +177,60 @@ and concurrency carry over; absolute byte totals do not.
 
 **Same-pair keeps no acceptance weight.** It appears here only as the contrast that quantifies
 what the sixteen guards were buying.
+
+---
+
+## 8. CKPT-01 on the one landing this produced
+
+The nginx session-state body buffer (§B3 in the journal, `client_body_buffer_size 1m` on
+`location ^~ /api/sessions`) is a live-wire change, so it gets the full checkpoint. Tag
+`ckpt/pre-nginx-sessionstate-buffer-20260730b113`.
+
+**1. Annotated tag on the exact tip, read from the running page.** Build id `20260730b113` from
+`__TALARIA_CHART_BUILD_ID`; commit `be7bc73a6be16e143adddc8efa0bba40d7c14e64` from
+`org.opencontainers.image.revision` on **both** running images, not from my own branch state.
+
+**2. Retained deployable artifact.** `talaria-trading-chart:canary-20260730b113` and
+`talaria-homepage:canary-20260730b113` are on the host — the bytes that actually ran — so
+rollback is a redeploy, never a rebuild. b112 is retained as well. Config backups at
+`/root/talaria-restore/nginx.local.conf.bak-ckpt-*`.
+
+**3. Kill-switch.** `canary-nginx-sessionstate-buffer-switch.sh {on|off|status}`, repo copy at
+`deploy/canary-nginx-sessionstate-buffer-switch.sh`. nginx has no runtime flag for a body
+buffer, so the switch is the marked config region. Both directions are surgical: it adds and
+removes only the text between its own markers. The gate has cells for the markers, including
+one that goes RED if the directive is moved outside them — a rollback that silently does
+nothing is worse than no switch.
+
+**4. Rollback exercised, with a differential rather than an assertion.** Three ~538 KB
+`PATCH /api/sessions/930/state` per arm, counting `a client request body is buffered to a
+temporary file` in the live error log:
+
+| arm | new temp-file writes | shell | /api/sessions | /api/file |
+|---|---|---|---|---|
+| switch ON (the landing) | **0** | 200 | 401 | 401 |
+| switch OFF (rollback run) | **3** | 200 | 401 | 401 |
+| switch back ON | **0** | 200 | 401 | 401 |
+
+Three requests produced exactly three temp-file writes with the switch off and none with it on,
+so `FLAG-01` is satisfied against the absent property rather than against a log line saying the
+feature is inactive. The OFF arm keeps the product working — shell 200, routes 401 because auth
+is enforced, not 502 — which is `FLAG-03`. Stamp `20260730b113` unchanged in every arm and the
+container was never recreated, so the flip needs a reload and nothing more.
+
+### The cross-switch hazard this uncovered
+
+`canary-nginx-bigjson-switch.sh` restored a **whole-file** pristine copy on `on`, taken
+29 July. Flipping it today would have silently reverted this landing: exactly the PURGE-2
+failure mode named in `AMENDMENT-DIRECTOR-RUNS-THE-MILES-20260730-1445` §3, a kill-switch that
+reverts a fix nobody knew had shipped. Its `on` path now reinserts only its own marked region,
+with a loud warning on the legacy fallback path. Exercised: bigjson `off` → `on` with the
+session-state buffer verified still live on both sides, and the tile cache confirmed intact
+(the first check read `0` because the grep used one space against a multi-space directive — a
+false alarm, re-checked with a proper pattern).
+
+### Ordering, stated plainly
+
+The config landed at 14:29, before this checkpoint existed. Tag, switch and exercised rollback
+were retro-fitted at 15:00 once `CKPT-01` was issued. The landing is now protected by a proven
+switch, but the order was wrong and the record says so.

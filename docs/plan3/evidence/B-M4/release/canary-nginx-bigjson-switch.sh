@@ -16,10 +16,12 @@ set -e
 
 CONF=/opt/talaria/homepage/nginx.local.conf
 PRISTINE=/root/talaria-restore/nginx.local.conf.bigjson-on
+SNIPPET=/root/talaria-restore/nginx.bigjson.snippet
 BACKUP=/root/talaria-restore/nginx.local.conf.prev
 LOG=/root/talaria-restore/NGINX-BIGJSON.log
 MARK_BEGIN='TALARIA-BIGJSON-NO-TEMP-FILE BEGIN'
 MARK_END='TALARIA-BIGJSON-NO-TEMP-FILE END'
+ANCHOR='location ^~ /api/file/ {'
 NOW=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 
 container() { docker ps --format '{{.Names}}' | grep -m1 homepage; }
@@ -63,6 +65,10 @@ case "${1:-status}" in
     [ "$(present_in_file)" = no ] && { echo "already off"; exit 0; }
     cp "$CONF" "$BACKUP"
     [ -f "$PRISTINE" ] || cp "$CONF" "$PRISTINE"
+    # Save the marked region so `on` can put back exactly what was taken out.
+    awk -v b="$MARK_BEGIN" -v e="$MARK_END" \
+      'index($0,b){keep=1} keep{print} index($0,e){keep=0}' "$CONF" > "$SNIPPET"
+    [ -s "$SNIPPET" ] || { echo "refusing to continue: snippet came out empty" >&2; exit 1; }
     awk -v b="$MARK_BEGIN" -v e="$MARK_END" \
       'index($0,b){skip=1} !skip{print} index($0,e){skip=0}' "$BACKUP" > "$CONF"
     apply off
@@ -70,9 +76,32 @@ case "${1:-status}" in
     ;;
   on)
     [ "$(present_in_file)" = yes ] && { echo "already on"; exit 0; }
-    [ -f "$PRISTINE" ] || { echo "no pristine copy at $PRISTINE; re-ship the conf" >&2; exit 1; }
     cp "$CONF" "$BACKUP"
-    cp "$PRISTINE" "$CONF"
+    # Reinsert ONLY the marked region. This used to copy $PRISTINE over the whole file, which
+    # meant a flip silently reverted every unrelated directive that had landed since the
+    # pristine copy was taken — it would have reverted the session-state body buffer that
+    # landed 2026-07-30. That is the PURGE-2 failure mode named in
+    # AMENDMENT-DIRECTOR-RUNS-THE-MILES-20260730-1445 §3: a kill-switch that reverts a fix
+    # nobody knew had shipped. The block is the only nested location inside /api/file/, so
+    # reinserting it after that opener is positionally equivalent to where it was.
+    if [ -s "$SNIPPET" ]; then
+      awk -v anchor="$ANCHOR" -v snip="$SNIPPET" '
+        { print }
+        index($0, anchor) && !done {
+          while ((getline line < snip) > 0) print line
+          close(snip); done = 1
+        }
+      ' "$BACKUP" > "$CONF"
+    elif [ -f "$PRISTINE" ]; then
+      # No snippet yet (never flipped off since this change): fall back to the pristine copy,
+      # but say so, because it can carry unrelated reverts.
+      echo "WARNING: no snippet at $SNIPPET; falling back to whole-file $PRISTINE." >&2
+      echo "WARNING: diff it against the live conf before trusting this flip." >&2
+      cp "$PRISTINE" "$CONF"
+    else
+      echo "no snippet and no pristine copy; re-ship the conf" >&2; exit 1
+    fi
+    grep -qF "$MARK_BEGIN" "$CONF" || { echo "reinsert failed; restoring" >&2; cp "$BACKUP" "$CONF"; exit 1; }
     apply on
     echo "on — big-JSON routes buffer in memory, never to disk"
     ;;

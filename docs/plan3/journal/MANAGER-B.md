@@ -4942,3 +4942,53 @@ the same pair. Recording it because the failure looked like mine and was not.
 `gate.mjs` could not ratchet: its `expectedTests` baseline is already adrift from the tree
 (`H-A1-B`, `H-S85`, `H-S86` exist as scenarios but are not in `known-failing.json`), and updating
 that baseline is a deliberate act in A's territory. Named for A rather than edited.
+
+---
+
+## B-0205 — CKPT-01 retro-fitted onto the one live-wire landing, and the switch that would have reverted it
+
+**AMENDMENT-DIRECTOR-RUNS-THE-MILES-20260730-1445 read.** `AUTH-01` noted: standing approval, no
+pausing for decisions inside my dispatch, PO contacted only when something is ready to test or the
+bar is unreachable. I am reporting by journal and continuing. `CKPT-01` is the operative part for
+me, and applying it honestly meant admitting one landing was already in without it.
+
+**The landing.** `client_body_buffer_size 1m` on `location ^~ /api/sessions`, deployed 14:29 by
+config reload. It had a backup and restore-on-failure inside the apply path, which is not what
+`CKPT-01` asks for: there was no tag, no kill-switch, and the rollback had never been *run*.
+Point 4 is the one the amendment says is usually skipped, and I had skipped it.
+
+**All four now exist.** Tag `ckpt/pre-nginx-sessionstate-buffer-20260730b113`, annotated, on
+`be7bc73a6` — build id and commit taken from the running page and the running images'
+`org.opencontainers.image.revision`, not from my branch. b113 and b112 images retained on the
+host, so rollback is a redeploy of bytes that already ran. Kill-switch
+`canary-nginx-sessionstate-buffer-switch.sh`, repo copy in `deploy/`.
+
+**The rollback was executed while green, and measured rather than asserted.** Three ~538KB
+`PATCH /api/sessions/930/state` per arm, counting client-body temp-file writes in the live log:
+ON gave 0, OFF gave **3**, back-ON gave 0. Three requests, three disk writes, exactly the defect
+returning — that is `FLAG-01` against the absent property. In every arm the product still worked
+(shell 200, routes 401 because auth is enforced, not 502), which is `FLAG-03` against a
+working-product assertion. Stamp `20260730b113` in all three arms, container never recreated.
+
+**What the exercise found, which is the reason to run these rather than describe them.**
+`canary-nginx-bigjson-switch.sh` restored a **whole-file** pristine copy taken 29 July. Running it
+`on` today would have silently reverted the session-state buffer — a kill-switch reverting a fix
+nobody knew had shipped, which is the PURGE-2 case the amendment cites by name in §3. I would not
+have found it by reading either script; I found it because the amendment made me exercise one.
+Its `on` path is now surgical, reinserting only its own marked region, with a loud warning if it
+ever falls back to the whole-file copy. Exercised bigjson `off` → `on` with the session-state
+buffer confirmed live either side.
+
+One scare worth recording against myself: my first post-flip check reported the tile cache
+missing. It was my grep — one space against a multi-space directive. Re-checked with a proper
+pattern: `proxy_cache tiles` present in the running config. I nearly reported a regression that
+did not exist, and the cost of checking was one command.
+
+**Gate 12 → 14 cells.** Two new mutants: dropping the switch markers goes RED, and moving the
+directive outside the markers while leaving it correctly sized also goes RED. The second is the
+one that matters — it is the shape of a switch that looks present and rolls back nothing.
+
+Repo and live are back to parity; both switch snapshots refreshed from the current config so
+neither can carry a stale revert. Territory position unchanged from B-0204:
+`homepage/nginx.local.conf` and its gate remain unowned, the 29 July verbal grant still unrecorded
+in `TERRITORY.yml`, and the harness files are still A's. Disclosed, not hidden.
