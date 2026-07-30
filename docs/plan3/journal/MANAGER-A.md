@@ -1896,3 +1896,27 @@ vm.Script.
 heap snapshots or >2MB artifacts in the workspace root.
 
 Sent as ANSWER-A-A-THIRD-OF-THE-ELEMENT-CLIMB-IS-A-FIX-THAT-NEVER-SHIPPED-20260730-2115.md.
+
+## 22:10 — Element climb attributed: ~22 history markers + 8.83 unshipped glow. A1 stays shelved.
+
+Director re-issued the duration-gate dispatch; C's 21:30 regrade already reframed it
+(per-trade 31.7, rewind ruled out as the writer, verdict UNRESOLVED pending 2.2h). I closed
+the residual from my 21:15 answer.
+
+**Attribution (source-verified on tip order-manager.js):** after open→close, order-line/SL-TP
+chrome is removed. What remains: entry marker ~10 (removeEntryMarker is a misnomer — strips
+price kids only), exit marker ~10 (kept as history), trade-connector 1–2 (existingMarker
+path re-appends with no dedupe), glow filters 8.83 (measured CDP, unshipped). Subtotal
+≈29.8–30.8 matches C's 31.7 inside CI.
+
+**Shipping implication:** glow GC at manager-a/order-glow-filters-20260730 @ fdda39a3b
+removes ~28% of the element climb and is the only pure leak in the set. The ~22 history-marker
+nodes/trade are CONF-02-by-design and belong to D's trade-eviction lane, not a missing
+.remove() on close. Shipping glow alone will not flatten the slope under CONF-02.
+
+**A1/A2:** stand on the shelve. Gate masters 2494–3910 < every eviction threshold.
+**CKPT-01:** capture+replay-advance proven on retained bytes; acceptance still RED on
+multichart embed boot (iframes: 0). **Realm-eviction grade:** still owed, not inventing.
+**Housekeeping:** EVID-02 dir ensured; pruned detached temp/cursor/stale worktrees; other
+managers' checkouts left alone. Answer:
+ANSWER-A-ELEMENT-CLIMB-IS-HISTORY-MARKERS-PLUS-UNSHIPPED-GLOW-20260730-2210.md.
