@@ -17,7 +17,7 @@
 | 9 | TAL-01893 | Go-To forward skip (`goToNextSession` in `chart.js`) |
 | 10 | TAL-01931 | replay step-forward batching (`replay-system.js`) |
 | 11 | TAL-01936 | time alignment (`chart.js`) |
-| 12 | TAL-01891 | memory campaign — PO: YES same 8 GB / normal session+trades report; folds into 730 MB/h |
+| 12 | TAL-01891 | **QUESTION not alarm** — PO: report ~10 days old. Path still on b113 corpus (no TRADE-EVICT); live OM now has eviction bytes. See `QUESTION-TAL-01891-PATH-STILL-ON-B113-20260730.md` |
 | 13 | TAL-01854 | PO-DECISIONS: REAL — auto-follow / TF-downshift family (reopened) |
 
 D does not own these. No second browser from D while C’s CONF-01 chrome is live.

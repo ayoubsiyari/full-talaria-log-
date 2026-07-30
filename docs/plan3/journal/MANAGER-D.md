@@ -89,3 +89,14 @@ exists — eviction deletes the redundant hot copy, it does not invent a new sto
 - Scorecard flip armed idle: `scripts/po-scorecard-flip.mjs` +
   `PO-SCORECARD-FLIP-PROCEDURE-20260730.md` — PASS→fixed, FAIL→broken on b113 when scorecard
   returns. Heavy evidence → `_evidence\manager-D\`.
+
+## 2026-07-30 — Prebuild B-train close gates + 01891 question
+
+- Built `scripts/prebuild-b-train-close-gates.mjs` for Rayan #8 / TAL-01807b / TAL-01896.
+  Against **b113 wire corpus**: all three **RED exit 1** (discriminator). Evidence:
+  `_evidence\manager-D\PREBUILD-B-TRAIN-CLOSE-GATES-20260730b113.json`.
+- Live OM (unlabelled stamp): #8 + 01807b flags **present**; tip unit gates GREEN; 01896
+  still delivery-unserved. No ledger flip until B names the stamp + `--expect-green`.
+- TAL-01891: **question not alarm** — path still on b113 corpus (no TRADE-EVICT there);
+  live now has eviction bytes. Doc `QUESTION-TAL-01891-PATH-STILL-ON-B113-20260730.md`.
+  No soak. Did not call PO.
