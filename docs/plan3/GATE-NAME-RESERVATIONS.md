@@ -636,3 +636,55 @@ Named residual: the passport reads only the ledger's `localStorage` mirror, neve
 publication, so that `buildSupportContext()` stays inside the surface set C's
 `SUPPORT-PASSPORT-DEGRADED-MODULES-V1` realm models. Cost: with `localStorage` unavailable the
 count cannot reach a ticket. Asserted as a cell so it is a known limit, not a surprise.
+
+## Queue item 13 — The window claim: a silent construction blocker (B, B-0197)
+
+| Name | Signature token | Implementation | Status |
+|---|---|---|---|
+| CLAIM-FAILURE-LEDGER-V1 | `__TALARIA_DISABLE_CLAIM_FAILURE_LEDGER_V1` | `chart v 1.4/chart/modules/chart-window-limit.js` (+ `homepage/public` mirror), gate `chart v 1.4/chart/modules/claim-failure-ledger.test.mjs` | LIVE — shipped 20260730b107, 26/26 with three mutants |
+| CLAIM-RETRY-DEADLOCK-FIX-V1 | `__TALARIA_DISABLE_CLAIM_RETRY_DEADLOCK_FIX_V1` | same file and gate | LIVE — shipped 20260730b107 |
+
+Why. `chart-window-limit.js` patches `window.fetch` and makes two paths wait on the window
+claim: `/api/file/*` (chart data) and `/api/sessions/{id}/state` (layout restore). When the
+claim does not succeed, the patch answers those with a **synthetic 409** and never touches
+the network — so a claim problem presents as "the chart has no data", with no console line
+and no server-side log. Two defects lived in that path:
+
+1. **401 fails closed and silently.** An expired or not-yet-attached session blocks data and
+   layout restore for the whole page. 404/405 fail *open* by contrast. Now counted into the
+   failed-write ledger, so a canary ticket says so. The claim is a POST, so a non-OK claim
+   genuinely is a failed server write; the blocked reads are consequences and counting each
+   of them would report one cause as dozens.
+2. **The release-race retry could never settle.** It called `claim(true)`, hit the
+   single-flight guard (`claimInFlight` is still true inside the handler) and returned
+   `claimPromise` — the chained promise whose resolution that handler was computing. A promise
+   awaiting its own descendant never settles and never rejects, so `ensureClaimed()` handed a
+   permanently-pending promise to the fetch patch and **every gated request hung forever**.
+   Trigger: a 409 with a kicked detail on the first claim, which is what a reload or a second
+   window produces before the old window's `release` lands — so it fires on some loads and not
+   others, from the same URL. Candidate cause of the nondeterministic document count; routed
+   to C, who owns the frame tree.
+
+Cells:
+
+| Cell | Asserts | Status |
+|---|---|---|
+| CLAIM-401-COUNTED | 401 counted with the real status against `/api/chart/windows/claim` | LIVE |
+| CLAIM-401-FAILS-CLOSED | 401 resolves false, which is why it must be counted | LIVE |
+| CLAIM-5XX-COUNTED | unexpected 5xx counted even though bootstrap soft-fails open | LIVE |
+| CLAIM-405-COUNTED | the nginx wrong-upstream class is counted | LIVE |
+| CLAIM-NO-RESPONSE-COUNTED | offline/abort counted as status 0, not dropped | LIVE |
+| CLAIM-SUCCESS-NOT-COUNTED | a healthy claim adds nothing | LIVE |
+| CLAIM-SUCCESS-DOES-NOT-CLEAR | a healthy claim must not erase failed *preference* writes from the shared record | LIVE |
+| CLAIM-SWITCH-CLIMBS | switch truthy, per call, self → parent → top (B-0185) | LIVE |
+| CLAIM-CLIMB-NOT-A-LEAK | a clean realm chain still counts | LIVE |
+| CLAIM-CROSS-ORIGIN-UNREADABLE | an unreadable realm is unknown, not disabled | LIVE |
+| CLAIM-DIAGNOSTICS-CANNOT-BREAK-CLAIM | absent or throwing ledger leaves the claim decision unchanged | LIVE |
+| CLAIM-PANELS-NEVER-COUNT | panels do not claim, so one cause is not multiplied by panel count | LIVE |
+| CLAIM-RETRY-SETTLES | a 409-kicked claim retries once and settles | LIVE |
+| CLAIM-RETRY-STILL-HAPPENS | the release-race retry still issues a second request | LIVE |
+| CLAIM-GATED-FETCH-SETTLES | a gated `/api/sessions/N/state` fetch settles rather than hanging | LIVE |
+| NC-RETRY-DEADLOCK-RESTORED | with `CLAIM-RETRY-DEADLOCK-FIX` killed the promise stays pending — the negative control reproduces the defect | LIVE |
+| NC-OWN-REALM-PREDICATE | non-climbing switch ignores a host-side flip | LIVE |
+| NC-DROP-401-COUNT | removing the 401 count makes the class silent again | LIVE |
+| NC-COUNT-BLOCKED-READS | counting blocked reads instead of the claim storms the ledger | LIVE |

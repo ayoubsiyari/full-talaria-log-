@@ -222,6 +222,56 @@
         showBlockedOverlay(detail || { code: 'chart_window_kicked', message: KICKED_MESSAGE });
     }
 
+    /**
+     * Realm-climbing truthiness read (B-0185): this module loads in the host AND in
+     * every panel iframe, so a switch the PO types on the page in front of him must
+     * be visible from the panel realm or the control is inert.
+     */
+    function talariaDisableFlagTruthy(flagName) {
+        var killed = function (w) {
+            try {
+                return !!(w && w[flagName]);
+            } catch (_e) {
+                return false;
+            }
+        };
+        if (killed(window)) return true;
+        try {
+            var parent = (window.parent && window.parent !== window) ? window.parent : null;
+            if (killed(parent)) return true;
+            var top = (window.top && window.top !== window && window.top !== parent)
+                ? window.top
+                : null;
+            if (killed(top)) return true;
+        } catch (_e) { /* parent chain unreachable; own-realm read above stands */ }
+        return false;
+    }
+
+    /**
+     * Count a failed claim into the support passport's failed-write ledger.
+     *
+     * Why the claim and not the fetches it blocks: a claim that does not succeed makes
+     * `ensureClaimed()` resolve false, and the fetch patch then answers every gated URL
+     * (/api/file/*, /api/sessions/N/state) with a synthetic 409 that never reaches the
+     * network. Nothing in the product says so, no server log records it, and the chart
+     * simply has no data — the same silent shape as the prefs 500. The claim is a POST,
+     * so a non-OK claim genuinely is a failed server write; the blocked reads downstream
+     * are consequences and counting each of them would storm the counter.
+     *
+     * Kill: window.__TALARIA_DISABLE_CLAIM_FAILURE_LEDGER_V1 (climbing).
+     */
+    function noteClaimFailure(status) {
+        if (talariaDisableFlagTruthy('__TALARIA_DISABLE_CLAIM_FAILURE_LEDGER_V1')) return;
+        try {
+            if (typeof window.__talariaNoteServerWriteFailure === 'function') {
+                window.__talariaNoteServerWriteFailure(
+                    '/api/chart/windows/claim',
+                    Number(status) || 0
+                );
+            }
+        } catch (_e) { /* diagnostics must never break the claim path */ }
+    }
+
     function heartbeat() {
         if (apiUnavailable || !clientId || window.__talariaChartWindowBlocked) return;
         if (!shouldClaim()) return;
@@ -251,6 +301,32 @@
         }).catch(function () { /* ignore transient */ });
     }
 
+    /**
+     * Issue one claim request. Split out from `claim()` so the release-race retry can
+     * make a FRESH request.
+     *
+     * The bug this removes: the retry used to call `claim(true)`, which hit the
+     * single-flight guard (`claimInFlight` is still true while we are inside the
+     * handler) and returned `claimPromise` — the very chained promise whose resolution
+     * that handler was computing. A promise awaiting its own descendant never settles,
+     * and this is not the self-resolution case the spec detects, so it does not even
+     * reject. `ensureClaimed()` then hands that permanently-pending promise to the fetch
+     * patch, and every gated URL (`/api/file/*`, `/api/sessions/N/state`) hangs forever
+     * with no error, no console line and no server log — the chart just has no data.
+     * It needs a 409 with a kicked detail on the first claim, which is what a reload or
+     * a second window produces before the old window's release lands, so it fires on
+     * some loads and not others.
+     *
+     * Kill: window.__TALARIA_DISABLE_CLAIM_RETRY_DEADLOCK_FIX_V1 (climbing) restores the
+     * self-referential retry.
+     */
+    function sendClaim(isRetry) {
+        if (talariaDisableFlagTruthy('__TALARIA_DISABLE_CLAIM_RETRY_DEADLOCK_FIX_V1')) {
+            return sendClaimRequest(isRetry, function () { return claim(true); });
+        }
+        return sendClaimRequest(isRetry, function () { return sendClaim(true); });
+    }
+
     function claim(isRetry) {
         if (!shouldClaim()) {
             return Promise.resolve(true);
@@ -258,8 +334,16 @@
         if (apiUnavailable) return Promise.resolve(true);
         if (claimInFlight && claimPromise) return claimPromise;
         claimInFlight = true;
+        claimPromise = sendClaim(!!isRetry).then(function (ok) {
+            claimInFlight = false;
+            return ok;
+        });
+        return claimPromise;
+    }
+
+    function sendClaimRequest(isRetry, retryOnce) {
         clientId = getOrCreateClientId();
-        claimPromise = fetch('/api/chart/windows/claim', {
+        return fetch('/api/chart/windows/claim', {
             method: 'POST',
             credentials: 'include',
             headers: { 'Content-Type': 'application/json' },
@@ -273,12 +357,16 @@
                     if (!heartbeatTimer) {
                         heartbeatTimer = setInterval(heartbeat, HEARTBEAT_MS);
                     }
+                    // Deliberately does NOT clear the failed-write ledger: that record is
+                    // shared with the preferences write path, and a healthy claim is no
+                    // evidence that saving settings works.
                     return true;
                 }
                 if (res.status === 409) {
                     var detail = parseDetail(res, data);
                     // Legacy block-new response — treat as kicked/takeover UX.
                     if (detail.code === 'chart_window_limit') {
+                        noteClaimFailure(res.status);
                         handleKicked({
                             code: 'chart_window_kicked',
                             message: detail.message || KICKED_MESSAGE,
@@ -286,27 +374,35 @@
                         return false;
                     }
                     if (isKickedDetail(detail) && !isRetry) {
-                        // Unexpected on claim; retry once after release race.
-                        return claim(true);
+                        // Unexpected on claim; retry once after release race. Not counted —
+                        // the retry's own outcome is the one worth reporting.
+                        return retryOnce();
                     }
+                    noteClaimFailure(res.status);
                     handleKicked(detail);
                     return false;
                 }
-                if (res.status === 401) return false;
+                if (res.status === 401) {
+                    // Fails CLOSED: every gated fetch now gets a synthetic 409 without
+                    // touching the network, so the chart has no data and no server log
+                    // records why. Counted so the passport says so.
+                    noteClaimFailure(res.status);
+                    return false;
+                }
                 if (res.status === 404 || res.status === 405) {
                     markApiUnavailable(res.status);
+                    noteClaimFailure(res.status);
                     return true;
                 }
                 // Soft-fail: do not brick chart on unexpected server errors during bootstrap.
+                noteClaimFailure(res.status);
                 return true;
             });
         }).catch(function () {
+            // No response at all (offline, DNS, abort). Status 0 = "never answered".
+            noteClaimFailure(0);
             return true;
-        }).then(function (ok) {
-            claimInFlight = false;
-            return ok;
         });
-        return claimPromise;
     }
 
     function ensureClaimed() {
