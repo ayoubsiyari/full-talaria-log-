@@ -1,0 +1,101 @@
+{
+  "packet": "W91",
+  "manager": "C",
+  "tier": "mid",
+  "model": "claude-opus-5-thinking",
+  "title": "The renderer's off-thread majority is V8 garbage collection, not raster and not compositing",
+
+  "instrument": {
+    "signature": "CPU-PROCESS-CENSUS-V1",
+    "file": "scripts/cpu-process-census.mjs",
+    "canSee": [
+      "CPU% per Chrome process from SystemInfo cpuTime deltas over a fixed window — category-independent ground truth",
+      "per-thread busy time by MERGED slice coverage (overlaps counted once) and per-event SELF time (a wrapper cannot absorb its children), with process names, so threads bucket into roles across processes"
+    ],
+    "cannotSee": [
+      "work the enabled trace categories do not instrument. Coverage is stated per arm below and it is PARTIAL: renderer-thread trace time covers 71% of the renderer's process CPU at four panels and 38% at single-chart replay. The shares within the trace are the finding; the uninstrumented remainder could move them.",
+      "the PO's core count, so shares travel and absolute percentages are indicative"
+    ],
+    "ownCost": "the tracing service itself consumed 34-52% of a core during traced arms. It is a separate process, excluded from renderer figures, and disclosed rather than netted out.",
+    "settleProtocol": "boot, arm replay in every frame, 5s run-in, then a fixed 10s trace window with no interaction inside it"
+  },
+
+  "the_answer_A_needs": {
+    "question": "is the off-thread majority raster, compositing, or JavaScript",
+    "verdict": "NEITHER RASTER NOR COMPOSITING. It is V8 garbage collection on the thread pool, driven by JavaScript allocation rate.",
+    "four_panel_replay_60x": {
+      "processLevel": { "pageRenderer": 194.3, "gpuProcess": 13.8, "browser": 17.7, "tracingServiceOwnCost": 34.0 },
+      "threadRoles": {
+        "renderer-threadpool": { "percentOfCore": 73.2, "shareOfTracedTotal": 50.6, "threads": 23 },
+        "renderer-main-js-and-layout": { "percentOfCore": 61.3, "shareOfTracedTotal": 42.4 },
+        "gpu-process-main": { "percentOfCore": 5.0, "shareOfTracedTotal": 3.5 },
+        "renderer-compositor": { "percentOfCore": 3.0, "shareOfTracedTotal": 2.0 },
+        "gpu-viz-compositor": { "percentOfCore": 1.2, "shareOfTracedTotal": 0.8 },
+        "renderer-raster": "ABSENT — no CompositorTileWorker thread appears at all"
+      },
+      "what_the_threadpool_is_doing_by_self_time_ms": {
+        "V8.GC_SCAVENGER_BACKGROUND_SCAVENGE_PARALLEL": 8376.7,
+        "V8.GC_MC_BACKGROUND_MARKING": 2023.7,
+        "ThreadPool_RunTask": 533.8,
+        "V8.GC_MC_BACKGROUND_SWEEPING": 429.0,
+        "reading": "10.8 seconds of GC self time inside a 16.05s window across 23 threads. Scavenger-dominated, which is young-generation collection: enormous numbers of SHORT-LIVED objects, not a growing old generation."
+      },
+      "what_the_main_thread_is_doing_by_self_time_ms": {
+        "FunctionCall": 6822.4,
+        "V8.GC_SCAVENGER_SCAVENGE_PARALLEL": 850.6,
+        "V8.GC_SCAVENGER_SCAVENGE_PARALLEL_PHASE": 546.7,
+        "LocalFrameView::performLayout": 140.6,
+        "reading": "the main thread is JavaScript plus more GC. Layout is 141 ms of roughly 9,800 ms busy — about 1.4%."
+      }
+    },
+    "single_chart_replay_60x": {
+      "processLevel": { "pageRenderer": 118.0, "gpuProcess": 43.0, "browser": 27.5 },
+      "threadRoles": {
+        "renderer-main-js-and-layout": 34.6,
+        "gpu-process-main": 9.8,
+        "renderer-compositor": 5.1,
+        "renderer-threadpool": 4.7,
+        "gpu-viz-compositor": 2.0
+      },
+      "mainThreadTopSelfMs": { "FunctionCall": 5171.1, "LocalFrameView::performLayout": 631.3, "PaintArtifactCompositor::Update": 570.7, "Paint": 537.9 },
+      "gpuMainTopSelfMs": { "RasterDecoderImpl::DoRasterCHROMIUM::Deserializing": 812.7, "SkiaOutputSurfaceImplOnGpu::FinishPaintRenderPass": 491.9, "RasterDecoderImpl::DoEndRasterCHROMIUM::Flush": 459.4 },
+      "reading": "at one chart the raster path IS visible — it is the GPU process main thread at 9.8% of a core — but it is an order below JavaScript on the main thread"
+    },
+    "idle_arm": {
+      "processLevel": { "pageRenderer": 23.7, "browser": 18.1, "gpuProcess": 7.1 },
+      "mainThreadPercent": 9.2,
+      "topSelfMs": { "FunctionCall": 414.9, "Commit": 71.2, "LocalFrameView::performLayout": 61.4 },
+      "reading": "the idle floor is JavaScript too, and 23.7% renderer corroborates my earlier 22.68% idle measurement on a different instrument"
+    },
+    "so_the_fix_is": "LESS JAVASCRIPT ALLOCATION in the replay tick path — fewer short-lived objects per tick. NOT fewer DOM nodes (layout is 1.4% of the main thread) and NOT fewer canvas surfaces (raster and compositing together are under 10% of a core in both arms)."
+  },
+
+  "i_am_correcting_my_own_earlier_breakdown": {
+    "what_I_said_in_W74_W78": "the off-thread ~62pp was raster plus per-frame layout and style at ~124fps",
+    "what_this_census_says": "at four panels the off-thread majority is V8 background GC (73.2% of a core), raster is absent from the renderer entirely and the GPU process main thread is 5%. My earlier attribution named the wrong subsystem.",
+    "why_the_earlier_census_missed_it": "it was scoped to the tab's renderer threads and reported thread totals rather than per-event self time within the thread pool, so parallel GC was pooled with generic worker time"
+  },
+
+  "this_reconciles_with_the_11_20_finding": {
+    "director_finding_1": "~213 MB of the heap was uncollected garbage, and A measured GC overhead at 0.258%",
+    "how_it_fits": "0.258% is main-thread GC PAUSE time, which is genuinely small. The cost is not on the main thread: it is 73% of a core of PARALLEL BACKGROUND collection. Allocation is enormous, main-thread pauses are cheap, background CPU is not, and the floor stays high between collections. All three observations are the same mechanism seen from three sides.",
+    "consequence": "allocation rate is now a CPU defect as well as a memory one, which raises its priority above both DOM and canvas work"
+  },
+
+  "gpu_monotonic_question_pre_answer": {
+    "note": "asked ahead of the GPU monotonic question, so stating what this run already shows",
+    "gpu_process_cpu": "43.0% at single-chart replay, 13.8% at four panels — it went DOWN as panels went up, because the main thread became the bottleneck and produced fewer frames to raster",
+    "implication": "GPU process load here is frame-rate-driven, not chart-count-driven, which is consistent with W90's finding that GPU process MEMORY is near-fixed per panel"
+  },
+
+  "node_census_status_stays_first": {
+    "controlled_session_reload_test": "IN PROGRESS, one load landed of five",
+    "load_1": { "elements": 2483, "nodesBeforeGc": 13792, "nodesAfterGc": 7412, "documents": 4, "listeners": 1504, "jsHeapAfterGcMB": 64.71, "uncollectedAtReadMB": 33.9 },
+    "two_things_this_already_shows": [
+      "the node counter FELL from 13,792 to 7,412 under a forced collection — 46% of it was uncollected detached nodes, the same artefact named in W89. Any session-to-session node comparison must be taken after a forced collection or it measures collection timing.",
+      "33.9 MB of the JS heap at read time was uncollected garbage on my surface too, which is the 11:20 Finding 1 mechanism reproduced at smaller scale"
+    ],
+    "blocker": "repeated in-tab navigation to the chart wedged the renderer on load 2: page.evaluate stopped responding and the readiness poll blocked. That is either a harness bootstrap race or the session-reload degradation itself — I will not claim which without evidence. Reworking the reload path to drive the app's own session switch rather than a full navigation.",
+    "why_that_matters": "if repeated in-tab loads reliably wedge this renderer, that is itself a finding adjacent to the Director's hypothesis, but it needs a clean reproduction before it is stated as one"
+  }
+}
