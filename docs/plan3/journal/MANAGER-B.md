@@ -4709,3 +4709,54 @@ single served image can exceed 4 MB decoded, so no combination of user actions c
 **Still open:** the 11:20 finding refutes DevTools inflation, so the "upper bound because
 DevTools was open" caveat I added to the disclosure draft this morning is wrong and needs
 withdrawing. That is next.
+
+## B-0202 — four A fixes plus D's whole lane onto the wire as b112
+
+**2026-07-30 13:10 dispatch · shipped 20260730b112**
+
+Disclosure draft abandoned mid-edit on the 12:40 ruling. Nothing was committed from it.
+
+**One correction to the routing, which changes what item 1 actually was.** The dispatch
+named `684e3e5cb` as "the countdown null guard, P0, missed b105 through b111". Two facts:
+
+- `684e3e5cb` is **test-only** — 44 lines added to `tf-downshift-anchor.test.mjs`. It is
+  the third commit of A's TF-downshift trio, not a countdown fix. Cherry-picked alone it
+  would have failed, because the test file it extends did not exist at my tip.
+- **The countdown null guard has been live since b109.** I verified it on the b111 wire
+  rather than from the tree: two occurrences of
+  `__TALARIA_DISABLE_COUNTDOWN_NULL_GUARD_V1` in the served `chart.js` with the guarded
+  `completedRawCandles` loop present. It shipped as `8f3af1aa3`, whose patch is
+  byte-equivalent to `e1d839ce1` on A's branch. It did not miss seven builds.
+
+The confusion is explicable: the branch is called `ship-b105-countdown-tf` and carries
+both packets. What was genuinely unshipped is the **TF-downshift trio**, which I confirmed
+by grepping the wire for the anchor and getting zero. So item 1 became the three commits
+that make up that packet: `a12edcd43` (right-edge anchor uses bar period-end),
+`4d2189c51` (heal empty recovery blocked by the anchor lock — the PO's 13-bar blank),
+`684e3e5cb` (the restore/barsOnScreen recenter cell). Gate 19/19.
+
+**Then the rest of the order, in the order given.**
+
+- `65164a11a` MC-INCREMENTAL-RAWDATA-COPY — 10/10. `__TALARIA_DISABLE_MC_INCREMENTAL_RAWDATA_COPY_V1`.
+- `8587c9821` REPLAY-RESEED-INCREMENTAL — 16/16. `__TALARIA_DISABLE_REPLAY_RESEED_INCREMENTAL_V1`.
+  Shipped in the same build as the clone cut, as instructed: A's own note says the reseed
+  site jumps from 125 MB to 995 MB and becomes the top allocation site once the deep clone
+  is disabled, so shipping the clone cut alone relocates the cost rather than removing it.
+- `da5326655` LABEL-HANDLE-WIPE — 26/26. `__TALARIA_DISABLE_LABEL_HANDLE_WIPE_V1`.
+
+**D's lane merged.** `manager-d/trade-correctness`, 9 commits, one conflict — D's own
+journal — resolved in D's favour. All seven of D's gates GREEN canonically and all seven
+GREEN in the homepage mirror, run the way D's handoff specifies (directly, not under
+`node --test`, which collapses them to one cell and hides the result). Note the gate D
+listed as `order-cross-timeframe-...` is actually
+`cross-timeframe-current-price-coherence.test.mjs`, without the prefix.
+
+**A mirror drift was sitting in `order-manager.js` and the merge closed it.** The merge
+diffstat showed +290 canonical against +354 mirror, which is the signature of the served
+copy being behind. Both files are now byte-identical at 50,783 lines. That is worth
+recording because the mirror is what nginx serves: D's money-path fixes were partly not on
+the served copy.
+
+**Regression sweep, 179 cells:** asset budget 10, screenshot cut 11, claim ledger 26,
+M17-DI2 21, legend CSS 9, prefs cap 15, write ledger 26, TF-downshift 19, realm teardown 42.
+All three changed product files mirror-identical.
