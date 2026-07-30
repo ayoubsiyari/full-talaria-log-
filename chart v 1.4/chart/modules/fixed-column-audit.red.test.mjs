@@ -32,18 +32,14 @@ function preloadKill(windowAssign) {
   return file;
 }
 
-test('AUDIT: duration suite stays GREEN when kill is preloaded (decoration)', () => {
-  const pre = preloadKill('{ __TALARIA_DISABLE_TRADE_DURATION_NORM_V1: true }');
+test('AUDIT: TAL-01896 duration RED file fails under kill (GATE-01)', () => {
   const r = runNode([
-    '--require',
-    pre,
-    '--test',
-    join(ROOT, 'chart v 1.4', 'talaria-design', 'src', 'orderManagerTradeRows.test.mjs'),
+    join(ROOT, 'chart v 1.4', 'talaria-design', 'src', 'orderManagerTradeRows.red.test.mjs'),
   ]);
   assert.notEqual(
     r.status,
     0,
-    'EXPECTED RED: duration suite must fail under kill; still GREEN ⇒ TAL-01896 not fixed',
+    `EXPECTED RED: orderManagerTradeRows.red.test.mjs must fail while duration-norm kill is ON (status=${r.status} out=${(r.stdout + r.stderr).slice(0, 200)})`,
   );
 });
 

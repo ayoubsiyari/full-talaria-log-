@@ -1,5 +1,10 @@
 # Manager D Journal
 
+## 2026-07-30 — keep moving after CKPT-01
+
+- TAL-01677 (Go-To session) + TAL-01733 (H-S19) → **owner-blocked A** (nav/harness, not money).
+- TAL-01896: added plain RED `orderManagerTradeRows.red.test.mjs` (kill → `139271h` wall-clock bleed). Fixed-column audit now proves GATE-01 via that file (nested `--test` was swallowing exit codes). Ledger → `fixed`. Honest fixed **50**, D `broken` **0**.
+
 ## 2026-07-30 — SEL-01 user-path landing (post CKPT-01)
 
 - Checkpoint `ckpt/pre-d-money-conf01-d5b790e56` was already taken; kill-switch `__TALARIA_DISABLE_ORDER_SEL01_EXACT_TEARDOWN_V1` already on tip (FLAG-01/02/03 via existing RED cell).

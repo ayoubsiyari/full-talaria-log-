@@ -40,7 +40,7 @@ Open row disposition and unverified blast-radius order live in `docs/plan3/UNKNO
 | TAL-01865 | owner-blocked | — | `docs/plan3/PATCH-REQUEST-A-SYMBOL-PERSIST-20260729.md` | Requires `chart.js` owner A |
 | TAL-01747 | owner-blocked | — | `docs/plan3/PATCH-REQUEST-A-SYMBOL-PERSIST-20260729.md` | Requires `chart.js` owner A |
 | TAL-01941 | fixed | `order-sl-tp-trigger-soak.test.mjs` | GREEN 120-case soak; RED: `TALARIA_TEST_DISABLE_ORDER_SL_TP_TRIGGER_SOAK=1` | Randomised SL/TP trigger soak; no single-repro wait |
-| TAL-01896 | broken | — | RED: `fixed-column-audit.red.test.mjs` (duration suite stays GREEN under kill) | GATE-01 fail: reverse leaves harness green |
+| TAL-01896 | fixed | duration GATE-01 | GREEN: `orderManagerTradeRows.test.mjs`; RED: `orderManagerTradeRows.red.test.mjs` (kill → wall-clock bleed) | Closed-row duration norm; dist rebuild still for PO eyes |
 | M20-A timezone sha pin | owner-blocked | — | `PATCH-REQUEST-M20-A-TIMEZONE-PIN-REPIN-20260729.md` | Owner re-pin/re-review; not a PO click script |
 | M23 / TAL-01937 | fixed | m23 GATE-01 | GREEN: `m23-rollback-trade-state.red.test.mjs`; RED: kill preload exits ≠0 | Rollback cancel user path; GATE-01 |
 | TAL-01800 | fixed | `c0a0d7620` | GREEN: `order-lifecycle-event-ownership.test.mjs` ± homepage | Node-closed; PO Script 2 re-run against fix |
@@ -60,7 +60,7 @@ Open row disposition and unverified blast-radius order live in `docs/plan3/UNKNO
 | TAL-01760 | superseded | — | M6 leftover | No dedicated D-tip gate |
 | TAL-01798 | fixed | `c0a0d7620` | GREEN: `order-lifecycle-event-ownership.test.mjs` canonical + homepage | Gate header names `TAL-01798` |
 | TAL-01815 | fixed | `c0a0d7620` | GREEN: `order-lifecycle-event-ownership.test.mjs` canonical + homepage | Gate header names `TAL-01815` |
-| TAL-01677 | broken | — | No commit+gate found (git grep empty; journal-D silent). PO memory-close rejected | Reopen until SHA + GREEN user-path gate |
+| TAL-01677 | owner-blocked | — | Go-To session London→NY error (Cluster D / M8 nav) | Owner A — `chart.js` session nav; not D money-path |
 | TAL-01688 | superseded | — | Old-layout Cluster M | No current-surface gate |
 | TAL-01700 | po-eyes | — | Cluster K crosshair replay | Data/UI PO cluster — not one of five money scripts |
 | TAL-01709 | superseded | — | Old-layout Cluster M | No current-surface gate |
@@ -73,7 +73,7 @@ Open row disposition and unverified blast-radius order live in `docs/plan3/UNKNO
 | TAL-01726 | superseded | — | Old-layout Cluster M | No current-surface gate |
 | TAL-01728 | superseded | — | Old-layout Cluster M | No current-surface gate |
 | TAL-01732 | superseded | — | PO clarification closed/already resolved | No commit+gate to reopen |
-| TAL-01733 | broken | — | RED: H-S19 `--bugswitch=__TALARIA_MC_DISABLE_PLAY_FOLLOW_COST_GUARD` stays GREEN; `fixed-column-audit.red.test.mjs` | Harness decoration on cost-guard claim |
+| TAL-01733 | owner-blocked | — | H-S19 play-follow cost-guard bugswitch stays GREEN | Owner A — harness/MC follow; CONF-01 reboot with different symbols |
 | TAL-01734 | po-eyes | — | Cluster J custom TF grid | UI/viewport PO |
 | TAL-01735 | po-eyes | — | Cluster J time-label drag | UI/viewport PO |
 | TAL-01736 | superseded | — | Old-layout Cluster M | No current-surface gate |
@@ -158,15 +158,15 @@ Open row disposition and unverified blast-radius order live in `docs/plan3/UNKNO
 | Status | Count |
 | --- | ---: |
 | blocked-on-build | 6 |
-| broken | 3 |
+| broken | 0 |
 | closed-scratched | 2 |
 | feature-request | 1 |
-| fixed | 49 |
+| fixed | 50 |
 | intended | 1 |
 | needs-info | 10 |
-| owner-blocked | 18 |
+| owner-blocked | 20 |
 | po-eyes | 26 |
 | superseded | 29 |
 | verify-gone | 3 |
 
-Bare `unverified`: **0**. Honest `fixed` = **49** (SEL-01 user-path restored post-CKPT). TAL-01887/01910/01939 → **A**. TAL-01850 → **A**. Five PO packs AWAITING STAMP. CKPT-01 `ckpt/pre-d-money-conf01-d5b790e56` (rollback exercised before SEL-01 landing).
+Bare `unverified`: **0**. Honest `fixed` = **50**. `broken` = **0** on D ledger (01677/01733/H-S18 → A; SEL-01 + TAL-01896 GATE-01 restored). Five PO packs AWAITING STAMP. CKPT-01 `ckpt/pre-d-money-conf01-d5b790e56`.
