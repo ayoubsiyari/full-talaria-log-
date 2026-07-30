@@ -4992,3 +4992,65 @@ Repo and live are back to parity; both switch snapshots refreshed from the curre
 neither can carry a stale revert. Territory position unchanged from B-0204:
 `homepage/nginx.local.conf` and its gate remain unowned, the 29 July verbal grant still unrecorded
 in `TERRITORY.yml`, and the harness files are still A's. Disclosed, not hidden.
+
+---
+
+## B-0206 — B4: half the served chart tree is the regression harness. Cut, gated, not deployed.
+
+**Two of the three things B4 asked me to remove were already gone.** Measured inside the running
+b113 homepage image, not inferred from the repo: **0** `node_modules` directories and **0** `.map`
+files in the served tree. The root `.dockerignore` already excludes `**/node_modules`, and every
+one of the 1,120 `.map` files in the worktree lives under the harness's own `node_modules`, so
+both leave with it. `frozen/` exists exactly once, inside the harness tree. So the dispatch's
+three named items are worth **0 bytes** in the image, and saying so is more useful than shipping
+an exclusion that removes nothing.
+
+**What is actually there.** The served `/chart/` tree is 36,287,273 bytes. Of that:
+
+| | bytes | files |
+|---|---:|---:|
+| `multichart-prod/harness/` (gate logs, evidence JSON, `scenarios.mjs`) | 15,549,219 | — |
+| colocated `*.test.mjs` | 2,340,833 | 139 |
+| `*.bak` / `*.backup` | 911,015 | 4 |
+| **total strippable** | **18,618,299** | |
+
+That is **51% of the served chart tree**, shipped to every browser's script cache and carried on
+every cold load. It also reconciles the Director's ~32 MB script-cache figure: about half of it
+was never product code.
+
+**Safety established by instrument, not by reading the code.** I collected every distinct
+`/chart/*` path requested on the live canary — 132 of them, and the window covers a real
+multichart session (`chart-embed.html`, `embed-bridge.js`, `panel-cmd-bridge.js`, `sync-bridge.js`
+all appear), which is the realm where a harness reference would plausibly hide. Applied the strip
+to a copy of the real served tree: **0 of 132 broke**. Manifest retained as evidence and the gate
+asserts no served path can match a strip pattern, so a future production reference to a
+`*.test.mjs` goes RED at commit time instead of 404ing in a canary.
+
+**The strip script caught my own error, which is the argument for guards that fail loudly.** My
+first version demanded `modules/multichart-manager.js` survive. It refused on the real tree —
+because that path is answered by a **307** to `multichart-prod/multichart-manager.js` and was
+never in the static tree at all. A fixed "these must exist" list is wrong the moment two images
+lay the tree out differently. Rewritten as an invariant: whatever was an entry point before the
+strip must be one after. Mutation-tested — over-deleting `multichart-prod`, and deleting `*.js`
+instead of `*.test.mjs`, both refuse; a wrong root refuses and deletes nothing.
+
+**CKPT-01 position, stated precisely.** The kill-switch is a build arg,
+`STRIP_NONSERVED_CHART_ASSETS`, and I built **both arms for real** rather than reasoning about
+them: default gives 36,287,273 -> 17,611,630 bytes with harness gone and entry points intact;
+`=0` gives the full 36,287,273 with the harness present. The revert needs no file edit. Retained
+artifact and exercised rollback are the b113 images already covered by
+`ckpt/pre-nginx-sessionstate-buffer-20260730b113`.
+
+**Deliberately not deployed.** This needs a rebuild, and rebuilding moves the wire while C is
+grading b113 — `DEPLOY-02`. It rides the next build, which is coming anyway for A's landing.
+Judged and taken alone under `AUTH-01`; the Director is not being asked.
+
+**Territory, disclosed.** `homepage/Dockerfile` and `.dockerignore` are **unowned** — preflight
+says a Director grant is required and no manager owns them. Same manifest gap as
+`homepage/nginx.local.conf`. B4 is in my dispatch so the work is authorised; the manifest has not
+caught up, and I am not stopping for it. `TERRITORY.yml` needs three entries: the two build files
+and `homepage/nginx.local.conf`.
+
+**Not done:** the trading-chart image (`Dockerfile.local`) serves the same paths as an nginx
+fallback and is unstripped. Harmless — a fallback request for a stripped path still resolves — but
+it is the same ~18 MB in a second image. Left for the next pass rather than changed unverified.

@@ -161,6 +161,20 @@ LABEL org.opencontainers.image.revision="${SOURCE_COMMIT_SHA}" \
 # Copy built static files
 COPY --from=builder /app/homepage/out /usr/share/nginx/html
 
+# Drop the parts of the served chart tree no browser requests: the multichart regression harness,
+# colocated *.test.mjs, and editor backups. Measured on the running b113 image: 36,127,529 ->
+# 17,509,230 bytes, 51% of the served chart tree, with all 132 paths seen in the live access log
+# still resolving. Set STRIP_NONSERVED_CHART_ASSETS=0 to build the unstripped tree — that is the
+# revert, and it needs no file edit. The script fails the build if it removes an entry point.
+ARG STRIP_NONSERVED_CHART_ASSETS=1
+COPY deploy/strip-nonserved-chart-assets.sh /usr/local/bin/strip-nonserved-chart-assets.sh
+RUN chmod +x /usr/local/bin/strip-nonserved-chart-assets.sh \
+    && if [ "$STRIP_NONSERVED_CHART_ASSETS" = "1" ]; then \
+         /usr/local/bin/strip-nonserved-chart-assets.sh /usr/share/nginx/html/chart; \
+       else \
+         echo "strip: SKIPPED (STRIP_NONSERVED_CHART_ASSETS=$STRIP_NONSERVED_CHART_ASSETS)"; \
+       fi
+
 # Copy nginx config (static /chart/ + tile cache — see nginx.local.conf)
 COPY homepage/nginx.local.conf /etc/nginx/conf.d/default.conf
 COPY securty/nginx-security-headers.conf /etc/nginx/conf.d/security-headers.conf
