@@ -1,0 +1,72 @@
+diff --git a/chart v 1.4/chart/chart.js b/chart v 1.4/chart/chart.js
+index e1c7a2dea..7bb4dff06 100644
+--- a/chart v 1.4/chart/chart.js
++++ b/chart v 1.4/chart/chart.js
+@@ -4219,15 +4219,67 @@ class Chart {
+                 if (Number.isFinite(gen) && gen <= self._mcFinerPanelHostCommitGeneration) return;
+                 if (Number.isFinite(gen)) self._mcFinerPanelHostCommitGeneration = gen;
+                 self._applyFinerPanelHostCommit(detail);
+             };
+             parentWin.addEventListener('talariaMcHostDataCommit', this._mcFinerPanelHostCommitHandler);
+             this._mcFinerPanelHostCommitListenerInstalled = true;
++            // Nothing else ever removed this listener, so tie removal to this
++            // panel's own teardown. Both handlers below are created in this realm
++            // and die with it, unlike the one registered on the host above.
++            var release = function () { self._releaseFinerPanelSelfOwnerHostCommitListener(); };
++            window.addEventListener('pagehide', release);
++            window.addEventListener('unload', release);
++            // Lets the host release the panel explicitly on removeChart.
++            window.__talariaReleasePanelHostCommitListener = release;
+         } catch (_e) { /* ignore */ }
+     }
+ 
++    /**
++     * Kill-switch for the host-commit listener release (default ON). Set
++     * __TALARIA_DISABLE_MC_RELEASE_HOST_COMMIT_LISTENER_V1 on the panel or the
++     * host window to keep the old install-only behaviour. Read per call so it can
++     * be flipped live.
++     */
++    _mcReleaseHostCommitListenerEnabled() {
++        try {
++            if (window.__TALARIA_DISABLE_MC_RELEASE_HOST_COMMIT_LISTENER_V1) return false;
++            var parentWin = window.parent;
++            if (parentWin && parentWin !== window
++                && parentWin.__TALARIA_DISABLE_MC_RELEASE_HOST_COMMIT_LISTENER_V1) {
++                return false;
++            }
++        } catch (_e) { /* cross-origin host: treat as enabled */ }
++        return true;
++    }
++
++    /**
++     * REALM-TEARDOWN-RELEASE-HOST-COMMIT: drop the host window's reference to
++     * this panel.
++     *
++     * The handler is a closure created in this panel realm and registered on the
++     * HOST window, so while it stays registered the host pins this whole realm —
++     * every script source and compiled function survives iframe removal. Measured
++     * as the retainer for all nine peer realms across three cycles.
++     */
++    _releaseFinerPanelSelfOwnerHostCommitListener() {
++        if (!this._mcReleaseHostCommitListenerEnabled()) return false;
++        var handler = this._mcFinerPanelHostCommitHandler;
++        if (!handler) return false;
++        try {
++            var parentWin = window.parent;
++            if (parentWin && parentWin !== window) {
++                parentWin.removeEventListener('talariaMcHostDataCommit', handler);
++            }
++        } catch (_e) {
++            return false;
++        }
++        this._mcFinerPanelHostCommitHandler = null;
++        this._mcFinerPanelHostCommitListenerInstalled = false;
++        return true;
++    }
++
+     _applyFinerPanelHostCommit(detail = {}) {
+         if (!this._isMultichartEmbedPanel()) return;
+         if (detail.fileId != null && this.currentFileId != null
+             && String(detail.fileId) !== String(this.currentFileId)) {
+             return;
+         }

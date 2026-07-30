@@ -291,6 +291,18 @@ export async function runHeapCycleMemoryGate({
     // retains a whole panel realm does not always show in a floor delta, and a
     // floor delta cannot say whether the product or our inspector holds it.
     const gradedSnapshot = newestCycleSnapshot(snapshotOutPath);
+    if (snapshotOutPath && !gradedSnapshot) {
+      // A surface that takes snapshots and discards them leaves REALM-SURVIVAL-V1
+      // with nothing to grade. Silence there reads as a pass; say it instead.
+      cells.push({
+        name: 'REALM-SURVIVAL-V1',
+        pass: false,
+        status: 'RED',
+        detail: `a snapshot was requested at ${snapshotOutPath} but none was written, `
+          + 'so realm survival could not be graded on this surface',
+        blocking: true,
+      });
+    }
     if (gradedSnapshot) {
       const affordable = shouldGradeInProcess(process.memoryUsage().heapUsed);
       const cell = affordable

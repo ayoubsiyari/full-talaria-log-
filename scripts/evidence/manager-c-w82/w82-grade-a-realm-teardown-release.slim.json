@@ -1,0 +1,146 @@
+{
+  "packet": "W82",
+  "manager": "C",
+  "tier": "mid",
+  "tierWhy": "measurement + repair of my own instrument; no money path and no ship-gate review in this packet",
+  "subject": "GRADE A's REALM-TEARDOWN-RELEASE (8aba6c1ef / c289c05c1) on the ship surface",
+  "verdict": "PARTIAL: floor delta 24.56 -> 21.50 MB/cycle (-12.5%); panel B still retained by the same anchor. The leak is not dead.",
+  "build": "20260729b103 (deployed, carries the fix: served multichart-manager.js 77762 bytes, all five flag names present)",
+
+  "snapshotCeiling": {
+    "cyclesRun": 3,
+    "why": "3 cycles parses; 6 cycles dies above V8 max string length. Stated, not silently truncated.",
+    "deployedSnapshotBytesMB": [337, 337],
+    "localSnapshotBytesMB": [324, 400, 326, 402, 419],
+    "parsedWith": "node --max-old-space-size=14336",
+    "newCeilingFound": "23.7GB RAM box: grading a 400MB snapshot inside the gate drove free memory to 1GB and runs began swapping. Snapshots are now graded offline, serialized. Local snapshots are 400MB+ where deployed are 337MB, so the local surface is closer to the ceiling."
+  },
+
+  "q1_doesTheFloorDeltaCollapse": {
+    "answer": "NO — it drops about 12.5% and keeps climbing",
+    "sameBuildAB": {
+      "fixOn": { "disableFlagsObservedInPage": 0, "floorsMB": [105.46, 126.43, 148.46], "deltasMB": [20.97, 22.03], "steadyMeanMB": 21.5, "seMB": 0.53 },
+      "fixOff": { "disableFlagsObservedInPage": 5, "floorsMB": [102.5, 126.91, 151.62], "deltasMB": [24.41, 24.71], "steadyMeanMB": 24.56 }
+    },
+    "effect": "-3.06 MB/cycle, -12.5%",
+    "controlAgreesWithDirectorBaseline": "fix-OFF at 24.56 MB/cycle lands inside the 23-26 MB/cycle baseline, so the control reproduces the before-number rather than assuming it",
+    "gateCells": {
+      "HEAP-CYCLE-HEAP-FLOOR-BOUNDED": "RED meanHeapFloorDelta=24.4MB vs max 8MB",
+      "HEAP-CYCLE-STEADY-STATE-RETENTION": "retention CONFIRMED beyond noise: steadyMean=21.5MB/cycle se=0.53MB, still growing at tail",
+      "HEAP-CYCLE-DATASET-CONFIG": "GREEN 4/4 distinct every cycle",
+      "HEAP-CYCLE-PO-WORKLOAD-ARMED": "GREEN arms=3"
+    },
+    "deepReleaseActive": true,
+    "priorDeployedFloorsForContext": {
+      "w80-deep_preFix": { "floorsMB": [104.58, 126.39, 148.07], "deltasMB": [21.81, 21.68] },
+      "w81-deep_preFix": { "floorsMB": [102.77, 124.83, 121.17], "deltasMB": [22.06, -3.66] }
+    }
+  },
+
+  "q2_whichOfTheFiveMattered": {
+    "answer": "at most cuts 1 and 2 can matter; three of the five have nothing to call at collapse time",
+    "instrument": "RELEASE-TARGET-CENSUS (new this packet): reads each cut's hook at four-up, after the PO workload is armed, before collapse",
+    "deployedCensus": {
+      "cut1_dragGuard": { "hook": "_removeDragEndGuard", "present": true, "panels": "A,B,C,D" },
+      "cut2_hostOrderRegistries": { "hook": "orderManager._stripOrderDrawingLayersFromChart", "present": true },
+      "cut3_tfAbort": { "hook": "_timeframeFetchAbort", "present": false, "meaning": "no in-flight fetch at collapse, nothing to abort" },
+      "cut4_indicatorWorker": { "hook": "_disposeIndicatorWorker", "present": true, "indicatorWorkerSingletonLive": false, "meaning": "dispose has no live worker to terminate" },
+      "cut5_blobWorkerUrl": { "hook": "TalariaCustomIndicators.disposeWorker", "present": false, "meaning": "API absent on all four panels" }
+    },
+    "leaveOneOutOnShipSurface": {
+      "method": "disable exactly one cut, keep the other four active; one flag read back in the page per arm",
+      "arms": {
+        "allFiveDisabled_control": { "deltasMB": [24.41, 24.71], "meanMB": 24.56 },
+        "allFiveActive_fixOn": { "deltasMB": [20.97, 22.03], "meanMB": 21.5 },
+        "cut1_dragGuardDisabled": { "deltasMB": [22.39, 17.91], "meanMB": 20.15 },
+        "cut2_orderRegistriesDisabled": { "deltasMB": [21.87, 24.7], "meanMB": 23.29 }
+      },
+      "reading": "removing cut 2 returns the number to the control (23.29 vs 24.56). Removing cut 1 does not (20.15, no worse than the full fix). Cuts 3, 4 and 5 have no hook to call at all. So cut 2 — stripping the host orderManager graphic registries — carries the whole 12.5%, and the other four are dead weight on this build.",
+      "honestLimit": "n=1 per arm and within-run spread reaches 4.5 MB/cycle (cut1 arm: 22.39 then 17.91), which is larger than the 3.06 MB effect being attributed. The ordering is consistent and repeatable-looking but I would want three repeats per arm before calling the attribution settled."
+    },
+    "honestLimit": "the whole effect is 3.06 MB/cycle and single-run cycle-to-cycle spread is about 1.5MB, so attributing 3MB across arms needs 2-3 repeats per arm. One run per arm can only find a cut that carries most of it.",
+    "staticGrepWasWrong": "grepping deployed chart.js said cut2's strip function was absent; the live census found it present. Hook presence is a runtime property of the object graph, not of one file."
+  },
+
+  "q3_realmSurvivalV1": {
+    "fixOn": { "realmsFound": 6, "live": 1, "productRetained": 1, "inspectorRetained": 4, "verdict": "PEER-REALM-SURVIVES-TEARDOWN (FAIL)", "survivor": "cycle1/panelB" },
+    "fixOff": { "realmsFound": 6, "live": 1, "productRetained": 1, "inspectorRetained": 4, "verdict": "PEER-REALM-SURVIVES-TEARDOWN (FAIL)", "survivor": "cycle1/panelB" },
+    "anchorUnchanged": "Window [JSGlobalObject] -> property mainChart -> Chart -> property _mcHostCacheFileRefOwners",
+    "reading": "the gate exists so nobody argues about whether panel B is gone. It is not gone, and the fix did not change the path that holds it. The 12.5% came off something else."
+  },
+
+  "cdRace": {
+    "question": "is the intermittent C/D leak still present after the cut",
+    "observed": "in both deployed arms the only product-retained realm was panel B; C and D were not retained in either run",
+    "answer": "not observed in these two runs, which is not the same as fixed — two runs cannot retire an intermittent effect, and nothing in A's five cuts targets it",
+    "status": "still open, still the second phenomenon behind the constant one"
+  },
+
+  "newLeakNamedAndCut": {
+    "name": "REALM-TEARDOWN-RELEASE-HOST-COMMIT",
+    "mechanism": "each panel Chart registers a closure on the HOST window (parentWin.addEventListener('talariaMcHostDataCommit', handler)). The closure captures the panel Chart, so the host pins the whole panel realm — script sources and compiled code included — after the iframe is removed. No removeEventListener for that event existed anywhere in chart.js.",
+    "site": "chart v 1.4/chart/chart.js Chart._installFinerPanelSelfOwnerHostCommitListener",
+    "measuredAs": "the retainer path for all 9 of 9 surviving peer realms on the local dist-v9 surface, in both the fix-ON and control arms",
+    "presentOnDeployedToo": { "installSite": true, "registeredOnParent": true, "anyRemoval": false, "note": "same defect on the ship surface; not the dominant retainer there, where _mcHostCacheFileRefOwners holds panel B" },
+    "priorSighting": "same listener named in my W73 orphan-listener census: type talariaMcHostDataCommit, target Window, n=15 instances",
+    "cut": "release on the panel's own pagehide/unload, plus window.__talariaReleasePanelHostCommitListener so removeChart can release explicitly",
+    "killSwitch": "__TALARIA_DISABLE_MC_RELEASE_HOST_COMMIT_LISTENER_V1 (panel or host window, read per call)",
+    "tests": "scripts/tests/host-commit-listener-release.test.mjs — 4 invariants; mutant that drops the removeEventListener is killed",
+    "patchForA": "scripts/evidence/manager-c-w82/host-commit-listener-release.patch — one hunk, 52 added lines, verified with git apply --check against the HEAD blob. Not committed inside chart.js because that file carries about 24 hunks of somebody else's uncommitted work in this tree and CRLF-vs-LF noise across all 42k lines; committing it would sweep up their work.",
+    "liveVerification": {
+      "surface": "local dist-v9, cut ON by default, 3 cycles",
+      "floorsMB": [104.29, 134.72, 167.55],
+      "deltasMB": [30.43, 32.83],
+      "productRetained": 9,
+      "result": "the cut fired and the leak did not move: the finerPanelHostCommit listener path is GONE from the retainer output, and a second, independent path now holds all nine realms",
+      "honest": "floors unchanged at about 30 MB/cycle, so on this surface the listener was never the load-bearing retainer even though it was the shortest path"
+    }
+  },
+
+  "nextRetainerNamed": {
+    "name": "HOST-BAR-CACHE-PINS-PANEL-REALM",
+    "path": "object Object --property:put -> closure put --internal:context -> context files -> Map -> entry -> property tfs -> Map -> entry -> property bars -> Array -> element[0] -> a bar object -> __proto__ -> constructor -> the panel realm's NativeContext -> global_object",
+    "mechanism": "the host bar cache (files -> tfs -> bars) stores plain objects that were ALLOCATED INSIDE a panel realm. Each such object's prototype and constructor belong to that realm, so ONE cached bar pins the entire realm — roughly 20MB of script sources and compiled code.",
+    "sameShapeAs": "Chart._mcHostCacheFileRefOwners on deployed: a host cache holding a Map built in the panel realm. Two instances of one class of defect.",
+    "explainsPriorNullResult": "this is why the ten cache shots in W74 (several of them caps) never moved the rate: capping bounds how MANY bars the cache holds, but a single surviving bar still pins a whole realm. The mass that matters is not the cache, it is the realm the cache reaches.",
+    "cutShape": "either copy bars into host-realm objects on ingest (structuredClone or rebuild) so the cache never holds a foreign-realm object, or key the cache by realm and evict on removeChart",
+    "owner": "product-side; A. Not mine to cut tonight and not behind my flags."
+  },
+
+  "surfaceMismatch": {
+    "claim": "the local dist-v9 surface retains realms by a different mechanism, so it cannot grade the deployed panel-B leak",
+    "deployed": { "productRetainedPerRun": 1, "identity": "panel B", "anchor": "Chart._mcHostCacheFileRefOwners" },
+    "local": { "productRetainedPerRun": 9, "identity": "B, C and D every cycle", "anchor": "host window talariaMcHostDataCommit listener closure finerPanelHostCommit", "hostCacheFileRefOwnersPresent": false },
+    "localAB": {
+      "control": { "floorsMB": [101.89, 131.97, 162.13], "deltasMB": [30.08, 30.16], "productRetained": 9 },
+      "fixOn": { "floorsMB": [101.57, 132.41, 163.56], "deltasMB": [30.84, 31.15], "productRetained": 9 }
+    },
+    "consequence": "A's fix has no measurable effect locally because nothing in it targets the retainer that dominates there"
+  },
+
+  "metricReconciliation": {
+    "issue": "my W81 note said we now UNDER-read the PO at 0-9 MB/cycle against his ~13",
+    "correction": "that came from one noisy run (w81-deep second step at -3.66MB). On b103 the steady-state mean is 21.5 +/- 0.53 MB/cycle and the floor mean is 24.4MB, i.e. we read ABOVE the PO's ~13, not below.",
+    "twoMetrics": "floorMB delta (post-collapse floor) and the steady-state census delta measure different points in the cycle; quoting one as the other is what produced the apparent under-read."
+  },
+
+  "instrumentDefectsFoundAndFixed": [
+    {
+      "defect": "the dist-v9 dispatch in runHeapCycleBrowserSession dropped disableFlags, snapshotOutPath, steadyStateDiff, finalRetainerSnapshot, releaseConsole, ablateTerminateWorkers and datasetRotate",
+      "cost": "a six-run leave-one-out matrix came back as six copies of ONE configuration, the control included. All six agreed, which reads exactly like 'no cut mattered'.",
+      "whyItWasInvisible": "a dropped ablation and an ablation that changes nothing produce identical output",
+      "fix": "forward every option; install the flags in the dist-v9 session; read the flags back out of the page every cycle and record the count",
+      "test": "scripts/tests/heap-cycle-surface-dispatch.test.mjs — every measurement option must reach every surface dispatch; mutant killed"
+    },
+    {
+      "defect": "when a snapshot was requested but none was written, REALM-SURVIVAL-V1 emitted no cell at all",
+      "cost": "silence reads as a pass",
+      "fix": "an absent snapshot is now a blocking RED naming the path that was requested"
+    }
+  ],
+
+  "commands": [
+    "node scripts/heap-cycle-memory-gate.mjs --require-browser --deployed --json --cycles=3 --dataset-mode=distinct --timeframes=1m,1m,1m,1m --no-po-hand-sample --steady-state-diff --snapshot-out=<f> --out=<r> [--disable-flags=<one or five>]",
+    "node --max-old-space-size=14336 scripts/realm-survival-gate.mjs --snapshot=<f>.cycle3.heapsnapshot"
+  ]
+}

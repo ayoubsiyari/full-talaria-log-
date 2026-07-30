@@ -661,6 +661,56 @@ async function tagPanelRealms(page, cycle, observedRows = []) {
   return tags;
 }
 
+/** A's REALM-TEARDOWN-RELEASE kill-switches (default ON; set true to disable a cut). */
+export const MC_RELEASE_KILL_SWITCHES = Object.freeze([
+  '__TALARIA_DISABLE_MC_RELEASE_DRAG_GUARD_V1',
+  '__TALARIA_DISABLE_MC_RELEASE_ORDER_REGISTRY_V1',
+  '__TALARIA_DISABLE_MC_RELEASE_TF_ABORT_V1',
+  '__TALARIA_DISABLE_MC_RELEASE_INDICATOR_WORKER_V1',
+  '__TALARIA_DISABLE_MC_RELEASE_BLOB_WORKER_V1',
+]);
+
+/**
+ * Does each REALM-TEARDOWN-RELEASE cut have anything to call on this build?
+ *
+ * Every cut is guarded by `typeof fn === 'function'` inside a silent try/catch,
+ * so a cut whose hook is absent is a no-op that looks identical to a cut that
+ * ran and did not help. Read at four-up, before collapse.
+ */
+async function readReleaseTargets(page, cycle) {
+  const perPanel = [];
+  for (const panelId of HEAP_CYCLE_PANEL_IDS) {
+    const target = panelTarget(page, panelId);
+    if (!target) continue;
+    const row = await target.evaluate(() => {
+      const c = window.chart || null;
+      const ci = window.TalariaCustomIndicators || null;
+      return {
+        cut1DragGuard: typeof c?._removeDragEndGuard === 'function',
+        cut3TfAbort: !!c?._timeframeFetchAbort,
+        cut4DisposeIndicatorWorker: typeof c?._disposeIndicatorWorker === 'function',
+        cut5DisposeBlobWorker: typeof ci?.disposeWorker === 'function',
+        indicatorWorkerLive: !!c?._indicatorWorkerSingleton,
+      };
+    }).catch(() => null);
+    if (row) perPanel.push({ panelId, ...row });
+  }
+  const host = await page.evaluate((releaseFlags) => {
+    const om = window.chart?.orderManager || null;
+    return {
+      cut2OrderManager: !!om,
+      cut2StripFn: typeof om?._stripOrderDrawingLayersFromChart === 'function',
+      // The anchor named in W81/P8. No cut in this fix targets it.
+      hostCacheFileRefOwners: !!window.chart?._mcHostCacheFileRefOwners,
+      // Read the kill-switches back out of the page. A dropped disableFlags made
+      // an entire leave-one-out matrix read as six copies of one configuration.
+      disableFlagsObserved: releaseFlags.filter((f) => !!window[f]),
+    };
+  }, MC_RELEASE_KILL_SWITCHES).catch(() => null);
+  logHeapCycle(`cycle ${cycle}: release targets ${JSON.stringify({ host, perPanel })}`);
+  return { cycle, host, perPanel };
+}
+
 async function applyDatasetPlan(page, plan, { settleMs = 800, timeoutMs = 45_000 } = {}) {
   const hostPlan = plan.panels.find((p) => p.panelId === 'A');
   if (hostPlan) await applyHostDataset(page, hostPlan);
@@ -854,10 +904,17 @@ async function runDistV9Session({
   timeoutMs,
   settleMs,
   puppeteer,
+  disableFlags = [],
   datasetMode = HEAP_CYCLE_DATASET_MODE_DISTINCT,
   timeframes = HEAP_CYCLE_DISTINCT_TIMEFRAMES,
   datasetRotate = 0,
   releaseConsole = false,
+  // Without these the local surface takes steady-state snapshots and throws them
+  // away, so REALM-SURVIVAL-V1 has nothing to grade and silently emits no cell.
+  finalRetainerSnapshot = false,
+  snapshotOutPath = null,
+  steadyStateDiff = false,
+  ablateTerminateWorkers = false,
 }) {
   if (!fs.existsSync(DIST_INDEX)) {
     throw new Error(`dist-v9 missing at ${DIST_INDEX} — run npm run build:live in talaria-design`);
@@ -880,6 +937,7 @@ async function runDistV9Session({
   try {
     const page = await browser.newPage();
     page.setDefaultTimeout(Math.min(180_000, timeoutMs));
+    await installDisableFlags(page, disableFlags);
     // Required: seeds u1_backtestingSession so mode=backtest loads bars.
     await installBuiltProductBoot(page, {});
     const baseUrl = `${harness.url}/chart/dist-v9/index.html?mode=backtest`;
@@ -895,6 +953,7 @@ async function runDistV9Session({
       growthCensus,
       steadyStateCensus,
       realmTags,
+      releaseTargets,
       workerAblations,
       retainerPaths,
       baselineOut,
@@ -914,6 +973,11 @@ async function runDistV9Session({
         .map((_, i) => HEAP_CYCLE_DISTINCT_FILE_IDS[(i + (((datasetRotate % 4) + 4) % 4)) % 4]),
       datasetMode,
       timeframes,
+      finalRetainerSnapshot,
+      snapshotOutPath,
+      steadyStateDiff,
+      ablateTerminateWorkers,
+      releaseConsole,
       poWorkload: true,
     });
 
@@ -939,6 +1003,7 @@ async function runDistV9Session({
       growthCensus,
       steadyStateCensus,
       realmTags,
+      releaseTargets,
       workerAblations,
       retainerPaths,
       poWorkload,
@@ -997,6 +1062,8 @@ async function runMultichartCycles({
   const steadyStateSamples = [];
   /** Realm identity tags per cycle, so a retained realm can name itself. */
   const realmTags = [];
+  /** Which REALM-TEARDOWN-RELEASE cuts have a live hook to call, per cycle. */
+  const releaseTargets = [];
   const workerAblations = [];
   const effectivePlayHold = poHandSample
     ? Math.max(playHoldMs, 20_000)
@@ -1113,6 +1180,7 @@ async function runMultichartCycles({
         tags: await tagPanelRealms(page, index + 1, datasetConfig?.observed || []),
         activePanel: await readActivePanel(page),
       });
+      releaseTargets.push(await readReleaseTargets(page, index + 1));
     } else {
       await sleep(settleMs);
     }
@@ -1456,6 +1524,7 @@ async function runMultichartCycles({
     growthCensus,
     steadyStateCensus,
     realmTags,
+    releaseTargets,
     workerAblations,
     retainerPaths,
     baselineOut,
@@ -1887,6 +1956,7 @@ async function runDeployedSession({
       growthCensus,
       steadyStateCensus,
       realmTags,
+      releaseTargets,
       workerAblations,
       retainerPaths,
       baselineOut,
@@ -1968,6 +2038,7 @@ async function runDeployedSession({
       growthCensus,
       steadyStateCensus,
       realmTags,
+      releaseTargets,
       workerAblations,
       retainerPaths,
       poWorkload,
@@ -2021,5 +2092,19 @@ export async function runHeapCycleBrowserSession({
       datasetRotate,
     });
   }
-  return runDistV9Session({ cycles, timeoutMs, settleMs, puppeteer, datasetMode, timeframes });
+  return runDistV9Session({
+    cycles,
+    timeoutMs,
+    settleMs,
+    puppeteer,
+    disableFlags,
+    datasetMode,
+    timeframes,
+    finalRetainerSnapshot,
+    snapshotOutPath,
+    steadyStateDiff,
+    ablateTerminateWorkers,
+    releaseConsole,
+    datasetRotate,
+  });
 }
