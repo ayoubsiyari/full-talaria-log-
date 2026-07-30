@@ -1294,3 +1294,107 @@ packet by accident rather than damaging it, which is luck and not method.
 
 I am holding the annotated tag until the commit is derived, so it records a measured mapping rather
 than my inference.
+
+## 2026-07-30 15:30 — Three packets in. One of them overturned a row of mine.
+
+### GLOW-GC teeth `fdda39a3b` — ACCEPTED, and my GAP 1 was wrong
+
+Verified before grading: clean tree, exactly one commit, diff is the single test file,
+`order-manager.js` byte-identical in both copies, 16/16 green (was 13/13).
+
+**The author refused my GAP 1 and it was right to.** I had recorded that hoisting the reclaim above
+the twelve `selectAll(...).remove()` calls in `_sweepOrphanedOrderLevelDom` leaves the suite green
+with zero red cells, and called that a teeth gap. It is not a gap — it is an **equivalent mutant**,
+and the cell I specified would have gone RED on shipped code.
+
+I checked this myself rather than taking it. The twelve removes are level, badge and connector
+selectors. None of them can match `entry-marker-N`, `exit-marker-N` or `partial-close-marker-N-*`,
+which are the only nodes carrying an order-keyed `url(#…)`. The only substring matchers are
+`[class*="open-tp-pct"][class*="tp-${oid}"]` and the two helper-returned pending-TP selectors
+`[class*="pending-tp-pct"][class*="pending-tp-${oid}"]` and
+`[class*="pending-tp-delete"][class*="pending-tp-${oid}"]` — each requires a class pair no marker
+group carries. Positive control that my extraction sees real content: the **strip** seam references
+`entry-marker` 4x, `exit-marker` 2x and `partial-close-marker` 2x. So the reference set is identical
+either side of the removes, and position cannot matter. The author's measured table agrees exactly:
+shipped and A1-applied produce byte-identical defs before and after.
+
+Where the ordering *is* load-bearing is `_stripOrderDrawingLayersFromChart`, whose removes delete
+the marker groups and whose own comment says so. That is where the tooth went, as M10, and it kills
+via a named behavioural cell. A hoist there leaks all three defs permanently.
+
+So my row is corrected, not merely closed: a hovered order genuinely keeps its glows through its own
+per-order sweep, by design, and the chart strip is what reclaims them.
+
+**GAP 2 was real** and A5 now dies to a named cell. The author disclosed unprompted that it had to
+construct the configuration deliberately, because every live reference in production today has a
+same-svg copy — so the document-wide scan is defence-in-depth on a documented invariant rather than
+a shield against a reachable bug. I would rather have that stated than discovered later.
+
+**Two counting failures of my own in one hour, same shape.** My re-extraction found ten removes, not
+twelve, because two use helper-returned selectors my regex could not see; and my first grep for those
+helpers returned empty because I guessed the parameter name `oid` when it is `orderId`. Both caught
+only because my own empty-result rule made me run a control. The author's twelve was right and my ten
+was not.
+
+### Legend colour teeth `90ff7d95a` — ACCEPTED
+
+Clean tree, one commit, single test file, all four product copies untouched, 25 → 28 cells, green.
+
+Three of four survivors dead. The one that matters: **S1 was killed by the EXISTING C06**, the cell
+already named "CHEAT-CATCH: multi-tag row text and colour both follow the bar". It needed no new
+assertion — only a harness that varies what it claims to check. That is the cleanest possible proof
+of the diagnosis I filed: the cell was not missing, it was toothless, asserting colours at every bar
+against an expectation that never changed. Colour now derives from the bar through one shared
+function, modelling MACD histogram sign flips and RSI threshold bands, with `atr-1` held fixed as a
+control and `created === 0` asserted so the kill is proven to come from the span-reuse path.
+
+Survivor 4 refused, correctly. The shape marker is `'multi:' + tags.length` and every write path that
+changes the child count sets it in the same block, so the guard is unreachable from production and
+the only available kill is a test reaching in to corrupt children directly. Left as knowing
+defence-in-depth.
+
+**It corrected my standing rule, and narrowed it.** I have been recording that an in-suite mutant cell
+inflates every kill. The mirror **byte-identity** cell does *not*: a mutant is applied identically to
+both copies, so they stay identical and that cell stays green. Only the in-suite mutant-**runner**
+cell trips, and only on needle collision. The attribution rule stands; it protects against a narrower
+inflation than I claimed. Also my item 3 said C07 probes only `adx-1` — it probes `rsi-1` too, which
+contradicted my own correct description two paragraphs earlier in the same brief.
+
+### A1 parity oracle `eb8cf3164` — ACCEPTED, with a gap I caused
+
+Clean tree, one commit, two added files and nothing else, zero product modifications, 11/11 green,
+and the 18-row corruption table all RED with named checks. Three negative controls green, including
+a detached deep clone — value-equal, identity-different — which matters because the real fix will
+likely clone and must not be flagged for it. Allocate-before-trim is a genuine independent observable:
+492 element reads compute-then-copy versus 1440 allocate-then-trim, and `TRIM_AFTER_ALLOCATE` returns
+bar-for-bar correct data while firing that check and nothing else.
+
+Two of its own findings are worth keeping. A **transposition is invisible to the painted series**
+because the resampler re-sorts by `t` first, so only retained parity catches it — which is the
+concrete justification for checking stored and painted separately rather than treating one as a proxy.
+And it found a blind spot in its own oracle by attacking it: stringified numeric values survive every
+value comparison through coercion, so `CHK_RETAINED_NUMERIC_TYPE` now exists and is the only check
+that fires for that case. Its anti-vacuity guard also failed on the first run and caught a check that
+fired for nothing — the same CHEAT-CATCH pathology as the legend cell, found by the author on itself.
+
+**It corrected my brief and the correction is real: my base is BEHIND deployment.**
+`__TALARIA_DISABLE_RAF_PAINT_COALESCE_V1` and `__TALARIA_DISABLE_COUNTDOWN_NULL_GUARD_V1` are zero
+occurrences at `8587c9821` and present on b113, proven with a positive control on the same pattern.
+Both are paint/tooltip path, and the number that governs A1 is identical either side — 24
+`_panelFullRawData` assignment sites on both — so the base still stands for this packet. But this is
+the same stale-base failure I logged against myself this morning, arriving from the other direction,
+and I only learned it because the author checked instead of assuming.
+
+**The gap is mine, not the author's.** I found the `replay.fullRawData` aliasing trap *after*
+dispatching, and the oracle does not cover it: `_tryExtendReplayMasterFromParent` appears zero times,
+`alias` zero times, and the two arrays are never compared by identity. So a fix that slices
+`_panelFullRawData` while `replay.fullRawData` still holds the full master passes the oracle silently
+while per-panel memory goes **up**. Follow-up dispatched for a `CHK_TOTAL_RETAINED` that counts bar
+objects across both arrays de-duplicated by identity, an explicit aliasing-invariant assertion that
+permits breaking the share only if total retention falls, and an in-place-truncation corruption.
+
+**Host topology answered.** The author asked rather than assuming, correctly. Tile A is the host
+reusing `#chartWrapper`, so production at four panels is 1 host + 3 independent iframe peers, not 4
+independent peers. Its fifth-symbol scene is a strict superset and stays, but must be labelled so
+nobody reads it as the shipping topology — and the host is itself a `Chart` with its own
+`_panelFullRawData`, so A1 applies to it and it is not exempt.
