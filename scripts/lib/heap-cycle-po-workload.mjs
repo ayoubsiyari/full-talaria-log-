@@ -206,6 +206,14 @@ export async function armHeapCyclePoWorkload(page, {
   playHoldMs = 6_000,
   replaySpeed = 60,
   retainIndicators = false,
+  /**
+   * PO-exact reproduction needs two indicators per panel and NO order at all: the
+   * zero-trade run is the control that separates the bar-driven defect from the
+   * trade-driven one, and an order placed by the harness would destroy it. Defaults
+   * are unchanged so every existing gate arms exactly as before.
+   */
+  indicators = HEAP_CYCLE_PO_INDICATORS,
+  placeOrder = true,
 } = {}) {
   const perPanel = [];
   const frameById = new Map();
@@ -215,10 +223,10 @@ export async function armHeapCyclePoWorkload(page, {
     frameById.set(id, frame);
     // Prefer chartTarget when available (handles A host vs iframe).
     const target = chartTarget(page, id) || frame;
-    let row = await armPanelChart(target, { replaySpeed, retainIndicators });
+    let row = await armPanelChart(target, { replaySpeed, retainIndicators, indicators });
     if (!row.ok) {
       await sleep(200);
-      row = await armPanelChart(target, { replaySpeed, retainIndicators });
+      row = await armPanelChart(target, { replaySpeed, retainIndicators, indicators });
     }
     logPoWorkload(
       `arm panel ${id}: ok=${row.ok} ind=${row.indicatorCount} `
@@ -227,8 +235,12 @@ export async function armHeapCyclePoWorkload(page, {
     perPanel.push({ id, ...row });
   }
 
-  const order = await placeHostOrder(page);
-  logPoWorkload(`order ok=${order.ok} openCount=${order.openCount}`);
+  const order = placeOrder
+    ? await placeHostOrder(page)
+    : { ok: true, skipped: true, reason: 'zero-trade reproduction: no order placed', openCount: 0 };
+  logPoWorkload(placeOrder
+    ? `order ok=${order.ok} openCount=${order.openCount}`
+    : 'order SKIPPED (zero-trade reproduction)');
 
   let observedPlaying = 0;
   const playStarted = Date.now();

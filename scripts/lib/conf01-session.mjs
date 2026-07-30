@@ -213,6 +213,9 @@ export async function bootConf01Session({
   settleMs = 10_000,
   extraArgs = [],
   disableFlags = [],
+  /** PO-exact reproduction: two indicators per panel, no order. See armHeapCyclePoWorkload. */
+  indicators = null,
+  placeOrder = true,
 } = {}) {
   const origin = String(process.env.TEST_VPS_URL || DEFAULT_ORIGIN).replace(/\/$/, '');
   const email = String(process.env.TEST_EMAIL || '').trim();
@@ -314,6 +317,8 @@ export async function bootConf01Session({
       replaySpeed,
       playHoldMs: 8_000,
       retainIndicators: true,
+      ...(indicators ? { indicators } : {}),
+      placeOrder,
     });
   } catch (error) {
     // One retry after a longer wait; a failed arm is graded, never thrown, so the
@@ -325,6 +330,8 @@ export async function bootConf01Session({
       replaySpeed,
       playHoldMs: 8_000,
       retainIndicators: true,
+      ...(indicators ? { indicators } : {}),
+      placeOrder,
     }).catch((retryError) => ({
       armed: false,
       indicatorsOk: false,

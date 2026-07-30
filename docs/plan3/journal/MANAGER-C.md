@@ -893,3 +893,61 @@ tier=mid model=claude-opus-5-thinking-high (author) · deployed b113 read off th
    cheap and loud: --no-synthetic, 12 samples at 60s, explicit --max-old-space-size so an
    OOM is an error rather than a disappearance. Its only job is to turn "React completeWork
    in the host page" into a component name.
+
+## W98 - 2026-07-31 00:10 - MONSTER 2 ANSWERED: PER-TICK COST GROWS WITH BARS PLAYED, TWO FUNCTIONS NAMED (tier=mid)
+
+Dispatch: ruling ccfb4b6b8. Everything else yielded. Build read off the running page: 20260730b114 (MEAS-01).
+
+1. THE ANSWER IS "IT GROWS". Renderer CPU-ms per bar 75.64 -> 113.90 (+50.6%), slope +3.46
+   per 1,000 bars played, CI [2.76, 4.16], CLIMBS. Throughput 13.16 -> 8.73 bars/s (-33.7%),
+   CI [-0.515, -0.314], FALLS. CPU SUPPLY PINNED at 99.42% -> 99.32% for the whole run, which
+   is what makes the other two rows mean something: at fixed supply, fewer bars per second is
+   arithmetically more cost per bar. 38 windows, 7,377 -> 19,059 bars summed over four panels.
+
+2. PO CONFIGURATION REPRODUCED INCLUDING THE CONTROL. Four panels, four symbols, four
+   timeframes, TWO indicators each (not the harness's usual four), 60x, 20 min, zero trades.
+   The zero-trade control was confirmed from PRODUCT state, not my intent: {open:0, closed:0,
+   journal:0}. advancing=4/4 in all 40 samples. Threading two-indicator/no-order options
+   through the harness left every existing gate's defaults untouched.
+
+3. TWO CULPRITS, by self-time diff of first-two-minutes vs last-two-minutes profiles:
+   - _m19iB62WindowFp  15.72% -> 29.26% (+13.54pp). FNV-1a over EVERY bar, building a
+     t|o|h|l|c|v string per bar, reached from drawIndicatorsOptimized -> _m19iExactTailPaint
+     -> _m19iExactTailPaintFp -> _m19iB62WindowFp(data, 0, totalLen). Called with tailStart=0,
+     so the "window" is the whole replayed history, per paint per panel. Worse: the
+     fingerprint is computed BEFORE the memo compare, so the memo prevents the work but not
+     the cost of deciding - a cache whose key costs more than a miss. Its own comment claims
+     a bounded pass, and it is bounded at the tail-window call sites; the two sites passing 0
+     are where the intent was lost.
+   - m20Q6CapturedClear 0.82% -> 10.40% (+9.58pp, 12.7x). m20Q6TrackScheduler pushes an entry
+     per setTimeout/setInterval/rAF/queueMicrotask and NEVER removes it (completion only sets
+     pending=false); m20Q6CapturedClear then linearly scans that only-growing list on every
+     clear. O(N^2) in elapsed frames.
+   Together 16.5% -> 39.7% of JS self time in twenty minutes with no trades and no interaction.
+
+4. VERIFIED AGAINST DEPLOYED, NOT MY CHECKOUT (which differs by 5,335 bytes): both
+   full-history call sites, the paintFp-before-memo ordering, the kill switch, the hash loop,
+   m20Q6CapturedClear, the push, the linear scan, and ZERO truncation sites for
+   state.schedulers - all fetched over HTTP from b114.
+
+5. KILL SWITCHES, for KILL-03: __TALARIA_DISABLE_M19I_EXACT_TAIL_PAINT_V1 already exists and
+   gates culprit 1 (an A/B probe, not the fix - it disables a freshness guard too; the fix is
+   a bounded tailStart). Culprit 2 has NO flag: zero __TALARIA_*M20Q6* identifiers exist in
+   the deployed file, so A must add one with the cut.
+
+6. GATE-01 PASS before pointing it at the product: planted growing tick read +0.083 ms per 1k
+   bars CI [0.076, 0.090] CLIMBS; constant control read -0.003 CI [-0.008, 0.002], not
+   climbing. The self-test also caught a reporting defect - a per-bar x-axis rounded every
+   real slope to 0 - which is why every slope here is quoted per 1,000 bars.
+
+7. WHAT I DID NOT SHOW, said plainly. I measured 1.5x decay, not the PO's 30x: my headless
+   session was saturated at 99.4% from sample #1 where his "started acceptable", and starting
+   inside saturation compresses the visible decay. Direction, slope, pinned-supply arithmetic
+   and the named functions hold; the magnitude of the user-visible collapse does not transfer
+   and I am not quoting one. Also tickMs NEVER READ: stepForward was wrapped in all four
+   realms and never called during playback, so per-bar cost is derived (renderer CPU / bars),
+   whole-process across all threads. The instrument recorded that gap in its own output
+   instead of reporting a confident zero. n=1 run.
+
+8. No supervisor loop was used and none will be: one launch, explicit --max-old-space-size,
+   and the machine was checked before each start (5.15 GB free at the probe launch).
