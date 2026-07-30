@@ -41,6 +41,7 @@ export function parseHeapCycleMemoryArgs(argv = process.argv.slice(2)) {
     ablateTerminateWorkers: false,
     datasetRotate: 0,
     releaseConsole: false,
+    memoryApiProbe: false,
   };
   for (const arg of argv) {
     if (arg === '--fixture' || arg === '--gate01-fixture') {
@@ -67,6 +68,10 @@ export function parseHeapCycleMemoryArgs(argv = process.argv.slice(2)) {
       options.releaseConsole = 'deep';
     } else if (arg.startsWith('--dataset-rotate=')) {
       options.datasetRotate = Number(arg.split('=')[1]) || 0;
+    } else if (arg === '--memory-api-probe') {
+      // MEMORY-API-SCOPE-V1: measures whether performance.memory sees panel
+      // iframe heaps at all, and whether measureUserAgentSpecificMemory is callable.
+      options.memoryApiProbe = true;
     } else if (arg === '--ablate-terminate-workers') {
       // Experiment: terminate panel workers before collapse to test whether the
       // unterminated indicator Worker is what pins the retained realm.
@@ -240,6 +245,7 @@ export async function runHeapCycleMemoryGate({
   ablateTerminateWorkers = false,
   datasetRotate = 0,
   releaseConsole = false,
+  memoryApiProbe = false,
   runBrowser = null,
 } = {}) {
   const startedAt = new Date().toISOString();
@@ -267,6 +273,7 @@ export async function runHeapCycleMemoryGate({
         if (datasetRotate) browserOpts.datasetRotate = datasetRotate;
         // Preserve the mode ('deep' vs true): coercing to true silently downgrades it.
         if (releaseConsole) browserOpts.releaseConsole = releaseConsole;
+        if (memoryApiProbe) browserOpts.memoryApiProbe = true;
         if (Number.isFinite(cycles) && cycles > 0) browserOpts.cycles = cycles;
         if (Number.isFinite(playHoldMs) && playHoldMs > 0) browserOpts.playHoldMs = playHoldMs;
         report = await browserRunner(browserOpts);
@@ -408,6 +415,7 @@ if (isMain) {
       ablateTerminateWorkers: options.ablateTerminateWorkers,
       datasetRotate: options.datasetRotate,
       releaseConsole: options.releaseConsole,
+      memoryApiProbe: options.memoryApiProbe,
     });
   } catch (error) {
     report = {

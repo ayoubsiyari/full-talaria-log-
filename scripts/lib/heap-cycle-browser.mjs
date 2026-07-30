@@ -711,6 +711,106 @@ async function readReleaseTargets(page, cycle) {
   return { cycle, host, perPanel };
 }
 
+/**
+ * MEMORY-API-SCOPE-V1. Answers, by measurement, what performance.memory can see.
+ *
+ * The claim under test is that usedJSHeapSize reports the main frame only and is
+ * therefore blind to panel iframes — which would scope every memory figure in the
+ * plan wrong. Rather than argue from documentation: allocate a known ballast
+ * INSIDE a panel realm and see whether the host's reading moves by that much.
+ *
+ * Also records whether measureUserAgentSpecificMemory is callable here, since it
+ * requires cross-origin isolation and is unavailable without COOP/COEP headers.
+ */
+async function probeMemoryApiScope(page, cycle) {
+  const readHost = () => page.evaluate(() => {
+    const m = performance.memory || null;
+    return m ? Number(m.usedJSHeapSize) || 0 : null;
+  }).catch(() => null);
+
+  const perPanel = [];
+  for (const panelId of HEAP_CYCLE_PANEL_IDS) {
+    const target = panelTarget(page, panelId);
+    if (!target) continue;
+    const row = await target.evaluate(() => {
+      const m = performance.memory || null;
+      return {
+        origin: location.origin,
+        usedJSHeapSize: m ? Number(m.usedJSHeapSize) || 0 : null,
+        // Same-origin frames share a renderer process and a V8 isolate, so a
+        // reading taken in a panel should match the host's if the heap is shared.
+        crossOriginIsolated: !!self.crossOriginIsolated,
+        hasMeasureUA: typeof performance.measureUserAgentSpecificMemory === 'function',
+      };
+    }).catch(() => null);
+    if (row) perPanel.push({ panelId, ...row });
+  }
+
+  const before = await readHost();
+  const ballastPanel = HEAP_CYCLE_PANEL_IDS.find((id) => panelTarget(page, id));
+  const ballast = ballastPanel
+    ? await panelTarget(page, ballastPanel).evaluate(() => {
+      // ~300k small objects with a distinct string each: unambiguously JS heap,
+      // not external ArrayBuffer memory that the counter treats differently.
+      const arr = [];
+      for (let i = 0; i < 300_000; i += 1) arr.push({ i, s: `mem-api-scope-${i}` });
+      window.__TALARIA_MEM_SCOPE_BALLAST__ = arr;
+      return arr.length;
+    }).catch(() => null)
+    : null;
+  const after = await readHost();
+  if (ballastPanel) {
+    await panelTarget(page, ballastPanel).evaluate(() => {
+      delete window.__TALARIA_MEM_SCOPE_BALLAST__;
+    }).catch(() => {});
+  }
+  const released = await readHost();
+
+  const measureUa = await page.evaluate(async () => {
+    if (typeof performance.measureUserAgentSpecificMemory !== 'function') {
+      return { available: false, reason: 'not a function on this surface' };
+    }
+    try {
+      const r = await performance.measureUserAgentSpecificMemory();
+      return {
+        available: true,
+        bytes: r?.bytes ?? null,
+        breakdownEntries: Array.isArray(r?.breakdown) ? r.breakdown.length : null,
+        scopes: Array.isArray(r?.breakdown)
+          ? r.breakdown.flatMap((b) => (b.attribution || []).map((a) => a.scope)).slice(0, 12)
+          : null,
+      };
+    } catch (err) {
+      return { available: false, reason: String(err && err.message ? err.message : err) };
+    }
+  }).catch((err) => ({ available: false, reason: String(err) }));
+
+  const hostMeta = await page.evaluate(() => ({
+    origin: location.origin,
+    crossOriginIsolated: !!self.crossOriginIsolated,
+    hasMeasureUA: typeof performance.measureUserAgentSpecificMemory === 'function',
+  })).catch(() => null);
+
+  const row = {
+    cycle,
+    hostMeta,
+    perPanel,
+    ballast: {
+      panelId: ballastPanel || null,
+      objects: ballast,
+      hostBeforeMB: before != null ? +(before / (1024 * 1024)).toFixed(2) : null,
+      hostAfterMB: after != null ? +(after / (1024 * 1024)).toFixed(2) : null,
+      hostReleasedMB: released != null ? +(released / (1024 * 1024)).toFixed(2) : null,
+      hostDeltaMB: before != null && after != null
+        ? +((after - before) / (1024 * 1024)).toFixed(2)
+        : null,
+    },
+    measureUa,
+  };
+  logHeapCycle(`cycle ${cycle}: MEMORY-API-SCOPE-V1 ${JSON.stringify(row)}`);
+  return row;
+}
+
 async function applyDatasetPlan(page, plan, { settleMs = 800, timeoutMs = 45_000 } = {}) {
   const hostPlan = plan.panels.find((p) => p.panelId === 'A');
   if (hostPlan) await applyHostDataset(page, hostPlan);
@@ -915,6 +1015,7 @@ async function runDistV9Session({
   snapshotOutPath = null,
   steadyStateDiff = false,
   ablateTerminateWorkers = false,
+  memoryApiProbe = false,
 }) {
   if (!fs.existsSync(DIST_INDEX)) {
     throw new Error(`dist-v9 missing at ${DIST_INDEX} — run npm run build:live in talaria-design`);
@@ -954,6 +1055,7 @@ async function runDistV9Session({
       steadyStateCensus,
       realmTags,
       releaseTargets,
+      memoryApiScope,
       workerAblations,
       retainerPaths,
       baselineOut,
@@ -1004,6 +1106,7 @@ async function runDistV9Session({
       steadyStateCensus,
       realmTags,
       releaseTargets,
+      memoryApiScope,
       workerAblations,
       retainerPaths,
       poWorkload,
@@ -1049,6 +1152,8 @@ async function runMultichartCycles({
   ablateTerminateWorkers = false,
   /** Ablation: drop inspector console handles before each floor sample. */
   releaseConsole = false,
+  /** MEMORY-API-SCOPE-V1: allocates ballast in a panel, so off by default. */
+  memoryApiProbe = false,
 } = {}) {
   // PO workload: CDP heap snapshots grow past V8's ~512MB string limit and also
   // detach the React shell mid-run. Floor calibration uses usedJSHeapSize only.
@@ -1064,6 +1169,8 @@ async function runMultichartCycles({
   const realmTags = [];
   /** Which REALM-TEARDOWN-RELEASE cuts have a live hook to call, per cycle. */
   const releaseTargets = [];
+  /** MEMORY-API-SCOPE-V1 rows: what performance.memory can actually see. */
+  const memoryApiScope = [];
   const workerAblations = [];
   const effectivePlayHold = poHandSample
     ? Math.max(playHoldMs, 20_000)
@@ -1181,6 +1288,7 @@ async function runMultichartCycles({
         activePanel: await readActivePanel(page),
       });
       releaseTargets.push(await readReleaseTargets(page, index + 1));
+      if (memoryApiProbe) memoryApiScope.push(await probeMemoryApiScope(page, index + 1));
     } else {
       await sleep(settleMs);
     }
@@ -1525,6 +1633,7 @@ async function runMultichartCycles({
     steadyStateCensus,
     realmTags,
     releaseTargets,
+    memoryApiScope,
     workerAblations,
     retainerPaths,
     baselineOut,
@@ -1801,6 +1910,7 @@ async function runDeployedSession({
   ablateTerminateWorkers = false,
   releaseConsole = false,
   datasetRotate = 0,
+  memoryApiProbe = false,
 }) {
   const email = String(process.env.TEST_EMAIL || process.env.L2_M1_TEST_EMAIL || '').trim();
   const password = String(process.env.TEST_PASSWORD || process.env.L2_M1_TEST_PASSWORD || '').trim();
@@ -1957,6 +2067,7 @@ async function runDeployedSession({
       steadyStateCensus,
       realmTags,
       releaseTargets,
+      memoryApiScope,
       workerAblations,
       retainerPaths,
       baselineOut,
@@ -1989,6 +2100,7 @@ async function runDeployedSession({
       ablateTerminateWorkers,
       releaseConsole,
       datasetRotate,
+      memoryApiProbe,
       poWorkload: true,
       playHoldMs: Number.isFinite(playHoldMs) && playHoldMs > 0 ? playHoldMs : 6_000,
       replaySpeed: 60,
@@ -2039,6 +2151,7 @@ async function runDeployedSession({
       steadyStateCensus,
       realmTags,
       releaseTargets,
+      memoryApiScope,
       workerAblations,
       retainerPaths,
       poWorkload,
@@ -2067,6 +2180,7 @@ export async function runHeapCycleBrowserSession({
   ablateTerminateWorkers = false,
   releaseConsole = false,
   datasetRotate = 0,
+  memoryApiProbe = false,
 } = {}) {
   const puppeteer = await loadPuppeteer();
   if (surface === HEAP_CYCLE_SURFACE_THIN_HOST) {
@@ -2090,6 +2204,7 @@ export async function runHeapCycleBrowserSession({
       ablateTerminateWorkers,
       releaseConsole,
       datasetRotate,
+      memoryApiProbe,
     });
   }
   return runDistV9Session({
@@ -2106,5 +2221,6 @@ export async function runHeapCycleBrowserSession({
     ablateTerminateWorkers,
     releaseConsole,
     datasetRotate,
+    memoryApiProbe,
   });
 }

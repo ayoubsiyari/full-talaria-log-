@@ -33,6 +33,7 @@ const MEASUREMENT_OPTIONS = [
   'ablateTerminateWorkers',
   'releaseConsole',
   'datasetRotate',
+  'memoryApiProbe',
 ];
 
 function dispatchBody(callee) {

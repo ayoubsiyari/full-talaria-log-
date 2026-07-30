@@ -1,0 +1,88 @@
+{
+  "packet": "W85",
+  "manager": "C",
+  "tier": "mid",
+  "tierWhy": "instrument scoping measurement plus a source read of teardown loops; no money path, no product diff",
+  "build": "20260729b103",
+  "surface": "deployed http://31.97.192.82:3000, four-up, distinct datasets, PO workload armed",
+  "headline": "THE INSTRUMENT IS NOT BLIND. Allocating 18 MB inside panel A's realm moved the HOST's usedJSHeapSize by 18.12 MB. Panels are same-origin, share one renderer process and one V8 isolate, and all four report the same heap. Every memory figure in the plan is scoped correctly for iframes.",
+
+  "oneLineAnswer": "Yes, my harness reads the same API as the PO (performance.memory.usedJSHeapSize after a forced collection) — and it is NOT main-frame-only for our topology: a ballast allocated inside a panel iframe shows up in the host's reading, measured, one run, +18.12 MB for 300k objects.",
+
+  "instrument": {
+    "name": "MEMORY-API-SCOPE-V1",
+    "where": "scripts/lib/heap-cycle-browser.mjs probeMemoryApiScope, behind --memory-api-probe (off by default; it allocates ballast)",
+    "contractTest": "scripts/tests/heap-cycle-surface-dispatch.test.mjs now asserts memoryApiProbe reaches both surface dispatches — the option that a dropped dispatch voided a whole matrix with last time"
+  },
+
+  "measured": {
+    "n": 1,
+    "hostOrigin": "http://31.97.192.82:3000",
+    "crossOriginIsolated": false,
+    "perPanel": [
+      { "panelId": "A", "origin": "http://31.97.192.82:3000", "usedJSHeapSizeMB": 173.8 },
+      { "panelId": "B", "origin": "http://31.97.192.82:3000", "usedJSHeapSizeMB": 172.15 },
+      { "panelId": "C", "origin": "http://31.97.192.82:3000", "usedJSHeapSizeMB": 169.85 },
+      { "panelId": "D", "origin": "http://31.97.192.82:3000", "usedJSHeapSizeMB": 197.09 }
+    ],
+    "readingFromPerPanel": "every panel reports a figure in the same 170-197MB band as the host, not its own small per-frame heap. A per-frame-isolated heap would read a few MB. They are all reporting the same shared isolate, sampled at different instants during a live replay.",
+    "ballastTest": {
+      "panel": "A",
+      "objects": 300000,
+      "hostBeforeMB": 195.26,
+      "hostAfterMB": 213.39,
+      "hostDeltaMB": 18.12,
+      "reading": "DECISIVE. The host's reading moved by the size of an allocation made entirely inside a panel realm.",
+      "honestCaveat": "the post-release read (238.17MB) is higher than the post-allocation read because no collection was forced after the delete and the replay keeps allocating. That third number says nothing; only before-to-after does."
+    },
+    "corroboratingPriorEvidence": "REALM-TAG-V1 and REALM-SURVIVAL-V1 already found panel-realm script sets (20.87MB) and the panel B realm inside snapshots taken from the HOST. A host-side snapshot cannot contain another isolate's objects, so panel realms were provably in the host isolate all along."
+  },
+
+  "whatIsGenuinelyInvisible": {
+    "workerHeaps": "real blind spot — workers get their own isolate. Bounded, though: the census reads 1 live worker (created=1, terminated=0) and W-earlier closed '+1 once, not per cycle', so it is not the growing term. Closable cheaply via CDP Runtime.getHeapUsage against the worker target; named as next step.",
+    "canvasAndGpu": "real blind spot — not JS heap at all. GPU work was 23.87% of a core in the CPU census, so there is mass here, but it is not what usedJSHeapSize is for.",
+    "crossOriginIframes": "would be invisible under site isolation, but ours are same-origin, measured above."
+  },
+
+  "measureUserAgentSpecificMemory": {
+    "status": "NOT AVAILABLE on the deployed surface",
+    "measured": { "hasFunction": false, "crossOriginIsolated": false, "reason": "not a function on this surface" },
+    "why": "the API is gated on cross-origin isolation, which needs COOP: same-origin and COEP: require-corp on the origin",
+    "blocker": "B owns those response headers",
+    "warningBeforeAnyoneAddsThem": [
+      "cross-origin isolation changes the process/isolate topology, so it changes the thing being measured mid-hunt",
+      "COEP require-corp blocks subresources without CORP headers, and the product depends on host-to-panel cross-frame access (frame.contentWindow.chart) that both the app and this harness use. Turning it on to measure memory could break the feature being measured.",
+      "it also resolves only after a collection and is coarse by design (bucketed, delayed) — it would give a per-frame breakdown I already have finer via per-realm snapshot attribution"
+    ],
+    "recommendation": "do not re-instrument on it. The premise that motivated it — a blind gauge — is falsified above, and per-realm snapshot attribution is strictly finer than its per-frame breakdown. If the Director still wants it as a cross-check, it is a B headers ticket plus a re-baseline, not a swap."
+  },
+
+  "consoleAttachedCost": {
+    "askedFor": "does the harness run with a console attached, and what does that cost",
+    "answer": "Yes. The harness drives Chrome over CDP with the Runtime domain enabled, which is a console for retention purposes. I measured this in W81 and it is why deep console release is now the default before every floor sample.",
+    "mechanism": "with the Runtime domain enabled the inspector holds page objects as '(Global handles) / DevTools console'. An Error created inside a panel realm closes over that realm via its stack accessor, so the session pins dead realms: 4 product-held against 8 console-held realms in the control.",
+    "magnitude": {
+      "controlFloorDeltasMB": [26.93, 18.79],
+      "deepReleaseFloorDeltasMB": [22.06, -3.66],
+      "n": 1,
+      "retroactiveCaveat": "W84's own standard applies to this too: the MECHANISM is proven (console-held realms counted directly), the MAGNITUDE comes from one run per arm and is not settled. Do not quote -3.66 as the post-release rate; my n=3 pooled floor delta with deep release as default is 25-27 MB/cycle.",
+      "shallowReleaseIsUseless": "discardConsoleEntries + releaseObjectGroup both returned ok and freed nothing"
+    },
+    "consequenceForThePoFigures": "the PO measured all night with DevTools open, and that inflates by this same mechanism. His ~12 MB/cycle is therefore an UPPER bound on the product's own rate, not an under-read. It does not explain the gap to my 25 — inflation pushes the wrong way for that — but it does mean nobody should treat his number as a floor."
+  },
+
+  "forwardMutationCheck": {
+    "askedFor": "check the panel-teardown loop for forward mutation while iterating",
+    "result": "NOT PRESENT in any teardown or purge loop in the sources I hold",
+    "loopsInspected": [
+      { "site": "multichart-manager.js dispose", "code": "for (const id of Array.from(this.charts.keys())) this.removeChart(id)", "safe": "keys snapshotted before removal" },
+      { "site": "multichart-manager.js removeChart", "code": "single get/delete by id, no iteration", "safe": "n/a" },
+      { "site": "MultichartGrid.jsx collapse path", "code": "for (const existingId of Array.from(mgr.charts.keys()))", "safe": "keys snapshotted; React state Sets/Maps copied before delete" },
+      { "site": "chart.js tile/meta cache purge", "code": "for (const k of [...this._tileCache.keys()]) ... delete", "safe": "keys spread before delete" }
+    ],
+    "alsoAgainstTheSignature": "the hypothesis predicts a deterministic skip: a forward splice over [A,B,C,D] removes A then C and skips B and D, so B and D would ALWAYS survive and C never would. I measure B always, A never, and C and D INTERMITTENTLY. It fits on A and B and contradicts on C.",
+    "limit": "these are the local sources. I still do not hold the b99/b103 product tree, so I cannot rule the pattern out in the deployed build — the same gap as the escalated host-cache cut."
+  },
+
+  "netEffectOnGrading": "W84's retraction stands unchanged: A's five cuts measure as no effect at n=3, and the gauge that measured that has now been shown to see panel-realm allocations. The leak is not hiding from the instrument in the frames; the two places it could still hide are worker heaps (1 worker, not growing) and non-JS canvas/GPU memory."
+}
