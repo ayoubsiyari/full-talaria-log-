@@ -1687,3 +1687,68 @@ CPU figure against the 462 ms/s baseline.
 
 Three packets now in flight: retention census, CKPT-01 artifact (committed 2500c0331, unreported),
 and this grading.
+
+---
+
+## 17:15 — A1 REOPENED, and the correction is against me
+
+Director ordered A1 built. My instinct was that I had already answered it at 0.05% and the
+order rested on a false premise. I checked before arguing, and **the check went against me.**
+
+**MY CEILING WAS A SNAPSHOT, NOT A SLOPE.** I measured A1's recoverable at FIXED master sizes
+(1,440 / 10,000 / 50,000 / 200,000 bars) and quoted the result as a ceiling. DUR-01 says an
+acceptance is a slope over time. I have spent the entire day enforcing that rule on other
+people's numbers and broke it inside my own headline finding. The structural half survives; the
+0.05% does not.
+
+**THE GROWTH PATH IS REAL AND IT IS ON THE CONF-01 PLAY PATH.** Verified: 
+_mergeIntoPanelFullRawData (L7096, 21 lines) has ZERO capping constructs - 0 splice, 0 length=,
+0 Math.min, 0 limit/cap/MAX/trim/shift. Callers are _ensureIndependentPanelCoversPlayhead (L7385)
+and ensureReplayDataCoversTimestamp (L8054): both playhead-cover paths that run AS THE PLAYHEAD
+ADVANCES, and the first is specifically the INDEPENDENT / different-symbol path = CONF-01 by
+construction. So the base series has an uncapped growth path during play on exactly the config
+the PO measured.
+
+**THE DIRECTOR'S DATUM DID THE WORK MY MEASUREMENT DID NOT.** "Their heap falls when playing
+while ours triples" is the signature of a growth path, not of static retention. A static
+retention problem does not triple during playback. That one sentence reopened A1 more
+effectively than anything I measured, and I did not have it when I wrote the finding.
+
+WHAT STILL HOLDS, and it SHAPES the fix rather than opposing it: bounding _panelFullRawData
+ALONE frees zero bar objects at every master size, structurally, because both slots are pointer
+arrays over the same objects. A1 bounds BOTH slots, one shared allocation, accounted in bar
+objects de-duplicated by identity. The 62b6afcc9 choke point deliberately does not truncate -
+that is the work now dispatched, not a missing feature.
+
+**CORRECTED HIS RATIONALE, and it points at a BETTER argument than the one he gave.**
+_mcRawDataCopyLimit() returning 200,000 is true, but it has exactly TWO consumers -
+_mcCloneRawDataBars L3545 and _mcIncrementalCloneRawDataBars L3574 - both reached only via
+_mcCopySamePairFullRawData, whose nine call sites are same-pair gated and unreachable at four
+different symbols. Under his own CONF-01 rule that 200,000 is NOT the missing cap. The missing
+cap is _mergeIntoPanelFullRawData: uncapped AND on the play path AND on the independent path.
+Strictly stronger, and it survives CONF-01 where the copy-limit argument does not.
+
+**TRADEZELLA COSTS ME MY OWN FAVOURITE HYPOTHESIS, recorded before it can survive as an
+assumption:** their script cache is 2x ours while their heap is 1/5 of ours for the same four
+instruments. That rules out per-realm script source as the differentiator - which was my leading
+candidate for the eviction lane at ~10.5 MB UTF-8 / ~21 MB UTF-16 per realm from two independent
+censuses. If they ship MORE code in LESS heap, code is not the gap.
+
+**CKPT-01 CHASED AND IT IS HALF DONE - this gates A1's landing.** Capture is sound: 120 assets,
+14,424,642 bytes of b113, captured 14:29:31Z, honest limitations, commit evidence with a PASSING
+positive control (74 text assets scanned, one 40-hex hit in favorites-manager.js, control ok).
+But THE ROLLBACK WAS NEVER EXERCISED - I searched the manifest myself: rollback=0, exercised=0,
+workingProduct=0, replayIndex=0, negativeControl=0; only 'rehearsal' appears, once, inside a
+LIMITATIONS note describing what the subcommand WOULD measure. A retained artifact plus an
+unexercised rollback plan is precisely the failure mode CKPT-01 exists to prevent. Sent back to
+execute it with a MOVED-replay-index working-product assertion, proof the browser loaded the
+retained bytes not live, and a negative control that must go RED. Treating it as the gate.
+
+DISPATCHED 8b211837 for the A1 truncation on the existing worktree: both slots, paging outward,
+SAFE-01 before allocation, GATE-01 red-before-green, truthy kill-switch, the
+_independentMasterCoversReplayTimestamp refetch cost PRICED rather than waved at, and the growth
+slope as a REQUIRED deliverable rather than an estimate. Told it to contradict me with numbers,
+including about this packet's own ceiling, since I have now been wrong about exactly that.
+
+A2 not started, not batched. Withdrawn without spending a packet: the 35-site setProperty flag
+and the post-exit sampling cut. The twenty owner-blocked rows untouched.
