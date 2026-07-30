@@ -16,13 +16,31 @@ performance.memory.usedJSHeapSize   // after forced GC, read in the TOP frame
 
 > `note: 'Workers hold private heaps invisible to main usedJSHeapSize.'`
 
-So the instrument is documented as blind to worker heaps. The PO's Documents-counter finding says the same blindness applies to **retained panel iframe documents**, which is exactly where the multichart leak lives. That makes it the wrong instrument for grading a panel-realm fix, which is what every recent memory cut has been.
+So the instrument is documented as blind to worker heaps. I then inferred that the same blindness applies to retained panel iframe documents. **That inference is WITHDRAWN — see §0 below. It was wrong, and it was the load-bearing claim of this document.**
+
+## 0. CORRECTION 2026-07-30, after C's W86 — the central claim of this note was wrong
+
+C measured what I had only reasoned about, and measured it the one way that settles it: **same-instant, two arms, nine samples.**
+
+- The CDP metric that Performance Monitor displays reads **0.695 ×** `performance.memory`. The console gauge reads **higher** than Performance Monitor, not lower. **The sign of my claim was inverted.**
+- Ballast allocated **inside panel A's realm moved the host console reading by +18 MB of JS heap in the host isolate**. A main-frame-only counter cannot do that. `performance.memory` is **per-isolate**, and our panels share the host renderer's isolate, so the host reading **does** include panel-realm JS heap.
+
+**What this means for the tables below: the "VOID as a grade of A's cut" verdict is itself withdrawn.** The gauge is not blind to the memory A's cuts release. It remains blind to worker heaps, it measures JS heap and not DOM/CSS/GPU, and it cannot see realms placed in a *different renderer process* — which is C's leading candidate for the unexplained 789 MB, since a 15-pair session is ~30 frames and Chrome may split those across processes.
+
+Two further consequences, both against my earlier framing:
+
+- **~12 MB/cycle is an UPPER bound on the product rate, not a floor.** The PO measured with DevTools open, which inflates. I had told A to treat megabyte deltas as a floor. That was backwards.
+- **`measureUserAgentSpecificMemory` is cancelled and C is right to refuse it.** COEP `require-corp` would break host-to-panel `frame.contentWindow` access, which both the product and the harness depend on: turning it on to measure memory would break the feature being measured. My §4 offered it as the better instrument; withdrawn.
+
+My error was the one this plan's standing order names — I compared readings taken in different sessions and called the difference a property of the instrument. **Same-instant or it is not a comparison.** C's ballast test is the positive control I should have built before writing any of this.
+
+The one thing here that stands unchanged is the reason it stands: the detached-node and DOM-census gates are counted from CDP snapshots rather than from `performance.memory`, which is why they were made the superior gate.
 
 ## 2. What that voids — including a number I gave the Director myself
 
 | Figure | Where it was used | Status |
 |---|---|---|
-| **~12 MB/cycle on b103, "halved from 23.5"** — both **main-frame JS heap** reads | my B-0193 and my report to the Director | **VOID as a grade of A's cut.** It measures the visible fraction only. A cut that releases panel-realm memory can move the true figure without moving this one, and vice versa. It is not evidence the leak was halved. |
+| **~12 MB/cycle on b103, "halved from 23.5"** — both **main-frame JS heap** reads | my B-0193 and my report to the Director | **The VOID verdict is WITHDRAWN (§0).** Same-isolate, so the gauge does see panel-realm JS heap; the reading is a legitimate grade of A's cut. Its real limits: DevTools was open (inflates, so ~12 is an **upper** bound), it excludes worker heaps and non-JS memory, and it cannot see realms in another renderer process. |
 | `HEAP_CYCLE_PO_FLOOR_MB=[106,152,204]`, `HEAP_CYCLE_PO_BASELINE_MB=54` | pinned calibration constants | **Valid as main-frame readings, not as footprint.** Keep for continuity of comparison; relabel, do not re-baseline yet. |
 | `HEAP-CYCLE-HEAP-FLOOR-BOUNDED` ≤ 8 MiB/cycle, **main-frame JS heap** | gate threshold | **Threshold is on the wrong scope.** Cannot pass or fail a panel-realm fix honestly. |
 | `HEAP-CYCLE-PO-HAND-SHAPE` mean ≈13 MB/cycle **main-frame JS heap**, PO hand `75/80/72/90/96/141/155` | gate cell | same — main-frame scope only |
@@ -118,7 +136,9 @@ A figure without a scope is how this happened. `HEAP-FIGURE-SCOPE-V1` now lints 
 
 ## 7. To A, C and D specifically
 
-**A** — your panel-realm cuts, including `STASHED-PANEL-HANDLE`, cannot be graded on the main-frame instrument. It is not that the number is imprecise; it is that the memory your cuts release is largely outside what that call reports. Grade on detached-node growth, which is sound, and treat any megabyte delta as a floor. Your fix is live: `e7616ab06` shipped in b104 as `db72fa4d3` (`git range-diff` prints them equal) and is still on the wire at b106.
+**A — this paragraph previously told you the opposite and it was wrong.** Your panel-realm cuts *can* be graded on the console gauge: it is per-isolate and your panels share the host isolate, which C proved with panel-realm ballast moving the host reading by +18 MB. Treat megabyte deltas as an **upper** bound, not a floor, because the PO's readings were taken with DevTools open. The counter loop the plan gives you (`DOM-COUNTER-STAIRCASE-V1`) is the right instrument for iteration speed regardless, and detached-node growth remains the attributable one.
+
+Your fixes are live: `e7616ab06` shipped in b104 as `db72fa4d3` (`git range-diff` prints them equal), and `XFRAME-REF-RELEASE` (`2ce27242d` + `34cac2453`) shipped in **b108**, both byte-equal to your originals. Your three CPU cuts and the countdown null guard shipped in **b109** — they were assembled on `manager-a/cpu-cuts-b105-20260730` and had never reached a stamp. All four gates green at my tip: 42/42 realm-teardown, 50/50 across countdown/legend-CSS/rAF with six on-disk mutants dead.
 
 **Also for A:** the M17-DI2 kill-switch could not reach the panels. All four read sites — `chart.js`, `replay-system.js`, `panel-cmd-bridge.js` — are loaded inside every panel iframe and each read its own realm only, so a host-side flip left the guard on and would have presented as "no effect". Fixed at all four sites and shipped in b105; your gate is extended from 13 to 21 cells with a mutant that proves the climb is load-bearing. Worth checking the same question against your other panel-realm switches: `panel-cmd-bridge.js` still has 13 own-realm reads belonging to other cuts, and I have not touched those.
 

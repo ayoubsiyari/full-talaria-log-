@@ -31,6 +31,14 @@ export const HEAP_SCOPE_TOKENS = Object.freeze([
   'top-frame JS heap',
   'per-realm JS heap',
   'cross-realm JS heap',
+  // Added 2026-07-30 after C's W86. `performance.memory` is per-ISOLATE, not per-frame:
+  // panels sharing the host renderer's isolate are included in a top-frame read, which
+  // C proved with panel-realm ballast moving the host reading by +18 MB. "main-frame JS
+  // heap" was therefore the wrong name for what we had been measuring all week, and a
+  // vocabulary that only offered the wrong name pushed writers towards it.
+  'JS heap in the host isolate',
+  'JS heap, host isolate',
+  'host-isolate JS heap',
   'renderer-process footprint',
   'process footprint',
   'detached-node count',

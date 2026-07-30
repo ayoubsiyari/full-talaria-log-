@@ -19,7 +19,9 @@ This note is only the limits we already know. It is not a request to ignore othe
 
 ### Multichart memory
 
-Changing multichart layout (adding/removing panels, cycling layouts) still costs memory. Our measurement says roughly **~50 MB per full layout cycle of main-frame JS heap**, and that figure is a **lower bound, not the total cost**: it is read in the top frame, so it does not account for the memory held by the chart panels themselves or by background workers. Total memory for the tab is materially higher and a corrected cross-realm figure is being measured now. Treat the number as a floor under active bisect, not a ceiling.
+Changing multichart layout (adding/removing panels, cycling layouts) still costs memory. Our best measurement is roughly **~12 MB per full layout cycle of JS heap in the host isolate**, and the retention has been attributed: **about two panel documents are kept alive per cycle**, at roughly 12 MB each, which accounts for essentially all of the per-cycle growth. Work to release them is in flight and under active measurement.
+
+Two honest caveats on that number rather than one. It **includes** the chart panels' own JS heap, because the panels share the host's JavaScript isolate — so it is not a top-frame-only fraction. But it **excludes** background worker heaps and all non-JS memory (DOM, CSS, decoded images, GPU buffers), so the tab's total footprint is materially higher than this figure. And because it was read with developer tools open, which inflates, treat it as an **upper** bound on the per-cycle rate rather than a floor.
 
 Please report if memory never settles after you return to a single chart, or if the tab's memory keeps climbing across layout changes.
 
@@ -33,7 +35,8 @@ At high replay speeds the chart will hit a CPU ceiling. A **single chart at 60×
 
 - We are **not** claiming parity with any third-party journaling product’s memory profile. Prior TradeZella-style memory comparisons are **withdrawn** and should not be used as a ship metric.
 - We are **not** quoting absolute Task Manager footprint megabytes in this note, and the JS-heap figure above must not be read as the tab's total memory.
-- We are **not** claiming the per-cycle growth has been halved or otherwise reduced. An earlier internal reading suggested that; it was taken on the main-frame instrument, which cannot see the panel realms where the retention lives, so it does not support the claim and has been withdrawn.
+- We are **not** claiming the per-cycle growth has been halved or otherwise reduced. Two independent instruments now agree that the earlier batch of teardown cuts changed nothing measurable, so the reduction claim is withdrawn and the cuts are shipped switched off.
+- We are **not** quoting any figure against a competitor's until both are read with the same gauge. Two legitimate gauges disagree by about 1.4× on the same page at the same instant, which is larger than most of the differences worth arguing about.
 
 ---
 
