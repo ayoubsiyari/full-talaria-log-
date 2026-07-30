@@ -1023,3 +1023,68 @@ writer. The author called it "a second line of defence" and that grading is fair
 Cherry-pick viability checked against the deployed surface: `_renderSeparatePanelLegendValue`,
 `_syncSeparatePanelOverlayValues` and `_syncSeparatePanelAxisTags` are all still present in deployed
 `chart-indicators-full.js` at b113, so the stale base does not block application.
+
+## 14:45 - CONF-01 / DUR-01 adopted. One finding re-assigns credit inside the ruling.
+
+Read `RULING-EVERY-MULTICHART-OPTIMISATION-IS-GATED-ON-SAME-PAIR-20260730-1430.md` and my
+section of `DISPATCH-CONF01-20260730-1430.md`. Both rules adopted without argument. Answer to the
+Director at `a08ac2767`.
+
+### Verified the ruling's mechanism myself, on DEPLOYED bytes not a manager branch
+
+Build `20260730b113`. `_mcRawDataCopyLimit()` literally `return 200000;` - the ruling is exactly
+right that this is the absence of a cap rather than a cap. `_panelFullRawData` = 102 occurrences
+deployed, 24 assignment sites in my base. Residency confirmed NOT shipped (`_residencyComputeSlice`
+= 0). One count correction in the Director's favour: the ruling says sixteen
+`_multichartSamePairAsHost` occurrences from reading `manager-a/critical-path`; deployed carries
+**twenty**.
+
+### FINDING: the clone cut and the reseed cut are INERT under CONF-01
+
+All nine `_mcCopySamePairFullRawData(...)` call sites are unreachable on a different-symbol panel.
+Six sit behind `if (!this._multichartSamePairAsHost(...)) return …` (guards L5482, L5759, L7559).
+The other three - L4584/4586/4601 in `_multichartMirrorHostTfSwitchIfReady` - sit behind
+`if (this._isIndependentMultichartPair()) return false;` at L4526-4529, which resolves through
+`_shouldAnchorPairSwitchToHostPlayhead(this.currentFileId)`. Positive control: the guard identifier
+resolves 20 times in the same file, so the absences are real.
+
+Both cuts were ON THE WIRE when the PO measured (`__TALARIA_DISABLE_MC_INCREMENTAL_RAWDATA_COPY_V1`
+and `__TALARIA_DISABLE_REPLAY_RESEED_INCREMENTAL_V1` both present on b113). So 586 MB / 107% is the
+fully unoptimised path measured with both optimisations live and unreachable.
+
+Two consequences. The −75% allocation figure is not "unverified for memory" as the ruling's table
+says - under CONF-01 it is **zero by construction**. And the renderer CPU improvement belongs to the
+configuration-independent cuts: I checked the rAF flag sites carry no same-pair or independent-pair
+guard within 60 lines above either occurrence.
+
+Ninth sighting of the family: green suite, real mechanism, zero effect because the path never runs
+in the configuration that ships.
+
+### CORRECTION to my own record: residency does NOT already cover A1
+
+Before starting a second landing I checked whether `9e0a8ad59` already bounds `_panelFullRawData`,
+because one of my rows claims it drops ~100k → 20.3k alongside `rawData` and derived data. It does
+not - **zero** occurrences of `_panelFullRawData` in that entire diff, and `_applyResidencyWindowV1`
+has one application site. The live writes on the different-symbol path come from `bars.slice()`,
+`master.slice()`, `incoming.slice()`, `merged` and `replaySystem.fullRawData`, none of which the
+trim passes through. My row overstated residency's reach; A1 is genuinely new work. My own earlier
+census already named the live mechanism though: uncapped `_mergeIntoPanelFullRawData`, key=fileId.
+
+### Dispatched
+
+**A1 oracle**, oracle-first per the ordering, base `8587c9821` - chosen because I verified it matches
+deployment for the data path rather than because it was convenient. That check exists precisely
+because I made the opposite mistake this morning. Built to go RED first against eight faithful
+corruptions (bar dropped mid/start/end, close altered in the last decimal, timestamp shifted one
+cadence, two bars transposed, whole range shifted by one, bar duplicated) plus a negative control
+that must stay GREEN. SAFE-01 written in as an observable - element copies counted through a Proxy
+so a fix that allocates first and trims after is caught rather than silently accepted.
+
+**CONF-01 retention census**, read-only, to size A1 against A2 before building either. It carries
+the tension I want settled rather than argued: the PO's own scaling test moved heap only 1.52x
+across a 100-1000x range change, and if data volume is not the mass then **bounding** it cannot pay
+either - which would undercut A1 as much as A2. Either that test was confounded by being
+single-dataset or both my assigned landings are mis-aimed. I told the census to say so plainly if
+the latter, and not to shade toward the landings I was given. DUR-01 folded in: slopes over a run,
+not two endpoint readings, because an array that is large but flat is a different problem from one
+that climbs.
