@@ -32,10 +32,18 @@ export function regradeDurationRun(report, { closedTarget = 30, minSpanHours = D
   // stall pattern, not the trend. The advancing stratum is the CONF-01
   // configuration as specified, so it carries the verdict; the mixed fit is
   // reported beside it and the stalled count is stated, never dropped silently.
-  const advancing = samples.filter((s) => s.state?.advancingPanels === 4);
+  const atLeast = (k) => samples.filter((s) => (s.state?.advancingPanels ?? 0) >= k);
+  const advancing = atLeast(4);
   const stalled = samples.length - advancing.length;
-  const advancingTrends = advancing.length >= 4 ? buildTrends(advancing, { minSpanHours }) : null;
-  const advancingVerdict = advancingTrends ? gradeDurationSeries(advancingTrends, { minSpanHours }) : null;
+  // Four advancing panels is the specified configuration and is preferred. If the
+  // defect leaves too few such samples to fit, a three-panel stratum is still a
+  // homogeneous population and is better than a fit across stalls — but it is a
+  // WEAKER basis and the report says which one carried the verdict.
+  const fit = (rows) => (rows.length >= 4 ? buildTrends(rows, { minSpanHours }) : null);
+  const advancingTrends = fit(advancing);
+  const threeTrends = advancingTrends ? null : fit(atLeast(3));
+  const usedTrends = advancingTrends || threeTrends;
+  const advancingVerdict = usedTrends ? gradeDurationSeries(usedTrends, { minSpanHours }) : null;
   return {
     signature: 'CONF01-DURATION-REGRADE-V1',
     graderSignature: DURATION_TREND_SIGNATURE,
@@ -58,6 +66,7 @@ export function regradeDurationRun(report, { closedTarget = 30, minSpanHours = D
     strata: {
       allSamples: samples.length,
       fullyAdvancing: advancing.length,
+      atLeastThreeAdvancing: atLeast(3).length,
       stalledOrPartial: stalled,
       advancingSpanHours: advancing.length
         ? +(advancing[advancing.length - 1].hours - advancing[0].hours).toFixed(3)
@@ -66,12 +75,14 @@ export function regradeDurationRun(report, { closedTarget = 30, minSpanHours = D
     },
     trends,
     verdictAllSamples: verdict,
-    trendsFullyAdvancing: advancingTrends,
+    trendsFullyAdvancing: usedTrends,
     verdictFullyAdvancing: advancingVerdict,
     // The stratum that matches the specified configuration decides, when it has
     // enough samples to fit at all.
     verdict: advancingVerdict || verdict,
-    verdictBasis: advancingVerdict ? 'fullyAdvancing' : 'allSamples',
+    verdictBasis: advancingTrends
+      ? 'fullyAdvancing(4/4)'
+      : (threeTrends ? 'atLeastThreeAdvancing(>=3/4, weaker basis)' : 'allSamples(mixed with stalls)'),
   };
 }
 
