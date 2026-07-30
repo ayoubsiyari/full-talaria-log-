@@ -597,3 +597,32 @@ Exactly five ` | `-separated fields after the list marker. Absent fields are wri
 2026-07-30T09:30Z | C | FINDING | packet=W87 | ROW=floor-census | "DOCUMENT COUNT IS NOT PANEL COUNT — measured. A fresh single chart reads Documents=2 while Page.getFrameTree contains exactly ONE frame, so the counter includes documents that are not frames (initial about:blank or detached). '11-18 documents' is therefore not '11-18 iframes', and neither was my own W86 staircase. FRAME-TREE-V1 now logs every document by URL at each fresh baseline. I cannot itemise his 383MB from my surface; candidate order to test: the app wrapper/route (my shell has no app chrome), a saved layout restoring tiles at load, profile extensions injecting frames, DevTools itself. THREE 60-SECOND TESTS FOR THE PO: (1) console on fresh chart: Array.from(document.querySelectorAll('iframe')).map(f=>f.src||'(no src)'); (2) reload in INCOGNITO with extensions off and re-read documents + JS heap — if 11-18 becomes 2-3 the floor is his profile, not our product; (3) Task Manager renderer rows + per-row JS memory."
 2026-07-30T09:30Z | C | FINDING | packet=W87 | ROW=baseline-nondeterminism | "13-vs-18 DOES NOT REPRODUCE on the chart shell. Four fresh loads: documents 2/2/2/2, frames 2/2/2/2, nodes 6324/6225/6228/6226, listeners 1348/1349/1348/1348, heap 75.36/75.37/76.06/75.44MB — spread under 1%. That narrows the varying component to outside the chart shell: the surrounding app, the restored layout, or his profile. Suggestive that whatever adds 9-16 documents is also what makes the count vary. HONEST LIMIT: a deterministic bare shell proves the shell is not the varying part, not that the wrapper is."
 2026-07-30T09:30Z | C | CORRECTION | packet=W87 | ROW=dom-counter-staircase | "MY OWN W86 STAIRCASE CARRIES THE SAME ARTEFACT AND I HAVE DEMOTED MY OWN GATE CELL. I sampled at the collapsed floor after forced GC — right moment — but measured no settle time and ran ONE run per arm, which is exactly the error W84 taught me, repeated eight hours later. DOM-COUNTER-STAIRCASE-V1 is now ADVISORY and never blocking, with thresholdCalibrated=false, because between-session spread (13 vs 18) exceeds the four-cycle drift and a fixed one-document tolerance would emit a confident RED on noise. Tests updated to pin the demotion. It gates nothing until a settle wait plus an N-session spread threshold replaces the constant, or it comes out. DECL-01: nothing declared; the per-cycle question is open until the PO's Performance Monitor sequence lands."
+
+## W88 — Criterion 0, cross-frame re-grade, and the gauge that closes the calibration gap
+tier=mid model=claude-opus-5-thinking (measurement + instrument work, no money path)
+
+CRITERION 0 (FRESH-LOAD-CENSUS-V1, n=10, Performance.getMetrics, fixed settle,
+forced GC, no DevTools window): cross-frame used median 61.52 MB, spread 0.73,
+sd 0.21. Documents 2 on every load, spread 0. Nodes median 6227.5, spread 99.
+The per-cycle floor climb on the same gauge is 13.83 MB = 18.9x that spread, so
+the residue is not a noise artefact here. Two variances must not be conflated:
+between-session fresh-load spread 0.73 MB, within-run per-delta sd 4.1 MB. The
+residue clears the first by 19x; the A/B difference sits inside the second.
+
+GAUGE: perf.memory disagrees with Performance Monitor by 1.22x on ABSOLUTES but
+1.76-2.00x on DELTAS. My 24 MB/cycle and the PO's ~12 are the same measurement
+on two gauges. On the Director's gauge I read 13.83 +/- 1.42. Calibration gap
+closed; every per-cycle figure I have quoted on perf.memory is restated at half.
+
+RE-GRADE of A's five cuts cross-frame: 13.83 ON vs 12.77 OFF, n=1/arm. The gauge
+does not rescue them and does not damn them; a verdict needs ~12 runs/arm.
+
+PREMISE CORRECTION: 383 + 3x135 explains the four-panel PEAK, not the collapsed
+FLOOR. Floors climb 74.06 -> 86.91 -> 100.10 -> 115.56 cross-frame with ONE chart
+open and GC forced, where per-panel cost is zero by construction.
+
+H5-same-bug: NOT supported in source. /api/chart/preferences failure returns
+local templates in both paths; MultichartGrid has no preferencesSync reference.
+Did not touch B's 500.
+
+Owed: constructor table (running), n>=12 re-grade, the PO's route, COOP/COEP.

@@ -123,7 +123,7 @@ export async function loadPuppeteer() {
   }
 }
 
-async function takeHeapSnapshotObject(cdp, { timeoutMs = 180_000, dumpPath = null } = {}) {
+export async function takeHeapSnapshotObject(cdp, { timeoutMs = 180_000, dumpPath = null } = {}) {
   // Buffer chunks — string concat hits V8 max string length (~512MB) under PO workload.
   const chunks = [];
   let partialBytes = 0;

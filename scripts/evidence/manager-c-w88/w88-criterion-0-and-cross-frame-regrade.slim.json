@@ -1,0 +1,117 @@
+{
+  "packet": "W88",
+  "manager": "C",
+  "tier": "mid",
+  "model": "claude-opus-5-thinking",
+  "title": "Criterion 0 noise floor, cross-frame re-grade of A's five cuts, and the arithmetic that does not retire the residue",
+  "rule_compliance": {
+    "no_confirmation_without_a_named_instrument_and_settle_protocol": "every finding below carries instrument + protocol fields; findings without them are labelled OPEN, not confirmed"
+  },
+
+  "correction_to_the_premise": {
+    "claim_received": "383 fresh single + 3 x 135 MB per additional panel = 788, therefore the residue may not exist",
+    "status": "the arithmetic is sound and it explains the PEAK; it does not touch the residue, which is a FLOOR measurement",
+    "why": [
+      "135 MB/panel explains the reading WHILE four panels are open. The residue claim has never been about that reading.",
+      "The residue is measured after the multichart is collapsed back to a single chart and garbage collection is forced: at the sample instant there is one chart, so a per-panel cost term cannot contribute to it.",
+      "On the cross-frame gauge the collapsed floors climb monotonically 74.06 -> 86.91 -> 100.10 -> 115.56 MB across four cycles. Additional-panel cost is zero at every one of those samples."
+    ],
+    "instrument": "Performance.getMetrics JSHeapUsedSize (the Performance Monitor figure), sampled after two forced collectGarbage calls with the multichart collapsed to a single chart",
+    "settle_protocol": "collapse to single chart, 2 x HeapProfiler.collectGarbage with 400ms between, then sample",
+    "residue_status": "STILL PRESENT on the cross-frame gauge. Not retired by the peak arithmetic."
+  },
+
+  "job_1_criterion_0": {
+    "signature": "FRESH-LOAD-CENSUS-V1",
+    "instrument": "Performance.getMetrics (JSHeapUsedSize, Documents, Frames, Nodes, JSEventListeners); performance.memory reported alongside, never instead",
+    "settle_protocol": "one fresh page per load, cache disabled, harness boot path, wait until window.chart.data.length > 200, forced GC, then sample; identical every load",
+    "n": 10,
+    "surface": "deployed dist-v9 single chart, 1 frame / 2 documents (NOT the PO's 11-18 document surface)",
+    "devtools": "no DevTools window; CDP attached, and nothing but booleans and numbers crosses the bridge, so the W81 console-retention mechanism is not in these figures",
+    "results": {
+      "cross_frame_used_mb": { "median": 61.52, "min": 61.09, "max": 61.82, "spread": 0.73, "sd": 0.21 },
+      "perf_memory_used_mb": { "median": 75.4, "min": 74.84, "max": 76.06, "spread": 1.22, "sd": 0.34 },
+      "documents": { "median": 2, "spread": 0, "sd": 0 },
+      "nodes": { "median": 6227.5, "min": 6225, "max": 6324, "spread": 99, "sd": 30.66 },
+      "listeners": { "median": 1348, "spread": 1 }
+    },
+    "the_number_that_matters": {
+      "fresh_load_between_session_spread_mb": 0.73,
+      "per_cycle_floor_climb_mb_same_gauge": 13.83,
+      "ratio": "18.9x",
+      "reading": "the residue is nineteen times the between-session noise floor on this surface. It is not a noise artefact."
+    },
+    "two_different_noises_must_not_be_conflated": {
+      "between_session_fresh_load_spread": "0.73 MB — small; this is what Criterion 0 measures",
+      "within_run_per_delta_sd": "4.1 MB (W83) — large; this is what swamped the A-versus-B comparison",
+      "consequence": "the residue clears its noise floor by 19x AND the A/B difference sits inside its noise floor. Both are true; they are different variances."
+    },
+    "document_count_is_deterministic_here": {
+      "observed": "2 documents on all ten loads, spread 0, and 1 frame on all ten",
+      "consequence": "the PO's 13-versus-18 nondeterminism does not exist on the bare chart shell. It lives in the surrounding app, the saved layout, or the browser profile — not in the chart."
+    }
+  },
+
+  "job_3_cross_frame_regrade_of_As_five_cuts": {
+    "why_re_graded": "the W84 retraction was measured on performance.memory. If that gauge were blind to panel realms the grade would be void, so the grade has been recomputed on the cross-frame gauge the Director specified.",
+    "instrument": "Performance.getMetrics JSHeapUsedSize at the same instant as every performance.memory sample (recorded since W86)",
+    "settle_protocol": "collapsed single-chart floor, 2 x forced GC, distinct datasets, 4 cycles",
+    "arms": {
+      "cuts_on": { "cross_frame_floors_mb": [74.06, 86.91, 100.1, 115.56], "cross_frame_deltas": [12.85, 13.19, 15.46], "mean": 13.83, "sd": 1.42 },
+      "cuts_off": { "cross_frame_floors_mb": [74.74, 87.68, 100.02, 113.04], "cross_frame_deltas": [12.94, 12.34, 13.02], "mean": 12.77, "sd": 0.37 }
+    },
+    "verdict": "the cuts do not measure smaller on the cross-frame gauge either: 13.83 with them ON against 12.77 with them OFF, i.e. 1.06 MB/cycle WORSE, well inside the per-delta noise.",
+    "n": "one run per arm, three deltas each. This does not write the cuts off and I am not writing them off — it says the cross-frame gauge does not rescue them. Settling it needs ~12 runs per arm at the measured per-delta sd (W83 resolution figure).",
+    "what_changed_and_what_did_not": "the gauge changed the MAGNITUDE (see below) but not the SIGN of the comparison. The W84 retraction stands on the gauge the Director asked for."
+  },
+
+  "gauge_reconciliation_the_significant_finding": {
+    "instrument_a": "performance.memory.usedJSHeapSize",
+    "instrument_b": "Performance.getMetrics JSHeapUsedSize (Performance Monitor)",
+    "on_absolutes": "b/a = 0.82 (61.52 vs 75.40 median at the fresh floor) — a 1.22x disagreement",
+    "on_deltas": "a/b = 1.76x to 2.00x — performance.memory reports roughly DOUBLE the per-cycle growth that Performance Monitor reports",
+    "consequence": "my headline 24 MB/cycle and the PO's hand-measured ~12 MB/cycle are the same measurement read on two gauges. On the Director's chosen gauge my harness reads 13.83 +/- 1.42 MB/cycle against the PO's ~12. THE TWENTY-FOLD CALIBRATION GAP IS CLOSED, and it closes without any surface correction.",
+    "restatement_owed": "every per-cycle figure I have reported on performance.memory should be halved to compare with a Performance Monitor reading. 23.5 pre-fix becomes ~13. I am restating rather than defending."
+  },
+
+  "job_4_enumerate_the_documents": {
+    "status": "PARTIAL — enumeration works, but the phenomenon is not on my surface",
+    "instrument": "FRAME-TREE-V1 (Page.getFrameTree, every frame's URL and name) plus the Documents counter",
+    "my_surface": "1 frame, 2 documents, identical on all ten loads; the low-load/high-load diff is empty because there is no variation to diff",
+    "leading_candidate_checked_in_source": {
+      "candidate": "panel construction gated on the failing /api/chart/preferences response (advisor's H5-is-the-same-bug hypothesis)",
+      "finding": "NOT SUPPORTED by the source. /api/chart/preferences is touched only in v9ChartTemplatesStorage.js, in hydrateV9ChartTemplatesFromCloud (GET) and syncV9ChartTemplatesCloudDirect (POST). The GET path returns local templates on !res.ok and on throw; the POST path returns false. Neither blocks, retries, or gates construction, and MultichartGrid.jsx contains no reference to preferencesSync at all.",
+      "instrument": "source read of v9ChartTemplatesStorage.js lines 89-140 and a preferencesSync grep across MultichartGrid.jsx",
+      "caveat": "this rules out template hydration as the gate. It does not rule out a different consumer on the PO's surface, which I cannot see without the route.",
+      "no_re_measurement_of_Bs_500": "confirmed — I did not issue a single request to that endpoint"
+    },
+    "blocker": "the exact route the PO loads for a fresh single chart. One line: BLOCKED on the PO's route; the PO or B unblocks it."
+  },
+
+  "job_2_name_the_383_mb": {
+    "status": "IN FLIGHT at time of writing, instrument and protocol fixed in advance so the number cannot be shopped",
+    "signature": "FLOOR-COMPOSITION-V1",
+    "instrument": "HeapProfiler.takeHeapSnapshot, aggregated by constructor",
+    "size_metric_declared_up_front": "SELF (shallow) size per constructor, with counts and mean bytes per object",
+    "why_not_retained_size": "self size answers the question actually posed — Object/Array dominating means bar data held as JS objects, Float64Array means already columnar, HeapNumber means boxed doubles. Retained size answers OWNERSHIP, which REALM-SURVIVAL-V1 and the retainer-path aggregation already answer. Substituting one for the other silently is the error I am avoiding by naming it.",
+    "surface_caveat_stated_before_the_result": "this snapshots MY 61 MB / 2-document floor, not the PO's 383 MB / 11-18 document floor. Composition proportions may transfer; the absolute mass does not. Naming the PO's 383 MB requires the route.",
+    "measureUserAgentSpecificMemory_pairing": "still unavailable — crossOriginIsolated=false, needs COOP/COEP headers from B (W85). The per-realm half of the Director's two-measurement plan is blocked on that header, not on my effort."
+  },
+
+  "what_survives_of_the_realm_work": {
+    "panel_B_retains_regardless_of_dataset": {
+      "instrument": "REALM-SURVIVAL-V1 over a heap snapshot, weak edges and WeakMap key/value pairs excluded",
+      "settle_protocol": "collapse to single chart, 2 x forced GC, snapshot, classify",
+      "claim_type": "PRESENCE, as the Director says — panel B's realm is reachable from a product object after teardown, in all four b103 arms, under dataset rotation",
+      "magnitude_claim_withdrawn_pending_regrade": "the 20.87-of-23.53 MB attribution was computed on performance.memory. On the cross-frame gauge the floor delta is ~13.8 MB, so the share needs recomputing before any MB figure from W78 is quoted again."
+    },
+    "named_anchor": "host Chart._mcHostCacheFileRefOwners holds a Map built inside the panel realm — presence argument, same instrument, still escalated to A"
+  },
+
+  "open_and_owed": [
+    "job 2 constructor table — running; lands next",
+    "job 3 at n>=12 per arm — the only way the cuts get a verdict rather than an absence of one",
+    "the PO's route — blocks naming the 383 MB and blocks the document enumeration that matters",
+    "COOP/COEP from B — blocks measureUserAgentSpecificMemory per-realm figures"
+  ]
+}
