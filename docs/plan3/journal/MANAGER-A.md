@@ -438,3 +438,73 @@ still running and is the current best hope of naming it.
 
 I am not editing the finding myself; it is not my document. Escalated to the Director as an amendment
 request with the measured numbers attached.
+
+## 2026-07-30T11:52 · ACCEPTED · MC-CLONE-CUT — the 75% allocator is cut, and the author''s suite missed a real regression
+
+`manager-a/mc-clone-cut-20260730` @ **8b6c90554** = 65164a11a (author, product) + d52d1d8b4 + 8b6c90554 (both MINE, test-only).
+Based on the LIVE tip e675e5d1b, so it cherry-picks independently and does NOT ride with the P0 branch.
+
+**The cut.** `_mcCopySamePairFullRawData(source, slotKey)` now copies once per destination slot and appends only
+the new tail. Falls back to a full clone on: different source identity, source shorter, boundary-timestamp
+mismatch, no slot key, or source above the 200k cap. Detachment preserved — every bar in the result is built by
+`_mcScalarCloneRawBar`, so this is NOT the aliasing flag. Flag `__TALARIA_DISABLE_MC_INCREMENTAL_RAWDATA_COPY_V1`,
+truthy semantics; the pre-existing `__TALARIA_DISABLE_MC_RAWDATA_COPY_V1` still takes precedence.
+Removes 99.13% of cloned bar objects per destination (8,170,290 -> 71,103 over a simulated 30s).
+
+**VERIFIED BY ME, not taken on report.** Clean tree, exactly one product commit, zero off-limits paths,
+mirrors byte-identical EFB77272F367E576, flags 1/1 in both copies, bogus-flag control 0.
+Ran EIGHT of my own mutants on disk in both mirrors, needle==1 enforced, negative control correctly NOT_APPLIED,
+files restored to baseline sha. All killed by NAMED BEHAVIOURAL cells, none anchor-only.
+
+**I ALSO READ THE CODE RATHER THAN THE TESTS, because the failure mode here is silent data corruption.**
+The fast path returns the SAME array object every call, so the whole design rests on nobody mutating it
+externally. Cleared with positive controls (50 `.push|splice` sites in replay-system.js prove the grep shape works):
+`_mergeIntoPanelFullRawData` REASSIGNS (chart.js:7014/:7026), never mutates; `_installPlayheadPrefix` builds a
+separate WeakMap-keyed buffer and only READS master. So the `out.length === cache.sourceLength` invariant holds.
+It is not ENFORCED in code, though — see ROW below.
+Also confirmed the append loop uses the identical malformed-bar filter as `_mcCloneRawDataBars`, so it cannot
+diverge from legacy, and the >200k fallback is correct because a tail-append can never drop a sliding-window head.
+
+**CAUGHT A REGRESSION THE AUTHOR DID NOT RUN INTO — leak-d, 8/0 -> 4/4.**
+`leak-d-rawdata-copy.test.mjs` covers the exact function the cut rewrote and the author never ran it.
+Classified properly instead of guessing: green at the parent e675e5d1b, red after the cut = genuine regression.
+Cause was NOT behaviour: `TypeError: this._mcIncrementalRawDataCopyDisabled is not a function`. The harness
+extracts a FIXED method list, so new collaborators break it — the EXTRACTION-LIST TRAP already on my board from
+cover-loop-safety. Plus three mutants anchored on source text the cut rewrote. Repaired in 8b6c90554: six methods
++ Map into the vm context, three mutants re-anchored. **All nine leak-d mutants still killed**, including
+`same-pair-helper-returns-alias`, `viewport-panel-site-aliased` and `sync-from-parent-master-site-aliased` — so
+the aliasing teeth were RESTORED, not relaxed to make the suite pass. That is independent confirmation from a
+suite I did not write that the cut preserves detachment at those call sites.
+
+**SWEPT ALL 117 module suites rather than assuming leak-d was the only casualty.** 14 red — every one of them
+red at the parent with IDENTICAL pass/fail counts, so all 14 are pre-existing debt on the live tip and leak-d was
+the only regression. (Separately notable: the tip carries 14 red module suites, incl. p3-bar-store-realm 15/1
+which I had already reported.)
+
+**CLOSED MY OWN B7 SURVIVOR rather than filing it.** Deleting the over-200k-cap fallback left the author''s suite
+fully green — the guard shipped untested, the fifth sighting today of the untested-branch/anchor family. Added a
+behavioural cell driving a source past an overridden limit plus a matching `drop-over-limit-fallback` mutant;
+suite 10 -> 11 cells and B7 now dies. Hit the cross-realm prototype trap doing it: the harness returns vm-context
+arrays that fail `assert/strict` deep equality with identical-looking values — `Array.from` rebuilds in-realm.
+
+**THE WIN IS REAL BUT NOT YET MEASURED LIVE, and I will not overstate it.** The fast path only pays off if the
+SOURCE array identity is stable across ticks; if the host churned it the win would be ZERO and the simulation
+would still look perfect. Checked in source: `this.fullRawData` is assigned only at init and replay start/reset
+(replay-system.js:183/:2723/:3449), never per tick, and the host `_panelFullRawData` writers are all fetch/merge
+paths. So identity is stable in steady-state playback and the fast path genuinely hits. That is a static argument,
+not a measurement — the honest number still requires re-reading the allocation profile with the cut deployed,
+which is already queued.
+
+ROUTING unchanged and still deliberately NOT stacked: (1) ship-b105-countdown-tf @ 684e3e5cb, the P0 STILL LIVE
+after b105/b106/b107; (2) cpu-cuts-b105 @ 612602877; (3) residency @ 9e0a8ad59; (4) this.
+
+ROWS:
+- The `out.length === cache.sourceLength` invariant is guaranteed today only by the ABSENCE of external mutators,
+  which I verified — it is not enforced. Any future in-place trim of `_panelFullRawData` or `replay.fullRawData`
+  silently corrupts the append offset and renders a continuous series across a hidden hole. A one-line length
+  check would convert that into a full-clone fallback. Cheap insurance, not needed today.
+- The cache retains a cross-realm ref to the host''s array. Adds no NEW class of retention (the same function
+  already aliases `parent.rawData`/`parent.data`), and dies with the panel chart, but it is now explicit.
+- `_reseedReplayFullRawFromLoadedData` remains queued as the next allocator; re-read the profile after this lands
+  rather than assuming the 75% converts 1:1.
+
