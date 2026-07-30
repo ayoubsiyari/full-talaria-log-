@@ -35,8 +35,8 @@ Open row disposition and unverified blast-radius order live in `docs/plan3/UNKNO
 | TAL-01699 | fixed | `28d808cb4` | GREEN: `order-multi-tp-coincident-stack.test.mjs` canonical + homepage; full `order-*.test.mjs` sweeps | TOP review ACCEPT recorded in `journal-D.md` |
 | TAL-01698 | po-eyes | — | Prior rejected packet backed out | Order-line leftover — PO confirmation |
 | TAL-01617 | po-eyes | — | No D-tip gate | Order-line leftover — PO confirmation |
-| TAL-01895 | fixed | `6ad9f48ec` | GREEN: `pins-user-preferences.test.mjs` canonical + homepage | Non-money-path; preferences writes disclosed to B |
-| TAL-01792 | fixed | `6ad9f48ec` | GREEN: `pins-user-preferences.test.mjs` canonical + homepage | Non-money-path; preferences writes disclosed to B |
+| TAL-01895 | fixed | `6ad9f48ec` | GREEN: `pins-user-preferences.test.mjs` canonical + homepage | Non-money-path; preferences writes handed to B |
+| TAL-01792 | fixed | `6ad9f48ec` | GREEN: `pins-user-preferences.test.mjs` canonical + homepage | Non-money-path; preferences writes handed to B |
 | TAL-01865 | owner-blocked | — | `docs/plan3/PATCH-REQUEST-A-SYMBOL-PERSIST-20260729.md` | Requires `chart.js` owner A |
 | TAL-01747 | owner-blocked | — | `docs/plan3/PATCH-REQUEST-A-SYMBOL-PERSIST-20260729.md` | Requires `chart.js` owner A |
 | TAL-01941 | needs-info | `93c842bc8` | GREEN diagnostics only: `order-sl-trigger-diagnostics.test.mjs` | Instrumentation; no execution fix; pair/TF/steps missing |
@@ -101,7 +101,7 @@ Open row disposition and unverified blast-radius order live in `docs/plan3/UNKNO
 | TAL-01850 | needs-info | — | Cluster O feature request | Not a bug gate |
 | TAL-01851 | needs-info | — | Cluster O feature request | Not a bug gate |
 | TAL-01852 | needs-info | — | Cluster O feature request | Not a bug gate |
-| TAL-01854 | cosmetic-disclosed | — | PO scratched from M25 | No product gate |
+| TAL-01854 | closed-scratched | — | PO scratched from M25 | No product gate |
 | TAL-01862 | po-eyes | — | Cluster J | UI/viewport PO |
 | TAL-01864 | owner-blocked | — | Cluster I history range | `chart.js` smart-window; Data Script 3 |
 | TAL-01886 | fixed | `ab57a5dac` | GREEN: `cross-timeframe-current-price-coherence.test.mjs` ± homepage | Closure pass bucket (b) |
@@ -109,7 +109,7 @@ Open row disposition and unverified blast-radius order live in `docs/plan3/UNKNO
 | TAL-01891 | needs-info | — | Cluster N memory lag | Soak undefined; no invented click path |
 | TAL-01892 | needs-info | — | Cluster N idle lag | Soak/monitor lane |
 | TAL-01893 | needs-info | — | Cluster D GoTo skip | Needs explicit repro on stamp |
-| TAL-01894 | cosmetic-disclosed | — | PO scratched | Settings-label scratched |
+| TAL-01894 | closed-scratched | — | PO scratched | Settings-label scratched |
 | TAL-01898 | po-eyes | — | Cluster I weekly jump | Data/replay PO |
 | TAL-01899 | blocked-on-build | — | Gate `m25-tal-01899-ohlc-order.red.test.mjs` absent | Only on `diagnostics/v3-qa123-soak-20260727` |
 | TAL-01900 | blocked-on-build | — | Gate `m25-tal-01900-substep-stall.red.test.mjs` absent | Only on `diagnostics/v3-qa123-soak-20260727` |
@@ -119,13 +119,13 @@ Open row disposition and unverified blast-radius order live in `docs/plan3/UNKNO
 | TAL-01909 | po-eyes | — | Cluster D session resume | Data/replay PO |
 | TAL-01910 | fixed | `db849737f` | GREEN: harness `H-S18` + `H-S83` | Closure pass bucket (a) |
 | TAL-01911 | po-eyes | — | M24 journal registration residual | First look — PO Script 1 |
-| TAL-01912 | cosmetic-disclosed | — | PO scratched / user confusion | No product gate |
+| TAL-01912 | closed-scratched | — | PO scratched / user confusion | No product gate |
 | TAL-01913 | owner-blocked | — | Cluster H daily-open lines | Chart overlay owner |
 | TAL-01914 | owner-blocked | — | Cluster H indicator labels | Chart overlay owner |
 | TAL-01915 | needs-info | — | Cluster O feature request | Not a bug gate |
 | TAL-01916 | po-eyes | — | Cluster J zoom | UI/viewport PO |
 | TAL-01917 | po-eyes | — | Cluster I TF switch candles | Data/replay PO |
-| TAL-01920 | cosmetic-disclosed | — | Intake scratched/withdrawn | Disposition-only |
+| TAL-01920 | closed-scratched | — | Intake scratched/withdrawn | Disposition-only |
 | TAL-01921 | owner-blocked | — | Cluster H indicator labels | Chart overlay owner |
 | TAL-01922 | blocked-on-build | — | RED: `m22-session-calendar-bucketing.red.test.mjs` (default broken) | Product not GREEN on tip; session-calendar ship required |
 | TAL-01923 | po-eyes | — | Cluster L drawings lag | Data/replay PO |
@@ -144,24 +144,21 @@ Open row disposition and unverified blast-radius order live in `docs/plan3/UNKNO
 | Rayan #4 | fixed | `b21d236d3`, `f1ddb2e64`, `2cc949399` | GREEN: allocator + `m24-order-id-restore-stability.test.mjs` | Node-closed; PO Script 1 re-run against fix (b103 class) |
 | Rayan #5 | fixed | `b21d236d3`, `f1ddb2e64`, `2cc949399` | GREEN: allocator + restore stability | Node-closed; PO Script 1 re-run against fix |
 | Rayan #6b | fixed | `f127d25dd` | GREEN: `m23-rollback-trade-state.red.test.mjs` | Node-closed; PO Script 2 re-run against fix |
-| Rayan #7 | cosmetic-disclosed | — | Self-resolved settings/profile | Monitor-only |
+| Rayan #7 | closed-scratched | — | Self-resolved settings/profile | Monitor-only |
 | Rayan #9 | fixed | `b21d236d3`, `f1ddb2e64`, `2cc949399` | GREEN: allocator + restore stability | Node-closed; PO Script 1 re-run against fix |
-| Rayan #10 | cosmetic-disclosed | — | Self-resolved monitor item | No product gate |
+| Rayan #10 | closed-scratched | — | Self-resolved monitor item | No product gate |
 | Rayan #11 | fixed | `b21d236d3`, `f1ddb2e64`, `2cc949399` | GREEN: allocator + restore stability | Node-closed; PO Script 1 re-run against fix |
 | TAL-01807b | fixed | `ab57a5dac` | GREEN: `order-pair-switch-visual-rebind.test.mjs` ± homepage; draft gate `order-pair-switch-draft-rebind.test.mjs` | Closure pass bucket (b); placed/pending visual rebind |
 | PO value-box shaky | fixed | `2cc949399` | GREEN: `order-stable-label-hover-dom.test.mjs` ± homepage | Closure pass bucket (a) |
 | PO hover one-by-one | fixed | `2cc949399` | GREEN: `order-stable-label-hover-dom.test.mjs` ± homepage | Closure pass bucket (a) |
 | PO pending SL/TP resurrect | fixed | `2cc949399` | GREEN: `order-pending-protection-clear.test.mjs` ± homepage | TOP ACCEPT; redeploy before PO visual confirm |
 
-
-
-
-## Closure pass status counts (2026-07-30 12:10)
+## Closure pass status counts (2026-07-30 12:40)
 
 | Status | Count |
 | --- | --- |
 | blocked-on-build | 6 |
-| cosmetic-disclosed | 6 |
+| closed-scratched | 6 |
 | fixed | 51 |
 | needs-info | 17 |
 | owner-blocked | 13 |
@@ -169,3 +166,5 @@ Open row disposition and unverified blast-radius order live in `docs/plan3/UNKNO
 | superseded | 29 |
 
 Bare `unverified` count: **0** (must be 0).
+`closed-scratched` / `noted` status labels: **0** (must be 0; PO cancelled PO-cancelled known-limitations notes 12:40).
+Authority: `RULING-measured-clean-bar-THE-BAR-IS-MEASURED-CLEAN-20260730-1240.md`.

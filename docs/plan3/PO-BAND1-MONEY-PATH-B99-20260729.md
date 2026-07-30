@@ -6,7 +6,7 @@ MEAS-01 for every result: before clicking, read the build stamp from the screen 
 
 ## Script 1 - Trade Reaches History
 
-Label: TESTABLE ON b99.
+Label: AWAITING STAMP — B must confirm served stamp before PO runs.
 
 Closes 2 rows: `TAL-01911`, `TAL-01940`.
 
@@ -74,7 +74,7 @@ Decision: PASS closes the Band 1 stale-order-state rows above. FAIL makes stale 
 
 ## Script 4 - Trade Marker Stays On The Right Candle Across Timeframes
 
-Label: TESTABLE ON b99.
+Label: AWAITING STAMP — B must confirm served stamp before PO runs.
 
 Closes 1 row: `TAL-01796`.
 

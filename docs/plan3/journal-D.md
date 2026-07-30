@@ -274,7 +274,7 @@
 
 - Wrote `docs/plan3/HANDOFF-D-TO-B-MERGE-20260729.md` for B's merge: D is on call to review every `order-manager.js` conflict hunk before money-path canary.
 - Flagged post-merge D gates that must pass after B resolves conflicts: new-draft constraint reset, live preview PnL, live risk quantity, block-place-during-preview-drag, and coincident multi-TP hit rows.
-- Disclosed out-of-grant preferences writes from `6ad9f48ec`: `preferences-sync.js` / `preferences-init.js` add user-level drawing-tool pins, preserve non-empty local timeframe/tool pins over empty cloud arrays, queue them back to API, and expose `save/loadDrawingToolFavorites`. These are not D-ratified and should come through B's merge only if B accepts them.
+- noted out-of-grant preferences writes from `6ad9f48ec`: `preferences-sync.js` / `preferences-init.js` add user-level drawing-tool pins, preserve non-empty local timeframe/tool pins over empty cloud arrays, queue them back to API, and expose `save/loadDrawingToolFavorites`. These are not D-ratified and should come through B's merge only if B accepts them.
 - Routed residuals again: M20-A owner must re-pin/re-review the `timezone-manager.js` sha256 gate; B must rebuild `dist-v9` bundles before PO can see TAL-01896 in the app.
 
 ## 2026-07-29 — M17-DI2 / TAL-01918 completed-bar close mutation
@@ -350,3 +350,10 @@
 - Reclassified 26 default-(c): cosmetic 6 / superseded 14 / needs-info 6 — zero PO minutes.
 - Five PO scripts assembled in `PO-SCRIPTS-NEXT-BUILD-20260730.md`, ordered by rows-closed/PO-minute, each row tagged re-run vs first look.
 - Ledger bare `unverified` count: **0**.
+
+## 2026-07-30 — 12:40 measured-clean-bar + po-eyes packs
+
+- Relabeled 6 former scratched/monitor rows → `closed-scratched` per PO 12:40 measured-clean ruling. Ledger status column has zero forbidden known-limitations labels.
+- Owner-blocked 13 listed for Director routing — all **A** — `OWNER-BLOCKED-ROUTING-20260730-1240.md`.
+- Bucket (a)/(b) reconfirmed GREEN; 6 remain `blocked-on-build`.
+- 26 `po-eyes` packed into five efficiency packs + named money Scripts 1–5; all `AWAITING STAMP` until B confirms stamp. No ready-to-run labels before stamp.

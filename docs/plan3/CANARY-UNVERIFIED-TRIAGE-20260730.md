@@ -1,61 +1,44 @@
-# Canary Row Disposition — 2026-07-30 (updated 12:10 closure pass)
+# Canary Row Disposition — 2026-07-30 (updated 12:40)
 
-Scope: the 102 unverified rows from the 10:40 triage, plus M24 reopen rows.  
-**Bare `unverified` count after this pass: 0.**  
-Authority: `docs/plan3/CANARY-CLOSURE-PASS-20260730-1210.md`, ledger `TICKET-STATUS-LEDGER-20260729.md`.
+Scope: former 102 unverified set.
+**Bare `unverified`: 0.**
+**No status uses forbidden known-limitations labels.** Scratched rows use `closed-scratched` (PO 12:40 ruling — `RULING-NO-DISCLOSURE-THE-BAR-IS-MEASURED-CLEAN-20260730-1240.md`).
 
-## Original triage counts (10:40, before closing)
+Authorities:
+- `docs/plan3/CANARY-CLOSURE-PASS-20260730-1210.md`
+- `docs/plan3/OWNER-BLOCKED-ROUTING-20260730-1240.md`
+- `docs/plan3/PO-SCRIPTS-NEXT-BUILD-20260730.md`
+- `docs/plan3/TICKET-STATUS-LEDGER-20260729.md`
 
-- `(a)` existing gate: **15**
-- `(b)` code read + new gate: **14**
-- `(c)` PO eyes / NEEDS-INFO: **73**
-- Total: **102**
+## Bucket (a) — confirmed 12:40
 
-## Closure pass outcomes (12:10)
-
-### Bucket (a)
-
-| Outcome | Count | Rows |
-| --- | ---: | --- |
-| `fixed` (gates GREEN) | 8 | TAL-01733, 01910, 01887, 01939, 01699, 01885, PO value-box, PO hover |
-| `blocked-on-build` | 6 | TAL-01918, 01922, 01899, 01718, 01900, 01902 |
-
-TAL-01918 / TAL-01922: gates exist locally and are RED; product fix not on deployed stamp → **BLOCKED-ON-BUILD**, not closed, not bare unverified.  
-M25 four: gates only on `diagnostics/v3-qa123-soak-20260727`.
-
-### Bucket (b)
-
-| Outcome | Count | Rows |
-| --- | ---: | --- |
-| `fixed` | 6 | TAL-01903, 01886, 01802, 01777, 01807b, PO pending SL/TP resurrect |
-| `owner-blocked` | 8 | TAL-01799, 01864, 01936, 01931, 01759, 01935/01914/01921, 01938, 01913 |
-
-New gates: `cross-timeframe-current-price-coherence.test.mjs`, `order-pair-switch-visual-rebind.test.mjs` (`ab57a5dac`).
-
-### Reclassify the 26 (default-c dump → zero PO minutes)
-
-| Class | Count |
+| Outcome | Count |
 | --- | ---: |
-| `cosmetic-disclosed` | 6 |
-| `superseded` | 14 |
-| `needs-info` | 6 |
+| `fixed` (gates GREEN, reconfirmed) | 8 |
+| `blocked-on-build` | 6 |
 
-IDs: see `CANARY-CLOSURE-PASS-20260730-1210.md` §3.
+Blocked: TAL-01918, 01922 (local RED; undeployed fix), TAL-01899/01718/01900/01902 (M25 pack on `diagnostics/v3-qa123-soak-20260727`).
 
-### Remaining `po-eyes` (26)
+## Bucket (b) — confirmed 12:40
 
-True deployed-build looks that still cannot close at node level: order-line leftovers, data/replay/UI clusters, TAL-01796 / TAL-01911 / TAL-01940 first looks, etc.  
-**Five money scripts** for the next stamp: `PO-SCRIPTS-NEXT-BUILD-20260730.md` (ordered by rows-closed / PO-minute; each row tagged re-run vs first look).
-
-## Ledger status totals after pass
-
-| Status | Count |
+| Outcome | Count |
 | --- | ---: |
-| fixed | 51 |
-| superseded | 29 |
-| po-eyes | 26 |
-| needs-info | 17 |
-| owner-blocked | 13 |
-| blocked-on-build | 6 |
-| cosmetic-disclosed | 6 |
-| unverified | **0** |
+| `fixed` (money-path first) | 6 |
+| `owner-blocked` → all **A** | 8 (13 total owner-blocked in ledger including rows outside the 14-slot list) |
+
+Money-path fixed: TAL-01903, 01886/01802, 01777, 01807b, PO pending clear.
+
+## Former scratched set (6) → `closed-scratched`
+
+Rayan #7, Rayan #10, TAL-01854, TAL-01894, TAL-01912, TAL-01920.
+No PO minutes. Not escalated with a floor/leak number.
+
+## 26 `po-eyes`
+
+Packed into five efficiency-ranked packs in `PO-SCRIPTS-NEXT-BUILD-20260730.md` Part A.
+Named money Scripts 1–5 in Part B (mostly re-runs of `fixed` rows + three first-look `po-eyes`).
+**All packs `AWAITING STAMP` until B confirms the served stamp.**
+
+## Owner-blocked (13) — Director routes
+
+See `OWNER-BLOCKED-ROUTING-20260730-1240.md`. All thirteen → **Manager A** (TAL-01799 conditional B only if order leak).

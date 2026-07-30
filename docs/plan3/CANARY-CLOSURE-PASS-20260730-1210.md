@@ -11,7 +11,7 @@
 | `fixed` | Commit + GREEN gate |
 | `broken` | Defect proven RED locally |
 | `blocked-on-build` | Gate/fix lives on undeployed branch, or product fix not on ship stamp |
-| `cosmetic-disclosed` | Low-blast / scratched / monitor-only; no PO eyes |
+| `closed-scratched` | Scratched / withdrawn / self-resolved; no PO eyes; not a known-limitations note |
 | `superseded` | Covered by shipped fix family or old-layout surface |
 | `needs-info` | Missing repro / feature question / soak undefined |
 | `owner-blocked` | Mechanism owned outside D tip (`chart.js`, replay, layout shell) |
@@ -63,9 +63,11 @@
 
 ## 3. Reclassify the 26 (was default bucket c)
 
+Status vocabulary updated 12:40: `closed-scratched` replaces the cancelled known-limitations status.
+
 | Class | Count | IDs |
 | --- | ---: | --- |
-| `cosmetic-disclosed` | 6 | Rayan #7, Rayan #10, TAL-01854, TAL-01894, TAL-01912, TAL-01920 |
+| `closed-scratched` | 6 | Rayan #7, Rayan #10, TAL-01854, TAL-01894, TAL-01912, TAL-01920 |
 | `superseded` | 14 | TAL-01653, 01658, 01691, 01692, 01760, 01780, 01781, 01789, 01791, 01795, 01805, 01756, 01732, 01723 |
 | `needs-info` | 6 | Rayan #2, TAL-01677, 01744, 01891, 01892, 01893 |
 | **Total** | **26** | |
