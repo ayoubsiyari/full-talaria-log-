@@ -425,6 +425,50 @@ test('short dest follow restore: drawn>0 (not blank chart)', () => {
   assert.equal(d.skipped, 0);
 });
 
+test('restore follow-latest: playhead-on + bars-off still recenters (drawn>0)', () => {
+  // Protects `_restoreTfSwitchViewport` needsRecenter `|| !barsOnScreen`.
+  // `_isReplayPlayheadOnScreen` only probes the LAST candle (with ±spacing
+  // halo); a short tip pinned just left of the plot can report onScreen
+  // while `_viewportHasLoadedBarsOnScreen` is false and paint draws 0.
+  const fromMs = TF_MS['1h'];
+  const toMs = TF_MS['1m'];
+  const oldBars = makeBars(fromMs, 500, T0);
+  const lastOld = oldBars[oldBars.length - 1].t;
+  const tipStart = lastOld + fromMs - 13 * toMs;
+  const shortBars = makeBars(toMs, 13, tipStart);
+  const { chart } = makeChart({
+    tf: '1h', data: oldBars, mode: 'follow', backtestReplay: true,
+  });
+  chart._captureTfSwitchViewport();
+  const vp = { ...chart._tfSwitchViewport };
+  assert.equal(vp.userHasPanned, false);
+  // Place last fine bar in the playhead left halo, outside loaded-bar overlap.
+  vp.anchorScreenX = chart.margin.l - 3;
+  chart.data = shortBars;
+  chart.currentTimeframe = '1m';
+  chart._tfSwitchViewport = vp;
+
+  assert.equal(chart._restoreTfSwitchViewport(), true);
+  const after = countDrawn(chart);
+  assert.ok(after.drawn > 0, `barsOnScreen gate must recenter; drawn=${after.drawn}`);
+  assert.equal(after.barsOnScreen, true);
+  assert.equal(chart._tfSwitchAnchorLock, null, 'recenter must drop the bad lock');
+
+  // White-box oracle (after e2e): commit alone is the playhead-on / bars-off blank.
+  const mid = makeChart({
+    tf: '1m', data: shortBars, mode: 'follow', backtestReplay: true,
+  }).chart;
+  assert.equal(mid._commitTfSwitchAnchorLock({ ...vp }), true);
+  const midDraw = countDrawn(mid);
+  assert.equal(midDraw.drawn, 0, 'oracle: left-halo pin paints drawn===0');
+  assert.equal(midDraw.barsOnScreen, false, 'oracle: loaded bars miss the plot');
+  assert.equal(
+    mid.replaySystem._isReplayPlayheadOnScreen(mid),
+    true,
+    'oracle: playhead probe still true (last-candle halo)',
+  );
+});
+
 test('downshift 1H→1m: viewport lands at last fine bar (0 behind), not ~59', () => {
   const r = barsBehindAfterSwitch('1h', '1m');
   assert.equal(r.legacyExpected, 59, 'oracle: legacy jump is 59 new-TF bars');
