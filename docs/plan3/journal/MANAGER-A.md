@@ -2216,3 +2216,78 @@ travel. C measured; I inferred against the measurement and should have gone to s
 first. Two hours.
 
 Doc: CORRECTION-A-THE-PER-TRADE-READING-IS-BACK-AND-C-WAS-RIGHT-20260731-0005.md
+
+---
+
+## 2026-07-31 01:20 — Monster 1 BOUNDED; glow GC never shipped; glow's defs half is not mine
+
+**QUEUE 1 LANDED.** `manager-a/v9-trade-row-window-20260731` @ `1a91cd928`, base
+`5763ace5f`. Bound the RENDERED trade-row window at one choke point between the sort
+and the map. `displayRows` had exactly TWO occurrences in the file - definition and
+`.map()` - so the bound is contained, not one of several render paths. Window is the
+TAIL because the default sort is id ascending; same shape as the `slice(-50)`/`slice(-100)`
+cap MultichartGrid already applies to this data. Hidden rows reachable via a single
+banner element, so the bound costs visibility and never data; CSV export was already
+running off the unbounded list.
+
+Flag `__TALARIA_DISABLE_V9_TRADE_ROW_WINDOW_V1`, truthy-disabling, read per call.
+16 cells, 34/34 across all four talaria-design suites. 8 mutants applied ON DISK, all
+killed by NAMED BEHAVIOURAL cells, negative control NOT_APPLIED, file restored to
+baseline bytes.
+
+**M4 DIED TO C15 AND NOTHING ELSE** - the boundary off-by-one. C15 exists only because
+I inspected the suite for gaps before running mutants and noticed nothing exercised
+`total === limit`. Without that inspection it was a survivor. Inspecting for gaps
+BEFORE the mutant run is worth more than the mutant run.
+
+**FLAG-03 LIMIT I AM STATING RATHER THAN GLOSSING.** V9 is the visual path and PURGE-2
+turned three panels black behind an OFF state that satisfied "the feature is inactive".
+C07 asserts the working product (40 closed trades -> 40 rows, each with id AND P&L,
+through the real builder). C16 asserts the OFF arm returns the input array BY IDENTITY,
+so `.map()` walks the same object as before. But NEITHER PAINTS. There is no React test
+harness in this repo - all three existing talaria-design suites are pure-function
+node:test. Someone with a browser must confirm the OFF arm paints before this is called
+FLAG-03 complete. Recorded as a row: every future FLAG-03 on a visual V9 fix hits this
+same wall.
+
+**QUEUE 2 - THE GLOW GC IS STILL NOT ON THE WIRE.** At deployed build 20260730b115 all
+five identifiers are ZERO (flag, `_orderGlowFilterGcEnabled`, `_reclaimOrderGlowFilters`,
+`_reclaimUnreferencedGlowFilters`, `ORDER-GLOW-GC-V1`) against a strong same-fetch
+control (`_ensureMarkerGlowFilter` 8, `_disposeEntryMarkerRecord` 6,
+`_sweepOrphanedOrderLevelDom` 4, `B-W16` 5, 88 `__TALARIA_DISABLE_`). So 4->146 was
+measured on the UNFIXED path and nothing needs rebuilding. Branch
+`manager-a/order-glow-filters-20260730` @ `fdda39a3b` re-run by me tonight: 16/16.
+Still ships from its own base per `046db737e` - tip is behind deployment on ORDER-SEL-01.
+
+**CONF-03 CLEARS for the glow reclaim**, checked against my own packet first because
+this is the discipline that killed my clone/reseed credit. All four reclaim call sites
+(2235/41612/41620/42678) carry no same-pair guard within 60 lines above, and the whole
+file has none: all five guard identifiers 0 in order-manager.js against 20/26/21/5/12
+in chart.js with the same matcher. Reachable at four different symbols. The old
+530-filters-to-0 number came from a single-config CDP run and is labelled as such, NOT
+cited as CONF-01 acceptance.
+
+**THE FINDING THAT MUST TRAVEL WITH THE GLOW FIX: it does not explain the defs half.**
+The reported shape is an SVGDefs/SVGFilter PAIR, ~2.0/trade each, ALWAYS EQUAL. Proven
+from source with controls: ONE `append('defs')` site in order-manager.js (:41506),
+guarded on the same line by `.empty()`, so one `<defs>` per svg reused; and
+order-manager creates NO svg elements at all (`append('svg')` 0, `createElementNS` 0)
+against controls `append('g')` 26 / `append('rect')` 47 / `append('filter')` 1 in the
+same file. Repo-wide only 6 `append('defs')` sites across 73 modules + chart.js
+(control `append('g')` 84). An always-equal pair is not two writers - it is ONE RETAINED
+SUBTREE COUNTED TWICE, a detached `<defs>` holding one `<filter>`. Fits my standing
+detached-retention row, since our census is `querySelectorAll('*')` and sees attached
+nodes only. ASK TO C: what does the SVGDefs counter count - attached by selector, or
+retained from a heap snapshot? NOBODY reports the glow fix as closing 4->146 until that
+is answered. Ship it on its own merits.
+
+**BOUNDS ON MY OWN FIX, unchanged and restated:** this is NOT the PO's zero-trade
+collapse and I will not report it as such; and expect the duration gate to stay RED,
+because 735.0 MB/h over 1333.5 elements/h is 564 KB per element and the most favourable
+corner of both CIs still needs 51.9 KB.
+
+**NEW ROW:** `TalariaV8bLive.jsx:37968` inlines a copy of `filterTradePanelRowsByTab`,
+which exists as an exported helper and IS used by the CSV path. Two copies of one
+predicate, already able to drift.
+
+Doc: ROUTE-A-TO-B-MONSTER1-BOUND-AND-GLOW-STILL-UNSHIPPED-20260731-0120.md
