@@ -16,6 +16,24 @@ function _orderPersistenceV1Enabled() {
     return typeof window === 'undefined' || !window.__TALARIA_DISABLE_ORDER_PERSISTENCE_V1;
 }
 
+/**
+ * B-W18 rollback lever for the B-W16 durable-journal hydration guard — default ON.
+ *
+ * Fail-safe, not a feature flag: ONLY an explicitly recognised affirmative value
+ * disables the guard. Unset, null, '', 0, 'false', 'off' or any typo leaves the
+ * guard ACTIVE, as does an absent `window`. The failure directions are not
+ * symmetric — a guard that silently fails off deletes a user's trade journal.
+ * Recognised disable values (after String/trim/lowercase): '1', 'true', 'yes',
+ * 'on' — the same vocabulary as the backend JOURNAL_SWEEP_PARSE_GUARD_ENABLED
+ * lever, so one incident runbook covers both surfaces.
+ */
+function _bW16HydrationGuardEnabled() {
+    if (typeof window === 'undefined') return true;
+    const kill = window.__TALARIA_DISABLE_B_W16_HYDRATION_GUARD_V1;
+    if (kill === undefined || kill === null) return true;
+    return !['1', 'true', 'yes', 'on'].includes(String(kill).trim().toLowerCase());
+}
+
 /** I16 — build_id + schema_version on persisted order/trade rows — default ON. */
 const ORDER_RECORD_SCHEMA_VERSION = 1;
 
@@ -82,6 +100,11 @@ function _orderLifecycleEventOwnershipV1Enabled() {
 function _m24OrderIdAllocatorV1Enabled() {
     return typeof window === 'undefined'
         || !window.__TALARIA_DISABLE_M24_ORDER_ID_ALLOCATOR_V1;
+}
+
+/** M24: stable displayed journal IDs after session hydrate — default ON. */
+function _m24DisplayIdStabilityV1Enabled() {
+    return typeof window === 'undefined' || window.__TALARIA_DISABLE_M24_DISPLAY_ID_STABILITY_V1 !== true;
 }
 
 /**
@@ -226,6 +249,16 @@ function _orderLineEdgeVisibilityV1Enabled() {
     return typeof window === 'undefined' || !window.__TALARIA_DISABLE_ORDER_LINE_EDGE_VISIBILITY_V1;
 }
 
+/** Clear pending SL/TP protection from service mirrors as well as the visible row. */
+function _orderPendingProtectionClearV1Enabled() {
+    return typeof window === 'undefined' || window.__TALARIA_DISABLE_ORDER_PENDING_PROTECTION_CLEAR_V1 !== true;
+}
+
+/** Keep preview value-box DOM stable during live label/control refreshes. */
+function _orderStableLabelHoverDomV1Enabled() {
+    return typeof window === 'undefined' || window.__TALARIA_DISABLE_ORDER_STABLE_LABEL_HOVER_DOM_V1 !== true;
+}
+
 /** Cluster G / TAL-01905: omitted seek guard tick must block current candle OHLC. */
 function _orderSeekGuardInfinityV1Enabled() {
     return typeof window === 'undefined' || !window.__TALARIA_DISABLE_ORDER_SEEK_GUARD_INFINITY_V1;
@@ -278,7 +311,7 @@ const ENTRY_STACK_OFFSET_PX = 16;
 const ORDER_CANCEL_PLACE_SUPPRESS_MS = 450;
 const ORDER_LINE_EDGE_VISIBILITY_PAD_PX = 24;
 const ORDER_SPLIT_HANDLE_MIN_DRAG_PX = 4;
-const MULTI_TP_COINCIDENT_STACK_OFFSET_PX = 14;
+const MULTI_TP_COINCIDENT_STACK_OFFSET_PX = 6;
 const DEFAULT_SLTP_STEPPER_OFFSET_PIPS = 10;
 
 /** T4 step 9: default ON — lot stepper full recalc + SL/TP stepper seed from entry; own kill-switch. */
@@ -863,7 +896,16 @@ class OrderManager {
         this._oiProvisionalDragCtx = null;
         this._oiProvisionalCancelHandlersInstalled = false;
         this._runtimeOrderPersistenceBootstrapped = false;
-        
+
+        /**
+         * B-W16 journal provenance tri-state: 'unhydrated' | 'hydrated' | 'locally-authored'.
+         * Fails closed — "we do not know" must never be treated as "there is nothing",
+         * because a durable write replaces the server journal wholesale.
+         */
+        this._journalProvenance = 'unhydrated';
+        /** Session id 'hydrated' was established for; this instance outlives a session switch. */
+        this._journalProvenanceSession = null;
+
         this.init();
     }
 
@@ -7446,6 +7488,22 @@ class OrderManager {
             hotQueued = true;
         }
         if (this.chart && typeof this.chart.queueCriticalSessionStateSave === 'function') {
+            // B-W16: guard BOTH durable exits (A1 rehydrate + legacy unmarked) with one
+            // branch. Admit-list, not a deny-list: an unset or unrecognised provenance
+            // is "we do not know", which must never open a durable write. 'hydrated'
+            // only vouches for the session it was established for — this instance
+            // outlives a session switch (see _m19CommitJournalArray).
+            const journalVouchedFor = this._journalProvenance === 'locally-authored'
+                || (this._journalProvenance === 'hydrated'
+                    && this._journalProvenanceSession === (sessionId != null ? String(sessionId) : null));
+            // B-W18 rollback lever: when the kill is engaged this branch is skipped
+            // entirely and the durable write proceeds exactly as it did pre-B-W16 —
+            // same return shape, no suppression, no warning. The guard condition
+            // itself is unchanged.
+            if (_bW16HydrationGuardEnabled() && !journalVouchedFor) {
+                console.warn("📔 durable journal write suppressed: this session's journal was never hydrated from the server; the in-memory journal may be incomplete and writing it would delete server-side trades. Keeping last durable state.");
+                return Promise.resolve({ hotQueued, durableQueued: false, reason: 'journal-unhydrated' });
+            }
             const rowsHaveRefs = this._m20A1RowsHaveScreenshotRefs(durableJournal);
             // M20-A1 runtime-kill transition: kill flipped AFTER rows were
             // externalized. Durable must NEVER replace the server journal
@@ -8430,6 +8488,62 @@ class OrderManager {
             if (Array.isArray(row.scaledEntries)) row.scaledEntries.forEach((entry) => visit(entry && entry.id));
             if (Array.isArray(row.splitEntries)) row.splitEntries.forEach((entry) => visit(entry && entry.id));
         });
+    }
+
+    _resolveJournalDisplayTradeId(trade, fallbackId = null) {
+        if (!_m24DisplayIdStabilityV1Enabled()) {
+            return trade ? (trade.tradeId || trade.id || fallbackId) : fallbackId;
+        }
+        const fromTrade = this._resolveJournalDisplayTradeIdValue(trade);
+        if (fromTrade != null) return fromTrade;
+        return fallbackId;
+    }
+
+    _resolveJournalDisplayTradeIdValue(trade) {
+        if (!trade || typeof trade !== 'object') return null;
+        const journalTradeId = trade.journal_trade_id ?? trade.journalTradeId;
+        const normalizeCandidate = (value, { allowZero = false } = {}) => {
+            if (value == null) return null;
+            const trimmed = String(value).trim();
+            if (trimmed === '') return null;
+            const withoutHash = trimmed.replace(/^#/, '');
+            const numeric = Number(withoutHash);
+            if (Number.isFinite(numeric) && numeric === 0 && !allowZero) return null;
+            return value;
+        };
+        const isJournalTradeId = (value) => {
+            const candidate = normalizeCandidate(value, { allowZero: true });
+            if (candidate == null || journalTradeId == null) return false;
+            return String(candidate).trim().replace(/^#/, '') === String(journalTradeId).trim().replace(/^#/, '');
+        };
+        const pick = (keys, options = {}) => {
+            for (const key of keys) {
+                const value = normalizeCandidate(trade[key], options);
+                if (value == null) continue;
+                if (options.skipJournalId && isJournalTradeId(value)) continue;
+                return value;
+            }
+            return null;
+        };
+        const stableId = pick(['client_trade_id', 'clientTradeId', 'tradeId']);
+        if (stableId != null) return stableId;
+        const legacyId = pick(['id'], { skipJournalId: true });
+        if (legacyId != null) return legacyId;
+        const userScopedId = pick(['display_trade_id', 'displayTradeId', 'user_trade_id', 'userTradeId']);
+        if (userScopedId != null) return userScopedId;
+        const lastResortId = pick(['tradeId', 'id'], { allowZero: false });
+        if (lastResortId != null) return lastResortId;
+        return null;
+    }
+
+    _resolveJournalExportTradeId(trade, fallbackId = '') {
+        if (!trade || typeof trade !== 'object') return fallbackId;
+        for (const key of ['client_trade_id', 'clientTradeId', 'tradeId', 'id']) {
+            const value = trade[key];
+            if (value == null || String(value).trim() === '') continue;
+            return value;
+        }
+        return fallbackId;
     }
 
     _m24ReconcileOrderIdCounter() {
@@ -9751,7 +9865,7 @@ class OrderManager {
         const time = this.formatTimeOnly(trade.closeTime);
         const closeTypeIcon = trade.closeType === 'TP' ? '🎯' : trade.closeType === 'BE' || String(trade.closeType || '').startsWith('BE') ? '⚖️' : trade.closeType === 'SL' ? '🛑' : '✋';
         const hasNotes = trade.preTradeNotes?.reason || trade.postTradeNotes?.reason;
-        const tradeId = trade.tradeId || trade.id;
+        const tradeId = this._resolveJournalDisplayTradeId(trade);
         const pnl = trade.netPnL || trade.pnl || 0;
         const direction = trade.direction || trade.type;
         const entryPrice = trade.entryPrice || trade.openPrice;
@@ -10186,7 +10300,7 @@ class OrderManager {
         
         // Handle field name variations
         const pnl = trade.netPnL || trade.pnl || 0;
-        const tradeId = trade.tradeId || trade.id;
+        const tradeId = this._resolveJournalDisplayTradeId(trade);
         const direction = trade.direction || trade.type;
         const entryPrice = trade.entryPrice || trade.openPrice;
         const exitPrice = trade.exitPrice || trade.closePrice;
@@ -11418,7 +11532,7 @@ class OrderManager {
         
         this.tradeJournal.forEach(trade => {
             const row = [
-                trade.tradeId || '',
+                this._resolveJournalExportTradeId(trade, '') || '',
                 trade.direction || '',
                 trade.symbol || '',
                 String(trade.ticker || trade.symbol || '').replace('/', '').toUpperCase(),
@@ -17426,10 +17540,28 @@ class OrderManager {
         }
     }
 
+    _clearPreviewLabelGroupForRender(labelGroup) {
+        if (!_orderStableLabelHoverDomV1Enabled()) {
+            labelGroup.selectAll('*').remove();
+            return false;
+        }
+        const node = labelGroup.node?.();
+        if (!node || !node.childNodes) {
+            labelGroup.selectAll('*').remove();
+            return false;
+        }
+        Array.from(node.childNodes).forEach((child) => {
+            if (!child?.classList?.contains?.('order-level-toast-label')) {
+                child.remove?.();
+            }
+        });
+        return true;
+    }
+
     renderPreviewLabel(lineData, overrideY = null) {
         if (!lineData || !lineData.labelGroup) return;
 
-        lineData.labelGroup.selectAll('*').remove();
+        this._clearPreviewLabelGroupForRender(lineData.labelGroup);
 
         const segments = this.composePreviewLabelSegments(lineData.label, lineData.price, lineData.color, lineData.direction);
         const gap = 4;
@@ -17732,6 +17864,7 @@ class OrderManager {
         const localY = clientY - wrapRect.top;
         const yScale = ch?.scales?.yScale;
         const badges = groupNode.querySelectorAll('.om-level-ctrl');
+        const restoreTransitions = [];
 
         for (let i = 0; i < badges.length; i++) {
             const el = badges[i];
@@ -17754,8 +17887,18 @@ class OrderManager {
             el.style.transition = 'none';
             el.style.opacity = '1';
             el.style.pointerEvents = 'all';
-            void el.getBoundingClientRect();
-            el.style.transition = prevTransition || 'opacity 0.12s ease';
+            restoreTransitions.push([el, prevTransition || 'opacity 0.12s ease']);
+        }
+        if (!restoreTransitions.length) return;
+        const restore = () => {
+            for (let i = 0; i < restoreTransitions.length; i++) {
+                restoreTransitions[i][0].style.transition = restoreTransitions[i][1];
+            }
+        };
+        if (_orderStableLabelHoverDomV1Enabled() && typeof requestAnimationFrame === 'function') {
+            requestAnimationFrame(restore);
+        } else {
+            restore();
         }
     }
 
@@ -22553,6 +22696,7 @@ class OrderManager {
             this.previewLines.multipleTPs.forEach(tpLine => {
                 if (tpLine && tpLine.price) {
                     const tpY = yScale(tpLine.price) + (tpLine._stackOffsetY || 0);
+                    const tpHitY = yScale(tpLine.price) + (tpLine._hitStackOffsetY || tpLine._stackOffsetY || 0);
                     
                     // Update line
                     if (tpLine.line) {
@@ -22563,8 +22707,8 @@ class OrderManager {
                     }
                     if (tpLine.hitLine) {
                         tpLine.hitLine
-                            .attr('y1', tpY)
-                            .attr('y2', tpY)
+                            .attr('y1', tpHitY)
+                            .attr('y2', tpHitY)
                             .attr('x2', pc.w);
                     }
 
@@ -22899,7 +23043,7 @@ class OrderManager {
                 if (target.price > 0) {
                     const color = tpColors[Math.min(index, tpColors.length - 1)];
                     const label = `TP${previewTpRank.get(index) ?? index + 1}`;
-                    const stackOffsetY = this._multiTpCoincidentStackYOffsetPx(index);
+                    const hitOffsetY = this._multiTpCoincidentHitOffsetPx(this.tpTargets, index);
                     
                     const tpLine = this.drawPreviewLine(
                         target.price,
@@ -22909,7 +23053,7 @@ class OrderManager {
                         true,
                         index,
                         target.id,
-                        stackOffsetY ? { _stackOffsetY: stackOffsetY } : null
+                        hitOffsetY ? { _hitStackOffsetY: hitOffsetY } : null
                     );
                     if (tpLine) {
                         this.previewLines.multipleTPs.push(tpLine);
@@ -23142,6 +23286,10 @@ class OrderManager {
             stackYPx = Number(options._stackOffsetY);
         }
         const lineYPx = y + stackYPx;
+        const hitStackYPx = options?._hitStackOffsetY != null && Number.isFinite(Number(options._hitStackOffsetY))
+            ? Number(options._hitStackOffsetY)
+            : stackYPx;
+        const hitYPx = y + hitStackYPx;
         const hitStrokeWidth = 20;
         const dash = options?.strokeDasharray ?? null;
         const disabled = options?.disabled === true;
@@ -23164,8 +23312,8 @@ class OrderManager {
             .attr('class', 'preview-line-hit')
             .attr('x1', 0)
             .attr('x2', chart.w)
-            .attr('y1', lineYPx)
-            .attr('y2', lineYPx)
+            .attr('y1', hitYPx)
+            .attr('y2', hitYPx)
             .attr('stroke', color)
             .attr('stroke-width', hitStrokeWidth)
             .attr('stroke-dasharray', dash)
@@ -23208,6 +23356,7 @@ class OrderManager {
         if (options?.isSplitEntry) lineData.isSplitEntry = true;
         if (options?.orderType) lineData.orderType = options.orderType;
         if (stackYPx) lineData._stackOffsetY = stackYPx;
+        if (hitStackYPx && hitStackYPx !== stackYPx) lineData._hitStackOffsetY = hitStackYPx;
 
         this.renderPreviewLabel(lineData, lineYPx);
         this.adjustPreviewLineForLabel(lineData);
@@ -23438,7 +23587,8 @@ class OrderManager {
 
                 const chartHeightRaw = ch.h ?? ch.height ?? ch.svg?.attr('height') ?? 0;
                 const chartHeight = Number(chartHeightRaw) || 0;
-                let clampedY = Math.max(0, Math.min(chartHeight, event.y));
+                const dragHitOffsetY = self._previewDragHitOffsetY(lineData, event);
+                let clampedY = Math.max(0, Math.min(chartHeight, event.y - dragHitOffsetY));
                 let newPrice = ch.scales.yScale.invert(clampedY);
 
                 // Tick-grid snap preview Entry / SL / TP lines while dragging so
@@ -23528,7 +23678,7 @@ class OrderManager {
                 lineData.price = newPrice;
                 lineData.line.attr('y1', clampedY).attr('y2', clampedY);
                 if (lineData.hitLine) {
-                    lineData.hitLine.attr('y1', clampedY).attr('y2', clampedY);
+                    lineData.hitLine.attr('y1', clampedY + (Number(lineData._hitStackOffsetY) || 0)).attr('y2', clampedY + (Number(lineData._hitStackOffsetY) || 0));
                 }
 
                 if (_orderSltpApplyOnReleaseFixEnabled()) {
@@ -25862,19 +26012,33 @@ class OrderManager {
         return idx * ENTRY_STACK_OFFSET_PX;
     }
 
-    _multiTpCoincidentStackYOffsetPx(targetIndex) {
+    _multiTpCoincidentHitOffsetPx(targets, targetIndex) {
         if (!_orderMultiTpCoincidentStackV1Enabled()) return 0;
-        if (!this.tpTargets || targetIndex == null || targetIndex < 0 || targetIndex >= this.tpTargets.length) return 0;
-        const target = this.tpTargets[targetIndex];
+        const list = Array.isArray(targets) ? targets : this.tpTargets;
+        if (!list || targetIndex == null || targetIndex < 0 || targetIndex >= list.length) return 0;
+        const target = list[targetIndex];
         if (!(target && target.price > 0)) return 0;
         const precision = Math.max(0, Math.min(10, this.getPricePrecision ? this.getPricePrecision(target.price) : 5));
         const key = Number(target.price).toFixed(precision);
-        const coincident = this.tpTargets
+        const coincident = list
             .map((t, idx) => ({ t, idx }))
             .filter(({ t }) => t && t.price > 0 && Number(t.price).toFixed(precision) === key)
             .map(({ idx }) => idx);
         const stackIndex = coincident.indexOf(targetIndex);
         return stackIndex > 0 ? stackIndex * MULTI_TP_COINCIDENT_STACK_OFFSET_PX : 0;
+    }
+
+    _multiTpCoincidentStackYOffsetPx(targetIndex) {
+        return this._multiTpCoincidentHitOffsetPx(this.tpTargets, targetIndex);
+    }
+
+    _previewDragHitOffsetY(lineData, event) {
+        const hitOffsetY = Number(lineData?._hitStackOffsetY);
+        if (!Number.isFinite(hitOffsetY) || hitOffsetY === 0) return 0;
+        const target = event?.sourceEvent?.target;
+        if (target?.classList?.contains?.('preview-line-hit')) return hitOffsetY;
+        if (typeof target?.closest === 'function' && target.closest('.preview-line-hit')) return hitOffsetY;
+        return 0;
     }
 
     /**
@@ -28973,13 +29137,14 @@ class OrderManager {
                     ? this._multiEntryStackYOffsetPx(lineData.multiEntryLevelId)
                     : (lineData._stackOffsetY || 0);
                 const yPixel = ch.scales.yScale(lineData.price) + stackYPx;
+                const hitYPixel = ch.scales.yScale(lineData.price) + (lineData._hitStackOffsetY ?? stackYPx);
                 const translateY = yPixel - (height / 2);
                 lineData.labelGroup.attr('transform', `translate(${fixedX}, ${translateY})`);
                 if (lineData.line) {
                     lineData.line.attr('y1', yPixel).attr('y2', yPixel);
                 }
                 if (lineData.hitLine) {
-                    lineData.hitLine.attr('y1', yPixel).attr('y2', yPixel);
+                    lineData.hitLine.attr('y1', hitYPixel).attr('y2', hitYPixel);
                 }
                 if (stackYPx) lineData._stackOffsetY = stackYPx;
                 this.adjustPreviewLineForLabel(lineData, fixedX, width, height);
@@ -29062,13 +29227,14 @@ class OrderManager {
                     ? this._multiEntryStackYOffsetPx(lineData.multiEntryLevelId)
                     : (lineData._stackOffsetY || 0);
                 const yPixel = ch.scales.yScale(lineData.price) + stackYPx;
+                const hitYPixel = ch.scales.yScale(lineData.price) + (lineData._hitStackOffsetY ?? stackYPx);
                 const translateY = yPixel - (height / 2);
                 lineData.labelGroup.attr('transform', `translate(${currentX}, ${translateY})`);
                 if (lineData.line) {
                     lineData.line.attr('y1', yPixel).attr('y2', yPixel);
                 }
                 if (lineData.hitLine) {
-                    lineData.hitLine.attr('y1', yPixel).attr('y2', yPixel);
+                    lineData.hitLine.attr('y1', hitYPixel).attr('y2', hitYPixel);
                 }
                 if (stackYPx) lineData._stackOffsetY = stackYPx;
                 this.adjustPreviewLineForLabel(lineData, currentX, width, height);
@@ -40503,6 +40669,19 @@ class OrderManager {
     /** Replace the journal array (restore / truncate / reorder / filter / hydrate / project). */
     _m19CommitJournalArray(next, reason) {
         this.tradeJournal = Array.isArray(next) ? next : []; // M19-D-JOURNAL-WRITE:commit
+        // B-W16 provenance allowlist: only a successful server hydrate vouches for
+        // completeness. Every other reason (including 'local-backup-hydrate', the
+        // failed-fetch path) leaves provenance untouched — no upgrade, no downgrade.
+        if (reason === 'session-state-hydrate') {
+            this._journalProvenance = 'hydrated';
+            let hydratedSession = null;
+            try {
+                hydratedSession = this.chart && typeof this.chart.getActiveTradingSessionId === 'function'
+                    ? this.chart.getActiveTradingSessionId()
+                    : null;
+            } catch (_) { hydratedSession = null; }
+            this._journalProvenanceSession = hydratedSession != null ? String(hydratedSession) : null;
+        }
         this._m19NoteJournalStructuralMutation(reason || 'journal-replace');
         if (_orderPnlRestoreStableV1Enabled() && typeof this.recomputeAccountFromJournal === 'function') {
             this.recomputeAccountFromJournal();
@@ -42505,7 +42684,7 @@ class OrderManager {
             svg.selectAll(this._pendingTpDeleteSelector(oid)).remove();
             svg.selectAll(`.order-${oid}`).remove();
             svg.selectAll(`.exec-order-connector[data-order-id="${oid}"]`).remove();
-            svg.selectAll(`[class*="multi-tp-avg-"][class*="-${oid}"]`).remove();
+            svg.selectAll(`.multi-tp-avg-${oid}`).remove();
         };
         const charts = typeof this._collectLayoutCharts === 'function'
             ? this._collectLayoutCharts()
@@ -42807,6 +42986,33 @@ class OrderManager {
             seenId.add(o.id);
             out.push(o);
         }
+        return out;
+    }
+
+    _pendingProtectionClearRecordsForOrder(seed) {
+        if (!seed) return [];
+        const raw = [];
+        const push = (arr) => {
+            (arr || []).forEach((p) => {
+                if (p && typeof p === 'object') raw.push(p);
+            });
+        };
+        push(this.pendingOrders);
+        push(this.orderService?.pendingOrders);
+        const seedId = seed.id;
+        const splitGroupId = seed.splitGroupId;
+        const isSplit = seed.isSplitEntry && splitGroupId != null;
+        if (seedId == null && !isSplit) return [seed];
+        const seen = new Set();
+        const out = [];
+        raw.forEach((p) => {
+            const sameId = p.id == seedId;
+            const sameSplit = isSplit && p.isSplitEntry && p.splitGroupId == splitGroupId;
+            if (!sameId && !sameSplit) return;
+            if (seen.has(p)) return;
+            seen.add(p);
+            out.push(p);
+        });
         return out;
     }
 
@@ -44092,7 +44298,12 @@ class OrderManager {
         const po = (this.pendingOrders || []).find(p => p.id == orderId);
         if (!po) return;
 
-        if (po.isSplitEntry && po.splitGroupId) {
+        const clearedRecords = _orderPendingProtectionClearV1Enabled()
+            ? this._pendingProtectionClearRecordsForOrder(po)
+            : null;
+        if (_orderPendingProtectionClearV1Enabled()) {
+            clearedRecords.forEach(m => { m.stopLoss = null; });
+        } else if (po.isSplitEntry && po.splitGroupId) {
             this._getSplitGroupPendingOrders(po).forEach(m => { m.stopLoss = null; });
         } else {
             po.stopLoss = null;
@@ -44101,6 +44312,10 @@ class OrderManager {
         this.removePendingSLTPLines(orderId);
         this.drawPendingOrderTargets(po, this.chart);
         this._drawExecutedOrderConnectors(this.chart);
+        if (_orderPendingProtectionClearV1Enabled()) {
+            if (typeof this._emitPendingMirrorSync === 'function') clearedRecords.forEach(m => this._emitPendingMirrorSync(m));
+            if (typeof this._schedulePendingOrdersPanelRefresh === 'function') this._schedulePendingOrdersPanelRefresh();
+        }
         console.log(`✅ Pending SL removed from order #${orderId}`);
         this.showNotification(`Stop Loss removed from pending order`, 'info');
     }
@@ -44112,7 +44327,12 @@ class OrderManager {
         const po = (this.pendingOrders || []).find(p => p.id == orderId);
         if (!po) return;
 
-        if (po.isSplitEntry && po.splitGroupId) {
+        const clearedRecords = _orderPendingProtectionClearV1Enabled()
+            ? this._pendingProtectionClearRecordsForOrder(po)
+            : null;
+        if (_orderPendingProtectionClearV1Enabled()) {
+            clearedRecords.forEach(m => { m.takeProfit = null; m.tpTargets = null; });
+        } else if (po.isSplitEntry && po.splitGroupId) {
             this._getSplitGroupPendingOrders(po).forEach(m => { m.takeProfit = null; m.tpTargets = null; });
         } else {
             po.takeProfit = null;
@@ -44125,6 +44345,10 @@ class OrderManager {
         const avgKey = `splitgrp_${po.splitGroupId}`;
         const avgIdx = (this.multiTPAvgLines || []).findIndex(g => g.orderId === avgKey || g.orderId === po.id);
         if (avgIdx !== -1) this._destroyMultiTPAvgEntry(avgIdx);
+        if (_orderPendingProtectionClearV1Enabled()) {
+            if (typeof this._emitPendingMirrorSync === 'function') clearedRecords.forEach(m => this._emitPendingMirrorSync(m));
+            if (typeof this._schedulePendingOrdersPanelRefresh === 'function') this._schedulePendingOrdersPanelRefresh();
+        }
         console.log(`✅ Pending TP removed from order #${orderId}`);
         this.showNotification(`Take Profit removed from pending order`, 'info');
     }
@@ -44428,7 +44652,9 @@ class OrderManager {
                     if (priceText) priceText.style('display', 'none');
                 }
                 
-                const y = ch.scales.yScale(displaySlPrice);
+                const rawY = ch.scales.yScale(displaySlPrice);
+                const edgeY = this._orderLineEdgeVisibleY(ch, rawY, 'SL');
+                const y = Number.isFinite(edgeY) ? edgeY : rawY;
                 const draggingThisSl = !!(
                     this._isDraggingOrderLine
                     && this._draggingManagedOpenLineKind === 'sl'
@@ -44744,7 +44970,9 @@ class OrderManager {
                     if (priceText) priceText.style('display', 'none');
                 }
                 
-                const y = ch.scales.yScale(displayTpPrice);
+                const rawY = ch.scales.yScale(displayTpPrice);
+                const edgeY = this._orderLineEdgeVisibleY(ch, rawY, 'TP');
+                const y = Number.isFinite(edgeY) ? edgeY : rawY;
                 
                 if (labelText && labelBox) {
                     const boxH = 22;
@@ -45290,8 +45518,8 @@ class OrderManager {
         if (this._isOrderYInMainPlot(ch, y)) return y;
         const bounds = this._orderMainPlotYBounds(ch);
         if (!bounds) return null;
-        if (y < bounds.top && y >= bounds.top - ORDER_LINE_EDGE_VISIBILITY_PAD_PX) return bounds.top;
-        if (y > bounds.bottom && y <= bounds.bottom + ORDER_LINE_EDGE_VISIBILITY_PAD_PX) return bounds.bottom;
+        if (y < bounds.top && y >= bounds.top - ORDER_LINE_EDGE_VISIBILITY_PAD_PX) return bounds.top + 0.5;
+        if (y > bounds.bottom && y <= bounds.bottom + ORDER_LINE_EDGE_VISIBILITY_PAD_PX) return bounds.bottom - 0.5;
         return null;
     }
 
@@ -45446,7 +45674,7 @@ class OrderManager {
                         console.log(`   ⚠️ Pending order not found for #${orderId}`);
                         this._disposeOrderLineElements(olEntry);
                         this.orderLines = (this.orderLines || []).filter(
-                            (ol) => !(ol.orderId === orderId && (ol.chart || this.chart) === ch)
+                            (ol) => !(ol.orderId === orderId && ol.isPending && (ol.chart || this.chart) === ch)
                         );
                         return;
                     }
@@ -45457,7 +45685,7 @@ class OrderManager {
                         console.log(`   ⚠️ Position not found for order #${orderId}`);
                         this._disposeOrderLineElements(olEntry);
                         this.orderLines = (this.orderLines || []).filter(
-                            (ol) => !(ol.orderId === orderId && (ol.chart || this.chart) === ch)
+                            (ol) => !(ol.orderId === orderId && !ol.isPending && (ol.chart || this.chart) === ch)
                         );
                         return;
                     }
@@ -45971,8 +46199,9 @@ class OrderManager {
                 shiftBtn(target._deleteBtn);
                 shiftBtn(target._splitBtn);
                 if (Number.isFinite(target.labelDimensions?.width)) {
-                    const hitEnd = minX;
+                    const hitEnd = Number(ch.w) || minX;
                     target.line?.attr('x2', Math.max(0, hitEnd));
+                    target.hitLine?.attr('x2', Math.max(0, hitEnd));
                 }
             });
         });
@@ -46955,7 +47184,7 @@ class OrderManager {
                 this.tradeJournal.forEach(trade => {
                     allTrades.push({
                         type: 'closed',
-                        id: trade.id || trade.tradeId,
+                        id: this._resolveJournalDisplayTradeId(trade),
                         symbol: normalizeTickerSymbol(trade),
                         direction: trade.direction || trade.type,
                         quantity: trade.quantity,
@@ -47084,7 +47313,7 @@ class OrderManager {
             } else {
                 const reversedJournal = this.tradeJournal.slice().reverse();
                 replayPositionsBodyEl.innerHTML = reversedJournal.map((trade, index) => {
-                    const tradeId = trade.tradeId || trade.id;
+                    const tradeId = this._resolveJournalDisplayTradeId(trade);
                     const direction = String(trade.direction || trade.type || '—').toUpperCase();
                     const sideClass = direction === 'SELL' ? 'replay-badge--sell' : 'replay-badge--buy';
                     const quantity = trade.quantity || 0;
@@ -49592,10 +49821,67 @@ class OrderManager {
 
         const innerW = tagW + (detailText ? gap + detailW : 0);
         const totalW = Math.max(o.minWidth || 72, stripeW + padL + innerW + padR);
+        const stableSig = [
+            detailText ? 'detail' : 'tag',
+            height,
+            fontSize,
+            font,
+            onRrTool ? 'rr' : (isPreview ? 'preview' : 'row'),
+            o.smallLabel ? 'small' : 'normal',
+            o.minWidth || '',
+        ].join('|');
+        const existingShell = _orderStableLabelHoverDomV1Enabled()
+            && parentGroup.select
+            && parentGroup.select('.order-level-toast-label');
+        if (existingShell && !existingShell.empty?.()
+            && existingShell.attr('data-stable-label-sig') === stableSig) {
+            existingShell
+                .style('opacity', shellOpacity)
+                .attr('data-stable-label-sig', stableSig);
+            existingShell.select('.order-level-toast-bg')
+                .attr('width', totalW)
+                .attr('height', height)
+                .attr('fill', bgFill)
+                .attr('stroke', th.border)
+                .attr('rx', shellRx);
+            existingShell.select('.order-level-toast-accent')
+                .attr('height', height)
+                .attr('fill', accent)
+                .attr('rx', onRrTool ? 3 : 0);
+            existingShell.select('.order-level-toast-tag')
+                .attr('fill', accent)
+                .attr('font-size', fontSize)
+                .attr('font-family', font)
+                .text(tagText);
+            let detailSel = existingShell.select('.order-level-toast-detail');
+            if (detailText) {
+                if (detailSel.empty?.()) {
+                    detailSel = existingShell.append('text')
+                        .attr('class', 'order-level-toast-detail')
+                        .attr('y', height / 2)
+                        .attr('dy', '0.35em')
+                        .attr('font-weight', '600');
+                }
+                detailSel
+                    .attr('x', stripeW + padL + tagW + gap)
+                    .attr('y', height / 2)
+                    .attr('fill', detailColor)
+                    .attr('font-size', fontSize)
+                    .attr('font-family', font)
+                    .text(detailText);
+            } else if (!detailSel.empty?.()) {
+                detailSel.remove();
+            }
+            return { width: totalW, height };
+        }
+        if (existingShell && !existingShell.empty?.()) {
+            existingShell.remove();
+        }
 
         const shell = parentGroup.append('g')
             .attr('class', 'order-level-toast-label')
             .attr('data-role', 'order-level-toast-shell')
+            .attr('data-stable-label-sig', stableSig)
             .style('opacity', shellOpacity);
 
         shell.append('rect')
