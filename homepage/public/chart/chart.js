@@ -29554,13 +29554,11 @@ class Chart {
         this.animateZoom();
 
         if (this.renderPending) {
-            // Clear pending in finally so a throwing render() cannot stall the
-            // coalescer permanently (next scheduleRender can mark dirty again).
-            try {
-                this.render();
-            } finally {
-                this.renderPending = false;
-            }
+            // Clear BEFORE paint so scheduleRender() raised during render() is
+            // not swallowed by a post-paint clear. Also throw-safe: a throwing
+            // render() leaves pending false, so the next scheduleRender re-arms.
+            this.renderPending = false;
+            this.render();
 
             // Update follow button visibility after each render (throttled).
             if (this.replaySystem && typeof this.replaySystem.updateAutoScrollIndicator === 'function') {

@@ -9,6 +9,9 @@
  *
  * Asserts PAINT COUNTS (not just final pixels). Single-canonical suite —
  * do NOT mirror under homepage/public.
+ *
+ * RAF-COALESCE-CLEAR-ORDER: clear renderPending BEFORE paint so a
+ * scheduleRender() raised during render() is not swallowed.
  */
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
@@ -120,7 +123,12 @@ function loadSource(sourceText = fs.readFileSync(CHART_JS, 'utf8')) {
   return sourceText;
 }
 
-function makeHarness(sourceText, { kill = false, flagPresent = true, throwOnce = false } = {}) {
+function makeHarness(sourceText, {
+  kill = false,
+  flagPresent = true,
+  throwOnce = false,
+  rearmDuringRender = false,
+} = {}) {
   const raf = makeRafClock();
   const sandbox = {
     console: { log() {}, warn() {}, error() {} },
@@ -154,6 +162,8 @@ class Chart {
         this.state = 0;
         this._throwOnce = ${throwOnce ? 'true' : 'false'};
         this._thrown = false;
+        this._rearmDuringRender = ${rearmDuringRender ? 'true' : 'false'};
+        this._rearmedOnce = false;
         this.replaySystem = { isPlaying: false, updateAutoScrollIndicator() {} };
         this.inertia = { active: false };
         this._panSyncBurstUntil = 0;
@@ -179,6 +189,11 @@ class Chart {
         }
         this.paintCount += 1;
         this.paintedStates.push(this.state);
+        if (this._rearmDuringRender && !this._rearmedOnce) {
+            this._rearmedOnce = true;
+            this.state = this.state + 100;
+            this.scheduleRender();
+        }
     }
 ${body}
 }
@@ -228,6 +243,29 @@ function idlePaintsAfterOneSchedule(sourceText, idleFrames) {
   return { afterFirst, total: chart.paintCount };
 }
 
+/**
+ * Acceptance for clear-before-paint: render() arms scheduleRender once mid-paint;
+ * the next animation frame must paint again (clear-after swallows that request).
+ */
+function inPaintRearmSurvives(sourceText) {
+  const { chart, raf } = makeHarness(sourceText, { kill: false, rearmDuringRender: true });
+  chart.replaySystem.isPlaying = true;
+  armLoop(chart, raf);
+
+  chart.state = 1;
+  chart.scheduleRender();
+  raf.flushFrame();
+  const afterFirst = chart.paintCount;
+  const pendingAfterFirst = chart.renderPending;
+  raf.flushFrame();
+  return {
+    afterFirst,
+    pendingAfterFirst,
+    afterSecond: chart.paintCount,
+    paintedStates: Array.from(chart.paintedStates),
+  };
+}
+
 // ── behavioural cells ────────────────────────────────────────────────────────
 
 test('N scheduleRender calls in ONE frame produce exactly ONE paint (replay path)', () => {
@@ -269,7 +307,7 @@ test('render() throwing leaves coalescer able to paint on the next frame', () =>
   chart.state = 1;
   chart.scheduleRender();
   assert.throws(() => raf.flushFrame(), /paint-boom/);
-  assert.equal(chart.renderPending, false, 'pending cleared in finally after throw');
+  assert.equal(chart.renderPending, false, 'pending already cleared before paint entered');
 
   chart.state = 2;
   chart.scheduleRender();
@@ -306,7 +344,7 @@ test('direct render() stays direct (sync escape)', () => {
   note('direct-render-escape', true);
 });
 
-test('fix OFF: paint counts match legacy (sync per schedule during replay)', () => {
+test('flag OFF: paint counts match legacy (sync per schedule during replay)', () => {
   const on = paintCountsForSchedules(loadSource(), 4, { kill: false, replay: true });
   const off = paintCountsForSchedules(loadSource(), 4, { kill: true, replay: true });
   assert.equal(on.paintsAfterFrame, 1);
@@ -378,6 +416,15 @@ test('paint-count reduction proven: 6→1 in one replay frame', () => {
   note('paint-count-reduction', true, `legacy=${legacy.paintsBeforeFrame} fixed=${fixed.paintsAfterFrame} saved=${reduction}`);
 });
 
+test('in-paint scheduleRender survives to next frame (clear-before-paint)', () => {
+  const r = inPaintRearmSurvives(loadSource());
+  assert.equal(r.afterFirst, 1, 'first frame paints once');
+  assert.equal(r.pendingAfterFirst, true, 'mid-paint scheduleRender left pending armed');
+  assert.equal(r.afterSecond, 2, 'second frame must paint the in-paint request');
+  assert.equal(r.paintedStates[1], 101, 'second paint sees state set during first paint');
+  note('in-paint-rearm-survives', true, `paints=${r.afterSecond} states=${JSON.stringify(r.paintedStates)}`);
+});
+
 test('mirrors: chart v 1.4 and homepage/public chart.js are byte-identical', () => {
   const a = fs.readFileSync(CHART_JS);
   const b = fs.readFileSync(CHART_MIRROR);
@@ -385,14 +432,18 @@ test('mirrors: chart v 1.4 and homepage/public chart.js are byte-identical', () 
   note('mirror-byte-identical', true, `sha256=${sha256(a).slice(0, 16)}`);
 });
 
-test('static: kill-switch name + per-call helper + try/finally pending clear present', () => {
+test('static: kill-switch name + per-call helper + clear-before-paint present', () => {
   const src = fs.readFileSync(CHART_JS, 'utf8');
   assert.match(src, /__TALARIA_DISABLE_RAF_PAINT_COALESCE_V1/);
   assert.match(src, /_rafPaintCoalesceEnabled/);
   assert.match(src, /_requestRafPaint/);
   assert.match(src, /RAF_PAINT_COALESCE_DISABLE_SWITCH/);
   const animate = methodSource(src, 'animate');
-  assert.match(animate, /try\s*\{[\s\S]*this\.render\(\);[\s\S]*\}\s*finally\s*\{[\s\S]*this\.renderPending\s*=\s*false/);
+  assert.match(
+    animate,
+    /if\s*\(\s*this\.renderPending\s*\)\s*\{[\s\S]*?this\.renderPending\s*=\s*false;[\s\S]*?this\.render\(\);/,
+    'clear-before-paint ordering in animate()',
+  );
   const sched = methodSource(src, 'scheduleRender');
   assert.match(sched, /_rafPaintCoalesceEnabled/);
   assert.match(sched, /opts && opts\.flush/);
@@ -400,6 +451,14 @@ test('static: kill-switch name + per-call helper + try/finally pending clear pre
 });
 
 // ── mutants (on-disk both mirrors + behavioural oracles) ─────────────────────
+
+/** Shared product needle for the clear-before-paint block in animate(). */
+const CLEAR_BEFORE_BLOCK = `        if (this.renderPending) {
+            // Clear BEFORE paint so scheduleRender() raised during render() is
+            // not swallowed by a post-paint clear. Also throw-safe: a throwing
+            // render() leaves pending false, so the next scheduleRender re-arms.
+            this.renderPending = false;
+            this.render();`;
 
 const MUTANTS = [
   {
@@ -429,22 +488,11 @@ const MUTANTS = [
   },
   {
     id: 'M2',
-    name: 'never clear the pending flag after paint',
-    needle: `        if (this.renderPending) {
-            // Clear pending in finally so a throwing render() cannot stall the
-            // coalescer permanently (next scheduleRender can mark dirty again).
-            try {
-                this.render();
-            } finally {
-                this.renderPending = false;
-            }`,
+    name: 'never clear the pending flag (no clear at all)',
+    needle: CLEAR_BEFORE_BLOCK,
     replacement: `        if (this.renderPending) {
             // MUTANT: never clear pending
-            try {
-                this.render();
-            } finally {
-                /* this.renderPending = false; */
-            }`,
+            this.render();`,
     killingCell: 'idle-no-overpaint (never-clear over-paints)',
     behavioural: true,
     oracle(mutSource) {
@@ -454,33 +502,21 @@ const MUTANTS = [
   },
   {
     id: 'M3',
-    name: 'clear pending BEFORE paint instead of after',
-    needle: `        if (this.renderPending) {
-            // Clear pending in finally so a throwing render() cannot stall the
-            // coalescer permanently (next scheduleRender can mark dirty again).
+    name: 'clear pending AFTER paint (swallows in-paint scheduleRender)',
+    needle: CLEAR_BEFORE_BLOCK,
+    replacement: `        if (this.renderPending) {
+            // MUTANT: clear AFTER paint — swallows mid-paint scheduleRender
             try {
                 this.render();
             } finally {
                 this.renderPending = false;
             }`,
-    replacement: `        if (this.renderPending) {
-            this.renderPending = false;
-            try {
-                this.render();
-            } finally {
-                /* cleared before paint */
-            }`,
-    // Clear-before still clears on throw in this model; kill is the static
-    // try/finally-after ordering cell (anchor). Marked NOT behavioural.
-    killingCell: 'static try/finally-after ordering (NOT behavioural / anchor)',
-    behavioural: false,
+    killingCell: 'in-paint-rearm-survives (clear-before-paint)',
+    behavioural: true,
     oracle(mutSource) {
-      const animate = methodSource(mutSource, 'animate');
-      assert.match(
-        animate,
-        /try\s*\{[\s\S]*this\.render\(\);[\s\S]*\}\s*finally\s*\{[\s\S]*this\.renderPending\s*=\s*false/,
-        'M3 must break finally-after clear ordering',
-      );
+      const r = inPaintRearmSurvives(mutSource);
+      assert.equal(r.afterSecond, 2, 'M3 clear-after must swallow the in-paint rearm');
+      assert.equal(r.pendingAfterFirst, true, 'M3 must leave pending false after clear-after');
     },
   },
   {
@@ -516,6 +552,37 @@ const MUTANTS = [
       assert.equal(chart._rafPaintCoalesceEnabled(), false, 'M4 must ignore mid-session flip');
     },
   },
+  {
+    id: 'M5',
+    name: 'clear twice — second clear after paint swallows in-paint rearm',
+    needle: CLEAR_BEFORE_BLOCK,
+    replacement: `        if (this.renderPending) {
+            // MUTANT: clear before AND after — post-paint clear swallows rearm
+            this.renderPending = false;
+            this.render();
+            this.renderPending = false;`,
+    killingCell: 'in-paint-rearm-survives (clear-before-paint)',
+    behavioural: true,
+    oracle(mutSource) {
+      const r = inPaintRearmSurvives(mutSource);
+      assert.equal(r.afterSecond, 2, 'M5 double-clear must swallow the in-paint rearm');
+    },
+  },
+  {
+    id: 'M6',
+    name: 'clear outside the guard (always clears; breaks pending arming)',
+    needle: CLEAR_BEFORE_BLOCK,
+    replacement: `        this.renderPending = false;
+        if (this.renderPending) {
+            // MUTANT: clear ran outside the guard — pending never observed true
+            this.render();`,
+    killingCell: 'one-frame-dedupe (N schedules → 1 paint)',
+    behavioural: true,
+    oracle(mutSource) {
+      const r = paintCountsForSchedules(mutSource, 6, { kill: false, replay: true });
+      assert.equal(r.paintsAfterFrame, 1, 'M6 clear-outside must miss the pending paint');
+    },
+  },
 ];
 
 test('on-disk mutants: both mirrors, needle once, TAP evidence, restore after', () => {
@@ -533,6 +600,11 @@ test('on-disk mutants: both mirrors, needle once, TAP evidence, restore after', 
   assert.doesNotThrow(() => {
     const r = idlePaintsAfterOneSchedule(CANON_BYTES.toString('utf8'), 4);
     assert.equal(r.total, 1);
+  });
+  assert.doesNotThrow(() => {
+    const r = inPaintRearmSurvives(CANON_BYTES.toString('utf8'));
+    assert.equal(r.afterSecond, 2);
+    assert.equal(r.pendingAfterFirst, true);
   });
 
   function restoreAll() {
