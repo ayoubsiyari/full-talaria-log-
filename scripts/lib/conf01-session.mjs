@@ -169,6 +169,43 @@ export function assessConf01Compliance({
   };
 }
 
+/**
+ * Wait until every frame that has a chart also has replay and enough bars to arm.
+ * Reports what was outstanding on failure rather than only that it failed — a late
+ * panel in this configuration is usually waiting on its own /bars request.
+ */
+export async function waitConf01PanelsReady(page, { timeoutMs = 150_000, want = 4 } = {}) {
+  const started = Date.now();
+  let perFrame = [];
+  while (Date.now() - started < timeoutMs) {
+    perFrame = [];
+    for (const frame of page.frames()) {
+      const got = await frame.evaluate(() => {
+        const ch = window.chart;
+        if (!ch) return null;
+        return {
+          fileId: ch.currentFileId != null ? String(ch.currentFileId) : null,
+          timeframe: ch.currentTimeframe != null ? String(ch.currentTimeframe) : null,
+          bars: Array.isArray(ch.data) ? ch.data.length : 0,
+          hasReplay: !!ch.replaySystem,
+        };
+      }).catch(() => null);
+      if (got) perFrame.push(got);
+    }
+    const ready = perFrame.filter((r) => r.hasReplay && r.bars > 20);
+    if (ready.length >= want) {
+      return { allReady: true, waitedMs: Date.now() - started, perFrame, inFlight: page.__conf01InFlight ? [...page.__conf01InFlight] : [] };
+    }
+    await sleep(1_000);
+  }
+  return {
+    allReady: false,
+    waitedMs: Date.now() - started,
+    perFrame,
+    inFlight: page.__conf01InFlight ? [...page.__conf01InFlight] : [],
+  };
+}
+
 export async function bootConf01Session({
   replaySpeed = 60,
   headless = true,
@@ -202,6 +239,21 @@ export async function bootConf01Session({
 
   const page = await browser.newPage();
   page.setDefaultTimeout(180_000);
+  // A request that never returns is the difference between "slow panel" and "the
+  // window-claim hang again", so track what is outstanding at all times.
+  const inFlight = new Map();
+  page.__conf01InFlight = [];
+  const refreshInFlight = () => {
+    const now = Date.now();
+    page.__conf01InFlight = [...inFlight.entries()]
+      .map(([url, at]) => ({ url, pendingMs: now - at }))
+      .filter((r) => r.pendingMs > 3_000)
+      .sort((a, b) => b.pendingMs - a.pendingMs)
+      .slice(0, 8);
+  };
+  page.on('request', (req) => { inFlight.set(req.url(), Date.now()); refreshInFlight(); });
+  page.on('requestfinished', (req) => { inFlight.delete(req.url()); refreshInFlight(); });
+  page.on('requestfailed', (req) => { inFlight.delete(req.url()); refreshInFlight(); });
   const browserCdp = await browser.target().createCDPSession();
   await uiLoginDeployed(page, origin, email, password);
   await page.evaluate(() => {
@@ -247,12 +299,40 @@ export async function bootConf01Session({
     timeframes,
   });
   const datasets = await applyDatasetPlan(page, plan, { timeoutMs: 90_000 });
-  const workload = await armHeapCyclePoWorkload(page, {
-    panelIds: CONF01_PANEL_IDS,
-    replaySpeed,
-    playHoldMs: 8_000,
-    retainIndicators: true,
-  });
+
+  // A panel that is still fetching its own base series is not ready to arm, and in
+  // the four-symbol configuration nothing is shared so every panel pays that wait
+  // separately. Wait for all four here rather than letting the arming time out.
+  const readiness = await waitConf01PanelsReady(page, { timeoutMs: 150_000 });
+  if (!readiness.allReady) {
+    console.error(`[conf01] panels not ready after ${readiness.waitedMs}ms: ${JSON.stringify(readiness.perFrame)} inFlight=${JSON.stringify(readiness.inFlight)}`);
+  }
+  let workload;
+  try {
+    workload = await armHeapCyclePoWorkload(page, {
+      panelIds: CONF01_PANEL_IDS,
+      replaySpeed,
+      playHoldMs: 8_000,
+      retainIndicators: true,
+    });
+  } catch (error) {
+    // One retry after a longer wait; a failed arm is graded, never thrown, so the
+    // run still reports which requirement was missed.
+    console.error(`[conf01] arm failed (${String(error?.message || error)}); retrying after extra wait`);
+    await waitConf01PanelsReady(page, { timeoutMs: 120_000 });
+    workload = await armHeapCyclePoWorkload(page, {
+      panelIds: CONF01_PANEL_IDS,
+      replaySpeed,
+      playHoldMs: 8_000,
+      retainIndicators: true,
+    }).catch((retryError) => ({
+      armed: false,
+      indicatorsOk: false,
+      order: { ok: false },
+      observedPlaying: 0,
+      armError: String(retryError?.message || retryError),
+    }));
+  }
   await sleep(settleMs);
 
   const observed = await readPanelDatasets(page, CONF01_PANEL_IDS).catch(() => []);
@@ -377,6 +457,12 @@ export async function probePanelAdvanceRates(page, { windowMs = 6_000, replaySpe
         return {
           timeframe: ch.currentTimeframe || null,
           fileId: ch.currentFileId != null ? String(ch.currentFileId) : null,
+          // What the product thinks the speed is, and what it offers to set it
+          // with: the harness has been asserting 60x without checking either.
+          speedField: Number.isFinite(Number(rs.speed)) ? Number(rs.speed) : null,
+          playbackSpeedField: Number.isFinite(Number(rs.playbackSpeed)) ? Number(rs.playbackSpeed) : null,
+          speedSetters: ['setSpeed', 'setPlaybackSpeed', 'setReplaySpeed', 'changeSpeed']
+            .filter((k) => typeof rs[k] === 'function'),
           idx: rs.currentIndex != null ? Number(rs.currentIndex) : null,
           bars: Array.isArray(ch.data) ? ch.data.length : null,
           ts: Number.isFinite(Number(rs.replayTimestamp)) ? Number(rs.replayTimestamp) : null,
@@ -388,10 +474,35 @@ export async function probePanelAdvanceRates(page, { windowMs = 6_000, replaySpe
     }
     return rows;
   };
+  // Count animation frames over the same window: if bars advance once per frame,
+  // bars/second is the frame rate and the speed setting is decorative.
+  // A frame that never paints never fires requestAnimationFrame, so the counter
+  // needs its own deadline: zero frames is a legitimate answer, a hang is not.
+  const framesPromise = Promise.all(page.frames().map((frame) => frame.evaluate((ms) => new Promise((resolve) => {
+    let frames = 0;
+    const t0 = performance.now();
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      resolve({ frames, wallMs: performance.now() - t0 });
+    };
+    setTimeout(finish, ms + 1_500);
+    const tick = () => {
+      frames += 1;
+      if (performance.now() - t0 >= ms) finish();
+      else requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  }), windowMs).catch(() => null)));
+
   const before = await read();
   await sleep(windowMs);
   const after = await read();
+  const frameCounts = await framesPromise;
   return after.map((a, i) => {
+    const fc = frameCounts[i];
+    const fps = fc && fc.wallMs ? +(fc.frames / (fc.wallMs / 1000)).toFixed(2) : null;
     const b = before[i] || {};
     const wallSec = (a.at - (b.at || a.at)) / 1000 || windowMs / 1000;
     const barsPerSec = b.idx != null && a.idx != null ? (a.idx - b.idx) / wallSec : null;
@@ -402,11 +513,16 @@ export async function probePanelAdvanceRates(page, { windowMs = 6_000, replaySpe
       timeframe: a.timeframe,
       fileId: a.fileId,
       playing: a.playing,
+      speedField: a.speedField,
+      playbackSpeedField: a.playbackSpeedField,
+      speedSetters: a.speedSetters,
       bars: a.bars,
       idxFrom: b.idx ?? null,
       idxTo: a.idx ?? null,
       barsPerSec: barsPerSec != null ? +barsPerSec.toFixed(3) : null,
       expectedBarsPerSec: expectedBarsPerSec != null ? +expectedBarsPerSec.toFixed(3) : null,
+      framesPerSec: fps,
+      barsPerFrame: fps && barsPerSec != null ? +(barsPerSec / fps).toFixed(3) : null,
       rateRatio: barsPerSec != null && expectedBarsPerSec ? +(barsPerSec / expectedBarsPerSec).toFixed(2) : null,
       simSecPerWallSec: simMsPerSec != null ? +(simMsPerSec / 1000).toFixed(1) : null,
       expectedSimSecPerWallSec: replaySpeed,

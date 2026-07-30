@@ -1,0 +1,142 @@
+{
+ "signature": "MANAGER-C-W93",
+ "takenAt": "2026-07-30T14:40:00Z",
+ "authority": "RULING-EVERY-MULTICHART-OPTIMISATION-IS-GATED-ON-SAME-PAIR-20260730-1430 (CONF-01, DUR-01), DISPATCH-CONF01-20260730-1430 items C1-C4",
+ "branch": "manager-c/verification-infra",
+
+ "instruments": {
+  "CONF01-SESSION-V1": {
+   "file": "scripts/lib/conf01-session.mjs",
+   "does": "boots four panels on four symbols at four timeframes with indicators and orders, and grades CONF-01 compliance from the product's own state",
+   "why_it_is_not_a_self_report": "indicators are counted from chart.indicators.active per panel, orders from orderService, and playback from the CONTINUOUS PLAYHEAD (replaySystem.replayTimestamp) rather than the isPlaying flag. A 1h panel at 60x closes a bar once a minute, so a bar-index test cannot tell a slow panel from a stalled one.",
+   "refuses": "any run whose four requirements are not all met is labelled DIAGNOSTIC ONLY and carries no acceptance weight"
+  },
+  "DURATION-TREND-V1": {
+   "file": "scripts/lib/duration-trend.mjs",
+   "does": "least-squares slope per series with a 95% confidence interval on the slope",
+   "four_verdicts": "CLIMBS / FALLS / BOUNDED / INDETERMINATE. A CI that straddles the flat band is INDETERMINATE, which is NOT a GREEN - that is the distinction DUR-01 asks for and the one this campaign kept missing by reading endpoints.",
+   "flat_bands_from": "measured noise floors: W88 fresh-load spread 0.73 MB, W90 process census ~10 MB between identical reads, W91b post-GC node stability 1.3%"
+  },
+  "CONF01-DURATION-GATE-V1": {
+   "file": "scripts/conf01-duration-gate.mjs",
+   "replaces": "SINGLE-PAIR-SOAK-V1 as freeze gate (retired per dispatch; same-pair carries no acceptance weight)",
+   "samples": "live heap, heap after two forced collections, DOM counters, elements across frames, per-process OS footprint, per-process CPU from cpuTime deltas, resident bars, _panelFullRawData length, orders, in-flight requests"
+  }
+ },
+
+ "GATE-01_negative_control": {
+  "requirement": "show the gate RED against a known-growing input before trusting it",
+  "input": "--inject-growth-mb-per-sample=12, retained page-side ballast",
+  "result": "RED at sample 6 of 11 (0.10h into a 0.2h run)",
+  "artefact": ".scratch-w93-gate01-clean.json",
+  "first_attempt_discarded": "an earlier control was invalidated by my own error: two gate processes wrote to the same output file and interleaved their samples. Detected, killed, re-run single-session. The interleaved file is kept as .scratch-w93-gate01-INVALID-interleaved.json rather than deleted."
+ },
+
+ "C1_reference_row": {
+  "status": "CONF-01 compliant, clean machine (no other browser session running)",
+  "configuration_verified": {
+   "panels": 4,
+   "symbols": ["XAUUSD", "HOG", "ETHBTC", "BTCEUR"],
+   "assignment": [{"panel": "A", "fileId": 677, "timeframe": "1m"}, {"panel": "B", "fileId": 673, "timeframe": "5m"}, {"panel": "C", "fileId": 670, "timeframe": "15m"}, {"panel": "D", "fileId": 669, "timeframe": "1h"}],
+   "indicatorsPerPanel": [4, 4, 4, 4],
+   "orderOpen": true
+  },
+  "idle": {
+   "liveJsHeapMB": 117.54,
+   "jsHeapAfterForcedCollectionMB": 118.33,
+   "rendererCpuPercent": 28.5,
+   "gpuProcessCpuPercent": 5.2,
+   "browserCpuPercent": 14.3,
+   "allChromeFootprintMB": 873.1
+  },
+  "playing": {
+   "liveJsHeapMB": 270.32,
+   "jsHeapAfterForcedCollectionMB": 151.29,
+   "rendererCpuPercent": 127.5,
+   "gpuProcessCpuPercent": 47.2,
+   "allChromeFootprintMB": 1179.83,
+   "pageRendererFootprintMB": 668.51,
+   "footprintByProcessType": {"renderer": 729.8, "gpu": 299.89, "browser": 87.35, "other": 62.79},
+   "nodesAfterCollection": 21060,
+   "documents": 7,
+   "listeners": 5062,
+   "elementsAllFrames": 5165
+  },
+  "idle_to_playing": {
+   "liveJsHeapMB": 152.78,
+   "jsHeapAfterForcedCollectionMB": 32.96,
+   "allChromeFootprintMB": 306.73,
+   "rendererCpuPercentagePoints": 99,
+   "meaning": "the ruling's central number reproduced on my own instrument: TradeZella's heap FALLS when it plays (133 -> 104 MB), ours climbs. +152.8 MB live, and +33.0 MB survives a forced collection, so it is not only garbage awaiting a sweep."
+  },
+  "against_the_PO": {
+   "po_b112_four_symbols": {"tabFootprintMB": 1629, "liveJsMB": 586, "tabCpuPercent": 107, "gpuCpuPercent": 51},
+   "mine": {"tabFootprintMB": 1180, "liveJsMB": 270, "rendererCpuPercent": 127.5, "gpuCpuPercent": 47.2},
+   "reading": "same shape, same GPU cost (47.2 vs 51), CPU comparable. Memory lower because his session holds more history: my panels hold 2,280/1,596/1,911/495 bars. The gap is bar residency, not instrument scope - this is the cross-frame gauge from W88."
+  }
+ },
+
+ "C4_cpu_split_under_CONF01": {
+  "process_level_ground_truth": {"rendererPercent": 127.5, "gpuProcessPercent": 47.2, "browserPercent": 30.8},
+  "renderer_thread_roles_playing": {"main_js_and_layout": 43.6, "threadpool_v8_gc": 7.6, "compositor": 6.7, "other": 2.4},
+  "gpu_thread_roles_playing": {"gpu_process_main": 9.8, "viz_compositor": 5.8},
+  "raster": "no raster worker threads appear in the trace at all, idle or playing - the same result as W91 at same-pair. The off-thread majority is not raster.",
+  "idle_for_contrast": {"main_js_and_layout": 12.3, "threadpool": 7.2, "compositor": 3.1, "gpu_process_main": 0.9},
+  "trace_coverage_caveat": "traced renderer threads sum to 60.3% against a process-level 127.5%, so 47% of renderer CPU is captured. Traced GPU threads sum to 15.6% against 47.2%, so 33% of GPU CPU is captured. Every role figure above is a floor, and the process-level figures are the ground truth.",
+  "gpu_47_percent_partial_answer": "GPU CPU goes 5.2% idle -> 47.2% playing with the same canvases and the same layout, so ~42 points are playback repaint, not surface count. Naming the remaining two thirds needs a GPU-side trace, which is queued behind the duration gate to avoid contention."
+ },
+
+ "DEFECT_1_replay_speed_setting_is_not_honoured": {
+  "instrument": "REPLAY-SPEED-CALIBRATION-V1, scripts/replay-speed-calibration.mjs",
+  "product_arithmetic": "chart.js:24826 - rawCandlesPerSecond = replaySystem.speed / timeframeSeconds. At speed 60 on a 1m chart that is 1.0 bars/second.",
+  "measured": {
+   "speedFieldReadBack": 60,
+   "hostBarsPerSecond": [9.065, 10.753, 17.649],
+   "expectedBarsPerSecond": 1.0,
+   "effectiveMultipleOfRequested": "9x to 17.6x, varying with load",
+   "simulatedSecondsPerWallSecond": "440 to 1070 across runs, i.e. 440x-1070x real time while 60x was selected"
+  },
+  "controllability_test": "setting replaySystem.speed to 6 (ten times slower) moved the rate from 8.24 to 7.41 bars/s, not to 0.82. speedIsControllable = false.",
+  "mechanism": "the advance is frame-driven, not clock-driven: 10.753 bars/s against 14.86 animation frames/s is 0.724 bars per frame. Rate therefore tracks the frame budget and ignores the selector.",
+  "consequences": [
+   "every CPU, allocation and heap-churn figure this campaign has published at '60x' was taken at roughly ten times that rate, mine included",
+   "cross-product CPU comparisons at a nominal 60x are not like-for-like unless the competitor's playback is also frame-bound",
+   "it is user-facing: the speed selector does not control speed"
+  ],
+  "owner": "A (chart.js replay advance), and it needs a kill-switched fix per KILL-01"
+ },
+
+ "DEFECT_2_peer_panels_close_no_bars_in_the_shipping_configuration": {
+  "measured": "at four symbols, the three peer panels advanced 0 bars/second against expected 0.2 (5m), 0.067 (15m) and 0.017 (1h), across every run, while their playhead advanced at the same 440-1070x as the host. They sit at the last bar of their resident window (idx == bars-1) within about two minutes of arming.",
+  "resident_windows": {"5m": 1596, "15m": 1911, "1h": 495},
+  "mechanism_matches_the_ruling": "the sixteen _multichartSamePairAsHost guards disable same-pair replay catch-up, so a peer must fetch its own /bars during play. It does not, so it exhausts its window and stops producing bars while continuing to consume a playhead.",
+  "consequence": "the shipping configuration does not merely cost more than same-pair; three of four panels stop producing bars. Any four-symbol performance number - including my reference row - is measured with one panel producing and three coasting, so it is a FLOOR on the real cost.",
+  "harness_accommodation": "keepConf01Playing re-seeks a panel that has reached the end of its data back to 20% and counts the re-seeks per sample, so the duration gate can hold a live workload. The count is published, because a workload that needs re-seeding to stay alive is evidence about the product.",
+  "owner": "A with B (per-panel /bars during play is B's C2 network question)"
+ },
+
+ "retired_instrument_refit": {
+  "what": "SINGLE-PAIR-SOAK-V1 harvested and stopped (it also contended for CPU with every CONF-01 measurement)",
+  "span": "0.452h, 13 samples, single pair, orders every sample",
+  "refit_with_CI": {
+   "heapAfterForcedCollectionMB": {"perHour": 19.008, "ci95": [9.871, 28.144], "verdict": "CLIMBS", "rSquared": 0.656},
+   "allChromeFootprintMB": {"perHour": 296.866, "ci95": [220.954, 372.778], "verdict": "CLIMBS", "rSquared": 0.871},
+   "pageRendererFootprintMB": {"perHour": 144.972, "ci95": [103.497, 186.447], "verdict": "CLIMBS", "rSquared": 0.843},
+   "elements": {"perHour": 1485.7, "ci95": [1467.4, 1504.0], "verdict": "CLIMBS", "rSquared": 1.0},
+   "residentBars": {"perHour": 35359, "verdict": "CLIMBS", "rSquared": 1.0}
+  },
+  "reading": "even at single pair, nothing is flat over 27 minutes: heap after collection climbs 19 MB/h and the footprint 297 MB/h, and resident bars climb 35,000/h because replay appends without bound. That is the residency term A1 targets, measured rather than argued.",
+  "caveats": ["same-pair, so no acceptance weight under CONF-01", "0.45h span does not satisfy DUR-01's 2h minimum", "documents fell from 4 to 1 mid-run, unexplained, so treat the DOM series as indicative"]
+ },
+
+ "running_now": {
+  "CONF01-DURATION-GATE-V1": "2.2 hours, CONF-01, 5-minute cadence, orders every other sample, out=.scratch-w93-conf01-2h-gate.json",
+  "purpose": "C2 freeze gate: slope with CI on heap after collection, footprint, elements, nodes, listeners and CPU"
+ },
+
+ "what_this_instrument_cannot_see": [
+  "worker isolate heaps",
+  "GPU-internal allocation beyond process footprint and thread CPU",
+  "the PO's machine: CPU percentages are of one core on this host, and his core count differs"
+ ]
+}
