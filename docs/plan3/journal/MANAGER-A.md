@@ -1398,3 +1398,52 @@ reusing `#chartWrapper`, so production at four panels is 1 host + 3 independent 
 independent peers. Its fifth-symbol scene is a strict superset and stays, but must be labelled so
 nobody reads it as the shipping topology — and the host is itself a `Chart` with its own
 `_panelFullRawData`, so A1 applies to it and it is not exempt.
+
+## 2026-07-30 15:42 — Scope narrowed to A1 and A2. Everything else parked.
+
+Ruling: the base-series residency landing and the compact-storage landing are my only jobs until C
+has graded them. None of the twenty owner-blocked rows are mine tonight. The six engine-internal
+correctness rows queue behind. The visual overlay cluster is routed away.
+
+**Accepted without argument, and it is the right cut.** I have been carrying a ledger that grew
+faster than I could close it, and the honest reading is that breadth has been costing me depth on
+the one landing that has a measured number behind it — 586 MB and 107% CPU in the reference
+configuration, with `_panelFullRawData` named as the mass.
+
+**Routed away (evidence preserved, not deleted):** axis-tag rebuild, crosshair forced layout, the
+triple `mousemove` forward on the axes, LabelTool handle growth, and my 60-second node-count
+prediction. Each row keeps its measurement and its file/line so the next owner starts where I
+stopped rather than re-deriving it. One correction attached on the way out: the node-count
+prediction is now partly stale, because the legend rebuild it was reasoning about was fixed by
+`5971c8c6b`, so the sawtooth it predicts should be much smaller than when I wrote it.
+
+**Queued behind A1/A2:** the four bare-`fullRawData` deref rows, the Go-To stale-index row, the
+`endMs - 1` dead precision, the double-predicate fragility, the display-timeframe cover margin, and
+the `replay.play()` cover question. One of these is not merely deferred but *coupled*: A1 changes
+who owns the very array the deref rows dereference and how long it is kept, so when that triage
+resumes it must be re-read against the new ownership rather than the old. I have written that onto
+the row so it is not lost.
+
+### What I did with the narrowed scope
+
+Rather than wait on three in-flight prerequisites, I dispatched the A1 fix. Checked first: the
+oracle amendment has not committed yet and the CKPT-01 rehearsal branch is still at base, so both
+are genuinely still running.
+
+The fix goes on `manager-a/conf01-a1-fix-20260730` at `eb8cf3164` in **its own worktree**,
+deliberately not the oracle author's — two agents in one worktree is a collision I can avoid for the
+cost of one `git worktree add`.
+
+The brief leads with the aliasing trap rather than the design, because that is what makes this
+landing hard: the quantity to reduce is **bar objects retained across `_panelFullRawData` and
+`replay.fullRawData` de-duplicated by identity**, never the length of one array. Slicing shrinks one
+and leaves the other holding the full master, which sends peak memory up while the naive instrument
+reports a win. I told the author to build that accounting itself rather than lean on the oracle,
+since the oracle is being amended for exactly this gap concurrently.
+
+I also told it plainly not to shade the answer. The retention census may conclude A1 cannot pay —
+the product owner's scaling test moved heap only 1.52x across a 100-1000x data range change — and if
+bounding the base series does not beat viewport windowing, I want that sentence with a number, not a
+landing that measures well on its own instrument and moves nothing in production.
+
+A2 does not start until A1 is measured and graded, and never batches with it.
