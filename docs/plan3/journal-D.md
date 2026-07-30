@@ -357,3 +357,11 @@
 - Owner-blocked 13 listed for Director routing — all **A** — `OWNER-BLOCKED-ROUTING-20260730-1240.md`.
 - Bucket (a)/(b) reconfirmed GREEN; 6 remain `blocked-on-build`.
 - 26 `po-eyes` packed into five efficiency packs + named money Scripts 1–5; all `AWAITING STAMP` until B confirms stamp. No ready-to-run labels before stamp.
+
+## 2026-07-30 — Fixed-column audit (Director 13:20)
+
+- Audited all 51 `fixed` rows for USER-path coverage and GATE-01 reverse→RED.
+- **Reopened: 13** → `broken` with RED `fixed-column-audit.red.test.mjs` (not unverified). Fixed remaining: **38**.
+- Money decorations: m23 suite stays GREEN under kill (TAL-01937 / Rayan #1/#3/#6b); duration suite under kill (TAL-01896); journal pytest under guard=0 (TAL-01926); TAL-01807b no reverse lever; CODE-PATH-ONLY money helpers TAL-01904/01809/01933/01810; SEL-01 selector-only; TAL-01733 H-S19 bugswitch stays GREEN.
+- Survived break attempts (examples): TAL-01908 restore kill → `942 !== 5`; TAL-01903 PnL kill → `12000 !== 10075`.
+- Standing by to fold PO answers on 23 decision rows and run five packs when B confirms stamp.

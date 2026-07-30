@@ -5,7 +5,7 @@ Open row disposition and unverified blast-radius order live in `docs/plan3/UNKNO
 | Ticket | Status | Commit | Gate | Review / Canary Note |
 | --- | --- | --- | --- | --- |
 | M17-DI2 / TAL-01918 | blocked-on-build | — | RED local: `m17-di2-completed-bar-close-mutation.red.test.mjs`; `m21-b-tal01918-red.test.mjs` | Fix/guard on `manager-a/m17-di2-completed-bar`; not on deployed stamp. 2026-07-30 closure pass |
-| M24 / TAL-01926 | fixed | `95adb8285`, `56b773b90` | GREEN: `py -m pytest "chart v 1.4/chart/tests/test_session_journal_store.py"` | Node/pytest closed; PO Script 1 re-run for count survival on stamp |
+| M24 / TAL-01926 | broken | — | RED: `node --test "chart v 1.4/chart/modules/fixed-column-audit.red.test.mjs"` (pytest stays GREEN with `SESSION_JOURNAL_PATCH_DELETE_GUARD=0`) | Fixed-column audit 13:20: claimed gate cannot fail under reverse |
 | TAL-01930 | fixed | `42d01a1dc` | GREEN: `m14-fibonacci-settings-levels-persist.test.mjs` canonical + homepage | M14 Fibonacci settings thread; non-money-path |
 | TAL-01888 | fixed | `42d01a1dc` | GREEN: `m14-fibonacci-settings-levels-persist.test.mjs` canonical + homepage | M14 Fibonacci settings thread; non-money-path |
 | TAL-01813 | fixed | `42d01a1dc` | GREEN: `m14-fibonacci-settings-levels-persist.test.mjs` canonical + homepage | M14 Fibonacci settings thread; non-money-path |
@@ -13,11 +13,11 @@ Open row disposition and unverified blast-radius order live in `docs/plan3/UNKNO
 | TAL-01908 | fixed | `2cc949399` | GREEN: `m24-order-id-restore-stability.test.mjs` ± homepage | Node-closed; PO Script 1 re-run against fix on next stamp |
 | TAL-01919 | fixed | `2cc949399` | GREEN: `m24-order-id-restore-stability.test.mjs` ± homepage | Node-closed; PO Script 1 re-run against fix |
 | TAL-01924 | fixed | `2cc949399` | GREEN: `m24-order-id-restore-stability.test.mjs` ± homepage | Node-closed; PO Script 1 re-run against fix |
-| TAL-01904 | fixed | `b3f6cd6de` | GREEN: `order-type-one-tick-pending.test.mjs` ± homepage | TOP ACCEPT; PO Script 3 re-run on stamp |
+| TAL-01904 | broken | — | RED: `fixed-column-audit.red.test.mjs` (CODE-PATH-ONLY `order-type-one-tick-pending.test.mjs`) | Gate classifies prices; never places/refreshes |
 | TAL-01897 | fixed | `5f3e68368`, `c0a0d7620` | GREEN: draft reset gates ± homepage | TOP ACCEPT; optional stamp confirm with order-line leftovers |
-| TAL-01933 | fixed | `a8d887db1` | GREEN: `order-single-tp-after-trail.test.mjs` ± homepage | TOP ACCEPT; PO Script 3 re-run on stamp |
-| TAL-01809 | fixed | `7a2871f24` | GREEN: `order-balance-floor.test.mjs` ± homepage | TOP ACCEPT; PO Script 3 re-run on stamp |
-| SEL-01 | fixed | `864c2446c` | GREEN: `order-sel01-exact-teardown.test.mjs` canonical + homepage | TOP re-review ACCEPT |
+| TAL-01933 | broken | — | RED: `fixed-column-audit.red.test.mjs` (CODE-PATH-ONLY `order-single-tp-after-trail.test.mjs`) | Helper unit; no user trail→TP path |
+| TAL-01809 | broken | — | RED: `fixed-column-audit.red.test.mjs` (CODE-PATH-ONLY `order-balance-floor.test.mjs`) | Helper unit; no user close/restore path |
+| SEL-01 | broken | — | RED: `fixed-column-audit.red.test.mjs` (selector-only `order-sel01-exact-teardown.test.mjs`) | Never tears down a user TP row |
 | Timezone EST-to-CST override | fixed | `ed2a183f3` | GREEN: `v9-theme-tz-honor-chart.test.mjs` canonical + homepage | Non-money-path; `chart.js` timezone follow-ups escalated |
 | TAL-01861 | fixed | `c0a0d7620` | GREEN: `order-cancel-before-confirm.test.mjs` canonical + homepage | TOP re-review ACCEPT |
 | TAL-01885 | fixed | `c0a0d7620` | GREEN: `order-line-edge-visibility.test.mjs` canonical + homepage | TOP re-review ACCEPT |
@@ -27,7 +27,7 @@ Open row disposition and unverified blast-radius order live in `docs/plan3/UNKNO
 | TAL-01750 | fixed | `c0a0d7620` | GREEN: `order-split-entry-hover-stick.test.mjs` canonical + homepage | TOP re-review ACCEPT |
 | TAL-01927 | fixed | `c0a0d7620`, `adaffe58e` | GREEN: `order-entry-screenshot-idempotent.test.mjs` ± homepage | Node-closed; PO Script 5 re-run against fix |
 | TAL-01903 | fixed | `c0a0d7620` | GREEN: `order-pnl-refresh-stable.test.mjs` canonical + homepage | TOP re-review ACCEPT |
-| TAL-01810 | fixed | `e9d9f7594` | GREEN: `order-exit-marker-spread-column.test.mjs` ± homepage | TOP ACCEPT; PO Script 3 re-run on stamp |
+| TAL-01810 | broken | — | RED: `fixed-column-audit.red.test.mjs` (CODE-PATH-ONLY `order-exit-marker-spread-column.test.mjs`) | Projection unit; no user fill/refresh path |
 | TAL-01683 | fixed | `379394fc0` | GREEN: `order-risk-qty-on-sl-commit.test.mjs` canonical + homepage | TOP re-review ACCEPT |
 | TAL-01751 | fixed | `b1196e79c` | GREEN: `order-be-place-anchor.test.mjs` canonical + homepage | TOP re-review ACCEPT |
 | TAL-01697 | fixed | `231df7bb5` | GREEN: `order-preview-live-recalc.test.mjs` canonical + homepage; full `order-*.test.mjs` sweeps | TOP review ACCEPT recorded in `journal-D.md` |
@@ -40,9 +40,9 @@ Open row disposition and unverified blast-radius order live in `docs/plan3/UNKNO
 | TAL-01865 | owner-blocked | — | `docs/plan3/PATCH-REQUEST-A-SYMBOL-PERSIST-20260729.md` | Requires `chart.js` owner A |
 | TAL-01747 | owner-blocked | — | `docs/plan3/PATCH-REQUEST-A-SYMBOL-PERSIST-20260729.md` | Requires `chart.js` owner A |
 | TAL-01941 | needs-info | `93c842bc8` | GREEN diagnostics only: `order-sl-trigger-diagnostics.test.mjs` | Instrumentation; no execution fix; pair/TF/steps missing |
-| TAL-01896 | fixed | `3fae85648` | GREEN: duration oracles | Node-closed; PO Script 4 re-run; needs dist-v9 |
+| TAL-01896 | broken | — | RED: `fixed-column-audit.red.test.mjs` (duration suite stays GREEN under kill) | GATE-01 fail: reverse leaves harness green |
 | M20-A timezone sha pin | owner-blocked | — | `PATCH-REQUEST-M20-A-TIMEZONE-PIN-REPIN-20260729.md` | Owner re-pin/re-review; not a PO click script |
-| M23 / TAL-01937 | fixed | `f127d25dd` | GREEN: `m23-rollback-trade-state.red.test.mjs` | Node-closed; PO Script 2 re-run against fix |
+| M23 / TAL-01937 | broken | — | RED: `fixed-column-audit.red.test.mjs` (m23 suite 14/14 GREEN under kill preload) | GATE-01 fail: CONTROL expects tip; suite cannot carry fixed |
 | TAL-01800 | fixed | `c0a0d7620` | GREEN: `order-lifecycle-event-ownership.test.mjs` ± homepage | Node-closed; PO Script 2 re-run against fix |
 | TAL-01940 | po-eyes | — | No D-tip product gate | First look — PO Script 5 (journal side-effects) |
 | TAL-01756 | superseded | `e9d9f7594` | Sibling gate: `order-exit-marker-spread-column.test.mjs` (TAL-01810) | Paired with TAL-01810 TOP ACCEPT; no independent row gate |
@@ -73,7 +73,7 @@ Open row disposition and unverified blast-radius order live in `docs/plan3/UNKNO
 | TAL-01726 | superseded | — | Old-layout Cluster M | No current-surface gate |
 | TAL-01728 | superseded | — | Old-layout Cluster M | No current-surface gate |
 | TAL-01732 | superseded | — | PO clarification closed/already resolved | No commit+gate to reopen |
-| TAL-01733 | fixed | `db849737f` | GREEN: `cd "chart v 1.4/chart/multichart-prod/harness" && node run.mjs --only=H-S19` and `--only=H-S83` | Closure pass bucket (a) |
+| TAL-01733 | broken | — | RED: H-S19 `--bugswitch=__TALARIA_MC_DISABLE_PLAY_FOLLOW_COST_GUARD` stays GREEN; `fixed-column-audit.red.test.mjs` | Harness decoration on cost-guard claim |
 | TAL-01734 | po-eyes | — | Cluster J custom TF grid | UI/viewport PO |
 | TAL-01735 | po-eyes | — | Cluster J time-label drag | UI/viewport PO |
 | TAL-01736 | superseded | — | Old-layout Cluster M | No current-surface gate |
@@ -138,33 +138,32 @@ Open row disposition and unverified blast-radius order live in `docs/plan3/UNKNO
 | TAL-01936 | owner-blocked | — | Cluster I time alignment | `chart.js` owner |
 | TAL-01938 | owner-blocked | — | Cluster H ORB size | Chart overlay / session calendar |
 | TAL-01939 | fixed | `db849737f` | GREEN: harness `H-S18` + `H-S83` | Closure pass bucket (a) |
-| Rayan #1 | fixed | `f127d25dd` | GREEN: `m23-rollback-trade-state.red.test.mjs` | Node-closed; PO Script 2 re-run against fix |
+| Rayan #1 | broken | — | RED: `fixed-column-audit.red.test.mjs` (m23 suite) | Same GATE-01 fail as TAL-01937 |
 | Rayan #2 | needs-info | — | Cluster C multichart | Needs current-build repro before script |
-| Rayan #3 | fixed | `f127d25dd` | GREEN: `m23-rollback-trade-state.red.test.mjs` | Node-closed; PO Script 2 re-run against fix |
+| Rayan #3 | broken | — | RED: `fixed-column-audit.red.test.mjs` (m23 suite) | Same GATE-01 fail as TAL-01937 |
 | Rayan #4 | fixed | `b21d236d3`, `f1ddb2e64`, `2cc949399` | GREEN: allocator + `m24-order-id-restore-stability.test.mjs` | Node-closed; PO Script 1 re-run against fix (b103 class) |
 | Rayan #5 | fixed | `b21d236d3`, `f1ddb2e64`, `2cc949399` | GREEN: allocator + restore stability | Node-closed; PO Script 1 re-run against fix |
-| Rayan #6b | fixed | `f127d25dd` | GREEN: `m23-rollback-trade-state.red.test.mjs` | Node-closed; PO Script 2 re-run against fix |
+| Rayan #6b | broken | — | RED: `fixed-column-audit.red.test.mjs` (m23 suite) | Same GATE-01 fail as TAL-01937 |
 | Rayan #7 | closed-scratched | — | Self-resolved settings/profile | Monitor-only |
 | Rayan #9 | fixed | `b21d236d3`, `f1ddb2e64`, `2cc949399` | GREEN: allocator + restore stability | Node-closed; PO Script 1 re-run against fix |
 | Rayan #10 | closed-scratched | — | Self-resolved monitor item | No product gate |
 | Rayan #11 | fixed | `b21d236d3`, `f1ddb2e64`, `2cc949399` | GREEN: allocator + restore stability | Node-closed; PO Script 1 re-run against fix |
-| TAL-01807b | fixed | `ab57a5dac` | GREEN: `order-pair-switch-visual-rebind.test.mjs` ± homepage; draft gate `order-pair-switch-draft-rebind.test.mjs` | Closure pass bucket (b); placed/pending visual rebind |
+| TAL-01807b | broken | — | RED: `fixed-column-audit.red.test.mjs` (no reverse lever on visual-rebind) | No kill-switch; cannot prove GATE-01 |
 | PO value-box shaky | fixed | `2cc949399` | GREEN: `order-stable-label-hover-dom.test.mjs` ± homepage | Closure pass bucket (a) |
 | PO hover one-by-one | fixed | `2cc949399` | GREEN: `order-stable-label-hover-dom.test.mjs` ± homepage | Closure pass bucket (a) |
 | PO pending SL/TP resurrect | fixed | `2cc949399` | GREEN: `order-pending-protection-clear.test.mjs` ± homepage | TOP ACCEPT; redeploy before PO visual confirm |
 
-## Closure pass status counts (2026-07-30 12:40)
+## Status counts (after fixed-column audit 2026-07-30 13:20)
 
 | Status | Count |
 | --- | --- |
 | blocked-on-build | 6 |
+| broken | 13 |
 | closed-scratched | 6 |
-| fixed | 51 |
+| fixed | 38 |
 | needs-info | 17 |
 | owner-blocked | 13 |
 | po-eyes | 26 |
 | superseded | 29 |
 
-Bare `unverified` count: **0** (must be 0).
-`closed-scratched` / `noted` status labels: **0** (must be 0; PO cancelled PO-cancelled known-limitations notes 12:40).
-Authority: `RULING-measured-clean-bar-THE-BAR-IS-MEASURED-CLEAN-20260730-1240.md`.
+Bare `unverified`: **0**. Fixed-column audit reopened: **13** (51→38 fixed). Authority: `FIXED-COLUMN-AUDIT-20260730-1320.md`.
