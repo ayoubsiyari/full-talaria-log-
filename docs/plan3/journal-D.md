@@ -1,5 +1,11 @@
 # Manager D Journal
 
+## 2026-07-30 — Director 13:50 Rayan #8 / Rayan #2
+
+- Rayan #8A skipped ID: existing `m24-order-id-allocator` + `m24-order-id-restore-stability` cover stale-counter collisions and hydrate display renumber (`#5→#942`); they did **not** cover a persisted counter ahead of live rows when pending `#8` vanished on hydrate (next mint jumped to `#9`). Fix: `_m24ReconcileOrderIdCounter()` now prefers `max(live ids)+1` over a stale persisted counter when `__TALARIA_DISABLE_M24_ORDER_ID_GAP_RECONCILE_V1` is absent (default ON). Gate: `node "chart v 1.4/chart/modules/m24-order-id-gap-after-hydrate.test.mjs"` ± homepage; RED `TALARIA_TEST_DISABLE_M24_ORDER_ID_GAP_RECONCILE=1`.
+- Rayan #8B self-opened sell: no deterministic PO repro. Added strict audit hook `_pushOpenPosition` / `_assertExplicitPlaceAudit` (active only when `window.__TALARIA_ORDER_EXPLICIT_PLACE_AUDIT_STRICT`; kill `__TALARIA_DISABLE_ORDER_EXPLICIT_PLACE_AUDIT_V1`). `executePendingOrder` uses `pending-fill` source. **Root-cause hypothesis:** idle replay still auto-fills ghost/stale `pendingOrders` via `checkPendingOrders` → `executePendingOrder` (user-visible “self-open” without a fresh confirm), possibly combined with multichart mirror resurrect class already gated elsewhere. Gate: `node "chart v 1.4/chart/modules/order-explicit-place-audit.test.mjs"` ± homepage; RED `TALARIA_TEST_DISABLE_ORDER_EXPLICIT_PLACE_AUDIT=1`.
+- Rayan #2: lag half is **Cluster A** (multichart perf); **vanished open order** is D money-path. Static + contract gate asserts `MultichartGrid` / `multichart-manager` `removeChart` paths do not assign host `openPositions = []`, and host journal/open rows survive simulated peer panel teardown. Gate: `node "chart v 1.4/chart/modules/order-mc-layout-teardown-retains-host-orders.test.mjs"` ± homepage; RED `TALARIA_TEST_DISABLE_MC_LAYOUT_HOST_ORDER_RETAIN=1`.
+
 ## 2026-07-30 — M24 Restore-Time Display Identity Escape
 
 - PO b103 result: history count survived refresh, but displayed trade ID changed from `#5` to `#942`. The existing allocator gate only covered minting new IDs past stale counters; it did not cover session hydrate / journal restore display identity.
@@ -365,3 +371,14 @@
 - Money decorations: m23 suite stays GREEN under kill (TAL-01937 / Rayan #1/#3/#6b); duration suite under kill (TAL-01896); journal pytest under guard=0 (TAL-01926); TAL-01807b no reverse lever; CODE-PATH-ONLY money helpers TAL-01904/01809/01933/01810; SEL-01 selector-only; TAL-01733 H-S19 bugswitch stays GREEN.
 - Survived break attempts (examples): TAL-01908 restore kill → `942 !== 5`; TAL-01903 PnL kill → `12000 !== 10075`.
 - Standing by to fold PO answers on 23 decision rows and run five packs when B confirms stamp.
+
+## 2026-07-30 — Director 13:50 money gates + PO fold-in
+
+- User-path GATE-01 restored for TAL-01904/01809/01933/01810/01926/01937 + TAL-01807b reverse lever.
+- Rayan #8: gap reconcile + explicit-place audit (skipped ID + self-open). Rayan #2 money half: layout teardown retain gate (lag → A).
+- TAL-01941: randomised SL/TP soak 120 cases (`order-sl-tp-trigger-soak.test.mjs`).
+- TAL-01677: **reopened broken** — no commit+gate in git/journal (PO memory close rejected).
+- TAL-01893: owner-blocked A (`chart.js` Go-To); M22 does not cover.
+- TAL-01744: `intended` (PO). TAL-01894: `feature-request`. TAL-01920 / Rayan #7/#10: `verify-gone`.
+- TAL-01850: **Manager A** canary blocker (`OWNER-TAL-01850-KEYBOARD-20260730.md`).
+- Five PO packs remain AWAITING STAMP.

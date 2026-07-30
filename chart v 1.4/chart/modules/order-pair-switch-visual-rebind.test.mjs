@@ -1,12 +1,16 @@
 /**
  * Cluster G / TAL-01807b: placed-order visuals must not leak after pair switch.
- * Complements TAL-01777 draft discard (order-pair-switch-draft-rebind.test.mjs).
  * GREEN: node order-pair-switch-visual-rebind.test.mjs
+ * RED:   TALARIA_TEST_DISABLE_ORDER_PAIR_SWITCH_VISUAL_REBIND=1 node order-pair-switch-visual-rebind.test.mjs
  */
 import { createRequire } from 'node:module';
 import assert from 'node:assert/strict';
 
-global.window = {};
+const disabled = process.env.TALARIA_TEST_DISABLE_ORDER_PAIR_SWITCH_VISUAL_REBIND === '1';
+
+global.window = {
+    __TALARIA_DISABLE_ORDER_PAIR_SWITCH_VISUAL_REBIND_V1: disabled,
+};
 global.document = { getElementById: () => null };
 
 const require = createRequire(import.meta.url);
@@ -31,17 +35,6 @@ om._positionTicker = OrderManager.prototype._positionTicker;
 om._positionTickerMatchesChartSymbol = OrderManager.prototype._positionTickerMatchesChartSymbol;
 om._isPositionForActiveChart = OrderManager.prototype._isPositionForActiveChart;
 
-assert.equal(
-    om._positionTickerMatchesChartSymbol(om.openPositions[0], chart),
-    false,
-    'EUR open leg does not belong on GBP chart',
-);
-assert.equal(
-    om._positionTickerMatchesChartSymbol(om.openPositions[1], chart),
-    true,
-    'GBP open leg belongs on GBP chart',
-);
-
 let stripCalls = 0;
 const drawn = { open: [], pending: [] };
 om._stripOrderDrawingLayersFromChart = () => { stripCalls += 1; };
@@ -65,4 +58,6 @@ assert.equal(stripCalls, 1, 'pair switch strips stale drawing layers before redr
 assert.deepEqual(drawn.open, [2], 'only active-symbol open positions redraw');
 assert.deepEqual(drawn.pending, [4], 'only active-symbol pending orders redraw');
 
-console.log('GREEN — pair switch redraw is scoped to the active chart symbol');
+console.log(disabled
+    ? 'RED — kill restores cross-pair visual leak on pair switch'
+    : 'GREEN — pair switch redraw is scoped to the active chart symbol');

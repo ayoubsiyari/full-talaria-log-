@@ -107,6 +107,19 @@ function _m24DisplayIdStabilityV1Enabled() {
     return typeof window === 'undefined' || window.__TALARIA_DISABLE_M24_DISPLAY_ID_STABILITY_V1 !== true;
 }
 
+/** Rayan #8 / M24: stale persisted counters must not skip unused numeric ids after hydrate. */
+function _m24OrderIdGapReconcileV1Enabled() {
+    return typeof window === 'undefined'
+        || window.__TALARIA_DISABLE_M24_ORDER_ID_GAP_RECONCILE_V1 !== true;
+}
+
+/** Synthetic audit for surprise open adoption (strict test mode only). */
+function _orderExplicitPlaceAuditV1Enabled() {
+    return typeof window !== 'undefined'
+        && window.__TALARIA_ORDER_EXPLICIT_PLACE_AUDIT_STRICT === true
+        && window.__TALARIA_DISABLE_ORDER_EXPLICIT_PLACE_AUDIT_V1 !== true;
+}
+
 /**
  * M23 REPLAY ROLLBACK TRADE-STATE — default ON.
  * Kill-switch: window.__TALARIA_DISABLE_M23_ROLLBACK_TRADE_CANCEL_V1 = <truthy>
@@ -394,6 +407,12 @@ function _orderPnlRestoreStableV1Enabled() {
 function _orderPairSwitchDraftRebindV1Enabled() {
     return typeof window === 'undefined'
         || !window.__TALARIA_DISABLE_ORDER_PAIR_SWITCH_DRAFT_REBIND_V1;
+}
+
+/** Cluster G / TAL-01807b: pair switch strips + redraws only the active symbol's order visuals. */
+function _orderPairSwitchVisualRebindV1Enabled() {
+    return typeof window === 'undefined'
+        || !window.__TALARIA_DISABLE_ORDER_PAIR_SWITCH_VISUAL_REBIND_V1;
 }
 
 /** Cluster G / TAL-01933: a single TP stays executable after SL trails past it. */
@@ -2381,22 +2400,25 @@ class OrderManager {
                 return;
             }
 
-            this._dropOrderVisualsNotOnMainChart();
-            // Full strip + reset (same idea as multi-panel): removes orphan SVG and stale DOM refs in
-            // orderLines/slLines/... so a symbol switch cannot leave another pair's visuals on the canvas.
-            this._stripOrderDrawingLayersFromChart(this.chart);
-            this._clearClosedTradeMarkerRegistry();
-            this.entryMarkers = [];
-            this.orderLines = [];
-            this.splitGroupAvgLines = [];
-            this.multiTPAvgLines = [];
-            this.slLines = [];
-            this.tpLines = [];
-            this.beLines = [];
-            this.pendingTargetLines = [];
+            const scopedPairSwitch = _orderPairSwitchVisualRebindV1Enabled();
+            if (scopedPairSwitch) {
+                this._dropOrderVisualsNotOnMainChart();
+                // Full strip + reset (same idea as multi-panel): removes orphan SVG and stale DOM refs in
+                // orderLines/slLines/... so a symbol switch cannot leave another pair's visuals on the canvas.
+                this._stripOrderDrawingLayersFromChart(this.chart);
+                this._clearClosedTradeMarkerRegistry();
+                this.entryMarkers = [];
+                this.orderLines = [];
+                this.splitGroupAvgLines = [];
+                this.multiTPAvgLines = [];
+                this.slLines = [];
+                this.tpLines = [];
+                this.beLines = [];
+                this.pendingTargetLines = [];
+            }
 
             (this.openPositions || []).forEach((pos) => {
-                if (!this._isPositionForActiveChart(pos)) return;
+                if (scopedPairSwitch && !this._isPositionForActiveChart(pos)) return;
                 this.drawOrderLine(pos);
                 this.drawSLTPLines(pos);
                 try {
@@ -2404,7 +2426,7 @@ class OrderManager {
                 } catch (e) { /* scales may not be ready yet */ }
             });
             (this.pendingOrders || []).forEach((po) => {
-                if (!this._positionTickerMatchesChartSymbol(po, this.chart)) return;
+                if (scopedPairSwitch && !this._positionTickerMatchesChartSymbol(po, this.chart)) return;
                 try {
                     this.drawPendingOrderLine(po);
                     this.drawPendingOrderTargets(po);
@@ -8562,7 +8584,12 @@ class OrderManager {
         this._m24ScanOrderIdentityRows(this.orderService && this.orderService.pendingOrders, visit);
         this._m24ScanOrderIdentityRows(this.orderService && this.orderService.openPositions, visit);
         const current = Number.parseInt(this.orderIdCounter, 10);
-        this.orderIdCounter = Math.max(Number.isFinite(current) && current > 0 ? current : 1, maxOrderId + 1);
+        const nextFromRows = Math.max(1, maxOrderId + 1);
+        if (_m24OrderIdAllocatorV1Enabled() && _m24OrderIdGapReconcileV1Enabled()) {
+            this.orderIdCounter = nextFromRows;
+        } else {
+            this.orderIdCounter = Math.max(Number.isFinite(current) && current > 0 ? current : 1, nextFromRows);
+        }
         return this.orderIdCounter;
     }
 
@@ -8571,6 +8598,42 @@ class OrderManager {
         const id = this._m24ReconcileOrderIdCounter();
         this.orderIdCounter = id + 1;
         return id;
+    }
+
+    _armExplicitPlaceIntent() {
+        if (!_orderExplicitPlaceAuditV1Enabled()) return;
+        this._explicitPlaceIntentDepth = (this._explicitPlaceIntentDepth | 0) + 1;
+    }
+
+    _disarmExplicitPlaceIntent() {
+        if (!_orderExplicitPlaceAuditV1Enabled()) return;
+        this._explicitPlaceIntentDepth = Math.max(0, (this._explicitPlaceIntentDepth | 0) - 1);
+    }
+
+    _assertExplicitPlaceAudit(source) {
+        if (!_orderExplicitPlaceAuditV1Enabled()) return true;
+        const ok = (this._explicitPlaceIntentDepth | 0) > 0
+            || (this._explicitPlaceIntentUntil | 0) > Date.now()
+            || source === 'pending-fill'
+            || source === 'session-restore'
+            || source === 'replay-resurrect';
+        if (ok) return true;
+        this._lastExplicitPlaceAuditViolation = source;
+        if (window.__TALARIA_ORDER_EXPLICIT_PLACE_AUDIT_THROW === true) {
+            throw new Error(`ORDER_EXPLICIT_PLACE_AUDIT:${source}`);
+        }
+        return false;
+    }
+
+    _pushOpenPosition(order, source) {
+        this._assertExplicitPlaceAudit(source || 'direct');
+        if (this.orderService) {
+            this.orderService.registerOpenOrder(order);
+            return;
+        }
+        this.attachStrategyVariablesToOrder(order);
+        this.openPositions.push(order);
+        this.orders.push(order);
     }
 
     /**
@@ -29406,6 +29469,9 @@ class OrderManager {
      */
     placeAdvancedOrder(options = {}) {
         console.log('🟦OM-DIAG placeAdvancedOrder() CALLED', options);
+        if (_orderExplicitPlaceAuditV1Enabled()) {
+            this._explicitPlaceIntentUntil = Date.now() + 120000;
+        }
         const keepPanelOpen = options.keepPanelOpen === true;
         if (this._shouldBlockPlaceDuringPreviewDrag()) {
             console.warn('🟦OM-DIAG place blocked while preview drag is active');
@@ -32531,14 +32597,7 @@ class OrderManager {
         // NOTE: Pending order already removed from array in checkPendingOrders()
         // to prevent re-execution race conditions
         
-        // Add to open positions
-        if (this.orderService) {
-            this.orderService.registerOpenOrder(order);
-        } else {
-            this.attachStrategyVariablesToOrder(order);
-            this.openPositions.push(order);
-            this.orders.push(order);
-        }
+        this._pushOpenPosition(order, 'pending-fill');
         
         // ═══ SPLIT ENTRY GROUP TRACKING ═══
         if (order.tradeGroupId) {
