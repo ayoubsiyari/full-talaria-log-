@@ -2620,7 +2620,13 @@ function ensureTalariaIndLegendHoverCss() {
     ].join('\n');
     let s = document.getElementById('talaria-ind-legend-hover-css');
     if (s) {
-        s.textContent = css;
+        // Kill-switch: truthy => legacy unconditional rewrite; absent/falsy => skip no-op writes.
+        // Flag is read per call (never sampled at module load).
+        const disableIndLegendCssIdempotentV1 = typeof window !== 'undefined'
+            && window.__TALARIA_DISABLE_IND_LEGEND_CSS_IDEMPOTENT_V1;
+        if (disableIndLegendCssIdempotentV1 || s.textContent !== css) {
+            s.textContent = css;
+        }
         return;
     }
     s = document.createElement('style');
