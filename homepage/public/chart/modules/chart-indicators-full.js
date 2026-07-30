@@ -78,6 +78,36 @@
     }
 
     const MAX_ACTIVE_INDICATORS = 10;
+    const INDICATOR_EVICT_V1_MAX_SETTINGS = 32;
+
+    function indicatorEvictV1Enabled() {
+        return typeof global === 'undefined'
+            || global.__TALARIA_DISABLE_INDICATOR_EVICT_V1 !== true;
+    }
+
+    function indicatorEvictTypeKey(indicator) {
+        return indicator && indicator.type != null
+            ? String(indicator.type).toLowerCase()
+            : '';
+    }
+
+    function indicatorEvictPlayhead(chart) {
+        const replay = chart && chart.replaySystem;
+        const candidates = [
+            replay && replay.replayTimestamp,
+            replay && replay.currentTimestamp,
+            replay && replay.currentTime,
+            replay && replay.playheadTime,
+            chart && chart.replayTimestamp,
+            chart && chart.currentTimestamp,
+            chart && chart.currentTime,
+        ];
+        for (let i = 0; i < candidates.length; i++) {
+            const n = Number(candidates[i]);
+            if (Number.isFinite(n)) return n;
+        }
+        return null;
+    }
 
     function isRc6IndicatorLifecycleStoreEnabled() {
         return typeof global.rc6IndicatorLifecycleStoreEnabled === 'function'
@@ -6041,6 +6071,9 @@
         chartRef.indicators.active.push(indicator);
         if (typeof chartRef._primeSeparatePanelForNewIndicator === 'function') {
             chartRef._primeSeparatePanelForNewIndicator(indicator, normalizedType);
+        }
+        if (typeof chartRef._restoreEvictedIndicatorSettingsForNewIndicator === 'function') {
+            chartRef._restoreEvictedIndicatorSettingsForNewIndicator(indicator);
         }
         if (typeof chartRef.updateOHLCIndicators === 'function') chartRef.updateOHLCIndicators();
         if (typeof chartRef.scheduleRender === 'function') chartRef.scheduleRender();
@@ -13451,6 +13484,10 @@
             this.hideVolumeIndicatorLine();
         }
 
+        if (typeof this._evictClearedIndicatorSettingsV1 === 'function') {
+            this._evictClearedIndicatorSettingsV1(this.indicators.active);
+        }
+
         this.indicators.active = [];
         this.indicators.data = {};
         this.separateIndicatorPanelHeight = 0;
@@ -14392,6 +14429,68 @@ Chart.prototype._getSeparatePanelHeights = function(indicators) {
         }
         store[indicator.id] = DEFAULT_SEPARATE_PANEL_HEIGHT;
         return DEFAULT_SEPARATE_PANEL_HEIGHT;
+    });
+};
+
+Chart.prototype._evictedIndicatorSettingsStoreV1 = function() {
+    if (!this._evictedIndicatorSettingsV1 || !Array.isArray(this._evictedIndicatorSettingsV1)) {
+        this._evictedIndicatorSettingsV1 = [];
+    }
+    return this._evictedIndicatorSettingsV1;
+};
+
+Chart.prototype._rememberEvictedIndicatorPanelHeightV1 = function(indicator, height) {
+    if (!indicatorEvictV1Enabled() || !indicator) return;
+    const key = indicatorEvictTypeKey(indicator);
+    const h = Number(height);
+    if (!key || !Number.isFinite(h) || h < MIN_SEPARATE_PANEL_HEIGHT) return;
+    const store = this._evictedIndicatorSettingsStoreV1();
+    for (let i = store.length - 1; i >= 0; i--) {
+        if (store[i] && store[i].key === key) store.splice(i, 1);
+    }
+    store.push({
+        key,
+        height: Math.max(MIN_SEPARATE_PANEL_HEIGHT, h),
+        playhead: indicatorEvictPlayhead(this),
+    });
+    while (store.length > INDICATOR_EVICT_V1_MAX_SETTINGS) store.shift();
+};
+
+Chart.prototype._restoreEvictedIndicatorSettingsForNewIndicator = function(indicator) {
+    if (!indicatorEvictV1Enabled() || !indicator) return false;
+    const key = indicatorEvictTypeKey(indicator);
+    if (!key || !this._evictedIndicatorSettingsV1) return false;
+    for (let i = this._evictedIndicatorSettingsV1.length - 1; i >= 0; i--) {
+        const entry = this._evictedIndicatorSettingsV1[i];
+        if (!entry || entry.key !== key) continue;
+        if (!this.chartSettings) this.chartSettings = {};
+        if (!this.chartSettings.separatePanelHeights || typeof this.chartSettings.separatePanelHeights !== 'object') {
+            this.chartSettings.separatePanelHeights = {};
+        }
+        this.chartSettings.separatePanelHeights[indicator.id] = entry.height;
+        indicator._evictedSettingsRestoredAtPlayhead = indicatorEvictPlayhead(this);
+        indicator._evictedSettingsSourcePlayhead = entry.playhead;
+        return true;
+    }
+    return false;
+};
+
+Chart.prototype._evictClearedIndicatorSettingsV1 = function(indicators) {
+    if (!indicatorEvictV1Enabled()
+        || !Array.isArray(indicators)
+        || !this.chartSettings
+        || !this.chartSettings.separatePanelHeights
+        || typeof this.chartSettings.separatePanelHeights !== 'object') {
+        return;
+    }
+    const heights = this.chartSettings.separatePanelHeights;
+    indicators.forEach((indicator) => {
+        if (!indicator) return;
+        const saved = Number(heights[indicator.id]);
+        if (Number.isFinite(saved)) {
+            this._rememberEvictedIndicatorPanelHeightV1(indicator, saved);
+        }
+        delete heights[indicator.id];
     });
 };
 
