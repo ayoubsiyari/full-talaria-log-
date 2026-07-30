@@ -1,0 +1,82 @@
+{
+  "packet": "W84",
+  "manager": "C",
+  "tier": "mid",
+  "tierWhy": "measurement and a retraction of my own result; no money path, no ship-gate review",
+  "build": "20260729b103",
+  "headline": "RETRACTION: at n=3 per arm A's five cuts show NO measurable effect. My -12.5% and my 'cut 2 carries it' were both noise at n=1.",
+
+  "bisectSettled": {
+    "design": "three arms interleaved rather than blocked (control, all-on, cut2-off, repeated three times) so drift in the deployed build or the network hits every arm equally",
+    "flagsVerifiedInPage": "every arm read its kill-switches back out of the page; control saw 5, cut2-off saw 1, all-on saw 0",
+    "arms": {
+      "allFiveDisabled_control": { "runs": 3, "perRunMeanMB": [24.56, 26.17, 24.48], "pooledMeanMB": 25.07, "sdMB": 3.44 },
+      "allFiveActive": { "runs": 3, "perRunMeanMB": [21.5, 28.49, 30.78], "pooledMeanMB": 26.93, "sdMB": 5.15 },
+      "cut2_orderRegistriesDisabled": { "runs": 3, "perRunMeanMB": [23.29, 29.63, 24.96], "pooledMeanMB": 25.96, "sdMB": 3.56 }
+    },
+    "effects": {
+      "fixEffect_controlMinusAllOn": -1.86,
+      "cut2Share_cut2offMinusAllOn": -0.97,
+      "note": "the sign is NEGATIVE: the arm with all five cuts active measured slightly HIGHER than the arm with all five disabled"
+    },
+    "statistics": {
+      "perDeltaSdMB": 4.1,
+      "deltasPerArm": 6,
+      "seOfDifferenceMB": 2.37,
+      "ci95OfFixEffectMB": [-6.5, 2.8],
+      "reading": "zero sits comfortably inside the interval. The instrument can only say the effect is smaller than about 6.5 MB/cycle; it cannot say it is non-zero."
+    },
+    "whatIGotWrong": "W82 reported -12.5% and named cut 2 as the carrier from ONE run per arm. I flagged the risk in the same evidence — within-run spread 4.5MB against a 3.06MB effect — and the repeats landed the other way. The first-run ordering (control 24.56 > cut2off 23.29 > allon 21.50) looked like a dose-response curve and was run-to-run noise.",
+    "corroboration": "the PO's own series across builds is flat (b85 13.3, b99 12.8, b103 12.2), which is what a no-effect fix looks like on his instrument too. Two instruments, one conclusion.",
+    "panelB": "still product-retained in every b103 arm measured, anchor unchanged Window -> mainChart -> Chart._mcHostCacheFileRefOwners",
+    "consequenceForCanary": "all five cuts are dead weight by measurement, not just four of them. Keep the kill-switches (they cost nothing and they are what made this gradeable) but do not credit a reduction to them."
+  },
+
+  "instrumentResolution": {
+    "problem": "a 3 MB/cycle claim is below what a 3-cycle run can resolve",
+    "numbers": "per-delta sd 4.1MB; a 3-cycle run yields 2 deltas, so one run's mean carries se ~2.9MB",
+    "runsNeeded": "resolving a 3 MB/cycle difference at 95% needs roughly 12 runs per arm at 3 cycles",
+    "designFix": "grade on TOTAL growth over a fixed cycle count rather than a per-cycle mean (fewer, larger numbers), and treat any difference under about 5 MB/cycle as unresolvable at n=3",
+    "standingRule": "no attribution from a single run per arm again, however clean the ordering looks"
+  },
+
+  "singleChartDoesNotLeak": {
+    "poData": { "config": "single chart, 2 indicators, 60x, heap every 10s", "samplesMB": [304, 224, 346, 313, 405, 257, 259, 380, 295], "shape": "sawtooth, no trend, range 181MB" },
+    "agreesWithMyMechanism": "retention is bound to panel-realm TEARDOWN: exactly one peer realm survives each multichart collapse, and single-chart replay never destroys a realm, so there is nothing to retain. A non-leaking single chart is what my realm-survival model predicts.",
+    "scopeConsequence": "the hunt stays on the multichart open/close path and on host caches holding panel-realm objects. No further effort on replay-side retention.",
+    "leaveOneOutDesignChange": {
+      "structure": "unchanged — the design already cycles multichart expand/collapse, which is the leaking operation",
+      "sampleSize": "changed, and this is the real lesson: three repeats per arm minimum, interleaved, or grade on totals",
+      "workloadHypothesis": "if replay does not leak, the replay hold may be droppable from the memory workload, which would make runs faster and less flaky (a panel-D arm hung during arming tonight)",
+      "whyIWillNotJustDropIt": "layout-only workload once under-read the leak by 34x (+0.69 vs +23.5 MB/cycle), so the workload does not get weakened without measuring which component carries the signal — indicators, order, or replay. Named as a test, not applied as an assumption."
+    },
+    "supportsForcedGc": "his live samples swing 181MB peak to trough, roughly 40x the per-cycle signal being hunted. That is why every floor I quote follows an explicit collectGarbage, and why a per-cycle mean from live readings needs many samples."
+  },
+
+  "cpuIsNotSmoothness": {
+    "askedFor": "state that high CPU and felt lag are separable",
+    "measured": {
+      "totalPercentOfCoreMean": 135.96,
+      "runs": [133.88, 139.53, 134.47],
+      "mainThreadPercentMean": 74.56,
+      "offMainPercentMean": 61.4,
+      "surface": "deployed, single panel, replay 60x, b99"
+    },
+    "whyItIsSmoothAnyway": "the main thread sits at about 74.5% of a core, so roughly a quarter of it is idle, and no frame is starved. Headless was producing 124 fps (an upper bound, not vsync-capped); the same per-frame costs at 60Hz come to about 105% of a core, which brackets the PO's 111%. At 60Hz the main thread would be near 36% — abundant headroom.",
+    "whereFeltLagWouldComeFrom": "not continuous load but individual tasks exceeding the frame budget of 16.7ms. The PO's own console shows one: a 30ms forced reflow. Both of his observations are consistent — smooth overall, with occasional single tasks long enough to drop a frame.",
+    "whatTheCpuCutsAreFor": "headroom, battery and thermals, and scaling: 137% of a core for ONE panel is what makes a four-panel or fifteen-pair session saturate. They are not the smoothness fix.",
+    "whatTheSmoothnessFixIs": "eliminating the one-off long tasks — synchronous layout forced from JS — which is a different target from the per-frame continuous cost."
+  },
+
+  "threeSightingsAreNotOneMechanism": {
+    "askedFor": "confirm the census, the shimmying order labels and the forced-reflow violation are one mechanism",
+    "answer": "NOT confirmed, and the numbers argue against it. Same class, two different sizes.",
+    "myCensus": { "event": "LocalFrameView::performLayout", "count": 1245, "presentedFrames": 1244, "msPerOccurrence": 0.394, "percentOfCore": 4.91, "reading": "one full layout per frame, continuous, sub-millisecond" },
+    "poViolation": { "text": "[Violation] Forced reflow while executing JavaScript took 30ms", "ratioToPerFrameLayout": 76, "reading": "a single synchronous layout 76x the size of one per-frame layout. That drops frames; a 0.394ms layout does not." },
+    "poShimmyingLabels": "consistent with the per-frame path — order labels repositioned every frame from geometry reads",
+    "verdict": "two of the three (per-frame layout and the shimmy) are plausibly the same path. The 30ms forced reflow is a third, larger, distinct event. Calling all three one mechanism would be an argument, not a measurement.",
+    "supportingSignal": { "event": "StyleEngine::scheduleInvalidationsForRuleSets", "count": 624, "perSecond": 62, "reading": "stylesheet rule-sets are being invalidated 62 times a second, which is the write half of a read-after-write layout thrash and would explain both style recalc at 1.56/frame and layout at 1/frame" },
+    "measurementThatWouldSettleIt": "attribute each LocalFrameView::performLayout to its PARENT trace event: nested under FunctionCall or EventDispatch means JS forced it synchronously; nested under BeginMainFrame or the lifecycle means it is scheduled. My census currently sums self time per event name and does not record parentage. That is a small addition to cpu-thread-census and it names the JS call site A has to cut.",
+    "notRunTonight": "the machine was on the bisect repeats, which the Director ranked first. Trace runs cannot share a box with memory runs without corrupting both."
+  }
+}
