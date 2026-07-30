@@ -148,6 +148,33 @@ closed**, one chart, deployed build below.
 Any of those three outcomes is informative, which is the point of writing the number
 down first.
 
+## Shipped, and what the PO does
+
+**Build 20260730b110.** Verified over HTTP on the canary, not from the tree:
+
+```
+SERVED_STAMP=window.__TALARIA_CHART_BUILD_ID='20260730b110'
+logo04_http=200  logo04_bytes=35347  logo04_pixels=1024x957  decoded_mb=3.74
+logo04_sha256=b47ba1be1c53... matches the resized file byte for byte
+screenshot-manager.js: guard=2 switch=1 climb_helper=1 call_sites=1
+served shell: exactly one <img ... logo-04.png>, no other eager brand image
+EAGER_DECODED_IMAGE_BYTES=3919872 (3.74 MB) from 1 asset — was 51.78 MB from 2
+```
+
+**The stamp to read on screen: `20260730b110`.**
+
+**Re-read, same instrument, same column.** Brave Task Manager, **DevTools closed**, one
+chart, hard reload first so the old decodes are not still cached:
+
+1. Open the chart, wait for candles.
+2. Brave menu -> More tools -> Task Manager.
+3. Read the **Image cache** column for the chart tab.
+
+Compare against **63,075K on b103**. My prediction is 14,000-15,000K. If it reads near
+63,000K the cut did not reach your browser (check the stamp, then hard-reload). If it
+reads near 24,000K my unattributed residual is bigger than I thought and I chase that
+next instead of more logos.
+
 ## Routing
 
 - **A** — nothing here touches your territory. `logo-04.png` changed pixels only; no
