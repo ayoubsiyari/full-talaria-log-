@@ -144,7 +144,9 @@ number is more honest than the one it replaces.
 
 **Eight rows leave the board** as AFTER or NO. `TAL-01744` closes. `TAL-01912` closes.
 
-**One question outstanding to the PO:** TAL-01894 as a feature — blocker, after, or no.
+**TAL-01894 — PO answered 13:47: AFTER.** Reclassified from defect to post-canary feature
+request (add a label-text-colour option to chart template settings). Off the canary board.
+**Zero questions outstanding to the PO. All 23 decision rows are answered.**
 
 ---
 
