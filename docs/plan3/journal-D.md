@@ -335,3 +335,10 @@
 - RED: `TALARIA_TEST_DISABLE_ORDER_PENDING_PROTECTION_CLEAR=1 node "chart v 1.4/chart/modules/order-pending-protection-clear-live-size.test.mjs"` fails because pending clear does not emit/persist null SL/TP snapshots.
 - RED: `TALARIA_TEST_DISABLE_ORDER_PENDING_PROTECTION_LIVE_SIZE=1 node "chart v 1.4/chart/modules/order-pending-protection-clear-live-size.test.mjs"` fails because pending lots stay at the placed quantity during protection drag.
 - GREEN: canonical and homepage `order-pending-protection-clear-live-size.test.mjs` pass. Adjacent canonical/homepage `order-risk-qty-live-preview-sl.test.mjs` pass.
+
+## 2026-07-30 — WORK-01 Recovery Complete (C-checkout)
+
+- Relocated four hours of uncommitted work from `full-talaria-log--main` (`manager-c/verification-infra`) into this worktree.
+- Commits: `2cc949399` (product packets), `6a99b581a` (canary triage/ledger/journal).
+- **B:** `manager-d/trade-correctness` tip is ready for train/build pickup. No commit was made in C's checkout; D paths were path-scoped cleaned there after verify.
+- Triage counts (committed): (a)=15, (b)=14, (c)=73, total=102.
