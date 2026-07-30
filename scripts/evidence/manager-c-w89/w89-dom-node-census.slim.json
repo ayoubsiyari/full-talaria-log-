@@ -1,0 +1,117 @@
+{
+  "packet": "W89",
+  "manager": "C",
+  "tier": "mid",
+  "model": "claude-opus-5-thinking",
+  "title": "DOM node census: the chart's DOM is 2,483 elements and flat; the counter the PO read is not counting chart elements",
+  "instruments": {
+    "DOM-NODE-CENSUS-V1": "document.querySelectorAll('*') in the host frame and every panel frame, grouped by tag, tag+class signature and ancestor-path signature, plus highest-fan-out parents with subtree sizes",
+    "node_totals": "text and comment nodes counted by TreeWalker; Performance.getMetrics Nodes read at the same instant",
+    "resident_bars": "chart.data.length",
+    "visible_bars": "chart.visibleEndIndex - chart.visibleStartIndex",
+    "range_total": "chart.totalCandles",
+    "zoom_driver": "wheel events dispatched on the canvas, no private zoom API assumed"
+  },
+  "settle_protocol": "fresh page, login-then-seed boot order, wait for chart data, 10s settle before the first census; idle censuses taken 30s apart with NO interaction between them; 4s settle after each zoom batch",
+  "surface_caveat": "deployed b106 bare chart shell (2 documents). The PO's surface is the full app. Element counts here are the CHART's own DOM, which is exactly what the ruling asks about, but the app wrapper is not in them.",
+
+  "job_1_what_are_the_nodes": {
+    "headline": "the chart's DOM is 2,483 elements / 5,685 nodes on a fresh single chart — thousands, not tens of thousands",
+    "totals": {
+      "elements": 2483,
+      "textNodes": 3160,
+      "commentNodes": 41,
+      "allNodes": 5685,
+      "canvases": 1,
+      "svgs": 73,
+      "iframes": 0,
+      "styleSheets": 16,
+      "listeners": 1348
+    },
+    "by_tag_top": { "div": 1368, "button": 258, "span": 198, "img": 177, "script": 79, "svg": 73, "path": 64, "input": 51, "circle": 38, "line": 32, "label": 27, "option": 25 },
+    "top_subtree_and_it_is_a_named_cut": {
+      "path": "body > div.compare-modal-overlay > div.compare-modal > div.compare-modal-body > div.ssd-list",
+      "children": 147,
+      "subtreeElements": 1219,
+      "modalChildSignature": "div.ssd-item.compare-ssd-item x147, distinct child signatures = 1",
+      "reading": "a CLOSED compare-symbols modal is built eagerly with one 8-element row per symbol: 1,219 elements, 49% of the entire chart shell's DOM, none of it visible",
+      "second": { "path": "body > div.custom-color-picker > div", "children": 80, "subtreeElements": 80, "modalChildSignature": "div.color-swatch x80" },
+      "combined": "1,299 of 2,483 elements (52%) are off-screen UI built at load: a closed modal's symbol list and a colour picker's swatches",
+      "honest_magnitude": "this is ~1,300 elements, worth a few hundred KB — it is a style-recalculation and load-cost candidate, NOT a fix for a 383 MB floor. Naming it as the DOM culprit would be overselling it."
+    },
+    "no_per_bar_or_per_tick_elements_found": "every high-fan-out parent is a UI list with a fixed item count (147 symbols, 80 swatches, 99 head scripts). No parent's child count tracks bars or ticks."
+  },
+
+  "job_2_what_does_it_scale_with": {
+    "verdict": "NONE OF THEM. The element count is invariant.",
+    "visible_bars_arm": [
+      { "label": "fresh-default-zoom", "visibleBars": 165, "elements": 2483, "residentBars": 2011, "candleWidth": 6.0 },
+      { "label": "zoom-target-500", "visibleBars": 457, "elements": 2483, "residentBars": 2011, "candleWidth": 1.19 },
+      { "label": "zoom-target-2000", "visibleBars": 1888, "elements": 2483, "residentBars": 2011, "candleWidth": 0.26 },
+      { "label": "zoom-back-to-500", "visibleBars": 558, "elements": 2483, "residentBars": 2011, "candleWidth": 0.95 }
+    ],
+    "visible_bars_reading": "an 11x change in visible bars (165 -> 1,888) moved the element count by ZERO. The chart is a true canvas renderer; it does not emit DOM per bar.",
+    "idle_replay_arm": {
+      "protocol": "replay playing at 60x, three censuses 30s apart, no interaction",
+      "elements": [2483, 2483, 2483],
+      "residentBars": [2011, 3868, 5652],
+      "perfMonitorNodes": [9132, 17644, 10614],
+      "classification_elements": "FLAT (design cost)",
+      "classification_perf_monitor_nodes": "RISING-NON-MONOTONIC — it nearly doubled and then fell back by 7,030",
+      "reading": "resident bars nearly TRIPLED during replay while the element count did not move by one node. Ticks elapsed do not create DOM either."
+    },
+    "answer_for_A": "there is no growing-while-idle DOM leak to cut. The chart's DOM is a flat design cost of ~2.5k elements, half of it off-screen UI. A should not be cutting per-bar element loops, because there are none."
+  },
+
+  "job_3_validate_the_po_test": {
+    "verdict": "THE FETCH IS WINDOWED, HARD. The scaling test did not vary what it claims to have varied.",
+    "measurement": { "residentBars": 2011, "totalCandles": 6097452, "ratio": "the app holds 2,011 bars resident out of 6,097,452 available — 1 in 3,032" },
+    "instrument": "chart.data.length against chart.totalCandles, read in the same evaluate at fresh load and at every zoom level",
+    "corroborating_api_names": "the chart exposes _computeBarsWindowForBacktest, _fetchBarsWindow, _fetchSmartWindowViaBars, _getVisibleFetchWindowFromPixels, _scheduleViewportBarsFetch, _refreshViewportBarsFromServer, loadedRanges — a viewport-windowed fetch architecture by name",
+    "zoom_out_did_not_fetch_more": "at 1,888 visible bars the resident set was still 2,011; zooming out 11x pulled nothing extra",
+    "consequence_stated_carefully": [
+      "Ruling 1's PREMISE — 'between the 3-day and 3-year sessions the underlying bar count rises by two to three orders of magnitude' — is not established. On this surface the resident bar count does not follow the range selector.",
+      "Ruling 1's CONCLUSION is nonetheless independently supported, and more strongly than by the scaling test: if only ~2,000 bars are ever resident, candle data cannot be the mass at any range. 2,000 bars is well under a megabyte however it is represented.",
+      "So the columnar refactor stays cancelled on my evidence too, but for a better reason: not 'heap barely moved when data grew 1000x' (which did not happen) but 'the app never holds enough data for representation to matter'.",
+      "Reopening is the Director's call. What I can state is that the test did not test what it claims, and that the conclusion survives anyway."
+    ],
+    "caveat": "I did not drive the range selector itself — I have no named API for it — so this is resident-bars-versus-total at fresh load and across zoom, on my surface. Driving the 3d/3mo/3yr selector needs either the selector's API name or the PO's route."
+  },
+
+  "job_4_one_chart_or_four_panels": {
+    "verdict": "from my own instrument: a single chart is 2 documents and 2,483 elements; a four-panel layout is 5 documents and 4,751 elements across all frames",
+    "per_panel_cost": { "elements": 659, "textNodes": 753, "allNodes": 1426, "listenersPerPanel": "≈404 (1,348 host -> 2,561 at four panels)" },
+    "arithmetic_that_settles_it": "even if the PO's 4 documents were four charts, four chart documents come to roughly 6,000 nodes on this instrument. His reading was 51,303. So ~45,000 of his nodes are NOT chart documents — they are the surrounding app, or nodes not attached to any document (see below).",
+    "so_the_ambiguity_is_moot": "one chart or four, the chart's DOM cannot account for 51,303. The question the ruling should ask instead is what the other 45,000 are."
+  },
+
+  "the_counter_itself_is_the_finding": {
+    "claim": "Performance Monitor's Nodes counter is not a count of chart DOM elements, and it includes nodes that are no longer in the tree",
+    "evidence": [
+      "at the same instant: my census 2,483 elements + 3,160 text + 41 comment = 5,685 nodes, while Performance.getMetrics Nodes read 9,132",
+      "across 60s of idle replay the counter went 9,132 -> 17,644 -> 10,614 while elements stayed pinned at exactly 2,483 and text nodes at exactly 3,160",
+      "it rose 8,512 and then FELL 7,030 with no DOM element change at all"
+    ],
+    "reading": "the counter tracks live nodes in the renderer including created-and-detached nodes awaiting collection. It sawtooths, and a falling count proves collection. A number that halves on its own is not a staircase and not a leak.",
+    "consequence": "'51,303 DOM nodes on a canvas chart' cannot be read as '51,303 elements the chart built'. The lead does not disappear, but it must be re-stated as: what is the PO's renderer holding, app wrapper versus transient garbage, and that needs his surface.",
+    "settle_protocol_for_anyone_repeating_this": "read the counter twice 30s apart with no interaction; if it falls, you are looking at uncollected transients, not retention"
+  },
+
+  "job_5_is_it_the_same_fact_as_12mb_per_document": {
+    "verdict": "NO. They are different mechanisms, and the numbers are three orders of magnitude apart.",
+    "argument": [
+      "a panel document carries 659 elements / 1,426 nodes, measured directly in each panel frame",
+      "the ruling's hypothesis needs ~12,000 nodes per retained document to make the ~12 MB self-explanatory; the measured figure is 1,426, and 659 elements is tens of kilobytes, not 12 MB",
+      "the per-document mass was already attributed by constructor in W78: 62% ExternalStringData, i.e. script source text and compiled code, ~20.87 MB of script text per panel realm on the performance.memory gauge (that MB figure is pending restatement on the cross-frame gauge per W88)"
+    ],
+    "consequence": "DOM-COUNTER-STAIRCASE-V1 and the node census are NOT one mechanism. A retained realm is expensive because it holds a copy of the application's script set, not because it holds nodes. Cutting DOM will not recover the per-document retention, and cutting the retention will not move the node counter."
+  },
+
+  "what_i_am_not_claiming": [
+    "that the PO's 51,303 is fine — I cannot see his surface and 45,000 unexplained nodes deserve the enumeration he asked for in W88, which is still blocked on his route",
+    "that the compare-modal and colour-picker eager rendering is the floor — it is ~1,300 elements and I have said what that is worth",
+    "any MB figure from W78 until it is recomputed on the cross-frame gauge"
+  ],
+  "one_line_blocker": "BLOCKED on the PO's route (and/or a node census run on his surface) to decompose the other ~45,000 nodes; the PO or B unblocks it.",
+  "dropped_as_instructed": "differential oracle work stood down — the refactor it protected is cancelled"
+}

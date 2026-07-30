@@ -626,3 +626,35 @@ local templates in both paths; MultichartGrid has no preferencesSync reference.
 Did not touch B's 500.
 
 Owed: constructor table (running), n>=12 re-grade, the PO's route, COOP/COEP.
+
+## W89 — DOM node census: the chart DOM is 2,483 elements and flat
+tier=mid model=claude-opus-5-thinking (measurement packet, no money path)
+
+INSTRUMENT: DOM-NODE-CENSUS-V1 (querySelectorAll('*') host + every panel frame,
+grouped by tag/signature/ancestor-path, plus fan-out parents), Performance.getMetrics
+Nodes at the same instant, chart.data.length for resident bars, wheel-driven zoom.
+SETTLE: login-then-seed boot, ready wait, 10s settle; idle censuses 30s apart with
+no interaction; 4s after each zoom batch.
+
+1. WHAT THEY ARE: 2,483 elements / 5,685 nodes on a fresh single chart. Biggest
+   subtree is a CLOSED compare-symbols modal: 147 rows, 1,219 elements, 49% of the
+   shell. Plus 80 colour swatches. 52% of the DOM is off-screen UI built at load.
+   Worth a few hundred KB - a style-recalc/load candidate, not a floor fix.
+2. WHAT IT SCALES WITH: nothing. 165 -> 1,888 visible bars moved elements by ZERO.
+   60s idle replay tripled resident bars (2,011 -> 5,652) and moved elements by ZERO.
+   No per-bar or per-tick element loop exists. Nothing for A to cut here.
+3. THE COUNTER IS THE FINDING: Performance Monitor Nodes went 9,132 -> 17,644 ->
+   10,614 while elements were pinned at 2,483. It rose 8,512 and FELL 7,030. It
+   counts detached-uncollected nodes, so 51,303 is not 51,303 chart elements.
+4. VALIDATION OF THE PO TEST: resident bars 2,011 against totalCandles 6,097,452 -
+   1 in 3,032. The fetch is viewport-windowed; the range selector does not vary
+   resident data. Ruling 1's premise is void, its conclusion survives for a better
+   reason (the app never holds enough data for representation to matter).
+5. FOUR PANELS: single = 2 docs/2,483 elements; four = 5 docs/4,751 elements;
+   659 elements per panel document. Four chart documents ~ 6,000 nodes, so ~45,000
+   of the PO's 51,303 are not chart documents.
+6. NOT THE SAME FACT as ~12 MB/document: a panel document holds 1,426 nodes, and
+   the per-document mass is script source (W78, 62% ExternalStringData). Cutting
+   DOM will not recover it.
+
+Differential oracle dropped as instructed.
