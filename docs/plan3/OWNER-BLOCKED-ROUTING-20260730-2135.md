@@ -41,6 +41,16 @@ See `OWNER-C-HS18-HS83-CONF01-20260730.md`.
 | TAL-01891 | memory campaign (PO: YES same 8 GB report) |
 | TAL-01854 | REAL — auto-follow / TF-downshift family (PO reopened) |
 
+## Per-owner handoffs (row lists, not counts)
+
+| Owner | n | Handoff |
+|---|---:|---|
+| **A** | 13 | `HANDOFF-OWNER-BLOCKED-TO-A-20260730.md` |
+| **E** | 5 | `HANDOFF-OWNER-BLOCKED-TO-E-20260730.md` |
+| **C** | 3 | `HANDOFF-OWNER-BLOCKED-TO-C-20260730.md` |
+
+Machine list: `OWNER-BLOCKED-ROW-LISTS-20260730.json` (verified against ledger: 13+5+3=21).
+
 ## D does not own these
 
 D’s canary-scope money path is TRADE-EVICT / single-owner / wire audit. Overlay and shell rows stay with E/A/C. D will not invent click paths for them.

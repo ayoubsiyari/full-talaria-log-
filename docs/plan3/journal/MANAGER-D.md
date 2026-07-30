@@ -77,3 +77,15 @@ exists — eviction deletes the redundant hot copy, it does not invent a new sto
   `PO-VISUAL-PACK-26-PO-EYES-20260730.md`.
 - Applied `PO-DECISIONS-23-ROWS` docx → `needs-info` **0**. Owner-blocked rebalanced A/E/C
   (`OWNER-BLOCKED-ROUTING-20260730-2135.md`).
+
+## 2026-07-30 — Resume: PO waits on C chrome; owner lists confirmed
+
+- **Do not call PO** for the 26-row pack until C’s CONF-01 / attribution clears and Director
+  says go. No second browser from D on this machine.
+- TRADE-EVICT / EXCURSION-SINGLE-OWNER stay harness GREEN only — C grades on the wire.
+- Owner-blocked handoffs with **named row lists** (not counts): A=13, E=5, C=3.
+  Verified 13+5+3=21 against ledger. Files: `HANDOFF-OWNER-BLOCKED-TO-{A,E,C}-20260730.md`,
+  `OWNER-BLOCKED-ROW-LISTS-20260730.json`.
+- Scorecard flip armed idle: `scripts/po-scorecard-flip.mjs` +
+  `PO-SCORECARD-FLIP-PROCEDURE-20260730.md` — PASS→fixed, FAIL→broken on b113 when scorecard
+  returns. Heavy evidence → `_evidence\manager-D\`.
