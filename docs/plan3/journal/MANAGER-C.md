@@ -847,3 +847,49 @@ tier=mid model=claude-opus-5-thinking-high (author) · deployed b113 read off th
    17:30 from the peer side; it is why advancingPanels stratification exists, and if
    a rewind rebuilds overlay nodes without releasing them it is a candidate writer
    for the element climb - which the attribution run will show directly.
+
+## W97 — The element writer named: React completeWork in the host page, 28.7 per closed trade
+
+tier=mid model=claude-opus-5-thinking-high (author) · deployed b113 read off the page
+
+1. ATTRIBUTION ANSWERED, and it completed before the death loop started. 25 clean samples
+   over 24.1 min, CONF-01 compliant, 73 closed positions, 4/4 advancing at the end,
+   GATE-01 PASS with the planted leaker ranked first. Top writer
+   R3 < O_ < R_ @ talaria-v9-live.js:40 at +28.70 elements per closed trade
+   CI[28.42,28.97], 191 -> 2,280 live. Named writers sum to ~32.9/trade against the
+   duration regrade's independent +31.7/trade: two instruments, two datasets, one answer.
+2. DEMANGLED STATICALLY FROM THE DEPLOYED BUNDLE, byte-matched 1,720,325 (local is
+   1,716,061, so local line numbers would have been wrong and the artifact records the
+   check). R_ = performUnitOfWork, O_ = completeUnitOfWork, R3 = completeWork - React 18's
+   render loop, identified from body evidence (fiber tag switch, stateNode, memoizedProps,
+   beginWork call), not from guesswork.
+3. THE CONSEQUENCE I HAVE TO STATE RATHER THAN HIDE: React creates host instances inside
+   completeWork, after the rendering component has returned, so a component frame can NEVER
+   appear in a createElement stack. "The call site is React" is the complete answer a
+   creation stack can give, and more stack depth would not have helped. The component is
+   recoverable from the fiber React attaches to each node - added to the census as a second
+   ranking over __reactFiber$ owners, fitted per closed trade, plus reactOwnedElements per
+   realm. Code-complete and UNRUN because the machine has no headroom.
+4. LOCATED TO THE HOST DOCUMENT. Netting out my planted writer's 46,080 elements, the host
+   page grew ~2,700 while each panel realm grew ~40. The accumulation is a host-page React
+   tree rendering something per closed position and keeping all of them attached - an
+   unbounded list, not a failed teardown. This retires the rewind hypothesis for elements
+   (a rewind would climb with time, this climbs with trades) and points away from panel
+   overlay rebuild paths, since the panels are flat.
+5. MY SHARE OF THE OOM DEATH LOOP, named. My W96 supervisor's for /L loop kept relaunching
+   the duration gate because my kill filter matched node.exe but not the cmd.exe running the
+   loop - two ~3 GB sessions on a machine with ~3 GB free. And my GATE-01 synthetic writer
+   planted 46,080 elements, 86% of the run's element count; it earned its keep by proving
+   the ranking works and must not run again now that it has. The Director's OOM diagnosis is
+   confirmed from this side: 3.03 GB free with ZERO Chrome processes, so the shortfall is
+   not mine to reclaim.
+6. VOIDED: ELEMENT-WRITER-ATTRIBUTION-V1-20260730-2200 (retained as ...-2200-VOID-page-died).
+   Its page died mid-run (elements 5,468 -> 0), so its -19,634/h trend is the page
+   disappearing, not a measurement. Duration segment 2 died at sample #3 with
+   "Performance.getMetrics: Session closed" - fifth loss, same cause. Per ruling 2a60e2cb3
+   the duration gate yields and is re-run after A's fix.
+7. Stopped work on port 22 per the ruling: closed to everyone, B owns the host route.
+8. NOT starting anything heavy until the Director confirms headroom. The re-run is designed
+   cheap and loud: --no-synthetic, 12 samples at 60s, explicit --max-old-space-size so an
+   OOM is an error rather than a disappearance. Its only job is to turn "React completeWork
+   in the host page" into a component name.

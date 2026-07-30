@@ -140,21 +140,57 @@ function instrumentationSource() {
       try { Element.prototype.insertAdjacentHTML = wrap; wrapped.push('insertAdjacentHTML'); } catch { /* frozen */ }
     }
 
+    // React creates host instances in completeWork, AFTER the component that
+    // rendered them has returned, so no component name can ever appear in a
+    // createElement stack. The owning component is recoverable from the fiber React
+    // attaches to the node instead: walk fiber.return and name the first few
+    // function/class components. This is read at census time, so it costs nothing
+    // during the run and retains nothing.
+    const fiberOwners = (el) => {
+      const key = Object.keys(el).find((k) => k.startsWith('__reactFiber$'));
+      if (!key) return null;
+      let fiber = el[key];
+      const names = [];
+      let hops = 0;
+      while (fiber && hops < 40 && names.length < 3) {
+        const t = fiber.type;
+        const name = typeof t === 'function' ? (t.displayName || t.name)
+          : (t && typeof t === 'object' ? (t.displayName || t.name || null) : null);
+        if (name && !names.includes(name)) names.push(name);
+        fiber = fiber.return;
+        hops += 1;
+      }
+      return names.length ? names.join(' < ') : null;
+    };
+
     state.census = () => {
       const live = new Map();
+      const owners = new Map();
       let unattributed = 0;
+      let reactOwned = 0;
       const all = document.querySelectorAll('*');
       for (const el of all) {
         const sig = state.sigs.get(el);
-        if (!sig) { unattributed += 1; continue; }
-        live.set(sig, (live.get(sig) || 0) + 1);
+        if (sig) live.set(sig, (live.get(sig) || 0) + 1);
+        else unattributed += 1;
+        // Owner census is independent of creator attribution: an element can be
+        // React-owned and pre-instrumentation at the same time.
+        let owner = null;
+        try { owner = fiberOwners(el); } catch { owner = null; }
+        if (owner) {
+          reactOwned += 1;
+          owners.set(owner, (owners.get(owner) || 0) + 1);
+        }
       }
       return {
         realm: state.realm,
         totalElements: all.length,
         preInstrumentation: unattributed,
+        reactOwnedElements: reactOwned,
         attributed: [...live.entries()].sort((a, b) => b[1] - a[1]).slice(0, 25)
           .map(([sig, count]) => ({ sig, count, createdEver: state.created.get(sig) || 0 })),
+        componentOwners: [...owners.entries()].sort((a, b) => b[1] - a[1]).slice(0, 25)
+          .map(([owner, count]) => ({ owner, count })),
       };
     };
 
@@ -207,6 +243,7 @@ async function censusEverywhere(page) {
 /** Sum one signature's live count across all realms, so a per-panel writer aggregates. */
 function foldSignatures(census) {
   const fold = new Map();
+  const owners = new Map();
   let total = 0;
   let pre = 0;
   for (const realm of census) {
@@ -215,8 +252,11 @@ function foldSignatures(census) {
     for (const a of realm.attributed || []) {
       fold.set(a.sig, (fold.get(a.sig) || 0) + a.count);
     }
+    for (const o of realm.componentOwners || []) {
+      owners.set(o.owner, (owners.get(o.owner) || 0) + o.count);
+    }
   }
-  return { total, preInstrumentation: pre, bySig: fold };
+  return { total, preInstrumentation: pre, bySig: fold, byOwner: owners };
 }
 
 export async function runElementWriterAttribution({
@@ -274,7 +314,11 @@ export async function runElementWriterAttribution({
           advancing: state?.advancingPanels ?? null,
           bySig: [...folded.bySig.entries()].sort((a, b) => b[1] - a[1]).slice(0, 30)
             .map(([sig, count]) => ({ sig, count })),
-          perRealm: census.map((c) => ({ realm: c.url, total: c.totalElements, pre: c.preInstrumentation })),
+          byOwner: [...folded.byOwner.entries()].sort((a, b) => b[1] - a[1]).slice(0, 30)
+            .map(([owner, count]) => ({ owner, count })),
+          perRealm: census.map((c) => ({
+            realm: c.url, total: c.totalElements, pre: c.preInstrumentation, reactOwned: c.reactOwnedElements,
+          })),
           churned: churn?.closed ?? null,
         });
         console.error(`[ewa] #${n} ${((Date.now() - startedAt) / 60_000).toFixed(1)}min elements=${folded.total} pre=${folded.preInstrumentation} closed=${trades?.managerClosed} advancing=${state?.advancingPanels} top=${report.samples.at(-1).bySig.slice(0, 2).map((s) => `${s.sig.split(' < ')[0]}:${s.count}`).join(' ')}`);
@@ -299,12 +343,61 @@ export async function runElementWriterAttribution({
         value: (s.bySig.find((b) => b.sig === sig)?.count) ?? 0,
       }));
       const t = fitTrend(series, { label: sig, flatBandPerHour: 60, minSpanHours: 0.25 });
-      trends.push({ sig, slopePerHour: t.perHour, ci: t.slopeCi95, verdict: t.verdict, first: series[0]?.value, last: series.at(-1)?.value });
+      // The climb is known to track CLOSED TRADES, not time (+31.7 elements per closed
+      // trade from the duration regrade), so each writer is also fitted against trade
+      // count. A writer whose slope is flat per hour but steep per trade is still the
+      // culprit; only the trade axis separates the two.
+      const perTrade = fitTrend(
+        good.filter((s) => Number.isFinite(s.closed))
+          .map((s) => ({ hours: s.closed, value: (s.bySig.find((b) => b.sig === sig)?.count) ?? 0 })),
+        { label: `${sig} per closedTrade`, flatBandPerHour: 1, minSpanHours: 0 },
+      );
+      trends.push({
+        sig,
+        slopePerHour: t.perHour,
+        ci: t.slopeCi95,
+        verdict: t.verdict,
+        slopePerClosedTrade: perTrade.perHour ?? null,
+        ciPerClosedTrade: perTrade.slopeCi95 ?? null,
+        verdictPerClosedTrade: perTrade.verdict,
+        first: series[0]?.value,
+        last: series.at(-1)?.value,
+      });
     }
     trends.sort((a, b) => (b.slopePerHour ?? 0) - (a.slopePerHour ?? 0));
     report.trends = trends;
     report.totalTrend = fitTrend(good.map((s) => ({ hours: s.hours, value: s.totalElements })),
       { label: 'totalElements', flatBandPerHour: 60, minSpanHours: 0.25 });
+
+    // The same fit over React component owners. This is the ranking A can act on:
+    // a call site inside React's completeWork names the framework, not the feature.
+    const ownerNames = new Set();
+    for (const s of good) for (const o of (s.byOwner || [])) ownerNames.add(o.owner);
+    const ownerTrends = [];
+    for (const owner of ownerNames) {
+      const series = good.map((s) => ({
+        hours: s.hours,
+        closed: s.closed,
+        value: (s.byOwner?.find((o) => o.owner === owner)?.count) ?? 0,
+      }));
+      const t = fitTrend(series, { label: owner, flatBandPerHour: 60, minSpanHours: 0.25 });
+      const perTrade = fitTrend(
+        series.filter((p) => Number.isFinite(p.closed)).map((p) => ({ hours: p.closed, value: p.value })),
+        { label: `${owner} per closedTrade`, flatBandPerHour: 1, minSpanHours: 5 },
+      );
+      ownerTrends.push({
+        owner,
+        slopePerHour: t.perHour,
+        ci: t.slopeCi95,
+        verdict: t.verdict,
+        slopePerClosedTrade: perTrade.perHour,
+        ciPerClosedTrade: perTrade.slopeCi95,
+        first: series[0]?.value,
+        last: series.at(-1)?.value,
+      });
+    }
+    ownerTrends.sort((a, b) => (b.slopePerClosedTrade ?? b.slopePerHour ?? 0) - (a.slopePerClosedTrade ?? a.slopePerHour ?? 0));
+    report.componentOwnerTrends = ownerTrends.slice(0, 15);
 
     const syntheticTrend = trends.find((t) => /ewaSyntheticLeakWriter/.test(t.sig));
     report.gate01 = synthetic
@@ -322,8 +415,14 @@ export async function runElementWriterAttribution({
     report.productClimbers = trends.filter((t) => !/ewaSyntheticLeakWriter/.test(t.sig)).slice(0, 10);
     console.error(`[ewa] GATE-01: ${report.gate01?.verdict}`);
     console.error(`[ewa] total elements ${report.totalTrend?.perHour}/h ${JSON.stringify(report.totalTrend?.slopeCi95)}`);
+    report.productClimbersPerTrade = trends.filter((t) => !/ewaSyntheticLeakWriter/.test(t.sig))
+      .slice().sort((a, b) => (b.slopePerClosedTrade ?? 0) - (a.slopePerClosedTrade ?? 0)).slice(0, 10);
     for (const t of report.productClimbers.slice(0, 5)) {
-      console.error(`[ewa]   ${t.slopePerHour}/h  ${t.first}->${t.last}  ${t.sig}`);
+      console.error(`[ewa]   ${t.slopePerHour}/h  ${t.slopePerClosedTrade}/trade  ${t.first}->${t.last}  ${t.sig}`);
+    }
+    console.error('[ewa] ranked by PER CLOSED TRADE:');
+    for (const t of report.productClimbersPerTrade.slice(0, 5)) {
+      console.error(`[ewa]   ${t.slopePerClosedTrade}/trade CI${JSON.stringify(t.ciPerClosedTrade)}  ${t.first}->${t.last}  ${t.sig}`);
     }
     save();
     return report;
