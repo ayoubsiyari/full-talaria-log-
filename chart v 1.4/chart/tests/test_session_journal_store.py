@@ -187,6 +187,11 @@ def test_m24_kill_switch_restores_legacy_patch_prune(monkeypatch):
     assert sjs.should_prune_absent_journal_trades(explicit_replace=False) is True
 
 
+def test_m24_implicit_chart_patch_must_not_prune_journal():
+    """GATE-01 (TAL-01926): full pytest must fail when SESSION_JOURNAL_PATCH_DELETE_GUARD=0."""
+    assert sjs.should_prune_absent_journal_trades(explicit_replace=False) is False
+
+
 def test_merge_order_rows_prefer_richer_by_id():
     prev = [{"id": 1, "bar_close_r": [1, 2, 3], "entryScreenshot": "data:x"}]
     incoming = [{"id": 1, "unrealizedPnL": 4.5}]

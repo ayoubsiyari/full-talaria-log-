@@ -76,4 +76,39 @@ function makeOm() {
   delete global.window;
 }
 
+// CONF-01 / class-3 polish: peer OM on a different symbol must adopt cleared protection
+// from the host emit (four-symbol identity — host EURUSD, peer GBPUSD).
+{
+  const host = makeOm();
+  const peer = makeOm();
+  host.chart = { currentSymbol: 'EURUSD', currentFileId: 'FILE_EUR' };
+  peer.chart = { currentSymbol: 'GBPUSD', currentFileId: 'FILE_GBP' };
+  const hostRow = {
+    id: 21, ticker: 'EURUSD', stopLoss: 90, takeProfit: 110,
+    tpTargets: [{ id: 'tp1', price: 110 }],
+  };
+  const peerMirror = {
+    id: 21, ticker: 'EURUSD', stopLoss: 90, takeProfit: 110,
+    tpTargets: [{ id: 'tp1', price: 110 }],
+  };
+  host.pendingOrders = [hostRow];
+  peer.pendingOrders = [peerMirror];
+  host._emitPendingMirrorSync = (order) => {
+    host.emitted.push(JSON.parse(JSON.stringify(order)));
+    const snap = host.emitted.at(-1);
+    const target = peer.pendingOrders.find((r) => r.id === snap.id);
+    if (target) {
+      target.stopLoss = snap.stopLoss;
+      target.takeProfit = snap.takeProfit;
+      target.tpTargets = snap.tpTargets;
+    }
+  };
+
+  host.removePendingStopLoss(21);
+  host.removePendingTakeProfit(21);
+  assert.equal(peerMirror.stopLoss, null, 'CONF-01: GBPUSD peer adopts cleared SL from EURUSD host emit');
+  assert.equal(peerMirror.takeProfit, null, 'CONF-01: GBPUSD peer adopts cleared TP from EURUSD host emit');
+  assert.equal(peerMirror.tpTargets, null, 'CONF-01: GBPUSD peer adopts cleared tpTargets');
+}
+
 console.log('GREEN - pending protection clear reaches service mirrors');

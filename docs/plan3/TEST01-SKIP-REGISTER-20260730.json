@@ -1,0 +1,45 @@
+{
+  "schema": "talaria.test01-skip-register.v1",
+  "stamp": "20260730b113",
+  "created": "2026-07-30",
+  "binding": "TEST-01 packs may skip these on b113; Saturday freeze must not.",
+  "freezeRule": "scripts/test01-skip-register-gate.mjs --freeze exits ≠0 if any moneyPath skip remains open.",
+  "routedToBNextTrain": [
+    "TAL-01896",
+    "TAL-01807b",
+    "Rayan #8"
+  ],
+  "skips": [
+    {
+      "ticket": "Rayan #8",
+      "moneyPath": true,
+      "reason": "gap reconcile + explicit-place audit discriminating markers absent on b113 wire",
+      "pack": "B1",
+      "allowedOnStamp": "20260730b113",
+      "forbiddenOnFreeze": true,
+      "status": "open",
+      "clearedOnStamp": null
+    },
+    {
+      "ticket": "TAL-01807b",
+      "moneyPath": true,
+      "reason": "pair-switch visual rebind flag absent on b113 wire",
+      "pack": "money residuals / B packs",
+      "allowedOnStamp": "20260730b113",
+      "forbiddenOnFreeze": true,
+      "status": "open",
+      "clearedOnStamp": null
+    },
+    {
+      "ticket": "TAL-01896",
+      "moneyPath": true,
+      "reason": "orderManagerTradeRows not served on canary surface (delivery); zero Next-chunk hits",
+      "pack": "B5",
+      "allowedOnStamp": "20260730b113",
+      "forbiddenOnFreeze": true,
+      "status": "open",
+      "clearedOnStamp": null,
+      "resolution": "not-served-on-canary-surface"
+    }
+  ]
+}

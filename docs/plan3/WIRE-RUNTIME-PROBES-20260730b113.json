@@ -1,0 +1,130 @@
+{
+  "schema": "talaria.wire-runtime-probes.v2",
+  "stamp": "20260730b113",
+  "tip": "f4e006b06",
+  "base": "http://31.97.192.82:3000",
+  "policy": "behavioural primary for money rows; text fallback",
+  "results": [
+    {
+      "ticket": "Rayan #2",
+      "kind": "behavioural-host-order-survives-peer-remove",
+      "primary": "behavioural",
+      "fallback": "live-source-contract",
+      "verdict": "on-wire",
+      "onWire": true,
+      "detail": "behavioural primary: host order survives peer remove (sim); live MC bytes do not clear openPositions near removeChart; RED sim under retainGuard=false fails by construction",
+      "live": {
+        "mgrStatus": 200,
+        "mgrHtml": false,
+        "mgrLen": 82265,
+        "clearsHostOpenPositions": false
+      },
+      "behavioural": {
+        "green": {
+          "pass": true,
+          "hostOpenId": 11,
+          "retainGuard": true
+        },
+        "red": {
+          "pass": false,
+          "hostOpenId": null,
+          "retainGuard": false
+        }
+      },
+      "browserPoRemaining": "optional CONF-01 2x2 click: place host order, remove peer panel, assert host row id survives"
+    },
+    {
+      "ticket": "Rayan #8",
+      "kind": "behavioural-blocked-by-missing-product-bytes",
+      "primary": "behavioural",
+      "fallback": "live-om-flags",
+      "verdict": "off-wire",
+      "onWire": false,
+      "detail": "behavioural primary blocked: gap + place-audit product bytes absent on live OM — cannot observe fixed behaviour on pre-fix wire; text fallback confirms off-wire; B next train",
+      "checks": [
+        {
+          "needle": "__TALARIA_DISABLE_M24_ORDER_ID_GAP_RECONCILE_V1",
+          "onWire": false
+        },
+        {
+          "needle": "__TALARIA_DISABLE_ORDER_EXPLICIT_PLACE_AUDIT_V1",
+          "onWire": false
+        },
+        {
+          "needle": "_assertExplicitPlaceAudit",
+          "onWire": false
+        }
+      ],
+      "liveOm": {
+        "status": 200,
+        "html": false,
+        "len": 2466844
+      }
+    },
+    {
+      "ticket": "TAL-01896",
+      "kind": "delivery-surface-census",
+      "verdict": "delivery-unserved",
+      "onWire": false,
+      "detail": "orderManagerTradeRows is NOT served on the canary surface (HTML traps on chart paths; zero Next chunk hits; not inlined into chart.js/OM). Delivery/routing item for B — larger than a marker rewrite.",
+      "delivery": "not-served-on-canary-surface",
+      "resolution": "not-served-on-canary-surface",
+      "fetches": [
+        {
+          "path": "/chart/talaria-design/src/orderManagerTradeRows.js",
+          "status": 200,
+          "html": true,
+          "len": 29406,
+          "ctype": "text/html",
+          "hasMarker": false,
+          "looksJsModule": false,
+          "servedAsModule": false
+        },
+        {
+          "path": "/chart/modules/orderManagerTradeRows.js",
+          "status": 200,
+          "html": true,
+          "len": 29406,
+          "ctype": "text/html",
+          "hasMarker": false,
+          "looksJsModule": false,
+          "servedAsModule": false
+        },
+        {
+          "path": "/talaria-design/src/orderManagerTradeRows.js",
+          "status": 404,
+          "html": true,
+          "len": 26790,
+          "ctype": "text/html",
+          "hasMarker": false,
+          "looksJsModule": false,
+          "servedAsModule": false
+        },
+        {
+          "path": "/chart/talaria-design/orderManagerTradeRows.js",
+          "status": 200,
+          "html": true,
+          "len": 29406,
+          "ctype": "text/html",
+          "hasMarker": false,
+          "looksJsModule": false,
+          "servedAsModule": false
+        },
+        {
+          "path": "/static/orderManagerTradeRows.js",
+          "status": 404,
+          "html": true,
+          "len": 26790,
+          "ctype": "text/html",
+          "hasMarker": false,
+          "looksJsModule": false,
+          "servedAsModule": false
+        }
+      ],
+      "nextChunkHits": [],
+      "linkedChunkCount": 18,
+      "inlinedIntoChartOrOm": false
+    }
+  ],
+  "tal01896Delivery": "not-served-on-canary-surface"
+}

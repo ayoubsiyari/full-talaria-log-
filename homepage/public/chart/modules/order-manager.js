@@ -107,6 +107,19 @@ function _m24DisplayIdStabilityV1Enabled() {
     return typeof window === 'undefined' || window.__TALARIA_DISABLE_M24_DISPLAY_ID_STABILITY_V1 !== true;
 }
 
+/** Rayan #8 / M24: stale persisted counters must not skip unused numeric ids after hydrate. */
+function _m24OrderIdGapReconcileV1Enabled() {
+    return typeof window === 'undefined'
+        || window.__TALARIA_DISABLE_M24_ORDER_ID_GAP_RECONCILE_V1 !== true;
+}
+
+/** Synthetic audit for surprise open adoption (strict test mode only). */
+function _orderExplicitPlaceAuditV1Enabled() {
+    return typeof window !== 'undefined'
+        && window.__TALARIA_ORDER_EXPLICIT_PLACE_AUDIT_STRICT === true
+        && window.__TALARIA_DISABLE_ORDER_EXPLICIT_PLACE_AUDIT_V1 !== true;
+}
+
 /**
  * M23 REPLAY ROLLBACK TRADE-STATE — default ON.
  * Kill-switch: window.__TALARIA_DISABLE_M23_ROLLBACK_TRADE_CANCEL_V1 = <truthy>
@@ -128,6 +141,46 @@ function _m19MarkerDeltaV1Enabled() {
 /** M19-E: guard hot-path console.log behind debug mode — default ON. warn/error untouched. */
 function _m19HotpathLogGuardV1Enabled() {
     return typeof window === 'undefined' || window.__TALARIA_DISABLE_M19_HOTPATH_LOG_GUARD_V1 !== true;
+}
+
+/**
+ * TRADE-EVICT-V1 — release hot screenshot/excursion bytes after the post-exit
+ * playhead bound; restore on rewind behind that playhead (EVICT-02). Default ON.
+ * Kill-switch: window.__TALARIA_DISABLE_TRADE_EVICT_V1 = true
+ * FLAG-01: ABSENT ⇒ enabled. FLAG-02: runtime flip, no reload. FLAG-03: OFF vs product.
+ */
+function _tradeEvictV1Enabled() {
+    return typeof window === 'undefined'
+        || window.__TALARIA_DISABLE_TRADE_EVICT_V1 !== true;
+}
+
+/**
+ * EXCURSION-SINGLE-OWNER-V1 — one authoritative owner for excursion series.
+ *
+ * Authoritative: tradeJournal (cold history). managerClosed and serviceClosed are
+ * the SAME array via bindServiceProp (order-manager ctor); they are not a second
+ * and third heap owner — only a second list pointer. The real duplicate was
+ * journal `.slice()` copies alongside the closed/service row.
+ *
+ * Default ON. Kill-switch: window.__TALARIA_DISABLE_EXCURSION_SINGLE_OWNER_V1 = true
+ * FLAG-01/02/03 same contract as TRADE-EVICT-V1.
+ *
+ * Also hard-caps each live series at `_m19ExcursionTailMaxV1()` after archive+bound
+ * so a census that sums four keys cannot be misread as a single-array cap miss.
+ */
+function _excursionSingleOwnerV1Enabled() {
+    return typeof window === 'undefined'
+        || window.__TALARIA_DISABLE_EXCURSION_SINGLE_OWNER_V1 !== true;
+}
+
+/** Excursion series keys owned by a single list under EXCURSION-SINGLE-OWNER-V1. */
+function _excursionSingleOwnerV1SeriesKeys() {
+    return [
+        'bar_close_r', 'bar_high_r', 'bar_low_r',
+        'post_exit_bar_close_r', 'post_exit_bar_high_r', 'post_exit_bar_low_r',
+        'bar_close_r_archive', 'bar_high_r_archive', 'bar_low_r_archive',
+        'post_exit_bar_close_r_archive', 'post_exit_bar_high_r_archive', 'post_exit_bar_low_r_archive',
+    ];
 }
 
 function _m19HotpathDebugLogsEnabled() {
@@ -394,6 +447,12 @@ function _orderPnlRestoreStableV1Enabled() {
 function _orderPairSwitchDraftRebindV1Enabled() {
     return typeof window === 'undefined'
         || !window.__TALARIA_DISABLE_ORDER_PAIR_SWITCH_DRAFT_REBIND_V1;
+}
+
+/** Cluster G / TAL-01807b: pair switch strips + redraws only the active symbol's order visuals. */
+function _orderPairSwitchVisualRebindV1Enabled() {
+    return typeof window === 'undefined'
+        || !window.__TALARIA_DISABLE_ORDER_PAIR_SWITCH_VISUAL_REBIND_V1;
 }
 
 /** Cluster G / TAL-01933: a single TP stays executable after SL trails past it. */
@@ -2381,22 +2440,25 @@ class OrderManager {
                 return;
             }
 
-            this._dropOrderVisualsNotOnMainChart();
-            // Full strip + reset (same idea as multi-panel): removes orphan SVG and stale DOM refs in
-            // orderLines/slLines/... so a symbol switch cannot leave another pair's visuals on the canvas.
-            this._stripOrderDrawingLayersFromChart(this.chart);
-            this._clearClosedTradeMarkerRegistry();
-            this.entryMarkers = [];
-            this.orderLines = [];
-            this.splitGroupAvgLines = [];
-            this.multiTPAvgLines = [];
-            this.slLines = [];
-            this.tpLines = [];
-            this.beLines = [];
-            this.pendingTargetLines = [];
+            const scopedPairSwitch = _orderPairSwitchVisualRebindV1Enabled();
+            if (scopedPairSwitch) {
+                this._dropOrderVisualsNotOnMainChart();
+                // Full strip + reset (same idea as multi-panel): removes orphan SVG and stale DOM refs in
+                // orderLines/slLines/... so a symbol switch cannot leave another pair's visuals on the canvas.
+                this._stripOrderDrawingLayersFromChart(this.chart);
+                this._clearClosedTradeMarkerRegistry();
+                this.entryMarkers = [];
+                this.orderLines = [];
+                this.splitGroupAvgLines = [];
+                this.multiTPAvgLines = [];
+                this.slLines = [];
+                this.tpLines = [];
+                this.beLines = [];
+                this.pendingTargetLines = [];
+            }
 
             (this.openPositions || []).forEach((pos) => {
-                if (!this._isPositionForActiveChart(pos)) return;
+                if (scopedPairSwitch && !this._isPositionForActiveChart(pos)) return;
                 this.drawOrderLine(pos);
                 this.drawSLTPLines(pos);
                 try {
@@ -2404,7 +2466,7 @@ class OrderManager {
                 } catch (e) { /* scales may not be ready yet */ }
             });
             (this.pendingOrders || []).forEach((po) => {
-                if (!this._positionTickerMatchesChartSymbol(po, this.chart)) return;
+                if (scopedPairSwitch && !this._positionTickerMatchesChartSymbol(po, this.chart)) return;
                 try {
                     this.drawPendingOrderLine(po);
                     this.drawPendingOrderTargets(po);
@@ -4260,6 +4322,167 @@ class OrderManager {
         ];
     }
 
+    /**
+     * TRADE-EVICT-V1 — memory term: per-order base64 screenshots + excursion arrays.
+     * Released from hot closedPositions after post-exit bound; journal keeps cold copy.
+     */
+    _tradeEvictV1HotFieldKeys() {
+        return [
+            'entryScreenshot', 'exitScreenshot', 'entryScreenshots', 'railScreenshots',
+            'screenshot', 'screenshotBase64', 'image', 'chartImage', 'thumbnail', 'preview',
+            'screenshots',
+            'bar_close_r', 'bar_high_r', 'bar_low_r',
+            'post_exit_bar_close_r', 'post_exit_bar_high_r', 'post_exit_bar_low_r',
+            'bar_close_r_archive', 'bar_high_r_archive', 'bar_low_r_archive',
+            'post_exit_bar_close_r_archive', 'post_exit_bar_high_r_archive', 'post_exit_bar_low_r_archive',
+            'post_checkpoints', 'trail_sl_path',
+            'bar_high_r_peak', 'bar_low_r_peak',
+            'post_exit_bar_high_r_peak', 'post_exit_bar_low_r_peak',
+        ];
+    }
+
+    /** Approximate retained hot bytes for EVICT-01 (screenshots + excursion series). */
+    _tradeEvictV1ApproxHotBytes(row) {
+        if (!row || typeof row !== 'object') return 0;
+        let n = 0;
+        for (const k of this._tradeEvictV1HotFieldKeys()) {
+            const v = row[k];
+            if (v == null) continue;
+            if (typeof v === 'string') n += v.length * 2;
+            else if (Array.isArray(v) || typeof v === 'object') {
+                try { n += JSON.stringify(v).length * 2; } catch { /* ignore */ }
+            }
+        }
+        return n;
+    }
+
+    _tradeEvictV1FindJournalRow(tradeId) {
+        const id = Number(tradeId);
+        if (!Number.isFinite(id) || !Array.isArray(this.tradeJournal)) return null;
+        return this.tradeJournal.find((t) => Number(t.tradeId ?? t.id) === id) || null;
+    }
+
+    _tradeEvictV1FindClosedRow(tradeId) {
+        const id = Number(tradeId);
+        if (!Number.isFinite(id) || !Array.isArray(this.closedPositions)) return null;
+        return this.closedPositions.find((p) => Number(p.id) === id) || null;
+    }
+
+    /**
+     * Release hot screenshot/excursion fields after post-exit bound at playhead T.
+     * Keeps id + entry/exit prices/times for canvas arrows. Journal is untouched.
+     */
+    _tradeEvictV1ReleaseHotFields(row, playheadT, meta = {}) {
+        if (!_tradeEvictV1Enabled() || !row || typeof row !== 'object') return false;
+        if (row._tradeEvictV1?.released === true) return false;
+        const t = Number(playheadT);
+        if (!Number.isFinite(t)) return false;
+        for (const k of this._tradeEvictV1HotFieldKeys()) {
+            if (k in row) row[k] = Array.isArray(row[k]) ? null : null;
+        }
+        row._tradeEvictV1 = {
+            released: true,
+            playheadT: t,
+            closeTime: Number(meta.closeTime ?? row.closeTime ?? row.exitTime) || null,
+            postExitTrackingMode: meta.postExitTrackingMode || row.postExitTrackingMode || this.postExitTrackingMode || 'hours',
+            postExitTrackingCandles: Number.parseInt(
+                meta.postExitTrackingCandles ?? row.postExitTrackingCandles ?? this.postExitTrackingCandles ?? 50, 10,
+            ),
+            post_exit_anchor_time: meta.post_exit_anchor_time ?? row.post_exit_anchor_time ?? null,
+            mfeMaeTrackingEndTime: meta.mfeMaeTrackingEndTime ?? row.mfeMaeTrackingEndTime ?? null,
+        };
+        return true;
+    }
+
+    /** Restore hot fields from journal when playhead rewinds behind eviction T (EVICT-02). */
+    _tradeEvictV1RestoreHotFieldsFromJournal(row, journal) {
+        if (!_tradeEvictV1Enabled() || !row || !journal) return false;
+        if (row._tradeEvictV1?.released !== true) return false;
+        for (const k of this._tradeEvictV1HotFieldKeys()) {
+            if (journal[k] == null) continue;
+            row[k] = Array.isArray(journal[k]) ? journal[k].slice() : journal[k];
+        }
+        const prev = row._tradeEvictV1;
+        row._tradeEvictV1 = {
+            ...prev,
+            released: false,
+            restoredAtPlayhead: true,
+        };
+        return true;
+    }
+
+    /**
+     * After post-exit bound completes at playhead T: drop from sampling (caller)
+     * and release hot memory on closedPositions. Journal retains cold copy.
+     */
+    _tradeEvictV1OnBoundComplete(position, playheadT) {
+        if (!_tradeEvictV1Enabled() || !position) return { released: false, bytesBefore: 0, bytesAfter: 0 };
+        const closed = this._tradeEvictV1FindClosedRow(position.id) || position;
+        const bytesBefore = this._tradeEvictV1ApproxHotBytes(closed);
+        const meta = {
+            closeTime: position.closeTime ?? position.exitTime,
+            postExitTrackingMode: position.postExitTrackingMode,
+            postExitTrackingCandles: position.postExitTrackingCandles,
+            post_exit_anchor_time: position.post_exit_anchor_time,
+            mfeMaeTrackingEndTime: position.mfeMaeTrackingEndTime,
+        };
+        this._tradeEvictV1ReleaseHotFields(closed, playheadT, meta);
+        if (closed !== position) this._tradeEvictV1ReleaseHotFields(position, playheadT, meta);
+        const journal = this._tradeEvictV1FindJournalRow(position.id);
+        if (journal && journal._tradeEvictV1?.released !== true) {
+            // Mark journal with eviction playhead metadata only — do not strip cold bytes.
+            journal._tradeEvictV1 = {
+                released: false,
+                cold: true,
+                playheadT: Number(playheadT),
+                closeTime: meta.closeTime ?? null,
+            };
+        }
+        const bytesAfter = this._tradeEvictV1ApproxHotBytes(closed);
+        return { released: true, bytesBefore, bytesAfter, playheadT: Number(playheadT) };
+    }
+
+    /**
+     * EVICT-02: trades evicted at playhead T become live again if playhead < T.
+     * Rehydrates hot fields from journal and re-queues post-exit sampling when still in window.
+     */
+    _tradeEvictV1SyncPlayhead(playheadMs) {
+        if (!_tradeEvictV1Enabled()) return { restored: 0, requeued: 0 };
+        const t = Number(playheadMs);
+        if (!Number.isFinite(t)) return { restored: 0, requeued: 0 };
+        let restored = 0;
+        let requeued = 0;
+        for (const closed of (this.closedPositions || [])) {
+            const ev = closed._tradeEvictV1;
+            if (!ev || ev.released !== true) continue;
+            const boundT = Number(ev.playheadT);
+            if (!Number.isFinite(boundT) || t >= boundT) continue;
+            const journal = this._tradeEvictV1FindJournalRow(closed.id);
+            if (!journal) continue;
+            if (this._tradeEvictV1RestoreHotFieldsFromJournal(closed, journal)) restored += 1;
+
+            // Resume post-exit sampling only while playhead is still inside the window.
+            const closeT = Number(ev.closeTime ?? closed.closeTime);
+            const inPostExit = Number.isFinite(closeT) && t > closeT && t < boundT;
+            const alreadyTracking = (this.mfeMaeTrackingPositions || []).some(
+                (p) => Number(p.id) === Number(closed.id),
+            );
+            if (inPostExit && !alreadyTracking) {
+                this.mfeMaeTrackingPositions.push({
+                    ...closed,
+                    postExitTrackingMode: ev.postExitTrackingMode || this.postExitTrackingMode || 'hours',
+                    postExitTrackingCandles: ev.postExitTrackingCandles ?? this.postExitTrackingCandles ?? 50,
+                    postExitProcessedCandles: 0,
+                    post_exit_anchor_time: ev.post_exit_anchor_time ?? closeT,
+                    mfeMaeTrackingEndTime: ev.mfeMaeTrackingEndTime ?? boundT,
+                    _tradeEvictV1Requeued: true,
+                });
+                requeued += 1;
+            }
+        }
+        return { restored, requeued };
+    }
+
     _m19HotPersistHeavyKeySet() {
         if (!this.__m19HotPersistHeavyKeySet) {
             this.__m19HotPersistHeavyKeySet = new Set(this._m19HotPersistHeavyFieldKeys());
@@ -6045,9 +6268,14 @@ class OrderManager {
     /**
      * Persist / journal canonical shape: bar_* = live tail only; *_archive =
      * preserved prefix. Never writes reconstructed arrays into bar_*.
+     *
+     * EXCURSION-SINGLE-OWNER-V1: share array object identity with `source` so
+     * journal + closed do not each retain a sliced copy. TRADE-EVICT then nulls
+     * the closed keys and the journal keeps the sole reference.
      */
     _m19AssignCanonicalExcursionStorage(target, source) {
         if (!target || !source || typeof target !== 'object') return target;
+        const share = _excursionSingleOwnerV1Enabled();
         const seriesKeys = [
             'bar_close_r', 'bar_high_r', 'bar_low_r',
             'post_exit_bar_close_r', 'post_exit_bar_high_r', 'post_exit_bar_low_r',
@@ -6055,14 +6283,14 @@ class OrderManager {
         for (let i = 0; i < seriesKeys.length; i++) {
             const k = seriesKeys[i];
             if (Array.isArray(source[k])) {
-                target[k] = source[k].slice();
+                target[k] = share ? source[k] : source[k].slice();
             } else if (target[k] == null) {
                 target[k] = [];
             }
             const archKey = `${k}_archive`;
-            if (source[archKey] != null && target[archKey] == null) {
+            if (source[archKey] != null && (share || target[archKey] == null)) {
                 target[archKey] = Array.isArray(source[archKey])
-                    ? source[archKey].slice()
+                    ? (share ? source[archKey] : source[archKey].slice())
                     : source[archKey];
             }
         }
@@ -6071,11 +6299,76 @@ class OrderManager {
             'post_exit_bar_high_r_peak', 'post_exit_bar_low_r_peak',
             'post_exit_bar_r_count', 'post_exit_bar_r_legacy_pending',
         ].forEach((k) => {
-            if (source[k] != null && target[k] == null) {
+            if (source[k] != null && (share || target[k] == null)) {
                 target[k] = source[k];
             }
         });
         return target;
+    }
+
+    /**
+     * EXCURSION-SINGLE-OWNER-V1 — point journal row at the hot row's excursion
+     * arrays (shared identity). Does not slice.
+     */
+    _excursionSingleOwnerV1ShareFromHot(journalRow, hotRow) {
+        if (!_excursionSingleOwnerV1Enabled() || !journalRow || !hotRow) return false;
+        for (const k of _excursionSingleOwnerV1SeriesKeys()) {
+            if (hotRow[k] == null) continue;
+            journalRow[k] = hotRow[k];
+        }
+        [
+            'bar_high_r_peak', 'bar_low_r_peak', 'bar_r_count', 'bar_r_legacy_pending',
+            'post_exit_bar_high_r_peak', 'post_exit_bar_low_r_peak',
+            'post_exit_bar_r_count', 'post_exit_bar_r_legacy_pending',
+        ].forEach((k) => {
+            if (hotRow[k] != null) journalRow[k] = hotRow[k];
+        });
+        journalRow._excursionSingleOwnerV1 = {
+            authoritative: 'tradeJournal',
+            sharedFromHot: true,
+            aliases: {
+                managerClosed: 'orderService.closedPositions (same array via bindServiceProp)',
+                serviceClosed: 'alias of managerClosed — zero additional bytes',
+            },
+        };
+        return true;
+    }
+
+    /**
+     * EXCURSION-SINGLE-OWNER-V1 — hard-cap every live series at tail max.
+     * Archive+bound already trims; this is the belt that fails closed if a path
+     * skipped the binder (Director 20:45 "cap not binding" kill).
+     */
+    _excursionSingleOwnerV1HardCapLiveTails(position) {
+        if (!_excursionSingleOwnerV1Enabled() || !position) return 0;
+        const max = this._m19ExcursionTailMaxV1();
+        if (!Number.isFinite(max) || max < 1) return 0;
+        let trimmed = 0;
+        const liveKeys = [
+            'bar_close_r', 'bar_high_r', 'bar_low_r',
+            'post_exit_bar_close_r', 'post_exit_bar_high_r', 'post_exit_bar_low_r',
+        ];
+        for (const k of liveKeys) {
+            const arr = position[k];
+            if (!Array.isArray(arr) || arr.length <= max) continue;
+            const removeCount = arr.length - max;
+            arr.copyWithin(0, removeCount);
+            arr.length = max;
+            trimmed += 1;
+        }
+        return trimmed;
+    }
+
+    /** Excursion-only UTF-16 byte estimate for CONF-02 single-owner cell. */
+    _excursionSingleOwnerV1ApproxBytes(row) {
+        if (!row || typeof row !== 'object') return 0;
+        let n = 0;
+        for (const k of _excursionSingleOwnerV1SeriesKeys()) {
+            const v = row[k];
+            if (!Array.isArray(v) || v.length === 0) continue;
+            try { n += JSON.stringify(v).length * 2; } catch { /* ignore */ }
+        }
+        return n;
     }
 
     /**
@@ -6276,6 +6569,8 @@ class OrderManager {
                 bootstrapPostExitPeaks,
             );
         }
+        // EXCURSION-SINGLE-OWNER-V1: belt-and-suspenders live-tail cap (≤256 each).
+        this._excursionSingleOwnerV1HardCapLiveTails(position);
     }
 
     /** Planned risk distance in price units (frozen initial SL vs array base). */
@@ -8562,7 +8857,12 @@ class OrderManager {
         this._m24ScanOrderIdentityRows(this.orderService && this.orderService.pendingOrders, visit);
         this._m24ScanOrderIdentityRows(this.orderService && this.orderService.openPositions, visit);
         const current = Number.parseInt(this.orderIdCounter, 10);
-        this.orderIdCounter = Math.max(Number.isFinite(current) && current > 0 ? current : 1, maxOrderId + 1);
+        const nextFromRows = Math.max(1, maxOrderId + 1);
+        if (_m24OrderIdAllocatorV1Enabled() && _m24OrderIdGapReconcileV1Enabled()) {
+            this.orderIdCounter = nextFromRows;
+        } else {
+            this.orderIdCounter = Math.max(Number.isFinite(current) && current > 0 ? current : 1, nextFromRows);
+        }
         return this.orderIdCounter;
     }
 
@@ -8571,6 +8871,42 @@ class OrderManager {
         const id = this._m24ReconcileOrderIdCounter();
         this.orderIdCounter = id + 1;
         return id;
+    }
+
+    _armExplicitPlaceIntent() {
+        if (!_orderExplicitPlaceAuditV1Enabled()) return;
+        this._explicitPlaceIntentDepth = (this._explicitPlaceIntentDepth | 0) + 1;
+    }
+
+    _disarmExplicitPlaceIntent() {
+        if (!_orderExplicitPlaceAuditV1Enabled()) return;
+        this._explicitPlaceIntentDepth = Math.max(0, (this._explicitPlaceIntentDepth | 0) - 1);
+    }
+
+    _assertExplicitPlaceAudit(source) {
+        if (!_orderExplicitPlaceAuditV1Enabled()) return true;
+        const ok = (this._explicitPlaceIntentDepth | 0) > 0
+            || (this._explicitPlaceIntentUntil | 0) > Date.now()
+            || source === 'pending-fill'
+            || source === 'session-restore'
+            || source === 'replay-resurrect';
+        if (ok) return true;
+        this._lastExplicitPlaceAuditViolation = source;
+        if (window.__TALARIA_ORDER_EXPLICIT_PLACE_AUDIT_THROW === true) {
+            throw new Error(`ORDER_EXPLICIT_PLACE_AUDIT:${source}`);
+        }
+        return false;
+    }
+
+    _pushOpenPosition(order, source) {
+        this._assertExplicitPlaceAudit(source || 'direct');
+        if (this.orderService) {
+            this.orderService.registerOpenOrder(order);
+            return;
+        }
+        this.attachStrategyVariablesToOrder(order);
+        this.openPositions.push(order);
+        this.orders.push(order);
     }
 
     /**
@@ -29406,6 +29742,9 @@ class OrderManager {
      */
     placeAdvancedOrder(options = {}) {
         console.log('🟦OM-DIAG placeAdvancedOrder() CALLED', options);
+        if (_orderExplicitPlaceAuditV1Enabled()) {
+            this._explicitPlaceIntentUntil = Date.now() + 120000;
+        }
         const keepPanelOpen = options.keepPanelOpen === true;
         if (this._shouldBlockPlaceDuringPreviewDrag()) {
             console.warn('🟦OM-DIAG place blocked while preview drag is active');
@@ -32028,6 +32367,11 @@ class OrderManager {
      * Update MFE/MAE tracking for closed positions
      */
     updateMfeMaeTracking(currentCandle, high, low) {
+        // EVICT-02: rewind behind eviction playhead T restores hot fields + may re-queue sampling.
+        // Runs even when tracking is empty so scrub/rewind still rehydrates.
+        if (currentCandle && Number.isFinite(Number(currentCandle.t))) {
+            this._tradeEvictV1SyncPlayhead(Number(currentCandle.t));
+        }
         if (this.mfeMaeTrackingEnabled === false) return;
         if (this.mfeMaeTrackingPositions.length === 0) return;
         
@@ -32115,26 +32459,33 @@ class OrderManager {
                 this.tradeJournal[journalIndex].maeTime = position.maeTime;
                 this.tradeJournal[journalIndex].highestPrice = position.highestPrice;
                 this.tradeJournal[journalIndex].lowestPrice = position.lowestPrice;
-                this.tradeJournal[journalIndex].bar_close_r = Array.isArray(position.bar_close_r) ? position.bar_close_r.slice() : [];
-                this.tradeJournal[journalIndex].bar_high_r = Array.isArray(position.bar_high_r) ? position.bar_high_r.slice() : [];
-                this.tradeJournal[journalIndex].bar_low_r = Array.isArray(position.bar_low_r) ? position.bar_low_r.slice() : [];
-                this.tradeJournal[journalIndex].post_exit_bar_close_r = Array.isArray(position.post_exit_bar_close_r) ? position.post_exit_bar_close_r.slice() : [];
-                this.tradeJournal[journalIndex].post_exit_bar_high_r = Array.isArray(position.post_exit_bar_high_r) ? position.post_exit_bar_high_r.slice() : [];
-                this.tradeJournal[journalIndex].post_exit_bar_low_r = Array.isArray(position.post_exit_bar_low_r) ? position.post_exit_bar_low_r.slice() : [];
-                // M19-B additive archive/peaks (I16 — lossless history alongside bounded tails).
-                [
-                    'bar_close_r_archive', 'bar_high_r_archive', 'bar_low_r_archive',
-                    'post_exit_bar_close_r_archive', 'post_exit_bar_high_r_archive', 'post_exit_bar_low_r_archive',
-                    'bar_high_r_peak', 'bar_low_r_peak', 'bar_r_count', 'bar_r_legacy_pending',
-                    'post_exit_bar_high_r_peak', 'post_exit_bar_low_r_peak', 'post_exit_bar_r_count',
-                    'post_exit_bar_r_legacy_pending',
-                ].forEach((k) => {
-                    if (position[k] != null) {
-                        this.tradeJournal[journalIndex][k] = Array.isArray(position[k])
-                            ? position[k].slice()
-                            : position[k];
-                    }
-                });
+                // EXCURSION-SINGLE-OWNER-V1: share array identity with the hot row
+                // (journal becomes sole owner after TRADE-EVICT nulls closed keys).
+                // Kill-switch OFF restores legacy per-series .slice() copies.
+                if (_excursionSingleOwnerV1Enabled()) {
+                    this._excursionSingleOwnerV1ShareFromHot(this.tradeJournal[journalIndex], position);
+                } else {
+                    this.tradeJournal[journalIndex].bar_close_r = Array.isArray(position.bar_close_r) ? position.bar_close_r.slice() : [];
+                    this.tradeJournal[journalIndex].bar_high_r = Array.isArray(position.bar_high_r) ? position.bar_high_r.slice() : [];
+                    this.tradeJournal[journalIndex].bar_low_r = Array.isArray(position.bar_low_r) ? position.bar_low_r.slice() : [];
+                    this.tradeJournal[journalIndex].post_exit_bar_close_r = Array.isArray(position.post_exit_bar_close_r) ? position.post_exit_bar_close_r.slice() : [];
+                    this.tradeJournal[journalIndex].post_exit_bar_high_r = Array.isArray(position.post_exit_bar_high_r) ? position.post_exit_bar_high_r.slice() : [];
+                    this.tradeJournal[journalIndex].post_exit_bar_low_r = Array.isArray(position.post_exit_bar_low_r) ? position.post_exit_bar_low_r.slice() : [];
+                    // M19-B additive archive/peaks (I16 — lossless history alongside bounded tails).
+                    [
+                        'bar_close_r_archive', 'bar_high_r_archive', 'bar_low_r_archive',
+                        'post_exit_bar_close_r_archive', 'post_exit_bar_high_r_archive', 'post_exit_bar_low_r_archive',
+                        'bar_high_r_peak', 'bar_low_r_peak', 'bar_r_count', 'bar_r_legacy_pending',
+                        'post_exit_bar_high_r_peak', 'post_exit_bar_low_r_peak', 'post_exit_bar_r_count',
+                        'post_exit_bar_r_legacy_pending',
+                    ].forEach((k) => {
+                        if (position[k] != null) {
+                            this.tradeJournal[journalIndex][k] = Array.isArray(position[k])
+                                ? position[k].slice()
+                                : position[k];
+                        }
+                    });
+                }
                 this._finalizeExcursionScalars(this.tradeJournal[journalIndex], position, { inTradeOnly: true });
                 // M4-2: post-exit checkpoints
                 this.tradeJournal[journalIndex].post_checkpoints = Array.isArray(position.post_checkpoints) ? position.post_checkpoints.slice() : [];
@@ -32184,8 +32535,19 @@ class OrderManager {
                 
                 console.log(`✅ MFE/MAE tracking completed for Order #${position.id} | MFE: ${position.mfe.toFixed(5)} | MAE: ${position.mae.toFixed(5)}`);
             }
+
+            // TRADE-EVICT-V1: post-exit bound complete at this playhead — release hot bytes.
+            // Journal already holds the cold copy above; canvas keeps entry/exit arrows + id.
+            const playheadT = Number(currentCandle?.t);
+            if (Number.isFinite(playheadT)) {
+                try {
+                    this._tradeEvictV1OnBoundComplete(position, playheadT);
+                } catch (err) {
+                    console.warn('TRADE-EVICT-V1 bound complete failed:', err);
+                }
+            }
             
-            // Remove from tracking array
+            // Remove from tracking array (CPU term: evicted trade cannot be sampled).
             this.mfeMaeTrackingPositions = this.mfeMaeTrackingPositions.filter(p => p.id !== position.id);
         });
     }
@@ -32531,14 +32893,7 @@ class OrderManager {
         // NOTE: Pending order already removed from array in checkPendingOrders()
         // to prevent re-execution race conditions
         
-        // Add to open positions
-        if (this.orderService) {
-            this.orderService.registerOpenOrder(order);
-        } else {
-            this.attachStrategyVariablesToOrder(order);
-            this.openPositions.push(order);
-            this.orders.push(order);
-        }
+        this._pushOpenPosition(order, 'pending-fill');
         
         // ═══ SPLIT ENTRY GROUP TRACKING ═══
         if (order.tradeGroupId) {
@@ -32679,6 +33034,11 @@ class OrderManager {
         if (!activeCandle) return;
         if (this.orderService && this.orderService.multiInstrumentSession) {
             this.orderService.multiInstrumentSession.current_time = activeCandle.t;
+        }
+
+        // TRADE-EVICT-V1 / EVICT-02: every tick (including scrub) may restore behind T.
+        if (Number.isFinite(Number(activeCandle.t))) {
+            this._tradeEvictV1SyncPlayhead(Number(activeCandle.t));
         }
         
         let currentCandle = activeCandle;
@@ -40035,7 +40395,7 @@ class OrderManager {
             c.svg.selectAll(`.pending-order-label-box.pending-${orderId}`).remove();
             c.svg.selectAll(`.pending-order-label-text.pending-${orderId}`).remove();
             c.svg.selectAll(`.pending-order-close-btn.pending-${orderId}`).remove();
-            c.svg.selectAll(`.pending-tp-delete.pending-tp-${orderId}`).remove();
+            c.svg.selectAll(this._pendingTpDeleteSelector(orderId)).remove();
             c.svg.selectAll(`.pending-tp-tp-plus-badge.pending-tp-${orderId}`).remove();
             c.svg.selectAll(this._pendingTpPctControlsSelector(orderId)).remove();
         });

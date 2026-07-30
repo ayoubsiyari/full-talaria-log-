@@ -1,0 +1,55 @@
+/**
+ * FIXED-COLUMN AUDIT RED — 2026-07-30 13:20 (updated)
+ *
+ * GATE-01: a claimed-fixed gate must go RED when the fix is reversed.
+ * Remaining decoration cells only — repaired money-path gates were removed.
+ *
+ * Run: node --test "chart v 1.4/chart/modules/fixed-column-audit.red.test.mjs"
+ */
+import { spawnSync } from 'node:child_process';
+import assert from 'node:assert/strict';
+import { writeFileSync, mkdtempSync } from 'node:fs';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
+import test from 'node:test';
+
+const ROOT = process.cwd();
+const MOD = join(ROOT, 'chart v 1.4', 'chart', 'modules');
+
+function runNode(args, env = {}) {
+  const r = spawnSync(process.execPath, args, {
+    cwd: ROOT,
+    env: { ...process.env, ...env },
+    encoding: 'utf8',
+  });
+  return { status: r.status ?? 1, stdout: r.stdout || '', stderr: r.stderr || '' };
+}
+
+function preloadKill(windowAssign) {
+  const dir = mkdtempSync(join(tmpdir(), 'd-audit-'));
+  const file = join(dir, 'preload.cjs');
+  writeFileSync(file, `globalThis.window = Object.assign(globalThis.window || {}, ${windowAssign});\n`);
+  return file;
+}
+
+test('AUDIT: TAL-01896 duration RED file fails under kill (GATE-01)', () => {
+  const r = runNode([
+    join(ROOT, 'chart v 1.4', 'talaria-design', 'src', 'orderManagerTradeRows.red.test.mjs'),
+  ]);
+  assert.notEqual(
+    r.status,
+    0,
+    `EXPECTED RED: orderManagerTradeRows.red.test.mjs must fail while duration-norm kill is ON (status=${r.status} out=${(r.stdout + r.stderr).slice(0, 200)})`,
+  );
+});
+
+test('AUDIT: SEL-01 user-path goes RED under kill (GATE-01)', () => {
+  const r = runNode([join(MOD, 'order-sel01-exact-teardown.test.mjs')], {
+    TALARIA_TEST_DISABLE_ORDER_SEL01_EXACT_TEARDOWN: '1',
+  });
+  assert.notEqual(
+    r.status,
+    0,
+    'EXPECTED RED: removePendingOrderLine(#1) must collide with #12 under kill',
+  );
+});

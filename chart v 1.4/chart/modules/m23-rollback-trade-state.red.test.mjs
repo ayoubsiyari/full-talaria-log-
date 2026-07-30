@@ -15,6 +15,11 @@
  *
  *   node --test --test-concurrency=1 \
  *     "chart v 1.4/chart/modules/m23-rollback-trade-state.red.test.mjs"
+ *
+ * RED (GATE-01 under kill preload):
+ *   node --require path/to/preload.cjs --test --test-concurrency=1 \
+ *     "chart v 1.4/chart/modules/m23-rollback-trade-state.red.test.mjs"
+ *   preload.cjs sets globalThis.__TALARIA_M23_KILL_PRELOADED = true and window kill flag.
  */
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -509,4 +514,24 @@ test('mutant: confirm bypass without flag dies', () => {
         /confirm UI must run/,
     );
     assert.equal(manager.closedPositions.length, 1);
+});
+
+test('GATE-01: default-on permanent cancel must fail when kill is preloaded', () => {
+    const killPreloaded = global.__TALARIA_M23_KILL_PRELOADED === true
+        || global.window?.[KILL] === true;
+    if (!killPreloaded) {
+        global.window = {};
+        const manager = managerFixture();
+        manager.forceCloseAllOrders(MID_CUT);
+        assert.equal(manager.openPositions.length, 0, 'fix ON must permanently cancel');
+        return;
+    }
+    global.window = { [KILL]: true };
+    const manager = managerFixture();
+    manager.forceCloseAllOrders(MID_CUT);
+    assert.equal(
+        manager.openPositions.length,
+        0,
+        'EXPECTED RED under kill preload: resurrect must not run when fix is default-on',
+    );
 });

@@ -1,5 +1,114 @@
 # Manager D Journal
 
+## 2026-07-30 — TRADE-EVICT-V1 CONF-02 byte cell (supersedes 98,306)
+
+- Ruling: `RULING-BOTH-EVICTIONS-ACCEPTED-AS-MECHANISM-THE-BYTE-FIGURE-IS-NOT-20260730-1740.md` — mechanism accepted; 98,306 not the product number.
+- Re-ran EVICT-01 at CONF-02: **30 closed**, screenshot fields sized from median live `Talaria-Chart-*` capture (265,167 data-URL chars; C harness measured 0 via submitOrder), excursion from C census **318 samples/trade**.
+- **Figure: 63,753,000 → 0** (~2.13 MB/trade hot). Artifact `TRADE-EVICT-V1-CONF02-BYTES-20260730.{json,md}`. Gate `trade-evict-v1-conf02-bytes.test.mjs`.
+- Explicit: harness GREEN only — C grades on the wire. Skip register still armed; #8 / 01807b on B.
+
+## 2026-07-30 — TRADE-EVICT-V1 landing (CKPT-01 + playhead eviction)
+
+- Fresh CKPT-01: tag `ckpt/pre-d-trade-evict-v1-6ba61eeeb` on tip `6ba61eeeb`; retained `artifacts/ckpt/pre-d-trade-evict-v1-6ba61eeeb/`; rollback exercised while green (corrupt→restore SHA match; cold-read + teardown GREEN). Doc `CKPT01-D-TRADE-EVICT-V1-20260730.md`.
+- Product: `__TALARIA_DISABLE_TRADE_EVICT_V1` (FLAG-01/02/03). On post-exit bound at playhead T, release screenshot + excursion hot fields from `closedPositions`, drop from `mfeMaeTrackingPositions`, keep id/entry/exit for canvas arrows. Journal retains cold copy.
+- EVICT-02: `_tradeEvictV1SyncPlayhead` on every `updatePositions` tick; rewind `t < T` restores from journal and re-queues sampling while still in post-exit window.
+- EVICT-01: fixture hot bytes **98306 → 0**; cold-read proof already accepted (retrieval half). Gates: `trade-evict-v1.test.mjs` GREEN=0 / `.red.test.mjs` RED≠0; homepage mirrored.
+- Audit secondary: Rayan #8 / 01807b stay on B next train; skip register stays armed. Did not wait on 01896 delivery or backend token.
+
+## 2026-07-30 — TEST-02 amended (fix-commit~1) + TRADE-EVICT cold-read
+
+- Correction `CORRECTION-B103-…-1635` copied. b103 corpus **withdrawn** as pre-fix reference.
+- Re-ran with per-marker `<fix-commit>~1` (Windows: bare `^` resolves to self — use `~1`).
+- **Corrected count on b113:** **39 on-wire** / 2 off-wire (#8, 01807b) / 7 unproven / 1 delivery-unserved (01896) / 1 backend-needs-token (01926). Prior 10/50 mistaken.
+- Money first: Rayan #2 behavioural host-retain → on-wire; #8 flags absent → off-wire; 01896 **not served on canary** (delivery, not marker).
+- B token request filed: `REQUEST-B-BACKEND-PROBE-TOKEN-TAL-01926-20260730.md` (non-blocking).
+- Skip register stays armed (`--freeze` still fails on #8 / 01807b / 01896).
+- **TRADE-EVICT-V1 step 1:** cold-read proof GREEN/RED — `trade-evict-v1-cold-read.test.mjs` + `TRADE-EVICT-V1-COLD-READ-PROOF-20260730.md`. Journal-only trade serves history MAE/MFE + path + screenshots with hot `closedPositions` empty.
+
+## 2026-07-30 — TEST-02 marker GATE-01 retrofit (b113)
+
+- Ruling `RULING-THE-WIRE-AUDIT-NEEDS-GATE-01-…-1605` copied. Binding: markers must be absent on pre-fix bytes.
+- Pretest corpora: `artifacts/wire-pretest/b103` (from `153c835e2`) + ckpt OM retained bytes.
+- Instruments: `wire-audit-test02-falsify.mjs`, `wire-runtime-money-probes.mjs`, `backend-journal-prune-live-probe.mjs`, `test01-skip-register-gate.mjs`.
+- **Headline:** TEST-01 43/50 → TEST-02 **10/50** discriminating on-wire; **37 wire-unproven** (vacuous on b103); **2 off-wire** (#8, 01807b); **1 backend-needs-api-probe** (01926).
+- Vacuous thrown out include `_m24ReconcileOrderIdCounter` and most older `__TALARIA_DISABLE_*` already on b103.
+- **Rayan #2 first:** live MC source-contract holds, but b103 already passes — not discriminating. Runtime sim of host retain documented; browser PO (peer removeChart) still required. Verdict `wire-unproven`.
+- **Rayan #8 first:** gap + place-audit flags discriminating vs b103 and **absent on wire** → `off-wire`. Routed to B next train (do not wait).
+- **TAL-01896:** named **needs a better marker** (kill-switch in b103 tree; not fetchable on canary). Not “needs a build.” Doc `TAL-01896-TEST02-RESOLUTION-20260730.md`.
+- **TAL-01926:** live API probe → `GET /api/sessions/1/state` = **401** (reachable-unread). Write discriminator needs token + disposable session; recipe in probe JSON.
+- **Skip register:** `TEST01-SKIP-REGISTER-20260730.json` — #8 / 01807b / 01896 open. `--freeze` exits 1 while any money skip remains (verified).
+- Artifacts: `WIRE-AUDIT-TEST02-20260730b113.{json,md}`, `WIRE-RUNTIME-PROBES-20260730b113.json`, `BACKEND-LIVE-PROBE-TAL-01926-20260730b113.json`.
+
+## 2026-07-30 — TEST-01 wire audit of all 50 fixed (b113)
+
+- Ruling `RULING-THREE-STRIKES-…-1540` copied. HONEST_FIXED=50 accepted; Director’s 53 was bad grep.
+- Generalised D3: `scripts/wire-audit-fixed.mjs` + `WIRE-AUDIT-FIXED-20260730b113.json/.md`.
+- MEAS-01 live stamp `20260730b113`. **Strict on-wire: 43/50.** Weak 3, partial 1 (Rayan #8), off-wire 2 (TAL-01896 path, TAL-01807b), backend 1 (01926).
+- Five CONF-01 packs rewritten under TEST-01: declare markers, mechanical proof before PO clicks; #8 / 01807b / 01896 skipped on b113 until a later stamp proves them. Not standing by for B.
+
+## 2026-07-30 — D3 M24 wire read
+
+- **Outcome A** for PO `#5→#942` on b103. Stamp source: B journal `PO_SHOULD_READ=20260729b103` tip `153c835e2` (00:05); M24 display fix `2cc949399` (11:59) not an ancestor; OM at that SHA has zero `_resolveJournalDisplayTradeId` / `DISPLAY_ID_STABILITY`; restore-stability test absent.
+- Live MEAS-01 (HTTP): `http://31.97.192.82:3000` shell stamp `20260730b113`; served `order-manager.js` has `_resolveJournalDisplayTradeId` + `__TALARIA_DISABLE_M24_DISPLAY_ID_STABILITY_V1` (post-b112 D-lane ship). Local `:3000` unreachable.
+- Full write-up: `docs/plan3/M24-WIRE-READ-D3-20260730.md`.
+
+## 2026-07-30 — GATE-01 RED-first proof (Rayan #2 / #8 under CONF-01)
+
+- Ran GREEN/RED on chart + homepage for Rayan #2 teardown retain, #8A gap-after-hydrate, #8B explicit-place audit. Matrix: all GREEN exit **0**, all RED under kill exit **1**.
+- CONF-01 kill coverage: #2 four-symbol host retention fails under kill; #8A mixed-symbol journal gap fails under kill; #8B previously RED-aborted on pre-CONF01 surprise only — reordered test so CONF-01 cross-panel surprise is first kill tooth. Pending-on-GBPUSD candle stays always-on ticker filter (not this FLAG).
+- Test-only edit: `order-explicit-place-audit.test.mjs` (± homepage mirror). No `order-manager.js` product edit (CKPT-01 untouched).
+- Record: `docs/plan3/RAYAN-2-8-RED-FIRST-PROOF-20260730.md`.
+
+## 2026-07-30 — DISPATCH-D 15:15 (one number / class-3 / M24 wire)
+
+- CKPT-01 accepted as four-manager reference.
+- **D1:** `scripts/ledger-status-count.mjs` → artifact `LEDGER-STATUS-COUNT-20260730.json`. **HONEST_FIXED=50** at tip `b55f66b66` (reconfirmed after later commits). Prior 48 was stale `51−3` arithmetic; 53 not reproduced. Prose counts retired.
+- **D3:** closed under `## 2026-07-30 — D3 M24 wire read` — outcome **A** (b103 lacked fix; live now b113 with symbols).
+- H-S18/H-S83 harness restage re-routed **A → C** (`OWNER-C-HS18-HS83-CONF01-20260730.md`). TAL-01677/01733 stay A.
+- Not standing by for B stamp (routed as B interrupt).
+- **D2:** Explore audit found CLASS-3 **TAL-01798** + **PO pending**. Applied: lifecycle peer-TF cell for 01798; pending-clear host→peer adopt already on tip. Remaining CLASS-3 among fixed: **0** (`CLASS3-VACUITY-AUDIT-D-20260730.md`).
+- **Rayan #2/#8:** RED-first matrix all GREEN=0/RED≠0; #8B reordered so kill fails on CONF-01 first (`RAYAN-2-8-RED-FIRST-PROOF-20260730.md`).
+- **TAL-01941:** C2 note requires explicit verdict cell in C’s duration report (`NOTE-C-TAL01941-SOAK-INTO-C2-20260730.md`).
+
+## 2026-07-30 — keep moving after CKPT-01
+
+- TAL-01677 (Go-To session) + TAL-01733 (H-S19) → **owner-blocked A** (nav/harness, not money).
+- TAL-01896: added plain RED `orderManagerTradeRows.red.test.mjs` (kill → `139271h` wall-clock bleed). Fixed-column audit now proves GATE-01 via that file (nested `--test` was swallowing exit codes). Ledger → `fixed`. Honest fixed **50**, D `broken` **0**.
+
+## 2026-07-30 — SEL-01 user-path landing (post CKPT-01)
+
+- Checkpoint `ckpt/pre-d-money-conf01-d5b790e56` was already taken; kill-switch `__TALARIA_DISABLE_ORDER_SEL01_EXACT_TEARDOWN_V1` already on tip (FLAG-01/02/03 via existing RED cell).
+- Gate was selector-shape only (fixed-column audit RED). Strengthened to user-path: fake SVG with pending #1 and #12; `removePendingOrderLine(1)` must leave #12 TP pct/delete controls.
+- Product: `removePendingOrderLine` now uses `_pendingTpDeleteSelector(orderId)` so kill restores substring delete collision (was hardcoded exact, breaking FLAG-03 on delete).
+- GREEN/RED verified; homepage OM mirror SHA-matched. Ledger SEL-01 → `fixed`. Honest fixed **49**.
+
+## 2026-07-30 — CKPT-01 binding (Director 14:45 amendment)
+
+- Read and copied `AMENDMENT-DIRECTOR-RUNS-THE-MILES-20260730-1445.md`. AUTH-01: no permission pauses inside dispatch; journal and keep moving. CKPT-01 applies to D risky money-path landings.
+- Hard checkpoint taken **before** the next OM product landing (system still green):
+  - Tag: `ckpt/pre-d-money-conf01-d5b790e56` on tip `d5b790e56`
+  - Retained bytes: `artifacts/ckpt/pre-d-money-conf01-d5b790e56/` (both `order-manager.js` mirrors, SHA `A788A611…2D0D68`); durable also via tag tree blobs
+  - Kill-switch: required on each subsequent landing (FLAG-01/02/03); reuse existing money flags when mechanism matches
+  - Rollback **exercised while green**: corrupt probe → restore from artifact → SHA match; tip gates GREEN
+- Record: `docs/plan3/CKPT01-D-MONEY-PATH-20260730.md`
+- H-S18/H-S83 reopen (TAL-01887/01910/01939) owner-routed to **A** (`OWNER-A-HS18-HS83-CONF01-20260730.md`) — harness/chart territory, not D money rewrite
+- MEAS-01 page stamp still TBD until B serves; train ID is tip SHA until then
+
+## 2026-07-30 — CONF-01 / DUR-01 (Director 14:30)
+
+- Binding: shipping reference is 4 panels / 4 symbols / 4 TFs / indicators / orders; same-pair has no acceptance weight; performance is slope-over-duration.
+- **D1:** Re-audited `fixed` gates. Reopened TAL-01887 / TAL-01910 / TAL-01939 (`H-S18`/`H-S83` `pair: 'same'`). Strengthened Rayan #2/#8, M24 restore mixed-symbol hydrate, and cross-TF peer isolation (kept TAL-01802/01886 fixed). Honest `fixed` = **48**.
+- **D2:** Rayan #2 teardown asserts four distinct symbols; Rayan #8 gap/place-audit use mixed-symbol / cross-panel cells. GREEN + RED kills verified.
+- **D3:** Note to C — TAL-01941 unit soak rides C2 duration; no second long harness (`NOTE-C-TAL01941-SOAK-INTO-C2-20260730.md`).
+- **D4:** M24 #5→#942 restore gate complete (mixed-symbol cell); `.red.test.mjs` remains RED under legacy path.
+- **D5:** Restaged `PO-SCRIPTS-NEXT-BUILD-20260730.md` — every pack opens CONF-01 layout first; packs still AWAITING STAMP.
+
+## 2026-07-30 — Director 13:50 Rayan #8 / Rayan #2
+
+- Rayan #8A skipped ID: existing `m24-order-id-allocator` + `m24-order-id-restore-stability` cover stale-counter collisions and hydrate display renumber (`#5→#942`); they did **not** cover a persisted counter ahead of live rows when pending `#8` vanished on hydrate (next mint jumped to `#9`). Fix: `_m24ReconcileOrderIdCounter()` now prefers `max(live ids)+1` over a stale persisted counter when `__TALARIA_DISABLE_M24_ORDER_ID_GAP_RECONCILE_V1` is absent (default ON). Gate: `node "chart v 1.4/chart/modules/m24-order-id-gap-after-hydrate.test.mjs"` ± homepage; RED `TALARIA_TEST_DISABLE_M24_ORDER_ID_GAP_RECONCILE=1`.
+- Rayan #8B self-opened sell: no deterministic PO repro. Added strict audit hook `_pushOpenPosition` / `_assertExplicitPlaceAudit` (active only when `window.__TALARIA_ORDER_EXPLICIT_PLACE_AUDIT_STRICT`; kill `__TALARIA_DISABLE_ORDER_EXPLICIT_PLACE_AUDIT_V1`). `executePendingOrder` uses `pending-fill` source. **Root-cause hypothesis:** idle replay still auto-fills ghost/stale `pendingOrders` via `checkPendingOrders` → `executePendingOrder` (user-visible “self-open” without a fresh confirm), possibly combined with multichart mirror resurrect class already gated elsewhere. Gate: `node "chart v 1.4/chart/modules/order-explicit-place-audit.test.mjs"` ± homepage; RED `TALARIA_TEST_DISABLE_ORDER_EXPLICIT_PLACE_AUDIT=1`.
+- Rayan #2: lag half is **Cluster A** (multichart perf); **vanished open order** is D money-path. Static + contract gate asserts `MultichartGrid` / `multichart-manager` `removeChart` paths do not assign host `openPositions = []`, and host journal/open rows survive simulated peer panel teardown. Gate: `node "chart v 1.4/chart/modules/order-mc-layout-teardown-retains-host-orders.test.mjs"` ± homepage; RED `TALARIA_TEST_DISABLE_MC_LAYOUT_HOST_ORDER_RETAIN=1`.
+
 ## 2026-07-30 — M24 Restore-Time Display Identity Escape
 
 - PO b103 result: history count survived refresh, but displayed trade ID changed from `#5` to `#942`. The existing allocator gate only covered minting new IDs past stale counters; it did not cover session hydrate / journal restore display identity.
@@ -357,3 +466,31 @@
 - Owner-blocked 13 listed for Director routing — all **A** — `OWNER-BLOCKED-ROUTING-20260730-1240.md`.
 - Bucket (a)/(b) reconfirmed GREEN; 6 remain `blocked-on-build`.
 - 26 `po-eyes` packed into five efficiency packs + named money Scripts 1–5; all `AWAITING STAMP` until B confirms stamp. No ready-to-run labels before stamp.
+
+## 2026-07-30 — Fixed-column audit (Director 13:20)
+
+- Audited all 51 `fixed` rows for USER-path coverage and GATE-01 reverse→RED.
+- **Reopened: 13** → `broken` with RED `fixed-column-audit.red.test.mjs` (not unverified). Fixed remaining: **38**.
+- Money decorations: m23 suite stays GREEN under kill (TAL-01937 / Rayan #1/#3/#6b); duration suite under kill (TAL-01896); journal pytest under guard=0 (TAL-01926); TAL-01807b no reverse lever; CODE-PATH-ONLY money helpers TAL-01904/01809/01933/01810; SEL-01 selector-only; TAL-01733 H-S19 bugswitch stays GREEN.
+- Survived break attempts (examples): TAL-01908 restore kill → `942 !== 5`; TAL-01903 PnL kill → `12000 !== 10075`.
+- Standing by to fold PO answers on 23 decision rows and run five packs when B confirms stamp.
+
+## 2026-07-30 — Director 13:50 money gates + PO fold-in
+
+- User-path GATE-01 restored for TAL-01904/01809/01933/01810/01926/01937 + TAL-01807b reverse lever.
+- Rayan #8: gap reconcile + explicit-place audit (skipped ID + self-open). Rayan #2 money half: layout teardown retain gate (lag → A).
+- TAL-01941: randomised SL/TP soak 120 cases (`order-sl-tp-trigger-soak.test.mjs`).
+- TAL-01677: **reopened broken** — no commit+gate in git/journal (PO memory close rejected).
+- TAL-01893: owner-blocked A (`chart.js` Go-To); M22 does not cover.
+- TAL-01744: `intended` (PO). TAL-01894: `feature-request`. TAL-01920 / Rayan #7/#10: `verify-gone`.
+- TAL-01850: **Manager A** canary blocker (`OWNER-TAL-01850-KEYBOARD-20260730.md`).
+- Five PO packs remain AWAITING STAMP.
+
+## 2026-07-30 — JOUR-01 + EXCURSION-SINGLE-OWNER-V1
+
+- Canonical journal is now `docs/plan3/journal/MANAGER-D.md` (JOUR-01). This file remains as
+  the longer historical notebook; new packet notes go to MANAGER-D.md.
+- EXCURSION-SINGLE-OWNER-V1 landed for Director `e8ba8bdbc`: journal authoritative;
+  closed≡service alias; share then TRADE-EVICT; hard-cap belt; CONF-02 delta **195,120** bytes
+  (~191 KB) — not the memory win. See `EXCURSION-SINGLE-OWNER-V1-LANDING-20260730.md`.
+- Rayan probes re-run: #2 on-wire, #8 off-wire, TAL-01896 needs a build / delivery-unserved.

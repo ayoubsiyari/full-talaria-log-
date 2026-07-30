@@ -1,10 +1,11 @@
-# PO scripts — next build (26 `po-eyes` + money re-runs)
+# PO scripts — CONF-01 packs under TEST-01
 
 **Checkout tip:** `manager-d/trade-correctness`  
-**Ruling:** measured-clean bar — `RULING-NO-DISCLOSURE-THE-BAR-IS-MEASURED-CLEAN-20260730-1240.md` (filename kept for git path; no status uses that cancelled vocabulary).  
-**Stamp rule:** do **not** mark any script ready to run until **B confirms the served stamp**. Until then every pack is `AWAITING STAMP`.
-
-MEAS-01 still required when B green-lights a stamp (build stamp, account, surface).
+**Binding:** `TEST-01` in `RULING-THREE-STRIKES-ON-THE-WIRE-AND-THE-REAL-DENOMINATOR-20260730-1540.md`  
+**Binding:** `TEST-02` in `RULING-THE-WIRE-AUDIT-NEEDS-GATE-01-AND-TWO-ROWS-MUST-MAKE-THE-FREEZE-20260730-1605.md` — markers must be absent on pre-fix bytes (b103/CKPT).  
+**Skip register:** `docs/plan3/TEST01-SKIP-REGISTER-20260730.json` — `node scripts/test01-skip-register-gate.mjs --freeze` must exit 0 before Saturday freeze.  
+**CONF-01:** every script opens **four panels / four symbols / four TFs**, indicators loaded, ≥1 order open, before row clicks.  
+**DUR-01:** soaks need ≥3 samples over ≥5 minutes, not a single reading.
 
 ---
 
@@ -67,12 +68,58 @@ for the four stamped packs.
 
 ---
 
-## Part A — Five packs covering all 26 `po-eyes`
+## TEST-01 gate (every pack, before any click)
 
-Ordered by **rows-closed per PO-minute** (dense packs first).  
-Every row below is currently `po-eyes` with commit `—` → look type **first-look** unless noted.
+A pack that cannot prove its subject is deployed **does not run**.
 
-### Rank 1 — Viewport / scale / toolbar (Cluster J) — 11 rows / ~12 min ≈ 0.9 rows/min
+1. Read MEAS-01 from the running page (`window.__TALARIA_CHART_BUILD_ID` / corner badge). Write the stamp.  
+2. Run the mechanical wire check against that stamp:
+
+```bash
+node scripts/wire-audit-fixed.mjs --base <CANARY_ORIGIN> --stamp <STAMP> --out docs/plan3/WIRE-AUDIT-FIXED-<STAMP>.json
+node scripts/wire-runtime-money-probes.mjs --base <CANARY_ORIGIN> --stamp <STAMP>
+node scripts/backend-journal-prune-live-probe.mjs --base <CANARY_ORIGIN> --stamp <STAMP>
+node scripts/wire-audit-test02-falsify.mjs --stamp <STAMP> --wire-dir artifacts/wire-<STAMP>
+node scripts/test01-skip-register-gate.mjs
+```
+
+3. For this pack, every **Declared commit / marker** row below must be TEST-02 `on-wire` (discriminating vs b103). Vacuous markers (present on b103) do not count. TAL-01926 needs the live API probe, not JS bytes.  
+4. If any declared money-path marker is `off-wire`, `partial`, or `wire-unproven`, **stop** — do not burn PO minutes on pre-fix bytes.
+
+**Current canary (2026-07-30):** stamp `20260730b113`.  
+- TEST-01 (pre-falsify): `WIRE-AUDIT-FIXED-20260730b113.md` — **43/50** strict.  
+- TEST-02 amended (`fix-commit~1`, not b103): `WIRE-AUDIT-TEST02-20260730b113.md` — **39/50** on-wire; 2 off-wire; 7 unproven; 1 delivery-unserved; 1 backend. Prior 10/50 b103-corpus run **withdrawn**.
+
+**Blocked on b113 (skip register; routed to B next train — do not wait):**
+
+| Row | Why |
+| --- | --- |
+| Rayan `#8` | discriminating gap + place-audit flags absent (vacuous `_m24ReconcileOrderIdCounter` thrown out) |
+| TAL-01807b | pair-switch visual rebind flag absent |
+| TAL-01896 | **needs a better marker** (kill-switch already in b103 tree; not on fetchable canary module) |
+
+---
+
+## CONF-01 open (every script, first)
+
+1. New session on the **proven** stamp.  
+2. Multichart **2×2**.  
+3. Four distinct symbols (e.g. EURUSD, GBPUSD, USDJPY, XAUUSD).  
+4. Four distinct timeframes (e.g. 1m, 5m, 15m, 1H).  
+5. Indicator on each panel; one visible order live.  
+6. Capture MEAS-01 (stamp, account, surface).  
+7. Confirm TEST-01 wire proof for this pack’s declared commits.  
+8. Only then run the script body.
+
+Fail immediately if same-pair / same-TF, or if TEST-01 fails.
+
+---
+
+## Part A — Five packs covering 26 `po-eyes`
+
+### Pack A1 — Viewport / scale / toolbar (Cluster J) — 11 rows / ~12 min
+
+**Declared commits / markers (TEST-01):** none money-path — UI first-look only. Still require MEAS-01 stamp write. Wire-audit column may be empty; pack runs on any stamp that serves the chart shell.
 
 | Row | Look type |
 | --- | --- |
@@ -88,9 +135,9 @@ Every row below is currently `po-eyes` with commit `—` → look type **first-l
 | TAL-01916 | first-look |
 | TAL-01928 | first-look |
 
-Click path: PO-CHECK Cluster J (grid, scale, zoom, toolbar). One session; do not invent new steps.
+### Pack A2 — Session / TF / history (I+D+L) — 7 rows / ~10 min
 
-### Rank 2 — Session / TF / history data (Clusters I+D+L) — 7 rows / ~10 min ≈ 0.7 rows/min
+**Declared markers:** cross-TF canonical mark path (`_applyCanonicalReplayMarkFromDetail` in served `replay-system.js`) when exercising TAL-01802/01886 kin; otherwise MEAS-01 only.
 
 | Row | Look type |
 | --- | --- |
@@ -102,9 +149,9 @@ Click path: PO-CHECK Cluster J (grid, scale, zoom, toolbar). One session; do not
 | TAL-01923 | first-look |
 | TAL-01934 | first-look |
 
-Click path: CANARY Data Integrity Scripts 2–4 + Cluster L drawings-lag step from PO-CHECK. Frozen playhead / session resume / weekly jump — use existing steps only.
+### Pack A3 — Order-line leftovers — 3 rows / ~6 min
 
-### Rank 3 — Order-line leftovers — 3 rows / ~6 min ≈ 0.5 rows/min
+**Declared markers:** `__TALARIA_DISABLE_ORDER_MULTI_TP_COINCIDENT_STACK_V1`, `__TALARIA_DISABLE_ORDER_LINE_EDGE_VISIBILITY_V1`, `__TALARIA_DISABLE_ORDER_STABLE_LABEL_HOVER_DOM_V1` (must be on-wire).
 
 | Row | Look type |
 | --- | --- |
@@ -112,90 +159,97 @@ Click path: CANARY Data Integrity Scripts 2–4 + Cluster L drawings-lag step fr
 | TAL-01698 | first-look |
 | TAL-01617 | first-look |
 
-Click path: Band-1 / Cluster G drag–preview confirmation steps already on file. Not the M10 fill script.
+### Pack A4 — Money residuals — 3 rows / ~8 min
 
-### Rank 4 — Money-path residuals (named Scripts 1 / 3 / 5) — 3 rows / ~8 min ≈ 0.4 rows/min
-
-These three are the only `po-eyes` that sit inside the named money scripts:
+**Declared markers:** `_resolveJournalDisplayTradeId` (M24 display); M10 lifecycle ownership flag; journal screenshot idempotent flag.
 
 | Row | Money script | Look type |
 | --- | --- | --- |
-| TAL-01911 | M24 identity (Script 1) | first-look |
-| TAL-01796 | M10 order mechanics (Script 3) | first-look |
-| TAL-01940 | Journal side-effects (Script 5) | first-look |
+| TAL-01911 | M24 identity | first-look |
+| TAL-01796 | M10 mechanics | first-look |
+| TAL-01940 | Journal side-effects | first-look |
 
-### Rank 5 — Multichart / crosshair (Clusters C+K) — 2 rows / ~6 min ≈ 0.3 rows/min
+### Pack A5 — Multichart / crosshair — 2 rows / ~6 min
+
+**Declared markers:** MEAS-01 + CONF-01 layout only (lag half is A). Rayan `#2` money half: structural `removeChart` on served `multichart-manager.js` (weak — note in result).
 
 | Row | Look type |
 | --- | --- |
 | TAL-01717 | first-look |
 | TAL-01700 | first-look |
 
-Click path: PO-CHECK Cluster C / K. Existing steps only.
+---
 
-**Sum:** 11 + 7 + 3 + 3 + 2 = **26**.
+## Part B — Named money scripts (re-runs)
+
+### Pack B1 — M24 identity — ~8 rows / ~8 min
+
+**Declared commits / markers (TEST-01):**
+
+| Marker | Required |
+| --- | --- |
+| `_resolveJournalDisplayTradeId` | yes |
+| `__TALARIA_DISABLE_M24_DISPLAY_ID_STABILITY_V1` | yes |
+| `__TALARIA_DISABLE_M24_ORDER_ID_ALLOCATOR_V1` / `_allocateOrderId` | yes |
+| Rayan `#8` gap + place-audit markers | **blocked on b113** — omit `#8` until next stamp proves them |
+
+| Row | Look type | b113 |
+| --- | --- | --- |
+| Rayan `#4/#5/#9` | re-run | OK if allocator+restore on-wire |
+| Rayan `#11` | re-run | OK |
+| TAL-01908 / 01919 / 01924 | re-run | OK |
+| TAL-01926 | re-run | backend — confirm via B API/journal prune, not JS audit |
+| TAL-01911 | first-look | OK |
+| Rayan `#8` | re-run | **SKIP on b113** |
+
+### Pack B2 — M10 order mechanics — ~7 rows / ~10 min
+
+**Declared markers:** one-tick pending, single-TP-after-trail, balance floor, exit-marker canonical projection, lifecycle ownership, pending-close netting — all must be on-wire (they are on b113 per audit).
+
+| Row | Look type |
+| --- | --- |
+| TAL-01933 | re-run |
+| TAL-01932 | re-run |
+| TAL-01904 | re-run |
+| TAL-01905 | re-run |
+| TAL-01809 | re-run |
+| TAL-01810 | re-run |
+| TAL-01796 | first-look |
+
+### Pack B3 — M23 rollback — ~5 rows / ~8 min
+
+**Declared marker:** `__TALARIA_DISABLE_M23_ROLLBACK_TRADE_CANCEL_V1` on-wire (present on b113).
+
+| Row | Look type |
+| --- | --- |
+| Rayan `#1` / `#3` / `#6b` | re-run |
+| TAL-01937 | re-run |
+| TAL-01800 | re-run |
+
+### Pack B4 — Journal side-effects — ~2 rows / ~6 min
+
+**Declared marker:** `__TALARIA_DISABLE_ORDER_ENTRY_SCREENSHOT_IDEMPOTENT_V1` (or gate’s product flag) on-wire.
+
+| Row | Look type |
+| --- | --- |
+| TAL-01927 | re-run |
+| TAL-01940 | first-look |
+
+### Pack B5 — Duration — ~1 row / ~4 min + DUR-01
+
+**Declared marker:** `__TALARIA_DISABLE_TRADE_DURATION_NORM_V1` / `tradeDurationNormV1Enabled`.  
+**b113:** **BLOCKED** — not on a fetchable wire module. Do not run until a stamp proves the duration pack.
+
+| Row | Look type |
+| --- | --- |
+| TAL-01896 | re-run — **SKIP on b113** |
+
+Also watch Rayan `#2` when closing a non-host panel (money half); lag half → A.
 
 ---
 
-## Part B — Named money scripts (mostly re-runs of already-`fixed` rows)
+## Not in these packs
 
-Run **only after B confirms stamp**. Ordered by rows-closed / PO-minute.  
-Includes the three `po-eyes` from Rank 4 above plus `fixed` rows that still need stamp eyes.
-
-### 1. M24 identity — ~8 rows / ~8 min
-
-| Row | Look type |
-| --- | --- |
-| Rayan `#4/#5/#9` | re-run against fix |
-| Rayan `#11` | re-run against fix |
-| TAL-01908 | re-run against fix |
-| TAL-01919 | re-run against fix |
-| TAL-01924 | re-run against fix |
-| TAL-01926 | re-run against fix |
-| TAL-01911 | **first-look** (`po-eyes`) |
-
-### 2. M10 order mechanics — ~7 rows / ~10 min
-
-| Row | Look type |
-| --- | --- |
-| TAL-01933 | re-run against fix |
-| TAL-01932 | re-run against fix |
-| TAL-01904 | re-run against fix |
-| TAL-01905 | re-run against fix |
-| TAL-01809 | re-run against fix |
-| TAL-01810 | re-run against fix |
-| TAL-01796 | **first-look** (`po-eyes`) |
-
-### 3. M23 rollback — ~5 rows / ~8 min
-
-| Row | Look type |
-| --- | --- |
-| Rayan `#1` | re-run against fix |
-| Rayan `#3` | re-run against fix |
-| Rayan `#6b` | re-run against fix |
-| TAL-01937 | re-run against fix |
-| TAL-01800 | re-run against fix |
-
-*(no `po-eyes` in this script)*
-
-### 4. Journal side-effects — ~2 rows / ~6 min
-
-| Row | Look type |
-| --- | --- |
-| TAL-01927 | re-run against fix |
-| TAL-01940 | **first-look** (`po-eyes`) |
-
-### 5. Duration — ~1 row / ~4 min
-
-| Row | Look type |
-| --- | --- |
-| TAL-01896 | re-run against fix (needs dist rebuild on stamp) |
-
----
-
-## What is not in these packs
-
-- `closed-scratched` (6) — no PO minutes.
-- `owner-blocked` (13) — routed in `OWNER-BLOCKED-ROUTING-20260730-1240.md`; Director assigns.
-- `blocked-on-build` (6) — wait for undeployed branch / M25 pack ship.
-- `superseded` / `needs-info` / `fixed` without a Part B re-run line — no PO pack.
+- `owner-blocked` / `needs-info` — Director’s routing debt (E / A queue per 15:40 ruling)  
+- `blocked-on-build` / `verify-gone` / `feature-request` / `intended`  
+- Rows TEST-01 fails for the live stamp
