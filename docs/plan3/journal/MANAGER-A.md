@@ -508,3 +508,68 @@ ROWS:
 - `_reseedReplayFullRawFromLoadedData` remains queued as the next allocator; re-read the profile after this lands
   rather than assuming the 75% converts 1:1.
 
+
+## 2026-07-30T12:30 · RULING 12:10 · four packets out, residency killed, and W91 re-aims the rest
+
+Read the ruling (67df8a5c9, director worktree). KILL-02 accepted: nothing retires without a number.
+
+**W91 LANDED AFTER THE RULING WAS WRITTEN AND CHANGES ITEMS 2, 4, 5 AND 6.** C''s CPU-PROCESS-CENSUS-V1
+(adcce4bee): at four panels the renderer''s off-thread majority is **V8 background GC at 73.2% of a core**,
+scavenger-dominated — young-generation collection, i.e. enormous numbers of SHORT-LIVED objects.
+Raster is ABSENT from the renderer entirely, compositor 3.0%, GPU-main 5.0%, and
+`LocalFrameView::performLayout` is 140.6 ms of ~9,800 ms busy = **1.4% of the main thread**.
+C corrects its own W74/W78 raster attribution. Consequence: **allocation rate is a CPU defect as well as a
+memory one**, and DOM/canvas work is not the lever.
+
+Three things follow, and I am stating them rather than quietly re-scoping:
+- **CUT 4, CANVAS PROMOTION, IS NOW DEAD WITH A NUMBER.** I recorded a disagreement rather than a refusal
+  on 30 Jul: promotion pays for UNCHANGED content, our canvas is fully repainted every frame, so the cost
+  is the drawing not the compositing. C''s census settles it — raster absent, compositing 3%. That is the
+  measurement I said I would take. It should get a death-certificate row.
+- **My allocation work is the main line, not a side quest.** The clone cut and the reseed cut target
+  exactly the short-lived-object rate the census names.
+- **The DOM cuts (item 2) are RETENTION fixes, not CPU fixes.** I have told both authors so and told the
+  glow-filter author to expect ~0 on the paint measurement the advisor''s raster framing implies.
+
+**DISPATCHED, tier=MID, writable sets disjoint per PAR-01, all four on their own worktrees:**
+1. RESEED-CUT — `_reseedReplayFullRawFromLoadedData` (chart.js:6490), branch manager-a/reseed-cut-20260730
+   off the clone-cut head 8b6c90554. Same incremental+flagged shape. I named the hazards: the destination
+   identity check is MANDATORY because replay-system.js:2723/:3449 externally replace `fullRawData`; only
+   the array copy may be optimised (the currentIndex re-sync and the tickPathCache resets must survive);
+   `this.data` churns identity per tick so `fullData` will mostly fall back and must not be forced.
+2. LABELTOOL handle growth — local to LabelTool by preference; shared `_clearGeometryChildren` may only be
+   touched if every dependent tool is named (the name-the-dependent rule).
+3. ORDER GLOW `<filter>` defs — dedupe on create + remove on teardown; must name what references a filter
+   before removing it.
+4. POINTER-SWEEP profile — read-only, product bytes byte-identical, positive control mandatory.
+
+**ITEM 3 — RESIDENCY IS DEAD, and I killed my own packet.** ANSWER doc committed. Two empty branches:
+during replay `_applyResidencyWindowV1` returns false at chart.js:9044-9045 (single caller at :10893 whose
+own comment says so); outside replay C measured 2,011 resident of 6,097,452, so windowing already did it.
+And it is aimed at the wrong array regardless — inside the whole residency block `_panelFullRawData` = 0
+and `fullRawData` = 0 against a control of 17 `this.rawData`. It cannot reach the 70,989-bar master.
+Remove from every plan document. The RAW-MASTER-during-replay trim is real, harder, and unowned — named,
+not promised, because the replay guard protects scroll-back and indicator history.
+
+**A DEATH CERTIFICATE IN THE RULING IS WRONG, and it is the same array confusion.** The columnar row prices
+"2,011 bars resident of 6.1M; ~465 KB". W89 states its gauge as `chart.data.length` — the RESAMPLED DISPLAY
+SERIES. The raw master I measured on the deployed build is 70,989 bars = ~16.4 MB/realm, ~66 MB at four.
+The certificate understates resident bar mass ~35x. **I am NOT asking to reopen columnar** — the PO scaling
+test (heap 1.52x across 100–1000x data) is the real killer and is untouched. Right conclusion, wrong number;
+please amend the row to cite the scaling test. STANDING: "resident bars" is ambiguous here by 35x — any bar
+count must name the ARRAY.
+
+**ITEM 4 — the writer is already named and already cut.** `ensureTalariaIndLegendHoverCss`
+indicator-ui.js:2621-2624 reassigns `<style>.textContent` per indicator pass, forcing a rule-set re-parse at
+~62/sec. Fix built and verified at 612602877 (1 write vs 60). The 15:00 fallback — 35 `setProperty` sites
+behind one flag — is unnecessary and aimed at an already-identified writer. What is owed is the A/B, not a
+new cut. Predicted SMALL given W91''s 1.4% layout figure; recorded in advance.
+
+**ITEM 7 — I OWN IT.** p3-bar-store-realm''s failing cell is "P3 mutants: neutered guards are killed by the
+realm/refcount oracles" — the cell whose job is to prove the suite has teeth, so the P3 guards are
+UNVERIFIED rather than broken. Bar-store realm guards are chart.js, which is mine; I am not routing it away.
+Queued behind the four packets, test-only.
+
+**ITEM 6 — re-baseline is right and I will not size the remaining cuts until the clone cut is deployed and
+the profile is re-read.** Sizing against a superseded ceiling is how we got here.
+
