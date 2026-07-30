@@ -176,6 +176,22 @@ managers:
         reason: granted to E on specificity - generated mirror
         provenance: ruling
         authority: director 20260730 17:05
+      - pattern: chart v 1.4/chart/modules/talaria-ratio-gap-indicator.js
+        reason: granted to E on specificity - overlay labels and info cells
+        provenance: ruling
+        authority: director 20260730 21:30 - second-half overlay grant, ROUTE-01
+      - pattern: homepage/public/chart/modules/talaria-ratio-gap-indicator.js
+        reason: granted to E on specificity - generated mirror of the above
+        provenance: ruling
+        authority: director 20260730 21:30
+      - pattern: chart v 1.4/chart/modules/talaria-fvg-indicator.js
+        reason: granted to E on specificity - FVG overlay boxes and tags
+        provenance: ruling
+        authority: director 20260730 21:30 - second-half overlay grant, ROUTE-01
+      - pattern: homepage/public/chart/modules/talaria-fvg-indicator.js
+        reason: granted to E on specificity - generated mirror of the above
+        provenance: ruling
+        authority: director 20260730 21:30
       - pattern: chart v 1.4/chart/modules/chart-window-limit.js
         reason: granted to B on specificity - both window-claim P0s are B's
         provenance: ruling
@@ -479,6 +495,20 @@ managers:
       - pattern: homepage/public/chart/modules/indicator-ui.js
         provenance: ruling
         reason: generated product mirror
+      - pattern: chart v 1.4/chart/modules/talaria-ratio-gap-indicator.js
+        provenance: ruling
+        authority: director 20260730 21:30 - second-half overlay grant against the sites E
+          named - PDR/GAP/OR/IB labels and info cells; canvas draw paths so not DOM producers,
+          granted for the overlay ticket cluster rather than the element hunt
+      - pattern: homepage/public/chart/modules/talaria-ratio-gap-indicator.js
+        provenance: ruling
+        reason: generated product mirror; E owns both sides or neither
+      - pattern: chart v 1.4/chart/modules/talaria-fvg-indicator.js
+        provenance: ruling
+        authority: director 20260730 21:30 - second-half overlay grant; FVG boxes and tags
+      - pattern: homepage/public/chart/modules/talaria-fvg-indicator.js
+        provenance: ruling
+        reason: generated product mirror; E owns both sides or neither
       - pattern: docs/plan3/journal/MANAGER-E.md
         provenance: ruling
         authority: A16.1 - each manager holds a positive grant to its own journal
