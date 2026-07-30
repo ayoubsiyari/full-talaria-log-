@@ -9,6 +9,10 @@
  * File size review cannot catch this class. Pixel dimensions can, so that is what this
  * gate checks, and it is the thing that has to survive the next design handover.
  *
+ * The converse class is real too, and this gate missed it until 2026-07-30: an image can be
+ * the exactly right shape and still be an absurd download. So encoded bytes are budgeted
+ * alongside decoded bytes, and neither check can shadow the other.
+ *
  * The budget is per image. `TARGETS` records the intended maximum edge for each brand
  * asset together with the displayed size that justifies it, so the next person to touch
  * these files can see the reasoning rather than guessing at a number.
@@ -16,6 +20,19 @@
 
 /** Hard ceiling for any single served image, in decoded bytes. */
 export const DECODED_BUDGET_BYTES = 4 * 1024 * 1024;
+
+/**
+ * Hard ceiling for any single served image, in encoded (transfer) bytes.
+ *
+ * The decoded budget above is blind to encoding, and that blind spot shipped: the OpenGraph
+ * card was 1200x631 — correct geometry, well inside every decoded check — and still 547 KB,
+ * because a smooth gradient stored as PNG barely compresses. Geometry review and this gate
+ * both passed it. Only bytes on the wire could see it.
+ *
+ * 160 KB: the largest legitimate served image today is a 118 KB design capture, so this
+ * leaves real headroom while catching anything of the half-megabyte class that caused it.
+ */
+export const ENCODED_BUDGET_BYTES = 160 * 1024;
 
 /** Trees whose images are served to browsers. */
 export const SERVED_IMAGE_ROOTS = Object.freeze([
@@ -92,10 +109,15 @@ export const TARGETS = Object.freeze([
         rationale: 'the design-bundle draw sizes are not pinned down, so this keeps 11x the known use.',
     },
     {
-        basename: 'talaria-log.logo.png',
+        basename: 'talaria-log.logo.jpg',
         maxEdge: 1200,
+        encodedMaxBytes: 64 * 1024,
         displayed: '1200x630 OpenGraph share card (crawler metadata; never rendered in the app)',
-        rationale: '1200x630 is the OpenGraph convention; it is a 1.1 MB download that no page needs at 1730px.',
+        rationale:
+            'geometry is fixed by the OpenGraph convention, so the only remaining lever is encoding. ' +
+            'It is JPEG rather than PNG because the card is a smooth gradient: PNG held it at 547 KB, ' +
+            'and pngquant got to 57 KB only by posterising the gradient visibly. JPEG q88 4:4:4 is ' +
+            '38 KB with the gradient and the mark edges intact. 64 KB leaves room for a re-cut, not for a re-PNG.',
     },
     {
         basename: 'talaria chart.png',
@@ -118,24 +140,51 @@ export function decodedBytes(width, height) {
     return width * height * 4;
 }
 
-/** @returns {{maxEdge:number}|null} the recorded target for a basename, if any. */
+/** @returns {{maxEdge:number,encodedMaxBytes?:number}|null} the recorded target for a basename, if any. */
 export function targetFor(basename) {
     return TARGETS.find((t) => t.basename.toLowerCase() === String(basename).toLowerCase()) ?? null;
 }
 
 /**
+ * The encoded ceiling that applies to one image: its own recorded one if it has a tighter
+ * target, otherwise the global budget.
+ */
+export function encodedCeilingFor(basename) {
+    const target = targetFor(basename);
+    return Math.min(target?.encodedMaxBytes ?? Infinity, ENCODED_BUDGET_BYTES);
+}
+
+/**
  * Audit a set of already-measured images.
  *
- * @param {Array<{path:string,basename:string,width:number|null,height:number|null}>} images
+ * @param {Array<{path:string,basename:string,width:number|null,height:number|null,diskBytes?:number}>} images
  */
 export function auditImages(images) {
     const overBudget = [];
     const unmeasurable = [];
     const overTarget = [];
+    const overEncoded = [];
     let totalDecoded = 0;
+    let totalEncoded = 0;
 
     for (const image of images) {
         if (!isBudgetedImage(image.path)) continue;
+
+        // Encoded weight is checked independently of dimensions: the OpenGraph card was
+        // correctly sized and still half a megabyte, so a geometry failure must not shadow it.
+        if (Number.isFinite(image.diskBytes)) {
+            totalEncoded += image.diskBytes;
+            const ceiling = encodedCeilingFor(image.basename);
+            if (image.diskBytes > ceiling) {
+                overEncoded.push({
+                    path: image.path,
+                    diskBytes: image.diskBytes,
+                    diskKB: Math.round(image.diskBytes / 1024),
+                    ceilingKB: Math.round(ceiling / 1024),
+                });
+            }
+        }
+
         if (!image.width || !image.height) {
             // Fail closed: an image this gate cannot measure is an image it cannot police.
             unmeasurable.push({ path: image.path });
@@ -165,11 +214,18 @@ export function auditImages(images) {
     return {
         gate: 'ASSET-DECODED-BUDGET-V1',
         budgetBytes: DECODED_BUDGET_BYTES,
+        encodedBudgetBytes: ENCODED_BUDGET_BYTES,
         checked: images.filter((i) => isBudgetedImage(i.path)).length,
         totalDecodedBytes: totalDecoded,
+        totalEncodedBytes: totalEncoded,
         overBudget,
         overTarget,
+        overEncoded,
         unmeasurable,
-        pass: overBudget.length === 0 && overTarget.length === 0 && unmeasurable.length === 0,
+        pass:
+            overBudget.length === 0 &&
+            overTarget.length === 0 &&
+            overEncoded.length === 0 &&
+            unmeasurable.length === 0,
     };
 }

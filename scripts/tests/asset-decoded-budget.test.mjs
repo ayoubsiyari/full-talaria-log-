@@ -17,11 +17,13 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
     DECODED_BUDGET_BYTES,
+    ENCODED_BUDGET_BYTES,
     SERVED_IMAGE_ROOTS,
     TARGETS,
     auditImages,
     isBudgetedImage,
     decodedBytes,
+    encodedCeilingFor,
     targetFor,
 } from '../lib/asset-decoded-budget.mjs';
 
@@ -158,6 +160,24 @@ test('CELL 4 — every image in scope could actually be measured', () => {
         'either add a parser or put it out of scope with a stated reason');
 });
 
+test('CELL 4b — no served image exceeds the encoded (transfer) budget', () => {
+    const result = auditImages(survey);
+    const report = result.overEncoded
+        .map((o) => `  ${o.path} is ${o.diskKB} KB, ceiling ${o.ceilingKB} KB`)
+        .join('\n');
+    assert.deepEqual(result.overEncoded, [],
+        `these images are heavier on the wire than anything justifies:\n${report}\n` +
+        'Re-encode rather than resize; correct dimensions do not make a download small.');
+});
+
+test('CELL 4c — the survey measured encoded bytes for every in-scope image', () => {
+    // Fail closed. The encoded check skips rows without diskBytes so that synthetic
+    // fixtures stay simple, which means the real survey must never produce such a row.
+    const missing = survey.filter((i) => !Number.isFinite(i.diskBytes)).map((i) => i.path);
+    assert.deepEqual(missing, [],
+        'an image whose bytes were not measured is an image the encoded budget cannot police');
+});
+
 test('CELL 5 — every target names the displayed size that justifies it', () => {
     for (const target of TARGETS) {
         assert.match(target.displayed, /\d|no load path/,
@@ -203,6 +223,32 @@ test('CELL 8 — MUTANT: a known asset re-exported oversized is caught by its ta
     assert.equal(result.overTarget[0].maxEdge, targetFor('logo-08.png').maxEdge);
 });
 
+test('CELL 8b — MUTANT: the 547 KB OpenGraph PNG is caught, and only by encoded bytes', () => {
+    // The actual defect, restored: right geometry, wrong encoding. Every dimension-based
+    // check passed it for as long as it shipped, so this asserts the encoded check is the
+    // one carrying it — if that ever stops being true the gate has lost its teeth.
+    const defect = {
+        path: 'homepage/public/talaria-log.logo.png',
+        basename: 'talaria-log.logo.jpg',
+        width: 1200,
+        height: 631,
+        diskBytes: 559679,
+    };
+    const result = auditImages([defect]);
+    assert.equal(result.overBudget.length, 0, 'premise: well inside the decoded budget');
+    assert.equal(result.overTarget.length, 0, 'premise: 1200px is exactly its recorded target');
+    assert.equal(result.overEncoded.length, 1, 'only the encoded budget can see this');
+    assert.equal(result.overEncoded[0].diskKB, 547);
+    assert.equal(result.pass, false);
+});
+
+test('CELL 8c — a per-asset encoded ceiling overrides the global one when tighter', () => {
+    assert.equal(encodedCeilingFor('talaria-log.logo.jpg'), 64 * 1024,
+        'the share card carries its own tighter ceiling');
+    assert.equal(encodedCeilingFor('no-such-asset.png'), ENCODED_BUDGET_BYTES,
+        'everything else falls back to the global budget');
+});
+
 test('CELL 9 — out-of-scope paths are excluded only where a reason is recorded', () => {
     assert.equal(isBudgetedImage('chart v 1.4/chart/multichart-prod/harness/docs/x/evidence/a.png'), false,
         'harness evidence is out of scope');
@@ -218,11 +264,18 @@ test('CELL 10 — report the current total for the record', () => {
         .filter((i) => i.width && i.height)
         .sort((a, b) => decodedBytes(b.width, b.height) - decodedBytes(a.width, a.height))
         .slice(0, 5);
+    const heaviest = [...survey]
+        .filter((i) => Number.isFinite(i.diskBytes))
+        .sort((a, b) => b.diskBytes - a.diskBytes)
+        .slice(0, 5);
     console.log(
         `\n  served images checked: ${result.checked}\n` +
         `  total decoded: ${(result.totalDecodedBytes / 1048576).toFixed(2)} MB\n` +
         `  budget per image: ${(DECODED_BUDGET_BYTES / 1048576).toFixed(0)} MB\n  largest:\n` +
-        worst.map((w) => `    ${(decodedBytes(w.width, w.height) / 1048576).toFixed(2)} MB  ${w.width}x${w.height}  ${w.path}`).join('\n')
+        worst.map((w) => `    ${(decodedBytes(w.width, w.height) / 1048576).toFixed(2)} MB  ${w.width}x${w.height}  ${w.path}`).join('\n') +
+        `\n  total encoded: ${(result.totalEncodedBytes / 1048576).toFixed(2)} MB\n` +
+        `  encoded budget per image: ${(ENCODED_BUDGET_BYTES / 1024).toFixed(0)} KB\n  heaviest:\n` +
+        heaviest.map((w) => `    ${(w.diskBytes / 1024).toFixed(0).padStart(4)} KB  ${w.path}`).join('\n')
     );
     assert.ok(result.totalDecodedBytes > 0);
 });

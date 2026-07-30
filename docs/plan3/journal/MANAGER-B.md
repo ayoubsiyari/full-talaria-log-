@@ -5354,3 +5354,123 @@ green marker over a live defect the Director just caught me on.
 Wire for D and E is now `20260730b115` — re-run TEST-02 / money probes / INDICATOR-EVICT against
 that stamp. C: the claim no longer stalls a worker, so a second CONF-01 session and the
 attribution instrument can coexist.
+
+## B-0215 — Served hygiene: five dead indicator copies out, the share card off PNG, and the freeze given an exit code
+
+Director's overnight item four. Items one to three were already closed at b115 (route named and
+used to ship, train cut, P0 reproduced and fixed); this is the remainder.
+
+### B-0204 stands on the current tree
+
+Re-ran the CONF-01 boot / play-in / play-cross probe on the post-b115 tree, after the deletions
+below. Boot 8 / 8 / 8 / 8 across top-page, CDP (4 distinct frames), per-realm fetch wrap and
+harness log; play-in and play-cross all zero on every instrument. **B-0204 play-zero stands.**
+The different-symbol cost remains boot latency, unchanged by the P0 work.
+
+That run doubles as the behavioural check on the deletions: all four panels booted with
+`getActiveChart` present. Deleting the copies did not cost a panel.
+
+### Five dead indicator copies removed
+
+| File | Bytes |
+|---|---|
+| `chart-indicators-with-hma.js` | 7,403 |
+| `chart-indicators-readable.js` | 5,737 |
+| `chart-indicators-working-backup-final.js` | 5,413 |
+| `chart-indicators.js` | 5,413 |
+| `indicator formuls.text` | 10,392 |
+
+Removed from both served source trees, so 68,716 bytes total. `chart-indicators.js` and
+`chart-indicators-working-backup-final.js` are byte-identical (`02c9f082338f`), which is what
+"backup-final" means in practice.
+
+**Four independent methods, each with a working control, because refs=0 is exactly the kind of
+number that is wrong when the tool is broken:**
+
+1. Full-text grep of the served tree → 0 referencing files. Control: `chart-indicators-full.js` = 13.
+2. nginx access log on the live canary → 0 requests. Control: `full.js` = 10, `indicator-ui.js` = 6.
+3. `served-module-reachability.mjs` BFS → all four **ORPHAN**, none NAMED-ONLY. Control: `full.js` = REACHED.
+4. CONF-01 harness boot after deletion → 4/4 panels live.
+
+Method 3 carries the most weight: `NAMED-ONLY` exists precisely to catch a computed loader like
+`modules/${name}.js`, and none of these landed in it.
+
+**A first pass said refs=0 for every indicator file including `chart-indicators-full.js`, which
+I know is loaded.** BusyBox `grep` has no `--include`, so the filter matched nothing and the
+tool reported a confident zero for the whole set. Had I acted on it I would have deleted the
+live implementation. MEAS-02: a zero from an instrument with no positive control is not a
+result. Every count above is quoted with the control that proves the instrument was live.
+
+`indicator-replay-ui-sync.mjs` looked dead by the same served-tree scan and was **kept** — it is
+the target of `indicator-replay-ui-sync.test.mjs` in the repo, which the served tree cannot see.
+
+### `served-module-reachability` had already found this and nothing failed
+
+It printed the four ORPHANs under a heading called "INDICATOR IMPLEMENTATIONS, classified". It
+is a report with no exit code, so the answer was on screen and shipped anyway. Added
+`deploy/dead-indicator-copies.test.mjs` (DEAD-INDICATOR-COPIES-V1): the live implementation must
+be present, the five must not return, and **exactly one** `chart-indicators*` implementation may
+exist per tree — the next backup will not be called `working-backup-final`. Negative control run:
+restoring one copy fails two cells; removing it passes five.
+
+55 orphans / 1.3 MB remain in the served tree. Most are harness and `.red.mjs`/`.mutants.mjs`
+files that `strip-nonserved-chart-assets.sh` already removes at build. Not swept tonight; noted.
+
+### The oversized logo is not oversized, it is mis-encoded
+
+`talaria-log.logo.png` is 559,679 bytes — and 1200x631, which is the correct OpenGraph size. It
+is referenced from 100 pages and **never rendered in the app**: every reference is `og:image` /
+`twitter:image`. Resizing it would have broken every share card while saving nothing a user
+waits on. The defect is bytes, not geometry.
+
+Palette reduction is the usual PNG lever and it is wrong here: `pngquant` reached 57 KB but
+posterised the dark-blue gradient into visible bands. Lossless `oxipng -o max` only reached
+468 KB. The card is a smooth gradient behind a hard-edged mark, which is a JPEG problem:
+**q88 at 4:4:4 chroma is 38,046 bytes, 93% off, gradient and edges intact.** Checked by eye
+against the original, not by ratio.
+
+Shipped as `talaria-log.logo.jpg` with `OG_IMAGE_PATH` repointed — one constant in
+`homepage/src/app/layout.tsx`, since every page reads it from there.
+
+### The asset gate was green over all of it
+
+`ASSET-DECODED-BUDGET-V1` budgets `width x height x 4`, which is right for the 4720px wordmark
+that started it, and blind to encoding. The share card was inside every decoded check and inside
+its own recorded `maxEdge`, at half a megabyte. Same shape as the window-claim P0: the gate was
+green and the defect was real.
+
+Added an encoded-bytes budget alongside the decoded one, 160 KB per served image (largest
+legitimate asset today is a 118 KB design capture), with a tighter per-asset 64 KB on the share
+card. The mutant asserts the 547 KB PNG fails **only** on encoded bytes — if a dimension check
+ever starts catching it, the mutant has stopped testing what it claims to.
+
+Total served images now 1.37 MB encoded across 65 files.
+
+### Deploy freeze: an exit code, not an agreement
+
+I cannot agree a window alone — I do not know when the PO tests, and no doc records it. So I
+built the half that does not need D and handed D the half that does.
+
+`deploy/deploy-freeze-guard.sh` (DEPLOY-FREEZE-V1): a lock on the canary host, `check` exits 1
+while it is open, and the ship path asks it. "We agreed not to deploy" survives until the next
+person with host access is mid-task at 03:00 and does not know the window exists — and that is
+me, since I hold the only working route.
+
+Three deliberate choices: **no expiry** (a window that auto-expires expires mid-test, leaving the
+PO on one build in a tab and another on the wire); **override exists and is loud** (a freeze that
+cannot be broken gets bypassed by not calling the guard — `TALARIA_FREEZE_OVERRIDE` prints and
+appends to the audit log); **presence of the lock is the signal**, so a truncated lock still blocks.
+
+9 cells, all green, including the empty-lock mutant. The test drives real `bash`; on this box
+that is WSL, which cannot read `C:\...` and does not forward environment variables without
+`WSLENV` — the first version silently ran against the real `/opt/talaria` lock instead of a temp
+one. Paths are translated and the env is set inside the bash command line, and CELL 0 asserts
+the exit code is not 127, so "script not found" can never be read as "frozen".
+
+Handoff: `docs/plan3/HANDOFF-B-TO-D-DEPLOY-FREEZE-20260731.md`. **D sets the clock and holds the
+lift.** Armed now, so the default is frozen; if D wants it open, D lifts.
+
+### Wire
+
+Shipped as `20260730b116` = b115 + this hygiene. Freeze armed immediately after, so b116 is the
+build the PO tests unless D lifts.
