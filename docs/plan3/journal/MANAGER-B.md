@@ -5054,3 +5054,35 @@ and `homepage/nginx.local.conf`.
 **Not done:** the trading-chart image (`Dockerfile.local`) serves the same paths as an nginx
 fallback and is unstripped. Harmless — a fallback request for a stripped path still resolves — but
 it is the same ~18 MB in a second image. Left for the next pass rather than changed unverified.
+
+---
+
+## B-0207 — Stamped four of D's five PO packs at b113; held Rank 4 and all of Part B
+
+Five-minute interrupt from the Director: stamp the five CONF-01 PO packs in
+`PO-SCRIPTS-NEXT-BUILD-20260730.md`. D's stamp rule makes this mine — every pack reads
+`AWAITING STAMP` until B confirms the served stamp.
+
+**Stamp: `20260730b113`,** verified over HTTP the way a browser sees it, served commit
+`be7bc73a6` from `org.opencontainers.image.revision` on both running images.
+
+**Four packs stamped, one held, Part B held.** Ranks 1, 2, 3 and 5 are stamped and runnable now —
+**23 of the 26 `po-eyes` rows, about 34 PO-minutes that do not need to wait for Saturday.** Rank 4
+and all five Part B money scripts are held: `manager-d/trade-correctness` is not in the served
+build, 16 commits ahead, and the protection-clear marker is absent from the served tree. Every
+Part B row is a re-run against a fix that is not there, and the three Rank 4 rows are the `po-eyes`
+inside those same scripts. Running them on b113 would record ~26 rows as still-broken against
+fixes that are real but unshipped — false negatives manufactured on the money path, the one lane
+where schedule pressure explicitly does not override the verdict.
+
+**A git ancestry check nearly made me stamp this wrong.** Testing whether A's four routed cuts were
+in b113 by `git merge-base --is-ancestor` said **none** of them were — and matching by commit
+subject also found nothing. Both are the wrong instrument: those commits were cherry-picked into
+the train, so the served tip does not descend from the original SHAs. Grepping the deployed tree
+for kill-switch tokens gives the real answer: **all twelve present**, including the clone cut,
+reseed cut, LabelTool wipe and countdown guard. Had I trusted git topology I would have told the
+Director that four fixes he routed at 13:10 never shipped, and held packs that are fine to run.
+Recording the method, because the next person to ask "is it in the build" will reach for `git log`
+first: on this train, only the served bytes answer that question.
+
+Back to the window-claim P0.

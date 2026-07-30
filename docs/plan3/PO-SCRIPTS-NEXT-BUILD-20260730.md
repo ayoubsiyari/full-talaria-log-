@@ -8,6 +8,65 @@ MEAS-01 still required when B green-lights a stamp (build stamp, account, surfac
 
 ---
 
+## STAMP — B, 2026-07-30 16:35Z
+
+**The stamp the PO must read on screen, before touching any pack:**
+
+```
+__TALARIA_CHART_BUILD_ID = '20260730b113'
+```
+
+Read it at `http://31.97.192.82:3000/chart/dist-v9/index.html` (view-source, or `__TALARIA_CHART_BUILD_ID`
+in the console). If it says anything other than `20260730b113`, stop — the pack results will not
+attribute. Verified over HTTP the way a browser sees it, not from a build log.
+
+Served commit `be7bc73a6be16e143adddc8efa0bba40d7c14e64`, on `org.opencontainers.image.revision`
+of **both** running images.
+
+**Four of the five packs are stamped and runnable now. Rank 4 is not, and neither is Part B.**
+
+| Pack | Rows | Status against `20260730b113` |
+| --- | ---: | --- |
+| Rank 1 — viewport / scale / toolbar | 11 | **STAMPED — run** |
+| Rank 2 — session / TF / history data | 7 | **STAMPED — run** |
+| Rank 3 — order-line leftovers | 3 | **STAMPED — run** |
+| Rank 4 — money-path residuals | 3 | `AWAITING STAMP` — see below |
+| Rank 5 — multichart / crosshair | 2 | **STAMPED — run** |
+| Part B — all five named money scripts | ~23 | `AWAITING STAMP` — see below |
+
+**23 of the 26 `po-eyes` rows are runnable now.** That is roughly 34 PO-minutes available before
+the freeze build exists, and it does not need to wait for Saturday.
+
+### Why Rank 4 and Part B are held
+
+`manager-d/trade-correctness` is **not in the served build** — 16 commits ahead of the served tip,
+and the protection-clear marker is absent from the served tree (0 files). Every Part B row is a
+*re-run against fix*, and the three Rank 4 rows are the `po-eyes` that sit inside those same named
+money scripts. Running them on `b113` would show the PO the pre-fix behaviour, and 26 rows would be
+recorded as still-broken against fixes that are real but unshipped. That is worse than not running
+them: it manufactures false negatives on the money path, which is the one lane where schedule
+pressure is explicitly not allowed to override the verdict.
+
+These clear the moment a build containing D's branch is served, and I will re-stamp this section
+with that build id. Nothing about the packs themselves changes.
+
+### What IS in the served build, checked in the served bytes
+
+Not inferred from git — the queued fixes were cherry-picked, so their original SHAs are not
+ancestors of the served tip and an ancestry check reports them missing when they are present. I
+grepped the deployed tree for each kill-switch token instead. All twelve present:
+
+`MC_STASHED_PANEL_HANDLE` · `MC_XFRAME_REF_RELEASE` · `COMPLETED_BAR_CLOSE_GUARD` (M17-DI2) ·
+`MC_INCREMENTAL_RAWDATA_COPY` (clone cut) · `REPLAY_RESEED_INCREMENTAL` (reseed cut) ·
+`LABEL_HANDLE_WIPE` · `COUNTDOWN_NULL_GUARD` · `WINDOW_CONTROL_FETCH_TIMEOUT` ·
+`RAF_PAINT_COALESCE` · `IND_LEGEND_CSS_IDEMPOTENT` · `PREFS_CLOUD_FAILURE_CAP` ·
+`SERVER_WRITE_FAILURE_LEDGER`
+
+So A's four routed cuts and the memory, image-cache and CPU work are all on the wire and in scope
+for the four stamped packs.
+
+---
+
 ## Part A — Five packs covering all 26 `po-eyes`
 
 Ordered by **rows-closed per PO-minute** (dense packs first).  
