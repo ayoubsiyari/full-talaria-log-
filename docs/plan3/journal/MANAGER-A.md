@@ -630,3 +630,86 @@ now dies. Same disposition as B7 on the clone cut: pin it, do not file it.
 ROW (cosmetic, for B): the new test file exists only at the canonical path. That matches existing practice
 (leak-d and mc-incremental are canonical-only too) and both mirror gates are green, so it is not a blocker.
 
+
+---
+
+## 2026-07-30 12:45Z - RESEED-CUT ACCEPTED 8587c9821 (allocation site #2 of the playback profile)
+
+`manager-a/reseed-cut-20260730` @ `8587c9821`, one commit on `8b6c90554`. Tree clean, packet is exactly
+3 paths (both chart.js mirrors + one new test file), zero off-set paths, mirrors identical
+`951888C3CCA084D3`, flag `__TALARIA_DISABLE_REPLAY_RESEED_INCREMENTAL_V1` 2/2 in both copies, bogus-flag
+control 0/0. Suite 16/16. Author ran 20 mutants on disk in both mirrors; negative control loud.
+
+**THE NUMBER, and it is measured not modelled:** 30 reseeds against the 70,989-bar master with a new bar
+before EVERY call (worst case, no free no-change calls). Legacy 2,129,235 element copies; incremental
+71,048. 30.0x fewer, 96.7% of copies removed. Counted by handing the method a Proxy over the seed array
+and counting numeric-index reads, so "appends only the tail" is OBSERVED, not asserted about source text.
+
+**SEVEN OF MY OWN MUTANTS, independent of the author's 20**, on disk in both mirrors, needle==1 enforced,
+negative control NOT_APPLIED, both files restored to `951888C3CCA084D3` after every one. ALL KILLED, every
+one by a NAMED BEHAVIOURAL cell: R1 drop-destination-identity (the hazard I made mandatory) -> "destination
+replaced externally forces a full copy"; R2 drop-seed-source-identity; R3 drop-shrink-check; R4
+drop-boundary-timestamp (6 cells); R5 `=== true` polarity (6 cells); R7 do-not-advance-cached-length.
+
+R6 alias-instead-of-copy is a kill of a different KIND and worth recording: it does not fail an assertion,
+it HANGS the suite. Aliasing makes `out === seedSource`, so `out.push(seedSource[i])` pushes onto the array
+it is iterating and the loop never terminates. I killed the run and restored by hand. Useful property, not
+a gap: the aliasing hazard CANNOT ship silently - it would wedge the tab, not corrupt data quietly.
+
+**MY BRIEF WAS WRONG AND THE AUTHOR WAS RIGHT: TEN call sites, not nine.** Counted dot-prefixed
+invocations excluding the definition: chart.js 6328/6941/7608/7896/8056/11183/11227/11534 = eight, plus
+`panel-cmd-bridge.js:630` and `embed-bridge.js:1106`. The two I missed are the BRIDGE entry points, i.e.
+the cross-realm ones, which is the worst pair to undercount on a packet about per-realm copying.
+
+**WHY THIS PAYS IS NOT WHAT I WROTE IN THE BRIEF, and the correction matters for routing.** I framed
+tail-append as the primary win. In fact both seed sources are always REPLACED on growth, so tail-append
+would be unreachable - except the sibling clone cut made it reachable: chart.js:4584/5523/7496 now assign
+`_panelFullRawData = this._mcCopySamePairFullRawData(...)`, and that helper returns its own retained array
+mutated in place. **This fix pays BECAUSE the clone cut shipped first.** On paths where the source is
+genuinely replaced it costs legacy plus one extra index read.
+
+ROUTING CONSEQUENCE, and it is a trap: `mc-clone-cut` IS an ancestor of `reseed-cut` (merge-base
+`8b6c90554`), so the dependency is structural on the MERGE path. It is NOT protected on the CHERRY-PICK
+path. If reseed is cherry-picked alone onto a ship head that lacks the clone cut, it is inert - green
+suite, zero win, and nothing would say so. Clone cut travels first or they travel together.
+
+**SIZING - the author refused to put one number on it and was right to.** It removes ~97% of the
+`fullRawData` line. The site is 995 MB with cloning off; `seedSource` is the full ~71k 1m master while
+`this.data` is sliced to the playhead and resampled (5-15x fewer bars above 1m), so the fullRawData line
+should dominate at plausibly 50-90%. Exact needs a PER-LINE allocation split. I hold the profile, so that
+ask is mine, not an open request to nobody.
+
+RESIDUAL, measured and disclosed rather than papered over: `replay.fullData` stays legacy. `this.data` is
+reassigned from `resampleData(...)` on essentially every tick (nine assignment sites in replay-system.js),
+so identity churns - the `display-series-cannot-pay` cell measures **0/60 retained against the master's
+59/60**. Two mutants pin that it still copies and still copies DEFENSIVELY. The honest fix there is to stop
+copying a freshly-allocated array at all, which is a semantic change to who owns `this.data`: separate packet.
+
+**SEVENTH SIGHTING of the anchor/teeth family, and I am correcting the author's severity DOWNWARD.** The
+author reports it dodged a landmine: `mc-incremental-rawdata-copy.test.mjs` anchors four mutants on
+single-line needles any faithful parallel implementation would reproduce verbatim
+(`&& cache.source === source`, `cache.sourceLength = source.length;`,
+`for (let i = prevLen; i < source.length; i += 1) {`, `return slotKey == null ? null : String(slotKey);`).
+It avoided the collision by naming its parameter `seedSource` and fields `seedLength`/`copy`. I verified
+the near-miss is real: all four are count=1 today, and the reseed impl's parallel lines are each count=1
+alongside them - had it used the obvious names, all four go to 2.
+
+But the author implied those rows would be silently skipped. **They would not - it FAILS LOUD.** The runner
+does `assert.deepEqual(notApplied, [], 'all mutants must apply to both mirrors exactly once')`, so a
+collision turns the suite RED. That is the NOT_APPLIED guard I added after the fabricated M3 escape, working
+exactly as designed. So this is fail-safe BRITTLENESS, not a teeth gap. The real risk is second-order and
+human: whoever hits that red is being told "your naming collided", and the tempting fix is to delete or
+loosen the mutant rather than re-anchor it. That is how teeth actually get pulled.
+
+Deliberately NOT fixing it tonight. The collision is not live (all four count=1), the failure mode is loud,
+and the file sits on a branch queued for ship - I am not editing a ship-queued suite mid-flight to pre-empt
+a hypothetical third implementation. Carried as a ROW for a test-only packet: re-anchor those four on
+unique multi-line context.
+
+Regression duty (author, and it is the good kind): 20 red cells across 37 module suites + 8 repo gates, ALL
+pre-existing - proved by backing the three files out, restoring a pristine `8b6c90554`, and re-running to an
+identical failure set cell for cell. Includes `p3-bar-store-realm` and `m21-b-tal01918-red`, both already
+carried as unowned rows. `MODULE-CONTENT-STAMP-BASELINE` drift identical with and without the change. The
+two suites the sibling cut touched are fully green: `leak-d-rawdata-copy` 8/8, `mc-incremental-rawdata-copy`
+11/11.
+
