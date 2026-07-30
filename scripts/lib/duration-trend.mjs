@@ -105,33 +105,60 @@ export function fitTrend(points, { label = '', flatBandPerHour = 0, minSpanHours
 }
 
 /**
- * Grade a set of fitted trends. Any CLIMBS is RED; anything not resolved to
- * BOUNDED/FALLS with sufficient duration cannot be GREEN.
+ * Grade a set of fitted trends.
+ *
+ * Two rules exist because the first version of this function broke DUR-01 while
+ * implementing it: it called RED on a 25-minute span, and it called a leak on a
+ * workload whose own definition is accumulation.
+ *
+ * 1. DURATION FIRST. A climb measured over less than minSpanHours is PROVISIONAL,
+ *    never a verdict. DUR-01 says an acceptance is a slope over at least two
+ *    hours; a short run cannot conclude in either direction, and an early RED
+ *    would be no more honest than an early GREEN.
+ * 2. ADVISORY SERIES ARE REPORTED, NEVER THE REASON. Under CONF-02 the harness
+ *    opens and closes trades continuously, so excursion samples and trade-marker
+ *    elements MUST climb; that is the design cost the ruling asked us to expose.
+ *    What decides RED is the same quantity per closed trade — cost that grows
+ *    faster than the book does.
  */
 export function gradeDurationSeries(trends, { minSpanHours = 2 } = {}) {
   const rows = Object.entries(trends || {}).map(([key, t]) => ({ key, ...t }));
-  const climbing = rows.filter((r) => r.verdict === 'CLIMBS');
-  const unresolved = rows.filter((r) => r.verdict === 'INDETERMINATE' || r.verdict === 'INSUFFICIENT');
-  const shortRuns = rows.filter((r) => r.durationOk === false);
+  const decisive = rows.filter((r) => !r.advisory);
+  const longEnough = (r) => r.durationOk !== false;
+  const climbing = decisive.filter((r) => r.verdict === 'CLIMBS' && longEnough(r));
+  const provisionalClimbing = rows.filter((r) => r.verdict === 'CLIMBS' && !longEnough(r));
+  const advisoryClimbing = rows.filter((r) => r.advisory && r.verdict === 'CLIMBS');
+  const unresolved = decisive.filter((r) => r.verdict === 'INDETERMINATE' || r.verdict === 'INSUFFICIENT');
+  const shortRuns = decisive.filter((r) => r.durationOk === false);
+  // A slope fitted against trade count is not a per-hour figure, and printing it as
+  // one would put the wrong unit in front of the Director.
+  const unit = (r) => (r.xUnit && r.xUnit !== 'hour' ? ` per ${r.xUnit}` : '/h');
+  const fmt = (r) => `${r.key} +${r.perHour}${unit(r)} CI[${r.slopeCi95?.join(',')}]`;
   let status;
   let reason;
   if (climbing.length) {
     status = 'RED';
-    reason = `climbing: ${climbing.map((r) => `${r.key} +${r.perHour}/h CI[${r.slopeCi95?.join(',')}]`).join('; ')}`;
-  } else if (unresolved.length || shortRuns.length) {
+    reason = `climbing beyond the flat band: ${climbing.map(fmt).join('; ')}`;
+  } else if (unresolved.length || shortRuns.length || provisionalClimbing.length) {
     status = 'UNRESOLVED';
+    const provisional = provisionalClimbing.length
+      ? ` PROVISIONAL climb, span too short to rule: ${provisionalClimbing.map(fmt).join('; ')}.`
+      : '';
     reason = `not enough duration or precision to call flat: ${[...new Set([
       ...unresolved.map((r) => r.key), ...shortRuns.map((r) => r.key),
-    ])].join(', ')} (DUR-01 needs >= ${minSpanHours}h and a CI inside the flat band)`;
+    ])].join(', ')} (DUR-01 needs >= ${minSpanHours}h and a CI inside the flat band).${provisional}`;
   } else {
     status = 'GREEN';
-    reason = `all series bounded within their flat bands over >= ${minSpanHours}h`;
+    reason = `all decisive series bounded within their flat bands over >= ${minSpanHours}h`;
   }
   return {
     signature: DURATION_TREND_SIGNATURE,
     status,
     reason,
     climbing: climbing.map((r) => r.key),
+    provisionalClimbing: provisionalClimbing.map((r) => r.key),
+    // Expected to climb under CONF-02; carried so the design cost is visible.
+    advisoryClimbing: advisoryClimbing.map((r) => r.key),
     unresolved: unresolved.map((r) => r.key),
   };
 }

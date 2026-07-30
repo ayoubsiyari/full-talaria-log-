@@ -564,6 +564,12 @@ export async function measureHeavyFieldBytes(page) {
       return 0;
     };
     const out = { perList: {}, totalChars: 0, rows: 0, rowsWithHeavy: 0, excursionSamples: 0 };
+    // The five lists overlap: closedPositions, tradeJournal and the service mirror
+    // are the SAME objects, so summing across lists counts one position's arrays
+    // three times. Retained bytes are a property of the object, not of how many
+    // lists point at it, so the deduped figures are the ones to quote.
+    const seen = new Set();
+    const dedup = { rows: 0, chars: 0, rowsWithHeavy: 0, excursionSamples: 0 };
     for (const [name, list] of lists) {
       if (!Array.isArray(list)) continue;
       let chars = 0;
@@ -575,10 +581,19 @@ export async function measureHeavyFieldBytes(page) {
         for (const key of HEAVY) {
           if (row[key] != null) rowChars += measure(row[key], 1);
         }
+        let rowSamples = 0;
+        for (const k of ['bar_close_r', 'bar_high_r', 'bar_low_r', 'post_exit_bar_close_r']) {
+          if (Array.isArray(row[k])) rowSamples += row[k].length;
+        }
         if (rowChars > 0) withHeavy += 1;
         chars += rowChars;
-        for (const k of ['bar_close_r', 'bar_high_r', 'bar_low_r', 'post_exit_bar_close_r']) {
-          if (Array.isArray(row[k])) samples += row[k].length;
+        samples += rowSamples;
+        if (!seen.has(row)) {
+          seen.add(row);
+          dedup.rows += 1;
+          dedup.chars += rowChars;
+          dedup.excursionSamples += rowSamples;
+          if (rowChars > 0) dedup.rowsWithHeavy += 1;
         }
       }
       out.perList[name] = { rows: list.length, heavyChars: chars, rowsWithHeavy: withHeavy, excursionSamples: samples };
@@ -589,6 +604,14 @@ export async function measureHeavyFieldBytes(page) {
     }
     out.heavyMB = +(out.totalChars / 1048576).toFixed(3);
     out.heavyCharsPerRow = out.rows ? Math.round(out.totalChars / out.rows) : 0;
+    out.deduped = {
+      rows: dedup.rows,
+      rowsWithHeavy: dedup.rowsWithHeavy,
+      totalChars: dedup.chars,
+      heavyMB: +(dedup.chars / 1048576).toFixed(3),
+      excursionSamples: dedup.excursionSamples,
+      listAliasFactor: dedup.excursionSamples ? +(out.excursionSamples / dedup.excursionSamples).toFixed(2) : null,
+    };
     return out;
   }).catch(() => null);
 }

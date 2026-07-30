@@ -37,6 +37,10 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 //   sampling noise dominates, so 5 MB/h is ~7x the single-read spread.
 //   footprint — W90 process census varied by ~10 MB between identical reads.
 //   elements/nodes — W91b showed post-GC node counts stable to 1.3%.
+// DUR-01: "no fewer than two hours". A shorter run is a smoke test that reports
+// its series and withholds a verdict, not a fast acceptance.
+export const DUR01_MIN_SPAN_HOURS = 2;
+
 export const CONF01_FLAT_BANDS = Object.freeze({
   heapAfterGcMB: 5,
   liveHeapMB: 15,
@@ -168,26 +172,88 @@ async function sampleOnce(page, cdp, browserCdp, { cpuWindowMs = 8_000 } = {}) {
   };
 }
 
-function buildTrends(samples) {
+export function buildTrends(samples, { minSpanHours = 2 } = {}) {
   const series = (pick) => samples.map((s) => ({ hours: s.hours, value: pick(s) }))
     .filter((p) => Number.isFinite(p.value));
-  const mk = (label, pick, band) => fitTrend(series(pick), { label, flatBandPerHour: band });
+  const mk = (label, pick, band, opts = {}) => ({
+    ...fitTrend(series(pick), { label, flatBandPerHour: band, minSpanHours }),
+    ...opts,
+  });
+  const closedOf = (s) => s.trades?.managerClosed ?? s.trades?.serviceClosed ?? null;
+  // Cost against TRADE COUNT, not against time. A ratio like elements/closed falls
+  // by construction as the denominator grows (fixed overhead divided by a rising
+  // count), which reads as an improvement and is not one. The slope of cost
+  // against closed trades is the marginal cost of carrying one more trade, which
+  // is the quantity A needs and the one CONF-02 was written to expose.
+  const vsClosed = (label, pick, band, minTrades = 10) => fitTrend(
+    samples
+      .map((s) => ({ hours: closedOf(s), value: pick(s) }))
+      .filter((p) => Number.isFinite(p.hours) && Number.isFinite(p.value)),
+    { label, flatBandPerHour: band, minSpanHours: minTrades },
+  );
+  // The order loop is only meaningful from the frame that carries the book.
+  // Runs recorded before W93b have no `measured` field; for those, the host frame
+  // is the book holder on this surface and a zero-call sample is not a cheap tick,
+  // it is a frame that was not ticking at all.
+  // Deduped when the sample has it; otherwise the manager's own two lists, which
+  // are disjoint. Never the cross-list total: closedPositions, tradeJournal and the
+  // service mirror are the same objects and summing them inflates by ~3x.
+  const excursionSamplesOf = (s) => {
+    const h = s.heavyFields;
+    if (!h) return null;
+    if (Number.isFinite(h.deduped?.excursionSamples)) return h.deduped.excursionSamples;
+    const open = h.perList?.managerOpen?.excursionSamples;
+    const closed = h.perList?.managerClosed?.excursionSamples;
+    return Number.isFinite(open) && Number.isFinite(closed) ? open + closed : null;
+  };
+  const loopMsPerTick = (s) => {
+    const m = s.orderLoop?.measured;
+    if (m) return m.calls > 0 ? m.msPerCall : null;
+    const legacyHost = s.orderLoop?.perFrame?.[0];
+    return legacyHost && legacyHost.calls > 0 ? legacyHost.msPerCall : null;
+  };
   return {
     heapAfterGcMB: mk('JS heap after forced collection (MB)', (s) => s.collected?.heapMB, CONF01_FLAT_BANDS.heapAfterGcMB),
     liveHeapMB: mk('JS heap live, pre-collection (MB)', (s) => s.live?.heapMB, CONF01_FLAT_BANDS.liveHeapMB),
     footprintTotalMB: mk('all-Chrome OS footprint (MB)', (s) => s.footprint?.totalPrivateMB, CONF01_FLAT_BANDS.footprintTotalMB),
     pageRendererFootprintMB: mk('page renderer OS footprint (MB)', (s) => s.footprint?.pageRendererPrivateMB, CONF01_FLAT_BANDS.pageRendererFootprintMB),
-    elements: mk('attached elements, all frames', (s) => s.elements, CONF01_FLAT_BANDS.elements),
+    // Advisory: CONF-02 accumulates trades, and trade markers are elements, so an
+    // absolute climb here is the design cost the ruling asked us to expose rather
+    // than evidence of a leak. The per-trade series below is what decides.
+    elements: mk('attached elements, all frames', (s) => s.elements, CONF01_FLAT_BANDS.elements, { advisory: true }),
+    elementsPerClosedTrade: {
+      ...vsClosed('attached elements per additional closed trade', (s) => s.elements, 5),
+      xUnit: 'closedTrade',
+      // W89 measured the element count invariant across 165->1,888 visible bars and
+      // across 60s of idle replay (spread 0), so on a fixed configuration this
+      // counter is close to noiseless and a 5-element band is conservative rather
+      // than a taste threshold. Stated because I demoted my own DOM counter cell in
+      // W87 for carrying an uncalibrated constant.
+      bandBasis: 'W89 DOM-NODE-CENSUS-V1: elements invariant (spread 0) on a fixed configuration',
+    },
     nodesAfterGc: mk('nodes after forced collection', (s) => s.collected?.nodes, CONF01_FLAT_BANDS.nodesAfterGc),
     listeners: mk('JS event listeners', (s) => s.collected?.listeners, CONF01_FLAT_BANDS.listeners),
     rendererCpuPercent: mk('renderer CPU (% of one core)', (s) => s.cpu?.rendererPercent, 3),
     gpuCpuPercent: mk('GPU process CPU (% of one core)', (s) => s.cpu?.gpuPercent, 3),
     // CONF-02: the time leak. Per-tick order-loop cost is expected to grow with the
     // number of closed trades, so it is graded as a series in its own right.
-    orderLoopMsPerTick: mk('order loop ms per replay tick', (s) => s.orderLoop?.measured?.msPerCall, 0.2),
+    orderLoopMsPerTick: mk('order loop ms per replay tick', loopMsPerTick, 0.2),
+    orderLoopMsPerTickPerClosedTrade: {
+      ...vsClosed('order loop ms per tick, per additional closed trade', loopMsPerTick, 0.02),
+      xUnit: 'closedTrade',
+    },
     orderLoopPercentOfMainThread: mk('order loop, % of main thread', (s) => s.orderLoop?.totalPercentOfMainThread, 2),
     heavyFieldMB: mk('retained screenshot/base64 MB', (s) => s.heavyFields?.heavyMB, 1),
-    excursionSamples: mk('excursion samples retained', (s) => s.heavyFields?.excursionSamples, 2_000),
+    excursionSamples: mk('excursion samples retained, deduplicated', excursionSamplesOf, 2_000, { advisory: true }),
+    excursionSamplesPerClosedTrade: {
+      // M19-B bounds each live tail at 256 values and a position carries four of
+      // them (bar_high_r, bar_low_r, bar_close_r, post_exit_bar_close_r), so the
+      // ceiling per closed trade is ~1,024. A marginal cost above that is the bound
+      // failing; below it, the bound is holding and the figure is a design cost.
+      ...vsClosed('excursion samples per additional closed trade', excursionSamplesOf, 1_024),
+      xUnit: 'closedTrade',
+      ceilingRationale: '4 arrays x 256-value M19-B tail bound',
+    },
   };
 }
 
@@ -234,6 +300,8 @@ export async function runConf01DurationGate({
       : null,
     conf01,
     flatBands: CONF01_FLAT_BANDS,
+    dur01MinSpanHours: DUR01_MIN_SPAN_HOURS,
+    canSatisfyDur01: hours >= DUR01_MIN_SPAN_HOURS,
     samples,
   };
   const save = () => { if (outPath) fs.writeFileSync(outPath, JSON.stringify(report, null, 1)); };
@@ -260,8 +328,8 @@ export async function runConf01DurationGate({
       samples.push({ sample: n, hours: +hoursNow.toFixed(4), order, rearmed, ...s });
       report.sampleCount = samples.length;
       report.elapsedHours = +((Date.now() - startedAt) / 3_600_000).toFixed(3);
-      report.trends = buildTrends(samples);
-      report.verdict = gradeDurationSeries(report.trends, { minSpanHours: Math.min(2, hours) });
+      report.trends = buildTrends(samples, { minSpanHours: DUR01_MIN_SPAN_HOURS });
+      report.verdict = gradeDurationSeries(report.trends, { minSpanHours: DUR01_MIN_SPAN_HOURS });
       report.conf02 = assessConf02(samples, { closedTarget });
       save();
       console.error(`[dur] #${n} ${hoursNow.toFixed(2)}h gcHeap=${s.collected.heapMB} live=${s.live.heapMB} footprint=${s.footprint.totalPrivateMB} elements=${s.elements} bars=${s.state.totalBars} advancing=${s.state.advancingPanels}/4 renderer=${s.cpu.rendererPercent}% closed=${s.trades?.managerClosed ?? s.trades?.serviceClosed} loop=${s.orderLoop?.measured?.msPerCall}ms/tick(book=${s.orderLoop?.measured?.closedHere ?? 0}) excursion=${s.heavyFields?.excursionSamples} heavy=${s.heavyFields?.heavyMB}MB status=${report.verdict?.status}`);
@@ -270,8 +338,8 @@ export async function runConf01DurationGate({
       if (nextAt > spent) await sleep(nextAt - spent);
     }
     report.finishedAtIso = new Date().toISOString();
-    report.trends = buildTrends(samples);
-    report.verdict = gradeDurationSeries(report.trends, { minSpanHours: Math.min(2, hours) });
+    report.trends = buildTrends(samples, { minSpanHours: DUR01_MIN_SPAN_HOURS });
+    report.verdict = gradeDurationSeries(report.trends, { minSpanHours: DUR01_MIN_SPAN_HOURS });
     report.conf02 = assessConf02(samples, { closedTarget });
     save();
     return report;

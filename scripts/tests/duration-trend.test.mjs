@@ -45,8 +45,10 @@ test('t critical values tighten with degrees of freedom', () => {
   assert.ok(tCritical95(10) > tCritical95(1000));
 });
 
-test('gradeDurationSeries is RED on any climb and UNRESOLVED on any indeterminate', () => {
-  const climbing = fitTrend(series([100, 110, 120, 130, 140]), { flatBandPerHour: 5 });
+test('gradeDurationSeries is RED on a climb of sufficient span and UNRESOLVED on any indeterminate', () => {
+  // 9 points x 0.25h = 2h span, so the climb satisfies DUR-01 and may decide.
+  const climbing = fitTrend(series([100, 110, 120, 130, 140, 150, 160, 170, 180]), { flatBandPerHour: 5 });
+  assert.equal(climbing.durationOk, true);
   const flat = fitTrend(series([100, 100.2, 99.9, 100.1, 100]), { flatBandPerHour: 5, minSpanHours: 0.5 });
   assert.equal(gradeDurationSeries({ heap: climbing, elements: flat }).status, 'RED');
 
@@ -59,6 +61,42 @@ test('gradeDurationSeries is RED on any climb and UNRESOLVED on any indeterminat
 test('a short run cannot be GREEN even when every series is bounded', () => {
   const flatButShort = fitTrend(series([100, 100.2, 99.9, 100.1], 0.05), { flatBandPerHour: 5, minSpanHours: 2 });
   assert.equal(gradeDurationSeries({ heap: flatButShort }, { minSpanHours: 2 }).status, 'UNRESOLVED');
+});
+
+test('a climb measured over less than the required span is PROVISIONAL, not RED', () => {
+  // The first version of this grader called RED on a 25-minute span while
+  // implementing a ruling that requires two hours. A short run cannot conclude in
+  // either direction.
+  const shortClimb = fitTrend(series([100, 110, 120, 130, 140], 0.08), { flatBandPerHour: 5, minSpanHours: 2 });
+  assert.equal(shortClimb.verdict, 'CLIMBS');
+  assert.equal(shortClimb.durationOk, false);
+  const graded = gradeDurationSeries({ heap: shortClimb }, { minSpanHours: 2 });
+  assert.equal(graded.status, 'UNRESOLVED');
+  assert.deepEqual(graded.climbing, []);
+  assert.deepEqual(graded.provisionalClimbing, ['heap']);
+  assert.match(graded.reason, /PROVISIONAL climb/);
+});
+
+test('advisory series are reported but never the RED reason', () => {
+  // CONF-02 mandates trade accumulation, so the absolute count of retained samples
+  // MUST climb. Grading that as a leak would fail the workload for obeying its own
+  // definition; what decides is the same cost per trade.
+  const climbing = fitTrend(series([100, 110, 120, 130, 140, 150, 160, 170, 180]), { flatBandPerHour: 5 });
+  const graded = gradeDurationSeries({ excursionSamples: { ...climbing, advisory: true } });
+  assert.equal(graded.status, 'GREEN');
+  assert.deepEqual(graded.advisoryClimbing, ['excursionSamples']);
+  assert.deepEqual(graded.climbing, []);
+});
+
+test('a slope fitted against trade count is reported in trades, not per hour', () => {
+  const perTrade = fitTrend(
+    [5, 10, 15, 20, 25, 30].map((closed, i) => ({ hours: closed, value: 5000 + i * 150 })),
+    { flatBandPerHour: 5, minSpanHours: 10 },
+  );
+  const graded = gradeDurationSeries({ elementsPerClosedTrade: { ...perTrade, xUnit: 'closedTrade' } });
+  assert.equal(graded.status, 'RED');
+  assert.match(graded.reason, /per closedTrade/);
+  assert.doesNotMatch(graded.reason, /\/h/);
 });
 
 // ─── CONF-01 compliance ────────────────────────────────────────────────────
