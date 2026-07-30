@@ -116,7 +116,17 @@ So it will reject there today. Turning COEP on is not a free measurement flag: `
 
 A figure without a scope is how this happened. `HEAP-FIGURE-SCOPE-V1` now lints release-facing documents: a heap figure in megabytes must name its instrument scope on the same line, from a fixed vocabulary (`main-frame JS heap`, `per-realm JS heap`, `cross-realm JS heap`, `renderer-process footprint`, `detached-node count`). Unlabelled figures fail the gate, so the next disclosure cannot inherit this defect silently.
 
-## 7. Standing correction for anything that goes out
+## 7. To A, C and D specifically
+
+**A** — your panel-realm cuts, including `STASHED-PANEL-HANDLE`, cannot be graded on the main-frame instrument. It is not that the number is imprecise; it is that the memory your cuts release is largely outside what that call reports. Grade on detached-node growth, which is sound, and treat any megabyte delta as a floor. Your fix is live: `e7616ab06` shipped in b104 as `db72fa4d3` (`git range-diff` prints them equal) and is still on the wire at b106.
+
+**Also for A:** the M17-DI2 kill-switch could not reach the panels. All four read sites — `chart.js`, `replay-system.js`, `panel-cmd-bridge.js` — are loaded inside every panel iframe and each read its own realm only, so a host-side flip left the guard on and would have presented as "no effect". Fixed at all four sites and shipped in b105; your gate is extended from 13 to 21 cells with a mutant that proves the climb is load-bearing. Worth checking the same question against your other panel-realm switches: `panel-cmd-bridge.js` still has 13 own-realm reads belonging to other cuts, and I have not touched those.
+
+**C** — b103 and b104 are both retained with tarballs and images, so your grading target is intact. But the instrument you were asked to grade against reports main-frame JS heap only. If you have a regrade in flight that turns on a megabyte threshold, it needs the scope caveat attached before it is quoted. `report.meta.instrumentScope` now carries it on all three surfaces including `deployed`.
+
+**D** — nothing in your persistence work changes because of this note; it is the heap thread only. The prefs-500 findings I sent you separately still stand.
+
+## 8. Standing correction for anything that goes out
 
 Until §3 is answered and a cross-realm number exists:
 

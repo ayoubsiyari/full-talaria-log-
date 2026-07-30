@@ -4473,7 +4473,19 @@ The consequence is the trap the Director named the first time: the PO types the 
 
 Landed at all four sites, mirrors byte-identical, and A's gate extended from 13 to **21 cells**: host-set switch reaches the panel, top-set switch reaches a nested panel, the bridge and replay paths each proven separately, a clean realm chain leaves the guard ON (the climb is not a leak), an unreadable cross-origin realm does not read as switch-set, and a mutant that runs the shipped predicate against the pre-fix one on the same realm chain — shipped sees the host switch, mutant is blind. Without that last cell the new cells could have passed with the defect still present.
 
+Shipped as **`20260730b105`**, verified on the wire: climb present in all three files, A's stashed-handle still at 5 occurrences, images and served stamp both `canary-20260730b105`.
+
 One honest correction to my own sweep: I first flagged `preferences-sync.js` as carrying the same defect because I grepped for the helper *name*. My cap already climbs, with an inline closure. A name is not a behaviour, and I nearly filed a false defect against myself on that basis. The remaining own-realm switches in `panel-cmd-bridge.js` (13, other managers' cuts) and `multichart-manager.js` (18, host-realm-only code where an own-realm read is correct) are listed for routing rather than changed unreviewed mid-canary.
+
+### 4. B-0196 — the write-failure counter was never on the served shell, and my own gate was green about it
+
+Verifying b105 on the wire rather than in the tree paid for itself immediately. The ledger loaded in the **panel** realms and not in the **chart shell**: `dist-v9/index.html` is a build artifact that the homepage image regenerates from `talaria-design/live/index.html` via vite and then re-stamps. I had added the script tag to the artifact and to its public mirror — both of which the build overwrites — so a single-chart user's failed saves were invisible to the passport, and my WIRING cell asserted the artifact and passed.
+
+A gate that asserts a file the wire does not use is worth nothing, and this one was mine. Tag added to the vite source, the WIRING cell now lists that source first with the reason written next to it, 26/26 still green. Shipped as **`20260730b106`** and confirmed on the served shell: `server-write-failure-ledger.js?v=20260730b106` at line 1544, immediately before `preferences-sync.js` at 1545, and present in the panel embed too.
+
+The generalisable lesson, which is the third time this week the same shape has appeared: *presence in the tree is not presence on the wire*, and every one of these was caught by an HTTP read of the running product rather than by a test. MEAS-01 exists for exactly this and it keeps earning its place.
+
+Retention audited after both ships: b103 (C's grading target), b104 (what the PO measured), b105 and b106 all hold tarballs and images.
 
 ### 5. FAILED SERVER WRITE COUNT — in the passport, gated, kill-switched
 
