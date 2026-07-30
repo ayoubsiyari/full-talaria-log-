@@ -775,3 +775,75 @@ PrivateMemorySize64 across every Chrome process and do see the rest.
    Flagged and NOT claimed at n=4: elements 5,552 -> 6,349 while closed trades went
    5 -> 24. A slope with confidence follows from the full run; four points and an
    eyeball are how this week produced two retractions.
+
+## W94-W96 — The screenshot term measured, two excursion claims corrected, and four duration runs lost
+
+tier=mid model=claude-opus-5-thinking-high (author) · deployed b113 read off the page
+
+1. SCREENSHOT TERM MEASURED ON THE PRODUCT'S OWN PATH, and D and E were waiting on
+   it. SCREENSHOT-BYTES-CENSUS-V1 calls window.screenshotManager.captureChartSnapshot()
+   - the same function order-manager.js:29853 calls - on deployed b113 under CONF-01
+   with 32 closed + 4 open: five captures at 140,535/140,939/141,319/141,875/140,415
+   chars, image/jpeg, mean 138.4 KB per position, 610x448 panel canvas. At CONF-02's
+   30 closed that is 4.05 MB, so screenshots are NOT a 730 MB/h explanation. GATE-01:
+   a planted 250,000-char payload read back as 250,022, so the counter is not blind.
+   Stated as a FLOOR: entryScreenshot only, one panel of four, M20-A1 externalisation
+   not included.
+2. THE MORE INTERESTING NUMBER IS 2,269 ms PER CAPTURE. Two-plus seconds of
+   synchronous main-thread work per order placed on a replaying chart. That is a
+   smoothness defect on the UI path and it belongs to A, not to D's eviction work.
+3. MY HEAVY-KEY LIST OMITTED entryScreenshot. The gate reported heavyChars 0 and the
+   Director read it as screenshots being absent. Two independent reasons for that
+   zero: my orders are placed through the API, which never runs the capture path, and
+   even with a capture present the key list would have missed it. Both fixed. A zero
+   from an instrument that cannot see the field is not evidence of absence, and I
+   published one.
+4. THE 256 CAP IS NOT EXCEEDED - and my field name caused that claim. A position
+   carries SIX excursion arrays each bounded at 256 (order-manager.js:5977, :5999);
+   my excursionSamples sums FOUR of them, so the ceiling is 1,024 per row and the
+   observed 319 is inside it. The archive path is bounded too: only pre-M19-B legacy
+   samples are archived, tracked by a monotonically decreasing pending counter, after
+   which drops fold into running peaks (:5897-5908). The field now carries its key
+   list and ceiling in the artifact. D should not spend a packet on a cap defect.
+5. "THREE LISTS EACH HOLD 12,762" IS PARTLY ONE LIST HELD THREE TIMES. My census
+   dedupes 104 rows to 68 BY OBJECT IDENTITY: managerClosed and serviceClosed are the
+   same objects, managerOpen and serviceOpen are the same objects, and only
+   managerJournal holds separate copies. Releasing an aliased list frees nothing.
+   Eviction must be graded by identity, not by summing list lengths.
+6. ELEMENT-WRITER-ATTRIBUTION-V1 BUILT AND GATE-01 PASSED BEFORE USE. It wraps
+   createElement, createElementNS, the innerHTML setter and insertAdjacentHTML in
+   every realm, associates each element with a compressed creator stack in a WeakMap
+   (not an expando, so the instrument does not retain what it measures), and censuses
+   LIVE ATTACHED elements by creator. Offline self-test: it names a planted leaking
+   writer and ranks it first, attributes the parser path, and correctly ignores a
+   create-and-release writer. GATE-01 failed twice first - every signature came out
+   'unknown' because the stack parser rejected frames whose URL contains encoded
+   parentheses, and I was reading fitTrend fields that do not exist. Both were my
+   defects and the gate caught them, which is the whole argument for GATE-01.
+   Deliberately NOT run yet: a second CONF-01 session contends for the window claim
+   that already hangs on this build and would jeopardise the running duration gate.
+7. FOUR DURATION RUNS NOW LOST, and the fourth is undiagnosed. Two died with the
+   editor's process tree (AppHangB1 17:37, editor crash at ~45 min). The third was
+   relaunched via schtasks, which left the task Queued and never started it. The
+   fourth was launched through WMI Win32_Process.Create so an editor death cannot
+   reach it - and it still vanished 12 minutes in after one good sample, with no
+   exception, no browser-disconnect record, no node error output and no Windows event.
+   Cause unknown, said plainly. Relaunched 21:03 under a supervisor that records each
+   attempt's exit code into separate segment artifacts, beside a machine watcher
+   sampling free memory and the process census every 30s, so a fifth loss produces a
+   diagnosis instead of a shrug.
+8. THE GATE WAS ALWAYS HEADLESS. bootConf01Session has run headless: true throughout;
+   there has never been a Chrome window. The dispatch's "move to headless Chrome" is
+   already satisfied and was not the failure. Moving OFF this machine is still right
+   and I cannot do it: ssh to 31.97.192.82:22 times out from here, so it needs B.
+   Caveat recorded for when it happens - the test host also serves the build, so a
+   four-panel headless Chrome at 60x there makes client and server compete for CPU.
+   Fine for the memory series, not fine for the renderer-CPU cells, which would need
+   re-baselining on the host rather than carrying over.
+9. Confirmed from the Director's note and kept: panelFullRawBars constant at
+   3595/3910/2494 across all ten samples of the partial run, so A's residency bound
+   holds and is not the climb. The host-panel rewind (replayIndex 2508 -> 2011,
+   advancing true -> false, peers still playing) is the same defect I escalated at
+   17:30 from the peer side; it is why advancingPanels stratification exists, and if
+   a rewind rebuilds overlay nodes without releasing them it is a candidate writer
+   for the element climb - which the attribution run will show directly.

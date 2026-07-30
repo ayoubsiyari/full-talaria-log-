@@ -540,7 +540,16 @@ export async function readTradeState(page) {
  */
 export async function measureHeavyFieldBytes(page) {
   return page.evaluate(() => {
-    const HEAVY = ['screenshot', 'screenshotBase64', 'image', 'chartImage', 'thumbnail', 'preview', 'screenshots', 'entryScreenshots'];
+    // Exactly the product's own heavy-key list (order-manager.js:3982-3984). My
+    // earlier list omitted entryScreenshot, exitScreenshot and railScreenshots —
+    // the singular entry/exit fields are the ones the capture path actually writes
+    // (`order.entryScreenshot = screenshot` at :29856), so a shorter list could
+    // report zero bytes while a screenshot sat on every row.
+    const HEAVY = [
+      'entryScreenshot', 'exitScreenshot', 'entryScreenshots', 'railScreenshots',
+      'screenshot', 'screenshotBase64', 'image', 'chartImage', 'thumbnail', 'preview',
+      'screenshots',
+    ];
     const chart = window.chart;
     const om = chart && (chart.orderManager || window.orderManager);
     const svc = om && om.orderService;
@@ -612,6 +621,16 @@ export async function measureHeavyFieldBytes(page) {
       excursionSamples: dedup.excursionSamples,
       listAliasFactor: dedup.excursionSamples ? +(out.excursionSamples / dedup.excursionSamples).toFixed(2) : null,
     };
+    // The bare count was read against a single array's 256 cap and reported as a
+    // cap violation. It aggregates four arrays, so it must carry its own ceiling.
+    out.excursionMeta = {
+      keysCounted: ['bar_close_r', 'bar_high_r', 'bar_low_r', 'post_exit_bar_close_r'],
+      perArrayCap: 256,
+      ceilingPerRow: 1_024,
+      note: 'a position carries SIX arrays bounded at 256 each (order-manager.js:5977,:5999); this sums four of them, so compare against 1,024 per row, never 256',
+      perRow: dedup.rows ? Math.round(dedup.excursionSamples / dedup.rows) : 0,
+    };
+    out.excursionMeta.withinCeiling = out.excursionMeta.perRow <= out.excursionMeta.ceilingPerRow;
     return out;
   }).catch(() => null);
 }
