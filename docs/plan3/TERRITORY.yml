@@ -81,6 +81,10 @@ journals:
     owner: B
   - path: docs/plan3/journal/MANAGER-C.md
     owner: C
+  - path: docs/plan3/journal/MANAGER-D.md
+    owner: D
+  - path: docs/plan3/journal/MANAGER-E.md
+    owner: E
 
 # Artifact trees every manager writes into, because each manager's own gates emit
 # their own evidence. Collision risk is low (paths are packet-named) and blocking
@@ -156,6 +160,22 @@ managers:
         reason: order mechanics belong to B and D, not A
         provenance: ruling
         authority: TB-1 default plus the 20260729 20:20 D grant
+      - pattern: chart v 1.4/chart/modules/chart-indicators-full.js
+        reason: granted to E on specificity - indicator lifecycle and eviction
+        provenance: ruling
+        authority: director 20260730 17:05
+      - pattern: homepage/public/chart/modules/chart-indicators-full.js
+        reason: granted to E on specificity - generated mirror of the above
+        provenance: ruling
+        authority: director 20260730 17:05
+      - pattern: chart v 1.4/chart/modules/indicator-ui.js
+        reason: granted to E on specificity - indicator delete path
+        provenance: ruling
+        authority: director 20260730 17:05
+      - pattern: homepage/public/chart/modules/indicator-ui.js
+        reason: granted to E on specificity - generated mirror
+        provenance: ruling
+        authority: director 20260730 17:05
       - pattern: docs/plan3/journal/MANAGER-B.md
         reason: another manager's journal
         provenance: ruling
@@ -391,6 +411,65 @@ managers:
       - pattern: docs/plan3/journal/MANAGER-C.md
         reason: another manager's journal
         provenance: ruling
+
+  - id: E
+    role: indicator lifecycle and eviction, chart overlay labels
+    deploy_surface: none - lands through B's train
+    provenance: ruling
+    authority: PLAN-FULL-EVICTION-CANARY-SUNDAY-1800-20260730-1620.md section 4
+    owned_rows:
+      - INDICATOR-EVICT-V1
+    owned_paths:
+      - pattern: chart v 1.4/chart/modules/chart-indicators-full.js
+        provenance: ruling
+        authority: director 20260730 17:05 - verified indicator lifecycle site; removeIndicator
+          and clearIndicators both live here, carved out of A's modules grant on specificity
+      - pattern: homepage/public/chart/modules/chart-indicators-full.js
+        provenance: ruling
+        reason: generated product mirror of the above; E owns both sides or neither
+      - pattern: chart v 1.4/chart/modules/indicator-ui.js
+        provenance: ruling
+        authority: director 20260730 17:05 - indicator delete path at :3077
+      - pattern: homepage/public/chart/modules/indicator-ui.js
+        provenance: ruling
+        reason: generated product mirror
+      - pattern: docs/plan3/journal/MANAGER-E.md
+        provenance: ruling
+        authority: A16.1 - each manager holds a positive grant to its own journal
+    denied_paths:
+      - pattern: chart v 1.4/chart/chart.js
+        reason: A is rewriting the base-series data and storage paths here through freeze;
+          a second writer in this file would collide with the memory landing
+        provenance: ruling
+        authority: director 20260730 17:05
+      - pattern: homepage/public/chart/chart.js
+        reason: as above, generated mirror
+        provenance: ruling
+      - pattern: chart v 1.4/chart/multichart-prod/panel-cmd-bridge.js
+        reason: multichart bridge is A's; it calls removeIndicator at :3727 so E coordinates
+          with A rather than owning it
+        provenance: ruling
+        authority: director 20260730 17:05
+      - pattern: chart v 1.4/chart/modules/order-manager.js
+        reason: order mechanics belong to B and D
+        provenance: ruling
+      - pattern: docs/plan3/journal/MANAGER-A.md
+        reason: another manager's journal
+        provenance: ruling
+      - pattern: docs/plan3/journal/MANAGER-B.md
+        reason: another manager's journal
+        provenance: ruling
+      - pattern: docs/plan3/journal/MANAGER-C.md
+        reason: another manager's journal
+        provenance: ruling
+      - pattern: docs/plan3/journal/MANAGER-D.md
+        reason: another manager's journal
+        provenance: ruling
+    # NOT YET GRANTED (director 20260730 17:05): E's overlay rows - daily-open lines,
+    # indicator labels, ORB and session labels, multichart layout shell - have not had
+    # their file sites read by the Director. BRIEF-03: granting a path the Director has
+    # not read is how B was granted journal-backend/ while the code was in api_server.py.
+    # E reports the exact sites; the grant follows within the hour of that report.
 
 # Open questions for the Director. Each is operative as written above until ruled.
 open_rulings:
