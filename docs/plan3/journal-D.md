@@ -1,12 +1,28 @@
 # Manager D Journal
 
+## 2026-07-30 — D3 M24 wire read
+
+- **Outcome A** for PO `#5→#942` on b103. Stamp source: B journal `PO_SHOULD_READ=20260729b103` tip `153c835e2` (00:05); M24 display fix `2cc949399` (11:59) not an ancestor; OM at that SHA has zero `_resolveJournalDisplayTradeId` / `DISPLAY_ID_STABILITY`; restore-stability test absent.
+- Live MEAS-01 (HTTP): `http://31.97.192.82:3000` shell stamp `20260730b113`; served `order-manager.js` has `_resolveJournalDisplayTradeId` + `__TALARIA_DISABLE_M24_DISPLAY_ID_STABILITY_V1` (post-b112 D-lane ship). Local `:3000` unreachable.
+- Full write-up: `docs/plan3/M24-WIRE-READ-D3-20260730.md`.
+
+## 2026-07-30 — GATE-01 RED-first proof (Rayan #2 / #8 under CONF-01)
+
+- Ran GREEN/RED on chart + homepage for Rayan #2 teardown retain, #8A gap-after-hydrate, #8B explicit-place audit. Matrix: all GREEN exit **0**, all RED under kill exit **1**.
+- CONF-01 kill coverage: #2 four-symbol host retention fails under kill; #8A mixed-symbol journal gap fails under kill; #8B previously RED-aborted on pre-CONF01 surprise only — reordered test so CONF-01 cross-panel surprise is first kill tooth. Pending-on-GBPUSD candle stays always-on ticker filter (not this FLAG).
+- Test-only edit: `order-explicit-place-audit.test.mjs` (± homepage mirror). No `order-manager.js` product edit (CKPT-01 untouched).
+- Record: `docs/plan3/RAYAN-2-8-RED-FIRST-PROOF-20260730.md`.
+
 ## 2026-07-30 — DISPATCH-D 15:15 (one number / class-3 / M24 wire)
 
 - CKPT-01 accepted as four-manager reference.
-- **D1:** `scripts/ledger-status-count.mjs` → artifact `LEDGER-STATUS-COUNT-20260730.json`. **HONEST_FIXED=50** at tip `b55f66b66`. Prior 48 was stale `51−3` arithmetic; 53 not reproduced. Prose counts retired.
+- **D1:** `scripts/ledger-status-count.mjs` → artifact `LEDGER-STATUS-COUNT-20260730.json`. **HONEST_FIXED=50** at tip `b55f66b66` (reconfirmed after later commits). Prior 48 was stale `51−3` arithmetic; 53 not reproduced. Prose counts retired.
+- **D3:** closed under `## 2026-07-30 — D3 M24 wire read` — outcome **A** (b103 lacked fix; live now b113 with symbols).
 - H-S18/H-S83 harness restage re-routed **A → C** (`OWNER-C-HS18-HS83-CONF01-20260730.md`). TAL-01677/01733 stay A.
 - Not standing by for B stamp (routed as B interrupt).
-- Parallel: D2 class-3 audit, D3 M24 wire read, Rayan #2/#8 RED-first proof; TAL-01941 C2 verdict note updated.
+- **D2:** Class-3 audit → **0** money/identity `conf01-unshaped` after Rayan reshape (`CLASS3-VACUITY-AUDIT-D-20260730.md`). PO pending clear got host/peer EURUSD→GBPUSD adopt cell.
+- **Rayan #2/#8:** RED-first matrix all GREEN=0/RED≠0; #8B reordered so kill fails on CONF-01 first (`RAYAN-2-8-RED-FIRST-PROOF-20260730.md`).
+- **TAL-01941:** C2 note requires explicit verdict cell in C’s duration report (`NOTE-C-TAL01941-SOAK-INTO-C2-20260730.md`).
 
 ## 2026-07-30 — keep moving after CKPT-01
 
