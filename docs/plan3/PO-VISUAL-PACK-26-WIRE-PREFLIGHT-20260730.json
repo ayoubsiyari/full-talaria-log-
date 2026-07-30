@@ -1,0 +1,30 @@
+{
+  "schema": "talaria.po-visual-pack-26.wire-preflight.v1",
+  "stamp": "20260730b113",
+  "pack": "docs/plan3/PO-VISUAL-PACK-26-PO-EYES-20260730.md",
+  "test01": "every declared money marker verified present in artifacts/wire-b113 before PO call",
+  "rowsInPack": 26,
+  "rowsBlockedOnBuildRemovedFromPack": [],
+  "shell": {
+    "chart_chart.js": true,
+    "chart_modules_order-manager.js": true,
+    "chart_multichart-prod_multichart-manager.js": true
+  },
+  "moneyMarkersOnWire": {
+    "__TALARIA_DISABLE_ORDER_MULTI_TP_COINCIDENT_STACK_V1": { "onWire": true, "fromCommit": "28d808cb4", "rows": ["TAL-01696", "TAL-01698", "TAL-01617"] },
+    "__TALARIA_DISABLE_ORDER_LINE_EDGE_VISIBILITY_V1": { "onWire": true, "fromCommit": "c0a0d7620", "rows": ["TAL-01696", "TAL-01698", "TAL-01617"] },
+    "__TALARIA_DISABLE_ORDER_STABLE_LABEL_HOVER_DOM_V1": { "onWire": true, "fromCommit": "2cc949399", "rows": ["TAL-01696", "TAL-01698", "TAL-01617"] },
+    "_resolveJournalDisplayTradeId": { "onWire": true, "fromCommit": "2cc949399", "rows": ["TAL-01911"] },
+    "__TALARIA_DISABLE_M24_DISPLAY_ID_STABILITY_V1": { "onWire": true, "fromCommit": "2cc949399", "rows": ["TAL-01911"] },
+    "__TALARIA_DISABLE_ORDER_ENTRY_SCREENSHOT_IDEMPOTENT_V1": { "onWire": true, "fromCommit": "c0a0d7620", "rows": ["TAL-01940"] }
+  },
+  "uiSections": {
+    "note": "Cluster J/I/D/L/K/C first-look rows declare chart-shell presence on stamp; no separate kill-switch",
+    "shellVerified": true
+  },
+  "flag01ExcursionSingleOwner": {
+    "killSwitch": "__TALARIA_DISABLE_EXCURSION_SINGLE_OWNER_V1",
+    "featureOnWhenFlagAbsent": true,
+    "proof": "typeof window === 'undefined' || window.__TALARIA_DISABLE_EXCURSION_SINGLE_OWNER_V1 !== true; GREEN cell deletes window key and asserts share-from-hot returns true"
+  }
+}
