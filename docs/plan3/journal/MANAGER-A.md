@@ -1636,3 +1636,54 @@ rather than grading a packet that may still be exercising its rollback.
 
 Not starting A2. Taking the eviction lane and measuring the retention question first, because
 it decides whether the mechanism exists at all.
+
+---
+
+## 17:00 — the eviction lane's mechanism is already deployed and has never been graded
+
+Took the new lane by asking its existence question first: does closing a panel release its
+realm? Before dispatching anything I read the five realm-teardown flags rather than reciting
+them, and NEARLY MADE A FALSE ESCALATION doing it.
+
+**First read said the five cuts were NOT on the wire.** I scanned deployed `chart.js` for
+`MC_RELEASE_*`, got zero against 45 distinct kill-switches present, and that is exactly the
+shape of the twelfth accepted-fix-never-shipped escalation. **It was a false negative.** The
+cuts live in `multichart-prod/multichart-manager.js`, not `chart.js`. Scanning the file that
+should carry the symbol, all five are LIVE at b113 with src=2 / wire=2 exact:
+MC_RELEASE_BLOB_WORKER_V1, MC_RELEASE_DRAG_GUARD_V1, MC_RELEASE_INDICATOR_WORKER_V1,
+MC_RELEASE_ORDER_REGISTRY_V1, MC_RELEASE_TF_ABORT_V1. Fifth time today the wrong-tree/wrong-file
+family has come for me and the first time the guard fired BEFORE the escalation left the room.
+
+Disclosing a real weakness in that check: my three chosen controls all returned 0/0 because
+they live in files the packet never touched, so they were never fetched — the control was
+badly scoped and proved nothing. The result stands on a better property than my control did:
+five independent flags each matching src=2/wire=2 exactly demonstrates the scan can see them.
+
+**The reachability blocker is also gone.** `__TALARIA_DISABLE_MC_STASHED_PANEL_HANDLE_V1`=2 and
+`mcStashPanelHandles`=5 on the wire. The audit that found all five cuts inert blamed React
+nulling `contentWindow` before `removeChart`; the stash fix shipped for exactly that. So b113
+is the first build where the five can act — and nobody has ever measured whether they do. That
+grading has been OWED all day and is now also the EVICT-01 existence proof for my lane.
+
+**One of my own rows is dead and I am retiring it, not carrying it:** I recorded
+`custom-indicators-runtime.js` as creating a worker blob URL with no `revokeObjectURL`, and
+proposed unrevoked blob URLs as the cheapest retained-realm fingerprint. On b113 that file has
+revokeObjectURL=1, createObjectURL=1, terminate(=2. The leak is fixed and my proposed
+fingerprint is probably dead. Told the probe to verify before using it rather than inheriting it.
+
+DISPATCHED 0a401b21, read-only, to grade it: five-flags-OFF ablation against default, fitted
+slopes per DUR-01, under CONF-01 AND CONF-02. Briefed with the false-negative trap by name so it
+does not repeat my chart.js mistake, with the stale blob row flagged as stale, and with the sizing
+that makes the answer interpretable — one realm is ~10.5 MB UTF-8 / ~21 MB UTF-16 of script source
+(two independent censuses agreeing within 0.4%), so a retained dead realm is worth 10-21 MB and a
+per-cycle retention much smaller than that means the realm IS being released and something else
+leaks. Told it plainly that "already released, nothing to build" is a fully acceptable result and
+not to shade toward the landing existing — the same instruction that got me the honest A1 answer.
+
+Also carried in: EVICT-01 needs TWO numbers not one, working-product assertion by MOVED replay
+index never an isPlaying flag, a negative control that must go RED, de-duplicate by identity
+rather than counting lengths (the A1 trap), and subtract a duration-matched idle window from any
+CPU figure against the 462 ms/s baseline.
+
+Three packets now in flight: retention census, CKPT-01 artifact (committed 2500c0331, unreported),
+and this grading.
