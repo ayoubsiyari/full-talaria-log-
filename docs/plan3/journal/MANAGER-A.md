@@ -2064,3 +2064,70 @@ fix lands in talaria-design/src = B''s tree; editing the bundle in mine would be
 build. I produce the diagnosis and the FLAG-01/02/03 kill-switch design, B lands it.
 
 Doc: ANSWER-A-ELEMENTS-ARE-1-PERCENT-OF-THE-SLOPE-AND-PER-TRADE-IS-CONFOUNDED-20260730-2315.md
+
+---
+
+## 23:45 — Both corrections taken. Zero-trade collapse has a superlinear per-tick candidate that CLEARS CONF-03
+
+**Correction 1 accepted, and it costs me nothing to accept because it points the same way my own
+arithmetic did.** The PO ran 15 min at 60x with ZERO trades and hit progressive collapse. Sized it:
+900 chart-minutes = 900 new 1m bars/panel = 3,600 across four panels = 0.79 MB of new bar data
+across the WHOLE run at 231.4 B/bar. That one line forecloses trades, ingested bar volume, AND the
+base-series residency lane (third independent reason A1/A2 are dead). It ALSO double-forecloses the
+element climb as the collapse mechanism: my 23:15 arithmetic put elements at 1-3% of the slope, and
+independently, C attributes the climber PER CLOSED TRADE while the PO closed none - so on C''s own
+attribution that writer contributed ZERO to a run that collapsed anyway. Whichever of us is right
+about the driver, elements are not the monster. I WILL NOT report any element fix as fixing the
+PO''s run.
+
+**Correction 2 (CONF-03) accepted and applied IMMEDIATELY to my own top candidate, before proposing
+it to anyone.** The discipline that got promoted is the one that killed my own clone/reseed credit,
+so the first thing I did with it was aim it at my own strongest lead rather than at someone else''s.
+
+**RESULT: the re-resample path clears CONF-03 where clone/reseed failed it.** No same-pair gate on
+ANY of the six sites - getDisplaySeries x3 (25515/25993/26782) and calculateScales x3
+(25797/29285/32791), all NONE within 3,000 chars above. Positive control that the absence is real:
+the same matcher finds _multichartSamePairAsHost 20, _isIndependentMultichartPair 26,
+_multichartFinerSamePairPanelSelfOwns 21, _shouldAnchorPairSwitchToHostPlayhead 5 elsewhere in the
+file. Symbol control render 210 / calculateScales 6 / currentFileId 147.
+
+**THE MECHANISM, AND IT IS SUPERLINEAR - which is the shape "progressive collapse" demands and
+nothing else I hold has.** replay-system.js:3980-3992 sets chart.rawData = fullRawData[0..currentIndex],
+a prefix GROWING ONE BAR PER TICK. Then :4003 does chart.data = chart.resampleData(chart.rawData, tf)
+- an UNCONDITIONAL FULL RE-RESAMPLE of that growing prefix every tick, allocating a fresh object per
+output bar, and it does NOT consult the pipeline cache at all. Then :4007 bumps dataVersion, which
+invalidates the pipeline display cache for every downstream reader so the paint-path read misses too.
+Per-tick allocation is proportional to currentIndex, so TOTAL over a run is proportional to
+currentIndex SQUARED. 12 direct .resampleData( callers in that file (control bumpDataVersion 14).
+
+**HALF OF THIS WAS ALREADY FIXED AND IT WAS THE WRONG HALF.** M20-Q9 fixed the SLICE
+(_installPlayheadPrefix reuses one growing owned prefix instead of fullRawData.slice(0, sliceEnd)).
+The RESAMPLE of that prefix at :4003 was never touched, and it is the larger term - the slice copies
+pointers, the resample allocates a new object per output bar.
+
+**A COMMENT THAT IS FALSE:** chart-data-pipeline.js:68 says "Incremental resample: O(1) when replay
+appends one raw bar". Not O(1) - _tryIncrementalResample''s first act at :126 is
+const out = prevResampled.slice(), a full copy of the prior resampled array. Both branches are O(n).
+Useful asymmetry nobody has exploited: the cache-HIT branch (:78-86) checks dataVersion, the
+INCREMENTAL branch (:88-96) does NOT - so with M20-Q9''s stable sourceRef and length growing by
+exactly one, the incremental branch is reachable every tick and the cheap fix may be to make it
+genuinely incremental rather than to fight the cache key.
+
+**BOUNDS I AM PUTTING ON MYSELF BEFORE ANYONE FUNDS THIS.** (1) ALLOCATION CHURN IS NOT RETENTION.
+I have shown a large growing per-tick ALLOCATION path; I have NOT shown it retains bytes. Strong
+CPU/GC story, plausible heap-high-water story, NOT a proven +735 MB/h story and I will not present
+it as one. (2) N is unmeasured under CONF-01 so I am deliberately quoting NO MB/s figure derived
+from a guessed N. (3) My enclosing-function resolver MISFIRED ON ITS OWN CONTROL (startReplayAtIndex
+-> handlePickModeClick), so the two load-bearing names updateChartData/updateChartDataFast were
+confirmed by reading the code directly, not by trusting the resolver. FALSIFIER STATED FIRST per the
+standing rule: under CONF-01, replay advancing, zero trades, count resampleData calls per tick and
+the length each returns. If per-tick allocated element count does NOT grow with currentIndex the
+superlinear claim is dead and I drop it as fast as I dropped A1.
+
+**NEW ROW - FLAG-02 DEFECT IN A SHIPPED KILL-SWITCH:** _m20Q9PrefixSliceFixEnabled returns
+window.__TALARIA_DISABLE_M20_PREFIX_SLICE_V1 !== true. STRICT equality, so setting it to 1 / 'true'
+/ 'yes' does NOT disable the fix. The exact truthy-semantics trap I have been recording against
+other people''s flags all day, sitting in a shipped one. Needs an owner BEFORE anyone tries to
+ablate M20-Q9 in a measurement, or the ablation arm will silently be the treatment arm.
+
+Doc: FINDING-A-THE-ZERO-TRADE-COLLAPSE-HAS-A-SUPERLINEAR-PER-TICK-RESAMPLE-20260730-2345.md
