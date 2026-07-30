@@ -181,6 +181,34 @@ async function sampleOnce(page, cdp, browserCdp, { withDump = false } = {}) {
   } catch (_) { /* recorded as null */ }
 
   const session = await withDeadline(page.evaluate(SESSION_STATE_FN), 20_000, 'session state').catch(() => null);
+  // A soak that quietly stops playing measures an idle chart for hours. Playback
+  // is re-armed whenever it is not running, and the re-arm is recorded so a
+  // stalled session cannot be mistaken for a calm one.
+  let reArm = null;
+  if (session && !session.replayPlaying) {
+    reArm = await withDeadline(page.evaluate(async () => {
+      const chart = window.chart;
+      const rs = chart && chart.replaySystem;
+      if (!rs) return { ok: false, reason: 'no replaySystem' };
+      try {
+        if (!rs.isActive && typeof rs.enterReplayMode === 'function') {
+          rs.enterReplayMode({ startAtBeginning: false, userInitiated: true });
+        }
+        if (!rs.isPlaying && typeof rs.play === 'function') rs.play();
+        else if (!rs.isPlaying && typeof rs.togglePlay === 'function') rs.togglePlay();
+        // play() starts across two animation frames (_playStartRaf1/_playStartRaf2),
+        // so isPlaying lags the call and must be waited for, not read immediately.
+        const started = Date.now();
+        while (Date.now() - started < 5_000 && !rs.isPlaying) {
+          await new Promise((r) => setTimeout(r, 100));
+        }
+        return {
+          ok: !!rs.isPlaying, isPlaying: !!rs.isPlaying, idx: rs.currentIndex,
+          bars: Array.isArray(chart.data) ? chart.data.length : null,
+        };
+      } catch (e) { return { ok: false, reason: String(e?.message || e) }; }
+    }), 20_000, 're-arm').catch((e) => ({ ok: false, reason: String(e?.message || e) }));
+  }
 
   const info = await browserCdp.send('SystemInfo.getProcessInfo').catch(() => ({ processInfo: [] }));
   const pids = (info.processInfo || []).map((p) => p.id);
@@ -218,6 +246,7 @@ async function sampleOnce(page, cdp, browserCdp, { withDump = false } = {}) {
       : null,
     elements,
     session,
+    reArm,
     os,
     pageRendererPrivateMB,
     allocators,
@@ -252,7 +281,14 @@ export async function runSinglePairSoak({
   const browser = await puppeteer.launch({
     headless: true,
     protocolTimeout: 300_000,
-    args: ['--no-sandbox', '--disable-dev-shm-usage', '--enable-precise-memory-info'],
+    args: [
+      '--no-sandbox', '--disable-dev-shm-usage', '--enable-precise-memory-info',
+      // Hours-long unattended run: nothing may be throttled for being unfocused,
+      // or the soak silently measures a paused chart.
+      '--disable-background-timer-throttling',
+      '--disable-backgrounding-occluded-windows',
+      '--disable-renderer-backgrounding',
+    ],
     defaultViewport: { width: 1440, height: 960 },
   });
 
@@ -288,6 +324,7 @@ export async function runSinglePairSoak({
   };
 
   let consecutiveFailures = 0;
+  const progress = { ticks: 0, reArms: 0, lastIndex: null };
   try {
     const browserCdp = await browser.target().createCDPSession();
     const page = await browser.newPage();
@@ -317,6 +354,21 @@ export async function runSinglePairSoak({
     await cdp.send('Performance.enable');
     await cdp.send('HeapProfiler.enable');
     page.on('error', (e) => { meta.targetCrash = String(e?.message || e); });
+    // A hung gated fetch is already known to exist on this build (the window-claim
+    // hang), and it would stall replay silently. Long-pending requests are recorded
+    // per sample so a stalled soak is diagnosable rather than just flat.
+    const inFlight = new Map();
+    page.on('request', (r) => inFlight.set(r.url() + Date.now(), { url: r.url(), startedAt: Date.now() }));
+    const settle = (r) => { for (const [k, v] of inFlight) if (v.url === r.url()) inFlight.delete(k); };
+    page.on('requestfinished', settle);
+    page.on('requestfailed', settle);
+    const pendingSnapshot = () => {
+      const rows = [...inFlight.values()]
+        .map((r) => ({ url: r.url.replace(/^https?:\/\/[^/]+/, ''), pendingMs: Date.now() - r.startedAt }))
+        .filter((r) => r.pendingMs > 5_000)
+        .sort((a, b) => b.pendingMs - a.pendingMs);
+      return { count: rows.length, oldest: rows.slice(0, 3) };
+    };
 
     meta.replayArmed = await page.evaluate((s) => {
       const rs = window.chart && window.chart.replaySystem;
@@ -344,8 +396,10 @@ export async function runSinglePairSoak({
         if (orderEverySamples > 0 && i % orderEverySamples === 0) {
           orders.attempted += 1;
           const placed = await withDeadline(placeMarketOrder(page), 30_000, 'place order');
-          if (placed?.ok) orders.accepted += 1; else { orders.failed += 1; row.orderError = placed?.reason; }
+          row.order = placed;
+          if (placed?.ok) orders.accepted += 1; else { orders.failed += 1; }
         }
+        row.pendingRequests = pendingSnapshot();
         Object.assign(row, await withDeadline(
           sampleOnce(page, cdp, browserCdp, { withDump: dumpEverySamples > 0 && i % dumpEverySamples === 0 }),
           120_000,
@@ -356,6 +410,16 @@ export async function runSinglePairSoak({
         row.error = String(error?.message || error);
         consecutiveFailures += 1;
       }
+      // Ticks processed, accumulated across loops, is the workload unit growth
+      // should be normalised against.
+      const idx = row.session?.replayIndex;
+      if (Number.isFinite(idx)) {
+        if (Number.isFinite(progress.lastIndex) && idx > progress.lastIndex) progress.ticks += idx - progress.lastIndex;
+        progress.lastIndex = idx;
+      }
+      if (row.reArm) progress.reArms += 1;
+      row.ticksProcessed = progress.ticks;
+      row.reArmCount = progress.reArms;
       samples.push(row);
       save();
       console.error(
