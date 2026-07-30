@@ -713,3 +713,109 @@ carried as unowned rows. `MODULE-CONTENT-STAMP-BASELINE` drift identical with an
 two suites the sibling cut touched are fully green: `leak-d-rawdata-copy` 8/8, `mc-incremental-rawdata-copy`
 11/11.
 
+
+---
+
+## 2026-07-30 13:26Z - ORDER-GLOW-GC-V1 ACCEPTED 6afb8006a, with two teeth gaps I found and rowed
+
+`manager-a/order-glow-filters-20260730` @ `6afb8006a`, base `e675e5d1b`. Tree clean, writable set exact
+(3 paths, +1250/-0), 13/13 cells. Author ran 9 mutants on disk in both mirrors with two negative controls,
+one of them the good kind (a NON-UNIQUE needle, ` }\n` x4,704, not just an absent one).
+
+**THE LEAK IS REAL AND NOW BOUNDED, measured in real Blink over CDP, not modelled:** 120 closed round trips
+plus 25 open orders leaves **530 `<filter>` nodes** (1,060 with their feDropShadow children) that a chart
+strip does not reclaim; after the fix, 0. The kill-switch run is deep-equal to the legacy run across the
+whole 120-element per-cycle series, which is the right way to prove a kill-switch restores legacy exactly.
+
+**KILL-02 SECOND NUMBER: MY PREDICTION HELD, AND IT KILLS THE RASTER RATIONALE.** Four arms, 240 frames x5:
+530 UNREFERENCED filters cost **+2.4 ms of raster across 240 frames (0.010 ms/frame)**, and 5,000 cost LESS
+(+1.85 ms) - no dose response, both inside noise. The positive control proves the instrument is not blind:
+REFERENCING those same 530 costs +447 ms raster, 10.1x the floor. An unreferenced `<filter>` is not
+rendered so it is not rastered. The only dose-responsive phase is Layout (23.9 -> 30.1 -> 72.5 ms as nodes
+go 405 -> 1,465 -> 10,405), +6.2 ms over 240 frames at realistic leak size. **This ships as a pure RETENTION
+fix. Anyone re-arguing the raster rationale now has to beat a number.**
+
+### Three corrections against my brief, all of which I confirmed
+
+1. **"About eight creation sites" was WRONG - there is exactly ONE.** `defs.append('filter')` occurs once,
+   at :41507 inside `_ensureMarkerGlowFilter`, and it ALREADY dedupes: :41505 `if (svg.select(`#${filterId}`)
+   .empty())`. My "8" was 8 references to `_ensureMarkerGlowFilter` = 1 definition + 7 call sites; I counted
+   references and wrote "creation sites". Half my proposed fix already existed at base. Note also that my
+   first grep for the guard came back EMPTY because I searched the author's PARAPHRASE (`'#' + filterId`)
+   rather than the real template literal - my own empty-grep rule caught it, and the guard is there.
+2. **`selectAll(...).remove()` is 102 in that file, not my 98.** Drift; my ratio argument is unaffected.
+3. My magnitude estimate held exactly: 4 filters/round trip x 2 nodes = 8 nodes/trade = 2,400 at 300 trades.
+
+**The author also found something I did not know, and it is what makes removal safe:** the filters are
+created EAGERLY at marker draw but referenced ONLY during hover, so at any resting moment essentially every
+per-order filter in `<defs>` is already unreferenced. The code does not rely on that argument - it refuses
+to remove anything a live `filter="url(#id)"` still names, scanning `ownerDocument` rather than the `<svg>`
+because url(#) resolves document-wide and sibling panels duplicate marker ids.
+
+### MIRROR DIVERGENCE: pre-existing, REAL, and the deployed side is the SAFE one
+
+Author reported the two `order-manager.js` copies were already NOT byte-identical at base (4 ins / 60 del,
+from merge `a07e35120` "reconcile manager-d/trade-correctness"), the homepage copy missing the B-W16/B-W18
+durable-journal hydration guard, and refused to reconcile them inside a glow packet. **Confirmed at base:
+B-W16 canon=5 mirror=0, B-W18 canon=2 mirror=0.** I also identified one of the two "older teardown
+selectors" concretely: mirror :42620 is `[class*="multi-tp-avg-"][class*="-${oid}"]` where canonical has
+`.multi-tp-avg-${oid}` - the mirror form is a substring match that can over-match across order ids.
+
+**I then settled the thing that actually matters, on the LIVE BYTES rather than by inference:**
+`http://31.97.192.82:3000/chart/modules/order-manager.js` has **B-W16 = 5 and B-W18 = 2**. So the DEPLOYED
+copy is the CANONICAL one and the homepage mirror is the stale side. The guard is NOT missing from
+production. Author's refusal was right and the risk is lower than its report reads - but the divergence is
+a live ROW: it is why `orphan-l4-entry-marker-listeners.test.mjs` is red on its byte-identity cell, and it
+belongs to whoever owns `a07e35120`, not to this packet.
+
+### MY OWN MUTANTS - four killed, and TWO SURVIVORS THE AUTHOR'S TABLE HID
+
+Five independent of the author's nine, on disk in both mirrors, needle==1, restored to
+`5FFA7D09A78DE0F5 / 177FA647920C4D28` every time. A2 partial-leg-prefix-loses-hyphen (order 1 claiming
+order 12's legs), A3 `=== true` polarity, A4 drop-only-the-fallback-exclusion (a PARTIAL break the author's
+whole-line M5 would not catch) - all three KILLED by named behavioural cells.
+
+**Then I discounted the author's own mutant-runner cell and two survivors appeared.** That cell mutates
+chart source and hash-checks it, so it goes red for ANY edit of mine regardless of behaviour - counting it
+as a killer inflates every result. This is exactly the defect I flagged on M17-DI2 and it is now confirmed
+in a second suite. Excluding it and the teardown/mirror cells:
+
+- **A5 reference-scan-svg-not-document SURVIVES all 12 behavioural cells.** Swapping
+  `_referencedGlowFilterIds(root.ownerDocument || root)` for `(root)` produced exactly ONE red cell: the
+  self-referential mutant cell. The cross-panel scan scope - which the author documents in a comment as
+  load-bearing, and which is the difference between safe and removing a filter a sibling panel still
+  references - has NO behavioural cell. `GLOW-GC ownership matchers and reference scan` does not vary scope.
+- **A1 reclaim-BEFORE-the-marker-removes SURVIVES with ZERO red cells.** Moving the reclaim above the twelve
+  `selectAll(...).remove()` calls in `_sweepOrphanedOrderLevelDom` leaves the entire suite green.
+
+**A1 needs its severity stated precisely, because the obvious reading is wrong.** It is NOT a defect today
+and the shipped order is correct. Because filters are referenced only during HOVER, at a resting teardown
+nothing references them and reclaim-before-remove still works - which is exactly why the suite stays green.
+The order becomes load-bearing only when an order is torn down WHILE its marker is hovered (closing from a
+control next to the marker), where the guard would correctly refuse and the reclaim would silently no-op.
+So: a real latent ordering hazard, no cell exercises teardown-while-hovered, and the property is untested
+rather than broken. Same family as the five inert realm-teardown cuts - green suite, zero effect.
+
+EIGHTH sighting of the anchor/teeth family. Rowed both; NOT fixing by hand, the cells are CDP/Blink and want
+their own test-only packet, same disposition as FLAG-TRUTHY-TEETH and STASH-REFRESH-TEETH.
+
+### Two other things worth carrying
+
+**THE EXTRACTION-LIST TRAP HAS STARTED SHAPING PRODUCTION CODE, not just breaking harnesses.** The author
+did not hang the reclaim on `_disposeEntryMarkerRecord` - the seam you would expect - because that method
+is in the FIXED `METHOD_NAMES` list that `orphan-l4-entry-marker-listeners.test.mjs` extracts and executes,
+so adding a call to a method outside that list would have broken it, and the writable set forbade extending
+the harness. It used `_sweepOrphanedOrderLevelDom` instead. That is a defensible choice and it disclosed it,
+but the escalation is the point: my standing row had this trap breaking TESTS. It is now steering where
+production code is allowed to go. That is a much stronger argument for fixing the extraction lists.
+
+**HYGIENE, and it will bite the next packet:** running the order-manager corpus MUTATES tracked evidence
+under `docs/plan3/**`, `chart v 1.4/chart/multichart-prod/harness/m21-b-tal01918-evidence/` and
+`tests/evidence/session-calendar-red/`, and creates an untracked `homepage/docs/plan3/`. The author cleaned
+it before committing. Any packet that runs these suites will show a dirty tree unrelated to its own change -
+so "dirty tree" is not by itself evidence of an uncommitted fix. Also `scripts/tests/m6-replay-leak-
+reproduce.test.mjs` times out at 240s in both arms.
+
+Regression duty (the good kind): 270 test files before and after, plus a re-run at base with the three files
+reverted. 43 pre-existing reds, 43 after, identical set, zero caused, zero flipped green.
+
