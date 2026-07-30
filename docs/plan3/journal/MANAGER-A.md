@@ -573,3 +573,60 @@ Queued behind the four packets, test-only.
 **ITEM 6 — re-baseline is right and I will not size the remaining cuts until the clone cut is deployed and
 the profile is re-read.** Sizing against a superseded ceiling is how we got here.
 
+
+## 2026-07-30T12:52 · ACCEPTED · LABELTOOL-HANDLE-GROWTH — and the author was right to refuse my instruction
+
+`manager-a/labeltool-handles-20260730` @ **1cfcc08f5** = da5326655 (author, product) + 1cfcc08f5 (MINE, test-only),
+based on the live tip e675e5d1b. Clean tree, one product commit, writable set respected,
+mirrors byte-identical 688917F09B434838, flag 1/1 both copies, bogus control 0.
+
+**THE NUMBER (KILL-02): +3 DOM nodes per reuse-render, exactly.** 6 nodes after 1 render, 153 after 50 with
+the switch on; flat at 6 with the fix. Stranded `.resize-handle-group` count after 50 renders: 50 legacy, 1 fixed.
+
+**I MUST CORRECT MY OWN ROW.** I recorded this as "~2,250 nodes/min per Label drawing during replay". The
+author verified +3/render and REFUSED to endorse the per-minute figure, correctly: 2,250/min implies ~12.5
+renders/sec, and the replay cadence comes from `getCandlePlaybackCadence()` and varies with user-selected
+speed. So the rate is SPEED-DEPENDENT, not a constant. +3/render is the verified quantity; my per-minute
+number was an unmeasured extrapolation and should not be quoted. Also, per W91 this is a RETENTION fix and
+carries no CPU claim — layout is 1.4% of the main thread.
+
+**THE AUTHOR DECLINED MY DESIGN AND WAS RIGHT.** I briefed wipe-and-reappend. It reused the preserved group
+in place instead, because a recreated handle would be stranded: during an active resize the manager sets
+`_skipHandleSetup = true` (manager :1087/:5931/:10815) which suppresses the `setupHandleDrag` rebind at
+:8867, and the hover-bind path caches `_hoverHandleBoundGroupNode` keyed on the drawing group node
+(:17082-17088), so for an unselected-but-hovered label a recreated handle would never be rebound at all.
+Keeping node identity makes both moot. This is the behaviour I want from authors: refuse with evidence.
+
+**IT ALSO FOUND A HAZARD MY BRIEF MISSED, which would have shipped silently.** `_clearGeometryChildren`
+removes non-handle children and `render()` then re-appends the marker circle AFTER the preserved handle, so
+the reused handle becomes the FIRST child, painted under a marker that has `pointer-events: all` — every
+handle click would have been swallowed. Fixed with `handleGroup.raise()`. I positive-controlled that this is
+the established idiom, not an invention: 6 `.raise()` sites across shapes+base, and base:2434 is literally
+`this.group.selectAll('.resize-handle-group').raise()`.
+
+**VERIFIED MYSELF, not taken on report:**
+- Attribute-drift check, the likeliest silent bug in a reuse-in-place fix: every field the sync path skips
+  (`r`, `fill`, `stroke`, `stroke-width`, `pointer-events`, `cursor`, class) is a CONSTANT; it refreshes
+  exactly the state-dependent ones (cx, cy, both opacities, data-point-index) and matches `.attr` vs `.style`
+  per property against the append path. No drift.
+- `'label'` is absent from `_supportsLiveHandleGeometryPatch` (manager :1038-1043), so the new
+  `_shouldCreateHandles` branch cannot strip a handle mid-resize. Author's claim confirmed.
+- For a LOCKED label the new code now removes handles where legacy appended them. Behaviour change, and the
+  correct one — it aligns LabelTool with every sibling and a locked drawing must not be resizable.
+- SIX of my own mutants on disk in both mirrors, needle==1, negative control NOT_APPLIED, files restored.
+  All killed by NAMED BEHAVIOURAL cells: drop-raise, STALE-HANDLE-POSITION (the reuse-specific bug),
+  `=== true` polarity, drop-residue-collapse, drop-the-guard, reuse-malformed-group.
+- Ran the two gates that would block B: sync-homepage-modules 2/2, territory-preflight 72/72.
+- Regression duty: author ran drawing-tools suites pre- and post-edit and got the IDENTICAL 7 failing cells;
+  all pre-existing, none in files it touched.
+
+**CLOSED ANOTHER UNTESTED GUARD — sixth sighting today of the anchor/teeth family.** My mutant L6 survived:
+deleting `if (glow.empty() || handle.empty()) return false;` left the suite green, so a preserved group
+stripped of its circles would be reused and the label would keep a handle group with nothing clickable in it
+— resize dead, silently. Unreachable today (`_isHandleNode`'s regex at base:973 preserves both circles too),
+which is exactly why a reader's confidence is not enough. Added a behavioural cell; suite 26 -> 27 and L6
+now dies. Same disposition as B7 on the clone cut: pin it, do not file it.
+
+ROW (cosmetic, for B): the new test file exists only at the canonical path. That matches existing practice
+(leak-d and mc-incremental are canonical-only too) and both mirror gates are green, so it is not a blocker.
+
