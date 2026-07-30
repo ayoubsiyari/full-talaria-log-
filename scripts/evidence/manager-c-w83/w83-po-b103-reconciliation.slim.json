@@ -1,0 +1,84 @@
+{
+  "packet": "W83",
+  "manager": "C",
+  "tier": "mid",
+  "tierWhy": "measurement and reconciliation of two instruments; no money path, no ship-gate review",
+  "subject": "Does A's five-cut fix halve the leak on b103, and are the PO's numbers comparable to mine",
+  "headline": "The halving does not survive either instrument. By the PO's own series the rate is flat across builds; by mine the five cuts move it 12.5%.",
+
+  "theHalvingClaim": {
+    "asStated": "PO 12 MB/cycle on b103 versus C's pre-fix 23.5 MB/cycle, read as a 2x reduction",
+    "problem": "that compares two different instruments on two different builds with two different workloads",
+    "poOwnSeriesAcrossBuilds": { "b85": 13.3, "b99": 12.8, "b103": 12.2, "reading": "flat; about -5% from b99 to b103, no step change" },
+    "cInstrumentOnB103_fixLive": { "cycles": 5, "steadyMeanMB": 23.76, "seMB": 2.53, "tailMB": 21.59, "meanFloorDeltaMB": 25.4, "preFixFigureMB": 23.5, "reading": "unchanged from pre-fix" },
+    "sameBuildABOnB103": { "allFiveCutsDisabled": 24.56, "allFiveCutsActive": 21.5, "effect": "-3.06 MB/cycle, -12.5%" },
+    "conclusion": "both instruments independently say the five cuts did not halve anything. The 12-vs-23.5 gap is an instrument gap that predates the fix: the PO read 13.3 on b85 while I read 23.5 on the same class of build."
+  },
+
+  "q1_whichCutCarried": {
+    "answer": "cut 2, host orderManager registries. The other four carry nothing on this build.",
+    "leaveOneOutOnB103": {
+      "allFiveDisabled_control": 24.56,
+      "allFiveActive": 21.5,
+      "cut1_dragGuardDisabled": 20.15,
+      "cut2_orderRegistriesDisabled": 23.29
+    },
+    "reading": "disabling cut 2 returns the rate to the control; disabling cut 1 does not degrade at all",
+    "cuts345": "no hook to call at collapse: _timeframeFetchAbort falsy, no live _indicatorWorkerSingleton, TalariaCustomIndicators.disposeWorker absent on all four panels (live RELEASE-TARGET-CENSUS, not a grep)",
+    "deadWeightIntoCanary": "cuts 1, 3, 4, 5 — keep the kill-switches, but nothing measurable is lost by their absence",
+    "honestLimit": "n=1 per arm; within-run spread reaches 4.5 MB against a 3.06 MB effect, so three repeats per arm would settle it"
+  },
+
+  "q2_isPanelBStillSurviving": {
+    "answer": "YES, in every configuration measured on b103",
+    "arms": {
+      "fixOn": { "productRetained": 1, "survivor": "cycle1/panelB" },
+      "fixOff": { "productRetained": 1, "survivor": "cycle1/panelB" },
+      "cut1Disabled": { "productRetained": 1, "survivor": "cycle1/panelB" },
+      "cut2Disabled": { "productRetained": 1, "survivor": "cycle1/panelB" }
+    },
+    "anchor": "Window [JSGlobalObject] -> property mainChart -> Chart -> property _mcHostCacheFileRefOwners",
+    "perDirectorsOwnRule": "B still survives, so the cuts were incomplete rather than the remaining mass being a wholly separate mechanism",
+    "remainingMassNamed": {
+      "class": "a HOST cache holding an object that was ALLOCATED INSIDE a panel realm; the object's constructor and prototype belong to that realm, so one cached item pins the whole ~20.87MB realm",
+      "instance1_deployed": "Chart._mcHostCacheFileRefOwners",
+      "instance2_local": "the host bar cache: closure put -> context files Map -> tfs Map -> bars Array -> a bar object -> constructor -> the panel realm global",
+      "whyCapsNeverWorked": "a cap bounds how many items the cache holds, not which realm a single held item reaches. This is why the ten cache shots in W74 did not move the rate.",
+      "cutShape": "copy bars and ref-owner entries into host-realm objects on ingest, or key those caches by realm and evict on removeChart"
+    }
+  },
+
+  "q3_does15PairsChangeTheComparison": {
+    "answer": "The numbers are NOT directly comparable as per-cycle means. They are comparable as totals over a stated cycle count, and they are comparable in mechanism.",
+    "reasons": [
+      {
+        "reason": "my rate decays with cycle count, so any per-cycle mean depends on how long you ran",
+        "evidence": "b103 five-cycle floors 106.82/137.10/162.33/182.49/201.88, deltas 30.28 / 25.23 / 20.16 / 19.39",
+        "consequence": "a 3-cycle run reads about 21-22 and a 5-cycle tail reads 19.4. A longer or heavier session sits lower on that curve, which moves the PO's session toward a smaller per-cycle number without any change in mechanism."
+      },
+      {
+        "reason": "forced GC versus live reading",
+        "evidence": "every floor I quote is taken after HeapProfiler.collectGarbage; the PO reads the live number. His deltas are +16, +3, +27, +6, +9 — the jitter signature of GC landing between readings, where mine are smooth.",
+        "consequence": "his robust statistic is the total (+61 over five cycles), not any single delta; per-cycle means from a live reading and from a forced-GC floor are different quantities."
+      },
+      {
+        "reason": "panel count should NOT scale the leak, so 15 pairs is not the explanation",
+        "evidence": "retention is exactly ONE realm per cycle and it is slot-bound to panel B — dataset rotation moved the data and B still survived. Growth is quantised in ~20.87MB realm units.",
+        "consequence": "his +61 MB over five cycles is about three realms; my +95 MB over four cycles is about four and a half. Same quantum, different frequency; a 15-pair session does not retain 15 realms per cycle."
+      }
+    ],
+    "howToCompareProperly": "state the build, the cycle count, and whether GC was forced, then compare TOTAL growth. On b103: PO +61MB / 5 cycles live-read, C +95MB / 4 cycles forced-GC floor.",
+    "harnessLimit": "my harness expands to four panels only (expandFourPanelsWithRetry / waitForDistV9FourReady), so I cannot reproduce a 15-pair session to test it directly. Saying so rather than implying the shapes match."
+  },
+
+  "snapshotCeiling": {
+    "note": "the five-cycle run is floor-only, no heap snapshots taken, so the V8 max-string-length ceiling does not apply to it. Snapshot-bearing runs remain at 3 cycles; 6 dies.",
+    "gateCellsThatNeedSixCycles": ["HEAP-CYCLE-INSTRUMENT-COMPLETE", "HEAP-CYCLE-LATE-JUMP-SHAPE"]
+  },
+
+  "build": "20260729b103",
+  "commands": [
+    "node scripts/heap-cycle-memory-gate.mjs --require-browser --deployed --json --cycles=5 --dataset-mode=distinct --timeframes=1m,1m,1m,1m --no-po-hand-sample --out=<r>",
+    "node --max-old-space-size=12288 scripts/realm-survival-gate.mjs --snapshot=<f>.cycle3.heapsnapshot"
+  ]
+}
