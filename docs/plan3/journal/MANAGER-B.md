@@ -5137,3 +5137,73 @@ adds a third quietly. It also asserts the safe shape — a `def` endpoint taking
 not flagged, so it cannot be dismissed as noise. `api_server.py` is outside the granted territory,
 so the fix is routed with the exact patch shape rather than landed: bound the wait with
 `SET LOCAL lock_timeout`, and get the locked section off the loop via `run_in_threadpool`.
+
+## B-0210 — C's gate has a host, and that host delivers half the CPU it advertises
+
+Director interrupt: get C's 2.2-hour four-panel gate off the PO's machine onto `31.97.192.82`,
+scoped, no credentials in chat. Done and handed over. The provisioning was the easy half; the
+measurement finding underneath it is the part that matters.
+
+**The host advertises 4 cores and delivers about 2.** Identical fixed work at rising parallelism:
+1 worker 1.00x, 2 workers 1.74x, 3 workers 2.03x, 4 workers 2.01x, 6 workers 2.07x, with steal
+pinned at 46-50% throughout. Since boot the box is 92.1% idle at 1.9% steal, so this is a cap that
+engages on demand, not a neighbour we are waiting out. Single-threaded work is stable — six
+identical runs spread 2.7%, sd 1.1% — so this does not show up as jitter. It shows up only when
+something asks for more than two cores, which is exactly what a four-panel Chrome layout does.
+
+**Why that is a DUR-01 problem and not just a capacity note.** DUR-01 asks for a slope over time.
+A four-panel 60x run on a box that throttles to half its nominal CPU can produce a rising slope
+that is the cap engaging, not our leak — and the throttle is demand-driven, so it correlates with
+exactly the phases where the gate is working hardest. C is therefore handed
+`mgr-c-record-steal`, which writes `epoch_s,busy_pct,idle_pct,steal_pct,load1`, and told plainly
+that without that column joined to its samples I do not consider a 2.2h slope from this host
+gradeable. That is my read, not a ruling; C owns the gate.
+
+**Scoping, enforced rather than trusted.** `mgr-c` is in no group but its own — not `docker`, not
+`sudo` beyond two wrappers — so DEPLOY-02 holds by construction: verified it cannot reach docker,
+and `mgr-c-stop-gate` refuses any unit not matching `mgr-c-gate-*`, so it cannot stop a canary
+container. The gate runs via `mgr-c-run-gate` inside a cgroup slice at CPUQuota=150%, MemoryMax=6G,
+IOWeight=50, which leaves the canary roughly half a core of the two available. `--cpu` widens it to
+at most 300% and prints what it costs the canary; that is a Director call, not a default. The
+wrapper also refuses to start under 10G free, because / is 82% full and shares the disk with the
+canary images and the Postgres volume. Chrome 148 was already present but under root's mode-700
+cache, so it is republished read-only at `/opt/chrome-for-testing`. No apt was needed: both libs
+`ldconfig` appeared to be missing are present under Ubuntu 24.04's `t64` names, which is worth
+remembering before anyone installs packages onto the live canary host to fix a phantom.
+
+**The gate cannot point at the deployed build, and that is by design.** An unauthenticated headless
+Chrome does not reach a chart: the shell returns 200, then its own JS calls `redirectToLogin()` on
+the 401 from `/api/auth/me`, so you land on the marketing homepage — 33 KB of Next.js, no chart. So
+the gate targets the local harness instead, which also keeps a 2.2h run from perturbing the wire and
+vice versa. Placed and proven, not described: the CONF-01 harness from `e95740e9d` at
+`/home/mgr-c/gate/chart/multichart-prod/harness`, serving `fileIds A:25 B:27 C:28 D:29` with
+`tfs A:1m B:5m C:15m D:1h`, four panels painting 2000 bars each, real traffic on
+`/api/file/{25,27,28,29}/bars` at four resolutions. The served-image copy of the harness predates
+the CONF-01 work and cannot express four symbols, so a copy of the served tree alone would have
+handed C a same-pair layout wearing a CONF-01 URL.
+
+**Three traps found while proving it, all of which produce a confident wrong number.**
+`getActiveChart()` is the accessor that exists in both host and embed realms; a probe using
+`window.chart` reports `bars: 0` and reads as a broken harness rather than a broken probe.
+`page.on('request')` on the top page does not see the iframes' data requests — my first pass
+captured zero while the harness log showed eight, which is the same shape of error as the "zero
+fetches during play" result in B-0204 and worth re-checking there. And `performance.memory` is
+per-realm: each of the four panels reports 28 MB, so a main-frame reading says 28 where the total
+is ~112 — the same instrument error that produced 131-192 MB when the real figure was ~789 MB.
+
+**Queue item 1 re-confirmed on the way past (MEAS-01).** `20260730b113` is what the running page
+serves: 65 stamped references in the served shell, 167 stamped requests in the access log, the
+stamp baked into the image at `/usr/share/nginx/html/chart/dist-v9/index.html`, image
+`talaria-homepage:canary-20260730b113` started 13:23. All four P0 markers present in the served
+`chart-window-limit.js`: `CONTROL_TIMEOUT_MS`, `controlFetch`, `AbortController`,
+`__TALARIA_DISABLE_WINDOW_CONTROL_FETCH_TIMEOUT_V1`.
+
+**Escalation, one line:** if C's gate needs genuinely uncontended CPU for 2.2 hours it cannot have
+it on this host while the host also serves the canary — a second host is the only clean answer, and
+the Director decides whether to buy one or accept a canary-degraded window at `--cpu 250`.
+
+EVID-02: handover, key and probe scripts live in `c:\Users\user\Desktop\talaria1\_handoff\manager-C\`,
+outside every worktree, confirmed by `git check-ignore` reporting the path as outside the
+repository. Nothing over 10 MB was written inside a worktree; the only >10 MB files present are
+pre-existing `homepage/.next/cache/webpack/*.pack` build caches, not evidence. Canary untouched
+throughout: HTTP 200, 8 containers up, 36G free at finish, and no `RECREATED` event.
