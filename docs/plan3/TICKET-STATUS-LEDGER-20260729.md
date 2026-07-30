@@ -10,9 +10,9 @@ Open row disposition and unverified blast-radius order live in `docs/plan3/UNKNO
 | TAL-01888 | fixed | `42d01a1dc` | GREEN: `m14-fibonacci-settings-levels-persist.test.mjs` canonical + homepage | M14 Fibonacci settings thread; non-money-path |
 | TAL-01813 | fixed | `42d01a1dc` | GREEN: `m14-fibonacci-settings-levels-persist.test.mjs` canonical + homepage | M14 Fibonacci settings thread; non-money-path |
 | TAL-01758 | fixed | `42d01a1dc` | GREEN: `m14-fibonacci-settings-levels-persist.test.mjs` canonical + homepage | M14 Fibonacci settings thread; non-money-path |
-| TAL-01908 | fixed | `b21d236d3`, `f1ddb2e64` | GREEN: `m24-order-id-allocator.test.mjs` canonical + homepage | TOP re-review ACCEPT in `docs/plan3/TOP-REVIEW-REQUEUE-D-20260729.md` |
-| TAL-01919 | fixed | `b21d236d3`, `f1ddb2e64` | GREEN: `m24-order-id-allocator.test.mjs` canonical + homepage | TOP re-review ACCEPT |
-| TAL-01924 | fixed | `b21d236d3`, `f1ddb2e64` | GREEN: `m24-order-id-allocator.test.mjs` canonical + homepage | TOP re-review ACCEPT |
+| TAL-01908 | unverified | — | Old gate `m24-order-id-allocator.test.mjs` proves only new allocation advances past restored max ids; RED: `node "chart v 1.4/chart/modules/m24-order-id-restore-stability.red.test.mjs"` fails hydrate ID stability | b103 escape: closed trade #5 became #942 after refresh |
+| TAL-01919 | unverified | — | Old gate `m24-order-id-allocator.test.mjs` proves only new allocation advances past restored max ids; does not cover session hydrate/display identity | Reopened from fixed because the shared M24 gate missed restore renumbering |
+| TAL-01924 | unverified | — | Old gate `m24-order-id-allocator.test.mjs` proves only new allocation advances past restored max ids; does not cover session hydrate/display identity | Reopened from fixed because the shared M24 gate missed restore renumbering |
 | TAL-01904 | fixed | `b3f6cd6de` | GREEN: `order-type-one-tick-pending.test.mjs` canonical + homepage | TOP re-review ACCEPT |
 | TAL-01897 | fixed | `5f3e68368`, `c0a0d7620` | GREEN: `order-entry-new-draft-reset.test.mjs`; `order-new-draft-constraint-reset.test.mjs` canonical + homepage | TOP re-review ACCEPT for `5f3e68368` and `c0a0d7620` |
 | TAL-01933 | fixed | `a8d887db1` | GREEN: `order-single-tp-after-trail.test.mjs` canonical + homepage | TOP re-review ACCEPT |

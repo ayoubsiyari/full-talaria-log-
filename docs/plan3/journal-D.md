@@ -1,5 +1,25 @@
 # Manager D Journal
 
+## 2026-07-30 — M24 Restore-Time Display Identity Escape
+
+- PO b103 result: history count survived refresh, but displayed trade ID changed from `#5` to `#942`. The existing allocator gate only covered minting new IDs past stale counters; it did not cover session hydrate / journal restore display identity.
+- RED: `node "chart v 1.4/chart/modules/m24-order-id-restore-stability.test.mjs"` failed before the fix with `942 !== 5`.
+- Fix: legacy order-manager display surfaces now use `_resolveJournalDisplayTradeId()` behind `__TALARIA_DISABLE_M24_DISPLAY_ID_STABILITY_V1` (default ON). The corrected resolver prefers the client/session ID (`client_trade_id` / `clientTradeId` / `tradeId`) so hydrate cannot replace `#5` with backend `user_trade_id`/`display_trade_id`/`journal_trade_id`. CSV/export now uses separate `_resolveJournalExportTradeId()` so display IDs cannot re-key ledger import/export. Allocator/dedupe semantics are not changed by this display fix.
+- GREEN: `node "chart v 1.4/chart/modules/m24-order-id-restore-stability.test.mjs"` and `node "homepage/public/chart/modules/m24-order-id-restore-stability.test.mjs"` pass, including the real hydrated row shape, equal client/user/journal IDs, zero display/user IDs, export identity, and kill-switch OFF legacy coverage.
+- Tier: money-path display/journal packet. Initial TOP review rejected the synthetic hydrate shape and user-id preference. Corrected packet was TOP-reviewed by `claude-opus-5-thinking-high` and ACCEPTED. Residual canary gates: module cache-buster/redeploy required before PO sees it, and deployed-build Script 1 must verify M24 on the live stamp.
+
+## 2026-07-30 — PO Visuals: Multi-TP Drift, SL Edge, Label/Hover Mechanism
+
+- Multi-TP drift root cause: coincident TP rungs were made separable by moving the visible preview row. Fix keeps the visible TP line/label/y-axis price at the true price and applies `_hitStackOffsetY` only to the invisible hit line, behind `__TALARIA_DISABLE_ORDER_MULTI_TP_COINCIDENT_STACK_V1`.
+- Follow-up correction: drag start on the invisible offset hit row still had to subtract `_hitStackOffsetY` before price math; `_previewDragHitOffsetY()` now keeps drag geometry hit-only, and Escape/cancel restores the hit row offset instead of collapsing it onto the visible line.
+- Multi-TP gates: `node "chart v 1.4/chart/modules/order-multi-tp-coincident-stack.test.mjs"` and `node "homepage/public/chart/modules/order-multi-tp-coincident-stack.test.mjs"` pass, including kill-switch OFF coverage and hit-row drag source coverage.
+- Placed SL partial-disappearance root cause: two mechanisms. Executed SL/TP rows used raw `yScale(price)` for visibility/clip checks, so a line landing just outside the price-pane edge could be hidden or clipped. Pending placed SL/TP rows could also be shortened to the label column by `_alignAllOrderLabels()` after placement.
+- SL edge/placement gates: `node "chart v 1.4/chart/modules/order-line-edge-visibility.test.mjs"` and `node "homepage/public/chart/modules/order-line-edge-visibility.test.mjs"` pass, including kill-switch OFF legacy-hidden coverage and pending full-width `x2` coverage.
+- Value-box shaky and sequential hover root cause: `renderPreviewLabel()` rebuilt the preview toast/value-box shell with `labelGroup.selectAll('*').remove()` on every live refresh, then hover controls restored opacity with an extra forced layout read per badge. Fix behind `__TALARIA_DISABLE_ORDER_STABLE_LABEL_HOVER_DOM_V1`: preserve and update the `.order-level-toast-label` shell in place when the label shape is unchanged, clear only adjacent controls before rebuilding them, and restore hover-control transitions in one rAF batch with no per-badge forced reflow.
+- Stable label/hover gates: `node "chart v 1.4/chart/modules/order-stable-label-hover-dom.test.mjs"` and `node "homepage/public/chart/modules/order-stable-label-hover-dom.test.mjs"` pass. The gate covers value-box shell reuse, control rebuild without shell teardown, kill-switch full-teardown legacy behavior, immediate hover visibility, and removal of the old extra layout read.
+- Pending SL/TP resurrect after re-drag+cancel root cause: local pending protection clears did not emit a cleared pending snapshot to peer panels, so a stale multichart peer could rebroadcast old `stopLoss`/`takeProfit`/`tpTargets` on the next drag. Fix behind `__TALARIA_DISABLE_ORDER_PENDING_PROTECTION_CLEAR_V1`: after pending SL/TP clear, emit `_emitPendingMirrorSync()` for every cleared pending record, including split-group legs, so peer panels receive explicit null protection. Gate: `node "chart v 1.4/chart/modules/order-pending-protection-clear.test.mjs"` and homepage mirror pass. TOP review initially rejected the fake two-array mirror test; corrected alias-shape/snapshot-emission packet was TOP-reviewed by `claude-opus-5-thinking-high` and ACCEPTED. Residual: `homepage/out` export copy must be rebuilt before deployed PO verification.
+- Open-row clustering: created `docs/plan3/UNVERIFIED-MECHANISM-CLUSTERS-20260730.md` and current canary authority `docs/plan3/CANARY-LEDGER-20260730.md`. Persistence/backend write-read is first and must be checked with B before frontend persistence edits; reports with no reproducible steps moved to NEEDS-INFO rather than PO scripts. Follow-up owner split recorded there: symbol persist to A, timezone residuals to A/M20-A, pins/favorites to B merge/backend, layout isolation remains open, and owner-identity shell resets split across A/B/homepage/backend.
+
 ## 2026-07-29 — M24 / TAL-01926
 
 - Charter files requested at start were absent in the original checkout: `docs/plan3/CHARTER-D-TRADE-CORRECTNESS-20260729-1310.md` and `docs/plan3/AUDIT-TICKET-BACKLOG-20260729-1300.md`. Controlling boundary recovered from `docs/plan3/INTAKE-MERGE-20260727.md`, then superseded by Director instruction: `session_journal_store.py` is Manager D scope; `api_server.py` belongs to Manager B.
@@ -298,3 +318,20 @@
 
 - Wrote `docs/plan3/PO-BAND1-MONEY-PATH-B99-20260729.md` as the first PO-ready Band 1 packet, not a complete pack. All four scripts are marked `TESTABLE ON b99` and require MEAS-01 build-stamp capture before results.
 - Coverage: 18 Band 1 rows across trade-history registration, order-line/drag visibility, stale order-state cancel/clear, and trade-marker projection. Validation found 18 unique row IDs and no duplicates.
+
+## 2026-07-30 — M24 / b103 order-id restore escape
+
+- PO result on b103: trade history count survived refresh, but displayed trade id changed from `#5` to `#942`.
+- Root of gate miss: `m24-order-id-allocator.test.mjs` covers `_allocateOrderId()` and split pending allocation against stale counters. It does not cover session hydrate / journal restore where `id` and `tradeId` can disagree and UI display changes from `trade.id` to `trade.tradeId`.
+- RED added: `node "chart v 1.4/chart/modules/m24-order-id-restore-stability.red.test.mjs"` fails with `942 !== 5`, proving hydrate can renumber a displayed closed trade row.
+- Ledger correction: `TAL-01908`, `TAL-01919`, and `TAL-01924` moved from `fixed` back to `unverified` because the shared M24 gate proves allocation collision avoidance only, not refresh/hydrate trade-id stability.
+
+## 2026-07-29 — PO Band 1 correction / pending protection re-drag and live lots
+
+- Process correction accepted: future PO scripts must compare the row's last-touching commit time against the live build stamp before using `TESTABLE ON <build>`. Rows touched after the stamp are `NEEDS NEW BUILD`.
+- tier=mid author model=gpt-5.5; TOP review required before canary because this is money-path pending-order SL/TP and position sizing.
+- Script 3 FAIL confirmed as not covered by the TAL-01897 new-draft reset. Working root cause: pending SL/TP delete/clear paths updated in-memory protection values but did not emit a null protection snapshot to peer panels or force a critical runtime-state persist, allowing stale restored/peer pending snapshots to replay deleted protection levels on later redraw. Fix is behind `__TALARIA_DISABLE_ORDER_PENDING_PROTECTION_CLEAR_V1` (default ON).
+- Script 2 gap confirmed: the merged preview-SL quantity fix covered new-order preview math, not placed pending-order protection drags. Pending entry/SL drags now recompute risk-sized lots live from immutable `originalRiskAmount` for explicit `risk-usd` / `risk-percent` pending orders, update the entry-line quantity source, suppress mid-drag fills, and feed the existing live pending panel refresh. Fix is behind `__TALARIA_DISABLE_ORDER_PENDING_PROTECTION_LIVE_SIZE_V1` (default ON).
+- RED: `TALARIA_TEST_DISABLE_ORDER_PENDING_PROTECTION_CLEAR=1 node "chart v 1.4/chart/modules/order-pending-protection-clear-live-size.test.mjs"` fails because pending clear does not emit/persist null SL/TP snapshots.
+- RED: `TALARIA_TEST_DISABLE_ORDER_PENDING_PROTECTION_LIVE_SIZE=1 node "chart v 1.4/chart/modules/order-pending-protection-clear-live-size.test.mjs"` fails because pending lots stay at the placed quantity during protection drag.
+- GREEN: canonical and homepage `order-pending-protection-clear-live-size.test.mjs` pass. Adjacent canonical/homepage `order-risk-qty-live-preview-sl.test.mjs` pass.

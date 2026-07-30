@@ -28,7 +28,9 @@ Decision: PASS closes the two Band 1 trade-ledger unverified rows. FAIL makes th
 
 ## Script 2 - Order Lines Stay Visible And Literal While Dragging
 
-Label: TESTABLE ON b99.
+Label: NEEDS NEW BUILD.
+
+Reason: drag-family fixes touching this script landed after the b99 16:12 cut. Do not use b99 for a pass result on this script.
 
 Closes 11 rows: `TAL-01696`, `TAL-01698`, `TAL-01617`, `TAL-01653`, `TAL-01692`, `TAL-01658`, `TAL-01691`, `TAL-01805`, `TAL-01795`, `TAL-01789`, `TAL-01791`.
 
@@ -49,7 +51,9 @@ Decision: PASS closes the order-line/drag visibility and live-value rows above. 
 
 ## Script 3 - Cancel Or Clear Does Not Bring Back Old Order State
 
-Label: TESTABLE ON b99.
+Label: NEEDS NEW BUILD.
+
+b99 result: FAIL. Retest only after the pending-protection mirror clear fix is in the build.
 
 Closes 4 rows: `TAL-01756`, `TAL-01780`, `TAL-01781`, `TAL-01760`.
 
