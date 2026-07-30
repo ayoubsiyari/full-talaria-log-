@@ -528,7 +528,7 @@ function panelTarget(page, panelId) {
 }
 
 /** Read what each panel is *actually* holding — never trust the commands. */
-async function readPanelDatasets(page, panelIds = HEAP_CYCLE_PANEL_IDS) {
+export async function readPanelDatasets(page, panelIds = HEAP_CYCLE_PANEL_IDS) {
   const rows = [];
   for (const panelId of panelIds) {
     const target = panelTarget(page, panelId);
@@ -891,7 +891,7 @@ async function probeMemoryApiScope(page, cycle) {
   return row;
 }
 
-async function applyDatasetPlan(page, plan, { settleMs = 800, timeoutMs = 45_000 } = {}) {
+export async function applyDatasetPlan(page, plan, { settleMs = 800, timeoutMs = 45_000 } = {}) {
   const hostPlan = plan.panels.find((p) => p.panelId === 'A');
   if (hostPlan) await applyHostDataset(page, hostPlan);
 
@@ -1905,7 +1905,7 @@ export async function uiLoginDeployed(page, origin, email, password) {
  *
  * @returns {{ fileIds: number[], symbols: (string|null)[], distinctSymbols: number }}
  */
-async function resolveDeployedFileIds(page, fallback = HEAP_CYCLE_DISTINCT_FILE_IDS) {
+export async function resolveDeployedFileIds(page, fallback = HEAP_CYCLE_DISTINCT_FILE_IDS) {
   const picked = await page.evaluate(async () => {
     try {
       const res = await fetch('/api/files', { credentials: 'include' });
