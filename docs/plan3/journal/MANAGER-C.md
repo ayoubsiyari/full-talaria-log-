@@ -951,3 +951,33 @@ Dispatch: ruling ccfb4b6b8. Everything else yielded. Build read off the running 
 
 8. No supervisor loop was used and none will be: one launch, explicit --max-old-space-size,
    and the machine was checked before each start (5.15 GB free at the probe launch).
+
+## W98b - 2026-07-31 00:30 - THE EXISTING FLAG BUYS +33% THROUGHPUT; DOSE-RESPONSE REPLICATED (tier=mid)
+
+Build read off the running page: 20260730b115. Both suspect files are served BYTE-IDENTICAL to
+b114 (994,217 and 453,663), so the version bump did not touch either mechanism.
+
+1. DOSE-RESPONSE on the product's own function, detached receiver so the live chart is never
+   mutated: 250b=0.1-0.2ms, 500b=0.2-0.3, 1000b=0.4-0.6, 2000b=1.0. Slope 0.487 ms per 1,000
+   bars CI[0.219,0.755] and REPLICATED at 0.494 CI[0.249,0.739] in a second session. Fixed-size
+   control flat both times (GATE-01 PASS twice).
+2. CALL RATE: 5,985 calls over 837 bars = 7.15 calls per bar, 9.73 ms per bar in that one
+   function, 13.2% of wall clock at ~2,500 resident bars/panel (first session: 5,338 and 11.7%).
+3. KILL-SWITCH A/B: 13.56 -> 18.05 bars/s, +33.1%, flag set in all four realms. LOWER BOUND -
+   the disabled arm ran later with MORE bars resident, a bias against the flag. n=1 window/arm.
+4. TWO INSTRUMENT DEFECTS OF MINE, both caught and one voided: ARM3 of the first probe read
+   0 -> 0 bars/s because my throughput helper read a field named perPanel where the session
+   state calls it panels. Voided that arm, fixed the gauge to read replaySystem.currentIndex per
+   realm directly, re-ran. Also zeroTrades reported false in the probe while the harness log
+   line says "order SKIPPED": my reporting reads conf01.workload.order and the skip lands
+   elsewhere in the shape. The decay hunt's control is sound because it was confirmed from
+   PRODUCT state ({open:0,closed:0,journal:0}); the probe's flag is a display bug, not a
+   configuration failure.
+5. A ROGUE DURATION GATE WAS RUNNING AND I KILLED IT. Scheduled task TalariaConf02Gate (the
+   W96 task that appeared never to start) fired at 23:59 and spawned freeze-gate ->
+   conf01-duration-gate, 20 Chrome processes against my probe. The ruling says the duration gate
+   yields to this hunt, and this is the same shape as the OOM cascade. Task now STOPPED and
+   DISABLED, processes killed, free RAM recovered 3.3 -> 6.4 GB. My first probe boot hung with a
+   0-byte log for ten minutes under that contention - consistent with the window-claim P0 (a
+   second session while another holds the claim) - so I killed it once, relaunched clean, and it
+   booted in ~90s. One relaunch, named cause, not blind retrying.

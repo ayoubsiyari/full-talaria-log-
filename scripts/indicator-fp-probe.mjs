@@ -165,14 +165,31 @@ async function everyRealm(page, fn, arg) {
   return rows;
 }
 
-/** Throughput over a window: bars advanced per second, summed across panels. */
+/**
+ * Throughput over a window: bars advanced per second, summed across panels.
+ *
+ * The replay index is read straight from each realm rather than through the session
+ * state helper, whose panel rows live under `panels` — reading a misnamed field is how
+ * a gauge silently reports zero bars and voids its own A/B.
+ */
 async function throughput(page, windowMs) {
   const read = async () => {
+    const rows = [];
+    for (const frame of page.frames()) {
+      try {
+        const r = await frame.evaluate(() => {
+          const rs = window.chart && window.chart.replaySystem;
+          if (!rs) return null;
+          return { idx: Number(rs.currentIndex) || 0, tf: (window.chart.currentTimeframe) || null };
+        });
+        if (r) rows.push(r);
+      } catch { /* frame gone */ }
+    }
     const st = await readConf01State(page, { advanceWindowMs: 1_200 }).catch(() => null);
     return {
       ts: Date.now(),
-      perPanel: (st?.perPanel || []).map((p) => ({ tf: p.timeframe, idx: p.replayIndex })),
-      sum: (st?.perPanel || []).reduce((t, p) => t + (Number(p.replayIndex) || 0), 0),
+      perPanel: rows,
+      sum: rows.reduce((t, p) => t + p.idx, 0),
       advancing: st?.advancingPanels ?? null,
     };
   };
