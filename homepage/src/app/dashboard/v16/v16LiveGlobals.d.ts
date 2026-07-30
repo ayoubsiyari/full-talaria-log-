@@ -142,6 +142,18 @@ declare global {
       class: string;
       status: string;
     }>;
+    /**
+     * Server writes that failed; published by server-write-failure-ledger.js for
+     * in-realm consumers. The support passport deliberately reads the ledger's
+     * localStorage mirror instead, because a ticket is filed from a different page.
+     */
+    __TALARIA_WRITE_FAILURE_STATE?: {
+      failedServerWrites: number;
+      endpoints: string[];
+      firstAt: number;
+      lastAt: number;
+      lastStatus: number;
+    };
   }
 }
 

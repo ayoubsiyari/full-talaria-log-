@@ -1536,7 +1536,9 @@
          time it runs (React's main.jsx is also deferred).
          ────────────────────────────────────────────────────────────── -->
 
-    <!-- Tier A — preferences-sync MUST run before preferences-init (defines window.preferencesSync). -->
+    <!-- Tier A — preferences-sync MUST run before preferences-init (defines window.preferencesSync).
+         The write-failure ledger loads first so the very first failed save is counted. -->
+    <script defer src="/chart/modules/server-write-failure-ledger.js?v=20260728b82"></script>
     <script defer src="/chart/modules/preferences-sync.js?v=20260728b82"></script>
     <script defer src="/chart/modules/preferences-init.js?v=20260728b82"></script>
     <script defer src="/chart/modules/market-calculations.js?v=20260728b82"></script>

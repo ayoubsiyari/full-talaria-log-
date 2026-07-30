@@ -4,6 +4,8 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <script>window.__TALARIA_CHART_BUILD_ID='20260728b82';try{console.info('[Talaria] chart build',window.__TALARIA_CHART_BUILD_ID);}catch(_){}</script>
+    <!-- PO attribution: visible badge + console one-liner window.__TALARIA_CHART_BUILD_ID -->
+    <style>#talaria-build-badge{position:fixed;bottom:4px;left:4px;z-index:99999;font:11px/1.2 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:rgba(232,234,237,.55);pointer-events:none;user-select:all;letter-spacing:.02em}</style>
     <title>Talaria — V9 Live</title>
     <link rel="manifest" href="/chart/manifest.webmanifest?v=20260728b82" />
     <link rel="icon" type="image/png" sizes="32x32" href="/chart/pwa/icon-32.png?v=20260728b82" />
@@ -1534,7 +1536,9 @@
          time it runs (React's main.jsx is also deferred).
          ────────────────────────────────────────────────────────────── -->
 
-    <!-- Tier A — preferences-sync MUST run before preferences-init (defines window.preferencesSync). -->
+    <!-- Tier A — preferences-sync MUST run before preferences-init (defines window.preferencesSync).
+         The write-failure ledger loads first so the very first failed save is counted. -->
+    <script defer src="/chart/modules/server-write-failure-ledger.js?v=20260728b82"></script>
     <script defer src="/chart/modules/preferences-sync.js?v=20260728b82"></script>
     <script defer src="/chart/modules/preferences-init.js?v=20260728b82"></script>
     <script defer src="/chart/modules/market-calculations.js?v=20260728b82"></script>
@@ -1647,6 +1651,8 @@
   <script type="module" crossorigin src="/chart/dist-v9/assets/talaria-v9-live.js?v=20260728b82"></script>
 </head>
 <body>
+    <div id="talaria-build-badge" aria-label="chart build id"></div>
+    <script>(function(){try{var el=document.getElementById('talaria-build-badge');var id=window.__TALARIA_CHART_BUILD_ID;if(el&&id)el.textContent='build '+id;}catch(_){}})();</script>
     <div id="backtestingLoader" aria-live="polite" aria-busy="true">
         <div class="loader-content">
             <div class="loader-brand-wrap">

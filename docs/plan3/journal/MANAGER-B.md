@@ -4385,3 +4385,68 @@ Routing note for A and D: `docs/plan3/evidence/B-M4/release/ROUTE-PREFS-500-TO-A
 **Heap, for the record:** b103 = ~12 MB/cycle against 23.5 before A's cut. Halved, not dead. b103 stays pinned for C.
 
 **Not shipped.** The cap is a client change and needs a stamp; the wire stays on b103 until C has graded. Staged, one command away.
+
+## B-0194 — 2026-07-30 — b104 shipped with A's panel handle; the prefs write is proven; the 500's blast radius is narrower than it looked; retention was eating the graded builds
+
+**Row:** M4-release | **Packet:** SHIP-B104-20260730 + PREFS-500-WRITE-PROOF | **Tier:** top
+**Justification (TIER-02, one clause):** the memory fix that actually reaches the panel had to reach the wire, and a wrong attribution of the 500 would have sent two managers to re-test the wrong symptoms.
+
+### 1. PRIORITY ONE — shipped. **PO reads `20260729b104`**
+
+`e7616ab06` cherry-picked clean onto the tip as `db72fa4d3`. Gate `realm-teardown-release.test.mjs` **35/35**, including the four new stash cells and both stash mutants; the manager mirror was already byte-identical to A's.
+
+MEAS-01, beyond the stamp — the code, on the wire, fetched over HTTP:
+
+| On the wire | Evidence |
+|---|---|
+| stamp | `window.__TALARIA_CHART_BUILD_ID='20260729b104'`, both images `canary-20260729b104` |
+| STASHED-PANEL-HANDLE | `multichart-manager.js` 81184 bytes, kill-switch ×2, `panelWinStash` ×5 |
+| M17-DI2 (completed-bar close guard) | `chart.js` ×2, `replay-system.js` ×2, `panel-cmd-bridge.js` ×1 |
+| PREFS cloud failure cap | `preferences-sync.js` 46632 bytes, cap ×2 |
+
+So b104 carries three things: A's detach-time panel-handle release, M17-DI2, and last night's preferences cap. **That is deliberately not one variable** — the Director asked for the handle plus M17-DI2 in one stamp, and the cap was already staged. The handle is the only heap-relevant change in it, so a heap comparison against b103 is still single-variable for memory. The 1H entry-price disagreement is M17-DI2's to answer and is independent of heap.
+
+### 2. Retention was deleting the build under measurement, and had been for four ships
+
+I told the Director b103 would stay pinned for C. It did not: the b104 ship's retention step **deleted b103's image and tarball**, as it had already deleted b100, b101 and b102.
+
+One line: **retention ranked build ids with a lexicographic `sort`, so `20260729b100`–`b104` sorted BELOW `20260729b85`, and the newest build was always retired as if it were the oldest** the moment it stopped being the live pin. Proven on the host rather than argued — old ordering keeps `b104 b85` as its two newest, fixed ordering keeps `b103 b104`.
+
+Cut: `sort -u -V` (digit runs compared numerically), plus a `PRIOR-PIN.txt` protection so the build that was live until the last ship is protected by name, plus `--self-test` asserting both properties. Installed on the host, self-test green, dry run now retains everything anyone could be grading. b103 and b104 also written into `KEEP-BUILDS.txt`, the escape hatch that existed and that I had failed to use.
+
+**b103 reconstituted** from its recorded sha `153c835e2` and re-tagged, build-only: no compose up, no LIVE-PIN write, `:latest` re-pointed at b104 afterwards so a watchdog restart cannot serve b103 code. Verified after: `live_pin=20260729b104`, both containers b104, `SERVED_STAMP=…b104`, `WIRE_UNCHANGED_OK`. **Honest limit: source-identical to what the PO measured, image layers rebuilt, so not byte-identical.** If C needs byte-identity for a grade, that needs saying.
+
+### 3. PRIORITY TWO — the write is proven working, over HTTP, the way a browser does it
+
+Root cause, one line, unchanged: `(psycopg2.errors.UndefinedColumn) column user_preferences.indicator_settings_templates does not exist` — the model declared it, the deployed table lacked it, and SQLAlchemy names every column in its SELECT, so read and write both died before touching a row. Deployment gap, not missing code.
+
+Last night I could only prove it through the ORM. Now through the endpoint: `GET` **200**, `POST` **200**, reload-shaped `GET` on a fresh connection returns the written values, and an independent DB read confirms them. Run on a throwaway probe user created and deleted inside the script — `users_left=0 prefs_left=0` — so no real user's preferences were read or written. The 422s in the log were my own earlier probe capturing app-startup lines into its own token; nothing to hunt.
+
+### 4. …and the blast radius is NARROWER than the hypothesis. This is the part that matters
+
+The Director's read was that symbol resets, timezone resets, pins, favourites and layout restore might be one backend bug. Measured, not argued:
+
+**Genuinely killed by the 500 — all 15 cloud-contract fields:** tool defaults, timeframe favourites, drawing-tool favourites, chart templates, keyboard shortcuts, drawing-tool styles, drawing-tool templates, indicator settings templates, v9 chart templates, panel sync settings, panel settings, market config, protection settings, general settings, keep-drawing. Pins, favourites, templates and panel layout had **no** cloud persistence at all. Those are worth re-testing now and some should come back green with no front-end change.
+
+**Never touched by the 500:**
+
+- **Selected symbol is not persisted anywhere.** Census of the whole served tree: **zero** `setItem` calls for any symbol-named key, and symbol is not one of the 15 fields. `chart.js` re-derives `currentSymbol` from whichever session it loads. TAL-01865 / TAL-01747 is a **missing capability, not a broken write** — there is no save to fix and no restore to repair.
+- **Timezone is local-only.** `timezone-manager.js` writes `userStorage['chartTimezone']`; `chartTimezone` appears **0 times** in `preferences-sync.js`. Not on the contract, so the repair cannot fix it either.
+
+`market_config` deserves naming because it looks like it should carry the symbol and does not: `{ marketType, pipSize, pipValuePerLot }`.
+
+Both symptoms presented identically to the ones the 500 did cause, which is exactly how two days went into the wrong place. Routing note updated for A and D with per-manager instructions and an explicit "do not fold symbol/timezone into the re-test batch".
+
+**Director's ruling acknowledged and recorded:** no V8/M15 preference contract on this write path yet. It is proven working as of this morning, after being dead for at least three hours, on a host whose `journal-backend` is still outside the canary stamp — so a three-tier store over it would fail identically and read as a front-end bug all over again.
+
+### 5. FAILED SERVER WRITE COUNT — in the passport, gated, kill-switched
+
+`failedServerWrites` + `failedServerWriteEndpoints` (+ last status) now ride in `buildSupportContext()` beside `degradedModules[]`. Ledger `server-write-failure-ledger.js`, wired into the preferences failure and success paths; kill-switch `__TALARIA_DISABLE_SERVER_WRITE_FAILURE_LEDGER_V1`, truthy, per call, climbing self→parent→top. Gate **26/26 with five mutants** (publisher removed, host-only switch, no cross-page mirror, uncapped passport, never cleared).
+
+Two design points worth keeping: it mirrors through `localStorage` because failures happen in the chart realm and tickets are filed from the dashboard realm — **different pages**, so a window global alone would always read zero where it matters. And the passport reads **only** that mirror, never the window publication, so `buildSupportContext()` stays inside the surface set C's passport-realm gate models — I checked, and reading the global turns C's REALM-FIDELITY and TEMPORAL cells RED with `unknownReads: window.__TALARIA_WRITE_FAILURE_STATE`. Named residual, asserted as a cell: with `localStorage` unavailable the count cannot reach a ticket.
+
+C's gate is **41 pass / 8 fail identically with and without my change** — the eight (alias-boot family) are pre-existing on this tip, and C should know they are red.
+
+### 6. Not shipped, on purpose
+
+The ledger and the passport field are staged, not on the wire. b104 went out minutes ago and the PO's heap comparison against b103 should not have the homepage image moved under it. **DEPLOY-02: b105 is one command away the moment the PO's b104 run finishes.**

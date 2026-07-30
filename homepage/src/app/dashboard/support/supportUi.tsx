@@ -74,6 +74,42 @@ export function buildSupportContext(): Record<string, string | string[]> {
   } catch {
     ctx.degradedModules = [];
   }
+  // failedServerWrites — the save-side twin of degradedModules[]. A module that
+  // never loaded shows up above; a module that loaded and then could not persist
+  // shows up here. /api/chart/preferences 500ed for hours on 2026-07-29 and no
+  // ticket could have said so, because nothing counted it.
+  const boundedPath = /^[A-Za-z0-9/_.:-]{1,120}$/;
+  try {
+    // Read the ledger's localStorage mirror, deliberately NOT its window
+    // publication. Failures happen in the chart realm and tickets are filed from
+    // the dashboard realm — different pages, so storage is the only channel that
+    // carries the count anyway. Staying on one already-modelled surface also keeps
+    // this function inside the surface set the passport realm gate models.
+    let state;
+    try {
+      const raw = window.localStorage.getItem("talaria_failed_server_writes");
+      state = raw ? JSON.parse(raw) : undefined;
+    } catch {
+      state = undefined;
+    }
+    const count = Number(state?.failedServerWrites);
+    ctx.failedServerWrites = String(
+      Number.isFinite(count) && count > 0 ? Math.min(Math.floor(count), 9999) : 0
+    );
+    const endpoints = state?.endpoints;
+    ctx.failedServerWriteEndpoints = Array.isArray(endpoints)
+      ? [...new Set(endpoints.filter((value): value is string =>
+          typeof value === "string" && boundedPath.test(value)
+        ))].slice(0, 8)
+      : [];
+    const lastStatus = Number(state?.lastStatus);
+    if (Number.isFinite(lastStatus) && lastStatus > 0 && lastStatus < 1000) {
+      ctx.failedServerWriteLastStatus = String(Math.floor(lastStatus));
+    }
+  } catch {
+    ctx.failedServerWrites = "0";
+    ctx.failedServerWriteEndpoints = [];
+  }
   return deepFreeze(ctx);
 }
 

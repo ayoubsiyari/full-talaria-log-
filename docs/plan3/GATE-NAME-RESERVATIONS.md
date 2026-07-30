@@ -590,3 +590,34 @@ Cells:
 | HIDDEN-TAB-DOCUMENT-FORCED-HIDDEN | probe forced `document.hidden === true` | LIVE |
 | HIDDEN-TAB-REPLAY-MUST-NOT-ADVANCE | playhead index/timestamp must not advance while hidden | LIVE (RED on unfixed product) |
 | NC-HIDDEN-TAB-PAUSE-SHIM | positive-control pause-on-hidden shim makes the advance cell GREEN | LIVE |
+
+## Queue item 12 — Failed server write count in the support passport (B, PREFS-500 follow-on)
+
+| Name | Signature token | Implementation | Status |
+|---|---|---|---|
+| SERVER-WRITE-FAILURE-LEDGER-V1 | `__TALARIA_DISABLE_SERVER_WRITE_FAILURE_LEDGER_V1` | `chart v 1.4/chart/modules/server-write-failure-ledger.js` (+ `homepage/public` mirror), consumer `homepage/src/app/dashboard/support/supportUi.tsx`, gate `chart v 1.4/chart/modules/server-write-failure-ledger.test.mjs` | LIVE in tree, staged for the stamp after the PO's b104 heap run — 26/26 with five mutants |
+
+Why: `degradedModules[]` announces a module that failed to LOAD. This announces one that
+loaded and then could not SAVE. `/api/chart/preferences` 500ed for at least three hours on
+2026-07-29 and no ticket could have said so, because nothing counted it.
+
+Cells:
+
+| Cell | Asserts | Status |
+|---|---|---|
+| WRITE-FAILURE-COUNTED | a 5xx or transport failure increments the ledger and publishes it | LIVE |
+| WRITE-FAILURE-REACHES-PASSPORT | `buildSupportContext()` carries `failedServerWrites` / `failedServerWriteEndpoints` | LIVE |
+| WRITE-FAILURE-CROSSES-PAGES | chart-realm failure is readable by the dashboard realm that files the ticket | LIVE |
+| WRITE-FAILURE-REALM-CLIMB | panel-realm failure visible on the host; host-side kill-switch flip reaches the panel (B-0185) | LIVE |
+| WRITE-FAILURE-BOUNDED | paths only, query stripped, endpoints capped at 8, count capped at 9999, stale record dropped at 24h | LIVE |
+| WRITE-FAILURE-CLEARED-ON-SUCCESS | one successful write clears the ledger | LIVE |
+| NC-PUBLISHER-REMOVED | ledger that stores nothing ⇒ passport count is 0 | LIVE |
+| NC-HOST-ONLY-SWITCH | non-climbing kill-switch leaves the panel counting | LIVE |
+| NC-NO-STORAGE-MIRROR | same-page still works, ticket realm sees nothing | LIVE |
+| NC-UNBOUNDED-PASSPORT | passport cap removed ⇒ tampered storage widens the ticket | LIVE |
+| NC-NEVER-CLEARED | success that does not clear ⇒ a transient 5xx follows the user | LIVE |
+
+Named residual: the passport reads only the ledger's `localStorage` mirror, never its window
+publication, so that `buildSupportContext()` stays inside the surface set C's
+`SUPPORT-PASSPORT-DEGRADED-MODULES-V1` realm models. Cost: with `localStorage` unavailable the
+count cannot reach a ticket. Asserted as a cell so it is a known limit, not a surprise.

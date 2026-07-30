@@ -72,6 +72,7 @@ class PreferencesSyncManager {
      */
     _noteCloudFailure(detail) {
         this._cloudFailureCount += 1;
+        this._noteServerWriteFailure(detail);
         if (this._cloudFailureCount < PreferencesSyncManager.MAX_CLOUD_FAILURES) return;
         this._cloudFailureSuspended = true;
         this.pendingUpdates = {};
@@ -92,6 +93,32 @@ class PreferencesSyncManager {
     _noteCloudSuccess() {
         this._cloudFailureCount = 0;
         this._cloudFailureSuspended = false;
+        this._noteServerWriteSuccess();
+    }
+
+    /**
+     * Hand the failure to the support-passport ledger so the ticket carries a
+     * failed-write count. Optional by design: the ledger is a separate module and
+     * this path must keep working when it has not loaded.
+     */
+    _noteServerWriteFailure(detail) {
+        try {
+            const status = /HTTP (\d{3})/.exec(String(detail || ''));
+            if (typeof window !== 'undefined' && typeof window.__talariaNoteServerWriteFailure === 'function') {
+                window.__talariaNoteServerWriteFailure(
+                    '/api/chart/preferences',
+                    status ? Number(status[1]) : 0
+                );
+            }
+        } catch (_) { /* diagnostics must never break persistence */ }
+    }
+
+    _noteServerWriteSuccess() {
+        try {
+            if (typeof window !== 'undefined' && typeof window.__talariaNoteServerWriteSuccess === 'function') {
+                window.__talariaNoteServerWriteSuccess();
+            }
+        } catch (_) {}
     }
 
     /**
