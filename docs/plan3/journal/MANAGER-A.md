@@ -1752,3 +1752,67 @@ including about this packet's own ceiling, since I have now been wrong about exa
 
 A2 not started, not batched. Withdrawn without spending a packet: the 35-site setProperty flag
 and the post-exit sampling cut. The twenty owner-blocked rows untouched.
+
+## 19:35 — A1 PAYS 9.5% AT THE MASTER I ACTUALLY MEASURED. Both my earlier ceilings were wrong.
+
+**The number, finally sized properly.** A1's recoverable is entirely a function of how far
+the base master has grown. Using the shipped arithmetic across the four CONF-01 panels:
+
+| master/panel | bars evicted | MB | share of 586 MB |
+|---|---|---|---|
+| 2,000 (fresh boot) | 0 | 0.00 | 0.00% |
+| 20,000 | 36,918 | 8.53 | 1.46% |
+| **70,989 — measured on deployed** | **240,398** | **55.53** | **9.48%** |
+| 200,000 | 756,398 | 174.73 | 29.82% |
+
+**70,989 is not a hypothetical — it is the master size my own playback allocation profile
+measured on the deployed build.** So A1 is worth ~55 MB / 9.5%, roughly 170x the 0.05% I
+reported at 16:20. My snapshot error was worse than the retraction I already issued: I
+measured at 1,440 bars, which is BELOW the size at which any bar is evictable, so I was
+measuring a structural zero and publishing it as a ceiling. Third time today I have had to
+move my own number on this packet, and every move has been in the same direction.
+
+**The binding constraint, priced.** _independentMasterCoversReplayTimestamp returns false
+unless the master reaches playhead + 6000*tfMs, and false means a refetch its own comment
+says "would wipe the chart and show loading". So 6,000 base bars must stay resident =
+**1.39 MB/panel, 5.54 MB across four that A1 CANNOT evict** without changing that predicate,
+which is a separate packet. Consequence: the **coarse** panel needs a master above **20,520
+bars** before it evicts anything at all, because at 1h each display bucket costs 60 base bars.
+This is why cell 13 (predicate preserved) is green and cell 14, the deliberate reversal
+control, correctly goes RED — GATE-01 satisfied.
+
+**Suite: 19/24, five RED, ALL test-side, none a price divergence.**
+- Cell 7 was a bar COUNT disagreement (6,242 actual vs 8,241 expected), and 6,242 is exactly
+  the 1m panel's correct retained figure (242 window + 6,000 runway). The cell assumed the
+  window runs to the END of the master; the window is bounded at BOTH ends and evicts the
+  future tail beyond the runway too. Cell 8, the field-exactness cell, was GREEN throughout.
+- Cells 11/12/21 failed on **the same root cause and it is the scene, not the fix**: all three
+  failed their own POSITIVE CONTROL on USDJPY, the 1h panel. Head eviction requires
+  PLAYHEAD_INDEX > windowBars, and 12,000 sat 2,520 under the 1h panel's 14,520. Nothing was
+  evicted because nothing COULD be. **The controls did their job** — they refused to let three
+  cells pass vacuously on a panel where the mechanism never ran. That is the opposite of the
+  green-suite-zero-effect family I have been finding all day, and the first time today a
+  control caught a vacuity before I did.
+- Cell 19 was a real harness defect: Array buffer allocation failed.
+
+**Fixed, test-side only, product bytes untouched.** Re-derived the scene from the arithmetic
+(PLAYHEAD_INDEX 20,000 > 14,520; BASE_BAR_COUNT 30,000 > 20,000 + 6,000 runway), corrected
+cell 7 to compare over the retained range at both ends, and added an **ANTI-VACUITY guard
+cell** that pins the derivation so the scene cannot silently drift back to a size where the
+bound cannot fire. Also found the OOM and the runtime share one cause: makePanel re-created
+a vm context AND re-compiled extracted chart.js/replay-system.js method bodies on every call,
+~50 times across the file. Now compiled once into a cached m.Script run into each fresh
+context — realm isolation per cell preserved, parse cost paid once.
+
+**MECHANISM IS SOUND where it counts:** both slots bound with ONE allocation (cell 9),
+retained bar objects fall de-duplicated BY IDENTITY (cell 10), master never mutated in place
+(cell 6), window computed before allocating (cells 5/6), kill-switch truthy-disables and read
+per call (cells 15/16), and _mergeIntoPanelFullRawData routes through the choke point (17).
+
+**Corrections against myself:** (1) I called the suite a HANG. It terminates in 114 seconds;
+the earlier 17- and 81-minute observations were both suites running at once. (2) Four
+dispatched packets stalled without reporting; I am doing this directly rather than
+re-dispatching. (3) The A1 truncation work was sitting uncommitted through the crash —
+secured byte-identical as `c97b06421` and labelled unverified at the time.
+
+Sent as HEARTBEAT-A-A1-PAYS-9.5-PERCENT-AT-THE-OBSERVED-MASTER-20260730-1935.md.
