@@ -1,0 +1,51 @@
+{
+  "schema": "talaria.backend-live-probe.v1",
+  "ticket": "M24 / TAL-01926",
+  "stamp": "20260730b113",
+  "tip": "f2d60a461",
+  "base": "http://31.97.192.82:3000",
+  "sessionId": 1,
+  "authProvided": false,
+  "verdict": "api-reachable-unread",
+  "detail": "GET /api/sessions/1/state → HTTP 401 (no token). Endpoint present; write discriminator needs --token + disposable session. Coordinate with B — do not wait.",
+  "reachability": [
+    {
+      "path": "/api/health",
+      "status": 401,
+      "html": false,
+      "err": null
+    },
+    {
+      "path": "/health",
+      "status": 404,
+      "html": true,
+      "err": null
+    },
+    {
+      "path": "/api/sessions/1",
+      "status": 401,
+      "html": false,
+      "err": null
+    },
+    {
+      "path": "/api/sessions/1/state",
+      "status": 401,
+      "html": false,
+      "err": null
+    }
+  ],
+  "stateGet": {
+    "status": 401,
+    "html": false,
+    "err": null
+  },
+  "writeProbe": null,
+  "recipe": {
+    "green": "PATCH journal shorter array without explicit_replace → prior SQL trades remain on subsequent GET",
+    "red": "SESSION_JOURNAL_PATCH_DELETE_GUARD=0 → same PATCH prunes orphans",
+    "ownerFiles": [
+      "session_journal_store.py",
+      "api_server.py (_sync_trading_session_journal_trades)"
+    ]
+  }
+}

@@ -2,6 +2,8 @@
 
 **Checkout tip:** `manager-d/trade-correctness`  
 **Binding:** `TEST-01` in `RULING-THREE-STRIKES-ON-THE-WIRE-AND-THE-REAL-DENOMINATOR-20260730-1540.md`  
+**Binding:** `TEST-02` in `RULING-THE-WIRE-AUDIT-NEEDS-GATE-01-AND-TWO-ROWS-MUST-MAKE-THE-FREEZE-20260730-1605.md` — markers must be absent on pre-fix bytes (b103/CKPT).  
+**Skip register:** `docs/plan3/TEST01-SKIP-REGISTER-20260730.json` — `node scripts/test01-skip-register-gate.mjs --freeze` must exit 0 before Saturday freeze.  
 **CONF-01:** every script opens **four panels / four symbols / four TFs**, indicators loaded, ≥1 order open, before row clicks.  
 **DUR-01:** soaks need ≥3 samples over ≥5 minutes, not a single reading.
 
@@ -16,20 +18,26 @@ A pack that cannot prove its subject is deployed **does not run**.
 
 ```bash
 node scripts/wire-audit-fixed.mjs --base <CANARY_ORIGIN> --stamp <STAMP> --out docs/plan3/WIRE-AUDIT-FIXED-<STAMP>.json
+node scripts/wire-runtime-money-probes.mjs --base <CANARY_ORIGIN> --stamp <STAMP>
+node scripts/backend-journal-prune-live-probe.mjs --base <CANARY_ORIGIN> --stamp <STAMP>
+node scripts/wire-audit-test02-falsify.mjs --stamp <STAMP> --wire-dir artifacts/wire-<STAMP>
+node scripts/test01-skip-register-gate.mjs
 ```
 
-3. For this pack, every **Declared commit / marker** row below must be `on-wire` (or `backend-static-unverifiable` only for TAL-01926).  
-4. If any declared money-path marker is `off-wire` or `partial`, **stop** — do not burn PO minutes on pre-fix bytes.
+3. For this pack, every **Declared commit / marker** row below must be TEST-02 `on-wire` (discriminating vs b103). Vacuous markers (present on b103) do not count. TAL-01926 needs the live API probe, not JS bytes.  
+4. If any declared money-path marker is `off-wire`, `partial`, or `wire-unproven`, **stop** — do not burn PO minutes on pre-fix bytes.
 
-**Current canary (2026-07-30):** stamp `20260730b113`. Full column audit: `WIRE-AUDIT-FIXED-20260730b113.md` — **43/50** strict on-wire.
+**Current canary (2026-07-30):** stamp `20260730b113`.  
+- TEST-01 (pre-falsify): `WIRE-AUDIT-FIXED-20260730b113.md` — **43/50** strict.  
+- TEST-02 (GATE-01 markers): `WIRE-AUDIT-TEST02-20260730b113.md` — **10/50** discriminating on-wire; **37** wire-unproven after vacuous throw-out.
 
-**Blocked on b113 (do not schedule until a later stamp proves them):**
+**Blocked on b113 (skip register; routed to B next train — do not wait):**
 
 | Row | Why |
 | --- | --- |
-| Rayan `#8` | gap reconcile + explicit-place audit markers absent |
+| Rayan `#8` | discriminating gap + place-audit flags absent (vacuous `_m24ReconcileOrderIdCounter` thrown out) |
 | TAL-01807b | pair-switch visual rebind flag absent |
-| TAL-01896 | duration-norm module not on a fetchable wire path |
+| TAL-01896 | **needs a better marker** (kill-switch already in b103 tree; not on fetchable canary module) |
 
 ---
 

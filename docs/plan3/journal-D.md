@@ -1,5 +1,19 @@
 # Manager D Journal
 
+## 2026-07-30 — TEST-02 marker GATE-01 retrofit (b113)
+
+- Ruling `RULING-THE-WIRE-AUDIT-NEEDS-GATE-01-…-1605` copied. Binding: markers must be absent on pre-fix bytes.
+- Pretest corpora: `artifacts/wire-pretest/b103` (from `153c835e2`) + ckpt OM retained bytes.
+- Instruments: `wire-audit-test02-falsify.mjs`, `wire-runtime-money-probes.mjs`, `backend-journal-prune-live-probe.mjs`, `test01-skip-register-gate.mjs`.
+- **Headline:** TEST-01 43/50 → TEST-02 **10/50** discriminating on-wire; **37 wire-unproven** (vacuous on b103); **2 off-wire** (#8, 01807b); **1 backend-needs-api-probe** (01926).
+- Vacuous thrown out include `_m24ReconcileOrderIdCounter` and most older `__TALARIA_DISABLE_*` already on b103.
+- **Rayan #2 first:** live MC source-contract holds, but b103 already passes — not discriminating. Runtime sim of host retain documented; browser PO (peer removeChart) still required. Verdict `wire-unproven`.
+- **Rayan #8 first:** gap + place-audit flags discriminating vs b103 and **absent on wire** → `off-wire`. Routed to B next train (do not wait).
+- **TAL-01896:** named **needs a better marker** (kill-switch in b103 tree; not fetchable on canary). Not “needs a build.” Doc `TAL-01896-TEST02-RESOLUTION-20260730.md`.
+- **TAL-01926:** live API probe → `GET /api/sessions/1/state` = **401** (reachable-unread). Write discriminator needs token + disposable session; recipe in probe JSON.
+- **Skip register:** `TEST01-SKIP-REGISTER-20260730.json` — #8 / 01807b / 01896 open. `--freeze` exits 1 while any money skip remains (verified).
+- Artifacts: `WIRE-AUDIT-TEST02-20260730b113.{json,md}`, `WIRE-RUNTIME-PROBES-20260730b113.json`, `BACKEND-LIVE-PROBE-TAL-01926-20260730b113.json`.
+
 ## 2026-07-30 — TEST-01 wire audit of all 50 fixed (b113)
 
 - Ruling `RULING-THREE-STRIKES-…-1540` copied. HONEST_FIXED=50 accepted; Director’s 53 was bad grep.

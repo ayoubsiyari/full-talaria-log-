@@ -123,6 +123,14 @@ docs/plan3/fixtures/*
 # Broadened to match the director_paths grant in TERRITORY.yml: governance and
 # finding documents are tracked; evidence/, probes/ and worker-reports/ stay local.
 !docs/plan3/*.md
+# TEST-01 / TEST-02 wire-audit machine artifacts (narrow — not all plan3 JSON).
+!docs/plan3/WIRE-AUDIT-FIXED-*.json
+!docs/plan3/WIRE-AUDIT-TEST02-*.json
+!docs/plan3/WIRE-RUNTIME-PROBES-*.json
+!docs/plan3/BACKEND-LIVE-PROBE-*.json
+!docs/plan3/TEST01-SKIP-REGISTER-*.json
+!docs/plan3/FIXED-WIRE-MARKERS-*.json
+!docs/plan3/LEDGER-STATUS-COUNT-*.json
 
 
 

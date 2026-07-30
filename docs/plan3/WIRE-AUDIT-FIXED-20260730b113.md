@@ -1,6 +1,7 @@
 # Wire audit — all 50 `fixed` rows vs deployed `20260730b113`
 
 **Authority:** `RULING-THREE-STRIKES-ON-THE-WIRE-AND-THE-REAL-DENOMINATOR-20260730-1540.md` (`TEST-01`)  
+**Superseded for “on the wire” claims by:** `TEST-02` → `WIRE-AUDIT-TEST02-20260730b113.md` (**10/50** discriminating; prior 43 includes vacuous markers)  
 **Instrument:** `node scripts/wire-audit-fixed.mjs --base http://31.97.192.82:3000 --stamp 20260730b113`  
 **Artifact:** `docs/plan3/WIRE-AUDIT-FIXED-20260730b113.json` (`talaria.wire-audit-fixed.v1`)  
 **Marker map (input vocabulary):** `docs/plan3/FIXED-WIRE-MARKERS-20260730.json` + `FIXED-WIRE-MARKERS-SUMMARY-20260730.md` (48/50 rows have needles; TAL-01941 + Rayan #2 have none)  

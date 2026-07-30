@@ -1,0 +1,114 @@
+{
+  "schema": "talaria.wire-runtime-probes.v1",
+  "stamp": "20260730b113",
+  "tip": "f2d60a461",
+  "base": "http://31.97.192.82:3000",
+  "results": [
+    {
+      "ticket": "Rayan #2",
+      "kind": "runtime-source-contract+simulate",
+      "verdict": "wire-unproven",
+      "onWire": null,
+      "detail": "runtime source-contract holds on live MC bytes, but identical contract already holds on b103 — not discriminating; needs browser PO (host order survives peer removeChart)",
+      "live": {
+        "mgrStatus": 200,
+        "mgrHtml": false,
+        "mgrLen": 82265,
+        "gridStatus": 200,
+        "gridHtml": true,
+        "contractPass": true
+      },
+      "b103": {
+        "contractPass": true
+      },
+      "simulation": {
+        "open": 1,
+        "pending": 1,
+        "journal": 1,
+        "pass": true
+      },
+      "textualDiscriminates": false
+    },
+    {
+      "ticket": "Rayan #8",
+      "kind": "live-om-discriminating-flags",
+      "verdict": "off-wire",
+      "onWire": false,
+      "detail": "gap reconcile + explicit-place audit flags absent on live OM (discriminating vs b103) — route to B next train; no browser substitute for missing product bytes",
+      "checks": [
+        {
+          "needle": "__TALARIA_DISABLE_M24_ORDER_ID_GAP_RECONCILE_V1",
+          "onWire": false,
+          "onB103": false,
+          "discriminating": true
+        },
+        {
+          "needle": "__TALARIA_DISABLE_ORDER_EXPLICIT_PLACE_AUDIT_V1",
+          "onWire": false,
+          "onB103": false,
+          "discriminating": true
+        },
+        {
+          "needle": "_assertExplicitPlaceAudit",
+          "onWire": false,
+          "onB103": false,
+          "discriminating": true
+        },
+        {
+          "needle": "_m24ReconcileOrderIdCounter",
+          "onWire": true,
+          "onB103": true,
+          "discriminating": false
+        }
+      ],
+      "behavioural": {
+        "whenDeployed": [
+          "CONF-01 2x2; place host order; hydrate; assert order id counter does not gap-skip under kill off",
+          "explicit place path: reject self-open without place audit when flag on"
+        ],
+        "runnableNow": false,
+        "reason": "product flags absent on wire — behavioural probe would observe pre-fix behaviour"
+      },
+      "liveOm": {
+        "status": 200,
+        "html": false,
+        "len": 2466844
+      }
+    },
+    {
+      "ticket": "TAL-01896",
+      "kind": "duration-surface-resolution",
+      "verdict": "wire-unproven",
+      "onWire": null,
+      "detail": "duration-norm kill-switch exists in tip AND b103 TradeRows source, but is not on a fetchable canary module (HTML trap / not shipped at /chart/.../orderManagerTradeRows.js). Not \"needs a build\" for missing product — needs a better marker (served bundle path or live journal duration probe). Still routed to B next train for auditable ship.",
+      "resolution": "needs-a-better-marker",
+      "onB103Tree": true,
+      "fetches": [
+        {
+          "path": "/chart/talaria-design/src/orderManagerTradeRows.js",
+          "status": 200,
+          "html": true,
+          "hasMarker": false,
+          "len": 29406
+        },
+        {
+          "path": "/chart/modules/orderManagerTradeRows.js",
+          "status": 200,
+          "html": true,
+          "hasMarker": false,
+          "len": 29406
+        },
+        {
+          "path": "/talaria-design/src/orderManagerTradeRows.js",
+          "status": 404,
+          "html": true,
+          "hasMarker": false,
+          "len": 26790
+        }
+      ],
+      "nextChunkHits": [],
+      "linkedChunkCount": 18
+    }
+  ],
+  "tal01896Resolution": "needs-a-better-marker"
+}
