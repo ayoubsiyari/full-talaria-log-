@@ -819,3 +819,107 @@ reproduce.test.mjs` times out at 240s in both arms.
 Regression duty (the good kind): 270 test files before and after, plus a re-run at base with the three files
 reverted. 43 pre-existing reds, 43 after, identical set, zero caused, zero flipped green.
 
+
+---
+
+## 2026-07-30 13:54Z - POINTER-SWEEP PROBE: render-scope bug FOUND, and b112 closes two of my escalations
+
+Read-only probe on `manager-a/pointer-sweep-probe-20260730`, base `e675e5d1b`, **nothing shipped** - I verified
+that myself: `git diff e675e5d1b --name-only` = 0 files, and the blob OIDs of all seven named files are
+identical to base. Only `.scratch-pointer-*` untracked.
+
+### FIRST: the P0 IS ON THE WIRE, and so are the CPU cuts. I am closing both escalations.
+
+I have escalated the countdown P0 twice and reported it missing through b105, b106 and b107. **On the live
+bytes at build `20260730b112`, `__TALARIA_DISABLE_COUNTDOWN_NULL_GUARD_V1` is PRESENT.** So are
+`__TALARIA_DISABLE_RAF_PAINT_COALESCE_V1`, `__TALARIA_DISABLE_TF_DOWNSHIFT_ANCHOR_FIX_V1`, and
+`__TALARIA_DISABLE_IND_LEGEND_CSS_IDEMPOTENT_V1` in the deployed `indicator-ui.js`. The P0 ship branch and
+the CPU-cuts branch both landed. **Escalation withdrawn; stop citing it.**
+
+**AND MY GREP WAS BROKEN AGAIN - THIRD TIME TODAY.** My first pass read `__TALARIA_DISABLE_RAF_COALESCE`
+and `__TALARIA_DISABLE_IND_LEGEND_CSS_IDEMPOTENT` and got 0/0, which I would have reported as "still not
+shipped". Both real names carry a `_V1` suffix. I only caught it because my own empty-grep rule forced me
+to pull the names from `612602877` instead of from memory. Had I trusted the first read I would have sent
+the Director a THIRD false "not on the wire" escalation. The rule has now paid for itself three times in
+one day; the failure mode is always the same, me reciting a flag name rather than reading it.
+
+### The finding: the dashboard-shaped bug is REAL, on the legend, at about a third of the magnitude
+
+Marginal main-thread ms per pointermove, real backtest session, 5 repeats, each 80-move sweep paired with a
+duration-matched idle window and subtracted:
+
+| surface | ms/move | style | layout | JS |
+|---|---|---|---|---|
+| **legend (separate-panel rows)** | **11.29** (sd 0.72) | 1.61 | 1.49 | 5.57 |
+| **order panel rows** | **9.29** (sd 1.43) | 0.73 | 1.09 | 4.02 |
+| legend (OHLC rows) | 6.43 | 0.97 | 0.67 | 1.72 |
+| candle area | 5.39 | 0.33 | 0.79 | 1.91 |
+| price axis | 4.41 | 0.20 | 0.58 | 1.75 |
+| time axis | 2.63 | 0.10 | 0.39 | 1.22 |
+
+**My census's deflationary prediction is HALF RIGHT and I should say so plainly.** On canvas and axes it
+holds: 2.6-5.4 ms/move, style recalc 0.1-0.3 ms, nothing like 31.5 ms. But the census measured playback
+with NO INTERACTION, so it could not see two DOM surfaces that only exist under a pointer. Hovering one
+separate-panel legend row commits **160.7 of 161.3 DOM mutations (99.6%) OUTSIDE that row**, 8.8 of them
+onto its own ancestors, and recalcs 93 elements where the hovered row's whole subtree is ~4. That is the
+dashboard's shape exactly, at 11.3 ms rather than 31.5 ms.
+
+### ROOT CAUSE: hovering a legend row runs FIVE full Chart.render() per move
+
+`Chart.render -> redrawDrawings -> DrawingToolsManager.redrawAll (:12751) -> updateClipPath (:2333)`, and
+`updateClipPath` writes the clip rect exactly once per call, so 5.00 clip-rect rewrites/move = **5 render()
+invocations per pointermove**. OHLC legend hover does this 0.13x/move; candle hover does it ZERO times.
+Every idle control arm returned zero chains, so it is pointer-caused, not background replay.
+
+**THE RECONCILIATION THAT MATTERS, AND IT RE-PRICES A ROW OF MINE.** The probe ran on b111, which HAS the
+rAF paint coalescer I shipped. The coalescer is deployed AND THE LEGEND HOVER PATH EVADES IT - 5 renders
+per move would collapse to 1 per frame if they went through `scheduleRender`. So these are DIRECT
+`this.render()` calls, i.e. exactly the residual I rowed: 60 direct `this.render()` sites still in chart.js
+against 126 `scheduleRender`. My rAF-reachability answer said "we were ABLE to lose frames, no proof we
+were losing them today." **There is now proof, with a number: 11.29 ms/move.**
+
+### Verified by me, statically, all three
+
+1. **The comment lies, and it is worth quoting.** `chart-indicators-full.js:20549` says "Update
+   crosshair-driven values on separate-panel legend rows **without rebuilding DOM**". Its callee
+   `_renderSeparatePanelLegendValue` opens at **:20522 with `el.innerHTML = '';`** and then recreates every
+   span with createElement/appendChild. Confirmed both lines by reading them. Also fires 1.75x/move on plain
+   candle hover via the cheap crosshair route, so it feeds the allocation rate the census measured.
+2. **Axis 3x mousemove amplification is real and cleanly separable.** `chart.js:42642-42643` forwards BOTH
+   `'mousemove'` AND `'pointermove'`, and `forwardEvent` maps `pointermove -> 'mousemove'` at **:42567**.
+   Confirmed all three lines. 80 dispatched moves produced 240 events (80 trusted + 160 synthetic). One
+   physical axis move runs the canvas mousemove pipeline three times - which is why the axes show 20 forced
+   layout reads/move against the candle area's 7.
+3. **`updateClipPath` is called unconditionally from `redrawAll`** - confirmed at :12751, 6 call sites total.
+
+### Ownership, because two of the six fix items are NOT mine
+
+Items 1-5 are mine (chart.js, chart-indicators-full.js, drawing-tools-manager.js, order-manager.js).
+**Item 6 (memoize the React rail icon components) is B's** - `talaria-design`. And the alert-system wrapper
+the probe flagged at `chart/dist-v9/index.html:1922-1929`, which re-wraps `ch.render` so every hover-driven
+render also runs `renderAlertLines()`, is **BUILD OUTPUT** of `talaria-design/src` per my standing rule
+(vite.config.live.js:142, emptyOutDir). Editing it in my tree would be erased by the next build. Both route
+to B as intelligence, not as patches.
+
+### Blind spots I am carrying forward rather than burying
+
+- **Idle baseline is 462 ms/s of main-thread busy with NO pointer input at all** (420-500 across five 2s
+  windows) = 46% of a core. Independently consistent with the GC/allocation census. Matched-window
+  subtraction handles the mean but inflates variance, hence 5 repeats and quoted spread.
+- **The inside/outside MILLISECOND split is apportioned, not measured.** Mutation and element counts are
+  direct; invalidation tracking gives counts and reasons but not per-node timing. The author said so
+  unprompted, which is the right instinct.
+- **Mutation counts are FLOORS**: 14,751 records recorded, 14,351 dropped at the observer cap on the legend.
+- **Order-panel write-site attribution is confounded** (idle window not duration-matched; every React icon
+  site returned an exact 4.0x ratio = artifact). Its trustworthy numbers are the timing and scope passes.
+- **Canvas inside/outside is ill-posed** - a canvas has no DOM subtree, so 100% of its DOM work is "outside"
+  by construction. The meaningful canvas result is that hover does DOM work AT ALL.
+- **Deployed chart.js line numbers do NOT match the worktree** (b111 vs base). The three module files match
+  exactly and were verified; chart.js sites were resolved by symbol. Any author must work from the worktree.
+
+Positive control: an injected handler doing a document-wide recalc plus getBoundingClientRect on every div
+and span moved style-elements-recalculated 41.2 -> 1292.1 per move (31.4x) and forced sync layouts 80 ->
+1041. The instrument resolves a deliberately planted render-scope escape across every channel reported, so
+the cheap canvas numbers are a real null and not a blind one. Instrument overhead +1.52 ms/move (12%),
+inside the run-to-run spread of either arm and an order of magnitude below the control's sensitivity.
+
