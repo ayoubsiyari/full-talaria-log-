@@ -175,6 +175,57 @@ Compare against **63,075K on b103**. My prediction is 14,000-15,000K. If it read
 reads near 24,000K my unattributed residual is bigger than I thought and I chase that
 next instead of more logos.
 
+## b111 — the full sweep, per the 10:50 dispatch
+
+b110 cut the two assets on the eager path. b111 does all of them, sized from the displayed
+measurement rather than a round number, and adds the CI check.
+
+| Asset | Was | Now | Decoded image bytes | Target set by |
+|---|---|---|---|---|
+| `logo-04.png` | 2391x2234 | **880x822** | 20.38 -> 2.76 MB | 440px `.loader-brand`, 416px homepage hero, at 2x |
+| `logo-05.png` | 3684x2234 | **600x364** | 31.40 -> 0.83 MB | 300px wordmark slot captured at `scale = 2` |
+| `logo-05.png` (root) | 4720x2234 | **600x284** | 40.22 -> 0.65 MB | sized with its sibling |
+| `logo-14.png` | 4720x2235 | **600x284** | 40.24 -> 0.65 MB | dark twin of logo-05 |
+| `logo-06.png` | 4720x2234 | **600x284** | 40.22 -> 0.65 MB | unreferenced; sized with siblings |
+| `logo-08.png` | 2391x2234 | **256x239** | 20.38 -> 0.23 MB | 80px auth panel at 2x, plus headroom |
+| `logo-09.png` | 2391x2234 | **256x239** | 20.38 -> 0.23 MB | dark twin of logo-08 |
+| `LOGO-07.png` | 2391x2234 | **256x239** | 20.38 -> 0.23 MB | 22px modal icon, generous headroom |
+| `talaria-log.logo.png` | 1730x909 | **1200x631** | 6.00 -> 2.89 MB | 1200x630 OpenGraph convention |
+| `talaria chart.png` | 3582x2078 | **1200x696** | 28.39 -> 3.19 MB | unreferenced; marketing size |
+
+**251.35 MB -> 12.32 MB of decoded image bytes across brand assets**, 42 files rewritten,
+every copy byte-identical to its siblings.
+
+Verified on the wire over HTTP, not from the tree:
+
+```
+SERVED_STAMP=window.__TALARIA_CHART_BUILD_ID='20260730b111'
+OK modules/logo-04.png  880x822  disk=31938B  decoded=2.76MB  target_max_edge=880
+OK modules/logo-05.png  600x364  disk= 8638B  decoded=0.83MB  target_max_edge=600
+OK modules/logo-06.png  600x284  disk= 8323B  decoded=0.65MB  target_max_edge=600
+OK modules/logo-08.png  256x239  disk= 4785B  decoded=0.23MB  target_max_edge=256
+OK modules/logo-09.png  256x239  disk= 4427B  decoded=0.23MB  target_max_edge=256
+OK modules/logo-14.png  600x284  disk= 7623B  decoded=0.65MB  target_max_edge=600
+ALL_BRAND_ASSETS_WITHIN_TARGET=yes
+on_demand_loader=2  dead_getter_in_code=0  session_field_in_code=comment only
+<img class="loader-brand" src="/chart/modules/logo-04.png" alt="Talaria" width="880" height="822" />
+```
+
+**The artwork was checked numerically, not by eye.** Alpha coverage and mean opaque colour
+against each pre-resize version in git — both scale-invariant, so a faithful downscale
+barely moves them. All 27 changed files within tolerance. Worth knowing: **`logo-05` is a
+pure white wordmark** and renders as a blank rectangle against a white background. It looks
+broken and is not.
+
+**CI check: ASSET-DECODED-BUDGET-V1.** 4 MB per-image decoded ceiling plus a per-asset
+target derived from displayed size, failing closed on anything it cannot parse, triggered by
+any change under the served image trees. 10/10 with four mutants. The per-asset target is
+the load-bearing half: a handover re-exporting `logo-08` at 900px sits under the 4 MB
+ceiling but is still 3.5x its displayed size, and only the target catches it.
+
+**Revised prediction for b111:** the eager path is now the loader brand alone at 2.76 MB, so
+roughly **13,000-14,000K** in the Image cache column, against 63,075K on b103.
+
 ## Routing
 
 - **A** — nothing here touches your territory. `logo-04.png` changed pixels only; no
