@@ -155,6 +155,60 @@ export function newestCycleSnapshot(snapshotOutPath, { existsSync = fs.existsSyn
  * the kill switch is a non-blocking SKIP, and inspector-retained realms are
  * reported but never graded because they are ours, not the product's.
  */
+/**
+ * DOM-COUNTER-STAIRCASE-V1.
+ *
+ * A closed panel whose document is still counted is a retained iframe, and it
+ * takes one CDP call to see. Documents that do not return to their pre-cycle
+ * count are RED with nothing to argue about; nodes and listeners ride along
+ * because they are the mass inside those documents.
+ *
+ * Tolerance is one document, because the shell legitimately keeps the host panel
+ * plus its own frame and a single extra can be a boot artefact rather than a leak.
+ */
+export function buildDomCounterCell(report) {
+  const baseline = report?.baseline?.perfMetrics || null;
+  const cycles = Array.isArray(report?.cycles) ? report.cycles : [];
+  const floors = cycles
+    // Report rows do not always carry `cycle`; fall back to position so the series
+    // reads c1 c2 c3 rather than cundefined.
+    .map((c, i) => ({ cycle: c.cycle ?? i + 1, m: c.returnSingle?.perfMetrics || null }))
+    .filter((r) => r.m);
+  if (!baseline || !floors.length) {
+    return {
+      name: 'DOM-COUNTER-STAIRCASE-V1',
+      pass: true,
+      status: 'SKIPPED',
+      detail: 'no Performance.getMetrics samples in this report (surface did not record them)',
+      nonBlocking: true,
+    };
+  }
+  const last = floors[floors.length - 1].m;
+  const docDelta = (last.documents ?? 0) - (baseline.documents ?? 0);
+  const nodeDelta = (last.nodes ?? 0) - (baseline.nodes ?? 0);
+  const listenerDelta = (last.jsEventListeners ?? 0) - (baseline.jsEventListeners ?? 0);
+  const returned = docDelta <= 1;
+  const series = floors.map((r) => `c${r.cycle}:${r.m.documents}`).join(' ');
+  return {
+    name: 'DOM-COUNTER-STAIRCASE-V1',
+    pass: returned,
+    status: returned ? 'GREEN' : 'RED',
+    detail: `documents baseline=${baseline.documents} → ${series} (delta ${docDelta >= 0 ? '+' : ''}${docDelta}); `
+      + `nodes ${nodeDelta >= 0 ? '+' : ''}${nodeDelta}, listeners ${listenerDelta >= 0 ? '+' : ''}${listenerDelta}. `
+      + (returned
+        ? 'documents returned to baseline across cycles'
+        : 'documents did NOT return to baseline — closed panels are still counted, i.e. retained iframes'),
+    blocking: !returned,
+    counters: {
+      baseline,
+      floors: floors.map((r) => ({ cycle: r.cycle, ...r.m })),
+      docDelta,
+      nodeDelta,
+      listenerDelta,
+    },
+  };
+}
+
 export function buildRealmSurvivalCell(grade) {
   if (!grade) return null;
   if (grade.status === 'SKIPPED') {
@@ -294,6 +348,8 @@ export async function runHeapCycleMemoryGate({
     }
 
     const cells = assertHeapCycleMemoryReport(report);
+    const domCell = buildDomCounterCell(report);
+    if (domCell) cells.push(domCell);
     // Grade realm survival whenever a run wrote a snapshot to disk. A leak that
     // retains a whole panel realm does not always show in a floor delta, and a
     // floor delta cannot say whether the product or our inspector holds it.

@@ -1,0 +1,60 @@
+{
+  "packet": "W86",
+  "manager": "C",
+  "tier": "mid",
+  "tierWhy": "instrument addition plus a two-arm measurement; no money path, no product diff",
+  "build": "20260729b103",
+  "surface": "deployed, four-up, distinct datasets, PO workload armed, 4 cycles per arm",
+  "headline": "DOCUMENT STAIRCASE REPRODUCED ON MY INSTRUMENT: 2 → 3, 5, 7, 10 across four cycles, RED and blocking. The retained-document mechanism is confirmed independently. But the 4x blindness claim does NOT reproduce: read at the same instant, performance.memory.usedJSHeapSize is 1.4x LARGER than the JS heap figure DevTools' Performance Monitor displays, not 4x smaller.",
+
+  "newInstrument": {
+    "name": "DOM-COUNTER-STAIRCASE-V1",
+    "cost": "one Performance.getMetrics call per sample, against 300MB+ heap snapshots elsewhere in this harness. The Director is right that it is the cheapest thing here.",
+    "counters": ["Documents", "Frames", "Nodes", "JSEventListeners", "JSHeapUsedSize", "JSHeapTotalSize"],
+    "policy": "documents that do not return to baseline by the final collapsed floor are a blocking RED; tolerance is one document; a report carrying no counters says SKIPPED rather than passing quietly",
+    "tests": "scripts/tests/dom-counter-staircase.test.mjs, 7 unit including the peak-is-not-evidence case and the missing-cycle-label regression the live run exposed",
+    "acceptanceCriterionForA": "documents returning to baseline across four cycles, which is now a gate cell rather than an assertion"
+  },
+
+  "documentStaircase": {
+    "cutsActive": { "documentsBaseline": 2, "floors": [3, 5, 7, 10], "nodes": [8808, 12578, 16112, 21527], "listeners": [1569, 1718, 1769, 1887] },
+    "cutsDisabled": { "documentsBaseline": 2, "floors": [3, 5, 7, 9], "nodes": [8739, 12253, 15874, 19471], "listeners": [1526, 1611, 1712, 1791] },
+    "peakAlsoClimbs": "four-up peak documents go 5, 6, 8, 10 — the retained documents are still counted at the next peak, which is what a staircase looks like from the other side",
+    "retainedPerCycle": "about 2 documents per cycle by this counter (+1, +2, +2, +3)",
+    "reconciliationWithMyRealmWork": "REALM-SURVIVAL grades ONE product-retained realm per cycle. The document counter cannot separate product-held from inspector-held documents, and W81 counted 4 product-held against 8 console-held realms. So the counter is an upper bound on product retention and the snapshot grade is the attributable part. They agree on the mechanism and differ on the count for a known reason.",
+    "massPerDocument": "floor delta 24.39 MB/cycle over ~2 retained documents is ~12 MB per document, which sits inside the advisor's 5-20 MB per document estimate"
+  },
+
+  "cutsStillMeasureAsZero": {
+    "onTheNewGauge": { "cutsActiveDocsDelta": 8, "cutsDisabledDocsDelta": 7, "reading": "one document apart across four cycles — inside a single panel's worth" },
+    "onTheOldGauge": { "cutsActiveMeanMB": 24.39, "cutsDisabledMeanMB": 25.5, "difference": -1.11 },
+    "verdict": "two independent gauges now agree that A's five cuts change nothing. W84's retraction is corroborated, not overturned, by the cheaper instrument."
+  },
+
+  "gaugeReconciliation": {
+    "claim": "Performance Monitor reads 789 MB while performance.memory.usedJSHeapSize reads 131-192 MB, so the console API is main-frame-only and blind by 4x",
+    "howITestedIt": "sampled performance.memory.usedJSHeapSize and CDP Performance.getMetrics (JSHeapUsedSize / JSHeapTotalSize — the same source DevTools' Performance Monitor displays) at THE SAME INSTANT, nine samples per arm, two arms",
+    "measured": {
+      "ratio_cdpUsed_over_perfMemory": 0.695,
+      "ratio_cdpTotal_over_perfMemory": 0.794,
+      "example": "cycle4 floor: perf.memory 176.68 MB, CDP used 115.56 MB, CDP total 129.89 MB",
+      "reading": "the two gauges track each other closely and performance.memory reads HIGHER. There is no 4x, and the sign is opposite to the claim."
+    },
+    "plusTheDirectTest": "W85's ballast test already showed the host reading move +18.12 MB for an allocation made entirely inside panel A's realm. A main-frame-only counter cannot do that.",
+    "soWhatExplains789": {
+      "notReproducedHere": "nothing in my topology produces a 4x gap between these two gauges",
+      "leadingCandidate": "MULTI-PROCESS SPLIT, not API scope. performance.memory is per-isolate. Our four panels sit in one renderer (measured: all four report the same shared heap band). A 15-pair session is ~30 frames, and if Chrome placed some of those frames in additional renderer processes, a console reading would cover only the frames in the main process while a whole-tab figure would not. That produces exactly this shape WITHOUT the API being main-frame-only.",
+      "sixtySecondTestForThePo": "open Chrome's Task Manager (Shift+Esc), find the rows for the app tab, and report (a) how many renderer rows exist for it and (b) each row's JavaScript memory. If there is more than one renderer row, the console number was partial and by how much is right there. If there is exactly one, the 789 needs a different explanation and I will chase it.",
+      "alsoWorthRulingOut": "peak-versus-floor timing (my peak/floor ratio is only ~1.15, so timing alone cannot give 4x) and DevTools-open inflation, which pushes his number UP not down"
+    },
+    "warningOnTheCompetitorComparison": "before 800-versus-490 is used as a claim, TradeZella has to be read with the SAME gauge. My controlled comparison shows two legitimate gauges disagreeing by up to 1.4x on the same page at the same instant, and comparing our total against a competitor's used would be a self-inflicted 4x."
+  },
+
+  "measureUserAgentSpecificMemory": {
+    "status": "still not callable — measured again in W85: function absent, crossOriginIsolated false",
+    "blocker": "needs COOP same-origin + COEP require-corp from B, and COEP require-corp risks breaking the host-to-panel contentWindow access the product itself uses",
+    "whyThisPacketDidNotWaitForIt": "the counter test the Director asked for answers the acceptance question tonight without any headers: documents returning to baseline is measurable now, on the deployed build, and it is already wired as a blocking gate cell."
+  },
+
+  "standingCorrection": "the Director's closing point is taken and applies to my own eight hours: the counter test cost 60 seconds and reproduced in one run what I had been grading through snapshots. Cheap counters first, snapshots only for attribution."
+}

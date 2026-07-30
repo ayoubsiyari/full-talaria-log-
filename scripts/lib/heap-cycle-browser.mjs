@@ -127,6 +127,47 @@ async function takeHeapSnapshotObject(cdp, { timeoutMs = 180_000, dumpPath = nul
   return JSON.parse(payload);
 }
 
+/**
+ * DOM-COUNTER-STAIRCASE-V1. The counters DevTools' Performance Monitor shows.
+ *
+ * A document count that never returns to baseline across open/close cycles is a
+ * retained iframe, stated without a snapshot or an argument — and it costs one
+ * CDP call rather than the 300MB+ snapshots the rest of this harness takes.
+ *
+ * JSHeapUsedSize and JSHeapTotalSize come from the same call, which is what makes
+ * the 789-vs-192 disagreement between Performance Monitor and
+ * performance.memory.usedJSHeapSize measurable at a single instant instead of
+ * across two sessions.
+ */
+async function readPerfMetrics(cdp, label = 'metrics') {
+  try {
+    const { metrics } = await cdp.send('Performance.getMetrics');
+    const get = (name) => {
+      const row = metrics.find((m) => m.name === name);
+      return row ? Number(row.value) : null;
+    };
+    const out = {
+      documents: get('Documents'),
+      frames: get('Frames'),
+      nodes: get('Nodes'),
+      jsEventListeners: get('JSEventListeners'),
+      detachedDomNodes: get('DetachedDomNodes'),
+      jsHeapUsedSize: get('JSHeapUsedSize'),
+      jsHeapTotalSize: get('JSHeapTotalSize'),
+    };
+    logHeapCycle(
+      `${label}: docs=${out.documents} frames=${out.frames} nodes=${out.nodes} `
+      + `listeners=${out.jsEventListeners} `
+      + `cdpUsedMB=${out.jsHeapUsedSize != null ? (out.jsHeapUsedSize / (1024 * 1024)).toFixed(2) : 'n/a'} `
+      + `cdpTotalMB=${out.jsHeapTotalSize != null ? (out.jsHeapTotalSize / (1024 * 1024)).toFixed(2) : 'n/a'}`,
+    );
+    return out;
+  } catch (err) {
+    logHeapCycle(`${label}: Performance.getMetrics failed ${String(err?.message || err)}`);
+    return null;
+  }
+}
+
 async function sampleHeapFloor(page, cdp, {
   label = 'floor',
   /** PO hand samples performance.memory without double+js GC. */
@@ -179,8 +220,12 @@ async function sampleHeapFloor(page, cdp, {
         : 'n/a'
     }`,
   );
+  // Read at the same instant as usedJSHeapSize so the two gauges can be compared
+  // without a second session between them.
+  const perfMetrics = await readPerfMetrics(cdp, label);
   return {
     ...jsHeap,
+    perfMetrics,
     cdpCollectGarbage: didCdpGc,
     metric: HEAP_METRIC_USED_JS_HEAP_SIZE,
     detachedDivCount: null,
@@ -249,6 +294,7 @@ async function sampleHeap(page, cdp, {
   return {
     ...jsHeap,
     metric: HEAP_METRIC_USED_JS_HEAP_SIZE,
+    perfMetrics: await readPerfMetrics(cdp, label),
     detachedDivCount: detached.detachedDivCount,
     htmlDivElementCount: detached.htmlDivElementCount,
     detachednessField: detached.detachednessField,
