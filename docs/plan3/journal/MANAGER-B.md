@@ -5207,3 +5207,60 @@ outside every worktree, confirmed by `git check-ignore` reporting the path as ou
 repository. Nothing over 10 MB was written inside a worktree; the only >10 MB files present are
 pre-existing `homepage/.next/cache/webpack/*.pack` build caches, not evidence. Canary untouched
 throughout: HTTP 200, 8 containers up, 36G free at finish, and no `RECREATED` event.
+
+## B-0211 — Train cut as 20260730b114; B-0204 re-check closed under MEAS-02
+
+Director `14eaef2c1` / MEAS-02. Cut the train rather than batch. **Stamp the PO must read:
+`20260730b114`.** Tip `75e713d16`.
+
+### What the train carries, verified over HTTP on the running page
+
+- Rayan #8 gap: `__TALARIA_DISABLE_M24_ORDER_ID_GAP_RECONCILE_V1` ×1 in served `order-manager.js`
+- Rayan #8 place-audit: `__TALARIA_DISABLE_ORDER_EXPLICIT_PLACE_AUDIT_V1` ×1
+- TAL-01807b: `__TALARIA_DISABLE_ORDER_PAIR_SWITCH_VISUAL_REBIND_V1` ×1
+- EXCURSION-SINGLE-OWNER: `__TALARIA_DISABLE_EXCURSION_SINGLE_OWNER_V1` ×2
+- TRADE-EVICT: `__TALARIA_DISABLE_TRADE_EVICT_V1` ×2
+- INDICATOR-EVICT: `__TALARIA_DISABLE_INDICATOR_EVICT_V1` ×1 and `clearIndicators` ×1 in served
+  `chart-indicators-full.js`
+- TAL-01896: `__TALARIA_DISABLE_TRADE_DURATION_NORM_V1` ×1 in served
+  `/chart/dist-v9/assets/talaria-v9-live.js` — now fetchable over HTTP
+
+MEAS-01: `window.__TALARIA_CHART_BUILD_ID='20260730b114'`, 65 `?v=` refs, all three canary
+containers on `canary-20260730b114`, grade lane untouched on `canary-20260729b85`. Prior pin
+retained (`20260730b113`). Tar saved. P0 ceiling still present (`CONTROL_TIMEOUT_MS` ×3).
+
+### Build blocker on the first cut — not a product defect
+
+Attempt 1 failed in `m19-progressive-session-soak.test.mjs` with
+`PREMISE-MISMATCH / restore assertions failed`. Canonical Fix A–E were all green. The restore
+cell's `balanceOk` required `orderIdCounter === fixture` (900). Rayan #8's gap reconcile
+(default ON) correctly collapses that padded counter to `max(observed ids)+1` = 503. The soak
+was asserting against correct product behaviour. Fixed in `75e713d16`; soak returns
+`M19-GREEN`. Then the train cut cleanly.
+
+### B-0204 re-check (MEAS-02)
+
+Question: did Trap 2 manufacture the play-zero result?
+
+Re-ran CONF-01 boot + play-in + play-cross with four instruments attached **before**
+navigation. Boot: top-page 8, CDP 8 (4 frames), per-realm wrap 8, harness 8. Play-in and
+play-cross: all four instruments 0.
+
+**B-0204 play-zero stands.** The different-symbol cost remains a boot-latency result.
+
+**Correction to my own Trap 2 claim.** On this harness, with listeners before navigation and a
+filter matching `/api/file/N/bars`, the top-page listener sees iframe traffic. The earlier host
+probe that reported "top page saw 0 while harness saw 8" used `/\/api\/(bars|smart|candles)/`,
+which does not match `/api/file/25/bars`. That was a MEAS-02 failure — a confidently wrong zero
+from a bad filter — not proof that `page.on('request')` is blind to iframes. Trap 2 as
+"top-page listeners never see iframe fetches" is withdrawn for this stack; MEAS-02 stands.
+
+Evidence: `docs/plan3/evidence/B-M4/release/FINDING-B0204-RECHECK-MEAS02-20260730.md`.
+
+### Trap 3 correction (Director)
+
+C's duration gate reads process private memory by type, not `performance.memory`. The
++730 MB/h stands; the climb is localised to the renderer (946 → 1507 MB) with GPU and browser
+flat. Trap 3 withdrew the old 131-192 MB figures and the PO's console readings only.
+
+Ping D and E: wire is `20260730b114` — re-run TEST-02 / money probes / INDICATOR-EVICT.
