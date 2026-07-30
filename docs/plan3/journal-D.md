@@ -1,5 +1,13 @@
 # Manager D Journal
 
+## 2026-07-30 — TRADE-EVICT-V1 landing (CKPT-01 + playhead eviction)
+
+- Fresh CKPT-01: tag `ckpt/pre-d-trade-evict-v1-6ba61eeeb` on tip `6ba61eeeb`; retained `artifacts/ckpt/pre-d-trade-evict-v1-6ba61eeeb/`; rollback exercised while green (corrupt→restore SHA match; cold-read + teardown GREEN). Doc `CKPT01-D-TRADE-EVICT-V1-20260730.md`.
+- Product: `__TALARIA_DISABLE_TRADE_EVICT_V1` (FLAG-01/02/03). On post-exit bound at playhead T, release screenshot + excursion hot fields from `closedPositions`, drop from `mfeMaeTrackingPositions`, keep id/entry/exit for canvas arrows. Journal retains cold copy.
+- EVICT-02: `_tradeEvictV1SyncPlayhead` on every `updatePositions` tick; rewind `t < T` restores from journal and re-queues sampling while still in post-exit window.
+- EVICT-01: fixture hot bytes **98306 → 0**; cold-read proof already accepted (retrieval half). Gates: `trade-evict-v1.test.mjs` GREEN=0 / `.red.test.mjs` RED≠0; homepage mirrored.
+- Audit secondary: Rayan #8 / 01807b stay on B next train; skip register stays armed. Did not wait on 01896 delivery or backend token.
+
 ## 2026-07-30 — TEST-02 amended (fix-commit~1) + TRADE-EVICT cold-read
 
 - Correction `CORRECTION-B103-…-1635` copied. b103 corpus **withdrawn** as pre-fix reference.

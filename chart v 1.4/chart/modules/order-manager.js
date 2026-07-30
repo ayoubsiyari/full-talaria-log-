@@ -143,6 +143,17 @@ function _m19HotpathLogGuardV1Enabled() {
     return typeof window === 'undefined' || window.__TALARIA_DISABLE_M19_HOTPATH_LOG_GUARD_V1 !== true;
 }
 
+/**
+ * TRADE-EVICT-V1 — release hot screenshot/excursion bytes after the post-exit
+ * playhead bound; restore on rewind behind that playhead (EVICT-02). Default ON.
+ * Kill-switch: window.__TALARIA_DISABLE_TRADE_EVICT_V1 = true
+ * FLAG-01: ABSENT ⇒ enabled. FLAG-02: runtime flip, no reload. FLAG-03: OFF vs product.
+ */
+function _tradeEvictV1Enabled() {
+    return typeof window === 'undefined'
+        || window.__TALARIA_DISABLE_TRADE_EVICT_V1 !== true;
+}
+
 function _m19HotpathDebugLogsEnabled() {
     if (typeof window === 'undefined') return false;
     return window.__TALARIA_DEBUG === true
@@ -4280,6 +4291,167 @@ class OrderManager {
             'post_exit_bar_close_r_archive', 'post_exit_bar_high_r_archive', 'post_exit_bar_low_r_archive',
             'post_checkpoints', 'trail_sl_path',
         ];
+    }
+
+    /**
+     * TRADE-EVICT-V1 — memory term: per-order base64 screenshots + excursion arrays.
+     * Released from hot closedPositions after post-exit bound; journal keeps cold copy.
+     */
+    _tradeEvictV1HotFieldKeys() {
+        return [
+            'entryScreenshot', 'exitScreenshot', 'entryScreenshots', 'railScreenshots',
+            'screenshot', 'screenshotBase64', 'image', 'chartImage', 'thumbnail', 'preview',
+            'screenshots',
+            'bar_close_r', 'bar_high_r', 'bar_low_r',
+            'post_exit_bar_close_r', 'post_exit_bar_high_r', 'post_exit_bar_low_r',
+            'bar_close_r_archive', 'bar_high_r_archive', 'bar_low_r_archive',
+            'post_exit_bar_close_r_archive', 'post_exit_bar_high_r_archive', 'post_exit_bar_low_r_archive',
+            'post_checkpoints', 'trail_sl_path',
+            'bar_high_r_peak', 'bar_low_r_peak',
+            'post_exit_bar_high_r_peak', 'post_exit_bar_low_r_peak',
+        ];
+    }
+
+    /** Approximate retained hot bytes for EVICT-01 (screenshots + excursion series). */
+    _tradeEvictV1ApproxHotBytes(row) {
+        if (!row || typeof row !== 'object') return 0;
+        let n = 0;
+        for (const k of this._tradeEvictV1HotFieldKeys()) {
+            const v = row[k];
+            if (v == null) continue;
+            if (typeof v === 'string') n += v.length * 2;
+            else if (Array.isArray(v) || typeof v === 'object') {
+                try { n += JSON.stringify(v).length * 2; } catch { /* ignore */ }
+            }
+        }
+        return n;
+    }
+
+    _tradeEvictV1FindJournalRow(tradeId) {
+        const id = Number(tradeId);
+        if (!Number.isFinite(id) || !Array.isArray(this.tradeJournal)) return null;
+        return this.tradeJournal.find((t) => Number(t.tradeId ?? t.id) === id) || null;
+    }
+
+    _tradeEvictV1FindClosedRow(tradeId) {
+        const id = Number(tradeId);
+        if (!Number.isFinite(id) || !Array.isArray(this.closedPositions)) return null;
+        return this.closedPositions.find((p) => Number(p.id) === id) || null;
+    }
+
+    /**
+     * Release hot screenshot/excursion fields after post-exit bound at playhead T.
+     * Keeps id + entry/exit prices/times for canvas arrows. Journal is untouched.
+     */
+    _tradeEvictV1ReleaseHotFields(row, playheadT, meta = {}) {
+        if (!_tradeEvictV1Enabled() || !row || typeof row !== 'object') return false;
+        if (row._tradeEvictV1?.released === true) return false;
+        const t = Number(playheadT);
+        if (!Number.isFinite(t)) return false;
+        for (const k of this._tradeEvictV1HotFieldKeys()) {
+            if (k in row) row[k] = Array.isArray(row[k]) ? null : null;
+        }
+        row._tradeEvictV1 = {
+            released: true,
+            playheadT: t,
+            closeTime: Number(meta.closeTime ?? row.closeTime ?? row.exitTime) || null,
+            postExitTrackingMode: meta.postExitTrackingMode || row.postExitTrackingMode || this.postExitTrackingMode || 'hours',
+            postExitTrackingCandles: Number.parseInt(
+                meta.postExitTrackingCandles ?? row.postExitTrackingCandles ?? this.postExitTrackingCandles ?? 50, 10,
+            ),
+            post_exit_anchor_time: meta.post_exit_anchor_time ?? row.post_exit_anchor_time ?? null,
+            mfeMaeTrackingEndTime: meta.mfeMaeTrackingEndTime ?? row.mfeMaeTrackingEndTime ?? null,
+        };
+        return true;
+    }
+
+    /** Restore hot fields from journal when playhead rewinds behind eviction T (EVICT-02). */
+    _tradeEvictV1RestoreHotFieldsFromJournal(row, journal) {
+        if (!_tradeEvictV1Enabled() || !row || !journal) return false;
+        if (row._tradeEvictV1?.released !== true) return false;
+        for (const k of this._tradeEvictV1HotFieldKeys()) {
+            if (journal[k] == null) continue;
+            row[k] = Array.isArray(journal[k]) ? journal[k].slice() : journal[k];
+        }
+        const prev = row._tradeEvictV1;
+        row._tradeEvictV1 = {
+            ...prev,
+            released: false,
+            restoredAtPlayhead: true,
+        };
+        return true;
+    }
+
+    /**
+     * After post-exit bound completes at playhead T: drop from sampling (caller)
+     * and release hot memory on closedPositions. Journal retains cold copy.
+     */
+    _tradeEvictV1OnBoundComplete(position, playheadT) {
+        if (!_tradeEvictV1Enabled() || !position) return { released: false, bytesBefore: 0, bytesAfter: 0 };
+        const closed = this._tradeEvictV1FindClosedRow(position.id) || position;
+        const bytesBefore = this._tradeEvictV1ApproxHotBytes(closed);
+        const meta = {
+            closeTime: position.closeTime ?? position.exitTime,
+            postExitTrackingMode: position.postExitTrackingMode,
+            postExitTrackingCandles: position.postExitTrackingCandles,
+            post_exit_anchor_time: position.post_exit_anchor_time,
+            mfeMaeTrackingEndTime: position.mfeMaeTrackingEndTime,
+        };
+        this._tradeEvictV1ReleaseHotFields(closed, playheadT, meta);
+        if (closed !== position) this._tradeEvictV1ReleaseHotFields(position, playheadT, meta);
+        const journal = this._tradeEvictV1FindJournalRow(position.id);
+        if (journal && journal._tradeEvictV1?.released !== true) {
+            // Mark journal with eviction playhead metadata only — do not strip cold bytes.
+            journal._tradeEvictV1 = {
+                released: false,
+                cold: true,
+                playheadT: Number(playheadT),
+                closeTime: meta.closeTime ?? null,
+            };
+        }
+        const bytesAfter = this._tradeEvictV1ApproxHotBytes(closed);
+        return { released: true, bytesBefore, bytesAfter, playheadT: Number(playheadT) };
+    }
+
+    /**
+     * EVICT-02: trades evicted at playhead T become live again if playhead < T.
+     * Rehydrates hot fields from journal and re-queues post-exit sampling when still in window.
+     */
+    _tradeEvictV1SyncPlayhead(playheadMs) {
+        if (!_tradeEvictV1Enabled()) return { restored: 0, requeued: 0 };
+        const t = Number(playheadMs);
+        if (!Number.isFinite(t)) return { restored: 0, requeued: 0 };
+        let restored = 0;
+        let requeued = 0;
+        for (const closed of (this.closedPositions || [])) {
+            const ev = closed._tradeEvictV1;
+            if (!ev || ev.released !== true) continue;
+            const boundT = Number(ev.playheadT);
+            if (!Number.isFinite(boundT) || t >= boundT) continue;
+            const journal = this._tradeEvictV1FindJournalRow(closed.id);
+            if (!journal) continue;
+            if (this._tradeEvictV1RestoreHotFieldsFromJournal(closed, journal)) restored += 1;
+
+            // Resume post-exit sampling only while playhead is still inside the window.
+            const closeT = Number(ev.closeTime ?? closed.closeTime);
+            const inPostExit = Number.isFinite(closeT) && t > closeT && t < boundT;
+            const alreadyTracking = (this.mfeMaeTrackingPositions || []).some(
+                (p) => Number(p.id) === Number(closed.id),
+            );
+            if (inPostExit && !alreadyTracking) {
+                this.mfeMaeTrackingPositions.push({
+                    ...closed,
+                    postExitTrackingMode: ev.postExitTrackingMode || this.postExitTrackingMode || 'hours',
+                    postExitTrackingCandles: ev.postExitTrackingCandles ?? this.postExitTrackingCandles ?? 50,
+                    postExitProcessedCandles: 0,
+                    post_exit_anchor_time: ev.post_exit_anchor_time ?? closeT,
+                    mfeMaeTrackingEndTime: ev.mfeMaeTrackingEndTime ?? boundT,
+                    _tradeEvictV1Requeued: true,
+                });
+                requeued += 1;
+            }
+        }
+        return { restored, requeued };
     }
 
     _m19HotPersistHeavyKeySet() {
@@ -32094,6 +32266,11 @@ class OrderManager {
      * Update MFE/MAE tracking for closed positions
      */
     updateMfeMaeTracking(currentCandle, high, low) {
+        // EVICT-02: rewind behind eviction playhead T restores hot fields + may re-queue sampling.
+        // Runs even when tracking is empty so scrub/rewind still rehydrates.
+        if (currentCandle && Number.isFinite(Number(currentCandle.t))) {
+            this._tradeEvictV1SyncPlayhead(Number(currentCandle.t));
+        }
         if (this.mfeMaeTrackingEnabled === false) return;
         if (this.mfeMaeTrackingPositions.length === 0) return;
         
@@ -32250,8 +32427,19 @@ class OrderManager {
                 
                 console.log(`✅ MFE/MAE tracking completed for Order #${position.id} | MFE: ${position.mfe.toFixed(5)} | MAE: ${position.mae.toFixed(5)}`);
             }
+
+            // TRADE-EVICT-V1: post-exit bound complete at this playhead — release hot bytes.
+            // Journal already holds the cold copy above; canvas keeps entry/exit arrows + id.
+            const playheadT = Number(currentCandle?.t);
+            if (Number.isFinite(playheadT)) {
+                try {
+                    this._tradeEvictV1OnBoundComplete(position, playheadT);
+                } catch (err) {
+                    console.warn('TRADE-EVICT-V1 bound complete failed:', err);
+                }
+            }
             
-            // Remove from tracking array
+            // Remove from tracking array (CPU term: evicted trade cannot be sampled).
             this.mfeMaeTrackingPositions = this.mfeMaeTrackingPositions.filter(p => p.id !== position.id);
         });
     }
@@ -32738,6 +32926,11 @@ class OrderManager {
         if (!activeCandle) return;
         if (this.orderService && this.orderService.multiInstrumentSession) {
             this.orderService.multiInstrumentSession.current_time = activeCandle.t;
+        }
+
+        // TRADE-EVICT-V1 / EVICT-02: every tick (including scrub) may restore behind T.
+        if (Number.isFinite(Number(activeCandle.t))) {
+            this._tradeEvictV1SyncPlayhead(Number(activeCandle.t));
         }
         
         let currentCandle = activeCandle;
