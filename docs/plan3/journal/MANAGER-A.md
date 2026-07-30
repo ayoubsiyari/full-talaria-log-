@@ -1231,3 +1231,66 @@ failure. There is a second, smaller edge: L2744 tests `data === this._panelFullR
 so an accessor that hands back a different array changes that predicate's answer.
 
 Four read-aliases to keep whole: L2744, L4246, L7255, L7377.
+
+### CKPT-01: the apparatus already exists and is better than what I was building. The gap is that nothing has used it for five days.
+
+I went looking for how a rollback would actually be *placed*, because I had flagged that as the
+unproven half of my own checkpoint. The answer changes the shape of the work.
+
+`scripts/deploy.sh` refuses to deploy without `--manifest=/secure/CKPT-N.provenance.json`, and
+`scripts/vps-deploy-after-pull.sh` explicitly rejects `chart`, `homepage`, `full` and `all` as
+targets that "can mutate chart/homepage without immutable provenance". Its own comment at line 10:
+**"Rollback uses this same command with the previous accepted manifest."**
+
+The manifest schema `talaria.checkpoint-provenance/v1` already carries every field CKPT-01 asks
+for — `buildId`, `source.sha` with a source tag ref, chart and homepage images pinned by sha256
+digest, a uniformity proof, and a full `rollback` block naming the previous build's digests.
+
+**I executed the rollback path rather than reading it.** `checkpoint-provenance.mjs plan
+--rollback` against CKPT-020 resolves and emits the exact two commands, digest-pinned, with
+`"buildAllowed": false`:
+
+```
+docker compose pull trading-chart trading-chart-worker homepage
+docker compose up -d --no-build --no-deps trading-chart trading-chart-worker homepage
+```
+
+That is CKPT-01 point 2 enforced by the tool: a redeploy of bytes that already ran, with rebuilding
+structurally forbidden. So this is not a rule we need to invent machinery for. It is a rule we
+already have machinery for.
+
+**The problem is coverage.** Searching by the schema string rather than by filename, with the
+positive control passing (9 files carry it), there are exactly **seven real manifests**, and the
+newest is **20260725b63**. The eighth match is `scripts/fixtures/.../green-manifest.json`, a test
+fixture stamped `20991231b99`, which I excluded.
+
+```
+b21 -> b57 -> b58 -> b59 -> b60 -> b61 -> b63        production today: b113
+```
+
+The chain was kept daily and then stops on 25 July. **Production is fifty builds and five days
+past the last recorded checkpoint.** A rollback driven by the newest real manifest would land
+production on **b61** — losing five days of work including the countdown P0 guard that only reached
+the wire this week.
+
+This is the CKPT-01 blocker for A1, and it is not something I can clear: `deploy.sh` reads its
+manifest from `/secure/` on the VPS, which I cannot see. So I am **not** claiming no manifest
+exists for b113 — my own empty-result rule forbids that, and the bound is real. What is established
+is that no repo-visible manifest covers the build we would have to roll back *to*, and that nobody
+can demonstrate otherwise from the repository alone.
+
+**Routed to B**, who holds VPS and registry access. Two questions, both answerable in minutes:
+does a retained manifest exist for b113, and is the image digest it names still pullable from ghcr?
+If either answer is no, then CKPT-01 point 2 is unsatisfied for A1 and the honest thing is to say
+so rather than tag a landing and call it checkpointed.
+
+**This also promotes the artifact capture I dispatched.** I briefed it as an independent byte-level
+cross-check, aimed at the wrong artifact — the real deployable unit is a digest-pinned image, not a
+folder of JS. But if b113's image digest turns out not to be retained, that raw capture becomes the
+only retained copy of the bytes now running, which moves it from complement to fallback. It also
+derives the commit from blob hashes, which is exactly the cross-check on a manifest's `source.sha`.
+Fourth time this week I have briefed against a premise I had not checked; this one improved the
+packet by accident rather than damaging it, which is luck and not method.
+
+I am holding the annotated tag until the commit is derived, so it records a measured mapping rather
+than my inference.
