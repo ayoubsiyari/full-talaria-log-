@@ -1170,3 +1170,64 @@ rehearsal that cannot fail proves nothing.
 Stated up front so it is not discovered later: this proves the artifact is good and bootable. It
 does **not** prove the production deploy mechanism can place it. That half is B's and remains
 unexercised.
+
+### A1 pre-work: the `_panelFullRawData` site map, measured by me before briefing anyone
+
+I have twice this week handed a packet a call-site list that was wrong (the reseed brief said nine
+sites; there were ten, and the two I missed were the cross-realm bridge entry points). So I built
+the A1 map myself first.
+
+**The base is deployment-faithful.** `8587c9821` against deployed b113, six mechanism identifiers,
+all exact: `_panelFullRawData` 102/102, `_mergeIntoPanelFullRawData` 3/3, `_mcCopySamePairFullRawData`
+11/11, `_multichartSamePairAsHost` 20/20, `_isIndependentMultichartPair` 26/26, `_mcRawDataCopyLimit`
+3/3, positive control `currentFileId` 149/149. Both A1-relevant absences confirmed on both sides:
+`_applyResidencyWindowV1` 0/0 (residency genuinely not shipped) and the A1 flag 0/0 (not built yet).
+This is the check I skipped on the legend packet this morning; doing it first now.
+
+**24 write sites, and only 6 of them are the ones I already cut.** L4584/4586, L5523/5525 and
+L7584/7586 go through `_mcCopySamePairFullRawData` — the same-pair-guarded six, inert under CONF-01.
+The other **18 are plain `.slice()`, spread, or merge results** and they are the live path in the
+four-symbol configuration. That is the sharpest confirmation yet of the inertness finding, and it
+tells A1 exactly where it has to act: the eighteen, not the six.
+
+**Nothing mutates the array in place — it is only ever reassigned wholesale.** Genuine in-place
+mutations of `_panelFullRawData`: zero. My first attempt at this claim does not count: my own
+regex matched `length === 0` as `length =`, flagging L6907 as a mutation when it is a read, and my
+first positive control returned zero as well, which under my own empty-result rule proves nothing.
+Re-ran with a control that works — the same matcher finds 10 in-place mutations on `this.drawings`
+in the same file and 0 on `_panelFullRawData`. The invariant is real, and the codebase states it
+itself at L7442-7444.
+
+That matters because it means A1 can bound at a **single choke point** — one
+`_setPanelFullRawData(bars, reason)` accessor with all 24 assignments routed through it — rather
+than chasing incremental appends. One place to apply the window, one place to hang the flag. It is
+also the same seam A2 needs, so A1 builds the boundary and A2 changes the representation behind it.
+Still separate packets and separate flags per the ruling; they just meet at a seam A1 creates.
+
+**Growth is uncapped and I can now say so with a measurement rather than an assertion.**
+`_mergeIntoPanelFullRawData` unions old and new bars into a `Map` keyed by timestamp and re-sorts:
+zero `splice`, zero `length =`, zero `Math.min`, zero `limit`/`cap`/`MAX`/`trim` anywhere in its
+body. Nothing bounds it.
+
+### THE TRAP IN A1, found before it was briefed rather than after it shipped
+
+At L7441-7445 `_tryExtendReplayMasterFromParent` assigns **the same array object** to both
+`replay.fullRawData` and `this._panelFullRawData`, and the comment says so deliberately: "these
+arrays are always reassigned wholesale (never mutated in place), so one allocation serves both.
+Halves per-panel history memory."
+
+So the obvious implementation of A1 fails in both directions:
+
+- **Slice to trim** and the sharing breaks. `_panelFullRawData` gets a short new array while
+  `replay.fullRawData` still holds the full one — peak memory goes *up*, not down, and the landing
+  reports a smaller number for the array it measures while the heap is worse. That is a green
+  instrument on a regression, which is the failure mode I have logged nine times.
+- **Trim in place** and it silently truncates the replay master, which is a correctness fault on
+  the price path — and the parity oracle's verdict is final there.
+
+A1 must therefore bound the array while keeping the aliasing invariant explicit, and its oracle has
+to assert on `replay.fullRawData` as well as on `_panelFullRawData`, or it cannot see either
+failure. There is a second, smaller edge: L2744 tests `data === this._panelFullRawData` by identity,
+so an accessor that hands back a different array changes that predicate's answer.
+
+Four read-aliases to keep whole: L2744, L4246, L7255, L7377.
