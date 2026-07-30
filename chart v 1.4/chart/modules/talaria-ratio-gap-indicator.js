@@ -148,8 +148,20 @@
         return { start: parseHm(parts[0]), end: parseHm(parts[1] || parts[0]) };
     }
 
+    /** Temporary OR-owner bisect: strict true disables ratio-gap OR lines/cells/targets only. */
+    function _talariaRatioGapOrPathDisabledV1() {
+        try {
+            if (global.__TALARIA_DISABLE_RATIO_GAP_OR_V1 === true) return true;
+            if (typeof window !== 'undefined' && window.__TALARIA_DISABLE_RATIO_GAP_OR_V1 === true) return true;
+        } catch (_) {}
+        return false;
+    }
+
     function calculateTalariaRatioGap(data, params) {
         var p = mergeParams(params);
+        if (_talariaRatioGapOrPathDisabledV1()) {
+            p = Object.assign({}, p, { showOR: false });
+        }
         var bars = Array.isArray(data) ? data : [];
         var n = bars.length;
         if (n < 2) return { lines: [], boxes: [], labels: [], infoCells: [], infoMeta: p };

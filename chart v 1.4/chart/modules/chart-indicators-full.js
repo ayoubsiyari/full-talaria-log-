@@ -5023,8 +5023,25 @@
         };
     }
 
+    /** Temporary OR-owner bisect: strict true disables chart-indicators-full openingrange calc/draw. */
+    function _talariaFullOrPathDisabledV1() {
+        try {
+            if (typeof global !== 'undefined' && global.__TALARIA_DISABLE_FULL_OR_V1 === true) return true;
+            if (typeof window !== 'undefined' && window.__TALARIA_DISABLE_FULL_OR_V1 === true) return true;
+        } catch (_) {}
+        return false;
+    }
+
     /** Per-day opening range in chart wall-clock window; bands appear only after the window closes (flat final high/low). */
     function calculateOpeningRange(data, params) {
+        if (_talariaFullOrPathDisabledV1()) {
+            const n = Array.isArray(data) ? data.length : 0;
+            return {
+                upper: new Array(n).fill(null),
+                lower: new Array(n).fill(null),
+                middle: new Array(n).fill(null)
+            };
+        }
         const resolved = typeof params === 'number'
             ? { rangeStart: '00:00', rangeEnd: (function (m) {
                 const mins = Math.max(1, Math.floor(m));
@@ -17004,6 +17021,7 @@ Chart.prototype._resolveIndicatorBandLineColor = function(color, opacityPct) {
 };
 
 Chart.prototype.drawOpeningRange = function(bands, style, startIndex, endIndex) {
+    if (_talariaFullOrPathDisabledV1()) return;
     if (!bands || !bands.upper) return;
     style = style || {};
     const resolve = this._resolveIndicatorBandLineColor.bind(this);
