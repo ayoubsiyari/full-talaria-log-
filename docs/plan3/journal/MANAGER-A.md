@@ -1920,3 +1920,35 @@ multichart embed boot (iframes: 0). **Realm-eviction grade:** still owed, not in
 **Housekeeping:** EVID-02 dir ensured; pruned detached temp/cursor/stale worktrees; other
 managers' checkouts left alone. Answer:
 ANSWER-A-ELEMENT-CLIMB-IS-HISTORY-MARKERS-PLUS-UNSHIPPED-GLOW-20260730-2210.md.
+
+## 22:45 — glow GC routed for ship, and the transplant I nearly shipped would have reverted a live fix
+
+**Routed:** manager-a/order-glow-filters-20260730 @ fdda39a3b, flag
+__TALARIA_DISABLE_ORDER_GLOW_FILTER_GC_V1 (2x in each of the two order-manager.js copies).
+16/16 at that head, 124 s; mutants applied ON DISK to BOTH mirrors with needle==1 asserted and
+each killed by a NAMED behavioural cell; both negative controls (nonexistent needle, ambiguous
+4,704x needle) reported NOT_APPLIED loudly; disk restored 5ffa7d09a78de0f5. Log at
+_evidence\manager-A\glow-gc-fdda39a3b.txt per EVID-02. Route doc:
+ROUTE-A-TO-B-GLOW-GC-SHIPS-FROM-ITS-OWN-BASE-20260730-2245.md.
+
+**THE NEAR-MISS, and it is the row worth keeping.** I first tried to transplant the two glow
+commits onto the tip so B would get a modern base. Exactly one conflict, in the per-order
+teardown: tip has the SUBSTRING matcher [class*="multi-tp-avg-"][class*="-${oid}"], the glow
+base has the EXACT .multi-tp-avg-${oid} from cluster-g's ORDER-SEL-01. I resolved it by keeping
+the tip's line and adding the reclaim beside it — correct policy, do not smuggle an unrelated
+fix through a conflict resolution — and it was WRONG, because the tip is the one that is behind.
+ORDER-SEL-01 is ON THE WIRE (3 occurrences at b113) and ZERO at tip 3ba0d41d4, with controls
+B-W16=5 and _disposeEntryMarkerRecord=6 on the same fetch proving the scan sees real content.
+So my resolution would have shipped a revert to the over-matching selector I had myself logged
+as a hazard — arriving from the direction I was not watching. Deleted the transplant branch and
+worktree; nothing routed. Caught only because the glow suite's fixed extraction list refuses to
+start without _orderSel01ExactTeardownV1Enabled: the extraction-list trap I have been escalating
+all day did the catching this time. I am not withdrawing the escalation — a harness that fails
+because a method is missing is fail-loud, which is the tolerable half of that trap.
+
+**Row for C, independent of this packet:** manager-c/verification-infra is behind deployment on
+order-manager.js. Anything measured on it that touches order teardown is measuring a tree the
+users do not have.
+
+**Still owed:** realm-eviction grade (not inventing it), CKPT-01 acceptance RED on multichart
+embed boot (iframes: 0). A1/A2 remain shelved at CONF-01 scale.
