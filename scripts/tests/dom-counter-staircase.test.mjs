@@ -22,12 +22,16 @@ function report(baselineDocs, floorDocs) {
   };
 }
 
-test('a document staircase is a blocking RED', () => {
+test('a document staircase is reported ADVISORY, never blocking, until calibrated', () => {
+  // The PO measured between-session variance (13 vs 18 documents on identical
+  // fresh loads) larger than the four-cycle drift, and frames are collected with
+  // a ~1s lag. A confident RED on that input is worse than no cell at all.
   const cell = buildDomCounterCell(report(2, [5, 8, 11, 14]));
-  assert.equal(cell.status, 'RED');
-  assert.equal(cell.pass, false);
-  assert.equal(cell.blocking, true);
-  assert.match(cell.detail, /did NOT return to baseline/);
+  assert.equal(cell.status, 'ADVISORY');
+  assert.equal(cell.pass, true);
+  assert.equal(cell.blocking, false);
+  assert.equal(cell.thresholdCalibrated, false);
+  assert.match(cell.detail, /needs repeats and a settle wait/);
   assert.match(cell.detail, /delta \+12/);
 });
 
@@ -38,9 +42,9 @@ test('documents returning to baseline is GREEN and not blocking', () => {
   assert.equal(cell.blocking, false);
 });
 
-test('one extra document is tolerated as boot artefact, two is not', () => {
+test('one extra document reads GREEN, more reads ADVISORY', () => {
   assert.equal(buildDomCounterCell(report(2, [2, 3])).status, 'GREEN');
-  assert.equal(buildDomCounterCell(report(2, [2, 4])).status, 'RED');
+  assert.equal(buildDomCounterCell(report(2, [2, 4])).status, 'ADVISORY');
 });
 
 test('the last cycle decides, not the peak mid-run', () => {

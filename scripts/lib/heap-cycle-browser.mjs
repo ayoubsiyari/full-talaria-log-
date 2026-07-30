@@ -85,6 +85,36 @@ function logHeapCycle(...args) {
   console.error(`[heap-cycle ${new Date().toISOString()}]`, ...args);
 }
 
+/**
+ * Chrome quantizes performance.memory unless this flag is set, and the PO's
+ * browser does not set it. Being able to drop it is how "is the console gauge
+ * wrong-scoped or merely wrong-precision" becomes a measurement.
+ */
+export function preciseMemoryArgs() {
+  return process.env.TALARIA_HEAP_NO_PRECISE_MEMORY === '1'
+    ? []
+    : ['--enable-precise-memory-info'];
+}
+
+/** Names every document alive, by URL, so "11-18 documents" can be itemised. */
+export async function readFrameTree(cdp, label = 'frames') {
+  try {
+    const tree = await cdp.send('Page.getFrameTree');
+    const rows = [];
+    const walk = (node, depth) => {
+      if (!node) return;
+      rows.push({ depth, url: String(node.frame?.url || '').slice(0, 140), name: node.frame?.name || null });
+      for (const child of node.childFrames || []) walk(child, depth + 1);
+    };
+    walk(tree?.frameTree, 0);
+    logHeapCycle(`${label}: FRAME-TREE-V1 count=${rows.length} ${JSON.stringify(rows)}`);
+    return rows;
+  } catch (err) {
+    logHeapCycle(`${label}: Page.getFrameTree failed ${String(err?.message || err)}`);
+    return null;
+  }
+}
+
 export async function loadPuppeteer() {
   try {
     return require('puppeteer');
@@ -223,9 +253,13 @@ async function sampleHeapFloor(page, cdp, {
   // Read at the same instant as usedJSHeapSize so the two gauges can be compared
   // without a second session between them.
   const perfMetrics = await readPerfMetrics(cdp, label);
+  // Itemise the documents on the fresh chart: the floor is its own finding.
+  const frameTree = /baseline/i.test(String(label)) ? await readFrameTree(cdp, label) : null;
   return {
     ...jsHeap,
     perfMetrics,
+    frameTree,
+    preciseMemoryInfo: process.env.TALARIA_HEAP_NO_PRECISE_MEMORY !== '1',
     cdpCollectGarbage: didCdpGc,
     metric: HEAP_METRIC_USED_JS_HEAP_SIZE,
     detachedDivCount: null,
@@ -1074,7 +1108,7 @@ async function runDistV9Session({
     args: [
       '--no-sandbox',
       '--disable-dev-shm-usage',
-      '--enable-precise-memory-info',
+      ...preciseMemoryArgs(),
       '--js-flags=--expose-gc',
     ],
     defaultViewport: { width: 1440, height: 960 },
@@ -1704,7 +1738,7 @@ async function runThinHostSession({
     args: [
       '--no-sandbox',
       '--disable-dev-shm-usage',
-      '--enable-precise-memory-info',
+      ...preciseMemoryArgs(),
       '--js-flags=--expose-gc',
     ],
     defaultViewport: { width: 1280, height: 900 },
@@ -1980,7 +2014,7 @@ async function runDeployedSession({
     args: [
       '--no-sandbox',
       '--disable-dev-shm-usage',
-      '--enable-precise-memory-info',
+      ...preciseMemoryArgs(),
       '--js-flags=--expose-gc',
     ],
     defaultViewport: { width: 1440, height: 960 },

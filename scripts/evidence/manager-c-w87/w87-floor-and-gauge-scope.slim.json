@@ -1,0 +1,69 @@
+{
+  "packet": "W87",
+  "manager": "C",
+  "tier": "mid",
+  "tierWhy": "instrument scoping measurement; no money path, no product diff",
+  "build": "20260729b103",
+  "headline": "THE SCOPING ERROR IS REAL BUT IT IS NOT THE API — IT IS THE SURFACE. My harness has been measuring a 2-document, 75 MB chart shell while the PO drives an 11-18 document, 383 MB page. Same metric, different page. Meanwhile the API claim fails again on measurement: performance.memory reads 1.22x HIGHER than the figure Performance Monitor shows, and Chrome's precision flag changes nothing (75.36 vs 75.37 MB).",
+
+  "whatIOwn": {
+    "concession": "the Director's instinct that every memory figure in this plan is scoped wrong is CORRECT, and I am the reason. My floor is 61-75 MB against his 383 MB on the same metric — a 5-6x surface gap. I have been grading cuts on a lighter page than the product the PO uses, and that plausibly contributed to the 12-vs-25 MB/cycle disagreement all week.",
+    "correctionToTheMechanism": "the gap is NOT that usedJSHeapSize reads the main frame only. Three independent measurements say otherwise (below). It is that my harness loads /chart/dist-v9/index.html?mode=backtest&mcLayout=1 — a bare chart shell with ONE document — and the PO loads the full application.",
+    "consequence": "re-baselining on the PO's actual route is the priority, and it needs the route named. Until then my absolute floors are not comparable to his; my A/B deltas remain internally valid because both arms ran on the same surface."
+  },
+
+  "gaugeMeasuredAgain": {
+    "precisionHypothesis": {
+      "idea": "every harness here passes --enable-precise-memory-info and the PO's Chrome does not; Chrome quantizes performance.memory without it, which could make his console readings coarse",
+      "test": "same build, same route, flag ON vs OFF, two runs each, reading performance.memory and CDP Performance.getMetrics at the same instant",
+      "result": "FALSIFIED. perf.memory 75.36 / 76.06 MB with the flag and 75.37 / 75.44 MB without it. The flag is not the explanation.",
+      "keptAnyway": "the switch is now in the harness behind TALARIA_HEAP_NO_PRECISE_MEMORY with unit tests, because it is the only way to reproduce the PO's browser configuration on demand"
+    },
+    "ratioToPerformanceMonitorMetric": {
+      "samples": [
+        { "arm": "precise1", "perfMemoryMB": 75.36, "cdpUsedMB": 61.82, "cdpTotalMB": 63.75, "ratio": 1.219 },
+        { "arm": "noprecise1", "perfMemoryMB": 75.37, "cdpUsedMB": 61.65, "cdpTotalMB": 64.75, "ratio": 1.223 },
+        { "arm": "precise2", "perfMemoryMB": 76.06, "cdpUsedMB": 61.47, "cdpTotalMB": 64.5, "ratio": 1.237 },
+        { "arm": "noprecise2", "perfMemoryMB": 75.44, "cdpUsedMB": 61.32, "cdpTotalMB": 64.25, "ratio": 1.23 }
+      ],
+      "readingWithW86": "W86 gave 18 same-instant samples at 0.695 (cdpUsed/perfMemory); these four agree at 1.22 the other way up. Across 22 samples performance.memory has NEVER read a fraction of the Performance Monitor figure — it reads consistently higher.",
+      "soTheReferenceInstruction": "I will report BOTH gauges from now on rather than swapping to one, because on my surface they disagree by a knowable 1.22x and neither is a fraction of the other. If the Director still wants Performance Monitor's number as the single reference, JSHeapUsedSize from Performance.getMetrics IS that number and it is already recorded at every sample."
+    }
+  },
+
+  "floorCensus": {
+    "question": "name what those documents ARE and what the 383 MB consists of",
+    "onMySurface": {
+      "documentsCounter": 2,
+      "frameTree": ["http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&mcLayout=1"],
+      "frameTreeCount": 1,
+      "nodes": "6225-6324",
+      "listeners": "1348-1349",
+      "perfMemoryMB": "75.36-76.06",
+      "cdpUsedMB": "61.32-61.82"
+    },
+    "firstRealFinding": "the Documents counter reads 2 while the frame tree contains exactly ONE frame. The counter therefore includes documents that are not frames — an initial about:blank or a detached document. CONSEQUENCE: '11-18 documents' is NOT '11-18 iframes', and neither is my own W86 staircase. Any argument that counts documents as panels is wrong by construction.",
+    "whatICannotName": "his 383 MB and 11-18 documents are not on my surface, so I cannot itemise them from here. Candidates, in the order I would test them: the application wrapper and route he loads (my shell has no app chrome at all), a saved layout restoring tiles at load, browser extensions in his profile injecting frames, and DevTools itself.",
+    "threeSixtySecondTestsForThePo": [
+      "In the console on the FRESH chart: Array.from(document.querySelectorAll('iframe')).map(f => f.src || '(no src)') — itemises every frame the page owns, by URL.",
+      "Reload the same page in an INCOGNITO window with extensions disabled and re-read documents and JS heap size. If 11-18 becomes 2-3, the floor is his profile, not our product.",
+      "Chrome Task Manager (Shift+Esc): how many renderer rows for the app tab, and each row's JavaScript memory. Still the cleanest explanation for a whole-tab figure exceeding a per-isolate one."
+    ],
+    "blockerForMe": "the exact URL/route the PO loads for a 'fresh single chart'. One line from him or B and I re-baseline everything on it."
+  },
+
+  "baselineNondeterminism": {
+    "question": "13 documents on one fresh load, 18 on another, same pairs, same hard refresh — name it",
+    "onMySurface": "DOES NOT REPRODUCE. Four fresh loads: documents 2/2/2/2, frames 2/2/2/2, nodes 6324/6225/6228/6226, listeners 1348/1349/1348/1348, heap 75.36/75.37/76.06/75.44 MB. Spread under 1%.",
+    "whatThatNarrowsTo": "the varying component is not in the chart shell. It is in the surrounding application, the restored layout, or his browser profile — the same three candidates as the floor, which is suggestive: whatever adds 9-16 documents is also what makes the count vary.",
+    "honestLimit": "a deterministic bare shell does not prove the app wrapper is the varying part. It proves the chart shell is not."
+  },
+
+  "onTheRetractedStaircase": {
+    "agreed": "my own W86 counter data has the same lag artefact in it. I read documents at the collapsed floor after a forced collection, which is the right moment, but I did not measure the settle time the PO observed, and I did not run between-session repeats to see whether the drift exceeds session-to-session variance. My +8 documents over four cycles was one run per arm — the exact error W84 taught me and I repeated it eight hours later.",
+    "whatSurvivesFromW86": "the DOM-COUNTER-STAIRCASE-V1 cell itself is still worth having, but its threshold is now wrong: a tolerance of one document cannot stand when between-session variance is larger than the drift. It needs a settle wait and a repeat-based threshold before it grades anything.",
+    "actionTaken": "I am not leaving a gate cell in place that would produce a confident RED on noise. Next packet: settle wait, N-session baseline spread, threshold derived from that spread — or the cell comes out."
+  },
+
+  "declaration": "Nothing declared. Per DECL-01 the per-cycle question is open until the PO's Performance Monitor sequence lands, and my instrument agrees it is open."
+}

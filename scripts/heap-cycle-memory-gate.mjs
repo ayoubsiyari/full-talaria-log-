@@ -163,8 +163,16 @@ export function newestCycleSnapshot(snapshotOutPath, { existsSync = fs.existsSyn
  * count are RED with nothing to argue about; nodes and listeners ride along
  * because they are the mass inside those documents.
  *
- * Tolerance is one document, because the shell legitimately keeps the host panel
- * plus its own frame and a single extra can be a boot artefact rather than a leak.
+ * ADVISORY, NOT BLOCKING, until the threshold is calibrated. The PO measured
+ * between-session variance (13 vs 18 documents on identical fresh loads) LARGER
+ * than the four-cycle drift, and frames are collected with a visible ~1s lag, so a
+ * fixed one-document tolerance would produce a confident RED on noise. The counter
+ * is reported at every sample; it does not gate until a repeat-based threshold
+ * replaces the constant below.
+ *
+ * Also note Documents counts documents that are not frames: a fresh single chart
+ * reads Documents=2 with exactly ONE frame in the tree. Document count is not
+ * panel count.
  */
 export function buildDomCounterCell(report) {
   const baseline = report?.baseline?.perfMetrics || null;
@@ -191,14 +199,20 @@ export function buildDomCounterCell(report) {
   const series = floors.map((r) => `c${r.cycle}:${r.m.documents}`).join(' ');
   return {
     name: 'DOM-COUNTER-STAIRCASE-V1',
-    pass: returned,
-    status: returned ? 'GREEN' : 'RED',
+    // Advisory: reported, never blocking, until the threshold is derived from
+    // measured between-session spread rather than assumed.
+    pass: true,
+    status: returned ? 'GREEN' : 'ADVISORY',
     detail: `documents baseline=${baseline.documents} → ${series} (delta ${docDelta >= 0 ? '+' : ''}${docDelta}); `
       + `nodes ${nodeDelta >= 0 ? '+' : ''}${nodeDelta}, listeners ${listenerDelta >= 0 ? '+' : ''}${listenerDelta}. `
       + (returned
         ? 'documents returned to baseline across cycles'
-        : 'documents did NOT return to baseline — closed panels are still counted, i.e. retained iframes'),
-    blocking: !returned,
+        : 'documents did not return to baseline in this run — NOT graded: between-session spread '
+          + 'is larger than the four-cycle drift and frames are collected with a ~1s lag, so this '
+          + 'needs repeats and a settle wait before it means anything'),
+    blocking: false,
+    nonBlocking: true,
+    thresholdCalibrated: false,
     counters: {
       baseline,
       floors: floors.map((r) => ({ cycle: r.cycle, ...r.m })),
