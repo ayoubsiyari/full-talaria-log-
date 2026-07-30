@@ -155,6 +155,19 @@ function attachNet(page, label, sink) {
       err: req.failure()?.errorText || 'fail',
     });
   });
+  // A request issued during unload (release on pagehide/beforeunload) completes at the
+  // network layer, but its document is gone before CDP can deliver the response event.
+  // Without this, an answered /release reads as a held socket — a false red.
+  page.on('requestfinished', (req) => {
+    const u = req.url();
+    if (!/\/api\/chart\/windows\//.test(u)) return;
+    sink.push({ t: now(), label, kind: 'finished', url: u.replace(BASE, '') });
+  });
+  page.on('framenavigated', (frame) => {
+    if (frame === page.mainFrame()) {
+      sink.push({ t: now(), label, kind: 'navigated', url: frame.url().replace(BASE, '') });
+    }
+  });
 }
 
 async function seedCookies(page, cookieHeader) {
@@ -375,7 +388,7 @@ function summariseNet(net) {
     const key = `${ev.label}|${ev.method || ''}|${ev.url}`;
     if (ev.kind === 'req') {
       open.set(`${key}|${ev.t}`, { ...ev, key });
-    } else if (ev.kind === 'res' || ev.kind === 'fail') {
+    } else if (ev.kind === 'res' || ev.kind === 'fail' || ev.kind === 'finished') {
       // match latest open with same label+url
       let best = null;
       let bestK = null;
@@ -399,13 +412,22 @@ function summariseNet(net) {
       }
     }
   }
-  const stillOpen = [...open.values()].map((v) => ({
+  // Requests whose document was destroyed after they were issued cannot be resolved from
+  // CDP. They are NOT evidence of a held socket; the server log is the arbiter for those.
+  const navAfter = (label, t) =>
+    net.some((e) => e.kind === 'navigated' && e.label === label && e.t >= t);
+  const leftovers = [...open.values()].map((v) => ({
     label: v.label,
     url: v.url,
     method: v.method,
     openForMs: now() - v.t,
+    documentDestroyed: navAfter(v.label, v.t),
   }));
-  return { closed, stillOpen };
+  return {
+    closed,
+    stillOpen: leftovers.filter((v) => !v.documentDestroyed),
+    unresolvedAcrossUnload: leftovers.filter((v) => v.documentDestroyed),
+  };
 }
 
 report.netSummary = summariseNet(report.net);
@@ -437,9 +459,13 @@ report.verdict = {
   slowClosedCount: slowClosed.length,
   apiSlowCount: apiSlow.length,
   pageSlowCount: pageSlow.length,
+  unresolvedAcrossUnload: (report.netSummary.unresolvedAcrossUnload || []).length,
   note: hangSurvived
     ? 'P0 REOPEN CONFIRMED behaviourally: timeout markers present AND path still slow/hangs'
     : 'No ≥9s hang observed in this run — not a close; intermittent stalls need more arms',
+  caveat:
+    'unresolvedAcrossUnload requests were issued by a document the reload destroyed; CDP '
+    + 'cannot deliver their outcome. Confirm those against the server access log, not here.',
 };
 
 const outJson = join(outDir, `behavioural-${stamp}.json`);

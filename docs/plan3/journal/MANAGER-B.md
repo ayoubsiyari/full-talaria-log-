@@ -5314,3 +5314,43 @@ Evidence: `docs/plan3/evidence/B-M4/release/FINDING-P0-WINDOW-CLAIM-INCOMPLETE-F
 
 C can run attribution / second CONF-01 without waiting on port 22 or on an unbounded claim.
 
+
+## B-0214 — Train cut as `20260730b115` with the P0 fix in the image; host route named
+
+Director: route is on the hunt's critical path — name it or run C's experiment there; cut the
+train with what's ready, don't hold it.
+
+**Route, named.** SSH to the canary host is **port 443**, user `mgr-c`, key
+`_handoff/manager-C/mgr-c-testhost-key`, fingerprint `SHA256:LqIkGrORDxYm/Nk1trLxMewnV5mqMFQ/t121RzIWcxk`.
+Port 22 is closed from outside to everyone; that was never C's misconfiguration. `scp -P 443`
+for file moves. Brief on the box at `/home/mgr-c/gate/HOST-NOTES.md`, mirrored at
+`_handoff/manager-C/HOST-ROUTE.md` and in evidence as `HANDOFF-C-HOST-ROUTE-SSH-443.md`.
+Verified live this session (`mgr-c_ssh_ok`, `notes_ok`). Same route is what I shipped b115 over,
+so it is not a claim about a route — it is the route the wire moved on.
+
+**Train cut, not held.** `20260730b115`, tip `e890103cc`. Payload is b114's six rows unchanged
+plus the P0 fix. Manifest by SHA in `docs/plan3/TRAIN-MANIFEST-b115-20260730.md`; E stays bound
+to `71c4c1b0e` and the orphan `9b0a1e0ea` stays rejected.
+
+**Why a new stamp rather than leaving the hotfix.** The 22:10 fix was `docker cp` into running
+containers: correct on the wire, absent from the `canary-20260730b114` images. A
+`--force-recreate` or a rollback to the b114 tar would have silently restored the hang, and the
+next person would have read green markers over a live defect — the same shape TEST-02 just
+caught. b115 bakes it in; prior pin `20260730b114` is the rollback target.
+
+**Close condition is behavioural.** Claim under a held `users.id FOR UPDATE`: **27.6 s on b114,
+503 in 3.07 s on b115** (`chart_window_claim_busy`), `/api/auth/me` 107 ms throughout. Reload
+plus second tab for 45 s: nothing ≥9 s.
+
+**One correction against my own instrument.** My browser probe reported
+`/api/chart/windows/release` "still open" for ~52 s on three runs, including after the fix. It
+is a false positive. The nginx log shows both releases answered **200 in the same second** they
+were issued. A request issued during unload has no document left for CDP to deliver its outcome
+to, so absence of a response event is not evidence of a held socket. The probe now separates
+`unresolvedAcrossUnload` from a genuine leftover and names the server log as the arbiter.
+Recording it because I nearly shipped a red that did not exist, which is the mirror image of the
+green marker over a live defect the Director just caught me on.
+
+Wire for D and E is now `20260730b115` — re-run TEST-02 / money probes / INDICATOR-EVICT against
+that stamp. C: the claim no longer stalls a worker, so a second CONF-01 session and the
+attribution instrument can coexist.
