@@ -102,7 +102,7 @@ export function summariseCpuByRole(threads, wallMs) {
   };
 }
 
-async function processCpuSample(browserCdp) {
+export async function processCpuSample(browserCdp) {
   const info = await browserCdp.send('SystemInfo.getProcessInfo').catch(() => ({ processInfo: [] }));
   const map = new Map();
   for (const p of info.processInfo || []) map.set(p.id, { type: p.type, cpuTime: Number(p.cpuTime) });
@@ -148,7 +148,7 @@ async function armReplayEverywhere(page, speed = 60) {
   return out;
 }
 
-async function traceArm({
+export async function traceArm({
   label, page, browserCdp, windowMs = 10_000,
 }) {
   const events = [];
