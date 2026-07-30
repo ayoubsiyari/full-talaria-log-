@@ -100,3 +100,12 @@ exists — eviction deletes the redundant hot copy, it does not invent a new sto
 - TAL-01891: **question not alarm** — path still on b113 corpus (no TRADE-EVICT there);
   live now has eviction bytes. Doc `QUESTION-TAL-01891-PATH-STILL-ON-B113-20260730.md`.
   No soak. Did not call PO.
+
+## 2026-07-30 — B stamp + PO deploy-freeze request
+
+- Live OM has #8 / 01807b bytes, but stamp is unlabelled. D will not flip without B naming
+  the stamp; unlabelled deploy is a **MEAS-01 defect**.
+- Requested explicit B freeze for the PO 26-row pack: no deploy between Director "PO start"
+  and scorecard return. If B ships first, D re-preflights the pack against the new named stamp.
+- Scratch artifacts moved out of worktree to `_evidence\manager-D\scratch-clean-*`; pending
+  protection clear tests committed in both trees with GREEN + RED clear-kill coverage.
