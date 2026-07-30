@@ -1,5 +1,13 @@
 # Manager D Journal
 
+## 2026-07-30 — DISPATCH-D 15:15 (one number / class-3 / M24 wire)
+
+- CKPT-01 accepted as four-manager reference.
+- **D1:** `scripts/ledger-status-count.mjs` → artifact `LEDGER-STATUS-COUNT-20260730.json`. **HONEST_FIXED=50** at tip `b55f66b66`. Prior 48 was stale `51−3` arithmetic; 53 not reproduced. Prose counts retired.
+- H-S18/H-S83 harness restage re-routed **A → C** (`OWNER-C-HS18-HS83-CONF01-20260730.md`). TAL-01677/01733 stay A.
+- Not standing by for B stamp (routed as B interrupt).
+- Parallel: D2 class-3 audit, D3 M24 wire read, Rayan #2/#8 RED-first proof; TAL-01941 C2 verdict note updated.
+
 ## 2026-07-30 — keep moving after CKPT-01
 
 - TAL-01677 (Go-To session) + TAL-01733 (H-S19) → **owner-blocked A** (nav/harness, not money).

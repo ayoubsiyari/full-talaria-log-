@@ -29,15 +29,15 @@ Reason: **`CONF-01: gate same-pair/single-panel vacuous`**
 
 ---
 
-## 3. Honest remaining `fixed` count
+## 3. Honest remaining `fixed` count — SUPERSEDED
 
-| Metric | Count |
-| --- | ---: |
-| Ledger `fixed` before CONF-01 apply | 51 |
-| Reopened (H-S18/H-S83) | 3 |
-| **Honest `fixed` after apply** | **48** |
+**Superseded by** `CONF01-FIXED-COUNT-MECHANICAL-20260730.md` + `node scripts/ledger-status-count.mjs`.
 
-OM unit gates that do not claim same-pair MC acceptance remain CONF01-OK (single-chart money-path units still have weight for their own defects).
+This section’s `51 − 3 = 48` used a stale baseline (pre-13:20 reopen / mid-repair). It is not evidence under EVID-01.
+
+**Current mechanical HONEST_FIXED at tip `b55f66b66`: 50.**
+
+OM unit gates that do not claim same-pair MC acceptance remain CONF01-OK (single-chart money-path units still have weight for their own defects). Class-3 (`conf01-unshaped`) is a separate audit (D2).
 
 ---
 
