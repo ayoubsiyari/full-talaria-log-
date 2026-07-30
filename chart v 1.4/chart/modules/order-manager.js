@@ -162,13 +162,15 @@ function _tradeEvictV1Enabled() {
  * and third heap owner — only a second list pointer. The real duplicate was
  * journal `.slice()` copies alongside the closed/service row.
  *
- * Default ON. Kill-switch: window.__TALARIA_DISABLE_EXCURSION_SINGLE_OWNER_V1 = true
- * FLAG-01/02/03 same contract as TRADE-EVICT-V1.
+ * Kill-switch: window.__TALARIA_DISABLE_EXCURSION_SINGLE_OWNER_V1 = true disables.
+ * FLAG-01: key ABSENT ⇒ feature ON (testable without setting the key to false).
+ * FLAG-02: runtime flip, no reload. FLAG-03: OFF vs product (RED cell).
  *
  * Also hard-caps each live series at `_m19ExcursionTailMaxV1()` after archive+bound
  * so a census that sums four keys cannot be misread as a single-array cap miss.
  */
 function _excursionSingleOwnerV1Enabled() {
+    // ABSENT or any value other than boolean true ⇒ feature enabled.
     return typeof window === 'undefined'
         || window.__TALARIA_DISABLE_EXCURSION_SINGLE_OWNER_V1 !== true;
 }

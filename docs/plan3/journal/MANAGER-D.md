@@ -67,3 +67,13 @@ exists — eviction deletes the redundant hot copy, it does not invent a new sto
 - **Handed to B as build-blocked** (not waiting): Rayan #8 off-wire (money freeze gate),
   TAL-01896 needs a build. Handoff:
   `HANDOFF-D-TO-B-BUILD-BLOCKED-RAYAN8-01896-20260730.md`.
+
+## 2026-07-30 — Director e982c3ce5 (57% ledger / 26 po-eyes)
+
+- **FLAG-01 confirmed:** `__TALARIA_DISABLE_EXCURSION_SINGLE_OWNER_V1` **ABSENT ⇒ feature ON**
+  (`!== true`). GREEN cell deletes the key; does not require explicit `false`.
+- Built **one** consolidated PO visual pack for all 26 `po-eyes`, setup-ordered, observables +
+  pass/fail boxes, TEST-01 wire preflight on b113 (0 rows removed for missing wire):
+  `PO-VISUAL-PACK-26-PO-EYES-20260730.md`.
+- Applied `PO-DECISIONS-23-ROWS` docx → `needs-info` **0**. Owner-blocked rebalanced A/E/C
+  (`OWNER-BLOCKED-ROUTING-20260730-2135.md`).

@@ -60,7 +60,7 @@ Open row disposition and unverified blast-radius order live in `docs/plan3/UNKNO
 | TAL-01760 | superseded | — | M6 leftover | No dedicated D-tip gate |
 | TAL-01798 | fixed | CONF-01 peer-TF cell | GREEN: `order-lifecycle-event-ownership.test.mjs` (+ peer GBPUSD TF≠host close); RED under lifecycle kill | Class-3 reshaped: other-layout TF must not close host |
 | TAL-01815 | fixed | `c0a0d7620` | GREEN: `order-lifecycle-event-ownership.test.mjs` canonical + homepage | Gate header names `TAL-01815` |
-| TAL-01677 | owner-blocked | — | Go-To session London→NY error (Cluster D / M8 nav) | Owner A — `chart.js` session nav; not D money-path |
+| TAL-01677 | verify-gone | — | PO-DECISIONS: already fixed (PO) | PO asserts fixed; no re-ask |
 | TAL-01688 | superseded | — | Old-layout Cluster M | No current-surface gate |
 | TAL-01700 | po-eyes | — | Cluster K crosshair replay | Data/UI PO cluster — not one of five money scripts |
 | TAL-01709 | superseded | — | Old-layout Cluster M | No current-surface gate |
@@ -86,47 +86,47 @@ Open row disposition and unverified blast-radius order live in `docs/plan3/UNKNO
 | TAL-01759 | owner-blocked | — | Cluster E session isolation | Layout/persistence owner lane |
 | TAL-01768 | po-eyes | — | Cluster J price-scale | UI/viewport PO |
 | TAL-01769 | superseded | — | Old-layout Cluster M | No current-surface gate |
-| TAL-01784 | needs-info | — | Cluster O feature request | Not a bug gate |
+| TAL-01784 | feature-request | — | PO-DECISIONS 23-row: NO | Not wanted |
 | TAL-01796 | po-eyes | — | M10 residual marker | First look — PO Script 3 |
 | TAL-01799 | owner-blocked | — | Multichart/layout shell | Cluster M / order on new layout |
 | TAL-01802 | fixed | `ab57a5dac` + CONF-01 cell | GREEN: `cross-timeframe-current-price-coherence.test.mjs` ± homepage (same-symbol TF + XAUUSD peer isolation) | CONF-01: peer must not inherit host mark |
-| TAL-01814 | needs-info | — | Cluster O feature request | Not a bug gate |
+| TAL-01814 | feature-request | — | PO-DECISIONS 23-row: NO | Not wanted |
 | TAL-01821 | po-eyes | — | Cluster J | UI/viewport PO |
 | TAL-01823 | po-eyes | — | Cluster J | UI/viewport PO |
 | TAL-01824 | superseded | — | Old-layout Cluster M | No current-surface gate |
 | TAL-01831 | superseded | — | Old-layout Cluster M | No current-surface gate |
 | TAL-01838 | po-eyes | — | Cluster J | UI/viewport PO |
 | TAL-01847 | superseded | — | Old-layout Cluster M | No current-surface gate |
-| TAL-01849 | needs-info | — | Cluster O feature request | Not a bug gate |
-| TAL-01850 | owner-blocked | — | CANARY BLOCKER — `keyboard-shortcuts.js` / `chart.js` | **Owner A** (TERRITORY). Not D |
-| TAL-01851 | needs-info | — | Cluster O feature request | Not a bug gate |
-| TAL-01852 | needs-info | — | Cluster O feature request | Not a bug gate |
-| TAL-01854 | closed-scratched | — | PO scratched from M25 | No product gate |
+| TAL-01849 | feature-request | — | PO-DECISIONS 23-row: AFTER | Post-canary backlog |
+| TAL-01850 | owner-blocked | — | PO-DECISIONS: BLOCKER | Owner **A** — canary blocker confirmed |
+| TAL-01851 | feature-request | — | PO-DECISIONS 23-row: AFTER | Post-canary backlog |
+| TAL-01852 | feature-request | — | PO-DECISIONS 23-row: AFTER | Post-canary backlog |
+| TAL-01854 | owner-blocked | — | PO-DECISIONS: REAL (auto-follow / TF downshift family) | Owner **A** |
 | TAL-01862 | po-eyes | — | Cluster J | UI/viewport PO |
 | TAL-01864 | owner-blocked | — | Cluster I history range | `chart.js` smart-window; Data Script 3 |
 | TAL-01886 | fixed | `ab57a5dac` + CONF-01 cell | GREEN: `cross-timeframe-current-price-coherence.test.mjs` ± homepage | CONF-01 peer isolation cell added |
 | TAL-01887 | owner-blocked | — | RED vacuous under CONF-01: `H-S18`/`H-S83` `pair: 'same'` | Owner **C** — harness restage; see `OWNER-C-HS18-HS83-CONF01-20260730.md` |
-| TAL-01891 | needs-info | — | Cluster N memory lag | Soak undefined; no invented click path |
-| TAL-01892 | needs-info | — | Cluster N idle lag | Soak/monitor lane |
+| TAL-01891 | owner-blocked | — | PO-DECISIONS: YES same memory campaign | Owner **A** — folds into 730 MB/h hunt |
+| TAL-01892 | blocked-on-build | — | PO-DECISIONS: NOT SURE; wait for fix train | Retest after memory/lag stamp |
 | TAL-01893 | owner-blocked | — | Go-To forward skip lives in `chart.js` (`goToNextSession`); M22 bucketing does not cover menu skip | Owner A; no D tip gate |
 | TAL-01894 | feature-request | — | Missing label-text-colour in chart template settings | Awaiting PO blocker/after/no |
 | TAL-01898 | po-eyes | — | Cluster I weekly jump | Data/replay PO |
 | TAL-01899 | blocked-on-build | — | Gate `m25-tal-01899-ohlc-order.red.test.mjs` absent | Only on `diagnostics/v3-qa123-soak-20260727` |
 | TAL-01900 | blocked-on-build | — | Gate `m25-tal-01900-substep-stall.red.test.mjs` absent | Only on `diagnostics/v3-qa123-soak-20260727` |
 | TAL-01902 | blocked-on-build | — | Gate `m25-tal-01902-session-calendar.red.test.mjs` absent | Only on `diagnostics/v3-qa123-soak-20260727` |
-| TAL-01906 | needs-info | — | Cluster O feature request | Not a bug gate |
-| TAL-01907 | needs-info | — | Cluster O feature request | Not a bug gate |
+| TAL-01906 | feature-request | — | PO-DECISIONS 23-row: AFTER | Post-canary backlog |
+| TAL-01907 | feature-request | — | PO-DECISIONS 23-row: AFTER | Post-canary backlog |
 | TAL-01909 | po-eyes | — | Cluster D session resume | Data/replay PO |
 | TAL-01910 | owner-blocked | — | RED vacuous under CONF-01: `H-S18`/`H-S83` `pair: 'same'` | Owner **C** — harness restage; see `OWNER-C-HS18-HS83-CONF01-20260730.md` |
 | TAL-01911 | po-eyes | — | M24 journal registration residual | First look — PO Script 1 |
 | TAL-01912 | closed-scratched | — | PO scratched / user confusion | No product gate |
-| TAL-01913 | owner-blocked | — | Cluster H daily-open lines | Chart overlay owner |
-| TAL-01914 | owner-blocked | — | Cluster H indicator labels | Chart overlay owner |
-| TAL-01915 | needs-info | — | Cluster O feature request | Not a bug gate |
+| TAL-01913 | owner-blocked | — | Cluster H daily-open lines | Owner **E** (indicator/overlay grant) |
+| TAL-01914 | owner-blocked | — | Cluster H indicator labels | Owner **E** |
+| TAL-01915 | feature-request | — | PO-DECISIONS 23-row: AFTER | Post-canary backlog |
 | TAL-01916 | po-eyes | — | Cluster J zoom | UI/viewport PO |
 | TAL-01917 | po-eyes | — | Cluster I TF switch candles | Data/replay PO |
 | TAL-01920 | verify-gone | — | PO reopened: positively verify absent on stamp (PO-CHECK §17) | Not find-original-repro |
-| TAL-01921 | owner-blocked | — | Cluster H indicator labels | Chart overlay owner |
+| TAL-01921 | owner-blocked | — | Cluster H indicator labels | Owner **E** |
 | TAL-01922 | blocked-on-build | — | RED: `m22-session-calendar-bucketing.red.test.mjs` (default broken) | Product not GREEN on tip; session-calendar ship required |
 | TAL-01923 | po-eyes | — | Cluster L drawings lag | Data/replay PO |
 | TAL-01925 | po-eyes | — | Cluster I weekly jump | Data/replay PO |
@@ -134,9 +134,9 @@ Open row disposition and unverified blast-radius order live in `docs/plan3/UNKNO
 | TAL-01929 | po-eyes | — | Cluster D session resume | Data/replay PO |
 | TAL-01931 | owner-blocked | — | Cluster L step-forward | `replay-system.js` owner |
 | TAL-01934 | po-eyes | — | Cluster K crosshair | Data/UI PO |
-| TAL-01935 | owner-blocked | — | Cluster H indicator labels | Chart overlay owner |
+| TAL-01935 | owner-blocked | — | Cluster H indicator labels | Owner **E** |
 | TAL-01936 | owner-blocked | — | Cluster I time alignment | `chart.js` owner |
-| TAL-01938 | owner-blocked | — | Cluster H ORB size | Chart overlay / session calendar |
+| TAL-01938 | owner-blocked | — | Cluster H ORB size | Owner **E** |
 | TAL-01939 | owner-blocked | — | RED vacuous under CONF-01: `H-S18`/`H-S83` `pair: 'same'` | Owner **C** — harness restage; see `OWNER-C-HS18-HS83-CONF01-20260730.md` |
 | Rayan #1 | fixed | m23 GATE-01 | GREEN/RED: `m23-rollback-trade-state.red.test.mjs` | Same as TAL-01937 |
 | Rayan #2 | fixed | CONF-01 four-symbol teardown gate | GREEN: `order-mc-layout-teardown-retains-host-orders.test.mjs` (EURUSD host + GBPUSD/USDJPY/XAUUSD peers); RED kill | Money-path under CONF-01; lag half → A |
