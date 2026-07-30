@@ -142,3 +142,77 @@ test('mutation: moving the block outside the /api/file/ location goes RED', () =
   const mutated = `${source.replace(block, '')}\n# relocated\n${block}\n`;
   assert.throws(() => assertBigJsonBufferingContract(mutated), /must be nested inside/);
 });
+
+// ── Session-state request bodies ────────────────────────────────────────────
+// The block above stops nginx spooling large RESPONSES. The other direction was still
+// spooling: a live session state measured 636,776 bytes, against a default client body
+// buffer of 8-16k, so every autosave of a working session wrote a temp file. Same disk,
+// same 81% full, and far more frequent than the candle reads.
+
+/** Byte offsets of the `location ^~ /api/sessions` block. */
+function sessionsLocation(source) {
+  const start = source.indexOf('location ^~ /api/sessions {');
+  assert.notEqual(start, -1, 'missing location ^~ /api/sessions');
+  let depth = 0;
+  for (let i = source.indexOf('{', start); i < source.length; i += 1) {
+    if (source[i] === '{') depth += 1;
+    else if (source[i] === '}') {
+      depth -= 1;
+      if (depth === 0) return { start, end: i };
+    }
+  }
+  throw new Error('unbalanced braces in location ^~ /api/sessions');
+}
+
+export function assertSessionStateBodyBufferContract(source = readConf()) {
+  const loc = sessionsLocation(source);
+  const block = directivesOnly(source.slice(loc.start, loc.end));
+
+  const m = block.match(/client_body_buffer_size\s+(\d+)([kmKM]?);/);
+  assert.ok(m, 'location ^~ /api/sessions must size client_body_buffer_size: without it the '
+    + 'default 8-16k spools every session-state write to disk');
+
+  const unit = (m[2] || '').toLowerCase();
+  const bytes = Number(m[1]) * (unit === 'm' ? 1024 * 1024 : unit === 'k' ? 1024 : 1);
+  // The measured state was 636,776 bytes. A buffer at or below that spools the very write
+  // this exists to keep in memory, so the gate holds the measurement, not the directive.
+  assert.ok(bytes >= 636_776,
+    `client_body_buffer_size must fit the measured 636,776-byte session state, got ${bytes}`);
+  // Bounded on the other side too: this is per-request memory on a shared host.
+  assert.ok(bytes <= 4 * 1024 * 1024,
+    `client_body_buffer_size must stay bounded, got ${bytes}`);
+
+  // The route must still be proxied and rate-limited: a body-buffer edit is an easy place
+  // to lose one of those by accident.
+  assert.match(block, /proxy_pass\s+http:\/\/trading-chart:8000;/,
+    '/api/sessions must still proxy to the chart backend');
+  assert.match(block, /limit_req\s+zone=/, '/api/sessions must keep its rate limits');
+  return true;
+}
+
+test('nginx.local.conf sizes the session-state request body buffer', () => {
+  assert.equal(assertSessionStateBodyBufferContract(), true);
+});
+
+test('mutation: removing client_body_buffer_size goes RED', () => {
+  const mutated = readConf().replace(/\n\s*client_body_buffer_size\s+1m;/, '');
+  assert.throws(() => assertSessionStateBodyBufferContract(mutated), /must size client_body_buffer_size/);
+});
+
+test('mutation: a buffer too small for the measured state goes RED', () => {
+  const mutated = readConf().replace(/client_body_buffer_size\s+1m;/, 'client_body_buffer_size 16k;');
+  assert.throws(() => assertSessionStateBodyBufferContract(mutated), /must fit the measured/);
+});
+
+test('mutation: an unbounded buffer goes RED', () => {
+  const mutated = readConf().replace(/client_body_buffer_size\s+1m;/, 'client_body_buffer_size 64m;');
+  assert.throws(() => assertSessionStateBodyBufferContract(mutated), /must stay bounded/);
+});
+
+test('mutation: losing the rate limit on /api/sessions goes RED', () => {
+  const source = readConf();
+  const loc = sessionsLocation(source);
+  const block = source.slice(loc.start, loc.end);
+  const mutated = source.replace(block, block.replace(/\n\s*limit_req\s+zone=[^\n]*/g, ''));
+  assert.throws(() => assertSessionStateBodyBufferContract(mutated), /must keep its rate limits/);
+});

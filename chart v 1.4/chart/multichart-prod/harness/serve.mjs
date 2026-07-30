@@ -101,6 +101,10 @@ const FILES = {
   25: { originalName: 'EURUSD.csv', basePrice: 1.08000, decimals: 5 },
   27: { originalName: 'GBPUSD.csv', basePrice: 1.27000, decimals: 5 },
   28: { originalName: 'DEEPFX.csv', basePrice: 1.15000, decimals: 5, synthDays: DEEP_SYNTH_DAYS },
+  // CONF-01 needs FOUR distinct instruments. Before this the harness topped out at three
+  // and tile D always duplicated the host, so no scenario could express the shipping
+  // configuration the PO named.
+  29: { originalName: 'USDJPY.csv', basePrice: 157.20000, decimals: 3 },
 };
 
 const CONTENT_TYPES = {
@@ -206,7 +210,7 @@ function chooseResolution(fromMs, toMs, resolution, limit) {
 
 // ── API log (Task 4.2 fetch-count assertions read this) ───────────────────
 const apiLog = [];
-function logApi(method, url, endpoint, fileId) {
+function logApi(method, url, endpoint, fileId, res = null) {
   const entry = {
     ts: Date.now(),
     method,
@@ -214,8 +218,13 @@ function logApi(method, url, endpoint, fileId) {
     fileId: fileId != null ? String(fileId) : null,
     path: url.pathname,
     query: Object.fromEntries(url.searchParams.entries()),
+    bytes: null,
   };
   apiLog.push(entry);
+  // B1 needs total bytes per panel, not just a request count. Attaching the entry to the
+  // response rather than keeping a module-level "current entry" keeps it correct when two
+  // panels are being served at once, which is the whole point of the CONF-01 measurement.
+  if (res) res.__apiLogEntry = entry;
   const qs = url.search || '';
   console.log(`[api] ${method} ${url.pathname}${qs}`);
   return entry;
@@ -223,9 +232,14 @@ function logApi(method, url, endpoint, fileId) {
 
 function sendJson(res, obj, status = 200) {
   const body = JSON.stringify(obj);
+  const bytes = Buffer.byteLength(body);
+  if (res.__apiLogEntry) {
+    res.__apiLogEntry.bytes = bytes;
+    res.__apiLogEntry.status = status;
+  }
   res.writeHead(status, {
     'Content-Type': 'application/json; charset=utf-8',
-    'Content-Length': Buffer.byteLength(body),
+    'Content-Length': bytes,
     'Cache-Control': 'no-store',
   });
   res.end(body);
@@ -394,10 +408,10 @@ function handleApi(req, res, url) {
   if (parts[1] === 'file' && parts[2] != null) {
     const fileId = parseInt(parts[2], 10);
     const endpoint = parts[3] || '';
-    if (endpoint === 'bars') { logApi(req.method, url, 'file.bars', fileId); return handleBars(res, url, fileId); }
-    if (endpoint === 'smart') { logApi(req.method, url, 'file.smart', fileId); return handleSmart(res, url, fileId); }
-    if (endpoint === 'meta') { logApi(req.method, url, 'file.meta', fileId); return handleMeta(res, fileId); }
-    if (endpoint === 'candles') { logApi(req.method, url, 'file.candles', fileId); return handleCandlesCursor(res, url, fileId); }
+    if (endpoint === 'bars') { logApi(req.method, url, 'file.bars', fileId, res); return handleBars(res, url, fileId); }
+    if (endpoint === 'smart') { logApi(req.method, url, 'file.smart', fileId, res); return handleSmart(res, url, fileId); }
+    if (endpoint === 'meta') { logApi(req.method, url, 'file.meta', fileId, res); return handleMeta(res, fileId); }
+    if (endpoint === 'candles') { logApi(req.method, url, 'file.candles', fileId, res); return handleCandlesCursor(res, url, fileId); }
   }
   // chart preferences: engine GETs on boot, mirrors known fields into storage.
   if (url.pathname === '/api/chart/preferences') {
@@ -642,11 +656,23 @@ function hostPageHtml(query) {
   if (pair === 'multi-independent' && fileIds.C != null) {
     fileIds.C = independentFileIdC;
   }
+  // CONF-01: every panel on its own instrument. This is the configuration the PO ruled
+  // users will actually run, and the one in which all sixteen _multichartSamePairAsHost
+  // guards return false, so nothing is shared, aliased or short-circuited.
+  if (pair === 'conf01') {
+    const distinct = [hostFileId, 27, 28, 29];
+    ids.forEach((id, i) => { fileIds[id] = distinct[i] != null ? distinct[i] : hostFileId; });
+  }
+  // Per-panel timeframes: `tfs=1m,5m,15m,1h`. Absent entries fall back to `tf`, so every
+  // pre-existing scenario keeps its single-timeframe behaviour untouched.
+  const tfList = String(q.get('tfs') || '').split(',').map((s) => s.trim()).filter(Boolean);
+  const tfs = {};
+  ids.forEach((id, i) => { tfs[id] = tfList[i] || tf; });
   const cols = panels === 1 ? 1 : 2;
   const rows = panels <= 2 ? 1 : 2;
   const buildId = '20260728b82';
 
-  const cfg = { pair, panels, tf, ids, iframeIds, fileIds, hostFileId, cols, rows };
+  const cfg = { pair, panels, tf, tfs, ids, iframeIds, fileIds, hostFileId, cols, rows };
 
   return `<!doctype html>
 <html lang="en">
@@ -780,6 +806,11 @@ function hostPageHtml(query) {
     var CFG = ${JSON.stringify(cfg)};
     window.__harnessConfig = CFG;
     var TF = CFG.tf;
+    // Per-panel timeframes (CONF-01). Falls back to CFG.tf for every id, so scenarios that
+    // never pass tfs behave exactly as before.
+    var TFS = CFG.tfs || {};
+    var HOST_TF = TFS[CFG.ids[0]] || TF;
+    var panelTf = function (id) { return TFS[id] || TF; };
     var grid = document.getElementById('grid');
     // Tile A already exists statically (holds the host chart DOM).
     window.__harnessCells = { A: grid.querySelector('[data-cell="A"]') };
@@ -817,7 +848,7 @@ function hostPageHtml(query) {
       // set the fileId, then loadFileData (no mode= → no auto-load, so this is
       // the single owner acquisition for fileId ${hostFileId}).
       try { ch.currentFileId = String(CFG.hostFileId); } catch (e) {}
-      try { if (typeof ch.currentTimeframe === 'string') ch.currentTimeframe = TF; } catch (e) {}
+      try { if (typeof ch.currentTimeframe === 'string') ch.currentTimeframe = HOST_TF; } catch (e) {}
       var p;
       try { p = ch.loadFileData(String(CFG.hostFileId)); } catch (e) {
         window.__harnessBootError = 'host loadFileData threw: ' + (e && e.message || e);
@@ -921,7 +952,7 @@ function hostPageHtml(query) {
       try {
         var hostBridge = window.MultichartBridge.installBridge(ch, { chartId: 'A', parentOrigin: '*', verbose: false });
         window.__harnessHostBridge = hostBridge;
-        mgr.addHostChart({ id: 'A', tf: TF, fileId: CFG.hostFileId }, hostBridge);
+        mgr.addHostChart({ id: 'A', tf: HOST_TF, fileId: CFG.hostFileId }, hostBridge);
         if (hostBridge && typeof hostBridge.setSyncModeGate === 'function') {
           hostBridge.setSyncModeGate(mgr.syncMode);
         }
@@ -957,7 +988,7 @@ function hostPageHtml(query) {
         grid.appendChild(d);
         window.__harnessCells[id] = d;
         var fid = CFG.fileIds[id] != null ? CFG.fileIds[id] : CFG.hostFileId;
-        mgr.addChart({ id: id, tf: TF, fileId: fid }, d);
+        mgr.addChart({ id: id, tf: panelTf(id), fileId: fid }, d);
       });
 
       // Faithful multichart replay fan-out: host replay-system gates broadcast on

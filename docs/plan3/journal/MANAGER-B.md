@@ -4853,3 +4853,80 @@ picks this lane up should reach for `-p 443` before concluding the host is down.
 session. An anonymous probe gets `401` in 2 ms, so the server is not stalling unconditionally.
 b113 makes the client immune either way, which is the requirement — a hung POST is now impossible
 rather than unlikely — but the server-side trigger is unnamed.
+
+## B-0204 — CONF-01: the different-symbol cost is boot latency, not requests
+
+Read `RULING-EVERY-MULTICHART-OPTIMISATION-IS-GATED-ON-SAME-PAIR-20260730-1430` and my section
+of `DISPATCH-CONF01-20260730-1430`. CONF-01 and DUR-01 taken as binding. B1, B2 and B3 below;
+B4 delegated.
+
+**The harness could not express CONF-01, which is why nobody had measured it.** Its most-distinct
+mode was three symbols with tile D duplicating the host, on one shared timeframe. I added a fourth
+instrument (file 29 USDJPY), a `pair=conf01` mode putting every panel on its own instrument,
+per-panel timeframes via `tfs=1m,5m,15m,1h`, and response-byte accounting in the API log. Harness
+only; no product code. Pre-existing scenarios are untouched because `tfs` falls back to `tf`.
+Flagged to C so C re-baselines on this rather than rebuilding it.
+
+**B1, measured (`FINDING-B1-CONF01-NETWORK-CENSUS-20260730-1430`).** Both arms driven exactly as
+scenario H-S8 drives play, so configuration is the only variable.
+
+| | same-pair | CONF-01 | ratio |
+|---|---|---|---|
+| boot data requests | 5 | 8 | 1.6x |
+| boot bytes | 760,172 | 1,221,849 | 1.6x |
+| boot wall time | 1,638 ms | 10,067 ms | **6.1x** |
+| panel TTFP (B/C/D) | 1.19-1.37 s | 9.39-9.90 s | **7-8x** |
+| requests during 30 s of play | 0 | 0 | — |
+| max requests in flight | 2 | 2 | — |
+
+Coalesced: no, no batching endpoint. Deduplicated: per-realm only — `ViewportDataManager`'s
+`pendingRequests` map is per instance and each panel is its own realm, and with four symbols the
+fileIds differ so there is nothing to dedupe. Serialised: yes in effect, never more than two in
+flight, because panels are constructed one after another. Queued behind the window claim: **no** —
+a panel realm reports `shouldClaim()` false, so `ensureClaimed()` resolves without claiming, and
+only the host claims. That bounds the P0 correctly: the hang never serialised panel data, it held
+sockets and starved the per-origin pool browser-wide.
+
+**Where I correct the ruling.** It states each panel "issues its own `/bars` requests while
+playing". Measured zero, in both arms, including with the playhead walked five hours past the
+loaded master. `ensureReplayDataCoversTimestamp` is called 90 times per panel and returns true at
+its first exit every time — `_independentMasterCoversReplayTimestamp` reports coverage the panel
+does not have, `pastMaster=true` with bar counts unchanged. The catch-up fetches below it
+(`_fetchIndependentReplayBridge`, `_fetchReplaySeekBuffer`) are never reached. So the per-panel
+play cost is residency and CPU, which is A's lane. The coverage check reporting true past the end
+of its own master is a correctness question I am flagging to A and D, not fixing in my lane.
+
+**Limit I am stating rather than hiding.** The harness has no `backtestingSession`, and
+`ensureReplayDataCoversTimestamp` returns false without one. That exit sits *downstream* of the
+coverage exit that actually fired, so it did not cause the zero — but this measurement cannot
+prove a real session would still fetch nothing once the coverage check is corrected. Harness
+`/bars` also caps at 2000 bars where production `/smart` takes 100,000, so byte totals are a
+floor. Counts, staggering and concurrency carry over; absolute bytes do not.
+
+**B2, confirmed closed on the wire.** b113 verified over HTTP: `CONTROL_TIMEOUT_MS`,
+`GATE_WAIT_TIMEOUT_MS`, `controlFetch`, `AbortController`, `withGateTimeout`, `heartbeatInFlight`,
+`pristineFetch` all present; `/release` routed through `controlFetch` behind `sendBeacon`. The
+dispatch's 240 s in flight is impossible against a 10 s ceiling. Gate re-run 18/18. Live stamp
+`20260730b113`.
+
+**B3, re-evaluated under CONF-01 and a second class landed.** The 29 July candle fix is holding:
+**zero** temp-file spools on `smart|candles|bars|candles.msgpack` under an hour of real b113
+traffic. CONF-01 does not change that verdict, and B1 shows four simultaneous large responses do
+not occur anyway — panel boots stagger to at most two in flight. But the container generation had
+45 spools on routes outside that block, in two classes:
+
+- 17 **client request body** spools on `PATCH /api/sessions/{n}/state`. `client_body_buffer_size`
+  was never set, so the default 8-16k applied while a live session state measures **636,776 bytes**
+  (session 930, `trading_session_states`). Every autosave of a working session was a disk write, on
+  a disk 81% full. Landed `client_body_buffer_size 1m` on `location ^~ /api/sessions`, sized to the
+  measurement. No nested location, so no `proxy_pass` inheritance trap.
+- 35 **upstream response** spools on `/journal/api/templates` and `/journal/api/strategies`, which
+  return **~5.5 MB** each. Not my territory — escalated to the Director for an owner.
+
+Gate `homepage/nginx-bigjson-buffering.test.mjs` extended from 7 to 12 cells: one contract cell
+plus four mutants (buffer removed, buffer too small for the measured state, buffer unbounded, rate
+limit lost). The size assertion holds the *measurement*, not the directive — a 16k buffer goes RED.
+Deployed by config reload: `nginx -t` inside the container first with restore-on-failure,
+`RECREATED=no`, `STAMP_BEFORE=STAMP_AFTER=20260730b113`, bigjson block and tile cache both still
+present, shell 200, `/api/sessions` and `/api/file` 401 (auth enforced, not 502). The wire did not
+move — DEPLOY-02 intact.
