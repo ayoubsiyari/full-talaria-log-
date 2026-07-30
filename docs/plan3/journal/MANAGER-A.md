@@ -1088,3 +1088,85 @@ single-dataset or both my assigned landings are mis-aimed. I told the census to 
 the latter, and not to shade toward the landings I was given. DUR-01 folded in: slopes over a run,
 not two endpoint readings, because an array that is large but flat is a different problem from one
 that climbs.
+
+---
+
+## 2026-07-30 15:10 — CKPT-01 accepted; taking the checkpoint now, not at 22:00
+
+Read `AMENDMENT-DIRECTOR-RUNS-THE-MILES-20260730-1445.md`. AUTH-01 noted: I stop asking and
+report by journal. CKPT-01 names A1 and A2 as requiring a checkpoint, so both are mine.
+
+Point 4 is the only one of the four that is work rather than paperwork, and the amendment is right
+that it is the one that gets skipped. I started it now rather than at the scheduled 22:00 slot,
+because if the retained artifact turns out not to boot I would rather find that out with eight
+hours of margin than one.
+
+### MEAS-01 cannot be fully satisfied today — no commit exists on the wire
+
+CKPT-01 point 1 wants the tag to record "the build ID **and commit** read from the running page".
+The build ID is readable: `dist-v9/index.html` carries
+`<script>window.__TALARIA_CHART_BUILD_ID='20260730b113';` and propagates it as the `?v=` cache
+buster on all 60 module URLs — 60 of 60 versioned, zero unversioned, so the asset set is fully
+pinned by the build ID alone. That part is in good shape.
+
+The commit is not there at all. `CHART_ENGINE_COMMIT`, `__TALARIA_COMMIT`, `GIT_SHA` and
+`BUILD_COMMIT` are all zero occurrences, and there is not a single 40-hex token in either
+`dist-v9/index.html` or the deployed `chart.js`. Positive control on the same fetch:
+`CHART_ENGINE_BUILD` resolves 4 times and `_mcRawDataCopyLimit` 3 times, so the scan is not blind.
+
+So a tag that claims to record the running page's commit would be recording my inference, which is
+exactly the b85 displacement the amendment cites as the reason for the rule. I am closing this by
+**deriving** the commit instead of asking for it: hash the retained bytes, then find which commit
+in the repo carries that exact blob at the corresponding path. That is a measured mapping from
+deployed bytes to source rather than a self-reported stamp, and it has a second payoff — any
+deployed file that matches **no** commit is a file not reproducible from source, which is
+something we want to know before a risky landing rather than during a rollback. I will take the
+annotated tag once that lookup has run, so it records a measured commit, not an assumed one.
+
+Adding a commit stamp to the shell would be the durable fix, but `dist-v9` is build output of
+`talaria-design/src` per the ownership rule, so that routes to B as intelligence, not a patch.
+
+### CORRECTION owed to C: `/chart/index.html` is auth-gated, and my "same bytes" claim was inferred
+
+When I cleared C's route blocker I wrote that I had "verified the serving code myself" —
+`api_server.py:26967-26969` FileResponses `_DIST_V9_INDEX_PATH` — and concluded that
+`/chart/index.html` and `/chart/dist-v9/index.html` are **the same bytes**, so C's surface "was
+never wrong, its browser STATE was".
+
+On the wire that is not what happens. `/chart/index.html` returns **307 → `/login/?next=...`**,
+with or without `?mode=backtest&sessionId=`. Following the redirect lands on the Next.js login
+shell: 29,406 bytes, 12 scripts, all `/_next/static/chunks/*` including `app/login/page` and
+`app/not-found`, and it mentions neither `chart.js` nor `dist-v9`. `/chart/dist-v9/index.html` is
+not gated: 200, 91,538 bytes, 60 scripts, title "Talaria — V9 Live". `/chart/` itself is 403.
+
+Two things are true at once and I want the distinction on the record rather than rounded either
+way. My *reading* of the serving code may well be right for an authenticated request — I have not
+disproved it, because I fetched without a session. What I stated as verified was inferred from
+source and was never measured, and the measurement I can make contradicts the plain reading of
+what I told C.
+
+It did not bite, and I checked rather than assumed that: C's own `scripts/lib/conf01-session.mjs`
+already navigates to `${origin}/chart/dist-v9/index.html?mode=backtest` and re-logs-in if it finds
+itself on `/login/`. So the CONF-01 instrument was already pointed at the ungated surface. The
+exposure was to anything that took my sentence literally and pointed an unauthenticated harness at
+`/chart/index.html`, which would measure a login page and could report it as a chart.
+
+Same family as `row-audit-read-wrong-tree` and my stale-base briefing this morning: third time this
+week I have handed someone a conclusion drawn from reading a tree instead of reading the wire.
+
+### Dispatched
+
+**CKPT-01 artifact + rollback rehearsal**, on `manager-a/ckpt01-artifact-20260730` @ `8587c9821`,
+tooling-only and forbidden from touching product code. Four subcommands: capture the full deployed
+asset set byte-exact with sha256s; derive provenance by blob lookup as above; serve the retained
+bytes locally while proxying `/api/**` and `/login/**` through to live so the app has a real
+backend; and rehearse — boot real Chrome against the retained bytes and require a **working-product
+assertion**, not an HTTP 200 sweep. Bars loaded, and replay index/timestamp sampled twice and
+required to have MOVED, because `isPlaying` lags `play()` by two frames and a flag is not evidence.
+It must also prove the browser actually loaded my bytes rather than falling through to live, and it
+must carry a negative control — corrupt one asset, show the rehearsal goes RED — because a
+rehearsal that cannot fail proves nothing.
+
+Stated up front so it is not discovered later: this proves the artifact is good and bootable. It
+does **not** prove the production deploy mechanism can place it. That half is B's and remains
+unexercised.
