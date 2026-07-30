@@ -1,4 +1,4 @@
-﻿# Ticket Status Ledger — Plan 3 / Trade Correctness
+# Ticket Status Ledger — Plan 3 / Trade Correctness
 
 Open row disposition and unverified blast-radius order live in `docs/plan3/UNKNOWN-RISK-LABELS-20260729.md`.
 
@@ -73,7 +73,7 @@ Open row disposition and unverified blast-radius order live in `docs/plan3/UNKNO
 | TAL-01726 | superseded | — | Old-layout Cluster M | No current-surface gate |
 | TAL-01728 | superseded | — | Old-layout Cluster M | No current-surface gate |
 | TAL-01732 | superseded | — | PO clarification closed/already resolved | No commit+gate to reopen |
-| TAL-01733 | fixed | harness 2026-07-30 | GREEN: `cd "chart v 1.4/chart/multichart-prod/harness" && node run.mjs --only=H-S19` and `--only=H-S83` | Closure pass bucket (a) |
+| TAL-01733 | fixed | `db849737f` | GREEN: `cd "chart v 1.4/chart/multichart-prod/harness" && node run.mjs --only=H-S19` and `--only=H-S83` | Closure pass bucket (a) |
 | TAL-01734 | po-eyes | — | Cluster J custom TF grid | UI/viewport PO |
 | TAL-01735 | po-eyes | — | Cluster J time-label drag | UI/viewport PO |
 | TAL-01736 | superseded | — | Old-layout Cluster M | No current-surface gate |
@@ -105,7 +105,7 @@ Open row disposition and unverified blast-radius order live in `docs/plan3/UNKNO
 | TAL-01862 | po-eyes | — | Cluster J | UI/viewport PO |
 | TAL-01864 | owner-blocked | — | Cluster I history range | `chart.js` smart-window; Data Script 3 |
 | TAL-01886 | fixed | `ab57a5dac` | GREEN: `cross-timeframe-current-price-coherence.test.mjs` ± homepage | Closure pass bucket (b) |
-| TAL-01887 | fixed | harness 2026-07-30 | GREEN: harness `H-S18` + `H-S83` | Closure pass bucket (a) |
+| TAL-01887 | fixed | `db849737f` | GREEN: harness `H-S18` + `H-S83` | Closure pass bucket (a) |
 | TAL-01891 | needs-info | — | Cluster N memory lag | Soak undefined; no invented click path |
 | TAL-01892 | needs-info | — | Cluster N idle lag | Soak/monitor lane |
 | TAL-01893 | needs-info | — | Cluster D GoTo skip | Needs explicit repro on stamp |
@@ -117,7 +117,7 @@ Open row disposition and unverified blast-radius order live in `docs/plan3/UNKNO
 | TAL-01906 | needs-info | — | Cluster O feature request | Not a bug gate |
 | TAL-01907 | needs-info | — | Cluster O feature request | Not a bug gate |
 | TAL-01909 | po-eyes | — | Cluster D session resume | Data/replay PO |
-| TAL-01910 | fixed | harness 2026-07-30 | GREEN: harness `H-S18` + `H-S83` | Closure pass bucket (a) |
+| TAL-01910 | fixed | `db849737f` | GREEN: harness `H-S18` + `H-S83` | Closure pass bucket (a) |
 | TAL-01911 | po-eyes | — | M24 journal registration residual | First look — PO Script 1 |
 | TAL-01912 | cosmetic-disclosed | — | PO scratched / user confusion | No product gate |
 | TAL-01913 | owner-blocked | — | Cluster H daily-open lines | Chart overlay owner |
@@ -137,7 +137,7 @@ Open row disposition and unverified blast-radius order live in `docs/plan3/UNKNO
 | TAL-01935 | owner-blocked | — | Cluster H indicator labels | Chart overlay owner |
 | TAL-01936 | owner-blocked | — | Cluster I time alignment | `chart.js` owner |
 | TAL-01938 | owner-blocked | — | Cluster H ORB size | Chart overlay / session calendar |
-| TAL-01939 | fixed | harness 2026-07-30 | GREEN: harness `H-S18` + `H-S83` | Closure pass bucket (a) |
+| TAL-01939 | fixed | `db849737f` | GREEN: harness `H-S18` + `H-S83` | Closure pass bucket (a) |
 | Rayan #1 | fixed | `f127d25dd` | GREEN: `m23-rollback-trade-state.red.test.mjs` | Node-closed; PO Script 2 re-run against fix |
 | Rayan #2 | needs-info | — | Cluster C multichart | Needs current-build repro before script |
 | Rayan #3 | fixed | `f127d25dd` | GREEN: `m23-rollback-trade-state.red.test.mjs` | Node-closed; PO Script 2 re-run against fix |

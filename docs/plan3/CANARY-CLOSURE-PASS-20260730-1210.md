@@ -29,10 +29,10 @@
 | TAL-01718 | `blocked-on-build` | — | absent | Same M25 pack branch |
 | TAL-01900 | `blocked-on-build` | — | absent | Same M25 pack branch |
 | TAL-01902 | `blocked-on-build` | — | absent | Same M25 pack branch |
-| TAL-01733 | `fixed` | harness run 2026-07-30 | GREEN: `node run.mjs --only=H-S19` + `H-S83` in `multichart-prod/harness` | — |
-| TAL-01910 | `fixed` | harness run 2026-07-30 | GREEN: `H-S18` + `H-S83` | — |
-| TAL-01887 | `fixed` | harness run 2026-07-30 | GREEN: `H-S18` + `H-S83` | — |
-| TAL-01939 | `fixed` | harness run 2026-07-30 | GREEN: `H-S18` + `H-S83` | — |
+| TAL-01733 | `fixed` | `db849737f` (closure pass; GREEN harness run) | GREEN: `node run.mjs --only=H-S19` + `H-S83` in `multichart-prod/harness` | — |
+| TAL-01910 | `fixed` | `db849737f` (closure pass; GREEN harness run) | GREEN: `H-S18` + `H-S83` | — |
+| TAL-01887 | `fixed` | `db849737f` (closure pass; GREEN harness run) | GREEN: `H-S18` + `H-S83` | — |
+| TAL-01939 | `fixed` | `db849737f` (closure pass; GREEN harness run) | GREEN: `H-S18` + `H-S83` | — |
 | TAL-01699 | `fixed` | `28d808cb4`, `2cc949399` | GREEN: `order-multi-tp-coincident-stack.test.mjs` ± homepage | Already fixed; reconfirmed |
 | TAL-01885 | `fixed` | `c0a0d7620`, `2cc949399` | GREEN: `order-line-edge-visibility.test.mjs` ± homepage | Already fixed; reconfirmed |
 | PO value boxes shaky | `fixed` | `2cc949399` | GREEN: `order-stable-label-hover-dom.test.mjs` ± homepage | — |
