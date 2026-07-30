@@ -4,7 +4,7 @@ Date: 2026-07-30
 
 **Checkout:** `C:\Users\user\Desktop\talaria1\manager-d-trade`  
 **Branch:** `manager-d/trade-correctness`  
-**Tip:** `de954fbac` (includes product + docs + this handoff once committed)
+**Tip:** `717b12e94` (includes product + docs + this handoff once committed)
 
 ## Status
 
