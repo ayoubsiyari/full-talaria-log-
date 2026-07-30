@@ -180,6 +180,41 @@ Ship it on its own merits; it removes a real unbounded `<filter>` accumulation.
 
 ---
 
+### A defs climber DOES exist, and it is a different writer
+
+Having proved order-manager cannot do it, I went looking for who can. There are six
+`append('defs')` sites in the whole chart tree. **Five are guarded**
+(`if (defs.empty())` or the ternary form) — one `<defs>` per svg, reused. **One is not:**
+
+```751:757:chart v 1.4/chart/modules/drawing-tools-channels.js
+container.append('defs').append('clipPath')
+    .attr('id', clipId)
+    .append('rect')
+```
+
+This runs in the regression-trend render path. Three things make it accumulate:
+
+1. The `<defs>` is appended to **`container`**, the shared drawing SVG — not to
+   `this.group`. `_prepareRenderGroup` (`drawing-tools-base.js:1001`) only ever
+   clears or replaces `this.group`, so the group rebuild cannot reclaim it.
+2. Nothing else reclaims it either. `regression-clip` occurs at **exactly one site
+   in the entire chart tree** — its own creation — and there is **no
+   `selectAll('defs')` sweeper anywhere**. Control that this search style works:
+   `entry-glow-` 6 hits, `exit-glow-` 9, `partial-glow-` 4.
+3. Every copy carries the **same** id, `regression-clip-${this.id}`, so all but the
+   first are referenced by nothing — `url(#…)` resolves to the first match. They are
+   pure dead weight.
+
+So one render of one regression-trend drawing leaves **three permanent nodes**
+(`defs` + `clipPath` + `rect`), and renders are continuous during replay.
+
+**What I am NOT claiming.** This produces a defs/clipPath pair, not a defs/**filter**
+pair, and it only fires when a regression-trend drawing exists with extend disabled
+(`:741`). Whether it is the defs half of C's 4 → 146 depends on C's counter definition
+and on whether that run had such a drawing on the chart. It is a **candidate with a
+proven mechanism**, not an attribution. But it is an unbounded DOM writer with no
+reclaim path either way, and it wants an owner.
+
 ## 3. Item 3 status
 
 The 13 owner-blocked ledger rows are in triage, TAL-01891 and TAL-01850 first.
@@ -192,3 +227,4 @@ Reporting separately.
 | Duplicated tab filter | `TalariaV8bLive.jsx:37968` inlines a copy of `filterTradePanelRowsByTab`, which exists as an exported helper and is used by the CSV path. Two copies of one predicate, already able to drift |
 | No React test harness | The V9 layer has no way to assert on rendered output; three suites exist and all are pure-function. Every FLAG-03 on a visual V9 fix will hit this same wall |
 | Glow defs half unattributed | Above. Needs C's counter definition before anyone sizes it |
+| **Unbounded defs writer** | `drawing-tools-channels.js:751` appends `defs`+`clipPath`+`rect` to the SHARED container on every regression-trend render, outside the group rebuild, all with a duplicate id, with no reclaim path anywhere in the tree. Three permanent nodes per render. Needs an owner |

@@ -2286,6 +2286,23 @@ collapse and I will not report it as such; and expect the duration gate to stay 
 because 735.0 MB/h over 1333.5 elements/h is 564 KB per element and the most favourable
 corner of both CIs still needs 51.9 KB.
 
+**A DEFS CLIMBER DOES EXIST AND IT IS A DIFFERENT WRITER.** Having proved order-manager
+cannot do it, I went looking for who can. SIX `append('defs')` sites in the whole chart
+tree; FIVE guarded by `.empty()` (one defs per svg, reused); ONE not:
+`drawing-tools-channels.js:751` `container.append('defs').append('clipPath')` in the
+regression-trend render path. It accumulates for three reasons: (1) the defs goes on
+`container`, the SHARED drawing svg, NOT on `this.group`, and `_prepareRenderGroup`
+(drawing-tools-base.js:1001) only clears/replaces `this.group`; (2) nothing else
+reclaims it - `regression-clip` occurs at EXACTLY ONE SITE in the entire tree, its own
+creation, and there is NO `selectAll('defs')` sweeper anywhere, with control
+`entry-glow-` 6 / `exit-glow-` 9 / `partial-glow-` 4 proving the search style works;
+(3) every copy carries the SAME id so all but the first are referenced by nothing.
+THREE permanent nodes per render, and renders are continuous during replay.
+
+NOT CLAIMING IT IS C'S DEFS HALF: this is a defs/clipPath pair, not defs/FILTER, and it
+only fires with a regression-trend drawing present and extend disabled (:741). Candidate
+with a proven mechanism, not an attribution. Unbounded either way; needs an owner.
+
 **NEW ROW:** `TalariaV8bLive.jsx:37968` inlines a copy of `filterTradePanelRowsByTab`,
 which exists as an exported helper and IS used by the CSV path. Two copies of one
 predicate, already able to drift.
