@@ -2,6 +2,8 @@
 
 Scope: 21 money-path rows and 12 data-integrity rows still needing canary-critical verification. These are grouped by mechanism. Run on the deployed build only, not a branch preview or local checkout.
 
+**Next-build PO order + re-run vs first-look tags:** `docs/plan3/PO-SCRIPTS-NEXT-BUILD-20260730.md` (Director 12:10). Prefer that ordering (M24 → M10 → M23 → journal → duration) for rows-closed per PO-minute.
+
 ## MEAS-01: Required For Every Script
 
 Before each script:

@@ -342,3 +342,11 @@
 - Commits: `2cc949399` (product packets), `6a99b581a` (canary triage/ledger/journal).
 - **B:** `manager-d/trade-correctness` tip is ready for train/build pickup. No commit was made in C's checkout; D paths were path-scoped cleaned there after verify.
 - Triage counts (committed): (a)=15, (b)=14, (c)=73, total=102.
+
+## 2026-07-30 — Closure pass 12:10 (no bare unverified)
+
+- Bucket (a): 8 fixed (harness H-S18/19/83 + order-line gates); 6 `blocked-on-build` (TAL-01918/01922 + four M25 gates on `diagnostics/v3-qa123-soak-20260727`).
+- Bucket (b): money-path first — TAL-01903/01777 reconfirmed; TAL-01802/01886 + TAL-01807b closed with `ab57a5dac` gates; pending SL/TP clear already `2cc949399`; remaining (b) `owner-blocked` on chart.js/replay/layout.
+- Reclassified 26 default-(c): cosmetic 6 / superseded 14 / needs-info 6 — zero PO minutes.
+- Five PO scripts assembled in `PO-SCRIPTS-NEXT-BUILD-20260730.md`, ordered by rows-closed/PO-minute, each row tagged re-run vs first look.
+- Ledger bare `unverified` count: **0**.
