@@ -1,0 +1,93 @@
+{
+  "packet": "W90",
+  "manager": "C",
+  "tier": "mid",
+  "model": "claude-opus-5-thinking",
+  "title": "Process and GPU composition: JS heap is 21% of the renderer, the non-JS mass is malloc and PartitionAlloc not DOM, and the GPU process is near-fixed",
+
+  "instrument": {
+    "signature": "PROCESS-MEMORY-CENSUS-V1",
+    "file": "scripts/process-memory-census.mjs",
+    "canSee": [
+      "every Chrome process, its type and its OS footprint (PrivateMemorySize64, which is what Task Manager's Memory footprint column tracks) — 100% of process-level cost",
+      "the allocator composition inside each process from Chrome's own memory-infra detailed dumps: v8, malloc, PartitionAlloc, Blink GC (Oilpan, where DOM lives), web cache, cc tiles, canvas, GPU textures, Skia, discardable, shared memory",
+      "the page renderer's JS heap, so the fraction older instruments could see is reported as an explicit ratio"
+    ],
+    "cannotSee": [
+      "GPU driver allocations outside Chrome's processes",
+      "the PO's machine: this is headed Chrome on a DPR-1 display, so absolute GPU figures are indicative and the per-configuration DELTA is the trustworthy part"
+    ],
+    "settleProtocol": "fresh profile, login-then-seed boot, wait for chart data, 12s settle (24s after layout change), then one process census plus one detailed memory dump per arm",
+    "knownWeakness": "memory-infra allocator roots can overlap, because I summed `size` rather than `effective_size`. Renderer roots sum to 310.9 MB against 311.21 MB private (clean), but GPU roots sum to 206 MB against 156 MB private, so GPU composition is a RANKING, not an additive decomposition."
+  },
+
+  "job_1_process_split_confirmed_dead": {
+    "verdict": "DEAD at the heaviest configuration this build offers. One page renderer, single chart and eight panels alike.",
+    "single_chart": { "rendererRows": 4, "pageRenderer": "311.21 MB", "otherRenderers": "19.68, 17.25, 19.57 MB — spare/blank, no page content" },
+    "heaviest": { "layout": 8, "rendererRows": 4, "pageRenderer": "562.50 MB", "otherRenderers": "20.65, 19.34, 20.87 MB" },
+    "important_correction_on_the_configuration": "the layout picker in this build offers 1..8 panels ONLY (enumerated in-page, not assumed). Fifteen simultaneous panels is not reachable through the layout UI, so the PO's '15 pairs' cannot be 15 concurrent panels — it is 15 pairs configured in a session. Eight panels is the heaviest concurrent configuration available, and I ran it.",
+    "reading": "adding seven panels multiplied the page renderer 1.8x and did not create a second content renderer. Same-process iframes, one isolate, and a console reading in it is complete for JavaScript. Closed.",
+    "corroboration": "my page renderer at single chart is 311.21 MB against the PO's 298 MB — the same figure on a different machine, which is the first time an absolute memory number of mine has matched his."
+  },
+
+  "job_2_composition": {
+    "single_chart": {
+      "pageRendererPrivateMB": 311.21,
+      "jsHeapMB": 65.76,
+      "nonJsRendererMB": 245.45,
+      "gpuProcessMB": 156.48,
+      "allChromeMB": 632.25,
+      "rendererAllocatorsMB": {
+        "v8": 64.93, "malloc": 63.29, "partition_alloc": 54.78, "web_cache": 28.25,
+        "blink_gc": 26.13, "shared_memory": 19.58, "cc": 17.32, "gpu": 9.25,
+        "discardable": 8.11, "skia": 6.96, "blink_objects": 6.46, "canvas": 5.85, "sqlite": 0.13
+      },
+      "gpuProcessAllocatorsRanked": { "gpu": 81.96, "malloc": 51.05, "cc": 36.08, "skia": 25.04, "shared_memory": 11.54 }
+    },
+    "what_the_non_js_mass_actually_is": [
+      "malloc 63.29 + partition_alloc 54.78 = 118 MB, 48% of the non-JS renderer: general C++ heap — Blink's non-Oilpan objects, V8 external data, network and decoder buffers",
+      "web_cache 28.25 MB: script source text and compiled code held OUTSIDE the JS heap. This is the same mass my W78 constructor census found inside it as ExternalStringData, counted on the other side of the fence",
+      "blink_gc 26.13 + blink_objects 6.46 = 32.6 MB: Oilpan, which is where DOM nodes, CSS rules and style data live",
+      "cc 17.32 + canvas 5.85 + skia 6.96 + gpu 9.25 = 39 MB of raster, tiles and canvas backing in the renderer"
+    ],
+    "the_dom_is_13_percent_of_the_non_js_mass_not_the_bulk": {
+      "claim_tested": "'fifty-one thousand nodes live in exactly the ~196 MB of non-JS renderer memory we have never measured'",
+      "result": "nodes do live outside the JS heap — that part is right — but Oilpan totals 32.6 MB of the 245 MB non-JS at single chart, 13%, and grows only 5.3 MB per added panel. The non-JS mass is dominated by general C++ heap, not by DOM.",
+      "consistency": "this agrees with W89: the chart's DOM is 2,483 elements, so it cannot be tens of megabytes"
+    },
+    "the_gpu_process_is_near_fixed_and_is_not_our_canvases": {
+      "measured": "156.48 MB at single chart, 186.71 MB at eight panels: +30.23 MB for seven extra panels, 4.3 MB per panel",
+      "our_canvas_backing": "single chart = ONE canvas, 888x864, 2.93 MB. Eight panels = one canvas per panel, 383x443, 0.65 MB each, 5.2 MB total. Renderer `canvas` allocator grew 0.64 MB per panel.",
+      "answer_to_As_read_only_question_before_he_asks": "canvases are allocated ONE PER CHART, sized to the CSS box, not per overlay and not per indicator. The multiplication hypothesis is falsified on this surface. At DPR 2 the backing stores would quadruple to roughly 21 MB — still not a 263 MB story.",
+      "reading": "the GPU process is mostly fixed browser and driver overhead, not proportional to our chart count. Promoting the canvas is still a CPU cut; on this evidence it is NOT a large memory cut, and I would not sell it as one."
+    },
+    "where_the_growth_is_versus_where_the_floor_is": {
+      "per_panel_deltas_mb_over_7_added_panels": {
+        "v8": 13.17, "malloc": 6.46, "blink_gc": 3.58, "cc": 3.53, "shared_memory": 2.42,
+        "gpu": 1.99, "blink_objects": 1.75, "partition_alloc": 0.84, "canvas": 0.64, "web_cache": 0.5,
+        "skia": 0.01, "discardable": 0.0, "rendererPrivateTotal": 35.9, "gpuProcess": 4.3
+      },
+      "the_nuance_that_matters_for_targeting": "the FLOOR is mostly non-JS (79%), but the GROWTH is mostly JS: v8 is 13.17 of the 35.9 MB per added panel, 37%, the largest single term. So the week's JS-scoped hunt was aimed correctly at per-panel and per-cycle growth, and wrongly at the floor. Both statements can be held at once."
+    }
+  },
+
+  "job_3_standing_requirement_implemented_in_code": {
+    "cell": "INSTRUMENT-SCOPE-V1, emitted by the memory gate on every run",
+    "states": "this gate reads the JS heap, which is 21.1% of the page renderer, 14.1% of renderer+GPU and 10.4% of all Chrome processes, and names the three things it is blind to",
+    "file": "scripts/heap-cycle-memory-gate.mjs (HEAP_CYCLE_GAUGE_SCOPE + buildInstrumentScopeCell)",
+    "note": "the fractions are cited from this census with build and configuration named, not asserted"
+  },
+
+  "job_4_the_1_8x_needs_separating_into_three_effects": {
+    "warning": "there are now THREE distinct gauge effects in play and they are being merged into one number. Merging them is how a 1.8x becomes folklore.",
+    "effect_1_gauge_versus_gauge": "performance.memory reads 1.22x above Performance Monitor on ABSOLUTES and 1.76-2.00x above it on DELTAS. Measured at the same instant, same session, NO DevTools involved (W88). This is not inflation by the inspector; it is two gauges.",
+    "effect_2_inspector_retention": "an attached console holds panel realms through Error stack accessors: 4 product-held against 8 console-held (W81). Real, and my harness has released deeply by default since W81. This one inflates for real.",
+    "effect_3_task_manager_versus_cdp": "Task Manager's JavaScript memory column reads ABOVE my CDP JS heap: the PO's single chart 102 MB allocated / 99 MB live, against my 65.76 MB used on a comparable single chart. His own row shows allocated-versus-live differs by only 3.7 MB, so that is not the explanation. Candidates: worker isolates (Task Manager counts every isolate in the process, my gauge counts the main one) and surface difference.",
+    "consequence": "if the PO's same-instant DevTools-open/closed test returns a factor, it is effect 2 alone and should be labelled as such. It does not license re-scaling figures that already differ by effects 1 or 3.",
+    "what_I_would_expect": "effect 2 to be real but smaller than 1.8x, because 383 versus 102 is 3.7x and no single mechanism I have measured is that large"
+  },
+
+  "residue_status_unchanged_by_this_packet": "the collapsed-floor climb (13.83 MB/cycle cross-frame, 19x the fresh-load noise floor, W88) is a JS-heap measurement and stands. v8 being the largest per-panel term is consistent with it.",
+  "one_line_blocker": "none for this packet. Still blocked on the PO's route for his surface's floor composition.",
+  "stopped_as_instructed": "process-split work closed; differential oracle stood down in W89"
+}

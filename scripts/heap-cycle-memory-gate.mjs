@@ -223,6 +223,42 @@ export function buildDomCounterCell(report) {
   };
 }
 
+/**
+ * Every instrument states what fraction of the system it can see. An unstated
+ * blind spot produces confident numbers about a fifth of the problem.
+ *
+ * Measured by PROCESS-MEMORY-CENSUS-V1 (W90, deployed b106, headed, single
+ * chart): page renderer 311.21 MB private, JS heap 65.76 MB, GPU process
+ * 156.48 MB, all Chrome 632.25 MB. This gate reads the JS heap only.
+ */
+export const HEAP_CYCLE_GAUGE_SCOPE = Object.freeze({
+  reads: 'JavaScript heap of the page renderer (performance.memory and Performance.getMetrics JSHeapUsedSize)',
+  jsHeapPercentOfRenderer: 21.1,
+  jsHeapPercentOfRendererPlusGpu: 14.1,
+  jsHeapPercentOfAllChrome: 10.4,
+  blindTo: [
+    'non-JS renderer memory (245 MB at single chart): malloc, PartitionAlloc, Blink GC where DOM nodes live, the web cache, compositor tiles',
+    'the GPU process entirely (156 MB at single chart): textures, shared images, Skia',
+    'worker isolate heaps, which Task Manager\'s JavaScript column includes and this gauge does not',
+  ],
+  measuredBy: 'PROCESS-MEMORY-CENSUS-V1, scripts/process-memory-census.mjs',
+});
+
+export function buildInstrumentScopeCell() {
+  const s = HEAP_CYCLE_GAUGE_SCOPE;
+  return {
+    name: 'INSTRUMENT-SCOPE-V1',
+    pass: true,
+    status: 'INFO',
+    detail: `this gate reads ${s.reads}, which is ${s.jsHeapPercentOfRenderer}% of the page renderer, `
+      + `${s.jsHeapPercentOfRendererPlusGpu}% of renderer+GPU and ${s.jsHeapPercentOfAllChrome}% of all Chrome `
+      + `processes (${s.measuredBy}). Blind to: ${s.blindTo.join('; ')}.`,
+    blocking: false,
+    nonBlocking: true,
+    scope: s,
+  };
+}
+
 export function buildRealmSurvivalCell(grade) {
   if (!grade) return null;
   if (grade.status === 'SKIPPED') {
@@ -364,6 +400,8 @@ export async function runHeapCycleMemoryGate({
     const cells = assertHeapCycleMemoryReport(report);
     const domCell = buildDomCounterCell(report);
     if (domCell) cells.push(domCell);
+    // No number leaves this gate without saying what share of the tab it covers.
+    cells.push(buildInstrumentScopeCell());
     // Grade realm survival whenever a run wrote a snapshot to disk. A leak that
     // retains a whole panel realm does not always show in a floor delta, and a
     // floor delta cannot say whether the product or our inspector holds it.

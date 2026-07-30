@@ -658,3 +658,34 @@ no interaction; 4s after each zoom batch.
    DOM will not recover it.
 
 Differential oracle dropped as instructed.
+
+## W90 — Process and GPU composition: the floor is non-JS, the growth is JS
+tier=mid model=claude-opus-5-thinking (measurement + instrument, no money path)
+
+INSTRUMENT: PROCESS-MEMORY-CENSUS-V1 (headed Chrome, DPR 1). Sees every Chrome
+process footprint (PrivateMemorySize64 = Task Manager's column) and the allocator
+composition inside each from memory-infra detailed dumps, plus the renderer JS heap.
+Cannot see GPU driver allocations outside Chrome, and is not the PO's machine.
+Weakness stated: summed `size` not `effective_size`, so GPU composition is a ranking
+not an additive split (renderer roots sum to 310.9 vs 311.21 private; GPU over-sums).
+
+1. PROCESS SPLIT CLOSED. One page renderer at single chart (311.21 MB) and at the
+   heaviest layout (8 panels, 562.50 MB). Other renderer rows are 17-21 MB spares.
+   The layout picker offers 1..8 ONLY - 15 concurrent panels is not reachable, so
+   "15 pairs" is not 15 panels. My 311 MB against the PO's 298 MB is the first
+   absolute memory figure of mine to match his.
+2. COMPOSITION. JS heap 65.76 = 21.1% of renderer, 14.1% of renderer+GPU, 10.4% of
+   all Chrome (632 MB). Non-JS 245 MB is malloc 63 + partition_alloc 55 (48%),
+   web_cache 28 (script text outside the heap), blink_gc+objects 33 (DOM = 13%,
+   NOT the bulk), cc/canvas/skia/gpu 39. GPU process 156 -> 187 MB for 7 extra
+   panels = 4.3/panel, near-fixed. Canvases are ONE PER CHART sized to the CSS box
+   (888x864 single; 0.65 MB each at 8 panels) - not per overlay, not per indicator.
+   Canvas promotion is a CPU cut, not a memory cut of size.
+3. TARGETING NUANCE: the floor is 79% non-JS but the GROWTH is 37% v8 (13.17 of
+   35.9 MB per added panel, the largest single term). The JS-scoped hunt was right
+   for per-cycle growth and wrong for the floor.
+4. INSTRUMENT-SCOPE-V1 now emitted by the memory gate on every run, naming the
+   fraction of the tab the gauge covers and the three things it is blind to.
+5. The 1.8x is THREE effects: gauge-vs-gauge (1.76-2.00x on deltas, no DevTools),
+   inspector retention (real, released by default since W81), and Task Manager JS
+   vs CDP JS heap (102 vs 65.76). Merging them is how a factor becomes folklore.
