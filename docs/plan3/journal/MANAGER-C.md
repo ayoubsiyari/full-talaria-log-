@@ -689,3 +689,89 @@ not an additive split (renderer roots sum to 310.9 vs 311.21 private; GPU over-s
 5. The 1.8x is THREE effects: gauge-vs-gauge (1.76-2.00x on deltas, no DevTools),
    inspector retention (real, released by default since W81), and Task Manager JS
    vs CDP JS heap (102 vs 65.76). Merging them is how a factor becomes folklore.
+
+## W91-W92b — CPU attribution, the node-counter's own noise, and the second-load hang
+tier=mid model=claude-opus-5-thinking (measurement and instrument work, no money path)
+
+Journalled late: these landed as commits adcce4bee, e614a33ba, c0296db8b, 00c578b04
+and 677f3d115 while this file went unwritten. The silence was mine and it was a
+violation of the rule I wrote.
+
+1. CPU-PROCESS-CENSUS-V1: the renderer's off-thread majority is V8 BACKGROUND GC,
+   73.2% of a core at four panels. Raster is absent and the compositor is 3%; GPU
+   main thread 5%; layout is 1.4% of the main thread. This CORRECTS my own W74/W78
+   "raster plus per-frame layout" attribution, which named the wrong subsystem and
+   would have aimed A's cuts at it. Scavenger-dominated GC means short-lived
+   objects per replay tick - an allocation-rate defect, not a paint defect.
+   COVERAGE CAVEAT that now attaches to every CPU claim I make: the trace accounts
+   for 38-71% of renderer process CPU, so the remainder is unattributed, not zero.
+2. SESSION-RELOAD-CENSUS-V1: Performance Monitor's Nodes counter reads 6,351-13,792
+   LIVE versus 7,317-7,415 after forced collection on a page that never changed
+   (elements 2,483 every run). A 2.2x live spread against a 1.3% collected spread
+   means live node comparisons across loads are unsafe, and the 51k->137k climb
+   cannot be confirmed on live readings.
+3. STYLE-WRITER-CENSUS-V1 names the invalidation writer: per-frame SVG add/remove
+   via d3, plus _syncAdaptivePriceAxisMargin/measure and two replay visibility
+   checks. ZERO chart.js setProperty sites fire at runtime, so the 35-site flag the
+   Director would have had A cut is a NO-OP. Naming it saved a wasted landing.
+4. ESCALATED to B and still open: POST /api/chart/windows/claim and /release never
+   return on deployed (240s in flight, the only two outstanding requests), starving
+   HTTP/1.1 connections browser-wide so a second chart load never boots. B-0197
+   (9fc8763f0) IS in the deployed build, so this is a route that fix does not cover.
+   My session-load node series stays blocked behind it; the census is warm.
+5. Soak playback defect in my own harness, fixed: play() starts across two rAF so
+   isPlaying lags the call, and replay APPENDS bars so index == length-1 always -
+   my at-end seek was fighting playback.
+
+## W93/W93b — CONF-01 reference row, DUR-01 duration gate, and two defects that made trades look free
+tier=mid model=claude-opus-5-thinking (instrument construction on my own harness, no money path)
+
+Dispatch: DISPATCH-CONF01-20260730-1430 (C1-C4), CONF-01, CONF-02, DUR-01, CKPT-01.
+INSTRUMENTS: conf01-reference-baseline (C1/C4), conf01-duration-gate (DUR-01/CONF-02),
+replay-speed-calibration, order-accumulation-census, freeze-gate (CKPT-01 entry).
+SURFACE: /chart/dist-v9 deployed b113, four panels, four symbols, four timeframes,
+indicators loaded, trades opened and closed continuously. COVERAGE: renderer JS heap
+is ~21% of the page renderer and ~10% of all Chrome; footprint figures are OS
+PrivateMemorySize64 across every Chrome process and do see the rest.
+
+1. COMPLIANCE IS MEASURED, NOT ARMED. assessConf01Compliance reads the product's
+   own state - chart.indicators.active, orderService.openPositions, and continuous
+   replayTimestamp advancement - not my arming report. An earlier version of this
+   check passed while playback was dead, which is precisely how a configuration
+   ruling gets satisfied on paper.
+2. PRODUCT DEFECT, REPLAY SPEED IS NOT HONOURED. Advance is frame-driven, not
+   speed-driven: measured 9.55 bars/s against 1/s configured, ~x9.55, and the same
+   ratio appears at other speeds. Every "60x" figure in this plan is a frame-rate
+   figure. Escalated to A.
+3. PRODUCT DEFECT, PEER PANELS DO NOT CLOSE BARS in the four-symbol configuration.
+   They exhaust their resident window in about two minutes and then consume playhead
+   without new data, so a long run needs re-seeking to stay alive. The CONF-01
+   reference row is therefore a FLOOR on the real cost, and the duration series
+   carries stall samples that must be excluded rather than averaged.
+4. MY OWN INSTRUMENT MADE ACCUMULATED TRADES LOOK COSTLESS, twice over. Orders
+   placed through submitOrder omitted array_base_price/initialStopLoss, so
+   _calculateExcursionRValues (order-manager.js:3916) returned null and no per-bar
+   sample arrays were ever built: zero excursion samples across 88 rows. And
+   measureOrderLoopCost timed frames()[0], which holds the whole book but stops
+   ticking once its resident window is exhausted, while peer panels tick 13/s with
+   EMPTY books at 0.012 ms. Both fixed; the live gate now reads 14,652 excursion
+   samples, 4,524 of them on 24 closed trades (~188 per trade), and grades only the
+   ticking frame that carries the book. VOIDS my W93 order-accumulation census
+   (0.5-0.74 ms/tick, flat to 42 closed) - do not quote it. The per-tick number A
+   needs for POST-EXIT-SAMPLING-CUT is UNMEASURED, and I would rather say that than
+   let a flat line stand as an answer. This is the third time this campaign has
+   measured the cheap configuration and the second time I did it to myself.
+5. DUR-01 arithmetic: least-squares slope with a 95% CI, graded CLIMBS / FALLS /
+   BOUNDED / INDETERMINATE against a flat band, and INSUFFICIENT below the two-hour
+   span the ruling requires. A run that cannot resolve its own slope says so
+   instead of reporting a reassuring mean. 19 unit tests.
+6. CKPT-01 exercised BEFORE the gate swap, and the rehearsal earned its keep: the
+   retained artifact was incomplete twice - once missing harness modules outside
+   scripts/, once missing node_modules - and the rollback only ran after both were
+   fixed. TALARIA_FREEZE_GATE selects the new CONF-01 gate or the retained
+   SINGLE-PAIR-SOAK-V1, a mistyped switch throws rather than quietly running the
+   new gate, and a missing artifact reports instead of silently rebuilding.
+7. RUNNING: 2.2h CONF-02 duration gate, five-minute cadence, closed-trade target 30.
+   Flagged and NOT claimed at n=4: elements 5,552 -> 6,349 while closed trades went
+   5 -> 24. A slope with confidence follows from the full run; four points and an
+   eyeball are how this week produced two retractions.
