@@ -16,17 +16,26 @@
 | 4 Kill-switch FLAG-01/02/03 | GREEN + RED gates |
 | 5 EVICT-01 both numbers | Bytes-down **and** cold retrieval (step 1) |
 
-## EVICT-01 measurement (fixture)
+## EVICT-01 measurement
+
+### Superseded (do not quote)
+
+`98,306 → 0` — one trade × 8 KB synthetic screenshot. Mechanism proof only; **not** the product figure.
+
+### CONF-02 product-scale cell (current)
+
+See `TRADE-EVICT-V1-CONF02-BYTES-20260730.md` / `.json`.
 
 | | Bytes (approx UTF-16 hot fields) |
 |---|---:|
-| Before eviction | **98 306** |
+| Before eviction (30 closed) | **63 753 000** |
 | After eviction | **0** |
-| Journal cold copy | intact (screenshots + path series) |
+| Per closed trade (before) | **~2 125 100** |
+| Journal cold copy | intact |
 
-Method: `_tradeEvictV1ApproxHotBytes` over
-`entryScreenshot` / `exitScreenshot` / `screenshotBase64` / `chartImage` / `thumbnail` /
-`railScreenshots` + in-trade/post-exit excursion arrays.
+Payload provenance: C CONF-02 excursion census (~318 samples/trade); median live `Talaria-Chart-*` product capture for screenshot field size (C harness screenshot chars = 0 via `submitOrder` — unmeasurable, not zero). Four screenshot fields per position.
+
+**Grading:** harness GREEN only. **C grades on the wire** under CONF-01/CONF-02 (`DECL-01`).
 
 ## EVICT-02
 

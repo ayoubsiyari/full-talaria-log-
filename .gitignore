@@ -131,6 +131,7 @@ docs/plan3/fixtures/*
 !docs/plan3/TEST01-SKIP-REGISTER-*.json
 !docs/plan3/FIXED-WIRE-MARKERS-*.json
 !docs/plan3/LEDGER-STATUS-COUNT-*.json
+!docs/plan3/TRADE-EVICT-V1-*.json
 
 
 

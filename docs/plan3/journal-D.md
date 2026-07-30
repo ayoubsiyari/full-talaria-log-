@@ -1,5 +1,12 @@
 # Manager D Journal
 
+## 2026-07-30 — TRADE-EVICT-V1 CONF-02 byte cell (supersedes 98,306)
+
+- Ruling: `RULING-BOTH-EVICTIONS-ACCEPTED-AS-MECHANISM-THE-BYTE-FIGURE-IS-NOT-20260730-1740.md` — mechanism accepted; 98,306 not the product number.
+- Re-ran EVICT-01 at CONF-02: **30 closed**, screenshot fields sized from median live `Talaria-Chart-*` capture (265,167 data-URL chars; C harness measured 0 via submitOrder), excursion from C census **318 samples/trade**.
+- **Figure: 63,753,000 → 0** (~2.13 MB/trade hot). Artifact `TRADE-EVICT-V1-CONF02-BYTES-20260730.{json,md}`. Gate `trade-evict-v1-conf02-bytes.test.mjs`.
+- Explicit: harness GREEN only — C grades on the wire. Skip register still armed; #8 / 01807b on B.
+
 ## 2026-07-30 — TRADE-EVICT-V1 landing (CKPT-01 + playhead eviction)
 
 - Fresh CKPT-01: tag `ckpt/pre-d-trade-evict-v1-6ba61eeeb` on tip `6ba61eeeb`; retained `artifacts/ckpt/pre-d-trade-evict-v1-6ba61eeeb/`; rollback exercised while green (corrupt→restore SHA match; cold-read + teardown GREEN). Doc `CKPT01-D-TRADE-EVICT-V1-20260730.md`.
