@@ -3,37 +3,10 @@
  * Handles chart screenshot functionality with various options
  */
 
-/**
- * SCREENSHOT-BRAND-PRELOAD-CUT-V1 kill-switch, read across realms.
- *
- * The chart shell can be framed by the dashboard, so a flag set on the host has to be
- * visible here or the negative control is inert (B-0185).
- */
-function _talariaScreenshotFlagTruthy(flagName) {
-    var killed = function (w) {
-        try {
-            return !!(w && w[flagName]);
-        } catch (_e) {
-            return false;
-        }
-    };
-    if (killed(typeof window !== 'undefined' ? window : null)) return true;
-    try {
-        var parent = (window.parent && window.parent !== window) ? window.parent : null;
-        if (killed(parent)) return true;
-        var top = (window.top && window.top !== window && window.top !== parent)
-            ? window.top
-            : null;
-        if (killed(top)) return true;
-    } catch (_e) { /* parent chain unreachable; own-realm read above stands */ }
-    return false;
-}
-
 class ScreenshotManager {
     constructor(chart) {
         this.chart = chart;
-        this._brandLogoImage = null;
-        this._brandLogoLoadPromise = null;
+        /** Bounds memo only — a few numbers, keyed on the source image's own dimensions. */
         this._brandLogoBounds = null;
         /** @type {Promise<boolean>|null} */
         this._zainFontLoadPromise = null;
@@ -212,44 +185,36 @@ class ScreenshotManager {
         }
     }
 
-    async getBrandLogoImage() {
-        if (this._brandLogoImage && this._brandLogoImage.complete && this._brandLogoImage.naturalWidth > 0) {
-            return this._brandLogoImage;
-        }
-
-        if (this._brandLogoLoadPromise) {
-            return this._brandLogoLoadPromise;
-        }
-
-        const candidates = ['modules/logo-05.png', 'modules/logo-14.png', 'modules/logo-04.png', 'modules/logo-09.png'];
-
-        this._brandLogoLoadPromise = new Promise((resolve) => {
-            const tryLoad = (index) => {
-                if (index >= candidates.length) {
-                    this._brandLogoLoadPromise = null;
-                    resolve(null);
-                    return;
-                }
-
-                const image = new Image();
-                image.decoding = 'async';
-                image.onload = () => {
-                    image.__talariaSource = candidates[index];
-                    this._brandLogoImage = image;
-                    this._brandLogoBounds = null;
-                    this._brandLogoLoadPromise = null;
-                    resolve(image);
-                };
-                image.onerror = () => {
-                    tryLoad(index + 1);
-                };
-                image.src = this.resolveAssetUrl(candidates[index]);
+    /**
+     * Load a brand logo for an export, and hold nothing afterwards.
+     *
+     * What was here: a `getBrandLogoImage()` that walked four candidates, kept the first
+     * on `this._brandLogoImage` for the life of the session, and was called once from
+     * `init()`. Nothing ever read the result — the export paths set `src` on cloned <img>
+     * elements via `resolveAssetUrl()`, and `getVisibleLogoBounds(image)` takes its image
+     * as an argument — so it was a session-long hold of a 3684x2234 bitmap (31.4 MB
+     * decoded) that no code path consumed.
+     *
+     * The export does not need a resident high-resolution copy, so there is no cache to
+     * make smarter: this loads on demand and drops the reference on settle. The caller
+     * owns the image and it becomes collectable as soon as the caller lets go.
+     */
+    async loadBrandLogoForExport(relativePath = 'modules/logo-05.png') {
+        return new Promise((resolve) => {
+            const image = new Image();
+            image.decoding = 'async';
+            const settle = (value) => {
+                image.onload = null;
+                image.onerror = null;
+                resolve(value);
             };
-
-            tryLoad(0);
+            image.onload = () => {
+                image.__talariaSource = relativePath;
+                settle(image);
+            };
+            image.onerror = () => settle(null);
+            image.src = this.resolveAssetUrl(relativePath);
         });
-
-        return this._brandLogoLoadPromise;
     }
 
     getVisibleLogoBounds(image) {
@@ -674,16 +639,10 @@ class ScreenshotManager {
     }
     
     init() {
-        // SCREENSHOT-BRAND-PRELOAD-CUT-V1. This preload fetched modules/logo-05.png —
-        // 3684x2234, so 31.4 MB decoded — on every chart page load, and nothing ever
-        // read the result: the screenshot paths load their own images via
-        // resolveAssetUrl(), and getVisibleLogoBounds() takes its image as an argument.
-        // It was a third of the measured 63,075K image cache, paid on the critical path
-        // of every load, for a cache with no reader. getBrandLogoImage() still works and
-        // still memoises if a caller ever wants it.
-        if (_talariaScreenshotFlagTruthy('__TALARIA_DISABLE_SCREENSHOT_BRAND_PRELOAD_CUT_V1')) {
-            this.getBrandLogoImage();
-        }
+        // SCREENSHOT-BRAND-PRELOAD-CUT-V1. No brand image is loaded at init. The preload
+        // that used to be here cost 31.4 MB of decoded image bytes on every page load for
+        // a cache nothing read; see loadBrandLogoForExport() for the full history. Exports
+        // load their own art on demand.
         this.initDropdown();
         this.initKeyboardShortcuts();
     }

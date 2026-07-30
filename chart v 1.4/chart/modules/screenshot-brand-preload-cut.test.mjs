@@ -2,15 +2,23 @@
  * SCREENSHOT-BRAND-PRELOAD-CUT-V1 — gate.
  *
  * The defect: ScreenshotManager's constructor called init(), which called
- * getBrandLogoImage(), which fetched modules/logo-05.png at 3684x2234 — 31.4 MB decoded
- * — on every chart page load. Nothing consumed the result. The screenshot paths build
- * their own images through resolveAssetUrl(), and getVisibleLogoBounds() takes its image
- * as a parameter, so the memo had no reader. It was roughly a third of the measured
- * 63,075K image cache, on the critical path of every load.
+ * getBrandLogoImage(), which fetched modules/logo-05.png at 3684x2234 — 31.4 MB of
+ * decoded image bytes — on every chart page load and kept it on the instance for the
+ * whole session. Nothing consumed it. The export paths set `src` on cloned <img>
+ * elements through resolveAssetUrl(), and getVisibleLogoBounds(image) takes its image as
+ * a parameter, so the cache had no reader.
  *
- * This gate loads the real shipped file into a vm context with an instrumented Image
- * constructor, so it exercises the actual chain (module load -> constructor -> init)
- * rather than a re-implementation of it.
+ * b110 stopped calling it behind a kill-switch. b111 removes the method and the
+ * session-long fields outright, because the export never needed a resident copy: there
+ * was no cache to make smarter, only a cache to delete. What replaces it,
+ * loadBrandLogoForExport(), loads on demand and keeps no reference after it settles.
+ *
+ * The kill-switch is therefore retired: with the code path gone there is no behaviour to
+ * toggle. Rollback for this one is the pinned b110 image, not a flag flip, and that is
+ * recorded in GATE-NAME-RESERVATIONS.md rather than left as flag theatre.
+ *
+ * This gate loads the real shipped file in a vm with an instrumented Image, so it
+ * exercises the actual module-load-to-constructor chain rather than a re-implementation.
  *
  * Run: node --test "chart v 1.4/chart/modules/screenshot-brand-preload-cut.test.mjs"
  */
@@ -25,17 +33,9 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const CANONICAL = path.join(HERE, 'screenshot-manager.js');
 const MIRROR = path.resolve(HERE, '../../../homepage/public/chart/modules/screenshot-manager.js');
 
-const FLAG = '__TALARIA_DISABLE_SCREENSHOT_BRAND_PRELOAD_CUT_V1';
-
-/**
- * Build a DOM-ish sandbox and evaluate `source` in it.
- *
- * @param {object} opts
- * @param {string} [opts.source] product source to run (defaults to the shipped file)
- * @param {'none'|'self'|'parent'|'top'} [opts.flagOn] which realm carries the kill-switch
- */
-function loadInSandbox({ source, flagOn = 'none' } = {}) {
+function loadInSandbox({ source } = {}) {
     const imageLoads = [];
+    const liveImages = [];
 
     class FakeImage {
         constructor() {
@@ -43,45 +43,44 @@ function loadInSandbox({ source, flagOn = 'none' } = {}) {
             this.complete = false;
             this.naturalWidth = 0;
             this._src = '';
+            liveImages.push(this);
         }
         set src(value) {
             this._src = value;
             imageLoads.push(value);
-            // Never fire onload/onerror: a real network fetch has not resolved by the
-            // time init() returns either, and the assertion is about the request.
         }
         get src() {
             return this._src;
         }
+        /** Drive the load the way the browser would, so settle paths are exercised. */
+        fireLoad() {
+            this.complete = true;
+            this.naturalWidth = 600;
+            if (typeof this.onload === 'function') this.onload();
+        }
+        fireError() {
+            if (typeof this.onerror === 'function') this.onerror();
+        }
     }
 
     const element = () => ({
-        style: {},
+        style: { setProperty() {} },
         classList: { add() {}, remove() {}, toggle() {}, contains: () => false },
-        setAttribute() {},
-        getAttribute: () => null,
-        appendChild() {},
-        append() {},
-        remove() {},
-        addEventListener() {},
-        removeEventListener() {},
+        setAttribute() {}, getAttribute: () => null,
+        appendChild() {}, append() {}, remove() {},
+        addEventListener() {}, removeEventListener() {},
         getContext: () => null,
-        querySelector: () => null,
-        querySelectorAll: () => [],
+        querySelector: () => null, querySelectorAll: () => [],
         insertAdjacentHTML() {},
-        set innerHTML(_v) {},
-        get innerHTML() { return ''; }
+        set innerHTML(_v) {}, get innerHTML() { return ''; }
     });
 
     const documentStub = {
         getElementById: () => null,
-        querySelector: () => null,
-        querySelectorAll: () => [],
+        querySelector: () => null, querySelectorAll: () => [],
         createElement: element,
-        addEventListener() {},
-        removeEventListener() {},
-        body: element(),
-        head: element(),
+        addEventListener() {}, removeEventListener() {},
+        body: element(), head: element(),
         fonts: { load: () => Promise.resolve([]), ready: Promise.resolve() },
         baseURI: 'https://canary.example/chart/dist-v9/'
     };
@@ -92,38 +91,21 @@ function loadInSandbox({ source, flagOn = 'none' } = {}) {
         pathname: '/chart/dist-v9/index.html'
     };
 
-    const parentWin = { [FLAG]: flagOn === 'parent' ? true : undefined };
-    const topWin = { [FLAG]: flagOn === 'top' ? true : undefined };
-
     const windowStub = {
-        location,
-        document: documentStub,
-        chart: { /* present so initScreenshotManager() constructs immediately */ },
-        addEventListener() {},
-        removeEventListener() {},
-        isSecureContext: true,
-        devicePixelRatio: 2,
-        Image: FakeImage,
-        URL,
-        setTimeout,
-        clearTimeout,
+        location, document: documentStub, chart: {},
+        addEventListener() {}, removeEventListener() {},
+        isSecureContext: true, devicePixelRatio: 2,
+        Image: FakeImage, URL, setTimeout, clearTimeout,
         navigator: { clipboard: null, userAgent: 'node-gate' }
     };
     windowStub.self = windowStub;
-    windowStub.parent = flagOn === 'parent' ? parentWin : windowStub;
-    windowStub.top = flagOn === 'top' ? topWin : windowStub.parent;
-    if (flagOn === 'self') windowStub[FLAG] = true;
+    windowStub.parent = windowStub;
+    windowStub.top = windowStub;
 
     const sandbox = {
-        window: windowStub,
-        document: documentStub,
-        location,
-        Image: FakeImage,
-        URL,
-        navigator: windowStub.navigator,
-        setTimeout,
-        clearTimeout,
-        Promise,
+        window: windowStub, document: documentStub, location,
+        Image: FakeImage, URL, navigator: windowStub.navigator,
+        setTimeout, clearTimeout, Promise,
         console: { log() {}, warn() {}, error() {}, info() {} }
     };
     sandbox.globalThis = sandbox;
@@ -133,129 +115,140 @@ function loadInSandbox({ source, flagOn = 'none' } = {}) {
         filename: 'screenshot-manager.js'
     });
 
-    return { imageLoads, sandbox, manager: windowStub.screenshotManager };
+    return { imageLoads, liveImages, manager: windowStub.screenshotManager };
 }
 
-const brandLoads = (loads) => loads.filter((u) => /logo-0\d|logo-1\d/i.test(u));
+const brandLoads = (loads) => loads.filter((u) => /logo-\d+\.png/i.test(u));
+const readSource = () => fs.readFileSync(CANONICAL, 'utf8');
 
 /* ── the cut ──────────────────────────────────────────────────────────────── */
 
-test('CELL 1 — by default, page load requests no brand logo at all', () => {
+test('CELL 1 — page load requests no brand logo at all', () => {
     const { imageLoads } = loadInSandbox();
-    assert.deepEqual(
-        brandLoads(imageLoads),
-        [],
-        `expected zero brand image requests on load, saw: ${imageLoads.join(', ')}`
-    );
+    assert.deepEqual(brandLoads(imageLoads), [],
+        `expected zero brand image requests on load, saw: ${imageLoads.join(', ')}`);
 });
 
 test('CELL 2 — the manager still constructs and is published', () => {
     const { manager } = loadInSandbox();
     assert.ok(manager, 'window.screenshotManager should still be created');
-    assert.equal(typeof manager.getBrandLogoImage, 'function',
-        'getBrandLogoImage must survive the cut so a future caller can still use it');
+    assert.equal(typeof manager.loadBrandLogoForExport, 'function',
+        'exports need an on-demand loader');
 });
 
-test('CELL 3 — an explicit call still loads the brand (the method is not broken)', () => {
-    const { imageLoads, manager } = loadInSandbox();
-    manager.getBrandLogoImage();
+test('CELL 3 — the on-demand loader fetches only when called', async () => {
+    const { imageLoads, liveImages, manager } = loadInSandbox();
+    assert.equal(brandLoads(imageLoads).length, 0, 'nothing before the call');
+
+    const pending = manager.loadBrandLogoForExport();
     assert.deepEqual(
         brandLoads(imageLoads).map((u) => u.replace(/^https:\/\/canary\.example/, '')),
         ['/chart/modules/logo-05.png'],
-        'calling it directly should still request the first candidate'
+        'the call should request exactly one asset'
     );
+    liveImages[liveImages.length - 1].fireLoad();
+    const image = await pending;
+    assert.ok(image, 'a loaded image should resolve');
 });
 
-/* ── FLAG-02: the negative control must really restore the old behaviour ──── */
+test('CELL 4 — nothing is retained on the instance after the export settles', async () => {
+    const { liveImages, manager } = loadInSandbox();
+    const pending = manager.loadBrandLogoForExport();
+    liveImages[liveImages.length - 1].fireLoad();
+    const image = await pending;
 
-for (const realm of ['self', 'parent', 'top']) {
-    test(`CELL 4.${realm} — kill-switch set on ${realm} restores the eager preload`, () => {
-        const { imageLoads } = loadInSandbox({ flagOn: realm });
-        assert.deepEqual(
-            brandLoads(imageLoads).map((u) => u.replace(/^https:\/\/canary\.example/, '')),
-            ['/chart/modules/logo-05.png'],
-            `flag on ${realm} must reinstate the preload, or the negative control is inert`
-        );
-    });
-}
+    const retained = Object.entries(manager).filter(([, v]) => v === image);
+    assert.deepEqual(retained.map(([k]) => k), [],
+        'the manager must not hold the export image for the session');
+    assert.equal(manager._brandLogoImage, undefined,
+        'the session-long brand field must be gone, not merely unset');
+    assert.equal(image.onload, null, 'handlers should be dropped on settle');
+    assert.equal(image.onerror, null, 'handlers should be dropped on settle');
+});
+
+test('CELL 5 — a failed load resolves null instead of hanging', async () => {
+    const { liveImages, manager } = loadInSandbox();
+    const pending = manager.loadBrandLogoForExport();
+    liveImages[liveImages.length - 1].fireError();
+    assert.equal(await pending, null, 'an export must not wait forever on a missing asset');
+});
 
 /* ── mutants: prove the cells above are load-bearing ──────────────────────── */
 
-test('CELL 5 — MUTANT: unconditional preload (the pre-cut code) fails CELL 1', () => {
-    const mutant = fs.readFileSync(CANONICAL, 'utf8').replace(
-        /if \(_talariaScreenshotFlagTruthy\('__TALARIA_DISABLE_SCREENSHOT_BRAND_PRELOAD_CUT_V1'\)\) \{\s*this\.getBrandLogoImage\(\);\s*\}/,
-        'this.getBrandLogoImage();'
+test('CELL 6 — MUTANT: reinstating the init preload fails CELL 1', () => {
+    const mutant = readSource().replace(
+        /        this\.initDropdown\(\);/,
+        '        this.loadBrandLogoForExport();\n        this.initDropdown();'
     );
-    assert.notEqual(mutant, fs.readFileSync(CANONICAL, 'utf8'), 'mutation must apply');
+    assert.notEqual(mutant, readSource(), 'mutation must apply');
     const { imageLoads } = loadInSandbox({ source: mutant });
     assert.equal(brandLoads(imageLoads).length, 1,
-        'the pre-cut code preloads, which is exactly what CELL 1 forbids');
+        'a preload in init is exactly what CELL 1 forbids');
 });
 
-test('CELL 6 — MUTANT: own-realm-only flag read fails the parent/top cells', () => {
-    const mutant = fs.readFileSync(CANONICAL, 'utf8').replace(
-        /if \(_talariaScreenshotFlagTruthy\('__TALARIA_DISABLE_SCREENSHOT_BRAND_PRELOAD_CUT_V1'\)\) \{/,
-        `if (!!window['${FLAG}']) {`
+test('CELL 7 — MUTANT: reinstating the session cache fails CELL 4', async () => {
+    const mutant = readSource().replace(
+        /                image\.__talariaSource = relativePath;/,
+        '                image.__talariaSource = relativePath;\n                this._brandLogoImage = image;'
     );
-    assert.notEqual(mutant, fs.readFileSync(CANONICAL, 'utf8'), 'mutation must apply');
-    const { imageLoads } = loadInSandbox({ source: mutant, flagOn: 'parent' });
-    assert.equal(brandLoads(imageLoads).length, 0,
-        'a host-only read cannot see the parent flag — this is the B-0185 defect and the ' +
-        'realm climb is what CELL 4.parent proves');
+    assert.notEqual(mutant, readSource(), 'mutation must apply');
+    const { liveImages, manager } = loadInSandbox({ source: mutant });
+    const pending = manager.loadBrandLogoForExport();
+    liveImages[liveImages.length - 1].fireLoad();
+    const image = await pending;
+    assert.equal(manager._brandLogoImage, image,
+        'the mutant does retain the image, which is the state CELL 4 rejects');
 });
 
 /* ── wiring ───────────────────────────────────────────────────────────────── */
 
-test('CELL 7 — mirror is byte-identical to the canonical module', () => {
-    assert.ok(fs.existsSync(MIRROR), `mirror missing at ${MIRROR}`);
-    assert.equal(
-        fs.readFileSync(MIRROR).toString('base64'),
-        fs.readFileSync(CANONICAL).toString('base64'),
-        'homepage/public mirror has drifted from chart v 1.4 — the served copy is the mirror'
-    );
-});
-
-test('CELL 8 — the guard and its comment are present in the shipped file', () => {
-    const src = fs.readFileSync(CANONICAL, 'utf8');
-    assert.match(src, /_talariaScreenshotFlagTruthy\(/, 'realm-climbing helper must exist');
-    assert.match(src, new RegExp(FLAG), 'kill-switch name must appear');
-    assert.equal(
-        (src.match(/this\.getBrandLogoImage\(\)/g) || []).length,
-        1,
-        'exactly one call site (inside the guard) is expected'
-    );
-});
-
-/* ── the asset half of the same packet ────────────────────────────────────── */
-
-const LOADER_BRAND_COPIES = [
-    path.join(HERE, 'logo-04.png'),
-    path.resolve(HERE, '../../../homepage/public/chart/modules/logo-04.png'),
-    path.resolve(HERE, '../../../homepage/public/logo-04.png')
-];
-
-/** IHDR carries width/height as big-endian u32 at byte 16 and 20. */
-function pngDimensions(file) {
-    const buf = fs.readFileSync(file);
-    return { width: buf.readUInt32BE(16), height: buf.readUInt32BE(20), bytes: buf.length };
-}
-
-test('CELL 9 — the loader brand is not shipped above 1024px on any edge', () => {
-    // .loader-brand renders at 440 CSS px. 1024 covers 2x device pixel ratio with room
-    // spare; the original 2391x2234 was 5.4x the displayed size and cost 20.4 MB decoded.
-    for (const file of LOADER_BRAND_COPIES) {
-        assert.ok(fs.existsSync(file), `missing ${file}`);
-        const { width, height } = pngDimensions(file);
-        assert.ok(
-            Math.max(width, height) <= 1024,
-            `${path.basename(path.dirname(file))}/logo-04.png is ${width}x${height}; ` +
-            `decoded that is ${((width * height * 4) / 1048576).toFixed(1)} MB`
+test('CELL 8 — the dead cache is gone from the shipped code', () => {
+    // Comments are stripped first: the file deliberately keeps a note about what used to
+    // be here, and a history note is not a code path.
+    const code = readSource()
+        .replace(/\/\*[\s\S]*?\*\//g, '')
+        .replace(/^\s*\/\/.*$/gm, '');
+    for (const symbol of ['getBrandLogoImage', '_brandLogoLoadPromise', '_brandLogoImage']) {
+        assert.equal(
+            code.includes(symbol), false,
+            `${symbol} should no longer exist in the shipped module; found it in code, not a comment`
         );
     }
 });
 
-test('CELL 10 — every loader-brand copy is byte-identical', () => {
-    const hashes = LOADER_BRAND_COPIES.map((f) => fs.readFileSync(f).toString('base64'));
-    assert.equal(new Set(hashes).size, 1,
-        'logo-04.png copies have diverged; the chart and the homepage would ship different art');
+test('CELL 9 — mirror is byte-identical to the canonical module', () => {
+    assert.ok(fs.existsSync(MIRROR), `mirror missing at ${MIRROR}`);
+    assert.equal(
+        fs.readFileSync(MIRROR).toString('base64'),
+        fs.readFileSync(CANONICAL).toString('base64'),
+        'homepage/public mirror has drifted — the served copy is the mirror'
+    );
+});
+
+/* ── the loader brand, which is the only eager image left ──────────────────── */
+
+const SHELLS = [
+    path.resolve(HERE, '../dist-v9/index.html'),
+    path.resolve(HERE, '../../talaria-design/live/index.html'),
+    path.resolve(HERE, '../../../homepage/public/chart/dist-v9/index.html')
+];
+
+test('CELL 10 — the loader brand declares intrinsic width and height', () => {
+    // Without these the shell reflows when the brand decodes, on every cold load.
+    for (const shell of SHELLS) {
+        assert.ok(fs.existsSync(shell), `missing shell ${shell}`);
+        const html = fs.readFileSync(shell, 'utf8');
+        const tag = /<img[^>]*class="loader-brand"[^>]*>/.exec(html);
+        assert.ok(tag, `no loader-brand <img> in ${path.basename(path.dirname(shell))}`);
+        assert.match(tag[0], /width="880"/, `loader brand needs width in ${shell}`);
+        assert.match(tag[0], /height="822"/, `loader brand needs height in ${shell}`);
+    }
+});
+
+test('CELL 11 — the declared dimensions match the shipped file exactly', () => {
+    // A declared size that disagrees with the bitmap is its own layout bug.
+    const file = path.join(HERE, 'logo-04.png');
+    const buf = fs.readFileSync(file);
+    assert.equal(buf.readUInt32BE(16), 880, 'logo-04.png width');
+    assert.equal(buf.readUInt32BE(20), 822, 'logo-04.png height');
 });

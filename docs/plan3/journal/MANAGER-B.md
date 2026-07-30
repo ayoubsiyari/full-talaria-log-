@@ -4637,3 +4637,75 @@ memory-leak figure. Gate green over 5 documents, self-test 13/13.
 **Not done:** `logo-08.png` is a 20.38 MB decode used as a 48px notification icon
 (`alert-system.js:1339`) and in the screenshot brand row. Real spike, not on the load
 path, so it is the next tranche. The 28 orphans are housekeeping, untouched tonight.
+
+## B-0201 — every brand asset resized to its displayed size, and a CI check so it stays there
+
+**2026-07-30 12:20 · completes the Director's 10:50 dispatch · shipped 20260730b111**
+
+b110 had cut the two assets on the eager path. The 10:50 dispatch asked for all of them,
+plus four things b110 did not do. All six items are now landed.
+
+**1. Every brand asset resized to max displayed size at 2x.** I read the displayed size for
+each from CSS and JSX rather than picking a round number:
+`.loader-brand` 440px and a 416px homepage hero -> **logo-04 at 880**;
+`.chart-brand .logo-bottom` hover max-width 300px captured at `scale = 2` ->
+**logo-05/14/06 at 600**; `.chart-brand .logo-top` 38px, auth panel 80px, alert icon 48px
+-> **logo-08/09 and LOGO-07 at 256**, which is 3x headroom over the rule because the login
+screen is brand-critical and the headroom costs 0.15 MB.
+
+**251.35 MB -> 12.32 MB of decoded image bytes across brand assets**, 42 files rewritten,
+every copy byte-identical to its siblings. My b110 target of 1024 for the loader brand was
+looser than your 2x rule, so it is now 880.
+
+**I verified the artwork survived numerically rather than by eye**, comparing alpha coverage
+and mean opaque colour against each pre-resize version in git — both scale-invariant, so a
+faithful downscale barely moves them. All 27 changed files within tolerance. This mattered:
+`logo-05` renders as a blank white rectangle on a white background and looks broken. It is
+a pure white wordmark (mean RGB 255,255,255) and it is fine. An eyeball would have raised a
+false alarm and cost twenty minutes.
+
+**2. width/height attributes.** Added `width="880" height="822"` to the loader-brand
+`<img>` in the Vite source and both dist-v9 copies. The other brand `<img>` tags already
+declared theirs. CELL 11 asserts the declared numbers match the shipped bitmap, because a
+declared size that disagrees with the file is its own layout bug.
+
+**3. Swept every served image including the mirrors.** 65 images in scope across the three
+served trees, largest now 3.19 MB decoded. No SVGs anywhere — every icon in this product is
+a bitmap, which is worth knowing separately.
+
+**4. screenshot-manager: the answer is that the export never needed it.** `getBrandLogoImage()`
+walked four candidates and kept the first on the instance for the session. Nothing consumed
+it — the export paths set `src` on cloned `<img>` elements through `resolveAssetUrl()`
+and `getVisibleLogoBounds(image)` takes its image as a parameter. So there was no cache to
+make smarter, only a 31.4 MB session hold to delete. `loadBrandLogoForExport()` replaces
+it: loads on demand, drops its handlers on settle, retains nothing. CELL 4 proves no field on
+the manager references the image afterwards and CELL 7 is a mutant that re-adds the cache.
+
+**I retired the b110 kill-switch rather than keep it.** With the code path deleted there is
+nothing to toggle, and a switch that restores a preload nothing reads is theatre. Rollback
+for this cut is the pinned `canary-20260730b110` image, recorded in the reservations doc so
+nobody has to guess. Flagging discipline is the point, not flag count.
+
+**5. Task Manager re-read** is the PO's, on b111. Prediction below.
+
+**6. CI check — ASSET-DECODED-BUDGET-V1.** `scripts/lib/asset-decoded-budget.mjs` plus
+`.github/workflows/asset-decoded-budget.yml`, triggered by any change under the served
+image trees, not just the manifest, because this regression arrives as a replaced .png in a
+commit that touches nothing else. Two budgets, because one is not enough: a 4 MB per-image
+ceiling catches a fresh 4720px export, and a per-asset target catches the realistic case a
+ceiling misses — a handover re-exporting `logo-08` at 900px, under 4 MB but still 3.5x its
+displayed size. Every target records the measurement that justifies it and CELL 5 fails if
+one does not. **It fails closed**: an image it cannot parse is a failure, not a skip. 10/10
+with four mutants. The gate caught its own manifest on the first run — the OpenGraph entry
+had no displayed size recorded — and I fixed the manifest rather than the assertion.
+
+**Predictions for the re-read, same instrument, Brave Task Manager Image cache column,
+DevTools closed, one chart.** 63,075K on b103. b110 should already read ~14,000-15,000K.
+b111 removes a further 1.0 MB from the eager path (loader brand 3.74 -> 2.76 MB) so it should
+read **~13,000-14,000K**. The large remaining numbers are all off the load path now: no
+single served image can exceed 4 MB decoded, so no combination of user actions can rebuild a
+62 MB image cache from brand art.
+
+**Still open:** the 11:20 finding refutes DevTools inflation, so the "upper bound because
+DevTools was open" caveat I added to the disclosure draft this morning is wrong and needs
+withdrawing. That is next.

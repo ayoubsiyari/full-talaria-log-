@@ -713,3 +713,41 @@ Paired with a non-flagged pure size reduction in the same packet, per the 10:20 
 asset size cuts need no switch: `logo-04.png` 2391x2234 -> 1024x957, all four copies
 byte-identical, **20.38 MB -> 3.74 MB of decoded image bytes** and 117 KB -> 35 KB on disk.
 CELL 9 and CELL 10 hold that line so a future re-export cannot quietly restore it.
+
+## ASSET-DECODED-BUDGET-V1 — reserved 2026-07-30 12:20 (B)
+
+| Name | Signature token | Implementation | Status |
+|---|---|---|---|
+| ASSET-DECODED-BUDGET-V1 | n/a — a CI check, not a runtime switch | `scripts/lib/asset-decoded-budget.mjs`, gate `scripts/tests/asset-decoded-budget.test.mjs`, workflow `.github/workflows/asset-decoded-budget.yml` | LIVE — 10/10 with four mutants |
+
+Why. Decoded bitmap cost is `width x height x 4` and is independent of file size, so the
+V9 handover's 4720x2234 wordmarks read as 87 KB in review and cost 40.2 MB each in the
+renderer's image cache. **File-size review cannot see this class of defect.** The check
+measures pixels against a 4 MB per-image decoded budget plus a per-asset target derived
+from the size each asset is actually displayed at, and it **fails closed**: an image it
+cannot parse is a failure, not a skip.
+
+Two budgets, because one is not enough. The global 4 MB ceiling catches a fresh 4720px
+export (CELL 6). The per-asset target catches the realistic regression a global ceiling
+misses — a handover re-exporting `logo-08` at 900px, which is comfortably under 4 MB but
+still 3.5x the size its 80px display justifies (CELL 8). Every target records the displayed
+measurement behind it, and CELL 5 fails if one does not.
+
+## SCREENSHOT-BRAND-PRELOAD-CUT-V1 — RETIRED 2026-07-30 12:20 (B)
+
+| Name | Signature token | Status |
+|---|---|---|
+| SCREENSHOT-BRAND-PRELOAD-CUT-V1 | `__TALARIA_DISABLE_SCREENSHOT_BRAND_PRELOAD_CUT_V1` | RETIRED in 20260730b111 — the code path it toggled no longer exists |
+
+Shipped in b110 as a guard around `ScreenshotManager.init()`'s brand preload. b111 deletes
+`getBrandLogoImage()`, `_brandLogoImage` and `_brandLogoLoadPromise` outright, because
+the export path never consumed any of it: it sets `src` on cloned `<img>` elements via
+`resolveAssetUrl()`, and `getVisibleLogoBounds(image)` takes its image as an argument.
+There was no cache to make smarter, only a session-long hold of a 31.4 MB bitmap to remove.
+`loadBrandLogoForExport()` replaces it: on demand, and it drops its handlers on settle.
+
+**Retiring rather than keeping the switch is deliberate.** With the path gone there is no
+behaviour to toggle, and a flag that restores a preload nothing reads is theatre. Rollback
+for this cut is the pinned `canary-20260730b110` image, which is what a flag flip would
+have bought and is recorded here so nobody has to guess. The name stays reserved so it is
+not reused for something else.
