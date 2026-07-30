@@ -176,6 +176,18 @@ managers:
         reason: granted to E on specificity - generated mirror
         provenance: ruling
         authority: director 20260730 17:05
+      - pattern: chart v 1.4/chart/modules/chart-window-limit.js
+        reason: granted to B on specificity - both window-claim P0s are B's
+        provenance: ruling
+        authority: director 20260730 17:25
+      - pattern: homepage/public/chart/modules/chart-window-limit.js
+        reason: granted to B on specificity - generated mirror
+        provenance: ruling
+        authority: director 20260730 17:25
+      - pattern: chart v 1.4/chart/modules/window-control-socket-*.test.mjs
+        reason: granted to B on specificity - the socket-release gates
+        provenance: ruling
+        authority: director 20260730 17:25
       - pattern: docs/plan3/journal/MANAGER-B.md
         reason: another manager's journal
         provenance: ruling
@@ -233,6 +245,40 @@ managers:
       - pattern: homepage/public/chart/talaria-design/**
         provenance: ruling
         authority: same grant - generated mirror of the above
+      - pattern: chart v 1.4/chart/modules/chart-window-limit.js
+        provenance: ruling
+        authority: director 20260730 17:25 - both window-claim P0s were routed to B while
+          this path sat in nobody's grant. Third occurrence today of routing work without
+          granting the path. Carved out of A's modules grant on specificity. B correctly
+          reported the gap rather than relocating the gate to deploy/ to dodge the
+          preflight, which would have hidden it.
+      - pattern: homepage/public/chart/modules/chart-window-limit.js
+        provenance: ruling
+        reason: generated product mirror; B owns both sides or neither
+      - pattern: chart v 1.4/chart/modules/window-control-socket-*.test.mjs
+        provenance: ruling
+        authority: same grant - the socket-release gates that hold the P0 fix
+      - pattern: homepage/public/chart/modules/window-control-socket-*.test.mjs
+        provenance: ruling
+        reason: generated mirror of the gate files
+      - pattern: homepage/Dockerfile
+        provenance: ruling
+        authority: director 20260730 17:25 - B owns the train assembly and the deploy gate
+          (RULING-MANAGER-E-TIER... section 4). The reproducible-build blocker was a missing
+          COPY in this file and B could not author the fix inside its own territory.
+      - pattern: chart v 1.4/chart/scripts/build-chart-client-bundle.mjs
+        provenance: ruling
+        authority: same grant - build assembly
+      - pattern: homepage/public/chart/scripts/build-chart-client-bundle.mjs
+        provenance: ruling
+        reason: generated mirror
+      - pattern: chart v 1.4/chart/scripts/bump-chart-engine-build.mjs
+        provenance: ruling
+        authority: same grant - the cache-stamp bump; a fix does not ship until the stamp
+          moves, which makes this file load-bearing for every landing
+      - pattern: scripts/checkpoint-build-assert.mjs
+        provenance: ruling
+        authority: same grant - CHECKPOINT_BUILD reproducibility assertion
     denied_paths:
       - pattern: chart v 1.4/talaria-design/src/orderManagerTradeRows.js
         reason: carved out to D for TAL-01896; order trade-row rendering is D's subject matter
