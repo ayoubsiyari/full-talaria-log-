@@ -6530,6 +6530,90 @@ class Chart {
         return run;
     }
 
+    // ─────────────────────────────────────────────────────────────────────
+    // Replay reseed — incremental fullRawData copy
+    //
+    // _reseedReplayFullRawFromLoadedData() re-spread the ENTIRE seed master
+    // (~71k bars) on every call, from ten call sites (eight here plus one each
+    // in panel-cmd-bridge.js and embed-bridge.js) — and several of those re-fire
+    // per replay step while a panel sits at a short master edge.
+    //
+    // Same shape as _mcCopySamePairFullRawData above: keep the array we handed
+    // out and append only the new tail while the seed source is provably the
+    // same, still-growing series. Anything else (source replaced, source
+    // shrunk, boundary moved, destination replaced by someone else) falls back
+    // to the legacy full spread and re-seeds the cache.
+    //
+    // Disable with window.__TALARIA_DISABLE_REPLAY_RESEED_INCREMENTAL_V1 = <truthy>.
+    // ─────────────────────────────────────────────────────────────────────
+
+    _replayReseedIncrementalDisabled() {
+        try {
+            return !!(typeof window !== 'undefined' && window.__TALARIA_DISABLE_REPLAY_RESEED_INCREMENTAL_V1);
+        } catch (_e) {
+            return false;
+        }
+    }
+
+    _replayReseedCopyCacheSlot(slotKey) {
+        if (slotKey == null) return null;
+        return String(slotKey);
+    }
+
+    _replayReseedCopyCache() {
+        if (!this._replayReseedIncrementalCopyCache) this._replayReseedIncrementalCopyCache = new Map();
+        return this._replayReseedIncrementalCopyCache;
+    }
+
+    _replayReseedBoundaryTimestamp(seedSource, length) {
+        if (!Array.isArray(seedSource) || length <= 0) return null;
+        const t = Number(seedSource[length - 1]?.t);
+        return Number.isFinite(t) ? t : null;
+    }
+
+    _cacheReplayReseedCopy(cacheKey, seedSource, out) {
+        this._replayReseedCopyCache().set(cacheKey, {
+            seedSource,
+            seedLength: seedSource.length,
+            lastTimestamp: this._replayReseedBoundaryTimestamp(seedSource, seedSource.length),
+            copy: out,
+        });
+        return out;
+    }
+
+    _replayReseedIncrementalCopy(seedSource, cacheKey, destination) {
+        const cache = this._replayReseedCopyCache().get(cacheKey);
+        const prevLen = cache?.seedLength ?? -1;
+        // cache.copy === destination is load-bearing, not defensive: replay-system.js
+        // reassigns replay.fullRawData behind our back, so handing back the retained
+        // array without it would resurrect a stale series over a newer one.
+        const canAppendTail = cache
+            && cache.copy === destination
+            && cache.seedSource === seedSource
+            && seedSource.length >= prevLen
+            && (prevLen === 0 || this._replayReseedBoundaryTimestamp(seedSource, prevLen) === cache.lastTimestamp);
+
+        if (!canAppendTail) {
+            return this._cacheReplayReseedCopy(cacheKey, seedSource, [...seedSource]);
+        }
+
+        const out = cache.copy;
+        for (let i = prevLen; i < seedSource.length; i += 1) {
+            out.push(seedSource[i]);
+        }
+        cache.seedLength = seedSource.length;
+        cache.lastTimestamp = this._replayReseedBoundaryTimestamp(seedSource, seedSource.length);
+        return out;
+    }
+
+    _reseedReplayCopyArray(seedSource, slotKey, destination) {
+        if (!Array.isArray(seedSource)) return seedSource;
+        if (this._replayReseedIncrementalDisabled()) return [...seedSource];
+        const cacheKey = this._replayReseedCopyCacheSlot(slotKey);
+        if (!cacheKey) return [...seedSource];
+        return this._replayReseedIncrementalCopy(seedSource, cacheKey, destination);
+    }
+
     /**
      * Reseed replay.fullRawData from the chart's current rawData after a pair
      * switch or reload. Multichart iframes mirror replay time from tile A but
@@ -6547,7 +6631,11 @@ class Chart {
         replay.animatingCandle = null;
         replay.tickProgress = 0;
         replay.tickElapsedMs = 0;
-        replay.fullRawData = [...seedSource];
+        replay.fullRawData = this._reseedReplayCopyArray(seedSource, 'replay.fullRawData', replay.fullRawData);
+        // NOT routed through the incremental copy: this.data is the DISPLAY series,
+        // rebuilt by resampleData() on essentially every tick, so its identity
+        // churns and the guard can never hit. See the reseed test's
+        // display-series-cannot-pay cell for the measured hit rate.
         replay.fullData = Array.isArray(this.data) ? [...this.data] : null;
         replay.rawTimeframe = this._nativeRawFetchTf || this.currentTimeframe;
         replay._fullRawDataMatchesTF = false;
