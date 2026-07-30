@@ -4819,3 +4819,37 @@ the page, so one reload leaves the outgoing page's unanswered release *and* the 
 claim in the shared pool — that is where C's "two POSTs" comes from, and it is why release
 had to be bounded too, not just claim. And the pool is per origin **per browser**, so this
 was never a per-tab defect: the wedged sockets outlive the tab that created them.
+
+### Shipped as `20260730b113` — verified over HTTP, not from the tree
+
+**The stamp the PO must read on screen: `20260730b113`.**
+
+MEAS-01 over `http://31.97.192.82:3000`: `shell_http=200`, served stamp
+`window.__TALARIA_CHART_BUILD_ID='20260730b113'`, all three containers on
+`canary-20260730b113`, `talaria-grade-homepage` left untouched on `canary-20260729b85` so C's
+grading capability is unaffected. Tar saved (320 MB, `gzip -t` OK) and `PINNED-20260730b113`
+written; b109 through b113 all hold pins.
+
+**On-wire proof of the cut** in the served `chart/modules/chart-window-limit.js` (32,259 bytes,
+up from 25,497): `controlFetch` ×5, `AbortController` ×3, `CONTROL_TIMEOUT_MS` ×3,
+`GATE_WAIT_TIMEOUT_MS` ×4, `withGateTimeout` ×2, `heartbeatInFlight` ×4,
+`__TALARIA_DISABLE_WINDOW_CONTROL_FETCH_TIMEOUT_V1` ×2. `sendClaimRequest` still ×3, so
+`9fc8763f0` is intact alongside it.
+
+**Nothing from b112 was dropped**, checked on the wire: clone cut ×1, reseed cut ×2, countdown
+guard ×2, LabelTool wipe ×1, D's `_resolveJournalDisplayTradeId` ×7, `loadBrandLogoForExport` ×2,
+and in `multichart-prod/multichart-manager.js` `mcStashPanelHandles` ×5 with both the
+stashed-handle and XFRAME-REF-RELEASE switches ×2 each. Recording the trap: those last two read
+**zero** in `chart.js` and I nearly reported a regression — they live in the multichart manager,
+which is where b107 verified them.
+
+**One operational note worth keeping.** SSH port 22 to the canary is blocked from this network
+and times out; **port 443 works** (`ssh -p 443 root@31.97.192.82`). Local Docker Desktop was
+stopped and holds no canary images at all, which made it look briefly as though the whole canary
+had vanished — it had not. The stack, the images and the wire are all on the host. Anyone who
+picks this lane up should reach for `-p 443` before concluding the host is down.
+
+**Still open, and not mine to close silently:** why the endpoint went quiet for C's authenticated
+session. An anonymous probe gets `401` in 2 ms, so the server is not stalling unconditionally.
+b113 makes the client immune either way, which is the requirement — a hung POST is now impossible
+rather than unlikely — but the server-side trigger is unnamed.
