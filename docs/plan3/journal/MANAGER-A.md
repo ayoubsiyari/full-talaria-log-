@@ -1952,3 +1952,47 @@ users do not have.
 
 **Still owed:** realm-eviction grade (not inventing it), CKPT-01 acceptance RED on multichart
 embed boot (iframes: 0). A1/A2 remain shelved at CONF-01 scale.
+
+## 23:20 — CKPT-01: the rollback IS exercised; two of the reds were my grader
+
+**eb31ffaa7** on manager-a/ckpt01-artifact-20260730, ZERO product bytes. Suite 11 -> 18, four
+mutants applied ON DISK each killed by a NAMED behavioural cell, negative control NOT_APPLIED,
+file restored byte-identical c0432a0ea26be1a9. Evidence in _evidence\manager-A\ per EVID-02.
+
+**I HAD BEEN REPORTING CKPT-01 AS "acceptance RED" AND DRAWING THE WRONG CONCLUSION FROM IT.**
+Reading the rehearsal record properly: the rollback is genuinely exercised. Browser loaded the
+RETAINED bytes (chartServedLocal 148, chartProxiedToLive 0, chartRequestsToLiveOrigin 0, main
+document AND engine both sourced artifact), the product ran (replay index 2010->2384, timestamp
+advanced), and the proof is a MOVED INDEX with isPlayingIsNotEvidence:true - never a boolean,
+which was my stated requirement. Negative control goes red and restores. Post-run integrity
+120/0. Residual hole measured: 0 unanswered chart requests, 83/120 exercised, 37 never requested
+and honestly labelled unexercised coverage rather than proof of redundancy. That is CKPT-01
+point 2 DONE. Not claiming CKPT-01 is satisfied - two things still block it.
+
+**BOTH BLOCKING REDS WERE MINE.** (1) The multichart count polled
+querySelectorAll('iframe').length through .catch(() => 0), so a destroyed execution context and
+an empty grid read identically as zero. Its OWN record contradicts it: chart-embed.html served
+from the artifact, 72 chart requests, 0 misses, and the harness's own comment says a single-panel
+boot never requests that file. Now counts embed DOCUMENTS via page.frames() and records
+measurability separately from value. I am NOT claiming panels booted - claiming the instrument
+cannot tell us. (2) The assertion-control arm never booted (hasChart false, main-document-from-
+artifact FALSE) and the verdict line called that "the check did not go red with replay stopped",
+i.e. stated a finding about the grader that was never demonstrated. Credit where due: the
+predicate ALREADY required a healthy boot, so the guard worked and refused the dead arm; only
+the reporting collapsed the two cases. Now split by an explicit inconclusive flag carrying the
+boot stage and failures.
+
+**MY OWN TRAP, THIRTEENTH-ISH SIGHTING AND THIS TIME IN MY OWN CELLS:** M3 SURVIVED the first
+mutant run. Every dead-arm cell I wrote set hasChart:false, so && short-circuited and the
+data-length half of the predicate was never entered - five cells around a branch none of them
+reached. Killed by the realistic state it guards: shell boots, window.chart exists, series never
+loads. Exactly the green-suite-dead-branch shape I have been recording against other people all
+day.
+
+**Realm-eviction grade: STILL OWED and I am not inventing it.** The read-only dispatch produced
+NO durable artifact - no grading doc, nothing in the evidence dir. Reporting that plainly rather
+than reconstructing a verdict from a chat summary. Question is well posed (five flags live at
+b113, first build in which they can act) and unanswered, and it depends on the same multichart
+boot path CKPT-01 just found it cannot currently measure.
+
+Doc: HEARTBEAT-A-CKPT01-ROLLBACK-IS-EXERCISED-THE-GRADER-WAS-THE-RED-20260730-2320.md
