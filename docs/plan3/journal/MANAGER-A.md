@@ -923,3 +923,103 @@ and span moved style-elements-recalculated 41.2 -> 1292.1 per move (31.4x) and f
 the cheap canvas numbers are a real null and not a blind one. Instrument overhead +1.52 ms/move (12%),
 inside the run-to-run spread of either arm and an order of magnitude below the control's sensitivity.
 
+
+## 14:26 - LEGEND-HOVER-RENDER-SCOPE ACCEPTED 5971c8c6b, and it cost me a retraction
+
+Packet accepted. `manager-a/legend-hover-render-scope-20260730` @ `5971c8c6b`, parent `e675e5d1b`. Tree clean,
+diff confined to the writable set, both mirrors byte-identical (indicators `559835D44872013D`, drawing-tools
+`38082CC1EE6E9502`), flag present exactly once per file across all four copies, bogus control 0. 25/25 green.
+
+### MY BRIEFING ERROR - I sent it to a tree that predates my own shipped cut
+
+The author reported that `__TALARIA_DISABLE_RAF_PAINT_COALESCE_V1` "does not exist anywhere in the tree", and
+that this voids the inference I built the packet on. **It is right, and the fault is mine.** Verified:
+
+| ref | flag hits | control `_isWheelZoomBurst` |
+|---|---|---|
+| `e675e5d1b` (the base I specified) | **0** | 14 |
+| `612602877` (my cpu-cuts commit) | 2 | 14 |
+| deployed b113 | 2 | - |
+
+`f282a5692`, which introduced the flag, is **not an ancestor of `e675e5d1b`**. I chose that base for
+cherry-pick independence and then briefed a diagnosis that depends on a cut the base does not contain. The
+author's grep was correct and its positive control was sound. This is the exact `row-audit-read-wrong-tree`
+failure I carry as a standing rule - an audit's tree must be pinned to the DEPLOYED sha - and this time I am
+the one who committed it. It does mean the author's refutation is scoped to a tree where my premise is
+absent, so it does not by itself reach the inference; but I had no business making it check.
+
+### RETRACTED: "five Chart.render() per pointermove" is not established
+
+I put that number in the journal. Withdrawing it. The author challenged the proxy conversion; its stated
+alternative (one render fanning across five `updateClipPath` call sites) is not the mechanism, but the
+objection is right for a different reason I confirmed myself:
+
+- `updateClipPath` has **5 call sites + 1 definition** - the author's count, not my 6.
+- `redrawAll` calls `updateClipPath` **exactly once**, so that leg is 1:1 as I assumed.
+- But `render()` can enter `redrawDrawings()` at **three** sites (chart.js:29769, :29858, :29937).
+
+So 5.00 clip writes/move is a floor of **~2 renders/move**, not 5. The differential still holds - every idle
+control arm returned zero chains, so the renders are hover-caused - but the count was inflated by a fan-out
+I did not account for. What survives: hover causes renders, and 11.29 ms/move is measured directly.
+
+**Reconciliation for the edge the author could not find, and it is testable.** It enumerated all 60 direct
+`this.render()` sites and found none hover-reachable; I confirmed `updatePriceHoverLine` is dead code on the
+deployed build too (1 occurrence = the definition, zero callers). But the alert-system wrapper at
+`chart/dist-v9/index.html:1922-1929` **re-wraps `ch.render`** - a hover to render edge through a runtime
+wrapper is invisible to a static grep of chart.js source, and the probe measured the deployed build which
+carries the wrapper. That is B's build output per the dist-v9 ownership rule. Next probe counts `Chart.render`
+ENTRIES directly instead of a downstream proxy; I should have specified that the first time.
+
+### The author's reinterpretation is the better diagnosis
+
+CUT 2 explains the whole evidence set with no render involved: `_syncSeparatePanelOverlayValues` rebuilt every
+row on every move (the 99.6%-outside-the-hovered-row split), and `el.innerHTML = ''` destroys the node under
+the cursor, forcing the browser to revalidate the whole `:hover` chain (the 93-element recalc against a
+~4-node subtree). Its sharpest point: this is why legend hover costs 11.29 ms and candle hover 5.39 ms
+*despite the candle running strictly more handlers* - on the candle the cursor is not inside the mutated
+subtree. Measured result: 24.00 mutations/move and 7.00 elements/move both to **0.00** intra-bar; element
+allocation to zero on every surface and pattern.
+
+The `:20549` comment I quoted as false is now **true** rather than edited - the behaviour changed to match it.
+The author describing that as "fixed the comment" is loose but not wrong in effect.
+
+### My own 7 mutants: 2 killed, 4 survived, control NOT_APPLIED
+
+Applied on disk to both mirrors, needle asserted `== 1` in each, restored and sha-verified (`559835D44872013D`
+both, identical to baseline). Killer attribution excludes the suite's own mirror/runner cells per the standing
+rule; the author had already excluded them by construction, which is the glow-packet lesson correctly applied.
+
+| mutant | result |
+|---|---|
+| P1 signature constant (rows freeze forever) | KILLED - C05, C06, C01d |
+| P3 single-tag text frozen | KILLED - C05, C01d |
+| P2 multi-tag **colour** frozen | **SURVIVED** |
+| P6 single-tag **colour** frozen | **SURVIVED** |
+| P5 row transitioning to `hideValues` keeps stale spans | **SURVIVED** |
+| P4 drop the childNodes-length shape check | **SURVIVED** (redundant guard) |
+| CONTROL needle absent | NOT_APPLIED (loud) |
+
+**Text staleness is fully covered. Colour staleness is not covered at all, on either path.** Root cause is one
+line: test.mjs:307 `spec.colors.map((c, i) => ({ text: barValue(spec.id, bar, i), color: c }))` varies the
+text by bar and takes the colour from a **fixed** `spec.colors`. So C06 - a cell named CHEAT-CATCH whose whole
+job is to be uncheatable - asserts colours at every bar against an expectation that never changes, and C07
+asserts a single-tag colour statically. Production varies exactly this: MACD histogram colour flips with the
+sign of the histogram. A regression that froze colour would leave a stuck-green histogram and a green CI.
+
+Eighth sighting of the anchor/teeth family, and the second today where the cell that fails is the one named
+for catching cheats. No live defect - the shipped code updates colour correctly. Test-only.
+
+P4 is knowingly redundant: the shape string is `'multi:' + tags.length`, so a count mismatch needs an external
+writer. The author called it "a second line of defence" and that grading is fair; not counting it against.
+
+### Left standing, both disclosed by the author unprompted
+
+- `updateCrosshair` calls `getBoundingClientRect()` on every crosshair update to auto-detect stale dimensions
+  = a forced synchronous layout per pointermove on all three surfaces. Real, in a writable file, outside the
+  three named cuts. Changing resize detection to buy a hover win is not a trade to make unasked.
+- `_syncSeparatePanelAxisTags` tears down and recreates every axis tag node per call - the same antipattern
+  one level up, on the render path rather than the hover path. Obvious next packet.
+
+Cherry-pick viability checked against the deployed surface: `_renderSeparatePanelLegendValue`,
+`_syncSeparatePanelOverlayValues` and `_syncSeparatePanelAxisTags` are all still present in deployed
+`chart-indicators-full.js` at b113, so the stale base does not block application.
