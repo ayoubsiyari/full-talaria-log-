@@ -14,7 +14,20 @@
     "cannotSee": "the GPU process, and the PO's route or machine"
   },
 
-  "blocker_one_line": "Every chart load after the FIRST hangs on my harness against deployed — I need B or the PO to say in 60 seconds whether reloading the chart tab hangs for a real user, because if it does it outranks everything in the memory plan.",
+  "blocker_one_line": "POST /api/chart/windows/claim and POST /api/chart/windows/release both hang forever on deployed, so the SECOND chart load in a browser never boots — B confirms whether 9fc8763f0 (B-0197) is in the deployed build and redeploys if not.",
+
+  "the_hang_is_named": {
+    "instrument": "requests tracked on tab 1 from the first load, dumped at the moment of the wedge (the wedged tab cannot be queried, so this is recorded ahead of time)",
+    "requests_in_flight_at_the_wedge": [
+      { "method": "POST", "url": "/api/chart/windows/release", "resourceType": "ping", "pendingMs": 240287 },
+      { "method": "POST", "url": "/api/chart/windows/claim", "resourceType": "fetch", "pendingMs": 239463 }
+    ],
+    "in_flight_count": 2,
+    "reading": "these are the ONLY two requests outstanding, and both are the window claim path. They never return in four minutes. This is precisely the defect B fixed today in 9fc8763f0 — 'the window claim could hang every gated fetch, and said nothing when it failed' — observed live on the deployed build.",
+    "why_the_fresh_tab_starved_too": "a dozen static PNGs (/w80/*.png, /assets/icons/*.png) sat pending 64s in the fresh tab while /api/auth/me returned normally, and the fresh tab did NOT bounce to /login. HTTP/1.1 caps concurrent connections per origin per BROWSER, not per tab, so the two hung POSTs plus the wedged tab's queue starve every other tab on the origin.",
+    "my_competing_harness_hypothesis_is_now_dead": "a synthetic session id cannot explain a POST that never returns, nor the same hang with distinct session ids per load",
+    "user_visible_consequence": "reload the chart tab, or open the chart in a second tab, and the chart never boots — and static assets stall browser-wide on that origin until the browser is closed. The PO would not have hit it because he keeps one tab open all day."
+  },
 
   "the_hang_characterised": {
     "reproduction": "4 independent runs, 12 attempted loads: load 1 always succeeds, loads 2..5 always exceed a 150s deadline",
@@ -24,9 +37,8 @@
     "not_this_tab_s_history": "a FRESH TAB opened in the same browser while the first was wedged could not load the chart either",
     "not_session-id-bound": "a run with a DISTINCT session id per load (--distinct-sessions) hung identically at load 2, so it is not a same-session claim",
     "server_recovers": "immediately after the browser exits, /chart/dist-v9/index.html returns 200 in 313ms and /login in 134ms from the same machine",
-    "leading_hypothesis": "a shared claim or gated fetch held by the live first session blocks subsequent document loads, and the blocked request stalls the new renderer's main thread during parse — that is the shape of today's B-0197 fix ('the window claim could hang every gated fetch, and said nothing when it failed', 9fc8763f0)",
-    "competing_hypothesis_not_excluded": "my harness seeds a synthetic session_id that does not exist server-side; a claim path on a non-existent session could hang for me and not for a real user. Load 1 uses the same synthetic id and always works, which weakens this but does not kill it.",
-    "what_decides_it": "B says whether 9fc8763f0 is in the deployed build, or the PO opens the chart, reloads the tab, and reports whether it comes back"
+    "cause": "CONFIRMED by the in-flight capture above: POST /api/chart/windows/claim and POST /api/chart/windows/release never return",
+    "what_B_decides": "whether 9fc8763f0 (B-0197) is in the deployed build; if it is, the fix does not cover this path and the hang is still live"
   },
 
   "node_counter_noise_floor": {

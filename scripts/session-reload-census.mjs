@@ -102,10 +102,28 @@ async function probeWedge(page, cdp, browserCdp = null, browser = null, url = nu
     let fresh = null;
     try {
       fresh = await withDeadline(browser.newPage(), 20_000, 'wedge fresh tab');
-      await withDeadline(fresh.goto(url, { waitUntil: 'domcontentloaded', timeout: 45_000 }), 50_000, 'wedge fresh goto');
+      // Which request never comes back is the thing B can act on. Requests that
+      // start and never finish are recorded by URL, in order.
+      const pending = new Map();
+      fresh.on('request', (r) => pending.set(r.url(), { url: r.url(), type: r.resourceType(), startedAt: Date.now() }));
+      const settle = (r) => pending.delete(r.url());
+      fresh.on('requestfinished', settle);
+      fresh.on('requestfailed', settle);
+      await withDeadline(fresh.goto(url, { waitUntil: 'domcontentloaded', timeout: 45_000 }), 50_000, 'wedge fresh goto')
+        .catch((e) => { out.freshGotoError = String(e?.message || e); });
       const ready = await withDeadline(waitForDistV9SingleReady(fresh, 60_000), 65_000, 'wedge fresh ready')
         .then(() => true).catch(() => false);
       out.freshTabLoads = ready;
+      // Sampled AFTER the readiness attempt: a request still pending here is one
+      // that never came back, which is the request B needs named.
+      out.freshTabPendingRequests = [...pending.values()]
+        .map((r) => ({ url: r.url.replace(/^https?:\/\/[^/]+/, ''), type: r.type, pendingMs: Date.now() - r.startedAt }))
+        .sort((a, b) => b.pendingMs - a.pendingMs)
+        .slice(0, 12);
+      // Bouncing to /login would mean the session was invalidated, which is a
+      // different fault from a hung fetch and must not be reported as one.
+      out.freshTabUrl = fresh.url().replace(/^https?:\/\/[^/]+/, '');
+      out.freshTabBouncedToLogin = /\/login\/?/i.test(out.freshTabUrl);
       out.freshTabElements = ready
         ? await fresh.evaluate(() => document.querySelectorAll('*').length).catch(() => null)
         : null;
@@ -253,6 +271,18 @@ export async function runSessionReloadCensus({
     await cdp.send('HeapProfiler.enable');
     // "Aw, Snap" and uncaught page errors are the difference between a hang and a
     // crash, and neither shows up in a timeout message.
+    // HTTP/1.1 caps concurrent connections PER ORIGIN PER BROWSER, so long-lived
+    // requests in this tab can starve every other tab. Tracking what tab 1 holds
+    // open is the only way to name them, since the tab cannot be queried once wedged.
+    const inFlight = new Map();
+    page.on('request', (r) => inFlight.set(r.url() + r.method() + Date.now(), {
+      url: r.url(), method: r.method(), type: r.resourceType(), startedAt: Date.now(),
+    }));
+    const clear = (r) => {
+      for (const [k, v] of inFlight) if (v.url === r.url()) inFlight.delete(k);
+    };
+    page.on('requestfinished', clear);
+    page.on('requestfailed', clear);
     const crashEvents = [];
     page.on('error', (e) => crashEvents.push({ kind: 'target-crash', message: String(e?.message || e) }));
     page.on('pageerror', (e) => crashEvents.push({ kind: 'page-error', message: String(e?.message || e).slice(0, 300) }));
@@ -319,6 +349,16 @@ export async function runSessionReloadCensus({
         row.wedge = await probeWedge(page, cdp, browserCdp, browser, url)
           .catch((e) => ({ probeError: String(e?.message || e) }));
         row.crashEvents = crashEvents.slice();
+        row.tab1RequestsInFlight = [...inFlight.values()]
+          .map((r) => ({
+            url: r.url.replace(/^https?:\/\/[^/]+/, ''),
+            method: r.method,
+            type: r.type,
+            pendingMs: Date.now() - r.startedAt,
+          }))
+          .sort((a, b) => b.pendingMs - a.pendingMs)
+          .slice(0, 20);
+        row.tab1InFlightCount = inFlight.size;
       }
       rows.push(row);
       save();
