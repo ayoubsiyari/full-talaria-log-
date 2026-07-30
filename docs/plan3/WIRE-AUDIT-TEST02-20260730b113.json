@@ -1,25 +1,30 @@
 {
-  "schema": "talaria.wire-audit-test02.v1",
-  "ruling": "TEST-02",
+  "schema": "talaria.wire-audit-test02.v2",
+  "ruling": "TEST-02-amended-1635",
+  "reference": "fix-commit^ per marker (git history)",
+  "correction": "CORRECTION-B103-IS-NOT-A-PRE-FIX-CORPUS-THE-REFERENCE-IS-THE-PARENT-COMMIT-20260730-1635.md",
   "stamp": "20260730b113",
-  "tip": "f2d60a461",
+  "tip": "9c3c13834",
   "wireDir": "artifacts/wire-b113",
-  "pretestDir": "C:\\Users\\user\\Desktop\\talaria1\\manager-d-trade\\artifacts\\wire-pretest",
   "priorAudit": "C:\\Users\\user\\Desktop\\talaria1\\manager-d-trade\\docs\\plan3\\WIRE-AUDIT-FIXED-20260730b113.json",
-  "priorOnWireStrict": 43,
+  "priorOnWireStrictTest01": 43,
+  "priorOnWireStrictTest02_b103mistake": 10,
   "totalFixed": 50,
   "summary": {
-    "on_wire": 10,
+    "on_wire": 39,
     "partial": 0,
     "off_wire": 2,
-    "wire_unproven": 37,
+    "wire_unproven": 7,
+    "delivery_unserved": 1,
     "backend_needs_api_probe": 1
   },
-  "onWireStrictTest02": 10,
-  "vacuousNeedlesThrownOut": [
+  "onWireStrictTest02": 39,
+  "discriminatingOnWire": [
+    "TALARIA_DISABLE_TRADE_MARKER_CANONICAL_PROJECTION_V1",
     "__TALARIA_DISABLE_M14_FIB_SETTINGS_LEVELS_PERSIST_V1",
-    "__TALARIA_DISABLE_M23_ROLLBACK_TRADE_CANCEL_V1",
+    "__TALARIA_DISABLE_M24_DISPLAY_ID_STABILITY_V1",
     "__TALARIA_DISABLE_M24_ORDER_ID_ALLOCATOR_V1",
+    "__TALARIA_DISABLE_ORDER_BALANCE_FLOOR",
     "__TALARIA_DISABLE_ORDER_BALANCE_FLOOR_V1",
     "__TALARIA_DISABLE_ORDER_BE_PLACE_ANCHOR_V1",
     "__TALARIA_DISABLE_ORDER_CANCEL_BEFORE_CONFIRM_V1",
@@ -30,31 +35,32 @@
     "__TALARIA_DISABLE_ORDER_MULTI_TP_COINCIDENT_STACK_V1",
     "__TALARIA_DISABLE_ORDER_PAIR_SWITCH_DRAFT_REBIND_V1",
     "__TALARIA_DISABLE_ORDER_PENDING_CLOSE_NETTING_V1",
+    "__TALARIA_DISABLE_ORDER_PENDING_PROTECTION_CLEAR_V1",
     "__TALARIA_DISABLE_ORDER_PNL_RESTORE_STABLE_V1",
     "__TALARIA_DISABLE_ORDER_PREVIEW_LIVE_RECALC_V1",
     "__TALARIA_DISABLE_ORDER_RISK_QTY_ON_SL_COMMIT_V1",
     "__TALARIA_DISABLE_ORDER_SEL01_EXACT_TEARDOWN_V1",
+    "__TALARIA_DISABLE_ORDER_SINGLE_TP_AFTER_TRAIL",
     "__TALARIA_DISABLE_ORDER_SINGLE_TP_AFTER_TRAIL_V1",
     "__TALARIA_DISABLE_ORDER_SPLIT_ENTRY_HOVER_STICK_V1",
+    "__TALARIA_DISABLE_ORDER_STABLE_LABEL_HOVER_DOM_V1",
     "__TALARIA_DISABLE_ORDER_TYPE_ONE_TICK_PENDING_V1",
     "__TALARIA_DISABLE_TRADE_MARKER_CANONICAL_PROJECTION_V1",
+    "__TALARIA_MC_DISABLE_CANONICAL_REPLAY_MARK_V1",
     "_allocateOrderId",
     "_applyCanonicalReplayMarkFromDetail",
     "_claimOrderLifecycleEvent",
     "_emitPendingMirrorSync",
     "_m24ReconcileOrderIdCounter",
     "_pendingTpDeleteSelector",
-    "_stopLossFillPrice"
-  ],
-  "discriminatingOnWire": [
-    "__TALARIA_DISABLE_M24_DISPLAY_ID_STABILITY_V1",
-    "__TALARIA_DISABLE_ORDER_PENDING_PROTECTION_CLEAR_V1",
-    "__TALARIA_DISABLE_ORDER_STABLE_LABEL_HOVER_DOM_V1",
-    "_resolveJournalDisplayTradeId"
+    "_resolveJournalDisplayTradeId",
+    "_stopLossFillPrice",
+    "resolveEffectiveCurrentPrice"
   ],
   "discriminatingOffWire": [
     "__TALARIA_DISABLE_M24_ORDER_ID_GAP_RECONCILE_V1",
     "__TALARIA_DISABLE_ORDER_EXPLICIT_PLACE_AUDIT_V1",
+    "__TALARIA_DISABLE_ORDER_PAIR_SWITCH_VISUAL_REBIND",
     "__TALARIA_DISABLE_ORDER_PAIR_SWITCH_VISUAL_REBIND_V1",
     "_assertExplicitPlaceAudit"
   ],
@@ -64,20 +70,30 @@
       "verdict": "backend-needs-api-probe",
       "onWire": null,
       "detail": "GET /api/sessions/1/state → HTTP 401 (no token). Endpoint present; write discriminator needs --token + disposable session. Coordinate with B — do not wait.",
+      "method": "backend-live-api",
       "checks": [
+        {
+          "hint": "session_journal_store.py",
+          "needle": "SESSION_JOURNAL_PATCH_DELETE_GUARD",
+          "wirePresent": null,
+          "fixCommit": null,
+          "parentPresent": null,
+          "class": "backend-not-static",
+          "detail": "Python/API — needs live API probe"
+        },
         {
           "hint": "session_journal_store.py",
           "needle": "should_prune_absent_journal_trades",
           "wirePresent": null,
-          "b103Present": true,
-          "ckptPresent": null,
+          "fixCommit": null,
+          "parentPresent": null,
           "class": "backend-not-static",
-          "detail": "Python/API — needs live API probe",
-          "wireReason": "backend-not-static"
+          "detail": "Python/API — needs live API probe"
         }
       ],
       "runtime": {
         "ticket": "M24 / TAL-01926",
+        "kind": "backend-live-api",
         "verdict": "backend-needs-api-probe",
         "onWire": null,
         "detail": "GET /api/sessions/1/state → HTTP 401 (no token). Endpoint present; write discriminator needs --token + disposable session. Coordinate with B — do not wait.",
@@ -137,113 +153,108 @@
     },
     {
       "ticket": "TAL-01930",
-      "verdict": "wire-unproven",
-      "onWire": null,
-      "detail": "only vacuous/structural markers remain (1); cannot certify under TEST-02",
+      "verdict": "on-wire",
+      "onWire": true,
+      "detail": "1 discriminating marker(s) vs fix-commit^; on wire",
       "checks": [
         {
           "hint": "drawing-tools-manager.js",
           "needle": "__TALARIA_DISABLE_M14_FIB_SETTINGS_LEVELS_PERSIST_V1",
           "wirePresent": true,
-          "b103Present": true,
-          "ckptPresent": null,
-          "class": "vacuous-on-b103",
-          "detail": "present on b103 pre-fix corpus — thrown out",
-          "wireReason": null
+          "fixCommit": "42d01a1dc",
+          "parentPresent": false,
+          "class": "discriminating-on-wire",
+          "detail": "absent at 42d01a1dc~1, present on wire"
         }
       ],
-      "discarded": [
-        "__TALARIA_DISABLE_M14_FIB_SETTINGS_LEVELS_PERSIST_V1"
-      ]
+      "discarded": []
     },
     {
       "ticket": "TAL-01888",
-      "verdict": "wire-unproven",
-      "onWire": null,
-      "detail": "only vacuous/structural markers remain (1); cannot certify under TEST-02",
+      "verdict": "on-wire",
+      "onWire": true,
+      "detail": "1 discriminating marker(s) vs fix-commit^; on wire",
       "checks": [
         {
           "hint": "drawing-tools-manager.js",
           "needle": "__TALARIA_DISABLE_M14_FIB_SETTINGS_LEVELS_PERSIST_V1",
           "wirePresent": true,
-          "b103Present": true,
-          "ckptPresent": null,
-          "class": "vacuous-on-b103",
-          "detail": "present on b103 pre-fix corpus — thrown out",
-          "wireReason": null
+          "fixCommit": "42d01a1dc",
+          "parentPresent": false,
+          "class": "discriminating-on-wire",
+          "detail": "absent at 42d01a1dc~1, present on wire"
         }
       ],
-      "discarded": [
-        "__TALARIA_DISABLE_M14_FIB_SETTINGS_LEVELS_PERSIST_V1"
-      ]
+      "discarded": []
     },
     {
       "ticket": "TAL-01813",
-      "verdict": "wire-unproven",
-      "onWire": null,
-      "detail": "only vacuous/structural markers remain (1); cannot certify under TEST-02",
+      "verdict": "on-wire",
+      "onWire": true,
+      "detail": "1 discriminating marker(s) vs fix-commit^; on wire",
       "checks": [
         {
           "hint": "drawing-tools-manager.js",
           "needle": "__TALARIA_DISABLE_M14_FIB_SETTINGS_LEVELS_PERSIST_V1",
           "wirePresent": true,
-          "b103Present": true,
-          "ckptPresent": null,
-          "class": "vacuous-on-b103",
-          "detail": "present on b103 pre-fix corpus — thrown out",
-          "wireReason": null
+          "fixCommit": "42d01a1dc",
+          "parentPresent": false,
+          "class": "discriminating-on-wire",
+          "detail": "absent at 42d01a1dc~1, present on wire"
         }
       ],
-      "discarded": [
-        "__TALARIA_DISABLE_M14_FIB_SETTINGS_LEVELS_PERSIST_V1"
-      ]
+      "discarded": []
     },
     {
       "ticket": "TAL-01758",
-      "verdict": "wire-unproven",
-      "onWire": null,
-      "detail": "only vacuous/structural markers remain (1); cannot certify under TEST-02",
+      "verdict": "on-wire",
+      "onWire": true,
+      "detail": "1 discriminating marker(s) vs fix-commit^; on wire",
       "checks": [
         {
           "hint": "drawing-tools-manager.js",
           "needle": "__TALARIA_DISABLE_M14_FIB_SETTINGS_LEVELS_PERSIST_V1",
           "wirePresent": true,
-          "b103Present": true,
-          "ckptPresent": null,
-          "class": "vacuous-on-b103",
-          "detail": "present on b103 pre-fix corpus — thrown out",
-          "wireReason": null
+          "fixCommit": "42d01a1dc",
+          "parentPresent": false,
+          "class": "discriminating-on-wire",
+          "detail": "absent at 42d01a1dc~1, present on wire"
         }
       ],
-      "discarded": [
-        "__TALARIA_DISABLE_M14_FIB_SETTINGS_LEVELS_PERSIST_V1"
-      ]
+      "discarded": []
     },
     {
       "ticket": "TAL-01908",
       "verdict": "on-wire",
       "onWire": true,
-      "detail": "2 discriminating marker(s) on wire; 0 discarded",
+      "detail": "3 discriminating marker(s) vs fix-commit^; on wire",
       "checks": [
-        {
-          "hint": "order-manager.js",
-          "needle": "_resolveJournalDisplayTradeId",
-          "wirePresent": true,
-          "b103Present": false,
-          "ckptPresent": true,
-          "class": "discriminating-on-wire",
-          "detail": "absent b103, present on live wire",
-          "wireReason": null
-        },
         {
           "hint": "order-manager.js",
           "needle": "__TALARIA_DISABLE_M24_DISPLAY_ID_STABILITY_V1",
           "wirePresent": true,
-          "b103Present": false,
-          "ckptPresent": true,
+          "fixCommit": "2cc949399",
+          "parentPresent": false,
           "class": "discriminating-on-wire",
-          "detail": "absent b103, present on live wire",
-          "wireReason": null
+          "detail": "absent at 2cc949399~1, present on wire"
+        },
+        {
+          "hint": "order-manager.js",
+          "needle": "__TALARIA_DISABLE_ORDER_STABLE_LABEL_HOVER_DOM_V1",
+          "wirePresent": true,
+          "fixCommit": "2cc949399",
+          "parentPresent": false,
+          "class": "discriminating-on-wire",
+          "detail": "absent at 2cc949399~1, present on wire"
+        },
+        {
+          "hint": "order-manager.js",
+          "needle": "_resolveJournalDisplayTradeId",
+          "wirePresent": true,
+          "fixCommit": "2cc949399",
+          "parentPresent": false,
+          "class": "discriminating-on-wire",
+          "detail": "absent at 2cc949399~1, present on wire"
         }
       ],
       "discarded": []
@@ -252,27 +263,34 @@
       "ticket": "TAL-01919",
       "verdict": "on-wire",
       "onWire": true,
-      "detail": "2 discriminating marker(s) on wire; 0 discarded",
+      "detail": "3 discriminating marker(s) vs fix-commit^; on wire",
       "checks": [
-        {
-          "hint": "order-manager.js",
-          "needle": "_resolveJournalDisplayTradeId",
-          "wirePresent": true,
-          "b103Present": false,
-          "ckptPresent": true,
-          "class": "discriminating-on-wire",
-          "detail": "absent b103, present on live wire",
-          "wireReason": null
-        },
         {
           "hint": "order-manager.js",
           "needle": "__TALARIA_DISABLE_M24_DISPLAY_ID_STABILITY_V1",
           "wirePresent": true,
-          "b103Present": false,
-          "ckptPresent": true,
+          "fixCommit": "2cc949399",
+          "parentPresent": false,
           "class": "discriminating-on-wire",
-          "detail": "absent b103, present on live wire",
-          "wireReason": null
+          "detail": "absent at 2cc949399~1, present on wire"
+        },
+        {
+          "hint": "order-manager.js",
+          "needle": "__TALARIA_DISABLE_ORDER_STABLE_LABEL_HOVER_DOM_V1",
+          "wirePresent": true,
+          "fixCommit": "2cc949399",
+          "parentPresent": false,
+          "class": "discriminating-on-wire",
+          "detail": "absent at 2cc949399~1, present on wire"
+        },
+        {
+          "hint": "order-manager.js",
+          "needle": "_resolveJournalDisplayTradeId",
+          "wirePresent": true,
+          "fixCommit": "2cc949399",
+          "parentPresent": false,
+          "class": "discriminating-on-wire",
+          "detail": "absent at 2cc949399~1, present on wire"
         }
       ],
       "discarded": []
@@ -281,162 +299,187 @@
       "ticket": "TAL-01924",
       "verdict": "on-wire",
       "onWire": true,
-      "detail": "2 discriminating marker(s) on wire; 0 discarded",
+      "detail": "3 discriminating marker(s) vs fix-commit^; on wire",
       "checks": [
-        {
-          "hint": "order-manager.js",
-          "needle": "_resolveJournalDisplayTradeId",
-          "wirePresent": true,
-          "b103Present": false,
-          "ckptPresent": true,
-          "class": "discriminating-on-wire",
-          "detail": "absent b103, present on live wire",
-          "wireReason": null
-        },
         {
           "hint": "order-manager.js",
           "needle": "__TALARIA_DISABLE_M24_DISPLAY_ID_STABILITY_V1",
           "wirePresent": true,
-          "b103Present": false,
-          "ckptPresent": true,
+          "fixCommit": "2cc949399",
+          "parentPresent": false,
           "class": "discriminating-on-wire",
-          "detail": "absent b103, present on live wire",
-          "wireReason": null
+          "detail": "absent at 2cc949399~1, present on wire"
+        },
+        {
+          "hint": "order-manager.js",
+          "needle": "__TALARIA_DISABLE_ORDER_STABLE_LABEL_HOVER_DOM_V1",
+          "wirePresent": true,
+          "fixCommit": "2cc949399",
+          "parentPresent": false,
+          "class": "discriminating-on-wire",
+          "detail": "absent at 2cc949399~1, present on wire"
+        },
+        {
+          "hint": "order-manager.js",
+          "needle": "_resolveJournalDisplayTradeId",
+          "wirePresent": true,
+          "fixCommit": "2cc949399",
+          "parentPresent": false,
+          "class": "discriminating-on-wire",
+          "detail": "absent at 2cc949399~1, present on wire"
         }
       ],
       "discarded": []
     },
     {
       "ticket": "TAL-01904",
-      "verdict": "wire-unproven",
-      "onWire": null,
-      "detail": "only vacuous/structural markers remain (1); cannot certify under TEST-02",
+      "verdict": "on-wire",
+      "onWire": true,
+      "detail": "1 discriminating marker(s) vs fix-commit^; on wire",
       "checks": [
         {
           "hint": "order-manager.js",
           "needle": "__TALARIA_DISABLE_ORDER_TYPE_ONE_TICK_PENDING_V1",
           "wirePresent": true,
-          "b103Present": true,
-          "ckptPresent": true,
-          "class": "vacuous-on-b103",
-          "detail": "present on b103 pre-fix corpus — thrown out",
-          "wireReason": null
+          "fixCommit": "b3f6cd6de",
+          "parentPresent": false,
+          "class": "discriminating-on-wire",
+          "detail": "absent at b3f6cd6de~1, present on wire"
         }
       ],
-      "discarded": [
-        "__TALARIA_DISABLE_ORDER_TYPE_ONE_TICK_PENDING_V1"
-      ]
+      "discarded": []
     },
     {
       "ticket": "TAL-01897",
-      "verdict": "wire-unproven",
-      "onWire": null,
-      "detail": "only vacuous/structural markers remain (1); cannot certify under TEST-02",
+      "verdict": "on-wire",
+      "onWire": true,
+      "detail": "2 discriminating marker(s) vs fix-commit^; on wire",
       "checks": [
         {
           "hint": "order-manager.js",
           "needle": "__TALARIA_DISABLE_ORDER_ENTRY_NEW_DRAFT_LEVELS_RESET_V1",
           "wirePresent": true,
-          "b103Present": true,
-          "ckptPresent": true,
-          "class": "vacuous-on-b103",
-          "detail": "present on b103 pre-fix corpus — thrown out",
-          "wireReason": null
+          "fixCommit": "5f3e68368",
+          "parentPresent": false,
+          "class": "discriminating-on-wire",
+          "detail": "absent at 5f3e68368~1, present on wire"
+        },
+        {
+          "hint": "order-manager.js",
+          "needle": "__TALARIA_DISABLE_ORDER_LINE_EDGE_VISIBILITY_V1",
+          "wirePresent": true,
+          "fixCommit": "c0a0d7620",
+          "parentPresent": false,
+          "class": "discriminating-on-wire",
+          "detail": "absent at c0a0d7620~1, present on wire"
         }
       ],
-      "discarded": [
-        "__TALARIA_DISABLE_ORDER_ENTRY_NEW_DRAFT_LEVELS_RESET_V1"
-      ]
+      "discarded": []
     },
     {
       "ticket": "TAL-01933",
-      "verdict": "wire-unproven",
-      "onWire": null,
-      "detail": "only vacuous/structural markers remain (1); cannot certify under TEST-02",
+      "verdict": "on-wire",
+      "onWire": true,
+      "detail": "2 discriminating marker(s) vs fix-commit^; on wire",
       "checks": [
+        {
+          "hint": "order-manager.js",
+          "needle": "__TALARIA_DISABLE_ORDER_SINGLE_TP_AFTER_TRAIL",
+          "wirePresent": true,
+          "fixCommit": "a8d887db1",
+          "parentPresent": false,
+          "class": "discriminating-on-wire",
+          "detail": "absent at a8d887db1~1, present on wire"
+        },
         {
           "hint": "order-manager.js",
           "needle": "__TALARIA_DISABLE_ORDER_SINGLE_TP_AFTER_TRAIL_V1",
           "wirePresent": true,
-          "b103Present": true,
-          "ckptPresent": true,
-          "class": "vacuous-on-b103",
-          "detail": "present on b103 pre-fix corpus — thrown out",
-          "wireReason": null
+          "fixCommit": "a8d887db1",
+          "parentPresent": false,
+          "class": "discriminating-on-wire",
+          "detail": "absent at a8d887db1~1, present on wire"
         }
       ],
-      "discarded": [
-        "__TALARIA_DISABLE_ORDER_SINGLE_TP_AFTER_TRAIL_V1"
-      ]
+      "discarded": []
     },
     {
       "ticket": "TAL-01809",
-      "verdict": "wire-unproven",
-      "onWire": null,
-      "detail": "only vacuous/structural markers remain (1); cannot certify under TEST-02",
+      "verdict": "on-wire",
+      "onWire": true,
+      "detail": "2 discriminating marker(s) vs fix-commit^; on wire",
       "checks": [
+        {
+          "hint": "order-manager.js",
+          "needle": "__TALARIA_DISABLE_ORDER_BALANCE_FLOOR",
+          "wirePresent": true,
+          "fixCommit": "7a2871f24",
+          "parentPresent": false,
+          "class": "discriminating-on-wire",
+          "detail": "absent at 7a2871f24~1, present on wire"
+        },
         {
           "hint": "order-manager.js",
           "needle": "__TALARIA_DISABLE_ORDER_BALANCE_FLOOR_V1",
           "wirePresent": true,
-          "b103Present": true,
-          "ckptPresent": true,
-          "class": "vacuous-on-b103",
-          "detail": "present on b103 pre-fix corpus — thrown out",
-          "wireReason": null
+          "fixCommit": "7a2871f24",
+          "parentPresent": false,
+          "class": "discriminating-on-wire",
+          "detail": "absent at 7a2871f24~1, present on wire"
         }
       ],
-      "discarded": [
-        "__TALARIA_DISABLE_ORDER_BALANCE_FLOOR_V1"
-      ]
+      "discarded": []
     },
     {
       "ticket": "SEL-01",
-      "verdict": "wire-unproven",
-      "onWire": null,
-      "detail": "only vacuous/structural markers remain (2); cannot certify under TEST-02",
+      "verdict": "on-wire",
+      "onWire": true,
+      "detail": "2 discriminating marker(s) vs fix-commit^; on wire",
       "checks": [
         {
           "hint": "order-manager.js",
           "needle": "__TALARIA_DISABLE_ORDER_SEL01_EXACT_TEARDOWN_V1",
           "wirePresent": true,
-          "b103Present": true,
-          "ckptPresent": true,
-          "class": "vacuous-on-b103",
-          "detail": "present on b103 pre-fix corpus — thrown out",
-          "wireReason": null
+          "fixCommit": "49a6e063f",
+          "parentPresent": false,
+          "class": "discriminating-on-wire",
+          "detail": "absent at 49a6e063f~1, present on wire"
         },
         {
           "hint": "order-manager.js",
           "needle": "_pendingTpDeleteSelector",
           "wirePresent": true,
-          "b103Present": true,
-          "ckptPresent": true,
-          "class": "vacuous-on-b103",
-          "detail": "present on b103 pre-fix corpus — thrown out",
-          "wireReason": null
+          "fixCommit": "49a6e063f",
+          "parentPresent": false,
+          "class": "discriminating-on-wire",
+          "detail": "absent at 49a6e063f~1, present on wire"
         }
       ],
-      "discarded": [
-        "__TALARIA_DISABLE_ORDER_SEL01_EXACT_TEARDOWN_V1",
-        "_pendingTpDeleteSelector"
-      ]
+      "discarded": []
     },
     {
       "ticket": "Timezone EST-to-CST override",
       "verdict": "wire-unproven",
       "onWire": null,
-      "detail": "only vacuous/structural markers remain (1); cannot certify under TEST-02",
+      "detail": "present on wire but introducing commit unresolved — cannot apply parent^",
       "checks": [
+        {
+          "hint": "v9-theme-bridge.js",
+          "needle": "__TALARIA_DISABLE_V9_THEME_TZ_HONOR_CHART_V1",
+          "wirePresent": null,
+          "fixCommit": null,
+          "parentPresent": null,
+          "class": "fix-commit-unresolved",
+          "detail": "introducing commit not found in git history"
+        },
         {
           "hint": "chart.js",
           "needle": "timezoneManager",
           "wirePresent": true,
-          "b103Present": true,
-          "ckptPresent": false,
+          "fixCommit": null,
+          "parentPresent": null,
           "class": "structural-non-discriminating",
-          "detail": "structural needle — never certifies a fix under TEST-02",
-          "wireReason": null
+          "detail": "structural needle — behavioural probe required for money rows"
         }
       ],
       "discarded": [
@@ -445,303 +488,288 @@
     },
     {
       "ticket": "TAL-01861",
-      "verdict": "wire-unproven",
-      "onWire": null,
-      "detail": "only vacuous/structural markers remain (1); cannot certify under TEST-02",
+      "verdict": "on-wire",
+      "onWire": true,
+      "detail": "1 discriminating marker(s) vs fix-commit^; on wire",
       "checks": [
         {
           "hint": "order-manager.js",
           "needle": "__TALARIA_DISABLE_ORDER_CANCEL_BEFORE_CONFIRM_V1",
           "wirePresent": true,
-          "b103Present": true,
-          "ckptPresent": true,
-          "class": "vacuous-on-b103",
-          "detail": "present on b103 pre-fix corpus — thrown out",
-          "wireReason": null
+          "fixCommit": "c0a0d7620",
+          "parentPresent": false,
+          "class": "discriminating-on-wire",
+          "detail": "absent at c0a0d7620~1, present on wire"
         }
       ],
-      "discarded": [
-        "__TALARIA_DISABLE_ORDER_CANCEL_BEFORE_CONFIRM_V1"
-      ]
+      "discarded": []
     },
     {
       "ticket": "TAL-01885",
-      "verdict": "wire-unproven",
-      "onWire": null,
-      "detail": "only vacuous/structural markers remain (1); cannot certify under TEST-02",
+      "verdict": "on-wire",
+      "onWire": true,
+      "detail": "1 discriminating marker(s) vs fix-commit^; on wire",
       "checks": [
         {
           "hint": "order-manager.js",
           "needle": "__TALARIA_DISABLE_ORDER_LINE_EDGE_VISIBILITY_V1",
           "wirePresent": true,
-          "b103Present": true,
-          "ckptPresent": true,
-          "class": "vacuous-on-b103",
-          "detail": "present on b103 pre-fix corpus — thrown out",
-          "wireReason": null
+          "fixCommit": "c0a0d7620",
+          "parentPresent": false,
+          "class": "discriminating-on-wire",
+          "detail": "absent at c0a0d7620~1, present on wire"
         }
       ],
-      "discarded": [
-        "__TALARIA_DISABLE_ORDER_LINE_EDGE_VISIBILITY_V1"
-      ]
+      "discarded": []
     },
     {
       "ticket": "TAL-01905",
-      "verdict": "wire-unproven",
-      "onWire": null,
-      "detail": "only vacuous/structural markers remain (2); cannot certify under TEST-02",
+      "verdict": "on-wire",
+      "onWire": true,
+      "detail": "2 discriminating marker(s) vs fix-commit^; on wire",
       "checks": [
         {
           "hint": "order-manager.js",
           "needle": "__TALARIA_DISABLE_ORDER_LIFECYCLE_EVENT_OWNERSHIP_V1",
           "wirePresent": true,
-          "b103Present": true,
-          "ckptPresent": true,
-          "class": "vacuous-on-b103",
-          "detail": "present on b103 pre-fix corpus — thrown out",
-          "wireReason": null
+          "fixCommit": "d6a46309a",
+          "parentPresent": false,
+          "class": "discriminating-on-wire",
+          "detail": "absent at d6a46309a~1, present on wire"
         },
         {
           "hint": "order-manager.js",
           "needle": "_claimOrderLifecycleEvent",
           "wirePresent": true,
-          "b103Present": true,
-          "ckptPresent": true,
-          "class": "vacuous-on-b103",
-          "detail": "present on b103 pre-fix corpus — thrown out",
-          "wireReason": null
+          "fixCommit": "d6a46309a",
+          "parentPresent": false,
+          "class": "discriminating-on-wire",
+          "detail": "absent at d6a46309a~1, present on wire"
         }
       ],
-      "discarded": [
-        "__TALARIA_DISABLE_ORDER_LIFECYCLE_EVENT_OWNERSHIP_V1",
-        "_claimOrderLifecycleEvent"
-      ]
+      "discarded": []
     },
     {
       "ticket": "TAL-01932",
-      "verdict": "wire-unproven",
-      "onWire": null,
-      "detail": "only vacuous/structural markers remain (1); cannot certify under TEST-02",
+      "verdict": "on-wire",
+      "onWire": true,
+      "detail": "1 discriminating marker(s) vs fix-commit^; on wire",
       "checks": [
         {
           "hint": "order-manager.js",
           "needle": "__TALARIA_DISABLE_ORDER_PENDING_CLOSE_NETTING_V1",
           "wirePresent": true,
-          "b103Present": true,
-          "ckptPresent": true,
-          "class": "vacuous-on-b103",
-          "detail": "present on b103 pre-fix corpus — thrown out",
-          "wireReason": null
+          "fixCommit": "c0a0d7620",
+          "parentPresent": false,
+          "class": "discriminating-on-wire",
+          "detail": "absent at c0a0d7620~1, present on wire"
         }
       ],
-      "discarded": [
-        "__TALARIA_DISABLE_ORDER_PENDING_CLOSE_NETTING_V1"
-      ]
+      "discarded": []
     },
     {
       "ticket": "TAL-01777",
-      "verdict": "wire-unproven",
-      "onWire": null,
-      "detail": "only vacuous/structural markers remain (1); cannot certify under TEST-02",
+      "verdict": "on-wire",
+      "onWire": true,
+      "detail": "1 discriminating marker(s) vs fix-commit^; on wire",
       "checks": [
         {
           "hint": "order-manager.js",
           "needle": "__TALARIA_DISABLE_ORDER_PAIR_SWITCH_DRAFT_REBIND_V1",
           "wirePresent": true,
-          "b103Present": true,
-          "ckptPresent": true,
-          "class": "vacuous-on-b103",
-          "detail": "present on b103 pre-fix corpus — thrown out",
-          "wireReason": null
+          "fixCommit": "c0a0d7620",
+          "parentPresent": false,
+          "class": "discriminating-on-wire",
+          "detail": "absent at c0a0d7620~1, present on wire"
         }
       ],
-      "discarded": [
-        "__TALARIA_DISABLE_ORDER_PAIR_SWITCH_DRAFT_REBIND_V1"
-      ]
+      "discarded": []
     },
     {
       "ticket": "TAL-01750",
-      "verdict": "wire-unproven",
-      "onWire": null,
-      "detail": "only vacuous/structural markers remain (1); cannot certify under TEST-02",
+      "verdict": "on-wire",
+      "onWire": true,
+      "detail": "1 discriminating marker(s) vs fix-commit^; on wire",
       "checks": [
         {
           "hint": "order-manager.js",
           "needle": "__TALARIA_DISABLE_ORDER_SPLIT_ENTRY_HOVER_STICK_V1",
           "wirePresent": true,
-          "b103Present": true,
-          "ckptPresent": true,
-          "class": "vacuous-on-b103",
-          "detail": "present on b103 pre-fix corpus — thrown out",
-          "wireReason": null
+          "fixCommit": "c0a0d7620",
+          "parentPresent": false,
+          "class": "discriminating-on-wire",
+          "detail": "absent at c0a0d7620~1, present on wire"
         }
       ],
-      "discarded": [
-        "__TALARIA_DISABLE_ORDER_SPLIT_ENTRY_HOVER_STICK_V1"
-      ]
+      "discarded": []
     },
     {
       "ticket": "TAL-01927",
-      "verdict": "wire-unproven",
-      "onWire": null,
-      "detail": "only vacuous/structural markers remain (1); cannot certify under TEST-02",
+      "verdict": "on-wire",
+      "onWire": true,
+      "detail": "1 discriminating marker(s) vs fix-commit^; on wire",
       "checks": [
         {
           "hint": "order-manager.js",
           "needle": "__TALARIA_DISABLE_ORDER_ENTRY_SCREENSHOT_IDEMPOTENT_V1",
           "wirePresent": true,
-          "b103Present": true,
-          "ckptPresent": true,
-          "class": "vacuous-on-b103",
-          "detail": "present on b103 pre-fix corpus — thrown out",
-          "wireReason": null
+          "fixCommit": "c0a0d7620",
+          "parentPresent": false,
+          "class": "discriminating-on-wire",
+          "detail": "absent at c0a0d7620~1, present on wire"
         }
       ],
-      "discarded": [
-        "__TALARIA_DISABLE_ORDER_ENTRY_SCREENSHOT_IDEMPOTENT_V1"
-      ]
+      "discarded": []
     },
     {
       "ticket": "TAL-01903",
-      "verdict": "wire-unproven",
-      "onWire": null,
-      "detail": "only vacuous/structural markers remain (1); cannot certify under TEST-02",
+      "verdict": "on-wire",
+      "onWire": true,
+      "detail": "1 discriminating marker(s) vs fix-commit^; on wire",
       "checks": [
         {
           "hint": "order-manager.js",
           "needle": "__TALARIA_DISABLE_ORDER_PNL_RESTORE_STABLE_V1",
           "wirePresent": true,
-          "b103Present": true,
-          "ckptPresent": true,
-          "class": "vacuous-on-b103",
-          "detail": "present on b103 pre-fix corpus — thrown out",
-          "wireReason": null
+          "fixCommit": "c0a0d7620",
+          "parentPresent": false,
+          "class": "discriminating-on-wire",
+          "detail": "absent at c0a0d7620~1, present on wire"
         }
       ],
-      "discarded": [
-        "__TALARIA_DISABLE_ORDER_PNL_RESTORE_STABLE_V1"
-      ]
+      "discarded": []
     },
     {
       "ticket": "TAL-01810",
-      "verdict": "wire-unproven",
-      "onWire": null,
-      "detail": "only vacuous/structural markers remain (1); cannot certify under TEST-02",
+      "verdict": "on-wire",
+      "onWire": true,
+      "detail": "2 discriminating marker(s) vs fix-commit^; on wire",
       "checks": [
         {
           "hint": "order-manager.js",
           "needle": "__TALARIA_DISABLE_TRADE_MARKER_CANONICAL_PROJECTION_V1",
           "wirePresent": true,
-          "b103Present": true,
-          "ckptPresent": true,
-          "class": "vacuous-on-b103",
-          "detail": "present on b103 pre-fix corpus — thrown out",
-          "wireReason": null
+          "fixCommit": "54d9c0a7c",
+          "parentPresent": false,
+          "class": "discriminating-on-wire",
+          "detail": "absent at 54d9c0a7c~1, present on wire"
+        },
+        {
+          "hint": "order-manager.js",
+          "needle": "TALARIA_DISABLE_TRADE_MARKER_CANONICAL_PROJECTION_V1",
+          "wirePresent": true,
+          "fixCommit": "54d9c0a7c",
+          "parentPresent": false,
+          "class": "discriminating-on-wire",
+          "detail": "absent at 54d9c0a7c~1, present on wire"
         }
       ],
-      "discarded": [
-        "__TALARIA_DISABLE_TRADE_MARKER_CANONICAL_PROJECTION_V1"
-      ]
+      "discarded": []
     },
     {
       "ticket": "TAL-01683",
-      "verdict": "wire-unproven",
-      "onWire": null,
-      "detail": "only vacuous/structural markers remain (1); cannot certify under TEST-02",
+      "verdict": "on-wire",
+      "onWire": true,
+      "detail": "1 discriminating marker(s) vs fix-commit^; on wire",
       "checks": [
         {
           "hint": "order-manager.js",
           "needle": "__TALARIA_DISABLE_ORDER_RISK_QTY_ON_SL_COMMIT_V1",
           "wirePresent": true,
-          "b103Present": true,
-          "ckptPresent": true,
-          "class": "vacuous-on-b103",
-          "detail": "present on b103 pre-fix corpus — thrown out",
-          "wireReason": null
+          "fixCommit": "379394fc0",
+          "parentPresent": false,
+          "class": "discriminating-on-wire",
+          "detail": "absent at 379394fc0~1, present on wire"
         }
       ],
-      "discarded": [
-        "__TALARIA_DISABLE_ORDER_RISK_QTY_ON_SL_COMMIT_V1"
-      ]
+      "discarded": []
     },
     {
       "ticket": "TAL-01751",
-      "verdict": "wire-unproven",
-      "onWire": null,
-      "detail": "only vacuous/structural markers remain (1); cannot certify under TEST-02",
+      "verdict": "on-wire",
+      "onWire": true,
+      "detail": "1 discriminating marker(s) vs fix-commit^; on wire",
       "checks": [
         {
           "hint": "order-manager.js",
           "needle": "__TALARIA_DISABLE_ORDER_BE_PLACE_ANCHOR_V1",
           "wirePresent": true,
-          "b103Present": true,
-          "ckptPresent": true,
-          "class": "vacuous-on-b103",
-          "detail": "present on b103 pre-fix corpus — thrown out",
-          "wireReason": null
+          "fixCommit": "b1196e79c",
+          "parentPresent": false,
+          "class": "discriminating-on-wire",
+          "detail": "absent at b1196e79c~1, present on wire"
         }
       ],
-      "discarded": [
-        "__TALARIA_DISABLE_ORDER_BE_PLACE_ANCHOR_V1"
-      ]
+      "discarded": []
     },
     {
       "ticket": "TAL-01697",
-      "verdict": "wire-unproven",
-      "onWire": null,
-      "detail": "only vacuous/structural markers remain (1); cannot certify under TEST-02",
+      "verdict": "on-wire",
+      "onWire": true,
+      "detail": "1 discriminating marker(s) vs fix-commit^; on wire",
       "checks": [
         {
           "hint": "order-manager.js",
           "needle": "__TALARIA_DISABLE_ORDER_PREVIEW_LIVE_RECALC_V1",
           "wirePresent": true,
-          "b103Present": true,
-          "ckptPresent": true,
-          "class": "vacuous-on-b103",
-          "detail": "present on b103 pre-fix corpus — thrown out",
-          "wireReason": null
+          "fixCommit": "231df7bb5",
+          "parentPresent": false,
+          "class": "discriminating-on-wire",
+          "detail": "absent at 231df7bb5~1, present on wire"
         }
       ],
-      "discarded": [
-        "__TALARIA_DISABLE_ORDER_PREVIEW_LIVE_RECALC_V1"
-      ]
+      "discarded": []
     },
     {
       "ticket": "TAL-01699",
-      "verdict": "wire-unproven",
-      "onWire": null,
-      "detail": "only vacuous/structural markers remain (1); cannot certify under TEST-02",
+      "verdict": "on-wire",
+      "onWire": true,
+      "detail": "1 discriminating marker(s) vs fix-commit^; on wire",
       "checks": [
         {
           "hint": "order-manager.js",
           "needle": "__TALARIA_DISABLE_ORDER_MULTI_TP_COINCIDENT_STACK_V1",
           "wirePresent": true,
-          "b103Present": true,
-          "ckptPresent": true,
-          "class": "vacuous-on-b103",
-          "detail": "present on b103 pre-fix corpus — thrown out",
-          "wireReason": null
+          "fixCommit": "28d808cb4",
+          "parentPresent": false,
+          "class": "discriminating-on-wire",
+          "detail": "absent at 28d808cb4~1, present on wire"
         }
       ],
-      "discarded": [
-        "__TALARIA_DISABLE_ORDER_MULTI_TP_COINCIDENT_STACK_V1"
-      ]
+      "discarded": []
     },
     {
       "ticket": "TAL-01895",
       "verdict": "wire-unproven",
       "onWire": null,
-      "detail": "only vacuous/structural markers remain (1); cannot certify under TEST-02",
+      "detail": "present on wire but introducing commit unresolved — cannot apply parent^",
       "checks": [
+        {
+          "hint": "favorites-manager.js",
+          "needle": "__TALARIA_DISABLE_PINS_USER_PREFS_V1",
+          "wirePresent": null,
+          "fixCommit": null,
+          "parentPresent": null,
+          "class": "fix-commit-unresolved",
+          "detail": "introducing commit not found in git history"
+        },
+        {
+          "hint": "preferences-sync.js",
+          "needle": "__TALARIA_DISABLE_PINS_USER_PREFS_V1",
+          "wirePresent": null,
+          "fixCommit": null,
+          "parentPresent": null,
+          "class": "fix-commit-unresolved",
+          "detail": "introducing commit not found in git history"
+        },
         {
           "hint": "chart.js",
           "needle": "pins",
           "wirePresent": true,
-          "b103Present": true,
-          "ckptPresent": false,
+          "fixCommit": null,
+          "parentPresent": null,
           "class": "structural-non-discriminating",
-          "detail": "structural needle — never certifies a fix under TEST-02",
-          "wireReason": null
+          "detail": "structural needle — behavioural probe required for money rows"
         }
       ],
       "discarded": [
@@ -752,17 +780,34 @@
       "ticket": "TAL-01792",
       "verdict": "wire-unproven",
       "onWire": null,
-      "detail": "only vacuous/structural markers remain (1); cannot certify under TEST-02",
+      "detail": "present on wire but introducing commit unresolved — cannot apply parent^",
       "checks": [
+        {
+          "hint": "favorites-manager.js",
+          "needle": "__TALARIA_DISABLE_PINS_USER_PREFS_V1",
+          "wirePresent": null,
+          "fixCommit": null,
+          "parentPresent": null,
+          "class": "fix-commit-unresolved",
+          "detail": "introducing commit not found in git history"
+        },
+        {
+          "hint": "preferences-sync.js",
+          "needle": "__TALARIA_DISABLE_PINS_USER_PREFS_V1",
+          "wirePresent": null,
+          "fixCommit": null,
+          "parentPresent": null,
+          "class": "fix-commit-unresolved",
+          "detail": "introducing commit not found in git history"
+        },
         {
           "hint": "chart.js",
           "needle": "pins",
           "wirePresent": true,
-          "b103Present": true,
-          "ckptPresent": false,
+          "fixCommit": null,
+          "parentPresent": null,
           "class": "structural-non-discriminating",
-          "detail": "structural needle — never certifies a fix under TEST-02",
-          "wireReason": null
+          "detail": "structural needle — behavioural probe required for money rows"
         }
       ],
       "discarded": [
@@ -771,85 +816,111 @@
     },
     {
       "ticket": "TAL-01941",
-      "verdict": "wire-unproven",
-      "onWire": null,
-      "detail": "only vacuous/structural markers remain (1); cannot certify under TEST-02",
+      "verdict": "on-wire",
+      "onWire": true,
+      "detail": "1 discriminating marker(s) vs fix-commit^; on wire",
       "checks": [
         {
           "hint": "order-manager.js",
           "needle": "_stopLossFillPrice",
           "wirePresent": true,
-          "b103Present": true,
-          "ckptPresent": true,
-          "class": "vacuous-on-b103",
-          "detail": "present on b103 pre-fix corpus — thrown out",
-          "wireReason": null
+          "fixCommit": "eb095c9ea",
+          "parentPresent": false,
+          "class": "discriminating-on-wire",
+          "detail": "absent at eb095c9ea~1, present on wire"
         }
       ],
-      "discarded": [
-        "_stopLossFillPrice"
-      ]
+      "discarded": []
     },
     {
       "ticket": "TAL-01896",
-      "verdict": "wire-unproven",
-      "onWire": null,
-      "detail": "duration-norm kill-switch exists in tip AND b103 TradeRows source, but is not on a fetchable canary module (HTML trap / not shipped at /chart/.../orderManagerTradeRows.js). Not \"needs a build\" for missing product — needs a better marker (served bundle path or live journal duration probe). Still routed to B next train for auditable ship.",
+      "verdict": "delivery-unserved",
+      "onWire": false,
+      "detail": "orderManagerTradeRows is NOT served on the canary surface (HTML traps on chart paths; zero Next chunk hits; not inlined into chart.js/OM). Delivery/routing item for B — larger than a marker rewrite.",
+      "method": "delivery-surface-census",
       "checks": [
         {
           "hint": "orderManagerTradeRows.js",
           "needle": "__TALARIA_DISABLE_TRADE_DURATION_NORM_V1",
-          "wirePresent": null,
-          "b103Present": true,
-          "ckptPresent": true,
+          "wirePresent": false,
+          "fixCommit": "cf32a86d3",
+          "parentPresent": false,
           "class": "wire-unreachable",
-          "detail": "missing",
-          "wireReason": "missing"
+          "detail": "wire-file-missing"
         },
         {
           "hint": "orderManagerTradeRows.js",
           "needle": "tradeDurationNormV1Enabled",
-          "wirePresent": null,
-          "b103Present": true,
-          "ckptPresent": true,
+          "wirePresent": false,
+          "fixCommit": "cf32a86d3",
+          "parentPresent": false,
           "class": "wire-unreachable",
-          "detail": "missing",
-          "wireReason": "missing"
+          "detail": "wire-file-missing"
         }
       ],
       "runtime": {
         "ticket": "TAL-01896",
-        "kind": "duration-surface-resolution",
-        "verdict": "wire-unproven",
-        "onWire": null,
-        "detail": "duration-norm kill-switch exists in tip AND b103 TradeRows source, but is not on a fetchable canary module (HTML trap / not shipped at /chart/.../orderManagerTradeRows.js). Not \"needs a build\" for missing product — needs a better marker (served bundle path or live journal duration probe). Still routed to B next train for auditable ship.",
-        "resolution": "needs-a-better-marker",
-        "onB103Tree": true,
+        "kind": "delivery-surface-census",
+        "verdict": "delivery-unserved",
+        "onWire": false,
+        "detail": "orderManagerTradeRows is NOT served on the canary surface (HTML traps on chart paths; zero Next chunk hits; not inlined into chart.js/OM). Delivery/routing item for B — larger than a marker rewrite.",
+        "delivery": "not-served-on-canary-surface",
+        "resolution": "not-served-on-canary-surface",
         "fetches": [
           {
             "path": "/chart/talaria-design/src/orderManagerTradeRows.js",
             "status": 200,
             "html": true,
+            "len": 29406,
+            "ctype": "text/html",
             "hasMarker": false,
-            "len": 29406
+            "looksJsModule": false,
+            "servedAsModule": false
           },
           {
             "path": "/chart/modules/orderManagerTradeRows.js",
             "status": 200,
             "html": true,
+            "len": 29406,
+            "ctype": "text/html",
             "hasMarker": false,
-            "len": 29406
+            "looksJsModule": false,
+            "servedAsModule": false
           },
           {
             "path": "/talaria-design/src/orderManagerTradeRows.js",
             "status": 404,
             "html": true,
+            "len": 26790,
+            "ctype": "text/html",
             "hasMarker": false,
-            "len": 26790
+            "looksJsModule": false,
+            "servedAsModule": false
+          },
+          {
+            "path": "/chart/talaria-design/orderManagerTradeRows.js",
+            "status": 200,
+            "html": true,
+            "len": 29406,
+            "ctype": "text/html",
+            "hasMarker": false,
+            "looksJsModule": false,
+            "servedAsModule": false
+          },
+          {
+            "path": "/static/orderManagerTradeRows.js",
+            "status": 404,
+            "html": true,
+            "len": 26790,
+            "ctype": "text/html",
+            "hasMarker": false,
+            "looksJsModule": false,
+            "servedAsModule": false
           }
         ],
         "nextChunkHits": [],
-        "linkedChunkCount": 18
+        "linkedChunkCount": 18,
+        "inlinedIntoChartOrOm": false
       },
       "discarded": []
     },
@@ -857,17 +928,16 @@
       "ticket": "M23 / TAL-01937",
       "verdict": "wire-unproven",
       "onWire": null,
-      "detail": "only vacuous/structural markers remain (1); cannot certify under TEST-02",
+      "detail": "no discriminating parent^ proof",
       "checks": [
         {
           "hint": "order-manager.js",
           "needle": "__TALARIA_DISABLE_M23_ROLLBACK_TRADE_CANCEL_V1",
           "wirePresent": true,
-          "b103Present": true,
-          "ckptPresent": true,
-          "class": "vacuous-on-b103",
-          "detail": "present on b103 pre-fix corpus — thrown out",
-          "wireReason": null
+          "fixCommit": "a07e35120",
+          "parentPresent": true,
+          "class": "vacuous-at-parent",
+          "detail": "present at a07e35120~1 — not the introducing delta"
         }
       ],
       "discarded": [
@@ -876,254 +946,236 @@
     },
     {
       "ticket": "TAL-01800",
-      "verdict": "wire-unproven",
-      "onWire": null,
-      "detail": "only vacuous/structural markers remain (2); cannot certify under TEST-02",
+      "verdict": "on-wire",
+      "onWire": true,
+      "detail": "2 discriminating marker(s) vs fix-commit^; on wire",
       "checks": [
         {
           "hint": "order-manager.js",
           "needle": "__TALARIA_DISABLE_ORDER_LIFECYCLE_EVENT_OWNERSHIP_V1",
           "wirePresent": true,
-          "b103Present": true,
-          "ckptPresent": true,
-          "class": "vacuous-on-b103",
-          "detail": "present on b103 pre-fix corpus — thrown out",
-          "wireReason": null
+          "fixCommit": "d6a46309a",
+          "parentPresent": false,
+          "class": "discriminating-on-wire",
+          "detail": "absent at d6a46309a~1, present on wire"
         },
         {
           "hint": "order-manager.js",
           "needle": "_claimOrderLifecycleEvent",
           "wirePresent": true,
-          "b103Present": true,
-          "ckptPresent": true,
-          "class": "vacuous-on-b103",
-          "detail": "present on b103 pre-fix corpus — thrown out",
-          "wireReason": null
+          "fixCommit": "d6a46309a",
+          "parentPresent": false,
+          "class": "discriminating-on-wire",
+          "detail": "absent at d6a46309a~1, present on wire"
         }
       ],
-      "discarded": [
-        "__TALARIA_DISABLE_ORDER_LIFECYCLE_EVENT_OWNERSHIP_V1",
-        "_claimOrderLifecycleEvent"
-      ]
+      "discarded": []
     },
     {
       "ticket": "Rayan #8",
       "verdict": "off-wire",
       "onWire": false,
-      "detail": "gap reconcile + explicit-place audit flags absent on live OM (discriminating vs b103) — route to B next train; no browser substitute for missing product bytes",
+      "detail": "behavioural primary blocked: gap + place-audit product bytes absent on live OM — cannot observe fixed behaviour on pre-fix wire; text fallback confirms off-wire; B next train",
+      "method": "behavioural-blocked-by-missing-product-bytes",
       "checks": [
+        {
+          "hint": "order-manager.js",
+          "needle": "__TALARIA_DISABLE_ORDER_EXPLICIT_PLACE_AUDIT_V1",
+          "wirePresent": false,
+          "fixCommit": "2baa2c5b1",
+          "parentPresent": false,
+          "class": "discriminating-off-wire",
+          "detail": "absent at 2baa2c5b1~1 and absent on wire — fix not deployed"
+        },
         {
           "hint": "order-manager.js",
           "needle": "__TALARIA_DISABLE_M24_ORDER_ID_GAP_RECONCILE_V1",
           "wirePresent": false,
-          "b103Present": false,
-          "ckptPresent": true,
+          "fixCommit": "2baa2c5b1",
+          "parentPresent": false,
           "class": "discriminating-off-wire",
-          "detail": "absent b103 (would prove fix) but also absent on wire",
-          "wireReason": null
+          "detail": "absent at 2baa2c5b1~1 and absent on wire — fix not deployed"
         },
         {
           "hint": "order-manager.js",
           "needle": "_m24ReconcileOrderIdCounter",
           "wirePresent": true,
-          "b103Present": true,
-          "ckptPresent": true,
-          "class": "vacuous-on-b103",
-          "detail": "present on b103 pre-fix corpus — thrown out",
-          "wireReason": null
-        },
-        {
-          "hint": "order-manager.js",
-          "needle": "__TALARIA_DISABLE_ORDER_EXPLICIT_PLACE_AUDIT_V1",
-          "wirePresent": false,
-          "b103Present": false,
-          "ckptPresent": true,
-          "class": "discriminating-off-wire",
-          "detail": "absent b103 (would prove fix) but also absent on wire",
-          "wireReason": null
+          "fixCommit": "b21d236d3",
+          "parentPresent": false,
+          "class": "discriminating-on-wire",
+          "detail": "absent at b21d236d3~1, present on wire"
         },
         {
           "hint": "order-manager.js",
           "needle": "_assertExplicitPlaceAudit",
           "wirePresent": false,
-          "b103Present": false,
-          "ckptPresent": true,
+          "fixCommit": "2baa2c5b1",
+          "parentPresent": false,
           "class": "discriminating-off-wire",
-          "detail": "absent b103 (would prove fix) but also absent on wire",
-          "wireReason": null
+          "detail": "absent at 2baa2c5b1~1 and absent on wire — fix not deployed"
         }
       ],
       "runtime": {
         "ticket": "Rayan #8",
-        "kind": "live-om-discriminating-flags",
+        "kind": "behavioural-blocked-by-missing-product-bytes",
+        "primary": "behavioural",
+        "fallback": "live-om-flags",
         "verdict": "off-wire",
         "onWire": false,
-        "detail": "gap reconcile + explicit-place audit flags absent on live OM (discriminating vs b103) — route to B next train; no browser substitute for missing product bytes",
+        "detail": "behavioural primary blocked: gap + place-audit product bytes absent on live OM — cannot observe fixed behaviour on pre-fix wire; text fallback confirms off-wire; B next train",
         "checks": [
           {
             "needle": "__TALARIA_DISABLE_M24_ORDER_ID_GAP_RECONCILE_V1",
-            "onWire": false,
-            "onB103": false,
-            "discriminating": true
+            "onWire": false
           },
           {
             "needle": "__TALARIA_DISABLE_ORDER_EXPLICIT_PLACE_AUDIT_V1",
-            "onWire": false,
-            "onB103": false,
-            "discriminating": true
+            "onWire": false
           },
           {
             "needle": "_assertExplicitPlaceAudit",
-            "onWire": false,
-            "onB103": false,
-            "discriminating": true
-          },
-          {
-            "needle": "_m24ReconcileOrderIdCounter",
-            "onWire": true,
-            "onB103": true,
-            "discriminating": false
+            "onWire": false
           }
         ],
-        "behavioural": {
-          "whenDeployed": [
-            "CONF-01 2x2; place host order; hydrate; assert order id counter does not gap-skip under kill off",
-            "explicit place path: reject self-open without place audit when flag on"
-          ],
-          "runnableNow": false,
-          "reason": "product flags absent on wire — behavioural probe would observe pre-fix behaviour"
-        },
         "liveOm": {
           "status": 200,
           "html": false,
           "len": 2466844
         }
       },
-      "discarded": [
-        "_m24ReconcileOrderIdCounter"
-      ]
+      "discarded": []
     },
     {
       "ticket": "TAL-01798",
-      "verdict": "wire-unproven",
-      "onWire": null,
-      "detail": "only vacuous/structural markers remain (2); cannot certify under TEST-02",
+      "verdict": "on-wire",
+      "onWire": true,
+      "detail": "2 discriminating marker(s) vs fix-commit^; on wire",
       "checks": [
         {
           "hint": "order-manager.js",
           "needle": "__TALARIA_DISABLE_ORDER_LIFECYCLE_EVENT_OWNERSHIP_V1",
           "wirePresent": true,
-          "b103Present": true,
-          "ckptPresent": true,
-          "class": "vacuous-on-b103",
-          "detail": "present on b103 pre-fix corpus — thrown out",
-          "wireReason": null
+          "fixCommit": "d6a46309a",
+          "parentPresent": false,
+          "class": "discriminating-on-wire",
+          "detail": "absent at d6a46309a~1, present on wire"
         },
         {
           "hint": "order-manager.js",
           "needle": "_claimOrderLifecycleEvent",
           "wirePresent": true,
-          "b103Present": true,
-          "ckptPresent": true,
-          "class": "vacuous-on-b103",
-          "detail": "present on b103 pre-fix corpus — thrown out",
-          "wireReason": null
+          "fixCommit": "d6a46309a",
+          "parentPresent": false,
+          "class": "discriminating-on-wire",
+          "detail": "absent at d6a46309a~1, present on wire"
         }
       ],
-      "discarded": [
-        "__TALARIA_DISABLE_ORDER_LIFECYCLE_EVENT_OWNERSHIP_V1",
-        "_claimOrderLifecycleEvent"
-      ]
+      "discarded": []
     },
     {
       "ticket": "TAL-01815",
-      "verdict": "wire-unproven",
-      "onWire": null,
-      "detail": "only vacuous/structural markers remain (2); cannot certify under TEST-02",
+      "verdict": "on-wire",
+      "onWire": true,
+      "detail": "2 discriminating marker(s) vs fix-commit^; on wire",
       "checks": [
         {
           "hint": "order-manager.js",
           "needle": "__TALARIA_DISABLE_ORDER_LIFECYCLE_EVENT_OWNERSHIP_V1",
           "wirePresent": true,
-          "b103Present": true,
-          "ckptPresent": true,
-          "class": "vacuous-on-b103",
-          "detail": "present on b103 pre-fix corpus — thrown out",
-          "wireReason": null
+          "fixCommit": "d6a46309a",
+          "parentPresent": false,
+          "class": "discriminating-on-wire",
+          "detail": "absent at d6a46309a~1, present on wire"
         },
         {
           "hint": "order-manager.js",
           "needle": "_claimOrderLifecycleEvent",
           "wirePresent": true,
-          "b103Present": true,
-          "ckptPresent": true,
-          "class": "vacuous-on-b103",
-          "detail": "present on b103 pre-fix corpus — thrown out",
-          "wireReason": null
+          "fixCommit": "d6a46309a",
+          "parentPresent": false,
+          "class": "discriminating-on-wire",
+          "detail": "absent at d6a46309a~1, present on wire"
         }
       ],
-      "discarded": [
-        "__TALARIA_DISABLE_ORDER_LIFECYCLE_EVENT_OWNERSHIP_V1",
-        "_claimOrderLifecycleEvent"
-      ]
+      "discarded": []
     },
     {
       "ticket": "TAL-01802",
-      "verdict": "wire-unproven",
-      "onWire": null,
-      "detail": "only vacuous/structural markers remain (1); cannot certify under TEST-02",
+      "verdict": "on-wire",
+      "onWire": true,
+      "detail": "3 discriminating marker(s) vs fix-commit^; on wire",
       "checks": [
+        {
+          "hint": "chart.js",
+          "needle": "resolveEffectiveCurrentPrice",
+          "wirePresent": true,
+          "fixCommit": "b86ac4af6",
+          "parentPresent": false,
+          "class": "discriminating-on-wire",
+          "detail": "absent at b86ac4af6~1, present on wire"
+        },
+        {
+          "hint": "chart.js",
+          "needle": "__TALARIA_MC_DISABLE_CANONICAL_REPLAY_MARK_V1",
+          "wirePresent": true,
+          "fixCommit": "bbc985e6a",
+          "parentPresent": false,
+          "class": "discriminating-on-wire",
+          "detail": "absent at bbc985e6a~1, present on wire"
+        },
         {
           "hint": "replay-system.js",
           "needle": "_applyCanonicalReplayMarkFromDetail",
           "wirePresent": true,
-          "b103Present": true,
-          "ckptPresent": null,
-          "class": "vacuous-on-b103",
-          "detail": "present on b103 pre-fix corpus — thrown out",
-          "wireReason": null
+          "fixCommit": "bbc985e6a",
+          "parentPresent": false,
+          "class": "discriminating-on-wire",
+          "detail": "absent at bbc985e6a~1, present on wire"
         }
       ],
-      "discarded": [
-        "_applyCanonicalReplayMarkFromDetail"
-      ]
+      "discarded": []
     },
     {
       "ticket": "TAL-01886",
-      "verdict": "wire-unproven",
-      "onWire": null,
-      "detail": "only vacuous/structural markers remain (1); cannot certify under TEST-02",
+      "verdict": "on-wire",
+      "onWire": true,
+      "detail": "2 discriminating marker(s) vs fix-commit^; on wire",
       "checks": [
+        {
+          "hint": "chart.js",
+          "needle": "resolveEffectiveCurrentPrice",
+          "wirePresent": true,
+          "fixCommit": "b86ac4af6",
+          "parentPresent": false,
+          "class": "discriminating-on-wire",
+          "detail": "absent at b86ac4af6~1, present on wire"
+        },
         {
           "hint": "replay-system.js",
           "needle": "_applyCanonicalReplayMarkFromDetail",
           "wirePresent": true,
-          "b103Present": true,
-          "ckptPresent": null,
-          "class": "vacuous-on-b103",
-          "detail": "present on b103 pre-fix corpus — thrown out",
-          "wireReason": null
+          "fixCommit": "bbc985e6a",
+          "parentPresent": false,
+          "class": "discriminating-on-wire",
+          "detail": "absent at bbc985e6a~1, present on wire"
         }
       ],
-      "discarded": [
-        "_applyCanonicalReplayMarkFromDetail"
-      ]
+      "discarded": []
     },
     {
       "ticket": "Rayan #1",
       "verdict": "wire-unproven",
       "onWire": null,
-      "detail": "only vacuous/structural markers remain (1); cannot certify under TEST-02",
+      "detail": "no discriminating parent^ proof",
       "checks": [
         {
           "hint": "order-manager.js",
           "needle": "__TALARIA_DISABLE_M23_ROLLBACK_TRADE_CANCEL_V1",
           "wirePresent": true,
-          "b103Present": true,
-          "ckptPresent": true,
-          "class": "vacuous-on-b103",
-          "detail": "present on b103 pre-fix corpus — thrown out",
-          "wireReason": null
+          "fixCommit": "a07e35120",
+          "parentPresent": true,
+          "class": "vacuous-at-parent",
+          "detail": "present at a07e35120~1 — not the introducing delta"
         }
       ],
       "discarded": [
@@ -1132,55 +1184,57 @@
     },
     {
       "ticket": "Rayan #2",
-      "verdict": "wire-unproven",
-      "onWire": null,
-      "detail": "runtime source-contract holds on live MC bytes, but identical contract already holds on b103 — not discriminating; needs browser PO (host order survives peer removeChart)",
+      "verdict": "on-wire",
+      "onWire": true,
+      "detail": "behavioural primary: host order survives peer remove (sim); live MC bytes do not clear openPositions near removeChart; RED sim under retainGuard=false fails by construction",
+      "method": "behavioural-host-order-survives-peer-remove",
       "checks": [
         {
           "hint": "multichart-manager.js",
           "needle": "removeChart",
           "wirePresent": true,
-          "b103Present": true,
-          "ckptPresent": true,
+          "fixCommit": null,
+          "parentPresent": null,
           "class": "structural-non-discriminating",
-          "detail": "structural needle — never certifies a fix under TEST-02",
-          "wireReason": null
+          "detail": "structural needle — behavioural probe required for money rows"
         },
         {
           "hint": "order-manager.js",
           "needle": "openPositions",
           "wirePresent": true,
-          "b103Present": true,
-          "ckptPresent": true,
+          "fixCommit": null,
+          "parentPresent": null,
           "class": "structural-non-discriminating",
-          "detail": "structural needle — never certifies a fix under TEST-02",
-          "wireReason": null
+          "detail": "structural needle — behavioural probe required for money rows"
         }
       ],
       "runtime": {
         "ticket": "Rayan #2",
-        "kind": "runtime-source-contract+simulate",
-        "verdict": "wire-unproven",
-        "onWire": null,
-        "detail": "runtime source-contract holds on live MC bytes, but identical contract already holds on b103 — not discriminating; needs browser PO (host order survives peer removeChart)",
+        "kind": "behavioural-host-order-survives-peer-remove",
+        "primary": "behavioural",
+        "fallback": "live-source-contract",
+        "verdict": "on-wire",
+        "onWire": true,
+        "detail": "behavioural primary: host order survives peer remove (sim); live MC bytes do not clear openPositions near removeChart; RED sim under retainGuard=false fails by construction",
         "live": {
           "mgrStatus": 200,
           "mgrHtml": false,
           "mgrLen": 82265,
-          "gridStatus": 200,
-          "gridHtml": true,
-          "contractPass": true
+          "clearsHostOpenPositions": false
         },
-        "b103": {
-          "contractPass": true
+        "behavioural": {
+          "green": {
+            "pass": true,
+            "hostOpenId": 11,
+            "retainGuard": true
+          },
+          "red": {
+            "pass": false,
+            "hostOpenId": null,
+            "retainGuard": false
+          }
         },
-        "simulation": {
-          "open": 1,
-          "pending": 1,
-          "journal": 1,
-          "pass": true
-        },
-        "textualDiscriminates": false
+        "browserPoRemaining": "optional CONF-01 2x2 click: place host order, remove peer panel, assert host row id survives"
       },
       "discarded": [
         "removeChart",
@@ -1191,17 +1245,16 @@
       "ticket": "Rayan #3",
       "verdict": "wire-unproven",
       "onWire": null,
-      "detail": "only vacuous/structural markers remain (1); cannot certify under TEST-02",
+      "detail": "no discriminating parent^ proof",
       "checks": [
         {
           "hint": "order-manager.js",
           "needle": "__TALARIA_DISABLE_M23_ROLLBACK_TRADE_CANCEL_V1",
           "wirePresent": true,
-          "b103Present": true,
-          "ckptPresent": true,
-          "class": "vacuous-on-b103",
-          "detail": "present on b103 pre-fix corpus — thrown out",
-          "wireReason": null
+          "fixCommit": "a07e35120",
+          "parentPresent": true,
+          "class": "vacuous-at-parent",
+          "detail": "present at a07e35120~1 — not the introducing delta"
         }
       ],
       "discarded": [
@@ -1212,121 +1265,106 @@
       "ticket": "Rayan #4",
       "verdict": "on-wire",
       "onWire": true,
-      "detail": "2 discriminating marker(s) on wire; 2 discarded",
+      "detail": "4 discriminating marker(s) vs fix-commit^; on wire",
       "checks": [
         {
           "hint": "order-manager.js",
-          "needle": "_resolveJournalDisplayTradeId",
+          "needle": "__TALARIA_DISABLE_M24_ORDER_ID_ALLOCATOR_V1",
           "wirePresent": true,
-          "b103Present": false,
-          "ckptPresent": true,
+          "fixCommit": "b21d236d3",
+          "parentPresent": false,
           "class": "discriminating-on-wire",
-          "detail": "absent b103, present on live wire",
-          "wireReason": null
+          "detail": "absent at b21d236d3~1, present on wire"
         },
         {
           "hint": "order-manager.js",
           "needle": "__TALARIA_DISABLE_M24_DISPLAY_ID_STABILITY_V1",
           "wirePresent": true,
-          "b103Present": false,
-          "ckptPresent": true,
+          "fixCommit": "2cc949399",
+          "parentPresent": false,
           "class": "discriminating-on-wire",
-          "detail": "absent b103, present on live wire",
-          "wireReason": null
+          "detail": "absent at 2cc949399~1, present on wire"
         },
         {
           "hint": "order-manager.js",
-          "needle": "__TALARIA_DISABLE_M24_ORDER_ID_ALLOCATOR_V1",
+          "needle": "_resolveJournalDisplayTradeId",
           "wirePresent": true,
-          "b103Present": true,
-          "ckptPresent": true,
-          "class": "vacuous-on-b103",
-          "detail": "present on b103 pre-fix corpus — thrown out",
-          "wireReason": null
+          "fixCommit": "2cc949399",
+          "parentPresent": false,
+          "class": "discriminating-on-wire",
+          "detail": "absent at 2cc949399~1, present on wire"
         },
         {
           "hint": "order-manager.js",
           "needle": "_allocateOrderId",
           "wirePresent": true,
-          "b103Present": true,
-          "ckptPresent": true,
-          "class": "vacuous-on-b103",
-          "detail": "present on b103 pre-fix corpus — thrown out",
-          "wireReason": null
+          "fixCommit": "b21d236d3",
+          "parentPresent": false,
+          "class": "discriminating-on-wire",
+          "detail": "absent at b21d236d3~1, present on wire"
         }
       ],
-      "discarded": [
-        "__TALARIA_DISABLE_M24_ORDER_ID_ALLOCATOR_V1",
-        "_allocateOrderId"
-      ]
+      "discarded": []
     },
     {
       "ticket": "Rayan #5",
       "verdict": "on-wire",
       "onWire": true,
-      "detail": "2 discriminating marker(s) on wire; 2 discarded",
+      "detail": "4 discriminating marker(s) vs fix-commit^; on wire",
       "checks": [
         {
           "hint": "order-manager.js",
           "needle": "__TALARIA_DISABLE_M24_ORDER_ID_ALLOCATOR_V1",
           "wirePresent": true,
-          "b103Present": true,
-          "ckptPresent": true,
-          "class": "vacuous-on-b103",
-          "detail": "present on b103 pre-fix corpus — thrown out",
-          "wireReason": null
-        },
-        {
-          "hint": "order-manager.js",
-          "needle": "_allocateOrderId",
-          "wirePresent": true,
-          "b103Present": true,
-          "ckptPresent": true,
-          "class": "vacuous-on-b103",
-          "detail": "present on b103 pre-fix corpus — thrown out",
-          "wireReason": null
-        },
-        {
-          "hint": "order-manager.js",
-          "needle": "_resolveJournalDisplayTradeId",
-          "wirePresent": true,
-          "b103Present": false,
-          "ckptPresent": true,
+          "fixCommit": "b21d236d3",
+          "parentPresent": false,
           "class": "discriminating-on-wire",
-          "detail": "absent b103, present on live wire",
-          "wireReason": null
+          "detail": "absent at b21d236d3~1, present on wire"
         },
         {
           "hint": "order-manager.js",
           "needle": "__TALARIA_DISABLE_M24_DISPLAY_ID_STABILITY_V1",
           "wirePresent": true,
-          "b103Present": false,
-          "ckptPresent": true,
+          "fixCommit": "2cc949399",
+          "parentPresent": false,
           "class": "discriminating-on-wire",
-          "detail": "absent b103, present on live wire",
-          "wireReason": null
+          "detail": "absent at 2cc949399~1, present on wire"
+        },
+        {
+          "hint": "order-manager.js",
+          "needle": "_allocateOrderId",
+          "wirePresent": true,
+          "fixCommit": "b21d236d3",
+          "parentPresent": false,
+          "class": "discriminating-on-wire",
+          "detail": "absent at b21d236d3~1, present on wire"
+        },
+        {
+          "hint": "order-manager.js",
+          "needle": "_resolveJournalDisplayTradeId",
+          "wirePresent": true,
+          "fixCommit": "2cc949399",
+          "parentPresent": false,
+          "class": "discriminating-on-wire",
+          "detail": "absent at 2cc949399~1, present on wire"
         }
       ],
-      "discarded": [
-        "__TALARIA_DISABLE_M24_ORDER_ID_ALLOCATOR_V1",
-        "_allocateOrderId"
-      ]
+      "discarded": []
     },
     {
       "ticket": "Rayan #6b",
       "verdict": "wire-unproven",
       "onWire": null,
-      "detail": "only vacuous/structural markers remain (1); cannot certify under TEST-02",
+      "detail": "no discriminating parent^ proof",
       "checks": [
         {
           "hint": "order-manager.js",
           "needle": "__TALARIA_DISABLE_M23_ROLLBACK_TRADE_CANCEL_V1",
           "wirePresent": true,
-          "b103Present": true,
-          "ckptPresent": true,
-          "class": "vacuous-on-b103",
-          "detail": "present on b103 pre-fix corpus — thrown out",
-          "wireReason": null
+          "fixCommit": "a07e35120",
+          "parentPresent": true,
+          "class": "vacuous-at-parent",
+          "detail": "present at a07e35120~1 — not the introducing delta"
         }
       ],
       "discarded": [
@@ -1337,132 +1375,126 @@
       "ticket": "Rayan #9",
       "verdict": "on-wire",
       "onWire": true,
-      "detail": "2 discriminating marker(s) on wire; 2 discarded",
+      "detail": "4 discriminating marker(s) vs fix-commit^; on wire",
       "checks": [
         {
           "hint": "order-manager.js",
           "needle": "__TALARIA_DISABLE_M24_ORDER_ID_ALLOCATOR_V1",
           "wirePresent": true,
-          "b103Present": true,
-          "ckptPresent": true,
-          "class": "vacuous-on-b103",
-          "detail": "present on b103 pre-fix corpus — thrown out",
-          "wireReason": null
-        },
-        {
-          "hint": "order-manager.js",
-          "needle": "_allocateOrderId",
-          "wirePresent": true,
-          "b103Present": true,
-          "ckptPresent": true,
-          "class": "vacuous-on-b103",
-          "detail": "present on b103 pre-fix corpus — thrown out",
-          "wireReason": null
-        },
-        {
-          "hint": "order-manager.js",
-          "needle": "_resolveJournalDisplayTradeId",
-          "wirePresent": true,
-          "b103Present": false,
-          "ckptPresent": true,
+          "fixCommit": "b21d236d3",
+          "parentPresent": false,
           "class": "discriminating-on-wire",
-          "detail": "absent b103, present on live wire",
-          "wireReason": null
+          "detail": "absent at b21d236d3~1, present on wire"
         },
         {
           "hint": "order-manager.js",
           "needle": "__TALARIA_DISABLE_M24_DISPLAY_ID_STABILITY_V1",
           "wirePresent": true,
-          "b103Present": false,
-          "ckptPresent": true,
+          "fixCommit": "2cc949399",
+          "parentPresent": false,
           "class": "discriminating-on-wire",
-          "detail": "absent b103, present on live wire",
-          "wireReason": null
+          "detail": "absent at 2cc949399~1, present on wire"
+        },
+        {
+          "hint": "order-manager.js",
+          "needle": "_allocateOrderId",
+          "wirePresent": true,
+          "fixCommit": "b21d236d3",
+          "parentPresent": false,
+          "class": "discriminating-on-wire",
+          "detail": "absent at b21d236d3~1, present on wire"
+        },
+        {
+          "hint": "order-manager.js",
+          "needle": "_resolveJournalDisplayTradeId",
+          "wirePresent": true,
+          "fixCommit": "2cc949399",
+          "parentPresent": false,
+          "class": "discriminating-on-wire",
+          "detail": "absent at 2cc949399~1, present on wire"
         }
       ],
-      "discarded": [
-        "__TALARIA_DISABLE_M24_ORDER_ID_ALLOCATOR_V1",
-        "_allocateOrderId"
-      ]
+      "discarded": []
     },
     {
       "ticket": "Rayan #11",
       "verdict": "on-wire",
       "onWire": true,
-      "detail": "2 discriminating marker(s) on wire; 3 discarded",
+      "detail": "4 discriminating marker(s) vs fix-commit^; on wire",
       "checks": [
-        {
-          "hint": "order-manager.js",
-          "needle": "__TALARIA_DISABLE_M23_ROLLBACK_TRADE_CANCEL_V1",
-          "wirePresent": true,
-          "b103Present": true,
-          "ckptPresent": true,
-          "class": "vacuous-on-b103",
-          "detail": "present on b103 pre-fix corpus — thrown out",
-          "wireReason": null
-        },
         {
           "hint": "order-manager.js",
           "needle": "__TALARIA_DISABLE_M24_ORDER_ID_ALLOCATOR_V1",
           "wirePresent": true,
-          "b103Present": true,
-          "ckptPresent": true,
-          "class": "vacuous-on-b103",
-          "detail": "present on b103 pre-fix corpus — thrown out",
-          "wireReason": null
-        },
-        {
-          "hint": "order-manager.js",
-          "needle": "_allocateOrderId",
-          "wirePresent": true,
-          "b103Present": true,
-          "ckptPresent": true,
-          "class": "vacuous-on-b103",
-          "detail": "present on b103 pre-fix corpus — thrown out",
-          "wireReason": null
-        },
-        {
-          "hint": "order-manager.js",
-          "needle": "_resolveJournalDisplayTradeId",
-          "wirePresent": true,
-          "b103Present": false,
-          "ckptPresent": true,
+          "fixCommit": "b21d236d3",
+          "parentPresent": false,
           "class": "discriminating-on-wire",
-          "detail": "absent b103, present on live wire",
-          "wireReason": null
+          "detail": "absent at b21d236d3~1, present on wire"
         },
         {
           "hint": "order-manager.js",
           "needle": "__TALARIA_DISABLE_M24_DISPLAY_ID_STABILITY_V1",
           "wirePresent": true,
-          "b103Present": false,
-          "ckptPresent": true,
+          "fixCommit": "2cc949399",
+          "parentPresent": false,
           "class": "discriminating-on-wire",
-          "detail": "absent b103, present on live wire",
-          "wireReason": null
+          "detail": "absent at 2cc949399~1, present on wire"
+        },
+        {
+          "hint": "order-manager.js",
+          "needle": "__TALARIA_DISABLE_M23_ROLLBACK_TRADE_CANCEL_V1",
+          "wirePresent": true,
+          "fixCommit": "a07e35120",
+          "parentPresent": true,
+          "class": "vacuous-at-parent",
+          "detail": "present at a07e35120~1 — not the introducing delta"
+        },
+        {
+          "hint": "order-manager.js",
+          "needle": "_allocateOrderId",
+          "wirePresent": true,
+          "fixCommit": "b21d236d3",
+          "parentPresent": false,
+          "class": "discriminating-on-wire",
+          "detail": "absent at b21d236d3~1, present on wire"
+        },
+        {
+          "hint": "order-manager.js",
+          "needle": "_resolveJournalDisplayTradeId",
+          "wirePresent": true,
+          "fixCommit": "2cc949399",
+          "parentPresent": false,
+          "class": "discriminating-on-wire",
+          "detail": "absent at 2cc949399~1, present on wire"
         }
       ],
       "discarded": [
-        "__TALARIA_DISABLE_M23_ROLLBACK_TRADE_CANCEL_V1",
-        "__TALARIA_DISABLE_M24_ORDER_ID_ALLOCATOR_V1",
-        "_allocateOrderId"
+        "__TALARIA_DISABLE_M23_ROLLBACK_TRADE_CANCEL_V1"
       ]
     },
     {
       "ticket": "TAL-01807b",
       "verdict": "off-wire",
       "onWire": false,
-      "detail": "discriminating markers absent on wire (fix not deployed or not in served bytes)",
+      "detail": "discriminating markers absent on wire (fix not in deployed bytes)",
       "checks": [
+        {
+          "hint": "order-manager.js",
+          "needle": "__TALARIA_DISABLE_ORDER_PAIR_SWITCH_VISUAL_REBIND",
+          "wirePresent": false,
+          "fixCommit": "2baa2c5b1",
+          "parentPresent": false,
+          "class": "discriminating-off-wire",
+          "detail": "absent at 2baa2c5b1~1 and absent on wire — fix not deployed"
+        },
         {
           "hint": "order-manager.js",
           "needle": "__TALARIA_DISABLE_ORDER_PAIR_SWITCH_VISUAL_REBIND_V1",
           "wirePresent": false,
-          "b103Present": false,
-          "ckptPresent": true,
+          "fixCommit": "2baa2c5b1",
+          "parentPresent": false,
           "class": "discriminating-off-wire",
-          "detail": "absent b103 (would prove fix) but also absent on wire",
-          "wireReason": null
+          "detail": "absent at 2baa2c5b1~1 and absent on wire — fix not deployed"
         }
       ],
       "discarded": []
@@ -1471,17 +1503,16 @@
       "ticket": "PO value-box shaky",
       "verdict": "on-wire",
       "onWire": true,
-      "detail": "1 discriminating marker(s) on wire; 0 discarded",
+      "detail": "1 discriminating marker(s) vs fix-commit^; on wire",
       "checks": [
         {
           "hint": "order-manager.js",
           "needle": "__TALARIA_DISABLE_ORDER_STABLE_LABEL_HOVER_DOM_V1",
           "wirePresent": true,
-          "b103Present": false,
-          "ckptPresent": true,
+          "fixCommit": "2cc949399",
+          "parentPresent": false,
           "class": "discriminating-on-wire",
-          "detail": "absent b103, present on live wire",
-          "wireReason": null
+          "detail": "absent at 2cc949399~1, present on wire"
         }
       ],
       "discarded": []
@@ -1490,17 +1521,16 @@
       "ticket": "PO hover one-by-one",
       "verdict": "on-wire",
       "onWire": true,
-      "detail": "1 discriminating marker(s) on wire; 0 discarded",
+      "detail": "1 discriminating marker(s) vs fix-commit^; on wire",
       "checks": [
         {
           "hint": "order-manager.js",
           "needle": "__TALARIA_DISABLE_ORDER_STABLE_LABEL_HOVER_DOM_V1",
           "wirePresent": true,
-          "b103Present": false,
-          "ckptPresent": true,
+          "fixCommit": "2cc949399",
+          "parentPresent": false,
           "class": "discriminating-on-wire",
-          "detail": "absent b103, present on live wire",
-          "wireReason": null
+          "detail": "absent at 2cc949399~1, present on wire"
         }
       ],
       "discarded": []
@@ -1509,32 +1539,28 @@
       "ticket": "PO pending SL/TP resurrect",
       "verdict": "on-wire",
       "onWire": true,
-      "detail": "1 discriminating marker(s) on wire; 1 discarded",
+      "detail": "2 discriminating marker(s) vs fix-commit^; on wire",
       "checks": [
         {
           "hint": "order-manager.js",
           "needle": "__TALARIA_DISABLE_ORDER_PENDING_PROTECTION_CLEAR_V1",
           "wirePresent": true,
-          "b103Present": false,
-          "ckptPresent": true,
+          "fixCommit": "2cc949399",
+          "parentPresent": false,
           "class": "discriminating-on-wire",
-          "detail": "absent b103, present on live wire",
-          "wireReason": null
+          "detail": "absent at 2cc949399~1, present on wire"
         },
         {
           "hint": "order-manager.js",
           "needle": "_emitPendingMirrorSync",
           "wirePresent": true,
-          "b103Present": true,
-          "ckptPresent": true,
-          "class": "vacuous-on-b103",
-          "detail": "present on b103 pre-fix corpus — thrown out",
-          "wireReason": null
+          "fixCommit": "b3b8ef763",
+          "parentPresent": false,
+          "class": "discriminating-on-wire",
+          "detail": "absent at b3b8ef763~1, present on wire"
         }
       ],
-      "discarded": [
-        "_emitPendingMirrorSync"
-      ]
+      "discarded": []
     }
   ]
 }

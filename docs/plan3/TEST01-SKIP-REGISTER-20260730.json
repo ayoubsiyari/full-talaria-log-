@@ -33,13 +33,13 @@
     {
       "ticket": "TAL-01896",
       "moneyPath": true,
-      "reason": "duration-norm not on fetchable wire module; TEST-02 resolution=needs-a-better-marker; still must not skip at freeze",
+      "reason": "orderManagerTradeRows not served on canary surface (delivery); zero Next-chunk hits",
       "pack": "B5",
       "allowedOnStamp": "20260730b113",
       "forbiddenOnFreeze": true,
       "status": "open",
       "clearedOnStamp": null,
-      "resolution": "needs-a-better-marker"
+      "resolution": "not-served-on-canary-surface"
     }
   ]
 }

@@ -1,25 +1,25 @@
-# TAL-01896 — TEST-02 resolution
+# TAL-01896 — delivery answer (TEST-02 corrected)
 
 **Date:** 2026-07-30  
 **Ticket:** TAL-01896 (trade duration norm)  
-**Named verdict:** **needs a better marker**
+**Named verdict:** **not served on the canary surface** (delivery / B routing)
 
 ---
 
-## Not “needs a build” (product invention)
+## Delivery census (`WIRE-RUNTIME-PROBES-20260730b113.json`)
 
-`__TALARIA_DISABLE_TRADE_DURATION_NORM_V1` / `tradeDurationNormV1Enabled` are already present in the **b103** tree at `chart v 1.4/talaria-design/src/orderManagerTradeRows.js` (commit ancestry includes `cf32a86d3`). Re-shipping the same kill-switch is not the missing piece.
+| Probe | Result |
+|---|---|
+| `/chart/talaria-design/src/orderManagerTradeRows.js` | HTML trap / not a JS module |
+| Other guessed chart paths | not a module |
+| Homepage `/_next/static/*` chunks linked from `/` | **0** hits for `tradeDurationNormV1Enabled` |
+| Inlined into served `order-manager.js` / `chart.js` | **no** |
 
-## Why the TEST-01 audit said off-wire
+**Conclusion:** this is not a marker-vocabulary problem. The module is not delivered on the
+canary surface D can audit. Routed to B with #8 / 01807b for the next train; skip register
+stays armed.
 
-The canary does not serve that file as a fetchable chart module at the guessed URLs (`/chart/talaria-design/src/orderManagerTradeRows.js` returns an HTML shell). Static wire scan → HTML trap → classified off-wire. That is a **method/marker** failure, not proof the homepage never bundles the helper.
+## Not “needs a build” of the kill-switch
 
-## Better marker (required)
-
-1. **Preferred:** locate the served homepage/`_next` chunk (or chart embed surface) that contains `tradeDurationNormV1Enabled` and add that path to `wire-audit-fixed.mjs` PATH_HINTS.  
-2. **Runtime:** live journal duration cell probe on the open session (observe norm’d duration formatting with kill off vs on) once a disposable session is available.  
-3. **Still routed to B** for the next train so the freeze build exposes an auditable path — D does not wait on B to name this verdict.
-
-## Freeze
-
-Skip register keeps TAL-01896 open on b113; `--freeze` fails while it remains skipped.
+The kill-switch already exists in git (including b103 tree). Shipping an **auditable served
+path** (static module or chunk that contains the marker) is the B delivery item.

@@ -1,35 +1,29 @@
-# Fixed-wire markers — TEST-02 discriminating set (b113)
+# Fixed-wire markers — TEST-02 amended (fix-commit~1)
 
-**Prior TEST-01:** 43/50 “on-wire” using any present needle.  
-**TEST-02:** only needles **absent on b103 pretest** and **present on wire** certify.
+**Correction:** `CORRECTION-B103-IS-NOT-A-PRE-FIX-CORPUS-…-1635.md`  
+**Artifact:** `WIRE-AUDIT-TEST02-20260730b113.json` (schema `talaria.wire-audit-test02.v2`)
 
-## Discriminating and on b113 wire (certify)
+| Class | Count |
+|---|---:|
+| on-wire | **39** |
+| off-wire | 2 (Rayan #8, TAL-01807b) |
+| wire-unproven | 7 |
+| delivery-unserved | 1 (TAL-01896) |
+| backend-needs-api-probe | 1 (TAL-01926) |
 
-| Needle | Path |
-|---|---|
-| `__TALARIA_DISABLE_M24_DISPLAY_ID_STABILITY_V1` | order-manager.js |
-| `_resolveJournalDisplayTradeId` | order-manager.js |
-| `__TALARIA_DISABLE_ORDER_STABLE_LABEL_HOVER_DOM_V1` | order-manager.js |
-| `__TALARIA_DISABLE_ORDER_PENDING_PROTECTION_CLEAR_V1` | order-manager.js |
+Prior mistaken b103-corpus run reported 10/50 — **withdrawn**.
 
-## Discriminating and off b113 wire (next train / B)
+## Money rows
 
-| Needle | Rows |
-|---|---|
-| `__TALARIA_DISABLE_M24_ORDER_ID_GAP_RECONCILE_V1` | Rayan #8 |
-| `__TALARIA_DISABLE_ORDER_EXPLICIT_PLACE_AUDIT_V1` | Rayan #8 |
-| `_assertExplicitPlaceAudit` | Rayan #8 |
-| `__TALARIA_DISABLE_ORDER_PAIR_SWITCH_VISUAL_REBIND_V1` | TAL-01807b |
+| Ticket | Method | Verdict |
+|---|---|---|
+| Rayan #2 | behavioural primary (host survives peer remove) | on-wire |
+| Rayan #8 | behavioural blocked — product flags absent | off-wire |
+| TAL-01896 | delivery census | not served on canary |
+| TAL-01807b | parent~1 text | off-wire |
+| TAL-01926 | live API (401 unread) | needs token from B |
 
-## Thrown out as vacuous (present on b103)
+## Note (Windows)
 
-28 needles — full list in `WIRE-AUDIT-TEST02-20260730b113.json` → `vacuousNeedlesThrownOut`.  
-Notable: `_m24ReconcileOrderIdCounter` (must never certify Rayan #8).
-
-## Special rows
-
-| Ticket | Disposition |
-|---|---|
-| Rayan #2 | no discriminating textual marker; runtime source-contract non-discriminating vs b103 → browser PO |
-| TAL-01896 | **needs a better marker** |
-| M24 / TAL-01926 | live API probe (`backend-journal-prune-live-probe.mjs`) |
+Parent refs use `commit~1`, not `commit^` — bare `^` is eaten under Windows and
+falsely resolves to the fix commit itself.

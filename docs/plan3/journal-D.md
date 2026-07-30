@@ -1,5 +1,15 @@
 # Manager D Journal
 
+## 2026-07-30 — TEST-02 amended (fix-commit~1) + TRADE-EVICT cold-read
+
+- Correction `CORRECTION-B103-…-1635` copied. b103 corpus **withdrawn** as pre-fix reference.
+- Re-ran with per-marker `<fix-commit>~1` (Windows: bare `^` resolves to self — use `~1`).
+- **Corrected count on b113:** **39 on-wire** / 2 off-wire (#8, 01807b) / 7 unproven / 1 delivery-unserved (01896) / 1 backend-needs-token (01926). Prior 10/50 mistaken.
+- Money first: Rayan #2 behavioural host-retain → on-wire; #8 flags absent → off-wire; 01896 **not served on canary** (delivery, not marker).
+- B token request filed: `REQUEST-B-BACKEND-PROBE-TOKEN-TAL-01926-20260730.md` (non-blocking).
+- Skip register stays armed (`--freeze` still fails on #8 / 01807b / 01896).
+- **TRADE-EVICT-V1 step 1:** cold-read proof GREEN/RED — `trade-evict-v1-cold-read.test.mjs` + `TRADE-EVICT-V1-COLD-READ-PROOF-20260730.md`. Journal-only trade serves history MAE/MFE + path + screenshots with hot `closedPositions` empty.
+
 ## 2026-07-30 — TEST-02 marker GATE-01 retrofit (b113)
 
 - Ruling `RULING-THE-WIRE-AUDIT-NEEDS-GATE-01-…-1605` copied. Binding: markers must be absent on pre-fix bytes.

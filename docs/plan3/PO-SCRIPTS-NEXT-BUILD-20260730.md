@@ -29,7 +29,7 @@ node scripts/test01-skip-register-gate.mjs
 
 **Current canary (2026-07-30):** stamp `20260730b113`.  
 - TEST-01 (pre-falsify): `WIRE-AUDIT-FIXED-20260730b113.md` — **43/50** strict.  
-- TEST-02 (GATE-01 markers): `WIRE-AUDIT-TEST02-20260730b113.md` — **10/50** discriminating on-wire; **37** wire-unproven after vacuous throw-out.
+- TEST-02 amended (`fix-commit~1`, not b103): `WIRE-AUDIT-TEST02-20260730b113.md` — **39/50** on-wire; 2 off-wire; 7 unproven; 1 delivery-unserved; 1 backend. Prior 10/50 b103-corpus run **withdrawn**.
 
 **Blocked on b113 (skip register; routed to B next train — do not wait):**
 
