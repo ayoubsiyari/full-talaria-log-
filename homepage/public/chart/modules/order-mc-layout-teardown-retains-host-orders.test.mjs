@@ -1,5 +1,6 @@
 /**
  * Rayan #2 money-path — host open + journal survive peer panel teardown.
+ * CONF-01: host symbol A; peer panels B/C/D (four distinct symbols).
  * Lag half is Cluster A; this gate is D money-path only.
  * GREEN: node order-mc-layout-teardown-retains-host-orders.test.mjs
  * RED:   TALARIA_TEST_DISABLE_MC_LAYOUT_HOST_ORDER_RETAIN=1 node …  (exit ≠ 0)
@@ -19,6 +20,15 @@ function resolveRepoPaths(fromDir) {
         chartRoot = path.resolve(fromDir, '..', '..', '..', '..', 'chart v 1.4', 'chart');
         managerSrc = path.join(chartRoot, 'multichart-prod', 'multichart-manager.js');
         gridSrc = path.join(chartRoot, '..', 'talaria-design', 'src', 'MultichartGrid.jsx');
+    }
+    if (!fs.existsSync(gridSrc)) {
+        gridSrc = path.join(
+            path.resolve(fromDir, '..', '..', '..', '..'),
+            'chart v 1.4',
+            'talaria-design',
+            'src',
+            'MultichartGrid.jsx',
+        );
     }
     return { managerSrc, gridSrc };
 }
@@ -40,24 +50,34 @@ assert.doesNotMatch(
     'multichart-manager removeChart must not clear openPositions arrays',
 );
 
-function simulateLayoutTileRemoval(hostOm, retainGuard) {
+/** Non-host tile removed while host order manager stays shared (CONF-01). */
+function simulateNonHostPanelTeardown(hostOm, _removedPeerSymbol, retainGuard) {
     if (!retainGuard) {
         hostOm.openPositions = [];
         hostOm.tradeJournal = [];
+        hostOm.pendingOrders = [];
     }
 }
 
+const HOST_SYMBOL = 'EURUSD';
+const PEER_SYMBOLS = ['GBPUSD', 'USDJPY', 'XAUUSD'];
+
 const hostOm = {
-    openPositions: [{ id: 11, ticker: 'EURUSD', status: 'OPEN', quantity: 0.1 }],
-    pendingOrders: [],
-    tradeJournal: [{ id: 9, tradeId: 9, ticker: 'EURUSD', pnl: 1 }],
-    orderIdCounter: 12,
+    openPositions: [{ id: 11, ticker: HOST_SYMBOL, status: 'OPEN', quantity: 0.1 }],
+    pendingOrders: [{ id: 12, ticker: HOST_SYMBOL, status: 'PENDING' }],
+    tradeJournal: [{ id: 9, tradeId: 9, ticker: HOST_SYMBOL, pnl: 1 }],
+    orderIdCounter: 13,
 };
 
-simulateLayoutTileRemoval(hostOm, !retainKill);
+const peerPanels = PEER_SYMBOLS.map((symbol, i) => ({ id: `peer-${i}`, symbol }));
+assert.equal(new Set([HOST_SYMBOL, ...PEER_SYMBOLS]).size, 4, 'CONF-01 four distinct symbols');
+
+simulateNonHostPanelTeardown(hostOm, peerPanels[2].symbol, !retainKill);
 
 // Always assert retention — kill clears arrays and must fail (GATE-01).
-assert.equal(hostOm.openPositions.length, 1, 'host openPositions survive panel remove');
-assert.equal(hostOm.tradeJournal.length, 1, 'host tradeJournal survive panel remove');
+assert.equal(hostOm.openPositions.length, 1, 'host openPositions survive non-host panel remove');
+assert.equal(hostOm.pendingOrders.length, 1, 'host pendingOrders survive non-host panel remove');
+assert.equal(hostOm.tradeJournal.length, 1, 'host tradeJournal survive non-host panel remove');
+assert.equal(hostOm.openPositions[0].ticker, HOST_SYMBOL, 'host open row stays on symbol A');
 assert.equal(hostOm.openPositions[0].id, 11, 'host open row id preserved');
 console.log('GREEN — host orders/journal survive multichart panel teardown contract');

@@ -128,6 +128,20 @@ assert.notEqual(panel5m.resolveEffectiveCurrentPrice(), hostMark);
 panelRs._applyCanonicalReplayMarkFromDetail(detail);
 assert.equal(panel5m.resolveEffectiveCurrentPrice(), hostMark);
 
+// CONF-01: different-symbol peer must not inherit host mark via same-pair alias path.
+const { chart: peerXau, rs: peerRs } = coarse5mPanel(1.90000);
+peerXau.currentSymbol = 'XAUUSD';
+peerXau.currentFileId = 'file-xauusd';
+const peerBefore = peerXau.resolveEffectiveCurrentPrice();
+peerRs._applyCanonicalReplayMarkFromDetail(detail);
+const peerAfter = peerXau.resolveEffectiveCurrentPrice();
+if (!disableCanonicalMark) {
+    assert.ok(
+        peerAfter === peerBefore || peerAfter === 1.90000 || peerAfter !== hostMark,
+        'CONF-01: XAUUSD peer must not take GBPUSD hostMark as current price',
+    );
+}
+
 console.log(disableCanonicalMark
     ? 'RED — canonical mark OFF leaves 1m vs 5m current price split'
     : 'GREEN — frozen playhead and canonical mark keep cross-timeframe price coherent');

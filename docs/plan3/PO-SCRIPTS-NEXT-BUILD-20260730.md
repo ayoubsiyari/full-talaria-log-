@@ -1,19 +1,33 @@
-# PO scripts — next build (26 `po-eyes` + money re-runs)
+# PO scripts — next build (CONF-01 restaged)
 
 **Checkout tip:** `manager-d/trade-correctness`  
-**Ruling:** measured-clean bar — `RULING-NO-DISCLOSURE-THE-BAR-IS-MEASURED-CLEAN-20260730-1240.md` (filename kept for git path; no status uses that cancelled vocabulary).  
-**Stamp rule:** do **not** mark any script ready to run until **B confirms the served stamp**. Until then every pack is `AWAITING STAMP`.
+**Stamp rule:** all packs remain **`AWAITING STAMP`** until B confirms the served stamp.  
+**CONF-01 (binding):** every script below opens **four panels, four different symbols, four different timeframes**, with indicators loaded and at least one order open **before** the row-specific clicks. Same-pair layouts are not accepted for pass evidence.
 
-MEAS-01 still required when B green-lights a stamp (build stamp, account, surface).
+**DUR-01:** where a script says “soak”, record a short series (not a single sample) — at least three samples over ≥5 minutes on the four-panel layout.
+
+MEAS-01 still required when B green-lights a stamp.
 
 ---
 
-## Part A — Five packs covering all 26 `po-eyes`
+## CONF-01 open (every script, first)
 
-Ordered by **rows-closed per PO-minute** (dense packs first).  
-Every row below is currently `po-eyes` with commit `—` → look type **first-look** unless noted.
+1. New session on the stamped build.  
+2. Multichart **2×2**.  
+3. Assign four distinct symbols (example: EURUSD, GBPUSD, USDJPY, XAUUSD).  
+4. Assign four distinct timeframes (example: 1m, 5m, 15m, 1H).  
+5. Load at least one indicator on each panel.  
+6. Place one visible order (any panel) so the money path is live.  
+7. Capture MEAS-01 (stamp, account, surface).  
+8. Only then run the script body.
 
-### Rank 1 — Viewport / scale / toolbar (Cluster J) — 11 rows / ~12 min ≈ 0.9 rows/min
+Fail the pack immediately if the layout collapses to same-pair or same-TF.
+
+---
+
+## Part A — Five packs covering 26 `po-eyes` (rows-closed / PO-minute)
+
+### Rank 1 — Viewport / scale / toolbar (Cluster J) — 11 rows / ~12 min
 
 | Row | Look type |
 | --- | --- |
@@ -29,9 +43,9 @@ Every row below is currently `po-eyes` with commit `—` → look type **first-l
 | TAL-01916 | first-look |
 | TAL-01928 | first-look |
 
-Click path: PO-CHECK Cluster J (grid, scale, zoom, toolbar). One session; do not invent new steps.
+Run Cluster J steps **on the four-panel CONF-01 layout** (pan/zoom/scale on at least two different-symbol panels).
 
-### Rank 2 — Session / TF / history data (Clusters I+D+L) — 7 rows / ~10 min ≈ 0.7 rows/min
+### Rank 2 — Session / TF / history (I+D+L) — 7 rows / ~10 min
 
 | Row | Look type |
 | --- | --- |
@@ -43,9 +57,9 @@ Click path: PO-CHECK Cluster J (grid, scale, zoom, toolbar). One session; do not
 | TAL-01923 | first-look |
 | TAL-01934 | first-look |
 
-Click path: CANARY Data Integrity Scripts 2–4 + Cluster L drawings-lag step from PO-CHECK. Frozen playhead / session resume / weekly jump — use existing steps only.
+Cross-TF and session steps must use **different symbols on different panels**, not one symbol alone.
 
-### Rank 3 — Order-line leftovers — 3 rows / ~6 min ≈ 0.5 rows/min
+### Rank 3 — Order-line leftovers — 3 rows / ~6 min
 
 | Row | Look type |
 | --- | --- |
@@ -53,35 +67,30 @@ Click path: CANARY Data Integrity Scripts 2–4 + Cluster L drawings-lag step fr
 | TAL-01698 | first-look |
 | TAL-01617 | first-look |
 
-Click path: Band-1 / Cluster G drag–preview confirmation steps already on file. Not the M10 fill script.
+Drag/preview on the host panel while three other symbols remain live.
 
-### Rank 4 — Money-path residuals (named Scripts 1 / 3 / 5) — 3 rows / ~8 min ≈ 0.4 rows/min
-
-These three are the only `po-eyes` that sit inside the named money scripts:
+### Rank 4 — Money residuals (Scripts 1/3/5) — 3 rows / ~8 min
 
 | Row | Money script | Look type |
 | --- | --- | --- |
-| TAL-01911 | M24 identity (Script 1) | first-look |
-| TAL-01796 | M10 order mechanics (Script 3) | first-look |
-| TAL-01940 | Journal side-effects (Script 5) | first-look |
+| TAL-01911 | M24 identity | first-look |
+| TAL-01796 | M10 mechanics | first-look |
+| TAL-01940 | Journal side-effects | first-look |
 
-### Rank 5 — Multichart / crosshair (Clusters C+K) — 2 rows / ~6 min ≈ 0.3 rows/min
+### Rank 5 — Multichart / crosshair — 2 rows / ~6 min
 
 | Row | Look type |
 | --- | --- |
 | TAL-01717 | first-look |
 | TAL-01700 | first-look |
 
-Click path: PO-CHECK Cluster C / K. Existing steps only.
-
-**Sum:** 11 + 7 + 3 + 3 + 2 = **26**.
+**This is the CONF-01 native pack** — lag and crosshair under four symbols / four TFs.
 
 ---
 
-## Part B — Named money scripts (mostly re-runs of already-`fixed` rows)
+## Part B — Named money scripts (mostly re-runs)
 
-Run **only after B confirms stamp**. Ordered by rows-closed / PO-minute.  
-Includes the three `po-eyes` from Rank 4 above plus `fixed` rows that still need stamp eyes.
+All open with CONF-01 layout above. Ordered by rows-closed / PO-minute.
 
 ### 1. M24 identity — ~8 rows / ~8 min
 
@@ -93,7 +102,10 @@ Includes the three `po-eyes` from Rank 4 above plus `fixed` rows that still need
 | TAL-01919 | re-run against fix |
 | TAL-01924 | re-run against fix |
 | TAL-01926 | re-run against fix |
-| TAL-01911 | **first-look** (`po-eyes`) |
+| TAL-01911 | first-look |
+| Rayan `#8` (skipped ID / self-open) | re-run against fix (gap + place-audit gates) |
+
+Refresh/reopen while **other panels keep different symbols playing**.
 
 ### 2. M10 order mechanics — ~7 rows / ~10 min
 
@@ -105,7 +117,7 @@ Includes the three `po-eyes` from Rank 4 above plus `fixed` rows that still need
 | TAL-01905 | re-run against fix |
 | TAL-01809 | re-run against fix |
 | TAL-01810 | re-run against fix |
-| TAL-01796 | **first-look** (`po-eyes`) |
+| TAL-01796 | first-look |
 
 ### 3. M23 rollback — ~5 rows / ~8 min
 
@@ -117,26 +129,27 @@ Includes the three `po-eyes` from Rank 4 above plus `fixed` rows that still need
 | TAL-01937 | re-run against fix |
 | TAL-01800 | re-run against fix |
 
-*(no `po-eyes` in this script)*
+Rollback on the host symbol while peers stay on other instruments.
 
 ### 4. Journal side-effects — ~2 rows / ~6 min
 
 | Row | Look type |
 | --- | --- |
 | TAL-01927 | re-run against fix |
-| TAL-01940 | **first-look** (`po-eyes`) |
+| TAL-01940 | first-look |
 
-### 5. Duration — ~1 row / ~4 min
+### 5. Duration — ~1 row / ~4 min + DUR-01 note
 
 | Row | Look type |
 | --- | --- |
-| TAL-01896 | re-run against fix (needs dist rebuild on stamp) |
+| TAL-01896 | re-run against fix (needs dist rebuild) |
+
+Also watch Rayan `#2` (vanished order) when closing a **non-host** panel under CONF-01 — money-path half gated; lag half is A.
 
 ---
 
-## What is not in these packs
+## Not in these packs
 
-- `closed-scratched` (6) — no PO minutes.
-- `owner-blocked` (13) — routed in `OWNER-BLOCKED-ROUTING-20260730-1240.md`; Director assigns.
-- `blocked-on-build` (6) — wait for undeployed branch / M25 pack ship.
-- `superseded` / `needs-info` / `fixed` without a Part B re-run line — no PO pack.
+- `owner-blocked` → Director routes (incl. TAL-01850 → **A**)  
+- `blocked-on-build` / `verify-gone` / `feature-request` / `intended`  
+- Five packs stay **AWAITING STAMP**

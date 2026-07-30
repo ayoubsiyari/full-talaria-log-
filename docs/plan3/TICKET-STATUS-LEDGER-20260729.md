@@ -46,7 +46,7 @@ Open row disposition and unverified blast-radius order live in `docs/plan3/UNKNO
 | TAL-01800 | fixed | `c0a0d7620` | GREEN: `order-lifecycle-event-ownership.test.mjs` ± homepage | Node-closed; PO Script 2 re-run against fix |
 | TAL-01940 | po-eyes | — | No D-tip product gate | First look — PO Script 5 (journal side-effects) |
 | TAL-01756 | superseded | `e9d9f7594` | Sibling gate: `order-exit-marker-spread-column.test.mjs` (TAL-01810) | Paired with TAL-01810 TOP ACCEPT; no independent row gate |
-| Rayan #8 | fixed | gap + place-audit gates | GREEN: `m24-order-id-gap-after-hydrate.test.mjs` + `order-explicit-place-audit.test.mjs`; both RED under kill | Skipped ID + self-open; GATE-01; stamp confirm still useful |
+| Rayan #8 | fixed | gap + place-audit CONF-01 | GREEN: `m24-order-id-gap-after-hydrate.test.mjs` (mixed-symbol journal) + `order-explicit-place-audit.test.mjs` (cross-symbol pending); both RED under kill | CONF-01 strengthened; stamp confirm still useful |
 | TAL-01653 | superseded | — | Plan-2 / M6 drag-follow family shipped | Board leftover; no dedicated D-tip gate |
 | TAL-01692 | superseded | — | M6 leftover / cluster G train | No dedicated D-tip gate |
 | TAL-01658 | superseded | — | Plan-2-fixed recurrence family | Board leftover |
@@ -89,7 +89,7 @@ Open row disposition and unverified blast-radius order live in `docs/plan3/UNKNO
 | TAL-01784 | needs-info | — | Cluster O feature request | Not a bug gate |
 | TAL-01796 | po-eyes | — | M10 residual marker | First look — PO Script 3 |
 | TAL-01799 | owner-blocked | — | Multichart/layout shell | Cluster M / order on new layout |
-| TAL-01802 | fixed | `ab57a5dac` | GREEN: `cross-timeframe-current-price-coherence.test.mjs` ± homepage | Closure pass bucket (b); Data Script 2 optional confirm |
+| TAL-01802 | fixed | `ab57a5dac` + CONF-01 cell | GREEN: `cross-timeframe-current-price-coherence.test.mjs` ± homepage (same-symbol TF + XAUUSD peer isolation) | CONF-01: peer must not inherit host mark |
 | TAL-01814 | needs-info | — | Cluster O feature request | Not a bug gate |
 | TAL-01821 | po-eyes | — | Cluster J | UI/viewport PO |
 | TAL-01823 | po-eyes | — | Cluster J | UI/viewport PO |
@@ -104,8 +104,8 @@ Open row disposition and unverified blast-radius order live in `docs/plan3/UNKNO
 | TAL-01854 | closed-scratched | — | PO scratched from M25 | No product gate |
 | TAL-01862 | po-eyes | — | Cluster J | UI/viewport PO |
 | TAL-01864 | owner-blocked | — | Cluster I history range | `chart.js` smart-window; Data Script 3 |
-| TAL-01886 | fixed | `ab57a5dac` | GREEN: `cross-timeframe-current-price-coherence.test.mjs` ± homepage | Closure pass bucket (b) |
-| TAL-01887 | fixed | `db849737f` | GREEN: harness `H-S18` + `H-S83` | Closure pass bucket (a) |
+| TAL-01886 | fixed | `ab57a5dac` + CONF-01 cell | GREEN: `cross-timeframe-current-price-coherence.test.mjs` ± homepage | CONF-01 peer isolation cell added |
+| TAL-01887 | broken | — | RED vacuous: harness `H-S18`/`H-S83` boot `pair: 'same'` | CONF-01: gate same-pair/single-panel vacuous |
 | TAL-01891 | needs-info | — | Cluster N memory lag | Soak undefined; no invented click path |
 | TAL-01892 | needs-info | — | Cluster N idle lag | Soak/monitor lane |
 | TAL-01893 | owner-blocked | — | Go-To forward skip lives in `chart.js` (`goToNextSession`); M22 bucketing does not cover menu skip | Owner A; no D tip gate |
@@ -117,7 +117,7 @@ Open row disposition and unverified blast-radius order live in `docs/plan3/UNKNO
 | TAL-01906 | needs-info | — | Cluster O feature request | Not a bug gate |
 | TAL-01907 | needs-info | — | Cluster O feature request | Not a bug gate |
 | TAL-01909 | po-eyes | — | Cluster D session resume | Data/replay PO |
-| TAL-01910 | fixed | `db849737f` | GREEN: harness `H-S18` + `H-S83` | Closure pass bucket (a) |
+| TAL-01910 | broken | — | RED vacuous: harness `H-S18`/`H-S83` boot `pair: 'same'` | CONF-01: gate same-pair/single-panel vacuous |
 | TAL-01911 | po-eyes | — | M24 journal registration residual | First look — PO Script 1 |
 | TAL-01912 | closed-scratched | — | PO scratched / user confusion | No product gate |
 | TAL-01913 | owner-blocked | — | Cluster H daily-open lines | Chart overlay owner |
@@ -137,9 +137,9 @@ Open row disposition and unverified blast-radius order live in `docs/plan3/UNKNO
 | TAL-01935 | owner-blocked | — | Cluster H indicator labels | Chart overlay owner |
 | TAL-01936 | owner-blocked | — | Cluster I time alignment | `chart.js` owner |
 | TAL-01938 | owner-blocked | — | Cluster H ORB size | Chart overlay / session calendar |
-| TAL-01939 | fixed | `db849737f` | GREEN: harness `H-S18` + `H-S83` | Closure pass bucket (a) |
+| TAL-01939 | broken | — | RED vacuous: harness `H-S18`/`H-S83` boot `pair: 'same'` | CONF-01: gate same-pair/single-panel vacuous |
 | Rayan #1 | fixed | m23 GATE-01 | GREEN/RED: `m23-rollback-trade-state.red.test.mjs` | Same as TAL-01937 |
-| Rayan #2 | fixed | `order-mc-layout-teardown-retains-host-orders.test.mjs` | GREEN default; RED: `TALARIA_TEST_DISABLE_MC_LAYOUT_HOST_ORDER_RETAIN=1` | Money-path: vanished order on layout close. Lag half → A |
+| Rayan #2 | fixed | CONF-01 four-symbol teardown gate | GREEN: `order-mc-layout-teardown-retains-host-orders.test.mjs` (EURUSD host + GBPUSD/USDJPY/XAUUSD peers); RED kill | Money-path under CONF-01; lag half → A |
 | Rayan #3 | fixed | m23 GATE-01 | GREEN/RED: `m23-rollback-trade-state.red.test.mjs` | Same as TAL-01937 |
 | Rayan #4 | fixed | `b21d236d3`, `f1ddb2e64`, `2cc949399` | GREEN: allocator + `m24-order-id-restore-stability.test.mjs` | Node-closed; PO Script 1 re-run against fix (b103 class) |
 | Rayan #5 | fixed | `b21d236d3`, `f1ddb2e64`, `2cc949399` | GREEN: allocator + restore stability | Node-closed; PO Script 1 re-run against fix |
@@ -153,15 +153,15 @@ Open row disposition and unverified blast-radius order live in `docs/plan3/UNKNO
 | PO hover one-by-one | fixed | `2cc949399` | GREEN: `order-stable-label-hover-dom.test.mjs` ± homepage | Closure pass bucket (a) |
 | PO pending SL/TP resurrect | fixed | `2cc949399` | GREEN: `order-pending-protection-clear.test.mjs` ± homepage | TOP ACCEPT; redeploy before PO visual confirm |
 
-## Status counts (Director 13:50 fold-in)
+## Status counts (CONF-01 / Director 14:30)
 
 | Status | Count |
 | --- | ---: |
 | blocked-on-build | 6 |
-| broken | 4 |
+| broken | 7 |
 | closed-scratched | 2 |
 | feature-request | 1 |
-| fixed | 51 |
+| fixed | 48 |
 | intended | 1 |
 | needs-info | 10 |
 | owner-blocked | 15 |
@@ -169,4 +169,4 @@ Open row disposition and unverified blast-radius order live in `docs/plan3/UNKNO
 | superseded | 29 |
 | verify-gone | 3 |
 
-Bare `unverified`: **0**. TAL-01850 canary blocker → **Manager A**. Five PO packs remain AWAITING STAMP.
+Bare `unverified`: **0**. Honest `fixed` after CONF-01 reopen of H-S18/H-S83 same-pair (TAL-01887/01910/01939): **48**. TAL-01850 → **A**. Five PO packs AWAITING STAMP (restaged for 4sym/4tf).

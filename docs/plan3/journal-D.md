@@ -1,5 +1,14 @@
 # Manager D Journal
 
+## 2026-07-30 — CONF-01 / DUR-01 (Director 14:30)
+
+- Binding: shipping reference is 4 panels / 4 symbols / 4 TFs / indicators / orders; same-pair has no acceptance weight; performance is slope-over-duration.
+- **D1:** Re-audited `fixed` gates. Reopened TAL-01887 / TAL-01910 / TAL-01939 (`H-S18`/`H-S83` `pair: 'same'`). Strengthened Rayan #2/#8, M24 restore mixed-symbol hydrate, and cross-TF peer isolation (kept TAL-01802/01886 fixed). Honest `fixed` = **48**.
+- **D2:** Rayan #2 teardown asserts four distinct symbols; Rayan #8 gap/place-audit use mixed-symbol / cross-panel cells. GREEN + RED kills verified.
+- **D3:** Note to C — TAL-01941 unit soak rides C2 duration; no second long harness (`NOTE-C-TAL01941-SOAK-INTO-C2-20260730.md`).
+- **D4:** M24 #5→#942 restore gate complete (mixed-symbol cell); `.red.test.mjs` remains RED under legacy path.
+- **D5:** Restaged `PO-SCRIPTS-NEXT-BUILD-20260730.md` — every pack opens CONF-01 layout first; packs still AWAITING STAMP.
+
 ## 2026-07-30 — Director 13:50 Rayan #8 / Rayan #2
 
 - Rayan #8A skipped ID: existing `m24-order-id-allocator` + `m24-order-id-restore-stability` cover stale-counter collisions and hydrate display renumber (`#5→#942`); they did **not** cover a persisted counter ahead of live rows when pending `#8` vanished on hydrate (next mint jumped to `#9`). Fix: `_m24ReconcileOrderIdCounter()` now prefers `max(live ids)+1` over a stale persisted counter when `__TALARIA_DISABLE_M24_ORDER_ID_GAP_RECONCILE_V1` is absent (default ON). Gate: `node "chart v 1.4/chart/modules/m24-order-id-gap-after-hydrate.test.mjs"` ± homepage; RED `TALARIA_TEST_DISABLE_M24_ORDER_ID_GAP_RECONCILE=1`.

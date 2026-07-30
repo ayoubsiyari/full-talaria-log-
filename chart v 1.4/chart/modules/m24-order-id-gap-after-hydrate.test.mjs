@@ -1,5 +1,6 @@
 /**
  * M24 skipped-id / gap after hydrate (Rayan #8 class).
+ * CONF-01: gap reconcile scans mixed-symbol journal rows (per shared order manager).
  * GREEN: node m24-order-id-gap-after-hydrate.test.mjs
  * RED:   TALARIA_TEST_DISABLE_M24_ORDER_ID_GAP_RECONCILE=1 node …  (exit ≠ 0)
  */
@@ -19,8 +20,8 @@ const OrderManager = require('./order-manager.js');
 const om = Object.create(OrderManager.prototype);
 om.tradeJournal = [
     { id: 5, tradeId: 5, ticker: 'EURUSD' },
-    { id: 6, tradeId: 6, ticker: 'EURUSD' },
-    { id: 7, tradeId: 7, ticker: 'EURUSD' },
+    { id: 6, tradeId: 6, ticker: 'GBPUSD' },
+    { id: 7, tradeId: 7, ticker: 'USDJPY' },
 ];
 om.pendingOrders = [];
 om.openPositions = [];

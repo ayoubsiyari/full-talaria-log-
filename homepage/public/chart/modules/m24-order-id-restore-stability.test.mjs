@@ -1,3 +1,8 @@
+/**
+ * M24 #5→#942 — b103 escape class / CONF-01 display id stability on hydrate.
+ * GREEN: node m24-order-id-restore-stability.test.mjs
+ * RED (legacy renumber path): node m24-order-id-restore-stability.red.test.mjs
+ */
 import { createRequire } from 'node:module';
 import assert from 'node:assert/strict';
 
@@ -57,6 +62,31 @@ assert.equal(
   '5',
   'CSV/export keeps client trade id and does not switch to display/user id'
 );
+
+// CONF-01: mixed-symbol journal hydrate — each row keeps client display id.
+const mixedSeed = [
+  { id: 5, tradeId: 5, client_trade_id: '5', ticker: 'EURUSD', pnl: 1 },
+  { id: 6, tradeId: 6, client_trade_id: '6', ticker: 'GBPUSD', pnl: 2 },
+  { id: 7, tradeId: 7, client_trade_id: '7', ticker: 'USDJPY', pnl: 3 },
+];
+const beforeMixed = mixedSeed.map((row) => String(displayedId(row)));
+om.tradeJournal = mixedSeed.map((row) => ({ ...row }));
+om._m19CommitJournalArray([
+  {
+    id: 5, tradeId: 5, client_trade_id: '5', user_trade_id: 942, display_trade_id: 942,
+    journal_trade_id: 120001, ticker: 'EURUSD', pnl: 1,
+  },
+  {
+    id: 6, tradeId: 6, client_trade_id: '6', user_trade_id: 601, display_trade_id: 601,
+    journal_trade_id: 120002, ticker: 'GBPUSD', pnl: 2,
+  },
+  {
+    id: 7, tradeId: 7, client_trade_id: '7', user_trade_id: 701, display_trade_id: 701,
+    journal_trade_id: 120003, ticker: 'USDJPY', pnl: 3,
+  },
+], 'session-state-hydrate');
+const afterMixed = om.tradeJournal.map((row) => String(displayedId(row)));
+assert.deepEqual(afterMixed, beforeMixed, 'CONF-01 mixed-symbol hydrate keeps each display id stable');
 
 global.window = { __TALARIA_DISABLE_M24_DISPLAY_ID_STABILITY_V1: true };
 assert.equal(
