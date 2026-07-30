@@ -1,0 +1,159 @@
+# IMAGE ASSET CENSUS — every image the app loads, by decoded bytes
+
+**Manager B · 2026-07-30 11:47 · answers the 10:20 dispatch item 1, before any cut**
+**Instrument for every figure below: decoded image bytes (width x height x 4), and
+Brave Task Manager "Image cache" where a measurement is quoted. Neither is JS heap.**
+
+## Method, and why decoded bytes is the right column
+
+`scripts/image-asset-census.mjs` walks the three served trees (`homepage/public`,
+`chart v 1.4/chart`, `chart v 1.4/talaria-design`), parses PNG/JPEG/GIF/WebP headers for
+true pixel dimensions, computes `width x height x 4` for the decoded bitmap, then greps
+every HTML/CSS/JS/TSX file for references to each basename and classifies the load site.
+
+A decoded bitmap costs `width x height x 4` bytes **whatever it cost on disk**. Flat
+artwork compresses superbly, which is exactly why this went unnoticed for three months:
+every one of these files looks trivial in a directory listing.
+
+**The whole defect in one line: 1.67 MB of PNG on disk decodes to 200.51 MB of bitmap.**
+
+## The top ten by decoded bytes
+
+Deduplicated by image content, because the browser decodes a URL once no matter how many
+copies of the file exist in the repo. "Copies" is how many paths hold identical bytes.
+
+| # | Decoded | Pixels | Disk | Copies | Asset | Loads when |
+|---|---|---|---|---|---|---|
+| 1 | **40.24 MB** | 4720x2235 | 76 KB | 2 | `chart/modules/logo-14.png` | screenshot dark-brand wordmark, on demand |
+| 2 | **40.22 MB** | 4720x2234 | 82 KB | 1 | `public/logo-05.png` | no live load path found (see below) |
+| 3 | **31.40 MB** | 3684x2234 | 59 KB | 2 | `chart/modules/logo-05.png` | **EAGER — every chart page load** |
+| 4 | **20.38 MB** | 2391x2234 | 114 KB | 3 | `chart/modules/logo-04.png` | **EAGER — every chart page load** |
+| 5 | **20.38 MB** | 2391x2234 | 59 KB | 3 | `chart/modules/logo-08.png` | alert notification icon; screenshot brand row |
+| 6 | **20.38 MB** | 2391x2234 | 64 KB | 2 | `chart/modules/logo-09.png` | screenshot brand row; legacy index |
+| 7 | **20.38 MB** | 2391x2234 | 117 KB | 5 | `public/LOGO-07.png` | 22px icon in the backtest modal |
+| 8 | **6.00 MB** | 1730x909 | 1100 KB | 1 | `public/talaria-log.logo.png` | OpenGraph share image (not rendered) |
+| 9 | **1.00 MB** | 512x512 | 26 KB | 7 | `dist-v9/pwa/icon-512.png` | PWA manifest, on install |
+| 10 | **0.14 MB** | 192x192 | 8 KB | 7 | `dist-v9/pwa/icon-192.png` | PWA manifest, eager |
+
+Below the top ten it collapses to nothing: the 32x32 icons and the favicon are 4 KB
+decoded between them. **Eight assets over 1024 px account for 199.36 MB of the 200.51 MB
+total.** There is no long tail. There are eight files.
+
+Format mix of everything referenced: **twelve PNGs and zero SVGs.** Every icon in this
+product is a bitmap.
+
+## The Director's four predicted shapes, adjudicated
+
+1. **PNGs at multiples of displayed size — CONFIRMED, and it is the whole defect.**
+   `logo-04.png` renders in a `440px` CSS box (`.loader-brand`) and ships at 2391 px.
+   `LOGO-07.png` renders at 22 px and ships at 2391 px — **108x the displayed edge.**
+2. **base64 data URLs in CSS or JS — REFUTED.** One `data:image/svg+xml` under 1 KB in
+   `HomePageClient.tsx`. Nothing else.
+3. **An eagerly-loaded full icon set — REFUTED.** There is no icon set. There are seven
+   near-identical brand logos.
+4. **A sprite sheet at absurd resolution — REFUTED.** No sprite sheets.
+
+## What actually loads on a chart page load, verified by reading the code
+
+This is the part that matters, and it is two files:
+
+- **`logo-04.png` — 20.38 MB.** `dist-v9/index.html` line 1659,
+  `<img class="loader-brand" src="/chart/modules/logo-04.png">`. A plain eager `<img>` in
+  the shipped shell, decoded before the first candle is drawn.
+- **`logo-05.png` — 31.40 MB.** `screenshot-manager.js`: module load calls
+  `initScreenshotManager()` -> `new ScreenshotManager()` -> `constructor` -> `init()` ->
+  `getBrandLogoImage()`, which requests `modules/logo-05.png` at 3684x2234.
+
+**Together 51.78 MB against a measured Image cache of 63,075K (61.60 MB).** The
+remaining ~9.8 MB is **not yet attributed** and I am not going to pretend it is. The
+post-cut re-read is what settles it — see the prediction below.
+
+### The second one is dead code, not a preload
+
+`getBrandLogoImage()` has exactly two mentions in the entire repository: its own
+definition and the call in `init()`. **Nothing consumes the result.** The screenshot
+paths build their own images through `resolveAssetUrl()` (lines 104-105, 364-370), and
+`getVisibleLogoBounds(image)` takes its image as a parameter, so `_brandLogoImage` is a
+memo with no reader.
+
+**A 31.4 MB decode on the critical path of every page load, for a cache nothing reads.**
+
+## Two corrections to the 10:50 finding
+
+The 10:50 note's arithmetic reached 52-72 MB by including assets that do not load. Both
+of these are real files at real sizes; neither is fetched:
+
+- **`logo-06.png`, 4720x2234, 40.22 MB decoded — never referenced.** Not in any HTML,
+  CSS, JS or TSX file in any served tree. It is listed first in the 10:50 table.
+- **`talaria chart.png`, 3582x2078, 28.39 MB decoded — never referenced.**
+
+**28 of the 69 image files on disk have no reference anywhere** — 2.53 MB of dead
+download weight, and 0 bytes of image cache. Deleting them is housekeeping, not a memory
+fix, and I have not touched them tonight.
+
+Also: `alert-system.js:1339` uses `logo-08.png` as a notification icon, so the first
+alert a user receives decodes **20.38 MB for a 48-pixel icon**. That is a real spike but
+it is not on the load path, so it is the next tranche rather than this one.
+
+## The cuts, landed
+
+### Cut 1 — resize the loader brand (pure size reduction, no flag per the 10:20 ruling)
+
+`logo-04.png`: **2391x2234 -> 1024x957**, all four copies byte-identical.
+**Decoded 20.38 MB -> 3.74 MB. On disk 117 KB -> 35 KB**, so it is also 82 KB less to
+download on the critical path.
+
+1024 px is deliberately generous: `.loader-brand` is a 440 px box, so this covers a 2x
+device pixel ratio with room spare, and it is above every other use of the file
+(280 px maintenance page, 80 px auth panel, 40 px homepage header, 22 px modal).
+
+Resized with `scripts/png-downscale.mjs` — a dependency-free box downsampler over Node's
+own zlib, because this machine has no ImageMagick, PIL or sharp and adding an image
+dependency to a product repo hours before a canary is a worse trade than 150 lines. It
+is alpha-weighted so a transparent neighbour cannot pull a halo into the wordmark edge,
+it refuses anything it does not fully support rather than silently mangling it, and
+`--selftest` is green on seven cells including a byte-exact round trip.
+
+### Cut 2 — stop preloading the screenshot brand (flagged: it changes WHEN an asset loads)
+
+`screenshot-manager.js` `init()` no longer calls `getBrandLogoImage()`.
+**Decoded 31.40 MB -> 0 MB on load.** The method itself is untouched and still memoises,
+so any future caller keeps working.
+
+- Kill-switch: **`__TALARIA_DISABLE_SCREENSHOT_BRAND_PRELOAD_CUT_V1`** restores the eager
+  preload exactly.
+- Read through a realm climb (self -> parent -> top), because the chart shell can be
+  framed by the dashboard and a host-only read would make the negative control inert.
+  That is the B-0185 defect and CELL 6 is a mutant that proves the climb is load-bearing.
+- Gate: `chart v 1.4/chart/modules/screenshot-brand-preload-cut.test.mjs`, **12/12**,
+  loading the real shipped file in a vm with an instrumented `Image` so it exercises the
+  actual module-load-to-constructor chain rather than a re-implementation.
+
+**Combined: 51.78 MB -> 3.74 MB of eager decoded image bytes, a 48.04 MB cut off every
+single page load**, plus 82 KB less to download.
+
+## The prediction, so the re-read can falsify it
+
+Same instrument that found this — **Brave Task Manager, "Image cache" column, DevTools
+closed**, one chart, deployed build below.
+
+- **Before (b103, PO-measured): 63,075K.**
+- **If my accounting is right: roughly 14,000-15,000K.**
+- If it lands near 63,000K, the cut did not reach the wire and the deploy is what to
+  check first.
+- If it lands near 24,000K, my ~9.8 MB residual is really ~19 MB and something else is
+  holding image cache that I have not found — in which case the residual is the next
+  thing I chase, not the logos.
+
+Any of those three outcomes is informative, which is the point of writing the number
+down first.
+
+## Routing
+
+- **A** — nothing here touches your territory. `logo-04.png` changed pixels only; no
+  chart module changed except `screenshot-manager.js`, which does not load in panel
+  realms (`chart-embed.html` does not include it).
+- **C** — this is image cache, not JS heap, and not the document staircase. It will not
+  move `performance.memory`, and it should not change your frame or node counts. If it
+  does, that is a finding.
+- **D** — no persistence surface touched.

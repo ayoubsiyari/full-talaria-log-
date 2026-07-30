@@ -688,3 +688,28 @@ Cells:
 | NC-OWN-REALM-PREDICATE | non-climbing switch ignores a host-side flip | LIVE |
 | NC-DROP-401-COUNT | removing the 401 count makes the class silent again | LIVE |
 | NC-COUNT-BLOCKED-READS | counting blocked reads instead of the claim storms the ledger | LIVE |
+
+## SCREENSHOT-BRAND-PRELOAD-CUT-V1 — reserved 2026-07-30 11:47 (B)
+
+| Name | Signature token | Implementation | Status |
+|---|---|---|---|
+| SCREENSHOT-BRAND-PRELOAD-CUT-V1 | `__TALARIA_DISABLE_SCREENSHOT_BRAND_PRELOAD_CUT_V1` | `chart v 1.4/chart/modules/screenshot-manager.js` (+ `homepage/public` mirror), gate `chart v 1.4/chart/modules/screenshot-brand-preload-cut.test.mjs` | LIVE — shipped 20260730b110, 12/12 with two mutants |
+
+Why. `ScreenshotManager`'s constructor called `init()`, which called
+`getBrandLogoImage()`, which fetched `modules/logo-05.png` at 3684x2234 — **31.40 MB of
+decoded image bytes** — on every chart page load. Nothing consumed the result:
+`getBrandLogoImage` has exactly two mentions in the repository, its own definition and
+that call, while the screenshot paths build their own images via `resolveAssetUrl()` and
+`getVisibleLogoBounds(image)` takes its image as a parameter. It was roughly half of the
+measured 63,075K of image cache, spent on the critical path of every load for a memo with
+no reader.
+
+Setting the switch restores the eager preload exactly, so the negative control is real
+(FLAG-02). The read climbs self -> parent -> top because the chart shell can be framed by
+the dashboard, and CELL 6 is a mutant that replaces the climb with an own-realm read and
+proves it fails the parent cell — the B-0185 defect, gated rather than argued.
+
+Paired with a non-flagged pure size reduction in the same packet, per the 10:20 ruling that
+asset size cuts need no switch: `logo-04.png` 2391x2234 -> 1024x957, all four copies
+byte-identical, **20.38 MB -> 3.74 MB of decoded image bytes** and 117 KB -> 35 KB on disk.
+CELL 9 and CELL 10 hold that line so a future re-export cannot quietly restore it.

@@ -41,6 +41,13 @@ export const HEAP_SCOPE_TOKENS = Object.freeze([
   'host-isolate JS heap',
   'renderer-process footprint',
   'process footprint',
+  // Added 2026-07-30 11:47 for the image asset census. The 62 MB the PO found sits in
+  // Brave's "Image cache" column, which is decoded bitmap storage — not JS heap and not
+  // process footprint. Without a name for it, the only vocabulary available to a writer
+  // was a heap token, which is how a decoded-bitmap number would have entered a release
+  // note as a memory-leak figure.
+  'decoded image bytes',
+  'image cache',
   'detached-node count',
   'usedJSHeapSize',
   'measureUserAgentSpecificMemory',
@@ -56,6 +63,9 @@ export const HEAP_FIGURE_GATED_DOCS = Object.freeze([
   // observation that started this correction.
   'docs/plan3/evidence/B-M4/release/CANARY-DISCLOSURE-DRAFT-20260729.md',
   'docs/plan3/evidence/B-M4/release/PO-HEAP-INSTRUMENT-CORRECTION-20260730.md',
+  // Quotes three different instruments (decoded image bytes, image cache, disk bytes) in
+  // the same tables, which is precisely the mix this gate exists to keep honest.
+  'docs/plan3/evidence/B-M4/release/IMAGE-ASSET-CENSUS-20260730-1147.md',
 ]);
 
 /** Heap/memory context words that make a megabyte figure a *heap* figure. */

@@ -4557,3 +4557,83 @@ b107 verified over HTTP: served stamp `20260730b107`, both images `canary-202607
 Not "should be fixed": **261 `UndefinedColumn` before the repair, zero since.** Since the repair the route is 86 × `GET 200` and 71 × `POST 200` with no 5xx; before it, 259 × `GET 500` and **zero successful POSTs at all**. The four 422s in the window are my own curl probes, not user traffic. Column present in `information_schema`.
 
 Routed to C in `ROUTE-TO-C-PREFS-DOES-NOT-GATE-CONSTRUCTION-20260730.md`, including the two theories I killed, so C does not spend the night re-running them.
+
+## B-0200 — the 62MB image cache is two eager PNGs, and one of them is dead code
+
+**2026-07-30 11:47 · answers the Director's 10:20 dispatch item 1 before cutting**
+
+The named finding doc was not on any branch I had checked out. I did not report it
+missing on an empty search — I ran the same query against a doc I knew existed as a
+positive control, then found it at `be740e7ae` plus four later findings. Worth noting
+that `7cd48ca4b` (11:20) **refutes DevTools inflation** (JS fell 332MB -> 128MB on
+attach; ~213MB was uncollected garbage, not retention), which contradicts the "upper
+bound because DevTools was open" caveat I added to the disclosure draft an hour ago. I
+have not corrected that yet; it is the next thing after the ship.
+
+**Census.** `scripts/image-asset-census.mjs`: parses real pixel dimensions from image
+headers, computes `w x h x 4` decoded bytes, greps every HTML/CSS/JS/TSX file for
+references and classifies each load site. 69 image files on disk, 41 referenced, 12
+distinct referenced bitmaps. **1.67 MB of PNG on disk decodes to 200.51 MB of bitmap.**
+Eight files over 1024px are 199.36 MB of that; there is no long tail. Twelve PNGs, zero
+SVGs — every icon in this product is a bitmap.
+
+Of the Director's four predicted shapes, one was right and three were wrong: oversized
+PNGs, **confirmed** (`LOGO-07.png` renders at 22px and ships at 2391px — 108x). No
+base64 payloads beyond one sub-1KB SVG, no icon set, no sprite sheets.
+
+**What actually loads on a chart page, verified by reading the chain rather than the
+directory listing** — two files, 51.78 MB of decoded image bytes against the PO's
+measured 63,075K of image cache:
+
+1. `logo-04.png`, 20.38 MB — `dist-v9/index.html:1659` loader-brand `<img>`.
+2. `logo-05.png`, 31.40 MB — `screenshot-manager.js` module load -> constructor ->
+   `init()` -> `getBrandLogoImage()`.
+
+**The second is dead code.** `getBrandLogoImage` has exactly two mentions in the whole
+repository: its definition and that call. Nothing reads `_brandLogoImage` — the
+screenshot paths build their own images through `resolveAssetUrl()` and
+`getVisibleLogoBounds(image)` takes its image as an argument. A 31.4 MB decode on every
+page load, for a cache with no reader, for three months.
+
+**Two corrections to the 10:50 finding**, which reached 52-72 MB by including assets that
+are never fetched: `logo-06.png` (40.22 MB decoded) and `talaria chart.png` (28.39 MB
+decoded) **have no reference anywhere in any served tree**. 28 of 69 files are orphans —
+2.53 MB of dead download, 0 bytes of image cache. The account did not close; it
+overcounted. Mine leaves **~9.8 MB unattributed** and says so.
+
+**Cuts, both landed in b110.**
+
+- Loader brand resized 2391x2234 -> 1024x957, four copies byte-identical: **20.38 MB ->
+  3.74 MB** decoded, 117 KB -> 35 KB on disk. No flag, per the 10:20 ruling. 1024px is
+  deliberately generous — `.loader-brand` is a 440px box, so this holds at 2x DPR and
+  clears every other use (280/80/40/22px).
+- Screenshot brand preload removed behind
+  `__TALARIA_DISABLE_SCREENSHOT_BRAND_PRELOAD_CUT_V1`: **31.40 MB -> 0**. Flagged
+  because it changes when an asset loads. Realm-climbing read, CELL 6 mutant proves the
+  climb is load-bearing.
+- Gate `screenshot-brand-preload-cut.test.mjs` **12/12** with two mutants, loading the
+  real shipped file in a vm with an instrumented `Image` so it tests the actual
+  module-load chain, not a re-implementation of it.
+
+**No image tooling on this machine** — no ImageMagick, no PIL, no sharp — so I wrote
+`scripts/png-downscale.mjs`, a box downsampler over Node's own zlib, rather than
+installing an image dependency into a product repo hours before a canary. Alpha-weighted
+so transparency cannot halo the edge, refuses anything it does not fully support instead
+of mangling it, `--selftest` green on 7 cells including a byte-exact round trip. I also
+eyeballed the output before it went near the wire.
+
+**Combined: 51.78 MB -> 3.74 MB of eager decoded image bytes per page load.**
+
+**Prediction written before the re-read, so it can be falsified.** Same instrument, Brave
+Task Manager "Image cache", DevTools closed, one chart: 63,075K before; **14,000-15,000K
+if my accounting holds**; ~63,000K means the cut never reached the wire; ~24,000K means my
+9.8 MB residual is really ~19 MB and the residual is the next thing I chase, not logos.
+
+**Also extended HEAP-FIGURE-SCOPE-V1** with `decoded image bytes` and `image cache`
+tokens and put the census under the gate. Until now the vocabulary offered writers only
+heap tokens, which is exactly how a decoded-bitmap number ends up in a release note as a
+memory-leak figure. Gate green over 5 documents, self-test 13/13.
+
+**Not done:** `logo-08.png` is a 20.38 MB decode used as a 48px notification icon
+(`alert-system.js:1339`) and in the screenshot brand row. Real spike, not on the load
+path, so it is the next tranche. The 28 orphans are housekeeping, untouched tonight.

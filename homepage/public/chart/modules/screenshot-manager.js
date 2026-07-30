@@ -3,6 +3,32 @@
  * Handles chart screenshot functionality with various options
  */
 
+/**
+ * SCREENSHOT-BRAND-PRELOAD-CUT-V1 kill-switch, read across realms.
+ *
+ * The chart shell can be framed by the dashboard, so a flag set on the host has to be
+ * visible here or the negative control is inert (B-0185).
+ */
+function _talariaScreenshotFlagTruthy(flagName) {
+    var killed = function (w) {
+        try {
+            return !!(w && w[flagName]);
+        } catch (_e) {
+            return false;
+        }
+    };
+    if (killed(typeof window !== 'undefined' ? window : null)) return true;
+    try {
+        var parent = (window.parent && window.parent !== window) ? window.parent : null;
+        if (killed(parent)) return true;
+        var top = (window.top && window.top !== window && window.top !== parent)
+            ? window.top
+            : null;
+        if (killed(top)) return true;
+    } catch (_e) { /* parent chain unreachable; own-realm read above stands */ }
+    return false;
+}
+
 class ScreenshotManager {
     constructor(chart) {
         this.chart = chart;
@@ -648,7 +674,16 @@ class ScreenshotManager {
     }
     
     init() {
-        this.getBrandLogoImage();
+        // SCREENSHOT-BRAND-PRELOAD-CUT-V1. This preload fetched modules/logo-05.png —
+        // 3684x2234, so 31.4 MB decoded — on every chart page load, and nothing ever
+        // read the result: the screenshot paths load their own images via
+        // resolveAssetUrl(), and getVisibleLogoBounds() takes its image as an argument.
+        // It was a third of the measured 63,075K image cache, paid on the critical path
+        // of every load, for a cache with no reader. getBrandLogoImage() still works and
+        // still memoises if a caller ever wants it.
+        if (_talariaScreenshotFlagTruthy('__TALARIA_DISABLE_SCREENSHOT_BRAND_PRELOAD_CUT_V1')) {
+            this.getBrandLogoImage();
+        }
         this.initDropdown();
         this.initKeyboardShortcuts();
     }
