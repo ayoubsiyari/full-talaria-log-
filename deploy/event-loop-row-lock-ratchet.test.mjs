@@ -34,10 +34,9 @@ const API_SERVER = join(HERE, '..', 'chart v 1.4', 'chart', 'api_server.py');
 const ROW_LOCK_TOKENS = ['with_for_update', '_lock_user_for_session_quota', '_check_session_create_quota'];
 
 // Frozen. Shrink when fixed; never extend without a Director ruling recorded in the reason.
-const KNOWN = new Set([
-  'chart_window_claim',
-  'patch_trading_session_state',
-]);
+// 2026-07-30 P0 reopen: both offenders moved off the loop (claim → sync def; session-state →
+// run_in_threadpool). Empty set is the closed state this ratchet was written for.
+const KNOWN = new Set([]);
 
 export function asyncEndpointsTakingRowLockOnLoop(source = readFileSync(API_SERVER, 'utf8')) {
   const lines = source.split(/\r?\n/);
@@ -104,16 +103,21 @@ test('the set of async endpoints holding a row lock on the event loop has not gr
   assert.equal(stillPresent.length, KNOWN.size);
 });
 
-test('the two known offenders are still the claim and the session-state write', () => {
-  // If either moves or is renamed, the escalation and the evidence document stop pointing at
-  // anything, and the next person cannot find the defect being tracked.
-  const byName = new Map(asyncEndpointsTakingRowLockOnLoop().map((o) => [o.name, o]));
-  const claim = byName.get('chart_window_claim');
-  const state = byName.get('patch_trading_session_state');
-  assert.ok(claim, 'chart_window_claim not found as an async row-lock endpoint');
-  assert.ok(state, 'patch_trading_session_state not found as an async row-lock endpoint');
-  assert.equal(claim.path, '/api/chart/windows/claim');
-  assert.equal(state.path, '/api/sessions/{session_id}/state');
+test('the former offenders are no longer async row-lock endpoints', () => {
+  // Closure record: claim is sync def; session-state DB work runs in run_in_threadpool.
+  // If either regresses to async+SessionLocal+FOR UPDATE, the empty-KNOWN cell above fails.
+  const source = readFileSync(API_SERVER, 'utf8');
+  assert.ok(/\ndef chart_window_claim\(/.test(source),
+    'chart_window_claim must remain a sync def so FastAPI runs it in the threadpool');
+  assert.ok(!/\nasync def chart_window_claim\(/.test(source),
+    'chart_window_claim must not return to async def');
+  assert.ok(source.includes('run_in_threadpool(_patch_trading_session_state_db)'),
+    'patch_trading_session_state must keep its DB work off the loop via run_in_threadpool');
+  assert.ok(source.includes('_set_local_lock_timeout'),
+    'lock_timeout helper must remain so contended FOR UPDATE cannot wait unboundedly');
+  const names = asyncEndpointsTakingRowLockOnLoop().map((o) => o.name);
+  assert.ok(!names.includes('chart_window_claim'));
+  assert.ok(!names.includes('patch_trading_session_state'));
 });
 
 test('a sync (def) endpoint taking the same lock is NOT reported', () => {

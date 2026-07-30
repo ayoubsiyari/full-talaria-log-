@@ -23,6 +23,8 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import sessionmaker, declarative_base, aliased
 from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.exc import OperationalError
+from starlette.concurrency import run_in_threadpool
 from datetime import datetime, timedelta
 import sys
 import csv
@@ -13054,10 +13056,26 @@ def _session_limit_reached_error(current: int, cap: int) -> HTTPException:
     )
 
 
+def _set_local_lock_timeout(db, timeout: str = "3s") -> None:
+    """Bound FOR UPDATE waits so a contended row cannot stall a worker unboundedly.
+
+    Client CONTROL_TIMEOUT_MS is 10s; the server must fail faster than that and louder
+    than a silent hang. SET LOCAL scopes to the current transaction only.
+    """
+    if not _DATABASE_USES_ROW_LOCK:
+        return
+    try:
+        db.execute(text(f"SET LOCAL lock_timeout = '{timeout}'"))
+    except Exception:
+        # sqlite / drivers without SET LOCAL: leave unbounded (dev only).
+        pass
+
+
 def _lock_user_for_session_quota(db, user_id: int) -> User | None:
     """Serialize concurrent session creates per user (PostgreSQL row lock)."""
     q = db.query(User).filter(User.id == user_id)
     if _DATABASE_USES_ROW_LOCK:
+        _set_local_lock_timeout(db)
         q = q.with_for_update()
     return q.first()
 
@@ -14318,8 +14336,14 @@ def _evict_oldest_chart_windows(db, user_id: int, *, need_slots: int) -> list[st
 
 
 @app.post("/api/chart/windows/claim")
-async def chart_window_claim(request: Request, body: _ChartWindowClaimIn):
-    """Register this browser window / installed app against max_sessions (kick-oldest)."""
+def chart_window_claim(request: Request, body: _ChartWindowClaimIn):
+    """Register this browser window / installed app against max_sessions (kick-oldest).
+
+    Sync ``def`` (not ``async def``): the body takes a PostgreSQL ``FOR UPDATE`` row lock
+    via a synchronous SQLAlchemy session. FastAPI runs ``def`` endpoints in the threadpool,
+    so a contended lock cannot stall this worker's event loop (P0, Director 2026-07-30 21:45).
+    ``_lock_user_for_session_quota`` also sets ``lock_timeout`` so the wait itself is bounded.
+    """
     if not AUTH_ENABLED:
         return {
             "ok": True,
@@ -14409,6 +14433,16 @@ async def chart_window_claim(request: Request, body: _ChartWindowClaimIn):
     except HTTPException:
         db.rollback()
         raise
+    except OperationalError as exc:
+        db.rollback()
+        # lock_timeout / deadlock — fail fast and loud instead of wedging a worker.
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "code": "chart_window_claim_busy",
+                "message": "Chart window claim is busy; retry shortly.",
+            },
+        ) from exc
     except Exception as exc:
         db.rollback()
         raise HTTPException(status_code=500, detail="Could not claim chart window.") from exc
@@ -25292,7 +25326,22 @@ async def patch_trading_session_state(session_id: int, request: Request):
         raise HTTPException(status_code=422, detail=str(exc))
     user = _require_paid_journal_user(request)
     _enforce_backtest_user_rate(user, "session_patch")
-    db = SessionLocal()
+
+    # Blocking SQLAlchemy + FOR UPDATE must not run on the event loop (P0 pair with
+    # chart_window_claim). Body was already awaited above; the remainder is sync work.
+    def _patch_trading_session_state_db():
+        db = SessionLocal()
+        try:
+            return _patch_trading_session_state_db_locked(
+                db, session_id=session_id, user=user, payload=payload, body_dict=body_dict
+            )
+        finally:
+            db.close()
+
+    return await run_in_threadpool(_patch_trading_session_state_db)
+
+
+def _patch_trading_session_state_db_locked(db, *, session_id: int, user, payload, body_dict: dict):
     try:
         s = db.query(TradingSession).filter(TradingSession.id == session_id).first()
         if not s:
@@ -25302,6 +25351,7 @@ async def patch_trading_session_state(session_id: int, request: Request):
 
         st = _get_or_create_trading_session_state(db, session_id=s.id, user_id=s.user_id)
         if _DATABASE_USES_ROW_LOCK:
+            _set_local_lock_timeout(db)
             st = (
                 db.query(TradingSessionState)
                 .filter(TradingSessionState.session_id == s.id)
@@ -25407,8 +25457,18 @@ async def patch_trading_session_state(session_id: int, request: Request):
         if warning:
             resp["warning"] = warning
         return resp
-    finally:
-        db.close()
+    except HTTPException:
+        db.rollback()
+        raise
+    except OperationalError as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "code": "session_state_busy",
+                "message": "Session state write is busy; retry shortly.",
+            },
+        ) from exc
 
 @app.patch("/api/sessions/{session_id}")
 async def update_trading_session(session_id: int, payload: TradingSessionUpdateIn, request: Request):

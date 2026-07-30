@@ -204,25 +204,30 @@
     function release() {
         if (!shouldClaim() || !clientId) return;
         var payload = JSON.stringify({ client_id: clientId });
+        // Prefer bounded controlFetch over sendBeacon. sendBeacon cannot be aborted, so a
+        // silent /release held a socket for the life of the browser and the CONTROL_TIMEOUT_MS
+        // ceiling never applied — the incomplete half of the P0 that markers alone could not
+        // close (Director 2026-07-30 21:45 / TEST-02). keepalive still outlives the page; the
+        // AbortController bound in controlFetch is what makes the socket releasable while this
+        // document is alive (reload / second-tab race). sendBeacon remains a last-resort
+        // fallback when fetch itself is unavailable.
+        try {
+            if (pristineFetch || typeof window.fetch === 'function') {
+                controlFetch('/api/chart/windows/release', {
+                    method: 'POST',
+                    credentials: 'include',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: payload,
+                    keepalive: true,
+                }).catch(function () { /* ignore */ });
+                return;
+            }
+        } catch (_e) { /* fall through to beacon */ }
         try {
             if (navigator.sendBeacon) {
                 var blob = new Blob([payload], { type: 'application/json' });
-                // POST — sendBeacon cannot reliably send DELETE.
                 navigator.sendBeacon('/api/chart/windows/release', blob);
-                return;
             }
-        } catch (_e) { /* fall through */ }
-        try {
-            // keepalive outlives the page, so an unanswered release from the OUTGOING page
-            // sits in the pool while the reloaded page tries to claim — two dead sockets from
-            // one reload. Bounded for that reason.
-            controlFetch('/api/chart/windows/release', {
-                method: 'POST',
-                credentials: 'include',
-                headers: { 'Content-Type': 'application/json' },
-                body: payload,
-                keepalive: true,
-            }).catch(function () { /* ignore */ });
         } catch (_e2) { /* ignore */ }
     }
 

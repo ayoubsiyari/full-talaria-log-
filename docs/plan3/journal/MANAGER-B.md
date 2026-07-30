@@ -5284,3 +5284,33 @@ accepted the orphan as readily as the named SHA; that is the failure mode the ad
 **Manifest.** Every payload row for this train is recorded by introducing SHA in
 `docs/plan3/TRAIN-MANIFEST-b114-20260730.md`. E's row is bound to
 `71c4c1b0ea0d8b91d525b2da2992c5f5b27ac934` only; `9b0a1e0ea` is listed as rejected.
+
+## B-0213 — Window-claim P0 reopened (TEST-02): reproduced under row lock; incomplete fix closed on the wire
+
+Ruling `2a60e2cb3` / `RULING-ATTRIBUTION-BEFORE-CONFIRMATION-AND-THE-WINDOW-CLAIM-IS-NOT-FIXED-20260730-2145.md`.
+
+**Both branches were right.** Markers present in served `chart-window-limit.js` (32,259 → hotfix 32,691 bytes with `controlFetch`-first release). Path still hung. Delivery ≠ behaviour.
+
+**Behavioural repro (not marker grep).** Authenticated claim while `users.id=13` held `FOR UPDATE`: **27.6 s** / 200 before the fix. `/api/auth/me` stayed ~90 ms. Idle dual-tab claims were fast (~100 ms) — the defect is contention on the event-loop row lock, which a second chart tab + session-state writes produce in C's real use.
+
+**Incomplete halves.**
+1. Server: `async def chart_window_claim` took sync `FOR UPDATE` on the loop; `patch_trading_session_state` was the twin.
+2. Client: `release()` preferred `sendBeacon` (unabortable), so `CONTROL_TIMEOUT_MS` never covered unload/reload releases.
+
+**Fix on the wire (surgical hotfix, restore `/root/talaria-restore/p0-window-claim-hotfix-20260730T221024Z`).**
+- `chart_window_claim` → sync `def` (threadpool)
+- `SET LOCAL lock_timeout = '3s'` → 503 `chart_window_claim_busy`
+- session-state DB work → `run_in_threadpool`
+- `release()` → `controlFetch` first
+- Ratchet `KNOWN` emptied; gates 9/9 + control-timeout 18/18 green
+
+**Post-fix under the same lock:** claim **503 in 3.07 s** (was 27.6 s). `me` 98 ms.
+
+**Host route for C (ruling item 2).** SSH is **port 443**, not 22. Port 22 closed to everyone. Key + brief: `c:\Users\user\Desktop\talaria1\_handoff\manager-C\HOST-ROUTE.md`; on-box `/home/mgr-c/gate/HOST-NOTES.md`. Verified `mgr-c_ssh_ok` this session.
+
+**Train (ruling item 3).** Already SHA-resolved in `docs/plan3/TRAIN-MANIFEST-b114-20260730.md`; E = `71c4c1b0e` only; orphan `9b0a1e0ea` rejected (B-0212).
+
+Evidence: `docs/plan3/evidence/B-M4/release/FINDING-P0-WINDOW-CLAIM-INCOMPLETE-FIX-BEHAVIOURAL-20260730-2200.md`; `_evidence/manager-B/p0-window-claim-behavioural/`.
+
+C can run attribution / second CONF-01 without waiting on port 22 or on an unbounded claim.
+
