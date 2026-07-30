@@ -1,7 +1,7 @@
 # TRADE-EVICT-V1 — CONF-02 EVICT-01 byte cell
 
 **Supersedes:** `98,306 → 0` (one-trade / 8 KB synthetic fixture).  
-**Tip:** `f4e006b06`  
+**Tip:** `ccc9b34c1`  
 **Grading:** harness GREEN only — **C grades on the wire** (`DECL-01`).
 
 ## Figure

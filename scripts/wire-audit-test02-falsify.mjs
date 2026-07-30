@@ -37,6 +37,9 @@ const PATH_HINTS = [
   { hint: 'orderManagerTradeRows.js', local: 'chart v 1.4/talaria-design/src/orderManagerTradeRows.js', wireNames: ['chart_talaria-design_src_orderManagerTradeRows.js', 'orderManagerTradeRows.js'] },
   { hint: 'drawing-tools-manager.js', local: 'chart v 1.4/chart/modules/drawing-tools-manager.js', wireNames: ['chart_modules_drawing-tools-manager.js', 'drawing-tools-manager.js'] },
   { hint: 'multichart-manager.js', local: 'chart v 1.4/chart/multichart-prod/multichart-manager.js', wireNames: ['chart_multichart-prod_multichart-manager.js', 'multichart-manager.js'] },
+  { hint: 'v9-theme-bridge.js', local: 'chart v 1.4/chart/modules/v9-theme-bridge.js', wireNames: ['chart_modules_v9-theme-bridge.js', 'v9-theme-bridge.js'] },
+  { hint: 'favorites-manager.js', local: 'chart v 1.4/chart/modules/favorites-manager.js', wireNames: ['chart_modules_favorites-manager.js', 'favorites-manager.js'] },
+  { hint: 'preferences-sync.js', local: 'chart v 1.4/chart/modules/preferences-sync.js', wireNames: ['chart_modules_preferences-sync.js', 'preferences-sync.js'] },
   { hint: 'session_journal_store.py', local: 'chart v 1.4/chart/session_journal_store.py', wireNames: [], backend: true },
 ];
 
@@ -425,9 +428,19 @@ function buildMarkerList(ticket, auditRow, markerRow) {
   if (/01807b/i.test(ticket)) {
     add('order-manager.js', '__TALARIA_DISABLE_ORDER_PAIR_SWITCH_VISUAL_REBIND_V1', [...rowCommits, '2baa2c5b1', '2cc949399', 'd5b790e56']);
   }
-  // Common money/order flags often lack ledger commits — seed known train SHAs.
+  // M23 introducing commit is f127d25dd (parent lacks the kill-switch). Do not
+  // seed merge/train SHAs (a07e35120 / tip noise) — those are vacuous-at-parent.
   if (/M23|Rayan #1|Rayan #3|Rayan #6b|01937/i.test(ticket)) {
-    add('order-manager.js', '__TALARIA_DISABLE_M23_ROLLBACK_TRADE_CANCEL_V1', [...rowCommits, '2baa2c5b1', 'c0a0d7620']);
+    add('order-manager.js', '__TALARIA_DISABLE_M23_ROLLBACK_TRADE_CANCEL_V1', [
+      ...rowCommits, 'f127d25dd', '79711ec2b', '4327f8f5f',
+    ]);
+  }
+  if (/Timezone EST-to-CST/i.test(ticket)) {
+    add('v9-theme-bridge.js', '__TALARIA_DISABLE_V9_THEME_TZ_HONOR_CHART_V1', [...rowCommits, 'ed2a183f3']);
+  }
+  if (/TAL-01895|TAL-01792/i.test(ticket)) {
+    add('favorites-manager.js', '__TALARIA_DISABLE_PINS_USER_PREFS_V1', [...rowCommits, '6ad9f48ec']);
+    add('preferences-sync.js', '__TALARIA_DISABLE_PINS_USER_PREFS_V1', [...rowCommits, '6ad9f48ec']);
   }
   return out;
 }

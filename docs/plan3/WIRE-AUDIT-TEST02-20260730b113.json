@@ -4,24 +4,25 @@
   "reference": "fix-commit^ per marker (git history)",
   "correction": "CORRECTION-B103-IS-NOT-A-PRE-FIX-CORPUS-THE-REFERENCE-IS-THE-PARENT-COMMIT-20260730-1635.md",
   "stamp": "20260730b113",
-  "tip": "f4e006b06",
+  "tip": "ccc9b34c1",
   "wireDir": "artifacts/wire-b113",
   "priorAudit": "C:\\Users\\user\\Desktop\\talaria1\\manager-d-trade\\docs\\plan3\\WIRE-AUDIT-FIXED-20260730b113.json",
   "priorOnWireStrictTest01": 43,
   "priorOnWireStrictTest02_b103mistake": 10,
   "totalFixed": 50,
   "summary": {
-    "on_wire": 39,
+    "on_wire": 46,
     "partial": 0,
     "off_wire": 2,
-    "wire_unproven": 7,
+    "wire_unproven": 0,
     "delivery_unserved": 1,
     "backend_needs_api_probe": 1
   },
-  "onWireStrictTest02": 39,
+  "onWireStrictTest02": 46,
   "discriminatingOnWire": [
     "TALARIA_DISABLE_TRADE_MARKER_CANONICAL_PROJECTION_V1",
     "__TALARIA_DISABLE_M14_FIB_SETTINGS_LEVELS_PERSIST_V1",
+    "__TALARIA_DISABLE_M23_ROLLBACK_TRADE_CANCEL_V1",
     "__TALARIA_DISABLE_M24_DISPLAY_ID_STABILITY_V1",
     "__TALARIA_DISABLE_M24_ORDER_ID_ALLOCATOR_V1",
     "__TALARIA_DISABLE_ORDER_BALANCE_FLOOR",
@@ -45,7 +46,9 @@
     "__TALARIA_DISABLE_ORDER_SPLIT_ENTRY_HOVER_STICK_V1",
     "__TALARIA_DISABLE_ORDER_STABLE_LABEL_HOVER_DOM_V1",
     "__TALARIA_DISABLE_ORDER_TYPE_ONE_TICK_PENDING_V1",
+    "__TALARIA_DISABLE_PINS_USER_PREFS_V1",
     "__TALARIA_DISABLE_TRADE_MARKER_CANONICAL_PROJECTION_V1",
+    "__TALARIA_DISABLE_V9_THEME_TZ_HONOR_CHART_V1",
     "__TALARIA_MC_DISABLE_CANONICAL_REPLAY_MARK_V1",
     "_allocateOrderId",
     "_applyCanonicalReplayMarkFromDetail",
@@ -341,10 +344,10 @@
           "hint": "order-manager.js",
           "needle": "__TALARIA_DISABLE_ORDER_TYPE_ONE_TICK_PENDING_V1",
           "wirePresent": true,
-          "fixCommit": "b3f6cd6de",
+          "fixCommit": "13149dfa3",
           "parentPresent": false,
           "class": "discriminating-on-wire",
-          "detail": "absent at b3f6cd6de~1, present on wire"
+          "detail": "absent at 13149dfa3~1, present on wire"
         }
       ],
       "discarded": []
@@ -386,19 +389,19 @@
           "hint": "order-manager.js",
           "needle": "__TALARIA_DISABLE_ORDER_SINGLE_TP_AFTER_TRAIL",
           "wirePresent": true,
-          "fixCommit": "a8d887db1",
+          "fixCommit": "5d620beb7",
           "parentPresent": false,
           "class": "discriminating-on-wire",
-          "detail": "absent at a8d887db1~1, present on wire"
+          "detail": "absent at 5d620beb7~1, present on wire"
         },
         {
           "hint": "order-manager.js",
           "needle": "__TALARIA_DISABLE_ORDER_SINGLE_TP_AFTER_TRAIL_V1",
           "wirePresent": true,
-          "fixCommit": "a8d887db1",
+          "fixCommit": "5d620beb7",
           "parentPresent": false,
           "class": "discriminating-on-wire",
-          "detail": "absent at a8d887db1~1, present on wire"
+          "detail": "absent at 5d620beb7~1, present on wire"
         }
       ],
       "discarded": []
@@ -413,19 +416,19 @@
           "hint": "order-manager.js",
           "needle": "__TALARIA_DISABLE_ORDER_BALANCE_FLOOR",
           "wirePresent": true,
-          "fixCommit": "7a2871f24",
+          "fixCommit": "2d01413d0",
           "parentPresent": false,
           "class": "discriminating-on-wire",
-          "detail": "absent at 7a2871f24~1, present on wire"
+          "detail": "absent at 2d01413d0~1, present on wire"
         },
         {
           "hint": "order-manager.js",
           "needle": "__TALARIA_DISABLE_ORDER_BALANCE_FLOOR_V1",
           "wirePresent": true,
-          "fixCommit": "7a2871f24",
+          "fixCommit": "2d01413d0",
           "parentPresent": false,
           "class": "discriminating-on-wire",
-          "detail": "absent at 7a2871f24~1, present on wire"
+          "detail": "absent at 2d01413d0~1, present on wire"
         }
       ],
       "discarded": []
@@ -459,18 +462,18 @@
     },
     {
       "ticket": "Timezone EST-to-CST override",
-      "verdict": "wire-unproven",
-      "onWire": null,
-      "detail": "present on wire but introducing commit unresolved — cannot apply parent^",
+      "verdict": "on-wire",
+      "onWire": true,
+      "detail": "1 discriminating marker(s) vs fix-commit^; on wire",
       "checks": [
         {
           "hint": "v9-theme-bridge.js",
           "needle": "__TALARIA_DISABLE_V9_THEME_TZ_HONOR_CHART_V1",
-          "wirePresent": null,
-          "fixCommit": null,
-          "parentPresent": null,
-          "class": "fix-commit-unresolved",
-          "detail": "introducing commit not found in git history"
+          "wirePresent": true,
+          "fixCommit": "ed2a183f3",
+          "parentPresent": false,
+          "class": "discriminating-on-wire",
+          "detail": "absent at ed2a183f3~1, present on wire"
         },
         {
           "hint": "chart.js",
@@ -740,27 +743,27 @@
     },
     {
       "ticket": "TAL-01895",
-      "verdict": "wire-unproven",
-      "onWire": null,
-      "detail": "present on wire but introducing commit unresolved — cannot apply parent^",
+      "verdict": "on-wire",
+      "onWire": true,
+      "detail": "2 discriminating marker(s) vs fix-commit^; on wire",
       "checks": [
         {
           "hint": "favorites-manager.js",
           "needle": "__TALARIA_DISABLE_PINS_USER_PREFS_V1",
-          "wirePresent": null,
-          "fixCommit": null,
-          "parentPresent": null,
-          "class": "fix-commit-unresolved",
-          "detail": "introducing commit not found in git history"
+          "wirePresent": true,
+          "fixCommit": "6ad9f48ec",
+          "parentPresent": false,
+          "class": "discriminating-on-wire",
+          "detail": "absent at 6ad9f48ec~1, present on wire"
         },
         {
           "hint": "preferences-sync.js",
           "needle": "__TALARIA_DISABLE_PINS_USER_PREFS_V1",
-          "wirePresent": null,
-          "fixCommit": null,
-          "parentPresent": null,
-          "class": "fix-commit-unresolved",
-          "detail": "introducing commit not found in git history"
+          "wirePresent": true,
+          "fixCommit": "6ad9f48ec",
+          "parentPresent": false,
+          "class": "discriminating-on-wire",
+          "detail": "absent at 6ad9f48ec~1, present on wire"
         },
         {
           "hint": "chart.js",
@@ -778,27 +781,27 @@
     },
     {
       "ticket": "TAL-01792",
-      "verdict": "wire-unproven",
-      "onWire": null,
-      "detail": "present on wire but introducing commit unresolved — cannot apply parent^",
+      "verdict": "on-wire",
+      "onWire": true,
+      "detail": "2 discriminating marker(s) vs fix-commit^; on wire",
       "checks": [
         {
           "hint": "favorites-manager.js",
           "needle": "__TALARIA_DISABLE_PINS_USER_PREFS_V1",
-          "wirePresent": null,
-          "fixCommit": null,
-          "parentPresent": null,
-          "class": "fix-commit-unresolved",
-          "detail": "introducing commit not found in git history"
+          "wirePresent": true,
+          "fixCommit": "6ad9f48ec",
+          "parentPresent": false,
+          "class": "discriminating-on-wire",
+          "detail": "absent at 6ad9f48ec~1, present on wire"
         },
         {
           "hint": "preferences-sync.js",
           "needle": "__TALARIA_DISABLE_PINS_USER_PREFS_V1",
-          "wirePresent": null,
-          "fixCommit": null,
-          "parentPresent": null,
-          "class": "fix-commit-unresolved",
-          "detail": "introducing commit not found in git history"
+          "wirePresent": true,
+          "fixCommit": "6ad9f48ec",
+          "parentPresent": false,
+          "class": "discriminating-on-wire",
+          "detail": "absent at 6ad9f48ec~1, present on wire"
         },
         {
           "hint": "chart.js",
@@ -926,23 +929,21 @@
     },
     {
       "ticket": "M23 / TAL-01937",
-      "verdict": "wire-unproven",
-      "onWire": null,
-      "detail": "no discriminating parent^ proof",
+      "verdict": "on-wire",
+      "onWire": true,
+      "detail": "1 discriminating marker(s) vs fix-commit^; on wire",
       "checks": [
         {
           "hint": "order-manager.js",
           "needle": "__TALARIA_DISABLE_M23_ROLLBACK_TRADE_CANCEL_V1",
           "wirePresent": true,
-          "fixCommit": "a07e35120",
-          "parentPresent": true,
-          "class": "vacuous-at-parent",
-          "detail": "present at a07e35120~1 — not the introducing delta"
+          "fixCommit": "f127d25dd",
+          "parentPresent": false,
+          "class": "discriminating-on-wire",
+          "detail": "absent at f127d25dd~1, present on wire"
         }
       ],
-      "discarded": [
-        "__TALARIA_DISABLE_M23_ROLLBACK_TRADE_CANCEL_V1"
-      ]
+      "discarded": []
     },
     {
       "ticket": "TAL-01800",
@@ -1164,23 +1165,21 @@
     },
     {
       "ticket": "Rayan #1",
-      "verdict": "wire-unproven",
-      "onWire": null,
-      "detail": "no discriminating parent^ proof",
+      "verdict": "on-wire",
+      "onWire": true,
+      "detail": "1 discriminating marker(s) vs fix-commit^; on wire",
       "checks": [
         {
           "hint": "order-manager.js",
           "needle": "__TALARIA_DISABLE_M23_ROLLBACK_TRADE_CANCEL_V1",
           "wirePresent": true,
-          "fixCommit": "a07e35120",
-          "parentPresent": true,
-          "class": "vacuous-at-parent",
-          "detail": "present at a07e35120~1 — not the introducing delta"
+          "fixCommit": "f127d25dd",
+          "parentPresent": false,
+          "class": "discriminating-on-wire",
+          "detail": "absent at f127d25dd~1, present on wire"
         }
       ],
-      "discarded": [
-        "__TALARIA_DISABLE_M23_ROLLBACK_TRADE_CANCEL_V1"
-      ]
+      "discarded": []
     },
     {
       "ticket": "Rayan #2",
@@ -1243,23 +1242,21 @@
     },
     {
       "ticket": "Rayan #3",
-      "verdict": "wire-unproven",
-      "onWire": null,
-      "detail": "no discriminating parent^ proof",
+      "verdict": "on-wire",
+      "onWire": true,
+      "detail": "1 discriminating marker(s) vs fix-commit^; on wire",
       "checks": [
         {
           "hint": "order-manager.js",
           "needle": "__TALARIA_DISABLE_M23_ROLLBACK_TRADE_CANCEL_V1",
           "wirePresent": true,
-          "fixCommit": "a07e35120",
-          "parentPresent": true,
-          "class": "vacuous-at-parent",
-          "detail": "present at a07e35120~1 — not the introducing delta"
+          "fixCommit": "f127d25dd",
+          "parentPresent": false,
+          "class": "discriminating-on-wire",
+          "detail": "absent at f127d25dd~1, present on wire"
         }
       ],
-      "discarded": [
-        "__TALARIA_DISABLE_M23_ROLLBACK_TRADE_CANCEL_V1"
-      ]
+      "discarded": []
     },
     {
       "ticket": "Rayan #4",
@@ -1353,23 +1350,21 @@
     },
     {
       "ticket": "Rayan #6b",
-      "verdict": "wire-unproven",
-      "onWire": null,
-      "detail": "no discriminating parent^ proof",
+      "verdict": "on-wire",
+      "onWire": true,
+      "detail": "1 discriminating marker(s) vs fix-commit^; on wire",
       "checks": [
         {
           "hint": "order-manager.js",
           "needle": "__TALARIA_DISABLE_M23_ROLLBACK_TRADE_CANCEL_V1",
           "wirePresent": true,
-          "fixCommit": "a07e35120",
-          "parentPresent": true,
-          "class": "vacuous-at-parent",
-          "detail": "present at a07e35120~1 — not the introducing delta"
+          "fixCommit": "f127d25dd",
+          "parentPresent": false,
+          "class": "discriminating-on-wire",
+          "detail": "absent at f127d25dd~1, present on wire"
         }
       ],
-      "discarded": [
-        "__TALARIA_DISABLE_M23_ROLLBACK_TRADE_CANCEL_V1"
-      ]
+      "discarded": []
     },
     {
       "ticket": "Rayan #9",
@@ -1420,7 +1415,7 @@
       "ticket": "Rayan #11",
       "verdict": "on-wire",
       "onWire": true,
-      "detail": "4 discriminating marker(s) vs fix-commit^; on wire",
+      "detail": "5 discriminating marker(s) vs fix-commit^; on wire",
       "checks": [
         {
           "hint": "order-manager.js",
@@ -1444,10 +1439,10 @@
           "hint": "order-manager.js",
           "needle": "__TALARIA_DISABLE_M23_ROLLBACK_TRADE_CANCEL_V1",
           "wirePresent": true,
-          "fixCommit": "a07e35120",
-          "parentPresent": true,
-          "class": "vacuous-at-parent",
-          "detail": "present at a07e35120~1 — not the introducing delta"
+          "fixCommit": "f127d25dd",
+          "parentPresent": false,
+          "class": "discriminating-on-wire",
+          "detail": "absent at f127d25dd~1, present on wire"
         },
         {
           "hint": "order-manager.js",
@@ -1468,9 +1463,7 @@
           "detail": "absent at 2cc949399~1, present on wire"
         }
       ],
-      "discarded": [
-        "__TALARIA_DISABLE_M23_ROLLBACK_TRADE_CANCEL_V1"
-      ]
+      "discarded": []
     },
     {
       "ticket": "TAL-01807b",

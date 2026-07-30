@@ -1,19 +1,19 @@
 # WIRE-AUDIT TEST-02 (amended) — 20260730b113
 
-**Tip:** `f4e006b06`  
+**Tip:** `ccc9b34c1`  
 **Schema:** `talaria.wire-audit-test02.v2`  
 **Reference:** `<fix-commit>^` per marker (git history) — **not** b103  
 **Correction:** `CORRECTION-B103-IS-NOT-A-PRE-FIX-CORPUS-…-1635.md`  
-**Prior mistaken TEST-02 (b103 corpus):** 10/50 → **corrected:** **39/50** discriminating on-wire
+**Prior mistaken TEST-02 (b103 corpus):** 10/50 → **corrected:** **46/50** discriminating on-wire
 
 ## Summary
 
 | Verdict | Count |
 |---|---:|
-| on-wire | 39 |
+| on-wire | 46 |
 | partial | 0 |
 | off-wire | 2 |
-| wire-unproven | 7 |
+| wire-unproven | 0 |
 | delivery-unserved | 1 |
 | backend-needs-api-probe | 1 |
 
@@ -31,6 +31,7 @@
 
 - `TALARIA_DISABLE_TRADE_MARKER_CANONICAL_PROJECTION_V1`
 - `__TALARIA_DISABLE_M14_FIB_SETTINGS_LEVELS_PERSIST_V1`
+- `__TALARIA_DISABLE_M23_ROLLBACK_TRADE_CANCEL_V1`
 - `__TALARIA_DISABLE_M24_DISPLAY_ID_STABILITY_V1`
 - `__TALARIA_DISABLE_M24_ORDER_ID_ALLOCATOR_V1`
 - `__TALARIA_DISABLE_ORDER_BALANCE_FLOOR`
@@ -54,7 +55,9 @@
 - `__TALARIA_DISABLE_ORDER_SPLIT_ENTRY_HOVER_STICK_V1`
 - `__TALARIA_DISABLE_ORDER_STABLE_LABEL_HOVER_DOM_V1`
 - `__TALARIA_DISABLE_ORDER_TYPE_ONE_TICK_PENDING_V1`
+- `__TALARIA_DISABLE_PINS_USER_PREFS_V1`
 - `__TALARIA_DISABLE_TRADE_MARKER_CANONICAL_PROJECTION_V1`
+- `__TALARIA_DISABLE_V9_THEME_TZ_HONOR_CHART_V1`
 - `__TALARIA_MC_DISABLE_CANONICAL_REPLAY_MARK_V1`
 - `_allocateOrderId`
 - `_applyCanonicalReplayMarkFromDetail`

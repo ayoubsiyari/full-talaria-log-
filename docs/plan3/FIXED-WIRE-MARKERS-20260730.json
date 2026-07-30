@@ -526,7 +526,9 @@
     },
     {
       "ticket": "M23 / TAL-01937",
-      "commits": [],
+      "commits": [
+        "f127d25dd"
+      ],
       "gates": [
         "m23-rollback-trade-state.red.test.mjs"
       ],
@@ -534,7 +536,7 @@
         {
           "pathHint": "order-manager.js",
           "needle": "__TALARIA_DISABLE_M23_ROLLBACK_TRADE_CANCEL_V1",
-          "fromCommit": "147fa8e5f"
+          "fromCommit": "f127d25dd"
         }
       ]
     },
@@ -638,7 +640,9 @@
     },
     {
       "ticket": "Rayan #1",
-      "commits": [],
+      "commits": [
+        "f127d25dd"
+      ],
       "gates": [
         "m23-rollback-trade-state.red.test.mjs"
       ],
@@ -646,7 +650,7 @@
         {
           "pathHint": "order-manager.js",
           "needle": "__TALARIA_DISABLE_M23_ROLLBACK_TRADE_CANCEL_V1",
-          "fromCommit": "147fa8e5f"
+          "fromCommit": "f127d25dd"
         }
       ]
     },
@@ -660,7 +664,9 @@
     },
     {
       "ticket": "Rayan #3",
-      "commits": [],
+      "commits": [
+        "f127d25dd"
+      ],
       "gates": [
         "m23-rollback-trade-state.red.test.mjs"
       ],
@@ -668,7 +674,7 @@
         {
           "pathHint": "order-manager.js",
           "needle": "__TALARIA_DISABLE_M23_ROLLBACK_TRADE_CANCEL_V1",
-          "fromCommit": "147fa8e5f"
+          "fromCommit": "f127d25dd"
         }
       ]
     },
@@ -718,7 +724,9 @@
     },
     {
       "ticket": "Rayan #6b",
-      "commits": [],
+      "commits": [
+        "f127d25dd"
+      ],
       "gates": [
         "m23-rollback-trade-state.red.test.mjs"
       ],
@@ -726,7 +734,7 @@
         {
           "pathHint": "order-manager.js",
           "needle": "__TALARIA_DISABLE_M23_ROLLBACK_TRADE_CANCEL_V1",
-          "fromCommit": "147fa8e5f"
+          "fromCommit": "f127d25dd"
         }
       ]
     },
