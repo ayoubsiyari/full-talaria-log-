@@ -105,7 +105,7 @@ Open row disposition and unverified blast-radius order live in `docs/plan3/UNKNO
 | TAL-01862 | po-eyes | — | Cluster J | UI/viewport PO |
 | TAL-01864 | owner-blocked | — | Cluster I history range | `chart.js` smart-window; Data Script 3 |
 | TAL-01886 | fixed | `ab57a5dac` + CONF-01 cell | GREEN: `cross-timeframe-current-price-coherence.test.mjs` ± homepage | CONF-01 peer isolation cell added |
-| TAL-01887 | broken | — | RED vacuous: harness `H-S18`/`H-S83` boot `pair: 'same'` | CONF-01: gate same-pair/single-panel vacuous |
+| TAL-01887 | owner-blocked | — | RED vacuous under CONF-01: `H-S18`/`H-S83` `pair: 'same'` | Owner A — harness/chart; see `OWNER-A-HS18-HS83-CONF01-20260730.md` |
 | TAL-01891 | needs-info | — | Cluster N memory lag | Soak undefined; no invented click path |
 | TAL-01892 | needs-info | — | Cluster N idle lag | Soak/monitor lane |
 | TAL-01893 | owner-blocked | — | Go-To forward skip lives in `chart.js` (`goToNextSession`); M22 bucketing does not cover menu skip | Owner A; no D tip gate |
@@ -117,7 +117,7 @@ Open row disposition and unverified blast-radius order live in `docs/plan3/UNKNO
 | TAL-01906 | needs-info | — | Cluster O feature request | Not a bug gate |
 | TAL-01907 | needs-info | — | Cluster O feature request | Not a bug gate |
 | TAL-01909 | po-eyes | — | Cluster D session resume | Data/replay PO |
-| TAL-01910 | broken | — | RED vacuous: harness `H-S18`/`H-S83` boot `pair: 'same'` | CONF-01: gate same-pair/single-panel vacuous |
+| TAL-01910 | owner-blocked | — | RED vacuous under CONF-01: `H-S18`/`H-S83` `pair: 'same'` | Owner A — harness/chart; see `OWNER-A-HS18-HS83-CONF01-20260730.md` |
 | TAL-01911 | po-eyes | — | M24 journal registration residual | First look — PO Script 1 |
 | TAL-01912 | closed-scratched | — | PO scratched / user confusion | No product gate |
 | TAL-01913 | owner-blocked | — | Cluster H daily-open lines | Chart overlay owner |
@@ -137,7 +137,7 @@ Open row disposition and unverified blast-radius order live in `docs/plan3/UNKNO
 | TAL-01935 | owner-blocked | — | Cluster H indicator labels | Chart overlay owner |
 | TAL-01936 | owner-blocked | — | Cluster I time alignment | `chart.js` owner |
 | TAL-01938 | owner-blocked | — | Cluster H ORB size | Chart overlay / session calendar |
-| TAL-01939 | broken | — | RED vacuous: harness `H-S18`/`H-S83` boot `pair: 'same'` | CONF-01: gate same-pair/single-panel vacuous |
+| TAL-01939 | owner-blocked | — | RED vacuous under CONF-01: `H-S18`/`H-S83` `pair: 'same'` | Owner A — harness/chart; see `OWNER-A-HS18-HS83-CONF01-20260730.md` |
 | Rayan #1 | fixed | m23 GATE-01 | GREEN/RED: `m23-rollback-trade-state.red.test.mjs` | Same as TAL-01937 |
 | Rayan #2 | fixed | CONF-01 four-symbol teardown gate | GREEN: `order-mc-layout-teardown-retains-host-orders.test.mjs` (EURUSD host + GBPUSD/USDJPY/XAUUSD peers); RED kill | Money-path under CONF-01; lag half → A |
 | Rayan #3 | fixed | m23 GATE-01 | GREEN/RED: `m23-rollback-trade-state.red.test.mjs` | Same as TAL-01937 |
@@ -153,20 +153,20 @@ Open row disposition and unverified blast-radius order live in `docs/plan3/UNKNO
 | PO hover one-by-one | fixed | `2cc949399` | GREEN: `order-stable-label-hover-dom.test.mjs` ± homepage | Closure pass bucket (a) |
 | PO pending SL/TP resurrect | fixed | `2cc949399` | GREEN: `order-pending-protection-clear.test.mjs` ± homepage | TOP ACCEPT; redeploy before PO visual confirm |
 
-## Status counts (CONF-01 / Director 14:30)
+## Status counts (CONF-01 + CKPT-01 / Director 14:45)
 
 | Status | Count |
 | --- | ---: |
 | blocked-on-build | 6 |
-| broken | 7 |
+| broken | 4 |
 | closed-scratched | 2 |
 | feature-request | 1 |
 | fixed | 48 |
 | intended | 1 |
 | needs-info | 10 |
-| owner-blocked | 15 |
+| owner-blocked | 18 |
 | po-eyes | 26 |
 | superseded | 29 |
 | verify-gone | 3 |
 
-Bare `unverified`: **0**. Honest `fixed` after CONF-01 reopen of H-S18/H-S83 same-pair (TAL-01887/01910/01939): **48**. TAL-01850 → **A**. Five PO packs AWAITING STAMP (restaged for 4sym/4tf).
+Bare `unverified`: **0**. Honest `fixed` = **48**. TAL-01887/01910/01939 → **A** (CONF-01 harness). TAL-01850 → **A**. Five PO packs AWAITING STAMP. CKPT-01 tag `ckpt/pre-d-money-conf01-d5b790e56` taken; rollback exercised while green.

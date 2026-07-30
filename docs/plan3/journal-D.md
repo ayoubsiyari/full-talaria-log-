@@ -1,5 +1,17 @@
 # Manager D Journal
 
+## 2026-07-30 — CKPT-01 binding (Director 14:45 amendment)
+
+- Read and copied `AMENDMENT-DIRECTOR-RUNS-THE-MILES-20260730-1445.md`. AUTH-01: no permission pauses inside dispatch; journal and keep moving. CKPT-01 applies to D risky money-path landings.
+- Hard checkpoint taken **before** the next OM product landing (system still green):
+  - Tag: `ckpt/pre-d-money-conf01-d5b790e56` on tip `d5b790e56`
+  - Retained bytes: `artifacts/ckpt/pre-d-money-conf01-d5b790e56/` (both `order-manager.js` mirrors, SHA `A788A611…2D0D68`); durable also via tag tree blobs
+  - Kill-switch: required on each subsequent landing (FLAG-01/02/03); reuse existing money flags when mechanism matches
+  - Rollback **exercised while green**: corrupt probe → restore from artifact → SHA match; tip gates GREEN
+- Record: `docs/plan3/CKPT01-D-MONEY-PATH-20260730.md`
+- H-S18/H-S83 reopen (TAL-01887/01910/01939) owner-routed to **A** (`OWNER-A-HS18-HS83-CONF01-20260730.md`) — harness/chart territory, not D money rewrite
+- MEAS-01 page stamp still TBD until B serves; train ID is tip SHA until then
+
 ## 2026-07-30 — CONF-01 / DUR-01 (Director 14:30)
 
 - Binding: shipping reference is 4 panels / 4 symbols / 4 TFs / indicators / orders; same-pair has no acceptance weight; performance is slope-over-duration.
