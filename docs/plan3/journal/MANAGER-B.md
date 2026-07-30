@@ -4349,3 +4349,39 @@ Gates at this tip: M17-DI2 13/13, lag 16/16, M28 12/12, realm-teardown 28/28.
 **Stamp reserved: `20260729b104`.** Build is staged (tar at tip `6ae251982`, runner `_run-ship-b104-key.sh`) and NOT deployed. Wire verified still `20260729b103` — pin, both images and served stamp — so the PO's heap run is measuring b103 undisturbed.
 
 DEPLOY-02 made mechanical rather than a promise: b104's runner opens with a measurement interlock and exits 9 if `/root/talaria-restore/MEASUREMENT-IN-PROGRESS` exists, so a mistimed ship aborts instead of displacing a measurement. Ship on the director's word that the heap run is finished; one command, ~5 minutes to stamp.
+
+## B-0193 — 2026-07-30 — PREFS-500: named, repaired on canary, capped behind a flag, routed to A and D
+
+**Row:** M4-release | **Packet:** PREFS-500-20260730 | **Tier:** top
+**Justification (TIER-02, one clause):** a live 500 on the persistence endpoint that invalidates two days of other managers' acceptance evidence.
+
+### 1. Why it 500s — one line
+
+`❌ Error loading preferences: (psycopg2.errors.UndefinedColumn) column user_preferences.indicator_settings_templates does not exist`
+
+The `UserPreferences` model declares the column; the deployed table lacked it. SQLAlchemy names every column in its SELECT, so the query died before touching a row. **It is a deployment gap, not missing code:** migration `add_indicator_settings_templates` and the idempotent `db_schema.py` ensure step are both present in the running image, and `alembic_version` on canary is `add_strategy_lab` — the revision was never applied.
+
+### 2. Every save, or only some — every one
+
+Read and write both begin with the same `UserPreferences.query.filter_by(user_id=...).first()`, so both 500 before any data work. Instrument over 180 minutes of backend log: **31 GET / 500, zero successes, one distinct error string**. No POSTs appear at all, and that is itself diagnostic — the client only POSTs from a queue filled by a *successful* GET merge, so the read failure suppressed the write path. Cloud persistence was dead in both directions and silent: the client fell back to localStorage and warned.
+
+### 3. Repaired, and proven, not assumed
+
+`prefs-schema-drift-repair.sh --apply` at **2026-07-29T23:59:05Z** — additive `ADD COLUMN IF NOT EXISTS` only, so it cannot lose a preference, and **no image changed**, so the `20260729b103` artifact C grades is byte-for-byte what the PO measured. Verified through the **same ORM the endpoint uses**, not raw psql: `ORM_SELECT_OK`, `ORM_WRITE_FLUSH_OK` then rolled back, `0` errors since. My own minted-token HTTP probe returned 422 (a JWT-mint mismatch in my probe, not a product state) — recording that so the 422s in the log are attributable to me and nobody hunts them.
+
+### 4. The storm, capped behind a kill-switch
+
+**`chart-window-limit.js:374` is not the retrier.** It is the monkey-patched `window.fetch` passthrough, so Chrome attributes every failing request in the app to that line. The real shape is one request per realm per load — host plus panels B/C/D — re-fired on every panel rebuild, visible as triplets one second apart at 23:24:44, 23:26:29, 23:28:23, 23:30:54, 23:33:04.
+
+Cut: `PREFS-CLOUD-FAILURE-CAP` in `preferences-sync.js` — bounded attempts (2), single-flight load, one console line per realm per session, success clears the cap so a transient 5xx does not cost the session. 401/403 keep their meanings. Kill-switch `__TALARIA_DISABLE_PREFS_CLOUD_FAILURE_CAP_V1`, truthy, read per call, **climbing host→parent→top** per B-0185. Gate `prefs-cloud-failure-cap.test.mjs` 15/15 including two mutants: remove the suspend flag and the storm returns; neuter the climb and a host-side flip reports "capped" inside the panel.
+
+### 5. Two things this exposed
+
+- **`journal-backend` is outside the canary stamp.** The ship path builds `trading-chart` and `homepage` only; the backend is `:latest`, up since 27 Jul. Backend fixes cannot reach canary until it is in the stamp. Mine; not fixed in this packet.
+- **`homepage/public/chart/modules/preferences-sync.js` was a stale 511-line copy** of a 1045-line canonical — the whole `window.TalariaPreferences` tier block missing. I checked the wire before claiming a second defect: the served file is 41562 bytes / 1045 lines with the tier block present, so the **build copies canonical over public and the wire is correct**. The repo mirror was the trap, not the product. Now byte-identical.
+
+Routing note for A and D: `docs/plan3/evidence/B-M4/release/ROUTE-PREFS-500-TO-A-AND-D-20260730.md`.
+
+**Heap, for the record:** b103 = ~12 MB/cycle against 23.5 before A's cut. Halved, not dead. b103 stays pinned for C.
+
+**Not shipped.** The cap is a client change and needs a stamp; the wire stays on b103 until C has graded. Staged, one command away.

@@ -14,6 +14,84 @@ class PreferencesSyncManager {
         // POST on every preference change from flooding the console.
         this._cloudSubscriptionBlocked = false;
         this._cloudSubscriptionNoticeShown = false;
+        // PREFS-CLOUD-FAILURE-CAP state (see prefsCloudFailureCapV1Enabled).
+        this._cloudFailureCount = 0;
+        this._cloudFailureSuspended = false;
+        this._cloudFailureNoticeShown = false;
+        this._inflightLoad = null;
+    }
+
+    /**
+     * PREFS-CLOUD-FAILURE-CAP — default ON. Truthy
+     * `window.__TALARIA_DISABLE_PREFS_CLOUD_FAILURE_CAP_V1` restores the previous
+     * behaviour of calling a broken cloud endpoint again on every load and every
+     * flush. Read per call, never sampled at init.
+     *
+     * Read across realms — own window, then parent, then top. Every multichart
+     * panel is its own window and each one runs its own manager, so an operator
+     * flipping this switch on the page in front of them (the host) must reach the
+     * panels too; a host-only predicate would report itself disabled while the
+     * cap stayed active in every panel. An unreadable cross-origin realm carries
+     * no instruction for us, so it fails towards the shipped default.
+     */
+    prefsCloudFailureCapV1Enabled() {
+        if (typeof window === 'undefined') return true;
+        const killed = (w) => {
+            try {
+                return !!(w && w.__TALARIA_DISABLE_PREFS_CLOUD_FAILURE_CAP_V1);
+            } catch (_e) {
+                return false;
+            }
+        };
+        if (killed(window)) return false;
+        try {
+            const parent = window.parent && window.parent !== window ? window.parent : null;
+            if (killed(parent)) return false;
+            const top = window.top && window.top !== window && window.top !== parent
+                ? window.top
+                : null;
+            if (killed(top)) return false;
+        } catch (_e) {
+            // Parent chain unreachable; the own-window read above already stands.
+        }
+        return true;
+    }
+
+    /** True once this realm has given up on the cloud endpoint for this session. */
+    _cloudCallsSuspended() {
+        if (!this.prefsCloudFailureCapV1Enabled()) return false;
+        return this._cloudFailureSuspended === true;
+    }
+
+    /**
+     * A 5xx or a transport error means the endpoint is broken, not that this
+     * caller is wrong, so repeating it cannot succeed. Every panel rebuild used
+     * to re-issue the call, which turned one broken endpoint into a request per
+     * realm per load and a console full of the same line. Allow a bounded number
+     * of attempts, then stop for the session and say so exactly once.
+     */
+    _noteCloudFailure(detail) {
+        this._cloudFailureCount += 1;
+        if (this._cloudFailureCount < PreferencesSyncManager.MAX_CLOUD_FAILURES) return;
+        this._cloudFailureSuspended = true;
+        this.pendingUpdates = {};
+        if (this.syncTimer) {
+            clearTimeout(this.syncTimer);
+            this.syncTimer = null;
+        }
+        if (!this._cloudFailureNoticeShown) {
+            this._cloudFailureNoticeShown = true;
+            console.warn(
+                '⚠️ Cloud preferences unavailable (' + detail
+                + ') — saving on this device only for the rest of this session.'
+            );
+        }
+    }
+
+    /** A success means the endpoint is back; the cap must not be sticky. */
+    _noteCloudSuccess() {
+        this._cloudFailureCount = 0;
+        this._cloudFailureSuspended = false;
     }
 
     /**
@@ -30,13 +108,30 @@ class PreferencesSyncManager {
     }
 
     /**
-     * Load all preferences from API (cloud) or localStorage (fallback)
+     * Load all preferences from API (cloud) or localStorage (fallback).
+     *
+     * Single-flight: several modules call this during boot and each panel boots
+     * on its own, so concurrent callers share one request instead of issuing one
+     * each. Under the kill-switch this is a straight pass-through.
      */
     async loadPreferences() {
+        if (!this.prefsCloudFailureCapV1Enabled()) {
+            return this._loadPreferencesOnce();
+        }
+        if (this._inflightLoad) return this._inflightLoad;
+        this._inflightLoad = this._loadPreferencesOnce();
+        try {
+            return await this._inflightLoad;
+        } finally {
+            this._inflightLoad = null;
+        }
+    }
+
+    async _loadPreferencesOnce() {
         try {
             const token = localStorage.getItem('token');
             
-            if (token && !this._cloudSubscriptionBlocked) {
+            if (token && !this._cloudSubscriptionBlocked && !this._cloudCallsSuspended()) {
                 // Try loading from API
                 const response = await fetch('/api/chart/preferences', {
                     method: 'GET',
@@ -48,9 +143,12 @@ class PreferencesSyncManager {
 
                 if (response.status === 403) {
                     this._onCloudSubscriptionBlocked();
+                } else if (response.status >= 500) {
+                    this._noteCloudFailure('HTTP ' + response.status);
                 }
 
                 if (response.ok) {
+                    this._noteCloudSuccess();
                     const result = await response.json();
                     if (result.success) {
                         const local = this.loadFromLocalStorage();
@@ -74,6 +172,7 @@ class PreferencesSyncManager {
             return this.preferences;
 
         } catch (error) {
+            this._noteCloudFailure((error && error.message) || 'transport error');
             console.warn('⚠️ Error loading preferences from cloud:', error.message);
             this.preferences = this.loadFromLocalStorage();
             this.isLoaded = true;
@@ -415,6 +514,7 @@ class PreferencesSyncManager {
      */
     scheduleSyncToAPI() {
         if (this._cloudSubscriptionBlocked) return;
+        if (this._cloudCallsSuspended()) return;
         if (this.syncTimer) {
             clearTimeout(this.syncTimer);
         }
@@ -440,6 +540,11 @@ class PreferencesSyncManager {
                 this.pendingUpdates = {};
                 return;
             }
+            if (this._cloudCallsSuspended()) {
+                // Endpoint answered 5xx past the cap — keep local only.
+                this.pendingUpdates = {};
+                return;
+            }
 
             if (Object.keys(this.pendingUpdates).length === 0) {
                 return;
@@ -456,6 +561,7 @@ class PreferencesSyncManager {
             });
 
             if (response.ok) {
+                this._noteCloudSuccess();
                 const result = await response.json();
                 console.log('✅ Preferences synced to cloud');
                 this.pendingUpdates = {};
@@ -465,9 +571,13 @@ class PreferencesSyncManager {
             } else if (response.status === 403) {
                 this._onCloudSubscriptionBlocked();
             } else {
+                if (response.status >= 500) {
+                    this._noteCloudFailure('HTTP ' + response.status);
+                }
                 console.warn('⚠️ Failed to sync preferences to cloud:', response.statusText);
             }
         } catch (error) {
+            this._noteCloudFailure((error && error.message) || 'transport error');
             console.warn('⚠️ Error syncing preferences to cloud:', error.message);
         }
     }
@@ -506,6 +616,13 @@ class PreferencesSyncManager {
         return this.isLoaded;
     }
 }
+
+/**
+ * Attempts this realm will make against a failing cloud endpoint before it stops
+ * for the session. Two, not one: a single transient 5xx should not cost a user
+ * their cloud sync, and two failures is already proof the endpoint is not well.
+ */
+PreferencesSyncManager.MAX_CLOUD_FAILURES = 2;
 
 // Create global instance
 window.preferencesSync = new PreferencesSyncManager();
