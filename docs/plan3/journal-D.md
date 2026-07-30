@@ -1,5 +1,12 @@
 # Manager D Journal
 
+## 2026-07-30 — SEL-01 user-path landing (post CKPT-01)
+
+- Checkpoint `ckpt/pre-d-money-conf01-d5b790e56` was already taken; kill-switch `__TALARIA_DISABLE_ORDER_SEL01_EXACT_TEARDOWN_V1` already on tip (FLAG-01/02/03 via existing RED cell).
+- Gate was selector-shape only (fixed-column audit RED). Strengthened to user-path: fake SVG with pending #1 and #12; `removePendingOrderLine(1)` must leave #12 TP pct/delete controls.
+- Product: `removePendingOrderLine` now uses `_pendingTpDeleteSelector(orderId)` so kill restores substring delete collision (was hardcoded exact, breaking FLAG-03 on delete).
+- GREEN/RED verified; homepage OM mirror SHA-matched. Ledger SEL-01 → `fixed`. Honest fixed **49**.
+
 ## 2026-07-30 — CKPT-01 binding (Director 14:45 amendment)
 
 - Read and copied `AMENDMENT-DIRECTOR-RUNS-THE-MILES-20260730-1445.md`. AUTH-01: no permission pauses inside dispatch; journal and keep moving. CKPT-01 applies to D risky money-path landings.

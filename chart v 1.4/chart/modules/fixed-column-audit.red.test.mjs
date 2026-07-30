@@ -47,10 +47,13 @@ test('AUDIT: duration suite stays GREEN when kill is preloaded (decoration)', ()
   );
 });
 
-test('AUDIT: SEL-01 gate asserts selectors only', async () => {
-  const { readFileSync } = await import('node:fs');
-  const src = readFileSync(join(MOD, 'order-sel01-exact-teardown.test.mjs'), 'utf8');
-  assert.match(src, /selector|querySelector|SEL-01/i);
-  assert.doesNotMatch(src, /removeChild|dispatchEvent|PointerEvent/, 'no DOM teardown actuation');
-  assert.fail('SEL-01 gate never removes a user TP row; selector-shape only');
+test('AUDIT: SEL-01 user-path goes RED under kill (GATE-01)', () => {
+  const r = runNode([join(MOD, 'order-sel01-exact-teardown.test.mjs')], {
+    TALARIA_TEST_DISABLE_ORDER_SEL01_EXACT_TEARDOWN: '1',
+  });
+  assert.notEqual(
+    r.status,
+    0,
+    'EXPECTED RED: removePendingOrderLine(#1) must collide with #12 under kill',
+  );
 });

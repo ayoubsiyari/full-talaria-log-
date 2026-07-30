@@ -40094,7 +40094,7 @@ class OrderManager {
             c.svg.selectAll(`.pending-order-label-box.pending-${orderId}`).remove();
             c.svg.selectAll(`.pending-order-label-text.pending-${orderId}`).remove();
             c.svg.selectAll(`.pending-order-close-btn.pending-${orderId}`).remove();
-            c.svg.selectAll(`.pending-tp-delete.pending-tp-${orderId}`).remove();
+            c.svg.selectAll(this._pendingTpDeleteSelector(orderId)).remove();
             c.svg.selectAll(`.pending-tp-tp-plus-badge.pending-tp-${orderId}`).remove();
             c.svg.selectAll(this._pendingTpPctControlsSelector(orderId)).remove();
         });

@@ -131,11 +131,7 @@ docs/plan3/fixtures/*
 .scratch-*.tar
 .scratch-*.tar.gz
 
-# CKPT-01 retained deployable bytes (large); manifests/README stay tracked.
-artifacts/ckpt/**/*.js
-!artifacts/ckpt/**/SHA256SUMS.txt
-!artifacts/ckpt/**/README.md
-
+# CKPT-01 retained deployable bytes (large JS); manifests/README stay tracked.
 artifacts/
 !artifacts/ckpt/
 artifacts/ckpt/*

@@ -17,7 +17,7 @@ Open row disposition and unverified blast-radius order live in `docs/plan3/UNKNO
 | TAL-01897 | fixed | `5f3e68368`, `c0a0d7620` | GREEN: draft reset gates ± homepage | TOP ACCEPT; optional stamp confirm with order-line leftovers |
 | TAL-01933 | fixed | user-path gate 2026-07-30 | GREEN: `order-single-tp-after-trail.test.mjs` ± homepage; RED: `TALARIA_TEST_DISABLE_ORDER_SINGLE_TP_AFTER_TRAIL=1` | Trail→single-TP touch path; GATE-01 |
 | TAL-01809 | fixed | user-path gate 2026-07-30 | GREEN: `order-balance-floor.test.mjs` ± homepage; RED: `TALARIA_TEST_DISABLE_ORDER_BALANCE_FLOOR=1` | User close + journal recompute floor; GATE-01 |
-| SEL-01 | broken | — | RED: `fixed-column-audit.red.test.mjs` (selector-only `order-sel01-exact-teardown.test.mjs`) | Never tears down a user TP row |
+| SEL-01 | fixed | user-path GATE-01 + CKPT-01 | GREEN: `order-sel01-exact-teardown.test.mjs` (removePendingOrderLine #1 vs #12); RED kill | Prefix collision; delete path uses `_pendingTpDeleteSelector` |
 | Timezone EST-to-CST override | fixed | `ed2a183f3` | GREEN: `v9-theme-tz-honor-chart.test.mjs` canonical + homepage | Non-money-path; `chart.js` timezone follow-ups escalated |
 | TAL-01861 | fixed | `c0a0d7620` | GREEN: `order-cancel-before-confirm.test.mjs` canonical + homepage | TOP re-review ACCEPT |
 | TAL-01885 | fixed | `c0a0d7620` | GREEN: `order-line-edge-visibility.test.mjs` canonical + homepage | TOP re-review ACCEPT |
@@ -158,10 +158,10 @@ Open row disposition and unverified blast-radius order live in `docs/plan3/UNKNO
 | Status | Count |
 | --- | ---: |
 | blocked-on-build | 6 |
-| broken | 4 |
+| broken | 3 |
 | closed-scratched | 2 |
 | feature-request | 1 |
-| fixed | 48 |
+| fixed | 49 |
 | intended | 1 |
 | needs-info | 10 |
 | owner-blocked | 18 |
@@ -169,4 +169,4 @@ Open row disposition and unverified blast-radius order live in `docs/plan3/UNKNO
 | superseded | 29 |
 | verify-gone | 3 |
 
-Bare `unverified`: **0**. Honest `fixed` = **48**. TAL-01887/01910/01939 → **A** (CONF-01 harness). TAL-01850 → **A**. Five PO packs AWAITING STAMP. CKPT-01 tag `ckpt/pre-d-money-conf01-d5b790e56` taken; rollback exercised while green.
+Bare `unverified`: **0**. Honest `fixed` = **49** (SEL-01 user-path restored post-CKPT). TAL-01887/01910/01939 → **A**. TAL-01850 → **A**. Five PO packs AWAITING STAMP. CKPT-01 `ckpt/pre-d-money-conf01-d5b790e56` (rollback exercised before SEL-01 landing).
