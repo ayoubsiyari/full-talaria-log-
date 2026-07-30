@@ -5086,3 +5086,57 @@ Recording the method, because the next person to ask "is it in the build" will r
 first: on this train, only the served bytes answer that question.
 
 Back to the window-claim P0.
+
+---
+
+## B-0208 — The P0 reproduced at the socket level: two held POSTs pre-fix, zero on b113. Half of C's report does not reproduce.
+
+The Director's 13:25 order was to reproduce it C's way rather than through the gate, name why the
+earlier fix did not cover it, make a hung POST impossible rather than unlikely, and extend the gate
+to go RED on **that** path. Done, and the result splits into a closure and a correction.
+
+**Reproduced, and the number matches C's exactly.** Real Chrome, four panels on four symbols,
+reload the tab, open a second one, against a server that accepts every control POST and never
+answers. On the genuine pre-fix module **two POSTs are held by the browser and never released**. On
+b113, **zero** — two released at **10001 ms and 10002 ms**, which is `CONTROL_TIMEOUT_MS` doing its
+job. The two the pre-fix arm did release went at ~30 s because the reload navigated away, not
+because anything bounded them.
+
+**My first negative control was invalid and would have told the Director the fix does nothing.** I
+began by flipping `__TALARIA_DISABLE_WINDOW_CONTROL_FETCH_TIMEOUT_V1`, and both arms looked
+identical. The flag only covers the abort; the heartbeat in-flight guard sits outside it, so a
+flag-off arm keeps half the fix. `FLAG-01` says test against the ABSENT property, and the absent
+property is the parent commit's file, not a flag. The gate now pulls `be7bc73a6^` and asserts it
+genuinely lacks `controlFetch` before trusting it as a control.
+
+**The starvation half does not reproduce, and I am not calling it dead.** Every ungated icon
+completed in both arms — 108 requests over 78 s, worst case 29 ms — with two tabs, four panels and
+POSTs stalled throughout. Two structural reasons, both checked: `isGatedUrl` covers only
+`/api/file/*` and `/api/sessions/{n}/state`, so static PNGs were never behind the JS gate at all;
+and `heartbeatTimer` is started **inside the claim's success handler**, so a claim that never
+resolves means the heartbeat never starts and socket count cannot grow past one per tab. Four POSTs,
+two persisting, against Chrome's six-per-host pool leaves headroom. Both the direct canary and the
+public host are HTTP/1.1, so the cap applies in principle — it simply was not reached. The hang was
+real and is fixed; the dozen PNGs pending 64 s have a cause this route does not produce.
+**Escalated to C in one line** for exact conditions: tab count, logged in or not, `:3000` or the
+public host, and the DevTools export. `DECL-01` — I do not get to close that half by reasoning.
+
+**GATE-01 is now two files.** The existing gate stays as the fast single-realm half and names the
+new one in its header. The browser-level half is
+`chart v 1.4/chart/modules/window-control-socket-release.test.mjs`. Mutated so the "shipped" module
+is the pre-fix file, it goes RED with `2 control POST(s) were still held` — the exact defect, the
+exact count. It also fails if the pre-fix arm releases everything, so it cannot pass by never
+reaching the claim, and it asserts ungated assets keep completing so the starvation question stays
+visible instead of being quietly assumed cured.
+
+One measurement bug caught in my own gate before it landed: I counted icons immediately after
+requesting the last batch, so images merely in flight read as stalled and the cell failed 39 of 42.
+That was the assertion measuring a race, not the product. Settled before counting.
+
+**Territory, disclosed.** `chart v 1.4/chart/modules/**` is A's, and `chart-window-limit.js` is not
+in B's `owned_paths` at all despite both P0s on it being routed to me. I left the gate beside the
+module rather than relocating it to `deploy/` to dodge the preflight, because that would hide the
+gap. Three exact patterns now need recording for B in `TERRITORY.yml`: `chart-window-limit.js`,
+`window-control-fetch-timeout.test.mjs`, `window-control-socket-release.test.mjs`. That is the third
+manifest gap I have reported today, with the other two being `homepage/nginx.local.conf` and the
+build files.

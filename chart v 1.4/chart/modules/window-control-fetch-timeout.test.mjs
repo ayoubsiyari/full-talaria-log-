@@ -1,6 +1,13 @@
 /**
  * GATE: a window-limit control POST that is accepted and never answered must not hang.
  *
+ * GATE-01 IS TWO FILES. Every cell below drives a stubbed fetch in one realm, which is fast and
+ * proves the mechanism, but it cannot show whether the BROWSER releases the socket — and that is
+ * the property C's P0 sighting was actually about. The browser-level half lives in
+ * window-control-socket-release.test.mjs: real Chrome, real sockets, C's route (chart tab with
+ * four panels, reload it, open a second tab), with the genuine pre-fix module as the negative
+ * control. It reproduces the two permanently-held POSTs and goes RED on them.
+ *
  * THE DEFECT THIS GATE EXISTS FOR
  * chart-window-limit.js gates /api/file/* and /api/sessions/N/state behind a claim POST.
  * That POST had no timeout, no AbortController and no ceiling of any kind. A server that
