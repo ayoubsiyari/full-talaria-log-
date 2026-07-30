@@ -139,3 +139,5 @@ artifacts/ckpt/*
 artifacts/ckpt/**/*
 !artifacts/ckpt/**/SHA256SUMS.txt
 !artifacts/ckpt/**/README.md
+# Wire-audit downloads (multi-MB served modules) — keep local only.
+artifacts/wire-*/

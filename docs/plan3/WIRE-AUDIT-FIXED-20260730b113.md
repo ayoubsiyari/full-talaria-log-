@@ -3,8 +3,9 @@
 **Authority:** `RULING-THREE-STRIKES-ON-THE-WIRE-AND-THE-REAL-DENOMINATOR-20260730-1540.md` (`TEST-01`)  
 **Instrument:** `node scripts/wire-audit-fixed.mjs --base http://31.97.192.82:3000 --stamp 20260730b113`  
 **Artifact:** `docs/plan3/WIRE-AUDIT-FIXED-20260730b113.json` (`talaria.wire-audit-fixed.v1`)  
+**Marker map (input vocabulary):** `docs/plan3/FIXED-WIRE-MARKERS-20260730.json` + `FIXED-WIRE-MARKERS-SUMMARY-20260730.md` (48/50 rows have needles; TAL-01941 + Rayan #2 have none)  
 **MEAS-01:** shell `window.__TALARIA_CHART_BUILD_ID='20260730b113'` over HTTP  
-**D tip at run:** `94dcfacc3`
+**D tip at run:** `94dcfacc3` (marker map tip `147fa8e5f`)
 
 ## Headline
 

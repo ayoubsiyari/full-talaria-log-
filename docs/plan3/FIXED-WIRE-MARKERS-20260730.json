@@ -1,0 +1,843 @@
+{
+  "schema": "talaria.fixed-wire-markers.v1",
+  "tip": "147fa8e5f45a639b1fa2719557791904b2b4bb8a",
+  "rows": [
+    {
+      "ticket": "M24 / TAL-01926",
+      "commits": [],
+      "gates": [
+        "test_session_journal_store.py"
+      ],
+      "markers": [
+        {
+          "pathHint": "session_journal_store.py",
+          "needle": "SESSION_JOURNAL_PATCH_DELETE_GUARD",
+          "fromCommit": "147fa8e5f"
+        }
+      ]
+    },
+    {
+      "ticket": "TAL-01930",
+      "commits": [
+        "42d01a1dc"
+      ],
+      "gates": [
+        "m14-fibonacci-settings-levels-persist.test.mjs"
+      ],
+      "markers": [
+        {
+          "pathHint": "drawing-tools-manager.js",
+          "needle": "__TALARIA_DISABLE_M14_FIB_SETTINGS_LEVELS_PERSIST_V1",
+          "fromCommit": "42d01a1dc"
+        }
+      ]
+    },
+    {
+      "ticket": "TAL-01888",
+      "commits": [
+        "42d01a1dc"
+      ],
+      "gates": [
+        "m14-fibonacci-settings-levels-persist.test.mjs"
+      ],
+      "markers": [
+        {
+          "pathHint": "drawing-tools-manager.js",
+          "needle": "__TALARIA_DISABLE_M14_FIB_SETTINGS_LEVELS_PERSIST_V1",
+          "fromCommit": "42d01a1dc"
+        }
+      ]
+    },
+    {
+      "ticket": "TAL-01813",
+      "commits": [
+        "42d01a1dc"
+      ],
+      "gates": [
+        "m14-fibonacci-settings-levels-persist.test.mjs"
+      ],
+      "markers": [
+        {
+          "pathHint": "drawing-tools-manager.js",
+          "needle": "__TALARIA_DISABLE_M14_FIB_SETTINGS_LEVELS_PERSIST_V1",
+          "fromCommit": "42d01a1dc"
+        }
+      ]
+    },
+    {
+      "ticket": "TAL-01758",
+      "commits": [
+        "42d01a1dc"
+      ],
+      "gates": [
+        "m14-fibonacci-settings-levels-persist.test.mjs"
+      ],
+      "markers": [
+        {
+          "pathHint": "drawing-tools-manager.js",
+          "needle": "__TALARIA_DISABLE_M14_FIB_SETTINGS_LEVELS_PERSIST_V1",
+          "fromCommit": "42d01a1dc"
+        }
+      ]
+    },
+    {
+      "ticket": "TAL-01908",
+      "commits": [
+        "2cc949399"
+      ],
+      "gates": [
+        "m24-order-id-restore-stability.test.mjs"
+      ],
+      "markers": [
+        {
+          "pathHint": "order-manager.js",
+          "needle": "__TALARIA_DISABLE_M24_DISPLAY_ID_STABILITY_V1",
+          "fromCommit": "2cc949399"
+        },
+        {
+          "pathHint": "order-manager.js",
+          "needle": "__TALARIA_DISABLE_ORDER_STABLE_LABEL_HOVER_DOM_V1",
+          "fromCommit": "2cc949399"
+        }
+      ]
+    },
+    {
+      "ticket": "TAL-01919",
+      "commits": [
+        "2cc949399"
+      ],
+      "gates": [
+        "m24-order-id-restore-stability.test.mjs"
+      ],
+      "markers": [
+        {
+          "pathHint": "order-manager.js",
+          "needle": "__TALARIA_DISABLE_M24_DISPLAY_ID_STABILITY_V1",
+          "fromCommit": "2cc949399"
+        },
+        {
+          "pathHint": "order-manager.js",
+          "needle": "__TALARIA_DISABLE_ORDER_STABLE_LABEL_HOVER_DOM_V1",
+          "fromCommit": "2cc949399"
+        }
+      ]
+    },
+    {
+      "ticket": "TAL-01924",
+      "commits": [
+        "2cc949399"
+      ],
+      "gates": [
+        "m24-order-id-restore-stability.test.mjs"
+      ],
+      "markers": [
+        {
+          "pathHint": "order-manager.js",
+          "needle": "__TALARIA_DISABLE_M24_DISPLAY_ID_STABILITY_V1",
+          "fromCommit": "2cc949399"
+        },
+        {
+          "pathHint": "order-manager.js",
+          "needle": "__TALARIA_DISABLE_ORDER_STABLE_LABEL_HOVER_DOM_V1",
+          "fromCommit": "2cc949399"
+        }
+      ]
+    },
+    {
+      "ticket": "TAL-01904",
+      "commits": [],
+      "gates": [
+        "order-type-one-tick-pending.test.mjs"
+      ],
+      "markers": [
+        {
+          "pathHint": "order-manager.js",
+          "needle": "__TALARIA_DISABLE_ORDER_TYPE_ONE_TICK_PENDING_V1",
+          "fromCommit": "147fa8e5f"
+        }
+      ]
+    },
+    {
+      "ticket": "TAL-01897",
+      "commits": [
+        "5f3e68368",
+        "c0a0d7620"
+      ],
+      "gates": [],
+      "markers": [
+        {
+          "pathHint": "order-manager.js",
+          "needle": "__TALARIA_DISABLE_ORDER_ENTRY_NEW_DRAFT_LEVELS_RESET_V1",
+          "fromCommit": "5f3e68368"
+        },
+        {
+          "pathHint": "order-manager.js",
+          "needle": "__TALARIA_DISABLE_ORDER_LINE_EDGE_VISIBILITY_V1",
+          "fromCommit": "c0a0d7620"
+        }
+      ]
+    },
+    {
+      "ticket": "TAL-01933",
+      "commits": [],
+      "gates": [
+        "order-single-tp-after-trail.test.mjs"
+      ],
+      "markers": [
+        {
+          "pathHint": "order-manager.js",
+          "needle": "__TALARIA_DISABLE_ORDER_SINGLE_TP_AFTER_TRAIL",
+          "fromCommit": "147fa8e5f"
+        },
+        {
+          "pathHint": "order-manager.js",
+          "needle": "__TALARIA_DISABLE_ORDER_SINGLE_TP_AFTER_TRAIL_V1",
+          "fromCommit": "147fa8e5f"
+        }
+      ]
+    },
+    {
+      "ticket": "TAL-01809",
+      "commits": [],
+      "gates": [
+        "order-balance-floor.test.mjs"
+      ],
+      "markers": [
+        {
+          "pathHint": "order-manager.js",
+          "needle": "__TALARIA_DISABLE_ORDER_BALANCE_FLOOR",
+          "fromCommit": "147fa8e5f"
+        },
+        {
+          "pathHint": "order-manager.js",
+          "needle": "__TALARIA_DISABLE_ORDER_BALANCE_FLOOR_V1",
+          "fromCommit": "147fa8e5f"
+        }
+      ]
+    },
+    {
+      "ticket": "SEL-01",
+      "commits": [],
+      "gates": [
+        "order-sel01-exact-teardown.test.mjs"
+      ],
+      "markers": [
+        {
+          "pathHint": "order-manager.js",
+          "needle": "__TALARIA_DISABLE_ORDER_SEL01_EXACT_TEARDOWN_V1",
+          "fromCommit": "147fa8e5f"
+        }
+      ]
+    },
+    {
+      "ticket": "Timezone EST-to-CST override",
+      "commits": [
+        "ed2a183f3"
+      ],
+      "gates": [
+        "v9-theme-tz-honor-chart.test.mjs"
+      ],
+      "markers": [
+        {
+          "pathHint": "v9-theme-bridge.js",
+          "needle": "__TALARIA_DISABLE_V9_THEME_TZ_HONOR_CHART_V1",
+          "fromCommit": "ed2a183f3"
+        }
+      ]
+    },
+    {
+      "ticket": "TAL-01861",
+      "commits": [
+        "c0a0d7620"
+      ],
+      "gates": [
+        "order-cancel-before-confirm.test.mjs"
+      ],
+      "markers": [
+        {
+          "pathHint": "order-manager.js",
+          "needle": "__TALARIA_DISABLE_ORDER_CANCEL_BEFORE_CONFIRM_V1",
+          "fromCommit": "c0a0d7620"
+        }
+      ]
+    },
+    {
+      "ticket": "TAL-01885",
+      "commits": [
+        "c0a0d7620"
+      ],
+      "gates": [
+        "order-line-edge-visibility.test.mjs"
+      ],
+      "markers": [
+        {
+          "pathHint": "order-manager.js",
+          "needle": "__TALARIA_DISABLE_ORDER_LINE_EDGE_VISIBILITY_V1",
+          "fromCommit": "c0a0d7620"
+        }
+      ]
+    },
+    {
+      "ticket": "TAL-01905",
+      "commits": [
+        "c0a0d7620"
+      ],
+      "gates": [
+        "order-lifecycle-event-ownership.test.mjs"
+      ],
+      "markers": [
+        {
+          "pathHint": "order-manager.js",
+          "needle": "__TALARIA_DISABLE_ORDER_LIFECYCLE_EVENT_OWNERSHIP_V1",
+          "fromCommit": "c0a0d7620"
+        }
+      ]
+    },
+    {
+      "ticket": "TAL-01932",
+      "commits": [
+        "c0a0d7620"
+      ],
+      "gates": [
+        "order-pending-close-netting.test.mjs"
+      ],
+      "markers": [
+        {
+          "pathHint": "order-manager.js",
+          "needle": "__TALARIA_DISABLE_ORDER_PENDING_CLOSE_NETTING_V1",
+          "fromCommit": "c0a0d7620"
+        }
+      ]
+    },
+    {
+      "ticket": "TAL-01777",
+      "commits": [
+        "c0a0d7620"
+      ],
+      "gates": [
+        "order-pair-switch-draft-rebind.test.mjs"
+      ],
+      "markers": [
+        {
+          "pathHint": "order-manager.js",
+          "needle": "__TALARIA_DISABLE_ORDER_PAIR_SWITCH_DRAFT_REBIND_V1",
+          "fromCommit": "c0a0d7620"
+        }
+      ]
+    },
+    {
+      "ticket": "TAL-01750",
+      "commits": [
+        "c0a0d7620"
+      ],
+      "gates": [
+        "order-split-entry-hover-stick.test.mjs"
+      ],
+      "markers": [
+        {
+          "pathHint": "order-manager.js",
+          "needle": "__TALARIA_DISABLE_ORDER_SPLIT_ENTRY_HOVER_STICK_V1",
+          "fromCommit": "c0a0d7620"
+        }
+      ]
+    },
+    {
+      "ticket": "TAL-01927",
+      "commits": [
+        "c0a0d7620",
+        "adaffe58e"
+      ],
+      "gates": [
+        "order-entry-screenshot-idempotent.test.mjs"
+      ],
+      "markers": [
+        {
+          "pathHint": "order-manager.js",
+          "needle": "__TALARIA_DISABLE_ORDER_ENTRY_SCREENSHOT_IDEMPOTENT_V1",
+          "fromCommit": "c0a0d7620"
+        }
+      ]
+    },
+    {
+      "ticket": "TAL-01903",
+      "commits": [
+        "c0a0d7620"
+      ],
+      "gates": [
+        "order-pnl-refresh-stable.test.mjs"
+      ],
+      "markers": [
+        {
+          "pathHint": "order-manager.js",
+          "needle": "__TALARIA_DISABLE_ORDER_PNL_RESTORE_STABLE_V1",
+          "fromCommit": "c0a0d7620"
+        }
+      ]
+    },
+    {
+      "ticket": "TAL-01810",
+      "commits": [],
+      "gates": [
+        "order-exit-marker-spread-column.test.mjs"
+      ],
+      "markers": [
+        {
+          "pathHint": "order-manager.js",
+          "needle": "__TALARIA_DISABLE_TRADE_MARKER_CANONICAL_PROJECTION_V1",
+          "fromCommit": "147fa8e5f"
+        },
+        {
+          "pathHint": "order-manager.js",
+          "needle": "TALARIA_DISABLE_TRADE_MARKER_CANONICAL_PROJECTION_V1",
+          "fromCommit": "147fa8e5f"
+        }
+      ]
+    },
+    {
+      "ticket": "TAL-01683",
+      "commits": [
+        "379394fc0"
+      ],
+      "gates": [
+        "order-risk-qty-on-sl-commit.test.mjs"
+      ],
+      "markers": [
+        {
+          "pathHint": "order-manager.js",
+          "needle": "__TALARIA_DISABLE_ORDER_RISK_QTY_ON_SL_COMMIT_V1",
+          "fromCommit": "379394fc0"
+        }
+      ]
+    },
+    {
+      "ticket": "TAL-01751",
+      "commits": [
+        "b1196e79c"
+      ],
+      "gates": [
+        "order-be-place-anchor.test.mjs"
+      ],
+      "markers": [
+        {
+          "pathHint": "order-manager.js",
+          "needle": "__TALARIA_DISABLE_ORDER_BE_PLACE_ANCHOR_V1",
+          "fromCommit": "b1196e79c"
+        }
+      ]
+    },
+    {
+      "ticket": "TAL-01697",
+      "commits": [
+        "231df7bb5"
+      ],
+      "gates": [
+        "order-preview-live-recalc.test.mjs",
+        "order-*.test.mjs"
+      ],
+      "markers": [
+        {
+          "pathHint": "order-manager.js",
+          "needle": "__TALARIA_DISABLE_ORDER_PREVIEW_LIVE_RECALC_V1",
+          "fromCommit": "231df7bb5"
+        }
+      ]
+    },
+    {
+      "ticket": "TAL-01699",
+      "commits": [
+        "28d808cb4"
+      ],
+      "gates": [
+        "order-multi-tp-coincident-stack.test.mjs",
+        "order-*.test.mjs"
+      ],
+      "markers": [
+        {
+          "pathHint": "order-manager.js",
+          "needle": "__TALARIA_DISABLE_ORDER_MULTI_TP_COINCIDENT_STACK_V1",
+          "fromCommit": "28d808cb4"
+        }
+      ]
+    },
+    {
+      "ticket": "TAL-01895",
+      "commits": [
+        "6ad9f48ec"
+      ],
+      "gates": [
+        "pins-user-preferences.test.mjs"
+      ],
+      "markers": [
+        {
+          "pathHint": "favorites-manager.js",
+          "needle": "__TALARIA_DISABLE_PINS_USER_PREFS_V1",
+          "fromCommit": "6ad9f48ec"
+        },
+        {
+          "pathHint": "preferences-sync.js",
+          "needle": "__TALARIA_DISABLE_PINS_USER_PREFS_V1",
+          "fromCommit": "6ad9f48ec"
+        }
+      ]
+    },
+    {
+      "ticket": "TAL-01792",
+      "commits": [
+        "6ad9f48ec"
+      ],
+      "gates": [
+        "pins-user-preferences.test.mjs"
+      ],
+      "markers": [
+        {
+          "pathHint": "favorites-manager.js",
+          "needle": "__TALARIA_DISABLE_PINS_USER_PREFS_V1",
+          "fromCommit": "6ad9f48ec"
+        },
+        {
+          "pathHint": "preferences-sync.js",
+          "needle": "__TALARIA_DISABLE_PINS_USER_PREFS_V1",
+          "fromCommit": "6ad9f48ec"
+        }
+      ]
+    },
+    {
+      "ticket": "TAL-01941",
+      "commits": [],
+      "gates": [
+        "order-sl-tp-trigger-soak.test.mjs"
+      ],
+      "markers": []
+    },
+    {
+      "ticket": "TAL-01896",
+      "commits": [],
+      "gates": [
+        "orderManagerTradeRows.test.mjs",
+        "orderManagerTradeRows.red.test.mjs"
+      ],
+      "markers": [
+        {
+          "pathHint": "orderManagerTradeRows.js",
+          "needle": "__TALARIA_DISABLE_TRADE_DURATION_NORM_V1",
+          "fromCommit": "147fa8e5f"
+        }
+      ]
+    },
+    {
+      "ticket": "M23 / TAL-01937",
+      "commits": [],
+      "gates": [
+        "m23-rollback-trade-state.red.test.mjs"
+      ],
+      "markers": [
+        {
+          "pathHint": "order-manager.js",
+          "needle": "__TALARIA_DISABLE_M23_ROLLBACK_TRADE_CANCEL_V1",
+          "fromCommit": "147fa8e5f"
+        }
+      ]
+    },
+    {
+      "ticket": "TAL-01800",
+      "commits": [
+        "c0a0d7620"
+      ],
+      "gates": [
+        "order-lifecycle-event-ownership.test.mjs"
+      ],
+      "markers": [
+        {
+          "pathHint": "order-manager.js",
+          "needle": "__TALARIA_DISABLE_ORDER_LIFECYCLE_EVENT_OWNERSHIP_V1",
+          "fromCommit": "c0a0d7620"
+        }
+      ]
+    },
+    {
+      "ticket": "Rayan #8",
+      "commits": [],
+      "gates": [
+        "m24-order-id-gap-after-hydrate.test.mjs",
+        "order-explicit-place-audit.test.mjs"
+      ],
+      "markers": [
+        {
+          "pathHint": "order-manager.js",
+          "needle": "__TALARIA_DISABLE_ORDER_EXPLICIT_PLACE_AUDIT_V1",
+          "fromCommit": "147fa8e5f"
+        }
+      ]
+    },
+    {
+      "ticket": "TAL-01798",
+      "commits": [],
+      "gates": [
+        "order-lifecycle-event-ownership.test.mjs"
+      ],
+      "markers": [
+        {
+          "pathHint": "order-manager.js",
+          "needle": "__TALARIA_DISABLE_ORDER_LIFECYCLE_EVENT_OWNERSHIP_V1",
+          "fromCommit": "147fa8e5f"
+        }
+      ]
+    },
+    {
+      "ticket": "TAL-01815",
+      "commits": [
+        "c0a0d7620"
+      ],
+      "gates": [
+        "order-lifecycle-event-ownership.test.mjs"
+      ],
+      "markers": [
+        {
+          "pathHint": "order-manager.js",
+          "needle": "__TALARIA_DISABLE_ORDER_LIFECYCLE_EVENT_OWNERSHIP_V1",
+          "fromCommit": "c0a0d7620"
+        }
+      ]
+    },
+    {
+      "ticket": "TAL-01802",
+      "commits": [
+        "ab57a5dac"
+      ],
+      "gates": [
+        "cross-timeframe-current-price-coherence.test.mjs"
+      ],
+      "markers": [
+        {
+          "pathHint": "chart.js",
+          "needle": "resolveEffectiveCurrentPrice",
+          "fromCommit": "ab57a5dac"
+        },
+        {
+          "pathHint": "chart.js",
+          "needle": "__TALARIA_MC_DISABLE_CANONICAL_REPLAY_MARK_V1",
+          "fromCommit": "ab57a5dac"
+        }
+      ]
+    },
+    {
+      "ticket": "TAL-01886",
+      "commits": [
+        "ab57a5dac"
+      ],
+      "gates": [
+        "cross-timeframe-current-price-coherence.test.mjs"
+      ],
+      "markers": [
+        {
+          "pathHint": "chart.js",
+          "needle": "resolveEffectiveCurrentPrice",
+          "fromCommit": "ab57a5dac"
+        }
+      ]
+    },
+    {
+      "ticket": "Rayan #1",
+      "commits": [],
+      "gates": [
+        "m23-rollback-trade-state.red.test.mjs"
+      ],
+      "markers": [
+        {
+          "pathHint": "order-manager.js",
+          "needle": "__TALARIA_DISABLE_M23_ROLLBACK_TRADE_CANCEL_V1",
+          "fromCommit": "147fa8e5f"
+        }
+      ]
+    },
+    {
+      "ticket": "Rayan #2",
+      "commits": [],
+      "gates": [
+        "order-mc-layout-teardown-retains-host-orders.test.mjs"
+      ],
+      "markers": []
+    },
+    {
+      "ticket": "Rayan #3",
+      "commits": [],
+      "gates": [
+        "m23-rollback-trade-state.red.test.mjs"
+      ],
+      "markers": [
+        {
+          "pathHint": "order-manager.js",
+          "needle": "__TALARIA_DISABLE_M23_ROLLBACK_TRADE_CANCEL_V1",
+          "fromCommit": "147fa8e5f"
+        }
+      ]
+    },
+    {
+      "ticket": "Rayan #4",
+      "commits": [
+        "b21d236d3",
+        "f1ddb2e64",
+        "2cc949399"
+      ],
+      "gates": [
+        "m24-order-id-restore-stability.test.mjs"
+      ],
+      "markers": [
+        {
+          "pathHint": "order-manager.js",
+          "needle": "__TALARIA_DISABLE_M24_ORDER_ID_ALLOCATOR_V1",
+          "fromCommit": "b21d236d3"
+        },
+        {
+          "pathHint": "order-manager.js",
+          "needle": "__TALARIA_DISABLE_M24_DISPLAY_ID_STABILITY_V1",
+          "fromCommit": "2cc949399"
+        }
+      ]
+    },
+    {
+      "ticket": "Rayan #5",
+      "commits": [
+        "b21d236d3",
+        "f1ddb2e64",
+        "2cc949399"
+      ],
+      "gates": [],
+      "markers": [
+        {
+          "pathHint": "order-manager.js",
+          "needle": "__TALARIA_DISABLE_M24_ORDER_ID_ALLOCATOR_V1",
+          "fromCommit": "b21d236d3"
+        },
+        {
+          "pathHint": "order-manager.js",
+          "needle": "__TALARIA_DISABLE_M24_DISPLAY_ID_STABILITY_V1",
+          "fromCommit": "2cc949399"
+        }
+      ]
+    },
+    {
+      "ticket": "Rayan #6b",
+      "commits": [],
+      "gates": [
+        "m23-rollback-trade-state.red.test.mjs"
+      ],
+      "markers": [
+        {
+          "pathHint": "order-manager.js",
+          "needle": "__TALARIA_DISABLE_M23_ROLLBACK_TRADE_CANCEL_V1",
+          "fromCommit": "147fa8e5f"
+        }
+      ]
+    },
+    {
+      "ticket": "Rayan #9",
+      "commits": [
+        "b21d236d3",
+        "f1ddb2e64",
+        "2cc949399"
+      ],
+      "gates": [],
+      "markers": [
+        {
+          "pathHint": "order-manager.js",
+          "needle": "__TALARIA_DISABLE_M24_ORDER_ID_ALLOCATOR_V1",
+          "fromCommit": "b21d236d3"
+        },
+        {
+          "pathHint": "order-manager.js",
+          "needle": "__TALARIA_DISABLE_M24_DISPLAY_ID_STABILITY_V1",
+          "fromCommit": "2cc949399"
+        }
+      ]
+    },
+    {
+      "ticket": "Rayan #11",
+      "commits": [
+        "b21d236d3",
+        "f1ddb2e64",
+        "2cc949399"
+      ],
+      "gates": [],
+      "markers": [
+        {
+          "pathHint": "order-manager.js",
+          "needle": "__TALARIA_DISABLE_M24_ORDER_ID_ALLOCATOR_V1",
+          "fromCommit": "b21d236d3"
+        },
+        {
+          "pathHint": "order-manager.js",
+          "needle": "__TALARIA_DISABLE_M24_DISPLAY_ID_STABILITY_V1",
+          "fromCommit": "2cc949399"
+        }
+      ]
+    },
+    {
+      "ticket": "TAL-01807b",
+      "commits": [],
+      "gates": [
+        "order-pair-switch-visual-rebind.test.mjs"
+      ],
+      "markers": [
+        {
+          "pathHint": "order-manager.js",
+          "needle": "__TALARIA_DISABLE_ORDER_PAIR_SWITCH_VISUAL_REBIND",
+          "fromCommit": "147fa8e5f"
+        },
+        {
+          "pathHint": "order-manager.js",
+          "needle": "__TALARIA_DISABLE_ORDER_PAIR_SWITCH_VISUAL_REBIND_V1",
+          "fromCommit": "147fa8e5f"
+        }
+      ]
+    },
+    {
+      "ticket": "PO value-box shaky",
+      "commits": [
+        "2cc949399"
+      ],
+      "gates": [
+        "order-stable-label-hover-dom.test.mjs"
+      ],
+      "markers": [
+        {
+          "pathHint": "order-manager.js",
+          "needle": "__TALARIA_DISABLE_ORDER_STABLE_LABEL_HOVER_DOM_V1",
+          "fromCommit": "2cc949399"
+        }
+      ]
+    },
+    {
+      "ticket": "PO hover one-by-one",
+      "commits": [
+        "2cc949399"
+      ],
+      "gates": [
+        "order-stable-label-hover-dom.test.mjs"
+      ],
+      "markers": [
+        {
+          "pathHint": "order-manager.js",
+          "needle": "__TALARIA_DISABLE_ORDER_STABLE_LABEL_HOVER_DOM_V1",
+          "fromCommit": "2cc949399"
+        }
+      ]
+    },
+    {
+      "ticket": "PO pending SL/TP resurrect",
+      "commits": [
+        "2cc949399"
+      ],
+      "gates": [
+        "order-pending-protection-clear.test.mjs"
+      ],
+      "markers": [
+        {
+          "pathHint": "order-manager.js",
+          "needle": "__TALARIA_DISABLE_ORDER_PENDING_PROTECTION_CLEAR_V1",
+          "fromCommit": "2cc949399"
+        }
+      ]
+    }
+  ]
+}
