@@ -1,12 +1,21 @@
-# TAL-01896 — delivery answer (TEST-02 corrected)
+# TAL-01896 — TEST-02 resolution (named)
 
 **Date:** 2026-07-30  
 **Ticket:** TAL-01896 (trade duration norm)  
-**Named verdict:** **not served on the canary surface** (delivery / B routing)
+**Named verdict:** **needs a build**
 
 ---
 
-## Delivery census (`WIRE-RUNTIME-PROBES-20260730b113.json`)
+## Binary choice (Director dispatch)
+
+| Option | Chosen? |
+|---|---|
+| **needs a build** | **YES** |
+| needs a better marker | no |
+
+## Why “needs a build”
+
+Live canary census (`WIRE-RUNTIME-PROBES-20260730b113.json`):
 
 | Probe | Result |
 |---|---|
@@ -15,11 +24,8 @@
 | Homepage `/_next/static/*` chunks linked from `/` | **0** hits for `tradeDurationNormV1Enabled` |
 | Inlined into served `order-manager.js` / `chart.js` | **no** |
 
-**Conclusion:** this is not a marker-vocabulary problem. The module is not delivered on the
-canary surface D can audit. Routed to B with #8 / 01807b for the next train; skip register
-stays armed.
+The kill-switch already exists in tip source (and in the b103 tree). The canary does **not**
+serve that module on any auditable path. That is a **delivery / next-train build** item for B
+(with #8 / 01807b), not a marker-vocabulary rewrite on D’s side.
 
-## Not “needs a build” of the kill-switch
-
-The kill-switch already exists in git (including b103 tree). Shipping an **auditable served
-path** (static module or chunk that contains the marker) is the B delivery item.
+Skip register keeps TAL-01896 open on b113; `--freeze` fails while it remains skipped.

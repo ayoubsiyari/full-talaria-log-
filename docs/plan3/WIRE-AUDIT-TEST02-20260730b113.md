@@ -1,6 +1,6 @@
 # WIRE-AUDIT TEST-02 (amended) — 20260730b113
 
-**Tip:** `9c3c13834`  
+**Tip:** `f4e006b06`  
 **Schema:** `talaria.wire-audit-test02.v2`  
 **Reference:** `<fix-commit>^` per marker (git history) — **not** b103  
 **Correction:** `CORRECTION-B103-IS-NOT-A-PRE-FIX-CORPUS-…-1635.md`  

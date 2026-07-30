@@ -154,6 +154,35 @@ function _tradeEvictV1Enabled() {
         || window.__TALARIA_DISABLE_TRADE_EVICT_V1 !== true;
 }
 
+/**
+ * EXCURSION-SINGLE-OWNER-V1 — one authoritative owner for excursion series.
+ *
+ * Authoritative: tradeJournal (cold history). managerClosed and serviceClosed are
+ * the SAME array via bindServiceProp (order-manager ctor); they are not a second
+ * and third heap owner — only a second list pointer. The real duplicate was
+ * journal `.slice()` copies alongside the closed/service row.
+ *
+ * Default ON. Kill-switch: window.__TALARIA_DISABLE_EXCURSION_SINGLE_OWNER_V1 = true
+ * FLAG-01/02/03 same contract as TRADE-EVICT-V1.
+ *
+ * Also hard-caps each live series at `_m19ExcursionTailMaxV1()` after archive+bound
+ * so a census that sums four keys cannot be misread as a single-array cap miss.
+ */
+function _excursionSingleOwnerV1Enabled() {
+    return typeof window === 'undefined'
+        || window.__TALARIA_DISABLE_EXCURSION_SINGLE_OWNER_V1 !== true;
+}
+
+/** Excursion series keys owned by a single list under EXCURSION-SINGLE-OWNER-V1. */
+function _excursionSingleOwnerV1SeriesKeys() {
+    return [
+        'bar_close_r', 'bar_high_r', 'bar_low_r',
+        'post_exit_bar_close_r', 'post_exit_bar_high_r', 'post_exit_bar_low_r',
+        'bar_close_r_archive', 'bar_high_r_archive', 'bar_low_r_archive',
+        'post_exit_bar_close_r_archive', 'post_exit_bar_high_r_archive', 'post_exit_bar_low_r_archive',
+    ];
+}
+
 function _m19HotpathDebugLogsEnabled() {
     if (typeof window === 'undefined') return false;
     return window.__TALARIA_DEBUG === true
@@ -6239,9 +6268,14 @@ class OrderManager {
     /**
      * Persist / journal canonical shape: bar_* = live tail only; *_archive =
      * preserved prefix. Never writes reconstructed arrays into bar_*.
+     *
+     * EXCURSION-SINGLE-OWNER-V1: share array object identity with `source` so
+     * journal + closed do not each retain a sliced copy. TRADE-EVICT then nulls
+     * the closed keys and the journal keeps the sole reference.
      */
     _m19AssignCanonicalExcursionStorage(target, source) {
         if (!target || !source || typeof target !== 'object') return target;
+        const share = _excursionSingleOwnerV1Enabled();
         const seriesKeys = [
             'bar_close_r', 'bar_high_r', 'bar_low_r',
             'post_exit_bar_close_r', 'post_exit_bar_high_r', 'post_exit_bar_low_r',
@@ -6249,14 +6283,14 @@ class OrderManager {
         for (let i = 0; i < seriesKeys.length; i++) {
             const k = seriesKeys[i];
             if (Array.isArray(source[k])) {
-                target[k] = source[k].slice();
+                target[k] = share ? source[k] : source[k].slice();
             } else if (target[k] == null) {
                 target[k] = [];
             }
             const archKey = `${k}_archive`;
-            if (source[archKey] != null && target[archKey] == null) {
+            if (source[archKey] != null && (share || target[archKey] == null)) {
                 target[archKey] = Array.isArray(source[archKey])
-                    ? source[archKey].slice()
+                    ? (share ? source[archKey] : source[archKey].slice())
                     : source[archKey];
             }
         }
@@ -6265,11 +6299,76 @@ class OrderManager {
             'post_exit_bar_high_r_peak', 'post_exit_bar_low_r_peak',
             'post_exit_bar_r_count', 'post_exit_bar_r_legacy_pending',
         ].forEach((k) => {
-            if (source[k] != null && target[k] == null) {
+            if (source[k] != null && (share || target[k] == null)) {
                 target[k] = source[k];
             }
         });
         return target;
+    }
+
+    /**
+     * EXCURSION-SINGLE-OWNER-V1 — point journal row at the hot row's excursion
+     * arrays (shared identity). Does not slice.
+     */
+    _excursionSingleOwnerV1ShareFromHot(journalRow, hotRow) {
+        if (!_excursionSingleOwnerV1Enabled() || !journalRow || !hotRow) return false;
+        for (const k of _excursionSingleOwnerV1SeriesKeys()) {
+            if (hotRow[k] == null) continue;
+            journalRow[k] = hotRow[k];
+        }
+        [
+            'bar_high_r_peak', 'bar_low_r_peak', 'bar_r_count', 'bar_r_legacy_pending',
+            'post_exit_bar_high_r_peak', 'post_exit_bar_low_r_peak',
+            'post_exit_bar_r_count', 'post_exit_bar_r_legacy_pending',
+        ].forEach((k) => {
+            if (hotRow[k] != null) journalRow[k] = hotRow[k];
+        });
+        journalRow._excursionSingleOwnerV1 = {
+            authoritative: 'tradeJournal',
+            sharedFromHot: true,
+            aliases: {
+                managerClosed: 'orderService.closedPositions (same array via bindServiceProp)',
+                serviceClosed: 'alias of managerClosed — zero additional bytes',
+            },
+        };
+        return true;
+    }
+
+    /**
+     * EXCURSION-SINGLE-OWNER-V1 — hard-cap every live series at tail max.
+     * Archive+bound already trims; this is the belt that fails closed if a path
+     * skipped the binder (Director 20:45 "cap not binding" kill).
+     */
+    _excursionSingleOwnerV1HardCapLiveTails(position) {
+        if (!_excursionSingleOwnerV1Enabled() || !position) return 0;
+        const max = this._m19ExcursionTailMaxV1();
+        if (!Number.isFinite(max) || max < 1) return 0;
+        let trimmed = 0;
+        const liveKeys = [
+            'bar_close_r', 'bar_high_r', 'bar_low_r',
+            'post_exit_bar_close_r', 'post_exit_bar_high_r', 'post_exit_bar_low_r',
+        ];
+        for (const k of liveKeys) {
+            const arr = position[k];
+            if (!Array.isArray(arr) || arr.length <= max) continue;
+            const removeCount = arr.length - max;
+            arr.copyWithin(0, removeCount);
+            arr.length = max;
+            trimmed += 1;
+        }
+        return trimmed;
+    }
+
+    /** Excursion-only UTF-16 byte estimate for CONF-02 single-owner cell. */
+    _excursionSingleOwnerV1ApproxBytes(row) {
+        if (!row || typeof row !== 'object') return 0;
+        let n = 0;
+        for (const k of _excursionSingleOwnerV1SeriesKeys()) {
+            const v = row[k];
+            if (!Array.isArray(v) || v.length === 0) continue;
+            try { n += JSON.stringify(v).length * 2; } catch { /* ignore */ }
+        }
+        return n;
     }
 
     /**
@@ -6470,6 +6569,8 @@ class OrderManager {
                 bootstrapPostExitPeaks,
             );
         }
+        // EXCURSION-SINGLE-OWNER-V1: belt-and-suspenders live-tail cap (≤256 each).
+        this._excursionSingleOwnerV1HardCapLiveTails(position);
     }
 
     /** Planned risk distance in price units (frozen initial SL vs array base). */
@@ -32358,26 +32459,33 @@ class OrderManager {
                 this.tradeJournal[journalIndex].maeTime = position.maeTime;
                 this.tradeJournal[journalIndex].highestPrice = position.highestPrice;
                 this.tradeJournal[journalIndex].lowestPrice = position.lowestPrice;
-                this.tradeJournal[journalIndex].bar_close_r = Array.isArray(position.bar_close_r) ? position.bar_close_r.slice() : [];
-                this.tradeJournal[journalIndex].bar_high_r = Array.isArray(position.bar_high_r) ? position.bar_high_r.slice() : [];
-                this.tradeJournal[journalIndex].bar_low_r = Array.isArray(position.bar_low_r) ? position.bar_low_r.slice() : [];
-                this.tradeJournal[journalIndex].post_exit_bar_close_r = Array.isArray(position.post_exit_bar_close_r) ? position.post_exit_bar_close_r.slice() : [];
-                this.tradeJournal[journalIndex].post_exit_bar_high_r = Array.isArray(position.post_exit_bar_high_r) ? position.post_exit_bar_high_r.slice() : [];
-                this.tradeJournal[journalIndex].post_exit_bar_low_r = Array.isArray(position.post_exit_bar_low_r) ? position.post_exit_bar_low_r.slice() : [];
-                // M19-B additive archive/peaks (I16 — lossless history alongside bounded tails).
-                [
-                    'bar_close_r_archive', 'bar_high_r_archive', 'bar_low_r_archive',
-                    'post_exit_bar_close_r_archive', 'post_exit_bar_high_r_archive', 'post_exit_bar_low_r_archive',
-                    'bar_high_r_peak', 'bar_low_r_peak', 'bar_r_count', 'bar_r_legacy_pending',
-                    'post_exit_bar_high_r_peak', 'post_exit_bar_low_r_peak', 'post_exit_bar_r_count',
-                    'post_exit_bar_r_legacy_pending',
-                ].forEach((k) => {
-                    if (position[k] != null) {
-                        this.tradeJournal[journalIndex][k] = Array.isArray(position[k])
-                            ? position[k].slice()
-                            : position[k];
-                    }
-                });
+                // EXCURSION-SINGLE-OWNER-V1: share array identity with the hot row
+                // (journal becomes sole owner after TRADE-EVICT nulls closed keys).
+                // Kill-switch OFF restores legacy per-series .slice() copies.
+                if (_excursionSingleOwnerV1Enabled()) {
+                    this._excursionSingleOwnerV1ShareFromHot(this.tradeJournal[journalIndex], position);
+                } else {
+                    this.tradeJournal[journalIndex].bar_close_r = Array.isArray(position.bar_close_r) ? position.bar_close_r.slice() : [];
+                    this.tradeJournal[journalIndex].bar_high_r = Array.isArray(position.bar_high_r) ? position.bar_high_r.slice() : [];
+                    this.tradeJournal[journalIndex].bar_low_r = Array.isArray(position.bar_low_r) ? position.bar_low_r.slice() : [];
+                    this.tradeJournal[journalIndex].post_exit_bar_close_r = Array.isArray(position.post_exit_bar_close_r) ? position.post_exit_bar_close_r.slice() : [];
+                    this.tradeJournal[journalIndex].post_exit_bar_high_r = Array.isArray(position.post_exit_bar_high_r) ? position.post_exit_bar_high_r.slice() : [];
+                    this.tradeJournal[journalIndex].post_exit_bar_low_r = Array.isArray(position.post_exit_bar_low_r) ? position.post_exit_bar_low_r.slice() : [];
+                    // M19-B additive archive/peaks (I16 — lossless history alongside bounded tails).
+                    [
+                        'bar_close_r_archive', 'bar_high_r_archive', 'bar_low_r_archive',
+                        'post_exit_bar_close_r_archive', 'post_exit_bar_high_r_archive', 'post_exit_bar_low_r_archive',
+                        'bar_high_r_peak', 'bar_low_r_peak', 'bar_r_count', 'bar_r_legacy_pending',
+                        'post_exit_bar_high_r_peak', 'post_exit_bar_low_r_peak', 'post_exit_bar_r_count',
+                        'post_exit_bar_r_legacy_pending',
+                    ].forEach((k) => {
+                        if (position[k] != null) {
+                            this.tradeJournal[journalIndex][k] = Array.isArray(position[k])
+                                ? position[k].slice()
+                                : position[k];
+                        }
+                    });
+                }
                 this._finalizeExcursionScalars(this.tradeJournal[journalIndex], position, { inTradeOnly: true });
                 // M4-2: post-exit checkpoints
                 this.tradeJournal[journalIndex].post_checkpoints = Array.isArray(position.post_checkpoints) ? position.post_checkpoints.slice() : [];

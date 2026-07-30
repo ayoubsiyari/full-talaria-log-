@@ -1,7 +1,7 @@
 {
   "schema": "talaria.wire-runtime-probes.v2",
   "stamp": "20260730b113",
-  "tip": "9c3c13834",
+  "tip": "f4e006b06",
   "base": "http://31.97.192.82:3000",
   "policy": "behavioural primary for money rows; text fallback",
   "results": [

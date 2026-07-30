@@ -1,6 +1,6 @@
 {
-  "schema": "talaria.trade-evict-v1.conf02-bytes.v1",
-  "tip": "987ee25fb",
+  "schema": "talaria.trade-evict-v1.conf02-bytes.v2",
+  "tip": "f4e006b06",
   "supersedes": {
     "figure": "98306 → 0",
     "why": "one trade × 8 KB synthetic screenshot × thin excursion — understated CONF-02 product cost"
@@ -11,6 +11,7 @@
   "seedPath": "C:/Users/user/Desktop/talaria1/manager-d-trade/docs/plan3/fixtures/TRADE-EVICT-V1-CONF02-SCREENSHOT-SEED.json",
   "conf02": {
     "closedPositions": 30,
+    "openPositions": 4,
     "excursionSamplesPerTradeFromC": 318,
     "screenshotDataUrlChars": 265167,
     "screenshotFieldsPerPosition": [
@@ -21,9 +22,13 @@
     ]
   },
   "bytes": {
-    "before": 63753000,
-    "after": 0,
+    "before": 70124552,
+    "after": 6371552,
     "delta": 63753000,
+    "closedBefore": 63753000,
+    "closedAfter": 0,
+    "openBefore": 6371552,
+    "openAfter": 6371552,
     "perClosedTradeBefore": 2125100,
     "perClosedTradeAfter": 0
   },

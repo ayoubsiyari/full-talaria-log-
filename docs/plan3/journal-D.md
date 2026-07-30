@@ -485,3 +485,12 @@
 - TAL-01744: `intended` (PO). TAL-01894: `feature-request`. TAL-01920 / Rayan #7/#10: `verify-gone`.
 - TAL-01850: **Manager A** canary blocker (`OWNER-TAL-01850-KEYBOARD-20260730.md`).
 - Five PO packs remain AWAITING STAMP.
+
+## 2026-07-30 — JOUR-01 + EXCURSION-SINGLE-OWNER-V1
+
+- Canonical journal is now `docs/plan3/journal/MANAGER-D.md` (JOUR-01). This file remains as
+  the longer historical notebook; new packet notes go to MANAGER-D.md.
+- EXCURSION-SINGLE-OWNER-V1 landed for Director `e8ba8bdbc`: journal authoritative;
+  closed≡service alias; share then TRADE-EVICT; hard-cap belt; CONF-02 delta **195,120** bytes
+  (~191 KB) — not the memory win. See `EXCURSION-SINGLE-OWNER-V1-LANDING-20260730.md`.
+- Rayan probes re-run: #2 on-wire, #8 off-wire, TAL-01896 needs a build / delivery-unserved.

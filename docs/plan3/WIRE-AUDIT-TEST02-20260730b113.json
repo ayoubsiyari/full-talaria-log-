@@ -4,7 +4,7 @@
   "reference": "fix-commit^ per marker (git history)",
   "correction": "CORRECTION-B103-IS-NOT-A-PRE-FIX-CORPUS-THE-REFERENCE-IS-THE-PARENT-COMMIT-20260730-1635.md",
   "stamp": "20260730b113",
-  "tip": "9c3c13834",
+  "tip": "f4e006b06",
   "wireDir": "artifacts/wire-b113",
   "priorAudit": "C:\\Users\\user\\Desktop\\talaria1\\manager-d-trade\\docs\\plan3\\WIRE-AUDIT-FIXED-20260730b113.json",
   "priorOnWireStrictTest01": 43,
