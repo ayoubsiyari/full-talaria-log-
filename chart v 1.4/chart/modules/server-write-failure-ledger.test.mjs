@@ -313,7 +313,14 @@ test('WIRING: preferences-sync calls the ledger on failure and clears it on succ
 });
 
 test('WIRING: the ledger is loaded by the served shells before preferences-sync', () => {
+    // `dist-v9/index.html` is a BUILD ARTIFACT: the homepage image regenerates it
+    // from `talaria-design/live/index.html` via vite, then rewrites the `?v=` stamps.
+    // This cell originally listed only the artifact, so it passed while the served
+    // shell had no ledger tag at all and the counter loaded in panel realms only —
+    // a gate green against a file the wire does not use. The vite source is listed
+    // first because it is the one that decides what ships.
     const shells = [
+        path.resolve(HERE, '..', '..', 'talaria-design', 'live', 'index.html'),
         path.resolve(HERE, '..', 'dist-v9', 'index.html'),
         path.resolve(HERE, '..', 'multichart-prod', 'chart-embed.html')
     ];
