@@ -41,6 +41,12 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // its series and withholds a verdict, not a fast acceptance.
 export const DUR01_MIN_SPAN_HOURS = 2;
 
+/**
+ * Quiet window before each sample during which playback is not re-armed, so a
+ * re-seek's allocation transient cannot land on a measurement.
+ */
+export const REARM_QUIET_MS = 90_000;
+
 export const CONF01_FLAT_BANDS = Object.freeze({
   heapAfterGcMB: 5,
   liveHeapMB: 15,
@@ -420,9 +426,33 @@ export async function runConf01DurationGate({
       report.conf02 = assessConf02(samples, { closedTarget });
       save();
       console.error(`[dur] #${n} ${hoursNow.toFixed(2)}h gcHeap=${s.collected.heapMB} live=${s.live.heapMB} footprint=${s.footprint.totalPrivateMB} elements=${s.elements} bars=${s.state.totalBars} advancing=${s.state.advancingPanels}/4 renderer=${s.cpu.rendererPercent}% closed=${s.trades?.managerClosed ?? s.trades?.serviceClosed} loop=${s.orderLoop?.measured?.msPerCall}ms/tick(book=${s.orderLoop?.measured?.closedHere ?? 0}) excursion=${s.heavyFields?.excursionSamples} heavy=${s.heavyFields?.heavyMB}MB status=${report.verdict?.status}`);
-      const spent = Date.now() - startedAt;
+      // Keep playback alive BETWEEN samples, not only after one. Panels exhaust their
+      // resident data mid-interval and a stalled panel stops allocating, which
+      // diluted the first run's slope badly enough that stratifying the same samples
+      // moved the footprint lower bound from +30 to +700 MB/h. Re-arming is kept away
+      // from the sample point on purpose — a re-seek allocates, and a transient
+      // landing on a measurement would be a worse defect than a stall. The last
+      // re-arm before each sample is recorded so its distance is auditable.
       const nextAt = n * intervalMs;
-      if (nextAt > spent) await sleep(nextAt - spent);
+      let lastRearmAt = null;
+      let midRearms = 0;
+      while (Date.now() - startedAt < nextAt) {
+        const remaining = nextAt - (Date.now() - startedAt);
+        await sleep(Math.min(60_000, remaining));
+        // Leave the final stretch untouched so any re-seek has time to settle.
+        if (nextAt - (Date.now() - startedAt) < REARM_QUIET_MS) break;
+        try {
+          const r = await keepConf01Playing(page, speed);
+          midRearms += 1;
+          if (r?.reseeks > 0) lastRearmAt = Date.now();
+        } catch { /* a failed re-arm is reported by the next sample's advancingPanels */ }
+      }
+      const last = samples.at(-1);
+      if (last) {
+        last.midIntervalRearms = midRearms;
+        last.secondsSinceLastReseekAtNextSample = lastRearmAt
+          ? Math.round((Date.now() - lastRearmAt) / 1_000) : null;
+      }
     }
     report.finishedAtIso = new Date().toISOString();
     report.completedPlannedDuration = !report.abortedReason
