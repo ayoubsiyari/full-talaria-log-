@@ -733,6 +733,35 @@ misses — a handover re-exporting `logo-08` at 900px, which is comfortably unde
 still 3.5x the size its 80px display justifies (CELL 8). Every target records the displayed
 measurement behind it, and CELL 5 fails if one does not.
 
+## WINDOW-CONTROL-FETCH-TIMEOUT-V1 — reserved 2026-07-30 13:55 (B)
+
+| Name | Signature token | Status |
+|---|---|---|
+| WINDOW-CONTROL-FETCH-TIMEOUT-V1 | `__TALARIA_DISABLE_WINDOW_CONTROL_FETCH_TIMEOUT_V1` | ACTIVE from 20260730b113 |
+
+Bounds the three window-limit control POSTs — claim, heartbeat, release — at 10s with a real
+`AbortController`, and puts an independent 12s ceiling on how long a gated fetch may wait for
+the claim gate. Gate: `window-control-fetch-timeout.test.mjs`, 18 cells including 5 mutants.
+
+One switch covers both ceilings deliberately. They are one defect — an unbounded control POST
+with no definite outcome — and splitting the switch would allow a half-disabled state that
+neither reproduces the original behaviour nor delivers the fix, which is precisely the
+condition FLAG-02 exists to prevent. Flipping it restores the deployed b112 behaviour exactly:
+no signal on the requests, and a claim that hangs forever when the server goes quiet. That
+equivalence is asserted, not assumed — the FLAG-01 cell checks both the hang and the absent
+signal, and the FLAG-02 cell flips it on the host and requires an embedded panel realm to see
+it, because a host-only read would make the switch look inert.
+
+**The timeouts open the gate rather than closing it.** A windows API we cannot reach is not
+evidence that this window lost its slot, so a stall soft-fails open, exactly as the existing
+5xx path does, and is counted in the failed-write ledger as status 0 with one console warning.
+Failing closed would answer every gated URL with a synthetic 409 and show an empty chart,
+which is a worse outcome than the hang and harder to diagnose. A mutant asserts that choice.
+
+**Not applied to the gated request itself.** `/api/file/*` and `/api/sessions/N/state` carry no
+ceiling of ours: chart data downloads are legitimately slow and aborting them would convert a
+slow chart into a broken one. A cell holds that line.
+
 ## SCREENSHOT-BRAND-PRELOAD-CUT-V1 — RETIRED 2026-07-30 12:20 (B)
 
 | Name | Signature token | Status |

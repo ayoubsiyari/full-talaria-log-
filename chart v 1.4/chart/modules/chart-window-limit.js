@@ -10,6 +10,25 @@
     var STORAGE_KEY = 'talaria_chart_window_id';
     var HEADER_NAME = 'X-Talaria-Chart-Window-Id';
     var HEARTBEAT_MS = 25000;
+    /**
+     * Ceiling on the window-limit control POSTs (claim / heartbeat / release).
+     *
+     * A server that accepts one of these and then goes quiet holds a socket open for the
+     * life of the browser. HTTP/1.1 caps sockets per origin per BROWSER, not per tab, so a
+     * handful of silent control POSTs starve every request to the origin — including the
+     * static images of a tab that has not loaded yet. These three are our own small POSTs
+     * and answer in milliseconds when the server is healthy, so a low ceiling costs nothing
+     * and converts "hangs until the browser is closed" into a counted failure.
+     */
+    var CONTROL_TIMEOUT_MS = 10000;
+    /**
+     * Ceiling on how long a gated fetch may wait for the claim gate to open, independent of
+     * the ceiling above. Belt and braces: it holds even if some future path reaches the gate
+     * without going through a bounded control POST. Deliberately NOT applied to the gated
+     * request itself — chart data downloads are legitimately slow and aborting them would
+     * turn a working chart into a broken one.
+     */
+    var GATE_WAIT_TIMEOUT_MS = 12000;
     var KICKED_MESSAGE = 'This chart was opened elsewhere — reload to take over.';
     /** Set when the windows API is missing/misrouted (e.g. nginx 405) so we stop spamming. */
     var apiUnavailable = false;
@@ -178,6 +197,9 @@
     var clientId = null;
     var heartbeatTimer = null;
     var claimInFlight = false;
+    var heartbeatInFlight = false;
+    /** window.fetch as it was before the patch; see controlFetch. */
+    var pristineFetch = null;
 
     function release() {
         if (!shouldClaim() || !clientId) return;
@@ -191,7 +213,10 @@
             }
         } catch (_e) { /* fall through */ }
         try {
-            fetch('/api/chart/windows/release', {
+            // keepalive outlives the page, so an unanswered release from the OUTGOING page
+            // sits in the pool while the reloaded page tries to claim — two dead sockets from
+            // one reload. Bounded for that reason.
+            controlFetch('/api/chart/windows/release', {
                 method: 'POST',
                 credentials: 'include',
                 headers: { 'Content-Type': 'application/json' },
@@ -248,6 +273,71 @@
     }
 
     /**
+     * fetch() for the window-limit control POSTs, with a hard ceiling and a definite outcome.
+     *
+     * On timeout the request is ABORTED, not merely ignored: the socket must actually close,
+     * otherwise the promise settles while the connection stays wedged in the browser's shared
+     * per-origin pool and the starvation continues invisibly. The abort surfaces as a
+     * rejection, which every caller here already handles as "never answered".
+     */
+    function controlFetch(url, init) {
+        // The pristine fetch, never the patched one: the control POSTs are not gated URLs
+        // today, so the patch would pass them through, but a widened gate must not be able to
+        // make the claim wait on itself.
+        var base = pristineFetch || window.fetch;
+        if (talariaDisableFlagTruthy('__TALARIA_DISABLE_WINDOW_CONTROL_FETCH_TIMEOUT_V1')) {
+            return base(url, init);
+        }
+        var controller = null;
+        try {
+            if (typeof AbortController === 'function') controller = new AbortController();
+        } catch (_e) { /* no AbortController: fall through to the plain request */ }
+        var next = init ? Object.assign({}, init) : {};
+        if (controller) next.signal = controller.signal;
+        var timer = null;
+        var timedOut = false;
+        var settle = function () {
+            if (timer !== null) {
+                clearTimeout(timer);
+                timer = null;
+            }
+        };
+        try {
+            timer = setTimeout(function () {
+                timedOut = true;
+                try {
+                    if (controller) controller.abort();
+                } catch (_e2) { /* already gone */ }
+            }, CONTROL_TIMEOUT_MS);
+        } catch (_e3) { /* no timers: the request is unbounded, as it was before */ }
+        return base(url, next).then(function (res) {
+            settle();
+            return res;
+        }, function (err) {
+            settle();
+            if (timedOut) {
+                warnOnce(
+                    '[chart-window-limit] ' + url + ' did not answer within '
+                    + CONTROL_TIMEOUT_MS + 'ms; request aborted so it cannot hold a socket. '
+                    + 'Counted as a failed server write.'
+                );
+            }
+            throw err;
+        });
+    }
+
+    var warnedMessages = null;
+    /** Loud, but once per message: a stalled endpoint retries and must not storm the console. */
+    function warnOnce(message) {
+        try {
+            if (!warnedMessages) warnedMessages = {};
+            if (warnedMessages[message]) return;
+            warnedMessages[message] = true;
+            console.warn(message);
+        } catch (_e) { /* diagnostics must never break the claim path */ }
+    }
+
+    /**
      * Count a failed claim into the support passport's failed-write ledger.
      *
      * Why the claim and not the fetches it blocks: a claim that does not succeed makes
@@ -275,13 +365,19 @@
     function heartbeat() {
         if (apiUnavailable || !clientId || window.__talariaChartWindowBlocked) return;
         if (!shouldClaim()) return;
-        fetch('/api/chart/windows/heartbeat', {
+        // Without this guard a stalled endpoint gets a fresh socket every HEARTBEAT_MS and the
+        // pool dies by accumulation rather than by any single hung request.
+        if (heartbeatInFlight) return;
+        heartbeatInFlight = true;
+        var done = function () { heartbeatInFlight = false; };
+        return controlFetch('/api/chart/windows/heartbeat', {
             method: 'POST',
             credentials: 'include',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ client_id: clientId }),
             cache: 'no-store',
         }).then(function (res) {
+            done();
             if (res.status === 401) return;
             if (res.status === 404 || res.status === 405) {
                 markApiUnavailable(res.status);
@@ -298,7 +394,10 @@
                     claim(true);
                 });
             }
-        }).catch(function () { /* ignore transient */ });
+        }).catch(function () {
+            done();
+            /* ignore transient */
+        });
     }
 
     /**
@@ -337,13 +436,21 @@
         claimPromise = sendClaim(!!isRetry).then(function (ok) {
             claimInFlight = false;
             return ok;
+        }, function () {
+            // A rejected claim must not become the cached answer for every later gated fetch:
+            // clear the in-flight state so the next one gets a fresh attempt, and soft-open so
+            // a dead windows API cannot brick the chart.
+            claimInFlight = false;
+            claimPromise = null;
+            noteClaimFailure(0);
+            return true;
         });
         return claimPromise;
     }
 
     function sendClaimRequest(isRetry, retryOnce) {
         clientId = getOrCreateClientId();
-        return fetch('/api/chart/windows/claim', {
+        return controlFetch('/api/chart/windows/claim', {
             method: 'POST',
             credentials: 'include',
             headers: { 'Content-Type': 'application/json' },
@@ -409,8 +516,44 @@
         if (!shouldClaim()) return Promise.resolve(true);
         if (window.__talariaChartWindowBlocked) return Promise.resolve(false);
         if (everClaimed && clientId) return Promise.resolve(true);
-        if (claimPromise) return claimPromise;
-        return claim(false);
+        return withGateTimeout(claimPromise ? claimPromise : claim(false));
+    }
+
+    /**
+     * Guarantee that waiting on the claim gate ends, whatever the gate does.
+     *
+     * The bounded control POSTs above are the fix; this is the floor under it. Any gated
+     * fetch that reaches the gate gets an answer within GATE_WAIT_TIMEOUT_MS even if the
+     * claim promise never settles for a reason nobody has thought of yet. Timing out opens
+     * the gate rather than closing it: a windows API we cannot reach is not evidence that
+     * this window lost its slot, and failing closed here would show an empty chart.
+     */
+    function withGateTimeout(promise) {
+        if (talariaDisableFlagTruthy('__TALARIA_DISABLE_WINDOW_CONTROL_FETCH_TIMEOUT_V1')) {
+            return promise;
+        }
+        if (typeof setTimeout !== 'function') return promise;
+        return new Promise(function (resolve) {
+            var done = false;
+            var timer = setTimeout(function () {
+                if (done) return;
+                done = true;
+                warnOnce(
+                    '[chart-window-limit] claim gate did not answer within '
+                    + GATE_WAIT_TIMEOUT_MS + 'ms; opening the gate so requests are not held. '
+                    + 'Counted as a failed server write.'
+                );
+                noteClaimFailure(0);
+                resolve(true);
+            }, GATE_WAIT_TIMEOUT_MS);
+            var finish = function (value) {
+                if (done) return;
+                done = true;
+                clearTimeout(timer);
+                resolve(value);
+            };
+            promise.then(finish, function () { finish(true); });
+        });
     }
 
     function isGatedUrl(url) {
@@ -464,6 +607,7 @@
         if (fetchPatched || typeof window.fetch !== 'function') return;
         fetchPatched = true;
         var originalFetch = window.fetch.bind(window);
+        pristineFetch = originalFetch;
         window.fetch = function (input, init) {
             var url = typeof input === 'string' ? input : (input && input.url) || '';
             if (!isGatedUrl(url)) {

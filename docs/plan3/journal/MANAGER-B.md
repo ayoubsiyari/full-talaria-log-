@@ -4760,3 +4760,62 @@ the served copy.
 **Regression sweep, 179 cells:** asset budget 10, screenshot cut 11, claim ledger 26,
 M17-DI2 21, legend CSS 9, prefs cap 15, write ledger 26, TF-downshift 19, realm teardown 42.
 All three changed product files mirror-identical.
+
+## B-0203 — the hung claim POST: no timeout anywhere on the control path
+
+**2026-07-30 13:25 dispatch · P0 canary blocker · fix + gate landed, ship pending**
+
+**Root cause, one line.** The three window-limit control POSTs had no timeout, no
+`AbortController` and no ceiling of any kind, so a server that accepted the claim and then
+went quiet left the claim promise pending forever and every gated fetch waiting on it.
+
+**Why `9fc8763f0` does not cover this route, precisely.** That fix removed a
+*self-referential promise*: the retry path returned its own unresolved promise, so a 409
+kicked-detail retry deadlocked in JS. It guarantees the claim promise settles **once the
+response arrives**. It says nothing about the response never arriving. `grep` for
+`AbortController|signal:|timeout` over the deployed `chart-window-limit.js` returns **zero
+hits** — there was nothing to restructure, because a promise waiting on a socket that never
+answers has no path to settle. The two defects share a file and a symptom and are otherwise
+unrelated: one is a JS lifecycle bug, this one is a missing network ceiling.
+
+**Why the 26/26 gate is green and blind.** `claim-failure-ledger.test.mjs` drives the module
+with a fetch stub that always settles — every cell models "the server said something" (401,
+409, 405, 500) or "the network refused" (rejects). C's case is neither: accepted, then
+silence. The same gate also stubs `setTimeout`/`clearTimeout` inert, so a ceiling could not
+have fired even if one existed. 26/26 was an honest statement about the paths it covers and
+structurally incapable of seeing this one. That is the lesson worth keeping: a gate whose
+fixture cannot express the failure mode cannot be evidence against it.
+
+**Reproduced twice, neither through the gate.**
+
+- Node, real sockets, real module: one unanswered claim POST leaves **3 of 3** gated fetches
+  pending forever, the socket open, and the gated endpoints never even reached by the server.
+- Chromium, real HTTP/1.1 pool, reload-then-second-tab as C did: **every tab sits at
+  `boot=booting` indefinitely** while `/api/auth/me` answers in 2ms and the tab stays on the
+  chart URL — C's signature exactly, including the control observation.
+
+With the fix: all three gated fetches settle at the 10s ceiling, and in the browser every tab
+reaches `boot=booted` with **9 of 9** claim-family sockets closed by the client. The socket
+closure is asserted server-side, not inferred from the promise: a promise that settles while
+the connection stays wedged fixes the console and leaves the starvation in place.
+
+**What landed.** `controlFetch()` bounds claim, heartbeat and release at 10s with a real
+abort; a heartbeat overlap guard, because without it a stalled endpoint takes a fresh socket
+every 25s and the pool dies by accumulation rather than by any one request; and an
+independent 12s ceiling on the claim-gate wait so no gated fetch can wait on the gate
+indefinitely even by a route nobody has thought of. Stalls soft-fail **open**, are counted in
+the ledger as status 0 and warned once. Switch: `__TALARIA_DISABLE_WINDOW_CONTROL_FETCH_TIMEOUT_V1`.
+
+**GATE-01 satisfied.** New gate `window-control-fetch-timeout.test.mjs`, 18 cells with 5
+mutants, **18/18 green on the fix and 9 of 13 real cells RED on the deployed b112 module** —
+including the consequence cell. The pre-existing claim gate stays 26/26.
+
+**Regression sweep, every module gate:** 132 files, **947 passing cells**. 55 failures in 15
+files, all of which fail identically on the pre-fix module and none of which reference
+`chart-window-limit.js` — pre-existing and not mine.
+
+**Two things this changes beyond the hang.** The release POST is `keepalive`, which outlives
+the page, so one reload leaves the outgoing page's unanswered release *and* the new page's
+claim in the shared pool — that is where C's "two POSTs" comes from, and it is why release
+had to be bounded too, not just claim. And the pool is per origin **per browser**, so this
+was never a per-tab defect: the wedged sockets outlive the tab that created them.
