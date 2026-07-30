@@ -314,7 +314,25 @@ export async function runConf01DurationGate({
   injectGrowthMbPerSample = 0,
   outPath = null,
 } = {}) {
-  const session = await bootConf01Session({ replaySpeed: speed });
+  // Boot is the fragile part of a long run and it must not cost the run. The
+  // deployed surface can hang a fresh load behind POST /api/chart/windows/claim
+  // (escalated to B, still open), and a browser killed without releasing its claim
+  // leaves the next boot waiting on it. Retry, with a wait long enough for a stale
+  // claim to lapse, and record every attempt rather than reporting a clean start.
+  const bootAttempts = [];
+  let session = null;
+  for (let attempt = 1; attempt <= 3 && !session; attempt += 1) {
+    try {
+      session = await bootConf01Session({ replaySpeed: speed });
+      bootAttempts.push({ attempt, ok: true });
+    } catch (err) {
+      const message = String(err?.message || err).slice(0, 300);
+      bootAttempts.push({ attempt, ok: false, message });
+      console.error(`[dur] boot attempt ${attempt} failed: ${message}`);
+      if (attempt === 3) throw err;
+      await sleep(90_000);
+    }
+  }
   const { browser, page, cdp, browserCdp, conf01 } = session;
   const startedAt = Date.now();
   const samples = [];
@@ -328,6 +346,7 @@ export async function runConf01DurationGate({
       ? { mode: 'GATE-01', injectGrowthMbPerSample, expect: 'RED on heap and footprint' }
       : null,
     conf01,
+    bootAttempts,
     flatBands: CONF01_FLAT_BANDS,
     dur01MinSpanHours: DUR01_MIN_SPAN_HOURS,
     canSatisfyDur01: hours >= DUR01_MIN_SPAN_HOURS,
@@ -342,14 +361,53 @@ export async function runConf01DurationGate({
   console.error(`[dur] advance rates: ${report.advanceRateProbe.map((r) => `${r.timeframe}:${r.barsPerSec}/s vs ${r.expectedBarsPerSec}/s x${r.rateRatio} sim${r.simSecPerWallSec}s/s atEnd=${r.atEnd}`).join(' | ')}`);
   save();
 
+  // A two-hour measurement must not disappear without saying why. The first
+  // attempt at this run died silently at 0.76h when the editor process hung and
+  // took the process tree with it; the report held ten samples and no cause.
+  report.liveness = { heartbeatIso: new Date().toISOString(), browserDisconnected: false, sampleErrors: [] };
+  browser.on('disconnected', () => {
+    report.liveness.browserDisconnected = true;
+    report.liveness.disconnectedAtIso = new Date().toISOString();
+    console.error('[dur] BROWSER DISCONNECTED — remaining samples will fail; the run ends here and says so');
+    save();
+  });
+
   try {
     let n = 0;
+    let consecutiveFailures = 0;
     while ((Date.now() - startedAt) / 3_600_000 < hours) {
       n += 1;
       const hoursNow = (Date.now() - startedAt) / 3_600_000;
-      if (injectGrowthMbPerSample > 0) await injectGrowth(page, injectGrowthMbPerSample);
-      const order = await churnTrades(page, { closedTarget });
-      const s = await sampleOnce(page, cdp, browserCdp, { cpuWindowMs });
+      report.liveness.heartbeatIso = new Date().toISOString();
+      report.liveness.lastSampleAttempted = n;
+      // One bad sample is not a reason to lose the run. Record it, keep the
+      // cadence, and stop only when the browser is plainly gone.
+      let order;
+      let s;
+      try {
+        if (injectGrowthMbPerSample > 0) await injectGrowth(page, injectGrowthMbPerSample);
+        order = await churnTrades(page, { closedTarget });
+        s = await sampleOnce(page, cdp, browserCdp, { cpuWindowMs });
+        consecutiveFailures = 0;
+      } catch (err) {
+        consecutiveFailures += 1;
+        report.liveness.sampleErrors.push({
+          sample: n,
+          hours: +hoursNow.toFixed(4),
+          message: String(err?.message || err).slice(0, 300),
+        });
+        save();
+        console.error(`[dur] #${n} FAILED (${consecutiveFailures} in a row): ${String(err?.message || err).slice(0, 200)}`);
+        if (report.liveness.browserDisconnected || consecutiveFailures >= 3) {
+          report.abortedReason = report.liveness.browserDisconnected
+            ? 'browser disconnected'
+            : `${consecutiveFailures} consecutive sample failures`;
+          break;
+        }
+        const spentAfterFail = Date.now() - startedAt;
+        if (n * intervalMs > spentAfterFail) await sleep(n * intervalMs - spentAfterFail);
+        continue;
+      }
       // Playback must be alive for the sample to mean anything; re-arm and record.
       // reseeks > 0 means panels had run out of resident data — recorded per sample
       // so the workload's own health is auditable alongside the memory series.
@@ -367,6 +425,8 @@ export async function runConf01DurationGate({
       if (nextAt > spent) await sleep(nextAt - spent);
     }
     report.finishedAtIso = new Date().toISOString();
+    report.completedPlannedDuration = !report.abortedReason
+      && (Date.now() - startedAt) / 3_600_000 >= hours;
     report.trends = buildTrends(samples, { minSpanHours: DUR01_MIN_SPAN_HOURS });
     report.verdict = gradeDurationSeries(report.trends, { minSpanHours: DUR01_MIN_SPAN_HOURS });
     report.conf02 = assessConf02(samples, { closedTarget });
