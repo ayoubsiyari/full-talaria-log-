@@ -2314,6 +2314,11 @@ class OrderManager {
         s.selectAll('text[class*="pip-indicator"]').remove();
         s.selectAll('text[class*="dollar-indicator"]').remove();
         s.selectAll('text[class*="rr-indicator"]').remove();
+        // ORDER-GLOW-GC-V1: the marker groups above were the only things that could
+        // hold url(#entry-glow-…) / url(#exit-glow-…) / url(#partial-glow-…), so their
+        // <filter> defs are now unreferenced. Left alone they survive every strip and
+        // <defs> keeps one per order the session ever saw.
+        this._reclaimOrderGlowFiltersForChart(chart);
     }
 
     _dropOrderVisualsNotOnMainChart() {
@@ -42073,6 +42078,113 @@ class OrderManager {
         }
     }
 
+    /**
+     * ORDER-GLOW-GC-V1 — default ON. Kill-switch:
+     *   window.__TALARIA_DISABLE_ORDER_GLOW_FILTER_GC_V1 = <truthy>
+     * restores the legacy shape exactly: a per-order <filter> is created once per id
+     * and never reclaimed, so <defs> grows monotonically with the number of orders a
+     * session has seen. Absent / falsy ⇒ GC on. Read per call (never sampled at init)
+     * and never throws — a flag whose getter blows up must not take order teardown
+     * with it, so an unreadable flag leaves the reclaim ON.
+     */
+    _orderGlowFilterGcEnabled() {
+        try {
+            return !(typeof window !== 'undefined'
+                && !!window.__TALARIA_DISABLE_ORDER_GLOW_FILTER_GC_V1);
+        } catch (_) {
+            return true;
+        }
+    }
+
+    /** The glow filter ids `orderId` owns: entry arrow, exit arrow, one per partial-close leg. */
+    _isOrderGlowFilterId(id, orderId) {
+        if (!id || orderId == null) return false;
+        const oid = String(orderId);
+        return id === `entry-glow-${oid}`
+            || id === `exit-glow-${oid}`
+            || id.startsWith(`partial-glow-${oid}-`);
+    }
+
+    /**
+     * Any glow filter keyed by an ORDER id. Deliberately excludes the two shared,
+     * order-independent filters — `trade-connector-glow` and the `exit-glow-fallback`
+     * used when a marker group carries no glow id — which are reused for the life of
+     * the chart and must survive a strip.
+     */
+    _isAnyOrderGlowFilterId(id) {
+        if (!id) return false;
+        if (id === 'trade-connector-glow' || id === 'exit-glow-fallback') return false;
+        return /^entry-glow-.+$/.test(id)
+            || /^exit-glow-.+$/.test(id)
+            || /^partial-glow-.+$/.test(id);
+    }
+
+    /** Every filter id still named by a live `filter="url(#…)"` anywhere in `doc`. */
+    _referencedGlowFilterIds(doc) {
+        const ids = new Set();
+        if (!doc || typeof doc.querySelectorAll !== 'function') return ids;
+        let nodes;
+        try { nodes = doc.querySelectorAll('[filter]'); } catch (_) { return ids; }
+        for (const el of nodes) {
+            const raw = el && typeof el.getAttribute === 'function' ? el.getAttribute('filter') : null;
+            if (!raw) continue;
+            const ref = /url\(\s*['"]?#([^)'"\s]+)['"]?\s*\)/.exec(raw);
+            if (ref) ids.add(ref[1]);
+        }
+        return ids;
+    }
+
+    /**
+     * Reclaim the <filter> defs `match(id)` claims — but only those nothing still
+     * points at. `filter="url(#id)"` resolves against the whole DOCUMENT rather than
+     * the owning <svg>, and panels duplicate marker ids across sibling svgs, so the
+     * reference scan runs over ownerDocument. Removing a still-referenced filter
+     * would leave that element rendering without its glow.
+     * Returns the number of <filter> nodes removed.
+     */
+    _reclaimUnreferencedGlowFilters(svg, match) {
+        if (!this._orderGlowFilterGcEnabled()) return 0;
+        if (typeof match !== 'function') return 0;
+        const root = svg && typeof svg.node === 'function' ? svg.node() : svg;
+        if (!root || typeof root.querySelectorAll !== 'function') return 0;
+        let filters;
+        try {
+            filters = Array.from(root.querySelectorAll('defs > filter'));
+        } catch (_) {
+            return 0;
+        }
+        if (!filters.length) return 0;
+        const referenced = this._referencedGlowFilterIds(root.ownerDocument || root);
+        let removed = 0;
+        for (const node of filters) {
+            const id = node && typeof node.getAttribute === 'function' ? node.getAttribute('id') : null;
+            if (!id || referenced.has(id)) continue;
+            let owned = false;
+            try { owned = !!match(id); } catch (_) { owned = false; }
+            if (!owned) continue;
+            try {
+                node.remove();
+                removed += 1;
+            } catch (_) { /* ignore */ }
+        }
+        return removed;
+    }
+
+    /** Order teardown: reclaim that one order's glow filters from a single surface. */
+    _reclaimOrderGlowFilters(svg, orderId) {
+        return this._reclaimUnreferencedGlowFilters(
+            svg,
+            (id) => this._isOrderGlowFilterId(id, orderId),
+        );
+    }
+
+    /** Chart strip: reclaim every per-order glow filter left behind on `chart`. */
+    _reclaimOrderGlowFiltersForChart(chart) {
+        const svg = chart && chart.svg ? chart.svg : null;
+        if (!svg) return 0;
+        return this._reclaimUnreferencedGlowFilters(svg, (id) => this._isAnyOrderGlowFilterId(id));
+    }
+
     /** Short label for trade marker tooltip: TP, SL, or closing side BUY / SELL. */
     _tradeMarkerTooltipTag(hitType, order) {
         const t = String(hitType || 'MANUAL').toUpperCase();
@@ -43124,6 +43236,8 @@ class OrderManager {
             svg.selectAll(`.order-${oid}`).remove();
             svg.selectAll(`.exec-order-connector[data-order-id="${oid}"]`).remove();
             svg.selectAll(`.multi-tp-avg-${oid}`).remove();
+            // ORDER-GLOW-GC-V1: this order's marker glow <filter> defs go with its visuals.
+            this._reclaimOrderGlowFilters(svg, oid);
         };
         const charts = typeof this._collectLayoutCharts === 'function'
             ? this._collectLayoutCharts()
