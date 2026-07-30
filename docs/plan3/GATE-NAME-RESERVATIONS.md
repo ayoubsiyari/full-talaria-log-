@@ -554,15 +554,15 @@ Cells:
 | HEAP-CYCLE-INSTRUMENT-COMPLETE | baseline + 3 cycles emit `usedJSHeapSize` after forced GC and `detachedDivCount` from heap snapshot | LIVE |
 | HEAP-CYCLE-DISTINCT-FILEIDS | each cycle expands with distinct harness fileIds 25/27/28/29 | LIVE |
 | HEAP-CYCLE-DETACHED-DIV-STABLE | mean per-cycle Detached HTMLDivElement delta (CDP `detachedness`) or retained `HTMLDivElement` growth after return-to-single ≤ `HEAP_CYCLE_DETACHED_STABLE_MAX=1` (PO leak ≈ +21699/cycle) | LIVE — superior/mandatory |
-| HEAP-CYCLE-HEAP-FLOOR-BOUNDED | mean return-to-single heap floor growth ≤ 8 MiB (PO hand ≈ +13 MB/cycle on canary; sealed fixture still ~50 MB/cycle) | LIVE |
+| HEAP-CYCLE-HEAP-FLOOR-BOUNDED | mean return-to-single floor growth ≤ 8 MiB on the **main-frame JS heap** instrument (`usedJSHeapSize`, top frame; PO hand ≈ +13 MB/cycle on canary; sealed fixture ~50 MB/cycle) | LIVE — **scope caveat 2026-07-30:** main-frame only, blind to panel-realm and worker heaps; cannot grade a panel-realm fix. See `evidence/B-M4/release/PO-HEAP-INSTRUMENT-CORRECTION-20260730.md` |
 | HEAP-CYCLE-PO-WORKLOAD-ARMED | live MultichartGrid cycles must arm 4 panels + ≥3 indicators/panel + host order + live replay playing; layout-only is GATE-01 decorative | LIVE (W74) |
-| HEAP-CYCLE-PO-HAND-SHAPE | report cell: mean≈13 MB/cycle + late jump ≥25 MB on cycle≥4 (PO hand 75/80/72/90/96/141/155) | LIVE (W74) |
+| HEAP-CYCLE-PO-HAND-SHAPE | report cell on the **main-frame JS heap** instrument: mean ≈13 MB/cycle + late jump ≥25 MB on cycle≥4 (PO hand 75/80/72/90/96/141/155, all `usedJSHeapSize` top-frame reads) | LIVE (W74) — same scope caveat |
 | HEAP-CYCLE-BUILD-PIN | `--require-build=` fail-closed if `meta.buildId` mismatches | LIVE (W74) |
 | REPLAY-INTERVAL-BUDGET-V1 | `TALARIA_REPLAY_INTERVAL_BUDGET_V1` | no `setInterval` callback >50ms during armed replay (PO console 55/82/95ms) | LIVE (W74) |
 | HEAP-GROWTH-CENSUS-EMITTED | report includes full constructor delta tables ×3 + A-list + B-list | LIVE — W68 |
 | HEAP-GROWTH-MONOTONIC-HOARDERS | A-list = constructors with sizeDelta>0 in all three cycles, ranked by total bytes | LIVE — W68; triage surface |
 | HEAP-GROWTH-TOP40-CONTEXT | B-list = top ≤40 by total size delta (context only) | LIVE — W68 |
-| HEAP-GROWTH-SURFACE-CALIBRATION | when leak-shaped, require ≥2/4 PO pins (Detached `<div>` ≳5k, UniqueElementData ≳10k, CSSBacking ≳10k, heap ≳28 MB); else report HARNESS-NOT-REAL-PRODUCT first | LIVE — W68; report-first when RED |
+| HEAP-GROWTH-SURFACE-CALIBRATION | when leak-shaped, require ≥2/4 PO pins (Detached `<div>` ≳5k, UniqueElementData ≳10k, CSSBacking ≳10k, **main-frame JS heap** ≳28 MB); else report HARNESS-NOT-REAL-PRODUCT first | LIVE — W68; report-first when RED. Three of the four pins are node/element censuses and are instrument-sound; only the fourth carries the main-frame scope caveat |
 | HEAP-RETAINER-PATHS-AGGREGATED | A-list tops (ExternalStringData, heap number, Object): walk retainer/dominator paths, aggregate identical paths, rank by total self bytes; flag `_tfDataCache`/`_btTfDataCache`/`_smartPrefetchCache` | LIVE — W69 |
 | M26-REGRADE-ON-HEAP-CYCLE | footprint verdict void; INSUFFICIENT while leak remains (M26 correct but insufficient) | LIVE |
 | FIX3-REGRADE-ON-HEAP-CYCLE | footprint verdict void; INSUFFICIENT while leak remains | LIVE |
@@ -575,7 +575,22 @@ Cells:
 W70 retainer harden: path normalize collapses WeakMapPair + script-source; application-preferred reverse climb so ExternalStringData can surface cache holders when present.
 
 Pinned constants: `HEAP_CYCLE_PO_DETACHED_DIVS_PER_CYCLE=21699`, `HEAP_CYCLE_PO_FLOOR_MB=[106,152,204]`, `HEAP_CYCLE_PO_BASELINE_MB=54`.
-PO census pins: UniqueElementData +30565/cycle, HeapVectorBacking\<CSSPropertyValue\> +22209/cycle, ~29 MB comparison total.
+PO census pins: UniqueElementData +30565/cycle, HeapVectorBacking\<CSSPropertyValue\> +22209/cycle, ~29 MB comparison total on the **main-frame JS heap** instrument.
+
+> **SCOPE CORRECTION 2026-07-30 (B).** Every megabyte figure in this section is
+> `performance.memory.usedJSHeapSize` read in the **top frame**. That call is blind to
+> worker heaps (stated in `heap-cycle-browser.mjs`) and does not account for retained
+> panel iframe documents, which is where the multichart leak lives. The figure the PO
+> measures by hand is reported as roughly four times larger. **The detached-node and
+> element-census pins are unaffected and remain the grading instruments;** the
+> megabyte pins are kept for continuity of comparison and must not be quoted as
+> footprint or used to grade a panel-realm fix. Full correction, including the
+> replacement PO command and the decision rule for shared-vs-separate isolates:
+> `docs/plan3/evidence/B-M4/release/PO-HEAP-INSTRUMENT-CORRECTION-20260730.md`.
+
+| Gate | Signature | Implementation | Status |
+|---|---|---|---|
+| HEAP-FIGURE-SCOPE-V1 | `TALARIA_HEAP_FIGURE_SCOPE_V1` | `scripts/lib/heap-figure-scope.mjs`, `scripts/tests/heap-figure-scope.test.mjs`; instrument labels in `scripts/lib/heap-cycle-memory.mjs` (`HEAP_INSTRUMENT_SCOPE_MAIN_FRAME`) and all three `heap-cycle-browser.mjs` session metas | LIVE — 13/13 with two mutants. A size figure sitting near heap/memory language in a release-facing document must name its instrument scope from a closed vocabulary; bare "heap" does not pay for itself. Journals are deliberately out of scope so the historical record is not rewritten to satisfy a lint. First run found four unlabelled figures in this file and five in its own correction notice. |
 
 ## Queue item 11 — Hidden-tab replay regression (W59 / GATE-01)
 

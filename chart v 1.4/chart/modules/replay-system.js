@@ -93,10 +93,14 @@ function _lagSetIntervalTickV1Enabled() {
  * Indeterminate (missing playhead/period helpers or non-finite) ⇒ write
  * (preserve legacy behaviour for charts without the helper, e.g. m2 harness).
  * Kill-switch: window.__TALARIA_DISABLE_COMPLETED_BAR_CLOSE_GUARD_V1
+ *
+ * Climbs self→parent→top (B-0195). This module runs in every panel realm, so an
+ * own-window read cannot see a switch set on the host: the flag would read as OFF
+ * in the panels, the guard would stay ON, and the flip would present as "kill-switch
+ * has no effect" — a negative control that controls nothing (FLAG-02).
  */
 function _completedBarCloseGuardDisabled() {
-    return typeof window !== 'undefined'
-        && !!window.__TALARIA_DISABLE_COMPLETED_BAR_CLOSE_GUARD_V1;
+    return _talariaDisableFlagTruthy('__TALARIA_DISABLE_COMPLETED_BAR_CLOSE_GUARD_V1');
 }
 
 function _shouldSkipCompletedBarCloseWrite(chart) {

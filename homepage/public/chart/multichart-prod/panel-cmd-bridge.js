@@ -47,6 +47,37 @@
     var params  = new URLSearchParams(global.location.search);
     var panelId = params.get('panelId') || params.get('id') || ('panel-' + Math.random().toString(36).slice(2, 6));
 
+    /**
+     * Kill-switch read that climbs self→parent→top (B-0195).
+     *
+     * This file only ever runs inside a panel iframe, so an own-realm read is the
+     * one realm an operator is least likely to be typing into. A switch set on the
+     * host reads as OFF here, the flip looks inert, and the wrong conclusion —
+     * "that fix does nothing" — is drawn from a control that never arrived.
+     * Unreadable realms are no instruction and fall to the shipped default.
+     */
+    function talariaDisableFlagTruthy(flagName) {
+        var killed = function (w) {
+            try {
+                return !!(w && w[flagName]);
+            } catch (_) {
+                return false;
+            }
+        };
+        if (killed(global)) return true;
+        try {
+            var parent = (global.parent && global.parent !== global) ? global.parent : null;
+            if (killed(parent)) return true;
+            var top = (global.top && global.top !== global && global.top !== parent)
+                ? global.top
+                : null;
+            if (killed(top)) return true;
+        } catch (_) {
+            // Parent chain unreachable; the own-realm read above already stands.
+        }
+        return false;
+    }
+
     function cb01MountSigBridgeSetTrigger(trigger, details) {
         try {
             var setTrigger = global.__talariaCb01MountSigSetTriggerV1;
@@ -2476,8 +2507,9 @@
             } else if (Array.isArray(ch.data) && ch.data.length) {
                 var last = ch.data[ch.data.length - 1];
                 if (last && typeof last === 'object') {
-                    var guardOff = typeof global !== 'undefined'
-                        && global.__TALARIA_DISABLE_COMPLETED_BAR_CLOSE_GUARD_V1;
+                    var guardOff = talariaDisableFlagTruthy(
+                        '__TALARIA_DISABLE_COMPLETED_BAR_CLOSE_GUARD_V1',
+                    );
                     var skipWrite = false;
                     if (!guardOff
                         && typeof ch._getReplayPlayheadMs === 'function'

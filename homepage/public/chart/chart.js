@@ -839,6 +839,39 @@ const MC_BACKGROUND_RENDER_CADENCE_DISABLE_SWITCH = '__TALARIA_DISABLE_MC_BACKGR
 // several frames later; ~1s at 60Hz is generous and still bounded.
 const MC_BACKGROUND_RENDER_CATCHUP_FRAME_BUDGET = 60;
 
+/**
+ * Kill-switch read that climbs self→parent→top (B-0195).
+ *
+ * chart.js is loaded inside every multichart panel realm, so a switch set on the
+ * host window is invisible to an own-window read. That failure mode is silent and
+ * expensive: the flip appears to do nothing, and the honest conclusion "the fix had
+ * no effect" is drawn from a control that never reached the code it was aiming at.
+ * An unreadable cross-origin realm is no instruction, so it falls to the shipped
+ * default rather than away from it.
+ */
+function _talariaDisableFlagTruthy(flagName) {
+    if (typeof window === 'undefined') return false;
+    const killed = (w) => {
+        try {
+            return !!(w && w[flagName]);
+        } catch (_e) {
+            return false;
+        }
+    };
+    if (killed(window)) return true;
+    try {
+        const parent = window.parent && window.parent !== window ? window.parent : null;
+        if (killed(parent)) return true;
+        const top = window.top && window.top !== window && window.top !== parent
+            ? window.top
+            : null;
+        if (killed(top)) return true;
+    } catch (_e) {
+        // Parent chain unreachable; the own-window read above already stands.
+    }
+    return false;
+}
+
 function _talariaM20Q9McDiagCountersDisabled() {
     try {
         return typeof window !== 'undefined'
@@ -9741,8 +9774,9 @@ class Chart {
         const last = this.data[this.data.length - 1];
         if (!last || typeof last !== 'object') return;
 
-        const guardDisabled = typeof window !== 'undefined'
-            && window.__TALARIA_DISABLE_COMPLETED_BAR_CLOSE_GUARD_V1;
+        const guardDisabled = _talariaDisableFlagTruthy(
+            '__TALARIA_DISABLE_COMPLETED_BAR_CLOSE_GUARD_V1',
+        );
         if (!guardDisabled) {
             const playhead = typeof this._getReplayPlayheadMs === 'function'
                 ? this._getReplayPlayheadMs()

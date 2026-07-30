@@ -43,6 +43,17 @@ export const HEAP_CYCLE_PO_FLOOR_MB = Object.freeze([106, 152, 204, 254, 304, 35
 export const HEAP_CYCLE_PO_BASELINE_MB = 54;
 /** PO canary hand mean ≈13 MB/cycle (2026-07-29). Legacy ~50 was Task Manager / denser residue. */
 export const HEAP_CYCLE_PO_PER_CYCLE_MB = 13;
+
+/**
+ * Scope of every megabyte figure this instrument emits. `performance.memory` is read
+ * in the top frame, so it cannot see worker heaps (noted below at the worker census)
+ * and does not account for retained panel iframe documents — the location of the
+ * multichart leak. Reports carry this so a downstream reader cannot mistake a
+ * main-frame reading for a process footprint, which is how 131–192 MB came to be
+ * quoted against a hand figure roughly four times larger (B, 2026-07-30).
+ * Correction: docs/plan3/evidence/B-M4/release/PO-HEAP-INSTRUMENT-CORRECTION-20260730.md
+ */
+export const HEAP_INSTRUMENT_SCOPE_MAIN_FRAME = 'main-frame JS heap (top-frame usedJSHeapSize; excludes worker and panel-realm heaps)';
 /** PO exact expected detached HTMLDivElement growth per cycle. */
 export const HEAP_CYCLE_PO_DETACHED_DIVS_PER_CYCLE = 21_699;
 
@@ -170,6 +181,7 @@ export function synthesizePoLeakHeapCycleReport() {
       cycles: HEAP_CYCLE_COUNT,
       surface: 'dist-v9',
       memoryInstrument: 'usedJSHeapSize+forcedGc',
+      instrumentScope: HEAP_INSTRUMENT_SCOPE_MAIN_FRAME,
       footprintNonGrading: HEAP_FOOTPRINT_NON_GRADING,
       detachedGateMandatory: true,
       growthCensus: true,

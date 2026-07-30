@@ -46,6 +46,7 @@ import {
   HEAP_CYCLE_DISTINCT_FILE_IDS,
   HEAP_CYCLE_PANEL_IDS,
   HEAP_CYCLE_SIGNATURE,
+  HEAP_INSTRUMENT_SCOPE_MAIN_FRAME,
 } from './heap-cycle-memory.mjs';
 import {
   HEAP_FOOTPRINT_NON_GRADING,
@@ -772,6 +773,7 @@ async function runDistV9Session({
         cycles,
         surface: HEAP_CYCLE_SURFACE_DIST_V9,
         memoryInstrument: 'usedJSHeapSize+forcedGc',
+        instrumentScope: HEAP_INSTRUMENT_SCOPE_MAIN_FRAME,
         footprintNonGrading: HEAP_FOOTPRINT_NON_GRADING,
         detachedGateMandatory: true,
         growthCensus: true,
@@ -1301,6 +1303,7 @@ async function runThinHostSession({
         cycles,
         surface: HEAP_CYCLE_SURFACE_THIN_HOST,
         memoryInstrument: 'usedJSHeapSize+forcedGc',
+        instrumentScope: HEAP_INSTRUMENT_SCOPE_MAIN_FRAME,
         footprintNonGrading: HEAP_FOOTPRINT_NON_GRADING,
         detachedGateMandatory: true,
         growthCensus: true,
@@ -1674,6 +1677,7 @@ async function runDeployedSession({
         memoryInstrument: poHandSample
           ? 'usedJSHeapSize+poHand(baselineSoftGc+hotCycles)'
           : 'usedJSHeapSize+forcedGc',
+        instrumentScope: HEAP_INSTRUMENT_SCOPE_MAIN_FRAME,
         footprintNonGrading: HEAP_FOOTPRINT_NON_GRADING,
         detachedGateMandatory: true,
         growthCensus: true,

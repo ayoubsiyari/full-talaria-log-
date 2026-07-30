@@ -4439,6 +4439,42 @@ Both symptoms presented identically to the ones the 500 did cause, which is exac
 
 **Director's ruling acknowledged and recorded:** no V8/M15 preference contract on this write path yet. It is proven working as of this morning, after being dead for at least three hours, on a host whose `journal-backend` is still outside the canary stamp — so a three-tier store over it would fail identically and read as a front-end bug all over again.
 
+## B-0195 — e7616ab06 was already on the wire; the heap numbers were not what we thought; and the switch that was supposed to prove M17-DI2 could not reach the panels
+
+**2026-07-30, live pin `20260729b104`.**
+
+### 1. STASHED-PANEL-HANDLE was shipped eleven hours before it was asked for again
+
+The Director asked me to build and ship A's `e7616ab06`, described as one commit above the tip and unbuilt. It is neither. It went out in **b104** as cherry-pick `db72fa4d3`, and `git range-diff e7616ab06~1..e7616ab06 db72fa4d3~1..db72fa4d3` prints `1: e7616ab06 = 1: db72fa4d3` — identical content, not merely equivalent. Verified on the wire rather than in the image: `mcStashPanelHandles` appears 5× in the served `multichart-prod/multichart-manager.js`, alongside `panelWinStash`, `panelChartStash` and the kill-switch. M17-DI2 and the prefs cap are there too. Stamp unchanged: **`20260729b104`**.
+
+The lesson for me is about reporting, not building. "Shipped as b104" in a status note is evidently not enough for a commit whose name the Director tracks separately from the stamp it rode in on. Payload names next to stamps from here.
+
+### 2. Every heap figure we have quoted is main-frame scoped — including mine
+
+The instrument is one call, `performance.memory.usedJSHeapSize`, taken via `page.evaluate` in the **top frame**. `heap-cycle-browser.mjs` already admitted the neighbouring case in a comment — *"Workers hold private heaps invisible to main usedJSHeapSize"* — and the PO's Documents-counter finding extends that blindness to retained panel iframe documents, which is exactly where the multichart leak lives.
+
+So **my own "~12 MB/cycle on b103, halved from 23.5" is void as a grade of A's cut.** It measures the visible fraction. A cut that releases panel-realm memory can move the truth without moving that number. I reported it as a result; it was a result about the instrument.
+
+What survives untouched: **detached `<div>` growth (+21,699/cycle) and the element censuses**, because they come from CDP heap snapshots, not from `performance.memory`. The decision to make the detached-div gate the mandatory superior one is what saved this from being a total loss.
+
+I have not substituted 789 for 192. They may not be the same quantity: Task Manager *Memory footprint* is process RSS including DOM, decoded images and GPU buffers, while `usedJSHeapSize` is live JS objects in one isolate — the tree already knows this, there is a comment in `heap-cycle-memory.mjs` reading *"Legacy ~50 was Task Manager / denser residue."* Replacing one unlabelled number with another unlabelled number would repeat the mistake in the opposite direction. **One line from the PO settles it: Task Manager or DevTools Performance monitor.**
+
+`measureUserAgentSpecificMemory()` is the right instrument and canary cannot run it: I checked the headers, and neither `/chart/dist-v9/index.html` nor `chart-embed.html` sends COOP or COEP, so `crossOriginIsolated` is false. I am **not** turning `require-corp` on during a 24-hour canary to win a measurement — it blocks any cross-origin subresource that has not opted in, and blank panels would cost more than the number is worth.
+
+Instead the PO gets a paste-once command that reads **every realm** and decides the question itself: if all realms report the same `usedMB` they share an isolate and our figures already counted the panels; if they differ, the top-frame read never saw them and the sum is the truth. Decision rule written down before the reading, so it cannot be argued afterwards. Full note: `evidence/B-M4/release/PO-HEAP-INSTRUMENT-CORRECTION-20260730.md`.
+
+Recurrence closed structurally rather than by intention: **HEAP-FIGURE-SCOPE-V1** (13/13, two mutants) lints release-facing documents so a megabyte figure near heap language must name its scope from a closed vocabulary. Bare "heap" does not pay for itself. It found four unlabelled figures in `GATE-NAME-RESERVATIONS.md` and five in my own correction notice on its first run. Journals are deliberately outside the gated set — the record of what we believed when is not something to rewrite to satisfy a lint. Instrument scope now also rides in the report metadata itself (`HEAP_INSTRUMENT_SCOPE_MAIN_FRAME`, all three browser sessions including `deployed`).
+
+### 3. The M17-DI2 kill-switch could not reach the panels. Caught while sweeping, not while testing
+
+Under the standing order to sweep for the B-0185 defect, I checked reachability on the wire. `__TALARIA_DISABLE_COMPLETED_BAR_CLOSE_GUARD_V1` is read at four sites, in three files — `chart.js`, `replay-system.js`, `panel-cmd-bridge.js` — and **all of them are loaded inside every panel iframe**, and every one read its own realm only.
+
+The consequence is the trap the Director named the first time: the PO types the switch on the page in front of him, the panels never see it, the guard stays on, the flip presents as *"no change"* — and the honest conclusion available from that evidence is "the guard does nothing". We would have retired a correct fix on the strength of an inert control. And it is worse than uniform blindness: `replay-system.js` already had a climbing helper serving **sixteen** other switches, and this one switch bypassed it. A host-side flip would have half-disabled the cure.
+
+Landed at all four sites, mirrors byte-identical, and A's gate extended from 13 to **21 cells**: host-set switch reaches the panel, top-set switch reaches a nested panel, the bridge and replay paths each proven separately, a clean realm chain leaves the guard ON (the climb is not a leak), an unreadable cross-origin realm does not read as switch-set, and a mutant that runs the shipped predicate against the pre-fix one on the same realm chain — shipped sees the host switch, mutant is blind. Without that last cell the new cells could have passed with the defect still present.
+
+One honest correction to my own sweep: I first flagged `preferences-sync.js` as carrying the same defect because I grepped for the helper *name*. My cap already climbs, with an inline closure. A name is not a behaviour, and I nearly filed a false defect against myself on that basis. The remaining own-realm switches in `panel-cmd-bridge.js` (13, other managers' cuts) and `multichart-manager.js` (18, host-realm-only code where an own-realm read is correct) are listed for routing rather than changed unreviewed mid-canary.
+
 ### 5. FAILED SERVER WRITE COUNT — in the passport, gated, kill-switched
 
 `failedServerWrites` + `failedServerWriteEndpoints` (+ last status) now ride in `buildSupportContext()` beside `degradedModules[]`. Ledger `server-write-failure-ledger.js`, wired into the preferences failure and success paths; kill-switch `__TALARIA_DISABLE_SERVER_WRITE_FAILURE_LEDGER_V1`, truthy, per call, climbing self→parent→top. Gate **26/26 with five mutants** (publisher removed, host-only switch, no cross-page mirror, uncapped passport, never cleared).

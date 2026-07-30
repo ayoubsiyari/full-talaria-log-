@@ -74,6 +74,33 @@ function methodSource(text, name, { optional = false } = {}) {
   return match[0].replace(/\n+$/, '\n');
 }
 
+/**
+ * Extract a module-scope `function name(...) { ... }` by brace matching.
+ *
+ * B-0195: the guard's kill-switch is read through a realm-climbing predicate that
+ * lives at module scope, outside the class. The extraction harness evaluates single
+ * methods, so the real predicate has to be evaluated alongside them — injecting a
+ * stub would let a host-only regression pass here while the panels ignored the flip
+ * on the wire, which is the exact defect these cells exist to catch.
+ */
+function moduleFunctionSource(text, name) {
+  const start = text.indexOf(`function ${name}(`);
+  assert.notEqual(start, -1, `module-scope function ${name} must exist`);
+  const brace = text.indexOf('{', start);
+  let depth = 0;
+  for (let i = brace; i < text.length; i++) {
+    if (text[i] === '{') depth += 1;
+    else if (text[i] === '}') {
+      depth -= 1;
+      if (depth === 0) return text.slice(start, i + 1);
+    }
+  }
+  throw new Error(`unbalanced braces extracting ${name}`);
+}
+
+const CHART_FLAG_PREDICATE = moduleFunctionSource(CHART_SOURCE, '_talariaDisableFlagTruthy');
+const BRIDGE_FLAG_PREDICATE = moduleFunctionSource(BRIDGE_SOURCE, 'talariaDisableFlagTruthy');
+
 function cloneBar(b) {
   return { t: b.t, o: b.o, h: b.h, l: b.l, c: b.c, v: b.v };
 }
@@ -204,6 +231,7 @@ function makeChartHarness(opts = {}) {
     : (playheadMs !== null && playheadMs !== undefined ? 'NaN' : 'null');
   vm.createContext(sandbox);
   vm.runInContext(`
+${CHART_FLAG_PREDICATE}
 class ChartHarness {
     constructor() {
         this.currentTimeframe = ${JSON.stringify(timeframe)};
@@ -282,6 +310,7 @@ function makeBridgeFn(opts = {}) {
   sandbox.globalThis = sandbox;
   vm.createContext(sandbox);
   vm.runInContext(`
+${BRIDGE_FLAG_PREDICATE}
 function isSameSymbolAsHost(ch) { return ${sameSymbol ? 'true' : 'false'}; }
 function readParentHostFileId() { return ${JSON.stringify(hostFileId)}; }
 ${fnSrc}
@@ -310,6 +339,7 @@ function attachRealHelpers(chart, source = CHART_SOURCE) {
   sandbox.globalThis = sandbox;
   vm.createContext(sandbox);
   vm.runInContext(`
+${CHART_FLAG_PREDICATE}
 class HelperHost {
     constructor() {
         this.currentTimeframe = '15m';
@@ -849,7 +879,185 @@ test('cell7b: mirror-path completed bar — animated close write skipped', () =>
   assert.notEqual(chart.data[chart.data.length - 1].c, animClose);
 });
 
+// ─── Cell 8: FLAG-01/02 realm reach (B-0195) ─────────────────────────────
+//
+// All four guarded sites run inside multichart panel iframes. Every one of them
+// used to read the switch from its own realm only. An operator flips the switch on
+// the page in front of them — the host — so the panels never saw it: the guard
+// stayed ON, the flip presented as "no change", and the reading available to us was
+// "the fix does nothing". A negative control that cannot reach the code it aims at
+// is worse than no control, because it produces a confident wrong answer.
+
+test('cell8: site1 — switch set on the HOST realm reaches the panel (parent climb)', () => {
+  const fx = makeResampledFixture();
+  const playhead = fx.periodEndLast; // completed ⇒ guard ON would skip the write
+  const data = fx.coarse.map(cloneBar);
+  const mark = Math.max(...data.map((b) => b.h)) + 0.03;
+
+  const { chart, window: win } = makeChartHarness({
+    playheadMs: playhead,
+    data: data.map(cloneBar),
+    liveMark: mark,
+    kill: undefined, // own realm clean, exactly as a panel sees it
+  });
+  assert.equal(!!win[SWITCH], false, 'panel realm must not carry the switch');
+  win.parent[SWITCH] = true; // operator typed it on the host
+
+  chart.resolveEffectiveCurrentPrice();
+  assertMarkExpanded(chart.data[chart.data.length - 1], mark,
+    'host-set switch must disable the guard inside the panel');
+});
+
+test('cell8b: site1 — switch on TOP reaches a nested panel realm', () => {
+  const fx = makeResampledFixture();
+  const playhead = fx.periodEndLast;
+  const data = fx.coarse.map(cloneBar);
+  const mark = Math.max(...data.map((b) => b.h)) + 0.03;
+
+  const { chart, window: win } = makeChartHarness({
+    playheadMs: playhead,
+    data: data.map(cloneBar),
+    liveMark: mark,
+  });
+  // Grid inside a dashboard shell: panel → grid host → top. Only top carries it.
+  win.top = { [SWITCH]: 1 };
+  chart.resolveEffectiveCurrentPrice();
+  assertMarkExpanded(chart.data[chart.data.length - 1], mark,
+    'top-set switch must disable the guard inside the panel');
+});
+
+test('cell8c: site3 bridge — host-set switch reaches the panel bridge', () => {
+  const fx = makeResampledFixture();
+  const playhead = fx.periodEndLast;
+  const mark = Math.max(...fx.coarse.map((b) => b.h)) + 0.03;
+  const bridge = makeBridgeFn({ kill: undefined });
+  bridge.global.parent = { [SWITCH]: true };
+
+  const chart = {
+    currentFileId: 'file-gbpusd',
+    currentTimeframe: '15m',
+    data: fx.coarse.map(cloneBar),
+    _mcCanonicalReplayMark: null,
+    replaySystem: {},
+    _getReplayPlayheadMs() { return playhead; },
+    _getBarPeriodEndMs(_i) { return fx.periodEndLast; },
+    parseTimeframe() { return 15 * M1; },
+  };
+  bridge.apply(chart, mark);
+  assertMarkExpanded(chart.data[chart.data.length - 1], mark,
+    'host-set switch must disable the guard inside the panel bridge');
+});
+
+test('cell8d: site2 replay-system — host-set switch reaches the panel module', () => {
+  const fx = makeResampledFixture();
+  const playhead = fx.periodEndLast;
+  const mark = Math.max(...fx.coarse.map((b) => b.h)) + 0.03;
+  const chart = {
+    currentFileId: 'file-gbpusd',
+    currentTimeframe: '15m',
+    data: fx.coarse.map(cloneBar),
+    _mcCanonicalReplayMark: null,
+  };
+  // Panel realm: own window clean, switch on the host above it.
+  global.window = { parent: { [SWITCH]: true } };
+  attachRealHelpers(chart);
+  chart._getReplayPlayheadMs = function () { return playhead; };
+  const rs = Object.create(ReplaySystem.prototype);
+  rs.chart = chart;
+  rs.animatingCandle = null;
+  rs._applyCanonicalReplayMarkFromDetail({ canonicalMark: mark, hostFileId: 'file-gbpusd' });
+  assertMarkExpanded(chart.data[chart.data.length - 1], mark,
+    'host-set switch must disable the guard in replay-system');
+  global.window = {};
+});
+
+test('cell8e: guard stays ON when no realm carries the switch — climb is not a leak', () => {
+  const fx = makeResampledFixture();
+  const playhead = fx.periodEndLast;
+  const data = fx.coarse.map(cloneBar);
+  const mark = Math.max(...data.map((b) => b.h)) + 0.03;
+  const { chart, window: win } = makeChartHarness({
+    playheadMs: playhead,
+    data: data.map(cloneBar),
+    liveMark: mark,
+  });
+  win.top = {};
+  const before = snapshotOhlc(chart.data[chart.data.length - 1]);
+  chart.resolveEffectiveCurrentPrice();
+  assertUnchanged(before, snapshotOhlc(chart.data[chart.data.length - 1]),
+    'a clean realm chain must leave the guard ON');
+});
+
+test('cell8f: an unreadable cross-origin realm must not disable the guard', () => {
+  const fx = makeResampledFixture();
+  const playhead = fx.periodEndLast;
+  const data = fx.coarse.map(cloneBar);
+  const mark = Math.max(...data.map((b) => b.h)) + 0.03;
+  const { chart, window: win } = makeChartHarness({
+    playheadMs: playhead,
+    data: data.map(cloneBar),
+    liveMark: mark,
+  });
+  // A cross-origin parent throws on property access. That is no instruction, so the
+  // shipped default (guard ON) must stand rather than the switch appearing set.
+  Object.defineProperty(win, 'parent', {
+    get() { throw new Error('cross-origin'); },
+    configurable: true,
+  });
+  const before = snapshotOhlc(chart.data[chart.data.length - 1]);
+  assert.doesNotThrow(() => chart.resolveEffectiveCurrentPrice());
+  assertUnchanged(before, snapshotOhlc(chart.data[chart.data.length - 1]),
+    'unreadable realm must not read as switch-set');
+});
+
+test('MUTANT own-realm-only predicate: cell8 dies, proving the climb is load-bearing', () => {
+  // The shipped predicate and the pre-B-0195 predicate, on the same realm chain a
+  // panel actually sees. If both agreed, cell8 would pass with the defect present.
+  const sandbox = { console: { log() {}, warn() {}, error() {} }, Object, Error };
+  sandbox.globalThis = sandbox;
+  sandbox.window = { parent: { [SWITCH]: true } };
+  vm.createContext(sandbox);
+  vm.runInContext(`
+${CHART_FLAG_PREDICATE}
+function _hostOnlyMutant(flagName) {
+    return typeof window !== 'undefined' && !!window[flagName];
+}
+globalThis.__shipped = _talariaDisableFlagTruthy(${JSON.stringify(SWITCH)});
+globalThis.__mutant = _hostOnlyMutant(${JSON.stringify(SWITCH)});
+`, sandbox);
+  assert.equal(sandbox.__shipped, true, 'shipped predicate must see the host switch');
+  assert.equal(sandbox.__mutant, false, 'the mutant is blind — this is the defect fixed');
+});
+
 // ─── White-box / mirror anchors (after behavioural cells) ────────────────
+
+test('anchor: all four guarded sites read the switch through a realm climb', () => {
+  // Named per file because the defect was not uniform: replay-system already had a
+  // climbing helper for sixteen other switches and this one switch bypassed it.
+  assert.match(CHART_SOURCE, /function _talariaDisableFlagTruthy\(/);
+  assert.match(
+    methodSource(CHART_SOURCE, '_applyCanonicalMarkToFormingBar'),
+    /_talariaDisableFlagTruthy\(\s*'__TALARIA_DISABLE_COMPLETED_BAR_CLOSE_GUARD_V1'/,
+  );
+  const replaySrc = fs.readFileSync(REPLAY_JS, 'utf8');
+  assert.match(
+    moduleFunctionSource(replaySrc, '_completedBarCloseGuardDisabled'),
+    /_talariaDisableFlagTruthy\(/,
+  );
+  assert.match(BRIDGE_SOURCE, /function talariaDisableFlagTruthy\(/);
+  for (const [label, src] of [
+    ['chart.js', CHART_SOURCE],
+    ['replay-system.js', replaySrc],
+    ['panel-cmd-bridge.js', BRIDGE_SOURCE],
+  ]) {
+    for (const realm of ['parent', 'top']) {
+      assert.ok(src.includes(`function ${label === 'panel-cmd-bridge.js' ? 'talariaDisableFlagTruthy' : '_talariaDisableFlagTruthy'}(`),
+        `${label} must define the climbing predicate`);
+      assert.ok(new RegExp(`\\.${realm}\\b`).test(src), `${label} must reach .${realm}`);
+    }
+  }
+});
+
 
 test('anchor: helper + kill-switch present; four sites guarded; mirrors byte-identical', () => {
   assert.match(CHART_SOURCE, /_applyCanonicalMarkToFormingBar\s*\(/);
