@@ -145,3 +145,40 @@ number is more honest than the one it replaces.
 **Eight rows leave the board** as AFTER or NO. `TAL-01744` closes. `TAL-01912` closes.
 
 **One question outstanding to the PO:** TAL-01894 as a feature — blocker, after, or no.
+
+---
+
+## ADDENDUM 13:50 — TAL-01891 is a report from ~10 days ago, not a current measurement
+
+The PO clarifies: **the tester who reached 8 GB ran that session roughly ten days ago,
+before any of this work began.** It is not a reading from the current build.
+
+That was information I did not have and did not ask for, and it changes what the row
+supports.
+
+**WITHDRAWN.** My inference that the clone cut may be "aimed at the wrong shape" because
+a single pair reached 8 GB. That reasoning treated a pre-Plan-3 report as a live
+measurement of today's build. Ten days spans b85 through b111 and a large number of
+shipped fixes, including the shared bar store, the orphan listeners, the realm teardown
+work and today's asset and paint cuts. **There is no basis for saying the current build
+does this on one pair, and I should not have said it.**
+
+**STANDS, for a reason that has nothing to do with the age of the report.** We have never
+soaked this application for hours. Our longest measurement is thirty seconds of playback.
+That gap is real whether TAL-01891 is current or historical, and the PO's own testers work
+in sessions measured in hours.
+
+**Reframed.** The multi-hour single-pair soak is no longer confirmation of a known leak —
+it is **how we find out whether the 8 GB path still exists.** Two outcomes, both useful:
+memory stays bounded and TAL-01891 closes as fixed-by-accumulated-work with evidence
+rather than by assumption; or it climbs, and we have caught the thing the testers reported
+before a canary user does.
+
+Still C's, still unattended, still zero PO time, still a freeze gate. **What changes is
+that it is now a question rather than an alarm.**
+
+**Recorded as a method note against myself.** The row said "needs-info" and I read a
+tester's symptom as a measurement without once asking when it was taken. MEAS-01 requires
+a build stamp on every measurement; a ticket describing a symptom has no stamp at all, and
+I gave it the weight of one. **A tester report is dated evidence about a past build until
+somebody reproduces it on a current one.**
