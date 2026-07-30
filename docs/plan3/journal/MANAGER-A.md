@@ -1816,3 +1816,83 @@ re-dispatching. (3) The A1 truncation work was sitting uncommitted through the c
 secured byte-identical as `c97b06421` and labelled unverified at the time.
 
 Sent as HEARTBEAT-A-A1-PAYS-9.5-PERCENT-AT-THE-OBSERVED-MASTER-20260730-1935.md.
+
+## 21:15 — A1 IS DEAD (fourth correction, terminal). A third of the element climb is a fix that never shipped.
+
+**A1 IS NOT ON THE WIRE and I must correct the Director's compliment before anyone builds on
+it.** He credited my residency bound for panelFullRawBars holding constant at 3595/3910/2494.
+Verified on deployed bytes with a passing control (_panelFullRawData 102, _mergeIntoPanel 3,
+currentFileId 149, _mcRawDataCopyLimit 3): all six A1 markers are ZERO, and so is
+_applyResidencyWindowV1 from the older residency packet. What holds that array flat is the
+pre-existing _buildIndependentHybridInitialMaster (4) + _independentMasterCoversReplayTimestamp
+(2). His empirical conclusion SURVIVES AND IS STRONGER than he stated: base-series retention is
+not the climb, established on a build with no residency bound at all.
+
+**THIS KILLS A1, AND A2 WITH IT.** The gate's masters are 2,494-3,910 bars. My own arithmetic:
+the finest panel needs 6,242 bars before it evicts ONE bar; every panel needs 20,520. Evictable
+at the observed sizes: zero, zero, zero. And the array is FLAT across ten samples, so there is
+no growth to catch either. My 9.5% came from a 70,989-bar master measured in the allocation
+profile - a 60x SAME-PAIR run, 21x larger than CONF-01 exhibits. Recommended shelving A1 rather
+than landing it: a behaviour-preserving refactor with a measured zero would spend a CKPT-01
+checkpoint on a 107%-CPU data path to buy nothing. Preserved at 512207d3a, 25/25.
+
+**THIRD WRONG SIZE FOR A1 IN ONE DAY - 0.05%, then 9.5%, now zero - AND ALWAYS THE SAME ERROR:**
+sizing a bound against a master I had not measured IN THE CONFIGURATION UNDER TEST. Recording
+the pattern, not just the number: I keep computing ceilings from whatever master figure is
+nearest to hand. The bound was never the problem; the instrument was.
+
+**RULED MYSELF OUT ON THE REWIND.** A1 is absent from the wire, so _residencyRepointReplayMaster
+- which does adjust sessionStartIndex and currentIndex - cannot have moved replayIndex 2508 ->
+2011. Not mine. Not yet identified.
+
+**THE ELEMENT CLIMB NAMES ITS OWN CADENCE.** +1333.5 elements/h against 40 trades in 45 min:
+per tick = 0.093 elements, per bar close = 0.370 - both IMPOSSIBLE, a writer cannot emit a
+fractional element. Per CLOSED TRADE = 25.0, a whole number. So the writer is order-lifecycle,
+not paint-loop.
+
+**AND 35% OF IT IS ALREADY FIXED AND SITTING UNSHIPPED.** My own CDP measurement in a real
+Blink DOM: 120 closed round trips + 25 open orders leave 530 unreclaimed <filter> nodes (1,060
+with feDropShadow children); after the fix, zero. That is 4.42 filters = 8.83 elements per
+closed trade = 8.83/25.0 = 35% of the climb, MEASURED not estimated. The order-glow GC
+(6afb8006a/fdda39a3b, 16/16, nine author mutants + five of mine) has flag=0 and method=0 on the
+wire against a control of 8. It needs to SHIP, not to be re-found. Legend hover render scope is
+also absent (flag=0) but it is a per-hover cost and an unattended gate has no pointer input, so
+I am NOT claiming it contributes to the 1333/h. LabelTool IS deployed (flag=1, method=2).
+
+**NOT ATTRIBUTED, AND I AM NOT GUESSING:** ~16.2 elements/trade remain. Candidate families read
+from deployed bytes: entry-glow-\, exit-glow-\, partial-glow-\, multi-tp-avg-\,
+pending-tp-\, tp-\. order-manager.js is removal-HEAVY overall (213 creates vs 357
+.remove() + 99 selectAll().remove()), so this is a specific family whose teardown selector
+misses, not a naive append-only path. Instrument: live element census grouped by tag/class/data-
+attribute, differenced across a run - 8 minutes yields ~178 new elements, well above noise. On
+the test host per EVID-02.
+
+**FOURTH FLAG-NAME-FROM-MEMORY FAILURE TODAY, and this time two of three were wrong.** I checked
+the wire with invented names for the legend and LabelTool flags; the real ones are
+__TALARIA_DISABLE_LEGEND_HOVER_RENDER_SCOPE_V1 and __TALARIA_DISABLE_LABEL_HANDLE_WIPE_V1, read
+from the commits. Had my empty-grep-is-unproven rule not forced me to pull names from source, I
+would have reported LabelTool as unshipped and the glow GC verdict would have been luck.
+
+**A1 SUITE, before shelving: 25/25 in 1.6s (was 5 RED in 114s), and it found a REAL PRODUCT BUG.**
+_resolveMultichartReplayPlayheadMs() returns null; Number(null) is 0 which IS finite, so the
+isFinite-only guard let a missing playhead through and windowed the master against the EPOCH,
+retaining bars 0..runway and evicting the entire real series. Same Number(null)===0 trap that got
+the earlier residency module rejected - second sighting in the same code area. Fixed in both
+mirrors. My mutants: M1 restore-the-bug KILLED, M2 allow-epoch-0 KILLED by a cell I had to ADD
+(it survived first), M4 kill-switch-strict-true KILLED by six named cells, M5 drop-the-runway
+KILLED, negative control NOT_APPLIED. M3 bound-one-slot-only UNRESOLVED - emits no TAP totals,
+consistent with the non-termination my reseed row predicts when the slots stop sharing one
+allocation; I am NOT counting it as a kill.
+
+**I CALLED THE SUITE A HANG AND IT WAS NOT.** The 114 seconds was assert's failure-diff
+machinery on 30,000-element arrays - one cell spent 64.8s building a diff before throwing
+'Array buffer allocation failed', which HID which assertion was failing. assert.ok(a === b)
+instead of assert.equal took the suite to 1.6s. Also: makePanel recompiled extracted chart.js
+and replay-system.js method bodies into a fresh vm context ~50 times per run; now one cached
+vm.Script.
+
+**HOUSEKEEPING DONE:** worktrees 34 mine -> 4, all 30 removals verified branch-intact by SHA
+(git worktree remove keeps the branch). Repo total was 81. _evidence\manager-A\ created; no
+heap snapshots or >2MB artifacts in the workspace root.
+
+Sent as ANSWER-A-A-THIRD-OF-THE-ELEMENT-CLIMB-IS-A-FIX-THAT-NEVER-SHIPPED-20260730-2115.md.
