@@ -435,6 +435,209 @@ export async function keepConf01Playing(page, replaySpeed = 60, { reseekFraction
 }
 
 /**
+ * CONF-02 workload: open and close trades so CLOSED positions accumulate. A closed
+ * trade keeps doing per-candle work (order-manager.js `updatePositions`, wired to
+ * `replaySystem.onUpdate`), so a measurement taken with a handful of fresh orders
+ * measures the cheap configuration a second time.
+ *
+ * Closing goes through closePositionAtPrice rather than closePosition, because the
+ * latter is the path a confirm modal calls and would stall an unattended run.
+ */
+export async function cycleTrades(page, { open = 1, close = 1 } = {}) {
+  return page.evaluate(async (toOpen, toClose) => {
+    try { window.alert = () => {}; } catch (_) {}
+    try { window.confirm = () => true; } catch (_) {}
+    const chart = window.chart;
+    const om = chart && (chart.orderManager || window.orderManager);
+    const svc = om && om.orderService;
+    const candle = chart && Array.isArray(chart.data) && chart.data.length
+      ? chart.data[chart.data.length - 1] : null;
+    const price = candle && Number(candle.c);
+    const out = { opened: 0, closed: 0, errors: [] };
+    if (!om || !Number.isFinite(price)) return { ...out, reason: 'no orderManager or price' };
+
+    for (let i = 0; i < toOpen; i += 1) {
+      try {
+        const r = svc && typeof svc.submitOrder === 'function' ? svc.submitOrder({
+          orderType: 'market', direction: i % 2 ? 'SELL' : 'BUY', side: i % 2 ? 'SELL' : 'BUY',
+          quantity: 1, entryPrice: price,
+          timestamp: candle.t != null ? Number(candle.t) : Date.now(),
+          stopLoss: i % 2 ? price * 1.01 : price * 0.99,
+          takeProfit: i % 2 ? price * 0.99 : price * 1.01,
+        }) : null;
+        if (r && r.id) out.opened += 1;
+      } catch (error) { out.errors.push(String(error?.message || error)); }
+    }
+
+    const openList = (Array.isArray(om.openPositions) && om.openPositions.length ? om.openPositions
+      : (svc && Array.isArray(svc.openPositions) ? svc.openPositions : []));
+    for (let i = 0; i < toClose && openList.length; i += 1) {
+      const pos = openList[0];
+      if (!pos || pos.id == null) break;
+      try {
+        if (typeof om.closePositionAtPrice === 'function') {
+          om.closePositionAtPrice(pos.id, price, 'MANUAL');
+        } else if (typeof om.closePosition === 'function') {
+          om.closePosition(pos.id);
+        } else break;
+        out.closed += 1;
+      } catch (error) { out.errors.push(String(error?.message || error)); break; }
+    }
+    return out;
+  }, open, close).catch((error) => ({ opened: 0, closed: 0, errors: [String(error?.message || error)] }));
+}
+
+/** Open and closed trade counts, wherever the product keeps them. */
+export async function readTradeState(page) {
+  return page.evaluate(() => {
+    const chart = window.chart;
+    const om = chart && (chart.orderManager || window.orderManager);
+    const svc = om && om.orderService;
+    const len = (v) => (Array.isArray(v) ? v.length : null);
+    return {
+      managerOpen: len(om?.openPositions),
+      managerClosed: len(om?.closedPositions),
+      managerJournal: len(om?.tradeJournal),
+      serviceOpen: len(svc?.openPositions),
+      serviceClosed: len(svc?.closedPositions),
+      serviceOrders: len(svc?.orders),
+    };
+  }).catch(() => ({}));
+}
+
+/**
+ * Retained bytes of screenshot / base64 style fields across open and closed
+ * positions. Decides whether the third term in the 15:55 finding is a real term or
+ * a footnote, so it counts characters on the actual rows rather than estimating.
+ */
+export async function measureHeavyFieldBytes(page) {
+  return page.evaluate(() => {
+    const HEAVY = ['screenshot', 'screenshotBase64', 'image', 'chartImage', 'thumbnail', 'preview', 'screenshots', 'entryScreenshots'];
+    const chart = window.chart;
+    const om = chart && (chart.orderManager || window.orderManager);
+    const svc = om && om.orderService;
+    const lists = [
+      ['managerOpen', om?.openPositions], ['managerClosed', om?.closedPositions],
+      ['managerJournal', om?.tradeJournal], ['serviceOpen', svc?.openPositions],
+      ['serviceClosed', svc?.closedPositions],
+    ];
+    const isHeavyKey = (k) => HEAVY.includes(k);
+    const measure = (value, depth = 0) => {
+      if (value == null || depth > 3) return 0;
+      if (typeof value === 'string') return value.length;
+      if (Array.isArray(value)) return value.reduce((s, v) => s + measure(v, depth + 1), 0);
+      if (typeof value === 'object') {
+        let total = 0;
+        for (const [k, v] of Object.entries(value)) {
+          if (isHeavyKey(k) || typeof v === 'object') total += measure(v, depth + 1);
+        }
+        return total;
+      }
+      return 0;
+    };
+    const out = { perList: {}, totalChars: 0, rows: 0, rowsWithHeavy: 0, excursionSamples: 0 };
+    for (const [name, list] of lists) {
+      if (!Array.isArray(list)) continue;
+      let chars = 0;
+      let withHeavy = 0;
+      let samples = 0;
+      for (const row of list) {
+        if (!row || typeof row !== 'object') continue;
+        let rowChars = 0;
+        for (const key of HEAVY) {
+          if (row[key] != null) rowChars += measure(row[key], 1);
+        }
+        if (rowChars > 0) withHeavy += 1;
+        chars += rowChars;
+        for (const k of ['bar_close_r', 'bar_high_r', 'bar_low_r', 'post_exit_bar_close_r']) {
+          if (Array.isArray(row[k])) samples += row[k].length;
+        }
+      }
+      out.perList[name] = { rows: list.length, heavyChars: chars, rowsWithHeavy: withHeavy, excursionSamples: samples };
+      out.totalChars += chars;
+      out.rows += list.length;
+      out.rowsWithHeavy += withHeavy;
+      out.excursionSamples += samples;
+    }
+    out.heavyMB = +(out.totalChars / 1048576).toFixed(3);
+    out.heavyCharsPerRow = out.rows ? Math.round(out.totalChars / out.rows) : 0;
+    return out;
+  }).catch(() => null);
+}
+
+/**
+ * Install a timing hook on the per-tick order loop in every frame that has one, so
+ * its cost can be read as a function of accumulated closed trades.
+ */
+export async function installOrderLoopTimer(page) {
+  const installed = [];
+  for (const frame of page.frames()) {
+    const got = await frame.evaluate(() => {
+      const chart = window.chart;
+      const om = chart && (chart.orderManager || window.orderManager);
+      if (!om || typeof om.updatePositions !== 'function') return null;
+      if (om.__conf02Timed) return { already: true };
+      const original = om.updatePositions.bind(om);
+      const state = { calls: 0, totalMs: 0, maxMs: 0, since: performance.now() };
+      window.__conf02OrderLoop = state;
+      om.updatePositions = function timedUpdatePositions(...args) {
+        const t0 = performance.now();
+        try {
+          return original(...args);
+        } finally {
+          const dt = performance.now() - t0;
+          state.calls += 1;
+          state.totalMs += dt;
+          if (dt > state.maxMs) state.maxMs = dt;
+        }
+      };
+      om.__conf02Timed = true;
+      return { installed: true };
+    }).catch(() => null);
+    if (got) installed.push(got);
+  }
+  return installed;
+}
+
+/** Reset and then read the order-loop timer over a fixed window. */
+export async function measureOrderLoopCost(page, { windowMs = 10_000 } = {}) {
+  const reset = async () => {
+    for (const frame of page.frames()) {
+      await frame.evaluate(() => {
+        const s = window.__conf02OrderLoop;
+        if (s) { s.calls = 0; s.totalMs = 0; s.maxMs = 0; s.since = performance.now(); }
+      }).catch(() => {});
+    }
+  };
+  await reset();
+  await sleep(windowMs);
+  const rows = [];
+  for (const frame of page.frames()) {
+    const got = await frame.evaluate(() => {
+      const s = window.__conf02OrderLoop;
+      if (!s) return null;
+      const wallMs = performance.now() - s.since;
+      return {
+        calls: s.calls,
+        totalMs: +s.totalMs.toFixed(2),
+        maxMs: +s.maxMs.toFixed(2),
+        wallMs: Math.round(wallMs),
+        msPerCall: s.calls ? +(s.totalMs / s.calls).toFixed(3) : null,
+        callsPerSec: wallMs ? +(s.calls / (wallMs / 1000)).toFixed(2) : null,
+        percentOfMainThread: wallMs ? +((s.totalMs / wallMs) * 100).toFixed(2) : null,
+      };
+    }).catch(() => null);
+    if (got) rows.push(got);
+  }
+  const host = rows[0] || null;
+  return {
+    perFrame: rows,
+    host,
+    totalPercentOfMainThread: +rows.reduce((s, r) => s + (r.percentOfMainThread || 0), 0).toFixed(2),
+  };
+}
+
+/**
  * Measure how fast each panel's replay actually advances, against the rate its
  * timeframe and the selected speed imply. Answers whether a peer respects the
  * speed selector or races through its data at frame rate.

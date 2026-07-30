@@ -22,7 +22,9 @@
 import fs from 'node:fs';
 
 import {
-  bootConf01Session, keepConf01Playing, probePanelAdvanceRates, readConf01State,
+  bootConf01Session, cycleTrades, installOrderLoopTimer, keepConf01Playing,
+  measureHeavyFieldBytes, measureOrderLoopCost, probePanelAdvanceRates, readConf01State,
+  readTradeState,
 } from './lib/conf01-session.mjs';
 import { fitTrend, gradeDurationSeries } from './lib/duration-trend.mjs';
 import { readOsFootprints } from './process-memory-census.mjs';
@@ -88,23 +90,24 @@ async function countElements(page) {
   return total;
 }
 
-async function placeOrderOnHost(page) {
-  return page.evaluate(() => {
-    try { window.alert = () => {}; } catch (_) {}
-    const ch = window.chart;
-    const svc = (ch && (ch.orderManager || window.orderManager))?.orderService;
-    const candle = ch && Array.isArray(ch.data) && ch.data.length ? ch.data[ch.data.length - 1] : null;
-    const price = candle && Number(candle.c);
-    if (!svc || typeof svc.submitOrder !== 'function' || !Number.isFinite(price)) return { ok: false };
-    try {
-      const r = svc.submitOrder({
-        orderType: 'market', direction: 'BUY', side: 'BUY', quantity: 1,
-        entryPrice: price, timestamp: candle.t != null ? Number(candle.t) : Date.now(),
-        stopLoss: price * 0.99, takeProfit: price * 1.01,
-      });
-      return { ok: !!(r && r.id), id: r && r.id };
-    } catch (error) { return { ok: false, reason: String(error?.message || error) }; }
-  }).catch(() => ({ ok: false }));
+/**
+ * CONF-02 trade churn. Front-load to thirty closed positions, then keep opening and
+ * closing so accumulation continues to grow through the window: a closed trade keeps
+ * doing per-candle work, so its count is part of the configuration, not decoration.
+ */
+async function churnTrades(page, { closedTarget = 30 } = {}) {
+  const before = await readTradeState(page);
+  const closed = before.managerClosed ?? before.serviceClosed ?? 0;
+  const batch = closed < closedTarget ? Math.min(8, closedTarget - closed) : 1;
+  const result = await cycleTrades(page, { open: batch, close: batch });
+  const after = await readTradeState(page);
+  return {
+    ...result,
+    closedBefore: closed,
+    closedAfter: after.managerClosed ?? after.serviceClosed ?? null,
+    openAfter: after.managerOpen ?? after.serviceOpen ?? null,
+    frontLoading: closed < closedTarget,
+  };
 }
 
 /** GATE-01 negative control: retain ballast the page keeps alive, N MB per sample. */
@@ -134,6 +137,9 @@ async function sampleOnce(page, cdp, browserCdp, { cpuWindowMs = 8_000 } = {}) {
   const collected = await readCounters(cdp);
   const elements = await countElements(page);
   const state = await readConf01State(page, { advanceWindowMs: 3_000 });
+  const trades = await readTradeState(page);
+  const orderLoop = await measureOrderLoopCost(page, { windowMs: 6_000 });
+  const heavyFields = await measureHeavyFieldBytes(page);
 
   const info = await browserCdp.send('SystemInfo.getProcessInfo').catch(() => ({ processInfo: [] }));
   const fps = await readOsFootprints((info.processInfo || []).map((p) => p.id)).catch(() => ({}));
@@ -150,7 +156,7 @@ async function sampleOnce(page, cdp, browserCdp, { cpuWindowMs = 8_000 } = {}) {
   }
 
   return {
-    live, collected, cpu, elements, state, inFlight,
+    live, collected, cpu, elements, state, inFlight, trades, orderLoop, heavyFields,
     footprint: {
       totalPrivateMB: +totalPrivateMB.toFixed(1),
       pageRendererPrivateMB: +pageRendererPrivateMB.toFixed(1),
@@ -173,6 +179,31 @@ function buildTrends(samples) {
     listeners: mk('JS event listeners', (s) => s.collected?.listeners, CONF01_FLAT_BANDS.listeners),
     rendererCpuPercent: mk('renderer CPU (% of one core)', (s) => s.cpu?.rendererPercent, 3),
     gpuCpuPercent: mk('GPU process CPU (% of one core)', (s) => s.cpu?.gpuPercent, 3),
+    // CONF-02: the time leak. Per-tick order-loop cost is expected to grow with the
+    // number of closed trades, so it is graded as a series in its own right.
+    orderLoopMsPerTick: mk('order loop ms per replay tick', (s) => s.orderLoop?.host?.msPerCall, 0.2),
+    orderLoopPercentOfMainThread: mk('order loop, % of main thread', (s) => s.orderLoop?.totalPercentOfMainThread, 2),
+    heavyFieldMB: mk('retained screenshot/base64 MB', (s) => s.heavyFields?.heavyMB, 1),
+    excursionSamples: mk('excursion samples retained', (s) => s.heavyFields?.excursionSamples, 2_000),
+  };
+}
+
+/**
+ * CONF-02 asks for accumulation, so a run that never reached the closed-position
+ * floor is a diagnostic no matter how flat its slopes look.
+ */
+export function assessConf02(samples, { closedTarget = 30 } = {}) {
+  const last = samples[samples.length - 1];
+  const closed = last?.trades?.managerClosed ?? last?.trades?.serviceClosed ?? 0;
+  const open = last?.trades?.managerOpen ?? last?.trades?.serviceOpen ?? 0;
+  return {
+    closedPositions: closed,
+    openPositions: open,
+    closedTarget,
+    compliant: closed >= closedTarget,
+    acceptanceWeight: closed >= closedTarget
+      ? `CONF-02 satisfied: ${closed} closed positions accumulated`
+      : `DIAGNOSTIC ONLY: ${closed} closed positions, CONF-02 requires >= ${closedTarget}`,
   };
 }
 
@@ -180,7 +211,7 @@ export async function runConf01DurationGate({
   hours = 2.25,
   intervalMs = 300_000,
   speed = 60,
-  orderEvery = 2,
+  closedTarget = 30,
   cpuWindowMs = 8_000,
   injectGrowthMbPerSample = 0,
   outPath = null,
@@ -203,6 +234,7 @@ export async function runConf01DurationGate({
     samples,
   };
   const save = () => { if (outPath) fs.writeFileSync(outPath, JSON.stringify(report, null, 1)); };
+  report.orderLoopHook = await installOrderLoopTimer(page);
   console.error(`[dur] CONF-01 compliant=${conf01.compliant} failed=[${conf01.failed.join(',')}] datasets=${JSON.stringify(conf01.observedDatasets)} advancing=${conf01.productState?.advancingPanels} indicators=${JSON.stringify(conf01.productState?.indicatorsPerPanel)}`);
   // Does each panel honour the speed selector, or does a peer race its window and
   // stop? Measured once at the top, before any accommodation is applied.
@@ -216,7 +248,7 @@ export async function runConf01DurationGate({
       n += 1;
       const hoursNow = (Date.now() - startedAt) / 3_600_000;
       if (injectGrowthMbPerSample > 0) await injectGrowth(page, injectGrowthMbPerSample);
-      const order = (n % orderEvery === 0) ? await placeOrderOnHost(page) : null;
+      const order = await churnTrades(page, { closedTarget });
       const s = await sampleOnce(page, cdp, browserCdp, { cpuWindowMs });
       // Playback must be alive for the sample to mean anything; re-arm and record.
       // reseeks > 0 means panels had run out of resident data — recorded per sample
@@ -227,8 +259,9 @@ export async function runConf01DurationGate({
       report.elapsedHours = +((Date.now() - startedAt) / 3_600_000).toFixed(3);
       report.trends = buildTrends(samples);
       report.verdict = gradeDurationSeries(report.trends, { minSpanHours: Math.min(2, hours) });
+      report.conf02 = assessConf02(samples, { closedTarget });
       save();
-      console.error(`[dur] #${n} ${hoursNow.toFixed(2)}h gcHeap=${s.collected.heapMB} live=${s.live.heapMB} footprint=${s.footprint.totalPrivateMB} elements=${s.elements} bars=${s.state.totalBars} advancing=${s.state.advancingPanels}/4 renderer=${s.cpu.rendererPercent}% status=${report.verdict?.status}`);
+      console.error(`[dur] #${n} ${hoursNow.toFixed(2)}h gcHeap=${s.collected.heapMB} live=${s.live.heapMB} footprint=${s.footprint.totalPrivateMB} elements=${s.elements} bars=${s.state.totalBars} advancing=${s.state.advancingPanels}/4 renderer=${s.cpu.rendererPercent}% closed=${s.trades?.managerClosed ?? s.trades?.serviceClosed} loop=${s.orderLoop?.host?.msPerCall}ms/tick heavy=${s.heavyFields?.heavyMB}MB status=${report.verdict?.status}`);
       const spent = Date.now() - startedAt;
       const nextAt = n * intervalMs;
       if (nextAt > spent) await sleep(nextAt - spent);
@@ -236,6 +269,7 @@ export async function runConf01DurationGate({
     report.finishedAtIso = new Date().toISOString();
     report.trends = buildTrends(samples);
     report.verdict = gradeDurationSeries(report.trends, { minSpanHours: Math.min(2, hours) });
+    report.conf02 = assessConf02(samples, { closedTarget });
     save();
     return report;
   } finally {
@@ -251,7 +285,7 @@ function parseArgs(argv) {
     if (k === 'hours') o.hours = Number(v);
     else if (k === 'interval-ms') o.intervalMs = Number(v);
     else if (k === 'speed') o.speed = Number(v);
-    else if (k === 'order-every') o.orderEvery = Number(v);
+    else if (k === 'closed-target') o.closedTarget = Number(v);
     else if (k === 'cpu-window-ms') o.cpuWindowMs = Number(v);
     else if (k === 'inject-growth-mb-per-sample') o.injectGrowthMbPerSample = Number(v);
     else if (k === 'out') o.outPath = v;
@@ -263,4 +297,5 @@ const invokedDirectly = process.argv[1] && /conf01-duration-gate\.mjs$/.test(pro
 if (invokedDirectly) {
   const report = await runConf01DurationGate(parseArgs(process.argv.slice(2)));
   console.error(`[dur] verdict=${report.verdict?.status} reason=${report.verdict?.reason}`);
+  console.error(`[dur] CONF-02: ${report.conf02?.acceptanceWeight}`);
 }
