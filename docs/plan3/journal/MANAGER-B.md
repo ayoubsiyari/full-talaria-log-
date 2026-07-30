@@ -4450,3 +4450,16 @@ C's gate is **41 pass / 8 fail identically with and without my change** — the 
 ### 6. Not shipped, on purpose
 
 The ledger and the passport field are staged, not on the wire. b104 went out minutes ago and the PO's heap comparison against b103 should not have the homepage image moved under it. **DEPLOY-02: b105 is one command away the moment the PO's b104 run finishes.**
+
+### 7. Addendum — the write path is proven by real users, not just by my probe
+
+Backend log census on `/api/chart/preferences`:
+
+| Window | GET | POST |
+|---|---|---|
+| Three hours before the repair | **31 × 500**, 5 × 401 | **none at all** |
+| Since the repair | **80 × 200**, 1 × 401 | **67 × 200**, zero failures |
+
+The absent POSTs before the repair are the tell: the client only POSTs from a queue that a *successful* GET merge fills, so the read failure suppressed the write path entirely — dead in both directions, silently, with a localStorage fallback covering for it. **67 real saves have since succeeded and nothing on that route has failed.** `UndefinedColumn` occurrences after the repair: **0** (last at 23:33:05Z, repair 23:59:05Z). Column present in `information_schema` now: yes.
+
+That is the measurement the V8/M15 ruling should be revisited against — not my say-so.

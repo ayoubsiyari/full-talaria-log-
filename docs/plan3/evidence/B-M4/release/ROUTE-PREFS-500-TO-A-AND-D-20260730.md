@@ -58,6 +58,15 @@ Round trip on `http://127.0.0.1:3000/api/chart/preferences` with a real bearer t
 
 `VERDICT=WRITE_PATH_PROVEN_OVER_HTTP`. Earlier 422s in the log were my own probe mangling its token with app-startup output; nothing to hunt.
 
+**And better than a probe — real user traffic, from the backend log:**
+
+| Window | GET | POST |
+|---|---|---|
+| Three hours before the repair | **31 × 500**, 5 × 401 | **none at all** |
+| Since the repair | **80 × 200**, 1 × 401 | **67 × 200**, zero failures |
+
+The zero POSTs before the repair is the diagnostic detail: the client only POSTs from a queue that a *successful* GET merge fills, so the read failure suppressed the write path entirely. Cloud persistence was dead in both directions, silently. Since the repair, 67 real saves have succeeded and no request on that route has failed. Occurrences of the `UndefinedColumn` error after the repair: **0** (last one 23:33:05Z, repair at 23:59:05Z).
+
 ### 2. What the 500 actually destroyed — and what it never touched
 
 The cloud contract is **exactly 15 fields** (`loadFromLocalStorage()` in `preferences-sync.js`). The 500 killed all 15 in both directions:
