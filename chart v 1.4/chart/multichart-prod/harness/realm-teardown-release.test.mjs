@@ -61,6 +61,7 @@ const FLAGS = {
     blobWorker: '__TALARIA_DISABLE_MC_RELEASE_BLOB_WORKER_V1',
 };
 const STASH_FLAG = '__TALARIA_DISABLE_MC_STASHED_PANEL_HANDLE_V1';
+const XFRAME_FLAG = '__TALARIA_DISABLE_MC_XFRAME_REF_RELEASE_V1';
 const ALL_FLAGS = Object.values(FLAGS);
 const OM_KEYS = [
     'orderLines', 'slLines', 'tpLines', 'beLines',
@@ -223,15 +224,35 @@ class FakeFrame extends FakeElement {
         this.stats = stats;
         this.listeners = new Map();
         this.removeCalls = 0;
+        this.aboutBlankCalls = 0;
         this.contentDocument = new FakePanelDocument(stats);
         const probe = makeReleaseProbe(stats);
         this._probe = probe;
+        this._src = 'http://example.test/chart-host.html';
         this.contentWindow = {
-            location: { href: 'http://example.test/chart-host.html' },
+            location: { href: this._src },
             document: this.contentDocument,
             chart: probe.panelChart,
             TalariaCustomIndicators: probe.customApi,
         };
+        Object.defineProperty(this, 'src', {
+            configurable: true,
+            enumerable: true,
+            get: () => this._src,
+            set: (value) => {
+                this._src = String(value);
+                if (this._src === 'about:blank') {
+                    this.aboutBlankCalls += 1;
+                    // Navigate tears down the child realm — live chart handle gone.
+                    this.contentWindow = {
+                        location: { href: 'about:blank' },
+                        document: this.contentDocument,
+                        chart: null,
+                        TalariaCustomIndicators: null,
+                    };
+                }
+            },
+        });
     }
 
     addEventListener(type, listener) {
@@ -284,6 +305,7 @@ function makeHostOrderManager(hostChart, panelChart) {
 function clearAllFlags(sandbox) {
     for (const flag of ALL_FLAGS) delete sandbox[flag];
     delete sandbox[STASH_FLAG];
+    delete sandbox[XFRAME_FLAG];
 }
 
 function stashViaBridgeReady(harness, entry, id) {
@@ -401,6 +423,8 @@ function addLoadedPanel(harness, id = 'B') {
     const entry = harness.manager.charts.get(id);
     assert.ok(entry, 'chart entry must be stored');
     assert.ok(entry.frame, 'chart entry must store frame');
+    // XFRAME-REF-RELEASE nulls entry.frame; keep a test-only handle for post-teardown asserts.
+    entry._testFrame = entry.frame;
     entry.frame.dispatch('load');
     return entry;
 }
@@ -414,11 +438,14 @@ function seedHostOmForPanel(harness, panelChart) {
 }
 
 function probeOf(entry) {
-    return entry.frame._probe;
+    const frame = entry.frame || entry._testFrame;
+    return frame._probe;
 }
 
 function assertRemoveCompleted(harness, entry, id) {
-    assert.equal(entry.frame.removeCalls, 1, 'c.frame.remove() ran');
+    const frame = entry.frame || entry._testFrame;
+    assert.ok(frame, 'frame handle must be resolvable after removeChart');
+    assert.equal(frame.removeCalls, 1, 'c.frame.remove() ran');
     assert.equal(harness.manager.charts.has(id), false, 'charts.delete(id) happened');
 }
 
@@ -1232,4 +1259,143 @@ test('stash-flag-polarity: falsy values keep stash ON (not === true sampling)', 
             `stash ON for falsy=${String(falsy)}`);
     }
     note('stash-flag-polarity', true);
+});
+
+// ── XFRAME-REF-RELEASE ────────────────────────────────────────────────────
+
+function assertXframeReleaseRan(entry, frame) {
+    assert.ok(frame.aboutBlankCalls >= 1, 'xframe: about:blank navigated');
+    assert.equal(frame.removeCalls, 1, 'xframe: frame.remove() ran');
+    assert.equal(entry.frame, null, 'xframe: c.frame nulled');
+    assert.equal(entry.overlay, null, 'xframe: c.overlay nulled');
+    assert.equal(entry.mountEl, null, 'xframe: c.mountEl nulled');
+    assert.equal(entry.cfg, null, 'xframe: c.cfg nulled');
+}
+
+function assertXframeReleaseSkipped(entry, frame) {
+    assert.equal(frame.aboutBlankCalls, 0, 'xframe OFF: about:blank NOT set');
+    assert.equal(frame.removeCalls, 1, 'xframe OFF: legacy frame.remove() still ran');
+    assert.ok(entry.frame === frame, 'xframe OFF: c.frame retained (legacy)');
+    assert.ok(entry.cfg != null, 'xframe OFF: c.cfg retained (legacy)');
+    assert.ok(entry.mountEl != null, 'xframe OFF: c.mountEl retained (legacy)');
+}
+
+test('xframe-ON: FLAG absent ⇒ about:blank + null frame/overlay/mountEl/cfg', () => {
+    const h = createHarness();
+    clearAllFlags(h.sandbox);
+    const entry = addLoadedPanel(h, 'B');
+    const frame = entry.frame;
+    const probe = probeOf(entry);
+    seedHostOmForPanel(h, probe.panelChart);
+    h.manager.removeChart('B');
+    assertXframeReleaseRan(entry, frame);
+    assertAllCutsRan(probe, h.hostOm, h.hostChart);
+    assert.equal(h.manager.charts.has('B'), false);
+    note('xframe-ON', true);
+});
+
+test('xframe-OFF: FLAG truthy ⇒ legacy exactly (no about:blank, fields retained)', () => {
+    const h = createHarness();
+    clearAllFlags(h.sandbox);
+    h.sandbox[XFRAME_FLAG] = true;
+    const entry = addLoadedPanel(h, 'B');
+    const frame = entry.frame;
+    const probe = probeOf(entry);
+    seedHostOmForPanel(h, probe.panelChart);
+    h.manager.removeChart('B');
+    assertXframeReleaseSkipped(entry, frame);
+    assertAllCutsRan(probe, h.hostOm, h.hostChart);
+    assert.equal(h.manager.charts.has('B'), false);
+    note('xframe-OFF', true);
+});
+
+test('xframe-ordering: nulling/about:blank AFTER five cuts (source + behaviour)', () => {
+    const src = fs.readFileSync(MANAGER_SRC, 'utf8');
+    const cut5Marker = '// CUT 5 — terminate + revoke panel custom-indicator blob worker URL.';
+    const xframeMarker = '// XFRAME-REF-RELEASE: AFTER all child-handle reads';
+    const iCut5 = src.indexOf(cut5Marker);
+    const iXframe = src.indexOf(xframeMarker);
+    assert.ok(iCut5 >= 0, 'CUT 5 marker present');
+    assert.ok(iXframe >= 0, 'XFRAME-REF-RELEASE marker present');
+    assert.ok(iXframe > iCut5, 'xframe nulling must appear after CUT 5 in source');
+
+    // Behavioural ordering probe: about:blank must still be 0 when cut5 runs.
+    // A mutant that moves XFRAME-REF-RELEASE before the five cuts fails here
+    // even if stash keeps the cut callbacks firing.
+    const h = createHarness();
+    clearAllFlags(h.sandbox);
+    const entry = addLoadedPanel(h, 'B');
+    const frame = entry.frame;
+    const probe = probeOf(entry);
+    const om = seedHostOmForPanel(h, probe.panelChart);
+    let aboutBlankAtCut5 = null;
+    const origDispose = probe.customApi.disposeWorker;
+    probe.customApi.disposeWorker = function () {
+        aboutBlankAtCut5 = frame.aboutBlankCalls;
+        return origDispose.apply(this, arguments);
+    };
+    h.manager.removeChart('B');
+    assert.equal(aboutBlankAtCut5, 0,
+        'about:blank must not run before cut5 disposeWorker');
+    assert.ok(frame.aboutBlankCalls >= 1, 'about:blank must run after the five cuts');
+    assertAllCutsRan(probe, om, h.hostChart);
+    assertXframeReleaseRan(entry, frame);
+    note('xframe-ordering', true);
+});
+
+test('xframe-detached-collapse: contentWindow null before removeChart still releases + nulls', () => {
+    const h = createHarness();
+    clearAllFlags(h.sandbox);
+    const entry = addLoadedPanel(h, 'B');
+    const frame = entry.frame;
+    const probe = probeOf(entry);
+    const om = seedHostOmForPanel(h, probe.panelChart);
+    stashViaBridgeReady(h, entry, 'B');
+    detachFrame(entry);
+    h.manager.removeChart('B');
+    assertAllCutsRan(probe, om, h.hostChart);
+    assert.equal(probe.panelChart._releaseSharedBarStoreFileRefsCalls, 1);
+    assertXframeReleaseRan(entry, frame);
+    note('xframe-detached-collapse', true);
+});
+
+test('xframe-flag-flip-per-call: truthy→absent restores release without reload', () => {
+    const h = createHarness();
+    clearAllFlags(h.sandbox);
+    h.sandbox[XFRAME_FLAG] = true;
+    const entryOff = addLoadedPanel(h, 'OFF');
+    const frameOff = entryOff.frame;
+    seedHostOmForPanel(h, probeOf(entryOff).panelChart);
+    h.manager.removeChart('OFF');
+    assertXframeReleaseSkipped(entryOff, frameOff);
+
+    delete h.sandbox[XFRAME_FLAG];
+    const entryOn = addLoadedPanel(h, 'ON');
+    const frameOn = entryOn.frame;
+    seedHostOmForPanel(h, probeOf(entryOn).panelChart);
+    h.manager.removeChart('ON');
+    assertXframeReleaseRan(entryOn, frameOn);
+    note('xframe-flag-flip-per-call', true);
+});
+
+test('xframe-flag-polarity: falsy values keep release ON (not === true sampling)', () => {
+    const h = createHarness();
+    for (const falsy of [false, 0, '', null, undefined]) {
+        clearAllFlags(h.sandbox);
+        h.sandbox[XFRAME_FLAG] = falsy;
+        const id = `XF${String(falsy)}`;
+        const entry = addLoadedPanel(h, id);
+        const frame = entry.frame;
+        seedHostOmForPanel(h, probeOf(entry).panelChart);
+        h.manager.removeChart(id);
+        assertXframeReleaseRan(entry, frame);
+    }
+    note('xframe-flag-polarity', true);
+});
+
+test('xframe-mirror-byte-identity: manager mirrors remain sha256-identical', () => {
+    const ha = sha256File(MANAGER_SRC);
+    const hb = sha256File(MANAGER_MIRROR);
+    note('xframe-mirror-byte-identity', ha === hb, `sha256=${ha.slice(0, 16)}`);
+    assert.equal(ha, hb, 'multichart-manager.js mirrors must be byte-identical');
 });
