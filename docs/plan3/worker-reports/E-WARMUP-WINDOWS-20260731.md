@@ -2,6 +2,15 @@
 
 **2026-07-31** · Manager E · packet `E-WARMUP-WINDOWS-V1`
 
+## Citable Contract
+
+Reference this contract by packet id **`E-WARMUP-WINDOWS-V1`** and commit
+**`77e7bbfff`**. Do not resolve it by subject line; B is pulling E commits by SHA.
+
+This contract is intentionally global only for the verified bounded families. If a later
+family needs a longer warm-up window, that family gets a named row and justification; it does
+not raise the global `warmupBars` rule for every indicator.
+
 ## Ruling for A
 
 Unbounded pre-session loading is unnecessary for the worker-tail indicator families below.
@@ -47,4 +56,4 @@ the estimator window.
 
 - Opening Range owner bisect: live `b114` BASE `127`, `FULL_OFF` `0`, `RG_OFF` `127`; owner is `chart-indicators-full.js`.
 - Opening Range fix: committed as `eb1cb76ae`; local probe GREEN (`30` bars vs max `32`).
-- Overlay rows: `TAL-01914`, `TAL-01921`, `TAL-01935` GREEN; `TAL-01938` RED until OR fix is on wire; `TAL-01913` BLOCKED on one-day session/no daily-open positive control.
+- Overlay rows: `TAL-01913`, `TAL-01914`, `TAL-01921`, `TAL-01935` GREEN; `TAL-01938` RED until OR fix is on wire. `TAL-01913` was re-run on QA 123 / session `870` with three days and retained 2 daily-open anchors after five paused steps.
