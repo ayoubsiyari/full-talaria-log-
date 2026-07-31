@@ -38,7 +38,9 @@
     "preflight:legacy-panel-shell-correctness": "node docs/plan3/oracles/legacy-panel-shell-correctness-v1.mjs",
     "test:legacy-panel-shell-correctness": "npm run preflight:legacy-panel-shell-correctness",
     "preflight:trade-attribution-correctness": "node docs/plan3/oracles/trade-attribution-correctness-v1.mjs",
-    "test:trade-attribution-correctness": "npm run preflight:trade-attribution-correctness"
+    "test:trade-attribution-correctness": "npm run preflight:trade-attribution-correctness",
+    "preflight:destroy-indicator-correctness": "node docs/plan3/oracles/destroy-indicator-correctness-v1.mjs",
+    "test:destroy-indicator-correctness": "npm run preflight:destroy-indicator-correctness"
   },
   "dependencies": {
     "dukascopy-node": "^1.46.3",
