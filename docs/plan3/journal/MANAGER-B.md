@@ -6099,3 +6099,69 @@ found where it is. Said that explicitly so A does not read elimination as an ans
 Recommended gate: not "the cache hits", which passes on a 1% fix, but cost per data event against bars
 loaded, with the per-event figure required to move.
 
+
+## B-0228 — plotWidth 1,478 confirms A's pixel bound, both of my conclusions needed correcting, and my own dry-run ate this entry once
+
+**2026-07-31 19:50**
+
+Queue items 1-3 were already delivered before the dispatch was written: K4's hang fixed and proven
+(server p95 500.5 -> 148.7 ms across b118/b119/b120, product verified), the MONSTER-2 finding published
+in its own right at 17:25, the missing cell filled at 17:05.
+
+**A asked for one number and it lands in A's favour.** plotWidth measured in the product at the exact
+viewport all my runs used: chart.w 1559, margin l 0 r 81 — not the {l:60,r:60} default in the source —
+so **plotWidth 1478 and the predicted knee is 739 bars.** My knee is not ~1,100; that was where my next
+sample sat. The bracketing readings are 55.0 ms/s at 579 bars and 322.5 at 798, already the full plateau
+value. **739 falls inside 579-798.** Flagged that the bracket spans b118 and b120 — sound for display
+cost, but two builds, and A should know rather than find out.
+
+**Correction 1: withdrew my own zoom refutation.** I reported "not the viewport" from arms at spacing
+15.1 and 7.0 px. ZOOMED_OUT_SLOT_PX is 2, so pixelLod needs spacing under 2 px, and usePixelAggregate
+also needs visSpan over plotWidth or over the 500 budget — mine were 98 and 211. **Both arms sat in the
+same sub-budget regime, so the test never crossed the boundary it existed to test.** Second time today I
+varied a parameter within a regime instead of across its boundary and read the null as a result. That is
+a pattern in my experiment design, not two incidents.
+
+**Correction 2: my "~1% of cost" timed the wrong branch and is blind to the cost that matters.** Fresh
+dataVersion missed branch 1; branch 2 needs sourceLen === length-1, which repeated calls did not satisfy,
+so it missed too. I timed the **full resample** — 1.8 ms at 6,242 bars. So A's incremental copy is cheaper
+still and neither is the ~86 ms per event. **But prevResampled.slice() allocates an N-element array every
+tick**, ~250k pointers/sec of garbage at C's 36,104 bars, and GC pauses land as long tasks that no
+stopwatch around the call attributes back to it. My figure bounds direct call cost and says nothing about
+allocation cost.
+
+**The reconciliation is the real result.** C has no plateau to 36,104 bars; I have flat 1,930-6,242. Both
+hold if per-event cost is a pixel-bounded display term — flat past 739 at a 1,478 px plot, my entire
+range — plus a term linear in loaded bars with a small constant, A's slice and its garbage. Same curve
+sampled in two places. So my plateau is a property of the 739-to-~6,000 interval at that plot width, not
+of the product. One check before anyone merges the curves: confirm C's rising quantity is blocked main
+thread and not memory, because a cumulative growing while a rate stays flat is no conflict at all.
+
+**Did not extend my range to meet C's, deliberately.** Needs a 20-minute 10x arm; C's soak owns the host
+until ~03:43 and one replay tab at 10x takes the chart container to ~85% CPU, which is my own number and
+the basis for two-soaks-impossible. Contaminating C's arm to settle what C's arm already answers would be
+the collision I spent the afternoon helping avoid.
+
+Eliminated a candidate before spending a run on it: LARGE_SERIES_THRESHOLD = 8000 explains nothing on my
+path, because usePipeline is true whenever isBacktestMode is true regardless of the threshold.
+
+**Train readiness (item 4), git-only, nothing deployed.** A's four SR-01 teardown commits cherry-pick
+clean onto my tip, 11 files, +4239/-2318, and carry the `destroy()` that D's `destroyStop: true` waits on.
+Routing held on the 36-site ruling. Flagged that the branch touches two copies of order-manager.js —
+`chart v 1.4/...` and `homepage/public/chart/...` — so a build updating one and not the other ships a
+split brain and the marker would be present in whichever copy someone greps. Verify on the wire from the
+container at cut time. Also stated the host precondition rather than assuming it: a deploy restarts the
+container and would end C's arm, so this cuts after the soak or with C's agreement.
+
+**And I lost this entry the first time, to my own command.** The train dry-run ended with
+`git reset --hard` to clean the scratch branch, and that discarded the uncommitted journal append sitting
+in the working tree. Caught it by checking whether the commit actually contained the file rather than
+trusting `git commit --trailer "Co-authored-by: Cursor <cursoragent@cursor.com>"`'s output — the commit said "2 files changed" when I had staged three, and that
+mismatch is the only reason I noticed.
+
+**A dry run that includes `git reset --hard` is not a dry run for the working tree.** Two rules for me,
+in the same spirit as the two from this morning that became standing practice: commit or stash before any
+experiment that resets, and prefer a `git worktree` for cherry-pick trials so the experiment cannot reach
+the tree I am writing in. Also: read the file count in a commit's output against what you staged. The
+Director warned E about uncommitted artifacts an hour ago and I then destroyed one of my own.
+
