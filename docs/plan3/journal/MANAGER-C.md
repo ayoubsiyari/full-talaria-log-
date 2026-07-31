@@ -1464,3 +1464,57 @@ separate the drivers and does not try. That separation is already published at +
 with hours held. `UNIT-01` is met the way the rule allows: no per-hour figure leaves this run without the
 declared trade rate and speed beside it.
 
+
+## W106 — 2026-07-31 13:05 · bars are straight too, and they beat trades three to one
+tier=mid model=claude-opus-5-thinking-high · `UNIT-01` `FIT-01` `MEAS-01` `KILL-02` `CKPT-01`
+
+`UNIT-01`'S PER-BAR HALF IS SATISFIED: **+23.98 MB per thousand resident bars, CI[22.75, 25.21]**, on an
+axis that was clean — 33 samples, **zero of them fell**, 6,700 → 36,810 bars in 39.95 minutes at 5x with
+zero trades and zero re-seeks. `FIT-01` licenses extrapolating this one where it forbade `+513 MB/h`:
+**runs z −0.04** against that fit's −6.57, and the halves agree at 24.80 and 23.30. **Bars are straight,
+trades are straight, only time is bent**, because both drivers decelerate.
+
+ONLY 4.26 MB OF THE 23.98 IS JS HEAP. 82% of the per-bar cost is not JavaScript, which is the same split as
+the 72% non-JS renderer at first paint. A gauge watching `usedJSHeapSize` while bars accumulate sees under a
+fifth of it. AND A SUSPECT DIES per `KILL-02`: DOM nodes do NOT grow with bars — r² 0.116, CI spanning zero,
+graded INDETERMINATE. The +27.79 elements per closed trade is trade-driven only.
+
+THE NUMBER FOR THE PO: a forty-minute replay with **ZERO TRADES** went from 1,025.7 MB to **1,778.4 MB**.
+At that workload bars contribute **~1,084 MB/h against ~332 MB/h from trades** at 20 closes/h. **Bars beat
+trades about three to one**, and R-1 says 82% of resident bars are never displayed. Every memory
+investigation this week has been organised around the smaller driver.
+
+ITEM 8 ANSWERED AS A SIDE EFFECT, WITH NO CONFOUND. Visible bars pinned at 488, total loaded 6,700 →
+36,810, throughput **1,122 → 503 bars/min — 45% of the opening rate**, at −19.2 bars/min per thousand
+resident bars. **O(total), not O(visible).** Cutting retained bars fixes memory AND lag with one change,
+which is the only place on this plan where that is true.
+
+TWO CORRECTIONS TO MY OWN PUBLISHED WORK. The **+16.61 MB per closed trade** was fitted with hours but
+WITHOUT bars, because that soak's bar axis was non-monotonic — so it is an **upper bound** and may be
+carrying bar cost. Tonight's smoke run already put the per-trade coefficient at −37 with a CI spanning zero
+once bars entered the model, on five trades, so it is a hint and not yet a number. And S1's "13 candles/s
+ceiling" is corrected in place: it is **not a fixed engine limit** but the rate at whatever bar count the
+measurement reached, since this run opened at 18.7 candles/s and fell to 8.4 with nothing changing but
+resident bars.
+
+TEN-HOUR SOAK IS RUNNING, pid 10684, launched 12:48, ends ~22:48. Governed at 20 closes/h so closed trades
+accumulate linearly in wall clock. THE SMOKE RUN EARNED ITS KEEP THREE TIMES: the governor delivered
+13.4/h against a 20/h target because it could only fire once per sample, and now executes every tick that
+is due; a renderer death on a tab that reached 1.5 GB in eighteen minutes is now recorded as a RESULT
+rather than discarding the grade; and it caught the build moving under us.
+
+BUILD IS MOVING FAST AND THE SOAK SAYS SO ITSELF: b116 this morning, b117 at midday, **b118** at launch.
+The artifact carries an explicit boundary line so no one compares tonight to B6 without knowing it is
+cross-build. My published mechanisms — R-1 residency, the per-bar rate, O(total) scaling — are not stale
+unless A has cut them, but the absolute numbers are pinned to b116 and I will not restate them against
+b118 without re-measuring.
+
+THREE FAILURES OF MY OWN TO RECORD. My census hook destructured `({ page })` when the harness calls
+`onSingleReady(page)`, so item 4's hydration recorder never attached — and **the harness logged the error
+while I read only the artifact**. A stale `C_OUT` in my shell made the monotonic run overwrite the
+bfcache-disabled artifact; recovering it produced an accidental independent replication that came out
+stronger than the original (documents [2,2,2] identical, footprint growth −9.5 MB against +14.7 MB, so that
+drift was noise I was right not to call growth). And the first ten-hour launch died writing nothing because
+I redirected its pipes in-process with nothing draining them. Configuration now comes from arguments, not
+the environment, and no long run launches again without a short launch check first.
+

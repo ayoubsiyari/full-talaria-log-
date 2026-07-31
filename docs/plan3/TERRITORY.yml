@@ -81,6 +81,10 @@ journals:
     owner: B
   - path: docs/plan3/journal/MANAGER-C.md
     owner: C
+  - path: docs/plan3/journal/MANAGER-D.md
+    owner: D
+  - path: docs/plan3/journal/MANAGER-E.md
+    owner: E
 
 # Artifact trees every manager writes into, because each manager's own gates emit
 # their own evidence. Collision risk is low (paths are packet-named) and blocking
@@ -280,6 +284,105 @@ managers:
         reason: another manager's journal
         provenance: ruling
 
+  - id: D
+    role: mechanism forensics, payload measurement, and the Phase 4 parity oracle
+    deploy_surface: none
+    provenance: ruling
+    authority: PLAN3-PHASE-4-THE-REALM-COLLAPSE-20260731-1300.md - D owns the behavioural
+      parity gate across four panels, front-loaded ahead of the refactor per GATE-01
+    owned_rows:
+      - M20-J1-verification
+      - D2-baseline-attribution
+      - PHASE4-parity-oracle
+    owned_paths:
+      - pattern: scripts/parity/**
+        provenance: ruling
+        reason: Phase 4 behavioural parity oracle; new tree, no collision with C's scripts grants
+        authority: PLAN3-PHASE-4 - D owns the behavioural gate, C owns the measurement half
+      - pattern: scripts/measure-*.mjs
+        provenance: ruling
+        reason: D's payload and bitmap measurement harnesses, already in use at D1
+      - pattern: docs/plan3/journal/MANAGER-D.md
+        provenance: ruling
+        authority: A16.1 - each manager holds a positive grant to its own journal
+      - pattern: docs/plan3/D[0-9]*.md
+        provenance: ruling
+        reason: D's own findings, prefixed to avoid collision with the Director's docs/plan3/*.md grant
+    denied_paths:
+      - pattern: chart v 1.4/chart/chart.js
+        reason: D measures and verifies; it ships no engine code. chart.js is A-L1's single-writer spine
+        provenance: ruling
+        authority: PLAN3-PHASE-4 - chart.js has exactly one writer at a time
+      - pattern: chart v 1.4/chart/modules/**
+        reason: product code belongs to A
+        provenance: ruling
+      - pattern: docs/plan3/journal/MANAGER-A.md
+        reason: another manager's journal
+        provenance: ruling
+      - pattern: docs/plan3/journal/MANAGER-B.md
+        reason: another manager's journal
+        provenance: ruling
+      - pattern: docs/plan3/journal/MANAGER-C.md
+        reason: another manager's journal
+        provenance: ruling
+      - pattern: docs/plan3/journal/MANAGER-E.md
+        reason: another manager's journal
+        provenance: ruling
+
+  - id: E
+    role: indicator correctness oracles, warm-up contract, overlay and drawing parity
+    deploy_surface: none
+    provenance: ruling
+    authority: PLAN3-PHASE-4-THE-REALM-COLLAPSE-20260731-1300.md - E owns the correctness
+      half of the parity gate; and the 20260731 warm-up contract rulings
+    owned_rows:
+      - TAL-01938-opening-range
+      - E-warmup-contract
+      - PHASE4-indicator-parity
+    owned_paths:
+      - pattern: chart v 1.4/chart/modules/talaria-ratio-gap-indicator.js
+        provenance: ruling
+        reason: granted 20260730; wins on specificity over A's modules/** grant
+      - pattern: chart v 1.4/chart/modules/talaria-fvg-indicator.js
+        provenance: ruling
+        reason: granted 20260730; wins on specificity over A's modules/** grant
+      - pattern: homepage/public/chart/modules/talaria-ratio-gap-indicator.js
+        provenance: ruling
+        reason: generated mirror of the above
+      - pattern: homepage/public/chart/modules/talaria-fvg-indicator.js
+        provenance: ruling
+        reason: generated mirror of the above
+      - pattern: docs/plan3/evidence/E-*/**
+        provenance: ruling
+        reason: E's own RED-gate evidence trees, E-prefixed
+      - pattern: docs/plan3/journal/MANAGER-E.md
+        provenance: ruling
+        authority: A16.1
+      - pattern: docs/plan3/E-*.md
+        provenance: ruling
+        reason: E's own findings, prefixed to avoid collision with the Director's grant
+    denied_paths:
+      - pattern: chart v 1.4/chart/chart.js
+        reason: chart.js is A-L1's single-writer spine
+        provenance: ruling
+        authority: PLAN3-PHASE-4
+      - pattern: chart v 1.4/chart/modules/chart-indicators-full.js
+        reason: E confirmed this file live on 20260730 but it remains A's; E writes oracles
+          against it and does not edit it. Prevents the collision that NOTE-E-IS-ABOUT-TO-FIX-POSSIBLY-DEAD-CODE flagged
+        provenance: ruling
+      - pattern: docs/plan3/journal/MANAGER-A.md
+        reason: another manager's journal
+        provenance: ruling
+      - pattern: docs/plan3/journal/MANAGER-B.md
+        reason: another manager's journal
+        provenance: ruling
+      - pattern: docs/plan3/journal/MANAGER-C.md
+        reason: another manager's journal
+        provenance: ruling
+      - pattern: docs/plan3/journal/MANAGER-D.md
+        reason: another manager's journal
+        provenance: ruling
+
 # Open questions for the Director. Each is operative as written above until ruled.
 open_rulings:
   - id: SH-1
@@ -300,6 +403,14 @@ open_rulings:
   - id: TB-5
     question: does Manager C own .gitignore for the governance-artifact negations, or should that change be Director-authored
     default_in_force: C owns .gitignore
+  - id: TB-7
+    question: Phase 4 runs four concurrent A lanes (chart.js spine, modules DOM scoping,
+      chart-embed.html shell strip, bridge deletion). All four sit inside A's existing grant,
+      so the territory preflight cannot detect a collision between them - it enforces
+      BETWEEN managers, never WITHIN one. The single-writer rule for chart.js is therefore
+      convention, not a CI control. Stated plainly per VER-01 rather than implied away.
+    default_in_force: A partitions its own lanes by file and holds one writer on chart.js;
+      a second concurrent chart.js writer is a defect the gate will not catch
   - id: TB-6
     question: docs/plan3 holds 340 untracked files against 56 tracked, and DIRECTOR-RULINGS-20260727.md is one of the untracked ones, so standing policy currently has no history, no diff and no attribution. Manager C did not un-ignore it, because whether policy documents enter version control is a Director decision. Ruling needed on which plan3 documents must be tracked.
     default_in_force: only the governance artifacts C owns are un-ignored (TERRITORY.yml, the four journals, GATE-NAME-RESERVATIONS.md, BOARD-VIEW.md, PO-QUEUE.md); every other plan3 document remains local-only and outside history

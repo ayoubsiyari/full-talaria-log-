@@ -38,13 +38,20 @@ import { ols2 } from './lib/ols2.mjs';
 import { readOsFootprints } from './process-memory-census.mjs';
 import { PO_TWO_INDICATORS } from './replay-decay-hunt.mjs';
 
-const OUT = process.env.C_OUT
-  || 'c:\\Users\\user\\Desktop\\talaria1\\_evidence\\manager-C\\BEND-SOAK-20260731.json';
-const HOURS = Number(process.env.C_HOURS || 10);
-const SAMPLE_MS = Number(process.env.C_SAMPLE_MS || 180_000);
-const SPEED = Number(process.env.C_SPEED || 5);
-/** Closes per hour, held steady. 3-minute cadence = 20/h, above the 20+/h floor I warned about. */
-const TARGET_CLOSES_PER_HOUR = Number(process.env.C_CLOSES_PER_HOUR || 20);
+// Configuration comes from ARGUMENTS, not environment variables. Two launches were lost to the
+// environment today: a stale C_OUT left in a shell made one run overwrite another run's artifact, and
+// in-process pipe redirection with nothing draining it killed the first ten-hour attempt before it wrote
+// a single sample. Arguments are visible in the process list and cannot leak between launches.
+const argOf = (name, fallback) => {
+  const hit = process.argv.find((a) => a.startsWith(`--${name}=`));
+  return hit ? hit.split('=').slice(1).join('=') : fallback;
+};
+const OUT = argOf('out', 'c:\\Users\\user\\Desktop\\talaria1\\_evidence\\manager-C\\BEND-SOAK-20260731.json');
+const HOURS = Number(argOf('hours', 10));
+const SAMPLE_MS = Number(argOf('sample-ms', 180_000));
+const SPEED = Number(argOf('speed', 5));
+/** Closes per hour, held steady. Above the 20+/h floor I warned the concavity would need. */
+const TARGET_CLOSES_PER_HOUR = Number(argOf('closes-per-hour', 20));
 /** The bar the PO is measured against. */
 const BAR_MB_PER_HOUR = 50;
 
