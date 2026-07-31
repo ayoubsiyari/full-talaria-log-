@@ -10,8 +10,17 @@
 **Selecting 60x makes replay slower than selecting 30x.** 12.83 candles/s against 13.34. The fastest
 setting on the control is not the fastest, and the whole upper half of the range does nothing.
 
-The engine tracks its own intended cadence exactly up to 5x, then breaks away and flattens at about
+The engine tracks its own intended cadence exactly up to 5x, then breaks away and delivers about
 **13 candles/s** regardless of what is asked for.
+
+> **CORRECTED 13:15 by `MONOTONIC-BARS-GATE`.** This document originally called that 13 candles/s a
+> *ceiling*. It is not a fixed engine limit — it is the rate at whatever bar count the measurement had
+> reached. A separate run at a constant 5x with zero trades opened at 18.7 candles/s and decayed to 8.4
+> while nothing changed but resident bars, at −19.2 bars/min per thousand. **The knee position and the
+> delivered rate are both bar-count dependent.** The tracking range up to 5x, the inversion where 60x is
+> slower than 30x, and the CPU pinned at every speed all stand unchanged; the word "ceiling" was too
+> strong and the number should be read as "13 candles/s at the bar counts these 12-minute points
+> reached".
 
 ## The curve
 

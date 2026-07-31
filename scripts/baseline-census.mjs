@@ -227,7 +227,11 @@ const accountHydration = [];
       placeOrder: false,
       // First paint of a single chart, before the multichart layout is applied, is a separate and
       // cheaper baseline that the competitor comparison is actually against.
-      onSingleReady: async ({ page }) => {
+      // conf01-session calls this hook as onSingleReady(page), positionally. Destructuring it as
+      // ({ page }) made `page` undefined, the hook threw, and boot swallowed it with a warning I did not
+      // read — which is why the first census artifact had no singleChartFirstPaint and no
+      // accountHydration section at all.
+      onSingleReady: async (page) => {
         attachAccountHydrationRecorder(page, accountHydration);
         await sleep(6_000);
         report.singleChartFirstPaint = {

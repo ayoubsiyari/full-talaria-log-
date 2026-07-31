@@ -34,6 +34,7 @@ import fs from 'node:fs';
 import { bootConf01Session, readConf01State, cycleTrades } from './lib/conf01-session.mjs';
 import { readSweepGauges, SWEEP_GAUGE_SCOPE_NOTE } from './lib/sweep-gauges.mjs';
 import { fitTrend } from './lib/duration-trend.mjs';
+import { ols2 } from './lib/ols2.mjs';
 import { readOsFootprints } from './process-memory-census.mjs';
 import { PO_TWO_INDICATORS } from './replay-decay-hunt.mjs';
 
@@ -84,6 +85,12 @@ const save = () => fs.writeFileSync(OUT, JSON.stringify(report, null, 1));
     });
     const { page, cdp, browserCdp, conf01, browser } = session;
     report.buildStamp = conf01?.buildId ?? null;
+    // Today's baseline, per-bar and correlation findings are all on b116. A different stamp here means
+    // tonight's numbers are NOT directly comparable to B6's and the comparison must be stated as
+    // cross-build rather than quietly made.
+    report.buildBoundary = report.buildStamp && !String(report.buildStamp).includes('b116')
+      ? `Findings published today were measured on 20260730b116; this run is on ${report.buildStamp}. Any comparison against B6 or against the per-bar rate is CROSS-BUILD and must say so.`
+      : null;
     report.conf01 = {
       panels: conf01?.panels ?? null,
       distinctFileIds: conf01?.distinctFileIds ?? null,
@@ -102,18 +109,36 @@ const save = () => fs.writeFileSync(OUT, JSON.stringify(report, null, 1));
       n += 1;
       const now = Date.now();
 
+      // The governor can only fire when the sample loop comes round, so a single close per pass makes the
+      // achieved rate the SAMPLE rate, not the target rate: the smoke run asked for 20/h and delivered
+      // 13.4/h. Execute every tick that is due instead, so the average rate is the declared one.
       if (now >= nextGovernorAt) {
-        trades.governorTicks += 1;
-        const c = await cycleTrades(page, { open: 1, close: 1, holdMs: 0 }).catch((e) => ({ errors: [String(e?.message || e)] }));
-        trades.opened += c?.opened || 0;
-        trades.closed += c?.closed || 0;
-        if (c?.errors?.length && trades.errors.length < 20) trades.errors.push(...c.errors.slice(0, 2));
+        let due = Math.max(1, Math.floor((now - nextGovernorAt) / governorEveryMs) + 1);
+        due = Math.min(due, 4); // never let a long stall dump a burst of trades into one sample
+        for (let k = 0; k < due; k += 1) {
+          trades.governorTicks += 1;
+          const c = await cycleTrades(page, { open: 1, close: 1, holdMs: 0 }).catch((e) => ({ errors: [String(e?.message || e)] }));
+          trades.opened += c?.opened || 0;
+          trades.closed += c?.closed || 0;
+          if (c?.errors?.length && trades.errors.length < 20) trades.errors.push(...c.errors.slice(0, 2));
+        }
         nextGovernorAt = now + governorEveryMs;
       }
 
-      const g = await readSweepGauges(page, cdp, browserCdp, {
-        cpuWindowMs: 6_000, readOsFootprints, forceGc: true,
-      });
+      // A ten-hour run on a tab that reached 1.5 GB in eighteen minutes may well be killed by the
+      // renderer running out of memory. That is a RESULT, not a failure, but it has to be recorded as one
+      // rather than surfacing as an unhandled rejection that discards the grade.
+      let g = null;
+      try {
+        g = await readSweepGauges(page, cdp, browserCdp, {
+          cpuWindowMs: 6_000, readOsFootprints, forceGc: true,
+        });
+      } catch (err) {
+        const msg = String(err?.message || err);
+        report.endedEarly = `gauges stopped answering at sample ${n} after ${((Date.now() - t0) / 3_600_000).toFixed(2)}h: ${msg.slice(0, 160)}`;
+        report.likelyRendererDeath = /detached|closed|Target|crash|Session/i.test(msg);
+        break;
+      }
       const state = await readConf01State(page).catch(() => null);
 
       // A soak that quietly stops playing measures an idle chart for hours.
@@ -252,6 +277,41 @@ const save = () => fs.writeFileSync(OUT, JSON.stringify(report, null, 1));
           : `At a steady ${meanRate != null ? meanRate.toFixed(1) : '?'} closes/h the settled rate is ${settled.toFixed(1)} MB/h — ${(settled / BAR_MB_PER_HOUR).toFixed(1)}x the ${BAR_MB_PER_HOUR} MB/h bar. The chord across the whole run reads ${chord?.perHour ?? '?'} MB/h, and the settled figure is the one a long session lives in.`,
       } : null,
     };
+
+    // ---- Bars against trades, because bars turned out to be the bigger driver -
+    // MONOTONIC-BARS-GATE measured +23.98 MB per thousand resident bars CI[22.75, 25.21] with trades held
+    // at zero, and at a moderate workload that is ~1,084 MB/h against ~332 MB/h from trades. The per-trade
+    // figure was fitted WITHOUT bars in the model and is therefore an upper bound. This run is the chance
+    // to put both drivers in one model — but only if its own bar axis accumulated, which a soak that
+    // re-arms playback cannot guarantee.
+    const barRows = s.filter((r) => Number.isFinite(r.residentBars) && Number.isFinite(r.footprintTotalMB)
+      && Number.isFinite(r.closedTrades));
+    let barsMonotonic = barRows.length >= 4;
+    for (let i = 1; i < barRows.length; i += 1) {
+      if (barRows[i].residentBars < barRows[i - 1].residentBars) { barsMonotonic = false; break; }
+    }
+    report.barsVersusTrades = {
+      barsMonotonic,
+      reArmCount: s.filter((r) => r.reArmed).length,
+      residentBarsFirst: barRows[0]?.residentBars ?? null,
+      residentBarsLast: barRows[barRows.length - 1]?.residentBars ?? null,
+      perThousandBarsFromTheCleanRun: 23.98,
+      perThousandBarsCiFromTheCleanRun: [22.75, 25.21],
+    };
+    if (barsMonotonic) {
+      const fit = ols2(
+        barRows.map((r) => r.footprintTotalMB),
+        barRows.map((r) => r.residentBars / 1000),
+        barRows.map((r) => r.closedTrades),
+      );
+      if (fit && !fit.degenerate) { delete fit.resid; delete fit.fitted; }
+      report.barsVersusTrades.twoDriverFit = fit;
+      report.barsVersusTrades.reading = fit?.degenerate
+        ? `Degenerate: ${fit.reason}. Bars and trades cannot be separated in this run.`
+        : `With both drivers in one model: ${fit.perHour} MB per thousand bars CI[${fit.perHourCi?.join(', ')}] and ${fit.perClosedTrade} MB per closed trade CI[${fit.perClosedTradeCi?.join(', ')}], VIF ${fit.varianceInflation}. The per-trade figure published at 10:10 (+16.61 MB, bars omitted) should be read against this one, and if it falls, part of what looked like trade cost was bar cost.`;
+    } else {
+      report.barsVersusTrades.reading = `NO two-driver fit: the bar axis was not monotonic (${report.barsVersusTrades.reArmCount} re-arms), so bars cannot enter the model without carrying the same artifact that made me refuse the soak's negative per-bar slope. The clean per-bar rate stands on MONOTONIC-BARS-GATE instead.`;
+    }
 
     report.verdict = report.bend.shape
       ? `${report.bend.shape.split('—')[0].trim()}. Settled local rate ${report.bend.settledMBPerHour} MB/h against a ${chord?.perHour ?? '?'} MB/h chord, at a ${report.driverSteadiness.steady ? 'STEADY' : 'NOT STEADY'} ${report.driverSteadiness.meanClosesPerHour} closes/h.`
