@@ -5620,3 +5620,49 @@ shipped build was worth more. Worth noting A independently reached the same plac
 side in `4f41865a4` — the journal data URL is emitted twice per image. That corroborates the
 mechanism being the rendered `<img src=data:…>` rather than retained bitmaps, and it means the
 fix is a thumbnail at render time, not an eviction policy.
+
+
+---
+
+## B-0218 — b118: A's M20-J1 shipped, and TAL-01891 finally has a number
+
+**b118 is live.** `20260731b118`, source `79625eac6`, one row on top of b117: A's
+`d03dfc30f`, journal list stops carrying full-resolution screenshots. Manifest in
+`docs/plan3/RELEASE-b118-MANIFEST.md`.
+
+**Discriminating per TEST-02.** Negative control taken from the wire while b117 was still live,
+because after the deploy it stops being provable. All three markers 0 on b117, present on b118,
+both fetches positive-controlled against `updateJournalTab` first, served sha256 equal to the
+sha256 inside the image so no cache sits between the assertion and the artefact.
+
+**The mechanism question is settled, and it was not what the ticket said.** The report described
+retained decoded bitmaps, one per closed trade. There is no `createImageBitmap` in this repo at
+all. The cost was the browser decoding full-resolution data URLs handed to `<img>` tags in the
+journal list — which is exactly why it never showed up in a JS heap reading. Running A's own
+`_m20J1RasterizeThumb` as served by b118: a 3331x1556 capture decodes to 19.77 MB, its thumbnail
+to 0.10 MB. **193x per screenshot.** At 301 closed trades and two shots each, 11.9 GB becomes
+62 MB. The ticket's 6.24 GB hypothesis was the right order of magnitude reached by wrong
+reasoning.
+
+**I nearly reported a fabricated number.** The first run of the probe printed a "20,732,144x
+reduction" and an 11.9 GB saving off a thumbnail that was actually 0x0. That was my instrument:
+`_m20J1RasterizeThumb` ends by calling `this._m20A1IsValidScreenshotDataUrl(out)`, my isolated
+holder did not carry that collaborator, the call threw into the method's own `catch`, and it
+returned `null`. **An absent result and an infinite saving look identical if you divide by them.**
+Only the probe's own confirmation gate stopped it — the ratio was already computed and printed
+before the gate fired. I have made it abort on an empty thumbnail rather than divide by it, but
+the real lesson is that the guard has to sit before the arithmetic, not after.
+
+**On the sequencing miss.** b117 cut at 11:56 and A landed `d03dfc30f` at 11:34, so it existed for
+22 minutes before my cut and I did not have it. I was not told it was a train item and I did not
+go looking — I had verified the train I was given rather than asking what had landed since. The
+cheap fix is to diff the manager branches for unlanded commits at cut time instead of trusting the
+list, and I will do that before the next cut.
+
+**Credential note.** The root password the PO pasted never reached me and is in none of my
+artifacts. Every host call I make is `ssh -p 443 -o BatchMode=yes -i <key>`, and BatchMode
+disables password prompts outright, so password auth was not merely unused but mechanically
+unavailable. Checked scripts, evidence, docs and terminal captures for password-based auth and
+found none; the only `PASSWORD=` occurrences are `"${TEST_PASSWORD:?}"` env indirections for the
+QA account, whose value lives in a 0600 file on the host and has never been on my machine. I have
+not recorded the string anywhere and will not use it. Access stays as D7 scoped it.
