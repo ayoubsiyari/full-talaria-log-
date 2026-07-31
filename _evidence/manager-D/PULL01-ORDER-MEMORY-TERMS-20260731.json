@@ -1,0 +1,79 @@
+{
+  "schema": "talaria.pull01.order-memory-terms.v1",
+  "tip": "76023722d",
+  "measuredAt": "2026-07-31T08:43:49.494Z",
+  "grading": "payload-sizing-no-browser-soak",
+  "caveat": "Decoded-bitmap model sizes real screenshot pixels (RGBA) but does not prove Chrome retains one decoded bitmap per trade without a live heap snapshot.",
+  "screenshot": {
+    "sourcePath": "C:/Users/user/Desktop/talaria1/manager-d-trade/docs/plan3/fixtures/talaria-chart-median-live-census.dataurl.txt",
+    "declaredMime": "image/png",
+    "actualFormat": "image/jpeg",
+    "mimeNote": "data URL MIME label does not match bytes; sizing uses actual JPEG dimensions",
+    "dataUrlChars": 242506,
+    "binaryBytes": 181862,
+    "width": 3331,
+    "height": 1556,
+    "decodedRgbaBytesPerBitmap": 20732144,
+    "compressedDataUrlUtf16BytesPerField": 485012,
+    "closedTradesAtExcursionScale": 301,
+    "models": {
+      "oneDecodedBitmapPerClosedTrade": {
+        "perClosedTradeBytes": 20732144,
+        "soakScaleBytes": 6240375344
+      },
+      "entryAndExitDecodedBitmapsPerClosedTrade": {
+        "perClosedTradeBytes": 41464288,
+        "soakScaleBytes": 12480750688
+      },
+      "fourCompressedDataUrlFieldsPerClosedTrade": {
+        "fields": [
+          "entryScreenshot",
+          "exitScreenshot",
+          "entryScreenshots[0].screenshot",
+          "railScreenshots[0]"
+        ],
+        "perClosedTradeBytes": 1940048,
+        "soakScaleBytes": 583954448
+      }
+    }
+  },
+  "excursion": {
+    "observedScaleSamples": 95652,
+    "growthSamplesPerHour": 23300,
+    "impliedClosedTradesAt318SamplesEach": 300.79245283018867,
+    "current": {
+      "totalSamples": 95652,
+      "seriesCount": 6,
+      "seriesLengths": [
+        15942,
+        15942,
+        15942,
+        15942,
+        15942,
+        15942
+      ],
+      "packedFloat64Bytes": 765216,
+      "productJsonUtf16Bytes": 1604120,
+      "bytesPerSampleJsonUtf16": 16.770375946138085
+    },
+    "hourlySlope": {
+      "totalSamples": 23300,
+      "seriesCount": 6,
+      "seriesLengths": [
+        3884,
+        3884,
+        3883,
+        3883,
+        3883,
+        3883
+      ],
+      "packedFloat64Bytes": 186400,
+      "productJsonUtf16Bytes": 358868,
+      "bytesPerSampleJsonUtf16": 15.40206008583691
+    }
+  },
+  "tal01891": {
+    "disposition": "reopen-live-p0-candidate",
+    "rationale": "At heavy-account scale, one decoded screenshot bitmap per closed trade is multi-GB and can make the 8 GB report accurate while fresh harness accounts miss it."
+  }
+}

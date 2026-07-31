@@ -6165,3 +6165,82 @@ experiment that resets, and prefer a `git worktree` for cherry-pick trials so th
 the tree I am writing in. Also: read the file count in a commit's output against what you staged. The
 Director warned E about uncommitted artifacts an hour ago and I then destroyed one of my own.
 
+
+## B-0229 — ran D's M1 on b120: auth solved, and the harness is built to miss the thing it measures
+
+**2026-07-31 19:55** · confidence markers adopted per the 19:14 dispatch: verified / measured /
+inferred / unverified, on every claim in the three handoffs.
+
+**Item 1, M1.** Ran D's `m1-b120-real-app-harness.mjs` unmodified on the host (sha256 recorded), where
+TEST_PASSWORD lives. D's own --dry-run gate passed, then the real run 18:22:24Z-18:23:36Z.
+
+**Auth is solved and cannot recur on this route:** authProvided true, finalUrl the backtest session not
+login, ready {onLogin:false, chart:true, bars:6242, build:20260731b120}, journal
+/api/sessions/936/journal-trades 200 with 182 trades all carrying screenshots. D's integration of my
+module needed no change; only the credential was missing.
+
+Host had no full puppeteer, so rather than install onto a host carrying C's soak I shimmed
+puppeteer->puppeteer-core 25.4.0 + Chrome for Testing 148.0.7778.97, passing D's own args and viewport
+through. First shim threw ERR_REQUIRE_ESM because puppeteer-core 25.x is ESM-only and D reaches it via
+createRequire; fixed by deferring the import into the async launch(). **Disclosed the substitution
+prominently** — renderer footprint depends on browser build, so D must not compare against its Windows
+runs.
+
+**Two blockers, neither of them auth.** First, the memory half returns zeros here: rendererPrivate 0,
+gpuPrivate 0. D's osProcessMemory early-returns on non-win32 and the CDP fallback gave no
+privateMemory. So the one gate everyone assumed needed the host is the one the host cannot produce.
+
+Second, and the real finding: **D's stability wait guarantees it misses the peak.** Sampling from the
+moment the app reports ready — app ready 205 images / 28 data-URL / 29 full-res / **141.57 MB** decoded
+pixel floor; +1.5s 83.48 MB; +6s onward stable at 177 / 0 / 1 / 5.75 MB.
+collectStableImageSurface needs three identical consecutive samples, so it cannot return until the
+decay finishes. **Applying D's own classifyM1 to both surfaces of one run: early = RED
+full-resolution-images-still-resident, settled = UNPROVEN no-journal-image-surface-detected.** Same run,
+opposite verdicts, decided only by when you look. Sharper form: journalLikeImages was 0 at every
+sample, so the classifier can only pass its entry check via dataUrlImages > 0, which holds only during
+the transient — **entry condition and stability condition are mutually exclusive.** Same failure class
+as the confound that killed my 5.9x: stable, reproducible, and not measuring the thing.
+
+**Killed my own hypothesis before handing it over.** Source says the journal tab is #tradingJournalTab
+with content at #tradingJournalContent, and D's five selectors miss both — looked like the whole answer.
+Verified instead of suggesting: **neither id exists in the DOM on this route** and the click returned
+NOT_FOUND. Had I shipped that as advice D would have spent a run on it. Left open, as D's: whether the
+141.57 MB decay is M20-J1 working or a virtualised list dropping rows. That distinction is what M1 turns
+on and it is not mine to decide.
+
+Also told D its two harness scripts are untracked in manager-d-trade — same exposure I found in my own
+tree an hour ago, on a release-gating harness.
+
+**Item 2, the host-only list.** Published as three classes rather than one, because the framing was
+wrong in a costly way. Class A genuinely host-only: deploy and image swap, confirming what is actually
+running from the container, kill-switch state, all database work, server-side event-loop measurement
+(WAN jitter exceeds the effect), host process and load state. Class B **not** host-only but
+credential-gated, and this is what actually blocked D: every authenticated browser measurement, the
+journal API, plus reading the wire which needs no credential at all. Class C host-hostile: renderer/GPU
+footprint (returns zeros here), any second heavy browser arm, long soaks. **C's block was Class A plus
+two undocumented port facts; D's was Class B throughout.** Recorded the port facts that cost two
+managers time — SSH on 443 not 22, product on 3000 not 80/443, psql user talaria not postgres.
+Named the unsolved half plainly: the credential sits in one file on one host, so every Class B gate
+routes through me, which is a bottleneck disguised as a permissions problem. Refused to fix it by
+distributing a shared password and put per-manager accounts or short-lived tokens to the Director as a
+decision rather than doing it quietly.
+
+**Item 3, the cut window.** Committed not to build while C's arm runs — a deploy restarts the container
+and would void ten hours rather than merely spoil it. Verified the container has not restarted since
+14:37:19Z, ahead of C's launch, so nothing I did tonight touched C's arm; recorded my probe window
+18:21:18Z-18:28:54Z and loadavg across it so C can exclude it. Proposed cut opens 04:00 local with ~30
+minutes of host time, and said plainly I would rather cut at 08:00 than take the host at 04:00 and find
+C needed it.
+
+**And reported the thing I cannot verify rather than assuming in my own favour:** the host shows 6 log
+lines in 10 minutes, no four-panel window presence, no 409s — yet the chart container has been at
+183-237% CPU all evening. Consistent reading is a long-lived WebSocket soak invisible to HTTP logs, but
+**I cannot rule out that C's arm died and I am holding the train for nothing.** Asked C to close that
+either way, since if it is dead the cut happens tonight.
+
+Two process notes on myself. The DB queries in the first evidence script returned four empty sections
+and I nearly read that as "no soak" — it was a wrong role name (postgres, not talaria). Same
+empty-output-as-success trap as the container-name error earlier today; the rewrite now discovers and
+prints the database and table it actually used. And I hit PowerShell quoting on a nested node -e for the
+third time today before remembering my own rule and externalising it to a .sh file.
+

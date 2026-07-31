@@ -1,0 +1,99 @@
+{
+  "signature": "TALARIA_RELEASE_PARITY_README_6_5_V1",
+  "status": "GREEN",
+  "routes": {
+    "pan": {
+      "cell": "README-6-5-PAN-THROTTLE",
+      "mode": "stable",
+      "route": "pan",
+      "status": "GREEN",
+      "charts": 4,
+      "durationMs": 30000,
+      "cpuThrottle": 4,
+      "timeframes": [
+        "1m",
+        "5m",
+        "15m",
+        "1h"
+      ],
+      "mismatchedTimeframesOnly": true,
+      "ticks": 300,
+      "ok": 1200,
+      "fail": 0,
+      "perChart": [
+        {
+          "ok": 300,
+          "fail": 0
+        },
+        {
+          "ok": 300,
+          "fail": 0
+        },
+        {
+          "ok": 300,
+          "fail": 0
+        },
+        {
+          "ok": 300,
+          "fail": 0
+        }
+      ],
+      "note": "README 6.5 amended: four mismatched-timeframe charts pan for 30s under 4× CPU throttle; fail stays 0."
+    },
+    "resize": {
+      "cell": "README-6-5-RESIZE-THROTTLE",
+      "mode": "stable",
+      "route": "resize",
+      "status": "GREEN",
+      "charts": 4,
+      "durationMs": 30000,
+      "cpuThrottle": 4,
+      "timeframes": [
+        "1m",
+        "5m",
+        "15m",
+        "1h"
+      ],
+      "mismatchedTimeframesOnly": true,
+      "ticks": 300,
+      "ok": 1200,
+      "fail": 0,
+      "perChart": [
+        {
+          "ok": 300,
+          "fail": 0
+        },
+        {
+          "ok": 300,
+          "fail": 0
+        },
+        {
+          "ok": 300,
+          "fail": 0
+        },
+        {
+          "ok": 300,
+          "fail": 0
+        }
+      ],
+      "note": "README 6.5 amended: four mismatched-timeframe charts resize for 30s under 4× CPU throttle; fail stays 0."
+    }
+  },
+  "redControls": [
+    {
+      "cell": "NC-README-6-5-PAN-FAILS",
+      "status": "GREEN",
+      "reportStatus": "RED",
+      "expected": "RED",
+      "fail": 18
+    },
+    {
+      "cell": "NC-README-6-5-RESIZE-FAILS",
+      "status": "GREEN",
+      "reportStatus": "RED",
+      "expected": "RED",
+      "fail": 18
+    }
+  ],
+  "limitation": "Hermetic pan+resize/throttle model of README 6.5 plus roadmap resize amendment. Product CDP 4× throttle drive remains a CONF-01 follow-up on the single-realm canary."
+}

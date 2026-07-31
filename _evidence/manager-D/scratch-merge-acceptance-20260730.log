@@ -1,0 +1,452 @@
+﻿PASS panel-boot-registers-on-host — hostListeners=1
+PASS host-listener-census-zero-after-teardown — hostListeners=0
+PASS repeated-cycles-flat — maxResidualPerCycle=0
+PASS live-panel-receives-commits — commits=2
+PASS live-panel-listener-retained — hostListeners=1
+PASS bfcache-pagehide-keeps-listener — hostListeners=1
+PASS bfcache-restore-still-delivers — commits=1
+PASS generation-dedup-preserved — gens=5,6
+PASS removal-uses-captured-host-ref — host=0 decoy=0
+PASS teardown-throw-contained
+PASS non-embed-registers-nothing — hostListeners=0
+PASS top-level-registers-nothing — hostListeners=0
+PASS event-registration-balanced — addEventListener=1 removeEventListener=1
+PASS window-parent-registrations-paired — paired=mouseup,pointerup,pointercancel,mousemove
+PASS teardown-hooks-pagehide-not-unload — pagehide add=1 rem=1 unload add=0 rem=0
+✔ M23: a removed multichart panel leaves ZERO talariaMcHostDataCommit listeners on the host (5.1741ms)
+✔ M23: repeated panel boot/teardown cycles do not accumulate host listeners (62.6909ms)
+✔ M23: a LIVE panel still receives host data commits (no eager removal) (2.3842ms)
+✔ M23: bfcache pagehide (persisted=true) must NOT remove the listener (3.9879ms)
+✔ M23: generation de-duplication still holds after the listener lifecycle change (2.6432ms)
+✔ M23: removal targets the captured host window, not a re-read window.parent (3.0903ms)
+✔ M23: teardown never throws, even if the host removeEventListener throws (2.893ms)
+✔ M23: a non-embed chart registers nothing and tears down cleanly (2.2878ms)
+✔ M23: a top-level chart (window.parent === window) registers nothing (4.0139ms)
+✔ M23: chart.js pairs every talariaMcHostDataCommit registration with a removal (2.4815ms)
+✔ M23: every window.parent.addEventListener site in chart.js has a matching removal (4.0627ms)
+✔ M23: panel teardown hooks pagehide, not unload (bfcache-safe) (1.0723ms)
+🧹 forceCloseAllOrders (selective @ 1721600090000): kept 0 closed + 1 open (+1 resurrected), removed 1 closed + 0 open, journal −1 (now 0)
+🧹 forceCloseAllOrders (selective @ 1721600090000): kept 0 closed + 0 open (+0 resurrected), removed 1 closed + 0 open, journal −1 (now 0)
+🧹 forceCloseAllOrders (selective @ 1721600090000): kept 0 closed + 0 open (+0 resurrected), removed 0 closed + 1 open, journal −0 (now 0)
+🧹 forceCloseAllOrders (selective @ 1721600090000): kept 1 closed + 0 open (+0 resurrected), removed 1 closed + 0 open, journal −1 (now 1)
+🧹 forceCloseAllOrders (selective @ 1721600090000): kept 0 closed + 0 open (+0 resurrected), removed 1 closed + 0 open, journal −1 (now 0)
+🧹 forceCloseAllOrders (selective @ 1721600090000): kept 0 closed + 0 open (+0 resurrected), removed 1 closed + 0 open, journal −1 (now 0)
+🧹 forceCloseAllOrders (selective @ 1721600105000): kept 0 closed + 0 open (+0 resurrected), removed 0 closed + 0 open, journal −0 (now 0)
+🧹 forceCloseAllOrders (selective @ 1721600090000): kept 0 closed + 0 open (+0 resurrected), removed 1 closed + 0 open, journal −1 (now 0)
+🧹 forceCloseAllOrders (selective @ 1721600090000): kept 0 closed + 1 open (+1 resurrected), removed 1 closed + 0 open, journal −1 (now 0)
+🧹 forceCloseAllOrders (selective @ 1721600090000): kept 0 closed + 0 open (+0 resurrected), removed 1 closed + 0 open, journal −1 (now 0)
+🧹 forceCloseAllOrders (selective @ 1721600090000): kept 0 closed + 0 open (+0 resurrected), removed 1 closed + 0 open, journal −1 (now 0)
+🧹 forceCloseAllOrders (selective @ 1721600090000): kept 0 closed + 1 open (+1 resurrected), removed 1 closed + 0 open, journal −1 (now 0)
+✔ M23 flag + permanent-cancel gate are wired (chart + homepage) (108.1389ms)
+✔ hypothesis REFUTED: cut path is bar-timeline keyed (not wall-clock/insertion) (39.4857ms)
+✔ CONTROL (kill): mid-trade cut resurrects open (tip behaviour) (9.0603ms)
+✔ RED: mid-trade cut permanently cancels — no resurrect (0.9703ms)
+✔ RED: open leg at cut is permanently cancelled (not preserved) (0.7671ms)
+✔ RED: keepClosed trades before cut are preserved; PnL reconciles (0.5931ms)
+✔ RED: markers/arrows cleared after permanent cancel (TAL-01937) (0.6849ms)
+✔ RED: forward after cancel cannot reactivate the trade (0.7032ms)
+✔ RED: cut path prompts; cancel aborts; confirm applies permanent cancel (3.0702ms)
+✔ CONTROL (kill): cut path does not prompt (1.4567ms)
+✔ unrelated pending before cut is preserved under permanent cancel (0.7851ms)
+✔ mutant: ungated resurrectOpen under default must die (39.7335ms)
+✔ mutant: kill polarity inverted dies (0.9981ms)
+✔ mutant: confirm bypass without flag dies (1.3324ms)
+📋 SPLIT 1/2: LIMIT BUY Order #43 @ 1.10100 (0.10 lots)
+   ⚠️ No tpTargets - will use single TP at 1.111
+GREEN — M24 order id allocator reconciles stale restored counters
+✔ chart v 1.4\chart\modules\m24-order-id-allocator.test.mjs (283.1992ms)
+GREEN — realized losses and recompute floor balance at zero
+✔ chart v 1.4\chart\modules\order-balance-floor.test.mjs (342.6211ms)
+GREEN — BE trigger keeps its preview/place anchor
+✔ chart v 1.4\chart\modules\order-be-place-anchor.test.mjs (363.1196ms)
+🟦OM-DIAG placeAdvancedOrder() CALLED { keepPanelOpen: true }
+🟦OM-DIAG placeAdvancedOrder() CALLED { keepPanelOpen: true }
+🟦OM-DIAG placeAdvancedOrder() CALLED { keepPanelOpen: true }
+GREEN — place is blocked until preview drag commits or cancels
+🟦OM-DIAG place blocked while preview drag is active
+🟦OM-DIAG place blocked while preview drag is active
+✔ chart v 1.4\chart\modules\order-block-place-during-preview-drag.test.mjs (436.7861ms)
+GREEN — cancel badge press suppresses trailing recreated place click
+✔ chart v 1.4\chart\modules\order-cancel-before-confirm.test.mjs (411.4307ms)
+   🧹 Removing 1 SL line(s) for order #17
+   🧹 Removing 1 TP line(s) for order #17
+   🧹 Removing 1 BE line(s) for order #17
+✅ All SL/TP/BE lines removed for order #17
+   🧹 Removing 1 SL line(s) for order #17
+   🧹 Removing 1 TP line(s) for order #17
+   🧹 Removing 1 BE line(s) for order #17
+✅ All SL/TP/BE lines removed for order #17
+✔ projected iframe cannot execute or re-mark from its display candle (4.4593ms)
+✔ timeframe-rebuilt iframe stays read-only before snapshot re-prime (0.9819ms)
+✔ projected order labels use the host mark on every timeframe (0.3609ms)
+✔ host panel A and projected panel B render the same canonical mark (0.4381ms)
+✔ snapshot kill-switch reconstructs panel-local mark divergence (0.3537ms)
+✔ SL/TP cleanup can target panel B without deleting panel A (2.9165ms)
+
+=== RC-5 order-entry aggregate property tests [LEGACY (delta-mutated)] ===
+
+FAIL (known): limit-main-crosses-market
+  op: {"type":"move","id":1,"price":1.105}
+    [order-type-reclassify] leg 2 classified stop, expected limit vs market 1.1
+    state: {"averageEntry":1.086667,"riskSplitSum":100,"mainOrderType":"stop","legs":[{"id":2,"price":1.085,"pct":50,"type":"stop","pnl":1000},{"id":1,"price":1.105,"pct":50,"type":"stop","pnl":-200}]}
+pass (known): delete-then-delta-stale-split
+pass (known): move-below-mark-positive-pnl
+FAIL (order-type): buy-zones-limit-market-stop
+  op: {"type":"move","id":1,"price":1.10005}
+    [order-type-reclassify] leg 2 classified stop, expected limit vs market 1.1
+    state: {"averageEntry":1.086667,"riskSplitSum":100,"mainOrderType":"stop","legs":[{"id":2,"price":1.085,"pct":50,"type":"stop","pnl":1500},{"id":1,"price":1.10005,"pct":50,"type":"stop","pnl":-1.2469}]}
+  op: {"type":"move","id":1,"price":1.102}
+    [order-type-reclassify] leg 2 classified stop, expected limit vs market 1.1
+    state: {"averageEntry":1.086667,"riskSplitSum":100,"mainOrderType":"stop","legs":[{"id":2,"price":1.085,"pct":50,"type":"stop","pnl":1500},{"id":1,"price":1.102,"pct":50,"type":"stop","pnl":-45.4545}]}
+pass (order-type): sell-zones-limit-market-stop
+FAIL (order-type): buy-zone-crossing-drag
+  op: {"type":"move","id":1,"price":1.1}
+    [order-type-reclassify] leg 1 classified limit, expected market vs market 1.1
+    state: {"averageEntry":1.086667,"riskSplitSum":100,"mainOrderType":"limit","legs":[{"id":2,"price":1.085,"pct":50,"type":"limit","pnl":1500},{"id":1,"price":1.1,"pct":50,"type":"limit","pnl":0}]}
+  op: {"type":"move","id":1,"price":1.103}
+    [order-type-reclassify] leg 2 classified stop, expected limit vs market 1.1
+    state: {"averageEntry":1.086667,"riskSplitSum":100,"mainOrderType":"stop","legs":[{"id":2,"price":1.085,"pct":50,"type":"stop","pnl":1500},{"id":1,"price":1.103,"pct":50,"type":"stop","pnl":-65.2174}]}
+FAIL (order-type): multi-entry-legs-classify-independently
+  op: {"type":"move","id":2,"price":1.102}
+    [avg-in-range] average 1.0866666666666667 not in [1.098, 1.102]
+    state: {"averageEntry":1.086667,"riskSplitSum":100,"mainOrderType":"limit","legs":[{"id":1,"price":1.098,"pct":50,"type":"limit","pnl":55.5556},{"id":2,"price":1.102,"pct":50,"type":"stop","pnl":-45.4545}]}
+  op: {"type":"add","id":3,"price":1.1}
+    [order-type-reclassify] leg 3 classified limit, expected market vs market 1.1
+    state: {"averageEntry":1.099848,"riskSplitSum":100,"mainOrderType":"limit","legs":[{"id":1,"price":1.098,"pct":38,"type":"limit","pnl":42.2222},{"id":3,"price":1.1,"pct":24,"type":"limit","pnl":0},{"id":2,"price":1.102,"pct":38,"type":"stop","pnl":-34.5455}]}
+
+Random seeds with violations: 32 / 50
+
+Example failing random sequence (seed=7):
+{
+  "seed": 7,
+  "ops": [
+    {
+      "type": "add",
+      "id": 3,
+      "price": 1.0812391651514919
+    },
+    {
+      "type": "rebalance"
+    },
+    {
+      "type": "move",
+      "id": 2,
+      "price": 1.088138042201288
+    },
+    {
+      "type": "move",
+      "id": 1,
+      "price": 1.0918331400987227
+    },
+    {
+      "type": "move",
+      "id": 1,
+      "price": 1.0818987090985757
+    },
+    {
+      "type": "move",
+      "id": 2,
+      "price": 1.0829284315027763
+    },
+    {
+      "type": "delete",
+      "id": 1
+    },
+    {
+      "type": "move",
+      "id": 2,
+      "price": 1.1024486526120454
+    },
+    {
+      "type": "add",
+      "id": 4,
+      "price": 1.0975555919110775
+    },
+    {
+      "type": "add",
+      "id": 5,
+      "price": 1.0828731477214024
+    }
+  ],
+  "trace": [
+    {
+      "op": {
+        "type": "move",
+        "id": 2,
+        "price": 1.0829284315027763
+      },
+      "violations": [
+        {
+          "code": "avg-in-range",
+          "msg": "average 1.0832501428478587 not in [1.0812391651514919, 1.0829284315027763]"
+        }
+      ],
+      "agg": {
+        "averageEntry": 1.08325,
+        "riskSplitSum": 100,
+        "mainOrderType": "limit",
+        "legs": [
+          {
+            "id": 3,
+            "price": 1.0812391651514919,
+            "pct": 24,
+            "type": "limit",
+            "pnl": 2471.503
+          },
+          {
+            "id": 1,
+            "price": 1.0818987090985757,
+            "pct": 38,
+            "type": "limit",
+            "pnl": 2421.9037
+          },
+          {
+            "id": 2,
+            "price": 1.0829284315027763,
+            "pct": 38,
+            "type": "limit",
+            "pnl": 1436.6722
+          }
+        ]
+      }
+    },
+    {
+      "op": {
+        "type": "move",
+        "id": 2,
+        "price": 1.1024486526120454
+      },
+      "violations": [
+        {
+          "code": "order-type-reclassify",
+          "msg": "leg 3 classified stop, expected limit vs market 1.1"
+        }
+      ],
+      "agg": {
+        "averageEntry": 1.081912,
+        "riskSplitSum": 100,
+        "mainOrderType": "stop",
+        "legs": [
+          {
+            "id": 3,
+            "price": 1.0812391651514919,
+            "pct": 39,
+            "type": "stop",
+            "pnl": 4016.1923
+          },
+          {
+            "id": 2,
+            "price": 1.1024486526120454,
+            "pct": 61,
+            "type": "stop",
+            "pnl": -229.5763
+          }
+        ]
+      }
+    }
+  ]
+}
+
+Total violation events: 84
+Mode: LEGACY (delta-mutated)
+
+RED — legacy delta model violates invariants (expected before fix)
+✔ chart v 1.4\chart\modules\order-entry-aggregates.property.test.mjs (299.621ms)
+GREEN — close/hit-target stack indices + manager offsets passed
+✔ chart v 1.4\chart\modules\order-entry-close-hittarget.test.mjs (509.9034ms)
+🔄 Reclassified order type: limit → stop (Entry: 1.10500, Current: 1.10000)
+pass: switches default ON
+pass: reclassification switch OFF
+🔄 Reclassified order type: limit → stop (Entry: 1.10500, Current: 1.10000)
+pass: live-label switch OFF
+pass: both switches OFF
+GREEN — real entry drag handler ran without ReferenceError across switch matrix
+✔ chart v 1.4\chart\modules\order-entry-drag-handler-reference.test.mjs (421.6863ms)
+GREEN — make-new-order clears stale draft SL/TP levels
+✔ chart v 1.4\chart\modules\order-entry-new-draft-reset.test.mjs (519.1536ms)
+GREEN — parse/drag-input SL/TP seed + lot stepper side-effects helpers passed
+✔ chart v 1.4\chart\modules\order-entry-parse-drag-input.test.mjs (420.1932ms)
+GREEN — remaining-open-8 preview color, second-entry offset, SL anchor, panel/cancel helpers passed
+✔ chart v 1.4\chart\modules\order-entry-remaining-open-8.test.mjs (528.342ms)
+✅ Entry screenshot captured for fresh order #29
+✅ Entry screenshot captured for late journal row #30
+GREEN — restored entry screenshots are idempotent and late shots persist to journal
+✔ chart v 1.4\chart\modules\order-entry-screenshot-idempotent.test.mjs (398.7653ms)
+GREEN — canonical projection anchors spread-side exits to hit time
+✔ chart v 1.4\chart\modules\order-exit-marker-spread-column.test.mjs (443.9499ms)
+
+--- ready-panels snapshot switch default ON ---
+
+--- collectUnsyncedReadyPanelIds ---
+
+--- fanOutHostOrderSnapshotToIframes — projection to ready iframes ---
+
+--- runtime fan-out preserves SVG and projects only host marks ---
+
+--- primeReadyPanelsWithHostOrders GREEN — F5 restore path uses snapshot ---
+
+--- primeReadyPanelsWithHostOrders — empty host does NOT mark peers synced (F5 race) ---
+
+--- primeReadyPanelsWithHostOrders RED — ready-panels switch OFF falls back to addOrder ---
+
+--- buildHostOrderStoreSnapshot — I16 row stamps ---
+
+29 passed, 0 failed
+✔ chart v 1.4\chart\modules\order-host-store.test.mjs (347.7783ms)
+
+--- switches default ON ---
+
+--- provisional lifecycle ---
+
+--- RC5-OI-1 GREEN — store unchanged during drag ---
+
+--- RC5-OI-1 edge (a) — committed SL cross fires during drag ---
+
+--- RC5-OI-1 RED — legacy live mutation (switch OFF) ---
+
+--- RC5-OI-1 edge (b) — cancel discards provisional ---
+
+--- shouldSuppressSltpHits — D-020 does not block committed hits ---
+
+--- getSltpHitTestPrice defensive committed read ---
+
+--- RC5-OI-2 — shouldDeferReplayPreviewSync ---
+
+--- commit on release ---
+
+--- RC5-OI-3 — #5 draft scale refresh from store ---
+
+--- RC5-OI-4 — A6-3 order store invariant during axis gesture ---
+
+=== 36 passed, 0 failed ===
+✔ chart v 1.4\chart\modules\order-interaction-guard.test.mjs (342.1211ms)
+   🎯 TAKE PROFIT HIT! Closing BUY #7 at 110.00000
+🗑️ Removed 1 order(s) from pending queue
+✔ candle-mode placement owns a future-candle boundary (2.3519ms)
+✔ tick-mode placement owns price action after the current tick (1.47ms)
+✔ tick identity wins over fine-execution replay:<barT> stamp (0.8513ms)
+✔ viewport and timeframe recomputes cannot replay one market event (0.9352ms)
+✔ omitted seek guard tick defaults to strict current-candle barrier (0.5485ms)
+✔ 1m order execution candle survives a 1D display switch (1.3112ms)
+✔ placement retains its 1m execution feed before the display master is replaced (0.5905ms)
+✔ replay batches paint while retaining every fine order-lifecycle event (2.187ms)
+✖ batched order playback evaluates every hidden fine step and paints once (5.3499ms)
+✔ batched order playback stops and paints on the exact lifecycle event (1.0586ms)
+✔ updatePositions closes only after canonical replay time advances (8.6782ms)
+✔ pending activation also requires a future canonical event (1.6154ms)
+✔ kill-switch reconstructs the stale-candle failure class (0.4585ms)
+✔ non-replay pricing keeps the legacy no-tick sentinel (0.2834ms)
+GREEN — pending SL/TP edge rows clamp visible without exposing far-out rows
+✔ chart v 1.4\chart\modules\order-line-edge-visibility.test.mjs (305.4051ms)
+--- candle readable ---
+--- place gate ready ---
+--- new order detection ---
+
+14 passed, 0 failed
+✔ chart v 1.4\chart\modules\order-mc-place-gate.test.mjs (278.0007ms)
+GREEN — coincident multi-TP rungs are separated for hit-testing
+✔ chart v 1.4\chart\modules\order-multi-tp-coincident-stack.test.mjs (295.3643ms)
+GREEN — new draft clears fields and hidden SL/TP drag constraints
+✔ chart v 1.4\chart\modules\order-new-draft-constraint-reset.test.mjs (264.0255ms)
+
+--- switch default ON ---
+
+--- positionBelongsOnLocalChart ---
+
+--- cross-ticker RED — legacy uses peer feed when ownership unknown ---
+
+--- owning-panel mark — GBP never reads EUR candle ---
+
+--- store-level property — one lifecycle one symbol feed ---
+
+--- resolveOwningPanelMidMarkPrice direct ---
+
+--- local EUR position must not mark off focused GBP peer candle ---
+
+--- MultichartGrid peer OHLC — GBP bar without panelManager / same TF ---
+
+--- A6-4 host snapshot helpers ---
+
+=== 29 passed, 0 failed ===
+✔ chart v 1.4\chart\modules\order-owning-panel-price.test.mjs (238.9426ms)
+GREEN — pair switch discards previous pair draft state
+✔ chart v 1.4\chart\modules\order-pair-switch-draft-rebind.test.mjs (341.7213ms)
+GREEN — full-size opposing pending fills close the existing position
+✔ chart v 1.4\chart\modules\order-pending-close-netting.test.mjs (236.3014ms)
+GREEN — journal restore is the account/PnL authority after refresh
+✔ chart v 1.4\chart\modules\order-pnl-refresh-stable.test.mjs (250.3262ms)
+GREEN — provisional TP drag feeds panel PnL before input commit
+✔ chart v 1.4\chart\modules\order-preview-live-recalc.test.mjs (368.4671ms)
+↩️ Provisional SL/TP edit cancelled (escape)
+GREEN — fixed-risk quantity follows live preview SL before commit
+✔ chart v 1.4\chart\modules\order-risk-qty-live-preview-sl.test.mjs (339.2983ms)
+GREEN — SL commit recalculates fixed-risk quantity
+✔ chart v 1.4\chart\modules\order-risk-qty-on-sl-commit.test.mjs (353.6367ms)
+
+--- switches ---
+
+--- serialize roundtrip ---
+
+--- apply to store (F5 end-state) ---
+
+--- session key scoping ---
+
+--- RED backend when switch OFF ---
+
+--- duplicate detection ---
+
+--- I16 persist stamp (RED-again: STAMP_OFF) ---
+
+=== 25 passed, 0 failed ===
+✔ chart v 1.4\chart\modules\order-runtime-persist.test.mjs (298.0262ms)
+GREEN — per-order pending TP teardown uses exact class selectors
+✔ chart v 1.4\chart\modules\order-sel01-exact-teardown.test.mjs (329.5691ms)
+GREEN — single TP stays executable after trailing SL crosses it
+✔ chart v 1.4\chart\modules\order-single-tp-after-trail.test.mjs (301.7269ms)
+GREEN - SL trigger diagnostics capture bounded decision evidence
+✔ chart v 1.4\chart\modules\order-sl-trigger-diagnostics.test.mjs (311.9948ms)
+GREEN — SL/TP display threshold + parsing reproductions passed
+✔ chart v 1.4\chart\modules\order-sltp-display-parsing.test.mjs (356.478ms)
+GREEN — split handles require intentional drag distance
+✔ chart v 1.4\chart\modules\order-split-entry-hover-stick.test.mjs (315.6878ms)
+GREEN — order-type live label refresh is decoupled from updatePreviewLines drag throttle
+✔ chart v 1.4\chart\modules\order-type-live-label-refresh.test.mjs (293.1016ms)
+GREEN — one-tick-away entries classify as pending orders
+✔ chart v 1.4\chart\modules\order-type-one-tick-pending.test.mjs (260.2912ms)
+🔄 Loading user preferences...
+📥 User preferences loaded from localStorage
+📂 Loaded favorites: [ 'ellipse' ]
+GREEN - pins persist as user-level preferences
+✅ User preferences initialized
+✔ chart v 1.4\chart\modules\pins-user-preferences.test.mjs (226.6432ms)
+ℹ tests 81
+ℹ suites 0
+ℹ pass 80
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1163.4729
+
+✖ failing tests:
+
+test at chart v 1.4\chart\modules\order-lifecycle-event-ownership.test.mjs:394:1
+✖ batched order playback evaluates every hidden fine step and paints once (5.3499ms)
+  AssertionError [ERR_ASSERTION]: four money-path evaluations should produce one chart paint, not four
+  
+  0 !== 1
+  
+      at TestContext.<anonymous> (file:///C:/Users/user/Desktop/talaria1/b-reconcile-d/chart%20v%201.4/chart/modules/order-lifecycle-event-ownership.test.mjs:402:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1201:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:831:18)
+      at Test.postRun (node:internal/test_runner/test:1330:19)
+      at Test.run (node:internal/test_runner/test:1258:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:831:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 0,
+    expected: 1,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

@@ -1,0 +1,55 @@
+{
+  "schema": "talaria.excursion-single-owner-v1.conf02-bytes.v1",
+  "tip": "f4e006b06",
+  "grading": "harness-GREEN-only",
+  "wireGradeOwner": "C",
+  "note": "DECL-01: not the memory win. Excursion term is small; 730 MB/h is elsewhere (A). C grades on the wire.",
+  "authoritative": "tradeJournal",
+  "aliases": {
+    "managerClosed_vs_serviceClosed": "same array via OrderManager.bindServiceProp — zero additional bytes",
+    "realDuplicateWas": "journal .slice() copies alongside closed row arrays"
+  },
+  "cap": {
+    "perArray": 256,
+    "directorMisread": "319 = mean sum of four keys / row (12,762/40), ceiling 1,024 — C FINDING 21:10",
+    "hardCapShipped": true
+  },
+  "conf02": {
+    "closedPositions": 30,
+    "openPositions": 4,
+    "samplesSumFourKeysPerClosed": 319,
+    "perSeries": 79
+  },
+  "legacyDualCopyFlagOff": {
+    "closedBytes": 195120,
+    "journalBytes": 195120,
+    "serviceBytes": 195120,
+    "openBytes": 6552,
+    "naiveThreeListBytes": 585360,
+    "dedupedRowBytes": 390240,
+    "samplesPerList": 9480,
+    "uniqueArrayIdentities": 240,
+    "totalWithOpens": 396792
+  },
+  "productFlagOn": {
+    "beforeEvictDedupedRowBytes": 390240,
+    "uniqueArrayIdentitiesBeforeEvict": 120,
+    "closedBytes": 0,
+    "journalBytes": 195120,
+    "serviceBytes": 0,
+    "openBytes": 6552,
+    "samplesClosed": 0,
+    "samplesJournal": 9480,
+    "samplesService": 0,
+    "retainedExcursionBytes": 201672,
+    "deltaVsLegacyDeduped": 195120
+  },
+  "figure": {
+    "legacyDedupedClosedJournalBytes": 390240,
+    "productJournalOnlyBytesAfterEvict": 195120,
+    "deltaBytes": 195120,
+    "openRetainedBytes": 6552,
+    "naiveThreeListBytesLegacy": 585360
+  },
+  "method": "_excursionSingleOwnerV1ApproxBytes = JSON.stringify(series)×2 UTF-16; screenshots excluded"
+}

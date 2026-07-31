@@ -1,0 +1,112 @@
+{
+  "signature": "TALARIA_RELEASE_PARITY_DESTROY_BYTES_BEHAVIOR_V1",
+  "status": "RED",
+  "current": {
+    "cell": "DESTROY-BYTES-NO-DESTROY",
+    "mode": "noDestroy",
+    "status": "RED",
+    "baseline": {
+      "listenerCountPerChart": 147,
+      "listenerClosureBytes": 37632,
+      "canvasBackingBytes": 4608000,
+      "imageSurfaceBytes": 244736,
+      "latePanResizeScratchBytes": 524288,
+      "rafLoopsPerChart": 1,
+      "timeoutHandlesAtRest": 2
+    },
+    "beforeGrow": {
+      "liveChartIds": [
+        "A",
+        "B"
+      ],
+      "detachedChartIds": [],
+      "survivingListeners": 294,
+      "detachedListeners": 0,
+      "retainedBytes": 9780736,
+      "detachedRetainedBytes": 0,
+      "lateWorkBytes": 0,
+      "rafLoops": 2,
+      "timeouts": 4
+    },
+    "atThree": {
+      "liveChartIds": [
+        "A",
+        "B",
+        "C"
+      ],
+      "detachedChartIds": [],
+      "survivingListeners": 441,
+      "detachedListeners": 0,
+      "retainedBytes": 14671104,
+      "detachedRetainedBytes": 0,
+      "lateWorkBytes": 0,
+      "rafLoops": 3,
+      "timeouts": 6
+    },
+    "afterLateWork": {
+      "liveChartIds": [
+        "A",
+        "B"
+      ],
+      "detachedChartIds": [
+        "C"
+      ],
+      "survivingListeners": 441,
+      "detachedListeners": 147,
+      "retainedBytes": 15195392,
+      "detachedRetainedBytes": 5414656,
+      "lateWorkBytes": 524288,
+      "rafLoops": 3,
+      "timeouts": 6
+    },
+    "failures": [
+      {
+        "reason": "destroyed-listeners-survive",
+        "count": 147
+      },
+      {
+        "reason": "destroyed-instance-retains-bytes",
+        "bytes": 5414656
+      },
+      {
+        "reason": "late-work-rehydrated-bytes",
+        "bytes": 524288
+      },
+      {
+        "reason": "destroyed-raf-loop-survives",
+        "before": 2,
+        "after": 3
+      }
+    ],
+    "eCompanion": {
+      "report": "manager-e-indicator-eviction/docs/plan3/worker-reports/E-FOCUS-DESTROY-CORRECTNESS-20260731.md",
+      "behaviorCell": "DESTROY-NO-DESTROY-RESURRECTS-INDICATOR",
+      "greenCell": "DESTROY-WITH-DESTROY-CLEARS-INDICATORS",
+      "boundary": "E owns destroyed indicator/drawing/overlay correctness; D owns retained bytes and late scheduled work."
+    },
+    "note": "D bytes-side behavior complement: removed charts must not retain bytes or process late pan/resize work."
+  },
+  "redControl": {
+    "cell": "RED-DESTROY-BYTES-NO-DESTROY",
+    "status": "GREEN",
+    "reportStatus": "RED",
+    "expected": "RED"
+  },
+  "futureControl": {
+    "cell": "GREEN-DESTROY-BYTES-WITH-DESTROY",
+    "status": "GREEN",
+    "reportStatus": "GREEN",
+    "expected": "GREEN"
+  },
+  "releaseAuthority": {
+    "stopAuthority": true,
+    "destroyStop": true,
+    "statement": "Chart.destroy() is absent; destroyed charts can retain bytes and process late work."
+  },
+  "eCompanion": {
+    "report": "manager-e-indicator-eviction/docs/plan3/worker-reports/E-FOCUS-DESTROY-CORRECTNESS-20260731.md",
+    "behaviorCell": "DESTROY-NO-DESTROY-RESURRECTS-INDICATOR",
+    "greenCell": "DESTROY-WITH-DESTROY-CLEARS-INDICATORS",
+    "boundary": "E owns destroyed indicator/drawing/overlay correctness; D owns retained bytes and late scheduled work."
+  }
+}

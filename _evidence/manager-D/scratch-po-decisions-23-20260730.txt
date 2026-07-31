@@ -1,0 +1,145 @@
+﻿Questions for the PO — 23 rows
+Director · 30 July 2026 · No build required — none of these need testing
+What this is. These 23 tickets cannot be closed by a test or by reading code. They need a decision, a memory, or a reproduction that only you have. Answering them removes all 23 from tomorrow's testing session. Type into the right-hand column; delete the option you don't want, or write freely.
+Section 1 — Feature requests (9 rows)
+Not defects. D correctly refused to write gates for them. One word each: BLOCKER (must be in canary), AFTER (post-canary backlog), or NO (not wanted).
+Ticket
+What was asked for
+Your answer
+TAL-01907
+ATR bands, with an RTH-only option
+AFTER
+TAL-01906
+SMT compare, synced across panels
+AFTER
+TAL-01915
+COT / Open Interest data availability
+AFTER 
+TAL-01814
+SMC webhook indicator
+NO
+TAL-01852
+Hide-future-candles analysis mode
+AFTER 
+TAL-01851
+Save settings as a layout template
+AFTER
+TAL-01850
+TradingView-style keyboard shortcuts
+BLOCKER
+TAL-01849
+Text and drawing-tool templates
+AFTER
+TAL-01784
+Time-only presets
+NO
+Section 2 — Two rows that may already be ours (2 rows)
+Read this section first. These two were filed as "needs more information", but their titles describe exactly what we have spent today hunting. If these are the same thing, they are not information-gathering rows — they are the campaign, and they close when the memory and lag work lands.
+Ticket
+What the tester reported
+Your answer
+TAL-01891
+"Memory grows to 8 GB, Chrome crash risk"
+
+Is this the same memory growth we have been measuring today, or a separate report with a different trigger? If you remember the tester's setup — how many charts, how long the session ran, whether they switched sessions in one tab — that matters. Today we found memory grows across in-tab session switches, which nobody had tested.
+YES
+What was the tester doing: 
+The tester is was just run normal session and take tardes on one pair and he reaching this high usage 
+
+"Idle, then lag on return"
+
+Leave the tab alone, come back, it is slow. Do you recognise this as still happening on the current build, or was it fixed at some point?
+NOT SURE
+
+Notes:
+We didnt test yet until you finish the build and the fix 
+Section 3 — Reproduction steps only you have (2 rows)
+D refused to invent click paths for these, which was right. Without steps they cannot be gated.
+Ticket
+What was reported
+Steps to reproduce
+TAL-01677
+"Go To session" produces an error message.
+
+Which session, which symbol, what date did you type, and what did the error say?
+
+
+We already fix this 
+TAL-01893
+"Go To" skips 2–3 sessions — you ask for a date and land somewhere else.
+
+Which timeframe, and does it skip forward or backward?
+
+I dont know wich timeframe, and the its skip forward , but make sure its still there or its solved with other go to problem  
+
+Section 4 — A specification decision (1 row)
+
+Ticket
+The question
+Your decision
+TAL-01744
+The crosshair snaps to candles, and its customisation is not carried across layouts.
+
+Two separate decisions:
+1. Should the crosshair snap to candles, or move freely? Or should it be a setting the user chooses?
+2. When you customise the crosshair in one layout, should every layout inherit it?
+1. Snapping:
+This tester think the snapping is an bug but is same like TV hade 
+
+2. Across layouts:
+No 
+Section 5 — Instrumentation only (1 row)
+
+Ticket
+The situation
+Your answer
+TAL-01941
+Stop-loss trigger behaviour. D added diagnostics but made no behavioural fix, because the report has no symbol, timeframe or steps.
+
+Do you remember what went wrong — did a stop trigger when it should not have, or fail to trigger when it should? On which pair?
+
+I dont know but some testers they have this problem some time the SL or TP not trigger , but i dont know if it resolver it now or not becaus on testing its work normal 
+
+Section 6 — Unconfirmed intake (2 rows)
+From Rayan's document. No reproduction recorded. If you don't recognise them, they close as unreproducible — that is a legitimate answer.
+Ticket
+Status
+Your answer
+Rayan #8
+Logged as "watch item", no reproduction captured.
+RECOGNISE IT (describe) 
+Rayan #2
+A multichart issue. Needs confirmation on the current build before a script is worth writing.
+RECOGNISE IT (describe)
+Section 7 — Six rows marked "scratched" — please confirm (6 rows)
+I want you to look at these properly rather than rubber-stamp them. D marked all six as scratched or self-resolved, on the basis that you or a tester withdrew them. But three of the titles read like genuine defects to me, and one of them describes something you reported to me yourself this morning. If any of these is real, it goes on the board today — there is no "scratched" bucket to hide in now that disclosures are cancelled.
+Ticket
+What it says — and my concern
+Your answer
+TAL-01854
+"No auto-follow when the last candle goes off-screen."
+
+My concern: this morning you told me that switching to a lower timeframe jumps the chart backwards and you have to drag to the last candle again. That sounds like the same defect. A has a fix branch for the timeframe-downshift anchor.
+REAL
+TAL-01894
+"Label text invisible — white on white in settings."
+
+My concern: invisible text is not cosmetic, it is unusable. Was this actually withdrawn, or fixed?
+Hes mean on setting menu with chart template there is no labels text color option 
+TAL-01912
+"Cannot navigate to a set time."
+
+My concern: marked as "user confusion", but it sits in the same family as TAL-01677 and TAL-01893 above, which are both open. If all three are one defect, this one should not be closed separately.
+GENUINELY SCRATCHED
+TAL-01920
+Tester misread low-volume out-of-hours candles. This one looks correctly scratched to me.
+REOPEN
+Rayan #7
+Settings / profile issue, recorded as self-resolved.
+REOPEN
+Rayan #10
+Monitor-only item, recorded as self-resolved.
+ REOPEN
+When you're done
+Send it back in any form — the file, a screenshot, or just typed answers in chat. I will fold them into the ledger and dispatch anything that turns out to be real. Every row you answer here is a row you do not have to test tomorrow.
+

@@ -1,0 +1,137 @@
+{
+  "schema": "talaria.prebuild-b-train-close-gates.v1",
+  "tip": "cb8e05b09",
+  "stamp": "live-unlabelled",
+  "base": "http://31.97.192.82:3000",
+  "wireDir": null,
+  "om": {
+    "ok": true,
+    "html": false,
+    "len": 2483770,
+    "source": "fetch"
+  },
+  "policy": "Gate asserts FIXED state. RED on b113 = discriminator (fix absent). GREEN after B train closes the row.",
+  "expectGreen": false,
+  "results": [
+    {
+      "ticket": "Rayan #8",
+      "freezeGate": true,
+      "green": true,
+      "verdict": "GREEN",
+      "exitImplies": 0,
+      "checks": [
+        {
+          "needle": "__TALARIA_DISABLE_M24_ORDER_ID_GAP_RECONCILE_V1",
+          "onWire": true
+        },
+        {
+          "needle": "__TALARIA_DISABLE_ORDER_EXPLICIT_PLACE_AUDIT_V1",
+          "onWire": true
+        },
+        {
+          "needle": "_assertExplicitPlaceAudit",
+          "onWire": true
+        }
+      ],
+      "behavioural": {
+        "gap": {
+          "kind": "gap-reconcile-next-mint",
+          "hasProductBytes": true,
+          "pass": true,
+          "redWhenAbsent": false,
+          "detail": "product bytes present — tip unit gates (m24-order-id-gap-after-hydrate) own full behaviour"
+        },
+        "placeAudit": {
+          "kind": "explicit-place-foreign-symbol-blocked",
+          "hasProductBytes": true,
+          "pass": true,
+          "redWhenAbsent": false,
+          "detail": "product bytes present — tip unit gates (order-explicit-place-audit) own full behaviour"
+        }
+      },
+      "tipUnitGatesWhenGreen": [
+        "node \"chart v 1.4/chart/modules/m24-order-id-gap-after-hydrate.test.mjs\"",
+        "node \"chart v 1.4/chart/modules/order-explicit-place-audit.test.mjs\""
+      ],
+      "detail": "discriminating gap+audit bytes on wire; behavioural contracts armed"
+    },
+    {
+      "ticket": "TAL-01807b",
+      "freezeGate": false,
+      "green": true,
+      "verdict": "GREEN",
+      "exitImplies": 0,
+      "checks": [
+        {
+          "needle": "__TALARIA_DISABLE_ORDER_PAIR_SWITCH_VISUAL_REBIND_V1",
+          "onWire": true
+        }
+      ],
+      "behavioural": {
+        "kind": "pair-switch-strips-foreign-visuals",
+        "hasProductBytes": true,
+        "pass": true,
+        "redWhenAbsent": false,
+        "detail": "product bytes present — tip unit gates (order-pair-switch-visual-rebind) own full behaviour"
+      },
+      "tipUnitGatesWhenGreen": [
+        "node \"chart v 1.4/chart/modules/order-pair-switch-visual-rebind.test.mjs\""
+      ],
+      "detail": "pair-switch visual rebind on wire"
+    },
+    {
+      "ticket": "TAL-01896",
+      "freezeGate": false,
+      "green": false,
+      "verdict": "RED",
+      "exitImplies": 1,
+      "behavioural": {
+        "kind": "duration-norm-bounds-bleed-display",
+        "hasProductBytes": false,
+        "pass": false,
+        "redWhenAbsent": true,
+        "rawBleedHours": 139271,
+        "displayUnderFix": "139271h",
+        "detail": "orderManagerTradeRows NOT served — bleed display path ungoverned on canary (RED)"
+      },
+      "fetches": [
+        {
+          "path": "/chart/talaria-design/src/orderManagerTradeRows.js",
+          "status": 200,
+          "html": true,
+          "hasMarker": false,
+          "servedAsModule": false
+        },
+        {
+          "path": "/chart/modules/orderManagerTradeRows.js",
+          "status": 200,
+          "html": true,
+          "hasMarker": false,
+          "servedAsModule": false
+        },
+        {
+          "path": "/talaria-design/src/orderManagerTradeRows.js",
+          "status": 404,
+          "html": true,
+          "hasMarker": false,
+          "servedAsModule": false
+        }
+      ],
+      "tipUnitGatesWhenGreen": [
+        "node \"chart v 1.4/talaria-design/src/orderManagerTradeRows.test.mjs\"",
+        "node \"chart v 1.4/talaria-design/src/orderManagerTradeRows.red.test.mjs\""
+      ],
+      "detail": "b113 discriminator: delivery-unserved — RED (expected until B train)"
+    }
+  ],
+  "summary": {
+    "allGreen": false,
+    "anyRed": true,
+    "byTicket": {
+      "Rayan #8": "GREEN",
+      "TAL-01807b": "GREEN",
+      "TAL-01896": "RED"
+    }
+  },
+  "closeCommandAfterTrain": "node scripts/prebuild-b-train-close-gates.mjs --base <CANARY> --stamp <NEW> --expect-green"
+}

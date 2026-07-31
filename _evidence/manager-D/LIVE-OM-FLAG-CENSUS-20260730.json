@@ -1,0 +1,14 @@
+{
+  "takenAt": "2026-07-30T21:36:53.829Z",
+  "source": "http://31.97.192.82:3000/chart/modules/order-manager.js",
+  "len": 2483770,
+  "present": {
+    "__TALARIA_DISABLE_M24_ORDER_ID_GAP_RECONCILE_V1": true,
+    "__TALARIA_DISABLE_ORDER_EXPLICIT_PLACE_AUDIT_V1": true,
+    "_assertExplicitPlaceAudit": true,
+    "__TALARIA_DISABLE_ORDER_PAIR_SWITCH_VISUAL_REBIND_V1": true,
+    "_tradeEvictV1Enabled": true,
+    "_excursionSingleOwnerV1Enabled": true,
+    "tradeDurationNormV1Enabled": false
+  }
+}

@@ -1,0 +1,152 @@
+{
+  "signature": "TALARIA_FIRST_PAINT_PRODUCT_PATH_PROBE_V1",
+  "measuredAt": "2026-07-31T13:31:46.120Z",
+  "url": "http://127.0.0.1:8791/chart/dist-v9/index.html?mode=backtest&mcLayout=2v",
+  "runs": 3,
+  "verdict": {
+    "status": "NOT_REPRODUCED",
+    "reason": "product path below 10s candidate threshold",
+    "medianMs": 152,
+    "medians": {
+      "fcp": 152,
+      "load": null,
+      "dcl": 229.70000000298023,
+      "wall": 644,
+      "firstApi": 14
+    }
+  },
+  "samples": [
+    {
+      "run": 1,
+      "wallMs": 644,
+      "gotoError": null,
+      "finalUrl": "http://127.0.0.1:8791/chart/dist-v9/index.html?mode=backtest&mcLayout=2v",
+      "buildId": "20260728b82",
+      "firstPaintMs": null,
+      "firstContentfulPaintMs": null,
+      "domContentLoadedMs": 229.70000000298023,
+      "loadEventEndMs": 0,
+      "loginLike": false,
+      "frameCount": 1,
+      "firstApiMs": 23,
+      "networkMarks": [
+        {
+          "t": 23,
+          "status": 200,
+          "url": "/chart/dist-v9/index.html?mode=backtest&mcLayout=2v"
+        },
+        {
+          "t": 57,
+          "status": 200,
+          "url": "/api/auth/me"
+        },
+        {
+          "t": 149,
+          "status": 200,
+          "url": "/chart/dist-v9/assets/talaria-v9-live.js?v=20260728b82"
+        },
+        {
+          "t": 190,
+          "status": 200,
+          "url": "/api/chart/windows/claim"
+        }
+      ],
+      "probeSource": "cdp-injected"
+    },
+    {
+      "run": 2,
+      "wallMs": 659,
+      "gotoError": null,
+      "finalUrl": "http://127.0.0.1:8791/chart/dist-v9/index.html?mode=backtest&mcLayout=2v",
+      "buildId": "20260728b82",
+      "firstPaintMs": null,
+      "firstContentfulPaintMs": null,
+      "domContentLoadedMs": 0,
+      "loadEventEndMs": 0,
+      "loginLike": false,
+      "frameCount": 1,
+      "firstApiMs": 11,
+      "networkMarks": [
+        {
+          "t": 11,
+          "status": 200,
+          "url": "/chart/dist-v9/index.html?mode=backtest&mcLayout=2v"
+        },
+        {
+          "t": 51,
+          "status": 200,
+          "url": "/api/auth/me"
+        },
+        {
+          "t": 117,
+          "status": 200,
+          "url": "/chart/dist-v9/assets/talaria-v9-live.js?v=20260728b82"
+        },
+        {
+          "t": 121,
+          "status": 200,
+          "url": "/api/chart/windows/claim"
+        },
+        {
+          "t": 653,
+          "status": 200,
+          "url": "/api/auth/me"
+        },
+        {
+          "t": 653,
+          "status": 200,
+          "url": "/api/files"
+        },
+        {
+          "t": 654,
+          "status": 200,
+          "url": "/api/files"
+        },
+        {
+          "t": 655,
+          "status": 200,
+          "url": "/api/auth/me"
+        }
+      ],
+      "probeSource": "cdp-injected"
+    },
+    {
+      "run": 3,
+      "wallMs": 638,
+      "gotoError": null,
+      "finalUrl": "http://127.0.0.1:8791/chart/dist-v9/index.html?mode=backtest&mcLayout=2v",
+      "buildId": "20260728b82",
+      "firstPaintMs": 152,
+      "firstContentfulPaintMs": 152,
+      "domContentLoadedMs": 217.39999999850988,
+      "loadEventEndMs": 0,
+      "loginLike": false,
+      "frameCount": 1,
+      "firstApiMs": 14,
+      "networkMarks": [
+        {
+          "t": 14,
+          "status": 200,
+          "url": "/chart/dist-v9/index.html?mode=backtest&mcLayout=2v"
+        },
+        {
+          "t": 52,
+          "status": 200,
+          "url": "/api/auth/me"
+        },
+        {
+          "t": 169,
+          "status": 200,
+          "url": "/api/chart/windows/claim"
+        },
+        {
+          "t": 179,
+          "status": 200,
+          "url": "/chart/dist-v9/assets/talaria-v9-live.js?v=20260728b82"
+        }
+      ],
+      "probeSource": "cdp-injected"
+    }
+  ],
+  "note": "Harness/product path without login. Candidacy uses FCP, else loadEventEnd, else wallMs."
+}

@@ -1,0 +1,96 @@
+{
+  "signature": "TALARIA_RELEASE_PARITY_NON_CONTAMINATION_V1",
+  "status": "GREEN",
+  "measuredAt": "2026-07-31T13:32:38.021Z",
+  "conf01": {
+    "panels": [
+      {
+        "id": "A",
+        "symbol": "XAUUSD",
+        "fileId": 677,
+        "timeframe": "1m"
+      },
+      {
+        "id": "B",
+        "symbol": "HOG",
+        "fileId": 673,
+        "timeframe": "5m"
+      },
+      {
+        "id": "C",
+        "symbol": "ETHBTC",
+        "fileId": 670,
+        "timeframe": "15m"
+      },
+      {
+        "id": "D",
+        "symbol": "BTCEUR",
+        "fileId": 669,
+        "timeframe": "1h"
+      }
+    ],
+    "fourPanels": true,
+    "fourDistinctSymbols": true,
+    "fourDistinctTimeframes": true,
+    "acceptanceWeight": "same-symbol panels earn no credit"
+  },
+  "operations": [
+    "change-symbol",
+    "change-timeframe",
+    "load-data",
+    "draw-shape",
+    "place-order",
+    "seek-playhead"
+  ],
+  "surfaces": [
+    "drawing-tools",
+    "indicators",
+    "orders",
+    "replay",
+    "crosshair-sync",
+    "range-sync",
+    "keyboard",
+    "context-menus"
+  ],
+  "greenStatus": "GREEN",
+  "parityBreadthStatus": "GREEN",
+  "redControls": [
+    {
+      "cell": "NC-UNSCOPED-H1-CACHE",
+      "status": "GREEN",
+      "reportStatus": "RED",
+      "matched": true
+    },
+    {
+      "cell": "NC-GLOBAL-CHARTDATALOADED",
+      "status": "GREEN",
+      "reportStatus": "RED",
+      "matched": true
+    }
+  ],
+  "breadthRedControls": [
+    {
+      "cell": "NC-PARITY-KEYBOARD-HOST-ROUTED",
+      "status": "GREEN",
+      "reportStatus": "RED",
+      "matched": true
+    },
+    {
+      "cell": "NC-PARITY-CONTEXT-MENU-HOST-ROUTED",
+      "status": "GREEN",
+      "reportStatus": "RED",
+      "matched": true
+    },
+    {
+      "cell": "NC-PARITY-CROSSHAIR-HOST-ABS-PRICE",
+      "status": "GREEN",
+      "reportStatus": "RED",
+      "matched": true
+    }
+  ],
+  "releaseAuthority": {
+    "stopAuthority": true,
+    "statement": "If this suite is insufficient to hold a final release, release waits.",
+    "currentLimitation": "Model oracle; must be wired to the real single-realm app before final release credit. Breadth cells are named and RED-controlled, not yet product-driven."
+  }
+}

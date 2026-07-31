@@ -55,6 +55,24 @@ I seeded a heavy journal to make the TAL-01891 memory work measurable: **182 tra
 exercise the path, so **it should not be removed until `M1` is closed.** After that, it is synthetic
 data sitting on a QA account in the release's database and someone should decide whether it stays.
 
+### 4. `/root/m1-b120-brun` scratch tree and its puppeteer shim — owner B
+
+Built at 18:22 to run D's M1 harness on the host, because D's script requires the full `puppeteer`
+package and this host has only `puppeteer-core`. It contains a shim at
+`repo/chart v 1.4/chart/multichart-prod/harness/node_modules/puppeteer/` that forwards `launch()` to
+`puppeteer-core` with a hard-coded `executablePath`.
+
+**Nothing served or deployed reads it** — it is a directory under `/root`, outside the deploy tree, so
+it carries no release risk. It is listed because a shim that silently substitutes a browser is exactly
+the kind of thing that misleads whoever finds it next, and because D may want to re-run against it.
+
+```bash
+rm -rf /root/m1-b120-brun          # after M1 closes
+ls -d /root/m1-b120-brun 2>/dev/null || echo "<gone>"
+```
+
+**Keep until M1 closes.** D's artifact and the run log live under it.
+
 ## Closed items
 
 ### `TALARIA_DISABLE_WINDOW_GATE_THREADPOOL_V1` in host `.env` — closed 17:40, owner B

@@ -1,0 +1,1834 @@
+{
+  "signature": "TALARIA_M1_B120_REAL_APP_HARNESS_V2",
+  "measuredAt": "2026-07-31T18:23:36.836Z",
+  "url": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&mcLayout=2v",
+  "expectedBuild": "b120",
+  "buildId": "20260731b120",
+  "finalUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+  "authProvided": true,
+  "authRoute": {
+    "source": "/root/m1-b120-brun/_evidence/manager-B/m20-j1/talaria-auth-route.mjs",
+    "ready": {
+      "href": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+      "onLogin": false,
+      "chart": true,
+      "bars": 6242,
+      "build": "20260731b120"
+    },
+    "journal": {
+      "path": "/api/sessions/936/journal-trades",
+      "status": 200,
+      "trades": 182,
+      "withScreenshot": 395,
+      "payloadBytes": 51588056,
+      "tried": []
+    },
+    "journalBearing": {
+      "sessionId": "936",
+      "fileId": "677",
+      "trades": 182,
+      "tradesWithScreenshot": 182
+    }
+  },
+  "journal": {
+    "path": "/api/sessions/936/journal-trades",
+    "status": 200,
+    "trades": 182,
+    "withScreenshot": 395,
+    "payloadBytes": 51588056,
+    "tried": []
+  },
+  "verdict": {
+    "status": "UNPROVEN",
+    "reason": "no-journal-image-surface-detected"
+  },
+  "surface": {
+    "imageCount": 177,
+    "fullResolutionImages": 1,
+    "thumbnailImages": 160,
+    "dataUrlImages": 0,
+    "journalLikeImages": 0,
+    "decodedPixelFloorBytes": 6029312,
+    "maxImageDecodedBytes": 2893440,
+    "rows": [
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 880,
+        "naturalHeight": 822,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 50,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 256,
+        "naturalHeight": 239,
+        "clientWidth": 32,
+        "clientHeight": 32,
+        "srcKind": "url",
+        "srcLength": 36,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 256,
+        "naturalHeight": 239,
+        "clientWidth": 41,
+        "clientHeight": 38,
+        "srcKind": "url",
+        "srcLength": 50,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 256,
+        "naturalHeight": 239,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 50,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 0,
+        "naturalHeight": 0,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 89,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 64,
+        "naturalHeight": 64,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 49,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 42,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 53,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 42,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 53,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 42,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 58,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 42,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 40,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 42,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 53,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 42,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 56,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 40,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 53,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 40,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 53,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 40,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 40,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 40,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 53,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 40,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 56,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 40,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 53,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 40,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 53,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 40,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 58,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 40,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 40,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 40,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 53,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 40,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 56,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 53,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 53,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 53,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 53,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 53,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 58,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 53,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 40,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 53,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 53,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 53,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 56,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 40,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 53,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 40,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 53,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 40,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 58,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 40,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 40,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 40,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 53,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 40,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 56,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 42,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 53,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 40,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 53,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 40,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 53,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 40,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 46,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 40,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 53,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 40,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 53,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 53,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 53,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 53,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 53,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 40,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 53,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 40,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 53,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 40,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 46,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 0,
+        "naturalHeight": 0,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 90,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 0,
+        "naturalHeight": 0,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 91,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 42,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 53,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 42,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 53,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 42,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 53,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 42,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 46,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 42,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 53,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 42,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 80,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 40,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 42,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 40,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 53,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 40,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 53,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 40,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 80,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 40,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 40,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 40,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 53,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 40,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 46,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 40,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 80,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 40,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 40,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 40,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 40,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 53,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 53,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 53,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 53,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 53,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 40,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 53,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 46,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 53,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 80,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 53,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 40,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 53,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 40,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 80,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 53,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 40,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 53,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 40,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 53,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 40,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 40,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 40,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 53,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 40,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 80,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 40,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 40,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 0,
+        "naturalHeight": 0,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 90,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 0,
+        "naturalHeight": 0,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 90,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 0,
+        "naturalHeight": 0,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 90,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 0,
+        "naturalHeight": 0,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 90,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 0,
+        "naturalHeight": 0,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 91,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 0,
+        "naturalHeight": 0,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 90,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 0,
+        "naturalHeight": 0,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 90,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 0,
+        "naturalHeight": 0,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 91,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 0,
+        "naturalHeight": 0,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 90,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 0,
+        "naturalHeight": 0,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 90,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 0,
+        "naturalHeight": 0,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 91,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 0,
+        "naturalHeight": 0,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 91,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 0,
+        "naturalHeight": 0,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 90,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 42,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 53,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 42,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 40,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 40,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 42,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 40,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 53,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 53,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 42,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 53,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 53,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 53,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 40,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 40,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      },
+      {
+        "frameUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+        "naturalWidth": 80,
+        "naturalHeight": 42,
+        "clientWidth": 0,
+        "clientHeight": 0,
+        "srcKind": "url",
+        "srcLength": 30,
+        "journalLike": false
+      }
+    ],
+    "stable": true,
+    "stableSamples": 3
+  },
+  "processes": {
+    "rendererPrivate": 0,
+    "gpuPrivate": 0,
+    "processCount": 9
+  },
+  "caveat": "GREEN_CANDIDATE still requires PO journal-usability confirmation per M1."
+}

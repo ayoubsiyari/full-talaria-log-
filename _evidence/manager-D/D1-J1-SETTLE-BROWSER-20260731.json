@@ -1,0 +1,398 @@
+{
+  "schema": "talaria.d1.j1-settle-browser.v1",
+  "tip": "76023722d",
+  "measuredAt": "2026-07-31T11:27:34.997Z",
+  "rows": 60,
+  "shotsPerRow": 2,
+  "imageCount": 120,
+  "cycles": 12,
+  "fixture": {
+    "path": "C:/Users/user/Desktop/talaria1/manager-d-trade/docs/plan3/fixtures/talaria-chart-median-live-census.dataurl.txt",
+    "declaredMime": "image/png",
+    "actualFormat": "image/jpeg",
+    "width": 3331,
+    "height": 1556,
+    "thumbMaxDim": 240,
+    "thumbWidth": 240,
+    "thumbHeight": 112,
+    "thumbDecodedBytesEach": 107520,
+    "thumbDomDecodedBytesPerCycle": 12902400
+  },
+  "baseline": {
+    "rendererPrivate": 165556224,
+    "rendererWorkingSet": 231579648,
+    "gpuPrivate": 104398848,
+    "gpuWorkingSet": 84291584,
+    "source": "windows-GetProcess",
+    "processInfo": [
+      {
+        "type": "browser",
+        "id": 26148,
+        "cpuTime": 1.277156
+      },
+      {
+        "type": "renderer",
+        "id": 22716,
+        "cpuTime": 0.069782
+      },
+      {
+        "type": "renderer",
+        "id": 1136,
+        "cpuTime": 0.845987
+      },
+      {
+        "type": "renderer",
+        "id": 7248,
+        "cpuTime": 0.081731
+      },
+      {
+        "type": "GPU",
+        "id": 4964,
+        "cpuTime": 0.890162
+      },
+      {
+        "type": "network.mojom.NetworkService",
+        "id": 26176,
+        "cpuTime": 0.24534
+      },
+      {
+        "type": "storage.mojom.StorageService",
+        "id": 1224,
+        "cpuTime": 0.053133
+      }
+    ],
+    "osProcessInfo": [
+      {
+        "Id": 1136,
+        "ProcessName": "chrome",
+        "PrivateMemorySize64": 122044416,
+        "WorkingSet64": 149000192
+      },
+      {
+        "Id": 1224,
+        "ProcessName": "chrome",
+        "PrivateMemorySize64": 11620352,
+        "WorkingSet64": 21975040
+      },
+      {
+        "Id": 4964,
+        "ProcessName": "chrome",
+        "PrivateMemorySize64": 104398848,
+        "WorkingSet64": 84291584
+      },
+      {
+        "Id": 7248,
+        "ProcessName": "chrome",
+        "PrivateMemorySize64": 22372352,
+        "WorkingSet64": 46759936
+      },
+      {
+        "Id": 22716,
+        "ProcessName": "chrome",
+        "PrivateMemorySize64": 21139456,
+        "WorkingSet64": 35819520
+      },
+      {
+        "Id": 26148,
+        "ProcessName": "chrome",
+        "PrivateMemorySize64": 44105728,
+        "WorkingSet64": 115343360
+      },
+      {
+        "Id": 26176,
+        "ProcessName": "chrome",
+        "PrivateMemorySize64": 18395136,
+        "WorkingSet64": 41664512
+      }
+    ]
+  },
+  "samples": [
+    {
+      "cycle": 1,
+      "hits": 0,
+      "misses": 120,
+      "imageCount": 120,
+      "decodedPixelFloorBytes": 12902400,
+      "markupChars": 649680,
+      "cacheEntries": 120,
+      "cacheChars": 635880,
+      "rendererPrivateBytes": 155938816,
+      "rendererPrivateDeltaFromBaseline": -9617408,
+      "rendererWorkingSetBytes": 224518144,
+      "rendererWorkingSetDeltaFromBaseline": -7061504,
+      "gpuPrivateBytes": 137932800,
+      "gpuPrivateDeltaFromBaseline": 33533952,
+      "gpuWorkingSetBytes": 90841088,
+      "gpuWorkingSetDeltaFromBaseline": 6549504,
+      "memorySource": "windows-GetProcess"
+    },
+    {
+      "cycle": 2,
+      "hits": 120,
+      "misses": 0,
+      "imageCount": 120,
+      "decodedPixelFloorBytes": 12902400,
+      "markupChars": 649680,
+      "cacheEntries": 120,
+      "cacheChars": 635880,
+      "rendererPrivateBytes": 175751168,
+      "rendererPrivateDeltaFromBaseline": 10194944,
+      "rendererWorkingSetBytes": 259231744,
+      "rendererWorkingSetDeltaFromBaseline": 27652096,
+      "gpuPrivateBytes": 144367616,
+      "gpuPrivateDeltaFromBaseline": 39968768,
+      "gpuWorkingSetBytes": 90935296,
+      "gpuWorkingSetDeltaFromBaseline": 6643712,
+      "memorySource": "windows-GetProcess"
+    },
+    {
+      "cycle": 3,
+      "hits": 120,
+      "misses": 0,
+      "imageCount": 120,
+      "decodedPixelFloorBytes": 12902400,
+      "markupChars": 649680,
+      "cacheEntries": 120,
+      "cacheChars": 635880,
+      "rendererPrivateBytes": 156696576,
+      "rendererPrivateDeltaFromBaseline": -8859648,
+      "rendererWorkingSetBytes": 241852416,
+      "rendererWorkingSetDeltaFromBaseline": 10272768,
+      "gpuPrivateBytes": 144367616,
+      "gpuPrivateDeltaFromBaseline": 39968768,
+      "gpuWorkingSetBytes": 91029504,
+      "gpuWorkingSetDeltaFromBaseline": 6737920,
+      "memorySource": "windows-GetProcess"
+    },
+    {
+      "cycle": 4,
+      "hits": 120,
+      "misses": 0,
+      "imageCount": 120,
+      "decodedPixelFloorBytes": 12902400,
+      "markupChars": 649680,
+      "cacheEntries": 120,
+      "cacheChars": 635880,
+      "rendererPrivateBytes": 159010816,
+      "rendererPrivateDeltaFromBaseline": -6545408,
+      "rendererWorkingSetBytes": 244097024,
+      "rendererWorkingSetDeltaFromBaseline": 12517376,
+      "gpuPrivateBytes": 144384000,
+      "gpuPrivateDeltaFromBaseline": 39985152,
+      "gpuWorkingSetBytes": 91066368,
+      "gpuWorkingSetDeltaFromBaseline": 6774784,
+      "memorySource": "windows-GetProcess"
+    },
+    {
+      "cycle": 5,
+      "hits": 120,
+      "misses": 0,
+      "imageCount": 120,
+      "decodedPixelFloorBytes": 12902400,
+      "markupChars": 649680,
+      "cacheEntries": 120,
+      "cacheChars": 635880,
+      "rendererPrivateBytes": 159158272,
+      "rendererPrivateDeltaFromBaseline": -6397952,
+      "rendererWorkingSetBytes": 244264960,
+      "rendererWorkingSetDeltaFromBaseline": 12685312,
+      "gpuPrivateBytes": 144392192,
+      "gpuPrivateDeltaFromBaseline": 39993344,
+      "gpuWorkingSetBytes": 91062272,
+      "gpuWorkingSetDeltaFromBaseline": 6770688,
+      "memorySource": "windows-GetProcess"
+    },
+    {
+      "cycle": 6,
+      "hits": 120,
+      "misses": 0,
+      "imageCount": 120,
+      "decodedPixelFloorBytes": 12902400,
+      "markupChars": 649680,
+      "cacheEntries": 120,
+      "cacheChars": 635880,
+      "rendererPrivateBytes": 159170560,
+      "rendererPrivateDeltaFromBaseline": -6385664,
+      "rendererWorkingSetBytes": 244355072,
+      "rendererWorkingSetDeltaFromBaseline": 12775424,
+      "gpuPrivateBytes": 144539648,
+      "gpuPrivateDeltaFromBaseline": 40140800,
+      "gpuWorkingSetBytes": 91226112,
+      "gpuWorkingSetDeltaFromBaseline": 6934528,
+      "memorySource": "windows-GetProcess"
+    },
+    {
+      "cycle": 7,
+      "hits": 120,
+      "misses": 0,
+      "imageCount": 120,
+      "decodedPixelFloorBytes": 12902400,
+      "markupChars": 649680,
+      "cacheEntries": 120,
+      "cacheChars": 635880,
+      "rendererPrivateBytes": 157212672,
+      "rendererPrivateDeltaFromBaseline": -8343552,
+      "rendererWorkingSetBytes": 243929088,
+      "rendererWorkingSetDeltaFromBaseline": 12349440,
+      "gpuPrivateBytes": 144547840,
+      "gpuPrivateDeltaFromBaseline": 40148992,
+      "gpuWorkingSetBytes": 91234304,
+      "gpuWorkingSetDeltaFromBaseline": 6942720,
+      "memorySource": "windows-GetProcess"
+    },
+    {
+      "cycle": 8,
+      "hits": 120,
+      "misses": 0,
+      "imageCount": 120,
+      "decodedPixelFloorBytes": 12902400,
+      "markupChars": 649680,
+      "cacheEntries": 120,
+      "cacheChars": 635880,
+      "rendererPrivateBytes": 157368320,
+      "rendererPrivateDeltaFromBaseline": -8187904,
+      "rendererWorkingSetBytes": 244035584,
+      "rendererWorkingSetDeltaFromBaseline": 12455936,
+      "gpuPrivateBytes": 144551936,
+      "gpuPrivateDeltaFromBaseline": 40153088,
+      "gpuWorkingSetBytes": 91250688,
+      "gpuWorkingSetDeltaFromBaseline": 6959104,
+      "memorySource": "windows-GetProcess"
+    },
+    {
+      "cycle": 9,
+      "hits": 120,
+      "misses": 0,
+      "imageCount": 120,
+      "decodedPixelFloorBytes": 12902400,
+      "markupChars": 649680,
+      "cacheEntries": 120,
+      "cacheChars": 635880,
+      "rendererPrivateBytes": 157388800,
+      "rendererPrivateDeltaFromBaseline": -8167424,
+      "rendererWorkingSetBytes": 244109312,
+      "rendererWorkingSetDeltaFromBaseline": 12529664,
+      "gpuPrivateBytes": 144621568,
+      "gpuPrivateDeltaFromBaseline": 40222720,
+      "gpuWorkingSetBytes": 91242496,
+      "gpuWorkingSetDeltaFromBaseline": 6950912,
+      "memorySource": "windows-GetProcess"
+    },
+    {
+      "cycle": 10,
+      "hits": 120,
+      "misses": 0,
+      "imageCount": 120,
+      "decodedPixelFloorBytes": 12902400,
+      "markupChars": 649680,
+      "cacheEntries": 120,
+      "cacheChars": 635880,
+      "rendererPrivateBytes": 157278208,
+      "rendererPrivateDeltaFromBaseline": -8278016,
+      "rendererWorkingSetBytes": 244011008,
+      "rendererWorkingSetDeltaFromBaseline": 12431360,
+      "gpuPrivateBytes": 144637952,
+      "gpuPrivateDeltaFromBaseline": 40239104,
+      "gpuWorkingSetBytes": 91271168,
+      "gpuWorkingSetDeltaFromBaseline": 6979584,
+      "memorySource": "windows-GetProcess"
+    },
+    {
+      "cycle": 11,
+      "hits": 120,
+      "misses": 0,
+      "imageCount": 120,
+      "decodedPixelFloorBytes": 12902400,
+      "markupChars": 649680,
+      "cacheEntries": 120,
+      "cacheChars": 635880,
+      "rendererPrivateBytes": 157437952,
+      "rendererPrivateDeltaFromBaseline": -8118272,
+      "rendererWorkingSetBytes": 244092928,
+      "rendererWorkingSetDeltaFromBaseline": 12513280,
+      "gpuPrivateBytes": 144478208,
+      "gpuPrivateDeltaFromBaseline": 40079360,
+      "gpuWorkingSetBytes": 91131904,
+      "gpuWorkingSetDeltaFromBaseline": 6840320,
+      "memorySource": "windows-GetProcess"
+    },
+    {
+      "cycle": 12,
+      "hits": 120,
+      "misses": 0,
+      "imageCount": 120,
+      "decodedPixelFloorBytes": 12902400,
+      "markupChars": 649680,
+      "cacheEntries": 120,
+      "cacheChars": 635880,
+      "rendererPrivateBytes": 157458432,
+      "rendererPrivateDeltaFromBaseline": -8097792,
+      "rendererWorkingSetBytes": 244199424,
+      "rendererWorkingSetDeltaFromBaseline": 12619776,
+      "gpuPrivateBytes": 144617472,
+      "gpuPrivateDeltaFromBaseline": 40218624,
+      "gpuWorkingSetBytes": 91283456,
+      "gpuWorkingSetDeltaFromBaseline": 6991872,
+      "memorySource": "windows-GetProcess"
+    }
+  ],
+  "summary": {
+    "cycle1RendererPrivateDelta": -9617408,
+    "lastRendererPrivateDelta": -8097792,
+    "lastMinusCycle1RendererPrivate": 1519616,
+    "afterWarmRendererRange": [
+      -8859648,
+      10194944
+    ],
+    "afterWarmRendererSpread": 19054592,
+    "stableTailCycles": [
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12
+    ],
+    "stableTailRendererRange": [
+      -8343552,
+      -6385664
+    ],
+    "stableTailRendererSpread": 1957888,
+    "cycle1GpuPrivateDelta": 33533952,
+    "lastGpuPrivateDelta": 40218624,
+    "lastMinusCycle1GpuPrivate": 6684672,
+    "afterWarmGpuRange": [
+      39968768,
+      40239104
+    ],
+    "afterWarmGpuSpread": 270336,
+    "stableTailGpuRange": [
+      39985152,
+      40239104
+    ],
+    "stableTailGpuSpread": 253952,
+    "cacheMissesByCycle": [
+      120,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    "classification": "computed-by-reader"
+  },
+  "caveats": [
+    "Windows process private bytes are coarse and can move with allocator arenas; slope across repeated renders is the leak signal.",
+    "The harness keeps the thumbnail cache across rebuilds to model M20-J1. Cycle 1 rasterizes; later cycles should be cache hits.",
+    "Full hydrated data-url strings remain resident in JS to isolate bitmap/raster behavior."
+  ]
+}
