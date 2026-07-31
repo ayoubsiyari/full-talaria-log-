@@ -2041,3 +2041,52 @@ essentially all growth, blink_gc/partition_alloc/malloc flat; if partition_alloc
 lives outside V8 and my per-bar figure needs re-reading. Growth in MB per thousand bars, never MB/h.
 
 Phase 4 cancellation noted; my one-isolate finding and A's under-4% pricing are both in the record.
+
+## 21:55 — The freeze has a stack, and the hot call site already has a kill-switch
+
+**Rasteriser, read on two routes, not inferred.** `WEBGL_debug_renderer_info` UNMASKED_RENDERER returns
+`ANGLE (NVIDIA, NVIDIA GeForce RTX 4060 Laptop GPU, Direct3D11)`, vendor `Google Inc. (NVIDIA)`, extension
+present on WebGL1 and WebGL2, and the soak browser's GPU-relevant launch flags are empty. **Hardware, no
+SwiftShader.** Read in a separate short-lived Chrome ON PURPOSE - a WebGL context inside the soak page
+allocates in the GPU process my scheduled allocator diff measures, and a new tab can fully occlude the soak
+window, which makes Chrome mark it hidden and throttle rAF. The two instances are bridged by an EXACT MATCH
+on the independently measured SystemInfo string, and the artifact refuses to transfer the result if they ever
+differ. **My paint buckets and GPU figures are user-representative; the cost curve is not caveated.**
+
+**The 792 ms task, made the object of study.** One 15s window held 15 tasks over 500 ms. The eight largest are
+91-92% scripting with the same four functions in the same order - this is one reproducible event, not a tail.
+Inside a 692.4 ms freeze (1,313 samples taken INSIDE that task, clock alignment against the trace asserted,
+not assumed): `_chartIndexForCloseMarkerOnChart` 31.8% / 219.9 ms, `m20Q6CapturedClear` 12.7%,
+`_m19iB62WindowFp` 10.4%, **`set innerHTML` 9.9% / 68.6 ms**, then setAttribute / checkVisibility /
+getBoundingClientRect / querySelectorAll ~9% between them. **A's `_resampleDataFull` is 2.2%.**
+
+**THE STACK IS THE DELIVERABLE:** `_chartIndexForCloseMarkerOnChart <- _chartIndexForExitMarkerOnChart <-
+updateOrderLines <- _syncOrderOverlaysDuringPan <- render <- _renderReplayChartUpdate <- [m20Q6 wrapper chain]
+<- updateChartData <- [m20Q6 wrapper chain AGAIN] <- m20Q6InertableScheduledCallback`. Three things no
+aggregate named: **order overlays re-sync from `render` on every replay update with nobody panning**; the
+**m20Q6 capture chain appears TWICE in one stack** around updateChartData and again around the render it
+triggers; and the innerHTML/DOM block enters via **replay-dashboard-sync.js:10** through `dispatchEvent` from
+`updateTimeDisplay`, so a dashboard listener runs synchronously on every clock update.
+
+**THE SWITCH ALREADY EXISTS IN THE SHIPPED BUILD:** `__TALARIA_DISABLE_ORDER_OVERLAY_PAN_ALWAYS_V1`, deployed
+chart.js:30109. I verified WHICH of the two call sites in `render` is live rather than assuming - the other
+(30012) is inside `if (visible.length === 0 && this.data.length > 0)` and returns, so it is not the replay
+path. The hot one is the one the switch covers. Profiler frames match the deployed file exactly (29217 /
+29800). **I did NOT flip it** - that mutates a committed ten-hour memory run mid-flight. One-line A/B for A on
+a free host; acceptance is the 31.8% falling toward zero.
+
+**FREQUENCY, measured not extrapolated** (12 min, 1,253 bars): **2,729 tasks per hour over 500 ms** (436 per
+thousand bars) and **125 per hour over a full second**, median long task 316 ms, longest 1,500 ms. **942.6
+ms of every second is spent inside tasks over 50 ms.** Blocking 804.8 ms/s here vs 657.7 in the 5s trace vs
+B's 302 - the trace caught a QUIET stretch and the gap to B widens on the longer window.
+
+**GC: I nearly published an artefact as a headline.** The FIRST task I caught (782.9 ms) was 24.1% GC / 187.9
+ms against 0.1% in the window average, which looked like the finding. The next two windows do not replicate:
+across eight freezes GC is 0.4-1.4%. Honest statement: **GC is an occasional add-on to a freeze that already
+exists, not its cause.**
+
+**Three of my own defects tonight, all caught by the same invariant.** Long-task time cannot exceed 1,000 ms
+per second on one thread. The trace calibration threw 1,652 (nested RunTask double count); the frequency
+observer threw 1,019 (`buffered:true` replays entries from before the window - Chrome's buffer holds exactly
+200, now excluded); and `Math.min(...events)` over 160,000 events blew the call stack inside a try, silently
+costing the entire stacks section of one run. Both instruments now assert the invariant and refuse to publish.
