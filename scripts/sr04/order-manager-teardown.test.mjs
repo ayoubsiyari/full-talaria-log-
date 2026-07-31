@@ -193,7 +193,10 @@ test('T9 the journal teardown still runs, so destroy composes rather than replac
 });
 
 test('T10 GATE-01: the shipped source BEFORE this change has no destroy at all', () => {
-    const head = execFileSync('git', ['show', 'HEAD:chart v 1.4/chart/modules/order-manager.js'],
+    // Pinned to the commit before teardown landed, not HEAD: a gate that reads HEAD compares the
+    // fix against itself as soon as the next commit arrives, and stops testing anything.
+    const PRE_TEARDOWN_SHA = '0df8e60d3';
+    const head = execFileSync('git', ['show', `${PRE_TEARDOWN_SHA}:chart v 1.4/chart/modules/order-manager.js`],
         { cwd: REPO, encoding: 'utf8', maxBuffer: 1024 * 1024 * 200 });
     assert.equal((head.match(/\n    destroy\(/g) || []).length, 0,
         'baseline must have no destroy — this is what R3 was blocked on');

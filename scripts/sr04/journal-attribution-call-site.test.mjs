@@ -176,10 +176,17 @@ test('C2 the recorded pip value derives from the OWNING chart mark, not the focu
     assert.notEqual(row.instrumentSettings.pip_value_per_lot, EUR_MARK * 1000);
 });
 
+/**
+ * Pinned to the commit immediately BEFORE the wiring landed, not to HEAD. Reading HEAD made this
+ * gate quietly stop testing anything the moment the next commit arrived — it compared the fix
+ * against itself and went red for the wrong reason.
+ */
+const PRE_WIRING_SHA = '468e7417de4c13a0af845b3a081c643aa4350664';
+
 test('C3 GATE-01 the shipped source BEFORE this change produces the defect these cells catch', () => {
     const head = execFileSync(
         'git',
-        ['show', `HEAD:chart v 1.4/chart/modules/order-manager.js`],
+        ['show', `${PRE_WIRING_SHA}:chart v 1.4/chart/modules/order-manager.js`],
         { cwd: REPO, encoding: 'utf8', maxBuffer: 1024 * 1024 * 200 }
     );
     const row = journalRowFor(head, { order: backgroundJpyClose, focus: eur(), panels: [jpy()] });
