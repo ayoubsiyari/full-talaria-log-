@@ -1,5 +1,34 @@
 // indicator-ui.js
 
+/**
+ * SR-03 focus routing: host chrome resolves "the chart" through the focus
+ * provider — last click / focus, never hover. Installed idempotently in each
+ * participating file because the shipping shells load them in different orders
+ * (favorites-manager.js runs before chart.js in dist-v9/index.html) and
+ * multichart-prod/chart-embed.html never loads chart.js at all.
+ *
+ * The `window.chart || window.mainChart` chain collapses INTO this resolver
+ * rather than surviving beside it: window.mainChart is written exactly once, in
+ * chart.js _talariaInitializeChart, on the line after window.chart and to the
+ * same object, so the chain could never name a different chart.
+ */
+if (typeof window !== 'undefined' && typeof window.__talariaActiveChartV1 !== 'function') {
+    window.__talariaActiveChartV1 = function talariaActiveChartV1() {
+        // Re-read on EVERY call, never captured at registration, so the switch
+        // can be flipped mid-session with no reload. Truthy disables.
+        if (window.__TALARIA_DISABLE_FOCUS_ROUTING_V1) {
+            return window.chart || window.mainChart || null;
+        }
+        if (typeof window.getActiveChart === 'function') {
+            try {
+                const active = window.getActiveChart();
+                if (active) return active;
+            } catch (_e) { /* provider threw: fall back to the host chart */ }
+        }
+        return window.chart || null;
+    };
+}
+
 /** Pine-aligned inputs for ICT Everything (native renderer in chart-indicators-full.js). */
 const OHLC_SOURCE_OPTIONS = [
     { value: 'open', label: 'Open' },
@@ -4007,7 +4036,7 @@ function createIndicatorSelectionMenu(chartInstance) {
             });
             let targetChart = (typeof window.getActiveChart === 'function' ? window.getActiveChart() : null) || chartInstance;
             if (!targetChart || typeof targetChart.addIndicator !== 'function') {
-                targetChart = window.chart || window.mainChart;
+                targetChart = window.__talariaActiveChartV1();
             }
             if (targetChart && typeof targetChart.addIndicator === 'function') {
                 targetChart.addIndicator(key, { ...defaultParams, ...defaultStyle });
@@ -4961,7 +4990,7 @@ function createIndicatorSettingsPanel(chartInstance, indicatorType, existingIndi
 
         let targetChart = (typeof window.getActiveChart === 'function' ? window.getActiveChart() : null) || chartInstance;
         if (!targetChart || typeof targetChart.addIndicator !== 'function') {
-            targetChart = window.chart || window.mainChart;
+            targetChart = window.__talariaActiveChartV1();
         }
 
         if (!targetChart || typeof targetChart.addIndicator !== 'function') {
@@ -6244,7 +6273,7 @@ window.setupIndicatorUI = setupIndicatorUI;
 let _indicatorUIReady = false;
 function _tryInitIndicatorUI() {
     if (_indicatorUIReady) return;
-    const chartInstance = window.chart || window.mainChart;
+    const chartInstance = window.__talariaActiveChartV1();
     if (chartInstance) {
         _indicatorUIReady = true;
         console.log('🎨 Setting up indicator UI');

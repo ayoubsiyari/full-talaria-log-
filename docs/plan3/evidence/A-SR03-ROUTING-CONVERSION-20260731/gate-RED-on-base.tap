@@ -1,0 +1,356 @@
+TAP version 13
+# Subtest: SR03-C01 econ sidebar mainChart() resolves the FOCUSED chart, not the host
+not ok 1 - SR03-C01 econ sidebar mainChart() resolves the FOCUSED chart, not the host
+  ---
+  duration_ms: 2.7189
+  type: 'test'
+  location: 'C:\\Users\\user\\Desktop\\talaria1\\manager-a-focus-routing\\chart v 1.4\\chart\\modules\\a-sr03-focus-routing.test.mjs:209:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    news sidebar must resolve the chart the user last clicked
+    
+    'A' !== 'B'
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'B'
+  actual: 'A'
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///C:/Users/user/Desktop/talaria1/manager-a-focus-routing/chart%20v%201.4/chart/modules/a-sr03-focus-routing.test.mjs:212:10)
+    Test.runInAsyncScope (node:async_hooks:227:14)
+    Test.run (node:internal/test_runner/test:1201:25)
+    Test.start (node:internal/test_runner/test:1096:17)
+    startSubtestAfterBootstrap (node:internal/test_runner/harness:385:17)
+  ...
+# Subtest: SR03-C02 econ sidebar marker redraw renders the FOCUSED chart
+not ok 2 - SR03-C02 econ sidebar marker redraw renders the FOCUSED chart
+  ---
+  duration_ms: 1.8425
+  type: 'test'
+  location: 'C:\\Users\\user\\Desktop\\talaria1\\manager-a-focus-routing\\chart v 1.4\\chart\\modules\\a-sr03-focus-routing.test.mjs:215:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    redraw must hit the focused chart only
+    + actual - expected
+    
+      [
+    +   'A:scheduleRender'
+    -   'B:scheduleRender'
+      ]
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+    0: 'B:scheduleRender'
+  actual:
+    0: 'A:scheduleRender'
+  operator: 'deepStrictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///C:/Users/user/Desktop/talaria1/manager-a-focus-routing/chart%20v%201.4/chart/modules/a-sr03-focus-routing.test.mjs:218:10)
+    Test.runInAsyncScope (node:async_hooks:227:14)
+    Test.run (node:internal/test_runner/test:1201:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:831:18)
+    Test.postRun (node:internal/test_runner/test:1330:19)
+    Test.run (node:internal/test_runner/test:1258:12)
+    async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3)
+  ...
+# Subtest: SR03-C03 favourites applies a tool to the FOCUSED chart
+not ok 3 - SR03-C03 favourites applies a tool to the FOCUSED chart
+  ---
+  duration_ms: 1.0396
+  type: 'test'
+  location: 'C:\\Users\\user\\Desktop\\talaria1\\manager-a-focus-routing\\chart v 1.4\\chart\\modules\\a-sr03-focus-routing.test.mjs:221:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    tool must land on the focused chart
+    + actual - expected
+    
+      [
+    +   'A:setTool:trendline'
+    -   'B:setTool:trendline'
+      ]
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+    0: 'B:setTool:trendline'
+  actual:
+    0: 'A:setTool:trendline'
+  operator: 'deepStrictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///C:/Users/user/Desktop/talaria1/manager-a-focus-routing/chart%20v%201.4/chart/modules/a-sr03-focus-routing.test.mjs:232:10)
+    Test.runInAsyncScope (node:async_hooks:227:14)
+    Test.run (node:internal/test_runner/test:1201:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:831:18)
+    Test.postRun (node:internal/test_runner/test:1330:19)
+    Test.run (node:internal/test_runner/test:1258:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:831:7)
+  ...
+# Subtest: SR03-C04 indicator UI binds the FOCUSED chart at init
+not ok 4 - SR03-C04 indicator UI binds the FOCUSED chart at init
+  ---
+  duration_ms: 0.9948
+  type: 'test'
+  location: 'C:\\Users\\user\\Desktop\\talaria1\\manager-a-focus-routing\\chart v 1.4\\chart\\modules\\a-sr03-focus-routing.test.mjs:235:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    indicator chrome must bind the focused chart
+    
+    'A' !== 'B'
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'B'
+  actual: 'A'
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///C:/Users/user/Desktop/talaria1/manager-a-focus-routing/chart%20v%201.4/chart/modules/a-sr03-focus-routing.test.mjs:245:10)
+    Test.runInAsyncScope (node:async_hooks:227:14)
+    Test.run (node:internal/test_runner/test:1201:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:831:18)
+    Test.postRun (node:internal/test_runner/test:1330:19)
+    Test.run (node:internal/test_runner/test:1258:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:831:7)
+  ...
+# Subtest: SR03-C05 hideSettingsMenu clears the settings source on the FOCUSED chart
+not ok 5 - SR03-C05 hideSettingsMenu clears the settings source on the FOCUSED chart
+  ---
+  duration_ms: 3.8397
+  type: 'test'
+  location: 'C:\\Users\\user\\Desktop\\talaria1\\manager-a-focus-routing\\chart v 1.4\\chart\\modules\\a-sr03-focus-routing.test.mjs:248:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    B opened settings so B carries _settingsSourceChart; hide must clear it on B, not on the host
+    + actual - expected
+    
+    + <ref *1> RealChart {
+    +   __id: 'B',
+    +   _pendingTemplate: null,
+    +   _settingsSourceChart: [Circular *1],
+    +   canvas: {
+    +     __captures: [],
+    +     releasePointerCapture: [Function: releasePointerCapture],
+    +     setPointerCapture: [Function: setPointerCapture]
+    +   },
+    +   drag: {
+    +     active: false,
+    +     type: null
+    +   },
+    +   h: 400,
+    +   isPanel: false,
+    +   margin: {
+    +     b: 0,
+    +     t: 0
+    +   },
+    +   offsetX: 0,
+    +   priceOffset: 0,
+    +   settingsModal: {
+    +     style: [Function: style]
+    +   }
+    + }
+    - null
+    
+  code: 'ERR_TEST_FAILURE'
+  ...
+# Subtest: SR03-C06 the window.mainChart chain no longer competes with the provider
+not ok 6 - SR03-C06 the window.mainChart chain no longer competes with the provider
+  ---
+  duration_ms: 0.9454
+  type: 'test'
+  location: 'C:\\Users\\user\\Desktop\\talaria1\\manager-a-focus-routing\\chart v 1.4\\chart\\modules\\a-sr03-focus-routing.test.mjs:265:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    the provider is the single notion of "the chart"; window.mainChart must not win
+    
+    'Z' !== 'B'
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'B'
+  actual: 'Z'
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///C:/Users/user/Desktop/talaria1/manager-a-focus-routing/chart%20v%201.4/chart/modules/a-sr03-focus-routing.test.mjs:270:10)
+    Test.runInAsyncScope (node:async_hooks:227:14)
+    Test.run (node:internal/test_runner/test:1201:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:831:18)
+    Test.postRun (node:internal/test_runner/test:1330:19)
+    Test.run (node:internal/test_runner/test:1258:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:831:7)
+  ...
+# Subtest: SR03-C07 the pointerdown owner wins over the inferred drag scan
+not ok 7 - SR03-C07 the pointerdown owner wins over the inferred drag scan
+  ---
+  duration_ms: 7.4716
+  type: 'test'
+  location: 'C:\\Users\\user\\Desktop\\talaria1\\manager-a-focus-routing\\chart v 1.4\\chart\\modules\\a-sr03-focus-routing.test.mjs:296:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    ownership is explicit from pointer capture, not inferred from whoever also looks active
+    
+    'A' !== 'B'
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'B'
+  actual: 'A'
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///C:/Users/user/Desktop/talaria1/manager-a-focus-routing/chart%20v%201.4/chart/modules/a-sr03-focus-routing.test.mjs:308:10)
+    Test.runInAsyncScope (node:async_hooks:227:14)
+    Test.run (node:internal/test_runner/test:1201:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:831:18)
+    Test.postRun (node:internal/test_runner/test:1330:19)
+    Test.run (node:internal/test_runner/test:1258:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:831:7)
+  ...
+# Subtest: SR03-C08 gesture ownership survives a focus change mid-drag
+not ok 8 - SR03-C08 gesture ownership survives a focus change mid-drag
+  ---
+  duration_ms: 7.6616
+  type: 'test'
+  location: 'C:\\Users\\user\\Desktop\\talaria1\\manager-a-focus-routing\\chart v 1.4\\chart\\modules\\a-sr03-focus-routing.test.mjs:312:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    a focus change during a drag must not hand the gesture to another instance
+    
+    'A' !== 'B'
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'B'
+  actual: 'A'
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///C:/Users/user/Desktop/talaria1/manager-a-focus-routing/chart%20v%201.4/chart/modules/a-sr03-focus-routing.test.mjs:323:10)
+    Test.runInAsyncScope (node:async_hooks:227:14)
+    Test.run (node:internal/test_runner/test:1201:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:831:18)
+    Test.postRun (node:internal/test_runner/test:1330:19)
+    Test.run (node:internal/test_runner/test:1258:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:831:7)
+  ...
+# Subtest: SR03-C09 ownership ends at pointerup and a released instance cannot win on a stale flag
+ok 9 - SR03-C09 ownership ends at pointerup and a released instance cannot win on a stale flag
+  ---
+  duration_ms: 8.2255
+  type: 'test'
+  ...
+# Subtest: SR03-C10 truthy kill-switch values DISABLE the fix (base routing returns)
+ok 10 - SR03-C10 truthy kill-switch values DISABLE the fix (base routing returns)
+  ---
+  duration_ms: 5.9236
+  type: 'test'
+  ...
+# Subtest: SR03-C11 falsy kill-switch values KEEP the fix
+not ok 11 - SR03-C11 falsy kill-switch values KEEP the fix
+  ---
+  duration_ms: 1.1787
+  type: 'test'
+  location: 'C:\\Users\\user\\Desktop\\talaria1\\manager-a-focus-routing\\chart v 1.4\\chart\\modules\\a-sr03-focus-routing.test.mjs:369:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    kill-switch=undefined is falsy and must keep focus routing on
+    
+    'A' !== 'B'
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'B'
+  actual: 'A'
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///C:/Users/user/Desktop/talaria1/manager-a-focus-routing/chart%20v%201.4/chart/modules/a-sr03-focus-routing.test.mjs:373:12)
+    Test.runInAsyncScope (node:async_hooks:227:14)
+    Test.run (node:internal/test_runner/test:1201:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:831:18)
+    Test.postRun (node:internal/test_runner/test:1330:19)
+    Test.run (node:internal/test_runner/test:1258:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:831:7)
+  ...
+# Subtest: SR03-C12 kill-switch is read per call and flips MID-RUN on one live instance
+not ok 12 - SR03-C12 kill-switch is read per call and flips MID-RUN on one live instance
+  ---
+  duration_ms: 1.2029
+  type: 'test'
+  location: 'C:\\Users\\user\\Desktop\\talaria1\\manager-a-focus-routing\\chart v 1.4\\chart\\modules\\a-sr03-focus-routing.test.mjs:378:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    switch absent: fix on
+    
+    'A' !== 'B'
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'B'
+  actual: 'A'
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///C:/Users/user/Desktop/talaria1/manager-a-focus-routing/chart%20v%201.4/chart/modules/a-sr03-focus-routing.test.mjs:383:10)
+    Test.runInAsyncScope (node:async_hooks:227:14)
+    Test.run (node:internal/test_runner/test:1201:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:831:18)
+    Test.postRun (node:internal/test_runner/test:1330:19)
+    Test.run (node:internal/test_runner/test:1258:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:831:7)
+  ...
+# Subtest: SR03-C13 FLAG-03 OFF arm still resolves chrome to a USABLE chart
+ok 13 - SR03-C13 FLAG-03 OFF arm still resolves chrome to a USABLE chart
+  ---
+  duration_ms: 7.4306
+  type: 'test'
+  ...
+# Subtest: SR03-C14 FLAG-03 a pan still MOVES A VIEWPORT with the fix off and on
+not ok 14 - SR03-C14 FLAG-03 a pan still MOVES A VIEWPORT with the fix off and on
+  ---
+  duration_ms: 14.5738
+  type: 'test'
+  location: 'C:\\Users\\user\\Desktop\\talaria1\\manager-a-focus-routing\\chart v 1.4\\chart\\modules\\a-sr03-focus-routing.test.mjs:416:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    enabled: expected owner B
+    
+    'A' !== 'B'
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'B'
+  actual: 'A'
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///C:/Users/user/Desktop/talaria1/manager-a-focus-routing/chart%20v%201.4/chart/modules/a-sr03-focus-routing.test.mjs:431:12)
+    Test.runInAsyncScope (node:async_hooks:227:14)
+    Test.run (node:internal/test_runner/test:1201:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:831:18)
+    Test.postRun (node:internal/test_runner/test:1330:19)
+    Test.run (node:internal/test_runner/test:1258:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:831:7)
+  ...
+# Subtest: SR03-C15 [SOURCE-PIN] host-identity discriminators still compare against window.chart
+ok 15 - SR03-C15 [SOURCE-PIN] host-identity discriminators still compare against window.chart
+  ---
+  duration_ms: 1.4236
+  type: 'test'
+  ...
+# Subtest: SR03-C16 [SOURCE-PIN] order-manager.js carries no routing edit in either mirror
+ok 16 - SR03-C16 [SOURCE-PIN] order-manager.js carries no routing edit in either mirror
+  ---
+  duration_ms: 14.899
+  type: 'test'
+  ...
+# Subtest: SR03-C17 symbol switcher still routes a secondary panel to loadPanelFileData
+ok 17 - SR03-C17 symbol switcher still routes a secondary panel to loadPanelFileData
+  ---
+  duration_ms: 3.5043
+  type: 'test'
+  ...
+1..17
+# tests 17
+# suites 0
+# pass 6
+# fail 11
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 181.5611

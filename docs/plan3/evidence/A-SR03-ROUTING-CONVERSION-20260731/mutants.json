@@ -1,0 +1,156 @@
+{
+  "signature": "TALARIA_SR03_MUTANTS_V1",
+  "measuredAt": "2026-07-31T18:08:53.439Z",
+  "rows": [
+    {
+      "id": "M01",
+      "file": "modules\\economic-news-sidebar.js",
+      "applied": true,
+      "outcome": "DIED",
+      "killedBy": [
+        "SR03-C10",
+        "SR03-C12"
+      ],
+      "name": "kill-switch compared with === true (the shipped defect: ablation arm becomes the treatment arm)"
+    },
+    {
+      "id": "M02",
+      "file": "modules\\economic-news-sidebar.js",
+      "applied": true,
+      "outcome": "DIED",
+      "killedBy": [
+        "SR03-C12"
+      ],
+      "name": "kill-switch captured at registration instead of read per call"
+    },
+    {
+      "id": "M03",
+      "file": "modules\\economic-news-sidebar.js",
+      "applied": true,
+      "outcome": "DIED",
+      "killedBy": [
+        "SR03-C01",
+        "SR03-C02",
+        "SR03-C06",
+        "SR03-C11",
+        "SR03-C12"
+      ],
+      "name": "provider result discarded (focus routing silently inert)"
+    },
+    {
+      "id": "M04",
+      "file": "modules\\economic-news-sidebar.js",
+      "applied": true,
+      "outcome": "DIED",
+      "killedBy": [
+        "SR03-C01",
+        "SR03-C06",
+        "SR03-C11",
+        "SR03-C12"
+      ],
+      "name": "news sidebar mainChart() reverts to the window.chart || window.mainChart chain"
+    },
+    {
+      "id": "M05",
+      "file": "modules\\economic-news-sidebar.js",
+      "applied": true,
+      "outcome": "DIED",
+      "killedBy": [
+        "SR03-C06"
+      ],
+      "name": "fallback chain survives BESIDE the provider (two competing notions of \"the chart\")"
+    },
+    {
+      "id": "M06",
+      "file": "modules\\favorites-manager.js",
+      "applied": true,
+      "outcome": "DIED",
+      "killedBy": [
+        "SR03-C03"
+      ],
+      "name": "favourites activateTool() reverts to the chain (tool lands on the host)"
+    },
+    {
+      "id": "M07",
+      "file": "modules\\indicator-ui.js",
+      "applied": true,
+      "outcome": "DIED",
+      "killedBy": [
+        "SR03-C04"
+      ],
+      "name": "indicator UI init reverts to the chain"
+    },
+    {
+      "id": "M08",
+      "file": "chart.js",
+      "applied": true,
+      "outcome": "DIED",
+      "killedBy": [
+        "SR03-C05"
+      ],
+      "name": "hideSettingsMenu clears the settings stamp on the host again (stamp leaks on the focused chart)"
+    },
+    {
+      "id": "M09",
+      "file": "chart.js",
+      "applied": true,
+      "outcome": "DIED",
+      "killedBy": [
+        "SR03-C07",
+        "SR03-C08",
+        "SR03-C14"
+      ],
+      "name": "_findActivePanChart ignores the explicit owner and re-infers the gesture"
+    },
+    {
+      "id": "M10",
+      "file": "chart.js",
+      "applied": true,
+      "outcome": "DIED",
+      "killedBy": [
+        "SR03-C09"
+      ],
+      "name": "gesture ownership is never released (pinned past pointerup)"
+    },
+    {
+      "id": "M11",
+      "file": "chart.js",
+      "applied": true,
+      "outcome": "DIED",
+      "killedBy": [
+        "SR03-C07",
+        "SR03-C08",
+        "SR03-C14"
+      ],
+      "name": "ownership is never recorded at pointer capture"
+    },
+    {
+      "id": "M12",
+      "file": "chart.js",
+      "applied": true,
+      "outcome": "DIED",
+      "killedBy": [
+        "SR03-C17"
+      ],
+      "name": "THE TRAP: route chart.js:18419 host-identity test through the provider (x !== x)"
+    },
+    {
+      "id": "M13",
+      "file": "chart.js",
+      "applied": true,
+      "outcome": "DIED",
+      "killedBy": [
+        "SR03-C14"
+      ],
+      "name": "gesture-owner read ignores the kill-switch (OFF arm no longer ablates)"
+    },
+    {
+      "id": "NEG",
+      "file": "chart.js",
+      "applied": false,
+      "outcome": "NOT_APPLIED_EXPECTED",
+      "killedBy": [],
+      "name": "NEGATIVE CONTROL — needle that must not exist anywhere"
+    }
+  ]
+}

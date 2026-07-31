@@ -975,6 +975,35 @@ function _talariaInstallMcDiagReporter() {
     };
 }
 
+/**
+ * SR-03 focus routing: host chrome resolves "the chart" through the focus
+ * provider — last click / focus, never hover. Installed idempotently here and
+ * in each participating module because the shipping shells load these files in
+ * different orders (favorites-manager.js runs before chart.js in
+ * dist-v9/index.html) and multichart-prod/chart-embed.html never loads chart.js.
+ *
+ * The `window.chart || window.mainChart` chain collapses INTO this resolver
+ * rather than surviving beside it: window.mainChart is written exactly once, in
+ * _talariaInitializeChart, on the line after window.chart and to the same
+ * object, so the chain could never name a different chart.
+ */
+if (typeof window !== 'undefined' && typeof window.__talariaActiveChartV1 !== 'function') {
+    window.__talariaActiveChartV1 = function talariaActiveChartV1() {
+        // Re-read on EVERY call, never captured at registration, so the switch
+        // can be flipped mid-session with no reload. Truthy disables.
+        if (window.__TALARIA_DISABLE_FOCUS_ROUTING_V1) {
+            return window.chart || window.mainChart || null;
+        }
+        if (typeof window.getActiveChart === 'function') {
+            try {
+                const active = window.getActiveChart();
+                if (active) return active;
+            } catch (_e) { /* provider threw: fall back to the host chart */ }
+        }
+        return window.chart || null;
+    };
+}
+
 class Chart {
     constructor(canvasElement = null, svgElement = null, options = {}) {
         installChartContextMenuCapture();
@@ -17212,8 +17241,15 @@ class Chart {
     hideSettingsMenu() {
         // Reset pending template
         this._pendingTemplate = null;
-        if (typeof window !== 'undefined' && window.chart) {
-            window.chart._settingsSourceChart = null;
+        // showSettingsMenu() stamps _settingsSourceChart on whichever chart owns
+        // the modal, which with N instances is the focused one, not necessarily
+        // the host. Clear it on the same chart or the stamp leaks.
+        const settingsOwner = (typeof window !== 'undefined'
+            && typeof window.__talariaActiveChartV1 === 'function')
+            ? window.__talariaActiveChartV1()
+            : (typeof window !== 'undefined' ? window.chart : null);
+        if (settingsOwner) {
+            settingsOwner._settingsSourceChart = null;
         }
 
         // For panels, hide the main chart's settings modal
@@ -17245,6 +17281,9 @@ class Chart {
         const targetChart = this._settingsSourceChart || this;
         // In multi-panel mode the main chart is still `window.chart` but has isPanel=true; only that
         // instance must drive global toolbar / body / chart-container chrome — never secondary panels.
+        // SR-03: this is an IDENTITY TEST ("am I the host"), not a target lookup. It is deliberately
+        // NOT routed through the focus provider — resolving it to the focused chart would make every
+        // instance believe it is the host and silently invert the guard. Misread once already.
         const isMainAppChart = typeof window !== 'undefined' && window.chart && targetChart === window.chart;
 
         const toRgbChannels = (color, fallback = '41, 98, 255') => {
@@ -18416,6 +18455,10 @@ class Chart {
             item.classList.add('active', 'loading');
             closeDropdown();
 
+            // SR-03: `targetChart !== window.chart` is an IDENTITY TEST ("the target is a
+            // secondary panel, not the host"), not a target lookup — targetChart is already
+            // resolved through the focus provider above. Routing this too would reduce it to
+            // `x !== x` and loadPanelFileData would never run again. Deliberately NOT routed.
             const loadPromise = (targetChart.isPanel && targetChart !== window.chart && typeof targetChart.loadPanelFileData === 'function')
                 ? targetChart.loadPanelFileData(nextFileId)
                 : ((targetChart.isBacktestMode || targetChart.backtestingSession)
@@ -19325,6 +19368,15 @@ class Chart {
     /** Chart currently driving a chart-body pan (multi-panel: only one at a time). */
     _findActivePanChart() {
         const isPan = (ch) => !!(ch && ch.drag && ch.drag.active && ch.drag.type === 'pan');
+        // SR-03: a gesture belongs to the instance that received pointerdown until
+        // pointerup. Ownership is recorded explicitly when the pointer is captured
+        // rather than re-inferred from whoever also looks active, so a pointer that
+        // crosses a panel boundary — or a focus change mid-drag — cannot hand the
+        // second half of a pan, or a load-more fetch, to a different viewport.
+        if (typeof window !== 'undefined' && !window.__TALARIA_DISABLE_FOCUS_ROUTING_V1) {
+            const owner = window.__talariaGestureOwnerV1;
+            if (isPan(owner)) return owner;
+        }
         if (isPan(this)) return this;
         if (typeof window !== 'undefined' && isPan(window.chart)) return window.chart;
         const pm = typeof window !== 'undefined' ? window.panelManager : null;
@@ -28152,6 +28204,10 @@ class Chart {
     }
 
     _releaseDragPointerCapture() {
+        // SR-03: releasing the capture ends this instance's ownership of the gesture.
+        if (typeof window !== 'undefined' && window.__talariaGestureOwnerV1 === this) {
+            window.__talariaGestureOwnerV1 = null;
+        }
         if (this._panPointerCaptureId != null && this.canvas) {
             try {
                 if (typeof this.canvas.releasePointerCapture === 'function') {
@@ -28186,6 +28242,9 @@ class Chart {
         if (!target || typeof target.setPointerCapture !== 'function') return;
         try {
             target.setPointerCapture(e.pointerId);
+            // SR-03: the instance that took the capture owns the gesture until it is
+            // released. Recorded host-wide so every reader resolves the same owner.
+            if (typeof window !== 'undefined') window.__talariaGestureOwnerV1 = this;
             if (target === this.canvas) {
                 this._panPointerCaptureId = e.pointerId;
             } else {
@@ -42887,6 +42946,9 @@ if (typeof window !== 'undefined') {
 // Wrapped as a named idempotent function so React can re-trigger it after
 // it mounts the #chartCanvas element.
 async function _talariaInitializeChart() {
+    // SR-03: idempotent boot guard, deliberately NOT routed. This read belongs to the
+    // instance-registry work, not to input routing; converting it would change what
+    // "already booted" means. Left exactly as found.
     if (typeof window !== 'undefined' && window.chart) return window.chart; // idempotent
 
     try {

@@ -3,6 +3,35 @@
  * Handles chart screenshot functionality with various options
  */
 
+/**
+ * SR-03 focus routing: host chrome resolves "the chart" through the focus
+ * provider — last click / focus, never hover. Installed idempotently in each
+ * participating file because the shipping shells load them in different orders
+ * (favorites-manager.js runs before chart.js in dist-v9/index.html) and
+ * multichart-prod/chart-embed.html never loads chart.js at all.
+ *
+ * The `window.chart || window.mainChart` chain collapses INTO this resolver
+ * rather than surviving beside it: window.mainChart is written exactly once, in
+ * chart.js _talariaInitializeChart, on the line after window.chart and to the
+ * same object, so the chain could never name a different chart.
+ */
+if (typeof window !== 'undefined' && typeof window.__talariaActiveChartV1 !== 'function') {
+    window.__talariaActiveChartV1 = function talariaActiveChartV1() {
+        // Re-read on EVERY call, never captured at registration, so the switch
+        // can be flipped mid-session with no reload. Truthy disables.
+        if (window.__TALARIA_DISABLE_FOCUS_ROUTING_V1) {
+            return window.chart || window.mainChart || null;
+        }
+        if (typeof window.getActiveChart === 'function') {
+            try {
+                const active = window.getActiveChart();
+                if (active) return active;
+            } catch (_e) { /* provider threw: fall back to the host chart */ }
+        }
+        return window.chart || null;
+    };
+}
+
 class ScreenshotManager {
     constructor(chart) {
         this.chart = chart;
@@ -1703,8 +1732,12 @@ class ScreenshotManager {
 }
 
 function initScreenshotManager() {
-    if (window.chart) {
-        window.screenshotManager = new ScreenshotManager(window.chart);
+    // NOTE: this only routes which chart the manager is CONSTRUCTED against.
+    // ScreenshotManager caches it as `this.chart` in its constructor, so capture
+    // does not yet follow focus after boot — see the SR-03 report's residual.
+    const target = window.__talariaActiveChartV1();
+    if (target) {
+        window.screenshotManager = new ScreenshotManager(target);
         return true;
     }
     return false;

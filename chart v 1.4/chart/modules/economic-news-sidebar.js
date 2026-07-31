@@ -2,6 +2,36 @@
  * Economic calendar (News sidebar) — Finnhub via chart API.
  * Loads calendar events for the chart’s bar date range (or visible window when history is long) so axis markers stay correct when panning.
  */
+
+/**
+ * SR-03 focus routing: host chrome resolves "the chart" through the focus
+ * provider — last click / focus, never hover. Installed idempotently in each
+ * participating file because the shipping shells load them in different orders
+ * (favorites-manager.js runs before chart.js in dist-v9/index.html) and
+ * multichart-prod/chart-embed.html never loads chart.js at all.
+ *
+ * The `window.chart || window.mainChart` chain collapses INTO this resolver
+ * rather than surviving beside it: window.mainChart is written exactly once, in
+ * chart.js _talariaInitializeChart, on the line after window.chart and to the
+ * same object, so the chain could never name a different chart.
+ */
+if (typeof window !== 'undefined' && typeof window.__talariaActiveChartV1 !== 'function') {
+    window.__talariaActiveChartV1 = function talariaActiveChartV1() {
+        // Re-read on EVERY call, never captured at registration, so the switch
+        // can be flipped mid-session with no reload. Truthy disables.
+        if (window.__TALARIA_DISABLE_FOCUS_ROUTING_V1) {
+            return window.chart || window.mainChart || null;
+        }
+        if (typeof window.getActiveChart === 'function') {
+            try {
+                const active = window.getActiveChart();
+                if (active) return active;
+            } catch (_e) { /* provider threw: fall back to the host chart */ }
+        }
+        return window.chart || null;
+    };
+}
+
 (function () {
     'use strict';
 
@@ -258,7 +288,7 @@
     }
 
     function mainChart() {
-        return window.chart || window.mainChart || null;
+        return window.__talariaActiveChartV1();
     }
 
     /**
@@ -1362,7 +1392,7 @@
 
     /** Redraw main chart canvas so time-axis economic markers track pan/zoom (see chart.js). */
     function requestChartMarkerRedraw() {
-        var ch = window.chart || window.mainChart;
+        var ch = window.__talariaActiveChartV1();
         if (ch && typeof ch.scheduleRender === 'function') {
             ch.scheduleRender();
         }
@@ -1574,7 +1604,7 @@
     // chart.js runs before this script; first chartDataLoaded may fire before the listener exists — catch up once DOM/scripts are ready.
     if (typeof window !== 'undefined') {
         setTimeout(function () {
-            var ch = window.chart || window.mainChart;
+            var ch = window.__talariaActiveChartV1();
             if (ch && Array.isArray(ch.data) && ch.data.length) {
                 onChartContextReady();
             }
@@ -1584,7 +1614,9 @@
     /** Called from chart.js when the visible date window changes — fetch gaps only, no extra redraw loops. */
     window.__economicCalendarNotifyChartRender = function (chart) {
         if (isEconomicCalendarApiDisabled()) return;
-        var ch = window.chart || window.mainChart;
+        // Discriminator, but the sidebar follows focus: react only to renders from
+        // the chart the sidebar is currently showing data for.
+        var ch = window.__talariaActiveChartV1();
         if (!chart || chart !== ch || chart.isPanel) return;
         if (shouldSkipLocalNewsFetch() || canUseParentCalendarSource()) return;
 
