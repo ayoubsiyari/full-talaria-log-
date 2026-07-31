@@ -1942,3 +1942,58 @@ managers' product edits and .ckpt snapshots and are not mine to commit.
 
 **4. SOAK RUNNING TO THE BEND.** pid 29112 alive, 1.13h, sample 22, foot 2,500.1 MB, heap 342.6, CPU 114.8%,
 bars monotonic, zero re-seeks. 1,120 MB above the ceiling I withdrew.
+
+## 2026-07-31 20:10 — the 86 ms is decomposed, the arena is named, and I corrected my own 72%-non-JS claim
+
+**1. THE TRACE (ordered first, and it redirects the hunt).** Four read-only attaches on the live soak, all with
+disconnect-never-close; the soak survived every one. Category decomposition of the main thread: SCRIPTING 87.2%,
+other 12.2%, PAINTING 0.6%, GC 0.0%, LAYOUT 0.0%, style 0.0%, busy 90.8% of wall. FireAnimationFrame is 69.8% of
+timeline events, TimerFire 14.3%, HandlePostMessage 11.4%. So the cost is JS inside rAF - paint, layout, style
+and GC were all live hypotheses this morning and all four are now under 1%.
+
+**Then a 1 ms sampling profile named the functions. THREE ARE 66.2% OF THE MAIN THREAD:**
+- _chartIndexForCloseMarkerOnChart (order-manager.js:42043) 24.1%, called 50/50 by the ENTRY and EXIT marker
+  index lookups. Two markers per closed trade, each searching a bar array - so its cost is TRADES x BARS, at 43
+  closed and ~63,000 resident. This LINKS Monster 1 and Monster 2 and it reconciles B: a trades x bars term is
+  invisible at 1,930-6,242 bars with few trades and dominant at 63,000 with 43. NOBODY HAS PROPOSED THIS.
+  FALSIFIABLE FREE: the zero-trade CONF-05 arm should show it near zero. I will profile arm 2 and report either way.
+- _m19iB62WindowFp (chart-indicators-full.js:10526) 23.8% - and only 48% comes from the paint path. 27% from
+  _indicatorAsyncDataToken and 25% from _indicatorAsyncTokenMatches, i.e. ~12% OF THE WHOLE MAIN THREAD is spent
+  computing fingerprints to decide whether a cached indicator result is still valid. Same anti-pattern A found
+  in the resample cache: paying the bookkeeping, not getting the benefit.
+- m20Q6CapturedClear (replay-system.js:9800) 18.3%, and two of three callers are NOT the chart -
+  replay-dashboard-sync.js:10 (43%) and economic-news-sidebar.js:1504 (41%). A news sidebar and a dashboard sync
+  drive 15% of the main thread during replay, and my standing item says there is NO kill-switch for m20Q6.
+
+**A's named mechanism, _resampleDataFull, is 3.5% (267 ms of 7,591).** Six candidates eliminated, five by reading
+source, and the one that was named is 3.5%. Nothing in the top three had been proposed. The Director's read was
+right: one trace beat a seventh source read.
+
+**2. THE ARENA IS NAMED, and background-detail memory-infra was cheap enough to take live.** pid30588 (the
+1,968 MB renderer): v8 1,479.3 MB, blink_gc 401.1, partition_alloc 307.9, malloc 172.8, cc 50.6, gpu 37.2,
+web_cache 13.7, skia 0.3. Rows overlap through ownership edges so the sum is not additive, but the ranking is.
+
+**AND IT CORRECTS ME.** I published "497 MB / 72% of the renderer is NOT JS" and built this evening's
+"growth is not DOM-resident, it lives in native allocators" on top of it. That 72% was renderer-private minus
+usedJSHeapSize, and usedJSHeapSize measures LIVE OBJECTS, not V8's footprint - V8 also holds committed-unused
+heap, code/bytecode space and external backing stores. Measured directly V8 is 75% of the renderer, not 28%. My
+collection-event evidence still stands as evidence, but its correct reading is NOT "the memory is outside V8" -
+it is that V8 returned live-object space and did not return the arena to the OS, which is what a generational
+heap does. I read a retention story out of an allocator behaviour. This also revises what I told the Director
+and A: Phase 4's target is V8 memory in ONE isolate that all four realms share.
+
+Canvas (4.16), skia (0.3), decoded images (>=5.75), GPU (37.2 renderer-side) are all excluded by number now
+rather than by argument. The remaining split is INSIDE v8: bar data versus code residency, which needs a heap
+snapshot by object type - the one instrument I will NOT take against a live soak, because it stops the world.
+
+**NEXT AND NEARLY FREE: a second background dump before arm 1 ends, diffed against this one.** Prediction stated
+in advance so it can be wrong: v8 carries essentially all the growth and blink_gc/partition_alloc/malloc stay
+flat. If partition_alloc climbs instead, bar data is held outside V8 and my per-bar figure needs re-reading.
+
+**3. TREE.** Committing this turn's work; my paths were clean before it and artifacts stay in _evidence.
+**4. SOAK.** pid 29112 alive through four attaches, sample 43+ at 2.26h, foot 2,900.1 MB, heap 947.1, cpu 137.1%,
+bars monotonic at ~63,300. Trace windows are timestamped in each artifact so overlapping samples get annotated.
+
+**My own wasted attach, recorded:** the first trace included the `toplevel` category, whose RunTask wrappers
+absorbed 99.9% of the time under an outermost-only pass and decomposed nothing. I built a decomposition tool
+that reported one bucket called "other".
