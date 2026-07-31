@@ -5944,3 +5944,55 @@ blocking time alone, or the soak will overstate severity by ~4x.
 BUDGET-01: the 100 ms/s row stays on hold, correctly. The longest-freeze companion argument is
 adopted for every row, which is the part of it that survives the withdrawal.
 
+
+## B-0225 — I published the cell before checking the host was quiet, and found three of my own residues doing it
+
+**2026-07-31 17:55**
+
+Ran the standing post-run state check against the container rather than my notes, and it caught
+things I would not have found otherwise. All three are mine.
+
+**1. The QA account's window cap was left at 12 for over an hour.** Product value is 2.
+`run-freeze-arm.sh` raises it so eviction cannot be mistaken for a freeze, and restoration lived in
+the traps of two *wrapper* scripts. `fill-missing-cell.sh` called the arm directly, so nothing put
+it back. That account is the one D uses for M20-J1, so I changed product behaviour under another
+manager's feet. Restored to 2, and moved the restore into the arm script itself with a trap on
+EXIT/INT/TERM that reads the prior value rather than assuming 2, verifies after writing, and aborts
+up front if it cannot read the value it would need to restore. Cleanup belongs to the thing that
+makes the mess, not to its callers.
+
+**2. Four scratch containers were still running, two of them on b118.** Bound to 127.0.0.1 on ports
+3101-3104, 0.31-0.65% CPU each, 3 GB memory between them. The load was negligible, but a b118 API
+answering on a port of the canary host is a trap for anyone who probes it believing they have the
+canary — the same failure class as trusting a marker. Removed, production containers untouched and
+verified after.
+
+**3. An orphaned `main-thread-freeze.mjs` with 13 Chrome processes was still running, loadavg
+12.13.** My own doing: testing the new trap, I killed the wrapper shell and not the node child, so
+the child survived and kept driving Chrome. Killing a parent does not kill what it spawned.
+
+**The third one threatened the finding I had just published**, because "no artificial load" in my
+label meant "my HTTP generator was off", not "the host was quiet". So I killed the orphans, waited
+for loadavg to fall from 12.13 to 1.23, proved it settled, and re-ran the cell recording loadavg
+per reading. **310.2 / 318.9 / 327.9 ms/s at 3,831 / 4,007 / 4,193 bars, against 312.6 / 318.4 /
+322.7 before.** Unchanged. Host load was not the driver and the finding stands as published.
+
+It also came back stronger. The plateau now spans **1,930-4,193 bars, n=11: mean 319.2 ms/s, sd
+10.9 (3.4% of mean), correlation 0.018, fitted slope 0.00025 ms/s per bar — 0.6 ms/s across the
+whole 2,263-bar span.** Flat to within noise over a 2.2x range of bar count. And contamination
+inflates readings, so the low-bar cells of 0 and 55 ms/s are if anything high, which makes the
+contrast conservative rather than overstated.
+
+One number worth having from the same runs, for capacity rather than for this finding: **a single
+replay tab at 10x drives the chart container to ~85% CPU** on a quiet host.
+
+**What I would have got wrong without the container check.** Published a load-free cell measured on
+a host at loadavg 12, left another manager's account mis-capped, and left two b118 endpoints live
+for someone else to trip over. The check that found all three is the one the Director made standing
+practice this morning, and this is the second time today it has paid.
+
+**Also flagged rather than silently removed:** `k4-probe@talaria-log.com` (id 131) is mine, created
+to reproduce eviction on a `max_sessions = 1` account, which the QA account cannot do. Credentials
+cloned from qa-canary, so no new secret. Left active in case C needs a cap-1 account tonight, but it
+must not survive into the release.
+

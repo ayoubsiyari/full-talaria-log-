@@ -10,14 +10,20 @@ Found while hunting a build difference for `K4`. It is not a `K4` result and doe
 **1. Bars alone block the main thread. The artificial load is irrelevant.** This is the clean result
 and it is the one that matters, because it is the PO's scenario.
 
-| | few bars (~580) | many bars (2,761–3,197) |
+| | few bars (~580) | many bars (2,761–4,193) |
 |---|---|---|
-| **no artificial load** | **0 ms/s**, 26 ms worst gap | **312.6 / 318.4 / 322.7 ms/s** |
-| **60 concurrent gated requests** | 55 ms/s | 302–343 ms/s |
+| **no artificial load** | **0 ms/s**, 26 ms worst gap | **310–328 ms/s** (n=6) |
+| **60 concurrent gated requests** | 55 ms/s | 302–343 ms/s (n=8) |
 
 At many bars the two rows are indistinguishable. **The 60-request load contributes nothing once bars
 have accumulated.** A zero-trade run with nobody generating traffic still loses about a third of
 every second of main thread. The PO has been describing this for two days.
+
+**The no-load cell was re-measured on a deliberately quiet host and did not move.** I published it
+first, then found the host had not been quiet — an orphaned probe of mine with 13 Chrome processes
+was still running and loadavg was 12.13. Re-run after killing it and waiting for loadavg to fall to
+1.23: **310.2 / 318.9 / 327.9 ms/s** at 3,831 / 4,007 / 4,193 bars, against 312.6 / 318.4 / 322.7
+before. Host load was not the cause.
 
 **2. The degradation is 6× more long tasks, not longer ones.** This is the part I would have got
 wrong by quoting a single aggregate, so it is stated with the aggregate that disagrees.
@@ -45,19 +51,29 @@ quoting 6× as "each freeze is six times worse" would be wrong.
 ```
  blocked
   ms/s
-  343 |                    ● ● ●   ● ● ● ● ●   ● ● ●     <- plateau, ~1/3 of wall clock
+  343 |                ● ● ● ● ●   ● ● ●   ● ● ●   ● ●    <- plateau, ~1/3 of wall clock
       |
   200 |          /
       |        /              steep climb
    55 |    ●
     0 | ●  (no load)
-      +---------------------------------------------------
-        579   ~1,100      1,930  2,592  2,761  3,197   bars loaded
+      +----------------------------------------------------
+        579   ~1,100    1,930   2,592   3,197    4,193   bars loaded
 ```
 
-**It climbs steeply, then plateaus.** 55 → ~300 between 579 and ~1,100 bars, then flat at 302–343
-across 1,100–3,197 bars. Within the plateau the correlation of bars against blocked ms/s is
-**−0.016** over five runs — genuinely flat, not slowly rising.
+**It climbs steeply, then plateaus.** 55 → ~300 between 579 and ~1,100 bars, then flat across
+1,930–4,193 bars — a 2.2× span of bar count with no trend:
+
+| | plateau, n=11 (30 s runs, both load conditions) |
+|---|---|
+| mean blocked | **319.2 ms/s** |
+| spread | sd 10.9 ms/s, **3.4% of mean** |
+| range | 302.4 – 338.6 ms/s |
+| correlation, bars vs blocked | **0.018** |
+| fitted slope | **0.00025 ms/s per bar** — 0.6 ms/s across the whole 2,263-bar span |
+
+**That is flat to within measurement noise.** Whatever grows the cost between 579 and ~1,100 bars
+has stopped entirely by 1,930 and stays stopped through 4,193.
 
 **The plateau is not gauge saturation.** A third of wall clock is far from any ceiling; the same
 instrument reported 0 ms/s in the same session. The flatness is a property of the product.
@@ -103,6 +119,15 @@ established for `L1` this morning, where paints/sec *falls* as the thread gets b
   across runs minutes apart, but a time-dependent confound is **not excluded**. This is the same
   class of error that produced the `K4` retraction and I am naming it rather than waiting to be
   caught by it.
+- **Host load is excluded for the plateau and would only flatter the low-bar cell.** During the
+  low-bar readings, four scratch containers of mine were up (~1.9% CPU total, localhost-bound) and
+  later an orphaned probe of mine as well. Contamination inflates a reading, so if anything the
+  low-bar figures of 0 and 55 ms/s are *high* — which makes the contrast against the plateau
+  conservative rather than overstated. The plateau itself was re-measured with the host quiet and
+  did not move.
+- **A single replay tab drives the server container to ~85% CPU** at 10x on a quiet host. Noted
+  because it bounds how many such tabs the canary can serve, which is a different question from
+  this finding but is measured by the same runs.
 - **I have not identified the code.** The per-bar task count and the plateau are measurements. The
   viewport-rebuild explanation is a hypothesis with a stated way to kill it.
 
@@ -118,6 +143,11 @@ Two instrumentation notes that cost me most of a cycle:
 2. **Record long-task count and timer lateness separately, not just total blocking time.** Total
    blocking time moved 5.8× while timer lateness moved 1.5×. A soak reporting only the first will
    overstate the severity by ~4×.
+
+3. **Your four panels will not fit.** `qa-canary` has `max_sessions = 2`, so a four-panel run
+   evicts two of them by design and their charts stop. That looks exactly like a freeze and it is
+   the cap working correctly — it cost me a whole run before I recognised it. Raise the cap for the
+   soak and put it back afterwards, or the soak measures eviction.
 
 If it does not rise, the relationship belongs to my setup and that is worth learning cheaply.
 

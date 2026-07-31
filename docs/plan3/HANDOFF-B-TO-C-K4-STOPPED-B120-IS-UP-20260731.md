@@ -133,3 +133,18 @@ a build. If it does not rise, the relationship belongs to my setup and you have 
 
 If you can vary zoom, one extra cell kills or confirms the mechanism: the plateau should scale with
 candles **visible**, not candles **loaded**.
+
+**3. Your four panels will not fit inside the QA account.** `qa-canary@talaria-log.com` has
+`max_sessions = 2`. A four-panel run evicts two panels by design and their charts stop dead, which
+looks exactly like a freeze — it cost me a full run before I recognised it was the cap working
+correctly. Raise the cap before the soak and put it back after. If you use my
+`run-freeze-arm.sh` it now does that itself on any exit path, including being killed.
+
+**4. Plateau confirmed wider and on a quiet host.** Flat across 1,930-4,193 bars, n=11: mean
+319.2 ms/s, sd 10.9 (3.4% of mean), correlation of bars against blocked ms/s 0.018, fitted slope
+0.00025 ms/s per bar — 0.6 ms/s across the whole 2,263-bar span. I also re-ran the no-load cell
+after killing an orphaned probe of mine and letting loadavg fall from 12.13 to 1.23: 310.2 / 318.9 /
+327.9 ms/s, unchanged. Host load is not the driver.
+
+One number from the same runs that bears on your capacity work rather than mine: **a single replay
+tab at 10x drives the chart container to ~85% CPU** on an otherwise quiet host.
