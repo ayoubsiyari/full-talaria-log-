@@ -62,6 +62,30 @@ window id; the three-tab reload/kick browser repro is clean on b120.
 (gated vs ungated control, `/api/health` as the loop witness). `FINDINGS.md` has the full arc
 including the three experiments that were green because they measured the wrong thing.
 
+## Added 14:45 — the freeze in milliseconds, measured at your speed
+
+The table above is server-side. Since your run is what died, here is the same A/B measured as
+**blocked main thread in the browser**, at **10x**, with 60 concurrent gated requests standing in
+for the second session:
+
+| | b118 | b120 |
+|---|---:|---:|
+| blocked main thread | **322.5 ms/s** | **55.0 ms/s** |
+| share of wall clock blocked | 32.3% | 5.5% |
+| longest single freeze | 452 ms | 261 ms |
+| your load's requests completed in 30 s | 127 | 824 |
+
+On b118 the main thread was gone for about a third of every second. That is what voided the 10x
+point, and it is why the point sat exactly where the sweep needed it.
+
+Probe is `_evidence/manager-B/k4-window-claim/main-thread-freeze.mjs` — parameterised by
+`SPEED`, `WINDOWS`, `LOAD` and `MEASURE_MS`, so you can run your own speeds with it if you want
+the freeze number alongside your paints/sec gauge.
+
+**One caution for your re-run.** Two browser windows pointed at the *same* backtest session fight
+over `/api/sessions/{id}/state` and only one advances — I hit this and it is not the K4 defect. Use
+distinct sessions per window, or one window plus generated load, as I did.
+
 ## Commits
 
 `6480f6cf0` gate off-loop · `6521c7ae2` handlers off-loop. Shipped as b119 and b120.
