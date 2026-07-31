@@ -125,9 +125,10 @@ function censusSource(nodeBudget) {
   const chart = window.chart;
   const rs = chart && chart.replaySystem;
   const visible = (() => {
-    // Distinct bars the user could actually SEE: the viewport window, if the product exposes it.
-    const start = chart && (chart.viewStartIndex ?? chart._viewStart ?? null);
-    const end = chart && (chart.viewEndIndex ?? chart._viewEnd ?? null);
+    // Distinct bars the user could actually SEE. The product's names are
+    // visibleStartIndex/visibleEndIndex (chart.js ~27293); the others are fallbacks.
+    const start = chart && (chart.visibleStartIndex ?? chart.viewStartIndex ?? chart._viewStart ?? null);
+    const end = chart && (chart.visibleEndIndex ?? chart.viewEndIndex ?? chart._viewEnd ?? null);
     if (Number.isFinite(start) && Number.isFinite(end) && end > start) return end - start;
     return null;
   })();

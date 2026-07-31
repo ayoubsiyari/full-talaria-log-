@@ -35,8 +35,11 @@ function residencySource() {
   const last = data && data.length ? data[data.length - 1] : null;
   const tOf = (b) => (b && (b.t ?? b.time ?? b.timestamp ?? null)) ?? null;
   const idx = rs && Number.isFinite(rs.currentIndex) ? rs.currentIndex : null;
-  const viewStart = ch.viewStartIndex ?? ch._viewStart ?? null;
-  const viewEnd = ch.viewEndIndex ?? ch._viewEnd ?? null;
+  // The product's names are visibleStartIndex/visibleEndIndex (chart.js ~27293). My first pass
+  // guessed viewStartIndex/_viewStart, which read null all through the 03:53 run and cost the
+  // viewport half of EVICT-03 in it. Old names kept as fallbacks only.
+  const viewStart = ch.visibleStartIndex ?? ch.viewStartIndex ?? ch._viewStart ?? null;
+  const viewEnd = ch.visibleEndIndex ?? ch.viewEndIndex ?? ch._viewEnd ?? null;
   return {
     realm: `${location.pathname}${location.search}`.slice(-52),
     timeframe: ch.currentTimeframe ? String(ch.currentTimeframe) : null,
@@ -72,8 +75,16 @@ function residencySource() {
 
 async function readAll(page) {
   const rows = [];
-  for (const frame of page.frames()) {
-    try { const r = await frame.evaluate(residencySource); if (r) rows.push(r); } catch { /* gone */ }
+  const frames = page.frames();
+  for (let i = 0; i < frames.length; i += 1) {
+    try {
+      const r = await frames[i].evaluate(residencySource);
+      // The three peer panels share an identical URL suffix, so the URL is NOT a realm identity.
+      // The 03:53 run keyed on it and silently merged three panels into one series, which
+      // manufactured 26 "releases" out of a series hopping between different panels' counts.
+      // The frame ordinal plus the timeframe is unique.
+      if (r) rows.push({ ...r, frameIndex: i, realmKey: `f${i}|${r.timeframe || '?'}` });
+    } catch { /* frame gone */ }
   }
   return rows;
 }
@@ -83,8 +94,9 @@ export function gradeEviction(series) {
   const byRealm = new Map();
   for (const s of series) {
     for (const r of s.rows) {
-      if (!byRealm.has(r.realm)) byRealm.set(r.realm, []);
-      byRealm.get(r.realm).push({ ...r, atMinutes: s.atMinutes });
+      const key = r.realmKey || `f${r.frameIndex ?? '?'}|${r.timeframe || '?'}`;
+      if (!byRealm.has(key)) byRealm.set(key, []);
+      byRealm.get(key).push({ ...r, atMinutes: s.atMinutes });
     }
   }
   const gauges = ['residentPrimary', 'residentRaw', 'residentPanelMaster'];
