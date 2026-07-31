@@ -221,6 +221,22 @@ export async function bootConf01Session({
    * arming or playback. For measurements that must see a cold chart.
    */
   onSingleReady = null,
+  /**
+   * SWEEP-01 knobs. All three default to the CONF-01 reference configuration, so every existing
+   * gate boots exactly as it did before this parameter block existed.
+   *
+   * panelIds — S2 varies panel count. The layout, the dataset plan, the arming and the compliance
+   *   assessment all have to agree on the count, which is why it is one option and not three.
+   * datasetMode — S4 varies same-pair against different-pair, the direct test of the
+   *   _multichartSamePairAsHost guards.
+   * preloadScript — S5 needs a knob read at chart construction, so it must be installed before
+   *   the chart page navigates rather than evaluated after it has painted.
+   */
+  panelIds = CONF01_PANEL_IDS,
+  datasetMode = HEAP_CYCLE_DATASET_MODE_DISTINCT,
+  preloadScript = null,
+  /** Only the backgrounded-tab scenario sets this. See the launch args for why. */
+  allowBackgroundThrottling = false,
 } = {}) {
   const origin = String(process.env.TEST_VPS_URL || DEFAULT_ORIGIN).replace(/\/$/, '');
   const email = String(process.env.TEST_EMAIL || '').trim();
@@ -236,10 +252,15 @@ export async function bootConf01Session({
       '--disable-dev-shm-usage',
       '--enable-precise-memory-info',
       // Unattended multi-hour runs must not be throttled for being unfocused,
-      // or the instrument measures a paused chart and calls it flat.
-      '--disable-background-timer-throttling',
-      '--disable-backgrounding-occluded-windows',
-      '--disable-renderer-backgrounding',
+      // or the instrument measures a paused chart and calls it flat. The one scenario that must
+      // NOT set these is the backgrounded-tab measurement: the PO's 1.24 GB and 18.8% CPU were
+      // measured on a tab Chrome was free to throttle, and disabling throttling would answer a
+      // question nobody asked.
+      ...(allowBackgroundThrottling ? [] : [
+        '--disable-background-timer-throttling',
+        '--disable-backgrounding-occluded-windows',
+        '--disable-renderer-backgrounding',
+      ]),
       ...extraArgs,
     ],
     defaultViewport: headless ? { width: 1600, height: 1000 } : null,
@@ -277,6 +298,9 @@ export async function bootConf01Session({
   });
 
   const url = reactParityUrlWithLayout(`${origin}/chart/dist-v9/index.html?mode=backtest`, '1');
+  // Must be installed before the chart page navigates: a knob the chart reads while constructing
+  // its first fetch cannot be set from a hook that only runs once the chart has painted.
+  if (preloadScript) await page.evaluateOnNewDocument(preloadScript);
   await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 180_000 });
   if (/\/login\/?/i.test(new URL(page.url()).pathname)) {
     await dismissCookieBanner(page);
@@ -306,12 +330,12 @@ export async function bootConf01Session({
   await cdp.send('HeapProfiler.enable');
 
   // Four panels, then four symbols at four timeframes, then indicators/orders/play.
-  await applyDistV9LayoutViaUi(page, 4, 0);
+  await applyDistV9LayoutViaUi(page, panelIds.length, 0);
   await sleep(settleMs);
   const fileChoice = await resolveDeployedFileIds(page);
   const plan = buildDatasetPlan({
-    mode: HEAP_CYCLE_DATASET_MODE_DISTINCT,
-    panelIds: CONF01_PANEL_IDS,
+    mode: datasetMode,
+    panelIds,
     fileIds: fileChoice.fileIds,
     timeframes,
   });
@@ -327,7 +351,7 @@ export async function bootConf01Session({
   let workload;
   try {
     workload = await armHeapCyclePoWorkload(page, {
-      panelIds: CONF01_PANEL_IDS,
+      panelIds,
       replaySpeed,
       playHoldMs: 8_000,
       retainIndicators: true,
@@ -340,7 +364,7 @@ export async function bootConf01Session({
     console.error(`[conf01] arm failed (${String(error?.message || error)}); retrying after extra wait`);
     await waitConf01PanelsReady(page, { timeoutMs: 120_000 });
     workload = await armHeapCyclePoWorkload(page, {
-      panelIds: CONF01_PANEL_IDS,
+      panelIds,
       replaySpeed,
       playHoldMs: 8_000,
       retainIndicators: true,
@@ -356,18 +380,18 @@ export async function bootConf01Session({
   }
   await sleep(settleMs);
 
-  const observed = await readPanelDatasets(page, CONF01_PANEL_IDS).catch(() => []);
+  const observed = await readPanelDatasets(page, panelIds).catch(() => []);
   let state = await readConf01State(page);
   // Peers cannot follow a host replay master when the symbols differ (the sixteen
   // same-pair guards all return false), so each panel must be armed in its own
   // right. One re-arm pass before grading, then the verdict stands as measured.
-  if (state.advancingPanels < 4) {
+  if (state.advancingPanels < panelIds.length) {
     await keepConf01Playing(page, replaySpeed);
     await sleep(4_000);
     state = await readConf01State(page);
   }
   const compliance = assessConf01Compliance({
-    panelCount: observed.length || CONF01_PANEL_IDS.length,
+    panelCount: observed.length || panelIds.length,
     fileChoice,
     datasetAssessment: { ...datasets.assessment, observed: observed.length ? observed : datasets.observed },
     workload,

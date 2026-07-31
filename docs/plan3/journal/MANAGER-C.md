@@ -1237,3 +1237,59 @@ realm keying that manufactured releases; a cadence with no denominator floor tha
 negative denominators; and viewport property names that were simply wrong (visibleStartIndex, not
 viewStartIndex), which leaves the viewport half of EVICT-03 unmeasured. Three instrument defects, zero
 re-runs needed, all stated in the artifacts and the summary rather than quietly corrected.
+
+## W103 — 2026-07-31 09:10 · tier=mid model=claude-opus-5-thinking-high · SWEEP-01 arrived after the night; sweeps launched, and 5-minute points would have lied
+
+The addendum (3df92902c) was written 00:20 and reached me 08:17, after the battery had run. Stating the
+consequence rather than the excuse: I ran items 1, 7, 9 and 11 of its order and skipped items 2-6, the
+five sweeps. SWEEP-01 ranks S3/S1/S5/S2/S4 ABOVE the copies-per-bar and eviction work I did run, and
+its central claim is that a fitted curve outranks any number of single readings. So the night produced
+points where the ruling wanted curves. Sweeps are now running in the ruling's order.
+
+THE PREREQUISITE PRODUCED A FINDING OF ITS OWN. The ruling says derive point duration from B1 and
+suggests five minutes a point. I derived it (DERIVE-SWEEP-POINT-DURATION-V1) by truncating both B1 arms
+to the first N windows and refitting. Criteria fixed before looking: CI excludes zero, the truncated
+slope lands inside the full run's CI, and the CI half-width is under half the slope.
+
+FIVE MINUTES FAILS, AND FAILS IN THE WORST POSSIBLE WAY. At ~5 min the two-indicator arm fits +3.435
+ms/bar per kbar against a true +2.812 (CI [2.508,3.116]) — 22% HIGH and outside the CI. The zero-
+indicator arm fits +0.832 against a true +1.036 — 20% LOW and outside the CI. Opposite directions, in
+the two arms whose RATIO is the whole point of a dose-response sweep. A four-point S3 at five minutes a
+point would have exaggerated the indicator effect at the top and understated it at the bottom, and I
+would have reported a steeper dose-response than exists. The smallest truncation usable in BOTH arms is
+20 windows (~11 min), so points run at 12. S3/S1/S2/S4 therefore cost ~3.5h, not the ruling's ~1.5h,
+and I am spending it: a curve that bends the wrong way is worse than no curve.
+
+INSTRUMENTS. sweep-runner.mjs enforces the three SWEEP-01 obligations in code, not intent: predictions
+per candidate mechanism are written into the artifact BEFORE the first point boots; every sweep names a
+negative control; and point duration carries its derivation. The grader passes GATE-01 on synthetic
+input — an inverted control (control is the worst point) voids the sweep, a control that merely
+degrades does not, because at zero indicators degradation FALSIFIES the recalc hypothesis rather than
+indicting the instrument. That distinction is the difference between a dead hypothesis and a dead
+sweep, and S3 was always likely to hit it.
+
+sweep-gauges.mjs takes the full gauge set at every point and states its own blind spots per MEAS-02:
+true main-thread share by category is NOT collected because it needs a trace that costs more than a
+point, and renderer CPU percent is reported instead and is a different number; renders-per-React-commit
+is NOT collected and paints/sec and paints/bar are the proxies. Named in the artifact so nobody quotes
+a proxy as the thing itself.
+
+THREE BOOT KNOBS ADDED, all defaulting to today's behaviour so every existing gate boots unchanged:
+panelIds (S2 needs layout, dataset plan, arming and compliance to agree on the count), datasetMode (S4
+needs identical = one fileId and one timeframe on all four panels, which is exactly what the twenty
+_multichartSamePairAsHost guards test for), and preloadScript (S5 needs a knob read during chart
+construction, so it cannot be set from a hook that runs after first paint). Also
+allowBackgroundThrottling, used by exactly one scenario: the backgrounded-tab measurement must leave
+Chrome's throttling ON, because the PO's 1.24 GB and 18.8% CPU were measured on a tab Chrome was free
+to throttle and our standard flags disable all three throttles.
+
+EARLY, FROM S3'S CONTROL POINT AND NOT YET GRADED: at ZERO indicators, four panels, 60x, CPU-ms/bar
+climbs 33.9 to 49.3 over six minutes and renderer private memory goes 846 to 1018 MB. The negative
+control degrades. Under S3's declared prediction set that is the recalc-only hypothesis dying, not the
+instrument lying — and it is B1's two-culprit split reproducing on a third independent instrument.
+
+A CHEAP CORROBORATION I DID NOT PLAN. Copies-per-resident-bar FALLS monotonically through the point,
+26.99 down to 14.99, while resident bars climb 9,029 to 18,075. A ratio that falls as 1/n is the
+signature of a FIXED cost being amortised, which is exactly B3's fixed-plus-marginal decomposition
+(202k bar objects fixed, ~3 slots marginal) arriving from a different instrument that was not built to
+test it.
