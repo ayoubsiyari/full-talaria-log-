@@ -1,0 +1,108 @@
+{
+  "signature": "TALARIA_CONF05_INDICATOR_SELECTION_V1",
+  "config": "CONF-05",
+  "purpose": "zero-trade reference arm uses one incremental last-point family and one anchored family indicator per chart",
+  "applyTo": {
+    "panels": 4,
+    "perChartIndicators": 2,
+    "totalIndicatorInstances": 8,
+    "rule": "apply the same two indicator definitions to each CONF-05 chart so the trade-bearing and zero-trade arms differ only by trades"
+  },
+  "selectedIndicators": [
+    {
+      "slot": 1,
+      "role": "incremental-last-point",
+      "family": "convergent recursive / EMA-family",
+      "type": "ema",
+      "displayName": "EMA",
+      "params": {
+        "period": 20,
+        "source": "close"
+      },
+      "why": "EMA is in the incremental-safe family; last/forming point can update from carried recursive state without whole-series recompute."
+    },
+    {
+      "slot": 2,
+      "role": "anchored-family",
+      "family": "VWAP anchored cumulative",
+      "type": "vwap",
+      "displayName": "VWAP",
+      "params": {
+        "source": "hlc3",
+        "anchorPeriod": "session",
+        "bandsCalcMode": "standard_deviation",
+        "band1Enabled": true,
+        "band1Mult": 1,
+        "band2Enabled": false,
+        "band3Enabled": false
+      },
+      "why": "VWAP is an anchored family; correctness depends on the configured anchorPeriod and carried accumulators if starting inside an anchor."
+    }
+  ],
+  "familyClassification": {
+    "incrementalLastPoint": {
+      "recommendedForCONF05": ["ema"],
+      "alsoSafe": [
+        "sma",
+        "wma",
+        "bb",
+        "bollinger",
+        "envelope",
+        "smaenvelope",
+        "atr",
+        "adx",
+        "rsi",
+        "macd",
+        "ppo",
+        "stoch",
+        "stochastic",
+        "roc",
+        "mom",
+        "momentum",
+        "willr",
+        "mfi",
+        "donchian",
+        "keltner",
+        "aroon",
+        "cmf",
+        "trix",
+        "stochrsi",
+        "massindex",
+        "coppock",
+        "rvi",
+        "elderray",
+        "ao",
+        "uo",
+        "vortex",
+        "dpo",
+        "stddev",
+        "dema",
+        "tema",
+        "hma",
+        "supertrend",
+        "adr",
+        "volume"
+      ],
+      "guardrails": [
+        "rsi with divergenceEnabled is not incremental-safe",
+        "centered or shifted presentations may leave the displayed last point null/unchanged until context exists"
+      ]
+    },
+    "anchoredOrCheckpoint": {
+      "recommendedForCONF05": ["vwap"],
+      "alsoAnchored": ["obv", "psar", "seasonality"],
+      "requirements": {
+        "vwap": "configured anchorPeriod plus prior cumPV/cumP2V/cumVol when starting inside an anchor",
+        "obv": "prior OBV baseline scalar plus previous close",
+        "psar": "trend direction, extreme point, acceleration factor, SAR value and clamp bars",
+        "seasonality": "keyed day-of-year sample store; no backward bar window fixes it"
+      }
+    }
+  },
+  "doNotUseForCONF05": [
+    {
+      "type": "seasonality",
+      "reason": "valuable negative-result family but non-causal; may require updating every visible bar sharing a day-of-year key and can render null with insufficient samples, so it is not the clean anchored representative for tonight's paired soak."
+    }
+  ]
+}
