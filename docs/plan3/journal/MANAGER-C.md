@@ -1808,3 +1808,34 @@ perturbation, and escalated it as a product defect. The deaths were real and rem
 not. A and B should not hunt it. Consequence: the heavy RESET-01 arms were capped at 1,300 MB by my own safety
 ceiling and declared the 1 GB-above-baseline target unreachable when it was reachable, so they need re-running
 without the cap once the host is free.
+
+## 2026-07-31 18:30 — the plateau does not exist, answered for free, and the MONSTER-2 axis needs no new gauge
+
+Read the 18:05 ruling. Three things asked of me; two were already done before it landed (the ceiling finding is
+published separately as FINDING-C-THE-1-38-GB-CEILING... and committed at 105a291b8; E's CONF-05 selection is
+loaded from E's own artifact and verified loading [2,2,2,2] with vwap present).
+
+**The third is answered with zero machine time and it closes the Director's conditional.** B measured cost per
+event rising 6.2x from 579 to 2,592 bars then plateauing past ~1,100. My monotonic-bars run BEGINS at 6,700 bars
+— 6.1x beyond that onset — and runs to 36,104, with zero trades, zero re-seeks and no forced GC. Across it, wall
+cost per event goes 48.54 -> 108.78 ms, a 2.24x rise, and the UPPER HALF alone (24,007-36,104 bars) has slope
++0.00327 ms per bar loaded with CI [0.00223, 0.00431] excluding zero. There is no plateau anywhere in the range.
+Worse: the upper-half slope is 1.7x the full-range slope, so cost per event climbs FASTER as bars accumulate.
+That is convex, which is the opposite of a bounded series.
+
+So B's plateau is a property of a 579-2,592 bar window, not of the resample — and since R-1 put resident bars at
+7,321 at CONF-01 first paint, users START past the top of B's range. A's "bounded-but-large" is not supported
+here, which closes the cheap-fix branch of the Director's conditional. I am NOT claiming the resample is the
+cause; that link is A's and its source evidence stands on its own. What I settled is that the shape has no knee.
+
+**The instrumentation request needs no gauge, only arithmetic.** Every soak sample already carries resident bars,
+elapsed time and renderer CPU, so cost per event is a difference between consecutive samples. The grader reads
+both artifact shapes so it scores the soak and the monotonic gate identically, and the running arm did not have
+to be restarted for it. Verified live at three samples: 48.93 -> 59.53 ms wall, 63.61 -> 79.24 ms CPU, already
+rising with trades present. Two intervals is not a curve and I am not quoting it as one.
+
+Caveats attached and both make the result conservative: CPU was pinned 117-133% so wall ms/event is largely the
+reciprocal of throughput and the CPU column understates true growth; and the clean zero-trade version of this
+axis is the CONF-05 arm, since a trade-bearing run gives only an upper bound on the bar-driven component.
+
+Arm 1 healthy and now at 1,674.2 MB — 294 MB above my withdrawn ceiling and the fifth run today to break it.
