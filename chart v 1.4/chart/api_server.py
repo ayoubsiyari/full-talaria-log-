@@ -3721,9 +3721,11 @@ async def auth_middleware(request: Request, call_next):
                 status_code=403,
             )
         # Kick-oldest hard gate: displaced windows cannot keep loading candles/state.
+        # Off-loop (K4-P0-WINDOW-GATE-THREADPOOL-V1): this runs on every gated request and used
+        # to do a blocking pool checkout right here, on the middleware's own event loop.
         if _path_requires_chart_window(path):
             try:
-                _require_active_chart_window(request, user=user)
+                await _require_active_chart_window_async(request, user=user)
             except HTTPException as exc:
                 return JSONResponse({"detail": exc.detail}, status_code=exc.status_code)
         return await call_next(request)
@@ -14315,6 +14317,38 @@ def _require_active_chart_window(request: Request, user=None) -> None:
             raise _chart_window_kicked_error()
     finally:
         db.close()
+
+
+async def _require_active_chart_window_async(request: Request, user=None) -> None:
+    """Run the window-presence gate without blocking the event loop.
+
+    ``_require_active_chart_window`` opens a SQLAlchemy session and queries. Both of its callers
+    are ``async def`` — the auth middleware and the chart websocket — so that work ran on the
+    event loop thread. Checking a connection out of the pool is itself a blocking call, and the
+    pool is ``DB_POOL_SIZE + DB_MAX_OVERFLOW`` per worker with a 30 s checkout timeout.
+
+    Concurrent claims are ``def`` endpoints, so they run in the threadpool and hold a pooled
+    connection for up to the 3 s ``lock_timeout`` while they contend on the user row. Enough
+    windows opening at once empties the pool; the gate then blocks the loop, and that worker
+    serves nobody — not other tabs, not other users, not static assets. With two workers there
+    are only two loops to lose.
+
+    Measured on b118 immediately before this change, at 120 claimers and 60 gated readers: an
+    endpoint that touches no database went from 3.4 ms idle to 1661 ms median and 2839 ms worst.
+    That whole-app freeze is the reported hang, and it is why a 10x window measurement was void.
+
+    This is the same remedy already applied to ``chart_window_claim`` itself, which was made a
+    sync ``def`` for exactly this reason; that pass fixed the endpoint and missed this second
+    site, so the markers shipped while the hang stayed. Gate semantics are untouched — same
+    query, same exceptions, same 409 — this only changes which thread waits.
+
+    Kill: ``TALARIA_DISABLE_WINDOW_GATE_THREADPOOL_V1`` (climbing) restores the inline call.
+    Marker: K4-P0-WINDOW-GATE-THREADPOOL-V1
+    """
+    if _truthy(os.getenv("TALARIA_DISABLE_WINDOW_GATE_THREADPOOL_V1", "")):
+        _require_active_chart_window(request, user=user)
+        return
+    await run_in_threadpool(_require_active_chart_window, request, user=user)
 
 
 def _evict_oldest_chart_windows(db, user_id: int, *, need_slots: int) -> list[str]:
@@ -26911,7 +26945,8 @@ async def ws_chart_stream(ws: WebSocket, file_id: int, timeframe: str):
             if user is None:
                 await ws.close(code=4401)
                 return
-            _require_active_chart_window(_WsReq(), user=user)  # type: ignore[arg-type]
+            # Off-loop for the same reason as the middleware gate above.
+            await _require_active_chart_window_async(_WsReq(), user=user)  # type: ignore[arg-type]
         except HTTPException:
             chart_ws_manager.disconnect(ws, file_id, timeframe)
             await ws.close(code=4409)

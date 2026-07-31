@@ -5705,3 +5705,48 @@ this ticket survived.
 does not expose the order manager globally and the journal tab is not in the DOM on a bare shell
 load, so it needs the dashboard bootstrap. I stopped rather than guess, and said so in the handoff
 instead of quietly reporting the partial as the whole.
+
+---
+
+## B-0220 — K4 window-claim P0: four experiments, no hang, not declared fixed
+
+2026-07-31 ~13:30Z · b118 on the live wire
+
+The acceptance the Director set is the hang stopping, not a marker appearing. I reported this
+fixed once with every marker on the wire while the hang survived, so the order this time was
+reproduce first, fix second. **I could not reproduce it, so I am not declaring it fixed.**
+
+Ruled out, each with a probe kept in `_evidence/manager-B/k4-window-claim/`:
+
+1. **Server starvation.** `chart_window_claim` is a sync `def` holding a `FOR UPDATE` lock;
+   the threadpool protects the event loop but bounds neither the threadpool nor the DB pool, so I
+   measured whether contended claims starve unrelated traffic on `gunicorn -w 2`. 16 concurrent
+   claims: all 200, max 0.823s. `/api/auth/me` during contention: max 0.258s against a 0.039s
+   quiet median. Not starved.
+2. **Reload + second tab.** Three windows against a cap of 2. Worst main-thread timer gap 478ms,
+   every fetch settled, kick fired on the oldest window as designed.
+3. **Kicked-tab spin.** A kicked tab answers gated fetches with a synthetic 409 and no network; a
+   retry loop there would spin. Watched 60s: two fetches, both heartbeats. No spin. The overlay's
+   "reload to take over" promise works.
+4. **C's pattern.** Cap 2, `_CHART_WINDOW_STALE_SECONDS` 90, heartbeat 25s — a killed harness
+   holds a slot 90s, so two dead sessions could put the account at cap and let a second CONF-01
+   run evict a measurement mid-flight. Reproduced the sequence deliberately: the measurement
+   survived, because kick-oldest evicts the dead slots first. The design handles it.
+
+**The check I nearly skipped.** Every tab reported ~6 fetches, which looks like a page that never
+became the product, and a green from an idle page is worth nothing. I verified before reporting
+rather than after: 140 requests, live chart, `window.chart` present, stamped 20260731b118. The
+six was my wrapper counting `fetch()` only. The four results are measurements of the product.
+
+**Why I am not closing it.** C's symptom is tied to a 10x replay run. My harness loads the chart
+but the OHLC readout is dashes — no candle data, so no replay ran in any of the four experiments.
+Replay at 10x is the one condition in C's report I have not put under the probe, and C's CONF-01
+harness is not on this host, so I would be guessing at the invocation and then reporting a green
+from the guess. That is the exact failure that produced the first wrong report. I need C's
+invocation or C's account; with either I can put a real 10x replay under the same instrumentation.
+
+**Cycle 1 items were already delivered before this ruling landed.** b118 carries A's `d03dfc30f`
+with M20-J1 discriminating against b117, and `manager-e/indicator-eviction` has tracked
+`origin/manager-e/indicator-eviction` since ~12:40Z. I re-verified both rather than asserting
+them: the upstream resolves from the director's own worktree too, which shares `.git/config`, so
+the "fatal: no upstream configured" reading predates the push.
