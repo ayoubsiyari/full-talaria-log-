@@ -2371,3 +2371,35 @@ is the A/B probe, not the switch.
 
 Not claiming C's +33.1% transfers - n=1 per arm, C labelled its own bias. I am claiming
 reachability and site-map correctness, which is what CONF-03 asks of me before a cut.
+
+## 01:15 - QUEUE 3 ledger triage: the count does not resolve and NEITHER named row is engineering work
+
+Verified by me from the board and the export, not taken on the triage report.
+
+**The "13 owner-blocked rows" does not exist in this checkout.** `owner-block` returns exactly
+TWO hits, both in my OWN journal (:1405, :1754), both saying **twenty**, both UNENUMERATED.
+Control: CONF-01 = 30 hits in docs/plan3, so the search works. No TAL row anywhere carries an
+owner-blocked label. So the 13 is either D's ledger outside git, or a subset nobody can name.
+**I cannot start rows I cannot identify** - this needs the enumeration, not more searching.
+
+**TAL-01891 (the 8 GB report) is NOT mine and the board already says so.** PLAN3-BOARD:832 -
+M19/M20 cluster, "all pre-fix website surface; acceptance evidence for the landed cure, **PO
+soak re-verify only**." Settled decisively on the board's OWN dated rule (:815): all 100 testers
+were on the OLD site; Ninja and IBRAHIM KHATTALIN moved to the new build on **2026-07-26**, and
+"only their tickets dated >=26-07 carry new-build signal." TAL-01891 is `created_at
+2026-07-24 2:32:23` - **two days before the move**, so it carries ZERO new-build signal.
+Board's standing first action is a D-034 provenance retest, explicitly "not by engineering."
+The Director's "question not alarm" and the board agree independently. 4 screenshots are
+referenced in the export and are ABSENT from the repo, so the 8 GB figure cannot be
+characterised as heap vs RSS vs tab total by anyone here.
+
+**TAL-01850 is a LOW-priority feature request the PO already ruled out of lane.** Export
+metadata: subject=shortcut, **category=suggestions, priority=low**. PLAN3-BOARD:872 files it
+under "**Feature backlog additions (PO decisions, no lane time)**" - TradingView-parity
+shortcuts (Shift+right-click clone, Shift+T trend line). Being told to work it FIRST during a
+memory kill is almost certainly a mis-keyed ID. Flagging rather than silently doing it or
+silently skipping it.
+
+**Consequence:** queue 3 is BLOCKED on an enumeration, and the two rows named to start with are
+a PO re-verify and a backlog suggestion. Not stalling on it - moving to FIX-01 item 1, whose
+trigger has fired and which I cleared for CONF-03 at 01:45.
