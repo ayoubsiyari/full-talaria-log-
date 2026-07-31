@@ -14136,6 +14136,15 @@ class Chart {
     initOrderManager() {
         try {
             if (typeof OrderManager !== 'undefined' && this.replaySystem) {
+                // Release the outgoing manager BEFORE replacing it. This method is reached from
+                // initReplaySystem, which has unguarded callers, so without this a second session
+                // leaves the previous manager attached to document/window — two managers acting on
+                // one keypress, the older one holding the previous session's orders.
+                try {
+                    if (this.orderManager && typeof this.orderManager.destroy === 'function') {
+                        this.orderManager.destroy();
+                    }
+                } catch (_destroyErr) { /* never block construction on teardown */ }
                 this.orderManager = new OrderManager(this, this.replaySystem);
             }
         } catch (error) {

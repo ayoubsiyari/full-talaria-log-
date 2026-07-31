@@ -1019,16 +1019,16 @@ class OrderManager {
         if (this._oiProvisionalCancelHandlersInstalled) return;
         this._oiProvisionalCancelHandlersInstalled = true;
         const self = this;
-        document.addEventListener('keydown', (e) => {
+        this._trackListener(document, 'keydown', (e) => {
             if (e.key !== 'Escape' || !self._oiIsProvisionalEditActive()) return;
             self._oiCancelActiveProvisionalEdit('escape');
         });
         if (_orderProvisionalFocusCancelV1Enabled()) {
-            window.addEventListener('multichartFocusChanged', () => {
+            this._trackListener(window, 'multichartFocusChanged', () => {
                 if (!self._oiIsProvisionalEditActive() && !self.isDraggingPreviewLine) return;
                 self._oiCancelActiveProvisionalEdit('focus-loss');
             });
-            window.addEventListener('blur', () => {
+            this._trackListener(window, 'blur', () => {
                 if (!self._multichartIsEmbedIframe()) return;
                 if (self._oiIsProvisionalEditActive() || self.isDraggingPreviewLine) {
                     self._oiCancelActiveProvisionalEdit('iframe-blur');
@@ -1412,6 +1412,67 @@ class OrderManager {
             } catch (e) { /* ignore */ }
         }
         return this.chart;
+    }
+
+    /**
+     * Register a listener on a target that OUTLIVES this manager (window, document, or any node it
+     * does not own), keeping the reference so it can be removed later.
+     *
+     * removeEventListener only detaches when the handler is the SAME function reference, so a
+     * listener installed with an inline arrow is unremovable — not because arrows are special, but
+     * because nobody kept the reference. Keeping it here is what makes teardown possible without
+     * rewriting every handler into a named method, and it stores the capture flag alongside, since
+     * a remove that disagrees on capture silently detaches nothing.
+     */
+    _trackListener(target, type, handler, options) {
+        if (!target || typeof target.addEventListener !== 'function') return handler;
+        target.addEventListener(type, handler, options);
+        if (!this._managedListeners) this._managedListeners = [];
+        this._managedListeners.push({ target, type, handler, options });
+        return handler;
+    }
+
+    /** Same contract for observers, which hold their callback and their observed nodes strongly. */
+    _trackObserver(observer) {
+        if (!observer) return observer;
+        if (!this._managedObservers) this._managedObservers = [];
+        this._managedObservers.push(observer);
+        return observer;
+    }
+
+    /**
+     * Release everything this manager attached to surfaces that outlive it.
+     *
+     * This is not hygiene. initReplaySystem (chart.js) constructs a fresh OrderManager on every
+     * call and abandons the previous one, while that one's document/window listeners stay attached
+     * and keep firing — so a second session gets two managers responding to one keypress, the older
+     * one holding the previous session's orders. Reset (exit a session, enter another in the same
+     * tab) cannot be correct until the outgoing manager stops receiving input.
+     *
+     * Idempotent, and safe to call on a partially constructed instance.
+     */
+    destroy() {
+        if (this._destroyed) return;
+        if (typeof window !== 'undefined' && window.__TALARIA_DISABLE_ORDER_MANAGER_TEARDOWN_V1) return;
+        this._destroyed = true;
+
+        for (const rec of this._managedListeners || []) {
+            try {
+                rec.target.removeEventListener(rec.type, rec.handler, rec.options);
+            } catch (_e) { /* target may already be gone */ }
+        }
+        this._managedListeners = [];
+
+        for (const obs of this._managedObservers || []) {
+            try {
+                if (typeof obs.disconnect === 'function') obs.disconnect();
+            } catch (_e) { /* ignore */ }
+        }
+        this._managedObservers = [];
+
+        try {
+            if (typeof this._m20A1Teardown === 'function') this._m20A1Teardown();
+        } catch (_e) { /* ignore */ }
     }
 
     /**
@@ -48463,12 +48524,15 @@ class OrderManager {
             clearTimeout(miDockResizeT);
             miDockResizeT = setTimeout(() => applyMiDockAnchorAboveReplay(), 80);
         };
-        window.addEventListener('resize', onReplayDockResize);
-        window.addEventListener('orientationchange', onReplayDockResize);
+        this._trackListener(window, 'resize', onReplayDockResize);
+        this._trackListener(window, 'orientationchange', onReplayDockResize);
         try {
             const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(onReplayDockResize) : null;
             const rtEl = document.getElementById('replayToolbar');
-            if (ro && rtEl) ro.observe(rtEl);
+            if (ro && rtEl) {
+                ro.observe(rtEl);
+                this._trackObserver(ro);
+            }
         } catch (_) {}
 
         // Restore minimized state
