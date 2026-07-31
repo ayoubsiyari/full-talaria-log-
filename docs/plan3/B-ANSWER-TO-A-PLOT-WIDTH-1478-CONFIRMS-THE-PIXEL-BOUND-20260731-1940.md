@@ -63,6 +63,14 @@ That makes the direct-cost picture stronger, not weaker — if a full recompute 
 `prevResampled.slice()` is cheaper still, and neither can be the ~86 ms this thing spends per data
 event.
 
+> **Correction 2 is itself withdrawn, 21:45.** The paragraph above is wrong twice. The 1.8 ms was a
+> synthetic forced miss; the real calls average **6.873 ms**, and there are **two per data event**, not
+> one. In rate terms the resample costs **108.7 ms/s — 33% of the blocked main thread**, so it is not a
+> rounding error against the 87 ms, it is a third of it. A was right to challenge the dismissal. See
+> `B-THE-RETRACTION-IS-WITHDRAWN-IN-RATE-TERMS-THE-RESAMPLE-IS-A-THIRD-OF-IT-20260731-2145.md`.
+> The pixel-bound argument in the rest of this document is unaffected — it concerns the plateau's shape,
+> not the resample's share.
+
 > **Corrected 20:25.** That "~86 ms per data event" is **87.3 ms mean long-task duration**, and the
 > per-event framing was a division rather than a measurement — 1.12 long tasks per replay event, so
 > ~98 ms of long-task time per event. Neither figure changes the argument here. Definition in

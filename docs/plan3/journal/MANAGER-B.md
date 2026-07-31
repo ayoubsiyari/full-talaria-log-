@@ -6355,3 +6355,63 @@ Kept confidence markers throughout, and they did the work the Director said they
 *fact* is verified, its *consequence* for paint attribution is inference, and the two get different
 treatment in every document.
 
+
+## B-0232 — A was right: I divided a per-call cost by a per-task duration and called it a share
+
+A challenged my 19:05 retraction on the grounds that it does not follow in rate terms. A is right, the
+retraction is withdrawn, and the way I got it wrong is worth more than the number.
+
+I wrote "1.8 ms per miss against an 87.3 ms task, so about 2%". That quotient is not a share of anything.
+A cost per call only becomes a cost per second once multiplied by a call rate, and I never measured the
+call rate — I read the code, saw one resample per data event, and used it as if it were an observation.
+Worse, the 1.8 ms came from one run and the 87.3 ms from a different one. That is the bar-count confound
+wearing a new hat: two numbers from two runs presented as one ratio. Third time today.
+
+Measured properly, wrapping the real functions during real replay and collecting the blocking in the same
+30-second window: 15.81 calls/s at 6.873 ms each = 108.7 ms/s, which is 33% of blocked main thread and
+14% of occupancy. My published figure was 1-4%. Wrong by 8.3x, and it was wrong in the direction that
+told another manager not to bother fixing their own defect.
+
+Then the part I nearly missed. Having restored A's cost claim, the obvious move was to endorse A's fix.
+The source stopped me: the incremental branch does not test dataVersion at all. So A's named mechanism
+cannot be what kills it, because the branch that matters never consults the thing A is proposing to
+change. Instrumented each guard clause over 298 real calls — sourceRef true in 0.7%, the +1 length
+condition true in 0.0%, dataVersion true in 50.3%. Two different source arrays alternate through a
+one-slot cache and evict each other, and something resets sourceLen to -1 every event. On the call where
+dataVersion is false, sourceRef is false too, so removing the version from the key converts zero calls.
+
+Both halves needed saying, and they pull opposite ways: A's cost claim restored, A's fix redirected. If
+I had only done the rate arithmetic I would have handed A a green light to ship a null result, which is
+the failure class the Director has now named six times. Gate it on ms/s, never on the hit counter — the
+product's own incrementalResamples counter reads 0 and would still read 0 after a key-only fix.
+
+Also: I wrote three scripts and a finding into the wrong tree tonight, outside the repo. Caught it when
+git said "not a git repository". Scripts living in the working area is normal and they get synced, but
+the doc was genuinely astray. Four days after the 129-scripts near-miss I did the same thing again at
+smaller scale, which tells me the habit is not fixed by knowing about it.
+
+## B-0233 — my own restore tool would have let an interrupted measurement keep running
+
+Built the checksum-verified backup and restore-in-place for the 04:00 window. Verify the backup before
+mutating rather than after, restore by truncating the existing inode rather than mv-ing over it so a
+0600 secrets file does not quietly change mode and owner, re-read from disk and compare, refuse a corrupt
+backup, print no contents ever.
+
+The rehearsal found a defect in the tool itself and it was the interesting one. I had trapped INT/TERM/HUP
+with the same handler as EXIT. That handler returns. So on SIGTERM the file was restored correctly and
+the job carried straight on — the rehearsal printed "SHOULD NOT REACH: job completed normally".
+
+That is worse than not restoring at all. The measurement continues past its own interruption with its
+conditions flipped back underneath it mid-run, and produces one plausible number from two different
+configurations with nothing in the log to say so. My safety mechanism was manufacturing the exact confound
+I have spent the day chasing. Signals now restore, clear the exit trap, and exit with the signal code,
+announcing that the run is void rather than resumed.
+
+Kept the SIGKILL case in the rehearsal rather than dropping it, because it fails: no trap can run, the
+switch stays applied. The honest mitigation is detection, so verify exits non-zero on a file that is not
+in its recorded state, and the standing instruction for the window is to run verify after every arm
+instead of only after the last one. A trap covers the paths it can reach.
+
+17 of 17. Rehearsed on a byte-copy, not the live file — a real apply needs a container restart and C's
+soak still holds a connection. The real .env checksum is asserted unchanged at the end of the rehearsal
+and it was.

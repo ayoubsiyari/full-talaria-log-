@@ -1,3 +1,17 @@
+> **WITHDRAWN 2026-07-31 21:45. THE TITLE OF THIS DOCUMENT IS WRONG.**
+>
+> The resample **is** the cost: 108.7 ms/s, 33% of the blocked main thread, worst single call 476.6 ms.
+> The 1–4% figure came from dividing a per-call cost by a per-task duration, which is not a share of
+> anything, using two numbers taken from two different runs. Measured in rate terms within a single run,
+> it is wrong by 8.3x. A was right to challenge it.
+>
+> What survives: A's named mechanism (`dataVersion` in the cache key) is still not the operative defect —
+> the incremental branch never tests `dataVersion`, and a key-only fix converts zero calls. The real
+> invalidators are a one-slot cache thrashed by two alternating source arrays, plus a per-event reset.
+>
+> Read `B-THE-RETRACTION-IS-WITHDRAWN-IN-RATE-TERMS-THE-RESAMPLE-IS-A-THIRD-OF-IT-20260731-2145.md`
+> instead. Do not quote any number below this line.
+
 # FINDING — A's resample-cache defect is real and I confirmed it in the product, but it accounts for about 1–4% of the measured cost. The plateau is not the viewport, not the raw cap, and not the resample.
 
 **2026-07-31 19:05 · Manager B · b120, live product, session 936, replay 10x**

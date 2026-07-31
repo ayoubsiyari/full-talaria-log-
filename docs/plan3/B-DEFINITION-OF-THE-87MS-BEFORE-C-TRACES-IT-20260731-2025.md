@@ -140,6 +140,15 @@ My own in-browser resample timing — 0.9–1.8 ms for a forced miss — is comp
 because it was taken in the same browser on the same page during the same activity. A microbenchmark in
 Node is not, and I should have said so at the time rather than let the comparison stand.
 
+> **Corrected 21:45, and it sharpens section 3 rather than contradicting it.** Same browser and same page
+> made that timing *commensurable*, but it was still a **synthetic forced miss**, not a real call, and it
+> was taken in a **different run** from the 87.3 ms. Both mattered: real calls average **6.873 ms** and
+> arrive **twice per data event**, so the resample is **108.7 ms/s = 33% of blocked**, measured inside a
+> single window. The lesson for anyone using this document: commensurable units are necessary but not
+> sufficient — a per-call cost still has to be multiplied by a measured call rate before it can be
+> compared with a per-second quantity, and both terms belong in the same run.
+> See `B-THE-RETRACTION-IS-WITHDRAWN-IN-RATE-TERMS-THE-RESAMPLE-IS-A-THIRD-OF-IT-20260731-2145.md`.
+
 ## 7. A better instrument exists on this browser, if C wants decomposition without a trace
 
 **[verified]** This Chrome supports **`long-animation-frame`** in
