@@ -14,7 +14,7 @@ M8 now bounds the `/api/sessions/{id}/state` journal supply line without allowin
 ## Motivating Case
 
 - Endpoint: `GET /api/sessions/936/state`
-- Current b120 journal: 182 trades, 395 screenshots in payload
+- B stamp at measurement: 6,242 bars, 182 trades, 395 screenshots in payload
 - M1 load transient lower bound: 141.57 MB at app-ready
 
 ## Guard Shape

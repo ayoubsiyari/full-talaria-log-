@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import test from 'node:test';
+import { runM8StateBoundGuard } from '../m8-state-bound-guard.mjs';
 
 const root = process.cwd();
 const chartSource = readFileSync(resolve(root, 'chart v 1.4/chart/chart.js'), 'utf8');
@@ -16,6 +17,14 @@ test('M8 state response exposes journal completeness metadata', () => {
   assert.match(apiSource, /journal_returned_count/);
   assert.match(apiSource, /journal_heavy_fields_omitted/);
   assert.match(apiSource, /m19_hot_persist_trim_v1/);
+});
+
+test('M8 state-bound guard carries B measurement stamp', () => {
+  const report = runM8StateBoundGuard();
+  assert.equal(report.measurementStamp.barCount, 6242);
+  assert.equal(report.measurementStamp.tradeCount, 182);
+  assert.equal(report.motivatingCase.bars, 6242);
+  assert.equal(report.motivatingCase.trades, 182);
 });
 
 test('M8 client mirrors are identical for chart and order-manager guards', () => {

@@ -1,6 +1,17 @@
 {
   "signature": "TALARIA_RELEASE_PARITY_README_6_3_V1",
   "status": "RED",
+  "measurementStamp": {
+    "sourceHandoff": "manager-b-plan3/docs/plan3/HANDOFF-B-TO-D-M1-RAN-ON-B120-AUTH-IS-SOLVED-AND-THE-HARNESS-MISSES-THE-PEAK-20260731-1935.md",
+    "sourceEvidence": "_evidence/manager-B/m20-j1/results/m1-peak-capture-result.json",
+    "measuredAt": "2026-07-31T18:23:36.836Z",
+    "buildId": "20260731b120",
+    "sessionId": 936,
+    "fileId": 677,
+    "barCount": 6242,
+    "tradeCount": 182,
+    "screenshotCount": 395
+  },
   "current": {
     "cell": "README-6-3-ADD-REMOVE",
     "mode": "noDestroy",
@@ -10,7 +21,9 @@
         "A",
         "B"
       ],
-      "survivingListeners": 102
+      "survivingListeners": 294,
+      "liveRafLoops": 2,
+      "timeoutHandlesAtRest": 2
     },
     "atThree": {
       "chartIds": [
@@ -18,20 +31,32 @@
         "B",
         "C"
       ],
-      "survivingListeners": 153
+      "survivingListeners": 441,
+      "liveRafLoops": 3,
+      "timeoutHandlesAtRest": 2
     },
     "after": {
       "chartIds": [
         "A",
         "B"
       ],
-      "survivingListeners": 153
+      "survivingListeners": 441,
+      "liveRafLoops": 3,
+      "timeoutHandlesAtRest": 2
     },
-    "listenerCountPerChart": 51,
-    "leakedListeners": 51,
+    "listenerCountPerChart": 147,
+    "pageWideRegisteredListeners": 357,
+    "pageWideRemovedListeners": 0,
+    "rafLoopsPerInstance": 1,
+    "timeoutHandlesAtRest": 2,
+    "anonymousClosureListeners": 147,
+    "retainedListenerReferences": 0,
+    "removableAtAll": false,
+    "leakedListeners": 147,
     "listenersCleared": false,
+    "teardownProbeMatchesCurrent": true,
     "requiresChartDestroy": true,
-    "note": "README 6.3: Layout 2→3→2; no listeners survive removeChart. RED until Chart.destroy() exists."
+    "note": "README 6.3: Layout 2→3→2; no listeners survive removeChart. RED until listeners are first made removable, then removed."
   },
   "destroyControl": {
     "cell": "README-6-3-WITH-DESTROY-CONTROL",
@@ -44,5 +69,5 @@
     "productBlocksRelease": true,
     "statement": "Chart.destroy() is absent; README 6.3 is intentionally RED until teardown removes global listeners."
   },
-  "limitation": "Hermetic listener/heap model using A spike count of 51 chart.js global listeners per instance. Product heap snapshot remains required for final credit."
+  "limitation": "Hermetic listener/heap model using A teardown probe: 147 live listeners/instance, 357 registered page-wide, 0 removed, 1 rAF/instance, 2 setTimeout handles at rest. Product heap snapshot remains required for final credit."
 }

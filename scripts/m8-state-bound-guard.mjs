@@ -8,6 +8,19 @@ const root = resolve(__dirname, '..');
 
 export const M8_STATE_BOUND_SIGNATURE = 'TALARIA_M8_STATE_BOUND_V1';
 
+export const B_M1_MEASUREMENT_STAMP = Object.freeze({
+  sourceHandoff:
+    'manager-b-plan3/docs/plan3/HANDOFF-B-TO-D-M1-RAN-ON-B120-AUTH-IS-SOLVED-AND-THE-HARNESS-MISSES-THE-PEAK-20260731-1935.md',
+  sourceEvidence: '_evidence/manager-B/m20-j1/results/m1-peak-capture-result.json',
+  measuredAt: '2026-07-31T18:23:36.836Z',
+  buildId: '20260731b120',
+  sessionId: 936,
+  fileId: 677,
+  barCount: 6242,
+  tradeCount: 182,
+  screenshotCount: 395,
+});
+
 function hasAll(text, patterns) {
   return patterns.every((pattern) => pattern.test(text));
 }
@@ -70,10 +83,12 @@ export function runM8StateBoundGuard() {
     checks,
     motivatingCase: {
       endpoint: 'GET /api/sessions/936/state',
-      trades: 182,
-      screenshotsInJournalPayload: 395,
+      bars: B_M1_MEASUREMENT_STAMP.barCount,
+      trades: B_M1_MEASUREMENT_STAMP.tradeCount,
+      screenshotsInJournalPayload: B_M1_MEASUREMENT_STAMP.screenshotCount,
       m1LoadTransientLowerBoundMB: 141.57,
     },
+    measurementStamp: B_M1_MEASUREMENT_STAMP,
     safetyProof:
       'State hydrate carries journal completeness/heavy-field metadata. Partial, failed, or heavy-slim hydrate never upgrades OrderManager provenance to durable session-state-hydrate, so omitted rows cannot be read as user has no trades.',
     productionServingEvidence: {

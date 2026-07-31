@@ -1,0 +1,135 @@
+{
+  "signature": "TALARIA_M8_LOAD_TOLL_BUDGET_V1",
+  "status": "RED",
+  "budgetMB": 50,
+  "measurementStamp": {
+    "sourceHandoff": "manager-b-plan3/docs/plan3/HANDOFF-B-TO-D-M1-RAN-ON-B120-AUTH-IS-SOLVED-AND-THE-HARNESS-MISSES-THE-PEAK-20260731-1935.md",
+    "sourceEvidence": "_evidence/manager-B/m20-j1/results/m1-peak-capture-result.json",
+    "measuredAt": "2026-07-31T18:23:36.836Z",
+    "buildId": "20260731b120",
+    "sessionId": 936,
+    "fileId": 677,
+    "barCount": 6242,
+    "tradeCount": 182,
+    "screenshotCount": 395
+  },
+  "sampleRequirement": "Samples must begin at navigation start; app-ready lower bounds are evidence, not acceptance.",
+  "mode": "known-b-host-lower-bound",
+  "current": {
+    "cell": "M8-LOAD-TOLL-B120-B-HOST-LOWER-BOUND",
+    "status": "RED",
+    "expected": "RED",
+    "verdict": {
+      "status": "RED",
+      "reason": "sample-window-not-navigation-start",
+      "budgetMB": 50,
+      "peak": {
+        "label": "app-ready",
+        "imageCount": 205,
+        "dataUrlImages": 28,
+        "fullResolutionImages": 29,
+        "thumbnailImages": 160,
+        "decodedPixelFloorBytes": 148446904,
+        "decodedPixelFloorMB": 141.57,
+        "largestSingleDecodedBytes": 7551884,
+        "sampleOrigin": "app-ready"
+      },
+      "peakDecodedMB": 141.57
+    },
+    "samples": [
+      {
+        "label": "app-ready",
+        "imageCount": 205,
+        "dataUrlImages": 28,
+        "fullResolutionImages": 29,
+        "thumbnailImages": 160,
+        "decodedPixelFloorBytes": 148446904,
+        "decodedPixelFloorMB": 141.57,
+        "largestSingleDecodedBytes": 7551884,
+        "sampleOrigin": "app-ready"
+      },
+      {
+        "label": "+1.5s",
+        "imageCount": 193,
+        "dataUrlImages": 16,
+        "fullResolutionImages": 17,
+        "thumbnailImages": 160,
+        "decodedPixelFloorBytes": 87535124,
+        "decodedPixelFloorMB": 83.48,
+        "sampleOrigin": "app-ready-plus-1500ms"
+      },
+      {
+        "label": "+6s-stable",
+        "imageCount": 177,
+        "dataUrlImages": 0,
+        "fullResolutionImages": 1,
+        "thumbnailImages": 160,
+        "decodedPixelFloorBytes": 6029312,
+        "decodedPixelFloorMB": 5.75,
+        "journalLikeImages": 0,
+        "sampleOrigin": "steady"
+      }
+    ],
+    "note": "B host artifact starts at app-ready after decoding began. It proves a 141.57 MB lower-bound toll, but it is not an M8 acceptance sample because it did not start at navigation start."
+  },
+  "verdict": {
+    "status": "RED",
+    "reason": "sample-window-not-navigation-start",
+    "budgetMB": 50,
+    "peak": {
+      "label": "app-ready",
+      "imageCount": 205,
+      "dataUrlImages": 28,
+      "fullResolutionImages": 29,
+      "thumbnailImages": 160,
+      "decodedPixelFloorBytes": 148446904,
+      "decodedPixelFloorMB": 141.57,
+      "largestSingleDecodedBytes": 7551884,
+      "sampleOrigin": "app-ready"
+    },
+    "peakDecodedMB": 141.57
+  },
+  "controls": [
+    {
+      "cell": "GREEN-M8-LOAD-TOLL-UNDER-BUDGET",
+      "status": "GREEN",
+      "verdict": {
+        "status": "GREEN",
+        "reason": "load-toll-within-budget-from-navigation-start",
+        "budgetMB": 50,
+        "peak": {
+          "label": "+250ms",
+          "sampleOrigin": "navigation-start",
+          "elapsedMs": 250,
+          "decodedPixelFloorBytes": 25165824,
+          "fullResolutionImages": 0
+        },
+        "peakDecodedMB": 24
+      },
+      "expected": "GREEN"
+    },
+    {
+      "cell": "RED-M8-LOAD-TOLL-OVER-BUDGET",
+      "status": "GREEN",
+      "reportStatus": "RED",
+      "verdict": {
+        "status": "RED",
+        "reason": "load-toll-budget-exceeded",
+        "budgetMB": 50,
+        "peak": {
+          "label": "nav-start",
+          "sampleOrigin": "navigation-start",
+          "elapsedMs": 0,
+          "decodedPixelFloorBytes": 83886080,
+          "fullResolutionImages": 10
+        },
+        "peakDecodedMB": 80
+      },
+      "expected": "RED"
+    }
+  ],
+  "releaseAuthority": {
+    "resetDependsOn": true,
+    "statement": "M8 load toll acceptance is not met until a navigation-start sample is within budget."
+  }
+}

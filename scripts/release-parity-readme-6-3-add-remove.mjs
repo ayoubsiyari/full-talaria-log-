@@ -25,6 +25,19 @@ const outPath = process.env.RELEASE_PARITY_6_3_OUT
 
 export const RELEASE_PARITY_README_6_3_SIGNATURE = 'TALARIA_RELEASE_PARITY_README_6_3_V1';
 
+export const B_M1_MEASUREMENT_STAMP = Object.freeze({
+  sourceHandoff:
+    'manager-b-plan3/docs/plan3/HANDOFF-B-TO-D-M1-RAN-ON-B120-AUTH-IS-SOLVED-AND-THE-HARNESS-MISSES-THE-PEAK-20260731-1935.md',
+  sourceEvidence: '_evidence/manager-B/m20-j1/results/m1-peak-capture-result.json',
+  measuredAt: '2026-07-31T18:23:36.836Z',
+  buildId: '20260731b120',
+  sessionId: 936,
+  fileId: 677,
+  barCount: 6242,
+  tradeCount: 182,
+  screenshotCount: 395,
+});
+
 export const TEARDOWN_PROBE_BASELINE = Object.freeze({
   liveListenersPerInstance: 147,
   pageWideRegisteredListeners: 357,
@@ -166,6 +179,7 @@ export function runReadme63Suite() {
   return {
     signature: RELEASE_PARITY_README_6_3_SIGNATURE,
     status,
+    measurementStamp: B_M1_MEASUREMENT_STAMP,
     current,
     destroyControl,
     releaseAuthority: {

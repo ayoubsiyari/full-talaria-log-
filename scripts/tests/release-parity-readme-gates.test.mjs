@@ -41,6 +41,8 @@ test('README 6.3 future destroy control proves the gate can go GREEN', () => {
   const suite = runReadme63Suite();
   assert.equal(suite.signature, RELEASE_PARITY_README_6_3_SIGNATURE);
   assert.equal(suite.status, 'RED');
+  assert.equal(suite.measurementStamp.barCount, 6242);
+  assert.equal(suite.measurementStamp.tradeCount, 182);
   assert.equal(suite.current.status, 'RED');
   assert.equal(suite.destroyControl.status, 'GREEN');
   assert.equal(suite.releaseAuthority.productBlocksRelease, true);

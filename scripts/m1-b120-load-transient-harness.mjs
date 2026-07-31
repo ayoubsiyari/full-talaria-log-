@@ -20,13 +20,30 @@ const puppeteer = require(resolve(root, 'chart v 1.4/chart/multichart-prod/harne
 export const M1_LOAD_TRANSIENT_SIGNATURE = 'TALARIA_M1_B120_LOAD_TRANSIENT_V1';
 export const M1_RESIDENT_SCREENSHOTS_SIGNATURE = 'TALARIA_M1_B120_RESIDENT_SCREENSHOTS_V1';
 
-export const B_HOST_TRANSIENT_LOWER_BOUND = Object.freeze({
+export const B_M1_MEASUREMENT_STAMP = Object.freeze({
   sourceHandoff:
     'manager-b-plan3/docs/plan3/HANDOFF-B-TO-D-M1-RAN-ON-B120-AUTH-IS-SOLVED-AND-THE-HARNESS-MISSES-THE-PEAK-20260731-1935.md',
+  sourceEvidence: '_evidence/manager-B/m20-j1/results/m1-peak-capture-result.json',
   measuredAt: '2026-07-31T18:23:36.836Z',
   buildId: '20260731b120',
+  sessionId: 936,
+  fileId: 677,
+  barCount: 6242,
+  tradeCount: 182,
+  screenshotCount: 395,
+});
+
+export const B_HOST_TRANSIENT_LOWER_BOUND = Object.freeze({
+  sourceHandoff: B_M1_MEASUREMENT_STAMP.sourceHandoff,
+  measuredAt: B_M1_MEASUREMENT_STAMP.measuredAt,
+  buildId: B_M1_MEASUREMENT_STAMP.buildId,
   finalUrl: 'http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677',
-  journal: { status: 200, trades: 182, screenshots: 395 },
+  measurementStamp: B_M1_MEASUREMENT_STAMP,
+  journal: {
+    status: 200,
+    trades: B_M1_MEASUREMENT_STAMP.tradeCount,
+    screenshots: B_M1_MEASUREMENT_STAMP.screenshotCount,
+  },
   appReady: {
     label: 'app-ready',
     imageCount: 205,
@@ -164,6 +181,7 @@ async function collectImageSurface(page, elapsedMs) {
     0,
   );
   return {
+    sampleOrigin: 'navigation-start',
     elapsedMs,
     imageCount: rows.length,
     dataUrlImages: rows.filter((img) => img.srcKind === 'data-url').length,
