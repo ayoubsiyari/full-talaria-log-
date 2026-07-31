@@ -5797,3 +5797,49 @@ contention, three of them green because they measured the wrong thing. Worse, th
 half **was already written and uncommitted in my own tree** from before the editor crash. I
 re-derived it instead of reading `git status` in my worktree first. After a crash, the first move
 is to inventory uncommitted work, not to start investigating.
+
+---
+
+## B-0222 — K4 freeze in milliseconds of blocked main thread; a BUDGET-01 row; and an incident of mine
+
+2026-07-31 ~14:45Z
+
+The Director asked for the freeze in ms of blocked main thread rather than present/absent.
+**First correction: my ~13:50 numbers (500.5ms -> 148.7ms) were SERVER event-loop unavailability,
+not browser main thread.** Different threads; only the second is what a user feels. Measured the
+right one, A/B against the real defect using b118's saved image.
+
+Condition: real product in replay at **10x** (the VOID sweep point) on session 936 / file 677,
+plus 60 concurrent gated requests standing in for the second heavy session that killed C's run,
+30s after startup, `-w 2`. Two witnesses: Long Tasks (blocking = duration beyond 50ms, the TBT
+convention) and a 50ms timer's actual lateness, so neither has to be trusted alone.
+
+| | b118 | b120 | |
+|---|---:|---:|---|
+| blocked main thread | **322.5 ms/s** | **55.0 ms/s** | 5.9x |
+| share of wall clock | 32.3% | 5.5% | |
+| long tasks | 279 | 44 | |
+| longest single freeze | 452ms | 261ms | |
+| load requests completed | 127 | 824 | 6.5x |
+
+On b118 the user's main thread was gone for about a third of every second, in bursts up to 452ms.
+The last row corroborates from another direction: the server was jammed, and these browser figures
+are that jam arriving at the user. With no load, b120 measures 0 ms/s and a 26ms worst gap, so the
+residual 55 is the load condition and not idling.
+
+Proposed row: **blocked main thread <= 100 ms/s** under that named condition, secondary **longest
+single freeze <= 300ms**. A rate, not a total, so a shorter run cannot make it pass — that was the
+flaw in the paints-per-bar row, a denominator that improved when you ran faster. The condition is
+part of the row; without it the number means nothing.
+
+**Incident, mine.** The A/B rolls the canary to b118 and restores b120 on exit. **The restore
+failed silently and the canary sat on b118 — with the P0 defect present — while the LIVE-PIN file
+claimed b120.** I had sent `docker compose up` output to /dev/null and written the pin
+unconditionally. My own follow-up check caught it because it verified the running container rather
+than the file I had written. Restored and verified against the container: images canary-20260731b120,
+wire 20260731b120, async gate and K4-P0-BARS-OFF-LOOP-V1 present, get_file_bars a sync def.
+
+Two rules now applied to my scripts: never suppress output of a command whose failure changes what
+is deployed, and never write a state file asserting something not verified against the thing itself.
+That is the same class of error as the one this whole ticket exists for — trusting a marker I wrote
+instead of the behaviour of the system.
