@@ -67,6 +67,20 @@ I could not reach the gigabyte-above-baseline state the ruling asked for, and th
 is not the renderer being killed and replaced — the whole browser process goes, which is why my gauges
 reported `Session closed. Most likely the browser has been closed`.
 
+> **CORRECTION, added 17:20 before this went further than my own journal.** A fourth run reached
+> **1,395.8 MB and did not die** — above two of the three death points — with the renderer at 910.6 MB and
+> the GPU process at 316.0 MB. **So footprint alone is not the trigger and "the browser dies at 1.38 GB" is
+> not established as a threshold.** Three deaths in a 1,377–1,408 MB band is a real signal about where the
+> danger is, and it is not the same as a wall.
+>
+> There is an alternative I have to rule out before this is escalated as a product defect at all: **my own
+> machine.** Two other managers' node processes were holding roughly 5 GB earlier today and system free
+> memory was 6.4 GB of 23.7 GB. If the deaths cluster where system free memory is low, the ceiling is
+> environmental and escalating it to A and B would be wrong. `CEILING-DEATH-PROBE-V1` now samples system
+> free and total memory at every reading and reports free memory at death against free memory at survival,
+> and it runs repetitions overnight so the question is answered by a distribution rather than by three
+> anecdotes. **Recommendation 1 below is therefore held pending that result.**
+
 Three things follow, and they matter more than the return axis:
 
 1. **The PO reports 1.5 GB sessions. We die at 1.38 GB.** If this reproduces off my machine, users are not
@@ -132,9 +146,11 @@ buys tens of megabytes on light sessions, not the gigabyte I implied this mornin
 
 ## Recommendation
 
-1. **Escalate the 1.38 GB browser death to A and B as a P0 above the return axis.** It caps every long
-   measurement at ten minutes, it sits below the footprint the PO reports, and it is the difference between
-   shipping a leak and shipping a crash.
+1. **HELD pending tonight's distribution.** The three deaths are real and they cap every long measurement at
+   roughly ten minutes, which is a genuine blocker on this plan whatever the cause. But a fourth run
+   survived 1,395.8 MB, so this is not a footprint wall, and my own machine's memory pressure is a live
+   alternative. CEILING-DEATH-PROBE-V1 runs repetitions overnight sampling system free memory at every
+   reading. **I am not sending A and B after a product defect I have not separated from my own environment.**
 2. **Item 7 closes on the memory question at heavy weight**, on the reload exit and on the cost of the
    cached documents. It does **not** close on logout or tab-close re-entry, which are VOID.
 3. **Resolve why a fresh navigation to `/chart/` does not initialise a chart** while a reload does. If that
