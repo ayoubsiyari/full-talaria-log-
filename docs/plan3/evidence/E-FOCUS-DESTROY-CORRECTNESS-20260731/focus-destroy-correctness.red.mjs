@@ -16,10 +16,10 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 export const SIGNATURE = 'TALARIA_E_FOCUS_DESTROY_CORRECTNESS_V1';
 
 const PANELS = Object.freeze([
-  { id: 'A', symbol: 'XAUUSD', timeframe: '1m' },
-  { id: 'B', symbol: 'HOG', timeframe: '5m' },
-  { id: 'C', symbol: 'ETHBTC', timeframe: '15m' },
-  { id: 'D', symbol: 'BTCEUR', timeframe: '1h' },
+  { id: 'A', symbol: 'XAUUSD', timeframe: '1m', canvasLeft: 0 },
+  { id: 'B', symbol: 'HOG', timeframe: '5m', canvasLeft: 1981 },
+  { id: 'C', symbol: 'ETHBTC', timeframe: '15m', canvasLeft: 760 },
+  { id: 'D', symbol: 'BTCEUR', timeframe: '1h', canvasLeft: 1260 },
 ]);
 
 function makePanel(cfg) {
@@ -28,6 +28,8 @@ function makePanel(cfg) {
     destroyed: false,
     keyboardCount: 0,
     mouseCount: 0,
+    mouseX: null,
+    canvasRect: { left: cfg.canvasLeft, width: 700 },
     indicators: {
       smaTip: { ownerPanelId: cfg.id, symbol: cfg.symbol, value: cfg.id.charCodeAt(0) },
       openingRange: { ownerPanelId: cfg.id, symbol: cfg.symbol, high: 100 + cfg.id.charCodeAt(0), low: 90 },
@@ -59,6 +61,7 @@ function snapshotPanels(state) {
       destroyed: panel.destroyed,
       keyboardCount: panel.keyboardCount,
       mouseCount: panel.mouseCount,
+      mouseX: panel.mouseX,
       indicators: panel.indicators,
     },
   ]))));
@@ -71,14 +74,20 @@ function routeKeyboard(state, mode) {
 }
 
 function routeMouse(state, mode) {
+  const clientX = 1188;
   if (mode === 'broadcastMouse') {
     state.events.push({ type: 'mouse', focusedPanelId: state.focusedPanelId, targetId: 'ALL' });
-    for (const panel of Object.values(state.panels)) panel.mouseCount += 1;
+    for (const panel of Object.values(state.panels)) {
+      panel.mouseCount += 1;
+      panel.mouseX = clientX - panel.canvasRect.left;
+    }
     return;
   }
   const targetId = mode === 'windowChartMouse' ? state.windowChartId : state.focusedPanelId;
-  state.events.push({ type: 'mouse', focusedPanelId: state.focusedPanelId, targetId });
+  const rectSourceId = mode === 'wrongRectMouse' ? state.windowChartId : targetId;
+  state.events.push({ type: 'mouse', focusedPanelId: state.focusedPanelId, targetId, rectSourceId, clientX });
   state.panels[targetId].mouseCount += 1;
+  state.panels[targetId].mouseX = clientX - state.panels[rectSourceId].canvasRect.left;
 }
 
 function focusRoutingFailures(state, eventKind) {
@@ -87,6 +96,17 @@ function focusRoutingFailures(state, eventKind) {
     const count = eventKind === 'keyboard' ? panel.keyboardCount : panel.mouseCount;
     if (id === state.focusedPanelId) {
       if (count !== 1) failures.push({ panelId: id, reason: `${eventKind}-missed-focused-instance`, count });
+      if (eventKind === 'mouse' && count === 1) {
+        const expectedMouseX = 1188 - panel.canvasRect.left;
+        if (panel.mouseX !== expectedMouseX) {
+          failures.push({
+            panelId: id,
+            reason: 'mouse-coordinate-wrong-instance',
+            observedMouseX: panel.mouseX,
+            expectedMouseX,
+          });
+        }
+      }
     } else if (count !== 0) {
       failures.push({ panelId: id, reason: `${eventKind}-leaked-to-peer`, count });
     }
@@ -99,7 +119,7 @@ export function runFocusRoutingSuite(mode = 'scoped') {
   routeKeyboard(keyboardState, mode);
   const keyboardFailures = focusRoutingFailures(keyboardState, 'keyboard');
 
-  const mouseState = makeState('C');
+  const mouseState = makeState(mode === 'wrongRectMouse' ? 'B' : 'C');
   routeMouse(mouseState, mode);
   const mouseFailures = focusRoutingFailures(mouseState, 'mouse');
 
@@ -177,6 +197,11 @@ export function runRedControls() {
       cell: 'FOCUS-MOUSE-WINDOW-CHART',
       report: runFocusRoutingSuite('windowChartMouse'),
       expectedFailureReason: 'mouse-missed-focused-instance',
+    },
+    {
+      cell: 'FOCUS-MOUSE-WRONG-RECT',
+      report: runFocusRoutingSuite('wrongRectMouse'),
+      expectedFailureReason: 'mouse-coordinate-wrong-instance',
     },
     {
       cell: 'FOCUS-MOUSE-BROADCAST',

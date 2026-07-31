@@ -19,7 +19,8 @@ Pulled E ready-queue item 1 after finishing the mismatched-timeframe parity cont
 
 ## Focus-Aware Input Routing
 
-Keyboard and mouse events must reach only the focused chart instance and must not leak to peers.
+Keyboard and mouse events must reach only the focused chart instance, must not leak to peers, and mouse
+coordinates must be resolved against the focused instance's own canvas rect.
 
 RED controls:
 
@@ -27,13 +28,14 @@ RED controls:
 |---|---|---|---|
 | `FOCUS-KEYBOARD-WINDOW-CHART` | Keyboard routes through `window.chart` / instance A while B is focused | `keyboard-missed-focused-instance` | GREEN control |
 | `FOCUS-MOUSE-WINDOW-CHART` | Mouse routes through `window.chart` / instance A while C is focused | `mouse-missed-focused-instance` | GREEN control |
+| `FOCUS-MOUSE-WRONG-RECT` | Mouse reaches B but resolves `clientX=1188` against A's canvas rect instead of B's | `mouse-coordinate-wrong-instance` | GREEN control |
 | `FOCUS-MOUSE-BROADCAST` | Mouse event is delivered to every panel | `mouse-leaked-to-peer` | GREEN control |
 
 GREEN control:
 
 | Control | Expected behavior | Result |
 |---|---|---|
-| `FOCUS-SCOPED-ROUTING` | Keyboard and mouse reach only the focused panel | GREEN |
+| `FOCUS-SCOPED-ROUTING` | Keyboard and mouse reach only the focused panel and mouse coordinates use that panel's canvas rect | GREEN |
 
 ## Destroy Indicator Behavior
 
