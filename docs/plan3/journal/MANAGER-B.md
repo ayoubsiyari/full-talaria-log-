@@ -5888,3 +5888,59 @@ Position is not persisted server-side (config_json is `{}`) and each run uses a 
 bar count is a property of the dataset at run time and cannot simply be reset. Controlling it is
 the next piece of work, and until it is controlled I have no defensible user-freeze number and no
 BUDGET-01 row.
+
+---
+
+## B-0224 — the confound is the finding: bars alone block, the load was irrelevant, and the 6x is a count not a cost
+
+**2026-07-31 17:25** · after RULING-B-WITHDREW-THE-CLAIM-...-MONSTER-2-MEASURED-20260731-1715
+
+Director promoted what I filed as a retraction to a finding in its own right and named the one
+missing cell. Both items done. The missing cell was cheap — one condition, three runs, ~5 minutes —
+so no risk of duplicating C's ten-hour CONF-05 soak.
+
+**The missing cell answers the question, and it answers it cleanly.** Many bars with NO artificial
+load: 312.6, 318.4, 322.7 ms/s at 2,761 / 2,981 / 3,197 bars. Many bars WITH the 60-request load:
+302-343. **Indistinguishable.** The load I had been treating as the stress condition contributes
+nothing once bars have accumulated. Bars alone block the main thread, so this is the PO's
+zero-trade scenario and it is explained. Load mattered only in the low-bar cell (0 -> 55 ms/s) and
+there it is a small effect on a small number.
+
+**Then I nearly published a wrong number.** Checking derived rates before committing showed
+blocking contributed *per task* is flat at 35.8-37.5 ms in every condition, low bars included, and
+p95 task duration actually *fell* from 187 ms to ~100 ms. Individual tasks did not get worse. What
+rose is their **frequency**: 1.5/s to 8.6/s, which at 7-8 bars/sec is about one long task per bar.
+So the 5.8x in blocked ms/s is a count effect. I then checked the witness that has no 50 ms
+threshold — timer lateness — and it moves only **1.5x** at p95 (96 -> 148 ms). The two aggregates
+disagree by ~4x, and blocked ms/s is the one that flatters the story.
+
+Had I quoted 6x without that check, I would have published "each freeze is six times worse" hours
+after withdrawing a claim for the same class of reason. The finding now leads with both witnesses
+and states plainly what the 6x is and is not. Same lesson as this morning, one level up: an
+aggregate can mislead about *magnitude* even when it is right about *direction*.
+
+**The shape and the lead for A.** Climbs 55 -> ~300 between 579 and ~1,100 bars, then flat
+302-343 out to 3,197 (correlation of bars against blocked ms/s within the plateau: -0.016). Not
+gauge saturation — a third of wall clock, and the same instrument read 0 ms/s in the same session.
+Cost that grows with bars then stops growing is a bounded working set rebuilt per event, not
+unbounded accumulation. Filed as a hypothesis with the test that kills it: if something rebuilds
+the visible window per bar rather than appending one bar, the plateau height depends on candles
+**visible**, not candles **loaded** — so zoom should move it and loading more bars should not. If
+the plateau is indifferent to zoom, I am wrong and the bounded set is something else.
+
+Corroboration that it is real work: bar rate falls 10.3 -> 7.2 bars/sec against a requested 10x as
+blocking rises. The replay is slowed by its own cost, which is the L1 mechanism.
+
+**Limit I stated rather than waited to be caught on:** the low-bar cells were measured earlier in
+the day than the high-bar cells, so elapsed wall time is not fully separated from bar count. Bars
+are the axis I recorded and the plateau holds across runs minutes apart, but a time-dependent
+confound is not excluded. CONF-03 also applies — outside CONF-01 and CONF-05, so this forms a
+hypothesis and must not be used to pick what to optimise.
+
+Handed C two instrumentation notes that cost me a cycle: instrument against bars loaded and not
+only wall clock, and record long-task count and timer lateness separately rather than total
+blocking time alone, or the soak will overstate severity by ~4x.
+
+BUDGET-01: the 100 ms/s row stays on hold, correctly. The longest-freeze companion argument is
+adopted for every row, which is the part of it that survives the withdrawal.
+

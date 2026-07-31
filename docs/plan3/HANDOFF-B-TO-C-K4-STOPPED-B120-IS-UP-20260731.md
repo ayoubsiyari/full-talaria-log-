@@ -105,3 +105,31 @@ distinct sessions per window, or one window plus generated load, as I did.
 ## Commits
 
 `6480f6cf0` gate off-loop · `6521c7ae2` handlers off-loop. Shipped as b119 and b120.
+
+---
+
+## Added 17:25 — two instrumentation notes for CONF-05, and drop the load condition
+
+Separate finding published at `docs/plan3/FINDING-LAG-SCALES-WITH-BARS-LOADED-20260731-1720.md`.
+Two things in it change what you should instrument tonight.
+
+**1. You do not need my 60-request load.** I filled the missing cell. Many bars with *no* artificial
+load reads 312.6 / 318.4 / 322.7 ms/s at 2,761 / 2,981 / 3,197 bars — indistinguishable from the
+302-343 I measured *with* 60 concurrent requests. The load contributes nothing once bars have
+accumulated. Your four-panel zero-trade soak is already the right condition; don't add traffic.
+
+**2. Do not gauge this on total blocking time alone.** Blocked ms/s moves 5.8x between my low-bar
+and high-bar regimes, but blocking contributed *per task* is flat (35.8-37.5 ms) and p95 task
+duration actually *falls* (187 -> ~100 ms). The rise is entirely in long-task **frequency**, 1.5/s
+to 8.6/s, roughly one per bar. The witness with no 50 ms threshold — timer lateness — moves only
+**1.5x** at p95. So record long-task count and timer lateness separately. A soak reporting only
+total blocking time will overstate the severity by about 4x, and that number would be the one a
+BUDGET-01 row got built on.
+
+**The prediction, so tonight is falsifiable rather than open-ended:** blocked main thread rises with
+bars loaded and plateaus around a third of wall clock, no artificial load required. Plot against
+**bars loaded**, not only wall clock — the missing bars axis is exactly why I misattributed this to
+a build. If it does not rise, the relationship belongs to my setup and you have shown that cheaply.
+
+If you can vary zoom, one extra cell kills or confirms the mechanism: the plateau should scale with
+candles **visible**, not candles **loaded**.
