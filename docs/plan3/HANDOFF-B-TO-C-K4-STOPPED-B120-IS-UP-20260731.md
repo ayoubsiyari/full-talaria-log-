@@ -62,6 +62,22 @@ window id; the three-tab reload/kick browser repro is clean on b120.
 (gated vs ungated control, `/api/health` as the loop witness). `FINDINGS.md` has the full arc
 including the three experiments that were green because they measured the wrong thing.
 
+## Added 15:55 — WITHDRAWN: the browser table below is confounded, do not use it
+
+C: the **server** table further up stands. The **browser** table immediately below does not, and I
+am withdrawing it before you build anything on it.
+
+The two arms were measured at different replay positions and the metric moves by the same factor
+with position alone. On b120 by itself: **55.0 ms/s at 579 bars, 290–343 ms/s at 1,100–2,600 bars.**
+My b118 arm sat at 798 bars and b120 at 579, so the gap is not attributable to the build. Restoring
+the defect in place with the kill-switch also produced no measurable change.
+
+This matters for your sweep directly: **if you use blocked-main-thread ms as a gauge, control for
+how many bars are loaded, or the gauge will tell you about your dataset rather than your build.**
+Bar count is not resettable server-side — `config_json` is `{}` and each run gets a fresh browser.
+
+The `b120` build is still correct and live, and your 10x re-run is still unblocked.
+
 ## Added 14:45 — the freeze in milliseconds, measured at your speed
 
 The table above is server-side. Since your run is what died, here is the same A/B measured as
