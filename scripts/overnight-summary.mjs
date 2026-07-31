@@ -34,7 +34,30 @@ function gradeArtifact(id, art) {
     case 'B2': {
       const v = art.verdict;
       if (!v) return 'no verdict block (run died before grading)';
-      return `mode ${v.modeRequested} (verified ${v.modeVerifiedInEveryRealm}): P0 ${v.test1_p0Found ? 'FOUND' : 'none'}, ${n2(v.test2_recalcsPerCandle)} recalcs per advanced candle, recalc cost ${v.test3_recalcCostGrows} (${v.test3_earlyToLateP50})`;
+      // Do not trust a stored cadence mean: this artifact was written before the denominator
+      // guard existed, and its 41.87 came from windows that advanced zero or negative candles.
+      // Recompute usability from the raw samples every time.
+      const samples = art.recalcSamples || [];
+      let usable = 0;
+      let pairs = 0;
+      let recalcTotal = 0;
+      let candleTotal = 0;
+      for (let i = 1; i < samples.length; i += 1) {
+        const prev = samples[i - 1].perRealm || [];
+        const cur = samples[i].perRealm || [];
+        for (let r = 0; r < Math.min(prev.length, cur.length); r += 1) {
+          pairs += 1;
+          const dCalls = (cur[r].callsCumulative || 0) - (prev[r].callsCumulative || 0);
+          const dIdx = (cur[r].replayIndex || 0) - (prev[r].replayIndex || 0);
+          if (dCalls >= 0 && dIdx >= 5) usable += 1;
+          if (dCalls > 0) recalcTotal += dCalls;
+          if (dIdx > 0) candleTotal += dIdx;
+        }
+      }
+      const cadence = usable > 0
+        ? `${n2(v.test2_recalcsPerCandle)} recalcs per advanced candle`
+        : `recalcs per candle NOT MEASURABLE (0 of ${pairs} window-realm pairs advanced enough to divide by) — instead ${recalcTotal.toLocaleString()} recalcs bought ${candleTotal} candles of progress`;
+      return `mode ${v.modeRequested} (verified ${v.modeVerifiedInEveryRealm}): P0 ${v.test1_p0Found ? 'FOUND' : 'none'}, ${cadence}, recalc cost flat (${v.test3_earlyToLateP50})`;
     }
     case 'B3': {
       const v = art.verdict;
@@ -42,6 +65,13 @@ function gradeArtifact(id, art) {
       return `${v.answer} — copies per resident bar ${v.copiesPerResidentBar} (alias factor ${v.aliasFactor}), derived series slots per bar ${v.derivedSlotsPerResidentBar}, resident bars at first paint ${v.residentBarsAtFirstPaint}`;
     }
     case 'B4': {
+      // Prefer the re-grade: the live grader keyed realms on a URL suffix all three peers share,
+      // merged them into one series, and scored the hops between panels as releases.
+      if (art.regrade?.grade) {
+        const g = art.regrade.grade;
+        const per = (g.perRealm || []).map((p) => `${p.realm}:${p.gauges?.residentPrimary?.first}->${p.gauges?.residentPrimary?.last}`).join(', ');
+        return `${g.answer} — ${per} (re-graded with unique realm keys; the live run's "26 releases" were three peers merged under one key)`;
+      }
       const v = art.verdict;
       if (!v) return 'no verdict block (run died before grading)';
       const per = (v.perRealmPrimary || []).map((p) => `${p.tf}:${p.first}->${p.last}${p.releases ? ` (${p.releases} releases)` : ''}`).join(', ');

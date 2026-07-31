@@ -1128,3 +1128,65 @@ B1 arm 1 is on b116 with all four realms reading candle, four distinct datasets,
 MY OWN INSTRUMENT DEFECT, recorded: the driver's free-RAM reading returns null all night because
 wmic is absent on this Windows build. Fixed for future runs (CIM via PowerShell); tonight there is
 no free-memory series and the summary says so rather than leaving a silent null.
+
+## W101 — 2026-07-31 04:35 · tier=mid model=claude-opus-5-thinking-high · battery B1-B5 banked, B6 soaking
+
+Five of six scenarios complete, zero deaths, zero relaunches. Build 20260730b116 read off the page
+in every one; playback mode read per realm in every one.
+
+B1/B1b - SAME-BUILD A/B, the caveat I attached to the 01:50 result is retired. 2ind +2.812
+CI[2.508,3.116], 0ind +1.036 CI[0.942,1.131], non-overlapping, indicators carry 63.2% of the growth
+against 63.9% cross-build. Two runs on different builds agreeing on the share to 0.7pp. Both of A's
+cuts still needed; cutting only the fingerprint leaves ~a third standing.
+
+B2 - ran in TICK rather than re-learning candle. Three answers: no P0; getPlaybackLoopKind() returns
+tick in ALL FOUR realms where candle returns null for peers, so tick runs four independent animation
+loops against candle's one; and 14,709 recalcs bought SEVEN candles of progress at a flat 0.687 ms
+each. The 20x is not cost-per-recalc, it is work driven by the animation clock instead of by bar
+advance. New hypothesis, labelled as one: candle at end-of-data fetches forward and extends the
+resident window (2,645 -> 14,548 in B4), tick does not (2,011 -> 2,011). One session with the
+playhead placed behind the end of data discriminates it.
+
+B3 - THE DISCRIMINATOR ANSWERED, and both halves matter. Marginal: 3 slots / 2 identity-distinct
+objects per new bar, inside the Director's "1-2 kills it" band. Fixed: the playing panel holds
+202,000 bar objects while drawing 2,618. The aggregate ratio FALLS 35.7 -> 21.5 -> 14.0 as resident
+bars grow 198% against slots growing 16.6% - a ratio decaying under load is a fixed cost being
+amortised, and quoting the 35.7 alone would have been the misleading number of the night. First
+paint holds 2,011 bars on a 1m chart with 6.1M available, so amplifier 2 does not fire at load; it
+fires at REPLAY ENTRY. That distinction decides where the cut goes.
+
+B4 - NOTHING IS EVER RELEASED. 0 releases, 4 realms, 26 samples, 3 gauges. Playhead sat at
+resident-1 in every single sample: the resident array IS the played history. 873 bars/min = 52,359
+bars/h = ~15-26 MB/h unbounded, which is 2-4% of the 730 MB/h. Also corrects the ruling's arithmetic:
+it assumed 1 bar/s at 60x, actual is 14.5 bars/s, so "60x" is ~870x real time on a 1m chart. The
+duration gate's own probe independently reads 1m:15.806/s vs 1/s x15.81.
+
+B5 - 84 shots, 40 controls, CONTACT-SHEET.png (1,387 KB) + .html. Drawing tools 52, orders 18,
+indicators 8, context menus 2, settings 2. Gap: my selectors matched no toolbar or replay-control
+group, so those two are missing and I say so rather than implying coverage.
+
+TWO DEFECTS IN MY OWN INSTRUMENTS, both found by cross-checking a result I did not like:
+1. B4's realm key was a frame-URL suffix that all three peers SHARE. Three panels merged into one
+   series, and that series hopping 1,596 -> 1,911 -> 495 scored as "26 releases" and produced
+   "SOMETHING RELEASES". Wrong in the interesting direction, which is the dangerous kind. Re-keyed
+   on frame ordinal + timeframe, artifact carries both grades, corrected answer unanimous.
+2. B2's cadence divided by advanced candles with no floor and reported 41.87 recalcs/candle from 55
+   zero-denominator and 13 NEGATIVE-denominator windows out of 84. Voided; the instrument now
+   excludes by reason, reports NOT MEASURABLE, and carries a rate fallback that survives a frozen
+   axis. Second time tonight a frozen axis produced a plausible number, so it is designed out now.
+Both cost a re-parse, no re-runs. I also fixed the summary generator so it recomputes cadence
+usability from raw samples and prefers re-grades - the PO's file must not quote numbers I voided.
+
+Also fixed: my viewport probe used viewStartIndex/_viewStart; the product's names are
+visibleStartIndex/visibleEndIndex (chart.js ~27293). Every viewport-distance figure in tonight's B3
+and B4 artifacts reads null. The playhead-distance half carries the verdict, so no conclusion moves,
+but the viewport half of EVICT-03 is UNMEASURED tonight and stated as such.
+
+CUTS NAMED FOR A WITH LINE NUMBERS: chart.js:7975 maxSmartLimit = highLimitAllowed ? 100000 : 2000
+(a 50x jump between the first-paint path and the replay path, matching 2,011 vs 102,000 measured),
+and replay-system.js:2607-2608 / 3333-3334 fullRawData/fullData spread copies which identity
+accounting proves are NOT aliases of each other. The cost is the length, not the copy.
+
+B6 soak running since 04:11 with a 237-min timeout, CONF-01 compliant, CONF-02 accumulating (5
+closed at sample 1), renderer 127.6%. It is the first soak of the plan that will exceed DUR-01's 2h
+span if it survives.
