@@ -36,13 +36,17 @@ function describeControlsSource() {
     if (st.visibility === 'hidden' || st.display === 'none' || Number(st.opacity) < 0.05) return false;
     return r.top > -50 && r.left > -50 && r.top < innerHeight + 50 && r.left < innerWidth + 50;
   };
+  // The first sweep's toolbar and replay-control groups came back empty because these selectors
+  // were guessed from class-name patterns and the V9 bundle does not use them. The IDs below are
+  // read out of the shipped bundle, so they match what actually renders.
   const groups = [
-    { group: 'drawing-tools', selector: '[data-tool], .drawing-tool, [class*="drawing"] button, [class*="tool-button"], [aria-label*="tool" i]' },
-    { group: 'toolbar', selector: '[class*="toolbar"] button, [class*="topbar"] button, header button' },
-    { group: 'replay-controls', selector: '[id*="replay" i], [class*="replay"] button, [class*="playback"] button' },
-    { group: 'settings-and-panels', selector: '[aria-label*="setting" i], [title*="setting" i], [class*="gear"], [class*="settings"] button' },
-    { group: 'orders', selector: '[class*="order"] button, [aria-label*="order" i], [class*="position"] button' },
+    { group: 'drawing-tools', selector: '[data-tool], .drawing-tool, [class*="drawing"] button, [class*="tool-button"], [aria-label*="tool" i], #crosshair, #brush, #brush2, #channel, #drawingsSyncToolbarBtn' },
+    { group: 'toolbar', selector: '#chartSymbol, #chartTimeframe, #chartChange, #chart-container > button, [class*="toolbar"] button, [class*="topbar"] button, header button' },
+    { group: 'replay-controls', selector: '#replayToolbar, #replayToolbar button, #replayToolbar select, #replayToolbarHandle, #replayModeBtn, #replayPlaybackMode, #replayTimeframe, #replayFollow, .replay-follow-float-btn' },
+    { group: 'settings-and-panels', selector: '#tl-sett, #txt-sett, #vb-sett, #vpb-sett, #avb-sett, #avb-more, #avb-lock, #avb-del, [aria-label*="setting" i], [title*="setting" i], [class*="gear"], [class*="settings"] button' },
+    { group: 'orders', selector: '#tl-rr-order, [class*="order"] button, [aria-label*="order" i], [class*="position"] button' },
     { group: 'indicators', selector: '[aria-label*="indicator" i], [title*="indicator" i], [class*="indicator"] button' },
+    { group: 'titled-controls', selector: '[title]:not([title=""])' },
   ];
   const out = [];
   const seen = new Set();
@@ -201,6 +205,25 @@ export async function runUiContactSheet({ outPath = null } = {}) {
     // First paint of a single chart, before the layout switch: the PO's default surface.
     await sleep(2_500);
     report.singleChartControls = await sweepSurface(page, outDir, 'single-chart', report.shots);
+    // The replay toolbar (#replayToolbar and its mode, timeframe and follow controls) is not in
+    // the DOM until replay mode is entered, which is why the first sweep returned an empty
+    // replay-controls group. Enter it, then sweep again so those controls are in the sheet.
+    report.replayEntry = await page.evaluate(() => {
+      const rs = window.chart && window.chart.replaySystem;
+      if (!rs) return { ok: false, why: 'no replay system' };
+      try {
+        if (typeof rs.enterReplayMode === 'function') rs.enterReplayMode({ startAtBeginning: false });
+        else if (typeof rs.enterReplay === 'function') rs.enterReplay();
+        else return { ok: false, why: 'no enterReplayMode' };
+      } catch (e) { return { ok: false, why: String(e.message).slice(0, 90) }; }
+      return { ok: true };
+    }).catch((e) => ({ ok: false, why: String(e?.message || e).slice(0, 90) }));
+    await sleep(4_000);
+    const toolbarPresent = await page.evaluate(() => !!document.querySelector('#replayToolbar')).catch(() => false);
+    report.replayToolbarPresentAfterEntry = toolbarPresent;
+    if (toolbarPresent) {
+      report.replayControls = await sweepSurface(page, outDir, 'single-chart-replay', report.shots);
+    }
     save();
   };
 
