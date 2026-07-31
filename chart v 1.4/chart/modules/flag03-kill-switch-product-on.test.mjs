@@ -35,6 +35,11 @@ const TODAY_SWITCH_HARNESSES = [
     harness: path.join(__dirname, 'order-sel01-exact-teardown.test.mjs'),
     productCell: null,
   },
+  {
+    switchName: '__TALARIA_DISABLE_JOURNAL_SHOT_THUMBS_V1',
+    harness: path.join(__dirname, 'm20-j1-journal-shot-thumbs.test.mjs'),
+    productCell: 'J1-C12 FLAG-03 working product OFF',
+  },
 ];
 
 function runHarness(file) {

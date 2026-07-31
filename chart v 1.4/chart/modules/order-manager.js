@@ -10062,9 +10062,32 @@ class OrderManager {
                 
                 // Render trade items
                 const reversedJournal = this.tradeJournal.slice().reverse();
-                const htmlContent = reversedJournal.map((trade, index) => this.renderTradeListItem(trade, index)).join('');
+                // M20-J1: bound the rendered set to one window (newest first).
+                // A 301-row journal built 301 rows of markup on every call.
+                const j1On = this._m20J1ThumbsEnabled();
+                const windowSize = j1On ? this._m20J1RenderWindow() : reversedJournal.length;
+                const visibleJournal = j1On && reversedJournal.length > windowSize
+                    ? reversedJournal.slice(0, windowSize)
+                    : reversedJournal;
+                const hiddenCount = reversedJournal.length - visibleJournal.length;
+                let htmlContent = visibleJournal.map((trade, index) => this.renderTradeListItem(trade, index)).join('');
+                if (hiddenCount > 0) {
+                    htmlContent += `
+            <div style="padding: 10px; text-align: center;">
+                <button type="button" data-journal-show-more="1" style="
+                    background: rgba(124,58,237,0.15);
+                    color: #c4b5fd;
+                    border: 1px solid rgba(124,58,237,0.4);
+                    border-radius: 6px;
+                    padding: 8px 14px;
+                    font-size: 11px;
+                    font-weight: 600;
+                    cursor: pointer;
+                " onclick="event.stopPropagation(); window.chart.orderManager.expandJournalRenderWindow()">Show more — ${hiddenCount} older trade${hiddenCount === 1 ? '' : 's'}</button>
+            </div>`;
+                }
                 
-                console.log(`✅ Rendered ${reversedJournal.length} trade items for sidebar`);
+                console.log(`✅ Rendered ${visibleJournal.length} trade items for sidebar`);
                 
                 tradeHistoryList.innerHTML = htmlContent;
                 
@@ -10080,6 +10103,16 @@ class OrderManager {
                         tradeHistoryList.addEventListener('click', (e) => {
                             const item = e.target.closest('.trade-history-item');
                             if (!item) return;
+                            // M20-J1: the LIVE row is the richer source (the
+                            // data-trade attribute no longer carries blobs);
+                            // the attribute stays as the fallback.
+                            if (this._m20J1ThumbsEnabled()) {
+                                const liveRow = this._m20J1FindRowByTradeId(item.getAttribute('data-trade-id'));
+                                if (liveRow) {
+                                    this.showTradeDetails(liveRow);
+                                    return;
+                                }
+                            }
                             const tradeData = item.getAttribute('data-trade');
                             if (!tradeData) return;
                             try {
@@ -10185,6 +10218,308 @@ class OrderManager {
         }
     }
 
+    // ═════════════════════════════════════════════════════════════════════
+    // M20-J1 — journal list stops carrying full-resolution screenshots.
+    //
+    // Kill-switch (restores the pre-J1 list markup byte-for-byte):
+    //   window.__TALARIA_DISABLE_JOURNAL_SHOT_THUMBS_V1 = <any truthy value>
+    //
+    // Three independent costs the pre-J1 list paid PER SCREENSHOT PER ROW:
+    //   1. data-trade='<JSON.stringify(trade)>'  — the whole row, screenshots
+    //      and their nested journalEntry/metadata duplicates included;
+    //   2. onclick="...showScreenshotPreview('<data url>', ...)";
+    //   3. <img src="<data url>"> displayed at 60px.
+    // (1) and (2) are STRING cost only — identical data URLs share one entry
+    // in the browser image cache, so they never caused a second decode. (3)
+    // is the decode. J1 removes (1) and (2) outright and replaces (3) with a
+    // small raster; full resolution stays reachable through the existing
+    // M20-A1 blob path (_m20A1ResolveRefBlob / in-row blob) at click time.
+    // ═════════════════════════════════════════════════════════════════════
+
+    /**
+     * FLAG-01/FLAG-02: read fresh on every call, never cached at module load;
+     * ANY truthy kill value (including the string '0') restores the legacy
+     * arm, and only genuinely falsy values leave J1 active.
+     */
+    _m20J1ThumbsEnabled() {
+        try {
+            if (typeof window === 'undefined') return true;
+            return !window.__TALARIA_DISABLE_JOURNAL_SHOT_THUMBS_V1;
+        } catch (_) {
+            return true;
+        }
+    }
+
+    _m20J1Config() {
+        return {
+            maxDim: 240,            // longest thumbnail edge (list shows 60px tall)
+            quality: 0.72,          // JPEG quality for the raster
+            maxCacheEntries: 512,
+            maxCacheBytes: 32 * 1024 * 1024,
+            windowSize: 60,         // rows rendered before "show more"
+            maxInflight: 4,         // concurrent rasterizations
+        };
+    }
+
+    /** Bounded LRU of generated thumbnails, keyed by _m20J1ThumbKey. */
+    _m20J1ThumbCache() {
+        if (!(this.__m20J1ThumbCache instanceof Map)) {
+            this.__m20J1ThumbCache = new Map();
+            this.__m20J1ThumbBytes = 0;
+        }
+        return this.__m20J1ThumbCache;
+    }
+
+    /**
+     * Stable per-(row, role) key. Externalized rows key off the A1 refId so a
+     * thumbnail survives rehydrate; embedded rows key off id + payload length,
+     * which changes if the screenshot is ever replaced.
+     */
+    _m20J1ThumbKey(trade, role) {
+        if (!trade || typeof trade !== 'object' || !role) return null;
+        const refField = role === 'exit' ? 'exitScreenshotRef' : 'entryScreenshotRef';
+        const ref = trade[refField];
+        if (ref && ref.refId) return `r:${ref.refId}`;
+        const shotField = role === 'exit' ? 'exitScreenshot' : 'entryScreenshot';
+        const shot = trade[shotField];
+        if (typeof shot !== 'string' || !shot) return null;
+        const id = trade.tradeId != null ? trade.tradeId : trade.id;
+        if (id == null) return null;
+        return `t:${id}:${role}:${shot.length}`;
+    }
+
+    _m20J1ThumbGet(key) {
+        if (!key) return null;
+        const c = this._m20J1ThumbCache();
+        if (!c.has(key)) return null;
+        const v = c.get(key);
+        c.delete(key);
+        c.set(key, v); // LRU bump
+        return v;
+    }
+
+    _m20J1ThumbPut(key, dataUrl) {
+        if (!key || typeof dataUrl !== 'string' || !dataUrl) return;
+        const cfg = this._m20J1Config();
+        if (dataUrl.length > cfg.maxCacheBytes) return;
+        const c = this._m20J1ThumbCache();
+        if (c.has(key)) {
+            this.__m20J1ThumbBytes -= c.get(key).length;
+            c.delete(key);
+        }
+        c.set(key, dataUrl);
+        this.__m20J1ThumbBytes += dataUrl.length;
+        while (c.size > cfg.maxCacheEntries || this.__m20J1ThumbBytes > cfg.maxCacheBytes) {
+            const oldest = c.keys().next().value;
+            if (oldest === undefined) break;
+            this.__m20J1ThumbBytes -= c.get(oldest).length;
+            c.delete(oldest);
+        }
+    }
+
+    /**
+     * Shared constant placeholder. One string literal for every pending
+     * thumbnail in the list, so N rows cost one string, not N data URLs.
+     */
+    _m20J1PlaceholderSrc() {
+        return 'data:image/svg+xml;charset=utf-8,'
+            + '%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20width%3D%22160%22%20height%3D%2260%22%3E'
+            + '%3Crect%20width%3D%22160%22%20height%3D%2260%22%20fill%3D%22%2321242e%22/%3E%3C/svg%3E';
+    }
+
+    /**
+     * Raster step, isolated so it is the ONLY part that needs a browser.
+     * Returns null (never throws) when no canvas/image API is reachable —
+     * callers then keep showing the placeholder, which is a bounded-memory
+     * degradation rather than a silent fall back to full resolution.
+     */
+    async _m20J1RasterizeThumb(dataUrl, maxDim, quality) {
+        if (typeof dataUrl !== 'string' || !dataUrl) return null;
+        try {
+            const scope = typeof window !== 'undefined' ? window : null;
+            if (!scope || typeof scope.Image !== 'function' || typeof document === 'undefined') return null;
+            const img = await new Promise((resolve) => {
+                const el = new scope.Image();
+                el.onload = () => resolve(el);
+                el.onerror = () => resolve(null);
+                el.src = dataUrl;
+            });
+            if (!img || !img.width || !img.height) return null;
+            const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+            const w = Math.max(1, Math.round(img.width * scale));
+            const h = Math.max(1, Math.round(img.height * scale));
+            const canvas = document.createElement('canvas');
+            canvas.width = w;
+            canvas.height = h;
+            const ctx = canvas.getContext('2d');
+            if (!ctx) return null;
+            ctx.drawImage(img, 0, 0, w, h);
+            const out = canvas.toDataURL('image/jpeg', quality);
+            canvas.width = 0;
+            canvas.height = 0;
+            return this._m20A1IsValidScreenshotDataUrl(out) ? out : null;
+        } catch (_) {
+            return null;
+        }
+    }
+
+    _m20J1ThumbState() {
+        if (!this.__m20J1ThumbState) {
+            this.__m20J1ThumbState = {
+                queue: [],
+                queued: new Set(),
+                inflight: new Set(),
+                failed: new Set(),
+                rerender: null,
+                repaintTimer: null,
+                repaintPending: false,
+            };
+        }
+        return this.__m20J1ThumbState;
+    }
+
+    /**
+     * Queue one thumbnail for generation off the render path. A permanent
+     * failure set means a broken payload is never retried in a loop.
+     */
+    _m20J1ScheduleThumb(key, dataUrl, rerender) {
+        if (!key || typeof dataUrl !== 'string' || !dataUrl) return;
+        const st = this._m20J1ThumbState();
+        if (st.failed.has(key) || st.queued.has(key) || st.inflight.has(key)) return;
+        if (rerender) st.rerender = rerender;
+        st.queued.add(key);
+        st.queue.push({ key, dataUrl });
+        this._m20J1PumpThumbs();
+    }
+
+    /**
+     * Drain the queue at bounded concurrency. Each completion pumps the next
+     * item directly, so a long backlog does not depend on repaint cadence;
+     * repaints are coalesced separately so the list is rebuilt once per batch
+     * rather than once per thumbnail.
+     */
+    _m20J1PumpThumbs() {
+        const st = this._m20J1ThumbState();
+        const cfg = this._m20J1Config();
+        while (st.inflight.size < cfg.maxInflight && st.queue.length) {
+            const item = st.queue.shift();
+            st.queued.delete(item.key);
+            st.inflight.add(item.key);
+            Promise.resolve()
+                .then(() => this._m20J1RasterizeThumb(item.dataUrl, cfg.maxDim, cfg.quality))
+                .then((thumb) => {
+                    st.inflight.delete(item.key);
+                    if (!thumb) {
+                        st.failed.add(item.key);
+                    } else {
+                        this._m20J1ThumbPut(item.key, thumb);
+                        this._m20J1RequestRepaint();
+                    }
+                    this._m20J1PumpThumbs();
+                })
+                .catch(() => {
+                    st.inflight.delete(item.key);
+                    st.failed.add(item.key);
+                    this._m20J1PumpThumbs();
+                });
+        }
+    }
+
+    /** One coalesced list repaint per batch of finished thumbnails. */
+    _m20J1RequestRepaint() {
+        const st = this._m20J1ThumbState();
+        if (st.repaintTimer != null) {
+            st.repaintPending = true;
+            return;
+        }
+        st.repaintTimer = setTimeout(() => {
+            st.repaintTimer = null;
+            const again = st.repaintPending;
+            st.repaintPending = false;
+            try {
+                const fn = st.rerender && typeof st.rerender.fn === 'function' ? st.rerender.fn : null;
+                if (fn) fn();
+            } catch (_) { /* display only */ }
+            if (again) this._m20J1RequestRepaint();
+        }, 250);
+    }
+
+    /**
+     * List <img> source for one (row, role): the cached thumbnail when it
+     * exists, otherwise the shared placeholder plus a scheduled raster. The
+     * full-resolution string is NEVER returned from here.
+     */
+    _m20J1ThumbSrc(trade, role, rerender) {
+        const key = this._m20J1ThumbKey(trade, role);
+        if (!key) return this._m20J1PlaceholderSrc();
+        const cached = this._m20J1ThumbGet(key);
+        if (cached) return cached;
+        const shot = role === 'exit' ? trade.exitScreenshot : trade.entryScreenshot;
+        if (typeof shot === 'string' && shot) this._m20J1ScheduleThumb(key, shot, rerender);
+        return this._m20J1PlaceholderSrc();
+    }
+
+    /** Live journal/closed row for a trade id — the click-time lookup source. */
+    _m20J1FindRowByTradeId(tradeId) {
+        if (tradeId == null) return null;
+        const want = String(tradeId);
+        for (const list of [this.tradeJournal, this.closedPositions]) {
+            if (!Array.isArray(list)) continue;
+            for (const row of list) {
+                if (!row || typeof row !== 'object') continue;
+                const id = row.tradeId != null ? row.tradeId : row.id;
+                if (id != null && String(id) === want) return row;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Click target for the journal list thumbnails. Replaces the pre-J1
+     * handler that inlined the whole base64 payload into an HTML attribute
+     * (which also interpolated attacker-influenced bytes into a quoted JS
+     * string — noted, not fixed here). Full resolution is fetched at click
+     * time: in-row blob first, then the existing A1 IndexedDB path.
+     */
+    showScreenshotPreviewForTrade(tradeId, role, title) {
+        const label = title || (role === 'exit' ? 'Exit Screenshot' : 'Entry Screenshot');
+        const row = this._m20J1FindRowByTradeId(tradeId);
+        if (!row) return;
+        const shot = role === 'exit' ? row.exitScreenshot : row.entryScreenshot;
+        if (typeof shot === 'string' && shot) {
+            this.showScreenshotPreview(shot, label);
+            return;
+        }
+        const ref = role === 'exit' ? row.exitScreenshotRef : row.entryScreenshotRef;
+        if (!ref || !ref.refId || typeof this._m20A1ResolveRefBlob !== 'function') return;
+        const cached = typeof this._m20A1DisplayBlob === 'function'
+            ? this._m20A1DisplayBlob(ref.refId)
+            : null;
+        if (cached) {
+            this.showScreenshotPreview(cached, label);
+            return;
+        }
+        this._m20A1ResolveRefBlob(ref.refId, { cache: true }).then((blob) => {
+            if (blob) this.showScreenshotPreview(blob, label);
+        }).catch(() => { /* preview unavailable — list is unaffected */ });
+    }
+
+    /** Rows currently rendered in the sidebar list (grows via "show more"). */
+    _m20J1RenderWindow() {
+        const cfg = this._m20J1Config();
+        const n = Number(this.__m20J1RenderWindow);
+        return Number.isFinite(n) && n >= cfg.windowSize ? n : cfg.windowSize;
+    }
+
+    /** "Show more" affordance: extend the window by one page and repaint. */
+    expandJournalRenderWindow() {
+        const cfg = this._m20J1Config();
+        this.__m20J1RenderWindow = this._m20J1RenderWindow() + cfg.windowSize;
+        try {
+            this.updateJournalTab();
+        } catch (_) { /* display only */ }
+    }
+
     /**
      * Render a single trade list item
      */
@@ -10233,14 +10568,34 @@ class OrderManager {
             margin-left: 4px;
         ">${nSplit}x ENTRIES</span>` : '';
         
-        // Store trade data directly on the element via data attribute
-        const tradeDataJson = JSON.stringify(trade).replace(/"/g, '&quot;');
+        // Store trade data directly on the element via data attribute.
+        // M20-J1: the heavy screenshot fields are dropped from this JSON —
+        // the click handler resolves the LIVE row by id (data-trade-id) and
+        // only falls back to this attribute, so nothing visible is lost.
+        const m20J1On = this._m20J1ThumbsEnabled();
+        // Inline-handler argument: trade ids in this codebase are numeric or
+        // short slugs, so a strict allow-list keeps the value inert inside a
+        // single-quoted JS string nested in an HTML attribute.
+        const m20J1IdArg = String(tradeId != null ? tradeId : '').replace(/[^A-Za-z0-9_.:-]/g, '');
+        const m20J1Rerender = { key: 'journal-tab', fn: () => this.updateJournalTab() };
+        let tradeForAttr = trade;
+        if (m20J1On) {
+            tradeForAttr = { ...trade };
+            delete tradeForAttr.entryScreenshot;
+            delete tradeForAttr.exitScreenshot;
+            delete tradeForAttr.entryScreenshots;
+            delete tradeForAttr.railScreenshots;
+            delete tradeForAttr.journalEntry;
+            delete tradeForAttr.metadata;
+        }
+        const tradeDataJson = JSON.stringify(tradeForAttr).replace(/"/g, '&quot;');
         
         console.log(`   Trade #${tradeId}: ${direction} ${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)}`);
         
         return `
             <div class="trade-history-item" 
                 data-trade-index="${index}"
+                data-trade-id="${tradeId != null ? String(tradeId).replace(/'/g, '&#39;').replace(/"/g, '&quot;') : ''}"
                 data-trade='${tradeDataJson}'
                 style="
                     background: linear-gradient(135deg, ${pnl >= 0 ? 'rgba(34,197,94,0.08)' : 'rgba(239,68,68,0.08)'} 0%, rgba(255,255,255,0.02) 100%);
@@ -10327,9 +10682,11 @@ class OrderManager {
                     ">
                         ${trade.entryScreenshot ? `
                             <div style="position: relative; cursor:default;" 
-                                 onclick="event.stopPropagation(); window.chart.orderManager.showScreenshotPreview('${trade.entryScreenshot}', 'Entry Screenshot')">
+                                 onclick="event.stopPropagation(); ${m20J1On
+                                     ? `window.chart.orderManager.showScreenshotPreviewForTrade('${m20J1IdArg}', 'entry', 'Entry Screenshot')`
+                                     : `window.chart.orderManager.showScreenshotPreview('${trade.entryScreenshot}', 'Entry Screenshot')`}">
                                 <div style="color: #787b86; font-size: 8px; margin-bottom: 2px; text-transform: uppercase; letter-spacing: 0.3px;">Entry</div>
-                                <img src="${trade.entryScreenshot}" style="
+                                <img src="${m20J1On ? this._m20J1ThumbSrc(trade, 'entry', m20J1Rerender) : trade.entryScreenshot}"${m20J1On ? ' loading="lazy" decoding="async"' : ''} style="
                                     width: 100%;
                                     height: 60px;
                                     object-fit: cover;
@@ -10344,9 +10701,11 @@ class OrderManager {
                         ` : ''}
                         ${trade.exitScreenshot ? `
                             <div style="position: relative; cursor:default;"
-                                 onclick="event.stopPropagation(); window.chart.orderManager.showScreenshotPreview('${trade.exitScreenshot}', 'Exit Screenshot')">
+                                 onclick="event.stopPropagation(); ${m20J1On
+                                     ? `window.chart.orderManager.showScreenshotPreviewForTrade('${m20J1IdArg}', 'exit', 'Exit Screenshot')`
+                                     : `window.chart.orderManager.showScreenshotPreview('${trade.exitScreenshot}', 'Exit Screenshot')`}">
                                 <div style="color: #787b86; font-size: 8px; margin-bottom: 2px; text-transform: uppercase; letter-spacing: 0.3px;">Exit</div>
-                                <img src="${trade.exitScreenshot}" style="
+                                <img src="${m20J1On ? this._m20J1ThumbSrc(trade, 'exit', m20J1Rerender) : trade.exitScreenshot}"${m20J1On ? ' loading="lazy" decoding="async"' : ''} style="
                                     width: 100%;
                                     height: 60px;
                                     object-fit: cover;
