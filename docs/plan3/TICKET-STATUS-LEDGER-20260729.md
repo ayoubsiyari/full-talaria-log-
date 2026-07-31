@@ -106,7 +106,7 @@ Open row disposition and unverified blast-radius order live in `docs/plan3/UNKNO
 | TAL-01864 | owner-blocked | — | Cluster I history range | `chart.js` smart-window; Data Script 3 |
 | TAL-01886 | fixed | `ab57a5dac` + CONF-01 cell | GREEN: `cross-timeframe-current-price-coherence.test.mjs` ± homepage | CONF-01 peer isolation cell added |
 | TAL-01887 | owner-blocked | — | RED vacuous under CONF-01: `H-S18`/`H-S83` `pair: 'same'` | Owner **C** — harness restage; see `OWNER-C-HS18-HS83-CONF01-20260730.md` |
-| TAL-01891 | owner-blocked | — | PO-DECISIONS: YES same memory campaign | Owner **A** — folds into 730 MB/h hunt |
+| TAL-01891 | broken | `PULL01-ORDER-MEMORY-TERMS-20260731.md` | Live P0 candidate: real decoded chart screenshot is 20.7 MB; heavy account scale can plausibly reach multi-GB | Owner **A** — screenshot/closed-trade memory hunt; fresh harness accounts are not representative |
 | TAL-01892 | blocked-on-build | — | PO-DECISIONS: NOT SURE; wait for fix train | Retest after memory/lag stamp |
 | TAL-01893 | owner-blocked | — | Go-To forward skip lives in `chart.js` (`goToNextSession`); M22 bucketing does not cover menu skip | Owner A; no D tip gate |
 | TAL-01894 | feature-request | — | Missing label-text-colour in chart template settings | Awaiting PO blocker/after/no |

@@ -38,7 +38,7 @@ See `OWNER-C-HS18-HS83-CONF01-20260730.md`.
 | TAL-01893 | Go-To forward skip |
 | TAL-01931 | replay step-forward |
 | TAL-01936 | time alignment |
-| TAL-01891 | memory campaign (PO: YES same 8 GB report) |
+| TAL-01891 | memory campaign — reopened live P0 candidate by PULL-01 screenshot payload sizing |
 | TAL-01854 | REAL — auto-follow / TF-downshift family (PO reopened) |
 
 ## Per-owner handoffs (row lists, not counts)

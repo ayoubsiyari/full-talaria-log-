@@ -3,7 +3,8 @@
 **Stamp to test:** `20260730b113` only  
 **Canary:** `http://31.97.192.82:3000`  
 **Binding:** TEST-01 — every declared commit/marker below was verified on this stamp’s wire **before** this pack was offered.  
-**Time target:** ~35–40 min · **one** CONF-01 multichart open · do not reopen 2×2 per row  
+**Binding:** CONF-04 — every measurement must state the mode read from each relevant realm.  
+**Time target:** ~55–60 min including mandatory zero-trade replay cell · **one** CONF-01 multichart open · do not reopen 2×2 per row  
 **Fill:** tick **PASS** or **FAIL** only — no prose required  
 **Tip that built this pack:** see `git rev-parse --short HEAD` on `manager-d/trade-correctness`
 
@@ -24,6 +25,26 @@ If the stamp on screen is **not** `20260730b113`, **stop**. Do not run this pack
 
 ---
 
+## CONF-04 mode axis (fill before scoring)
+
+No row in this pack counts without this mode axis. Read the mode from each realm once at start,
+then re-read if replay/session/order state changes. If a realm is not visible or not readable,
+write `UNREADABLE` and stop before calling any row PASS.
+
+| Axis | Realm to read | Mode value read | Applies to rows |
+|---|---|---|---|
+| M0 | Page / shell realm (stamp + top-level app mode) | __________ | all rows |
+| M1 | Host chart realm (active symbol + TF + chart mode) | __________ | all rows |
+| M2 | Replay realm (play/pause + speed + candle/tick/replay mode) | __________ | Z, 12-20, 24-26 |
+| M3 | Multichart host realm (layout + selected panel mode) | __________ | Z, all rows |
+| M4 | Peer panel realms (each iframe/panel symbol + TF + replay mode) | __________ | Z, 12-20 |
+| M5 | Order-manager realm (order/trade mode: zero-trade, draft, pending, live, closed) | __________ | Z, 21-26 |
+| M6 | History/journal realm (All Trades/history mode) | __________ | 24-26 |
+
+For Section Z, M5 must read **zero-trade**: no open, pending, or closed trades.
+
+---
+
 ## One-time setup (do once)
 
 1. New session on stamp `20260730b113`.
@@ -31,9 +52,10 @@ If the stamp on screen is **not** `20260730b113`, **stop**. Do not run this pack
 3. Four symbols: EURUSD · GBPUSD · USDJPY · XAUUSD.
 4. Four TFs: 1m · 5m · 15m · 1H (one per panel).
 5. One indicator visible on each panel.
-6. One small live / pending order visible on the host panel.
-7. Write MEAS-01 stamp above.
-8. Keep this layout open for the whole pack. Only change what a section asks.
+6. **Do not place any trade yet.** Run Section Z first.
+7. After Section Z passes (or is recorded FAIL), place one small live / pending order on the host panel for the order/journal sections.
+8. Write MEAS-01 stamp above.
+9. Keep this layout open for the whole pack. Only change what a section asks.
 
 ---
 
@@ -41,6 +63,7 @@ If the stamp on screen is **not** `20260730b113`, **stop**. Do not run this pack
 
 | # | Row | Setup section | PASS | FAIL |
 |---|---|---|:---:|:---:|
+| Z | ZERO-TRADE-60X | Mandatory replay guard | ☐ | ☐ |
 | 1 | TAL-01724 | A Viewport | ☐ | ☐ |
 | 2 | TAL-01734 | A Viewport | ☐ | ☐ |
 | 3 | TAL-01735 | A Viewport | ☐ | ☐ |
@@ -70,9 +93,41 @@ If the stamp on screen is **not** `20260730b113`, **stop**. Do not run this pack
 
 ---
 
+## Section Z — Zero-trade replay guard (mandatory before any trade)
+
+**CONF-04 mode reads:** M0, M1, M2, M3, M4, M5.  
+**Why:** a pack that only tests replay with trades can miss a smoothness defect that exists
+with zero trades. This cell protects every row below that claims replay motion or smoothness.
+
+### Steps
+
+1. Confirm there are **zero** open, pending, and closed trades in the session.
+2. Keep the 2×2 multichart from setup: four symbols, four TFs, indicators visible.
+3. Set replay speed to **60x**.
+4. Press Play and let it run for **at least 15 minutes**.
+5. During the run, do not place orders. Do not open the order panel.
+6. Watch whether replay remains smooth and whether all panels keep advancing.
+
+### Observable
+
+PASS: for 15+ minutes at 60x with zero trades, replay remains responsive, panels keep advancing,
+no panel freezes/stutters badly, and chart interaction remains usable at the end.
+
+FAIL: before 15 minutes, replay becomes visibly choppy, stalls, one panel stops while others
+continue, controls lag badly, or the chart becomes hard to interact with.
+
+**If Section Z fails:** do **not** mark replay-smoothness rows PASS. Mark the relevant replay
+rows FAIL unless Director explicitly scopes the failure elsewhere.
+
+Replay rows guarded by Z: TAL-01898, TAL-01925, TAL-01917, TAL-01909, TAL-01929,
+TAL-01923, TAL-01700, TAL-01934, TAL-01717.
+
+---
+
 ## Section A — Viewport / scale / toolbar (Cluster J) · rows 1–11
 
 **Keep** the 2×2 from setup. Work on the host panel unless noted.  
+**CONF-04 mode reads:** M0, M1, M3.  
 **Declared wire (TEST-01):** chart shell on b113 (`chart_chart.js` served). No separate money-path kill-switch; these are first-look UI confirms on the deployed shell.
 
 ### Steps (run once; score each row from what you saw)
@@ -107,6 +162,7 @@ If the stamp on screen is **not** `20260730b113`, **stop**. Do not run this pack
 
 **Still** on the same 2×2. Focus host panel.
 
+**CONF-04 mode reads:** M0, M1, M2, M3, M4.  
 **Declared wire:** `chart.js` + `replay-system.js` on b113 (shell). Kin markers for cross-TF work already on-wire for related fixed rows (`TAL-01802` / `TAL-01886`); this section is visual confirm only.
 
 ### Steps
@@ -127,6 +183,7 @@ If the stamp on screen is **not** `20260730b113`, **stop**. Do not run this pack
 
 ## Section C — Session resume (Cluster D) · rows 15–16
 
+**CONF-04 mode reads:** M0, M1, M2, M3, M4.  
 **Declared wire:** chart shell on b113.
 
 ### Steps
@@ -146,6 +203,7 @@ If the stamp on screen is **not** `20260730b113`, **stop**. Do not run this pack
 
 ## Section D — Drawings lag (Cluster L) · row 17
 
+**CONF-04 mode reads:** M0, M1, M2, M3.  
 **Declared wire:** chart shell on b113.
 
 ### Steps
@@ -164,6 +222,7 @@ If the stamp on screen is **not** `20260730b113`, **stop**. Do not run this pack
 
 ## Section E — Crosshair (Cluster K) · rows 18–19
 
+**CONF-04 mode reads:** M0, M1, M2, M3.  
 **Declared wire:** chart shell on b113.
 
 ### Steps
@@ -183,6 +242,7 @@ If the stamp on screen is **not** `20260730b113`, **stop**. Do not run this pack
 
 ## Section F — Multichart peers (Cluster C) · row 20
 
+**CONF-04 mode reads:** M0, M1, M2, M3, M4.  
 **Declared wire:** `multichart-manager.js` on b113. (Rayan #2 money retain is separately on-wire by runtime probe — this row is visual peer motion.)
 
 ### Steps
@@ -200,6 +260,7 @@ If the stamp on screen is **not** `20260730b113`, **stop**. Do not run this pack
 
 ## Section G — Order lines (Cluster G leftovers) · rows 21–23
 
+**CONF-04 mode reads:** M0, M1, M3, M5.  
 **Declared commits / markers (TEST-01 — verified on b113 wire):**
 
 | Marker | Introducing commit |
@@ -227,6 +288,7 @@ If the stamp on screen is **not** `20260730b113`, **stop**. Do not run this pack
 
 ## Section H — History / markers / journal side-effects · rows 24–26
 
+**CONF-04 mode reads:** M0, M1, M2, M3, M5, M6.  
 **Declared commits / markers (TEST-01 — verified on b113 wire):**
 
 | Marker | Introducing commit |

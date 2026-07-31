@@ -20,6 +20,13 @@ const packTickets = [
   'TAL-01700', 'TAL-01934', 'TAL-01717', 'TAL-01696', 'TAL-01698', 'TAL-01617',
   'TAL-01911', 'TAL-01796', 'TAL-01940',
 ];
+const zeroTradeGuardTicket = 'ZERO-TRADE-60X';
+const replayGuardedTickets = [
+  'TAL-01898', 'TAL-01925', 'TAL-01917',
+  'TAL-01909', 'TAL-01929', 'TAL-01923',
+  'TAL-01700', 'TAL-01934', 'TAL-01717',
+];
+const requiredModeAxis = ['M0', 'M1', 'M2', 'M3', 'M4', 'M5', 'M6'];
 
 function arg(name) {
   const i = process.argv.indexOf(name);
@@ -44,12 +51,26 @@ if (sc.stamp && sc.stamp !== '20260730b113') {
   console.error('Refuse flip: scorecard stamp must be 20260730b113, got', sc.stamp);
   process.exit(1);
 }
+const missingModeAxis = requiredModeAxis.filter((k) => {
+  const v = sc.modeAxis && sc.modeAxis[k];
+  return !v || String(v).trim().toUpperCase() === 'UNREADABLE';
+});
+if (missingModeAxis.length) {
+  console.error('Refuse flip: CONF-04 mode axis missing/unreadable:', missingModeAxis.join(', '));
+  process.exit(1);
+}
 
 const byTicket = new Map();
 for (const r of sc.results || []) {
   const v = String(r.verdict || '').toUpperCase();
   if (v !== 'PASS' && v !== 'FAIL') continue;
   byTicket.set(r.ticket, v);
+}
+
+if (byTicket.get(zeroTradeGuardTicket) === 'FAIL') {
+  for (const t of replayGuardedTickets) {
+    if (!byTicket.has(t) || byTicket.get(t) === 'PASS') byTicket.set(t, 'FAIL');
+  }
 }
 
 let ledger = readFileSync(ledgerPath, 'utf8');
@@ -86,6 +107,7 @@ for (const t of packTickets) {
 }
 
 for (const [t] of byTicket) {
+  if (t === zeroTradeGuardTicket) continue;
   if (!packSet.has(t)) flipped.skipped.push({ ticket: t, reason: 'not-in-26-pack' });
 }
 
@@ -99,6 +121,9 @@ const out = {
   tip,
   stamp: '20260730b113',
   scorecard: abs.replace(/\\/g, '/'),
+  modeAxis: sc.modeAxis,
+  zeroTradeGuard: byTicket.get(zeroTradeGuardTicket) || 'missing',
+  replayGuardedTickets,
   flipped,
   at: new Date().toISOString(),
 };

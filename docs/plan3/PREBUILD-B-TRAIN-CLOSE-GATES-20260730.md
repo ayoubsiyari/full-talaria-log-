@@ -3,6 +3,8 @@
 **2026-07-30** · Manager D · not blocked on anyone  
 **Script:** `scripts/prebuild-b-train-close-gates.mjs`  
 **EVID-02:** `_evidence\manager-D\PREBUILD-B-TRAIN-CLOSE-GATES-<stamp>.json`
+**TEST-02:** RED on `20260730b113` is the expected discriminator; GREEN only counts on a later
+named stamp with B-train bytes.
 
 ## Why this exists
 
@@ -32,11 +34,11 @@ node scripts/prebuild-b-train-close-gates.mjs --base <CANARY> --stamp <NEW> --ex
 
 No Chromium. HTTP / wire-dir only.
 
-## Measured 2026-07-30 evening
+## Measured / refreshed
 
 | Surface | Rayan #8 | TAL-01807b | TAL-01896 | Gate exit |
 |---|---|---|---|---|
-| `artifacts/wire-b113` (stamped corpus) | RED | RED | RED | **1** (discriminator) |
+| `artifacts/wire-b113` (stamped corpus, refreshed 2026-07-31 00:13) | RED | RED | RED | **1** (discriminator) |
 | Live canary OM (stamp **unlabelled** — MEAS-01 pending) | GREEN | GREEN | RED | **1** (01896 still out) |
 
 Tip unit gates for #8 / 01807b: GREEN=0 locally. Ledger flip for those two waits on B’s named stamp + `--expect-green` on that stamp. 01896 remains delivery-unserved on live.

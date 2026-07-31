@@ -1,6 +1,7 @@
 # REQUEST D -> B — name live stamp and freeze deploys for PO visual pack
 
 **2026-07-30 22:47** · Manager D · time-critical PO-window guard  
+**2026-07-31 00:13 refresh:** ACK required before Director starts PO. No implicit freeze.
 **Pack at risk:** `PO-VISUAL-PACK-26-PO-EYES-20260730.md`
 
 ## 1. Name the live stamp
@@ -33,6 +34,12 @@ Expected window: ~40 minutes.
 
 If B must ship sooner, D re-runs TEST-01 preflight against the new named stamp first and
 reissues the pack. That is cheap, but it is not optional.
+
+**ACK requested from B:** write the exact freeze acceptance in this file or the B journal:
+`ACK PO freeze: no deploy from Director PO-start until scorecard return; if deploy is needed,
+B will notify D first and D re-preflights against the new named stamp.`
+
+Until that ACK exists, D treats the freeze as **requested / not yet agreed**.
 
 ## 3. Current B-train close gates
 
