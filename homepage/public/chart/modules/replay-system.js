@@ -797,7 +797,31 @@ class ReplaySystem {
     }
 
     getPlaybackMode() {
+        if (this._isCandleOnlyPlaybackEnabled()) return 'candle';
         return this.playbackMode === 'candle' ? 'candle' : 'tick';
+    }
+
+    /**
+     * TICK-OFF-01 — candle is the only playback mode.
+     *
+     * Tick data is simulated: there is no tick feed, so the mode animates a random
+     * intra-candle path. It cost four concurrent animation loops against candle's
+     * one, and 14,709 recalcs that advanced seven candles, for a cosmetic effect.
+     *
+     * Forced at this accessor rather than at the call sites for two reasons. Every
+     * behavioural read of the mode already routes through here, and
+     * startTickAnimation() already re-routes to startCandleByCandle() whenever the
+     * mode is not tick — so this selects a state the product already ships and users
+     * already reach rather than introducing a new one. It also keeps the mode label
+     * honest: syncPlaybackModeControls() reads the same accessor, so the control can
+     * never display "tick" while the engine runs candle.
+     *
+     * this.playbackMode keeps the user's stored preference untouched, so the setting
+     * returns intact when this switch is removed post-canary.
+     */
+    _isCandleOnlyPlaybackEnabled() {
+        return typeof window === 'undefined'
+            || !window.__TALARIA_DISABLE_CANDLE_ONLY_PLAYBACK_V1;
     }
 
     _isReplayIntervalCadenceFixEnabled() {
