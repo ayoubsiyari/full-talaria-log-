@@ -247,12 +247,20 @@ const accountHydration = [];
     // Count script parses from now on. If nothing re-evaluates during playback, the per-realm script
     // mass is a baseline term exactly as the advisor said, and this is what confirms which.
     let parsedAfterFirstPaint = 0;
+    let parsedByHarness = 0;
     const parsedUrls = new Set();
+    // Every page.evaluate() I make is itself a script parse. Counting those as product re-evaluation
+    // is observer contamination, and the first version of this grader did exactly that: it reported
+    // "27 scripts parsed during playback" when all of them were my own probe's stack frames.
+    const isHarnessParse = (url) => !url
+      || /puppeteer|[\\/]scripts[\\/]|\.mjs|__puppeteer|pptr:|%5C|%2F/i.test(url);
     try {
       await cdp.send('Debugger.enable');
       cdp.on('Debugger.scriptParsed', (e) => {
+        const url = String(e.url || '');
+        if (isHarnessParse(url)) { parsedByHarness += 1; return; }
         parsedAfterFirstPaint += 1;
-        if (parsedUrls.size < 40 && e.url) parsedUrls.add(String(e.url).slice(-60));
+        if (parsedUrls.size < 40) parsedUrls.add(url.slice(-60));
       });
     } catch { report.debuggerUnavailable = true; }
 
@@ -284,6 +292,7 @@ const accountHydration = [];
       gauges: await readSweepGauges(page, cdp, browserCdp, { cpuWindowMs: 6_000, forceGc: true, readOsFootprints }),
       scriptParsesTotal: parsedAfterFirstPaint,
       scriptParsesDuringPlayback: parsedAfterFirstPaint - (report.scriptParsesAtFirstPaintMark || 0),
+      harnessParsesExcluded: parsedByHarness,
       newlyParsedUrls: [...parsedUrls].slice(0, 20),
     };
     save();

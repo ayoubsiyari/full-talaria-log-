@@ -25,7 +25,7 @@ import {
 } from './lib/heap-cycle-browser.mjs';
 import { readOsFootprints } from './process-memory-census.mjs';
 
-const OUT = 'c:\\Users\\user\\Desktop\\talaria1\\_evidence\\manager-C\\SESSION-RESET-20260731.json';
+const OUT = process.env.C_OUT || 'c:\\Users\\user\\Desktop\\talaria1\\_evidence\\manager-C\\SESSION-RESET-20260731.json';
 const SESSIONS = Number(process.env.C_SESSIONS || 3);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -87,10 +87,22 @@ const storageSource = async () => {
     const password = String(process.env.TEST_PASSWORD || '').trim();
     if (!email || !password) throw new Error('needs TEST_EMAIL and TEST_PASSWORD');
 
+    // A documents staircase across logout/login has a BENIGN candidate explanation: Chrome's
+    // back-forward cache retains the outgoing document, with its whole JS heap, so that a Back press
+    // can restore it instantly. That is a browser feature, not a product leak, and it would produce
+    // exactly the +N documents per cycle shape. This arm disables it so the two can be told apart.
+    const disableBfcache = process.env.C_DISABLE_BFCACHE === '1';
+    report.arm = disableBfcache ? 'bfcache-disabled' : 'default';
+    report.armWhy = disableBfcache
+      ? 'BackForwardCache disabled: if the documents staircase survives this, the retention is ours, not the browser cache.'
+      : 'Default Chrome. A staircase here is not yet attributable, because bfcache would produce the same shape.';
     const puppeteer = await loadPuppeteer();
     browser = await puppeteer.launch({
       headless: true,
-      args: ['--no-sandbox', '--disable-dev-shm-usage', '--js-flags=--expose-gc'],
+      args: [
+        '--no-sandbox', '--disable-dev-shm-usage', '--js-flags=--expose-gc',
+        ...(disableBfcache ? ['--disable-features=BackForwardCache'] : []),
+      ],
     });
     const browserCdp = await browser.target().createCDPSession();
     const page = await browser.newPage();
