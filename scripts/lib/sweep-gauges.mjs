@@ -181,36 +181,88 @@ async function readWorkers(browserCdp, page) {
     out.workers = workers.length;
     out.workerTypes = [...new Set(workers.map((w) => w.type))];
 
-    // Each worker gets its own CDP session via the Puppeteer target, which is the supported way to
-    // reach another isolate; a browser-level session cannot answer Runtime.getHeapUsage for it.
+    // The first version of this reached workers through browser.targets(), on the assumption that a
+    // browser-level session cannot answer Runtime.getHeapUsage for another isolate. GATE-01 failed it
+    // against a 120 MB in-worker ballast: browser.targets() does not list DEDICATED workers at all, so
+    // zero heaps were read. CDP does see them, so the working route is to attach to the target id from
+    // Target.getTargets with a flattened session and talk to it over the same browser connection.
+    // Three routes are tried in order and the one that answered is recorded, because a gauge that
+    // silently changes how it reads is not a gauge.
     let total = 0;
     let measured = 0;
     const browser = page?.browser?.();
-    const workerTargets = (browser && typeof browser.targets === 'function')
-      ? browser.targets().filter((t) => /worker/i.test(t.type()))
-      : [];
-    for (const t of workerTargets) {
-      const row = { type: t.type(), url: String(t.url() || '').slice(-70), heapUsedMB: null, heapTotalMB: null, why: null };
-      let session = null;
+    const routesTried = [];
+
+    const readViaFlattenedSession = async (targetId) => {
+      const { sessionId } = await browserCdp.send('Target.attachToTarget', { targetId, flatten: true });
+      const conn = typeof browserCdp.connection === 'function' ? browserCdp.connection() : null;
+      const session = conn && typeof conn.session === 'function' ? conn.session(sessionId) : null;
+      if (!session) throw new Error('no flattened session from connection');
       try {
-        session = await t.createCDPSession();
-        const usage = await session.send('Runtime.getHeapUsage');
+        return await session.send('Runtime.getHeapUsage');
+      } finally {
+        await browserCdp.send('Target.detachFromTarget', { sessionId }).catch(() => {});
+      }
+    };
+
+    for (const w of workers) {
+      const row = {
+        type: w.type, url: String(w.url || '').slice(-70), heapUsedMB: null, heapTotalMB: null,
+        via: null, why: null,
+      };
+      let usage = null;
+      try {
+        usage = await readViaFlattenedSession(w.targetId);
+        row.via = 'flattened-session';
+      } catch (err) {
+        row.why = `flattened: ${String(err?.message || err).slice(0, 60)}`;
+      }
+      // Fallback: Puppeteer's own WebWorker list, which does cover dedicated workers even when
+      // browser.targets() omits them.
+      if (!usage && page && typeof page.workers === 'function') {
+        for (const pw of page.workers()) {
+          if (!String(pw.url() || '').includes(String(w.url || '').slice(-30))) continue;
+          try {
+            const client = pw.client ?? pw._client;
+            if (client && typeof client.send === 'function') {
+              usage = await client.send('Runtime.getHeapUsage');
+              row.via = 'page.workers';
+            }
+          } catch (err) { row.why = `${row.why || ''} pageWorkers: ${String(err?.message || err).slice(0, 50)}`; }
+          if (usage) break;
+        }
+      }
+      // Last resort: the Puppeteer target list, which was the original and weakest route.
+      if (!usage && browser && typeof browser.targets === 'function') {
+        const t = browser.targets().find((x) => /worker/i.test(x.type()) && x.url() === w.url);
+        if (t) {
+          let session = null;
+          try {
+            session = await t.createCDPSession();
+            usage = await session.send('Runtime.getHeapUsage');
+            row.via = 'puppeteer-target';
+          } catch (err) { row.why = `${row.why || ''} target: ${String(err?.message || err).slice(0, 50)}`; }
+          finally { if (session) await session.detach().catch(() => {}); }
+        }
+      }
+      if (usage) {
         row.heapUsedMB = +(usage.usedSize / 1048576).toFixed(2);
         row.heapTotalMB = +(usage.totalSize / 1048576).toFixed(2);
         total += row.heapUsedMB;
         measured += 1;
-      } catch (err) {
-        row.why = String(err?.message || err).slice(0, 80);
-      } finally {
-        if (session) await session.detach().catch(() => {});
       }
+      if (row.via) routesTried.push(row.via);
       out.workerHeaps.push(row);
     }
     out.workerHeapTotalMB = measured > 0 ? +total.toFixed(2) : null;
     out.workerHeapsMeasured = measured;
-    out.workerTargetsSeenByPuppeteer = workerTargets.length;
-    if (out.workers > 0 && workerTargets.length === 0) {
-      out.workerHeapGap = `CDP reports ${out.workers} worker target(s) but Puppeteer exposes none, so their heaps are unmeasured rather than zero`;
+    out.workerHeapRoutes = [...new Set(routesTried)];
+    out.workerTargetsSeenByPuppeteer = (browser && typeof browser.targets === 'function')
+      ? browser.targets().filter((t) => /worker/i.test(t.type())).length : null;
+    if (out.workers > 0 && measured === 0) {
+      out.workerHeapGap = `CDP reports ${out.workers} worker target(s) and NONE of the three read routes answered, so their heaps are unmeasured rather than zero`;
+    } else if (out.workers > measured) {
+      out.workerHeapGap = `${measured} of ${out.workers} worker heaps read; the remainder are unmeasured, not zero`;
     }
   } catch { /* leave nulls */ }
 

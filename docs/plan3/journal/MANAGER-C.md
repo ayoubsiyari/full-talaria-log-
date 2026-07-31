@@ -1370,3 +1370,97 @@ I will measure whether account-scoped history hydrates unbounded at load, which 
 account and is the part A needs in order to cut; the cohort magnitude still needs a heavy account from
 whoever owns them.
 
+## W105 — 2026-07-31 12:10 · items 1, 3, 6 and 7 landed; the logout staircase was the browser
+tier=mid model=claude-opus-5-thinking-high · `UNIT-01` `FIT-01` `PULL-01` `MEAS-01` `GATE-01` `KILL-02`
+
+EDITOR CRASH COST NOTHING. Every run had already written: S1 and S5 completed, the baseline queue
+superseded the sweep queue at 09:58 exactly as designed so S2 never started, and all three of its items
+finished. Build `20260730b116` read off the page on each.
+
+R-1 CONFIRMS THE PO BY COUNT, AND IT IS THE BIGGEST BASELINE LEVER WE HAVE. Of 7,321 resident bars across
+four realms, **6,009 — 82.1% — sit BEFORE the session start**. Pre-session history the user never asked to
+replay, at **15 resident bars per visible bar** (7,321 against 488). The session-start index came from the
+product's own `sessionStartIndex` after the instrument tried five candidate names, so the split is not
+resting on a guess. A SUSPECT DIES IN THE SAME COUNT per `KILL-02`: only **4 bars** sit after the playhead
+across all four realms, so "it loads the unplayed future" is dead.
+
+ITEM 6, AND THE HEADLINE IS THE REMAINDER. Four panels, first paint, zero trades: **1,122.1 MB total** —
+renderer 693.8, GPU process 259.2, browser 62.5. Post-collection JS heap is **186.66 MB, 27% of the
+renderer**; the other **497.23 MB, 72%, is not JavaScript**. Every gauge we own reads the 27%. Two smaller
+results: declared canvas backing stores total **4.16 MB against a 259 MB GPU process**, so anyone cutting
+canvas surfaces to save GPU memory would be aiming at 1.6% of it, and decoded images are 5.75 MB. 61,272
+DOM nodes and 14,796 listeners before anything plays.
+
+THE 92 MB SCRIPT QUESTION IS A BASELINE TERM, SETTLED. Zero product scripts parsed, decoded script bytes
+moved **0.00 MB**, request count 251 → 251 across three minutes of four-panel playback. The advisor's
+condition was "unless something re-evaluates mid-session" and nothing does. Cross-realm sharing is a
+baseline fix, and it should be SIZED now even though it is fixed later.
+
+ITEM 1, THE CURVE, AND THE CONTROL IS INVERTED. The engine tracks its own intended cadence at **1.03 of
+intent at 1x and 1.002 at 5x**, then breaks away: **0.44 at 30x, 0.205 at 60x**. In absolute terms **60x
+delivers 12.83 candles/s against 13.34 at 30x** — asking for double returns 3.8% less, because the 16 ms
+interval floor is reached and tick work exceeds the interval. The top half of the speed control does
+nothing and the very top is worse than the middle. B4's 873 bars/min reproduces here as 12.83 on a
+different day with a different instrument.
+
+TWO THINGS THE CURVE ADDED THAT NOBODY ASKED FOR. Renderer CPU is **pinned 118–132% at EVERY speed
+including 1x**, where it burns a full core to advance ONE candle per second — so a large speed-independent
+cost exists, and I say plainly that a pinned gauge cannot discriminate on its own; what separates the two
+terms is that throughput saturates, which a purely fixed cost would not do. And the engine renders
+**141.7 paints/s at 1x**, roughly 141 paints per advanced candle, with paints/s FALLING as speed rises.
+The paint loop is decoupled from bar advance. That is now the cheapest untested lead on the page.
+
+NO PLAN NUMBER NEEDS RESTATING. Every per-bar figure I have published came from observed `replayIndex`
+deltas, never from the slider, so the 63/37 split and the CPU-ms/bar slopes stand and `Delta 2` holds for a
+stronger reason than the same-build argument: there was no mislabelling factor in the arms to cancel.
+
+ITEM 7 CLOSED, AND I ALMOST PUBLISHED A FALSE LEAK. The first arm showed documents **3 → 6 → 9** and heap
+**17.1 → 31.6 → 46.1 MB** across three logout/login cycles: clean, monotonic, and exactly what retained
+realms look like. It is **Chrome's back-forward cache**. With `--disable-features=BackForwardCache`
+documents are flat at **2, 2, 2**, heap flat at **12.3/13.7/13.7**, growth falls from **106.6 MB to
+14.7 MB** and logout returns **28.8–49.0 MB** instead of nothing. Storage was flat at 1,797 bytes in all
+six readings. THIS SHAPE HAS NOW MISLED THIS PLAN TWICE — the Director read it as retained iframes on
+30 July and retracted it without a mechanism. There is a mechanism now and a reproducible A/B, so it
+should not need a third pass. Recommend one line in the harness standard: any measurement counting
+documents or comparing heap across a navigation must state whether bfcache was on, exactly as `MEAS-01`
+requires a build stamp.
+
+GATE-01 FAILED MY OWN GAUGE AND THE FAILURE WAS WORTH MORE THAN A PASS. A 120 MB ballast inside a real
+dedicated worker read as **nothing**, because Puppeteer's `browser.targets()` does not list dedicated
+workers. No worker-heap number was quoted and the census row says UNMEASURED rather than 0. What the run
+measured instead: the ballast moved the page JS heap by **−0.39 MB** — total blindness, demonstrated not
+argued — and renderer private footprint by **+121.2 MB**. So worker memory was missing from the
+ATTRIBUTION and never from the TOTAL; it is already inside my footprint figures and inside that 497 MB
+residual. ONE CORRECTION TO THE 09:15 FRAMING: the 467 MB outside the renderer is GPU plus browser, and
+worker heaps are NOT part of it. Also: freeing inside the worker did **not** return the memory —
+renderer private went 149.5 → 149.8 MB. Allocator arenas stay warm. Gauge now has three read routes and
+records which one answered; it will be re-gated before any number is quoted.
+
+FOUR OF MY OWN DEFECTS CORRECTED BEFORE PUBLISHING. The script-mass grader counted the harness's own
+`page.evaluate()` compilations as product re-evaluation — observer contamination inside a gauge built to
+detect re-evaluation, and it produced a "GROWTH TERM TOO" verdict that the clean signals contradicted. The
+worker row said UNMEASURED without saying where that memory went. The curve grader claimed a ceiling from
+one point above the knee. And the new monotonic gate called `fitTrend` with an entirely wrong signature,
+caught by probing the function rather than trusting my memory of it.
+
+THE NEW ITEM, FROM MY OWN FINDING, IS RUNNING. `monotonic-bars-gate` — zero trades, **no re-seeks**, 5x
+because S1 located the knee above it, deep history at load. If playback stops the run ENDS and reports the
+span it achieved, because a re-seek is exactly what destroyed the per-bar axis in the soak. Any sample
+where resident bars FELL is excluded from the fit with its reason attached. First arm confirmed the axis
+accumulates cleanly (+1,303 and +1,262 bars per sample) and hinted at roughly 62 MB per thousand bars; it
+was restarted three minutes in because post-collection heap was only being read on sample one, which would
+have left the heap axis with a single point. `UNIT-01`'s per-bar half will be satisfied or I will report
+why not.
+
+TONIGHT'S SOAK CARRIES BOTH JOBS AND IS DECISIVE EITHER WAY. `bend-soak` governs the CLOSE rate at 20/h
+through `closePositionAtPrice`, so closed trades accumulate linearly in wall clock BY CONSTRUCTION. B6
+could not answer the bend question because its own close rate halved from 32.9/h to 15.0/h, and memory is
+linear in closed trades — a decaying driver is sufficient on its own to bend the time curve. With the
+driver held steady: a STRAIGHT curve means B6's bend was entirely its decaying driver, there is no plateau,
+and the PO must be told the flattening they hoped for does not exist; a curve that STILL bends means the
+saturation is real and its settled local rate is the number that says how far we are from 50 MB/h. I state
+the cost up front — holding closes linear in time makes trades and hours collinear, so this run cannot
+separate the drivers and does not try. That separation is already published at +16.61 MB per closed trade
+with hours held. `UNIT-01` is met the way the rule allows: no per-hour figure leaves this run without the
+declared trade rate and speed beside it.
+
