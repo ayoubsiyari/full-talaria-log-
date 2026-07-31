@@ -5507,3 +5507,61 @@ hour earlier.
 
 Sequencing was deliberate: hygiene shipped first, freeze armed second, so the PO tests b116 and
 nothing further moves without D. D holds the lift.
+
+## B-0216 — The account axis on the support passport, the P0 re-confirmed on b116, and a green I had to withdraw
+
+**A green I withdrew.** My first run of the b116 P0 probe printed OK. The claim had returned 401
+in 7 ms and my assertion only asked whether it was *bounded* — it was bounded because it never
+reached the row lock. A stopwatch on a request that never arrives measures nothing. Two causes,
+both worth keeping: the session cookie is `chart_session_id`, not the default `session_id`; and
+`auth_middleware` gates on *entitlement*, not identity, so a signed-in but unentitled account
+gets a flat 401 on `/api/chart/**` before routing — which is why a GET on a POST-only path
+returned 401 rather than 405. That 405-that-isn't is the cheapest outside tell. The probe now
+fails closed on 401/400/000. Same lesson as MEAS-02 in a new place: "it was quick" is the most
+seductive way to mistake a dead instrument for a pass.
+
+**P0 on b116, behaviourally.** With a `FOR UPDATE` held on the claimant's own users row, the
+claim returned 503 `chart_window_claim_busy` in 3.03 s — against 27.6 s of hang on b114 and
+3.07 s on b115. `/api/auth/me` answered in 44/76/159 ms *during* the stall, which is the part
+that matters: the defect was the event loop, not the claim. Two-tab case bounded at 3.08 s and
+6.09 s.
+
+**The account axis, and why it is not in the browser passport.** Account age and closed-trade
+count are stamped server-side. Three reasons, in order of weight. Forgery: both change triage
+priority, so a client-editable field is a queue-jumping control, and the server already knows
+both from the session. Coverage: three paths open tickets, including the legacy V9 chart which
+builds its own context object and would have been missed — "every report" means every, and only
+the server sees all three. Availability: the reports that most need triage context come from
+broken clients, so a browser-side field goes missing exactly when it matters. They sit under
+their own `account` key, written after the client's `context`, so a crafted context can neither
+overwrite them nor pass for them.
+
+**Unknown is not zero.** An unreadable value reports `"unknown"`. A brand-new account and a
+failed lookup would otherwise be identical, and telling those apart is the entire purpose of the
+axis. A failing trade count also must not stop a ticket opening — a user who cannot report an
+outage is worse than a support view missing a field.
+
+**The discriminator.** The first behavioural run returned 0 and 0. True for an account created
+that morning, and also exactly what a stub returning zeros prints, so it was not evidence. I
+moved the QA account to 437 days and 23 trades and required the ticket to report those. Both
+tracked; the client's deliberately forged 9999 lost on both axes. Run as a shadow container
+beside the canary — same image, only `api_server.py` mounted, nothing public — with the live
+canary checked in the same run as a negative control and confirmed *not* to carry the change.
+
+**Not shipped.** D holds the lift on the freeze I armed, and being the first to walk around my
+own lock would be worth less than the feature. I also reverted `/opt/talaria` to the b116 state
+afterwards: the files were in the build context so tests could run against a real interpreter,
+and left there the next `docker compose build` by anyone would have shipped an unapproved change
+under someone else's build id. Nothing now ships by accident.
+
+**The credential blocker was the real one.** The route (port 443) was never the hard part. B, C
+and W5 had all stalled on the same missing test account, so I provisioned one: through the
+product's own signup, real hashing, real strength and breach checks, non-admin, entitlements
+granted the way an admin approves an invited user. No guard was weakened — the mailbox
+verification row was written for that one address and the check itself is untouched. Password
+generated on the host into a 0600 file; it has never existed on my machine.
+
+**A's tick-mode kill-switch has not landed** — nothing in any of five worktrees. When it does:
+the marker has to prove the flag is *live*, not merely present in the bundle. The P0 already
+taught that the expensive way.
+

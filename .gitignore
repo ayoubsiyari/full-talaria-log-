@@ -150,3 +150,6 @@ artifacts/ckpt/**/*
 !artifacts/ckpt/**/README.md
 # Wire-audit downloads (multi-MB served modules) — keep local only.
 artifacts/wire-*/
+
+# Session scratch files — never part of the tree
+.scratch-*
