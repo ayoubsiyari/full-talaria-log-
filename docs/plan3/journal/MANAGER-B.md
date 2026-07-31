@@ -5474,3 +5474,36 @@ lift.** Armed now, so the default is frozen; if D wants it open, D lifts.
 
 Shipped as `20260730b116` = b115 + this hygiene. Freeze armed immediately after, so b116 is the
 build the PO tests unless D lifts.
+
+### b116 shipped, and a wrong assertion caught by the deploy that passed
+
+`20260730b116`, SHA `85d988ca8`, prior pin `20260730b115`, all four rollback tars retained.
+Health `healthy`, stamp `__TALARIA_CHART_BUILD_ID='20260730b116'` on the wire, served tree
+31.8M → 31.2M.
+
+The ship script's wire check **failed on a correct deploy**: it asserted `404` for a removed
+module and got `307`. The removal was fine — the file is absent from the image — but this stack
+answers an unresolvable `/chart/modules/*` path with a redirect to `/login?next=...`, so 404 is
+a status this path can never return. I had written an assertion that could only ever fail.
+
+`not 200` would not have fixed it either: following the redirect gives the login page, which is
+a 200 of 32,196 bytes. The check now asserts the two things a redirect rule cannot fake — the
+file is absent from the image filesystem, and the URL does not yield `application/javascript` —
+and runs `chart-indicators-full.js` through the identical checks as a positive control
+(`application/javascript`, 994,217 bytes). Without that control, "serves text/html" would pass
+just as happily if nginx were down.
+
+Worth recording because it is the third instrument error in two days pointing the same way: the
+BusyBox `--include` zero, the CDP unload false positive, and now a status code asserted from
+assumption rather than from one observation of the stack. Each was caught by a control. None
+would have been caught by the assertion alone.
+
+### Freeze is armed and enforcing
+
+Verified by attempting a real deploy against it: `/tmp/ship-b116-on-host.sh` exits **8**, zero
+occurrences of `BUILD_START` in its log, and both refusals recorded in
+`/opt/talaria/DEPLOY-FREEZE.log`. Not a dry run — the same command that shipped b116 half an
+hour earlier.
+
+Sequencing was deliberate: hygiene shipped first, freeze armed second, so the PO tests b116 and
+nothing further moves without D. D holds the lift.
