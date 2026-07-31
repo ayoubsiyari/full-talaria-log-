@@ -1067,3 +1067,64 @@ Builds: two-indicator arm b115, everything after it b116 (B shipped mid-A/B).
 8. GATE-01 PASS on both new instruments before use: mode agreement (planted tick-while-host-candle
    reads P0) and progress (planted stall reads stalled, planted motion reads moving on all three
    gauges).
+
+## W100 — 2026-07-31 02:55 · tier=mid model=claude-opus-5-thinking-high · NIGHT-01 overnight battery armed
+
+Director's overnight battery (ruling 776923bde). Six scenarios, six unattended hours, PO asleep.
+Built the driver first, because the failure mode that cost tonight three hours was not a bad
+measurement - it was a hung process nobody was awake to kill.
+
+DRIVER: scripts/overnight-battery.mjs. NIGHT-01 in code rather than in intent:
+- serial queue, one heavy scenario at a time, no parallelism anywhere in the file;
+- every child spawned with an explicit --max-old-space-size (1.5-2 GB per scenario, 512 MB for
+  the driver itself) so an OOM is a non-zero exit, not a disappearance;
+- HARD TIMEOUT per scenario, and on timeout the process TREE is killed (taskkill /T) plus any
+  stray chrome.exe, because the window-claim hang produces a process that never exits and never
+  logs. Without this one feature a 03:10 hang eats the whole night;
+- a death is recorded VOID with its reason and the queue CONTINUES. There is no relaunch path in
+  the file at all, by design;
+- exit 0 with no artifact is also VOID - a run that proved nothing is not a pass;
+- manifest rewritten after every state change, so a driver death still leaves a readable record.
+
+I DID NOT RE-RUN B1 AND B2 AS WRITTEN, and the reason is on the record here rather than buried.
+The ruling was written 00:05; my answers to both landed 01:00-02:30 (W98, W99). Re-running candle
+mode would have spent 65 of my six hours re-learning banked numbers. Instead each was run in the
+form that adds information:
+- B1 as a SAME-BUILD A/B. The one real weakness in my killer A/B was that the arms landed on
+  b115 and b116 because B shipped between them. Both arms now run back to back on one build, as
+  two separate processes so a boot hang costs one arm rather than both.
+- B2 in TICK MODE, which has never been measured. Cadence and recalc cost in candle are answered
+  (1.00 per advanced candle over 32 windows; cost BOUNDED 0.714 -> 0.750 ms); in tick they are
+  unknown, and tick is where the unattributed 20x per-bar cost lives. Same instrument, the mode
+  parameterised and VERIFIED as held after settling, because the V9 React layer re-asserts its own
+  mode onto the instance every 250 ms.
+
+NEW INSTRUMENTS, both GATE-01 PASS before use:
+- BAR-COPIES-CENSUS-V1 (B3). Bar arrays are DISCOVERED by walking the object graph from
+  window/chart with a visited set and a node budget, not read off a hardcoded list, and every hit
+  reports its PATH - the attribution, not just a count. Critically it separates ALIASING from
+  COPYING: slots and identity-distinct objects are counted separately, so two arrays holding the
+  same objects cannot be reported as two copies. That is precisely the error I made on the
+  excursion lists this afternoon and it is now designed out. Derived numeric series are counted
+  separately, since indicator output is numbers and would be invisible to a bar-shaped census.
+  GATE-01: clean 1x reads "hypothesis dies", planted 20x reads "large duplication", planted
+  20x-aliased reads alias factor 20 rather than 20 copies.
+- BAR-EVICTION-PROBE-V1 (B4). Three residency gauges, not one, because "resident" has three
+  meanings here and quoting the wrong one is how this gets misread: the drawing series
+  (chart.data), the raw feed, and the panel master. Eviction that trims only the drawing series
+  while the master keeps everything is not eviction. GATE-01: monotonic reads NEVER RELEASED,
+  planted drop reads RELEASES, plateau reads CAPPED.
+- UI-CONTACT-SHEET-V1 (B5). Controls discovered from the live DOM so tools nobody remembered are
+  still photographed; each shot cropped to the control AND captured full-page, because a 1600x1000
+  screenshot of a 24px icon tells the PO nothing. One HTML sheet plus one PNG.
+
+Also added: an onSingleReady hook to bootConf01Session. B3 needs resident bars at first paint
+BEFORE any playback, and the only alternative - opening a second chart page - walks straight into
+the window-claim P0. Defaults to a no-op, so every existing gate boots unchanged.
+
+MEAS-01/CONF-04 on every scenario: build stamp read off the page and playback mode read per realm.
+B1 arm 1 is on b116 with all four realms reading candle, four distinct datasets, zero trades.
+
+MY OWN INSTRUMENT DEFECT, recorded: the driver's free-RAM reading returns null all night because
+wmic is absent on this Windows build. Fixed for future runs (CIM via PowerShell); tonight there is
+no free-memory series and the summary says so rather than leaving a silent null.

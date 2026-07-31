@@ -65,18 +65,19 @@ function readModeSource() {
   };
 }
 
-/** Sets candle mode in a realm and reports what the instance says afterwards. */
-function setCandleSource(restartPlayback) {
+/** Sets a playback mode in a realm and reports what the instance says afterwards. */
+function setModeSource({ mode, restartPlayback }) {
   const rs = window.chart && window.chart.replaySystem;
   if (!rs || typeof rs.setPlaybackMode !== 'function') return { set: false, reason: 'no setPlaybackMode' };
   const before = typeof rs.getPlaybackMode === 'function' ? rs.getPlaybackMode() : null;
   try {
-    rs.setPlaybackMode('candle', { restartPlayback });
+    rs.setPlaybackMode(mode, { restartPlayback });
   } catch (e) {
     return { set: false, error: String(e?.message || e).slice(0, 120), before };
   }
   return {
     set: true,
+    requested: mode,
     restartPlayback,
     before,
     after: typeof rs.getPlaybackMode === 'function' ? rs.getPlaybackMode() : null,
@@ -180,6 +181,13 @@ export function gradeModeAgreement(rows) {
 
 export async function runReplayModeTruth({
   minutes = 16, speed = 60, selectAfterPlay = false, indicators = 2, outPath = null,
+  /**
+   * Which mode to select. Candle answered tests 1-3 at 01:00; `tick` runs the same cadence and
+   * cost measurement in the mode that has never been measured, where the per-bar cost is 20x
+   * and unattributed. The mode is verified as held after settling, because the V9 React layer
+   * re-asserts its own mode onto the instance on a 250 ms poller.
+   */
+  setMode = 'candle',
 } = {}) {
   const indicatorList = indicators === 0 ? [] : PO_TWO_INDICATORS;
   const { browser, page, cdp, conf01 } = await bootConf01Session({
@@ -217,12 +225,20 @@ export async function runReplayModeTruth({
     console.error(`[rmt] TEST0 raw playbackMode per realm: ${JSON.stringify(asFound.filter((r) => r.hasReplay).map((r) => r.rawPlaybackMode))} shouldUseTickAnimation=${JSON.stringify(asFound.filter((r) => r.hasReplay).map((r) => r.shouldUseTickAnimation))}`);
     save();
 
-    // TEST 1 — select candle-by-candle. `restartPlayback` mirrors the drain path when
-    // the mode is selected after play has already started.
-    report.test1_setCandle = await everyRealm(page, setCandleSource, !selectAfterPlay);
-    console.error(`[rmt] TEST1 setPlaybackMode('candle', {restartPlayback:${!selectAfterPlay}}) -> ${JSON.stringify(report.test1_setCandle.filter((r) => r.set).map((r) => `${r.before}->${r.after}`))}`);
+    // TEST 1 — select the mode. `restartPlayback` mirrors the drain path when the mode is
+    // selected after play has already started.
+    report.modeRequested = setMode;
+    report.test1_setMode = await everyRealm(page, setModeSource, { mode: setMode, restartPlayback: !selectAfterPlay });
+    console.error(`[rmt] TEST1 setPlaybackMode('${setMode}', {restartPlayback:${!selectAfterPlay}}) -> ${JSON.stringify(report.test1_setMode.filter((r) => r.set).map((r) => `${r.before}->${r.after}`))}`);
     await keepConf01Playing(page, speed).catch(() => {});
     await sleep(4_000);
+    // Verified, not assumed: a requested mode that did not survive the React poller is a mode
+    // this run never ran in, and every number below would be mislabelled.
+    report.modeHeldAfterSettle = (await everyRealm(page, readModeSource))
+      .filter((r) => r.hasReplay).map((r) => r.getPlaybackMode);
+    report.modeVerified = report.modeHeldAfterSettle.length > 0
+      && report.modeHeldAfterSettle.every((m) => m === setMode);
+    console.error(`[rmt] mode after settle: ${JSON.stringify(report.modeHeldAfterSettle)} verified=${report.modeVerified}`);
 
     report.instrumented = await everyRealm(page, recalcCounterSource);
     console.error(`[rmt] recalc counter wrapped in ${report.instrumented.filter((r) => r.wrapped).length} realms`);
@@ -334,6 +350,8 @@ export async function runReplayModeTruth({
     };
 
     report.verdict = {
+      modeRequested: setMode,
+      modeVerifiedInEveryRealm: report.modeVerified,
       test0_modeTheHarnessHasBeenUsing: report.test0_asFoundBeforeAnySet.grade.hostMode,
       test1_p0Found: !!report.p0?.found,
       test1_modeAgreementAtEveryCheckpoint: report.checkpoints.every((c) => c.grade.allAgreeOnMode),
@@ -360,6 +378,7 @@ function parseArgs(argv) {
     else if (k === 'speed') o.speed = Number(v);
     else if (k === 'indicators') o.indicators = Number(v);
     else if (k === 'select-after-play') o.selectAfterPlay = true;
+    else if (k === 'set-mode') o.setMode = v;
     else if (k === 'out') o.outPath = v;
   }
   return o;

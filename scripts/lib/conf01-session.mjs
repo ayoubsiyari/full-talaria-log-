@@ -216,6 +216,11 @@ export async function bootConf01Session({
   /** PO-exact reproduction: two indicators per panel, no order. See armHeapCyclePoWorkload. */
   indicators = null,
   placeOrder = true,
+  /**
+   * Called with the page once a single chart has painted and BEFORE any layout change,
+   * arming or playback. For measurements that must see a cold chart.
+   */
+  onSingleReady = null,
 } = {}) {
   const origin = String(process.env.TEST_VPS_URL || DEFAULT_ORIGIN).replace(/\/$/, '');
   const email = String(process.env.TEST_EMAIL || '').trim();
@@ -280,6 +285,15 @@ export async function bootConf01Session({
   }
   await dismissCookieBanner(page).catch(() => {});
   await waitForDistV9SingleReady(page, 180_000);
+  // The only moment in a session that is "a chart at first paint with nothing played yet".
+  // B3 needs it to test the resident-load amplifier on its own, and opening a second chart
+  // page to get it would walk straight into the window-claim hang. Defaults to a no-op so
+  // every existing gate boots exactly as before.
+  if (typeof onSingleReady === 'function') {
+    try { await onSingleReady(page); } catch (e) {
+      console.error(`[conf01] onSingleReady hook threw, continuing boot: ${String(e?.message || e).slice(0, 140)}`);
+    }
+  }
   if (disableFlags.length) {
     await page.evaluate((names) => {
       for (const n of names) { try { window[n] = true; } catch (_) {} }
