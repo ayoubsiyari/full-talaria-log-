@@ -11438,8 +11438,11 @@ def api_finnhub_news(
 
 
 @app.get("/api/file/{file_id}/tile-meta/{tf}")
-async def get_tile_meta(file_id: int, tf: str):
-    """Return tile index (count, timestamps per tile) for a file+timeframe."""
+def get_tile_meta(file_id: int, tf: str):
+    """Return tile index (count, timestamps per tile) for a file+timeframe.
+
+    Sync ``def``: reads tile metadata off disk with no ``await`` (K4-P0-BARS-OFF-LOOP-V1).
+    """
     meta = _load_tile_meta(file_id, tf)
     if meta is None:
         raise HTTPException(status_code=404, detail="Tiles not ready for this timeframe")
@@ -11447,8 +11450,10 @@ async def get_tile_meta(file_id: int, tf: str):
 
 
 @app.get("/api/file/{file_id}/tile/{tf}/{tile_idx}")
-async def get_tile(file_id: int, tf: str, tile_idx: int, response: Response):
+def get_tile(file_id: int, tf: str, tile_idx: int, response: Response):
     """
+    Sync ``def``: reads a binary tile off disk with no ``await`` (K4-P0-BARS-OFF-LOOP-V1).
+
     Return raw binary tile — 48 bytes/candle (little-endian float64: t,o,h,l,c,v).
     Cache-Control: immutable — nginx caches this for every user after the first request.
     """
@@ -11471,8 +11476,11 @@ async def get_tile(file_id: int, tf: str, tile_idx: int, response: Response):
 
 
 @app.get("/api/file/{file_id}/conversion-status")
-async def get_conversion_status(file_id: int):
-    """SSE-friendly polling endpoint for upload→binary conversion progress."""
+def get_conversion_status(file_id: int):
+    """SSE-friendly polling endpoint for upload→binary conversion progress.
+
+    Sync ``def``: queries the database with no ``await`` (K4-P0-BARS-OFF-LOOP-V1).
+    """
     db = next(get_db())
     try:
         aggs = db.query(CSVAggregate).filter(CSVAggregate.file_id == file_id).all()
@@ -24830,7 +24838,8 @@ async def get_trading_session(session_id: int, request: Request):
         db.close()
 
 @app.get("/api/sessions/{session_id}/state")
-async def get_trading_session_state(session_id: int, request: Request):
+def get_trading_session_state(session_id: int, request: Request):
+    """Sync ``def``: reads session state with no ``await`` (K4-P0-BARS-OFF-LOOP-V1)."""
     user = _require_paid_journal_user(request)
     db = SessionLocal()
     try:
@@ -25816,8 +25825,11 @@ async def get_files(
         db.close()
 
 @app.get("/api/file/{file_id}")
-async def get_file(file_id: int, offset: int = 0, limit: int = 10000):
-    """Get specific CSV file data with pagination"""
+def get_file(file_id: int, offset: int = 0, limit: int = 10000):
+    """Get specific CSV file data with pagination.
+
+    Sync ``def``: queries and reads with no ``await`` (K4-P0-BARS-OFF-LOOP-V1).
+    """
     db = next(get_db())
     try:
         db_file = db.query(CSVFile).filter(CSVFile.id == file_id).first()
@@ -25863,7 +25875,7 @@ async def get_file(file_id: int, offset: int = 0, limit: int = 10000):
         db.close()
 
 @app.get("/api/file/{file_id}/smart")
-async def get_file_smart(
+def get_file_smart(
     file_id: int,
     request: Request,
     timeframe: str = "1m",
@@ -26130,7 +26142,7 @@ async def get_file_smart(
         db.close()
 
 @app.get("/api/file/{file_id}/candles")
-async def get_file_candles(
+def get_file_candles(
     file_id: int,
     timeframe: str = "1m",
     limit: int = 3000,
@@ -26670,7 +26682,7 @@ def _smart_questdb_window(
 
 
 @app.get("/api/file/{file_id}/bars")
-async def get_file_bars(
+def get_file_bars(
     file_id: int,
     request: Request,
     from_: int | None = Query(None, alias="from"),
@@ -26678,7 +26690,21 @@ async def get_file_bars(
     resolution: str = Query("auto", description="auto or 1m,5m,15m,1h,4h,1d,1w"),
     limit: int = Query(2000, ge=1, le=2000),
 ):
-    """Bounded OHLC range with bar-budget resolution selection."""
+    """Bounded OHLC range with bar-budget resolution selection.
+
+    Sync ``def`` (not ``async def``): the body is synchronous throughout — a user lookup, a pool
+    checkout, a ``CSVFile`` query, then CSV parsing and candle resampling. Declared ``async`` it
+    ran all of that on the event loop, so one bar load made the worker unavailable to every other
+    request; with ``-w 2`` there are two loops to lose. This is the chart's hot path, so that is
+    the whole-app freeze users report as the hang.
+
+    Moving the window gate off-loop (K4-P0-WINDOW-GATE-THREADPOOL-V1) took /api/health under
+    gated load from 500.5 ms to 341.2 ms p95 and no further — this endpoint was the larger half.
+    Same remedy as ``chart_window_claim``: FastAPI runs ``def`` endpoints in the threadpool.
+    No behaviour changes; there is no ``await`` in the body.
+
+    Marker: K4-P0-BARS-OFF-LOOP-V1
+    """
     user = _get_user_from_request(request)
     if user is not None:
         _enforce_backtest_user_rate(user, "smart")
@@ -26779,8 +26805,10 @@ def _dataset_authoritative_ts_bounds(
 
 
 @app.get("/api/file/{file_id}/meta")
-async def get_file_meta(file_id: int):
+def get_file_meta(file_id: int):
     """
+    Sync ``def``: queries and reads with no ``await`` (K4-P0-BARS-OFF-LOOP-V1).
+
     Return metadata about a file: available timeframes, date range,
     row counts, and binary conversion status.
     """
