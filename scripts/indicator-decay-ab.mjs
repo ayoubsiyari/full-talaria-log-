@@ -222,6 +222,57 @@ export async function runArm({
   }
 }
 
+/**
+ * A single arm, so a boot that hangs on the window claim costs one arm rather than the
+ * fifteen minutes the other arm already spent. Arms are merged offline by
+ * `mergeArms`, which requires both to state the same build and mode.
+ */
+export async function runSingleArm({
+  indicators, minutes = 15, speed = 60, mode = 'candle', outPath = null,
+} = {}) {
+  const report = {
+    signature: 'INDICATOR-DECAY-AB-V1',
+    armOnly: indicators,
+    startedAtIso: new Date().toISOString(),
+    ruling: '606defe033 test 4',
+    plan: { minutes, speed, mode },
+    arms: {},
+  };
+  const key = indicators === 0 ? 'zeroIndicators' : 'twoIndicators';
+  report.arms[key] = await runArm({ indicators, minutes, speed, mode, outPath, report });
+  if (outPath) fs.writeFileSync(outPath, JSON.stringify(report, null, 1));
+  return report;
+}
+
+/** Merges two single-arm artifacts into one verdict, refusing mismatched configurations. */
+export function mergeArms(twoArm, zeroArm) {
+  const a = twoArm?.arms?.twoIndicators;
+  const b = zeroArm?.arms?.zeroIndicators;
+  const mismatch = [];
+  if (a?.build?.scriptVersion !== b?.build?.scriptVersion) {
+    mismatch.push(`build ${a?.build?.scriptVersion} vs ${b?.build?.scriptVersion}`);
+  }
+  if (a?.modeRequested !== b?.modeRequested) mismatch.push(`mode ${a?.modeRequested} vs ${b?.modeRequested}`);
+  if (a?.minutes !== b?.minutes) mismatch.push(`minutes ${a?.minutes} vs ${b?.minutes}`);
+  if (a?.speed !== b?.speed) mismatch.push(`speed ${a?.speed} vs ${b?.speed}`);
+  const decays = (r) => r?.result?.trends?.cpuMsPerBar?.verdict === 'CLIMBS';
+  return {
+    signature: 'INDICATOR-DECAY-AB-V1-MERGED',
+    configurationMismatch: mismatch,
+    comparable: mismatch.length === 0,
+    build: a?.build?.scriptVersion ?? null,
+    twoIndicators: a?.result ?? null,
+    zeroIndicators: b?.result ?? null,
+    zeroArmVerifiedAtZeroIndicators: b?.zeroVerified ?? null,
+    zeroArmFailedIn: b?.zeroFailedIn ?? null,
+    answer: (decays(a) && !decays(b))
+      ? 'THE DECAY IS INDICATOR-DEPENDENT — it climbs with two indicators and does not at zero'
+      : ((decays(a) && decays(b))
+        ? 'THE DECAY SURVIVES ZERO INDICATORS — the indicator paths are not the whole of Monster 2'
+        : 'INCONCLUSIVE — the two-indicator arm did not reproduce a climbing curve'),
+  };
+}
+
 export async function runIndicatorDecayAb({
   minutes = 15, speed = 60, mode = 'candle', outPath = null,
 } = {}) {
@@ -282,9 +333,14 @@ function parseArgs(argv) {
     else if (k === 'speed') o.speed = Number(v);
     else if (k === 'mode') o.mode = v;
     else if (k === 'out') o.outPath = v;
+    else if (k === 'arm') o.arm = Number(v);
   }
   return o;
 }
 
 const invokedDirectly = process.argv[1] && /indicator-decay-ab\.mjs$/.test(process.argv[1].replace(/\\/g, '/'));
-if (invokedDirectly) await runIndicatorDecayAb(parseArgs(process.argv.slice(2)));
+if (invokedDirectly) {
+  const args = parseArgs(process.argv.slice(2));
+  if (args.arm != null) await runSingleArm({ indicators: args.arm, ...args });
+  else await runIndicatorDecayAb(args);
+}

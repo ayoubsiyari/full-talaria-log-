@@ -1,5 +1,43 @@
 # FINDING — the competitive deficit is CPU, not memory, and it predates Plan 3
 
+> ## 🎯 THE SHAPE OF THE DEFICIT (2026-07-28 12:25) — supersedes every block below
+>
+> PO completed the A/B. **The gap is a near-constant fixed overhead, not a per-tick multiplier.**
+>
+> | Measurement | Talaria | TradeZella | Ratio | **Absolute gap** |
+> |---|---|---|---|---|
+> | Idle CPU | 12–30 (≈7.79 untraced after instrument correction) | 0.4–1.8 | ~10x | — |
+> | **Replay 1x CPU** | **34.4** | **1.8** | **19x** | **32.6 pp** |
+> | **Replay 10x CPU** | **114.7** | **76.1–80** | **1.4x** | **~36 pp** |
+> | Memory at 10x | 460 MB | 400–490 MB | **parity** | — |
+> | **Client storage** | **582 kB** | **4.3 MB** | **we use 7x LESS** | — |
+>
+> ### The decisive observation: the absolute gap is constant
+>
+> **32.6 percentage points at 1x. ~36 percentage points at 10x.** A ten-fold increase in replay work changes the gap by ~3 points. **That is the signature of a fixed cost per unit of wall-clock time, not of expensive per-tick work.**
+>
+> Decomposing on that basis: at 10x, subtracting our resting floor leaves roughly **1.3x** their per-tick replay cost. **Our per-tick replay work is roughly competitive.** What is not competitive is a constant overhead that runs regardless of what the chart is doing — the same thing we see as the idle floor, and it dominates completely at low speed where there is little real work to hide it.
+>
+> **This is very good news for the deadline.** A fixed overhead is a bug to find and delete. A per-tick multiplier would have been an architectural rewrite. **The idle floor is not a side issue that also happens to exist — it appears to BE the deficit**, visible at rest and merely diluted at speed.
+>
+> ### Correction — storage is NOT the memory problem. My third correction to this document today.
+>
+> **Talaria total client storage: 582 kB. TradeZella: 4.3 MB.** We store **7x less** than the competitor. 582 kB cannot explain 1.3 GB of memory, so **the storage-growth row I opened at 11:44 is closed as refuted.**
+>
+> **What actually happened with the 1.62 GB:** clearing browser data helped not by discarding stored bytes but by forcing a **fresh page load**. The growth is a **runtime leak in a long-lived tab**, consistent with A's finding that the `chart.js` missing-`removeEventListener` leak is *pure retention with zero teardown CPU*. **Restated row: memory grows with tab lifetime, not with stored data.** Measure against **session duration and interaction count**, not against storage size.
+>
+> ### Two architectural observations from the competitor's storage
+>
+> 1. **TradeZella persists candle data to IndexedDB** — a `symbol-candles` store keyed `["EURUSD", 60000, <timestamp>]`, alongside `notebookNotes`. **They spend disk to save memory; we appear to hold candles in RAM.** That is the most concrete architectural difference found so far, and it aligns with them being at memory parity while we leak.
+> 2. **Our localStorage shows unbounded per-session key growth** — `u13_chart_drawings_s616_25`, `s848_25`, `s849_25`, `s850_25` and their `_meta` and `_mcla` variants, plus **two coexisting key namespaces** (`u13_`-prefixed and unprefixed, with `active_trading_session_id` 884 against `u13_active_trading_session_id` 850). Small in bytes, but it is unbounded growth and a split-brain on which key is authoritative — directly relevant to the V8/M15 preference contract.
+>
+> ### Consequences
+>
+> - **A's priority is confirmed and narrowed: find the constant overhead.** The 7.79% untraced idle is the same phenomenon. This now has the highest expected value of any work on the board.
+> - **A's 73x resample ceiling needs re-reading against this.** If we genuinely did 73x the necessary work per tick, we would not be within 1.4x at 10x. Either the ceiling is a rarely-triggered worst case or resampling is cheap relative to the constant overhead. **Do not brief the 73x figure as the explanation for the CPU gap** — per BRIEF-02 it is a hypothesis this measurement partly contradicts.
+> - **The 10x cap keeps its CPU rationale but loses its competitive one:** at 10x we are within 1.4x of TradeZella, and TradeZella itself reaches 76–80 at that speed. **High speed is expensive for everyone.** The cap remains a PO product decision.
+> - **Confounder to note honestly:** our 1x and 10x figures carried three moving averages; TradeZella's did not. Indicators measured at ~2 points at rest, so this is unlikely to change the shape, but the re-measurement after the overhead fix should match indicator counts.
+
 > ## ✅ CONTROLLED LADDER (2026-07-28 11:39) — supersedes both blocks below. Read this one.
 >
 > PO ran `PO-PROTOCOL-CPU-AB-20260728.md` in a **fresh private window with browser data cleared**, EURUSD 1m, 3 years, one pair.

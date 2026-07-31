@@ -109,12 +109,16 @@ not per bar across four advancing panels. The slope, its CI, the pinned-CPU arit
 profile diff all stand — the x-axis was monotonic and dominated by host advance — but the
 label was wrong and the configuration statement was too generous.
 
-This is also the honest explanation of why I measured a 1.5x decay where the PO felt 30x: three
-of my four panels were not doing per-candle work at all. Whether the peers were advancing by
-*timestamp* while their index stayed frozen is not settled by that artifact, because I did not
-record per-peer simulated time. The A/B now running records index advance, simulated-time
-advance and resident-bar advance per realm, so the next artifact will state it per panel
-instead of collapsing it into one number.
+**RESOLVED, from the A/B's new per-realm gauge: the peers were advancing, by simulated time.**
+Every one of 28 windows in the two-indicator arm reads `byIndex=1/4, bySimTime=4/4`. So all
+four panels are genuinely playing; only the host advances `currentIndex`, because peers are
+**seeked by timestamp** (`goToReplayTimestamp`) rather than stepped by index. The correct
+statement of my configuration is therefore *four panels playing, one bar-index axis*, and the
+per-bar cost is per **host** bar with three peers advancing alongside. Neither "four panels
+advancing" nor "only the host advanced" was right; this is.
+
+That still explains part of the gap between my 1.5x and the PO's 30x, because the host's 1m
+panel is the only realm closing bars at index cadence.
 
 ## What is still open from this branch
 

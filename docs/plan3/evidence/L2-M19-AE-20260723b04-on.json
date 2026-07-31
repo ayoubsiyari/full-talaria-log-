@@ -2,42 +2,42 @@
   "row": "L2-M19-AE",
   "title": "M19 A–E progressive session — checkpoint 20260723b04",
   "task": "M19-AE-ON",
-  "startedAt": "2026-07-23T09:54:57.209Z",
-  "finishedAt": "2026-07-23T09:55:02.903Z",
+  "startedAt": "2026-07-28T23:36:27.253Z",
+  "finishedAt": "2026-07-28T23:36:32.557Z",
   "wallClock": {
-    "startedWallMs": 1784800497209,
-    "finishedWallMs": 1784800502903
+    "startedWallMs": 1785281787253,
+    "finishedWallMs": 1785281792557
   },
-  "elapsedMs": 5566.0781,
-  "headSha": "c9700ebc881ef0080f770537f5ee5dbd8c863ef7",
+  "elapsedMs": 5141.1864,
+  "headSha": "a5fdc3c026c96a832b5c0f0d523e36bd34353a7e",
   "fileHashes": {
-    "order-manager.js": "b3d8ce89bba7972d323364e184c36e83cd3f9dfe5ffa3ec9705ce9bebb2c44ba",
-    "replay-system.js": "075c89220377c01a2500dd24ebe08aea2a754d61a5720c11a4913a7a60da091e",
-    "chart.js": "da12556863debdfe4953c8f19ed1275037df903a201a3509029d59d453dfc763"
+    "order-manager.js": "8c7e4080623d407b27853f4c0e306363d769561ab5271ee64b92064974eb0b42",
+    "replay-system.js": "17fad1ef06c90bdb5ad481c3919a8098ce65fa6d0630585815ab3476dd4e9d9f",
+    "chart.js": "ae6a5e2ca87700648d9010fd0d46a51fba13fed3d35bf0f9f5827d982c9803e3"
   },
   "anchors": {
     "ok": true,
     "anchors": {
-      "order-manager.js:updatePositions": 29836,
+      "order-manager.js:updatePositions": 31943,
       "order-manager.js:updatePositions→updatePositionsPanel": null,
-      "order-manager.js:updatePositions→scheduleRuntimePanel": 30730,
-      "order-manager.js:updatePositionsPanel": 43596,
-      "order-manager.js:_updatePositionsPanelRuntimeOnly": 30892,
-      "order-manager.js:_appendExcursionSnapshot": 4211,
-      "order-manager.js:persistJournal": 5394,
-      "order-manager.js:_buildRuntimeOrderPersistPatch": 6535,
-      "order-manager.js:_redrawClosedJournalTradeMarkers": 37809,
-      "order-manager.js:_redrawJournalMarkersForReplayPlayhead": 37971,
-      "order-manager.js:hotpath-console-updatePositions": 30721,
-      "order-manager.js:hotpath-console-updatePositionsPanel": 43611,
+      "order-manager.js:updatePositions→scheduleRuntimePanel": 32837,
+      "order-manager.js:updatePositionsPanel": 45709,
+      "order-manager.js:_updatePositionsPanelRuntimeOnly": 32999,
+      "order-manager.js:_appendExcursionSnapshot": 5941,
+      "order-manager.js:persistJournal": 7131,
+      "order-manager.js:_buildRuntimeOrderPersistPatch": 8366,
+      "order-manager.js:_redrawClosedJournalTradeMarkers": 39922,
+      "order-manager.js:_redrawJournalMarkersForReplayPlayhead": 40084,
+      "order-manager.js:hotpath-console-updatePositions": 32828,
+      "order-manager.js:hotpath-console-updatePositionsPanel": 45724,
       "replay-system.js:updatePositions#1": [
-        3805,
-        5430,
-        5873,
-        7197,
-        8369
+        4074,
+        5813,
+        6346,
+        7727,
+        8927
       ],
-      "chart.js:flushSessionStateSave": 12614
+      "chart.js:flushSessionStateSave": 12796
     }
   },
   "constants": {
@@ -72,15 +72,15 @@
       "asserts": {
         "frameRatio": {
           "pass": true,
-          "firstMed": 0.03444999999999254,
-          "lastMed": 0.037649999999985084,
-          "ratio": 1.0928882438314438,
+          "firstMed": 0.015399999999999636,
+          "lastMed": 0.01340000000004693,
+          "ratio": 0.8701298701329381,
           "limit": 1.25
         },
         "frameSlope": {
           "pass": true,
-          "slopePer1k": -0.0011600000000044019,
-          "slopeFracOfFirst": -0.03367198838910459,
+          "slopePer1k": -0.0008500000000140062,
+          "slopeFracOfFirst": -0.05519480519571599,
           "limitFrac": 0.05
         },
         "runtimeSteadyGrowth": {
@@ -117,22 +117,22 @@
         }
       },
       "windowMedians": [
-        0.0352500000000191,
-        0.030300000000011096,
-        0.04699999999996862,
-        0.06140000000002033,
-        0.0413499999999658,
-        0.03149999999999409,
-        0.029399999999952797,
-        0.03890000000001237,
-        0.04004999999995107,
-        0.02944999999999709
+        0.017500000000040927,
+        0.011600000000015598,
+        0.009999999999990905,
+        0.011149999999986449,
+        0.010300000000029286,
+        0.010999999999967258,
+        0.011249999999961346,
+        0.009999999999990905,
+        0.01474999999999227,
+        0.013249999999970896
       ],
-      "firstMed": 0.03444999999999254,
-      "lastMed": 0.037649999999985084,
-      "ratio": 1.0928882438314438,
-      "slopePer1k": -0.0011600000000044019,
-      "slopeFracOfFirst": -0.03367198838910459,
+      "firstMed": 0.015399999999999636,
+      "lastMed": 0.01340000000004693,
+      "ratio": 0.8701298701329381,
+      "slopePer1k": -0.0008500000000140062,
+      "slopeFracOfFirst": -0.05519480519571599,
       "startRuntimeBytes": 1886,
       "endRuntimeBytes": 1879,
       "startSessionBytes": 1925,
@@ -253,15 +253,15 @@
       "asserts": {
         "frameRatio": {
           "pass": true,
-          "firstMed": 0.040549999999939246,
-          "lastMed": 0.027150000000006003,
-          "ratio": 0.6695437731207566,
+          "firstMed": 0.011500000000069122,
+          "lastMed": 0.012200000000120781,
+          "ratio": 1.0608695652215177,
           "limit": 1.25
         },
         "frameSlope": {
           "pass": true,
-          "slopePer1k": -0.001950000000010732,
-          "slopeFracOfFirst": -0.04808877928517025,
+          "slopePer1k": -0.00023999999999659848,
+          "slopeFracOfFirst": -0.020869565216970084,
           "limitFrac": 0.05
         },
         "runtimeSteadyGrowth": {
@@ -298,22 +298,22 @@
         }
       },
       "windowMedians": [
-        0.04610000000002401,
-        0.03919999999993706,
-        0.03600000000005821,
-        0.031849999999963075,
-        0.037699999999858846,
-        0.027599999999893043,
-        0.025200000000040745,
-        0.03809999999998581,
-        0.024599999999963984,
-        0.03634999999997035
+        0.01325000000002774,
+        0.00925000000000864,
+        0.007899999999949614,
+        0.011099999999942156,
+        0.009349999999926695,
+        0.011899999999968713,
+        0.012399999999843203,
+        0.012300000000095679,
+        0.01239999999995689,
+        0.012050000000044747
       ],
-      "firstMed": 0.040549999999939246,
-      "lastMed": 0.027150000000006003,
-      "ratio": 0.6695437731207566,
-      "slopePer1k": -0.001950000000010732,
-      "slopeFracOfFirst": -0.04808877928517025,
+      "firstMed": 0.011500000000069122,
+      "lastMed": 0.012200000000120781,
+      "ratio": 1.0608695652215177,
+      "slopePer1k": -0.00023999999999659848,
+      "slopeFracOfFirst": -0.020869565216970084,
       "startRuntimeBytes": 1886,
       "endRuntimeBytes": 1879,
       "startSessionBytes": 1925,
@@ -434,15 +434,15 @@
       "asserts": {
         "frameRatio": {
           "pass": true,
-          "firstMed": 0.03739999999993415,
-          "lastMed": 0.026600000000144064,
-          "ratio": 0.7112299465291684,
+          "firstMed": 0.01089999999999236,
+          "lastMed": 0.010000000000218279,
+          "ratio": 0.9174311926812191,
           "limit": 1.25
         },
         "frameSlope": {
           "pass": true,
-          "slopePer1k": -0.0020599999999831196,
-          "slopeFracOfFirst": -0.05508021390338894,
+          "slopePer1k": -0.0003400000000056025,
+          "slopeFracOfFirst": -0.031192660550994566,
           "limitFrac": 0.05
         },
         "runtimeSteadyGrowth": {
@@ -479,22 +479,22 @@
         }
       },
       "windowMedians": [
-        0.03739999999993415,
-        0.03735000000006039,
-        0.03719999999998436,
-        0.04035000000010314,
-        0.027050000000031105,
-        0.026250000000118234,
-        0.03739999999970678,
-        0.0363999999999578,
-        0.0261000000000422,
-        0.027100000000018554
+        0.01089999999999236,
+        0.010800000000017462,
+        0.011400000000094224,
+        0.010950000000093496,
+        0.01110000000016953,
+        0.006699999999909778,
+        0.009399999999914144,
+        0.010600000000067666,
+        0.010599999999840293,
+        0.009199999999964348
       ],
-      "firstMed": 0.03739999999993415,
-      "lastMed": 0.026600000000144064,
-      "ratio": 0.7112299465291684,
-      "slopePer1k": -0.0020599999999831196,
-      "slopeFracOfFirst": -0.05508021390338894,
+      "firstMed": 0.01089999999999236,
+      "lastMed": 0.010000000000218279,
+      "ratio": 0.9174311926812191,
+      "slopePer1k": -0.0003400000000056025,
+      "slopeFracOfFirst": -0.031192660550994566,
       "startRuntimeBytes": 1886,
       "endRuntimeBytes": 1879,
       "startSessionBytes": 1925,
@@ -617,34 +617,34 @@
       "warmup": 500,
       "measured": 5000,
       "windowMedians": [
-        0.036200000000008004,
-        0.0370500000001357,
-        0.035499999999956344,
-        0.024749999999812644,
-        0.022699999999986176,
-        0.02229999999985921,
-        0.022499999999809006,
-        0.021600000000034925,
-        0.024800000000141154,
-        0.06944999999996071
+        0.008299999999962893,
+        0.006399999999757711,
+        0.008800000000064756,
+        0.006400000000212458,
+        0.006300000000010186,
+        0.014349999999922147,
+        0.009199999999964348,
+        0.00860000000011496,
+        0.0065999999997075065,
+        0.00709999999980937
       ],
-      "firstMed": 0.03679999999985739,
-      "lastMed": 0.04390000000012151,
-      "ratio": 1.1929347826166203,
-      "slopePer1k": 0.006649999999990541,
-      "slopeFracOfFirst": 0.1807065217395737,
+      "firstMed": 0.00680000000011205,
+      "lastMed": 0.006750000000010914,
+      "ratio": 0.9926470588087777,
+      "slopePer1k": -0.00024000000003070453,
+      "slopeFracOfFirst": -0.03529411765099262,
       "asserts": {
         "frameRatio": {
           "pass": true,
-          "firstMed": 0.03679999999985739,
-          "lastMed": 0.04390000000012151,
-          "ratio": 1.1929347826166203,
+          "firstMed": 0.00680000000011205,
+          "lastMed": 0.006750000000010914,
+          "ratio": 0.9926470588087777,
           "limit": 1.25
         },
         "frameSlope": {
-          "pass": false,
-          "slopePer1k": 0.006649999999990541,
-          "slopeFracOfFirst": 0.1807065217395737,
+          "pass": true,
+          "slopePer1k": -0.00024000000003070453,
+          "slopeFracOfFirst": -0.03529411765099262,
           "limitFrac": 0.05
         },
         "runtimeSteadyGrowth": {
@@ -680,7 +680,7 @@
           "count": 50
         }
       },
-      "frameSlopeFail": true,
+      "frameSlopeFail": false,
       "persistFail": false,
       "allFivePaths": true,
       "fixA": {
@@ -951,6 +951,11 @@
       "endSessionBytes": 64623,
       "consoleCalls": 0,
       "consoleCallsMeasured": 0,
+      "consoleExemptCalls": 0,
+      "consoleExemptById": {},
+      "consoleHotpathExemptions": [
+        "B_W16_DURABLE_JOURNAL_UNHYDRATED_HARNESS_ARTEFACT"
+      ],
       "consoleArgBytes": 0,
       "base64PersistBytes": 41891400,
       "base64InnerHtmlBytes": 0,
@@ -973,34 +978,34 @@
       "warmup": 500,
       "measured": 5000,
       "windowMedians": [
-        0.019050000000106593,
-        0.014749999999821739,
-        0.017800000000079308,
-        0.012400000000070577,
-        0.013900000000376167,
-        0.017650000000003274,
-        0.01799999999980173,
-        0.014750000000049113,
-        0.01799999999980173,
-        0.012199999999893407
+        0.010499999999865395,
+        0.00930000000016662,
+        0.008500000000367436,
+        0.009500000000116415,
+        0.009399999999914144,
+        0.009500000000116415,
+        0.009399999999914144,
+        0.009700000000066211,
+        0.009000000000014552,
+        0.00945000000001528
       ],
-      "firstMed": 0.017150000000128784,
-      "lastMed": 0.01439999999979591,
-      "ratio": 0.8396501457543892,
-      "slopePer1k": -0.001370000000042637,
-      "slopeFracOfFirst": -0.0798833819260845,
+      "firstMed": 0.009900000000016007,
+      "lastMed": 0.009200000000191721,
+      "ratio": 0.9292929293107925,
+      "slopePer1k": -0.00020999999997002307,
+      "slopeFracOfFirst": -0.02121212120905894,
       "asserts": {
         "frameRatio": {
           "pass": true,
-          "firstMed": 0.017150000000128784,
-          "lastMed": 0.01439999999979591,
-          "ratio": 0.8396501457543892,
+          "firstMed": 0.009900000000016007,
+          "lastMed": 0.009200000000191721,
+          "ratio": 0.9292929293107925,
           "limit": 1.25
         },
         "frameSlope": {
           "pass": true,
-          "slopePer1k": -0.001370000000042637,
-          "slopeFracOfFirst": -0.0798833819260845,
+          "slopePer1k": -0.00020999999997002307,
+          "slopeFracOfFirst": -0.02121212120905894,
           "limitFrac": 0.05
         },
         "runtimeSteadyGrowth": {
@@ -1307,6 +1312,11 @@
       "endSessionBytes": 64015,
       "consoleCalls": 0,
       "consoleCallsMeasured": 0,
+      "consoleExemptCalls": 0,
+      "consoleExemptById": {},
+      "consoleHotpathExemptions": [
+        "B_W16_DURABLE_JOURNAL_UNHYDRATED_HARNESS_ARTEFACT"
+      ],
       "consoleArgBytes": 0,
       "base64PersistBytes": 41891400,
       "base64InnerHtmlBytes": 0,
@@ -1329,34 +1339,34 @@
       "warmup": 500,
       "measured": 5000,
       "windowMedians": [
-        0.06510000000025684,
-        0.0726999999999407,
-        0.06955000000016298,
-        0.07245000000011714,
-        0.05089999999972861,
-        0.06815000000005966,
-        0.04960000000028231,
-        0.06175000000030195,
-        0.07349999999996726,
-        0.061749999999847205
+        0.015049999999973807,
+        0.014499999999770807,
+        0.014699999999947977,
+        0.01499999999987267,
+        0.014400000000023283,
+        0.014299999999821011,
+        0.014650000000074215,
+        0.01710000000002765,
+        0.015000000000327418,
+        0.0136000000002241
       ],
-      "firstMed": 0.06980000000021391,
-      "lastMed": 0.07150000000001455,
-      "ratio": 1.024355300856668,
-      "slopePer1k": -0.0006700000000819273,
-      "slopeFracOfFirst": -0.00959885386933917,
+      "firstMed": 0.014799999999922875,
+      "lastMed": 0.014299999999821011,
+      "ratio": 0.9662162162091575,
+      "slopePer1k": -0.0002899999999499414,
+      "slopeFracOfFirst": -0.01959459459131437,
       "asserts": {
         "frameRatio": {
           "pass": true,
-          "firstMed": 0.06980000000021391,
-          "lastMed": 0.07150000000001455,
-          "ratio": 1.024355300856668,
+          "firstMed": 0.014799999999922875,
+          "lastMed": 0.014299999999821011,
+          "ratio": 0.9662162162091575,
           "limit": 1.25
         },
         "frameSlope": {
           "pass": true,
-          "slopePer1k": -0.0006700000000819273,
-          "slopeFracOfFirst": -0.00959885386933917,
+          "slopePer1k": -0.0002899999999499414,
+          "slopeFracOfFirst": -0.01959459459131437,
           "limitFrac": 0.05
         },
         "runtimeSteadyGrowth": {
@@ -1406,7 +1416,7 @@
         "panelBoundedByStructural": true,
         "panelReconstructsPerTick": false,
         "frameSlopePass": true,
-        "absFlat": false,
+        "absFlat": true,
         "pass": true
       },
       "fixB": {
@@ -1664,6 +1674,11 @@
       "endSessionBytes": 64623,
       "consoleCalls": 0,
       "consoleCallsMeasured": 0,
+      "consoleExemptCalls": 0,
+      "consoleExemptById": {},
+      "consoleHotpathExemptions": [
+        "B_W16_DURABLE_JOURNAL_UNHYDRATED_HARNESS_ARTEFACT"
+      ],
       "consoleArgBytes": 0,
       "base64PersistBytes": 41891400,
       "base64InnerHtmlBytes": 0,
@@ -1686,34 +1701,34 @@
       "warmup": 500,
       "measured": 5000,
       "windowMedians": [
-        0.014100000000325963,
-        0.010299999999915599,
-        0.010900000000219734,
-        0.011499999999614374,
-        0.014799999999922875,
-        0.009900000000016007,
-        0.011050000000068394,
-        0.010900000000219734,
-        0.010500000000320142,
-        0.009700000000520959
+        0.012300000000323053,
+        0.009350000000267755,
+        0.01125000000001819,
+        0.010599999999612919,
+        0.00860000000011496,
+        0.007900000000518048,
+        0.008499999999912689,
+        0.007899999999608553,
+        0.009000000000014552,
+        0.007499999999708962
       ],
-      "firstMed": 0.01139999999986685,
-      "lastMed": 0.010299999999915599,
-      "ratio": 0.9035087719329737,
-      "slopePer1k": -0.0008799999999610008,
-      "slopeFracOfFirst": -0.07719298245362097,
+      "firstMed": 0.010800000000017462,
+      "lastMed": 0.008200000000215368,
+      "ratio": 0.7592592592779731,
+      "slopePer1k": -0.0009600000001228181,
+      "slopeFracOfFirst": -0.08888888890011722,
       "asserts": {
         "frameRatio": {
           "pass": true,
-          "firstMed": 0.01139999999986685,
-          "lastMed": 0.010299999999915599,
-          "ratio": 0.9035087719329737,
+          "firstMed": 0.010800000000017462,
+          "lastMed": 0.008200000000215368,
+          "ratio": 0.7592592592779731,
           "limit": 1.25
         },
         "frameSlope": {
           "pass": true,
-          "slopePer1k": -0.0008799999999610008,
-          "slopeFracOfFirst": -0.07719298245362097,
+          "slopePer1k": -0.0009600000001228181,
+          "slopeFracOfFirst": -0.08888888890011722,
           "limitFrac": 0.05
         },
         "runtimeSteadyGrowth": {
@@ -2021,6 +2036,11 @@
       "endSessionBytes": 64015,
       "consoleCalls": 0,
       "consoleCallsMeasured": 0,
+      "consoleExemptCalls": 0,
+      "consoleExemptById": {},
+      "consoleHotpathExemptions": [
+        "B_W16_DURABLE_JOURNAL_UNHYDRATED_HARNESS_ARTEFACT"
+      ],
       "consoleArgBytes": 0,
       "base64PersistBytes": 41891400,
       "base64InnerHtmlBytes": 0,
