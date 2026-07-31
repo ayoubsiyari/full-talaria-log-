@@ -15,6 +15,29 @@ convenience scripts and historical evidence scripts not wired from the root pack
 - `npm run test:legacy-panel-shell-correctness` -> GREEN; exercised missing canvas, main constructor, and fallback-main RED arms.
 - `npm run preflight:trade-attribution-correctness` -> RED on current E tree with `resolverExecutionState: RESOLVER_ABSENT_FROM_TREE`.
 
+## Configuration Stamp Ledger
+
+Every active gate is stamped with `barCount` and `tradeCount`. Static/meta gates declare
+`n/a` rather than leaving the comparison shape implicit.
+
+| Gate | Config stamp |
+|---|---|
+| `preflight:territory` / `test:territory` | `barCount=n/a`; `tradeCount=n/a`; scope is git/manifest/journal fixtures. |
+| `preflight:module-contracts` / `test:module-contracts` | `barCount=n/a`; `tradeCount=n/a`; scope is HTML/module presence and degraded-state fixtures. |
+| `preflight:shell-inventory` / `test:shell-inventory` | `barCount=n/a`; `tradeCount=n/a`; scope is servable shell inventory fixtures. |
+| `checkpoint:provenance` / `test:checkpoint-provenance` | `barCount=n/a`; `tradeCount=n/a`; scope is build/provenance/tree-layout fixtures. |
+| `preflight:order-overlay-browser` / `test:order-overlay-browser` | `barCount=0`; `tradeCount=0`; browser smoke only, explicitly `NOT-BEHAVIOUR-COVERING`. |
+| `preflight:order-registry-eviction` / `test:order-registry-eviction` | `barCount=0`; `tradeCount=0`; hermetic source/fixture scan, no market data replay. |
+| `preflight:differential-parity` / `test:differential-parity` | `barCount=100000/500000/1000000` for `DRIFT-SMA-*`; `tradeCount=0`; parity-only indicator data. |
+| `preflight:bar-tick-invariants` / `test:bar-tick-invariants` | `barCount=4` ETH tick-bar fixture, `2` futures fixture, `1` FX control; `tradeCount=0`. |
+| `preflight:teardown-census` / `test:teardown-census` | `barCount=0`; `tradeCount=0`; hermetic teardown resource census. |
+| `preflight:rest-state-census` / `test:teardown-census` | `barCount=0`; `tradeCount=0`; hermetic rest-state resource census. |
+| `preflight:lag-session-history` / `test:lag-session-history` | `barCount=n/a`; `tradeCount=n/a`; provenance/sealing stub only. |
+| `preflight:support-passport-degraded` / `test:support-passport-degraded` | `barCount=n/a`; `tradeCount=n/a`; support UI/runtime degraded-state wiring. |
+| `preflight:legacy-panel-shell-correctness` / `test:legacy-panel-shell-correctness` | `barCount=0`; `tradeCount=0`; static/model legacy shell behavior. |
+| `preflight:trade-attribution-correctness` / `test:trade-attribution-correctness` | `barCount=4` total candles, one per panel; `tradeCount=1` closed trade fixture. |
+| `preflight:destroy-indicator-correctness` / `test:destroy-indicator-correctness` | `barCount=0`; `tradeCount=0`; model teardown/late-event behavior. |
+
 ## Active Gate Inventory
 
 | Gate | Verdict | Demonstrated RED / limitation |
