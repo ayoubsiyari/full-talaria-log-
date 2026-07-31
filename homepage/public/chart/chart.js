@@ -1004,6 +1004,81 @@ if (typeof window !== 'undefined' && typeof window.__talariaActiveChartV1 !== 'f
     };
 }
 
+/**
+ * Collect every reachable Chart instance across the host realm and its panel
+ * iframes. Deliberately NOT _talariaMcDiagCollectCharts: that one filters on
+ * `chart._mcDiag`, so a chart with diagnostics disabled would be invisible to it
+ * and an order belonging to that chart would silently resolve to null.
+ */
+function _talariaCollectChartsForAttribution(win, out, seen) {
+    if (!win || seen.has(win)) return;
+    seen.add(win);
+    try {
+        const chart = win.chart || win.mainChart;
+        if (chart && typeof chart === 'object') out.push(chart);
+    } catch (_e) { /* cross-origin */ }
+    try {
+        const frames = win.document ? win.document.querySelectorAll('iframe') : [];
+        for (const frame of frames) {
+            try {
+                if (frame.contentWindow) _talariaCollectChartsForAttribution(frame.contentWindow, out, seen);
+            } catch (_frameErr) { /* cross-origin or not ready */ }
+        }
+    } catch (_e) { /* ignore */ }
+}
+
+/**
+ * Resolve which Chart a trade action belongs to, FROM THE ORDER RECORD ALONE.
+ *
+ * Policy 3: trade actions resolve through the order record — never focus, never
+ * hover, never ambient window.chart, never `this`. A free function precisely so a
+ * caller cannot bind it and have that change the answer.
+ *
+ * The key is `order.sourceFileId`, stamped at order creation from the owning
+ * chart's `currentFileId` (order-manager.js _chartSourceFileId), matched back
+ * against `chart.currentFileId`.
+ *
+ * Returns null rather than guessing, in BOTH the no-match and the AMBIGUOUS case.
+ * Two panels can legitimately show one file (the same-pair configuration), and in
+ * that case the record genuinely does not name an owner — picking the host or the
+ * first match would produce a confident, normal-looking, wrong attribution, which
+ * is the failure this policy exists to prevent.
+ *
+ * @param   {object} order
+ * @returns {object|null} the owning Chart instance, or null if unresolvable
+ */
+function _resolveTradeJournalAttribution(order) {
+    if (typeof window !== 'undefined' && window.__TALARIA_DISABLE_TRADE_ATTRIBUTION_RESOLVER_V1) {
+        return null;
+    }
+    if (!order || typeof order !== 'object') return null;
+
+    const wanted = order.sourceFileId;
+    if (wanted == null || String(wanted) === '') return null;
+    const key = String(wanted);
+
+    const charts = [];
+    try {
+        _talariaCollectChartsForAttribution(
+            (typeof window !== 'undefined' ? (window.top || window) : null), charts, new Set()
+        );
+    } catch (_e) { return null; }
+
+    let match = null;
+    for (const chart of charts) {
+        let id = null;
+        try { id = chart && chart.currentFileId; } catch (_e) { continue; }
+        if (id == null || String(id) !== key) continue;
+        if (match && match !== chart) return null;   // ambiguous — never guess
+        match = chart;
+    }
+    return match || null;
+}
+
+if (typeof window !== 'undefined') {
+    window._resolveTradeJournalAttribution = _resolveTradeJournalAttribution;
+}
+
 class Chart {
     constructor(canvasElement = null, svgElement = null, options = {}) {
         installChartContextMenuCapture();
