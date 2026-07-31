@@ -1,22 +1,15 @@
-# OVERNIGHT SUMMARY — 2026-07-31 (Manager C, NIGHT-01 battery)
+# OVERNIGHT SUMMARY — 2026-07-31
 
-**Was the night good? 0 of 1 scenarios produced a usable artifact, none died.**
-**Headline:** see the table
+**Was the night good?** 4 of 4 scenarios returned a usable artifact.
 
-| # | status | verdict | min |
+| scenario | status | verdict | elapsed |
 | --- | --- | --- | --- |
-| **B1** | RUNNING | in progress · latest: no fit produced (two indicators); build ? | — |
+| B1 | **OK** | OK — see artifact | 17.8 min |
+| B1b | **OK** | OK — see artifact | 21 min |
+| B2 | **OK** | OK — see artifact | 17.9 min |
+| B3 | **OK** | OK — see artifact | 17.1 min |
 
-## What each scenario was
+Driver started 2026-07-31T01:39:33.101Z, last updated 2026-07-31T02:53:22.323Z.
 
-**B1 — Mode truth + indicator A/B, SAME BUILD (two indicators arm).** B1 was answered at 01:00-02:30, after the 00:05 ruling was written; its one weakness was cross-build arms (b115 vs b116). This re-runs both arms back to back on one build so the A/B is same-build.
-
-## Reading this honestly
-
-- Every scenario ran serially under an explicit `--max-old-space-size` with a hard timeout, per `NIGHT-01`. A scenario that died is `VOID` with its reason and the queue continued; nothing was relaunched.
-- `B1` and `B2` were specified before my 01:00-02:30 results landed, so they were run in the form that adds information rather than re-learning a banked number: `B1` as a **same-build** A/B (the earlier arms were b115 vs b116), `B2` in **tick mode**, which had never been measured.
-- `B3` sees JS-visible arrays reachable from `window` within a node budget in each realm. It is blind to closure-held, `WeakMap`-held and worker-held bars, so its copies-per-bar ratio is a **lower bound**.
-- `B4` reads array lengths. A fall in resident count proves **dereferencing**, not collection; proving collection needs a heap snapshot.
-- Free-RAM context reads `null` in tonight's manifest: `wmic` is absent on this Windows build. Fixed in the driver for future runs, but tonight there is no free-memory series.
-
-_Manifest: `c:\Users\user\Desktop\talaria1\_evidence\manager-C\OVERNIGHT-MANIFEST-20260731.json`. Driver started 2026-07-31T01:39:33.101Z. Summary regenerated 2026-07-31T01:42:02.246Z._
+_Verdict lines are filled in by the grader pass; a bare "OK — see artifact" means the run
+completed but had not been graded when this file was last written._

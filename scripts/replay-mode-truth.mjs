@@ -65,6 +65,16 @@ function readModeSource() {
   };
 }
 
+/**
+ * MIN_CANDLES_FOR_CADENCE — a cadence is recalcs DIVIDED BY advanced candles, so a window that
+ * advanced nothing has no cadence, and a window whose playhead moved BACKWARDS (a re-seek) has a
+ * negative denominator. Both produce numbers that look like measurements and are not: the tick
+ * run at 03:36 reported a mean of 41.87 recalcs/candle from 55 zero-denominator and 13
+ * negative-denominator windows out of 84. Windows below this floor are excluded and counted, so
+ * the artifact says "not measurable" instead of quoting arithmetic on a broken denominator.
+ */
+const MIN_CANDLES_FOR_CADENCE = 5;
+
 /** Sets a playback mode in a realm and reports what the instance says afterwards. */
 function setModeSource({ mode, restartPlayback }) {
   const rs = window.chart && window.chart.replaySystem;
@@ -289,8 +299,17 @@ export async function runReplayModeTruth({
             ? r.replayIndex - prev.replayIndex : null;
           return {
             realm: r.realm, mode: r.mode, loopKind: r.loopKind,
-            recalcs: dCalls, candlesAdvanced: dBars,
-            recalcsPerCandle: (dCalls != null && dBars > 0) ? +(dCalls / dBars).toFixed(2) : null,
+        recalcs: dCalls, candlesAdvanced: dBars,
+        // Excluded, with the reason kept, rather than divided anyway: a negative dCalls is the
+        // counter having been re-installed, and a denominator at or below the floor is a window
+        // with no forward progress to divide by.
+        cadenceExcludedBecause: (dCalls == null || dBars == null) ? 'no reading'
+          : (dCalls < 0 ? 'recalc counter reset'
+            : (dBars < 0 ? 'playhead moved backwards (re-seek)'
+              : (dBars === 0 ? 'no candle advanced'
+                : (dBars < MIN_CANDLES_FOR_CADENCE ? `only ${dBars} candle(s) advanced, below the floor of ${MIN_CANDLES_FOR_CADENCE}` : null)))),
+        recalcsPerCandle: (dCalls != null && dCalls >= 0 && dBars >= MIN_CANDLES_FOR_CADENCE)
+          ? +(dCalls / dBars).toFixed(2) : null,
           };
         });
         const perCandle = sample.perRealmDelta.map((d) => d.recalcsPerCandle).filter((x) => x != null);
@@ -340,14 +359,54 @@ export async function runReplayModeTruth({
     }
     const byMode = (m) => cadence.filter((c) => c.mode === m).map((c) => c.recalcsPerCandle);
     const meanOf = (a) => (a.length ? +(a.reduce((x, y) => x + y, 0) / a.length).toFixed(2) : null);
-    report.test2_recalcCadence = {
-      samples: cadence.length,
-      meanRecalcsPerCandle: meanOf(cadence.map((c) => c.recalcsPerCandle)),
-      meanInCandleMode: meanOf(byMode('candle')),
-      meanInTickMode: meanOf(byMode('tick')),
-      max: cadence.length ? Math.max(...cadence.map((c) => c.recalcsPerCandle)) : null,
-      expectationInCandleMode: '~1 per advanced candle; near frame rate confirms the multiplier',
-    };
+  // Only windows that actually advanced can carry a cadence. Everything else is counted by
+  // reason, and if nothing qualifies the answer is NOT MEASURABLE rather than a mean.
+  const allDeltas = report.recalcSamples.flatMap((s) => s.perRealmDelta || []);
+  const excludedByReason = {};
+  for (const d of allDeltas) {
+    if (d.cadenceExcludedBecause) {
+      const key = d.cadenceExcludedBecause.replace(/\d+/g, 'N');
+      excludedByReason[key] = (excludedByReason[key] || 0) + 1;
+    }
+  }
+  const usable = cadence.filter((c) => c.recalcsPerCandle != null);
+  report.test2_recalcCadence = {
+    usableWindows: usable.length,
+    totalWindowRealmPairs: allDeltas.length,
+    excludedByReason,
+    measurable: usable.length > 0,
+    meanRecalcsPerCandle: usable.length ? meanOf(usable.map((c) => c.recalcsPerCandle)) : null,
+    meanInCandleMode: meanOf(byMode('candle')),
+    meanInTickMode: meanOf(byMode('tick')),
+    max: usable.length ? Math.max(...usable.map((c) => c.recalcsPerCandle)) : null,
+    expectationInCandleMode: '~1 per advanced candle; near frame rate confirms the multiplier',
+    // The rate-based reading survives a frozen bar axis, which the cadence does not: it says how
+    // much recalc work happened per SECOND and how much forward progress it bought.
+    rateFallback: (() => {
+      const first = report.recalcSamples[0];
+      const last = report.recalcSamples.at(-1);
+      if (!first || !last || last === first) return null;
+      const secs = ((last.minutes - first.minutes) * 60) || null;
+      if (!secs) return null;
+      const per = (r) => {
+        const f = (first.perRealm || [])[r];
+        const l = (last.perRealm || [])[r];
+        if (!f || !l) return null;
+        return {
+          mode: l.mode,
+          loopKind: l.loopKind,
+          recalcsTotal: l.callsCumulative - f.callsCumulative,
+          candlesAdvancedTotal: l.replayIndex - f.replayIndex,
+          recalcsPerSecond: +((l.callsCumulative - f.callsCumulative) / secs).toFixed(2),
+        };
+      };
+      return {
+        spanSeconds: +secs.toFixed(0),
+        perRealm: [0, 1, 2, 3].map(per).filter(Boolean),
+        note: 'recalcs per SECOND against candles advanced in the same span. When bar progress is ~0 this is the only honest way to state the recalc load.',
+      };
+    })(),
+  };
 
     report.verdict = {
       modeRequested: setMode,
@@ -356,7 +415,9 @@ export async function runReplayModeTruth({
       test1_p0Found: !!report.p0?.found,
       test1_modeAgreementAtEveryCheckpoint: report.checkpoints.every((c) => c.grade.allAgreeOnMode),
       test1_loopKindDisagreements: report.checkpoints.flatMap((c) => c.grade.loopKindDisagreesWithMode),
-      test2_recalcsPerCandle: report.test2_recalcCadence.meanRecalcsPerCandle,
+      test2_recalcsPerCandle: report.test2_recalcCadence.measurable
+        ? report.test2_recalcCadence.meanRecalcsPerCandle
+        : "NOT MEASURABLE - no window advanced enough candles to divide by; see excludedByReason and rateFallback",
       test3_recalcCostGrows: report.test3_recalcCostGrowth.fitVsBars.verdict,
       test3_earlyToLateP50: `${report.test3_recalcCostGrowth.earlyP50Ms} -> ${report.test3_recalcCostGrowth.lateP50Ms} ms`,
     };
