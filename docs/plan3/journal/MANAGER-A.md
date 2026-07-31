@@ -2308,3 +2308,66 @@ which exists as an exported helper and IS used by the CSV path. Two copies of on
 predicate, already able to drift.
 
 Doc: ROUTE-A-TO-B-MONSTER1-BOUND-AND-GLOW-STILL-UNSHIPPED-20260731-0120.md
+
+---
+
+## 01:45 — Monster 1 re-aimed to REMOVAL; FIX-01 ladder reconstructed and item 1 cleared
+
+**Monster 1 is virtualised, not capped.** `manager-a/v9-trade-row-window-20260731` @
+`083f25dda`. Rendered node count now follows the panel HEIGHT, not the trade count, so
+the class is removed rather than postponed. Spacers preserve the true scroll height, so
+unlike the cap **nothing is hidden** - the bound stops costing visibility.
+
+Uniform row height verified before building: tag dropdown is position:fixed and out of
+flow (:38317), screenshot strip is 132px inside a 148px cap so it cannot wrap, all other
+cells single-line with ellipsis. Height is MEASURED anyway, not assumed.
+
+Layered: flag set -> legacy full table; height unmeasurable -> the V1 cap; measured ->
+virtualised. The cap survives as the degraded path, which is what the Director allowed
+as the fallback.
+
+Caught a defect I was introducing: row hover keys are index-based (pos-/id-/cls-), which
+a sliding window would have made collide. Rows now derive an ABSOLUTE index.
+
+49/49 four suites, 8/8 mutants on disk killed by named behavioural cells, negative
+control NOT_APPLIED, restored to baseline sha256:0378602788f3f951, JSX parse-checked
+against a corrupted positive control. V-M4 (bottom-edge off-by-one) SURVIVED first pass
+- overscan masks it - and now dies to V15 alone. Second boundary mutant this week that
+only died to a cell added by hunting for the gap before running mutants.
+
+FLAG-03 paint gap is UNCHANGED and is arguably WORSE: scroll behaviour is precisely what
+a pure-function cell cannot see. Still needs a browser.
+
+Canvas rejected with a reason, not by default: this table has per-row hover, click,
+double-click, editable dropdowns and thumbnails. Canvas is right for the CHART surface,
+not for an interactive table.
+
+**FIX-01 is not in the repo.** 0 files at HEAD against a control where CONF-01=29,
+CKPT-01=20, DUR-01=15, CONF-03=6, FLAG-03=4, EVICT-01=2 all resolve. Ladder rebuilt from
+the Director's enumeration + C's escalation; if the written one differs, mine is wrong.
+
+Mapping: item 1 = C's SHOT 1 (TRIGGER FIRED). Item 3 partly shipped already (rAF coalesce
+live at b113; residual is replay-system.js). **Item 5 is the A1 choke point I already
+built at 62b6afcc9** - measured zero as a memory play, but as a range-read/correctness
+play it is a different argument and the seam is on disk. C's SHOT 2 (scheduler ledger,
+0.82%->10.40% self time) is NOT one of the five and needs its own authorisation + a new
+flag.
+
+**Item 1 CLEARS CONF-03**, checked before proposing it. All four same-pair guards are 0
+in chart-indicators-full.js against a control of 20/26/21/5 in chart.js with the same
+matcher. All five hasher sites ungated => reachable at four symbols, unlike clone/reseed.
+
+C's site map holds: def :10487, two UNBOUNDED targets :10269 + :11738, two BOUNDED
+precedents :10511 + :10540. **Correction to C:** the precedent is `_m19iB62TailTokenStale`
+not `_m19iB62IsTailTokenStale` - the cited name is 0 occurrences tree-wide against a
+control of _m19iB62TailToken=4. Mechanism right, identifier mistyped.
+
+Design trap recorded for the cut: bounding the window removes history from the
+fingerprint. Safe only because the fp already joins _indicatorDataFingerprint,
+dataVersion, _m19iB62MasterGeneration and _m19iB62ChartPairIdentity; and tailStart must
+itself be joined or two windows collide to one fingerprint. Needs its OWN flag -
+__TALARIA_DISABLE_M19I_EXACT_TAIL_PAINT_V1 kills the whole freshness guard, so per C it
+is the A/B probe, not the switch.
+
+Not claiming C's +33.1% transfers - n=1 per arm, C labelled its own bias. I am claiming
+reachability and site-map correctness, which is what CONF-03 asks of me before a cut.
