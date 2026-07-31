@@ -5565,3 +5565,58 @@ generated on the host into a 0600 file; it has never existed on my machine.
 the marker has to prove the flag is *live*, not merely present in the bundle. The P0 already
 taught that the expensive way.
 
+
+
+---
+
+## B-0217 — b117 is live: TICK-OFF-01 shipped and proven to *do* something
+
+**The build is up.** `20260731b117`, source `1dad98859`, both images tagged and saved. D and E
+were idle waiting on it. Full manifest with every row resolved to a SHA is in
+`docs/plan3/RELEASE-b117-MANIFEST.md`.
+
+**The named SHA was not the payload.** The dispatch said A's kill-switch landed at `bf74eced0`.
+That commit is 129 lines of markdown announcing the landing; the implementation is `801783777`.
+Pulling only what I was told to pull would have shipped a document to the canary, and the wire
+marker I was asked to produce would have come back absent. This is the "by SHA not by message"
+rule catching a case it was not written for — the SHA was real, it just was not the code.
+
+**Presence is not the marker.** I took the negative control from the wire on b116 *before*
+deploying, because after the ship that build is gone and "provably absent from a build predating
+the fix" becomes unprovable. All three markers: 0 on b116, present on b117. Both fetches were
+positive-controlled against `startCandleByCandle` first — an absence proved against a login page
+is not an absence, which is the shape of the false green I withdrew yesterday.
+
+**And presence still is not behaviour.** A disclosed his own gap: *nothing paints, node:test
+cannot see a canvas*. On the P0 the marker shipped and the hang survived, so I did not want to
+report a string. Against the module fetched from live b117, in a browser: kill active returns
+`candle`, flag set returns `tick`, `'0'` restores tick and `0` does not — real truthiness, not
+`=== true` — and `this.playbackMode` is still `tick` afterwards, so the user's setting comes back
+when the switch is removed. The arms differ. That is the claim. Four panels actually painting
+under the kill is still unproven and I have not claimed it.
+
+**I lifted my own freeze, and the guard was right to make me.** It refused the first attempt
+outright — my earlier search had missed it because `find` does not follow the `/opt` symlink, so
+I had briefly believed the mechanism was gone. It was not. Before lifting I checked whether the
+thing it protects actually existed: 981 of 981 requests in the prior 15 minutes were
+HeadlessChrome, no human session, and `MEASUREMENT-IN-PROGRESS` — the agreed way to reserve the
+host — was absent. So the stated protectee was not there.
+
+What *was* there: an automated multichart harness at ~843 req/min, panels C and D, which the
+container restart killed. It is re-runnable and unregistered, but I broke someone's run and it
+should be said plainly rather than filed under "no human affected". The lesson for the freeze is
+that a lock whose protectee cannot be observed will eventually be lifted by whoever checks; if
+the window is real, claim the host.
+
+**Two things I nearly shipped by accident and did not.** The tree had 202 uncommitted files after
+the crash, but 114 of them were pure CRLF churn — 15,745 lines that would have buried the 58 that
+mattered. Committed the three real files, reverted the rest, and ignored `.scratch-*` so it cannot
+recur. And `/opt/talaria` was carrying 137 modified files; I checked all three payload markers
+were at zero occurrences before building, so b117 is b116 plus this train and not plus whatever
+was lying in the build context.
+
+**Not done:** TAL-01891. The decode probe was mid-flight when the ship took priority, and a
+shipped build was worth more. Worth noting A independently reached the same place from the other
+side in `4f41865a4` — the journal data URL is emitted twice per image. That corroborates the
+mechanism being the rendered `<img src=data:…>` rather than retained bitmaps, and it means the
+fix is a thumbnail at render time, not an eviction policy.
