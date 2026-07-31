@@ -400,16 +400,39 @@ export async function keepConf01Playing(page, replaySpeed = 60, { reseekFraction
       const bars = Array.isArray(chart.data) ? chart.data.length : 0;
       const atEnd = bars > 0 && rs.currentIndex != null && Number(rs.currentIndex) >= bars - 2;
       let reseeked = false;
+      let reseekMovedIndex = null;
+      let reseekFallbackUsed = false;
       try {
         if (!rs.isActive && typeof rs.enterReplayMode === 'function') {
           rs.enterReplayMode({ startAtBeginning: true, userInitiated: true });
         }
         if (typeof rs.setSpeed === 'function') { try { rs.setSpeed(speed); } catch (_) {} }
+        // A re-seek that does not actually move the playhead turns a slow run into a dead
+        // one and reports success while doing it — that cost me a sixteen-minute tick run
+        // whose bar axis was frozen at the resident total. So the seek is VERIFIED, and if
+        // it did not take, replay is re-entered from the beginning as a second attempt.
         if (atEnd && typeof rs.goToReplayTimestamp === 'function' && bars > 50) {
+          const idxBefore = Number(rs.currentIndex);
           const target = chart.data[Math.floor(bars * fraction)];
           if (target && target.t != null) {
             rs.goToReplayTimestamp(Number(target.t));
             reseeked = true;
+            const waited = Date.now();
+            while (Date.now() - waited < 1_500 && Number(rs.currentIndex) >= idxBefore) {
+              await new Promise((r) => setTimeout(r, 100));
+            }
+            reseekMovedIndex = Number(rs.currentIndex) < idxBefore;
+            if (!reseekMovedIndex && typeof rs.enterReplayMode === 'function') {
+              try {
+                rs.enterReplayMode({ startAtBeginning: true, userInitiated: true });
+                reseekFallbackUsed = true;
+                const w2 = Date.now();
+                while (Date.now() - w2 < 1_500 && Number(rs.currentIndex) >= idxBefore) {
+                  await new Promise((r) => setTimeout(r, 100));
+                }
+                reseekMovedIndex = Number(rs.currentIndex) < idxBefore;
+              } catch (_) { /* leave reseekMovedIndex false so the caller can see it */ }
+            }
           }
         }
         if (!rs.isPlaying) {
@@ -429,6 +452,8 @@ export async function keepConf01Playing(page, replaySpeed = 60, { reseekFraction
           timeframe: chart.currentTimeframe || null,
           atEndBeforeReseek: atEnd,
           reseeked,
+          reseekMovedIndex,
+          reseekFallbackUsed,
         };
       } catch (_) { return null; }
     }, replaySpeed, reseekFraction).catch(() => null);
@@ -438,7 +463,17 @@ export async function keepConf01Playing(page, replaySpeed = 60, { reseekFraction
       if (got.reseeked) reseeks += 1;
     }
   }
-  return { playing, reseeks, perPanel, count: playing };
+  const reseekedRows = perPanel.filter((p) => p.reseeked);
+  return {
+    playing,
+    reseeks,
+    perPanel,
+    count: playing,
+    // An ineffective re-seek is worse than none: the caller must be able to void the window.
+    reseeksThatMovedTheIndex: reseekedRows.filter((p) => p.reseekMovedIndex === true).length,
+    reseeksThatDidNotMove: reseekedRows.filter((p) => p.reseekMovedIndex === false).length,
+    reseekFallbacksUsed: reseekedRows.filter((p) => p.reseekFallbackUsed).length,
+  };
 }
 
 /**
