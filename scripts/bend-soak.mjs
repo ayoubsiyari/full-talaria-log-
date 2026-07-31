@@ -306,6 +306,23 @@ const save = () => fs.writeFileSync(OUT, JSON.stringify(report, null, 1));
         localMBPerHour: dh > 0 && inBucket[0].footprintTotalMB != null && inBucket[inBucket.length - 1].footprintTotalMB != null
           ? +(((inBucket[inBucket.length - 1].footprintTotalMB - inBucket[0].footprintTotalMB) / dh).toFixed(1))
           : null,
+        // UNIT-01's driver unit. MB/h is per-bar cost times whatever bar rate the engine delivered in this
+        // bucket, and delivered rate falls as bars accumulate - so an early bucket's MB/h flatters or damns the
+        // build for a reason that is not the build. Bars delivered is recorded next to it so the MB/h figure can
+        // never be quoted without the rate that produced it.
+        barsDelivered: (() => {
+          const d = (inBucket[inBucket.length - 1].residentBars ?? 0) - (inBucket[0].residentBars ?? 0);
+          return d > 0 ? d : null;
+        })(),
+        deliveredBarsPerSec: (() => {
+          const d = (inBucket[inBucket.length - 1].residentBars ?? 0) - (inBucket[0].residentBars ?? 0);
+          return d > 0 && dh > 0 ? +(d / (dh * 3600)).toFixed(2) : null;
+        })(),
+        localMBPerThousandBars: (() => {
+          const d = (inBucket[inBucket.length - 1].residentBars ?? 0) - (inBucket[0].residentBars ?? 0);
+          const dm = (inBucket[inBucket.length - 1].footprintTotalMB ?? 0) - (inBucket[0].footprintTotalMB ?? 0);
+          return d > 0 ? +((dm / d) * 1000).toFixed(2) : null;
+        })(),
         samples: inBucket.length,
       });
     }

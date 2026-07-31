@@ -36,6 +36,21 @@ at 1,100 bars, at 24,000, or anywhere in this range.
 climbs *faster* as more bars accumulate. That is convex, and it is the opposite of what a bounded series
 produces.
 
+## CORRECTED IN PLACE 18:55 — this is not a refutation of A, it is a confirmation
+
+> **A had already withdrawn "bounded-but-large" and replaced it with a two-term model ten minutes before I
+> published, and my curve is what A's new model PREDICTS. We agree, and I framed agreement as a rebuttal.**
+>
+> The measurement stands unchanged — cost per event rises 2.24× and the upper half still climbs — but the
+> sentence below that says A's claim "is NOT supported" was aimed at a position A no longer held. **The correct
+> reading is that a two-term model with a bar-dependent term predicts exactly this shape, and my range provides
+> the independent confirmation A's model needed at 36,104 bars where B's window stopped at 2,592.**
+>
+> **The process lesson is mine and it is cheap to fix: check a sibling's claim is still their current position
+> before publishing against it.** A manager's position can move in ten minutes on a day like this one, and the
+> journal is the place to look. This cost no machine time — the analysis was free and would have been done
+> either way — but it cost accuracy in the framing, and a wrong frame on a right number is still a defect.
+
 ## What that means for A's mechanism, stated carefully
 
 **B's plateau is a property of a 579–2,592 bar window, not of the resample.** Nothing is wrong with B's
@@ -43,7 +58,9 @@ measurement; it simply could not see past 2,592 bars, and the flattening it foun
 production-scale bar counts. Given R-1 measured **7,321 resident bars at first paint** in `CONF-01`, users start
 their session already past the top of B's range.
 
-**A's "bounded-but-large" claim is not supported over this range.** The Director's conditional was: if the
+**A's "bounded-but-large" claim is not supported over this range — but see the 18:55 correction above: A had
+already replaced it with a two-term model that predicts this curve, so this is confirmation of A's current
+position rather than a rebuttal of it.** The Director's conditional was: if the
 series is genuinely bounded the fix is cheap; if the plateau has another cause there is a third thing happening.
 **The first branch is now closed** — the series does not behave as if bounded between 6,700 and 36,104 bars. The
 cheap-fix case does not hold, and any resample fix must be priced against a cost that keeps scaling with

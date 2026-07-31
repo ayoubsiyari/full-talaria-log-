@@ -39,6 +39,13 @@ export function ols2(y, x1, x2) {
   const r12 = s12 / Math.sqrt(s11 * s22);
   return {
     b0: +b0.toFixed(3),
+    // `perHour`/`perClosedTrade` are the ORIGINAL caller's predictors and are kept for compatibility, but the
+    // names are a hazard: this function does not know what x1 and x2 are, and a caller passing bars as x1 would
+    // read a bar coefficient labelled "perHour". `perX1`/`perX2` are the honest names and new callers use them.
+    perX1: +b1.toFixed(3),
+    perX1Ci: [+(b1 - t * se1).toFixed(3), +(b1 + t * se1).toFixed(3)],
+    perX2: +b2.toFixed(3),
+    perX2Ci: [+(b2 - t * se2).toFixed(3), +(b2 + t * se2).toFixed(3)],
     perHour: +b1.toFixed(3),
     perHourCi: [+(b1 - t * se1).toFixed(3), +(b1 + t * se1).toFixed(3)],
     perClosedTrade: +b2.toFixed(3),

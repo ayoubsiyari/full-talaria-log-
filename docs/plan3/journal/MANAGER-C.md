@@ -1839,3 +1839,51 @@ reciprocal of throughput and the CPU column understates true growth; and the cle
 axis is the CONF-05 arm, since a trade-bearing run gives only an upper bound on the bar-driven component.
 
 Arm 1 healthy and now at 1,674.2 MB — 294 MB above my withdrawn ceiling and the fifth run today to break it.
+
+## 2026-07-31 18:55 — the soak is NOT void: four documents verified live by timeOrigin, and the growth is not DOM-resident
+
+**Liveness stated, not assumed: pid 29112 ALIVE, started 18:15:16, sample 11 at 0.538h, foot 2,037 MB, bars
+monotonic 7,043 -> 31,000+, node=2 chrome=10.** Footprint is now 657 MB above the ceiling I withdrew.
+
+**The documents question is answered and the run stands.** I attached READ-ONLY to the running browser (port from
+DevToolsActivePort, puppeteer.connect, browser.disconnect and never close) and read identity from inside each
+realm. Four frames carry a live window.chart and they have FOUR DISTINCT performance.timeOrigin values, which is
+minted per document and cannot be shared across realms - positive proof of four documents, where frame URLs
+would have proved nothing. The host document ITSELF carries a chart, so CONF-01 is host-chart + 3 panel iframes
+= exactly 4 live documents. Documents metric read 4 at the same moment, live expected 4, detached pending ZERO.
+So the 7 included three NON-PANEL documents from the login navigation, detached and reclaimed at sample 4 along
+with 12,060 listeners, 25,891 nodes and 206 MB of heap. My own instinct that 4 documents was one too few for
+four panels was wrong, and the architecture is now pinned.
+
+**My probe's first pass would have produced a FALSE VOID.** Judging advance by bar count returned 1 of 4, which
+reads exactly like three evicted panels; the simulated playhead returns 4 of 4. At 5 candles/s a 1h panel closes
+a bar every ~12s, which is the trap my own conf01-session.mjs documents in a comment I did not follow in a new
+script. One instrument, one window, two opposite verdicts about whether ten hours are void.
+
+**THE FINDING: footprint does not care about the DOM.** A natural collection returned 206 MB of heap, 12,060
+listeners, 25,891 nodes and 3 documents in one event, and footprint rose straight through it, 1,674 -> 1,787 MB.
+Three of the four candidate homes for the growth are eliminated by a natural experiment I did not have to run.
+It is not retained DOM, not retained listeners, not retained JS heap. It tracks BARS RESIDENT - 24.55 MB/kbar
+here against 23.98 on an independent zero-trade run - and bar data lives in typed arrays and native allocators.
+The 730.1 MB of non-JS renderer memory is still unattributed to an arena and that is now my most valuable open
+question.
+
+**Unit corrected per the Director: 24.55 MB per thousand resident bars CI [22.25, 27.50], r2 0.977.** The ~1,099
+MB/h I could have quoted is inseparable from the 12.83 bars/sec delivered in that window, and delivered rate
+falls 20.6 -> 9.19 as bars accumulate, so any early-window MB/h is a warm-up artifact. Two independent runs
+agree in the driver's unit while disagreeing wildly in MB/h, which is the whole argument for the rule.
+bend-soak now records barsDelivered, deliveredBarsPerSec and localMBPerThousandBars in every hourly bucket, so
+MB/h can no longer be quoted without the rate that produced it. Arm 1 is graded offline since the running
+process holds the old code.
+
+**Two of my own defects caught by publishing:** the two-driver split returned -49.7 MB PER CLOSED TRADE, memory
+falling as trades close, at predictor correlation 0.992 and variance inflation 60.9 - unidentified, now
+suppressed with the reason recorded and the coefficients kept only for the record. Identification comes from the
+paired zero-trade CONF-05 arm, where the between-arm difference IS the trade term. And ols2's return fields were
+named perHour/perClosedTrade, hard-coding the ORIGINAL caller's predictors, so passing bars as x1 reads a bar
+coefficient labelled "perHour"; added perX1/perX2 aliases without breaking the three existing callers.
+
+**Correction accepted on the plateau finding, corrected in place:** A had already replaced "bounded-but-large"
+with a two-term model ten minutes before I published, and my curve is what A's model PREDICTS. I framed
+agreement as a rebuttal. The numbers stand; the frame was wrong. Lesson: check a sibling's claim is still their
+current position before publishing against it - positions move in ten minutes on a day like this.
