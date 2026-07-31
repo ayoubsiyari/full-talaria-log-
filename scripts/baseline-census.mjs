@@ -147,9 +147,66 @@ async function perFrame(page, fn) {
   return rows;
 }
 
+/**
+ * Item 4's mechanism half, measured on the one account I hold rather than blocked on a second.
+ *
+ * The static scan found `/api/journal` called with no bounding parameter, and the client then applies
+ * `slice(0, 4)` for display — so the whole history can cross the wire and be parsed even though four
+ * entries are shown. Journal entries can also carry a screenshot as an inline `data:` URL. That makes
+ * journal hydration a candidate for baseline scaling with account age AND a candidate for the ~23 MB
+ * per closed trade measured this morning.
+ *
+ * This records every account-scoped response with its byte count and, where it parses as JSON, how many
+ * records and how many screenshot-shaped fields it carried.
+ */
+function attachAccountHydrationRecorder(page, sink) {
+  const interesting = /\/api\/(journal|trade|order|position|account|portfolio|stat)/i;
+  page.on('response', async (res) => {
+    try {
+      const url = res.url();
+      if (!interesting.test(url)) return;
+      const buf = await res.buffer().catch(() => null);
+      const row = {
+        url: url.slice(-90),
+        status: res.status(),
+        bytes: buf ? buf.length : null,
+        atIso: new Date().toISOString(),
+        records: null,
+        screenshotFields: null,
+        screenshotBytes: null,
+        largestRecordBytes: null,
+      };
+      if (buf && buf.length && /json/i.test(res.headers()['content-type'] || '')) {
+        try {
+          const j = JSON.parse(buf.toString('utf8'));
+          const list = Array.isArray(j) ? j : (Array.isArray(j.list) ? j.list : (Array.isArray(j.entries) ? j.entries : null));
+          if (list) {
+            row.records = list.length;
+            let shots = 0;
+            let shotBytes = 0;
+            let largest = 0;
+            for (const rec of list) {
+              const s = JSON.stringify(rec || {});
+              largest = Math.max(largest, s.length);
+              for (const k of ['screenshot', 'dataUrl', 'image', 'thumbnail', 'src']) {
+                const v = rec && rec[k];
+                if (typeof v === 'string' && v.length > 256) { shots += 1; shotBytes += v.length; }
+              }
+            }
+            row.screenshotFields = shots;
+            row.screenshotBytes = shotBytes;
+            row.largestRecordBytes = largest;
+          }
+        } catch { /* not the shape we expected */ }
+      }
+      sink.push(row);
+    } catch { /* response gone */ }
+  });
+}
+
 const report = {
   signature: 'BASELINE-CENSUS-V1',
-  ruling: 'cbfdb81f4 items 3 and 6',
+  ruling: 'cbfdb81f4 items 3 and 6, plus item 4 mechanism half',
   startedAtIso: new Date().toISOString(),
   gaugeScope: SWEEP_GAUGE_SCOPE_NOTE,
   measurementNotes: [
@@ -158,6 +215,7 @@ const report = {
   ],
 };
 const save = () => fs.writeFileSync(OUT, JSON.stringify(report, null, 1));
+const accountHydration = [];
 
 (async () => {
   let session = null;
@@ -170,6 +228,7 @@ const save = () => fs.writeFileSync(OUT, JSON.stringify(report, null, 1));
       // First paint of a single chart, before the multichart layout is applied, is a separate and
       // cheaper baseline that the competitor comparison is actually against.
       onSingleReady: async ({ page }) => {
+        attachAccountHydrationRecorder(page, accountHydration);
         await sleep(6_000);
         report.singleChartFirstPaint = {
           residency: await perFrame(page, residencyCensusSource),
@@ -298,6 +357,30 @@ const save = () => fs.writeFileSync(OUT, JSON.stringify(report, null, 1));
       allProcessResidualMB: +(total - rows.reduce((t, r) => t + (r.mb || 0), 0)).toFixed(2),
       dom: { elements: g.counters?.live?.elements ?? null, nodes: g.counters?.live?.nodes ?? null, listeners: g.counters?.live?.listeners ?? null, documents: g.counters?.live?.documents ?? null },
       caveat: 'Rows do not sum to the total by construction: two are floors and the renderer residual is a named remainder, not an unexplained one. The GPU and browser rows are whole-process figures and therefore include their own non-JS overhead.',
+    };
+  }
+
+  // ---- Grade: item 4 mechanism — does account history hydrate at load? -------
+  if (accountHydration.length) {
+    const journal = accountHydration.filter((r) => /journal/i.test(r.url));
+    const totalBytes = accountHydration.reduce((t, r) => t + (r.bytes || 0), 0);
+    const shotBytes = accountHydration.reduce((t, r) => t + (r.screenshotBytes || 0), 0);
+    const maxRecords = Math.max(0, ...accountHydration.map((r) => r.records || 0));
+    report.accountHydration = {
+      responses: accountHydration.length,
+      journalResponses: journal.length,
+      totalBytesAtLoad: totalBytes,
+      totalMBAtLoad: +(totalBytes / 1048576).toFixed(2),
+      largestRecordCount: maxRecords,
+      screenshotBytesAtLoad: shotBytes,
+      screenshotMBAtLoad: +(shotBytes / 1048576).toFixed(2),
+      rows: accountHydration.slice(0, 30),
+      verdict: journal.length === 0
+        ? 'The journal is NOT fetched during chart load on this account, so account history is not a chart-baseline term by this route. It may still be a dashboard-baseline term.'
+        : (maxRecords > 0
+          ? `Account history DOES hydrate at load: ${maxRecords} records in one response, ${(totalBytes / 1048576).toFixed(2)} MB across ${accountHydration.length} account-scoped responses, of which ${(shotBytes / 1048576).toFixed(2)} MB is screenshot-shaped string data. Unbounded at the call site, so this scales with account age.`
+          : `The journal is fetched at load (${journal.length} response(s), ${(totalBytes / 1048576).toFixed(2)} MB) but did not parse into a record list, so the per-record cost is unmeasured here.`),
+      caveat: 'Measured on ONE account. Magnitude on a heavy account still needs credentials I do not hold; this establishes the mechanism and the shape, not the ceiling.',
     };
   }
 
