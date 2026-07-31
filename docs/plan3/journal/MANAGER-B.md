@@ -5666,3 +5666,42 @@ unavailable. Checked scripts, evidence, docs and terminal captures for password-
 found none; the only `PASSWORD=` occurrences are `"${TEST_PASSWORD:?}"` env indirections for the
 QA account, whose value lives in a 0600 file on the host and has never been on my machine. I have
 not recorded the string anywhere and will not use it. Access stays as D7 scoped it.
+
+
+---
+
+## B-0219 — E has an upstream, and a heavy real-data account for the journal fix
+
+**E's branch now has an upstream.** `manager-e/indicator-eviction` had none, and origin had no
+manager branches at all — A's, B's and E's have all been local-only across worktrees, which is why
+E's PULL-01 fetch succeeded while the branch still had nowhere to deliver to. Pushed it to
+`origin/manager-e/indicator-eviction` with `-u`; tracking now resolves, 0 ahead and 0 behind, so
+plain `git push` and `git pull` work for E. E's two RED-gate commits (`813e4ea74`, `6c59a86b9` —
+the 5.33 display bars at 1h and 1.33 at 4h) are cherry-picked into the train lineage as well, so
+the gate can reach a build.
+
+Worth flagging beyond E: **no manager branch has an upstream.** E hit it first and hit it twice,
+but A and I are in the same position, and the next handoff that depends on a push will fail the
+same way. This is a shared-remote gap, not E's mistake.
+
+**b118 was already live** when the item came round again — shipped 11:29Z with `d03dfc30f`. So the
+build D needs for the real-app confirmation exists.
+
+**Seeded a heavy account out of real captures.** D's win was measured on 120 synthetic images on a
+synthetic page, which establishes the mechanism but not the product. There were already 540
+screenshot-bearing payloads in the database, so I copied the 150 largest onto the QA account as
+session 936: 41 MB in the database, and — checked rather than assumed — **165 real captures
+totalling 18.7 MB actually reach the client** over a 43 MB API response. An endpoint that stripped
+or deferred them would have made any measurement against that account a false win, which is
+exactly the failure I keep having to design against.
+
+**The arm I recommended to D is inside b118, not across builds.** b117-vs-b118 is two builds and
+many variables. M20-J1 ships its own kill-switch, so the same build with
+`__TALARIA_DISABLE_JOURNAL_SHOT_THUMBS_V1` set reproduces b117's behaviour exactly, one variable
+apart. And measure RSS, not JS heap — the bytes land in the image cache, which is the whole reason
+this ticket survived.
+
+**Not finished:** I did not get `updateJournalTab()` driving end to end headlessly. The chart shell
+does not expose the order manager globally and the journal tab is not in the DOM on a bare shell
+load, so it needs the dashboard bootstrap. I stopped rather than guess, and said so in the handoff
+instead of quietly reporting the partial as the whole.
