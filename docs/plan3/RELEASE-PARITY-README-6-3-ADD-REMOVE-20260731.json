@@ -1,0 +1,48 @@
+{
+  "signature": "TALARIA_RELEASE_PARITY_README_6_3_V1",
+  "status": "RED",
+  "current": {
+    "cell": "README-6-3-ADD-REMOVE",
+    "mode": "noDestroy",
+    "status": "RED",
+    "beforeGrow": {
+      "chartIds": [
+        "A",
+        "B"
+      ],
+      "survivingListeners": 102
+    },
+    "atThree": {
+      "chartIds": [
+        "A",
+        "B",
+        "C"
+      ],
+      "survivingListeners": 153
+    },
+    "after": {
+      "chartIds": [
+        "A",
+        "B"
+      ],
+      "survivingListeners": 153
+    },
+    "listenerCountPerChart": 51,
+    "leakedListeners": 51,
+    "listenersCleared": false,
+    "requiresChartDestroy": true,
+    "note": "README 6.3: Layout 2→3→2; no listeners survive removeChart. RED until Chart.destroy() exists."
+  },
+  "destroyControl": {
+    "cell": "README-6-3-WITH-DESTROY-CONTROL",
+    "status": "GREEN",
+    "reportStatus": "GREEN",
+    "expected": "GREEN"
+  },
+  "releaseAuthority": {
+    "stopAuthority": true,
+    "productBlocksRelease": true,
+    "statement": "Chart.destroy() is absent; README 6.3 is intentionally RED until teardown removes global listeners."
+  },
+  "limitation": "Hermetic listener/heap model using A spike count of 51 chart.js global listeners per instance. Product heap snapshot remains required for final credit."
+}

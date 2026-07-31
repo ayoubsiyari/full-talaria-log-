@@ -1,0 +1,103 @@
+{
+  "signature": "TALARIA_LEGACY_INDEX_PANEL_PATH_V1",
+  "status": "GREEN",
+  "green": {
+    "signature": "TALARIA_LEGACY_INDEX_PANEL_PATH_V1",
+    "cell": "LEGACY-INDEX-ISPANEL-PATH",
+    "status": "GREEN",
+    "files": [
+      "chart v 1.4/chart/index.html",
+      "chart v 1.4/chart/legacy-index.html",
+      "chart v 1.4/chart/chart.js"
+    ],
+    "indexLinksLegacyShell": true,
+    "legacyAuthRedirectPresent": true,
+    "panelConstructorCall": true,
+    "explicitPanelFlag": true,
+    "constructorCanvasArgSetsPanel": true,
+    "authRequired": false,
+    "limitation": "Static shell wiring gate. It covers the legacy-index isPanel path without auth; it does not prove browser resize behavior.",
+    "failures": []
+  },
+  "redControls": [
+    {
+      "cell": "RED-LEGACY-INDEX-LINK-REMOVED",
+      "report": {
+        "signature": "TALARIA_LEGACY_INDEX_PANEL_PATH_V1",
+        "cell": "LEGACY-INDEX-ISPANEL-PATH",
+        "status": "RED",
+        "files": [
+          "chart v 1.4/chart/index.html",
+          "chart v 1.4/chart/legacy-index.html",
+          "chart v 1.4/chart/chart.js"
+        ],
+        "indexLinksLegacyShell": false,
+        "legacyAuthRedirectPresent": true,
+        "panelConstructorCall": true,
+        "explicitPanelFlag": true,
+        "constructorCanvasArgSetsPanel": true,
+        "authRequired": false,
+        "limitation": "Static shell wiring gate. It covers the legacy-index isPanel path without auth; it does not prove browser resize behavior.",
+        "failures": [
+          "chart/index.html no longer links to /chart/legacy-index.html"
+        ]
+      },
+      "status": "GREEN",
+      "expected": "RED",
+      "reportStatus": "RED"
+    },
+    {
+      "cell": "RED-LEGACY-PANEL-CONSTRUCTOR-REMOVED",
+      "report": {
+        "signature": "TALARIA_LEGACY_INDEX_PANEL_PATH_V1",
+        "cell": "LEGACY-INDEX-ISPANEL-PATH",
+        "status": "RED",
+        "files": [
+          "chart v 1.4/chart/index.html",
+          "chart v 1.4/chart/legacy-index.html",
+          "chart v 1.4/chart/chart.js"
+        ],
+        "indexLinksLegacyShell": true,
+        "legacyAuthRedirectPresent": true,
+        "panelConstructorCall": false,
+        "explicitPanelFlag": true,
+        "constructorCanvasArgSetsPanel": true,
+        "authRequired": false,
+        "limitation": "Static shell wiring gate. It covers the legacy-index isPanel path without auth; it does not prove browser resize behavior.",
+        "failures": [
+          "legacy-index does not construct panels via new Chart(panel.canvas, panel.svg, { panelIndex })"
+        ]
+      },
+      "status": "GREEN",
+      "expected": "RED",
+      "reportStatus": "RED"
+    },
+    {
+      "cell": "RED-CHART-CONSTRUCTOR-DOES-NOT-SET-ISPANEL",
+      "report": {
+        "signature": "TALARIA_LEGACY_INDEX_PANEL_PATH_V1",
+        "cell": "LEGACY-INDEX-ISPANEL-PATH",
+        "status": "RED",
+        "files": [
+          "chart v 1.4/chart/index.html",
+          "chart v 1.4/chart/legacy-index.html",
+          "chart v 1.4/chart/chart.js"
+        ],
+        "indexLinksLegacyShell": true,
+        "legacyAuthRedirectPresent": true,
+        "panelConstructorCall": true,
+        "explicitPanelFlag": true,
+        "constructorCanvasArgSetsPanel": false,
+        "authRequired": false,
+        "limitation": "Static shell wiring gate. It covers the legacy-index isPanel path without auth; it does not prove browser resize behavior.",
+        "failures": [
+          "Chart constructor no longer sets this.isPanel=true for canvasElement path"
+        ]
+      },
+      "status": "GREEN",
+      "expected": "RED",
+      "reportStatus": "RED"
+    }
+  ],
+  "limitation": "Non-auth static control only. Browser reproduction remains A/product territory."
+}

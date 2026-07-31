@@ -1,0 +1,435 @@
+{
+  "schema": "talaria.d1.journal-bitmap-delta-browser.v1",
+  "tip": "76023722d",
+  "measuredAt": "2026-07-31T11:04:32.091Z",
+  "rows": 60,
+  "shotsPerRow": 2,
+  "imageCount": 120,
+  "fixture": {
+    "path": "C:/Users/user/Desktop/talaria1/manager-d-trade/docs/plan3/fixtures/talaria-chart-median-live-census.dataurl.txt",
+    "declaredMime": "image/png",
+    "actualFormat": "image/jpeg",
+    "width": 3331,
+    "height": 1556,
+    "fullDecodedBytesEach": 20732144,
+    "thumbMaxDim": 240,
+    "thumbWidth": 240,
+    "thumbHeight": 112,
+    "thumbDecodedBytesEach": 107520
+  },
+  "theoreticalDecoded": {
+    "legacyFullDomBytes": 2487857280,
+    "j1ThumbnailDomBytes": 12902400,
+    "deltaBytes": 2474954880
+  },
+  "scenarios": {
+    "legacy": {
+      "name": "legacy-full-img-dom",
+      "mode": "legacy",
+      "beforeProcess": {
+        "renderer": 69382144,
+        "gpu": 106553344,
+        "rendererWorkingSet": 131784704,
+        "gpuWorkingSet": 84692992,
+        "memorySource": "windows-GetProcess",
+        "processInfo": [
+          {
+            "type": "browser",
+            "id": 21480,
+            "cpuTime": 0.725141
+          },
+          {
+            "type": "renderer",
+            "id": 7572,
+            "cpuTime": 0.048424
+          },
+          {
+            "type": "renderer",
+            "id": 3716,
+            "cpuTime": 0.083576
+          },
+          {
+            "type": "renderer",
+            "id": 19696,
+            "cpuTime": 0.076851
+          },
+          {
+            "type": "GPU",
+            "id": 17632,
+            "cpuTime": 0.246645
+          },
+          {
+            "type": "network.mojom.NetworkService",
+            "id": 29320,
+            "cpuTime": 0.192023
+          },
+          {
+            "type": "storage.mojom.StorageService",
+            "id": 27684,
+            "cpuTime": 0.050538
+          }
+        ],
+        "osProcessInfo": [
+          {
+            "Id": 3716,
+            "ProcessName": "chrome",
+            "PrivateMemorySize64": 23732224,
+            "WorkingSet64": 50221056
+          },
+          {
+            "Id": 7572,
+            "ProcessName": "chrome",
+            "PrivateMemorySize64": 22167552,
+            "WorkingSet64": 34680832
+          },
+          {
+            "Id": 17632,
+            "ProcessName": "chrome",
+            "PrivateMemorySize64": 106553344,
+            "WorkingSet64": 84692992
+          },
+          {
+            "Id": 19696,
+            "ProcessName": "chrome",
+            "PrivateMemorySize64": 23482368,
+            "WorkingSet64": 46882816
+          },
+          {
+            "Id": 21480,
+            "ProcessName": "chrome",
+            "PrivateMemorySize64": 40222720,
+            "WorkingSet64": 112652288
+          },
+          {
+            "Id": 27684,
+            "ProcessName": "chrome",
+            "PrivateMemorySize64": 11636736,
+            "WorkingSet64": 22085632
+          },
+          {
+            "Id": 29320,
+            "ProcessName": "chrome",
+            "PrivateMemorySize64": 18018304,
+            "WorkingSet64": 41074688
+          }
+        ]
+      },
+      "afterProcess": {
+        "renderer": 139018240,
+        "gpu": 537542656,
+        "rendererWorkingSet": 388931584,
+        "gpuWorkingSet": 199929856,
+        "memorySource": "windows-GetProcess",
+        "processInfo": [
+          {
+            "type": "browser",
+            "id": 21480,
+            "cpuTime": 2.075388
+          },
+          {
+            "type": "renderer",
+            "id": 23140,
+            "cpuTime": 0.06769
+          },
+          {
+            "type": "renderer",
+            "id": 7572,
+            "cpuTime": 0.096764
+          },
+          {
+            "type": "renderer",
+            "id": 3716,
+            "cpuTime": 1.961795
+          },
+          {
+            "type": "renderer",
+            "id": 19696,
+            "cpuTime": 0.084527
+          },
+          {
+            "type": "GPU",
+            "id": 17632,
+            "cpuTime": 1.154729
+          },
+          {
+            "type": "network.mojom.NetworkService",
+            "id": 29320,
+            "cpuTime": 0.260888
+          },
+          {
+            "type": "storage.mojom.StorageService",
+            "id": 27684,
+            "cpuTime": 0.050844
+          }
+        ],
+        "osProcessInfo": [
+          {
+            "Id": 3716,
+            "ProcessName": "chrome",
+            "PrivateMemorySize64": 72749056,
+            "WorkingSet64": 272982016
+          },
+          {
+            "Id": 7572,
+            "ProcessName": "chrome",
+            "PrivateMemorySize64": 22204416,
+            "WorkingSet64": 34971648
+          },
+          {
+            "Id": 17632,
+            "ProcessName": "chrome",
+            "PrivateMemorySize64": 537542656,
+            "WorkingSet64": 199929856
+          },
+          {
+            "Id": 19696,
+            "ProcessName": "chrome",
+            "PrivateMemorySize64": 23494656,
+            "WorkingSet64": 46985216
+          },
+          {
+            "Id": 21480,
+            "ProcessName": "chrome",
+            "PrivateMemorySize64": 50110464,
+            "WorkingSet64": 129597440
+          },
+          {
+            "Id": 23140,
+            "ProcessName": "chrome",
+            "PrivateMemorySize64": 20570112,
+            "WorkingSet64": 33992704
+          },
+          {
+            "Id": 27684,
+            "ProcessName": "chrome",
+            "PrivateMemorySize64": 11636736,
+            "WorkingSet64": 22142976
+          },
+          {
+            "Id": 29320,
+            "ProcessName": "chrome",
+            "PrivateMemorySize64": 18247680,
+            "WorkingSet64": 41865216
+          }
+        ]
+      },
+      "rendererPrivateDeltaBytes": 69636096,
+      "gpuPrivateDeltaBytes": 430989312,
+      "pageStats": {
+        "imageCount": 120,
+        "decodedPixelFloorBytes": 2487857280,
+        "markupChars": 29113200,
+        "fullSourceChars": 29103240,
+        "thumbChars": 0
+      },
+      "metrics": {
+        "jsHeapUsed": null,
+        "jsHeapTotal": null,
+        "nodes": 126,
+        "documents": 1,
+        "jsEventListeners": 0
+      }
+    },
+    "j1": {
+      "name": "j1-thumb-raster-dom",
+      "mode": "thumb",
+      "beforeProcess": {
+        "renderer": 65576960,
+        "gpu": 107991040,
+        "rendererWorkingSet": 130277376,
+        "gpuWorkingSet": 85291008,
+        "memorySource": "windows-GetProcess",
+        "processInfo": [
+          {
+            "type": "browser",
+            "id": 26236,
+            "cpuTime": 0.724466
+          },
+          {
+            "type": "renderer",
+            "id": 20520,
+            "cpuTime": 0.060571
+          },
+          {
+            "type": "renderer",
+            "id": 20836,
+            "cpuTime": 0.083074
+          },
+          {
+            "type": "renderer",
+            "id": 29044,
+            "cpuTime": 0.080054
+          },
+          {
+            "type": "GPU",
+            "id": 3540,
+            "cpuTime": 0.255569
+          },
+          {
+            "type": "network.mojom.NetworkService",
+            "id": 28940,
+            "cpuTime": 0.186465
+          },
+          {
+            "type": "storage.mojom.StorageService",
+            "id": 27016,
+            "cpuTime": 0.047723
+          }
+        ],
+        "osProcessInfo": [
+          {
+            "Id": 3540,
+            "ProcessName": "chrome",
+            "PrivateMemorySize64": 107991040,
+            "WorkingSet64": 85291008
+          },
+          {
+            "Id": 20520,
+            "ProcessName": "chrome",
+            "PrivateMemorySize64": 18448384,
+            "WorkingSet64": 33316864
+          },
+          {
+            "Id": 20836,
+            "ProcessName": "chrome",
+            "PrivateMemorySize64": 23744512,
+            "WorkingSet64": 50253824
+          },
+          {
+            "Id": 26236,
+            "ProcessName": "chrome",
+            "PrivateMemorySize64": 40419328,
+            "WorkingSet64": 114081792
+          },
+          {
+            "Id": 27016,
+            "ProcessName": "chrome",
+            "PrivateMemorySize64": 11706368,
+            "WorkingSet64": 22163456
+          },
+          {
+            "Id": 28940,
+            "ProcessName": "chrome",
+            "PrivateMemorySize64": 18079744,
+            "WorkingSet64": 40951808
+          },
+          {
+            "Id": 29044,
+            "ProcessName": "chrome",
+            "PrivateMemorySize64": 23384064,
+            "WorkingSet64": 46706688
+          }
+        ]
+      },
+      "afterProcess": {
+        "renderer": 158814208,
+        "gpu": 139239424,
+        "rendererWorkingSet": 226615296,
+        "gpuWorkingSet": 94941184,
+        "memorySource": "windows-GetProcess",
+        "processInfo": [
+          {
+            "type": "browser",
+            "id": 26236,
+            "cpuTime": 1.464717
+          },
+          {
+            "type": "renderer",
+            "id": 20520,
+            "cpuTime": 0.065879
+          },
+          {
+            "type": "renderer",
+            "id": 20836,
+            "cpuTime": 2.636721
+          },
+          {
+            "type": "renderer",
+            "id": 29044,
+            "cpuTime": 0.087058
+          },
+          {
+            "type": "GPU",
+            "id": 3540,
+            "cpuTime": 1.429188
+          },
+          {
+            "type": "network.mojom.NetworkService",
+            "id": 28940,
+            "cpuTime": 0.243404
+          },
+          {
+            "type": "storage.mojom.StorageService",
+            "id": 27016,
+            "cpuTime": 0.047983
+          }
+        ],
+        "osProcessInfo": [
+          {
+            "Id": 3540,
+            "ProcessName": "chrome",
+            "PrivateMemorySize64": 139239424,
+            "WorkingSet64": 94941184
+          },
+          {
+            "Id": 20520,
+            "ProcessName": "chrome",
+            "PrivateMemorySize64": 18452480,
+            "WorkingSet64": 33423360
+          },
+          {
+            "Id": 20836,
+            "ProcessName": "chrome",
+            "PrivateMemorySize64": 116965376,
+            "WorkingSet64": 146313216
+          },
+          {
+            "Id": 26236,
+            "ProcessName": "chrome",
+            "PrivateMemorySize64": 44470272,
+            "WorkingSet64": 118419456
+          },
+          {
+            "Id": 27016,
+            "ProcessName": "chrome",
+            "PrivateMemorySize64": 11706368,
+            "WorkingSet64": 22220800
+          },
+          {
+            "Id": 28940,
+            "ProcessName": "chrome",
+            "PrivateMemorySize64": 18108416,
+            "WorkingSet64": 41050112
+          },
+          {
+            "Id": 29044,
+            "ProcessName": "chrome",
+            "PrivateMemorySize64": 23396352,
+            "WorkingSet64": 46878720
+          }
+        ]
+      },
+      "rendererPrivateDeltaBytes": 93237248,
+      "gpuPrivateDeltaBytes": 31248384,
+      "pageStats": {
+        "imageCount": 120,
+        "decodedPixelFloorBytes": 12902400,
+        "markupChars": 645840,
+        "fullSourceChars": 29103240,
+        "thumbChars": 635880
+      },
+      "metrics": {
+        "jsHeapUsed": null,
+        "jsHeapTotal": null,
+        "nodes": 126,
+        "documents": 1,
+        "jsEventListeners": 0
+      }
+    }
+  },
+  "caveats": [
+    "CDP does not expose Chrome Task Manager image-cache column directly; decoded image cache is bounded by DOM naturalWidth/naturalHeight and cross-checked against renderer process footprint where OS process bytes are available.",
+    "Both arms keep hydrated full data-url strings in JS to isolate decoded-bitmap/list-DOM behavior from string retention.",
+    "A J1 rasterization may transiently decode full sources; the question here is whether full decoded images remain resident after the list settles."
+  ]
+}

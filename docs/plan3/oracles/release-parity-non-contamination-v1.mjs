@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { pathToFileURL } from 'node:url';
 import { runForbiddenFieldsSuite } from './release-parity-forbidden-fields-v1.mjs';
+import { runDestroyBytesBehaviorSuite } from '../../../scripts/release-parity-destroy-bytes-behavior.mjs';
 import { runReadme63Suite } from '../../../scripts/release-parity-readme-6-3-add-remove.mjs';
 import { runReadme65Suite } from '../../../scripts/release-parity-readme-6-5-pan-throttle.mjs';
 
@@ -589,6 +590,7 @@ export function runReleaseParityNonContaminationOracle() {
   const forbiddenFields = runForbiddenFieldsSuite();
   const readme63 = runReadme63Suite();
   const readme65 = runReadme65Suite();
+  const destroyBytesBehavior = runDestroyBytesBehaviorSuite();
   const redControls = runRedControls();
   const breadthRedControls = runParityBreadthRedControls();
   const redControlFailures = [
@@ -602,11 +604,12 @@ export function runReleaseParityNonContaminationOracle() {
     && forbiddenFields.status === 'GREEN'
     && readme63.status === 'GREEN'
     && readme65.status === 'GREEN'
+    && destroyBytesBehavior.status === 'GREEN'
     && redControlFailures.length === 0
     && !trapStop
     ? 'GREEN'
     : 'RED';
-  const destroyStop = readme63.status === 'RED';
+  const destroyStop = readme63.status === 'RED' || destroyBytesBehavior.status === 'RED';
   return {
     signature: RELEASE_PARITY_NON_CONTAMINATION_SIGNATURE,
     status,
@@ -615,6 +618,7 @@ export function runReleaseParityNonContaminationOracle() {
     forbiddenFields,
     readme63,
     readme65,
+    destroyBytesBehavior,
     redControls,
     breadthRedControls,
     releaseAuthority: {
@@ -623,14 +627,14 @@ export function runReleaseParityNonContaminationOracle() {
       trapStop,
       productStubBlocksRelease,
       statement: destroyStop
-        ? 'README 6.3 is intentionally RED: Chart.destroy() is absent and detached chart listeners survive layout changes.'
+        ? 'Destroy gates are intentionally RED: Chart.destroy() is absent, detached chart listeners/bytes survive, and late work can rehydrate bytes.'
         : (trapStop
         ? 'Ported guard cannot fire per-instance in a single realm — RELEASE-01 stop.'
         : (productStubBlocksRelease
           ? 'Ported traps fire per-instance. Product installForbiddenSetterTraps remains a stub — release waits on product non-stub traps before single-realm ships.'
           : 'If this suite is insufficient to hold a final release, release waits.')),
       currentLimitation:
-        'Model oracle + ported engine-api-guards; README 6.3 is RED until Chart.destroy() exists. Product shell heap/CDP drives remain CONF-01 follow-ups. E owns indicator/drawing/overlay RED controls.',
+        'Model oracle + ported engine-api-guards; README 6.3 and destroy-bytes behavior are RED until Chart.destroy() exists. Product shell heap/CDP drives remain CONF-01 follow-ups. E owns indicator/drawing/overlay destroy correctness.',
       eCompanion: forbiddenFields.eCompanion,
     },
   };

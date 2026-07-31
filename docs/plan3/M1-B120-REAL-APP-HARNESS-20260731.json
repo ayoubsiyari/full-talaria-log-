@@ -1,0 +1,47 @@
+{
+  "signature": "TALARIA_M1_B120_REAL_APP_HARNESS_V2",
+  "measuredAt": "2026-07-31T17:28:24.162Z",
+  "url": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+  "expectedBuild": "b120",
+  "buildId": "20260731b120",
+  "finalUrl": "http://31.97.192.82:3000/login/?next=%2Fchart%2Fdist-v9%2Findex.html%3Fmode%3Dbacktest%26sessionId%3D936%26fileId%3D677",
+  "authProvided": true,
+  "authRoute": {
+    "source": "C:\\Users\\user\\Desktop\\talaria1\\_evidence\\manager-B\\m20-j1\\talaria-auth-route.mjs",
+    "error": "login failed with HTTP 401"
+  },
+  "journal": null,
+  "verdict": {
+    "status": "UNPROVEN_LOGIN_PATH",
+    "reason": "real-app redirected to login; auth cookie required"
+  },
+  "surface": {
+    "imageCount": 1,
+    "fullResolutionImages": 0,
+    "thumbnailImages": 1,
+    "dataUrlImages": 0,
+    "journalLikeImages": 0,
+    "decodedPixelFloorBytes": 244736,
+    "maxImageDecodedBytes": 244736,
+    "rows": [
+      {
+        "frameUrl": "http://31.97.192.82:3000/login/?next=%2Fchart%2Fdist-v9%2Findex.html%3Fmode%3Dbacktest%26sessionId%3D936%26fileId%3D677",
+        "naturalWidth": 256,
+        "naturalHeight": 239,
+        "clientWidth": 80,
+        "clientHeight": 80,
+        "srcKind": "url",
+        "srcLength": 36,
+        "journalLike": false
+      }
+    ],
+    "stable": true,
+    "stableSamples": 3
+  },
+  "processes": {
+    "rendererPrivate": 142811136,
+    "gpuPrivate": 103415808,
+    "processCount": 8
+  },
+  "caveat": "GREEN_CANDIDATE still requires PO journal-usability confirmation per M1."
+}

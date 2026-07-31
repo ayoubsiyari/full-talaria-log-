@@ -1,0 +1,258 @@
+{
+  "signature": "TALARIA_RELEASE_PARITY_NON_CONTAMINATION_V1",
+  "status": "RED",
+  "forbiddenFields": {
+    "status": "GREEN",
+    "ten": [
+      {
+        "cell": "FORBIDDEN-PRICEMIN",
+        "status": "GREEN",
+        "ownedByE": false
+      },
+      {
+        "cell": "FORBIDDEN-PRICEMAX",
+        "status": "GREEN",
+        "ownedByE": false
+      },
+      {
+        "cell": "FORBIDDEN-AUTOSCALE",
+        "status": "GREEN",
+        "ownedByE": false
+      },
+      {
+        "cell": "FORBIDDEN-PRICEZOOM",
+        "status": "GREEN",
+        "ownedByE": false
+      },
+      {
+        "cell": "FORBIDDEN-PRICEOFFSET",
+        "status": "GREEN",
+        "ownedByE": false
+      },
+      {
+        "cell": "FORBIDDEN-TIMEFRAME",
+        "status": "GREEN",
+        "ownedByE": false
+      },
+      {
+        "cell": "FORBIDDEN-INDICATORS",
+        "status": "GREEN",
+        "ownedByE": true
+      },
+      {
+        "cell": "FORBIDDEN-DRAWINGS",
+        "status": "GREEN",
+        "ownedByE": true
+      },
+      {
+        "cell": "FORBIDDEN-CHARTTYPE",
+        "status": "GREEN",
+        "ownedByE": true
+      },
+      {
+        "cell": "FORBIDDEN-SCALEMODE",
+        "status": "GREEN",
+        "ownedByE": false
+      }
+    ],
+    "traps": {
+      "cell": "PER-INSTANCE-SETTER-TRAPS",
+      "status": "GREEN",
+      "proof": {
+        "ok": true,
+        "installedA": true,
+        "installedB": true,
+        "threw": true,
+        "errorCode": "FORBIDDEN_SETTER_TRAP",
+        "errorField": "priceScale.min",
+        "errorInstanceId": "B",
+        "internalOk": true,
+        "productStub": true,
+        "decisionsFields": [
+          "priceMin",
+          "priceMax",
+          "autoScale",
+          "priceZoom",
+          "priceOffset",
+          "timeframe",
+          "indicators",
+          "drawings",
+          "chartType",
+          "scaleMode"
+        ],
+        "eOwnedDeferred": [
+          "indicators",
+          "drawings",
+          "chartType"
+        ]
+      },
+      "releaseAuthority": {
+        "stopAuthority": true,
+        "productStubBlocksRelease": true,
+        "statement": "Ported traps fire per-instance in a single realm. Product engine-api-guards.js installForbiddenSetterTraps remains a stub — release waits on product non-stub traps before single-realm ships."
+      }
+    },
+    "selfTest": "GREEN",
+    "autoScale": "GREEN"
+  },
+  "parityBreadth": {
+    "status": "GREEN",
+    "surfaces": [
+      "drawing-tools",
+      "indicators",
+      "orders",
+      "replay",
+      "crosshair-sync",
+      "range-sync",
+      "keyboard",
+      "context-menus"
+    ],
+    "redControls": [
+      {
+        "cell": "NC-PARITY-DRAWING-HOST-ROUTED",
+        "status": "GREEN",
+        "reportStatus": "RED",
+        "expectedFailureReason": "single-realm-reference-mismatch"
+      },
+      {
+        "cell": "NC-PARITY-ORDERS-HOST-ROUTED",
+        "status": "GREEN",
+        "reportStatus": "RED",
+        "expectedFailureReason": "single-realm-reference-mismatch"
+      },
+      {
+        "cell": "NC-PARITY-REPLAY-HOST-ROUTED",
+        "status": "GREEN",
+        "reportStatus": "RED",
+        "expectedFailureReason": "single-realm-reference-mismatch"
+      },
+      {
+        "cell": "NC-PARITY-KEYBOARD-HOST-ROUTED",
+        "status": "GREEN",
+        "reportStatus": "RED",
+        "expectedFailureReason": "single-realm-reference-mismatch"
+      },
+      {
+        "cell": "NC-PARITY-CONTEXT-MENU-HOST-ROUTED",
+        "status": "GREEN",
+        "reportStatus": "RED",
+        "expectedFailureReason": "single-realm-reference-mismatch"
+      },
+      {
+        "cell": "NC-PARITY-CROSSHAIR-HOST-ABS-PRICE",
+        "status": "GREEN",
+        "reportStatus": "RED",
+        "expectedFailureReason": "single-realm-reference-mismatch"
+      }
+    ]
+  },
+  "readme63": {
+    "status": "RED",
+    "current": {
+      "cell": "README-6-3-ADD-REMOVE",
+      "mode": "noDestroy",
+      "status": "RED",
+      "beforeGrow": {
+        "chartIds": [
+          "A",
+          "B"
+        ],
+        "survivingListeners": 294,
+        "liveRafLoops": 2,
+        "timeoutHandlesAtRest": 2
+      },
+      "atThree": {
+        "chartIds": [
+          "A",
+          "B",
+          "C"
+        ],
+        "survivingListeners": 441,
+        "liveRafLoops": 3,
+        "timeoutHandlesAtRest": 2
+      },
+      "after": {
+        "chartIds": [
+          "A",
+          "B"
+        ],
+        "survivingListeners": 441,
+        "liveRafLoops": 3,
+        "timeoutHandlesAtRest": 2
+      },
+      "listenerCountPerChart": 147,
+      "pageWideRegisteredListeners": 357,
+      "pageWideRemovedListeners": 0,
+      "rafLoopsPerInstance": 1,
+      "timeoutHandlesAtRest": 2,
+      "anonymousClosureListeners": 147,
+      "retainedListenerReferences": 0,
+      "removableAtAll": false,
+      "leakedListeners": 147,
+      "listenersCleared": false,
+      "teardownProbeMatchesCurrent": true,
+      "requiresChartDestroy": true,
+      "note": "README 6.3: Layout 2→3→2; no listeners survive removeChart. RED until listeners are first made removable, then removed."
+    },
+    "destroyControl": {
+      "cell": "README-6-3-WITH-DESTROY-CONTROL",
+      "status": "GREEN",
+      "reportStatus": "GREEN",
+      "expected": "GREEN"
+    },
+    "releaseAuthority": {
+      "stopAuthority": true,
+      "productBlocksRelease": true,
+      "statement": "Chart.destroy() is absent; README 6.3 is intentionally RED until teardown removes global listeners."
+    }
+  },
+  "readme65": {
+    "status": "GREEN",
+    "routes": {
+      "pan": {
+        "status": "GREEN",
+        "fail": 0,
+        "mismatchedTimeframesOnly": true
+      },
+      "resize": {
+        "status": "GREEN",
+        "fail": 0,
+        "mismatchedTimeframesOnly": true
+      }
+    },
+    "redControls": [
+      {
+        "cell": "NC-README-6-5-PAN-FAILS",
+        "status": "GREEN",
+        "reportStatus": "RED",
+        "expected": "RED",
+        "fail": 18
+      },
+      {
+        "cell": "NC-README-6-5-RESIZE-FAILS",
+        "status": "GREEN",
+        "reportStatus": "RED",
+        "expected": "RED",
+        "fail": 18
+      }
+    ]
+  },
+  "releaseAuthority": {
+    "stopAuthority": true,
+    "destroyStop": true,
+    "trapStop": false,
+    "productStubBlocksRelease": true,
+    "statement": "README 6.3 is intentionally RED: Chart.destroy() is absent and detached chart listeners survive layout changes.",
+    "currentLimitation": "Model oracle + ported engine-api-guards; README 6.3 is RED until Chart.destroy() exists. Product shell heap/CDP drives remain CONF-01 follow-ups. E owns indicator/drawing/overlay RED controls.",
+    "eCompanion": {
+      "owner": "E",
+      "path": "docs/plan3/evidence/E-RELEASE-PARITY-CORRECTNESS-20260731/release-parity-correctness.red.mjs",
+      "redControls": [
+        "RP-INDICATOR-GLOBAL-SLOT",
+        "RP-DRAWING-GLOBAL-LAYER",
+        "RP-OVERLAY-GLOBAL-LAYER"
+      ],
+      "note": "E-VER-019/020 already prove indicator/drawing/overlay cross-contamination RED. Do not rebuild."
+    }
+  }
+}

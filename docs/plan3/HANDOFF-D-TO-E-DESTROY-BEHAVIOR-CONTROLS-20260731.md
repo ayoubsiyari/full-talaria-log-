@@ -10,6 +10,7 @@ D owns the byte/listener side:
 
 - README 6.3 add/remove gate
 - heap/listener survival model
+- destroy-bytes behavior complement: removed charts must not retain bytes or process late pan/resize work
 - `destroyStop: true` until `Chart.destroy()` exists
 - future product heap snapshot proof after A lands teardown
 
@@ -34,3 +35,16 @@ Added / retained RED controls:
 - `NC-PARITY-CROSSHAIR-HOST-ABS-PRICE`
 
 These are parity breadth controls, not destroy behavior controls.
+
+Added D bytes-side destroy behavior control:
+
+- `scripts/release-parity-destroy-bytes-behavior.mjs`
+- `DESTROY-BYTES-NO-DESTROY` — current state RED: detached listeners/bytes survive and late pan/resize rehydrates bytes
+- `DESTROY-BYTES-WITH-DESTROY` — future control GREEN: detached listeners, retained bytes and late-work bytes go to zero
+
+E companion already exists in `E-FOCUS-DESTROY-CORRECTNESS-20260731.md`:
+
+- `DESTROY-NO-DESTROY-RESURRECTS-INDICATOR`
+- `DESTROY-WITH-DESTROY-CLEARS-INDICATORS`
+
+D is not asserting indicator resurrection, drawing resurrection or overlay correctness here.

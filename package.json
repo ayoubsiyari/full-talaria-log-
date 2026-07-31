@@ -33,6 +33,8 @@
     "preflight:release-parity-readme-6-3": "node scripts/release-parity-readme-6-3-add-remove.mjs",
     "preflight:release-parity-readme-6-5": "node scripts/release-parity-readme-6-5-pan-throttle.mjs",
     "test:release-parity-readme-gates": "node --test scripts/tests/release-parity-readme-gates.test.mjs",
+    "preflight:release-parity-destroy-bytes": "node scripts/release-parity-destroy-bytes-behavior.mjs",
+    "test:release-parity-destroy-bytes": "node --test scripts/tests/release-parity-destroy-bytes-behavior.test.mjs",
     "preflight:m1-b120-real-app": "node scripts/m1-b120-real-app-harness.mjs --dry-run",
     "test:m1-b120-real-app": "node --test scripts/tests/m1-b118-real-app-harness.test.mjs",
     "preflight:m1-b118-real-app": "node scripts/m1-b118-real-app-harness.mjs --dry-run",

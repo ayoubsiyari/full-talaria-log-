@@ -349,3 +349,17 @@ exists — eviction deletes the redundant hot copy, it does not invent a new sto
   `docs/plan3/M1-B120-REAL-APP-HARNESS-20260731.json`; verdict remains **`UNPROVEN_LOGIN_PATH`**.
 - Legacy-shell reconciliation line added for A: D proved source wiring plus redirect code only; D did not prove
   the shell is served live or renders instead of redirecting.
+
+## 2026-07-31 19:14 — Whole queue pass
+
+- Parity breadth checked in the aggregate oracle: orders, drawings, replay, keyboard and context menus all have
+  reference-vs-candidate cells plus host-routed RED controls; still model credit only until driven against the
+  real single-realm app.
+- Added D-owned destroy bytes behavior complement:
+  `scripts/release-parity-destroy-bytes-behavior.mjs`. Current `noDestroy` state is RED because detached
+  listeners/bytes survive and late pan/resize work can rehydrate bytes; `withDestroy` future control is GREEN.
+- Coordination boundary with E updated in `HANDOFF-D-TO-E-DESTROY-BEHAVIOR-CONTROLS-20260731.md`. E owns
+  `DESTROY-NO-DESTROY-RESURRECTS-INDICATOR` and correctness after teardown; D owns retained bytes / late work.
+- M1 artifact not yet returned from B. Only B's host runner script is present under
+  `_evidence/manager-B/m20-j1/run-d-m1-harness-on-host.sh`; D will not spend another login-path run. M1 stays
+  D-owned and closes when B hands back the host artifact.

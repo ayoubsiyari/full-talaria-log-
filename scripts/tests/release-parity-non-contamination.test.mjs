@@ -129,6 +129,7 @@ test('full release parity non-contamination report is RED until Chart.destroy() 
     forbiddenFields: report.forbiddenFields.status,
     readme63: report.readme63.status,
     readme65: report.readme65.status,
+    destroyBytesBehavior: report.destroyBytesBehavior.status,
     releaseAuthority: report.releaseAuthority,
     forbiddenFailures: report.forbiddenFields.failures,
   }, null, 2));
@@ -137,6 +138,9 @@ test('full release parity non-contamination report is RED until Chart.destroy() 
   assert.equal(report.forbiddenFields.status, 'GREEN');
   assert.equal(report.readme63.status, 'RED');
   assert.equal(report.readme65.status, 'GREEN');
+  assert.equal(report.destroyBytesBehavior.status, 'RED');
+  assert.equal(report.destroyBytesBehavior.redControl.status, 'GREEN');
+  assert.equal(report.destroyBytesBehavior.futureControl.status, 'GREEN');
   assert.equal(report.redControls.every((c) => c.status === 'GREEN'), true);
   assert.equal(report.breadthRedControls.every((c) => c.status === 'GREEN'), true);
   assert.equal(report.releaseAuthority.stopAuthority, true);
@@ -144,7 +148,12 @@ test('full release parity non-contamination report is RED until Chart.destroy() 
   assert.equal(report.releaseAuthority.trapStop, false);
   assert.equal(report.releaseAuthority.productStubBlocksRelease, true);
   assert.match(report.releaseAuthority.statement, /Chart\.destroy\(\) is absent/);
+  assert.match(report.releaseAuthority.statement, /late work can rehydrate bytes/);
   assert.equal(report.forbiddenFields.tenFieldCells.length, 10);
+  assert.equal(
+    report.destroyBytesBehavior.eCompanion.behaviorCell,
+    'DESTROY-NO-DESTROY-RESURRECTS-INDICATOR',
+  );
   assert.deepEqual(report.releaseAuthority.eCompanion.redControls, [
     'RP-INDICATOR-GLOBAL-SLOT',
     'RP-DRAWING-GLOBAL-LAYER',

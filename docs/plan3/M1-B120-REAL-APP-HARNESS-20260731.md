@@ -30,3 +30,7 @@ This was a single bounded run: no `--wait`, no watcher, no multi-hour loop. It a
 - `test:m1-b120-real-app` — PASS
 - `preflight:m1-b120-real-app` with `M1_EXPECTED_BUILD=b120` — READY
 - Bounded authenticated-route live run — artifact written, B route login `HTTP 401`, `UNPROVEN_LOGIN_PATH`
+
+## Ownership Update
+
+As of the 19:14 queue update, M1 execution has moved to B because the remaining blocker is the host credential, not D's harness. D will not spend another login-path run. Ownership of the M1 verdict remains with D once B returns the host artifact.
