@@ -1,0 +1,1026 @@
+{
+  "stamp": "2026-07-30T22-11-26-413Z",
+  "base": "http://31.97.192.82:3000",
+  "observeMs": 45000,
+  "markers": {
+    "status": 200,
+    "bytes": 32665,
+    "CONTROL_TIMEOUT_MS": true,
+    "controlFetch": true,
+    "AbortController": true,
+    "kill": true
+  },
+  "apiClaims": [
+    {
+      "label": "seq-A",
+      "status": 200,
+      "ms": 232,
+      "ok": true,
+      "evicted": 0
+    },
+    {
+      "label": "seq-B",
+      "status": 200,
+      "ms": 79,
+      "ok": true,
+      "evicted": 1
+    },
+    {
+      "label": "par-A",
+      "status": 200,
+      "ms": 107,
+      "ok": true,
+      "evicted": 1
+    },
+    {
+      "label": "par-B",
+      "status": 200,
+      "ms": 205,
+      "ok": true,
+      "evicted": 1
+    },
+    {
+      "label": "par2-A",
+      "status": 200,
+      "ms": 95,
+      "ok": true,
+      "evicted": 1
+    },
+    {
+      "label": "par2-B",
+      "status": 200,
+      "ms": 101,
+      "ok": true,
+      "evicted": 1
+    }
+  ],
+  "net": [
+    {
+      "t": 1785449489018,
+      "label": "tab1",
+      "kind": "req",
+      "method": "GET",
+      "url": "/api/auth/me"
+    },
+    {
+      "t": 1785449489147,
+      "label": "tab1",
+      "kind": "res",
+      "status": 200,
+      "url": "/api/auth/me"
+    },
+    {
+      "t": 1785449489405,
+      "label": "tab1",
+      "kind": "req",
+      "method": "POST",
+      "url": "/api/chart/windows/claim"
+    },
+    {
+      "t": 1785449489542,
+      "label": "tab1",
+      "kind": "res",
+      "status": 200,
+      "url": "/api/chart/windows/claim"
+    },
+    {
+      "t": 1785449490676,
+      "label": "tab1",
+      "kind": "req",
+      "method": "GET",
+      "url": "/api/auth/me"
+    },
+    {
+      "t": 1785449490940,
+      "label": "tab1",
+      "kind": "res",
+      "status": 200,
+      "url": "/api/auth/me"
+    },
+    {
+      "t": 1785449494547,
+      "label": "tab1",
+      "kind": "req",
+      "method": "GET",
+      "url": "/api/auth/me"
+    },
+    {
+      "t": 1785449494649,
+      "label": "tab1",
+      "kind": "res",
+      "status": 200,
+      "url": "/api/auth/me"
+    },
+    {
+      "t": 1785449494652,
+      "label": "tab1",
+      "kind": "req",
+      "method": "POST",
+      "url": "/api/chart/windows/claim"
+    },
+    {
+      "t": 1785449494742,
+      "label": "tab1",
+      "kind": "res",
+      "status": 200,
+      "url": "/api/chart/windows/claim"
+    },
+    {
+      "t": 1785449494752,
+      "label": "tab1",
+      "kind": "req",
+      "method": "POST",
+      "url": "/api/chart/windows/release"
+    },
+    {
+      "t": 1785449494849,
+      "label": "tab1",
+      "kind": "req",
+      "method": "GET",
+      "url": "/api/auth/me"
+    },
+    {
+      "t": 1785449494924,
+      "label": "tab1",
+      "kind": "req",
+      "method": "GET",
+      "url": "/api/auth/me"
+    },
+    {
+      "t": 1785449495042,
+      "label": "tab1",
+      "kind": "res",
+      "status": 200,
+      "url": "/api/auth/me"
+    },
+    {
+      "t": 1785449495106,
+      "label": "tab1",
+      "kind": "req",
+      "method": "POST",
+      "url": "/api/chart/windows/claim"
+    },
+    {
+      "t": 1785449495129,
+      "label": "tab1",
+      "kind": "res",
+      "status": 200,
+      "url": "/api/auth/me"
+    },
+    {
+      "t": 1785449495225,
+      "label": "tab1",
+      "kind": "res",
+      "status": 200,
+      "url": "/api/chart/windows/claim"
+    },
+    {
+      "t": 1785449499004,
+      "label": "tab2",
+      "kind": "req",
+      "method": "GET",
+      "url": "/api/auth/me"
+    },
+    {
+      "t": 1785449499206,
+      "label": "tab2",
+      "kind": "req",
+      "method": "GET",
+      "url": "/api/auth/me"
+    },
+    {
+      "t": 1785449499321,
+      "label": "tab2",
+      "kind": "res",
+      "status": 200,
+      "url": "/api/auth/me"
+    },
+    {
+      "t": 1785449499409,
+      "label": "tab2",
+      "kind": "res",
+      "status": 200,
+      "url": "/api/auth/me"
+    },
+    {
+      "t": 1785449499411,
+      "label": "tab2",
+      "kind": "req",
+      "method": "POST",
+      "url": "/api/chart/windows/claim"
+    },
+    {
+      "t": 1785449499517,
+      "label": "tab2",
+      "kind": "res",
+      "status": 200,
+      "url": "/api/chart/windows/claim"
+    },
+    {
+      "t": 1785449504080,
+      "label": "tab1",
+      "kind": "req",
+      "method": "GET",
+      "url": "/api/auth/me"
+    },
+    {
+      "t": 1785449504220,
+      "label": "tab1",
+      "kind": "res",
+      "status": 200,
+      "url": "/api/auth/me"
+    },
+    {
+      "t": 1785449504222,
+      "label": "tab2",
+      "kind": "req",
+      "method": "GET",
+      "url": "/api/auth/me"
+    },
+    {
+      "t": 1785449504328,
+      "label": "tab2",
+      "kind": "res",
+      "status": 200,
+      "url": "/api/auth/me"
+    },
+    {
+      "t": 1785449509331,
+      "label": "tab1",
+      "kind": "req",
+      "method": "GET",
+      "url": "/api/auth/me"
+    },
+    {
+      "t": 1785449509430,
+      "label": "tab1",
+      "kind": "res",
+      "status": 200,
+      "url": "/api/auth/me"
+    },
+    {
+      "t": 1785449509432,
+      "label": "tab2",
+      "kind": "req",
+      "method": "GET",
+      "url": "/api/auth/me"
+    },
+    {
+      "t": 1785449509532,
+      "label": "tab2",
+      "kind": "res",
+      "status": 200,
+      "url": "/api/auth/me"
+    },
+    {
+      "t": 1785449514534,
+      "label": "tab1",
+      "kind": "req",
+      "method": "GET",
+      "url": "/api/auth/me"
+    },
+    {
+      "t": 1785449514632,
+      "label": "tab1",
+      "kind": "res",
+      "status": 200,
+      "url": "/api/auth/me"
+    },
+    {
+      "t": 1785449514634,
+      "label": "tab2",
+      "kind": "req",
+      "method": "GET",
+      "url": "/api/auth/me"
+    },
+    {
+      "t": 1785449514741,
+      "label": "tab2",
+      "kind": "res",
+      "status": 200,
+      "url": "/api/auth/me"
+    },
+    {
+      "t": 1785449519744,
+      "label": "tab1",
+      "kind": "req",
+      "method": "GET",
+      "url": "/api/auth/me"
+    },
+    {
+      "t": 1785449519850,
+      "label": "tab1",
+      "kind": "res",
+      "status": 200,
+      "url": "/api/auth/me"
+    },
+    {
+      "t": 1785449519851,
+      "label": "tab2",
+      "kind": "req",
+      "method": "GET",
+      "url": "/api/auth/me"
+    },
+    {
+      "t": 1785449519940,
+      "label": "tab2",
+      "kind": "res",
+      "status": 200,
+      "url": "/api/auth/me"
+    },
+    {
+      "t": 1785449520228,
+      "label": "tab1",
+      "kind": "req",
+      "method": "POST",
+      "url": "/api/chart/windows/heartbeat"
+    },
+    {
+      "t": 1785449520361,
+      "label": "tab1",
+      "kind": "res",
+      "status": 409,
+      "url": "/api/chart/windows/heartbeat"
+    },
+    {
+      "t": 1785449524520,
+      "label": "tab2",
+      "kind": "req",
+      "method": "POST",
+      "url": "/api/chart/windows/heartbeat"
+    },
+    {
+      "t": 1785449524621,
+      "label": "tab2",
+      "kind": "res",
+      "status": 200,
+      "url": "/api/chart/windows/heartbeat"
+    },
+    {
+      "t": 1785449524942,
+      "label": "tab1",
+      "kind": "req",
+      "method": "GET",
+      "url": "/api/auth/me"
+    },
+    {
+      "t": 1785449525036,
+      "label": "tab1",
+      "kind": "res",
+      "status": 200,
+      "url": "/api/auth/me"
+    },
+    {
+      "t": 1785449525038,
+      "label": "tab2",
+      "kind": "req",
+      "method": "GET",
+      "url": "/api/auth/me"
+    },
+    {
+      "t": 1785449525133,
+      "label": "tab2",
+      "kind": "res",
+      "status": 200,
+      "url": "/api/auth/me"
+    },
+    {
+      "t": 1785449530135,
+      "label": "tab1",
+      "kind": "req",
+      "method": "GET",
+      "url": "/api/auth/me"
+    },
+    {
+      "t": 1785449530248,
+      "label": "tab1",
+      "kind": "res",
+      "status": 200,
+      "url": "/api/auth/me"
+    },
+    {
+      "t": 1785449530250,
+      "label": "tab2",
+      "kind": "req",
+      "method": "GET",
+      "url": "/api/auth/me"
+    },
+    {
+      "t": 1785449530358,
+      "label": "tab2",
+      "kind": "res",
+      "status": 200,
+      "url": "/api/auth/me"
+    },
+    {
+      "t": 1785449535360,
+      "label": "tab1",
+      "kind": "req",
+      "method": "GET",
+      "url": "/api/auth/me"
+    },
+    {
+      "t": 1785449535459,
+      "label": "tab1",
+      "kind": "res",
+      "status": 200,
+      "url": "/api/auth/me"
+    },
+    {
+      "t": 1785449535461,
+      "label": "tab2",
+      "kind": "req",
+      "method": "GET",
+      "url": "/api/auth/me"
+    },
+    {
+      "t": 1785449535559,
+      "label": "tab2",
+      "kind": "res",
+      "status": 200,
+      "url": "/api/auth/me"
+    },
+    {
+      "t": 1785449540561,
+      "label": "tab1",
+      "kind": "req",
+      "method": "GET",
+      "url": "/api/auth/me"
+    },
+    {
+      "t": 1785449540647,
+      "label": "tab1",
+      "kind": "res",
+      "status": 200,
+      "url": "/api/auth/me"
+    },
+    {
+      "t": 1785449540648,
+      "label": "tab2",
+      "kind": "req",
+      "method": "GET",
+      "url": "/api/auth/me"
+    },
+    {
+      "t": 1785449540747,
+      "label": "tab2",
+      "kind": "res",
+      "status": 200,
+      "url": "/api/auth/me"
+    },
+    {
+      "t": 1785449545749,
+      "label": "tab1",
+      "kind": "req",
+      "method": "GET",
+      "url": "/api/auth/me"
+    },
+    {
+      "t": 1785449545842,
+      "label": "tab1",
+      "kind": "res",
+      "status": 200,
+      "url": "/api/auth/me"
+    },
+    {
+      "t": 1785449545843,
+      "label": "tab2",
+      "kind": "req",
+      "method": "GET",
+      "url": "/api/auth/me"
+    },
+    {
+      "t": 1785449545938,
+      "label": "tab2",
+      "kind": "res",
+      "status": 200,
+      "url": "/api/auth/me"
+    },
+    {
+      "t": 1785449545940,
+      "label": "tab2",
+      "kind": "req",
+      "method": "POST",
+      "url": "/api/chart/windows/claim"
+    },
+    {
+      "t": 1785449545940,
+      "label": "tab1",
+      "kind": "req",
+      "method": "POST",
+      "url": "/api/chart/windows/claim"
+    },
+    {
+      "t": 1785449546034,
+      "label": "tab1",
+      "kind": "res",
+      "status": 200,
+      "url": "/api/chart/windows/claim"
+    },
+    {
+      "t": 1785449546037,
+      "label": "tab2",
+      "kind": "res",
+      "status": 200,
+      "url": "/api/chart/windows/claim"
+    }
+  ],
+  "steps": [
+    {
+      "step": "open",
+      "ms": 1818,
+      "url": "http://31.97.192.82:3000/chart/dist-v9/"
+    },
+    {
+      "step": "reload",
+      "ms": 145,
+      "url": "http://31.97.192.82:3000/chart/dist-v9/"
+    },
+    {
+      "step": "open-tab2",
+      "ms": 111,
+      "url": "http://31.97.192.82:3000/chart/dist-v9/"
+    }
+  ],
+  "snapshots": [
+    {
+      "label": "tab1-after-open",
+      "href": "http://31.97.192.82:3000/chart/dist-v9/",
+      "title": "Talaria — V9 Live",
+      "pin": "20260730b114",
+      "blocked": false,
+      "overlay": false,
+      "ready": "complete"
+    },
+    {
+      "label": "tab1-after-reload",
+      "href": "http://31.97.192.82:3000/chart/dist-v9/",
+      "title": "Talaria — V9 Live",
+      "pin": "20260730b114",
+      "blocked": false,
+      "overlay": false,
+      "ready": "complete"
+    },
+    {
+      "label": "tab1-end",
+      "href": "http://31.97.192.82:3000/chart/dist-v9/",
+      "title": "Talaria — V9 Live",
+      "pin": "20260730b114",
+      "blocked": true,
+      "overlay": true,
+      "ready": "complete"
+    },
+    {
+      "label": "tab2-end",
+      "href": "http://31.97.192.82:3000/chart/dist-v9/",
+      "title": "Talaria — V9 Live",
+      "pin": "20260730b114",
+      "blocked": false,
+      "overlay": false,
+      "ready": "complete"
+    }
+  ],
+  "authMe": [
+    {
+      "when": "after-open-tab1",
+      "ok": true,
+      "status": 200,
+      "ms": 103
+    },
+    {
+      "when": "t+5251",
+      "tab1": {
+        "ok": true,
+        "status": 200,
+        "ms": 141
+      },
+      "tab2": {
+        "ok": true,
+        "status": 200,
+        "ms": 107
+      }
+    },
+    {
+      "when": "t+10454",
+      "tab1": {
+        "ok": true,
+        "status": 200,
+        "ms": 99
+      },
+      "tab2": {
+        "ok": true,
+        "status": 200,
+        "ms": 100
+      }
+    },
+    {
+      "when": "t+15663",
+      "tab1": {
+        "ok": true,
+        "status": 200,
+        "ms": 98
+      },
+      "tab2": {
+        "ok": true,
+        "status": 200,
+        "ms": 107
+      }
+    },
+    {
+      "when": "t+20862",
+      "tab1": {
+        "ok": true,
+        "status": 200,
+        "ms": 107
+      },
+      "tab2": {
+        "ok": true,
+        "status": 200,
+        "ms": 89
+      }
+    },
+    {
+      "when": "t+26055",
+      "tab1": {
+        "ok": true,
+        "status": 200,
+        "ms": 94
+      },
+      "tab2": {
+        "ok": true,
+        "status": 200,
+        "ms": 96
+      }
+    },
+    {
+      "when": "t+31280",
+      "tab1": {
+        "ok": true,
+        "status": 200,
+        "ms": 113
+      },
+      "tab2": {
+        "ok": true,
+        "status": 200,
+        "ms": 108
+      }
+    },
+    {
+      "when": "t+36481",
+      "tab1": {
+        "ok": true,
+        "status": 200,
+        "ms": 100
+      },
+      "tab2": {
+        "ok": true,
+        "status": 200,
+        "ms": 99
+      }
+    },
+    {
+      "when": "t+41670",
+      "tab1": {
+        "ok": true,
+        "status": 200,
+        "ms": 87
+      },
+      "tab2": {
+        "ok": true,
+        "status": 200,
+        "ms": 99
+      }
+    },
+    {
+      "when": "t+46860",
+      "tab1": {
+        "ok": true,
+        "status": 200,
+        "ms": 94
+      },
+      "tab2": {
+        "ok": true,
+        "status": 200,
+        "ms": 95
+      }
+    }
+  ],
+  "pageClaims": [
+    {
+      "when": "after-open-tab1",
+      "status": 200,
+      "ms": 92,
+      "ok": true,
+      "evicted": 1
+    },
+    {
+      "when": "dual-tab-parallel",
+      "tab1": {
+        "status": 200,
+        "ms": 95,
+        "ok": true,
+        "evicted": 1
+      },
+      "tab2": {
+        "status": 200,
+        "ms": 98,
+        "ok": true,
+        "evicted": 1
+      }
+    }
+  ],
+  "pendingAtEnd": [
+    {
+      "label": "tab1",
+      "pending": [
+        {
+          "name": "/api/chart/windows/heartbeat",
+          "duration": 133,
+          "transferSize": 411
+        },
+        {
+          "name": "/api/chart/windows/claim",
+          "duration": 120,
+          "transferSize": 413
+        },
+        {
+          "name": "/api/chart/windows/claim",
+          "duration": 93,
+          "transferSize": 413
+        }
+      ]
+    },
+    {
+      "label": "tab2",
+      "pending": [
+        {
+          "name": "/api/chart/windows/claim",
+          "duration": 106,
+          "transferSize": 420
+        },
+        {
+          "name": "/api/chart/windows/heartbeat",
+          "duration": 101,
+          "transferSize": 346
+        },
+        {
+          "name": "/api/chart/windows/claim",
+          "duration": 97,
+          "transferSize": 406
+        }
+      ]
+    }
+  ],
+  "verdict": {
+    "markersPresent": true,
+    "hangSurvived": true,
+    "stillOpenCount": 1,
+    "slowClosedCount": 0,
+    "apiSlowCount": 0,
+    "pageSlowCount": 0,
+    "note": "P0 REOPEN CONFIRMED behaviourally: timeout markers present AND path still slow/hangs"
+  },
+  "netSummary": {
+    "closed": [
+      {
+        "label": "tab1",
+        "url": "/api/auth/me",
+        "status": 200,
+        "err": null,
+        "ms": 129
+      },
+      {
+        "label": "tab1",
+        "url": "/api/chart/windows/claim",
+        "status": 200,
+        "err": null,
+        "ms": 137
+      },
+      {
+        "label": "tab1",
+        "url": "/api/auth/me",
+        "status": 200,
+        "err": null,
+        "ms": 264
+      },
+      {
+        "label": "tab1",
+        "url": "/api/auth/me",
+        "status": 200,
+        "err": null,
+        "ms": 102
+      },
+      {
+        "label": "tab1",
+        "url": "/api/chart/windows/claim",
+        "status": 200,
+        "err": null,
+        "ms": 90
+      },
+      {
+        "label": "tab1",
+        "url": "/api/auth/me",
+        "status": 200,
+        "err": null,
+        "ms": 118
+      },
+      {
+        "label": "tab1",
+        "url": "/api/auth/me",
+        "status": 200,
+        "err": null,
+        "ms": 280
+      },
+      {
+        "label": "tab1",
+        "url": "/api/chart/windows/claim",
+        "status": 200,
+        "err": null,
+        "ms": 119
+      },
+      {
+        "label": "tab2",
+        "url": "/api/auth/me",
+        "status": 200,
+        "err": null,
+        "ms": 115
+      },
+      {
+        "label": "tab2",
+        "url": "/api/auth/me",
+        "status": 200,
+        "err": null,
+        "ms": 405
+      },
+      {
+        "label": "tab2",
+        "url": "/api/chart/windows/claim",
+        "status": 200,
+        "err": null,
+        "ms": 106
+      },
+      {
+        "label": "tab1",
+        "url": "/api/auth/me",
+        "status": 200,
+        "err": null,
+        "ms": 140
+      },
+      {
+        "label": "tab2",
+        "url": "/api/auth/me",
+        "status": 200,
+        "err": null,
+        "ms": 106
+      },
+      {
+        "label": "tab1",
+        "url": "/api/auth/me",
+        "status": 200,
+        "err": null,
+        "ms": 99
+      },
+      {
+        "label": "tab2",
+        "url": "/api/auth/me",
+        "status": 200,
+        "err": null,
+        "ms": 100
+      },
+      {
+        "label": "tab1",
+        "url": "/api/auth/me",
+        "status": 200,
+        "err": null,
+        "ms": 98
+      },
+      {
+        "label": "tab2",
+        "url": "/api/auth/me",
+        "status": 200,
+        "err": null,
+        "ms": 107
+      },
+      {
+        "label": "tab1",
+        "url": "/api/auth/me",
+        "status": 200,
+        "err": null,
+        "ms": 106
+      },
+      {
+        "label": "tab2",
+        "url": "/api/auth/me",
+        "status": 200,
+        "err": null,
+        "ms": 89
+      },
+      {
+        "label": "tab1",
+        "url": "/api/chart/windows/heartbeat",
+        "status": 409,
+        "err": null,
+        "ms": 133
+      },
+      {
+        "label": "tab2",
+        "url": "/api/chart/windows/heartbeat",
+        "status": 200,
+        "err": null,
+        "ms": 101
+      },
+      {
+        "label": "tab1",
+        "url": "/api/auth/me",
+        "status": 200,
+        "err": null,
+        "ms": 94
+      },
+      {
+        "label": "tab2",
+        "url": "/api/auth/me",
+        "status": 200,
+        "err": null,
+        "ms": 95
+      },
+      {
+        "label": "tab1",
+        "url": "/api/auth/me",
+        "status": 200,
+        "err": null,
+        "ms": 113
+      },
+      {
+        "label": "tab2",
+        "url": "/api/auth/me",
+        "status": 200,
+        "err": null,
+        "ms": 108
+      },
+      {
+        "label": "tab1",
+        "url": "/api/auth/me",
+        "status": 200,
+        "err": null,
+        "ms": 99
+      },
+      {
+        "label": "tab2",
+        "url": "/api/auth/me",
+        "status": 200,
+        "err": null,
+        "ms": 98
+      },
+      {
+        "label": "tab1",
+        "url": "/api/auth/me",
+        "status": 200,
+        "err": null,
+        "ms": 86
+      },
+      {
+        "label": "tab2",
+        "url": "/api/auth/me",
+        "status": 200,
+        "err": null,
+        "ms": 99
+      },
+      {
+        "label": "tab1",
+        "url": "/api/auth/me",
+        "status": 200,
+        "err": null,
+        "ms": 93
+      },
+      {
+        "label": "tab2",
+        "url": "/api/auth/me",
+        "status": 200,
+        "err": null,
+        "ms": 95
+      },
+      {
+        "label": "tab1",
+        "url": "/api/chart/windows/claim",
+        "status": 200,
+        "err": null,
+        "ms": 94
+      },
+      {
+        "label": "tab2",
+        "url": "/api/chart/windows/claim",
+        "status": 200,
+        "err": null,
+        "ms": 97
+      }
+    ],
+    "stillOpen": [
+      {
+        "label": "tab1",
+        "url": "/api/chart/windows/release",
+        "method": "POST",
+        "openForMs": 51564
+      }
+    ]
+  }
+}
