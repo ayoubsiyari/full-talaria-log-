@@ -137,8 +137,12 @@ const save = () => fs.writeFileSync(OUT, JSON.stringify(report, null, 1));
       // rather than surfacing as an unhandled rejection that discards the grade.
       let g = null;
       try {
+        // forceGc was TRUE here and it was a real confound, not a detail. Collecting at every sample is a
+        // perturbation no user experiences, and on the arm the Director voided this afternoon it both
+        // suppressed roughly 200 MB of growth and explained why the page refused to get heavy. A soak
+        // measuring a slope must not repeatedly reset the thing whose slope it is measuring.
         g = await readSweepGauges(page, cdp, browserCdp, {
-          cpuWindowMs: 6_000, readOsFootprints, forceGc: true,
+          cpuWindowMs: 6_000, readOsFootprints, forceGc: false,
         });
       } catch (err) {
         const msg = String(err?.message || err);
@@ -171,7 +175,13 @@ const save = () => fs.writeFileSync(OUT, JSON.stringify(report, null, 1));
         footprintTotalMB: g.footprint?.totalPrivateMB ?? null,
         rendererMB: g.footprint?.pageRendererPrivateMB ?? null,
         gpuMB: g.footprint?.gpuProcessPrivateMB ?? null,
+        // Null BY DESIGN now, not by failure: no collection is forced during the run. A grader that saw a
+        // null here and read it as a broken gauge would draw the wrong conclusion, so it says so.
         heapPostGcMB: g.counters?.collected?.jsHeapMB ?? null,
+        heapPostGcUnavailableReason: g.counters?.collected?.jsHeapMB == null
+          ? 'no forced collection during the soak, by design — forcing GC every sample was the confound that voided this afternoon\'s arm'
+          : null,
+        heapLiveMB: g.counters?.live?.jsHeapMB ?? null,
         nodes: g.counters?.live?.nodes ?? null,
         listeners: g.counters?.live?.listeners ?? null,
         documents: g.counters?.live?.documents ?? null,
@@ -181,7 +191,7 @@ const save = () => fs.writeFileSync(OUT, JSON.stringify(report, null, 1));
       });
       save();
       const r = report.samples[report.samples.length - 1];
-      console.error(`[bend] #${n} ${r.hours}h closed=${r.closedTrades} foot=${r.footprintTotalMB}MB heap=${r.heapPostGcMB}MB nodes=${r.nodes} cpu=${r.rendererCpuPercent}%${reArmed ? ' RE-ARMED' : ''}`);
+      console.error(`[bend] #${n} ${r.hours}h closed=${r.closedTrades} foot=${r.footprintTotalMB}MB heapLive=${r.heapLiveMB}MB nodes=${r.nodes} cpu=${r.rendererCpuPercent}%${reArmed ? ' RE-ARMED' : ''}`);
 
       await sleep(SAMPLE_MS);
     }

@@ -1737,3 +1737,38 @@ arms, tab close. It runs in segments because the browser has died three times to
 what ended the last attempt at ten minutes; restarts are counted and reported, and the summary separates the
 longest continuous stretch from accumulated time because DUR-01 is satisfied by the former only. No scope
 added beyond the two ordered gauges.
+
+## 2026-07-31 17:45 — GATE-PHASE4 measured: the baseline did not move, and the four realms are one process sharing one isolate
+
+Read the 15:55 ruling. Pre-empted my own ten-hour soak an hour in to run the baseline on a quiet machine,
+because a number gating 665 hours cannot be measured under contention. Segment 1 preserved.
+
+**The answer: the baseline is NOT comfortably under 1 GB.** Post-GC 1,159.7 MB CI[1098,1221] against the b116
+premise of 1,122.1 — unchanged, the premise sits inside my CI. Live 1,342.9 MB CI[1318,1368], which is 842.9
+MB over the 500 MB bar. A's journal fix did not move the CONF-01 chart baseline, consistent with my census
+finding that the journal is not fetched during chart load; the 2.49 GB of decoded pixels it removed was never
+part of this baseline.
+
+**The 497 was derived from two differently scoped numbers and I would not have staked 665 hours on it.** It
+subtracted a one-isolate heap from the LARGEST SINGLE renderer process, with the worker heap row null so two
+worker isolates were being counted as native cost. Corrected — every renderer summed, every isolate summed,
+workers read per-isolate — the post-GC figure is 477.7 against their 497.2. Wrong derivation, right magnitude.
+
+**The finding that changes the decision: there are not four heavy realms.** One renderer holds 906 of 989 MB
+and Target.getTargets returns NO iframe targets, so the panels are same-origin, in-process, and share the main
+frame's V8 isolate. Phase 4 cannot recover three process overheads because they do not exist; the target is
+duplicated per-realm structure inside one process. And 254.8 MB of JS heap survives the collapse since one
+realm still holds four datasets, so nobody should price Phase 4 as recovering 730 MB or 497.
+
+Side effect: the standing worry that usedJSHeapSize is blind to iframe heaps is TRUE for out-of-process frames
+and FALSE in CONF-01. My own row was labelled "page isolate" as though it were a gap when it already covered
+all four realms.
+
+**Walking back my own P0.** With forced GC removed the clean-arm check reached 1,526.1 MB and kept going. The
+1.38 GB ceiling is soft and load-dependent, not a constant, and A and B should not spend a cycle hunting it.
+The deaths were real; the threshold was not.
+
+**Clean arms done, soak relaunched 17:44.** bend-soak was sampling with forceGc:true — collecting every three
+minutes for ten hours, resetting the very quantity whose slope it measures. Now live, with the post-GC field
+labelled null-by-design. The live-versus-collected gap is 183.2 MB, which is the size of the perturbation I
+had been introducing and what users actually carry.
