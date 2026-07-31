@@ -21,7 +21,10 @@ strength of that ruling.
 
 ## What A should cut, unchanged from my 00:25 escalation
 
-1. **`_m19iB62WindowFp` called with `tailStart = 0`** from `_m19iExactTailPaintFp` — a full-history
+1. **`_m19iB62WindowFp` called with `tailStart = 0`** from `_m19iExactTailPaintFp`, both in
+   **`chart/modules/chart-indicators-full.js`** (verified live on b116: 5 and 7 occurrences, plus 3
+   of the kill switch — the file is the indicators module, not `chart.js`, which is where I would
+   have looked first) — a full-history
    FNV hash per paint, computed *before* the memo comparison, so the cache key costs more than a
    miss. Self-time share grew 15.72% → 29.26% within one run. Dose-response 0.487 ms per 1,000
    bars hashed, replicated at 0.494. 7.15 calls per bar, 9.73 ms per bar, 13.2% of wall clock.

@@ -1,0 +1,173 @@
+{
+ "signature": "INDICATOR-DECAY-AB-V1-MERGED",
+ "configurationMismatch": [
+  "build 20260730b115 vs 20260730b116"
+ ],
+ "comparable": false,
+ "build": "20260730b115",
+ "twoIndicators": {
+  "samples": 28,
+  "barSpan": {
+   "from": 6587,
+   "to": 20152
+  },
+  "cpuMsPerBarFirstThird": 54.63,
+  "cpuMsPerBarLastThird": 76.96,
+  "cpuMsPerBarChangePercent": 40.9,
+  "barsPerSecFirstThird": 18.43,
+  "barsPerSecLastThird": 12.95,
+  "cpuPercentMean": 98.9,
+  "trends": {
+   "cpuMsPerBar": {
+    "xUnit": "per 1,000 bars played",
+    "label": "cpuMsPerBar @2ind",
+    "n": 28,
+    "spanHours": 13.565,
+    "durationOk": true,
+    "first": 47.74,
+    "last": 79.41,
+    "min": 47.03,
+    "max": 93.9,
+    "perHour": 2.444,
+    "slopeCi95": [
+     1.811,
+     3.076
+    ],
+    "slopeSe": 0.31,
+    "rSquared": 0.705,
+    "flatBandPerHour": 0.5,
+    "projectedPerHourAt8h": 19.5,
+    "verdict": "CLIMBS"
+   },
+   "barsPerSec": {
+    "xUnit": "per 1,000 bars played",
+    "label": "barsPerSec @2ind",
+    "n": 28,
+    "spanHours": 13.565,
+    "durationOk": true,
+    "first": 20.91,
+    "last": 12.61,
+    "min": 8.38,
+    "max": 20.91,
+    "perHour": -0.605,
+    "slopeCi95": [
+     -0.78,
+     -0.429
+    ],
+    "slopeSe": 0.086,
+    "rSquared": 0.656,
+    "flatBandPerHour": 0.1,
+    "projectedPerHourAt8h": -4.8,
+    "verdict": "FALLS"
+   }
+  },
+  "modeAtStart": [
+   "candle",
+   "candle",
+   "candle",
+   "candle"
+  ],
+  "modeAtEnd": [
+   "candle",
+   "candle",
+   "candle",
+   "candle"
+  ],
+  "loopKindAtEnd": [
+   "candle",
+   null,
+   null,
+   null
+  ],
+  "indicatorsAtEnd": [
+   2,
+   2,
+   2,
+   2
+  ]
+ },
+ "zeroIndicators": {
+  "samples": 28,
+  "barSpan": {
+   "from": 7199,
+   "to": 33521
+  },
+  "cpuMsPerBarFirstThird": 25.22,
+  "cpuMsPerBarLastThird": 41.5,
+  "cpuMsPerBarChangePercent": 64.6,
+  "barsPerSecFirstThird": 37.72,
+  "barsPerSecLastThird": 24.04,
+  "cpuPercentMean": 97.76,
+  "trends": {
+   "cpuMsPerBar": {
+    "xUnit": "per 1,000 bars played",
+    "label": "cpuMsPerBar @0ind",
+    "n": 28,
+    "spanHours": 26.322,
+    "durationOk": true,
+    "first": 22.53,
+    "last": 47.53,
+    "min": 22.53,
+    "max": 47.53,
+    "perHour": 0.881,
+    "slopeCi95": [
+     0.807,
+     0.954
+    ],
+    "slopeSe": 0.036,
+    "rSquared": 0.958,
+    "flatBandPerHour": 0.5,
+    "projectedPerHourAt8h": 7,
+    "verdict": "CLIMBS"
+   },
+   "barsPerSec": {
+    "xUnit": "per 1,000 bars played",
+    "label": "barsPerSec @0ind",
+    "n": 28,
+    "spanHours": 26.322,
+    "durationOk": true,
+    "first": 40.26,
+    "last": 20.72,
+    "min": 20.72,
+    "max": 40.26,
+    "perHour": -0.742,
+    "slopeCi95": [
+     -0.8,
+     -0.685
+    ],
+    "slopeSe": 0.028,
+    "rSquared": 0.964,
+    "flatBandPerHour": 0.1,
+    "projectedPerHourAt8h": -5.9,
+    "verdict": "FALLS"
+   }
+  },
+  "modeAtStart": [
+   "candle",
+   "candle",
+   "candle",
+   "candle"
+  ],
+  "modeAtEnd": [
+   "candle",
+   "candle",
+   "candle",
+   "candle"
+  ],
+  "loopKindAtEnd": [
+   "candle",
+   null,
+   null,
+   null
+  ],
+  "indicatorsAtEnd": [
+   0,
+   0,
+   0,
+   0
+  ]
+ },
+ "zeroArmVerifiedAtZeroIndicators": 4,
+ "zeroArmFailedIn": [],
+ "answer": "THE DECAY SURVIVES ZERO INDICATORS — the indicator paths are not the whole of Monster 2"
+}
