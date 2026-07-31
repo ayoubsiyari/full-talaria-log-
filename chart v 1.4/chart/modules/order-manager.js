@@ -1415,6 +1415,31 @@ class OrderManager {
     }
 
     /**
+     * The chart a TRADE ACTION belongs to, resolved from the order record alone.
+     *
+     * Deliberately NOT _getOrderContextChart: that one answers "which chart is the user looking at",
+     * which is the right question for live UI and the wrong one for journaling. A close writes a
+     * permanent record, and whichever panel happens to hold focus at the moment a background position
+     * hits its stop has no bearing on which instrument was traded.
+     *
+     * Returns null when the record does not name a resolvable owner (no sourceFileId, no match, or two
+     * panels showing one file). Callers fall back to the focused-chart reading in that case, so this is
+     * strictly an improvement on the legacy path and never a new failure mode.
+     */
+    _resolveJournalContextChart(order) {
+        if (typeof window === 'undefined') return null;
+        if (window.__TALARIA_DISABLE_JOURNAL_ATTRIBUTION_V1) return null;
+        const resolve = window.TalariaTradeAttribution
+            && window.TalariaTradeAttribution._resolveTradeJournalAttribution;
+        if (typeof resolve !== 'function') return null;
+        try {
+            return resolve(order) || null;
+        } catch (_e) {
+            return null;
+        }
+    }
+
+    /**
      * Replay driver for the chart that owns the dataset (must match getCurrentCandle / tick animation).
      */
     _playbackReplaySystem() {
@@ -7010,8 +7035,15 @@ class OrderManager {
         return true;
     }
 
-    _getActiveInstrumentSettings() {
-        const ticker = this._getActiveTicker();
+    /**
+     * @param {object} [contextChart] price the instrument against THIS chart instead of the focused one.
+     *   Journaling passes the chart the order record names, so a close records the scalars of the pair
+     *   that was actually traded even while another panel holds focus. Every other caller omits it and
+     *   keeps the focused-chart reading, which is correct for live UI.
+     */
+    _getActiveInstrumentSettings(contextChart) {
+        const ticker = (contextChart && this._normalizeTicker(contextChart.currentSymbol))
+            || this._getActiveTicker();
         let base;
         if (this.orderService && typeof this.orderService.getInstrumentSettings === 'function') {
             base = this.orderService.getInstrumentSettings(ticker, {
@@ -7031,7 +7063,12 @@ class OrderManager {
             try {
                 const calc = window.marketCalcEngine.getCalculator(ticker, this.marketType);
                 if (calc && calc.specs && Number.isFinite(calc.specs.pipSize) && calc.specs.pipSize > 0) {
-                    const cc = typeof this.getCurrentCandle === 'function' ? this.getCurrentCandle() : null;
+                    // The mark feeds calcPipValuePerLot, so it must come from the same chart as the
+                    // ticker above — reading the focused chart here is what recorded a 1.08-shaped
+                    // mark against a 156-shaped pair.
+                    const cc = contextChart
+                        ? this._getCurrentCandleForChart(contextChart)
+                        : (typeof this.getCurrentCandle === 'function' ? this.getCurrentCandle() : null);
                     const mark = cc && Number.isFinite(Number.parseFloat(cc.c)) ? Number.parseFloat(cc.c) : undefined;
                     let pv = null;
                     if (typeof calc.calcPipValuePerLot === 'function') {
@@ -13567,8 +13604,15 @@ class OrderManager {
         }
         
         // Resolve ticker from the order first so background/synced trades are attributed correctly.
-        const symbol = order.ticker || order.symbol || this._getActiveTicker();
-        const instrumentSettings = order.instrument_settings || this._getActiveInstrumentSettings();
+        // The ticker was already order-first; the SCALARS were not, so a row could name one pair and
+        // price it with another's pip size and mark. Both now fall back to the chart the record names
+        // before they fall back to whichever chart has focus.
+        const journalChart = this._resolveJournalContextChart(order);
+        const symbol = order.ticker || order.symbol
+            || (journalChart && this._normalizeTicker(journalChart.currentSymbol))
+            || this._getActiveTicker();
+        const instrumentSettings = order.instrument_settings
+            || this._getActiveInstrumentSettings(journalChart);
 
         const defaultSetup = this._getSessionDefaultTradeSetup();
         const userPre = order.journalEntry?.preTradeNotes;
