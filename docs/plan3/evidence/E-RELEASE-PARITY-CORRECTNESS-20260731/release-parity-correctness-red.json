@@ -1,0 +1,735 @@
+{
+  "signature": "TALARIA_E_RELEASE_PARITY_CORRECTNESS_V1",
+  "status": "GREEN",
+  "green": {
+    "signature": "TALARIA_E_RELEASE_PARITY_CORRECTNESS_V1",
+    "mode": "scoped",
+    "conf01": {
+      "panels": [
+        {
+          "id": "A",
+          "symbol": "XAUUSD",
+          "fileId": 677,
+          "timeframe": "1m"
+        },
+        {
+          "id": "B",
+          "symbol": "HOG",
+          "fileId": 673,
+          "timeframe": "5m"
+        },
+        {
+          "id": "C",
+          "symbol": "ETHBTC",
+          "fileId": 670,
+          "timeframe": "15m"
+        },
+        {
+          "id": "D",
+          "symbol": "BTCEUR",
+          "fileId": 669,
+          "timeframe": "1h"
+        }
+      ],
+      "fourPanels": true,
+      "fourDistinctSymbols": true,
+      "fourDistinctTimeframes": true,
+      "acceptanceWeight": "same-symbol panels earn no credit"
+    },
+    "status": "GREEN",
+    "failures": [],
+    "cells": [
+      {
+        "cell": "CORRECTNESS-INDICATOR",
+        "surface": "indicator",
+        "targetId": "B",
+        "status": "GREEN",
+        "peersIdentical": true,
+        "targetChanged": true,
+        "peerFailures": [],
+        "targetFailures": []
+      },
+      {
+        "cell": "CORRECTNESS-DRAWING",
+        "surface": "drawing",
+        "targetId": "C",
+        "status": "GREEN",
+        "peersIdentical": true,
+        "targetChanged": true,
+        "peerFailures": [],
+        "targetFailures": []
+      },
+      {
+        "cell": "CORRECTNESS-OVERLAY",
+        "surface": "overlay",
+        "targetId": "D",
+        "status": "GREEN",
+        "peersIdentical": true,
+        "targetChanged": true,
+        "peerFailures": [],
+        "targetFailures": []
+      }
+    ]
+  },
+  "redControls": [
+    {
+      "cell": "RP-INDICATOR-GLOBAL-SLOT",
+      "mode": "globalIndicatorSlot",
+      "expectedFailureReason": "indicator-cross-contamination",
+      "report": {
+        "signature": "TALARIA_E_RELEASE_PARITY_CORRECTNESS_V1",
+        "mode": "globalIndicatorSlot",
+        "conf01": {
+          "panels": [
+            {
+              "id": "A",
+              "symbol": "XAUUSD",
+              "fileId": 677,
+              "timeframe": "1m"
+            },
+            {
+              "id": "B",
+              "symbol": "HOG",
+              "fileId": 673,
+              "timeframe": "5m"
+            },
+            {
+              "id": "C",
+              "symbol": "ETHBTC",
+              "fileId": 670,
+              "timeframe": "15m"
+            },
+            {
+              "id": "D",
+              "symbol": "BTCEUR",
+              "fileId": 669,
+              "timeframe": "1h"
+            }
+          ],
+          "fourPanels": true,
+          "fourDistinctSymbols": true,
+          "fourDistinctTimeframes": true,
+          "acceptanceWeight": "same-symbol panels earn no credit"
+        },
+        "status": "RED",
+        "failures": [
+          {
+            "cell": "CORRECTNESS-INDICATOR",
+            "targetId": "B",
+            "reason": "indicator-cross-contamination",
+            "peerFailures": [
+              {
+                "surface": "indicator",
+                "panelId": "A",
+                "name": "smaTip",
+                "reason": "indicator-cross-contamination",
+                "value": {
+                  "ownerPanelId": "B",
+                  "symbol": "HOG",
+                  "value": 610
+                }
+              },
+              {
+                "surface": "indicator",
+                "panelId": "C",
+                "name": "smaTip",
+                "reason": "indicator-cross-contamination",
+                "value": {
+                  "ownerPanelId": "B",
+                  "symbol": "HOG",
+                  "value": 610
+                }
+              },
+              {
+                "surface": "indicator",
+                "panelId": "D",
+                "name": "smaTip",
+                "reason": "indicator-cross-contamination",
+                "value": {
+                  "ownerPanelId": "B",
+                  "symbol": "HOG",
+                  "value": 610
+                }
+              }
+            ],
+            "targetFailures": []
+          }
+        ],
+        "cells": [
+          {
+            "cell": "CORRECTNESS-INDICATOR",
+            "surface": "indicator",
+            "targetId": "B",
+            "status": "RED",
+            "peersIdentical": true,
+            "targetChanged": true,
+            "peerFailures": [
+              {
+                "surface": "indicator",
+                "panelId": "A",
+                "name": "smaTip",
+                "reason": "indicator-cross-contamination",
+                "value": {
+                  "ownerPanelId": "B",
+                  "symbol": "HOG",
+                  "value": 610
+                }
+              },
+              {
+                "surface": "indicator",
+                "panelId": "C",
+                "name": "smaTip",
+                "reason": "indicator-cross-contamination",
+                "value": {
+                  "ownerPanelId": "B",
+                  "symbol": "HOG",
+                  "value": 610
+                }
+              },
+              {
+                "surface": "indicator",
+                "panelId": "D",
+                "name": "smaTip",
+                "reason": "indicator-cross-contamination",
+                "value": {
+                  "ownerPanelId": "B",
+                  "symbol": "HOG",
+                  "value": 610
+                }
+              }
+            ],
+            "targetFailures": []
+          },
+          {
+            "cell": "CORRECTNESS-DRAWING",
+            "surface": "drawing",
+            "targetId": "C",
+            "status": "GREEN",
+            "peersIdentical": true,
+            "targetChanged": true,
+            "peerFailures": [],
+            "targetFailures": []
+          },
+          {
+            "cell": "CORRECTNESS-OVERLAY",
+            "surface": "overlay",
+            "targetId": "D",
+            "status": "GREEN",
+            "peersIdentical": true,
+            "targetChanged": true,
+            "peerFailures": [],
+            "targetFailures": []
+          }
+        ]
+      },
+      "status": "GREEN"
+    },
+    {
+      "cell": "RP-DRAWING-GLOBAL-LAYER",
+      "mode": "globalDrawingLayer",
+      "expectedFailureReason": "drawing-cross-contamination",
+      "report": {
+        "signature": "TALARIA_E_RELEASE_PARITY_CORRECTNESS_V1",
+        "mode": "globalDrawingLayer",
+        "conf01": {
+          "panels": [
+            {
+              "id": "A",
+              "symbol": "XAUUSD",
+              "fileId": 677,
+              "timeframe": "1m"
+            },
+            {
+              "id": "B",
+              "symbol": "HOG",
+              "fileId": 673,
+              "timeframe": "5m"
+            },
+            {
+              "id": "C",
+              "symbol": "ETHBTC",
+              "fileId": 670,
+              "timeframe": "15m"
+            },
+            {
+              "id": "D",
+              "symbol": "BTCEUR",
+              "fileId": 669,
+              "timeframe": "1h"
+            }
+          ],
+          "fourPanels": true,
+          "fourDistinctSymbols": true,
+          "fourDistinctTimeframes": true,
+          "acceptanceWeight": "same-symbol panels earn no credit"
+        },
+        "status": "RED",
+        "failures": [
+          {
+            "cell": "CORRECTNESS-DRAWING",
+            "targetId": "C",
+            "reason": "drawing-cross-contamination",
+            "peerFailures": [
+              {
+                "surface": "drawing",
+                "panelId": "A",
+                "drawingId": "C-trendline",
+                "reason": "drawing-cross-contamination",
+                "value": {
+                  "id": "C-trendline",
+                  "ownerPanelId": "C",
+                  "symbol": "ETHBTC",
+                  "type": "trendline",
+                  "points": [
+                    {
+                      "x": 1,
+                      "y": 179
+                    },
+                    {
+                      "x": 2,
+                      "y": 184
+                    }
+                  ]
+                }
+              },
+              {
+                "surface": "drawing",
+                "panelId": "B",
+                "drawingId": "C-trendline",
+                "reason": "drawing-cross-contamination",
+                "value": {
+                  "id": "C-trendline",
+                  "ownerPanelId": "C",
+                  "symbol": "ETHBTC",
+                  "type": "trendline",
+                  "points": [
+                    {
+                      "x": 1,
+                      "y": 179
+                    },
+                    {
+                      "x": 2,
+                      "y": 184
+                    }
+                  ]
+                }
+              },
+              {
+                "surface": "drawing",
+                "panelId": "D",
+                "drawingId": "C-trendline",
+                "reason": "drawing-cross-contamination",
+                "value": {
+                  "id": "C-trendline",
+                  "ownerPanelId": "C",
+                  "symbol": "ETHBTC",
+                  "type": "trendline",
+                  "points": [
+                    {
+                      "x": 1,
+                      "y": 179
+                    },
+                    {
+                      "x": 2,
+                      "y": 184
+                    }
+                  ]
+                }
+              }
+            ],
+            "targetFailures": []
+          }
+        ],
+        "cells": [
+          {
+            "cell": "CORRECTNESS-INDICATOR",
+            "surface": "indicator",
+            "targetId": "B",
+            "status": "GREEN",
+            "peersIdentical": true,
+            "targetChanged": true,
+            "peerFailures": [],
+            "targetFailures": []
+          },
+          {
+            "cell": "CORRECTNESS-DRAWING",
+            "surface": "drawing",
+            "targetId": "C",
+            "status": "RED",
+            "peersIdentical": false,
+            "targetChanged": true,
+            "peerFailures": [
+              {
+                "surface": "drawing",
+                "panelId": "A",
+                "drawingId": "C-trendline",
+                "reason": "drawing-cross-contamination",
+                "value": {
+                  "id": "C-trendline",
+                  "ownerPanelId": "C",
+                  "symbol": "ETHBTC",
+                  "type": "trendline",
+                  "points": [
+                    {
+                      "x": 1,
+                      "y": 179
+                    },
+                    {
+                      "x": 2,
+                      "y": 184
+                    }
+                  ]
+                }
+              },
+              {
+                "surface": "drawing",
+                "panelId": "B",
+                "drawingId": "C-trendline",
+                "reason": "drawing-cross-contamination",
+                "value": {
+                  "id": "C-trendline",
+                  "ownerPanelId": "C",
+                  "symbol": "ETHBTC",
+                  "type": "trendline",
+                  "points": [
+                    {
+                      "x": 1,
+                      "y": 179
+                    },
+                    {
+                      "x": 2,
+                      "y": 184
+                    }
+                  ]
+                }
+              },
+              {
+                "surface": "drawing",
+                "panelId": "D",
+                "drawingId": "C-trendline",
+                "reason": "drawing-cross-contamination",
+                "value": {
+                  "id": "C-trendline",
+                  "ownerPanelId": "C",
+                  "symbol": "ETHBTC",
+                  "type": "trendline",
+                  "points": [
+                    {
+                      "x": 1,
+                      "y": 179
+                    },
+                    {
+                      "x": 2,
+                      "y": 184
+                    }
+                  ]
+                }
+              }
+            ],
+            "targetFailures": []
+          },
+          {
+            "cell": "CORRECTNESS-OVERLAY",
+            "surface": "overlay",
+            "targetId": "D",
+            "status": "GREEN",
+            "peersIdentical": true,
+            "targetChanged": true,
+            "peerFailures": [],
+            "targetFailures": []
+          }
+        ]
+      },
+      "status": "GREEN"
+    },
+    {
+      "cell": "RP-OVERLAY-GLOBAL-LAYER",
+      "mode": "globalOverlayLayer",
+      "expectedFailureReason": "overlay-cross-contamination",
+      "report": {
+        "signature": "TALARIA_E_RELEASE_PARITY_CORRECTNESS_V1",
+        "mode": "globalOverlayLayer",
+        "conf01": {
+          "panels": [
+            {
+              "id": "A",
+              "symbol": "XAUUSD",
+              "fileId": 677,
+              "timeframe": "1m"
+            },
+            {
+              "id": "B",
+              "symbol": "HOG",
+              "fileId": 673,
+              "timeframe": "5m"
+            },
+            {
+              "id": "C",
+              "symbol": "ETHBTC",
+              "fileId": 670,
+              "timeframe": "15m"
+            },
+            {
+              "id": "D",
+              "symbol": "BTCEUR",
+              "fileId": 669,
+              "timeframe": "1h"
+            }
+          ],
+          "fourPanels": true,
+          "fourDistinctSymbols": true,
+          "fourDistinctTimeframes": true,
+          "acceptanceWeight": "same-symbol panels earn no credit"
+        },
+        "status": "RED",
+        "failures": [
+          {
+            "cell": "CORRECTNESS-OVERLAY",
+            "targetId": "D",
+            "reason": "overlay-cross-contamination",
+            "peerFailures": [
+              {
+                "surface": "overlay",
+                "panelId": "A",
+                "kind": "legendRows",
+                "reason": "overlay-cross-contamination",
+                "value": {
+                  "ownerPanelId": "D",
+                  "symbol": "BTCEUR",
+                  "text": "BTCEUR:refreshed"
+                }
+              },
+              {
+                "surface": "overlay",
+                "panelId": "A",
+                "kind": "axisTags",
+                "reason": "overlay-cross-contamination",
+                "value": {
+                  "ownerPanelId": "D",
+                  "symbol": "BTCEUR",
+                  "text": "D:axis:refreshed"
+                }
+              },
+              {
+                "surface": "overlay",
+                "panelId": "A",
+                "kind": "sessionLabels",
+                "reason": "overlay-cross-contamination",
+                "value": {
+                  "ownerPanelId": "D",
+                  "symbol": "BTCEUR",
+                  "text": "BTCEUR:session:refreshed"
+                }
+              },
+              {
+                "surface": "overlay",
+                "panelId": "B",
+                "kind": "legendRows",
+                "reason": "overlay-cross-contamination",
+                "value": {
+                  "ownerPanelId": "D",
+                  "symbol": "BTCEUR",
+                  "text": "BTCEUR:refreshed"
+                }
+              },
+              {
+                "surface": "overlay",
+                "panelId": "B",
+                "kind": "axisTags",
+                "reason": "overlay-cross-contamination",
+                "value": {
+                  "ownerPanelId": "D",
+                  "symbol": "BTCEUR",
+                  "text": "D:axis:refreshed"
+                }
+              },
+              {
+                "surface": "overlay",
+                "panelId": "B",
+                "kind": "sessionLabels",
+                "reason": "overlay-cross-contamination",
+                "value": {
+                  "ownerPanelId": "D",
+                  "symbol": "BTCEUR",
+                  "text": "BTCEUR:session:refreshed"
+                }
+              },
+              {
+                "surface": "overlay",
+                "panelId": "C",
+                "kind": "legendRows",
+                "reason": "overlay-cross-contamination",
+                "value": {
+                  "ownerPanelId": "D",
+                  "symbol": "BTCEUR",
+                  "text": "BTCEUR:refreshed"
+                }
+              },
+              {
+                "surface": "overlay",
+                "panelId": "C",
+                "kind": "axisTags",
+                "reason": "overlay-cross-contamination",
+                "value": {
+                  "ownerPanelId": "D",
+                  "symbol": "BTCEUR",
+                  "text": "D:axis:refreshed"
+                }
+              },
+              {
+                "surface": "overlay",
+                "panelId": "C",
+                "kind": "sessionLabels",
+                "reason": "overlay-cross-contamination",
+                "value": {
+                  "ownerPanelId": "D",
+                  "symbol": "BTCEUR",
+                  "text": "BTCEUR:session:refreshed"
+                }
+              }
+            ],
+            "targetFailures": []
+          }
+        ],
+        "cells": [
+          {
+            "cell": "CORRECTNESS-INDICATOR",
+            "surface": "indicator",
+            "targetId": "B",
+            "status": "GREEN",
+            "peersIdentical": true,
+            "targetChanged": true,
+            "peerFailures": [],
+            "targetFailures": []
+          },
+          {
+            "cell": "CORRECTNESS-DRAWING",
+            "surface": "drawing",
+            "targetId": "C",
+            "status": "GREEN",
+            "peersIdentical": true,
+            "targetChanged": true,
+            "peerFailures": [],
+            "targetFailures": []
+          },
+          {
+            "cell": "CORRECTNESS-OVERLAY",
+            "surface": "overlay",
+            "targetId": "D",
+            "status": "RED",
+            "peersIdentical": false,
+            "targetChanged": true,
+            "peerFailures": [
+              {
+                "surface": "overlay",
+                "panelId": "A",
+                "kind": "legendRows",
+                "reason": "overlay-cross-contamination",
+                "value": {
+                  "ownerPanelId": "D",
+                  "symbol": "BTCEUR",
+                  "text": "BTCEUR:refreshed"
+                }
+              },
+              {
+                "surface": "overlay",
+                "panelId": "A",
+                "kind": "axisTags",
+                "reason": "overlay-cross-contamination",
+                "value": {
+                  "ownerPanelId": "D",
+                  "symbol": "BTCEUR",
+                  "text": "D:axis:refreshed"
+                }
+              },
+              {
+                "surface": "overlay",
+                "panelId": "A",
+                "kind": "sessionLabels",
+                "reason": "overlay-cross-contamination",
+                "value": {
+                  "ownerPanelId": "D",
+                  "symbol": "BTCEUR",
+                  "text": "BTCEUR:session:refreshed"
+                }
+              },
+              {
+                "surface": "overlay",
+                "panelId": "B",
+                "kind": "legendRows",
+                "reason": "overlay-cross-contamination",
+                "value": {
+                  "ownerPanelId": "D",
+                  "symbol": "BTCEUR",
+                  "text": "BTCEUR:refreshed"
+                }
+              },
+              {
+                "surface": "overlay",
+                "panelId": "B",
+                "kind": "axisTags",
+                "reason": "overlay-cross-contamination",
+                "value": {
+                  "ownerPanelId": "D",
+                  "symbol": "BTCEUR",
+                  "text": "D:axis:refreshed"
+                }
+              },
+              {
+                "surface": "overlay",
+                "panelId": "B",
+                "kind": "sessionLabels",
+                "reason": "overlay-cross-contamination",
+                "value": {
+                  "ownerPanelId": "D",
+                  "symbol": "BTCEUR",
+                  "text": "BTCEUR:session:refreshed"
+                }
+              },
+              {
+                "surface": "overlay",
+                "panelId": "C",
+                "kind": "legendRows",
+                "reason": "overlay-cross-contamination",
+                "value": {
+                  "ownerPanelId": "D",
+                  "symbol": "BTCEUR",
+                  "text": "BTCEUR:refreshed"
+                }
+              },
+              {
+                "surface": "overlay",
+                "panelId": "C",
+                "kind": "axisTags",
+                "reason": "overlay-cross-contamination",
+                "value": {
+                  "ownerPanelId": "D",
+                  "symbol": "BTCEUR",
+                  "text": "D:axis:refreshed"
+                }
+              },
+              {
+                "surface": "overlay",
+                "panelId": "C",
+                "kind": "sessionLabels",
+                "reason": "overlay-cross-contamination",
+                "value": {
+                  "ownerPanelId": "D",
+                  "symbol": "BTCEUR",
+                  "text": "BTCEUR:session:refreshed"
+                }
+              }
+            ],
+            "targetFailures": []
+          }
+        ]
+      },
+      "status": "GREEN"
+    }
+  ],
+  "releaseAuthority": {
+    "currentLimitation": "Cycle 2 model oracle; must be wired into the real single-realm app before final release credit.",
+    "transplantTarget": "D release-parity-non-contamination suite or successor real-app parity gate"
+  },
+  "measuredAt": "2026-07-31T12:43:02.170Z"
+}
