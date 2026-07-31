@@ -1,0 +1,18 @@
+[heap-cycle 2026-07-31T01:17:00.910Z] layout UI → 4 (li=0)
+[heap-cycle 2026-07-31T01:17:14.388Z] datasets mode=distinct observed=4/4 [A:677@1m(2011) B:673@5m(1596) C:670@15m(1911) D:669@1h(495)]
+[heap-cycle-po-workload 2026-07-31T01:17:14.391Z] arm panel A: wait ready
+[heap-cycle-po-workload 2026-07-31T01:17:14.730Z] arm panel A: ok=false ind=2 replay=true playing=true
+[heap-cycle-po-workload 2026-07-31T01:17:14.731Z] arm panel B: wait ready
+[heap-cycle-po-workload 2026-07-31T01:17:18.503Z] arm panel B: ok=false ind=2 replay=true playing=true
+[heap-cycle-po-workload 2026-07-31T01:17:18.503Z] arm panel C: wait ready
+[heap-cycle-po-workload 2026-07-31T01:17:21.933Z] arm panel C: ok=false ind=2 replay=true playing=true
+[heap-cycle-po-workload 2026-07-31T01:17:21.933Z] arm panel D: wait ready
+[heap-cycle-po-workload 2026-07-31T01:17:25.402Z] arm panel D: ok=false ind=2 replay=true playing=true
+[heap-cycle-po-workload 2026-07-31T01:17:25.402Z] order SKIPPED (zero-trade reproduction)
+[heap-cycle-po-workload 2026-07-31T01:17:33.493Z] play hold done observedPlaying=4
+[tpp] build=20260730b116 closedTrades=[null,null,null,null]
+[tpp] candle, set while paused: mode=candle,candle,candle,candle loopKind=candle,,, playing=1/4 progress=4/4 (byIndex=1 bySim=4 residentGrew=1) hostIdx+2378 cpu=99.6% STALLED=false
+[tpp] tick, set while paused: mode=tick,tick,tick,tick loopKind=tick,,, playing=1/4 progress=4/4 (byIndex=1 bySim=4 residentGrew=1) hostIdx+115 cpu=94.2% STALLED=false
+[tpp] candle again (re-arm for the mid-play switch): mode=candle,candle,candle,candle loopKind=candle,,, playing=1/4 progress=4/4 (byIndex=1 bySim=4 residentGrew=1) hostIdx+345 cpu=100.4% STALLED=false
+[tpp] tick, set while already playing: mode=tick,tick,tick,tick loopKind=tick,,, playing=1/4 progress=4/4 (byIndex=1 bySim=4 residentGrew=1) hostIdx+115 cpu=89.3% STALLED=false
+[tpp] ANSWER: tick advances in both selections; the stall in the decay run has another cause

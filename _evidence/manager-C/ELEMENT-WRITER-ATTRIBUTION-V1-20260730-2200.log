@@ -1,0 +1,54 @@
+[heap-cycle 2026-07-30T21:01:30.146Z] layout UI → 4 (li=0)
+[heap-cycle 2026-07-30T21:01:43.540Z] datasets mode=distinct observed=4/4 [A:677@1m(2011) B:673@5m(1596) C:670@15m(1911) D:669@1h(495)]
+[heap-cycle-po-workload 2026-07-30T21:01:43.544Z] arm panel A: wait ready
+[heap-cycle-po-workload 2026-07-30T21:01:43.713Z] arm panel A: ok=true ind=4 replay=true playing=true
+[heap-cycle-po-workload 2026-07-30T21:01:43.713Z] arm panel B: wait ready
+[heap-cycle-po-workload 2026-07-30T21:01:43.884Z] arm panel B: ok=true ind=4 replay=true playing=true
+[heap-cycle-po-workload 2026-07-30T21:01:43.888Z] arm panel C: wait ready
+[heap-cycle-po-workload 2026-07-30T21:01:44.151Z] arm panel C: ok=true ind=4 replay=true playing=true
+[heap-cycle-po-workload 2026-07-30T21:01:44.151Z] arm panel D: wait ready
+[heap-cycle-po-workload 2026-07-30T21:01:44.422Z] arm panel D: ok=true ind=4 replay=true playing=true
+[heap-cycle-po-workload 2026-07-30T21:01:44.515Z] order ok=true openCount=1
+[heap-cycle-po-workload 2026-07-30T21:01:53.191Z] play hold done observedPlaying=4
+[ewa] build={"scriptVersion":"20260730b113","href":"http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&mcLayout=1"} conf01=true
+[ewa] instrumented 4 realms: 6w,6w,6w,6w
+[ewa] GATE-01 synthetic writer installed in 4 realms at 40/5s
+[ewa] #1 0.2min elements=5468 pre=4882 closed=2 advancing=4 top=R3@talaria-v9-live.js:40:191 ewaSyntheticLeakWriter@pptr:;CdpFrame.%3Canonymous%3E%20c%3A%5CUsers%5Cuser%5CDesktop%5Ctalaria1%5Cfull-talaria-log--main%5Cchart%20v%201.4%5Cchart%5Cmultichart-prod%5Charness%5Cnode_modules%5Cpuppeteer-core%5Clib%5Ccjs%5Cpuppeteer%5Cutil%5Cdecorators.js%3A109%3A27:12:160
+[ewa] #2 1.2min elements=7504 pre=4882 closed=3 advancing=4 top=ewaSyntheticLeakWriter@pptr:;CdpFrame.%3Canonymous%3E%20c%3A%5CUsers%5Cuser%5CDesktop%5Ctalaria1%5Cfull-talaria-log--main%5Cchart%20v%201.4%5Cchart%5Cmultichart-prod%5Charness%5Cnode_modules%5Cpuppeteer-core%5Clib%5Ccjs%5Cpuppeteer%5Cutil%5Cdecorators.js%3A109%3A27:12:2080 R3@talaria-v9-live.js:40:280
+[ewa] #3 2.2min elements=9571 pre=4882 closed=6 advancing=4 top=ewaSyntheticLeakWriter@pptr:;CdpFrame.%3Canonymous%3E%20c%3A%5CUsers%5Cuser%5CDesktop%5Ctalaria1%5Cfull-talaria-log--main%5Cchart%20v%201.4%5Cchart%5Cmultichart-prod%5Charness%5Cnode_modules%5Cpuppeteer-core%5Clib%5Ccjs%5Cpuppeteer%5Cutil%5Cdecorators.js%3A109%3A27:12:4000 R3@talaria-v9-live.js:40:367
+[ewa] #4 3.1min elements=11398 pre=4882 closed=10 advancing=4 top=ewaSyntheticLeakWriter@pptr:;CdpFrame.%3Canonymous%3E%20c%3A%5CUsers%5Cuser%5CDesktop%5Ctalaria1%5Cfull-talaria-log--main%5Cchart%20v%201.4%5Cchart%5Cmultichart-prod%5Charness%5Cnode_modules%5Cpuppeteer-core%5Clib%5Ccjs%5Cpuppeteer%5Cutil%5Cdecorators.js%3A109%3A27:12:5760 R3@talaria-v9-live.js:40:453
+[ewa] #5 4.2min elements=13584 pre=4882 closed=12 advancing=4 top=ewaSyntheticLeakWriter@pptr:;CdpFrame.%3Canonymous%3E%20c%3A%5CUsers%5Cuser%5CDesktop%5Ctalaria1%5Cfull-talaria-log--main%5Cchart%20v%201.4%5Cchart%5Cmultichart-prod%5Charness%5Cnode_modules%5Cpuppeteer-core%5Clib%5Ccjs%5Cpuppeteer%5Cutil%5Cdecorators.js%3A109%3A27:12:7840 R3@talaria-v9-live.js:40:541
+[ewa] #6 5.0min elements=0 pre=0 closed=undefined advancing=0 top=
+[ewa] #7 6.0min elements=0 pre=0 closed=undefined advancing=0 top=
+[ewa] #8 7.0min elements=0 pre=0 closed=undefined advancing=0 top=
+[ewa] #9 8.0min elements=0 pre=0 closed=undefined advancing=0 top=
+[ewa] #10 9.0min elements=0 pre=0 closed=undefined advancing=0 top=
+[ewa] #11 10.0min elements=0 pre=0 closed=undefined advancing=0 top=
+[ewa] #12 11.0min elements=0 pre=0 closed=undefined advancing=0 top=
+[ewa] #13 12.0min elements=0 pre=0 closed=undefined advancing=0 top=
+[ewa] #14 13.0min elements=0 pre=0 closed=undefined advancing=0 top=
+[ewa] #15 14.0min elements=0 pre=0 closed=undefined advancing=0 top=
+[ewa] #16 15.0min elements=0 pre=0 closed=undefined advancing=0 top=
+[ewa] #17 16.0min elements=0 pre=0 closed=undefined advancing=0 top=
+[ewa] #18 17.0min elements=0 pre=0 closed=undefined advancing=0 top=
+[ewa] #19 18.0min elements=0 pre=0 closed=undefined advancing=0 top=
+[ewa] #20 19.0min elements=0 pre=0 closed=undefined advancing=0 top=
+[ewa] #21 20.0min elements=0 pre=0 closed=undefined advancing=0 top=
+[ewa] #22 21.0min elements=0 pre=0 closed=undefined advancing=0 top=
+[ewa] #23 22.0min elements=0 pre=0 closed=undefined advancing=0 top=
+[ewa] #24 23.0min elements=0 pre=0 closed=undefined advancing=0 top=
+[ewa] #25 24.0min elements=0 pre=0 closed=undefined advancing=0 top=
+[ewa] #26 25.0min elements=0 pre=0 closed=undefined advancing=0 top=
+[ewa] GATE-01: PASS (named, not first)
+[ewa] total elements -19634.086/h [-30114.53,-9153.643]
+[ewa]   -0.347/h  0.072/trade  0->0  d@talaria-v9-live.js:143
+[ewa]   -0.942/h  -0.096/trade  0->0  talariaAppendIndicatorLegendRow@indicator-ui.js:2994 < ?@indicator-ui.js:3165 < talariaRebuildOhlcIndicatorLegend@indicator-ui.js:3160
+[ewa]   -1.175/h  0.136/trade  0->0  HTMLDocument.m20Q6CapturedQuery@replay-system.js:9686 < Object.show@talaria-toast-stack.js:276 < OrderManager.showNotification@order-manager.js:47504
+[ewa]   -1.554/h  0.128/trade  0->0  HTMLDocument.m20Q6CapturedQuery@replay-system.js:9686 < ?@chart-indicators-full.js:20529 < Chart._renderSeparatePanelLegendValue@chart-indicators-full.js:20528
+[ewa]   -2.035/h  0.12/trade  0->0  HTMLDocument.m20Q6CapturedQuery@replay-system.js:9686 < Object.show@talaria-toast-stack.js:252 < OrderManager.showNotification@order-manager.js:47504
+[ewa] ranked by PER CLOSED TRADE:
+[ewa]   31.314/trade CI[20.769,41.858]  191->0  R3@talaria-v9-live.js:40 < O_@talaria-v9-live.js:40 < R_@talaria-v9-live.js:40
+[ewa]   2.513/trade CI[-4.655,9.682]  36->0  SVGGElement.<anonymous>@d3.min.js:2 < SVGGElement.<anonymous>@d3.min.js:2 < Vn.select@d3.min.js:2
+[ewa]   2.077/trade CI[1.726,2.429]  4->0  SVGDefsElement.<anonymous>@d3.min.js:2 < SVGDefsElement.<anonymous>@d3.min.js:2 < Vn.select@d3.min.js:2
+[ewa]   2.077/trade CI[1.726,2.429]  4->0  SVGFilterElement.<anonymous>@d3.min.js:2 < SVGFilterElement.<anonymous>@d3.min.js:2 < Vn.select@d3.min.js:2
+[ewa]   0.29/trade CI[-0.925,1.505]  5->0  SVGSVGElement.<anonymous>@d3.min.js:2 < SVGSVGElement.<anonymous>@d3.min.js:2 < Vn.select@d3.min.js:2

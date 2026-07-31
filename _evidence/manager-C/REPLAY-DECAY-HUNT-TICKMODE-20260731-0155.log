@@ -1,0 +1,90 @@
+[heap-cycle 2026-07-31T00:51:04.274Z] layout UI → 4 (li=0)
+[heap-cycle 2026-07-31T00:51:17.612Z] datasets mode=distinct observed=4/4 [A:677@1m(2011) B:673@5m(1596) C:670@15m(1911) D:669@1h(495)]
+[heap-cycle-po-workload 2026-07-31T00:51:17.614Z] arm panel A: wait ready
+[heap-cycle-po-workload 2026-07-31T00:51:17.929Z] arm panel A: ok=false ind=2 replay=true playing=true
+[heap-cycle-po-workload 2026-07-31T00:51:17.929Z] arm panel B: wait ready
+[heap-cycle-po-workload 2026-07-31T00:51:21.286Z] arm panel B: ok=false ind=2 replay=true playing=true
+[heap-cycle-po-workload 2026-07-31T00:51:21.287Z] arm panel C: wait ready
+[heap-cycle-po-workload 2026-07-31T00:51:27.669Z] arm panel C: ok=false ind=2 replay=true playing=false
+[heap-cycle-po-workload 2026-07-31T00:51:27.669Z] arm panel D: wait ready
+[heap-cycle-po-workload 2026-07-31T00:51:31.203Z] arm panel D: ok=false ind=2 replay=true playing=true
+[heap-cycle-po-workload 2026-07-31T00:51:31.204Z] order SKIPPED (zero-trade reproduction)
+[heap-cycle-po-workload 2026-07-31T00:51:39.409Z] play hold done observedPlaying=4
+[rdh] build={"scriptVersion":"20260730b116","href":"http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&mcLayout=1"} conf01=false order="unknown"
+[rdh] zero-trade control: {"open":0,"closed":0,"journal":0}
+[rdh] CONF-04 mode requested=tick realms=["candle->tick/tick","tick->tick/null","tick->tick/null","tick->tick/null"]
+[rdh] CONF-04 after 3s: tick held in 4/4 realms (reverted in 0) verified=true
+[rdh] instrumented realms=4 withWrappedTick=4 names=["stepForward"]
+[rdh] first profile: 38428 samples, top=(program)@(no url):-1:33.32% (idle)@(no url):-1:21.25% _m19iB62WindowFp@chart-indicators-full.js:10519:5.6%
+[rdh] #1 1.0min bars=6014 tickMs=null longTasks=0 (0ms) advancing=0/4 cpu=78.5% heap=170.01 nodes=50729
+[rdh] #1 RE-SEEK x4 — bar axis discontinuity recorded
+[rdh] #2 1.2min bars=6009 tickMs=null longTasks=0 (0ms) advancing=0/4 cpu=14.7% heap=200.02 nodes=83554
+[rdh] #2 RE-SEEK x4 — bar axis discontinuity recorded
+[rdh] #3 1.3min bars=6009 tickMs=null longTasks=0 (0ms) advancing=0/4 cpu=88.3% heap=187.24 nodes=33072
+[rdh] #3 RE-SEEK x4 — bar axis discontinuity recorded
+[rdh] #4 1.5min bars=6009 tickMs=null longTasks=0 (0ms) advancing=0/4 cpu=89% heap=158.87 nodes=24122
+[rdh] #4 RE-SEEK x4 — bar axis discontinuity recorded
+[rdh] #5 2.0min bars=6009 tickMs=null longTasks=0 (0ms) advancing=0/4 cpu=82.4% heap=226.93 nodes=46379
+[rdh] #5 RE-SEEK x4 — bar axis discontinuity recorded
+[rdh] #6 2.5min bars=6009 tickMs=null longTasks=0 (0ms) advancing=0/4 cpu=81.9% heap=276.17 nodes=70888
+[rdh] #6 RE-SEEK x4 — bar axis discontinuity recorded
+[rdh] #7 3.0min bars=6009 tickMs=null longTasks=0 (0ms) advancing=0/4 cpu=87.4% heap=159.68 nodes=26755
+[rdh] #7 RE-SEEK x4 — bar axis discontinuity recorded
+[rdh] #8 3.5min bars=6009 tickMs=null longTasks=0 (0ms) advancing=0/4 cpu=81.4% heap=214.57 nodes=49064
+[rdh] #8 RE-SEEK x4 — bar axis discontinuity recorded
+[rdh] #9 4.0min bars=6009 tickMs=null longTasks=0 (0ms) advancing=0/4 cpu=88% heap=285.1 nodes=75384
+[rdh] #9 RE-SEEK x4 — bar axis discontinuity recorded
+[rdh] #10 4.5min bars=6009 tickMs=null longTasks=0 (0ms) advancing=0/4 cpu=83.5% heap=189.47 nodes=31073
+[rdh] #10 RE-SEEK x4 — bar axis discontinuity recorded
+[rdh] #11 5.0min bars=6009 tickMs=null longTasks=0 (0ms) advancing=0/4 cpu=83.8% heap=224.63 nodes=53883
+[rdh] #11 RE-SEEK x4 — bar axis discontinuity recorded
+[rdh] #12 5.5min bars=6009 tickMs=null longTasks=0 (0ms) advancing=0/4 cpu=84.8% heap=292.79 nodes=78242
+[rdh] #12 RE-SEEK x4 — bar axis discontinuity recorded
+[rdh] #13 6.0min bars=6009 tickMs=null longTasks=0 (0ms) advancing=0/4 cpu=82.8% heap=191.33 nodes=35167
+[rdh] #13 RE-SEEK x4 — bar axis discontinuity recorded
+[rdh] #14 6.5min bars=6009 tickMs=null longTasks=0 (0ms) advancing=0/4 cpu=88% heap=252.39 nodes=59872
+[rdh] #14 RE-SEEK x4 — bar axis discontinuity recorded
+[rdh] #15 7.0min bars=6009 tickMs=null longTasks=0 (0ms) advancing=0/4 cpu=83.2% heap=135.88 nodes=14691
+[rdh] #15 RE-SEEK x4 — bar axis discontinuity recorded
+[rdh] #16 7.5min bars=6009 tickMs=null longTasks=0 (0ms) advancing=0/4 cpu=81.3% heap=197.83 nodes=38193
+[rdh] #16 RE-SEEK x4 — bar axis discontinuity recorded
+[rdh] #17 8.0min bars=6009 tickMs=null longTasks=0 (0ms) advancing=0/4 cpu=90.2% heap=245.07 nodes=62511
+[rdh] #17 RE-SEEK x4 — bar axis discontinuity recorded
+[rdh] #18 8.5min bars=6009 tickMs=null longTasks=0 (0ms) advancing=0/4 cpu=83.5% heap=140.68 nodes=18870
+[rdh] #18 RE-SEEK x4 — bar axis discontinuity recorded
+[rdh] #19 9.0min bars=6009 tickMs=null longTasks=0 (0ms) advancing=0/4 cpu=84.5% heap=212.29 nodes=44158
+[rdh] #19 RE-SEEK x4 — bar axis discontinuity recorded
+[rdh] #20 9.5min bars=6009 tickMs=null longTasks=0 (0ms) advancing=0/4 cpu=82.8% heap=282.74 nodes=72354
+[rdh] #20 RE-SEEK x4 — bar axis discontinuity recorded
+[rdh] #21 10.0min bars=6009 tickMs=null longTasks=0 (0ms) advancing=0/4 cpu=80.1% heap=189.31 nodes=36368
+[rdh] #21 RE-SEEK x4 — bar axis discontinuity recorded
+[rdh] #22 10.5min bars=6009 tickMs=null longTasks=0 (0ms) advancing=0/4 cpu=85.4% heap=133.72 nodes=18334
+[rdh] #22 RE-SEEK x4 — bar axis discontinuity recorded
+[rdh] #23 11.0min bars=6009 tickMs=null longTasks=0 (0ms) advancing=0/4 cpu=83% heap=214.72 nodes=49101
+[rdh] #23 RE-SEEK x4 — bar axis discontinuity recorded
+[rdh] #24 11.5min bars=6009 tickMs=null longTasks=0 (0ms) advancing=0/4 cpu=87.6% heap=130.43 nodes=29917
+[rdh] #24 RE-SEEK x4 — bar axis discontinuity recorded
+[rdh] #25 12.0min bars=6009 tickMs=null longTasks=0 (0ms) advancing=0/4 cpu=82.3% heap=208.03 nodes=45923
+[rdh] #25 RE-SEEK x4 — bar axis discontinuity recorded
+[rdh] #26 12.5min bars=6009 tickMs=null longTasks=0 (0ms) advancing=0/4 cpu=80.6% heap=296.14 nodes=77094
+[rdh] #26 RE-SEEK x4 — bar axis discontinuity recorded
+[rdh] #27 13.0min bars=6009 tickMs=null longTasks=0 (0ms) advancing=0/4 cpu=83.5% heap=269.53 nodes=72821
+[rdh] #27 RE-SEEK x4 — bar axis discontinuity recorded
+[rdh] #28 13.5min bars=6009 tickMs=null longTasks=0 (0ms) advancing=0/4 cpu=81.7% heap=198.62 nodes=38478
+[rdh] #28 RE-SEEK x4 — bar axis discontinuity recorded
+[rdh] #29 14.0min bars=6009 tickMs=null longTasks=0 (0ms) advancing=0/4 cpu=89.1% heap=190.59 nodes=33237
+[rdh] #29 RE-SEEK x4 — bar axis discontinuity recorded
+[rdh] last profile: 38300 samples
+[rdh] #31 15.5min bars=6009 tickMs=null longTasks=0 (0ms) advancing=0/4 cpu=85.3% heap=266.13 nodes=68309
+[rdh] #31 RE-SEEK x4 — bar axis discontinuity recorded
+[rdh] #32 15.7min bars=6009 tickMs=null longTasks=0 (0ms) advancing=0/4 cpu=85.2% heap=211.1 nodes=49401
+[rdh] #32 RE-SEEK x4 — bar axis discontinuity recorded
+[rdh] ANSWER: UNRESOLVED — neither growth nor flatness established at this sample count
+[rdh] tickMs undefined/bar CIundefined INSUFFICIENT · throughput undefined/bar INSUFFICIENT · longTaskMs 0/bar BOUNDED
+[rdh]   +6.77pp  5.6% -> 12.37%  _m19iB62WindowFp@chart-indicators-full.js:10519
+[rdh]   +4.84pp  33.32% -> 38.16%  (program)@(no url):-1
+[rdh]   +0.32pp  0.27% -> 0.59%  _shouldSkipMultichartBackgroundRender@chart.js:3093
+[rdh]   +0.23pp  0.39% -> 0.62%  getPriceDecimalsForSymbol@chart.js:31490
+[rdh]   +0.14pp  0.77% -> 0.91%  (garbage collector)@(no url):-1
+[rdh]   +0.12pp  0.79% -> 0.91%  fillText@(no url):-1
+EXIT=0 

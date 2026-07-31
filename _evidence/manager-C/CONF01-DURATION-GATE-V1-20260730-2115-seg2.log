@@ -1,0 +1,21 @@
+[freeze-gate] mode=conf01 flag=ABSENT (default) signature=CONF01-DURATION-GATE-V1 source=working tree isTheBar=true
+[heap-cycle 2026-07-30T20:17:51.918Z] layout UI → 4 (li=0)
+[heap-cycle 2026-07-30T20:18:12.566Z] datasets mode=distinct observed=4/4 [A:677@1m(2011) B:673@5m(1596) C:670@15m(1911) D:669@1h(495)]
+[heap-cycle-po-workload 2026-07-30T20:18:12.571Z] arm panel A: wait ready
+[heap-cycle-po-workload 2026-07-30T20:18:12.705Z] arm panel A: ok=true ind=4 replay=true playing=true
+[heap-cycle-po-workload 2026-07-30T20:18:12.706Z] arm panel B: wait ready
+[heap-cycle-po-workload 2026-07-30T20:18:16.505Z] arm panel B: ok=true ind=4 replay=true playing=true
+[heap-cycle-po-workload 2026-07-30T20:18:16.505Z] arm panel C: wait ready
+[heap-cycle-po-workload 2026-07-30T20:18:16.705Z] arm panel C: ok=true ind=4 replay=true playing=true
+[heap-cycle-po-workload 2026-07-30T20:18:16.705Z] arm panel D: wait ready
+[heap-cycle-po-workload 2026-07-30T20:18:16.939Z] arm panel D: ok=true ind=4 replay=true playing=true
+[heap-cycle-po-workload 2026-07-30T20:18:17.017Z] order ok=true openCount=1
+[heap-cycle-po-workload 2026-07-30T20:18:25.419Z] play hold done observedPlaying=4
+[dur] CONF-01 compliant=true failed=[] datasets=[{"panelId":"A","fileId":"677","timeframe":"1m","bars":2261},{"panelId":"B","fileId":"673","timeframe":"5m","bars":1596},{"panelId":"C","fileId":"670","timeframe":"15m","bars":1911},{"panelId":"D","fileId":"669","timeframe":"1h","bars":495}] advancing=4 indicators=[4,4,4,4]
+[dur] advance rates: 1m:10.351/s vs 1/s x10.35 sim621.1s/s atEnd=true | 5m:0/s vs 0.2/s x0 sim630.5s/s atEnd=true | 15m:0/s vs 0.067/s x0 sim632s/s atEnd=true | 1h:0/s vs 0.017/s x0 sim622.1s/s atEnd=true
+[dur] #1 0.00h gcHeap=148.17 live=218.52 footprint=1360.6 elements=5553 bars=6623 advancing=4/4 renderer=126.1% closed=5 loop=0.562ms/tick(book=5) excursion=7134 heavy=0MB status=UNRESOLVED
+[dur] #2 0.06h gcHeap=167.05 live=297.81 footprint=1462.8 elements=5990 bars=6962 advancing=4/4 renderer=126.7% closed=13 loop=0.517ms/tick(book=13) excursion=14226 heavy=0MB status=UNRESOLVED
+[dur] BROWSER DISCONNECTED — remaining samples will fail; the run ends here and says so
+[dur] #3 FAILED (1 in a row): Protocol error (Performance.getMetrics): Session closed. Most likely the page has been closed.
+[dur] verdict=UNRESOLVED reason=not enough duration or precision to call flat: heapAfterGcMB, liveHeapMB, footprintTotalMB, pageRendererFootprintMB, elementsPerClosedTrade, nodesAfterGc, listeners, rendererCpuPercent, gpuCpuPercent, orderLoopMsPerTick, orderLoopMsPerTickPerClosedTrade, orderLoopPercentOfMainThread, heavyFieldMB, excursionSamplesPerClosedTrade (DUR-01 needs >= 2h and a CI inside the flat band).
+[dur] CONF-02: DIAGNOSTIC ONLY: 13 closed positions, CONF-02 requires >= 30

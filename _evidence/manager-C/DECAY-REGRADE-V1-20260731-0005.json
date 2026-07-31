@@ -1,0 +1,495 @@
+{
+ "signature": "DECAY-REGRADE-V1",
+ "source": "REPLAY-DECAY-HUNT-V1",
+ "build": "20260730b114",
+ "zeroTradeControl": {
+  "open": 0,
+  "closed": 0,
+  "journal": 0
+ },
+ "windows": 38,
+ "barSpan": {
+  "from": 7377,
+  "to": 19059
+ },
+ "trends": {
+  "cpuMsPerBar": {
+   "xUnit": "per 1,000 bars played (all four panels summed)",
+   "label": "renderer CPU-ms per bar",
+   "n": 38,
+   "spanHours": 11.682,
+   "durationOk": true,
+   "first": 74.96,
+   "last": 119.83,
+   "min": 58.3,
+   "max": 119.83,
+   "perHour": 3.46,
+   "slopeCi95": [
+    2.756,
+    4.163
+   ],
+   "slopeSe": 0.348,
+   "rSquared": 0.733,
+   "flatBandPerHour": 0.5,
+   "projectedPerHourAt8h": 27.7,
+   "verdict": "CLIMBS"
+  },
+  "barsPerSec": {
+   "xUnit": "per 1,000 bars played (all four panels summed)",
+   "label": "throughput",
+   "n": 38,
+   "spanHours": 11.682,
+   "durationOk": true,
+   "first": 13.25,
+   "last": 8.29,
+   "min": 8.29,
+   "max": 17.1,
+   "perHour": -0.415,
+   "slopeCi95": [
+    -0.515,
+    -0.314
+   ],
+   "slopeSe": 0.05,
+   "rSquared": 0.659,
+   "flatBandPerHour": 0.1,
+   "projectedPerHourAt8h": -3.3,
+   "verdict": "FALLS"
+  },
+  "longTaskMsPerBar": {
+   "xUnit": "per 1,000 bars played (all four panels summed)",
+   "label": "long-task ms per bar",
+   "n": 38,
+   "spanHours": 11.682,
+   "durationOk": true,
+   "first": 114.86,
+   "last": 279.88,
+   "min": 41.8,
+   "max": 279.88,
+   "perHour": 9.094,
+   "slopeCi95": [
+    6.018,
+    12.171
+   ],
+   "slopeSe": 1.522,
+   "rSquared": 0.498,
+   "flatBandPerHour": 0.5,
+   "projectedPerHourAt8h": 72.8,
+   "verdict": "CLIMBS"
+  },
+  "cpuPercent": {
+   "xUnit": "per 1,000 bars played (all four panels summed)",
+   "label": "renderer CPU percent",
+   "n": 38,
+   "spanHours": 11.682,
+   "durationOk": true,
+   "first": 99.3,
+   "last": 99.3,
+   "min": 99.3,
+   "max": 100,
+   "perHour": -0.008,
+   "slopeCi95": [
+    -0.022,
+    0.007
+   ],
+   "slopeSe": 0.007,
+   "rSquared": 0.031,
+   "flatBandPerHour": 1,
+   "projectedPerHourAt8h": -0.1,
+   "verdict": "BOUNDED"
+  }
+ },
+ "firstFiveWindows": {
+  "barsPerSec": 13.16,
+  "cpuMsPerBar": 75.64,
+  "cpuPercent": 99.42
+ },
+ "lastFiveWindows": {
+  "barsPerSec": 8.73,
+  "cpuMsPerBar": 113.9,
+  "cpuPercent": 99.32
+ },
+ "perBarCostChangePercent": 50.6,
+ "throughputChangePercent": -33.7,
+ "windowSeries": [
+  {
+   "atBars": 7377,
+   "minutes": 1.18,
+   "barsAdvanced": 124,
+   "windowSec": 9.4,
+   "barsPerSec": 13.25,
+   "cpuPercent": 99.3,
+   "cpuMsPerBar": 74.96,
+   "longTaskMsPerBar": 114.86
+  },
+  {
+   "atBars": 7504,
+   "minutes": 1.34,
+   "barsAdvanced": 127,
+   "windowSec": 9.9,
+   "barsPerSec": 12.83,
+   "cpuPercent": 99.3,
+   "cpuMsPerBar": 77.41,
+   "longTaskMsPerBar": 118.67
+  },
+  {
+   "atBars": 7639,
+   "minutes": 1.51,
+   "barsAdvanced": 135,
+   "windowSec": 10,
+   "barsPerSec": 13.55,
+   "cpuPercent": 99.6,
+   "cpuMsPerBar": 73.48,
+   "longTaskMsPerBar": 110.09
+  },
+  {
+   "atBars": 8043,
+   "minutes": 2,
+   "barsAdvanced": 404,
+   "windowSec": 29.4,
+   "barsPerSec": 13.74,
+   "cpuPercent": 99.4,
+   "cpuMsPerBar": 72.34,
+   "longTaskMsPerBar": 111.66
+  },
+  {
+   "atBars": 8416,
+   "minutes": 2.5,
+   "barsAdvanced": 373,
+   "windowSec": 30,
+   "barsPerSec": 12.43,
+   "cpuPercent": 99.5,
+   "cpuMsPerBar": 80.03,
+   "longTaskMsPerBar": 121.89
+  },
+  {
+   "atBars": 8795,
+   "minutes": 3,
+   "barsAdvanced": 379,
+   "windowSec": 30,
+   "barsPerSec": 12.63,
+   "cpuPercent": 99.4,
+   "cpuMsPerBar": 78.68,
+   "longTaskMsPerBar": 118.12
+  },
+  {
+   "atBars": 9308,
+   "minutes": 3.5,
+   "barsAdvanced": 513,
+   "windowSec": 30,
+   "barsPerSec": 17.1,
+   "cpuPercent": 99.7,
+   "cpuMsPerBar": 58.3,
+   "longTaskMsPerBar": 41.8
+  },
+  {
+   "atBars": 9642,
+   "minutes": 4,
+   "barsAdvanced": 334,
+   "windowSec": 30,
+   "barsPerSec": 11.13,
+   "cpuPercent": 100,
+   "cpuMsPerBar": 89.82,
+   "longTaskMsPerBar": 165.81
+  },
+  {
+   "atBars": 9904,
+   "minutes": 4.5,
+   "barsAdvanced": 262,
+   "windowSec": 30,
+   "barsPerSec": 8.73,
+   "cpuPercent": 99.4,
+   "cpuMsPerBar": 113.82,
+   "longTaskMsPerBar": 232.16
+  },
+  {
+   "atBars": 10235,
+   "minutes": 5,
+   "barsAdvanced": 331,
+   "windowSec": 30,
+   "barsPerSec": 11.03,
+   "cpuPercent": 99.3,
+   "cpuMsPerBar": 90,
+   "longTaskMsPerBar": 133.76
+  },
+  {
+   "atBars": 10568,
+   "minutes": 5.5,
+   "barsAdvanced": 333,
+   "windowSec": 30,
+   "barsPerSec": 11.1,
+   "cpuPercent": 99.5,
+   "cpuMsPerBar": 89.64,
+   "longTaskMsPerBar": 132.23
+  },
+  {
+   "atBars": 10909,
+   "minutes": 6,
+   "barsAdvanced": 341,
+   "windowSec": 30,
+   "barsPerSec": 11.37,
+   "cpuPercent": 99.3,
+   "cpuMsPerBar": 87.36,
+   "longTaskMsPerBar": 124.92
+  },
+  {
+   "atBars": 11262,
+   "minutes": 6.5,
+   "barsAdvanced": 353,
+   "windowSec": 30,
+   "barsPerSec": 11.77,
+   "cpuPercent": 99.6,
+   "cpuMsPerBar": 84.65,
+   "longTaskMsPerBar": 122.52
+  },
+  {
+   "atBars": 11579,
+   "minutes": 7,
+   "barsAdvanced": 317,
+   "windowSec": 30,
+   "barsPerSec": 10.57,
+   "cpuPercent": 99.3,
+   "cpuMsPerBar": 93.97,
+   "longTaskMsPerBar": 142.13
+  },
+  {
+   "atBars": 11931,
+   "minutes": 7.5,
+   "barsAdvanced": 352,
+   "windowSec": 30,
+   "barsPerSec": 11.73,
+   "cpuPercent": 99.4,
+   "cpuMsPerBar": 84.72,
+   "longTaskMsPerBar": 121.84
+  },
+  {
+   "atBars": 12266,
+   "minutes": 8,
+   "barsAdvanced": 335,
+   "windowSec": 30,
+   "barsPerSec": 11.17,
+   "cpuPercent": 99.4,
+   "cpuMsPerBar": 89.01,
+   "longTaskMsPerBar": 126.96
+  },
+  {
+   "atBars": 12597,
+   "minutes": 8.5,
+   "barsAdvanced": 331,
+   "windowSec": 30,
+   "barsPerSec": 11.03,
+   "cpuPercent": 99.6,
+   "cpuMsPerBar": 90.27,
+   "longTaskMsPerBar": 129.35
+  },
+  {
+   "atBars": 12915,
+   "minutes": 9,
+   "barsAdvanced": 318,
+   "windowSec": 30,
+   "barsPerSec": 10.6,
+   "cpuPercent": 99.4,
+   "cpuMsPerBar": 93.77,
+   "longTaskMsPerBar": 142.43
+  },
+  {
+   "atBars": 13259,
+   "minutes": 9.5,
+   "barsAdvanced": 344,
+   "windowSec": 30,
+   "barsPerSec": 11.47,
+   "cpuPercent": 99.5,
+   "cpuMsPerBar": 86.77,
+   "longTaskMsPerBar": 121.11
+  },
+  {
+   "atBars": 13580,
+   "minutes": 10,
+   "barsAdvanced": 321,
+   "windowSec": 30,
+   "barsPerSec": 10.7,
+   "cpuPercent": 99.4,
+   "cpuMsPerBar": 92.9,
+   "longTaskMsPerBar": 141.52
+  },
+  {
+   "atBars": 13901,
+   "minutes": 10.5,
+   "barsAdvanced": 321,
+   "windowSec": 30,
+   "barsPerSec": 10.7,
+   "cpuPercent": 99.6,
+   "cpuMsPerBar": 93.08,
+   "longTaskMsPerBar": 135.43
+  },
+  {
+   "atBars": 14218,
+   "minutes": 11,
+   "barsAdvanced": 317,
+   "windowSec": 30,
+   "barsPerSec": 10.57,
+   "cpuPercent": 99.4,
+   "cpuMsPerBar": 94.07,
+   "longTaskMsPerBar": 139.77
+  },
+  {
+   "atBars": 14543,
+   "minutes": 11.5,
+   "barsAdvanced": 325,
+   "windowSec": 30,
+   "barsPerSec": 10.83,
+   "cpuPercent": 99.7,
+   "cpuMsPerBar": 92.03,
+   "longTaskMsPerBar": 130.02
+  },
+  {
+   "atBars": 14822,
+   "minutes": 12,
+   "barsAdvanced": 279,
+   "windowSec": 30,
+   "barsPerSec": 9.3,
+   "cpuPercent": 99.4,
+   "cpuMsPerBar": 106.88,
+   "longTaskMsPerBar": 182.43
+  },
+  {
+   "atBars": 15123,
+   "minutes": 12.5,
+   "barsAdvanced": 301,
+   "windowSec": 30,
+   "barsPerSec": 10.03,
+   "cpuPercent": 99.6,
+   "cpuMsPerBar": 99.27,
+   "longTaskMsPerBar": 153.48
+  },
+  {
+   "atBars": 15412,
+   "minutes": 13,
+   "barsAdvanced": 289,
+   "windowSec": 30,
+   "barsPerSec": 9.63,
+   "cpuPercent": 99.4,
+   "cpuMsPerBar": 103.18,
+   "longTaskMsPerBar": 167.39
+  },
+  {
+   "atBars": 15715,
+   "minutes": 13.5,
+   "barsAdvanced": 303,
+   "windowSec": 30,
+   "barsPerSec": 10.1,
+   "cpuPercent": 99.7,
+   "cpuMsPerBar": 98.71,
+   "longTaskMsPerBar": 155.27
+  },
+  {
+   "atBars": 16000,
+   "minutes": 14,
+   "barsAdvanced": 285,
+   "windowSec": 30,
+   "barsPerSec": 9.5,
+   "cpuPercent": 99.4,
+   "cpuMsPerBar": 104.63,
+   "longTaskMsPerBar": 163.24
+  },
+  {
+   "atBars": 16289,
+   "minutes": 14.5,
+   "barsAdvanced": 289,
+   "windowSec": 30,
+   "barsPerSec": 9.63,
+   "cpuPercent": 99.5,
+   "cpuMsPerBar": 103.29,
+   "longTaskMsPerBar": 165.13
+  },
+  {
+   "atBars": 16571,
+   "minutes": 15,
+   "barsAdvanced": 282,
+   "windowSec": 30,
+   "barsPerSec": 9.4,
+   "cpuPercent": 99.4,
+   "cpuMsPerBar": 105.74,
+   "longTaskMsPerBar": 177.6
+  },
+  {
+   "atBars": 16844,
+   "minutes": 15.5,
+   "barsAdvanced": 273,
+   "windowSec": 30,
+   "barsPerSec": 9.1,
+   "cpuPercent": 99.6,
+   "cpuMsPerBar": 109.45,
+   "longTaskMsPerBar": 189.43
+  },
+  {
+   "atBars": 17124,
+   "minutes": 16,
+   "barsAdvanced": 280,
+   "windowSec": 30,
+   "barsPerSec": 9.33,
+   "cpuPercent": 99.4,
+   "cpuMsPerBar": 106.5,
+   "longTaskMsPerBar": 178.06
+  },
+  {
+   "atBars": 17378,
+   "minutes": 16.5,
+   "barsAdvanced": 254,
+   "windowSec": 30,
+   "barsPerSec": 8.47,
+   "cpuPercent": 99.3,
+   "cpuMsPerBar": 117.28,
+   "longTaskMsPerBar": 255.79
+  },
+  {
+   "atBars": 17645,
+   "minutes": 17,
+   "barsAdvanced": 267,
+   "windowSec": 30,
+   "barsPerSec": 8.9,
+   "cpuPercent": 99.3,
+   "cpuMsPerBar": 111.57,
+   "longTaskMsPerBar": 209.74
+  },
+  {
+   "atBars": 17922,
+   "minutes": 17.5,
+   "barsAdvanced": 277,
+   "windowSec": 30,
+   "barsPerSec": 9.23,
+   "cpuPercent": 99.3,
+   "cpuMsPerBar": 107.55,
+   "longTaskMsPerBar": 166.68
+  },
+  {
+   "atBars": 18182,
+   "minutes": 18,
+   "barsAdvanced": 260,
+   "windowSec": 30,
+   "barsPerSec": 8.67,
+   "cpuPercent": 99.3,
+   "cpuMsPerBar": 114.58,
+   "longTaskMsPerBar": 230.27
+  },
+  {
+   "atBars": 18970,
+   "minutes": 19.53,
+   "barsAdvanced": 788,
+   "windowSec": 91.9,
+   "barsPerSec": 8.57,
+   "cpuPercent": 99.4,
+   "cpuMsPerBar": 115.95,
+   "longTaskMsPerBar": 209.29
+  },
+  {
+   "atBars": 19059,
+   "minutes": 19.71,
+   "barsAdvanced": 89,
+   "windowSec": 10.7,
+   "barsPerSec": 8.29,
+   "cpuPercent": 99.3,
+   "cpuMsPerBar": 119.83,
+   "longTaskMsPerBar": 279.88
+  }
+ ]
+}

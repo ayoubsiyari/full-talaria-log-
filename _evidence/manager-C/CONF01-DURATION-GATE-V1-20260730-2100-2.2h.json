@@ -1,0 +1,755 @@
+{
+ "signature": "CONF01-DURATION-GATE-V1",
+ "startedAtIso": "2026-07-30T19:48:06.149Z",
+ "plannedHours": 2.2,
+ "intervalMs": 300000,
+ "replaySpeed": 60,
+ "negativeControl": null,
+ "conf01": {
+  "signature": "CONF01-SESSION-V1",
+  "compliant": true,
+  "requirements": {
+   "fourPanels": true,
+   "fourDistinctSymbols": true,
+   "fourDistinctTimeframes": true,
+   "plannedAssignmentLanded": true,
+   "indicatorsLoaded": true,
+   "ordersOpen": true,
+   "playbackAdvancing": true
+  },
+  "failed": [],
+  "acceptanceWeight": "CONF-01 compliant: carries acceptance weight",
+  "observedDatasets": [
+   {
+    "panelId": "A",
+    "fileId": "677",
+    "timeframe": "1m",
+    "bars": 2440
+   },
+   {
+    "panelId": "B",
+    "fileId": "673",
+    "timeframe": "5m",
+    "bars": 1596
+   },
+   {
+    "panelId": "C",
+    "fileId": "670",
+    "timeframe": "15m",
+    "bars": 1911
+   },
+   {
+    "panelId": "D",
+    "fileId": "669",
+    "timeframe": "1h",
+    "bars": 495
+   }
+  ],
+  "symbols": [
+   "XAUUSD",
+   "HOG",
+   "ETHBTC",
+   "BTCEUR"
+  ],
+  "productState": {
+   "charts": 4,
+   "advancingPanels": 4,
+   "playingFlagPanels": 1,
+   "indicatorsPerPanel": [
+    4,
+    4,
+    4,
+    4
+   ],
+   "ordersTotal": 1,
+   "openPositionsTotal": 0,
+   "distinctTimeframes": [
+    "1m",
+    "5m",
+    "15m",
+    "1h"
+   ],
+   "distinctFileIds": [
+    "677",
+    "673",
+    "670",
+    "669"
+   ],
+   "totalBars": 6506,
+   "totalPanelFullRawBars": 9999
+  },
+  "buildId": "20260730b113",
+  "replaySpeed": 60,
+  "fileIds": [
+   677,
+   673,
+   670,
+   669
+  ],
+  "workloadSummary": {
+   "indicatorsOk": true,
+   "panels": 4,
+   "order": {
+    "ok": true,
+    "result": {
+     "id": 1,
+     "status": "OPEN"
+    },
+    "openCount": 1,
+    "via": "orderService.submitOrder"
+   },
+   "observedPlaying": 4,
+   "armed": true
+  }
+ },
+ "bootAttempts": [
+  {
+   "attempt": 1,
+   "ok": true
+  }
+ ],
+ "flatBands": {
+  "heapAfterGcMB": 5,
+  "liveHeapMB": 15,
+  "footprintTotalMB": 20,
+  "pageRendererFootprintMB": 15,
+  "elements": 50,
+  "nodesAfterGc": 400,
+  "listeners": 200
+ },
+ "dur01MinSpanHours": 2,
+ "canSatisfyDur01": true,
+ "samples": [
+  {
+   "sample": 1,
+   "hours": 0.0018,
+   "order": {
+    "opened": 8,
+    "closed": 8,
+    "errors": [],
+    "dismissed": [],
+    "replayAfter": {
+     "isActive": true,
+     "isPlaying": true,
+     "idx": 2759
+    },
+    "closedBefore": 1,
+    "closedAfter": 6,
+    "openAfter": 3,
+    "frontLoading": true
+   },
+   "rearmed": null,
+   "live": {
+    "heapMB": 334.11,
+    "nodes": 79932,
+    "documents": 7,
+    "frames": 7,
+    "listeners": 18890
+   },
+   "collected": {
+    "heapMB": 166.84,
+    "nodes": 25718,
+    "documents": 7,
+    "frames": 7,
+    "listeners": 6134
+   },
+   "cpu": {
+    "rendererPercent": 130.1,
+    "gpuPercent": 43.6,
+    "browserPercent": 3,
+    "totalPercent": 178.8
+   },
+   "elements": 5567,
+   "state": {
+    "panels": [
+     {
+      "fileId": "677",
+      "timeframe": "1m",
+      "symbol": "EURUSD",
+      "bars": 2924,
+      "rawBars": 2924,
+      "panelFullRawBars": null,
+      "replayActive": true,
+      "replayPlaying": true,
+      "replayIndex": 2923,
+      "replayTimestamp": 1773277500000,
+      "indicators": 4,
+      "openPositions": 3,
+      "orders": 9,
+      "closedTrades": null,
+      "isHost": true,
+      "advancedBars": 41,
+      "advancedIndex": 40,
+      "advancedSimMs": 2400000,
+      "advancing": true
+     },
+     {
+      "fileId": "673",
+      "timeframe": "5m",
+      "symbol": "FILE_673",
+      "bars": 1596,
+      "rawBars": 1596,
+      "panelFullRawBars": 3595,
+      "replayActive": true,
+      "replayPlaying": false,
+      "replayIndex": 1595,
+      "replayTimestamp": 1773277500000,
+      "indicators": 4,
+      "openPositions": 0,
+      "orders": 0,
+      "closedTrades": null,
+      "isHost": false,
+      "advancedBars": 0,
+      "advancedIndex": 0,
+      "advancedSimMs": 2460000,
+      "advancing": true
+     },
+     {
+      "fileId": "670",
+      "timeframe": "15m",
+      "symbol": "FILE_670",
+      "bars": 1911,
+      "rawBars": 1911,
+      "panelFullRawBars": 3910,
+      "replayActive": true,
+      "replayPlaying": false,
+      "replayIndex": 1910,
+      "replayTimestamp": 1773277560000,
+      "indicators": 4,
+      "openPositions": 0,
+      "orders": 0,
+      "closedTrades": null,
+      "isHost": false,
+      "advancedBars": 0,
+      "advancedIndex": 0,
+      "advancedSimMs": 2460000,
+      "advancing": true
+     },
+     {
+      "fileId": "669",
+      "timeframe": "1h",
+      "symbol": "FILE_669",
+      "bars": 495,
+      "rawBars": 495,
+      "panelFullRawBars": 2494,
+      "replayActive": true,
+      "replayPlaying": false,
+      "replayIndex": 494,
+      "replayTimestamp": 1773277620000,
+      "indicators": 4,
+      "openPositions": 0,
+      "orders": 0,
+      "closedTrades": null,
+      "isHost": false,
+      "advancedBars": 0,
+      "advancedIndex": 0,
+      "advancedSimMs": 2460000,
+      "advancing": true
+     }
+    ],
+    "charts": 4,
+    "advancingPanels": 4,
+    "advanceWindowMs": 3000,
+    "simMsPerPanel": [
+     2400000,
+     2460000,
+     2460000,
+     2460000
+    ],
+    "playingFlagPanels": 1,
+    "distinctFileIds": [
+     "677",
+     "673",
+     "670",
+     "669"
+    ],
+    "distinctTimeframes": [
+     "1m",
+     "5m",
+     "15m",
+     "1h"
+    ],
+    "indicatorsPerPanel": [
+     4,
+     4,
+     4,
+     4
+    ],
+    "ordersTotal": 9,
+    "openPositionsTotal": 3,
+    "totalBars": 6926,
+    "totalPanelFullRawBars": 9999
+   },
+   "inFlight": [],
+   "trades": {
+    "managerOpen": 3,
+    "managerClosed": 6,
+    "managerJournal": 6,
+    "serviceOpen": 3,
+    "serviceClosed": 6,
+    "serviceOrders": 9
+   },
+   "orderLoop": {
+    "perFrame": [
+     {
+      "calls": 78,
+      "totalMs": 32.8,
+      "maxMs": 0.8,
+      "wallMs": 6330,
+      "msPerCall": 0.421,
+      "callsPerSec": 12.32,
+      "percentOfMainThread": 0.52,
+      "isHost": true,
+      "timeframe": "1m",
+      "closedHere": 6,
+      "openHere": 3,
+      "excursionSamplesHere": 1020
+     },
+     {
+      "calls": 86,
+      "totalMs": 1,
+      "maxMs": 0.1,
+      "wallMs": 6372,
+      "msPerCall": 0.012,
+      "callsPerSec": 13.5,
+      "percentOfMainThread": 0.02,
+      "isHost": false,
+      "timeframe": "5m",
+      "closedHere": 0,
+      "openHere": 0,
+      "excursionSamplesHere": 0
+     },
+     {
+      "calls": 65,
+      "totalMs": 1.1,
+      "maxMs": 0.1,
+      "wallMs": 6499,
+      "msPerCall": 0.017,
+      "callsPerSec": 10,
+      "percentOfMainThread": 0.02,
+      "isHost": false,
+      "timeframe": "15m",
+      "closedHere": 0,
+      "openHere": 0,
+      "excursionSamplesHere": 0
+     },
+     {
+      "calls": 84,
+      "totalMs": 1.3,
+      "maxMs": 0.1,
+      "wallMs": 6542,
+      "msPerCall": 0.015,
+      "callsPerSec": 12.84,
+      "percentOfMainThread": 0.02,
+      "isHost": false,
+      "timeframe": "1h",
+      "closedHere": 0,
+      "openHere": 0,
+      "excursionSamplesHere": 0
+     }
+    ],
+    "host": {
+     "calls": 78,
+     "totalMs": 32.8,
+     "maxMs": 0.8,
+     "wallMs": 6330,
+     "msPerCall": 0.421,
+     "callsPerSec": 12.32,
+     "percentOfMainThread": 0.52,
+     "isHost": true,
+     "timeframe": "1m",
+     "closedHere": 6,
+     "openHere": 3,
+     "excursionSamplesHere": 1020
+    },
+    "bookFrame": {
+     "calls": 78,
+     "totalMs": 32.8,
+     "maxMs": 0.8,
+     "wallMs": 6330,
+     "msPerCall": 0.421,
+     "callsPerSec": 12.32,
+     "percentOfMainThread": 0.52,
+     "isHost": true,
+     "timeframe": "1m",
+     "closedHere": 6,
+     "openHere": 3,
+     "excursionSamplesHere": 1020
+    },
+    "measured": {
+     "calls": 78,
+     "totalMs": 32.8,
+     "maxMs": 0.8,
+     "wallMs": 6330,
+     "msPerCall": 0.421,
+     "callsPerSec": 12.32,
+     "percentOfMainThread": 0.52,
+     "isHost": true,
+     "timeframe": "1m",
+     "closedHere": 6,
+     "openHere": 3,
+     "excursionSamplesHere": 1020
+    },
+    "bookFrameTicking": true,
+    "totalPercentOfMainThread": 0.58
+   },
+   "heavyFields": {
+    "perList": {
+     "managerOpen": {
+      "rows": 3,
+      "heavyChars": 0,
+      "rowsWithHeavy": 0,
+      "excursionSamples": 2304
+     },
+     "managerClosed": {
+      "rows": 6,
+      "heavyChars": 0,
+      "rowsWithHeavy": 0,
+      "excursionSamples": 756
+     },
+     "managerJournal": {
+      "rows": 6,
+      "heavyChars": 0,
+      "rowsWithHeavy": 0,
+      "excursionSamples": 756
+     },
+     "serviceOpen": {
+      "rows": 3,
+      "heavyChars": 0,
+      "rowsWithHeavy": 0,
+      "excursionSamples": 2304
+     },
+     "serviceClosed": {
+      "rows": 6,
+      "heavyChars": 0,
+      "rowsWithHeavy": 0,
+      "excursionSamples": 756
+     }
+    },
+    "totalChars": 0,
+    "rows": 24,
+    "rowsWithHeavy": 0,
+    "excursionSamples": 6876,
+    "heavyMB": 0,
+    "heavyCharsPerRow": 0,
+    "deduped": {
+     "rows": 15,
+     "rowsWithHeavy": 0,
+     "totalChars": 0,
+     "heavyMB": 0,
+     "excursionSamples": 3816,
+     "listAliasFactor": 1.8
+    }
+   },
+   "footprint": {
+    "totalPrivateMB": 1367.1,
+    "pageRendererPrivateMB": 905.5,
+    "byType": {
+     "browser": 61.5,
+     "renderer": 959.7,
+     "gpu": 298.4,
+     "other": 47.4
+    }
+   }
+  }
+ ],
+ "orderLoopHook": [
+  {
+   "installed": true
+  },
+  {
+   "installed": true
+  },
+  {
+   "installed": true
+  },
+  {
+   "installed": true
+  }
+ ],
+ "advanceRateProbe": [
+  {
+   "timeframe": "1m",
+   "fileId": "677",
+   "playing": true,
+   "speedField": 60,
+   "playbackSpeedField": null,
+   "speedSetters": [
+    "setSpeed"
+   ],
+   "bars": 2608,
+   "idxFrom": 2510,
+   "idxTo": 2607,
+   "barsPerSec": 15.972,
+   "expectedBarsPerSec": 1,
+   "framesPerSec": 29.44,
+   "barsPerFrame": 0.543,
+   "rateRatio": 15.97,
+   "simSecPerWallSec": 958.3,
+   "expectedSimSecPerWallSec": 60,
+   "atEnd": true
+  },
+  {
+   "timeframe": "5m",
+   "fileId": "673",
+   "playing": false,
+   "speedField": 60,
+   "playbackSpeedField": null,
+   "speedSetters": [
+    "setSpeed"
+   ],
+   "bars": 1596,
+   "idxFrom": 1595,
+   "idxTo": 1595,
+   "barsPerSec": 0,
+   "expectedBarsPerSec": 0.2,
+   "framesPerSec": 29.44,
+   "barsPerFrame": 0,
+   "rateRatio": 0,
+   "simSecPerWallSec": 958.5,
+   "expectedSimSecPerWallSec": 60,
+   "atEnd": true
+  },
+  {
+   "timeframe": "15m",
+   "fileId": "670",
+   "playing": false,
+   "speedField": 60,
+   "playbackSpeedField": null,
+   "speedSetters": [
+    "setSpeed"
+   ],
+   "bars": 1911,
+   "idxFrom": 1910,
+   "idxTo": 1910,
+   "barsPerSec": 0,
+   "expectedBarsPerSec": 0.067,
+   "framesPerSec": 29.44,
+   "barsPerFrame": 0,
+   "rateRatio": 0,
+   "simSecPerWallSec": 959.1,
+   "expectedSimSecPerWallSec": 60,
+   "atEnd": true
+  },
+  {
+   "timeframe": "1h",
+   "fileId": "669",
+   "playing": false,
+   "speedField": 60,
+   "playbackSpeedField": null,
+   "speedSetters": [
+    "setSpeed"
+   ],
+   "bars": 495,
+   "idxFrom": 494,
+   "idxTo": 494,
+   "barsPerSec": 0,
+   "expectedBarsPerSec": 0.017,
+   "framesPerSec": 29.42,
+   "barsPerFrame": 0,
+   "rateRatio": 0,
+   "simSecPerWallSec": 959.1,
+   "expectedSimSecPerWallSec": 60,
+   "atEnd": true
+  }
+ ],
+ "liveness": {
+  "heartbeatIso": "2026-07-30T19:48:12.522Z",
+  "browserDisconnected": false,
+  "sampleErrors": [],
+  "lastSampleAttempted": 1
+ },
+ "sampleCount": 1,
+ "elapsedHours": 0.011,
+ "trends": {
+  "heapAfterGcMB": {
+   "label": "JS heap after forced collection (MB)",
+   "n": 1,
+   "verdict": "INSUFFICIENT",
+   "reason": "fewer than 4 samples",
+   "flatBandPerHour": 5,
+   "durationOk": false,
+   "bandCalibrated": true,
+   "bandBasis": "W88 CRITERION 0 / FRESH-LOAD-CENSUS-V1, n=10: cross-frame spread 0.73 MB, sd 0.21"
+  },
+  "liveHeapMB": {
+   "label": "JS heap live, pre-collection (MB)",
+   "n": 1,
+   "verdict": "INSUFFICIENT",
+   "reason": "fewer than 4 samples",
+   "flatBandPerHour": 15,
+   "durationOk": false,
+   "bandCalibrated": false,
+   "bandBasis": "live heap is pre-collection and its within-run sd was 4.1 MB per delta (W84); band not derived from a duration measurement"
+  },
+  "footprintTotalMB": {
+   "label": "all-Chrome OS footprint (MB)",
+   "n": 1,
+   "verdict": "INSUFFICIENT",
+   "reason": "fewer than 4 samples",
+   "flatBandPerHour": 20,
+   "durationOk": false,
+   "bandCalibrated": false,
+   "bandBasis": "no measured OS-footprint noise floor over hours; W90 measured absolutes, not drift"
+  },
+  "pageRendererFootprintMB": {
+   "label": "page renderer OS footprint (MB)",
+   "n": 1,
+   "verdict": "INSUFFICIENT",
+   "reason": "fewer than 4 samples",
+   "flatBandPerHour": 15,
+   "durationOk": false,
+   "bandCalibrated": false,
+   "bandBasis": "as footprintTotalMB"
+  },
+  "elements": {
+   "label": "attached elements, all frames",
+   "n": 1,
+   "verdict": "INSUFFICIENT",
+   "reason": "fewer than 4 samples",
+   "flatBandPerHour": 50,
+   "durationOk": false,
+   "bandCalibrated": true,
+   "bandBasis": "W89 DOM-NODE-CENSUS-V1: element count invariant (spread 0) across zoom and 60s idle replay",
+   "advisory": true
+  },
+  "elementsPerClosedTrade": {
+   "label": "attached elements per additional closed trade",
+   "n": 1,
+   "verdict": "INSUFFICIENT",
+   "reason": "fewer than 4 samples",
+   "flatBandPerHour": 5,
+   "durationOk": false,
+   "xUnit": "closedTrade",
+   "bandBasis": "W89 DOM-NODE-CENSUS-V1: elements invariant (spread 0) on a fixed configuration",
+   "bandCalibrated": false
+  },
+  "nodesAfterGc": {
+   "label": "nodes after forced collection",
+   "n": 1,
+   "verdict": "INSUFFICIENT",
+   "reason": "fewer than 4 samples",
+   "flatBandPerHour": 400,
+   "durationOk": false,
+   "bandCalibrated": false,
+   "bandBasis": "W91b measured 7,317-7,415 after forced GC on an unchanged page (1.3%), which is a static spread, not a per-hour band"
+  },
+  "listeners": {
+   "label": "JS event listeners",
+   "n": 1,
+   "verdict": "INSUFFICIENT",
+   "reason": "fewer than 4 samples",
+   "flatBandPerHour": 200,
+   "durationOk": false,
+   "bandCalibrated": false,
+   "bandBasis": "no measured listener noise floor"
+  },
+  "rendererCpuPercent": {
+   "label": "renderer CPU (% of one core)",
+   "n": 1,
+   "verdict": "INSUFFICIENT",
+   "reason": "fewer than 4 samples",
+   "flatBandPerHour": 3,
+   "durationOk": false,
+   "bandCalibrated": false
+  },
+  "gpuCpuPercent": {
+   "label": "GPU process CPU (% of one core)",
+   "n": 1,
+   "verdict": "INSUFFICIENT",
+   "reason": "fewer than 4 samples",
+   "flatBandPerHour": 3,
+   "durationOk": false,
+   "bandCalibrated": false
+  },
+  "orderLoopMsPerTick": {
+   "label": "order loop ms per replay tick",
+   "n": 1,
+   "verdict": "INSUFFICIENT",
+   "reason": "fewer than 4 samples",
+   "flatBandPerHour": 0.2,
+   "durationOk": false,
+   "bandCalibrated": false
+  },
+  "orderLoopMsPerTickPerClosedTrade": {
+   "label": "order loop ms per tick, per additional closed trade",
+   "n": 1,
+   "verdict": "INSUFFICIENT",
+   "reason": "fewer than 4 samples",
+   "flatBandPerHour": 0.02,
+   "durationOk": false,
+   "xUnit": "closedTrade"
+  },
+  "orderLoopPercentOfMainThread": {
+   "label": "order loop, % of main thread",
+   "n": 1,
+   "verdict": "INSUFFICIENT",
+   "reason": "fewer than 4 samples",
+   "flatBandPerHour": 2,
+   "durationOk": false,
+   "bandCalibrated": false
+  },
+  "heavyFieldMB": {
+   "label": "retained screenshot/base64 MB",
+   "n": 1,
+   "verdict": "INSUFFICIENT",
+   "reason": "fewer than 4 samples",
+   "flatBandPerHour": 1,
+   "durationOk": false,
+   "bandCalibrated": false
+  },
+  "excursionSamples": {
+   "label": "excursion samples retained, deduplicated",
+   "n": 1,
+   "verdict": "INSUFFICIENT",
+   "reason": "fewer than 4 samples",
+   "flatBandPerHour": 2000,
+   "durationOk": false,
+   "bandCalibrated": false,
+   "advisory": true
+  },
+  "excursionSamplesPerClosedTrade": {
+   "label": "excursion samples per additional closed trade",
+   "n": 1,
+   "verdict": "INSUFFICIENT",
+   "reason": "fewer than 4 samples",
+   "flatBandPerHour": 1024,
+   "durationOk": false,
+   "bandCalibrated": true,
+   "xUnit": "closedTrade",
+   "ceilingRationale": "4 arrays x 256-value M19-B tail bound"
+  }
+ },
+ "verdict": {
+  "signature": "DURATION-TREND-V1",
+  "status": "UNRESOLVED",
+  "reason": "not enough duration or precision to call flat: heapAfterGcMB, liveHeapMB, footprintTotalMB, pageRendererFootprintMB, elementsPerClosedTrade, nodesAfterGc, listeners, rendererCpuPercent, gpuCpuPercent, orderLoopMsPerTick, orderLoopMsPerTickPerClosedTrade, orderLoopPercentOfMainThread, heavyFieldMB, excursionSamplesPerClosedTrade (DUR-01 needs >= 2h and a CI inside the flat band).",
+  "climbing": [],
+  "thresholdDependent": [],
+  "provisionalClimbing": [],
+  "advisoryClimbing": [],
+  "unresolved": [
+   "heapAfterGcMB",
+   "liveHeapMB",
+   "footprintTotalMB",
+   "pageRendererFootprintMB",
+   "elementsPerClosedTrade",
+   "nodesAfterGc",
+   "listeners",
+   "rendererCpuPercent",
+   "gpuCpuPercent",
+   "orderLoopMsPerTick",
+   "orderLoopMsPerTickPerClosedTrade",
+   "orderLoopPercentOfMainThread",
+   "heavyFieldMB",
+   "excursionSamplesPerClosedTrade"
+  ]
+ },
+ "conf02": {
+  "closedPositions": 6,
+  "openPositions": 3,
+  "closedTarget": 30,
+  "compliant": false,
+  "acceptanceWeight": "DIAGNOSTIC ONLY: 6 closed positions, CONF-02 requires >= 30"
+ }
+}

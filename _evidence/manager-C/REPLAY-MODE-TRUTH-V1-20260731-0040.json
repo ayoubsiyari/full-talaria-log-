@@ -1,0 +1,3339 @@
+{
+ "signature": "REPLAY-MODE-TRUTH-V1",
+ "startedAtIso": "2026-07-30T23:38:22.312Z",
+ "ruling": "606defe033 (CONF-04)",
+ "plan": {
+  "minutes": 16,
+  "speed": 60,
+  "selectAfterPlay": false,
+  "indicators": 2
+ },
+ "conf01": {
+  "compliant": false,
+  "failed": [
+   "indicatorsLoaded",
+   "ordersOpen"
+  ]
+ },
+ "checkpoints": [
+  {
+   "atMinutes": 0,
+   "label": "0min",
+   "rows": [
+    {
+     "url": "92.82:3000/chart/dist-v9/index.html?mode=backtest&mcLayout=1",
+     "hasReplay": true,
+     "realm": "/chart/dist-v9/index.html?mode=backtest&mcLayout=1",
+     "rawPlaybackMode": "candle",
+     "getPlaybackMode": "candle",
+     "getPlaybackLoopKind": "candle",
+     "shouldUseTickAnimation": false,
+     "tickAnimationEnabled": false,
+     "isActive": true,
+     "isPlaying": true,
+     "isPlayStarting": false,
+     "animatingCandle": false,
+     "hasPlayInterval": true,
+     "hasTickInterval": false,
+     "fastMode": false,
+     "speed": 60,
+     "replayIndex": 2101,
+     "indicators": 2,
+     "timeframe": "1m"
+    },
+    {
+     "url": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "hasReplay": true,
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "rawPlaybackMode": "candle",
+     "getPlaybackMode": "candle",
+     "getPlaybackLoopKind": null,
+     "shouldUseTickAnimation": false,
+     "tickAnimationEnabled": false,
+     "isActive": true,
+     "isPlaying": false,
+     "isPlayStarting": false,
+     "animatingCandle": false,
+     "hasPlayInterval": false,
+     "hasTickInterval": false,
+     "fastMode": false,
+     "speed": 60,
+     "replayIndex": 1595,
+     "indicators": 2,
+     "timeframe": "5m"
+    },
+    {
+     "url": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "hasReplay": true,
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "rawPlaybackMode": "candle",
+     "getPlaybackMode": "candle",
+     "getPlaybackLoopKind": null,
+     "shouldUseTickAnimation": false,
+     "tickAnimationEnabled": false,
+     "isActive": true,
+     "isPlaying": false,
+     "isPlayStarting": false,
+     "animatingCandle": false,
+     "hasPlayInterval": false,
+     "hasTickInterval": false,
+     "fastMode": false,
+     "speed": 60,
+     "replayIndex": 1910,
+     "indicators": 2,
+     "timeframe": "15m"
+    },
+    {
+     "url": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "hasReplay": true,
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "rawPlaybackMode": "candle",
+     "getPlaybackMode": "candle",
+     "getPlaybackLoopKind": null,
+     "shouldUseTickAnimation": false,
+     "tickAnimationEnabled": false,
+     "isActive": true,
+     "isPlaying": false,
+     "isPlayStarting": false,
+     "animatingCandle": false,
+     "hasPlayInterval": false,
+     "hasTickInterval": false,
+     "fastMode": false,
+     "speed": 60,
+     "replayIndex": 494,
+     "indicators": 2,
+     "timeframe": "1h"
+    }
+   ],
+   "grade": {
+    "realmsWithReplay": 4,
+    "hostMode": "candle",
+    "hostLoopKind": "candle",
+    "panelModes": [
+     "candle",
+     "candle",
+     "candle"
+    ],
+    "panelLoopKinds": [
+     null,
+     null,
+     null
+    ],
+    "allAgreeOnMode": true,
+    "tickWhileHostCandleCount": 0,
+    "p0": false,
+    "loopKindDisagreesWithMode": [],
+    "loopKinds": [
+     "candle",
+     null,
+     null,
+     null
+    ]
+   }
+  },
+  {
+   "atMinutes": 2.22,
+   "label": "2min",
+   "rows": [
+    {
+     "url": "92.82:3000/chart/dist-v9/index.html?mode=backtest&mcLayout=1",
+     "hasReplay": true,
+     "realm": "/chart/dist-v9/index.html?mode=backtest&mcLayout=1",
+     "rawPlaybackMode": "candle",
+     "getPlaybackMode": "candle",
+     "getPlaybackLoopKind": "candle",
+     "shouldUseTickAnimation": false,
+     "tickAnimationEnabled": false,
+     "isActive": true,
+     "isPlaying": true,
+     "isPlayStarting": false,
+     "animatingCandle": false,
+     "hasPlayInterval": true,
+     "hasTickInterval": false,
+     "fastMode": false,
+     "speed": 60,
+     "replayIndex": 4289,
+     "indicators": 2,
+     "timeframe": "1m"
+    },
+    {
+     "url": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "hasReplay": true,
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "rawPlaybackMode": "candle",
+     "getPlaybackMode": "candle",
+     "getPlaybackLoopKind": null,
+     "shouldUseTickAnimation": false,
+     "tickAnimationEnabled": false,
+     "isActive": true,
+     "isPlaying": false,
+     "isPlayStarting": false,
+     "animatingCandle": false,
+     "hasPlayInterval": false,
+     "hasTickInterval": false,
+     "fastMode": false,
+     "speed": 60,
+     "replayIndex": 1595,
+     "indicators": 2,
+     "timeframe": "5m"
+    },
+    {
+     "url": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "hasReplay": true,
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "rawPlaybackMode": "candle",
+     "getPlaybackMode": "candle",
+     "getPlaybackLoopKind": null,
+     "shouldUseTickAnimation": false,
+     "tickAnimationEnabled": false,
+     "isActive": true,
+     "isPlaying": false,
+     "isPlayStarting": false,
+     "animatingCandle": false,
+     "hasPlayInterval": false,
+     "hasTickInterval": false,
+     "fastMode": false,
+     "speed": 60,
+     "replayIndex": 1910,
+     "indicators": 2,
+     "timeframe": "15m"
+    },
+    {
+     "url": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "hasReplay": true,
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "rawPlaybackMode": "candle",
+     "getPlaybackMode": "candle",
+     "getPlaybackLoopKind": null,
+     "shouldUseTickAnimation": false,
+     "tickAnimationEnabled": false,
+     "isActive": true,
+     "isPlaying": false,
+     "isPlayStarting": false,
+     "animatingCandle": false,
+     "hasPlayInterval": false,
+     "hasTickInterval": false,
+     "fastMode": false,
+     "speed": 60,
+     "replayIndex": 494,
+     "indicators": 2,
+     "timeframe": "1h"
+    }
+   ],
+   "grade": {
+    "realmsWithReplay": 4,
+    "hostMode": "candle",
+    "hostLoopKind": "candle",
+    "panelModes": [
+     "candle",
+     "candle",
+     "candle"
+    ],
+    "panelLoopKinds": [
+     null,
+     null,
+     null
+    ],
+    "allAgreeOnMode": true,
+    "tickWhileHostCandleCount": 0,
+    "p0": false,
+    "loopKindDisagreesWithMode": [],
+    "loopKinds": [
+     "candle",
+     null,
+     null,
+     null
+    ]
+   }
+  },
+  {
+   "atMinutes": 10,
+   "label": "10min",
+   "rows": [
+    {
+     "url": "92.82:3000/chart/dist-v9/index.html?mode=backtest&mcLayout=1",
+     "hasReplay": true,
+     "realm": "/chart/dist-v9/index.html?mode=backtest&mcLayout=1",
+     "rawPlaybackMode": "candle",
+     "getPlaybackMode": "candle",
+     "getPlaybackLoopKind": "candle",
+     "shouldUseTickAnimation": false,
+     "tickAnimationEnabled": false,
+     "isActive": true,
+     "isPlaying": true,
+     "isPlayStarting": false,
+     "animatingCandle": false,
+     "hasPlayInterval": true,
+     "hasTickInterval": false,
+     "fastMode": false,
+     "speed": 60,
+     "replayIndex": 9687,
+     "indicators": 2,
+     "timeframe": "1m"
+    },
+    {
+     "url": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "hasReplay": true,
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "rawPlaybackMode": "candle",
+     "getPlaybackMode": "candle",
+     "getPlaybackLoopKind": null,
+     "shouldUseTickAnimation": false,
+     "tickAnimationEnabled": false,
+     "isActive": true,
+     "isPlaying": false,
+     "isPlayStarting": false,
+     "animatingCandle": false,
+     "hasPlayInterval": false,
+     "hasTickInterval": false,
+     "fastMode": false,
+     "speed": 60,
+     "replayIndex": 1595,
+     "indicators": 2,
+     "timeframe": "5m"
+    },
+    {
+     "url": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "hasReplay": true,
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "rawPlaybackMode": "candle",
+     "getPlaybackMode": "candle",
+     "getPlaybackLoopKind": null,
+     "shouldUseTickAnimation": false,
+     "tickAnimationEnabled": false,
+     "isActive": true,
+     "isPlaying": false,
+     "isPlayStarting": false,
+     "animatingCandle": false,
+     "hasPlayInterval": false,
+     "hasTickInterval": false,
+     "fastMode": false,
+     "speed": 60,
+     "replayIndex": 1910,
+     "indicators": 2,
+     "timeframe": "15m"
+    },
+    {
+     "url": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "hasReplay": true,
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "rawPlaybackMode": "candle",
+     "getPlaybackMode": "candle",
+     "getPlaybackLoopKind": null,
+     "shouldUseTickAnimation": false,
+     "tickAnimationEnabled": false,
+     "isActive": true,
+     "isPlaying": false,
+     "isPlayStarting": false,
+     "animatingCandle": false,
+     "hasPlayInterval": false,
+     "hasTickInterval": false,
+     "fastMode": false,
+     "speed": 60,
+     "replayIndex": 494,
+     "indicators": 2,
+     "timeframe": "1h"
+    }
+   ],
+   "grade": {
+    "realmsWithReplay": 4,
+    "hostMode": "candle",
+    "hostLoopKind": "candle",
+    "panelModes": [
+     "candle",
+     "candle",
+     "candle"
+    ],
+    "panelLoopKinds": [
+     null,
+     null,
+     null
+    ],
+    "allAgreeOnMode": true,
+    "tickWhileHostCandleCount": 0,
+    "p0": false,
+    "loopKindDisagreesWithMode": [],
+    "loopKinds": [
+     "candle",
+     null,
+     null,
+     null
+    ]
+   }
+  },
+  {
+   "atMinutes": 15.05,
+   "label": "15min",
+   "rows": [
+    {
+     "url": "92.82:3000/chart/dist-v9/index.html?mode=backtest&mcLayout=1",
+     "hasReplay": true,
+     "realm": "/chart/dist-v9/index.html?mode=backtest&mcLayout=1",
+     "rawPlaybackMode": "candle",
+     "getPlaybackMode": "candle",
+     "getPlaybackLoopKind": "candle",
+     "shouldUseTickAnimation": false,
+     "tickAnimationEnabled": false,
+     "isActive": true,
+     "isPlaying": true,
+     "isPlayStarting": false,
+     "animatingCandle": false,
+     "hasPlayInterval": true,
+     "hasTickInterval": false,
+     "fastMode": false,
+     "speed": 60,
+     "replayIndex": 12758,
+     "indicators": 2,
+     "timeframe": "1m"
+    },
+    {
+     "url": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "hasReplay": true,
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "rawPlaybackMode": "candle",
+     "getPlaybackMode": "candle",
+     "getPlaybackLoopKind": null,
+     "shouldUseTickAnimation": false,
+     "tickAnimationEnabled": false,
+     "isActive": true,
+     "isPlaying": false,
+     "isPlayStarting": false,
+     "animatingCandle": false,
+     "hasPlayInterval": false,
+     "hasTickInterval": false,
+     "fastMode": false,
+     "speed": 60,
+     "replayIndex": 1595,
+     "indicators": 2,
+     "timeframe": "5m"
+    },
+    {
+     "url": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "hasReplay": true,
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "rawPlaybackMode": "candle",
+     "getPlaybackMode": "candle",
+     "getPlaybackLoopKind": null,
+     "shouldUseTickAnimation": false,
+     "tickAnimationEnabled": false,
+     "isActive": true,
+     "isPlaying": false,
+     "isPlayStarting": false,
+     "animatingCandle": false,
+     "hasPlayInterval": false,
+     "hasTickInterval": false,
+     "fastMode": false,
+     "speed": 60,
+     "replayIndex": 1910,
+     "indicators": 2,
+     "timeframe": "15m"
+    },
+    {
+     "url": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "hasReplay": true,
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "rawPlaybackMode": "candle",
+     "getPlaybackMode": "candle",
+     "getPlaybackLoopKind": null,
+     "shouldUseTickAnimation": false,
+     "tickAnimationEnabled": false,
+     "isActive": true,
+     "isPlaying": false,
+     "isPlayStarting": false,
+     "animatingCandle": false,
+     "hasPlayInterval": false,
+     "hasTickInterval": false,
+     "fastMode": false,
+     "speed": 60,
+     "replayIndex": 494,
+     "indicators": 2,
+     "timeframe": "1h"
+    }
+   ],
+   "grade": {
+    "realmsWithReplay": 4,
+    "hostMode": "candle",
+    "hostLoopKind": "candle",
+    "panelModes": [
+     "candle",
+     "candle",
+     "candle"
+    ],
+    "panelLoopKinds": [
+     null,
+     null,
+     null
+    ],
+    "allAgreeOnMode": true,
+    "tickWhileHostCandleCount": 0,
+    "p0": false,
+    "loopKindDisagreesWithMode": [],
+    "loopKinds": [
+     "candle",
+     null,
+     null,
+     null
+    ]
+   }
+  }
+ ],
+ "recalcSamples": [
+  {
+   "minutes": 0,
+   "advancingPanels": 4,
+   "perRealm": [
+    {
+     "realm": "/chart/dist-v9/index.html?mode=backtest&mcLayout=1",
+     "mode": "candle",
+     "loopKind": "candle",
+     "callsCumulative": 5,
+     "replayIndex": 2103,
+     "residentBars": 2104,
+     "recalcMeanMs": 0.74,
+     "recalcP50Ms": 0.7,
+     "recalcP95Ms": 0.9,
+     "recalcMaxMs": 0.9,
+     "windowSamples": 5
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "callsCumulative": 0,
+     "replayIndex": 1595,
+     "residentBars": 1596,
+     "recalcMeanMs": null,
+     "recalcP50Ms": null,
+     "recalcP95Ms": null,
+     "recalcMaxMs": null,
+     "windowSamples": 0
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "callsCumulative": 0,
+     "replayIndex": 1910,
+     "residentBars": 1911,
+     "recalcMeanMs": null,
+     "recalcP50Ms": null,
+     "recalcP95Ms": null,
+     "recalcMaxMs": null,
+     "windowSamples": 0
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "callsCumulative": 15,
+     "replayIndex": 494,
+     "residentBars": 495,
+     "recalcMeanMs": 0.4667,
+     "recalcP50Ms": 0.5,
+     "recalcP95Ms": 0.7,
+     "recalcMaxMs": 0.7,
+     "windowSamples": 15
+    }
+   ]
+  },
+  {
+   "minutes": 0.55,
+   "advancingPanels": 4,
+   "perRealm": [
+    {
+     "realm": "/chart/dist-v9/index.html?mode=backtest&mcLayout=1",
+     "mode": "candle",
+     "loopKind": "candle",
+     "callsCumulative": 655,
+     "replayIndex": 2753,
+     "residentBars": 2754,
+     "recalcMeanMs": 0.7368,
+     "recalcP50Ms": 0.7,
+     "recalcP95Ms": 1.1,
+     "recalcMaxMs": 3.6,
+     "windowSamples": 650
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "callsCumulative": 660,
+     "replayIndex": 1595,
+     "residentBars": 1596,
+     "recalcMeanMs": 0.5261,
+     "recalcP50Ms": 0.5,
+     "recalcP95Ms": 0.8,
+     "recalcMaxMs": 6.8,
+     "windowSamples": 660
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "callsCumulative": 659,
+     "replayIndex": 1910,
+     "residentBars": 1911,
+     "recalcMeanMs": 0.514,
+     "recalcP50Ms": 0.5,
+     "recalcP95Ms": 0.8,
+     "recalcMaxMs": 1.7,
+     "windowSamples": 659
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "callsCumulative": 664,
+     "replayIndex": 494,
+     "residentBars": 495,
+     "recalcMeanMs": 0.5069,
+     "recalcP50Ms": 0.5,
+     "recalcP95Ms": 0.9,
+     "recalcMaxMs": 2,
+     "windowSamples": 649
+    }
+   ],
+   "perRealmDelta": [
+    {
+     "realm": "/chart/dist-v9/index.html?mode=backtest&mcLayout=1",
+     "mode": "candle",
+     "loopKind": "candle",
+     "recalcs": 650,
+     "candlesAdvanced": 650,
+     "recalcsPerCandle": 1
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "recalcs": 660,
+     "candlesAdvanced": 0,
+     "recalcsPerCandle": null
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "recalcs": 659,
+     "candlesAdvanced": 315,
+     "recalcsPerCandle": 2.09
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "recalcs": 664,
+     "candlesAdvanced": -1101,
+     "recalcsPerCandle": null
+    }
+   ]
+  },
+  {
+   "minutes": 1.1,
+   "advancingPanels": 4,
+   "perRealm": [
+    {
+     "realm": "/chart/dist-v9/index.html?mode=backtest&mcLayout=1",
+     "mode": "candle",
+     "loopKind": "candle",
+     "callsCumulative": 1309,
+     "replayIndex": 3409,
+     "residentBars": 3409,
+     "recalcMeanMs": 0.772,
+     "recalcP50Ms": 0.7,
+     "recalcP95Ms": 1.2,
+     "recalcMaxMs": 3.5,
+     "windowSamples": 654
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "callsCumulative": 1305,
+     "replayIndex": 1595,
+     "residentBars": 1596,
+     "recalcMeanMs": 0.5188,
+     "recalcP50Ms": 0.5,
+     "recalcP95Ms": 0.9,
+     "recalcMaxMs": 1.5,
+     "windowSamples": 645
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "callsCumulative": 1312,
+     "replayIndex": 1910,
+     "residentBars": 1911,
+     "recalcMeanMs": 0.5331,
+     "recalcP50Ms": 0.5,
+     "recalcP95Ms": 0.9,
+     "recalcMaxMs": 6.6,
+     "windowSamples": 653
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "callsCumulative": 1320,
+     "replayIndex": 494,
+     "residentBars": 495,
+     "recalcMeanMs": 0.5003,
+     "recalcP50Ms": 0.5,
+     "recalcP95Ms": 0.8,
+     "recalcMaxMs": 3,
+     "windowSamples": 656
+    }
+   ],
+   "perRealmDelta": [
+    {
+     "realm": "/chart/dist-v9/index.html?mode=backtest&mcLayout=1",
+     "mode": "candle",
+     "loopKind": "candle",
+     "recalcs": 654,
+     "candlesAdvanced": 656,
+     "recalcsPerCandle": 1
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "recalcs": 645,
+     "candlesAdvanced": 0,
+     "recalcsPerCandle": null
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "recalcs": 652,
+     "candlesAdvanced": 315,
+     "recalcsPerCandle": 2.07
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "recalcs": 660,
+     "candlesAdvanced": -1101,
+     "recalcsPerCandle": null
+    }
+   ]
+  },
+  {
+   "minutes": 1.65,
+   "advancingPanels": 4,
+   "perRealm": [
+    {
+     "realm": "/chart/dist-v9/index.html?mode=backtest&mcLayout=1",
+     "mode": "candle",
+     "loopKind": "candle",
+     "callsCumulative": 1778,
+     "replayIndex": 3878,
+     "residentBars": 3878,
+     "recalcMeanMs": 1.0505,
+     "recalcP50Ms": 1,
+     "recalcP95Ms": 1.5,
+     "recalcMaxMs": 4.1,
+     "windowSamples": 469
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "callsCumulative": 1769,
+     "replayIndex": 1595,
+     "residentBars": 1596,
+     "recalcMeanMs": 0.7246,
+     "recalcP50Ms": 0.7,
+     "recalcP95Ms": 1.1,
+     "recalcMaxMs": 3,
+     "windowSamples": 464
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "callsCumulative": 1783,
+     "replayIndex": 1910,
+     "residentBars": 1911,
+     "recalcMeanMs": 0.762,
+     "recalcP50Ms": 0.8,
+     "recalcP95Ms": 1.2,
+     "recalcMaxMs": 2.9,
+     "windowSamples": 471
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "callsCumulative": 1789,
+     "replayIndex": 494,
+     "residentBars": 495,
+     "recalcMeanMs": 0.7322,
+     "recalcP50Ms": 0.7,
+     "recalcP95Ms": 1.1,
+     "recalcMaxMs": 4.9,
+     "windowSamples": 469
+    }
+   ],
+   "perRealmDelta": [
+    {
+     "realm": "/chart/dist-v9/index.html?mode=backtest&mcLayout=1",
+     "mode": "candle",
+     "loopKind": "candle",
+     "recalcs": 469,
+     "candlesAdvanced": 469,
+     "recalcsPerCandle": 1
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "recalcs": 464,
+     "candlesAdvanced": 0,
+     "recalcsPerCandle": null
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "recalcs": 478,
+     "candlesAdvanced": 315,
+     "recalcsPerCandle": 1.52
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "recalcs": 484,
+     "candlesAdvanced": -1101,
+     "recalcsPerCandle": null
+    }
+   ]
+  },
+  {
+   "minutes": 2.22,
+   "advancingPanels": 4,
+   "perRealm": [
+    {
+     "realm": "/chart/dist-v9/index.html?mode=backtest&mcLayout=1",
+     "mode": "candle",
+     "loopKind": "candle",
+     "callsCumulative": 2193,
+     "replayIndex": 4292,
+     "residentBars": 4293,
+     "recalcMeanMs": 1.0627,
+     "recalcP50Ms": 1,
+     "recalcP95Ms": 1.5,
+     "recalcMaxMs": 5.2,
+     "windowSamples": 415
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "callsCumulative": 2194,
+     "replayIndex": 1595,
+     "residentBars": 1596,
+     "recalcMeanMs": 0.7779,
+     "recalcP50Ms": 0.8,
+     "recalcP95Ms": 1.1,
+     "recalcMaxMs": 1.8,
+     "windowSamples": 425
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "callsCumulative": 2194,
+     "replayIndex": 1910,
+     "residentBars": 1911,
+     "recalcMeanMs": 0.7769,
+     "recalcP50Ms": 0.8,
+     "recalcP95Ms": 1.1,
+     "recalcMaxMs": 1.4,
+     "windowSamples": 411
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "callsCumulative": 2206,
+     "replayIndex": 494,
+     "residentBars": 495,
+     "recalcMeanMs": 0.7683,
+     "recalcP50Ms": 0.8,
+     "recalcP95Ms": 1.1,
+     "recalcMaxMs": 1.4,
+     "windowSamples": 417
+    }
+   ],
+   "perRealmDelta": [
+    {
+     "realm": "/chart/dist-v9/index.html?mode=backtest&mcLayout=1",
+     "mode": "candle",
+     "loopKind": "candle",
+     "recalcs": 415,
+     "candlesAdvanced": 414,
+     "recalcsPerCandle": 1
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "recalcs": 425,
+     "candlesAdvanced": 0,
+     "recalcsPerCandle": null
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "recalcs": 425,
+     "candlesAdvanced": 315,
+     "recalcsPerCandle": 1.35
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "recalcs": 437,
+     "candlesAdvanced": -1101,
+     "recalcsPerCandle": null
+    }
+   ]
+  },
+  {
+   "minutes": 2.78,
+   "advancingPanels": 4,
+   "perRealm": [
+    {
+     "realm": "/chart/dist-v9/index.html?mode=backtest&mcLayout=1",
+     "mode": "candle",
+     "loopKind": "candle",
+     "callsCumulative": 2587,
+     "replayIndex": 4687,
+     "residentBars": 4687,
+     "recalcMeanMs": 1.1142,
+     "recalcP50Ms": 1.1,
+     "recalcP95Ms": 1.5,
+     "recalcMaxMs": 2.2,
+     "windowSamples": 394
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "callsCumulative": 2590,
+     "replayIndex": 1595,
+     "residentBars": 1596,
+     "recalcMeanMs": 0.8162,
+     "recalcP50Ms": 0.8,
+     "recalcP95Ms": 1.1,
+     "recalcMaxMs": 1.7,
+     "windowSamples": 396
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "callsCumulative": 2584,
+     "replayIndex": 1910,
+     "residentBars": 1911,
+     "recalcMeanMs": 0.7933,
+     "recalcP50Ms": 0.8,
+     "recalcP95Ms": 1.2,
+     "recalcMaxMs": 2.6,
+     "windowSamples": 390
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "callsCumulative": 2595,
+     "replayIndex": 494,
+     "residentBars": 495,
+     "recalcMeanMs": 0.7869,
+     "recalcP50Ms": 0.8,
+     "recalcP95Ms": 1.1,
+     "recalcMaxMs": 3.9,
+     "windowSamples": 389
+    }
+   ],
+   "perRealmDelta": [
+    {
+     "realm": "/chart/dist-v9/index.html?mode=backtest&mcLayout=1",
+     "mode": "candle",
+     "loopKind": "candle",
+     "recalcs": 394,
+     "candlesAdvanced": 395,
+     "recalcsPerCandle": 1
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "recalcs": 396,
+     "candlesAdvanced": 0,
+     "recalcsPerCandle": null
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "recalcs": 390,
+     "candlesAdvanced": 315,
+     "recalcsPerCandle": 1.24
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "recalcs": 401,
+     "candlesAdvanced": -1101,
+     "recalcsPerCandle": null
+    }
+   ]
+  },
+  {
+   "minutes": 3.33,
+   "advancingPanels": 4,
+   "perRealm": [
+    {
+     "realm": "/chart/dist-v9/index.html?mode=backtest&mcLayout=1",
+     "mode": "candle",
+     "loopKind": "candle",
+     "callsCumulative": 2984,
+     "replayIndex": 5084,
+     "residentBars": 5084,
+     "recalcMeanMs": 1.0461,
+     "recalcP50Ms": 1,
+     "recalcP95Ms": 1.5,
+     "recalcMaxMs": 5.2,
+     "windowSamples": 397
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "callsCumulative": 2982,
+     "replayIndex": 1595,
+     "residentBars": 1596,
+     "recalcMeanMs": 0.7531,
+     "recalcP50Ms": 0.7,
+     "recalcP95Ms": 1.1,
+     "recalcMaxMs": 2.6,
+     "windowSamples": 392
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "callsCumulative": 2982,
+     "replayIndex": 1910,
+     "residentBars": 1911,
+     "recalcMeanMs": 0.7508,
+     "recalcP50Ms": 0.8,
+     "recalcP95Ms": 1,
+     "recalcMaxMs": 1.7,
+     "windowSamples": 398
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "callsCumulative": 2993,
+     "replayIndex": 494,
+     "residentBars": 495,
+     "recalcMeanMs": 0.7377,
+     "recalcP50Ms": 0.7,
+     "recalcP95Ms": 1.1,
+     "recalcMaxMs": 2.6,
+     "windowSamples": 398
+    }
+   ],
+   "perRealmDelta": [
+    {
+     "realm": "/chart/dist-v9/index.html?mode=backtest&mcLayout=1",
+     "mode": "candle",
+     "loopKind": "candle",
+     "recalcs": 397,
+     "candlesAdvanced": 397,
+     "recalcsPerCandle": 1
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "recalcs": 392,
+     "candlesAdvanced": 0,
+     "recalcsPerCandle": null
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "recalcs": 392,
+     "candlesAdvanced": 315,
+     "recalcsPerCandle": 1.24
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "recalcs": 403,
+     "candlesAdvanced": -1101,
+     "recalcsPerCandle": null
+    }
+   ]
+  },
+  {
+   "minutes": 3.88,
+   "advancingPanels": 4,
+   "perRealm": [
+    {
+     "realm": "/chart/dist-v9/index.html?mode=backtest&mcLayout=1",
+     "mode": "candle",
+     "loopKind": "candle",
+     "callsCumulative": 3373,
+     "replayIndex": 5473,
+     "residentBars": 5473,
+     "recalcMeanMs": 1.0643,
+     "recalcP50Ms": 1.1,
+     "recalcP95Ms": 1.4,
+     "recalcMaxMs": 4.4,
+     "windowSamples": 389
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "callsCumulative": 3379,
+     "replayIndex": 1595,
+     "residentBars": 1596,
+     "recalcMeanMs": 0.7841,
+     "recalcP50Ms": 0.8,
+     "recalcP95Ms": 1,
+     "recalcMaxMs": 12.1,
+     "windowSamples": 397
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "callsCumulative": 3377,
+     "replayIndex": 1910,
+     "residentBars": 1911,
+     "recalcMeanMs": 0.7486,
+     "recalcP50Ms": 0.7,
+     "recalcP95Ms": 1.1,
+     "recalcMaxMs": 1.9,
+     "windowSamples": 395
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "callsCumulative": 3383,
+     "replayIndex": 494,
+     "residentBars": 495,
+     "recalcMeanMs": 0.7608,
+     "recalcP50Ms": 0.7,
+     "recalcP95Ms": 1.1,
+     "recalcMaxMs": 12.8,
+     "windowSamples": 390
+    }
+   ],
+   "perRealmDelta": [
+    {
+     "realm": "/chart/dist-v9/index.html?mode=backtest&mcLayout=1",
+     "mode": "candle",
+     "loopKind": "candle",
+     "recalcs": 389,
+     "candlesAdvanced": 389,
+     "recalcsPerCandle": 1
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "recalcs": 397,
+     "candlesAdvanced": 0,
+     "recalcsPerCandle": null
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "recalcs": 395,
+     "candlesAdvanced": 315,
+     "recalcsPerCandle": 1.25
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "recalcs": 401,
+     "candlesAdvanced": -1101,
+     "recalcsPerCandle": null
+    }
+   ]
+  },
+  {
+   "minutes": 4.44,
+   "advancingPanels": 4,
+   "perRealm": [
+    {
+     "realm": "/chart/dist-v9/index.html?mode=backtest&mcLayout=1",
+     "mode": "candle",
+     "loopKind": "candle",
+     "callsCumulative": 3757,
+     "replayIndex": 5856,
+     "residentBars": 5857,
+     "recalcMeanMs": 1.0708,
+     "recalcP50Ms": 1.1,
+     "recalcP95Ms": 1.4,
+     "recalcMaxMs": 3.7,
+     "windowSamples": 384
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "callsCumulative": 3759,
+     "replayIndex": 1595,
+     "residentBars": 1596,
+     "recalcMeanMs": 0.8155,
+     "recalcP50Ms": 0.8,
+     "recalcP95Ms": 1.1,
+     "recalcMaxMs": 23.8,
+     "windowSamples": 380
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "callsCumulative": 3751,
+     "replayIndex": 1910,
+     "residentBars": 1911,
+     "recalcMeanMs": 0.7644,
+     "recalcP50Ms": 0.8,
+     "recalcP95Ms": 1.1,
+     "recalcMaxMs": 2.1,
+     "windowSamples": 374
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "callsCumulative": 3757,
+     "replayIndex": 494,
+     "residentBars": 495,
+     "recalcMeanMs": 0.7094,
+     "recalcP50Ms": 0.7,
+     "recalcP95Ms": 1,
+     "recalcMaxMs": 1.2,
+     "windowSamples": 374
+    }
+   ],
+   "perRealmDelta": [
+    {
+     "realm": "/chart/dist-v9/index.html?mode=backtest&mcLayout=1",
+     "mode": "candle",
+     "loopKind": "candle",
+     "recalcs": 384,
+     "candlesAdvanced": 383,
+     "recalcsPerCandle": 1
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "recalcs": 380,
+     "candlesAdvanced": 0,
+     "recalcsPerCandle": null
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "recalcs": 372,
+     "candlesAdvanced": 315,
+     "recalcsPerCandle": 1.18
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "recalcs": 378,
+     "candlesAdvanced": -1101,
+     "recalcsPerCandle": null
+    }
+   ]
+  },
+  {
+   "minutes": 4.99,
+   "advancingPanels": 4,
+   "perRealm": [
+    {
+     "realm": "/chart/dist-v9/index.html?mode=backtest&mcLayout=1",
+     "mode": "candle",
+     "loopKind": "candle",
+     "callsCumulative": 4155,
+     "replayIndex": 6255,
+     "residentBars": 6255,
+     "recalcMeanMs": 1.1435,
+     "recalcP50Ms": 1.1,
+     "recalcP95Ms": 1.7,
+     "recalcMaxMs": 6.4,
+     "windowSamples": 398
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "callsCumulative": 4161,
+     "replayIndex": 1595,
+     "residentBars": 1596,
+     "recalcMeanMs": 0.6818,
+     "recalcP50Ms": 0.7,
+     "recalcP95Ms": 1,
+     "recalcMaxMs": 1.9,
+     "windowSamples": 402
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "callsCumulative": 4154,
+     "replayIndex": 1910,
+     "residentBars": 1911,
+     "recalcMeanMs": 0.7218,
+     "recalcP50Ms": 0.7,
+     "recalcP95Ms": 1,
+     "recalcMaxMs": 3.1,
+     "windowSamples": 403
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "callsCumulative": 4166,
+     "replayIndex": 494,
+     "residentBars": 495,
+     "recalcMeanMs": 0.6932,
+     "recalcP50Ms": 0.7,
+     "recalcP95Ms": 1,
+     "recalcMaxMs": 1.4,
+     "windowSamples": 409
+    }
+   ],
+   "perRealmDelta": [
+    {
+     "realm": "/chart/dist-v9/index.html?mode=backtest&mcLayout=1",
+     "mode": "candle",
+     "loopKind": "candle",
+     "recalcs": 398,
+     "candlesAdvanced": 399,
+     "recalcsPerCandle": 1
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "recalcs": 402,
+     "candlesAdvanced": 0,
+     "recalcsPerCandle": null
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "recalcs": 395,
+     "candlesAdvanced": 315,
+     "recalcsPerCandle": 1.25
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "recalcs": 407,
+     "candlesAdvanced": -1101,
+     "recalcsPerCandle": null
+    }
+   ]
+  },
+  {
+   "minutes": 5.54,
+   "advancingPanels": 4,
+   "perRealm": [
+    {
+     "realm": "/chart/dist-v9/index.html?mode=backtest&mcLayout=1",
+     "mode": "candle",
+     "loopKind": "candle",
+     "callsCumulative": 4555,
+     "replayIndex": 6655,
+     "residentBars": 6655,
+     "recalcMeanMs": 1.1135,
+     "recalcP50Ms": 1,
+     "recalcP95Ms": 1.3,
+     "recalcMaxMs": 38.3,
+     "windowSamples": 400
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "callsCumulative": 4551,
+     "replayIndex": 1595,
+     "residentBars": 1596,
+     "recalcMeanMs": 0.6844,
+     "recalcP50Ms": 0.7,
+     "recalcP95Ms": 1,
+     "recalcMaxMs": 1.8,
+     "windowSamples": 390
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "callsCumulative": 4559,
+     "replayIndex": 1910,
+     "residentBars": 1911,
+     "recalcMeanMs": 0.6886,
+     "recalcP50Ms": 0.7,
+     "recalcP95Ms": 1,
+     "recalcMaxMs": 1.2,
+     "windowSamples": 405
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "callsCumulative": 4559,
+     "replayIndex": 494,
+     "residentBars": 495,
+     "recalcMeanMs": 0.6753,
+     "recalcP50Ms": 0.7,
+     "recalcP95Ms": 1,
+     "recalcMaxMs": 1.3,
+     "windowSamples": 393
+    }
+   ],
+   "perRealmDelta": [
+    {
+     "realm": "/chart/dist-v9/index.html?mode=backtest&mcLayout=1",
+     "mode": "candle",
+     "loopKind": "candle",
+     "recalcs": 400,
+     "candlesAdvanced": 400,
+     "recalcsPerCandle": 1
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "recalcs": 390,
+     "candlesAdvanced": 0,
+     "recalcsPerCandle": null
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "recalcs": 398,
+     "candlesAdvanced": 315,
+     "recalcsPerCandle": 1.26
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "recalcs": 398,
+     "candlesAdvanced": -1101,
+     "recalcsPerCandle": null
+    }
+   ]
+  },
+  {
+   "minutes": 6.09,
+   "advancingPanels": 4,
+   "perRealm": [
+    {
+     "realm": "/chart/dist-v9/index.html?mode=backtest&mcLayout=1",
+     "mode": "candle",
+     "loopKind": "candle",
+     "callsCumulative": 4929,
+     "replayIndex": 7028,
+     "residentBars": 7029,
+     "recalcMeanMs": 1.0489,
+     "recalcP50Ms": 1,
+     "recalcP95Ms": 1.4,
+     "recalcMaxMs": 2.3,
+     "windowSamples": 374
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "callsCumulative": 4928,
+     "replayIndex": 1595,
+     "residentBars": 1596,
+     "recalcMeanMs": 0.717,
+     "recalcP50Ms": 0.7,
+     "recalcP95Ms": 1,
+     "recalcMaxMs": 1.4,
+     "windowSamples": 377
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "callsCumulative": 4933,
+     "replayIndex": 1910,
+     "residentBars": 1911,
+     "recalcMeanMs": 0.7353,
+     "recalcP50Ms": 0.7,
+     "recalcP95Ms": 1.1,
+     "recalcMaxMs": 1.8,
+     "windowSamples": 374
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "callsCumulative": 4939,
+     "replayIndex": 494,
+     "residentBars": 495,
+     "recalcMeanMs": 0.7324,
+     "recalcP50Ms": 0.7,
+     "recalcP95Ms": 1,
+     "recalcMaxMs": 3.3,
+     "windowSamples": 380
+    }
+   ],
+   "perRealmDelta": [
+    {
+     "realm": "/chart/dist-v9/index.html?mode=backtest&mcLayout=1",
+     "mode": "candle",
+     "loopKind": "candle",
+     "recalcs": 374,
+     "candlesAdvanced": 373,
+     "recalcsPerCandle": 1
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "recalcs": 377,
+     "candlesAdvanced": 0,
+     "recalcsPerCandle": null
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "recalcs": 382,
+     "candlesAdvanced": 315,
+     "recalcsPerCandle": 1.21
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "recalcs": 388,
+     "candlesAdvanced": -1101,
+     "recalcsPerCandle": null
+    }
+   ]
+  },
+  {
+   "minutes": 6.65,
+   "advancingPanels": 4,
+   "perRealm": [
+    {
+     "realm": "/chart/dist-v9/index.html?mode=backtest&mcLayout=1",
+     "mode": "candle",
+     "loopKind": "candle",
+     "callsCumulative": 5347,
+     "replayIndex": 7447,
+     "residentBars": 7447,
+     "recalcMeanMs": 0.9627,
+     "recalcP50Ms": 0.9,
+     "recalcP95Ms": 1.3,
+     "recalcMaxMs": 3.6,
+     "windowSamples": 418
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "callsCumulative": 5332,
+     "replayIndex": 1595,
+     "residentBars": 1596,
+     "recalcMeanMs": 0.7248,
+     "recalcP50Ms": 0.6,
+     "recalcP95Ms": 0.9,
+     "recalcMaxMs": 21.9,
+     "windowSamples": 404
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "callsCumulative": 5328,
+     "replayIndex": 1910,
+     "residentBars": 1911,
+     "recalcMeanMs": 0.6673,
+     "recalcP50Ms": 0.6,
+     "recalcP95Ms": 1,
+     "recalcMaxMs": 1.3,
+     "windowSamples": 395
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "callsCumulative": 5337,
+     "replayIndex": 494,
+     "residentBars": 495,
+     "recalcMeanMs": 0.6407,
+     "recalcP50Ms": 0.6,
+     "recalcP95Ms": 1,
+     "recalcMaxMs": 1.3,
+     "windowSamples": 398
+    }
+   ],
+   "perRealmDelta": [
+    {
+     "realm": "/chart/dist-v9/index.html?mode=backtest&mcLayout=1",
+     "mode": "candle",
+     "loopKind": "candle",
+     "recalcs": 418,
+     "candlesAdvanced": 419,
+     "recalcsPerCandle": 1
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "recalcs": 404,
+     "candlesAdvanced": 0,
+     "recalcsPerCandle": null
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "recalcs": 400,
+     "candlesAdvanced": 315,
+     "recalcsPerCandle": 1.27
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "recalcs": 409,
+     "candlesAdvanced": -1101,
+     "recalcsPerCandle": null
+    }
+   ]
+  },
+  {
+   "minutes": 7.21,
+   "advancingPanels": 4,
+   "perRealm": [
+    {
+     "realm": "/chart/dist-v9/index.html?mode=backtest&mcLayout=1",
+     "mode": "candle",
+     "loopKind": "candle",
+     "callsCumulative": 5742,
+     "replayIndex": 7841,
+     "residentBars": 7842,
+     "recalcMeanMs": 0.9458,
+     "recalcP50Ms": 0.9,
+     "recalcP95Ms": 1.3,
+     "recalcMaxMs": 1.6,
+     "windowSamples": 395
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "callsCumulative": 5736,
+     "replayIndex": 1595,
+     "residentBars": 1596,
+     "recalcMeanMs": 0.6582,
+     "recalcP50Ms": 0.6,
+     "recalcP95Ms": 1,
+     "recalcMaxMs": 3.3,
+     "windowSamples": 404
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "callsCumulative": 5742,
+     "replayIndex": 1910,
+     "residentBars": 1911,
+     "recalcMeanMs": 0.7271,
+     "recalcP50Ms": 0.7,
+     "recalcP95Ms": 1,
+     "recalcMaxMs": 12.1,
+     "windowSamples": 414
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "callsCumulative": 5755,
+     "replayIndex": 494,
+     "residentBars": 495,
+     "recalcMeanMs": 0.6751,
+     "recalcP50Ms": 0.7,
+     "recalcP95Ms": 1,
+     "recalcMaxMs": 1.3,
+     "windowSamples": 418
+    }
+   ],
+   "perRealmDelta": [
+    {
+     "realm": "/chart/dist-v9/index.html?mode=backtest&mcLayout=1",
+     "mode": "candle",
+     "loopKind": "candle",
+     "recalcs": 395,
+     "candlesAdvanced": 394,
+     "recalcsPerCandle": 1
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "recalcs": 404,
+     "candlesAdvanced": 0,
+     "recalcsPerCandle": null
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "recalcs": 410,
+     "candlesAdvanced": 315,
+     "recalcsPerCandle": 1.3
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "recalcs": 423,
+     "candlesAdvanced": -1101,
+     "recalcsPerCandle": null
+    }
+   ]
+  },
+  {
+   "minutes": 7.77,
+   "advancingPanels": 4,
+   "perRealm": [
+    {
+     "realm": "/chart/dist-v9/index.html?mode=backtest&mcLayout=1",
+     "mode": "candle",
+     "loopKind": "candle",
+     "callsCumulative": 6131,
+     "replayIndex": 8231,
+     "residentBars": 8231,
+     "recalcMeanMs": 1.0324,
+     "recalcP50Ms": 1,
+     "recalcP95Ms": 1.6,
+     "recalcMaxMs": 4.3,
+     "windowSamples": 389
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "callsCumulative": 6137,
+     "replayIndex": 1595,
+     "residentBars": 1596,
+     "recalcMeanMs": 0.6676,
+     "recalcP50Ms": 0.6,
+     "recalcP95Ms": 1,
+     "recalcMaxMs": 1.5,
+     "windowSamples": 401
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "callsCumulative": 6137,
+     "replayIndex": 1910,
+     "residentBars": 1911,
+     "recalcMeanMs": 0.7008,
+     "recalcP50Ms": 0.7,
+     "recalcP95Ms": 1.1,
+     "recalcMaxMs": 3.1,
+     "windowSamples": 395
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "callsCumulative": 6144,
+     "replayIndex": 494,
+     "residentBars": 495,
+     "recalcMeanMs": 0.6928,
+     "recalcP50Ms": 0.6,
+     "recalcP95Ms": 1.1,
+     "recalcMaxMs": 2.2,
+     "windowSamples": 389
+    }
+   ],
+   "perRealmDelta": [
+    {
+     "realm": "/chart/dist-v9/index.html?mode=backtest&mcLayout=1",
+     "mode": "candle",
+     "loopKind": "candle",
+     "recalcs": 389,
+     "candlesAdvanced": 390,
+     "recalcsPerCandle": 1
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "recalcs": 401,
+     "candlesAdvanced": 0,
+     "recalcsPerCandle": null
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "recalcs": 401,
+     "candlesAdvanced": 315,
+     "recalcsPerCandle": 1.27
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "recalcs": 408,
+     "candlesAdvanced": -1101,
+     "recalcsPerCandle": null
+    }
+   ]
+  },
+  {
+   "minutes": 8.33,
+   "advancingPanels": 4,
+   "perRealm": [
+    {
+     "realm": "/chart/dist-v9/index.html?mode=backtest&mcLayout=1",
+     "mode": "candle",
+     "loopKind": "candle",
+     "callsCumulative": 6506,
+     "replayIndex": 8605,
+     "residentBars": 8606,
+     "recalcMeanMs": 0.9864,
+     "recalcP50Ms": 0.9,
+     "recalcP95Ms": 1.3,
+     "recalcMaxMs": 4.3,
+     "windowSamples": 375
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "callsCumulative": 6505,
+     "replayIndex": 1595,
+     "residentBars": 1596,
+     "recalcMeanMs": 0.713,
+     "recalcP50Ms": 0.7,
+     "recalcP95Ms": 1,
+     "recalcMaxMs": 1.4,
+     "windowSamples": 368
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "callsCumulative": 6508,
+     "replayIndex": 1910,
+     "residentBars": 1911,
+     "recalcMeanMs": 0.7186,
+     "recalcP50Ms": 0.7,
+     "recalcP95Ms": 1,
+     "recalcMaxMs": 2.7,
+     "windowSamples": 371
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "callsCumulative": 6518,
+     "replayIndex": 494,
+     "residentBars": 495,
+     "recalcMeanMs": 0.6741,
+     "recalcP50Ms": 0.7,
+     "recalcP95Ms": 1,
+     "recalcMaxMs": 1.3,
+     "windowSamples": 374
+    }
+   ],
+   "perRealmDelta": [
+    {
+     "realm": "/chart/dist-v9/index.html?mode=backtest&mcLayout=1",
+     "mode": "candle",
+     "loopKind": "candle",
+     "recalcs": 375,
+     "candlesAdvanced": 374,
+     "recalcsPerCandle": 1
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "recalcs": 368,
+     "candlesAdvanced": 0,
+     "recalcsPerCandle": null
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "recalcs": 371,
+     "candlesAdvanced": 315,
+     "recalcsPerCandle": 1.18
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "recalcs": 381,
+     "candlesAdvanced": -1101,
+     "recalcsPerCandle": null
+    }
+   ]
+  },
+  {
+   "minutes": 8.89,
+   "advancingPanels": 4,
+   "perRealm": [
+    {
+     "realm": "/chart/dist-v9/index.html?mode=backtest&mcLayout=1",
+     "mode": "candle",
+     "loopKind": "candle",
+     "callsCumulative": 6869,
+     "replayIndex": 8970,
+     "residentBars": 8970,
+     "recalcMeanMs": 1.0413,
+     "recalcP50Ms": 1,
+     "recalcP95Ms": 1.4,
+     "recalcMaxMs": 2.2,
+     "windowSamples": 363
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "callsCumulative": 6870,
+     "replayIndex": 1595,
+     "residentBars": 1596,
+     "recalcMeanMs": 0.7151,
+     "recalcP50Ms": 0.7,
+     "recalcP95Ms": 1.1,
+     "recalcMaxMs": 1.5,
+     "windowSamples": 365
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "callsCumulative": 6866,
+     "replayIndex": 1910,
+     "residentBars": 1911,
+     "recalcMeanMs": 0.7318,
+     "recalcP50Ms": 0.7,
+     "recalcP95Ms": 1,
+     "recalcMaxMs": 8,
+     "windowSamples": 358
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "callsCumulative": 6875,
+     "replayIndex": 494,
+     "residentBars": 495,
+     "recalcMeanMs": 0.7081,
+     "recalcP50Ms": 0.7,
+     "recalcP95Ms": 1,
+     "recalcMaxMs": 2,
+     "windowSamples": 357
+    }
+   ],
+   "perRealmDelta": [
+    {
+     "realm": "/chart/dist-v9/index.html?mode=backtest&mcLayout=1",
+     "mode": "candle",
+     "loopKind": "candle",
+     "recalcs": 363,
+     "candlesAdvanced": 365,
+     "recalcsPerCandle": 0.99
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "recalcs": 365,
+     "candlesAdvanced": 0,
+     "recalcsPerCandle": null
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "recalcs": 361,
+     "candlesAdvanced": 315,
+     "recalcsPerCandle": 1.15
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "recalcs": 370,
+     "candlesAdvanced": -1101,
+     "recalcsPerCandle": null
+    }
+   ]
+  },
+  {
+   "minutes": 9.44,
+   "advancingPanels": 4,
+   "perRealm": [
+    {
+     "realm": "/chart/dist-v9/index.html?mode=backtest&mcLayout=1",
+     "mode": "candle",
+     "loopKind": "candle",
+     "callsCumulative": 7227,
+     "replayIndex": 9328,
+     "residentBars": 9328,
+     "recalcMeanMs": 1.0444,
+     "recalcP50Ms": 1,
+     "recalcP95Ms": 1.5,
+     "recalcMaxMs": 1.8,
+     "windowSamples": 358
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "callsCumulative": 7232,
+     "replayIndex": 1595,
+     "residentBars": 1596,
+     "recalcMeanMs": 0.7304,
+     "recalcP50Ms": 0.7,
+     "recalcP95Ms": 1,
+     "recalcMaxMs": 2.2,
+     "windowSamples": 362
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "callsCumulative": 7207,
+     "replayIndex": 1910,
+     "residentBars": 1911,
+     "recalcMeanMs": 0.7493,
+     "recalcP50Ms": 0.7,
+     "recalcP95Ms": 1,
+     "recalcMaxMs": 11.5,
+     "windowSamples": 341
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "callsCumulative": 7240,
+     "replayIndex": 494,
+     "residentBars": 495,
+     "recalcMeanMs": 0.7055,
+     "recalcP50Ms": 0.7,
+     "recalcP95Ms": 1.1,
+     "recalcMaxMs": 1.8,
+     "windowSamples": 365
+    }
+   ],
+   "perRealmDelta": [
+    {
+     "realm": "/chart/dist-v9/index.html?mode=backtest&mcLayout=1",
+     "mode": "candle",
+     "loopKind": "candle",
+     "recalcs": 358,
+     "candlesAdvanced": 358,
+     "recalcsPerCandle": 1
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "recalcs": 362,
+     "candlesAdvanced": 0,
+     "recalcsPerCandle": null
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "recalcs": 337,
+     "candlesAdvanced": 315,
+     "recalcsPerCandle": 1.07
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "recalcs": 370,
+     "candlesAdvanced": -1101,
+     "recalcsPerCandle": null
+    }
+   ]
+  },
+  {
+   "minutes": 10,
+   "advancingPanels": 4,
+   "perRealm": [
+    {
+     "realm": "/chart/dist-v9/index.html?mode=backtest&mcLayout=1",
+     "mode": "candle",
+     "loopKind": "candle",
+     "callsCumulative": 7590,
+     "replayIndex": 9690,
+     "residentBars": 9691,
+     "recalcMeanMs": 1.0661,
+     "recalcP50Ms": 1,
+     "recalcP95Ms": 1.4,
+     "recalcMaxMs": 4.9,
+     "windowSamples": 363
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "callsCumulative": 7590,
+     "replayIndex": 1595,
+     "residentBars": 1596,
+     "recalcMeanMs": 0.7017,
+     "recalcP50Ms": 0.7,
+     "recalcP95Ms": 1,
+     "recalcMaxMs": 3.5,
+     "windowSamples": 358
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "callsCumulative": 7590,
+     "replayIndex": 1910,
+     "residentBars": 1911,
+     "recalcMeanMs": 0.7407,
+     "recalcP50Ms": 0.7,
+     "recalcP95Ms": 1,
+     "recalcMaxMs": 12.1,
+     "windowSamples": 383
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "callsCumulative": 7600,
+     "replayIndex": 494,
+     "residentBars": 495,
+     "recalcMeanMs": 0.7239,
+     "recalcP50Ms": 0.6,
+     "recalcP95Ms": 1,
+     "recalcMaxMs": 22.7,
+     "windowSamples": 360
+    }
+   ],
+   "perRealmDelta": [
+    {
+     "realm": "/chart/dist-v9/index.html?mode=backtest&mcLayout=1",
+     "mode": "candle",
+     "loopKind": "candle",
+     "recalcs": 363,
+     "candlesAdvanced": 362,
+     "recalcsPerCandle": 1
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "recalcs": 358,
+     "candlesAdvanced": 0,
+     "recalcsPerCandle": null
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "recalcs": 358,
+     "candlesAdvanced": 315,
+     "recalcsPerCandle": 1.14
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "recalcs": 368,
+     "candlesAdvanced": -1101,
+     "recalcsPerCandle": null
+    }
+   ]
+  },
+  {
+   "minutes": 10.57,
+   "advancingPanels": 4,
+   "perRealm": [
+    {
+     "realm": "/chart/dist-v9/index.html?mode=backtest&mcLayout=1",
+     "mode": "candle",
+     "loopKind": "candle",
+     "callsCumulative": 7945,
+     "replayIndex": 10046,
+     "residentBars": 10046,
+     "recalcMeanMs": 1.0273,
+     "recalcP50Ms": 1,
+     "recalcP95Ms": 1.4,
+     "recalcMaxMs": 1.8,
+     "windowSamples": 355
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "callsCumulative": 7929,
+     "replayIndex": 1595,
+     "residentBars": 1596,
+     "recalcMeanMs": 0.6962,
+     "recalcP50Ms": 0.7,
+     "recalcP95Ms": 1,
+     "recalcMaxMs": 2,
+     "windowSamples": 339
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "callsCumulative": 7945,
+     "replayIndex": 1910,
+     "residentBars": 1911,
+     "recalcMeanMs": 0.6763,
+     "recalcP50Ms": 0.7,
+     "recalcP95Ms": 1,
+     "recalcMaxMs": 1.3,
+     "windowSamples": 355
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "callsCumulative": 7956,
+     "replayIndex": 494,
+     "residentBars": 495,
+     "recalcMeanMs": 0.7354,
+     "recalcP50Ms": 0.7,
+     "recalcP95Ms": 1,
+     "recalcMaxMs": 21,
+     "windowSamples": 356
+    }
+   ],
+   "perRealmDelta": [
+    {
+     "realm": "/chart/dist-v9/index.html?mode=backtest&mcLayout=1",
+     "mode": "candle",
+     "loopKind": "candle",
+     "recalcs": 355,
+     "candlesAdvanced": 356,
+     "recalcsPerCandle": 1
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "recalcs": 339,
+     "candlesAdvanced": 0,
+     "recalcsPerCandle": null
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "recalcs": 355,
+     "candlesAdvanced": 315,
+     "recalcsPerCandle": 1.13
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "recalcs": 366,
+     "candlesAdvanced": -1101,
+     "recalcsPerCandle": null
+    }
+   ]
+  },
+  {
+   "minutes": 11.13,
+   "advancingPanels": 4,
+   "perRealm": [
+    {
+     "realm": "/chart/dist-v9/index.html?mode=backtest&mcLayout=1",
+     "mode": "candle",
+     "loopKind": "candle",
+     "callsCumulative": 8301,
+     "replayIndex": 10401,
+     "residentBars": 10402,
+     "recalcMeanMs": 1.0559,
+     "recalcP50Ms": 1,
+     "recalcP95Ms": 1.4,
+     "recalcMaxMs": 3.2,
+     "windowSamples": 356
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "callsCumulative": 8305,
+     "replayIndex": 1595,
+     "residentBars": 1596,
+     "recalcMeanMs": 0.6965,
+     "recalcP50Ms": 0.7,
+     "recalcP95Ms": 1,
+     "recalcMaxMs": 1.5,
+     "windowSamples": 376
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "callsCumulative": 8299,
+     "replayIndex": 1910,
+     "residentBars": 1911,
+     "recalcMeanMs": 0.7006,
+     "recalcP50Ms": 0.7,
+     "recalcP95Ms": 1.1,
+     "recalcMaxMs": 1.7,
+     "windowSamples": 354
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "callsCumulative": 8312,
+     "replayIndex": 494,
+     "residentBars": 495,
+     "recalcMeanMs": 0.7028,
+     "recalcP50Ms": 0.7,
+     "recalcP95Ms": 1,
+     "recalcMaxMs": 2.1,
+     "windowSamples": 356
+    }
+   ],
+   "perRealmDelta": [
+    {
+     "realm": "/chart/dist-v9/index.html?mode=backtest&mcLayout=1",
+     "mode": "candle",
+     "loopKind": "candle",
+     "recalcs": 356,
+     "candlesAdvanced": 355,
+     "recalcsPerCandle": 1
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "recalcs": 376,
+     "candlesAdvanced": 0,
+     "recalcsPerCandle": null
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "recalcs": 370,
+     "candlesAdvanced": 315,
+     "recalcsPerCandle": 1.17
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "recalcs": 383,
+     "candlesAdvanced": -1101,
+     "recalcsPerCandle": null
+    }
+   ]
+  },
+  {
+   "minutes": 11.69,
+   "advancingPanels": 4,
+   "perRealm": [
+    {
+     "realm": "/chart/dist-v9/index.html?mode=backtest&mcLayout=1",
+     "mode": "candle",
+     "loopKind": "candle",
+     "callsCumulative": 8659,
+     "replayIndex": 10760,
+     "residentBars": 10760,
+     "recalcMeanMs": 0.993,
+     "recalcP50Ms": 1,
+     "recalcP95Ms": 1.3,
+     "recalcMaxMs": 2.9,
+     "windowSamples": 358
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "callsCumulative": 8649,
+     "replayIndex": 1595,
+     "residentBars": 1596,
+     "recalcMeanMs": 0.6756,
+     "recalcP50Ms": 0.6,
+     "recalcP95Ms": 1,
+     "recalcMaxMs": 2.9,
+     "windowSamples": 344
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "callsCumulative": 8650,
+     "replayIndex": 1910,
+     "residentBars": 1911,
+     "recalcMeanMs": 0.6798,
+     "recalcP50Ms": 0.7,
+     "recalcP95Ms": 1,
+     "recalcMaxMs": 1.5,
+     "windowSamples": 351
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "callsCumulative": 8653,
+     "replayIndex": 494,
+     "residentBars": 495,
+     "recalcMeanMs": 0.6337,
+     "recalcP50Ms": 0.6,
+     "recalcP95Ms": 0.9,
+     "recalcMaxMs": 1.3,
+     "windowSamples": 341
+    }
+   ],
+   "perRealmDelta": [
+    {
+     "realm": "/chart/dist-v9/index.html?mode=backtest&mcLayout=1",
+     "mode": "candle",
+     "loopKind": "candle",
+     "recalcs": 358,
+     "candlesAdvanced": 359,
+     "recalcsPerCandle": 1
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "recalcs": 344,
+     "candlesAdvanced": 0,
+     "recalcsPerCandle": null
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "recalcs": 345,
+     "candlesAdvanced": 315,
+     "recalcsPerCandle": 1.1
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "recalcs": 348,
+     "candlesAdvanced": -1101,
+     "recalcsPerCandle": null
+    }
+   ]
+  },
+  {
+   "minutes": 12.26,
+   "advancingPanels": 4,
+   "perRealm": [
+    {
+     "realm": "/chart/dist-v9/index.html?mode=backtest&mcLayout=1",
+     "mode": "candle",
+     "loopKind": "candle",
+     "callsCumulative": 8989,
+     "replayIndex": 11090,
+     "residentBars": 11090,
+     "recalcMeanMs": 1.0867,
+     "recalcP50Ms": 1,
+     "recalcP95Ms": 1.4,
+     "recalcMaxMs": 6,
+     "windowSamples": 330
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "callsCumulative": 8988,
+     "replayIndex": 1595,
+     "residentBars": 1596,
+     "recalcMeanMs": 0.7168,
+     "recalcP50Ms": 0.7,
+     "recalcP95Ms": 1,
+     "recalcMaxMs": 2,
+     "windowSamples": 339
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "callsCumulative": 8988,
+     "replayIndex": 1910,
+     "residentBars": 1911,
+     "recalcMeanMs": 0.7293,
+     "recalcP50Ms": 0.7,
+     "recalcP95Ms": 1,
+     "recalcMaxMs": 1.4,
+     "windowSamples": 338
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "callsCumulative": 9000,
+     "replayIndex": 494,
+     "residentBars": 495,
+     "recalcMeanMs": 0.7458,
+     "recalcP50Ms": 0.7,
+     "recalcP95Ms": 1,
+     "recalcMaxMs": 12.7,
+     "windowSamples": 347
+    }
+   ],
+   "perRealmDelta": [
+    {
+     "realm": "/chart/dist-v9/index.html?mode=backtest&mcLayout=1",
+     "mode": "candle",
+     "loopKind": "candle",
+     "recalcs": 330,
+     "candlesAdvanced": 330,
+     "recalcsPerCandle": 1
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "recalcs": 339,
+     "candlesAdvanced": 0,
+     "recalcsPerCandle": null
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "recalcs": 339,
+     "candlesAdvanced": 315,
+     "recalcsPerCandle": 1.08
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "recalcs": 351,
+     "candlesAdvanced": -1101,
+     "recalcsPerCandle": null
+    }
+   ]
+  },
+  {
+   "minutes": 12.81,
+   "advancingPanels": 4,
+   "perRealm": [
+    {
+     "realm": "/chart/dist-v9/index.html?mode=backtest&mcLayout=1",
+     "mode": "candle",
+     "loopKind": "candle",
+     "callsCumulative": 9353,
+     "replayIndex": 11453,
+     "residentBars": 11454,
+     "recalcMeanMs": 0.9533,
+     "recalcP50Ms": 0.9,
+     "recalcP95Ms": 1.3,
+     "recalcMaxMs": 1.6,
+     "windowSamples": 364
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "callsCumulative": 9359,
+     "replayIndex": 1595,
+     "residentBars": 1596,
+     "recalcMeanMs": 0.6148,
+     "recalcP50Ms": 0.6,
+     "recalcP95Ms": 0.9,
+     "recalcMaxMs": 1.2,
+     "windowSamples": 371
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "callsCumulative": 9351,
+     "replayIndex": 1910,
+     "residentBars": 1911,
+     "recalcMeanMs": 0.6198,
+     "recalcP50Ms": 0.6,
+     "recalcP95Ms": 0.9,
+     "recalcMaxMs": 1.4,
+     "windowSamples": 363
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "callsCumulative": 9363,
+     "replayIndex": 494,
+     "residentBars": 495,
+     "recalcMeanMs": 0.6132,
+     "recalcP50Ms": 0.6,
+     "recalcP95Ms": 0.9,
+     "recalcMaxMs": 1.4,
+     "windowSamples": 363
+    }
+   ],
+   "perRealmDelta": [
+    {
+     "realm": "/chart/dist-v9/index.html?mode=backtest&mcLayout=1",
+     "mode": "candle",
+     "loopKind": "candle",
+     "recalcs": 364,
+     "candlesAdvanced": 363,
+     "recalcsPerCandle": 1
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "recalcs": 371,
+     "candlesAdvanced": 0,
+     "recalcsPerCandle": null
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "recalcs": 363,
+     "candlesAdvanced": 315,
+     "recalcsPerCandle": 1.15
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "recalcs": 375,
+     "candlesAdvanced": -1101,
+     "recalcsPerCandle": null
+    }
+   ]
+  },
+  {
+   "minutes": 13.38,
+   "advancingPanels": 4,
+   "perRealm": [
+    {
+     "realm": "/chart/dist-v9/index.html?mode=backtest&mcLayout=1",
+     "mode": "candle",
+     "loopKind": "candle",
+     "callsCumulative": 9680,
+     "replayIndex": 11780,
+     "residentBars": 11781,
+     "recalcMeanMs": 1.0557,
+     "recalcP50Ms": 1,
+     "recalcP95Ms": 1.5,
+     "recalcMaxMs": 4.5,
+     "windowSamples": 327
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "callsCumulative": 9684,
+     "replayIndex": 1595,
+     "residentBars": 1596,
+     "recalcMeanMs": 0.7397,
+     "recalcP50Ms": 0.7,
+     "recalcP95Ms": 1.1,
+     "recalcMaxMs": 1.7,
+     "windowSamples": 325
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "callsCumulative": 9681,
+     "replayIndex": 1910,
+     "residentBars": 1911,
+     "recalcMeanMs": 0.7203,
+     "recalcP50Ms": 0.7,
+     "recalcP95Ms": 1,
+     "recalcMaxMs": 1.7,
+     "windowSamples": 330
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "callsCumulative": 9691,
+     "replayIndex": 494,
+     "residentBars": 495,
+     "recalcMeanMs": 0.6881,
+     "recalcP50Ms": 0.7,
+     "recalcP95Ms": 1,
+     "recalcMaxMs": 1.2,
+     "windowSamples": 328
+    }
+   ],
+   "perRealmDelta": [
+    {
+     "realm": "/chart/dist-v9/index.html?mode=backtest&mcLayout=1",
+     "mode": "candle",
+     "loopKind": "candle",
+     "recalcs": 327,
+     "candlesAdvanced": 327,
+     "recalcsPerCandle": 1
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "recalcs": 325,
+     "candlesAdvanced": 0,
+     "recalcsPerCandle": null
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "recalcs": 322,
+     "candlesAdvanced": 315,
+     "recalcsPerCandle": 1.02
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "recalcs": 332,
+     "candlesAdvanced": -1101,
+     "recalcsPerCandle": null
+    }
+   ]
+  },
+  {
+   "minutes": 13.93,
+   "advancingPanels": 4,
+   "perRealm": [
+    {
+     "realm": "/chart/dist-v9/index.html?mode=backtest&mcLayout=1",
+     "mode": "candle",
+     "loopKind": "candle",
+     "callsCumulative": 10005,
+     "replayIndex": 12106,
+     "residentBars": 12106,
+     "recalcMeanMs": 1.0938,
+     "recalcP50Ms": 1,
+     "recalcP95Ms": 1.5,
+     "recalcMaxMs": 13.5,
+     "windowSamples": 325
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "callsCumulative": 10006,
+     "replayIndex": 1595,
+     "residentBars": 1596,
+     "recalcMeanMs": 0.7882,
+     "recalcP50Ms": 0.7,
+     "recalcP95Ms": 1,
+     "recalcMaxMs": 26.4,
+     "windowSamples": 322
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "callsCumulative": 10007,
+     "replayIndex": 1910,
+     "residentBars": 1911,
+     "recalcMeanMs": 0.6687,
+     "recalcP50Ms": 0.6,
+     "recalcP95Ms": 1,
+     "recalcMaxMs": 1.2,
+     "windowSamples": 326
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "callsCumulative": 10015,
+     "replayIndex": 494,
+     "residentBars": 495,
+     "recalcMeanMs": 0.6957,
+     "recalcP50Ms": 0.7,
+     "recalcP95Ms": 1,
+     "recalcMaxMs": 1.7,
+     "windowSamples": 324
+    }
+   ],
+   "perRealmDelta": [
+    {
+     "realm": "/chart/dist-v9/index.html?mode=backtest&mcLayout=1",
+     "mode": "candle",
+     "loopKind": "candle",
+     "recalcs": 325,
+     "candlesAdvanced": 326,
+     "recalcsPerCandle": 1
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "recalcs": 322,
+     "candlesAdvanced": 0,
+     "recalcsPerCandle": null
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "recalcs": 323,
+     "candlesAdvanced": 315,
+     "recalcsPerCandle": 1.03
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "recalcs": 331,
+     "candlesAdvanced": -1101,
+     "recalcsPerCandle": null
+    }
+   ]
+  },
+  {
+   "minutes": 14.49,
+   "advancingPanels": 4,
+   "perRealm": [
+    {
+     "realm": "/chart/dist-v9/index.html?mode=backtest&mcLayout=1",
+     "mode": "candle",
+     "loopKind": "candle",
+     "callsCumulative": 10343,
+     "replayIndex": 12443,
+     "residentBars": 12444,
+     "recalcMeanMs": 1.0299,
+     "recalcP50Ms": 1,
+     "recalcP95Ms": 1.4,
+     "recalcMaxMs": 4.9,
+     "windowSamples": 338
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "callsCumulative": 10344,
+     "replayIndex": 1595,
+     "residentBars": 1596,
+     "recalcMeanMs": 0.6669,
+     "recalcP50Ms": 0.6,
+     "recalcP95Ms": 1,
+     "recalcMaxMs": 4,
+     "windowSamples": 338
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "callsCumulative": 10348,
+     "replayIndex": 1910,
+     "residentBars": 1911,
+     "recalcMeanMs": 0.69,
+     "recalcP50Ms": 0.7,
+     "recalcP95Ms": 1,
+     "recalcMaxMs": 2.1,
+     "windowSamples": 341
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "callsCumulative": 10348,
+     "replayIndex": 494,
+     "residentBars": 495,
+     "recalcMeanMs": 0.6601,
+     "recalcP50Ms": 0.6,
+     "recalcP95Ms": 1,
+     "recalcMaxMs": 1.9,
+     "windowSamples": 333
+    }
+   ],
+   "perRealmDelta": [
+    {
+     "realm": "/chart/dist-v9/index.html?mode=backtest&mcLayout=1",
+     "mode": "candle",
+     "loopKind": "candle",
+     "recalcs": 338,
+     "candlesAdvanced": 337,
+     "recalcsPerCandle": 1
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "recalcs": 338,
+     "candlesAdvanced": 0,
+     "recalcsPerCandle": null
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "recalcs": 342,
+     "candlesAdvanced": 315,
+     "recalcsPerCandle": 1.09
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "recalcs": 342,
+     "candlesAdvanced": -1101,
+     "recalcsPerCandle": null
+    }
+   ]
+  },
+  {
+   "minutes": 15.05,
+   "advancingPanels": 4,
+   "perRealm": [
+    {
+     "realm": "/chart/dist-v9/index.html?mode=backtest&mcLayout=1",
+     "mode": "candle",
+     "loopKind": "candle",
+     "callsCumulative": 10661,
+     "replayIndex": 12762,
+     "residentBars": 12762,
+     "recalcMeanMs": 1.2104,
+     "recalcP50Ms": 1.1,
+     "recalcP95Ms": 1.4,
+     "recalcMaxMs": 50.7,
+     "windowSamples": 318
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "callsCumulative": 10664,
+     "replayIndex": 1595,
+     "residentBars": 1596,
+     "recalcMeanMs": 0.6919,
+     "recalcP50Ms": 0.7,
+     "recalcP95Ms": 1,
+     "recalcMaxMs": 1.7,
+     "windowSamples": 320
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "callsCumulative": 10666,
+     "replayIndex": 1910,
+     "residentBars": 1911,
+     "recalcMeanMs": 0.7201,
+     "recalcP50Ms": 0.7,
+     "recalcP95Ms": 1,
+     "recalcMaxMs": 2.1,
+     "windowSamples": 318
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "callsCumulative": 10674,
+     "replayIndex": 494,
+     "residentBars": 495,
+     "recalcMeanMs": 0.6598,
+     "recalcP50Ms": 0.6,
+     "recalcP95Ms": 1,
+     "recalcMaxMs": 1.3,
+     "windowSamples": 326
+    }
+   ],
+   "perRealmDelta": [
+    {
+     "realm": "/chart/dist-v9/index.html?mode=backtest&mcLayout=1",
+     "mode": "candle",
+     "loopKind": "candle",
+     "recalcs": 318,
+     "candlesAdvanced": 319,
+     "recalcsPerCandle": 1
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "recalcs": 320,
+     "candlesAdvanced": 0,
+     "recalcsPerCandle": null
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "recalcs": 322,
+     "candlesAdvanced": 315,
+     "recalcsPerCandle": 1.02
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "recalcs": 330,
+     "candlesAdvanced": -1101,
+     "recalcsPerCandle": null
+    }
+   ]
+  },
+  {
+   "minutes": 15.62,
+   "advancingPanels": 4,
+   "perRealm": [
+    {
+     "realm": "/chart/dist-v9/index.html?mode=backtest&mcLayout=1",
+     "mode": "candle",
+     "loopKind": "candle",
+     "callsCumulative": 10989,
+     "replayIndex": 13090,
+     "residentBars": 13090,
+     "recalcMeanMs": 1.0393,
+     "recalcP50Ms": 1,
+     "recalcP95Ms": 1.4,
+     "recalcMaxMs": 4.5,
+     "windowSamples": 328
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "callsCumulative": 10993,
+     "replayIndex": 1595,
+     "residentBars": 1596,
+     "recalcMeanMs": 0.6772,
+     "recalcP50Ms": 0.7,
+     "recalcP95Ms": 1,
+     "recalcMaxMs": 1.6,
+     "windowSamples": 329
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "callsCumulative": 10993,
+     "replayIndex": 1910,
+     "residentBars": 1911,
+     "recalcMeanMs": 0.6908,
+     "recalcP50Ms": 0.7,
+     "recalcP95Ms": 1,
+     "recalcMaxMs": 1.5,
+     "windowSamples": 327
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "callsCumulative": 11002,
+     "replayIndex": 494,
+     "residentBars": 495,
+     "recalcMeanMs": 0.6646,
+     "recalcP50Ms": 0.7,
+     "recalcP95Ms": 1,
+     "recalcMaxMs": 1.3,
+     "windowSamples": 328
+    }
+   ],
+   "perRealmDelta": [
+    {
+     "realm": "/chart/dist-v9/index.html?mode=backtest&mcLayout=1",
+     "mode": "candle",
+     "loopKind": "candle",
+     "recalcs": 328,
+     "candlesAdvanced": 328,
+     "recalcsPerCandle": 1
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "recalcs": 329,
+     "candlesAdvanced": 0,
+     "recalcsPerCandle": null
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "recalcs": 329,
+     "candlesAdvanced": 315,
+     "recalcsPerCandle": 1.04
+    },
+    {
+     "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "recalcs": 338,
+     "candlesAdvanced": -1101,
+     "recalcsPerCandle": null
+    }
+   ]
+  }
+ ],
+ "build": {
+  "scriptVersion": "20260730b115"
+ },
+ "test0_asFoundBeforeAnySet": {
+  "rows": [
+   {
+    "url": "92.82:3000/chart/dist-v9/index.html?mode=backtest&mcLayout=1",
+    "hasReplay": true,
+    "realm": "/chart/dist-v9/index.html?mode=backtest&mcLayout=1",
+    "rawPlaybackMode": "candle",
+    "getPlaybackMode": "candle",
+    "getPlaybackLoopKind": "candle",
+    "shouldUseTickAnimation": false,
+    "tickAnimationEnabled": false,
+    "isActive": true,
+    "isPlaying": true,
+    "isPlayStarting": false,
+    "animatingCandle": false,
+    "hasPlayInterval": true,
+    "hasTickInterval": false,
+    "fastMode": false,
+    "speed": 60,
+    "replayIndex": 2604,
+    "indicators": 2,
+    "timeframe": "1m"
+   },
+   {
+    "url": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+    "hasReplay": true,
+    "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+    "rawPlaybackMode": "candle",
+    "getPlaybackMode": "candle",
+    "getPlaybackLoopKind": null,
+    "shouldUseTickAnimation": false,
+    "tickAnimationEnabled": false,
+    "isActive": true,
+    "isPlaying": false,
+    "isPlayStarting": false,
+    "animatingCandle": false,
+    "hasPlayInterval": false,
+    "hasTickInterval": false,
+    "fastMode": false,
+    "speed": 60,
+    "replayIndex": 1595,
+    "indicators": 2,
+    "timeframe": "5m"
+   },
+   {
+    "url": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+    "hasReplay": true,
+    "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+    "rawPlaybackMode": "candle",
+    "getPlaybackMode": "candle",
+    "getPlaybackLoopKind": null,
+    "shouldUseTickAnimation": false,
+    "tickAnimationEnabled": false,
+    "isActive": true,
+    "isPlaying": false,
+    "isPlayStarting": false,
+    "animatingCandle": false,
+    "hasPlayInterval": false,
+    "hasTickInterval": false,
+    "fastMode": false,
+    "speed": 60,
+    "replayIndex": 1910,
+    "indicators": 2,
+    "timeframe": "15m"
+   },
+   {
+    "url": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+    "hasReplay": true,
+    "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+    "rawPlaybackMode": "candle",
+    "getPlaybackMode": "candle",
+    "getPlaybackLoopKind": null,
+    "shouldUseTickAnimation": false,
+    "tickAnimationEnabled": false,
+    "isActive": true,
+    "isPlaying": false,
+    "isPlayStarting": false,
+    "animatingCandle": false,
+    "hasPlayInterval": false,
+    "hasTickInterval": false,
+    "fastMode": false,
+    "speed": 60,
+    "replayIndex": 494,
+    "indicators": 2,
+    "timeframe": "1h"
+   }
+  ],
+  "grade": {
+   "realmsWithReplay": 4,
+   "hostMode": "candle",
+   "hostLoopKind": "candle",
+   "panelModes": [
+    "candle",
+    "candle",
+    "candle"
+   ],
+   "panelLoopKinds": [
+    null,
+    null,
+    null
+   ],
+   "allAgreeOnMode": true,
+   "tickWhileHostCandleCount": 0,
+   "p0": false,
+   "loopKindDisagreesWithMode": [],
+   "loopKinds": [
+    "candle",
+    null,
+    null,
+    null
+   ]
+  },
+  "note": "the harness has never called setPlaybackMode, so this is the mode every prior measurement of mine was taken in"
+ },
+ "test1_setCandle": [
+  {
+   "url": "92.82:3000/chart/dist-v9/index.html?mode=backtest&mcLayout=1",
+   "set": true,
+   "restartPlayback": true,
+   "before": "candle",
+   "after": "candle",
+   "loopKindAfter": "candle",
+   "rawAfter": "candle"
+  },
+  {
+   "url": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+   "set": true,
+   "restartPlayback": true,
+   "before": "candle",
+   "after": "candle",
+   "loopKindAfter": null,
+   "rawAfter": "candle"
+  },
+  {
+   "url": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+   "set": true,
+   "restartPlayback": true,
+   "before": "candle",
+   "after": "candle",
+   "loopKindAfter": null,
+   "rawAfter": "candle"
+  },
+  {
+   "url": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+   "set": true,
+   "restartPlayback": true,
+   "before": "candle",
+   "after": "candle",
+   "loopKindAfter": null,
+   "rawAfter": "candle"
+  }
+ ],
+ "instrumented": [
+  {
+   "url": "92.82:3000/chart/dist-v9/index.html?mode=backtest&mcLayout=1",
+   "wrapped": true,
+   "realm": "/chart/dist-v9/index.html?mode=backtest&mcLayout=1"
+  },
+  {
+   "url": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+   "wrapped": true,
+   "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2"
+  },
+  {
+   "url": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+   "wrapped": true,
+   "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2"
+  },
+  {
+   "url": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2",
+   "wrapped": true,
+   "realm": "260730b115&chartWindowId=cwms85lkkyttpbrappt4&embedRev=ohlc2"
+  }
+ ],
+ "test3_recalcCostGrowth": {
+  "earlyWindowMinutes": "<=3",
+  "lateWindowMinutes": ">=12",
+  "earlyP50Ms": 0.7136,
+  "lateP50Ms": 0.75,
+  "changePercent": 5.1,
+  "fitVsBars": {
+   "xUnit": "ms per 1,000 bars played",
+   "label": "recalc p50 vs bars",
+   "n": 114,
+   "spanHours": 12.596,
+   "durationOk": true,
+   "first": 0.5,
+   "last": 1,
+   "min": 0.5,
+   "max": 1.1,
+   "perHour": 0.036,
+   "slopeCi95": [
+    0.031,
+    0.042
+   ],
+   "slopeSe": 0.003,
+   "rSquared": 0.633,
+   "flatBandPerHour": 0.05,
+   "projectedPerHourAt8h": 0.3,
+   "verdict": "BOUNDED"
+  },
+  "samples": 114
+ },
+ "test2_recalcCadence": {
+  "samples": 56,
+  "meanRecalcsPerCandle": 1.12,
+  "meanInCandleMode": 1.12,
+  "meanInTickMode": null,
+  "max": 2.09,
+  "expectationInCandleMode": "~1 per advanced candle; near frame rate confirms the multiplier"
+ },
+ "verdict": {
+  "test0_modeTheHarnessHasBeenUsing": "candle",
+  "test1_p0Found": false,
+  "test1_modeAgreementAtEveryCheckpoint": true,
+  "test1_loopKindDisagreements": [],
+  "test2_recalcsPerCandle": 1.12,
+  "test3_recalcCostGrows": "BOUNDED",
+  "test3_earlyToLateP50": "0.7136 -> 0.75 ms"
+ }
+}

@@ -1,0 +1,58 @@
+[heap-cycle 2026-07-30T23:37:36.173Z] layout UI → 4 (li=0)
+[heap-cycle 2026-07-30T23:37:49.287Z] datasets mode=distinct observed=4/4 [A:677@1m(2011) B:673@5m(1596) C:670@15m(1911) D:669@1h(495)]
+[heap-cycle-po-workload 2026-07-30T23:37:49.290Z] arm panel A: wait ready
+[heap-cycle-po-workload 2026-07-30T23:37:49.621Z] arm panel A: ok=false ind=2 replay=true playing=true
+[heap-cycle-po-workload 2026-07-30T23:37:49.622Z] arm panel B: wait ready
+[heap-cycle-po-workload 2026-07-30T23:37:52.968Z] arm panel B: ok=false ind=2 replay=true playing=true
+[heap-cycle-po-workload 2026-07-30T23:37:52.968Z] arm panel C: wait ready
+[heap-cycle-po-workload 2026-07-30T23:37:56.453Z] arm panel C: ok=false ind=2 replay=true playing=true
+[heap-cycle-po-workload 2026-07-30T23:37:56.453Z] arm panel D: wait ready
+[heap-cycle-po-workload 2026-07-30T23:37:59.869Z] arm panel D: ok=false ind=2 replay=true playing=true
+[heap-cycle-po-workload 2026-07-30T23:37:59.869Z] order SKIPPED (zero-trade reproduction)
+[heap-cycle-po-workload 2026-07-30T23:38:07.988Z] play hold done observedPlaying=4
+[rmt] build=20260730b115 TEST0 as-found: host=candle/candle panels=["candle","candle","candle"] loopKinds=[null,null,null]
+[rmt] TEST0 raw playbackMode per realm: ["candle","candle","candle","candle"] shouldUseTickAnimation=[false,false,false,false]
+[rmt] TEST1 setPlaybackMode('candle', {restartPlayback:true}) -> ["candle->candle","candle->candle","candle->candle","candle->candle"]
+[rmt] recalc counter wrapped in 4 realms
+[rmt] CHECKPOINT 0min: host=candle/candle panels=["candle","candle","candle"] loopKinds=[null,null,null] P0=false
+[rmt] 0.6min recalcs/candle=[1,2.09] recalcP50=[0.7,0.5,0.5,0.5] bars=[2753,1595,1910,494] advancing=4/4
+[rmt] 1.1min recalcs/candle=[1,2.07] recalcP50=[0.7,0.5,0.5,0.5] bars=[3409,1595,1910,494] advancing=4/4
+[rmt] 1.6min recalcs/candle=[1,1.52] recalcP50=[1,0.7,0.8,0.7] bars=[3878,1595,1910,494] advancing=4/4
+[rmt] CHECKPOINT 2min: host=candle/candle panels=["candle","candle","candle"] loopKinds=[null,null,null] P0=false
+[rmt] 2.2min recalcs/candle=[1,1.35] recalcP50=[1,0.8,0.8,0.8] bars=[4292,1595,1910,494] advancing=4/4
+[rmt] 2.8min recalcs/candle=[1,1.24] recalcP50=[1.1,0.8,0.8,0.8] bars=[4687,1595,1910,494] advancing=4/4
+[rmt] 3.3min recalcs/candle=[1,1.24] recalcP50=[1,0.7,0.8,0.7] bars=[5084,1595,1910,494] advancing=4/4
+[rmt] 3.9min recalcs/candle=[1,1.25] recalcP50=[1.1,0.8,0.7,0.7] bars=[5473,1595,1910,494] advancing=4/4
+[rmt] 4.4min recalcs/candle=[1,1.18] recalcP50=[1.1,0.8,0.8,0.7] bars=[5856,1595,1910,494] advancing=4/4
+[rmt] 5.0min recalcs/candle=[1,1.25] recalcP50=[1.1,0.7,0.7,0.7] bars=[6255,1595,1910,494] advancing=4/4
+[rmt] 5.5min recalcs/candle=[1,1.26] recalcP50=[1,0.7,0.7,0.7] bars=[6655,1595,1910,494] advancing=4/4
+[rmt] 6.1min recalcs/candle=[1,1.21] recalcP50=[1,0.7,0.7,0.7] bars=[7028,1595,1910,494] advancing=4/4
+[rmt] 6.7min recalcs/candle=[1,1.27] recalcP50=[0.9,0.6,0.6,0.6] bars=[7447,1595,1910,494] advancing=4/4
+[rmt] 7.2min recalcs/candle=[1,1.3] recalcP50=[0.9,0.6,0.7,0.7] bars=[7841,1595,1910,494] advancing=4/4
+[rmt] 7.8min recalcs/candle=[1,1.27] recalcP50=[1,0.6,0.7,0.6] bars=[8231,1595,1910,494] advancing=4/4
+[rmt] 8.3min recalcs/candle=[1,1.18] recalcP50=[0.9,0.7,0.7,0.7] bars=[8605,1595,1910,494] advancing=4/4
+[rmt] 8.9min recalcs/candle=[0.99,1.15] recalcP50=[1,0.7,0.7,0.7] bars=[8970,1595,1910,494] advancing=4/4
+[rmt] 9.4min recalcs/candle=[1,1.07] recalcP50=[1,0.7,0.7,0.7] bars=[9328,1595,1910,494] advancing=4/4
+[rmt] CHECKPOINT 10min: host=candle/candle panels=["candle","candle","candle"] loopKinds=[null,null,null] P0=false
+[rmt] 10.0min recalcs/candle=[1,1.14] recalcP50=[1,0.7,0.7,0.6] bars=[9690,1595,1910,494] advancing=4/4
+[rmt] 10.6min recalcs/candle=[1,1.13] recalcP50=[1,0.7,0.7,0.7] bars=[10046,1595,1910,494] advancing=4/4
+[rmt] 11.1min recalcs/candle=[1,1.17] recalcP50=[1,0.7,0.7,0.7] bars=[10401,1595,1910,494] advancing=4/4
+[rmt] 11.7min recalcs/candle=[1,1.1] recalcP50=[1,0.6,0.7,0.6] bars=[10760,1595,1910,494] advancing=4/4
+[rmt] 12.3min recalcs/candle=[1,1.08] recalcP50=[1,0.7,0.7,0.7] bars=[11090,1595,1910,494] advancing=4/4
+[rmt] 12.8min recalcs/candle=[1,1.15] recalcP50=[0.9,0.6,0.6,0.6] bars=[11453,1595,1910,494] advancing=4/4
+[rmt] 13.4min recalcs/candle=[1,1.02] recalcP50=[1,0.7,0.7,0.7] bars=[11780,1595,1910,494] advancing=4/4
+[rmt] 13.9min recalcs/candle=[1,1.03] recalcP50=[1,0.7,0.6,0.7] bars=[12106,1595,1910,494] advancing=4/4
+[rmt] 14.5min recalcs/candle=[1,1.09] recalcP50=[1,0.6,0.7,0.6] bars=[12443,1595,1910,494] advancing=4/4
+[rmt] CHECKPOINT 15min: host=candle/candle panels=["candle","candle","candle"] loopKinds=[null,null,null] P0=false
+[rmt] 15.1min recalcs/candle=[1,1.02] recalcP50=[1.1,0.7,0.7,0.6] bars=[12762,1595,1910,494] advancing=4/4
+[rmt] 15.6min recalcs/candle=[1,1.04] recalcP50=[1,0.7,0.7,0.7] bars=[13090,1595,1910,494] advancing=4/4
+[rmt] VERDICT {
+ "test0_modeTheHarnessHasBeenUsing": "candle",
+ "test1_p0Found": false,
+ "test1_modeAgreementAtEveryCheckpoint": true,
+ "test1_loopKindDisagreements": [],
+ "test2_recalcsPerCandle": 1.12,
+ "test3_recalcCostGrows": "BOUNDED",
+ "test3_earlyToLateP50": "0.7136 -> 0.75 ms"
+}
+EXIT=0 

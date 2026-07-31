@@ -1,0 +1,18 @@
+[freeze-gate] mode=conf01 flag=ABSENT (default) signature=CONF01-DURATION-GATE-V1 source=working tree isTheBar=true
+[heap-cycle 2026-07-30T20:03:45.739Z] layout UI → 4 (li=0)
+[heap-cycle 2026-07-30T20:04:00.775Z] datasets mode=distinct observed=4/4 [A:677@1m(2011) B:673@5m(1596) C:670@15m(1911) D:669@1h(495)]
+[heap-cycle-po-workload 2026-07-30T20:04:00.779Z] arm panel A: wait ready
+[heap-cycle-po-workload 2026-07-30T20:04:00.940Z] arm panel A: ok=true ind=4 replay=true playing=true
+[heap-cycle-po-workload 2026-07-30T20:04:00.940Z] arm panel B: wait ready
+[heap-cycle-po-workload 2026-07-30T20:04:04.392Z] arm panel B: ok=true ind=4 replay=true playing=true
+[heap-cycle-po-workload 2026-07-30T20:04:04.392Z] arm panel C: wait ready
+[heap-cycle-po-workload 2026-07-30T20:04:08.030Z] arm panel C: ok=true ind=4 replay=true playing=true
+[heap-cycle-po-workload 2026-07-30T20:04:08.030Z] arm panel D: wait ready
+[heap-cycle-po-workload 2026-07-30T20:04:11.501Z] arm panel D: ok=true ind=4 replay=true playing=true
+[heap-cycle-po-workload 2026-07-30T20:04:11.550Z] order ok=true openCount=1
+[heap-cycle-po-workload 2026-07-30T20:04:19.768Z] play hold done observedPlaying=4
+[dur] CONF-01 compliant=true failed=[] datasets=[{"panelId":"A","fileId":"677","timeframe":"1m","bars":2324},{"panelId":"B","fileId":"673","timeframe":"5m","bars":1596},{"panelId":"C","fileId":"670","timeframe":"15m","bars":1911},{"panelId":"D","fileId":"669","timeframe":"1h","bars":495}] advancing=4 indicators=[4,4,4,4]
+[dur] advance rates: 1m:12.268/s vs 1/s x12.27 sim736.1s/s atEnd=true | 5m:0/s vs 0.2/s x0 sim733.8s/s atEnd=true | 15m:0/s vs 0.067/s x0 sim764.2s/s atEnd=true | 1h:0/s vs 0.017/s x0 sim764.7s/s atEnd=true
+[dur] #1 0.00h gcHeap=162.27 live=309.55 footprint=1369.7 elements=5553 bars=6741 advancing=4/4 renderer=129% closed=5 loop=0.584ms/tick(book=5) excursion=7233 heavy=0MB status=UNRESOLVED
+[dur] #2 0.08h gcHeap=122.85 live=145.63 footprint=992.9 elements=5948 bars=8767 advancing=0/4 renderer=35.7% closed=10 loop=undefinedms/tick(book=0) excursion=10305 heavy=0MB status=UNRESOLVED
+[dur] #3 0.17h gcHeap=152.82 live=220.05 footprint=1495.4 elements=6114 bars=6288 advancing=3/4 renderer=132.8% closed=18 loop=0.023ms/tick(book=0) excursion=10368 heavy=0MB status=UNRESOLVED

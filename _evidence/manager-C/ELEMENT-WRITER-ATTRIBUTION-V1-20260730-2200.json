@@ -1,0 +1,2114 @@
+{
+ "signature": "ELEMENT-WRITER-ATTRIBUTION-V1",
+ "startedAtIso": "2026-07-30T21:02:07.612Z",
+ "plan": {
+  "minutes": 26,
+  "intervalMs": 60000,
+  "speed": 60,
+  "closedTarget": 30,
+  "synthetic": true,
+  "syntheticPerTick": 40
+ },
+ "conf01": {
+  "compliant": true,
+  "failed": [],
+  "datasets": [
+   {
+    "panelId": "A",
+    "fileId": "677",
+    "timeframe": "1m",
+    "bars": 2218
+   },
+   {
+    "panelId": "B",
+    "fileId": "673",
+    "timeframe": "5m",
+    "bars": 1596
+   },
+   {
+    "panelId": "C",
+    "fileId": "670",
+    "timeframe": "15m",
+    "bars": 1911
+   },
+   {
+    "panelId": "D",
+    "fileId": "669",
+    "timeframe": "1h",
+    "bars": 495
+   }
+  ]
+ },
+ "counts": "ATTACHED elements only; detached-uncollected nodes are excluded and are what Performance Monitor Nodes includes",
+ "samples": [
+  {
+   "n": 1,
+   "minutes": 0.166,
+   "hours": 0.0028,
+   "totalElements": 5468,
+   "preInstrumentation": 4882,
+   "closed": 2,
+   "advancing": 4,
+   "bySig": [
+    {
+     "sig": "R3@talaria-v9-live.js:40 < O_@talaria-v9-live.js:40 < R_@talaria-v9-live.js:40",
+     "count": 191
+    },
+    {
+     "sig": "ewaSyntheticLeakWriter@pptr:;CdpFrame.%3Canonymous%3E%20c%3A%5CUsers%5Cuser%5CDesktop%5Ctalaria1%5Cfull-talaria-log--main%5Cchart%20v%201.4%5Cchart%5Cmultichart-prod%5Charness%5Cnode_modules%5Cpuppeteer-core%5Clib%5Ccjs%5Cpuppeteer%5Cutil%5Cdecorators.js%3A109%3A27:12",
+     "count": 160
+    },
+    {
+     "sig": "SVGGElement.<anonymous>@d3.min.js:2 < SVGGElement.<anonymous>@d3.min.js:2 < Vn.select@d3.min.js:2",
+     "count": 36
+    },
+    {
+     "sig": "talariaAppendIndicatorLegendRow@indicator-ui.js:3003 < ?@indicator-ui.js:3165 < talariaRebuildOhlcIndicatorLegend@indicator-ui.js:3160",
+     "count": 32
+    },
+    {
+     "sig": "talariaAppendIndicatorLegendRow@indicator-ui.js:3046 < ?@indicator-ui.js:3165 < talariaRebuildOhlcIndicatorLegend@indicator-ui.js:3160",
+     "count": 32
+    },
+    {
+     "sig": "Chart.<anonymous>@chart-indicators-full.js:20845 < Chart._syncSeparatePanelAxisTags@chart-indicators-full.js:20799 < Chart._updateSeparatePanelLabels@chart-indicators-full.js:20922",
+     "count": 9
+    },
+    {
+     "sig": "?@chart-indicators-full.js:20873 < Chart.<anonymous>@chart-indicators-full.js:20869 < Chart._syncSeparatePanelAxisTags@chart-indicators-full.js:20799",
+     "count": 9
+    },
+    {
+     "sig": "talariaFillLegendLoadingDots@indicator-ui.js:2866 < talariaFillLegendValueSpan@indicator-ui.js:2876 < ?@indicator-ui.js:2933",
+     "count": 8
+    },
+    {
+     "sig": "Chart._renderSeparatePanelLegendValue@chart-indicators-full.js:20522 < Chart.<anonymous>@chart-indicators-full.js:20559 < Chart._syncSeparatePanelOverlayValues@chart-indicators-full.js:20556",
+     "count": 8
+    },
+    {
+     "sig": "HTMLDocument.m20Q6CapturedQuery@replay-system.js:9686 < talariaAppendIndicatorLegendRow@indicator-ui.js:2970 < ?@indicator-ui.js:3165",
+     "count": 6
+    },
+    {
+     "sig": "HTMLDocument.m20Q6CapturedQuery@replay-system.js:9686 < talariaAppendIndicatorLegendRow@indicator-ui.js:2975 < ?@indicator-ui.js:3165",
+     "count": 6
+    },
+    {
+     "sig": "talariaFillLegendValueSpan@indicator-ui.js:2880 < ?@indicator-ui.js:2933 < talariaSyncOhlcIndicatorLegendValues@indicator-ui.js:2907",
+     "count": 6
+    },
+    {
+     "sig": "HTMLDocument.m20Q6CapturedQuery@replay-system.js:9686 < ?@indicator-ui.js:2889 < talariaFillLegendValueSpan@indicator-ui.js:2888",
+     "count": 6
+    },
+    {
+     "sig": "HTMLDocument.m20Q6CapturedQuery@replay-system.js:9686 < talariaAppendIndicatorLegendRow@indicator-ui.js:2994 < ?@indicator-ui.js:3165",
+     "count": 6
+    },
+    {
+     "sig": "HTMLDocument.m20Q6CapturedQuery@replay-system.js:9686 < talariaAppendIndicatorLegendRow@indicator-ui.js:3071 < ?@indicator-ui.js:3165",
+     "count": 6
+    },
+    {
+     "sig": "?@chart-indicators-full.js:20529 < Chart._renderSeparatePanelLegendValue@chart-indicators-full.js:20528 < Chart.<anonymous>@chart-indicators-full.js:20559",
+     "count": 6
+    },
+    {
+     "sig": "SVGSVGElement.<anonymous>@d3.min.js:2 < SVGSVGElement.<anonymous>@d3.min.js:2 < Vn.select@d3.min.js:2",
+     "count": 5
+    },
+    {
+     "sig": "SVGDefsElement.<anonymous>@d3.min.js:2 < SVGDefsElement.<anonymous>@d3.min.js:2 < Vn.select@d3.min.js:2",
+     "count": 4
+    },
+    {
+     "sig": "SVGFilterElement.<anonymous>@d3.min.js:2 < SVGFilterElement.<anonymous>@d3.min.js:2 < Vn.select@d3.min.js:2",
+     "count": 4
+    },
+    {
+     "sig": "HTMLDocument.m20Q6CapturedQuery@replay-system.js:9686 < Chart.<anonymous>@chart-indicators-full.js:20845 < Chart._syncSeparatePanelAxisTags@chart-indicators-full.js:20799",
+     "count": 3
+    },
+    {
+     "sig": "HTMLDocument.m20Q6CapturedQuery@replay-system.js:9686 < ?@chart-indicators-full.js:20873 < Chart.<anonymous>@chart-indicators-full.js:20869",
+     "count": 3
+    },
+    {
+     "sig": "talariaRebuildOhlcIndicatorLegend@indicator-ui.js:3148 < Chart.updateOHLCIndicators@indicator-ui.js:6504 < runReplayPlayIndicatorPass@chart-indicators-full.js:11448",
+     "count": 3
+    },
+    {
+     "sig": "Chart._renderSeparatePanelLegendValue@chart-indicators-full.js:20543 < Chart.<anonymous>@chart-indicators-full.js:20559 < Chart._syncSeparatePanelOverlayValues@chart-indicators-full.js:20556",
+     "count": 3
+    },
+    {
+     "sig": "?@chart-indicators-full.js:20534 < Chart._renderSeparatePanelLegendValue@chart-indicators-full.js:20528 < Chart.<anonymous>@chart-indicators-full.js:20559",
+     "count": 3
+    },
+    {
+     "sig": "?@chart-indicators-full.js:20765 < Chart._syncSeparatePanelAxisTags@chart-indicators-full.js:20763 < Chart._updateSeparatePanelLabels@chart-indicators-full.js:20922",
+     "count": 3
+    },
+    {
+     "sig": "Chart._syncSeparatePanelAxisTags@chart-indicators-full.js:20783 < Chart._updateSeparatePanelLabels@chart-indicators-full.js:20922 < Chart.renderSeparatePanelIndicators@chart-indicators-full.js:15389",
+     "count": 3
+    },
+    {
+     "sig": "?@c%3A%5CUsers%5Cuser%5CDesktop%5Ctalaria1%5Cfull-talaria-log--main%5Cchart%20v%201.4%5Cchart%5Cmultichart-prod%5Charness%5Cnode_modules%5Cpuppeteer-core%5Clib%5Ccjs%5Cpuppeteer%5Cutil%5Cdecorators.js%3A109%3A27:7 < syntheticWriterSource@pptr:;CdpFrame.%3Canonymous%3E%20c%3A%5CUsers%5Cuser%5CDesktop%5Ctalaria1%5Cfull-talaria-log--main%5Cchart%20v%201.4%5Cchart%5Cmultichart-prod%5Charness%5Cnode_modules%5Cpuppeteer-core%5Clib%5Ccjs%5Cpuppeteer%5Cutil%5Cdecorators.js%3A109%3A27:15",
+     "count": 3
+    },
+    {
+     "sig": "talariaAppendIndicatorLegendRow@indicator-ui.js:2970 < ?@indicator-ui.js:3165 < talariaRebuildOhlcIndicatorLegend@indicator-ui.js:3160",
+     "count": 2
+    },
+    {
+     "sig": "talariaAppendIndicatorLegendRow@indicator-ui.js:2975 < ?@indicator-ui.js:3165 < talariaRebuildOhlcIndicatorLegend@indicator-ui.js:3160",
+     "count": 2
+    },
+    {
+     "sig": "talariaFillLegendLoadingDots@indicator-ui.js:2852 < talariaFillLegendValueSpan@indicator-ui.js:2876 < ?@indicator-ui.js:2933",
+     "count": 2
+    }
+   ],
+   "perRealm": [
+    {
+     "realm": "92.82:3000/chart/dist-v9/index.html?mode=backtest&mcLayout=1",
+     "total": 3158,
+     "pre": 2824
+    },
+    {
+     "realm": "260730b113&chartWindowId=cwms800t2y3v2sm4trdy&embedRev=ohlc2",
+     "total": 771,
+     "pre": 686
+    },
+    {
+     "realm": "260730b113&chartWindowId=cwms800t2y3v2sm4trdy&embedRev=ohlc2",
+     "total": 770,
+     "pre": 686
+    },
+    {
+     "realm": "260730b113&chartWindowId=cwms800t2y3v2sm4trdy&embedRev=ohlc2",
+     "total": 769,
+     "pre": 686
+    }
+   ],
+   "churned": 3
+  },
+  {
+   "n": 2,
+   "minutes": 1.175,
+   "hours": 0.0196,
+   "totalElements": 7504,
+   "preInstrumentation": 4882,
+   "closed": 3,
+   "advancing": 4,
+   "bySig": [
+    {
+     "sig": "ewaSyntheticLeakWriter@pptr:;CdpFrame.%3Canonymous%3E%20c%3A%5CUsers%5Cuser%5CDesktop%5Ctalaria1%5Cfull-talaria-log--main%5Cchart%20v%201.4%5Cchart%5Cmultichart-prod%5Charness%5Cnode_modules%5Cpuppeteer-core%5Clib%5Ccjs%5Cpuppeteer%5Cutil%5Cdecorators.js%3A109%3A27:12",
+     "count": 2080
+    },
+    {
+     "sig": "R3@talaria-v9-live.js:40 < O_@talaria-v9-live.js:40 < R_@talaria-v9-live.js:40",
+     "count": 280
+    },
+    {
+     "sig": "SVGGElement.<anonymous>@d3.min.js:2 < SVGGElement.<anonymous>@d3.min.js:2 < Vn.select@d3.min.js:2",
+     "count": 54
+    },
+    {
+     "sig": "talariaAppendIndicatorLegendRow@indicator-ui.js:3003 < ?@indicator-ui.js:3165 < talariaRebuildOhlcIndicatorLegend@indicator-ui.js:3160",
+     "count": 32
+    },
+    {
+     "sig": "talariaAppendIndicatorLegendRow@indicator-ui.js:3046 < ?@indicator-ui.js:3165 < talariaRebuildOhlcIndicatorLegend@indicator-ui.js:3160",
+     "count": 32
+    },
+    {
+     "sig": "Chart.<anonymous>@chart-indicators-full.js:20845 < Chart._syncSeparatePanelAxisTags@chart-indicators-full.js:20799 < Chart._updateSeparatePanelLabels@chart-indicators-full.js:20922",
+     "count": 9
+    },
+    {
+     "sig": "?@chart-indicators-full.js:20873 < Chart.<anonymous>@chart-indicators-full.js:20869 < Chart._syncSeparatePanelAxisTags@chart-indicators-full.js:20799",
+     "count": 9
+    },
+    {
+     "sig": "SVGDefsElement.<anonymous>@d3.min.js:2 < SVGDefsElement.<anonymous>@d3.min.js:2 < Vn.select@d3.min.js:2",
+     "count": 8
+    },
+    {
+     "sig": "SVGFilterElement.<anonymous>@d3.min.js:2 < SVGFilterElement.<anonymous>@d3.min.js:2 < Vn.select@d3.min.js:2",
+     "count": 8
+    },
+    {
+     "sig": "talariaFillLegendLoadingDots@indicator-ui.js:2866 < talariaFillLegendValueSpan@indicator-ui.js:2876 < ?@indicator-ui.js:2933",
+     "count": 8
+    },
+    {
+     "sig": "Chart._renderSeparatePanelLegendValue@chart-indicators-full.js:20522 < Chart.<anonymous>@chart-indicators-full.js:20559 < Chart._syncSeparatePanelOverlayValues@chart-indicators-full.js:20556",
+     "count": 8
+    },
+    {
+     "sig": "SVGSVGElement.<anonymous>@d3.min.js:2 < SVGSVGElement.<anonymous>@d3.min.js:2 < Vn.select@d3.min.js:2",
+     "count": 7
+    },
+    {
+     "sig": "HTMLDocument.m20Q6CapturedQuery@replay-system.js:9686 < talariaAppendIndicatorLegendRow@indicator-ui.js:2970 < ?@indicator-ui.js:3165",
+     "count": 6
+    },
+    {
+     "sig": "HTMLDocument.m20Q6CapturedQuery@replay-system.js:9686 < talariaAppendIndicatorLegendRow@indicator-ui.js:2975 < ?@indicator-ui.js:3165",
+     "count": 6
+    },
+    {
+     "sig": "talariaFillLegendValueSpan@indicator-ui.js:2880 < ?@indicator-ui.js:2933 < talariaSyncOhlcIndicatorLegendValues@indicator-ui.js:2907",
+     "count": 6
+    },
+    {
+     "sig": "HTMLDocument.m20Q6CapturedQuery@replay-system.js:9686 < ?@indicator-ui.js:2889 < talariaFillLegendValueSpan@indicator-ui.js:2888",
+     "count": 6
+    },
+    {
+     "sig": "HTMLDocument.m20Q6CapturedQuery@replay-system.js:9686 < talariaAppendIndicatorLegendRow@indicator-ui.js:2994 < ?@indicator-ui.js:3165",
+     "count": 6
+    },
+    {
+     "sig": "HTMLDocument.m20Q6CapturedQuery@replay-system.js:9686 < talariaAppendIndicatorLegendRow@indicator-ui.js:3071 < ?@indicator-ui.js:3165",
+     "count": 6
+    },
+    {
+     "sig": "?@chart-indicators-full.js:20529 < Chart._renderSeparatePanelLegendValue@chart-indicators-full.js:20528 < Chart.<anonymous>@chart-indicators-full.js:20559",
+     "count": 6
+    },
+    {
+     "sig": "HTMLDocument.m20Q6CapturedQuery@replay-system.js:9686 < ?@chart-indicators-full.js:20873 < Chart.<anonymous>@chart-indicators-full.js:20869",
+     "count": 3
+    },
+    {
+     "sig": "talariaRebuildOhlcIndicatorLegend@indicator-ui.js:3148 < Chart.updateOHLCIndicators@indicator-ui.js:6504 < runReplayPlayIndicatorPass@chart-indicators-full.js:11448",
+     "count": 3
+    },
+    {
+     "sig": "Chart._renderSeparatePanelLegendValue@chart-indicators-full.js:20543 < Chart.<anonymous>@chart-indicators-full.js:20559 < Chart._syncSeparatePanelOverlayValues@chart-indicators-full.js:20556",
+     "count": 3
+    },
+    {
+     "sig": "?@chart-indicators-full.js:20534 < Chart._renderSeparatePanelLegendValue@chart-indicators-full.js:20528 < Chart.<anonymous>@chart-indicators-full.js:20559",
+     "count": 3
+    },
+    {
+     "sig": "?@chart-indicators-full.js:20765 < Chart._syncSeparatePanelAxisTags@chart-indicators-full.js:20763 < Chart._updateSeparatePanelLabels@chart-indicators-full.js:20922",
+     "count": 3
+    },
+    {
+     "sig": "Chart._syncSeparatePanelAxisTags@chart-indicators-full.js:20783 < Chart._updateSeparatePanelLabels@chart-indicators-full.js:20922 < Chart.renderSeparatePanelIndicators@chart-indicators-full.js:15389",
+     "count": 3
+    },
+    {
+     "sig": "?@c%3A%5CUsers%5Cuser%5CDesktop%5Ctalaria1%5Cfull-talaria-log--main%5Cchart%20v%201.4%5Cchart%5Cmultichart-prod%5Charness%5Cnode_modules%5Cpuppeteer-core%5Clib%5Ccjs%5Cpuppeteer%5Cutil%5Cdecorators.js%3A109%3A27:7 < syntheticWriterSource@pptr:;CdpFrame.%3Canonymous%3E%20c%3A%5CUsers%5Cuser%5CDesktop%5Ctalaria1%5Cfull-talaria-log--main%5Cchart%20v%201.4%5Cchart%5Cmultichart-prod%5Charness%5Cnode_modules%5Cpuppeteer-core%5Clib%5Ccjs%5Cpuppeteer%5Cutil%5Cdecorators.js%3A109%3A27:15",
+     "count": 3
+    },
+    {
+     "sig": "talariaAppendIndicatorLegendRow@indicator-ui.js:2970 < ?@indicator-ui.js:3165 < talariaRebuildOhlcIndicatorLegend@indicator-ui.js:3160",
+     "count": 2
+    },
+    {
+     "sig": "talariaAppendIndicatorLegendRow@indicator-ui.js:2975 < ?@indicator-ui.js:3165 < talariaRebuildOhlcIndicatorLegend@indicator-ui.js:3160",
+     "count": 2
+    },
+    {
+     "sig": "talariaFillLegendLoadingDots@indicator-ui.js:2852 < talariaFillLegendValueSpan@indicator-ui.js:2876 < ?@indicator-ui.js:2933",
+     "count": 2
+    },
+    {
+     "sig": "talariaAppendIndicatorLegendRow@indicator-ui.js:2994 < ?@indicator-ui.js:3165 < talariaRebuildOhlcIndicatorLegend@indicator-ui.js:3160",
+     "count": 2
+    }
+   ],
+   "perRealm": [
+    {
+     "realm": "92.82:3000/chart/dist-v9/index.html?mode=backtest&mcLayout=1",
+     "total": 3754,
+     "pre": 2824
+    },
+    {
+     "realm": "260730b113&chartWindowId=cwms800t2y3v2sm4trdy&embedRev=ohlc2",
+     "total": 1251,
+     "pre": 686
+    },
+    {
+     "realm": "260730b113&chartWindowId=cwms800t2y3v2sm4trdy&embedRev=ohlc2",
+     "total": 1250,
+     "pre": 686
+    },
+    {
+     "realm": "260730b113&chartWindowId=cwms800t2y3v2sm4trdy&embedRev=ohlc2",
+     "total": 1249,
+     "pre": 686
+    }
+   ],
+   "churned": 3
+  },
+  {
+   "n": 3,
+   "minutes": 2.163,
+   "hours": 0.0361,
+   "totalElements": 9571,
+   "preInstrumentation": 4882,
+   "closed": 6,
+   "advancing": 4,
+   "bySig": [
+    {
+     "sig": "ewaSyntheticLeakWriter@pptr:;CdpFrame.%3Canonymous%3E%20c%3A%5CUsers%5Cuser%5CDesktop%5Ctalaria1%5Cfull-talaria-log--main%5Cchart%20v%201.4%5Cchart%5Cmultichart-prod%5Charness%5Cnode_modules%5Cpuppeteer-core%5Clib%5Ccjs%5Cpuppeteer%5Cutil%5Cdecorators.js%3A109%3A27:12",
+     "count": 4000
+    },
+    {
+     "sig": "R3@talaria-v9-live.js:40 < O_@talaria-v9-live.js:40 < R_@talaria-v9-live.js:40",
+     "count": 367
+    },
+    {
+     "sig": "SVGGElement.<anonymous>@d3.min.js:2 < SVGGElement.<anonymous>@d3.min.js:2 < Vn.select@d3.min.js:2",
+     "count": 90
+    },
+    {
+     "sig": "talariaAppendIndicatorLegendRow@indicator-ui.js:3003 < ?@indicator-ui.js:3165 < talariaRebuildOhlcIndicatorLegend@indicator-ui.js:3160",
+     "count": 32
+    },
+    {
+     "sig": "talariaAppendIndicatorLegendRow@indicator-ui.js:3046 < ?@indicator-ui.js:3165 < talariaRebuildOhlcIndicatorLegend@indicator-ui.js:3160",
+     "count": 32
+    },
+    {
+     "sig": "SVGDefsElement.<anonymous>@d3.min.js:2 < SVGDefsElement.<anonymous>@d3.min.js:2 < Vn.select@d3.min.js:2",
+     "count": 14
+    },
+    {
+     "sig": "SVGFilterElement.<anonymous>@d3.min.js:2 < SVGFilterElement.<anonymous>@d3.min.js:2 < Vn.select@d3.min.js:2",
+     "count": 14
+    },
+    {
+     "sig": "SVGSVGElement.<anonymous>@d3.min.js:2 < SVGSVGElement.<anonymous>@d3.min.js:2 < Vn.select@d3.min.js:2",
+     "count": 13
+    },
+    {
+     "sig": "Chart.<anonymous>@chart-indicators-full.js:20845 < Chart._syncSeparatePanelAxisTags@chart-indicators-full.js:20799 < Chart._updateSeparatePanelLabels@chart-indicators-full.js:20922",
+     "count": 9
+    },
+    {
+     "sig": "?@chart-indicators-full.js:20873 < Chart.<anonymous>@chart-indicators-full.js:20869 < Chart._syncSeparatePanelAxisTags@chart-indicators-full.js:20799",
+     "count": 9
+    },
+    {
+     "sig": "talariaFillLegendLoadingDots@indicator-ui.js:2866 < talariaFillLegendValueSpan@indicator-ui.js:2876 < ?@indicator-ui.js:2933",
+     "count": 8
+    },
+    {
+     "sig": "HTMLDocument.m20Q6CapturedQuery@replay-system.js:9686 < talariaAppendIndicatorLegendRow@indicator-ui.js:2970 < ?@indicator-ui.js:3165",
+     "count": 8
+    },
+    {
+     "sig": "HTMLDocument.m20Q6CapturedQuery@replay-system.js:9686 < talariaAppendIndicatorLegendRow@indicator-ui.js:2975 < ?@indicator-ui.js:3165",
+     "count": 8
+    },
+    {
+     "sig": "HTMLDocument.m20Q6CapturedQuery@replay-system.js:9686 < talariaAppendIndicatorLegendRow@indicator-ui.js:2994 < ?@indicator-ui.js:3165",
+     "count": 8
+    },
+    {
+     "sig": "HTMLDocument.m20Q6CapturedQuery@replay-system.js:9686 < talariaAppendIndicatorLegendRow@indicator-ui.js:3071 < ?@indicator-ui.js:3165",
+     "count": 8
+    },
+    {
+     "sig": "Chart._renderSeparatePanelLegendValue@chart-indicators-full.js:20522 < Chart.<anonymous>@chart-indicators-full.js:20559 < Chart._syncSeparatePanelOverlayValues@chart-indicators-full.js:20556",
+     "count": 8
+    },
+    {
+     "sig": "talariaFillLegendValueSpan@indicator-ui.js:2880 < ?@indicator-ui.js:2933 < talariaSyncOhlcIndicatorLegendValues@indicator-ui.js:2907",
+     "count": 6
+    },
+    {
+     "sig": "HTMLDocument.m20Q6CapturedQuery@replay-system.js:9686 < ?@indicator-ui.js:2889 < talariaFillLegendValueSpan@indicator-ui.js:2888",
+     "count": 6
+    },
+    {
+     "sig": "?@chart-indicators-full.js:20529 < Chart._renderSeparatePanelLegendValue@chart-indicators-full.js:20528 < Chart.<anonymous>@chart-indicators-full.js:20559",
+     "count": 6
+    },
+    {
+     "sig": "HTMLDocument.m20Q6CapturedQuery@replay-system.js:9686 < Chart.<anonymous>@chart-indicators-full.js:20845 < Chart._syncSeparatePanelAxisTags@chart-indicators-full.js:20799",
+     "count": 4
+    },
+    {
+     "sig": "talariaRebuildOhlcIndicatorLegend@indicator-ui.js:3148 < Chart.updateOHLCIndicators@indicator-ui.js:6504 < runReplayPlayIndicatorPass@chart-indicators-full.js:11448",
+     "count": 4
+    },
+    {
+     "sig": "HTMLDocument.m20Q6CapturedQuery@replay-system.js:9686 < ?@chart-indicators-full.js:20873 < Chart.<anonymous>@chart-indicators-full.js:20869",
+     "count": 3
+    },
+    {
+     "sig": "Chart._renderSeparatePanelLegendValue@chart-indicators-full.js:20543 < Chart.<anonymous>@chart-indicators-full.js:20559 < Chart._syncSeparatePanelOverlayValues@chart-indicators-full.js:20556",
+     "count": 3
+    },
+    {
+     "sig": "?@chart-indicators-full.js:20534 < Chart._renderSeparatePanelLegendValue@chart-indicators-full.js:20528 < Chart.<anonymous>@chart-indicators-full.js:20559",
+     "count": 3
+    },
+    {
+     "sig": "?@chart-indicators-full.js:20765 < Chart._syncSeparatePanelAxisTags@chart-indicators-full.js:20763 < Chart._updateSeparatePanelLabels@chart-indicators-full.js:20922",
+     "count": 3
+    },
+    {
+     "sig": "Chart._syncSeparatePanelAxisTags@chart-indicators-full.js:20783 < Chart._updateSeparatePanelLabels@chart-indicators-full.js:20922 < Chart.renderSeparatePanelIndicators@chart-indicators-full.js:15389",
+     "count": 3
+    },
+    {
+     "sig": "?@c%3A%5CUsers%5Cuser%5CDesktop%5Ctalaria1%5Cfull-talaria-log--main%5Cchart%20v%201.4%5Cchart%5Cmultichart-prod%5Charness%5Cnode_modules%5Cpuppeteer-core%5Clib%5Ccjs%5Cpuppeteer%5Cutil%5Cdecorators.js%3A109%3A27:7 < syntheticWriterSource@pptr:;CdpFrame.%3Canonymous%3E%20c%3A%5CUsers%5Cuser%5CDesktop%5Ctalaria1%5Cfull-talaria-log--main%5Cchart%20v%201.4%5Cchart%5Cmultichart-prod%5Charness%5Cnode_modules%5Cpuppeteer-core%5Clib%5Ccjs%5Cpuppeteer%5Cutil%5Cdecorators.js%3A109%3A27:15",
+     "count": 3
+    },
+    {
+     "sig": "talariaFillLegendLoadingDots@indicator-ui.js:2852 < talariaFillLegendValueSpan@indicator-ui.js:2876 < ?@indicator-ui.js:2933",
+     "count": 2
+    },
+    {
+     "sig": "HTMLDocument.m20Q6CapturedQuery@replay-system.js:9686 < ?@chart-indicators-full.js:20529 < Chart._renderSeparatePanelLegendValue@chart-indicators-full.js:20528",
+     "count": 2
+    },
+    {
+     "sig": "HTMLDocument.m20Q6CapturedQuery@replay-system.js:9686 < Object.show@talaria-toast-stack.js:252 < OrderManager.showNotification@order-manager.js:47504",
+     "count": 2
+    }
+   ],
+   "perRealm": [
+    {
+     "realm": "92.82:3000/chart/dist-v9/index.html?mode=backtest&mcLayout=1",
+     "total": 4381,
+     "pre": 2824
+    },
+    {
+     "realm": "260730b113&chartWindowId=cwms800t2y3v2sm4trdy&embedRev=ohlc2",
+     "total": 1731,
+     "pre": 686
+    },
+    {
+     "realm": "260730b113&chartWindowId=cwms800t2y3v2sm4trdy&embedRev=ohlc2",
+     "total": 1730,
+     "pre": 686
+    },
+    {
+     "realm": "260730b113&chartWindowId=cwms800t2y3v2sm4trdy&embedRev=ohlc2",
+     "total": 1729,
+     "pre": 686
+    }
+   ],
+   "churned": 3
+  },
+  {
+   "n": 4,
+   "minutes": 3.099,
+   "hours": 0.0516,
+   "totalElements": 11398,
+   "preInstrumentation": 4882,
+   "closed": 10,
+   "advancing": 4,
+   "bySig": [
+    {
+     "sig": "ewaSyntheticLeakWriter@pptr:;CdpFrame.%3Canonymous%3E%20c%3A%5CUsers%5Cuser%5CDesktop%5Ctalaria1%5Cfull-talaria-log--main%5Cchart%20v%201.4%5Cchart%5Cmultichart-prod%5Charness%5Cnode_modules%5Cpuppeteer-core%5Clib%5Ccjs%5Cpuppeteer%5Cutil%5Cdecorators.js%3A109%3A27:12",
+     "count": 5760
+    },
+    {
+     "sig": "R3@talaria-v9-live.js:40 < O_@talaria-v9-live.js:40 < R_@talaria-v9-live.js:40",
+     "count": 453
+    },
+    {
+     "sig": "SVGGElement.<anonymous>@d3.min.js:2 < SVGGElement.<anonymous>@d3.min.js:2 < Vn.select@d3.min.js:2",
+     "count": 63
+    },
+    {
+     "sig": "talariaAppendIndicatorLegendRow@indicator-ui.js:3003 < ?@indicator-ui.js:3165 < talariaRebuildOhlcIndicatorLegend@indicator-ui.js:3160",
+     "count": 32
+    },
+    {
+     "sig": "talariaAppendIndicatorLegendRow@indicator-ui.js:3046 < ?@indicator-ui.js:3165 < talariaRebuildOhlcIndicatorLegend@indicator-ui.js:3160",
+     "count": 32
+    },
+    {
+     "sig": "SVGDefsElement.<anonymous>@d3.min.js:2 < SVGDefsElement.<anonymous>@d3.min.js:2 < Vn.select@d3.min.js:2",
+     "count": 21
+    },
+    {
+     "sig": "SVGFilterElement.<anonymous>@d3.min.js:2 < SVGFilterElement.<anonymous>@d3.min.js:2 < Vn.select@d3.min.js:2",
+     "count": 21
+    },
+    {
+     "sig": "Chart.<anonymous>@chart-indicators-full.js:20845 < Chart._syncSeparatePanelAxisTags@chart-indicators-full.js:20799 < Chart._updateSeparatePanelLabels@chart-indicators-full.js:20922",
+     "count": 9
+    },
+    {
+     "sig": "?@chart-indicators-full.js:20873 < Chart.<anonymous>@chart-indicators-full.js:20869 < Chart._syncSeparatePanelAxisTags@chart-indicators-full.js:20799",
+     "count": 9
+    },
+    {
+     "sig": "talariaFillLegendLoadingDots@indicator-ui.js:2866 < talariaFillLegendValueSpan@indicator-ui.js:2876 < ?@indicator-ui.js:2933",
+     "count": 8
+    },
+    {
+     "sig": "Chart._renderSeparatePanelLegendValue@chart-indicators-full.js:20522 < Chart.<anonymous>@chart-indicators-full.js:20559 < Chart._syncSeparatePanelOverlayValues@chart-indicators-full.js:20556",
+     "count": 8
+    },
+    {
+     "sig": "SVGSVGElement.<anonymous>@d3.min.js:2 < SVGSVGElement.<anonymous>@d3.min.js:2 < Vn.select@d3.min.js:2",
+     "count": 7
+    },
+    {
+     "sig": "HTMLDocument.m20Q6CapturedQuery@replay-system.js:9686 < talariaAppendIndicatorLegendRow@indicator-ui.js:2970 < ?@indicator-ui.js:3165",
+     "count": 6
+    },
+    {
+     "sig": "HTMLDocument.m20Q6CapturedQuery@replay-system.js:9686 < talariaAppendIndicatorLegendRow@indicator-ui.js:2975 < ?@indicator-ui.js:3165",
+     "count": 6
+    },
+    {
+     "sig": "talariaFillLegendValueSpan@indicator-ui.js:2880 < ?@indicator-ui.js:2933 < talariaSyncOhlcIndicatorLegendValues@indicator-ui.js:2907",
+     "count": 6
+    },
+    {
+     "sig": "HTMLDocument.m20Q6CapturedQuery@replay-system.js:9686 < ?@indicator-ui.js:2889 < talariaFillLegendValueSpan@indicator-ui.js:2888",
+     "count": 6
+    },
+    {
+     "sig": "HTMLDocument.m20Q6CapturedQuery@replay-system.js:9686 < talariaAppendIndicatorLegendRow@indicator-ui.js:2994 < ?@indicator-ui.js:3165",
+     "count": 6
+    },
+    {
+     "sig": "HTMLDocument.m20Q6CapturedQuery@replay-system.js:9686 < talariaAppendIndicatorLegendRow@indicator-ui.js:3071 < ?@indicator-ui.js:3165",
+     "count": 6
+    },
+    {
+     "sig": "?@chart-indicators-full.js:20529 < Chart._renderSeparatePanelLegendValue@chart-indicators-full.js:20528 < Chart.<anonymous>@chart-indicators-full.js:20559",
+     "count": 6
+    },
+    {
+     "sig": "HTMLDocument.m20Q6CapturedQuery@replay-system.js:9686 < ?@chart-indicators-full.js:20873 < Chart.<anonymous>@chart-indicators-full.js:20869",
+     "count": 3
+    },
+    {
+     "sig": "HTMLDocument.m20Q6CapturedQuery@replay-system.js:9686 < Object.show@talaria-toast-stack.js:252 < OrderManager.showNotification@order-manager.js:47504",
+     "count": 3
+    },
+    {
+     "sig": "HTMLDocument.m20Q6CapturedQuery@replay-system.js:9686 < Object.show@talaria-toast-stack.js:276 < OrderManager.showNotification@order-manager.js:47504",
+     "count": 3
+    },
+    {
+     "sig": "talariaRebuildOhlcIndicatorLegend@indicator-ui.js:3148 < Chart.updateOHLCIndicators@indicator-ui.js:6504 < runReplayPlayIndicatorPass@chart-indicators-full.js:11448",
+     "count": 3
+    },
+    {
+     "sig": "Chart._renderSeparatePanelLegendValue@chart-indicators-full.js:20543 < Chart.<anonymous>@chart-indicators-full.js:20559 < Chart._syncSeparatePanelOverlayValues@chart-indicators-full.js:20556",
+     "count": 3
+    },
+    {
+     "sig": "?@chart-indicators-full.js:20534 < Chart._renderSeparatePanelLegendValue@chart-indicators-full.js:20528 < Chart.<anonymous>@chart-indicators-full.js:20559",
+     "count": 3
+    },
+    {
+     "sig": "?@chart-indicators-full.js:20765 < Chart._syncSeparatePanelAxisTags@chart-indicators-full.js:20763 < Chart._updateSeparatePanelLabels@chart-indicators-full.js:20922",
+     "count": 3
+    },
+    {
+     "sig": "Chart._syncSeparatePanelAxisTags@chart-indicators-full.js:20783 < Chart._updateSeparatePanelLabels@chart-indicators-full.js:20922 < Chart.renderSeparatePanelIndicators@chart-indicators-full.js:15389",
+     "count": 3
+    },
+    {
+     "sig": "?@c%3A%5CUsers%5Cuser%5CDesktop%5Ctalaria1%5Cfull-talaria-log--main%5Cchart%20v%201.4%5Cchart%5Cmultichart-prod%5Charness%5Cnode_modules%5Cpuppeteer-core%5Clib%5Ccjs%5Cpuppeteer%5Cutil%5Cdecorators.js%3A109%3A27:7 < syntheticWriterSource@pptr:;CdpFrame.%3Canonymous%3E%20c%3A%5CUsers%5Cuser%5CDesktop%5Ctalaria1%5Cfull-talaria-log--main%5Cchart%20v%201.4%5Cchart%5Cmultichart-prod%5Charness%5Cnode_modules%5Cpuppeteer-core%5Clib%5Ccjs%5Cpuppeteer%5Cutil%5Cdecorators.js%3A109%3A27:15",
+     "count": 3
+    },
+    {
+     "sig": "talariaAppendIndicatorLegendRow@indicator-ui.js:2970 < ?@indicator-ui.js:3165 < talariaRebuildOhlcIndicatorLegend@indicator-ui.js:3160",
+     "count": 2
+    },
+    {
+     "sig": "talariaAppendIndicatorLegendRow@indicator-ui.js:2975 < ?@indicator-ui.js:3165 < talariaRebuildOhlcIndicatorLegend@indicator-ui.js:3160",
+     "count": 2
+    }
+   ],
+   "perRealm": [
+    {
+     "realm": "92.82:3000/chart/dist-v9/index.html?mode=backtest&mcLayout=1",
+     "total": 4888,
+     "pre": 2824
+    },
+    {
+     "realm": "260730b113&chartWindowId=cwms800t2y3v2sm4trdy&embedRev=ohlc2",
+     "total": 2171,
+     "pre": 686
+    },
+    {
+     "realm": "260730b113&chartWindowId=cwms800t2y3v2sm4trdy&embedRev=ohlc2",
+     "total": 2170,
+     "pre": 686
+    },
+    {
+     "realm": "260730b113&chartWindowId=cwms800t2y3v2sm4trdy&embedRev=ohlc2",
+     "total": 2169,
+     "pre": 686
+    }
+   ],
+   "churned": 3
+  },
+  {
+   "n": 5,
+   "minutes": 4.172,
+   "hours": 0.0695,
+   "totalElements": 13584,
+   "preInstrumentation": 4882,
+   "closed": 12,
+   "advancing": 4,
+   "bySig": [
+    {
+     "sig": "ewaSyntheticLeakWriter@pptr:;CdpFrame.%3Canonymous%3E%20c%3A%5CUsers%5Cuser%5CDesktop%5Ctalaria1%5Cfull-talaria-log--main%5Cchart%20v%201.4%5Cchart%5Cmultichart-prod%5Charness%5Cnode_modules%5Cpuppeteer-core%5Clib%5Ccjs%5Cpuppeteer%5Cutil%5Cdecorators.js%3A109%3A27:12",
+     "count": 7840
+    },
+    {
+     "sig": "R3@talaria-v9-live.js:40 < O_@talaria-v9-live.js:40 < R_@talaria-v9-live.js:40",
+     "count": 541
+    },
+    {
+     "sig": "SVGGElement.<anonymous>@d3.min.js:2 < SVGGElement.<anonymous>@d3.min.js:2 < Vn.select@d3.min.js:2",
+     "count": 72
+    },
+    {
+     "sig": "talariaAppendIndicatorLegendRow@indicator-ui.js:3003 < ?@indicator-ui.js:3165 < talariaRebuildOhlcIndicatorLegend@indicator-ui.js:3160",
+     "count": 32
+    },
+    {
+     "sig": "talariaAppendIndicatorLegendRow@indicator-ui.js:3046 < ?@indicator-ui.js:3165 < talariaRebuildOhlcIndicatorLegend@indicator-ui.js:3160",
+     "count": 32
+    },
+    {
+     "sig": "SVGDefsElement.<anonymous>@d3.min.js:2 < SVGDefsElement.<anonymous>@d3.min.js:2 < Vn.select@d3.min.js:2",
+     "count": 26
+    },
+    {
+     "sig": "SVGFilterElement.<anonymous>@d3.min.js:2 < SVGFilterElement.<anonymous>@d3.min.js:2 < Vn.select@d3.min.js:2",
+     "count": 26
+    },
+    {
+     "sig": "SVGSVGElement.<anonymous>@d3.min.js:2 < SVGSVGElement.<anonymous>@d3.min.js:2 < Vn.select@d3.min.js:2",
+     "count": 10
+    },
+    {
+     "sig": "Chart.<anonymous>@chart-indicators-full.js:20845 < Chart._syncSeparatePanelAxisTags@chart-indicators-full.js:20799 < Chart._updateSeparatePanelLabels@chart-indicators-full.js:20922",
+     "count": 9
+    },
+    {
+     "sig": "?@chart-indicators-full.js:20873 < Chart.<anonymous>@chart-indicators-full.js:20869 < Chart._syncSeparatePanelAxisTags@chart-indicators-full.js:20799",
+     "count": 9
+    },
+    {
+     "sig": "talariaFillLegendLoadingDots@indicator-ui.js:2866 < talariaFillLegendValueSpan@indicator-ui.js:2876 < ?@indicator-ui.js:2933",
+     "count": 8
+    },
+    {
+     "sig": "HTMLDocument.m20Q6CapturedQuery@replay-system.js:9686 < talariaAppendIndicatorLegendRow@indicator-ui.js:2970 < ?@indicator-ui.js:3165",
+     "count": 8
+    },
+    {
+     "sig": "HTMLDocument.m20Q6CapturedQuery@replay-system.js:9686 < talariaAppendIndicatorLegendRow@indicator-ui.js:2975 < ?@indicator-ui.js:3165",
+     "count": 8
+    },
+    {
+     "sig": "HTMLDocument.m20Q6CapturedQuery@replay-system.js:9686 < talariaAppendIndicatorLegendRow@indicator-ui.js:2994 < ?@indicator-ui.js:3165",
+     "count": 8
+    },
+    {
+     "sig": "HTMLDocument.m20Q6CapturedQuery@replay-system.js:9686 < talariaAppendIndicatorLegendRow@indicator-ui.js:3071 < ?@indicator-ui.js:3165",
+     "count": 8
+    },
+    {
+     "sig": "Chart._renderSeparatePanelLegendValue@chart-indicators-full.js:20522 < Chart.<anonymous>@chart-indicators-full.js:20559 < Chart._syncSeparatePanelOverlayValues@chart-indicators-full.js:20556",
+     "count": 8
+    },
+    {
+     "sig": "talariaFillLegendValueSpan@indicator-ui.js:2880 < ?@indicator-ui.js:2933 < talariaSyncOhlcIndicatorLegendValues@indicator-ui.js:2907",
+     "count": 6
+    },
+    {
+     "sig": "HTMLDocument.m20Q6CapturedQuery@replay-system.js:9686 < ?@indicator-ui.js:2889 < talariaFillLegendValueSpan@indicator-ui.js:2888",
+     "count": 6
+    },
+    {
+     "sig": "?@chart-indicators-full.js:20529 < Chart._renderSeparatePanelLegendValue@chart-indicators-full.js:20528 < Chart.<anonymous>@chart-indicators-full.js:20559",
+     "count": 6
+    },
+    {
+     "sig": "talariaRebuildOhlcIndicatorLegend@indicator-ui.js:3148 < Chart.updateOHLCIndicators@indicator-ui.js:6504 < runReplayPlayIndicatorPass@chart-indicators-full.js:11448",
+     "count": 4
+    },
+    {
+     "sig": "HTMLDocument.m20Q6CapturedQuery@replay-system.js:9686 < ?@chart-indicators-full.js:20873 < Chart.<anonymous>@chart-indicators-full.js:20869",
+     "count": 3
+    },
+    {
+     "sig": "Chart._renderSeparatePanelLegendValue@chart-indicators-full.js:20543 < Chart.<anonymous>@chart-indicators-full.js:20559 < Chart._syncSeparatePanelOverlayValues@chart-indicators-full.js:20556",
+     "count": 3
+    },
+    {
+     "sig": "?@chart-indicators-full.js:20534 < Chart._renderSeparatePanelLegendValue@chart-indicators-full.js:20528 < Chart.<anonymous>@chart-indicators-full.js:20559",
+     "count": 3
+    },
+    {
+     "sig": "?@chart-indicators-full.js:20765 < Chart._syncSeparatePanelAxisTags@chart-indicators-full.js:20763 < Chart._updateSeparatePanelLabels@chart-indicators-full.js:20922",
+     "count": 3
+    },
+    {
+     "sig": "Chart._syncSeparatePanelAxisTags@chart-indicators-full.js:20783 < Chart._updateSeparatePanelLabels@chart-indicators-full.js:20922 < Chart.renderSeparatePanelIndicators@chart-indicators-full.js:15389",
+     "count": 3
+    },
+    {
+     "sig": "?@c%3A%5CUsers%5Cuser%5CDesktop%5Ctalaria1%5Cfull-talaria-log--main%5Cchart%20v%201.4%5Cchart%5Cmultichart-prod%5Charness%5Cnode_modules%5Cpuppeteer-core%5Clib%5Ccjs%5Cpuppeteer%5Cutil%5Cdecorators.js%3A109%3A27:7 < syntheticWriterSource@pptr:;CdpFrame.%3Canonymous%3E%20c%3A%5CUsers%5Cuser%5CDesktop%5Ctalaria1%5Cfull-talaria-log--main%5Cchart%20v%201.4%5Cchart%5Cmultichart-prod%5Charness%5Cnode_modules%5Cpuppeteer-core%5Clib%5Ccjs%5Cpuppeteer%5Cutil%5Cdecorators.js%3A109%3A27:15",
+     "count": 3
+    },
+    {
+     "sig": "talariaFillLegendLoadingDots@indicator-ui.js:2852 < talariaFillLegendValueSpan@indicator-ui.js:2876 < ?@indicator-ui.js:2933",
+     "count": 2
+    },
+    {
+     "sig": "HTMLDocument.m20Q6CapturedQuery@replay-system.js:9686 < ?@chart-indicators-full.js:20529 < Chart._renderSeparatePanelLegendValue@chart-indicators-full.js:20528",
+     "count": 2
+    },
+    {
+     "sig": "HTMLDocument.m20Q6CapturedQuery@replay-system.js:9686 < Chart.<anonymous>@chart-indicators-full.js:20845 < Chart._syncSeparatePanelAxisTags@chart-indicators-full.js:20799",
+     "count": 2
+    },
+    {
+     "sig": "d@talaria-v9-live.js:143",
+     "count": 1
+    }
+   ],
+   "perRealm": [
+    {
+     "realm": "92.82:3000/chart/dist-v9/index.html?mode=backtest&mcLayout=1",
+     "total": 5514,
+     "pre": 2824
+    },
+    {
+     "realm": "260730b113&chartWindowId=cwms800t2y3v2sm4trdy&embedRev=ohlc2",
+     "total": 2691,
+     "pre": 686
+    },
+    {
+     "realm": "260730b113&chartWindowId=cwms800t2y3v2sm4trdy&embedRev=ohlc2",
+     "total": 2690,
+     "pre": 686
+    },
+    {
+     "realm": "260730b113&chartWindowId=cwms800t2y3v2sm4trdy&embedRev=ohlc2",
+     "total": 2689,
+     "pre": 686
+    }
+   ],
+   "churned": 3
+  },
+  {
+   "n": 6,
+   "minutes": 5.033,
+   "hours": 0.0839,
+   "totalElements": 0,
+   "preInstrumentation": 0,
+   "closed": null,
+   "advancing": 0,
+   "bySig": [],
+   "perRealm": [],
+   "churned": 0
+  },
+  {
+   "n": 7,
+   "minutes": 6.033,
+   "hours": 0.1006,
+   "totalElements": 0,
+   "preInstrumentation": 0,
+   "closed": null,
+   "advancing": 0,
+   "bySig": [],
+   "perRealm": [],
+   "churned": 0
+  },
+  {
+   "n": 8,
+   "minutes": 7.033,
+   "hours": 0.1172,
+   "totalElements": 0,
+   "preInstrumentation": 0,
+   "closed": null,
+   "advancing": 0,
+   "bySig": [],
+   "perRealm": [],
+   "churned": 0
+  },
+  {
+   "n": 9,
+   "minutes": 8.033,
+   "hours": 0.1339,
+   "totalElements": 0,
+   "preInstrumentation": 0,
+   "closed": null,
+   "advancing": 0,
+   "bySig": [],
+   "perRealm": [],
+   "churned": 0
+  },
+  {
+   "n": 10,
+   "minutes": 9.033,
+   "hours": 0.1506,
+   "totalElements": 0,
+   "preInstrumentation": 0,
+   "closed": null,
+   "advancing": 0,
+   "bySig": [],
+   "perRealm": [],
+   "churned": 0
+  },
+  {
+   "n": 11,
+   "minutes": 10.033,
+   "hours": 0.1672,
+   "totalElements": 0,
+   "preInstrumentation": 0,
+   "closed": null,
+   "advancing": 0,
+   "bySig": [],
+   "perRealm": [],
+   "churned": 0
+  },
+  {
+   "n": 12,
+   "minutes": 11.033,
+   "hours": 0.1839,
+   "totalElements": 0,
+   "preInstrumentation": 0,
+   "closed": null,
+   "advancing": 0,
+   "bySig": [],
+   "perRealm": [],
+   "churned": 0
+  },
+  {
+   "n": 13,
+   "minutes": 12.033,
+   "hours": 0.2006,
+   "totalElements": 0,
+   "preInstrumentation": 0,
+   "closed": null,
+   "advancing": 0,
+   "bySig": [],
+   "perRealm": [],
+   "churned": 0
+  },
+  {
+   "n": 14,
+   "minutes": 13.033,
+   "hours": 0.2172,
+   "totalElements": 0,
+   "preInstrumentation": 0,
+   "closed": null,
+   "advancing": 0,
+   "bySig": [],
+   "perRealm": [],
+   "churned": 0
+  },
+  {
+   "n": 15,
+   "minutes": 14.033,
+   "hours": 0.2339,
+   "totalElements": 0,
+   "preInstrumentation": 0,
+   "closed": null,
+   "advancing": 0,
+   "bySig": [],
+   "perRealm": [],
+   "churned": 0
+  },
+  {
+   "n": 16,
+   "minutes": 15.033,
+   "hours": 0.2506,
+   "totalElements": 0,
+   "preInstrumentation": 0,
+   "closed": null,
+   "advancing": 0,
+   "bySig": [],
+   "perRealm": [],
+   "churned": 0
+  },
+  {
+   "n": 17,
+   "minutes": 16.033,
+   "hours": 0.2672,
+   "totalElements": 0,
+   "preInstrumentation": 0,
+   "closed": null,
+   "advancing": 0,
+   "bySig": [],
+   "perRealm": [],
+   "churned": 0
+  },
+  {
+   "n": 18,
+   "minutes": 17.033,
+   "hours": 0.2839,
+   "totalElements": 0,
+   "preInstrumentation": 0,
+   "closed": null,
+   "advancing": 0,
+   "bySig": [],
+   "perRealm": [],
+   "churned": 0
+  },
+  {
+   "n": 19,
+   "minutes": 18.033,
+   "hours": 0.3006,
+   "totalElements": 0,
+   "preInstrumentation": 0,
+   "closed": null,
+   "advancing": 0,
+   "bySig": [],
+   "perRealm": [],
+   "churned": 0
+  },
+  {
+   "n": 20,
+   "minutes": 19.033,
+   "hours": 0.3172,
+   "totalElements": 0,
+   "preInstrumentation": 0,
+   "closed": null,
+   "advancing": 0,
+   "bySig": [],
+   "perRealm": [],
+   "churned": 0
+  },
+  {
+   "n": 21,
+   "minutes": 20.033,
+   "hours": 0.3339,
+   "totalElements": 0,
+   "preInstrumentation": 0,
+   "closed": null,
+   "advancing": 0,
+   "bySig": [],
+   "perRealm": [],
+   "churned": 0
+  },
+  {
+   "n": 22,
+   "minutes": 21.033,
+   "hours": 0.3506,
+   "totalElements": 0,
+   "preInstrumentation": 0,
+   "closed": null,
+   "advancing": 0,
+   "bySig": [],
+   "perRealm": [],
+   "churned": 0
+  },
+  {
+   "n": 23,
+   "minutes": 22.033,
+   "hours": 0.3672,
+   "totalElements": 0,
+   "preInstrumentation": 0,
+   "closed": null,
+   "advancing": 0,
+   "bySig": [],
+   "perRealm": [],
+   "churned": 0
+  },
+  {
+   "n": 24,
+   "minutes": 23.033,
+   "hours": 0.3839,
+   "totalElements": 0,
+   "preInstrumentation": 0,
+   "closed": null,
+   "advancing": 0,
+   "bySig": [],
+   "perRealm": [],
+   "churned": 0
+  },
+  {
+   "n": 25,
+   "minutes": 24.033,
+   "hours": 0.4006,
+   "totalElements": 0,
+   "preInstrumentation": 0,
+   "closed": null,
+   "advancing": 0,
+   "bySig": [],
+   "perRealm": [],
+   "churned": 0
+  },
+  {
+   "n": 26,
+   "minutes": 25.033,
+   "hours": 0.4172,
+   "totalElements": 0,
+   "preInstrumentation": 0,
+   "closed": null,
+   "advancing": 0,
+   "bySig": [],
+   "perRealm": [],
+   "churned": 0
+  }
+ ],
+ "build": {
+  "scriptVersion": "20260730b113",
+  "href": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&mcLayout=1"
+ },
+ "instrumented": [
+  {
+   "url": "92.82:3000/chart/dist-v9/index.html?mode=backtest&mcLayout=1",
+   "already": false,
+   "realm": "/chart/dist-v9/index.html",
+   "wrapped": [
+    "createElement",
+    "createElementNS",
+    "createElement",
+    "createElementNS",
+    "innerHTML",
+    "insertAdjacentHTML"
+   ]
+  },
+  {
+   "url": "260730b113&chartWindowId=cwms800t2y3v2sm4trdy&embedRev=ohlc2",
+   "already": false,
+   "realm": "/chart/multichart-prod/chart-embed.html",
+   "wrapped": [
+    "createElement",
+    "createElementNS",
+    "createElement",
+    "createElementNS",
+    "innerHTML",
+    "insertAdjacentHTML"
+   ]
+  },
+  {
+   "url": "260730b113&chartWindowId=cwms800t2y3v2sm4trdy&embedRev=ohlc2",
+   "already": false,
+   "realm": "/chart/multichart-prod/chart-embed.html",
+   "wrapped": [
+    "createElement",
+    "createElementNS",
+    "createElement",
+    "createElementNS",
+    "innerHTML",
+    "insertAdjacentHTML"
+   ]
+  },
+  {
+   "url": "260730b113&chartWindowId=cwms800t2y3v2sm4trdy&embedRev=ohlc2",
+   "already": false,
+   "realm": "/chart/multichart-prod/chart-embed.html",
+   "wrapped": [
+    "createElement",
+    "createElementNS",
+    "createElement",
+    "createElementNS",
+    "innerHTML",
+    "insertAdjacentHTML"
+   ]
+  }
+ ],
+ "synthetic": [
+  {
+   "url": "92.82:3000/chart/dist-v9/index.html?mode=backtest&mcLayout=1",
+   "ok": true,
+   "perTick": 40
+  },
+  {
+   "url": "260730b113&chartWindowId=cwms800t2y3v2sm4trdy&embedRev=ohlc2",
+   "ok": true,
+   "perTick": 40
+  },
+  {
+   "url": "260730b113&chartWindowId=cwms800t2y3v2sm4trdy&embedRev=ohlc2",
+   "ok": true,
+   "perTick": 40
+  },
+  {
+   "url": "260730b113&chartWindowId=cwms800t2y3v2sm4trdy&embedRev=ohlc2",
+   "ok": true,
+   "perTick": 40
+  }
+ ],
+ "trends": [
+  {
+   "sig": "d@talaria-v9-live.js:143",
+   "slopePerHour": -0.347,
+   "ci": [
+    -0.98,
+    0.286
+   ],
+   "verdict": "BOUNDED",
+   "slopePerClosedTrade": 0.072,
+   "ciPerClosedTrade": [
+    -0.064,
+    0.208
+   ],
+   "verdictPerClosedTrade": "BOUNDED",
+   "first": 0,
+   "last": 0
+  },
+  {
+   "sig": "talariaAppendIndicatorLegendRow@indicator-ui.js:2994 < ?@indicator-ui.js:3165 < talariaRebuildOhlcIndicatorLegend@indicator-ui.js:3160",
+   "slopePerHour": -0.942,
+   "ci": [
+    -2.18,
+    0.296
+   ],
+   "verdict": "BOUNDED",
+   "slopePerClosedTrade": -0.096,
+   "ciPerClosedTrade": [
+    -0.431,
+    0.24
+   ],
+   "verdictPerClosedTrade": "BOUNDED",
+   "first": 0,
+   "last": 0
+  },
+  {
+   "sig": "HTMLDocument.m20Q6CapturedQuery@replay-system.js:9686 < Object.show@talaria-toast-stack.js:276 < OrderManager.showNotification@order-manager.js:47504",
+   "slopePerHour": -1.175,
+   "ci": [
+    -3.06,
+    0.711
+   ],
+   "verdict": "BOUNDED",
+   "slopePerClosedTrade": 0.136,
+   "ciPerClosedTrade": [
+    -0.375,
+    0.647
+   ],
+   "verdictPerClosedTrade": "BOUNDED",
+   "first": 0,
+   "last": 0
+  },
+  {
+   "sig": "HTMLDocument.m20Q6CapturedQuery@replay-system.js:9686 < ?@chart-indicators-full.js:20529 < Chart._renderSeparatePanelLegendValue@chart-indicators-full.js:20528",
+   "slopePerHour": -1.554,
+   "ci": [
+    -3.232,
+    0.123
+   ],
+   "verdict": "BOUNDED",
+   "slopePerClosedTrade": 0.128,
+   "ciPerClosedTrade": [
+    -0.273,
+    0.528
+   ],
+   "verdictPerClosedTrade": "BOUNDED",
+   "first": 0,
+   "last": 0
+  },
+  {
+   "sig": "HTMLDocument.m20Q6CapturedQuery@replay-system.js:9686 < Object.show@talaria-toast-stack.js:252 < OrderManager.showNotification@order-manager.js:47504",
+   "slopePerHour": -2.035,
+   "ci": [
+    -4.169,
+    0.099
+   ],
+   "verdict": "BOUNDED",
+   "slopePerClosedTrade": 0.12,
+   "ciPerClosedTrade": [
+    -0.438,
+    0.677
+   ],
+   "verdictPerClosedTrade": "BOUNDED",
+   "first": 0,
+   "last": 0
+  },
+  {
+   "sig": "talariaAppendIndicatorLegendRow@indicator-ui.js:2970 < ?@indicator-ui.js:3165 < talariaRebuildOhlcIndicatorLegend@indicator-ui.js:3160",
+   "slopePerHour": -2.751,
+   "ci": [
+    -4.574,
+    -0.928
+   ],
+   "verdict": "BOUNDED",
+   "slopePerClosedTrade": -0.128,
+   "ciPerClosedTrade": [
+    -0.528,
+    0.273
+   ],
+   "verdictPerClosedTrade": "BOUNDED",
+   "first": 2,
+   "last": 0
+  },
+  {
+   "sig": "talariaAppendIndicatorLegendRow@indicator-ui.js:2975 < ?@indicator-ui.js:3165 < talariaRebuildOhlcIndicatorLegend@indicator-ui.js:3160",
+   "slopePerHour": -2.751,
+   "ci": [
+    -4.574,
+    -0.928
+   ],
+   "verdict": "BOUNDED",
+   "slopePerClosedTrade": -0.128,
+   "ciPerClosedTrade": [
+    -0.528,
+    0.273
+   ],
+   "verdictPerClosedTrade": "BOUNDED",
+   "first": 2,
+   "last": 0
+  },
+  {
+   "sig": "talariaFillLegendLoadingDots@indicator-ui.js:2852 < talariaFillLegendValueSpan@indicator-ui.js:2876 < ?@indicator-ui.js:2933",
+   "slopePerHour": -3.522,
+   "ci": [
+    -5.459,
+    -1.585
+   ],
+   "verdict": "BOUNDED",
+   "slopePerClosedTrade": -0.09,
+   "ciPerClosedTrade": [
+    -0.431,
+    0.25
+   ],
+   "verdictPerClosedTrade": "BOUNDED",
+   "first": 2,
+   "last": 0
+  },
+  {
+   "sig": "HTMLDocument.m20Q6CapturedQuery@replay-system.js:9686 < Chart.<anonymous>@chart-indicators-full.js:20845 < Chart._syncSeparatePanelAxisTags@chart-indicators-full.js:20799",
+   "slopePerHour": -3.953,
+   "ci": [
+    -6.886,
+    -1.02
+   ],
+   "verdict": "BOUNDED",
+   "slopePerClosedTrade": -0.072,
+   "ciPerClosedTrade": [
+    -0.818,
+    0.675
+   ],
+   "verdictPerClosedTrade": "BOUNDED",
+   "first": 3,
+   "last": 0
+  },
+  {
+   "sig": "HTMLDocument.m20Q6CapturedQuery@replay-system.js:9686 < ?@chart-indicators-full.js:20873 < Chart.<anonymous>@chart-indicators-full.js:20869",
+   "slopePerHour": -6.458,
+   "ci": [
+    -9.388,
+    -3.528
+   ],
+   "verdict": "BOUNDED",
+   "slopePerClosedTrade": 0,
+   "ciPerClosedTrade": [
+    0,
+    0
+   ],
+   "verdictPerClosedTrade": "BOUNDED",
+   "first": 3,
+   "last": 0
+  },
+  {
+   "sig": "Chart._renderSeparatePanelLegendValue@chart-indicators-full.js:20543 < Chart.<anonymous>@chart-indicators-full.js:20559 < Chart._syncSeparatePanelOverlayValues@chart-indicators-full.js:20556",
+   "slopePerHour": -6.458,
+   "ci": [
+    -9.388,
+    -3.528
+   ],
+   "verdict": "BOUNDED",
+   "slopePerClosedTrade": 0,
+   "ciPerClosedTrade": [
+    0,
+    0
+   ],
+   "verdictPerClosedTrade": "BOUNDED",
+   "first": 3,
+   "last": 0
+  },
+  {
+   "sig": "?@chart-indicators-full.js:20534 < Chart._renderSeparatePanelLegendValue@chart-indicators-full.js:20528 < Chart.<anonymous>@chart-indicators-full.js:20559",
+   "slopePerHour": -6.458,
+   "ci": [
+    -9.388,
+    -3.528
+   ],
+   "verdict": "BOUNDED",
+   "slopePerClosedTrade": 0,
+   "ciPerClosedTrade": [
+    0,
+    0
+   ],
+   "verdictPerClosedTrade": "BOUNDED",
+   "first": 3,
+   "last": 0
+  },
+  {
+   "sig": "?@chart-indicators-full.js:20765 < Chart._syncSeparatePanelAxisTags@chart-indicators-full.js:20763 < Chart._updateSeparatePanelLabels@chart-indicators-full.js:20922",
+   "slopePerHour": -6.458,
+   "ci": [
+    -9.388,
+    -3.528
+   ],
+   "verdict": "BOUNDED",
+   "slopePerClosedTrade": 0,
+   "ciPerClosedTrade": [
+    0,
+    0
+   ],
+   "verdictPerClosedTrade": "BOUNDED",
+   "first": 3,
+   "last": 0
+  },
+  {
+   "sig": "Chart._syncSeparatePanelAxisTags@chart-indicators-full.js:20783 < Chart._updateSeparatePanelLabels@chart-indicators-full.js:20922 < Chart.renderSeparatePanelIndicators@chart-indicators-full.js:15389",
+   "slopePerHour": -6.458,
+   "ci": [
+    -9.388,
+    -3.528
+   ],
+   "verdict": "BOUNDED",
+   "slopePerClosedTrade": 0,
+   "ciPerClosedTrade": [
+    0,
+    0
+   ],
+   "verdictPerClosedTrade": "BOUNDED",
+   "first": 3,
+   "last": 0
+  },
+  {
+   "sig": "?@c%3A%5CUsers%5Cuser%5CDesktop%5Ctalaria1%5Cfull-talaria-log--main%5Cchart%20v%201.4%5Cchart%5Cmultichart-prod%5Charness%5Cnode_modules%5Cpuppeteer-core%5Clib%5Ccjs%5Cpuppeteer%5Cutil%5Cdecorators.js%3A109%3A27:7 < syntheticWriterSource@pptr:;CdpFrame.%3Canonymous%3E%20c%3A%5CUsers%5Cuser%5CDesktop%5Ctalaria1%5Cfull-talaria-log--main%5Cchart%20v%201.4%5Cchart%5Cmultichart-prod%5Charness%5Cnode_modules%5Cpuppeteer-core%5Clib%5Ccjs%5Cpuppeteer%5Cutil%5Cdecorators.js%3A109%3A27:15",
+   "slopePerHour": -6.458,
+   "ci": [
+    -9.388,
+    -3.528
+   ],
+   "verdict": "BOUNDED",
+   "slopePerClosedTrade": 0,
+   "ciPerClosedTrade": [
+    0,
+    0
+   ],
+   "verdictPerClosedTrade": "BOUNDED",
+   "first": 3,
+   "last": 0
+  },
+  {
+   "sig": "talariaRebuildOhlcIndicatorLegend@indicator-ui.js:3148 < Chart.updateOHLCIndicators@indicator-ui.js:6504 < runReplayPlayIndicatorPass@chart-indicators-full.js:11448",
+   "slopePerHour": -7.235,
+   "ci": [
+    -10.666,
+    -3.805
+   ],
+   "verdict": "BOUNDED",
+   "slopePerClosedTrade": 0.064,
+   "ciPerClosedTrade": [
+    -0.136,
+    0.264
+   ],
+   "verdictPerClosedTrade": "BOUNDED",
+   "first": 3,
+   "last": 0
+  },
+  {
+   "sig": "talariaFillLegendValueSpan@indicator-ui.js:2880 < ?@indicator-ui.js:2933 < talariaSyncOhlcIndicatorLegendValues@indicator-ui.js:2907",
+   "slopePerHour": -12.916,
+   "ci": [
+    -18.776,
+    -7.056
+   ],
+   "verdict": "BOUNDED",
+   "slopePerClosedTrade": 0,
+   "ciPerClosedTrade": [
+    0,
+    0
+   ],
+   "verdictPerClosedTrade": "BOUNDED",
+   "first": 6,
+   "last": 0
+  },
+  {
+   "sig": "HTMLDocument.m20Q6CapturedQuery@replay-system.js:9686 < ?@indicator-ui.js:2889 < talariaFillLegendValueSpan@indicator-ui.js:2888",
+   "slopePerHour": -12.916,
+   "ci": [
+    -18.776,
+    -7.056
+   ],
+   "verdict": "BOUNDED",
+   "slopePerClosedTrade": 0,
+   "ciPerClosedTrade": [
+    0,
+    0
+   ],
+   "verdictPerClosedTrade": "BOUNDED",
+   "first": 6,
+   "last": 0
+  },
+  {
+   "sig": "?@chart-indicators-full.js:20529 < Chart._renderSeparatePanelLegendValue@chart-indicators-full.js:20528 < Chart.<anonymous>@chart-indicators-full.js:20559",
+   "slopePerHour": -12.916,
+   "ci": [
+    -18.776,
+    -7.056
+   ],
+   "verdict": "BOUNDED",
+   "slopePerClosedTrade": 0,
+   "ciPerClosedTrade": [
+    0,
+    0
+   ],
+   "verdictPerClosedTrade": "BOUNDED",
+   "first": 6,
+   "last": 0
+  },
+  {
+   "sig": "HTMLDocument.m20Q6CapturedQuery@replay-system.js:9686 < talariaAppendIndicatorLegendRow@indicator-ui.js:2970 < ?@indicator-ui.js:3165",
+   "slopePerHour": -14.47,
+   "ci": [
+    -21.332,
+    -7.609
+   ],
+   "verdict": "BOUNDED",
+   "slopePerClosedTrade": 0.128,
+   "ciPerClosedTrade": [
+    -0.273,
+    0.528
+   ],
+   "verdictPerClosedTrade": "BOUNDED",
+   "first": 6,
+   "last": 0
+  },
+  {
+   "sig": "HTMLDocument.m20Q6CapturedQuery@replay-system.js:9686 < talariaAppendIndicatorLegendRow@indicator-ui.js:2975 < ?@indicator-ui.js:3165",
+   "slopePerHour": -14.47,
+   "ci": [
+    -21.332,
+    -7.609
+   ],
+   "verdict": "BOUNDED",
+   "slopePerClosedTrade": 0.128,
+   "ciPerClosedTrade": [
+    -0.273,
+    0.528
+   ],
+   "verdictPerClosedTrade": "BOUNDED",
+   "first": 6,
+   "last": 0
+  },
+  {
+   "sig": "HTMLDocument.m20Q6CapturedQuery@replay-system.js:9686 < talariaAppendIndicatorLegendRow@indicator-ui.js:2994 < ?@indicator-ui.js:3165",
+   "slopePerHour": -14.47,
+   "ci": [
+    -21.332,
+    -7.609
+   ],
+   "verdict": "BOUNDED",
+   "slopePerClosedTrade": 0.128,
+   "ciPerClosedTrade": [
+    -0.273,
+    0.528
+   ],
+   "verdictPerClosedTrade": "BOUNDED",
+   "first": 6,
+   "last": 0
+  },
+  {
+   "sig": "HTMLDocument.m20Q6CapturedQuery@replay-system.js:9686 < talariaAppendIndicatorLegendRow@indicator-ui.js:3071 < ?@indicator-ui.js:3165",
+   "slopePerHour": -14.47,
+   "ci": [
+    -21.332,
+    -7.609
+   ],
+   "verdict": "BOUNDED",
+   "slopePerClosedTrade": 0.128,
+   "ciPerClosedTrade": [
+    -0.273,
+    0.528
+   ],
+   "verdictPerClosedTrade": "BOUNDED",
+   "first": 6,
+   "last": 0
+  },
+  {
+   "sig": "talariaFillLegendLoadingDots@indicator-ui.js:2866 < talariaFillLegendValueSpan@indicator-ui.js:2876 < ?@indicator-ui.js:2933",
+   "slopePerHour": -17.221,
+   "ci": [
+    -25.035,
+    -9.408
+   ],
+   "verdict": "BOUNDED",
+   "slopePerClosedTrade": 0,
+   "ciPerClosedTrade": [
+    0,
+    0
+   ],
+   "verdictPerClosedTrade": "BOUNDED",
+   "first": 8,
+   "last": 0
+  },
+  {
+   "sig": "Chart._renderSeparatePanelLegendValue@chart-indicators-full.js:20522 < Chart.<anonymous>@chart-indicators-full.js:20559 < Chart._syncSeparatePanelOverlayValues@chart-indicators-full.js:20556",
+   "slopePerHour": -17.221,
+   "ci": [
+    -25.035,
+    -9.408
+   ],
+   "verdict": "BOUNDED",
+   "slopePerClosedTrade": 0,
+   "ciPerClosedTrade": [
+    0,
+    0
+   ],
+   "verdictPerClosedTrade": "BOUNDED",
+   "first": 8,
+   "last": 0
+  },
+  {
+   "sig": "SVGSVGElement.<anonymous>@d3.min.js:2 < SVGSVGElement.<anonymous>@d3.min.js:2 < Vn.select@d3.min.js:2",
+   "slopePerHour": -17.665,
+   "ci": [
+    -27.001,
+    -8.329
+   ],
+   "verdict": "BOUNDED",
+   "slopePerClosedTrade": 0.29,
+   "ciPerClosedTrade": [
+    -0.925,
+    1.505
+   ],
+   "verdictPerClosedTrade": "INDETERMINATE",
+   "first": 5,
+   "last": 0
+  },
+  {
+   "sig": "Chart.<anonymous>@chart-indicators-full.js:20845 < Chart._syncSeparatePanelAxisTags@chart-indicators-full.js:20799 < Chart._updateSeparatePanelLabels@chart-indicators-full.js:20922",
+   "slopePerHour": -19.374,
+   "ci": [
+    -28.164,
+    -10.584
+   ],
+   "verdict": "BOUNDED",
+   "slopePerClosedTrade": 0,
+   "ciPerClosedTrade": [
+    0,
+    0
+   ],
+   "verdictPerClosedTrade": "BOUNDED",
+   "first": 9,
+   "last": 0
+  },
+  {
+   "sig": "?@chart-indicators-full.js:20873 < Chart.<anonymous>@chart-indicators-full.js:20869 < Chart._syncSeparatePanelAxisTags@chart-indicators-full.js:20799",
+   "slopePerHour": -19.374,
+   "ci": [
+    -28.164,
+    -10.584
+   ],
+   "verdict": "BOUNDED",
+   "slopePerClosedTrade": 0,
+   "ciPerClosedTrade": [
+    0,
+    0
+   ],
+   "verdictPerClosedTrade": "BOUNDED",
+   "first": 9,
+   "last": 0
+  },
+  {
+   "sig": "SVGDefsElement.<anonymous>@d3.min.js:2 < SVGDefsElement.<anonymous>@d3.min.js:2 < Vn.select@d3.min.js:2",
+   "slopePerHour": -29.09,
+   "ci": [
+    -48.378,
+    -9.802
+   ],
+   "verdict": "BOUNDED",
+   "slopePerClosedTrade": 2.077,
+   "ciPerClosedTrade": [
+    1.726,
+    2.429
+   ],
+   "verdictPerClosedTrade": "CLIMBS",
+   "first": 4,
+   "last": 0
+  },
+  {
+   "sig": "SVGFilterElement.<anonymous>@d3.min.js:2 < SVGFilterElement.<anonymous>@d3.min.js:2 < Vn.select@d3.min.js:2",
+   "slopePerHour": -29.09,
+   "ci": [
+    -48.378,
+    -9.802
+   ],
+   "verdict": "BOUNDED",
+   "slopePerClosedTrade": 2.077,
+   "ciPerClosedTrade": [
+    1.726,
+    2.429
+   ],
+   "verdictPerClosedTrade": "CLIMBS",
+   "first": 4,
+   "last": 0
+  },
+  {
+   "sig": "talariaAppendIndicatorLegendRow@indicator-ui.js:3003 < ?@indicator-ui.js:3165 < talariaRebuildOhlcIndicatorLegend@indicator-ui.js:3160",
+   "slopePerHour": -68.885,
+   "ci": [
+    -100.139,
+    -37.632
+   ],
+   "verdict": "INDETERMINATE",
+   "slopePerClosedTrade": 0,
+   "ciPerClosedTrade": [
+    0,
+    0
+   ],
+   "verdictPerClosedTrade": "BOUNDED",
+   "first": 32,
+   "last": 0
+  },
+  {
+   "sig": "talariaAppendIndicatorLegendRow@indicator-ui.js:3046 < ?@indicator-ui.js:3165 < talariaRebuildOhlcIndicatorLegend@indicator-ui.js:3160",
+   "slopePerHour": -68.885,
+   "ci": [
+    -100.139,
+    -37.632
+   ],
+   "verdict": "INDETERMINATE",
+   "slopePerClosedTrade": 0,
+   "ciPerClosedTrade": [
+    0,
+    0
+   ],
+   "verdictPerClosedTrade": "BOUNDED",
+   "first": 32,
+   "last": 0
+  },
+  {
+   "sig": "SVGGElement.<anonymous>@d3.min.js:2 < SVGGElement.<anonymous>@d3.min.js:2 < Vn.select@d3.min.js:2",
+   "slopePerHour": -132.27,
+   "ci": [
+    -200.505,
+    -64.035
+   ],
+   "verdict": "FALLS",
+   "slopePerClosedTrade": 2.513,
+   "ciPerClosedTrade": [
+    -4.655,
+    9.682
+   ],
+   "verdictPerClosedTrade": "INDETERMINATE",
+   "first": 36,
+   "last": 0
+  },
+  {
+   "sig": "R3@talaria-v9-live.js:40 < O_@talaria-v9-live.js:40 < R_@talaria-v9-live.js:40",
+   "slopePerHour": -752.877,
+   "ci": [
+    -1166.764,
+    -338.99
+   ],
+   "verdict": "FALLS",
+   "slopePerClosedTrade": 31.314,
+   "ciPerClosedTrade": [
+    20.769,
+    41.858
+   ],
+   "verdictPerClosedTrade": "CLIMBS",
+   "first": 191,
+   "last": 0
+  },
+  {
+   "sig": "ewaSyntheticLeakWriter@pptr:;CdpFrame.%3Canonymous%3E%20c%3A%5CUsers%5Cuser%5CDesktop%5Ctalaria1%5Cfull-talaria-log--main%5Cchart%20v%201.4%5Cchart%5Cmultichart-prod%5Charness%5Cnode_modules%5Cpuppeteer-core%5Clib%5Ccjs%5Cpuppeteer%5Cutil%5Cdecorators.js%3A109%3A27:12",
+   "slopePerHour": -7759.387,
+   "ci": [
+    -13521.378,
+    -1997.396
+   ],
+   "verdict": "FALLS",
+   "slopePerClosedTrade": 682.128,
+   "ciPerClosedTrade": [
+    442.477,
+    921.778
+   ],
+   "verdictPerClosedTrade": "CLIMBS",
+   "first": 160,
+   "last": 0
+  }
+ ],
+ "totalTrend": {
+  "label": "totalElements",
+  "n": 26,
+  "spanHours": 0.414,
+  "durationOk": true,
+  "first": 5468,
+  "last": 0,
+  "min": 0,
+  "max": 13584,
+  "perHour": -19634.086,
+  "slopeCi95": [
+   -30114.53,
+   -9153.643
+  ],
+  "slopeSe": 5087.594,
+  "rSquared": 0.383,
+  "flatBandPerHour": 60,
+  "projectedPerHourAt8h": -157072.7,
+  "verdict": "FALLS"
+ },
+ "gate01": {
+  "namedSyntheticWriter": true,
+  "syntheticSlopePerHour": -7759.387,
+  "syntheticRank": 35,
+  "verdict": "PASS (named, not first)"
+ },
+ "productClimbers": [
+  {
+   "sig": "d@talaria-v9-live.js:143",
+   "slopePerHour": -0.347,
+   "ci": [
+    -0.98,
+    0.286
+   ],
+   "verdict": "BOUNDED",
+   "slopePerClosedTrade": 0.072,
+   "ciPerClosedTrade": [
+    -0.064,
+    0.208
+   ],
+   "verdictPerClosedTrade": "BOUNDED",
+   "first": 0,
+   "last": 0
+  },
+  {
+   "sig": "talariaAppendIndicatorLegendRow@indicator-ui.js:2994 < ?@indicator-ui.js:3165 < talariaRebuildOhlcIndicatorLegend@indicator-ui.js:3160",
+   "slopePerHour": -0.942,
+   "ci": [
+    -2.18,
+    0.296
+   ],
+   "verdict": "BOUNDED",
+   "slopePerClosedTrade": -0.096,
+   "ciPerClosedTrade": [
+    -0.431,
+    0.24
+   ],
+   "verdictPerClosedTrade": "BOUNDED",
+   "first": 0,
+   "last": 0
+  },
+  {
+   "sig": "HTMLDocument.m20Q6CapturedQuery@replay-system.js:9686 < Object.show@talaria-toast-stack.js:276 < OrderManager.showNotification@order-manager.js:47504",
+   "slopePerHour": -1.175,
+   "ci": [
+    -3.06,
+    0.711
+   ],
+   "verdict": "BOUNDED",
+   "slopePerClosedTrade": 0.136,
+   "ciPerClosedTrade": [
+    -0.375,
+    0.647
+   ],
+   "verdictPerClosedTrade": "BOUNDED",
+   "first": 0,
+   "last": 0
+  },
+  {
+   "sig": "HTMLDocument.m20Q6CapturedQuery@replay-system.js:9686 < ?@chart-indicators-full.js:20529 < Chart._renderSeparatePanelLegendValue@chart-indicators-full.js:20528",
+   "slopePerHour": -1.554,
+   "ci": [
+    -3.232,
+    0.123
+   ],
+   "verdict": "BOUNDED",
+   "slopePerClosedTrade": 0.128,
+   "ciPerClosedTrade": [
+    -0.273,
+    0.528
+   ],
+   "verdictPerClosedTrade": "BOUNDED",
+   "first": 0,
+   "last": 0
+  },
+  {
+   "sig": "HTMLDocument.m20Q6CapturedQuery@replay-system.js:9686 < Object.show@talaria-toast-stack.js:252 < OrderManager.showNotification@order-manager.js:47504",
+   "slopePerHour": -2.035,
+   "ci": [
+    -4.169,
+    0.099
+   ],
+   "verdict": "BOUNDED",
+   "slopePerClosedTrade": 0.12,
+   "ciPerClosedTrade": [
+    -0.438,
+    0.677
+   ],
+   "verdictPerClosedTrade": "BOUNDED",
+   "first": 0,
+   "last": 0
+  },
+  {
+   "sig": "talariaAppendIndicatorLegendRow@indicator-ui.js:2970 < ?@indicator-ui.js:3165 < talariaRebuildOhlcIndicatorLegend@indicator-ui.js:3160",
+   "slopePerHour": -2.751,
+   "ci": [
+    -4.574,
+    -0.928
+   ],
+   "verdict": "BOUNDED",
+   "slopePerClosedTrade": -0.128,
+   "ciPerClosedTrade": [
+    -0.528,
+    0.273
+   ],
+   "verdictPerClosedTrade": "BOUNDED",
+   "first": 2,
+   "last": 0
+  },
+  {
+   "sig": "talariaAppendIndicatorLegendRow@indicator-ui.js:2975 < ?@indicator-ui.js:3165 < talariaRebuildOhlcIndicatorLegend@indicator-ui.js:3160",
+   "slopePerHour": -2.751,
+   "ci": [
+    -4.574,
+    -0.928
+   ],
+   "verdict": "BOUNDED",
+   "slopePerClosedTrade": -0.128,
+   "ciPerClosedTrade": [
+    -0.528,
+    0.273
+   ],
+   "verdictPerClosedTrade": "BOUNDED",
+   "first": 2,
+   "last": 0
+  },
+  {
+   "sig": "talariaFillLegendLoadingDots@indicator-ui.js:2852 < talariaFillLegendValueSpan@indicator-ui.js:2876 < ?@indicator-ui.js:2933",
+   "slopePerHour": -3.522,
+   "ci": [
+    -5.459,
+    -1.585
+   ],
+   "verdict": "BOUNDED",
+   "slopePerClosedTrade": -0.09,
+   "ciPerClosedTrade": [
+    -0.431,
+    0.25
+   ],
+   "verdictPerClosedTrade": "BOUNDED",
+   "first": 2,
+   "last": 0
+  },
+  {
+   "sig": "HTMLDocument.m20Q6CapturedQuery@replay-system.js:9686 < Chart.<anonymous>@chart-indicators-full.js:20845 < Chart._syncSeparatePanelAxisTags@chart-indicators-full.js:20799",
+   "slopePerHour": -3.953,
+   "ci": [
+    -6.886,
+    -1.02
+   ],
+   "verdict": "BOUNDED",
+   "slopePerClosedTrade": -0.072,
+   "ciPerClosedTrade": [
+    -0.818,
+    0.675
+   ],
+   "verdictPerClosedTrade": "BOUNDED",
+   "first": 3,
+   "last": 0
+  },
+  {
+   "sig": "HTMLDocument.m20Q6CapturedQuery@replay-system.js:9686 < ?@chart-indicators-full.js:20873 < Chart.<anonymous>@chart-indicators-full.js:20869",
+   "slopePerHour": -6.458,
+   "ci": [
+    -9.388,
+    -3.528
+   ],
+   "verdict": "BOUNDED",
+   "slopePerClosedTrade": 0,
+   "ciPerClosedTrade": [
+    0,
+    0
+   ],
+   "verdictPerClosedTrade": "BOUNDED",
+   "first": 3,
+   "last": 0
+  }
+ ],
+ "productClimbersPerTrade": [
+  {
+   "sig": "R3@talaria-v9-live.js:40 < O_@talaria-v9-live.js:40 < R_@talaria-v9-live.js:40",
+   "slopePerHour": -752.877,
+   "ci": [
+    -1166.764,
+    -338.99
+   ],
+   "verdict": "FALLS",
+   "slopePerClosedTrade": 31.314,
+   "ciPerClosedTrade": [
+    20.769,
+    41.858
+   ],
+   "verdictPerClosedTrade": "CLIMBS",
+   "first": 191,
+   "last": 0
+  },
+  {
+   "sig": "SVGGElement.<anonymous>@d3.min.js:2 < SVGGElement.<anonymous>@d3.min.js:2 < Vn.select@d3.min.js:2",
+   "slopePerHour": -132.27,
+   "ci": [
+    -200.505,
+    -64.035
+   ],
+   "verdict": "FALLS",
+   "slopePerClosedTrade": 2.513,
+   "ciPerClosedTrade": [
+    -4.655,
+    9.682
+   ],
+   "verdictPerClosedTrade": "INDETERMINATE",
+   "first": 36,
+   "last": 0
+  },
+  {
+   "sig": "SVGDefsElement.<anonymous>@d3.min.js:2 < SVGDefsElement.<anonymous>@d3.min.js:2 < Vn.select@d3.min.js:2",
+   "slopePerHour": -29.09,
+   "ci": [
+    -48.378,
+    -9.802
+   ],
+   "verdict": "BOUNDED",
+   "slopePerClosedTrade": 2.077,
+   "ciPerClosedTrade": [
+    1.726,
+    2.429
+   ],
+   "verdictPerClosedTrade": "CLIMBS",
+   "first": 4,
+   "last": 0
+  },
+  {
+   "sig": "SVGFilterElement.<anonymous>@d3.min.js:2 < SVGFilterElement.<anonymous>@d3.min.js:2 < Vn.select@d3.min.js:2",
+   "slopePerHour": -29.09,
+   "ci": [
+    -48.378,
+    -9.802
+   ],
+   "verdict": "BOUNDED",
+   "slopePerClosedTrade": 2.077,
+   "ciPerClosedTrade": [
+    1.726,
+    2.429
+   ],
+   "verdictPerClosedTrade": "CLIMBS",
+   "first": 4,
+   "last": 0
+  },
+  {
+   "sig": "SVGSVGElement.<anonymous>@d3.min.js:2 < SVGSVGElement.<anonymous>@d3.min.js:2 < Vn.select@d3.min.js:2",
+   "slopePerHour": -17.665,
+   "ci": [
+    -27.001,
+    -8.329
+   ],
+   "verdict": "BOUNDED",
+   "slopePerClosedTrade": 0.29,
+   "ciPerClosedTrade": [
+    -0.925,
+    1.505
+   ],
+   "verdictPerClosedTrade": "INDETERMINATE",
+   "first": 5,
+   "last": 0
+  },
+  {
+   "sig": "HTMLDocument.m20Q6CapturedQuery@replay-system.js:9686 < Object.show@talaria-toast-stack.js:276 < OrderManager.showNotification@order-manager.js:47504",
+   "slopePerHour": -1.175,
+   "ci": [
+    -3.06,
+    0.711
+   ],
+   "verdict": "BOUNDED",
+   "slopePerClosedTrade": 0.136,
+   "ciPerClosedTrade": [
+    -0.375,
+    0.647
+   ],
+   "verdictPerClosedTrade": "BOUNDED",
+   "first": 0,
+   "last": 0
+  },
+  {
+   "sig": "HTMLDocument.m20Q6CapturedQuery@replay-system.js:9686 < ?@chart-indicators-full.js:20529 < Chart._renderSeparatePanelLegendValue@chart-indicators-full.js:20528",
+   "slopePerHour": -1.554,
+   "ci": [
+    -3.232,
+    0.123
+   ],
+   "verdict": "BOUNDED",
+   "slopePerClosedTrade": 0.128,
+   "ciPerClosedTrade": [
+    -0.273,
+    0.528
+   ],
+   "verdictPerClosedTrade": "BOUNDED",
+   "first": 0,
+   "last": 0
+  },
+  {
+   "sig": "HTMLDocument.m20Q6CapturedQuery@replay-system.js:9686 < talariaAppendIndicatorLegendRow@indicator-ui.js:2970 < ?@indicator-ui.js:3165",
+   "slopePerHour": -14.47,
+   "ci": [
+    -21.332,
+    -7.609
+   ],
+   "verdict": "BOUNDED",
+   "slopePerClosedTrade": 0.128,
+   "ciPerClosedTrade": [
+    -0.273,
+    0.528
+   ],
+   "verdictPerClosedTrade": "BOUNDED",
+   "first": 6,
+   "last": 0
+  },
+  {
+   "sig": "HTMLDocument.m20Q6CapturedQuery@replay-system.js:9686 < talariaAppendIndicatorLegendRow@indicator-ui.js:2975 < ?@indicator-ui.js:3165",
+   "slopePerHour": -14.47,
+   "ci": [
+    -21.332,
+    -7.609
+   ],
+   "verdict": "BOUNDED",
+   "slopePerClosedTrade": 0.128,
+   "ciPerClosedTrade": [
+    -0.273,
+    0.528
+   ],
+   "verdictPerClosedTrade": "BOUNDED",
+   "first": 6,
+   "last": 0
+  },
+  {
+   "sig": "HTMLDocument.m20Q6CapturedQuery@replay-system.js:9686 < talariaAppendIndicatorLegendRow@indicator-ui.js:2994 < ?@indicator-ui.js:3165",
+   "slopePerHour": -14.47,
+   "ci": [
+    -21.332,
+    -7.609
+   ],
+   "verdict": "BOUNDED",
+   "slopePerClosedTrade": 0.128,
+   "ciPerClosedTrade": [
+    -0.273,
+    0.528
+   ],
+   "verdictPerClosedTrade": "BOUNDED",
+   "first": 6,
+   "last": 0
+  }
+ ]
+}

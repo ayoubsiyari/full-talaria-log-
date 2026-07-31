@@ -1,0 +1,1316 @@
+{
+ "signature": "INDICATOR-DECAY-AB-V1",
+ "startedAtIso": "2026-07-30T23:58:49.064Z",
+ "ruling": "606defe033 test 4",
+ "question": "does the decay disappear at zero indicators?",
+ "plan": {
+  "minutes": 15,
+  "speed": 60,
+  "mode": "candle"
+ },
+ "arms": {
+  "twoIndicators": {
+   "indicators": 2,
+   "minutes": 15,
+   "speed": 60,
+   "modeRequested": "candle",
+   "samples": [
+    {
+     "n": 1,
+     "minutes": 0.38,
+     "advancingPanels": 4,
+     "windowSec": 20,
+     "barsAdvanced": 419,
+     "barsPerSec": 20.91,
+     "cpuPercent": 99.8,
+     "cpuMsPerBar": 47.74,
+     "atBars": 6587,
+     "heapMB": 218.22,
+     "realmAdvance": [
+      {
+       "tf": "1m",
+       "indexAdvance": 419,
+       "simMsAdvance": 25140000,
+       "residentBarsAdvance": 420
+      },
+      {
+       "tf": "5m",
+       "indexAdvance": 0,
+       "simMsAdvance": 25200000,
+       "residentBarsAdvance": 0
+      },
+      {
+       "tf": "15m",
+       "indexAdvance": 0,
+       "simMsAdvance": 25140000,
+       "residentBarsAdvance": 0
+      },
+      {
+       "tf": "1h",
+       "indexAdvance": 0,
+       "simMsAdvance": 25200000,
+       "residentBarsAdvance": 0
+      }
+     ],
+     "realmsAdvancingByIndex": 1,
+     "realmsAdvancingBySimTime": 4
+    },
+    {
+     "n": 2,
+     "minutes": 0.92,
+     "advancingPanels": 4,
+     "windowSec": 20.3,
+     "barsAdvanced": 422,
+     "barsPerSec": 20.84,
+     "cpuPercent": 98,
+     "cpuMsPerBar": 47.03,
+     "atBars": 7300,
+     "heapMB": 145.71,
+     "realmAdvance": [
+      {
+       "tf": "1m",
+       "indexAdvance": 422,
+       "simMsAdvance": 25320000,
+       "residentBarsAdvance": 422
+      },
+      {
+       "tf": "5m",
+       "indexAdvance": 0,
+       "simMsAdvance": 25320000,
+       "residentBarsAdvance": 0
+      },
+      {
+       "tf": "15m",
+       "indexAdvance": 0,
+       "simMsAdvance": 25320000,
+       "residentBarsAdvance": 0
+      },
+      {
+       "tf": "1h",
+       "indexAdvance": 0,
+       "simMsAdvance": 25380000,
+       "residentBarsAdvance": 0
+      }
+     ],
+     "realmsAdvancingByIndex": 1,
+     "realmsAdvancingBySimTime": 4
+    },
+    {
+     "n": 3,
+     "minutes": 1.47,
+     "advancingPanels": 4,
+     "windowSec": 20.2,
+     "barsAdvanced": 402,
+     "barsPerSec": 19.94,
+     "cpuPercent": 100.4,
+     "cpuMsPerBar": 50.34,
+     "atBars": 7945,
+     "heapMB": 185.82,
+     "realmAdvance": [
+      {
+       "tf": "1m",
+       "indexAdvance": 402,
+       "simMsAdvance": 24120000,
+       "residentBarsAdvance": 402
+      },
+      {
+       "tf": "5m",
+       "indexAdvance": 0,
+       "simMsAdvance": 24120000,
+       "residentBarsAdvance": 0
+      },
+      {
+       "tf": "15m",
+       "indexAdvance": 0,
+       "simMsAdvance": 24120000,
+       "residentBarsAdvance": 0
+      },
+      {
+       "tf": "1h",
+       "indexAdvance": 0,
+       "simMsAdvance": 24120000,
+       "residentBarsAdvance": 0
+      }
+     ],
+     "realmsAdvancingByIndex": 1,
+     "realmsAdvancingBySimTime": 4
+    },
+    {
+     "n": 4,
+     "minutes": 2.01,
+     "advancingPanels": 4,
+     "windowSec": 20.1,
+     "barsAdvanced": 342,
+     "barsPerSec": 17.04,
+     "cpuPercent": 99.6,
+     "cpuMsPerBar": 58.44,
+     "atBars": 8528,
+     "heapMB": 405.05,
+     "realmAdvance": [
+      {
+       "tf": "1m",
+       "indexAdvance": 342,
+       "simMsAdvance": 20520000,
+       "residentBarsAdvance": 342
+      },
+      {
+       "tf": "5m",
+       "indexAdvance": 0,
+       "simMsAdvance": 20520000,
+       "residentBarsAdvance": 0
+      },
+      {
+       "tf": "15m",
+       "indexAdvance": 0,
+       "simMsAdvance": 20460000,
+       "residentBarsAdvance": 0
+      },
+      {
+       "tf": "1h",
+       "indexAdvance": 0,
+       "simMsAdvance": 20520000,
+       "residentBarsAdvance": 0
+      }
+     ],
+     "realmsAdvancingByIndex": 1,
+     "realmsAdvancingBySimTime": 4
+    },
+    {
+     "n": 5,
+     "minutes": 2.56,
+     "advancingPanels": 4,
+     "windowSec": 20.3,
+     "barsAdvanced": 410,
+     "barsPerSec": 20.21,
+     "cpuPercent": 100.1,
+     "cpuMsPerBar": 49.53,
+     "atBars": 9185,
+     "heapMB": 164.18,
+     "realmAdvance": [
+      {
+       "tf": "1m",
+       "indexAdvance": 410,
+       "simMsAdvance": 24600000,
+       "residentBarsAdvance": 409
+      },
+      {
+       "tf": "5m",
+       "indexAdvance": 0,
+       "simMsAdvance": 24540000,
+       "residentBarsAdvance": 0
+      },
+      {
+       "tf": "15m",
+       "indexAdvance": 0,
+       "simMsAdvance": 24540000,
+       "residentBarsAdvance": 0
+      },
+      {
+       "tf": "1h",
+       "indexAdvance": 0,
+       "simMsAdvance": 24540000,
+       "residentBarsAdvance": 0
+      }
+     ],
+     "realmsAdvancingByIndex": 1,
+     "realmsAdvancingBySimTime": 4
+    },
+    {
+     "n": 6,
+     "minutes": 3.1,
+     "advancingPanels": 4,
+     "windowSec": 20.2,
+     "barsAdvanced": 353,
+     "barsPerSec": 17.48,
+     "cpuPercent": 98.9,
+     "cpuMsPerBar": 56.58,
+     "atBars": 9761,
+     "heapMB": 176.61,
+     "realmAdvance": [
+      {
+       "tf": "1m",
+       "indexAdvance": 353,
+       "simMsAdvance": 194340000,
+       "residentBarsAdvance": 352
+      },
+      {
+       "tf": "5m",
+       "indexAdvance": 0,
+       "simMsAdvance": 194280000,
+       "residentBarsAdvance": 0
+      },
+      {
+       "tf": "15m",
+       "indexAdvance": 0,
+       "simMsAdvance": 194340000,
+       "residentBarsAdvance": 0
+      },
+      {
+       "tf": "1h",
+       "indexAdvance": 0,
+       "simMsAdvance": 194340000,
+       "residentBarsAdvance": 0
+      }
+     ],
+     "realmsAdvancingByIndex": 1,
+     "realmsAdvancingBySimTime": 4
+    },
+    {
+     "n": 7,
+     "minutes": 3.65,
+     "advancingPanels": 4,
+     "windowSec": 20.1,
+     "barsAdvanced": 325,
+     "barsPerSec": 16.17,
+     "cpuPercent": 101.2,
+     "cpuMsPerBar": 62.6,
+     "atBars": 10310,
+     "heapMB": 245.38,
+     "realmAdvance": [
+      {
+       "tf": "1m",
+       "indexAdvance": 325,
+       "simMsAdvance": 19500000,
+       "residentBarsAdvance": 326
+      },
+      {
+       "tf": "5m",
+       "indexAdvance": 0,
+       "simMsAdvance": 19560000,
+       "residentBarsAdvance": 0
+      },
+      {
+       "tf": "15m",
+       "indexAdvance": 0,
+       "simMsAdvance": 19440000,
+       "residentBarsAdvance": 0
+      },
+      {
+       "tf": "1h",
+       "indexAdvance": 0,
+       "simMsAdvance": 19500000,
+       "residentBarsAdvance": 0
+      }
+     ],
+     "realmsAdvancingByIndex": 1,
+     "realmsAdvancingBySimTime": 4
+    },
+    {
+     "n": 8,
+     "minutes": 4.19,
+     "advancingPanels": 4,
+     "windowSec": 20.1,
+     "barsAdvanced": 336,
+     "barsPerSec": 16.73,
+     "cpuPercent": 99.5,
+     "cpuMsPerBar": 59.47,
+     "atBars": 10862,
+     "heapMB": 388.87,
+     "realmAdvance": [
+      {
+       "tf": "1m",
+       "indexAdvance": 336,
+       "simMsAdvance": 20160000,
+       "residentBarsAdvance": 336
+      },
+      {
+       "tf": "5m",
+       "indexAdvance": 0,
+       "simMsAdvance": 20160000,
+       "residentBarsAdvance": 0
+      },
+      {
+       "tf": "15m",
+       "indexAdvance": 0,
+       "simMsAdvance": 20160000,
+       "residentBarsAdvance": 0
+      },
+      {
+       "tf": "1h",
+       "indexAdvance": 0,
+       "simMsAdvance": 20160000,
+       "residentBarsAdvance": 0
+      }
+     ],
+     "realmsAdvancingByIndex": 1,
+     "realmsAdvancingBySimTime": 4
+    },
+    {
+     "n": 9,
+     "minutes": 4.73,
+     "advancingPanels": 4,
+     "windowSec": 20.3,
+     "barsAdvanced": 335,
+     "barsPerSec": 16.51,
+     "cpuPercent": 98.9,
+     "cpuMsPerBar": 59.91,
+     "atBars": 11387,
+     "heapMB": 432.05,
+     "realmAdvance": [
+      {
+       "tf": "1m",
+       "indexAdvance": 335,
+       "simMsAdvance": 20100000,
+       "residentBarsAdvance": 335
+      },
+      {
+       "tf": "5m",
+       "indexAdvance": 0,
+       "simMsAdvance": 20100000,
+       "residentBarsAdvance": 0
+      },
+      {
+       "tf": "15m",
+       "indexAdvance": 0,
+       "simMsAdvance": 20100000,
+       "residentBarsAdvance": 0
+      },
+      {
+       "tf": "1h",
+       "indexAdvance": 0,
+       "simMsAdvance": 20100000,
+       "residentBarsAdvance": 0
+      }
+     ],
+     "realmsAdvancingByIndex": 1,
+     "realmsAdvancingBySimTime": 4
+    },
+    {
+     "n": 10,
+     "minutes": 5.28,
+     "advancingPanels": 4,
+     "windowSec": 20.1,
+     "barsAdvanced": 308,
+     "barsPerSec": 15.31,
+     "cpuPercent": 100.6,
+     "cpuMsPerBar": 65.71,
+     "atBars": 11891,
+     "heapMB": 486.19,
+     "realmAdvance": [
+      {
+       "tf": "1m",
+       "indexAdvance": 308,
+       "simMsAdvance": 18480000,
+       "residentBarsAdvance": 309
+      },
+      {
+       "tf": "5m",
+       "indexAdvance": 0,
+       "simMsAdvance": 18540000,
+       "residentBarsAdvance": 0
+      },
+      {
+       "tf": "15m",
+       "indexAdvance": 0,
+       "simMsAdvance": 18540000,
+       "residentBarsAdvance": 0
+      },
+      {
+       "tf": "1h",
+       "indexAdvance": 0,
+       "simMsAdvance": 18600000,
+       "residentBarsAdvance": 0
+      }
+     ],
+     "realmsAdvancingByIndex": 1,
+     "realmsAdvancingBySimTime": 4
+    },
+    {
+     "n": 11,
+     "minutes": 5.82,
+     "advancingPanels": 4,
+     "windowSec": 20.4,
+     "barsAdvanced": 314,
+     "barsPerSec": 15.43,
+     "cpuPercent": 98.4,
+     "cpuMsPerBar": 63.78,
+     "atBars": 12399,
+     "heapMB": 214.3,
+     "realmAdvance": [
+      {
+       "tf": "1m",
+       "indexAdvance": 314,
+       "simMsAdvance": 18840000,
+       "residentBarsAdvance": 314
+      },
+      {
+       "tf": "5m",
+       "indexAdvance": 0,
+       "simMsAdvance": 18840000,
+       "residentBarsAdvance": 0
+      },
+      {
+       "tf": "15m",
+       "indexAdvance": 0,
+       "simMsAdvance": 18840000,
+       "residentBarsAdvance": 0
+      },
+      {
+       "tf": "1h",
+       "indexAdvance": 0,
+       "simMsAdvance": 18900000,
+       "residentBarsAdvance": 0
+      }
+     ],
+     "realmsAdvancingByIndex": 1,
+     "realmsAdvancingBySimTime": 4
+    },
+    {
+     "n": 12,
+     "minutes": 6.36,
+     "advancingPanels": 4,
+     "windowSec": 20.1,
+     "barsAdvanced": 303,
+     "barsPerSec": 15.07,
+     "cpuPercent": 99.6,
+     "cpuMsPerBar": 66.09,
+     "atBars": 12897,
+     "heapMB": 232.24,
+     "realmAdvance": [
+      {
+       "tf": "1m",
+       "indexAdvance": 303,
+       "simMsAdvance": 18180000,
+       "residentBarsAdvance": 303
+      },
+      {
+       "tf": "5m",
+       "indexAdvance": 0,
+       "simMsAdvance": 18180000,
+       "residentBarsAdvance": 0
+      },
+      {
+       "tf": "15m",
+       "indexAdvance": 0,
+       "simMsAdvance": 18180000,
+       "residentBarsAdvance": 0
+      },
+      {
+       "tf": "1h",
+       "indexAdvance": 0,
+       "simMsAdvance": 18180000,
+       "residentBarsAdvance": 0
+      }
+     ],
+     "realmsAdvancingByIndex": 1,
+     "realmsAdvancingBySimTime": 4
+    },
+    {
+     "n": 13,
+     "minutes": 6.91,
+     "advancingPanels": 4,
+     "windowSec": 20.1,
+     "barsAdvanced": 310,
+     "barsPerSec": 15.43,
+     "cpuPercent": 99.8,
+     "cpuMsPerBar": 64.69,
+     "atBars": 13407,
+     "heapMB": 402.83,
+     "realmAdvance": [
+      {
+       "tf": "1m",
+       "indexAdvance": 310,
+       "simMsAdvance": 18600000,
+       "residentBarsAdvance": 309
+      },
+      {
+       "tf": "5m",
+       "indexAdvance": 0,
+       "simMsAdvance": 18540000,
+       "residentBarsAdvance": 0
+      },
+      {
+       "tf": "15m",
+       "indexAdvance": 0,
+       "simMsAdvance": 18540000,
+       "residentBarsAdvance": 0
+      },
+      {
+       "tf": "1h",
+       "indexAdvance": 0,
+       "simMsAdvance": 18540000,
+       "residentBarsAdvance": 0
+      }
+     ],
+     "realmsAdvancingByIndex": 1,
+     "realmsAdvancingBySimTime": 4
+    },
+    {
+     "n": 14,
+     "minutes": 7.46,
+     "advancingPanels": 4,
+     "windowSec": 20.1,
+     "barsAdvanced": 399,
+     "barsPerSec": 19.84,
+     "cpuPercent": 101.2,
+     "cpuMsPerBar": 51.02,
+     "atBars": 13986,
+     "heapMB": 295.57,
+     "realmAdvance": [
+      {
+       "tf": "1m",
+       "indexAdvance": 399,
+       "simMsAdvance": 23940000,
+       "residentBarsAdvance": 400
+      },
+      {
+       "tf": "5m",
+       "indexAdvance": 0,
+       "simMsAdvance": 24000000,
+       "residentBarsAdvance": 0
+      },
+      {
+       "tf": "15m",
+       "indexAdvance": 0,
+       "simMsAdvance": 24000000,
+       "residentBarsAdvance": 0
+      },
+      {
+       "tf": "1h",
+       "indexAdvance": 0,
+       "simMsAdvance": 24000000,
+       "residentBarsAdvance": 0
+      }
+     ],
+     "realmsAdvancingByIndex": 1,
+     "realmsAdvancingBySimTime": 4
+    },
+    {
+     "n": 15,
+     "minutes": 8.1,
+     "advancingPanels": 4,
+     "windowSec": 25.7,
+     "barsAdvanced": 215,
+     "barsPerSec": 8.38,
+     "cpuPercent": 78.7,
+     "cpuMsPerBar": 93.9,
+     "atBars": 14478,
+     "heapMB": 289.78,
+     "realmAdvance": [
+      {
+       "tf": "1m",
+       "indexAdvance": 215,
+       "simMsAdvance": 12900000,
+       "residentBarsAdvance": 214
+      },
+      {
+       "tf": "5m",
+       "indexAdvance": 0,
+       "simMsAdvance": 12840000,
+       "residentBarsAdvance": 0
+      },
+      {
+       "tf": "15m",
+       "indexAdvance": 0,
+       "simMsAdvance": 12840000,
+       "residentBarsAdvance": 0
+      },
+      {
+       "tf": "1h",
+       "indexAdvance": 0,
+       "simMsAdvance": 12840000,
+       "residentBarsAdvance": 0
+      }
+     ],
+     "realmsAdvancingByIndex": 1,
+     "realmsAdvancingBySimTime": 4
+    },
+    {
+     "n": 16,
+     "minutes": 8.65,
+     "advancingPanels": 4,
+     "windowSec": 20.3,
+     "barsAdvanced": 294,
+     "barsPerSec": 14.45,
+     "cpuPercent": 100.4,
+     "cpuMsPerBar": 69.47,
+     "atBars": 14966,
+     "heapMB": 209.95,
+     "realmAdvance": [
+      {
+       "tf": "1m",
+       "indexAdvance": 294,
+       "simMsAdvance": 17640000,
+       "residentBarsAdvance": 294
+      },
+      {
+       "tf": "5m",
+       "indexAdvance": 0,
+       "simMsAdvance": 17640000,
+       "residentBarsAdvance": 0
+      },
+      {
+       "tf": "15m",
+       "indexAdvance": 0,
+       "simMsAdvance": 17640000,
+       "residentBarsAdvance": 0
+      },
+      {
+       "tf": "1h",
+       "indexAdvance": 0,
+       "simMsAdvance": 17640000,
+       "residentBarsAdvance": 0
+      }
+     ],
+     "realmsAdvancingByIndex": 1,
+     "realmsAdvancingBySimTime": 4
+    },
+    {
+     "n": 17,
+     "minutes": 9.2,
+     "advancingPanels": 4,
+     "windowSec": 20.3,
+     "barsAdvanced": 281,
+     "barsPerSec": 13.83,
+     "cpuPercent": 98.8,
+     "cpuMsPerBar": 71.43,
+     "atBars": 15411,
+     "heapMB": 228.19,
+     "realmAdvance": [
+      {
+       "tf": "1m",
+       "indexAdvance": 281,
+       "simMsAdvance": 16920000,
+       "residentBarsAdvance": 281
+      },
+      {
+       "tf": "5m",
+       "indexAdvance": 0,
+       "simMsAdvance": 16920000,
+       "residentBarsAdvance": 0
+      },
+      {
+       "tf": "15m",
+       "indexAdvance": 0,
+       "simMsAdvance": 16920000,
+       "residentBarsAdvance": 0
+      },
+      {
+       "tf": "1h",
+       "indexAdvance": 0,
+       "simMsAdvance": 16920000,
+       "residentBarsAdvance": 0
+      }
+     ],
+     "realmsAdvancingByIndex": 1,
+     "realmsAdvancingBySimTime": 4
+    },
+    {
+     "n": 18,
+     "minutes": 9.75,
+     "advancingPanels": 4,
+     "windowSec": 20.3,
+     "barsAdvanced": 269,
+     "barsPerSec": 13.27,
+     "cpuPercent": 99.7,
+     "cpuMsPerBar": 75.13,
+     "atBars": 15849,
+     "heapMB": 387.36,
+     "realmAdvance": [
+      {
+       "tf": "1m",
+       "indexAdvance": 269,
+       "simMsAdvance": 16140000,
+       "residentBarsAdvance": 268
+      },
+      {
+       "tf": "5m",
+       "indexAdvance": 0,
+       "simMsAdvance": 16080000,
+       "residentBarsAdvance": 0
+      },
+      {
+       "tf": "15m",
+       "indexAdvance": 0,
+       "simMsAdvance": 16080000,
+       "residentBarsAdvance": 0
+      },
+      {
+       "tf": "1h",
+       "indexAdvance": 0,
+       "simMsAdvance": 16080000,
+       "residentBarsAdvance": 0
+      }
+     ],
+     "realmsAdvancingByIndex": 1,
+     "realmsAdvancingBySimTime": 4
+    },
+    {
+     "n": 19,
+     "minutes": 10.3,
+     "advancingPanels": 4,
+     "windowSec": 20.2,
+     "barsAdvanced": 283,
+     "barsPerSec": 14.04,
+     "cpuPercent": 100.9,
+     "cpuMsPerBar": 71.85,
+     "atBars": 16302,
+     "heapMB": 259.5,
+     "realmAdvance": [
+      {
+       "tf": "1m",
+       "indexAdvance": 283,
+       "simMsAdvance": 16980000,
+       "residentBarsAdvance": 283
+      },
+      {
+       "tf": "5m",
+       "indexAdvance": 0,
+       "simMsAdvance": 16980000,
+       "residentBarsAdvance": 0
+      },
+      {
+       "tf": "15m",
+       "indexAdvance": 0,
+       "simMsAdvance": 16980000,
+       "residentBarsAdvance": 0
+      },
+      {
+       "tf": "1h",
+       "indexAdvance": 0,
+       "simMsAdvance": 16980000,
+       "residentBarsAdvance": 0
+      }
+     ],
+     "realmsAdvancingByIndex": 1,
+     "realmsAdvancingBySimTime": 4
+    },
+    {
+     "n": 20,
+     "minutes": 10.85,
+     "advancingPanels": 4,
+     "windowSec": 20.3,
+     "barsAdvanced": 281,
+     "barsPerSec": 13.84,
+     "cpuPercent": 98.7,
+     "cpuMsPerBar": 71.34,
+     "atBars": 16755,
+     "heapMB": 173.16,
+     "realmAdvance": [
+      {
+       "tf": "1m",
+       "indexAdvance": 281,
+       "simMsAdvance": 190200000,
+       "residentBarsAdvance": 281
+      },
+      {
+       "tf": "5m",
+       "indexAdvance": 0,
+       "simMsAdvance": 190200000,
+       "residentBarsAdvance": 0
+      },
+      {
+       "tf": "15m",
+       "indexAdvance": 0,
+       "simMsAdvance": 190200000,
+       "residentBarsAdvance": 0
+      },
+      {
+       "tf": "1h",
+       "indexAdvance": 0,
+       "simMsAdvance": 190200000,
+       "residentBarsAdvance": 0
+      }
+     ],
+     "realmsAdvancingByIndex": 1,
+     "realmsAdvancingBySimTime": 4
+    },
+    {
+     "n": 21,
+     "minutes": 11.4,
+     "advancingPanels": 4,
+     "windowSec": 20.6,
+     "barsAdvanced": 268,
+     "barsPerSec": 12.99,
+     "cpuPercent": 98.1,
+     "cpuMsPerBar": 75.5,
+     "atBars": 17202,
+     "heapMB": 413.68,
+     "realmAdvance": [
+      {
+       "tf": "1m",
+       "indexAdvance": 268,
+       "simMsAdvance": 16080000,
+       "residentBarsAdvance": 268
+      },
+      {
+       "tf": "5m",
+       "indexAdvance": 0,
+       "simMsAdvance": 16080000,
+       "residentBarsAdvance": 0
+      },
+      {
+       "tf": "15m",
+       "indexAdvance": 0,
+       "simMsAdvance": 16140000,
+       "residentBarsAdvance": 0
+      },
+      {
+       "tf": "1h",
+       "indexAdvance": 0,
+       "simMsAdvance": 16080000,
+       "residentBarsAdvance": 0
+      }
+     ],
+     "realmsAdvancingByIndex": 1,
+     "realmsAdvancingBySimTime": 4
+    },
+    {
+     "n": 22,
+     "minutes": 11.96,
+     "advancingPanels": 4,
+     "windowSec": 20.3,
+     "barsAdvanced": 276,
+     "barsPerSec": 13.6,
+     "cpuPercent": 100.3,
+     "cpuMsPerBar": 73.75,
+     "atBars": 17644,
+     "heapMB": 337.68,
+     "realmAdvance": [
+      {
+       "tf": "1m",
+       "indexAdvance": 276,
+       "simMsAdvance": 16560000,
+       "residentBarsAdvance": 276
+      },
+      {
+       "tf": "5m",
+       "indexAdvance": 0,
+       "simMsAdvance": 16560000,
+       "residentBarsAdvance": 0
+      },
+      {
+       "tf": "15m",
+       "indexAdvance": 0,
+       "simMsAdvance": 16560000,
+       "residentBarsAdvance": 0
+      },
+      {
+       "tf": "1h",
+       "indexAdvance": 0,
+       "simMsAdvance": 16560000,
+       "residentBarsAdvance": 0
+      }
+     ],
+     "realmsAdvancingByIndex": 1,
+     "realmsAdvancingBySimTime": 4
+    },
+    {
+     "n": 23,
+     "minutes": 12.51,
+     "advancingPanels": 4,
+     "windowSec": 20.2,
+     "barsAdvanced": 264,
+     "barsPerSec": 13.05,
+     "cpuPercent": 99.8,
+     "cpuMsPerBar": 76.47,
+     "atBars": 18075,
+     "heapMB": 170.61,
+     "realmAdvance": [
+      {
+       "tf": "1m",
+       "indexAdvance": 264,
+       "simMsAdvance": 15840000,
+       "residentBarsAdvance": 263
+      },
+      {
+       "tf": "5m",
+       "indexAdvance": 0,
+       "simMsAdvance": 15780000,
+       "residentBarsAdvance": 0
+      },
+      {
+       "tf": "15m",
+       "indexAdvance": 0,
+       "simMsAdvance": 15780000,
+       "residentBarsAdvance": 0
+      },
+      {
+       "tf": "1h",
+       "indexAdvance": 0,
+       "simMsAdvance": 15780000,
+       "residentBarsAdvance": 0
+      }
+     ],
+     "realmsAdvancingByIndex": 1,
+     "realmsAdvancingBySimTime": 4
+    },
+    {
+     "n": 24,
+     "minutes": 13.07,
+     "advancingPanels": 4,
+     "windowSec": 20.5,
+     "barsAdvanced": 254,
+     "barsPerSec": 12.39,
+     "cpuPercent": 98.2,
+     "cpuMsPerBar": 79.25,
+     "atBars": 18496,
+     "heapMB": 406.13,
+     "realmAdvance": [
+      {
+       "tf": "1m",
+       "indexAdvance": 254,
+       "simMsAdvance": 15240000,
+       "residentBarsAdvance": 254
+      },
+      {
+       "tf": "5m",
+       "indexAdvance": 0,
+       "simMsAdvance": 15240000,
+       "residentBarsAdvance": 0
+      },
+      {
+       "tf": "15m",
+       "indexAdvance": 0,
+       "simMsAdvance": 15300000,
+       "residentBarsAdvance": 0
+      },
+      {
+       "tf": "1h",
+       "indexAdvance": 0,
+       "simMsAdvance": 15300000,
+       "residentBarsAdvance": 0
+      }
+     ],
+     "realmsAdvancingByIndex": 1,
+     "realmsAdvancingBySimTime": 4
+    },
+    {
+     "n": 25,
+     "minutes": 13.62,
+     "advancingPanels": 4,
+     "windowSec": 20.1,
+     "barsAdvanced": 279,
+     "barsPerSec": 13.86,
+     "cpuPercent": 99.7,
+     "cpuMsPerBar": 71.95,
+     "atBars": 18935,
+     "heapMB": 364.71,
+     "realmAdvance": [
+      {
+       "tf": "1m",
+       "indexAdvance": 279,
+       "simMsAdvance": 16740000,
+       "residentBarsAdvance": 279
+      },
+      {
+       "tf": "5m",
+       "indexAdvance": 0,
+       "simMsAdvance": 16740000,
+       "residentBarsAdvance": 0
+      },
+      {
+       "tf": "15m",
+       "indexAdvance": 0,
+       "simMsAdvance": 16740000,
+       "residentBarsAdvance": 0
+      },
+      {
+       "tf": "1h",
+       "indexAdvance": 0,
+       "simMsAdvance": 16740000,
+       "residentBarsAdvance": 0
+      }
+     ],
+     "realmsAdvancingByIndex": 1,
+     "realmsAdvancingBySimTime": 4
+    },
+    {
+     "n": 26,
+     "minutes": 14.16,
+     "advancingPanels": 4,
+     "windowSec": 20.1,
+     "barsAdvanced": 247,
+     "barsPerSec": 12.27,
+     "cpuPercent": 99.8,
+     "cpuMsPerBar": 81.34,
+     "atBars": 19349,
+     "heapMB": 500.54,
+     "realmAdvance": [
+      {
+       "tf": "1m",
+       "indexAdvance": 247,
+       "simMsAdvance": 14820000,
+       "residentBarsAdvance": 248
+      },
+      {
+       "tf": "5m",
+       "indexAdvance": 0,
+       "simMsAdvance": 14880000,
+       "residentBarsAdvance": 0
+      },
+      {
+       "tf": "15m",
+       "indexAdvance": 0,
+       "simMsAdvance": 14820000,
+       "residentBarsAdvance": 0
+      },
+      {
+       "tf": "1h",
+       "indexAdvance": 0,
+       "simMsAdvance": 14820000,
+       "residentBarsAdvance": 0
+      }
+     ],
+     "realmsAdvancingByIndex": 1,
+     "realmsAdvancingBySimTime": 4
+    },
+    {
+     "n": 27,
+     "minutes": 14.71,
+     "advancingPanels": 4,
+     "windowSec": 20.1,
+     "barsAdvanced": 241,
+     "barsPerSec": 11.96,
+     "cpuPercent": 100,
+     "cpuMsPerBar": 83.59,
+     "atBars": 19750,
+     "heapMB": 298.62,
+     "realmAdvance": [
+      {
+       "tf": "1m",
+       "indexAdvance": 241,
+       "simMsAdvance": 14520000,
+       "residentBarsAdvance": 242
+      },
+      {
+       "tf": "5m",
+       "indexAdvance": 0,
+       "simMsAdvance": 14580000,
+       "residentBarsAdvance": 0
+      },
+      {
+       "tf": "15m",
+       "indexAdvance": 0,
+       "simMsAdvance": 14580000,
+       "residentBarsAdvance": 0
+      },
+      {
+       "tf": "1h",
+       "indexAdvance": 0,
+       "simMsAdvance": 14520000,
+       "residentBarsAdvance": 0
+      }
+     ],
+     "realmsAdvancingByIndex": 1,
+     "realmsAdvancingBySimTime": 4
+    },
+    {
+     "n": 28,
+     "minutes": 15.26,
+     "advancingPanels": 4,
+     "windowSec": 20.2,
+     "barsAdvanced": 255,
+     "barsPerSec": 12.61,
+     "cpuPercent": 100.1,
+     "cpuMsPerBar": 79.41,
+     "atBars": 20152,
+     "heapMB": 476.42,
+     "realmAdvance": [
+      {
+       "tf": "1m",
+       "indexAdvance": 255,
+       "simMsAdvance": 15300000,
+       "residentBarsAdvance": 256
+      },
+      {
+       "tf": "5m",
+       "indexAdvance": 0,
+       "simMsAdvance": 15360000,
+       "residentBarsAdvance": 0
+      },
+      {
+       "tf": "15m",
+       "indexAdvance": 0,
+       "simMsAdvance": 15360000,
+       "residentBarsAdvance": 0
+      },
+      {
+       "tf": "1h",
+       "indexAdvance": 0,
+       "simMsAdvance": 15360000,
+       "residentBarsAdvance": 0
+      }
+     ],
+     "realmsAdvancingByIndex": 1,
+     "realmsAdvancingBySimTime": 4
+    }
+   ],
+   "build": {
+    "scriptVersion": "20260730b115"
+   },
+   "conf01": {
+    "compliant": false,
+    "failed": [
+     "indicatorsLoaded",
+     "ordersOpen"
+    ]
+   },
+   "modeAtStart": [
+    {
+     "url": "92.82:3000/chart/dist-v9/index.html?mode=backtest&mcLayout=1",
+     "mode": "candle",
+     "loopKind": "candle",
+     "rawMode": "candle",
+     "indicators": 2,
+     "replayIndex": 2852,
+     "residentBars": 2853,
+     "timeframe": "1m"
+    },
+    {
+     "url": "260730b115&chartWindowId=cwms86d61f75m6mjqxqv&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "rawMode": "candle",
+     "indicators": 2,
+     "replayIndex": 1595,
+     "residentBars": 1596,
+     "timeframe": "5m"
+    },
+    {
+     "url": "260730b115&chartWindowId=cwms86d61f75m6mjqxqv&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "rawMode": "candle",
+     "indicators": 2,
+     "replayIndex": 1910,
+     "residentBars": 1911,
+     "timeframe": "15m"
+    },
+    {
+     "url": "260730b115&chartWindowId=cwms86d61f75m6mjqxqv&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "rawMode": "candle",
+     "indicators": 2,
+     "replayIndex": 494,
+     "residentBars": 495,
+     "timeframe": "1h"
+    }
+   ],
+   "modeAtEnd": [
+    {
+     "url": "92.82:3000/chart/dist-v9/index.html?mode=backtest&mcLayout=1",
+     "mode": "candle",
+     "loopKind": "candle",
+     "rawMode": "candle",
+     "indicators": 2,
+     "replayIndex": 16317,
+     "residentBars": 16317,
+     "timeframe": "1m"
+    },
+    {
+     "url": "260730b115&chartWindowId=cwms86d61f75m6mjqxqv&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "rawMode": "candle",
+     "indicators": 2,
+     "replayIndex": 1595,
+     "residentBars": 1596,
+     "timeframe": "5m"
+    },
+    {
+     "url": "260730b115&chartWindowId=cwms86d61f75m6mjqxqv&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "rawMode": "candle",
+     "indicators": 2,
+     "replayIndex": 1910,
+     "residentBars": 1911,
+     "timeframe": "15m"
+    },
+    {
+     "url": "260730b115&chartWindowId=cwms86d61f75m6mjqxqv&embedRev=ohlc2",
+     "mode": "candle",
+     "loopKind": null,
+     "rawMode": "candle",
+     "indicators": 2,
+     "replayIndex": 494,
+     "residentBars": 495,
+     "timeframe": "1h"
+    }
+   ],
+   "result": {
+    "samples": 28,
+    "barSpan": {
+     "from": 6587,
+     "to": 20152
+    },
+    "cpuMsPerBarFirstThird": 54.63,
+    "cpuMsPerBarLastThird": 76.96,
+    "cpuMsPerBarChangePercent": 40.9,
+    "barsPerSecFirstThird": 18.43,
+    "barsPerSecLastThird": 12.95,
+    "cpuPercentMean": 98.9,
+    "trends": {
+     "cpuMsPerBar": {
+      "xUnit": "per 1,000 bars played",
+      "label": "cpuMsPerBar @2ind",
+      "n": 28,
+      "spanHours": 13.565,
+      "durationOk": true,
+      "first": 47.74,
+      "last": 79.41,
+      "min": 47.03,
+      "max": 93.9,
+      "perHour": 2.444,
+      "slopeCi95": [
+       1.811,
+       3.076
+      ],
+      "slopeSe": 0.31,
+      "rSquared": 0.705,
+      "flatBandPerHour": 0.5,
+      "projectedPerHourAt8h": 19.5,
+      "verdict": "CLIMBS"
+     },
+     "barsPerSec": {
+      "xUnit": "per 1,000 bars played",
+      "label": "barsPerSec @2ind",
+      "n": 28,
+      "spanHours": 13.565,
+      "durationOk": true,
+      "first": 20.91,
+      "last": 12.61,
+      "min": 8.38,
+      "max": 20.91,
+      "perHour": -0.605,
+      "slopeCi95": [
+       -0.78,
+       -0.429
+      ],
+      "slopeSe": 0.086,
+      "rSquared": 0.656,
+      "flatBandPerHour": 0.1,
+      "projectedPerHourAt8h": -4.8,
+      "verdict": "FALLS"
+     }
+    },
+    "modeAtStart": [
+     "candle",
+     "candle",
+     "candle",
+     "candle"
+    ],
+    "modeAtEnd": [
+     "candle",
+     "candle",
+     "candle",
+     "candle"
+    ],
+    "loopKindAtEnd": [
+     "candle",
+     null,
+     null,
+     null
+    ],
+    "indicatorsAtEnd": [
+     2,
+     2,
+     2,
+     2
+    ]
+   }
+  }
+ }
+}

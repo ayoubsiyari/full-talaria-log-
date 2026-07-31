@@ -1,0 +1,65 @@
+[heap-cycle 2026-07-30T22:36:01.297Z] layout UI → 4 (li=0)
+[heap-cycle 2026-07-30T22:36:15.592Z] datasets mode=distinct observed=4/4 [A:677@1m(2011) B:673@5m(1596) C:670@15m(1911) D:669@1h(495)]
+[heap-cycle-po-workload 2026-07-30T22:36:15.596Z] arm panel A: wait ready
+[heap-cycle-po-workload 2026-07-30T22:36:15.989Z] arm panel A: ok=false ind=2 replay=true playing=true
+[heap-cycle-po-workload 2026-07-30T22:36:15.989Z] arm panel B: wait ready
+[heap-cycle-po-workload 2026-07-30T22:36:16.522Z] arm panel B: ok=false ind=2 replay=true playing=true
+[heap-cycle-po-workload 2026-07-30T22:36:16.522Z] arm panel C: wait ready
+[heap-cycle-po-workload 2026-07-30T22:36:17.858Z] arm panel C: ok=false ind=2 replay=true playing=true
+[heap-cycle-po-workload 2026-07-30T22:36:17.859Z] arm panel D: wait ready
+[heap-cycle-po-workload 2026-07-30T22:36:22.557Z] arm panel D: ok=false ind=2 replay=true playing=true
+[heap-cycle-po-workload 2026-07-30T22:36:22.557Z] order SKIPPED (zero-trade reproduction)
+[heap-cycle-po-workload 2026-07-30T22:36:31.052Z] play hold done observedPlaying=4
+[rdh] build={"scriptVersion":"20260730b114","href":"http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&mcLayout=1"} conf01=false order="unknown"
+[rdh] zero-trade control: {"open":0,"closed":0,"journal":0}
+[rdh] instrumented realms=4 withWrappedTick=4 names=["stepForward"]
+[rdh] first profile: 37016 samples, top=_m19iB62WindowFp@chart-indicators-full.js:10519:15.72% (program)@(no url):-1:13.09% getBoundingClientRect@(no url):-1:8.18%
+[rdh] #1 1.0min bars=7253 tickMs=null longTasks=674 (100016ms) advancing=4/4 cpu=99.4% heap=123.51 nodes=72572
+[rdh] #2 1.2min bars=7377 tickMs=null longTasks=139 (14243ms) advancing=4/4 cpu=99.3% heap=394.59 nodes=65778
+[rdh] #3 1.3min bars=7504 tickMs=null longTasks=136 (15071ms) advancing=4/4 cpu=99.3% heap=417.6 nodes=65574
+[rdh] #4 1.5min bars=7639 tickMs=null longTasks=102 (14862ms) advancing=4/4 cpu=99.6% heap=144.61 nodes=28733
+[rdh] #5 2.0min bars=8043 tickMs=null longTasks=302 (45112ms) advancing=4/4 cpu=99.4% heap=231.53 nodes=29904
+[rdh] #6 2.5min bars=8416 tickMs=null longTasks=357 (45466ms) advancing=4/4 cpu=99.5% heap=273.39 nodes=37017
+[rdh] #7 3.0min bars=8795 tickMs=null longTasks=272 (44769ms) advancing=4/4 cpu=99.4% heap=373.18 nodes=48913
+[rdh] #8 3.5min bars=9308 tickMs=null longTasks=225 (21445ms) advancing=4/4 cpu=99.7% heap=221.2 nodes=20075
+[rdh] #9 4.0min bars=9642 tickMs=null longTasks=12 (55382ms) advancing=4/4 cpu=100% heap=406.57 nodes=56866
+[rdh] #10 4.5min bars=9904 tickMs=null longTasks=181 (60825ms) advancing=4/4 cpu=99.4% heap=431.95 nodes=51829
+[rdh] #11 5.0min bars=10235 tickMs=null longTasks=489 (44274ms) advancing=4/4 cpu=99.3% heap=455.53 nodes=56781
+[rdh] #12 5.5min bars=10568 tickMs=null longTasks=307 (44034ms) advancing=4/4 cpu=99.5% heap=159.23 nodes=33397
+[rdh] #13 6.0min bars=10909 tickMs=null longTasks=483 (42599ms) advancing=4/4 cpu=99.3% heap=265.83 nodes=28960
+[rdh] #14 6.5min bars=11262 tickMs=null longTasks=354 (43250ms) advancing=4/4 cpu=99.6% heap=442.92 nodes=49080
+[rdh] #15 7.0min bars=11579 tickMs=null longTasks=544 (45055ms) advancing=4/4 cpu=99.3% heap=491.48 nodes=53853
+[rdh] #16 7.5min bars=11931 tickMs=null longTasks=342 (42889ms) advancing=4/4 cpu=99.4% heap=317.87 nodes=32292
+[rdh] #17 8.0min bars=12266 tickMs=null longTasks=532 (42532ms) advancing=4/4 cpu=99.4% heap=450.58 nodes=49445
+[rdh] #18 8.5min bars=12597 tickMs=null longTasks=312 (42816ms) advancing=4/4 cpu=99.6% heap=160.26 nodes=29229
+[rdh] #19 9.0min bars=12915 tickMs=null longTasks=528 (45292ms) advancing=4/4 cpu=99.4% heap=236.63 nodes=21285
+[rdh] #20 9.5min bars=13259 tickMs=null longTasks=323 (41663ms) advancing=4/4 cpu=99.5% heap=463.1 nodes=46943
+[rdh] #21 10.0min bars=13580 tickMs=null longTasks=540 (45429ms) advancing=4/4 cpu=99.4% heap=218.43 nodes=20557
+[rdh] #22 10.5min bars=13901 tickMs=null longTasks=357 (43472ms) advancing=4/4 cpu=99.6% heap=428.07 nodes=43088
+[rdh] #23 11.0min bars=14218 tickMs=null longTasks=539 (44308ms) advancing=4/4 cpu=99.4% heap=234.58 nodes=20934
+[rdh] #24 11.5min bars=14543 tickMs=null longTasks=357 (42256ms) advancing=4/4 cpu=99.7% heap=467.96 nodes=43540
+[rdh] #25 12.0min bars=14822 tickMs=null longTasks=593 (50897ms) advancing=4/4 cpu=99.4% heap=189.4 nodes=30443
+[rdh] #26 12.5min bars=15123 tickMs=null longTasks=413 (46196ms) advancing=4/4 cpu=99.6% heap=374.09 nodes=33777
+[rdh] #27 13.0min bars=15412 tickMs=null longTasks=614 (48375ms) advancing=4/4 cpu=99.4% heap=167.52 nodes=27072
+[rdh] #28 13.5min bars=15715 tickMs=null longTasks=392 (47048ms) advancing=4/4 cpu=99.7% heap=364.9 nodes=29635
+[rdh] #29 14.0min bars=16000 tickMs=null longTasks=540 (46524ms) advancing=4/4 cpu=99.4% heap=168.7 nodes=46766
+[rdh] #30 14.5min bars=16289 tickMs=null longTasks=446 (47724ms) advancing=4/4 cpu=99.5% heap=323.98 nodes=26020
+[rdh] #31 15.0min bars=16571 tickMs=null longTasks=612 (50082ms) advancing=4/4 cpu=99.4% heap=477.1 nodes=40378
+[rdh] #32 15.5min bars=16844 tickMs=null longTasks=466 (51714ms) advancing=4/4 cpu=99.6% heap=237.49 nodes=18527
+[rdh] #33 16.0min bars=17124 tickMs=null longTasks=643 (49857ms) advancing=4/4 cpu=99.4% heap=415.31 nodes=33761
+[rdh] #34 16.5min bars=17378 tickMs=null longTasks=1015 (64971ms) advancing=4/4 cpu=99.3% heap=463.01 nodes=38123
+[rdh] #35 17.0min bars=17645 tickMs=null longTasks=893 (56000ms) advancing=4/4 cpu=99.3% heap=210.86 nodes=16575
+[rdh] #36 17.5min bars=17922 tickMs=null longTasks=757 (46170ms) advancing=4/4 cpu=99.3% heap=423.82 nodes=33123
+[rdh] #37 18.0min bars=18182 tickMs=null longTasks=978 (59870ms) advancing=4/4 cpu=99.3% heap=547.19 nodes=42901
+[rdh] last profile: 37185 samples
+[rdh] #39 19.5min bars=18970 tickMs=null longTasks=2672 (164917ms) advancing=4/4 cpu=99.4% heap=237.73 nodes=30134
+[rdh] #40 19.7min bars=19059 tickMs=null longTasks=372 (24909ms) advancing=4/4 cpu=99.3% heap=284.14 nodes=21104
+[rdh] ANSWER: GROWS WITH BARS PLAYED — bar-driven cost confirmed; the profile diff names the function
+[rdh] tickMs undefined/bar CIundefined INSUFFICIENT · throughput undefined/bar INSUFFICIENT · longTaskMs 2202.735/bar CLIMBS
+[rdh]   +13.54pp  15.72% -> 29.26%  _m19iB62WindowFp@chart-indicators-full.js:10519
+[rdh]   +9.58pp  0.82% -> 10.4%  m20Q6CapturedClear@replay-system.js:9775
+[rdh]   +1.69pp  1.64% -> 3.33%  (garbage collector)@(no url):-1
+[rdh]   +1.29pp  2.04% -> 3.33%  _resampleDataFull@chart.js:26503
+[rdh]   +0.26pp  0.38% -> 0.64%  w.onmessage@chart-indicators-full.js:8042
+[rdh]   +0.15pp  0.52% -> 0.67%  (idle)@(no url):-1
+EXIT=0 

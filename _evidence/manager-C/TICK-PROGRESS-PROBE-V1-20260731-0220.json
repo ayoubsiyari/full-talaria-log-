@@ -1,0 +1,966 @@
+{
+ "signature": "TICK-PROGRESS-PROBE-V1",
+ "startedAtIso": "2026-07-31T01:17:48.039Z",
+ "question": "does tick mode advance, and does selecting it mid-play differ from selecting it while paused?",
+ "plan": {
+  "windowSec": 120,
+  "speed": 60
+ },
+ "arms": [
+  {
+   "label": "candle, set while paused",
+   "modeRequested": "candle",
+   "setWhilePaused": true,
+   "control": [
+    {
+     "steps": [
+      {
+       "paused": {
+        "mode": "candle",
+        "loopKind": null,
+        "isPlaying": false,
+        "idx": 2769,
+        "simMs": 1773268260000,
+        "residentBars": 2770,
+        "animatingCandle": false,
+        "hasTickInterval": false,
+        "hasPlayInterval": false
+       }
+      },
+      {
+       "modeSet": {
+        "mode": "candle",
+        "loopKind": null,
+        "isPlaying": false,
+        "idx": 2769,
+        "simMs": 1773268260000,
+        "residentBars": 2770,
+        "animatingCandle": false,
+        "hasTickInterval": false,
+        "hasPlayInterval": false
+       }
+      },
+      {
+       "played": {
+        "mode": "candle",
+        "loopKind": "candle",
+        "isPlaying": false,
+        "idx": 2769,
+        "simMs": 1773268260000,
+        "residentBars": 2770,
+        "animatingCandle": false,
+        "hasTickInterval": false,
+        "hasPlayInterval": false
+       }
+      }
+     ],
+     "before": {
+      "mode": "candle",
+      "loopKind": "candle",
+      "isPlaying": true,
+      "idx": 2769,
+      "simMs": 1773268260000,
+      "residentBars": 2770,
+      "animatingCandle": false,
+      "hasTickInterval": false,
+      "hasPlayInterval": true
+     },
+     "after": {
+      "mode": "candle",
+      "loopKind": "candle",
+      "isPlaying": false,
+      "idx": 2769,
+      "simMs": 1773268260000,
+      "residentBars": 2770,
+      "animatingCandle": false,
+      "hasTickInterval": false,
+      "hasPlayInterval": false
+     }
+    },
+    {
+     "steps": [
+      {
+       "paused": {
+        "mode": "candle",
+        "loopKind": null,
+        "isPlaying": false,
+        "idx": 1595,
+        "simMs": 1773268260000,
+        "residentBars": 1596,
+        "animatingCandle": false,
+        "hasTickInterval": false,
+        "hasPlayInterval": false
+       }
+      },
+      {
+       "modeSet": {
+        "mode": "candle",
+        "loopKind": null,
+        "isPlaying": false,
+        "idx": 1595,
+        "simMs": 1773268260000,
+        "residentBars": 1596,
+        "animatingCandle": false,
+        "hasTickInterval": false,
+        "hasPlayInterval": false
+       }
+      },
+      {
+       "played": {
+        "mode": "candle",
+        "loopKind": "candle",
+        "isPlaying": false,
+        "idx": 1595,
+        "simMs": 1773268260000,
+        "residentBars": 1596,
+        "animatingCandle": false,
+        "hasTickInterval": false,
+        "hasPlayInterval": false
+       }
+      }
+     ],
+     "before": {
+      "mode": "candle",
+      "loopKind": null,
+      "isPlaying": false,
+      "idx": 1595,
+      "simMs": 1773268260000,
+      "residentBars": 1596,
+      "animatingCandle": false,
+      "hasTickInterval": false,
+      "hasPlayInterval": false
+     },
+     "after": {
+      "mode": "candle",
+      "loopKind": "candle",
+      "isPlaying": false,
+      "idx": 1595,
+      "simMs": 1773268260000,
+      "residentBars": 1596,
+      "animatingCandle": false,
+      "hasTickInterval": false,
+      "hasPlayInterval": false
+     }
+    },
+    {
+     "steps": [
+      {
+       "paused": {
+        "mode": "candle",
+        "loopKind": null,
+        "isPlaying": false,
+        "idx": 1910,
+        "simMs": 1773268260000,
+        "residentBars": 1911,
+        "animatingCandle": false,
+        "hasTickInterval": false,
+        "hasPlayInterval": false
+       }
+      },
+      {
+       "modeSet": {
+        "mode": "candle",
+        "loopKind": null,
+        "isPlaying": false,
+        "idx": 1910,
+        "simMs": 1773268260000,
+        "residentBars": 1911,
+        "animatingCandle": false,
+        "hasTickInterval": false,
+        "hasPlayInterval": false
+       }
+      },
+      {
+       "played": {
+        "mode": "candle",
+        "loopKind": "candle",
+        "isPlaying": false,
+        "idx": 1910,
+        "simMs": 1773268260000,
+        "residentBars": 1911,
+        "animatingCandle": false,
+        "hasTickInterval": false,
+        "hasPlayInterval": false
+       }
+      }
+     ],
+     "before": {
+      "mode": "candle",
+      "loopKind": null,
+      "isPlaying": false,
+      "idx": 1910,
+      "simMs": 1773268260000,
+      "residentBars": 1911,
+      "animatingCandle": false,
+      "hasTickInterval": false,
+      "hasPlayInterval": false
+     },
+     "after": {
+      "mode": "candle",
+      "loopKind": "candle",
+      "isPlaying": false,
+      "idx": 1910,
+      "simMs": 1773268260000,
+      "residentBars": 1911,
+      "animatingCandle": false,
+      "hasTickInterval": false,
+      "hasPlayInterval": false
+     }
+    },
+    {
+     "steps": [
+      {
+       "paused": {
+        "mode": "candle",
+        "loopKind": null,
+        "isPlaying": false,
+        "idx": 494,
+        "simMs": 1773268260000,
+        "residentBars": 495,
+        "animatingCandle": false,
+        "hasTickInterval": false,
+        "hasPlayInterval": false
+       }
+      },
+      {
+       "modeSet": {
+        "mode": "candle",
+        "loopKind": null,
+        "isPlaying": false,
+        "idx": 494,
+        "simMs": 1773268260000,
+        "residentBars": 495,
+        "animatingCandle": false,
+        "hasTickInterval": false,
+        "hasPlayInterval": false
+       }
+      },
+      {
+       "played": {
+        "mode": "candle",
+        "loopKind": "candle",
+        "isPlaying": false,
+        "idx": 494,
+        "simMs": 1773268260000,
+        "residentBars": 495,
+        "animatingCandle": false,
+        "hasTickInterval": false,
+        "hasPlayInterval": false
+       }
+      }
+     ],
+     "before": {
+      "mode": "candle",
+      "loopKind": null,
+      "isPlaying": false,
+      "idx": 494,
+      "simMs": 1773268260000,
+      "residentBars": 495,
+      "animatingCandle": false,
+      "hasTickInterval": false,
+      "hasPlayInterval": false
+     },
+     "after": {
+      "mode": "candle",
+      "loopKind": "candle",
+      "isPlaying": false,
+      "idx": 494,
+      "simMs": 1773268260000,
+      "residentBars": 495,
+      "animatingCandle": false,
+      "hasTickInterval": false,
+      "hasPlayInterval": false
+     }
+    }
+   ],
+   "cpuPercent": 99.6,
+   "grade": {
+    "windowSec": 120,
+    "realms": 4,
+    "realmsWithAnyProgress": 4,
+    "realmsAdvancingByIndex": 1,
+    "realmsAdvancingBySimTime": 4,
+    "realmsWithResidentGrowth": 1,
+    "hostIndexAdvance": 2378,
+    "stalled": false,
+    "perRealm": [
+     {
+      "tf": "1m",
+      "mode": "candle",
+      "loopKind": "candle",
+      "isPlaying": true,
+      "indexAdvance": 2378,
+      "simMsAdvance": 142740000,
+      "residentBarsAdvance": 2377,
+      "animatingCandle": false,
+      "hasTickInterval": false,
+      "hasPlayInterval": true
+     },
+     {
+      "tf": "5m",
+      "mode": "candle",
+      "loopKind": null,
+      "isPlaying": false,
+      "indexAdvance": 0,
+      "simMsAdvance": 142680000,
+      "residentBarsAdvance": 0,
+      "animatingCandle": false,
+      "hasTickInterval": false,
+      "hasPlayInterval": false
+     },
+     {
+      "tf": "15m",
+      "mode": "candle",
+      "loopKind": null,
+      "isPlaying": false,
+      "indexAdvance": 0,
+      "simMsAdvance": 142740000,
+      "residentBarsAdvance": 0,
+      "animatingCandle": false,
+      "hasTickInterval": false,
+      "hasPlayInterval": false
+     },
+     {
+      "tf": "1h",
+      "mode": "candle",
+      "loopKind": null,
+      "isPlaying": false,
+      "indexAdvance": 0,
+      "simMsAdvance": 142680000,
+      "residentBarsAdvance": 0,
+      "animatingCandle": false,
+      "hasTickInterval": false,
+      "hasPlayInterval": false
+     }
+    ]
+   }
+  },
+  {
+   "label": "tick, set while paused",
+   "modeRequested": "tick",
+   "setWhilePaused": true,
+   "control": [
+    {
+     "steps": [
+      {
+       "paused": {
+        "mode": "candle",
+        "loopKind": null,
+        "isPlaying": false,
+        "idx": 5237,
+        "simMs": 1773416400000,
+        "residentBars": 5238,
+        "animatingCandle": false,
+        "hasTickInterval": false,
+        "hasPlayInterval": false
+       }
+      },
+      {
+       "modeSet": {
+        "mode": "tick",
+        "loopKind": null,
+        "isPlaying": false,
+        "idx": 5237,
+        "simMs": 1773416400000,
+        "residentBars": 5238,
+        "animatingCandle": false,
+        "hasTickInterval": false,
+        "hasPlayInterval": false
+       }
+      },
+      {
+       "played": {
+        "mode": "tick",
+        "loopKind": "tick",
+        "isPlaying": false,
+        "idx": 5237,
+        "simMs": 1773416400000,
+        "residentBars": 5238,
+        "animatingCandle": false,
+        "hasTickInterval": false,
+        "hasPlayInterval": false
+       }
+      }
+     ],
+     "before": {
+      "mode": "candle",
+      "loopKind": "candle",
+      "isPlaying": true,
+      "idx": 5237,
+      "simMs": 1773416400000,
+      "residentBars": 5238,
+      "animatingCandle": false,
+      "hasTickInterval": false,
+      "hasPlayInterval": true
+     },
+     "after": {
+      "mode": "tick",
+      "loopKind": "tick",
+      "isPlaying": false,
+      "idx": 5237,
+      "simMs": 1773416400000,
+      "residentBars": 5238,
+      "animatingCandle": false,
+      "hasTickInterval": false,
+      "hasPlayInterval": false
+     }
+    },
+    {
+     "steps": [
+      {
+       "paused": {
+        "mode": "tick",
+        "loopKind": null,
+        "isPlaying": false,
+        "idx": 1595,
+        "simMs": 1773416400000,
+        "residentBars": 1596,
+        "animatingCandle": false,
+        "hasTickInterval": false,
+        "hasPlayInterval": false
+       }
+      },
+      {
+       "modeSet": {
+        "mode": "tick",
+        "loopKind": null,
+        "isPlaying": false,
+        "idx": 1595,
+        "simMs": 1773416400000,
+        "residentBars": 1596,
+        "animatingCandle": false,
+        "hasTickInterval": false,
+        "hasPlayInterval": false
+       }
+      },
+      {
+       "played": {
+        "mode": "tick",
+        "loopKind": "tick",
+        "isPlaying": false,
+        "idx": 1595,
+        "simMs": 1773416400000,
+        "residentBars": 1596,
+        "animatingCandle": false,
+        "hasTickInterval": false,
+        "hasPlayInterval": false
+       }
+      }
+     ],
+     "before": {
+      "mode": "tick",
+      "loopKind": null,
+      "isPlaying": false,
+      "idx": 1595,
+      "simMs": 1773416400000,
+      "residentBars": 1596,
+      "animatingCandle": false,
+      "hasTickInterval": false,
+      "hasPlayInterval": false
+     },
+     "after": {
+      "mode": "tick",
+      "loopKind": "tick",
+      "isPlaying": false,
+      "idx": 1595,
+      "simMs": 1773416400000,
+      "residentBars": 1596,
+      "animatingCandle": false,
+      "hasTickInterval": false,
+      "hasPlayInterval": false
+     }
+    },
+    {
+     "steps": [
+      {
+       "paused": {
+        "mode": "tick",
+        "loopKind": null,
+        "isPlaying": false,
+        "idx": 1910,
+        "simMs": 1773416400000,
+        "residentBars": 1911,
+        "animatingCandle": false,
+        "hasTickInterval": false,
+        "hasPlayInterval": false
+       }
+      },
+      {
+       "modeSet": {
+        "mode": "tick",
+        "loopKind": null,
+        "isPlaying": false,
+        "idx": 1910,
+        "simMs": 1773416400000,
+        "residentBars": 1911,
+        "animatingCandle": false,
+        "hasTickInterval": false,
+        "hasPlayInterval": false
+       }
+      },
+      {
+       "played": {
+        "mode": "tick",
+        "loopKind": "tick",
+        "isPlaying": false,
+        "idx": 1910,
+        "simMs": 1773416400000,
+        "residentBars": 1911,
+        "animatingCandle": false,
+        "hasTickInterval": false,
+        "hasPlayInterval": false
+       }
+      }
+     ],
+     "before": {
+      "mode": "tick",
+      "loopKind": null,
+      "isPlaying": false,
+      "idx": 1910,
+      "simMs": 1773416400000,
+      "residentBars": 1911,
+      "animatingCandle": false,
+      "hasTickInterval": false,
+      "hasPlayInterval": false
+     },
+     "after": {
+      "mode": "tick",
+      "loopKind": "tick",
+      "isPlaying": false,
+      "idx": 1910,
+      "simMs": 1773416400000,
+      "residentBars": 1911,
+      "animatingCandle": false,
+      "hasTickInterval": false,
+      "hasPlayInterval": false
+     }
+    },
+    {
+     "steps": [
+      {
+       "paused": {
+        "mode": "tick",
+        "loopKind": null,
+        "isPlaying": false,
+        "idx": 494,
+        "simMs": 1773416400000,
+        "residentBars": 495,
+        "animatingCandle": false,
+        "hasTickInterval": false,
+        "hasPlayInterval": false
+       }
+      },
+      {
+       "modeSet": {
+        "mode": "tick",
+        "loopKind": null,
+        "isPlaying": false,
+        "idx": 494,
+        "simMs": 1773416400000,
+        "residentBars": 495,
+        "animatingCandle": false,
+        "hasTickInterval": false,
+        "hasPlayInterval": false
+       }
+      },
+      {
+       "played": {
+        "mode": "tick",
+        "loopKind": "tick",
+        "isPlaying": false,
+        "idx": 494,
+        "simMs": 1773416400000,
+        "residentBars": 495,
+        "animatingCandle": false,
+        "hasTickInterval": false,
+        "hasPlayInterval": false
+       }
+      }
+     ],
+     "before": {
+      "mode": "tick",
+      "loopKind": null,
+      "isPlaying": false,
+      "idx": 494,
+      "simMs": 1773416400000,
+      "residentBars": 495,
+      "animatingCandle": false,
+      "hasTickInterval": false,
+      "hasPlayInterval": false
+     },
+     "after": {
+      "mode": "tick",
+      "loopKind": "tick",
+      "isPlaying": false,
+      "idx": 494,
+      "simMs": 1773416400000,
+      "residentBars": 495,
+      "animatingCandle": false,
+      "hasTickInterval": false,
+      "hasPlayInterval": false
+     }
+    }
+   ],
+   "cpuPercent": 94.2,
+   "grade": {
+    "windowSec": 120,
+    "realms": 4,
+    "realmsWithAnyProgress": 4,
+    "realmsAdvancingByIndex": 1,
+    "realmsAdvancingBySimTime": 4,
+    "realmsWithResidentGrowth": 1,
+    "hostIndexAdvance": 115,
+    "stalled": false,
+    "perRealm": [
+     {
+      "tf": "1m",
+      "mode": "tick",
+      "loopKind": "tick",
+      "isPlaying": true,
+      "indexAdvance": 115,
+      "simMsAdvance": 6900000,
+      "residentBarsAdvance": 115,
+      "animatingCandle": true,
+      "hasTickInterval": true,
+      "hasPlayInterval": false
+     },
+     {
+      "tf": "5m",
+      "mode": "tick",
+      "loopKind": null,
+      "isPlaying": false,
+      "indexAdvance": 0,
+      "simMsAdvance": 6900000,
+      "residentBarsAdvance": 0,
+      "animatingCandle": false,
+      "hasTickInterval": false,
+      "hasPlayInterval": false
+     },
+     {
+      "tf": "15m",
+      "mode": "tick",
+      "loopKind": null,
+      "isPlaying": false,
+      "indexAdvance": 0,
+      "simMsAdvance": 6900000,
+      "residentBarsAdvance": 0,
+      "animatingCandle": false,
+      "hasTickInterval": false,
+      "hasPlayInterval": false
+     },
+     {
+      "tf": "1h",
+      "mode": "tick",
+      "loopKind": null,
+      "isPlaying": false,
+      "indexAdvance": 0,
+      "simMsAdvance": 6900000,
+      "residentBarsAdvance": 0,
+      "animatingCandle": false,
+      "hasTickInterval": false,
+      "hasPlayInterval": false
+     }
+    ]
+   }
+  },
+  {
+   "label": "tick, set while already playing",
+   "modeRequested": "tick",
+   "setWhilePaused": false,
+   "control": [
+    {
+     "steps": [
+      {
+       "modeSet": {
+        "mode": "tick",
+        "loopKind": "tick",
+        "isPlaying": true,
+        "idx": 5783,
+        "simMs": 1773622320000,
+        "residentBars": 5785,
+        "animatingCandle": true,
+        "hasTickInterval": true,
+        "hasPlayInterval": false
+       }
+      },
+      {
+       "played": {
+        "mode": "tick",
+        "loopKind": "tick",
+        "isPlaying": true,
+        "idx": 5783,
+        "simMs": 1773622320000,
+        "residentBars": 5785,
+        "animatingCandle": true,
+        "hasTickInterval": true,
+        "hasPlayInterval": false
+       }
+      }
+     ],
+     "before": {
+      "mode": "candle",
+      "loopKind": "candle",
+      "isPlaying": true,
+      "idx": 5783,
+      "simMs": 1773622320000,
+      "residentBars": 5783,
+      "animatingCandle": false,
+      "hasTickInterval": false,
+      "hasPlayInterval": true
+     },
+     "after": {
+      "mode": "tick",
+      "loopKind": "tick",
+      "isPlaying": true,
+      "idx": 5783,
+      "simMs": 1773622320000,
+      "residentBars": 5785,
+      "animatingCandle": true,
+      "hasTickInterval": true,
+      "hasPlayInterval": false
+     }
+    },
+    {
+     "steps": [
+      {
+       "modeSet": {
+        "mode": "tick",
+        "loopKind": null,
+        "isPlaying": false,
+        "idx": 1595,
+        "simMs": 1773622320000,
+        "residentBars": 1596,
+        "animatingCandle": false,
+        "hasTickInterval": false,
+        "hasPlayInterval": false
+       }
+      },
+      {
+       "played": {
+        "mode": "tick",
+        "loopKind": "tick",
+        "isPlaying": false,
+        "idx": 1595,
+        "simMs": 1773622320000,
+        "residentBars": 1596,
+        "animatingCandle": false,
+        "hasTickInterval": false,
+        "hasPlayInterval": false
+       }
+      }
+     ],
+     "before": {
+      "mode": "tick",
+      "loopKind": null,
+      "isPlaying": false,
+      "idx": 1595,
+      "simMs": 1773622320000,
+      "residentBars": 1596,
+      "animatingCandle": false,
+      "hasTickInterval": false,
+      "hasPlayInterval": false
+     },
+     "after": {
+      "mode": "tick",
+      "loopKind": "tick",
+      "isPlaying": false,
+      "idx": 1595,
+      "simMs": 1773622320000,
+      "residentBars": 1596,
+      "animatingCandle": false,
+      "hasTickInterval": false,
+      "hasPlayInterval": false
+     }
+    },
+    {
+     "steps": [
+      {
+       "modeSet": {
+        "mode": "tick",
+        "loopKind": null,
+        "isPlaying": false,
+        "idx": 1910,
+        "simMs": 1773622320000,
+        "residentBars": 1911,
+        "animatingCandle": false,
+        "hasTickInterval": false,
+        "hasPlayInterval": false
+       }
+      },
+      {
+       "played": {
+        "mode": "tick",
+        "loopKind": "tick",
+        "isPlaying": false,
+        "idx": 1910,
+        "simMs": 1773622320000,
+        "residentBars": 1911,
+        "animatingCandle": false,
+        "hasTickInterval": false,
+        "hasPlayInterval": false
+       }
+      }
+     ],
+     "before": {
+      "mode": "tick",
+      "loopKind": null,
+      "isPlaying": false,
+      "idx": 1910,
+      "simMs": 1773622320000,
+      "residentBars": 1911,
+      "animatingCandle": false,
+      "hasTickInterval": false,
+      "hasPlayInterval": false
+     },
+     "after": {
+      "mode": "tick",
+      "loopKind": "tick",
+      "isPlaying": false,
+      "idx": 1910,
+      "simMs": 1773622320000,
+      "residentBars": 1911,
+      "animatingCandle": false,
+      "hasTickInterval": false,
+      "hasPlayInterval": false
+     }
+    },
+    {
+     "steps": [
+      {
+       "modeSet": {
+        "mode": "tick",
+        "loopKind": null,
+        "isPlaying": false,
+        "idx": 494,
+        "simMs": 1773622320000,
+        "residentBars": 495,
+        "animatingCandle": false,
+        "hasTickInterval": false,
+        "hasPlayInterval": false
+       }
+      },
+      {
+       "played": {
+        "mode": "tick",
+        "loopKind": "tick",
+        "isPlaying": false,
+        "idx": 494,
+        "simMs": 1773622320000,
+        "residentBars": 495,
+        "animatingCandle": false,
+        "hasTickInterval": false,
+        "hasPlayInterval": false
+       }
+      }
+     ],
+     "before": {
+      "mode": "tick",
+      "loopKind": null,
+      "isPlaying": false,
+      "idx": 494,
+      "simMs": 1773622320000,
+      "residentBars": 495,
+      "animatingCandle": false,
+      "hasTickInterval": false,
+      "hasPlayInterval": false
+     },
+     "after": {
+      "mode": "tick",
+      "loopKind": "tick",
+      "isPlaying": false,
+      "idx": 494,
+      "simMs": 1773622320000,
+      "residentBars": 495,
+      "animatingCandle": false,
+      "hasTickInterval": false,
+      "hasPlayInterval": false
+     }
+    }
+   ],
+   "cpuPercent": 89.3,
+   "grade": {
+    "windowSec": 120,
+    "realms": 4,
+    "realmsWithAnyProgress": 4,
+    "realmsAdvancingByIndex": 1,
+    "realmsAdvancingBySimTime": 4,
+    "realmsWithResidentGrowth": 1,
+    "hostIndexAdvance": 115,
+    "stalled": false,
+    "perRealm": [
+     {
+      "tf": "1m",
+      "mode": "tick",
+      "loopKind": "tick",
+      "isPlaying": true,
+      "indexAdvance": 115,
+      "simMsAdvance": 6900000,
+      "residentBarsAdvance": 115,
+      "animatingCandle": true,
+      "hasTickInterval": true,
+      "hasPlayInterval": false
+     },
+     {
+      "tf": "5m",
+      "mode": "tick",
+      "loopKind": null,
+      "isPlaying": false,
+      "indexAdvance": 0,
+      "simMsAdvance": 6900000,
+      "residentBarsAdvance": 0,
+      "animatingCandle": false,
+      "hasTickInterval": false,
+      "hasPlayInterval": false
+     },
+     {
+      "tf": "15m",
+      "mode": "tick",
+      "loopKind": null,
+      "isPlaying": false,
+      "indexAdvance": 0,
+      "simMsAdvance": 6900000,
+      "residentBarsAdvance": 0,
+      "animatingCandle": false,
+      "hasTickInterval": false,
+      "hasPlayInterval": false
+     },
+     {
+      "tf": "1h",
+      "mode": "tick",
+      "loopKind": null,
+      "isPlaying": false,
+      "indexAdvance": 0,
+      "simMsAdvance": 6900000,
+      "residentBarsAdvance": 0,
+      "animatingCandle": false,
+      "hasTickInterval": false,
+      "hasPlayInterval": false
+     }
+    ]
+   }
+  }
+ ],
+ "build": "20260730b116",
+ "zeroTrades": [
+  null,
+  null,
+  null,
+  null
+ ],
+ "verdict": {
+  "candleAdvances": true,
+  "tickSelectedWhilePausedAdvances": true,
+  "tickSelectedMidPlayAdvances": true,
+  "hostIndexAdvance": {
+   "candle": 2378,
+   "tickWhilePaused": 115,
+   "tickMidPlay": 115
+  },
+  "cpuPercent": {
+   "candle": 99.6,
+   "tickWhilePaused": 94.2,
+   "tickMidPlay": 89.3
+  },
+  "answer": "tick advances in both selections; the stall in the decay run has another cause"
+ }
+}

@@ -1027,3 +1027,43 @@ loopKind-vs-mode mismatch is caught.
 8. Added --mode= to the decay hunt with a held-after-3s check, because the 250ms React poller can
    revert a requested tick and a mode that is not verified after settling is a mode the run never
    ran in.
+
+## W99b — test 4 answered, tick mode measured for the first time, and two corrections of mine
+2026-07-31 02:30 | tier=mid model=claude-opus-5-thinking-high
+Builds: two-indicator arm b115, everything after it b116 (B shipped mid-A/B).
+
+1. TEST 4 - THE DECAY SURVIVES ZERO INDICATORS. 2ind: 54.63 -> 76.96 ms/bar (+40.9%), slope +2.444
+   per 1k bars CI[1.811,3.076] CLIMBS. 0ind: 25.22 -> 41.50 (+64.6%), slope +0.881 CI[0.807,0.954]
+   CLIMBS. CIs do NOT overlap. Indicators carry 2.2x of the LEVEL and ~2/3 of the GROWTH; one third
+   survives at zero indicators. Zero meant zero: verified 0 active in 4/4 realms, not trusted from
+   the arming path. This is the 00:10 prediction confirmed - the fingerprint is indicator-gated,
+   m20Q6CapturedClear is not - and a single mechanism cannot produce "slope falls to a third but
+   does not reach zero". The ruling's "everything else yields to the recalc path" does NOT trigger.
+2. A/B DEFECT I OWN: the arms are cross-build (b115 vs b116) because arm 2's first boot hung twelve
+   minutes on the window-claim P0. I killed it, added single-arm mode so a hang costs one arm not
+   both, and re-ran. The b115->b116 delta is trade-table virtualisation plus dead-file removal, both
+   inert at zero trades, and a faster b116 would bias the zero arm TOWARD "no decay" - which it did
+   not show. Merge tool records comparable=false with the build delta rather than averaging.
+3. TICK MODE MEASURED FOR THE FIRST TIME, and it is a 20x defect. One session, three arms: candle
+   set while paused +2,378 host bars/120s (19.8 bars/s, 99.6% CPU); tick set while paused +115
+   (0.96 bars/s, 94.2%); tick set while already playing +115 (0.96 bars/s, 89.3%). So ~981 CPU-ms
+   per bar in tick against ~50 in candle: 20.7x slower for the same requested 60x and the same CPU.
+   Selection order makes NO difference (+115 either way, two different code paths agreeing exactly).
+   That is the "replay speed is not honored" complaint quantified.
+4. CORRECTION OF MY OWN FIRST READ: I initially read the tick decay run's advancing=0/4 as "tick
+   does not advance at all". Wrong. Every realm was at the END of its resident data, so my
+   keepConf01Playing helper re-seeked all four every sample and the re-seek did not restore
+   progress - my helper's defect, not tick's. Cost: one 16-minute run. The run's own verdict said
+   UNRESOLVED rather than fitting a line through a frozen axis, which is the instrument behaving.
+5. TICK PROFILE: 85-89% of a core doing NO forward work, and _m19iB62WindowFp is the top grower
+   again, 5.6% -> 12.37% self-time with ZERO bars added - so in tick its cost is call-rate driven
+   (paints), not hash-length driven. Same function as the candle finding.
+6. THE V9 MODE DEFAULT IS CANDLE, NOT TICK, contradicting the ruling's closing concern:
+   useState("candle") + a 250ms poller that syncs instance->React. Tick is one click away though,
+   and separately: clicking any INTERVAL other than Auto silently forces the mode back to candle
+   (a!=="Auto" && Bb("candle")), so a user who chose tick loses it via an unrelated control.
+7. Test 1 after-play variant (restartPlayback:false, the drain shape): no P0, all four candle at
+   0/2/5min, host cadence 1.00. The drain path does not split the mode either.
+8. GATE-01 PASS on both new instruments before use: mode agreement (planted tick-while-host-candle
+   reads P0) and progress (planted stall reads stalled, planted motion reads moving on all three
+   gauges).

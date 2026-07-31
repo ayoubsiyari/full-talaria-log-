@@ -1,0 +1,396 @@
+{
+ "signature": "INDICATOR-FP-PROBE-V1",
+ "startedAtIso": "2026-07-30T23:22:17.892Z",
+ "suspect": "_m19iB62WindowFp via _m19iExactTailPaintFp / _indicatorAsyncDataToken, both called with tailStart=0",
+ "killSwitch": "__TALARIA_DISABLE_M19I_EXACT_TAIL_PAINT_V1",
+ "conf01": {
+  "compliant": false,
+  "failed": [
+   "indicatorsLoaded",
+   "ordersOpen"
+  ]
+ },
+ "zeroTrades": false,
+ "build": {
+  "scriptVersion": "20260730b115"
+ },
+ "doseResponse": [
+  {
+   "url": "92.82:3000/chart/dist-v9/index.html?mode=backtest&mcLayout=1",
+   "available": true,
+   "residentBars": 2336,
+   "timeframe": "1m",
+   "rungs": [
+    {
+     "bars": 250,
+     "error": null,
+     "medianMs": 0.1,
+     "minMs": 0.1,
+     "maxMs": 0.2,
+     "usPerBar": 0.4
+    },
+    {
+     "bars": 500,
+     "error": null,
+     "medianMs": 0.3,
+     "minMs": 0.2,
+     "maxMs": 0.4,
+     "usPerBar": 0.6
+    },
+    {
+     "bars": 1000,
+     "error": null,
+     "medianMs": 0.4,
+     "minMs": 0.2,
+     "maxMs": 0.4,
+     "usPerBar": 0.4
+    },
+    {
+     "bars": 2000,
+     "error": null,
+     "medianMs": 1,
+     "minMs": 0.7,
+     "maxMs": 1.1,
+     "usPerBar": 0.5
+    }
+   ],
+   "control": [
+    {
+     "rep": 1,
+     "bars": 250,
+     "medianMs": 0.1,
+     "error": null
+    },
+    {
+     "rep": 2,
+     "bars": 250,
+     "medianMs": 0.1,
+     "error": null
+    },
+    {
+     "rep": 3,
+     "bars": 250,
+     "medianMs": 0.1,
+     "error": null
+    },
+    {
+     "rep": 4,
+     "bars": 250,
+     "medianMs": 0,
+     "error": null
+    }
+   ]
+  },
+  {
+   "url": "260730b115&chartWindowId=cwms85107lh67hwommqd&embedRev=ohlc2",
+   "available": true,
+   "residentBars": 1596,
+   "timeframe": "5m",
+   "rungs": [
+    {
+     "bars": 250,
+     "error": null,
+     "medianMs": 0.2,
+     "minMs": 0,
+     "maxMs": 2.3,
+     "usPerBar": 0.8
+    },
+    {
+     "bars": 500,
+     "error": null,
+     "medianMs": 0.2,
+     "minMs": 0.1,
+     "maxMs": 0.4,
+     "usPerBar": 0.4
+    },
+    {
+     "bars": 1000,
+     "error": null,
+     "medianMs": 0.6,
+     "minMs": 0.5,
+     "maxMs": 0.9,
+     "usPerBar": 0.6
+    }
+   ],
+   "control": [
+    {
+     "rep": 1,
+     "bars": 250,
+     "medianMs": 0.1,
+     "error": null
+    },
+    {
+     "rep": 2,
+     "bars": 250,
+     "medianMs": 0.1,
+     "error": null
+    },
+    {
+     "rep": 3,
+     "bars": 250,
+     "medianMs": 0,
+     "error": null
+    }
+   ]
+  },
+  {
+   "url": "260730b115&chartWindowId=cwms85107lh67hwommqd&embedRev=ohlc2",
+   "available": true,
+   "residentBars": 1911,
+   "timeframe": "15m",
+   "rungs": [
+    {
+     "bars": 250,
+     "error": null,
+     "medianMs": 0.2,
+     "minMs": 0.1,
+     "maxMs": 0.3,
+     "usPerBar": 0.8
+    },
+    {
+     "bars": 500,
+     "error": null,
+     "medianMs": 0.2,
+     "minMs": 0.1,
+     "maxMs": 0.2,
+     "usPerBar": 0.4
+    },
+    {
+     "bars": 1000,
+     "error": null,
+     "medianMs": 0.7,
+     "minMs": 0.6,
+     "maxMs": 0.7,
+     "usPerBar": 0.7
+    }
+   ],
+   "control": [
+    {
+     "rep": 1,
+     "bars": 250,
+     "medianMs": 0,
+     "error": null
+    },
+    {
+     "rep": 2,
+     "bars": 250,
+     "medianMs": 0,
+     "error": null
+    },
+    {
+     "rep": 3,
+     "bars": 250,
+     "medianMs": 0.1,
+     "error": null
+    }
+   ]
+  },
+  {
+   "url": "260730b115&chartWindowId=cwms85107lh67hwommqd&embedRev=ohlc2",
+   "available": true,
+   "residentBars": 495,
+   "timeframe": "1h",
+   "rungs": [
+    {
+     "bars": 250,
+     "error": null,
+     "medianMs": 0.1,
+     "minMs": 0.1,
+     "maxMs": 0.3,
+     "usPerBar": 0.4
+    }
+   ],
+   "control": [
+    {
+     "rep": 1,
+     "bars": 250,
+     "medianMs": 0.3,
+     "error": null
+    }
+   ]
+  }
+ ],
+ "doseFit": {
+  "xUnit": "ms per 1,000 bars hashed",
+  "label": "paintFp cost vs bars",
+  "n": 4,
+  "spanHours": 1.75,
+  "durationOk": true,
+  "first": 0.1,
+  "last": 1,
+  "min": 0.1,
+  "max": 1,
+  "perHour": 0.494,
+  "slopeCi95": [
+   0.249,
+   0.739
+  ],
+  "slopeSe": 0.057,
+  "rSquared": 0.974,
+  "flatBandPerHour": 0.05,
+  "projectedPerHourAt8h": 4,
+  "verdict": "CLIMBS"
+ },
+ "controlFit": {
+  "xUnit": "ms per repetition at a FIXED 250 bars",
+  "label": "fixed-size control",
+  "n": 4,
+  "spanHours": 3,
+  "durationOk": true,
+  "first": 0.1,
+  "last": 0,
+  "min": 0,
+  "max": 0.1,
+  "perHour": -0.03,
+  "slopeCi95": [
+   -0.105,
+   0.045
+  ],
+  "slopeSe": 0.017,
+  "rSquared": 0.6,
+  "flatBandPerHour": 0.05,
+  "projectedPerHourAt8h": -0.2,
+  "verdict": "INDETERMINATE"
+ },
+ "gate01": {
+  "ladderReadsLinear": true,
+  "fixedSizeControlReadsFlat": true,
+  "verdict": "PASS"
+ },
+ "callRateInstall": [
+  {
+   "url": "92.82:3000/chart/dist-v9/index.html?mode=backtest&mcLayout=1",
+   "already": false,
+   "realm": "/chart/dist-v9/index.html?mode=backtest&mcLayout=1",
+   "wrapped": [
+    "_m19iExactTailPaintFp",
+    "_indicatorParamsHash"
+   ]
+  },
+  {
+   "url": "260730b115&chartWindowId=cwms85107lh67hwommqd&embedRev=ohlc2",
+   "already": false,
+   "realm": "260730b115&chartWindowId=cwms85107lh67hwommqd&embedRev=ohlc2",
+   "wrapped": [
+    "_m19iExactTailPaintFp",
+    "_indicatorParamsHash"
+   ]
+  },
+  {
+   "url": "260730b115&chartWindowId=cwms85107lh67hwommqd&embedRev=ohlc2",
+   "already": false,
+   "realm": "260730b115&chartWindowId=cwms85107lh67hwommqd&embedRev=ohlc2",
+   "wrapped": [
+    "_m19iExactTailPaintFp",
+    "_indicatorParamsHash"
+   ]
+  },
+  {
+   "url": "260730b115&chartWindowId=cwms85107lh67hwommqd&embedRev=ohlc2",
+   "already": false,
+   "realm": "260730b115&chartWindowId=cwms85107lh67hwommqd&embedRev=ohlc2",
+   "wrapped": [
+    "_m19iExactTailPaintFp",
+    "_indicatorParamsHash"
+   ]
+  }
+ ],
+ "callRate": [
+  {
+   "url": "92.82:3000/chart/dist-v9/index.html?mode=backtest&mcLayout=1",
+   "realm": "/chart/dist-v9/index.html?mode=backtest&mcLayout=1",
+   "wrapped": [
+    "_m19iExactTailPaintFp",
+    "_indicatorParamsHash"
+   ],
+   "calls": 2816,
+   "totalMs": 5016.7,
+   "meanMs": 1.781,
+   "maxMs": 36,
+   "startIndex": 2338,
+   "nowIndex": 3204,
+   "residentBars": 3205
+  },
+  {
+   "url": "260730b115&chartWindowId=cwms85107lh67hwommqd&embedRev=ohlc2",
+   "realm": "260730b115&chartWindowId=cwms85107lh67hwommqd&embedRev=ohlc2",
+   "wrapped": [
+    "_m19iExactTailPaintFp",
+    "_indicatorParamsHash"
+   ],
+   "calls": 1059,
+   "totalMs": 1461.9,
+   "meanMs": 1.38,
+   "maxMs": 12.2,
+   "startIndex": 1595,
+   "nowIndex": 1595,
+   "residentBars": 1596
+  },
+  {
+   "url": "260730b115&chartWindowId=cwms85107lh67hwommqd&embedRev=ohlc2",
+   "realm": "260730b115&chartWindowId=cwms85107lh67hwommqd&embedRev=ohlc2",
+   "wrapped": [
+    "_m19iExactTailPaintFp",
+    "_indicatorParamsHash"
+   ],
+   "calls": 1058,
+   "totalMs": 1099.6,
+   "meanMs": 1.039,
+   "maxMs": 5.8,
+   "startIndex": 1910,
+   "nowIndex": 1910,
+   "residentBars": 1911
+  },
+  {
+   "url": "260730b115&chartWindowId=cwms85107lh67hwommqd&embedRev=ohlc2",
+   "realm": "260730b115&chartWindowId=cwms85107lh67hwommqd&embedRev=ohlc2",
+   "wrapped": [
+    "_m19iExactTailPaintFp",
+    "_indicatorParamsHash"
+   ],
+   "calls": 1052,
+   "totalMs": 565.8,
+   "meanMs": 0.538,
+   "maxMs": 4.9,
+   "startIndex": 494,
+   "nowIndex": 494,
+   "residentBars": 495
+  }
+ ],
+ "callRateSummary": {
+  "windowSec": 61.7,
+  "barsAdvanced": 837,
+  "calls": 5985,
+  "callsPerBar": 7.15,
+  "msInFingerprint": 8144,
+  "msPerBar": 9.73,
+  "shareOfWallClock": 13.2,
+  "note": "shareOfWallClock is against ONE thread-second per second; four realms share one main thread, so 100% means the fingerprint alone saturates it"
+ },
+ "ab": {
+  "predicted": "if the fingerprint is the choke, throughput rises when the flag is set",
+  "on": {
+   "windowSec": 61.7,
+   "barsAdvanced": 837,
+   "barsPerSec": 13.56,
+   "advancing": 4,
+   "startSum": 6340,
+   "endSum": 7177
+  },
+  "flagSetInRealms": 4,
+  "off": {
+   "windowSec": 181.7,
+   "barsAdvanced": 3279,
+   "barsPerSec": 18.05,
+   "advancing": 4,
+   "startSum": 6295,
+   "endSum": 9574
+  },
+  "result": {
+   "barsPerSecWithPathLive": 13.56,
+   "barsPerSecWithPathDisabled": 18.05,
+   "changePercent": 33.1,
+   "caveat": "n=1 window per arm, and the disabled arm runs LATER in the session, so more bars are resident: a same-direction bias against the flag, which makes any improvement a lower bound"
+  }
+ }
+}

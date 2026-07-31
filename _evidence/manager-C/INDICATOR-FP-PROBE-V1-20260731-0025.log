@@ -1,0 +1,18 @@
+[heap-cycle 2026-07-30T23:21:36.587Z] layout UI → 4 (li=0)
+[heap-cycle 2026-07-30T23:21:49.621Z] datasets mode=distinct observed=4/4 [A:677@1m(2011) B:673@5m(1596) C:670@15m(1911) D:669@1h(495)]
+[heap-cycle-po-workload 2026-07-30T23:21:49.625Z] arm panel A: wait ready
+[heap-cycle-po-workload 2026-07-30T23:21:50.008Z] arm panel A: ok=false ind=2 replay=true playing=true
+[heap-cycle-po-workload 2026-07-30T23:21:50.008Z] arm panel B: wait ready
+[heap-cycle-po-workload 2026-07-30T23:21:50.780Z] arm panel B: ok=false ind=2 replay=true playing=true
+[heap-cycle-po-workload 2026-07-30T23:21:50.780Z] arm panel C: wait ready
+[heap-cycle-po-workload 2026-07-30T23:21:51.494Z] arm panel C: ok=false ind=2 replay=true playing=true
+[heap-cycle-po-workload 2026-07-30T23:21:51.495Z] arm panel D: wait ready
+[heap-cycle-po-workload 2026-07-30T23:21:55.169Z] arm panel D: ok=false ind=2 replay=true playing=true
+[heap-cycle-po-workload 2026-07-30T23:21:55.170Z] order SKIPPED (zero-trade reproduction)
+[heap-cycle-po-workload 2026-07-30T23:22:03.227Z] play hold done observedPlaying=4
+[ifp] build={"scriptVersion":"20260730b115"} zeroTrades=false
+[ifp] ARM1 rungs=["250b:0.1ms","500b:0.3ms","1000b:0.4ms","2000b:1ms"]
+[ifp] ARM1 slope=0.494 ms per 1k bars CI[0.249,0.739] CLIMBS; control -0.03 INDETERMINATE; GATE-01 PASS
+[ifp] ARM2 5985 calls over 837 bars = 7.15/bar, 9.73 ms/bar, 13.2% of wall clock
+[ifp] ARM3 A/B 13.56 -> 18.05 bars/s (33.1%) flagSetIn=4 realms
+EXIT=0 

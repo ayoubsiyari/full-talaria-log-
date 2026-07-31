@@ -1,0 +1,3541 @@
+{
+ "signature": "REPLAY-DECAY-HUNT-V1",
+ "startedAtIso": "2026-07-30T22:36:45.322Z",
+ "reproduces": "PO zero-trade run: 4 panels, 4 symbols, 4 timeframes, 2 indicators each, 60x, ZERO trades",
+ "plan": {
+  "minutes": 20,
+  "intervalMs": 30000,
+  "speed": 60,
+  "profileMs": 60000
+ },
+ "conf01": {
+  "compliant": false,
+  "failed": [
+   "indicatorsLoaded",
+   "ordersOpen"
+  ],
+  "datasets": [
+   {
+    "panelId": "A",
+    "fileId": "677",
+    "timeframe": "1m",
+    "bars": 2283
+   },
+   {
+    "panelId": "B",
+    "fileId": "673",
+    "timeframe": "5m",
+    "bars": 1596
+   },
+   {
+    "panelId": "C",
+    "fileId": "670",
+    "timeframe": "15m",
+    "bars": 1911
+   },
+   {
+    "panelId": "D",
+    "fileId": "669",
+    "timeframe": "1h",
+    "bars": 495
+   }
+  ]
+ },
+ "zeroTrades": {
+  "orderPlacedByHarness": null
+ },
+ "samples": [
+  {
+   "n": 1,
+   "minutes": 1.023,
+   "hours": 0.0191,
+   "elapsedBarsAllPanels": 7253,
+   "hostReplayIndex": 3254,
+   "tickMsWeighted": null,
+   "perPanelTick": [
+    {
+     "realm": "/chart/dist-v9/index.html?mode=backtest&mcLayout=1",
+     "tf": "1m",
+     "idx": 3254,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 169,
+     "longTaskMs": 25006,
+     "indicators": 2,
+     "elements": 2810
+    },
+    {
+     "realm": "tf=1m&v=20260730b114&chartWindowId=cwms83eclncjkf6j8crd&embedRev=ohlc2",
+     "tf": "5m",
+     "idx": 1595,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 169,
+     "longTaskMs": 25054,
+     "indicators": 2,
+     "elements": 693
+    },
+    {
+     "realm": "tf=1m&v=20260730b114&chartWindowId=cwms83eclncjkf6j8crd&embedRev=ohlc2",
+     "tf": "15m",
+     "idx": 1910,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 168,
+     "longTaskMs": 24978,
+     "indicators": 2,
+     "elements": 693
+    },
+    {
+     "realm": "tf=1m&v=20260730b114&chartWindowId=cwms83eclncjkf6j8crd&embedRev=ohlc2",
+     "tf": "1h",
+     "idx": 494,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 168,
+     "longTaskMs": 24978,
+     "indicators": 2,
+     "elements": 692
+    }
+   ],
+   "longTasksTotal": 674,
+   "longTaskMsTotal": 100016,
+   "advancingPanels": 4,
+   "barsPerSecPerPanel": null,
+   "rendererCpuPercent": 99.4,
+   "heapMB": 123.51,
+   "nodes": 72572,
+   "listeners": 17396
+  },
+  {
+   "n": 2,
+   "minutes": 1.179,
+   "hours": 0.0219,
+   "elapsedBarsAllPanels": 7377,
+   "hostReplayIndex": 3378,
+   "tickMsWeighted": null,
+   "perPanelTick": [
+    {
+     "realm": "/chart/dist-v9/index.html?mode=backtest&mcLayout=1",
+     "tf": "1m",
+     "idx": 3378,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 34,
+     "longTaskMs": 3452,
+     "indicators": 2,
+     "elements": 2813
+    },
+    {
+     "realm": "tf=1m&v=20260730b114&chartWindowId=cwms83eclncjkf6j8crd&embedRev=ohlc2",
+     "tf": "5m",
+     "idx": 1595,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 35,
+     "longTaskMs": 3597,
+     "indicators": 2,
+     "elements": 693
+    },
+    {
+     "realm": "tf=1m&v=20260730b114&chartWindowId=cwms83eclncjkf6j8crd&embedRev=ohlc2",
+     "tf": "15m",
+     "idx": 1910,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 35,
+     "longTaskMs": 3597,
+     "indicators": 2,
+     "elements": 693
+    },
+    {
+     "realm": "tf=1m&v=20260730b114&chartWindowId=cwms83eclncjkf6j8crd&embedRev=ohlc2",
+     "tf": "1h",
+     "idx": 494,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 35,
+     "longTaskMs": 3597,
+     "indicators": 2,
+     "elements": 692
+    }
+   ],
+   "longTasksTotal": 139,
+   "longTaskMsTotal": 14243,
+   "advancingPanels": 4,
+   "barsPerSecPerPanel": null,
+   "rendererCpuPercent": 99.3,
+   "heapMB": 394.59,
+   "nodes": 65778,
+   "listeners": 14998
+  },
+  {
+   "n": 3,
+   "minutes": 1.344,
+   "hours": 0.0247,
+   "elapsedBarsAllPanels": 7504,
+   "hostReplayIndex": 3505,
+   "tickMsWeighted": null,
+   "perPanelTick": [
+    {
+     "realm": "/chart/dist-v9/index.html?mode=backtest&mcLayout=1",
+     "tf": "1m",
+     "idx": 3505,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 35,
+     "longTaskMs": 3921,
+     "indicators": 2,
+     "elements": 2814
+    },
+    {
+     "realm": "tf=1m&v=20260730b114&chartWindowId=cwms83eclncjkf6j8crd&embedRev=ohlc2",
+     "tf": "5m",
+     "idx": 1595,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 33,
+     "longTaskMs": 3612,
+     "indicators": 2,
+     "elements": 693
+    },
+    {
+     "realm": "tf=1m&v=20260730b114&chartWindowId=cwms83eclncjkf6j8crd&embedRev=ohlc2",
+     "tf": "15m",
+     "idx": 1910,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 33,
+     "longTaskMs": 3612,
+     "indicators": 2,
+     "elements": 693
+    },
+    {
+     "realm": "tf=1m&v=20260730b114&chartWindowId=cwms83eclncjkf6j8crd&embedRev=ohlc2",
+     "tf": "1h",
+     "idx": 494,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 35,
+     "longTaskMs": 3926,
+     "indicators": 2,
+     "elements": 692
+    }
+   ],
+   "longTasksTotal": 136,
+   "longTaskMsTotal": 15071,
+   "advancingPanels": 4,
+   "barsPerSecPerPanel": null,
+   "rendererCpuPercent": 99.3,
+   "heapMB": 417.6,
+   "nodes": 65574,
+   "listeners": 14602
+  },
+  {
+   "n": 4,
+   "minutes": 1.51,
+   "hours": 0.0273,
+   "elapsedBarsAllPanels": 7639,
+   "hostReplayIndex": 3640,
+   "tickMsWeighted": null,
+   "perPanelTick": [
+    {
+     "realm": "/chart/dist-v9/index.html?mode=backtest&mcLayout=1",
+     "tf": "1m",
+     "idx": 3640,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 26,
+     "longTaskMs": 3794,
+     "indicators": 2,
+     "elements": 2814
+    },
+    {
+     "realm": "tf=1m&v=20260730b114&chartWindowId=cwms83eclncjkf6j8crd&embedRev=ohlc2",
+     "tf": "5m",
+     "idx": 1595,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 26,
+     "longTaskMs": 3794,
+     "indicators": 2,
+     "elements": 693
+    },
+    {
+     "realm": "tf=1m&v=20260730b114&chartWindowId=cwms83eclncjkf6j8crd&embedRev=ohlc2",
+     "tf": "15m",
+     "idx": 1910,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 26,
+     "longTaskMs": 3794,
+     "indicators": 2,
+     "elements": 693
+    },
+    {
+     "realm": "tf=1m&v=20260730b114&chartWindowId=cwms83eclncjkf6j8crd&embedRev=ohlc2",
+     "tf": "1h",
+     "idx": 494,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 24,
+     "longTaskMs": 3480,
+     "indicators": 2,
+     "elements": 692
+    }
+   ],
+   "longTasksTotal": 102,
+   "longTaskMsTotal": 14862,
+   "advancingPanels": 4,
+   "barsPerSecPerPanel": null,
+   "rendererCpuPercent": 99.6,
+   "heapMB": 144.61,
+   "nodes": 28733,
+   "listeners": 3404
+  },
+  {
+   "n": 5,
+   "minutes": 2,
+   "hours": 0.0355,
+   "elapsedBarsAllPanels": 8043,
+   "hostReplayIndex": 4044,
+   "tickMsWeighted": null,
+   "perPanelTick": [
+    {
+     "realm": "/chart/dist-v9/index.html?mode=backtest&mcLayout=1",
+     "tf": "1m",
+     "idx": 4044,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 75,
+     "longTaskMs": 11238,
+     "indicators": 2,
+     "elements": 2814
+    },
+    {
+     "realm": "tf=1m&v=20260730b114&chartWindowId=cwms83eclncjkf6j8crd&embedRev=ohlc2",
+     "tf": "5m",
+     "idx": 1595,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 75,
+     "longTaskMs": 11238,
+     "indicators": 2,
+     "elements": 693
+    },
+    {
+     "realm": "tf=1m&v=20260730b114&chartWindowId=cwms83eclncjkf6j8crd&embedRev=ohlc2",
+     "tf": "15m",
+     "idx": 1910,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 76,
+     "longTaskMs": 11318,
+     "indicators": 2,
+     "elements": 693
+    },
+    {
+     "realm": "tf=1m&v=20260730b114&chartWindowId=cwms83eclncjkf6j8crd&embedRev=ohlc2",
+     "tf": "1h",
+     "idx": 494,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 76,
+     "longTaskMs": 11318,
+     "indicators": 2,
+     "elements": 692
+    }
+   ],
+   "longTasksTotal": 302,
+   "longTaskMsTotal": 45112,
+   "advancingPanels": 4,
+   "barsPerSecPerPanel": null,
+   "rendererCpuPercent": 99.4,
+   "heapMB": 231.53,
+   "nodes": 29904,
+   "listeners": 6803
+  },
+  {
+   "n": 6,
+   "minutes": 2.5,
+   "hours": 0.0438,
+   "elapsedBarsAllPanels": 8416,
+   "hostReplayIndex": 4417,
+   "tickMsWeighted": null,
+   "perPanelTick": [
+    {
+     "realm": "/chart/dist-v9/index.html?mode=backtest&mcLayout=1",
+     "tf": "1m",
+     "idx": 4417,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 89,
+     "longTaskMs": 11291,
+     "indicators": 2,
+     "elements": 2814
+    },
+    {
+     "realm": "tf=1m&v=20260730b114&chartWindowId=cwms83eclncjkf6j8crd&embedRev=ohlc2",
+     "tf": "5m",
+     "idx": 1595,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 90,
+     "longTaskMs": 11445,
+     "indicators": 2,
+     "elements": 693
+    },
+    {
+     "realm": "tf=1m&v=20260730b114&chartWindowId=cwms83eclncjkf6j8crd&embedRev=ohlc2",
+     "tf": "15m",
+     "idx": 1910,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 89,
+     "longTaskMs": 11365,
+     "indicators": 2,
+     "elements": 693
+    },
+    {
+     "realm": "tf=1m&v=20260730b114&chartWindowId=cwms83eclncjkf6j8crd&embedRev=ohlc2",
+     "tf": "1h",
+     "idx": 494,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 89,
+     "longTaskMs": 11365,
+     "indicators": 2,
+     "elements": 692
+    }
+   ],
+   "longTasksTotal": 357,
+   "longTaskMsTotal": 45466,
+   "advancingPanels": 4,
+   "barsPerSecPerPanel": null,
+   "rendererCpuPercent": 99.5,
+   "heapMB": 273.39,
+   "nodes": 37017,
+   "listeners": 8497
+  },
+  {
+   "n": 7,
+   "minutes": 3,
+   "hours": 0.0522,
+   "elapsedBarsAllPanels": 8795,
+   "hostReplayIndex": 4796,
+   "tickMsWeighted": null,
+   "perPanelTick": [
+    {
+     "realm": "/chart/dist-v9/index.html?mode=backtest&mcLayout=1",
+     "tf": "1m",
+     "idx": 4796,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 68,
+     "longTaskMs": 11210,
+     "indicators": 2,
+     "elements": 2814
+    },
+    {
+     "realm": "tf=1m&v=20260730b114&chartWindowId=cwms83eclncjkf6j8crd&embedRev=ohlc2",
+     "tf": "5m",
+     "idx": 1595,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 67,
+     "longTaskMs": 11056,
+     "indicators": 2,
+     "elements": 693
+    },
+    {
+     "realm": "tf=1m&v=20260730b114&chartWindowId=cwms83eclncjkf6j8crd&embedRev=ohlc2",
+     "tf": "15m",
+     "idx": 1910,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 68,
+     "longTaskMs": 11176,
+     "indicators": 2,
+     "elements": 693
+    },
+    {
+     "realm": "tf=1m&v=20260730b114&chartWindowId=cwms83eclncjkf6j8crd&embedRev=ohlc2",
+     "tf": "1h",
+     "idx": 494,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 69,
+     "longTaskMs": 11327,
+     "indicators": 2,
+     "elements": 692
+    }
+   ],
+   "longTasksTotal": 272,
+   "longTaskMsTotal": 44769,
+   "advancingPanels": 4,
+   "barsPerSecPerPanel": null,
+   "rendererCpuPercent": 99.4,
+   "heapMB": 373.18,
+   "nodes": 48913,
+   "listeners": 10752
+  },
+  {
+   "n": 8,
+   "minutes": 3.5,
+   "hours": 0.0604,
+   "elapsedBarsAllPanels": 9308,
+   "hostReplayIndex": 5309,
+   "tickMsWeighted": null,
+   "perPanelTick": [
+    {
+     "realm": "/chart/dist-v9/index.html?mode=backtest&mcLayout=1",
+     "tf": "1m",
+     "idx": 5309,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 57,
+     "longTaskMs": 5459,
+     "indicators": 2,
+     "elements": 2814
+    },
+    {
+     "realm": "tf=1m&v=20260730b114&chartWindowId=cwms83eclncjkf6j8crd&embedRev=ohlc2",
+     "tf": "5m",
+     "idx": 1595,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 57,
+     "longTaskMs": 5459,
+     "indicators": 2,
+     "elements": 693
+    },
+    {
+     "realm": "tf=1m&v=20260730b114&chartWindowId=cwms83eclncjkf6j8crd&embedRev=ohlc2",
+     "tf": "15m",
+     "idx": 1910,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 56,
+     "longTaskMs": 5339,
+     "indicators": 2,
+     "elements": 693
+    },
+    {
+     "realm": "tf=1m&v=20260730b114&chartWindowId=cwms83eclncjkf6j8crd&embedRev=ohlc2",
+     "tf": "1h",
+     "idx": 494,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 55,
+     "longTaskMs": 5188,
+     "indicators": 2,
+     "elements": 692
+    }
+   ],
+   "longTasksTotal": 225,
+   "longTaskMsTotal": 21445,
+   "advancingPanels": 4,
+   "barsPerSecPerPanel": null,
+   "rendererCpuPercent": 99.7,
+   "heapMB": 221.2,
+   "nodes": 20075,
+   "listeners": 4006
+  },
+  {
+   "n": 9,
+   "minutes": 4,
+   "hours": 0.0708,
+   "elapsedBarsAllPanels": 9642,
+   "hostReplayIndex": 5643,
+   "tickMsWeighted": null,
+   "perPanelTick": [
+    {
+     "realm": "/chart/dist-v9/index.html?mode=backtest&mcLayout=1",
+     "tf": "1m",
+     "idx": 5643,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 2,
+     "longTaskMs": 6733,
+     "indicators": 2,
+     "elements": 2814
+    },
+    {
+     "realm": "tf=1m&v=20260730b114&chartWindowId=cwms83eclncjkf6j8crd&embedRev=ohlc2",
+     "tf": "5m",
+     "idx": 1595,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 3,
+     "longTaskMs": 14022,
+     "indicators": 2,
+     "elements": 693
+    },
+    {
+     "realm": "tf=1m&v=20260730b114&chartWindowId=cwms83eclncjkf6j8crd&embedRev=ohlc2",
+     "tf": "15m",
+     "idx": 1910,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 3,
+     "longTaskMs": 14022,
+     "indicators": 2,
+     "elements": 693
+    },
+    {
+     "realm": "tf=1m&v=20260730b114&chartWindowId=cwms83eclncjkf6j8crd&embedRev=ohlc2",
+     "tf": "1h",
+     "idx": 494,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 4,
+     "longTaskMs": 20605,
+     "indicators": 2,
+     "elements": 692
+    }
+   ],
+   "longTasksTotal": 12,
+   "longTaskMsTotal": 55382,
+   "advancingPanels": 4,
+   "barsPerSecPerPanel": null,
+   "rendererCpuPercent": 100,
+   "heapMB": 406.57,
+   "nodes": 56866,
+   "listeners": 23514
+  },
+  {
+   "n": 10,
+   "minutes": 4.5,
+   "hours": 0.0772,
+   "elapsedBarsAllPanels": 9904,
+   "hostReplayIndex": 5905,
+   "tickMsWeighted": null,
+   "perPanelTick": [
+    {
+     "realm": "/chart/dist-v9/index.html?mode=backtest&mcLayout=1",
+     "tf": "1m",
+     "idx": 5905,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 44,
+     "longTaskMs": 22081,
+     "indicators": 2,
+     "elements": 2814
+    },
+    {
+     "realm": "tf=1m&v=20260730b114&chartWindowId=cwms83eclncjkf6j8crd&embedRev=ohlc2",
+     "tf": "5m",
+     "idx": 1595,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 46,
+     "longTaskMs": 15109,
+     "indicators": 2,
+     "elements": 693
+    },
+    {
+     "realm": "tf=1m&v=20260730b114&chartWindowId=cwms83eclncjkf6j8crd&embedRev=ohlc2",
+     "tf": "15m",
+     "idx": 1910,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 46,
+     "longTaskMs": 15109,
+     "indicators": 2,
+     "elements": 693
+    },
+    {
+     "realm": "tf=1m&v=20260730b114&chartWindowId=cwms83eclncjkf6j8crd&embedRev=ohlc2",
+     "tf": "1h",
+     "idx": 494,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 45,
+     "longTaskMs": 8526,
+     "indicators": 2,
+     "elements": 692
+    }
+   ],
+   "longTasksTotal": 181,
+   "longTaskMsTotal": 60825,
+   "advancingPanels": 4,
+   "barsPerSecPerPanel": null,
+   "rendererCpuPercent": 99.4,
+   "heapMB": 431.95,
+   "nodes": 51829,
+   "listeners": 11728
+  },
+  {
+   "n": 11,
+   "minutes": 5,
+   "hours": 0.0855,
+   "elapsedBarsAllPanels": 10235,
+   "hostReplayIndex": 6236,
+   "tickMsWeighted": null,
+   "perPanelTick": [
+    {
+     "realm": "/chart/dist-v9/index.html?mode=backtest&mcLayout=1",
+     "tf": "1m",
+     "idx": 6236,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 123,
+     "longTaskMs": 11118,
+     "indicators": 2,
+     "elements": 2814
+    },
+    {
+     "realm": "tf=1m&v=20260730b114&chartWindowId=cwms83eclncjkf6j8crd&embedRev=ohlc2",
+     "tf": "5m",
+     "idx": 1595,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 122,
+     "longTaskMs": 11052,
+     "indicators": 2,
+     "elements": 693
+    },
+    {
+     "realm": "tf=1m&v=20260730b114&chartWindowId=cwms83eclncjkf6j8crd&embedRev=ohlc2",
+     "tf": "15m",
+     "idx": 1910,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 122,
+     "longTaskMs": 11052,
+     "indicators": 2,
+     "elements": 693
+    },
+    {
+     "realm": "tf=1m&v=20260730b114&chartWindowId=cwms83eclncjkf6j8crd&embedRev=ohlc2",
+     "tf": "1h",
+     "idx": 494,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 122,
+     "longTaskMs": 11052,
+     "indicators": 2,
+     "elements": 692
+    }
+   ],
+   "longTasksTotal": 489,
+   "longTaskMsTotal": 44274,
+   "advancingPanels": 4,
+   "barsPerSecPerPanel": null,
+   "rendererCpuPercent": 99.3,
+   "heapMB": 455.53,
+   "nodes": 56781,
+   "listeners": 12443
+  },
+  {
+   "n": 12,
+   "minutes": 5.5,
+   "hours": 0.0938,
+   "elapsedBarsAllPanels": 10568,
+   "hostReplayIndex": 6569,
+   "tickMsWeighted": null,
+   "perPanelTick": [
+    {
+     "realm": "/chart/dist-v9/index.html?mode=backtest&mcLayout=1",
+     "tf": "1m",
+     "idx": 6569,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 76,
+     "longTaskMs": 11001,
+     "indicators": 2,
+     "elements": 2814
+    },
+    {
+     "realm": "tf=1m&v=20260730b114&chartWindowId=cwms83eclncjkf6j8crd&embedRev=ohlc2",
+     "tf": "5m",
+     "idx": 1595,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 77,
+     "longTaskMs": 11011,
+     "indicators": 2,
+     "elements": 693
+    },
+    {
+     "realm": "tf=1m&v=20260730b114&chartWindowId=cwms83eclncjkf6j8crd&embedRev=ohlc2",
+     "tf": "15m",
+     "idx": 1910,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 77,
+     "longTaskMs": 11011,
+     "indicators": 2,
+     "elements": 693
+    },
+    {
+     "realm": "tf=1m&v=20260730b114&chartWindowId=cwms83eclncjkf6j8crd&embedRev=ohlc2",
+     "tf": "1h",
+     "idx": 494,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 77,
+     "longTaskMs": 11011,
+     "indicators": 2,
+     "elements": 692
+    }
+   ],
+   "longTasksTotal": 307,
+   "longTaskMsTotal": 44034,
+   "advancingPanels": 4,
+   "barsPerSecPerPanel": null,
+   "rendererCpuPercent": 99.5,
+   "heapMB": 159.23,
+   "nodes": 33397,
+   "listeners": 3544
+  },
+  {
+   "n": 13,
+   "minutes": 6,
+   "hours": 0.1022,
+   "elapsedBarsAllPanels": 10909,
+   "hostReplayIndex": 6910,
+   "tickMsWeighted": null,
+   "perPanelTick": [
+    {
+     "realm": "/chart/dist-v9/index.html?mode=backtest&mcLayout=1",
+     "tf": "1m",
+     "idx": 6910,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 122,
+     "longTaskMs": 10760,
+     "indicators": 2,
+     "elements": 2814
+    },
+    {
+     "realm": "tf=1m&v=20260730b114&chartWindowId=cwms83eclncjkf6j8crd&embedRev=ohlc2",
+     "tf": "5m",
+     "idx": 1595,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 120,
+     "longTaskMs": 10590,
+     "indicators": 2,
+     "elements": 693
+    },
+    {
+     "realm": "tf=1m&v=20260730b114&chartWindowId=cwms83eclncjkf6j8crd&embedRev=ohlc2",
+     "tf": "15m",
+     "idx": 1910,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 120,
+     "longTaskMs": 10590,
+     "indicators": 2,
+     "elements": 693
+    },
+    {
+     "realm": "tf=1m&v=20260730b114&chartWindowId=cwms83eclncjkf6j8crd&embedRev=ohlc2",
+     "tf": "1h",
+     "idx": 494,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 121,
+     "longTaskMs": 10659,
+     "indicators": 2,
+     "elements": 692
+    }
+   ],
+   "longTasksTotal": 483,
+   "longTaskMsTotal": 42599,
+   "advancingPanels": 4,
+   "barsPerSecPerPanel": null,
+   "rendererCpuPercent": 99.3,
+   "heapMB": 265.83,
+   "nodes": 28960,
+   "listeners": 6511
+  },
+  {
+   "n": 14,
+   "minutes": 6.5,
+   "hours": 0.1105,
+   "elapsedBarsAllPanels": 11262,
+   "hostReplayIndex": 7263,
+   "tickMsWeighted": null,
+   "perPanelTick": [
+    {
+     "realm": "/chart/dist-v9/index.html?mode=backtest&mcLayout=1",
+     "tf": "1m",
+     "idx": 7263,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 89,
+     "longTaskMs": 10871,
+     "indicators": 2,
+     "elements": 2814
+    },
+    {
+     "realm": "tf=1m&v=20260730b114&chartWindowId=cwms83eclncjkf6j8crd&embedRev=ohlc2",
+     "tf": "5m",
+     "idx": 1595,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 88,
+     "longTaskMs": 10780,
+     "indicators": 2,
+     "elements": 693
+    },
+    {
+     "realm": "tf=1m&v=20260730b114&chartWindowId=cwms83eclncjkf6j8crd&embedRev=ohlc2",
+     "tf": "15m",
+     "idx": 1910,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 89,
+     "longTaskMs": 10834,
+     "indicators": 2,
+     "elements": 693
+    },
+    {
+     "realm": "tf=1m&v=20260730b114&chartWindowId=cwms83eclncjkf6j8crd&embedRev=ohlc2",
+     "tf": "1h",
+     "idx": 494,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 88,
+     "longTaskMs": 10765,
+     "indicators": 2,
+     "elements": 692
+    }
+   ],
+   "longTasksTotal": 354,
+   "longTaskMsTotal": 43250,
+   "advancingPanels": 4,
+   "barsPerSecPerPanel": null,
+   "rendererCpuPercent": 99.6,
+   "heapMB": 442.92,
+   "nodes": 49080,
+   "listeners": 11090
+  },
+  {
+   "n": 15,
+   "minutes": 7,
+   "hours": 0.1189,
+   "elapsedBarsAllPanels": 11579,
+   "hostReplayIndex": 7580,
+   "tickMsWeighted": null,
+   "perPanelTick": [
+    {
+     "realm": "/chart/dist-v9/index.html?mode=backtest&mcLayout=1",
+     "tf": "1m",
+     "idx": 7580,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 135,
+     "longTaskMs": 11158,
+     "indicators": 2,
+     "elements": 2814
+    },
+    {
+     "realm": "tf=1m&v=20260730b114&chartWindowId=cwms83eclncjkf6j8crd&embedRev=ohlc2",
+     "tf": "5m",
+     "idx": 1595,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 137,
+     "longTaskMs": 11335,
+     "indicators": 2,
+     "elements": 693
+    },
+    {
+     "realm": "tf=1m&v=20260730b114&chartWindowId=cwms83eclncjkf6j8crd&embedRev=ohlc2",
+     "tf": "15m",
+     "idx": 1910,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 136,
+     "longTaskMs": 11281,
+     "indicators": 2,
+     "elements": 693
+    },
+    {
+     "realm": "tf=1m&v=20260730b114&chartWindowId=cwms83eclncjkf6j8crd&embedRev=ohlc2",
+     "tf": "1h",
+     "idx": 494,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 136,
+     "longTaskMs": 11281,
+     "indicators": 2,
+     "elements": 692
+    }
+   ],
+   "longTasksTotal": 544,
+   "longTaskMsTotal": 45055,
+   "advancingPanels": 4,
+   "barsPerSecPerPanel": null,
+   "rendererCpuPercent": 99.3,
+   "heapMB": 491.48,
+   "nodes": 53853,
+   "listeners": 11882
+  },
+  {
+   "n": 16,
+   "minutes": 7.5,
+   "hours": 0.1272,
+   "elapsedBarsAllPanels": 11931,
+   "hostReplayIndex": 7932,
+   "tickMsWeighted": null,
+   "perPanelTick": [
+    {
+     "realm": "/chart/dist-v9/index.html?mode=backtest&mcLayout=1",
+     "tf": "1m",
+     "idx": 7932,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 87,
+     "longTaskMs": 10855,
+     "indicators": 2,
+     "elements": 2813
+    },
+    {
+     "realm": "tf=1m&v=20260730b114&chartWindowId=cwms83eclncjkf6j8crd&embedRev=ohlc2",
+     "tf": "5m",
+     "idx": 1595,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 85,
+     "longTaskMs": 10678,
+     "indicators": 2,
+     "elements": 693
+    },
+    {
+     "realm": "tf=1m&v=20260730b114&chartWindowId=cwms83eclncjkf6j8crd&embedRev=ohlc2",
+     "tf": "15m",
+     "idx": 1910,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 85,
+     "longTaskMs": 10678,
+     "indicators": 2,
+     "elements": 693
+    },
+    {
+     "realm": "tf=1m&v=20260730b114&chartWindowId=cwms83eclncjkf6j8crd&embedRev=ohlc2",
+     "tf": "1h",
+     "idx": 494,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 85,
+     "longTaskMs": 10678,
+     "indicators": 2,
+     "elements": 692
+    }
+   ],
+   "longTasksTotal": 342,
+   "longTaskMsTotal": 42889,
+   "advancingPanels": 4,
+   "barsPerSecPerPanel": null,
+   "rendererCpuPercent": 99.4,
+   "heapMB": 317.87,
+   "nodes": 32292,
+   "listeners": 7350
+  },
+  {
+   "n": 17,
+   "minutes": 8,
+   "hours": 0.1355,
+   "elapsedBarsAllPanels": 12266,
+   "hostReplayIndex": 8267,
+   "tickMsWeighted": null,
+   "perPanelTick": [
+    {
+     "realm": "/chart/dist-v9/index.html?mode=backtest&mcLayout=1",
+     "tf": "1m",
+     "idx": 8267,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 133,
+     "longTaskMs": 10633,
+     "indicators": 2,
+     "elements": 2814
+    },
+    {
+     "realm": "tf=1m&v=20260730b114&chartWindowId=cwms83eclncjkf6j8crd&embedRev=ohlc2",
+     "tf": "5m",
+     "idx": 1595,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 133,
+     "longTaskMs": 10633,
+     "indicators": 2,
+     "elements": 693
+    },
+    {
+     "realm": "tf=1m&v=20260730b114&chartWindowId=cwms83eclncjkf6j8crd&embedRev=ohlc2",
+     "tf": "15m",
+     "idx": 1910,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 133,
+     "longTaskMs": 10633,
+     "indicators": 2,
+     "elements": 693
+    },
+    {
+     "realm": "tf=1m&v=20260730b114&chartWindowId=cwms83eclncjkf6j8crd&embedRev=ohlc2",
+     "tf": "1h",
+     "idx": 494,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 133,
+     "longTaskMs": 10633,
+     "indicators": 2,
+     "elements": 692
+    }
+   ],
+   "longTasksTotal": 532,
+   "longTaskMsTotal": 42532,
+   "advancingPanels": 4,
+   "barsPerSecPerPanel": null,
+   "rendererCpuPercent": 99.4,
+   "heapMB": 450.58,
+   "nodes": 49445,
+   "listeners": 10892
+  },
+  {
+   "n": 18,
+   "minutes": 8.5,
+   "hours": 0.1438,
+   "elapsedBarsAllPanels": 12597,
+   "hostReplayIndex": 8598,
+   "tickMsWeighted": null,
+   "perPanelTick": [
+    {
+     "realm": "/chart/dist-v9/index.html?mode=backtest&mcLayout=1",
+     "tf": "1m",
+     "idx": 8598,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 78,
+     "longTaskMs": 10704,
+     "indicators": 2,
+     "elements": 2811
+    },
+    {
+     "realm": "tf=1m&v=20260730b114&chartWindowId=cwms83eclncjkf6j8crd&embedRev=ohlc2",
+     "tf": "5m",
+     "idx": 1595,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 78,
+     "longTaskMs": 10704,
+     "indicators": 2,
+     "elements": 693
+    },
+    {
+     "realm": "tf=1m&v=20260730b114&chartWindowId=cwms83eclncjkf6j8crd&embedRev=ohlc2",
+     "tf": "15m",
+     "idx": 1910,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 78,
+     "longTaskMs": 10704,
+     "indicators": 2,
+     "elements": 693
+    },
+    {
+     "realm": "tf=1m&v=20260730b114&chartWindowId=cwms83eclncjkf6j8crd&embedRev=ohlc2",
+     "tf": "1h",
+     "idx": 494,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 78,
+     "longTaskMs": 10704,
+     "indicators": 2,
+     "elements": 692
+    }
+   ],
+   "longTasksTotal": 312,
+   "longTaskMsTotal": 42816,
+   "advancingPanels": 4,
+   "barsPerSecPerPanel": null,
+   "rendererCpuPercent": 99.6,
+   "heapMB": 160.26,
+   "nodes": 29229,
+   "listeners": 3874
+  },
+  {
+   "n": 19,
+   "minutes": 9,
+   "hours": 0.1522,
+   "elapsedBarsAllPanels": 12915,
+   "hostReplayIndex": 8916,
+   "tickMsWeighted": null,
+   "perPanelTick": [
+    {
+     "realm": "/chart/dist-v9/index.html?mode=backtest&mcLayout=1",
+     "tf": "1m",
+     "idx": 8916,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 132,
+     "longTaskMs": 11323,
+     "indicators": 2,
+     "elements": 2814
+    },
+    {
+     "realm": "tf=1m&v=20260730b114&chartWindowId=cwms83eclncjkf6j8crd&embedRev=ohlc2",
+     "tf": "5m",
+     "idx": 1595,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 132,
+     "longTaskMs": 11323,
+     "indicators": 2,
+     "elements": 693
+    },
+    {
+     "realm": "tf=1m&v=20260730b114&chartWindowId=cwms83eclncjkf6j8crd&embedRev=ohlc2",
+     "tf": "15m",
+     "idx": 1910,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 132,
+     "longTaskMs": 11323,
+     "indicators": 2,
+     "elements": 693
+    },
+    {
+     "realm": "tf=1m&v=20260730b114&chartWindowId=cwms83eclncjkf6j8crd&embedRev=ohlc2",
+     "tf": "1h",
+     "idx": 494,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 132,
+     "longTaskMs": 11323,
+     "indicators": 2,
+     "elements": 692
+    }
+   ],
+   "longTasksTotal": 528,
+   "longTaskMsTotal": 45292,
+   "advancingPanels": 4,
+   "barsPerSecPerPanel": null,
+   "rendererCpuPercent": 99.4,
+   "heapMB": 236.63,
+   "nodes": 21285,
+   "listeners": 4930
+  },
+  {
+   "n": 20,
+   "minutes": 9.5,
+   "hours": 0.1606,
+   "elapsedBarsAllPanels": 13259,
+   "hostReplayIndex": 9260,
+   "tickMsWeighted": null,
+   "perPanelTick": [
+    {
+     "realm": "/chart/dist-v9/index.html?mode=backtest&mcLayout=1",
+     "tf": "1m",
+     "idx": 9260,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 78,
+     "longTaskMs": 10183,
+     "indicators": 2,
+     "elements": 2814
+    },
+    {
+     "realm": "tf=1m&v=20260730b114&chartWindowId=cwms83eclncjkf6j8crd&embedRev=ohlc2",
+     "tf": "5m",
+     "idx": 1595,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 81,
+     "longTaskMs": 10460,
+     "indicators": 2,
+     "elements": 693
+    },
+    {
+     "realm": "tf=1m&v=20260730b114&chartWindowId=cwms83eclncjkf6j8crd&embedRev=ohlc2",
+     "tf": "15m",
+     "idx": 1910,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 82,
+     "longTaskMs": 10510,
+     "indicators": 2,
+     "elements": 693
+    },
+    {
+     "realm": "tf=1m&v=20260730b114&chartWindowId=cwms83eclncjkf6j8crd&embedRev=ohlc2",
+     "tf": "1h",
+     "idx": 494,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 82,
+     "longTaskMs": 10510,
+     "indicators": 2,
+     "elements": 692
+    }
+   ],
+   "longTasksTotal": 323,
+   "longTaskMsTotal": 41663,
+   "advancingPanels": 4,
+   "barsPerSecPerPanel": null,
+   "rendererCpuPercent": 99.5,
+   "heapMB": 463.1,
+   "nodes": 46943,
+   "listeners": 10133
+  },
+  {
+   "n": 21,
+   "minutes": 10,
+   "hours": 0.169,
+   "elapsedBarsAllPanels": 13580,
+   "hostReplayIndex": 9581,
+   "tickMsWeighted": null,
+   "perPanelTick": [
+    {
+     "realm": "/chart/dist-v9/index.html?mode=backtest&mcLayout=1",
+     "tf": "1m",
+     "idx": 9581,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 137,
+     "longTaskMs": 11527,
+     "indicators": 2,
+     "elements": 2814
+    },
+    {
+     "realm": "tf=1m&v=20260730b114&chartWindowId=cwms83eclncjkf6j8crd&embedRev=ohlc2",
+     "tf": "5m",
+     "idx": 1595,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 135,
+     "longTaskMs": 11334,
+     "indicators": 2,
+     "elements": 693
+    },
+    {
+     "realm": "tf=1m&v=20260730b114&chartWindowId=cwms83eclncjkf6j8crd&embedRev=ohlc2",
+     "tf": "15m",
+     "idx": 1910,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 134,
+     "longTaskMs": 11284,
+     "indicators": 2,
+     "elements": 693
+    },
+    {
+     "realm": "tf=1m&v=20260730b114&chartWindowId=cwms83eclncjkf6j8crd&embedRev=ohlc2",
+     "tf": "1h",
+     "idx": 494,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 134,
+     "longTaskMs": 11284,
+     "indicators": 2,
+     "elements": 692
+    }
+   ],
+   "longTasksTotal": 540,
+   "longTaskMsTotal": 45429,
+   "advancingPanels": 4,
+   "barsPerSecPerPanel": null,
+   "rendererCpuPercent": 99.4,
+   "heapMB": 218.43,
+   "nodes": 20557,
+   "listeners": 4314
+  },
+  {
+   "n": 22,
+   "minutes": 10.5,
+   "hours": 0.1772,
+   "elapsedBarsAllPanels": 13901,
+   "hostReplayIndex": 9902,
+   "tickMsWeighted": null,
+   "perPanelTick": [
+    {
+     "realm": "/chart/dist-v9/index.html?mode=backtest&mcLayout=1",
+     "tf": "1m",
+     "idx": 9902,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 90,
+     "longTaskMs": 10931,
+     "indicators": 2,
+     "elements": 2813
+    },
+    {
+     "realm": "tf=1m&v=20260730b114&chartWindowId=cwms83eclncjkf6j8crd&embedRev=ohlc2",
+     "tf": "5m",
+     "idx": 1595,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 89,
+     "longTaskMs": 10847,
+     "indicators": 2,
+     "elements": 693
+    },
+    {
+     "realm": "tf=1m&v=20260730b114&chartWindowId=cwms83eclncjkf6j8crd&embedRev=ohlc2",
+     "tf": "15m",
+     "idx": 1910,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 89,
+     "longTaskMs": 10847,
+     "indicators": 2,
+     "elements": 693
+    },
+    {
+     "realm": "tf=1m&v=20260730b114&chartWindowId=cwms83eclncjkf6j8crd&embedRev=ohlc2",
+     "tf": "1h",
+     "idx": 494,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 89,
+     "longTaskMs": 10847,
+     "indicators": 2,
+     "elements": 692
+    }
+   ],
+   "longTasksTotal": 357,
+   "longTaskMsTotal": 43472,
+   "advancingPanels": 4,
+   "barsPerSecPerPanel": null,
+   "rendererCpuPercent": 99.6,
+   "heapMB": 428.07,
+   "nodes": 43088,
+   "listeners": 9385
+  },
+  {
+   "n": 23,
+   "minutes": 11,
+   "hours": 0.1856,
+   "elapsedBarsAllPanels": 14218,
+   "hostReplayIndex": 10219,
+   "tickMsWeighted": null,
+   "perPanelTick": [
+    {
+     "realm": "/chart/dist-v9/index.html?mode=backtest&mcLayout=1",
+     "tf": "1m",
+     "idx": 10219,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 134,
+     "longTaskMs": 11002,
+     "indicators": 2,
+     "elements": 2813
+    },
+    {
+     "realm": "tf=1m&v=20260730b114&chartWindowId=cwms83eclncjkf6j8crd&embedRev=ohlc2",
+     "tf": "5m",
+     "idx": 1595,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 135,
+     "longTaskMs": 11102,
+     "indicators": 2,
+     "elements": 693
+    },
+    {
+     "realm": "tf=1m&v=20260730b114&chartWindowId=cwms83eclncjkf6j8crd&embedRev=ohlc2",
+     "tf": "15m",
+     "idx": 1910,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 135,
+     "longTaskMs": 11102,
+     "indicators": 2,
+     "elements": 693
+    },
+    {
+     "realm": "tf=1m&v=20260730b114&chartWindowId=cwms83eclncjkf6j8crd&embedRev=ohlc2",
+     "tf": "1h",
+     "idx": 494,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 135,
+     "longTaskMs": 11102,
+     "indicators": 2,
+     "elements": 692
+    }
+   ],
+   "longTasksTotal": 539,
+   "longTaskMsTotal": 44308,
+   "advancingPanels": 4,
+   "barsPerSecPerPanel": null,
+   "rendererCpuPercent": 99.4,
+   "heapMB": 234.58,
+   "nodes": 20934,
+   "listeners": 4402
+  },
+  {
+   "n": 24,
+   "minutes": 11.5,
+   "hours": 0.1938,
+   "elapsedBarsAllPanels": 14543,
+   "hostReplayIndex": 10544,
+   "tickMsWeighted": null,
+   "perPanelTick": [
+    {
+     "realm": "/chart/dist-v9/index.html?mode=backtest&mcLayout=1",
+     "tf": "1m",
+     "idx": 10544,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 90,
+     "longTaskMs": 10639,
+     "indicators": 2,
+     "elements": 2814
+    },
+    {
+     "realm": "tf=1m&v=20260730b114&chartWindowId=cwms83eclncjkf6j8crd&embedRev=ohlc2",
+     "tf": "5m",
+     "idx": 1595,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 89,
+     "longTaskMs": 10539,
+     "indicators": 2,
+     "elements": 693
+    },
+    {
+     "realm": "tf=1m&v=20260730b114&chartWindowId=cwms83eclncjkf6j8crd&embedRev=ohlc2",
+     "tf": "15m",
+     "idx": 1910,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 89,
+     "longTaskMs": 10539,
+     "indicators": 2,
+     "elements": 693
+    },
+    {
+     "realm": "tf=1m&v=20260730b114&chartWindowId=cwms83eclncjkf6j8crd&embedRev=ohlc2",
+     "tf": "1h",
+     "idx": 494,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 89,
+     "longTaskMs": 10539,
+     "indicators": 2,
+     "elements": 692
+    }
+   ],
+   "longTasksTotal": 357,
+   "longTaskMsTotal": 42256,
+   "advancingPanels": 4,
+   "barsPerSecPerPanel": null,
+   "rendererCpuPercent": 99.7,
+   "heapMB": 467.96,
+   "nodes": 43540,
+   "listeners": 9088
+  },
+  {
+   "n": 25,
+   "minutes": 12,
+   "hours": 0.2022,
+   "elapsedBarsAllPanels": 14822,
+   "hostReplayIndex": 10823,
+   "tickMsWeighted": null,
+   "perPanelTick": [
+    {
+     "realm": "/chart/dist-v9/index.html?mode=backtest&mcLayout=1",
+     "tf": "1m",
+     "idx": 10823,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 147,
+     "longTaskMs": 12639,
+     "indicators": 2,
+     "elements": 2814
+    },
+    {
+     "realm": "tf=1m&v=20260730b114&chartWindowId=cwms83eclncjkf6j8crd&embedRev=ohlc2",
+     "tf": "5m",
+     "idx": 1595,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 148,
+     "longTaskMs": 12700,
+     "indicators": 2,
+     "elements": 693
+    },
+    {
+     "realm": "tf=1m&v=20260730b114&chartWindowId=cwms83eclncjkf6j8crd&embedRev=ohlc2",
+     "tf": "15m",
+     "idx": 1910,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 148,
+     "longTaskMs": 12700,
+     "indicators": 2,
+     "elements": 693
+    },
+    {
+     "realm": "tf=1m&v=20260730b114&chartWindowId=cwms83eclncjkf6j8crd&embedRev=ohlc2",
+     "tf": "1h",
+     "idx": 494,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 150,
+     "longTaskMs": 12858,
+     "indicators": 2,
+     "elements": 692
+    }
+   ],
+   "longTasksTotal": 593,
+   "longTaskMsTotal": 50897,
+   "advancingPanels": 4,
+   "barsPerSecPerPanel": null,
+   "rendererCpuPercent": 99.4,
+   "heapMB": 189.4,
+   "nodes": 30443,
+   "listeners": 3522
+  },
+  {
+   "n": 26,
+   "minutes": 12.5,
+   "hours": 0.2107,
+   "elapsedBarsAllPanels": 15123,
+   "hostReplayIndex": 11124,
+   "tickMsWeighted": null,
+   "perPanelTick": [
+    {
+     "realm": "/chart/dist-v9/index.html?mode=backtest&mcLayout=1",
+     "tf": "1m",
+     "idx": 11124,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 104,
+     "longTaskMs": 11575,
+     "indicators": 2,
+     "elements": 2814
+    },
+    {
+     "realm": "tf=1m&v=20260730b114&chartWindowId=cwms83eclncjkf6j8crd&embedRev=ohlc2",
+     "tf": "5m",
+     "idx": 1595,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 103,
+     "longTaskMs": 11514,
+     "indicators": 2,
+     "elements": 693
+    },
+    {
+     "realm": "tf=1m&v=20260730b114&chartWindowId=cwms83eclncjkf6j8crd&embedRev=ohlc2",
+     "tf": "15m",
+     "idx": 1910,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 103,
+     "longTaskMs": 11514,
+     "indicators": 2,
+     "elements": 693
+    },
+    {
+     "realm": "tf=1m&v=20260730b114&chartWindowId=cwms83eclncjkf6j8crd&embedRev=ohlc2",
+     "tf": "1h",
+     "idx": 494,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 103,
+     "longTaskMs": 11593,
+     "indicators": 2,
+     "elements": 692
+    }
+   ],
+   "longTasksTotal": 413,
+   "longTaskMsTotal": 46196,
+   "advancingPanels": 4,
+   "barsPerSecPerPanel": null,
+   "rendererCpuPercent": 99.6,
+   "heapMB": 374.09,
+   "nodes": 33777,
+   "listeners": 7141
+  },
+  {
+   "n": 27,
+   "minutes": 13,
+   "hours": 0.2189,
+   "elapsedBarsAllPanels": 15412,
+   "hostReplayIndex": 11413,
+   "tickMsWeighted": null,
+   "perPanelTick": [
+    {
+     "realm": "/chart/dist-v9/index.html?mode=backtest&mcLayout=1",
+     "tf": "1m",
+     "idx": 11413,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 154,
+     "longTaskMs": 12153,
+     "indicators": 2,
+     "elements": 2813
+    },
+    {
+     "realm": "tf=1m&v=20260730b114&chartWindowId=cwms83eclncjkf6j8crd&embedRev=ohlc2",
+     "tf": "5m",
+     "idx": 1595,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 154,
+     "longTaskMs": 12153,
+     "indicators": 2,
+     "elements": 693
+    },
+    {
+     "realm": "tf=1m&v=20260730b114&chartWindowId=cwms83eclncjkf6j8crd&embedRev=ohlc2",
+     "tf": "15m",
+     "idx": 1910,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 154,
+     "longTaskMs": 12153,
+     "indicators": 2,
+     "elements": 693
+    },
+    {
+     "realm": "tf=1m&v=20260730b114&chartWindowId=cwms83eclncjkf6j8crd&embedRev=ohlc2",
+     "tf": "1h",
+     "idx": 494,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 152,
+     "longTaskMs": 11916,
+     "indicators": 2,
+     "elements": 692
+    }
+   ],
+   "longTasksTotal": 614,
+   "longTaskMsTotal": 48375,
+   "advancingPanels": 4,
+   "barsPerSecPerPanel": null,
+   "rendererCpuPercent": 99.4,
+   "heapMB": 167.52,
+   "nodes": 27072,
+   "listeners": 5805
+  },
+  {
+   "n": 28,
+   "minutes": 13.5,
+   "hours": 0.2273,
+   "elapsedBarsAllPanels": 15715,
+   "hostReplayIndex": 11716,
+   "tickMsWeighted": null,
+   "perPanelTick": [
+    {
+     "realm": "/chart/dist-v9/index.html?mode=backtest&mcLayout=1",
+     "tf": "1m",
+     "idx": 11716,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 98,
+     "longTaskMs": 11762,
+     "indicators": 2,
+     "elements": 2813
+    },
+    {
+     "realm": "tf=1m&v=20260730b114&chartWindowId=cwms83eclncjkf6j8crd&embedRev=ohlc2",
+     "tf": "5m",
+     "idx": 1595,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 98,
+     "longTaskMs": 11762,
+     "indicators": 2,
+     "elements": 693
+    },
+    {
+     "realm": "tf=1m&v=20260730b114&chartWindowId=cwms83eclncjkf6j8crd&embedRev=ohlc2",
+     "tf": "15m",
+     "idx": 1910,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 98,
+     "longTaskMs": 11762,
+     "indicators": 2,
+     "elements": 693
+    },
+    {
+     "realm": "tf=1m&v=20260730b114&chartWindowId=cwms83eclncjkf6j8crd&embedRev=ohlc2",
+     "tf": "1h",
+     "idx": 494,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 98,
+     "longTaskMs": 11762,
+     "indicators": 2,
+     "elements": 692
+    }
+   ],
+   "longTasksTotal": 392,
+   "longTaskMsTotal": 47048,
+   "advancingPanels": 4,
+   "barsPerSecPerPanel": null,
+   "rendererCpuPercent": 99.7,
+   "heapMB": 364.9,
+   "nodes": 29635,
+   "listeners": 6206
+  },
+  {
+   "n": 29,
+   "minutes": 14,
+   "hours": 0.2356,
+   "elapsedBarsAllPanels": 16000,
+   "hostReplayIndex": 12001,
+   "tickMsWeighted": null,
+   "perPanelTick": [
+    {
+     "realm": "/chart/dist-v9/index.html?mode=backtest&mcLayout=1",
+     "tf": "1m",
+     "idx": 12001,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 135,
+     "longTaskMs": 11631,
+     "indicators": 2,
+     "elements": 2814
+    },
+    {
+     "realm": "tf=1m&v=20260730b114&chartWindowId=cwms83eclncjkf6j8crd&embedRev=ohlc2",
+     "tf": "5m",
+     "idx": 1595,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 135,
+     "longTaskMs": 11631,
+     "indicators": 2,
+     "elements": 693
+    },
+    {
+     "realm": "tf=1m&v=20260730b114&chartWindowId=cwms83eclncjkf6j8crd&embedRev=ohlc2",
+     "tf": "15m",
+     "idx": 1910,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 135,
+     "longTaskMs": 11631,
+     "indicators": 2,
+     "elements": 693
+    },
+    {
+     "realm": "tf=1m&v=20260730b114&chartWindowId=cwms83eclncjkf6j8crd&embedRev=ohlc2",
+     "tf": "1h",
+     "idx": 494,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 135,
+     "longTaskMs": 11631,
+     "indicators": 2,
+     "elements": 692
+    }
+   ],
+   "longTasksTotal": 540,
+   "longTaskMsTotal": 46524,
+   "advancingPanels": 4,
+   "barsPerSecPerPanel": null,
+   "rendererCpuPercent": 99.4,
+   "heapMB": 168.7,
+   "nodes": 46766,
+   "listeners": 9536
+  },
+  {
+   "n": 30,
+   "minutes": 14.5,
+   "hours": 0.2439,
+   "elapsedBarsAllPanels": 16289,
+   "hostReplayIndex": 12290,
+   "tickMsWeighted": null,
+   "perPanelTick": [
+    {
+     "realm": "/chart/dist-v9/index.html?mode=backtest&mcLayout=1",
+     "tf": "1m",
+     "idx": 12290,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 111,
+     "longTaskMs": 11896,
+     "indicators": 2,
+     "elements": 2814
+    },
+    {
+     "realm": "tf=1m&v=20260730b114&chartWindowId=cwms83eclncjkf6j8crd&embedRev=ohlc2",
+     "tf": "5m",
+     "idx": 1595,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 111,
+     "longTaskMs": 11896,
+     "indicators": 2,
+     "elements": 693
+    },
+    {
+     "realm": "tf=1m&v=20260730b114&chartWindowId=cwms83eclncjkf6j8crd&embedRev=ohlc2",
+     "tf": "15m",
+     "idx": 1910,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 112,
+     "longTaskMs": 11966,
+     "indicators": 2,
+     "elements": 693
+    },
+    {
+     "realm": "tf=1m&v=20260730b114&chartWindowId=cwms83eclncjkf6j8crd&embedRev=ohlc2",
+     "tf": "1h",
+     "idx": 494,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 112,
+     "longTaskMs": 11966,
+     "indicators": 2,
+     "elements": 692
+    }
+   ],
+   "longTasksTotal": 446,
+   "longTaskMsTotal": 47724,
+   "advancingPanels": 4,
+   "barsPerSecPerPanel": null,
+   "rendererCpuPercent": 99.5,
+   "heapMB": 323.98,
+   "nodes": 26020,
+   "listeners": 5469
+  },
+  {
+   "n": 31,
+   "minutes": 15,
+   "hours": 0.2522,
+   "elapsedBarsAllPanels": 16571,
+   "hostReplayIndex": 12572,
+   "tickMsWeighted": null,
+   "perPanelTick": [
+    {
+     "realm": "/chart/dist-v9/index.html?mode=backtest&mcLayout=1",
+     "tf": "1m",
+     "idx": 12572,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 153,
+     "longTaskMs": 12530,
+     "indicators": 2,
+     "elements": 2814
+    },
+    {
+     "realm": "tf=1m&v=20260730b114&chartWindowId=cwms83eclncjkf6j8crd&embedRev=ohlc2",
+     "tf": "5m",
+     "idx": 1595,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 153,
+     "longTaskMs": 12530,
+     "indicators": 2,
+     "elements": 693
+    },
+    {
+     "realm": "tf=1m&v=20260730b114&chartWindowId=cwms83eclncjkf6j8crd&embedRev=ohlc2",
+     "tf": "15m",
+     "idx": 1910,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 153,
+     "longTaskMs": 12511,
+     "indicators": 2,
+     "elements": 693
+    },
+    {
+     "realm": "tf=1m&v=20260730b114&chartWindowId=cwms83eclncjkf6j8crd&embedRev=ohlc2",
+     "tf": "1h",
+     "idx": 494,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 153,
+     "longTaskMs": 12511,
+     "indicators": 2,
+     "elements": 692
+    }
+   ],
+   "longTasksTotal": 612,
+   "longTaskMsTotal": 50082,
+   "advancingPanels": 4,
+   "barsPerSecPerPanel": null,
+   "rendererCpuPercent": 99.4,
+   "heapMB": 477.1,
+   "nodes": 40378,
+   "listeners": 8604
+  },
+  {
+   "n": 32,
+   "minutes": 15.5,
+   "hours": 0.2605,
+   "elapsedBarsAllPanels": 16844,
+   "hostReplayIndex": 12845,
+   "tickMsWeighted": null,
+   "perPanelTick": [
+    {
+     "realm": "/chart/dist-v9/index.html?mode=backtest&mcLayout=1",
+     "tf": "1m",
+     "idx": 12845,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 117,
+     "longTaskMs": 12954,
+     "indicators": 2,
+     "elements": 2814
+    },
+    {
+     "realm": "tf=1m&v=20260730b114&chartWindowId=cwms83eclncjkf6j8crd&embedRev=ohlc2",
+     "tf": "5m",
+     "idx": 1595,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 117,
+     "longTaskMs": 12954,
+     "indicators": 2,
+     "elements": 693
+    },
+    {
+     "realm": "tf=1m&v=20260730b114&chartWindowId=cwms83eclncjkf6j8crd&embedRev=ohlc2",
+     "tf": "15m",
+     "idx": 1910,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 116,
+     "longTaskMs": 12903,
+     "indicators": 2,
+     "elements": 693
+    },
+    {
+     "realm": "tf=1m&v=20260730b114&chartWindowId=cwms83eclncjkf6j8crd&embedRev=ohlc2",
+     "tf": "1h",
+     "idx": 494,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 116,
+     "longTaskMs": 12903,
+     "indicators": 2,
+     "elements": 692
+    }
+   ],
+   "longTasksTotal": 466,
+   "longTaskMsTotal": 51714,
+   "advancingPanels": 4,
+   "barsPerSecPerPanel": null,
+   "rendererCpuPercent": 99.6,
+   "heapMB": 237.49,
+   "nodes": 18527,
+   "listeners": 3973
+  },
+  {
+   "n": 33,
+   "minutes": 16,
+   "hours": 0.2689,
+   "elapsedBarsAllPanels": 17124,
+   "hostReplayIndex": 13125,
+   "tickMsWeighted": null,
+   "perPanelTick": [
+    {
+     "realm": "/chart/dist-v9/index.html?mode=backtest&mcLayout=1",
+     "tf": "1m",
+     "idx": 13125,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 160,
+     "longTaskMs": 12420,
+     "indicators": 2,
+     "elements": 2814
+    },
+    {
+     "realm": "tf=1m&v=20260730b114&chartWindowId=cwms83eclncjkf6j8crd&embedRev=ohlc2",
+     "tf": "5m",
+     "idx": 1595,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 161,
+     "longTaskMs": 12479,
+     "indicators": 2,
+     "elements": 693
+    },
+    {
+     "realm": "tf=1m&v=20260730b114&chartWindowId=cwms83eclncjkf6j8crd&embedRev=ohlc2",
+     "tf": "15m",
+     "idx": 1910,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 161,
+     "longTaskMs": 12479,
+     "indicators": 2,
+     "elements": 693
+    },
+    {
+     "realm": "tf=1m&v=20260730b114&chartWindowId=cwms83eclncjkf6j8crd&embedRev=ohlc2",
+     "tf": "1h",
+     "idx": 494,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 161,
+     "longTaskMs": 12479,
+     "indicators": 2,
+     "elements": 692
+    }
+   ],
+   "longTasksTotal": 643,
+   "longTaskMsTotal": 49857,
+   "advancingPanels": 4,
+   "barsPerSecPerPanel": null,
+   "rendererCpuPercent": 99.4,
+   "heapMB": 415.31,
+   "nodes": 33761,
+   "listeners": 7152
+  },
+  {
+   "n": 34,
+   "minutes": 16.5,
+   "hours": 0.2773,
+   "elapsedBarsAllPanels": 17378,
+   "hostReplayIndex": 13379,
+   "tickMsWeighted": null,
+   "perPanelTick": [
+    {
+     "realm": "/chart/dist-v9/index.html?mode=backtest&mcLayout=1",
+     "tf": "1m",
+     "idx": 13379,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 254,
+     "longTaskMs": 16246,
+     "indicators": 2,
+     "elements": 2813
+    },
+    {
+     "realm": "tf=1m&v=20260730b114&chartWindowId=cwms83eclncjkf6j8crd&embedRev=ohlc2",
+     "tf": "5m",
+     "idx": 1595,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 253,
+     "longTaskMs": 16187,
+     "indicators": 2,
+     "elements": 693
+    },
+    {
+     "realm": "tf=1m&v=20260730b114&chartWindowId=cwms83eclncjkf6j8crd&embedRev=ohlc2",
+     "tf": "15m",
+     "idx": 1910,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 254,
+     "longTaskMs": 16269,
+     "indicators": 2,
+     "elements": 693
+    },
+    {
+     "realm": "tf=1m&v=20260730b114&chartWindowId=cwms83eclncjkf6j8crd&embedRev=ohlc2",
+     "tf": "1h",
+     "idx": 494,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 254,
+     "longTaskMs": 16269,
+     "indicators": 2,
+     "elements": 692
+    }
+   ],
+   "longTasksTotal": 1015,
+   "longTaskMsTotal": 64971,
+   "advancingPanels": 4,
+   "barsPerSecPerPanel": null,
+   "rendererCpuPercent": 99.3,
+   "heapMB": 463.01,
+   "nodes": 38123,
+   "listeners": 8021
+  },
+  {
+   "n": 35,
+   "minutes": 17,
+   "hours": 0.2857,
+   "elapsedBarsAllPanels": 17645,
+   "hostReplayIndex": 13646,
+   "tickMsWeighted": null,
+   "perPanelTick": [
+    {
+     "realm": "/chart/dist-v9/index.html?mode=backtest&mcLayout=1",
+     "tf": "1m",
+     "idx": 13646,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 222,
+     "longTaskMs": 13926,
+     "indicators": 2,
+     "elements": 2814
+    },
+    {
+     "realm": "tf=1m&v=20260730b114&chartWindowId=cwms83eclncjkf6j8crd&embedRev=ohlc2",
+     "tf": "5m",
+     "idx": 1595,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 224,
+     "longTaskMs": 14057,
+     "indicators": 2,
+     "elements": 693
+    },
+    {
+     "realm": "tf=1m&v=20260730b114&chartWindowId=cwms83eclncjkf6j8crd&embedRev=ohlc2",
+     "tf": "15m",
+     "idx": 1910,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 223,
+     "longTaskMs": 13975,
+     "indicators": 2,
+     "elements": 693
+    },
+    {
+     "realm": "tf=1m&v=20260730b114&chartWindowId=cwms83eclncjkf6j8crd&embedRev=ohlc2",
+     "tf": "1h",
+     "idx": 494,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 224,
+     "longTaskMs": 14042,
+     "indicators": 2,
+     "elements": 692
+    }
+   ],
+   "longTasksTotal": 893,
+   "longTaskMsTotal": 56000,
+   "advancingPanels": 4,
+   "barsPerSecPerPanel": null,
+   "rendererCpuPercent": 99.3,
+   "heapMB": 210.86,
+   "nodes": 16575,
+   "listeners": 3426
+  },
+  {
+   "n": 36,
+   "minutes": 17.5,
+   "hours": 0.294,
+   "elapsedBarsAllPanels": 17922,
+   "hostReplayIndex": 13923,
+   "tickMsWeighted": null,
+   "perPanelTick": [
+    {
+     "realm": "/chart/dist-v9/index.html?mode=backtest&mcLayout=1",
+     "tf": "1m",
+     "idx": 13923,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 190,
+     "longTaskMs": 11606,
+     "indicators": 2,
+     "elements": 2813
+    },
+    {
+     "realm": "tf=1m&v=20260730b114&chartWindowId=cwms83eclncjkf6j8crd&embedRev=ohlc2",
+     "tf": "5m",
+     "idx": 1595,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 188,
+     "longTaskMs": 11475,
+     "indicators": 2,
+     "elements": 693
+    },
+    {
+     "realm": "tf=1m&v=20260730b114&chartWindowId=cwms83eclncjkf6j8crd&embedRev=ohlc2",
+     "tf": "15m",
+     "idx": 1910,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 190,
+     "longTaskMs": 11578,
+     "indicators": 2,
+     "elements": 693
+    },
+    {
+     "realm": "tf=1m&v=20260730b114&chartWindowId=cwms83eclncjkf6j8crd&embedRev=ohlc2",
+     "tf": "1h",
+     "idx": 494,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 189,
+     "longTaskMs": 11511,
+     "indicators": 2,
+     "elements": 692
+    }
+   ],
+   "longTasksTotal": 757,
+   "longTaskMsTotal": 46170,
+   "advancingPanels": 4,
+   "barsPerSecPerPanel": null,
+   "rendererCpuPercent": 99.3,
+   "heapMB": 423.82,
+   "nodes": 33123,
+   "listeners": 7031
+  },
+  {
+   "n": 37,
+   "minutes": 18,
+   "hours": 0.3024,
+   "elapsedBarsAllPanels": 18182,
+   "hostReplayIndex": 14183,
+   "tickMsWeighted": null,
+   "perPanelTick": [
+    {
+     "realm": "/chart/dist-v9/index.html?mode=backtest&mcLayout=1",
+     "tf": "1m",
+     "idx": 14183,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 244,
+     "longTaskMs": 14912,
+     "indicators": 2,
+     "elements": 2814
+    },
+    {
+     "realm": "tf=1m&v=20260730b114&chartWindowId=cwms83eclncjkf6j8crd&embedRev=ohlc2",
+     "tf": "5m",
+     "idx": 1595,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 244,
+     "longTaskMs": 14912,
+     "indicators": 2,
+     "elements": 693
+    },
+    {
+     "realm": "tf=1m&v=20260730b114&chartWindowId=cwms83eclncjkf6j8crd&embedRev=ohlc2",
+     "tf": "15m",
+     "idx": 1910,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 245,
+     "longTaskMs": 15023,
+     "indicators": 2,
+     "elements": 693
+    },
+    {
+     "realm": "tf=1m&v=20260730b114&chartWindowId=cwms83eclncjkf6j8crd&embedRev=ohlc2",
+     "tf": "1h",
+     "idx": 494,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 245,
+     "longTaskMs": 15023,
+     "indicators": 2,
+     "elements": 692
+    }
+   ],
+   "longTasksTotal": 978,
+   "longTaskMsTotal": 59870,
+   "advancingPanels": 4,
+   "barsPerSecPerPanel": null,
+   "rendererCpuPercent": 99.3,
+   "heapMB": 547.19,
+   "nodes": 42901,
+   "listeners": 9000
+  },
+  {
+   "n": 39,
+   "minutes": 19.532,
+   "hours": 0.3279,
+   "elapsedBarsAllPanels": 18970,
+   "hostReplayIndex": 14971,
+   "tickMsWeighted": null,
+   "perPanelTick": [
+    {
+     "realm": "/chart/dist-v9/index.html?mode=backtest&mcLayout=1",
+     "tf": "1m",
+     "idx": 14971,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 667,
+     "longTaskMs": 41184,
+     "indicators": 2,
+     "elements": 2814
+    },
+    {
+     "realm": "tf=1m&v=20260730b114&chartWindowId=cwms83eclncjkf6j8crd&embedRev=ohlc2",
+     "tf": "5m",
+     "idx": 1595,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 670,
+     "longTaskMs": 41369,
+     "indicators": 2,
+     "elements": 693
+    },
+    {
+     "realm": "tf=1m&v=20260730b114&chartWindowId=cwms83eclncjkf6j8crd&embedRev=ohlc2",
+     "tf": "15m",
+     "idx": 1910,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 667,
+     "longTaskMs": 41155,
+     "indicators": 2,
+     "elements": 693
+    },
+    {
+     "realm": "tf=1m&v=20260730b114&chartWindowId=cwms83eclncjkf6j8crd&embedRev=ohlc2",
+     "tf": "1h",
+     "idx": 494,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 668,
+     "longTaskMs": 41209,
+     "indicators": 2,
+     "elements": 692
+    }
+   ],
+   "longTasksTotal": 2672,
+   "longTaskMsTotal": 164917,
+   "advancingPanels": 4,
+   "barsPerSecPerPanel": null,
+   "rendererCpuPercent": 99.4,
+   "heapMB": 237.73,
+   "nodes": 30134,
+   "listeners": 3753
+  },
+  {
+   "n": 40,
+   "minutes": 19.711,
+   "hours": 0.3308,
+   "elapsedBarsAllPanels": 19059,
+   "hostReplayIndex": 15060,
+   "tickMsWeighted": null,
+   "perPanelTick": [
+    {
+     "realm": "/chart/dist-v9/index.html?mode=backtest&mcLayout=1",
+     "tf": "1m",
+     "idx": 15060,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 94,
+     "longTaskMs": 6283,
+     "indicators": 2,
+     "elements": 2814
+    },
+    {
+     "realm": "tf=1m&v=20260730b114&chartWindowId=cwms83eclncjkf6j8crd&embedRev=ohlc2",
+     "tf": "5m",
+     "idx": 1595,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 91,
+     "longTaskMs": 6098,
+     "indicators": 2,
+     "elements": 693
+    },
+    {
+     "realm": "tf=1m&v=20260730b114&chartWindowId=cwms83eclncjkf6j8crd&embedRev=ohlc2",
+     "tf": "15m",
+     "idx": 1910,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 94,
+     "longTaskMs": 6291,
+     "indicators": 2,
+     "elements": 693
+    },
+    {
+     "realm": "tf=1m&v=20260730b114&chartWindowId=cwms83eclncjkf6j8crd&embedRev=ohlc2",
+     "tf": "1h",
+     "idx": 494,
+     "calls": 0,
+     "meanMs": null,
+     "p95Ms": null,
+     "maxMs": 0,
+     "longTasks": 93,
+     "longTaskMs": 6237,
+     "indicators": 2,
+     "elements": 692
+    }
+   ],
+   "longTasksTotal": 372,
+   "longTaskMsTotal": 24909,
+   "advancingPanels": 4,
+   "barsPerSecPerPanel": null,
+   "rendererCpuPercent": 99.3,
+   "heapMB": 284.14,
+   "nodes": 21104,
+   "listeners": 4424
+  }
+ ],
+ "liveness": {
+  "crashed": false,
+  "errors": []
+ },
+ "build": {
+  "scriptVersion": "20260730b114",
+  "href": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&mcLayout=1"
+ },
+ "tradeControl": {
+  "open": 0,
+  "closed": 0,
+  "journal": 0
+ },
+ "instrumented": [
+  {
+   "url": "://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&mcLayout=1",
+   "already": false,
+   "realm": "/chart/dist-v9/index.html?mode=backtest&mcLayout=1",
+   "wrapped": [
+    "stepForward",
+    "stepForward"
+   ],
+   "longTaskObserver": true
+  },
+  {
+   "url": "tf=1m&v=20260730b114&chartWindowId=cwms83eclncjkf6j8crd&embedRev=ohlc2",
+   "already": false,
+   "realm": "tf=1m&v=20260730b114&chartWindowId=cwms83eclncjkf6j8crd&embedRev=ohlc2",
+   "wrapped": [
+    "stepForward",
+    "stepForward"
+   ],
+   "longTaskObserver": true
+  },
+  {
+   "url": "tf=1m&v=20260730b114&chartWindowId=cwms83eclncjkf6j8crd&embedRev=ohlc2",
+   "already": false,
+   "realm": "tf=1m&v=20260730b114&chartWindowId=cwms83eclncjkf6j8crd&embedRev=ohlc2",
+   "wrapped": [
+    "stepForward",
+    "stepForward"
+   ],
+   "longTaskObserver": true
+  },
+  {
+   "url": "tf=1m&v=20260730b114&chartWindowId=cwms83eclncjkf6j8crd&embedRev=ohlc2",
+   "already": false,
+   "realm": "tf=1m&v=20260730b114&chartWindowId=cwms83eclncjkf6j8crd&embedRev=ohlc2",
+   "wrapped": [
+    "stepForward",
+    "stepForward"
+   ],
+   "longTaskObserver": true
+  }
+ ],
+ "tickWrapCoverage": {
+  "realms": 4,
+  "realmsWithWrappedTick": 4,
+  "note": "tickMs available in the realms listed; realms without a wrap report null rather than zero"
+ },
+ "profileFirst": {
+  "totalHits": 37016,
+  "durationMs": 60000,
+  "top": [
+   {
+    "fn": "_m19iB62WindowFp@chart-indicators-full.js:10519",
+    "hits": 5818,
+    "selfPercent": 15.72
+   },
+   {
+    "fn": "(program)@(no url):-1",
+    "hits": 4847,
+    "selfPercent": 13.09
+   },
+   {
+    "fn": "getBoundingClientRect@(no url):-1",
+    "hits": 3028,
+    "selfPercent": 8.18
+   },
+   {
+    "fn": "talariaAppendIndicatorLegendRow@indicator-ui.js:2967",
+    "hits": 1447,
+    "selfPercent": 3.91
+   },
+   {
+    "fn": "checkVisibility@(no url):-1",
+    "hits": 1147,
+    "selfPercent": 3.1
+   },
+   {
+    "fn": "_resampleDataFull@chart.js:26503",
+    "hits": 755,
+    "selfPercent": 2.04
+   },
+   {
+    "fn": "measure@chart.js:32058",
+    "hits": 686,
+    "selfPercent": 1.85
+   },
+   {
+    "fn": "_renderReplayChartUpdate@replay-system.js:3985",
+    "hits": 664,
+    "selfPercent": 1.79
+   },
+   {
+    "fn": "(garbage collector)@(no url):-1",
+    "hits": 607,
+    "selfPercent": 1.64
+   },
+   {
+    "fn": "m20Q6PatchTarget@replay-system.js:9644",
+    "hits": 426,
+    "selfPercent": 1.15
+   },
+   {
+    "fn": "Chart._drawPanelAxisTicks@chart-indicators-full.js:18540",
+    "hits": 401,
+    "selfPercent": 1.08
+   },
+   {
+    "fn": "setAttribute@(no url):-1",
+    "hits": 379,
+    "selfPercent": 1.02
+   },
+   {
+    "fn": "fillText@(no url):-1",
+    "hits": 338,
+    "selfPercent": 0.91
+   },
+   {
+    "fn": "_inferPrecisionFromData@chart.js:31946",
+    "hits": 321,
+    "selfPercent": 0.87
+   },
+   {
+    "fn": "querySelector@(no url):-1",
+    "hits": 318,
+    "selfPercent": 0.86
+   },
+   {
+    "fn": "m20Q6CapturedClear@replay-system.js:9775",
+    "hits": 305,
+    "selfPercent": 0.82
+   },
+   {
+    "fn": "render@chart.js:29799",
+    "hits": 297,
+    "selfPercent": 0.8
+   },
+   {
+    "fn": "talariaRebuildOhlcIndicatorLegend@indicator-ui.js:3144",
+    "hits": 280,
+    "selfPercent": 0.76
+   },
+   {
+    "fn": "querySelectorAll@(no url):-1",
+    "hits": 271,
+    "selfPercent": 0.73
+   },
+   {
+    "fn": "T_@talaria-v9-live.js:39",
+    "hits": 252,
+    "selfPercent": 0.68
+   },
+   {
+    "fn": "j7@talaria-v9-live.js:142",
+    "hits": 217,
+    "selfPercent": 0.59
+   },
+   {
+    "fn": "V8@talaria-v9-live.js:16",
+    "hits": 206,
+    "selfPercent": 0.56
+   },
+   {
+    "fn": "getPriceDecimalsForSymbol@chart.js:31490",
+    "hits": 204,
+    "selfPercent": 0.55
+   },
+   {
+    "fn": "findGoToTargetIndex@chart.js:23401",
+    "hits": 204,
+    "selfPercent": 0.55
+   },
+   {
+    "fn": "appendChild@(no url):-1",
+    "hits": 200,
+    "selfPercent": 0.54
+   },
+   {
+    "fn": "warn@panel-cmd-bridge.js:114",
+    "hits": 198,
+    "selfPercent": 0.53
+   },
+   {
+    "fn": "(idle)@(no url):-1",
+    "hits": 193,
+    "selfPercent": 0.52
+   },
+   {
+    "fn": "R3@talaria-v9-live.js:39",
+    "hits": 164,
+    "selfPercent": 0.44
+   },
+   {
+    "fn": "drawCandlesticks@chart.js:34179",
+    "hits": 152,
+    "selfPercent": 0.41
+   },
+   {
+    "fn": "(anonymous)@chart-indicators-full.js:20897",
+    "hits": 150,
+    "selfPercent": 0.41
+   },
+   {
+    "fn": "_wallClockParts@timezone-manager.js:244",
+    "hits": 145,
+    "selfPercent": 0.39
+   },
+   {
+    "fn": "(anonymous)@economic-news-sidebar.js:771",
+    "hits": 145,
+    "selfPercent": 0.39
+   },
+   {
+    "fn": "talariaFillLegendLoadingDots@indicator-ui.js:2848",
+    "hits": 145,
+    "selfPercent": 0.39
+   },
+   {
+    "fn": "collectMarkerSourceEvents@economic-news-sidebar.js:760",
+    "hits": 143,
+    "selfPercent": 0.39
+   },
+   {
+    "fn": "m20Q6CapturedQuery@replay-system.js:9684",
+    "hits": 142,
+    "selfPercent": 0.38
+   },
+   {
+    "fn": "w.onmessage@chart-indicators-full.js:8042",
+    "hits": 139,
+    "selfPercent": 0.38
+   },
+   {
+    "fn": "_formatLastPrice@chart.js:31636",
+    "hits": 136,
+    "selfPercent": 0.37
+   },
+   {
+    "fn": "Chart._renderSeparatePanelLegendValue@chart-indicators-full.js:20618",
+    "hits": 133,
+    "selfPercent": 0.36
+   },
+   {
+    "fn": "measureText@(no url):-1",
+    "hits": 132,
+    "selfPercent": 0.36
+   },
+   {
+    "fn": "drawImage@(no url):-1",
+    "hits": 128,
+    "selfPercent": 0.35
+   }
+  ]
+ },
+ "profileLast": {
+  "totalHits": 37185,
+  "durationMs": 60000,
+  "top": [
+   {
+    "fn": "_m19iB62WindowFp@chart-indicators-full.js:10519",
+    "hits": 10880,
+    "selfPercent": 29.26
+   },
+   {
+    "fn": "m20Q6CapturedClear@replay-system.js:9775",
+    "hits": 3867,
+    "selfPercent": 10.4
+   },
+   {
+    "fn": "(program)@(no url):-1",
+    "hits": 3095,
+    "selfPercent": 8.32
+   },
+   {
+    "fn": "getBoundingClientRect@(no url):-1",
+    "hits": 1902,
+    "selfPercent": 5.11
+   },
+   {
+    "fn": "_resampleDataFull@chart.js:26503",
+    "hits": 1239,
+    "selfPercent": 3.33
+   },
+   {
+    "fn": "(garbage collector)@(no url):-1",
+    "hits": 1238,
+    "selfPercent": 3.33
+   },
+   {
+    "fn": "talariaAppendIndicatorLegendRow@indicator-ui.js:2967",
+    "hits": 743,
+    "selfPercent": 2
+   },
+   {
+    "fn": "checkVisibility@(no url):-1",
+    "hits": 714,
+    "selfPercent": 1.92
+   },
+   {
+    "fn": "measure@chart.js:32058",
+    "hits": 461,
+    "selfPercent": 1.24
+   },
+   {
+    "fn": "_renderReplayChartUpdate@replay-system.js:3985",
+    "hits": 447,
+    "selfPercent": 1.2
+   },
+   {
+    "fn": "m20Q6PatchTarget@replay-system.js:9644",
+    "hits": 305,
+    "selfPercent": 0.82
+   },
+   {
+    "fn": "Chart._drawPanelAxisTicks@chart-indicators-full.js:18540",
+    "hits": 248,
+    "selfPercent": 0.67
+   },
+   {
+    "fn": "(idle)@(no url):-1",
+    "hits": 248,
+    "selfPercent": 0.67
+   },
+   {
+    "fn": "setAttribute@(no url):-1",
+    "hits": 238,
+    "selfPercent": 0.64
+   },
+   {
+    "fn": "w.onmessage@chart-indicators-full.js:8042",
+    "hits": 238,
+    "selfPercent": 0.64
+   },
+   {
+    "fn": "render@chart.js:29799",
+    "hits": 233,
+    "selfPercent": 0.63
+   },
+   {
+    "fn": "warn@panel-cmd-bridge.js:114",
+    "hits": 225,
+    "selfPercent": 0.61
+   },
+   {
+    "fn": "fillText@(no url):-1",
+    "hits": 221,
+    "selfPercent": 0.59
+   },
+   {
+    "fn": "_inferPrecisionFromData@chart.js:31946",
+    "hits": 195,
+    "selfPercent": 0.52
+   },
+   {
+    "fn": "querySelectorAll@(no url):-1",
+    "hits": 194,
+    "selfPercent": 0.52
+   },
+   {
+    "fn": "querySelector@(no url):-1",
+    "hits": 193,
+    "selfPercent": 0.52
+   },
+   {
+    "fn": "(anonymous)@chart.js:26433",
+    "hits": 164,
+    "selfPercent": 0.44
+   },
+   {
+    "fn": "packBarsCompact@indicator-performance.js:65",
+    "hits": 158,
+    "selfPercent": 0.42
+   },
+   {
+    "fn": "talariaRebuildOhlcIndicatorLegend@indicator-ui.js:3144",
+    "hits": 149,
+    "selfPercent": 0.4
+   },
+   {
+    "fn": "Chart._m19iExactTailPaintFp@chart-indicators-full.js:11760",
+    "hits": 147,
+    "selfPercent": 0.4
+   },
+   {
+    "fn": "T_@talaria-v9-live.js:39",
+    "hits": 147,
+    "selfPercent": 0.4
+   },
+   {
+    "fn": "fetch@(no url):-1",
+    "hits": 143,
+    "selfPercent": 0.38
+   },
+   {
+    "fn": "(anonymous)@economic-news-sidebar.js:771",
+    "hits": 138,
+    "selfPercent": 0.37
+   },
+   {
+    "fn": "V8@talaria-v9-live.js:16",
+    "hits": 137,
+    "selfPercent": 0.37
+   },
+   {
+    "fn": "j7@talaria-v9-live.js:142",
+    "hits": 136,
+    "selfPercent": 0.37
+   },
+   {
+    "fn": "findGoToTargetIndex@chart.js:23401",
+    "hits": 134,
+    "selfPercent": 0.36
+   },
+   {
+    "fn": "_formatLastPrice@chart.js:31636",
+    "hits": 119,
+    "selfPercent": 0.32
+   },
+   {
+    "fn": "R3@talaria-v9-live.js:39",
+    "hits": 118,
+    "selfPercent": 0.32
+   },
+   {
+    "fn": "appendChild@(no url):-1",
+    "hits": 114,
+    "selfPercent": 0.31
+   },
+   {
+    "fn": "_indicatorAsyncDataToken@chart-indicators-full.js:10285",
+    "hits": 113,
+    "selfPercent": 0.3
+   },
+   {
+    "fn": "m20Q6CapturedQuery@replay-system.js:9684",
+    "hits": 110,
+    "selfPercent": 0.3
+   },
+   {
+    "fn": "measureText@(no url):-1",
+    "hits": 109,
+    "selfPercent": 0.29
+   },
+   {
+    "fn": "(anonymous)@chart-indicators-full.js:20897",
+    "hits": 103,
+    "selfPercent": 0.28
+   },
+   {
+    "fn": "drawCandlesticks@chart.js:34179",
+    "hits": 103,
+    "selfPercent": 0.28
+   },
+   {
+    "fn": "Chart._renderSeparatePanelLegendValue@chart-indicators-full.js:20618",
+    "hits": 102,
+    "selfPercent": 0.27
+   }
+  ]
+ },
+ "verdictBasis": {
+  "samplesAll": 39,
+  "samplesBeforeFirstReseek": 39,
+  "basis": "continuous bar axis before any re-seek"
+ },
+ "trends": {
+  "tickMsVsBars": {
+   "xUnit": "per 1,000 bars played",
+   "label": "tickMs per 1k bars played",
+   "n": 0,
+   "verdict": "INSUFFICIENT",
+   "reason": "fewer than 4 samples",
+   "flatBandPerHour": 0.02,
+   "durationOk": false
+  },
+  "longTaskMsVsBars": {
+   "xUnit": "per 1,000 bars played",
+   "label": "longTaskMs per 1k bars played",
+   "n": 39,
+   "spanHours": 11.806,
+   "durationOk": true,
+   "first": 100016,
+   "last": 24909,
+   "min": 14243,
+   "max": 164917,
+   "perHour": 2202.735,
+   "slopeCi95": [
+    124.734,
+    4280.737
+   ],
+   "slopeSe": 1028.205,
+   "rSquared": 0.11,
+   "flatBandPerHour": 10,
+   "projectedPerHourAt8h": 17621.9,
+   "verdict": "CLIMBS"
+  },
+  "cpuVsBars": {
+   "xUnit": "per 1,000 bars played",
+   "label": "rendererCpu per 1k bars played",
+   "n": 39,
+   "spanHours": 11.806,
+   "durationOk": true,
+   "first": 99.4,
+   "last": 99.3,
+   "min": 99.3,
+   "max": 100,
+   "perHour": -0.007,
+   "slopeCi95": [
+    -0.02,
+    0.007
+   ],
+   "slopeSe": 0.007,
+   "rSquared": 0.024,
+   "flatBandPerHour": 5,
+   "projectedPerHourAt8h": -0.1,
+   "verdict": "BOUNDED"
+  },
+  "barsPerSecVsBars": {
+   "xUnit": "per 1,000 bars played",
+   "label": "throughput per 1k bars played",
+   "n": 0,
+   "verdict": "INSUFFICIENT",
+   "reason": "fewer than 4 samples",
+   "flatBandPerHour": 1,
+   "durationOk": false
+  },
+  "heapVsBars": {
+   "xUnit": "per 1,000 bars played",
+   "label": "heapMB per 1k bars played",
+   "n": 39,
+   "spanHours": 11.806,
+   "durationOk": true,
+   "first": 123.51,
+   "last": 284.14,
+   "min": 123.51,
+   "max": 547.19,
+   "perHour": 4.047,
+   "slopeCi95": [
+    -6.888,
+    14.982
+   ],
+   "slopeSe": 5.411,
+   "rSquared": 0.015,
+   "flatBandPerHour": 1,
+   "projectedPerHourAt8h": 32.4,
+   "verdict": "INDETERMINATE"
+  }
+ },
+ "profileDiff": {
+  "grew": [
+   {
+    "fn": "_m19iB62WindowFp@chart-indicators-full.js:10519",
+    "firstPercent": 15.72,
+    "lastPercent": 29.26,
+    "deltaPercentPoints": 13.54
+   },
+   {
+    "fn": "m20Q6CapturedClear@replay-system.js:9775",
+    "firstPercent": 0.82,
+    "lastPercent": 10.4,
+    "deltaPercentPoints": 9.58
+   },
+   {
+    "fn": "(garbage collector)@(no url):-1",
+    "firstPercent": 1.64,
+    "lastPercent": 3.33,
+    "deltaPercentPoints": 1.69
+   },
+   {
+    "fn": "_resampleDataFull@chart.js:26503",
+    "firstPercent": 2.04,
+    "lastPercent": 3.33,
+    "deltaPercentPoints": 1.29
+   },
+   {
+    "fn": "w.onmessage@chart-indicators-full.js:8042",
+    "firstPercent": 0.38,
+    "lastPercent": 0.64,
+    "deltaPercentPoints": 0.26
+   },
+   {
+    "fn": "(idle)@(no url):-1",
+    "firstPercent": 0.52,
+    "lastPercent": 0.67,
+    "deltaPercentPoints": 0.15
+   },
+   {
+    "fn": "warn@panel-cmd-bridge.js:114",
+    "firstPercent": 0.53,
+    "lastPercent": 0.61,
+    "deltaPercentPoints": 0.08
+   },
+   {
+    "fn": "render@chart.js:29799",
+    "firstPercent": 0.8,
+    "lastPercent": 0.63,
+    "deltaPercentPoints": -0.17
+   },
+   {
+    "fn": "V8@talaria-v9-live.js:16",
+    "firstPercent": 0.56,
+    "lastPercent": 0.37,
+    "deltaPercentPoints": -0.19
+   },
+   {
+    "fn": "findGoToTargetIndex@chart.js:23401",
+    "firstPercent": 0.55,
+    "lastPercent": 0.36,
+    "deltaPercentPoints": -0.19
+   },
+   {
+    "fn": "querySelectorAll@(no url):-1",
+    "firstPercent": 0.73,
+    "lastPercent": 0.52,
+    "deltaPercentPoints": -0.21
+   },
+   {
+    "fn": "j7@talaria-v9-live.js:142",
+    "firstPercent": 0.59,
+    "lastPercent": 0.37,
+    "deltaPercentPoints": -0.22
+   },
+   {
+    "fn": "appendChild@(no url):-1",
+    "firstPercent": 0.54,
+    "lastPercent": 0.31,
+    "deltaPercentPoints": -0.23
+   },
+   {
+    "fn": "T_@talaria-v9-live.js:39",
+    "firstPercent": 0.68,
+    "lastPercent": 0.4,
+    "deltaPercentPoints": -0.28
+   },
+   {
+    "fn": "fillText@(no url):-1",
+    "firstPercent": 0.91,
+    "lastPercent": 0.59,
+    "deltaPercentPoints": -0.32
+   }
+  ],
+  "shrank": [
+   {
+    "fn": "(program)@(no url):-1",
+    "firstPercent": 13.09,
+    "lastPercent": 8.32,
+    "deltaPercentPoints": -4.77
+   },
+   {
+    "fn": "getBoundingClientRect@(no url):-1",
+    "firstPercent": 8.18,
+    "lastPercent": 5.11,
+    "deltaPercentPoints": -3.07
+   },
+   {
+    "fn": "talariaAppendIndicatorLegendRow@indicator-ui.js:2967",
+    "firstPercent": 3.91,
+    "lastPercent": 2,
+    "deltaPercentPoints": -1.91
+   },
+   {
+    "fn": "checkVisibility@(no url):-1",
+    "firstPercent": 3.1,
+    "lastPercent": 1.92,
+    "deltaPercentPoints": -1.18
+   },
+   {
+    "fn": "measure@chart.js:32058",
+    "firstPercent": 1.85,
+    "lastPercent": 1.24,
+    "deltaPercentPoints": -0.61
+   },
+   {
+    "fn": "_renderReplayChartUpdate@replay-system.js:3985",
+    "firstPercent": 1.79,
+    "lastPercent": 1.2,
+    "deltaPercentPoints": -0.59
+   },
+   {
+    "fn": "getPriceDecimalsForSymbol@chart.js:31490",
+    "firstPercent": 0.55,
+    "lastPercent": 0,
+    "deltaPercentPoints": -0.55
+   },
+   {
+    "fn": "Chart._drawPanelAxisTicks@chart-indicators-full.js:18540",
+    "firstPercent": 1.08,
+    "lastPercent": 0.67,
+    "deltaPercentPoints": -0.41
+   },
+   {
+    "fn": "setAttribute@(no url):-1",
+    "firstPercent": 1.02,
+    "lastPercent": 0.64,
+    "deltaPercentPoints": -0.38
+   },
+   {
+    "fn": "talariaRebuildOhlcIndicatorLegend@indicator-ui.js:3144",
+    "firstPercent": 0.76,
+    "lastPercent": 0.4,
+    "deltaPercentPoints": -0.36
+   }
+  ]
+ },
+ "verdict": {
+  "question": "is per-tick cost flat, or does it grow with bars already played?",
+  "tickMsVerdict": "INSUFFICIENT",
+  "tickMsSlopePerBar": null,
+  "tickMsCi": null,
+  "throughputVerdict": "INSUFFICIENT",
+  "longTaskVerdict": "CLIMBS",
+  "answer": "GROWS WITH BARS PLAYED — bar-driven cost confirmed; the profile diff names the function",
+  "namedCulprits": [
+   {
+    "fn": "_m19iB62WindowFp@chart-indicators-full.js:10519",
+    "firstPercent": 15.72,
+    "lastPercent": 29.26,
+    "deltaPercentPoints": 13.54
+   },
+   {
+    "fn": "m20Q6CapturedClear@replay-system.js:9775",
+    "firstPercent": 0.82,
+    "lastPercent": 10.4,
+    "deltaPercentPoints": 9.58
+   },
+   {
+    "fn": "(garbage collector)@(no url):-1",
+    "firstPercent": 1.64,
+    "lastPercent": 3.33,
+    "deltaPercentPoints": 1.69
+   },
+   {
+    "fn": "_resampleDataFull@chart.js:26503",
+    "firstPercent": 2.04,
+    "lastPercent": 3.33,
+    "deltaPercentPoints": 1.29
+   },
+   {
+    "fn": "w.onmessage@chart-indicators-full.js:8042",
+    "firstPercent": 0.38,
+    "lastPercent": 0.64,
+    "deltaPercentPoints": 0.26
+   }
+  ],
+  "tickCoverage": {
+   "realms": 4,
+   "realmsWithWrappedTick": 4,
+   "note": "tickMs available in the realms listed; realms without a wrap report null rather than zero"
+  }
+ }
+}

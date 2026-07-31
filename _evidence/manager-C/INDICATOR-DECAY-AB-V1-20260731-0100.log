@@ -1,0 +1,43 @@
+[heap-cycle 2026-07-30T23:59:07.223Z] layout UI → 4 (li=0)
+[heap-cycle 2026-07-30T23:59:21.462Z] datasets mode=distinct observed=4/4 [A:677@1m(2011) B:673@5m(1596) C:670@15m(1911) D:669@1h(495)]
+[heap-cycle-po-workload 2026-07-30T23:59:21.469Z] arm panel A: wait ready
+[heap-cycle-po-workload 2026-07-30T23:59:21.827Z] arm panel A: ok=false ind=2 replay=true playing=true
+[heap-cycle-po-workload 2026-07-30T23:59:21.827Z] arm panel B: wait ready
+[heap-cycle-po-workload 2026-07-30T23:59:25.178Z] arm panel B: ok=false ind=2 replay=true playing=true
+[heap-cycle-po-workload 2026-07-30T23:59:25.178Z] arm panel C: wait ready
+[heap-cycle-po-workload 2026-07-30T23:59:32.752Z] arm panel C: ok=false ind=2 replay=true playing=false
+[heap-cycle-po-workload 2026-07-30T23:59:32.752Z] arm panel D: wait ready
+[heap-cycle-po-workload 2026-07-30T23:59:36.294Z] arm panel D: ok=false ind=2 replay=true playing=true
+[heap-cycle-po-workload 2026-07-30T23:59:36.294Z] order SKIPPED (zero-trade reproduction)
+[heap-cycle-po-workload 2026-07-30T23:59:44.381Z] play hold done observedPlaying=4
+[ab] arm=2ind build=20260730b115 mode=["candle/candle","candle/null","candle/null","candle/null"] ind=[2,2,2,2]
+[ab] arm=2ind #1 0.38min bars=6587 20.91 bars/s cpu=99.8% cpuMsPerBar=47.74 byIndex=1/4 bySimTime=4/4
+[ab] arm=2ind #2 0.92min bars=7300 20.84 bars/s cpu=98% cpuMsPerBar=47.03 byIndex=1/4 bySimTime=4/4
+[ab] arm=2ind #3 1.47min bars=7945 19.94 bars/s cpu=100.4% cpuMsPerBar=50.34 byIndex=1/4 bySimTime=4/4
+[ab] arm=2ind #4 2.01min bars=8528 17.04 bars/s cpu=99.6% cpuMsPerBar=58.44 byIndex=1/4 bySimTime=4/4
+[ab] arm=2ind #5 2.56min bars=9185 20.21 bars/s cpu=100.1% cpuMsPerBar=49.53 byIndex=1/4 bySimTime=4/4
+[ab] arm=2ind #6 3.1min bars=9761 17.48 bars/s cpu=98.9% cpuMsPerBar=56.58 byIndex=1/4 bySimTime=4/4
+[ab] arm=2ind #7 3.65min bars=10310 16.17 bars/s cpu=101.2% cpuMsPerBar=62.6 byIndex=1/4 bySimTime=4/4
+[ab] arm=2ind #8 4.19min bars=10862 16.73 bars/s cpu=99.5% cpuMsPerBar=59.47 byIndex=1/4 bySimTime=4/4
+[ab] arm=2ind #9 4.73min bars=11387 16.51 bars/s cpu=98.9% cpuMsPerBar=59.91 byIndex=1/4 bySimTime=4/4
+[ab] arm=2ind #10 5.28min bars=11891 15.31 bars/s cpu=100.6% cpuMsPerBar=65.71 byIndex=1/4 bySimTime=4/4
+[ab] arm=2ind #11 5.82min bars=12399 15.43 bars/s cpu=98.4% cpuMsPerBar=63.78 byIndex=1/4 bySimTime=4/4
+[ab] arm=2ind #12 6.36min bars=12897 15.07 bars/s cpu=99.6% cpuMsPerBar=66.09 byIndex=1/4 bySimTime=4/4
+[ab] arm=2ind #13 6.91min bars=13407 15.43 bars/s cpu=99.8% cpuMsPerBar=64.69 byIndex=1/4 bySimTime=4/4
+[ab] arm=2ind #14 7.46min bars=13986 19.84 bars/s cpu=101.2% cpuMsPerBar=51.02 byIndex=1/4 bySimTime=4/4
+[ab] arm=2ind #15 8.1min bars=14478 8.38 bars/s cpu=78.7% cpuMsPerBar=93.9 byIndex=1/4 bySimTime=4/4
+[ab] arm=2ind #16 8.65min bars=14966 14.45 bars/s cpu=100.4% cpuMsPerBar=69.47 byIndex=1/4 bySimTime=4/4
+[ab] arm=2ind #17 9.2min bars=15411 13.83 bars/s cpu=98.8% cpuMsPerBar=71.43 byIndex=1/4 bySimTime=4/4
+[ab] arm=2ind #18 9.75min bars=15849 13.27 bars/s cpu=99.7% cpuMsPerBar=75.13 byIndex=1/4 bySimTime=4/4
+[ab] arm=2ind #19 10.3min bars=16302 14.04 bars/s cpu=100.9% cpuMsPerBar=71.85 byIndex=1/4 bySimTime=4/4
+[ab] arm=2ind #20 10.85min bars=16755 13.84 bars/s cpu=98.7% cpuMsPerBar=71.34 byIndex=1/4 bySimTime=4/4
+[ab] arm=2ind #21 11.4min bars=17202 12.99 bars/s cpu=98.1% cpuMsPerBar=75.5 byIndex=1/4 bySimTime=4/4
+[ab] arm=2ind #22 11.96min bars=17644 13.6 bars/s cpu=100.3% cpuMsPerBar=73.75 byIndex=1/4 bySimTime=4/4
+[ab] arm=2ind #23 12.51min bars=18075 13.05 bars/s cpu=99.8% cpuMsPerBar=76.47 byIndex=1/4 bySimTime=4/4
+[ab] arm=2ind #24 13.07min bars=18496 12.39 bars/s cpu=98.2% cpuMsPerBar=79.25 byIndex=1/4 bySimTime=4/4
+[ab] arm=2ind #25 13.62min bars=18935 13.86 bars/s cpu=99.7% cpuMsPerBar=71.95 byIndex=1/4 bySimTime=4/4
+[ab] arm=2ind #26 14.16min bars=19349 12.27 bars/s cpu=99.8% cpuMsPerBar=81.34 byIndex=1/4 bySimTime=4/4
+[ab] arm=2ind #27 14.71min bars=19750 11.96 bars/s cpu=100% cpuMsPerBar=83.59 byIndex=1/4 bySimTime=4/4
+[ab] arm=2ind #28 15.26min bars=20152 12.61 bars/s cpu=100.1% cpuMsPerBar=79.41 byIndex=1/4 bySimTime=4/4
+[ab] arm=2ind RESULT cpuMsPerBar 54.63 -> 76.96 (40.9%) slope 2.444 CI[1.811,3.076] CLIMBS
+EXIT=-1 

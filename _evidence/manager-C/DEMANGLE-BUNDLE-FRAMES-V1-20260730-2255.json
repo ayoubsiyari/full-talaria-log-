@@ -1,0 +1,60 @@
+{
+ "signature": "DEMANGLE-BUNDLE-FRAMES-V1",
+ "file": ".scratch-w97-deployed-live.js",
+ "bytes": 1720325,
+ "deployedBytes": 1720325,
+ "matchesDeployed": true,
+ "names": [
+  {
+   "name": "R3",
+   "definitionsFound": 1,
+   "entries": [
+    {
+     "atIndex": 100735,
+     "line": 40,
+     "matched": "function R3(",
+     "domCalls": [],
+     "verdict": "no direct DOM call in the sliced body — likely a wrapper or dispatch frame",
+     "reactHints": [
+      "touches fiber.stateNode (React fiber commit)",
+      "reads memoizedProps (React fiber)",
+      "switches on fiber tag (HostComponent=5)"
+     ],
+     "slice": "function R3(t,n,i){var o=n.pendingProps;switch(N5(n),n.tag){case 2:case 16:case 15:case 0:case 11:case 7:case 8:case 12:case 9:case 14:return So(n),null;case 1:return os(n.type)&&v1(),So(n),null;case 3:return o=n.stateNode,hh(),Gr(is),Gr(Co),Y5(),o.pendingContext&&(o.context=o.pendingContext,o.pendingContext=null),(t=="
+    }
+   ]
+  },
+  {
+   "name": "O_",
+   "definitionsFound": 1,
+   "entries": [
+    {
+     "atIndex": 125973,
+     "line": 40,
+     "matched": "function O_(",
+     "domCalls": [],
+     "verdict": "no direct DOM call in the sliced body — likely a wrapper or dispatch frame",
+     "reactHints": [],
+     "slice": "function O_(t){var n=t;do{var i=n.alternate;if(t=n.return,n.flags&32768){if(i=O3(i,n),i!==null){i.flags&=32767,Ii=i;return}if(t!==null)t.flags|=32768,t.subtreeFlags=0,t.deletions=null;else{zi=6,Ii=null;return}}else if(i=R3(i,n,ms),i!==null){Ii=i;return}if(n=n.sibling,n!==null){Ii=n;return}Ii=n=t}while(n!==null);zi===0&"
+    }
+   ]
+  },
+  {
+   "name": "R_",
+   "definitionsFound": 1,
+   "entries": [
+    {
+     "atIndex": 125864,
+     "line": 40,
+     "matched": "function R_(",
+     "domCalls": [],
+     "verdict": "no direct DOM call in the sliced body — likely a wrapper or dispatch frame",
+     "reactHints": [
+      "reads memoizedProps (React fiber)"
+     ],
+     "slice": "function R_(t){var n=W_(t.alternate,t,ms);t.memoizedProps=t.pendingProps,n===null?O_(t):Ii=n,tL.current=null}function O_(t){var n=t;do{var i=n.alternate;if(t=n.return,n.flags&32768){if(i=O3(i,n),i!==null){i.flags&=32767,Ii=i;return}if(t!==null)t.flags|=32768,t.subtreeFlags=0,t.deletions=null;else{zi=6,Ii=null;return}}e"
+    }
+   ]
+  }
+ ]
+}
