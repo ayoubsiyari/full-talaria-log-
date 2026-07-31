@@ -10,6 +10,7 @@ import fs from 'node:fs';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import vm from 'node:vm';
 
 export const SIGNATURE = 'TALARIA_E_TRADE_ATTRIBUTION_CORRECTNESS_V1';
 
@@ -20,8 +21,17 @@ const require = createRequire(import.meta.url);
 
 const SOURCE_ORDER_MANAGER = 'chart v 1.4/chart/modules/order-manager.js';
 const PUBLIC_ORDER_MANAGER = 'homepage/public/chart/modules/order-manager.js';
+const SOURCE_CHART_JS = 'chart v 1.4/chart/chart.js';
+const PUBLIC_CHART_JS = 'homepage/public/chart/chart.js';
 const ATTRIBUTION_RESOLVER = '_resolveTradeJournalAttribution';
+const ATTRIBUTION_RESOLVER_COLLECTOR = '_talariaCollectChartsForAttribution';
 const ATTRIBUTION_RESOLVER_DISABLE_FLAG = '__TALARIA_DISABLE_TRADE_ATTRIBUTION_RESOLVER_V1';
+const RESOLVER_ABSENT_FROM_TREE = 'RESOLVER_ABSENT_FROM_TREE';
+const RESOLVER_ANCHOR_BROKEN = 'RESOLVER_ANCHOR_BROKEN';
+const RESOLVER_PRESENT_IN_TREE = 'RESOLVER_PRESENT_IN_TREE';
+const RESOLVER_PRESENT_BUT_UNCALLED = 'RESOLVER_PRESENT_BUT_UNCALLED';
+const RESOLVER_CALLED_BUT_WRONG = 'RESOLVER_CALLED_BUT_WRONG';
+const RESOLVER_CALLED_AND_CORRECT = 'RESOLVER_CALLED_AND_CORRECT';
 const ATTRIBUTION_RESOLVER_CONTRACT = Object.freeze({
   manager: 'A',
   commit: '59395680c',
@@ -71,10 +81,26 @@ function inspectOrderManager(relPath) {
   };
 }
 
+function inspectChartResolver(relPath) {
+  const text = readRel(relPath);
+  const classChartLine = findLine(text, 'class Chart');
+  return {
+    path: relPath,
+    collectorLine: findLine(text, `function ${ATTRIBUTION_RESOLVER_COLLECTOR}`),
+    resolverLine: findLine(text, `function ${ATTRIBUTION_RESOLVER}(order)`),
+    windowExportLine: findLine(text, `window.${ATTRIBUTION_RESOLVER} = ${ATTRIBUTION_RESOLVER}`),
+    sourceFileIdLine: findLine(text, 'const wanted = order.sourceFileId;'),
+    ambiguityNullLine: findLine(text, 'if (match && match !== chart) return null;'),
+    classChartLine,
+  };
+}
+
 function inspectStaticSurface() {
   return {
     source: inspectOrderManager(SOURCE_ORDER_MANAGER),
     publicMirror: inspectOrderManager(PUBLIC_ORDER_MANAGER),
+    chartResolver: inspectChartResolver(SOURCE_CHART_JS),
+    chartResolverPublicMirror: inspectChartResolver(PUBLIC_CHART_JS),
   };
 }
 
@@ -114,6 +140,151 @@ function loadProductOrderManagerClass() {
   return productOrderManagerClass;
 }
 
+function classifyChartResolverTree(staticSurface) {
+  const entries = [staticSurface.chartResolver, staticSurface.chartResolverPublicMirror];
+  const hasAnyResolver = entries.some((entry) => entry.resolverLine || entry.windowExportLine);
+  if (!hasAnyResolver) {
+    return {
+      state: RESOLVER_ABSENT_FROM_TREE,
+      failures: entries.map((entry) => ({
+        state: RESOLVER_ABSENT_FROM_TREE,
+        reason: 'trade-attribution-resolver-absent-from-tree',
+        path: entry.path,
+        expectedResolver: ATTRIBUTION_RESOLVER,
+        expectedPlacement: ATTRIBUTION_RESOLVER_CONTRACT.placement,
+      })),
+    };
+  }
+
+  const failures = [];
+  for (const entry of entries) {
+    if (!entry.collectorLine) {
+      failures.push({
+        state: RESOLVER_ANCHOR_BROKEN,
+        reason: 'trade-attribution-chart-collector-anchor-broken',
+        path: entry.path,
+        expectedAnchor: `function ${ATTRIBUTION_RESOLVER_COLLECTOR}`,
+      });
+    }
+    if (!entry.resolverLine) {
+      failures.push({
+        state: RESOLVER_ANCHOR_BROKEN,
+        reason: 'trade-attribution-resolver-anchor-broken',
+        path: entry.path,
+        expectedAnchor: `function ${ATTRIBUTION_RESOLVER}(order)`,
+      });
+    }
+    if (!entry.windowExportLine) {
+      failures.push({
+        state: RESOLVER_ANCHOR_BROKEN,
+        reason: 'trade-attribution-window-export-anchor-broken',
+        path: entry.path,
+        expectedPlacement: ATTRIBUTION_RESOLVER_CONTRACT.placement,
+      });
+    }
+    if (!entry.classChartLine) {
+      failures.push({
+        state: RESOLVER_ANCHOR_BROKEN,
+        reason: 'trade-attribution-class-chart-anchor-broken',
+        path: entry.path,
+        expectedAnchor: 'class Chart',
+      });
+    }
+    if (!entry.sourceFileIdLine) {
+      failures.push({
+        state: RESOLVER_ANCHOR_BROKEN,
+        reason: 'trade-attribution-source-file-id-lookup-anchor-broken',
+        path: entry.path,
+        expectedAnchor: 'const wanted = order.sourceFileId;',
+      });
+    }
+    if (!entry.ambiguityNullLine) {
+      failures.push({
+        state: RESOLVER_ANCHOR_BROKEN,
+        reason: 'trade-attribution-ambiguity-null-anchor-broken',
+        path: entry.path,
+        expectedAnchor: 'if (match && match !== chart) return null;',
+      });
+    }
+  }
+
+  return {
+    state: failures.length ? RESOLVER_ANCHOR_BROKEN : RESOLVER_PRESENT_IN_TREE,
+    failures,
+  };
+}
+
+function extractChartResolverSource(relPath = SOURCE_CHART_JS) {
+  const text = readRel(relPath);
+  const start = text.indexOf(`function ${ATTRIBUTION_RESOLVER_COLLECTOR}`);
+  const end = text.indexOf('class Chart', start);
+  const hasResolver = text.includes(`function ${ATTRIBUTION_RESOLVER}(order)`)
+    || text.includes(`window.${ATTRIBUTION_RESOLVER} = ${ATTRIBUTION_RESOLVER}`);
+  if (!hasResolver) {
+    return {
+      ok: false,
+      state: RESOLVER_ABSENT_FROM_TREE,
+      reason: 'trade-attribution-resolver-absent-from-tree',
+      path: relPath,
+    };
+  }
+  if (start < 0) {
+    return {
+      ok: false,
+      state: RESOLVER_ANCHOR_BROKEN,
+      reason: 'trade-attribution-chart-collector-anchor-broken',
+      path: relPath,
+      expectedAnchor: `function ${ATTRIBUTION_RESOLVER_COLLECTOR}`,
+    };
+  }
+  if (end < 0) {
+    return {
+      ok: false,
+      state: RESOLVER_ANCHOR_BROKEN,
+      reason: 'trade-attribution-class-chart-anchor-broken',
+      path: relPath,
+      expectedAnchor: 'class Chart',
+    };
+  }
+  return {
+    ok: true,
+    state: RESOLVER_PRESENT_IN_TREE,
+    source: text.slice(start, end),
+    path: relPath,
+  };
+}
+
+function installChartResolverFromProduct() {
+  if (typeof globalThis.window?.[ATTRIBUTION_RESOLVER] === 'function') {
+    return { ok: true, state: RESOLVER_PRESENT_IN_TREE, installed: true, source: 'preinstalled-window-global' };
+  }
+  const extracted = extractChartResolverSource();
+  if (!extracted.ok) return { ...extracted, installed: false };
+  try {
+    vm.runInNewContext(extracted.source, {
+      window: globalThis.window,
+      Set,
+    }, { filename: SOURCE_CHART_JS });
+  } catch (error) {
+    return {
+      ok: false,
+      state: RESOLVER_ANCHOR_BROKEN,
+      installed: false,
+      reason: 'trade-attribution-resolver-vm-load-failed',
+      path: SOURCE_CHART_JS,
+      error: String(error?.message || error),
+    };
+  }
+  const installed = typeof globalThis.window?.[ATTRIBUTION_RESOLVER] === 'function';
+  return {
+    ok: installed,
+    state: installed ? RESOLVER_PRESENT_IN_TREE : RESOLVER_PRESENT_BUT_UNCALLED,
+    installed,
+    reason: installed ? null : 'trade-attribution-window-export-did-not-install',
+    path: SOURCE_CHART_JS,
+  };
+}
+
 async function withProductGlobals(state, fn) {
   const priorWindow = globalThis.window;
   const priorDocument = globalThis.document;
@@ -123,29 +294,45 @@ async function withProductGlobals(state, fn) {
     makeChart(panelFor(state, panelId)),
   ]));
   const chartA = chartsByPanelId.A;
+  const frameWindows = Object.entries(chartsByPanelId)
+    .filter(([panelId]) => panelId !== 'A')
+    .map(([, chart]) => ({
+      chart,
+      mainChart: null,
+      document: { querySelectorAll: () => [] },
+    }));
+  const document = {
+    documentElement: { classList: { contains: () => false } },
+    getElementById: () => null,
+    addEventListener: () => {},
+    querySelectorAll: (selector) => (selector === 'iframe'
+      ? frameWindows.map((contentWindow) => ({ contentWindow }))
+      : []),
+  };
   globalThis.window = {
     chart: chartA,
+    mainChart: chartA,
     chartsByPanelId,
     multiChartInstances: Object.values(chartsByPanelId),
     screenshotManager: null,
     marketCalcEngine: null,
     getActiveChart: () => chartA,
     addEventListener: () => {},
+    document,
     parent: null,
+    top: null,
   };
   globalThis.window.parent = globalThis.window;
-  globalThis.document = {
-    documentElement: { classList: { contains: () => false } },
-    getElementById: () => null,
-    addEventListener: () => {},
-  };
+  globalThis.window.top = globalThis.window;
+  globalThis.document = document;
   globalThis.userStorage = {
     getItem: () => null,
     setItem: () => {},
     removeItem: () => {},
   };
+  const resolverLoad = installChartResolverFromProduct();
   try {
-    return await fn();
+    return await fn(resolverLoad);
   } finally {
     if (priorWindow === undefined) delete globalThis.window;
     else globalThis.window = priorWindow;
@@ -328,16 +515,19 @@ function assertResolverNull(resolver, input) {
 
 export async function runResolverContractCase(mode) {
   const state = makeState('A');
-  return withProductGlobals(state, async () => {
+  return withProductGlobals(state, async (resolverLoad) => {
     const resolver = globalThis.window?.[ATTRIBUTION_RESOLVER];
     const failures = [];
     if (typeof resolver !== 'function') {
       failures.push({
+        state: resolverLoad.state,
         reason: 'trade-attribution-resolver-not-found',
         expectedPlacement: ATTRIBUTION_RESOLVER_CONTRACT.placement,
+        resolverLoad,
       });
       return {
         mode,
+        resolverState: resolverLoad.state,
         status: 'RED',
         contract: ATTRIBUTION_RESOLVER_CONTRACT,
         failures,
@@ -410,6 +600,8 @@ export async function runResolverContractCase(mode) {
 
     return {
       mode,
+      resolverState: RESOLVER_PRESENT_IN_TREE,
+      resolverLoad,
       status: failures.length ? 'RED' : 'GREEN',
       contract: ATTRIBUTION_RESOLVER_CONTRACT,
       failures,
@@ -490,12 +682,13 @@ export async function runTradeAttributionCase(mode = 'orderRecord') {
   const order = makeOrder(state, mode);
   const referenceCloseData = buildCloseData(state, order, mode);
   const referenceEntry = saveTradeToJournalModel(state, order, referenceCloseData);
-  const { closeData, resolverUsed, productEntry } = await withProductGlobals(state, async () => {
+  const { closeData, resolverUsed, resolverLoad, productEntry } = await withProductGlobals(state, async (resolverLoad) => {
     const manager = makeProductOrderManager(state);
     const productClose = buildCloseDataFromProduct(state, manager, order, mode);
     return {
       closeData: productClose.closeData,
       resolverUsed: productClose.resolverUsed,
+      resolverLoad,
       productEntry: await saveTradeToJournalProduct(manager, state, order, productClose.closeData),
     };
   });
@@ -503,14 +696,24 @@ export async function runTradeAttributionCase(mode = 'orderRecord') {
     ? attributionFailures(state, productEntry)
     : [{ reason: 'product-journal-entry-not-written' }];
   if (mode === 'orderRecord' && resolverUsed !== ATTRIBUTION_RESOLVER) {
-    failures.push({ reason: 'trade-attribution-resolver-not-found', expectedResolver: ATTRIBUTION_RESOLVER, resolverUsed });
+    failures.push({
+      state: resolverLoad.state === RESOLVER_PRESENT_IN_TREE ? RESOLVER_PRESENT_BUT_UNCALLED : resolverLoad.state,
+      reason: resolverLoad.state === RESOLVER_PRESENT_IN_TREE
+        ? 'trade-attribution-resolver-present-but-uncalled'
+        : 'trade-attribution-resolver-not-found',
+      expectedResolver: ATTRIBUTION_RESOLVER,
+      resolverUsed,
+      resolverLoad,
+    });
   }
   return {
     mode,
+    resolverState: resolverLoad.state,
     status: failures.length ? 'RED' : 'GREEN',
     assertion: 'four mismatched panels; trade closed on panel B while focus is panel A; journal uses B instrument and B price',
     target: 'real OrderManager.saveTradeToJournal plus attribution resolver/getCurrentCandle',
     resolverUsed,
+    resolverLoad,
     expected: expectedAttribution(state),
     order: stable(order),
     referenceCloseData: stable(referenceCloseData),
@@ -519,6 +722,14 @@ export async function runTradeAttributionCase(mode = 'orderRecord') {
     productEntry: stable(productEntry),
     failures,
   };
+}
+
+function classifyResolverExecution({ resolverTreeState, orderRecordReport, resolverContractControls }) {
+  if (resolverTreeState.state !== RESOLVER_PRESENT_IN_TREE) return resolverTreeState.state;
+  if (orderRecordReport.resolverUsed !== ATTRIBUTION_RESOLVER) return RESOLVER_PRESENT_BUT_UNCALLED;
+  const contractWrong = resolverContractControls.some((control) => control.status !== 'GREEN');
+  if (orderRecordReport.status !== 'GREEN' || contractWrong) return RESOLVER_CALLED_BUT_WRONG;
+  return RESOLVER_CALLED_AND_CORRECT;
 }
 
 function runControl(cell, report, expected = 'GREEN', expectedReason = null) {
@@ -530,6 +741,7 @@ function runControl(cell, report, expected = 'GREEN', expectedReason = null) {
 
 export async function runTradeAttributionCorrectnessOracle() {
   const staticSurface = inspectStaticSurface();
+  const resolverTreeState = classifyChartResolverTree(staticSurface);
   const staticFailures = [];
   for (const entry of [staticSurface.source, staticSurface.publicMirror]) {
     if (!entry.hasSaveTradeToJournal) staticFailures.push({ reason: 'saveTradeToJournal-not-found', path: entry.path });
@@ -539,6 +751,7 @@ export async function runTradeAttributionCorrectnessOracle() {
     if (!entry.closeDataExitPriceLine) staticFailures.push({ reason: 'close-data-exit-price-line-not-found', path: entry.path });
     if (!entry.sourceFileLine) staticFailures.push({ reason: 'source-file-line-not-found', path: entry.path });
   }
+  staticFailures.push(...resolverTreeState.failures);
 
   const resolverContractControls = [
     runControl('TRADE-RESOLVER-GLOBAL-SIGNATURE', await runResolverContractCase('globalSignature'), 'GREEN'),
@@ -557,6 +770,12 @@ export async function runTradeAttributionCorrectnessOracle() {
     runControl('TRADE-JOURNAL-FOCUS-ORDER-AND-PRICE', await runTradeAttributionCase('focusOrderAndCloseData'), 'RED', 'journal-close-candle-not-order-panel'),
   ];
 
+  const resolverExecutionState = classifyResolverExecution({
+    resolverTreeState,
+    orderRecordReport: greenControls[0].report,
+    resolverContractControls,
+  });
+
   const status = staticFailures.length === 0
     && resolverContractControls.every((control) => control.status === 'GREEN')
     && greenControls.every((control) => control.status === 'GREEN')
@@ -569,6 +788,8 @@ export async function runTradeAttributionCorrectnessOracle() {
     status,
     staticSurface,
     staticFailures,
+    resolverTreeState,
+    resolverExecutionState,
     resolverContract: ATTRIBUTION_RESOLVER_CONTRACT,
     resolverContractControls,
     greenControls,
