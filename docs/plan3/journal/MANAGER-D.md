@@ -363,3 +363,16 @@ exists — eviction deletes the redundant hot copy, it does not invent a new sto
 - M1 artifact not yet returned from B. Only B's host runner script is present under
   `_evidence/manager-B/m20-j1/run-d-m1-harness-on-host.sh`; D will not spend another login-path run. M1 stays
   D-owned and closes when B hands back the host artifact.
+
+## 2026-07-31 20:32 — M1 host artifact returned; split unchanged
+
+- Parity breadth remains covered in `release-parity-non-contamination-v1.mjs`: orders, drawings, replay,
+  keyboard and context menus have reference-vs-candidate GREEN cells plus host-routed RED controls.
+- Read B handoff `HANDOFF-B-TO-D-M1-RAN-ON-B120-AUTH-IS-SOLVED-AND-THE-HARNESS-MISSES-THE-PEAK-20260731-1935.md`.
+  Auth is solved on b120: final URL is the product route, `onLogin: false`, `6242` bars, journal API `200`,
+  `182` trades and `395` screenshots in payload.
+- M1 closed from B artifact as **auth solved / harness misses peak**, not GREEN. Settled D harness reports
+  `UNPROVEN / no-journal-image-surface-detected` at 5.75 MB decoded floor; B's early sample from the same run
+  gives lower-bound **141.57 MB**, `29` full-res images, and D classifier would mark it RED.
+- Destroy split unchanged and coordinated: D owns README 6.3 plus destroy-bytes/late-work; E owns
+  `DESTROY-NO-DESTROY-RESURRECTS-INDICATOR` and teardown correctness behavior.

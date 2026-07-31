@@ -1,47 +1,53 @@
 {
   "signature": "TALARIA_M1_B120_REAL_APP_HARNESS_V2",
-  "measuredAt": "2026-07-31T17:28:24.162Z",
-  "url": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+  "managerDClosure": "M1_AUTH_SOLVED_HARNESS_MISSES_PEAK",
+  "measuredAt": "2026-07-31T18:23:36.836Z",
+  "sourceHandoff": "manager-b-plan3/docs/plan3/HANDOFF-B-TO-D-M1-RAN-ON-B120-AUTH-IS-SOLVED-AND-THE-HARNESS-MISSES-THE-PEAK-20260731-1935.md",
+  "sourceArtifact": "manager-b-plan3/_evidence/manager-D/M1-B120-REAL-APP-HARNESS-20260731.json",
   "expectedBuild": "b120",
   "buildId": "20260731b120",
-  "finalUrl": "http://31.97.192.82:3000/login/?next=%2Fchart%2Fdist-v9%2Findex.html%3Fmode%3Dbacktest%26sessionId%3D936%26fileId%3D677",
+  "finalUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
   "authProvided": true,
+  "authSolved": true,
   "authRoute": {
-    "source": "C:\\Users\\user\\Desktop\\talaria1\\_evidence\\manager-B\\m20-j1\\talaria-auth-route.mjs",
-    "error": "login failed with HTTP 401"
+    "onLogin": false,
+    "chart": true,
+    "bars": 6242,
+    "build": "20260731b120",
+    "journalStatus": 200,
+    "journalTrades": 182,
+    "journalScreenshots": 395,
+    "payloadBytes": 51588056
   },
-  "journal": null,
-  "verdict": {
-    "status": "UNPROVEN_LOGIN_PATH",
-    "reason": "real-app redirected to login; auth cookie required"
-  },
-  "surface": {
-    "imageCount": 1,
-    "fullResolutionImages": 0,
-    "thumbnailImages": 1,
+  "settledHarnessVerdict": {
+    "status": "UNPROVEN",
+    "reason": "no-journal-image-surface-detected",
+    "imageCount": 177,
     "dataUrlImages": 0,
-    "journalLikeImages": 0,
-    "decodedPixelFloorBytes": 244736,
-    "maxImageDecodedBytes": 244736,
-    "rows": [
-      {
-        "frameUrl": "http://31.97.192.82:3000/login/?next=%2Fchart%2Fdist-v9%2Findex.html%3Fmode%3Dbacktest%26sessionId%3D936%26fileId%3D677",
-        "naturalWidth": 256,
-        "naturalHeight": 239,
-        "clientWidth": 80,
-        "clientHeight": 80,
-        "srcKind": "url",
-        "srcLength": 36,
-        "journalLike": false
-      }
-    ],
-    "stable": true,
-    "stableSamples": 3
+    "fullResolutionImages": 1,
+    "thumbnailImages": 160,
+    "decodedPixelFloorBytes": 6029312,
+    "approxDecodedMB": 5.75,
+    "journalLikeImages": 0
   },
-  "processes": {
-    "rendererPrivate": 142811136,
-    "gpuPrivate": 103415808,
-    "processCount": 8
+  "earlySurfaceLowerBound": {
+    "statusIfClassified": "RED",
+    "reasonIfClassified": "full-resolution-images-still-resident",
+    "imageCount": 205,
+    "dataUrlImages": 28,
+    "fullResolutionImages": 29,
+    "thumbnailImages": 160,
+    "decodedPixelFloorMB": 141.57,
+    "largestSingleDecodedBytes": 7551884
   },
-  "caveat": "GREEN_CANDIDATE still requires PO journal-usability confirmation per M1."
+  "harnessDefect": {
+    "summary": "collectStableImageSurface waits for three identical one-second samples, so it selects the quiet state after the transient full-size image peak has decayed.",
+    "entryVsStabilityConflict": "journalLikeImages is 0 at every sample; dataUrlImages is non-zero only during the transient, before stability can be satisfied.",
+    "processMemoryCaveat": "Host Linux run reports rendererPrivate=0 and gpuPrivate=0 because the harness has no Linux process-memory path."
+  },
+  "closure": {
+    "m1QueueItemClosed": true,
+    "productPass": false,
+    "nextQuestion": "Determine whether the 141.57 MB transient is M20-J1 working as designed or virtualized-list row drop-off; it is a lower bound, not a true peak."
+  }
 }
