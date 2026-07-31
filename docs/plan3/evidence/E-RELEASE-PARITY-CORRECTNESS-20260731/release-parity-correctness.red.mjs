@@ -22,6 +22,10 @@ export const CONF01_PANELS = Object.freeze([
   { id: 'D', symbol: 'BTCEUR', fileId: 669, timeframe: '1h' },
 ]);
 
+export const MATCHED_TF_PANELS = Object.freeze(
+  CONF01_PANELS.map((panel) => Object.freeze({ ...panel, timeframe: '1m' })),
+);
+
 function stable(value) {
   if (value === null || typeof value !== 'object') return value;
   if (Array.isArray(value)) return value.map(stable);
@@ -68,9 +72,9 @@ function makePanel(cfg) {
   };
 }
 
-function makeState() {
+function makeState(panelDefs = CONF01_PANELS) {
   return {
-    panels: Object.fromEntries(CONF01_PANELS.map((cfg) => [cfg.id, makePanel(cfg)])),
+    panels: Object.fromEntries(panelDefs.map((cfg) => [cfg.id, makePanel(cfg)])),
     globalIndicatorSlot: null,
     globalDrawingLayer: null,
     globalOverlayLayer: null,
@@ -104,10 +108,16 @@ function snapshotPeers(state, targetId) {
   return out;
 }
 
-function assertConf01Shape() {
-  return CONF01_PANELS.length === 4
-    && new Set(CONF01_PANELS.map((p) => p.symbol)).size === 4
-    && new Set(CONF01_PANELS.map((p) => p.timeframe)).size === 4;
+function conf01Shape(panelDefs) {
+  return {
+    panels: panelDefs,
+    fourPanels: panelDefs.length === 4,
+    fourDistinctSymbols: new Set(panelDefs.map((p) => p.symbol)).size === 4,
+    fourDistinctTimeframes: new Set(panelDefs.map((p) => p.timeframe)).size === 4,
+    mismatchedTimeframesOnly: panelDefs.length === 4
+      && new Set(panelDefs.map((p) => p.timeframe)).size === panelDefs.length,
+    acceptanceWeight: 'same-symbol or matched-timeframe panels earn no contamination-fixture credit',
+  };
 }
 
 function ownerFailures(state) {
@@ -218,13 +228,20 @@ function mutateTarget(state, targetId, surface, mode) {
 
 export function runCorrectnessSuite(opts = {}) {
   const mode = opts.mode || 'scoped';
+  const panelDefs = opts.panelDefs || CONF01_PANELS;
   const failures = [];
   const cells = [];
-  if (!assertConf01Shape()) failures.push({ cell: 'CONF01-SHAPE', reason: 'not-four-distinct-symbols-and-timeframes' });
+  const shape = conf01Shape(panelDefs);
+  if (!shape.fourPanels || !shape.fourDistinctSymbols) {
+    failures.push({ cell: 'CONF01-SHAPE', reason: 'not-four-distinct-symbols' });
+  }
+  if (!shape.mismatchedTimeframesOnly) {
+    failures.push({ cell: 'CONF01-MISMATCHED-TF', reason: 'matched-timeframes-unverified' });
+  }
 
   for (const [index, surface] of CORRECTNESS_SURFACES.entries()) {
-    const targetId = CONF01_PANELS[(index + 1) % CONF01_PANELS.length].id;
-    const state = makeState();
+    const targetId = panelDefs[(index + 1) % panelDefs.length].id;
+    const state = makeState(panelDefs);
     const beforePeers = snapshotPeers(state, targetId);
     const beforeTarget = stableString(snapshotPanel(state.panels[targetId]));
     mutateTarget(state, targetId, surface, mode);
@@ -263,13 +280,7 @@ export function runCorrectnessSuite(opts = {}) {
   return {
     signature: SIGNATURE,
     mode,
-    conf01: {
-      panels: CONF01_PANELS,
-      fourPanels: CONF01_PANELS.length === 4,
-      fourDistinctSymbols: new Set(CONF01_PANELS.map((p) => p.symbol)).size === 4,
-      fourDistinctTimeframes: new Set(CONF01_PANELS.map((p) => p.timeframe)).size === 4,
-      acceptanceWeight: 'same-symbol panels earn no credit',
-    },
+    conf01: shape,
     status: failures.length ? 'RED' : 'GREEN',
     failures,
     cells,
@@ -293,6 +304,7 @@ export function runRedControls() {
       ...control,
       report,
       status: report.status === 'RED'
+        && report.conf01.mismatchedTimeframesOnly === true
         && report.failures.some((f) => f.reason === control.expectedFailureReason)
         ? 'GREEN'
         : 'RED',
@@ -300,15 +312,37 @@ export function runRedControls() {
   });
 }
 
+export function runValidityControls() {
+  const report = runCorrectnessSuite({ mode: 'scoped', panelDefs: MATCHED_TF_PANELS });
+  return [
+    {
+      cell: 'RP-MATCHED-TF-INVALID',
+      expectedFailureReason: 'matched-timeframes-unverified',
+      report,
+      status: report.status === 'RED'
+        && report.failures.some((f) => f.reason === 'matched-timeframes-unverified')
+        ? 'GREEN'
+        : 'RED',
+    },
+  ];
+}
+
 export function runReleaseParityCorrectnessOracle() {
   const green = runCorrectnessSuite({ mode: 'scoped' });
   const redControls = runRedControls();
-  const status = green.status === 'GREEN' && redControls.every((c) => c.status === 'GREEN') ? 'GREEN' : 'RED';
+  const validityControls = runValidityControls();
+  const status = green.status === 'GREEN'
+    && green.conf01.mismatchedTimeframesOnly === true
+    && redControls.every((c) => c.status === 'GREEN')
+    && validityControls.every((c) => c.status === 'GREEN')
+    ? 'GREEN'
+    : 'RED';
   return {
     signature: SIGNATURE,
     status,
     green,
     redControls,
+    validityControls,
     releaseAuthority: {
       currentLimitation: 'Cycle 2 model oracle; must be wired into the real single-realm app before final release credit.',
       transplantTarget: 'D release-parity-non-contamination suite or successor real-app parity gate',
@@ -328,6 +362,13 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     redControls: report.redControls.map((c) => ({
       cell: c.cell,
       mode: c.mode,
+      status: c.status,
+      reportStatus: c.report.status,
+      expectedFailureReason: c.expectedFailureReason,
+      matched: c.report.failures.some((f) => f.reason === c.expectedFailureReason),
+    })),
+    validityControls: report.validityControls.map((c) => ({
+      cell: c.cell,
       status: c.status,
       reportStatus: c.report.status,
       expectedFailureReason: c.expectedFailureReason,

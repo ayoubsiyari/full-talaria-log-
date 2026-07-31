@@ -34,7 +34,8 @@
       "fourPanels": true,
       "fourDistinctSymbols": true,
       "fourDistinctTimeframes": true,
-      "acceptanceWeight": "same-symbol panels earn no credit"
+      "mismatchedTimeframesOnly": true,
+      "acceptanceWeight": "same-symbol or matched-timeframe panels earn no contamination-fixture credit"
     },
     "status": "GREEN",
     "failures": [],
@@ -189,7 +190,8 @@
           "fourPanels": true,
           "fourDistinctSymbols": true,
           "fourDistinctTimeframes": true,
-          "acceptanceWeight": "same-symbol panels earn no credit"
+          "mismatchedTimeframesOnly": true,
+          "acceptanceWeight": "same-symbol or matched-timeframe panels earn no contamination-fixture credit"
         },
         "status": "RED",
         "failures": [
@@ -353,7 +355,8 @@
           "fourPanels": true,
           "fourDistinctSymbols": true,
           "fourDistinctTimeframes": true,
-          "acceptanceWeight": "same-symbol panels earn no credit"
+          "mismatchedTimeframesOnly": true,
+          "acceptanceWeight": "same-symbol or matched-timeframe panels earn no contamination-fixture credit"
         },
         "status": "RED",
         "failures": [
@@ -517,7 +520,8 @@
           "fourPanels": true,
           "fourDistinctSymbols": true,
           "fourDistinctTimeframes": true,
-          "acceptanceWeight": "same-symbol panels earn no credit"
+          "mismatchedTimeframesOnly": true,
+          "acceptanceWeight": "same-symbol or matched-timeframe panels earn no contamination-fixture credit"
         },
         "status": "RED",
         "failures": [
@@ -681,7 +685,8 @@
           "fourPanels": true,
           "fourDistinctSymbols": true,
           "fourDistinctTimeframes": true,
-          "acceptanceWeight": "same-symbol panels earn no credit"
+          "mismatchedTimeframesOnly": true,
+          "acceptanceWeight": "same-symbol or matched-timeframe panels earn no contamination-fixture credit"
         },
         "status": "RED",
         "failures": [
@@ -845,7 +850,8 @@
           "fourPanels": true,
           "fourDistinctSymbols": true,
           "fourDistinctTimeframes": true,
-          "acceptanceWeight": "same-symbol panels earn no credit"
+          "mismatchedTimeframesOnly": true,
+          "acceptanceWeight": "same-symbol or matched-timeframe panels earn no contamination-fixture credit"
         },
         "status": "RED",
         "failures": [
@@ -1009,7 +1015,8 @@
           "fourPanels": true,
           "fourDistinctSymbols": true,
           "fourDistinctTimeframes": true,
-          "acceptanceWeight": "same-symbol panels earn no credit"
+          "mismatchedTimeframesOnly": true,
+          "acceptanceWeight": "same-symbol or matched-timeframe panels earn no contamination-fixture credit"
         },
         "status": "RED",
         "failures": [
@@ -1173,7 +1180,8 @@
           "fourPanels": true,
           "fourDistinctSymbols": true,
           "fourDistinctTimeframes": true,
-          "acceptanceWeight": "same-symbol panels earn no credit"
+          "mismatchedTimeframesOnly": true,
+          "acceptanceWeight": "same-symbol or matched-timeframe panels earn no contamination-fixture credit"
         },
         "status": "RED",
         "failures": [
@@ -1337,7 +1345,8 @@
           "fourPanels": true,
           "fourDistinctSymbols": true,
           "fourDistinctTimeframes": true,
-          "acceptanceWeight": "same-symbol panels earn no credit"
+          "mismatchedTimeframesOnly": true,
+          "acceptanceWeight": "same-symbol or matched-timeframe panels earn no contamination-fixture credit"
         },
         "status": "RED",
         "failures": [
@@ -1501,7 +1510,8 @@
           "fourPanels": true,
           "fourDistinctSymbols": true,
           "fourDistinctTimeframes": true,
-          "acceptanceWeight": "same-symbol panels earn no credit"
+          "mismatchedTimeframesOnly": true,
+          "acceptanceWeight": "same-symbol or matched-timeframe panels earn no contamination-fixture credit"
         },
         "status": "RED",
         "failures": [
@@ -1733,7 +1743,8 @@
           "fourPanels": true,
           "fourDistinctSymbols": true,
           "fourDistinctTimeframes": true,
-          "acceptanceWeight": "same-symbol panels earn no credit"
+          "mismatchedTimeframesOnly": true,
+          "acceptanceWeight": "same-symbol or matched-timeframe panels earn no contamination-fixture credit"
         },
         "status": "RED",
         "failures": [
@@ -2031,7 +2042,8 @@
           "fourPanels": true,
           "fourDistinctSymbols": true,
           "fourDistinctTimeframes": true,
-          "acceptanceWeight": "same-symbol panels earn no credit"
+          "mismatchedTimeframesOnly": true,
+          "acceptanceWeight": "same-symbol or matched-timeframe panels earn no contamination-fixture credit"
         },
         "status": "RED",
         "failures": [
@@ -2359,9 +2371,172 @@
       "status": "GREEN"
     }
   ],
+  "validityControls": [
+    {
+      "cell": "RP-MATCHED-TF-INVALID",
+      "expectedFailureReason": "matched-timeframes-unverified",
+      "report": {
+        "signature": "TALARIA_E_RELEASE_PARITY_CORRECTNESS_V1",
+        "mode": "scoped",
+        "conf01": {
+          "panels": [
+            {
+              "id": "A",
+              "symbol": "XAUUSD",
+              "fileId": 677,
+              "timeframe": "1m"
+            },
+            {
+              "id": "B",
+              "symbol": "HOG",
+              "fileId": 673,
+              "timeframe": "1m"
+            },
+            {
+              "id": "C",
+              "symbol": "ETHBTC",
+              "fileId": 670,
+              "timeframe": "1m"
+            },
+            {
+              "id": "D",
+              "symbol": "BTCEUR",
+              "fileId": 669,
+              "timeframe": "1m"
+            }
+          ],
+          "fourPanels": true,
+          "fourDistinctSymbols": true,
+          "fourDistinctTimeframes": false,
+          "mismatchedTimeframesOnly": false,
+          "acceptanceWeight": "same-symbol or matched-timeframe panels earn no contamination-fixture credit"
+        },
+        "status": "RED",
+        "failures": [
+          {
+            "cell": "CONF01-MISMATCHED-TF",
+            "reason": "matched-timeframes-unverified"
+          }
+        ],
+        "cells": [
+          {
+            "cell": "CORRECTNESS-PRICEMIN",
+            "surface": "priceMin",
+            "targetId": "B",
+            "status": "GREEN",
+            "peersIdentical": true,
+            "targetChanged": true,
+            "peerFailures": [],
+            "targetFailures": []
+          },
+          {
+            "cell": "CORRECTNESS-PRICEMAX",
+            "surface": "priceMax",
+            "targetId": "C",
+            "status": "GREEN",
+            "peersIdentical": true,
+            "targetChanged": true,
+            "peerFailures": [],
+            "targetFailures": []
+          },
+          {
+            "cell": "CORRECTNESS-AUTOSCALE",
+            "surface": "autoScale",
+            "targetId": "D",
+            "status": "GREEN",
+            "peersIdentical": true,
+            "targetChanged": true,
+            "peerFailures": [],
+            "targetFailures": []
+          },
+          {
+            "cell": "CORRECTNESS-PRICEZOOM",
+            "surface": "priceZoom",
+            "targetId": "A",
+            "status": "GREEN",
+            "peersIdentical": true,
+            "targetChanged": true,
+            "peerFailures": [],
+            "targetFailures": []
+          },
+          {
+            "cell": "CORRECTNESS-PRICEOFFSET",
+            "surface": "priceOffset",
+            "targetId": "B",
+            "status": "GREEN",
+            "peersIdentical": true,
+            "targetChanged": true,
+            "peerFailures": [],
+            "targetFailures": []
+          },
+          {
+            "cell": "CORRECTNESS-INDICATOR",
+            "surface": "indicator",
+            "targetId": "C",
+            "status": "GREEN",
+            "peersIdentical": true,
+            "targetChanged": true,
+            "peerFailures": [],
+            "targetFailures": []
+          },
+          {
+            "cell": "CORRECTNESS-DRAWING",
+            "surface": "drawing",
+            "targetId": "D",
+            "status": "GREEN",
+            "peersIdentical": true,
+            "targetChanged": true,
+            "peerFailures": [],
+            "targetFailures": []
+          },
+          {
+            "cell": "CORRECTNESS-OVERLAY",
+            "surface": "overlay",
+            "targetId": "A",
+            "status": "GREEN",
+            "peersIdentical": true,
+            "targetChanged": true,
+            "peerFailures": [],
+            "targetFailures": []
+          },
+          {
+            "cell": "CORRECTNESS-TIMEFRAME",
+            "surface": "timeframe",
+            "targetId": "B",
+            "status": "GREEN",
+            "peersIdentical": true,
+            "targetChanged": true,
+            "peerFailures": [],
+            "targetFailures": []
+          },
+          {
+            "cell": "CORRECTNESS-CHARTTYPE",
+            "surface": "chartType",
+            "targetId": "C",
+            "status": "GREEN",
+            "peersIdentical": true,
+            "targetChanged": true,
+            "peerFailures": [],
+            "targetFailures": []
+          },
+          {
+            "cell": "CORRECTNESS-SCALEMODE",
+            "surface": "scaleMode",
+            "targetId": "D",
+            "status": "GREEN",
+            "peersIdentical": true,
+            "targetChanged": true,
+            "peerFailures": [],
+            "targetFailures": []
+          }
+        ]
+      },
+      "status": "GREEN"
+    }
+  ],
   "releaseAuthority": {
     "currentLimitation": "Cycle 2 model oracle; must be wired into the real single-realm app before final release credit.",
     "transplantTarget": "D release-parity-non-contamination suite or successor real-app parity gate"
   },
-  "measuredAt": "2026-07-31T13:09:48.536Z"
+  "measuredAt": "2026-07-31T14:24:02.770Z"
 }

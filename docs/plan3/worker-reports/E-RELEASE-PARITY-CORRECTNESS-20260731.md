@@ -21,7 +21,7 @@ Then E added the correctness half of D's parity scaffold as an E-owned companion
 ## Assertion Shape
 
 The model uses the same CONF-01 shape as D's scaffold: four panels, four distinct symbols, four distinct
-timeframes, with same-symbol panels carrying no acceptance weight.
+timeframes. Same-symbol panels and matched-timeframe panels carry no contamination-fixture credit.
 
 It asserts isolation across the forbidden fields from `multichart/decisions.md`, with the
 price-axis fields first because that is the original shipped bug class:
@@ -49,7 +49,8 @@ Owner identity is asserted across:
 ## RED Controls
 
 The normal scoped fixture is GREEN. The deliberate contamination fixtures all go RED with the expected
-surface-specific reason:
+surface-specific reason. Every RED control runs against mismatched timeframes only; matched-timeframe
+fixtures are treated as unverified rather than passed.
 
 | Control | Deliberate break | Expected RED reason | Result |
 |---|---|---|---|
@@ -64,6 +65,12 @@ surface-specific reason:
 | `RP-INDICATOR-GLOBAL-SLOT` | Shared indicator slot assigned to every panel | `indicator-cross-contamination` | GREEN control |
 | `RP-DRAWING-GLOBAL-LAYER` | One global drawing layer assigned to every panel | `drawing-cross-contamination` | GREEN control |
 | `RP-OVERLAY-GLOBAL-LAYER` | One global overlay layer assigned to every panel | `overlay-cross-contamination` | GREEN control |
+
+Validity control:
+
+| Control | Deliberate invalid fixture | Expected RED reason | Result |
+|---|---|---|---|
+| `RP-MATCHED-TF-INVALID` | Four distinct symbols but every panel at `1m` | `matched-timeframes-unverified` | GREEN control |
 
 This is still a model oracle. It earns assertion-shape credit now and is ready to transplant into D's
 real single-realm release parity gate when that build exists; it does not claim final release credit by
