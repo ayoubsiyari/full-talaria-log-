@@ -52,6 +52,30 @@ const HostCtor = new Function(`
 
 const ChartDataPipeline = require(PIPELINE);
 
+/**
+ * WORKLOAD STAMP — every ms/s figure below is a per-event cost multiplied by these, and it is
+ * meaningless without them. Two independent measurements of this same function disagreed by 4x
+ * purely on workload: 8.5% of occupancy at zero orders, 2.2% of a freeze at 43 trades where
+ * _chartIndexForCloseMarkerOnChart took 31.8%. Both were right. A re-run in a trade-bearing session
+ * will read this fix as a null result unless it compares against the same stamp.
+ */
+const WORKLOAD = Object.freeze({
+    trades: 0,                 // zero orders open or closed — no order-path cost is in these numbers
+    ticksMeasured: 60,
+    barsPerCase: 'declared per case below',
+    note: 'replay advancing, no orders, no indicators beyond the default set'
+});
+
+/**
+ * The scheduler REQUESTS 62.5 events/s (getCandlePlaybackCadence, 16 ms floor). A saturated main
+ * thread DELIVERS 7.87/s (measured). The requested rate is not a rate share, so the achieved figure
+ * is the one to quote for occupancy; the requested one is kept only so the two can be reconciled.
+ */
+const REQUESTED_EVENT_RATE = 62.5;
+const ACHIEVED_EVENT_RATE = 7.87;
+/** Measured calls per event; the cache hit rate is 0.4%, so both calls land on the resample path. */
+const RESAMPLES_PER_EVENT = 2.0;
+
 function makeBars(n, stepMs = 60_000) {
     const out = new Array(n);
     let px = 100;
@@ -115,7 +139,8 @@ function runReplay(tf, residentBars, ticks, { closeEvery = 5, disabled = false }
         mismatches,
         fullResamplesPerEvent: +(fullCalls / ticks).toFixed(3),
         meanMs: +mean.toFixed(4),
-        msPerSecondAt62_5: +(mean * 62.5).toFixed(1),
+        msPerSecondRequested: +(mean * REQUESTED_EVENT_RATE * RESAMPLES_PER_EVENT).toFixed(1),
+        msPerSecondAchieved: +(mean * ACHIEVED_EVENT_RATE * RESAMPLES_PER_EVENT).toFixed(1),
     };
 }
 
@@ -203,23 +228,60 @@ test('C7b the tail-bucket guard: last bar CROSSING into a new bucket without the
         'a bucket-crossing forming bar must fall through to a full resample, not refresh the old tail');
 });
 
-test('C8 MEASUREMENT: publish the before/after in ms/s at 62.5 events/s', () => {
+test('C8 MEASUREMENT: before/after in ms/s, stamped with bar count and trade count', () => {
     const rows = [];
     for (const [tf, bars] of [['1m', 25583], ['15m', 25583], ['1h', 25583], ['1m', 36104]]) {
         const legacy = runReplay(tf, bars, 60, { disabled: true });
         const fixed = runReplay(tf, bars, 60);
         rows.push({
-            tf, bars,
-            legacy_ms_per_s: legacy.msPerSecondAt62_5,
-            fixed_ms_per_s: fixed.msPerSecondAt62_5,
-            saved_ms_per_s: +(legacy.msPerSecondAt62_5 - fixed.msPerSecondAt62_5).toFixed(1),
+            tf,
+            bars,
+            trades: WORKLOAD.trades,
+            legacy_ms_per_s: legacy.msPerSecondAchieved,
+            fixed_ms_per_s: fixed.msPerSecondAchieved,
+            saved_ms_per_s: +(legacy.msPerSecondAchieved - fixed.msPerSecondAchieved).toFixed(1),
+            // Relative win is rate-independent: the event rate cancels in the ratio, so this is the
+            // one number that survives a re-measurement of the cadence.
+            relative_win: +(legacy.msPerSecondAchieved / Math.max(fixed.msPerSecondAchieved, 1e-9)).toFixed(1),
+            legacy_ms_per_s_at_requested_rate: legacy.msPerSecondRequested,
         });
     }
-    console.log('\nMONSTER-2 before/after (ms/s at 62.5 events/s):');
+    console.log(`\nMONSTER-2 before/after — STAMP: trades=${WORKLOAD.trades}, ticks=${WORKLOAD.ticksMeasured}, `
+        + `achieved rate=${ACHIEVED_EVENT_RATE}/s, resamples/event=${RESAMPLES_PER_EVENT}`);
+    console.log(`  (${WORKLOAD.note})`);
     for (const r of rows) {
-        console.log(`  ${r.tf} @ ${r.bars} bars: ${r.legacy_ms_per_s} -> ${r.fixed_ms_per_s} ms/s  (saved ${r.saved_ms_per_s})`);
+        console.log(`  ${r.tf} @ ${r.bars} bars, ${r.trades} trades: `
+            + `${r.legacy_ms_per_s} -> ${r.fixed_ms_per_s} ms/s  (saved ${r.saved_ms_per_s}, ${r.relative_win}x)`);
     }
     assert.ok(rows.every((r) => r.saved_ms_per_s > 0), 'every configuration must improve');
+    assert.ok(rows.every((r) => r.relative_win > 5), 'the relative win is the rate-independent claim');
+});
+
+test('C8b the published figure is the ACHIEVED rate, not the requested one', () => {
+    // The requested rate is what getCandlePlaybackCadence asks for; a saturated thread delivers far
+    // less. Publishing the requested figure overstates the absolute saving by ~4x, which is exactly
+    // what happened the first time these numbers went out.
+    assert.ok(ACHIEVED_EVENT_RATE < REQUESTED_EVENT_RATE,
+        'achieved rate must be the smaller, measured one');
+    const r = runReplay('1m', 25583, 20, { disabled: true });
+    assert.ok(r.msPerSecondAchieved < r.msPerSecondRequested,
+        'the published ms/s must be derived from the achieved rate');
+    const ratio = r.msPerSecondRequested / r.msPerSecondAchieved;
+    assert.ok(Math.abs(ratio - REQUESTED_EVENT_RATE / ACHIEVED_EVENT_RATE) < 0.01,
+        'the two figures must differ by exactly the rate ratio, so they can be reconciled');
+});
+
+test('C8c the stamp is present and names a trade count, so a re-run cannot be compared blind', () => {
+    // Two correct measurements of this function disagreed 4x on workload alone. A figure quoted
+    // without its trade count is not comparable to one taken in a trade-bearing session.
+    assert.equal(typeof WORKLOAD.trades, 'number', 'trade count must be declared, not implied');
+    assert.equal(WORKLOAD.trades, 0, 'these numbers are the zero-order workload');
+    assert.ok(Object.isFrozen(WORKLOAD), 'the stamp must not be mutable by a later case');
+    const src = readFileSync(new URL(import.meta.url), 'utf8');
+    assert.ok(/trades=\$\{WORKLOAD\.trades\}/.test(src),
+        'the printed report must carry the trade count, not just the source');
+    assert.ok(/\$\{r\.bars\} bars, \$\{r\.trades\} trades/.test(src),
+        'every published row must carry both bar count and trade count');
 });
 
 test('C9 mirror carries the identical pipeline', () => {
