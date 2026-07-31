@@ -6051,3 +6051,51 @@ and four closed ones. Every entry names the owner, the exact undo, and how to ve
 the database or container rather than against the file. Three of the closed items I did not know
 existed until I interrogated the host, which is the whole argument for the file.
 
+
+## B-0227 — killed my own viewport hypothesis, and A's named mechanism is ~1% of the cost
+
+**2026-07-31 19:05** · after RULING-A-NAMED-MONSTER-2-...-1805
+
+C told plainly and committed: panels share one slot, zero 409s across the whole soak window, nothing
+evicted, first soak was not void and the relaunch was not needed. That is my error and the note says
+so. D's route was already delivered before the ruling was written.
+
+Then the part worth keeping. The ruling asked A to explain my plateau, on the reasoning that a
+resample linear in source length would keep climbing. I had a falsifiable prediction on file for
+exactly this — if the bounded set is the viewport, the plateau tracks candles visible — so I ran it.
+
+**My hypothesis is dead.** Alternating zoom so bar growth could not alias with zoom order: visible
+candles 98 vs 211, display series 175-194 vs 308, blocked ms/s 328 vs 319. Indifferent. The bound is
+not the viewport. I designed the alternation specifically so a monotone bar trend could be told apart
+from a zoom effect, and it was the alternation that made the null result trustworthy rather than just
+noisy.
+
+Then eliminated two more candidates by reading lengths rather than reasoning: `REPLAY_RAW_CAP=5000`
+never fires — chart.data grew 5,121 -> 6,242 straight through it with fullRawData constant at 28,859 —
+and the 500-bar context trim is not active either. Source length is unbounded and growing.
+
+**Which made the premise itself suspect, so I timed the thing.** A forced resample miss costs
+**0.9-1.8 ms** at 6,242 bars, highest at 1m and *lower* on higher timeframes, against a measured
+per-event cost of ~86 ms. A hit costs 0. So the entire benefit available from fixing the cache key is
+**at most ~12.6 ms/s of ~320 ms/s — about 4% at 1m and ~2% above it.**
+
+A's source analysis is not wrong and I said so plainly: eight bump sites against a single-slot cache
+needing an exact match is a real defect, and a cache that cannot hit is worse than no cache. What is
+wrong is the cost attribution. Had A shipped it against a `MONSTER-2` gate, the gate would have gone
+green on a fix that removes one percent of the defect — the sixth instance today of a test passing for
+a reason unrelated to the thing it exists to catch, and the first where I could have prevented it with
+a number instead of an argument.
+
+**It also corrects my own headline.** Per-event cost is flat across 1,930-6,242 bars, a 3.2x range. So
+"cost grows with bars" is true only below ~1,100; above that what changed is that events crossed the
+50 ms long-task threshold, not that they got more expensive. The degradation is real and user-visible
+and the number stands, but the mechanism story I attached to it was wrong in the plateau region.
+
+**Limit I stated rather than hid:** `getDisplaySeries()` timed 0 ms because my loop never bumped
+dataVersion between calls, so it served its own display cache. **I have not measured a cold full
+per-event path** — only the resample inside it. So I have narrowed where the 90 ms is not, and have not
+found where it is. Said that explicitly so A does not read elimination as an answer.
+
+Recommended gate: not "the cache hits", which passes on a 1% fix, but cost per data event against bars
+loaded, with the per-event figure required to move.
+
