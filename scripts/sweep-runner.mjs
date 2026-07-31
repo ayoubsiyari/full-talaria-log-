@@ -21,6 +21,7 @@
  * per NIGHT-01. A sweep with fewer than 3 usable points reports NO FIT rather than a line through
  * two dots.
  */
+import { execSync } from 'node:child_process';
 import fs from 'node:fs';
 
 import { bootConf01Session, keepConf01Playing, readConf01State, CONF01_PANEL_IDS } from './lib/conf01-session.mjs';
@@ -32,6 +33,34 @@ import { readOsFootprints } from './process-memory-census.mjs';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const EVIDENCE = 'c:\\Users\\user\\Desktop\\talaria1\\_evidence\\manager-C';
+/**
+ * A boot that has produced nothing after this long is the window-claim hang, not a slow login:
+ * S3's fourth point sat silent for 25 minutes and burned the sweep's whole remaining budget. Failing
+ * the point fast keeps the rest of the curve.
+ */
+const BOOT_TIMEOUT_MIN = 8;
+
+function killStrayChrome() {
+  try {
+    execSync('powershell -NoProfile -Command "Get-Process chrome -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowTitle -eq \'\' } | Stop-Process -Force"',
+      { stdio: 'ignore', timeout: 30_000 });
+  } catch { /* nothing to kill */ }
+}
+
+/** Boots with a deadline. On timeout the point is VOID and the queue keeps its remaining points. */
+async function bootWithDeadline(bootOpts) {
+  let timer = null;
+  try {
+    return await Promise.race([
+      bootConf01Session(bootOpts),
+      new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`boot exceeded ${BOOT_TIMEOUT_MIN} min with no session (window-claim hang signature)`)), BOOT_TIMEOUT_MIN * 60_000);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
 /** Derived in DERIVE-SWEEP-POINT-DURATION-V1. Do not shorten without re-deriving. */
 export const POINT_MINUTES = 12;
 
@@ -162,7 +191,7 @@ async function runPoint(sweep, value, { pointMinutes, outPath, report }) {
       bootOpts.preloadScript = `window.CHART_BACKTEST_SMART_INITIAL_LIMIT = ${value};`;
     }
 
-    session = await bootConf01Session(bootOpts);
+    session = await bootWithDeadline(bootOpts);
     const { page, cdp, browserCdp, conf01 } = session;
     point.build = await page.evaluate(() => {
       const s = [...document.querySelectorAll('script[src]')]
@@ -224,6 +253,10 @@ async function runPoint(sweep, value, { pointMinutes, outPath, report }) {
     if (session) {
       await session.cdp?.detach?.().catch(() => {});
       await session.browser?.close?.().catch(() => {});
+    } else if (point.status === 'VOID') {
+      // A boot that timed out never handed back a browser to close, so the orphan has to be
+      // reaped here or it competes with the next point for memory.
+      killStrayChrome();
     }
     save();
   }
