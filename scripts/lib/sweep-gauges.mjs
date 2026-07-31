@@ -163,12 +163,131 @@ async function readCounters(cdp) {
   return out;
 }
 
-async function readWorkers(browserCdp) {
+/**
+ * Worker realms, WITH their heaps. Counting workers was never the gap — the gap was that a worker
+ * heap lives in its own V8 isolate, so neither `usedJSHeapSize` nor `Performance.getMetrics` on the
+ * page can see a byte of it.
+ *
+ * `performance.measureUserAgentSpecificMemory()` is the documented route and is tried first, but it
+ * requires cross-origin isolation (COOP/COEP) which this server does not send, so it is expected to
+ * be unavailable and its unavailability is recorded rather than assumed. The route that works
+ * regardless: attach to each worker target over CDP and ask that isolate directly.
+ */
+async function readWorkers(browserCdp, page) {
+  const out = { workers: null, workerTypes: [], workerHeaps: [], workerHeapTotalMB: null, uaSpecificMemory: null };
   try {
     const { targetInfos } = await browserCdp.send('Target.getTargets');
     const workers = (targetInfos || []).filter((t) => /worker/i.test(t.type));
-    return { workers: workers.length, workerTypes: [...new Set(workers.map((w) => w.type))] };
-  } catch { return { workers: null, workerTypes: [] }; }
+    out.workers = workers.length;
+    out.workerTypes = [...new Set(workers.map((w) => w.type))];
+
+    // Each worker gets its own CDP session via the Puppeteer target, which is the supported way to
+    // reach another isolate; a browser-level session cannot answer Runtime.getHeapUsage for it.
+    let total = 0;
+    let measured = 0;
+    const browser = page?.browser?.();
+    const workerTargets = (browser && typeof browser.targets === 'function')
+      ? browser.targets().filter((t) => /worker/i.test(t.type()))
+      : [];
+    for (const t of workerTargets) {
+      const row = { type: t.type(), url: String(t.url() || '').slice(-70), heapUsedMB: null, heapTotalMB: null, why: null };
+      let session = null;
+      try {
+        session = await t.createCDPSession();
+        const usage = await session.send('Runtime.getHeapUsage');
+        row.heapUsedMB = +(usage.usedSize / 1048576).toFixed(2);
+        row.heapTotalMB = +(usage.totalSize / 1048576).toFixed(2);
+        total += row.heapUsedMB;
+        measured += 1;
+      } catch (err) {
+        row.why = String(err?.message || err).slice(0, 80);
+      } finally {
+        if (session) await session.detach().catch(() => {});
+      }
+      out.workerHeaps.push(row);
+    }
+    out.workerHeapTotalMB = measured > 0 ? +total.toFixed(2) : null;
+    out.workerHeapsMeasured = measured;
+    out.workerTargetsSeenByPuppeteer = workerTargets.length;
+    if (out.workers > 0 && workerTargets.length === 0) {
+      out.workerHeapGap = `CDP reports ${out.workers} worker target(s) but Puppeteer exposes none, so their heaps are unmeasured rather than zero`;
+    }
+  } catch { /* leave nulls */ }
+
+  if (page) {
+    out.uaSpecificMemory = await page.evaluate(async () => {
+      if (typeof performance.measureUserAgentSpecificMemory !== 'function') {
+        return { available: false, reason: 'not a function on this surface', crossOriginIsolated: !!self.crossOriginIsolated };
+      }
+      try {
+        const r = await performance.measureUserAgentSpecificMemory();
+        const byScope = {};
+        for (const b of r.breakdown || []) {
+          for (const a of b.attribution || []) {
+            const k = a.scope || 'unknown';
+            byScope[k] = +(((byScope[k] || 0) + b.bytes) / 1048576).toFixed(2);
+          }
+          if (!(b.attribution || []).length && b.bytes) {
+            byScope[(b.types || ['unattributed']).join('+')] = +(((byScope.unattributed || 0) + b.bytes) / 1048576).toFixed(2);
+          }
+        }
+        return { available: true, totalMB: +(r.bytes / 1048576).toFixed(2), byScope, crossOriginIsolated: !!self.crossOriginIsolated };
+      } catch (err) {
+        return { available: false, reason: String(err?.message || err).slice(0, 120), crossOriginIsolated: !!self.crossOriginIsolated };
+      }
+    }).catch((err) => ({ available: false, reason: String(err).slice(0, 120) }));
+  }
+  return out;
+}
+
+/**
+ * Canvas and GPU surface accounting. The GPU process footprint is an OS number that says nothing
+ * about WHAT is in it; this counts the surfaces the page actually asks for and prices them at
+ * 4 bytes per device pixel, which is the floor for an RGBA backing store. A canvas is also
+ * double-buffered while compositing, so the true cost is at least this and possibly twice it —
+ * stated as a floor, never as the total.
+ */
+const canvasCensusSource = () => {
+  const dpr = window.devicePixelRatio || 1;
+  const list = [...document.querySelectorAll('canvas')];
+  let bytes = 0;
+  let pixels = 0;
+  const sizes = [];
+  for (const c of list) {
+    const w = c.width || 0;
+    const h = c.height || 0;
+    pixels += w * h;
+    bytes += w * h * 4;
+    if (sizes.length < 12) sizes.push(`${w}x${h}`);
+  }
+  // Deliberately NOT probing getContext(): on a canvas that has no context yet, asking for one
+  // allocates a backing store, so the probe would inflate the very number being measured.
+  return {
+    canvases: list.length,
+    devicePixelRatio: dpr,
+    totalPixels: pixels,
+    backingStoreFloorMB: +(bytes / 1048576).toFixed(2),
+    largestSizes: sizes,
+    zeroSizedCanvases: list.filter((c) => !c.width || !c.height).length,
+  };
+};
+
+async function readCanvasCensus(page) {
+  const perFrame = [];
+  for (const [i, f] of page.frames().entries()) {
+    try {
+      const r = await f.evaluate(canvasCensusSource);
+      if (r && r.canvases > 0) perFrame.push({ frameIndex: i, ...r });
+    } catch { /* frame gone */ }
+  }
+  const total = perFrame.reduce((t, r) => t + r.backingStoreFloorMB, 0);
+  return {
+    frames: perFrame.length,
+    canvasesTotal: perFrame.reduce((t, r) => t + r.canvases, 0),
+    backingStoreFloorTotalMB: +total.toFixed(2),
+    note: 'Floor only: 4 bytes per device pixel of declared canvas size. Excludes compositor double-buffering, layer tiles and decoded images, so the GPU process footprint should exceed it.',
+    perFrame,
+  };
 }
 
 async function cpuSample(browserCdp) {
@@ -226,7 +345,8 @@ export async function readSweepGauges(page, cdp, browserCdp, {
     } catch { /* frame gone */ }
   }
 
-  const workers = await readWorkers(browserCdp);
+  const workers = await readWorkers(browserCdp, page);
+  const canvas = await readCanvasCensus(page);
   const storage = await readStorageAndNetwork(page);
 
   let footprint = {};
@@ -261,6 +381,7 @@ export async function readSweepGauges(page, cdp, browserCdp, {
     cpu,
     counters: { live, collected },
     workers,
+    canvas,
     storage,
     footprint,
     realms,
@@ -281,4 +402,4 @@ export async function readSweepGauges(page, cdp, browserCdp, {
   };
 }
 
-export const SWEEP_GAUGE_SCOPE_NOTE = 'Collected: OS private memory by process type, GPU process private memory, JS heap live and post-GC, elements/nodes/listeners/documents/frames/workers, copies-per-bar, CPU-ms per bar, bars/sec, paints/sec and paints/bar, recalc cadence and cost where installed, localStorage and StorageManager estimate and SW cache count, network count and bytes, renderer and GPU CPU percent. NOT collected: true main-thread share by category (needs a trace; renderer CPU percent is reported instead and is a different number) and renders-per-React-commit (paints/sec and paints/bar are the proxies).';
+export const SWEEP_GAUGE_SCOPE_NOTE = 'Collected: OS private memory by process type, GPU process private memory, worker realm heaps read per-isolate over CDP (Runtime.getHeapUsage against each attached worker target, which needs no cross-origin isolation) with measureUserAgentSpecificMemory attempted and its availability recorded, canvas backing-store floor at 4 bytes per device pixel per frame, JS heap live and post-GC, elements/nodes/listeners/documents/frames/workers, copies-per-bar, CPU-ms per bar, bars/sec, paints/sec and paints/bar, recalc cadence and cost where installed, localStorage and StorageManager estimate and SW cache count, network count and bytes, renderer and GPU CPU percent. NOT collected: true main-thread share by category (needs a trace; renderer CPU percent is reported instead and is a different number) and renders-per-React-commit (paints/sec and paints/bar are the proxies).';
