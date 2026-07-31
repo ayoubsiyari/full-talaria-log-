@@ -77,7 +77,12 @@ const rows = manifest.scenarios.map((s) => {
   if (status === 'OK') verdict = graded || 'completed, but the artifact carried no verdict block';
   else if (status === 'VOID') verdict = `${s.reason}${graded ? ` · partial: ${graded}` : ''}`;
   else if (status === 'SKIPPED') verdict = s.reason;
-  else verdict = graded ? `in progress · latest: ${graded}` : 'in progress';
+  else {
+    // A live run has no verdict block yet, which is not the same thing as having died. Saying
+    // "died before grading" about a running soak would be the PO's first and worst impression.
+    const partial = graded && !/died before grading/.test(graded) ? ` · latest: ${graded}` : '';
+    verdict = `still running${partial}`;
+  }
   return { id: s.id, title: s.title, status, verdict, elapsed: s.elapsedMin, why: s.why };
 });
 
