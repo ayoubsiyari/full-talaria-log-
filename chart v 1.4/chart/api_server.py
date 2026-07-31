@@ -14843,6 +14843,50 @@ def _support_set_ticket_extra(t: SupportThread, data: dict) -> None:
     t.ticket_extra = json.dumps(data, separators=(",", ":"))[:12000]
 
 
+def _support_account_facts(db, user) -> dict:
+    """Where this reporter sits on the account-age / trade-volume axis, stamped by the server.
+
+    Deliberately NOT part of the client's support passport, for three reasons:
+
+    1. Forgery. The passport is assembled in the browser. Account age and trade count change
+       how a ticket is triaged, so a field a user can edit is a field that can jump their
+       queue position. The server already knows both from the authenticated session.
+    2. Coverage. Three code paths open tickets today — SupportInbox, V16SupportChatPopover and
+       the legacy V9 chart, which builds its own context object. "Every report carries its own
+       position" means every, and only the server sees all three.
+    3. Availability. The reports that most need triage context come from broken clients. A
+       browser-side field is missing exactly when it matters.
+
+    Unavailable values are reported as "unknown", never as 0. A new account with no trades and
+    an account whose facts could not be read look identical if both say zero, and the whole
+    point of the axis is telling those two apart.
+    """
+    facts: dict = {}
+
+    created = getattr(user, "created_at", None)
+    if isinstance(created, datetime):
+        # created_at is stored naive UTC (datetime.utcnow default), so compare against utcnow.
+        facts["account_age_days"] = max((datetime.utcnow() - created).days, 0)
+    else:
+        facts["account_age_days"] = "unknown"
+
+    try:
+        # trading_session_journal_trades is the closed-trade record: one row per journal trade,
+        # written when a trade completes. user_id is indexed, so this is a cheap aggregate.
+        facts["closed_trades"] = int(
+            db.query(func.count(TradingSessionJournalTrade.id))
+            .filter(TradingSessionJournalTrade.user_id == int(user.id))
+            .scalar()
+            or 0
+        )
+    except Exception:
+        # A ticket must still open if this count fails. Support losing one field beats a user
+        # who cannot report the outage.
+        facts["closed_trades"] = "unknown"
+
+    return facts
+
+
 def _support_load_tags(t: SupportThread) -> list[str]:
     raw = getattr(t, "tags_json", None) or ""
     if not raw:
@@ -15496,6 +15540,9 @@ def _support_thread_dict(
         "tags": tags,
         "context": extra.get("context") if isinstance(extra.get("context"), dict) else None,
         "structured": extra.get("structured") if isinstance(extra.get("structured"), dict) else None,
+        # Server-stamped account position; separate from `context` so the trust boundary
+        # stays visible to anything reading a thread.
+        "account": extra.get("account") if isinstance(extra.get("account"), dict) else None,
         "related_thread_id": rel_id,
         "related_ticket_ref": rel_ref,
         "csat_rating": getattr(t, "csat_rating", None),
@@ -15725,6 +15772,9 @@ async def support_create_thread(request: Request):
             extra["structured"] = {
                 str(k)[:64]: str(v)[:2000] for k, v in list(structured_in.items())[:12]
             }
+        # Written after the client-supplied blocks and under its own key, so a crafted
+        # `context` can neither overwrite these nor be mistaken for them.
+        extra["account"] = _support_account_facts(db, user)
         t = SupportThread(
             user_id=user.id,
             subject=subj[: SUPPORT_SUBJECT_MAX],
