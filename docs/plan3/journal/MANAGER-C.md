@@ -1518,3 +1518,139 @@ drift was noise I was right not to call growth). And the first ten-hour launch d
 I redirected its pipes in-process with nothing draining them. Configuration now comes from arguments, not
 the environment, and no long run launches again without a short launch check first.
 
+
+## W107 — 2026-07-31 13:40 · RESET-01 reopens item 7, and the mechanism is four lines of our own code
+
+**I accept the rejection on all three grounds.** The strongest of them is the second, which I got wrong in
+a way worth naming: I treated "it is Chrome's back-forward cache" as an exoneration when it is a
+mechanism. Users run bfcache on, so they live the staircase, and the reason Chrome can hold our document
+is that our document is enormous and hands itself over intact. That reframing is the Director's and it is
+better than mine.
+
+**AND THE CODE IS MORE SPECIFIC THAN EITHER OF US SAID.** chart.js has FOUR memory-release hooks, all four
+registered on `pagehide` — background render catch-up (L3160), host cache (L3896), **the shared bar store
+(L4018)**, and panel host commit (L5027). Every one of them opens with the same line:
+
+    if (ev && ev.persisted === true) return;
+
+`persisted` is true EXACTLY when the document is being put into the back-forward cache. So every release
+path we own is switched off precisely on the cached path. Not "we take no action" — we wrote the action and
+then disabled it for this case. The bar-store hook is the one that matters most, because bars are
+23.98 MB per thousand and 82% of resident bars are never displayed.
+
+**The early return is defensible and still has to change.** Releasing on a path where the user may press
+Back, with no re-hydration, trades a memory bug for a correctness bug — and there IS no re-hydration: the
+only `pageshow` listener in the bundle is `_handleViewportRefresh` (L1572), a viewport refresh. So A's cut
+is a PAIR, and I recommend the cheap half for the canary: make the heavy document bfcache-INELIGIBLE
+(`Cache-Control: no-store`), and all four existing hooks start firing on every exit with no new release
+logic written. Option two — drop the early return and add `pageshow`-persisted re-acquisition — is
+strictly better and materially more work.
+
+**One scoping call, stated before it could look like an excuse: only the logout exit can use bfcache.** A
+reload replaces the same document, a tab close destroys it, so neither is a back-forward cache path and
+the two arms cannot differ on them. The second arm is therefore spent on logout, which is where it buys
+something.
+
+**A correction I caught in my own scan before reporting it.** My first pass concluded "NO pagehide handler
+releases memory" — an artifact of a regex that could only find `function foo(` and `const foo =`, so it
+missed four handlers whose own NAMES contain the word Release. The corrected reader reports INCONCLUSIVE
+when it cannot find a body rather than reporting absence. Counting handler mentions can never answer this
+question; only reading them can.
+
+**ON THE ARTIFACT, PRECISELY.** The clearing arm was destroyed by my stale `C_OUT` and the numbers were
+briefly in a commit body with nothing behind them — the Director is right, and right that it landed on the
+morning's most consequential claim. It is on disk now, signature `SESSION-RESET-V1`, arm
+`bfcache-disabled`, written 12:09, **nineteen minutes after the ruling, so the check was accurate when it
+was made.** What is on disk is a REPLICATION, not the original: documents [2,2,2] identical, heap within
+0.16 MB, footprint growth −9.5 MB where the original read +14.7. The original is gone permanently.
+
+**AND THE AUDIT I BUILT TO PREVENT A REPEAT FOUND SOMETHING WORSE ON THE SAME MEASUREMENT.** Both
+`SESSION-RESET` arms recorded `buildStamp: null` — the probe read `__TALARIA_CHART_BUILD_ID`, which the
+dist-v9 single-chart page does not set. So item 7's contested A/B was not only light and out of
+configuration, **it was unstamped**, and under MEAS-01 that is a second reason it could not have closed the
+item. `scripts/lib/artifact-contract.mjs` now enforces both disciplines in code rather than by memory:
+`bfcacheState` required like a build stamp, and signature checked against filename before publishing.
+`bfcacheState` is backfilled across all 37 existing artifacts, marked as backfilled rather than passed off
+as declared. I also had to fix the checker twice, because its first version cried wolf on nested build
+stamps and on legitimate filename variants — an audit that produces noise is an audit nobody reads, which
+is how the discipline lapsed in the first place.
+
+**RUNNING NOW.** `RETURN-AXIS-PROBE-V1`, default arm, heavy CONF-01, three exits taken separately. The
+ten-hour soak YIELDED to it at 13:05 with 2 samples, per the standing precedent that a long run yields
+when two sessions cannot coexist; its partial is preserved and it relaunches when the return axis lands.
+Two instrument defects were caught by a short launch check before the real run: I was comparing a
+COLLECTED heavy reading against UNCOLLECTED post-exit readings, which manufactured a −75 MB "release" in
+which the exit appeared to ADD memory; and I read re-entry 10 seconds after navigation, which on a
+four-panel restore would catch a half-built page, understate it and hand back a FALSE PASS in the lenient
+direction. Re-entry is now a settling trajectory that grades itself INCONCLUSIVE if still climbing, and
+every re-entry reading carries a state census — because a reload that legitimately RESTORES four panels is
+not retention, and calling it one would be the same error as calling bfcache a leak.
+
+
+## W107 — 2026-07-31 13:40 · RESET-01 reopens item 7, and the mechanism is four lines of our own code
+
+**I accept the rejection on all three grounds.** The strongest of them is the second, which I got wrong in
+a way worth naming: I treated "it is Chrome's back-forward cache" as an exoneration when it is a
+mechanism. Users run bfcache on, so they live the staircase, and the reason Chrome can hold our document
+is that our document is enormous and hands itself over intact. That reframing is the Director's and it is
+better than mine.
+
+**AND THE CODE IS MORE SPECIFIC THAN EITHER OF US SAID.** chart.js has FOUR memory-release hooks, all four
+registered on `pagehide` — background render catch-up (L3160), host cache (L3896), **the shared bar store
+(L4018)**, and panel host commit (L5027). Every one of them opens with the same line:
+
+    if (ev && ev.persisted === true) return;
+
+`persisted` is true EXACTLY when the document is being put into the back-forward cache. So every release
+path we own is switched off precisely on the cached path. Not "we take no action" — we wrote the action and
+then disabled it for this case. The bar-store hook is the one that matters most, because bars are
+23.98 MB per thousand and 82% of resident bars are never displayed.
+
+**The early return is defensible and still has to change.** Releasing on a path where the user may press
+Back, with no re-hydration, trades a memory bug for a correctness bug — and there IS no re-hydration: the
+only `pageshow` listener in the bundle is `_handleViewportRefresh` (L1572), a viewport refresh. So A's cut
+is a PAIR, and I recommend the cheap half for the canary: make the heavy document bfcache-INELIGIBLE
+(`Cache-Control: no-store`), and all four existing hooks start firing on every exit with no new release
+logic written. Option two — drop the early return and add `pageshow`-persisted re-acquisition — is
+strictly better and materially more work.
+
+**One scoping call, stated before it could look like an excuse: only the logout exit can use bfcache.** A
+reload replaces the same document, a tab close destroys it, so neither is a back-forward cache path and
+the two arms cannot differ on them. The second arm is therefore spent on logout, which is where it buys
+something.
+
+**A correction I caught in my own scan before reporting it.** My first pass concluded "NO pagehide handler
+releases memory" — an artifact of a regex that could only find `function foo(` and `const foo =`, so it
+missed four handlers whose own NAMES contain the word Release. The corrected reader reports INCONCLUSIVE
+when it cannot find a body rather than reporting absence. Counting handler mentions can never answer this
+question; only reading them can.
+
+**ON THE ARTIFACT, PRECISELY.** The clearing arm was destroyed by my stale `C_OUT` and the numbers were
+briefly in a commit body with nothing behind them — the Director is right, and right that it landed on the
+morning's most consequential claim. It is on disk now, signature `SESSION-RESET-V1`, arm
+`bfcache-disabled`, written 12:09, **nineteen minutes after the ruling, so the check was accurate when it
+was made.** What is on disk is a REPLICATION, not the original: documents [2,2,2] identical, heap within
+0.16 MB, footprint growth −9.5 MB where the original read +14.7. The original is gone permanently.
+
+**AND THE AUDIT I BUILT TO PREVENT A REPEAT FOUND SOMETHING WORSE ON THE SAME MEASUREMENT.** Both
+`SESSION-RESET` arms recorded `buildStamp: null` — the probe read `__TALARIA_CHART_BUILD_ID`, which the
+dist-v9 single-chart page does not set. So item 7's contested A/B was not only light and out of
+configuration, **it was unstamped**, and under MEAS-01 that is a second reason it could not have closed the
+item. `scripts/lib/artifact-contract.mjs` now enforces both disciplines in code rather than by memory:
+`bfcacheState` required like a build stamp, and signature checked against filename before publishing.
+`bfcacheState` is backfilled across all 37 existing artifacts, marked as backfilled rather than passed off
+as declared. I also had to fix the checker twice, because its first version cried wolf on nested build
+stamps and on legitimate filename variants — an audit that produces noise is an audit nobody reads, which
+is how the discipline lapsed in the first place.
+
+**RUNNING NOW.** `RETURN-AXIS-PROBE-V1`, default arm, heavy CONF-01, three exits taken separately. The
+ten-hour soak YIELDED to it at 13:05 with 2 samples, per the standing precedent that a long run yields
+when two sessions cannot coexist; its partial is preserved and it relaunches when the return axis lands.
+Two instrument defects were caught by a short launch check before the real run: I was comparing a
+COLLECTED heavy reading against UNCOLLECTED post-exit readings, which manufactured a −75 MB "release" in
+which the exit appeared to ADD memory; and I read re-entry 10 seconds after navigation, which on a
+four-panel restore would catch a half-built page, understate it and hand back a FALSE PASS in the lenient
+direction. Re-entry is now a settling trajectory that grades itself INCONCLUSIVE if still climbing, and
+every re-entry reading carries a state census — because a reload that legitimately RESTORES four panels is
+not retention, and calling it one would be the same error as calling bfcache a leak.
+
