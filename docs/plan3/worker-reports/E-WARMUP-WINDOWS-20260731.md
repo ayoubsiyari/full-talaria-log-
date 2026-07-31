@@ -59,6 +59,21 @@ merged endpoint against a full-pass worker result. Evidence:
 | PSAR | PSAR | State checkpoint, not bars | n/a | n/a | Needs prior trend direction, extreme point, acceleration factor and SAR value at the window edge, or a full recompute from a trusted PSAR anchor/checkpoint. |
 | Seasonality | Seasonality | Keyed samples, not backward window | n/a | n/a | Non-causal by design: values depend on keyed historical samples by day-of-year. Needs a sample store/keyed baseline; no backward window of bars makes it correct. |
 
+## Stated Exceptions
+
+The table above is a bounded-window contract only for causal FIR/windowed and convergent-IIR
+families. These four families are not "longer window" cases:
+
+- **VWAP:** use the configured `anchorPeriod` and either start the fetched array on that anchor or
+  carry prior `cumPV`, `cumP2V` and `cumVol` accumulators into the first fetched bar.
+- **OBV:** carry a prior OBV baseline scalar into the first fetched bar; tests must assert on
+  `obv` and `ma` levels because Bollinger width is invariant under the baseline offset.
+- **PSAR:** carry a state checkpoint containing trend direction, extreme point, acceleration factor
+  and SAR value, or recompute from a trusted PSAR anchor/checkpoint.
+- **Seasonality:** no backward bar window fixes this family. It is non-causal and requires a keyed
+  historical sample store/baseline by day-of-year; without that sample baseline the correct behavior
+  is to report the indicator as insufficiently anchored rather than increase pre-session bars.
+
 ## Longer-window exceptions
 
 None in this evidence run. The script attempted the estimator window first and would have tried
@@ -72,6 +87,17 @@ Gate: `docs/plan3/evidence/E-WARMUP-WINDOWS-20260731/pre-session-warmup-buckets.
 Current source is **RED**. The backtest initial fetch buckets are fixed counts and do not apply
 the indicator contract. The 1m-master backtest path is worse: it computes the `<=1h` bucket in
 master minutes, then displays the result at coarser timeframes.
+
+Green target for A's pre-session bound:
+
+- For bounded-window families, compute `requiredDisplayWarmupBars` from the active indicators using
+  the formula, not a fixed bucket value.
+- If the request timeframe is the display timeframe, fetch at least that many pre-session display
+  bars.
+- If the backtest path requests a 1m master for a coarser display timeframe, convert display bars
+  to source bars: `ceil(requiredDisplayWarmupBars * displayTfMs / requestTfMs)`.
+- This bar-count rule does not satisfy VWAP, OBV, PSAR or seasonality; those require the stated
+  anchors/checkpoints above.
 
 | Mode | Example | Effective display warm-up | Deficit vs 264 floor | Deficit vs SMA-200 / 864 |
 |---|---:|---:|---:|---:|

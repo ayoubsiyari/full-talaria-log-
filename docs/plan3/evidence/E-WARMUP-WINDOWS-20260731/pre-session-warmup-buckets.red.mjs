@@ -38,6 +38,11 @@ function requiredWarmup(maxParam) {
 
 const requiredFloor = requiredWarmup(50);
 const requiredSma200 = requiredWarmup(200);
+const oneMinute = 1;
+
+function requiredSourceBars(requiredDisplayBars, displayMinutes, requestMinutes) {
+  return Math.ceil(requiredDisplayBars * displayMinutes / requestMinutes);
+}
 
 const directBuckets = [
   { bucket: 'weekly+', exampleTf: '1w', sourceLookbackBars: 26, displayMinutes: 7 * 24 * 60 },
@@ -47,7 +52,10 @@ const directBuckets = [
 ].map((row) => ({
   ...row,
   mode: 'direct-display-tf',
+  requestMinutes: row.displayMinutes,
   effectiveDisplayBars: row.sourceLookbackBars,
+  requiredSourceBarsFloor: requiredSourceBars(requiredFloor, row.displayMinutes, row.displayMinutes),
+  requiredSourceBarsSma200: requiredSourceBars(requiredSma200, row.displayMinutes, row.displayMinutes),
   floorDeficitBars: Math.max(0, requiredFloor - row.sourceLookbackBars),
   sma200DeficitBars: Math.max(0, requiredSma200 - row.sourceLookbackBars),
 }));
@@ -65,8 +73,11 @@ const masterRows = [
     bucket: '<=1h source bucket forced by requestTimeframe=1m',
     sourceLookbackBars: 320,
     sourceLookbackMinutes: 320,
+    requestMinutes: oneMinute,
     ...row,
     effectiveDisplayBars: effective,
+    requiredSourceBarsFloor: requiredSourceBars(requiredFloor, row.displayMinutes, oneMinute),
+    requiredSourceBarsSma200: requiredSourceBars(requiredSma200, row.displayMinutes, oneMinute),
     floorDeficitBars: Math.max(0, requiredFloor - effective),
     sma200DeficitBars: Math.max(0, requiredSma200 - effective),
   };
@@ -94,6 +105,14 @@ const evidence = {
     requiredSma200,
     note: 'empty-indicator early return is 50; this gate covers non-empty indicator correctness',
   },
+  greenTarget: {
+    boundedFamilies: [
+      'Compute requiredDisplayWarmupBars from active indicators, not from fixed timeframe buckets.',
+      'When request timeframe equals display timeframe, pre-session source bars must be >= requiredDisplayWarmupBars.',
+      'When a 1m master is requested for a coarser display timeframe, pre-session source bars must be >= ceil(requiredDisplayWarmupBars * displayTfMs / requestTfMs).',
+      'VWAP/OBV/PSAR/seasonality are outside the bar-window rule and require anchors/checkpoints from the contract.',
+    ],
+  },
   rows,
   verdict: failing.length ? 'RED' : 'GREEN',
   reason: failing.length
@@ -114,6 +133,8 @@ process.stdout.write(`${JSON.stringify({
     effectiveDisplayBars: row.effectiveDisplayBars,
     floorDeficitBars: row.floorDeficitBars,
     sma200DeficitBars: row.sma200DeficitBars,
+    requiredSourceBarsFloor: row.requiredSourceBarsFloor,
+    requiredSourceBarsSma200: row.requiredSourceBarsSma200,
   })),
 }, null, 2)}\n`);
 process.exitCode = failing.length ? 1 : 0;
