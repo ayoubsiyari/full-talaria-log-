@@ -1703,3 +1703,37 @@ blank-Chrome canary that survived 8.76 minutes and proved the deaths were mine.
 **Closed an old escalation:** `SW_VERSION` now reads b118 against the deployed build where this morning it
 read b80, and there are zero `location.reload()` sites in chart.js. The version-reload trap is disarmed.
 
+
+## 2026-07-31 17:15 — both ordered gauges built and run; the ten hours is launched; the replacement budget row is also gameable
+
+Read the three rulings. They were not in my worktree — they live in `talaria-director\docs\plan3\`, which is
+why the 11:50 RESET-01 ruling read as missing this morning. Killed the queued overnight ceiling probe before
+starting, per the order to delete anything queued; its partial reps stay on disk as evidence.
+
+**Gauge 2 — the original bug — GREEN, and not vacuously.** Panned the 1h panel by synthetic drag and read the
+1m peer: zero price fields moved. The gauge verifies the pan actually moved the panned chart and returns VOID
+rather than green if it did not, and it chooses strict versus visibleRange grading by reading whether the
+peer's own window moved. It hit both cases across two runs and was clean under both. Field names and the
+autoScale-stays-true subtlety are lifted from the shipped `engine-api-guards.js` rather than reinvented.
+
+**Gauge 1 — host paints/sec at 1x, static — reads 0.0.** The playing arm of the same counter reads 140.8/s at
+96% host share, reproducing S1's 141.7/s on independently written code. So the counter is validated and the
+zero is real: the host does not paint at frame rate when idle, it paints 141 times a second while replaying at
+one candle per second.
+
+**Which means the replacement BUDGET-01 row goes green on the broken build.** The row says "at 1x, static
+dataset" and carries a measured value of ~131, but that 131 was measured while PLAYING. Under the condition
+the row states, the unfixed build scores 0.0. Same failure as the paints-per-candle row from the other
+direction: the first was gameable through its denominator, this one is already satisfied by its condition.
+Recommended two rows instead — host paints/sec at 1x WHILE PLAYING (140.8, the live defect) and the static
+reading locked at 0. Flagged for A, whose L1 opens against the static condition and would find nothing to fix.
+
+**My own headline corrected in place.** The S1 finding no longer leads with "141 paints per candle", and my
+suggested fix — cap paints to one per advanced bar — is withdrawn, because it aimed at the per-bar render path
+that A's rAF coalescing already handles correctly.
+
+**Ten-hour soak launched 17:14 on b120** with four RESET-01 exit runs appended: reload, logout in both bfcache
+arms, tab close. It runs in segments because the browser has died three times today near 1.38 GB, which is
+what ended the last attempt at ten minutes; restarts are counted and reported, and the summary separates the
+longest continuous stretch from accumulated time because DUR-01 is satisfied by the former only. No scope
+added beyond the two ordered gauges.

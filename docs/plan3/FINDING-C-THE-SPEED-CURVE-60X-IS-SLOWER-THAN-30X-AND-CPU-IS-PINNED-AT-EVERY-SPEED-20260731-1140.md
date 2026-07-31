@@ -73,13 +73,33 @@ speed, and a per-bar cost that caps throughput at ~13 candles/s.
 
 ### 3. The engine paints far more often than anything changes
 
-**141.7 paints/s at 1x**, while one candle advances per second — roughly **141 paints per candle**, and
-more than twice a 60 Hz display can show. Paints/s *falls* as speed rises (141.7 → 118 → 84.7 → 74.2),
-so the paint loop is decoupled from bar advance and runs flat out, competing with the work that actually
-matters.
+> **CORRECTED IN PLACE 17:05 — the label was wrong, and "paints per candle" is withdrawn as a headline.**
+> A challenged this before opening `L1` and A was right. **Paints-per-bar is a clock-driven paint rate
+> divided by the bar rate — a ratio with a denominator the product controls, not a cost per candle.** My own
+> table proves it: multiply the two columns and they collapse to the paint rate (142.9 × 1.00 ≈ 142.9;
+> 25.0 × 5.00 = 125; 6.7 × 13.49 ≈ 90; 5.9 × 14.87 ≈ 88). A genuine per-bar cost would make paints/sec
+> *rise* with bar rate; it **falls**. And at 60x, 5.9 paints/bar across four realms is ~1.5 per realm per
+> bar, which is exactly A's "one `render()` per canvas per candle" measured on the real product. **The two
+> measurements agree and there is no per-bar paint defect.**
+>
+> This mattered beyond my own wording: the Director had written "paints per candle: 141 today, ceiling
+> single digits" into `BUDGET-01`, and **the unfixed product already scores 5.9 simply by running the replay
+> fast** — the budget row would have gone green on a broken build. That row is withdrawn and replaced with
+> **host-realm paints/sec at 1x on a static dataset**, which has no denominator to game. My instrument was
+> right; the denominator I chose to divide it by hid the defect at speed.
+>
+> **The real finding, restated in the surviving unit:** at 1x the host realm performs **92.0% of all
+> painting** — roughly **131 paints/sec** while one candle per second arrives — and each panel contributes
+> under 3%. The host is the one realm that is not an iframe and the only one that loads the React layer.
+> So the defect is host-side and unconditional, and per the 14:00 ruling **Phase 4 is structurally incapable
+> of fixing it**, because the host survives the realm collapse. Also withdrawn: my suggested test, "cap
+> paints to one per advanced bar behind a flag". That aimed at the per-bar render path, which A's coalescing
+> through `_scheduleCandlePlaybackPaint` already handles correctly and which must not be "improved".
 
-This is a new lead and it belongs to the fixed cost in finding 2. It is also the cheapest thing on this
-page to test: cap paints to one per advanced bar behind a flag and re-measure.
+**141.7 paints/s at 1x**, while one candle advances per second — and more than twice what a 60 Hz display
+can show. Paints/s *falls* as speed rises (141.7 → 118 → 84.7 → 74.2), so the paint loop is decoupled from
+bar advance and runs flat out, competing with the work that actually matters. **Read the rate, not the
+ratio**, and read it host-side.
 
 ## What must not be read from this table
 
@@ -109,7 +129,7 @@ nothing, and the very top is worse than the middle.
 
 1. **Locate the knee.** The 10x point must be re-run to close the (5x, 30x] bracket. Cheap, 12 minutes,
    blocked only by the window-claim hang.
-2. **The over-paint test.** 141 paints per candle at 1x is the largest unexplained constant on this page.
+2. **The over-paint test — RESTATED 17:05.** Not paints per candle, which is a ratio the product can game by running faster. **Host-realm paints/sec at 1x on a static dataset**: ~131 with 92% of all painting in the host realm, the one realm that is not an iframe and the only one loading React.
 3. **For A:** the interval floor at `replay-system.js:4668` is where the inversion lives. A tick budget
    that backs off when work exceeds the interval would make 60x at least as fast as 30x, which is the
    minimum a user expects from a speed control.
