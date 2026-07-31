@@ -1593,7 +1593,50 @@ class Chart {
                 }
             });
         }
-        
+
+        // SR-02 RESIZE-01 — panel viewport-resize propagation.
+        //
+        // The window 'resize' registration above sits in the `!this.isPanel`
+        // arm, so panels never got one. The panel-side ResizeObserver in
+        // multichart-prod/embed-bridge.js only calls drawingManager.redrawAll(),
+        // which repaints drawings but never rebuilds the canvas backing store —
+        // that only happens in Chart.resize(). A panel therefore kept a stale
+        // backing store after a viewport change and painted at the old
+        // resolution into a smaller box (measured: CSS box 791x849 -> 449x700,
+        // backing store stayed 791x849).
+        //
+        // Container resize and window resize are different routes: container
+        // resize already reaches Chart.resize() directly. This adds only the
+        // missing window route. Chart.resize() early-returns unless dimensions
+        // actually change, so this is a no-op when nothing moved.
+        if (this.isPanel && !this._handlePanelViewportRefresh) {
+            this._handlePanelViewportRefresh = () => {
+                // Kill-switch read on EVERY call, not at registration, so it can
+                // be flipped mid-session with no reload. Truthy disables the
+                // fix; falsy (undefined/null/false/0/''/NaN) keeps it. Do not
+                // convert this to a `=== true` comparison.
+                try {
+                    if (typeof window !== 'undefined'
+                        && window.__TALARIA_DISABLE_PANEL_VIEWPORT_RESIZE_V1) return;
+                } catch (_) { /* ignore */ }
+                // Same layout-drag suppression the host handler uses: the
+                // multichart splitter drives its own resize path.
+                if (this._multichartLayoutDragging) return;
+                try {
+                    if (typeof window !== "undefined" && window.__multichartLayoutDragging) return;
+                    if (window.parent && window.parent !== window
+                        && window.parent.__multichartLayoutDragging) return;
+                } catch (_) { /* ignore */ }
+                if (this._panelViewportRefreshRaf) return;
+                this._panelViewportRefreshRaf = requestAnimationFrame(() => {
+                    this._panelViewportRefreshRaf = 0;
+                    this.resize();
+                    this.scheduleRender();
+                });
+            };
+            window.addEventListener('resize', this._handlePanelViewportRefresh);
+        }
+
         // Initialize Drawing Tools Manager
         if (!this.isPanel) {
             // Main chart gets its own managers

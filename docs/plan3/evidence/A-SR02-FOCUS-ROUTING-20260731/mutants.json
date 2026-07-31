@@ -1,0 +1,104 @@
+{
+  "signature": "TALARIA_SR02_MUTANTS_V1",
+  "mirrors": [
+    "C:\\Users\\user\\Desktop\\talaria1\\manager-a-focus-routing\\chart v 1.4\\chart\\chart.js",
+    "C:\\Users\\user\\Desktop\\talaria1\\manager-a-focus-routing\\homepage\\public\\chart\\chart.js"
+  ],
+  "mirrorsIdenticalBefore": true,
+  "baselineSha": "5473FF43374E4C14F21B28D0A516412D83EFDFCBD167B5B4251F5E95B1B823B4",
+  "finalShas": [
+    "5473FF43374E4C14F21B28D0A516412D83EFDFCBD167B5B4251F5E95B1B823B4",
+    "5473FF43374E4C14F21B28D0A516412D83EFDFCBD167B5B4251F5E95B1B823B4"
+  ],
+  "mirrorsIdenticalAfter": true,
+  "allRestored": true,
+  "suiteGreenBefore": "GREEN",
+  "suiteGreenAfterRestore": "GREEN",
+  "mutants": [
+    {
+      "id": "M1-DROP-PANEL-RESIZE-REGISTRATION",
+      "rationale": "Removing the new panel registration must reproduce the original defect.",
+      "applied": "APPLIED",
+      "occurrencesPerMirror": {
+        "chart": 1
+      },
+      "mutatedMirrorsIdentical": true,
+      "suiteStatusUnderMutant": "RED",
+      "killedBy": [
+        "RESIZE-PANEL-LISTENER-REGISTERED",
+        "RESIZE-PANEL-BACKING-STORE-REFLOWS"
+      ],
+      "survivedCells": [],
+      "restoredAndBlobVerified": true,
+      "status": "KILLED"
+    },
+    {
+      "id": "M2-SWITCH-STRICT-EQUALS-TRUE",
+      "rationale": "A `=== true` comparison is the defect class already found in shipped switches here: truthy values like 1 or 'yes' would stop disabling the fix.",
+      "applied": "APPLIED",
+      "occurrencesPerMirror": {
+        "chart": 1
+      },
+      "mutatedMirrorsIdentical": true,
+      "suiteStatusUnderMutant": "RED",
+      "killedBy": [
+        "KILLSWITCH-TRUTHY-DISABLES"
+      ],
+      "survivedCells": [],
+      "restoredAndBlobVerified": true,
+      "status": "KILLED"
+    },
+    {
+      "id": "M3-DEFEAT-RESIZE-EARLY-RETURN",
+      "rationale": "If Chart.resize() stops early-returning on a no-op, a synthetic same-size resize would appear to do work and every resize GREEN becomes meaningless.",
+      "applied": "APPLIED",
+      "occurrencesPerMirror": {
+        "chart": 1
+      },
+      "mutatedMirrorsIdentical": true,
+      "suiteStatusUnderMutant": "RED",
+      "killedBy": [
+        "RESIZE-NOOP-MEASURES-NOTHING"
+      ],
+      "survivedCells": [],
+      "restoredAndBlobVerified": true,
+      "status": "KILLED"
+    },
+    {
+      "id": "M4-MOVE-REGISTRATION-UNDER-HOST-ARM",
+      "rationale": "Flipping the guard to the host arm leaves the code present but unreachable for panels — the exact shape of the original defect.",
+      "applied": "APPLIED",
+      "occurrencesPerMirror": {
+        "chart": 1
+      },
+      "mutatedMirrorsIdentical": true,
+      "suiteStatusUnderMutant": "RED",
+      "killedBy": [
+        "RESIZE-PANEL-LISTENER-REGISTERED",
+        "RESIZE-PANEL-BACKING-STORE-REFLOWS"
+      ],
+      "survivedCells": [],
+      "restoredAndBlobVerified": true,
+      "status": "KILLED"
+    },
+    {
+      "id": "M5-HOIST-SWITCH-READ-OUT-OF-HANDLER",
+      "rationale": "Removing the per-call switch read makes the flag unflippable mid-session, which FLAG-02 forbids.",
+      "applied": "APPLIED",
+      "occurrencesPerMirror": {
+        "chart": 1
+      },
+      "mutatedMirrorsIdentical": true,
+      "suiteStatusUnderMutant": "RED",
+      "killedBy": [
+        "KILLSWITCH-TRUTHY-DISABLES",
+        "FLAG02-MIDSESSION-FLIP-NO-RELOAD"
+      ],
+      "survivedCells": [],
+      "restoredAndBlobVerified": true,
+      "status": "KILLED"
+    }
+  ],
+  "status": "ALL_KILLED",
+  "measuredAt": "2026-07-31T16:10:20.839Z"
+}

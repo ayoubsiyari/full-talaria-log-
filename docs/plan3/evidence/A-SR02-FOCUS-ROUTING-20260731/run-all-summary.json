@@ -1,0 +1,31 @@
+{
+  "bootedFileCount": 60,
+  "summary": [
+    {
+      "step": "census-positive-control",
+      "exit": 0,
+      "verdict": "GREEN"
+    },
+    {
+      "step": "classification",
+      "exit": 0,
+      "verdict": "GREEN"
+    },
+    {
+      "step": "focus-seam-source-bound",
+      "exit": 0,
+      "verdict": "GREEN"
+    },
+    {
+      "step": "resize-suite",
+      "exit": 0,
+      "verdict": "GREEN"
+    },
+    {
+      "step": "mutants",
+      "exit": 0,
+      "verdict": "GREEN"
+    }
+  ],
+  "measuredAt": "2026-07-31T16:10:20.893Z"
+}
