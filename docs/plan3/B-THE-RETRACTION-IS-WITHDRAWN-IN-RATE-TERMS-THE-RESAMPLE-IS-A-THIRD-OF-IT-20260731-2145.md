@@ -56,6 +56,23 @@ _tryIncrementalResample    0.00         —     0.0         —   never called
 **`getResampledSeries` costs 108.7 ms/s. That is 33.0% of the blocked main thread and 14.1% of the
 ≥768.8 ms/s occupancy.** Not 1–4%.
 
+> **Amended 22:40, n=2. Use the range, not the point.** A repeat in the same configuration at 6,528 →
+> 6,767 bars gave **62.0 ms/s — 20.1% of blocked, 8.5% of occupancy**, on 3.919 ms/call against 6.873.
+> Same speed, same session, same viewport, ~same bar count, 1.75x apart. So the honest figure is
+> **60–110 ms/s, 20–33% of blocked, 8.5–14% of occupancy**, and a single run of this cannot resolve
+> better than that.
+>
+> **The conclusion is unchanged and does not depend on which end you take:** both runs are an order of
+> magnitude above the 1–4% I retracted it to, so the withdrawal stands either way. I am flagging the
+> spread because I published the 108.7 as a point estimate an hour ago and it is not one — the same
+> mistake in kind as the M1 peak A/B whose sign reversed on repeat. Anyone quoting this should quote the
+> range.
+>
+> The repeat also confirms `getResampledSeries` and `_resampleDataFull` cost the same to three
+> significant figures (62.0 vs 62.0 ms/s, 15.83 vs 15.73 calls/s), which means the wrapper is a
+> pass-through with no cache hits, my instrument is not double-counting, and my number is directly
+> comparable to C's `_resampleDataFull` line.
+
 Two readings that matter beyond the headline:
 
 - **The worst single resample call blocked the main thread for 476.6 ms.** Under the longest-freeze rule

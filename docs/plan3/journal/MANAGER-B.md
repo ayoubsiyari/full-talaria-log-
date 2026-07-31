@@ -6415,3 +6415,45 @@ instead of only after the last one. A trap covers the paths it can reach.
 17 of 17. Rehearsed on a byte-copy, not the live file — a real apply needs a container restart and C's
 soak still holds a connection. The real .env checksum is asserted unchanged at the end of the rehearsal
 and it was.
+
+## B-0234 — the event rate is an output of the system, not a parameter, and that is my plateau
+
+Checked the served bundle for an inline source map. None: 111 files, 15 MB, zero inline maps, zero .map
+files, wire hashes matched disk on all six heavy assets. Clean negative, nothing to fix. Noticed on the
+way past that /chart/anything-missing.js returns 200 with an HTML body from an SPA catch-all, while
+/chart/modules/... correctly 404s. It briefly convinced me maps were being generated on demand. Worth
+flagging because a marker check of the form "fetch, assert 200" passes on a path that does not exist —
+the same failure class as reading empty grep output as success. The grep in my TEST-02 checks is not a
+nicety, it is the only part doing work.
+
+Then the cache key. A had asked for one specific number: measured events/s in the configuration behind
+the 708 ms/s, because it converts every per-event figure anyone has produced. I had it and had not
+noticed I had it — it fell out of the rate-terms run as a byproduct and I read past it twice.
+
+Nominal cadence at 10x is 10/s. Achieved is 7.87/s. A's table uses 62.5/s, derived exactly and correctly
+from the cadence function, and at 60x that is the rate the scheduler ASKS for. At ~93 ms of occupancy per
+event the thread can deliver about 10.7. So the rate ceilings at 1000/cost-per-event, which means A's two
+factors are not independent: as the defect worsens the achieved rate falls in proportion and the product
+flattens. That is why A overshot 708 at 60,000 bars, and A flagging the overshoot instead of trimming it
+is what made it diagnosable.
+
+And it is my plateau. I ruled out the viewport, the raw cap and the context bars and filed it as owed. The
+answer is that the thread runs out of seconds: past the knee the lag stops showing up as more blocked
+time and starts showing up as fewer bars per second. C's soak is the corroboration from another machine —
+1,253 bars in 12 minutes is 1.74/s at 65,000 bars, 36x below A's assumed rate, with occupancy at 94% of
+wall clock. I should have gone looking for this the moment I had a plateau I could not name, rather than
+eliminating candidates one at a time.
+
+C's 2.2% for _resampleDataFull against my 8.5% looked like a contradiction and is not. My session carries
+zero orders and _chartIndexForCloseMarkerOnChart takes zero calls, so C's dominant 31.8% term is simply
+absent from my workload. Two different workloads, both correctly measured. The consequence is the useful
+part: the marker cost and the resample cost dominate in different regimes, so either fix will read as a
+null result if it is measured in the other's configuration. Every gate on these needs its bar count and
+trade count written into it.
+
+Also, n=2 killed my own headline again. The repeat gave 62.0 ms/s where the first run gave 108.7 — same
+speed, same session, same bar count, 1.75x apart. The conclusion survives at either end, since both are an
+order of magnitude above the 1-4% I had retracted it to, but I published a point estimate an hour ago and
+it was never a point. That is the third time today a repeat has moved a number I had already filed. The
+pattern is not bad luck: I keep publishing after one run because the first run is the one that answers the
+question I was asked, and the second is the one that tells me whether the answer is real.
