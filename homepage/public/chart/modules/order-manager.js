@@ -959,7 +959,8 @@ class OrderManager {
         this._runtimeOrderPersistenceBootstrapped = false;
 
         /**
-         * B-W16 journal provenance tri-state: 'unhydrated' | 'hydrated' | 'locally-authored'.
+         * B-W16/M8 journal provenance:
+         * 'unhydrated' | 'hydrated' | 'partial-hydrate' | 'locally-authored'.
          * Fails closed — "we do not know" must never be treated as "there is nothing",
          * because a durable write replaces the server journal wholesale.
          */
@@ -41031,9 +41032,10 @@ class OrderManager {
     /** Replace the journal array (restore / truncate / reorder / filter / hydrate / project). */
     _m19CommitJournalArray(next, reason) {
         this.tradeJournal = Array.isArray(next) ? next : []; // M19-D-JOURNAL-WRITE:commit
-        // B-W16 provenance allowlist: only a successful server hydrate vouches for
-        // completeness. Every other reason (including 'local-backup-hydrate', the
-        // failed-fetch path) leaves provenance untouched — no upgrade, no downgrade.
+        // B-W16/M8 provenance allowlist: only a complete full server hydrate
+        // vouches for delete/replace authority. Partial/slim state hydrate is
+        // display-only and explicitly downgrades provenance so omitted rows or
+        // omitted screenshot fields cannot be written back as "user has none".
         if (reason === 'session-state-hydrate') {
             this._journalProvenance = 'hydrated';
             let hydratedSession = null;
@@ -41043,6 +41045,15 @@ class OrderManager {
                     : null;
             } catch (_) { hydratedSession = null; }
             this._journalProvenanceSession = hydratedSession != null ? String(hydratedSession) : null;
+        } else if (reason === 'session-state-partial-hydrate' || reason === 'session-state-slim-hydrate') {
+            this._journalProvenance = 'partial-hydrate';
+            let partialSession = null;
+            try {
+                partialSession = this.chart && typeof this.chart.getActiveTradingSessionId === 'function'
+                    ? this.chart.getActiveTradingSessionId()
+                    : null;
+            } catch (_) { partialSession = null; }
+            this._journalProvenanceSession = partialSession != null ? String(partialSession) : null;
         }
         this._m19NoteJournalStructuralMutation(reason || 'journal-replace');
         if (_orderPnlRestoreStableV1Enabled() && typeof this.recomputeAccountFromJournal === 'function') {

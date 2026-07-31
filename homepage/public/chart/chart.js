@@ -12702,6 +12702,10 @@ class Chart {
                     : [];
                 const localJournal = [...inMemory, ...legacyJournal];
                 const rawJournal = state.journal;
+                const journalComplete = state.journal_complete === true;
+                const journalHeavyFieldsOmitted = state.journal_heavy_fields_omitted === true;
+                const journalCount = Number(state.journal_count);
+                const knownServerJournalCount = Number.isFinite(journalCount) ? journalCount : null;
                 const serverJournal = (Array.isArray(rawJournal) ? rawJournal : []).map(normalizeJournalTrade);
                 // Merge by trade id: in-memory + one-time legacy import + server (server wins field conflicts).
                 const merged = new Map();
@@ -12743,10 +12747,21 @@ class Chart {
                         merged.set(k, this.orderManager._m19MergePreferRicherTradeRow(prev, t, { slimMarked: true }));
                     }
                 });
-                if (typeof this.orderManager._m19CommitJournalArray === 'function') {
+                const hydrateReason = journalComplete && !journalHeavyFieldsOmitted
+                    ? 'session-state-hydrate'
+                    : (journalHeavyFieldsOmitted ? 'session-state-slim-hydrate' : 'session-state-partial-hydrate');
+                const partialEmptyWouldHideServerTrades = !journalComplete
+                    && serverJournal.length === 0
+                    && knownServerJournalCount != null
+                    && knownServerJournalCount > 0;
+                if (partialEmptyWouldHideServerTrades) {
+                    console.warn('📔 Partial session journal hydrate returned 0 rows for a non-empty server journal; keeping existing/local journal and withholding delete authority.');
+                    this.orderManager._journalProvenance = 'partial-hydrate';
+                    this.orderManager._journalProvenanceSession = String(sessionId);
+                } else if (typeof this.orderManager._m19CommitJournalArray === 'function') {
                     this.orderManager._m19CommitJournalArray(
                         Array.from(merged.values()),
-                        'session-state-hydrate',
+                        hydrateReason,
                     );
                 } else {
                     this.orderManager.tradeJournal = Array.from(merged.values()); // M19-D-JOURNAL-WRITE:legacy-fallback

@@ -50,6 +50,34 @@ def max_journal_trades_per_session() -> int:
     return max(100, int(os.getenv("MAX_JOURNAL_TRADES_PER_SESSION", "5000")))
 
 
+def state_hydrate_journal_max_rows() -> int:
+    return max(1, int(os.getenv("M8_STATE_HYDRATE_JOURNAL_MAX_ROWS", "1000")))
+
+
+def state_hydrate_strip_heavy_enabled() -> bool:
+    return os.getenv("M8_STATE_HYDRATE_STRIP_HEAVY", "true").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
+
+def _strip_heavy_journal_fields(value: Any, omitted: set[str]) -> Any:
+    heavy = set(globals().get("_HOT_PERSIST_HEAVY_KEYS", ()))
+    if isinstance(value, list):
+        return [_strip_heavy_journal_fields(v, omitted) for v in value]
+    if not isinstance(value, dict):
+        return value
+    out: dict = {}
+    for key, child in value.items():
+        if key in heavy:
+            omitted.add(key)
+            continue
+        out[key] = _strip_heavy_journal_fields(child, omitted)
+    return out
+
+
 def load_journal_trades_from_sql(db: "Session", session_id: int, journal_trade_model: Any) -> list[dict]:
     rows = (
         db.query(journal_trade_model)
@@ -66,6 +94,52 @@ def load_journal_trades_from_sql(db: "Session", session_id: int, journal_trade_m
         if isinstance(payload, dict):
             out.append(enrich_journal_trade_from_sql_row(payload, row, session_id))
     return out
+
+
+def load_state_hydrate_journal_page_from_sql(
+    db: "Session",
+    session_id: int,
+    journal_trade_model: Any,
+    *,
+    max_rows: int | None = None,
+    strip_heavy: bool | None = None,
+) -> dict:
+    max_n = state_hydrate_journal_max_rows() if max_rows is None else max(1, int(max_rows))
+    strip = state_hydrate_strip_heavy_enabled() if strip_heavy is None else bool(strip_heavy)
+    base = db.query(journal_trade_model).filter(journal_trade_model.session_id == int(session_id))
+    total_count = int(base.count())
+    rows = (
+        base.order_by(journal_trade_model.updated_at.asc(), journal_trade_model.id.asc())
+        .limit(max_n)
+        .all()
+    )
+    out: list[dict] = []
+    omitted: set[str] = set()
+    parse_errors = 0
+    for row in rows:
+        try:
+            payload = json.loads(row.payload_json) if row.payload_json else {}
+        except Exception:
+            parse_errors += 1
+            continue
+        if not isinstance(payload, dict):
+            parse_errors += 1
+            continue
+        enriched = enrich_journal_trade_from_sql_row(payload, row, session_id)
+        out.append(_strip_heavy_journal_fields(enriched, omitted) if strip else enriched)
+    returned_count = len(out)
+    return {
+        "rows": out,
+        "total_count": total_count,
+        "returned_count": returned_count,
+        "complete": returned_count == total_count and parse_errors == 0,
+        "cursor": None if returned_count >= total_count else returned_count,
+        "max_rows": max_n,
+        "omitted_heavy_fields": sorted(omitted),
+        "heavy_fields_omitted": bool(omitted),
+        "parse_errors": parse_errors,
+        "storage": "sql",
+    }
 
 
 def enrich_journal_trade_from_sql_row(payload: dict, row: Any, session_id: int) -> dict:
@@ -136,11 +210,72 @@ def resolve_session_journal(
     return journal if isinstance(journal, list) else []
 
 
+def resolve_session_journal_for_state_hydrate(
+    db: "Session",
+    session_id: int,
+    user_id: int,
+    state: dict,
+    *,
+    journal_trade_model: Any,
+    sync_fn: Callable,
+) -> dict:
+    """
+    Bounded startup read for GET /api/sessions/{id}/state.
+
+    This is not a delete authority. It carries completeness metadata so clients
+    can distinguish an empty complete journal from partial/error hydration.
+    """
+    if journal_sql_primary_enabled():
+        page = load_state_hydrate_journal_page_from_sql(db, session_id, journal_trade_model)
+        if page["total_count"] > 0 or page["returned_count"] > 0 or page["parse_errors"] > 0:
+            return page
+        if backfill_journal_sql_from_state(
+            db, session_id, user_id, state, journal_trade_model=journal_trade_model, sync_fn=sync_fn
+        ):
+            db.commit()
+            return load_state_hydrate_journal_page_from_sql(db, session_id, journal_trade_model)
+    inline = state.get("journal")
+    rows = inline if isinstance(inline, list) else []
+    omitted: set[str] = set()
+    stripped = [_strip_heavy_journal_fields(row, omitted) for row in rows]
+    return {
+        "rows": stripped,
+        "total_count": len(rows),
+        "returned_count": len(stripped),
+        "complete": True,
+        "cursor": None,
+        "max_rows": len(rows),
+        "omitted_heavy_fields": sorted(omitted),
+        "heavy_fields_omitted": bool(omitted),
+        "parse_errors": 0,
+        "storage": "inline",
+    }
+
+
 def apply_journal_to_state_for_response(state: dict, journal: list[dict]) -> None:
     """Response-only: chart clients expect state.journal on GET."""
     state["journal"] = journal
     state["journal_storage"] = "sql" if journal_sql_primary_enabled() else "inline"
     state["journal_count"] = len(journal)
+
+
+def apply_journal_page_to_state_for_response(state: dict, page: dict) -> None:
+    """Response-only bounded journal hydrate with explicit completeness metadata."""
+    rows = page.get("rows") if isinstance(page.get("rows"), list) else []
+    state["journal"] = rows
+    state["journal_storage"] = page.get("storage") or ("sql" if journal_sql_primary_enabled() else "inline")
+    state["journal_count"] = int(page.get("total_count") or len(rows))
+    state["journal_returned_count"] = int(page.get("returned_count") or len(rows))
+    state["journal_complete"] = bool(page.get("complete"))
+    state["journal_hydrate_mode"] = "complete-slim" if page.get("heavy_fields_omitted") else "complete"
+    if not state["journal_complete"]:
+        state["journal_hydrate_mode"] = "partial"
+    state["journal_cursor"] = page.get("cursor")
+    state["journal_omitted_heavy_fields"] = list(page.get("omitted_heavy_fields") or [])
+    state["journal_heavy_fields_omitted"] = bool(page.get("heavy_fields_omitted"))
+    state["journal_parse_errors"] = int(page.get("parse_errors") or 0)
+    if state["journal_heavy_fields_omitted"]:
+        state["m19_hot_persist_trim_v1"] = True
 
 
 def strip_journal_from_persisted_state(state: dict) -> None:

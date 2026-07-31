@@ -1,0 +1,37 @@
+{
+  "signature": "TALARIA_M8_STATE_BOUND_V1",
+  "status": "IMPLEMENTED_PENDING_LIVE_MEASURE",
+  "checks": [
+    {
+      "cell": "M8-BACKEND-BOUNDED-STATE-HYDRATE",
+      "status": "GREEN"
+    },
+    {
+      "cell": "M8-FAILED-PARTIAL-NOT-EMPTY-HISTORY",
+      "status": "GREEN"
+    },
+    {
+      "cell": "M8-SCREENSHOT-SUPPLY-LINE-BOUND",
+      "status": "GREEN"
+    },
+    {
+      "cell": "M8-CLIENT-MIRRORS-IDENTICAL",
+      "status": "GREEN"
+    }
+  ],
+  "motivatingCase": {
+    "endpoint": "GET /api/sessions/936/state",
+    "trades": 182,
+    "screenshotsInJournalPayload": 395,
+    "m1LoadTransientLowerBoundMB": 141.57
+  },
+  "safetyProof": "State hydrate carries journal completeness/heavy-field metadata. Partial, failed, or heavy-slim hydrate never upgrades OrderManager provenance to durable session-state-hydrate, so omitted rows cannot be read as user has no trades.",
+  "productionServingEvidence": {
+    "file": "chart v 1.4/chart/api_server.py",
+    "route": "GET /chart/{file_name}",
+    "evidence": "api_server.py sets _CHART_ROOT_PATH = Path(__file__).resolve().parent and serves /chart/index.html from _CHART_ROOT_PATH / \"dist-v9\" / \"index.html\" when present before falling back to dist/ or chart/index.html.",
+    "productionMirror": "chart v 1.4/chart",
+    "homepageMirrorStatus": "source mirror only; not mounted by api_server.py for /chart assets"
+  },
+  "productMeasure": "Pending: rerun M1 load-transient harness on b120 after deploy to prove the supply line reduction on the real app."
+}
