@@ -1,0 +1,86 @@
+{
+  "signature": "TALARIA_M1_B120_LOAD_TRANSIENT_V1",
+  "residentSignature": "TALARIA_M1_B120_RESIDENT_SCREENSHOTS_V1",
+  "source": "manager-b-plan3/docs/plan3/HANDOFF-B-TO-D-M1-RAN-ON-B120-AUTH-IS-SOLVED-AND-THE-HARNESS-MISSES-THE-PEAK-20260731-1935.md",
+  "buildId": "20260731b120",
+  "finalUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+  "journal": {
+    "status": 200,
+    "trades": 182,
+    "screenshots": 395
+  },
+  "residentScreenshots": {
+    "verdict": {
+      "status": "PASSED",
+      "reason": "resident-screenshot-surface-settled-to-thumbnails"
+    },
+    "steadySurface": {
+      "label": "+6s-stable",
+      "imageCount": 177,
+      "dataUrlImages": 0,
+      "fullResolutionImages": 1,
+      "thumbnailImages": 160,
+      "decodedPixelFloorBytes": 6029312,
+      "decodedPixelFloorMB": 5.75,
+      "journalLikeImages": 0
+    },
+    "boardVerdict": "PASSED",
+    "statement": "Resident screenshots passed on b120 real app: 5.75 MB steady floor, 1 full-res, 160 thumbs, 182 journal trades."
+  },
+  "loadTransient": {
+    "verdict": {
+      "status": "NEW_DEFECT",
+      "reason": "load-transient-full-resolution-images",
+      "lowerBound": true,
+      "peak": {
+        "label": "app-ready",
+        "imageCount": 205,
+        "dataUrlImages": 28,
+        "fullResolutionImages": 29,
+        "thumbnailImages": 160,
+        "decodedPixelFloorBytes": 148446904,
+        "decodedPixelFloorMB": 141.57,
+        "largestSingleDecodedBytes": 7551884
+      },
+      "peakDecodedMB": 141.57,
+      "thresholdMB": 50
+    },
+    "samples": [
+      {
+        "label": "app-ready",
+        "imageCount": 205,
+        "dataUrlImages": 28,
+        "fullResolutionImages": 29,
+        "thumbnailImages": 160,
+        "decodedPixelFloorBytes": 148446904,
+        "decodedPixelFloorMB": 141.57,
+        "largestSingleDecodedBytes": 7551884
+      },
+      {
+        "label": "+1.5s",
+        "imageCount": 193,
+        "dataUrlImages": 16,
+        "fullResolutionImages": 17,
+        "thumbnailImages": 160,
+        "decodedPixelFloorBytes": 87535124,
+        "decodedPixelFloorMB": 83.48
+      },
+      {
+        "label": "+6s-stable",
+        "imageCount": 177,
+        "dataUrlImages": 0,
+        "fullResolutionImages": 1,
+        "thumbnailImages": 160,
+        "decodedPixelFloorBytes": 6029312,
+        "decodedPixelFloorMB": 5.75,
+        "journalLikeImages": 0
+      }
+    ],
+    "boardVerdict": "NEW_DEFECT",
+    "statement": "Routine page load decodes a lower-bound 141.57 MB transient before the resident surface settles; sample begins at app-ready, so true peak may be higher."
+  },
+  "rendererMemoryLead": {
+    "status": "live-not-confirmed",
+    "statement": "The 4.85 MB-per-screenshot lead remains live for C V8/isolate attribution, but it is not confirmed as the renderer residual cause."
+  }
+}

@@ -376,3 +376,16 @@ exists — eviction deletes the redundant hot copy, it does not invent a new sto
   gives lower-bound **141.57 MB**, `29` full-res images, and D classifier would mark it RED.
 - Destroy split unchanged and coordinated: D owns README 6.3 plus destroy-bytes/late-work; E owns
   `DESTROY-NO-DESTROY-RESURRECTS-INDICATOR` and teardown correctness behavior.
+
+## 2026-07-31 20:50 — M1 split into resident and transient verdicts
+
+- M1 resident screenshots are **PASSED** on b120 real app: stable surface is **5.75 MB**, **1** full-res,
+  **160** thumbnails, with **182** journal trades on the page. This confirms A's journal fix for the
+  resident case.
+- The **141.57 MB** app-ready surface is a separate **NEW_DEFECT**: routine page load transient,
+  lower-bound only because B sampled after decoding had begun. Added `scripts/m1-b120-load-transient-harness.mjs`
+  so this is measured from navigation start, not from stability.
+- The old single-harness framing was a measurement-window defect: entry and stability conditions answered
+  different questions. M1 now has two board verdicts rather than one overloaded classifier.
+- The 4.85 MB-per-screenshot figure remains a live lead for C's V8/shared-isolate renderer attribution,
+  but it is not confirmed as the renderer residual cause.

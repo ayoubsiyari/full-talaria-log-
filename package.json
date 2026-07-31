@@ -37,6 +37,8 @@
     "test:release-parity-destroy-bytes": "node --test scripts/tests/release-parity-destroy-bytes-behavior.test.mjs",
     "preflight:m1-b120-real-app": "node scripts/m1-b120-real-app-harness.mjs --dry-run",
     "test:m1-b120-real-app": "node --test scripts/tests/m1-b118-real-app-harness.test.mjs",
+    "preflight:m1-b120-load-transient": "node scripts/m1-b120-load-transient-harness.mjs",
+    "test:m1-b120-load-transient": "node --test scripts/tests/m1-b120-load-transient-harness.test.mjs",
     "preflight:m1-b118-real-app": "node scripts/m1-b118-real-app-harness.mjs --dry-run",
     "test:m1-b118-real-app": "node --test scripts/tests/m1-b118-real-app-harness.test.mjs",
     "watch:m1-b118-real-app": "node scripts/m1-b118-real-app-harness.mjs --wait",

@@ -1,6 +1,6 @@
 {
   "signature": "TALARIA_M1_B120_REAL_APP_HARNESS_V2",
-  "managerDClosure": "M1_AUTH_SOLVED_HARNESS_MISSES_PEAK",
+  "managerDClosure": "M1_SPLIT_RESIDENT_PASSED_LOAD_TRANSIENT_NEW_DEFECT",
   "measuredAt": "2026-07-31T18:23:36.836Z",
   "sourceHandoff": "manager-b-plan3/docs/plan3/HANDOFF-B-TO-D-M1-RAN-ON-B120-AUTH-IS-SOLVED-AND-THE-HARNESS-MISSES-THE-PEAK-20260731-1935.md",
   "sourceArtifact": "manager-b-plan3/_evidence/manager-D/M1-B120-REAL-APP-HARNESS-20260731.json",
@@ -19,9 +19,9 @@
     "journalScreenshots": 395,
     "payloadBytes": 51588056
   },
-  "settledHarnessVerdict": {
-    "status": "UNPROVEN",
-    "reason": "no-journal-image-surface-detected",
+  "residentScreenshots": {
+    "status": "PASSED",
+    "reason": "resident-screenshot-surface-settled-to-thumbnails",
     "imageCount": 177,
     "dataUrlImages": 0,
     "fullResolutionImages": 1,
@@ -30,9 +30,10 @@
     "approxDecodedMB": 5.75,
     "journalLikeImages": 0
   },
-  "earlySurfaceLowerBound": {
-    "statusIfClassified": "RED",
-    "reasonIfClassified": "full-resolution-images-still-resident",
+  "loadTransient": {
+    "status": "NEW_DEFECT",
+    "reason": "load-transient-full-resolution-images",
+    "lowerBound": true,
     "imageCount": 205,
     "dataUrlImages": 28,
     "fullResolutionImages": 29,
@@ -40,14 +41,20 @@
     "decodedPixelFloorMB": 141.57,
     "largestSingleDecodedBytes": 7551884
   },
-  "harnessDefect": {
-    "summary": "collectStableImageSurface waits for three identical one-second samples, so it selects the quiet state after the transient full-size image peak has decayed.",
-    "entryVsStabilityConflict": "journalLikeImages is 0 at every sample; dataUrlImages is non-zero only during the transient, before stability can be satisfied.",
-    "processMemoryCaveat": "Host Linux run reports rendererPrivate=0 and gpuPrivate=0 because the harness has no Linux process-memory path."
+  "harnessSplit": {
+    "summary": "The original stable M1 harness asked resident and transient questions with one classifier. They are now split.",
+    "residentHarness": "scripts/m1-b118-real-app-harness.mjs",
+    "loadTransientHarness": "scripts/m1-b120-load-transient-harness.mjs",
+    "processMemoryCaveat": "Host Linux run reports rendererPrivate=0 and gpuPrivate=0 because the old harness has no Linux process-memory path."
+  },
+  "rendererMemoryLead": {
+    "status": "live-not-confirmed",
+    "statement": "The 4.85 MB-per-screenshot lead remains live for C V8/shared-isolate attribution, but it is not confirmed as the renderer residual cause."
   },
   "closure": {
     "m1QueueItemClosed": true,
-    "productPass": false,
-    "nextQuestion": "Determine whether the 141.57 MB transient is M20-J1 working as designed or virtualized-list row drop-off; it is a lower bound, not a true peak."
+    "residentScreenshotsOnBoardAsWin": true,
+    "loadTransientOnBoardAsNewDefect": true,
+    "nextQuestion": "Measure from navigation start to find the true load-transient peak and determine whether it is M20-J1 working as designed or virtualized-list row drop-off."
   }
 }

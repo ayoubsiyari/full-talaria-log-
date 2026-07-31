@@ -5,9 +5,9 @@
 **Harness:** `scripts/m1-b118-real-app-harness.mjs`  
 **Artifact:** `docs/plan3/M1-B120-REAL-APP-HARNESS-20260731.json`
 
-## Verdict
+## Split Verdicts
 
-Bounded M1 host fire completed through B's credential route. It is **not GREEN**, and M1 is closed as an auth-solved harness measurement-window defect, not as a product pass.
+Bounded M1 host fire completed through B's credential route. Auth is solved, and M1 is split into two verdicts because resident screenshots and the load transient are different defects.
 
 | Field | Value |
 |---|---|
@@ -17,10 +17,10 @@ Bounded M1 host fire completed through B's credential route. It is **not GREEN**
 | authenticated route | solved on host; `onLogin: false`, chart loaded, `6242` bars |
 | final URL | `/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677` |
 | journal API | `200`, `182` trades, `395` screenshots in payload |
-| settled harness verdict | `UNPROVEN` |
-| settled reason | `no-journal-image-surface-detected` |
+| resident screenshots | `PASSED` — 5.75 MB steady floor, 1 full-res, 160 thumbs |
+| load transient | `NEW_DEFECT` — lower-bound 141.57 MB at app-ready |
 
-This confirms the real app served b120, reached a journal-bearing product page, and removed the `UNPROVEN_LOGIN_PATH` blocker. The remaining issue is D's harness sampling window: the stable surface misses the transient full-size image peak.
+This confirms A's journal fix on the real app for the resident case: after settle, screenshots are not staying resident as full-size data URLs. The separate load-transient defect remains: routine page load decodes a lower-bound 141.57 MB before the resident surface settles.
 
 ## Harness Peak Note
 
@@ -32,9 +32,13 @@ B sampled the same authenticated route from app-ready instead of after D's stabi
 | +1.5s | 193 | 16 | 17 | 160 | 83.48 MB |
 | +6s stable | 177 | 0 | 1 | 160 | 5.75 MB |
 
-Applying D's classifier to the early surface gives `RED / full-resolution-images-still-resident`; applying it to the stable surface gives `UNPROVEN / no-journal-image-surface-detected`. Because `collectStableImageSurface` requires three identical one-second samples, it selects the quiet state after the peak has decayed. `journalLikeImages` stayed `0` at every sample, so D's current entry condition and stability condition are mutually exclusive on this route.
+Applying D's old single classifier to the early surface gives `RED / full-resolution-images-still-resident`; applying it to the stable surface gives `UNPROVEN / no-journal-image-surface-detected`. That was a harness design bug: it asked one classifier to answer both resident and transient questions. The split harness records resident screenshots as `PASSED` and the load transient as `NEW_DEFECT`.
 
-M1 is therefore closed as: auth solved, b120 product route proven, current D harness not valid for the peak-footprint claim. The early `141.57 MB` is a lower bound, not a true peak.
+The early `141.57 MB` is a lower bound, not a true peak. B sampled at app-ready after decoding had already begun. Because page load is a routine user action, this gets its own harness: `scripts/m1-b120-load-transient-harness.mjs`.
+
+## Renderer Memory Lead
+
+D's earlier 4.85 MB-per-screenshot figure remains a live lead for C's V8/shared-isolate attribution, but it is not confirmed as the renderer residual cause.
 
 ## Bounds
 
@@ -44,7 +48,8 @@ This was a single bounded run: no `--wait`, no watcher, no multi-hour loop. It a
 
 - `test:m1-b120-real-app` — PASS
 - `preflight:m1-b120-real-app` with `M1_EXPECTED_BUILD=b120` — READY
-- B host run — auth solved, settled artifact `UNPROVEN`, harness peak miss documented
+- `test:m1-b120-load-transient` — PASS
+- B host run — auth solved, resident screenshot verdict `PASSED`; load transient verdict `NEW_DEFECT`
 
 ## Ownership Update
 
