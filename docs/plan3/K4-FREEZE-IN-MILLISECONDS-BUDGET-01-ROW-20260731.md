@@ -2,6 +2,48 @@
 
 **2026-07-31 · Manager B · A/B on the live product, b118 vs b120**
 
+> ## WITHDRAWN 15:55 — the 5.9x below is not established
+>
+> **The b118-vs-b120 comparison in this document is confounded and I am withdrawing its headline.**
+> Do not put the 100 ms/s row into `BUDGET-01` on this evidence.
+>
+> The two arms were measured at different replay positions, and the metric moves by roughly the
+> same factor with position alone **on one build**:
+>
+> | build | bars loaded at measurement | blocked ms/s |
+> |---|---:|---:|
+> | b120 | 579 | **55.0** |
+> | b118 | 798 | 322.5 |
+> | b120 | ~1,100–1,500 | 290–343 |
+> | b120 | 1,930–2,592 | 302–339 |
+>
+> **b120 alone spans 55 to 343 ms/s depending only on how many bars were loaded.** My "b118 322.5
+> versus b120 55.0" compared 798 bars against 579 bars and attributed the gap to the build. It
+> cannot be attributed to the build without a b120 reading at ~800 bars, which I do not have.
+>
+> A second result points the same way. Restoring the defect **in place** on b120 with the shipped
+> kill-switch, same build, same session, produced **no measurable change**: 334.8 / 343.7 / 303.8
+> ms/s with the defect back, against 343.1 / 334.5 / 290.2 without it. If the gate defect drove the
+> freeze, putting it back should have raised the number. It did not. (Caveat: the kill-switch
+> restores only the gate half; the handler half has no switch.)
+>
+> Within the saturated range the metric is flat — correlation of bars against blocked ms/s is
+> **−0.016** over five runs on one build — so the sensitivity is somewhere below ~1,000 bars,
+> exactly where both arms sat.
+>
+> **What still stands** is this morning's *server* measurement, which was a controlled A/B taken
+> within minutes on the same host with an equal-volume ungated control isolating the gate:
+> `/api/health` p95 under gated load 500.5 ms (b118) → 341.2 ms (b119) → 148.7 ms (b120). The fix
+> is real and measured. What is **not** established is how much user-visible main-thread freeze it
+> removed.
+>
+> **To settle it** I need b120 measured at a matched replay position. Position is not persisted
+> server-side (`config_json` is `{}`) and each run uses a fresh browser, so the bar count is a
+> property of the dataset at the time of the run and I cannot simply reset it — that is the next
+> piece of work, not a result.
+>
+> The sections below are left unedited as the record of what I measured and claimed.
+
 ## A correction to my own morning report first
 
 What I reported at ~13:50 — 500.5 ms falling to 148.7 ms — was **server event-loop

@@ -5843,3 +5843,48 @@ Two rules now applied to my scripts: never suppress output of a command whose fa
 is deployed, and never write a state file asserting something not verified against the thing itself.
 That is the same class of error as the one this whole ticket exists for — trusting a marker I wrote
 instead of the behaviour of the system.
+
+---
+
+## B-0223 — I am withdrawing the 5.9x freeze claim. It was confounded by replay position.
+
+2026-07-31 ~15:55Z
+
+The Director adopted my ms-of-blocked-main-thread framing and my numbers. **The numbers are
+confounded and the 5.9x does not survive.** Reporting this before it reaches a budget row.
+
+I set out to do two things the threshold needed: repeats for variance (VER-07) and a way to make
+the gate fail **in place** rather than by rolling the canary, since rolling is what produced my pin
+bug. Both were done. Both undermined the headline.
+
+**Repeats.** Three b120 runs came back at 343.1 / 334.5 / 290.2 ms/s — not the 55.0 I had reported
+for b120 half an hour earlier. Same build, same probe, same load. The variable is bar count: the
+55.0 run measured at 579 bars, these at 1,100-1,500.
+
+**In-place RED arm.** Restoring the defect on b120 with the shipped kill-switch produced
+334.8 / 343.7 / 303.8 against 343.1 / 334.5 / 290.2 without it. **No measurable change.** If the
+gate defect drove the user-visible freeze, putting it back should have raised the number.
+
+**The confound test.** Across 1,930-2,592 bars on one build the correlation of bars against blocked
+ms/s is -0.016 — flat, saturated at ~300-340. So the sensitivity lives below ~1,000 bars, which is
+exactly the region both A/B arms sat in: b120 at 579 bars, b118 at 798.
+
+So my A/B compared 798 bars against 579 bars and attributed the gap to the build. **It is not
+attributable to the build without a b120 reading at ~800 bars, which I do not have.**
+
+**What still stands:** this morning's server measurement. That one was controlled — same host,
+minutes apart, with an equal-volume ungated control isolating the gate: /api/health p95 under
+gated load 500.5ms (b118) -> 341.2ms (b119) -> 148.7ms (b120). The fix is real. What is not
+established is how much user-visible freeze it removed.
+
+**Two further errors of mine in this pass.** My `recreate()` ran `docker compose up` without
+exporting TRADING_CHART_IMAGE, so the container came back as `talaria-trading-chart:latest`
+instead of the pinned `canary-20260731b120`. Content-identical (the ship script tags latest to
+the canary tag) but the pin discipline was broken; repinned and verified against the container.
+And I built a threshold proposal on a single 30s reading, which is the same n=1 error I would
+reject in someone else's evidence.
+
+Position is not persisted server-side (config_json is `{}`) and each run uses a fresh browser, so
+bar count is a property of the dataset at run time and cannot simply be reset. Controlling it is
+the next piece of work, and until it is controlled I have no defensible user-freeze number and no
+BUDGET-01 row.
