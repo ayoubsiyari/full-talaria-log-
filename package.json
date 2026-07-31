@@ -34,7 +34,9 @@
     "preflight:lag-session-history": "node docs/plan3/oracles/indicator-lag-oracle-v1.mjs",
     "test:lag-session-history": "node --test scripts/tests/lag-session-history-control.test.mjs",
     "preflight:support-passport-degraded": "node scripts/support-passport-degraded-gate.mjs",
-    "test:support-passport-degraded": "node --test scripts/tests/support-passport-degraded.test.mjs"
+    "test:support-passport-degraded": "node --test scripts/tests/support-passport-degraded.test.mjs",
+    "preflight:legacy-panel-shell-correctness": "node docs/plan3/oracles/legacy-panel-shell-correctness-v1.mjs",
+    "test:legacy-panel-shell-correctness": "npm run preflight:legacy-panel-shell-correctness"
   },
   "dependencies": {
     "dukascopy-node": "^1.46.3",
