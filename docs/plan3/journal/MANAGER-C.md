@@ -981,3 +981,49 @@ b114 (994,217 and 453,663), so the version bump did not touch either mechanism.
    0-byte log for ten minutes under that contention - consistent with the window-claim P0 (a
    second session while another holds the claim) - so I killed it once, relaunched clean, and it
    booted in ~90s. One relaunch, named cause, not blind retrying.
+
+## W99 — the tick-animation branch: candle mode is clean on tests 1-3, and my x-axis was host-only
+2026-07-31 01:00 | tier=mid model=claude-opus-5-thinking-high (analysis+instrument authoring)
+Ruling 606defe033 (CONF-04). Instrument REPLAY-MODE-TRUTH-V1, build 20260730b115 read off the page.
+GATE-01 PASS offline: planted tick-while-host-candle reads P0, clean input does not, a
+loopKind-vs-mode mismatch is caught.
+
+1. TEST 1 - NO P0. Host and three panels all read getPlaybackMode()='candle' at play-start, 2min,
+   10min and 15min; zero loopKind disagreements. The hypothesised race did not occur in 16 minutes.
+   Panel loopKind is null BY DESIGN: peers do not run their own loop (bridge sets
+   _multichartPassivePlayActive and drives them from the host's per-candle event), so a peer has a
+   mode but no loop - and the tick animation is driven by the loop peers do not run.
+2. TEST 0, free and first - EVERY MEASUREMENT I HAVE PUBLISHED WAS CANDLE MODE. Read before setting
+   anything: raw playbackMode='candle' in all four realms, _shouldUseTickAnimation()=false in all
+   four. My b114 decay run was candle, same as the PO's tests. Caveat discharged with a number.
+3. WHY it is candle, from the deployed bundle: React useState("candle") for mode and
+   useState("Auto") for INTERVAL, re-asserted onto the instance every 250ms, and the pushed mode is
+   (interval && interval!=="Auto") || selected==="candle" ? "candle" : "tick". So (a) a user who
+   never touches the selector gets CANDLE, not tick - contradicting the ruling's closing concern,
+   measured not argued; (b) a non-Auto INTERVAL forces candle whatever the mode selector says. The
+   engine's mode is a function of two controls, one of which is not labelled "mode". CONF-04 is
+   right for exactly this reason.
+4. TEST 2 - CADENCE IS ~1, NOT FRAME RATE. Host exactly 1.00 recalcs per advanced candle in every
+   one of 32 windows; mean across realms 1.12. At 60x a per-frame cadence would read in the tens.
+   The multiplier does not exist in candle mode, and I am saying so as loudly as I would have said
+   the opposite.
+5. TEST 3 - RECALC COST IS BOUNDED. p50 0.714ms early -> 0.750ms late across bars 2,753 -> 13,090.
+   The slice-length term is NOT in the recalc path; it is in the paint fingerprint I named at 00:10
+   (_m19iB62WindowFp at tailStart=0), which is the O(n) with the +33% kill-switch A/B behind it.
+6. CORRECTION TO MY OWN W98, and it is the important part. My "four panels advancing" came from a
+   gauge that accepts advance by index OR simulated time OR resident bars. Per realm in that
+   artifact: host 1m 3,254->15,060 (+11,806); peers 5m/15m/1h all EXACTLY FLAT. Only the host
+   advanced its index, so my x-axis was host bars plus three constants. Slope, CI, pinned-CPU
+   arithmetic and profile diff all stand; the LABEL was wrong and the configuration claim too
+   generous. It is also the honest reason I measured 1.5x where the PO felt 30x - three of my four
+   panels were not doing per-candle work. Whether peers advanced by TIMESTAMP with a frozen index is
+   not settled by that artifact (I did not record per-peer sim time); the A/B now running records
+   index, sim-time and resident-bar advance per realm.
+7. TEST 4 running: two indicators vs zero, 15 min each, candle, mode recorded per realm, and the
+   zero arm VERIFIES zero per realm rather than trusting the arming path. Stated in advance:
+   _m19iExactTailPaint is ALSO indicator-gated, so a decay that vanishes at zero indicators is
+   consistent with both the recalc hypothesis and my fingerprint finding. Test 4 establishes
+   indicator-dependence; it cannot name the recalc path. Tests 2 and 3 are the discriminators.
+8. Added --mode= to the decay hunt with a held-after-3s check, because the 250ms React poller can
+   revert a requested tick and a mode that is not verified after settling is a mode the run never
+   ran in.

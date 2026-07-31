@@ -229,6 +229,12 @@ export function diffProfiles(first, last, { minShare = 0.5 } = {}) {
 
 export async function runReplayDecayHunt({
   minutes = 20, intervalMs = 30_000, speed = 60, profileMs = 60_000, outPath = null,
+  /**
+   * CONF-04: the replay mode is part of the configuration. `null` means "leave whatever
+   * the product chose and record it"; 'tick' or 'candle' sets it in every realm. Tick had
+   * never been load-tested when this option was added.
+   */
+  mode = null,
 } = {}) {
   const { browser, page, cdp, conf01 } = await bootConf01Session({
     replaySpeed: speed,
@@ -273,6 +279,61 @@ export async function runReplayDecayHunt({
       };
     }).catch(() => null);
     console.error(`[rdh] zero-trade control: ${JSON.stringify(report.tradeControl)}`);
+
+    // CONF-04: record the mode read from every running instance, and set it if asked.
+    // A measurement that cannot state the mode each panel was in carries no weight.
+    report.mode = { requested: mode, realms: [] };
+    for (const frame of page.frames()) {
+      try {
+        const r = await frame.evaluate((setTo) => {
+          const rs = window.chart && window.chart.replaySystem;
+          if (!rs) return null;
+          const before = typeof rs.getPlaybackMode === 'function' ? rs.getPlaybackMode() : null;
+          if (setTo && typeof rs.setPlaybackMode === 'function') {
+            try { rs.setPlaybackMode(setTo, { restartPlayback: true }); } catch (_) {}
+          }
+          return {
+            before,
+            raw: String(rs.playbackMode),
+            mode: typeof rs.getPlaybackMode === 'function' ? rs.getPlaybackMode() : null,
+            loopKind: typeof rs.getPlaybackLoopKind === 'function' ? rs.getPlaybackLoopKind() : null,
+            tickAnimationEnabled: !!rs.tickAnimationEnabled,
+            shouldUseTickAnimation: typeof rs._shouldUseTickAnimation === 'function'
+              ? rs._shouldUseTickAnimation() : null,
+          };
+        }, mode);
+        if (r) report.mode.realms.push({ url: frame.url().slice(-60), ...r });
+      } catch { /* frame gone */ }
+    }
+    console.error(`[rdh] CONF-04 mode requested=${mode ?? '(as found)'} realms=${JSON.stringify(report.mode.realms.map((r) => `${r.before}->${r.mode}/${r.loopKind}`))}`);
+    if (mode) {
+      // The V9 React layer re-asserts its own mode onto the instance on a 250 ms poller,
+      // and forces 'candle' whenever the INTERVAL selector is not 'Auto'. So a requested
+      // mode that is not verified a few seconds later is a mode this run never ran in.
+      await sleep(3_000);
+      report.mode.afterSettle = [];
+      for (const frame of page.frames()) {
+        try {
+          const r = await frame.evaluate(() => {
+            const rs = window.chart && window.chart.replaySystem;
+            if (!rs) return null;
+            return {
+              mode: typeof rs.getPlaybackMode === 'function' ? rs.getPlaybackMode() : null,
+              loopKind: typeof rs.getPlaybackLoopKind === 'function' ? rs.getPlaybackLoopKind() : null,
+              animatingCandle: !!rs.animatingCandle,
+              hasTickInterval: rs.tickInterval != null,
+            };
+          });
+          if (r) report.mode.afterSettle.push(r);
+        } catch { /* frame gone */ }
+      }
+      const held = report.mode.afterSettle.filter((r) => r.mode === mode).length;
+      report.mode.heldAfter3s = held;
+      report.mode.revertedIn = report.mode.afterSettle.length - held;
+      report.mode.verified = report.mode.revertedIn === 0 && held > 0;
+      console.error(`[rdh] CONF-04 after 3s: ${mode} held in ${held}/${report.mode.afterSettle.length} realms (reverted in ${report.mode.revertedIn}) verified=${report.mode.verified}`);
+      await keepConf01Playing(page, speed).catch(() => {});
+    }
 
     report.instrumented = await installEverywhere(page, tickInstrumentSource);
     const wrappedCount = report.instrumented.filter((r) => (r.wrapped || []).length).length;
@@ -481,6 +542,7 @@ function parseArgs(argv) {
     else if (k === 'interval-ms') o.intervalMs = Number(v);
     else if (k === 'speed') o.speed = Number(v);
     else if (k === 'profile-ms') o.profileMs = Number(v);
+    else if (k === 'mode') o.mode = v;
     else if (k === 'self-test') o.selfTest = true;
     else if (k === 'out') o.outPath = v;
   }
