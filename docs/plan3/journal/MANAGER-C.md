@@ -1772,3 +1772,39 @@ The deaths were real; the threshold was not.
 minutes for ten hours, resetting the very quantity whose slope it measures. Now live, with the post-GC field
 labelled null-by-design. The live-versus-collected gap is 183.2 MB, which is the size of the perturbation I
 had been introducing and what users actually carry.
+
+## 2026-07-31 18:20 — session-cap check: FOUR PANELS CONFIRMED, but my soak could not prove it, so I killed it anyway
+
+Read the urgent note. Killed pid 23164 at 17:52, seven minutes old, before checking anything — the artifact
+could not answer the question and an aging run was the one thing I could remove immediately.
+
+**Why I could not answer it from the artifact, which is the real failure here.** The soak recorded NOTHING about
+how many panels it held: conf01.panels/distinctFileIds/distinctTimeframes were all null because the boot's
+return object does not carry them, and no sample carried a panel count. A ten-hour four-panel soak that cannot
+state it held four panels is exactly the instrument that would have reported an eviction as the freeze defect.
+
+**Confirmed, not assumed, on three independent readings.** The account is esperanza@gmail.com, NOT qa-canary, so
+B's cap-2 finding is about a different account. Retrospectively, perm-gauges recorded advancingPanels=4 while
+playing at 17:05. Prospectively, a fresh 4-minute run shows 4/4 panels ADVANCING with datasets 677/673/670/669
+and timeframes 1m/5m/15m/1h, 2 indicators each, sustained across four samples. Presence would not have been
+enough — an evicted panel can still be a realm with bars — so the gate is advancing, over a window.
+
+**The gate is now permanent.** bend-soak asserts 4 advancing panels with distinct datasets at boot and refuses
+to start otherwise, records charts/advancing/datasets/timeframes on EVERY sample, and stops the run if two
+consecutive samples hold fewer than four. An eviction at hour six is no longer invisible.
+
+**Caught a second defect while wiring E's selection in: my pair was wrong.** PO_TWO_INDICATORS is sma+rsi and
+BOTH are in E's incremental-last-point family, so the run measured one recalculation shape twice and never
+touched the anchored family. Now both arms read E's artifact directly — ema(20,close) + vwap(session,hlc3,1sigma)
+— and the run VOIDs if any panel loads fewer than 2. Verified: [2,2,2,2], shortfall 0, vwap loads.
+
+**Declared for the pair so arm 2 cannot drift:** speed 5 candles/s, candle mode, b120, esperanza@gmail.com,
+same indicators, same gauges. Arms run SEQUENTIALLY per B's 85%-CPU measurement; arm 1 (CONF-01, trade-bearing,
+with the four RESET-01 exits) launched 18:15 and ends ~04:15, so arm 2 (CONF-05, zero trades) follows after.
+
+**WITHDRAWN: my own 1.38 GB P0.** Four runs since 17:40 went to 1,526 / 1,605 / 1,560 / 1,396 MB and none died.
+The highest was 1,605 MB and still climbing. I built an instrument that perturbed the system, measured the
+perturbation, and escalated it as a product defect. The deaths were real and remain unexplained; the ceiling was
+not. A and B should not hunt it. Consequence: the heavy RESET-01 arms were capped at 1,300 MB by my own safety
+ceiling and declared the 1 GB-above-baseline target unreachable when it was reachable, so they need re-running
+without the cap once the host is free.

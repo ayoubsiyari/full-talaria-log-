@@ -37,6 +37,7 @@ import { fitTrend } from './lib/duration-trend.mjs';
 import { ols2 } from './lib/ols2.mjs';
 import { readOsFootprints } from './process-memory-census.mjs';
 import { PO_TWO_INDICATORS } from './replay-decay-hunt.mjs';
+import { loadConf05Indicators } from './lib/conf05-indicators.mjs';
 
 // Configuration comes from ARGUMENTS, not environment variables. Two launches were lost to the
 // environment today: a stale C_OUT left in a shell made one run overwrite another run's artifact, and
@@ -84,8 +85,16 @@ const save = () => fs.writeFileSync(OUT, JSON.stringify(report, null, 1));
   let session = null;
   const trades = { opened: 0, closed: 0, governorTicks: 0, errors: [] };
   try {
+    // Both arms of the paired soak take their indicators from E's artifact, not from PO_TWO_INDICATORS.
+    // CONF-05 requires the arms differ in exactly one variable, so the indicator pair cannot be chosen
+    // per-arm. If E's file is unreadable this throws and the run does not start, which is correct: silently
+    // falling back to a different pair would invalidate the subtraction that is the whole point.
+    const eSel = loadConf05Indicators();
+    report.indicatorSelection = eSel.provenance;
+    report.indicatorPairs = eSel.pairs.map(([type, params]) => ({ type, params }));
+    console.error(`[bend] indicators from E: ${eSel.pairs.map(([t2]) => t2).join(' + ')} (${eSel.provenance.familyCoverage})`);
     session = await bootConf01Session({
-      indicators: PO_TWO_INDICATORS,
+      indicators: eSel.pairs,
       speed: SPEED,
       placeOrder: false,
       label: 'bend-soak',
@@ -103,6 +112,52 @@ const save = () => fs.writeFileSync(OUT, JSON.stringify(report, null, 1));
       distinctFileIds: conf01?.distinctFileIds ?? null,
       distinctTimeframes: conf01?.distinctTimeframes ?? null,
     };
+
+    // PANEL INTEGRITY GATE.
+    //
+    // The previous launch of this soak recorded NOTHING about how many panels it was holding — the three
+    // fields above all came back null and no sample carried a panel count. B then found that the shared
+    // canary account is capped at two sessions and that exceeding it EVICTS panels in a way that "looks
+    // exactly like a freeze". A ten-hour four-panel soak that cannot state it held four panels is therefore
+    // not merely incomplete: it would report an eviction as the freeze defect we are hunting, with ten hours
+    // of apparent evidence behind it. Presence is not enough either — an evicted panel can still be a realm
+    // with bars loaded. The gate is that four panels are ADVANCING, over a window, with distinct datasets.
+    const bootState = await readConf01State(page, { advanceWindowMs: 6_000 }).catch(() => null);
+    report.panelIntegrityAtBoot = {
+      charts: bootState?.charts ?? null,
+      advancingPanels: bootState?.advancingPanels ?? null,
+      playingFlagPanels: bootState?.playingFlagPanels ?? null,
+      distinctFileIds: bootState?.distinctFileIds ?? null,
+      distinctTimeframes: bootState?.distinctTimeframes ?? null,
+      indicatorsPerPanel: bootState?.indicatorsPerPanel ?? null,
+      perPanelAdvancedBars: (bootState?.panels || []).map((p) => p.advancedBars),
+      account: String(process.env.TEST_EMAIL || '').trim() || null,
+      whyThisGateExists: 'B verified the shared canary account is capped at 2 sessions and that eviction mimics a freeze. This asserts four panels are ADVANCING with distinct datasets before ten hours are spent.',
+    };
+    // The indicator pair must actually be LOADED, not merely requested. `vwap` is an anchored family the
+    // harness has not driven before, and a pair that silently loaded one indicator would make the two arms
+    // differ in more than trades while every other field looked healthy.
+    const indPerPanel = bootState?.indicatorsPerPanel || [];
+    const indShortfall = indPerPanel.filter((c) => Number(c) < 2).length;
+    report.panelIntegrityAtBoot.indicatorShortfallPanels = indShortfall;
+    if (indPerPanel.length >= 4 && indShortfall > 0) {
+      report.status = 'VOID';
+      report.void = `INDICATOR LOAD FAILED: ${indShortfall} of ${indPerPanel.length} panels carry fewer than 2 active indicators (${JSON.stringify(indPerPanel)}) with E's selection ${JSON.stringify(eSel.pairs.map(([t2]) => t2))}. CONF-05 requires 2 per chart and 8 instances, and the paired arms must differ only in trades, so a partial load voids the pair rather than the arm.`;
+      save();
+      console.error(`[bend] ${report.void}`);
+      try { await browser?.close?.(); } catch { /* gone */ }
+      process.exit(0);
+    }
+    if ((bootState?.advancingPanels ?? 0) < 4) {
+      report.status = 'VOID';
+      report.void = `PANEL INTEGRITY FAILED AT BOOT: ${bootState?.advancingPanels ?? 'unknown'} of 4 panels advancing (${bootState?.charts ?? 'unknown'} charts present, datasets ${JSON.stringify(bootState?.distinctFileIds || [])}). This is what a session-cap eviction looks like, and continuing would measure fewer panels than claimed while the eviction read as the freeze defect. Refusing to spend ten hours.`;
+      save();
+      console.error(`[bend] ${report.void}`);
+      try { await browser?.close?.(); } catch { /* gone */ }
+      process.exit(0);
+    }
+    console.error(`[bend] panel integrity OK: ${bootState.advancingPanels}/4 advancing, datasets ${JSON.stringify(bootState.distinctFileIds)}, timeframes ${JSON.stringify(bootState.distinctTimeframes)}`);
+    let consecutiveShortSamples = 0;
 
     const t0 = Date.now();
     const deadline = t0 + HOURS * 3_600_000;
@@ -182,6 +237,12 @@ const save = () => fs.writeFileSync(OUT, JSON.stringify(report, null, 1));
           ? 'no forced collection during the soak, by design — forcing GC every sample was the confound that voided this afternoon\'s arm'
           : null,
         heapLiveMB: g.counters?.live?.jsHeapMB ?? null,
+        // Recorded on EVERY sample now, so the configuration is evidenced continuously rather than assumed
+        // from the boot. A panel evicted at hour six would otherwise be invisible.
+        charts: state?.charts ?? null,
+        advancingPanels: state?.advancingPanels ?? null,
+        distinctFileIds: (state?.distinctFileIds || []).length || null,
+        distinctTimeframes: (state?.distinctTimeframes || []).length || null,
         nodes: g.counters?.live?.nodes ?? null,
         listeners: g.counters?.live?.listeners ?? null,
         documents: g.counters?.live?.documents ?? null,
@@ -192,6 +253,27 @@ const save = () => fs.writeFileSync(OUT, JSON.stringify(report, null, 1));
       save();
       const r = report.samples[report.samples.length - 1];
       console.error(`[bend] #${n} ${r.hours}h closed=${r.closedTrades} foot=${r.footprintTotalMB}MB heapLive=${r.heapLiveMB}MB nodes=${r.nodes} cpu=${r.rendererCpuPercent}%${reArmed ? ' RE-ARMED' : ''}`);
+
+      // A panel lost mid-run voids everything after it. Two consecutive short samples rules out a single
+      // mis-timed read while still stopping long before ten hours of two-panel data accumulate.
+      if ((r.advancingPanels ?? 0) < 4) {
+        consecutiveShortSamples += 1;
+        if (consecutiveShortSamples >= 2) {
+          report.panelIntegrityLost = {
+            atSample: n,
+            atHours: r.hours,
+            advancingPanels: r.advancingPanels,
+            charts: r.charts,
+            reading: 'Two consecutive samples held fewer than four advancing panels. Under the session cap B verified, this is an eviction, and an eviction mimics the freeze defect. Everything after the first short sample is out of configuration and must not be graded.',
+          };
+          report.endedEarly = `panel integrity lost at sample ${n} (${r.hours}h): ${r.advancingPanels} of 4 advancing`;
+          save();
+          console.error(`[bend] STOPPING: ${report.endedEarly}`);
+          break;
+        }
+      } else {
+        consecutiveShortSamples = 0;
+      }
 
       await sleep(SAMPLE_MS);
     }
