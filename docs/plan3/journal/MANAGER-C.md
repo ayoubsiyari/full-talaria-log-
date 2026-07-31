@@ -1293,3 +1293,80 @@ A CHEAP CORROBORATION I DID NOT PLAN. Copies-per-resident-bar FALLS monotonicall
 signature of a FIXED cost being amortised, which is exactly B3's fixed-plus-marginal decomposition
 (202k bar objects fixed, ~3 slots marginal) arriving from a different instrument that was not built to
 test it.
+
+## W104 — the 09:15 queue: four items answered before lunch, three of them for nothing
+
+**2026-07-31 11:05** · tier=mid model=claude-opus-5-thinking-high · ruling cbfdb81f4
+`UNIT-01`, `FIT-01`, `PULL-01` in force. Tick mode dropped from every scenario.
+
+FIRST ACTION WAS TO STOP MY OWN QUEUE. The chained standing queue ended in a torture scenario that
+selects tick mode, and it was sleeping on a pid wait, so stopping it cost nothing and prevented an hour
+of measuring a mode that is being removed. S2 and S4 are dropped as slope work below every item in the
+new queue. S1 and S5 are KEPT and that is a judgement I want on the record: under baseline-over-slope
+they read as sweeps, but S1 *is* item 1's curve and S5 *is* item 8's baseline half — same instrument,
+different question, and cancelling them would have meant rebuilding them.
+
+ITEM 2, THE FREE CORRELATION, COST NOTHING AND CORRECTED MY OWN HEADLINE. `FIT-01` earned its promotion
+on first use. Footprint against hours has rSquared 0.9810 — and runs z of -6.57, lag-1 of 0.778, and a
+quadratic term that explains a further 76% of residual variance with a NEGATIVE coefficient. My
++513.3 MB/h is a chord across a concave curve. Against closed trades the same quadratic test buys 4%:
+memory is straight in trades and bent in time. The trade rate itself halved, 32.9 to 15.0 closes/hour,
+so trades bend time, and that is the whole attribution. +31.06 MB per closed trade univariate, +16.61
+CI[11.81, 21.42] with hours held — brackets the advisor's 23 and both bitmap references.
+
+THE TRAP IN THAT RESULT, because it reads as good news and is not: concave growth looks like a system
+approaching a plateau. It is a property of MY workload. A session holding 20+ closes/hour for ten hours
+has no reason to flatten, and tonight's soak must be graded per closed trade at a deliberately steady
+trade rate or it will spend ten hours reproducing this same ambiguity.
+
+TWO OF MY OWN DEFECTS FIXED IN THAT ANALYSIS. The verdict logic had no branch for "the discriminating
+test had no leverage" and fell straight through to the affirmative — it claimed per-trade support from a
+step test in which all 57 intervals contained a close. Leverage is now required and reported. And a
+per-thousand-bars figure is suppressed with its reason rather than published as -2,639 MB, because
+resident bar count is not monotonic across that soak.
+
+ITEM 1 SETTLED, AND THE ANSWER WAS NEITHER OPTION OFFERED. Not a user-facing P0, not a probe defect: a
+units mismatch in the expectation. `replay-system.js:4661` says it outright — "slider speed = steps/sec"
+— and at 1x the engine computes intervalMs 1000 with stepsPerTick 1, intending exactly 1.00 candles/s.
+S1 measured 1.04 across 22 samples with four panels advancing. Implementation and instrument agree to
+4%. On a 1-minute chart that makes slider 1x equal to 60x real time and 60x equal to 3,750x. B4's 873
+bars/min is therefore 23% of intended cadence — starvation, not overspeed. Nothing I have published per
+bar needs restating, because every per-bar figure is computed from observed replayIndex deltas and never
+inferred from the slider.
+
+THE CURVE, WITH A HOLE IN IT I AM NOT PAPERING OVER. 1x delivers 1.03 of intent, 5x delivers 1.002, 30x
+delivers 0.48. The 10x point is VOID on the window-claim hang, so the knee is BRACKETED to (5x, 30x] and
+cannot be located inside it. I caught three overstatements in my own grader before publishing: it
+labelled the shape SATURATING, claimed a shared ceiling, and ignored VOID points — all three from a
+single measured point above the knee. One point above a knee is a shortfall, not a ceiling.
+
+ITEM 5 ANSWERED FROM DISK. Workers are a FIXED PAIR: zero indicators gives zero workers, and one and two
+indicators both give exactly 2, pinned at min=max=2 across 12 minutes and many thousands of recalcs at
+each dose. "A worker per recalc batch with no termination" is dead. A worker created and promptly
+terminated inside a 10-second sampling gap would be invisible, but that variant is harmless by
+construction, since non-termination was the hypothesis. The harness gap was real though — sweep-gauges
+never called `measureUserAgentSpecificMemory` — and it is NOT a one-line fix, because that API needs
+cross-origin isolation this server does not send. Worker heaps are now read per-isolate over CDP
+instead, and I am quoting no worker-heap number until it has moved by a known 120 MB ballast per
+`GATE-01`.
+
+ITEM 7, TWO HALVES DEAD IN MINUTES. Logout sets `location.href` to `/login/` — cross-document
+navigation, so the realm IS discarded and the same-document hypothesis is dead. `chart/sw.js` precaches
+nothing, its fetch handler is `respondWith(fetch(request))`, and activate deletes every cache: nothing
+pins a stale shell, recorded per `KILL-02`. The half that survives is the one source cannot answer —
+destroying a document is not returning its memory, since the renderer process and its allocator arenas
+can stay warm, and that is queued.
+
+ONE LATENT TRAP FOUND WHILE LOOKING: `SW_VERSION` reads b80 against a deployed b116. Inert today only
+because the version-reload prompt that consumes it is retired and default-OFF. Re-enable that prompt and
+it fires permanently on every load.
+
+ESCALATION, ONE LINE, NOW WITH A PRICE: the window-claim hang has VOIDed two sweep points — S3's
+4-indicator dose and S1's 10x — and the second one is the gap where the speed knee lives. It is B's P0
+and my 8-minute boot deadline is a mitigation, not a fix.
+
+BLOCKED, ONE LINE: item 4 needs a second account and I hold one set of credentials. Not idling on it —
+I will measure whether account-scoped history hydrates unbounded at load, which is decidable on one
+account and is the part A needs in order to cut; the cohort magnitude still needs a heavy account from
+whoever owns them.
+
