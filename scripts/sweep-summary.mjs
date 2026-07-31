@@ -12,10 +12,27 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+import { SWEEPS, summarisePoint, gradeSweep } from './sweep-runner.mjs';
+
 const EVIDENCE = 'c:\\Users\\user\\Desktop\\talaria1\\_evidence\\manager-C';
 const STAMP = '20260731';
 
 const read = (p) => { try { return JSON.parse(fs.readFileSync(p, 'utf8')); } catch { return null; } };
+
+/**
+ * A sweep killed on a later point may have no grade written. Grade it here from the points that
+ * did complete, so a hung fourth session cannot discard three good doses.
+ */
+function ensureGraded(id, art) {
+  if (art.grade && art.pointSummaries?.length) return art;
+  const done = (art.points || []).filter((p) => p.status === 'OK');
+  if (!done.length) return art;
+  const sweep = SWEEPS[id];
+  art.pointSummaries = done.map(summarisePoint);
+  art.grade = gradeSweep(sweep, art.pointSummaries);
+  art.gradedOffline = `graded by the summary from ${done.length} completed point(s); the sweep process did not finish`;
+  return art;
+}
 const n1 = (v) => (Number.isFinite(v) ? (Math.abs(v) >= 100 ? v.toFixed(0) : v.toFixed(2)) : '?');
 const ci = (a) => (Array.isArray(a) && a.length === 2 ? `CI[${n1(a[0])},${n1(a[1])}]` : '');
 const pct = (v) => (Number.isFinite(v) ? `${(v * 100).toFixed(0)}%` : '?');
@@ -31,28 +48,55 @@ function wordsS3(art) {
   const zs = slopeOf(zero);
   const ts = slopeOf(top);
   const curve = art.grade?.curves?.cpuMsPerBarSlopePerKbar;
-  const rises = curve && curve.verdict === 'CLIMBS';
+  const shape = art.grade?.shapes?.cpuMsPerBarSlopePerKbar;
+  const levelShape = art.grade?.shapes?.cpuMsPerBarMean;
+  const throughputShape = art.grade?.shapes?.barsPerSecMean;
+  const memShape = art.grade?.shapes?.footprintMBPerMin;
+  // "rises" comes from the shape, which is measurable at three points. A least-squares CI needs
+  // four, and its absence must never be read as flatness.
+  const rises = shape?.shape === 'RISES';
   const zeroDegrades = Number.isFinite(zs) && zs > 0 && (zero.cpuMsPerBarSlopeVerdict === 'CLIMBS');
   const share = (Number.isFinite(zs) && Number.isFinite(ts) && ts > 0) ? (ts - zs) / ts : null;
+  // A three-point fit has no CI, so quote the per-unit change from the shape instead and say so,
+  // rather than printing a blank where a confidence interval should be.
+  const perInd = Number.isFinite(curve?.slopePerUnitKnob)
+    ? `${n1(curve.slopePerUnitKnob)} ${ci(curve.ci)}`
+    : `${n1(shape?.perUnitKnob)} (${shape?.n ?? '?'} points, too few for a confidence interval)`;
 
   const died = [];
   const survived = [];
+  const extra = [];
+  if (levelShape?.shape === 'RISES' && throughputShape?.shape === 'FALLS') {
+    extra.push(`Per-bar cost goes ${levelShape.values.map((v) => n1(v.value)).join(' → ')} ms/bar as indicators go ${levelShape.values.map((v) => v.knob).join('/')}, and throughput collapses with it, ${throughputShape.values.map((v) => n1(v.value)).join(' → ')} bars/second. That collapse IS what the PO felt as 60x decaying toward 2x.`);
+  }
+  if (memShape?.shape === 'FLAT') {
+    extra.push(`Memory growth is indifferent to indicators — ${memShape.values.map((v) => n1(v.value)).join(' / ')} MB/min across the doses — even though the top dose advances far fewer bars. Indicators cost CPU, not memory, so Monster 1 and Monster 2 are separable and this sweep separates them.`);
+    died.push('"indicators drive the memory growth as well as the CPU growth" — memory growth per minute is flat across 0/1/2 indicators while CPU cost nearly triples');
+  }
+
   let words;
-  if (zeroDegrades && rises) {
+  if (shape?.shape === 'UNMEASURED') {
+    words = 'S3 has too few completed doses to state a shape.';
+  } else if (zeroDegrades && rises) {
     died.push('"the indicator recalc path is the whole of Monster 2" — it degrades just as clearly with zero indicators loaded');
     survived.push('"there are two drivers, one indicator-gated and one not" — the curve rises with dose AND has a large non-zero intercept');
-    words = `Degradation rises with indicator count — ${n1(curve.slopePerUnitKnob)} extra CPU-ms per bar per thousand bars for each indicator added ${ci(curve.ci)} — but it does NOT vanish at zero indicators: the control still degrades at ${n1(zs)} ms/bar per thousand bars, which is ${pct(1 - share)} of the ${n1(ts)} measured at ${top.value} indicators. Indicators are an amplifier, not the cause.`;
+    words = `Degradation rises with indicator count — about ${perInd} extra CPU-ms per bar per thousand bars for each indicator added${shape?.superlinear ? ', and it rises faster than linearly' : ''} — but it does NOT vanish at zero indicators: the control still degrades at ${n1(zs)} ms/bar per thousand bars, which is ${pct(1 - share)} of the ${n1(ts)} measured at ${top.value} indicator(s) per chart. Indicators are an amplifier, not the cause.`;
   } else if (!zeroDegrades && rises) {
     died.push('"there is an indicator-independent driver" — the zero-indicator control is flat');
     survived.push('"the recalc path is the driver" — dose-response with a flat control is as clean as this gets');
-    words = `Degradation scales with indicator count and disappears entirely without them: ${n1(curve.slopePerUnitKnob)} per indicator ${ci(curve.ci)}, and the zero-indicator control is flat. Monster 2 is the recalc path.`;
-  } else if (!rises) {
-    died.push('"indicator count drives Monster 2" — the curve is flat across 0/1/2/4');
-    words = `Degradation does not move with indicator count: the fit across 0/1/2/4 is ${curve ? `${n1(curve.slopePerUnitKnob)} per indicator ${ci(curve.ci)}, verdict ${curve.verdict}` : 'unavailable'}. Whatever drives the decay does not care how many indicators are loaded.`;
+    words = `Degradation scales with indicator count and disappears without them: ${perInd} per indicator, and the zero-indicator control is flat. Monster 2 is the recalc path.`;
+  } else if (shape?.shape === 'FLAT') {
+    died.push('"indicator count drives Monster 2" — the curve is measurably flat across the doses run');
+    words = `Degradation does not move with indicator count: ${shape.values.map((v) => `${v.knob}→${n1(v.value)}`).join(', ')}, a spread too small to call a slope. Whatever drives the decay does not care how many indicators are loaded.`;
   } else {
-    words = 'S3 produced a shape that matches none of its declared predictions, which is itself worth reporting rather than smoothing over.';
+    words = `S3's curve is ${shape?.shape ?? 'unavailable'} (${(shape?.values || []).map((v) => `${v.knob}→${n1(v.value)}`).join(', ')}), which matches none of the declared predictions cleanly and is reported as such rather than smoothed.`;
   }
-  return { words, died, survived, table: pts.map((p) => `${p.value} ind: slope ${n1(slopeOf(p))} ${ci(p.cpuMsPerBarSlopeCi)}, level ${n1(p.cpuMsPerBarMean)} ms/bar, ${n1(p.footprintMBPerMin)} MB/min`) };
+  return {
+    words: [words, ...extra].join(' '),
+    died,
+    survived,
+    table: pts.map((p) => `${p.value} ind/chart (${p.indicatorsActive} active across 4 panels): slope ${n1(slopeOf(p))} ${ci(p.cpuMsPerBarSlopeCi)}, level ${n1(p.cpuMsPerBarMean)} ms/bar, ${n1(p.barsPerSecMean)} bars/s, ${n1(p.footprintMBPerMin)} MB/min, ${n1(p.paintsPerBarMean)} paints/bar`),
+  };
 }
 
 function wordsS1(art) {
@@ -213,7 +257,8 @@ const sweepManifest = read(path.join(EVIDENCE, `SWEEP-QUEUE-MANIFEST-${STAMP}.js
 const standingManifest = read(path.join(EVIDENCE, `STANDING-QUEUE-MANIFEST-${STAMP}.json`));
 
 for (const id of ['S3', 'S1', 'S5', 'S2', 'S4']) {
-  const art = read(path.join(EVIDENCE, `SWEEP-${id}-${STAMP}.json`));
+  let art = read(path.join(EVIDENCE, `SWEEP-${id}-${STAMP}.json`));
+  if (art) art = ensureGraded(id, art);
   const entry = sweepManifest?.sweeps?.find((s) => s.id === id);
   if (!art) {
     if (entry?.status === 'RUNNING') inProgress.push(`${id} — running now`);

@@ -231,7 +231,7 @@ async function runPoint(sweep, value, { pointMinutes, outPath, report }) {
 }
 
 /** Per-point summary statistics, then the across-point fit. */
-function summarisePoint(point) {
+export function summarisePoint(point) {
   const withDerived = point.samples.filter((s) => s.derived?.cpuMsPerBar != null);
   const fitPts = withDerived.map((s) => ({
     hours: (s.realms[0]?.replayIndex ?? 0) / 1000,
@@ -281,6 +281,44 @@ function summarisePoint(point) {
   };
 }
 
+/**
+ * Shape of a series across knob values, usable at three points where a least-squares fit with a CI
+ * is not. This exists because "the fit returned INSUFFICIENT" and "the curve is flat" are
+ * completely different statements, and conflating them reports a live hypothesis as a dead one.
+ */
+export function shapeAcross(points, key) {
+  const rows = points
+    .filter((p) => Number.isFinite(Number(p.value)) && Number.isFinite(p[key]))
+    .map((p) => ({ x: Number(p.value), y: p[key] }))
+    .sort((a, b) => a.x - b.x);
+  if (rows.length < 2) return { shape: 'UNMEASURED', n: rows.length, reason: 'fewer than two points' };
+  const ys = rows.map((r) => r.y);
+  const first = ys[0];
+  const last = ys[ys.length - 1];
+  const monotonicUp = ys.every((v, i) => i === 0 || v >= ys[i - 1]);
+  const monotonicDown = ys.every((v, i) => i === 0 || v <= ys[i - 1]);
+  const ratio = (Math.abs(first) > 1e-9) ? last / first : null;
+  const span = Math.max(...ys.map(Math.abs));
+  const spread = span > 0 ? (Math.max(...ys) - Math.min(...ys)) / span : 0;
+  let shape;
+  if (spread < 0.2) shape = 'FLAT';
+  else if (monotonicUp) shape = 'RISES';
+  else if (monotonicDown) shape = 'FALLS';
+  else shape = 'NON-MONOTONIC';
+  // Per-unit change tells linear from superlinear without needing a CI.
+  const perUnit = rows.length >= 2 ? (last - first) / (rows[rows.length - 1].x - rows[0].x) : null;
+  const increments = rows.slice(1).map((r, i) => +((r.y - rows[i].y) / Math.max(1e-9, r.x - rows[i].x)).toFixed(3));
+  return {
+    shape,
+    n: rows.length,
+    values: rows.map((r) => ({ knob: r.x, value: +r.y.toFixed(3) })),
+    firstToLastRatio: ratio != null ? +ratio.toFixed(2) : null,
+    perUnitKnob: perUnit != null ? +perUnit.toFixed(3) : null,
+    incrementsPerUnit: increments,
+    superlinear: increments.length >= 2 ? increments[increments.length - 1] > increments[0] * 1.25 : null,
+  };
+}
+
 export function gradeSweep(sweep, pointSummaries) {
   const ok = pointSummaries.filter((p) => p.status === 'OK');
   const control = ok.find((p) => p.isNegativeControl);
@@ -297,11 +335,14 @@ export function gradeSweep(sweep, pointSummaries) {
   };
 
   const curves = {};
+  const shapes = {};
   for (const key of ['cpuMsPerBarMean', 'cpuMsPerBarSlopePerKbar', 'barsPerSecMean', 'paintsPerSecMean',
     'paintsPerBarMean', 'footprintMBPerMin', 'heapMBPerMin', 'elementsPerMin', 'residentBarsPerMin',
     'rendererCpuPercentMean']) {
     const f = fitAcross(key);
     if (f) curves[key] = f;
+    // Always computed, even when a CI is unavailable, so a three-point sweep still states a shape.
+    shapes[key] = shapeAcross(ok, key);
   }
 
   // Linearity check for S2-style questions: is cost PER UNIT flat or rising?
@@ -319,6 +360,7 @@ export function gradeSweep(sweep, pointSummaries) {
     voidPoints: pointSummaries.filter((p) => p.status !== 'OK').map((p) => ({ value: p.value, reason: p.reason })),
     enoughForACurve: ok.length >= 3 || !!sweep.isComparisonNotCurve,
     curves,
+    shapes,
     perUnitCost: perUnit,
     negativeControl: control ? {
       value: control.value,
@@ -365,10 +407,15 @@ export async function runSweep(sweepId, { pointMinutes = POINT_MINUTES, outPath 
   for (const value of sweep.values) {
     // eslint-disable-next-line no-await-in-loop -- serial by NIGHT-01
     await runPoint(sweep, value, { pointMinutes, outPath, report });
+    // Grade after EVERY point, not once at the end. A sweep killed on its last point still has to
+    // carry the verdict its completed points earned; the alternative is three good doses thrown
+    // away because the fourth session hung in boot, which is what happened on S3.
+    report.pointSummaries = report.points.filter((p) => p.status === 'OK').map(summarisePoint);
+    report.grade = gradeSweep(sweep, report.pointSummaries);
+    report.gradedAfterPoint = value;
     save();
   }
-
-  report.pointSummaries = report.points.map(summarisePoint);
+  report.pointSummaries = report.points.filter((p) => p.status !== 'RUNNING').map(summarisePoint);
   report.grade = gradeSweep(sweep, report.pointSummaries);
   save();
   console.error(`[sweep] ${sweep.id} POINTS:`);
