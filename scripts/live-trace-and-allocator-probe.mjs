@@ -163,9 +163,33 @@ try {
 
   const includedCategories = PHASES === 'memory'
     ? ['disabled-by-default-memory-infra']
-        // NO 'toplevel'. Its RunTask events WRAP everything, so an outermost-only pass credits 99.9% of the time to
-    // a wrapper and reports "other". That is exactly what my first trace did, and it decomposed nothing.
-    : ['devtools.timeline', 'disabled-by-default-devtools.timeline', 'v8', 'v8.execute', 'blink.user_timing', 'disabled-by-default-v8.gc'];
+        // 'toplevel' IS included, but RunTask is excluded from the BUCKETING pass by the CONTAINERS filter below.
+    // Both are needed and for different jobs: RunTask is the only source of main-thread TASK durations, which
+    // B's long-task calibration requires, while bucketing through it credits 99.9% of time to a wrapper.
+    // Dropping the category outright - my first instinct - would have satisfied item 3 and broken item 1.
+    : ['devtools.timeline', 'disabled-by-default-devtools.timeline', 'toplevel', 'v8', 'v8.execute', 'blink.user_timing', 'disabled-by-default-v8.gc'];
+
+  // RASTERISER STRING, recorded IN THE ARTIFACT rather than only in prose. This host rasterises in software,
+  // so any paint bucket here is not a user's paint cost and the gpu process figure is software rasteriser
+  // memory wearing a GPU label.
+  const sysInfo = await client.send('SystemInfo.getInfo').catch(() => null);
+  const aux = sysInfo?.gpu?.auxAttributes || {};
+  const glRenderer = aux.glRenderer || sysInfo?.gpu?.devices?.[0]?.deviceString || null;
+  const software = /swiftshader|software|llvmpipe|subzero/i.test(String(glRenderer || '') + JSON.stringify(sysInfo?.gpu?.featureStatus || {}));
+  report.rasteriser = {
+    glRenderer,
+    glVendor: aux.glVendor || null,
+    glVersion: aux.glVersion || null,
+    devices: (sysInfo?.gpu?.devices || []).map((d) => d.deviceString || d.vendorString || null),
+    // Recorded in full rather than reduced to a boolean: a blocklisted feature can force software raster even
+    // when the adapter string names real hardware, and the next reader should be able to check that themselves.
+    featureStatus: sysInfo?.gpu?.featureStatus || null,
+    driverBugWorkaroundCount: Array.isArray(sysInfo?.gpu?.driverBugWorkarounds) ? sysInfo.gpu.driverBugWorkarounds.length : null,
+    softwareRasterised: software,
+    caveat: software
+      ? 'SOFTWARE RASTERISATION. There is no hardware GPU on this host, so the gpu-process figure is SwiftShader memory wearing a GPU label, and ANY PAINT OR RASTER BUCKET IN THIS ARTIFACT IS NOT A USER PAINT COST. Paint numbers from this host may only be used as an upper bound and must never be compared against a hardware-rasterised measurement.'
+      : 'Hardware rasterisation reported; paint buckets are comparable to a user path.',
+  };
 
   const barsBefore = await barsOf();
   const wallStart = Date.now();
@@ -219,6 +243,55 @@ try {
     const mainKey = [...busyByThread.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
     report.mainThread = { key: mainKey, candidates: [...busyByThread.entries()].map(([k, v]) => ({ thread: k, busyMs: +(v / 1000).toFixed(1) })) };
 
+    // B'S LONG-TASK CALIBRATION, computed BEFORE any bucket is read. Main-thread TASKS only, over 50 ms,
+    // summing the excess over 50, divided by wall seconds. Near 302 ms/s means B's instrument and mine agree
+    // and my buckets may be quoted against B's numbers. The unthresholded total is the tell: ~300 ms/s would
+    // mean this trace is ALSO thresholding and no bucket could be trusted; north of 700 means it is not.
+    if (mainKey) {
+      const [cpid, ctid] = mainKey.split(':').map(Number);
+      // OUTERMOST TASKS ONLY. `RunTask` and `ThreadControllerImpl::RunTask` NEST, so summing both counts the
+      // same task twice - my first calibration returned 1,652 ms/s of work per second on ONE thread, which is
+      // physically impossible and is exactly how the double count announced itself. A task total may never
+      // exceed 1000 ms/s per thread, and that invariant is now asserted below.
+      const rawTasks = events.filter((e) => e.ph === 'X' && e.pid === cpid && e.tid === ctid
+        && /^(RunTask|ThreadControllerImpl::RunTask)$/.test(e.name) && e.dur > 0)
+        .sort((a, b) => a.ts - b.ts || b.dur - a.dur);
+      const tasks = [];
+      let taskCoveredEnd = -Infinity;
+      for (const e of rawTasks) {
+        if (e.ts < taskCoveredEnd) continue;
+        taskCoveredEnd = e.ts + e.dur;
+        tasks.push(e);
+      }
+      const wallSec = (report.window?.wallMs || TRACE_MS) / 1000;
+      const durs = tasks.map((e) => e.dur / 1000);
+      const long = durs.filter((d) => d > 50);
+      const blockingMsPerSec = long.reduce((s, d) => s + (d - 50), 0) / wallSec;
+      const totalMsPerSec = durs.reduce((s, d) => s + d, 0) / wallSec;
+      report.calibration = {
+        method: "B's conversion: main-thread tasks over 50 ms, sum of (duration - 50), divided by wall-clock seconds.",
+        taskCount: tasks.length,
+        longTaskCount: long.length,
+        longestTaskMs: durs.length ? +Math.max(...durs).toFixed(1) : null,
+        blockingMsPerSec: +blockingMsPerSec.toFixed(1),
+        bTarget: 302,
+        unthresholdedTotalMsPerSec: +totalMsPerSec.toFixed(1),
+        thresholdingCheck: totalMsPerSec > 700
+          ? `PASS: unthresholded total is ${totalMsPerSec.toFixed(0)} ms/s, north of 700, so this trace is NOT thresholding and the decomposition can be trusted.`
+          : `FAIL: unthresholded total is only ${totalMsPerSec.toFixed(0)} ms/s, which is the signature of a trace that is itself thresholding. No bucket may be quoted until that is explained.`,
+        agreesWithB: Math.abs(blockingMsPerSec - 302) / 302 < 0.25,
+        nestedTasksDiscarded: rawTasks.length - tasks.length,
+        physicallyPossible: totalMsPerSec <= 1000,
+      };
+      if (!report.calibration.physicallyPossible) {
+        report.calibration.verdict = `INVALID: ${totalMsPerSec.toFixed(0)} ms of task time per second on ONE thread is impossible, so this is a counting defect in my instrument and not a measurement. No bucket may be read from this trace.`;
+        report.calibration.agreesWithB = null;
+      }
+      report.calibration.verdict = report.calibration.agreesWithB
+        ? `CALIBRATED: ${blockingMsPerSec.toFixed(0)} ms/s blocking against B's 302, inside 25%. Our instruments agree and my buckets may be quoted against B's figures.`
+        : `NOT CALIBRATED: ${blockingMsPerSec.toFixed(0)} ms/s blocking against B's 302. The gap must be explained before any bucket of mine is set beside any number of B's.`;
+    }
+
     if (mainKey) {
       const [mpid, mtid] = mainKey.split(':').map(Number);
       // Container events that merely wrap real work. Counting them hides the decomposition.
@@ -248,6 +321,9 @@ try {
         byCategoryMs: Object.fromEntries(Object.entries(buckets).map(([k, v]) => [k, +(v / 1000).toFixed(1)])),
         byCategoryPercent: Object.fromEntries(Object.entries(buckets).map(([k, v]) => [k, +((v / topLevelBusyUs) * 100).toFixed(1)])),
         byCategoryMsPerEvent: evs > 0 ? Object.fromEntries(Object.entries(buckets).map(([k, v]) => [k, +((v / 1000) / evs).toFixed(1)])) : null,
+        paintBucketCaveat: report.rasteriser?.softwareRasterised
+          ? 'THE PAINTING BUCKET IS NOT A USER PAINT COST: this host rasterises in software via SwiftShader. Treat it as an upper bound and do not compare it with hardware-rasterised figures.'
+          : null,
         topEvents: Object.entries(named).sort((a, b) => b[1] - a[1]).slice(0, 15)
           .map(([name, us]) => ({ name, ms: +(us / 1000).toFixed(1), percent: +((us / topLevelBusyUs) * 100).toFixed(1) })),
       };

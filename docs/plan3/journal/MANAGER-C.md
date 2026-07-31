@@ -1997,3 +1997,47 @@ bars monotonic at ~63,300. Trace windows are timestamped in each artifact so ove
 **My own wasted attach, recorded:** the first trace included the `toplevel` category, whose RunTask wrappers
 absorbed 99.9% of the time under an outermost-only pass and decomposed nothing. I built a decomposition tool
 that reported one bucket called "other".
+
+## 21:00 — Calibration passes the thresholding test, reads 2.18x B, and I am not on B's host
+
+Three ordered items before any bucket was read.
+
+**1. B's calibration.** Unthresholded main-thread task total **867.3 ms/s** — north of 700, so my trace is
+NOT thresholding and the decomposition can be read. Independent cross-check: the decomposition pass, sharing
+no code, puts the thread busy 861 ms/s. Two passes agree to 0.7%. Blocking time by B's conversion is
+**657.7 ms/s against B's 302, a factor of 2.18**, so I am NOT quoting my buckets against B's numbers yet.
+The boring explanation is testable: my window sits at 65,700 resident bars, B's per-event window ran
+1,930-6,242, and my own cost-per-event curve rises 2.24x across a comparable span. **Prediction for B: re-run
+the conversion at ~65,000 bars and read near 650, not 302.** If B reads 302 there, my explanation is dead and
+the 2.18 is the thing to chase. Also: one task ran **792.6 ms** — a three-quarter-second UI freeze, not a rate.
+
+**The calibration caught my own double count.** First pass returned 1,651.9 ms/s — over a second of work per
+second on one thread, impossible. `RunTask` and `ThreadControllerImpl::RunTask` nest and I summed both;
+1,129 nested duplicates of 2,325 discarded. Had B's target been 600, my double-counted 1,101 would have read
+as a plausible near-miss and I would have published it. The instrument now asserts the invariant and voids
+the whole trace rather than reporting a bucket.
+
+**Process failure:** I applied that patch with a PowerShell `.Replace()` whose anchor did not match. It
+returns the string unchanged, so the edit silently did nothing and I ran a full trace against the committed
+ten-hour soak believing code was present that was not. A patch that cannot fail loudly is not a patch.
+
+**2. Rasteriser — the premise does not hold for me.** `ANGLE (NVIDIA, NVIDIA GeForce RTX 4060 Laptop GPU,
+Direct3D11)`, hardware-accelerated, no SwiftShader anywhere; the only non-accelerated features are
+direct_rendering_display_compositor, raw_draw, trees_in_viz and webnn, none of them rasterisation. **I am not
+on B's host.** So my GPU-process figure is real GPU memory and my paint bucket IS a user-comparable cost.
+The caveat is generated from the live string rather than remembered, so it prints the software warning
+automatically on a host that has one. The consequence is larger than the caveat: **if B rasterises in
+software and I do not, every cross-manager CPU comparison today spans two different machines** — and it
+points the wrong way for the 2.18, since software raster would make B's number higher, not lower.
+
+**3. Dropping `toplevel` would have broken item 1.** `RunTask` is the only source of task durations, which
+B's calibration is defined over. Kept the category, excluded `RunTask` from the bucketing pass instead — one
+trace serves both items. Calibrated decomposition: scripting 87.7%, other 11.6%, painting 0.5%, gc 0.1%,
+layout/rendering/parsing 0.0%, 271.6 ms per data event, FireAnimationFrame 70.7%.
+
+**Second allocator dump scheduled** (pid 20216, fires ~185 min, self-diffs against dump 1, voids on pid
+change). Prediction written into the script before the measurement and graded mechanically: v8 carries
+essentially all growth, blink_gc/partition_alloc/malloc flat; if partition_alloc climbs instead, bar data
+lives outside V8 and my per-bar figure needs re-reading. Growth in MB per thousand bars, never MB/h.
+
+Phase 4 cancellation noted; my one-isolate finding and A's under-4% pricing are both in the record.
