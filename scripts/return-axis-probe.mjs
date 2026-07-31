@@ -44,6 +44,7 @@ const ARM = String(argOf('arm', 'default'));
 const HEAVY_MB = Number(argOf('heavy-mb', 1024));
 const HEAVY_DEADLINE_MIN = Number(argOf('heavy-deadline-min', 55));
 const SPEED = Number(argOf('speed', 5));
+const TRADE_EVERY_MS = Number(argOf('trade-every-sec', 25)) * 1000;
 const OUT = argOf('out', `c:\\Users\\user\\Desktop\\talaria1\\_evidence\\manager-C\\RETURN-AXIS-${ARM.toUpperCase()}-20260731.json`);
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -56,6 +57,7 @@ const report = {
   arm: ARM,
   exitsRequested: EXITS,
   heavyTargetMBAboveFirstPaint: HEAVY_MB,
+  tradeEverySeconds: TRADE_EVERY_MS / 1000,
   onlyLogoutIsBfcacheEligible: 'A reload replaces the same document and a tab close destroys it; neither is a back-forward cache path. The two arms can therefore only differ on the logout exit, and that is where the second arm is spent.',
   gaugeScope: SWEEP_GAUGE_SCOPE_NOTE,
   startedAtIso: new Date().toISOString(),
@@ -177,17 +179,44 @@ async function footprintOnly(browserCdp, cdp = null) {
       let last = null;
       let closes = 0;
       let nextTrade = Date.now();
+      row.buildTrace = [];
+      // The first attempt at this loop crawled at ~5 MB/min on bars alone and would never have reached the
+      // target, and because it logged only footprint I could not tell a dead playback from a genuine
+      // plateau. Two changes: the trace records resident bars and closed trades so the driver is visible,
+      // and trades run at TRADE_EVERY_MS rather than every three minutes. Trades are worth ~16.6 MB each,
+      // so they are the fast lever, and CONF-01 calls for orders accumulating anyway. Bars decelerate by
+      // construction — throughput falls as resident bars grow, which is this morning's O(total) result — so
+      // bars alone cannot carry a fixed target inside a fixed deadline.
       while (Date.now() < heavyDeadline) {
         if (Date.now() >= nextTrade) {
           const c = await cycleTrades(page, { open: 1, close: 1, holdMs: 0 }).catch(() => null);
           closes += c?.closed || 0;
-          nextTrade = Date.now() + 180_000;
+          nextTrade = Date.now() + TRADE_EVERY_MS;
         }
-        await sleep(60_000);
+        await sleep(30_000);
         const fp = await footprintOnly(browserCdp, cdp);
         last = fp.totalPrivateMB ?? last;
-        console.error(`[return:${exit}] building heavy: ${last}MB / target ${heavyTarget.toFixed(0)}MB (+${(last - referenceMB).toFixed(0)} of ${HEAVY_MB}) closes=${closes}`);
+        const bars = await page.evaluate(() => {
+          let n = 0;
+          const wins = [window];
+          for (const f of Array.from(document.querySelectorAll('iframe'))) {
+            try { if (f.contentWindow) wins.push(f.contentWindow); } catch { /* cross-origin */ }
+          }
+          for (const w of wins) { try { if (Array.isArray(w.chart?.data)) n += w.chart.data.length; } catch { /* gone */ } }
+          return n;
+        }).catch(() => null);
+        row.buildTrace.push({ atIso: new Date().toISOString(), totalPrivateMB: last, residentBars: bars, closesIssued: closes });
+        const prev = row.buildTrace[row.buildTrace.length - 2];
+        const barsMoving = prev?.residentBars != null && bars != null ? bars - prev.residentBars : null;
+        console.error(`[return:${exit}] building heavy: ${last}MB (+${(last - referenceMB).toFixed(0)} of ${HEAVY_MB}) bars=${bars}${barsMoving != null ? ` (+${barsMoving})` : ''} closes=${closes}`);
         if (last != null && last >= heavyTarget) break;
+      }
+      // If bars never moved, the heavy state was built by trades alone and the reader must know that.
+      const trace = row.buildTrace;
+      row.barsAdvancedDuringBuild = trace.length >= 2 && trace[0].residentBars != null && trace[trace.length - 1].residentBars != null
+        ? trace[trace.length - 1].residentBars - trace[0].residentBars : null;
+      if (row.barsAdvancedDuringBuild != null && row.barsAdvancedDuringBuild <= 0) {
+        row.playbackStalledDuringBuild = `Resident bars did not advance during the build (${trace[0].residentBars} to ${trace[trace.length - 1].residentBars}). Whatever heaviness this document carries came from trades and from the initial load, not from replay.`;
       }
       row.heavyState = await readAll(page, cdp, browserCdp, `heavy-before-${exit}`);
       row.heavyClosedTradesAdded = closes;

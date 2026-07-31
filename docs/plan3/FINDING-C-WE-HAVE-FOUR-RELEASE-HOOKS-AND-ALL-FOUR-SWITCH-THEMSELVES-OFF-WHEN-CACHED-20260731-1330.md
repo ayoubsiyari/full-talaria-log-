@@ -19,6 +19,29 @@ if (ev && ev.persisted === true) return;
 every release path we own is deliberately disabled in precisely the case where the document is about to
 be held. bfcache keeps our heavy state because our own code hands it over intact.
 
+> **INDEPENDENTLY RE-VERIFIED 14:20** against the served `20260731b118` bundle by
+> `PAGEHIDE-RELEASE-VERIFY-V1` (artifact `PAGEHIDE-RELEASE-VERIFY-20260731.json`), because this document
+> arrived in my namespace committed by another manager's process and its claims are load-bearing. The
+> verifier resolves each handler body rather than counting mentions. Result: **claims 2 and 3 confirmed,
+> claim 1 corrected.**
+>
+> - There are **nine** `pagehide` registrations, not four. They resolve to **four distinct release
+>   handlers** — `_mcBackgroundRenderCatchupReleaseHandler`, `_mcHostCacheReleaseUnloadHandler`,
+>   `_sharedBarStoreReleaseUnloadHandler`, `_mcFinerPanelHostCommitUnloadHandler` — **each registered at
+>   two sites** (benign: `addEventListener` dedupes by function reference and the installers guard on an
+>   existing handler), plus **one non-release handler**.
+> - **All eight release registrations early-return on `ev.persisted === true`.** Confirmed by reading the
+>   bodies, zero inconclusive.
+> - **Only one `pageshow` listener exists** — `_handleViewportRefresh` at 1572 — and it does not branch on
+>   `persisted`. No restore path. Confirmed.
+> - **And the sharper point, which the original missed:** the ninth handler is `flushPendingSessionState`,
+>   and it does **not** guard on `persisted`. So on being put into the cache **we run the handler that
+>   flushes session state and we run none of the handlers that free memory.** The document is not unaware
+>   it is being put away — it acts, and the action it takes is the one that costs nothing to keep.
+> - Two grader defects of my own were fixed getting here: classifying handlers by NAME put the fourth
+>   release hook in the wrong bin because its release call is in its body, and grading release and
+>   non-release handlers together produced a misleading "8 of 9".
+
 ## The four hooks
 
 | line in `chart.js` | hook | what it would release |

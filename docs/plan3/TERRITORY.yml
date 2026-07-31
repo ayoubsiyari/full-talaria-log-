@@ -299,6 +299,19 @@ managers:
         provenance: ruling
         reason: Phase 4 behavioural parity oracle; new tree, no collision with C's scripts grants
         authority: PLAN3-PHASE-4 - D owns the behavioural gate, C owns the measurement half
+      - pattern: docs/plan3/oracles/release-parity-*.mjs
+        provenance: ruling
+        reason: CORRECTION 20260731-1330. D placed its parity oracle in the conventional
+          oracles tree, which is correct practice; my scripts/parity/** grant invented a
+          location nobody uses. C retains docs/plan3/oracles/** as a tree; these named
+          release-parity files win on specificity, the same way E's two indicator files
+          win over A's modules tree.
+        authority: A11.2 grants C the oracles tree; specificity carve-out is Director-authored
+      - pattern: scripts/tests/release-parity-*.test.mjs
+        provenance: ruling
+        reason: CORRECTION 20260731-1330. Same carve-out for the test harness half. C
+          retains scripts/tests/** as a tree.
+        authority: A11.2
       - pattern: scripts/measure-*.mjs
         provenance: ruling
         reason: D's payload and bitmap measurement harnesses, already in use at D1
