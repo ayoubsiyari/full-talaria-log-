@@ -6308,3 +6308,50 @@ window after C's arm — and nothing else: no dependencies, no access, no accoun
 Declined to rewrite D's harness, but offered to, since the credential being here is the only reason any
 of this sat with me.
 
+
+## B-0231 — ran the M1 peak capture; a repeat reversed the sign and killed my third headline of the day
+
+**2026-07-31 21:15**
+
+**Ran at 20:56, not 04:00, and said why.** The window was granted on the condition "no overlap with a
+soak in either direction", which is objectively checkable, so I checked it: zero browsers, zero node,
+zero remote connections to :3000, chart container 0% CPU, loadavg 0.48. Built a runner that refuses to
+start otherwise and prints every check. Postflight clean. Offered a clean-room repeat at 04:00 if the
+Director wants the hour rather than the condition. The guard's first version refused to run because its
+own ps grep matched its own command line — failing closed was the right direction, fixed to match comm.
+
+**The transient is real and precisely reproducible.** Four captures, two runs x two arms: peak 148.03 MB
+decoded, 32 full-resolution images (31 data-URLs), largest 7.2 MB, settled 5.75 MB with 1 full-res.
+25.7x. Identical to the decimal every time. The peak occupies about **one sample in three hundred**, so
+D's three-identical-samples requirement does not merely miss it by luck — it is excluded by
+construction. D's own classifyM1 gives RED at peak and UNPROVEN settled in all four.
+
+**And then the A/B nearly cost me.** Run 1: renderer peak RSS 708.0 MB with J1 on against 1001.1 MB with
+it off — a clean 293 MB saving attributable to M20-J1. Run 2 reversed it: 961.9 on, 691.3 off, J1
+apparently *costing* 271 MB. **The within-arm spread is larger than the between-arm difference.** Had I
+reported after run 1 it would have gone straight into M1's kill condition, and it would have been the
+5.9x all over again. Third headline a repeat has killed today. Reported the detection floor rather than
+a null: with n=2 and ~254 MB spread I cannot see an effect smaller than that, so "no measurable
+difference" is not "no difference".
+
+**What survives is the Director's split, now experimentally separated rather than argued.** The DOM image
+surface is byte-identical with the fix on and off, twice. So the 148 MB transient is not M20-J1's doing
+and M20-J1 does not fix it. Meanwhile the settled surface is clean in both arms — one full-res image,
+5.75 MB — so on this route the "screenshots stay resident" defect does not reproduce at all. Two
+defects, one of which this route does not exhibit and one of which has no owner and no gate. Left the
+next question as D's and noted it needs no host time: which code path creates those 32 image elements at
+t+35s, given the journal list is not in the DOM here.
+
+**Also pushed back on a caveat I caused.** The Director propagated a SwiftShader caveat to every paint
+conclusion on the premise that C's soak runs on this host. It does not: zero browsers, zero node, zero
+remote connections, and **zero ws/chart accepts in twelve hours**. C's browser is on C's own machine, so
+C's gpuMB is measured by an unknown rasteriser, not a known-software one. Narrowed it: my numbers are
+verified software-rasterised, the consequence for paint attribution remains inference, and C's is
+unknown rather than wrong — one line of WEBGL_debug_renderer_info converts it to a fact. **Over-caveating
+is not free**; C's 36,104-bar curve is one of the few things measured on plausibly user-like hardware and
+reclassifying it as a software artefact on my account would lose it for nothing.
+
+Kept confidence markers throughout, and they did the work the Director said they would: the SwiftShader
+*fact* is verified, its *consequence* for paint attribution is inference, and the two get different
+treatment in every document.
+

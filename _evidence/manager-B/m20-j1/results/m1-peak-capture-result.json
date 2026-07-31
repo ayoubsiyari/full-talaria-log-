@@ -1,0 +1,70 @@
+[
+  {
+    "label": "A-j1-enabled",
+    "disableJ1": false,
+    "ready": {
+      "href": "http://127.0.0.1:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+      "onLogin": false,
+      "chart": true,
+      "bars": 6242,
+      "build": "20260731b120"
+    },
+    "peak": {
+      "t": 42404,
+      "count": 208,
+      "dataUrl": 31,
+      "fullRes": 32,
+      "fullResDataUrl": 31,
+      "thumbs": 160,
+      "bytes": 155215796,
+      "maxOne": 7551884
+    },
+    "settled": {
+      "t": 71404,
+      "count": 177,
+      "dataUrl": 0,
+      "fullRes": 1,
+      "fullResDataUrl": 0,
+      "thumbs": 160,
+      "bytes": 6029312,
+      "maxOne": 2893440
+    },
+    "rendPeak": 961.8999999999999,
+    "gpuPeak": 147.4,
+    "samples": 515
+  },
+  {
+    "label": "B-j1-disabled",
+    "disableJ1": true,
+    "ready": {
+      "href": "http://127.0.0.1:3000/chart/dist-v9/index.html?mode=backtest&sessionId=936&fileId=677",
+      "onLogin": false,
+      "chart": true,
+      "bars": 6242,
+      "build": "20260731b120"
+    },
+    "peak": {
+      "t": 47983,
+      "count": 208,
+      "dataUrl": 31,
+      "fullRes": 32,
+      "fullResDataUrl": 31,
+      "thumbs": 160,
+      "bytes": 155215796,
+      "maxOne": 7551884
+    },
+    "settled": {
+      "t": 84401,
+      "count": 177,
+      "dataUrl": 0,
+      "fullRes": 1,
+      "fullResDataUrl": 0,
+      "thumbs": 160,
+      "bytes": 6029312,
+      "maxOne": 2893440
+    },
+    "rendPeak": 691.3000000000001,
+    "gpuPeak": 144.9,
+    "samples": 617
+  }
+]
