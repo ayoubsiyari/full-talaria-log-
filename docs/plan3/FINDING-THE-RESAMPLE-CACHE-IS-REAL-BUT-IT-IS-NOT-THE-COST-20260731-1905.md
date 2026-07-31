@@ -33,6 +33,14 @@ difference — **at most ~12.6 ms/s of a measured ~320 ms/s, and less on every t
 Against that, the measured per-event cost is **~86 ms** (8.6 long tasks/s carrying ~36 ms of blocking
 each beyond the 50 ms threshold). **The resample is roughly 1% of one event.**
 
+> **Corrected 20:25.** Recomputed from the raw rows over the whole plateau regime: **8.11 long tasks/s,
+> 37.3 ms mean blocking above threshold, 87.3 ms mean task duration.** And "per event" was an inference,
+> not a measurement — there are **1.12 long tasks per replay event**, so a replay event carries about
+> **98 ms** of long-task time. The conclusion of this document is unaffected: 0.9–1.8 ms against 87–98 ms
+> is still roughly one percent. Full definition, and why C's trace will total more than twice my
+> headline without disagreeing with it, in
+> `docs/plan3/B-DEFINITION-OF-THE-87MS-BEFORE-C-TRACES-IT-20260731-2025.md`.
+
 **This does not refute A's source analysis. It refutes the cost attribution.** A cache that can never
 hit during the one activity that needs it is a genuine defect and worth fixing on its own merits — it
 pays bookkeeping for no benefit. It is simply not what makes replay slow, so it should not be the

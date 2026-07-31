@@ -63,6 +63,11 @@ That makes the direct-cost picture stronger, not weaker — if a full recompute 
 `prevResampled.slice()` is cheaper still, and neither can be the ~86 ms this thing spends per data
 event.
 
+> **Corrected 20:25.** That "~86 ms per data event" is **87.3 ms mean long-task duration**, and the
+> per-event framing was a division rather than a measurement — 1.12 long tasks per replay event, so
+> ~98 ms of long-task time per event. Neither figure changes the argument here. Definition in
+> `docs/plan3/B-DEFINITION-OF-THE-87MS-BEFORE-C-TRACES-IT-20260731-2025.md`.
+
 **But there is a route by which your mechanism costs far more than its call time, and my microbenchmark
 is blind to it.** `prevResampled.slice()` *allocates a new N-element array on every tick*. At ~7 ticks/s
 and C's 36,104 bars that is roughly a quarter of a million pointers of garbage per second. **The copy

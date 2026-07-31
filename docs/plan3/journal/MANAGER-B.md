@@ -6244,3 +6244,67 @@ empty-output-as-success trap as the container-name error earlier today; the rewr
 prints the database and table it actually used. And I hit PowerShell quoting on a nested node -e for the
 third time today before remembering my own rule and externalising it to a .sh file.
 
+
+## B-0230 — the 86 ms is a mean long-task duration, not a per-event cost, and the main thread is busier than my headline says
+
+**2026-07-31 20:30**
+
+**Item 2, the definition, before C traces.** Went back to the raw rows rather than restate my own prose,
+which was right to do: recomputing over all 15 plateau-regime rows (barsAtArm > 739, 467.2 s, 3,790
+tasks, 141,243 ms blocking) gives 8.11 tasks/s, 302.3 ms/s, 37.3 ms mean blocking above threshold, and
+**87.3 ms mean task duration**. So the number is `50 + mean(duration - 50)` — **the mean duration of a
+task that already exceeded 50 ms. It is not a measured per-event cost.** The per-event framing was a
+division: long tasks run at 8.11/s against a ~7.25/s dataVersion bump rate, so **1.12 tasks per event**,
+and a replay event carries ~98 ms of long-task time rather than 87.
+
+**The part that would have cost a day.** My metric is the Total Blocking Time convention, so it discards
+the first 50 ms of every counted task and every sub-50 ms task entirely. Adding back only the discarded
+50 ms per counted task: **the main thread is demonstrably occupied ≥ 707.9 ms/s, against the 302.3 ms/s
+I have been quoting** — and 708 is still a floor. **C's bucketed trace will total north of 700 and that
+is agreement, not contradiction.** Wrote the exact conversion so C can reproduce my 302 from the trace
+(filter tasks > 50 ms, sum duration-50, divide by wall seconds) and said plainly I would rather C spend
+five minutes calibrating than we spend a day on the gap. If C's trace instead totals ~300, *that* is the
+real disagreement.
+
+**Config recorded by interrogation, not memory.** Chrome for Testing 148.0.7778.97 headless,
+puppeteer-core 25.4.0, 1600x950 DPR 1, b120, session 936, replay 10x, 30 s armed 3 s in. And the one
+that matters most for C's paint buckets: **rasterisation is ANGLE/Vulkan SwiftShader — software, no
+GPU.** Any paint or raster number from this host is not what a user's GPU-accelerated browser produces,
+so C must record its own rasteriser or only the scripting buckets are comparable.
+
+**Answered the boundary question honestly: there is no event boundary.** The unit is the event-loop
+task; I never instrumented a replay tick. Includes JS plus main-thread style/layout/paint inside the
+same task; excludes compositor raster and GPU process. GC is inside when it lands in a task, outside
+when it is incremental/idle — and bounded, because my independent timer-gap witness tracks the longest
+task within about one timer interval on every row, so nothing large is escaping attribution.
+
+**Named the three incompatible units**, including the one I let stand: A's Node microseconds are not
+comparable to my figure even in principle — different engine config, no rendering, no event-loop
+contention, no surrounding GC pressure. My own 0.9-1.8 ms resample timing *is* comparable, because it
+was taken in the same browser on the same page during the same activity. I should have said that when
+A's row went up.
+
+Found a better instrument while checking: this Chrome supports **long-animation-frame**, which already
+carries renderStart, styleAndLayoutStart and per-script forcedStyleAndLayoutDuration. Offered it to C as
+a third witness rather than a substitute for the trace. Not run against the product yet, marked
+unverified.
+
+Corrected both published docs in place rather than reinterpreting them.
+
+**Item 1, catching the M1 peak.** Two of three things are cheap and the third is not mine.
+**[verified] /proc/<pid>/status VmHWM is populated on this host and CDP privateMemory is null** — which
+is exactly why D got zeros — so the renderer-footprint half becomes a kernel-maintained high-water mark
+needing no sampling race at all: 181.8 MB browser, 105.9 MB renderer, 137.7 MB GPU. About twenty lines
+in D's harness. The image-surface peak needs the sampler installed with evaluateOnNewDocument and max
+reported instead of the settled value.
+
+**The actual blocker is a definition, and I said so rather than iterating.** The same run gives RED at
+app-ready and UNPROVEN six seconds later under D's own classifier, so better instruments only produce
+both answers more precisely. Offered my read as input, not decision: a 141 MB transient clearing in six
+seconds is a real user-visible cost but a *different defect* from screenshots staying resident, and one
+harness should not try to return one verdict for both. Asked for exactly one thing — an exclusive host
+window after C's arm — and nothing else: no dependencies, no access, no accounts.
+
+Declined to rewrite D's harness, but offered to, since the credential being here is the only reason any
+of this sat with me.
+
