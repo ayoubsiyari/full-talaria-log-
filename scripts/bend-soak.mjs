@@ -421,10 +421,26 @@ const save = () => fs.writeFileSync(OUT, JSON.stringify(report, null, 1));
         barRows.map((r) => r.closedTrades),
       );
       if (fit && !fit.degenerate) { delete fit.resid; delete fit.fitted; }
+      // x1 here is THOUSANDS OF BARS, not hours. ols2's legacy field names say `perHour`, so the artifact is
+      // rewritten to name what was actually predicted - a per-bar coefficient published under an hourly label is
+      // the exact defect that put wrong units into rulings.
+      if (fit && !fit.degenerate) {
+        fit.perThousandBars = fit.perX1;
+        fit.perThousandBarsCi = fit.perX1Ci;
+        fit.perClosedTradeMB = fit.perX2;
+        fit.perClosedTradeMBCi = fit.perX2Ci;
+        fit.predictorNames = { x1: 'thousands of resident bars', x2: 'closed trades' };
+        delete fit.perHour; delete fit.perHourCi;
+      }
       report.barsVersusTrades.twoDriverFit = fit;
+      // A split is only readable if the drivers separate. In a governed soak they usually do not, and OLS then
+      // answers with confident nonsense such as memory FALLING as trades close.
+      const vif = fit && !fit.degenerate ? (fit.varianceInflation ?? null) : null;
       report.barsVersusTrades.reading = fit?.degenerate
         ? `Degenerate: ${fit.reason}. Bars and trades cannot be separated in this run.`
-        : `With both drivers in one model: ${fit.perHour} MB per thousand bars CI[${fit.perHourCi?.join(', ')}] and ${fit.perClosedTrade} MB per closed trade CI[${fit.perClosedTradeCi?.join(', ')}], VIF ${fit.varianceInflation}. The per-trade figure published at 10:10 (+16.61 MB, bars omitted) should be read against this one, and if it falls, part of what looked like trade cost was bar cost.`;
+        : (vif != null && vif > 10
+          ? `NOT SEPARABLE and therefore NOT PUBLISHED: predictor correlation ${fit.predictorCorrelation}, variance inflation ${vif}. Over this run bars and closed trades are effectively one variable, so the coefficients are unidentified - the fit offers ${fit.perThousandBars} MB per thousand bars and ${fit.perClosedTradeMB} MB per closed trade, and a negative per-trade term means collinearity rather than memory falling as trades close. The paired zero-trade CONF-05 arm is the identification strategy: with trades zero by construction, the BETWEEN-ARM difference is the trade term.`
+          : `With both drivers in one model: ${fit.perThousandBars} MB per thousand bars CI[${fit.perThousandBarsCi?.join(', ')}] and ${fit.perClosedTradeMB} MB per closed trade CI[${fit.perClosedTradeMBCi?.join(', ')}], VIF ${vif}. The per-trade figure published at 10:10 (+16.61 MB, bars omitted) should be read against this one, and if it falls, part of what looked like trade cost was bar cost.`);
     } else {
       report.barsVersusTrades.reading = `NO two-driver fit: the bar axis was not monotonic (${report.barsVersusTrades.reArmCount} re-arms), so bars cannot enter the model without carrying the same artifact that made me refuse the soak's negative per-bar slope. The clean per-bar rate stands on MONOTONIC-BARS-GATE instead.`;
     }

@@ -1887,3 +1887,58 @@ coefficient labelled "perHour"; added perX1/perX2 aliases without breaking the t
 with a two-term model ten minutes before I published, and my curve is what A's model PREDICTS. I framed
 agreement as a rebuttal. The numbers stand; the frame was wrong. Lesson: check a sibling's claim is still their
 current position before publishing against it - positions move in ten minutes on a day like this.
+
+## 2026-07-31 19:35 — four items worked: the ols2 sweep, the B reconciliation, the tree, and the soak
+
+**1. OLS2 CORRECTIONS SWEEP (CORRECTIONS-C-...-20260731-1930.md).** Read all five call sites and traced every
+published figure to the coefficient it used. NINE figures checked: SEVEN STAND, one artifact field will be
+relabelled, two MB/h headlines withdrawn. Nothing I published is numerically wrong, and the reason is narrow
+rather than creditable: every published two-driver figure came from the ONE call site whose predictors happened
+to match the library's field names - ols2(foot, hours, closed), where perHour really was hours and
+perClosedTrade really was trades. The quadratic site reads b2 for the x-squared term via perClosedTrade, which
+is documented in a comment and uses only the SIGN, so the CONCAVE verdict stands. +1,392 excursion/trade never
+touched ols2 (single-predictor in conf01-duration-gate).
+
+**The one live exposure is in a file being written right now.** bend-soak:418 passes THOUSANDS OF BARS as x1;
+its prose says "MB per thousand bars" correctly but the artifact field is called perHour. Arm 1 runs the pre-fix
+code, so its artifact will carry twoDriverFit.perHour holding a per-kbar coefficient. Fixed for arm 2:
+publishes perThousandBars/perClosedTradeMB with a predictorNames block and DELETES perHour so it cannot be read;
+same edit adds the VIF>10 suppression so arm 2 cannot publish the unidentified split arm 1 would have. Arm 1's
+artifact gets relabelled offline the moment it closes.
+
+**Two MB/h headlines withdrawn, which is the deeper half of the point.** +513.3 MB/h is now unit-unsafe as well
+as a chord across a curve, and its bar axis was non-monotonic so it CANNOT be converted - only replaced, by
+23.98 (zero trades) and 24.55 (with trades) MB/kbar. The 1,084-vs-332 MB/h pair keeps its 3:1 ratio but the
+MB/h form is withdrawn. Lesson: a shared library that names its outputs after its FIRST caller's variables will
+silently mislabel every later caller.
+
+**2. B RECONCILIATION - the harder answer.** Live read: spacing is 6.0 px on the host and 2.43/2.45/2.37 on the
+iframes against B's 7.0. But the host's candleWidth is 6, EXACTLY B's 6 - the whole difference for that panel is
+a 1 px gap. And the host holds 40,105 of 41,031 resident bars (97.7%), with the iframes at 648/269/9. So my
+"36,104 bars" is nearly a single-chart figure taken at B's own candle width, which removes zoom for the panel
+that carries the load and leaves the RANGES: B spans 1,930-6,242, I span 6,700-40,105, and they do not overlap
+at all. TWO MECHANISMS WITH DIFFERENT ONSETS - flat below ~6,000 bars, biting above it. R-1's 7,321 bars at
+first paint is already above B's entire range. I could NOT verify pixelLodActiveNow: zero properties matching
+lod/decim/stride/downsample/simplif/skipRender/coarse on all four live chart objects, so B should say where that
+field comes from rather than either of us reasoning from a name.
+
+**ARENA NARROWED HARD.** Largest renderer 1,968.2 MB of 2,032.3 across four renderers - 96.8% in ONE process,
+the other three at ~20 MB each and not panels, so the Phase-4 escalation hardens. GPU 303.1. Canvas backing
+stores 4.16 MB across 4 canvases (reproduces the census exactly). Decoded img >= 5.75 MB. So ~1.5 GB of non-JS
+sits in ONE renderer with DOM, listeners, heap, canvas, bitmaps and GPU all excluded, and the per-bar shape
+agrees: only 4.26 of 23.98 MB/kbar is JS heap. Survivors: script/compiled-code residency and native allocator
+arenas holding bar data. Closing instrument is a memory-infra allocator dump, which needs a host not mid-soak,
+so it runs after arm 2.
+
+**Two probe defects caught before publishing:** SystemInfo.getProcessInfo's `memory` field reads 0 on this
+platform so my first pass reported 0 MB for EVERY process type - caught only because I knew the renderer figure
+already; bytes come from readOsFootprints, which my own baseline gate uses. And my first pass would have
+reported worker heaps as 0.00 MB rather than UNMEASURED - browser.targets() does not list dedicated workers,
+which is the GATE-01 blind spot I already fixed elsewhere with three routes.
+
+**3. TREE CLEAN.** Only one untracked file of mine (the probe), now committed. All 111 artifacts / 4.7 MB live in
+_evidence\manager-C, OUTSIDE the Cursor-indexed tree, so EVID-02 holds. The other 417 status entries are other
+managers' product edits and .ckpt snapshots and are not mine to commit.
+
+**4. SOAK RUNNING TO THE BEND.** pid 29112 alive, 1.13h, sample 22, foot 2,500.1 MB, heap 342.6, CPU 114.8%,
+bars monotonic, zero re-seeks. 1,120 MB above the ceiling I withdrew.
