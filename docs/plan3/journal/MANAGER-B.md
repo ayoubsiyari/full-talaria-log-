@@ -5996,3 +5996,58 @@ to reproduce eviction on a `max_sessions = 1` account, which the QA account cann
 cloned from qa-canary, so no new secret. Left active in case C needs a cap-1 account tonight, but it
 must not survive into the release.
 
+
+## B-0226 — my cap warning nearly cost C the night, and the reason is that I asserted a consequence I had not checked
+
+**2026-07-31 18:30** · after URGENT-THE-SESSION-CAP-MAY-VOID-THE-SOAK-...-1746
+
+Both items done, and the first one is a correction of my own note.
+
+**The cap is raised: qa-canary 2 -> 6**, read back from the database. The gate reads the column per
+claim so a running soak picks it up with no restart. Exact SQL is in the answer doc, including the
+container name, because I guessed `talaria-trading-postgres-1` earlier today and got silently empty
+output from a name that does not exist. It is `talaria-db-1`.
+
+**But the cap was never the constraint, and my warning was the problem.** I wrote "raise the cap
+before running four panels" as a general statement. It is true of four separate chart windows and
+false of four multichart panels. Measured on b120, same account, same shell, one difference:
+a top-level page claims once (HTTP 200); a page carrying `?panelId=` claims **nothing** and inherits
+the host's client id. So four panels are one slot. The product decides by URL and `shouldClaim()` is
+false for panels.
+
+Acting on my note meant stopping a ten-hour soak three minutes after launch. I sent a consequence
+without interrogating which shape C actually runs — the same error class I have spent the day
+correcting in my own measurements, arriving this time as advice to someone else. Withdrawn in the
+answer doc with the two-page proof, plus a one-command slot/cap/409 check C can run **while the soak
+continues** so nothing has to be stopped to find out.
+
+**Also worth C knowing: the soak is not on this host.** At 17:50 there were zero chrome and zero node
+processes here and only two presence rows, one stale and one from an unrelated account. Whatever pid
+23164 is, it is elsewhere. A soak pointed at a different environment is a bigger problem than the cap,
+so I said so rather than assuming it was fine.
+
+**D's route is proven and handed over as a module, not an account.** login 200, final URL the chart
+app and not `/login/`, 4,347 bars, build 20260731b120, and `/api/sessions/936/journal-trades` -> 200
+with **182 trades, 395 screenshots, 51.6 MB**. The five things that decide whether you land on the app
+or back on login are encoded in the module with the reasons, since each cost me a run today: be on an
+origin page before posting the login; wait for the app's own redirect before navigating; never
+`networkidle` on a page holding a websocket; assert the final URL is not login and throw; poll for a
+fact the app reports rather than sleeping. Session 936 is part of the answer, not incidental — a
+correct route into an empty session still returns UNPROVEN, and 936 is the heaviest by an order of
+magnitude.
+
+**What I did not close, said plainly rather than left for D to discover.** I could not find the
+journal panel's control in the DOM — zero candidates across buttons, tabs, roles and
+`data-tab`/`data-panel` matching journal/trades — so the full journal list is not rendered and that
+step is D's. Two leads offered as leads: the default backtest view already decodes 2 screenshots
+holding **~10.2 MB of RGBA at ~1.34 Mpixels each** on a build that carries the M20-J1 fix, which does
+not look thumbnail-sized to me but I do not know the intended size and will not assert it; and the
+count read 0 on one run and 2 on the next because the images decode after the chart reports ready, so
+**a single sample will lie and M1 must poll until it settles.**
+
+**Opened a release checklist** rather than trusting memory, per the Director. Three open items — the
+raised cap, `k4-probe` to be deleted, and the seeded 50 MB journal which cannot go until M1 closes —
+and four closed ones. Every entry names the owner, the exact undo, and how to verify the undo against
+the database or container rather than against the file. Three of the closed items I did not know
+existed until I interrogated the host, which is the whole argument for the file.
+
