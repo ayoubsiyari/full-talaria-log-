@@ -1,0 +1,18 @@
+---
+description: BIND-01 gate binding and vacuity standard
+alwaysApply: true
+---
+
+# BIND-01 Gate Binding
+
+For every gate you create, modify, or audit, distinguish these states explicitly:
+
+- `RESOLVER_ABSENT_FROM_TREE`: the expected implementation or binding target is not present in the checked tree.
+- `RESOLVER_PRESENT_BUT_UNCALLED`: the implementation is present, but the gate never binds to or exercises it.
+- `RESOLVER_CALLED_BUT_WRONG`: the gate binds to the implementation, calls it, and observes incorrect behavior.
+
+The names may be adapted for non-resolver gates, but the three concepts must remain: presence is not binding, binding is not correctness, and the gate output must say which state it observed.
+
+A gate audit is incomplete unless each active gate demonstrates a RED on known-defective input, or lists why it cannot. Do not treat a passing happy-path check, static presence check, or harness/schema failure as proof that product behavior is covered.
+
+If a gate depends on text anchors or extraction points, broken anchors must fail loudly with a distinct state/reason, not collapse into the same RED as a missing implementation or live product defect.
