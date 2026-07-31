@@ -196,6 +196,18 @@ async function runScenario(s, manifest, manifestPath) {
     entry.reason = finished.reason;
     // A partial artifact is worth keeping: these instruments write incrementally.
     entry.partialArtifactRetained = entry.artifactExists;
+    // A run can finish its measurement, write a graded verdict, and then hang in teardown —
+    // which is what the 04:11 soak did: 58 samples, 3.78h span, graded RED, then the browser
+    // disconnected and the process never exited. The exit code alone would file that as a
+    // failure, so record when the DATA is complete even though the PROCESS was killed.
+    try {
+      const art = JSON.parse(fs.readFileSync(entry.artifact, 'utf8'));
+      const status = art?.verdict?.status;
+      if (status && status !== 'UNRESOLVED') {
+        entry.measurementComplete = true;
+        entry.artifactVerdictStatus = status;
+      }
+    } catch { /* no readable artifact */ }
   }
   entry.tail = readTail(entry.logPath, 24);
   save();

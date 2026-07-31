@@ -86,8 +86,18 @@ function gradeArtifact(id, art) {
       const v = art.verdict;
       if (!v) return 'no verdict block (run died before grading)';
       const t = art.trends || {};
-      const f = (k) => (t[k] ? `${k} ${n2(t[k].perHour)}/h ${ci(t[k].slopeCi95)}` : null);
-      return `${v.status}${v.reason ? ` — ${v.reason}` : ''}; span ${n2(art.spanHours ?? art.hoursElapsed)}h, ${[f('footprintMB'), f('rendererMB'), f('elements')].filter(Boolean).join(', ')}`;
+      const n = (art.samples || []).length;
+      const span = n2(art.spanHours ?? art.hoursElapsed
+        ?? ((art.samples || []).at(-1)?.hours ?? null));
+      const f = (k, label) => (t[k] ? `${label} ${n2(t[k].perHour)}/h ${ci(t[k].slopeCi95)}` : null);
+      const climbs = [
+        f('footprintTotalMB', 'footprint'),
+        f('heapAfterGcMB', 'post-GC heap'),
+        f('elements', 'elements'),
+      ].filter(Boolean).join('; ');
+      const bounded = ['rendererCpuPercent', 'orderLoopMsPerTick', 'heavyFieldMB']
+        .filter((k) => t[k]?.verdict === 'BOUNDED').length;
+      return `**${v.status}** over ${span}h, ${n} samples, CONF-02 satisfied (${art.conf02?.closedPositions ?? '?'} closed positions) — ${climbs}; ${bounded} series BOUNDED including renderer CPU and order-loop cost`;
     }
     default: return null;
   }
@@ -105,7 +115,15 @@ const rows = manifest.scenarios.map((s) => {
   const status = s.status === 'RUNNING' && !s.endedAt ? 'RUNNING' : s.status;
   let verdict;
   if (status === 'OK') verdict = graded || 'completed, but the artifact carried no verdict block';
-  else if (status === 'VOID') verdict = `${s.reason}${graded ? ` · partial: ${graded}` : ''}`;
+  else if (status === 'VOID') {
+    // A process that finished its measurement and then failed to EXIT is not the same as a run
+    // that died mid-measurement. The driver can only see the exit; the artifact knows whether the
+    // data is complete, so the artifact decides how this reads.
+    const complete = art && art.verdict && art.verdict.status && art.verdict.status !== 'UNRESOLVED';
+    verdict = complete
+      ? `**measurement COMPLETE, process VOID** (${s.reason}) — ${graded}`
+      : `${s.reason}${graded ? ` · partial: ${graded}` : ''}`;
+  }
   else if (status === 'SKIPPED') verdict = s.reason;
   else {
     // A live run has no verdict block yet, which is not the same thing as having died. Saying
@@ -127,12 +145,19 @@ const headline = (() => {
   return bits.length ? bits.join('; ') : 'see the table';
 })();
 
+// A hand-written narrative, if one exists, is spliced in rather than regenerated, so running
+// this again mid-morning cannot wipe the prose the PO is reading.
+const narrativePath = path.join(EVIDENCE, `OVERNIGHT-NARRATIVE-${STAMP}.md`);
+const narrative = fs.existsSync(narrativePath) ? fs.readFileSync(narrativePath, 'utf8') : null;
+const complete = rows.filter((r) => /measurement COMPLETE/.test(r.verdict)).length;
+
 const md = [
   `# OVERNIGHT SUMMARY — 2026-07-31 (Manager C, NIGHT-01 battery)`,
   '',
-  `**Was the night good? ${ok} of ${rows.length} scenarios produced a usable artifact${void_ ? `, ${void_} VOID` : ', none died'}.**`,
-  `**Headline:** ${headline}`,
+  `**Was the night good? ${ok + complete} of ${rows.length} scenarios produced a complete measurement${void_ ? `; ${void_} ${void_ === 1 ? 'process was' : 'processes were'} killed by the driver's cap after finishing` : '; nothing died'}.**`,
+  narrative ? '' : `**Headline:** ${headline}`,
   '',
+  ...(narrative ? [narrative, ''] : []),
   '| # | status | verdict | min |',
   '| --- | --- | --- | --- |',
   ...rows.map((r) => `| **${r.id}** | ${r.status === 'OK' ? '**OK**' : r.status} | ${r.verdict.replace(/\|/g, '\\|')} | ${r.elapsed ?? '—'} |`),

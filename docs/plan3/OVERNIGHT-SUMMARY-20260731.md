@@ -1,7 +1,51 @@
 # OVERNIGHT SUMMARY — 2026-07-31 (Manager C, NIGHT-01 battery)
 
-**Was the night good? 6 of 7 scenarios produced a usable artifact, none died.**
-**Headline:** bar retention: LARGE DUPLICATION; eviction: NOTHING IS EVER RELEASED
+**Was the night good? 7 of 7 scenarios produced a complete measurement; 1 process was killed by the driver's cap after finishing.**
+
+
+## The night in five lines
+
+1. **Bar retention: half right, and the right half is not the one anyone expected.** Bars added
+   during replay cost **3 array slots / 2 real objects each** — inside the "1-2 kills it" band. But
+   the playing panel holds **202,000 bar objects while drawing 2,618**, and **nothing is ever
+   released**: zero releases across four panels, 26 samples, three gauges. Accrual is
+   **~15-26 MB/h, unbounded** — real, and only **2-4%** of the 730 MB/h. Two cuts named for A with
+   file and line numbers.
+2. **The duration soak finally ran long enough to quote.** 3.78 hours, 58 samples, **RED**:
+   footprint **+513 MB/h CI[494, 532]**, post-GC heap **+55 MB/h CI[53, 57]**. The last attempt
+   died at 45 minutes and gave CI[30, 1432] — a number I refused to ship. This one is ±3.7%.
+   CONF-02 satisfied with **84 closed positions**.
+3. **Monster 1 confirmed as trade-driven, 12x tighter.** Elements **+27.8 per closed trade
+   CI[26.1, 29.4]**, against my earlier +31.7 CI[10.9, 52.5]. Meanwhile **renderer CPU, GPU CPU and
+   order-loop cost are all BOUNDED** over the same 3.78 hours — the order loop does not degrade with
+   trade count (measured across 5 → 84 closed positions).
+4. **The indicator A/B replicates on one build.** Two indicators **+2.812 CI[2.508, 3.116]**, zero
+   indicators **+1.036 CI[0.942, 1.131]**, non-overlapping. Indicators carry **63.2%** of the decay
+   against 63.9% measured cross-build last night. **Both of A's cuts are needed**; cutting only the
+   fingerprint leaves a third of it standing.
+5. **"60x" is really about 870x, and tick mode is worse than we thought.** At a selected 60x on a
+   1-minute chart the engine advances **873 bars/minute**. In tick mode all four panels run their
+   own animation loop (candle runs one), and in 16 minutes **14,709 indicator recalcs bought seven
+   candles of progress**.
+
+**For the PO specifically:** the visual sweep is done and waiting —
+`_evidence\manager-C\ui-sheet-20260731\CONTACT-SHEET.png` (or the `.html`), **84 shots of 40
+controls** in default and active states, single chart and four-panel: 52 drawing-tool shots, 18
+order-panel, 8 indicator, 2 context menus, 2 settings panels. It is missing the main toolbar and the
+replay controls — my selectors did not match them — so treat it as most of the sweep, not all of it.
+
+**Nothing died in the measuring.** Six scenarios, serial, zero relaunches. The soak's process was
+killed by its own cap during teardown *after* writing a complete graded verdict, which is why it
+reads "measurement COMPLETE, process VOID".
+
+**Two of my own instruments were wrong tonight and I caught both by cross-checking results I did not
+like.** A realm key that merged three panels into one series turned a flat "nothing releases" into a
+false "something releases"; and a cadence metric with no denominator floor reported 41.87 recalcs per
+candle from 55 zero-denominator and 13 *negative*-denominator windows. Both voided, both fixed, both
+cost a re-parse and no re-runs. A third: my viewport probe used the wrong property names, so the
+viewport half of the eviction question is **unmeasured** tonight — the playhead half is what carries
+the verdict.
+
 
 | # | status | verdict | min |
 | --- | --- | --- | --- |
@@ -11,7 +55,7 @@
 | **B3** | **OK** | LARGE DUPLICATION — the multiplier is the story — copies per resident bar 14 (alias factor 1.58), derived series slots per bar 0, resident bars at first paint 2011 | 17.1 |
 | **B4** | **OK** | NOTHING IS EVER RELEASED — resident bars are monotonic in every realm while playing forward — f0\|1m:2645->14548, f1\|5m:1596->1596, f2\|15m:1911->1911, f3\|1h:495->495 (re-graded with unique realm keys; the live run's "26 releases" were three peers merged under one key) | 16.2 |
 | **B5** | **OK** | 84 screenshots, 19 single-chart and 21 multichart controls; contact sheet at c:\Users\user\Desktop\talaria1\_evidence\manager-C\ui-sheet-20260731\CONTACT-SHEET.png | 1.8 |
-| **B6** | RUNNING | still running · latest: UNRESOLVED — not enough duration or precision to call flat: heapAfterGcMB, liveHeapMB, footprintTotalMB, pageRendererFootprintMB, elementsPerClosedTrade, nodesAfterGc, listeners, rendererCpuPercent, gpuCpuPercent, orderLoopMsPerTick, orderLoopMsPerTickPerClosedTrade, orderLoopPercentOfMainThread, heavyFieldMB, excursionSamplesPerClosedTrade (DUR-01 needs >= 2h and a CI inside the flat band).; span nullh, elements null/h  | — |
+| **B6** | VOID | **measurement COMPLETE, process VOID** (timed out after 237 min without exiting (window-claim hang shape)) — **RED** over 3.78h, 58 samples, CONF-02 satisfied (84 closed positions) — footprint 513.27/h CI[494.17, 532.37]; post-GC heap 54.97/h CI[53.15, 56.79]; elements 448.82/h CI[410.8, 486.84]; 3 series BOUNDED including renderer CPU and order-loop cost | 237 |
 
 ## What each scenario was
 
@@ -37,4 +81,4 @@
 - `B4` reads array lengths. A fall in resident count proves **dereferencing**, not collection; proving collection needs a heap snapshot.
 - Free-RAM context reads `null` in tonight's manifest: `wmic` is absent on this Windows build. Fixed in the driver for future runs, but tonight there is no free-memory series.
 
-_Manifest: `c:\Users\user\Desktop\talaria1\_evidence\manager-C\OVERNIGHT-MANIFEST-20260731.json`. Driver started 2026-07-31T01:39:33.101Z. Summary regenerated 2026-07-31T03:15:17.754Z._
+_Manifest: `c:\Users\user\Desktop\talaria1\_evidence\manager-C\OVERNIGHT-MANIFEST-20260731.json`. Driver started 2026-07-31T01:39:33.101Z. Summary regenerated 2026-07-31T07:15:44.972Z._

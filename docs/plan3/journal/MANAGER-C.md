@@ -1190,3 +1190,50 @@ accounting proves are NOT aliases of each other. The cost is the length, not the
 B6 soak running since 04:11 with a 237-min timeout, CONF-01 compliant, CONF-02 accumulating (5
 closed at sample 1), renderer 127.6%. It is the first soak of the plan that will exceed DUR-01's 2h
 span if it survives.
+
+## W102 — 2026-07-31 08:25 · tier=mid model=claude-opus-5-thinking-high · battery complete, 7/7 measured
+
+B6 landed and the night is closed. Zero scenarios died in the measuring; one process was killed by
+its own cap AFTER writing a complete graded verdict.
+
+B6 - THE DURATION GATE FINALLY RAN LONG ENOUGH. 3.78h, 58 samples, 84 closed positions so CONF-02 is
+satisfied too. RED: footprint +513.3 MB/h CI[494.2,532.4], post-GC heap +55.0 CI[53.1,56.8], elements
++448.8/h CI[410.8,486.8]. Against the 45-minute partial's +730.8 CI[30,1432] the point estimate came
+down 30% and the interval narrowed ~37x. That is the number the Director refused to ship, now
+shippable.
+
+TWO THINGS NEWLY CLOSED:
+1. Monster 1 is trade-driven and now tight: elements +27.79 per CLOSED TRADE CI[26.1,29.4] against my
+   20:45 figure of +31.7 CI[10.9,52.5]. Same answer, 12x tighter, old point estimate inside the new
+   interval.
+2. THE ORDER LOOP DOES NOT DEGRADE WITH TRADE COUNT - a negative result I owed. Regressing per-tick
+   cost against closed count across 5 -> 84 positions gives -0.28 microseconds per tick per closed
+   trade. Flat. So the real shape is empty-book -> non-empty book (0.012 -> ~0.4 ms/tick) with NO
+   further growth, and nobody needs to cut a per-trade loop. Closes order-census-rerun.
+
+CPU BOUNDED OVER 3.78h (renderer -1.29/h, GPU -1.32/h) and I said in the finding why that is NOT
+evidence against Monster 2: utilisation was pinned 114-134% the whole run and a saturated gauge cannot
+climb. Monster 2 is cost per bar; this instrument does not measure it. Left unstated, that row would
+be misread as "the decay is gone".
+
+ONE DISAGREEMENT WITH MYSELF, LEFT OPEN RATHER THAN SMOOTHED: excursion samples +1,392 per closed
+trade CI[1,335,1,450] here, versus ~318 per closed trade measured at 22:00. 4.4x apart. Best
+hypothesis is that sampling is duration-dependent not count-dependent, so "per closed trade" is the
+wrong denominator and hold time is the driver. heavyFieldMB is 0 throughout so no screenshot payload
+is involved. The reconciliation is mine and it is on my list.
+
+DRIVER RULE IMPROVED, NOT WEAKENED: a timeout still files VOID, because a run that cannot exit is not
+a clean run. But the exit code and the data are different questions, so the driver now also records
+measurementComplete when the artifact holds a graded verdict, and the summary distinguishes "died
+mid-measurement" from "finished then hung in teardown". Tonight that distinction is the difference
+between the PO reading "the soak failed again" and "the soak finally worked".
+
+PO DELIVERABLE READY: OVERNIGHT-SUMMARY-20260731.md with a five-line narrative on top, spliced from a
+separate narrative file so re-running the generator cannot wipe the prose. Plus the contact sheet: 84
+shots, 40 controls, 1,387 KB PNG.
+
+FINAL TALLY OF MY OWN DEFECTS TONIGHT, all three found by cross-checking results I did not like:
+realm keying that manufactured releases; a cadence with no denominator floor that produced 41.87 from
+negative denominators; and viewport property names that were simply wrong (visibleStartIndex, not
+viewStartIndex), which leaves the viewport half of EVICT-03 unmeasured. Three instrument defects, zero
+re-runs needed, all stated in the artifacts and the summary rather than quietly corrected.
