@@ -21,6 +21,15 @@ const require = createRequire(import.meta.url);
 const SOURCE_ORDER_MANAGER = 'chart v 1.4/chart/modules/order-manager.js';
 const PUBLIC_ORDER_MANAGER = 'homepage/public/chart/modules/order-manager.js';
 const ATTRIBUTION_RESOLVER = '_resolveTradeJournalAttribution';
+const ATTRIBUTION_RESOLVER_DISABLE_FLAG = '__TALARIA_DISABLE_TRADE_ATTRIBUTION_RESOLVER_V1';
+const ATTRIBUTION_RESOLVER_CONTRACT = Object.freeze({
+  manager: 'A',
+  commit: '59395680c',
+  path: 'docs/plan3/worker-reports/A-RESOLVER-SIGNATURE-RESERVED-CONTRACT-20260731-1915.md',
+  placement: `window.${ATTRIBUTION_RESOLVER}`,
+  arity: 1,
+  disableFlag: ATTRIBUTION_RESOLVER_DISABLE_FLAG,
+});
 
 const PANELS = Object.freeze([
   { id: 'A', symbol: 'EURUSD', fileId: 610, timeframe: '1m', candle: { t: 1710000000000, c: 1.08456, close: 1.08456 } },
@@ -55,7 +64,7 @@ function inspectOrderManager(relPath) {
     path: relPath,
     hasSaveTradeToJournal: /async saveTradeToJournal\(order, closeData, postTradeNotes\)/.test(text),
     hasGetCurrentCandleCalls: /this\.getCurrentCandle\(\)/.test(text),
-    resolverLine: findLine(text, `${ATTRIBUTION_RESOLVER}(order`),
+    managerResolverLine: findLine(text, `${ATTRIBUTION_RESOLVER}(order`),
     orderFirstSymbolLine: findLine(text, 'const symbol = order.ticker || order.symbol || this._getActiveTicker();'),
     closeDataExitPriceLine: findLine(text, 'exitPrice: closeData.closePrice'),
     sourceFileLine: findLine(text, 'sourceFileId: order.sourceFileId ?? order.source_file_id ?? null'),
@@ -109,9 +118,15 @@ async function withProductGlobals(state, fn) {
   const priorWindow = globalThis.window;
   const priorDocument = globalThis.document;
   const priorUserStorage = globalThis.userStorage;
-  const chartA = makeChart(panelFor(state, 'A'));
+  const chartsByPanelId = Object.fromEntries(Object.keys(state.panels).map((panelId) => [
+    panelId,
+    makeChart(panelFor(state, panelId)),
+  ]));
+  const chartA = chartsByPanelId.A;
   globalThis.window = {
     chart: chartA,
+    chartsByPanelId,
+    multiChartInstances: Object.values(chartsByPanelId),
     screenshotManager: null,
     marketCalcEngine: null,
     getActiveChart: () => chartA,
@@ -246,25 +261,30 @@ function saveTradeToJournalModel(state, order, closeData) {
 function normalizeProductAttribution(state, order, attribution) {
   if (!attribution || typeof attribution !== 'object') return null;
   const candle = attribution.candle || attribution.currentCandle || attribution.closeCandle || null;
-  const chart = attribution.chart || attribution.panelChart || null;
+  const chart = attribution.chart
+    || attribution.panelChart
+    || (typeof attribution.getCurrentCandle === 'function' || attribution.currentSymbol ? attribution : null);
   const symbol = attribution.symbol || attribution.ticker || candle?.symbol || chart?.currentSymbol || order.ticker || order.symbol;
   const sourceFileId = attribution.sourceFileId ?? attribution.source_file_id ?? candle?.fileId ?? chart?.currentFileId ?? order.sourceFileId;
-  const closePrice = Number(attribution.closePrice ?? candle?.c ?? candle?.close);
+  const chartCandle = chart && typeof chart.getCurrentCandle === 'function' ? chart.getCurrentCandle() : null;
+  const closePrice = Number(attribution.closePrice ?? candle?.c ?? candle?.close ?? chartCandle?.c ?? chartCandle?.close);
   if (!Number.isFinite(closePrice)) return null;
   return {
-    closeTime: attribution.closeTime ?? candle?.t ?? panelFor(state, EXPECTED_PANEL_ID).candle.t,
+    closeTime: attribution.closeTime ?? candle?.t ?? chartCandle?.t ?? panelFor(state, EXPECTED_PANEL_ID).candle.t,
     closePrice,
     pnl: 42,
     type: 'MANUAL',
-    closeCandlePanelId: attribution.panelId || attribution.ownerPanelId || candle?.panelId || EXPECTED_PANEL_ID,
+    closeCandlePanelId: attribution.panelId || attribution.ownerPanelId || candle?.panelId || chart?.panelId || EXPECTED_PANEL_ID,
     closeCandleSymbol: symbol,
     closeCandleFileId: sourceFileId,
   };
 }
 
 function buildCloseDataFromProduct(state, manager, order, mode = 'orderRecord') {
-  if (mode === 'orderRecord' && typeof manager[ATTRIBUTION_RESOLVER] === 'function') {
-    const resolved = normalizeProductAttribution(state, order, manager[ATTRIBUTION_RESOLVER](order));
+  const resolver = globalThis.window?.[ATTRIBUTION_RESOLVER];
+  const resolverDisabled = Boolean(globalThis.window?.[ATTRIBUTION_RESOLVER_DISABLE_FLAG]);
+  if (mode === 'orderRecord' && typeof resolver === 'function' && !resolverDisabled) {
+    const resolved = normalizeProductAttribution(state, order, resolver(order));
     if (resolved) return { closeData: resolved, resolverUsed: ATTRIBUTION_RESOLVER };
   }
 
@@ -283,6 +303,118 @@ function buildCloseDataFromProduct(state, manager, order, mode = 'orderRecord') 
     },
     resolverUsed: 'legacy-getCurrentCandle',
   };
+}
+
+function resultPanelId(result) {
+  if (!result || typeof result !== 'object') return null;
+  if (result.panelId) return result.panelId;
+  if (result.ownerPanelId) return result.ownerPanelId;
+  if (result.chart?.panelId) return result.chart.panelId;
+  if (result.panelChart?.panelId) return result.panelChart.panelId;
+  if (result.currentSymbol) {
+    const match = PANELS.find((panel) => panel.symbol === result.currentSymbol);
+    return match?.id || null;
+  }
+  return null;
+}
+
+function assertResolverNull(resolver, input) {
+  try {
+    return { threw: false, result: resolver(input) };
+  } catch (error) {
+    return { threw: true, error: String(error?.message || error) };
+  }
+}
+
+export async function runResolverContractCase(mode) {
+  const state = makeState('A');
+  return withProductGlobals(state, async () => {
+    const resolver = globalThis.window?.[ATTRIBUTION_RESOLVER];
+    const failures = [];
+    if (typeof resolver !== 'function') {
+      failures.push({
+        reason: 'trade-attribution-resolver-not-found',
+        expectedPlacement: ATTRIBUTION_RESOLVER_CONTRACT.placement,
+      });
+      return {
+        mode,
+        status: 'RED',
+        contract: ATTRIBUTION_RESOLVER_CONTRACT,
+        failures,
+      };
+    }
+
+    if (resolver.length !== ATTRIBUTION_RESOLVER_CONTRACT.arity) {
+      failures.push({
+        reason: 'trade-attribution-resolver-wrong-arity',
+        observedArity: resolver.length,
+        expectedArity: ATTRIBUTION_RESOLVER_CONTRACT.arity,
+      });
+    }
+
+    if (mode === 'focusPurity') {
+      const order = makeOrder(state, 'orderRecord');
+      const firstPanelId = resultPanelId(resolver(order));
+      globalThis.window.chart = globalThis.window.chartsByPanelId.C;
+      globalThis.window.getActiveChart = () => globalThis.window.chartsByPanelId.D;
+      state.focusedPanelId = 'D';
+      const secondPanelId = resultPanelId(resolver(order));
+      if (firstPanelId !== secondPanelId) {
+        failures.push({
+          reason: 'trade-attribution-resolver-focus-dependent',
+          firstPanelId,
+          secondPanelId,
+        });
+      }
+    } else if (mode === 'missingOwnerNull') {
+      const result = assertResolverNull(resolver, { id: 'ownerless-record' });
+      if (result.threw || result.result !== null) {
+        failures.push({
+          reason: result.threw ? 'trade-attribution-resolver-threw' : 'trade-attribution-resolver-guessed-owner',
+          observed: stable(result),
+        });
+      }
+    } else if (mode === 'badShapesNull') {
+      for (const input of [null, undefined, {}, { ownerPanelId: 'UNKNOWN' }]) {
+        const result = assertResolverNull(resolver, input);
+        if (result.threw || result.result !== null) {
+          failures.push({
+            reason: result.threw ? 'trade-attribution-resolver-threw-on-bad-shape' : 'trade-attribution-resolver-guessed-on-bad-shape',
+            input: stable(input),
+            observed: stable(result),
+          });
+        }
+      }
+    } else if (mode === 'destroyedOwnerNull') {
+      const order = makeOrder(state, 'orderRecord');
+      globalThis.window.chartsByPanelId[EXPECTED_PANEL_ID].destroyed = true;
+      const result = assertResolverNull(resolver, order);
+      if (result.threw || result.result !== null) {
+        failures.push({
+          reason: result.threw ? 'trade-attribution-resolver-threw-on-destroyed-owner' : 'trade-attribution-resolver-returned-destroyed-owner',
+          observed: stable(result),
+        });
+      }
+    } else if (mode === 'killSwitch') {
+      const order = makeOrder(state, 'orderRecord');
+      globalThis.window[ATTRIBUTION_RESOLVER_DISABLE_FLAG] = 1;
+      const result = assertResolverNull(resolver, order);
+      if (result.threw || result.result !== null) {
+        failures.push({
+          reason: result.threw ? 'trade-attribution-resolver-threw-while-disabled' : 'trade-attribution-resolver-ignored-disable-flag',
+          disableFlag: ATTRIBUTION_RESOLVER_DISABLE_FLAG,
+          observed: stable(result),
+        });
+      }
+    }
+
+    return {
+      mode,
+      status: failures.length ? 'RED' : 'GREEN',
+      contract: ATTRIBUTION_RESOLVER_CONTRACT,
+      failures,
+    };
+  });
 }
 
 async function saveTradeToJournalProduct(manager, state, order, closeData) {
@@ -402,12 +534,20 @@ export async function runTradeAttributionCorrectnessOracle() {
   for (const entry of [staticSurface.source, staticSurface.publicMirror]) {
     if (!entry.hasSaveTradeToJournal) staticFailures.push({ reason: 'saveTradeToJournal-not-found', path: entry.path });
     if (!entry.hasGetCurrentCandleCalls) staticFailures.push({ reason: 'getCurrentCandle-call-not-found', path: entry.path });
-    if (!entry.resolverLine) staticFailures.push({ reason: 'trade-attribution-resolver-not-found', path: entry.path, expectedResolver: ATTRIBUTION_RESOLVER });
+    if (entry.managerResolverLine) staticFailures.push({ reason: 'trade-attribution-resolver-defined-inside-order-manager', path: entry.path, line: entry.managerResolverLine });
     if (!entry.orderFirstSymbolLine) staticFailures.push({ reason: 'order-first-symbol-line-not-found', path: entry.path });
     if (!entry.closeDataExitPriceLine) staticFailures.push({ reason: 'close-data-exit-price-line-not-found', path: entry.path });
     if (!entry.sourceFileLine) staticFailures.push({ reason: 'source-file-line-not-found', path: entry.path });
   }
 
+  const resolverContractControls = [
+    runControl('TRADE-RESOLVER-GLOBAL-SIGNATURE', await runResolverContractCase('globalSignature'), 'GREEN'),
+    runControl('TRADE-RESOLVER-FOCUS-PURITY', await runResolverContractCase('focusPurity'), 'GREEN'),
+    runControl('TRADE-RESOLVER-MISSING-OWNER-NULL', await runResolverContractCase('missingOwnerNull'), 'GREEN'),
+    runControl('TRADE-RESOLVER-BAD-SHAPES-NULL', await runResolverContractCase('badShapesNull'), 'GREEN'),
+    runControl('TRADE-RESOLVER-DESTROYED-OWNER-NULL', await runResolverContractCase('destroyedOwnerNull'), 'GREEN'),
+    runControl('TRADE-RESOLVER-KILL-SWITCH', await runResolverContractCase('killSwitch'), 'GREEN'),
+  ];
   const greenControls = [
     runControl('TRADE-JOURNAL-ORDER-RECORD-ATTRIBUTION', await runTradeAttributionCase('orderRecord'), 'GREEN'),
   ];
@@ -418,6 +558,7 @@ export async function runTradeAttributionCorrectnessOracle() {
   ];
 
   const status = staticFailures.length === 0
+    && resolverContractControls.every((control) => control.status === 'GREEN')
     && greenControls.every((control) => control.status === 'GREEN')
     && redControls.every((control) => control.status === 'GREEN')
     ? 'GREEN'
@@ -428,6 +569,8 @@ export async function runTradeAttributionCorrectnessOracle() {
     status,
     staticSurface,
     staticFailures,
+    resolverContract: ATTRIBUTION_RESOLVER_CONTRACT,
+    resolverContractControls,
     greenControls,
     redControls,
     limitation: 'Node differential oracle over real OrderManager.saveTradeToJournal. It does not execute browser order close UI; A must make the named resolver import-free/Node-safe or this gate remains RED.',
