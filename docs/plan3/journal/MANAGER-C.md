@@ -1654,3 +1654,52 @@ direction. Re-entry is now a settling trajectory that grades itself INCONCLUSIVE
 every re-entry reading carries a state census — because a reload that legitimately RESTORES four panels is
 not retention, and calling it one would be the same error as calling bfcache a leak.
 
+
+## W107 — 2026-07-31 17:00 · RESET-01, the return axis on a heavy document
+
+**Ruling** RESET-01 · tier=mid · build 20260731b120 (b118 -> b120 mid-session)
+
+The Director rejected my item 7 closure on three counts and all three were right. Taking them in the order
+he set:
+
+**The artifact.** The clearing arm was destroyed by my own stale `C_OUT`. What is on disk now is a
+replication written at 12:09, nineteen minutes after the ruling, so his check was accurate when he made it;
+the original run is gone permanently. A signature-versus-filename assertion now runs before publishing and
+`bfcacheState` is a required field on every artifact, as adopted.
+
+**The weight.** He was right that a 369 MB session cannot separate a benign cache from a catastrophic one.
+Re-run at **1.34 GB**, and heavy replicates light with a sharper answer than either of us expected: logout
+with bfcache **ON** leaves **511.8 MB**, with it **OFF** leaves **528.8 MB** — 17 MB apart, and ON is the
+LOWER arm. bfcache retains **four documents that cost nothing measurable**. Counting documents would have
+reported 4-to-1 and implied retention; pricing them shows there is none. The reason closes the loop: Chrome
+declines to cache a very large document, so the light session was cached and the heavy one is not. The cache
+protects itself against exactly the document we feared it would hold.
+
+**Reload, which the PO named first and which had never been run.** Fully graded and the only trustworthy
+re-entry: heavy peak 1,317.7 MB (+416.7 above four-panel first paint), after reload 570.9 MB with 746.8 MB
+released, re-entry 637.0 MB with a real chart present against a single-chart baseline of 649.6 MB —
+**return delta −12.6 MB**. Session N+1 started below where session 1 started. The four-panel layout does not
+restore itself, so this arm does not test four-panel re-entry.
+
+**What should decide tomorrow: the browser dies at ~1.38 GB.** Exit code 1, no signal, Chrome's stderr
+clean. Three times: the ten-hour soak at 1,377.6 MB, and the reload arm at 1,377.9 MB (renderer 877, GPU
+337, heap 243, 4 renderers, 8,542 bars, 20 closes). The soak was NOT killed by another manager — I suspected
+that and disproved it. It reached the ceiling and died of it. So the bend question is unanswerable by long
+soak until this is fixed, every long run is capped near ten minutes, and the PO's 1.5 GB sessions sit ABOVE
+where we stop existing. That is the difference between shipping a leak and shipping a crash.
+
+**Not settled, and not passed.** The logout and tab-close return axes are VOID: re-entry never produced a
+chart, zero realms and zero bars after 126 s with the page at `/chart/`. My grader first called these
+**PASSES** because an empty page uses less memory than a chart — a verdict that flattered us on an
+instrument that never reached the state it claimed to compare. Now a hard gate. Open question with teeth: a
+reload re-initialises the chart, a fresh navigation to `/chart/` in the same browser does not.
+
+**Own defects.** Forced GC every twelve seconds through the heavy phase, suppressing ~200 MB of the very
+heaviness the ruling asked for; `realms` compared as an array against `4`; the single-chart baseline threw
+silently on a function defined later; both gauges swallowed errors into `{}` so I logged `undefined` for
+four minutes with no cause; and I suspected another manager's rehearsal of killing my soak before running a
+blank-Chrome canary that survived 8.76 minutes and proved the deaths were mine.
+
+**Closed an old escalation:** `SW_VERSION` now reads b118 against the deployed build where this morning it
+read b80, and there are zero `location.reload()` sites in chart.js. The version-reload trap is disarmed.
+

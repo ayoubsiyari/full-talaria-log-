@@ -33,7 +33,7 @@ import fs from 'node:fs';
 import {
   dismissCookieBanner, uiLoginDeployed, waitForDistV9SingleReady,
 } from './lib/heap-cycle-browser.mjs';
-import { bootConf01Session, readConf01State, waitConf01PanelsReady } from './lib/conf01-session.mjs';
+import { bootConf01Session, readConf01State, waitConf01PanelsReady, cycleTrades } from './lib/conf01-session.mjs';
 import { readOsFootprints } from './process-memory-census.mjs';
 import { PO_TWO_INDICATORS } from './replay-decay-hunt.mjs';
 
@@ -47,6 +47,7 @@ const TARGET_HEAVY_MB = Number(argOf('heavy-mb', 1024));
 const HEAVY_CAP_MIN = Number(argOf('heavy-cap-min', 25));
 const CYCLES = Number(argOf('cycles', 2));
 const SPEED = Number(argOf('speed', 30));
+const MAX_FOOTPRINT_MB = Number(argOf('max-footprint-mb', 1300));
 const OUT = argOf('out', `c:\\Users\\user\\Desktop\\talaria1\\_evidence\\manager-C\\RESET-RETURN-${EXIT_MODE.toUpperCase()}-${BFCACHE ? 'BFON' : 'BFOFF'}-20260731.json`);
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -68,6 +69,8 @@ const report = {
   design: {
     targetHeavyMBAboveFourPanelFirstPaint: TARGET_HEAVY_MB,
     heavyCapMinutes: HEAVY_CAP_MIN,
+    safetyCeilingMB: MAX_FOOTPRINT_MB,
+    whySafetyCeiling: 'The browser died twice at about 1.4 GB total footprint (exit code 1, no signal). The heavy phase therefore stops at the heaviest SURVIVABLE state and declares the shortfall against the gigabyte the ruling asked for, rather than repeatedly killing the browser to chase a target the product cannot reach.',
     cycles: CYCLES,
     speed: SPEED,
     whyHeavy: 'The first attempt at this measurement used a 369 MB, 17 MB-heap session. A light document being released says nothing about whether a heavy one is.',
@@ -88,10 +91,36 @@ const save = () => fs.writeFileSync(OUT, JSON.stringify(report, null, 1));
       label: `reset-return-${EXIT_MODE}`,
       extraArgs: BFCACHE ? [] : ['--disable-features=BackForwardCache'],
       preloadScript: 'window.CHART_BACKTEST_SMART_INITIAL_LIMIT = 32000;',
-      // Session 1's cheap reference, captured before any layout change.
-      onSingleReady: async (page) => {
+      // Session 1's cheap reference, captured before any layout change. This must NOT call the shared
+      // reader: the hook fires during boot, before that reader exists, and referencing it threw silently
+      // and left me with no single-chart baseline at all. It builds its own sessions instead.
+      onSingleReady: async (pg) => {
         await sleep(6_000);
-        report.singleChartFirstPaint = await readAll(page);
+        try {
+          const s = await pg.createCDPSession();
+          const b = await pg.browser().target().createCDPSession();
+          await s.send('Performance.enable').catch(() => {});
+          await s.send('HeapProfiler.collectGarbage').catch(() => {});
+          await sleep(1_500);
+          const { metrics } = await s.send('Performance.getMetrics');
+          const m = Object.fromEntries(metrics.map((x) => [x.name, x.value]));
+          const info = await b.send('SystemInfo.getProcessInfo');
+          const fps = await readOsFootprints((info.processInfo || []).map((p) => p.id));
+          let total = 0;
+          for (const p of info.processInfo || []) total += fps[p.id]?.privateMB || 0;
+          report.singleChartFirstPaint = {
+            documents: m.Documents ?? null,
+            nodes: m.Nodes ?? null,
+            jsHeapMB: m.JSHeapUsedSize ? +(m.JSHeapUsedSize / 1048576).toFixed(2) : null,
+            totalPrivateMB: +total.toFixed(1),
+            realms: 1,
+            atIso: new Date().toISOString(),
+          };
+          await s.detach().catch(() => {});
+          await b.detach().catch(() => {});
+        } catch (err) {
+          report.singleChartFirstPaintError = String(err?.message || err).slice(0, 160);
+        }
       },
     });
     browser = session.browser;
@@ -109,8 +138,34 @@ const save = () => fs.writeFileSync(OUT, JSON.stringify(report, null, 1));
     // because both readers swallowed their errors into `{}`. An instrument that cannot say WHY it stopped
     // answering is not usable for an unattended measurement, so failures are now recorded and the run
     // stops rather than looping on nothing.
+    // "Session closed. Most likely the browser has been closed" is not a diagnosis, it is Puppeteer
+    // noticing a corpse. A blank Chrome survived nine minutes on this machine, so these deaths are mine
+    // and they need a cause: the browser's exit code and signal, Chrome's own last words, and the last
+    // good reading before it went. If our trade loop reliably kills a four-panel browser near the weight
+    // the PO reports, that is a finding rather than an obstacle.
     const readErrors = [];
     let crashSignal = null;
+    const chromeStderr = [];
+    report.browserDeath = null;
+    try {
+      const proc = browser.process();
+      report.browserPid = proc?.pid ?? null;
+      proc?.stderr?.on('data', (d) => {
+        const s = String(d).trim();
+        if (s) chromeStderr.push(s.slice(0, 300));
+        if (chromeStderr.length > 40) chromeStderr.shift();
+      });
+      proc?.on('exit', (code, signal) => {
+        report.browserDeath = {
+          exitCode: code, signal, atIso: new Date().toISOString(),
+          lastChromeStderr: chromeStderr.slice(-8),
+        };
+        crashSignal = `browser process exited code=${code} signal=${signal}`;
+      });
+    } catch { /* diagnostics are best effort */ }
+    browser.on('disconnected', () => {
+      report.browserDisconnectedAtIso = report.browserDisconnectedAtIso || new Date().toISOString();
+    });
     page.on('error', (e) => { crashSignal = `page crashed: ${String(e?.message || e).slice(0, 120)}`; });
     page.on('framenavigated', (f) => {
       try { if (f === page.mainFrame()) report.mainFrameNavigations = (report.mainFrameNavigations || 0) + 1; } catch { /* ignore */ }
@@ -157,15 +212,17 @@ const save = () => fs.writeFileSync(OUT, JSON.stringify(report, null, 1));
         return {};
       }
     }
-    async function readAll(pg, sess = null) {
+    async function readAll(pg, sess = null, { gc = true } = {}) {
       const s = sess || cdp;
-      await s.send('HeapProfiler.collectGarbage').catch(() => {});
-      await sleep(1_500);
+      if (gc) {
+        await s.send('HeapProfiler.collectGarbage').catch(() => {});
+        await sleep(1_500);
+      }
       const state = await readConf01State(pg).catch(() => null);
       return {
         ...(await counters(s)),
         ...(await footprints()),
-        realms: state?.panels ?? null,
+        realms: Array.isArray(state?.panels) ? state.panels.length : (state?.panels ?? null),
         residentBars: state?.totalBars ?? null,
         advancingPanels: state?.advancingPanels ?? null,
         atIso: new Date().toISOString(),
@@ -184,14 +241,33 @@ const save = () => fs.writeFileSync(OUT, JSON.stringify(report, null, 1));
       // --- go heavy ---
       const heavyDeadline = Date.now() + HEAVY_CAP_MIN * 60_000;
       const want = (c === 1 ? baselineMB : row.reentryFootprintMB || baselineMB) + TARGET_HEAVY_MB;
-      let heavy = await readAll(page);
+      let heavy = await readAll(page, null, { gc: false });
+      // HOW THE DOCUMENT IS MADE HEAVY, and why it is not by playback alone.
+      // The initial fetch is capped at 2,000 bars per panel in chart.js — the cap already escalated to A —
+      // so resident bars start near 6,000 and can only grow by advancing, at roughly 300 to 1,200 bars per
+      // minute. At 23.98 MB per thousand bars, reaching a gigabyte that way takes over two hours per
+      // cycle, which is not a measurement, it is a wait. Trades are the other measured driver at roughly
+      // 17 to 31 MB per closed trade, so the heavy phase drives BOTH and the composition is declared:
+      // a heavy document here is a real user's heavy document, not an artificial allocation.
+      // A DECLARED SAFETY CEILING, and why it exists.
+      // The browser has now died twice at about 1.4 GB total footprint — exit code 1, no signal, renderer
+      // 877 MB and GPU 337 MB at the last good reading, nothing in Chrome's stderr. The ruling asks for a
+      // gigabyte above first paint, which from a 931 MB four-panel baseline means 1,955 MB: past the point
+      // where the browser stops existing. So the heavy phase stops at the heaviest state that SURVIVES and
+      // the shortfall is reported as a finding, because a document that cannot be built without killing the
+      // browser is a more serious answer than the one the ruling expected.
       let blindReads = 0;
-      while (Date.now() < heavyDeadline && (heavy.totalPrivateMB ?? 0) < want) {
-        await sleep(45_000);
-        heavy = await readAll(page);
+      let heavyCloses = 0;
+      while (Date.now() < heavyDeadline && (heavy.totalPrivateMB ?? 0) < want
+             && (heavy.totalPrivateMB ?? 0) < MAX_FOOTPRINT_MB) {
+        const t = await cycleTrades(page, { open: 1, close: 1, holdMs: 0 }).catch(() => null);
+        heavyCloses += t?.closed || 0;
+        await sleep(20_000);
+        heavy = await readAll(page, null, { gc: false });
+        if (heavy.totalPrivateMB != null) report.lastGoodReading = { ...heavy, closedTrades: heavyCloses };
         const blind = heavy.totalPrivateMB == null || heavy.documents == null;
         blindReads = blind ? blindReads + 1 : 0;
-        console.error(`[return] cycle ${c} heavy ${heavy.totalPrivateMB} MB / target ${Math.round(want)} MB, bars ${heavy.residentBars}, docs ${heavy.documents}${blind ? ' [BLIND READ]' : ''}`);
+        console.error(`[return] cycle ${c} heavy ${heavy.totalPrivateMB} MB / target ${Math.round(want)} MB, bars ${heavy.residentBars}, closes ${heavyCloses}, docs ${heavy.documents}${blind ? ' [BLIND READ]' : ''}`);
         if (crashSignal || blindReads >= 2) {
           row.heavyPhaseAborted = crashSignal
             || `gauges returned nothing twice in a row during the heavy phase; last errors ${JSON.stringify(readErrors.slice(-3))}`;
@@ -200,9 +276,12 @@ const save = () => fs.writeFileSync(OUT, JSON.stringify(report, null, 1));
         }
       }
       row.heavyPeak = heavy;
+      row.heavyDriverComposition = { closedTradesDuringHeavyPhase: heavyCloses, residentBarsGained: (heavy.residentBars ?? 0) - (report.fourPanelFirstPaint?.residentBars ?? 0), note: 'Both measured drivers were used because the 2,000-bar-per-panel initial fetch cap makes playback-only heaviness take hours. Composition is declared so nobody reads this as an artificial allocation.' };
       row.heavyAboveBaselineMB = (heavy.totalPrivateMB != null && baselineMB != null)
         ? +(heavy.totalPrivateMB - baselineMB).toFixed(1) : null;
       row.reachedTarget = (row.heavyAboveBaselineMB ?? 0) >= TARGET_HEAVY_MB;
+      row.stoppedAtSafetyCeiling = (heavy.totalPrivateMB ?? 0) >= MAX_FOOTPRINT_MB;
+      row.safetyCeilingMB = MAX_FOOTPRINT_MB;
       row.heavyNote = row.reachedTarget
         ? `carried ${row.heavyAboveBaselineMB} MB above four-panel first paint before the exit`
         : `only reached ${row.heavyAboveBaselineMB} MB above first paint within the ${HEAVY_CAP_MIN}-minute cap; the exit was taken anyway and the shortfall is declared rather than hidden`;
@@ -242,12 +321,41 @@ const save = () => fs.writeFileSync(OUT, JSON.stringify(report, null, 1));
       if (EXIT_MODE === 'logout') {
         await dismissCookieBanner(page).catch(() => {});
         await uiLoginDeployed(page, ORIGIN, String(process.env.TEST_EMAIL || '').trim(), String(process.env.TEST_PASSWORD || '').trim());
+        // Logging back in does not land on the chart, so waiting for one produced zero realms for two
+        // minutes and a VOID. A returning user navigates back to the chart; so does this.
+        row.urlAfterLogin = page.url();
+        if (!/\/chart\/?/.test(page.url())) {
+          await page.goto(`${ORIGIN}/chart/`, { waitUntil: 'domcontentloaded', timeout: 120_000 }).catch(() => {});
+        }
       } else if (EXIT_MODE === 'tabclose') {
         await page.goto(`${ORIGIN}/chart/`, { waitUntil: 'domcontentloaded', timeout: 120_000 }).catch(() => {});
       }
       await waitForDistV9SingleReady(page, { timeout: 180_000 }).catch(() => {});
       // If the app restores the four-panel layout by itself, give it the chance to before reading.
       await waitConf01PanelsReady(page, { timeoutMs: 60_000, want: 4 }).catch(() => {});
+
+      // A RE-ENTRY WITH NO CHART IS NOT A RE-ENTRY.
+      // The logout and tab-close arms were first read while the page was still empty — zero realms, zero
+      // resident bars — and the grader happily reported that the return axis PASSED because an unloaded
+      // page uses less memory than a chart. That verdict flattered us on an instrument that never reached
+      // the state it claimed to compare. The chart must now actually be present, and if it never arrives
+      // the cycle is VOID rather than a pass.
+      const chartDeadline = Date.now() + 120_000;
+      let seen = null;
+      while (Date.now() < chartDeadline) {
+        seen = await readConf01State(page).catch(() => null);
+        const realms = Array.isArray(seen?.panels) ? seen.panels.length : 0;
+        if (realms >= 1 && (seen?.totalBars ?? 0) > 0) break;
+        await sleep(5_000);
+      }
+      const seenRealms = Array.isArray(seen?.panels) ? seen.panels.length : 0;
+      row.reentryUrl = page.url();
+      row.reentryChartPresent = seenRealms >= 1 && (seen?.totalBars ?? 0) > 0;
+      row.reentryChartWaitSeconds = +((Date.now() - (chartDeadline - 120_000)) / 1000).toFixed(1);
+      if (!row.reentryChartPresent) {
+        row.reentryVoid = `re-entry never produced a chart: ${seenRealms} realm(s), ${seen?.totalBars ?? 0} resident bars after ${row.reentryChartWaitSeconds}s at ${row.reentryUrl}. Grading a footprint against an unloaded page would manufacture a pass, so this cycle is VOID on the return axis.`;
+        console.error(`[return] cycle ${c} RE-ENTRY VOID: ${row.reentryVoid}`);
+      }
       await sleep(8_000);
       row.reentryFirstPaintSeconds = +((Date.now() - t0) / 1000).toFixed(1);
       row.reentry = await readAll(page, cdp);
@@ -271,6 +379,7 @@ const save = () => fs.writeFileSync(OUT, JSON.stringify(report, null, 1));
       save();
     }
     report.gaugeReadErrors = readErrors.slice(0, 20);
+    report.chromeStderrTail = chromeStderr.slice(-8);
     report.crashSignal = crashSignal;
     report.status = 'OK';
   } catch (err) {
@@ -282,7 +391,8 @@ const save = () => fs.writeFileSync(OUT, JSON.stringify(report, null, 1));
   }
 
   // ---- Grade the RETURN axis ----------------------------------------------
-  const cs = report.cycles.filter((r) => r.returnDeltaMB != null);
+  const cs = report.cycles.filter((r) => r.returnDeltaMB != null && r.reentryChartPresent);
+  const voided = report.cycles.filter((r) => r.reentryVoid);
   if (cs.length) {
     const deltas = cs.map((r) => r.returnDeltaMB);
     const held = cs.map((r) => r.stillHeldMB);
