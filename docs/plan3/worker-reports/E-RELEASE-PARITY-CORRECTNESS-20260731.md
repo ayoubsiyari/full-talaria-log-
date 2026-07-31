@@ -23,7 +23,24 @@ Then E added the correctness half of D's parity scaffold as an E-owned companion
 The model uses the same CONF-01 shape as D's scaffold: four panels, four distinct symbols, four distinct
 timeframes, with same-symbol panels carrying no acceptance weight.
 
-It asserts owner identity across:
+It asserts isolation across the forbidden fields from `multichart/decisions.md`, with the
+price-axis fields first because that is the original shipped bug class:
+
+- `priceMin`
+- `priceMax`
+- `autoScale`
+- `priceZoom`
+- `priceOffset`
+- `timeframe`
+- `indicators`
+- `drawings`
+- `chartType`
+- `scaleMode`
+
+It also keeps the overlay checks E had already added, because overlay labels/tags are in E territory even
+though they are not part of the ten-field decision list.
+
+Owner identity is asserted across:
 
 - indicator state (`smaTip`, `openingRange`) with owner panel and symbol checks;
 - drawings with owner panel and symbol checks;
@@ -36,6 +53,14 @@ surface-specific reason:
 
 | Control | Deliberate break | Expected RED reason | Result |
 |---|---|---|---|
+| `RP-PRICE-MIN-GLOBAL` | Shared `priceMin` assigned to every panel | `price-axis-cross-contamination` | GREEN control |
+| `RP-PRICE-MAX-GLOBAL` | Shared `priceMax` assigned to every panel | `price-axis-cross-contamination` | GREEN control |
+| `RP-AUTO-SCALE-GLOBAL` | Shared `autoScale` assigned to every panel | `price-axis-cross-contamination` | GREEN control |
+| `RP-PRICE-ZOOM-GLOBAL` | Shared `priceZoom` assigned to every panel | `price-axis-cross-contamination` | GREEN control |
+| `RP-PRICE-OFFSET-GLOBAL` | Shared `priceOffset` assigned to every panel | `price-axis-cross-contamination` | GREEN control |
+| `RP-TIMEFRAME-GLOBAL` | Shared `timeframe` assigned to every panel | `timeframe-cross-contamination` | GREEN control |
+| `RP-CHART-TYPE-GLOBAL` | Shared `chartType` assigned to every panel | `chart-type-cross-contamination` | GREEN control |
+| `RP-SCALE-MODE-GLOBAL` | Shared `scaleMode` assigned to every panel | `scale-mode-cross-contamination` | GREEN control |
 | `RP-INDICATOR-GLOBAL-SLOT` | Shared indicator slot assigned to every panel | `indicator-cross-contamination` | GREEN control |
 | `RP-DRAWING-GLOBAL-LAYER` | One global drawing layer assigned to every panel | `drawing-cross-contamination` | GREEN control |
 | `RP-OVERLAY-GLOBAL-LAYER` | One global overlay layer assigned to every panel | `overlay-cross-contamination` | GREEN control |

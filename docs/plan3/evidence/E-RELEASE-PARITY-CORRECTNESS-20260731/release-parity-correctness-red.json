@@ -40,9 +40,59 @@
     "failures": [],
     "cells": [
       {
+        "cell": "CORRECTNESS-PRICEMIN",
+        "surface": "priceMin",
+        "targetId": "B",
+        "status": "GREEN",
+        "peersIdentical": true,
+        "targetChanged": true,
+        "peerFailures": [],
+        "targetFailures": []
+      },
+      {
+        "cell": "CORRECTNESS-PRICEMAX",
+        "surface": "priceMax",
+        "targetId": "C",
+        "status": "GREEN",
+        "peersIdentical": true,
+        "targetChanged": true,
+        "peerFailures": [],
+        "targetFailures": []
+      },
+      {
+        "cell": "CORRECTNESS-AUTOSCALE",
+        "surface": "autoScale",
+        "targetId": "D",
+        "status": "GREEN",
+        "peersIdentical": true,
+        "targetChanged": true,
+        "peerFailures": [],
+        "targetFailures": []
+      },
+      {
+        "cell": "CORRECTNESS-PRICEZOOM",
+        "surface": "priceZoom",
+        "targetId": "A",
+        "status": "GREEN",
+        "peersIdentical": true,
+        "targetChanged": true,
+        "peerFailures": [],
+        "targetFailures": []
+      },
+      {
+        "cell": "CORRECTNESS-PRICEOFFSET",
+        "surface": "priceOffset",
+        "targetId": "B",
+        "status": "GREEN",
+        "peersIdentical": true,
+        "targetChanged": true,
+        "peerFailures": [],
+        "targetFailures": []
+      },
+      {
         "cell": "CORRECTNESS-INDICATOR",
         "surface": "indicator",
-        "targetId": "B",
+        "targetId": "C",
         "status": "GREEN",
         "peersIdentical": true,
         "targetChanged": true,
@@ -52,7 +102,7 @@
       {
         "cell": "CORRECTNESS-DRAWING",
         "surface": "drawing",
-        "targetId": "C",
+        "targetId": "D",
         "status": "GREEN",
         "peersIdentical": true,
         "targetChanged": true,
@@ -62,6 +112,36 @@
       {
         "cell": "CORRECTNESS-OVERLAY",
         "surface": "overlay",
+        "targetId": "A",
+        "status": "GREEN",
+        "peersIdentical": true,
+        "targetChanged": true,
+        "peerFailures": [],
+        "targetFailures": []
+      },
+      {
+        "cell": "CORRECTNESS-TIMEFRAME",
+        "surface": "timeframe",
+        "targetId": "B",
+        "status": "GREEN",
+        "peersIdentical": true,
+        "targetChanged": true,
+        "peerFailures": [],
+        "targetFailures": []
+      },
+      {
+        "cell": "CORRECTNESS-CHARTTYPE",
+        "surface": "chartType",
+        "targetId": "C",
+        "status": "GREEN",
+        "peersIdentical": true,
+        "targetChanged": true,
+        "peerFailures": [],
+        "targetFailures": []
+      },
+      {
+        "cell": "CORRECTNESS-SCALEMODE",
+        "surface": "scaleMode",
         "targetId": "D",
         "status": "GREEN",
         "peersIdentical": true,
@@ -72,6 +152,1318 @@
     ]
   },
   "redControls": [
+    {
+      "cell": "RP-PRICE-MIN-GLOBAL",
+      "mode": "global:priceMin",
+      "expectedFailureReason": "price-axis-cross-contamination",
+      "report": {
+        "signature": "TALARIA_E_RELEASE_PARITY_CORRECTNESS_V1",
+        "mode": "global:priceMin",
+        "conf01": {
+          "panels": [
+            {
+              "id": "A",
+              "symbol": "XAUUSD",
+              "fileId": 677,
+              "timeframe": "1m"
+            },
+            {
+              "id": "B",
+              "symbol": "HOG",
+              "fileId": 673,
+              "timeframe": "5m"
+            },
+            {
+              "id": "C",
+              "symbol": "ETHBTC",
+              "fileId": 670,
+              "timeframe": "15m"
+            },
+            {
+              "id": "D",
+              "symbol": "BTCEUR",
+              "fileId": 669,
+              "timeframe": "1h"
+            }
+          ],
+          "fourPanels": true,
+          "fourDistinctSymbols": true,
+          "fourDistinctTimeframes": true,
+          "acceptanceWeight": "same-symbol panels earn no credit"
+        },
+        "status": "RED",
+        "failures": [
+          {
+            "cell": "CORRECTNESS-PRICEMIN",
+            "targetId": "B",
+            "reason": "price-axis-cross-contamination",
+            "peerFailures": [],
+            "targetFailures": []
+          }
+        ],
+        "cells": [
+          {
+            "cell": "CORRECTNESS-PRICEMIN",
+            "surface": "priceMin",
+            "targetId": "B",
+            "status": "RED",
+            "peersIdentical": false,
+            "targetChanged": true,
+            "peerFailures": [],
+            "targetFailures": []
+          },
+          {
+            "cell": "CORRECTNESS-PRICEMAX",
+            "surface": "priceMax",
+            "targetId": "C",
+            "status": "GREEN",
+            "peersIdentical": true,
+            "targetChanged": true,
+            "peerFailures": [],
+            "targetFailures": []
+          },
+          {
+            "cell": "CORRECTNESS-AUTOSCALE",
+            "surface": "autoScale",
+            "targetId": "D",
+            "status": "GREEN",
+            "peersIdentical": true,
+            "targetChanged": true,
+            "peerFailures": [],
+            "targetFailures": []
+          },
+          {
+            "cell": "CORRECTNESS-PRICEZOOM",
+            "surface": "priceZoom",
+            "targetId": "A",
+            "status": "GREEN",
+            "peersIdentical": true,
+            "targetChanged": true,
+            "peerFailures": [],
+            "targetFailures": []
+          },
+          {
+            "cell": "CORRECTNESS-PRICEOFFSET",
+            "surface": "priceOffset",
+            "targetId": "B",
+            "status": "GREEN",
+            "peersIdentical": true,
+            "targetChanged": true,
+            "peerFailures": [],
+            "targetFailures": []
+          },
+          {
+            "cell": "CORRECTNESS-INDICATOR",
+            "surface": "indicator",
+            "targetId": "C",
+            "status": "GREEN",
+            "peersIdentical": true,
+            "targetChanged": true,
+            "peerFailures": [],
+            "targetFailures": []
+          },
+          {
+            "cell": "CORRECTNESS-DRAWING",
+            "surface": "drawing",
+            "targetId": "D",
+            "status": "GREEN",
+            "peersIdentical": true,
+            "targetChanged": true,
+            "peerFailures": [],
+            "targetFailures": []
+          },
+          {
+            "cell": "CORRECTNESS-OVERLAY",
+            "surface": "overlay",
+            "targetId": "A",
+            "status": "GREEN",
+            "peersIdentical": true,
+            "targetChanged": true,
+            "peerFailures": [],
+            "targetFailures": []
+          },
+          {
+            "cell": "CORRECTNESS-TIMEFRAME",
+            "surface": "timeframe",
+            "targetId": "B",
+            "status": "GREEN",
+            "peersIdentical": true,
+            "targetChanged": true,
+            "peerFailures": [],
+            "targetFailures": []
+          },
+          {
+            "cell": "CORRECTNESS-CHARTTYPE",
+            "surface": "chartType",
+            "targetId": "C",
+            "status": "GREEN",
+            "peersIdentical": true,
+            "targetChanged": true,
+            "peerFailures": [],
+            "targetFailures": []
+          },
+          {
+            "cell": "CORRECTNESS-SCALEMODE",
+            "surface": "scaleMode",
+            "targetId": "D",
+            "status": "GREEN",
+            "peersIdentical": true,
+            "targetChanged": true,
+            "peerFailures": [],
+            "targetFailures": []
+          }
+        ]
+      },
+      "status": "GREEN"
+    },
+    {
+      "cell": "RP-PRICE-MAX-GLOBAL",
+      "mode": "global:priceMax",
+      "expectedFailureReason": "price-axis-cross-contamination",
+      "report": {
+        "signature": "TALARIA_E_RELEASE_PARITY_CORRECTNESS_V1",
+        "mode": "global:priceMax",
+        "conf01": {
+          "panels": [
+            {
+              "id": "A",
+              "symbol": "XAUUSD",
+              "fileId": 677,
+              "timeframe": "1m"
+            },
+            {
+              "id": "B",
+              "symbol": "HOG",
+              "fileId": 673,
+              "timeframe": "5m"
+            },
+            {
+              "id": "C",
+              "symbol": "ETHBTC",
+              "fileId": 670,
+              "timeframe": "15m"
+            },
+            {
+              "id": "D",
+              "symbol": "BTCEUR",
+              "fileId": 669,
+              "timeframe": "1h"
+            }
+          ],
+          "fourPanels": true,
+          "fourDistinctSymbols": true,
+          "fourDistinctTimeframes": true,
+          "acceptanceWeight": "same-symbol panels earn no credit"
+        },
+        "status": "RED",
+        "failures": [
+          {
+            "cell": "CORRECTNESS-PRICEMAX",
+            "targetId": "C",
+            "reason": "price-axis-cross-contamination",
+            "peerFailures": [],
+            "targetFailures": []
+          }
+        ],
+        "cells": [
+          {
+            "cell": "CORRECTNESS-PRICEMIN",
+            "surface": "priceMin",
+            "targetId": "B",
+            "status": "GREEN",
+            "peersIdentical": true,
+            "targetChanged": true,
+            "peerFailures": [],
+            "targetFailures": []
+          },
+          {
+            "cell": "CORRECTNESS-PRICEMAX",
+            "surface": "priceMax",
+            "targetId": "C",
+            "status": "RED",
+            "peersIdentical": false,
+            "targetChanged": true,
+            "peerFailures": [],
+            "targetFailures": []
+          },
+          {
+            "cell": "CORRECTNESS-AUTOSCALE",
+            "surface": "autoScale",
+            "targetId": "D",
+            "status": "GREEN",
+            "peersIdentical": true,
+            "targetChanged": true,
+            "peerFailures": [],
+            "targetFailures": []
+          },
+          {
+            "cell": "CORRECTNESS-PRICEZOOM",
+            "surface": "priceZoom",
+            "targetId": "A",
+            "status": "GREEN",
+            "peersIdentical": true,
+            "targetChanged": true,
+            "peerFailures": [],
+            "targetFailures": []
+          },
+          {
+            "cell": "CORRECTNESS-PRICEOFFSET",
+            "surface": "priceOffset",
+            "targetId": "B",
+            "status": "GREEN",
+            "peersIdentical": true,
+            "targetChanged": true,
+            "peerFailures": [],
+            "targetFailures": []
+          },
+          {
+            "cell": "CORRECTNESS-INDICATOR",
+            "surface": "indicator",
+            "targetId": "C",
+            "status": "GREEN",
+            "peersIdentical": true,
+            "targetChanged": true,
+            "peerFailures": [],
+            "targetFailures": []
+          },
+          {
+            "cell": "CORRECTNESS-DRAWING",
+            "surface": "drawing",
+            "targetId": "D",
+            "status": "GREEN",
+            "peersIdentical": true,
+            "targetChanged": true,
+            "peerFailures": [],
+            "targetFailures": []
+          },
+          {
+            "cell": "CORRECTNESS-OVERLAY",
+            "surface": "overlay",
+            "targetId": "A",
+            "status": "GREEN",
+            "peersIdentical": true,
+            "targetChanged": true,
+            "peerFailures": [],
+            "targetFailures": []
+          },
+          {
+            "cell": "CORRECTNESS-TIMEFRAME",
+            "surface": "timeframe",
+            "targetId": "B",
+            "status": "GREEN",
+            "peersIdentical": true,
+            "targetChanged": true,
+            "peerFailures": [],
+            "targetFailures": []
+          },
+          {
+            "cell": "CORRECTNESS-CHARTTYPE",
+            "surface": "chartType",
+            "targetId": "C",
+            "status": "GREEN",
+            "peersIdentical": true,
+            "targetChanged": true,
+            "peerFailures": [],
+            "targetFailures": []
+          },
+          {
+            "cell": "CORRECTNESS-SCALEMODE",
+            "surface": "scaleMode",
+            "targetId": "D",
+            "status": "GREEN",
+            "peersIdentical": true,
+            "targetChanged": true,
+            "peerFailures": [],
+            "targetFailures": []
+          }
+        ]
+      },
+      "status": "GREEN"
+    },
+    {
+      "cell": "RP-AUTO-SCALE-GLOBAL",
+      "mode": "global:autoScale",
+      "expectedFailureReason": "price-axis-cross-contamination",
+      "report": {
+        "signature": "TALARIA_E_RELEASE_PARITY_CORRECTNESS_V1",
+        "mode": "global:autoScale",
+        "conf01": {
+          "panels": [
+            {
+              "id": "A",
+              "symbol": "XAUUSD",
+              "fileId": 677,
+              "timeframe": "1m"
+            },
+            {
+              "id": "B",
+              "symbol": "HOG",
+              "fileId": 673,
+              "timeframe": "5m"
+            },
+            {
+              "id": "C",
+              "symbol": "ETHBTC",
+              "fileId": 670,
+              "timeframe": "15m"
+            },
+            {
+              "id": "D",
+              "symbol": "BTCEUR",
+              "fileId": 669,
+              "timeframe": "1h"
+            }
+          ],
+          "fourPanels": true,
+          "fourDistinctSymbols": true,
+          "fourDistinctTimeframes": true,
+          "acceptanceWeight": "same-symbol panels earn no credit"
+        },
+        "status": "RED",
+        "failures": [
+          {
+            "cell": "CORRECTNESS-AUTOSCALE",
+            "targetId": "D",
+            "reason": "price-axis-cross-contamination",
+            "peerFailures": [],
+            "targetFailures": []
+          }
+        ],
+        "cells": [
+          {
+            "cell": "CORRECTNESS-PRICEMIN",
+            "surface": "priceMin",
+            "targetId": "B",
+            "status": "GREEN",
+            "peersIdentical": true,
+            "targetChanged": true,
+            "peerFailures": [],
+            "targetFailures": []
+          },
+          {
+            "cell": "CORRECTNESS-PRICEMAX",
+            "surface": "priceMax",
+            "targetId": "C",
+            "status": "GREEN",
+            "peersIdentical": true,
+            "targetChanged": true,
+            "peerFailures": [],
+            "targetFailures": []
+          },
+          {
+            "cell": "CORRECTNESS-AUTOSCALE",
+            "surface": "autoScale",
+            "targetId": "D",
+            "status": "RED",
+            "peersIdentical": false,
+            "targetChanged": true,
+            "peerFailures": [],
+            "targetFailures": []
+          },
+          {
+            "cell": "CORRECTNESS-PRICEZOOM",
+            "surface": "priceZoom",
+            "targetId": "A",
+            "status": "GREEN",
+            "peersIdentical": true,
+            "targetChanged": true,
+            "peerFailures": [],
+            "targetFailures": []
+          },
+          {
+            "cell": "CORRECTNESS-PRICEOFFSET",
+            "surface": "priceOffset",
+            "targetId": "B",
+            "status": "GREEN",
+            "peersIdentical": true,
+            "targetChanged": true,
+            "peerFailures": [],
+            "targetFailures": []
+          },
+          {
+            "cell": "CORRECTNESS-INDICATOR",
+            "surface": "indicator",
+            "targetId": "C",
+            "status": "GREEN",
+            "peersIdentical": true,
+            "targetChanged": true,
+            "peerFailures": [],
+            "targetFailures": []
+          },
+          {
+            "cell": "CORRECTNESS-DRAWING",
+            "surface": "drawing",
+            "targetId": "D",
+            "status": "GREEN",
+            "peersIdentical": true,
+            "targetChanged": true,
+            "peerFailures": [],
+            "targetFailures": []
+          },
+          {
+            "cell": "CORRECTNESS-OVERLAY",
+            "surface": "overlay",
+            "targetId": "A",
+            "status": "GREEN",
+            "peersIdentical": true,
+            "targetChanged": true,
+            "peerFailures": [],
+            "targetFailures": []
+          },
+          {
+            "cell": "CORRECTNESS-TIMEFRAME",
+            "surface": "timeframe",
+            "targetId": "B",
+            "status": "GREEN",
+            "peersIdentical": true,
+            "targetChanged": true,
+            "peerFailures": [],
+            "targetFailures": []
+          },
+          {
+            "cell": "CORRECTNESS-CHARTTYPE",
+            "surface": "chartType",
+            "targetId": "C",
+            "status": "GREEN",
+            "peersIdentical": true,
+            "targetChanged": true,
+            "peerFailures": [],
+            "targetFailures": []
+          },
+          {
+            "cell": "CORRECTNESS-SCALEMODE",
+            "surface": "scaleMode",
+            "targetId": "D",
+            "status": "GREEN",
+            "peersIdentical": true,
+            "targetChanged": true,
+            "peerFailures": [],
+            "targetFailures": []
+          }
+        ]
+      },
+      "status": "GREEN"
+    },
+    {
+      "cell": "RP-PRICE-ZOOM-GLOBAL",
+      "mode": "global:priceZoom",
+      "expectedFailureReason": "price-axis-cross-contamination",
+      "report": {
+        "signature": "TALARIA_E_RELEASE_PARITY_CORRECTNESS_V1",
+        "mode": "global:priceZoom",
+        "conf01": {
+          "panels": [
+            {
+              "id": "A",
+              "symbol": "XAUUSD",
+              "fileId": 677,
+              "timeframe": "1m"
+            },
+            {
+              "id": "B",
+              "symbol": "HOG",
+              "fileId": 673,
+              "timeframe": "5m"
+            },
+            {
+              "id": "C",
+              "symbol": "ETHBTC",
+              "fileId": 670,
+              "timeframe": "15m"
+            },
+            {
+              "id": "D",
+              "symbol": "BTCEUR",
+              "fileId": 669,
+              "timeframe": "1h"
+            }
+          ],
+          "fourPanels": true,
+          "fourDistinctSymbols": true,
+          "fourDistinctTimeframes": true,
+          "acceptanceWeight": "same-symbol panels earn no credit"
+        },
+        "status": "RED",
+        "failures": [
+          {
+            "cell": "CORRECTNESS-PRICEZOOM",
+            "targetId": "A",
+            "reason": "price-axis-cross-contamination",
+            "peerFailures": [],
+            "targetFailures": []
+          }
+        ],
+        "cells": [
+          {
+            "cell": "CORRECTNESS-PRICEMIN",
+            "surface": "priceMin",
+            "targetId": "B",
+            "status": "GREEN",
+            "peersIdentical": true,
+            "targetChanged": true,
+            "peerFailures": [],
+            "targetFailures": []
+          },
+          {
+            "cell": "CORRECTNESS-PRICEMAX",
+            "surface": "priceMax",
+            "targetId": "C",
+            "status": "GREEN",
+            "peersIdentical": true,
+            "targetChanged": true,
+            "peerFailures": [],
+            "targetFailures": []
+          },
+          {
+            "cell": "CORRECTNESS-AUTOSCALE",
+            "surface": "autoScale",
+            "targetId": "D",
+            "status": "GREEN",
+            "peersIdentical": true,
+            "targetChanged": true,
+            "peerFailures": [],
+            "targetFailures": []
+          },
+          {
+            "cell": "CORRECTNESS-PRICEZOOM",
+            "surface": "priceZoom",
+            "targetId": "A",
+            "status": "RED",
+            "peersIdentical": false,
+            "targetChanged": true,
+            "peerFailures": [],
+            "targetFailures": []
+          },
+          {
+            "cell": "CORRECTNESS-PRICEOFFSET",
+            "surface": "priceOffset",
+            "targetId": "B",
+            "status": "GREEN",
+            "peersIdentical": true,
+            "targetChanged": true,
+            "peerFailures": [],
+            "targetFailures": []
+          },
+          {
+            "cell": "CORRECTNESS-INDICATOR",
+            "surface": "indicator",
+            "targetId": "C",
+            "status": "GREEN",
+            "peersIdentical": true,
+            "targetChanged": true,
+            "peerFailures": [],
+            "targetFailures": []
+          },
+          {
+            "cell": "CORRECTNESS-DRAWING",
+            "surface": "drawing",
+            "targetId": "D",
+            "status": "GREEN",
+            "peersIdentical": true,
+            "targetChanged": true,
+            "peerFailures": [],
+            "targetFailures": []
+          },
+          {
+            "cell": "CORRECTNESS-OVERLAY",
+            "surface": "overlay",
+            "targetId": "A",
+            "status": "GREEN",
+            "peersIdentical": true,
+            "targetChanged": true,
+            "peerFailures": [],
+            "targetFailures": []
+          },
+          {
+            "cell": "CORRECTNESS-TIMEFRAME",
+            "surface": "timeframe",
+            "targetId": "B",
+            "status": "GREEN",
+            "peersIdentical": true,
+            "targetChanged": true,
+            "peerFailures": [],
+            "targetFailures": []
+          },
+          {
+            "cell": "CORRECTNESS-CHARTTYPE",
+            "surface": "chartType",
+            "targetId": "C",
+            "status": "GREEN",
+            "peersIdentical": true,
+            "targetChanged": true,
+            "peerFailures": [],
+            "targetFailures": []
+          },
+          {
+            "cell": "CORRECTNESS-SCALEMODE",
+            "surface": "scaleMode",
+            "targetId": "D",
+            "status": "GREEN",
+            "peersIdentical": true,
+            "targetChanged": true,
+            "peerFailures": [],
+            "targetFailures": []
+          }
+        ]
+      },
+      "status": "GREEN"
+    },
+    {
+      "cell": "RP-PRICE-OFFSET-GLOBAL",
+      "mode": "global:priceOffset",
+      "expectedFailureReason": "price-axis-cross-contamination",
+      "report": {
+        "signature": "TALARIA_E_RELEASE_PARITY_CORRECTNESS_V1",
+        "mode": "global:priceOffset",
+        "conf01": {
+          "panels": [
+            {
+              "id": "A",
+              "symbol": "XAUUSD",
+              "fileId": 677,
+              "timeframe": "1m"
+            },
+            {
+              "id": "B",
+              "symbol": "HOG",
+              "fileId": 673,
+              "timeframe": "5m"
+            },
+            {
+              "id": "C",
+              "symbol": "ETHBTC",
+              "fileId": 670,
+              "timeframe": "15m"
+            },
+            {
+              "id": "D",
+              "symbol": "BTCEUR",
+              "fileId": 669,
+              "timeframe": "1h"
+            }
+          ],
+          "fourPanels": true,
+          "fourDistinctSymbols": true,
+          "fourDistinctTimeframes": true,
+          "acceptanceWeight": "same-symbol panels earn no credit"
+        },
+        "status": "RED",
+        "failures": [
+          {
+            "cell": "CORRECTNESS-PRICEOFFSET",
+            "targetId": "B",
+            "reason": "price-axis-cross-contamination",
+            "peerFailures": [],
+            "targetFailures": []
+          }
+        ],
+        "cells": [
+          {
+            "cell": "CORRECTNESS-PRICEMIN",
+            "surface": "priceMin",
+            "targetId": "B",
+            "status": "GREEN",
+            "peersIdentical": true,
+            "targetChanged": true,
+            "peerFailures": [],
+            "targetFailures": []
+          },
+          {
+            "cell": "CORRECTNESS-PRICEMAX",
+            "surface": "priceMax",
+            "targetId": "C",
+            "status": "GREEN",
+            "peersIdentical": true,
+            "targetChanged": true,
+            "peerFailures": [],
+            "targetFailures": []
+          },
+          {
+            "cell": "CORRECTNESS-AUTOSCALE",
+            "surface": "autoScale",
+            "targetId": "D",
+            "status": "GREEN",
+            "peersIdentical": true,
+            "targetChanged": true,
+            "peerFailures": [],
+            "targetFailures": []
+          },
+          {
+            "cell": "CORRECTNESS-PRICEZOOM",
+            "surface": "priceZoom",
+            "targetId": "A",
+            "status": "GREEN",
+            "peersIdentical": true,
+            "targetChanged": true,
+            "peerFailures": [],
+            "targetFailures": []
+          },
+          {
+            "cell": "CORRECTNESS-PRICEOFFSET",
+            "surface": "priceOffset",
+            "targetId": "B",
+            "status": "RED",
+            "peersIdentical": false,
+            "targetChanged": true,
+            "peerFailures": [],
+            "targetFailures": []
+          },
+          {
+            "cell": "CORRECTNESS-INDICATOR",
+            "surface": "indicator",
+            "targetId": "C",
+            "status": "GREEN",
+            "peersIdentical": true,
+            "targetChanged": true,
+            "peerFailures": [],
+            "targetFailures": []
+          },
+          {
+            "cell": "CORRECTNESS-DRAWING",
+            "surface": "drawing",
+            "targetId": "D",
+            "status": "GREEN",
+            "peersIdentical": true,
+            "targetChanged": true,
+            "peerFailures": [],
+            "targetFailures": []
+          },
+          {
+            "cell": "CORRECTNESS-OVERLAY",
+            "surface": "overlay",
+            "targetId": "A",
+            "status": "GREEN",
+            "peersIdentical": true,
+            "targetChanged": true,
+            "peerFailures": [],
+            "targetFailures": []
+          },
+          {
+            "cell": "CORRECTNESS-TIMEFRAME",
+            "surface": "timeframe",
+            "targetId": "B",
+            "status": "GREEN",
+            "peersIdentical": true,
+            "targetChanged": true,
+            "peerFailures": [],
+            "targetFailures": []
+          },
+          {
+            "cell": "CORRECTNESS-CHARTTYPE",
+            "surface": "chartType",
+            "targetId": "C",
+            "status": "GREEN",
+            "peersIdentical": true,
+            "targetChanged": true,
+            "peerFailures": [],
+            "targetFailures": []
+          },
+          {
+            "cell": "CORRECTNESS-SCALEMODE",
+            "surface": "scaleMode",
+            "targetId": "D",
+            "status": "GREEN",
+            "peersIdentical": true,
+            "targetChanged": true,
+            "peerFailures": [],
+            "targetFailures": []
+          }
+        ]
+      },
+      "status": "GREEN"
+    },
+    {
+      "cell": "RP-TIMEFRAME-GLOBAL",
+      "mode": "global:timeframe",
+      "expectedFailureReason": "timeframe-cross-contamination",
+      "report": {
+        "signature": "TALARIA_E_RELEASE_PARITY_CORRECTNESS_V1",
+        "mode": "global:timeframe",
+        "conf01": {
+          "panels": [
+            {
+              "id": "A",
+              "symbol": "XAUUSD",
+              "fileId": 677,
+              "timeframe": "1m"
+            },
+            {
+              "id": "B",
+              "symbol": "HOG",
+              "fileId": 673,
+              "timeframe": "5m"
+            },
+            {
+              "id": "C",
+              "symbol": "ETHBTC",
+              "fileId": 670,
+              "timeframe": "15m"
+            },
+            {
+              "id": "D",
+              "symbol": "BTCEUR",
+              "fileId": 669,
+              "timeframe": "1h"
+            }
+          ],
+          "fourPanels": true,
+          "fourDistinctSymbols": true,
+          "fourDistinctTimeframes": true,
+          "acceptanceWeight": "same-symbol panels earn no credit"
+        },
+        "status": "RED",
+        "failures": [
+          {
+            "cell": "CORRECTNESS-TIMEFRAME",
+            "targetId": "B",
+            "reason": "timeframe-cross-contamination",
+            "peerFailures": [],
+            "targetFailures": []
+          }
+        ],
+        "cells": [
+          {
+            "cell": "CORRECTNESS-PRICEMIN",
+            "surface": "priceMin",
+            "targetId": "B",
+            "status": "GREEN",
+            "peersIdentical": true,
+            "targetChanged": true,
+            "peerFailures": [],
+            "targetFailures": []
+          },
+          {
+            "cell": "CORRECTNESS-PRICEMAX",
+            "surface": "priceMax",
+            "targetId": "C",
+            "status": "GREEN",
+            "peersIdentical": true,
+            "targetChanged": true,
+            "peerFailures": [],
+            "targetFailures": []
+          },
+          {
+            "cell": "CORRECTNESS-AUTOSCALE",
+            "surface": "autoScale",
+            "targetId": "D",
+            "status": "GREEN",
+            "peersIdentical": true,
+            "targetChanged": true,
+            "peerFailures": [],
+            "targetFailures": []
+          },
+          {
+            "cell": "CORRECTNESS-PRICEZOOM",
+            "surface": "priceZoom",
+            "targetId": "A",
+            "status": "GREEN",
+            "peersIdentical": true,
+            "targetChanged": true,
+            "peerFailures": [],
+            "targetFailures": []
+          },
+          {
+            "cell": "CORRECTNESS-PRICEOFFSET",
+            "surface": "priceOffset",
+            "targetId": "B",
+            "status": "GREEN",
+            "peersIdentical": true,
+            "targetChanged": true,
+            "peerFailures": [],
+            "targetFailures": []
+          },
+          {
+            "cell": "CORRECTNESS-INDICATOR",
+            "surface": "indicator",
+            "targetId": "C",
+            "status": "GREEN",
+            "peersIdentical": true,
+            "targetChanged": true,
+            "peerFailures": [],
+            "targetFailures": []
+          },
+          {
+            "cell": "CORRECTNESS-DRAWING",
+            "surface": "drawing",
+            "targetId": "D",
+            "status": "GREEN",
+            "peersIdentical": true,
+            "targetChanged": true,
+            "peerFailures": [],
+            "targetFailures": []
+          },
+          {
+            "cell": "CORRECTNESS-OVERLAY",
+            "surface": "overlay",
+            "targetId": "A",
+            "status": "GREEN",
+            "peersIdentical": true,
+            "targetChanged": true,
+            "peerFailures": [],
+            "targetFailures": []
+          },
+          {
+            "cell": "CORRECTNESS-TIMEFRAME",
+            "surface": "timeframe",
+            "targetId": "B",
+            "status": "RED",
+            "peersIdentical": false,
+            "targetChanged": true,
+            "peerFailures": [],
+            "targetFailures": []
+          },
+          {
+            "cell": "CORRECTNESS-CHARTTYPE",
+            "surface": "chartType",
+            "targetId": "C",
+            "status": "GREEN",
+            "peersIdentical": true,
+            "targetChanged": true,
+            "peerFailures": [],
+            "targetFailures": []
+          },
+          {
+            "cell": "CORRECTNESS-SCALEMODE",
+            "surface": "scaleMode",
+            "targetId": "D",
+            "status": "GREEN",
+            "peersIdentical": true,
+            "targetChanged": true,
+            "peerFailures": [],
+            "targetFailures": []
+          }
+        ]
+      },
+      "status": "GREEN"
+    },
+    {
+      "cell": "RP-CHART-TYPE-GLOBAL",
+      "mode": "global:chartType",
+      "expectedFailureReason": "chart-type-cross-contamination",
+      "report": {
+        "signature": "TALARIA_E_RELEASE_PARITY_CORRECTNESS_V1",
+        "mode": "global:chartType",
+        "conf01": {
+          "panels": [
+            {
+              "id": "A",
+              "symbol": "XAUUSD",
+              "fileId": 677,
+              "timeframe": "1m"
+            },
+            {
+              "id": "B",
+              "symbol": "HOG",
+              "fileId": 673,
+              "timeframe": "5m"
+            },
+            {
+              "id": "C",
+              "symbol": "ETHBTC",
+              "fileId": 670,
+              "timeframe": "15m"
+            },
+            {
+              "id": "D",
+              "symbol": "BTCEUR",
+              "fileId": 669,
+              "timeframe": "1h"
+            }
+          ],
+          "fourPanels": true,
+          "fourDistinctSymbols": true,
+          "fourDistinctTimeframes": true,
+          "acceptanceWeight": "same-symbol panels earn no credit"
+        },
+        "status": "RED",
+        "failures": [
+          {
+            "cell": "CORRECTNESS-CHARTTYPE",
+            "targetId": "C",
+            "reason": "chart-type-cross-contamination",
+            "peerFailures": [],
+            "targetFailures": []
+          }
+        ],
+        "cells": [
+          {
+            "cell": "CORRECTNESS-PRICEMIN",
+            "surface": "priceMin",
+            "targetId": "B",
+            "status": "GREEN",
+            "peersIdentical": true,
+            "targetChanged": true,
+            "peerFailures": [],
+            "targetFailures": []
+          },
+          {
+            "cell": "CORRECTNESS-PRICEMAX",
+            "surface": "priceMax",
+            "targetId": "C",
+            "status": "GREEN",
+            "peersIdentical": true,
+            "targetChanged": true,
+            "peerFailures": [],
+            "targetFailures": []
+          },
+          {
+            "cell": "CORRECTNESS-AUTOSCALE",
+            "surface": "autoScale",
+            "targetId": "D",
+            "status": "GREEN",
+            "peersIdentical": true,
+            "targetChanged": true,
+            "peerFailures": [],
+            "targetFailures": []
+          },
+          {
+            "cell": "CORRECTNESS-PRICEZOOM",
+            "surface": "priceZoom",
+            "targetId": "A",
+            "status": "GREEN",
+            "peersIdentical": true,
+            "targetChanged": true,
+            "peerFailures": [],
+            "targetFailures": []
+          },
+          {
+            "cell": "CORRECTNESS-PRICEOFFSET",
+            "surface": "priceOffset",
+            "targetId": "B",
+            "status": "GREEN",
+            "peersIdentical": true,
+            "targetChanged": true,
+            "peerFailures": [],
+            "targetFailures": []
+          },
+          {
+            "cell": "CORRECTNESS-INDICATOR",
+            "surface": "indicator",
+            "targetId": "C",
+            "status": "GREEN",
+            "peersIdentical": true,
+            "targetChanged": true,
+            "peerFailures": [],
+            "targetFailures": []
+          },
+          {
+            "cell": "CORRECTNESS-DRAWING",
+            "surface": "drawing",
+            "targetId": "D",
+            "status": "GREEN",
+            "peersIdentical": true,
+            "targetChanged": true,
+            "peerFailures": [],
+            "targetFailures": []
+          },
+          {
+            "cell": "CORRECTNESS-OVERLAY",
+            "surface": "overlay",
+            "targetId": "A",
+            "status": "GREEN",
+            "peersIdentical": true,
+            "targetChanged": true,
+            "peerFailures": [],
+            "targetFailures": []
+          },
+          {
+            "cell": "CORRECTNESS-TIMEFRAME",
+            "surface": "timeframe",
+            "targetId": "B",
+            "status": "GREEN",
+            "peersIdentical": true,
+            "targetChanged": true,
+            "peerFailures": [],
+            "targetFailures": []
+          },
+          {
+            "cell": "CORRECTNESS-CHARTTYPE",
+            "surface": "chartType",
+            "targetId": "C",
+            "status": "RED",
+            "peersIdentical": false,
+            "targetChanged": true,
+            "peerFailures": [],
+            "targetFailures": []
+          },
+          {
+            "cell": "CORRECTNESS-SCALEMODE",
+            "surface": "scaleMode",
+            "targetId": "D",
+            "status": "GREEN",
+            "peersIdentical": true,
+            "targetChanged": true,
+            "peerFailures": [],
+            "targetFailures": []
+          }
+        ]
+      },
+      "status": "GREEN"
+    },
+    {
+      "cell": "RP-SCALE-MODE-GLOBAL",
+      "mode": "global:scaleMode",
+      "expectedFailureReason": "scale-mode-cross-contamination",
+      "report": {
+        "signature": "TALARIA_E_RELEASE_PARITY_CORRECTNESS_V1",
+        "mode": "global:scaleMode",
+        "conf01": {
+          "panels": [
+            {
+              "id": "A",
+              "symbol": "XAUUSD",
+              "fileId": 677,
+              "timeframe": "1m"
+            },
+            {
+              "id": "B",
+              "symbol": "HOG",
+              "fileId": 673,
+              "timeframe": "5m"
+            },
+            {
+              "id": "C",
+              "symbol": "ETHBTC",
+              "fileId": 670,
+              "timeframe": "15m"
+            },
+            {
+              "id": "D",
+              "symbol": "BTCEUR",
+              "fileId": 669,
+              "timeframe": "1h"
+            }
+          ],
+          "fourPanels": true,
+          "fourDistinctSymbols": true,
+          "fourDistinctTimeframes": true,
+          "acceptanceWeight": "same-symbol panels earn no credit"
+        },
+        "status": "RED",
+        "failures": [
+          {
+            "cell": "CORRECTNESS-SCALEMODE",
+            "targetId": "D",
+            "reason": "scale-mode-cross-contamination",
+            "peerFailures": [],
+            "targetFailures": []
+          }
+        ],
+        "cells": [
+          {
+            "cell": "CORRECTNESS-PRICEMIN",
+            "surface": "priceMin",
+            "targetId": "B",
+            "status": "GREEN",
+            "peersIdentical": true,
+            "targetChanged": true,
+            "peerFailures": [],
+            "targetFailures": []
+          },
+          {
+            "cell": "CORRECTNESS-PRICEMAX",
+            "surface": "priceMax",
+            "targetId": "C",
+            "status": "GREEN",
+            "peersIdentical": true,
+            "targetChanged": true,
+            "peerFailures": [],
+            "targetFailures": []
+          },
+          {
+            "cell": "CORRECTNESS-AUTOSCALE",
+            "surface": "autoScale",
+            "targetId": "D",
+            "status": "GREEN",
+            "peersIdentical": true,
+            "targetChanged": true,
+            "peerFailures": [],
+            "targetFailures": []
+          },
+          {
+            "cell": "CORRECTNESS-PRICEZOOM",
+            "surface": "priceZoom",
+            "targetId": "A",
+            "status": "GREEN",
+            "peersIdentical": true,
+            "targetChanged": true,
+            "peerFailures": [],
+            "targetFailures": []
+          },
+          {
+            "cell": "CORRECTNESS-PRICEOFFSET",
+            "surface": "priceOffset",
+            "targetId": "B",
+            "status": "GREEN",
+            "peersIdentical": true,
+            "targetChanged": true,
+            "peerFailures": [],
+            "targetFailures": []
+          },
+          {
+            "cell": "CORRECTNESS-INDICATOR",
+            "surface": "indicator",
+            "targetId": "C",
+            "status": "GREEN",
+            "peersIdentical": true,
+            "targetChanged": true,
+            "peerFailures": [],
+            "targetFailures": []
+          },
+          {
+            "cell": "CORRECTNESS-DRAWING",
+            "surface": "drawing",
+            "targetId": "D",
+            "status": "GREEN",
+            "peersIdentical": true,
+            "targetChanged": true,
+            "peerFailures": [],
+            "targetFailures": []
+          },
+          {
+            "cell": "CORRECTNESS-OVERLAY",
+            "surface": "overlay",
+            "targetId": "A",
+            "status": "GREEN",
+            "peersIdentical": true,
+            "targetChanged": true,
+            "peerFailures": [],
+            "targetFailures": []
+          },
+          {
+            "cell": "CORRECTNESS-TIMEFRAME",
+            "surface": "timeframe",
+            "targetId": "B",
+            "status": "GREEN",
+            "peersIdentical": true,
+            "targetChanged": true,
+            "peerFailures": [],
+            "targetFailures": []
+          },
+          {
+            "cell": "CORRECTNESS-CHARTTYPE",
+            "surface": "chartType",
+            "targetId": "C",
+            "status": "GREEN",
+            "peersIdentical": true,
+            "targetChanged": true,
+            "peerFailures": [],
+            "targetFailures": []
+          },
+          {
+            "cell": "CORRECTNESS-SCALEMODE",
+            "surface": "scaleMode",
+            "targetId": "D",
+            "status": "RED",
+            "peersIdentical": false,
+            "targetChanged": true,
+            "peerFailures": [],
+            "targetFailures": []
+          }
+        ]
+      },
+      "status": "GREEN"
+    },
     {
       "cell": "RP-INDICATOR-GLOBAL-SLOT",
       "mode": "globalIndicatorSlot",
@@ -115,7 +1507,7 @@
         "failures": [
           {
             "cell": "CORRECTNESS-INDICATOR",
-            "targetId": "B",
+            "targetId": "C",
             "reason": "indicator-cross-contamination",
             "peerFailures": [
               {
@@ -124,20 +1516,20 @@
                 "name": "smaTip",
                 "reason": "indicator-cross-contamination",
                 "value": {
-                  "ownerPanelId": "B",
-                  "symbol": "HOG",
-                  "value": 610
+                  "ownerPanelId": "C",
+                  "symbol": "ETHBTC",
+                  "value": 770
                 }
               },
               {
                 "surface": "indicator",
-                "panelId": "C",
+                "panelId": "B",
                 "name": "smaTip",
                 "reason": "indicator-cross-contamination",
                 "value": {
-                  "ownerPanelId": "B",
-                  "symbol": "HOG",
-                  "value": 610
+                  "ownerPanelId": "C",
+                  "symbol": "ETHBTC",
+                  "value": 770
                 }
               },
               {
@@ -146,9 +1538,9 @@
                 "name": "smaTip",
                 "reason": "indicator-cross-contamination",
                 "value": {
-                  "ownerPanelId": "B",
-                  "symbol": "HOG",
-                  "value": 610
+                  "ownerPanelId": "C",
+                  "symbol": "ETHBTC",
+                  "value": 770
                 }
               }
             ],
@@ -157,9 +1549,59 @@
         ],
         "cells": [
           {
+            "cell": "CORRECTNESS-PRICEMIN",
+            "surface": "priceMin",
+            "targetId": "B",
+            "status": "GREEN",
+            "peersIdentical": true,
+            "targetChanged": true,
+            "peerFailures": [],
+            "targetFailures": []
+          },
+          {
+            "cell": "CORRECTNESS-PRICEMAX",
+            "surface": "priceMax",
+            "targetId": "C",
+            "status": "GREEN",
+            "peersIdentical": true,
+            "targetChanged": true,
+            "peerFailures": [],
+            "targetFailures": []
+          },
+          {
+            "cell": "CORRECTNESS-AUTOSCALE",
+            "surface": "autoScale",
+            "targetId": "D",
+            "status": "GREEN",
+            "peersIdentical": true,
+            "targetChanged": true,
+            "peerFailures": [],
+            "targetFailures": []
+          },
+          {
+            "cell": "CORRECTNESS-PRICEZOOM",
+            "surface": "priceZoom",
+            "targetId": "A",
+            "status": "GREEN",
+            "peersIdentical": true,
+            "targetChanged": true,
+            "peerFailures": [],
+            "targetFailures": []
+          },
+          {
+            "cell": "CORRECTNESS-PRICEOFFSET",
+            "surface": "priceOffset",
+            "targetId": "B",
+            "status": "GREEN",
+            "peersIdentical": true,
+            "targetChanged": true,
+            "peerFailures": [],
+            "targetFailures": []
+          },
+          {
             "cell": "CORRECTNESS-INDICATOR",
             "surface": "indicator",
-            "targetId": "B",
+            "targetId": "C",
             "status": "RED",
             "peersIdentical": true,
             "targetChanged": true,
@@ -170,20 +1612,20 @@
                 "name": "smaTip",
                 "reason": "indicator-cross-contamination",
                 "value": {
-                  "ownerPanelId": "B",
-                  "symbol": "HOG",
-                  "value": 610
+                  "ownerPanelId": "C",
+                  "symbol": "ETHBTC",
+                  "value": 770
                 }
               },
               {
                 "surface": "indicator",
-                "panelId": "C",
+                "panelId": "B",
                 "name": "smaTip",
                 "reason": "indicator-cross-contamination",
                 "value": {
-                  "ownerPanelId": "B",
-                  "symbol": "HOG",
-                  "value": 610
+                  "ownerPanelId": "C",
+                  "symbol": "ETHBTC",
+                  "value": 770
                 }
               },
               {
@@ -192,9 +1634,9 @@
                 "name": "smaTip",
                 "reason": "indicator-cross-contamination",
                 "value": {
-                  "ownerPanelId": "B",
-                  "symbol": "HOG",
-                  "value": 610
+                  "ownerPanelId": "C",
+                  "symbol": "ETHBTC",
+                  "value": 770
                 }
               }
             ],
@@ -203,7 +1645,7 @@
           {
             "cell": "CORRECTNESS-DRAWING",
             "surface": "drawing",
-            "targetId": "C",
+            "targetId": "D",
             "status": "GREEN",
             "peersIdentical": true,
             "targetChanged": true,
@@ -213,6 +1655,36 @@
           {
             "cell": "CORRECTNESS-OVERLAY",
             "surface": "overlay",
+            "targetId": "A",
+            "status": "GREEN",
+            "peersIdentical": true,
+            "targetChanged": true,
+            "peerFailures": [],
+            "targetFailures": []
+          },
+          {
+            "cell": "CORRECTNESS-TIMEFRAME",
+            "surface": "timeframe",
+            "targetId": "B",
+            "status": "GREEN",
+            "peersIdentical": true,
+            "targetChanged": true,
+            "peerFailures": [],
+            "targetFailures": []
+          },
+          {
+            "cell": "CORRECTNESS-CHARTTYPE",
+            "surface": "chartType",
+            "targetId": "C",
+            "status": "GREEN",
+            "peersIdentical": true,
+            "targetChanged": true,
+            "peerFailures": [],
+            "targetFailures": []
+          },
+          {
+            "cell": "CORRECTNESS-SCALEMODE",
+            "surface": "scaleMode",
             "targetId": "D",
             "status": "GREEN",
             "peersIdentical": true,
@@ -267,27 +1739,27 @@
         "failures": [
           {
             "cell": "CORRECTNESS-DRAWING",
-            "targetId": "C",
+            "targetId": "D",
             "reason": "drawing-cross-contamination",
             "peerFailures": [
               {
                 "surface": "drawing",
                 "panelId": "A",
-                "drawingId": "C-trendline",
+                "drawingId": "D-trendline",
                 "reason": "drawing-cross-contamination",
                 "value": {
-                  "id": "C-trendline",
-                  "ownerPanelId": "C",
-                  "symbol": "ETHBTC",
+                  "id": "D-trendline",
+                  "ownerPanelId": "D",
+                  "symbol": "BTCEUR",
                   "type": "trendline",
                   "points": [
                     {
                       "x": 1,
-                      "y": 179
+                      "y": 121
                     },
                     {
                       "x": 2,
-                      "y": 184
+                      "y": 126
                     }
                   ]
                 }
@@ -295,43 +1767,43 @@
               {
                 "surface": "drawing",
                 "panelId": "B",
-                "drawingId": "C-trendline",
+                "drawingId": "D-trendline",
                 "reason": "drawing-cross-contamination",
                 "value": {
-                  "id": "C-trendline",
-                  "ownerPanelId": "C",
-                  "symbol": "ETHBTC",
+                  "id": "D-trendline",
+                  "ownerPanelId": "D",
+                  "symbol": "BTCEUR",
                   "type": "trendline",
                   "points": [
                     {
                       "x": 1,
-                      "y": 179
+                      "y": 121
                     },
                     {
                       "x": 2,
-                      "y": 184
+                      "y": 126
                     }
                   ]
                 }
               },
               {
                 "surface": "drawing",
-                "panelId": "D",
-                "drawingId": "C-trendline",
+                "panelId": "C",
+                "drawingId": "D-trendline",
                 "reason": "drawing-cross-contamination",
                 "value": {
-                  "id": "C-trendline",
-                  "ownerPanelId": "C",
-                  "symbol": "ETHBTC",
+                  "id": "D-trendline",
+                  "ownerPanelId": "D",
+                  "symbol": "BTCEUR",
                   "type": "trendline",
                   "points": [
                     {
                       "x": 1,
-                      "y": 179
+                      "y": 121
                     },
                     {
                       "x": 2,
-                      "y": 184
+                      "y": 126
                     }
                   ]
                 }
@@ -342,9 +1814,59 @@
         ],
         "cells": [
           {
+            "cell": "CORRECTNESS-PRICEMIN",
+            "surface": "priceMin",
+            "targetId": "B",
+            "status": "GREEN",
+            "peersIdentical": true,
+            "targetChanged": true,
+            "peerFailures": [],
+            "targetFailures": []
+          },
+          {
+            "cell": "CORRECTNESS-PRICEMAX",
+            "surface": "priceMax",
+            "targetId": "C",
+            "status": "GREEN",
+            "peersIdentical": true,
+            "targetChanged": true,
+            "peerFailures": [],
+            "targetFailures": []
+          },
+          {
+            "cell": "CORRECTNESS-AUTOSCALE",
+            "surface": "autoScale",
+            "targetId": "D",
+            "status": "GREEN",
+            "peersIdentical": true,
+            "targetChanged": true,
+            "peerFailures": [],
+            "targetFailures": []
+          },
+          {
+            "cell": "CORRECTNESS-PRICEZOOM",
+            "surface": "priceZoom",
+            "targetId": "A",
+            "status": "GREEN",
+            "peersIdentical": true,
+            "targetChanged": true,
+            "peerFailures": [],
+            "targetFailures": []
+          },
+          {
+            "cell": "CORRECTNESS-PRICEOFFSET",
+            "surface": "priceOffset",
+            "targetId": "B",
+            "status": "GREEN",
+            "peersIdentical": true,
+            "targetChanged": true,
+            "peerFailures": [],
+            "targetFailures": []
+          },
+          {
             "cell": "CORRECTNESS-INDICATOR",
             "surface": "indicator",
-            "targetId": "B",
+            "targetId": "C",
             "status": "GREEN",
             "peersIdentical": true,
             "targetChanged": true,
@@ -354,7 +1876,7 @@
           {
             "cell": "CORRECTNESS-DRAWING",
             "surface": "drawing",
-            "targetId": "C",
+            "targetId": "D",
             "status": "RED",
             "peersIdentical": false,
             "targetChanged": true,
@@ -362,21 +1884,21 @@
               {
                 "surface": "drawing",
                 "panelId": "A",
-                "drawingId": "C-trendline",
+                "drawingId": "D-trendline",
                 "reason": "drawing-cross-contamination",
                 "value": {
-                  "id": "C-trendline",
-                  "ownerPanelId": "C",
-                  "symbol": "ETHBTC",
+                  "id": "D-trendline",
+                  "ownerPanelId": "D",
+                  "symbol": "BTCEUR",
                   "type": "trendline",
                   "points": [
                     {
                       "x": 1,
-                      "y": 179
+                      "y": 121
                     },
                     {
                       "x": 2,
-                      "y": 184
+                      "y": 126
                     }
                   ]
                 }
@@ -384,43 +1906,43 @@
               {
                 "surface": "drawing",
                 "panelId": "B",
-                "drawingId": "C-trendline",
+                "drawingId": "D-trendline",
                 "reason": "drawing-cross-contamination",
                 "value": {
-                  "id": "C-trendline",
-                  "ownerPanelId": "C",
-                  "symbol": "ETHBTC",
+                  "id": "D-trendline",
+                  "ownerPanelId": "D",
+                  "symbol": "BTCEUR",
                   "type": "trendline",
                   "points": [
                     {
                       "x": 1,
-                      "y": 179
+                      "y": 121
                     },
                     {
                       "x": 2,
-                      "y": 184
+                      "y": 126
                     }
                   ]
                 }
               },
               {
                 "surface": "drawing",
-                "panelId": "D",
-                "drawingId": "C-trendline",
+                "panelId": "C",
+                "drawingId": "D-trendline",
                 "reason": "drawing-cross-contamination",
                 "value": {
-                  "id": "C-trendline",
-                  "ownerPanelId": "C",
-                  "symbol": "ETHBTC",
+                  "id": "D-trendline",
+                  "ownerPanelId": "D",
+                  "symbol": "BTCEUR",
                   "type": "trendline",
                   "points": [
                     {
                       "x": 1,
-                      "y": 179
+                      "y": 121
                     },
                     {
                       "x": 2,
-                      "y": 184
+                      "y": 126
                     }
                   ]
                 }
@@ -431,6 +1953,36 @@
           {
             "cell": "CORRECTNESS-OVERLAY",
             "surface": "overlay",
+            "targetId": "A",
+            "status": "GREEN",
+            "peersIdentical": true,
+            "targetChanged": true,
+            "peerFailures": [],
+            "targetFailures": []
+          },
+          {
+            "cell": "CORRECTNESS-TIMEFRAME",
+            "surface": "timeframe",
+            "targetId": "B",
+            "status": "GREEN",
+            "peersIdentical": true,
+            "targetChanged": true,
+            "peerFailures": [],
+            "targetFailures": []
+          },
+          {
+            "cell": "CORRECTNESS-CHARTTYPE",
+            "surface": "chartType",
+            "targetId": "C",
+            "status": "GREEN",
+            "peersIdentical": true,
+            "targetChanged": true,
+            "peerFailures": [],
+            "targetFailures": []
+          },
+          {
+            "cell": "CORRECTNESS-SCALEMODE",
+            "surface": "scaleMode",
             "targetId": "D",
             "status": "GREEN",
             "peersIdentical": true,
@@ -485,51 +2037,18 @@
         "failures": [
           {
             "cell": "CORRECTNESS-OVERLAY",
-            "targetId": "D",
+            "targetId": "A",
             "reason": "overlay-cross-contamination",
             "peerFailures": [
               {
                 "surface": "overlay",
-                "panelId": "A",
-                "kind": "legendRows",
-                "reason": "overlay-cross-contamination",
-                "value": {
-                  "ownerPanelId": "D",
-                  "symbol": "BTCEUR",
-                  "text": "BTCEUR:refreshed"
-                }
-              },
-              {
-                "surface": "overlay",
-                "panelId": "A",
-                "kind": "axisTags",
-                "reason": "overlay-cross-contamination",
-                "value": {
-                  "ownerPanelId": "D",
-                  "symbol": "BTCEUR",
-                  "text": "D:axis:refreshed"
-                }
-              },
-              {
-                "surface": "overlay",
-                "panelId": "A",
-                "kind": "sessionLabels",
-                "reason": "overlay-cross-contamination",
-                "value": {
-                  "ownerPanelId": "D",
-                  "symbol": "BTCEUR",
-                  "text": "BTCEUR:session:refreshed"
-                }
-              },
-              {
-                "surface": "overlay",
                 "panelId": "B",
                 "kind": "legendRows",
                 "reason": "overlay-cross-contamination",
                 "value": {
-                  "ownerPanelId": "D",
-                  "symbol": "BTCEUR",
-                  "text": "BTCEUR:refreshed"
+                  "ownerPanelId": "A",
+                  "symbol": "XAUUSD",
+                  "text": "XAUUSD:refreshed"
                 }
               },
               {
@@ -538,9 +2057,9 @@
                 "kind": "axisTags",
                 "reason": "overlay-cross-contamination",
                 "value": {
-                  "ownerPanelId": "D",
-                  "symbol": "BTCEUR",
-                  "text": "D:axis:refreshed"
+                  "ownerPanelId": "A",
+                  "symbol": "XAUUSD",
+                  "text": "A:axis:refreshed"
                 }
               },
               {
@@ -549,9 +2068,9 @@
                 "kind": "sessionLabels",
                 "reason": "overlay-cross-contamination",
                 "value": {
-                  "ownerPanelId": "D",
-                  "symbol": "BTCEUR",
-                  "text": "BTCEUR:session:refreshed"
+                  "ownerPanelId": "A",
+                  "symbol": "XAUUSD",
+                  "text": "XAUUSD:session:refreshed"
                 }
               },
               {
@@ -560,9 +2079,9 @@
                 "kind": "legendRows",
                 "reason": "overlay-cross-contamination",
                 "value": {
-                  "ownerPanelId": "D",
-                  "symbol": "BTCEUR",
-                  "text": "BTCEUR:refreshed"
+                  "ownerPanelId": "A",
+                  "symbol": "XAUUSD",
+                  "text": "XAUUSD:refreshed"
                 }
               },
               {
@@ -571,9 +2090,9 @@
                 "kind": "axisTags",
                 "reason": "overlay-cross-contamination",
                 "value": {
-                  "ownerPanelId": "D",
-                  "symbol": "BTCEUR",
-                  "text": "D:axis:refreshed"
+                  "ownerPanelId": "A",
+                  "symbol": "XAUUSD",
+                  "text": "A:axis:refreshed"
                 }
               },
               {
@@ -582,9 +2101,42 @@
                 "kind": "sessionLabels",
                 "reason": "overlay-cross-contamination",
                 "value": {
-                  "ownerPanelId": "D",
-                  "symbol": "BTCEUR",
-                  "text": "BTCEUR:session:refreshed"
+                  "ownerPanelId": "A",
+                  "symbol": "XAUUSD",
+                  "text": "XAUUSD:session:refreshed"
+                }
+              },
+              {
+                "surface": "overlay",
+                "panelId": "D",
+                "kind": "legendRows",
+                "reason": "overlay-cross-contamination",
+                "value": {
+                  "ownerPanelId": "A",
+                  "symbol": "XAUUSD",
+                  "text": "XAUUSD:refreshed"
+                }
+              },
+              {
+                "surface": "overlay",
+                "panelId": "D",
+                "kind": "axisTags",
+                "reason": "overlay-cross-contamination",
+                "value": {
+                  "ownerPanelId": "A",
+                  "symbol": "XAUUSD",
+                  "text": "A:axis:refreshed"
+                }
+              },
+              {
+                "surface": "overlay",
+                "panelId": "D",
+                "kind": "sessionLabels",
+                "reason": "overlay-cross-contamination",
+                "value": {
+                  "ownerPanelId": "A",
+                  "symbol": "XAUUSD",
+                  "text": "XAUUSD:session:refreshed"
                 }
               }
             ],
@@ -593,9 +2145,59 @@
         ],
         "cells": [
           {
+            "cell": "CORRECTNESS-PRICEMIN",
+            "surface": "priceMin",
+            "targetId": "B",
+            "status": "GREEN",
+            "peersIdentical": true,
+            "targetChanged": true,
+            "peerFailures": [],
+            "targetFailures": []
+          },
+          {
+            "cell": "CORRECTNESS-PRICEMAX",
+            "surface": "priceMax",
+            "targetId": "C",
+            "status": "GREEN",
+            "peersIdentical": true,
+            "targetChanged": true,
+            "peerFailures": [],
+            "targetFailures": []
+          },
+          {
+            "cell": "CORRECTNESS-AUTOSCALE",
+            "surface": "autoScale",
+            "targetId": "D",
+            "status": "GREEN",
+            "peersIdentical": true,
+            "targetChanged": true,
+            "peerFailures": [],
+            "targetFailures": []
+          },
+          {
+            "cell": "CORRECTNESS-PRICEZOOM",
+            "surface": "priceZoom",
+            "targetId": "A",
+            "status": "GREEN",
+            "peersIdentical": true,
+            "targetChanged": true,
+            "peerFailures": [],
+            "targetFailures": []
+          },
+          {
+            "cell": "CORRECTNESS-PRICEOFFSET",
+            "surface": "priceOffset",
+            "targetId": "B",
+            "status": "GREEN",
+            "peersIdentical": true,
+            "targetChanged": true,
+            "peerFailures": [],
+            "targetFailures": []
+          },
+          {
             "cell": "CORRECTNESS-INDICATOR",
             "surface": "indicator",
-            "targetId": "B",
+            "targetId": "C",
             "status": "GREEN",
             "peersIdentical": true,
             "targetChanged": true,
@@ -605,7 +2207,7 @@
           {
             "cell": "CORRECTNESS-DRAWING",
             "surface": "drawing",
-            "targetId": "C",
+            "targetId": "D",
             "status": "GREEN",
             "peersIdentical": true,
             "targetChanged": true,
@@ -615,53 +2217,20 @@
           {
             "cell": "CORRECTNESS-OVERLAY",
             "surface": "overlay",
-            "targetId": "D",
+            "targetId": "A",
             "status": "RED",
             "peersIdentical": false,
             "targetChanged": true,
             "peerFailures": [
               {
                 "surface": "overlay",
-                "panelId": "A",
-                "kind": "legendRows",
-                "reason": "overlay-cross-contamination",
-                "value": {
-                  "ownerPanelId": "D",
-                  "symbol": "BTCEUR",
-                  "text": "BTCEUR:refreshed"
-                }
-              },
-              {
-                "surface": "overlay",
-                "panelId": "A",
-                "kind": "axisTags",
-                "reason": "overlay-cross-contamination",
-                "value": {
-                  "ownerPanelId": "D",
-                  "symbol": "BTCEUR",
-                  "text": "D:axis:refreshed"
-                }
-              },
-              {
-                "surface": "overlay",
-                "panelId": "A",
-                "kind": "sessionLabels",
-                "reason": "overlay-cross-contamination",
-                "value": {
-                  "ownerPanelId": "D",
-                  "symbol": "BTCEUR",
-                  "text": "BTCEUR:session:refreshed"
-                }
-              },
-              {
-                "surface": "overlay",
                 "panelId": "B",
                 "kind": "legendRows",
                 "reason": "overlay-cross-contamination",
                 "value": {
-                  "ownerPanelId": "D",
-                  "symbol": "BTCEUR",
-                  "text": "BTCEUR:refreshed"
+                  "ownerPanelId": "A",
+                  "symbol": "XAUUSD",
+                  "text": "XAUUSD:refreshed"
                 }
               },
               {
@@ -670,9 +2239,9 @@
                 "kind": "axisTags",
                 "reason": "overlay-cross-contamination",
                 "value": {
-                  "ownerPanelId": "D",
-                  "symbol": "BTCEUR",
-                  "text": "D:axis:refreshed"
+                  "ownerPanelId": "A",
+                  "symbol": "XAUUSD",
+                  "text": "A:axis:refreshed"
                 }
               },
               {
@@ -681,9 +2250,9 @@
                 "kind": "sessionLabels",
                 "reason": "overlay-cross-contamination",
                 "value": {
-                  "ownerPanelId": "D",
-                  "symbol": "BTCEUR",
-                  "text": "BTCEUR:session:refreshed"
+                  "ownerPanelId": "A",
+                  "symbol": "XAUUSD",
+                  "text": "XAUUSD:session:refreshed"
                 }
               },
               {
@@ -692,9 +2261,9 @@
                 "kind": "legendRows",
                 "reason": "overlay-cross-contamination",
                 "value": {
-                  "ownerPanelId": "D",
-                  "symbol": "BTCEUR",
-                  "text": "BTCEUR:refreshed"
+                  "ownerPanelId": "A",
+                  "symbol": "XAUUSD",
+                  "text": "XAUUSD:refreshed"
                 }
               },
               {
@@ -703,9 +2272,9 @@
                 "kind": "axisTags",
                 "reason": "overlay-cross-contamination",
                 "value": {
-                  "ownerPanelId": "D",
-                  "symbol": "BTCEUR",
-                  "text": "D:axis:refreshed"
+                  "ownerPanelId": "A",
+                  "symbol": "XAUUSD",
+                  "text": "A:axis:refreshed"
                 }
               },
               {
@@ -714,12 +2283,75 @@
                 "kind": "sessionLabels",
                 "reason": "overlay-cross-contamination",
                 "value": {
-                  "ownerPanelId": "D",
-                  "symbol": "BTCEUR",
-                  "text": "BTCEUR:session:refreshed"
+                  "ownerPanelId": "A",
+                  "symbol": "XAUUSD",
+                  "text": "XAUUSD:session:refreshed"
+                }
+              },
+              {
+                "surface": "overlay",
+                "panelId": "D",
+                "kind": "legendRows",
+                "reason": "overlay-cross-contamination",
+                "value": {
+                  "ownerPanelId": "A",
+                  "symbol": "XAUUSD",
+                  "text": "XAUUSD:refreshed"
+                }
+              },
+              {
+                "surface": "overlay",
+                "panelId": "D",
+                "kind": "axisTags",
+                "reason": "overlay-cross-contamination",
+                "value": {
+                  "ownerPanelId": "A",
+                  "symbol": "XAUUSD",
+                  "text": "A:axis:refreshed"
+                }
+              },
+              {
+                "surface": "overlay",
+                "panelId": "D",
+                "kind": "sessionLabels",
+                "reason": "overlay-cross-contamination",
+                "value": {
+                  "ownerPanelId": "A",
+                  "symbol": "XAUUSD",
+                  "text": "XAUUSD:session:refreshed"
                 }
               }
             ],
+            "targetFailures": []
+          },
+          {
+            "cell": "CORRECTNESS-TIMEFRAME",
+            "surface": "timeframe",
+            "targetId": "B",
+            "status": "GREEN",
+            "peersIdentical": true,
+            "targetChanged": true,
+            "peerFailures": [],
+            "targetFailures": []
+          },
+          {
+            "cell": "CORRECTNESS-CHARTTYPE",
+            "surface": "chartType",
+            "targetId": "C",
+            "status": "GREEN",
+            "peersIdentical": true,
+            "targetChanged": true,
+            "peerFailures": [],
+            "targetFailures": []
+          },
+          {
+            "cell": "CORRECTNESS-SCALEMODE",
+            "surface": "scaleMode",
+            "targetId": "D",
+            "status": "GREEN",
+            "peersIdentical": true,
+            "targetChanged": true,
+            "peerFailures": [],
             "targetFailures": []
           }
         ]
@@ -731,5 +2363,5 @@
     "currentLimitation": "Cycle 2 model oracle; must be wired into the real single-realm app before final release credit.",
     "transplantTarget": "D release-parity-non-contamination suite or successor real-app parity gate"
   },
-  "measuredAt": "2026-07-31T12:43:02.170Z"
+  "measuredAt": "2026-07-31T13:09:48.536Z"
 }

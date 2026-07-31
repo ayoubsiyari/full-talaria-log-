@@ -5,7 +5,9 @@
  * Model oracle for the correctness half of the single-realm parity suite.
  * It is deliberately runnable before the single-realm app exists: the value is
  * the assertion shape and the RED controls for indicator, drawing and overlay
- * cross-panel contamination.
+ * cross-panel contamination. It also models the forbidden-field invariants from
+ * multichart/decisions.md, with price-axis fields first because that is the
+ * original shipped bug class.
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -41,8 +43,16 @@ function seedFor(cfg) {
 
 function makePanel(cfg) {
   const seed = seedFor(cfg);
+  const priceMin = 90 + (seed % 23);
   return {
     ...cfg,
+    priceMin,
+    priceMax: priceMin + 40 + (seed % 17),
+    autoScale: true,
+    priceZoom: 1 + ((seed % 5) / 10),
+    priceOffset: seed % 9,
+    chartType: 'candlestick',
+    scaleMode: 'linear',
     indicators: {
       smaTip: { ownerPanelId: cfg.id, symbol: cfg.symbol, value: seed % 1000 },
       openingRange: { ownerPanelId: cfg.id, symbol: cfg.symbol, anchor: `${cfg.symbol}:${cfg.timeframe}:or`, high: 100 + (seed % 17), low: 90 + (seed % 11) },
@@ -64,6 +74,7 @@ function makeState() {
     globalIndicatorSlot: null,
     globalDrawingLayer: null,
     globalOverlayLayer: null,
+    globalForbiddenField: null,
   };
 }
 
@@ -72,6 +83,13 @@ function snapshotPanel(panel) {
     symbol: panel.symbol,
     fileId: panel.fileId,
     timeframe: panel.timeframe,
+    priceMin: panel.priceMin,
+    priceMax: panel.priceMax,
+    autoScale: panel.autoScale,
+    priceZoom: panel.priceZoom,
+    priceOffset: panel.priceOffset,
+    chartType: panel.chartType,
+    scaleMode: panel.scaleMode,
     indicators: panel.indicators,
     drawings: panel.drawings,
     overlays: panel.overlays,
@@ -116,9 +134,56 @@ function ownerFailures(state) {
   return failures;
 }
 
+const PRICE_AXIS_FIELDS = new Set(['priceMin', 'priceMax', 'autoScale', 'priceZoom', 'priceOffset']);
+const FORBIDDEN_FIELD_SURFACES = Object.freeze([
+  'priceMin',
+  'priceMax',
+  'autoScale',
+  'priceZoom',
+  'priceOffset',
+  'timeframe',
+  'chartType',
+  'scaleMode',
+]);
+const CORRECTNESS_SURFACES = Object.freeze([
+  ...FORBIDDEN_FIELD_SURFACES.slice(0, 5),
+  'indicator',
+  'drawing',
+  'overlay',
+  ...FORBIDDEN_FIELD_SURFACES.slice(5),
+]);
+
+function contaminationReason(surface) {
+  if (PRICE_AXIS_FIELDS.has(surface)) return 'price-axis-cross-contamination';
+  if (surface === 'timeframe') return 'timeframe-cross-contamination';
+  if (surface === 'chartType') return 'chart-type-cross-contamination';
+  if (surface === 'scaleMode') return 'scale-mode-cross-contamination';
+  return `${surface}-cross-contamination`;
+}
+
+function nextForbiddenValue(panel, surface) {
+  if (surface === 'priceMin') return panel.priceMin - 10;
+  if (surface === 'priceMax') return panel.priceMax + 10;
+  if (surface === 'autoScale') return false;
+  if (surface === 'priceZoom') return panel.priceZoom + 0.25;
+  if (surface === 'priceOffset') return panel.priceOffset + 7;
+  if (surface === 'timeframe') return panel.timeframe === '4h' ? '1m' : '4h';
+  if (surface === 'chartType') return panel.chartType === 'candlestick' ? 'line' : 'candlestick';
+  if (surface === 'scaleMode') return panel.scaleMode === 'linear' ? 'log' : 'linear';
+  throw new Error(`unknown forbidden field: ${surface}`);
+}
+
 function mutateTarget(state, targetId, surface, mode) {
   const target = state.panels[targetId];
-  if (surface === 'indicator') {
+  if (FORBIDDEN_FIELD_SURFACES.includes(surface)) {
+    const next = nextForbiddenValue(target, surface);
+    if (mode === `global:${surface}`) {
+      state.globalForbiddenField = { surface, value: next, sourcePanelId: targetId };
+      for (const panel of Object.values(state.panels)) panel[surface] = next;
+    } else {
+      target[surface] = next;
+    }
+  } else if (surface === 'indicator') {
     const next = { ownerPanelId: targetId, symbol: target.symbol, value: target.indicators.smaTip.value + 1 };
     if (mode === 'globalIndicatorSlot') {
       state.globalIndicatorSlot = next;
@@ -153,13 +218,12 @@ function mutateTarget(state, targetId, surface, mode) {
 
 export function runCorrectnessSuite(opts = {}) {
   const mode = opts.mode || 'scoped';
-  const surfaces = ['indicator', 'drawing', 'overlay'];
   const failures = [];
   const cells = [];
   if (!assertConf01Shape()) failures.push({ cell: 'CONF01-SHAPE', reason: 'not-four-distinct-symbols-and-timeframes' });
 
-  for (const surface of surfaces) {
-    const targetId = surface === 'indicator' ? 'B' : surface === 'drawing' ? 'C' : 'D';
+  for (const [index, surface] of CORRECTNESS_SURFACES.entries()) {
+    const targetId = CONF01_PANELS[(index + 1) % CONF01_PANELS.length].id;
     const state = makeState();
     const beforePeers = snapshotPeers(state, targetId);
     const beforeTarget = stableString(snapshotPanel(state.panels[targetId]));
@@ -170,6 +234,7 @@ export function runCorrectnessSuite(opts = {}) {
     const targetFailures = ownerFailures(state).filter((f) => f.panelId === targetId);
     const peersIdentical = stableString(beforePeers) === stableString(afterPeers);
     const targetChanged = beforeTarget !== afterTarget;
+    const fieldContamination = FORBIDDEN_FIELD_SURFACES.includes(surface) && !peersIdentical;
     const status = peersIdentical && targetChanged && peerFailures.length === 0 && targetFailures.length === 0 ? 'GREEN' : 'RED';
     const cell = {
       cell: `CORRECTNESS-${surface.toUpperCase()}`,
@@ -186,7 +251,9 @@ export function runCorrectnessSuite(opts = {}) {
       failures.push({
         cell: cell.cell,
         targetId,
-        reason: peerFailures[0]?.reason || targetFailures[0]?.reason || (!peersIdentical ? 'peer-mutated' : 'target-did-not-change'),
+        reason: fieldContamination
+          ? contaminationReason(surface)
+          : peerFailures[0]?.reason || targetFailures[0]?.reason || (!peersIdentical ? 'peer-mutated' : 'target-did-not-change'),
         peerFailures,
         targetFailures,
       });
@@ -211,6 +278,11 @@ export function runCorrectnessSuite(opts = {}) {
 
 export function runRedControls() {
   const controls = [
+    ...FORBIDDEN_FIELD_SURFACES.map((surface) => ({
+      cell: `RP-${surface.replace(/[A-Z]/g, (ch) => `-${ch}`).toUpperCase()}-GLOBAL`,
+      mode: `global:${surface}`,
+      expectedFailureReason: contaminationReason(surface),
+    })),
     { cell: 'RP-INDICATOR-GLOBAL-SLOT', mode: 'globalIndicatorSlot', expectedFailureReason: 'indicator-cross-contamination' },
     { cell: 'RP-DRAWING-GLOBAL-LAYER', mode: 'globalDrawingLayer', expectedFailureReason: 'drawing-cross-contamination' },
     { cell: 'RP-OVERLAY-GLOBAL-LAYER', mode: 'globalOverlayLayer', expectedFailureReason: 'overlay-cross-contamination' },
