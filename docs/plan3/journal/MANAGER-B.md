@@ -5750,3 +5750,50 @@ with M20-J1 discriminating against b117, and `manager-e/indicator-eviction` has 
 `origin/manager-e/indicator-eviction` since ~12:40Z. I re-verified both rather than asserting
 them: the upstream resolves from the director's own worktree too, which shares `.git/config`, so
 the "fatal: no upstream configured" reading predates the push.
+
+---
+
+## B-0221 — K4 window-claim P0: the hang found and stopped (b119, b120)
+
+2026-07-31 ~13:50Z
+
+**The hang was never the claim, and never the client.** It was blocking database and file work on
+the event loop, on the chart's hot path. `auth_middleware` is `async def` and called the
+window gate, which opens a session and queries. Behind that gate, nine handlers were declared
+`async def` with bodies that never await — tiles, candles, smart, meta, bars, session state —
+each doing pool checkouts, DB queries, disk reads and CSV resampling. FastAPI runs `async def`
+on the loop, so loading a chart made the worker unavailable to everyone: other tabs, other users,
+static assets. Two workers, two loops to lose. No console error, no server log. That is C's
+symptom, and why the 10x measurement was void.
+
+Measured with `/api/health` (touches nothing) under load, against an equal-volume **ungated**
+control so this could not be confused with general load. Concurrency 60, same probe throughout:
+
+| build | gated p95 | ratio to control | verdict |
+|---|---|---|---|
+| b118 pre-fix | 500.5ms | 14.8x | STALL |
+| b119 gate off-loop | 341.2ms | 7.4x | STALL |
+| b120 handlers off-loop | 148.7ms | 3.6x | no stall |
+
+**b119 is the row that matters to me.** Real fix, shipped, marker on the wire — and the hang
+survived. Stopping at the marker would have filed the same false green a second time on the same
+ticket. The probe caught it; my judgement would not have.
+
+The instrument is not blind: it fired RED twice today on this host and went green only after the
+second fix. Kill-switch `TALARIA_DISABLE_WINDOW_GATE_THREADPOOL_V1` restores the defect on the
+same build.
+
+**Not overclaimed.** A residual 3.6x over the control remains at concurrency 60; gated requests do
+real work and the control is imperfect (mostly cheap 429s). The threshold no longer trips and p95
+fell 3.4x, but it is not a flat line. I also never reproduced a hang through the browser two-tab
+path on any build, including pre-fix — the defect is in server concurrency, not the tab.
+
+**Product verified, not assumed**, since nine hot-path endpoints changed scheduling: all six probed
+endpoints return 200 with real payloads in 24-60ms; the gate still returns 409 `chart_window_kicked`
+for an unclaimed and for a missing window id; the browser repro re-run on b120 is clean.
+
+**What this cost me.** I burned most of the cycle on four experiments against the client and claim
+contention, three of them green because they measured the wrong thing. Worse, the fix for the first
+half **was already written and uncommitted in my own tree** from before the editor crash. I
+re-derived it instead of reading `git status` in my worktree first. After a crash, the first move
+is to inventory uncommitted work, not to start investigating.
