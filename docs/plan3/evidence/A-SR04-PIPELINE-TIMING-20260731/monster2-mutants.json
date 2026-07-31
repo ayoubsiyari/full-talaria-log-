@@ -1,0 +1,61 @@
+﻿{
+  "baseHash": "2c89f043085202ee",
+  "restoreHash": "2c89f043085202ee",
+  "restored": true,
+  "results": [
+    {
+      "id": "M1 no-walkback (last bar only)",
+      "status": "KILLED",
+      "killedBy": [
+        "C2 CORRECTNESS 1m->15m: multi-bar buckets stay exact under forming-bar mutation",
+        "C3 CORRECTNESS 1m->1h: exact across a 60-bar bucket",
+        "C7 falls through to a full resample when the tail bucket does not match"
+      ]
+    },
+    {
+      "id": "M2 drop tail-bucket guard",
+      "status": "KILLED",
+      "killedBy": [
+        "C7b the tail-bucket guard: last bar CROSSING into a new bucket without the length changing must not overwrite the cached tail"
+      ]
+    },
+    {
+      "id": "M3 killswitch === true",
+      "status": "KILLED",
+      "killedBy": [
+        "C5 KILL-SWITCH is truthy-disabling and re-read per call"
+      ]
+    },
+    {
+      "id": "M4 open from tail not bucket-first",
+      "status": "KILLED",
+      "killedBy": [
+        "C2 CORRECTNESS 1m->15m: multi-bar buckets stay exact under forming-bar mutation",
+        "C3 CORRECTNESS 1m->1h: exact across a 60-bar bucket",
+        "C7 falls through to a full resample when the tail bucket does not match"
+      ]
+    },
+    {
+      "id": "M5 stale close",
+      "status": "KILLED",
+      "killedBy": [
+        "C2 CORRECTNESS 1m->15m: multi-bar buckets stay exact under forming-bar mutation",
+        "C3 CORRECTNESS 1m->1h: exact across a 60-bar bucket",
+        "C7 falls through to a full resample when the tail bucket does not match"
+      ]
+    },
+    {
+      "id": "M6 skip dataVersion inequality",
+      "status": "SURVIVED",
+      "killedBy": null
+    },
+    {
+      "id": "NEGATIVE-CONTROL",
+      "status": "NOT_APPLIED (expected)",
+      "counts": [
+        0,
+        0
+      ]
+    }
+  ]
+}

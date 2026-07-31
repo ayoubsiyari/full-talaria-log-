@@ -14,6 +14,15 @@
     /** Match chart.js TV_ZOOMED_OUT_SLOT_PX — 1px body + 1px gutter per slot. */
     const ZOOMED_OUT_SLOT_PX = 2;
 
+    /**
+     * Kill-switch for the forming-bucket refresh branch. Read on EVERY call so it can be
+     * flipped mid-session with no reload. TRUTHY disables — not `=== true`.
+     */
+    function _mcFormingBucketRefreshDisabled() {
+        return typeof global !== 'undefined'
+            && !!global.__TALARIA_DISABLE_MC_FORMING_BUCKET_REFRESH_V1;
+    }
+
     class ChartDataPipeline {
         constructor(chart) {
             this.chart = chart;
@@ -106,6 +115,35 @@
                 }
             }
 
+            // MONSTER-2: replay bumps dataVersion on every tick, but the source length
+            // only grows when a bar CLOSES. On every other tick the last raw bar mutates
+            // in place (the forming bar), so the exact branch misses on dataVersion and
+            // the incremental branch misses on length — and a series of any size was
+            // being resampled from scratch. Only the final bucket is actually dirty.
+            //
+            // This makes the same append-only assumption about the prefix that the
+            // incremental branch above already makes; it is not a weaker guarantee.
+            if (
+                !_mcFormingBucketRefreshDisabled()
+                && cache.sourceRef === source
+                && cache.tf === tf
+                && cache.sourceLen === source.length
+                && cache.dataVersion !== dv
+                && Array.isArray(cache.result)
+                && cache.result.length > 0
+                && typeof chart.parseTimeframe === 'function'
+            ) {
+                const refreshed = this._tryRefreshFormingBucket(source, cache.result, tf, chart);
+                if (refreshed) {
+                    if (chart._mcDiag && typeof chart._mcDiag.formingBucketRefreshes === 'number') {
+                        chart._mcDiag.formingBucketRefreshes++;
+                    }
+                    cache.dataVersion = dv;
+                    cache.result = refreshed;
+                    return refreshed;
+                }
+            }
+
             const full = typeof chart._resampleDataFull === 'function'
                 ? chart._resampleDataFull(source, tf)
                 : (typeof chart.resampleData === 'function' ? chart.resampleData(source, tf) : source);
@@ -116,6 +154,57 @@
             cache.dataVersion = dv;
             cache.result = full;
             return full;
+        }
+
+        /**
+         * Rebuild ONLY the final bucket from the raw bars belonging to it, for the case
+         * where the source did not grow but its forming bar mutated.
+         *
+         * Returns null — falling through to a full resample — whenever the bucket the
+         * last raw bar belongs to is not the bucket the cached tail already represents.
+         * That guard is what makes this safe for timeframes whose bucketing does not
+         * follow floor(t/tfMs)*tfMs (weeks, months): the computed start will not match
+         * the cached tail, so this branch simply never fires and the full path runs.
+         */
+        _tryRefreshFormingBucket(source, prevResampled, tf, chart) {
+            const timeframeMs = chart.parseTimeframe(tf);
+            if (!Number.isFinite(timeframeMs) || timeframeMs <= 0) return null;
+
+            const lastRaw = source[source.length - 1];
+            if (!lastRaw || !Number.isFinite(lastRaw.t)) return null;
+
+            const bucketStart = Math.floor(lastRaw.t / timeframeMs) * timeframeMs;
+            const lastBucket = prevResampled[prevResampled.length - 1];
+            if (!lastBucket || lastBucket.t !== bucketStart) return null;
+
+            // Walk back over the raw bars inside this bucket so a mutation anywhere in
+            // the forming bucket is picked up, not just one on the final bar. Bounded by
+            // bars-per-bucket, never by series length.
+            let firstIdx = source.length - 1;
+            while (firstIdx > 0) {
+                const prev = source[firstIdx - 1];
+                if (!prev || !Number.isFinite(prev.t)) break;
+                if (Math.floor(prev.t / timeframeMs) * timeframeMs !== bucketStart) break;
+                firstIdx--;
+            }
+
+            const first = source[firstIdx];
+            if (!first) return null;
+
+            let h = first.h;
+            let l = first.l;
+            let v = Number(first.v) || 0;
+            for (let k = firstIdx + 1; k < source.length; k++) {
+                const bar = source[k];
+                if (!bar) continue;
+                if (bar.h > h) h = bar.h;
+                if (bar.l < l) l = bar.l;
+                v += Number(bar.v) || 0;
+            }
+
+            const out = prevResampled.slice();
+            out[out.length - 1] = { t: bucketStart, o: first.o, h, l, c: lastRaw.c, v };
+            return out;
         }
 
         _tryIncrementalResample(source, prevResampled, tf, chart) {
