@@ -12,5 +12,8 @@ export default defineConfig({
   build: {
     outDir: path.resolve(__dirname, '../../homepage/public/talaria-v8b-design'),
     emptyOutDir: true,
+    // KILL-04 — no source maps in a served bundle. Pinned rather than left to the Vite default;
+    // see the longer note in vite.config.live.js.
+    sourcemap: false,
   },
 })

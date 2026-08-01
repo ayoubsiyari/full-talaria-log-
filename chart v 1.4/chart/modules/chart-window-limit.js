@@ -264,6 +264,12 @@
         // rather than waiting for the next heartbeat to fail and show a false takeover overlay.
         if (!shouldClaim()) return;
         bfcacheStats.reclaimed += 1;
+        // Clear the in-flight dedupe first. `claim()` returns the existing promise when one is pending,
+        // which is right for concurrent boot callers and wrong here: a claim that was in flight when the
+        // document froze settled against a server state that no longer exists, and reusing its promise
+        // means the restore issues no request at all. Found by the behavioural gate, not by reading.
+        claimInFlight = false;
+        claimPromise = null;
         try {
             claim(false);
         } catch (_e2) { /* ignore */ }

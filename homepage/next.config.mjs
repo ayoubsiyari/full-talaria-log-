@@ -30,6 +30,9 @@ const JOURNAL_BACKEND =
 const nextConfig = {
   output: "export",
   trailingSlash: true,
+  // KILL-04 — no browser source maps in a production build. Next already defaults this to false;
+  // pinned so the property is "maps cannot ship" rather than "the default happens to be off".
+  productionBrowserSourceMaps: false,
   images: {
     unoptimized: true,
   },

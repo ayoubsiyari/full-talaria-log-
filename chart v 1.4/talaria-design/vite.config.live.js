@@ -142,6 +142,16 @@ export default defineConfig({
         outDir: path.resolve(__dirname, '../chart/dist-v9'),
         emptyOutDir: true,
         /**
+         * KILL-04 — no source maps in the served bundle, ever.
+         *
+         * Vite already defaults this to false, so today's bundle is clean; I verified that against the
+         * running build, not against this file. Pinned explicitly anyway because the property we want
+         * is "maps cannot ship", and "the default happens to be off" is not that property — a Vite
+         * major, an inherited config, or one debugging session that forgets to revert all turn it on
+         * silently. A shipped map hands the reader our whole unminified source.
+         */
+        sourcemap: false,
+        /**
          * Stable entry filename (no content hash in the basename) so partial deploys
          * are less likely to 404: index.html and assets/talaria-v9-live.js stay aligned.
          * Cache bust: bump ?v= on the script in live/index.html when needed.

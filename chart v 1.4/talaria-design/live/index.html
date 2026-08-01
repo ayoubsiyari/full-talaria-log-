@@ -1535,6 +1535,8 @@
          ────────────────────────────────────────────────────────────── -->
 
     <!-- Tier A — preferences-sync MUST run before preferences-init (defines window.preferencesSync). -->
+    <!-- HYG-1: must precede preferences-sync.js, which looks for __talariaSettingsWriteBreaker. -->
+    <script defer src="/chart/modules/settings-write-breaker.js?v=20260727b80"></script>
     <script defer src="/chart/modules/preferences-sync.js?v=20260727b80"></script>
     <script defer src="/chart/modules/preferences-init.js?v=20260727b80"></script>
     <script defer src="/chart/modules/market-calculations.js?v=20260727b80"></script>
