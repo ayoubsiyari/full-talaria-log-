@@ -96,14 +96,41 @@ console.log('\n=== a dev build still works, and is honestly labelled ===');
 
 console.log('\n=== the chain: does the SHA actually reach the script, and the artefact reach the wire? ===');
 {
-  const dockerfile = fs.readFileSync(path.join(REPO, 'homepage/Dockerfile'), 'utf8');
-  const bumpInvocation = dockerfile.match(/BUILD_ID="\$CHART_BUILD_ID"[\s\S]{0,220}?bump-chart-engine-build\.mjs/);
-  check('Dockerfile passes SOURCE_COMMIT_SHA to the bump step',
-    !!bumpInvocation && /SOURCE_COMMIT_SHA="\$SOURCE_COMMIT_SHA"/.test(bumpInvocation[0]), true);
-  check('Dockerfile passes CHECKPOINT_BUILD to it too (the strict lock)',
-    !!bumpInvocation && /CHECKPOINT_BUILD="\$CHECKPOINT_BUILD"/.test(bumpInvocation[0]), true);
-  check('SOURCE_COMMIT_SHA is a declared ARG in the chart_assets stage',
-    /FROM node:20-alpine AS chart_assets[\s\S]*?ARG SOURCE_COMMIT_SHA/.test(dockerfile), true);
+  // EVERY Dockerfile that runs the emitter, discovered rather than listed.
+  //
+  // The original gate hard-coded homepage/Dockerfile and passed. But /chart/build-info.json
+  // is served by api_server.py, which ships in the TRADING-CHART image, built from
+  // chart v 1.4/chart/Dockerfile.local -- and that one invoked the emitter with BUILD_ID
+  // alone. No SOURCE_COMMIT_SHA, and no CHECKPOINT_BUILD, so the strict lock never engaged
+  // and the emitter silently wrote sourceCommitSha: null instead of failing the build. The
+  // fix was wired to one tier and verified on that same tier. Enumerate instead.
+  const dockerfiles = [];
+  const walk = (dir) => {
+    for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+      if (e.name === 'node_modules' || e.name === '.git' || e.name.startsWith('.ckpt')) continue;
+      const abs = path.join(dir, e.name);
+      if (e.isDirectory()) walk(abs);
+      else if (/^Dockerfile/.test(e.name)) dockerfiles.push(abs);
+    }
+  };
+  walk(REPO);
+
+  const emitters = dockerfiles.filter((f) => fs.readFileSync(f, 'utf8').includes('bump-chart-engine-build.mjs'));
+  check('at least two Dockerfiles run the emitter (chart image and homepage image)',
+    emitters.length >= 2, true);
+  console.log(`        emitter Dockerfiles: ${emitters.map((f) => path.relative(REPO, f)).join(', ')}`);
+
+  for (const f of emitters) {
+    const rel = path.relative(REPO, f).replace(/\\/g, '/');
+    const src = fs.readFileSync(f, 'utf8');
+    const inv = src.match(/BUILD_ID="\$CHART_BUILD_ID"[\s\S]{0,260}?bump-chart-engine-build\.mjs/);
+    check(`${rel}: passes SOURCE_COMMIT_SHA to the emitter`,
+      !!inv && /SOURCE_COMMIT_SHA="\$SOURCE_COMMIT_SHA"/.test(inv[0]), true);
+    check(`${rel}: passes CHECKPOINT_BUILD to it too (the strict lock)`,
+      !!inv && /CHECKPOINT_BUILD="\$CHECKPOINT_BUILD"/.test(inv[0]), true);
+    check(`${rel}: declares SOURCE_COMMIT_SHA as an ARG`,
+      /ARG SOURCE_COMMIT_SHA/.test(src), true);
+  }
 
   const api = fs.readFileSync(path.join(REPO, 'chart v 1.4/chart/api_server.py'), 'utf8');
   check('build-info.json is on the served whitelist', /CHART_ROOT_FILES = \{[\s\S]{0,200}"build-info\.json"/.test(api), true);

@@ -67,7 +67,10 @@ RUN if [ "$CHECKPOINT_BUILD" = "1" ]; then \
       node /build/chart/modules/m19-progressive-session-soak.test.mjs; \
     fi \
     && if [ "$CHECKPOINT_BUILD" = "1" ]; then \
-      BUILD_ID="$CHART_BUILD_ID" node /build/chart/scripts/bump-chart-engine-build.mjs; \
+      BUILD_ID="$CHART_BUILD_ID" \
+      SOURCE_COMMIT_SHA="$SOURCE_COMMIT_SHA" \
+      CHECKPOINT_BUILD="$CHECKPOINT_BUILD" \
+      node /build/chart/scripts/bump-chart-engine-build.mjs; \
     fi \
     && npm run build:live:chart \
     && if [ "$CHECKPOINT_BUILD" = "1" ]; then \
