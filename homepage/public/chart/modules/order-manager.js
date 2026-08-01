@@ -12,6 +12,48 @@ const ORDER_MANAGER_LOCAL_RUNTIME_KEY = 'chart_orders_runtime_local_v1';
 const ORDER_RUNTIME_SESSION_STORAGE_KEY = 'chart_orders_runtime_session_v1';
 
 /** A6-2 order persistence across F5 — default ON. */
+/**
+ * Realm-climbing kill-switch reader, same behaviour as the one in replay-system.js.
+ * A panel runs in its own realm, so a switch set on the host must still be seen here.
+ */
+function _talariaDisableFlagTruthy(flagName) {
+    if (typeof window === 'undefined') return false;
+    const killed = (w) => {
+        try {
+            return !!(w && w[flagName]);
+        } catch (_e) {
+            return false;
+        }
+    };
+    if (killed(window)) return true;
+    try {
+        const parent = window.parent && window.parent !== window ? window.parent : null;
+        if (killed(parent)) return true;
+        const top = window.top && window.top !== window && window.top !== parent
+            ? window.top
+            : null;
+        if (killed(top)) return true;
+    } catch (_e) {
+        // Parent chain unreachable; the own-window read above already stands.
+    }
+    return false;
+}
+
+/**
+ * MEM-1b — per-symbol execution-series cap (default ON).
+ * Kill-switch: window.__TALARIA_SERIES_LRU_V1 = <truthy> restores the unbounded
+ * per-timeframe map. Read per write, never sampled at init.
+ */
+function _seriesLruDisabled() {
+    return _talariaDisableFlagTruthy('__TALARIA_SERIES_LRU_V1');
+}
+
+/**
+ * Retained execution cadences per instrument. The reader only ever consults candidates
+ * finer than the display timeframe, so a handful covers every reachable fallback.
+ */
+const ORDER_EXECUTION_TF_CAP = 4;
+
 function _orderPersistenceV1Enabled() {
     return typeof window === 'undefined' || !window.__TALARIA_DISABLE_ORDER_PERSISTENCE_V1;
 }
@@ -1937,11 +1979,41 @@ class OrderManager {
         const fileId = String(ch.currentFileId);
         const perFile = this._orderExecutionSeriesByFileId.get(fileId) || new Map();
         perFile.set(timeframe, { cadenceMs, series });
+        this._capOrderExecutionSeriesPerFile(perFile);
         this._orderExecutionSeriesByFileId.delete(fileId);
         this._orderExecutionSeriesByFileId.set(fileId, perFile);
         while (this._orderExecutionSeriesByFileId.size > 8) {
             const oldest = this._orderExecutionSeriesByFileId.keys().next().value;
             this._orderExecutionSeriesByFileId.delete(oldest);
+        }
+    }
+
+    /**
+     * MEM-1b — bound the per-timeframe execution series map.
+     *
+     * Each entry pins an entire master series by reference, so leaving this dimension
+     * uncapped keeps every raw timeframe the session has ever visited resident. Its two
+     * sibling caches (_tfDataCache, _btTfDataCache) already cap both dimensions; this one
+     * capped only the instrument dimension.
+     *
+     * The policy is finest-first, deliberately NOT least-recently-used.
+     * _orderExecutionSeriesContext walks cadences from finest to coarsest and takes the
+     * first that covers the playhead, so evicting by recency could drop the finest
+     * retained cadence and silently coarsen fill and SL/TP evaluation. Coarser entries go
+     * first, and they stay reachable through the backtest TF cache fallback that the same
+     * reader consults beside the retained series.
+     */
+    _capOrderExecutionSeriesPerFile(perFile) {
+        if (!perFile || typeof perFile.size !== 'number') return;
+        if (perFile.size <= ORDER_EXECUTION_TF_CAP) return;
+        if (_seriesLruDisabled()) return;
+        const finestFirst = [...perFile.entries()].sort((a, b) => {
+            const ca = Number(a[1] && a[1].cadenceMs);
+            const cb = Number(b[1] && b[1].cadenceMs);
+            return (Number.isFinite(ca) ? ca : Infinity) - (Number.isFinite(cb) ? cb : Infinity);
+        });
+        for (const [timeframe] of finestFirst.slice(ORDER_EXECUTION_TF_CAP)) {
+            perFile.delete(timeframe);
         }
     }
 
