@@ -47,8 +47,6 @@
     "test:reset-gates": "node --test scripts/tests/reset-gates.test.mjs",
     "preflight:lag1a-marker-index-cache": "node scripts/lag1a-marker-index-cache-gate.mjs --require-browser",
     "test:lag1a-marker-index-cache": "node --test scripts/tests/lag1a-marker-index-cache-gate.test.mjs",
-    "preflight:entry-levels-cap": "node scripts/entry-levels-cap-gate.mjs",
-    "test:entry-levels-cap": "node --test scripts/tests/entry-levels-cap-gate.test.mjs",
     "preflight:m1-b118-real-app": "node scripts/m1-b118-real-app-harness.mjs --dry-run",
     "test:m1-b118-real-app": "node --test scripts/tests/m1-b118-real-app-harness.test.mjs",
     "watch:m1-b118-real-app": "node scripts/m1-b118-real-app-harness.mjs --wait",
