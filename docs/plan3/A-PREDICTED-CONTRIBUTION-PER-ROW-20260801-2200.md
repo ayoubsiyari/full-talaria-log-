@@ -132,3 +132,46 @@ takes it should treat reconciling that ordering as the work, not the conflict ma
 
 Predicted contribution unchanged at approximately 0 MB for the memory arm, so nothing in
 tonight's verdict turns on it.
+## Final disposition of the four remaining paint rows — none needed to land
+
+Worked 22:01–22:20 under a five-minute-per-row timebox. **All four resolve as already-present
+or superseded. No product bytes were missing.** Verified by content, not by branch name.
+
+| Row | Finding | Disposition |
+|---|---|---|
+| `4c2823d410` | identical patch-id to `fe9ec13326` (`7a028b2e…`) | same row, not two |
+| `fe9ec13326` | already in the build: cherry-pick staged **0 product lines** in either chart.js mirror | already present |
+| `2e283b3ae7` | already in the build and wired | already present |
+| `5f2d137a89` | **superseded** — it is the older focus-based FIX 1 | must not land |
+
+### `fe9ec13326` / `4c2823d410` — already present
+
+The pick auto-merged both `chart.js` mirrors to content byte-identical with HEAD:
+`git diff --cached` reported zero staged product lines. `_isMultichartPanelVisibleForPaint`
+is live in the tip. Only the gate file conflicted, as a whole-file divergence between two
+versions of the same suite (1,196 vs 1,174 lines) — churn with no product change behind it.
+
+### `2e283b3ae7` — already present and wired
+
+Of the commit's 92 product lines per mirror, only 14 applied, and those 14 were a **second
+copy of `_lagSetIntervalTickV1Enabled`** next to the one already at line 162. HEAD already
+carries one definition, one call site and four `LAG-SETINTERVAL-TICK` markers. Landing it
+would have added a duplicate function definition and nothing else.
+
+### `5f2d137a89` — superseded, and landing it would regress the build
+
+This is the original focus-based FIX 1. The tip carries the later visibility-based revision.
+Two hunks make it unambiguous:
+
+- HEAD: `if (this._isMultichartPanelVisibleForPaint()) return false;`
+  incoming: `const focusedId = this._getFocusedMultichartPanelId(); …`
+- HEAD: `this._requestRafPaint();`  incoming: `this.render();`
+
+`focusedPanelId` defaults to host tile A and only changes on click, so the focus predicate
+classifies every never-clicked on-screen tile as "background for life". That is the defect the
+visibility revision exists to fix. Taking this row reverts it, and separately reverts the rAF
+paint coalescing to a raw synchronous `render()`.
+
+**A "confirmed absent" verdict by commit is not the same as absent by content.** Three of
+these four were present; the fourth is a superseded ancestor of what is present. Worth E
+re-checking the remaining roster the same way before the next pick round.
