@@ -414,3 +414,14 @@ exists — eviction deletes the redundant hot copy, it does not invent a new sto
   discriminating. Added D to E handoff `HANDOFF-D-TO-E-PROC3-LAG1A-LIFE4-20260801.md`.
 - M8 specifically records byte-identical proof for both client mirrors (`chart.js` and `modules/order-manager.js`);
   the prior one-mirror-only miss is now named as a PROC-3 failure mode and not self-certified away.
+
+## 2026-08-01 10:15 — Entry levels cap on scaling path
+
+- Implemented `__TALARIA_ENTRY_LEVELS_CAP_V1` in both `order-manager.js` mirrors. The explicit split-entry
+  path already capped at `MAX_ENTRY_LEVELS`; `applyScaling(order)` now checks the same cap before
+  `group.entries.push(order)`.
+- Added `scripts/entry-levels-cap-gate.mjs` and `scripts/tests/entry-levels-cap-gate.test.mjs`.
+  Gate shape exercises the bypass path directly: cap ON rejects the fifth scaled entry; cap OFF reaches five
+  entries as the RED-armed control. Zero-trade and below-cap regimes remain GREEN.
+- Added B review handoff `HANDOFF-D-TO-B-ENTRY-LEVELS-CAP-REVIEW-20260801.md` and E PROC-3 handoff
+  `HANDOFF-D-TO-E-PROC3-ENTRY-LEVELS-CAP-20260801.md`.
