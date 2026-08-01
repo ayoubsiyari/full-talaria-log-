@@ -6457,3 +6457,40 @@ order of magnitude above the 1-4% I had retracted it to, but I published a point
 it was never a point. That is the third time today a repeat has moved a number I had already filed. The
 pattern is not bad luck: I keep publishing after one run because the first run is the one that answers the
 question I was asked, and the second is the one that tells me whether the answer is real.
+
+## B-0235 — I ran my own falsifier and it took the finding I was proudest of with it
+
+The Director asked for the saturation mechanism tested rather than assumed. Tested: refuted. Across 625
+to 6,900 bars the achieved event rate moves 1.10x where saturation predicted 11x, and cost per event moves
+1.00x. Occupancy did not climb either, so the disproof I had offered as the alternative also did not
+happen. Nothing varies with bar count at all.
+
+Which means the plateau I spent hours failing to explain never existed. My 17:20 finding put blocked main
+thread at 55 ms/s at 579 bars against 302-343 past 1,100 and called it 6.2x. Tonight, at 625 bars, twice,
+at two very different host loads: 330.3 and 316.8. The low anchor does not reproduce. So the shape I
+published — climbs steeply then plateaus — was two unlike measurements with a line drawn between them,
+and the reason viewport, raw cap and context bars all came back negative is that there was nothing there.
+
+That finding was called the first direct measurement of MONSTER-2 and the per-bar lag rate UNIT-01 had
+been waiting for. It was mine, it was wrong, and it was wrong in the most flattering direction available:
+it produced exactly the number the room wanted, on one reading, and I published it the same hour. Three
+corrections in this lineage now. The rule I am adopting is not "be more careful", it is mechanical — no
+finding on n=1, and any claimed slope gets its low end re-measured last, after the high end, so a stale
+or idle anchor cannot survive to become the interesting half of a ratio.
+
+Two things went right and I want them recorded because they are the reason this was catchable. The
+interleaved design: each bar count visited twice, out of monotonic order, load recorded per window. Load
+varied 16x, from 0.72 to 11.49, and moved nothing — so the whole evening's numbers are cleared of host
+load in passing. And the harness refusing windows where the seek did not land: the first pilot asked for
+20,000 bars, silently got 1,661 because startReplayAtIndex truncates rawData, and recorded it as a
+20,000-bar point. A sweep that accepts a failed seek invents its own x-axis. I only caught it by reading
+the actual-versus-target column, which is an argument for printing both even when you are sure.
+
+The result is better for the project than what it replaced. LAG-ZT is not a ramp, it is a floor: 330 ms/s
+blocked with 625 bars and zero trades, constant. The PO needs no accumulation to see it. And the hunt is
+better posed — not "what grows with bars" but "what costs ~700 ms/s regardless of bars or trades", of
+which render is 200 and the resample 62, leaving about 450 unattributed.
+
+Also published REGIME-01 with a stamp emitter rather than a checklist, since a rule nobody can run is a
+rule nobody follows. Retro-stamping my own gates is on the list behind the 04:00 window, and I said so in
+the document rather than exempting the person who wrote it.

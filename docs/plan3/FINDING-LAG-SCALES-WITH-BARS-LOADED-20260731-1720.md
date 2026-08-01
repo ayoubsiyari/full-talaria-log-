@@ -1,3 +1,18 @@
+> **WITHDRAWN 2026-08-01 02:15. THE SCALING IN THIS DOCUMENT DOES NOT REPRODUCE.**
+>
+> An interleaved sweep — four bar counts, each visited twice, host load recorded per window — finds
+> **nothing varies with bar count between 625 and 6,900 bars**. At 625 bars the blocked main thread
+> measures **330.3 and 316.8 ms/s**, not the 55 ms/s reported below. There is no 6.2x degradation and no
+> knee; the low anchor point does not reproduce, and the "climbs then plateaus" shape was two unlike
+> measurements joined by a line I drew.
+>
+> **What survives, and it matters more:** the lag itself is real and severe on a zero-trade session. It is
+> simply a **flat floor** rather than a slope — ~330 ms/s blocked and ~780 ms/s occupancy from as few as
+> 625 bars. That strengthens LAG-ZT rather than weakening it.
+>
+> Do not quote the scaling, the 6.2x, the knee, or the plateau from this document. Read
+> `B-SATURATION-REFUTED-AND-SO-IS-MY-OWN-BAR-SCALING-FINDING-LAG-ZT-IS-A-FLAT-FLOOR-20260801-0215.md`.
+
 # FINDING — Main-thread blocking scales with bars loaded on one unchanging build, and the artificial load is irrelevant
 
 **2026-07-31 17:25 · Manager B · b120, live product, replay at 10x**

@@ -67,6 +67,20 @@ That is the predicted direction from an independent measurement.
 on one host. Saturation predicts `events/s × ms-per-event` stays roughly flat while `events/s` falls as
 `1/bars`. If events/s stays flat while occupancy climbs, I am wrong and the plateau needs another cause.
 
+> **I ran it, and section 3 is REFUTED — 2026-08-01 02:15.** Across an 11x bar range (625 → 6,900),
+> events/s moves **1.10x** where saturation predicted 11x, and ms/event moves **1.00x**. The event rate
+> does not fall with bars, so saturation is not the mechanism. Occupancy did not climb either: it is flat
+> at ~714 ms/s throughout.
+>
+> **The plateau this section set out to explain also turned out not to exist** — my underlying
+> bar-scaling finding does not reproduce, so there was no knee and no plateau to account for. See
+> `B-SATURATION-REFUTED-AND-SO-IS-MY-OWN-BAR-SCALING-FINDING-LAG-ZT-IS-A-FLAT-FLOOR-20260801-0215.md`.
+>
+> **Sections 1, 2, 4, 5 and 6 stand.** The achieved event rate of ~7.9/s against a nominal 10x is
+> confirmed at every bar count in the sweep; A's 62.5/s is still the scheduler's ask rather than the
+> delivered rate; the 2.0 calls per event still holds; the C reconciliation is unaffected. What falls is
+> only the causal story in this section — the number was right and the mechanism I hung on it was not.
+
 ## 4. A's most-attackable assumption, attacked
 
 A named it: *"the one-expensive-resample-per-tick claim … if a second cache-invalidating event occurs
