@@ -23,11 +23,22 @@ docker stats --no-stream --format '{{.Name}}  cpu {{.CPUPerc}}  mem {{.MemUsage}
 
 echo
 echo "=== active window claims in the last 2 minutes ==="
-docker exec talaria-db-1 psql -U talaria -t -A -c \
+# Column is last_seen_at, not last_seen. The first version of this query errored, and because the error
+# went to a sed pipe it read as "no active claims" - which is the same shape as the empty-output-is-
+# success trap that has cost me twice tonight. Failing loudly instead.
+claims=$(docker exec talaria-db-1 psql -U talaria -t -A -c \
   "select coalesce(u.email,'?')||'  claims='||count(*) from chart_window_presence p
      left join users u on u.id = p.user_id
-    where p.last_seen > now() - interval '2 minutes'
-    group by u.email;" 2>&1 | sed 's/^/  /'
+    where p.last_seen_at > now() - interval '2 minutes'
+    group by u.email;" 2>&1)
+if echo "$claims" | grep -qi 'error'; then
+  echo "  QUERY FAILED - do not read this as 'no claims':"
+  echo "$claims" | sed 's/^/    /'
+elif [ -z "$claims" ]; then
+  echo "  (query succeeded, zero active claims)"
+else
+  echo "$claims" | sed 's/^/  /'
+fi
 
 echo
 echo "=== app request volume, last 2 minutes ==="
