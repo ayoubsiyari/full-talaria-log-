@@ -70,7 +70,13 @@ try {
 console.log(`\n=== ROW REVIEW: ${range} ===\n  ${subject}\n  ${files.length} files changed\n`);
 
 const isDoc = (f) => /^(docs|_evidence)\//.test(f) || /\.md$/.test(f);
+// Evidence that lives beside the code it proves: harnesses, and the RED/GREEN/MUTANTS
+// transcripts they emit. The .txt transcripts were classified as product on first run and
+// raised three BLOCKs against A's ABSENT-01 for "the browser would run something unreviewed",
+// which is false -- nothing imports a .txt. They still owe a mirror copy for the uniformity
+// proof, so they stay in the parity check; they just are not a serving hazard.
 const isTestArtefact = (f) => /\.(test|red|mutants|spec|acceptance)\.(mjs|js)$/.test(f)
+  || /\.(RED|GREEN|MUTANTS)\.txt$/i.test(f)
   || /(^|\/)(b-)?fixtures?\//.test(f) || /-notgate\./.test(f);
 const product = files.filter((f) => !isDoc(f));
 
