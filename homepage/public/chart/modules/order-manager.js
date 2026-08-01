@@ -174,6 +174,12 @@ function _m24OrderIdGapReconcileV1Enabled() {
         || window.__TALARIA_DISABLE_M24_ORDER_ID_GAP_RECONCILE_V1 !== true;
 }
 
+/** N5: idempotent full closes and immutable durable journal snapshots, default ON. */
+function _n5MoneyPathCollisionV1Enabled() {
+    return typeof window === 'undefined'
+        || window.__TALARIA_DISABLE_N5_MONEY_PATH_COLLISION_V1 !== true;
+}
+
 /** Synthetic audit for surprise open adoption (strict test mode only). */
 function _orderExplicitPlaceAuditV1Enabled() {
     return typeof window !== 'undefined'
@@ -7965,13 +7971,16 @@ class OrderManager {
         const trimOn = this._m19PersistTrimV1Enabled();
         const hotJournal = this._m19CloneJournalForHotSessionPersist();
         let durableJournal = this.tradeJournal;
-        if (trimOn) {
+        if (trimOn || _n5MoneyPathCollisionV1Enabled()) {
             try {
                 durableJournal = JSON.parse(JSON.stringify(Array.isArray(this.tradeJournal) ? this.tradeJournal : []));
             } catch (_) {
                 durableJournal = Array.isArray(this.tradeJournal) ? this.tradeJournal.slice() : [];
             }
         }
+        const durableJournalByTicker = _n5MoneyPathCollisionV1Enabled()
+            ? this._m20A1GroupRowsByTicker(durableJournal)
+            : journalByTicker;
 
         let hotQueued = false;
         if (this.chart && typeof this.chart.scheduleSessionStateSave === 'function') {
@@ -8096,7 +8105,7 @@ class OrderManager {
             this.chart.queueCriticalSessionStateSave({
                 journal: durableJournal,
                 per_instrument_stats: perInstrumentStats,
-                journal_by_ticker: journalByTicker
+                journal_by_ticker: durableJournalByTicker
             });
             return Promise.resolve({ hotQueued, durableQueued: true, sync: true });
         }
@@ -35139,6 +35148,14 @@ class OrderManager {
         const closeQuantity = isPartialClose
             ? this._multiTpPartialCloseQuantity(position, percentage)
             : position.quantity;
+        if (!isPartialClose && _n5MoneyPathCollisionV1Enabled()) {
+            if (position._n5FullCloseInFlight || position.status === 'CLOSING' || position.status === 'CLOSED') {
+                console.warn(`⚠️ Duplicate full close ignored for order #${orderId}`);
+                return;
+            }
+            position._n5FullCloseInFlight = true;
+            position.status = 'CLOSING';
+        }
         
         console.log(`   isPartialClose=${isPartialClose}, closeQuantity=${closeQuantity}, position.quantity=${position.quantity}`);
 
