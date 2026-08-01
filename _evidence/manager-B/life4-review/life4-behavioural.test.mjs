@@ -15,8 +15,15 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const ROOT = process.argv[2] || 'C:/Users/user/Desktop/talaria1/manager-d-trade';
+// Defaults to the tree this gate lives in, NOT to D's worktree. It was originally written
+// to point at manager-d-trade for the review, and left that way it silently reports another
+// manager's state as your own: after the null-session fix landed in the train it still read
+// red, because it was still measuring D's unfixed tree. Pass a root explicitly to review
+// someone else's.
+const HERE = path.dirname(fileURLToPath(import.meta.url));
+const ROOT = process.argv[2] || path.resolve(HERE, '../../..');
 const CHART = path.join(ROOT, 'chart v 1.4/chart/chart.js');
 const OM = path.join(ROOT, 'chart v 1.4/chart/modules/order-manager.js');
 

@@ -21,9 +21,13 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
+import { fileURLToPath } from 'node:url';
 
+// Defaults to the tree this gate lives in, NOT to D's worktree — see the same correction in
+// life4-behavioural.test.mjs. A review gate left pointing at the reviewee's checkout keeps
+// reporting their state after the row has landed in the train.
 const ROOT = process.argv[2]
-  || 'C:/Users/user/Desktop/talaria1/manager-d-trade';
+  || path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 const OM = path.join(ROOT, 'chart v 1.4/chart/modules/order-manager.js');
 
 let pass = 0, fail = 0;

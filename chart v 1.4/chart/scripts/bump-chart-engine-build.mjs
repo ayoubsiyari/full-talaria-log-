@@ -1,8 +1,26 @@
 #!/usr/bin/env node
 /**
- * Bump CHART_ENGINE_BUILD in chart.js and patch version in package.json.
- * Usage: npm run version:bump
+ * Image-build emitter. Usage: npm run version:bump
  * Override: BUILD_ID=20260629b2 npm run version:bump
+ * Inspect without mutating: node bump-chart-engine-build.mjs --dry-run
+ *
+ * ── THREE PRODUCT SIDE EFFECTS. THIS SCRIPT IS NOT A VERIFIER. ───────────────────────────
+ *
+ * Running it writes to the tree in three places:
+ *
+ *   1. chart.js          — rewrites `const CHART_ENGINE_BUILD = '…'`
+ *   2. package.json      — bumps the patch version (1.4.31 → 1.4.32 → …), UNCONDITIONALLY,
+ *                          once per invocation
+ *   3. build-info.json   — PASSPORT-3: buildId + sourceCommitSha (added 2026-08-01)
+ *
+ * Effects 1 and 2 predate PASSPORT-3; effect 3 is new. All three are declared here because
+ * C found six verifier runs had walked the version 1.4.31 → 1.4.37 in a tree that was
+ * supposed to be quiescent. Anything that wants to CHECK this emitter must pass --dry-run;
+ * a tree that moves when you look at it cannot be sealed, and a version that advances six
+ * times without a build is a false provenance signal of exactly the kind PASSPORT-3 exists
+ * to remove.
+ *
+ * --dry-run computes everything, writes nothing, and prints the build-info it would emit.
  */
 import fs from 'fs';
 import path from 'path';
@@ -38,6 +56,8 @@ function bumpPatchVersion(version) {
     return parts.join('.');
 }
 
+const DRY_RUN = process.argv.includes('--dry-run');
+
 function main() {
     if (!fs.existsSync(CHART_JS)) {
         console.error('[bump-chart-engine-build] Missing chart.js');
@@ -51,17 +71,19 @@ function main() {
         process.exit(1);
     }
 
+    if (DRY_RUN) console.log('[bump-chart-engine-build] --dry-run: no file will be written');
+
     const nextBuild = process.env.BUILD_ID?.trim() || incrementBuildId(match[1]);
     const after = before.replace(BUILD_RE, `const CHART_ENGINE_BUILD = '${nextBuild}';`);
-    fs.writeFileSync(CHART_JS, after, 'utf8');
-    console.log('[bump-chart-engine-build] CHART_ENGINE_BUILD:', match[1], '→', nextBuild);
+    if (!DRY_RUN) fs.writeFileSync(CHART_JS, after, 'utf8');
+    console.log('[bump-chart-engine-build] (1/3) CHART_ENGINE_BUILD:', match[1], '→', nextBuild);
 
     if (fs.existsSync(PKG_JSON)) {
         const pkg = JSON.parse(fs.readFileSync(PKG_JSON, 'utf8'));
         const prev = pkg.version || '0.0.0';
         pkg.version = bumpPatchVersion(prev);
-        fs.writeFileSync(PKG_JSON, `${JSON.stringify(pkg, null, 2)}\n`, 'utf8');
-        console.log('[bump-chart-engine-build] package.json version:', prev, '→', pkg.version);
+        if (!DRY_RUN) fs.writeFileSync(PKG_JSON, `${JSON.stringify(pkg, null, 2)}\n`, 'utf8');
+        console.log('[bump-chart-engine-build] (2/3) package.json version:', prev, '→', pkg.version);
     }
 
     writeBuildInfo(nextBuild);
@@ -104,8 +126,9 @@ function writeBuildInfo(buildId) {
         checkpointBuild: strict,
         builtAt: new Date().toISOString(),
     };
-    fs.writeFileSync(BUILD_INFO, `${JSON.stringify(info, null, 2)}\n`, 'utf8');
-    console.log('[bump-chart-engine-build] build-info.json:', info.buildId, info.sourceCommitSha || '(no sha - non-checkpoint build)');
+    if (!DRY_RUN) fs.writeFileSync(BUILD_INFO, `${JSON.stringify(info, null, 2)}\n`, 'utf8');
+    console.log('[bump-chart-engine-build] (3/3) build-info.json:', info.buildId, info.sourceCommitSha || '(no sha - non-checkpoint build)');
+    if (DRY_RUN) console.log(JSON.stringify(info, null, 2));
 }
 
 main();

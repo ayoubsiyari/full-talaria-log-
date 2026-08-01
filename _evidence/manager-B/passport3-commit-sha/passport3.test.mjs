@@ -152,5 +152,22 @@ console.log('\n=== discriminating: the pre-change build would pass a naive gate 
   check('but an HTTP-reachable artefact only exists after it', realQuestion, true);
 }
 
-console.log(`\n================ PASSPORT-3: ${pass} passed, ${fail} failed ================`);
+console.log(`\n================ PASSPORT-3 (REPO MODE): ${pass} passed, ${fail} failed ================`);
+console.log(`
+  SCOPE CAVEAT — this gate does not establish that the passport is readable.
+
+  Every check above reads a file on disk. None makes an HTTP request. C found the gap the
+  hard way: with all of these green, the live origin served 29,406 bytes of app-shell login
+  HTML under a 200 for /chart/build-info.json. A 200, not a 404 — so a reader checking
+  res.ok is satisfied and a reader calling res.json() in a try/catch records
+  sourceCommitSha: null, which is worse than no passport because it looks like an answer.
+
+  Green here means the emitter, the Dockerfile wiring, the whitelist, the handler and the
+  nginx ordering are correct ON DISK. Wire behaviour is a separate proposition: auth
+  middleware, an SPA catch-all or a proxy tier can each satisfy the file and break the wire.
+
+  PASSPORT-3 is not bound until this passes against the deployed origin:
+    node _evidence/manager-B/passport3-commit-sha/passport3-verify.mjs --mode=live \\
+         --origin=<origin> --expect-build=<badge> --expect-sha=<train tip>
+  Run it at the cut, so the transition is witnessed rather than inferred.`);
 process.exit(fail ? 1 : 0);

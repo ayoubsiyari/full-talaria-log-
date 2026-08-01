@@ -126,14 +126,30 @@ const axis = (row, name, ok, detail) => { rows.push({ row, name, ok, detail }); 
     'the emitter reading an env nobody sets is the unwired shape');
   axis(R, 'bound: the artefact is on the served whitelist',
     !!api && /CHART_ROOT_FILES = \{[\s\S]{0,200}"build-info\.json"/.test(api), '');
-  axis(R, 'bound: nginx proxies /chart/ to the backend that serves it',
+  axis(R, 'bound (config only): nginx routes /chart/ to the backend that serves it',
     !!ngx && /location ~ \^\/\(modules\|uploads\|chart\|styles\)\//.test(ngx),
-    'served by the wrong tier would make it a 404');
-  axis(R, 'bound: served no-store so every soak sample re-reads it',
+    'NOT a statement about the wire — see the live-mode caveat below');
+  axis(R, 'bound (config only): served no-store so every soak sample re-reads it',
     !!api && /file_name == "build-info\.json"/.test(api) && /"Cache-Control": "no-store"/.test(api), '');
 
   axis(R, 'discriminating: gate runs the real emitter and asserts the build FAILS on a bad SHA',
     true, 'passport3.test.mjs — empty/short/non-hex all exit 1 with no artefact');
+
+  // BIND-01. Every check above reads a file. Config-correct and wire-correct are different
+  // propositions, and C demonstrated the gap: with all of the above green, the live origin
+  // returned 29,406 bytes of app-shell login HTML under a 200 for /chart/build-info.json.
+  // Not a 404 — a 200, so res.ok is satisfied and a try/catch reader records a null SHA.
+  // Repo mode cannot observe this. It is RESOLVER_PRESENT_BUT_UNCALLED, and reporting it as
+  // plain green is the false green that let the defect stand.
+  axis(R, 'discriminating: the live verifier goes RED on 200-plus-login-HTML',
+    !!rd('_evidence/manager-B/passport3-commit-sha/passport3-verify.mjs')
+    && !!rd('_evidence/manager-B/passport3-commit-sha/passport3-verify.selftest.mjs'),
+    'passport3-verify.selftest.mjs 9/9 — rejects HTML-under-200, null SHA, cacheable, and 404, each for its own reason');
+  axis(R, 'bound ON THE WIRE: UNPROVEN until passport3-verify --mode=live passes at the cut',
+    false,
+    'DELIBERATE RED. Clears only by witnessing a live origin, never by editing this file. '
+    + 'node _evidence/manager-B/passport3-commit-sha/passport3-verify.mjs --mode=live '
+    + '--origin=<origin> --expect-build=<badge> --expect-sha=<train tip>');
 }
 
 const byRow = {};
