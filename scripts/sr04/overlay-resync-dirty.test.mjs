@@ -402,3 +402,51 @@ test('C12b source anchor: the pan-path call sites stay unconditional', () => {
     assert.ok(!panBlock.includes('_overlayResyncDirtyKey('),
         'the pan path must not be gated by this key');
 });
+
+/**
+ * C13 SELF-PROOF (PROC-3 "discriminating").
+ *
+ * Reverting the commit that introduced this row also removes this file, so the finding
+ * "the gate passes with the fix reverted" can be an artefact of the gate no longer
+ * existing rather than of the gate being vacuous. This cell settles it without any
+ * external revert: it neuters the SHIPPED text in memory, three different ways, and
+ * asserts the same scene C2 uses then reports the defect. A decorative harness cannot
+ * satisfy this, and it keeps working after the fix is committed.
+ */
+test('C13 SELF-PROOF: the harness reports the defect when the fix is present but inert', () => {
+    const idleFrames = (src) => {
+        installWindow();
+        const chart = makeChart(src);
+        const visible = windowOf(chart);
+        for (let i = 0; i < 6; i++) renderOnce(src, chart, visible);
+        return chart.calls.length;
+    };
+
+    assert.equal(idleFrames(SRC), 1, 'control: the shipped fix skips the five identical frames');
+
+    const neuterings = [
+        {
+            id: 'guard always passes',
+            rx: /if \(overlayResyncKey === null\s*\|\| overlayResyncKey !== this\._overlayResyncDirtyKeyLast\) \{/,
+            to: 'if (true) {',
+        },
+        {
+            id: 'key computed but never stored',
+            rx: /this\._overlayResyncDirtyKeyLast = overlayResyncKey;/,
+            to: '',
+        },
+        {
+            id: 'key always indeterminate',
+            rx: /_overlayResyncDirtyKey\(visible\) \{/,
+            to: '_overlayResyncDirtyKey(visible) { return null;',
+        },
+    ];
+
+    for (const n of neuterings) {
+        assert.match(SRC, n.rx, `neutering needle missing, so this cell proves nothing: ${n.id}`);
+        const broken = SRC.replace(n.rx, n.to);
+        assert.notEqual(broken, SRC, `neutering did not alter the source: ${n.id}`);
+        assert.equal(idleFrames(broken), 6,
+            `an inert fix (${n.id}) must resync on every frame; reading 1 here means the harness is decorative`);
+    }
+});
