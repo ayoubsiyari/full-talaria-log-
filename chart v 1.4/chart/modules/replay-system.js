@@ -5435,6 +5435,16 @@ class ReplaySystem {
             this._speedGov = {
                 /** Sliding window of {at, bars} advance samples. */
                 samples: [],
+                /**
+                 * Start of the measured span. A sample says "these bars
+                 * arrived at this instant", so the time they took is the
+                 * gap since the *previous* sample. Measuring from the
+                 * oldest retained sample instead would count N bars over
+                 * N-1 gaps and over-read the rate by N/(N-1) — enough, at
+                 * ten samples, to invent 11% of drift that is not there
+                 * and correct against it.
+                 */
+                anchorAt: null,
                 /** Corrector output: demand = target * gain. Starts neutral. */
                 gain: 1,
                 /** When the current out-of-tolerance run began; null when in tolerance. */
@@ -5508,17 +5518,29 @@ class ReplaySystem {
         const n = Number(bars);
         if (!Number.isFinite(n) || n <= 0) return;
         const gov = this._speedGovState();
+        if (gov.anchorAt === null) {
+            // The first sample only establishes the origin: how long its own
+            // bars took is unknowable, since there is no earlier instant.
+            gov.anchorAt = now;
+            return;
+        }
         gov.samples.push({ at: now, bars: n });
         this._speedGovTrimWindow(now);
     }
 
-    /** Drop samples that have aged out of the measurement window. */
+    /**
+     * Drop samples that have aged out, moving the anchor forward to the
+     * last instant dropped so the surviving bars keep their true span.
+     */
     _speedGovTrimWindow(now = _speedGovNow()) {
         const gov = this._speedGovState();
         const cutoff = now - SPEED_GOV_RATE_WINDOW_MS;
         let drop = 0;
         while (drop < gov.samples.length && gov.samples[drop].at < cutoff) drop++;
-        if (drop > 0) gov.samples.splice(0, drop);
+        if (drop > 0) {
+            gov.anchorAt = gov.samples[drop - 1].at;
+            gov.samples.splice(0, drop);
+        }
     }
 
     /**
@@ -5529,9 +5551,8 @@ class ReplaySystem {
     getEffectiveBarsPerSecond(now = _speedGovNow()) {
         const gov = this._speedGovState();
         this._speedGovTrimWindow(now);
-        if (gov.samples.length === 0) return 0;
-        const oldest = gov.samples[0].at;
-        const spanMs = now - oldest;
+        if (gov.samples.length === 0 || gov.anchorAt === null) return 0;
+        const spanMs = now - gov.anchorAt;
         if (!(spanMs > 0)) return 0;
         let bars = 0;
         for (let i = 0; i < gov.samples.length; i++) bars += gov.samples[i].bars;
@@ -5614,6 +5635,7 @@ class ReplaySystem {
         // would have the next evaluation judge this correction on stale
         // evidence and immediately correct again.
         gov.samples.length = 0;
+        gov.anchorAt = null;
         return changed;
     }
 
@@ -5632,6 +5654,7 @@ class ReplaySystem {
     _speedGovResetMeter() {
         const gov = this._speedGovState();
         gov.samples.length = 0;
+        gov.anchorAt = null;
         gov.driftSince = null;
         gov.lastTickAt = null;
     }
