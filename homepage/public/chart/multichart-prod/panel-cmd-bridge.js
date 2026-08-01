@@ -1672,7 +1672,6 @@
         if (pc.currentFileId != null) payload.hostFileId = String(pc.currentFileId);
         if (Number.isFinite(pc.offsetX)) payload.hostOffsetX = pc.offsetX;
         var prs = pc.replaySystem;
-        if (prs && Number.isFinite(prs.currentIndex)) payload.currentIndex = prs.currentIndex;
 
         var prevOffsetX = ch.offsetX;
         var prevCandleWidth = ch.candleWidth;
@@ -1710,8 +1709,8 @@
                     mirrorPrependCompensation = (ch && typeof ch._applyMultichartMirrorPrependCompensation === 'function')
                         ? ch._applyMultichartMirrorPrependCompensation(mirrorPrependSnapshot, { replay: rs })
                         : null;
-                    if (Number.isFinite(prs.currentIndex) && !mirrorPrependCompensation) {
-                        rs.currentIndex = prs.currentIndex;
+                    if (!mirrorPrependCompensation && typeof rs.syncCurrentIndexFromReplayTimestamp === 'function') {
+                        rs.syncCurrentIndexFromReplayTimestamp(rs.replayTimestamp);
                     }
                     if (payload.animatedCandle && Number(payload.tickProgress) > 0) {
                         rs.tickProgress = Number(payload.tickProgress) || 0;
@@ -2985,7 +2984,9 @@
                     ch.replaySystem.fullRawData = copySamePairFullRawDataForBridge(ch, prs.fullRawData);
                     ch.replaySystem.rawTimeframe = prs.rawTimeframe || '1m';
                     ch.replaySystem.replayTimestamp = Number.isFinite(Number(ts)) ? Number(ts) : prs.replayTimestamp;
-                    if (Number.isFinite(prs.currentIndex)) ch.replaySystem.currentIndex = prs.currentIndex;
+                    if (typeof ch.replaySystem.syncCurrentIndexFromReplayTimestamp === 'function') {
+                        ch.replaySystem.syncCurrentIndexFromReplayTimestamp(ch.replaySystem.replayTimestamp);
+                    }
                 }
                 if (typeof ch._applyMultichartMirrorPrependCompensation === 'function') {
                     ch._applyMultichartMirrorPrependCompensation(mirrorPrependSnapshot, { replay: ch.replaySystem });

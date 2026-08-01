@@ -8687,11 +8687,14 @@ class ReplaySystem {
                 chart._chartViewRestored = true;
             }
 
-            const pIdx = Number(detail && detail.currentIndex);
-            if (Number.isFinite(pIdx) && !mirrorPrependCompensation) {
-                this.currentIndex = Math.max(this.sessionStartIndex || 0, pIdx);
-            }
             this.replayTimestamp = ts;
+            let timeResolvedIndex = -1;
+            if (!mirrorPrependCompensation) {
+                timeResolvedIndex = this._findLastRawIndexAtOrBefore(this.fullRawData, ts);
+                if (timeResolvedIndex >= 0) {
+                    this.currentIndex = Math.max(this.sessionStartIndex || 0, timeResolvedIndex);
+                }
+            }
             if (Number.isFinite(detail && detail.tickElapsedMs)) {
                 this.tickElapsedMs = Number(detail.tickElapsedMs);
             }
@@ -8702,7 +8705,7 @@ class ReplaySystem {
             if (hasAnim) {
                 const pathIdx = mirrorPrependCompensation && Number.isFinite(this.currentIndex)
                     ? this.currentIndex
-                    : pIdx;
+                    : timeResolvedIndex;
                 const pathTarget = (Array.isArray(this.fullRawData)
                     && Number.isFinite(pathIdx) && this.fullRawData[pathIdx])
                     ? this.fullRawData[pathIdx]
@@ -9061,7 +9064,6 @@ class ReplaySystem {
     _buildMultichartReplayFrameDetail() {
         const detail = {
             timestamp: this.replayTimestamp,
-            currentIndex: this.currentIndex,
             tickProgress: this.tickProgress,
             tickElapsedMs: this.tickElapsedMs,
             isPlaying: !!this.isPlaying,
