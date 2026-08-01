@@ -32376,6 +32376,22 @@ class OrderManager {
         }
     }
     
+    _n5BeginFullClose(position, orderId) {
+        if (!_n5MoneyPathCollisionV1Enabled()) return true;
+        if (!position) return false;
+        if (position._n5FullCloseInFlight || position.status === 'CLOSED') {
+            console.warn(`⚠️ Duplicate full close ignored for order #${orderId}`);
+            return false;
+        }
+        position._n5FullCloseInFlight = true;
+        return true;
+    }
+
+    _n5EndFullClose(position) {
+        if (!_n5MoneyPathCollisionV1Enabled() || !position) return;
+        if (position._n5FullCloseInFlight) delete position._n5FullCloseInFlight;
+    }
+
     /**
      * Close a position
      */
@@ -32385,6 +32401,9 @@ class OrderManager {
         
         const currentCandle = this.getCurrentCandle();
         if (!currentCandle) return;
+
+        if (!this._n5BeginFullClose(position, orderId)) return;
+        try {
         
         let closePrice;
         if (_orderOwningPanelPriceV1Enabled()) {
@@ -32729,6 +32748,9 @@ class OrderManager {
             pnl: pnl,
             type: 'MANUAL'
         });
+        } finally {
+            this._n5EndFullClose(position);
+        }
     }
     
     /**
@@ -35148,14 +35170,8 @@ class OrderManager {
         const closeQuantity = isPartialClose
             ? this._multiTpPartialCloseQuantity(position, percentage)
             : position.quantity;
-        if (!isPartialClose && _n5MoneyPathCollisionV1Enabled()) {
-            if (position._n5FullCloseInFlight || position.status === 'CLOSING' || position.status === 'CLOSED') {
-                console.warn(`⚠️ Duplicate full close ignored for order #${orderId}`);
-                return;
-            }
-            position._n5FullCloseInFlight = true;
-            position.status = 'CLOSING';
-        }
+        if (!isPartialClose && !this._n5BeginFullClose(position, orderId)) return;
+        try {
         
         console.log(`   isPartialClose=${isPartialClose}, closeQuantity=${closeQuantity}, position.quantity=${position.quantity}`);
 
@@ -36191,6 +36207,9 @@ class OrderManager {
             isSplitTrade: isSplitTrade,
             numberOfEntries: numberOfEntries
         });
+        } finally {
+            if (!isPartialClose) this._n5EndFullClose(position);
+        }
     }
     
     /**

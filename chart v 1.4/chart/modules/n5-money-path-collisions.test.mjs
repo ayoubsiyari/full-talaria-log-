@@ -125,10 +125,12 @@ function makeManager({ reenter = false } = {}) {
 
     const noop = () => {};
     Object.assign(om, {
-        getCurrentCandle() { return { t: 1_700_000_500_000, close: 0 }; },
+        getCurrentCandle() { return { t: 1_700_000_500_000, c: this.__n5CurrentClosePrice ?? 0, close: this.__n5CurrentClosePrice ?? 0 }; },
         _evalCandleForPosition(_position, candle) { return candle; },
         _positionTicker(position) { return position.ticker || position.symbol || 'EURUSD'; },
         _getActiveTicker() { return 'EURUSD'; },
+        _resolveOwningPanelMidMarkPrice() { return this.__n5CurrentClosePrice; },
+        _resolveUnrealizedMarkPrice() { return this.__n5CurrentClosePrice; },
         _isPositionForActiveChart() { return true; },
         _collectLayoutCharts() { return [this.chart]; },
         _positionTickerMatchesChartSymbol() { return true; },
@@ -139,6 +141,7 @@ function makeManager({ reenter = false } = {}) {
                 : closePrice - position.openPrice;
             return diff * quantity * 100;
         },
+        _applyHalfSpreadExitPrice(closePrice) { return closePrice; },
         _roundTripCommissionForLots() { return 0; },
         _applyRealizedPnLToBalance(pnl) {
             this.balance += pnl;
@@ -146,7 +149,11 @@ function makeManager({ reenter = false } = {}) {
             if (this.__n5ReenterEnabled && this.__n5ActiveClose && !this.__n5Reentered.has(this.__n5ActiveClose.id)) {
                 const active = this.__n5ActiveClose;
                 this.__n5Reentered.add(active.id);
-                this.closePositionAtPrice(active.id, active.closePrice, active.hitType);
+                if (active.method === 'manual') {
+                    this.closePosition(active.id);
+                } else {
+                    this.closePositionAtPrice(active.id, active.closePrice, active.hitType);
+                }
             }
         },
         _freezeInTradeExcursionSnapshot: noop,
@@ -174,7 +181,7 @@ function makeManager({ reenter = false } = {}) {
         _m20A1GroupRowsByTicker(rows) {
             return { EURUSD: rows.slice() };
         },
-        _m19PersistTrimV1Enabled() { return false; },
+        _m19PersistTrimV1Enabled() { return true; },
         _m19CloneJournalForHotSessionPersist() {
             return this.tradeJournal.slice();
         },
@@ -191,6 +198,14 @@ function makeManager({ reenter = false } = {}) {
         removeMfeMaeMarkers: noop,
         removeSplitGroupAvgLine: noop,
         _cleanupOrderVisualsAfterClose: noop,
+        _cleanupOrphanedYAxisHighlights: noop,
+        checkScaledGroupComplete() { return true; },
+        createAggregateJournalEntry() { return null; },
+        _resolvePositionOrderType() { return 'market'; },
+        _m19MaxExcursionR() { return null; },
+        drawSLTPLines: noop,
+        drawMultiTPAvgLine: noop,
+        removePreviewLines: noop,
         updatePositionsPanel: noop,
         updateJournalTab: noop,
         showTradeJournalModal: noop,
@@ -204,20 +219,27 @@ function makeManager({ reenter = false } = {}) {
     return om;
 }
 
-function closeOnceWithCollision(om, position, closePrice) {
+function closeOnceWithCollision(om, position, closePrice, method = 'price') {
     om.openPositions.push(position);
     om.orders.push(position);
     om.orderService.openPositions = om.openPositions;
-    om.__n5ActiveClose = { id: position.id, closePrice, hitType: 'TP' };
+    om.__n5CurrentClosePrice = closePrice;
+    om.__n5ActiveClose = { id: position.id, closePrice, hitType: 'TP', method };
     try {
-        om.closePositionAtPrice(position.id, closePrice, 'TP');
-        om.closePositionAtPrice(position.id, closePrice, 'TP');
+        if (method === 'manual') {
+            om.closePosition(position.id);
+            om.closePosition(position.id);
+        } else {
+            om.closePositionAtPrice(position.id, closePrice, 'TP');
+            om.closePositionAtPrice(position.id, closePrice, 'TP');
+        }
     } finally {
         om.__n5ActiveClose = null;
+        om.__n5CurrentClosePrice = null;
     }
 }
 
-function runDoubleCloseScenario({ disableFix = false } = {}) {
+function runDoubleCloseScenario({ disableFix = false, method = 'price' } = {}) {
     window.__TALARIA_DISABLE_N5_MONEY_PATH_COLLISION_V1 = disableFix;
     const om = makeManager({ reenter: true });
     const expected = [];
@@ -230,7 +252,7 @@ function runDoubleCloseScenario({ disableFix = false } = {}) {
             exitPrice: closePrice,
             pnl: 100,
         });
-        closeOnceWithCollision(om, position, closePrice);
+        closeOnceWithCollision(om, position, closePrice, method);
     }
     const expectedPnl = expected.reduce((sum, row) => sum + row.pnl, 0);
     return {
@@ -253,6 +275,7 @@ test('N5 real close path: 100 double-closes keep exact journal rows, values, and
     assert.deepEqual(result.rows, result.expected);
     assert.equal(result.balanceDelta, result.expectedPnl);
     assert.equal(result.om.closedPositions.length, 100);
+    assert.ok(result.om.closedPositions.every((row) => !row._n5FullCloseInFlight && row.status !== 'CLOSING'));
 });
 
 test('N5 mutant-red: disabling product close idempotency over-credits real balance', () => {
@@ -261,6 +284,31 @@ test('N5 mutant-red: disabling product close idempotency over-credits real balan
     assert.notEqual(result.balanceDelta, result.expectedPnl,
         'product mutant must fail exact money values even when row count is masked');
     assert.equal(result.balanceDelta, result.expectedPnl * 2);
+});
+
+test('N5 real manual close path: closePosition shares the full-close guard', () => {
+    const result = runDoubleCloseScenario({ method: 'manual' });
+    assert.equal(result.rows.length, 100);
+    assert.deepEqual(result.rows, result.expected);
+    assert.equal(result.balanceDelta, result.expectedPnl);
+    assert.equal(result.om.closedPositions.length, 100);
+    assert.ok(result.om.closedPositions.every((row) => !row._n5FullCloseInFlight && row.status !== 'CLOSING'));
+});
+
+test('N5 real close path: thrown mid-close releases latch for retry', () => {
+    window.__TALARIA_DISABLE_N5_MONEY_PATH_COLLISION_V1 = false;
+    const om = makeManager();
+    const position = makePosition(1);
+    const closePrice = position.openPrice + 1;
+    om.openPositions.push(position);
+    om.__n5CurrentClosePrice = closePrice;
+    om._freezeInTradeExcursionSnapshot = () => { throw new Error('forced mid-close failure'); };
+    assert.throws(() => om.closePositionAtPrice(position.id, closePrice, 'TP'), /forced mid-close failure/);
+    assert.equal(position._n5FullCloseInFlight, undefined);
+    om._freezeInTradeExcursionSnapshot = () => {};
+    om.closePositionAtPrice(position.id, closePrice, 'TP');
+    assert.equal(om.tradeJournal.length, 1);
+    assert.equal(om.balance - om.initialBalance, 100);
 });
 
 test('N5 real durable queue: reload-during-save cannot mutate queued rows by reference', () => {
@@ -288,7 +336,7 @@ test('N5 real durable queue: reload-during-save cannot mutate queued rows by ref
     ]);
 });
 
-test('N5 mutant-red: disabling durable snapshot lets queued rows mutate by reference', () => {
+test('N5 mutant-red: disabling durable snapshot lets queued per-ticker rows mutate by reference', () => {
     window.__TALARIA_DISABLE_N5_MONEY_PATH_COLLISION_V1 = true;
     const om = makeManager();
     om.tradeJournal = [
@@ -299,8 +347,10 @@ test('N5 mutant-red: disabling durable snapshot lets queued rows mutate by refer
     const queued = om.__n5DurableQueue[0];
     om.tradeJournal[0].pnl = 9999;
 
-    assert.equal(queued.journal[0].pnl, 9999,
-        'product mutant must expose queued durable rows mutating after save time');
+    assert.equal(queued.journal[0].pnl, 25,
+        'shipping trim still protects the top-level journal array');
+    assert.equal(queued.journal_by_ticker.EURUSD[0].pnl, 9999,
+        'product mutant must expose queued per-ticker durable rows mutating after save time');
 });
 
 test('N5 mirrors stay byte-identical for order-manager', () => {
