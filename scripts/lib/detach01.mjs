@@ -55,6 +55,18 @@ export function openRun({ name, out, meta = {} }) {
     ? fs.readFileSync(out, 'utf8').split('\n').filter(Boolean).length - resumed.length
     : 0;
 
+  // A hard kill leaves the file without a trailing newline, and appending to that CONCATENATES the first new
+  // record onto the torn fragment - so the resume silently destroys its own first line, which is the segment
+  // boundary. Truncate back to the last complete line before reopening. Caught by the self-test, not in
+  // production, and only because the test simulated the exact failure the primitive exists for.
+  if (fs.existsSync(out)) {
+    const raw = fs.readFileSync(out, 'utf8');
+    if (raw.length && !raw.endsWith('\n')) {
+      const keep = raw.lastIndexOf('\n');
+      fs.truncateSync(out, keep >= 0 ? keep + 1 : 0);
+    }
+  }
+
   const fd = fs.openSync(out, 'a');
   let n = resumed.length;
   const startedAt = Date.now();
