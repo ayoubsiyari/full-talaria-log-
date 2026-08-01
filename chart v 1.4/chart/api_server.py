@@ -3654,6 +3654,23 @@ async def auth_middleware(request: Request, call_next):
         "/logo-08.png",
         "/talaria-chart.png",
         "/talaria chart.png",
+        # PASSPORT-3 — the build passport must be readable without a session.
+        #
+        # Everything under /chart is protected by the prefix rule below, so an
+        # unauthenticated GET of the passport was redirected to /login/ and a
+        # redirect-following client landed on ~29 KB of app-shell HTML under a 200.
+        # Not a 404: res.ok is satisfied, res.json() throws into a try/catch, and the
+        # reader records sourceCommitSha: null — the exact failure this row exists to
+        # prevent, because a null looks like an answer.
+        #
+        # The soak harness reads this at launch and re-verifies it every sample, from a
+        # browser with no credentials, and refuses to start if it cannot.
+        #
+        # Exact path only, never a prefix: the /chart prefix guard below is unchanged and
+        # every other file under it still requires a session. The body is build id,
+        # commit SHA and a timestamp — no user or account data. The disclosure is that a
+        # reader learns which source built the deployment, which is the entire purpose.
+        "/chart/build-info.json",
     }
 
     public_prefixes = (

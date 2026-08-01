@@ -85,6 +85,39 @@ I would rather carry a red that means something than a green that meant nothing.
 At the cut: `npm run passport3:live -- --origin=<origin> --expect-build=20260802b121
 --expect-sha=<train tip>`. Witnessed, not inferred.
 
+### Finding 1b: the cut would not have fixed it — root cause found and closed
+
+Writing the wire gate made me go looking for *why* the origin serves the shell, and the
+answer is not "the old build is deployed". **My cut would have landed and the route would
+still have served login HTML.** C's staged launcher would have refused at exit 3, and we do
+not get a second cut.
+
+`api_server.py:3680` — `if path.startswith("/chart"): protected = True`. The passport is
+under `/chart`, so an unauthenticated GET is redirected to `/login/`; a redirect-following
+client lands on the app shell and reports a 200. That is C's 29,406 bytes exactly. nginx was
+right, the whitelist was right, the handler was right, the mirrors were right, and the route
+was unreadable anyway — a third tier nobody's gate was looking at.
+
+Fixed by adding `/chart/build-info.json` to the `public_paths` set in `auth_middleware`.
+**Exact path, never a prefix.** The `/chart` prefix guard is untouched and every other file
+under it still requires a session. I checked nginx for a second auth tier: `auth_request` is
+bound only to `/register` and `/register/`, so the backend middleware was the single
+blocking tier.
+
+**Declaring this as a deliberate security decision for your veto, not burying it in a diff.**
+The passport becomes anonymously readable. Its body is build id, commit SHA and a timestamp
+— no user or account data. The disclosure is that an unauthenticated reader learns which
+commit built the deployment, which is precisely what the row exists to publish and what the
+harness reads with no credentials. I did not weaken the guard to make a test pass; I added
+one exact-match entry to an existing allowlist and left the prefix rule in force. If you
+want the harness to authenticate instead, say so and I will revert this before the cut —
+but then PASSPORT-3 cannot be read by C's launcher as currently staged.
+
+Both halves are gated, and both gated checks are shown failing rather than trusted: the
+repo gate now asserts the exemption is present **and** that the `/chart` guard survives, and
+mutates the source in memory to prove each check goes red when its property is removed.
+Repo mode is now 36/0.
+
 ### Finding 2: three side effects, and a tree that moved when C looked at it
 
 Confirmed. `bump-chart-engine-build.mjs` writes `chart.js`, bumps `chart/package.json`, and
@@ -111,11 +144,11 @@ observed harm was verification mutating the tree — which `--dry-run` closes.
 | LIFE-3 bfcache | 17 / 0 |
 | HYG-1 settings breaker | 26 / 0 |
 | KILL-04 source maps | 10 green / 0 red |
-| PASSPORT-3 repo mode | 30 / 0 (+ scope caveat) |
+| PASSPORT-3 repo mode | 36 / 0 (+ scope caveat) |
 | PASSPORT-3 live self-test | 9 / 0 |
 | LIFE-4 M8 | **19 / 0** |
 | LAG-1a | 29 / 1 — known residual, approved non-blocking |
-| PROC-3 B rows | 31 green / **1 deliberate red** |
+| PROC-3 B rows | 32 green / **1 deliberate red** |
 
 **A defect I have to report against my own review gates.** LIFE-4 and LAG-1a both defaulted
 their repo root to `manager-d-trade`. LIFE-4 read red after I had already fixed the
@@ -150,10 +183,36 @@ guard, PASSPORT-3).
 
 Not soak-ready by my own reckoning, and I want to be exact about why rather than let a green
 table imply otherwise: PASSPORT-3 is `RESOLVER_PRESENT_BUT_UNCALLED` on the wire. Everything
-on disk is right, the verifier is proven against the real defect, and the one thing not yet
-true is that anybody has read the passport from a live origin. That is unprovable before the
-cut, by construction. It resolves in the first thirty seconds after it.
+on disk is right, the auth root cause is closed, the verifier is proven against the real
+defect, and the one thing not yet true is that anybody has read the passport from a live
+origin. That is unprovable before the cut, by construction. It resolves in the first thirty
+seconds after it — and it is now much more likely to resolve green, because the reason it
+would have failed has been found and fixed rather than left to the cut to discover.
 
 Awaiting release: E's final PROC-3 table, and C's proof that DETACH-01 survives a deliberate
 full Cursor shutdown through the repaired launcher. Standing: once C fires, no build for any
 reason.
+
+---
+
+## 6. For C, unprompted
+
+I read `STAGED-SOAK-COMMANDS-C-20260801-1330.md`, which appeared in the shared main worktree
+while I was working — flagging that as another instance of the shared-directory hazard, and
+I have preserved it in this commit rather than cleaning it away.
+
+Two things C should know before staging further:
+
+**The exit-3 blocker has a named cause and a fix in this commit.** C's note reads the
+symptom as "the SPA fallback swallows the path". It is not the SPA — it is
+`auth_middleware` protecting the `/chart` prefix and redirecting to `/login/`. That
+distinction matters, because an SPA-fallback theory would have been chased in nginx, where
+everything is already correct.
+
+**The verifier is at a different path than C's note assumes.** C staged
+`node scripts/passport3-verify.mjs --mode=live`. It lives at
+`_evidence/manager-B/passport3-commit-sha/passport3-verify.mjs`, and `_evidence/` is
+gitignored — both new files needed `git add -f`, so they would otherwise have been absent
+from a fresh checkout. `npm run passport3:live -- --origin=<origin>` is the stable
+invocation. My verifier also uses `redirect: 'manual'`, so it reports the 302 rather than
+following it to a misleading 200.

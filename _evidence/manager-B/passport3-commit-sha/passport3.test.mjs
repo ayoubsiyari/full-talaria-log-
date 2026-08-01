@@ -138,6 +138,18 @@ console.log('\n=== the chain: does the SHA actually reach the script, and the ar
   const earlier = ng.slice(0, chartProxyAt < 0 ? 0 : chartProxyAt);
   const earlierJsonBlock = /location\s+[~^][^\n]*\bjson\b[^\n]*\{/i.test(earlier);
   check('no earlier location block claims .json before the chart proxy', earlierJsonBlock, false);
+
+  // The tier the routing checks above cannot see, and the one that actually broke it.
+  // auth_middleware marks everything under /chart protected, so an unauthenticated GET of
+  // the passport is redirected to /login/ and a redirect-following client gets ~29 KB of
+  // app-shell HTML under a 200. nginx was right, the handler was right, the whitelist was
+  // right, and the route was still unreadable. The harness reads this with no credentials.
+  const publicSet = api.slice(api.indexOf('public_paths = {'), api.indexOf('public_prefixes'));
+  check('the passport is exempt from auth, so an anonymous harness can read it',
+    /"\/chart\/build-info\.json"/.test(publicSet), true);
+  // The exemption must be exact-match. A prefix here would expose every chart asset.
+  check('and the /chart prefix guard is still in force for everything else',
+    /if path\.startswith\("\/chart"\):\s*\n\s*protected = True/.test(api), true);
 }
 
 console.log('\n=== discriminating: the pre-change build would pass a naive gate and fail this one ===');
@@ -150,6 +162,26 @@ console.log('\n=== discriminating: the pre-change build would pass a naive gate 
     .includes('build-info.json');
   check('a repo grep for SOURCE_COMMIT_SHA was green before the change', naive, true);
   check('but an HTTP-reachable artefact only exists after it', realQuestion, true);
+}
+
+console.log('\n=== discriminating: the auth exemption check goes red when the exemption is removed ===');
+{
+  // BIND-01. The auth tier is what actually broke this route while every other check was
+  // green, so its assertion has to be shown failing rather than trusted for being present.
+  // Mutate the source in memory and re-run the same predicate.
+  const api = fs.readFileSync(path.join(REPO, 'chart v 1.4/chart/api_server.py'), 'utf8');
+  const slice = (src) => src.slice(src.indexOf('public_paths = {'), src.indexOf('public_prefixes'));
+  const exempt = (src) => /"\/chart\/build-info\.json"/.test(slice(src));
+
+  check('the real tree is exempt', exempt(api), true);
+  const mutant = api.replace('        "/chart/build-info.json",\n', '');
+  check('the mutant actually differs from the real tree', mutant.length < api.length, true);
+  check('and a tree without the exemption is caught', exempt(mutant), false);
+
+  // The other half: the exemption must not have been bought by widening the guard.
+  const widened = api.replace('if path.startswith("/chart"):\n        protected = True', '');
+  const guarded = (src) => /if path\.startswith\("\/chart"\):\s*\n\s*protected = True/.test(src);
+  check('a tree that dropped the /chart guard entirely is caught', guarded(widened), false);
 }
 
 console.log(`\n================ PASSPORT-3 (REPO MODE): ${pass} passed, ${fail} failed ================`);

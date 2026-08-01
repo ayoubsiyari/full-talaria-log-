@@ -131,6 +131,12 @@ const axis = (row, name, ok, detail) => { rows.push({ row, name, ok, detail }); 
     'NOT a statement about the wire — see the live-mode caveat below');
   axis(R, 'bound (config only): served no-store so every soak sample re-reads it',
     !!api && /file_name == "build-info\.json"/.test(api) && /"Cache-Control": "no-store"/.test(api), '');
+  // The tier that actually swallowed the route. auth_middleware protects the whole /chart
+  // prefix, so the passport redirected to /login/ and a redirect-following reader got the
+  // app shell under a 200 while routing, whitelist and handler were all green.
+  axis(R, 'bound: the passport is exempt from auth so an anonymous harness can read it',
+    !!api && /"\/chart\/build-info\.json",/.test(api),
+    'exact path only — the /chart prefix guard is unchanged for every other file');
 
   axis(R, 'discriminating: gate runs the real emitter and asserts the build FAILS on a bad SHA',
     true, 'passport3.test.mjs — empty/short/non-hex all exit 1 with no artefact');
