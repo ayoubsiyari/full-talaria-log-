@@ -75,8 +75,12 @@ async function readPanels(page) {
       if (!ch) return null;
       const rs = ch.replaySystem;
       return {
-        isHost: window.top === window,
-        tf: ch.timeframe ?? null,
+          isHost: window.top === window,
+          // The engine field is currentTimeframe. conf01-session.mjs:58 already reads it correctly; this
+          // script asked for ch.timeframe, which does not exist, so every segment marker recorded
+          // [null,null,null,null] while asserting "4 panels with distinct datasets". A panel that silently
+          // changed timeframe mid-run would have been invisible in the artifact that exists to catch it.
+          tf: ch.currentTimeframe != null ? String(ch.currentTimeframe) : (ch.timeframe ?? null),
         bars: Array.isArray(ch.data) ? ch.data.length : 0,
         playhead: [rs?.replayTimestamp, rs?.currentTime, rs?.replayIndex].map(Number).find((v) => Number.isFinite(v)) ?? null,
       };

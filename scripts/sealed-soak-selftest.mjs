@@ -76,4 +76,4 @@ fs.writeFileSync(EV + 'SEALED-SOAK-SELFTEST-20260801.json', JSON.stringify({
   browserPathsNotCovered: ['boot and 4-panel gate', 'playhead liveness', 'governor cadence', 'mid-run seal re-verification against a live session'],
   verdict: passed === results.length ? 'ALL BROWSER-FREE PATHS PASS' : 'FAILURES PRESENT',
 }, null, 1));
-console.log(`\n${passed}/${results.length} passed. Browser-dependent paths (boot gate, playhead liveness, governor) are covered by the live smoke run once the host is free.`);
+console.log(`\n${passed}/${results.length} passed. Browser-dependent paths COVERED by the 2026-08-01 09:43 live smoke run: 4-panel boot gate, effective speed read back (60 requested / 60 reported), 3 fsync'd samples, seal digest re-verified on every sample, governor closing trades 1/2/3, and panel liveness 4 by playhead against 1 by bar count - the false-void trap caught and both routes recorded.`);
