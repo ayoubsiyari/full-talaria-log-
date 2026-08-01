@@ -136,3 +136,85 @@ this repo, so the whole heap toolchain cannot run here as-checked-out. I ran it 
 junction to the installed tree in `full-talaria-log--main` and removed the junction after.
 Someone should decide whether that dependency gets declared, because right now every heap gate
 in `scripts/` is unrunnable from a clean clone.
+
+### A — 2026-08-02 00:55 — ORDER-01 §5 landed, and an honest §2 status
+
+`tier=top author model=claude-opus-5-thinking-high`. TIER-01: an independent TOP reviewer
+ACCEPT is still outstanding on the clock and catch-up semantics. Self-authored review does not
+satisfy it, and the data clock drives candle delivery into SL/TP evaluation.
+
+Commits: `5c1a49dbc` (engine ladder + migration), `1876fabeb` (selectors).
+
+**I got the ladder wrong the first time.** I read "ten candle speeds" as a geometric ladder and
+shipped `0.5, 1, 2, 5, 10, 15, 20, 30, 60, 100` — ten speeds that still included 60, which is
+the single setting the order exists to remove. It is now the integers **1 through 10**: nothing
+above 10, nothing between.
+
+**There were three ladders, and only the engine had been fixed.** The legacy shell slider ran
+`1 … 86400x` and defaulted to **60x**; the V9 React toolbar ran `1 … 100x` and defaulted to
+**30**; the engine had its own list. That is how 60x stayed on screen after the engine stopped
+offering it, so the shell's two slider blocks now read a single helper that asks the engine, and
+the fallback literal is only for the window before the chart exists.
+
+**Migration is a nearest-rung snap, not a clamp.** A clamp agrees with a snap on every legacy
+value above 10, so the cases that actually discriminate are the sub-rung ones; the mutant cell
+asserts exactly that. Covered: all fifteen legacy-shell rungs to 86400, all fifteen V9 rungs,
+the previously shipped engine ladder, and both field defaults — 30 and 60 both land on 10.
+`getTargetBarsPerSecond()` normalises too, because restore paths and `window._pendingReplaySpeed`
+both assign `this.speed` without passing through `setSpeed`.
+
+---
+
+#### What of §2 is actually implemented
+
+Asked directly, so answered directly. My earlier commit subject — "speeds are bars per second,
+and the rate is measured" — describes candle mode plus read-back, and the five green oracles
+should not be read as covering tick mode. They do not.
+
+| §2 requirement | Status on the candidate |
+|---|---|
+| Tick mode offers the same ten speeds | **Landed.** Both shells, tick-aware. |
+| REALISTIC as a distinct labelled option | **Landed.** Renders as `REAL` in tick mode only. The engine resolves it, and leaving tick mode moves it onto a candle rung instead of stranding the user. |
+| Bar duration = `(timeframe_seconds / 4) / N` | **Implemented, oracle-covered, and OFF by default.** |
+
+**So the animation contract is not in force.** With `__TALARIA_SPEED_GOV_TICK_V1` off — which is
+the shipped default — the tick path still computes `rawCandleTimeframeMs / effectivePlaybackSpeed`,
+i.e. `tf / N`. That is **four times slower than the contract at every rung of the ladder**. The
+function that computes the contract exists, is wired to the one production consumer, and has an
+oracle; it is simply gated off.
+
+**And I have to correct my earlier reason for gating it.** I said it was the CPU ceiling for
+forming-candle paints at 60x–100x. Since §5 caps the ladder at 10, that reason should have
+evaporated, so I retested it: flipping the default to on still red-lights **7 of 19 cells**
+across `m19-i-g2-tick-speed-coherence`, `b75-po-v5-1d-tick-speed-routing.red` and
+`m28-replay-hidden-pause`. The failures are not budget failures — they read
+`equal-TF control has no hidden subdivision acceleration` and `switch OFF must restore legacy
+commit-only fast mode`. Those suites encode the legacy `tf / N` divisor as an invariant.
+
+Turning §2's animation on is therefore not a paint fix I can land alone. It needs the owners of
+those three oracles to re-bless them against the new divisor. **Someone should give that a row.**
+I have left the switch present and defaulted off rather than reverting the code, so the row is a
+re-blessing exercise rather than a reimplementation.
+
+---
+
+#### dist-v9 is not rebuilt, and I cannot rebuild it here
+
+The V9 toolbar is bundled, so **the canary and the soak will keep rendering the old 1–100x
+slider until the bundle owner rebuilds**. `talaria-design` has no `node_modules` in this
+worktree or in `full-talaria-log--main`, and there is no vite binary anywhere, so
+`npm run build:live` cannot run from a clean clone. The engine half is unaffected —
+`replay-system.js` loads as a loose module, so the 1–10 ladder, the migration and the governor
+are all live in the candidate right now.
+
+Two independent build-toolchain gaps are now open: this one, and `puppeteer` being undeclared in
+every `package.json`, which makes every heap gate in `scripts/` unrunnable as-checked-out. I ran
+the allocation sampling through a junction to an installed tree and removed it after.
+
+#### Oracles
+
+`scripts/sr04/order01-selector.test.mjs`, 23 cells, and the engine suite is now 49. The selector
+oracle executes the shell's ladder helper in a `vm` rather than pattern-matching it, asserts each
+surface separately — a single ladder assertion goes green while a second surface stays stale,
+which is the failure that already happened once here — and parses the shell's script block,
+because the ladder edits sit in a 61k-line inline script that nothing else in the suite compiles.
