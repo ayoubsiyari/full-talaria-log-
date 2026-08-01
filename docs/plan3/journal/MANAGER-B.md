@@ -6494,3 +6494,49 @@ which render is 200 and the resample 62, leaving about 450 unattributed.
 Also published REGIME-01 with a stamp emitter rather than a checklist, since a rule nobody can run is a
 rule nobody follows. Retro-stamping my own gates is on the list behind the 04:00 window, and I said so in
 the document rather than exempting the person who wrote it.
+
+## B-0236 — the no-regression clause, and why it needed a number before it could be used
+
+Director corrected my reading of REGIME-01. I had it as "declare both arms, one may move"; the actual bar
+is "one must improve, neither may worsen". The clause I dropped is the one that catches the case nobody
+would see: a fix that helps trade-heavy and quietly costs zero-trade passes clean under my version,
+because both arms were declared and one improved. Corrected in the document and attributed.
+
+Also recorded the second half, which I had conflated: a fix passing is not a defect closing. LAG-ZT
+closes when every declared regime meets its bar, whichever fix got it there. That matters concretely
+tomorrow — the marker fix can pass on its merits while LAG-ZT stays open, and given ~450 ms/s of that
+floor is still unattributed to any named mechanism, nobody should be able to read that pass as lag
+solved.
+
+Then the part that took the time. "Neither may worsen" is a claim about a difference, and I had no spread
+to judge a difference against. The falsifier sweep turned out to be exactly the right source — eight
+windows, unchanging build, nothing under test — and it gives cv 7.3% on blocked ms/s. An unchanging
+build varies 1.25x run to run. So at n=1 per arm nothing under ~21% is visible, and a single-run
+no-regression check would wave through a real 20% regression while reporting "did not worsen". The risk
+is asymmetric in a way worth remembering: noise makes an improvement harder to prove, which is safe, and
+a regression easier to miss, which is not. The clause the Director added is precisely the half that noise
+attacks.
+
+Wrote the oracle as a pure function so any manager's harness can feed it numbers, and tested it against
+the case it exists to catch. One test failed, and the failure was worth more than the other fifteen
+passing: it certified a 2.5% change as real because the sd of three tight samples was 2. I had let a run
+claim better precision than the instrument has ever demonstrated. Floored the sd at the published cv.
+
+Chasing that fix exposed the deeper error. I had implemented "did not worsen" as "no significant
+regression detected", which is not the same claim and is nearly automatic with a wide interval — the
+noisier the run, the more readily it certifies. That is the same failure shape as an aggregate that hides
+the defect it exists to catch. Certifying an arm held is a claim of equivalence and needs the upper bound
+of the change inside a margin, so the oracle now has a fourth state, NOT CERTIFIED, meaning add repeats.
+An under-powered run now fails instead of passing, which is the opposite of what I first shipped.
+
+The margin is a judgement, not a measurement, so I defaulted it to 10% and priced the alternatives
+instead of deciding: 5% costs 18 repeats per arm and two and a half hours, 10% costs 5 and forty
+minutes. A 10% bar that runs on a release night beats a 5% bar that gets skipped, but that is the
+Director's call and I flagged it as needing one.
+
+Both standing rules from the falsifier are now enforced rather than remembered: the oracle refuses a
+verdict below n=3, and the sweep interleaves bar counts so drift over a run cannot pose as a slope.
+
+One honest gap: the cv is measured zero-trade. A session doing marker work every event may be noisier, so
+the repeat counts are a floor rather than a promise. The oracle takes the larger of observed and floor,
+so it degrades safely, and I asked the first trade-bearing gate to report its own cv.

@@ -1,10 +1,13 @@
 # REGIME-01 — every performance gate declares its bar count and trade count
 
 **From:** Manager B
-**Date:** 2026-08-01 02:00
+**Date:** 2026-08-01 02:00, **revised 02:40** with the Director's no-regression clause
 **For:** D, E, A, C — anyone filing a performance gate
-**Helper:** `_evidence/manager-B/k4-window-claim/regime-stamp.mjs` (one import, one call)
+**Helpers:** `regime-stamp.mjs` (declaration, one import one call) · `regime-oracle.mjs` (pass/fail,
+pure function) · `derive-noise-floor.mjs` and `margin-cost-table.mjs` (the arithmetic behind the
+thresholds), all in `_evidence/manager-B/k4-window-claim/`
 **Related rows:** LAG-ZT (zero-trade lag), MONSTER-2
+**Needs a ruling:** the non-inferiority margin — defaulted to 10%, cost table below
 
 ---
 
@@ -75,17 +78,104 @@ per-event cost into a rate, this field *is* your conversion factor.
 conclusions; C read the string and found an RTX 4060. The canary host is software-rasterised, C's machine
 is not, and a paint number without this field cannot be compared with either.
 
-## REGIME-01, as I understand the acceptance bar
+## REGIME-01, the acceptance bar
+*(corrected 02:40 by the Director; my earlier reading was missing the no-regression clause)*
 
-A fix greens a freeze-cadence oracle **in both regimes** before "solved" is recorded. Practically, that
-means each fix ships with two stamped runs — one zero-trade, one trade-bearing — and both are declared
-even when only one moved. **A fix that moves only its own regime is not failing REGIME-01; it is passing
-with a declared scope.** What fails REGIME-01 is a fix recorded as "solved" on one arm with the other arm
-unmeasured, because that is the one that returns as a tester ticket.
+**A fix passes if it moves its declared regime and does not regress the other. Both arms measured, one
+must improve, neither may worsen.**
 
-If a fix genuinely cannot move the other regime — mine cannot touch marker resolution, since my session
-calls it zero times — say so in the stamp and let the other regime's owner gate their own. Silence there
-is what makes two correct fixes look like two failures.
+The clause I had missed is the last one, and it is the one that catches the shape nobody would notice: a
+fix that helps trade-heavy and quietly hurts zero-trade passes clean under my version. Both arms were
+declared, one improved, and the damage rides along inside a "declared scope".
+
+A fix that genuinely cannot move the other regime still passes — mine cannot touch marker resolution,
+since my session calls it zero times — but it must now *show* the other arm holding, not merely note that
+it was out of scope.
+
+### And a fix passing is not the defect closing
+
+These are separate events and the record must keep them separate:
+
+| | passes when | recorded against |
+|---|---|---|
+| **a fix** | moves its declared regime, regresses neither | the fix |
+| **a defect row** (LAG-ZT, trade-heavy) | *every* declared regime meets its bar, whichever fix got it there | the row |
+
+So the marker fix can pass on its own merits tomorrow while LAG-ZT stays open, and nobody can read that
+pass as "lag solved". Given LAG-ZT is currently a **flat ~330 ms/s floor with roughly 450 ms/s of
+occupancy unattributed to any named mechanism**, that separation is doing real work: no fix now in flight
+is aimed at the bulk of it.
+
+### The clause needs a number, or it is not testable
+
+"Neither may worsen" is a claim about a difference, and a difference means nothing without the spread of
+the instrument measuring it. The saturation sweep gives that for free — eight windows, one unchanging
+build, nothing under test:
+
+| metric | mean | sd | cv | min–max |
+|---|---|---|---|---|
+| blocked ms/s | 303.3 | 22.1 | **7.3%** | 264.0–330.3 |
+| occupancy ms/s | 714.0 | 51.6 | 7.2% | 649.5–780.5 |
+| ms/event | 93.0 | 7.1 | 7.6% | 80.5–102.8 |
+
+An unchanging build varies by **1.25x** run to run. The consequence, and it is the whole reason this
+section exists:
+
+**At n=1 per arm, nothing below ~21% is visible. A single-run no-regression check would wave through a
+real 20% regression and report "did not worsen".**
+
+Note which way the risk runs, because it is not symmetric. For the *improvement* half a noisy instrument
+makes a fix harder to prove — annoying, but safe. For the *no-regression* half it makes a regression
+easier to miss. The clause the Director added is precisely the half that noise attacks.
+
+### Failing to detect a regression is not evidence there is none
+
+This is the trap I fell into while implementing the clause, and it is worth naming because the naive
+version looks correct. "No significant regression detected" is not "no regression". With a wide enough
+interval it is automatic. Certifying that an arm held is a claim of *equivalence*, and it needs the
+**upper bound** of the change to sit inside a stated margin — not merely the point estimate to look
+flat.
+
+The oracle therefore returns four states per arm, not three: `IMPROVED`, `REGRESSED`, `NO-REGRESSION
+CERTIFIED`, and `NOT CERTIFIED` — the last meaning *we cannot tell, add repeats*. An under-powered run
+lands on `NOT CERTIFIED` and fails, which is the correct outcome and the opposite of what my first
+implementation did.
+
+### The margin is a judgement, and here is its price
+
+How much drift counts as "did not worsen" is the Director's to set. The cost in repeats, at cv 7.3%,
+for a flat arm to certify:
+
+| margin | repeats/arm | windows | wall clock | |
+|---|---|---|---|---|
+| 2% | 107 | 428 | 856 min | impractical |
+| 5% | 18 | 72 | 144 min | expensive but possible |
+| **10%** | **5** | **20** | **40 min** | **recommended** |
+| 15% | 2 (floored to 3) | 12 | 24 min | weak |
+
+**Recommendation: 10%**, defaulted in the oracle pending your ruling. It is the widest margin still
+meaningfully tighter than the ~21% a single run silently allows, and it fits a 40-minute slot. A 5% bar
+needs two and a half hours per fix and will be the first thing dropped on a release night; a 10% bar that
+actually runs is worth more than a 5% bar that gets skipped.
+
+**Minimum n=3 regardless**, since below that the run's own spread cannot be estimated at all.
+
+### Running it
+
+`_evidence/manager-B/k4-window-claim/regime-oracle.mjs` — a pure function, no page and no host, so any
+harness can feed it numbers:
+
+```js
+import { verdict, printVerdict } from './regime-oracle.mjs';
+printVerdict(verdict({
+  zeroTrade:    { before: [...], after: [...] },   // n >= 5 for a 10% margin
+  tradeBearing: { before: [...], after: [...] },
+}, { declaredRegime: 'tradeBearing' }));
+```
+
+Sixteen tests in `regime-oracle.test.mjs`, the first of which is the exact case the Director described —
+helps trade-heavy, quietly hurts zero-trade — asserted to **fail**. If that test ever passes, the clause
+has become decorative.
 
 ## How to get the numbers without building anything
 
@@ -102,6 +192,19 @@ The authenticated route and a journal-bearing session are already proven and doc
   silently lands short and a harness that does not assert the landing will invent its own x-axis. Mine
   did exactly that before I caught it.
 
+## Standing rules that attach to this
+
+Adopted from the falsifier, and they are the cheapest guards on this page:
+
+- **No finding on n=1.** The bar-scaling finding I withdrew was a slope drawn through single runs.
+- **Any claimed slope re-measures its low end last.** My 55 ms/s anchor at 579 bars was measured once,
+  early, and never revisited; every later point was consistent with a flat floor. Re-measuring the low
+  end at the end would have caught it at 17:20 instead of 02:15.
+
+Both are now enforced rather than remembered: the oracle refuses a verdict below n=3, and the sweep
+interleaves bar counts instead of walking them in order, so a drift over the run cannot masquerade as a
+slope.
+
 ## What I owe against this myself
 
 My own filed gates are not stamped to this standard, and I am not exempting the person who wrote the
@@ -114,6 +217,14 @@ saying so, which at the time I did not know was a distinguishing fact about them
 - [verified] the 31.8%-versus-zero-calls contrast, from C's filed profile and my own instrumented run.
 - [measured] achieved 7.87 events/s against a nominal 10x, twice.
 - [verified] `startReplayAtIndex` truncates `rawData`; `goToReplayTimestamp` does not — both observed.
-- [inferred] my reading of the REGIME-01 acceptance bar in the section above. If the intent is stricter —
-  that a fix must *move* both arms rather than *declare* both — say so and I will correct this document,
-  because D and E will build against whichever version is written down.
+- [verified] the acceptance bar as now written, quoted from the Director's correction. My earlier
+  [inferred] reading was wrong in exactly the way flagged and is replaced above.
+- [measured] cv 7.3% on blocked ms/s, 7.2% on occupancy, from 8 windows on an unchanging build.
+  Derivation prints its own arithmetic: `derive-noise-floor.mjs`.
+- [inferred] that this cv transfers to the trade-bearing arm. It was measured zero-trade, and a session
+  doing marker work on every event may well be noisier. **The oracle already handles this**: it takes the
+  larger of the run's observed spread and this floor, so a noisier arm is held to its own noise. But the
+  repeat counts in the margin table are a floor, not a promise — the first trade-bearing gate should
+  report its own cv so the table can be corrected.
+- [inferred] the 10% margin recommendation. The arithmetic behind the trade-off is verified; where to sit
+  on it is a judgement and I have only defaulted it, not decided it.
