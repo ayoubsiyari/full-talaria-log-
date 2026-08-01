@@ -80,10 +80,37 @@ visible rather than silent.
 
 `beforeunload` keeps its unconditional release: it only ever means closing.
 
+### The measured before-state, which is worse than I assumed
+
+Measured on **canary `31.97.192.82` (software rasteriser), build b120, pre-LIFE-3**:
+
+```
+$ curl -sSI http://localhost:3000/chart/dist-v9/index.html
+HTTP/1.1 200 OK
+Content-Type: text/html
+Cache-Control: max-age=3600
+Cache-Control: public, must-revalidate
+```
+
+Three facts, none of which I had before I looked:
+
+1. **No `no-store`, so the chart document is bfcache-eligible today.** That is LIFE-3's precondition,
+   now measured rather than assumed.
+2. **Two conflicting `Cache-Control` headers on one response.** Exactly the ambiguity I guarded against
+   in the nginx edit, already happening on the StaticFiles mount route.
+3. **`max-age=3600`** — the shell is cacheable for an hour. That is weaker than the `no-cache,
+   must-revalidate` the nginx config advertises, because this route does not go through that rule. It
+   is also a stale-build hazard independent of bfcache: a user can hold an hour-old shell against a new
+   server, which is the same version-skew that §2.4 of my LIFE-4 review worries about.
+
+The middleware fix collapses all three: Starlette's `MutableHeaders.__setitem__` replaces every existing
+value for the key, so one `no-store, must-revalidate` arrives instead of two contradictory ones.
+
 ### State
 
 Code complete, both mirrors byte-identical (`git hash-object` AGREE), Python and JS syntax-gated on the
-host, switch semantics tested across six env values. **Not yet behaviourally proven.** The RED/GREEN is
+host, switch semantics tested across six env values, before-state measured above. **Not yet
+behaviourally proven end to end.** The RED/GREEN is
 a Puppeteer navigate-away-and-back that asserts the takeover overlay appears with the switch off and
 does not with it on. I have `scripts/bfcache-nonce-check.mjs` as the identity probe to build it from.
 That is the next thing I run, and I am not claiming the row until it is green.
