@@ -12,6 +12,7 @@
 import fs from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { openRun, inspectRun } from './lib/detach01.mjs';
+import { perBarFields, evaluateGauges } from './lib/soak-gauges.mjs';
 
 const EV = 'c:\\Users\\user\\Desktop\\talaria1\\_evidence\\manager-C\\';
 const OUT = EV + 'SEALED-SOAK-SELFTEST.jsonl';
@@ -64,6 +65,45 @@ check('heartbeat reports COMPLETED after a clean finish', done.state === 'COMPLE
 fs.writeFileSync(OUT.replace(/\.jsonl$/, '.heartbeat.json'), JSON.stringify({ name: 'selftest', alive: true, samples: 4, lastSampleAt: new Date(Date.now() - 3600000).toISOString() }, null, 1));
 const stale = inspectRun(OUT);
 check('heartbeat reports DEAD OR STALLED when samples stop arriving', stale.state === 'DEAD OR STALLED', `stale for ${stale.staleForSec}s`);
+
+// 6. THE GAUGES — and these are written to be DISCRIMINATING per PROC-3 axis 4. Each one fails if the
+//    guard it checks is removed, so a green here is not a green on absent code. They import the same
+//    functions the sample loop calls, not a restatement of them.
+
+// 6a. A working gauge must not trip the guard, or the run stops on healthy data.
+let m = { footprint: 0, blocking: 0 };
+let g = evaluateGauges(m, { footprintTotalMB: 1393.1 }, { blockingMsPerSec: 356.8 });
+check('healthy gauges do not stop the run', g.stop === false && g.misses.footprint === 0, 'no false stop');
+
+// 6b. ONE miss is tolerated - a single failed process read is not a broken gauge.
+g = evaluateGauges({ footprint: 0, blocking: 0 }, { footprintTotalMB: null }, { blockingMsPerSec: 300 });
+check('a single failed footprint read does not stop the run', g.stop === false && g.misses.footprint === 1, 'miss counted, run continues');
+
+// 6c. TWO consecutive misses must stop it. Delete the guard and this goes RED.
+g = evaluateGauges({ footprint: 1, blocking: 0 }, { footprintTotalMB: null, footprintReadFailed: 'SystemInfo unavailable' }, { blockingMsPerSec: 300 });
+check('two consecutive footprint failures STOP the run rather than logging nulls',
+  g.stop === true && /footprint returned null on two consecutive/.test(g.why), g.why?.slice(0, 72));
+
+// 6d. Same for the lag gauge, independently.
+g = evaluateGauges({ footprint: 0, blocking: 1 }, { footprintTotalMB: 1400 }, { blockingMsPerSec: null, blockingNote: 'observer produced no readable result' });
+check('two consecutive blocking failures STOP the run independently of memory',
+  g.stop === true && /blocking returned null/.test(g.why), g.why?.slice(0, 72));
+
+// 6e. THE UNIT TRAP. Level and slope must not be the same number under two names. With real smoke-run
+//     values the level reads ~191 and the true slope ~49; if perBarFields ever returns the level in the
+//     slope field, this goes RED - which is exactly what my first version did.
+const f1 = perBarFields(1387.7, 7258, null);
+const f2 = perBarFields(1427.8, 8077, { bars: 7258, mb: 1387.7 });
+check('first sample of a segment has NO slope, because it has no predecessor',
+  f1.localSlopeMbPerKbar === null && f1.footprintPerKbarLEVEL > 100, `level=${f1.footprintPerKbarLEVEL} slope=${f1.localSlopeMbPerKbar}`);
+check('the slope field is a SLOPE, not the level wearing the published unit',
+  f2.localSlopeMbPerKbar !== f2.footprintPerKbarLEVEL && Math.abs(f2.localSlopeMbPerKbar - 48.96) < 0.1 && f2.footprintPerKbarLEVEL > 170,
+  `level=${f2.footprintPerKbarLEVEL} slope=${f2.localSlopeMbPerKbar} — published slopes are 23.98/24.55/25.35`);
+
+// 6f. A slope over a bar delta too small to mean anything must be withheld, not published as a huge number.
+const f3 = perBarFields(1430.0, 8090, { bars: 8077, mb: 1427.8 });
+check('a slope over a trivial bar delta is withheld rather than published as noise',
+  f3.localSlopeMbPerKbar === null, `13 bars apart -> slope=${f3.localSlopeMbPerKbar}`);
 
 const passed = results.filter((r) => r.pass).length;
 fs.writeFileSync(EV + 'SEALED-SOAK-SELFTEST-20260801.json', JSON.stringify({

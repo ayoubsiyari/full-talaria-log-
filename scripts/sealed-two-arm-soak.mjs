@@ -34,6 +34,7 @@ import { bootConf01Session, cycleTrades } from './lib/conf01-session.mjs';
 import { loadConf05Indicators } from './lib/conf05-indicators.mjs';
 import { reapOrphanedRenderers } from './lib/find-soak-port.mjs';
 import { readOsFootprints } from './process-memory-census.mjs';
+import { perBarFields, evaluateGauges } from './lib/soak-gauges.mjs';
 
 const argOf = (n, d) => { const h = process.argv.find((a) => a.startsWith(`--${n}=`)); return h ? h.split('=').slice(1).join('=') : d; };
 const ARM = argOf('arm', 'trades');                 // trades | zerotrade
@@ -331,22 +332,7 @@ try {
       closedTrades: closed,
       // MEMORY — the reason this run exists.
       ...footprint,
-      // LEVEL and SLOPE are kept apart, and the field names say which is which. My first version published
-      // total/bars under the name "mbPerThousandResidentBars" - the same unit as my published 23.98 / 24.55
-      // / 25.35 MB/kbar SLOPES, but reading 196. It is a level: it divides the ~1.1 GB fixed baseline by
-      // bars, so it starts huge and FALLS as bars accumulate. Anyone comparing it to a published slope
-      // would have read an eight-fold regression that does not exist, and the falling series would have
-      // looked like a fix landing. Two fields, two names, no ambiguity.
-      footprintPerKbarLEVEL: footprint.footprintTotalMB != null && residentBars > 0
-        ? +((footprint.footprintTotalMB / residentBars) * 1000).toFixed(2)
-        : null,
-      localSlopeMbPerKbar: (() => {
-        if (footprint.footprintTotalMB == null || !prevSample) return null;
-        const dB = residentBars - prevSample.bars;
-        const dM = footprint.footprintTotalMB - prevSample.mb;
-        // Bars must move meaningfully or the ratio is noise over a rounding error.
-        return dB >= 200 ? +((dM / dB) * 1000).toFixed(2) : null;
-      })(),
+      ...perBarFields(footprint.footprintTotalMB, residentBars, prevSample),
       localSlopeNote: 'localSlopeMbPerKbar is the consecutive-sample slope and is the figure comparable to the published 23.98 / 24.55 / 25.35 MB/kbar. footprintPerKbarLEVEL is NOT - it carries the fixed baseline and falls as bars accumulate. The run-level slope comes from a fit over all samples, not from either field.',
       // LAG — same host, same cadence, so the scorecard has a before/after that is not two computers.
       ...blocking,
@@ -368,18 +354,11 @@ try {
       run.note({ __warning: true, segment, why: `Only ${live} of ${after.length} panels live by playhead (bar-count route says ${liveByBars}).` });
     }
 
-    // A gauge that silently stops reading is worse than one that never existed, because the artifact still
-    // looks like a measurement. Two consecutive nulls on either gauge stops the run.
-    gaugeMisses.footprint = footprint.footprintTotalMB == null ? gaugeMisses.footprint + 1 : 0;
-    gaugeMisses.blocking = blocking.blockingMsPerSec == null ? gaugeMisses.blocking + 1 : 0;
-    if (gaugeMisses.footprint >= 2 || gaugeMisses.blocking >= 2) {
-      run.note({
-        __void: true,
-        segment,
-        why: `Gauge failure: ${gaugeMisses.footprint >= 2 ? 'footprint' : 'blocking'} returned null on two consecutive samples`
-          + `${footprint.footprintReadFailed ? ` (${footprint.footprintReadFailed})` : ''}${blocking.blockingNote ? ` (${blocking.blockingNote})` : ''}.`
-          + ' Stopping rather than filling ten hours with a column of nulls that reads as a completed run.',
-      });
+    const gauge = evaluateGauges(gaugeMisses, footprint, blocking);
+    gaugeMisses.footprint = gauge.misses.footprint;
+    gaugeMisses.blocking = gauge.misses.blocking;
+    if (gauge.stop) {
+      run.note({ __void: true, segment, why: gauge.why });
       log('GAUGE FAILURE — stopping');
       break;
     }
