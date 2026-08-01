@@ -69,8 +69,8 @@ paint rows. The 5-row balance is accounted below so no row sits in limbo.
 
 | Bucket | Row | Commit(s) | Disposition |
 | --- | --- | --- | --- |
-| Balance | A1 residency null/epoch playhead | `512207d3a0` | Dropped for tonight by A: fixes a base-series residency module/pre-image absent from this tree. |
-| Balance | Residency window ships inline | `9e0a8ad591` | Dropped for tonight by A: would add a second trimmer over EVICT-03's master window hours before soak. |
+| Balance | A1 residency null/epoch playhead | `512207d3a0` | `CANNOT-APPLY`: fixes a base-series residency module/pre-image absent from this tree. |
+| Balance | Residency window ships inline | `9e0a8ad591` | `PENDING-A-OWNER-DECISION`: A must answer whether MEM-1a/EVICT-03's master-window trimmer covers it (`CLEARED-BY-MEM-1a`) or whether it is additive and must land. |
 | Balance | COVER-INFLIGHT-WEDGE | `fc7a80b958` | Landed by D; D journal records it with cover-loop, M17-DI2, and ORDER-GLOW-GC. |
 | Balance | COVER-LOOP-SAFETY | `1c7fe2d912` | Landed by D; D journal records it with cover-inflight, M17-DI2, and ORDER-GLOW-GC. |
 | Balance | M23 rollback trade-state | `4327f8f5f2` | Already present on D tip; cherry-pick resolved empty and was skipped. |
