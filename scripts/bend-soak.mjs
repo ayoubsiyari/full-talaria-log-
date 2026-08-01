@@ -38,6 +38,7 @@ import { ols2 } from './lib/ols2.mjs';
 import { readOsFootprints } from './process-memory-census.mjs';
 import { PO_TWO_INDICATORS } from './replay-decay-hunt.mjs';
 import { loadConf05Indicators } from './lib/conf05-indicators.mjs';
+import { reapOrphanedRenderers } from './lib/find-soak-port.mjs';
 
 // Configuration comes from ARGUMENTS, not environment variables. Two launches were lost to the
 // environment today: a stale C_OUT left in a shell made one run overwrite another run's artifact, and
@@ -89,18 +90,39 @@ const save = () => fs.writeFileSync(OUT, JSON.stringify(report, null, 1));
     // CONF-05 requires the arms differ in exactly one variable, so the indicator pair cannot be chosen
     // per-arm. If E's file is unreadable this throws and the run does not start, which is correct: silently
     // falling back to a different pair would invalidate the subtraction that is the whole point.
+    // A segment must not boot underneath the corpse of its predecessor. See reapOrphanedRenderers.
+    report.orphanReap = reapOrphanedRenderers();
+    if (report.orphanReap.killed.length) {
+      console.error(`[bend] reaped ${report.orphanReap.killed.length} orphaned renderer(s) before boot: ${report.orphanReap.killed.join(', ')}`);
+    }
     const eSel = loadConf05Indicators();
     report.indicatorSelection = eSel.provenance;
     report.indicatorPairs = eSel.pairs.map(([type, params]) => ({ type, params }));
     console.error(`[bend] indicators from E: ${eSel.pairs.map(([t2]) => t2).join(' + ')} (${eSel.provenance.familyCoverage})`);
+    // OPTION NAME BUG, found 23:33 on 31 Jul. This passed `speed`, but bootConf01Session's parameter is
+    // `replaySpeed`, so the value was silently discarded and every run defaulted to 60. Segments 1 and 2 of
+    // tonight's soak were launched with --speed=5 and RAN AT 60: the live engine reports 60 and the delivered
+    // rate is 8.44 bars/s, which 5 candles/s cannot produce. The condition was fine; the label was false.
+    // The effective speed is now read back from the engine and recorded, so a discarded option shows up in
+    // the artifact instead of in a sibling's reconciliation three days later.
     session = await bootConf01Session({
       indicators: eSel.pairs,
-      speed: SPEED,
+      replaySpeed: SPEED,
       placeOrder: false,
       label: 'bend-soak',
     });
     const { page, cdp, browserCdp, conf01, browser } = session;
     report.buildStamp = conf01?.buildId ?? null;
+    report.requestedSpeed = SPEED;
+    report.effectiveSpeed = await page.evaluate(() => {
+      const rs = window.chart && window.chart.replaySystem;
+      if (!rs) return null;
+      return rs.speed != null ? Number(rs.speed) : (rs.playbackSpeed != null ? Number(rs.playbackSpeed) : null);
+    }).catch(() => null);
+    // Recorded, not fatal: a run must never die over a label. But it must never publish a false one either.
+    report.speedMismatch = report.effectiveSpeed != null && Number(report.effectiveSpeed) !== Number(SPEED)
+      ? `Requested speed ${SPEED} but the engine reports ${report.effectiveSpeed}. Every rate in this artifact belongs to ${report.effectiveSpeed}, not ${SPEED}.`
+      : null;
     // Today's baseline, per-bar and correlation findings are all on b116. A different stamp here means
     // tonight's numbers are NOT directly comparable to B6's and the comparison must be stated as
     // cross-build rather than quietly made.

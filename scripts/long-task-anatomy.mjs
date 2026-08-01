@@ -21,6 +21,7 @@
  */
 import fs from 'node:fs';
 import { loadPuppeteer } from './lib/heap-cycle-browser.mjs';
+import { findSoakBrowser, assertSameBrowser } from './lib/find-soak-port.mjs';
 
 const argOf = (n, d) => { const h = process.argv.find((a) => a.startsWith(`--${n}=`)); return h ? h.split('=').slice(1).join('=') : d; };
 const PORT = argOf('port', '49797');
@@ -56,7 +57,12 @@ const report = {
 let browser = null;
 try {
   const puppeteer = await loadPuppeteer();
-  browser = await puppeteer.connect({ browserURL: `http://127.0.0.1:${PORT}`, defaultViewport: null });
+  // Discover rather than assume. Each soak segment launches its own browser on an ephemeral port.
+  const soak = await findSoakBrowser(PORT === 'auto' ? [] : [Number(PORT)]);
+  if (!soak) throw new Error('No live soak browser with a chart page found on any chrome-owned port.');
+  report.attachedTo = { port: soak.port, chartPages: soak.chartPages, candidates: soak.candidates };
+  const startIdentity = soak.identity;
+  browser = await puppeteer.connect({ browserURL: `http://127.0.0.1:${soak.port}`, defaultViewport: null });
   const pages = await browser.pages();
   const page = pages.find((p) => /\/chart\//.test(p.url())) || pages[pages.length - 1];
   const barsOf = async () => {
@@ -141,6 +147,134 @@ try {
         report.longTasks.reading = report.longTasks.physicallyPossible
           ? `${report.longTasks.perHour.over500} tasks per hour exceed 500 ms and ${report.longTasks.perHour.over1000} exceed a full second, measured over ${report.window.observedMinutes} minutes rather than extrapolated from a 5-second trace. Blocking time over this long window is ${report.longTasks.blockingMsPerSec} ms/s, against ${report.longTasks.totalLongTaskMsPerSec} ms/s of total long-task time.`
           : `INVALID: ${report.longTasks.totalLongTaskMsPerSec} ms of long-task time per second on one thread is impossible, so this count is contaminated and no rate may be quoted from it.`;
+      }
+    }
+  }
+
+  // ---------------------------------------------------------------------------------------------------------
+  // LOAF: long-animation-frame. Free, in-page, and it carries three things no trace category can give -
+  // styleAndLayoutStart (so render and style/layout separate from script without a category guess),
+  // per-script forcedStyleAndLayoutDuration (synchronous reflow, attributed to the script that forced it),
+  // and windowAttribution per script (self vs descendant), which is the host-versus-panel split.
+  // ---------------------------------------------------------------------------------------------------------
+  if (PHASE === 'loaf') {
+    const barsBefore = await barsOf();
+    const t0 = Date.now();
+    const supported = await page.evaluate(() => {
+      try { return (PerformanceObserver.supportedEntryTypes || []).includes('long-animation-frame'); } catch { return false; }
+    }).catch(() => false);
+    report.loafSupported = supported;
+    if (!supported) {
+      report.voided = 'long-animation-frame is not supported by this browser build. Recorded rather than substituted.';
+    } else {
+      await page.evaluate(() => {
+        if (window.__C_LOAF) return;
+        window.__C_LOAF = { frames: [], dropped: 0, startedAt: performance.now() };
+        window.__C_LOAF.observer = new PerformanceObserver((list) => {
+          for (const e of list.getEntries()) {
+            if (window.__C_LOAF.frames.length >= 4000) { window.__C_LOAF.dropped += 1; continue; }
+            window.__C_LOAF.frames.push({
+              st: Math.round(e.startTime),
+              dur: Math.round(e.duration),
+              blocking: Math.round(e.blockingDuration || 0),
+              renderStart: Math.round(e.renderStart || 0),
+              styleLayoutStart: Math.round(e.styleAndLayoutStart || 0),
+              scripts: (e.scripts || []).map((s) => ({
+                dur: Math.round(s.duration),
+                forced: Math.round(s.forcedStyleAndLayoutDuration || 0),
+                pause: Math.round(s.pauseDuration || 0),
+                invokerType: s.invokerType || null,
+                invoker: String(s.invoker || '').slice(0, 120),
+                url: String(s.sourceURL || '').split('/').pop().slice(0, 80),
+                fn: String(s.sourceFunctionName || '').slice(0, 80),
+                attr: s.windowAttribution || null,
+              })),
+            });
+          }
+        });
+        window.__C_LOAF.observer.observe({ type: 'long-animation-frame', buffered: true });
+      });
+      await sleep(OBSERVE_MS);
+      const got = await page.evaluate(() => {
+        const o = window.__C_LOAF;
+        if (!o) return null;
+        const out = { frames: o.frames.slice(), dropped: o.dropped, startedAt: o.startedAt, observedMs: performance.now() - o.startedAt };
+        try { o.observer.disconnect(); } catch { /* gone */ }
+        delete window.__C_LOAF;
+        return out;
+      }).catch(() => null);
+      const barsAfter = await barsOf();
+      // A segment roll mid-observation empties the result. It must void loudly, not read as a quiet page.
+      const stillThere = await findSoakBrowser([soak.port]);
+      assertSameBrowser(startIdentity, stillThere?.identity);
+
+      if (!got || !got.frames.length) {
+        report.voided = 'The long-animation-frame observer produced no frames, and the browser identity is unchanged, so the page genuinely produced no long animation frames.';
+      } else {
+        // Same exclusion as the long-task phase: buffered:true replays entries from before observation began.
+        const frames = got.frames.filter((f) => f.st >= got.startedAt);
+        const sec = got.observedMs / 1000;
+        const sum = (a) => a.reduce((s, x) => s + x, 0);
+        const totalDur = sum(frames.map((f) => f.dur));
+        // The three phases the entry itself delimits, so none of this is a category guess.
+        const scriptMs = sum(frames.map((f) => (f.renderStart > 0 ? f.renderStart - f.st : f.dur)));
+        const renderMs = sum(frames.map((f) => (f.renderStart > 0 && f.styleLayoutStart > 0 ? f.styleLayoutStart - f.renderStart : 0)));
+        const styleLayoutMs = sum(frames.map((f) => (f.styleLayoutStart > 0 ? (f.st + f.dur) - f.styleLayoutStart : 0)));
+        const allScripts = frames.flatMap((f) => f.scripts);
+        const forcedMs = sum(allScripts.map((s) => s.forced));
+
+        const agg = (keyFn) => {
+          const m = new Map();
+          for (const s of allScripts) {
+            const k = keyFn(s);
+            const cur = m.get(k) || { ms: 0, forcedMs: 0, count: 0 };
+            cur.ms += s.dur; cur.forcedMs += s.forced; cur.count += 1;
+            m.set(k, cur);
+          }
+          return [...m.entries()].sort((a, b) => b[1].ms - a[1].ms).slice(0, 12)
+            .map(([k, v]) => ({ key: k, ms: v.ms, msPerSec: +(v.ms / sec).toFixed(1), forcedMs: v.forcedMs, calls: v.count }));
+        };
+
+        report.window = {
+          startedAt: new Date(t0).toISOString(),
+          observedMinutes: +(got.observedMs / 60000).toFixed(1),
+          barsBefore, barsAfter, barsDelivered: barsAfter - barsBefore,
+        };
+        report.loaf = {
+          frames: frames.length,
+          bufferedExcluded: got.frames.length - frames.length,
+          droppedByCap: got.dropped,
+          longestFrameMs: Math.max(...frames.map((f) => f.dur)),
+          medianFrameMs: frames.map((f) => f.dur).sort((a, b) => a - b)[Math.floor(frames.length / 2)],
+          framesPerSec: +(frames.length / sec).toFixed(2),
+          totalLoafMsPerSec: +(totalDur / sec).toFixed(1),
+          blockingMsPerSec: +(sum(frames.map((f) => f.blocking)) / sec).toFixed(1),
+          // NAMES MATTER HERE AND THE OBVIOUS ONES ARE WRONG. The middle phase, renderStart ->
+          // styleAndLayoutStart, is where requestAnimationFrame and ResizeObserver CALLBACKS run. It is
+          // author JavaScript, not paint. Calling it "render" would have published a 41.8% rendering cost on
+          // a page whose real style-and-layout cost is 1.2%, and it would have contradicted my own trace
+          // decomposition for no reason.
+          phaseSplitMsPerSec: {
+            scriptBeforeRender: +(scriptMs / sec).toFixed(1),
+            renderCallbacksJs: +(renderMs / sec).toFixed(1),
+            styleAndLayout: +(styleLayoutMs / sec).toFixed(1),
+          },
+          phaseSplitPercent: totalDur > 0 ? {
+            scriptBeforeRender: +((scriptMs / totalDur) * 100).toFixed(1),
+            renderCallbacksJs: +((renderMs / totalDur) * 100).toFixed(1),
+            styleAndLayout: +((styleLayoutMs / totalDur) * 100).toFixed(1),
+          } : null,
+          forcedStyleAndLayoutMsPerSec: +(forcedMs / sec).toFixed(1),
+          forcedPercentOfScript: scriptMs > 0 ? +((forcedMs / scriptMs) * 100).toFixed(1) : null,
+          // THE PER-FRAME SPLIT, free: 'self' is the host document, 'descendant' is a panel iframe.
+          byWindowAttribution: agg((s) => s.attr || 'unknown'),
+          byInvokerType: agg((s) => s.invokerType || 'unknown'),
+          bySource: agg((s) => `${s.fn || '(anonymous)'} @ ${s.url || '?'}`),
+          byInvoker: agg((s) => s.invoker || '(none)'),
+          physicallyPossible: (totalDur / sec) <= 1000,
+        };
+        const p = report.loaf.phaseSplitPercent || {};
+        report.loaf.reading = `Delimited by the entry's own renderStart and styleAndLayoutStart rather than inferred from event names: ${p.scriptBeforeRender}% is script before the rendering opportunity, ${p.renderCallbacksJs}% is rendering-phase CALLBACKS (requestAnimationFrame and friends - author JavaScript, not paint), and only ${p.styleAndLayout}% is real style and layout. Read correctly that is ~${(Number(p.scriptBeforeRender) + Number(p.renderCallbacksJs)).toFixed(1)}% JavaScript, which AGREES with the trace decomposition instead of contradicting it. Synchronous forced reflow inside scripts is ${report.loaf.forcedStyleAndLayoutMsPerSec} ms/s, ${report.loaf.forcedPercentOfScript}% of script time - a cost no category split had shown.`;
       }
     }
   }

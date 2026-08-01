@@ -25,6 +25,7 @@
  */
 import fs from 'node:fs';
 import { loadPuppeteer } from './lib/heap-cycle-browser.mjs';
+import { findSoakBrowser } from './lib/find-soak-port.mjs';
 
 const argOf = (name, fallback) => {
   const hit = process.argv.find((a) => a.startsWith(`--${name}=`));
@@ -60,7 +61,12 @@ const report = {
 let browser = null;
 try {
   const puppeteer = await loadPuppeteer();
-  browser = await puppeteer.connect({ browserURL: `http://127.0.0.1:${PORT}`, defaultViewport: null });
+  // Discover the port: each soak segment runs its own browser on an ephemeral one, so a hard-coded port
+  // silently attaches to nothing once a segment rolls.
+  const soak = await findSoakBrowser(PORT === 'auto' ? [] : [Number(PORT)]);
+  if (!soak) throw new Error('No live soak browser with a chart page found on any chrome-owned port.');
+  report.attachedTo = { port: soak.port, chartPages: soak.chartPages, browserIdentity: soak.identity.slice(-12) };
+  browser = await puppeteer.connect({ browserURL: `http://127.0.0.1:${soak.port}`, defaultViewport: null });
   const pages = await browser.pages();
   const page = pages.find((p) => /\/chart\//.test(p.url())) || pages[pages.length - 1];
 
