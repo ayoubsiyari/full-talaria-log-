@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Leak shot (a): multichart panel teardown releases host data-cache ownership.
  *
  *   node --test --test-concurrency=1 \
@@ -20,7 +20,7 @@ const SWITCH = '__TALARIA_DISABLE_MC_HOST_CACHE_RELEASE_V1';
 const SOURCE = fs.readFileSync(CHART_JS, 'utf8');
 
 function note(name, pass, detail = '') {
-  process.stdout.write(`${pass ? 'PASS' : 'FAIL'} ${name}${detail ? ` ? ${detail}` : ''}\n`);
+  process.stdout.write(`${pass ? 'PASS' : 'FAIL'} ${name}${detail ? ` — ${detail}` : ''}\n`);
 }
 
 function sha256(value) {

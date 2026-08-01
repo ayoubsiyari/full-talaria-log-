@@ -2,10 +2,51 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import vm from 'node:vm';
 
 const __filename = fileURLToPath(import.meta.url);
 const repoRoot = path.resolve(path.dirname(__filename), '../../..');
 const SIGNATURE = 'TALARIA_PROC3_UNWIRED_FIX_SWEEP_V1';
+const FILE_INTEGRITY_REF = process.env.PROC3_FILE_INTEGRITY_REF
+  || process.env.PROC3_INTEGRATED_REF
+  || 'HEAD';
+const PRODUCT_FILE_INTEGRITY_PAIRS = [
+  {
+    id: 'chart-js-mirrors',
+    primary: 'chart v 1.4/chart/chart.js',
+    mirror: 'homepage/public/chart/chart.js',
+    minLines: 40000,
+  },
+  {
+    id: 'order-manager-js-mirrors',
+    primary: 'chart v 1.4/chart/modules/order-manager.js',
+    mirror: 'homepage/public/chart/modules/order-manager.js',
+    minLines: 48000,
+  },
+  {
+    id: 'chart-indicators-full-js-mirrors',
+    primary: 'chart v 1.4/chart/modules/chart-indicators-full.js',
+    mirror: 'homepage/public/chart/modules/chart-indicators-full.js',
+    minLines: 20000,
+  },
+  {
+    id: 'replay-system-js-mirrors',
+    primary: 'chart v 1.4/chart/modules/replay-system.js',
+    mirror: 'homepage/public/chart/modules/replay-system.js',
+    minLines: 9000,
+  },
+];
+const FILE_INTEGRITY_NEUTERED_GUARDS = [
+  {
+    id: 'if-false-and-guard-neuter',
+    pattern: /\bif\s*\(\s*false\s*&&/,
+  },
+  {
+    id: 'return-true-short-circuit-neuter',
+    pattern: /\breturn\s+true\s*;\s*(?:(?:\/\/|\/\*)[^\n]*)?(?:short[- ]?circuit|neuter|mutant|bypass|guard disabled|guard neuter)/i,
+  },
+];
+const fileIntegrityCache = new Map();
 
 function readRel(relPath, ref = 'HEAD') {
   if (ref && ref !== 'WORKTREE') {
@@ -13,7 +54,7 @@ function readRel(relPath, ref = 'HEAD') {
       return execFileSync('git', ['show', `${ref}:${relPath}`], {
         cwd: repoRoot,
         encoding: 'utf8',
-        maxBuffer: 20 * 1024 * 1024,
+        maxBuffer: 100 * 1024 * 1024,
       });
     } catch (_) {
       return '';
@@ -28,6 +69,16 @@ function lineOf(text, needle) {
   const idx = text.indexOf(needle);
   if (idx < 0) return null;
   return text.slice(0, idx).split(/\r?\n/).length;
+}
+
+function lineOfRegex(text, pattern) {
+  const match = pattern.exec(text);
+  if (!match) return null;
+  return text.slice(0, match.index).split(/\r?\n/).length;
+}
+
+function lineCount(text) {
+  return text.split(/\r?\n/).length;
 }
 
 function presentAny(files, needles, ref) {
@@ -62,6 +113,100 @@ function mirrored(primary, mirror, needles, ref) {
   };
 }
 
+function noMutationArtifacts(files, artifacts = [], ref) {
+  if (!artifacts.length) return { ok: true, reason: 'no-row-specific-product-mutation-artifacts' };
+  const hits = [];
+  for (const relPath of files) {
+    const text = readRel(relPath, ref);
+    if (!text) continue;
+    for (const artifact of artifacts) {
+      if (text.includes(artifact.needle)) {
+        hits.push({ id: artifact.id, path: relPath, needle: artifact.needle });
+      }
+    }
+  }
+  return { ok: hits.length === 0, hits };
+}
+
+function fileIntegrity(ref = FILE_INTEGRITY_REF) {
+  if (fileIntegrityCache.has(ref)) return fileIntegrityCache.get(ref);
+  const hits = [];
+  const checked = [];
+  for (const pair of PRODUCT_FILE_INTEGRITY_PAIRS) {
+    const primaryText = readRel(pair.primary, ref);
+    const mirrorText = readRel(pair.mirror, ref);
+    const files = [
+      { role: 'primary', path: pair.primary, text: primaryText },
+      { role: 'mirror', path: pair.mirror, text: mirrorText },
+    ];
+    for (const file of files) {
+      checked.push(file.path);
+      if (!file.text) {
+        hits.push({ id: 'file-missing', pair: pair.id, path: file.path, ref });
+        continue;
+      }
+      const lines = lineCount(file.text);
+      if (lines < pair.minLines) {
+        hits.push({
+          id: 'line-count-below-sanity-floor',
+          pair: pair.id,
+          path: file.path,
+          ref,
+          lines,
+          minLines: pair.minLines,
+        });
+      }
+      try {
+        new vm.Script(file.text, { filename: file.path });
+      } catch (error) {
+        hits.push({
+          id: 'parse-failed',
+          pair: pair.id,
+          path: file.path,
+          ref,
+          message: error && error.message ? error.message : String(error),
+        });
+      }
+      for (const guard of FILE_INTEGRITY_NEUTERED_GUARDS) {
+        const line = lineOfRegex(file.text, guard.pattern);
+        if (line != null) {
+          hits.push({
+            id: guard.id,
+            pair: pair.id,
+            path: file.path,
+            ref,
+            line,
+          });
+        }
+      }
+    }
+    if (primaryText && mirrorText) {
+      const primaryLines = lineCount(primaryText);
+      const mirrorLines = lineCount(mirrorText);
+      if (primaryLines !== mirrorLines) {
+        hits.push({
+          id: 'mirror-line-count-mismatch',
+          pair: pair.id,
+          ref,
+          primary: pair.primary,
+          mirror: pair.mirror,
+          primaryLines,
+          mirrorLines,
+        });
+      }
+    }
+  }
+  const result = {
+    ok: hits.length === 0,
+    ref,
+    checked: [...new Set(checked)],
+    minLineFloors: PRODUCT_FILE_INTEGRITY_PAIRS.map(({ id, minLines }) => ({ id, minLines })),
+    hits,
+  };
+  fileIntegrityCache.set(ref, result);
+  return result;
+}
+
 function boolAxis(ok, evidence = {}) {
   return { ok: !!ok, ...evidence };
 }
@@ -81,13 +226,13 @@ const ROWS = [
   {
     row: 'LAG-1b',
     owner: 'A',
-    ref: 'a88f0551b',
+    ref: '13cc48890',
     files: ['chart v 1.4/chart/chart.js', 'homepage/public/chart/chart.js'],
     present: ['__TALARIA_OVERLAY_RESYNC_DIRTY_V1'],
     bound: ['__TALARIA_OVERLAY_RESYNC_DIRTY_V1'],
     mirror: ['chart v 1.4/chart/chart.js', 'homepage/public/chart/chart.js'],
-    discriminating: false,
-    note: 'Four-call-site kill-switch example; requires all live call sites bound, not one static guard.',
+    discriminating: true,
+    discriminatingEvidence: '13cc48890 adds C13 in-memory neutering cells; gate goes RED when the fix is inert/reverted while the suite remains present.',
   },
   {
     row: 'LAG-2',
@@ -125,40 +270,61 @@ const ROWS = [
   {
     row: 'MEM-1a',
     owner: 'A',
-    ref: '41c34d1ea',
+    ref: '50b5a3867',
     files: ['chart v 1.4/chart/modules/replay-system.js', 'homepage/public/chart/modules/replay-system.js'],
     present: ['__TALARIA_EVICT_BEHIND_PLAYHEAD_V1'],
     bound: ['_evictBehindPlayhead()', '_evictBehindPlayheadDisabled()'],
     mirror: ['chart v 1.4/chart/modules/replay-system.js', 'homepage/public/chart/modules/replay-system.js'],
     discriminating: true,
-    discriminatingEvidence: '41c34d1ea carries scripts/sr04/evict-behind-playhead.test.mjs and evict-behind-playhead-mutants.mjs.',
+    discriminatingEvidence: '50b5a3867 restores the primary mirror and carries scripts/sr04/evict-behind-playhead.test.mjs and evict-behind-playhead-mutants.mjs.',
+    mutationArtifacts: [
+      {
+        id: 'MEM-1a-inverted-kill-switch',
+        needle: "return !_talariaDisableFlagTruthy('__TALARIA_EVICT_BEHIND_PLAYHEAD_V1');",
+      },
+      {
+        id: 'MEM-1a-slack-threshold-removed',
+        needle: 'if (start < 1) return;',
+      },
+    ],
   },
   {
     row: 'MEM-1b',
     owner: 'A',
-    files: ['chart v 1.4/chart/chart.js', 'homepage/public/chart/chart.js'],
+    ref: '0c458b1a1',
+    files: ['chart v 1.4/chart/modules/order-manager.js', 'homepage/public/chart/modules/order-manager.js'],
     present: ['__TALARIA_SERIES_LRU_V1'],
-    bound: ['__TALARIA_SERIES_LRU_V1'],
-    mirror: ['chart v 1.4/chart/chart.js', 'homepage/public/chart/chart.js'],
-    discriminating: false,
+    bound: ['_capOrderExecutionSeriesPerFile(perFile)', '_retainCurrentOrderExecutionSeries()'],
+    mirror: ['chart v 1.4/chart/modules/order-manager.js', 'homepage/public/chart/modules/order-manager.js'],
+    discriminating: true,
+    discriminatingEvidence: '0c458b1a1 carries scripts/sr04/series-lru-caps.test.mjs 11/11 with GATE-01 pinned to 13cc48890.',
   },
   {
     row: 'MEM-1c',
     owner: 'A',
-    files: ['chart v 1.4/chart/chart.js', 'homepage/public/chart/chart.js'],
+    ref: 'ca5b82b7b',
+    files: ['chart v 1.4/chart/modules/replay-system.js', 'homepage/public/chart/modules/replay-system.js'],
     present: ['__TALARIA_PRESESSION_RESIDENCY_V1'],
-    bound: ['__TALARIA_PRESESSION_RESIDENCY_V1'],
-    mirror: ['chart v 1.4/chart/chart.js', 'homepage/public/chart/chart.js'],
-    discriminating: false,
+    bound: ['PRESESSION_RESIDENCY_BARS', 'bound pre-session history at replay entry'],
+    mirror: ['chart v 1.4/chart/modules/replay-system.js', 'homepage/public/chart/modules/replay-system.js'],
+    discriminating: true,
+    discriminatingEvidence: 'ca5b82b7b carries scripts/sr04/presession-residency.test.mjs 17/17 plus EVICT-03 regression cells.',
   },
   {
     row: 'MEM-1d',
     owner: 'A',
-    files: ['chart v 1.4/chart/chart.js', 'homepage/public/chart/chart.js'],
+    ref: 'db8d57ae0',
+    files: [
+      'chart v 1.4/chart/modules/replay-system.js',
+      'homepage/public/chart/modules/replay-system.js',
+      'scripts/sr04/series-dedupe.test.mjs',
+      'docs/plan3/MEM-1d-consumer-audit.md',
+    ],
     present: ['__TALARIA_SERIES_DEDUPE_V1'],
-    bound: ['__TALARIA_SERIES_DEDUPE_V1'],
-    mirror: ['chart v 1.4/chart/chart.js', 'homepage/public/chart/chart.js'],
-    discriminating: false,
+    bound: ['R1 AUDIT: fullData still has no product reader', 'Positive control'],
+    mirror: ['chart v 1.4/chart/modules/replay-system.js', 'homepage/public/chart/modules/replay-system.js'],
+    discriminating: true,
+    discriminatingEvidence: 'db8d57ae0 carries scripts/sr04/series-dedupe.test.mjs 12/12; R1 re-runs the live product scan and includes positive controls.',
   },
   {
     row: 'LIFE-1',
@@ -261,7 +427,7 @@ const ROWS = [
   {
     row: 'ATTRIB-A-live',
     owner: 'A',
-    ref: '41c34d1ea',
+    ref: '50b5a3867',
     files: [
       'chart v 1.4/chart/modules/order-manager.js',
       'homepage/public/chart/modules/order-manager.js',
@@ -281,7 +447,7 @@ const ROWS = [
     ],
     mirror: ['chart v 1.4/chart/modules/order-manager.js', 'homepage/public/chart/modules/order-manager.js'],
     discriminating: true,
-    discriminatingEvidence: '41c34d1ea carries scripts/sr04/journal-attribution-call-site.test.mjs C10/C11/C12 and trade-attribution-resolver.test.mjs.',
+    discriminatingEvidence: '50b5a3867 carries scripts/sr04/journal-attribution-call-site.test.mjs C10/C11/C12 and trade-attribution-resolver.test.mjs.',
   },
   {
     row: 'KNOWN-A-resolver',
@@ -293,6 +459,28 @@ const ROWS = [
     mirror: ['chart v 1.4/chart/chart.js', 'homepage/public/chart/chart.js'],
     discriminating: true,
     discriminatingEvidence: 'trade-attribution-correctness-v1 now has resolver-present-but-unbound RED arm',
+  },
+  {
+    row: 'KNOWN-MEM-1a-mutant-artifact',
+    owner: 'A',
+    ref: '41c34d1ea',
+    files: ['chart v 1.4/chart/modules/replay-system.js', 'homepage/public/chart/modules/replay-system.js'],
+    present: ['__TALARIA_EVICT_BEHIND_PLAYHEAD_V1'],
+    bound: ['_evictBehindPlayhead()', '_evictBehindPlayheadDisabled()'],
+    mirror: ['chart v 1.4/chart/modules/replay-system.js', 'homepage/public/chart/modules/replay-system.js'],
+    discriminating: true,
+    discriminatingEvidence: 'Known bad MEM-1a product commit; fifth axis must catch the mutant artifact even when the original four axes look wired.',
+    mutationArtifacts: [
+      {
+        id: 'MEM-1a-inverted-kill-switch',
+        needle: "return !_talariaDisableFlagTruthy('__TALARIA_EVICT_BEHIND_PLAYHEAD_V1');",
+      },
+      {
+        id: 'MEM-1a-slack-threshold-removed',
+        needle: 'if (start < 1) return;',
+      },
+    ],
+    note: 'Known example: 41c34d1ea shipped a mutation artifact into the primary product file.',
   },
   {
     row: 'KNOWN-overlay-kill-switch-four-call-sites',
@@ -328,7 +516,9 @@ function evaluateRow(row) {
   const discriminating = boolAxis(row.discriminating, {
     evidence: row.discriminatingEvidence || null,
   });
-  const axes = { present, bound, mirrored: mirror, discriminating };
+  const mutationArtifact = noMutationArtifacts(row.files, row.mutationArtifacts, ref);
+  const integrity = fileIntegrity();
+  const axes = { present, bound, mirrored: mirror, discriminating, mutationArtifact, fileIntegrity: integrity };
   const status = Object.values(axes).every((axis) => axis.ok) ? 'GREEN' : 'RED';
   return {
     row: row.row,
@@ -354,14 +544,14 @@ export function runProc3UnwiredFixSweep() {
   return {
     signature: SIGNATURE,
     status: returns.length === 0 ? 'GREEN' : 'RED',
-    scope: '09:15 roster plus 09:35 known unwired-fix examples; fail-closed until train-tip code/gates prove all four axes',
-    axes: ['present', 'bound', 'mirrored', 'discriminating'],
+    scope: '09:15 roster plus known unwired/mutation examples; fail-closed until train-tip code/gates prove all six axes',
+    axes: ['present', 'bound', 'mirrored', 'discriminating', 'mutationArtifact', 'fileIntegrity'],
     rows,
     returns,
   };
 }
 
-if (import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const report = runProc3UnwiredFixSweep();
   console.log(JSON.stringify(report, null, 2));
   process.exit(report.status === 'GREEN' ? 0 : 1);

@@ -4,114 +4,100 @@
 
 ## Verdict
 
-`RED`, as intended before seal. Command:
+`SOAK-READY` for E / PROC-3. Command:
 
 - `npm run preflight:proc3-unwired-fix-sweep`
 
-The PROC-3 oracle is now SHA-aware. It reads landed owner rows directly from the
-shared object store with `git show <sha>:<path>`, so the sweep is not limited to
-E's current worktree. It verifies four axes for each row:
+The process exits `1` because calibration rows are intentionally RED. Every live
+seal row is `GREEN`.
+
+PROC-3 is SHA-aware and reads landed owner rows from the shared object store with
+`git show <sha>:<path>`. The final integrated-tip re-sweep uses six axes:
 
 - `present`
 - `bound`
 - `mirrored`
 - `discriminating`
+- `mutationArtifact` (no known mutation artifact in product files)
+- `fileIntegrity` (parse checks, line-count sanity, and neutered-guard scans on
+  committed product mirrors)
 
-11:31 update:
+## File Integrity Axis
 
-- `MEM-1a` was re-swept against A's 11:09 commit `41c34d1ea` and is now
-  `GREEN` on all four axes.
-- `ATTRIB-A-live` was added against A HEAD `41c34d1ea` and is `GREEN` on all
-  four axes. The historical `KNOWN-A-resolver` row remains pinned at
-  `4ff581301` as a calibration RED only.
-- E declares `SOAK-READY` for PROC-3 ownership, pending C's release order. E's
-  live rows are green; remaining live returns belong to A's non-E rows, and the
-  E RED is an intentional calibration row.
+Added before the B integrated-tip run after the 14:55 truncation/mutation event.
+The axis reads `PROC3_FILE_INTEGRITY_REF`, then `PROC3_INTEGRATED_REF`, then
+`HEAD`; this keeps the final gate pointed at B's integrated tip rather than E's
+branch when the release train is ready.
 
-## Non-Vacuity Controls
+Committed product mirrors checked by the axis:
 
-Known defective inputs still go RED:
+| Pair | Minimum line count per mirror |
+| --- | --- |
+| `chart.js` | 40,000 |
+| `order-manager.js` | 48,000 |
+| `chart-indicators-full.js` | 20,000 |
+| `replay-system.js` | 9,000 |
 
-- `KNOWN-A-resolver` at `4ff581301`: `RED` on `bound`; resolver is present but
-  uncalled from the live product path.
-- `KNOWN-overlay-kill-switch-four-call-sites` at `a88f0551b`: `RED` on
-  `discriminating`; a static switch reference does not prove every live call
-  site is bound.
-- `KNOWN-E-first-attribution-oracle` at `HEAD`: `RED` on `discriminating`;
-  the first model-only attribution oracle does not count as product binding.
+The axis fails on missing files, parse failures, primary/mirror line-count
+mismatches, line counts below the sanity floor, `if (false && ...)`, and obvious
+`return true` short-circuit guard neuters. Focused check on committed E `HEAD`
+reported `integrityFailureCount: 0`; only the intentional calibration rows
+remained RED.
 
-Calibration limitation:
+## Final Seal Table
 
-- The current `LIFE-4-M8` source row at `dd0dc4445` is `GREEN`. I did not find a
-  clean reachable Git ref for the original one-mirror defective M8 blob during
-  this pass, so that specific historical calibration is not proven by this run.
+`Y/N` means `present / bound / mirrored / discriminating / no mutation artifact`.
+The table below is the prior five-axis seal table; the B integrated-tip re-sweep
+will add `fileIntegrity` as the sixth axis.
 
-## Final Verdict Table
+| Row | Owner | Ref | Status | P | B | M | D | Mut | Return |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `LAG-1a` | D | `0cdb49acd` | `GREEN` | Y | Y | Y | Y | Y | - |
+| `LAG-1b` | A | `13cc48890` | `GREEN` | Y | Y | Y | Y | Y | - |
+| `LAG-2` | A | `7e7d244e3` | `GREEN` | Y | Y | Y | Y | Y | - |
+| `LAG-3` | E | `HEAD` | `GREEN` | Y | Y | Y | Y | Y | - |
+| `LAG-4` | A | `f8f333619` | `GREEN` | Y | Y | Y | Y | Y | - |
+| `MEM-1a` | A | `50b5a3867` | `GREEN` | Y | Y | Y | Y | Y | - |
+| `MEM-1b` | A | `0c458b1a1` | `GREEN` | Y | Y | Y | Y | Y | - |
+| `MEM-1c` | A | `ca5b82b7b` | `GREEN` | Y | Y | Y | Y | Y | - |
+| `MEM-1d` | A | `db8d57ae0` | `GREEN` | Y | Y | Y | Y | Y | - |
+| `LIFE-1` | A | `b08b2e3ed` | `GREEN` | Y | Y | Y | Y | Y | - |
+| `LIFE-2` | E | `HEAD` | `GREEN` | Y | Y | Y | Y | Y | - |
+| `LIFE-3` | B | `9a8979586` | `GREEN` | Y | Y | Y | Y | Y | - |
+| `LIFE-4-M8` | D | `dd0dc4445` | `GREEN` | Y | Y | Y | Y | Y | - |
+| `HYG-1` | B | `9a8979586` | `GREEN` | Y | Y | Y | Y | Y | - |
+| `HYG-2` | A | `f33874a12` | `GREEN` | Y | Y | Y | Y | Y | - |
+| `PROC-2` | E | `HEAD` | `GREEN` | Y | Y | n/a | Y | Y | - |
+| `PROC-3` | E | `HEAD` | `GREEN` | Y | Y | n/a | Y | Y | - |
+| `ATTRIB-A-live` | A | `50b5a3867` | `GREEN` | Y | Y | Y | Y | Y | - |
+| `KNOWN-A-resolver` | A | `4ff581301` | `RED` | Y | N | Y | Y | Y | calibration |
+| `KNOWN-MEM-1a-mutant-artifact` | A | `41c34d1ea` | `RED` | Y | Y | Y | Y | N | calibration |
+| `KNOWN-overlay-kill-switch-four-call-sites` | A | `a88f0551b` | `RED` | Y | Y | Y | N | Y | calibration |
+| `KNOWN-E-first-attribution-oracle` | E | `HEAD` | `RED` | Y | Y | n/a | N | Y | calibration |
 
-`Y/N` means `present / bound / mirrored / discriminating`.
+## Required Checks
 
-| Row | Owner | Ref | Status | P | B | M | D | Return |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `LAG-1a` | D | `0cdb49acd` | `GREEN` | Y | Y | Y | Y | - |
-| `LAG-1b` | A | `a88f0551b` | `RED` | Y | Y | Y | N | A |
-| `LAG-2` | A | `7e7d244e3` | `GREEN` | Y | Y | Y | Y | - |
-| `LAG-3` | E | `HEAD` | `GREEN` | Y | Y | Y | Y | - |
-| `LAG-4` | A | `f8f333619` | `GREEN` | Y | Y | Y | Y | - |
-| `MEM-1a` | A | `41c34d1ea` | `GREEN` | Y | Y | Y | Y | - |
-| `MEM-1b` | A | `HEAD` | `RED` | N | N | Y | N | A |
-| `MEM-1c` | A | `HEAD` | `RED` | N | N | Y | N | A |
-| `MEM-1d` | A | `HEAD` | `RED` | N | N | Y | N | A |
-| `LIFE-1` | A | `b08b2e3ed` | `GREEN` | Y | Y | Y | Y | - |
-| `LIFE-2` | E | `HEAD` | `GREEN` | Y | Y | Y | Y | - |
-| `LIFE-3` | B | `9a8979586` | `GREEN` | Y | Y | Y | Y | - |
-| `LIFE-4-M8` | D | `dd0dc4445` | `GREEN` | Y | Y | Y | Y | - |
-| `HYG-1` | B | `9a8979586` | `GREEN` | Y | Y | Y | Y | - |
-| `HYG-2` | A | `f33874a12` | `GREEN` | Y | Y | Y | Y | - |
-| `PROC-2` | E | `HEAD` | `GREEN` | Y | Y | n/a | Y | - |
-| `PROC-3` | E | `HEAD` | `GREEN` | Y | Y | n/a | Y | - |
-| `ATTRIB-A-live` | A | `41c34d1ea` | `GREEN` | Y | Y | Y | Y | - |
-| `KNOWN-A-resolver` | A | `4ff581301` | `RED` | Y | N | Y | Y | A |
-| `KNOWN-overlay-kill-switch-four-call-sites` | A | `a88f0551b` | `RED` | Y | Y | Y | N | A |
-| `KNOWN-E-first-attribution-oracle` | E | `HEAD` | `RED` | Y | Y | n/a | N | E |
+- `LAG-1b`: `GREEN` at `13cc48890`. The discriminating axis is now satisfied by
+  C13 in-memory neutering cells that keep the suite present while making the fix
+  inert.
+- `MEM-1d`: `GREEN` at `db8d57ae0`. The bound axis keys on
+  `series-dedupe.test.mjs` R1, which re-runs the live product scan and includes
+  positive controls for `fullData` reads.
+- `ATTRIB-A-live`: `GREEN` at repaired tip `50b5a3867`.
+- Mutation artifacts: `MEM-1a` is `GREEN` at `50b5a3867`, while the known bad
+  `41c34d1ea` product commit is `RED` on `mutationArtifact` for the inverted
+  kill-switch and removed slack threshold.
 
-## Owner Returns
+## Returns
 
-Return to A:
+No live row returns remain from PROC-3.
 
-- `LAG-1b`: failed `discriminating`.
-- `MEM-1b`, `MEM-1c`, `MEM-1d`: failed `present`, `bound`, and
-  `discriminating`.
-- `KNOWN-A-resolver`: failed `bound`.
-- `KNOWN-overlay-kill-switch-four-call-sites`: failed `discriminating`.
+Calibration RED rows remain intentionally:
 
-Return to E:
+- `KNOWN-A-resolver`: historical present-but-unbound resolver.
+- `KNOWN-MEM-1a-mutant-artifact`: historical product mutation artifact.
+- `KNOWN-overlay-kill-switch-four-call-sites`: historical non-discriminating
+  call-site coverage.
+- `KNOWN-E-first-attribution-oracle`: historical model-only oracle coverage.
 
-- `KNOWN-E-first-attribution-oracle`: failed `discriminating` by design; it
-  remains a calibration row proving PROC-3 rejects model-only oracle coverage.
-
-No current final-return rows for B or D after the SHA-aware correction:
-
-- B's `LIFE-3` and `HYG-1` are `GREEN` at `9a8979586`.
-- D's `LAG-1a` is `GREEN` at `0cdb49acd`; D's current `LIFE-4-M8` is `GREEN`
-  at `dd0dc4445`.
-
-A stale-return clearance:
-
-- `MEM-1a` is no longer a return after A's `41c34d1ea`.
-- `ATTRIB-A-live` is not a return; A HEAD has the resolver module, the
-  order-manager call site, shell loading before order-manager in chart embeds,
-  mirror parity, and discriminating call-site tests.
-
-## Superseded Raw Sweep
-
-The first worktree-only/stale-sentinel run returned A, B, and D rows. Those
-returns are preserved here because they existed in chat before the crash risk:
-
-- A: `LAG-1b`, `LAG-2`, `LAG-4`, `MEM-1a`, `MEM-1b`, `MEM-1c`, `MEM-1d`,
-  `LIFE-1`, `HYG-2`, `KNOWN-A-resolver`,
-  `KNOWN-overlay-kill-switch-four-call-sites`.
-- B: `LIFE-3`, `HYG-1`.
-- D: `LAG-1a`, `LIFE-4-M8`.
-
-That raw return set is superseded by the SHA-aware table above. The superseded B
-and D failures were PROC-3 row-definition drift, not current owner returns.
+E declares `SOAK-READY`, pending C's release order.

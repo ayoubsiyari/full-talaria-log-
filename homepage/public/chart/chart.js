@@ -4080,6 +4080,15 @@ class Chart {
         return !(typeof window !== 'undefined' && window.__TALARIA_DISABLE_MC_HOST_CACHE_RELEASE_V1);
     }
 
+    /**
+     * LEAK-G: under multichart, suppress BT TF prefetch fill (default ON).
+     * Kill-switch: window.__TALARIA_DISABLE_MC_BT_TF_PREFETCH_V1 — truthy restores prefetch.
+     * Distinct from __TALARIA_DISABLE_BT_TF_CACHE_PLAYHEAD_COVER.
+     */
+    _mcBtTfPrefetchGateEnabled() {
+        return !(typeof window !== 'undefined' && window.__TALARIA_DISABLE_MC_BT_TF_PREFETCH_V1);
+    }
+
     _mcHostCacheOwnerId() {
         if (!this._mcHostCacheClientId) {
             const rand = Math.random().toString(36).slice(2);
@@ -7946,7 +7955,25 @@ class Chart {
         return stepMs < rawMs * 0.92;
     }
 
+    /**
+     * LEAK-I (wave-2 retainer): default-ON gate that suppresses ~100k-bar
+     * high-limit bulk / lazy replay master hydrates.
+     * Kill-switch: window.__TALARIA_DISABLE_MC_HIGH_LIMIT_BULK_V1 — truthy
+     * restores the legacy 100k path. Fix default ON when absent; !! truthiness;
+     * read per call.
+     */
+    _mcHighLimitBulkGateEnabled() {
+        try {
+            return !(typeof window !== 'undefined'
+                && !!window.__TALARIA_DISABLE_MC_HIGH_LIMIT_BULK_V1);
+        } catch (_e) {
+            return true;
+        }
+    }
+
     _lazyReplayMasterSmartLimit() {
+        // LEAK-I: clamp lazy master windows to the normal smart page size.
+        if (this._mcHighLimitBulkGateEnabled()) return 2000;
         const fallback = 100000;
         try {
             const w = Number(window.__TALARIA_MC_LAZY_REPLAY_MASTER_LIMIT);
@@ -7959,14 +7986,19 @@ class Chart {
 
     _highLimitBulkHistoryDisabled() {
         try {
+            // V1 product switch: fix ON (absent/falsy kill) forces high-limit bulk off.
+            if (this._mcHighLimitBulkGateEnabled()) return true;
+            // Kill path: informal disable remains an additional disable (already wired).
             return typeof window !== 'undefined'
                 && !!window.__TALARIA_MC_DISABLE_HIGH_LIMIT_BULK;
         } catch (_e) {
-            return false;
+            return true;
         }
     }
 
     _highLimitBulkHistorySmartLimit() {
+        // LEAK-I: clamp even if a caller bypasses _shouldUseHighLimitBulkHistory.
+        if (this._mcHighLimitBulkGateEnabled()) return 2000;
         const fallback = 100000;
         try {
             const w = Number(window.__TALARIA_MC_HIGH_LIMIT_BULK_LIMIT);
@@ -8548,7 +8580,29 @@ class Chart {
         return this._getSmartCachedPayload(fileId, params, true);
     }
 
+    /**
+     * LEAK-F: suppress idle smart prefetch-others under multichart by default.
+     * Kill switch window.__TALARIA_DISABLE_MC_SMART_PREFETCH_OTHERS_V1 — truthy
+     * restores prefetch-others. Fix default ON when flag absent; !! truthiness;
+     * read per call.
+     */
+    _mcSmartPrefetchOthersGateEnabled() {
+        try {
+            return !(typeof window !== 'undefined'
+                && !!window.__TALARIA_DISABLE_MC_SMART_PREFETCH_OTHERS_V1);
+        } catch (_e) {
+            return true;
+        }
+    }
+
     _scheduleSmartPrefetchOthers(activeFileId, timeframe, session) {
+        // MC-only gate: skip fill-before-spill warming of other session symbols.
+        // Single-chart keeps prior behaviour (schedule still runs).
+        try {
+            const inMc = (typeof this._isMultichartEmbedPanel === 'function' && this._isMultichartEmbedPanel())
+                || (typeof this._isMultichartHostPanel === 'function' && this._isMultichartHostPanel());
+            if (inMc && this._mcSmartPrefetchOthersGateEnabled()) return;
+        } catch (_e) { /* fall through — schedule */ }
         const ric = window.requestIdleCallback || ((cb) => setTimeout(cb, 250));
         ric(() => {
             if (!this._smartPrefetchCache) this._smartPrefetchCache = new Map();
@@ -10339,6 +10393,13 @@ class Chart {
     }
 
     _scheduleBacktestTimeframePrefetch(fileId, session) {
+        // LEAK-G: fill-before-spill — host can warm 6 fileIds × 8 TFs × 12k bars.
+        // Default-ON under MC: no-op schedule. Kill restores prefetch. Store path untouched (LEAK-A).
+        if (this._mcBtTfPrefetchGateEnabled()
+            && typeof this._usesMultichartReplayMaster === 'function'
+            && this._usesMultichartReplayMaster()) {
+            return;
+        }
         if (!this.isBacktestMode || !fileId) return;
         if (this._btTfPrefetchScheduled === fileId) return;
         this._btTfPrefetchScheduled = fileId;
