@@ -3,6 +3,42 @@
  * Handles syncing all user preferences between localStorage and cloud database
  */
 
+/**
+ * Read a kill-switch across own window, then parent, then top.
+ *
+ * Deliberately a shared function rather than a second copy of the climb inside each
+ * predicate. prefsCloudFailureCapV1Enabled carries the original inline climb, and
+ * prefs-cloud-failure-cap.test.mjs mutates that block through an anchor it requires to be
+ * unique in the file: a verbatim duplicate elsewhere makes another manager's gate throw
+ * "mutation anchor is not unique" rather than fail, which reads as a broken harness instead
+ * of a broken product. One implementation, one anchor, and the behaviour is identical.
+ *
+ * An unreadable cross-origin realm carries no instruction for us, so it fails towards the
+ * shipped default.
+ */
+function _talariaPrefsKillFlagAcrossRealms(flagName) {
+    if (typeof window === 'undefined') return false;
+    const killed = (w) => {
+        try {
+            return !!(w && w[flagName]);
+        } catch (_e) {
+            return false;
+        }
+    };
+    if (killed(window)) return true;
+    try {
+        const parentWin = window.parent && window.parent !== window ? window.parent : null;
+        if (killed(parentWin)) return true;
+        const topWin = window.top && window.top !== window && window.top !== parentWin
+            ? window.top
+            : null;
+        if (killed(topWin)) return true;
+    } catch (_e) {
+        // Realm chain unreachable; the own-window read above already stands.
+    }
+    return false;
+}
+
 class PreferencesSyncManager {
     constructor() {
         this.preferences = null;
@@ -79,26 +115,7 @@ class PreferencesSyncManager {
      * host must reach the panels.
      */
     prefsBootstrapTimeoutV1Enabled() {
-        if (typeof window === 'undefined') return true;
-        const killed = (w) => {
-            try {
-                return !!(w && w.__TALARIA_DISABLE_PREFS_BOOTSTRAP_TIMEOUT_V1);
-            } catch (_e) {
-                return false;
-            }
-        };
-        if (killed(window)) return false;
-        try {
-            const parent = window.parent && window.parent !== window ? window.parent : null;
-            if (killed(parent)) return false;
-            const top = window.top && window.top !== window && window.top !== parent
-                ? window.top
-                : null;
-            if (killed(top)) return false;
-        } catch (_e) {
-            // Parent chain unreachable; the own-window read above already stands.
-        }
-        return true;
+        return !_talariaPrefsKillFlagAcrossRealms('__TALARIA_DISABLE_PREFS_BOOTSTRAP_TIMEOUT_V1');
     }
 
     /**

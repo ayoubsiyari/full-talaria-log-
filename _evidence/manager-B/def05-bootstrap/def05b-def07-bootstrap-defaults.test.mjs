@@ -121,7 +121,10 @@ console.log('\n=== PRESENT: the switch and the bound are declared in the shipped
   check('and reads __TALARIA_DISABLE_PREFS_BOOTSTRAP_TIMEOUT_V1',
     src.includes('__TALARIA_DISABLE_PREFS_BOOTSTRAP_TIMEOUT_V1'), true);
   check('and climbs the realm chain, so a host switch reaches every panel',
-    /prefsBootstrapTimeoutV1Enabled[\s\S]{0,900}window\.top/.test(src), true);
+    /prefsBootstrapTimeoutV1Enabled\(\)\s*\{\s*return !_talariaPrefsKillFlagAcrossRealms\(/.test(src), true);
+  check('via one shared climb, not a second copy that would break the cap gate\'s mutation anchor',
+    (src.match(/const parentWin = window\.parent/g) || []).length === 1
+      && /function _talariaPrefsKillFlagAcrossRealms[\s\S]{0,700}window\.top/.test(src), true);
   check('the GET is given an AbortController signal', /signal:\s*controller\.signal/.test(src), true);
   check('and the timer is cleared on every exit, leaving nothing armed for the soak',
     /finally\s*\{[\s\S]{0,160}clearTimeout\(bootstrapTimer\)/.test(src), true);
