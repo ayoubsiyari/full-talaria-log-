@@ -458,6 +458,18 @@
     var chartInstance = null;
     var coalescedReplayFrameArgs = null;
     var coalescedReplayFrameRaf = null;
+    var latestFrame = null;
+
+    function latestWinsEnabled() {
+        try {
+            if (typeof global !== 'undefined'
+                && Object.prototype.hasOwnProperty.call(global, '__TALARIA_LATEST_WINS_V1')
+                && global.__TALARIA_LATEST_WINS_V1 === false) {
+                return false;
+            }
+        } catch (_) {}
+        return true;
+    }
 
     function getChartInstance() {
         if (chartInstance) return chartInstance;
@@ -1185,7 +1197,8 @@
 
     function flushCoalescedReplayFrameApply() {
         coalescedReplayFrameRaf = null;
-        var args = coalescedReplayFrameArgs;
+        var args = latestWinsEnabled() && latestFrame ? latestFrame.args : coalescedReplayFrameArgs;
+        latestFrame = null;
         coalescedReplayFrameArgs = null;
         if (!args) return;
         var ch = getChartInstance();
@@ -1194,17 +1207,30 @@
     }
 
     function scheduleCoalescedReplayFrameApply(args) {
-        coalescedReplayFrameArgs = args;
+        if (latestWinsEnabled()) {
+            latestFrame = { args: Object.assign({}, args || {}), instant: false };
+            coalescedReplayFrameArgs = latestFrame.args;
+        } else {
+            coalescedReplayFrameArgs = args;
+        }
         if (coalescedReplayFrameRaf != null) return;
         var raf = global.requestAnimationFrame || function (fn) { return setTimeout(fn, 16); };
         coalescedReplayFrameRaf = raf(flushCoalescedReplayFrameApply);
+    }
+
+    function applyLatestFrameInstant(args) {
+        if (!latestWinsEnabled()) return false;
+        latestFrame = { args: Object.assign({}, args || {}), instant: true };
+        coalescedReplayFrameArgs = latestFrame.args;
+        flushCoalescedReplayFrameApply();
+        return true;
     }
 
     function applyReplayFrameHot(args, directApply) {
         var ch = getChartInstance();
         if (!ch) return false;
         if (directApply) {
-            applyReplayFrame(ch, args);
+            if (!applyLatestFrameInstant(args)) applyReplayFrame(ch, args);
         } else {
             scheduleCoalescedReplayFrameApply(args);
         }
@@ -1540,6 +1566,11 @@
                 return false;
             };
             ch.ensureReplayDataCoversTimestamp(seekTs).then(function () {
+                if (applyLatestFrameInstant(buildPayload())) {
+                    ch._mcCatchUpFails = 0;
+                    ch._mcCatchUpCooldownUntil = 0;
+                    return;
+                }
                 if (retryMirror()) {
                     ch._mcCatchUpFails = 0;
                     ch._mcCatchUpCooldownUntil = 0;
