@@ -1391,6 +1391,15 @@ class ReplaySystem {
 
         this.playbackMode = normalizedMode;
         this.tickAnimationEnabled = normalizedMode === 'tick';
+
+        // ORDER-01 §5: REALISTIC exists only in tick mode. Leaving tick while
+        // it is selected would strand the user on a speed candle mode has no
+        // rung for, and the bare Number() downstream would silently read it
+        // as 1 while the selector went on showing something else.
+        if (normalizedMode === 'candle' && this.speed === SPEED_GOV_REALISTIC) {
+            this.speed = SPEED_GOV_LADDER_BPS[0];
+        }
+
         this.syncPlaybackModeControls();
 
         if (!modeChanged) return;

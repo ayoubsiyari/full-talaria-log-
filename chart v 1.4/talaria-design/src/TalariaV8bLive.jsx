@@ -12031,7 +12031,8 @@ const TalariaV8bLive = () => {
   const [tickCandle, setTickCandle] = useState("candle");
   const [playing, setPlaying] = useState(false);
   const [replayPlayStarting, setReplayPlayStarting] = useState(false);
-  const [speed, setSpeed] = useState(30);
+  // ORDER-01 §5: 30 is no longer a rung; it migrates to the ladder top.
+  const [speed, setSpeed] = useState(10);
   const [buySell, setBuySell] = useState("buy");
   const [orderType, setOrderType] = useState("market");
   const [btmTab, setBtmTab] = useState("all");
@@ -13681,7 +13682,9 @@ const TalariaV8bLive = () => {
         }
         const mode = typeof rs.getPlaybackMode === 'function' ? rs.getPlaybackMode() : rs.playbackMode;
         if (mode && mode !== replayMode) setReplayMode(mode);
-        if (Number.isFinite(rs.speed) && rs.speed !== speed) setSpeed(rs.speed);
+        // REALISTIC is a speed but not a number, so a finite-only check would
+        // let the toolbar keep showing a numeric rung while the engine runs 1:1.
+        if ((Number.isFinite(rs.speed) || rs.speed === 'REALISTIC') && rs.speed !== speed) setSpeed(rs.speed);
       }
     };
     const id = setInterval(sync, 250);
@@ -37404,10 +37407,12 @@ const TalariaV8bLive = () => {
                 opacity:replayPlayStarting?0.95:(playing?(hov==="rp-play"?1:0.7):undefined)}}/>
             </button>
             {/* Speed */}
-            {/* Speed — 15-step slide bar */}
-            {(()=>{const steps=[1,2,3,5,10,15,20,25,30,50,60,70,80,90,100];const si=steps.reduce((best,v,i)=>Math.abs(v-speed)<Math.abs(steps[best]-speed)?i:best,0);const pct=si/14*100;return(
+            {/* Speed — ORDER-01 §5: exactly 1–10 bars/sec in candle mode, the
+                same ten plus REALISTIC in tick mode. Nothing above 10, nothing
+                between. The 15-step ladder this replaced went to 100×. */}
+            {(()=>{const steps=replayMode==="tick"?[1,2,3,4,5,6,7,8,9,10,"REALISTIC"]:[1,2,3,4,5,6,7,8,9,10];const last=steps.length-1;const rIdx=steps.indexOf("REALISTIC");const si=speed==="REALISTIC"?(rIdx<0?last:rIdx):steps.reduce((best,v,i)=>(typeof v==="number"&&Math.abs(v-speed)<Math.abs(steps[best]-speed))?i:best,0);const pct=si/last*100;return(
             <div style={{display:"flex",alignItems:"center",gap:6,padding:"0 6px",width:140,flexShrink:0}}>
-              <span style={{fontSize:14,fontWeight:800,color:c.acL,fontVariantNumeric:"tabular-nums",width:40,flexShrink:0,textAlign:"right",userSelect:"none",letterSpacing:"-0.02em",transition:"transform 0.1s ease",transform:hov==="rp-spd-dn"?`scale(1.18) translateY(-2px)`:`translateY(-2px)`,display:"inline-block",paddingRight:2,boxSizing:"border-box"}}>{steps[si]}<span style={{fontSize:16,fontWeight:800,color:c.acL,marginLeft:1}}>×</span></span>
+              <span style={{fontSize:14,fontWeight:800,color:c.acL,fontVariantNumeric:"tabular-nums",width:40,flexShrink:0,textAlign:"right",userSelect:"none",letterSpacing:"-0.02em",transition:"transform 0.1s ease",transform:hov==="rp-spd-dn"?`scale(1.18) translateY(-2px)`:`translateY(-2px)`,display:"inline-block",paddingRight:2,boxSizing:"border-box"}}>{steps[si]==="REALISTIC"?<span style={{fontSize:11,fontWeight:800,color:c.acL,letterSpacing:"0.02em"}}>REAL</span>:<>{steps[si]}<span style={{fontSize:16,fontWeight:800,color:c.acL,marginLeft:1}}>×</span></>}</span>
               <div style={{position:"relative",width:88,height:36,display:"flex",alignItems:"center"}}>
                 {/* Track */}
                 <div style={{position:"absolute",left:0,right:0,height:3,top:"50%",transform:"translateY(-50%)",borderRadius:99,background:c.trk}}>
@@ -37415,7 +37420,7 @@ const TalariaV8bLive = () => {
                 </div>
                 {/* Thumb — upward triangle */}
                 <div style={{position:"absolute",left:`calc(${pct}% - 6px)`,top:"calc(50% + 2px)",width:12,height:9,clipPath:"polygon(50% 0%,0% 100%,100% 100%)",background:`linear-gradient(180deg,${c.acL},${c.ac})`,filter:hov==="rp-spd-dn"?`drop-shadow(0 0 8px ${c.acG}) brightness(1.35)`:`drop-shadow(0 0 4px ${c.acG})`,transform:hov==="rp-spd-dn"?"scale(1.18)":"scale(1)",transition:"transform 0.08s ease,filter 0.08s ease",pointerEvents:"none"}}/>
-                <input type="range" min="0" max="14" step="1" value={si}
+                <input type="range" min="0" max={last} step="1" value={si}
                   onChange={e=>setSpeed(steps[Number(e.target.value)])}
                   onPointerDown={()=>setHov("rp-spd-dn")}
                   onPointerUp={()=>setHov(null)} onPointerLeave={()=>setHov(null)}
