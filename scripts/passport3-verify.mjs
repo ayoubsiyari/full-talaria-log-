@@ -58,10 +58,12 @@ if (MODE === 'contract') {
   const emitter = path.join(chartDir, 'scripts', 'bump-chart-engine-build.mjs');
   const artefact = path.join(chartDir, 'build-info.json');
   const saved = fs.existsSync(artefact) ? fs.readFileSync(artefact, 'utf8') : null;
-  const savedEngine = (() => {
-    const f = path.join(chartDir, 'chart.js');
-    return fs.existsSync(f) ? fs.readFileSync(f, 'utf8') : null;
-  })();
+  // B's emitter has THREE product side effects, not one: it rewrites chart.js's build constant AND bumps
+  // the version in package.json. My first pass restored only chart.js, and six emitter runs walked
+  // package.json from 1.4.31 to 1.4.37 in a tree that is supposed to be quiescent. Every file the emitter
+  // can touch is captured and put back, and the run asserts it afterwards.
+  const TOUCHED = ['chart.js', 'package.json'].map((f) => path.join(chartDir, f));
+  const savedProduct = new Map(TOUCHED.filter((f) => fs.existsSync(f)).map((f) => [f, fs.readFileSync(f, 'utf8')]));
 
   const runEmitter = (env) => {
     const r = spawnSync(process.execPath, [emitter], {
@@ -121,9 +123,14 @@ if (MODE === 'contract') {
     check('a 404 is reported as NOT_DEPLOYED, distinct from every other failure',
       missing.ok === false && missing.state === 'NOT_DEPLOYED', `state=${missing.state}`);
   } finally {
-    // B's emitter rewrites chart.js's build constant. Put both files back exactly.
     if (saved != null) fs.writeFileSync(artefact, saved); else { try { fs.unlinkSync(artefact); } catch { /* never existed */ } }
-    if (savedEngine != null) fs.writeFileSync(path.join(chartDir, 'chart.js'), savedEngine);
+    for (const [f, s] of savedProduct) fs.writeFileSync(f, s);
+
+    // Asserted, not hoped: a verifier that leaves a product file modified during quiescence is a hazard,
+    // and "I restored it" is the kind of claim this programme requires evidence for.
+    const stillDirty = spawnSync('git', ['status', '--porcelain', '--', ...TOUCHED, artefact], { encoding: 'utf8' });
+    const dirty = String(stillDirty.stdout || '').trim();
+    check('the verifier leaves no product file modified', dirty === '', dirty || 'chart.js, package.json and build-info.json all restored');
   }
 } else {
   const live = await readBuildInfo(ORIGIN);
