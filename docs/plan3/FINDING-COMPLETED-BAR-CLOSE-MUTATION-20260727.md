@@ -17,46 +17,7 @@ A finished candle's close changed by 13 pips. On 5m the same procedure was stabl
 
 Direction suggests the **first** reading was the wrong one: the just-completed bucket appears to hold a partial/interpolated close, which is later replaced by the true close when something forces a clean rebuild.
 
-## COMPLETE DATA SET (PO, 2026-07-28 00:11) — the resampled series lags the raw series, and the error scales with bucket duration
-
-### D3 — cross-timeframe read at one frozen playhead
-
-| TF | last-bar `C` |
-|---|---|
-| **1m** | **1.41500** |
-| 5m | 1.41477 |
-| 15m | 1.41477 |
-| 1H | 1.41477 |
-| 4H | 1.41477 |
-| 1D | 1.41477 |
-| 1W | 1.41477 |
-
-**1m is the outlier; every resampled timeframe agrees with every other to the last digit.** Gap = 0.00023 (**2.3 pips**).
-
-1m is the native raw granularity — no resampling. Every other timeframe is resampled from it. So this is not per-timeframe drift and not a bucketing error: it is **one lag point on the resample path**, identical for all consumers of it. The resampled display series' last bar carries a stale close while the native series carries the live one.
-
-Note this contradicts the earlier reading of D2's 5m result as "clean": 5m is stale here by the same 2.3 pips as 1W. 5m was never correct — the mutation was simply below observation threshold.
-
-### D2 — completed-bar mutation, by timeframe
-
-| TF | `C` at completion | `C` later | Delta |
-|---|---|---|---|
-| 5m | 1.30508 | 1.30508 | 0 (below threshold) |
-| 15m | 1.41279 | 1.41273 | **−0.6 pips** |
-| 1H | 1.30532 | 1.30662 | **+13 pips** |
-| 4H | 1.42074 | 1.42796 | **+72 pips** |
-
-**Monotonic in timeframe duration across four cells.** Magnitudes are not strictly comparable (different playheads, different price activity), but the trend is unambiguous and the mechanism it implies is not.
-
-### Unified mechanism (supersedes the separate D2/D3 framings)
-
-The resampled display series' **last bar holds a close taken at the static playhead rather than at the live tick**, so it trails the raw series by an amount proportional to how much of the bucket is not yet included. When that bucket finalises, the trailing value can be retained instead of being rebuilt from raw — and only corrects when something later forces a clean full resample.
-
-This single mechanism accounts for both observations and for the timeframe scaling: a coarser bucket leaves more un-included time, so both the live lag (D3) and the baked-in error (D2) grow with bucket duration. 4H at 72 pips is the same defect as 15m at 0.6 pips.
-
-**Severity restated:** 72 pips wrong on a 4H close, then silently corrected, is not a threshold-of-perception defect. This is a hard canary blocker.
-
-## Why 5m passed and 1H failed (superseded — see complete data set above)
+## Why 5m passed and 1H failed
 
 5m passing does **not** establish that 5m is correct. The magnitude of this class of error is bounded by how far price travelled between the wrong close and the true close, so a short bucket can hide it below observation threshold. Treat 5m as "not observed," not "correct" — the oracle must assert on both.
 
@@ -89,14 +50,7 @@ If (1) ≠ (2), the finalization path is retaining a trimmed or interpolated val
 A completed candle's close must be immutable. Beyond the direct integrity problem:
 
 - Any indicator consuming closes on a coarse timeframe is computed from a wrong close and then **recomputed when the close corrects** — producing a visible shift of indicator values on already-painted bars.
-- **PROMOTED to leading hypothesis for the indicator-lag family (2026-07-28 00:11).** The D3 data changes the standing of this considerably. On every resampled timeframe the last bar's close trails the live price. Any indicator computed from closes therefore trails price by construction — which is *precisely* the reported symptom, "indicators lagging behind price." It predicts three things we can check against what we already know:
-  1. The lag should be **absent on 1m** (native granularity, no resample) and **present on every timeframe above it**. This would explain why some single-chart tests on fine timeframes looked clean while others did not.
-  2. The lag should be **worse on coarser timeframes**, matching the D2 scaling.
-  3. It would be **independent of render cadence**, which is why two days of cadence work moved the symptom without eliminating it.
-
-  **Decisive test, cheap:** reproduce the indicator lag on 1m versus 5m/1H/4H at the same speed. If it is absent on 1m and scales with coarseness above it, the dominant cause is data staleness, not render cadence, and the render work should stop until the data path is fixed.
-
-  This does not retire the render-cadence findings — the M-c coalesce chain and the loader gap were real. It reframes the residual symptom that survived them.
+- **Hypothesis worth testing, not yet established:** this may contribute to the "indicators lag / jump behind price" family. Those reports have been pursued as a render-cadence problem; if closes are mutating under the indicators, part of the visible symptom is a *data* effect, not a render effect. Cheap to test — assert close immutability on completed buckets and see whether any of the indicator-shift reports change behaviour.
 
 ## Gates
 

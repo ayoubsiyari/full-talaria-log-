@@ -4,8 +4,16 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const defaultManifest = path.join(repoRoot, 'scripts/module-contracts.json');
+// In CHECKPOINT Docker stages the script is COPY'd to /scripts/*.mjs, so the
+// parent-of-script default would be filesystem root. Allow an explicit root
+// (Dockerfile sets TALARIA_MODULE_CONTRACT_ROOT) and fall back to repo layout.
+const scriptDir = path.dirname(fileURLToPath(import.meta.url));
+const repoRoot = process.env.TALARIA_MODULE_CONTRACT_ROOT
+  ? path.resolve(process.env.TALARIA_MODULE_CONTRACT_ROOT)
+  : path.resolve(scriptDir, '..');
+const defaultManifest = process.env.TALARIA_MODULE_CONTRACTS_JSON
+  ? path.resolve(process.env.TALARIA_MODULE_CONTRACTS_JSON)
+  : path.join(scriptDir, 'module-contracts.json');
 const SURFACE_CONTRACT_CLASS_ALLOWLIST = Object.freeze({
   host: ['correctness'],
   panel: ['correctness'],

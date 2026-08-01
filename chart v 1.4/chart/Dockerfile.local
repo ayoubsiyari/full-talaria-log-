@@ -28,9 +28,31 @@ COPY ["scripts/checkpoint-build-assert.mjs", "./checkpoint-tools/checkpoint-buil
 COPY ["scripts/lib/checkpoint-provenance.mjs", "./checkpoint-tools/lib/checkpoint-provenance.mjs"]
 COPY ["scripts/lib/homepage-forwarding-contracts.mjs", "./checkpoint-tools/lib/homepage-forwarding-contracts.mjs"]
 COPY ["scripts/lib/homepage-forwarding-contracts.mjs", "/scripts/lib/homepage-forwarding-contracts.mjs"]
+# build:live:chart → preflight:module-contracts resolves ../../scripts from /build/talaria-design → /scripts/
+COPY ["scripts/module-contract-preflight.mjs", "/scripts/module-contract-preflight.mjs"]
+COPY ["scripts/module-contracts.json", "/scripts/module-contracts.json"]
+# soak Fix-E named exemptions — soak at /build/chart/modules imports ../../../scripts/lib → /scripts/lib
+COPY ["scripts/lib/m19-e-hotpath-console-exemptions.mjs", "/scripts/lib/m19-e-hotpath-console-exemptions.mjs"]
 COPY ["chart v 1.4/talaria-design", "./talaria-design/"]
 COPY ["chart v 1.4/chart", "./chart/"]
 COPY ["homepage/public/chart/modules/m20-q6-replay-lifecycle-binding.test.mjs", "/homepage/public/chart/modules/m20-q6-replay-lifecycle-binding.test.mjs"]
+# module-contract-preflight is COPY'd to /scripts (repoRoot would be /). Point it at
+# a reconstructed tree that matches contract inventory/mirror paths.
+COPY ["homepage/public/chart/modules/module-presence-runtime.js", "/contract-root/homepage/public/chart/modules/module-presence-runtime.js"]
+COPY ["homepage/public/chart/modules/indicator-performance.js", "/contract-root/homepage/public/chart/modules/indicator-performance.js"]
+COPY ["homepage/public/chart/dist-v9", "/contract-root/homepage/public/chart/dist-v9"]
+COPY ["homepage/public/chart/multichart-prod", "/contract-root/homepage/public/chart/multichart-prod"]
+# Public mirror of routed /chart/multichart/ panel shell — required by
+# module-contracts.json rows multichart-panel-shell-{source,public}.
+COPY ["homepage/public/chart/multichart/chart-host.html", "/contract-root/homepage/public/chart/multichart/chart-host.html"]
+RUN mkdir -p "/contract-root/chart v 1.4" \
+  && ln -sfn /build/chart "/contract-root/chart v 1.4/chart" \
+  && ln -sfn /build/talaria-design "/contract-root/chart v 1.4/talaria-design" \
+  # chart/dist-v9 is .dockerignored (rebuilt by vite); seed from committed public mirror
+  # so module-contract-preflight's chart-host inventory exists before build:live:chart.
+  && rm -rf /build/chart/dist-v9 \
+  && cp -a /contract-root/homepage/public/chart/dist-v9 /build/chart/dist-v9
+ENV TALARIA_MODULE_CONTRACT_ROOT=/contract-root
 WORKDIR /build/talaria-design
 ENV NODE_ENV=production
 RUN if [ "$CHECKPOINT_BUILD" = "1" ]; then \

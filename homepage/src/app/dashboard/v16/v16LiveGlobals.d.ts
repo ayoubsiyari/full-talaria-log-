@@ -121,6 +121,8 @@ declare global {
     __TALARIA_CHART_TOGGLE_SUPPORT__?: () => void;
     /** Left nav Support button anchor for popover positioning. */
     __TALARIA_SUPPORT_NAV_ANCHOR__?: HTMLElement;
+    /** Kill-switch: restore immortal support-WS ping after socket close (legacy spam). */
+    __TALARIA_DISABLE_SUPPORT_WS_PING_CLEANUP_V1?: boolean;
     /** Required chart modules that failed presence checks; bounded IDs only. */
     __TALARIA_DEGRADED_STATE?: {
       degradedModules: string[];
@@ -140,6 +142,18 @@ declare global {
       class: string;
       status: string;
     }>;
+    /**
+     * Server writes that failed; published by server-write-failure-ledger.js for
+     * in-realm consumers. The support passport deliberately reads the ledger's
+     * localStorage mirror instead, because a ticket is filed from a different page.
+     */
+    __TALARIA_WRITE_FAILURE_STATE?: {
+      failedServerWrites: number;
+      endpoints: string[];
+      firstAt: number;
+      lastAt: number;
+      lastStatus: number;
+    };
   }
 }
 

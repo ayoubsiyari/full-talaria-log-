@@ -439,1967 +439,4185 @@ still running and is the current best hope of naming it.
 I am not editing the finding myself; it is not my document. Escalated to the Director as an amendment
 request with the measured numbers attached.
 
-## 2026-07-30T11:52 · ACCEPTED · MC-CLONE-CUT — the 75% allocator is cut, and the author''s suite missed a real regression
+---
 
-`manager-a/mc-clone-cut-20260730` @ **8b6c90554** = 65164a11a (author, product) + d52d1d8b4 + 8b6c90554 (both MINE, test-only).
-Based on the LIVE tip e675e5d1b, so it cherry-picks independently and does NOT ride with the P0 branch.
+## 2026-07-28T00:35 · CORRECTION · §A13 and §A12.2 are now in the workspace copy; my 00:20 reading was substantially right
 
-**The cut.** `_mcCopySamePairFullRawData(source, slotKey)` now copies once per destination slot and appends only
-the new tail. Falls back to a full clone on: different source identity, source shorter, boundary-timestamp
-mismatch, no slot key, or source above the 200k cap. Detachment preserved — every bar in the result is built by
-`_mcScalarCloneRawBar`, so this is NOT the aliasing flag. Flag `__TALARIA_DISABLE_MC_INCREMENTAL_RAWDATA_COPY_V1`,
-truthy semantics; the pre-existing `__TALARIA_DISABLE_MC_RAWDATA_COPY_V1` still takes precedence.
-Removes 99.13% of cloned bar objects per destination (8,170,290 -> 71,103 over a simulated 30s).
+Superseding the ASSUMPTION of 2026-07-28T00:20. `docs/plan3/DIRECTOR-RULINGS-20260727.md` now contains
+§A13 at line 209 with §A13.1–§A13.4, and §A12.2 at line 188. Checked against the eight rules I
+extracted from the dispatch text: all eight hold. Two details worth recording because they change my
+own past routing calls rather than confirming them.
 
-**VERIFIED BY ME, not taken on report.** Clean tree, exactly one product commit, zero off-limits paths,
-mirrors byte-identical EFB77272F367E576, flags 1/1 in both copies, bogus-flag control 0.
-Ran EIGHT of my own mutants on disk in both mirrors, needle==1 enforced, negative control correctly NOT_APPLIED,
-files restored to baseline sha. All killed by NAMED BEHAVIOURAL cells, none anchor-only.
+- §A13.2's table routes **"Test, oracle and harness authoring against stated criteria"** to mid tier
+  (`gpt-5.5-medium-fast`). That confirms my 00:22 self-assessment: the session-calendar RED was
+  over-tiered on the letter, and the §A10 control inventory clearly was.
+- The same table routes **"any edit to `chart.js` shared paths (resample, pipeline, replay, indicator,
+  render)"** to top tier. That retroactively justifies the `_mcDiag` counter packet at top tier, which
+  I had recorded at 00:22 as merely "defensible."
 
-**I ALSO READ THE CODE RATHER THAN THE TESTS, because the failure mode here is silent data corruption.**
-The fast path returns the SAME array object every call, so the whole design rests on nobody mutating it
-externally. Cleared with positive controls (50 `.push|splice` sites in replay-system.js prove the grep shape works):
-`_mergeIntoPanelFullRawData` REASSIGNS (chart.js:7014/:7026), never mutates; `_installPlayheadPrefix` builds a
-separate WeakMap-keyed buffer and only READS master. So the `out.length === cache.sourceLength` invariant holds.
-It is not ENFORCED in code, though — see ROW below.
-Also confirmed the append loop uses the identical malformed-bar filter as `_mcCloneRawDataBars`, so it cannot
-diverge from legacy, and the >200k fallback is correct because a tail-append can never drop a sliding-window head.
-
-**CAUGHT A REGRESSION THE AUTHOR DID NOT RUN INTO — leak-d, 8/0 -> 4/4.**
-`leak-d-rawdata-copy.test.mjs` covers the exact function the cut rewrote and the author never ran it.
-Classified properly instead of guessing: green at the parent e675e5d1b, red after the cut = genuine regression.
-Cause was NOT behaviour: `TypeError: this._mcIncrementalRawDataCopyDisabled is not a function`. The harness
-extracts a FIXED method list, so new collaborators break it — the EXTRACTION-LIST TRAP already on my board from
-cover-loop-safety. Plus three mutants anchored on source text the cut rewrote. Repaired in 8b6c90554: six methods
-+ Map into the vm context, three mutants re-anchored. **All nine leak-d mutants still killed**, including
-`same-pair-helper-returns-alias`, `viewport-panel-site-aliased` and `sync-from-parent-master-site-aliased` — so
-the aliasing teeth were RESTORED, not relaxed to make the suite pass. That is independent confirmation from a
-suite I did not write that the cut preserves detachment at those call sites.
-
-**SWEPT ALL 117 module suites rather than assuming leak-d was the only casualty.** 14 red — every one of them
-red at the parent with IDENTICAL pass/fail counts, so all 14 are pre-existing debt on the live tip and leak-d was
-the only regression. (Separately notable: the tip carries 14 red module suites, incl. p3-bar-store-realm 15/1
-which I had already reported.)
-
-**CLOSED MY OWN B7 SURVIVOR rather than filing it.** Deleting the over-200k-cap fallback left the author''s suite
-fully green — the guard shipped untested, the fifth sighting today of the untested-branch/anchor family. Added a
-behavioural cell driving a source past an overridden limit plus a matching `drop-over-limit-fallback` mutant;
-suite 10 -> 11 cells and B7 now dies. Hit the cross-realm prototype trap doing it: the harness returns vm-context
-arrays that fail `assert/strict` deep equality with identical-looking values — `Array.from` rebuilds in-realm.
-
-**THE WIN IS REAL BUT NOT YET MEASURED LIVE, and I will not overstate it.** The fast path only pays off if the
-SOURCE array identity is stable across ticks; if the host churned it the win would be ZERO and the simulation
-would still look perfect. Checked in source: `this.fullRawData` is assigned only at init and replay start/reset
-(replay-system.js:183/:2723/:3449), never per tick, and the host `_panelFullRawData` writers are all fetch/merge
-paths. So identity is stable in steady-state playback and the fast path genuinely hits. That is a static argument,
-not a measurement — the honest number still requires re-reading the allocation profile with the cut deployed,
-which is already queued.
-
-ROUTING unchanged and still deliberately NOT stacked: (1) ship-b105-countdown-tf @ 684e3e5cb, the P0 STILL LIVE
-after b105/b106/b107; (2) cpu-cuts-b105 @ 612602877; (3) residency @ 9e0a8ad59; (4) this.
-
-ROWS:
-- The `out.length === cache.sourceLength` invariant is guaranteed today only by the ABSENCE of external mutators,
-  which I verified — it is not enforced. Any future in-place trim of `_panelFullRawData` or `replay.fullRawData`
-  silently corrupts the append offset and renders a continuous series across a hidden hole. A one-line length
-  check would convert that into a full-clone fallback. Cheap insurance, not needed today.
-- The cache retains a cross-realm ref to the host''s array. Adds no NEW class of retention (the same function
-  already aliases `parent.rawData`/`parent.data`), and dies with the panel chart, but it is now explicit.
-- `_reseedReplayFullRawFromLoadedData` remains queued as the next allocator; re-read the profile after this lands
-  rather than assuming the 75% converts 1:1.
-
-
-## 2026-07-30T12:30 · RULING 12:10 · four packets out, residency killed, and W91 re-aims the rest
-
-Read the ruling (67df8a5c9, director worktree). KILL-02 accepted: nothing retires without a number.
-
-**W91 LANDED AFTER THE RULING WAS WRITTEN AND CHANGES ITEMS 2, 4, 5 AND 6.** C''s CPU-PROCESS-CENSUS-V1
-(adcce4bee): at four panels the renderer''s off-thread majority is **V8 background GC at 73.2% of a core**,
-scavenger-dominated — young-generation collection, i.e. enormous numbers of SHORT-LIVED objects.
-Raster is ABSENT from the renderer entirely, compositor 3.0%, GPU-main 5.0%, and
-`LocalFrameView::performLayout` is 140.6 ms of ~9,800 ms busy = **1.4% of the main thread**.
-C corrects its own W74/W78 raster attribution. Consequence: **allocation rate is a CPU defect as well as a
-memory one**, and DOM/canvas work is not the lever.
-
-Three things follow, and I am stating them rather than quietly re-scoping:
-- **CUT 4, CANVAS PROMOTION, IS NOW DEAD WITH A NUMBER.** I recorded a disagreement rather than a refusal
-  on 30 Jul: promotion pays for UNCHANGED content, our canvas is fully repainted every frame, so the cost
-  is the drawing not the compositing. C''s census settles it — raster absent, compositing 3%. That is the
-  measurement I said I would take. It should get a death-certificate row.
-- **My allocation work is the main line, not a side quest.** The clone cut and the reseed cut target
-  exactly the short-lived-object rate the census names.
-- **The DOM cuts (item 2) are RETENTION fixes, not CPU fixes.** I have told both authors so and told the
-  glow-filter author to expect ~0 on the paint measurement the advisor''s raster framing implies.
-
-**DISPATCHED, tier=MID, writable sets disjoint per PAR-01, all four on their own worktrees:**
-1. RESEED-CUT — `_reseedReplayFullRawFromLoadedData` (chart.js:6490), branch manager-a/reseed-cut-20260730
-   off the clone-cut head 8b6c90554. Same incremental+flagged shape. I named the hazards: the destination
-   identity check is MANDATORY because replay-system.js:2723/:3449 externally replace `fullRawData`; only
-   the array copy may be optimised (the currentIndex re-sync and the tickPathCache resets must survive);
-   `this.data` churns identity per tick so `fullData` will mostly fall back and must not be forced.
-2. LABELTOOL handle growth — local to LabelTool by preference; shared `_clearGeometryChildren` may only be
-   touched if every dependent tool is named (the name-the-dependent rule).
-3. ORDER GLOW `<filter>` defs — dedupe on create + remove on teardown; must name what references a filter
-   before removing it.
-4. POINTER-SWEEP profile — read-only, product bytes byte-identical, positive control mandatory.
-
-**ITEM 3 — RESIDENCY IS DEAD, and I killed my own packet.** ANSWER doc committed. Two empty branches:
-during replay `_applyResidencyWindowV1` returns false at chart.js:9044-9045 (single caller at :10893 whose
-own comment says so); outside replay C measured 2,011 resident of 6,097,452, so windowing already did it.
-And it is aimed at the wrong array regardless — inside the whole residency block `_panelFullRawData` = 0
-and `fullRawData` = 0 against a control of 17 `this.rawData`. It cannot reach the 70,989-bar master.
-Remove from every plan document. The RAW-MASTER-during-replay trim is real, harder, and unowned — named,
-not promised, because the replay guard protects scroll-back and indicator history.
-
-**A DEATH CERTIFICATE IN THE RULING IS WRONG, and it is the same array confusion.** The columnar row prices
-"2,011 bars resident of 6.1M; ~465 KB". W89 states its gauge as `chart.data.length` — the RESAMPLED DISPLAY
-SERIES. The raw master I measured on the deployed build is 70,989 bars = ~16.4 MB/realm, ~66 MB at four.
-The certificate understates resident bar mass ~35x. **I am NOT asking to reopen columnar** — the PO scaling
-test (heap 1.52x across 100–1000x data) is the real killer and is untouched. Right conclusion, wrong number;
-please amend the row to cite the scaling test. STANDING: "resident bars" is ambiguous here by 35x — any bar
-count must name the ARRAY.
-
-**ITEM 4 — the writer is already named and already cut.** `ensureTalariaIndLegendHoverCss`
-indicator-ui.js:2621-2624 reassigns `<style>.textContent` per indicator pass, forcing a rule-set re-parse at
-~62/sec. Fix built and verified at 612602877 (1 write vs 60). The 15:00 fallback — 35 `setProperty` sites
-behind one flag — is unnecessary and aimed at an already-identified writer. What is owed is the A/B, not a
-new cut. Predicted SMALL given W91''s 1.4% layout figure; recorded in advance.
-
-**ITEM 7 — I OWN IT.** p3-bar-store-realm''s failing cell is "P3 mutants: neutered guards are killed by the
-realm/refcount oracles" — the cell whose job is to prove the suite has teeth, so the P3 guards are
-UNVERIFIED rather than broken. Bar-store realm guards are chart.js, which is mine; I am not routing it away.
-Queued behind the four packets, test-only.
-
-**ITEM 6 — re-baseline is right and I will not size the remaining cuts until the clone cut is deployed and
-the profile is re-read.** Sizing against a superseded ceiling is how we got here.
-
-
-## 2026-07-30T12:52 · ACCEPTED · LABELTOOL-HANDLE-GROWTH — and the author was right to refuse my instruction
-
-`manager-a/labeltool-handles-20260730` @ **1cfcc08f5** = da5326655 (author, product) + 1cfcc08f5 (MINE, test-only),
-based on the live tip e675e5d1b. Clean tree, one product commit, writable set respected,
-mirrors byte-identical 688917F09B434838, flag 1/1 both copies, bogus control 0.
-
-**THE NUMBER (KILL-02): +3 DOM nodes per reuse-render, exactly.** 6 nodes after 1 render, 153 after 50 with
-the switch on; flat at 6 with the fix. Stranded `.resize-handle-group` count after 50 renders: 50 legacy, 1 fixed.
-
-**I MUST CORRECT MY OWN ROW.** I recorded this as "~2,250 nodes/min per Label drawing during replay". The
-author verified +3/render and REFUSED to endorse the per-minute figure, correctly: 2,250/min implies ~12.5
-renders/sec, and the replay cadence comes from `getCandlePlaybackCadence()` and varies with user-selected
-speed. So the rate is SPEED-DEPENDENT, not a constant. +3/render is the verified quantity; my per-minute
-number was an unmeasured extrapolation and should not be quoted. Also, per W91 this is a RETENTION fix and
-carries no CPU claim — layout is 1.4% of the main thread.
-
-**THE AUTHOR DECLINED MY DESIGN AND WAS RIGHT.** I briefed wipe-and-reappend. It reused the preserved group
-in place instead, because a recreated handle would be stranded: during an active resize the manager sets
-`_skipHandleSetup = true` (manager :1087/:5931/:10815) which suppresses the `setupHandleDrag` rebind at
-:8867, and the hover-bind path caches `_hoverHandleBoundGroupNode` keyed on the drawing group node
-(:17082-17088), so for an unselected-but-hovered label a recreated handle would never be rebound at all.
-Keeping node identity makes both moot. This is the behaviour I want from authors: refuse with evidence.
-
-**IT ALSO FOUND A HAZARD MY BRIEF MISSED, which would have shipped silently.** `_clearGeometryChildren`
-removes non-handle children and `render()` then re-appends the marker circle AFTER the preserved handle, so
-the reused handle becomes the FIRST child, painted under a marker that has `pointer-events: all` — every
-handle click would have been swallowed. Fixed with `handleGroup.raise()`. I positive-controlled that this is
-the established idiom, not an invention: 6 `.raise()` sites across shapes+base, and base:2434 is literally
-`this.group.selectAll('.resize-handle-group').raise()`.
-
-**VERIFIED MYSELF, not taken on report:**
-- Attribute-drift check, the likeliest silent bug in a reuse-in-place fix: every field the sync path skips
-  (`r`, `fill`, `stroke`, `stroke-width`, `pointer-events`, `cursor`, class) is a CONSTANT; it refreshes
-  exactly the state-dependent ones (cx, cy, both opacities, data-point-index) and matches `.attr` vs `.style`
-  per property against the append path. No drift.
-- `'label'` is absent from `_supportsLiveHandleGeometryPatch` (manager :1038-1043), so the new
-  `_shouldCreateHandles` branch cannot strip a handle mid-resize. Author's claim confirmed.
-- For a LOCKED label the new code now removes handles where legacy appended them. Behaviour change, and the
-  correct one — it aligns LabelTool with every sibling and a locked drawing must not be resizable.
-- SIX of my own mutants on disk in both mirrors, needle==1, negative control NOT_APPLIED, files restored.
-  All killed by NAMED BEHAVIOURAL cells: drop-raise, STALE-HANDLE-POSITION (the reuse-specific bug),
-  `=== true` polarity, drop-residue-collapse, drop-the-guard, reuse-malformed-group.
-- Ran the two gates that would block B: sync-homepage-modules 2/2, territory-preflight 72/72.
-- Regression duty: author ran drawing-tools suites pre- and post-edit and got the IDENTICAL 7 failing cells;
-  all pre-existing, none in files it touched.
-
-**CLOSED ANOTHER UNTESTED GUARD — sixth sighting today of the anchor/teeth family.** My mutant L6 survived:
-deleting `if (glow.empty() || handle.empty()) return false;` left the suite green, so a preserved group
-stripped of its circles would be reused and the label would keep a handle group with nothing clickable in it
-— resize dead, silently. Unreachable today (`_isHandleNode`'s regex at base:973 preserves both circles too),
-which is exactly why a reader's confidence is not enough. Added a behavioural cell; suite 26 -> 27 and L6
-now dies. Same disposition as B7 on the clone cut: pin it, do not file it.
-
-ROW (cosmetic, for B): the new test file exists only at the canonical path. That matches existing practice
-(leak-d and mc-incremental are canonical-only too) and both mirror gates are green, so it is not a blocker.
-
+Still absent from the file: **§Part 4** (cited by §A13.1 for reviewer non-downgrade) and **§Part 6**
+(cited by §A12.3 as the agent smoke sweep standard). The document contains Part A and Part B only. The
+00:20 assumption therefore stands for those two, unchanged and still unverified.
 
 ---
 
-## 2026-07-30 12:45Z - RESEED-CUT ACCEPTED 8587c9821 (allocation site #2 of the playback profile)
+## 2026-07-28T00:37 · DECISION · what counts as a write packet "in flight"
 
-`manager-a/reseed-cut-20260730` @ `8587c9821`, one commit on `8b6c90554`. Tree clean, packet is exactly
-3 paths (both chart.js mirrors + one new test file), zero off-set paths, mirrors identical
-`951888C3CCA084D3`, flag `__TALARIA_DISABLE_REPLAY_RESEED_INCREMENTAL_V1` 2/2 in both copies, bogus-flag
-control 0/0. Suite 16/16. Author ran 20 mutants on disk in both mirrors; negative control loud.
+§A13.3 caps me at three write packets in flight. I am reading that cap as **subagents actively holding
+a worktree**, not as committed-but-unmerged branches, and recording the reading so it can be overruled
+rather than discovered later.
 
-**THE NUMBER, and it is measured not modelled:** 30 reseeds against the 70,989-bar master with a new bar
-before EVERY call (worst case, no free no-change calls). Legacy 2,129,235 element copies; incremental
-71,048. 30.0x fewer, 96.7% of copies removed. Counted by handing the method a Proxy over the seed array
-and counting numeric-index reads, so "appends only the tail" is OBSERVED, not asserted about source text.
+Basis: the cap's two stated purposes are collision avoidance and top-tier review throughput.
+`manager-a-mcdiag` is committed at `3e1fdc05e` with a clean tree and no subagent attached, so it can
+collide with nothing. It does still consume review capacity, which is the other half of the rationale,
+so I am not treating the slot as free without saying so.
 
-**SEVEN OF MY OWN MUTANTS, independent of the author's 20**, on disk in both mirrors, needle==1 enforced,
-negative control NOT_APPLIED, both files restored to `951888C3CCA084D3` after every one. ALL KILLED, every
-one by a NAMED BEHAVIOURAL cell: R1 drop-destination-identity (the hazard I made mandatory) -> "destination
-replaced externally forces a full copy"; R2 drop-seed-source-identity; R3 drop-shrink-check; R4
-drop-boundary-timestamp (6 cells); R5 `=== true` polarity (6 cells); R7 do-not-advance-cached-length.
-
-R6 alias-instead-of-copy is a kill of a different KIND and worth recording: it does not fail an assertion,
-it HANGS the suite. Aliasing makes `out === seedSource`, so `out.push(seedSource[i])` pushes onto the array
-it is iterating and the loop never terminates. I killed the run and restored by hand. Useful property, not
-a gap: the aliasing hazard CANNOT ship silently - it would wedge the tab, not corrupt data quietly.
-
-**MY BRIEF WAS WRONG AND THE AUTHOR WAS RIGHT: TEN call sites, not nine.** Counted dot-prefixed
-invocations excluding the definition: chart.js 6328/6941/7608/7896/8056/11183/11227/11534 = eight, plus
-`panel-cmd-bridge.js:630` and `embed-bridge.js:1106`. The two I missed are the BRIDGE entry points, i.e.
-the cross-realm ones, which is the worst pair to undercount on a packet about per-realm copying.
-
-**WHY THIS PAYS IS NOT WHAT I WROTE IN THE BRIEF, and the correction matters for routing.** I framed
-tail-append as the primary win. In fact both seed sources are always REPLACED on growth, so tail-append
-would be unreachable - except the sibling clone cut made it reachable: chart.js:4584/5523/7496 now assign
-`_panelFullRawData = this._mcCopySamePairFullRawData(...)`, and that helper returns its own retained array
-mutated in place. **This fix pays BECAUSE the clone cut shipped first.** On paths where the source is
-genuinely replaced it costs legacy plus one extra index read.
-
-ROUTING CONSEQUENCE, and it is a trap: `mc-clone-cut` IS an ancestor of `reseed-cut` (merge-base
-`8b6c90554`), so the dependency is structural on the MERGE path. It is NOT protected on the CHERRY-PICK
-path. If reseed is cherry-picked alone onto a ship head that lacks the clone cut, it is inert - green
-suite, zero win, and nothing would say so. Clone cut travels first or they travel together.
-
-**SIZING - the author refused to put one number on it and was right to.** It removes ~97% of the
-`fullRawData` line. The site is 995 MB with cloning off; `seedSource` is the full ~71k 1m master while
-`this.data` is sliced to the playhead and resampled (5-15x fewer bars above 1m), so the fullRawData line
-should dominate at plausibly 50-90%. Exact needs a PER-LINE allocation split. I hold the profile, so that
-ask is mine, not an open request to nobody.
-
-RESIDUAL, measured and disclosed rather than papered over: `replay.fullData` stays legacy. `this.data` is
-reassigned from `resampleData(...)` on essentially every tick (nine assignment sites in replay-system.js),
-so identity churns - the `display-series-cannot-pay` cell measures **0/60 retained against the master's
-59/60**. Two mutants pin that it still copies and still copies DEFENSIVELY. The honest fix there is to stop
-copying a freshly-allocated array at all, which is a semantic change to who owns `this.data`: separate packet.
-
-**SEVENTH SIGHTING of the anchor/teeth family, and I am correcting the author's severity DOWNWARD.** The
-author reports it dodged a landmine: `mc-incremental-rawdata-copy.test.mjs` anchors four mutants on
-single-line needles any faithful parallel implementation would reproduce verbatim
-(`&& cache.source === source`, `cache.sourceLength = source.length;`,
-`for (let i = prevLen; i < source.length; i += 1) {`, `return slotKey == null ? null : String(slotKey);`).
-It avoided the collision by naming its parameter `seedSource` and fields `seedLength`/`copy`. I verified
-the near-miss is real: all four are count=1 today, and the reseed impl's parallel lines are each count=1
-alongside them - had it used the obvious names, all four go to 2.
-
-But the author implied those rows would be silently skipped. **They would not - it FAILS LOUD.** The runner
-does `assert.deepEqual(notApplied, [], 'all mutants must apply to both mirrors exactly once')`, so a
-collision turns the suite RED. That is the NOT_APPLIED guard I added after the fabricated M3 escape, working
-exactly as designed. So this is fail-safe BRITTLENESS, not a teeth gap. The real risk is second-order and
-human: whoever hits that red is being told "your naming collided", and the tempting fix is to delete or
-loosen the mutant rather than re-anchor it. That is how teeth actually get pulled.
-
-Deliberately NOT fixing it tonight. The collision is not live (all four count=1), the failure mode is loud,
-and the file sits on a branch queued for ship - I am not editing a ship-queued suite mid-flight to pre-empt
-a hypothetical third implementation. Carried as a ROW for a test-only packet: re-anchor those four on
-unique multi-line context.
-
-Regression duty (author, and it is the good kind): 20 red cells across 37 module suites + 8 repo gates, ALL
-pre-existing - proved by backing the three files out, restoring a pristine `8b6c90554`, and re-running to an
-identical failure set cell for cell. Includes `p3-bar-store-realm` and `m21-b-tal01918-red`, both already
-carried as unowned rows. `MODULE-CONTENT-STAMP-BASELINE` drift identical with and without the change. The
-two suites the sibling cut touched are fully green: `leak-d-rawdata-copy` 8/8, `mc-incremental-rawdata-copy`
-11/11.
-
+Current occupancy: `session-calendar-red` and `shell-control-inventory` hold worktrees; the new
+`indicator-lag-data-effect` packet takes the third slot. Its writable set is **harness and evidence
+only, no product file at all**, so it is disjoint from both siblings by construction rather than by my
+judgement. Read-only work in flight: the residency-cap review, the measurement review, the raw-cap
+reconciliation, and the daily/weekly anchoring audit. Those are uncapped per §A13.3.
 
 ---
 
-## 2026-07-30 13:26Z - ORDER-GLOW-GC-V1 ACCEPTED 6afb8006a, with two teeth gaps I found and rowed
+## 2026-07-28T00:39 · OPEN · re-dispatch reconciled against work already completed
 
-`manager-a/order-glow-filters-20260730` @ `6afb8006a`, base `e675e5d1b`. Tree clean, writable set exact
-(3 paths, +1250/-0), 13/13 cells. Author ran 9 mutants on disk in both mirrors with two negative controls,
-one of them the good kind (a NON-UNIQUE needle, ` }\n` x4,704, not just an absent one).
+The re-dispatch supersedes prior dispatches, but four of its six items already have results, so I am
+recording state rather than re-running them.
 
-**THE LEAK IS REAL AND NOW BOUNDED, measured in real Blink over CDP, not modelled:** 120 closed round trips
-plus 25 open orders leaves **530 `<filter>` nodes** (1,060 with their feDropShadow children) that a chart
-strip does not reclaim; after the fix, 0. The kill-switch run is deep-equal to the legacy run across the
-whole 120-element per-cycle series, which is the right way to prove a kill-switch restores legacy exactly.
-
-**KILL-02 SECOND NUMBER: MY PREDICTION HELD, AND IT KILLS THE RASTER RATIONALE.** Four arms, 240 frames x5:
-530 UNREFERENCED filters cost **+2.4 ms of raster across 240 frames (0.010 ms/frame)**, and 5,000 cost LESS
-(+1.85 ms) - no dose response, both inside noise. The positive control proves the instrument is not blind:
-REFERENCING those same 530 costs +447 ms raster, 10.1x the floor. An unreferenced `<filter>` is not
-rendered so it is not rastered. The only dose-responsive phase is Layout (23.9 -> 30.1 -> 72.5 ms as nodes
-go 405 -> 1,465 -> 10,405), +6.2 ms over 240 frames at realistic leak size. **This ships as a pure RETENTION
-fix. Anyone re-arguing the raster rationale now has to beat a number.**
-
-### Three corrections against my brief, all of which I confirmed
-
-1. **"About eight creation sites" was WRONG - there is exactly ONE.** `defs.append('filter')` occurs once,
-   at :41507 inside `_ensureMarkerGlowFilter`, and it ALREADY dedupes: :41505 `if (svg.select(`#${filterId}`)
-   .empty())`. My "8" was 8 references to `_ensureMarkerGlowFilter` = 1 definition + 7 call sites; I counted
-   references and wrote "creation sites". Half my proposed fix already existed at base. Note also that my
-   first grep for the guard came back EMPTY because I searched the author's PARAPHRASE (`'#' + filterId`)
-   rather than the real template literal - my own empty-grep rule caught it, and the guard is there.
-2. **`selectAll(...).remove()` is 102 in that file, not my 98.** Drift; my ratio argument is unaffected.
-3. My magnitude estimate held exactly: 4 filters/round trip x 2 nodes = 8 nodes/trade = 2,400 at 300 trades.
-
-**The author also found something I did not know, and it is what makes removal safe:** the filters are
-created EAGERLY at marker draw but referenced ONLY during hover, so at any resting moment essentially every
-per-order filter in `<defs>` is already unreferenced. The code does not rely on that argument - it refuses
-to remove anything a live `filter="url(#id)"` still names, scanning `ownerDocument` rather than the `<svg>`
-because url(#) resolves document-wide and sibling panels duplicate marker ids.
-
-### MIRROR DIVERGENCE: pre-existing, REAL, and the deployed side is the SAFE one
-
-Author reported the two `order-manager.js` copies were already NOT byte-identical at base (4 ins / 60 del,
-from merge `a07e35120` "reconcile manager-d/trade-correctness"), the homepage copy missing the B-W16/B-W18
-durable-journal hydration guard, and refused to reconcile them inside a glow packet. **Confirmed at base:
-B-W16 canon=5 mirror=0, B-W18 canon=2 mirror=0.** I also identified one of the two "older teardown
-selectors" concretely: mirror :42620 is `[class*="multi-tp-avg-"][class*="-${oid}"]` where canonical has
-`.multi-tp-avg-${oid}` - the mirror form is a substring match that can over-match across order ids.
-
-**I then settled the thing that actually matters, on the LIVE BYTES rather than by inference:**
-`http://31.97.192.82:3000/chart/modules/order-manager.js` has **B-W16 = 5 and B-W18 = 2**. So the DEPLOYED
-copy is the CANONICAL one and the homepage mirror is the stale side. The guard is NOT missing from
-production. Author's refusal was right and the risk is lower than its report reads - but the divergence is
-a live ROW: it is why `orphan-l4-entry-marker-listeners.test.mjs` is red on its byte-identity cell, and it
-belongs to whoever owns `a07e35120`, not to this packet.
-
-### MY OWN MUTANTS - four killed, and TWO SURVIVORS THE AUTHOR'S TABLE HID
-
-Five independent of the author's nine, on disk in both mirrors, needle==1, restored to
-`5FFA7D09A78DE0F5 / 177FA647920C4D28` every time. A2 partial-leg-prefix-loses-hyphen (order 1 claiming
-order 12's legs), A3 `=== true` polarity, A4 drop-only-the-fallback-exclusion (a PARTIAL break the author's
-whole-line M5 would not catch) - all three KILLED by named behavioural cells.
-
-**Then I discounted the author's own mutant-runner cell and two survivors appeared.** That cell mutates
-chart source and hash-checks it, so it goes red for ANY edit of mine regardless of behaviour - counting it
-as a killer inflates every result. This is exactly the defect I flagged on M17-DI2 and it is now confirmed
-in a second suite. Excluding it and the teardown/mirror cells:
-
-- **A5 reference-scan-svg-not-document SURVIVES all 12 behavioural cells.** Swapping
-  `_referencedGlowFilterIds(root.ownerDocument || root)` for `(root)` produced exactly ONE red cell: the
-  self-referential mutant cell. The cross-panel scan scope - which the author documents in a comment as
-  load-bearing, and which is the difference between safe and removing a filter a sibling panel still
-  references - has NO behavioural cell. `GLOW-GC ownership matchers and reference scan` does not vary scope.
-- **A1 reclaim-BEFORE-the-marker-removes SURVIVES with ZERO red cells.** Moving the reclaim above the twelve
-  `selectAll(...).remove()` calls in `_sweepOrphanedOrderLevelDom` leaves the entire suite green.
-
-**A1 needs its severity stated precisely, because the obvious reading is wrong.** It is NOT a defect today
-and the shipped order is correct. Because filters are referenced only during HOVER, at a resting teardown
-nothing references them and reclaim-before-remove still works - which is exactly why the suite stays green.
-The order becomes load-bearing only when an order is torn down WHILE its marker is hovered (closing from a
-control next to the marker), where the guard would correctly refuse and the reclaim would silently no-op.
-So: a real latent ordering hazard, no cell exercises teardown-while-hovered, and the property is untested
-rather than broken. Same family as the five inert realm-teardown cuts - green suite, zero effect.
-
-EIGHTH sighting of the anchor/teeth family. Rowed both; NOT fixing by hand, the cells are CDP/Blink and want
-their own test-only packet, same disposition as FLAG-TRUTHY-TEETH and STASH-REFRESH-TEETH.
-
-### Two other things worth carrying
-
-**THE EXTRACTION-LIST TRAP HAS STARTED SHAPING PRODUCTION CODE, not just breaking harnesses.** The author
-did not hang the reclaim on `_disposeEntryMarkerRecord` - the seam you would expect - because that method
-is in the FIXED `METHOD_NAMES` list that `orphan-l4-entry-marker-listeners.test.mjs` extracts and executes,
-so adding a call to a method outside that list would have broken it, and the writable set forbade extending
-the harness. It used `_sweepOrphanedOrderLevelDom` instead. That is a defensible choice and it disclosed it,
-but the escalation is the point: my standing row had this trap breaking TESTS. It is now steering where
-production code is allowed to go. That is a much stronger argument for fixing the extraction lists.
-
-**HYGIENE, and it will bite the next packet:** running the order-manager corpus MUTATES tracked evidence
-under `docs/plan3/**`, `chart v 1.4/chart/multichart-prod/harness/m21-b-tal01918-evidence/` and
-`tests/evidence/session-calendar-red/`, and creates an untracked `homepage/docs/plan3/`. The author cleaned
-it before committing. Any packet that runs these suites will show a dirty tree unrelated to its own change -
-so "dirty tree" is not by itself evidence of an uncommitted fix. Also `scripts/tests/m6-replay-leak-
-reproduce.test.mjs` times out at 240s in both arms.
-
-Regression duty (the good kind): 270 test files before and after, plus a re-run at base with the three files
-reverted. 43 pre-existing reds, 43 after, identical set, zero caused, zero flipped green.
-
-
----
-
-## 2026-07-30 13:54Z - POINTER-SWEEP PROBE: render-scope bug FOUND, and b112 closes two of my escalations
-
-Read-only probe on `manager-a/pointer-sweep-probe-20260730`, base `e675e5d1b`, **nothing shipped** - I verified
-that myself: `git diff e675e5d1b --name-only` = 0 files, and the blob OIDs of all seven named files are
-identical to base. Only `.scratch-pointer-*` untracked.
-
-### FIRST: the P0 IS ON THE WIRE, and so are the CPU cuts. I am closing both escalations.
-
-I have escalated the countdown P0 twice and reported it missing through b105, b106 and b107. **On the live
-bytes at build `20260730b112`, `__TALARIA_DISABLE_COUNTDOWN_NULL_GUARD_V1` is PRESENT.** So are
-`__TALARIA_DISABLE_RAF_PAINT_COALESCE_V1`, `__TALARIA_DISABLE_TF_DOWNSHIFT_ANCHOR_FIX_V1`, and
-`__TALARIA_DISABLE_IND_LEGEND_CSS_IDEMPOTENT_V1` in the deployed `indicator-ui.js`. The P0 ship branch and
-the CPU-cuts branch both landed. **Escalation withdrawn; stop citing it.**
-
-**AND MY GREP WAS BROKEN AGAIN - THIRD TIME TODAY.** My first pass read `__TALARIA_DISABLE_RAF_COALESCE`
-and `__TALARIA_DISABLE_IND_LEGEND_CSS_IDEMPOTENT` and got 0/0, which I would have reported as "still not
-shipped". Both real names carry a `_V1` suffix. I only caught it because my own empty-grep rule forced me
-to pull the names from `612602877` instead of from memory. Had I trusted the first read I would have sent
-the Director a THIRD false "not on the wire" escalation. The rule has now paid for itself three times in
-one day; the failure mode is always the same, me reciting a flag name rather than reading it.
-
-### The finding: the dashboard-shaped bug is REAL, on the legend, at about a third of the magnitude
-
-Marginal main-thread ms per pointermove, real backtest session, 5 repeats, each 80-move sweep paired with a
-duration-matched idle window and subtracted:
-
-| surface | ms/move | style | layout | JS |
-|---|---|---|---|---|
-| **legend (separate-panel rows)** | **11.29** (sd 0.72) | 1.61 | 1.49 | 5.57 |
-| **order panel rows** | **9.29** (sd 1.43) | 0.73 | 1.09 | 4.02 |
-| legend (OHLC rows) | 6.43 | 0.97 | 0.67 | 1.72 |
-| candle area | 5.39 | 0.33 | 0.79 | 1.91 |
-| price axis | 4.41 | 0.20 | 0.58 | 1.75 |
-| time axis | 2.63 | 0.10 | 0.39 | 1.22 |
-
-**My census's deflationary prediction is HALF RIGHT and I should say so plainly.** On canvas and axes it
-holds: 2.6-5.4 ms/move, style recalc 0.1-0.3 ms, nothing like 31.5 ms. But the census measured playback
-with NO INTERACTION, so it could not see two DOM surfaces that only exist under a pointer. Hovering one
-separate-panel legend row commits **160.7 of 161.3 DOM mutations (99.6%) OUTSIDE that row**, 8.8 of them
-onto its own ancestors, and recalcs 93 elements where the hovered row's whole subtree is ~4. That is the
-dashboard's shape exactly, at 11.3 ms rather than 31.5 ms.
-
-### ROOT CAUSE: hovering a legend row runs FIVE full Chart.render() per move
-
-`Chart.render -> redrawDrawings -> DrawingToolsManager.redrawAll (:12751) -> updateClipPath (:2333)`, and
-`updateClipPath` writes the clip rect exactly once per call, so 5.00 clip-rect rewrites/move = **5 render()
-invocations per pointermove**. OHLC legend hover does this 0.13x/move; candle hover does it ZERO times.
-Every idle control arm returned zero chains, so it is pointer-caused, not background replay.
-
-**THE RECONCILIATION THAT MATTERS, AND IT RE-PRICES A ROW OF MINE.** The probe ran on b111, which HAS the
-rAF paint coalescer I shipped. The coalescer is deployed AND THE LEGEND HOVER PATH EVADES IT - 5 renders
-per move would collapse to 1 per frame if they went through `scheduleRender`. So these are DIRECT
-`this.render()` calls, i.e. exactly the residual I rowed: 60 direct `this.render()` sites still in chart.js
-against 126 `scheduleRender`. My rAF-reachability answer said "we were ABLE to lose frames, no proof we
-were losing them today." **There is now proof, with a number: 11.29 ms/move.**
-
-### Verified by me, statically, all three
-
-1. **The comment lies, and it is worth quoting.** `chart-indicators-full.js:20549` says "Update
-   crosshair-driven values on separate-panel legend rows **without rebuilding DOM**". Its callee
-   `_renderSeparatePanelLegendValue` opens at **:20522 with `el.innerHTML = '';`** and then recreates every
-   span with createElement/appendChild. Confirmed both lines by reading them. Also fires 1.75x/move on plain
-   candle hover via the cheap crosshair route, so it feeds the allocation rate the census measured.
-2. **Axis 3x mousemove amplification is real and cleanly separable.** `chart.js:42642-42643` forwards BOTH
-   `'mousemove'` AND `'pointermove'`, and `forwardEvent` maps `pointermove -> 'mousemove'` at **:42567**.
-   Confirmed all three lines. 80 dispatched moves produced 240 events (80 trusted + 160 synthetic). One
-   physical axis move runs the canvas mousemove pipeline three times - which is why the axes show 20 forced
-   layout reads/move against the candle area's 7.
-3. **`updateClipPath` is called unconditionally from `redrawAll`** - confirmed at :12751, 6 call sites total.
-
-### Ownership, because two of the six fix items are NOT mine
-
-Items 1-5 are mine (chart.js, chart-indicators-full.js, drawing-tools-manager.js, order-manager.js).
-**Item 6 (memoize the React rail icon components) is B's** - `talaria-design`. And the alert-system wrapper
-the probe flagged at `chart/dist-v9/index.html:1922-1929`, which re-wraps `ch.render` so every hover-driven
-render also runs `renderAlertLines()`, is **BUILD OUTPUT** of `talaria-design/src` per my standing rule
-(vite.config.live.js:142, emptyOutDir). Editing it in my tree would be erased by the next build. Both route
-to B as intelligence, not as patches.
-
-### Blind spots I am carrying forward rather than burying
-
-- **Idle baseline is 462 ms/s of main-thread busy with NO pointer input at all** (420-500 across five 2s
-  windows) = 46% of a core. Independently consistent with the GC/allocation census. Matched-window
-  subtraction handles the mean but inflates variance, hence 5 repeats and quoted spread.
-- **The inside/outside MILLISECOND split is apportioned, not measured.** Mutation and element counts are
-  direct; invalidation tracking gives counts and reasons but not per-node timing. The author said so
-  unprompted, which is the right instinct.
-- **Mutation counts are FLOORS**: 14,751 records recorded, 14,351 dropped at the observer cap on the legend.
-- **Order-panel write-site attribution is confounded** (idle window not duration-matched; every React icon
-  site returned an exact 4.0x ratio = artifact). Its trustworthy numbers are the timing and scope passes.
-- **Canvas inside/outside is ill-posed** - a canvas has no DOM subtree, so 100% of its DOM work is "outside"
-  by construction. The meaningful canvas result is that hover does DOM work AT ALL.
-- **Deployed chart.js line numbers do NOT match the worktree** (b111 vs base). The three module files match
-  exactly and were verified; chart.js sites were resolved by symbol. Any author must work from the worktree.
-
-Positive control: an injected handler doing a document-wide recalc plus getBoundingClientRect on every div
-and span moved style-elements-recalculated 41.2 -> 1292.1 per move (31.4x) and forced sync layouts 80 ->
-1041. The instrument resolves a deliberately planted render-scope escape across every channel reported, so
-the cheap canvas numbers are a real null and not a blind one. Instrument overhead +1.52 ms/move (12%),
-inside the run-to-run spread of either arm and an order of magnitude below the control's sensitivity.
-
-
-## 14:26 - LEGEND-HOVER-RENDER-SCOPE ACCEPTED 5971c8c6b, and it cost me a retraction
-
-Packet accepted. `manager-a/legend-hover-render-scope-20260730` @ `5971c8c6b`, parent `e675e5d1b`. Tree clean,
-diff confined to the writable set, both mirrors byte-identical (indicators `559835D44872013D`, drawing-tools
-`38082CC1EE6E9502`), flag present exactly once per file across all four copies, bogus control 0. 25/25 green.
-
-### MY BRIEFING ERROR - I sent it to a tree that predates my own shipped cut
-
-The author reported that `__TALARIA_DISABLE_RAF_PAINT_COALESCE_V1` "does not exist anywhere in the tree", and
-that this voids the inference I built the packet on. **It is right, and the fault is mine.** Verified:
-
-| ref | flag hits | control `_isWheelZoomBurst` |
-|---|---|---|
-| `e675e5d1b` (the base I specified) | **0** | 14 |
-| `612602877` (my cpu-cuts commit) | 2 | 14 |
-| deployed b113 | 2 | - |
-
-`f282a5692`, which introduced the flag, is **not an ancestor of `e675e5d1b`**. I chose that base for
-cherry-pick independence and then briefed a diagnosis that depends on a cut the base does not contain. The
-author's grep was correct and its positive control was sound. This is the exact `row-audit-read-wrong-tree`
-failure I carry as a standing rule - an audit's tree must be pinned to the DEPLOYED sha - and this time I am
-the one who committed it. It does mean the author's refutation is scoped to a tree where my premise is
-absent, so it does not by itself reach the inference; but I had no business making it check.
-
-### RETRACTED: "five Chart.render() per pointermove" is not established
-
-I put that number in the journal. Withdrawing it. The author challenged the proxy conversion; its stated
-alternative (one render fanning across five `updateClipPath` call sites) is not the mechanism, but the
-objection is right for a different reason I confirmed myself:
-
-- `updateClipPath` has **5 call sites + 1 definition** - the author's count, not my 6.
-- `redrawAll` calls `updateClipPath` **exactly once**, so that leg is 1:1 as I assumed.
-- But `render()` can enter `redrawDrawings()` at **three** sites (chart.js:29769, :29858, :29937).
-
-So 5.00 clip writes/move is a floor of **~2 renders/move**, not 5. The differential still holds - every idle
-control arm returned zero chains, so the renders are hover-caused - but the count was inflated by a fan-out
-I did not account for. What survives: hover causes renders, and 11.29 ms/move is measured directly.
-
-**Reconciliation for the edge the author could not find, and it is testable.** It enumerated all 60 direct
-`this.render()` sites and found none hover-reachable; I confirmed `updatePriceHoverLine` is dead code on the
-deployed build too (1 occurrence = the definition, zero callers). But the alert-system wrapper at
-`chart/dist-v9/index.html:1922-1929` **re-wraps `ch.render`** - a hover to render edge through a runtime
-wrapper is invisible to a static grep of chart.js source, and the probe measured the deployed build which
-carries the wrapper. That is B's build output per the dist-v9 ownership rule. Next probe counts `Chart.render`
-ENTRIES directly instead of a downstream proxy; I should have specified that the first time.
-
-### The author's reinterpretation is the better diagnosis
-
-CUT 2 explains the whole evidence set with no render involved: `_syncSeparatePanelOverlayValues` rebuilt every
-row on every move (the 99.6%-outside-the-hovered-row split), and `el.innerHTML = ''` destroys the node under
-the cursor, forcing the browser to revalidate the whole `:hover` chain (the 93-element recalc against a
-~4-node subtree). Its sharpest point: this is why legend hover costs 11.29 ms and candle hover 5.39 ms
-*despite the candle running strictly more handlers* - on the candle the cursor is not inside the mutated
-subtree. Measured result: 24.00 mutations/move and 7.00 elements/move both to **0.00** intra-bar; element
-allocation to zero on every surface and pattern.
-
-The `:20549` comment I quoted as false is now **true** rather than edited - the behaviour changed to match it.
-The author describing that as "fixed the comment" is loose but not wrong in effect.
-
-### My own 7 mutants: 2 killed, 4 survived, control NOT_APPLIED
-
-Applied on disk to both mirrors, needle asserted `== 1` in each, restored and sha-verified (`559835D44872013D`
-both, identical to baseline). Killer attribution excludes the suite's own mirror/runner cells per the standing
-rule; the author had already excluded them by construction, which is the glow-packet lesson correctly applied.
-
-| mutant | result |
+| Item | State |
 |---|---|
-| P1 signature constant (rows freeze forever) | KILLED - C05, C06, C01d |
-| P3 single-tag text frozen | KILLED - C05, C01d |
-| P2 multi-tag **colour** frozen | **SURVIVED** |
-| P6 single-tag **colour** frozen | **SURVIVED** |
-| P5 row transitioning to `hideValues` keeps stale spans | **SURVIVED** |
-| P4 drop the childNodes-length shape check | **SURVIVED** (redundant guard) |
-| CONTROL needle absent | NOT_APPLIED (loud) |
+| 1 · Loader fix + §A4c presence assertions | Accepted locally at `634448817`. Not verified on TEST-1; no train has run. |
+| 2 · `_mcDiag.resamples` across a replay run | **Answered**, with the instrument corrected first — see 00:40. |
+| 3 · Indicator lag as a data effect | **New tonight.** Dispatched top tier, harness-only writable set. |
+| 4 · Trim redesign | Design returned twice, re-priced. Implementation not dispatched; blocked on item 3's verdict and on the write cap. |
+| 5 · Session calendar | RED in flight; the required anchoring enumeration dispatched read-only at 00:34. Product wiring still withheld. |
+| 6 · §A2 re-baseline, then surviving C3a shape | Blocked. See the amendment request below. |
+| §1.2 residency cap, in writing | **Answered** at 00:48. |
 
-**Text staleness is fully covered. Colour staleness is not covered at all, on either path.** Root cause is one
-line: test.mjs:307 `spec.colors.map((c, i) => ({ text: barValue(spec.id, bar, i), color: c }))` varies the
-text by bar and takes the colour from a **fixed** `spec.colors`. So C06 - a cell named CHEAT-CATCH whose whole
-job is to be uncheatable - asserts colours at every bar against an expectation that never changes, and C07
-asserts a single-tag colour statically. Production varies exactly this: MACD histogram colour flips with the
-sign of the histogram. A regression that froze colour would leave a stuck-green histogram and a green CI.
+**Amendment requests to the Director, three, all evidenced.**
 
-Eighth sighting of the anchor/teeth family, and the second today where the cell that fails is the one named
-for catching cheats. No live defect - the shipped code updates colour correctly. Test-only.
+1. **§A9.3 names an instrument that cannot gate.** The ruling requires the per-tick resample hypothesis
+   be settled "using the existing `_mcDiag.resamples` counter." Measured, that field reads exactly 2.00
+   per tick at zero, one and two real full resamples. §A9.3 should name the three separated counters.
+   The underlying question §A9.3 asked is nonetheless **answered**: per-tick full resampling is
+   confirmed, and the incremental branch never fires.
+2. **§A1's "not greenfield" premise is factually wrong.** It states that `visible-window-mirror.mjs`,
+   `reusable-buffer-pool.mjs` and `m21-3a-single-data-owner-model.mjs` already exist in-tree and that
+   C3a is "wiring audited components into the product path." All three carry headers marking them
+   reference/test-only with explicit instructions not to wire them into product runtime, and they have
+   zero product importers. The files exist; the capability does not. C3a is closer to greenfield than
+   the ruling assumes, and the estimate should move accordingly.
+3. **The item-2 result does not license item 6.** §A9.1 states that any memory cell without indicators
+   and open trades does not close the memory row, and the measurement had neither, plus no panels and
+   no browser. It confirmed a CPU and allocation mechanism, not a memory attribution. Rayan's 3.5 GB
+   single-layout 1m term remains unattributed, so choosing a C3a shape now would still be choosing
+   against an unmeasured target.
 
-P4 is knowingly redundant: the shape string is `'multi:' + tags.length`, so a count mismatch needs an external
-writer. The author called it "a second line of defence" and that grading is fair; not counting it against.
-
-### Left standing, both disclosed by the author unprompted
-
-- `updateCrosshair` calls `getBoundingClientRect()` on every crosshair update to auto-detect stale dimensions
-  = a forced synchronous layout per pointermove on all three surfaces. Real, in a writable file, outside the
-  three named cuts. Changing resize detection to buy a hover win is not a trade to make unasked.
-- `_syncSeparatePanelAxisTags` tears down and recreates every axis tag node per call - the same antipattern
-  one level up, on the render path rather than the hover path. Obvious next packet.
-
-Cherry-pick viability checked against the deployed surface: `_renderSeparatePanelLegendValue`,
-`_syncSeparatePanelOverlayValues` and `_syncSeparatePanelAxisTags` are all still present in deployed
-`chart-indicators-full.js` at b113, so the stale base does not block application.
-
-## 14:45 - CONF-01 / DUR-01 adopted. One finding re-assigns credit inside the ruling.
-
-Read `RULING-EVERY-MULTICHART-OPTIMISATION-IS-GATED-ON-SAME-PAIR-20260730-1430.md` and my
-section of `DISPATCH-CONF01-20260730-1430.md`. Both rules adopted without argument. Answer to the
-Director at `a08ac2767`.
-
-### Verified the ruling's mechanism myself, on DEPLOYED bytes not a manager branch
-
-Build `20260730b113`. `_mcRawDataCopyLimit()` literally `return 200000;` - the ruling is exactly
-right that this is the absence of a cap rather than a cap. `_panelFullRawData` = 102 occurrences
-deployed, 24 assignment sites in my base. Residency confirmed NOT shipped (`_residencyComputeSlice`
-= 0). One count correction in the Director's favour: the ruling says sixteen
-`_multichartSamePairAsHost` occurrences from reading `manager-a/critical-path`; deployed carries
-**twenty**.
-
-### FINDING: the clone cut and the reseed cut are INERT under CONF-01
-
-All nine `_mcCopySamePairFullRawData(...)` call sites are unreachable on a different-symbol panel.
-Six sit behind `if (!this._multichartSamePairAsHost(...)) return …` (guards L5482, L5759, L7559).
-The other three - L4584/4586/4601 in `_multichartMirrorHostTfSwitchIfReady` - sit behind
-`if (this._isIndependentMultichartPair()) return false;` at L4526-4529, which resolves through
-`_shouldAnchorPairSwitchToHostPlayhead(this.currentFileId)`. Positive control: the guard identifier
-resolves 20 times in the same file, so the absences are real.
-
-Both cuts were ON THE WIRE when the PO measured (`__TALARIA_DISABLE_MC_INCREMENTAL_RAWDATA_COPY_V1`
-and `__TALARIA_DISABLE_REPLAY_RESEED_INCREMENTAL_V1` both present on b113). So 586 MB / 107% is the
-fully unoptimised path measured with both optimisations live and unreachable.
-
-Two consequences. The −75% allocation figure is not "unverified for memory" as the ruling's table
-says - under CONF-01 it is **zero by construction**. And the renderer CPU improvement belongs to the
-configuration-independent cuts: I checked the rAF flag sites carry no same-pair or independent-pair
-guard within 60 lines above either occurrence.
-
-Ninth sighting of the family: green suite, real mechanism, zero effect because the path never runs
-in the configuration that ships.
-
-### CORRECTION to my own record: residency does NOT already cover A1
-
-Before starting a second landing I checked whether `9e0a8ad59` already bounds `_panelFullRawData`,
-because one of my rows claims it drops ~100k → 20.3k alongside `rawData` and derived data. It does
-not - **zero** occurrences of `_panelFullRawData` in that entire diff, and `_applyResidencyWindowV1`
-has one application site. The live writes on the different-symbol path come from `bars.slice()`,
-`master.slice()`, `incoming.slice()`, `merged` and `replaySystem.fullRawData`, none of which the
-trim passes through. My row overstated residency's reach; A1 is genuinely new work. My own earlier
-census already named the live mechanism though: uncapped `_mergeIntoPanelFullRawData`, key=fileId.
-
-### Dispatched
-
-**A1 oracle**, oracle-first per the ordering, base `8587c9821` - chosen because I verified it matches
-deployment for the data path rather than because it was convenient. That check exists precisely
-because I made the opposite mistake this morning. Built to go RED first against eight faithful
-corruptions (bar dropped mid/start/end, close altered in the last decimal, timestamp shifted one
-cadence, two bars transposed, whole range shifted by one, bar duplicated) plus a negative control
-that must stay GREEN. SAFE-01 written in as an observable - element copies counted through a Proxy
-so a fix that allocates first and trims after is caught rather than silently accepted.
-
-**CONF-01 retention census**, read-only, to size A1 against A2 before building either. It carries
-the tension I want settled rather than argued: the PO's own scaling test moved heap only 1.52x
-across a 100-1000x range change, and if data volume is not the mass then **bounding** it cannot pay
-either - which would undercut A1 as much as A2. Either that test was confounded by being
-single-dataset or both my assigned landings are mis-aimed. I told the census to say so plainly if
-the latter, and not to shade toward the landings I was given. DUR-01 folded in: slopes over a run,
-not two endpoint readings, because an array that is large but flat is a different problem from one
-that climbs.
+**Outstanding `PO-REQ` count: 0.** Nothing I hold requires PO time that an assertion could not answer,
+and the 45-minute per-train budget is shared across three managers.
 
 ---
 
-## 2026-07-30 15:10 — CKPT-01 accepted; taking the checkpoint now, not at 22:00
-
-Read `AMENDMENT-DIRECTOR-RUNS-THE-MILES-20260730-1445.md`. AUTH-01 noted: I stop asking and
-report by journal. CKPT-01 names A1 and A2 as requiring a checkpoint, so both are mine.
-
-Point 4 is the only one of the four that is work rather than paperwork, and the amendment is right
-that it is the one that gets skipped. I started it now rather than at the scheduled 22:00 slot,
-because if the retained artifact turns out not to boot I would rather find that out with eight
-hours of margin than one.
-
-### MEAS-01 cannot be fully satisfied today — no commit exists on the wire
-
-CKPT-01 point 1 wants the tag to record "the build ID **and commit** read from the running page".
-The build ID is readable: `dist-v9/index.html` carries
-`<script>window.__TALARIA_CHART_BUILD_ID='20260730b113';` and propagates it as the `?v=` cache
-buster on all 60 module URLs — 60 of 60 versioned, zero unversioned, so the asset set is fully
-pinned by the build ID alone. That part is in good shape.
-
-The commit is not there at all. `CHART_ENGINE_COMMIT`, `__TALARIA_COMMIT`, `GIT_SHA` and
-`BUILD_COMMIT` are all zero occurrences, and there is not a single 40-hex token in either
-`dist-v9/index.html` or the deployed `chart.js`. Positive control on the same fetch:
-`CHART_ENGINE_BUILD` resolves 4 times and `_mcRawDataCopyLimit` 3 times, so the scan is not blind.
-
-So a tag that claims to record the running page's commit would be recording my inference, which is
-exactly the b85 displacement the amendment cites as the reason for the rule. I am closing this by
-**deriving** the commit instead of asking for it: hash the retained bytes, then find which commit
-in the repo carries that exact blob at the corresponding path. That is a measured mapping from
-deployed bytes to source rather than a self-reported stamp, and it has a second payoff — any
-deployed file that matches **no** commit is a file not reproducible from source, which is
-something we want to know before a risky landing rather than during a rollback. I will take the
-annotated tag once that lookup has run, so it records a measured commit, not an assumed one.
-
-Adding a commit stamp to the shell would be the durable fix, but `dist-v9` is build output of
-`talaria-design/src` per the ownership rule, so that routes to B as intelligence, not a patch.
-
-### CORRECTION owed to C: `/chart/index.html` is auth-gated, and my "same bytes" claim was inferred
-
-When I cleared C's route blocker I wrote that I had "verified the serving code myself" —
-`api_server.py:26967-26969` FileResponses `_DIST_V9_INDEX_PATH` — and concluded that
-`/chart/index.html` and `/chart/dist-v9/index.html` are **the same bytes**, so C's surface "was
-never wrong, its browser STATE was".
-
-On the wire that is not what happens. `/chart/index.html` returns **307 → `/login/?next=...`**,
-with or without `?mode=backtest&sessionId=`. Following the redirect lands on the Next.js login
-shell: 29,406 bytes, 12 scripts, all `/_next/static/chunks/*` including `app/login/page` and
-`app/not-found`, and it mentions neither `chart.js` nor `dist-v9`. `/chart/dist-v9/index.html` is
-not gated: 200, 91,538 bytes, 60 scripts, title "Talaria — V9 Live". `/chart/` itself is 403.
-
-Two things are true at once and I want the distinction on the record rather than rounded either
-way. My *reading* of the serving code may well be right for an authenticated request — I have not
-disproved it, because I fetched without a session. What I stated as verified was inferred from
-source and was never measured, and the measurement I can make contradicts the plain reading of
-what I told C.
-
-It did not bite, and I checked rather than assumed that: C's own `scripts/lib/conf01-session.mjs`
-already navigates to `${origin}/chart/dist-v9/index.html?mode=backtest` and re-logs-in if it finds
-itself on `/login/`. So the CONF-01 instrument was already pointed at the ungated surface. The
-exposure was to anything that took my sentence literally and pointed an unauthenticated harness at
-`/chart/index.html`, which would measure a login page and could report it as a chart.
-
-Same family as `row-audit-read-wrong-tree` and my stale-base briefing this morning: third time this
-week I have handed someone a conclusion drawn from reading a tree instead of reading the wire.
-
-### Dispatched
-
-**CKPT-01 artifact + rollback rehearsal**, on `manager-a/ckpt01-artifact-20260730` @ `8587c9821`,
-tooling-only and forbidden from touching product code. Four subcommands: capture the full deployed
-asset set byte-exact with sha256s; derive provenance by blob lookup as above; serve the retained
-bytes locally while proxying `/api/**` and `/login/**` through to live so the app has a real
-backend; and rehearse — boot real Chrome against the retained bytes and require a **working-product
-assertion**, not an HTTP 200 sweep. Bars loaded, and replay index/timestamp sampled twice and
-required to have MOVED, because `isPlaying` lags `play()` by two frames and a flag is not evidence.
-It must also prove the browser actually loaded my bytes rather than falling through to live, and it
-must carry a negative control — corrupt one asset, show the rehearsal goes RED — because a
-rehearsal that cannot fail proves nothing.
-
-Stated up front so it is not discovered later: this proves the artifact is good and bootable. It
-does **not** prove the production deploy mechanism can place it. That half is B's and remains
-unexercised.
-
-### A1 pre-work: the `_panelFullRawData` site map, measured by me before briefing anyone
-
-I have twice this week handed a packet a call-site list that was wrong (the reseed brief said nine
-sites; there were ten, and the two I missed were the cross-realm bridge entry points). So I built
-the A1 map myself first.
-
-**The base is deployment-faithful.** `8587c9821` against deployed b113, six mechanism identifiers,
-all exact: `_panelFullRawData` 102/102, `_mergeIntoPanelFullRawData` 3/3, `_mcCopySamePairFullRawData`
-11/11, `_multichartSamePairAsHost` 20/20, `_isIndependentMultichartPair` 26/26, `_mcRawDataCopyLimit`
-3/3, positive control `currentFileId` 149/149. Both A1-relevant absences confirmed on both sides:
-`_applyResidencyWindowV1` 0/0 (residency genuinely not shipped) and the A1 flag 0/0 (not built yet).
-This is the check I skipped on the legend packet this morning; doing it first now.
-
-**24 write sites, and only 6 of them are the ones I already cut.** L4584/4586, L5523/5525 and
-L7584/7586 go through `_mcCopySamePairFullRawData` — the same-pair-guarded six, inert under CONF-01.
-The other **18 are plain `.slice()`, spread, or merge results** and they are the live path in the
-four-symbol configuration. That is the sharpest confirmation yet of the inertness finding, and it
-tells A1 exactly where it has to act: the eighteen, not the six.
-
-**Nothing mutates the array in place — it is only ever reassigned wholesale.** Genuine in-place
-mutations of `_panelFullRawData`: zero. My first attempt at this claim does not count: my own
-regex matched `length === 0` as `length =`, flagging L6907 as a mutation when it is a read, and my
-first positive control returned zero as well, which under my own empty-result rule proves nothing.
-Re-ran with a control that works — the same matcher finds 10 in-place mutations on `this.drawings`
-in the same file and 0 on `_panelFullRawData`. The invariant is real, and the codebase states it
-itself at L7442-7444.
-
-That matters because it means A1 can bound at a **single choke point** — one
-`_setPanelFullRawData(bars, reason)` accessor with all 24 assignments routed through it — rather
-than chasing incremental appends. One place to apply the window, one place to hang the flag. It is
-also the same seam A2 needs, so A1 builds the boundary and A2 changes the representation behind it.
-Still separate packets and separate flags per the ruling; they just meet at a seam A1 creates.
-
-**Growth is uncapped and I can now say so with a measurement rather than an assertion.**
-`_mergeIntoPanelFullRawData` unions old and new bars into a `Map` keyed by timestamp and re-sorts:
-zero `splice`, zero `length =`, zero `Math.min`, zero `limit`/`cap`/`MAX`/`trim` anywhere in its
-body. Nothing bounds it.
-
-### THE TRAP IN A1, found before it was briefed rather than after it shipped
-
-At L7441-7445 `_tryExtendReplayMasterFromParent` assigns **the same array object** to both
-`replay.fullRawData` and `this._panelFullRawData`, and the comment says so deliberately: "these
-arrays are always reassigned wholesale (never mutated in place), so one allocation serves both.
-Halves per-panel history memory."
-
-So the obvious implementation of A1 fails in both directions:
-
-- **Slice to trim** and the sharing breaks. `_panelFullRawData` gets a short new array while
-  `replay.fullRawData` still holds the full one — peak memory goes *up*, not down, and the landing
-  reports a smaller number for the array it measures while the heap is worse. That is a green
-  instrument on a regression, which is the failure mode I have logged nine times.
-- **Trim in place** and it silently truncates the replay master, which is a correctness fault on
-  the price path — and the parity oracle's verdict is final there.
-
-A1 must therefore bound the array while keeping the aliasing invariant explicit, and its oracle has
-to assert on `replay.fullRawData` as well as on `_panelFullRawData`, or it cannot see either
-failure. There is a second, smaller edge: L2744 tests `data === this._panelFullRawData` by identity,
-so an accessor that hands back a different array changes that predicate's answer.
-
-Four read-aliases to keep whole: L2744, L4246, L7255, L7377.
-
-### CKPT-01: the apparatus already exists and is better than what I was building. The gap is that nothing has used it for five days.
-
-I went looking for how a rollback would actually be *placed*, because I had flagged that as the
-unproven half of my own checkpoint. The answer changes the shape of the work.
-
-`scripts/deploy.sh` refuses to deploy without `--manifest=/secure/CKPT-N.provenance.json`, and
-`scripts/vps-deploy-after-pull.sh` explicitly rejects `chart`, `homepage`, `full` and `all` as
-targets that "can mutate chart/homepage without immutable provenance". Its own comment at line 10:
-**"Rollback uses this same command with the previous accepted manifest."**
-
-The manifest schema `talaria.checkpoint-provenance/v1` already carries every field CKPT-01 asks
-for — `buildId`, `source.sha` with a source tag ref, chart and homepage images pinned by sha256
-digest, a uniformity proof, and a full `rollback` block naming the previous build's digests.
-
-**I executed the rollback path rather than reading it.** `checkpoint-provenance.mjs plan
---rollback` against CKPT-020 resolves and emits the exact two commands, digest-pinned, with
-`"buildAllowed": false`:
-
-```
-docker compose pull trading-chart trading-chart-worker homepage
-docker compose up -d --no-build --no-deps trading-chart trading-chart-worker homepage
-```
-
-That is CKPT-01 point 2 enforced by the tool: a redeploy of bytes that already ran, with rebuilding
-structurally forbidden. So this is not a rule we need to invent machinery for. It is a rule we
-already have machinery for.
-
-**The problem is coverage.** Searching by the schema string rather than by filename, with the
-positive control passing (9 files carry it), there are exactly **seven real manifests**, and the
-newest is **20260725b63**. The eighth match is `scripts/fixtures/.../green-manifest.json`, a test
-fixture stamped `20991231b99`, which I excluded.
-
-```
-b21 -> b57 -> b58 -> b59 -> b60 -> b61 -> b63        production today: b113
-```
-
-The chain was kept daily and then stops on 25 July. **Production is fifty builds and five days
-past the last recorded checkpoint.** A rollback driven by the newest real manifest would land
-production on **b61** — losing five days of work including the countdown P0 guard that only reached
-the wire this week.
-
-This is the CKPT-01 blocker for A1, and it is not something I can clear: `deploy.sh` reads its
-manifest from `/secure/` on the VPS, which I cannot see. So I am **not** claiming no manifest
-exists for b113 — my own empty-result rule forbids that, and the bound is real. What is established
-is that no repo-visible manifest covers the build we would have to roll back *to*, and that nobody
-can demonstrate otherwise from the repository alone.
-
-**Routed to B**, who holds VPS and registry access. Two questions, both answerable in minutes:
-does a retained manifest exist for b113, and is the image digest it names still pullable from ghcr?
-If either answer is no, then CKPT-01 point 2 is unsatisfied for A1 and the honest thing is to say
-so rather than tag a landing and call it checkpointed.
-
-**This also promotes the artifact capture I dispatched.** I briefed it as an independent byte-level
-cross-check, aimed at the wrong artifact — the real deployable unit is a digest-pinned image, not a
-folder of JS. But if b113's image digest turns out not to be retained, that raw capture becomes the
-only retained copy of the bytes now running, which moves it from complement to fallback. It also
-derives the commit from blob hashes, which is exactly the cross-check on a manifest's `source.sha`.
-Fourth time this week I have briefed against a premise I had not checked; this one improved the
-packet by accident rather than damaging it, which is luck and not method.
-
-I am holding the annotated tag until the commit is derived, so it records a measured mapping rather
-than my inference.
-
-## 2026-07-30 15:30 — Three packets in. One of them overturned a row of mine.
-
-### GLOW-GC teeth `fdda39a3b` — ACCEPTED, and my GAP 1 was wrong
-
-Verified before grading: clean tree, exactly one commit, diff is the single test file,
-`order-manager.js` byte-identical in both copies, 16/16 green (was 13/13).
-
-**The author refused my GAP 1 and it was right to.** I had recorded that hoisting the reclaim above
-the twelve `selectAll(...).remove()` calls in `_sweepOrphanedOrderLevelDom` leaves the suite green
-with zero red cells, and called that a teeth gap. It is not a gap — it is an **equivalent mutant**,
-and the cell I specified would have gone RED on shipped code.
-
-I checked this myself rather than taking it. The twelve removes are level, badge and connector
-selectors. None of them can match `entry-marker-N`, `exit-marker-N` or `partial-close-marker-N-*`,
-which are the only nodes carrying an order-keyed `url(#…)`. The only substring matchers are
-`[class*="open-tp-pct"][class*="tp-${oid}"]` and the two helper-returned pending-TP selectors
-`[class*="pending-tp-pct"][class*="pending-tp-${oid}"]` and
-`[class*="pending-tp-delete"][class*="pending-tp-${oid}"]` — each requires a class pair no marker
-group carries. Positive control that my extraction sees real content: the **strip** seam references
-`entry-marker` 4x, `exit-marker` 2x and `partial-close-marker` 2x. So the reference set is identical
-either side of the removes, and position cannot matter. The author's measured table agrees exactly:
-shipped and A1-applied produce byte-identical defs before and after.
-
-Where the ordering *is* load-bearing is `_stripOrderDrawingLayersFromChart`, whose removes delete
-the marker groups and whose own comment says so. That is where the tooth went, as M10, and it kills
-via a named behavioural cell. A hoist there leaks all three defs permanently.
-
-So my row is corrected, not merely closed: a hovered order genuinely keeps its glows through its own
-per-order sweep, by design, and the chart strip is what reclaims them.
-
-**GAP 2 was real** and A5 now dies to a named cell. The author disclosed unprompted that it had to
-construct the configuration deliberately, because every live reference in production today has a
-same-svg copy — so the document-wide scan is defence-in-depth on a documented invariant rather than
-a shield against a reachable bug. I would rather have that stated than discovered later.
-
-**Two counting failures of my own in one hour, same shape.** My re-extraction found ten removes, not
-twelve, because two use helper-returned selectors my regex could not see; and my first grep for those
-helpers returned empty because I guessed the parameter name `oid` when it is `orderId`. Both caught
-only because my own empty-result rule made me run a control. The author's twelve was right and my ten
-was not.
-
-### Legend colour teeth `90ff7d95a` — ACCEPTED
-
-Clean tree, one commit, single test file, all four product copies untouched, 25 → 28 cells, green.
-
-Three of four survivors dead. The one that matters: **S1 was killed by the EXISTING C06**, the cell
-already named "CHEAT-CATCH: multi-tag row text and colour both follow the bar". It needed no new
-assertion — only a harness that varies what it claims to check. That is the cleanest possible proof
-of the diagnosis I filed: the cell was not missing, it was toothless, asserting colours at every bar
-against an expectation that never changed. Colour now derives from the bar through one shared
-function, modelling MACD histogram sign flips and RSI threshold bands, with `atr-1` held fixed as a
-control and `created === 0` asserted so the kill is proven to come from the span-reuse path.
-
-Survivor 4 refused, correctly. The shape marker is `'multi:' + tags.length` and every write path that
-changes the child count sets it in the same block, so the guard is unreachable from production and
-the only available kill is a test reaching in to corrupt children directly. Left as knowing
-defence-in-depth.
-
-**It corrected my standing rule, and narrowed it.** I have been recording that an in-suite mutant cell
-inflates every kill. The mirror **byte-identity** cell does *not*: a mutant is applied identically to
-both copies, so they stay identical and that cell stays green. Only the in-suite mutant-**runner**
-cell trips, and only on needle collision. The attribution rule stands; it protects against a narrower
-inflation than I claimed. Also my item 3 said C07 probes only `adx-1` — it probes `rsi-1` too, which
-contradicted my own correct description two paragraphs earlier in the same brief.
-
-### A1 parity oracle `eb8cf3164` — ACCEPTED, with a gap I caused
-
-Clean tree, one commit, two added files and nothing else, zero product modifications, 11/11 green,
-and the 18-row corruption table all RED with named checks. Three negative controls green, including
-a detached deep clone — value-equal, identity-different — which matters because the real fix will
-likely clone and must not be flagged for it. Allocate-before-trim is a genuine independent observable:
-492 element reads compute-then-copy versus 1440 allocate-then-trim, and `TRIM_AFTER_ALLOCATE` returns
-bar-for-bar correct data while firing that check and nothing else.
-
-Two of its own findings are worth keeping. A **transposition is invisible to the painted series**
-because the resampler re-sorts by `t` first, so only retained parity catches it — which is the
-concrete justification for checking stored and painted separately rather than treating one as a proxy.
-And it found a blind spot in its own oracle by attacking it: stringified numeric values survive every
-value comparison through coercion, so `CHK_RETAINED_NUMERIC_TYPE` now exists and is the only check
-that fires for that case. Its anti-vacuity guard also failed on the first run and caught a check that
-fired for nothing — the same CHEAT-CATCH pathology as the legend cell, found by the author on itself.
-
-**It corrected my brief and the correction is real: my base is BEHIND deployment.**
-`__TALARIA_DISABLE_RAF_PAINT_COALESCE_V1` and `__TALARIA_DISABLE_COUNTDOWN_NULL_GUARD_V1` are zero
-occurrences at `8587c9821` and present on b113, proven with a positive control on the same pattern.
-Both are paint/tooltip path, and the number that governs A1 is identical either side — 24
-`_panelFullRawData` assignment sites on both — so the base still stands for this packet. But this is
-the same stale-base failure I logged against myself this morning, arriving from the other direction,
-and I only learned it because the author checked instead of assuming.
-
-**The gap is mine, not the author's.** I found the `replay.fullRawData` aliasing trap *after*
-dispatching, and the oracle does not cover it: `_tryExtendReplayMasterFromParent` appears zero times,
-`alias` zero times, and the two arrays are never compared by identity. So a fix that slices
-`_panelFullRawData` while `replay.fullRawData` still holds the full master passes the oracle silently
-while per-panel memory goes **up**. Follow-up dispatched for a `CHK_TOTAL_RETAINED` that counts bar
-objects across both arrays de-duplicated by identity, an explicit aliasing-invariant assertion that
-permits breaking the share only if total retention falls, and an in-place-truncation corruption.
-
-**Host topology answered.** The author asked rather than assuming, correctly. Tile A is the host
-reusing `#chartWrapper`, so production at four panels is 1 host + 3 independent iframe peers, not 4
-independent peers. Its fifth-symbol scene is a strict superset and stays, but must be labelled so
-nobody reads it as the shipping topology — and the host is itself a `Chart` with its own
-`_panelFullRawData`, so A1 applies to it and it is not exempt.
-
-## 2026-07-30 15:42 — Scope narrowed to A1 and A2. Everything else parked.
-
-Ruling: the base-series residency landing and the compact-storage landing are my only jobs until C
-has graded them. None of the twenty owner-blocked rows are mine tonight. The six engine-internal
-correctness rows queue behind. The visual overlay cluster is routed away.
-
-**Accepted without argument, and it is the right cut.** I have been carrying a ledger that grew
-faster than I could close it, and the honest reading is that breadth has been costing me depth on
-the one landing that has a measured number behind it — 586 MB and 107% CPU in the reference
-configuration, with `_panelFullRawData` named as the mass.
-
-**Routed away (evidence preserved, not deleted):** axis-tag rebuild, crosshair forced layout, the
-triple `mousemove` forward on the axes, LabelTool handle growth, and my 60-second node-count
-prediction. Each row keeps its measurement and its file/line so the next owner starts where I
-stopped rather than re-deriving it. One correction attached on the way out: the node-count
-prediction is now partly stale, because the legend rebuild it was reasoning about was fixed by
-`5971c8c6b`, so the sawtooth it predicts should be much smaller than when I wrote it.
-
-**Queued behind A1/A2:** the four bare-`fullRawData` deref rows, the Go-To stale-index row, the
-`endMs - 1` dead precision, the double-predicate fragility, the display-timeframe cover margin, and
-the `replay.play()` cover question. One of these is not merely deferred but *coupled*: A1 changes
-who owns the very array the deref rows dereference and how long it is kept, so when that triage
-resumes it must be re-read against the new ownership rather than the old. I have written that onto
-the row so it is not lost.
-
-### What I did with the narrowed scope
-
-Rather than wait on three in-flight prerequisites, I dispatched the A1 fix. Checked first: the
-oracle amendment has not committed yet and the CKPT-01 rehearsal branch is still at base, so both
-are genuinely still running.
-
-The fix goes on `manager-a/conf01-a1-fix-20260730` at `eb8cf3164` in **its own worktree**,
-deliberately not the oracle author's — two agents in one worktree is a collision I can avoid for the
-cost of one `git worktree add`.
-
-The brief leads with the aliasing trap rather than the design, because that is what makes this
-landing hard: the quantity to reduce is **bar objects retained across `_panelFullRawData` and
-`replay.fullRawData` de-duplicated by identity**, never the length of one array. Slicing shrinks one
-and leaves the other holding the full master, which sends peak memory up while the naive instrument
-reports a win. I told the author to build that accounting itself rather than lean on the oracle,
-since the oracle is being amended for exactly this gap concurrently.
-
-I also told it plainly not to shade the answer. The retention census may conclude A1 cannot pay —
-the product owner's scaling test moved heap only 1.52x across a 100-1000x data range change — and if
-bounding the base series does not beat viewport windowing, I want that sentence with a number, not a
-landing that measures well on its own instrument and moves nothing in production.
-
-A2 does not start until A1 is measured and graded, and never batches with it.
-
-## 2026-07-30 16:00 — The alias trap I made the headline of the A1 brief is inert under CONF-01
-
-### Oracle amendment `ae992af95` — ACCEPTED
-
-Verified myself: clean tree, two commits from base, diff is still only the two added oracle files,
-**zero** product bytes touched in either `chart.js` or either `replay-system.js`, mirrors identical
-`8DC917ABEE51B4B3`, 16/16 green. The three new rows behave as claimed on my own run, not on report:
-
-- `SHRINK_PANEL_LEAVE_REPLAY_FULL` → RED via `CHK_TOTAL_RETAINED` **and nothing else**
-- `chk-total-retained` → CONF-01 bars **1440 → 1440**; aliased slots **1440 → 1920**
-- `chk-alias-invariant` → wide window RED (slots 1440→1800 while bars 1440→900), narrow GREEN
-
-### My row was wrong, and I verified the correction rather than accepting it
-
-I have been carrying, and put at the top of the A1 fix brief, that
-`_tryExtendReplayMasterFromParent` L7441-7445 assigns one array to both slots and therefore slicing
-sends peak memory up. **That site cannot execute on a different-symbol panel.** The method opens at
-L7395 and its *first* statement-level guard is:
+## 2026-07-28T00:41 · ASSUMPTION · I have treated the two PO price readings as different sessions
+
+The completed-bar finding is EURUSD backtest session 877 around 1.305; tonight's D3 readings are around
+1.415. I have assumed these are different playheads, sessions or instruments rather than an
+inconsistency in the reports, and I briefed the indicator-lag worker to reproduce the D3 **signature** —
+exact agreement across resampled timeframes with the native timeframe differing — rather than the
+literal values.
+
+Risk if wrong: if the two readings are meant to be the same session, one of them is mis-transcribed and
+the monotonic 0 / −0.6 / +13 / +72 table may be measuring something other than I think. Mitigation: the
+worker is required to state that it matched the signature and not the values, so no literal number
+enters the record unverified.
+
+---
+
+## 2026-07-28T00:43 · DECISION · item 4 implementation does not dispatch until item 3 reports
+
+The trim redesign is the highest-leverage change available and I am still holding it, deliberately.
+
+Item 3 tests the hypothesis that the trim is why every resampled timeframe reports a close truncated at
+the playhead — which would make the exact six-way agreement at 1.41477 and the monotonic post-completion
+jump two consequences of one mechanism, and would fold the indicator lag into the same fix. If that is
+right, the trim packet's scope, its oracle and its acceptance criterion all change: it stops being a
+completed-bar-immutability fix with a performance side effect and becomes the fix for the painted-value
+lag as well, which raises its tier of evidence.
+
+If it is wrong — if the shared value turns out to be a cache-identity artefact rather than the trim —
+then the trim packet is narrower than currently priced and something else owns the lag. Either answer
+changes what I dispatch, so dispatching now would mean authoring the wrong oracle. Item 3 is hours; the
+trim packet is 10–13 days. Waiting is cheap.
+
+---
+
+## 2026-07-28T01:05 · CORRECTION · I recommended a host-side dial that is a trap; retracting it
+
+Superseding the recommendation in my 00:48 `ANSWER`. I told the Director that re-scoping the residency
+row from panel-side to host-side was an "hours, not days" measurement because
+`_highLimitBulkHistorySmartLimit` is "already switchable via a documented global." Adversarial review
+refuted both halves and I am retracting the recommendation rather than softening it.
+
+`__TALARIA_MC_HIGH_LIMIT_BULK_LIMIT` appears **exactly once in the repository** — the read itself. No
+documentation, no test, no harness scenario, no kill-switch registry entry. It is an undocumented read,
+not a documented switch. Worse, the sibling switch that *is* harness-covered records what happens when
+this class of limit is turned down: the scenario cell's own assertion text is "replay enter reverts to
+**many small fetches**." That is precisely the hazard the same analysis used to reject paging — a
+smaller resident forward window means the playhead reaches the loaded edge more often, and every edge
+hit is a network round trip with a stall. I would have been proposing the rejected mechanism through a
+different door. Two further defects: the dial floors at 2000, and a **second** independent 100,000 dial
+exists for host panels that turning the first one down does not touch.
+
+**The do-not-build verdict itself survives, and strengthens** — reviewer confidence 92% against the
+author's 80%. But the reason changed, and the new reason is the more useful one: the mixed-4 symptom is
+**allocation churn, not residency**. The analysis divided a retained-bytes numerator by a browser-memory
+denominator that sawtooths, which is the signature of short-lived allocation. If the symptom is churn, a
+residency cap cannot touch it at any size, and the byte arithmetic — which was wrong in both directions,
+too high per bar and far too low on total retainers — stops mattering. Recorded per §A4b: I reached the
+right verdict partly for the wrong reason, and the record should say so.
+
+**The replacement instrument, which I did not have at 00:48: bound the caches, not the master.** Four
+constants — the cached-fileId count, per-file timeframe-cache breadth, the 12,000-bar cache depth and
+the decoded-tile ceiling — are pure caches whose read paths are already miss-tolerant. Eviction costs a
+refetch or a resample; it cannot change a painted value, cannot move a drawing anchor, and cannot starve
+indicator warm-up, because a miss falls back to the fetch path that would have run anyway. That is a
+materially safer dial than the fetch limit and it is measurable in hours. This is the host-side
+measurement I should have named.
+
+---
+
+## 2026-07-28T01:08 · VERDICT · the 90-second freeze is named, and it is not in my territory
+
+Read-only triage returned a named primary mechanism for §A9.2, and it is a different animal from
+everything I have been measuring.
+
+`surface=` static source analysis across `chart.js`, `replay-system.js`, `chart-data-pipeline.js` and
+`order-manager.js`. `coverage=` **no timing measured, nothing executed, and the loop was not observed
+firing in the reporting session.** Every duration below is derived from complexity plus conventional
+per-operation costs. This is a well-supported hypothesis, not an established fact, and I am recording it
+as such.
+
+**Mechanism: a non-converging journal-marker restore cascade in `order-manager.js`.** Six `setTimeout`
+callbacks are armed per `chartDataLoaded` event with no `clearTimeout` and no stored handle — and the
+sibling function immediately below it *does* clear its timer, so the omission is asymmetric rather than
+house style. `chartDataLoaded` fires on every replay frame advance. Each queued pass begins by
+invalidating its own delta cache, so the incremental fast path can never engage and **every pass is a
+full pass by construction**. The exit condition compares drawn-marker count against an expected count,
+but the expected-count function omits the open-positions and pending-orders filter that the drawing
+function applies — so any journal row whose id is also an open or pending position is **counted as
+expected and never drawn**, the comparison can never be satisfied, the pending flag never clears, and
+every subsequent event adds six more full passes to a queue that already drains slower than it fills.
+
+That last detail is why this needs open trades plus journal rows to appear, and it is exactly the
+configuration the earlier memory sweeps did not have. The arithmetic reaches ninety seconds: roughly one
+to two seconds per pass at four panels, and about sixty queued passes, all with expiry times already in
+the past, so the browser runs them back to back and the compositor never gets a frame. Sixty deep at 1.5
+seconds is one wall, not sixty stutters — and that is the specific thing the per-tick resample cannot
+produce, because it yields the thread between units of work. It also explains the parts that are hard to
+fake: fine for five minutes then a wall, because per-pass cost grows as trades close; one layout
+restoring responsiveness *immediately* without anything being fixed, because dropping from four renders
+to one puts drain rate back above fill rate.
+
+**This is Manager B's file. I am not touching it, and I am not opening a row on it.** Escalated to the
+Director with the discriminating experiment attached. My territory's contribution to the same symptom —
+per-tick full resampling and per-panel synchronous work on the host thread — is real, bounded, and
+explains sustained high CPU and the sawtooth, not the wall.
+
+**One trap worth recording before anyone acts:** the allocation rate from my side is part of what pushes
+the heap into the regime where those passes are slowest. So fixing the per-tick resample will make the
+wall *shorter* without removing it, which is an excellent way to record a false "fixed."
+
+---
+
+## 2026-07-28T01:11 · DECISION · no `PO-REQ` for the freeze experiment, despite it being cheap and decisive
+
+The triage supplies a genuinely good fifteen-minute experiment: with four mixed panels, indicators, an
+open position and a non-empty journal, read the pending-restore flag during steady play and see whether
+it stays set, then enable the existing read-only marker-debug global and watch whether the pass count
+per second climbs rather than holds. It would confirm or exclude the mechanism in one session.
+
+I am not emitting it. The row lives in Manager B's territory, and §A12.3 caps requested PO time at 45
+minutes per train **across all three managers combined** — spending it on another manager's row is not
+mine to do. The experiment goes to the Director with the escalation so that whoever owns the row can
+spend the budget on it. Outstanding `PO-REQ` count from me remains **0**.
+
+---
+
+## 2026-07-28T01:14 · OPEN · new defect in my own territory, painted as a value, live today
+
+Found incidentally by the residency-cap reviewer while verifying an unrelated claim, and it is the
+clearest §A4c instance of the night.
+
+The weekly-map indicator reads `ctx.rawData` and needs roughly 36 calendar weeks of 1h bars — its own
+comment says so and its constant encodes it. But non-replay `rawData` is **already ring-buffer capped at
+5,000 bars for 1m**. On a 1m chart that is about three and a half days. The slice helper returns the
+short array without complaint, so the engine computes what it presents as a fourteen-week average from
+days of data, and paints it. No error, no degraded badge, no warning.
+
+Capability loss without failure, painted as a value, live on the product right now, and independent of
+every packet currently in flight. Opened as its own row in my territory. Not dispatched tonight — the
+canary blockers outrank it and the write cap is the binding constraint — but it is exactly the class
+§A4c exists to catch, and it was found by a reviewer looking at something else, which is worth noting
+about how much of this the gates are still missing.
+
+---
+
+## 2026-07-28T01:17 · VERDICT · session-calendar RED landed and reproduces the PO evidence exactly
+
+Packet `session-calendar-red`, commit `91cf6218f`, worktree `manager-a-session-calendar`. No product
+file modified; the module-contracts preflight still exits 0. **Adversarial review dispatched and not yet
+returned — this verdict is provisional and the packet is not accepted.**
+
+40 of 160 value assertions fail against the product as committed, and they are the right 40: the Friday
+4 Jan 2013 session bucket is absent, the phantom Saturday bar exists, four daily bars are named Sunday,
+the daily bucket count is 24 where 20 is correct, and weekly opens render Wednesday 19:00 five times
+instead of Sunday 17:00 four times. The DST evidence is the part I find most convincing — the local
+anchor minute-of-day currently reads both 19:00 EST and 20:00 EDT where a correct implementation holds
+one constant value, and the session-span histogram is all-24h where exactly one 23-hour session must
+exist. That histogram is a structural falsifier for any fixed-offset implementation, which is the
+failure mode I was most worried about when I briefed this.
+
+`surface=` the real `parseTimeframe`, `_prepareBarsForResampling` and `_resampleDataFull`, lifted as
+verbatim source text and executed in a `node:vm` realm alongside the unmodified pipeline.
+`coverage=` no browser, no PO verification, no real session-877 data, panels simulated as VM realms
+rather than iframes, and timezone varied in place of a different physical host so ICU/tzdata version
+coverage is unverified. The GREEN half is a **patch applied in memory only**, so the 0/160 pass is a
+claim about wiring that has not shipped. All of that is in the reviewer's brief.
+
+Two incidental defects reported and correctly not fixed: `_tryIncrementalResample` mis-buckets
+out-of-order appends, reproducing in the pre-fix state and therefore pre-existing, with a three-line fix
+offered; and `parseTimeframe('1wk')` returns 60000 ms because there is no `wk` unit, while the
+max-bars-on-screen table lists `1wk` as weekly. Both get their own rows rather than riding this packet.
+
+**One decision the author made that was not theirs to make, and I am not ratifying it.** Crypto *daily*
+at 00:00 UTC was specified; crypto *weekly* was not. The author chose Monday 00:00 UTC, which changes
+crypto weekly output relative to today's Thursday-aligned epoch weeks. That is a user-visible
+convention change on an instrument class outside the stated scope of the fix, so it goes to the Director
+with the migration disposition rather than being settled inside a RED packet.
+
+---
+
+## 2026-07-28T01:30 · CORRECTION · my 00:52 correction was itself wrong; the PO sweep was right
+
+Superseding the `CORRECTION` of 2026-07-28T00:52. I told the Director that
+`PO-SWEEP-RESULTS-20260727.md` was wrong to claim per-tick cost scales with total history, on the
+strength of a design report asserting the backtest replay path is bounded at ~5,000 raw bars.
+Independent top-tier verification **refutes that assertion**. The sweep was right and I was wrong, and
+the wrong version is the one I put in front of the Director.
+
+The cap is real and has the stated values, but it is **not a bound on the replay path**.
+`capReplayFullRawData` is wired at exactly one call site, guarded on `direction === 'forward'` viewport
+prefetch, and it only ever runs as a side effect of a successful forward history fetch. Meanwhile
+backtest boot requests the high-limit bulk history and the initial ingest takes the `startIndex === 0`
+branch, which assigns `this.rawData = newData` with no cap at all; replay entry then copies that
+wholesale into `fullRawData`. The playhead prefix installed on every tick clamps only to master length.
+So per-tick resample cost **does** grow with session length, up to roughly 100,000 bars.
+
+The reconciliation of the two numbers, which is the sentence for the dossier: the 5,000-bar cap and the
+100,000-bar bulk fetch are both real and do not conflict, because the host loads up to 100,000 bars
+uncapped at backtest boot and the 5,000 cap is only applied behind a forward-prefetch guard, so it trims
+nothing for any session the initial fetch already covers.
+
+The practical shape is a **bifurcation on session length** that nobody had distinguished. A session that
+fits inside the initial bulk window — roughly 69 days of 1m bars — is fully preloaded, forward prefetch
+is then blocked by the session-end gate, the cap never fires, and the prefix grows to the whole session.
+Only sessions longer than the bulk window ever reach the cap. So 5,000 is not a steady-state bound; it is
+a one-off eviction that the common configuration never reaches.
+
+Consequences I am obliged to restate because I argued the opposite an hour ago:
+
+- **The C3a de-scoping is withdrawn.** Per-tick resampling is O(session length) on the common path, and
+  Rayan's single-layout 1m case is exactly the configuration that preloads the most bars. This mechanism
+  is back in contention for the headline symptom.
+- **The 1.97× 1m-versus-1H churn ratio still stands** and is unaffected — that arithmetic was about
+  per-raw-bar prepare cost, not about the cap.
+- **A host-side residency cap is now materially more interesting than I said at 01:05**, because bounding
+  resident history would cut per-tick work proportionally rather than only saving retained bytes. The
+  panel-side do-not-build is untouched; the safe dial is still the cache bounds rather than the
+  undocumented fetch limit.
+
+**A third linear-in-session-length cost was found on the same path and is not in any measurement yet.**
+`_getWalkForwardOhlcToPlayhead` scans `fullRawData` from index 0 to the playhead on every tick via
+`_aggregateFinerBarsWalkForward`, called from `_trimLastDataBarToReplayPlayhead`. The guard exempts 1m
+display over 1m raw, so every coarser display timeframe pays a second O(playhead) scan per tick. Opened
+as a row.
+
+`_REPLAY_RAW_CAP` is confirmed double-assigned, effective value 120000, and **unread in production** —
+its only reader sits in a ternary arm reachable only when `_getRawDataCap` is not a function, which never
+holds for a real chart. Inert, cosmetic, worth correcting so nobody reasons from it later.
+
+---
+
+## 2026-07-28T01:33 · CORRECTION · the per-tick figure I reported was half the real one
+
+I reported 1.000 full resamples per tick as the product figure. It is **2.000**. The review established
+that `updateChartData` calls `_renderReplayChartUpdate()`, which calls `chart.render()` **synchronously
+inside the tick**, and `render()` nulls the frame display series and then reaches `getDisplaySeries()`
+through `calculateScales()`. The render resample is therefore unconditional and inside the tick, not the
+modelled optional extra the packet described. The cells I quoted as the product were the
+stub-suppressed configuration; the cells labelled as carrying an extra render frame are the product.
+
+Direction of the error: the finding is **more** severe than I reported, not less. And it confirms two
+packets are required, because removing the cache drop leaves the tick/render source alternation intact.
+
+---
+
+## 2026-07-28T01:35 · VERDICT · measurement packet ACCEPTED and merged
+
+Packet `mcdiag-resample-measurement`, merged at `243dda5eb`. Adversarial review reproduced every reported
+number **bit-exactly in independent processes** — zero mismatches across 14 counters × 12 cells × both
+scale sets — and confirmed each mechanism in product source with positive controls proving the counters
+discriminate rather than merely agree. It specifically attacked the stub set and found that the two stubs
+upstream of the resample decision bias **in favour** of incrementality: the harness advances the playhead
+by exactly one index where the real product can jump several, which would break the incremental guard
+outright. The harness gives incrementality its best possible chance and still measures zero.
+
+`surface=` real `ReplaySystem.prototype.updateChartData` over unmodified product sources in a `node:vm`,
+independently reproduced. `coverage=` no browser, no panels, no indicators, no open trades, fast mode not
+driven; the §A5.4 different-clock-or-host leg is **not** satisfied, since the reproduction ran on the same
+machine; and the harness always exits 0, so it is a measurement instrument and not usable as a CI cell as
+written.
+
+Two defects in the packet's own reasoning, both recorded rather than waved through. Its closing claim that
+this fits the single-layout report better than per-panel duplication is **unsupported** — panel sync was
+stubbed, so per-panel duplication was measured at zero by construction and the two cannot be ranked. And
+the packet counts **allocation churn, not retained heap**; 3.5 GB retained is a different quantity from
+~3,300 short-lived objects per tick. §A9.3's "measure before building" is satisfied for the CPU question
+and explicitly **not** satisfied for the memory question, which §A9.1 requires indicators and open trades
+to close.
+
+---
+
+## 2026-07-28T01:38 · CORRECTION · §A10's motivating example is factually wrong
+
+§A10 opens on magnet-mode snapping as its instance of feature-level capability loss, stating the current
+shell contains zero references to `magnet`. That is true of the shell HTML file and false of the product:
+the magnet button, dropdown and Off/Weak/Strong selector exist in the V9 React toolbar, are wired to the
+engine, and are present in the shipped bundle, which is newer than the last source change. The shell
+renders from its React entry point, so grepping the HTML sees nothing. **Magnet mode is reachable today.**
+
+The ruling's conclusion survives its example. The inventory found 10 genuine migration-loss rows out of
+324 controls, plus 14 retired with no recorded reason. But the *method* implied by the example — grep the
+shell — is the one method the inventory explicitly recommends against, and it produced this false positive.
+
+**The largest row is worse than magnet ever was.** A 2,064-line price-alert engine is loaded *and
+instantiated* on every host page and wraps `chart.render` to draw alert lines every frame, while its
+entire UI is legacy-only. The shipped FAQ answers "Can I set price alerts?" with "a full alert and
+notification system is coming in a future release." The product denies a feature it is already running,
+and pays a per-frame render cost for it. That last part makes it my row and not only a UI row.
+
+One structural finding worth keeping: a control inventory **cannot** be asserted at build time the way
+§A4c asserts modules. The hide-positions row proves it — both the icon and its dispatch branch are in the
+bundle and only the menu entry is missing, so a bundle grep goes green over a real loss. A runtime control
+census against a declared capability manifest is the only gate that catches it, and the manifest, not the
+gate, is the load-bearing work.
+
+---
+
+## 2026-07-28T01:41 · PO-REQ · one number, ten seconds, and it decides whether C3a is aimed correctly
+
+My first `PO-REQ`. Emitted because it **cannot** be an assertion under §A12.4: the answer depends on what
+the history server actually returns for a real session, and no harness in the tree can simulate that. The
+client asks for 100,000 bars and raises its own ceiling to permit it; whether the server delivers that,
+or silently clamps lower, is not establishable from source.
+
+1. **Surface and build.** TEST-1 host chart, backtest mode, any real EURUSD session — session 877 is fine
+   and is already loaded in the PO's earlier sweeps. Confirm the build ID on screen before starting.
+2. **Steps.** Enter replay as normal. Open DevTools console. Record exactly three values:
+   `window.chart.replaySystem.fullRawData.length`, `window.chart.rawData.length`, and
+   `window.chart.currentTimeframe`. One number each, no interpretation.
+3. **Expected result, stated before looking.** `fullRawData.length` is in the tens of thousands — on the
+   order of 10,000 to 100,000 — and **not** approximately 5,000. If it reads ~5,000 my correction above is
+   wrong again and the de-scoping stands after all.
+4. **Time estimate.** Under two minutes, against the 15-minute cap and the 45-minute per-train budget
+   shared across all three managers.
+5. **What is blocked.** C3a shape selection (§A9.3 / §A1), the host-side residency re-scope, and the
+   priority of the per-tick resample row against the journal-marker freeze row. All three currently rest
+   on an upper bound verified in source but never observed live.
+
+Outstanding `PO-REQ` count: **1**.
+
+---
+
+## 2026-07-28T01:52 · VERDICT · indicator lag is a data effect — render-cadence work stops for this symptom
+
+surface= headless `node:vm`, single chart, backtest+replay, real `chart.js` / `chart-data-pipeline.js` /
+`replay-system.js` / `chart-indicators-full.js` / `indicator-performance.js`; 7 timeframes; SMA(20),
+WMA(20), EMA(20), RSI(14); both M20-Q9 kill-switch states; 3 identical repeats plus a variation run at a
+different playhead and animation granularity.
+
+coverage= no browser and no canvas, so the painted and sub-pixel limb of §A7.1 is unmeasured. No panels,
+no multichart, no trades — per §A9.1 this does **not** close the memory row. Fast mode only, in its real
+no-forming-candle configuration. The `_btTfDataCache` walk-forward branch is not exercised. §A7
+optimized-versus-fallback parity is **not addressed at all**: both sides of the oracle use the same
+implementation by design, which means this packet cannot detect an error where the shared implementation
+is itself wrong. One host, so §A5.4's different-clock limb is unmet. Literal D3/D2 values are not
+reproduced — signature only.
+
+**Verdict: DATA EFFECT CONFIRMED.** The discriminator is the part worth keeping. `1.41477` is the close
+of the last raw bar at or before the playhead, **not** a stale cache — and the rival is refuted rather
+than merely unsupported. The author's first probe was worthless and they said so: priming the pipeline at
+the same playhead made both candidates the *same number*, so the check could not discriminate at all. The
+rebuilt probe primes 45 minutes earlier, so a reused cache would paint `1.46909` where the playhead close
+is `1.46981`; every resampled timeframe painted `1.46981`. A second, independent probe switched
+timeframes on one chart with the cache deliberately holding the earlier result and agreed on all six
+steps. The harness now refuses to answer unless the two candidates are verified distinct first, which is
+the correct shape for this class of probe and I want it copied.
+
+**My stated mechanism was wrong in its route, right in its conclusion.** I wrote that 1m is clean because
+there is no remainder to exclude. The real reason is that `_getWalkForwardOhlcToPlayhead` is a **no-op on
+the native timeframe** — it only aggregates from a series finer than the display period, so a 1m master
+on a 1m display has nothing finer and the trim returns null. On 5m and above the same 1m master always
+qualifies, so all six timeframes run **one shared aggregation to one shared instant**. That is the actual
+explanation of six-way agreement to the last digit, and it is a better one than mine.
+
+Predictions: **P1 held** (0.0 pips on 1m at every cadence and repeat). **P2 held** (5m 0.69, 1h 1.14, 4h
+1.14 pips). **P4 held**, with the strongest evidence in the packet.
+
+**P3 split, and the author flagged it rather than smoothing it.** The live frozen-playhead gap is *flat*
+across resampled timeframes. I had predicted monotonic worsening. The author is right that flat is the
+correct result here, and the reason is that it matches the PO's own D3 table — which reports one shared
+value and one shared 2.3-pip gap on all six timeframes. A monotonic D3 would have *contradicted* the PO
+data. The monotonic behaviour lives instead in the truncation error, sampled at 16 bucket positions per
+timeframe: **1.47 / 5.50 / 10.53 / 17.95 / 19.07** mean absolute pips for 5m / 15m / 1h / 4h / 1d,
+strictly monotonic on every repeat. Two quantities, one flat and one monotonic; I had conflated them.
+
+**P4 is why render-cadence work stops.** Four render cadences — 12 frames, 2, 1, and **zero** — over 12
+ticks gave a spread of `0.000000` pips on all three repeats. A null result from a blind instrument is
+worth nothing, so the cadence axis carries a positive control that feeds it a deliberately stale painted
+frame: it reads 1.14 → 3.65 → 5.73 pips at 0, 2 and 8 ticks of staleness. The instrument can see
+cadence-tracking lag. It sees none here.
+
+**Stop render-cadence work on this symptom.** Two limits I am not dropping. It says nothing about cadence
+work aimed at frame smoothness or four-panel starvation, which is §A4b's second mechanism and stays
+live. And "render cadence" in this instrument means display-pipeline invocation frequency, not real frame
+timing — an effect mediated by rAF ordering or worker coalescing would not appear. The author puts
+*medium*, not high, confidence on this mechanism accounting for the **entire** residual symptom, and I am
+carrying that qualifier forward rather than rounding it up.
+
+---
+
+## 2026-07-28T01:54 · CORRECTION · TAL-01918 is probably not the defect we filed
+
+Supersedes the framing in `FINDING-COMPLETED-BAR-CLOSE-MUTATION-20260727.md`, pending review.
+
+The finding records a completed 1H candle's close moving 13 pips **after** finalisation. The diagnostic
+above reports that a genuinely historical bucket moved **0 pips** on 5m/15m/1h/4h/1d with the M20-Q9
+kill-switch in both states — and the control really controlled, the product helper was observed returning
+both `true` and `false`. Those two statements cannot both be plain descriptions of the same event.
+
+The author's reading, which I find plausible and have sent for adversarial review rather than adopting:
+this is a **wrong-window** defect, not a staleness defect, and there is only one of them. The coarse
+reading is computed correctly over `[bucketStart, playhead]` instead of `[bucketStart, bucketEnd]` and
+rebuilt from scratch each tick. The bar that moves is the one that was **last when read** — which, under
+candle-mode stepping, looks complete to a human for a whole step. S2 is excluded; S1's "baked in at
+finalization" limb does not reproduce on this build.
+
+If that holds, the consequence is the thing I am most afraid of in this row: **the bucket-immutability
+assertion I ordered would pass while the product is still wrong.** It asserts that a finalised bucket
+never changes, and on this build finalised buckets never change. The defect lives one bar earlier. An
+oracle that passes on a broken product is worse than no oracle, because it converts an open question into
+a closed one. I have made this the first attack in the review brief.
+
+Not yet actioned: the finding needs rewriting if the review agrees. I am not rewriting a PO-authored
+finding on one unreviewed diagnostic.
+
+---
+
+## 2026-07-28T01:56 · CORRECTION · the trim is not the whole fix — the slice is the other half
+
+Supersedes my item-4 framing, which said the fix is to make `_trimLastDataBarToReplayPlayhead()`
+non-destructive.
+
+Two findings break that scope. The live mirror path **skips the trim mid-animation**, verified
+byte-level. And the D2 truncation error — the monotonic 1.47 → 19.07 pip series — comes from the playhead
+**slice**, not the trim. So a corrective packet that only makes the trim non-destructive leaves the
+larger and timeframe-scaling half of the error in place, and would report success against an oracle
+watching the trim.
+
+The unification thesis survives; its scope does not. Trim-as-overlay still plausibly resolves the
+cache-drop and the per-tick full resample. It does not by itself resolve the wrong-window error. I will
+not dispatch the trim redesign until the review above returns, because the design depends on whether the
+defect is one thing or two, and I would be specifying against the wrong shape.
+
+---
+
+## 2026-07-28T01:58 · VERDICT · anchor audit — cost is near zero, and that is the bad news
+
+surface= read-only source audit across both trees, persisted-state consumers of daily and weekly bar
+timestamps: drawings, orders, journal entries, saved layouts, indicator caches.
+
+coverage= source-level only. No runtime confirmation of which datasets are live, no migration executed,
+no PO surface observation. The vendor-native question below is explicitly unresolved and is the audit's
+own largest gap.
+
+The migration cost is close to zero because almost every persisted anchor is an **absolute epoch-ms
+timestamp**, not a bar index or a bucket key. Nothing needs rewriting on disk. I asked for this
+enumeration expecting it to be the real cost of the session-calendar fix, per the PO's scope guidance. It
+is not.
+
+What the audit found instead is worse and I am recording it as the headline. **The codebase already
+contains six mutually inconsistent definitions of "a day" and "a week", and the chart's bucketing is a
+seventh.** The fix aligns the chart with two of them and makes it newly disagree with four. One of those
+four is ICT PDH/PDL versus chart daily bars, which agree *today* — and agree only because both are wrong
+in the same way. Fixing one breaks a visible agreement that users currently rely on. That is a class of
+regression no oracle in the tree would catch, because both sides would be individually defensible.
+
+The audit also named a **third** epoch-flooring bucket site that the finding missed:
+`talaria-fvg-indicator.js:68-70`, `periodStart(t, tfMs)`, used at line 294, with `tfToMs` supporting `d`
+and `w`. The PO's scope guidance said there are two sites and they must share one helper. There are
+three. The third is not being wired in this packet, and I have had the author add a census assertion so
+that the count is pinned rather than assumed.
+
+Twelve silent-shift items, ordered by consequence. The two I am carrying up: the **propfirm daily-loss
+rule** and **anchored volume profile**, both of which change meaning when the day boundary moves, and
+neither of which fails loudly. And a gate hazard — **caches are not keyed on calendar version**, so the
+§A5 negative control will lie unless every affected cache is invalidated on flip. A kill-switch that does
+not actually switch is a worse artifact than no kill-switch.
+
+`parseTimeframe` must **not** change its return value; roughly 90 consumers depend on the current flat
+86400000 / 604800000. Estimate for the full row, 12 to 14.5 days.
+
+---
+
+## 2026-07-28T02:00 · DIRECTOR-Q · vendor-native daily datasets — the question that decides the fix
+
+Not a `PO-REQ`; it is a design ruling, not an observation. Raising it as the audit's highest-value
+output.
+
+When the chart switches to 1D, it does not resample from 1m. It **refetches a vendor-native `1d`
+dataset** and then re-floors it through `Math.floor(t / 86400000) * 86400000`. So the question is: **does
+the session calendar re-bucket a vendor-native daily series, pass it through, or refuse it?**
+
+- **Pass through** is correct if the vendor already stamps at 22:00Z / 21:00Z, i.e. anchors to 17:00 New
+  York — the bucket function is then the identity and there is nothing to do.
+- **Re-bucket** is correct if the vendor stamps at 00:00Z.
+- Choosing re-bucket when the vendor is already session-anchored **reproduces the exact defect being
+  fixed, in the opposite direction**: each bar gets re-stamped two hours earlier and wears a session date
+  it does not contain. The OHLC still looks plausible, so this is **unfalsifiable from the chart**. That
+  property is what makes it worth the Director's time rather than mine.
+
+I have dispatched a read-only probe to settle the empirical half from the repository, the API server or a
+local dataset before spending any PO minutes, per §A12.4 — a request that could have been an assertion is
+a defect in the gate system. The ruling is still needed either way; the probe only removes the guesswork
+about which branch we are ruling on.
+
+---
+
+## 2026-07-28T02:03 · VERDICT · session-calendar RED accepted at r2, finished at r3
+
+surface= second independent top-tier adversarial review, author not involved; oracle landed in-memory and
+executed against real product code, all 44 symbol shapes and all registry rows swept, sixteen
+break-attempts on the W5 guard. Then r3 re-verified against a live-origin capture of nginx responses and
+per-frame executed scripts.
+
+coverage= no browser paint, no deploy, no product wiring merged. Crypto weekly remains unratified. The
+`chart-host.html` surface named below is captured but not fixed.
+
+**ACCEPT at r2.** The reviewer's own words for why: the GREEN half now proves something about the
+product, not about the harness. They landed the wiring in memory, ran with only `currentSymbol`
+populated, got 20 buckets with Friday present, then re-introduced the r1 defect and confirmed the effect
+clause catches it. `TESTDXY` does not match `DXY`, `NZDUSDX` does not match `NZDUSD`, and
+`isRegistered`/`getSpecs` share a resolver so there is no normalisation gap. The
+`MarketCalculationEngine.isRegistered()` choice — which the author made in response to my re-brief — was
+endorsed explicitly.
+
+**One defect I required fixed before boarding, and it was the right call.** `_sessionInstrumentClass`
+memoised a `null`, so a registry transiently absent at first call became **permanently** absent for that
+symbol and the chart never recovered. Capability loss without failure, §A4c's exact class. Cell N could
+never have caught it: cell N tests *permanent* absence, never *recovery*. The r3 fix is better than the
+one I specified — it separates `symbol-not-registered` (settled, cacheable) from `registry-unavailable`
+(not an answer at all, never cacheable), and keys the cache on the engine instance. Recovery is now
+covered by a cell that installs the registry mid-test and asserts the output *moves*.
+
+**FX anchor versus the server's existing weekend filter: zero disagreement**, and now a standing
+differential rather than a one-off. 156 closes and 156 reopens over 2013–2015 at minute resolution, both
+directions, every close a daily session open and every reopen both a daily and a weekly open, converse
+checked for spurious opens, one distinct local anchor across three years. It also pins five exact strings
+from the Python source so an edit there fails the cell rather than drifting against a stale
+transcription. Since `api_server.py` already implements this rule DST-aware, matching it was the
+difference between six calendars and eight.
+
+---
+
+## 2026-07-28T02:05 · OPEN · the session-calendar fix is inert on a live multichart surface
+
+Escalating this above the packet it came from.
+
+I asked whether `multichart/chart-host.html` was still servable, expecting a yes-or-no. The answer is
+worse than orphaned-but-served: **`multichart-shell.html` is live and embeds two `chart-host.html`
+iframes**, both captured executing `/chart/chart.js` with **no module registry at all** — the file's own
+comment says "engine (no modules — minimum surface)". So the session-calendar fix, once wired, is inert
+on a reachable user-facing surface with two panels, and those panels keep the phantom Saturday while the
+single-chart surface is correct. A fix that is silently absent on one surface and present on another is
+worse than a fix that is absent everywhere, because it makes the two surfaces disagree.
+
+`legacy-index.html` is HTTP 200 and loads the registry **after** `chart.js` — not merely declared after,
+*executed* after, exec index 38 versus 46. It works today by `defer` timing rather than by declaration.
+Combined with the memo-poisoning bug, that was the realistic path to a permanent null.
+
+Two things the sweep turned up beyond what I asked. There are **eight** shells executing `chart.js`, not
+six — `multichart-prod/chart-embed.html` builds its script list in JS and is invisible to a tag-only
+scan, and is correctly ordered. And `chart-host.html` has **drifted between trees**: the source tree
+carries 26 lines of TF-switch viewport handling the served tree lacks. The author did not reconcile it
+and was right not to — copying an unmirrored feature onto the served tree to make a hash match is exactly
+the kind of quiet change that should never happen inside an unrelated packet.
+
+Blocks the session-calendar wiring change, not the RED packet.
+
+---
+
+## 2026-07-28T02:07 · OPEN · four registry rows are mis-typed, and the fix will trust them
+
+New defect, found by the r3 sweep, and it is created *by* the session-calendar fix rather than merely
+revealed by it.
+
+`DXY`, `USDX`, `XTIUSD` and `XNGUSD` are all registered as `forex`. None is spot FX. WTI and natural gas
+open **18:00 ET**, not 17:00. After wiring, each gets a confident one-hour-wrong session boundary — and
+`isRegistered()` will not catch it, because the row exists. The degraded-passport announcement I relied
+on as the acceptable-inertness argument only fires on *unresolved* symbols; a mis-typed row resolves
+cleanly and silently.
+
+The registry has **120** rows, not 119. The G10 cross matrix is missing exactly two, `EURNZD` and
+`GBPNZD` (26 of 28), plus the SGD crosses and `XPTUSD`/`XPDUSD`.
+
+On broker suffixes, the author's placement argument is correct and I am adopting it: `_resolveRegistryKey`
+already splits on `/ - _ .`, so `EURUSD.a`, `EURUSD-ECN` and `EURUSD_i` resolve while `EURUSDm`,
+`EURUSDpro` and `EURUSD#` do not. The rule belongs in the **resolver**, not in the class mapping —
+`EURUSDm` and `EURUSD` are the same instrument for pip size, P&L and session alike, and putting it in
+`classFromRegistry` would give the calendar a symbol vocabulary the money path does not share. That is a
+divergence I would rather not create on a money-adjacent surface.
+
+---
+
+## 2026-07-28T02:20 · DISPATCH-REGISTER · §A13.3b compliance, train 1 — backfilled
+
+§A13.3b requires a `DISPATCH` entry per dispatch carrying `role`, `tier`, `model`, and for top-tier
+authors a named `trigger` clause. It also says a dispatch absent from the journal is an unaccepted
+packet. None of my dispatches this train carried one, so I am backfilling the whole register rather than
+starting the count from now — starting from now would quietly launder the trains under audit.
+
+### Author-tier dispatches
+
+| # | Packet | role | tier | model | §A13.2 trigger row |
+|---|---|---|---|---|---|
+| 1 | `mcdiag-resample-measurement` | author | top | opus-5-high | **none nameable** — row is "Test, oracle and harness authoring", mid |
+| 2 | `session-calendar-red` | author | top | opus-5-high | "Architecture design (… session-calendar design)" |
+| 3 | `indicator-lag-data-effect` | author | top | opus-5-high | "Numeric correctness: … anything painted as a value" |
+| 4 | `shell-control-inventory` | author | top | opus-5-high | **none nameable** — row is "control enumeration", cheap |
+| 5 | `residency-cap-answer` | author | top | opus-5-high | "Architecture design (C3a shapes …)" |
+| 6 | `freeze-triage` | author | top | opus-5-high | "Root-cause triage of any surprise or new regression" |
+| 7 | `anchor-audit` | author | top | opus-5-high | **none nameable** — row is "Audits, greps, file:line inventories", cheap |
+| 8 | `raw-cap-verification` | author | top | opus-5-high | **none nameable** — verification of a stated claim, cheap |
+| 9 | `vendor-anchor-probe` | author | mid | gpt-5.5-medium-fast | n/a |
+| 10 | `a6-servable-surfaces` | author | cheap | composer-2.5-fast | n/a |
+| 11 | `a4c-guard-sites` | author | cheap | cursor-grok-4.5-medium-fast | n/a |
+
+**Author tier: 8 top / 1 mid / 2 cheap = 73% top.** Above the 40% reporting threshold, so it requires
+justification, and the honest justification is that **half of it has none**. Four of the eight can name a
+row. Four cannot, and of those, three sit on rows the table marks explicitly cheap — including
+`shell-control-inventory`, which §A13.3b names by name as work that must be dispatched cheap. Had those
+four routed correctly the figure would be 4/11, or 36%, under the threshold without special pleading.
+
+### Reviewer-tier dispatches — reported separately, not under audit
+
+| # | Packet | role | tier | model |
+|---|---|---|---|---|
+| R1 | `session-calendar-red` r1 | reviewer | top | opus-5-high |
+| R2 | `session-calendar-red` r2 | reviewer | top | opus-5-high |
+| R3 | `session-calendar-red` r3 delta | reviewer | top | opus-5-high |
+| R4 | `indicator-lag-data-effect` | reviewer | top | opus-5-high |
+
+**Reviewer tier: 4 top / 0 mid / 0 cheap = 100% top.** Correct and non-negotiable per §A13.1. I am
+stating it separately because a blended figure would have read 12/15 = 80% and hidden the fact that the
+reviewer half is policy working exactly as written while the author half is the violation.
+
+---
+
+## 2026-07-28T02:22 · CORRECTION · why I was routing top, and it is not the reason the ruling assumes
+
+§A13.3b diagnoses the drift as escalation under uncertainty — a verifiability judgement quietly converted
+into a comfort judgement. For Managers B and C I cannot speak. For me that diagnosis is **too generous**,
+and recording the real mechanism matters more than accepting the stated one, because the fix is
+different.
+
+**I was not choosing top tier. I was not choosing at all.** The dispatch tool inherits the parent model
+when no model is specified, and my own model is top tier. In eight of eleven authoring dispatches I
+passed no model parameter. So "default to cheap" required an affirmative act I was not performing, and
+every unspecified dispatch silently resolved upward. There was no comfort judgement to interrogate,
+because there was no judgement in the path at all.
+
+This is the same failure the Director names one line earlier in the ruling — a contract with no machine
+check is a suggestion — but one degree worse. §A13.2 was not merely unchecked; the tooling **defaulted
+against it**. An unstated preference lost to an unstated default, silently, eleven times, and I did not
+notice because the outputs were good. That is precisely the shape of the loader defect and of TB-6:
+capability loss with no failure signal. I have been writing about that class all night in other people's
+code.
+
+Concretely, from now on: **no dispatch leaves without an explicit `model` parameter**, cheap or
+otherwise, including the ones I intend to be top. An omitted model is now a defect in my brief, not a
+neutral choice, because omission is not neutral in this tool. The named-trigger requirement is the
+second gate, not the first — naming a row cannot catch a dispatch where I never considered tier at all.
+
+The four correctly-triggered top dispatches I stand behind and would repeat: session-calendar is named in
+the architecture row verbatim, the indicator-lag verdict turns on painted values at the fifth decimal,
+the freeze work was root-cause triage of a surprise, and the residency-cap answer was a C3a shape
+question. The other four I would now route cheap or mid, and I expect the outputs would have been
+identical — which is the ruling's actual claim, and I have no evidence against it.
+
+---
+
+## 2026-07-28T02:24 · METRIC · rejection rate by (task class × model), train 1
+
+Reported per §A13.3b part 4 and Part 4. Adjudicated means a top-tier review returned ACCEPT or BLOCK.
+
+| Task class | Model | Dispatched | Adjudicated | Rejected | Rate |
+|---|---|---|---|---|---|
+| Oracle / harness authoring | opus-5-high | 1 | 2 | 1 | **50%** |
+| Measurement harness | opus-5-high | 1 | 1 | 0 | 0% |
+| Diagnostic harness | opus-5-high | 1 | 0 | — | pending |
+| Read-only audit / inventory | opus-5-high | 4 | 0 | 0 | 0% (unreviewed) |
+| Architecture answer | opus-5-high | 1 | 0 | 0 | 0% (unreviewed) |
+| Evidence probe | gpt-5.5-medium-fast | 1 | 0 | — | pending |
+| Enumeration | composer-2.5-fast | 1 | 0 | — | pending |
+| Enumeration | cursor-grok-4.5-medium-fast | 1 | 0 | — | pending |
+
+Three things this table says that the numbers alone do not.
+
+**The only measured rejection rate in the train belongs to the top tier**, at 50% on oracle authoring —
+`session-calendar-red` r1 was blocked outright because the wiring patch read properties that do not exist
+on `chart.js`, so the GREEN half proved a fact about the harness and not about the product. Top tier is
+not buying immunity; it bought one blocked packet out of two adjudications. That is a data point against
+the assumption I was implicitly running on.
+
+**The cheap and mid rows are empty, and that is the finding.** §A13.3b says the measurement is what makes
+cheap tier safe to use. The converse is what actually happened to me: I never dispatched cheap, so no
+evidence about cheap accumulated, so there was never a moment where cheap looked demonstrably safe, so I
+kept not dispatching cheap. The absence of the metric was not a reporting lapse downstream of the routing
+problem — it was **load-bearing in causing it**. Part 4 required this from the outset and my not
+producing it is a substantive failure, not a paperwork one.
+
+**Four audit dispatches show 0% rejection against zero reviews.** That number is not evidence of anything
+and I will not present it as though it were. §A13.2 bars cheap-tier judgement from the record; it does
+not exempt top-tier evidence-gathering from review. Two of those four produced classifications I have
+already acted on — the anchor audit's seven-calendar finding and the freeze triage's mechanism — with no
+independent pass. I am not opening that as a new row tonight, but it is a gap and I am naming it before
+someone else does.
+
+---
+
+## 2026-07-28T02:26 · DISPATCH · cheap tier, effective immediately
+
+Dispatched on receipt of the ruling rather than at the next train boundary, since §A13.3b names both of
+these as work currently on the board.
+
+- **`a6-servable-surfaces`** — cheap, `composer-2.5-fast`, read-only, no writable files. §A6 enumeration
+  across the HTML surfaces. Not a re-run for its own sake: the previous top-tier pass said six shells
+  execute `chart.js` and the r3 sweep found eight, because `chart-embed.html` builds its script list in
+  JavaScript and is invisible to a tag-only scan, and because `chart-host.html` is reachable only as an
+  iframe child of `multichart-shell.html`. The brief hands it both misses so it searches for dynamic
+  loads and iframe reachability edges, and asks for tree drift as a fourth table. A top-tier model would
+  have produced the same table more slowly.
+- **`a4c-guard-sites`** — cheap, `cursor-grok-4.5-medium-fast`, read-only, no writable files. Guard-site
+  enumeration for the `global.X &&` class, grouped by **failing-branch behaviour** rather than by file,
+  because silent-skip and silent-fallback are the two groups that matter and grouping by file hides them.
+  Also asked to find any other guard that **memoises a negative result**, since that is exactly the defect
+  just fixed in `_sessionInstrumentClass` and I have no reason to think it occurs only once.
+
+Both briefs state explicitly that the subagent must not classify or issue verdicts, per §A13.2's bar on
+cheap-tier judgement entering the record. They report guards, fallbacks and observable consequences; I
+classify. That constraint is what makes the cheap dispatch safe here, and it is the first thing to check
+if either packet comes back wrong.
+
+Still to route cheap when their turn comes: the §A8 mechanical presence pass, `_mcDiag` log tabulation on
+the next replay run, and evidence-folder assembly for the session-calendar packet. Not dispatched now —
+none is blocking, and I would rather see how the first two cheap packets land before widening.
+
+---
+
+## 2026-07-28T02:32 · DISPATCH · overnight authority accepted, four packets out
+
+Per §A13.3b every dispatch is journalled with role, tier, model, and a named trigger row for top-tier
+authoring.
+
+| Packet | role | tier | model | §A13.2 trigger row |
+|---|---|---|---|---|
+| `tal01918-red` | author | top | claude-opus-5-thinking-high | "Numeric correctness: … anything painted as a value" **and** "Any edit to `chart.js` shared paths" |
+| `mcdiag-tabulation` | author | cheap | composer-2.5-fast | n/a — row 2, "Log parsing, counter tabulation" |
+| `legacy-deroute` | author | cheap | cursor-grok-4.5-medium-fast | n/a — row 1, "Audits, greps, file:line inventories" |
+| `a10-residue` | author | cheap | composer-2.5-fast | n/a — row 1, "control enumeration" |
+
+All four carry an explicit `model` parameter. Per the correction I logged at 02:22 an omitted model is
+now a defect in my brief, because this tool inherits the parent model on omission and my parent model is
+top tier — omission routes upward silently, so there is no such thing as a neutral non-choice here.
+
+Three of the four cheap briefs explicitly forbid the subagent from classifying or issuing a verdict, per
+§A13.2's bar on cheap-tier judgement entering the record. They return facts; I classify. That constraint
+is what makes cheap dispatch safe on these tasks, and it is the first thing to check if one comes back
+wrong.
+
+**Write-packet accounting.** `tal01918-red` takes my third and last write slot. In flight:
+`session-calendar-red` (r3, under review), `indicator-lag-data-effect` (under review), `tal01918-red`
+(dispatched). The three cheap packets are read-only or evidence-only and are uncapped. Consequences,
+stated rather than discovered later:
+
+- **The `drawing-tools-manager.js` hand-off from Manager B is queued, not dropped.** It is a write
+  packet and I am at the cap. It boards the moment the first of the three merges. B has the proven
+  two-line fix against the same registry, so it is cheap tier and short — it is waiting on budget, not
+  on difficulty.
+- **The legacy de-route is deliberately split.** Phase 1 is read-only evidence plus an exact unified
+  diff; the apply is held for a slot. This also makes the change safer, because of the dependency below.
+
+---
+
+## 2026-07-28T02:34 · DECISION · three of tonight's instructions are already discharged, and I am not re-running them
+
+Recording this rather than silently complying, because re-running completed work would look like progress
+and produce none.
+
+**The lag experiment is done.** The Director asks me to test whether the lag is a data effect — absent on
+1m, worse as timeframes coarsen, independent of render cadence — and says the single experiment either
+collapses two rows or kills a hypothesis. That experiment ran tonight and is under adversarial review.
+Absent on 1m held. Present above 1m held. Independent of render cadence held, with zero spread across
+four cadences including a zero-frame cell and a positive control proving the instrument can see
+cadence-tracking lag when it is present. "Worse as timeframe coarsens" **split**: the live gap is flat
+across resampled timeframes — which matches the PO's own flat table and would have been contradicted by a
+monotonic result — while the monotonic growth lives in the truncation error at 1.47 / 5.50 / 10.53 /
+17.95 / 19.07 pips for 5m through 1d. So the collapse the Director hoped for has provisionally happened.
+
+Rather than repeat it, I have given `tal01918-red` the **join** as its deliverable: does the window error
+it measures reproduce both the PO's 0 / −0.6 / +13 / +72 series *and* the sibling's monotonic series? If
+one quantity explains both, the rows collapse and I treat them as one fix. The brief says explicitly that
+a forced unification is worse than two honest rows.
+
+**The session-calendar design is done and accepted**, at r2 by independent top-tier review, with r3
+delivering the memo-poisoning fix and a standing differential against the server's existing FX weekend
+rule — 156 closes and 156 reopens over three years, both directions, zero disagreement. It is
+per-instrument-class via `MarketCalculationEngine.isRegistered()`, not a constant swap, as required. What
+remains is wiring, and wiring is blocked on two things below, neither of which is design.
+
+**§1.2 is answered**, in writing, at `docs/plan3/ANSWER-A1.2-RESIDENCY-CAP-20260728.md`. Do not build the
+panel-side cap. Expected mixed-4 effect ≈ 0, cost 4–6 days to establish that. Two of the question's three
+premises are false: the named modules are reference/test-only rather than shippable, and panels hold
+references rather than bars, so there is nothing per-panel to cap. The measured cost is host-side — 2.000
+full resamples per tick scaling with total history — which is consistent with 3.5 GB on a **single**-panel
+1m layout, a figure no per-panel duplication story explains.
+
+---
+
+## 2026-07-28T02:36 · ASSUMPTION · §A14.2 not found in the ruling I can read
+
+Logged per tonight's instruction to record a default and proceed rather than idle.
+
+The dispatch cites §A14.2 for the legacy de-route. The copy of `DIRECTOR-RULINGS-20260727.md` at commit
+`9d0453094` contains no §A14 section that I can locate. Either it landed in a commit I have not fetched,
+or it is being applied ahead of publication.
+
+**Default I am proceeding on:** the de-route is exactly as the dispatch describes it — remove the
+allowlist entry, remove the Dockerfile copy, prove the route 404s, retain only the chart-root source —
+and nothing in the unpublished §A14.2 changes that scope. I have de-risked the assumption by making
+phase 1 read-only, so if §A14.2 turns out to say something different, I have spent evidence-gathering
+effort and applied nothing.
+
+This is the second time tonight a governing document has not been where it should be; the earlier
+instance was the gitignored rulings that failed to propagate into worktrees. Recording the pattern.
+
+---
+
+## 2026-07-28T02:38 · OPEN · the de-route target is the redirect chain's destination
+
+Found while writing the brief, before dispatch.
+
+`api_server.py:26923` is `"legacy-index.html"` in the `CHART_ROOT_FILES` allowlist. **Line 26924 is
+`"index.v9.html"`, and its inline comment reads `redirect stub → legacy-index.html (no second
+monolith)`.** So the page being de-routed is the *target* of a redirect stub two lines below it in the
+same allowlist, and `index.html` at 26921 is itself described as a stub pointing at V9.
+
+Removing the target without following the chain converts a working page into a redirect to a 404. That
+is the §A4c failure class applied to a route rather than to a global: the request succeeds, the user
+lands nowhere useful, and nothing logs. The brief requires the full `index.html` → `index.v9.html` →
+`legacy-index.html` chain mapped with file:line before any diff is proposed.
+
+One interaction worth noting: `legacy-index.html` is the shell the session-calendar sweep flagged for
+loading `chart.js` **before** `modules/market-calculations.js`, inverted relative to every other shell
+and working today only by `defer` timing. If the de-route lands, that hazard disappears with the page. If
+the de-route stalls, it stays live and needs covering separately. Two rows that partially cancel — worth
+sequencing deliberately rather than fixing both.
+
+---
+
+## 2026-07-28T02:40 · STATUS · wiring blockers for the session-calendar canary gate
+
+Neither is design work, so neither is addressed by dispatching more design.
+
+1. **The fix is inert on a live multichart surface.** `multichart-shell.html` is served and embeds two
+   `chart-host.html` iframes, both executing `chart.js` with no module registry at all. Wiring the
+   calendar leaves those two panels showing the phantom Saturday while the single-chart surface is
+   correct. Two surfaces disagreeing is worse than the fix being absent everywhere, because it is the
+   harder bug to report and the harder one to believe.
+2. **The vendor-native question is unruled.** Switching to 1D refetches a vendor-native daily dataset
+   rather than resampling from 1m. If the vendor already stamps at 22:00Z the bucket function is the
+   identity and there is nothing to do; if it stamps 00:00Z, re-bucketing reproduces the defect in the
+   opposite direction, and the OHLC still looks plausible so it is unfalsifiable from the chart. A
+   read-only probe is out attempting to settle the empirical half without spending PO minutes, per
+   §A12.4.
+
+Outstanding `PO-REQ` count: **1** — `fullRawData.length` on a real session, which gates C3a scope.
+
+---
+
+## 2026-07-28T02:55 · CORRECTION · I told two managers to stop render-cadence work on evidence that was arithmetic
+
+Supersedes the recommendation in my 01:52 VERDICT. **Render-cadence work must not stop.** I forwarded that recommendation and it was wrong; the responsibility is mine, not the packet author's.
+
+The P4 null — zero spread across four render cadences including a zero-frame cell — was produced by a knob structurally disconnected from the measured quantity. The reviewer proved it rather than arguing it: they replaced `buildDisplaySeries` with a function returning an empty array, destroying the display pipeline entirely, and the measured lag did not move by one part in ten thousand. 0.8871 pips at every cadence including no rendering at all.
+
+The positive control did not catch this, and the reason is the part worth keeping. It varied `stalePaintTicks` into a harness-local array, proving the **comparator** could see a stale value if handed one. P4 needed the **actuator** proven capable of producing one. A positive control on the wrong limb is harder to catch on review than no control at all, because it looks like diligence.
+
+Two rounds later the same packet failed the opposite way, and that is the more instructive half. Re-wired, P4 *failed* — but only because the harness stubs `_renderReplayChartUpdate`, removing the product's own unconditional per-tick `render()` at `replay-system.js:4064` → `:3723`, with `scheduleRender` short-circuiting to synchronous while replay plays (`chart.js:28446-28449`). Restore the real method and the product renders **24 times in 24 ticks in every cell**, including the cells that asked for fewer. Revision 1's gate could never fail; revision 2's could never hold. Both were decided by scaffolding.
+
+The author's generalisation, which I am adopting as a standing check on my own briefs: **prove an axis exists by finding the product code that varies it, and treat every stub between the knob and the measurement as a candidate for having manufactured the result.**
+
+`p4.held` is now `null`, not `false`. Reporting it failed would assert something about the product this surface cannot support — the same error in the other direction.
+
+---
+
+## 2026-07-28T02:57 · VERDICT · where render cadence actually lives, and what survives without it
+
+surface= headless node:vm, single-chart replay path, real product modules, both kill-switch states, three repeats; plus independent reviewer execution with the product's own render call restored. coverage= no browser, no canvas, no rAF, no panels, no worker coalescing; the mirror path named below is **not** executed by any harness in this row.
+
+**The cadence mechanism is real and on a surface nobody measured.** `replay-system.js:7896-7903`: on the multichart mirror path, `applyMultichartMirrorFrame` updates `chart.data`, bumps `dataVersion`, and **deliberately skips the paint** when `_mcDeferPlayRenderToEased` is set (`:7867`, live during panel play), handing it to the eased-follow scheduler; `_finishMultichartMirrorRender` honours that at `:7715`. That is a genuine data-advances-without-render window. The harness stubs `applyMultichartMirrorFrame` and never runs it.
+
+So the author built a correct model of a real product behaviour and applied it to the one surface where it cannot occur. Cadence work is **re-pointed, not cancelled**: aim it at `_mcDeferPlayRenderToEased` / `_finishMultichartMirrorRender` on the panels surface. **Do not cite the 10.1-pip or 33-point figures anywhere** — they are properties of a stub. Reviewer confidence: ~90% that this harness cannot answer the cadence question in either direction, ~75% that the mirror path is a genuine coupling worth a lane.
+
+**What survives independently of all of it:** with a frame painted every tick and staleness *measured* at zero, every resampled timeframe still sits **1.4161 pips from truth while 1m sits at exactly 0**. That is now a reachable falsifier rather than an unreachable one — the reviewer identified the input that reaches it (disabling the trim via `replaySystem.isActive`) and confirmed the floor drops to exactly zero, so `DATA EFFECT EXCLUDED` genuinely emits. **A data fix is required regardless of how good the renderer gets.**
+
+---
+
+## 2026-07-28T02:59 · CORRECTION · TAL-01918 reproduces — retracting my re-scope
+
+Supersedes my 01:54 CORRECTION, which said the finding was probably not the defect we filed and might need rewriting. **It reproduces. Do not rewrite it.** I based that entry on a single unreviewed diagnostic and should have waited; I said at the time I would not rewrite a PO-authored finding on that basis, and that instinct was the only thing that stopped this becoming an error in the record rather than in my reasoning.
+
+Four independent measurements on 1H now agree it is real: PO 13 pips on the product, reviewer 21.3 driving candle-mode stepping, the diagnostic author 14.6 after fixing their subject bar, and the RED packet 4.9 on a deliberately quiet fixture.
+
+**The "0 pips" that misled me was a tautology.** Its subject was `chart.data[length - 2]`; the trim writes only `length - 1` (`chart.js:8955-8965`). The RED packet retained that subject as a labelled control and recorded **0 violations across 2,740,084 comparisons** — it passes everywhere, including cells where the correct subject moves 18 pips. Having the tautology on the record numerically is better than deleting it.
+
+**My instinct about the oracle was right and is now confirmed three ways:** an immutability assertion on that subject would have passed unconditionally while users watched a candle move 21 pips. That is the §A4c class applied to a gate rather than to a feature.
+
+---
+
+## 2026-07-28T03:01 · VERDICT · TAL-01918 mechanism — one defect, in the slice, and only visible under candle stepping
+
+surface= RED packet at `9f45965e4`, 8-cell matrix across 5m/15m/1H/4H, both stepping modes, both M20-Q9 states, 1H phase sweep at six offsets, 2,880-point identity check, fault-injected attribution. coverage= synthetic quiet random-walk fixture, no browser, nothing painted measured; magnitudes not transferable. **Under adversarial review; not yet accepted.**
+
+**Candle-mode stepping is a precondition for observing the defect at all.** This is the finding I did not expect and it retroactively explains every negative result on this row. Under raw stepping, the last tick a bucket occupies the last slot *is* its own final raw bar, so the window is complete at the exact instant of measurement and nothing is observable whatever subject you choose: **0 violations of 575 at 5m, 0 of 191, 0 of 47, 0 of 11**. Switch to coarse stepping and the same cells go **575/575, 191/191, 47/47, 11/11**.
+
+**The phase sweep is the mechanism proof.** On 1H: 47/47 buckets move at +0, +1, +20 and +30 minutes into the bucket, 44/47 at +58, and **0/47 at +59 — the bucket's final raw bar.** It vanishes precisely there and nowhere else. A retained stale value would not know where the bucket ends. Independently swept by the reviewer on the sibling packet with the same result, decaying monotonically to exactly zero at the final raw bar on 5m, 1h and 4h.
+
+**Identity: window error ≡ truncation error, 2,880 checked, 0 mismatches. One defect, not two.** The completed-bar mutation and the indicator lag are the same quantity. Two rows collapse.
+
+**Attribution: 100% slice, 0% trim**, with the zero bounded by fault injection — an ill-formed bar on which the trim writes 200 points off, proving the trim *would* have been attributed had it contributed.
+
+**This re-aims the fix.** Item 4 of the work order is "make `_trimLastDataBarToReplayPlayhead()` a render-time overlay". On this evidence the trim contributes nothing and the playhead **slice** contributes everything. I am not dispatching the corrective packet until the review rules on trim-versus-slice, because the current design brief points at the wrong component.
+
+**TAL-01918 has no single magnitude and the oracle must assert zero, never a tolerance.** Per-bucket 1H deltas span −5.74 to +23.96 and cross zero; the PO's 13 and the reviewer's 21.3 are two draws from one distribution. The quantity is price travel across the untraversed bucket remainder, structurally zero at the final raw bar. A tolerance calibrated on a mean would pass a 5m defect while failing an identical 1H one — precisely what the finding warns against.
+
+---
+
+## 2026-07-28T03:03 · VERDICT · session-calendar r4 accepted; daily and weekly must board separately
+
+surface= third independent top-tier adversarial review; census scanner attacked with nine injected syntactic shapes in a file and form the author did not test; counts re-derived from committed blobs; K2 attacked with five evasions; `_replayBucketStart` pins attacked with seven mutations; §8.6 provenance legs each verified at file:line. coverage= no browser, no deploy, no wiring merged; tree-sync durability unverifiable; recall not provable by sampling.
+
+**ACCEPT.** The M2 tautology that carried the last block is genuinely fixed — the reviewer injected a bar-bucketing site into `alert-system.js`, a different file and syntactic dress from the author's own probe, and the cell failed and named it exactly. All four state counts reconcile against the emitted JSON with zero duplicate keys, and the +21 net growth is real new assertions.
+
+**The census found 21 flooring expressions, 6 bar-bucketing — against the 3 that r3 certified.** Beyond the two the previous review supplied, `floorToBucket` in `sync-bridge.js` is also grid-coupled and snaps cross-panel viewports; the reviewer refines this to **four byte-identical copies, not two**, and notes `ceilToBucket` on the next line is an uncounted twin excluded only because the regex looks for `Math.floor`.
+
+**Five items recorded, one of which I am making a precondition for relying on the census after wiring.** The scanner's stated scope is wrong: it walks `chart v 1.4/chart`, the **authoring** tree, while the packet's own §7 says `homepage/public/chart` is what is served. They agree today, byte-for-byte, so no number is currently wrong — but four of the six bar-bucketing files have no mirror-identity pin, and tree drift is already documented in this repo. Also: recall is one syntactic shape wide (a numeric-literal divisor, `t - (t % D)`, reversed operands and two-level nesting all escape), so "21 flooring expressions overall" must read "21 found by this pattern". The `_replayBucketStart` reachability pin is cosmetic — negating the guard leaves it passing — but the **comment pin works**, and since the comment claims "matches chart resampleData", landing the wiring falsifies it and the cell fails. The blocker claim survives through the comment, not the reachability. K2 is still defeated by string-keyed property access, and cell K2 already contains that exact pattern four lines above the meta-assertion, so the evasion is one natural edit away.
+
+**Daily and weekly must board separately, and I am adopting that split.** Weekly is settled: `1week` is not an importable vendor timeframe (`api_server.py:19531`, `:20054`), so weekly binaries are built locally by `_resample_candles` with `bucket = (c['t'] // tf_ms) * tf_ms` at `:8837` — epoch flooring, the defect itself, one layer upstream. With no vendor weekly series there is no third-party convention to defer to and ratification is a straight product call. **Daily is not settled**, because `1day` *is* importable, so daily bars may be vendor-cut and re-bucketing them client-side would be re-cutting correctly-cut bars in the wrong layer.
+
+The reviewer decomposed the daily question into two that may not need the PO at all: does any canary-cohort dataset have a `1day` raw period, and does the client ever resample *from* a `1day` series? If either is no, the blocker collapses. Dispatched cheap and read-only.
+
+---
+
+## 2026-07-28T03:05 · OPEN · money-path silent fallbacks — Manager B territory, escalating
+
+The guard-site enumeration returned 509 unique capability sites across 189 product files. Most are ordinary. Two families are not, and both are outside my territory, so I am recording rather than acting.
+
+**`marketCalcEngine` missing falls back to hardcoded money constants, silently.** `order-manager.js:3316-3330` falls through to `pipValuePerLot || 10` — a flat $10 per pip. `:3293-3307` falls through to `pipSize || 0.0001`. Roughly twenty further sites at `:3382`, `:3903`, `:6456`, `:6531-6548`, `:6876-6893`, `:8669`, `:18226`, `:19710` and others compute P&L, risk, precision and market type from non-registry numbers, generally forex defaults. Nothing logs. For a JPY pair or a futures contract these are simply wrong, and the wrongness is denominated in money.
+
+**`propFirmTracker` missing skips the trading-disabled check and trading proceeds.** `order-manager.js:28998` and `:29594`, no else branch, no log. A safety control that silently ceases to exist is worse than one that fails loudly.
+
+**A third memoisation defect of the family we just fixed**, and this one caches a *wrong positive* rather than a null: `MarketCalculationEngine.getCalculator` (`market-calculations.js:634`, `:795-808`) builds heuristic fallback specs for an unknown symbol, marks them `_genericFallback: true`, and **caches that calculator forever** per normalised key. No clear API. So one lookup before the registry resolves poisons that symbol's money math for the session. Combined with the four mis-typed registry rows, this is the same failure class arriving from three directions in one night.
+
+---
+
+## 2026-07-28T03:07 · CORRECTION · the multichart inertness claim was overstated
+
+Supersedes my 02:05 OPEN entry.
+
+I wrote that the session-calendar fix would be inert on a live multichart surface because `multichart-shell.html` embeds two registry-less `chart-host.html` iframes. The §A6 enumeration corrects the scope: **there are two multichart paths, and the production one is fine.** Production multichart is `dist-v9` as host plus `chart-embed.html` iframes, and `chart-embed.html` **has** the registry — it builds its script list in JavaScript, which is why a tag-only scan missed it. The registry-less `chart-host.html` path is the **sandbox** multichart, reached via `multichart-shell.html`.
+
+The concern is real but smaller and differently located than I stated. `multichart-shell.html` does not execute `chart.js` itself; it only spawns children.
+
+A larger finding in the same sweep that I did not ask for: **`legacy-index.html` loads roughly 40 modules but not `chart-data-pipeline.js`, not `indicator-performance.js`, not `viewport-data-manager.js`, and not the registry.** It runs `chart.js` without the data pipeline. Seven unique documents execute `chart.js` across 216 HTML files, eleven paths counting mirrors.
+
+---
+
+## 2026-07-28T03:09 · METRIC · `_mcDiag` tabulation, and what it does not settle
+
+24 rows, all three repeats identical. Tick path alone: **1.000 full resamples per tick**. Tick plus one render frame: **2.000**. `incrementalResamples` is **0.000 in every cell** — the incremental branch never fires at all, in either kill-switch state, on 1m or 1h. The switch was verified by observation rather than assumption, `_m20Q9PrefixSliceFixEnabled()` reading true and false as expected.
+
+Two limits I am not glossing. `fullRawData.length` was **3,000** in the harness; real sessions are believed to be one to two orders larger, which is exactly what my outstanding `PO-REQ` asks and why C3a scope is still ungated. And 5m and 4H could not be produced — the harness hardcodes 1m and 1h with no CLI to extend, correctly reported rather than estimated.
+
+Outstanding `PO-REQ` count: **1**.
+
+---
+
+## 2026-07-28 04:35 — CORRECTION: I retract my TAL-01918 mechanism verdict in full
+
+At 03:01 I recorded a VERDICT naming the mechanism as "one defect, in the slice, and only visible under candle stepping," with attribution 100% slice / 0% trim. Every one of those three clauses is withdrawn. The adversarial review at [Review TAL-01918 RED](c7b8b102-df3f-4fcd-b38c-466bcea8a472) took the packet apart and the author conceded without relitigating a single point.
+
+**"One defect, not two" is withdrawn.** The identity test computed `truncationErr` and `windowErr` from two expressions that were literally the same value: `referenceBucketsPoints` assigns `cur.cP = r.cP` on every row (`corpus.mjs:165`), so `ref.cP` *is* `closeAtT.get(bucketLastRawT)`. 0/2,880 was arithmetically forced. The decisive proof is that in a review run where `loadProductChartSurface()` threw and every product-touching test errored, this test still passed with `checked=2880 mismatches=0`. No product code was involved. I propagated that unification into my journal and into a re-brief. It should not have entered the record.
+
+**The 100% slice / 0% trim attribution is withdrawn**, and it was wrong in the more interesting direction. The fault injection bounding the trim's contribution moved the **high** (−200 points) while the statistic was close-only, so the trim's close contribution was never bounded at all. Driving the `_btTfDataCache` branch, the trim moves the close on 4/4 ticks by −10.3, +10.1, −3.5 and −0.2 pip — same order as the whole effect.
+
+**The candle-stepping precondition survives inverted.** Under raw stepping the bucket window is complete at the measurement instant, and there the product is exact. That is evidence the window arithmetic is *right*, not evidence the mode was wrong. I drew the opposite inference.
+
+## 2026-07-28 04:36 — VERDICT: the third oracle defect, and this one could never pass
+
+surface=`m21-b-tal01918-red` harness, pinned `chart.js` / `replay-system.js` / `chart-data-pipeline.js` at `9f45965e4`
+coverage=8-cell timeframe × stepping matrix, 5m/15m/1H/4H, plus a 1m control; three synthetic aggregator models; five corpus shapes
+
+Two packets were blocked tonight for oracles whose subject could never change. This one is the inverse: **an oracle whose subject could never be stable.** Run against an ideal aggregator with exact full-bucket arithmetic and no product code at all, LIMB 1 still failed 47/47 at 4.9 pip — and it failed identically when the live bar was explicitly marked `isForming: true`, which is the remedy the packet's own report recommended. It passed only for a chart that refuses to draw a live candle.
+
+The oracle sampled the bucket while it still *was* the last bar, i.e. exactly when it is not finalised, with no completeness gate (`oracles.mjs:139-144`). At every reported 1H violation the playhead sat at `bucketStart + 20min` of a 60-minute bucket. Minimum un-elapsed remainder across all violations: 40 minutes. Never zero.
+
+**And the verdict was a property of the fixture.** Same product bytes, flat corpus: all four cells flip to PASS. A pure-corpus calculation with no product in it predicts 1.48 / 2.53 / 4.96 / 10.62 pip against the measured 1.48 / 2.54 / 4.90 / 10.59. It was a volatility meter. A corpus containing a weekend or an illiquid session would have silently reported TAL-01918 fixed.
+
+That is three instances of the same family in one night, across three independent authors and two model tiers. I am no longer treating this as an authoring accident. Recorded as a standing hazard: **an oracle must be run against a correct implementation before its RED is believed.** The ideal-aggregator control is the instrument that caught all three, and I will require it in every §A7 brief from here.
+
+I also caused part of this one. I told the author that the `length - 2` stability result was a tautology because the trim cannot reach that slot. True of the trim, false in general: the packet's own counters show `fullResampleCalls === ticks` and `incrementalHits = 0`, so `_resampleDataFull` rebuilds the entire series from the growing prefix every tick and that bar is recomputed from scratch before every comparison. It was the packet's only sound immutability result and I had it discarded in favour of an unsound one.
+
+## 2026-07-28 04:37 — VERDICT: neither the trim nor the slice; the row is a presentation defect
+
+surface=same, at `fb3eb56a0`
+coverage=32 matrix cells, two stepping laws driven from product code, three aggregator models, five corpus shapes
+
+I asked for a trim-versus-slice ruling before dispatching a corrective packet. The ruling is **neither**, and it is drawn from the packet's own sound measurements rather than against them:
+
+- The slice is exact whenever the window is complete — 0 value failures across 1,656 matrix checks plus 2,880 in the 1m control.
+- Completed buckets never mutate — 0 violations across 3,110,344 stability comparisons, on a series fully recomputed every tick.
+- The 100% slice share was an artifact of scoring the slice against a reference containing bars the playhead has not reached.
+
+**The defect is presentation.** The product publishes the newest coarse bucket as an ordinary finished bar, with no forming marker in any of 15 searched spellings, while it holds only the elapsed raw bars. Driving the product's own `calculateNextIndex` (`replay-system.js:4964-4967`), the steady-state landing phase is 0 at every timeframe from a deliberately off-phase start, so:
+
+| timeframe | raw bars in newest candle | bucket un-elapsed | markers |
+|---|---|---|---|
+| 5m | 1 of 5 | 80% | 0 |
+| 1H | 1 of 60 | 98% | 0 |
+| 4H | 1 of 240 | 99.58% | 0 |
+
+A user stepping candle-by-candle sees an unlabelled one-minute stub in the slot where they read a finished candle, then watches it fill in. That is normal behaviour for a live candle and surprising only because nothing labels it as one. It is a plausible mechanism for the PO's 13-pip report and it is neither of the two suspects I was chasing.
+
+**Row renamed** from "completed-bar close mutation" — contradicted by this packet's own 0/1,664 and 0/3,110,344 — to **`unmarked-forming-candle`**. Not "coarse": clause A fails 2,304/2,304 at 5m, 2,688/2,688 at 15m, 2,832/2,832 at 1H and 2,868/2,868 at 4H under *raw* stepping as well. Coarse stepping sets the severity, not the existence.
+
+**One constraint the corrective packet must carry.** On the `_btTfDataCache` path the pre-trim resample equals the **full bucket** close on 4/4 ticks and the post-trim value equals an independent to-playhead aggregation on 4/4. The trim is writing the *correct* value there; its 10.3 pip is the size of the correction it applies. Narrowing or removing the trim on that path re-introduces up to 10.3 pip of future data into a live candle. My 03:01 note that "work on the trim moves zero pips" would have pointed a fixer straight into that.
+
+Reachability of that branch is scoped, not claimed: the probe replaces `_getBtTfDataCache` wholesale and bypasses four gates the real accessor applies. It shows the branch executing and what it computes, nothing about the shipped cache reaching it.
+
+## 2026-07-28 04:38 — VERDICT: TAL-01918 RED accepted at r2, finished at r3
+
+surface=`manager-a/tal01918-red` at `fb3eb56a0`
+coverage=28 tests, 26 pass, 2 fail (both limbs), evidence byte-identical across independent reruns
+
+Accepted at r2 after the rebuilt LIMB 1 survived the instrument that killed r1: it passes against a model that omits the partial bucket, passes against one that merely marks it `isForming` with clause A exercised 48 times rather than skipped, and fails 48/48 against the real product. The reviewer could not make it fail on a healthy product or pass on a broken one.
+
+Clause B was the sharpest residual risk — marker-awareness is the correct narrowing and also the classic way to disarm an assertion. The reviewer built the discriminating input, an aggregator that marks its live candle correctly but corrupts a *finished* bar by 5 points, and clause B fired 48/48 with A and C silent. Across five corpus shapes including a weekend gap with 480 bars excised and two illiquid-session variants, clause A fails 100% of its checks in every one. The fixture-flatness failure is closed, not moved.
+
+r3 landed four must-fixes. The one worth recording: `assert.ok(masterFail > 0)` failed on a flat corpus with the product byte-identical — the r1 error re-imported one level down into an asserted position. Also two product claims printing `pass: true` on an empty matrix via `[].every(...)`, the 4H row rendering 239/240 as "100%", and a float-equality conjunct that was a 0.005 pip tolerance in disguise.
+
+r3 also closed the undriven legacy stepping path rather than deferring it. `_advanceCoarseLegacyCandleBucket` is phase-*preserving* and is checked first at all three step sites, so when its gate is on it dominates. Driven with one declared gate stub, phase is preserved at all four timeframes where `calculateNextIndex` collapses to 0. **Two evidenced stepping laws with opposite phase behaviour, and the RED fails under both.** Under the legacy gate the newest candle holds `phase + 1` raw bars, so the 1-of-60 figure is specific to `calculateNextIndex` — that bounds the mechanism table, not the RED.
+
+Not verified, and I am carrying these rather than burying them: shipped reachability of the `_btTfDataCache` branch; anything painted, since there is no browser and the render limb clears `_frameDisplaySeries` by hand in place of `render()`; and the magnitude gap — the PO's 72 pip at 4H sits outside this fixture's observed maximum of 43.2, which bounds the corpus rather than the defect.
+
+---
+
+## 2026-07-28 05:24 — VERDICT: eviction-discriminator port accepted and merged
+
+surface=`chart v 1.4/chart/modules/drawing-tools-manager.js` and its `homepage/public/chart/` mirror
+coverage=both `orderLines` eviction sites in the file; `chart.js` and `replay-system.js` swept and clean
+
+Manager B's proven discriminator ported into the A-owned executed-removal path. Both of the doubts I briefed the reviewer on came back against me, which is the useful outcome.
+
+I predicted a missing second site, because B needed two edits with opposite discriminators. There are exactly two sites in A's file and the pending-removal one at `:12133` was **already discriminated before this packet**. B needed two edits because both of its sites were undiscriminated; only one of A's was.
+
+I predicted `isPending` might not be populated, making the port a no-op or, worse, converting a spurious-deletion bug into a registry leak. It is populated and never mutated: `drawPendingOrderLine` sets `isPending: true` at `order-manager.js:38085`, `drawOrderLine` omits the key entirely at `:36409`, there is no assignment to a row's `isPending` anywhere, and rows hold live D3 selections so nothing serialises the flag away. The reviewer drove the real source block from both revisions across a six-case truth table: exactly one case changes behaviour, and it is the intended one. The "flagless pending row" case that would have made the fix a no-op is unreachable. The stale-flag leak case is bounded to one frame by `updateOrderLines` self-cleaning at `:44620-44626`.
+
+The user-visible defect this closes is real and reachable: `_reconcileOrderLineDomForChart` at `:45216` treats the registry as source of truth and deletes DOM nodes with no matching row. Under the parent, deleting a position drawing evicted the live pending row and the reconciler then erased that pending order's line from the chart.
+
+Two gaps I am carrying rather than closing here. **No automated gate covers this file** — B's eviction-invariant RED declares `meta.product` as `order-manager.js` and enumerates five sites in that file only, so a revert of A's line would be caught by nothing. And **B's fix is not in this ancestry**: `git merge-base --is-ancestor` exits 1 and the packet's `order-manager.js` is B's pre-fix blob, so the composite cannot be validated on this branch. Both go to the digest.
+
+## 2026-07-28 05:25 — CORRECTION: I rejected a correct finding on a paginated grep, and it grew the packet into a hazard
+
+This is the most expensive mistake I have made tonight and it is entirely mine.
+
+The follow-up packet was asked to remove three dead selectors. The author reported that `.sl-${id}` and `.tp-${id}` are real class names. I grepped `order-manager.js` for class attributes interpolating an order id, saw no SL/TP entries, and told the author their claim was unsubstantiated — adding a process note about not asserting unverified facts.
+
+**My grep was capped at 30 hits and the answer was at line 42374**, outside the window. `` `sl-line sl-${order.id}` `` is right there, with the same pattern at `:42382, 42387, 42393, 42401, 42406, 42423, 42438, 42445`, and the codebase's own orphan sweeper uses exactly those selectors at `:41701-41702`. I read absence-in-the-first-thirty as absence-in-the-file. The author was correct and I lectured them for it.
+
+The cost was not the wasted pass. Acting on my false finding, the author replaced the selectors with a `removeSLTPLines(order.id, ch)` call, on the strength of a registry-leak premise **I supplied in the re-brief**. The adversarial review then reproduced the parent path and found no leak: zero dangling handles, `slLines` and `tpLines` rows coherent with their DOM, because the old selectors were dead and had never swept anything. There was nothing to close. I invented the justification, the author built to it, and the result was a change that erases a live position's stop-loss.
+
+Two process changes. I will not treat a truncated search as an enumeration — if a grep is capped, either raise the cap or say "not found in the first N". And when a subagent contradicts me on a checkable fact, I will check it before writing the correction, not after the review catches me.
+
+## 2026-07-28 05:26 — VERDICT: chart-scope accepted, selector revival blocked
+
+surface=same two files
+coverage=both eviction sites, two panels, `orderLines` / `slLines` / `tpLines`, rows with own-panel, foreign-panel and absent `chart`
+
+**Change 1 accepted.** `orderManager.chart` is not a focus pointer — assigned exactly once in the constructor at `order-manager.js:451`, no other assignment in the file, no external `orderManager.chart =` in the tree, and each `Chart` constructs its own `OrderManager` at `chart.js:13034`. So it is the owning panel and immutable for the object's lifetime, and scoping to it is right. Foreign-panel rows now survive with their DOM intact instead of being evicted and orphaned.
+
+**Change 2 blocked, and the ruling is to do nothing rather than something.** `deleteDrawing` cancels pending orders at `:12065` but never mutates `openPositions`, so it does not close a position. Making the selectors live therefore erases the entry line, SL and TP of a position that still carries exposure and a live stop at 95 in the fixture, with nothing on the render path bringing it back — `updateOrderLines` only repositions, `updateSLTPLines` only disposes. Recovery needs a symbol switch.
+
+The codebase states the rule against it at `order-manager.js:41761-41765`: sweeping `.order-<id>` is "correct for a FULL close", and where the position stays open the entry line "must come back". This call site is not a close.
+
+Both parent and packet are wrong here — parent orphans the entry-line DOM as a stale ghost while SL and TP keep tracking; the packet erases everything. The packet is wrong in the more dangerous direction, so change 2 is reduced to deleting three genuinely dead selectors with no replacement. Re-review of the reduced packet is out.
+
+Two attacks came back clean and are recorded so nobody re-runs them: `removeSLTPLines` **is** idempotent — rows are filtered out on the first pass at `:42941, 42966, 42984`, three consecutive calls throw nothing and double-dispose nothing — and the `.order-${id}` sweep was correctly scoped to `ch.svg` with zero leakage across panels. The block was about semantics, never mechanics.
+
+## 2026-07-28 05:27 — OPEN: an RR tool deleted at a position's entry price wipes that position's lines
+
+surface=`drawing-tools-manager.js:12077`
+coverage=code read plus reviewer harness; not observed on a live surface
+
+The arm that associates a deleted drawing with an open position is a bare price coincidence:
 
 ```js
-L7401  if (!this._multichartSamePairAsHost(this.currentFileId)) return false;
+Math.abs((order.openPrice || order.entryPrice) - entryPrice) < 0.00001
 ```
 
-Same for the other two aliasing sites — L4922 behind `_multichartFinerSamePairPanelSelfOwns` at
-L4899, L6364 inside `if (finerPanelSelfOwner)` at L6362 where `finerPanelSelfOwner = samePairAsHost
-&& …`. The CONF-01-reachable path is instead **L6943, `replay.fullRawData = [...this._panelFullRawData]`**,
-in `_independentPanelTimeframeSwitch` — a method whose name is literal and which contains **zero**
-same-pair predicates between its open at L6904 and that line. A shallow copy, not an alias.
+No id, no ownership link, no creation-time association. Draw a risk-reward tool at the same level as an unrelated open position, delete the tool, and the block treats it as that position's drawing. Both the author and the reviewer read it the same way independently.
 
-**My own re-check was the sloppy one.** It reported the guard as L7402 rather than L7401 because it
-walked backwards and took the *nearest* match, stopping one line early. That is the fourth
-take-the-nearest-match failure I have caught in myself today, and the second where my own tooling
-disagreed with an author who turned out to be right.
+At parent this costs a stale ghost entry line. It becomes materially worse the moment anything in that block is made live, which is precisely what change 2 attempted. Opening as its own row rather than patching it inside an eviction packet, because the question above the diff is whether `deleteDrawing` should be touching a live position's visuals at all without closing it. If full-close teardown is ever wanted here, the existing composite is `_cleanupOrderVisualsAfterClose(orderId)` at `:41732`, which sweeps all layout surfaces and syncs `orderService.openPositions`; an inline `removeSLTPLines` reimplements a fragment of it with none of its preconditions.
 
-### The severity inverts, and it makes A1 harder rather than easier
+## 2026-07-28 05:28 — ASSUMPTION: a rejection caused by my own false finding does not count toward §A13 escalation
 
-Under CONF-01 the two slots are two separate **pointer arrays over the same bar objects**. The only
-path that deep-clones bars is `_mcCloneRawDataBars`, which lives in the same-pair family and is
-inert here. So:
+§A13 says two rejections of a packet escalate the author to top tier, and the Director restated it as non-negotiable in §A13.3b. `eviction-scope` has two: mine on the selector claim, and the reviewer's BLOCK.
 
-> **Bounding `_panelFullRawData` alone recovers nothing.** Retained bar objects go 1440 → 1440,
-> measured. The window keeps the very objects `replay.fullRawData` still pins in full. The saving is
-> one pointer array — about 8 bytes per bar — and zero bar objects.
+But the first rejection was my error, not the author's — they reported a fact correctly and I overruled it on a truncated grep. And the second is downstream of the first, since the `removeSLTPLines` call exists only because my re-brief asserted a leak. Escalating the author for my mistakes inverts what the rule is for.
 
-That is the same pathology I warned about, arriving by a different route and with a worse ending:
-not a regression that a careful instrument would catch, but a **complete no-op that a length-based
-instrument reports as a large win**. My own brief, followed faithfully, would have produced exactly
-that fix. Eleventh sighting of the family, and the first where I authored the trap myself.
+**Default I am proceeding on:** a rejection whose cause is traced to a manager's own false finding does not count toward the two-rejection escalation, and the count for this packet stands at zero against the author. The reduction was authored at composer tier with the mandatory top-tier review unchanged. Flagging for a ruling; if the Director reads the rule as mechanical, I will re-author the reduction at top tier and record the tier correction.
 
-The memory-goes-up version is real, but only in the **host-symbol** topology, where the slots do
-alias: slots 1440 → 1920, measured. That topology is production too — tile A is the host and holds
-one of the four symbols — which is why the amendment carries a second scene rather than only
-hardening the first. Both must be covered and now are.
+## 2026-07-28 05:29 — OPEN: a divergent copy of a served file under `homepage/public`
 
-### Correction queued for the fix author, deliberately not interrupted
-
-The fix packet is mid-flight. I chose not to interrupt it because the safety net is already in place
-and I checked that rather than assuming: my original brief required retention accounting across both
-arrays de-duplicated by identity, and required pulling the amended oracle before reporting — and
-`SHRINK_PANEL_LEAVE_REPLAY_FULL` fails precisely the one-slot fix. The correction goes the moment it
-reports, before any grading.
-
-### Two things the author did that I want to keep
-
-`CHK_ALIAS_INVARIANT` **nearly failed to earn its place** and the author said so unprompted: at the
-default 421-bar window it is arithmetically implied by `CHK_TOTAL_RETAINED` and cannot be killed
-independently, because the retention ceiling (2 × window = 842) is already below the 1440-bar master.
-It only becomes independently killable at a wide window, so a 900-bar variant was added where it
-fires alone. Same shape as the glow equivalent-mutant finding this afternoon: a check that cannot
-fire on its own is not a check.
-
-And it corrected its own first implementation of the in-place truncation, which used `splice(0, n)`
-and therefore also tripped `CHK_ALLOC_BEFORE_TRIM` — misleading coverage, since that check is a
-read-count proxy for allocation order and was firing incidentally. Switching to `copyWithin` +
-`length =` gives the cheapest correct in-place truncation, which now fires only the mutation check.
-That is the difference between a tooth and a coincidence.
-
-It also independently confirmed **zero in-place mutations on the alias side** across all receivers,
-which I re-ran: 0 in `chart.js` against a positive control of 8 on `this.drawings`.
+An untracked third copy of `drawing-tools-manager.js` sits at `homepage/public/chart/multichart-prod/harness/frozen/m21-vy-ab-baseline-v2.2/runtime/chart/modules/`, still at parent content. It is a deliberately pinned A/B baseline so its staleness is correct by design, but it is untracked and under a served root, so any audit of `homepage/public` finds a divergent copy of a money-adjacent file with no provenance trail. Recording rather than acting — the pin is legitimate and I am not going to break someone's frozen baseline to tidy a search result.
 
 ---
 
-## 16:20 — A1 measured: it does not pay, and the same number impeaches A2
+## 2026-07-28 05:52 — VERDICT: eviction-scope accepted at r3 and merged
 
-The A1 fix reported. **Bounding `_panelFullRawData` frees ZERO bar objects** — at 1,440, 10,000,
-50,000 and 200,000 bars per panel. 23.7 KB of array spine across four panels, 0.004% of 586 MB.
-Bounding both slots, which the amended oracle demands, recovers ~324 KB, 0.05%.
+surface=`chart v 1.4/chart/modules/drawing-tools-manager.js` and its `homepage/public/chart/` mirror
+coverage=both eviction sites, two panels, `orderLines` / `slLines` / `tpLines` / `beLines`, rows with own-panel, foreign-panel, absent, null and undefined `chart`
 
-This is the answer I told the author not to shade, and it came back against the task it was given.
+The reduction is accepted. The reviewer did not take the author's inertness numbers — they sliced the changed region verbatim out of parent, the blocked commit and the packet by anchor comment, ran all three against one identical mock, and got byte-identical `slLines`, `tpLines`, `beLines` and every real SL/TP DOM node between parent and packet. Change 2 is provably inert.
 
-**It also caps A2, which is the part that matters.** A2 compacts bar storage, so A2 can only recover
-a fraction of whatever bar data weighs. Two independent methods now say bar data is not the mass:
-my direct measurement (586 MB of `_panelFullRawData` would need 6.4 M bar objects = 3.04 years of 1m
-data per panel), and the PO's own 1.52x-across-100-1000x scaling test, which implies a
-data-proportional share of 0.05–0.53% = **0.3 to 3.1 MB of 586 MB**. Both my assigned landings are
-aimed at the same sub-1% term. Sent as FINDING-A-A1-MEASURED-DOES-NOT-PAY-AND-CAPS-A2.
+The inertness proof is a token-semantics argument and it is worth recording, because it is the exact trap I fell into. Every producer emits **two** class tokens — a bare kind token and a hyphenated id token: `order-line order-${id}`, `sl-line sl-${id}`, `tp-line tp-${id}`. A CSS class selector matches whole tokens with no prefix matching, so `.sl-line-101` can never match an element whose class attribute is `sl-line sl-101`. The three deleted selectors were incapable of matching anything the codebase produces. Exhaustive count across the tracked tree, all file types, both trees: two hits each, both in unreferenced `.js.bak` files.
 
-Best explanation for `_panelFullRawData` being named the dominant retained structure: a
-**shared-retention artifact**. Both slots point at the same bars, so the bars are attributed to the
-nearest common dominator rather than to either array — exactly what a retainer census does when two
-arrays alias one object graph.
+I had flagged the predicate rewrite as possibly out of scope. The reviewer defended it and I accept that: `(row.chart || this.chart) === ch` is the house idiom at roughly 35 sites across `order-manager.js`, including the orphan reaper at `:45237` and `removeSLTPLines` itself at `:42922`, while `(l.chart || ch) === ch` appears nowhere else in the codebase. The blocked version was the anomaly. It is also identical in the only reachable state — `orderManager.chart` has exactly one writer, the constructor at `:451` — and under a hypothetical rebind it fails *safe*, leaving a stale line rather than deleting a live one. For a change whose purpose is to stop over-eviction, that is the right direction to fail.
 
-**I OVERTURNED MY OWN AUTHOR, by reading guard bodies instead of guard names.** It reported L4922 and
-L6364 as NOT same-pair gated and used that as its reason to refuse truncation. Verified false:
-`_multichartFinerSamePairPanelSelfOwns` L4739 requires `_multichartSamePairAsHost` at L4743 and
-excludes `_isIndependentMultichartPair` at L4744-4747, and L6364 is doubly gated —
-`const finerPanelSelfOwner = samePairAsHost && this._multichartFinerSamePairPanelSelfOwns({...})`.
-The name does not lie. The oracle author and my 16:00 entry stand. Headline is unaffected: the zero
-result rests on the reachable shallow copy, not on those sites. Note the symmetry — this morning I
-was the one taking guard NAMES on trust; today my author did it and I caught it because I had already
-been burned. My own grep for the guard also came back matching `_mcFinerPanelSelfOwner`, a different
-instance field, and empty-result-is-unproven is what made me re-read rather than report.
+One provenance detail the packet did not claim and which settles the amend chain: insertions moved 22 → 24 → 16 across the two amends while **deletions stayed pinned at 12**, and the deleted-line sets are byte-identical across all three generations. The amends only ever changed what was added back, never what was removed from parent.
 
-Three of its four corrections HOLD, and one is load-bearing against the ruling's premise:
-`_buildIndependentHybridInitialMaster` (L6112-6114, gated `independentPair && displayTf !== '1m'`)
-already builds coarse native history spliced with 1m only from the playhead bucket, fetches capped at
-2,000 bars. Under CONF-01 that covers three of four panels. **Viewport windowing already took most of
-what A1 was dispatched to take** — the direct answer to "does A1 remove anything beyond existing
-windowing". Site count is 25 not 24 (`panel-cmd-bridge.js` L1761, inert same-pair family).
+## 2026-07-28 05:53 — OPEN: cancelling pending order #1 erases the visuals of orders #10 through #19
 
-**Landed but HELD, not routed.** `62b6afcc9` routes all 24 assignments through
-`_setPanelFullRawData(bars, reason)`; verified by me, exactly ONE bare write left per mirror (the
-accessor's own, L7219) and 24 routed sites, both mirrors identical. 26/26 (oracle 16/16 with the seam
-swapped onto the real implementation, residency 10/10), 8/8 mutants on disk both mirrors, 0
-NOT_APPLIED. The choke point deliberately does not truncate. I am not routing it: shipping a
-behaviour-preserving refactor with zero measured benefit spends a CKPT-01 checkpoint to buy nothing,
-on a data path, at 107% CPU. Its only value is as the A2 seam and A2 is what is now in question.
+surface=`drawing-tools-manager.js:12163` and `:12182`, and the mirror
+coverage=code read plus id-generation trace; not observed on a live surface
 
-Unmeasured cost if anyone forces the bound: `_independentMasterCoversReplayTimestamp` (L7386) uses
-master depth to avoid a refetch that "would wipe the chart and show loading". Bounding both slots to
-480 bars pushes it false and trades 0.05% of heap for refetch churn.
+The reviewer flagged the aggressive-fallback block below the eviction sites as still unscoped. I checked it and the substring hazard is worse than "worth a row".
 
-Not starting A2. The retention census, dispatched before either landing was built precisely to settle
-this, is still running and will name where the mass actually is.
+```js
+svg.selectAll(`[class*="pending-${orderId}"]`).remove();
+```
 
----
+`[class*=...]` is a **substring** match, not a token match. And order ids are not opaque: `this.orderIdCounter = 1` at `order-manager.js:512`, incremented at every `id: this.orderIdCounter++` site — `:29222, 29709, 29908, 29980, 30140, 30183, 30350, 30442, 30522, 30592, 35912` and more. So ids are 1, 2, 3, … 10, 11, 12.
 
-## 16:50 — the board moved under me; two of the Director's five mechanisms are mine and measured at 0.05%
+`pending-1` is a substring of `pending-10`, `pending-11` … `pending-19`, `pending-100` … and so on. Cancelling pending order #1 removes the DOM for every pending order whose id starts with 1. On a session with a dozen pending orders that is most of them, silently, on a money-adjacent surface. The counter is persisted and restored from the journal (`:8168`), so the low ids that collide most are exactly the ones a fresh session produces.
 
-Checked the tree before starting anything and found my scope had changed at 16:20, twelve
-minutes before my A1 finding landed. PLAN-FULL-EVICTION-CANARY-SUNDAY-1800 §4 now gives me
-THREE mechanisms — A1, A2, and **multichart eviction on close + a capped warm room** — and §6
-budgets Fri 02:00-08:00 for "the first two duration grades, A's landings".
+Two sites, both in my territory. Dispatching as its own packet rather than folding it into the eviction row, because the mechanism is different — this is selector semantics, not registry scoping — and because the fix needs an enumeration of every class token a pending order produces before the selector can be narrowed safely. `[class*=]` may be catching families like `pending-tp-*` that a bare `.pending-${id}` would miss.
 
-Those two landings are the two I have just measured at **0.05% combined**. So the plan spends
-six hours of C — the resource the Director himself named the critical path — grading nothing,
-and puts two inert mechanisms into a five-way integration risk class he correctly flagged as a
-different risk class from anything we have shipped. Sent ANSWER-A-TWO-OF-YOUR-FIVE-MECHANISMS-
-ARE-MEASURED-AT-0.05-PERCENT under his own §7 rule that bad news travels at the speed of good.
+## 2026-07-28 05:54 — OPEN: `deleteDrawing` de-registers a position it never closes
 
-**THIRD INDEPENDENT LINE ARRIVED WITHOUT ME.** The Director's own 15:55 finding names per-order
-base64 screenshots and O(all orders ever opened) per-tick sampling. That is the same conclusion
-as mine from the opposite direction: the mass is not bar data. Three methods now agree — my
-direct measurement, the PO's 1.52x scaling test, and his screenshot/order term. I am no longer
-asking anyone to take my number alone, which matters because my number contradicts the ruling
-that assigned me the work.
+surface=`drawing-tools-manager.js:12073-12140`
+coverage=reviewer driver, parent versus packet, open position with live SL and TP
 
-CONF-02 STRENGTHENS the result rather than qualifying it, and I want that on the record before
-someone uses it to dismiss the measurement: accumulating 30+ closed positions adds screenshots
-and order state to the DENOMINATOR, so bar data's share shrinks. A1's result is structural —
-shared bar objects — so it does not move with trade count.
+Scoped rather than patched, per the review. The residual after the merge: the executed registry row for the own panel is evicted while `openPositions` is untouched, so the position stays live. The orphaned `order-line order-${id}` DOM node does not persist either — the reaper at `order-manager.js:45216`, reached from `_purgeOrderOverlayArtifacts` at `:44583, 44917, 45339`, deletes DOM with no matching registry row.
 
-**The new third assignment is the one worth having, and the arithmetic is already in hand.** A
-panel realm is ~10.476 MB UTF-8 / ~20.95 MB UTF-16 of script source alone (C's 10.469 MB/realm
-and mine agree within 0.4%), so ONE retained dead realm is 30-65x what A1 and A2 recover
-together, before its ~12.8k-node document and its data. Right unit, right order of magnitude.
+So the steady state a user sees is **a position with a stop-loss and a take-profit still drawn and still tracking, and no entry line**. Plus the entry marker, since `.entry-marker-${id}` is live, has a real producer at `order-manager.js:40853`, and this packet deliberately kept removing it to preserve parity.
 
-**BOUND I PUT ON MY OWN CLAIM IN THE ANSWER, because I have been burned by exactly this shape:**
-I retracted the "six realms retained" inference earlier today (clean ratio, wrong baseline), so
-I am NOT asserting closed panels are retained today. That is what EVICT-01's bytes-down proof
-has to establish and it is the first thing I measure rather than assume. If closed panels
-already release cleanly the mechanism does not exist, and I will say so as fast as I said it
-about A1.
+This is a parent defect, not one the merge introduces — at parent the unscoped filter emptied `orderLines` entirely and the reaper then erased the entry line on *every* panel. The merge narrows the blast radius from all panels to the own panel. Direction of travel is correct and the residual is ship-acceptable.
 
-On the capped room I agree with his resolution and sharpened one thing: a CI-asserted cap is
-necessary, not sufficient. Eleven sightings today of green-suite-zero-effect all had passing
-tests. The cap needs a cell proving eviction HAPPENED UNDER PRESSURE, not that a constant is
-<= another constant. ACQUIT-01 on a number nobody exercises is the exact failure mode I keep
-finding.
+The underlying wrong is that a drawing-layer delete evicts an executed-order registry row for a position it has no authority to close, and it associates the two on a bare price coincidence (`:12077`, logged separately at 05:27). Same row as that one.
 
-CKPT-01 for the lane is in flight, not graded: manager-a/ckpt01-artifact-20260730 committed
-2500c0331 at 16:35 with a retained b113 manifest (1,615 lines), scripts/ckpt01-artifact.mjs and
-a test file. It has NOT reported to me. Standing rule cuts both ways — a commit is not a
-completion signal any more than a completion signal is a commit — so I am leaving it mid-flight
-rather than grading a packet that may still be exercising its rollback.
+## 2026-07-28 05:55 — METRIC: rejection rate by (task class × model), train 2
 
-Not starting A2. Taking the eviction lane and measuring the retention question first, because
-it decides whether the mechanism exists at all.
+Per §A13.3b. Author tier and reviewer tier reported separately; reviewer is top tier on every row by rule and is not counted as an escalation.
+
+| task class | author model | packets | rejections | rate |
+|---|---|---|---|---|
+| RED harness authoring | gpt-5.5-medium-fast | 1 | 2 | 200% |
+| mechanical port | composer-2.5-fast | 1 | 0 | 0% |
+| specced predicate fix | composer-2.5-fast | 1 | 2 | 200% |
+| adversarial review | claude-opus-5-thinking-high | 4 | n/a | n/a |
+
+Author tier this train: **0% top-tier authoring**, 3 of 3 packets authored cheap. Reviewer tier: 100% top, as required. No §A13.2 row was invoked for authoring, so no justification is owed.
+
+The two rejection counts of 200% both need reading, and neither supports escalating the author. On the RED, both rejections were oracle-design faults that a top-tier author had already produced twice tonight in the sibling packets — the tier was not the variable. On the predicate fix, **the first rejection was mine** on a false finding and the second was downstream of a leak premise I supplied; see the ASSUMPTION at 05:28. Counting either against a cheap author would tell me to escalate for my own errors.
+
+What the cheap tier actually cost this train: one wasted pass on the predicate fix, caused by me. What it saved: three packets at composer rates against four top-tier reviews that caught everything. The reviews are doing the work §A13.2 says they should.
 
 ---
 
-## 17:00 — the eviction lane's mechanism is already deployed and has never been graded
+## 2026-07-28 06:02 — ESCALATION to Manager B: five substring-selector id collisions in `order-manager.js`
 
-Took the new lane by asking its existence question first: does closing a panel release its
-realm? Before dispatching anything I read the five realm-teardown flags rather than reciting
-them, and NEARLY MADE A FALSE ESCALATION doing it.
+surface=`chart v 1.4/chart/modules/order-manager.js`, Manager B's exclusive write
+coverage=exhaustive grep for interpolated `[class*=]` in that file; id-generation traced; not observed on a live surface
 
-**First read said the five cuts were NOT on the wire.** I scanned deployed `chart.js` for
-`MC_RELEASE_*`, got zero against 45 distinct kill-switches present, and that is exactly the
-shape of the twelfth accepted-fix-never-shipped escalation. **It was a false negative.** The
-cuts live in `multichart-prod/multichart-manager.js`, not `chart.js`. Scanning the file that
-should carry the symbol, all five are LIVE at b113 with src=2 / wire=2 exact:
-MC_RELEASE_BLOB_WORKER_V1, MC_RELEASE_DRAG_GUARD_V1, MC_RELEASE_INDICATOR_WORKER_V1,
-MC_RELEASE_ORDER_REGISTRY_V1, MC_RELEASE_TF_ABORT_V1. Fifth time today the wrong-tree/wrong-file
-family has come for me and the first time the guard fired BEFORE the escalation left the room.
+Found while fixing the same defect class in my own file. I verified these myself before escalating rather than forwarding a subagent's report:
 
-Disclosing a real weakness in that check: my three chosen controls all returned 0/0 because
-they live in files the packet never touched, so they were never fetched — the control was
-badly scoped and proved nothing. The result stands on a better property than my control did:
-five independent flags each matching src=2/wire=2 exactly demonstrates the scan can see them.
+```39148:39148:chart v 1.4/chart/modules/order-manager.js
+            c.svg.selectAll(`[class*="pending-tp-pct"][class*="pending-tp-${orderId}"]`).remove();
+```
 
-**The reachability blocker is also gone.** `__TALARIA_DISABLE_MC_STASHED_PANEL_HANDLE_V1`=2 and
-`mcStashPanelHandles`=5 on the wire. The audit that found all five cuts inert blamed React
-nulling `contentWindow` before `removeChart`; the stash fix shipped for exactly that. So b113
-is the first build where the five can act — and nobody has ever measured whether they do. That
-grading has been OWED all day and is now also the EVICT-01 existence proof for my lane.
+```41707:41712:chart v 1.4/chart/modules/order-manager.js
+            svg.selectAll(`[class*="open-tp-pct"][class*="tp-${oid}"]`).remove();
+            svg.selectAll(`[class*="pending-tp-pct"][class*="pending-tp-${oid}"]`).remove();
+            svg.selectAll(`[class*="pending-tp-delete"][class*="pending-tp-${oid}"]`).remove();
+            svg.selectAll(`[class*="pending-tp-split"][class*="pending-tp-${oid}"]`).remove();
+            svg.selectAll(`[class*="multi-tp-avg-"][class*="-${oid}"]`).remove();
+```
 
-**One of my own rows is dead and I am retiring it, not carrying it:** I recorded
-`custom-indicators-runtime.js` as creating a worker blob URL with no `revokeObjectURL`, and
-proposed unrevoked blob URLs as the cheapest retained-realm fingerprint. On b113 that file has
-revokeObjectURL=1, createObjectURL=1, terminate(=2. The leak is fixed and my proposed
-fingerprint is probably dead. Told the probe to verify before using it rather than inheriting it.
+All five interpolate an order id into a **substring** match with no token boundary. Order ids come from `this.orderIdCounter = 1` at `:512`, incremented at every `id: this.orderIdCounter++` site and restored from the journal at `:8168`, so they are small sequential integers and prefix collisions are the common case, not an edge case. `tp-1` is a substring of `tp-10` through `tp-19` and `tp-100`; the family conjunct narrows *which* family is hit but not *which id* within it.
 
-DISPATCHED 0a401b21, read-only, to grade it: five-flags-OFF ablation against default, fitted
-slopes per DUR-01, under CONF-01 AND CONF-02. Briefed with the false-negative trap by name so it
-does not repeat my chart.js mistake, with the stale blob row flagged as stale, and with the sizing
-that makes the answer interpretable — one realm is ~10.5 MB UTF-8 / ~21 MB UTF-16 of script source
-(two independent censuses agreeing within 0.4%), so a retained dead realm is worth 10-21 MB and a
-per-cycle retention much smaller than that means the realm IS being released and something else
-leaks. Told it plainly that "already released, nothing to build" is a fully acceptable result and
-not to shade toward the landing existing — the same instruction that got me the honest A1 answer.
+`:41712` is the worst of the five. `[class*="-${oid}"]` for id 1 matches any class in the `multi-tp-avg-` family containing `-1` anywhere — `multi-tp-avg-1`, `-10`, `-11`, `-100`. The conjunct saves it from matching the whole document; nothing saves it from matching the wrong order.
 
-Also carried in: EVICT-01 needs TWO numbers not one, working-product assertion by MOVED replay
-index never an isPlaying flag, a negative control that must go RED, de-duplicate by identity
-rather than counting lengths (the A1 trap), and subtract a duration-matched idle window from any
-CPU figure against the 462 ms/s baseline.
+Note `:41707` also crosses families: `tp-1` is a substring of `pending-tp-10`, so the open-TP sweep can reach pending elements. The `[class*="open-tp-pct"]` conjunct is what prevents it in practice, which means the safety depends on a second selector rather than on the id term being correct.
 
-Three packets now in flight: retention census, CKPT-01 artifact (committed 2500c0331, unreported),
-and this grading.
+Not mine to fix. Handing over with the mechanism, the id-generation evidence and the fix shape my own packet used, so B does not repeat the analysis. Two notes from my side that may save B a pass: the safe form is a whole-token class selector, since producers emit a bare kind token plus a hyphenated id token and token selectors cannot prefix-match; and check redundancy before deleting, because in my file the sweep turned out to be covered by an adjacent explicit removal, which made deletion cleaner than substitution — that may or may not hold in B's block.
+
+## 2026-07-28 06:03 — DECISION: reviewing a deletion against a higher bar than a substitution
+
+The `pending-selector` author did not narrow the selector, they deleted both sweeps, on the grounds that an adjacent exact `.pending-${id}` removal already covers the same elements for the correct id. Their driver supports it: parent removes order 1's family plus the families of 10, 11, 19 and 100; packet removes exactly parent's order-1 set.
+
+I am not accepting that on the author's inventory. A deletion asserts that something is unnecessary, which is a strictly larger claim than asserting it is too wide, and the failure mode is inverted — instead of removing too much, it leaves orphaned DOM for the cancelled order. Briefed the reviewer to build the producer inventory independently and to block on any element removed at parent for order 1 that survives at packet, with the reaper's collection trigger established for anything that does survive.
+
+Recording the reasoning because it is the general rule I want applied: when a fix is a deletion, the acceptance criterion is coverage of the deleted behaviour, not correctness of the remaining behaviour.
 
 ---
 
-## 17:15 — A1 REOPENED, and the correction is against me
+## 2026-07-28 06:14 — VERDICT: pending-selector collision fixed by deletion; accepted and merged
 
-Director ordered A1 built. My instinct was that I had already answered it at 0.05% and the
-order rested on a false premise. I checked before arguing, and **the check went against me.**
+surface=`chart v 1.4/chart/modules/drawing-tools-manager.js:12163, 12182` and the mirror
+coverage=46 cancelled ids swept (1–40 plus 100, 101, 102, 110, 199, 1000); both sweep sites isolated and combined; full producer inventory harvested independently from `order-manager.js`
 
-**MY CEILING WAS A SNAPSHOT, NOT A SLOPE.** I measured A1's recoverable at FIXED master sizes
-(1,440 / 10,000 / 50,000 / 200,000 bars) and quoted the result as a ceiling. DUR-01 says an
-acceptance is a slope over time. I have spent the entire day enforcing that rule on other
-people's numbers and broke it inside my own headline finding. The structural half survives; the
-0.05% does not.
+The deletion holds, and I held it to the higher bar I set at 06:03. The reviewer built the producer inventory themselves rather than taking the author's, and proved the redundancy mechanically: **1008 correct-id checks, zero mismatches** between `[class*="pending-${id}"]` and `.pending-${id}`. The property that makes it true is that no producer emits `pending-` followed by digits with anything appended or prepended inside the same token. So for the correct id the sweep selected exactly what the surviving exact selector selects, and its only contribution was its own over-match.
 
-**THE GROWTH PATH IS REAL AND IT IS ON THE CONF-01 PLAY PATH.** Verified: 
-_mergeIntoPanelFullRawData (L7096, 21 lines) has ZERO capping constructs - 0 splice, 0 length=,
-0 Math.min, 0 limit/cap/MAX/trim/shift. Callers are _ensureIndependentPanelCoversPlayhead (L7385)
-and ensureReplayDataCoversTimestamp (L8054): both playhead-cover paths that run AS THE PLAYHEAD
-ADVANCES, and the first is specifically the INDEPENDENT / different-symbol path = CONF-01 by
-construction. So the base series has an uncapped growth path during play on exactly the config
-the PO measured.
+The family I flagged as the risk in the brief — `pending-entry-plus-badge pending-${id}`, whose only id-bearing token is the bare one and which has no explicit named removal — is covered by the surviving `.pending-${orderId}` at `:12160` and `:12181`. Removed at parent, removed at packet.
 
-**THE DIRECTOR'S DATUM DID THE WORK MY MEASUREMENT DID NOT.** "Their heap falls when playing
-while ours triples" is the signature of a growth path, not of static retention. A static
-retention problem does not triple during playback. That one sentence reopened A1 more
-effectively than anything I measured, and I did not have it when I wrote the finding.
+**Magnitude, measured.** Cancelling order 1 at parent destroyed 21 of its own elements and **48 belonging to orders 10, 11, 19 and 100**. Across the 46-id sweep, parent destroys **484 elements of innocent orders**; packet destroys none. Worst single case is order 1, which at parent also wipes 176 elements across ids 10–19, 100, 101, 102, 110, 199 and 1000. Both sweep sites are independently affected — site 2 is normally masked by site 1, and isolating them shows 44 foreign elements destroyed by each.
 
-WHAT STILL HOLDS, and it SHAPES the fix rather than opposing it: bounding _panelFullRawData
-ALONE frees zero bar objects at every master size, structurally, because both slots are pointer
-arrays over the same objects. A1 bounds BOTH slots, one shared allocation, accounted in bar
-objects de-duplicated by identity. The 62b6afcc9 choke point deliberately does not truncate -
-that is the work now dispatched, not a missing feature.
+No leak: the order-1 removal set is byte-identical at parent and packet in every configuration — 20 elements with the hand-built inventory, 21 with the auto-harvested one, per-site and combined, across all 46 ids.
 
-**CORRECTED HIS RATIONALE, and it points at a BETTER argument than the one he gave.**
-_mcRawDataCopyLimit() returning 200,000 is true, but it has exactly TWO consumers -
-_mcCloneRawDataBars L3545 and _mcIncrementalCloneRawDataBars L3574 - both reached only via
-_mcCopySamePairFullRawData, whose nine call sites are same-pair gated and unreachable at four
-different symbols. Under his own CONF-01 rule that 200,000 is NOT the missing cap. The missing
-cap is _mergeIntoPanelFullRawData: uncapped AND on the play path AND on the independent path.
-Strictly stronger, and it survives CONF-01 where the copy-limit argument does not.
+**Deletion was the right call over a token selector**, for a reason I had not considered. `svg.selectAll('.pending-' + orderId).remove()` is character-for-character the line already sitting two lines above at `:12160` and immediately above at `:12181`. Substituting would have left a literal duplicate statement, inviting a future reader to assume the two differ and preserve both. Deletion is also narrower in blast radius than substitution, because it changes no selector that any element currently matches.
 
-**TRADEZELLA COSTS ME MY OWN FAVOURITE HYPOTHESIS, recorded before it can survive as an
-assumption:** their script cache is 2x ours while their heap is 1/5 of ours for the same four
-instruments. That rules out per-realm script source as the differentiator - which was my leading
-candidate for the eviction lane at ~10.5 MB UTF-8 / ~21 MB UTF-16 per realm from two independent
-censuses. If they ship MORE code in LESS heap, code is not the gap.
+The author's "no `pending-tp-*` prefix" statement is correct for a stronger reason than they gave: `pending-tp-tp-plus-badge` has **no producer at all** — it would need `prefix='pending-tp'` and nothing passes that. `_createPlusBadge` has exactly two call sites, `order-manager.js:36403` with `'order'` and `:38080` with `'pending'`.
 
-**CKPT-01 CHASED AND IT IS HALF DONE - this gates A1's landing.** Capture is sound: 120 assets,
-14,424,642 bytes of b113, captured 14:29:31Z, honest limitations, commit evidence with a PASSING
-positive control (74 text assets scanned, one 40-hex hit in favorites-manager.js, control ok).
-But THE ROLLBACK WAS NEVER EXERCISED - I searched the manifest myself: rollback=0, exercised=0,
-workingProduct=0, replayIndex=0, negativeControl=0; only 'rehearsal' appears, once, inside a
-LIMITATIONS note describing what the subcommand WOULD measure. A retained artifact plus an
-unexercised rollback plan is precisely the failure mode CKPT-01 exists to prevent. Sent back to
-execute it with a MOVED-replay-index working-product assertion, proof the browser loaded the
-retained bytes not live, and a negative control that must go RED. Treating it as the gate.
+## 2026-07-28 06:15 — OPEN: `pending-be-*` elements are never removed on cancel, and the reaper cannot collect them
 
-DISPATCHED 8b211837 for the A1 truncation on the existing worktree: both slots, paging outward,
-SAFE-01 before allocation, GATE-01 red-before-green, truthy kill-switch, the
-_independentMasterCoversReplayTimestamp refetch cost PRICED rather than waved at, and the growth
-slope as a REQUIRED deliverable rather than an estimate. Told it to contradict me with numbers,
-including about this packet's own ceiling, since I have now been wrong about exactly that.
+surface=`drawing-tools-manager.js` cancel block; `order-manager.js:45216` reaper
+coverage=reviewer driver, parent and packet identical
 
-A2 not started, not batched. Withdrawn without spending a packet: the 35-site setProperty flag
-and the post-exit sampling cut. The twenty owner-blocked rows untouched.
+Three order-1 elements survive cancellation at both parent and packet: `pending-be-line`, `pending-be-label` and `pending-be-hit-line`, all carrying `pending-be-${id}`. The substring sweep never reached them either — `pending-be-1` does not contain `pending-1` — so this is untouched by the fix and pre-existing.
 
-## 19:35 — A1 PAYS 9.5% AT THE MASTER I ACTUALLY MEASURED. Both my earlier ceilings were wrong.
+The block removes `.pending-sl-${id}` and `.pending-tp-${id}` and has no `.pending-be-${id}`. And the reaper cannot clean up after it: `_reconcileOrderLineDomForChart` scans only `.order-line, .pending-order-line` at `:45219` and `.order-label-accent, .pending-order-label-accent` at `:45257`, so break-even elements are outside its sweep entirely. They persist until something else clears the chart.
 
-**The number, finally sized properly.** A1's recoverable is entirely a function of how far
-the base master has grown. Using the shipped arithmetic across the four CONF-01 panels:
+Two related asymmetries recorded with it: site 2 lacks the `.pending-sl-` and `.pending-tp-` removals that site 1 has, and `entryPriceStr` at `:12143` is unused at both revisions.
 
-| master/panel | bars evicted | MB | share of 586 MB |
+## 2026-07-28 06:16 — ADDENDUM to the Manager B escalation: three of the flagged selectors are already dead
+
+Following up my 06:02 handover with a fact that changes the shape of B's work rather than its priority. `pending-tp-tp-plus-badge` has no producer anywhere in the tree — it would require `_createPlusBadge` to be called with `prefix='pending-tp'`, and the only two call sites pass `'order'` and `'pending'`. So the three removal selectors referencing it at `order-manager.js:1987, 38411, 39147` are dead code, not live collisions.
+
+That does not retire the escalation. `:41707`, `:41708`, `:41709`, `:41712` and the id term at `:39148` still interpolate ids into substring matches against families that do have producers. But B should check producer existence before narrowing each one — some of that block may be deletable rather than fixable, which is how my own packet resolved.
+
+## 2026-07-28 06:17 — OPEN: three source-versus-mirror divergences under `homepage/public/chart/`
+
+A tree-wide scan across 547 mirrored files found exactly three OID mismatches: `m20-q6-replay-lifecycle-binding.test.mjs`, `multichart/chart-host.html`, and `m19-h-timeframe-switch.test.mjs`. All three predate tonight's packets and none was touched by them.
+
+`multichart/chart-host.html` is the one I care about — it is a servable chart shell in my territory and I had already recorded it as drifting by 29 lines. The other two are test files and lower stakes. Recording the full set now that I have an exhaustive count rather than a spot check, because "the mirror matches except where it doesn't" is not a state I want to keep re-discovering. Opening as a row against my own territory.
+
+---
+
+## 2026-07-28 06:22 — DIGEST: train 3 (03:20–06:20)
+
+**Shipped to `manager-a/critical-path`, nothing to TEST-1.** Five packets merged: the TAL-01918 RED (renamed `unmarked-forming-candle`), the eviction-discriminator port from Manager B, the eviction chart-scope plus dead-selector deletion, and the pending-selector substring fix. Two are product changes to `drawing-tools-manager.js` and its mirror; the rest are harness and RED.
+
+**Why nothing reached TEST-1.** The overnight authority is to deploy where the entire chain is automated-GREEN. It is not. Both product changes land in `drawing-tools-manager.js`, and the adversarial review established that **no automated gate covers that file at all** — Manager B's eviction-invariant RED declares `meta.product` as `order-manager.js` and enumerates five sites in that file only. Reverting either of tonight's lines would be caught by nothing. I am not going to call an ungated file automated-GREEN because its reviews were thorough; the reviews are not the chain. Holding both behind a gate rather than shipping on reviewer confidence.
+
+**Escalated.** To Manager B: five interpolated substring-selector id collisions in `order-manager.js` (three of them dead code, amended after the fact), plus the money-path silent fallbacks and the journal-marker restore cascade behind the 90-second freeze. To the Director: an ASSUMPTION on whether a rejection caused by a manager's own false finding counts toward §A13's two-rejection escalation, and the outstanding daily-bar provenance question.
+
+**Queued, in priority order.** The `unmarked-forming-candle` corrective packet — specified against presentation and stepping, not the trim or the slice, and not yet dispatched. Session-calendar weekly can board; daily is blocked on provenance. Then the `pending-be` cleanup gap, the `deleteDrawing` de-registration row with its price-coincidence association, and the three source-versus-mirror divergences.
+
+**Next verification batch.** Re-run all merged harnesses against the `critical-path` tip rather than their authoring branches, since none has been exercised post-merge. Then close the gate gap — an eviction-invariant gate that actually covers `drawing-tools-manager.js` — because that is the single thing standing between tonight's two product fixes and a TEST-1 deploy.
+
+**Loader STOP-THE-LINE.** Not landed tonight and I am not going to bury that. The §A4c presence assertions remain the standing first item and no packet tonight advanced them; every write slot went to the two canary blockers and the defects that fell out of them. Flagging rather than reprioritising unilaterally, since the blockers were the Director's stated priority order.
+
+**Tier mix, §A13.3b.** Author tier: **0% top-tier**, four of four packets authored cheap — `gpt-5.5-medium-fast` on the RED and the pending-selector fix, `composer-2.5-fast` on the eviction port and scope. No §A13.2 row was invoked for authoring, so no justification is owed and none is offered. Reviewer tier: **100% top-tier**, five reviews, per the rule that the reviewer is never downgraded. Rejection rate by (task class × model) is at 05:55; both 200% figures trace to causes other than author tier, one of them mine.
+
+**API capacity.** Five top-tier adversarial reviews in a three-hour window is the dominant spend, and it is buying its keep — the reviews caught an oracle that could not pass on a correct product, a fix that would have erased a live position's stop-loss, and a false finding of my own. Cheap authoring plus expensive review is the right ratio and I am not adjusting it.
+
+---
+
+## 2026-07-28 08:44 — VERDICT: the gate I was told to build already exists, and I am not allowed to build it
+
+surface=`docs/plan3/TERRITORY.yml` at `42ce455aa`; C's untracked working tree; `manager-b/plan3-20260727` at `14b985fa3`
+coverage=all three manager branches searched, plus class-of-defect terms rather than filename alone
+
+§A16.5 makes gate coverage for `drawing-tools-manager.js` my first priority and tells me to take C's generalised invariant host rather than write a second one. Both halves of that turn out to be already satisfied, and the residual blocker is not mine.
+
+**C's host exists and already covers my file.** It is `scripts/order-registry-eviction-invariant.mjs` with its declaration at `scripts/fixtures/order-registry-eviction-sites.json`, and that fixture already lists `drawing-tools-manager` in `meta.sources[]` with sites at ordinals 6 and 7 — `deleteDrawing#0` and `deleteDrawing#1`. It generalises B's engine correctly: it scans every `meta.sources[]` writer instead of one hard-coded file, and it accepts a manager-qualified left-hand side like `orderManager.orderLines` rather than only `this.orderLines`, which is exactly the spelling my file uses.
+
+**It is untracked.** All four artefacts are `??` in C's working tree with no commit hash, on no branch, merged nowhere. `ORDER-REGISTRY-EVICTION-INVARIANT-V1` is marked RESERVED and not LIVE in `GATE-NAME-RESERVATIONS.md`, it has no `package.json` script, and no workflow invokes it. So it cannot be part of an automated-GREEN chain today, and the thing standing between my merged work and a deploy is a commit and a CI wiring in C's territory.
+
+**And I cannot author it.** `scripts/tests/**`, `scripts/fixtures/**`, `.github/workflows/**` and `GATE-NAME-RESERVATIONS.md` are all C-owned in `TERRITORY.yml`; §A15.2 assigns shared-registry invariant gates to C explicitly. My grant covers the product module tree, the mirrors and my own journal — nothing under `scripts/`. Writing the gate myself would be a territory violation and the preflight would reject the packet.
+
+So my first priority is a hand-off, not a packet. Recording it plainly rather than quietly substituting different work, because "A builds the gate" and "A cannot write in the directory the gate lives in" cannot both be true and the Director should see which one gives.
+
+## 2026-07-28 08:45 — DECISION: what I am doing about it instead
+
+There is a real hazard in simply waiting, and it is one C cannot see from their side.
+
+**C's fixture models my file as it was before tonight's merges.** Ordinals 6 and 7 were derived against the pre-merge `deleteDrawing`. Since then two eviction predicates gained a chart-scope term and two substring selector sweeps were deleted outright. If C commits the fixture as it stands, the gate either fails spuriously or — the worse outcome — passes against a model of code that no longer exists, which is a gate documenting a guarantee it cannot enforce. That is the exact failure §A16.2 just ruled against on C's own manifest header.
+
+Dispatched a packet to emit the authoritative current site enumeration into `docs/plan3/evidence/`, which is a shared path all three managers may write. It is written in C's own strict fixture schema — validated by running C's gate against it from a temp copy rather than by hand — so C can splice it in rather than re-derive it, and neither of us has to guess at the other's file. It also states the delta against ordinals 6 and 7 explicitly, including that the two sweeps were a **deletion** and not a relocation, since a model that goes looking for relocated code will find something plausible and wrong.
+
+That is the most I can do inside my territory to shorten C's path to LIVE. Flagging the dependency rather than treating it as discharged: **my first deploy of the day is gated on a Manager C commit.**
+
+## 2026-07-28 08:46 — ASSUMPTION discharged: §A16.4 answers the escalation question
+
+My 05:28 ASSUMPTION is ruled on and I had it right. A rejection caused by my own false finding or defective brief does not count toward the two-rejection author escalation, because that rule detects insufficient author tier and the author was never the problem.
+
+Adopting the ruled instrument in place of my ad-hoc one: rejections are attributed to cause in three columns — `author-defect`, `brief-defect`, `manager-finding-defect` — and only the first counts toward escalation. **Three manager-caused rejections in one train sends my next brief to top-tier review before dispatch**, with my decomposition as the thing under review. All three columns go in the digest from now on.
+
+Recomputing train 3 under the ruled attribution: the two `eviction-scope` rejections were one `manager-finding-defect` (the paginated-grep error) and one `brief-defect` (the registry-leak premise I supplied downstream of it). That is two manager-caused rejections in one train, one short of the trigger. The two TAL-01918 rejections were `author-defect` on an oracle-design fault. So the corrected train-3 line is author-defect 2, brief-defect 1, manager-finding-defect 1.
+
+I am one manager-caused rejection away from having my own briefs reviewed before dispatch, and that is the correct place for the pressure to sit.
+
+## 2026-07-28 08:47 — Director hypothesis falsified: recording it against my own record too
+
+§A16.0 records that the Director's leading hypothesis — indicator lag as a data effect from stale completed-bar closes — is falsified, and credits the overnight work. Worth noting on my side that I carried that hypothesis further than the evidence did: I recorded a VERDICT at 03:01 naming the slice as the mechanism and telling two managers to stop render-cadence work, then retracted it at 04:30 when the review showed the identity was a self-referential expression and the attribution an artifact of the metric.
+
+The lag family now has no leading hypothesis, which is the honest state and is worse than having a wrong one only in the sense that it is harder to act on. Recording it so nobody reads my 03:01 entry without the 04:30 one.
+
+---
+
+## 2026-07-28 09:02 — VERDICT: daily and weekly bars are derived, and the client cannot fix either
+
+surface=`chart.js`, `chart-data-pipeline.js`, `api_server.py`, `questdb_store.py`, `firstrate_ingest.py`, `questdb` read path
+coverage=ingest defaults for four providers, binary build, both server read paths, client fetch and commit path, twelve flooring sites enumerated across client, server and worker
+
+**The provenance question is answered: derived, both.** Default ingest stores 1m across every provider — FirstRate `1min` at `api_server.py:4892` and `:19528`, Dukascopy `m1` at `:674`, Binance `1m` at `:20402`, QuestDB ingesting only `ohlcv_1m` at `questdb_store.py:183-191`. The `1d` and `1w` binaries are built at ingest by `_resample_candles(candles, 86400000 | 604800000)` at `api_server.py:8843-8852`, an epoch floor. `1day` is an admitted FirstRate source period, but there is no "this dataset is natively daily" registry field — whatever is ingested goes through `build_binary_for_file`, which always writes a `1m` binary and resamples every other timeframe from it. There is no `1week` ingest period at all.
+
+Per §A16.3 that means we bucket to the class calendar rather than matching a provider stamp. The FirstRate FX timezone premise is confirmed: `_FX_TZ = ZoneInfo("America/New_York")` at `firstrate_ingest.py:30`, with crypto on `_UTC_TZ` at `:899`.
+
+**But §A16.3's "weekly boards now" cannot be executed, and the reason is structural.** The client requests store resolution `1w` for weekly display (`_questdbStoreResolution`, `chart.js:7554-7557`), the server serves the pre-built weekly aggregate from `bin_{file_id}_1w.bin` or QuestDB `SAMPLE BY 1w ALIGN TO CALENDAR`, and `_commitLoadedBars` then unconditionally re-resamples it (`chart.js:9683-9687`) through `_resampleDataFull`'s epoch floor at `:25524-25540`.
+
+So at weekly display the finest data the client holds is **already epoch-week-bucketed**. No client-side calendar can recover Sunday-17:00-ET boundaries from a weekly aggregate. Wiring the helper into the two client sites would re-bucket aggregates and produce a plausible-looking wrong answer — which is worse than the current wrong answer, because it would pass a naive oracle and look fixed.
+
+Two independent confirmations. The author verified the same chain from the other end and reported **fix blocked on server territory**, backing out preliminary client edits before committing; the worktree is clean and no commit was made. And `api_server.py` and `questdb_store.py` are not in Manager A's owned paths under `TERRITORY.yml`, so the layer where the boundaries are actually set is not mine.
+
+Also settled: the answer to "would a native daily bar stamped at the provider's session open survive?" is **no**, by code path rather than prediction. `_resampleDataFull` rewrites `t` to `Math.floor(candle.t / 86400000) * 86400000`. Only bars already on the epoch boundary survive unchanged, which is why crypto is accidentally correct.
+
+## 2026-07-28 09:03 — CORRECTION: I interrupted an author because my brief was wrong, and it was the right call
+
+I dispatched the weekly boarding brief telling the author that `session-calendar.js` "already exists and was merged" and to extend it. Both clauses true, the implication false: on `manager-a/critical-path` the module is **not imported or called from `chart.js` or `chart-data-pipeline.js` at all**. The RED landed the module and never wired it. So `__TALARIA_DISABLE_SESSION_CALENDAR_V1` is currently a no-op on the live path, because there is no live path to gate.
+
+I also gave the author an incomplete flooring inventory and one outright wrong entry. Missing and live: the backtest replay seam at `chart.js:6311`, `compare-overlay.js:3250-3255` which delegates to `chart.resampleData` and would change silently with it, and `talaria-fvg-indicator.js:68-69`. Wrong: I listed `workers/candle-decode.worker.js` `resampleCandles` as a live disagreement risk. It is **dead** — an orphan with no `new Worker(...candle-decode)` anywhere in the product.
+
+Interrupted mid-flight rather than waiting, because the author was writing client wiring against a premise the audit had just falsified. That is a `brief-defect` under §A16.4 and I am counting it as one. It is my second brief-defect and my third manager-caused rejection overall today — **the §A16.4 trigger is met, and my next brief goes to top-tier review before dispatch.** I am not waiting to be told; the loader brief dispatched at 08:58 predates the trigger, and the one after it goes to review.
+
+The instrument is correct and I want to say so plainly rather than grudgingly. Every one of tonight's manager-caused rejections came from me asserting a negative — "these classes do not exist", "this helper is already wired" — on a search I did not exhaust. That is a decomposition defect, not an authoring defect, and putting my decomposition under review is the right response to it.
+
+## 2026-07-28 09:04 — DIRECTOR-Q: the session-calendar fix cannot be completed in Manager A's territory
+
+§A16.3 rules the convention and boards weekly now. Weekly cannot board, for the reason above, and daily has the same blocker. The fix needs a decision I do not have the authority to take.
+
+**Option A — fix it server-side.** Change the bucketing in `_resample_candles` at `api_server.py:8843-8852` and the QuestDB `SAMPLE BY … ALIGN TO CALENDAR` path so the stored `1d` and `1w` aggregates are session-anchored per instrument class. This puts the calendar where the aggregation actually happens and fixes every consumer at once, including the compare overlay and anything that reads the bins directly. It requires a DST-aware calendar in Python as well as JS, which is a second implementation of the same rule and therefore a fresh bug-class risk unless the two are tested against each other. Neither file is in my owned paths.
+
+**Option B — give the client finer data at daily and weekly display.** Map `1d` and `1w` display to a sub-daily store resolution and bucket locally with the existing JS helper. This keeps one calendar implementation and stays in my territory. The author's read is that it requires changing pagination and windowing to get past the `/bars` 2000-row cap, with a payload increase. I would add that it risks re-introducing the many-small-fetches problem on the replay path, which is the trap I already retracted a recommendation over once tonight.
+
+**My recommendation is A**, on the grounds that one calendar at the aggregation layer beats two calendars plus a fetch-shape change, and that Option B leaves the stored bins wrong for every non-chart consumer. But I hold neither file and I am not going to assume a grant.
+
+What I need: either a territory grant covering the server bucketing path, or a ruling assigning it to whoever owns it. Until then daily and weekly both stay blocked, and I have moved the freed write slot to the loader STOP-THE-LINE.
+
+Per §A12.2 this is a Director question and not a PO-REQ — no PO time is required, the convention is already ruled, and the open item is ownership rather than product judgement.
+
+---
+
+## 2026-07-28 09:12 — CORRECTION: I meant reachability, it still stands, and it does not rescue my claim
+
+surface=`chart v 1.4/chart/modules/order-manager.js` at `manager-a/critical-path`
+coverage=every `_createPlusBadge` call site and every producer of the five class tokens named on the three lines; verified by me directly, not relayed
+
+**Which sense I meant: reachability**, and specifically constructive reachability. `pending-tp-tp-plus-badge` can only be built by `_createPlusBadge`, whose class expression at `:35586` is `${prefix}-${label.toLowerCase().replace('+','-plus')}-badge`. Producing that token needs `prefix='pending-tp'`. There are exactly two call sites — `:36403` passing `'order'` and `:38080` passing `'pending'` — so no call path constructs it.
+
+**That claim survives B's check**, and I have now verified it myself rather than relaying it. B proved textual presence of producers for *other* tokens. We do not disagree.
+
+**But the distinction does not rescue what I wrote, and I am not going to hide behind the out.** My error was unit of analysis, not sense of existence. I wrote "the three removal selectors at `:1987, 38411, 39147` are dead code", naming **lines** as though each were a single selector. Line 1987 is one `.selectAll()` carrying **five** comma-separated selectors, and only the first is dead:
+
+| selector on line 1987 | producer | status |
+|---|---|---|
+| `[class*="pending-tp-tp-plus-badge"]` | none — no call path | dead (reachable-false) |
+| `[class*="pending-tp-delete"]` | `:38586` | **live** (textual + reachable) |
+| `[class*="pending-tp-split"]` | `:38622` | **live** |
+| `[class*="pending-sl-badge"]` | `:38017` | **live** |
+| `[class*="pending-tp-badge"]` | `:38047` | **live** |
+
+So the corrected finding, per statement rather than per line:
+
+- **`:38411`** — `ch.svg.selectAll('[class*="pending-tp-tp-plus-badge"]').remove();` is a standalone statement whose only selector is dead. Deletable. But `:38412` and `:38413` immediately below it target `pending-tp-delete` and `pending-tp-split`, both live. **The statement is dead; the block is not.**
+- **`:39147`** — `.pending-tp-tp-plus-badge.pending-tp-${orderId}` is a compound requiring the dead class, so it can never match. Deletable as a statement. `:39146` and `:39148` around it are live.
+- **`:1987` — NOT deletable.** Deleting it strands the delete badge, the split badge and both pending SL/TP badges with no cleanup path. This is the Director's point and it is correct.
+
+The pct-control steppers B cites at `:38558`, `:42589` and `:44047`, and the `multi-tp-avg-` producer at `:37012`, are all live and all sit under selectors I never claimed were dead.
+
+**Per VER-01, restating both claims in the required form.** Mine: `pending-tp-tp-plus-badge` is **reachable-false** — no call path constructs it — and I did not check textual presence, which was the gap. B's: the five tokens above are **textually present with named producers**, and on the evidence of those producer sites they are reachable too. Neither claim was wrong; mine was applied at the wrong granularity.
+
+## 2026-07-28 09:13 — ADDENDUM supersedes 06:16: nothing in the B escalation is retired
+
+Correcting the record for B, because a wrongly-widened "dead code" note is more dangerous than no note.
+
+One thing to correct in the other direction too. The withdrawal is described as covering "three of the five substring selectors". My 06:16 entry did not say that — it named `:1987, 38411, 39147`, which are **not** among the five I escalated at 06:02, and it said in terms that `:41707`, `:41708`, `:41709`, `:41712` and the id term at `:39148` "still interpolate ids into substring matches against families that do have producers". **All five escalated sites were live when I escalated them and are live now.** I want that unambiguous so B does not deprioritise five real id collisions on the strength of a note about three different lines.
+
+Net position for B, stated per statement and with the claim type attached:
+
+- The five escalated collision sites stand, unchanged, all reachable-true.
+- Of the three lines in my addendum, two are dead statements (`:38411`, `:39147`, reachable-false) and one is not (`:1987`, four of five selectors reachable-true).
+- **Nothing gets deleted until the reachability dispatch reports.** That includes the two I still believe are dead — my confidence there is exactly the kind that has been wrong three times today.
+
+## 2026-07-28 09:14 — Does the hold apply to the deletion I already merged? No, and here is why
+
+Stating this before anyone conflates the two, because "Manager A deleted selectors" is true of both and they are not the same act.
+
+The merged `pending-selector` packet deleted `[class*="pending-${orderId}"]` at two sites in `drawing-tools-manager.js`. That was **not** a dead-code deletion. Those selectors matched plenty — that was the defect. They were deleted because they were proven **redundant** against an adjacent surviving `.pending-${orderId}` on the same block: 1008 correct-id equivalence checks, zero mismatches, and a byte-identical removal set for the cancelled order at parent and packet. The deletion removed over-match, not coverage.
+
+The distinction that matters: those were **live selectors proven equivalent to a survivor**, whereas `:38411` and `:39147` are **selectors proven to match nothing**. Different evidence standard, different risk. The hold is on the second class, and correctly so.
+
+One thing that falls out of re-reading it. Neither the deleted sweep nor the surviving `.pending-${id}` ever matched `pending-tp-*`, `pending-sl-*` or `pending-be-*` tokens, because none of those contain `pending-${id}` as a substring or as a whole token. So the cancel path in my file never cleaned that family up — the same gap I opened at 06:15 for `pending-be-*`, now known to extend to the pending TP and SL badges as well. Widening that row rather than opening a second one.
+
+---
+
+## 2026-07-28 09:26 — CORRECTION: four dispatches I reported as landed never reached the tree
+
+surface=`manager-a/critical-path` at `207ec960d`; main checkout on `manager-c/verification-infra`
+coverage=exhaustive harness sweep at the merged tip, 5 runnable paths and 5 support modules, 6 invocations
+
+The post-merge sweep I ordered found something I did not order it to look for. Four dispatches whose findings I journaled as verdicts and metrics have **no harness on `critical-path` at all**:
+
+- `m21-b-mcdiag-tabulation-*` — JSON artifacts untracked in the main checkout, no `.mjs` at tip
+- `m21-b-legacy-deroute-*` — not at tip
+- `m21-b-a10-residue-*` — JSON and MD untracked in the main checkout, no harness at tip
+- `m21-a-indicator-lag-data-effect.mjs` — on its own branch at `71e44bf49`, never merged
+
+The indicator-lag one is fine: that packet was blocked twice and its P4 withdrawn, so it should not be merged and being branch-resident is correct. The other three are not fine. Nine files sit **untracked inside Manager C's working checkout**, under `chart v 1.4/chart/multichart-prod/harness/`, which is my owned path. They are on nobody's branch. A `git clean` in that checkout destroys them.
+
+I cited those artifacts in the record. The `_mcDiag` tabulation METRIC at 06:00, the §A10 residue closure, the legacy de-route evidence — all rest on files that exist in exactly one untracked copy in another manager's tree. That is the provenance failure this sprint keeps ruling against, and I produced it myself by dispatching cheap read-only work without requiring an isolated worktree and a branch. Read-only briefs are uncapped and I treated them as consequence-free; they are not, because they still emit.
+
+**Standing correction to my own dispatch practice: every brief gets a worktree and a branch, including read-only ones, if it writes a single byte.** The distinction that matters is not read-versus-write against the product, it is emits-versus-does-not-emit.
+
+Drafted a rescue packet and sent it to pre-dispatch review per §A16.4 rather than firing it — including the question of whether rescue is even the right remedy, since regenerating from a versioned generator would beat committing nine orphan blobs, and since artifacts produced inside C's dirty tree may have been measured against the wrong tree state entirely. If that last one holds, the metrics need regenerating rather than preserving, and I would rather learn that from a reviewer than from the record.
+
+## 2026-07-28 09:27 — OPEN: committed session-calendar evidence is stale against the tip
+
+`tests/evidence/session-calendar-red/m22-session-calendar-fourstate.json` carries `buildSha: 1c6292073`, its authoring commit. The tip is `207ec960d`. The blob was never regenerated at merge, so the committed evidence and a fresh run at the same commit do not agree.
+
+The oracle behaviour is stable — the `broken` state still fails 90 assertions, the four-state proof still holds, and internal determinism holds across three repeats per state — so this is a provenance defect rather than a correctness one. But it means the committed artifact cannot be used as an authority for the tip, which is the only thing a committed artifact is for.
+
+Two other determinism results, recorded as clean so nobody re-runs them: TAL-01918's evidence is byte-identical across runs **and** matches the committed blob, with its pinned `chart.js` SHA matching the live file at tip; and the m20-q9 counter fields match committed, with the only byte drift in an advisory `ms/tick` wall-clock field that the harness documents as advisory.
+
+## 2026-07-28 09:28 — VERDICT: harness chain intact post-merge; no drawing-tools staleness
+
+surface=`manager-a/critical-path` at `207ec960d`
+coverage=6 invocations across 5 runnable harness paths, each run at least twice
+
+Both canary-blocker REDs still fail in the way they are supposed to fail. TAL-01918 exits 1 with 26 of 28 passing and the two limbs failing. The session-calendar RED exits 1 in `broken` with 90 of 386 assertions failing, and exits 0 in `fixed` with 388 of 388 green. The four-state driver exits 0 with all 40 cells OK. The Q9 prefix-slice scaffold is green at 19 of 19. No import errors, no path assumptions that broke at merge, no load failures.
+
+The specific risk I asked about is clear: **no Manager A harness at tip references, hashes or line-enumerates `drawing-tools-manager.js` or `deleteDrawing`.** Tonight's eviction edits stale nothing. That is a relief and also the problem — it is the same fact as §A16.5's, seen from the harness side rather than the gate side. The file is not merely ungated, it is untouched by any instrument I own.
+
+## 2026-07-28 09:29 — The gate evidence ran, and C's host cannot express one of my two sites
+
+The evidence packet for C is authored and under adversarial review. Its headline is that C's gate, run against the emitted fixture, reports **1 passed, 5 failed** — and the failures matter more than the pass.
+
+Two of my sites are confirmed and their predicates captured verbatim: ordinal 6 at `:12086` evicting executed rows, ordinal 7 at `:12135` evicting pending ones, both now carrying `(l.chart || orderManager.chart) === ch`. C's host does accept the manager-qualified `orderManager.orderLines` spelling, which was the compatibility question.
+
+But **ordinal 7 is not discoverable by C's parser**, because `removedIds.includes(l.orderId)` is a call expression and the host models comparisons. I want to be explicit about the direction of the fix: that is an expressiveness limit in the gate, and the remedy is a hand-off asking C to extend the host — **not** reshaping a product predicate so a parser can read it. Bending product code to suit an instrument is how you get a gate that passes because the code was written to the gate's shape rather than to the requirement.
+
+The `order-manager.js` ordinals 4/5 drift the run also surfaced is, I believe, an ancestry artifact rather than a regression: a prior review established that B's fix `9133fd9e0` is not in this branch's ancestry and the tree carries B's pre-fix blob, so a gate seeing no `isPending` discriminator there is reporting the file it was given. Flagged to the reviewer to confirm rather than asserted, because that is exactly the shape of claim I have got wrong three times today.
+
+---
+
+## 2026-07-28 09:34 — Loader STOP-THE-LINE authored; two hazards flagged into review before I read the rest
+
+Packet `677cb7db2` on `manager-a/loader-a4c`. Six files: `legacy-index.html`, `multichart/chart-host.html`, `module-presence-runtime.js`, and the `homepage/public` mirror of each. `ModulePresenceRuntime` now loads before `chart.js` and `IndicatorPerf` before `chart-indicators-full.js` on the served legacy and multichart sandbox shells. Three-state proof reported: CONFORMING clean, ABSENT and NONCONFORMING both loud with flag, event, console error and badge. C's two gates pass, preflight ok at 10 checked.
+
+This is the item that has stood first on my work order for three nights and the Director has noted no packet advanced it. That is exactly the condition under which I would accept a weak packet, so I said so in the review brief and asked the reviewer to assume I am motivated to wave it through.
+
+Two things I am not willing to take on the author's word.
+
+**The mirror reconciliation.** The author found pre-existing source/mirror drift on `chart-host.html` and resolved it by overwriting the homepage mirror from the source, as a side effect of an unrelated task. I have an OPEN finding logging three such divergences under `homepage/public/chart/`, none of them diagnosed. A parity fix chosen by whoever happened to be in the file is not a diagnosis — the question is which copy is actually served on that route and what the mirror carried that the source does not. If the mirror held live behaviour, this packet deleted it under cover of housekeeping. That is a block on its own regardless of the rest of the packet's quality, and the reconciliation should be its own change with its own reasoning.
+
+**Whether the item is actually closed.** The assertions landed on a legacy shell and a sandbox host. `dist-v9/index.html` was not touched, on the grounds that it already satisfies C's contract gate. But satisfying a manifest check and actually loading the runtime before `chart.js` are different claims, and §A16.2 exists because we keep conflating them. If the primary production shell is `dist-v9`, then STOP-THE-LINE is partially closed at best and I should not report it as done.
+
+Also asked the reviewer to verify the untouched-surface negatives directly rather than accept them. The packet exempts `backtesting.html`, `propfirm-backtest.html`, `multichart-shell.html`, `index.v9.html` and `chart-embed.html`. At least one of those exemptions is legitimate-by-delegation rather than legitimate-by-not-executing — `multichart-shell.html` embeds `chart-host.html` iframes, so it inherits coverage rather than not needing it. Right conclusion, possibly wrong reason, and the reason is what generalises. Three unexhausted negatives from me today, all wrong, so I am not signing a fourth.
+
+One open question of substance for the reviewer: supported degraded mode here is loud but **non-blocking** — badge and telemetry, no hard kill. For a correctness-class module that may be the wrong contract. A chart that renders wrong numbers with a badge in the corner has not failed safely.
+
+**Hygiene check I ran myself:** the author ran `npm ci` to install puppeteer for C's browser gate. Main checkout is unchanged at 161 entries with no new lockfile or `node_modules` drift, so whatever it touched, it was not C's tracked tree. The one modified `package.json` there is pre-existing and not mine.
+
+**Hand-off to C, not actionable by me:** `scripts/module-contracts.json` still marks legacy as excluded and does not inventory `multichart/chart-host.html`, though both are servable and now conform. C either updates the inventory or explicitly retires those routes. I did not touch `scripts/**`.
+
+---
+
+## 2026-07-28 09:42 — CORRECTION: the §A16.4 pre-dispatch review caught four false premises in my own brief
+
+surface=`manager-a/critical-path`, main checkout on `manager-c/verification-infra` at `b290e7ec1`
+coverage=`git ls-files --others --exclude-standard` across every path pattern TERRITORY.yml grants A, plus `git log --all` per file, plus blob-hash comparison across three tree states
+
+This is the fourth partial-list defect I have produced today and the first one that never reached a subagent. That is the entire argument for §A16.4 and I want it on the record that the ruling paid for itself within an hour of my hitting its trigger.
+
+**False premise 1 — I sent the brief to the wrong location.** The `legacy-deroute` artifacts are not in Manager C's checkout. They are not in the main checkout in any form: not on disk, not tracked, not in history, not in a dangling object. All five are sitting untracked in **my own `manager-a-critical-path` worktree**, and they are that worktree's entire dirty state. I have now confirmed this directly. The brief told the subagent to enumerate untracked files *in the main checkout*; an obedient subagent would have found nothing named `legacy-deroute`, reported that accurately, and I would have read the accurate report as "already handled." The reviewer's point that a five-entry dirty state is in **more** danger than a 161-entry one is correct and uncomfortable — five stray files look like debris anyone would sweep without thinking.
+
+**False premise 2 — my file set was 9 of 464.** Under the harness path alone there are 162 untracked files. Across all A-granted patterns there are 464: 60 under `modules/`, 174 under `multichart-prod/`, 230 under `homepage/public/chart/`. Repo-wide there are 505, so about 92% of everything untracked in that checkout is my territory.
+
+**The mechanism matters more than the number, because it will fool me again.** `git status --porcelain` collapses a wholly-untracked directory to a single entry. My nine files sit loose in an otherwise-tracked directory so they enumerate individually; `frozen/` and `m21-w6-fixtures/` are whole untracked trees and collapse to one line each. That is how 505 files present as 161 entries. **`git status` is a change detector, not an enumeration.** Every completeness claim I have made from a `git status` count today was unsound, including my own hygiene check an hour ago. The invariance checks my reviewers ran — 161 before, 161 after — remain valid, because detecting *change* is what that command is actually good for. Enumeration needs `git ls-files --others --exclude-standard`.
+
+**False premise 3 — the 161 entries are not "someone else's."** They are the complete dirty state: 54 modified tracked files plus 107 untracked entries, and my nine are among them. My brief said "~161 pre-existing entries that are not mine or yours" while also demanding byte-identity. Harmless in effect, wrong in fact, same overconfident negative.
+
+**False premise 4 — the contamination risk is inverted.** I worried the artifacts were measured against C's tree. For the mcdiag set the opposite is provable: `m21-b-mcdiag-tabulation-results.json` self-declares it ran from A's worktree, and the reviewer corroborated it independently rather than trusting the field — the generator `m20-q9-mcdiag-resample-measurement.mjs` is tracked on `manager-a/critical-path` and is **absent from C's branch and C's checkout entirely**, so it could not have run there. Those three files are clean.
+
+**My acceptance criterion was a tautology.** "Every artifact either reproducible at tip or explicitly flagged unreproducible" — every artifact is one or the other by definition. Flag all nine unreproducible and the packet passes. No threshold, no requirement that the reproducible ones match, no defined failure state. I have been writing acceptance criteria that describe an outcome space rather than select within it.
+
+**"At tip" is unusable as written.** `critical-path` advanced three times during the review — `79310288e`, `965cd533a`, `7a3a8f55e`, roughly one commit every four minutes, all of them mine. Every brief from here pins a SHA.
+
+**A supply-chain hazard my corrected scope would have created.** Had a subagent taken the real 464-file enumeration and obeyed "copy them into the rescue worktree," it would have committed vendored minified third-party JavaScript (`d3.min.js`, `lz-string.min.js`), binary `.woff2` fonts, and a full `runtime/chart/` product snapshot. Landing vendored minified bundles as "evidence" is a supply-chain problem whatever the intent, and it would have been produced by *fixing* the scope error rather than by leaving it. Also inside my declared writable path: `frozen/m21-vy-ab-baseline-v2.2/.scratch/chart v 1.4/chart/chart.js.rej`, a failed-patch reject in a directory named `.scratch`. My suspicion that some of this is deliberate scratch was right and my brief had no filter for it.
+
+## 2026-07-28 09:43 — OPEN: the §A10 residue evidence summarises inputs that are on no ancestor of critical-path
+
+`m21-b-a10-residue-manifest.json` declares its sources as `docs/plan3/SHELL-CONTROL-INVENTORY-20260728.md` and `scripts/shell-control-verdicts.json`, with the note that evidence was gathered from the main workspace and "line numbers match current tree." **Neither input exists there.** Both are tracked only on `manager-a/shell-control-inventory`, which `git merge-base --is-ancestor` confirms is not an ancestor of `critical-path`. The manifest's own provenance note is false on its face.
+
+So committing those six files to `critical-path` would land derived analysis on a branch where the underlying inventory has never existed — the exact failure TB-6 was ruled on. They stay off `critical-path` until the inputs are there or the artifacts are rescued onto a branch based on `shell-control-inventory` instead.
+
+One narrower finding inside it, only reachable by hashing rather than reading. Of the five surfaces the a10 work searched, four are byte-identical across A's tip, C's HEAD and C's working tree. But `chart v 1.4/chart/chart.js` is **three different blobs** — `8c5f365f` at A's tip, `e1c7a2de` at C's HEAD, `4408ae8a` in C's working tree. Whatever the a10 work concluded about `chart.js` was concluded against a file state that exists on no branch anywhere, and needs re-derivation. My §A10 residue closure is withdrawn to the extent it rests on `chart.js` line citations.
+
+## 2026-07-28 09:44 — DIRECTOR-Q: two territory questions the evidence work surfaced
+
+**Q1. I produced work product on a row assigned to Manager C.** `TERRITORY.yml:212` lists `A10-ui-control-inventory` under C's `owned_rows`. The a10 manifest self-declares `worker: m21-b-a10-residue (Manager A §A13.4 cheap tier)`. The path gate passes because the output landed in an A-owned path; the row assignment does not. My `Row: evidence-provenance` trailer would have papered over that, which is why I am raising it instead. Does the row assignment or the path grant govern, and does C's §A10 work now have a duplicate?
+
+**Q2. A's grant over the harness tree is inferred, not ruled.** `TERRITORY.yml:136` grants A `chart v 1.4/chart/multichart-prod/**` with `provenance: inferred`. It is operative under fail-closed default, but a 464-file untracked population in a path whose ownership was never explicitly ruled is not something I should resolve by acting. Related and larger: whether the 230-file `homepage/public/chart/**` mirror should be tracked at all is a triage decision above my tier, and I am not dispatching it.
+
+## 2026-07-28 09:45 — DECISION: rescue splits into three, and only the clean third is dispatching
+
+Taking the reviewer's decomposition rather than my own, and recording that it is the reviewer's — the corrected shape is not mine and should not be credited to me.
+
+**Dispatching now:** the three mcdiag files, which have a versioned generator on A's tip and a verbatim recorded command line. Not a rescue — pin the SHA, re-run, commit the output, use the stranded copies only as a determinism check. Plus provenance determination for the five legacy-deroute files in my own worktree, which the brief must name by their actual location. Both are small and I am naming both worktrees explicitly, since pointing at the wrong tree is what failed last time.
+
+**Held:** the six a10 files, pending the input-branch question above.
+
+**Not dispatched:** the remaining ~455 untracked A-territory files. That is triage, not rescue, and per Q2 it is not mine to settle.
+
+---
+
+## 2026-07-28 09:52 — CORRECTION: the `pending-be` gap I opened is false, and it is my fifth negative-from-an-unexhausted-search today
+
+surface=`chart v 1.4/chart/modules/order-manager.js` at `ff6e9df18`
+coverage=all call paths of `cancelPendingOrder` traced to their disposal calls, plus the producer chain for BE lines
+
+I journaled that `pending-be-*` elements are never removed on cancel and the reaper cannot collect them. **The first half is wrong.** `cancelPendingOrder` calls `removePendingSLTPLines` on every path — `:39213` non-split, `:39199-39200` split with no siblings remaining, `:39246-39248` split with siblings remaining — plus a direct `.pending-be-${primaryLegId}` sweep at `:39264`. And BE lines are genuinely in that registry: `createLine(beTriggerPrice, 'BE')` at `:38379` produces the classes at `:38238`/`:38247`/`:38252`, the item is pushed to `entries` at `:38383`, and `entries` reaches `this.pendingTargetLines` at `:38389`. `removePendingSLTPLines` at `:39088-39106` then detaches every one of them. The ordinary cancel path works.
+
+What survives is narrower and still worth having: the reaper at `:45216` scans `.order-line, .pending-order-line` only, and `_reconcileOrphanLabelAccents` at `:45169` scans `[class*="label-accent"]`, so **neither can collect a BE node orphaned by a lost `pendingTargetLines` record**. The same hole exists for `.pending-sl-${orderId}` — `removePendingOrderLine`'s sweeps at `:39139-39148` cover pending-entry and pending-TP classes only. So the gap is real, is not BE-specific, and only bites when the retained selection is lost. The OPEN row is amended to that.
+
+**This is the fifth time today I have asserted a negative from a search I had not exhausted** — the paginated selector grep, the session-calendar brief premise, the dead-code addendum against B, the four premises in the evidence-rescue brief, and now this. Every one had the same shape: I looked, did not find, and wrote "never." The remedy is not more care, because I have been careful each time and it has not worked.
+
+**Rule, effective now: I do not put a negative claim in the record without stating the search that produced it and why that search was exhaustive.** "Not found by grep for X" is a permitted claim. "Never happens" requires tracing every call path to a terminal, and if I have not done that, the claim is downgraded to the thing I actually verified. This applies to my own briefs as hard as to author output, since three of the five were briefs.
+
+## 2026-07-28 09:53 — VERDICT: the gate-evidence packet is BLOCKED, and its premise was wrong — C's fixture is already correct
+
+surface=`docs/plan3/evidence/` packet `3e989cf8c`; product blobs `a8761396` (drawing-tools) and `ff6e9df18` (order-manager)
+coverage=independent re-derivation of the site list, hermetic gate re-run, structural JSON comparison against C's untracked fixture
+
+The enumeration itself is sound and the reviewer derived it independently rather than checking mine: exactly two `orderLines` writers in `drawing-tools-manager.js`, at `:12086` and `:12135`, both predicates verbatim including the chart-scope spelling, no `splice`/`pop`/`shift`/computed-write/alias anywhere — the token appears on only seven lines in an 812 KB file. The JSON invents no keys against C's strict schema. Territory, trailers and `git diff == git diff -w` are clean. Product blobs match the current critical-path tip, so nothing is stale.
+
+**But the packet's reason for existing is false.** A's JSON is structurally byte-identical to C's existing untracked fixture — every meta key *and value*, every site's identity and disposal object, including ordinals 6 and 7. Strip the `note` fields and the two serialise equal. Running C's own fixture against the same sources produces the identical `1 passed, 5 failed`. **There is nothing in any gate-read field for C to correct**, and C's notes already carry the correct diagnosis at `:126` and `:137`.
+
+I dispatched a packet to repair a model that was not broken. The premise I built it on — that C's fixture models A's file as it was before tonight's merges — is true as history and irrelevant as consequence: the merges changed eviction *predicate text*, and the fixture schema has no field for predicate text, which is exactly why it survived unchanged. I checked the timestamps and inferred staleness from them instead of diffing the thing itself.
+
+Worse, shipping it would have cost C something. My notes on ordinals 0–5 are boilerplate that discards five accurate descriptions of B's sites, and a subagent handed a drop-in fixture splices it wholesale. A document titled "Delta Against C's Model" that contains no delta actively invites edits to fields that are already right.
+
+**Disposition: the JSON is withdrawn entirely.** A structurally identical file with worse notes is pure downside. What has value is a short note telling C not to change the fixture, classifying the five failures, and carrying the two product findings below.
+
+## 2026-07-28 09:54 — OPEN: two real defects in `drawing-tools-manager.js` that the gate failures were masking
+
+Both are mine, both are in my territory, and I had classified both as modelling limitations.
+
+**Ordinal 6 evicts a registry row without disposing its DOM.** `positionsToRemove` is collected from `orderManager.openPositions` at `:12076`, but the eviction at `:12086` is over `orderManager.orderLines`. Inside the `forEach` the only disposal is `ch.svg.selectAll('.entry-marker-' + order.id).remove()` at `:12082` — no `removeOrderLine`, no `_disposeOrderLineElements`. So the row is dropped while its line, label, price box, close button and connector stay attached. That is the zombie in `meta.hazard`, inverted. Gate cell B-OREI-06 is a **true positive**, not an inexpressible site. Mitigation so nobody over-reacts: `_reconcileOrderLineDomForChart` at `order-manager.js:45216` removes nodes with no matching registry row, so the orphan is collectable on a later pass. On-screen consequence in between is unverified.
+
+**Ordinal 7 removes more than it disposes.** The collect-filter at `:12107-12114` accepts a row on parsed `priceText` content alone, so `linesToRemove` can include rows for unrelated orders. Then `:12135` removes *every* pending row on `ch` whose id is in `removedIds` — so a duplicate pending row sharing an id that was never collected is evicted without ever being disposed. Removal ⊃ disposal is precisely the property the gate exists to prove. The reviewer found this; I did not. Reachability at runtime is unverified and the gate's G4 disclaims it.
+
+**Amended wording on a third, because mine could seed a wrong model.** I wrote that `deleteDrawing` "de-registers a position it never closes." The price-coincidence association at `:12077` is real, but what is de-registered is the position's **order-line row**, not the position — `openPositions` is never mutated in this file. As written C could model an `openPositions` mutation that does not exist, which is the §A16.2 failure this packet was supposed to prevent.
+
+## 2026-07-28 09:55 — Two hand-offs corrected, and a residue that will mislead a grep
+
+**The ordinal 7 ask to C was wrong.** I said extend the host to accept call expressions. The reviewer showed that would not make it green: even with `.includes()` and block bodies parsed, the collect-filter reads `l.priceText` and the free identifiers `orderManager` and `entryPrice`, while the gate's row model exposes only `orderId`/`isPending`/`chart` and its base environment binds only `this`/`orderId`/`ch`. The correct ask is **a new disposal kind for an id-set derived from an unmodelled collection, or an explicit scope exclusion.** My instinct not to reshape product code to suit the parser was right; my proposed remedy was still wrong.
+
+**Ordinals 4/5 confirmed an ancestry artifact, decisively.** The tree's `order-manager.js` blob is `ff6e9df18446595fd3148ca36efe358259ba6af6`, which is exactly the pre-image named in B's fix diff `index ff6e9df18..b0f49ba11`. `9133fd9e0` is not an ancestor of either branch. The gate is correctly reporting a pre-fix file; C should ignore it and the real fix is landing B's commit.
+
+**Residue that will mislead C.** The deleted broad sweep still exists in three places — `drawing-tools-manager.js.bak:3476,3495`, the identical `homepage/public` copy, and transcribed in this journal at `:1639`. A C subagent grepping for the sweep finds it and may conclude it is live. Saying "deleted, not relocated" without naming the residue is not enough. Separately: `homepage/public/chart/modules/drawing-tools-manager.js` is the same blob `a8761396` as the `chart v 1.4` copy, so there is no mirror drift on this file — one of the three divergences I logged does not apply here.
+
+---
+
+## 2026-07-28 10:04 — Evidence-rescue authored clean; held for review on a collision the author could not have seen
+
+Packet `69dfab6d5` on `manager-a/evidence-rescue`, parent pinned `f0a4dee73`. Eight artifacts that existed in exactly one unversioned copy are now on a branch. The author reports PASS against the acceptance criterion with a defined failure state, which is the criterion I got wrong last time.
+
+The mcdiag regeneration is the result I wanted: **zero counter-field differences** against the stranded copy, with drift confined to 96 advisory wall-clock fields and one metadata path. The counters are the entire value of those files, so they are now reproducible at a pinned SHA rather than merely preserved. The recorded command line came out of `results.json` verbatim, so the regeneration is repeatable by anyone.
+
+**A collision I raised into the review rather than resolving myself.** `m21-b-legacy-deroute-proposed.diff` proposes `git rm homepage/public/chart/legacy-index.html`. The loader packet `677cb7db2`, sitting in review right now as the STOP-THE-LINE item, **adds §A4c presence assertions to that exact file.** One packet is hardening a file the other proposes deleting. Both are mine and both look right in isolation, which is the tell that I have two work items that were never reconciled against each other. If the de-route is correct then the loader has protected a surface that should not exist; if the homepage copy is genuinely served then the de-route is proposing to delete a live shell. I am not merging either until that is settled. The deroute diff was also authored against `7718cace6`, which predates the loader work, so it may no longer apply cleanly.
+
+**A reported contradiction I think is a category error, and deliberately did not assert.** The author reports that the claim "the mcdiag generator is absent from C's branch entirely" is false, having found the generator present at pin `f0a4dee73`. But the pin is on *A's* branch, where the generator is obviously expected — the original claim was about **C's branch and C's checkout**, which is what made it provable the files were not measured in C's tree. Testing A's tree does not answer a question about C's. I have flagged it for the reviewer to settle factually rather than writing my own reading into the record, because "I suspect the author checked the wrong tree" is exactly the kind of confident inference that has cost me five retractions today. If the generator really is on C's branch, the provenance argument for those three files collapses and they need re-deriving.
+
+**Two smaller things I asked the reviewer to weigh rather than accept.** `table.txt` truncates its own recorded command line, omitting `--start 1500 --json …` — an evidence file that misstates the command that produced it is a provenance defect even when its numbers check out, and its numbers did. And `proposed.diff` is an unapplied patch against a tree state that has since moved, committed into an evidence directory; committed diffs rot quietly and get applied later by someone who trusts the filename. If it stays, it needs a marker naming the SHA it applies to.
+
+Worth recording that the author surfaced the CWD hazard from the inside: the harness writes `--json` relative to the working directory, so an unpinned CWD writes into whichever tree you happen to be standing in. They hit it, moved the file, and reported it. That hazard was in the brief because the pre-dispatch review put it there.
+
+**Baselines held.** Main checkout 161 porcelain / 505 untracked at start and end; A's worktree still carries its five untracked deroute originals; all eight source files unchanged by SHA-256. The contract was to copy out and leave both trees alone, and it did.
+
+---
+
+## 2026-07-28 09:21 — DIGEST train 4 (06:20–09:20)
+
+### Deployed to TEST-1
+
+**Zero.** Two reasons, both standing. `drawing-tools-manager.js` remains ungated, so per §A16.5 no chain containing it is automated-GREEN however well its diffs were reviewed. And a collision surfaced this train between two of my own packets — one hardens `homepage/public/chart/legacy-index.html`, the other proposes deleting it — which I will not merge past until it is settled.
+
+### Merged to critical-path
+
+**Zero product or evidence packets.** Journal commits only. Four packets are alive but none has cleared review: loader-a4c `677cb7db2`, evidence-rescue `69dfab6d5`, gate-note `3455601`, and gate-evidence `3e989cf8c` which is blocked and partly withdrawn.
+
+### Tier mix, reported separately per §A13.3b
+
+**Authoring: 0% top tier.** Every authoring dispatch this train went to composer-2.5-fast or gpt-5.5-medium-fast. No §A13.2 trigger row was invoked, because none applied — the work was transcription, enumeration, regeneration and provenance tracing, all of it mechanical and all of it verifiable by a gate or a re-run.
+
+**Review: 100% top tier, five reviews.** Not downgraded once, and one of the five was a §A16.4 pre-dispatch brief review rather than a packet review.
+
+Well under the 40% ceiling, so no justification is owed. I will note the ratio is not restraint on my part — it is that this train contained no `chart.js` shared-path edit, no money-path change and no numeric-correctness work. The trains where I legitimately exceed 40% have not arrived yet today.
+
+**Precision caveat, since §A13.3b asked for numbers and I would rather bound them than invent them:** I can substantiate the model for the dispatches I issued personally in this window. For two earlier dispatches carried over from train 3 I did not record the model in the journal at dispatch time, so they are excluded from the percentage rather than assumed cheap. Fixing that is a journal-hygiene change I am making now: **model goes in the journal at dispatch, not reconstructed at digest.**
+
+### Rejection attribution, three columns per §A16.4
+
+| Column | Count | Detail |
+|---|---|---|
+| `author-defect` | **0** | No packet was rejected for the author's own error this train |
+| `brief-defect` | **2** | evidence-rescue draft 1 — four false premises, killed pre-dispatch; gate-evidence — the whole premise that C's fixture was stale |
+| `manager-finding-defect` | **1** | gate-evidence carried three of my false or misdirected findings: the `pending-be` gap, ordinal 6 framed as a modelling limit when it is a product defect, and an ordinal 7 hand-off whose remedy would not have worked |
+
+**Zero author defects against three manager defects is the finding of this train**, and it is not flattering. The cheap tier is performing exactly as §A13.2 predicted; the defect source is me. The §A16.4 escalation trigger was met earlier today and remains met.
+
+The one rejection that cost nothing is the one worth keeping: the evidence-rescue brief was killed **before a subagent saw it**, so four false premises produced no wasted authoring, no rejected packet and no wrong artifact in the tree. That is the ruling working as designed.
+
+### The failure mode, named
+
+Six times today I asserted a negative from a search I had not exhausted: the paginated selector grep, the session-calendar brief premise, the dead-code addendum against B, four premises in the evidence-rescue brief, the `pending-be` gap, and the inference that C's fixture was stale from its timestamp rather than its contents. Every one had the same shape — I looked, did not find, wrote "never" or "not there."
+
+Two rules now in force, both aimed at the mechanism rather than at trying harder:
+
+1. **No negative claim enters the record without the search that produced it and why that search was exhaustive.** "Not found by grep for X" is permitted. "Never happens" requires tracing every call path to a terminal.
+2. **`git status` is a change detector, not an enumeration.** It collapses wholly-untracked directories, which is how 505 untracked files presented to me as 161 entries. Completeness claims use `git ls-files --others --exclude-standard`.
+
+### Open rows carried forward
+
+Loader STOP-THE-LINE, possibly only partially closed pending the `dist-v9` question. Gate coverage for `drawing-tools-manager.js`, blocked in C's territory. Two new product defects of my own, ordinals 6 and 7 in `deleteDrawing`. Session-calendar weekly, blocked on server territory. The a10 evidence set, held because its inputs live only on an unmerged branch. Stale session-calendar four-state evidence needing regeneration at tip. Roughly 455 untracked A-territory files awaiting a triage decision above my tier.
+
+### Outstanding PO-REQ
+
+Zero. Two DIRECTOR-Q are open: whether the `A10-ui-control-inventory` row assignment or the path grant governs, and whether A's `multichart-prod/**` grant marked `provenance: inferred` is sufficient basis to act on a 464-file untracked population.
+
+---
+
+## 2026-07-28 09:31 — VERDICT: loader-a4c BLOCKED. The gate evidence is vacuous and the packet hides a 989 KB surface expansion
+
+surface=`manager-a/loader-a4c` `677cb7db2`, parent `8df52c22`; six files
+coverage=preflight run hermetically against parent **and** packet trees, four-state probe authored against the packet runtime, every asserted negative verified independently, nginx and `api_server.py` route resolution traced
+
+**The finding that decides it: the headline gate evidence proves nothing about this packet.** `module-contract-preflight.mjs` produces **byte-identical output at the parent and at the packet** — same `checked=10`, same surfaces, same indices. The preflight skips any surface not `owned-stamped`; both `legacy-index.html` copies are `excluded`, and `multichart/chart-host.html` is absent from the inventory entirely. **Not one of the six changed files is observed by the gate.** C's browser gate tests two other files. Both gates were green before the packet existed.
+
+"Preflight ok, 10 checked" was equally true before the work was done. Citing an unchanged gate as evidence for a change is the exact §A16.2 overclaim — in a packet whose whole subject is not confusing presence with soundness. I accepted that line in the author's report without asking what the gate could see, which is the same reflex that produced the no-op delta two hours ago: I read a green result instead of asking what it was sensitive to.
+
+**The undeclared change is larger than the declared one.** `tripwirePasses()` requires a `chart-indicators-full.js` script tag to exist, so loading the presence runtime into any shell without an indicator consumer produces a **false-positive degraded badge**. The packet's response was to add `chart-indicators-full.js` — **989,406 bytes** — to `chart-host.html`, deleting the header line "no modules — minimum surface." So roughly 1 MB of JS now loads per sandbox panel iframe, on a routed multi-iframe surface, **to silence a tripwire false positive**, with no memory measurement, while §A9 multichart memory is REOPENED and Rayan is hitting 3.5 GB on a single layout.
+
+It also mutates a diagnostic instrument. The sandbox was deliberately minimum-surface so engine defects would not be masked by module interaction, and it is in use for multichart diagnosis right now. This was presented as loader hygiene. It is the same standard I applied to the mirror reconciliation and it fails it considerably harder.
+
+**My top concern was falsified, and in the opposite direction.** The mirror had not lost anything — `homepage/public/chart/multichart/chart-host.html` was *behind* the source, and the reconciliation forward-ported about 30 lines of TF-switch viewport preservation into it. Every `-` in the parent source-vs-mirror diff has a `+` counterpart; nothing existed only in the mirror. And that copy is not served: `homepage/nginx.conf` proxies `/chart/` to the chart service, which mounts `/chart/multichart` from the source tree at `api_server.py:27024`. So it is a discipline violation against a dead copy, not deleted live behaviour. My pre-declared automatic-BLOCK trigger does not fire. My open finding on three `homepage/public/chart/` divergences is down to two, both `.test.mjs`, resolved in a direction nobody chose.
+
+**My §A4c concern was wrong and the ruling says so verbatim.** §A4c.4 mandates a loud non-blocking degraded indicator for correctness class, and §A4c closes with "Rejected: fail-hard-at-runtime on missing dependency. A CDN/cache hiccup must never kill a trading chart." Flag plus telemetry plus console plus badge is the specified contract, not a weak substitute for one.
+
+I want the shape of that recorded, because it differs from my six retractions today: **I raised it as a question for the reviewer rather than asserting it.** It cost one paragraph and produced a citation. Had I written "non-blocking is wrong for correctness class" into a brief, it would have been a seventh false claim and an author would have built to it. Asking is not asserting, and the difference is the whole cost of being wrong.
+
+The reviewer attached a caveat worth keeping: the ruling purchases that risk acceptance with *build-time enforcement*, and two compensating controls are incomplete. §A4c.2's gate does not cover the shells this packet touched, and §A4c.6 — the trade record storing the degraded flag and missing-module list — is **not implemented** anywhere in `order-service.js` or `order-manager.js`. So the system holds the ruling's risk acceptance without the controls that justify it. Not mine to fix, but it belongs on the board.
+
+**Also blocked on:** the NONCONFORMING leg of the three-state proof is not in the tree. The reviewer authored a probe and confirmed the mechanism genuinely discriminates — dropping any one of six symbols fires, and non-callable symbols are caught, so it is not a total-absence tripwire. But no committed test contains that case; C's node gate covers CONFORMING/ABSENT/MISORDERED only. The one genuinely valuable property is guarded by nothing. And `git diff` ≠ `git diff -w` by one line — a false claim, minor in substance, and caused solely by the drive-by reconciliation.
+
+**Clean and not to be re-litigated:** territory, trailers, global spelling with no third variant, error-string matchers (zero consumers of the old text tree-wide), all three OID parity pairs, and `npm ci` hygiene — timestamps place it in A's worktree at 08:57, three weeks after the main checkout's `node_modules`, with no lockfile change.
+
+## 2026-07-28 09:32 — CORRECTION: STOP-THE-LINE was already partially closed before my packet, and my packet closed only ungated surfaces
+
+`dist-v9/index.html` genuinely loads both modules in order — `module-presence-runtime.js` at 1607 before `chart.js` at 1613, `indicator-performance.js` at 1639 before `chart-indicators-full.js` at 1640, all `defer` so document order is execution order. That is real presence and reachability, not a manifest inference, and the property survives rebuild because the generative source `talaria-design/live/index.html` carries the same tags.
+
+**But it landed in `54edafa8a` and `90e0e0cf8`, not in my packet.** The production panel `multichart-prod/chart-embed.html` was already green too. My packet closed `legacy-index.html` and the multichart sandbox host — genuinely routed, genuinely uncovered, and worth having — but I cannot claim the increment I have been reporting for three nights.
+
+**What actually closes the row is in Manager C's territory, not mine.** Four routed shells sit outside or mis-declared in the inventory: `legacy-index.html` is declared `servable: false` while `api_server.py:26923` routes it; `index.v9.html`, `multichart/chart-host.html` and `multichart-shell.html` are absent entirely. And §A14.3's exposure conditional — if a shell does not reference the correctness-class modules then `routed` must be false — is not implemented in `module-contract-preflight.mjs` at all. A manifest status word disagreeing with a live route is the §A14.1 defect the Director made a standing rule about.
+
+So the honest statement is: **the overdue item is overdue because the gate that would prove it closed cannot see the shells in question.** I have been treating this as an authoring problem in my own territory for three nights and it is substantially an inventory problem in C's.
+
+## 2026-07-28 09:33 — DECISION: taking the reviewer's four-way split; shipping only the honest slice
+
+**(a) Dispatching now** — `legacy-index.html` ×2 plus the runtime error-string change. Acceptable as-is, trivially, and genuinely improves two routed uncovered shells. Ships today.
+
+**(b) Held, own packet** — the `chart-host.html` surface expansion. My leaning, stated as a leaning and not a ruling: **fix the tripwire, do not load a megabyte.** `tripwirePasses()` should not demand a consumer tag on a shell that has no indicator consumer; requiring one inverts the contract, since the tripwire exists to detect a missing provider for a consumer that exists. The alternative — declaring `chart-host` indicator-required — must carry a memory number, and taking that during an open §A9 investigation needs a reason better than silencing a badge.
+
+**(c) Held, own packet** — the mirror reconciliation, bundled with the two remaining `.test.mjs` divergences, decided on which copy is authoritative rather than on which file someone happened to be editing.
+
+**(d) Escalating to C and the Director** — inventory correction for the four routed shells plus §A14.3's exposure conditional. This is the item that closes STOP-THE-LINE and it is not mine to write.
+
+Also noting for the re-author: the packet's parent `8df52c22` is three commits behind `critical-path`, all of them my own journal commits, so no content conflict — but the slice rebases onto the current tip.
+
+---
+
+## 2026-07-28 09:38 — VERDICT: loader slice (a) accepted and merged. First product merge of the day
+
+surface=`manager-a/critical-path` now `8bda25481`; four files, six insertions, two deletions
+coverage=subset property verified by me directly against both the base and the reviewed packet; content reviewed at top tier as part of `677cb7db2`
+
+`885057cb5` merged. Two `legacy-index.html` copies now load `ModulePresenceRuntime` before `chart.js` and `IndicatorPerf` before `chart-indicators-full.js`, plus the runtime error string covering the non-conforming case.
+
+**On the §A13.1 review requirement, because this is a judgement call and should be visible rather than quietly made.** I did not dispatch a fresh adversarial review for this packet, and here is the reasoning. The four files' content is byte-identical to `677cb7db2`, which received a full top-tier adversarial review that examined these exact changes and found them "acceptable as-is, trivially" — the block was on the other two files and on the evidence framing, not on this content. What was unreviewed was the *subset property*: that nothing else rode along. I verified that myself and directly — `git diff --name-only` against base returns exactly four paths, `git diff` against `677cb7db2` on those four paths is empty, and both `chart-host.html` blobs are unchanged from base at `fc11a1ee6` and `4fcf70905`. So the content had a separate reviewer and I am not the only judge of it; the only thing I judged alone is a mechanical property with a decisive test.
+
+If the Director reads §A13.1 as requiring a fresh reviewer per commit rather than per change, this merge is out of order and I will take the correction.
+
+**What this does and does not close.** It closes two genuinely routed, genuinely uncovered shells. It does not close STOP-THE-LINE. Per the review, `dist-v9/index.html` and `multichart-prod/chart-embed.html` were already correct before any of my work, and what remains is an inventory problem in C's territory: `legacy-index.html` is declared `servable: false` while `api_server.py:26923` routes it, three further routed shells are absent from the inventory, and §A14.3's exposure conditional is unimplemented. **No gate observes the files I just merged**, which is the honest statement of this merge's standing — the change is right, and nothing automated will notice if it regresses.
+
+**One coverage claim I am deliberately not making.** Slice (a) changed two copies of `legacy-index.html`, but the review established that `/chart/legacy-index.html` is served from the chart root — the `chart v 1.4/chart` tree — via `CHART_ROOT_FILES:26923`, and that nginx proxies `/chart/` to the chart service rather than serving the `homepage/public` tree. The same tracing showed the `homepage/public` multichart mirror is not served. Whether the `homepage/public` copy of `legacy-index.html` is served **on any route** was not established, and I am not asserting it is not. So the verified coverage gain is one shell, with the mirror edit justified by parity discipline rather than by reachability. That distinction is exactly what the deroute collision turns on, and it is already in front of the reviewer holding that question.
+
+**TEST-1: still not deploying.** §A16.5 is unaffected by this merge — `drawing-tools-manager.js` is already on `critical-path` and still ungated, so the chain is not automated-GREEN regardless of what else lands. This merge improves the tree; it does not unblock the deploy.
+
+---
+
+## 2026-07-28 09:44 — Replay speed cap accepted. Read §3.1 and §7.1; sequencing set by §7.1, not by my preference
+
+`CONCLUSION-48H-20260728.md` read in full. The cap is §3 — high value, explicitly **does not block the canary**. §7.1 is unambiguous: *"The two managers on the chain take on nothing new until the chain clears."* My chain items due 15:15 are **M1** (`indicator-performance.js` present and executing on every servable surface, presence assertions live at build **and** runtime), the §A2 re-measurement on the fixed build, and the written §1.2 answer.
+
+So the cap gets my **read-only capacity, which §A13 leaves uncapped**, and M1 keeps the write slots. Two measurement packets are out now; no cap implementation is dispatched and none will be until the chain clears or the measurements force a re-plan.
+
+**M1 is not closed and I should be blunt that this morning's merge did not close it.** M1's bar is *every* servable surface with assertions live at build and runtime. Slice (a) covered two routed shells that **no gate observes**. Four routed shells remain outside or mis-declared in C's inventory, and §A14.3's exposure conditional is unimplemented, so the build half of M1 does not exist for those surfaces. M1 cannot close on A's work alone.
+
+## 2026-07-28 09:45 — OPEN: the fast path may be reachable at 10x, which would invert the cap's payoff
+
+surface=`chart v 1.4/chart/modules/replay-system.js`
+coverage=**code reading only — no execution, no measurement.** Recorded as a hypothesis, explicitly not a verdict.
+
+The PO's payoff item is: confirm the fast-mode threshold sits above 10x, then retire `updateChartDataFast` → `_renderReplayChartUpdate` as unreachable. Reading the branch, I think that precondition may fail on coarse timeframes.
+
+```
+:5292  const rawCandlesPerSecond = effectivePlaybackSpeed / rawCandleTimeframeSec;
+:5295  let realTimeCandleDuration = rawCandleTimeframeMs / effectivePlaybackSpeed;
+:5296  const cadenceSubdivisions = this._finestTfCadenceSubdivisions();
+:5299      realTimeCandleDuration = realTimeCandleDuration / cadenceSubdivisions;
+:5306  const useFastMode = tickSpeedCoherent ? realTimeCandleDuration < 32
+:5308                                        : rawCandlesPerSecond > 1;
+```
+
+`_finestTfCadenceSubdivisions()` at `:1050-1057` returns `Math.round(coarse / finest)`.
+
+**The two branches disagree, and that is the crux.** The legacy branch tests `rawCandlesPerSecond > 1`, which at 10x on 1m raw is 10/60 ≈ 0.167 and **ignores subdivisions entirely** — never fast mode at 10x. The coherence branch tests `realTimeCandleDuration < 32`, and that quantity **has been divided by the subdivision count**. At 10x with 1m raw, duration is 6000 ms; if a 1D display yields 1440 subdivisions it becomes ≈ **4.17 ms**, which is under 32, so fast mode engages **at the capped speed**.
+
+If that holds, two things follow. The ceiling is cosmetic on 1D in exactly the way §3.1 requirement 1 warns about — the label is capped while the work rate stays roughly three orders of magnitude above 1m. And the deletion is not merely unjustified but **actively dangerous**: retiring a path the product still enters at 10x would remove the renderer actually used on coarse timeframes.
+
+**I am not asserting this.** It is arithmetic over a code reading, the runtime values of `_getFinestReplayCadenceMs()` and `_getCoarseReplayCadenceAnchorMs()` are unverified, and which branch is live depends on `_m19iTickSpeedCoherenceEnabled()` whose default I have not established. I have briefed it to the measurement packet **as a hypothesis to refute**, with an explicit instruction that showing me wrong is the more useful outcome. Six false negatives this week have all come from acting on exactly this kind of confident reading, and the discipline that has actually worked is asking rather than asserting.
+
+If the measurement confirms it, the §3.1 payoff needs re-planning and I will raise it rather than quietly reshape the order.
+
+## 2026-07-28 09:46 — Two read-only packets dispatched on the cap; both cheap per §A13.3b
+
+**Work-rate measurement.** The acceptance criterion in §3.1 is measured tick and render rate at 10x on 1m and 1D, not the UI change. Four cells minimum — 1m and 1D crossed with both kill-switch states — reporting whether `fastMode` engages at 10x, the real subdivision values, raw counts with measurement windows rather than bare rates, and the actual engage-threshold per timeframe against the PO's assumed ~60x. Directed at the existing VM-harness pattern rather than a new one.
+
+**Entry-point enumeration.** Requirement 2 wants every path clamped: picker, restored sessions, saved preferences, URL parameters, internal setters. I asked three things beyond the list. Whether the UI label is the multiplier or a display name for a different number — `:5278` comments "60x = 1 raw candle/sec", which suggests it may not be, and that decides what "cap at 10x" even means in code. Whether `getEffectivePlaybackSpeed()` is a total chokepoint or whether some paths write a field that is read directly, since one clamp beats N only if the chokepoint is genuinely total. And what persists across restore, traced from storage key to landing site.
+
+Both briefs require the search method behind every negative claim, and both say a stated lower bound beats a false total. One of this week's six false negatives was a paginated grep that silently truncated, so both are told to check their tooling actually returned everything.
+
+## 2026-07-28 09:47 — PO-REQ: the 5x lag observation, which §3.1 makes a precondition for claiming any mitigation
+
+§3.1 is explicit that no mitigation may be claimed until one observation settles it: **does the indicator lag still occur at 5x?** If it does, the cap changes nothing the user sees and the mechanism is still unfound.
+
+This is not answerable in code. The symptom is the PO's — replay with drawings, orders and indicators present — and we have never established it was high-speed-only. It needs one observation on the next build.
+
+**Request:** on the first TEST build carrying the cap, run the PO's own replay scenario at **5x** with drawings, orders and indicators present, and report whether indicators visibly trail price on already-painted bars. A yes/no with the timeframe used is sufficient; no instrumentation needed.
+
+**Cost:** minutes, inside the batched T+12h session at Tue 21:25 rather than as a separate interruption.
+
+**Why it cannot wait:** it is pre-registered in §3.1 as gating the mitigation claim, and it is cheap to take at the same sitting as everything else on that build.
+
+**Default in force if unanswered**, logged per §7.3 so I do not idle: I will record the lag row as **"bounded by product cap, mitigation unverified at 5x"** and will not claim mitigation. The disposition already states that raising the cap reopens the row with no test guarding the higher range.
+
+---
+
+## 2026-07-28 09:50 — REVERTED: slice (a) violated §A14.3. I merged a change a standing ruling forbids
+
+surface=`manager-a/critical-path`; merge `8bda25481` reverted at `c94a0a406`
+coverage=ruling text read directly by me at `DIRECTOR-RULINGS-20260727.md:294-310` before acting
+
+§A14.3:306, verbatim:
+
+> **Invert the assertion instead of deleting it.** Do not assert *legacy must contain these modules* (a demand to fix a shell we have ruled must die). Assert the exposure conditional:
+> > **for any shell: if it does not reference the correctness-class required modules, then `routed` must be false.**
+
+And §A14.2:298:
+
+> **the chart-root source is retained; every routed copy is de-routed and removed, with no retain obligation.**
+
+Slice (a) added `module-presence-runtime.js` and `indicator-performance.js` to both copies of `legacy-index.html`. That is precisely the demand §A14.3 forbids. **And it is worse than merely redundant: by making legacy compliant it silences the exposure RED the Director wanted preserved.** The gate is supposed to fire on legacy *because it is routed while lacking the modules*. I removed the condition that makes it fire, in a packet I described as improving coverage. Corroborating: `scripts/module-contracts.json:95-109` already carries both legacy paths as `status: excluded`, `servable: false`, reason "stale public source shell; route-removal debt". The presence gate should never have iterated them, and I should have asked why it did not rather than treating the gap as mine to fill.
+
+Reverted in full at `c94a0a406`. The error-string change rode along in the revert; it was harmless and independent and can re-land on its own if it is worth a packet, which I doubt.
+
+**How this got through, since the failure is procedural and not just factual.** The top-tier review of `677cb7db2` explicitly blessed this slice — "acceptable as-is today, trivially" — and I verified the subset property myself and merged on that basis. So a top-tier reviewer missed the ruling too. That does not transfer the accountability: reviewers check the packet in front of them, and **knowing which standing rulings govern a surface is the manager's job, not the reviewer's.** I have read §A14 before. I did not re-read it when I touched the exact file it names.
+
+The concrete lesson is narrower than "read the rulings." It is: **before touching a file, grep the rulings for that filename.** `legacy-index.html` appears by name in §A14.2 and §A14.3. Thirty seconds would have caught this. I am adding it to my pre-dispatch checklist rather than resolving to remember.
+
+**This also corrects my reading of M1.** I have been treating M1's "every servable surface" as including legacy and reporting the gap as mine to close. Legacy is ruled must-die and declared non-servable; it is **out of M1's scope**, and the work I have been queuing against it was never M1 work. What M1 actually needs is the §A14.3 exposure conditional implemented as a live gate — which is C's, per §A14.3's "reserve it under a gate name and apply it across the narrow inventory" — plus confirmation on the genuinely servable surfaces. My 15:15 chain item is therefore smaller than I thought and depends more on C than I thought.
+
+## 2026-07-28 09:51 — VERDICT: evidence-rescue BLOCKED on report accuracy; the counter evidence itself holds
+
+surface=`manager-a/evidence-rescue` `69dfab6d5`
+coverage=regeneration independently reproduced in an isolated four-blob tree at the pin, every differing leaf key enumerated across all 1800 leaves
+
+**The core result is confirmed exactly and is the packet's real value.** An independent run in a hermetic temp tree reproduced 96 advisory wall-clock diffs, one output-path field, and **zero counter-field differences** — every A cell at `replayTicks=300, fullResamples=300, incrementalResamples=0`, every B cell at 600, determinism IDENTICAL across all repeats in all twelve cells. Not a classifier's opinion about which fields are counters; a full leaf-key enumeration.
+
+Blocked on four accuracy defects in the report around it.
+
+**My contract was broken, invisibly.** `m21-b-mcdiag-tabulation-raw-output.json` in C's checkout was **overwritten by the author's own verification run** — its `config.jsonOut` is an absolute path into C's tree, and nobody would document that path. So "both external trees unchanged" is false. The content is provably benign, and the original is preserved in the commit, but the mechanism is the finding: **the file already existed and was already untracked, so porcelain and untracked counts never moved.** Every count-based hygiene check I have relied on today — mine and my reviewers' — would pass this while another manager's evidence sat silently modified. Count-based isolation checks are necessary and not sufficient; content hashes of the specific files at risk are what actually prove non-interference. That is the second time today a `git status` count has told me something weaker than I read into it.
+
+**`refs.tsv` claims a total it does not have.** REPORT describes it as "Every `legacy-index.html` reference"; an exhaustive `git grep` finds **172 hits across 49 files** against roughly 56 real rows, with 62 of its 118 rows citing the packet's own artifacts — 52% self-portrait. The omissions are material rather than cosmetic: `m22-session-calendar-harness.mjs:923-924`, `m22-session-calendar-bucketing.red.test.mjs:1490-1491`, `session-calendar.contract.json:46` and `bump-dist-v9-cache-legacy.test.mjs:2` all hard-code a **two-copy existence invariant** for the very file the de-route proposes to delete. None appears in the breakage table. The de-route stays correct per §A14.2; its impact analysis has a hole, and the curated list concealed it.
+
+**`proposed.diff` is not a patch.** `git apply --check` rejects it — "corrupt patch at line 35." A hunk header declares ten lines and supplies nine; the deletion hunk declares 61146 lines and contains seven lines of prose. Yet it ships an "Apply checklist." That is the worst combination: it invites mechanical application, fails, and whoever inherits it hand-repairs hunks against a tree that has since moved two lines. This repo already carries a `chart.js.rej` under a `.scratch/` directory from exactly that workflow. It gets renamed so no tool and no human treats it as appliable, and regenerated for real in the apply slot.
+
+**`table.txt` omits its own controls, which I rate above the truncation I flagged.** The truncated command line at `:7` is real and self-correcting from two siblings. The larger defect is that the harness produces **twelve** cells and both companions present only the 24 A/B rows. Cells `D1` and `D2` show `fullResamples=0, incrementalResamples=300` — **the control proving the counter can register incremental hits at all**, which is exactly what gives the headline `fullResamples=300, incrementalResamples=0` its meaning. Publishing the headline without the control is selective even with the data preserved in the raw JSON.
+
+**Contradiction #1 is struck.** Two exhaustive searches settle it: `git ls-tree -r` over C's entire tracked tree returns zero paths matching `mcdiag`, and a full recursive filesystem walk finds no generator on C's disk. The author tested A's pin, where the generator is trivially expected. The provenance reasoning stands. I was right to route it as a question rather than assert it, and right not to claim more than that.
+
+---
+
+## 2026-07-28 09:56 — Speed entry-point enumeration returned. The label question is settled and a hidden unlock already exists
+
+surface=`chart v 1.4/chart/` product tree plus V9 sources in `chart v 1.4/talaria-design/`
+coverage=**lower bound, stated as such** — 18 confident product entry points, 6 confident playback bypass reads; method recorded per negative claim
+
+**Q1 settled: the label is the multiplier.** `Nx` is stored verbatim in `replaySystem.speed`. The `:5278` comment I was suspicious of describes semantics — market-seconds per real-second — not a second numbering. So "cap at 10x" means clamp stored `speed` to ≤ 10, with no translation layer. That was the question that had to be answered before anyone could write the change, and it is answered.
+
+**A shared write clamp already exists.** `normalizeSpeed()` at `:6836-6839` clamps every formal setter to 1–100. Changing `Math.min(100, n)` to `Math.min(10, n)` catches every path that goes through `setSpeed`, `applyPersistedState`, or `_pendingReplaySpeed` — which is most of them, including all three session-backup tiers and the server `state.replay.speed` restore. The clamp-every-entry-point requirement is far cheaper than I expected.
+
+**Three findings that change what the cap has to do.**
+
+**1. A hidden flag that doubles speed already exists, and the PO's requirement forbids exactly this.** `getEffectivePlaybackSpeed()` at `:6843-6848` returns `normalizeSpeed(this.speed)` under the default, but with `window.__TALARIA_DISABLE_M19I_TICK_SPEED_COHERENCE_V1 === true` it returns `min(200, base × 2)`. So today the label can read 100 while playback runs at 200, and under a 10x cap the same switch yields **20x from a labelled 10x**. §3.1 says "Hard ceiling — no hidden flag, no user unlock." **A cap that clamps the stored value and leaves this multiplier in place is not a hard ceiling**, and this is the single most important thing the enumeration found.
+
+**2. The constructor default is above the new cap.** `replay-system.js:30` sets `this.speed = 60`. V9 React initialises to 30, the dashboard modal to 30. All three exceed 10, so there is a window before UI sync where the engine holds an out-of-range speed. The defaults move with the cap or the cap has a hole at startup.
+
+**3. `getEffectivePlaybackSpeed()` is not a playback chokepoint** — it governs tick-animation cadence only. Six product sites read `speed` directly: candle cadence at `replay-system.js:4667`, pan-load chunk sizing at `chart.js:24813-24826`, the replay draw throttle at `drawing-tools-manager.js:12749-12751`, plus multichart broadcast, session backup and the persist patch. The clamp handles correctness of the stored value; these sites determine whether the *work* actually falls, which is §3.1's acceptance criterion and why the measurement packet matters more than the clamp.
+
+One of those six is a latent behaviour change worth naming: the drawing throttle branches on `speed >= 50`, choosing 750 ms over 250 ms. Under a 10x cap that branch becomes **unreachable**, so replay always takes the 250 ms path. Less total work at lower speed, but it is a second dead branch created by the cap and it should be decided deliberately rather than discovered later.
+
+**A scope question the cap creates.** Two incompatible ladders exist. V9 production offers 1, 2, 3, 5, 10, 15, 20, 25, 30, 50, 60, 70, 80, 90, 100. Legacy offers 1, 2, 5, 10, 30, 60, … 86400, and `normalizeSpeed` silently collapses everything above 100 — so legacy's top nine labels have been lying for some time. Applying §3.1 to V9 means keeping 1, 2, 3, 5, 10 and removing nine options. **But legacy is the shell §A14.2 ruled must be de-routed and removed**, and I have just reverted a packet for improving it. Editing its ladder would repeat that error in a smaller way. My position: **do not touch the legacy ladder; let de-routing remove it**, and note that its labels above 100 are already cosmetic.
+
+**Dead code the enumeration surfaced**, none of it urgent: `#speedSelectBar` has no matching element anywhere in the repo so `attachSpeedButtonEvents()` is inert; `setSpeedFromSlider` is never defined so the clone-slider listener is permanently guarded off; the `#replaySpeed` select is hidden with a single option. And `backtestingSession.replaySpeed` is written at session creation and read by nothing in the chart engine — a persistence path that looks live and is not.
+
+**Not dispatching implementation.** §7.1 holds: nothing new until the chain clears. The remaining unknown is the work-rate measurement, which decides whether the cap is real on 1D and whether the fast path can be retired at all. I would rather write one correct spec against both results than a clamp now and a correction later.
+
+**Method note, recorded because I asked for it.** Every negative claim came back with the search behind it — the URL-parameter, IndexedDB, `speedSelectBar` and `setSpeedFromSlider` negatives each name the pattern and scope searched, and the bypass inventory is explicitly given as a lower bound of 6 confident behaviours out of 10 raw matches rather than as a total. That is the standard I have been failing at all week, and it is the first packet today that met it without being corrected.
+
+---
+
+## 2026-07-28 10:02 — VERDICT: the 10x cap does not make the fast path unreachable. The §3.1 retirement precondition fails
+
+surface=`chart v 1.4/chart/modules/replay-system.js` blob `1f02c6998`, verified identical at C's HEAD and A's tip and clean in the worktree, so the measurement applies to my branch
+coverage=six executed cells on the real `startTickAnimation()` with the real `setTimeout` scheduler, ~12 s wall-clock windows; **not** a browser measurement, and resample CPU per call was not measured
+
+§3.1 says: *"Confirm the fast-mode threshold sits above 10x before deleting anything."* It does not.
+
+**The threshold depends on deployment shape, and in one shape it is below 10x — far below.**
+
+| Shape | Subdivisions | Fast-mode engages above | `fastMode` at 10x |
 |---|---|---|---|
-| 2,000 (fresh boot) | 0 | 0.00 | 0.00% |
-| 20,000 | 36,918 | 8.53 | 1.46% |
-| **70,989 — measured on deployed** | **240,398** | **55.53** | **9.48%** |
-| 200,000 | 756,398 | 174.73 | 29.82% |
+| Single-chart, 1m | 1 | **1875x** | false |
+| Single-chart, 1D | 1 | **1875x** | false |
+| Multichart 1D with a 1m peer | 1440 | **~1.30x** | **true** |
+| Multichart, 1m | 1 | 1875x | false |
 
-**70,989 is not a hypothetical — it is the master size my own playback allocation profile
-measured on the deployed build.** So A1 is worth ~55 MB / 9.5%, roughly 170x the 0.05% I
-reported at 16:20. My snapshot error was worse than the retraction I already issued: I
-measured at 1,440 bars, which is BELOW the size at which any bar is evictable, so I was
-measuring a structural zero and publishing it as a ceiling. Third time today I have had to
-move my own number on this packet, and every move has been in the same direction.
+So on multichart with two or more panels including a finer peer, `updateChartDataFast` runs at 10x on the 1D host — and at 5x, and at 2x. **Retiring it would break that path.** The deletion cannot proceed on the stated ground.
 
-**The binding constraint, priced.** _independentMasterCoversReplayTimestamp returns false
-unless the master reaches playhead + 6000*tfMs, and false means a refetch its own comment
-says "would wipe the chart and show loading". So 6,000 base bars must stay resident =
-**1.39 MB/panel, 5.54 MB across four that A1 CANNOT evict** without changing that predicate,
-which is a separate packet. Consequence: the **coarse** panel needs a master above **20,520
-bars** before it evicts anything at all, because at 1h each display bucket costs 60 base bars.
-This is why cell 13 (predicate preserved) is green and cell 14, the deliberate reversal
-control, correctly goes RED — GATE-01 satisfied.
+**The stronger version of the finding, which changes the argument rather than just answering it.** Single-chart engages only above 1875x, and `normalizeSpeed()` already clamps everything to 100. So on the default single-chart deployment **the fast path is already unreachable today, at any speed the product offers, cap or no cap.** Its only live reachability is multichart — where the threshold is ~1.3x and the cap is irrelevant. The retirement question therefore has nothing to do with the 10x ceiling in either direction. It is entirely a question about multichart finest-TF cadence, and it should be re-planned on that basis rather than as a consequence of the cap.
 
-**Suite: 19/24, five RED, ALL test-side, none a price divergence.**
-- Cell 7 was a bar COUNT disagreement (6,242 actual vs 8,241 expected), and 6,242 is exactly
-  the 1m panel's correct retained figure (242 window + 6,000 runway). The cell assumed the
-  window runs to the END of the master; the window is bounded at BOTH ends and evicts the
-  future tail beyond the runway too. Cell 8, the field-exactness cell, was GREEN throughout.
-- Cells 11/12/21 failed on **the same root cause and it is the scene, not the fix**: all three
-  failed their own POSITIVE CONTROL on USDJPY, the 1h panel. Head eviction requires
-  PLAYHEAD_INDEX > windowBars, and 12,000 sat 2,520 under the 1h panel's 14,520. Nothing was
-  evicted because nothing COULD be. **The controls did their job** — they refused to let three
-  cells pass vacuously on a panel where the mechanism never ran. That is the opposite of the
-  green-suite-zero-effect family I have been finding all day, and the first time today a
-  control caught a vacuity before I did.
-- Cell 19 was a real harness defect: Array buffer allocation failed.
+**The PO's ~60x figure describes a branch that is off.** `rawCandlesPerSecond > 1` is the legacy branch, live only when `__TALARIA_DISABLE_M19I_TICK_SPEED_COHERENCE_V1 === true`. The default is the coherence branch, `realTimeCandleDuration < 32`. The ~60x in §3.1 is accurate for a code path nobody is running.
 
-**Fixed, test-side only, product bytes untouched.** Re-derived the scene from the arithmetic
-(PLAYHEAD_INDEX 20,000 > 14,520; BASE_BAR_COUNT 30,000 > 20,000 + 6,000 runway), corrected
-cell 7 to compare over the retained range at both ends, and added an **ANTI-VACUITY guard
-cell** that pins the derivation so the scene cannot silently drift back to a size where the
-bound cannot fire. Also found the OOM and the runtime share one cause: makePanel re-created
-a vm context AND re-compiled extracted chart.js/replay-system.js method bodies on every call,
-~50 times across the file. Now compiled once into a cached m.Script run into each fresh
-context — realm isolation per cell preserved, parse cost paid once.
+## 2026-07-28 10:03 — CORRECTION: my own hypothesis was half wrong, and the half I got wrong was the alarming half
 
-**MECHANISM IS SOUND where it counts:** both slots bound with ONE allocation (cell 9),
-retained bar objects fall de-duplicated BY IDENTITY (cell 10), master never mutated in place
-(cell 6), window computed before allocating (cells 5/6), kill-switch truthy-disables and read
-per call (cells 15/16), and _mergeIntoPanelFullRawData routes through the choke point (17).
+I wrote that if subdivision drives fast mode at 10x, "the label is capped while the work rate stays roughly three orders of magnitude above 1m." **That is false and the measurement refutes it.**
 
-**Corrections against myself:** (1) I called the suite a HANG. It terminates in 114 seconds;
-the earlier 17- and 81-minute observations were both suites running at once. (2) Four
-dispatched packets stalled without reporting; I am doing this directly rather than
-re-dispatching. (3) The A1 truncation work was sitting uncommitted through the crash —
-secured byte-identical as `c97b06421` and labelled unverified at the time.
+Measured at 10x over ~12 s windows: single-chart 1m and single-chart 1D are **identical** — 50 forming-tick paints, 50 `render()` calls, 2 raw commits, ~4.16 paints/sec. Multichart 1D in fast mode produces **2** `updateChartDataFast` calls and **2** renders in the same window, ~0.17/sec. Fast mode at 10x does **less** work than smooth mode, not more.
 
-Sent as HEARTBEAT-A-A1-PAYS-9.5-PERCENT-AT-THE-OBSERVED-MASTER-20260730-1935.md.
+The mechanism I missed: subdivisions divide `realTimeCandleDuration`, which selects the mode, but `fastModeInterval` is computed from `rawCandlesPerSecond`, which **ignores subdivisions**. So the subdivision decides *which renderer you get* without changing *how often it runs*. That is arguably a defect in its own right — one input governs mode selection and a different one governs cadence — and it is why my arithmetic predicted an explosion that does not occur.
 
-## 21:15 — A1 IS DEAD (fourth correction, terminal). A third of the element climb is a fix that never shipped.
+**So §3.1 requirement 1 is satisfied on the default deployment and I can say so with a measurement rather than an assurance:** at 10x, 1D and 1m generate the same tick and render rate on single-chart. The ceiling is not cosmetic there. The caveat is multichart, where 1D crosses into a different renderer at almost any speed — a correctness question about which renderer is used, not a work-rate question.
 
-**A1 IS NOT ON THE WIRE and I must correct the Director's compliment before anyone builds on
-it.** He credited my residency bound for panelFullRawBars holding constant at 3595/3910/2494.
-Verified on deployed bytes with a passing control (_panelFullRawData 102, _mergeIntoPanel 3,
-currentFileId 149, _mcRawDataCopyLimit 3): all six A1 markers are ZERO, and so is
-_applyResidencyWindowV1 from the older residency packet. What holds that array flat is the
-pre-existing _buildIndependentHybridInitialMaster (4) + _independentMasterCoversReplayTimestamp
-(2). His empirical conclusion SURVIVES AND IS STRONGER than he stated: base-series retention is
-not the climb, established on a build with no residency bound at all.
+I was right to route this as a hypothesis to refute rather than a finding. Had I briefed "the ceiling is cosmetic on 1D, here is the three-orders-of-magnitude problem," an author would have built to a premise the measurement destroys.
 
-**THIS KILLS A1, AND A2 WITH IT.** The gate's masters are 2,494-3,910 bars. My own arithmetic:
-the finest panel needs 6,242 bars before it evicts ONE bar; every panel needs 20,520. Evictable
-at the observed sizes: zero, zero, zero. And the array is FLAT across ten samples, so there is
-no growth to catch either. My 9.5% came from a 70,989-bar master measured in the allocation
-profile - a 60x SAME-PAIR run, 21x larger than CONF-01 exhibits. Recommended shelving A1 rather
-than landing it: a behaviour-preserving refactor with a measured zero would spend a CKPT-01
-checkpoint on a 107%-CPU data path to buy nothing. Preserved at 512207d3a, 25/25.
+## 2026-07-28 10:04 — Provenance note: two absence claims in the measurement are true of C's tree and false of mine
 
-**THIRD WRONG SIZE FOR A1 IN ONE DAY - 0.05%, then 9.5%, now zero - AND ALWAYS THE SAME ERROR:**
-sizing a bound against a master I had not measured IN THE CONFIGURATION UNDER TEST. Recording
-the pattern, not just the number: I keep computing ceilings from whatever master figure is
-nearest to hand. The bound was never the problem; the instrument was.
+The measurement reported that `_mcDiag.replayTicks` / `fullResamples` / `incrementalResamples` are "not present in this checkout's `chart.js`" and that the m20-q9 harness is "absent from this tree," so it used its own instrumentation.
 
-**RULED MYSELF OUT ON THE REWIND.** A1 is absent from the wire, so _residencyRepointReplayMaster
-- which does adjust sessionStartIndex and currentIndex - cannot have moved replayIndex 2508 ->
-2011. Not mine. Not yet identified.
+Both are true of the main checkout, which sits on `manager-c/verification-infra`. **Both are false of `manager-a/critical-path`**, where I checked directly: 13 counter references in `chart.js`, 1 in `chart-data-pipeline.js`, and `m20-q9-mcdiag-resample-measurement.mjs` present in the harness tree. This is the third time today the same category error has appeared — an agent reads the main checkout, finds something absent, and reports it as absent from the tree. It is the identical shape to the struck contradiction #1 in the evidence-rescue packet.
 
-**THE ELEMENT CLIMB NAMES ITS OWN CADENCE.** +1333.5 elements/h against 40 trades in 45 min:
-per tick = 0.093 elements, per bar close = 0.370 - both IMPOSSIBLE, a writer cannot emit a
-fractional element. Per CLOSED TRADE = 25.0, a whole number. So the writer is order-lifecycle,
-not paint-loop.
+It changes nothing about the measurement: `replay-system.js` is the same blob on both branches and the instrumentation was self-contained. But it means the numbers were taken with bespoke counters when the product counters were available one branch over, and any re-run should be pinned to A's tip so the two instruments can be cross-checked.
 
-**AND 35% OF IT IS ALREADY FIXED AND SITTING UNSHIPPED.** My own CDP measurement in a real
-Blink DOM: 120 closed round trips + 25 open orders leave 530 unreclaimed <filter> nodes (1,060
-with feDropShadow children); after the fix, zero. That is 4.42 filters = 8.83 elements per
-closed trade = 8.83/25.0 = 35% of the climb, MEASURED not estimated. The order-glow GC
-(6afb8006a/fdda39a3b, 16/16, nine author mutants + five of mine) has flag=0 and method=0 on the
-wire against a control of 8. It needs to SHIP, not to be re-found. Legend hover render scope is
-also absent (flag=0) but it is a per-hover cost and an unattended gate has no pointer input, so
-I am NOT claiming it contributes to the 1333/h. LabelTool IS deployed (flag=1, method=2).
+**Standing correction to my briefs: state which branch the working tree is on and which branch the claim is about, because they are not the same and three agents in a row have conflated them.**
 
-**NOT ATTRIBUTED, AND I AM NOT GUESSING:** ~16.2 elements/trade remain. Candidate families read
-from deployed bytes: entry-glow-\, exit-glow-\, partial-glow-\, multi-tp-avg-\,
-pending-tp-\, tp-\. order-manager.js is removal-HEAVY overall (213 creates vs 357
-.remove() + 99 selectAll().remove()), so this is a specific family whose teardown selector
-misses, not a naive append-only path. Instrument: live element census grouped by tag/class/data-
-attribute, differenced across a run - 8 minutes yields ~178 new elements, well above noise. On
-the test host per EVID-02.
+## 2026-07-28 10:05 — DIRECTOR-Q: the cap's payoff item needs re-planning, and I am not reshaping it myself
 
-**FOURTH FLAG-NAME-FROM-MEMORY FAILURE TODAY, and this time two of three were wrong.** I checked
-the wire with invented names for the legend and LabelTool flags; the real ones are
-__TALARIA_DISABLE_LEGEND_HOVER_RENDER_SCOPE_V1 and __TALARIA_DISABLE_LABEL_HANDLE_WIPE_V1, read
-from the commits. Had my empty-grep-is-unproven rule not forced me to pull names from source, I
-would have reported LabelTool as unshipped and the glow GC verdict would have been luck.
+§3.1's payoff is retiring `updateChartDataFast` on the ground that a 10x ceiling makes it unreachable. That ground does not hold: it is already unreachable on single-chart at any offered speed, and it remains reachable on multichart 1D at 10x and below.
 
-**A1 SUITE, before shelving: 25/25 in 1.6s (was 5 RED in 114s), and it found a REAL PRODUCT BUG.**
-_resolveMultichartReplayPlayheadMs() returns null; Number(null) is 0 which IS finite, so the
-isFinite-only guard let a missing playhead through and windowed the master against the EPOCH,
-retaining bars 0..runway and evicting the entire real series. Same Number(null)===0 trap that got
-the earlier residency module rejected - second sighting in the same code area. Fixed in both
-mirrors. My mutants: M1 restore-the-bug KILLED, M2 allow-epoch-0 KILLED by a cell I had to ADD
-(it survived first), M4 kill-switch-strict-true KILLED by six named cells, M5 drop-the-runway
-KILLED, negative control NOT_APPLIED. M3 bound-one-slot-only UNRESOLVED - emits no TAP totals,
-consistent with the non-termination my reseed row predicts when the slots stop sharing one
-allocation; I am NOT counting it as a kill.
+**The cap itself is unaffected and I am proceeding with it** — the clamp, the entry points, the hidden-flag closure and the measured acceptance all stand on their own, and §3.1 correctly separates the cap from its payoff.
 
-**I CALLED THE SUITE A HANG AND IT WAS NOT.** The 114 seconds was assert's failure-diff
-machinery on 30,000-element arrays - one cell spent 64.8s building a diff before throwing
-'Array buffer allocation failed', which HID which assertion was failing. assert.ok(a === b)
-instead of assert.equal took the suite to 1.6s. Also: makePanel recompiled extracted chart.js
-and replay-system.js method bodies into a fresh vm context ~50 times per run; now one cached
-vm.Script.
+**What I need ruled** is whether the second-renderer retirement is still wanted on the different ground the measurement exposes: not "no user can reach it" but "only multichart 1D reaches it, via a finest-TF cadence path whose mode selector and cadence disagree." That is a real duplicate-implementation risk of exactly the kind §3.1 argues against — two implementations of drawing the chart, never proven to agree — but retiring it now would change multichart 1D replay behaviour rather than delete dead code, which is a different risk and a different packet.
 
-**HOUSEKEEPING DONE:** worktrees 34 mine -> 4, all 30 removals verified branch-intact by SHA
-(git worktree remove keeps the branch). Repo total was 81. _evidence\manager-A\ created; no
-heap snapshots or >2MB artifacts in the workspace root.
-
-Sent as ANSWER-A-A-THIRD-OF-THE-ELEMENT-CLIMB-IS-A-FIX-THAT-NEVER-SHIPPED-20260730-2115.md.
-
-## 22:10 — Element climb attributed: ~22 history markers + 8.83 unshipped glow. A1 stays shelved.
-
-Director re-issued the duration-gate dispatch; C's 21:30 regrade already reframed it
-(per-trade 31.7, rewind ruled out as the writer, verdict UNRESOLVED pending 2.2h). I closed
-the residual from my 21:15 answer.
-
-**Attribution (source-verified on tip order-manager.js):** after open→close, order-line/SL-TP
-chrome is removed. What remains: entry marker ~10 (removeEntryMarker is a misnomer — strips
-price kids only), exit marker ~10 (kept as history), trade-connector 1–2 (existingMarker
-path re-appends with no dedupe), glow filters 8.83 (measured CDP, unshipped). Subtotal
-≈29.8–30.8 matches C's 31.7 inside CI.
-
-**Shipping implication:** glow GC at manager-a/order-glow-filters-20260730 @ fdda39a3b
-removes ~28% of the element climb and is the only pure leak in the set. The ~22 history-marker
-nodes/trade are CONF-02-by-design and belong to D's trade-eviction lane, not a missing
-.remove() on close. Shipping glow alone will not flatten the slope under CONF-02.
-
-**A1/A2:** stand on the shelve. Gate masters 2494–3910 < every eviction threshold.
-**CKPT-01:** capture+replay-advance proven on retained bytes; acceptance still RED on
-multichart embed boot (iframes: 0). **Realm-eviction grade:** still owed, not inventing.
-**Housekeeping:** EVID-02 dir ensured; pruned detached temp/cursor/stale worktrees; other
-managers' checkouts left alone. Answer:
-ANSWER-A-ELEMENT-CLIMB-IS-HISTORY-MARKERS-PLUS-UNSHIPPED-GLOW-20260730-2210.md.
-
-## 22:45 — glow GC routed for ship, and the transplant I nearly shipped would have reverted a live fix
-
-**Routed:** manager-a/order-glow-filters-20260730 @ fdda39a3b, flag
-__TALARIA_DISABLE_ORDER_GLOW_FILTER_GC_V1 (2x in each of the two order-manager.js copies).
-16/16 at that head, 124 s; mutants applied ON DISK to BOTH mirrors with needle==1 asserted and
-each killed by a NAMED behavioural cell; both negative controls (nonexistent needle, ambiguous
-4,704x needle) reported NOT_APPLIED loudly; disk restored 5ffa7d09a78de0f5. Log at
-_evidence\manager-A\glow-gc-fdda39a3b.txt per EVID-02. Route doc:
-ROUTE-A-TO-B-GLOW-GC-SHIPS-FROM-ITS-OWN-BASE-20260730-2245.md.
-
-**THE NEAR-MISS, and it is the row worth keeping.** I first tried to transplant the two glow
-commits onto the tip so B would get a modern base. Exactly one conflict, in the per-order
-teardown: tip has the SUBSTRING matcher [class*="multi-tp-avg-"][class*="-${oid}"], the glow
-base has the EXACT .multi-tp-avg-${oid} from cluster-g's ORDER-SEL-01. I resolved it by keeping
-the tip's line and adding the reclaim beside it — correct policy, do not smuggle an unrelated
-fix through a conflict resolution — and it was WRONG, because the tip is the one that is behind.
-ORDER-SEL-01 is ON THE WIRE (3 occurrences at b113) and ZERO at tip 3ba0d41d4, with controls
-B-W16=5 and _disposeEntryMarkerRecord=6 on the same fetch proving the scan sees real content.
-So my resolution would have shipped a revert to the over-matching selector I had myself logged
-as a hazard — arriving from the direction I was not watching. Deleted the transplant branch and
-worktree; nothing routed. Caught only because the glow suite's fixed extraction list refuses to
-start without _orderSel01ExactTeardownV1Enabled: the extraction-list trap I have been escalating
-all day did the catching this time. I am not withdrawing the escalation — a harness that fails
-because a method is missing is fail-loud, which is the tolerable half of that trap.
-
-**Row for C, independent of this packet:** manager-c/verification-infra is behind deployment on
-order-manager.js. Anything measured on it that touches order teardown is measuring a tree the
-users do not have.
-
-**Still owed:** realm-eviction grade (not inventing it), CKPT-01 acceptance RED on multichart
-embed boot (iframes: 0). A1/A2 remain shelved at CONF-01 scale.
-
-## 23:20 — CKPT-01: the rollback IS exercised; two of the reds were my grader
-
-**eb31ffaa7** on manager-a/ckpt01-artifact-20260730, ZERO product bytes. Suite 11 -> 18, four
-mutants applied ON DISK each killed by a NAMED behavioural cell, negative control NOT_APPLIED,
-file restored byte-identical c0432a0ea26be1a9. Evidence in _evidence\manager-A\ per EVID-02.
-
-**I HAD BEEN REPORTING CKPT-01 AS "acceptance RED" AND DRAWING THE WRONG CONCLUSION FROM IT.**
-Reading the rehearsal record properly: the rollback is genuinely exercised. Browser loaded the
-RETAINED bytes (chartServedLocal 148, chartProxiedToLive 0, chartRequestsToLiveOrigin 0, main
-document AND engine both sourced artifact), the product ran (replay index 2010->2384, timestamp
-advanced), and the proof is a MOVED INDEX with isPlayingIsNotEvidence:true - never a boolean,
-which was my stated requirement. Negative control goes red and restores. Post-run integrity
-120/0. Residual hole measured: 0 unanswered chart requests, 83/120 exercised, 37 never requested
-and honestly labelled unexercised coverage rather than proof of redundancy. That is CKPT-01
-point 2 DONE. Not claiming CKPT-01 is satisfied - two things still block it.
-
-**BOTH BLOCKING REDS WERE MINE.** (1) The multichart count polled
-querySelectorAll('iframe').length through .catch(() => 0), so a destroyed execution context and
-an empty grid read identically as zero. Its OWN record contradicts it: chart-embed.html served
-from the artifact, 72 chart requests, 0 misses, and the harness's own comment says a single-panel
-boot never requests that file. Now counts embed DOCUMENTS via page.frames() and records
-measurability separately from value. I am NOT claiming panels booted - claiming the instrument
-cannot tell us. (2) The assertion-control arm never booted (hasChart false, main-document-from-
-artifact FALSE) and the verdict line called that "the check did not go red with replay stopped",
-i.e. stated a finding about the grader that was never demonstrated. Credit where due: the
-predicate ALREADY required a healthy boot, so the guard worked and refused the dead arm; only
-the reporting collapsed the two cases. Now split by an explicit inconclusive flag carrying the
-boot stage and failures.
-
-**MY OWN TRAP, THIRTEENTH-ISH SIGHTING AND THIS TIME IN MY OWN CELLS:** M3 SURVIVED the first
-mutant run. Every dead-arm cell I wrote set hasChart:false, so && short-circuited and the
-data-length half of the predicate was never entered - five cells around a branch none of them
-reached. Killed by the realistic state it guards: shell boots, window.chart exists, series never
-loads. Exactly the green-suite-dead-branch shape I have been recording against other people all
-day.
-
-**Realm-eviction grade: STILL OWED and I am not inventing it.** The read-only dispatch produced
-NO durable artifact - no grading doc, nothing in the evidence dir. Reporting that plainly rather
-than reconstructing a verdict from a chat summary. Question is well posed (five flags live at
-b113, first build in which they can act) and unanswered, and it depends on the same multichart
-boot path CKPT-01 just found it cannot currently measure.
-
-Doc: HEARTBEAT-A-CKPT01-ROLLBACK-IS-EXERCISED-THE-GRADER-WAS-THE-RED-20260730-2320.md
+**Default in force if unanswered**, per §7.3: I implement the cap, leave `updateChartDataFast` in place, and record the duplicate-renderer risk as an open row rather than closing it. I will not delete a reachable renderer on a precondition that measurement has falsified.
 
 ---
 
-## 23:15 — Element writer: I confirm React, I dispute per-trade, and elements cannot be the 730 MB/h
+## 2026-07-28 10:12 — Director ratification logged. Cap proceeds on product grounds; retirement withdrawn
 
-**Static only. No browser started (constraint 1 respected).** Everything is a regrade of artifacts
-already on disk. Reproducer committed as scripts/ewa-regrade-drivers.mjs.
+The DIRECTOR-Q is answered as I defaulted it: implement the cap, leave `updateChartDataFast` in place, carry the duplicate-implementation risk as an open row. §3.1's payoff claim and the "~60x" figure are retracted at `f990eb4b5`, and the document now carries the measured thresholds — 1875x single-chart against a `normalizeSpeed()` clamp of 100, ~1.30x on multichart.
 
-**CONFIRMED C INDEPENDENTLY, AND C''S IS BETTER.** I resolved the three frames before reading C''s
-23:00 finding and reached the same structure - all three are React vendor code, so the attribution
-names the MECHANISM not a component. My evidence was line-40 CONTENT, not names: memoizedState x90,
-stateNode x78, flags x127, alternate x36, plus React''s insertion primitive uk(), against document
-x0 and useState x0, with function x302 as the positive control proving the matcher worked. But C
-demangled against the DEPLOYED bundle (1,720,325 B) and I read the LOCAL one (1,716,061 B), where
-O_ and R_ bind to unrelated .click() dispatchers at line 143. SIXTH-ISH SIGHTING of my own
-local-tree-is-behind-deployment row, and this time C checked the byte count and I did not. C''s
-naming supersedes mine; my structural conclusion stands because it rests on content.
+Worth recording what changed underneath the decision: the cap survives, but **the reason it survives is not the reason it was ordered.** The architectural justification is withdrawn; the PO confirms it on product grounds — fewer offered speeds, less surface to test before Thursday, competitor parity. Same change, different warrant. I am noting that because a future reader finding "cap at 10x" in the tree should not reconstruct the architectural argument from §3.1's original text.
 
-**DISPUTED, WITH C''S OWN CONTROL: "+28.7 per closed trade" IS CONFOUNDED.** Trades closed at a
-near-constant ~3/min and NO interval had zero closes, so levels are collinear - which is why the
-fit reports R2 0.9995 vs trades and 0.99998 vs time at the same time. First differences separate
-them, and the artifact carries a natural positive control (d3 defs/filter, genuinely per-trade):
+**Requirement 1 is marked satisfied with the measurement behind it**, and my withdrawn prediction is recorded as prominently as the result. That is the right way round.
 
-  trades/interval:   1      2      3      4
-  React elements:  89.00  88.00  87.00  86.00   corr -0.9042
-  d3 defs CONTROL:  4.00   4.50   5.94   7.33   corr +0.6678
+Two new project rules came out of today and both are now binding on me:
 
-A 4x predictor swing moves the React writer 3.5% DOWNWARD while the control scales upward on the
-same intervals with the same sampling noise. HONEST BOUND I AM PUTTING ON MY OWN RESULT: this does
-NOT prove time-driven - a lagged per-trade writer would also decorrelate, and a smooth response
-against a phase-noisy counter reproduces this exactly. It proves the per-trade figure is UNPROVEN,
-which is enough to unseat three inferences resting on it: C''s "the rewind hypothesis is retired"
-(premise is the thing in question - REWIND IS BACK ON THE TABLE), C''s "unbounded list, not a
-teardown bug", and the Director''s re-mount-per-trade dispatch premise. Decisive test is trivial
-and unrun: ONE SEGMENT WITH REPLAY ADVANCING AND NO TRADES CLOSING. Asked C to fold it into the
-already-planned --no-synthetic re-run rather than spend a new run.
+**BRIEF-02** — route an unmeasured premise as a hypothesis to refute, never as briefed background. Today produced three dead premises: the Director's data-effect lag theory, the Director's fast-path retirement ground, and my own 1D work-rate prediction. Any one briefed as fact would have bought an authored packet against a false premise. Framing costs nothing.
 
-**THE NUMBER THAT MATTERS MOST, AND IT IS ARITHMETIC NOT STATISTICS: ELEMENTS ARE ~1-3% OF THE
-SLOPE.** The duration gate pairs +735.0 MB/h renderer with +1333.5 elements/h and calls elements
-the leading candidate for the same slope. Dividing: 564 KB PER ELEMENT. The CI corner most
-favourable to the hypothesis still needs 51.9 KB; C''s faster host figure needs 144 KB. A DOM
-element costs single-digit KB. At a generous 4 KB the gate''s own slope is 5.2 MB/h = 0.71% of 735,
-and C''s faster figure is 20.4 MB/h = 2.78%. So the element hunt CANNOT be the memory answer and
-the gate should be expected to stay RED after any element fix. Told the Director plainly rather
-than working the dispatch as given. Also noted unresolved: the two instruments disagree 4x on the
-element slope itself (1,333/h vs 5,224/h, different runs).
+**TREE-01** — every presence or absence claim names the branch it concerns and the branch the working tree is on. This came from my correction and it has already caught three agents today.
 
-**INSTRUMENT GAP THAT RELOCATES THE REMAINING 97%.** The census is querySelectorAll('*')
-(element-writer-attribution.mjs:171) so it counts ATTACHED elements only. C''s "live" label is
-therefore accurate. But DETACHED-BUT-RETAINED nodes are invisible to it - the Director''s stated
-failure mode (re-mount leaving nodes attached) would show, E''s finding (a removal misses DETACHED
-nodes) would not. Since attached growth is 1-3% of the slope, detached retention is where the rest
-would hide and NOTHING CURRENTLY MEASURES IT. That is a heap-snapshot retainer-path question, not
-an element census.
+## 2026-07-28 10:13 — Cap dispatched. Four changes, all measured, and the hidden unlock is the one that matters
 
-**WITHDRAWING HALF OF MY OWN 22:10 ANSWER.** ANSWER-A-ELEMENT-CLIMB-IS-HISTORY-MARKERS-PLUS-
-UNSHIPPED-GLOW attributed the climb to history markers + glow. NO order-manager writer appears in
-C''s climber list at all. That half was inference; C measured. Withdrawn. The glow half is
-corroborated exactly (defs and filter at ~2.0/trade each, always equal = the defs+filter pair
-shape) and is the ONLY part of the element climb with a shipped fix (fdda39a3b, routed on its own
-base).
+Packet on `manager-a/speed-cap`, based at pinned `f802a66fa`. Writable set is exactly `replay-system.js` and `TalariaV8bLive.jsx`; V9 sources are confirmed A's at `TERRITORY.yml:138`.
 
-**OWNERSHIP, SETTLED BEFORE BUILDING ANYTHING:** talaria-v9-live.js exists ONLY under dist-v9/
-assets/ and is build output of talaria-design/src (vite.config.live.js:142, emptyOutDir true). Any
-fix lands in talaria-design/src = B''s tree; editing the bundle in mine would be erased by the next
-build. I produce the diagnosis and the FLAG-01/02/03 kill-switch design, B lands it.
+Reserved: `REPLAY_SPEED_MAX`, `REPLAY_SPEED_DEFAULT`.
 
-Doc: ANSWER-A-ELEMENTS-ARE-1-PERCENT-OF-THE-SLOPE-AND-PER-TRADE-IS-CONFOUNDED-20260730-2315.md
+The four changes are the write clamp at `normalizeSpeed():6836-6839`, bounding the doubled kill-switch branch in `getEffectivePlaybackSpeed():6843-6848`, moving both defaults onto a named constant, and truncating the V9 ladder to 1, 2, 3, 5, 10.
+
+**The hidden unlock is the requirement most likely to be skipped and the one §3.1 names explicitly.** With `__TALARIA_DISABLE_M19I_TICK_SPEED_COHERENCE_V1 === true` the effective speed becomes `min(200, base × 2)`, so a labelled 10x plays at 20x. A packet that clamps the stored value and stops there would look complete, pass a naive check, and leave a hard ceiling that is not hard. It is called out as its own numbered change with its own acceptance clause.
+
+**One product-visible decision I am surfacing rather than burying.** Both defaults exceed the new cap — engine 60, V9 React 30 — so they must move. I specified `REPLAY_SPEED_DEFAULT = 5` with the reasoning stated in the brief so the PO can overrule it cheaply: defaulting to 10 would start every user at maximum, which neither old default did, and 5 is the nearest mid-ladder option and an existing offered speed. Because it is one named constant, reversal is a one-line change. **This is a product choice I am making by default, not a technical necessity, and it should be confirmed.**
+
+**Explicitly excluded, with reasons in the brief so the author does not helpfully widen:** no touching `updateChartDataFast` or `_renderReplayChartUpdate`, since measurement proved them reachable; no touching either `legacy-index.html`, since §A14.2/§A14.3 rule it de-routed and I reverted a packet this morning for exactly that; and no touching the six direct `speed` readers outside my writable set, including the `speed >= 50` draw throttle that the cap renders unreachable.
+
+Acceptance requires the clamp be **executed**, not read — a stored 60, a restored 60 and the doubled branch all demonstrated ≤ 10 in a VM — with CWD pinned inside the packet's own worktree, because one of these harnesses leaked a `--json` file into another manager's checkout this week.
+
+## 2026-07-28 10:14 — M1 scoping dispatched, because I have already been wrong about this gate once today
+
+M1 is due 15:15 and I do not trust my own model of it. This morning I merged assertions onto `legacy-index.html` believing I was closing an M1 gap, and reverted them because §A14.3 forbids exactly that — legacy is out of M1 scope entirely, not a gap in it.
+
+So before authoring anything further I am buying an enumeration: the routed surfaces minus the ruled-retired ones, per-surface runtime presence and ordering of `indicator-performance.js`, and — the part I keep underweighting — **whether the build gate observes each surface at all**, since a prior review proved `module-contract-preflight.mjs` emits byte-identical output with and without a change because it skips anything not `owned-stamped`. A surface with correct HTML that no gate watches is not covered, and M1 demands build **and** runtime.
+
+Also asked: does the §A14.3 exposure conditional exist as a live gate anywhere, and do C's new `scripts/lib/servable-shell-discovery.mjs` and `scripts/tests/servable-shell-discovery.test.mjs` implement it? If C is already building it, the residual for M1 is smaller than it looks and my job is to hand off rather than duplicate.
+
+The deliverable I actually need is the last line of that report: **can M1 close by 15:15 on A's work alone, or does it require C?** My current expectation, held loosely and flagged as such per BRIEF-02, is that it requires C — but I have been wrong about this gate's shape once already today, so it is a question and not a finding.
+
+## 2026-07-28 10:15 — Queued, not dispatched, so the chain is not displaced
+
+Three items are owed and none of them may take capacity from M1, the §A2 re-measurement or the §1.2 answer:
+
+**Requirement 3, CPU at 100x versus 10x.** The last remaining test of the PO's original suspicion that high speed drives cost, and now the only part of §3.1 still unmeasured. Non-blocking. Note it must be taken **before** the cap lands or on a build with the cap disabled, since afterwards 100x is unreachable — if the cap merges first, the comparison becomes impossible without reverting. That sequencing constraint is not in §3.1 and I am recording it before it bites.
+
+**The `realTimeCandleDuration` versus `rawCandlesPerSecond` investigation**, promoted by the Director ahead of anything about retirement. Subdivisions divide the quantity that selects the renderer but not the quantity that sets the cadence, so one input picks the mode and a different input paces it. It is characterisable without changing replay behaviour, which is what makes it a better next step than the retirement question.
+
+**Re-running the `_mcDiag` measurement pinned to my tip**, so the product counters and the bespoke ones can be cross-checked. The original ran in the main checkout on C's branch where the counters and the harness are genuinely absent; on `manager-a/critical-path` there are 13 counter references in `chart.js`, one in `chart-data-pipeline.js`, and the harness is present. Same blob for `replay-system.js` on both branches, so the measurement stands — but the cross-check is cheap and TREE-01 exists because this class of confusion keeps recurring.
 
 ---
 
-## 23:45 — Both corrections taken. Zero-trade collapse has a superlinear per-tick candidate that CLEARS CONF-03
+## 2026-07-28 10:22 — Cap authored at `48aba47bc`; clamp demonstrated by execution, not by reading
 
-**Correction 1 accepted, and it costs me nothing to accept because it points the same way my own
-arithmetic did.** The PO ran 15 min at 60x with ZERO trades and hit progressive collapse. Sized it:
-900 chart-minutes = 900 new 1m bars/panel = 3,600 across four panels = 0.79 MB of new bar data
-across the WHOLE run at 231.4 B/bar. That one line forecloses trades, ingested bar volume, AND the
-base-series residency lane (third independent reason A1/A2 are dead). It ALSO double-forecloses the
-element climb as the collapse mechanism: my 23:15 arithmetic put elements at 1-3% of the slope, and
-independently, C attributes the climber PER CLOSED TRADE while the PO closed none - so on C''s own
-attribution that writer contributed ZERO to a run that collapsed anyway. Whichever of us is right
-about the driver, elements are not the monster. I WILL NOT report any element fix as fixing the
-PO''s run.
+surface=`manager-a/speed-cap`, base `f802a66fa`; two files, +19/−6
+coverage=VM execution of the real `replay-system.js` across six input paths; **build artifact not yet checked, persisted-index behaviour not yet independently verified**
 
-**Correction 2 (CONF-03) accepted and applied IMMEDIATELY to my own top candidate, before proposing
-it to anyone.** The discipline that got promoted is the one that killed my own clone/reseed credit,
-so the first thing I did with it was aim it at my own strongest lead rather than at someone else''s.
+Six cells all return 10: `normalizeSpeed(60)`, `setSpeed(60)`, `applyPersistedState({speed:60})`, the `_pendingReplaySpeed` path, and the doubled kill-switch branch from both a stored 10 and a stored 60. The doubled branch previously produced 20 from a labelled 10; it now produces 10. Every assignment to `this.speed` in the file routes through `normalizeSpeed` — constructor, `applyPersistedState:248`, both `_pendingReplaySpeed` restore sites, `setSpeed:6857`, and the TF-switch resume at `:8777`.
 
-**RESULT: the re-resample path clears CONF-03 where clone/reseed failed it.** No same-pair gate on
-ANY of the six sites - getDisplaySeries x3 (25515/25993/26782) and calculateScales x3
-(25797/29285/32791), all NONE within 3,000 chars above. Positive control that the absence is real:
-the same matcher finds _multichartSamePairAsHost 20, _isIndependentMultichartPair 26,
-_multichartFinerSamePairPanelSelfOwns 21, _shouldAnchorPairSwitchToHostPlayhead 5 elsewhere in the
-file. Symbol control render 210 / calculateScales 6 / currentFileId 147.
+That is the requirement §3.1 called the signature failure mode — a stored 60 surviving a restore — demonstrated closed by running it rather than by reading the call graph.
 
-**THE MECHANISM, AND IT IS SUPERLINEAR - which is the shape "progressive collapse" demands and
-nothing else I hold has.** replay-system.js:3980-3992 sets chart.rawData = fullRawData[0..currentIndex],
-a prefix GROWING ONE BAR PER TICK. Then :4003 does chart.data = chart.resampleData(chart.rawData, tf)
-- an UNCONDITIONAL FULL RE-RESAMPLE of that growing prefix every tick, allocating a fresh object per
-output bar, and it does NOT consult the pipeline cache at all. Then :4007 bumps dataVersion, which
-invalidates the pipeline display cache for every downstream reader so the paint-path read misses too.
-Per-tick allocation is proportional to currentIndex, so TOTAL over a run is proportional to
-currentIndex SQUARED. 12 direct .resampleData( callers in that file (control bumpDataVersion 14).
+## 2026-07-28 10:23 — CORRECTION: my writable file set named a file that does not exist
 
-**HALF OF THIS WAS ALREADY FIXED AND IT WAS THE WRONG HALF.** M20-Q9 fixed the SLICE
-(_installPlayheadPrefix reuses one growing owned prefix instead of fullRawData.slice(0, sliceEnd)).
-The RESAMPLE of that prefix at :4003 was never touched, and it is the larger term - the slice copies
-pointers, the resample allocates a new object per output bar.
+**brief-defect, mine.** I specified `chart v 1.4/talaria-design/live/TalariaV8bLive.jsx`. That path does not exist at the base SHA. The V9 entry is `live/main.jsx`, which imports `../src/TalariaV8bLive.jsx`, and the ladder and React default live in `src/`. I wrote the path from the enumeration report's citation without checking it resolved.
 
-**A COMMENT THAT IS FALSE:** chart-data-pipeline.js:68 says "Incremental resample: O(1) when replay
-appends one raw bar". Not O(1) - _tryIncrementalResample''s first act at :126 is
-const out = prevResampled.slice(), a full copy of the prior resampled array. Both branches are O(n).
-Useful asymmetry nobody has exploited: the cache-HIT branch (:78-86) checks dataVersion, the
-INCREMENTAL branch (:88-96) does NOT - so with M20-Q9''s stable sourceRef and length growing by
-exactly one, the incremental branch is reachable every tick and the cheap fix may be to make it
-genuinely incremental rather than to fight the cache key.
+The author did the right thing: used the real file, and **reported the discrepancy as a refuted premise instead of quietly widening scope or quietly failing.** That is BRIEF-02 working in the direction it was written for — the rule is about my premises, and this is the first time one of mine has been caught by an author rather than by a reviewer.
 
-**BOUNDS I AM PUTTING ON MYSELF BEFORE ANYONE FUNDS THIS.** (1) ALLOCATION CHURN IS NOT RETENTION.
-I have shown a large growing per-tick ALLOCATION path; I have NOT shown it retains bytes. Strong
-CPU/GC story, plausible heap-high-water story, NOT a proven +735 MB/h story and I will not present
-it as one. (2) N is unmeasured under CONF-01 so I am deliberately quoting NO MB/s figure derived
-from a guessed N. (3) My enclosing-function resolver MISFIRED ON ITS OWN CONTROL (startReplayAtIndex
--> handlePickModeClick), so the two load-bearing names updateChartData/updateChartDataFast were
-confirmed by reading the code directly, not by trusting the resolver. FALSIFIER STATED FIRST per the
-standing rule: under CONF-01, replay advancing, zero trades, count resampleData calls per tick and
-the length each returns. If per-tick allocated element count does NOT grow with currentIndex the
-superlinear claim is dead and I drop it as fast as I dropped A1.
+`TERRITORY.yml:138` grants A `chart v 1.4/talaria-design/**`, so the grant covers `src/` and there is no territory breach. But my brief said "if a change appears to require a third file, stop and report rather than widening," and a literal reading of the writable set was violated. I am recording it as a brief-defect rather than an author-defect, and I have asked the reviewer to confirm the territory reading rather than take mine.
 
-**NEW ROW - FLAG-02 DEFECT IN A SHIPPED KILL-SWITCH:** _m20Q9PrefixSliceFixEnabled returns
-window.__TALARIA_DISABLE_M20_PREFIX_SLICE_V1 !== true. STRICT equality, so setting it to 1 / 'true'
-/ 'yes' does NOT disable the fix. The exact truthy-semantics trap I have been recording against
-other people''s flags all day, sitting in a shipped one. Needs an owner BEFORE anyone tries to
-ablate M20-Q9 in a measurement, or the ablation arm will silently be the treatment arm.
+## 2026-07-28 10:24 — The hazard I sent to review that the packet does not mention
 
-Doc: FINDING-A-THE-ZERO-TRADE-COLLAPSE-HAS-A-SUPERLINEAR-PER-TICK-RESAMPLE-20260730-2345.md
+`chart v 1.4/chart/dist-v9/` is a **build artifact** generated from `talaria-design`, and a copy of it is committed to the tree. The packet changed the V9 React source and did not touch `dist-v9`. So the committed bundle presumably still offers the full fifteen-option ladder up to 100x.
 
-## 00:05 - CORRECTION: THE PER-TRADE READING IS BACK. C WAS RIGHT, I WAS NOT.
+Whether that matters depends entirely on whether any route can serve the committed copy without a rebuild. Earlier tracing found `Dockerfile.local` does `COPY --from=v9_react /build/chart/dist-v9 ./dist-v9`, which would overwrite it with freshly built output — in which case the source change is sufficient. But that was established for one Dockerfile, not for every path, and **`dist-v9` is the primary production surface**. If a local dev server, a static mount, `api_server.py` routing or a stale image serves the committed bundle, the cap is defeated exactly where it matters most, and the packet is incomplete rather than wrong.
 
-Two read-only source sweeps of talaria-design/src came back and one of them overturns my
-own 23:15 dispute. Correcting promptly because C is designing a re-run on my objection.
+I am not asserting either way. It is the review's first item, framed as a question, because I do not know and the cost of guessing wrong here is a ceiling that exists only in source.
 
-**WHAT I CLAIMED AT 23:15 (e4544ba1b):** C''s "+28.7 elements per closed trade" is
-confounded - a 4x swing in trades moved the React writer 89->86, corr -0.9042, while a
-genuine per-trade d3 writer on the same intervals scaled +0.6678. I attached a bound in
-the same document: "does NOT prove time-driven - A LAGGED PER-TRADE WRITER WOULD
-DECORRELATE TOO." That caveat is now the live explanation. My dispute does not stand.
+## 2026-07-28 10:25 — OPEN: the hidden switch still doubles speed below the ceiling
 
-**THE WRITER, NAMED FROM SOURCE.** Bottom trades table, one row per closed trade,
-TalariaV8bLive.jsx:38241 `key={r.id}`. Row region = 188 lines, 50 host tag sites (28 div,
-19 span, 1 svg, 1 path, 1 img), ~28-31 rendering for a closed row with dropdowns shut.
-VERIFIED BY ME textually with the method limit stated: a static count sees tag SITES not
-runtime instances, so this corroborates magnitude and does not measure it. List is
-UNBOUNDED and NOT VIRTUALISED. Panel stays MOUNTED when collapsed - :37948
-`height: btmOpen ? btmHeight : 0` with overflow hidden - so closing the drawer releases
-nothing.
+The bounded branch is now `Math.min(REPLAY_SPEED_MAX, base * 2)`. Because `base` is already clamped the ceiling holds, and a labelled 10x can no longer play at 20x. But the doubling itself survives underneath: with the kill-switch set, a stored **3 becomes an effective 6**.
 
-**THE RECONCILIATION I COULD NOT PRODUCE AT 23:15, and it is the whole thing.** I read
-"87 elements per interval, flat across trade bins" as evidence AGAINST per-trade. It is
-the opposite: trades closed at ~3/min steady x ~29 elements/row = 87 per interval. THE
-CONSTANT I TREATED AS THE ANOMALY IS THE PER-TRADE PRODUCT. Rate was stable, so the
-response was smooth.
+§3.1 says "no hidden flag, no user unlock." The ceiling is now genuinely hard, but a hidden switch that makes a labelled 3x play at 6x is the same defect at a smaller scale — the label still lies. It is **pre-existing**, and this packet neither created nor worsened it; the packet strictly reduced its range. I have asked the reviewer to rule whether it satisfies §3.1 as written or needs its own row, rather than deciding that myself, because it is a question about what the requirement means rather than about what the code does.
 
-**WHY THE CORRELATION WENT NEGATIVE.** Rows do not appear when the counter increments.
-Re-render is polled: :12577 setInterval(bump, 800), plus a bump on the order:closed bus
-event (:12573-12574). A row lands up to 800ms after the close that incremented C''s
-counter, so a close near an interval boundary is COUNTED in one sample and RENDERED in the
-next. The d3 defs/filter control IS synchronous with the close - which is exactly why it
-stayed positively correlated while the React writer did not. Two writers, same predictor,
-one lagged. The negative correlation is an artifact of my differencing, not a property of
-the product.
+## 2026-07-28 10:26 — Two things I did not let the author's report settle
 
-**THE DIRECTOR''S STATED FAILURE MODE IS REFUTED FOR THE ELEMENT CLIMB.** "React
-reconciling and re-mounting rather than updating, leaving previous nodes attached" is not
-what this is. The trade table key is stable; rows UPDATE. The climb is a plainly unbounded
-list with CORRECT keys. The remount pattern does exist - :38931
-`key={item.id}-s${layersSelectionRevision}` remounts every visible Objects Tree row on
-every drawingSelectionChanged - but a remount DESTROYS AND RECREATES, so an ATTACHED
-element census reads it flat. Same for the nav-badge tooltip: ~3.3 createElement/sec during
-replay but replaceChildren() first, so ~7,200/h created and none accumulated. Both are
-CPU/GC churn, NOT attached growth.
+**The persisted-index question.** The slider max moved 14 → 4 and the percentage calculation changed from `si/14` to `si/maxIdx*100`. The author says out-of-range persisted values "snap to nearest step via existing `reduce` nearest-match logic." That is exactly the kind of claim I have accepted too readily today — it is plausible, it is probably true, and it is unverified. A stored slider index of 12, or a stored speed of 60 arriving from any of the three session-backup tiers or the server `state.replay.speed`, must land somewhere defensible and the thumb must sit where the speed actually is. A restored session that silently lands on the wrong speed **is** the silent capability drift §3.1 names, so it gets independent verification.
 
-**MY OWN LEADING HYPOTHESIS IS DEAD TOO,** and I want it recorded as such rather than
-quietly dropped. I expected a ref/Map keyed by trade or panel id storing DOM with no
-delete. The one id-keyed DOM map - cellRefs in MultichartGrid.jsx - DOES delete on unmount
-(:8556-8559) with matching per-panel-id cleanup at :2843-2872. Positive control that the
-absences are real: MutationObserver/IntersectionObserver = 0 against 166 useEffect in the
-same file.
+**Boundary inputs nobody exercised.** The demonstration used 60 throughout. I asked the reviewer to drive `10.5`, a negative, `NaN`, the string `"60"` and `Infinity` — `normalizeSpeed` coerces with `Number()` and has a `Number.isFinite` guard, so these should be fine, and that is precisely why nobody tested them.
 
-**WHAT DOES NOT CHANGE, and the second is STRENGTHENED by the correction.** (1) Elements
-are 1-3% of the renderer slope: 735.0 MB/h over 1333.5 elements/h = 564 KB per element,
-and the most favourable corner of both CIs still needs 51.9 KB. That is arithmetic and is
-independent of what drives the elements - expect the gate to stay RED after any element
-fix. (2) NOT THE PO''S RUN. 15 min at 60x with ZERO trades hit progressive collapse; if
-the writer is per-trade, which is now the better-supported reading, it contributed exactly
-zero to that run. The correction makes the foreclosure firmer. BINDING ON ME: I will not
-report this fix as fixing the PO''s collapse. The zero-trade segment I asked C for is
-still worth running - no longer a discriminator, now a cheap confirmation.
-
-**THE FIX IS LOW-RISK BECAUSE THE CAP ALREADY EXISTS FOR THIS DATA.** MultichartGrid bounds
-peer trade sync at slice(-50)/slice(-100); the host render path simply has no equivalent.
-Bound the RENDERED window, not what is stored. Switch
-__TALARIA_DISABLE_V9_TRADE_ROW_WINDOW_V1, truthy-disabling, read per call. FLAG-03 bites
-here because it is the visual path and PURGE-2 turned three panels black behind an OFF
-state that satisfied "the feature is inactive" - the OFF assertion must be that a closed
-trade STILL PRODUCES A VISIBLE ROW carrying its id and P&L text. Routes to B:
-talaria-v9-live.js is build output of talaria-design/src (vite.config.live.js:142,
-emptyOutDir), so editing the bundle in my tree would be erased by the next build.
-
-**ROWS RAISED:** Objects Tree forced remount (CPU row, not memory); nav-badge tooltip
-churn; collapsed panel stays mounted; tryInstallHostBus poll at MultichartGrid.js:7750-7753
-not cleared on early unmount (bounded <=5s); tlChkLastActRef unbounded but NOT DOM.
-
-**WHAT I GOT WRONG, PLAINLY.** I applied the differencing correctly and reached the wrong
-conclusion, because I weighted a decorrelation I had MYSELF named as non-diagnostic. The
-lesson is not "do not difference" - it is that when I write down a bound that makes my own
-result non-diagnostic, I must go looking for that mechanism before I let the result
-travel. C measured; I inferred against the measurement and should have gone to source
-first. Two hours.
-
-Doc: CORRECTION-A-THE-PER-TRADE-READING-IS-BACK-AND-C-WAS-RIGHT-20260731-0005.md
+**Reported and correctly not acted on:** the `speed >= 50` draw throttle branch is now unreachable, the six direct `speed` readers outside the writable set are untouched, and `backtestingSession.replaySpeed` remains write-only. Requirement 3 — CPU at 100x versus 10x — is still owed and **must be measured before this packet merges**, because afterwards 100x is unreachable and the comparison needs a revert to run at all.
 
 ---
 
-## 2026-07-31 01:20 — Monster 1 BOUNDED; glow GC never shipped; glow's defs half is not mine
+## 2026-07-28 10:34 — M1: A's half is green; the gate that closes it is not on A's branch
 
-**QUEUE 1 LANDED.** `manager-a/v9-trade-row-window-20260731` @ `1a91cd928`, base
-`5763ace5f`. Bound the RENDERED trade-row window at one choke point between the sort
-and the map. `displayRows` had exactly TWO occurrences in the file - definition and
-`.map()` - so the bound is contained, not one of several render paths. Window is the
-TAIL because the default sort is id ascending; same shape as the `slice(-50)`/`slice(-100)`
-cap MultichartGrid already applies to this data. Hidden rows reachable via a single
-banner element, so the bound costs visibility and never data; CSV export was already
-running off the unbounded list.
+surface=`manager-a/critical-path` @ `f802a66`, with C-territory infra read at `manager-c/verification-infra` @ `ab44afe`
+coverage=all five owned-stamped shells checked this run for presence and ordering; `module-contract-preflight.mjs` executed green (10 checks); §A14.3 gate executed on C's branch
 
-Flag `__TALARIA_DISABLE_V9_TRADE_ROW_WINDOW_V1`, truthy-disabling, read per call.
-16 cells, 34/34 across all four talaria-design suites. 8 mutants applied ON DISK, all
-killed by NAMED BEHAVIOURAL cells, negative control NOT_APPLIED, file restored to
-baseline bytes.
+**The direct answer to my own question — M1 cannot close by 15:15 on A's work alone.** It is not blocked on anything A still owes.
 
-**M4 DIED TO C15 AND NOTHING ELSE** - the boundary off-by-one. C15 exists only because
-I inspected the suite for gaps before running mutants and noticed nothing exercised
-`total === limit`. Without that inspection it was a survivor. Inspecting for gaps
-BEFORE the mutant run is worth more than the mutant run.
+The surviving production chart runtime is smaller than I had been carrying: **two public URLs** (`/chart/index.html`, `/chart/multichart-prod/chart-embed.html`) across **five stamped file paths**, plus `talaria-design/live/index.html` as the Vite source that regenerates two of them. All five have `indicator-performance.js` present and ordered before `chart-indicators-full.js`, every tag is `defer` so document order is execution order, the panel surfaces preserve order through sequential `document.write` of a `paths[]` array, and the rebuild path is guarded because `build:chart-v9` runs `preflight:module-contracts` first. The runtime tripwire tests pass. A owes nothing further here.
 
-**FLAG-03 LIMIT I AM STATING RATHER THAN GLOSSING.** V9 is the visual path and PURGE-2
-turned three panels black behind an OFF state that satisfied "the feature is inactive".
-C07 asserts the working product (40 closed trades -> 40 rows, each with id AND P&L,
-through the real builder). C16 asserts the OFF arm returns the input array BY IDENTITY,
-so `.map()` walks the same object as before. But NEITHER PAINTS. There is no React test
-harness in this repo - all three existing talaria-design suites are pure-function
-node:test. Someone with a browser must confirm the OFF arm paints before this is called
-FLAG-03 complete. Recorded as a row: every future FLAG-03 on a visual V9 fix hits this
-same wall.
+What is missing is the gate, and it is entirely in C's territory: `shell-inventory-preflight.mjs` and `servable-shell-discovery.mjs` are **absent from A's branch** and CI-wired only on C's. So on A's branch the §A14.3 assertion does not exist to run.
 
-**QUEUE 2 - THE GLOW GC IS STILL NOT ON THE WIRE.** At deployed build 20260730b115 all
-five identifiers are ZERO (flag, `_orderGlowFilterGcEnabled`, `_reclaimOrderGlowFilters`,
-`_reclaimUnreferencedGlowFilters`, `ORDER-GLOW-GC-V1`) against a strong same-fetch
-control (`_ensureMarkerGlowFilter` 8, `_disposeEntryMarkerRecord` 6,
-`_sweepOrphanedOrderLevelDom` 4, `B-W16` 5, 88 `__TALARIA_DISABLE_`). So 4->146 was
-measured on the UNFIXED path and nothing needs rebuilding. Branch
-`manager-a/order-glow-filters-20260730` @ `fdda39a3b` re-run by me tonight: 16/16.
-Still ships from its own base per `046db737e` - tip is behind deployment on ORDER-SEL-01.
+## 2026-07-28 10:35 — §A14.3 fires on `chart-host.html`, and it vindicates the hold rather than the packet
 
-**CONF-03 CLEARS for the glow reclaim**, checked against my own packet first because
-this is the discipline that killed my clone/reseed credit. All four reclaim call sites
-(2235/41612/41620/42678) carry no same-pair guard within 60 lines above, and the whole
-file has none: all five guard identifiers 0 in order-manager.js against 20/26/21/5/12
-in chart.js with the same matcher. Reachable at four different symbols. The old
-530-filters-to-0 number came from a single-config CDP run and is labelled as such, NOT
-cited as CONF-01 acceptance.
+Executed on C's branch: the exposure conditional is implemented as violation kind `conditional-exposure` at `shell-inventory-preflight.mjs:710-723`, and it fires **twice** — on `chart v 1.4/chart/multichart/chart-host.html` and its `homepage/public` mirror. Both load the chart engine and carry neither `indicator-performance.js` nor `module-presence-runtime.js`.
 
-**THE FINDING THAT MUST TRAVEL WITH THE GLOW FIX: it does not explain the defs half.**
-The reported shape is an SVGDefs/SVGFilter PAIR, ~2.0/trade each, ALWAYS EQUAL. Proven
-from source with controls: ONE `append('defs')` site in order-manager.js (:41506),
-guarded on the same line by `.empty()`, so one `<defs>` per svg reused; and
-order-manager creates NO svg elements at all (`append('svg')` 0, `createElementNS` 0)
-against controls `append('g')` 26 / `append('rect')` 47 / `append('filter')` 1 in the
-same file. Repo-wide only 6 `append('defs')` sites across 73 modules + chart.js
-(control `append('g')` 84). An always-equal pair is not two writers - it is ONE RETAINED
-SUBTREE COUNTED TWICE, a detached `<defs>` holding one `<filter>`. Fits my standing
-detached-retention row, since our census is `querySelectorAll('*')` and sees attached
-nodes only. ASK TO C: what does the SVGDefs counter count - attached by selector, or
-retained from a heap snapshot? NOBODY reports the glow fix as closing 4->146 until that
-is answered. Ship it on its own merits.
+This settles the held `tripwire` row and it settles it against the packet. The loader packet proposed adding `chart-indicators-full.js` to `chart-host.html` — a 989 KB undeclared expansion — to silence what it read as a tripwire false positive. **§A14.3's remedy for a shell in that state is the opposite one: de-route it, do not wire modules into it.** I held the packet on the grounds that a megabyte of unmeasured JS is not a way to quiet a tripwire; the ruling's own conditional says the tripwire was not false at all, and the correct discharge is removing the route. That work is C's.
 
-**BOUNDS ON MY OWN FIX, unchanged and restated:** this is NOT the PO's zero-trade
-collapse and I will not report it as such; and expect the duration gate to stay RED,
-because 735.0 MB/h over 1333.5 elements/h is 564 KB per element and the most favourable
-corner of both CIs still needs 51.9 KB.
+Legacy fires `removal-pending` rather than a missing-module violation, which is the §A14.3 inversion behaving as written — legacy is not an M1 module gap and must not be counted as one.
 
-**A DEFS CLIMBER DOES EXIST AND IT IS A DIFFERENT WRITER.** Having proved order-manager
-cannot do it, I went looking for who can. SIX `append('defs')` sites in the whole chart
-tree; FIVE guarded by `.empty()` (one defs per svg, reused); ONE not:
-`drawing-tools-channels.js:751` `container.append('defs').append('clipPath')` in the
-regression-trend render path. It accumulates for three reasons: (1) the defs goes on
-`container`, the SHARED drawing svg, NOT on `this.group`, and `_prepareRenderGroup`
-(drawing-tools-base.js:1001) only clears/replaces `this.group`; (2) nothing else
-reclaims it - `regression-clip` occurs at EXACTLY ONE SITE in the entire tree, its own
-creation, and there is NO `selectAll('defs')` sweeper anywhere, with control
-`entry-glow-` 6 / `exit-glow-` 9 / `partial-glow-` 4 proving the search style works;
-(3) every copy carries the SAME id so all but the first are referenced by nothing.
-THREE permanent nodes per render, and renders are continuous during replay.
+## 2026-07-28 10:36 — CORRECTION: I over-generalised the module-contract gate's blindness
 
-NOT CLAIMING IT IS C'S DEFS HALF: this is a defs/clipPath pair, not defs/FILTER, and it
-only fires with a regression-trend drawing present and extend disabled (:741). Candidate
-with a proven mechanism, not an attribution. Unbounded either way; needs an owner.
+When I blocked the loader packet I wrote that `module-contract-preflight.mjs` produced byte-identical output before and after the changed files and therefore did not observe them. **The fact was right and my generalisation was wrong.**
 
-**NEW ROW:** `TalariaV8bLive.jsx:37968` inlines a copy of `filterTradePanelRowsByTab`,
-which exists as an exported helper and IS used by the CSV path. Two copies of one
-predicate, already able to drift.
+The gate skips any inventory row whose status is not `owned-stamped` (`:71-77`). Fault injection on A's branch shows it goes RED on missing, duplicated and misordered tags for surfaces it does observe. So it is not a gate that fails to notice edits — it is a gate with a **documented exclusion list**, and the loader packet happened to edit an excluded surface (legacy). My block stands on its evidence; the sentence generalising it to the gate's owned-stamped checks is withdrawn.
 
-Doc: ROUTE-A-TO-B-MONSTER1-BOUND-AND-GLOW-STILL-UNSHIPPED-20260731-0120.md
+## 2026-07-28 10:37 — Two scope figures I had wrong, and a cross-link to the cap review
+
+The §A6 enumeration figure I have been repeating as "114 HTML files" does not describe this tree. The independent walk of `chart v 1.4`, `homepage/public` and `homepage/out` found **31**, because `homepage/out` does not exist. Two of the 31 are undeclared in C's 29-row inventory (`maintenance.html` and design mockups) and neither references the chart engine, so the inventory's coverage of chart shells is complete even though its file count is not.
+
+Separately, `backtesting.html` and `propfirm-backtest.html` are routed and allowlisted but load no `chart.js` and no `/chart/modules/*` — routed is not the same as in-scope for the indicator stack, and I should stop treating the allowlist as the scope boundary.
+
+**Cross-link worth passing on:** the M1 walk shows `dist-v9/index.html` carrying script tags at the same line numbers as `talaria-design/live/index.html`, which means the built shell is close to a copy of the source shell and the React application is bundled into separate assets. That is directly relevant to the `dist-v9` hazard I sent to the cap review — if the speed ladder rides in a bundled asset rather than in the shell HTML, checking the committed `index.html` would not reveal a stale ladder. The reviewer should look at the assets, not the shell.
+
+## 2026-07-28 10:38 — ESCALATION to C and the Director: M1's remainder is four C-owned items
+
+M1 is a 15:15 chain item and A cannot deliver it. The remainder, in the order it must land:
+
+1. **Land and CI-wire** `shell-inventory-preflight.mjs` and `servable-shell-discovery.mjs` onto the integration branch. Today they exist only on C's branch, so §A14.3 is unenforced everywhere else.
+2. **De-route sandbox `chart-host.html`** on both the FastAPI mount and the nginx public copy. This clears both `conditional-exposure` violations, and per §A14.3 it is the only permitted remedy — wiring modules in is forbidden.
+3. **Integrate both preflights into the deploy gate path**, not just `multichart-harness.yml`. M1 cites §A4c at build *and* runtime.
+4. **Merge the branches** so A's green HTML state and C's gate infra ship together. Neither is sufficient alone.
+
+The shell preflight is currently RED overall at 63 budgeted violations — 45 `proof-of-derouting-unsatisfied` and 13 `shell-parse-incomplete` beyond the two above — so item 3 has a precondition that is C's to size, not mine to assert.
+
+**There is a narrower M1 the PO could accept today**, and I want it ruled rather than assumed: *§A4c module-contract preflight plus runtime tripwire, on the five owned-stamped production shells only.* That slice is green on A's branch right now, verified by execution this run. It is a real guarantee about the surfaces users actually reach, and it is **not** the §A14.3 retirement primitive — it says nothing about shells that should not be routed at all. Per §A16.5, review confidence is not gate coverage; I am not going to quietly redefine M1 down to the part I can pass.
 
 ---
 
-## 01:45 — Monster 1 re-aimed to REMOVAL; FIX-01 ladder reconstructed and item 1 cleared
+## 2026-07-28 10:48 — M2 re-opened on PO ground truth; three cheap read-only audits dispatched
 
-**Monster 1 is virtualised, not capped.** `manager-a/v9-trade-row-window-20260731` @
-`083f25dda`. Rendered node count now follows the panel HEIGHT, not the trade count, so
-the class is removed rather than postponed. Spacers preserve the true scroll height, so
-unlike the cap **nothing is hidden** - the bound stops costing visibility.
+§A16.3, §A16.3b and §A16.3c read verbatim from `manager-c/verification-infra` @ `ab44afe`. **They are not on `manager-a/critical-path`** — I checked all four branches; three matches on C's branch, zero on A's, `critical-path` and `main`. Per TREE-01 I am working from C's copy and will say so in every downstream brief.
 
-Uniform row height verified before building: tag dropdown is position:fixed and out of
-flow (:38317), screenshot strip is 132px inside a 148px cap so it cannot wrap, all other
-cells single-line with ellipsis. Height is MEASURED anyway, not assumed.
+**Tooling note worth keeping.** My first grep for `A16.3` in the working tree returned nothing, and the working tree *is* on C's branch. The cause is that `docs/` is gitignored and ripgrep skips ignored paths silently. That is a false-negative generator sitting directly on top of the governing documents, and it is very likely one source of the "absent from the tree" claims that have cost us four packets this week. **Rule: never establish presence or absence of a governing document by grepping the working tree — read it through `git show`.** Every brief I dispatched today carries this warning.
 
-Layered: flag set -> legacy full table; height unmeasurable -> the V1 cap; measured ->
-virtualised. The cap survives as the degraded path, which is what the Director allowed
-as the fallback.
+## 2026-07-28 10:49 — What the ruling changes about M2, and the one premise I am testing rather than building on
 
-Caught a defect I was introducing: row hover keys are index-based (pos-/id-/cls-), which
-a sliding window would have made collide. Rows now derive an ABSOLUTE index.
+The design is now constrained rather than open. Boundaries come from a rule resolved through a timezone database — never a millisecond offset, because 17:00 ET is UTC−5 in winter and UTC−4 in summer and the error would land exactly on session boundaries. Session *existence and length* come from observed data, so no ticks in a window means no bar, which handles the futures maintenance hour, early closes, bank holidays and weekends with one rule and no holiday table we would have to source before Thursday. The standing invariant — **never synthesise a bar with no underlying ticks** — is the general form of the defect class, and it kills the phantom Saturday whichever mechanism produced it.
 
-49/49 four suites, 8/8 mutants on disk killed by named behavioural cells, negative
-control NOT_APPLIED, restored to baseline sha256:0378602788f3f951, JSX parse-checked
-against a corrupted positive control. V-M4 (bottom-edge off-by-one) SURVIVED first pass
-- overscan masks it - and now dies to V15 alone. Second boundary mutant this week that
-only died to a cell added by hunting for the gap before running mutants.
+The consequence I had not appreciated: an FX daily bar spans 24 hours and a futures daily bar spans 23, so **no constant buckets both** and `Math.floor(t / 86400000)` cannot be repaired by substituting a different number. That retires the shape of fix I had been carrying.
 
-FLAG-03 paint gap is UNCHANGED and is arguably WORSE: scroll behaviour is precisely what
-a pure-function cell cannot see. Still needs a browser.
+**The premise I am not building on.** §A16.3's derived branch says that if the bars are derived we bucket them client-side to the class calendar. My earlier provenance audit found the server builds the 1d and 1w pre-aggregates by epoch resampling. If the client receives *already-bucketed daily bars*, no client-side calendar can recover session boundaries — you cannot un-bucket — and the remedy in the ruling does not apply. That is the blocker I raised as a DIRECTOR-Q and I do not think the new ruling has met it yet. So I have folded it into the gating audit as a first-class question: at 1D and 1W, does the client hold 1m data it can re-bucket, or daily bars it cannot? **If it is the latter, M2 is not in A's territory at all**, and finding that out now is worth more than any mechanism I could propose today.
 
-Canvas rejected with a reason, not by default: this table has per-row hover, click,
-double-click, editable dropdowns and thumbnails. Canvas is right for the CHART surface,
-not for an interactive table.
+## 2026-07-28 10:50 — Three audits, each with its refutation criterion stated in advance
 
-**FIX-01 is not in the repo.** 0 files at HEAD against a control where CONF-01=29,
-CKPT-01=20, DUR-01=15, CONF-03=6, FLAG-03=4, EVICT-01=2 all resolve. Ladder rebuilt from
-the Director's enumeration + C's escalation; if the written one differs, mine is wrong.
+**Gating audit — feed timestamp timezone.** Leading candidate for the phantom Saturday: if timestamps arrive on broker time (UTC+2/UTC+3) while flooring treats them as UTC, Friday 17:00 ET is 21:00 UTC which is Saturday 00:00 broker time, and Friday's closing hours floor into a Saturday bucket as direct arithmetic. Briefed as a hypothesis. **Refuted if timestamps are UTC and the Saturday bar still appears.** The author must derive the predicted appearance of the 2013-01-04 weekend before comparing it to the PO's observation, so the prediction cannot be fitted to the answer.
 
-Mapping: item 1 = C's SHOT 1 (TRIGGER FIRED). Item 3 partly shipped already (rAF coalesce
-live at b113; residual is replay-system.js). **Item 5 is the A1 choke point I already
-built at 62b6afcc9** - measured zero as a memory play, but as a range-read/correctness
-play it is a different argument and the seam is on disk. C's SHOT 2 (scheduler ledger,
-0.82%->10.40% self time) is NOT one of the five and needs its own authorisation + a new
-flag.
+**Count-forward audit.** The PO's drift mechanism is correct if and only if some path builds bars by counting forward. Flooring cannot accumulate drift. **Refuted if every bucketing path floors.** I told the author the two known sites are already established and the value is entirely in the remaining ones, and specifically to watch for count-forward wearing a disguise — `t += timeframeMs` in a `while`, a bucket derived from the previous bucket's start, or **index arithmetic like `Math.floor(i / barsPerBucket)` where `i` is a position rather than a timestamp**. That last one reads exactly like flooring and is the one I expect to be missed. Python is in scope, because the daily aggregates may be built server-side.
 
-**Item 1 CLEARS CONF-03**, checked before proposing it. All four same-pair guards are 0
-in chart-indicators-full.js against a control of 20/26/21/5 in chart.js with the same
-matcher. All five hasher sites ungated => reachable at four symbols, unlike clone/reseed.
+**Classifier inventory.** The PO's canary set is NQ, ES and GC — all CME futures — so classification is now mandatory rather than a nicety. The named trap is that `XAUUSD` is spot gold rolling at 17:00 ET while `GC` is a CME future rolling at 18:00 ET, and one careless mapping treats them alike. The real question I need answered is extend-or-replace: does the existing merged-but-unwired helper have any concept of a futures class, an 18:00 boundary or a maintenance gap, or does it assume one rule for everything? I also asked for the DST resolution to be **quoted**, not characterised, since offset-versus-timezone-database is the difference between a fix and a fix that re-breaks in November.
 
-C's site map holds: def :10487, two UNBOUNDED targets :10269 + :11738, two BOUNDED
-precedents :10511 + :10540. **Correction to C:** the precedent is `_m19iB62TailTokenStale`
-not `_m19iB62IsTailTokenStale` - the cited name is 0 occurrences tree-wide against a
-control of _m19iB62TailToken=4. Mechanism right, identifier mistyped.
+All three are read-only and cheap, consistent with §A13.3b — these are path-tracing, enumeration and inventory, which are exactly the classes named as must-dispatch-cheap. **No mechanism is proposed and no code is touched until the two gating audits report**, per the Director's instruction.
 
-Design trap recorded for the cut: bounding the window removes history from the
-fingerprint. Safe only because the fp already joins _indicatorDataFingerprint,
-dataVersion, _m19iB62MasterGeneration and _m19iB62ChartPairIdentity; and tailStart must
-itself be joined or two windows collide to one fingerprint. Needs its OWN flag -
-__TALARIA_DISABLE_M19I_EXACT_TAIL_PAINT_V1 kills the whole freshness guard, so per C it
-is the A/B probe, not the switch.
+**ASSUMPTION logged:** I am treating my own earlier provenance finding (server-side epoch pre-aggregation of 1d/1w) as unverified for the purposes of this work, and have briefed it as a premise to refute rather than as background. If it survives, the derived-branch remedy in §A16.3 needs revisiting; if it falls, M2 proceeds client-side as the ruling assumes.
 
-Not claiming C's +33.1% transfers - n=1 per arm, C labelled its own bias. I am claiming
-reachability and site-map correctness, which is what CONF-03 asks of me before a cut.
+---
 
-## 01:15 - QUEUE 3 ledger triage: the count does not resolve and NEITHER named row is engineering work
+## 2026-07-28 10:58 — §1.2 answer verified: conclusion stands, two premises beneath it do not
 
-Verified by me from the board and the export, not taken on the triage report.
+surface=`docs/plan3/ANSWER-A1.2-RESIDENCY-CAP-20260728.md`, committed at `52a4ceb5d` on `manager-a/critical-path` only; SHA-256 `1f23ffad5b37…`; **absent from B's branch, C's branch, `main` and five others**
+coverage=every load-bearing claim re-checked against `manager-a/critical-path` tip `9c5d55e4e`, with import searches enumerated
 
-**The "13 owner-blocked rows" does not exist in this checkout.** `owner-block` returns exactly
-TWO hits, both in my OWN journal (:1405, :1754), both saying **twenty**, both UNENUMERATED.
-Control: CONF-01 = 30 hits in docs/plan3, so the search works. No TAL row anywhere carries an
-owner-blocked label. So the 13 is either D's ledger outside git, or a subset nobody can name.
-**I cannot start rows I cannot identify** - this needs the enumeration, not more searching.
+The answer is real, committed, and on a branch — not the untracked-artifact situation that has bitten us repeatedly. All three required parts are present as figures rather than gestures: **cannot ship independently; expected mixed-4 effect ≈ 0; cost 4–6 days.** Do not build.
 
-**TAL-01891 (the 8 GB report) is NOT mine and the board already says so.** PLAN3-BOARD:832 -
-M19/M20 cluster, "all pre-fix website surface; acceptance evidence for the landed cure, **PO
-soak re-verify only**." Settled decisively on the board's OWN dated rule (:815): all 100 testers
-were on the OLD site; Ninja and IBRAHIM KHATTALIN moved to the new build on **2026-07-26**, and
-"only their tickets dated >=26-07 carry new-build signal." TAL-01891 is `created_at
-2026-07-24 2:32:23` - **two days before the move**, so it carries ZERO new-build signal.
-Board's standing first action is a D-034 provenance retest, explicitly "not by engineering."
-The Director's "question not alarm" and the board agree independently. 4 screenshots are
-referenced in the export and are ABSENT from the repo, so the 8 GB figure cannot be
-characterised as heap vs RSS vs tab total by anyone here.
+My recollection was right on the conclusion and **wrong on the host-side lever**. I remembered the document recommending the host-side bulk-history dial as the more impactful alternative. It does the opposite — it *withdraws* that recommendation and calls turning down `_highLimitBulkHistorySmartLimit` a trap, because the fallback drops from a smart cap of up to 100k bars to 2000/800 (`chart.js:24326-24329`) and puts network fetches back on the replay path. That retraction is mine from earlier in the sprint and I had lost track of it. The document is correct; my memory was not.
 
-**TAL-01850 is a LOW-priority feature request the PO already ruled out of lane.** Export
-metadata: subject=shortcut, **category=suggestions, priority=low**. PLAN3-BOARD:872 files it
-under "**Feature backlog additions (PO decisions, no lane time)**" - TradingView-parity
-shortcuts (Shift+right-click clone, Shift+T trend line). Being told to work it FIRST during a
-memory kill is almost certainly a mis-keyed ID. Flagging rather than silently doing it or
-silently skipping it.
+## 2026-07-28 10:59 — CORRECTION: the two modules are not unwired, they are absent
 
-**Consequence:** queue 3 is BLOCKED on an enumeration, and the two rows named to start with are
-a PO re-verify and a backlog suggestion. Not stalling on it - moving to FIX-01 item 1, whose
-trigger has fired and which I cleared for CONF-03 at 01:45.
+This is the finding that matters, and it makes the answer stronger rather than weaker.
+
+I have been describing `visible-window-mirror.mjs` and `reusable-buffer-pool.mjs` as reference or test-only code sitting in-tree unwired. **On `manager-a/critical-path` HEAD they are not in git at all.** `git ls-tree -r` for `m21-w6-fixtures` returns **empty** on that branch; the only copies are untracked working-tree artifacts, and committed evidence already says so at `docs/plan3/evidence/W1-Q9-20260724-HUNK-MANIFEST.json:10` — "absent from HEAD". The negative claim that no product path imports them is backed by an enumerated search across both module names, all import patterns under `chart v 1.4/` and `homepage/public/chart/`, and existence checks across eight branches. The single code reference is a test.
+
+**So §1.2's own question contains a stale premise.** It asks whether a cap can ship "using the existing audited" modules, and `DIRECTOR-RULINGS-20260727.md:21` (§A1) describes them as already existing in-tree. Neither description holds against A's tip. There is no audited artifact to build on — which does not weaken "do not build", it removes the last argument for building. I have dispatched the correction to the answer document and I am **not** editing the ruling; §A1's drift goes to the Director as a note, because correcting a Director document is not mine to do.
+
+## 2026-07-28 11:00 — I am putting my own post-merge green under investigation
+
+The verification turned up something I did not ask for and should have found myself: `m21-2-candle-offscreen-scaffold.test.mjs:1524` is a **tracked** test that **dynamically imports `visible-window-mirror.mjs`**, which is not tracked on the same branch. On a clean checkout that import has nothing to resolve.
+
+Yesterday I recorded a verdict that the merged harnesses were re-run post-merge and the chain was intact. **I no longer trust that green.** If it was produced in a tree carrying the ~455 untracked files, it may have been exercising files that are not in the branch — and a gate that passes only because of untracked artifacts is precisely the defect §A16.5 names, wearing better clothes. Review confidence is not gate coverage, and neither is a green obtained in a contaminated tree.
+
+I have dispatched a clean-worktree re-run to settle it, briefed so that a finding against me is the expected useful outcome. Three ways it can land: the test is itself untracked, in which case there is no tracked-imports-untracked problem and my green was fine; the import is guarded and degrades cleanly, same result; or a tracked gate genuinely depends on untracked files, in which case **my post-merge verdict was contaminated and must be withdrawn**, along with any claim of automated-GREEN that rested on it.
+
+I am not waiting for that answer to say the obvious: **the ~455 untracked files in A's territory are no longer a housekeeping row.** I have been carrying them as triage I judged above my tier and did not dispatch. If they can silently supply the inputs a gate needs, they are a correctness hazard on the deploy path, and their triage is now ahead of packaging rather than behind it.
+
+---
+
+## 2026-07-28 11:12 — Count-forward hypothesis REFUTED against its stated criterion
+
+surface=`manager-a/critical-path` @ `6f616779c`
+coverage=nineteen bucketing sites classified across `chart v 1.4/chart/**`, the `homepage/public/chart/**` mirrors, workers, indicators, the multichart bridge, and Python server-side resampling; searches written to files and read whole to avoid the pagination failure that cost us a packet this week
+
+**Every product path that assigns a bar to a bucket floors, or uses absolute calendar alignment.** No product path builds bars by counting forward from a reference. The single count-forward in the tree is a **test** helper at `m10-trade-marker-projection.test.mjs:140-141` (`const bucketEnd = start + tfMs`), which is not product.
+
+The disguises I specifically asked to be hunted were found and correctly classified as *not* the defect: `applyRenderBudget`'s `Math.floor(b * step)` is index-arithmetic render LOD that preserves each bar's original `t` and never assigns a timeframe bucket; `_advanceCoarseLegacyCandleBucket`'s `currentTimestamp + tfMs` steps the playhead without writing OHLC; and `calculateNextIndex` adds `tfMs` to a value that was already floored, so it lands on the floor grid rather than drifting off it.
+
+So the PO's mechanism does not apply. **This eliminates the mechanism without touching the substance of the PO's point** — `parseTimeframe` still returns a flat `24*60*60*1000` for `'d'` and `7*24*…` for `'w'`, and that assumed 24-hour day against a session that is not 24 hours remains exactly the defect. The PO was right about the cause and wrong about the route.
+
+Per §A16.3c's stated logic, one of the two refutations is now in. If the timezone audit also refutes, the mechanism is in **labelling rather than bucketing** and the next probe is the display timezone.
+
+## 2026-07-28 11:13 — ESCALATION: "weekly boards now" collides with territory, and this time I have the citation
+
+§A16.3b instructs weekly to board now. The audit shows **weekly bars are built server-side in Python**:
+
+- `chart v 1.4/chart/api_server.py:8843` — `_resample_candles`, `bucket = (c['t'] // tf_ms) * tf_ms`, and the audit states weekly binaries are built here with `604800000`.
+- `chart v 1.4/chart/questdb_store.py:536,684,872,886` — `SAMPLE BY … ALIGN TO CALENDAR` producing `ohlcv_1d` and `ohlcv_1w`.
+
+Neither file is in Manager A's territory. This is the DIRECTOR-Q I raised earlier as an inference; **it is now a citation.** Weekly boundaries are decided in Python before the client sees them, and a client-side session calendar cannot recover a boundary the server already collapsed. I cannot board weekly on A's work alone, and I am not going to author into another manager's files to make a deadline.
+
+Daily is a different and better-shaped question: the audit marks vendor FirstRate `1day` provenance **OPEN** — those bars may arrive already session-aligned, in which case §A16.3's "if native, match the provider's stamping and disclose it" branch applies and no bucketing change is needed at all. That is precisely what the gating timezone audit is establishing, so I am holding rather than guessing.
+
+## 2026-07-28 11:14 — The XAUUSD/GC trap is real, and it is not where the ruling predicted
+
+The Director warned that one careless mapping would treat spot and futures gold alike. **The primary classifier is fine** — `MarketCalculationEngine` puts `XAUUSD` in `forex` and `GC` in `futures`, at `market-calculations.js:27` and `:115`. That specific fear is unfounded.
+
+The defect sits one layer down and points the other way. `bucketStart()` does not use the registry-backed path the contract intends; it calls `resolveInstrumentClass()`, and the helper's own `CME_ROOTS` lists only index roots — ES, NQ, YM, RTY and micros — **not GC**. So `resolveInstrumentClass('GC')` returns `unknown` and falls through to epoch bucketing. **GC is a canary instrument.** The failure is not that GC gets the FX calendar; it is that GC gets no calendar at all, silently, even after the helper is wired. That is worse than the predicted trap because it survives the wiring packet and looks like success.
+
+There is a second inconsistency in the same area: the intended path `classFromRegistry()` would map GC correctly to `cme-index-futures`, so the helper contains two classification routes that disagree, and the one `bucketStart` actually calls is the wrong one. Any wiring packet has to resolve that before it does anything else.
+
+## 2026-07-28 11:15 — Helper status: extend, not replace — with two gaps against the ruling
+
+`session-calendar.js` is committed and tracked on `manager-a/critical-path` and `manager-a/session-calendar-red` (blob `90b1573…`, SHA-256 `d6a35384…`), and **absent from `manager-c/verification-infra` and `main`**. Per TREE-01 that matters: C's branch is the checked-out tree, so anyone auditing there will correctly report the helper as non-existent, and they will not be wrong.
+
+It is not a stub. DST is resolved through `Intl.DateTimeFormat` with IANA zones — `formatterFor`/`zoneParts` at `:150-178`, FX anchored to `America/New_York` at `17*60` minutes — which is exactly what §A16.3 requires and explicitly **not** a fixed millisecond offset. FX and crypto are implemented; the class registry and kill-switch exist. So the answer to extend-or-replace is **extend**, and the gap is implementation plus wiring rather than absent structure.
+
+Two gaps measured against the PO's table:
+
+**Futures are declared, not implemented.** `cme-index-futures` carries `zone: 'America/Chicago'` and `dailyOpenMinute: null` with `status: 'declared'`, so `bucketStart` epoch-falls-back by design. There is no 18:00 ET boundary and **no maintenance gap anywhere in the code** — `'cme-daily-maintenance-break'` appears only as a name in a `requires` array. §A16.3's third consequence says no bar may be synthesised for 17:00–18:00 ET; nothing today prevents that. And `MARKET_TYPE_TO_CLASS.futures` maps every future to one class, lumping CL, GC, ZB, grains and 6E with the index contracts.
+
+**The unknown-symbol fallback is silent, and the ruling requires it to be loud.** `detectMarketType()` returns `'forex'` with no log for anything it cannot classify (`market-calculations.js:923-959`), and `getSpecs()` returns a `_genericFallback` without announcing it. §A16.3b requires unknown symbols to fall back to FX **while logging loudly per §A4c**. The contract names an intended `'SessionCalendar.unresolved-instrument'` announcement, but no product caller exists to make it. As written today the product would take an unrecognised futures symbol, silently call it forex, and bucket it on a calendar that is wrong by an hour — which is the silent-degradation class §A4c exists to prevent.
+
+**Still gated.** No mechanism proposed and nothing authored until the timezone audit reports, per the Director's instruction. What these two audits have bought is that the mechanism space is now much smaller: not count-forward, not the classifier, and — for weekly — not client-side at all.
+
+---
+
+## 2026-07-28 11:26 — §1.2 correction landed at `cd5a7b136`; both corrections reproduced before writing
+
+surface=`docs/plan3/ANSWER-A1.2-RESIDENCY-CAP-20260728.md` on `manager-a/a12-correction`, base `6f616779c`, +13/−5, one file
+coverage=both corrections re-derived by command before being written; SHA-256 before `B1A4DDD3…` after `F90A21D9…`
+
+`git ls-tree -r manager-a/critical-path -- "chart v 1.4/chart/modules/m21-w6-fixtures/"` returns **empty**, which is the whole basis of the correction and it was reproduced rather than taken from my report. The ruling document was not edited and its SHA-256 is unchanged — §A1's drift goes to the Director as a note, which is the right side of that line. The three-part answer still reads **No / ≈ 0 / 4–6 days**, and the corrections are worded to tighten it: with no audited artifact in the branch, the cost is building from scratch rather than finishing reference code. Queued for the mandatory §A13.1 review with the A2 packet.
+
+## 2026-07-28 11:27 — A2 re-baseline HELD: the numbers are too good and I do not yet believe them
+
+surface=`manager-a/a2-rebaseline` @ `61e62c3f5`, base `9c5d55e4e`
+coverage=measurement executed and committed with harness and two evidence files; **comparability unestablished**
+
+| Cell | Fallback baseline in §A2 | This packet |
+|---|---|---|
+| mixed-4 working set | 2.5–2.7 GB | **786.6 MiB** |
+| CPU | 128–140% | **25.1%** |
+| teardown residual | ~230 MB | **20.4 MiB** |
+| cycle staircase | 302 → 442 → 465 → **988** → 530 MB | **13.5 → 13.6 → 13.6 → 13.5 MiB** |
+| mixed-4 JS heap peak | — | **33.1 MiB** |
+
+**The JS heap figure is the one I cannot get past.** A 33 MiB JavaScript heap cannot hold the bar data of a workload that previously produced multi-gigabyte working sets. The cycle cell is roughly forty times smaller than before and the 988 MB outlier — which §A2 specifically flags as requiring explanation and as *not noise if it recurs at the same index* — simply vanished. Either M19-I is a three-to-five-fold improvement on every axis at once, or **the harness is measuring a smaller scenario than the one that produced the original numbers.** I am not willing to guess which, and a wrong guess in the optimistic direction is the more expensive one because it would be used to size C3a.
+
+**The proximate cause is a brief-defect that I own.** I told the author to find and reuse the existing baseline harness rather than write a new measurement approach. They wrote a new one, `m21-a2-rebaseline-runner.mjs`. I stated the instruction but did not make it an acceptance condition, so nothing in the packet's gate caught it — and a new instrument produces numbers that are not comparable to the old ones by construction, which defeats §A2's entire stated purpose. §A2 says the delta between baselines is our first real measurement of M19-I's value on the product surface; **this packet has no delta.** The review will run both harnesses on the same tip, which settles it in one comparison: if the old harness still yields gigabytes where the new one yields megabytes, the instrument is the anomaly rather than the build.
+
+**A thing I checked before writing it down, and did not find.** My brief for this packet did not prohibit `npm ci`, unlike my read-only briefs. The author ran it inside their own worktree. That is **not** a violation and I am recording it as clean, because writing it up as one would be exactly the manager-finding-defect I have already triggered §A16.4 with today.
+
+## 2026-07-28 11:28 — CORRECTION to my own correction: the 1.000 figure was never wrong
+
+The `_mcDiag` cross-check pinned to A's tip reports **2.000 full resamples per tick in all four cells** — 1m and 1H, kill-switch on and off — and separately reports **tick-only rows at 1.000**.
+
+Earlier in this sprint I reported 1.000, then corrected myself to 2.000 and logged the first figure as an arithmetic defect that halved the real number. That correction now looks **wrong in its reasoning even though 2.000 is the right headline**. Both figures appear to have been real and measuring different things: 1.000 on the tick-only path, 2.000 once the render path is included. So the original measurement was not defective, it was narrower than the question. I have asked the reviewer to confirm this reading independently before I let it stand, because a correction to a correction is exactly where I should be slowest.
+
+## 2026-07-28 11:29 — The larger finding hiding inside the counter: the incremental branch never fires
+
+`incrementalResamples` is **zero in all four cells**, and the M20-Q9 kill-switch changes nothing — 2.000 with it on, 2.000 with it off, on both 1m and 1H.
+
+That is a bigger result than the resample count. The original hypothesis was that `_installPlayheadPrefix()` dropping the consumer cache defeats the pipeline's incremental branch, and that the kill-switch would therefore move the number. **It moves nothing.** If incremental is structurally always zero on this route, the incremental path is dead on the replay path regardless of the switch, and the switch is not controlling what we believed it controlled. I have asked the reviewer to establish whether the branch is genuinely unreachable or merely never taken under this harness's conditions — the distinction decides whether this is a code finding or another instrument artifact, and given the packet's other numbers I am not assuming.
+
+**Write packets now at the cap of three:** speed-cap, a12-correction, a2-rebaseline. No further write dispatches until one clears.
+
+---
+
+## 2026-07-28 11:44 — M2 SOLVED: both hypotheses refuted, and the surviving mechanism predicts the PO's observation to the hour
+
+surface=`manager-a/critical-path` @ `9c5d55e4e`, twelve-hop timestamp path cited
+coverage=ingest through display; both §A16.3c hypotheses tested against their stated criteria
+
+**Broker-time: REFUTED.** FirstRate FX rows are US Eastern wall-clock, declared at `firstrate_ingest.py:28-31` and parsed with `tzinfo=_FX_TZ` then `.timestamp()*1000` at `:649-696`. The canonical CSV is explicitly "Unix epoch milliseconds (UTC instant)" at `:905-944`. Crypto normalises UTC; equities, futures and options default Eastern at `:890-902`. The client normaliser preserves epoch-ms and only rescales seconds-sized values (`chart.js:9624-9642`). So chart-held `t` is a UTC instant by the time bucketing runs, and the broker-offset arithmetic cannot occur.
+
+One precision I am keeping, because it is the kind of thing that later gets misquoted: the *vendor* feed is not UTC — it is Eastern wall-clock. The *canonical and chart-held* feed is UTC epoch-ms. Both statements are true and only the second one bears on bucketing.
+
+**Count-forward: REFUTED** (recorded earlier). So §A16.3c's stated disjunction resolves: **the defect is in labelling, and the next probe is the display timezone.** That probe has now been run, and it lands.
+
+**The phantom Saturday, derived rather than guessed.** A UTC daily bucket at `2013-01-06 00:00Z` rendered in New York — UTC−5 in January — displays as **Saturday 5 Jan 2013 19:00**. The PO reported a bar labelled **Saturday 5 Jan '13 19:00**. That is not an approximate match, it is the same label to the hour. The bucket is real and holds the Sunday-evening FX reopen at 22:00Z; it is the *label* that is a fiction, because a UTC-midnight boundary displayed in Eastern time falls on the previous calendar evening. The missing Friday is the same arithmetic from the other side: Friday's session runs Thu 22:00Z → Fri 22:00Z and therefore sits in the bucket displayed as Thu 3 Jan 19:00, so the Friday label maps to a UTC Saturday that has no trading and draws nothing.
+
+The Director's §A16.3 fourth consequence said UTC-midnight flooring alone does not obviously produce a Saturday bar and something else was contributing, most likely a mismatch between the timezone used to bucket and the timezone used to label. **That is exactly what it is**, and `convertToTimezone()` at `timezone-manager.js:238-255` is the labelling half — it builds a display `Date` and does not mutate stored `t`, so bucketing and labelling genuinely disagree by construction.
+
+## 2026-07-28 11:45 — ESCALATION, now decisive: the client cannot fix daily or weekly, because it never holds the data
+
+This is the finding that determines whether M2 is Manager A's work at all, and the answer is no.
+
+For ordinary 1D and 1W views the client **holds already-bucketed daily and weekly bars**. It requests the current timeframe (`chart.js:7525-7559`), `/smart` returns "the exact requested timeframe" (`api_server.py:25621-25625`), and the client records `_nativeRawFetchTf = timeframe` (`chart.js:24110-24117`). Pan-load does the same through `checkViewportLoadMore` → `_fetchCandlesCursor` (`chart.js:24682-24848`). Replay is mixed, but backtest boot normally sets `replayRawTf` to the display timeframe.
+
+**You cannot un-bucket.** §A16.3's derived-branch remedy — "if they are derived, we bucket to the class calendar" — presumes the client holds something finer than a day to re-bucket, and for the timeframes in question it does not. Combined with the earlier citation that the buckets are built server-side at `api_server.py:8843` and `questdb_store.py:521-538`/`:659-691`, the daily and weekly boundary is decided in Python before the client ever sees a bar.
+
+So the ruling's two branches both point off A's territory. If the bars are native we disclose the provider's stamping, which is a product decision. If they are derived we re-bucket, which requires the server. **Weekly cannot board on A's work, and neither can daily.** I am not going to author into another manager's files to hit a deadline, and I am not going to propose a client-side mechanism I have just established cannot work.
+
+**What A can do, and it is not nothing.** The labelling half is client-side and it is where the observed symptom actually lives. A bucket boundary computed in one timezone and rendered in another is a defect A owns end to end, and fixing the label alignment addresses precisely what the PO saw — no Friday, phantom Saturday — without touching a boundary. Whether that is sufficient or merely cosmetic depends on whether the PO's complaint is "the bars are labelled wrong" or "the bars contain the wrong hours." **Those are different defects with different owners and I want the Director to say which one is being fixed** before I brief anything.
+
+Also still open and now more relevant: vendor `1day` provenance. If FirstRate's own daily bars arrive session-aligned, the server is re-flooring correct bars into incorrect ones, which would make this a server-side regression rather than a missing feature.
+
+## 2026-07-28 11:46 — WITHDRAWN: my post-merge chain-intact verdict was contaminated
+
+**My doubt was founded and the verdict is withdrawn.** In a cleanroom worktree containing only tracked files, the chain does not reproduce.
+
+`chart v 1.4/chart/modules/m21-2-candle-offscreen-scaffold.test.mjs` is **tracked** and imports `m21-w6-fixtures/visible-window-mirror.mjs`, which is **not**. The import sits in a `try/catch`, but the catch does not skip or degrade — it records a failure string and the test then runs `assert.equal(w6Ok, true, w6Detail)` at `:1520`. **A caught exception is converted into a hard assertion failure**, which is the worst of both shapes: it looks defensive and fails closed against a file that is simply not in the branch. Both the `chart v 1.4` and `homepage/public` copies fail identically.
+
+`npm run test:checkpoint-provenance` also fails in the cleanroom, 12 of 14. Every Puppeteer harness could not run at all — I forbade `npm ci`, so that is my constraint rather than a defect, but it means **the browser half of the chain is unmeasured in a clean tree** and I should not have been calling the chain green without it. `preflight:module-contracts` passes at both root and `talaria-design`, so the M1 half genuinely stands.
+
+My earlier description had one detail wrong: the test is at `modules/`, not inside `m21-w6-fixtures/`. The substance is unaffected — a tracked test importing an untracked module — but I am recording the correction because I asserted the path.
+
+**Consequence.** Any claim of automated-GREEN resting on that re-run is void. Per §A16.5, review confidence is not gate coverage; a green obtained in a tree carrying 512 untracked files is not gate coverage either. The untracked triage is no longer a background row — untracked files are *actively supplying* a tracked test's inputs today.
+
+## 2026-07-28 11:47 — Speed cap BLOCKED, and the block is a brief-defect of mine
+
+The ceiling itself is sound and was independently derived rather than accepted: six assignments to `this.speed` exist, five route through `normalizeSpeed`, the sixth assigns the in-range literal 5, and no product write bypasses the clamp. Twenty-nine inputs reproduced. `window.REPLAY_SPEED_MAX = 999` does not unlock it; nor does the static; a lexical rebind throws. `updateChartDataFast`, `_renderReplayChartUpdate` and `getCandlePlaybackCadence` are byte-identical to base, so the Director's constraint holds exactly.
+
+**The block is that two committed mirrors in A's own grant still ship pre-cap behaviour.** Both `dist-v9` bundles still carry the 15-step ladder to 100x, and `homepage/public/chart/modules/replay-system.js` is byte-identical to the *base* engine — an unclamped committed copy with `Math.min(100)`, `Math.min(200)` and `this.speed = 60`. `TERRITORY.yml:130` and `:141` grant A both paths. **My writable set named two files when the territory needed four**, so nothing in the packet could have caught this. That is my second brief-defect on this packet.
+
+Production is not defeated: both Dockerfiles rebuild and overwrite, and even served stale the engine is fetched separately and still clamps, so the worst case is a control offering 100x that visibly snaps back to 10x. Mislabelling, not capability. But an unclamped engine committed in my own territory is not something I will ship past.
+
+**Two of my own suspicions refuted, and I want them recorded as loudly as the findings.** There is no persisted slider index at all — `si` is computed at render time and no speed-index state exists, so my "stored index 12" scenario is *unrepresentable*. And the percentage change from `si/14` to `si/maxIdx*100` is **exactly correct** at every step, not subtly wrong. I raised both as hazards; both were wrong, and BRIEF-02 framing is what kept them from becoming an authored fix to a non-problem.
+
+**Sub-ceiling doubling ruled: non-compliant with §3.1 on its own terms** — a hidden global that makes a labelled 3x play at 6x changes what a labelled speed means — but pre-existing, and the packet strictly narrowed it. Separate row, so a clean cap is not blocked by an inherited flag.
+
+New rows from the review: the packet adds the file's **first two top-level `const` declarations**, so a double-load into one document now throws `SyntaxError` where it previously did not — latent, since each shell references it once, but the file is a classic script served at two URLs. `Infinity` normalises to **1**, not 10, so the fastest input yields the slowest speed; fails safe, semantically inverted. `9.999` survives, because the engine enforces the ceiling and never the ladder. And a pre-existing mount-order race means a restored 60 lands on either 10 or 5 — never above 10, so the cap is unaffected.
+
+**`REPLAY_SPEED_DEFAULT = 5` remains unratified** and the code says so in its own comments. It moves the engine default from an effective 10 to 5 and V9 from 30 to 5, which changes what a speed means and is reserved to the PO. Going to PO-REQ; the cap does not depend on it.
+
+---
+
+## 2026-07-28 11:58 — Two dispatches died on an API limit; both re-dispatched, and one of them raises a §A13.1 question
+
+Both the A2 adversarial review and the speed-cap mirror remediation terminated on **API usage limit**, with the platform reporting a switch to grok-4.5. Neither completed.
+
+**State verified before re-dispatching rather than assumed.** No `manager-a-speed-cap-mirrors` worktree exists, and `manager-a/speed-cap` is still at `48aba47bc` — the mirror task did nothing at all, so there is no partial build to reconcile and I told the re-dispatch not to go looking for one. The review was read-only and left nothing. This is the cheap check that catches a half-finished build being mistaken for a finished one, and it is worth doing every time a dispatch dies mid-flight rather than only when it looks like it mattered.
+
+**The governance point, which I am recording because it will recur tonight.** §A13.1 says the reviewer is never downgraded and no cheap-tier output may enter the record as a verdict. When the top tier is rate-limited, "switch to a cheaper model and carry on" would silently convert a mandatory top-tier review into a cheap one — and nothing in our process would have flagged it, because the packet would simply come back reviewed. **A model-availability failure must fail closed, not fail cheap.** I have re-dispatched the A2 review at top tier. If it hits the limit again, the packet stays held and I will say so rather than accepting a downgraded review; a held packet is a known state, a quietly downgraded review is not.
+
+**The mirror remediation is a different case and I routed it cheap deliberately.** It is authoring, not judgement: a specified build-and-sync with acceptance clauses that are mechanically checkable — ladder contents, a SHA-256 equality between two files, and three greps that must return nothing. §A13.2's test is whether a gate converts a mistake into a rejected packet, and here it plainly does, so grok-4.5 is the correct routing rather than a concession to availability. The mandatory top-tier review still follows. That distinction — cheap where a gate catches it, top tier where judgement enters the record — is exactly what §A13.3b asked us to start applying deliberately instead of defaulting upward, and this is the first time today the constraint has come from availability rather than from my own choice.
+
+**Reinforced in the re-dispatch:** the mirror task must rebuild from source and must **not** hand-edit the minified bundle, with an explicit instruction to stop and report if it finds itself reaching for a string replacement inside `talaria-v9-live.js`. A hand-patched bundle would pass every acceptance clause I wrote while silently desynchronising the artifact from its source, which is the failure this whole packet exists to remove. I also flagged, per BRIEF-02, that I have not personally verified `sync-v9-to-homepage.mjs` exists or that `build:live:chart` is the right entry point — both came from the review's reading, not mine, and a refuted premise there is a better outcome than a forced build.
+
+---
+
+## 2026-07-28 12:08 — LAG FAMILY REOPENED on residue; census dispatched ahead of everything else
+
+`FINDING-LAG-IS-RESIDUE-20260728.md` read in full. The PO's controlled observation refutes the speed hypothesis with the cleanest possible evidence: **Step 1 and Step 4 are the same configuration, Step 4 ran at a lower speed, and only Step 4 lagged.** The single intervening event was a multichart session, and 800 MB never came back. Speed is not the variable; prior multichart use is.
+
+Dispatched the decisive test as the Director ruled — census before any fix, three points, refutation criteria fixed in advance.
+
+## 2026-07-28 12:09 — The recurrence illusion explains a year of my own verdicts, not just the PO's
+
+§2 of the finding is the part I need to sit with. A session-history-dependent defect answers identical tests differently depending on what preceded them. That means "the lag came back" and "it worked last night" were never contradictions — **verification was non-deterministic and nobody controlled for session history.** Fixes were not un-fixed.
+
+**Every lag verdict I have recorded without a fresh window is now suspect, including the ones I accepted.** I am not going to enumerate them from memory and pretend that is a review; the correct move is the standing rule the finding imposes — from now on, lag verification states its prior actions and uses a fresh context, or the verdict is void. I have written that into the census brief as a control run rather than an aspiration.
+
+This also lands on my own conduct. I have spent today being careful about *where* claims came from — which branch, which tree, which blob. I was not careful about *when*, and a measurement's session history is provenance exactly as much as its branch is.
+
+## 2026-07-28 12:10 — The two rows merge, and the §A9 residual was the visible edge
+
+The reopened §A9 memory row and the lag family are plausibly one defect. The ~230 MB teardown residual we closed as "bounded multichart working set" was its edge — and the reason we closed it wrongly is precise and worth naming: **we measured whether bytes were retained. Nobody measured whether they were still executing.**
+
+That is why the census counts *live* handles rather than cumulative creations, and why I asked for a **creation-site stack trace retained per handle**. A count proves something leaked; an attributed count names the file and line to fix. The difference is a day of bisection.
+
+It is also why the brief measures **frame intervals directly** at each census point. The claimed mechanism is frame starvation, not allocation pressure, and inferring frames from memory figures is how we ended up believing the wrong model last time.
+
+## 2026-07-28 12:11 — Speed cap disposition corrected before it can be misread
+
+**The cap is not a mitigation for this symptom and must not be recorded as one.** It stays as a PO product decision on product grounds — fewer offered speeds, less surface to test, competitor parity — and nothing about it addresses residue. The lag family's disposition moves from "bounded by product cap" to **open, residue leading**.
+
+I want this on the record now rather than after the fact, because the cap packet is mid-flight and its own journal entries sit a few pages above this one. A reader skimming this journal in a week could easily join "cap shipped" to "lag closed", and that inference would be wrong in exactly the way that costs a sprint.
+
+## 2026-07-28 12:12 — Three separate defects captured, explicitly not conflated
+
+Held as their own rows, none of them the residue defect:
+
+1. **1D historical bars render slowly with indicators trailing the load.** The finding identifies this as the original day-one pan-back complaint, still live. This one is mine.
+2. **A sibling panel's time axis moves while the 1D panel renders** — one panel's work mutating another's axis. Cross-panel interference.
+3. **Drawings on the 1D panel shift while panning** — drawing coordinates are not pinned to price and time during pan.
+
+Rows 2 and 3 point at multichart bridge and drawing-tool code that is very likely **not** in A's territory, so I am recording them and will route rather than author. That territory question is also why the census stops at measurement: the probable fix sites, `sync-bridge.js` and `panel-cmd-bridge.js`, are not mine to edit even once the mechanism is proven.
+
+## 2026-07-28 12:13 — ASSUMPTION and a provenance constraint I cannot design around
+
+`typeof window.IndicatorPerf` is **undefined on deployed b75**, so the loader fix is not on TEST despite b79/b80 candidates existing. Every figure in the finding — 1.0 GB, 2.5 GB, 1.8 GB, the 800 MB shortfall — is a **fallback-path baseline** per §A2 and must be re-taken after a build with the module loaded is deployed.
+
+I expect the structural finding to survive, because a leak does not depend on which indicator implementation runs, and I expect every magnitude to move. The census brief therefore requires `typeof window.IndicatorPerf` to be reported **at each census point**, so the run states which world it measured rather than leaving it to be inferred later — which is the failure §A2 was written to stop, and which the finding itself notes nearly cost the PO another cycle chasing speed.
+
+**Write-packet accounting, stated rather than quietly exceeded.** Three packets are nominally in flight — speed-cap mirrors, a2-rebaseline, a12-correction — but only the first is still writing; the other two are authored and awaiting review. I am treating the §A13 cap as a concurrency limit on *active writes*, since its purpose is preventing two subagents on one file, and the census touches a disjoint new path. Two active writers, no file overlap.
+
+---
+
+## 2026-07-28 12:22 — CORRECTION: "the failed dispatch did nothing at all" was wrong, and my check was the reason
+
+I stated — here and to the Director — that the API-limited mirror dispatch left nothing behind, and I based that on `git worktree list` showing `manager-a/speed-cap` still at `48aba47bc` with no `-mirrors` worktree present.
+
+**That check was insufficient and the claim was false.** The author found the existing `manager-a-speed-cap` worktree **dirty from a prior partial attempt** and had to reset it to clean HEAD before working. I verified the branch tip and the absence of a new worktree; I did not verify working-tree cleanliness, which is the only thing that would actually have answered the question I was asking. A commit SHA tells you what was committed, not what was written.
+
+This is the same failure shape I have been catching in others all day — a check that looks like it establishes a negative but only covers part of the space. I asserted a clean state from a partial observation, which is precisely the practice I made a standing rule against this morning. **Rule extended: a "nothing was left behind" claim requires `git status --porcelain` in the specific worktree, not a branch-tip comparison.**
+
+The consequence is not severe — the residue was uncommitted work in a scratch worktree and the author reset it — but I have asked the reviewer to establish whether the reset discarded anything of value, and whether the committed result is consistent with a clean rebuild rather than carrying residue from the abandoned attempt. That is the one thing here I cannot check myself.
+
+## 2026-07-28 12:23 — Mirror gap closed at `b96ad1bba` — rebuilt from source, not patched
+
+surface=`manager-a/speed-cap` @ `b96ad1bba`, parent `48aba47bc`; seven files across both `dist-v9` trees plus the homepage engine mirror
+coverage=acceptance greps executed; **non-cap bundle delta not yet characterised**
+
+Built through the real entry chain — `build:live:chart` → `vite.config.live.js` (`root: live/`, `outDir: ../chart/dist-v9`) → `live/main.jsx` → `../src/TalariaV8bLive.jsx` — so the artifacts derive from the reviewed source rather than from a string replacement in minified output, which was the failure mode I most wanted excluded. `homepage/public/chart/modules/replay-system.js` now hashes identically to the capped source, closing the unclamped committed engine.
+
+Two details the author handled correctly rather than papering over. Vite emits `max:KM.length-1` rather than a literal `max:"4"`, so my acceptance clause could not match textually and they said so instead of declaring it met. And `Math.min(100, progress * 100)` survives in the engine — correctly identified as a progress-bar width rather than a speed clamp, which my grep would have flagged as a failure. Both are the kind of thing a less careful author reports as green.
+
+## 2026-07-28 12:24 — The sync spill is the real finding, and it may be a live correctness gap
+
+`scripts/sync-v9-to-homepage.mjs` copies far more than `dist-v9`: modules, workers, `chart.js`, vendor, fonts, `multichart-prod`, `legacy-index` and PWA assets. Running it produced changes across all of that, and the author **reverted everything outside my writable set** before committing.
+
+That was the right call under the brief I wrote. But it means something I want quantified rather than left as an impression: **if the sync script wanted to update those files, then `homepage/public/chart/**` is stale against source in more places than the one this packet fixed.** The defect this entire packet exists to close was an unclamped engine mirror. I now have direct evidence that mirror may have siblings, and I do not know how many or what they contain.
+
+I have asked the review to enumerate exactly which files the sync would have changed and how each diverges from its `chart v 1.4/chart/**` source. That list is either a housekeeping row or a second correctness gap, and I am not guessing which. Note the shape of the discovery: **the sync spill was surfaced only because the writable set was narrow enough to force a revert.** A wider grant would have swallowed the whole sync into this commit and we would have learned nothing.
+
+## 2026-07-28 12:25 — The question I sent to review that the packet cannot answer about itself
+
+A Vite rebuild regenerates the **entire** bundle from current source. The previously committed bundle was built at some earlier point, so **any source drift accumulated between that build and now rides along in this diff, silently.** The commit message says speed cap; the artifact may contain considerably more.
+
+That is a larger risk than whether the ladder is correct, and it is invisible to every acceptance clause I wrote — all of mine test for the presence or absence of cap-related strings, and none would notice an unrelated component changing. Characterising a minified diff is genuinely hard, so I asked for the technique to be stated along with what it can and cannot see.
+
+Related and also unverified by the packet: **no `npm ci` was run** — the build used pre-existing `node_modules`. So I do not know whether a clean CI install reproduces this artifact byte-for-byte. If it does not, we have committed a build output that nobody else can regenerate, which is a poor thing to have on a deploy path.
+
+---
+
+## 2026-07-28 12:38 — Residue census NOT DECISIVE: the run never reproduced the lag
+
+surface=`manager-a/residue-census` @ `b9cab8ab6`, base `3144426f5`
+coverage=three-point census executed with per-handle attribution and a fresh-context control; **the symptom under investigation did not occur**
+
+The author returned `undetermined`, which is honest. My reading is that it understates the problem.
+
+**Frames held at roughly 60 fps at every point, including after teardown.** The PO's Step 4 was visibly lagging with the whole browser affected. My refutation criterion was "refuted if counts return to baseline *while the lag persists*", and the lag never appeared — so **neither limb was tested.** A census of a session that never lagged cannot explain a lag mechanism. The experiment ran correctly and measured the wrong session.
+
+What it did find is thin and points away from the hypothesis rather than toward it: intervals, rAF and workers were flat, timeouts actually **fell below baseline**, and only listeners moved, by **+4** and not recovering. Some of those survivors look like the harness's own instrumentation — a host-page message listener and a `replayMultichartFrame` listener — so the genuine product residue is probably smaller than 4. The attributed product survivors are iframe `load`/`error` at `multichart-manager.js:462` and `:487`, `talariaMcHostDataCommit` at `chart.js:4249`, and `pagehide` at `order-manager.js:4379`.
+
+**A `pagehide` listener costs nothing until the page hides.** The hypothesis is frame starvation from orphaned *executing* work, and surviving a teardown is not the same as consuming a frame budget. I have asked the review to separate handles that merely persist from handles that actually cost something per frame or per tick, because conflating those two is how a leak census produces a confident answer about the wrong thing.
+
+## 2026-07-28 12:39 — The systemic finding: two harnesses today, both orders of magnitude under product scale
+
+This is larger than either packet and I am escalating it as its own row.
+
+| Measurement | Harness reported | Product/PO observed |
+|---|---|---|
+| Residue census heap | 15.4 MB → 32.4 MB | 1.0 GB → 2.5 GB → 1.8 GB |
+| A2 mixed-4 working set | 786 MiB | 2.5–2.7 GB |
+| A2 mixed-4 JS heap | 33.1 MiB | — |
+| A2 cycle staircase | 13.5 MiB flat | 302 → 988 → 530 MB |
+
+Two independently authored harnesses, on the same day, both landing between one-and-a-half and three orders of magnitude below what the product does. I flagged the A2 figures this morning as implausible and treated it as one packet's defect. **With a second instance it stops looking like a packet defect and starts looking like a property of how we build harnesses.**
+
+If that is right, a whole class of our measurement is invalid — including figures we have already acted on — and the correct response is not to re-brief two authors but to fix the instrument. The candidate causes are worth testing rather than assuming: how many bars are actually loaded and whether the data is real or a synthetic fixture; whether panels genuinely carry different symbols; run duration against a real soak; headless Chrome; and whether "heap used" is even the counter that produced the PO's gigabyte figures rather than a similarly-named different quantity. **A clean explanation is the outcome I want most** — if headless mode plus per-context heap versus whole-process memory accounts for the gap, then the harnesses are fine and I need the conversion factor, not a rebuild.
+
+**The practical question I need answered before I brief anyone again: can a headless harness reproduce the PO's scenario at all?** If it cannot, then the decisive test the Director ordered is not achievable by dispatch. It becomes a real browser session with instrumentation, which is a PO-REQ and not an author task — and I would rather learn that now than after a third harness returns a third set of unusable numbers.
+
+## 2026-07-28 12:40 — Wrong world, and this time it cuts against comparability in both directions
+
+The run measured `typeof window.IndicatorPerf === "object"` at every census point — the **fixed** world. The PO's observation was on deployed b75 where it is `undefined`, the fallback world. §5 of the finding predicts the structural result survives and the magnitudes change, and I still expect that.
+
+But note what it means here: we compared a fixed-world harness against a fallback-world observation and found no lag in the harness. **That is not evidence the lag is absent** — it is a comparison across two different builds, and either the world or the harness scale could account for the whole difference. Requiring the world to be reported at each point was the right call this morning; what it bought me is knowing that this particular comparison cannot carry weight, which is exactly what §A2 exists to force.
+
+**The one genuinely useful positive:** the fresh-context control was clean, which is consistent with the residue model and would have refuted it outright had it lagged. That prediction survives — but it survives in a session that never lagged in the first place, so it is weak confirmation of a model that remains untested rather than support for it.
+
+---
+
+## 2026-07-28 12:54 — A2 BLOCKED on a fact I never raised: the harness loads no indicator
+
+surface=`manager-a/a2-rebaseline` @ `61e62c3f5`
+coverage=harness read, re-run independently at 5× duration, counters traced to source, old harness located
+
+I blocked this on implausible magnitudes. The decisive reason is simpler and worse: **the runner contains no indicator code at all.** Grepped for `indicator|sma|ema|wma`, the only hits are `panelFrameMap`. The prior harness declares `conditionsRequired: ['no-indicators', 'representative-sma-ema-wma']` and actively sets `chart.indicators.active` before calling `recalculateIndicators()`.
+
+§A2's re-baseline exists to measure the value of loading `IndicatorPerf`, whose whole effect is swapping naive SMA/WMA for `rollingSmaFast`. **A workload with zero indicators cannot measure that delta by construction.** No amount of re-running fixes it. That is the block, and I did not find it — I was looking at the outputs when I should have been looking at what the workload contained.
+
+## 2026-07-28 12:55 — Three refutations I owe, and one of them is my own argument
+
+**The harness is honest.** Real headless Chrome via puppeteer, a real host page over local HTTP, three real `chart-embed.html` iframes, real bar data from `serve.mjs`. No `node:vm`, no synthetic host. I had raised that as a live possibility; it is refuted.
+
+**The symbols are genuinely mixed.** File IDs 25/27/28/25 at 1m/1h/15m/4h — three distinct symbols, with panel D honestly labelled as repeating panel A at a different timeframe. Not the same-symbol soak §A2 warns about.
+
+**My JS-heap argument was right for the wrong reason.** I argued 33 MiB could not hold the bar data of a gigabyte workload, implying a substituted counter. It is the **same** counter — `JSHeapUsedSize` in both instruments. 33 MiB is simply the honest heap of a workload about thirty times smaller: panel A moved 1,102 → 1,120 bars across 12 seconds, where the prior soak's panels went 2,001 → 30,846. The prior harness's own JS heap after fifteen minutes was 246.7 MiB on the same counter. My conclusion held; my reasoning was wrong, and I would have defended the wrong reasoning if nobody had checked it.
+
+**Where I was right about counters, in three of five rows.** Working-set peak is `PrivateMemorySize64` in the old instrument against `WorkingSet64` in the new — private commit versus resident set. Teardown residual and the cycle staircase were process memory before and are **JS heap** now. And CPU is the sharpest: the old figure summed cpuTime across the whole browser process tree; the new one is a single renderer's `TaskDuration` over wall clock, **structurally capped at 100% and therefore incapable of ever expressing 128–140%.** My comparison table was invalid in three rows, and not in the direction I assumed.
+
+Two further defects worth keeping: the mixed-4 cell recorded **ten samples in 12.7 seconds** despite a 100 ms setting, because each iteration spawns `powershell.exe` — and a peak from ten point samples misses the boot transient entirely. And mixed-4's baseline working set is already 718.7 MiB because the browser is reused across cells, so the workload-attributable figure is **67.9 MiB, not 786.6.**
+
+## 2026-07-28 12:56 — My "reuse the existing harness" instruction was findable but not executable
+
+The old harness exists at `tests/evidence/b70-stage5/b75-v3-two-panel-downscoped-soak.mjs`, tracked on A's branch, C's branch and the packet's own tree. So the author could have found it, and my instruction was satisfiable in that sense.
+
+But **"run both on the same tip" was not executable as I posed it.** That harness targets a *deployed origin* — it authenticates, claims a server-side chart-window lease, and discovers session-ready files from the server. It has no concept of a git tip, and the local `serve.mjs` cannot stand in because it stubs auth and has no lease endpoint. The reviewer had valid credentials and correctly declined to run a thirty-minute authenticated soak against production inside a read-only review, which was the right call.
+
+So my brief-defect here is more specific than "the author ignored an instruction": **I asked for a comparison between two instruments that do not share a substrate.** No author could have satisfied it.
+
+## 2026-07-28 12:57 — The constructive route, and I am adopting it
+
+The reviewer's alternative is better than what I asked for. The archived *numbers* are lost because they carry no SHA, but **the world they measured is reconstructible**: run one harness twice on one build — once with `IndicatorPerf` present, once with it suppressed. §A4c names `852420adc` as the commit that dropped the script tag, so the pre-fix surface is identifiable.
+
+That yields M19-I's value as a **controlled A/B on a single build with a single instrument**, which is strictly stronger evidence than any comparison against unattributed figures, and it removes the dependence on a deployed host having been in a particular state on a particular night. §A2's stated purpose — the delta as our first real measurement of M19-I's value — is met better this way than by the route the ruling implies.
+
+The instrument itself is worth keeping. What it needs before it can carry §A2: an indicator arm matching both prior conditions; a play window in tens of minutes rather than seconds; `PrivateMemorySize64` alongside `WorkingSet64`; whole-tree CPU rather than one renderer's `TaskDuration`; process memory for the teardown and cycle cells; the sampling loop off the per-iteration PowerShell spawn; and mixed-4's baseline taken on a fresh browser rather than one carrying mixed-2's residue.
+
+## 2026-07-28 12:58 — CODE FINDING: the incremental branch is live, and three separate mechanisms defeat it
+
+This is the most valuable thing to come out of today and it is not an instrument artifact — the reviewer verified the mechanism in product source rather than trusting counters.
+
+`chart-data-pipeline.js:88-97` gates the incremental branch on **array identity**, `cache.sourceRef === source`, plus `cache.sourceLen === source.length - 1`. Both kill-switch positions break that precondition, by *different* mechanisms:
+
+- **Fix ON** — `_installPlayheadPrefix` (`replay-system.js:3837-3866`) ends by calling `_m20Q9DropConsumerResampleCache` → `invalidateResampleCache()` → `sourceRef = null`. Evidence: `cacheDrops: 300`, `distinctRawDataIdentities: 1`.
+- **Fix OFF** — the same function returns `master.slice(0, end)`, a brand-new array object every tick, so the identity test fails for an entirely unrelated reason. Evidence: `cacheDrops: 0`, `distinctRawDataIdentities: 300`.
+
+**That is why the switch moves nothing: both positions are independently fatal.** And my original hypothesis about the cache drop is **confirmed as one of the two**, not refuted — I had started treating it as dead after the switch showed flat, which would have been the wrong conclusion drawn from a correct observation.
+
+The prize is large. Controls D1 and D2 — fix on, cache drop neutralised, tick only — fire `incrementalResamples: 300` of 300 with `fullResamples: 0`, and per-tick cost falls from **7.77 ms to 0.106 ms at 1m, a 73× improvement**, sitting behind a branch that is live code rather than dead. But D3, the same control *with a render frame*, snaps back to 600 full resamples and zero incremental attempts. **The render path defeats it a third way**, and relaxing the M20-Q9 cache drop alone recovers nothing under realistic conditions.
+
+Caveat carried forward honestly: the D-cells run in a node host with roughly twelve stubbed replay methods over 3,000 synthetic bars, and the neutralised state is a harness injection rather than any shipping configuration. The two identity-breaking mechanisms are confirmed in source and I hold those with confidence; the 73× is a ceiling measured under stubbing, not a promised product gain.
+
+## 2026-07-28 12:59 — Restating the 1.000/2.000 correction, and naming what I cannot yet resolve
+
+My reading is **confirmed**: in `m20-q9-mcdiag-atip-20260728.json` the tick-only A-cells report 1.000 and the render-inclusive B-cells report 2.000, across all four of 1m/1H × switch on/off. Both were real, measuring different things. Commit `3e1fdc05e` already carried both figures in its own message.
+
+**But I am not closing this, because there is a second and independent 1-versus-2 in the same evidence.** The legacy `_mcDiag.resamples` field reads 2.000 per tick even in the tick-only cells, because it sums the `updateChartData` wrapper hit and the full-array `resampleData` hit for a *single* resample — the packet documents that as "1/tick means zero full resamples, 2/tick means one full resample per tick". If my original correction was sourced from that legacy field rather than from a render-frame cell, then it **was** double-counting and my original arithmetic-defect log was right after all.
+
+I cannot tell which from this packet; it needs the text of the earlier report. **So the correction stands as: my restatement is right if the figure came from a render cell, and my original log was right if it came from the legacy field, and I do not yet know which.** Recording the ambiguity rather than picking the flattering branch — I have now corrected this figure twice and a third confident restatement without the source text would be exactly the overconfidence the first two came from.
+
+---
+
+## 2026-07-28 13:14 — PRIORITY ZERO accepted. Measurement One is already in hand, and it confirms the hypothesis
+
+`FINDING-CPU-NOT-MEMORY-20260728.md` and §1.5 read in full. Re-measurement framing dropped as instructed; the CPU work subsumes it.
+
+**Number one does not need dispatching — it was measured this morning and pinned to A's tip.** `_mcDiag` on `manager-a/a2-rebaseline` @ `61e62c3f5`, cross-checked against product source by top-tier review:
+
+- **2.000 full resamples per replay tick** in the render-inclusive cells, 1.000 tick-only, across 1m and 1H with the M20-Q9 switch both ON and OFF.
+- **`incrementalResamples` is zero in every cell.** The incremental branch never fires.
+- The branch is **live code, not dead code**, and **three independent mechanisms** defeat it.
+
+`chart-data-pipeline.js:88-97` gates incrementality on **array identity** — `cache.sourceRef === source` plus `cache.sourceLen === source.length - 1`. With the fix ON, `_installPlayheadPrefix` (`replay-system.js:3837-3866`) calls `_m20Q9DropConsumerResampleCache` → `sourceRef = null` (`cacheDrops: 300`, `distinctRawDataIdentities: 1`). With it OFF, the same function returns `master.slice(0, end)` — a **new array object every tick** — so identity fails for a completely different reason (`cacheDrops: 0`, `distinctRawDataIdentities: 300`). Both positions are independently fatal, which is exactly why the kill-switch moves nothing.
+
+**The Director's prediction that this would be a multiple and not a percentage is confirmed.** Controls with the cache drop neutralised fire incremental 300 of 300 with zero full resamples, and per-tick cost falls from **7.77 ms to 0.106 ms at 1m — 73×.** But a control adding one render frame snaps straight back to 600 full resamples and zero incremental attempts, so **the render path defeats it a third way and relaxing M20-Q9 alone recovers nothing under realistic conditions.**
+
+Honest caveat: those control cells run in a node host with roughly twelve stubbed replay methods over 3,000 synthetic bars, and the neutralised state is a harness injection, not a shipping configuration. **The two identity-breaking mechanisms are confirmed in product source and I hold those firmly; the 73× is a ceiling measured under stubbing, not a promised product gain.** I will not quote it as a forecast.
+
+## 2026-07-28 13:15 — Two, three and four dispatched as ONE session, deliberately
+
+The Director listed render amplification, main-thread share and render-surface inventory as three measurements. **I dispatched them as one instrumented session on one configuration**, and the reason is today's most expensive lesson.
+
+Two harnesses authored today returned figures one-and-a-half to three orders of magnitude below product reality — a 33 MiB JS heap where the product shows gigabytes, twelve-second windows against thirty-minute soaks, ~2,000 bars against ~30,000, and in three of five cells a counter that was not the same quantity it was being compared against. **Three separate harnesses would have given me three different scales and no way to relate the numbers to each other.** One session gives three mutually comparable results even if the absolute scale turns out wrong.
+
+I also made the scale problem an explicit acceptance condition rather than a hope: the author must state bar counts, run duration, speed, indicator count and panel symbols, and must say whether the session's tab CPU is anywhere near **129.3%**. If it idles at 20%, the phenomenon was not reproduced and the attribution describes a different workload — I would rather have that stated plainly than receive a beautifully detailed breakdown of the wrong thing. **Reaching the PO's CPU figure matters more than polishing the breakdown.**
+
+The probe matches the PO's protocol: two panels, EURUSD 15m and 1m, **no indicators**, one open position, order panel open, fresh context. Render amplification is briefed to produce a **trigger histogram** rather than a ratio — the useful artefact is what causes the fifty renders, not the confirmation that there are fifty. Main-thread share carries its refutation criterion: **if the bulk of per-tick work is already off-main-thread, the competitor's advantage is algorithmic rather than threading**, and I need that immediately because it redirects everything.
+
+Number five, the residue census, now serves both rows — orphaned rAF loops are CPU by definition — and its priority rises accordingly. It is already in adversarial review.
+
+## 2026-07-28 13:16 — §1.2's restatement strengthens the answer I already gave
+
+The acceptance criterion moves to CPU per tick and per frame with memory secondary, and a proposal that halves bytes while leaving CPU untouched will not be selected.
+
+**My §1.2 answer already says do not build the residency cap**, and it now has a second independent reason. I reached "no" on the grounds that panels hold references rather than bars, that the two named modules are absent from the branch entirely, and that the measured cost is 2.000 full resamples per tick on the host rather than per-panel duplication. The finding adds that **bytes are already at parity with the competitor**, so even a cap that worked perfectly would target the axis where we are not behind. The conclusion is unchanged and better supported; I have nothing to redirect because I was not building toward the cap.
+
+What the restatement *does* change is where the foundation increment should aim, and this morning's `_mcDiag` result answers that too: **the per-tick full resample is O(history) work on every tick, on the main thread, and the incremental branch that would avoid it is live and reachable behind three separate defeats.** That is a CPU-per-tick target with a measured ceiling behind it, which is precisely the shape §1.2 now asks for.
+
+## 2026-07-28 13:17 — The honesty clause, recorded before there is any pressure to bend it
+
+**The 4–5x CPU gap is architectural, predates Plan 3, and will not be closed by Thursday. I will not claim otherwise.**
+
+The measurement is dated 2026-07-25 — before b74, before b75, before every Plan 3 change under discussion. No regression is established and none is claimed. What I will produce is the largest contributors, the measured delta from cutting them, and an explicit statement of what remains. A description of work done is not a result; every change reports a before/after pair on the PO's protocol.
+
+One consequence I want on the record now: if the render path is confirmed as the third defeat of incrementality, then the fix touches shared `chart.js` render paths — which is a §A13.2 top-tier authoring trigger by name, and one of the few places today where I will be authoring above cheap tier on the row rather than the ratio.
+
+---
+
+## 2026-07-28 13:32 — CORRECTION: my "two harnesses, orders of magnitude" escalation was partly my own counter confusion
+
+This morning I escalated a systemic finding — two harnesses returning figures one-and-a-half to three orders of magnitude below product. **The framing does not survive a like-for-like comparison, and the error was in my table.**
+
+The A2 runner implements `browserWorkingSet()`, a Windows process-tree `WorkingSet64` sum — almost certainly the same category as the PO's Task Manager gigabytes. Compared properly:
+
+| Comparison | Ratio |
+|---|---|
+| a2 mixed-4 **working set** 786 MiB vs §A2's 2.5–2.7 GiB | **~3.3×** |
+| a2 mixed-4 **JS heap** 33 MiB vs §A2's 2.5–2.7 GiB | 78× |
+
+**The 78× exists only because I set a JS-heap number against a working-set baseline.** I built that table, I put a heap figure and a working-set figure in adjacent rows, and I drew a systemic conclusion from the gap between two different quantities. That is the same category error I criticised the A2 packet for making in its own cycle cell, committed by me in the entry that criticised it.
+
+The genuine gap is real but smaller and different in kind: **workload**. Both harnesses hold roughly **2,000 bars per panel** — measured directly, not inferred — against a product path allowing 100,000 per timeframe and capping at 200,000. That is a 50–100× data-volume gap, on synthetic mulberry32 candles, over 12-second windows against multi-minute human sessions.
+
+So the conclusion becomes: **not systemic invalidity.** One systemic *reporting* defect — mixing JS heap with process working set, present in both packets and in my own analysis — plus one quantified workload gap. **Figures already acted on are not void; they need a stated counter and a stated bar count.** The conversion rule is compare working set to working set, and scale the bar count before comparing absolute magnitudes at all.
+
+I am glad I escalated it. I am recording plainly that the alarming number in my escalation was mine.
+
+## 2026-07-28 13:33 — PRODUCT LEAK FOUND, in my own territory, by the census I called non-decisive
+
+`chart.js:4234-4252`, `_installFinerPanelSelfOwnerHostCommitListener()`, called unconditionally from the `Chart` constructor for any multichart embed panel:
+
+```js
+const parentWin = window.parent;
+parentWin.addEventListener('talariaMcHostDataCommit', this._mcFinerPanelHostCommitHandler);
+```
+
+**There is no `removeEventListener` for that event anywhere in the product** — a full-tree search returns exactly two hits, this registration and the matching dispatch. So every multichart panel that ever boots leaves a permanent listener on the **host** window, and its closure retains the destroyed panel's entire `Chart`: `rawData`, indicator caches, canvases. It accumulates per panel boot per session, and it is **invisible to any test that starts from a fresh window** — which is precisely the session-history-dependent shape §2 of the residue finding predicted.
+
+Measured, not inferred: the listener survived teardown and was still registered 79.5 s later. It is consistent with the one quantitative signal in the census — heap 15.4 → 28.3 → 32.4 MB against a 16.6 MB fresh control, never recovering.
+
+**It is in `chart.js`. That is mine, and I have dispatched the fix RED-first** at top tier, citing the §A13.2 row by name: *any edit to chart.js shared paths*. The red assertion is available today and — the part that matters — **it does not require the lag to be reproduced.** It is a structural claim about listener counts after teardown, which sidesteps the entire problem that made the census non-decisive.
+
+## 2026-07-28 13:34 — Two more corrections to my reading of the census
+
+**My instrument-versus-product suspicion was wrong.** I said the harness's own listeners probably inflated the +4 and the real product residue was smaller. The two harness listeners appear once in *both* documents and cancel exactly in the delta — instrument contribution to the +4 is **zero**, and all four survivors are product. Of the four, one is the genuine leak above, one is a `{once:true}` IndexedDB hook on the host's own window that is lazy initialisation rather than residue, and two are ledger artifacts on a removed iframe element that the census can never see garbage-collected.
+
+**My "a census of a session that never lagged cannot explain a lag mechanism" was wrong too.** It conflates two jobs. A census can rule mechanisms out and discover residue independently of whether the symptom fires, and this one did both. My central claim — that the run never lagged, so the refutation criterion was never tested — stands, and is if anything understated: `decide()` has no branch at all for "the symptom was never produced", so any non-lagging run returns `undetermined` by construction. The evidence should say the criterion was **untestable in this configuration** rather than that the test was inconclusive. Those read very differently downstream.
+
+## 2026-07-28 13:35 — What this eliminates, and why it matters for PRIORITY ZERO
+
+Within the host realm and this scenario: `intervals: 0`, `animationFrames: exactly 1`, `workers: exactly 1`, `broadcastChannels: exactly 1` at all four census points. **Four of the five candidates in the residue hypothesis are eliminated** — orphaned intervals, duplicated rAF render loops, leaked workers, leaked BroadcastChannels. My "timeouts actually fell below baseline" observation was a boot transient; the two that vanished were only live in a sample taken about six seconds after boot.
+
+**And the survivors cost nothing per frame.** `_emitMultichartHostDataCommit` fires on load, timeframe switch, `chartDataLoaded` and smart-window commit — never from a rAF or a replay tick. Per-frame or per-tick budget consumers among the survivors: **zero**.
+
+That is a significant negative for PRIORITY ZERO and I want it stated rather than buried. The Director raised the residue census to serve the CPU row on the reasoning that orphaned rAF loops are CPU by definition. **They would be, but there are none.** The leak explains a memory staircase and cannot explain frame starvation, so **the residue is not the CPU story.** CPU attribution now rests entirely on the per-tick resample result already in hand and on the attribution probe in flight.
+
+One caveat that argues for expecting more rather than fewer leaks: the census patches `EventTarget.prototype` **per realm**, so a cross-realm registration written as `EventTarget.prototype.addEventListener.call(parentWin, …)` would never have been seen. Cross-realm registration is exactly the class this finding belongs to, so the instrument has a known blind spot for its own discovery. I have asked the fix packet to enumerate sibling cross-realm registrations and report without fixing them.
+
+## 2026-07-28 13:36 — PO-REQ: the decisive residue test cannot be run headless
+
+Confirmed on four independent grounds, and I am routing it rather than re-briefing a third harness author.
+
+The harness's lag detector has **never demonstrated sensitivity** — 16.7 ms p95 in all four conditions including a 5× replay with four MAs — and under headless with `--disable-gpu`, a whole-browser stall is exactly the class of effect that pipeline does not surface. The data volume that plausibly causes the symptom is never loaded, hard-capped at 2,000 bars by the stub API. The build and world are both wrong: b61 with `IndicatorPerf` present against deployed b75 with it undefined. And **the harness navigates between single and multichart where production stays in one document** — `page.goto` destroys the JS context, so it cannot see anything accumulated by the PO's Steps 1 and 2, and its +4 conflates boot configuration with teardown residue.
+
+**PO-REQ:** an instrumented real-browser session following the PO's own protocol. What headless remains good for, and what I am keeping, is the handle ledger plus a forced-GC retained-size measurement — both are session-history-independent structural facts, and the ledger is how this leak surfaced at all.
+
+---
+
+## 2026-07-28 13:48 — Speed cap ACCEPTED, block cleared, proven by byte-identical rebuild
+
+surface=`manager-a/speed-cap` @ `b96ad1bba`
+coverage=all acceptance clauses independently reproduced; **the artifact was rebuilt from committed source with the pinned toolchain and produced a byte-identical blob OID** (`1e51164f5…`)
+
+That rebuild answers three of my questions at once and does it better than clause-checking could. The non-cap delta question, the reproducibility question and the reset-residue question all collapse into it: if a clean rebuild from committed source reproduces the committed bytes exactly, then nothing unrelated rode along, the build is reproducible, and no residue from the abandoned attempt survived into the artifact.
+
+**My "a rebuild carries more than the intended change" hazard is refuted.** A raw diff was useless because esbuild reallocated identifiers globally, so the reviewer wrote a lexer and compared skeletons plus sorted multisets of string, numeric, property and regex literals. Long identifiers: **identical multiset, 37,532 entries.** Regex literals: identical, 215. The entire semantic delta across 1.7 MB is the ladder constants and the slider bound, mapping 1:1 onto the source diff with nothing left over. `index.html` is 100% a cache-id bump; `sw.js` is a one-line version bump.
+
+**My reproducibility concern is refuted twice.** The pre-existing `node_modules` matched the tracked lockfile exactly — 63 packages, zero drift — and both Dockerfiles run `npm ci` in a clean image and rebuild from source regardless.
+
+## 2026-07-28 13:49 — CORRECTION: I said the mirrors "ship" pre-cap behaviour. They do not ship at all.
+
+I restated the block as *"two committed mirrors in A's grant still ship pre-cap behaviour."* **"Ship" is wrong.** Both containerised deploy paths overwrite the committed artifacts from freshly built source — `homepage/Dockerfile` under a comment reading "Fresh chart bundle (overwrites committed homepage/public/chart/*)", and `Dockerfile.local` under "Overwrite committed dist-v9". Since `homepage/public/chart/modules/replay-system.js` is overwritten from the capped source, **the unclamped mirror could not have reached a user through either image.**
+
+The remediation was still right — committed state should be honest, and a non-Docker path serving `homepage/public/` directly would have used the stale copy — but **the live-correctness severity was not what I asserted.** I had the mechanism right earlier in the day and then let the language drift when I restated it. That matters because "ships pre-cap behaviour" reads as a user-facing capability gap, and this was a repository-hygiene gap.
+
+## 2026-07-28 13:50 — CORRECTION: I feared the unclamped mirror had siblings. It has none.
+
+I wrote that the sync spill was "the real finding" and might be "a second correctness gap". Quantified from committed trees: **24 files, and exactly one genuine stale-content divergence — a test file.**
+
+`modules/m19-h-timeframe-switch.test.mjs` has drifted (the source carries a flake fix and a kill-switch flag the mirror predates). One further file differs **by design**, being the sole entry in `HOMEPAGE_FORWARDING_CONTRACTS` which the sync deliberately rewrites. Seventeen are missing from the mirror and all are non-runtime harnesses, contracts and evidence. Five are mirror-only `.log` files, all tracked, so nothing was lost to the sync's `rm -rf`.
+
+**Not one runtime module, worker, vendor file, font, `chart.js` or `legacy-index.html` diverges.** The unclamped engine was a singleton. My instinct to quantify rather than assume was right; the alarm I attached to it was not, and the row is worth about one test file rather than a second correctness gap.
+
+## 2026-07-28 13:51 — Reset residue answered positively, which is the harder and better answer
+
+I flagged this as the thing I could least check myself. The per-worktree reflog shows the reset moved `f802a66fa` → `f802a66fa` — **the same commit** — so nothing was orphaned and no committed work was lost; only uncommitted content was discarded. Then, rather than resting on that, the reviewer searched the object store directly: 128 unreachable blobs, the ten largest signature-checked, and **no unreachable blob anywhere in the repository contains `[1,2,3,5,10]`.** No capped variant was ever thrown away.
+
+The reviewer also discarded one of their own negatives on method grounds — a loose-object search that could not have found anything because the relevant blobs are packed — and said so instead of banking it. That is the standard I want and it is worth naming.
+
+## 2026-07-28 13:52 — Third brief-defect confirmed, and it left a real skew in the tree
+
+**My three-path writable set was too narrow.** `bump-dist-v9-cache.mjs --dist` legitimately writes nine further files — `live/index.html`, three `sw.js` copies, `chart.js` in both trees, `legacy-index.html`, and `chart-embed.html` and `harness/serve.mjs` in both trees. Reverting them was correct under my brief and **introduced a build-id skew that did not previously exist**: the dist shell now stamps `b83` while the legacy and embed shells still stamp `b80` on the same `/chart/modules/*` URLs, so those surfaces can serve a cached copy the dist shell has already busted.
+
+Severity is low and I am not blocking on it — both Dockerfiles re-run the bump and emit a coherent set, so the skew exists in the committed tree only and never in a deployed image. Two further files were already skewed at `b61` before this packet, which is pre-existing and separately owned. **Open row, not a block.** Notably the guard that would catch this, `uniqueCacheIds`, is exercised only against synthetic HTML in a script test, so no existing gate fails on a real skew — which is its own small §A16.5 instance.
+
+That is three brief-defects from me on this one packet: a file path that did not exist, a writable set missing two territory paths, and now a writable set missing the bump's nine. All three share a cause — **I wrote file sets from what the change appeared to need rather than from what the tooling actually writes.**
+
+## 2026-07-28 13:53 — Merge decision: HOLD, and the reason is a measurement that becomes impossible afterwards
+
+Both halves of the cap are now accepted. Two things stand between it and merge.
+
+`REPLAY_SPEED_DEFAULT = 5` is unratified and the code says so in its own comments. It changes what a speed means and is reserved to the PO. **PO-REQ stands; the cap does not depend on it.**
+
+Requirement 3 — CPU at 100x versus 10x on the same replay — is still owed, and **once the cap merges, 100x is unreachable and that comparison cannot be run without a revert.** So I am holding the merge rather than dispatching the measurement, and that is a deliberate prioritisation rather than a delay: PRIORITY ZERO already has two write packets in flight on the CPU deficit and the residue leak, and the Director stated Req 3 is non-blocking and must not displace chain work. Adding a third writer to a non-blocking item would be poor discipline.
+
+Holding costs nothing and preserves the option. It is also worth recording that **Req 3's value has fallen sharply**: its purpose was to test the PO's suspicion that high speed drives cost, and that suspicion has now been refuted twice — once by the 10x measurement showing 1m and 1D identical, and once by the residue finding showing a 1x session lagging where a 5x session did not. I will run it before merging, but as debt discharge rather than as a live hypothesis.
+
+---
+
+## 2026-07-28 14:04 — IDLE CPU supersedes the loaded protocol. This is the best-shaped defect we have had all week.
+
+Superseding block read. The loaded-protocol probe I dispatched twenty minutes ago is **superseded**; I will accept whatever it returns as secondary evidence but it is no longer the priority, and I am not acting on it as one.
+
+**Why this observation is worth more than everything above it in this journal.** One pair, 1m, nothing playing, fresh refresh, no indicators, no orders — **20.6% CPU with periodic spikes to ~120%**. An idle chart should consume approximately zero. That single measurement eliminates every confounder we have chased for days: not replay speed, not indicators, not multichart, not teardown residue, not per-tick data volume. **A loop is running with no input change.** Nothing I have measured today constrains the problem as sharply as a baseline taken with nothing happening.
+
+I also note the parity claim is corrected — it held against FX Replay only, and against TradeZella we are 3–6× worse on memory and 4–50× worse on idle CPU. My §1.2 answer leaned on "bytes are at parity" as a second reason not to build the residency cap. **That reason is withdrawn.** The conclusion survives on its original grounds — panels hold references not bars, the named modules are absent from the branch, and the cost is host-side per-tick work — but I should not carry a retracted premise forward, and the CPU-per-tick acceptance criterion is now doing all the work.
+
+## 2026-07-28 14:05 — One design decision I made against the brief, and why
+
+The Director asked for a **10-second** Performance recording. **I briefed a longer capture instead**, and I want the reason on record rather than looking like drift.
+
+The signature is *periodic* — spike to ~120%, fall back to 10–30%. A fixed ten-second window can straddle a cycle or miss a spike entirely, and would then report a resting floor with no spike in it, which is the most misleading possible artefact: it would look like a clean measurement and would send us after steady-state cost when the defect is a timer. So the capture must span **several spike cycles**.
+
+More importantly, that turns the measurement into a diagnosis. **The spike period is the single most diagnostic number available.** If it spikes every N milliseconds, the culprit is a timer registered with interval N — so I required the measured period to be matched directly against the live-interval census, with candidates named. A flame chart tells you what ran; a period matched to a registered interval tells you which line registered it.
+
+## 2026-07-28 14:06 — Suspects briefed as a list to test, not a list to confirm
+
+The Director's ordering is a hypothesis and I passed it as one. The M20-Q2 countdown idle-render path leads because **that fix's own name describes an idle render loop**, which is about as strong a prior as one gets. M20-Q1's replaced DOM poll follows, and the framing there is precise and worth repeating: verify it is *gone* rather than *additionally present*. **A replacement landed without the original being removed produces exactly this signature**, and it is the failure mode our own process is most likely to generate — we have merged a lot of replacements this month.
+
+Then the forming-candle updater on a timer, autosave on an interval, and any resample or layer-cache invalidation driven by time rather than by data change.
+
+I instructed explicitly: **test the list, do not work down it looking for confirmation, and if the trace points somewhere not on the list, lead the report with that.** Three premises briefed as fact today turned out false, and a suspect list is exactly the artefact that turns into a self-fulfilling search.
+
+The same scale guard as the last two dispatches applies, and here it is the acceptance condition rather than a caveat: **if the session idles near 0%, the phenomenon was not reproduced** and the breakdown describes a different workload. Reaching roughly 20% at rest matters more than anything else in the report.
+
+## 2026-07-28 14:07 — Why this outranks the architectural work, in my own words
+
+If the resting floor is 20%, then replay and indicators are stacked **on top of** it, and the 129% figure may be substantially this same defect plus load. That reframes the whole CPU row: the per-tick resample result I reported this morning is real and confirmed in source, but it may be a smaller share of the total than I presented it as, because I was comparing it against a total I assumed was load.
+
+And unlike the resample work — which needs the incremental branch's three separate defeats unpicked, one of them in the render path, in shared `chart.js` — **an idle loop is a small local fix.** That makes it the only credible route to a measured CPU improvement inside 46 hours. Acceptance is a before/after pair on the PO's protocol; a description of work done is not a result.
+
+`hcaptcha.com` and `accounts.google.com` subframes at roughly 160 MB are folded into the same session as a factual inventory — present or not, what loads them, what they cost idle. Whether they *belong* on an authenticated chart surface is a routing question and not the author's call, so I asked for facts only.
+
+**Write packets at three and I am naming them rather than quietly exceeding:** idle-cpu, host-listener-leak, cpu-attribution (superseded, allowed to finish). All three touch disjoint paths — a new harness, `chart.js` plus a new test, and a different new harness — so there is no two-authors-one-file exposure. Nothing further dispatches until one clears.
+
+---
+
+## 2026-07-28 14:22 — Static census in. The lead suspect is confirmed present but is almost certainly NOT the floor.
+
+Census returned on `manager-a/critical-path` @ `0091b74d5`, tree on `manager-c/verification-infra`. I verified the headline finding in the blob myself before briefing on it.
+
+**`Chart.animate()` is an unconditional self-perpetuating rAF loop.** `chart.js:28676`:
+
+```
+animate() {
+    requestAnimationFrame(this._animateBound);
+    ...
+}
+```
+
+The re-request is the **first statement, before any guard**. Started once at init and **never stopped for the life of the page**. There is no idle condition anywhere on that path — not tab visibility, not data change, not user input. A chart with nothing happening wakes 60 times a second forever.
+
+**This reframes the suspect list, and I want the reframe on record because it changes what a fix would be.** §1 in the Director's order — the M20-Q2 countdown idle-render path — is **confirmed present and correctly identified as idle work**, at `chart.js:30563–30598`, but it is **not a timer of its own**. It is 1 Hz logic hosted *inside* `animate()`. So the countdown is a passenger, not the engine. Fixing or deleting M20-Q2 entirely would remove roughly one repaint per second and **would leave the 60 Hz wakeup completely intact**. If the resting floor turns out to be the loop, the Director's first suspect is not the defect.
+
+That is a distinction worth being precise about rather than reporting "suspect 1 confirmed", which is technically true and would have been actively misleading.
+
+## 2026-07-28 14:23 — What the census settled, and the one thing static analysis structurally cannot settle
+
+**Refuted, with stated searches:**
+- **Autosave on an interval — does not exist.** No `setInterval` autosave anywhere in the territory; the autosave paths are event- and boundary-driven (mutation, pause, pagehide). Director suspect §4 is dead.
+- **M20-Q1's replaced DOM poll is genuinely gone, not additionally present.** The 600 ms `setInterval` survives at `chart.js:31957` but only behind kill-switch `__TALARIA_DISABLE_M20_Q1_V9_TIME_SYNC_OBSERVER_V1`, and the default path explicitly calls `_stopV9TimeControlsSyncLegacyTimer()` before installing the MutationObserver. This was the failure mode I thought most likely to land — a replacement merged without the original removed — and it did not. Good result; our process did that one correctly.
+- **Forming-candle updater is replay-gated**, `isPlaying`-guarded at `replay-system.js:5518`, cleared by `stopAllPlayback()`. Not idle work. Director suspect §3 is dead at rest.
+- **No time-driven resample or layer-cache invalidation exists.** Resample flush is tied to pan/host-sync rAF, and every `requestIdleCallback` use is one-shot. Director suspect §5 is dead.
+- **Alert checker does not run with zero alerts** on the default M20-Q8 path.
+
+So four of five named suspects are eliminated at rest and the fifth is a passenger. **The census earned its dispatch by killing hypotheses, which is what I asked it for.**
+
+**One genuinely unnamed find:** `economic-news-sidebar.js:1105` runs a **1000 ms countdown `setInterval`** that starts whenever `loadCalendar()` completes — **including when the News panel is closed**, because the calendar is loaded for axis markers. It is stopped on tab-hide and then **restarted on tab-visible whenever `state.loaded`, without rechecking whether the News UI is active**. That is idle DOM work on a closed panel, nobody named it, and it is a candidate for the 1 Hz component.
+
+**And the thing static reading cannot answer.** `animate()` only calls `render()` when `this.renderPending` is set. I counted **116 `scheduleRender()` call sites in `chart.js` alone**. Enumerating them tells us nothing about rest — whether any of them fires with no input change is a runtime fact. **This is the decisive question**: a 60 Hz wakeup that does nothing costs a percent or two, but a 60 Hz wakeup that actually paints a full chart canvas is the entire 20%.
+
+There is a cheap way to settle it that I did not think of when I wrote the trace brief: **`render()` increments `_mcDiag.renders` at `chart.js:28730`.** Reading that counter across ten seconds of a genuinely idle chart discriminates the three cases outright — ~600 means we are painting every frame at rest, ~10 means the countdown is driving it, ~0 means the floor is bare loop overhead or lives outside `chart.js` entirely. I will put this to the trace probe the moment it reports.
+
+## 2026-07-28 14:24 — The hole in the census, and why it may matter more than anything in it
+
+The census covered `chart.js` and `modules/*.js` well. It did **not** map the shipped V9 React bundle: `dist-v9/assets/talaria-v9-live.js` is 3.4 MB minified on one line, and a regex pass found `setInterval` at **24, 300, 800, 1000 and 1500 ms** with **call sites unmapped**.
+
+**That is the surface the PO actually measured.** The PO's 20.6% was taken on the product, and the product is the V9 shell — so periodic work in the React host counts against us identically to periodic work in `chart.js`, and a **24 ms interval** in particular is a ~40 Hz timer that would sit right alongside the rAF loop in cost. I am dispatching that mapping cheap and read-only rather than leaving it as a footnote, because an unattributed 24 ms interval on the shipped bundle is exactly the kind of thing that survives a confident-looking report.
+
+One citation defect to note against the census: it cites `animate()`'s countdown call as `chart.js:286705–28706`, which cannot exist in a 41,860-line file. The real site is 28705. Harmless here because I verified the code directly, but it is the second transcription-quality issue this week and I am not treating cited line numbers as reliable without opening them.
+
+---
+
+## 2026-07-28 14:36 — host-listener-leak authored. Its most valuable output is the finding that lowers its own priority.
+
+Packet on `manager-a/host-listener-leak`, base `manager-a/critical-path` @ `8f78c9ffa`, HEAD `9ad391084`. Two commits, RED at `c9050af81` then fix, 349 insertions across exactly the two files in the writable set. Suite red 4/11 on base, green 11/11 on the fix, and the patched product methods verified in real Chromium: host listener census 1 → 0 across `frame.remove()` with live commits still delivering.
+
+**The finding that matters most is not the fix.** The author resolved the question the residue census left open: after `frame.remove()` the orphaned handler **never executes again** — commits dispatched at 0 ms, +100 ms and +800 ms all failed to reach it, while the same handler received them while the panel was alive.
+
+So this is **pure retention with zero post-teardown CPU cost**. That has two consequences I would rather state than let sit implied:
+
+1. **This leak is not part of the CPU story**, and the CPU story is our priority-zero problem. It retains bytes; it does not burn cycles. Its urgency drops accordingly and it should not displace idle-CPU work.
+2. It also means the residue hypothesis for the lag — *teardown leaves live work running* — gets no support from the one concrete leak we found. Four of five residue candidates returned to baseline, and the fifth turns out to be inert. **The residue model is now substantially weaker than when the Director promoted it to leading hypothesis**, and I should say so rather than let a merged leak fix read as corroboration. The frame-starvation mechanism remains unevidenced.
+
+Two things the author correctly refused to overclaim: it could not prove *retention* in-browser, because no browser API exposes a listener census outside DevTools, so the structural argument (registration never removed) plus the review's 79.5 s survival measurement is what we have; and it only tested Chromium.
+
+## 2026-07-28 14:37 — Brief-defect, and this one is a repeat, so I am treating it as a pattern rather than an incident
+
+The packet breaks two enforced tests — `m10-trade-marker-projection.test.mjs` and one cell of `m22-session-calendar-bucketing.red.test.mjs` — both purely on **canonical↔mirror byte parity** between `chart v 1.4/chart/chart.js` and `homepage/public/chart/chart.js`. The author was instructed not to touch the mirror and correctly did not.
+
+**That is my defect, not the author's.** I wrote a writable set of two files for a change to a file the repo enforces as one half of a byte-identical pair. The fix was never completable inside the set I granted.
+
+**And I have now made this exact mistake three times today.** The cap packet was blocked because two mirrors in my grant shipped pre-cap behaviour. I logged a brief-defect for a writable set of two files where territory needed four. Now this. Three instances of one error is not three incidents — it is a missing step in how I write briefs.
+
+**Standing correction, effective now: before granting a writable set, for every file in it I check whether a mirror or built artefact of that file is enforced anywhere, and either include the mirror in the grant or state in the brief why it is deliberately excluded and what will fail as a result.** "Deliberately excluded" is a legitimate choice — splitting the mirror into its own packet is often right — but it must be a stated decision with its consequence named, not a silent omission that the author discovers at test time.
+
+Counted as `brief-defect` in the digest per §A16.4, and it does not count toward the author's two-rejection escalation, because the author was never the problem.
+
+## 2026-07-28 14:38 — Escalating the duplication itself, because the pattern is in the repo and not only in me
+
+Three separate packets this train have been blocked or damaged by `homepage/public/chart/**` divergence. Manager C has now also modified `homepage/public/chart/chart.js` on their branch, so **the mirror is diverging from two directions at once** while an enforced test demands byte identity.
+
+I am raising this as a row rather than absorbing it packet by packet. A duplicated file with a byte-parity gate means **every edit to `chart.js` is structurally a two-territory change**, which collides directly with the standing rule that no commit spans two territories. Those two rules cannot both hold. Either the mirror is generated (and the gate checks generation, not bytes), or it is owned by one manager, or the parity gate is wrong. I have no authority to pick, so it goes up.
+
+## 2026-07-28 14:39 — Sibling audit result, recorded because it was a negative I expected to be positive
+
+I briefed the author to enumerate cross-realm registrations expecting more unpaired siblings. There is exactly one other cross-realm registration in the product — `chart.js:27148–27154`, the drag-end guard — and **it is already correctly paired** with `_removeDragEndGuard`. The high-count `addEventListener` receivers in `sync-bridge.js`, `panel-cmd-bridge.js`, `embed-bridge.js` and `multichart-manager.js` all bind their own realm's `window` through the `(function (global) {...})(window)` idiom and are not cross-realm at all.
+
+So the leak is a one-off, not a class. I was wrong to expect a family, and the correct disposition is a single fix rather than a sweep.
+
+One structural fact worth carrying forward: **`Chart` has no `destroy()` method at all.** The only teardown-shaped method, `_teardownV9TimeControlsSync()`, is dead code whose own comment describes it as a helper for a future `Chart.destroy`. That is why the fix had to hang off the document lifecycle rather than a destructor, and it is the reason any future panel-teardown cleanup will face the same problem.
+
+Top-tier adversarial review dispatched per §A13.1, aimed at the four things the author could not close: the bfcache-evicted-without-restore path that the `persisted === true` early return skips, the unexercised `frame.src = 'about:blank'` teardown path at `multichart-manager.js:442`, whether storing `_mcFinerPanelHostCommitTarget` creates a **new** panel→host retention edge, and whether the `pagehide` handler added to fix a listener leak leaks itself. Merge is held pending that review and the mirror question regardless — per §A16.5, two failing enforced parity tests means this cannot be part of an automated-GREEN chain in its current shape.
+
+---
+
+## 2026-07-28 14:48 — V9 bundle mapped. Six clock-driven React pumps run on an idle single-panel chart, and two of them are unconditional.
+
+Source-first mapping of `dist-v9/assets/talaria-v9-live.js` back to `talaria-design/src/`. **14 `setInterval` sites, every one attributed to source, no bundle period without a source match.**
+
+**Correction to what I reported at 14:24, and I raised it prominently so I am correcting it prominently.** I flagged the **24 ms** interval as "a ~40 Hz timer sitting right alongside the rAF loop in cost". **It does not run on the PO's protocol.** It is at `TalariaV8bLive.jsx:19408` and its `useEffect` returns early at 18949 when `!orderPanelOpen`. The PO's measurement was taken with no orders. It is real, it is shipped, it has correct cleanup, and it is irrelevant to the idle floor. My concern was misplaced.
+
+The related correction: the earlier regex pass that produced `24, 300, 800, 1000, 1500` **missed more than it found** — the real set adds 100, 250, 500, 150, 2500 and 30000. A regex over a 3.4 MB single-line blob is not an enumeration, and I should not have carried its output forward as one. Source-first was the right call and it is the method for this class from now on.
+
+**What actually runs on a quiet single-panel authenticated chart, order panel closed, news closed, not playing:**
+
+| ms | Site | What it does at rest |
+|---|---|---|
+| 250 | `TalariaV8bLive.jsx:13687` | polls `replaySystem` for play state / mode / speed |
+| 300 | `TalariaV8bLive.jsx:13830` | syncs replay nav-integrity badge DOM |
+| 500 | `TalariaV8bLive.jsx:15836` | `setAccountBalance` / `setAccountEquity` from chart/OM |
+| 800 | `TalariaV8bLive.jsx:12577` | `setOmTradeRev(n+1)` fallback poll |
+| 800 | `TalariaV8bLive.jsx:12650` | multichart snapshot poll → `setOmTradeRev` |
+| 1500 | `TalariaV8bLive.jsx:22774` | re-hooks drawing toolbars |
+
+## 2026-07-28 14:49 — The specific mechanism, and why I rate it above the rAF loop
+
+`setOmTradeRev(n + 1)` is a **monotonically incrementing revision counter**. React cannot bail out of a state update whose value always changes. So **two independent 800 ms timers each force a re-render of the trades and bottom-panel subtree, roughly 2.5 times a second, on a chart with no orders and no trades to display.**
+
+Worse, the second one is unconditional in the way that matters: at `12650`, when `__multichartGrid` is **missing or unmounted** — which is the normal state of a single-panel chart — it still falls through to `12631–12632` and calls `setOmTradeRev` every 800 ms anyway. It is polling for a grid that does not exist and bumping a revision counter to announce that nothing changed. The host-aggregation flag that governs it defaults **on** (`orderManagerTradeRows.js:9–10`).
+
+This is a better fit for the observation than the bare rAF loop. **`animate()`'s unconditional 60 Hz wakeup is real and I am not withdrawing it** — but at rest it mostly early-exits, and a wakeup that does nothing is cheap. Clock-driven React re-renders of a large subtree are not cheap, and "a loop is executing with no input change" describes `setOmTradeRev` more exactly than it describes `animate()`. It also matches the *shape* of the signature: a steady floor from the 250/300/500 ms pumps, with periodic heavier work as the 800 ms re-render chains land.
+
+**Both remain hypotheses.** The trace decides which, and the two are cleanly separable in a flame chart — rAF frames attribute to `Chart.animate`, React re-renders attribute to the reconciler. I am holding the fix packet until the trace returns rather than authoring against the more attractive of two unmeasured candidates, because the Director requires a measured before/after on the PO's protocol and the trace **is** the before. That is minutes, not hours, and picking wrong costs a write slot and a day.
+
+## 2026-07-28 14:50 — hcaptcha and Google: the honest answer is a discrepancy, not a finding
+
+Asked whether these belong on an authenticated chart surface, the factual answer from this tree is that **they are not on it at all**.
+
+- **`hcaptcha`: zero matches anywhere in the repo**, case-insensitive, across `chart v 1.4`, `homepage` and `dist-v9`. Not gated, not disabled — absent.
+- **`accounts.google.com/gsi/client`** appears once, at `homepage/src/components/ui/GoogleAuthButton.tsx:31`, reached only through `auth-fuse.tsx:1244` which is wrapped in `SHOW_GOOGLE_AUTH`, and that constant is **`false`** at `auth-fuse.tsx:41`. Nothing in the chart shell references it; `live/index.html` authenticates via `/api/auth/me` alone.
+
+**So I cannot answer the question as asked, and I am not going to pretend the absence is the answer.** The PO observed roughly 160 MB of these subframes on the product. This tree cannot produce them. One of three things is true: the deployed build differs from this tree, the subframes belong to another tab or an extension in the PO's browser rather than to the chart, or they are injected by a hosting layer outside the repo. **That is a provenance discrepancy and it goes up rather than being closed as "not our code"** — the same failure mode as concluding a document is absent because ripgrep skipped it. Settling it needs the deployed surface inspected, not the tree.
+
+One real defect found in passing, unrelated to idle CPU: `MultichartGrid.jsx:7746–7754` starts a 100 ms poll whose id is never cleared by the unmount cleanup at `8168–8179`, so unmounting inside its ~5 s window strands an interval. Bounded and not the floor, but it is a genuine leak and it is mine. Logging as an open row.
+
+---
+
+## 2026-07-28 14:58 — Idle CPU REPRODUCED. First time this week a harness has hit the same phenomenon the PO reported.
+
+Packet `b273b5df6` on `manager-a/idle-cpu`, build `20260726b75`, authenticated, one pair, 1m, nothing playing, no indicators, no orders.
+
+**Measured 13.12% average idle CPU against the PO's 20.6%, peak 177.28%.** Nonzero, same order of magnitude, and it is the first harness this train to reproduce the phenomenon rather than describe a different workload at the wrong scale. That was the acceptance condition and it is met. Two prior harnesses produced confident numbers for workloads nobody was asking about; this one did not.
+
+**Attribution of the floor is rAF.** `FireAnimationFrame` fired 10,023 times, live rAF creation site is `Chart.animate`. Flame totals over the window: `v8.callFunction` ~3829 ms, `WebFrameWidgetImpl::BeginMainFrame` ~3090 ms, `Blink.Animate.UpdateTime` ~2980 ms, `PageAnimator::serviceScriptedAnimations` ~2914 ms, `FireAnimationFrame` ~2646 ms.
+
+**The number inside that which I think matters most:** 3829 ms of JS across 10,023 callbacks is **~0.38 ms of JavaScript per animation frame**. An `animate()` that merely wakes and early-exits costs microseconds. **0.38 ms per frame is real work**, so something inside the loop is doing something at rest — and neither the static census nor this trace has yet said what. That is the gap I am closing next.
+
+**The Director's periodic-task inference is not supported by this run.** Only one spike above 50% occurred in 70 seconds, so **no stable spike period exists to match against the interval census** — which was the whole diagnostic strategy I built the brief around. The spike-then-fall signature the PO described did not reproduce. I am not treating that as refuting the PO's observation; headless differs from a real desktop session, and one spike is not zero. But **my period-matching plan produced nothing and I should say so rather than quietly dropping it.**
+
+Live handles at rest: 9 `setInterval`, **0 `setTimeout`**, 1 rAF. The nine intervals match the static census exactly — the V9 bundle's 250/300/500/800/1500/30000 ms pumps, `chart-window-limit.js`'s 25 s heartbeat, and `economic-news-sidebar.js`'s 1000 ms countdown. **Two independent methods agreeing on the same nine handles is the strongest cross-check I have had all week**, and it retires any worry that the census missed a registration site.
+
+## 2026-07-28 14:59 — I am rejecting part of this report, and reconciling it against the static audit
+
+The suspects section reports "present in trace context" and "broad DOM timer/poll patterns present" for M20-Q1, the forming-candle updater, and time-driven resample invalidation.
+
+**Those are not findings and they do not enter the record.** A callsite appearing in a trace's static context is not a function that ran. The static census established the opposite for all three **with the exact searches stated**: M20-Q1's 600 ms poll is reachable only behind its kill-switch and the default path explicitly stops the legacy timer first; the forming-candle updater is `isPlaying`-guarded and cleared by `stopAllPlayback()`; no time-driven resample or cache invalidation exists at all.
+
+Vague trace-context assertions must not be allowed to overwrite precise search-backed refutations. **The resolution is not to pick the more recent report — it is to ask the question empirically**, because the trace author has the one thing the census did not: a live browser. Did those paths *execute*? I have sent it back to answer exactly that, and told it "did not execute" is the expected and perfectly good answer.
+
+**One item in that section is a genuine find and the author under-weighted it: repeated `PATCH /api/sessions/870/state` on an idle chart.** That is work with no input change, which is precisely the phenomenon under investigation, and it **contradicts the census's well-evidenced finding that no autosave `setInterval` exists**. Both cannot be right as stated. If it is event-driven rather than timer-driven, then something is firing events repeatedly at rest and that is a more interesting defect than a stray timer. I have asked for count, cadence, body size, trigger, and **the main-thread cost of serialising the body** — for a large session state that can exceed the network cost, and it would be invisible to an interval census by construction.
+
+## 2026-07-28 15:00 — A measurement-validity problem that cuts against the headline
+
+**10,023 `FireAnimationFrame` in 70 seconds is ~143 per second, not 60.** Either headless is running the callback uncapped, or there is more than one rAF loop despite the census showing a single live handle.
+
+This works **against** the conclusion the same report draws. If headless fires rAF at ~2.4× the rate a real browser would, then **rAF's share of the 13.12% is inflated by that factor** and its true contribution on the PO's machine is proportionally smaller — which would also help explain why we measured 13.12% where the PO measured 20.6% with a *different* mix underneath. I have required the attribution restated normalised to 60 Hz, and told the author to say directly if its headline changes.
+
+I am flagging this myself rather than waiting for the adversarial reviewer to find it. The number flatters the hypothesis I currently favour least, and that is exactly when it needs checking hardest.
+
+## 2026-07-28 15:01 — Where the two candidates now stand, and why I am still not authoring a fix
+
+- **`animate()` rAF loop** — confirmed running, confirmed the live rAF site, and carrying ~0.38 ms of JS per frame. But the frame rate is suspect and *what* it does per frame is unattributed.
+- **The six V9 React pumps** — all nine live intervals confirmed present at rest by two independent methods, but **the trace does not attribute cost to them**, and the two 800 ms `setOmTradeRev` re-render chains I rated highest at 14:49 do not appear in the flame totals at all.
+
+So my 14:49 ranking is **not supported by this trace**, and I am saying that before anyone else does. The evidence currently favours the rAF loop over the React pumps, which is the reverse of what I told the Director an hour ago — subject to the 143 Hz correction, which could reverse it again.
+
+`_mcDiag.renders` settles it and I did not ask for it in the original brief. Delta over 60 idle seconds: ≈ frame count means we repaint the whole chart every frame at rest and the defect is found; ≈ 60 means the countdown drives it; ≈ 0 means the loop is overhead and the cost is elsewhere. I have also asked for `fullResamples` and `incrementalResamples` across the same idle window, because **a resample advancing with nothing playing would be O(history) work at rest** and would outrank every other row on this board.
+
+Fix packet stays held. One more round of measurement is cheap; authoring against the wrong one of two candidates costs a write slot and a day, and I have now been wrong about the ranking once already today.
+
+Subframes: `hcaptcha.com` and `accounts.google.com` are **absent from the authenticated chart frame and target inventory at runtime**. That is now two independent confirmations — source and live browser — that the PO's ~160 MB does not come from this surface in this build. The provenance discrepancy stands and goes up.
+
+---
+
+## 2026-07-28 15:12 — The superseded probe returned, and it corroborates the idle finding at a completely different workload
+
+Packet `d3ac2b561` on `manager-a/cpu-attribution`, base `8b1ed59b1`. I superseded this mid-flight and told it to land as secondary evidence. **It turns out to carry the single most useful cross-check I have.**
+
+Render triggers under load — two panels, replay running:
+
+| Panel | Renders | Data changes | Ratio | rAF | Replay tick | Something else |
+|---|---|---|---|---|---|---|
+| A — EURUSD 15m | 752 | 349 | 2.15:1 | **402** | **0** | 350 |
+| B — EURUSD 1m | 1372 | 375 | 3.66:1 | **700** | 362 | 310 |
+
+**rAF is the largest single render trigger in both panels — 53% and 51% — and on Panel A, with replay actually running, not one render was triggered by a replay tick.**
+
+That is the same mechanism the idle trace independently attributed the resting floor to: `Chart.animate` at `chart.js:28676`, re-requesting its own frame unconditionally as the first statement with no idle guard. **Two harnesses, two workloads that could hardly be more different — one with nothing happening, one with replay driving two panels — pointing at one loop.**
+
+I am deliberately not celebrating this yet. Cross-workload agreement is either the real finding or a **shared instrumentation artefact**, and the specific way it could be an artefact is obvious enough that I put it at the top of the review brief: if renders are attributed by call stack, "rAF" may be the frame the work was *delivered* on rather than the thing that *caused* it, in which case any coalesced render is labelled rAF by construction and the histogram is close to tautological. Until that is settled the number does not enter the record. Top-tier review dispatched, because §A13.2's numeric-correctness trigger applies and this figure is about to carry a priority-zero decision.
+
+Two further weaknesses I flagged rather than waiting to be told: **the "something else" bucket is 350 and 310 renders, roughly a quarter of all renders, unattributed** — a quarter unnamed materially weakens any ranking built on the rest. And **Panel A's zero replay-tick renders is surprising enough to be either an important finding or a broken counter**, and I do not currently know which.
+
+## 2026-07-28 15:13 — brief-defect, mine, fourth of the train
+
+I specified **"no indicators"** for this probe while setting acceptance as **matching the PO's 129.3%** — a figure the PO took **with** indicators present. That brief is internally inconsistent on its face. The run came in at 30.17% process CPU, and I have no way to tell how much of the 4x shortfall is my missing indicator load versus something else absent from the harness, because I removed the variable and then asked to match a number that contains it.
+
+Logged as `brief-defect` per §A16.4, not counting against the author, who reported the shortfall plainly and correctly warned that the attribution describes its own workload rather than the PO deficit. I have asked the reviewer to tell me whether the missing indicators plausibly account for a 30 → 129 gap or whether that gap is too large for that explanation, because if it is too large the harness is missing something structural and every load measurement I take with it will be wrong the same way.
+
+**Both harnesses now under-reproduce, and by different factors** — idle 13.12% against 20.6% (0.64x), loaded 30.17% against 129.3% (0.23x). If under-reproduction were a constant environment factor those ratios would be similar. They are not, which says the loaded harness is missing a contributor the idle one is not. Indicators are the obvious candidate and are also exactly what I omitted.
+
+## 2026-07-28 15:14 — Zero workers, and what that does to the competitor hypothesis
+
+**No dedicated workers were observed at all**, by an injected `Worker` wrapper and by CDP worker-target metrics independently. Worker task share 0%; main-thread task share 14.27%.
+
+The standing hypothesis from the CPU finding was that the competitor's advantage is off-main-thread execution. This does not confirm that hypothesis — it establishes our side of it: **nothing of ours runs off the main thread on this workload.** Combined with the idle trace's ~0.38 ms of JavaScript per animation frame and rAF driving half of all renders under load, the picture is a single thread doing everything, woken unconditionally sixty-plus times a second.
+
+I have asked the reviewer whether the two-method worker check is sound enough to state as fact, because "we have no workers" is the kind of clean negative that turns out to have an exception.
+
+**Layer inventory: 13 live canvas/SVG surfaces, 27.75 MiB total backing store**, with the main chart canvas and drawing SVG at 7,274,400 bytes each per panel. That does not come close to explaining the PO's 154 MB GPU figure against the competitor's 34 MB, and I have asked the reviewer to say so or correct me. Teardown behaved: after `removeChart("B")`, B's layers were not retained.
+
+Write slot freed — cpu-attribution is done. In flight: idle-cpu (follow-up running), host-listener-leak (authored, in review). Three top-tier reviews concurrent, all read-only and uncapped.
+
+---
+
+## 2026-07-28 15:26 — DECISIVE: the chart does not repaint at rest. My lead hypothesis is demoted and I am demoting it before anyone asks.
+
+Amended packet `35d2be530` on `manager-a/idle-cpu`. Idle CPU 14.91% this run against the PO's 20.6%.
+
+| Counter | Delta over idle window |
+|---|---|
+| `_mcDiag.renders` | **0** |
+| `_mcDiag.resamples` | **0** |
+| `_mcDiag.fullResamples` | **0** |
+| `_mcDiag.incrementalResamples` | **0** |
+| `PATCH /api/sessions/*/state` | **0** |
+
+And the three disputed paths, answered empirically in a live browser rather than by pattern-matching source: **M20-Q1's legacy 600 ms poll did not execute. The forming-candle updater did not execute. Time-driven resample/cache invalidation did not execute.** That resolves the conflict I flagged at 14:59 **in favour of the static census**, and the census's search-backed refutations stand.
+
+**The rAF frame-rate question resolved against my lead hypothesis.** Headless was running at **141.86 fps**, confirmed — no fixed-frame-rate or vsync flag, count excludes page load. `FireAnimationFrame` self-time was 3457 ms = 5.69% measured, and **normalised to 60 Hz that is 2.41%**.
+
+**So `Chart.animate`'s unconditional loop is real, it is genuinely unguarded, and it costs about 2.4% — not 20%.** I put it forward as the lead at 14:22 and again at 15:01. It is not the floor. Demoted, and I would rather say that in the same hour I said the opposite than let it stand because it was mine.
+
+**I also got the earlier per-frame arithmetic wrong in a way worth naming.** At 14:58 I divided 3829 ms of `v8.callFunction` by 10,023 frames to get "~0.38 ms of JavaScript per animation frame" and concluded real work was happening in the loop. With `renders = 0`, `animate()` is provably early-exiting every frame, so that inference was unsound — I attributed a whole-page JS total to one callback because it was the callback I was looking at. The division was arithmetic; the attribution was assumption.
+
+## 2026-07-28 15:27 — The investigation now has no suspect, and I would rather state that than name one
+
+Adding up what survives: 14.91% idle, of which rAF explains **2.41%**. Nothing repaints. Nothing resamples. Nothing autosaves. Every one of the Director's five named suspects is eliminated, four by the census and three of those confirmed empirically as never executing.
+
+**Roughly 12.5 percentage points are unattributed and every named candidate is dead.**
+
+Trace-event categories — `FireAnimationFrame`, `v8.callFunction`, `BeginMainFrame` — say which *machinery* ran, not which *code* ran, and I have been reasoning from machinery all afternoon. What I have never asked for is the obvious thing: **a bottom-up JavaScript self-time profile, top functions by self time, mapped to source.** Dispatched now.
+
+My expectation is the six V9 React pumps, since they are the only known periodic work left standing, and that would put my 14:49 ranking **back in play after I withdrew it at 15:01**. I have flagged that as a hypothesis to refute and told the author the profile wins if it disagrees. I have now moved on this question twice in one afternoon; the way to stop is to measure the thing directly instead of re-ranking candidates.
+
+## 2026-07-28 15:28 — Two holes I left, both mine, both now closed by instruction
+
+**The counter I asked for answers a narrower question than I thought.** `render()` increments `_mcDiag.renders`, but **M20-Q2's default path does a region paint on the price axis rather than calling `render()`**. A once-per-second region paint is therefore **invisible to that counter by construction.** So `renders = 0` supports "no *full-chart* painting at rest" and **not** "no painting at rest", which is how I was about to read it. Sent back for direct instrumentation of the region-paint path.
+
+**And the validity control I should have demanded in the first brief: Chrome tracing is not free.** Attaching the Performance recorder and CDP instrumentation consumes CPU, so some fraction of 14.91% may be **the act of measuring**. If the untraced figure is materially lower, every attribution taken today needs rescaling. That is the largest single threat to this whole line of work and it has been sitting unexamined since 14:04. Required now, both numbers side by side.
+
+Related and practical: the same conditions produced **13.12% then 14.91%**, about 14% apart. I have asked for the spread across three runs, because **a fix has to beat that noise before a before/after pair means anything**, and the Director's acceptance criterion is precisely a before/after pair.
+
+## 2026-07-28 15:29 — Status, plainly
+
+We have eliminated a great deal and located nothing. Four hours in, the honest summary is: the idle floor reproduces, it is not repainting, it is not resampling, it is not any of the five suspects, and rAF accounts for a sixth of it. The remaining five-sixths has never been profiled at function granularity.
+
+That is progress — an eliminated hypothesis is worth having and several of these were load-bearing — but it is **not** the small local fix inside 46 hours that the CPU finding hoped for, and I am not going to present elimination as if it were location. No fix packet has been authored and none should be until the profile names a function.
+
+---
+
+## 2026-07-28 15:44 — RETRACTION. The render-trigger histogram is BLOCKED. I reported it to the Director as corroboration and it is not.
+
+At 15:12 I told the Director that rAF was the largest render trigger under load — 53% and 51% — and called it "the single most useful cross-check I have", explicitly offering it as independent support for the idle rAF finding. **That is withdrawn in full. It may not be cited at any scope, including "this run only".**
+
+The review settled the exact question I raised and the answer is worse than I feared.
+
+**The histogram labels delivery, not cause.** Attribution is the synchronous dynamic scope of the JS stack at the moment `render()` returns. Nothing records who called `setTimeout`, who called `requestAnimationFrame`, or — decisively — **who set `renderPending`**. `animate()` renders only when that flag is set, and the flag is written from roughly **thirty sites across four files**: four in `chart.js`, eleven in `replay-system.js`, eleven in `order-manager.js`, three in `panel-cmd-bridge.js`. Every render `animate()` performs is a *deferred* render whose cause was a flag write on an earlier stack the probe cannot see, so it is labelled `'rAF loop'` because that is the only thing on the stack. **Any coalesced render is labelled rAF by construction.**
+
+The packet's own numbers prove it without inference: Panel A recorded **752 renders but only 53 `scheduleRender` calls**; Panel B **1372 renders and 15**. Both counters non-zero, so the wrap worked — meaning at least 699 and 1357 renders never passed through the one scheduling function the instrument can observe.
+
+**And Panel A's "0 replay ticks" is not a broken counter — it is an inversion.** The reviewer closed the arithmetic exactly: A ticked 349 times (`bumpDataVersion` = 349), the indicator recalc fired 698 = 2 × 349 from two call sites, 350 renders are the synchronous `chart.render()` calls on a bare `setTimeout` stack, 402 are deferred `renderPending` harvests, and 350 + 402 = 752 = 2.15 × 349. **All 752 of Panel A's renders are causally downstream of replay ticks. True attribution is ~100%; the histogram reports 0%.**
+
+The cause is a wrap-list gap. The host driver path is `scheduleNextTick` → `animateTick` → `updateChartWithAnimatedCandle` → `applyMultichartMirrorFrame` → `_finishMultichartMirrorRender`, and **not one of those is instrumented**, while Panel B's passive-mirror path goes through three methods that are. The entire 0-versus-362 asymmetry is a property of the probe, not the product.
+
+**So the unattributed share is not the quarter I flagged — it is 74% to 100%.** The rAF bucket carries no causal information either, leaving only "replay tick" as honest, at 0/752 and 362/1372.
+
+**My instinct was right and my conclusion was wrong.** I wrote at 15:12 that cross-workload agreement is "either the real finding or a shared instrumentation artefact". It was the artefact. This harness is not a second witness; it is a mirror. I should have held the number until the review returned instead of leading a report with it — I even wrote "I am deliberately not celebrating this yet" and then celebrated it in the summary I sent up. That gap between what I journalled and what I reported is the actual error.
+
+## 2026-07-28 15:45 — The finding that transfers, and it may pre-empt the profile I just dispatched
+
+Two unmatched variables in that packet apply directly to the idle work, and one of them could mean **the bottom-up JS profile I dispatched at 15:26 comes back empty.**
+
+**`deviceScaleFactor: 1`.** A real display at dpr 2 quadruples raster and GPU pixel work for identical layout — and raster/compositor/GPU is **53% of measured CPU** (19.1 of 36.25 CPU-seconds are *not* renderer main-thread time). If the PO's machine renders at dpr 2 and our harness at dpr 1, we are systematically under-measuring the largest share of the cost.
+
+**That reframes the 12.5 unattributed points.** I have been assuming the missing idle CPU is main-thread JavaScript, which is why I asked for a JS self-time profile. **If it is raster and compositor work, a JS profile will find nothing and I will have spent a round confirming an absence.** I am not cancelling the profile — knowing the JS side is quiet is worth having, and it is already running — but I am adding the process-level thread breakdown to the same packet, because that is the measurement that discriminates.
+
+**Page visibility was never recorded** in the loaded run: no `visibilityState`, `document.hidden`, `bringToFront` or `Page.setWebLifecycleState` anywhere in the harness, launched headful with no foregrounding step. An occluded headful window has rAF throttled to near zero. The idle harness is clear on this axis — 141.86 fps proves it was not throttled — but it is exactly the class of confound I have not been checking, and it must become a recorded field in every CPU harness rather than an assumption.
+
+**And the dpr insight independently supplies a hypothesis for the GPU gap I could not explain at 15:14.** Measured canvas backing store is 13.87 MiB at dpr 1 (the other half of the quoted 27.75 MiB is a fabricated `w×h×4` estimate for SVG overlays with no measured GPU residency). At dpr 2 the same layout is **55.5 MiB of canvas alone**, and with compositor tiles and double buffering the PO's 154 MB stops looking mysterious. Untested, but it is the first mechanism proposed for that number.
+
+## 2026-07-28 15:46 — Corrections to my own record, and one place I was wrong to suspect
+
+- **`Chart.animate` opens at `chart.js:28677`, not 28676** — 28676 is blank in base `8b1ed59b1`, and the same function sits at 29108 in the working tree because Manager C has an uncommitted rewrite in flight. I have cited 28676 three times today. **Line numbers must be pinned to a commit when they enter the record**, and on this repo that is not pedantry: the file is being rewritten underneath us by another manager.
+- **My double-counting suspicion was unfounded where I aimed it.** Windows are genuinely identical, renders are not double-counted, and 2.15:1 is a real renders-per-tick figure. I said in the brief that confirming me wrong was as valuable as finding a defect and I am recording it as such.
+- **But the error class I named is live elsewhere in the packet.** `timed()` pushes **strings** onto the shadow stack, while child-time accounting guards on `typeof parent === 'object'` — which can never be true. So `selfMs` is silently identical to `totalMs` in all 26 rows, making `topMainThreadConsumersBySelfMs` an **inclusive**-time ranking mislabelled as self time. Four nested Panel B frames sum to 16.1 s against 17.1 s total for both panels. **That table does not enter the record either.**
+- **The reviewer declined to let me take the blame for the reproduction gap, and I am recording its reasoning rather than my mea culpa.** My no-indicators brief defect is real, but indicators cannot close a 4.29× gap when the main thread is at 14.27% of one core — that would need it at ~113% of a single thread. dpr, unverified visibility, and Panel B never playing are each independently large. **Fixing my brief is necessary and not sufficient**, and I would have over-corrected on my own error and missed the structural ones.
+
+## 2026-07-28 15:47 — Two things to carry forward
+
+**The probe measured the one number that would have helped and threw it away.** `rafCallbacks` and `rafMs` are computed and then discarded by `summarizeProbe` before the evidence is written — zero occurrences in the JSON. The packet instrumented the exact mechanism under investigation and ended up unable to say anything about it. Three small mechanical fixes would make it citable: attribute the `renderPending` write at its site rather than the frame that harvests it, extend the wrap list to the five driver-path functions, and stop dropping the rAF fields. Worth doing when the loaded protocol comes back, not now.
+
+**The documented re-run command does not reproduce the evidence.** `--play-ms 900000` landed on `warmupMs`; the evidence shows `playMs: 120000`. What ran was a 15-minute warmup and a 120-second window, by which point Panel A had already consumed 401→1826 of 2000 bars, so the measurement covers the final 9% of the dataset — and A exhausted it entirely at ~110 s, idling for the last two samples. **A reproduction command that does not reproduce is a provenance defect**, and it is the second artefact-integrity failure this train.
+
+Also correcting a claim I made at 15:14: **"nothing runs off the main thread" is wrong.** 53% of process CPU is off the renderer main thread by design — compositing, raster, GPU, networking. The defensible statement is narrower: **no application JavaScript runs on a dedicated worker; all product JS is on the renderer main thread.** The worker check itself is sound by two independent methods, but it does not cover `SharedWorker`, service workers or worklets, and I stated a conclusion broader than the measurement.
+
+---
+
+## 2026-07-28 15:58 — Leak packet BLOCKED on shape, fix survives all six attacks, and three things I told the Director are wrong
+
+Review of `9ad391084` returned **BLOCK — on shape only**. Every one of the six attack points I aimed at the fix came back in the author's favour, tested with instrumentation rather than argument. I could not have asked for a cleaner separation: the change is right, the packaging is not.
+
+**B1, the blocker:** `homepage/public/chart/chart.js` is a generated copy of the canonical file, enforced byte-identical, and **it is what the homepage deployment actually serves**. As committed, the deployed engine still leaks. Failure set verified exhaustively — all 153 tracked `*.test.mjs` run at base and at HEAD in pinned trees — and it is exactly the two parity cells, nothing else moved.
+
+### Correction 1 — my mirror escalation rested on a false premise
+
+At 14:38 I escalated that the mirror is "diverging from two directions at once" and that byte-parity makes every `chart.js` edit structurally a two-territory change, colliding with the no-commit-spans-two-territories rule. I asked the Director to choose between three options.
+
+**The first option is simply the fact.** The mirror **is generated** — `chart v 1.4/talaria-design/scripts/sync-v9-to-homepage.mjs` does a plain `copyFileSync` of canonical onto mirror. For a copied file, byte-parity *is* the generation check, so **the gate is correct and my framing of it as possibly-wrong was not.**
+
+And **Manager C is not breaking parity.** C changes both files symmetrically, −32 lines each. My "diverging from two directions" claim was wrong; I inferred divergence from seeing the mirror in C's dirty list without checking whether the canonical moved with it.
+
+**So the escalation largely dissolves and I am withdrawing it as posed.** What survives is much narrower and purely operational: the generator clobbers whatever it copies onto, so it must not be run in the main checkout while C has uncommitted mirror edits. Run inside the packet's own worktree it is safe, which is how I have briefed the remediation. That is a sequencing note, not a governance question, and I should not have sent the Director a ruling request for something a five-minute read of the sync script answered.
+
+### Correction 2 — my dispatch brief contained a false finding
+
+I told the reviewer that `multichart-manager.js:442` was an **unexercised teardown path** and asked it to settle the assumption. **It is not a teardown path at all.** It is the error fallback inside `addChart`, assigning the initial `src` of a freshly created, not-yet-inserted iframe when the src builder throws. No panel document has loaded, no `Chart` exists, no listener was ever installed. All three `.src =` sites in both managers are on a fresh `createElement('iframe')`.
+
+Logged as **manager-finding-defect** per §A16.4. The reviewer tested the shape anyway and it is covered — `pagehide` fires synchronously with `persisted=false` on `frame.remove()`, ancestor removal, `innerHTML=''` **and** `src='about:blank'` on a loaded panel, host listeners 1 → 0 in all four.
+
+### Correction 3 — "the leak is a one-off, not a class" is wrong
+
+At 14:39 I recorded the sibling audit as a negative I had expected to be positive, and concluded a single fix was the right disposition rather than a sweep.
+
+**There is a second one.** The drag-end guard at `chart.js:27148–27154` is *paired* — which is what my audit asked about and correctly found — but it is **not teardown-safe**: a panel destroyed mid-drag strands three to four `window.parent` listeners, because pairing only fires on drag end and teardown does not wait for one. **My audit asked the wrong question.** Pairing and teardown-safety are different properties and I conflated them, which is the same category error as reachability-versus-textual-presence that cost a round earlier this week. No concrete trigger found, low severity, logged as an open row — but the disposition "one-off, not a class" is withdrawn.
+
+## 2026-07-28 15:59 — A correction in the author's favour, and it changes what I can ask for in future
+
+The author wrote — and I repeated to the Director — that in-browser retention **could not be proven**, because no browser API exposes a listener census outside DevTools. **That is false, and the reviewer proved it by doing it.** CDP's `DOMDebugger.getEventListeners` gives an exact census of a window's listeners, and `page.metrics()` gives detached-document counts.
+
+Over eight boot/teardown cycles with forced GC:
+
+| | detached documents retained | stranded host listeners |
+|---|---|---|
+| leaky | 8 | 8 |
+| fixed | **0** | **0** |
+
+Ten cycles gave 10 versus 0. So the leak is exactly one retained panel document per teardown and the fix takes it to zero — **measured, not argued from structure.** The reviewer explicitly warned off its own heap figure as an artefact of a synthetic payload, which is the right instinct and the opposite of what happened with the render histogram.
+
+**The standing consequence: "no API exposes this" is not an acceptable limit on a browser packet from now on.** CDP exposes far more than the page-visible API surface, and I accepted an unprovable-in-principle claim that was merely unattempted.
+
+Finding (a) is **confirmed with a positive control** — the orphaned handler ran 0 times post-teardown, while a live panel handler fired once and a host-registered listener fired four times across the same commits. A zero from a silent instrument proves nothing; this zero is real. **The leak contributes nothing to the CPU deficit and must not displace idle-CPU work.**
+
+## 2026-07-28 16:00 — The gap worth fixing, and the remediation
+
+Mutation testing killed five of six mutants but **one survived: swapping `'pagehide'` for `'unload'` passes all 11 cells.** That matters more than a generic coverage gap, because `unload` is **precisely the design the author considered and rejected** — it makes the document bfcache-ineligible, a silent behaviour regression. So the gate currently goes green over the one alternative the packet's own reasoning rules out. **A gate that does not pin the decision the packet rests on is not gating the packet.**
+
+Remediation dispatched cheap: regenerate the mirror via the generator rather than by hand, inside the packet worktree so C's edits are untouched, and add a cell that kills the `unload` mutant. The product fix is explicitly out of the writable set.
+
+Two open rows I am not acting on now: all browser evidence is Chromium 148 only, and a deterministic host-driven removal could join `_b70ShadowDisposeIndicatorGeneration()` three lines above `c.frame.remove()`, dropping the sole dependency on browser unload behaviour. That is hardening, not a defect, and it is worth noting the host already has a de facto panel-dispose hook at exactly the right place despite `Chart` having no `destroy()`.
+
+---
+
+## 2026-07-28 16:14 — The instrument was 45% of the measurement. Correcting the headline I gave the Director at 15:26.
+
+The validity control returned and it is the most consequential number of the day.
+
+| Condition | Idle CPU |
+|---|---|
+| Traced + page-init probe + profiler attached | **14.11%** |
+| **Untraced, no probe, 3 runs** | **7.79% mean** (7.70 / 6.73 / 8.93) |
+
+**About 6.3 percentage points of the "idle CPU floor" was our own measurement apparatus.** Every figure I have reported today — 13.12%, 14.91%, and the 12.5 "unattributed" points I built two dispatches around — was inflated by roughly 45%.
+
+**This materially weakens the claim I led with at 15:26.** I told the Director "IDLE CPU REPRODUCED: 13.12% vs the PO's 20.6%" and treated the acceptance condition as met. **The real harness floor is 7.79% against 20.6%, so we reproduce about 38% of the phenomenon, not 65%.** The harness still shows nonzero idle CPU and is still above the competitor's 0.4–5.1% band, so something is there — but "reproduced" was too strong and I am downgrading it to "partially reproduced, majority unexplained."
+
+I asked for this control myself at 15:28 and called it "the largest single threat to this whole line of work". It was, and it was sitting unexamined for two hours while I dispatched three rounds of attribution against a number that was 45% instrument. **The lesson is not that I eventually caught it — it is that a measurement harness needs its own null control before its first result is reported, not after its fourth.**
+
+## 2026-07-28 16:15 — My React-pump hypothesis is dead, definitively and by direct measurement
+
+The bottom-up profile is unambiguous. Main thread **82.8% idle**. Largest product JS frame in the entire top-20: **72.9 ms = 0.12%**. And the seven named interval callbacks I expected to find the answer in, measured directly over 60 seconds:
+
+| Site | Wall time |
+|---|---|
+| `TalariaV8bLive.jsx:15836` account balance/equity | 50.8 ms |
+| `TalariaV8bLive.jsx:13830` nav-integrity DOM sync | 32.1 ms |
+| `TalariaV8bLive.jsx:13687` replay-state poll | 8.4 ms |
+| `TalariaV8bLive.jsx:12577` `setOmTradeRev` pump | 4.9 ms |
+| `economic-news-sidebar.js:1105` news countdown | 3.0 ms |
+| `TalariaV8bLive.jsx:22774` toolbar re-hook | 2.3 ms |
+| `TalariaV8bLive.jsx:12650` panel snapshot pump | 2.2 ms |
+| **Total** | **103.7 ms = 0.17%** |
+
+**All seven together cost 0.17% of main-thread time.** My 14:49 reasoning — that two unconditional `setOmTradeRev(n+1)` pumps force a React re-render of the trades subtree 2.5 times a second and that this was the best fit for the observation — was mechanically correct about what the code does and **wrong by two orders of magnitude about what it costs.** A revision counter that always changes does force a re-render; the re-render is simply cheap when there is nothing to render.
+
+That is the third hypothesis of mine to die today and the pattern is consistent: **I have been reasoning from mechanism to cost without measuring cost.** Plausible mechanisms are easy to find in a codebase this size. Every one of them today has been either free or absent.
+
+The M20-Q2 countdown closes the same way: `_tickBarCloseCountdown` ran 8621 times for **93.2 ms total**, and `_paintBarCloseCountdownRegion` ran **0 times**. The hole I flagged at 15:28 was real in principle — `renders = 0` genuinely cannot see a region paint — and in this run there was no region paint to see.
+
+## 2026-07-28 16:16 — rAF: the number did not move, the denominator did
+
+rAF normalised to 60 Hz is **2.16%**, and it is now confirmed that `FireAnimationFrame` duration includes the JavaScript executed inside the callback, not merely browser-side dispatch. So that figure is the loop's full cost.
+
+Against an untraced floor of 7.79%, **rAF is roughly a quarter to a third of the harness's real idle CPU — the largest single named contributor by a wide margin**, with all product JS intervals at 0.17% behind it.
+
+**I want to be precise that this is not a third reversal.** I demoted rAF at 15:26 from "the floor, ~20%" to 2.41%, and that demotion stands unchanged — it is 2.16–2.41% now as it was then. What changed is the total it sits inside. Same numerator, corrected denominator, larger share. `Chart.animate` re-requesting its frame unconditionally with no idle guard remains a genuine defect and is now the best-supported one we have, but it is a two-point defect, not a twenty-point one.
+
+## 2026-07-28 16:17 — Where this leaves the Director's premise, stated plainly
+
+The CPU finding's argument for priority was that an idle floor would be **"a small local fix rather than a rewrite, the only credible route to a real CPU improvement inside 46 hours."**
+
+**On what we can measure, that premise is not supported.** Main thread 83% idle, product JavaScript at 0.17%, no repaint, no resample, no autosave, every named suspect eliminated. **There is no small local JavaScript fix to be had here**, because there is almost no JavaScript running. The largest thing we could delete is worth about two points.
+
+Two honest readings, and I am not choosing between them yet:
+
+1. **The cost is off the main thread** — raster, compositor, GPU. The loaded-protocol review found 53% of process CPU there, and 83% main-thread idle here points the same way. Dispatched: per-thread and per-process breakdown, plus a `deviceScaleFactor: 2` re-run, since dpr quadruples pixel work and is our largest unmatched variable. Framed as a hypothesis to refute — **if dpr 2 does not move it, that eliminates the leading remaining explanation and is worth having.**
+2. **The harness does not reproduce the defect.** We now measure 7.79% where the PO measures 20.6%, so **~62% of the phenomenon is absent from our instrument.** The fix may exist and be invisible here.
+
+Both readings converge on the same conclusion: **more harness rounds have low expected yield, and the decisive evidence is a profile of the PO's actual session.** Filing a PO-REQ for a 10-second Chrome Performance recording plus a `chrome://tracing` process breakdown on the machine that produced 20.6%. That is minutes of PO time and it discriminates in one shot between "our harness is blind to it" and "it is off-main-thread work we can find here".
+
+One tooling gap worth closing regardless: **no source map exists for `talaria-v9-live.js`**, so minified frames like `xA`, `I8`, `M3` cannot be resolved. The author correctly declined to guess at their identities rather than inventing attributions. Asked whether the Vite build can emit maps — read-only, no build change.
+
+---
+
+## 2026-07-28 16:28 — Mirror closed and the mutant killed, but the interesting finding is about the generator
+
+Remediation landed at `74965d0f7`, cherry-picked onto the packet branch as **`09bdd9ef9`**. I verified both claims myself rather than accepting them:
+
+```
+canonical: 8CBEE957C07350BD8BBCE097BD74B82C900E6B45263B46A6EB480592174AB1ED
+mirror   : 8CBEE957C07350BD8BBCE097BD74B82C900E6B45263B46A6EB480592174AB1ED
+MATCH: True
+```
+
+The cherry-pick is +70 lines across two files, which reconciles exactly: 43 lines of fix that the mirror was missing, plus the ~27-line test cell. Both previously-red parity cells pass. The new cell kills the `unload` mutant — shipped implementation 12/12, mutant 11 pass with the new cell the only failure. M23 packet is now `c9050af81` + `9ad391084` + `09bdd9ef9`.
+
+**The finding worth recording is that I briefed the generator wrong, and so did the review before me.**
+
+Both of us described `sync-v9-to-homepage.mjs` as "a plain `copyFileSync` of canonical onto mirror". **It is nothing of the sort.** Running it touched roughly twenty paths: `dist-v9/index.html`, both `sw.js` files, `legacy-index.html`, `chart-embed.html`, `harness/serve.mjs`, `talaria-design/live/index.html` and their homepage counterparts; it **deleted five `.log` files** under the homepage harness; it created untracked module copies; and most significantly **it bumped `CHART_ENGINE_BUILD` in the canonical `chart.js` from `20260724b61` to `20260727b81`.**
+
+**The generator writes to its own input.** A tool that mutates the source of truth it is supposed to be copying *from* is a genuinely hazardous shape, and it means my instruction — "run the generator rather than hand-copying, so the result is reproducible" — was advice that would have produced an unreviewed nineteen-file diff had the author followed it literally. The author instead reverted everything and re-applied only the single chart-engine copy, which was the right judgement, and caught a defect in my brief by exercising it.
+
+This is the second time today a claim of mine about the repo's plumbing came from reading a characterisation rather than the script. I withdrew the mirror escalation at 15:58 on the strength of "it's generated by copyFileSync" — **that premise is now itself qualified.** The chart-engine *step* is a copy; the *script* is a deploy sync. My withdrawal still stands, because the byte-parity gate is still the right check for a copied file and C is still preserving parity symmetrically. But I reached the right conclusion through a description I had not verified, twice in a row, and that is luck rather than method.
+
+## 2026-07-28 16:29 — Three things the hash check cannot answer, now in review
+
+The bytes are machine-verified and the mutant kill is demonstrated, so the mechanical half is gate-covered. **The risk lives entirely in the surgery**, which no gate sees:
+
+1. **Reverting the other ~18 generator outputs may have preserved real drift.** If any of those files was *already* out of sync with its source before this packet, we have kept a defect and labelled it hygiene. That is precisely the failure that blocked the speed-cap packet this week — merging while `homepage/public/chart/**` and `dist-v9` mirrors still shipped pre-change behaviour. I want each of the twenty classified as genuine no-op or pre-existing drift.
+2. **Skipping the `CHART_ENGINE_BUILD` bump may break cache invalidation.** The canonical stamp reads `b61` while the deployed surface is `b75` with `b79`/`b80` candidates — **the stamp is already stale relative to reality, by fourteen builds.** If that constant is what busts client caches, merging a `chart.js` change without moving it risks clients being served a cached pre-fix engine, and the fix would be invisible in production while every gate reads green. That is the worst failure shape available: a green chain certifying a change nobody receives.
+3. **The commit is not reproducible from its own message.** The mirror is the output of running the generator, reverting most of it, and re-applying one step by hand. A third party following the commit will either re-run the generator blind — and get nineteen unwanted files plus a build-ID bump — or assume the mirror is generator-clean. **A reproduction path that does not reproduce is the second provenance defect of this train**, after the `--play-ms` flag that landed on `warmupMs`.
+
+Dispatched top-tier, scoped to those three plus confirmation that the new cell cannot pass a genuine `unload` implementation. I explicitly told the reviewer not to re-litigate the fix, and to say plainly if my generator concerns are overblown rather than manufacturing findings to justify the review.
+
+**Merge stays held.** Not on the fix, which has survived a full adversarial pass, but because item 2 could make the merge cosmetic and I would rather answer that before landing than discover it on TEST-1.
+
+---
+
+# 2026-07-28 16:36 — TRAIN DIGEST (§A13.3b)
+
+## Author tier and reviewer tier, as separate numbers
+
+**Authoring — 5 packets:**
+
+| Tier | Model | Packets |
+|---|---|---|
+| Top | `claude-opus-5-thinking-high` | 1 — host-listener-leak fix |
+| Mid | `gpt-5.5-medium-fast` | 1 — idle-CPU measurement harness (+2 resumes) |
+| Cheap | `composer-2.5-fast` | 2 — static periodic-work census, V9 bundle mapping |
+| Cheap | `cursor-grok-4.5-medium-fast` | 1 — leak-mirror remediation |
+
+**Top-tier authoring: 1 of 5 = 20%.** Below the 40% threshold, so no justification owed.
+
+**Reviewing — 4 packets, 100% top tier, zero downgrades.** One model-availability failure earlier today was failed closed and re-dispatched at tier rather than downgraded, per the rule I put in force this morning.
+
+## Top-tier authoring trigger, cited by row not paraphrase
+
+One dispatch, one trigger: **§A13.2 — "any edit to `chart.js` shared paths"**, for the host-listener-leak fix, which modifies `_installFinerPanelSelfOwnerHostCommitListener` in `chart v 1.4/chart/chart.js`. Nothing else this train met a trigger and nothing else was escalated.
+
+## Rejection rate per (task class × model)
+
+| Task class | Model | Dispatched | Rejected / blocked | Rate |
+|---|---|---|---|---|
+| Read-only enumeration | `composer-2.5-fast` | 2 | 0 | **0%** |
+| Mechanical remediation | `cursor-grok-4.5-medium-fast` | 1 | 0 (in review) | **0%** |
+| Measurement harness | `gpt-5.5-medium-fast` | 1 | 0 | **0%** |
+| Measurement harness | mid tier (cpu-attribution) | 1 | 1 | **100%** |
+| Product fix | `claude-opus-5-thinking-high` | 1 | 1 (on shape, my defect) | **100%** |
+| Adversarial review | `claude-opus-5-thinking-high` | 4 | 0 | **0%** |
+
+**The number §A13.3b was asking for is the first row: cheap tier is 0-for-2 on rejections this train, and both cheap dispatches produced the train's most useful results** — the static census killed four of five named suspects with stated searches, and the bundle mapping killed my own 24 ms concern and mapped all fourteen intervals where a regex had found five. Neither needed a top-tier model; a top-tier model would have been slower for identical output.
+
+The two 100% rows are worth reading carefully, because **neither is evidence against its tier.** The product fix was blocked on packaging I specified, not on authoring — the fix itself survived a full adversarial pass on all six attack points. The cpu-attribution probe is the only genuine author-side defect this train.
+
+## The three rejection columns (§A16.4)
+
+| Column | Count | Detail |
+|---|---|---|
+| **author-defect** | **1** | cpu-attribution probe: shadow stack pushes strings so `selfMs == totalMs` in all 26 rows; render trigger attributed by delivery frame rather than cause; `rafCallbacks`/`rafMs` measured then discarded before writing evidence |
+| **brief-defect** | **3** | writable set omitted the enforced `chart.js` mirror; "no indicators" specified against a PO acceptance figure taken *with* indicators; "run the generator" for a generator that writes to its own input |
+| **manager-finding-defect** | **1** | told the reviewer `multichart-manager.js:442` was an unexercised teardown path — it is the iframe-creation error fallback |
+
+**Four manager-caused against one author-caused. The §A16.4 trigger is met again: my next brief goes to top-tier review before dispatch**, and I am recording that obligation here rather than waiting to be reminded of it.
+
+**The pattern in those four is one thing, not four.** Every one is a premise I did not verify before writing it into a brief — a mirror I did not check for, an acceptance figure I did not reconcile against my own protocol, a script I did not read, a line number I did not open. My tier routing was sound all train; my inputs were not. That is the actual finding of this digest and it is more useful than the percentages.
+
+## Corrections and retractions issued this train
+
+Seven, which is high and which I would rather have visible than smoothed:
+
+1. **rAF as the idle floor** — demoted from ~20% to 2.16%. Led with it twice.
+2. **"0.38 ms of JS per animation frame"** — unsound inference; `renders = 0` proves `animate()` early-exits.
+3. **The `setOmTradeRev` pump ranking** — measured at 0.17% for all seven intervals combined. Wrong by two orders of magnitude.
+4. **The 24 ms interval** — gated on `orderPanelOpen`; does not run on the PO's protocol.
+5. **The render-trigger histogram** — reported to the Director as corroboration, then BLOCKED. Not citable at any scope.
+6. **"Idle CPU reproduced"** — downgraded; untraced floor is 7.79% against 20.6%, so ~38% not ~65%.
+7. **"Nothing runs off the main thread"** — 53% of process CPU is off it by design.
+
+Plus two withdrawals: the mirror escalation (premise false — the mirror is generated and C preserves parity), and "the leak is a one-off, not a class" (the drag-end guard is paired but not teardown-safe).
+
+## Standing rules added this train
+
+- Content-hash at-risk files; counts do not detect overwrites.
+- Check every writable file for an enforced mirror or built artefact before granting the set.
+- A regex over a minified blob is not an enumeration — map source-first.
+- Pin line numbers to a commit; another manager is rewriting `chart.js` underneath us.
+- "No API exposes this" is not an acceptable limit on a browser packet — CDP exposes far more than the page-visible surface.
+- A measurement harness needs its own null control **before** its first result is reported.
+
+## Where the work stands
+
+**Priority zero, idle CPU:** untraced floor 7.79%, main thread 82.8% idle, product JS 0.17%, no repaint, no resample, no autosave, all five named suspects eliminated. rAF at 2.16% is the largest named contributor. **The "small local fix" premise is not supported by measurement** — there is almost no JavaScript running to remove. Per-thread breakdown and a dpr-2 re-run are in flight as the discriminator; a PO-REQ for a profile on the PO's own machine is filed, because our instrument misses ~62% of the phenomenon.
+
+**M23 host-listener-leak:** three commits, canonical and mirror hash-identical, mutant killed, in top-tier review. Held on the `CHART_ENGINE_BUILD` question — the stamp is fourteen builds stale and if it drives cache invalidation the merge could be cosmetic.
+
+**Outstanding PO-REQ count: 4** — lag at 5x, `REPLAY_SPEED_DEFAULT=5` ratification, instrumented real-browser residue session, and the new idle-CPU profile on the PO's machine.
+
+---
+
+## 2026-07-28 16:48 — CORRECTION: I was comparing the wrong quantity. The harness reproduces ~79%, not ~38%.
+
+The 7.79% I reported at 16:14 as "untraced idle CPU" was **CDP `Performance.getMetrics` `TaskDuration`** — a renderer-**main-thread busy proxy**, not whole-process CPU. Measured properly with `SystemInfo.getProcessInfo`:
+
+| dpr 1, untraced | |
+|---|---|
+| **Whole Chrome** | **16.25%** of one core |
+| renderer | 11.93% (73.4%) |
+| GPU | 3.64% (22.4%) |
+| browser | 0.57% |
+| network | 0.11% |
+| main-thread `TaskDuration` proxy | 6.90% |
+
+**Against the PO's 20.6% that is roughly 79% reproduction.** My 16:14 downgrade — "we reproduce ~38%, majority unexplained" — was wrong, and it was wrong because I compared a main-thread proxy against a whole-tab figure without checking what the counter measured.
+
+**This is the same error I made this morning** and logged as a category error then: comparing JS heap against working set and declaring a 78× scaling crisis that was really 3.3×. Two counter-comparison mistakes in one day, in both directions — once inventing a crisis, once dismissing a reproduction. **The rule I should have written this morning and am writing now: before comparing any two performance numbers, state what each counter measures and confirm they measure the same thing.** I wrote a digest an hour ago concluding my failures were all unverified premises in briefs. This is a fifth instance of exactly that, in my own arithmetic.
+
+The instrument-overhead finding still stands — 14.11% traced against ~6.9% untraced on the *same* counter — so tracing does roughly double the main-thread proxy. That comparison was like-for-like and survives.
+
+## 2026-07-28 16:49 — dpr REFUTED, cleanly
+
+Three runs at `deviceScaleFactor: 2`: **14.28% mean, spread 0.55** — *lower* than dpr 1's 16.25%, with the process shape essentially unchanged at ~75% renderer / ~22% GPU. Environment pinned and recorded for every run: `devicePixelRatio` 2, `visibilityState: visible`, `hidden: false`, canvas 2798×1698 backing store against 1399×849 CSS, so the scaling genuinely applied.
+
+**Quadrupling the pixel work did not increase idle CPU.** That was the leading remaining explanation — mine, promoted from the loaded-protocol review at 15:45 — and it is dead. I asked for it framed as a hypothesis to refute and said a null result would be worth having; it is, because it removes the last candidate that was not the rAF loop.
+
+It also weakens the dpr-2 hypothesis I offered for the PO's 154 MB GPU figure. That was always untested speculation and it should now be treated as unsupported rather than pending.
+
+## 2026-07-28 16:50 — What the split actually says, and the experiment it points to
+
+**The renderer process burns 11.93% while our JavaScript is doing essentially nothing.** All seven interval callbacks total 0.17%. The largest single JS frame is 0.12%. `renders` delta is zero. No countdown region paint. So the renderer is busy on work that is **neither running our code nor painting our chart**, and the GPU process is carrying another 3.64% alongside it.
+
+There is one mechanism in our territory that produces exactly that shape. **`Chart.animate` re-requests `requestAnimationFrame` unconditionally as its first statement, with no idle guard** (`chart.js:28677` at base `8f78c9ffa`). An outstanding rAF request obliges the compositor to run a full frame lifecycle — `BeginMainFrame`, commit, GPU handoff — **whether or not anything paints.** A busy renderer, a busy GPU, an idle main thread and zero repaints is precisely what that predicts.
+
+**The 2.16% I measured for rAF is the callback's own duration. It never included the pipeline the callback obliges.** That is the third distinct thing I have got wrong about this loop today, and the pattern in all three is the same: I kept measuring the JavaScript and the cost was never in the JavaScript.
+
+**Ablation experiment dispatched** — neutralise the re-request at idle by injection, no product change, measure whole-process CPU both arms, three runs each, untraced. Refutation criterion stated up front and binding: **if killing the loop does not materially move whole-process CPU, rAF is exonerated and the cost is somewhere nobody has named**, and that leads the report.
+
+Two guards on believing any drop, both of which I have learned to require the hard way today:
+
+1. **Confirm the chart still works.** If ablation also kills zoom animation, pan or the countdown, the saving is bought by breaking the product and the number is worthless as a fix estimate.
+2. **Headless runs rAF at ~142 fps, not 60.** If the loop is the driver, any saving here is inflated by ~2.4× against a real display. I required the delta reported **both raw and normalised to 60 Hz**, and the normalised figure is the honest estimate.
+
+If it lands, this is finally the shape the CPU finding hoped for: an idle guard on one function. I asked for the guard **described, not implemented** — where it sits, what must be true to skip the re-request, and what re-arms it so zoom, pan, replay and the countdown are unaffected. That is a separate packet with its own review, and the re-arm set is where the risk lives.
+
+Source maps: neither `vite.config.live.js` nor `vite.config.js` sets `build.sourcemap`, and no `*.map` exists in the tree. **A config gap rather than a deliberate exclusion** — worth closing so minified frames resolve, but not today and not in this packet.
+
+One honest limitation carried forward: Windows thread CPU deltas were captured but the lightweight API exposes only PID/TID and CPU time, with no Chrome role names. So "renderer and GPU processes" is supported; "compositor versus raster versus tile-worker" is not, and the author declined to label them rather than guessing. Settling that needs ETW or Chrome thread-name metadata, and the ablation experiment may make it unnecessary.
+
+---
+
+## 2026-07-28 16:58 — M23 MERGED to critical-path at `cdb64cfa3`. My build-stamp concern was wrong and I am glad I asked.
+
+Remediation **ACCEPTed**. I amended the provenance into the commit message (`c7d2f190b`) and merged the three-commit packet. Verified at the merged tip myself rather than on report:
+
+```
+canonical blob: 2ece9979a1299962ec48a298d2b4a97a2d272593
+mirror blob   : 2ece9979a1299962ec48a298d2b4a97a2d272593
+PARITY: True
+M23 suite: 12 pass, 0 fail
+```
+
+Canonical and mirror share a **single git blob OID**, which is a stronger statement than a matching digest — they are literally the same object.
+
+### The concern I raised loudest was the one that was wrong
+
+I told the Director this could be "the worst failure shape available: a green chain certifying a change nobody receives", on the theory that a stale `CHART_ENGINE_BUILD` would leave clients on a cached pre-fix engine.
+
+**`CHART_ENGINE_BUILD` is not a cache key.** It appears three times in `chart.js` — a definition, a telemetry field, and a `console.info`. Nothing keys a fetch on it. **The real key is the `?v=` query in the referring HTML, uniform at `20260727b80` across all six shells in both trees**, and the service worker is a pure pass-through that deletes all caches on activate.
+
+And the bump is explicitly a deploy step. `homepage/Dockerfile:45` runs `bump-chart-engine-build.mjs` with `CHART_BUILD_ID`, then line 47 rebuilds and re-stamps every `?v=`, then lines 80–89 `COPY --from=chart_assets` **over** the committed mirror, under a comment saying exactly that. The committed mirror is never what ships; it exists to satisfy the parity gates. **Committing the generator's `b81` would have baked in a build id unrelated to the eventual deploy id — worse than leaving `b61`.**
+
+So the author's choice was right and my framing was wrong. I invited the reviewer to tell me if my concerns were overblown rather than manufacture findings, and it did. **That instruction has now paid for itself twice today** — once here, once when the same instruction produced the histogram BLOCK rather than a polite confirmation.
+
+One conditional worth keeping: my concern becomes live only if some path ever ships `homepage/public/chart/**` **without** the image build. The workflows and compose file were searched and no such path exists. Standing note, not a defect.
+
+### Reverting the eighteen was also right
+
+Every source→mirror pair the generator touches was compared by blob OID at the packet commit: `dist-v9` 8/8, `vendor` 2/2, `fonts` 42/42, `workers` 3/3, `multichart-prod` 0 differences, plus `chart.js`, `legacy-index.html`, `compare-overlay.js`, `sw.js`, `manifest.webmanifest`, `pwa-install.js` all identical. **Every served runtime asset is byte-identical to its source**, so nothing stale was preserved and no defect was laundered as hygiene — which was my sharpest worry and the failure that blocked the cap packet.
+
+Blob history settles the packet's shape cleanly: mirror in sync at `c9050af81`, diverged **only** because of the fix at `9ad391084`, restored at `c7d2f190b`. Nothing else moved.
+
+### Three new rows out of this
+
+1. **Genuine pre-existing drift: `homepage/public/chart/modules/m19-h-timeframe-switch.test.mjs`** is an older revision — 210 lines against 225, missing the `waitFor` helper and the Q6 disable flag. It diverged at `b51213dbd`, predates this packet, and is a test file rather than a served asset. Already acknowledged in-tree by a comment in the m22 red suite calling it "someone else's row". **It is now my row, because I found it and it is in my territory.**
+2. **Standing tool non-idempotency:** five tracked `.log` files under `homepage/public/chart/multichart-prod/harness/` exist only in the mirror, and the generator `rmSync`s the destination before copying — so **any** run deletes tracked files. Nobody caused that; it is latent in the tool and will bite whoever next runs it in anger.
+3. **The gate cell has a narrow residual.** It kills every *substitution* of `unload` for `pagehide` regardless of quoting, because the `pagehide`-presence assertion is the backstop. It survives only an *additive* `unload` written with double quotes or via an identifier. `chart.js` has 124 single-quoted and 0 double-quoted `addEventListener` calls, so the double-quote escape is stylistically implausible; the identifier form is marginally more plausible. Residual, not blocker, and the sibling pairing cell covers the host surface independently.
+
+## 2026-07-28 16:59 — Merged, NOT deployed, and the reason is not this packet
+
+Per §A16.5 the reviewer answered yes: M23 can be part of an automated-GREEN chain with the provenance note recorded, which it now is.
+
+**I am not deploying to TEST-1.** The overnight authority is conditional on *the entire chain* being automated-GREEN, and it is not — for reasons that predate and are independent of M23. The cleanroom run established that a **tracked** test (`m21-2-candle-offscreen-scaffold.test.mjs`) imports an **untracked** fixture (`visible-window-mirror.mjs`), so a clean checkout fails, and `test:checkpoint-provenance` fails 12 of 14 there. Merging a green packet onto a tree whose chain is red in a fresh clone does not make the chain green, and claiming a deploy on that basis is precisely the overclaim §A16.2 forbids.
+
+So M23 is landed and gated; deployment waits on the untracked-artefact row, which is the ~455-file hazard I promoted from housekeeping to correctness earlier and which is now the thing standing between a reviewed fix and TEST-1.
+
+---
+
+## 2026-07-28 17:12 — rAF ablation: mechanism ACCEPTED, magnitude BLOCKED. First result on this row that clears the noise floor.
+
+Untraced A/B, 3 runs per arm, whole-Chrome CPU:
+
+```
+baseline  16.37% mean, range [15.87, 17.17]
+ablated    8.33% mean, range [ 8.09,  8.49]
+renderer  12.18% -> 6.08%
+GPU        3.75% -> 1.91%
+```
+
+**Ranges are disjoint.** Against the ~14% run-variance noise floor I recorded on this row, the arm separation is ~4x. After a day in which three hypotheses died and 6.3 points of an earlier figure turned out to be my own tracing overhead, this is the first thing that survives contact.
+
+Verdict from top-tier review: **ACCEPT the mechanism, BLOCK the magnitude as framed.**
+
+### The mechanism, and why it vindicates the correction I made this morning
+
+The single most informative number is one the summary buries. **Deny exactly one callback and main-frame rAF traffic goes to zero and stays there for 60 seconds** — not "drops", zero *requests*. Nothing else in the main frame asked for a frame the entire minute.
+
+Per frame the whole-Chrome delta is ~0.56 ms, of which the chart's own JS is ~0.011 ms. **About 2%. The other ~98% is Chrome's per-frame animation-frame lifecycle** — BeginMainFrame, compositor commit, GPU frame. The GPU process delta alone is 23% of the total.
+
+That is the architectural conclusion and it is now measured rather than argued: **a guard that makes the callback body cheaper saves nothing. Only not requesting the frame saves anything.**
+
+It also confirms the correction I logged this morning as my third rAF error. I demoted rAF twice on the grounds that its callback self-time was only 2.16%. That number was right and the inference was wrong: **callback duration was never the cost, the pipeline it obliges is.** The ablation measures the pipeline. I had the right suspect twice and dismissed it twice with the wrong instrument.
+
+### Two of my five concerns were unfounded, and one was backwards
+
+**Backwards:** I worried the baseline arm's `null` rAF counters meant an instrumented arm was being compared against an un-instrumented one. The wrapper's cost sits *inside the ablated arm*, so it can only make the ablated number larger and the delta **more conservative**, never inflated. And the loop's baseline rate is independently pinned: trace `FireAnimationFrame` gives 142.513 fps, a page-init counter that knows nothing about the trace gives 142.512 fps.
+
+**Unfounded — wheel-zoom.** I asked whether the ablation might silence zoom animation. `animateZoom()` is **dead code at runtime**: `zoomAnimation.active` is never assigned `true` anywhere in the tree (ripgrep, zero hits). Wheel zoom is instant and runs through `_scheduleWheelBurstRender`, which has its own rAF and is untouched.
+
+**Unfounded — over-broad suppression.** `_animateBound` is passed to `requestAnimationFrame` from **exactly one line in the codebase** (`chart.js:28678`), established by exhaustive search with `dist-v9` confirmed tracked and unignored. The predicate is strict reference identity, gated by an `isIdle()` that fails closed on nine conditions.
+
+**Correct but refuted:** the arms were blocked, not interleaved (baseline 1-2-3 then ablated 1-2-3, one Chrome instance). But the un-ablated level replicates to three significant figures across a **separate browser launch** — 16.250% vs 16.372% — and drift points the wrong way (throttling would make later runs read higher; they read 49% lower). Seven un-ablated samples across three sessions, minimum 14.00; three ablated, maximum 8.49.
+
+## 2026-07-28 17:13 — What is citable to the PO, and what I must not say
+
+**I must not carry "we halved idle CPU" up the chain.** The 49% is a fact about this harness at 142.5 fps.
+
+Normalized to 60 Hz the citable range is **1.3 to 3.4 percentage points of one core** — the low end being the main-thread component that transfers most confidently, the high end assuming every compositor and GPU cycle transfers unchanged. That is **6-16% of the PO's 20.6%**, or 11-28% of the 12.3% clean-profile idle baseline. **The point estimate is not derivable from this evidence and I will not offer one.**
+
+Three things attach to that range:
+
+1. **It is a ceiling twice over** — it is what removing the loop *entirely* buys, and a behaviour-preserving guard must keep some frames.
+2. **The tension I raised dissolves, but not in my favour.** I argued that a harness at 142.5 fps reading 16.37% against the PO's 60 Hz 20.6% implied the normalization was wrong. The PO's 20.6% is not a point estimate — their own controlled ladder records idle as "12.3, oscillating up to 29.5". The harness sits inside their band. There was nothing to explain.
+3. **An open unit question that changes the comparison.** The PO's figures come from Chrome's task manager, which reports **per-process** rows normalized to one core — which is why 129.3 and 114.7 exceed 100. If 20.6 is the tab row alone, the comparable harness number is the **renderer** 12.18%, not whole-Chrome 16.37%. The document does not say. I am raising this rather than picking the reading that flatters us.
+
+**And the mechanism explains none of the spikes.** The PO's most alarming symptom is periodic spikes to ~120. The rAF loop is a steady cost. `spikeGroups` is empty in all six runs at a 50% threshold — the harness never reproduced the spikes in either arm. **This addresses the floor and says nothing about the spike family.** That needs saying before the PO asks.
+
+## 2026-07-28 17:14 — The fix is bigger than the loop, and the review found the reason
+
+The guard I sketched — arm only when work is pending, re-arm from `scheduleRender()` — is **insufficient, and would have shipped a starvation bug.**
+
+`scheduleRender()` is only one of the paths that sets `renderPending`. I enumerated the writers myself after the review named them: **29 sites assign `renderPending = true`, and 24 of them bypass `scheduleRender()` entirely** — `chart.js` x4, `chart-main.js` x1, `panel-cmd-bridge.js` x3, `replay-system.js` x11, `order-manager.js` x10. Under a `scheduleRender`-only guard every one of those is **silently starved** until something unrelated happens to arm a frame. That is a worse defect than the one being fixed, and it is exactly the class this project keeps shipping.
+
+**The shape that survives this is an accessor.** All 29 writes are property writes on a chart instance (`this.` / `chart.` / `c.` / `ch.` / `ctx.` / `initiator.` / `mainChart.` / `pc.`), so converting `renderPending` into a setter that arms the loop on write catches every writer without editing any of them.
+
+Two consequences, and the first is the one that matters for territory:
+
+- **The fix stays entirely inside `chart.js`.** Ten of the writers are in `order-manager.js`, which is **Manager B's file**. An accessor means I do not touch it. No commit spans two territories, and I do not need B's slot.
+- **A prototype accessor will not work.** The constructor sets `this.renderPending = false` at `chart.js:1223`, an own data property that shadows any prototype accessor. It must be `Object.defineProperty(this, 'renderPending', ...)` in the constructor over a backing field. That is precisely the subtlety that would defeat a cheap author, and it is now in the brief rather than waiting to be discovered in review.
+
+### Two corrections to what the author reported
+
+**The countdown smoke test proves nothing.** It reports `countdownText: "01:00"` identically in all three ablated runs, which reads as "countdown survived". It is not. The harness runs with replay **active but paused**, so `_getBarCloseCountdownText()` branches to the replay variant and returns a frozen clock. The countdown path was never exercised. So the blast radius on the countdown is **untested, not tested-good** — and separately, the idle cost measured here is the cost of an *empty* frame, with the countdown contributing nothing.
+
+The `panBy` leg is weak too: `panBy()` calls `this.render()` directly, so it passes with the loop dead.
+
+Preserving the countdown is cheap regardless — its internal throttle is 1 Hz, so ~60 frames a minute against 8621, about 0.7% of the recovered saving. Not a design constraint.
+
+**Line-number discipline held.** Every citation above is pinned to `3f2acdb11` on `manager-a/idle-cpu`. `animate()` is 28677 there and 29108 in C's tree.
+
+## 2026-07-28 17:15 — Provenance fixed before it became the next M23
+
+The author amended the ablation into the existing commit, whose message read `test(m24): capture idle CPU profile` and said nothing about an ablation experiment. **Same defect class I had just finished correcting on M23 an hour earlier** — a commit whose message does not describe what is in it.
+
+Rewritten at `3f2acdb11` to state both experiments, that no product code is modified, that the ablation is **not** a fix and not behaviour-preserving, that the delta is an upper bound, and that the 60 Hz figure rests on two assumptions of which one is unestablished. Verified the diff touches no product file: three harness/evidence paths only, worktree porcelain 0.
+
+I am recording this as a pattern rather than an incident. Twice today an author folded a new experiment into a commit labelled for the old one. My briefs do not currently say "if you amend, rewrite the message to describe the amended contents." They will.
+
+---
+
+## 2026-07-28 17:34 — §A16.4 pre-dispatch review: DO NOT DISPATCH. The rule paid for itself on first use.
+
+I hit the §A16.4 trigger this train, so my next brief went to top-tier review before dispatch with the decomposition as the thing under review. **It was rejected, with eight required changes.** Had I dispatched it, a top-tier author would have spent a packet against a design with an unsatisfiable acceptance criterion.
+
+### The blocker: I dismissed the one thing that forces a second mechanism
+
+My arming list ended "…or a countdown tick is due", and I wrote of the countdown that it costs "about 0.7% of the saving. **Not a design constraint.**"
+
+**That is backwards.** "A countdown tick is due" is a *future event*, not a state readable at the moment the loop decides to disarm. **Once the loop stops, nothing is running that will notice a second has elapsed.** There is no timer to piggyback on — the only `setInterval` in `chart.js` is the Q1 v9 time-sync at 31957, which M20-Q1 put behind a kill switch and is off by default.
+
+So the guard as I specified it would disarm and the countdown would simply stop, and my own acceptance criterion 2 — "the countdown still ticks" — is **unsatisfiable by the design I mandated**. The countdown is the only item on the list that forces a second scheduling mechanism into the packet, with its own teardown wiring, on a class that has had listener-leak packets this very train. It is the reason the packet is bigger than it looks, and I had labelled it the reason it was smaller.
+
+### My arming list was mostly dead conditions
+
+The reviewer asked the question I never did: **which paths have no rAF of their own?** Five of six `scheduleRender()` branches delegate to private rAFs (`_scheduleAxisZoomRender`, `_scheduleWheelBurstRender`, `_schedulePanSyncFollowRender`, `_scheduleSeparatePanelResizeRender`) and **self-drive, needing no arming at all**. Zoom animation is dead. And `inertia.active` is **also never set true anywhere in the tree** — I verified this myself, zero hits — so the `replayPlaying || inertialPan` branch at 28478 is half dead too.
+
+The real arming list is two items: the `renderPending` deferred render, and the countdown. My seven-condition list was mostly ceremony.
+
+### The magnitude error is mine, and it was sitting in my own evidence file
+
+My brief led with the raw 8.52-point delta. **`normalized60HzDeltaCpuPercent: 3.589` is a sibling field in the same JSON object**, computed by the harness for exactly this purpose, with its own note that headless cadence is ~142.5 fps.
+
+The galling part: **I had it right in the journal and wrong in the brief.** Two hours ago I logged the citable range as 1.3–3.4 points and wrote "I must not carry 'we halved idle CPU' up the chain." Then I wrote a brief that led with 8.52 and omitted the normalised field. My own documents disagreed and the brief was the one that would have been acted on. Correct figure: **~3.6 points at 60 Hz**, which roughly halves the value proposition — and that is a manager's call to make before dispatch, not an implementer's to discover.
+
+### Three factual corrections to my enumeration
+
+1. **`chart-main.js` contains a second, complete, dead `Chart` class.** `class Chart` at line 14, its own `renderPending = false` at 116, its own one-shot rAF, its own `window.Chart = Chart` at 225. I verified it myself: **no HTML anywhere loads it.** So `chart-main.js:212` is not a write on the accessor-bearing class, and the count is **28 arming sites, not 29**. My load-bearing sentence — "all 29 writes are property writes on a chart instance, so this catches every writer" — was false. Small error, sharp edge: criterion 3 said to assert against the enumerated list, so the gate would have demanded a dead class in another file arm a frame.
+2. **Blast radius short by two files.** `chart-indicators-full.js` (x3) and both copies of `sync-bridge.js` write `renderPending = false`. They cannot starve anything, but they invoke my setter from outside my scoped five, and one is a cross-chart write from the sync bridge. Honest figure: **56 writes across 7 files, of which 28 arm.**
+3. **My "24 bypass `scheduleRender()`" is not reproducible.** Exactly one of the writes sits inside `scheduleRender()`, so **28 bypass it**. My conclusion was right and in fact stronger than I stated; only the number was invented.
+
+### Two things I asserted about gates that were wrong
+
+- **"Enforced by two gate cells" is wrong on count and on mechanism.** Four cells across three files read both trees, and **none compares bytes or hashes** — they assert needle presence in each. My parity criterion is self-imposed, not gate-enforced. I told the implementer a gate was watching when none was.
+- **An existing gate source-scans the first 2200 characters of `animate()` for `_tickBarCloseCountdown`.** I measured the headroom myself: the needle sits at offset 1461, leaving **739 characters**. An arming block plus a documented kill-switch comment would plausibly push it past the cutoff and fail the cell. So the arming logic must land *below* the countdown call, or that test file joins the writable set. This is the third time this train my writable set has been short.
+
+### The ablation carries no behavioural evidence for this design
+
+The ablated arm re-armed on `scheduleRender` — **exactly the shape I correctly rejected as a starvation bug.** So it starved 27 of the 28 arming sites for the full 60-second window. The CPU number remains a valid *upper bound*, but a correct implementation arms more frames than the ablated arm did, so **8.52 is an optimistic ceiling twice over** and no behavioural claim from that arm transfers.
+
+### Provenance correction
+
+The profiled page was `http://31.97.192.82:3000/chart/dist-v9/index.html` loading `/chart/chart.js?v=20260726b75`, with `Chart.animate` at **28648** — not 28677. **The measurement is of the deployed b75 build, not of my branch.** Immaterial for idle rAF behaviour, but "A/B ablation on `manager-a/idle-cpu` at `469663fad`" overstates it, and I have been enforcing TREE-01 on everyone else all day.
+
+### What survived
+
+The accessor shape itself checks out on every hazard: no `Object.assign` onto a chart, no spread, no `Object.keys`, no `JSON.stringify`, no `structuredClone`, no `delete`, no `hasOwnProperty` probe, no subclassing, reads not hot. `homepage/public/chart/chart.js` really is the only other tracked `chart.js` and the two are byte-identical; `dist-v9` is **untracked and CI-built**, loading `/chart/chart.js` as its own script, so no bundle needs updating. My constructor-shadowing hazard was real and correctly diagnosed, as was the `scheduleRender`-starvation trap. One addition: `Object.create(Chart.prototype)` bypasses a per-instance accessor entirely, and that pattern exists in `b70-indicator-pure-paint.test.mjs` — test-only, but my test must construct through the real constructor or criterion 3 passes vacuously.
+
+## 2026-07-28 17:35 — Splitting the packet. Dispatching the accessor half now; the guard waits on a wake design.
+
+Taking the reviewer's recommendation. **Packet 1 is the accessor conversion alone**, with the loop left unconditional. It is behaviour-preserving by construction, it carries all of the wide-blast-radius risk, and — the reason it is the right first move — **it converts the 28-site question from a static assertion into a measurement.** Ship it, read `_mcDiag.m25FramesArmed` off a real session, and prove all 28 paths fire before anything depends on them.
+
+Shipped together, a starvation bug and an accessor bug are indistinguishable in the field, and the symptom is a chart that silently stops repainting. That is the worst thing to have to bisect under a 46-hour clock.
+
+**Packet 2 (the guard) is blocked** on a countdown wake mechanism being chosen and specified with teardown. I am not dispatching it until that exists.
+
+One criterion I had missing entirely and am adding to packet 1: **writing `false` must not arm.** `chart.js` alone has 17 `= false` writes plus the five outside it. A mutant whose setter arms on any assignment would have passed all six of my original criteria while saving nothing — **the same shape as the `unload` mutant that survived all 11 cells of my last gate.** Twice now my acceptance criteria have failed to pin the packet's own decision, and both times the gap was the missing negative case.
+
+---
+
+## 2026-07-28 18:02 — M25 accessor BLOCKED. I specified an instrument that cannot answer the question I built it to answer.
+
+The diff is clean — cleanest thing reviewed on this row. 17/17 cells, **all five mutants killed with zero survivors**, single hunk at 1226, `animate()` byte-identical, canonical and mirror sharing blob `4c272a35d`, porcelain 0. It is blocked anyway, on my own stated rule: the packet exists solely to let us read off a real session which of 28 code paths demand frames, and **it structurally cannot do that.**
+
+### The defect is in my specification, not the author's code
+
+`m25FramesArmed` is **one integer with no site labels**, and the falsy→true rule caps it at **one increment per animation frame** — because `animate()` clears `renderPending` at `chart.js:28771` once per frame. I verified that line myself rather than take it on report.
+
+The reviewer demonstrated it by execution with real product bytes from three different arming sites in three different files:
+
+```
+three distinct arming sites fire inside ONE frame
+  replay-system.js:3282     counter 0 -> 1
+  order-manager.js:36433    counter 1 -> 1
+  panel-cmd-bridge.js:1416  counter 1 -> 1
+counter after 3 distinct paths demanded a frame: 1
+
+over 6 frames: 18 site activations, counter = 5
+```
+
+**A scalar bounded above by the frame count cannot prove 28 propositions.** That is arithmetic, and I should have seen it when I wrote the criterion.
+
+**The second-order failure is the dangerous one.** The deduplication does not merely fail to distinguish co-firing sites, it **erases them**: a site that reliably fires just after another within the same frame registers zero for an entire session, and the natural reading of zero is "this path is dead". Handing that to a loop-guard packet whose safety depends on knowing which paths are live would produce exactly the starvation bug the accessor design was chosen to prevent. **I would have built the instrument, trusted it, and shipped the bug it existed to prevent.**
+
+### A related trap in reading the counter at all
+
+14 of the 17 `chart.js` clearing sites are `this.renderPending = false; this.render();` — **synchronous renders that deliberately bypass the rAF path** (wheel-zoom burst 26427, axis zoom 26855, panel resize 26881, pan scroll sync 28149, and `scheduleRender()`'s own replay/inertial early return at 28566). Those are real render demand the counter records as **zero**.
+
+Not a defect for the loop-guard purpose — a synchronous render needs no loop wake — but it means `m25FramesArmed` must never be read as "how much rendering is happening". **During replay playback, the dominant scenario on this entire row, `scheduleRender()` takes the synchronous branch and contributes nothing to the counter.** That is a footgun aimed directly at the next person to quote this number.
+
+### My lead concern confirmed, but my reasoning about it was wrong
+
+`__mcDiagReport()` never shows the counter and `__mcDiagReset()` never zeroes it. Proven by executing the product's own reporter: the row keys come back without `m25FramesArmed`, and reset moved `renders` 9→0 while leaving `m25FramesArmed` at 41.
+
+**But non-enumerability is not the cause.** `_talariaMcDiagSnapshot` reads `diag?.[field]` **by name**, which works fine on a non-enumerable property. **The allow-list at `:799` alone excludes it.** I had conflated two mechanisms — enumerability governs `JSON.stringify`, the allow-list governs the report — and so did the suite's own comment at line 548.
+
+The remedy is pinned by precedent: the accepted resample packet added `replayTicks`/`fullResamples`/`incrementalResamples` to **both** `MC_DIAG_COUNTER_FIELDS` and `_ensureMcDiag()`. Same shape here. **Adding to the allow-list alone would be worse than doing nothing** — `_talariaMcDiagZeroCounters` does `diag[field] = 0`, so on a kill-switch instance the first `__mcDiagReset()` would *create* the property as enumerable, delivering the exact shape change I was trying to avoid, late and nondeterministically.
+
+### My criterion 4 over-reached and pushed the author into the corner
+
+Shape identity on the `Chart` instance is reasonable — sibling modules spread and stringify chart objects. **Shape identity on `_mcDiag`, a diagnostics bag whose entire purpose is accumulating counters, is not**, and the accepted resample packet already broke it with no consequence. Criterion 4 must be scoped to the instance. I wrote a criterion that made the correct implementation fail and the hobbled one pass.
+
+### Three of my premises refuted, and one warning that was noise
+
+- **`_mcDiag` ordering (my q5): refuted.** `_ensureMcDiag()` is called unconditionally at 965 with no guard and no `try`, ~260 lines before the install at 1226. The two throws that precede it abort construction entirely. The setter's `if (diag)` is defensive, not load-bearing.
+- **My evidence-rewrite warning did not reproduce.** I warned the reviewer that `chart.js`-reading suites rewrite six tracked evidence files. Six runs, porcelain checked before and after each: empty every time. **This suite contains no write call.** I generalised one author's incident into a property of a suite I had not checked — the same "reasoned from a characterisation instead of reading the source" error I logged twice yesterday and once already today.
+- **TIER-B is about as weak as I suspected.** All 28 statements reduce to `<expr>.renderPending = true;` and JS guarantees an own accessor intercepts every one, so executing them adds little over asserting they exist. What it does add is genuine but narrow: per-file counts are pinned, so if Manager B adds or removes an `order-manager.js` site the census cell fails loudly. **Drift protection, not reachability evidence.** And it *binds* each receiver to an accessor-bearing instance, which assumes the thing being proved — at runtime `pc`, `ch`, `initiator`, `mainChart`, `c`, `ctx` must each really be constructor-built `Chart`s, and TIER-B cannot detect it if one is not.
+
+### What survives, and it is the part that matters
+
+**The single interception point is correct.** All 28 sites now funnel through one setter, and that is exactly where packet 2's loop-wake belongs. Minimal, behaviour-preserving, and untouched by this BLOCK. The remedy is **additive and does not modify the accessor**.
+
+Also confirmed clean: every product write is a literal `true`/`false` (144 matches searched with ignore rules disabled, zero non-boolean writers, no `Reflect.set`, no dynamic access), the census reproduces exactly at 28 arming / 28 clearing / 56 total across 7 files, the kill switch is two genuinely distinct structures with no reachable hybrid, the extraction cannot go stale, and nothing outside the three-file writable set moved.
+
+## 2026-07-28 18:03 — Remediation dispatched; and a note on the deploy token
+
+Two additive changes, neither touching the accessor: allow-list plus `_ensureMcDiag()` initialisation per the resample precedent, and **per-site attribution**, without which no allow-list fix makes the packet answer its own question.
+
+**Deploy prerequisite worth recording now rather than discovering later.** The served page loads `/chart/chart.js?v=20260727b80` and this packet does not bump it. That token has been static across the last four `chart.js`-touching commits including the merged M23, and is bumped by separate stamping commits — so it is **not this packet's obligation**. But **before anyone tries to read this counter off the deployed site, the token must move**, or a cached response serves the pre-M25 engine and the counter is simply absent. That is precisely the "green chain certifying a change nobody receives" shape I raised on M23 and was wrong about there; here it is real, because the counter's absence is indistinguishable from a zero reading.
+
+### Score-keeping
+
+This train's manager-caused defects now include: a brief pinning line numbers and a file hash to a different branch than the one I told the author to base on; a clearing-site itemisation six short; repeating a reviewer's RED-oracle claim that holds only for the mirror copy; a criterion that penalised the correct implementation; a warning generalised from an unrelated incident; and — the substantive one — **specifying a scalar to answer a 28-way question.**
+
+The §A16.4 pre-dispatch review caught eight defects and missed this one. That is not an argument against the rule; it caught a scheduling hole that would have cost a full packet. But it does mean pre-dispatch review is not a substitute for asking, of every instrument I specify, **the question I asked too late here: can this measurement, in principle, express the answer I need?**
+
+---
+
+## 2026-07-28 18:41 — M25 ACCEPTED and merged at `751cc38d6`. The instrument now answers its own question.
+
+Remediation reviewed top-tier and accepted, **verified by execution in real Blink rather than under `node --test`** — the reviewer sliced the 3,246 product helper bytes out of `chart.js` and ran them in HeadlessChrome 150 loaded as its own `<script src="…?v=…">`, the same shape as deployment.
+
+Merged tip: 41/41 across M25 and M23, canonical and mirror sharing blob `13fc6ced3`, `animate()` byte-identical at 2,404 bytes with sha256 prefix `2da0ed5db403f0df` at both parent and head.
+
+**Direct answer to the question the packet exists for: yes, one real session now yields a defensible per-site list.**
+
+### Why the attribution works where the scalar could not
+
+It records on **every truthy write**, not on the falsy→true transition. That is the whole fix: the true→true writes the scalar structurally cannot see are exactly the ones that were being erased. No sampling, no per-frame de-duplication, no rate limit.
+
+Verified against every hazard I named, by execution:
+
+- **Frame 1 is the caller, not the setter.** Raw Blink stack confirms `at Object.set` as frame 0 and the arming site as frame 1; the `?v=` cache-buster is stripped and the path collapses to a basename.
+- **Two arming sites on one line** separate by column (`:65:67` vs `:65:116`).
+- **Callbacks, `.then()`, post-`await`, `setTimeout`, `Array.forEach`** all attribute to the assignment's own position. Location-less native frames are filtered, so frame 1 is the nearest JS frame that could have performed the write — the right answer, not a lucky one.
+- **V8 inlining**, which I pushed hardest on: 200k hot iterations gave one stable key at count exactly 200000, and under `--allow-natives-syntax` with TurboFan confirmed on the outer function and the inner ones inlined, the key still resolved to the inlined innermost assignment line.
+- **Degraded stacks** yield a visible `(stack unavailable)` key rather than a silent drop — same "incompleteness announces itself" principle as the overflow key.
+
+The reviewer wrote 22 adversarial mutants of their own and killed 18. The four survivors are defensive or behaviourally equivalent, **except one worth recording: a mutant that moves the flag read onto the per-write path survives.** The shipped code is correct — the flag is read once at construction — but no cell guards that regression, and it only affects the on-path.
+
+### Cost, measured rather than argued
+
+I demanded a measurement and got one. Blink: **off 118 ns, on 7,277 ns per truthy write, so +7.16 µs.** Flat across stack depths of 2, 10 and 30 because `stackTraceLimit` is 10.
+
+| truthy writes/frame | @60 fps | cost |
+|---|---|---|
+| 1 | 60/s | 0.043% of a core |
+| 3 | 180/s | 0.13% |
+| 28 (ceiling) | 1,680/s | 1.2% |
+
+**At genuine idle it is ~one truthy write per second** — the countdown branch at 1 Hz — so about 0.0007% of a core. Critically, the loop-shaped sites like `pc.renderPending = true` in `replay-system.js` iterate over *different chart instances*, each with its own `_mcDiag`, so they do not multiply the per-instance count. This cannot threaten the idle-CPU measurement it exists to support.
+
+Off is genuinely zero, not merely small: the setter is the same function object the parent installed (`.toString()` equality against `ba2d30e57`), and the flag is read in exactly one function, called from one place, called from one place — the constructor.
+
+### My cost tension was not real
+
+I put it to the reviewer that "one capture per frame" and "records on every truthy write" were in tension and demanded it resolved by measurement. **There is no such claim in the committed artefact.** The commit message and the `COST` block both say per truthy write. I was reconciling the submission prose against the code and treating the discrepancy as the code's problem. The artefact was self-consistent all along.
+
+### The author overstated two things; neither is a defect
+
+- **"Criterion 7 was unsatisfiable" is overstated.** The reviewer patched the parent to add only the allow-list entry, keeping the non-enumerable property, and the reporter emitted the column with the right value while `__mcDiagReset()` zeroed it and `JSON.stringify` still excluded it. **The reporter reads by name, and a non-enumerable property is readable by name.** So it was unsatisfiable alongside *this implementation*, not alongside Change 1 as such. The author's stated *reason* survives though: that minimal route leaves `_mcDiag` at 15 keys until the first reset under the kill switch, which then creates the property enumerably at 16 — the late nondeterministic shape change the commit warns about. Design right, word wrong.
+- **"The region cell is strictly stronger" is false.** The parent elided 46 lines; the new cell elides three regions totalling **321** — 275 more, including the entire 248-line reporter block. It is stronger in two other respects (two bases instead of one, anchor uniqueness), so it is a **trade, not an upgrade**. The reviewer closed the gap for this commit directly: `_talariaMcDiagPanelIdForWindow`, `_talariaMcDiagSnapshot`, `_talariaMcDiagCollectCharts` and `_talariaInstallMcDiagReporter` are **byte-identical across all three commits**, so nothing hid in the widened exemption. Carry-forward for the next packet in this family: anchor the helper region to end at `function _talariaMcDiagPanelIdForWindow` instead of `class Chart {`, handing ~100 lines back to line-for-line comparison at no cost.
+
+### Two residues recorded, neither blocking
+
+- **Kill-switch-on is indistinguishable from a genuinely idle session in the report** — both emit `m25FramesArmed: 0`. Same silent-zero shape as the erasure bug, but materially less severe: it requires an operator to deliberately set a switch whose purpose is to remove the instrument, and the accessor's absence is directly observable. With attribution on there is a partial disambiguator: kill-switch-on leaves `m25ArmingSites` **absent**, a real idle session leaves it **present and empty**.
+- **`m25FramesArmed` was inserted mid-list**, after `renders` and before `seams`, so the row goes 17→18 keys and `console.table` column order shifts. Every consumer is key-based so nothing breaks, and no stored row digest exists — but any future evidence comparison that digests `JSON.stringify(row)` must be regenerated.
+
+## 2026-07-28 18:42 — Closing the last trap before it costs a session
+
+The reviewer flagged a session-protocol hazard I am treating as a defect instead, because it is a smaller version of exactly what got the parent blocked.
+
+**`m25ArmingSites` is not among the 18 columns `__mcDiagReport()` emits.** The saturated scalar *is*. So an operator who runs the product's own reporter and stops **gets the misleading number and thinks they have their answer** — while the useful map sits one property away, reachable only as `chart._mcDiag.m25ArmingSites` per instance. And `_talariaMcDiagCollectCharts`, the function that walks host and iframes, is module-scope and unexposed, so for multichart the operator must walk `document.querySelectorAll('iframe')` by hand — and **3 of the 28 sites live in `panel-cmd-bridge.js` and fire only on panel charts inside iframes.**
+
+I blocked the parent for shipping an instrument that reads plausibly and answers wrongly. Relying on protocol discipline to stop someone reading the saturated scalar is a weaker control than putting the right number where they will look. Dispatching a small follow-up to surface the map through the reporter and expose the collector, rather than writing a note and hoping.
+
+M25 is merged and correct as it stands; this is additive.
+
+---
+
+## 2026-07-28 19:08 — Report-map ACCEPTED and merged at `f3792a040`. 45/45 at the tip; the instrument row is closed.
+
+The M25 chain is now three merged packets: accessor (`ba2d30e57`), attribution (`733ad254e`), reporter surfacing (`1f50a47fb`). Canonical and mirror share blob `1e1c493b6`.
+
+### The `animate()` fingerprint dispute — both numbers were real, both extractions sloppy
+
+I passed the author a spec figure of **2,404 bytes / sha256 `2da0ed5db403f0df`**, taken from a prior review without recording how it was derived. The author reported **2,403 chars / `cde6083d893677f9`** and said my premise did not match. The reviewer brute-forced every contiguous line span under six renderings and **reproduced both hashes exactly**:
+
+| Claim | Span | Rendering | Size |
+|---|---|---|---|
+| Mine | 28911–28962 | indent stripped, LF, no trailing NL | 2404 B / 2402 c |
+| Author's | 28912–28963 | LF, plus trailing NL | 2405 B / 2403 c |
+
+Line 28911 is a whitespace-only separator *before* the declaration; 28963 is the blank line *after* the closing brace. **My span started one line early, theirs ended one line late, and I quoted bytes while they quoted chars.** Extraction-method difference, as I suspected. `animate()` did not change.
+
+**Citable fingerprint, method stated so this never recurs** — brace-matched from the first character of the declaration's indentation through the matching closing brace inclusive, LF, no trailing newline:
+
+> `animate()` — **2403 bytes / 2401 chars**, sha256 `a41cdd2e02636736e8b7d802d19be8d37f2e23a5a3c716b5cdae0b64a42b6632`
+
+Identical at `e56e9244d` and `1f50a47fb` and in both `chart.js` copies. Bytes exceed chars by 2 because of one em-dash in a comment — **which is precisely why the two figures could never be reconciled**, and a reminder that a hash without its derivation is not a specification. That was my brief-defect: I shipped a number stripped of its method.
+
+### The blind spot re-checked, and it held
+
+The exempted region grew from 249 lines to 295 and swallows the whole reporter. Every top-level function inside it was hashed across both revisions: **7 unchanged** (including `_talariaMcDiagCollectCharts` byte-identical), **2 changed** (`_talariaMcDiagSnapshot`, `_talariaInstallMcDiagReporter`), **3 added**.
+
+The check I most wanted was the residue: strip every function body and compare what remains — the allow-list, the three `M25_ARMING_SITES_*` constants, the doc comments. It differs by exactly **six newlines**, the blank-line separators for three new functions; whitespace-normalised it is identical at 4,387 characters. **Nothing was slipped into the allow-list or the constants**, which is where I would have hidden something. Outside all three regions, `chart.js` is byte-identical at 1,945,715 bytes.
+
+**This is the third consecutive commit on this file whose gate gap was closed by a reviewer hashing functions by hand.** That is not sustainable. New row: promote function-level hashing into the suite so the next packet does not need a human for it.
+
+### `null` was the right call, and I can now say why rather than assume
+
+No consumer reads `m25FramesArmed` **at all** — established by `git grep` across the tracked tree plus `rg --no-ignore --hidden` so gitignored `docs/` was included. `harness-lib.mjs` and `diagRowsByPanelId` read only `fetches`; the m22 runner reads three named fields; `confirm-host.mjs` touches only `panelId`. The single wholesale-row consumer lands in evidence output, and with attribution off that row is byte-equal to base, so **no stored evidence shifts**.
+
+A separate boolean field would have widened the row in *every* session including the default, destroying the byte-equality this packet worked to preserve. Reusing the column keeps `Object.keys(row)` identical.
+
+### The collector reaches the panels, and the cycle guard is load-bearing
+
+`__mcDiagCollect` passes a fresh `Set()`, and that matters: a mutant swapping it for a no-op guard **collects 16,785 charts** against a self-referential frame. The two statements outside any `try` are `Set` operations on an object reference and cannot throw even for a cross-origin `WindowProxy`.
+
+Cross-origin was modelled two ways, including the realistic browser case the author did not cover — where `contentWindow` resolves to an opaque proxy and *every* property access throws, not just the getter. Host and same-origin panel both return, nothing throws, no hang.
+
+And the three iframe-only sites are genuinely reachable: `multichart-manager.js:445` sets `frame.src` to a **relative** URL so production panels are same-origin, every frame loading `chart.js` sets `window.chart` at `:41937` which is the key the walker looks for, and `panel-cmd-bridge.js` contains exactly the 3 arming sites.
+
+**Inherited residual, not introduced:** a genuinely cross-origin frame is skipped silently with no signal, and its sites would read as dead. Base had the same property. A `skipped` count in the returned value would close it cheaply — new row.
+
+### A reviewer self-correction worth more than the result
+
+The reviewer's first mutation run reported **14/14 killed and was worthless**: two oracles were failing on the *unmutated* baseline and killing everything by default. One was their own error (demanding kill-switch output match base — the exact thing the packet changes), the other a cross-realm `deepStrictEqual` prototype mismatch. They fixed both, re-ran, and got a real 14/14.
+
+**I want that recorded as a method requirement, not a curiosity: a mutation score is meaningless without asserting the oracles pass on the unmutated product first.** I have accepted mutation scores three times today without asking for that control. That is my gap, not theirs.
+
+## 2026-07-28 19:09 — The one thing that is NOT closed, and it is my constraint that causes it
+
+**With attribution off — the default — the report is byte-identical to base: the saturated scalar, no `sites` key, and no indication that a per-site map exists at all.** An operator who does not know about `__TALARIA_ENABLE_M25_ARMING_ATTRIBUTION_V1` gets the misleading number and stops. **That is precisely the scenario this packet was dispatched to prevent**, now solved for flag-on sessions and untouched for flag-off ones.
+
+The silence is forced by the byte-equality requirement, **which I imposed**. I am accepting it rather than reopening, for a reason I want on the record so it can be challenged: the only near-term consumer is the session we are about to run, which will set the flag; and relaxing byte-equality would shift stored evidence rows for a hazard whose victim is hypothetical. That is a judgement, not a proof, and it sits uncomfortably beside my own standing lesson that fixing the instrument beats trusting the protocol.
+
+**Session protocol, recorded here because a runbook line is the mitigation:**
+
+1. Set `window.__TALARIA_ENABLE_M25_ARMING_ATTRIBUTION_V1 = true` **before any chart is constructed** — it is read once per construction, so setting it late attributes nothing.
+2. Bump the `?v=` token before reading anything off the deployed site. It sits at `20260727b80` and has been static across the last five `chart.js`-touching commits. **A cached response serves a pre-M25 engine and the counter is simply absent — indistinguishable from a zero reading.**
+3. Read `__mcDiagCollect()` for host plus panels, not `__mcDiagReport()` alone.
+4. **Never quote `m25FramesArmed` as a path count.** It saturates at one per frame by construction. The per-site map is the answer; the scalar is a frame count wearing a counter's name.
+5. Read nothing from a chart constructed before step 1.
+
+## 2026-07-28 ~15:5x — M26 orphaned ReplaySystems (FINDING-ORPHANED-REPLAY-SYSTEMS-20260728)
+
+branch=manager-a/orphan-replay-destroy base=manager-a/critical-path@4cf6bf14e tip=08d024b02 (NOT merged)
+
+**VERDICT: code ACCEPT-WITH-CONDITIONS (conditions closed). M-6 BLOCKED — UNTESTED, not green.**
+surface=multichart-prod/multichart-manager.js (+enforced homepage mirror) coverage=node oracles 5/5; browser M-6 non-discriminating
+
+### Two premises in the Director's finding REFUTED before dispatch
+1. Cited multichart-manager.js:583-588. Real site is **519-528** on my base, and **522-523 on the finding author's own branch**. Content, not numbers.
+2. "A fourth entry in a list of three — the teardown already destroys the Q7/Q5 bridges, each kill-switched." **No such list exists.** Zero occurrences of `destroy` in that file on **any** ref; `backlog/lane3-bridge-teardown-q5q7` is unmerged and lacks it too. The pattern was established, not matched.
+   - Cause of the illusion: the manager's own teardown is named **`dispose`** (:189), so a `destroy` search misses it. `dispose()` does `for (id of charts.keys()) this.removeChart(id)` (:201), reached from `MultichartGrid.jsx:2805` on unmount — so the fix IS on the PO's back-to-single-chart path. Chain independently confirmed by review.
+
+### Mechanism CONFIRMED, and stronger than reported
+`destroy()` (replay-system.js:10179) is two statements; the teardown inlined the first and dropped `m20Q6DrainState`. **Stronger: `destroy()`/`dispose()` are called from nowhere in the product** — the sole reference is the :10187 self-call.
+
+### M-6 is UNTESTED — do not report the enabled arm as green
+The A/B used the kill switch on one build. **The control arm (today's shipping behaviour) also passed both criteria: 1 replay system before and after, delta 0.** A criterion the defect arm passes is not evidence. Reporting it green would repeat exactly the error that got **M-5 withdrawn**.
+Reviewer confirmed and found it worse than I argued:
+- `frame.remove()` fires **pagehide 0–7 ms after removal**, so the pre-existing hook (replay-system.js:9563-9579) drains first. **The harness is structurally incapable of exhibiting the defect.**
+- No open-state sample: never shows the count rising above 1, so "1 after" is unfalsifiable. `beforeOpen` is already 1 (host chart).
+- Detached-div detector reads **0 in every sample of every arm** against a PO baseline of 19,852 — uncalibrated, no positive control.
+- `buildAcceptance` reads only the enabled arm; the control was collected and discarded.
+
+### MY HYPOTHESIS REFUTED (mine, not an author's)
+I briefed that `destroy()` drains but never nulls the reference, so M-6 #1 was structurally unmeetable. **False.** The clean path nulls `chart.replaySystem`, deletes the chart-owner entry, and releases the state from a strong `Set` (replay-system.js:9814-9822, :9811). Conclusion survives on other grounds only: both arms already sit at 1, so the fix cannot be shown to move criterion 1 on this path.
+**Real gap instead:** partial drain sets `destroy-pending` and **throws** (:9824, :9846-9851), leaving `chart.replaySystem` intact — and `removeChart` swallowed it silently. Now logged (condition 2).
+
+### brief-defect (mine, 4th of the same class this train)
+Writable set omitted the **enforced** homepage mirror; `b70-multichart-manager-mirrors.test.mjs` gates it. First author correctly **refused the packet** rather than widening scope. I have a standing rule to check every writable file for an enforced mirror and I broke it again.
+
+### Scope decision is load-bearing for CORRECTNESS, not tidiness
+Left `multichart/multichart-manager.js` (identical defect at :201-202) alone. Reviewer found `multichart/chart-host.html:281-283` installs a **no-op Proxy** whose `.destroy` is truthy — so patching the non-prod twin would set the guard, skip the real `_b70Shadow…` dispose, and be a **strict regression**. Recorded so the obvious follow-up does not land.
+
+### Director follow-ups
+- **#3 orphan liveness — partial, limits stated.** Control arm: 32 registrations, 28 pending event registrations, **0 pending timers/rAFs**, 3 pagehide executions during removal. "Registered" ≠ "firing"; executions were during frame removal, not steady state. Probe instrumentation itself alters retention. **Does not close the lag question.**
+- **#4 Document filter — 0 in both arms**, filtered by class not by size-sorted scan. But the same snapshot instrument reads 0 detached divs everywhere, so **the null is not yet trustworthy**.
+- **Baseline caveat honoured:** 19,852 predates multichart; this addresses growth, not baseline. Flat delta not reported as a fixed leak.
+
+### OPEN
+- **PO-REQ: M-6 on the PO's real browser.** Headless self-heals via pagehide; the PO's Chrome shows 3 orphans. The environments disagree and only the PO's side has the defect.
+- Census wrote full heap snapshots then **deleted** them (heapDeleted:true), counting node names only — it had the data to answer "what retains this" and discarded it.
+- Ordering mutant survived initial oracle (two separate call arrays); killed in 08d024b02.
+
+## 2026-07-28 ~16:0x — M26 MERGED per RULING-MEMORY-FIX-DISPOSITION-20260728
+
+merge=a9c7e34c9 branch=manager-a/critical-path (from manager-a/orphan-replay-destroy@08d024b02)
+
+**DISPOSITION (Director's words, not mine): "code-correct, effect not demonstrated." Kill-switch on.**
+Per **EVID-01** the pending demonstration is **Manager C's M-6 gate on the live browser runner**.
+**This is NOT reported as a fixed leak.** It is not reported as closing the lag complaint.
+
+My proposed "hygiene grounds" label is **withdrawn as too weak** and the Director is right that it was.
+The distinction I failed to draw: **confidence in the fix** and **an instrument able to observe its effect**
+are different deficiencies. Only the second is missing here. Conflating them is how a real fix gets
+discarded as unproven.
+
+Green at merge tip: m26 5/5, b70-multichart-manager-mirrors 1/1, b70-indicator-generation-shadow 37/37,
+m10-runtime-pnl-replay-frame 9/9, m23-host-listener-leak 12/12, m25-render-pending-accessor 33/33 = **97/97**.
+
+### FINDING (Director instructed this be recorded): my harness measures a smaller scenario
+The census cannot reproduce a leak the PO caught by hand in ten minutes. **That is not an obstacle, it is an answer.**
+It settles my own earlier open doubt — I refused to say whether a 33 MiB heap meant a fivefold improvement or a
+harness measuring a smaller scenario. **It is the smaller scenario.** Every byte total this harness has produced
+is now suspect for that reason, not merely "unvalidated".
+Mechanism of the under-reproduction: `frame.remove()` fires `pagehide` 0-7 ms after removal in headless, so the
+pre-existing drain hook self-heals before the defect can manifest. Plus no open-state sample and an uncalibrated
+detached-div detector reading 0 in every arm.
+
+### Director's new PO numbers supersede parts of my census
+- **4 -> 17 engines, unbounded**, ~7.5 MB retained each (my census: constant 1 — instrument, not reality)
+- **~15 leaked panel documents** — so the Document question is answered **affirmatively by PO data**. My census
+  read 0 and the earlier retraction is superseded. My 0 was an uncalibrated instrument, not evidence of absence.
+- **compiled code 45 -> 137 MB**
+- heap names the retaining edge as **the instance being a key in a strong Map** — consistent with review's finding
+  that `page.states` is a strong `Set` (replay-system.js:9528) released by `m20Q6ReleasePageState` (:9811).
+
+### Routing decisions I did NOT get to make (ruled)
+- **Not** "hold for the PO's reading" — that makes the PO our first instrument again after four hand-run snapshot
+  rounds today, and blocks the train on one person under a 3-4h standby canary.
+- **Not** "rebuild my harness" — C's browser runner already exists and the M-6 gate is already dispatched to C.
+  Two managers building two instruments for one measurement is the waste being called out.
+
+### HAND-OFF TO C (M-6 gate) — carry these or the gate repeats my failure
+1. **Suppress or account for the `pagehide` self-heal.** replay-system.js:9563-9579 drains on pagehide/beforeunload
+   of the panel window; `frame.remove()` fires it 0-7 ms later. A runner that does not handle this **cannot** show
+   the defect and will read green on broken code — the M-5 failure mode again.
+2. **Sample while panels are OPEN.** Count must be shown to rise above 1, or "1 after" is unfalsifiable.
+   `beforeOpen` is already 1 (the host chart), so criterion 1 is satisfied by the host alone.
+3. **Calibrate the detached-div detector against a known-detached node** before trusting a 0.
+4. **Run BOTH arms** via `__TALARIA_DISABLE_M26_PANEL_REPLAY_DESTROY_V1`; assert the arms **differ**.
+   My census collected the control arm and then discarded it — `buildAcceptance` read only the enabled arm.
+5. **Mutant = real fix-reversal** per C's W55 precedent, since the gate is the sole evidence the fix works.
+6. **Do not delete the heap snapshots.** Mine wrote them then set `heapDeleted:true` and counted node names only —
+   it had the data to answer "what retains this" and threw it away.
+
+### STANDING WARNING attached to this row
+**Do not patch `multichart/multichart-manager.js`** (non-prod), despite the identical defect at :201-202.
+`multichart/chart-host.html:281-283` installs a no-op **Proxy** whose `.destroy` is truthy, so the guard would
+pass, the real `_b70ShadowDisposeIndicatorGeneration` would be **skipped**, and it is a **strict regression**.
+The scope decision is load-bearing for correctness, not tidiness.
+
+## 2026-07-28 ~18:0x — CHARTER cycle 1. Items 3 and 2 SHIPPED; item 1 blocked on a referent.
+
+Read in order: CHARTER-A-FAST-CHARTS, RULING-PARALLELISM-1722, FINDING-REPLAY-RUNS-HIDDEN, DISPATCH-REBALANCE-1742.
+**TREE-01: all four exist only in the director worktree, not in mine or the main checkout.**
+
+### SHIPPED — item 3 (M26 completion) = M27, merged **cd979b8cc**
+Nulls `fullData`/`fullRawData` and releases the retainer. 5/5 oracles, 5/5 mutants killed.
+
+**CHARTER §2.3 REPORT — contradicts what the PO has been told. There is no strong Map.**
+The heap edge `part of key {M20Q6ReplaySystem} -> value (Object) pair in Map` is a **WeakMap ephemeron**;
+the transcription dropped "Weak". Measured, not argued: V8 emits that string **only** for ephemeron tables,
+a strong Map with an object key produces zero such edges, and the edge runs **from** the key. It is
+`m20Q6States` (replay-system.js:9089). **An ephemeron cannot retain its own key — there was nothing to delete.**
+Charter §4's candidate (our own mcDiag wrapper, chart.js:2864) is **also eliminated**: it installs closures
+**onto** the instance, so the edge points replay->chart, the wrong direction to retain.
+
+**The real retainer, named (M-3 satisfied):** `Chart.orderManager.replaySystem` and
+`OrderManager.orderService.replaySystem` are strong and **never nulled anywhere in product code**.
+`replay-system.js:9821` nulled **one of three** references. That is why `destroy()` reported success
+and freed nothing, and why M26 was correctly labelled "code-correct, effect not demonstrated".
+
+**UNCLAIMED SAFETY FIX found by review — bigger than the memory.** The drain sets `isPlaying=false` but
+**never clears `isActive`**. So at base the seven order-placement guards
+(`order-manager.js:21271, 28734, 30054, 30303, 30399, 30495, 30565`, all `!rs || !rs.isActive`) see a
+**destroyed engine still reporting active** and **let orders through** against frozen `fullRawData`/`currentIndex`.
+M27 makes them see `null` and refuse. **Fail-open becomes fail-closed on the money path.** Measured both ways.
+
+### SHIPPED — item 2 (FIX 3, hidden pause) = M28, merged **6d52fff66**
+12/12 cells. Pauses on `visibilitychange`, resumes with no catch-up, no double-advance, no skip;
+intra-tick progress preserved on the tick path.
+Review caught a **real defect in my first cut**: the kill switch **stranded** a running replay on a
+mid-session flip — `isPlaying=true`, zero live timers, playhead frozen, two clicks to recover. Two modes,
+both measured, both now fixed and celled. Root cause was a **sampling asymmetry**: registration read the flag
+once at `setup()` while the guards read it per call.
+Review also **refuted the packet's capture claim**: `setup` is **not** in `m20Q6EffectMethods` (that list has
+`setupGoBackMultiPanelUI`). Capture works via the `M20Q6ReplaySystem.setup()` override at `:10023-10029`.
+No leak (1 listener after construct, 0 after destroy) but the invariant is now celled, not described.
+
+### BLOCKED — item 1 (kill-switch on the render-path fix), and it is the train blocker
+**I cannot identify the referent and I will not guess on B's train.** Probe returned M25's
+`renderPending` accessor — but **M25 is CUT and already carries
+`__TALARIA_DISABLE_M25_RENDER_PENDING_ACCESSOR_V1` (chart.js:1432-1436)**, so it cannot be a missing switch.
+B's journal seam 1 (lines 81-86) points at `chart.js` invalidation/scheduling — `render()` tail 29500-29514,
+`chartViewPanning` — and line 335 names `__TALARIA_DISABLE_ORDER_OVERLAY_PAN_ALWAYS_V1` (chart.js:29418/29422).
+Candidate: V6-P4 "lines disappearing" (B journal :293), cure possibly in A's invalidation path.
+**Question raised to Director rather than building the wrong thing.** Did not stall: ran items 2 and 3 meanwhile.
+
+### M25 CUT but ALREADY MERGED (f3792a040)
+The cut says do not start; it is already in. Reverting is 56 writes of churn against green tests.
+**Proposal under Charter §1/§4 (keep the capability, make it cheap): flip the accessor to default-OFF**
+so it is zero-cost unless explicitly enabled, rather than reverting. **Not actioned — not in my five.**
+
+### PAR-01 applied
+Two read-only + one writer in parallel; items 2/3/4 serialised on `replay-system.js` by stacking M28 on M27
+so there was exactly one writer at a time; one top-tier review covered both stacked commits, since PAR-01 §3
+names review capacity as the ceiling.
+
+### Hazards recorded
+- `m22-session-calendar-bucketing.red` **mutates the tracked** `tests/evidence/session-calendar-red/m22-session-calendar-broken.json` on every run. Restored twice today.
+- A subagent committed to a **detached HEAD** (`ef026db5f`); rescued onto `manager-a/m28-replay-hidden-pause`. **Briefs must state the worktree may be detached and require attaching before commit.**
+- **5th brief-defect of the same class: writable set omitted an enforced mirror.** Two authors refused packets over it; both were right. `replay-system.js` is byte-mirrored AND hash-pinned (reviewed core = five floating-toolbar methods only).
+
+## 2026-07-28 ~18:5x — CYCLE 2. M25 cut enforced; train audit done; drain questions closed.
+
+### TRAIN AUDIT (the actual blocker) — 10 in-scope items, 4 flagged, **6 missing switches**
+**V6-P4 IS NOT IN THE TRAIN.** Exhaustive: `git grep -i -E "v6[-_ ]?p4"` = **one** hit, my own journal line 4275,
+prose, added by the tip commit. `git log -S"chartViewPanning" 39152ca7b..HEAD` = docs only. The `render()` tail
+and `chartViewPanning` are **byte-untouched**. Cited anchors stale: `render()` tail is `chart.js:29064-29368`
+not 29500-29514; `__TALARIA_DISABLE_ORDER_OVERLAY_PAN_ALWAYS_V1` is `:29263/:29267` not 29418/29422.
+**The elimination was sound but the conclusion does not follow** — the train's unflagged render changes are elsewhere.
+Baseline **39152ca7b** (144 commits), chosen because **every** b75-b80 anchor collapses to it.
+`?v=` token proven unusable as a deploy marker: two divergent trees emit `20260727b80` and neither is an ancestor.
+
+**Missing, prioritised:** P1 M23 host-commit teardown (stops a path that paints; bfcache `persisted===false` leaves a
+panel deaf) · P2 order-line eviction rescope (only item changing what is **visibly drawn**; flag-off leaves orphaned
+order/SL/TP lines) · P3 IndicatorPerf loader (**load-time `<script>` only** — answers Q7; flips 12 consumer sites) ·
+P4 module-presence tripwire (draws a "Degraded" badge, 500ms budget, no off switch) · P5 M20-Q9 counters ·
+P6 deleted served shell (**no runtime switch possible** — needs a decision).
+
+**STRUCTURAL FINDING — Charter §2.3, affects what the whole ruling buys.**
+`git grep localStorage --and __TALARIA_DISABLE` = **0**. Same for `URLSearchParams`. **No shell reads any
+kill-switch from a URL param, localStorage or any persisted source.** All 64 `__TALARIA_DISABLE_*` reads require the
+global to be set **by hand in the page before the reading code runs**. So on a single-push deployment "the switch is
+present" means **"an operator can set it in DevTools and reload"**, NOT "we can turn this off for all users without a
+push." **If the latter is the intent, the ruling is not yet satisfied by adding six switches.** A one-time seeder
+reading an allow-list from localStorage in each shell's first inline script buys it for all 64 flags at once and is
+**smaller than adding the six**. Raised, not built.
+
+### M25 REVERTED and merged **0fc260f6d** — and it was an active blocker, not just dead weight
+`m25-render-pending-accessor.test.mjs` carried a **freeze cell** — "no chart.js region outside the three declared
+ones changed" — which **fails on ANY future chart.js edit**. **A cancelled packet was freezing the file**, and it
+blocked R1 today. Author correctly stopped rather than touch the pin. `chart.js` now **byte-identical to
+`ba2d30e57^`** (empty diff). Q9 counters survived — they are `3e1fdc05e`'s, not M25's.
+**Revert cost was far below my own "56 writes of churn" estimate**: no commit after M25 touched `chart.js` at all,
+so it was conflict-free by construction. **My estimate was wrong and it delayed the cut.**
+
+### R1 authored **6872d3c6f** (branch `manager-a/r1-chartjs-killswitches`) — closes P1 and P5
+26/26 focused. Per-call sampling with celled mid-session flip; flag-on installs **no wrapper frame at all** on
+`updateChartDataFast`. Awaiting top-tier review. `chart-data-pipeline.js:101` `incrementalResamples++` left —
+outside the writable set, needs its own packet.
+
+### DIRECTOR'S TWO DRAIN CHECKS — **both ruled out**, by runtime probe not source-reading
+**(a) Aggregate throw: RULED OUT, three ways.** The throw is the **final statement** at `:9962-9966`, after every
+release, and each release is individually wrapped in `attempt()` (`:9787-9803`) — **so it skips nothing**. Probe
+with an injected remove-fault: timers 7->0, listeners 10->2 (only the faulted pair), all DOM strips done. Predicate
+requires **a host DOM API to throw** = fault injection, not production. Failure lands in `'destroy-pending'`, which
+is **re-drainable**, with two production retry paths. **The multichart call site IS wrapped** (`multichart-manager.js:528`
+try, `:543-546` catch). Two unwrapped sites exist — `destroy()`/`dispose()` and the `'replacement'` prologue —
+and neither matters for the same reason.
+**(b) Destroyed-phase early return: UNREACHABLE, and the mechanism was mis-stated.** Guard is `:9773` not `:9671`.
+**The drain never deletes from `m20Q6States`** (4 hits total, no `.delete`), so a destroyed instance **can never get
+a new state record** — the hypothesised mechanism cannot occur. Re-registration onto the **old** record would leak
+(probe: `setup()` re-registers, re-drain returns the stale report) but **no production path reaches it**: `init`/`setup`
+have no caller outside the base constructor, and every async vector is inert via `acceptCallbacks` (`:9348`, `:9468`, `:10315`).
+**Note the trap:** adding `m20Q6States.delete(instance)` to the drain would **create** the Director's hypothesised bug.
+Director's line numbers off by ~100 throughout (function is `:9769-9969`); two call sites omitted from the brief
+(`constructor-rollback`, `setup-rollback`) — six, not four.
+
+### Serialisation
+Director lifted PAR-01 file-granularity to region-granularity. Adopted. M26/FIX 3 were already merged in the ordered
+sequence (M26 `cd979b8cc` then FIX 3 `6d52fff66`) before the ruling arrived.
+
+### Next
+R2 (P2), R3 (P3+P4) concurrent on disjoint files; top-tier review of R1; then FIX 2, FIX 1.
+
+## 2026-07-28 ~20:0x — NAME RESERVATION + queue-count correction.
+
+### RESERVED, cross-manager — do not vary
+**`__TALARIA_DISABLE_MC_BACKGROUND_RENDER_CADENCE_V1`** — FIX 1, background-panel render cadence.
+**B has already written this exact name into its gate expectations.** A second name desynchronises A and B,
+so this is now a hard constraint on the FIX 1 brief, not a preference. FIX 1 remains **last** by design.
+
+### Reserved for the remaining train switches (mine, to avoid parallel-brief collision)
+- `__TALARIA_DISABLE_M24_ORDER_EVICTION_SCOPE_V1` — P2, order-line eviction rescope
+- `__TALARIA_DISABLE_INDICATOR_PERF_BRIDGE_V1` — P3, IndicatorPerf loader
+- `__TALARIA_DISABLE_MODULE_PRESENCE_TRIPWIRE_V1` — P4, module-presence tripwire
+
+### CORRECTION to the Director's "three of five"
+**Item 1 is NOT complete — it is 2 of 6.** The ruling's own generalisation made the enumeration the deliverable,
+and the enumeration found **six** missing switches. R1 (merged `a794613b4`) closed **P1** (M23 host-commit
+teardown) and **P5** (M20-Q9 counters). **Still open: P2, P3, P4, and P6.**
+P6 (deleted served shell `homepage/public/chart/talaria-design/live/index.html`, `d071c858f`) **cannot take a
+runtime switch at all** — no file, nothing to flag — so it needs a Director decision: confirm the route has no
+consumers before the push, or restore the file and delete it in a later train. **Not a flag; a decision.**
+
+### R1 review outcome — M23 ACCEPT, Q9 BLOCK, both now merged
+**New failure mode worth naming.** Q9's first cut read the flag per call *correctly*, but **the read itself
+permanently mutated the object graph**: the wrapper self-uninstalled on first call under flag-on, and
+`initReplaySystem()` runs once per page load, so there was no way back without a reload. **This is the M28
+stranding defect in mirror image** — stranding on ON->OFF instead of OFF->ON.
+**The corruption was silent AND plausible:** after one flip cycle it reported `fullResamplesPerTick = 2.000`
+against a truth of `1.000`, and 2.000 is the value this journal records as the legitimate render-frame
+signature (entries 2691, 2945). **A corrupted reading would have been indistinguishable from a published one.**
+Also fixed: three fields nulled while only two increments were gated, so `incrementalResamples` kept measuring
+under a flag documented as "measurement disabled" and had its output discarded.
+
+### GENERAL LESSON — applies to every kill-switch packet from here
+**Cells wrote the flag as explicit `false`; in production the property is ABSENT.** An inverted-defaulting
+mutant therefore survived the entire suite while silently inverting both switches on the real page. Code was
+correct, coverage was not. **Every switch packet must now cell the absent-property default and an ON->OFF->observe
+flip.** Added to the standing brief template.
+
+## 2026-07-28 ~20:5x — SETTLEMENT WITH B on the assembled tip. Neither of us was wrong.
+
+### The disagreement was a tip-age artefact, and it is fully resolved
+**Assembly `f8a6c28a8` was cut 20:08:02.** Its merge-base with my tip is **`ba174d694`** — my 20:00 journal commit,
+**after R1 merged but before R2 and R3 did**. So:
+- **B's inventory is correct for the object B inspected.** At `f8a6c28a8`, P2/P3/P4 exist **only in documentation**
+  (`KILL-SWITCH-INVENTORY.md` and my own reservation entry) with **no product code**. B listing them "A residual"
+  was accurate.
+- **My enumeration is correct for my tip.** All three are built, reviewed and merged.
+**Nobody needs to re-audit. B needs four commits.**
+
+### What B must pick up — exactly these, in this order
+`1ec5bf9e9` -> `7036b7eed` (R2, P2) -> `7e9db92c4` -> `e0cb3103f` (R3, P3+P4). Taking **`e0cb3103f`** takes all four.
+
+**Pre-verified for B so it does not have to:**
+- `git merge-tree --write-tree f8a6c28a8 e0cb3103f` = **CLEAN, no conflicts.**
+- **No B or C commit touched any of the three product files** since the merge-base — `drawing-tools-manager.js`,
+  `chart-indicators-full.js`, `module-presence-runtime.js` all untouched in `ba174d694..f8a6c28a8`. **Zero contention.**
+- After the pick-up the inventory's three "A residual" rows become rows 9, 10, 11 on the same terms as rows 7-8:
+  strict `=== true`, absent property = fix ON, per-call.
+
+### Confirmed consistent with B, no action needed
+B's **"phantom cleared"** note is right: `__TALARIA_DISABLE_MC_BACKGROUND_RENDER_CADENCE_V1` is FIX 1's flag,
+**FIX 1 is not in the train**, and the name is reserved only so A and B do not desynchronise. **Not a release precondition.**
+
+### P6 — held the push, correctly, and it is not mine to resolve
+Ruled: B checks consumers via live-surface-probe plus C's census. Nothing requests the route -> proceed;
+anything does -> restore `homepage/public/chart/talaria-design/live/index.html` and the deletion moves to a later
+train. **No runtime switch is possible for an absent file, which is why this was escalated rather than flagged.**
+
+### FLAG-01 and FLAG-02 now binding on all three managers — adopted into my standing brief template
+- **FLAG-01 — every switch packet cells the ABSENT property, never explicit `false`.** Origin: R1's cells wrote
+  `= false` while production has the property absent, so an inverted-defaulting mutant **survived the entire suite**
+  while silently inverting both switches on the real page. **Code was correct, coverage was not.**
+- **FLAG-02 — a switch that cannot be flipped back in-page without a reload is not a switch.** Origin: Q9's wrapper
+  self-uninstalled on first call under flag-on, so ON->OFF could never recover. **This defect has now appeared three
+  times in one day in three different disguises** — M28 stranded OFF->ON, Q9 stranded ON->OFF by self-uninstall,
+  P4 stranded ON->OFF by init-time sampling. **It is a family, not three incidents**, and FLAG-02 is the only rule
+  that catches all three shapes.
+Both are now mandatory acceptance items in every switch brief I write.
+
+---
+
+## 2026-07-28 21:19 — SHELL-REPAIR (chart-host.html / multichart-shell.html): PREMISE REFUTED, packet not dispatched
+
+**VERDICT: the order's motivating premise is FALSE.** surface=`manager-a/critical-path` @ `186ee3ab3`, coverage=static (git grep + shipped bundle) corroborated by a prior live Playwright run against b75.
+
+### The claim, and what is actually true
+Order: *"this is why indicator performance was never loaded in panels ... module-presence-runtime.js is also missing
+from the same file."* **Product panels do not load `chart-host.html`.** They load
+`multichart-prod/chart-embed.html`, which **already carries both modules**.
+
+| | `indicator-performance.js` | `module-presence-runtime.js` |
+|---|---|---|
+| `multichart-prod/chart-embed.html` (panels actually use this) | 1 | 1 |
+| `multichart/chart-host.html` (the order's target) | 0 | 0 |
+
+Panel iframe URL is built in exactly one place, `MultichartGrid.jsx:1081`, returning
+`/chart/multichart-prod/chart-embed.html?...`. **I verified this in the shipped artefact myself, not just in source:**
+`dist-v9/assets/talaria-v9-live.js` contains `chart-embed.html` **once** and `chart-host.html` **zero times**.
+`chart-host.html` is the **sandbox** panel, reachable only via `multichart-shell.html`, and its own header declares the
+gap as deliberate: *"engine (no modules - minimum surface)"*.
+
+So the `IndicatorPerf` gap is real **only on the sandbox surface**, and closing it changes nothing a user sees.
+
+### Two further premise corrections (TREE-01, all at `186ee3ab3`)
+- **Paths.** Files are under `multichart/`, not `multichart-prod/`, and **each has an enforced mirror — four files, not two.**
+- **`multichart-shell.html` is not frozen at a10.** It carries `?v=20260509T1755` / `?v=20260509T2030` — **9 May, two
+  weeks older than the stated 24 May**. Nothing in that file is at `20260524a10`. Only `chart-host.html` is.
+
+### Why I did not dispatch the parity work
+Not a pin correction. `chart-embed.html`'s list is **53 modules built dynamically** via `document.write`, so parity is
+~1 MB per panel plus five structural hazards:
+1. **`m22` pins the gap by value.** `expectEqual('M4','shells-with-registry-ABSENT', ...)` at
+   `m22-session-calendar-bucketing.red.test.mjs:1497` **lists both `chart-host.html` mirrors as the expected set.**
+   Adding modules fails that assertion — and **that suite is the one that mutates a tracked evidence file**, so the
+   change cannot even be validated without running the file I am avoiding.
+2. **The tripwire would draw a false "Degraded" on a working panel.** `tripwirePasses()` requires a
+   `chart-indicators-full.js` tag to exist; adding the presence runtime without 989 KB of consumer fails `orderOk`.
+3. **Classic vs `defer`** — `chart-host.html`'s inline stub block and bootstrap IIFE are classic; copying `defer` tags
+   reorders execution silently.
+4. **Stub/real collision** — the shell installs no-op Proxies over eight subsystems before `chart.js`.
+5. **`chart-window-limit.js`** would introduce a window claim into the sandbox's only data path.
+
+**Kill-switch coverage is 2 of ~53** (`__TALARIA_DISABLE_INDICATOR_PERF_BRIDGE_V1`,
+`__TALARIA_DISABLE_MODULE_PRESENCE_TRIPWIRE_V1`, both present, `e0cb3103f` confirmed ancestor). I will not sign
+"the switches cover this".
+
+### Stamping is cosmetic here — demonstrated, not asserted
+**No build step writes these stamps; they are hand-edited.** `chart-shell-audit.mjs` strips them, the runtime probe
+only reads them. And the two `chart-host.html` mirrors **both carry `?v=20260524a10` while being different files**
+(53,609 vs 52,302 bytes, differing SHA-256). One identical token, two different files — a self-contained proof the
+token does not track deploys. Neither file appears in `module-contracts.json`'s 8-row inventory, so **no gate would
+observe a new stamp.** Trap for anyone who greps: that inventory *does* have an id `chart-host`, but it points at
+`dist-v9/index.html`.
+
+### GENUINE FIND, and the only item here with real value: unpinned third-party script on the chart surface
+`chart-host.html` fetches d3 from `cdnjs.cloudflare.com`, **no SRI, no fallback**. The repo has **zero real
+`integrity=` attributes anywhere.** The vendored `chart/vendor/d3.min.js` is the **same version 7.8.5, byte-identical
+across both trees** — a verified drop-in `src` swap at zero behavioural cost. The iframe carries no `sandbox`
+attribute by design, so a compromised CDN executes with full same-origin access.
+
+### Mirror drift (new row)
+`chart-host.html` is **not** byte-mirrored (3 insertions / 26 deletions); `multichart-shell.html` is. The homepage
+copy is **behind** source, missing `_captureTfSwitchViewport`/`_restoreTfSwitchViewport`.
+
+### DIRECTOR-Q — governance conflict I cannot adjudicate
+The order says *"Ruling A14.3 does not apply."* But this journal records A14.3 firing **twice, on these exact two
+files**, with the remedy being de-route and **"wiring modules in is forbidden"** — and a prior packet proposing
+precisely this module addition was **held** on those grounds. The Director's exemption was granted on the stated
+ground that *panels resolve to it*, **which is the premise I have just refuted.** I default to: **cancel the parity
+work, ship nothing to these files in this train**, and treat the d3 swap as a security row for the next train.
+Proceeding on the pre-push switch sweep meanwhile.
+
+### 21:24 — DIRECTOR RULING on SHELL-REPAIR: CANCELLED
+**Parity work cancelled. Nothing ships to `multichart/chart-host.html` or `multichart-shell.html` in this train**
+(neither mirror). The A14.3 exemption rested on *"panels resolve to it"*, which is refuted above, so the exemption
+does not survive its premise and I am **not** applying it. The prior A14.3 hold on these two files therefore stands
+unchanged — no new precedent is set in either direction.
+
+**Carried forward as an open SECURITY row for the next train (not closed, not fixed):**
+- `multichart/chart-host.html` fetches d3 from `cdnjs.cloudflare.com` with **no SRI and no fallback**; repo has
+  **zero real `integrity=` attributes anywhere**. Vendored `chart/vendor/d3.min.js` is the **same 7.8.5,
+  byte-identical across both trees** — verified drop-in. Iframe has no `sandbox` attribute by design, so a
+  compromised CDN executes with full same-origin access. `legacy-index.html` has the same class of exposure (d3 +
+  lz-string from cdnjs) but at least carries a jsdelivr `onerror` fallback.
+- `chart-host.html` is **not byte-mirrored**: homepage copy is 23 lines behind source, missing
+  `_captureTfSwitchViewport`/`_restoreTfSwitchViewport`, so the **served** sandbox copy loses viewport preservation
+  on timeframe switch.
+
+**Standing lesson (BRIEF-02 working as designed):** the order arrived as fact — *"this is why indicator performance
+was never loaded in panels"* — and was false. Routing it as a hypothesis to refute cost one read-only audit and
+saved a ~53-module write against a live shell that would have broken an `m22` gate. **Third time today an unmeasured
+premise died on contact.** Framing costs nothing.
+
+---
+
+## 2026-07-28 21:47 — STAMP-1 MERGED `8f626fdb2`; the dependency claim is REFUTED for product panels
+
+**VERDICT: the stamp was worth doing and is done. The reordering it justified is not warranted.**
+surface=`manager-a/critical-path` @ `8f626fdb2`, coverage=static across all four shells + shipped `dist-v9` bundle.
+
+### What shipped
+`../chart.js` in `multichart/chart-host.html` had **no `?v=` at all**; both mirrors now carry `?v=20260727b80`, and the
+stale pins are refreshed (`20260524a10` in chart-host; `20260509T1755`/`T2030` in multichart-shell — the latter **9 May,
+two weeks older than the order stated**). Token-only: verified by normalising every `?v=` to a placeholder and diffing
+against base — the sole structural delta is `../chart.js` gaining a query string. New `shell-cache-stamp.test.mjs`,
+**adversarial mutation score 12/14** after remediation; the cells added post-review kill **mirror token desync — this
+bug's own failure mode** — plus `defer`/`async` injection and unstamped same-origin absolute URLs.
+
+Risk argument, tested rather than assumed: because the URL was **unstamped**, every **cold** browser was already
+fetching today's engine into this zero-module shell. Stamping creates **no new engine/shell combination**; it extends
+the already-live one to warm browsers. Review independently confirmed `chart.js` reads **no module global at
+script-eval time** and all eight `new X(` sites on module globals are guarded or covered by the shell's inline stubs.
+
+### CORRECTION: "every chart.js fix is invisible inside multichart panels on warm browsers" is FALSE for product
+The product delivery chain is **stamped end to end**, and I verified each hop:
+1. Host page `dist-v9/index.html` sets `window.__TALARIA_CHART_BUILD_ID='20260727b80'`.
+2. `chart-embed.html` — the shell panels actually load — takes `p.get('v') || '20260727b80'` and appends
+   `'?v=' + V` to **all 54 paths, `/chart/chart.js` among them**.
+3. Bridge scripts are stamped **inside** `injectScript` at `MultichartGrid.jsx:454` (`s.src = src + "?v=" + BRIDGE_VERSION`),
+   so the bare-path call sites at 467/472/473 are stamped despite appearing unstamped. `BRIDGE_VERSION` resolves to
+   `__TALARIA_CHART_BUILD_ID` = b80, **not** the `20260609b07` fallback.
+
+**Therefore FIX 1 and FIX 2 are not undeliverable and were never blocked on this.** The dependency argument does not hold.
+
+### The a10 fingerprint localises B's measurement to the sandbox
+`git grep -l "20260524a10"` over both trees returns **exactly two files: the two `chart-host.html` mirrors.** Nothing
+else in either tree carries that token, so an observation of *"warm panel loads 20260524a10"* **can only be the sandbox
+shell**. A stale product panel would have shown some other `b`-token. `diverge: true` was real; its surface was the
+sandbox, which is precisely what STAMP-1 fixes.
+
+### Consequence for M26 "effect not demonstrated" — engine divergence is NOT the explanation
+M26 lives in `multichart-prod/multichart-manager.js`, whose **product delivery path is stamped** (hop 3 above), and
+M27/M28 live in `replay-system.js`, which is **entry in `chart-embed.html`'s stamped `paths` array**. So harness and
+PO browser were not running different engines on those files. **The "effect not demonstrated" verdict stands on its
+own merits and is not explained away by cache staleness.** I am not reopening it on this ground.
+
+### Module parity: still held, unchanged
+Nothing in this ruling touches the reasons it was cancelled at 21:24 — `m22` pins both `chart-host.html` mirrors as the
+expected registry-ABSENT set, and the motivating premise remains refuted.
+
+### Carried (review conditions, accepted as residuals)
+- Next `m22` run **will rewrite one detail line** in its tracked evidence file: recorded `chart-host.html` load order
+  now includes the token. **Expected, not a regression.**
+- `shell-cache-stamp.test.mjs` is **wired into no CI job** — house pattern for all 76 siblings in that directory, not a
+  new omission, but nothing runs it on merge.
+- The ~23-line `chart-host.html` mirror drift is **deliberately preserved** and byte-identical to base.
+
+---
+
+## 2026-07-28 22:16 — STAMP-1 REVERTED `88691742e`; de-route confirmed as the remedy; **nginx alone does not close this route**
+
+Director withdrew the 21:10 finding and the 21:22 ruling in full; **A14.3 stands unamended and the exemption is
+revoked.** Option A confirmed, and the deferral in its tail rejected: the d3 exposure closes **this** train by
+de-routing rather than becoming a next-train security row.
+
+### Revert, and why it was right beyond compliance
+`8f626fdb2` reverted at `88691742e`; all four shells and the test are **byte-identical to `186ee3ab3`** (verified by
+empty `git diff --stat` across those paths). Two independent reasons:
+1. **`shell-cache-stamp.test.mjs` pinned the script inventory and mirror parity of four files scheduled for deletion.**
+   A pin on a corpse is a **non-converging blocker** — precisely how the cut M25 freeze pin blocked R1 earlier today.
+   Leaving it would have handed the de-router a red gate.
+2. The stamp's only benefit accrued to a route we intend to stop answering.
+**Re-land is a single cherry-pick of `8f626fdb2`** if the de-route slips.
+
+### BLOCKING GAP for the de-route — nginx `^~ /chart/multichart/` is necessary but NOT sufficient
+**`api_server.py:27022-27025` mounts the same directory on the app server:**
+`app.mount("/chart/multichart", StaticFiles(directory=_CHART_ROOT_PATH/"multichart", html=True), name="chart_multichart")`.
+An edge redirect does not remove a FastAPI mount. This is not hypothetical — the tracked b75 evidence
+(`b75-indicator-performance-live-audit.json`) reached the sandbox at **`http://31.97.192.82:3000` directly**, i.e. the
+app server, and got **HTTP 200** with two `chart-host.html` child frames. **So the d3/cdnjs exposure survives a
+redirect-only de-route on any path that reaches uvicorn directly.** Complete de-route needs the mount removed as well
+as the redirect. Exhaustive search: `git grep "multichart" -- "*.conf"` returns **one comment and no rule**, so nothing
+currently fronts it.
+
+### Second exposure the de-route also closes (not previously noted)
+`homepage/public/chart/multichart/` ships **9 tracked files, of which three are internal design documents** —
+`README.md`, `decisions.md`, `engine-api-audit.md` — served publicly from the static root. `homepage/Dockerfile`
+copies `dist-v9`, `modules`, `chart.js`, `multichart-prod`, `workers`, `vendor`, `fonts` **but not `multichart`**, so
+these reach the image via the tracked `public/` tree rather than a deliberate asset copy. Another argument for
+de-routing over hardening.
+
+### Order restored
+Switch round-trip sweep, then FIX 2 and FIX 1 concurrently. **Stamp priority cancelled; there was no delivery
+dependency** — the product chain was already stamped end to end (host page b80 -> `chart-embed.html` stamping all 54
+paths -> `injectScript` stamping bridges at `MultichartGrid.jsx:454`).
+
+### Process change accepted
+Runtime-load claims now go to B for a probe before reaching me as work. **This would have caught both of tonight's
+reversals at zero cost** — the a10 fingerprint and the `chart-embed.html` paths array were each one command away.

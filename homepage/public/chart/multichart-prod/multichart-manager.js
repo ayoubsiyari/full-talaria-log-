@@ -54,6 +54,222 @@
         }
     }
 
+    /** M26: panel ReplaySystem owns its listener/timer teardown. Default ON. */
+    function m26PanelReplayDestroyEnabled() {
+        try {
+            return !(global && global.__TALARIA_DISABLE_M26_PANEL_REPLAY_DESTROY_V1);
+        } catch (_) {
+            return true;
+        }
+    }
+
+    /**
+     * ORPHAN-L1: removeChart unregisters panel talariaMcHostDataCommit on parent
+     * before iframe death. Default ON when absent; truthiness kills (per call).
+     */
+    function mcFinerHostCommitUnregisterV1Enabled() {
+        try {
+            return !(global && global.__TALARIA_DISABLE_MC_FINER_HOST_COMMIT_UNREGISTER_V1);
+        } catch (_) {
+            return true;
+        }
+    }
+
+    /** PURGE-1: removeChart releases manager-held panel references. Default ON by absent property. */
+    function mcPanelStatePurgeV1Enabled() {
+        try {
+            return !(global && global.__TALARIA_DISABLE_MC_PANEL_STATE_PURGE_V1);
+        } catch (_) {
+            return true;
+        }
+    }
+
+    /** Leak shot (c): removeChart releases panel-held shared bar-store refs. Default ON. */
+    function mcClearFileOnRemoveV1Enabled() {
+        try {
+            return !(global && global.__TALARIA_DISABLE_MC_CLEARFILE_ON_REMOVE_V1);
+        } catch (_) {
+            return true;
+        }
+    }
+
+    /**
+     * ORPHAN-L2: removeChart always releases the iframe `load` listener for
+     * iframe panels (independent of PURGE-1). Default ON by absent property.
+     * Kill: window.__TALARIA_DISABLE_MC_IFRAME_LOAD_LISTENER_RELEASE_V1 — truthiness; per call.
+     */
+    function mcIframeLoadListenerReleaseV1Enabled() {
+        try {
+            return !(global && global.__TALARIA_DISABLE_MC_IFRAME_LOAD_LISTENER_RELEASE_V1);
+        } catch (_) {
+            return true;
+        }
+    }
+
+    /**
+     * ORPHAN-L3: removeChart always releases the iframe `error` listener for
+     * iframe panels (independent of PURGE-1). Default ON by absent property.
+     * Kill: window.__TALARIA_DISABLE_MC_IFRAME_ERROR_LISTENER_RELEASE_V1 — truthiness; per call.
+     */
+    function mcIframeErrorListenerReleaseV1Enabled() {
+        try {
+            return !(global && global.__TALARIA_DISABLE_MC_IFRAME_ERROR_LISTENER_RELEASE_V1);
+        } catch (_) {
+            return true;
+        }
+    }
+
+    /**
+     * REALM-TEARDOWN-RELEASE CUT 1: removeChart drops panel drag-end guard on
+     * the host window. Default ON by absent property.
+     * Kill: window.__TALARIA_DISABLE_MC_RELEASE_DRAG_GUARD_V1 — truthiness; per call.
+     */
+    function mcReleaseDragGuardV1Enabled() {
+        try {
+            return !(global && global.__TALARIA_DISABLE_MC_RELEASE_DRAG_GUARD_V1);
+        } catch (_) {
+            return true;
+        }
+    }
+
+    /**
+     * REALM-TEARDOWN-RELEASE CUT 2: removeChart strips host orderManager
+     * registry entries that point at the removed panel chart. Default ON.
+     * Kill: window.__TALARIA_DISABLE_MC_RELEASE_ORDER_REGISTRY_V1 — truthiness; per call.
+     */
+    function mcReleaseOrderRegistryV1Enabled() {
+        try {
+            return !(global && global.__TALARIA_DISABLE_MC_RELEASE_ORDER_REGISTRY_V1);
+        } catch (_) {
+            return true;
+        }
+    }
+
+    /**
+     * REALM-TEARDOWN-RELEASE CUT 3: removeChart aborts in-flight timeframe
+     * fetch AbortController on the panel chart. Default ON.
+     * Kill: window.__TALARIA_DISABLE_MC_RELEASE_TF_ABORT_V1 — truthiness; per call.
+     */
+    function mcReleaseTfAbortV1Enabled() {
+        try {
+            return !(global && global.__TALARIA_DISABLE_MC_RELEASE_TF_ABORT_V1);
+        } catch (_) {
+            return true;
+        }
+    }
+
+    /**
+     * REALM-TEARDOWN-RELEASE CUT 4: removeChart disposes the panel indicator
+     * worker singleton + pending map. Default ON.
+     * Kill: window.__TALARIA_DISABLE_MC_RELEASE_INDICATOR_WORKER_V1 — truthiness; per call.
+     */
+    function mcReleaseIndicatorWorkerV1Enabled() {
+        try {
+            return !(global && global.__TALARIA_DISABLE_MC_RELEASE_INDICATOR_WORKER_V1);
+        } catch (_) {
+            return true;
+        }
+    }
+
+    /**
+     * REALM-TEARDOWN-RELEASE CUT 5: removeChart disposes the panel custom-
+     * indicator blob worker URL. Default ON.
+     * Kill: window.__TALARIA_DISABLE_MC_RELEASE_BLOB_WORKER_V1 — truthiness; per call.
+     */
+    function mcReleaseBlobWorkerV1Enabled() {
+        try {
+            return !(global && global.__TALARIA_DISABLE_MC_RELEASE_BLOB_WORKER_V1);
+        } catch (_) {
+            return true;
+        }
+    }
+
+    /**
+     * STASHED-PANEL-HANDLE: keep panel contentWindow/chart handles on the
+     * manager entry so removeChart can still release the realm after React
+     * detaches the iframe (contentWindow becomes null). Default ON.
+     * Kill: window.__TALARIA_DISABLE_MC_STASHED_PANEL_HANDLE_V1 — truthiness; per call.
+     */
+    function mcStashedPanelHandleV1Enabled() {
+        try {
+            return !(global && global.__TALARIA_DISABLE_MC_STASHED_PANEL_HANDLE_V1);
+        } catch (_) {
+            return true;
+        }
+    }
+
+    /**
+     * XFRAME-REF-RELEASE: after realm-release cuts, null host-held entry
+     * fields that can point at the child iframe / its mount surface
+     * (frame/overlay/mountEl/cfg). Teardown hygiene only — releases host
+     * references to child-realm objects at destroy. Must run AFTER the five
+     * REALM-TEARDOWN cuts, bar-store release, replay destroy, and stash
+     * clear — those paths read child handles. Default ON by absent property.
+     * Kill: window.__TALARIA_DISABLE_MC_XFRAME_REF_RELEASE_V1 — truthiness; per call.
+     */
+    function mcXframeRefReleaseV1Enabled() {
+        try {
+            return !(global && global.__TALARIA_DISABLE_MC_XFRAME_REF_RELEASE_V1);
+        } catch (_) {
+            return true;
+        }
+    }
+
+    /** Record live panel handles while the iframe realm is still reachable. */
+    function mcStashPanelHandles(entry, win, chart) {
+        if (!mcStashedPanelHandleV1Enabled() || !entry) return;
+        try {
+            if (win) entry.panelWinStash = win;
+            if (chart) entry.panelChartStash = chart;
+        } catch (_) { /* ignore */ }
+    }
+
+    /** LIVE first, STASH second. Never prefer a stale stash over a live handle. */
+    function mcResolvePanelWin(c) {
+        var live = null;
+        try {
+            live = c && c.frame && c.frame.contentWindow;
+        } catch (_) {
+            live = null;
+        }
+        if (live) {
+            try {
+                mcStashPanelHandles(c, live, live.chart);
+            } catch (_) { /* ignore */ }
+            return live;
+        }
+        if (!mcStashedPanelHandleV1Enabled()) return null;
+        try {
+            return (c && c.panelWinStash) || null;
+        } catch (_) {
+            return null;
+        }
+    }
+
+    /** LIVE first, STASH second. Never prefer a stale stash over a live handle. */
+    function mcResolvePanelChart(c) {
+        var live = null;
+        try {
+            live = c && c.frame && c.frame.contentWindow && c.frame.contentWindow.chart;
+        } catch (_) {
+            live = null;
+        }
+        if (live) {
+            try {
+                var liveWin = null;
+                try { liveWin = c.frame && c.frame.contentWindow; } catch (_) { liveWin = null; }
+                mcStashPanelHandles(c, liveWin, live);
+            } catch (_) { /* ignore */ }
+            return live;
+        }
+        if (!mcStashedPanelHandleV1Enabled()) return null;
+        try {
+            return (c && c.panelChartStash) || null;
+        } catch (_) {
+            return null;
+        }
+    }
+
     /** panel-cmd `loadFile` / heavy ops: iframes may still be parsing dist-v9 after bridge-ready. */
     var PANEL_CMD_TIMEOUT_MS = 25000;
 
@@ -369,14 +585,48 @@
         } catch (_) {}
     }
 
-    function scheduleIframeBrandSuppression(frame) {
+    function mcPanelEntryStillLive(entry) {
+        if (!entry || entry._mcPanelRemoved) return false;
+        var frame = null;
+        try { frame = entry.frame; } catch (_) { return false; }
+        if (!frame) return false;
+        try {
+            if (frame.isConnected === false) return false;
+        } catch (_) {}
+        return true;
+    }
+
+    function scheduleIframeBrandSuppression(frame, entry) {
         if (!frame) return;
         var n = 0;
-        var tick = function () {
+        var tick = function (activeHandle) {
+            if (entry && activeHandle && Array.isArray(entry._mcBrandSuppressionTimers)) {
+                var activeIdx = entry._mcBrandSuppressionTimers.indexOf(activeHandle);
+                if (activeIdx >= 0) entry._mcBrandSuppressionTimers.splice(activeIdx, 1);
+            }
+            if (mcPanelStatePurgeV1Enabled() && !mcPanelEntryStillLive(entry)) {
+                return;
+            }
             suppressIframeChartBrand(frame);
-            if (++n < 48) setTimeout(tick, 250);
+            if (++n < 48) {
+                if (mcPanelStatePurgeV1Enabled() && !mcPanelEntryStillLive(entry)) {
+                    return;
+                }
+                var handle = setTimeout(function () { tick(handle); }, 250);
+                if (entry && Array.isArray(entry._mcBrandSuppressionTimers)) {
+                    entry._mcBrandSuppressionTimers.push(handle);
+                }
+            }
         };
         tick();
+    }
+
+    function releasePanelSharedBarStoreRefsOnRemove(entry) {
+        if (!mcClearFileOnRemoveV1Enabled()) return;
+        const panelChart = mcResolvePanelChart(entry);
+        if (panelChart && typeof panelChart._releaseSharedBarStoreFileRefs === 'function') {
+            panelChart._releaseSharedBarStoreFileRefs();
+        }
     }
 
     /**
@@ -459,15 +709,38 @@
         // can push `window.chart` well past 5s after the iframe `load` event
         // even though init is still healthy — embed-bridge polls up to 30s.
         var BRIDGE_READY_TIMEOUT_MS = 30000;
-        frame.addEventListener('load', function () {
-            scheduleIframeBrandSuppression(frame);
+        const entry = {
+            id:      cfg.id,
+            cfg:     cfg,
+            frame:   frame,
+            overlay: overlay,
+            ready:   false,
+            state:   { symbol: '—', timeframe: cfg.tf, candleCount: 0 },
+            mountEl: mountEl,
+            _mcBrandSuppressionTimers: [],
+            _mcBridgeReadyTimeouts: [],
+            _mcFrameLoadListener: null,
+            _mcFrameErrorListener: null,
+            _mcPanelRemoved: false,
+            panelWinStash: null,
+            panelChartStash: null,
+        };
+        const onFrameLoad = function () {
+            scheduleIframeBrandSuppression(frame, entry);
             self._log('info', 'iframe loaded: ' + cfg.id + ' (waiting for bridge-ready…)');
             if (overlay) {
                 const small = overlay.querySelector('small');
                 if (small) small.textContent = 'iframe: LOADED — bridge: pending (up to '
                     + Math.round(BRIDGE_READY_TIMEOUT_MS / 1000) + 's)';
             }
-            setTimeout(function () {
+            if (mcPanelStatePurgeV1Enabled() && !mcPanelEntryStillLive(entry)) {
+                return;
+            }
+            var bridgeReadyTimeout = setTimeout(function () {
+                if (entry && Array.isArray(entry._mcBridgeReadyTimeouts)) {
+                    var idx = entry._mcBridgeReadyTimeouts.indexOf(bridgeReadyTimeout);
+                    if (idx >= 0) entry._mcBridgeReadyTimeouts.splice(idx, 1);
+                }
                 const c = self.charts.get(cfg.id);
                 if (c && !c.ready) {
                     const reason = 'bridge never reported ready within '
@@ -483,26 +756,23 @@
                     try { self.onChartBootFailed(cfg.id, reason, frame.src); } catch (_) {}
                 }
             }, BRIDGE_READY_TIMEOUT_MS);
-        });
-        frame.addEventListener('error', function () {
+            entry._mcBridgeReadyTimeouts.push(bridgeReadyTimeout);
+        };
+        const onFrameError = function () {
             self._log('error', 'iframe FAILED to load: ' + cfg.id + ' src=' + frame.src);
             if (overlay) {
                 const small = overlay.querySelector('small');
                 if (small) small.textContent = 'iframe: LOAD FAILED';
             }
             try { self.onChartBootFailed(cfg.id, 'iframe failed to load', frame.src); } catch (_) {}
-        });
+        };
+        entry._mcFrameLoadListener = onFrameLoad;
+        entry._mcFrameErrorListener = onFrameError;
+        frame.addEventListener('load', onFrameLoad);
+        frame.addEventListener('error', onFrameError);
         mountEl.appendChild(frame);
 
-        this.charts.set(cfg.id, {
-            id:      cfg.id,
-            cfg:     cfg,
-            frame:   frame,
-            overlay: overlay,
-            ready:   false,
-            state:   { symbol: '—', timeframe: cfg.tf, candleCount: 0 },
-            mountEl: mountEl,
-        });
+        this.charts.set(cfg.id, entry);
         this._log('info', 'addChart ' + cfg.id + ' (tf=' + (cfg.tf || '?') + ')');
     };
 
@@ -512,18 +782,185 @@
         if (c.host) {
             // Host charts are not iframes — never tear down their DOM.
             // The parent owns the chartWrapper element.
+            try {
+                c.panelWinStash = null;
+                c.panelChartStash = null;
+            } catch (_) { /* ignore */ }
             this.charts.delete(id);
             this._log('info', 'removeChart ' + id + ' (host — DOM left intact)');
             return;
         }
+        // ORPHAN-L2 / ORPHAN-L3: release iframe load/error listeners even when
+        // PURGE-1 is off or its try-path is missed. Each family has its own
+        // kill-switch for independent bisect. Host charts never reach here.
         try {
-            const panelChart = c.frame && c.frame.contentWindow && c.frame.contentWindow.chart;
-            if (panelChart
+            var releaseFrame = null;
+            try { releaseFrame = c.frame; } catch (_) { releaseFrame = null; }
+            if (mcIframeLoadListenerReleaseV1Enabled()
+                && releaseFrame
+                && c._mcFrameLoadListener) {
+                try { releaseFrame.removeEventListener('load', c._mcFrameLoadListener); } catch (_) {}
+                c._mcFrameLoadListener = null;
+            }
+            if (mcIframeErrorListenerReleaseV1Enabled()
+                && releaseFrame
+                && c._mcFrameErrorListener) {
+                try { releaseFrame.removeEventListener('error', c._mcFrameErrorListener); } catch (_) {}
+                c._mcFrameErrorListener = null;
+            }
+        } catch (_) {}
+        if (mcPanelStatePurgeV1Enabled()) {
+            try {
+                c._mcPanelRemoved = true;
+                if (Array.isArray(c._mcBrandSuppressionTimers)) {
+                    for (var bt = 0; bt < c._mcBrandSuppressionTimers.length; bt++) {
+                        try { clearTimeout(c._mcBrandSuppressionTimers[bt]); } catch (_) {}
+                    }
+                    c._mcBrandSuppressionTimers.length = 0;
+                }
+                if (Array.isArray(c._mcBridgeReadyTimeouts)) {
+                    for (var i = 0; i < c._mcBridgeReadyTimeouts.length; i++) {
+                        try { clearTimeout(c._mcBridgeReadyTimeouts[i]); } catch (_) {}
+                    }
+                    c._mcBridgeReadyTimeouts.length = 0;
+                }
+            } catch (_) {}
+        }
+        try {
+            releasePanelSharedBarStoreRefsOnRemove(c);
+        } catch (err) {
+            const message = err && err.message ? ': ' + err.message : '';
+            this._log('error', 'removeChart ' + id + ' shared bar-store release failed' + message);
+        }
+        try {
+            const panelChart = mcResolvePanelChart(c);
+            // ORPHAN-L1: sever parent-window host-commit listener BEFORE iframe
+            // death. pagehide (M23) remains a backup; manager teardown is the
+            // reliable path when pagehide does not run or runs too late.
+            if (mcFinerHostCommitUnregisterV1Enabled()
+                && panelChart
+                && typeof panelChart._removeFinerPanelSelfOwnerHostCommitListener === 'function') {
+                panelChart._removeFinerPanelSelfOwnerHostCommitListener();
+            }
+            const replaySystem = panelChart && panelChart.replaySystem;
+            let _m26PanelReplayDestroyed = false;
+            if (m26PanelReplayDestroyEnabled()
+                && replaySystem
+                && typeof replaySystem.destroy === 'function') {
+                replaySystem.destroy();
+                _m26PanelReplayDestroyed = true;
+            }
+            if (!_m26PanelReplayDestroyed
+                && panelChart
                 && typeof panelChart._b70ShadowDisposeIndicatorGeneration === 'function') {
                 panelChart._b70ShadowDisposeIndicatorGeneration();
             }
-        } catch (_) {}
+        } catch (err) {
+            const message = err && err.message ? ': ' + err.message : '';
+            this._log('error', 'removeChart ' + id + ' panel replay teardown failed' + message);
+        }
+        // REALM-TEARDOWN-RELEASE: five independent realm-release cuts. Each has
+        // its own kill-switch and try/catch so one failure cannot skip the rest
+        // or prevent frame.remove / charts.delete.
+        var panelChartRelease = null;
+        try {
+            panelChartRelease = mcResolvePanelChart(c);
+        } catch (_) {
+            panelChartRelease = null;
+        }
+        // CUT 1 — drag-end guard registered on host window from inside panel.
+        try {
+            if (mcReleaseDragGuardV1Enabled()
+                && panelChartRelease
+                && typeof panelChartRelease._removeDragEndGuard === 'function') {
+                panelChartRelease._removeDragEndGuard();
+            }
+        } catch (_) { /* ignore */ }
+        // CUT 2 — host orderManager graphic registries holding the peer chart.
+        try {
+            if (mcReleaseOrderRegistryV1Enabled() && panelChartRelease) {
+                var hostOm = null;
+                try {
+                    hostOm = global.chart && global.chart.orderManager;
+                } catch (_) {
+                    hostOm = null;
+                }
+                if (hostOm) {
+                    if (typeof hostOm._stripOrderDrawingLayersFromChart === 'function') {
+                        try {
+                            hostOm._stripOrderDrawingLayersFromChart(panelChartRelease);
+                        } catch (_) { /* ignore */ }
+                    }
+                    var omKeys = [
+                        'orderLines', 'slLines', 'tpLines', 'beLines',
+                        'entryMarkers', 'exitMarkers', 'splitGroupAvgLines',
+                        'multiTPAvgLines', 'pendingTargetLines', 'tradeConnectors',
+                        'partialCloseMarkers', 'mfeMaeMarkers'
+                    ];
+                    for (var omi = 0; omi < omKeys.length; omi++) {
+                        var omArr = hostOm[omKeys[omi]];
+                        if (!Array.isArray(omArr)) continue;
+                        hostOm[omKeys[omi]] = omArr.filter(function (entry) {
+                            return !(entry && entry.chart === panelChartRelease);
+                        });
+                    }
+                }
+            }
+        } catch (_) { /* ignore */ }
+        // CUT 3 — abort in-flight timeframe fetch on the removed panel.
+        try {
+            if (mcReleaseTfAbortV1Enabled() && panelChartRelease) {
+                var tfAbort = panelChartRelease._timeframeFetchAbort;
+                if (tfAbort) {
+                    if (typeof tfAbort.abort === 'function') {
+                        try { tfAbort.abort(); } catch (_) { /* ignore */ }
+                    }
+                    panelChartRelease._timeframeFetchAbort = null;
+                }
+            }
+        } catch (_) { /* ignore */ }
+        // CUT 4 — terminate panel indicator worker singleton + clear pending.
+        try {
+            if (mcReleaseIndicatorWorkerV1Enabled()
+                && panelChartRelease
+                && typeof panelChartRelease._disposeIndicatorWorker === 'function') {
+                panelChartRelease._disposeIndicatorWorker();
+            }
+        } catch (_) { /* ignore */ }
+        // CUT 5 — terminate + revoke panel custom-indicator blob worker URL.
+        try {
+            if (mcReleaseBlobWorkerV1Enabled()) {
+                var panelWinRelease = null;
+                try {
+                    panelWinRelease = mcResolvePanelWin(c);
+                } catch (_) {
+                    panelWinRelease = null;
+                }
+                var customIndApi = panelWinRelease && panelWinRelease.TalariaCustomIndicators;
+                if (customIndApi && typeof customIndApi.disposeWorker === 'function') {
+                    customIndApi.disposeWorker();
+                }
+            }
+        } catch (_) { /* ignore */ }
+        // Drop stashed realm handles before the entry is deleted so the stash
+        // itself cannot outlive removeChart as a retainer.
+        try {
+            c.panelWinStash = null;
+            c.panelChartStash = null;
+        } catch (_) { /* ignore */ }
         try { c.frame.remove(); } catch (_) {}
+        // XFRAME-REF-RELEASE: AFTER all child-handle reads (five cuts, bar-store,
+        // replay destroy, stash clear, frame.remove). Null host-held entry fields
+        // that can retain the child iframe / mount surface. No iframe lifecycle
+        // change (no about:blank) — field nulling on an entry about to be deleted.
+        if (mcXframeRefReleaseV1Enabled()) {
+            try {
+                c.frame = null;
+                c.overlay = null;
+                c.mountEl = null;
+                c.cfg = null;
+            } catch (_) { /* ignore */ }
+        }
         this.charts.delete(id);
         this._log('info', 'removeChart ' + id);
     };
@@ -1007,11 +1444,15 @@
                     }
                     if (sourceChart.mountEl) sourceChart.mountEl.classList.add('ready');
                     this._log('info', 'bridge ready: ' + sourceId);
+                    // STASHED-PANEL-HANDLE: bridge-ready proves the panel realm is
+                    // reachable — stash contentWindow / chart for detach-time teardown.
+                    try {
+                        const bridgeWin = sourceChart.frame && sourceChart.frame.contentWindow;
+                        mcStashPanelHandles(sourceChart, bridgeWin, bridgeWin && bridgeWin.chart);
+                    } catch (_) { /* ignore */ }
                     if (global.__TALARIA_ENABLE_B70_SINGLE_INDICATOR_OWNER_V1 === true) {
                         try {
-                            const panelChart = sourceChart.frame
-                                && sourceChart.frame.contentWindow
-                                && sourceChart.frame.contentWindow.chart;
+                            const panelChart = mcResolvePanelChart(sourceChart);
                             const connector = global.__TALARIA_B70_CONNECT_INDICATOR_PANEL_V1;
                             if (panelChart && global.chart && typeof connector === 'function') {
                                 connector(panelChart, global.chart);
@@ -1322,6 +1763,10 @@
                 return;
             }
             const win = chartEntry.frame && chartEntry.frame.contentWindow;
+            // Refresh stashed panel handles whenever a live contentWindow is observed.
+            if (win) {
+                try { mcStashPanelHandles(chartEntry, win, win.chart); } catch (_) { /* ignore */ }
+            }
             if (win && typeof win.__multichartSyncApply === 'function') {
                 if (msg && msg.panSync && msg.type === 'visibleRange') {
                     win.__multichartSyncApply(msg);

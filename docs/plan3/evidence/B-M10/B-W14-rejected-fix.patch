@@ -1,0 +1,304 @@
+﻿diff --git a/chart v 1.4/chart/modules/order-manager.js b/chart v 1.4/chart/modules/order-manager.js
+index ad491e587..60295edf1 100644
+--- a/chart v 1.4/chart/modules/order-manager.js	
++++ b/chart v 1.4/chart/modules/order-manager.js	
+@@ -117,6 +117,30 @@ function _m19HotpathLog(first, ...rest) {
+     console.log(first, ...rest);
+ }
+ 
++/**
++ * B-M10 / GUARD-01 — the single accepted test for "this value is a usable bar-clock epoch".
++ *
++ * Coercion is the whole defect: `Number(null)`, `Number('')`, `Number(false)` and `Number([])` are
++ * all `0`, so `Number.isFinite(Number(x))` waves those through and the subtraction that follows
++ * dates the trade from 1970, which is where the multi-decade holding times came from. Type-gate
++ * first, coerce second, never coerce anything that is not already a number or a non-blank string.
++ * `0` is a legitimate epoch and is accepted; the `||` chains this replaces treated it as absent.
++ */
++function isFiniteBarTime(value) {
++    if (typeof value === 'number') return Number.isFinite(value);
++    if (typeof value === 'string') {
++        const trimmed = value.trim();
++        if (trimmed === '') return false;
++        return Number.isFinite(Number(trimmed));
++    }
++    return false;
++}
++
++/** Bar-clock epoch as a number, or `null` when `value` is not one. Never returns a coerced `0`. */
++function barTimeMsOrNull(value) {
++    return isFiniteBarTime(value) ? Number(value) : null;
++}
++
+ // Test/harness surface (M19-E green); not used by product call sites.
+ if (typeof globalThis !== 'undefined') {
+     globalThis.__TALARIA_M19_HOTPATH_LOG = _m19HotpathLog;
+@@ -7831,7 +7855,10 @@ class OrderManager {
+         const closeTime = ctx.closeTime != null ? ctx.closeTime : (entry.closeTime ?? entry.exitTime);
+         const closePrice = ctx.closePrice != null ? ctx.closePrice : (entry.exitPrice ?? entry.closePrice);
+         const openTime = position.openTime != null ? position.openTime : entry.openTime;
+-        if (openTime == null || closeTime == null) return entry;
++        // GUARD-01: `openTime == null` let `''`, `NaN`, `false` and `[]` through, and the
++        // `new Date(openTime).toISOString()` below then threw out of the caller — losing the whole
++        // ledger row, not just the duration. Same predicate, same early return, no new branch.
++        if (!isFiniteBarTime(openTime) || closeTime == null) return entry;
+ 
+         const holdingTimeMs = closeTime - openTime;
+         const entryDate = new Date(openTime);
+@@ -33314,6 +33341,96 @@ class OrderManager {
+         return parseFloat(partialReward.toFixed(2));
+     }
+ 
++    /** Time of the last bar of `series`, or null when the series is empty or that bar has no bar time. */
++    _lastBarTimeMs(series) {
++        if (!Array.isArray(series) || series.length === 0) return null;
++        const bar = series[series.length - 1];
++        return bar ? barTimeMsOrNull(bar.t) : null;
++    }
++
++    /**
++     * Charts that actually display this position's instrument, in preference order.
++     * `_getOrderContextChart()` is the focused panel and may be a different pair — `isBackgroundClose`
++     * exists precisely because those two differ — so a background position must not take its close
++     * time from whatever pair the user happens to be looking at.
++     */
++    _closeTimeChartsForPosition(position, isBackgroundClose) {
++        const out = [];
++        const seen = new Set();
++        const add = (ch) => {
++            if (!ch || seen.has(ch)) return;
++            seen.add(ch);
++            out.push(ch);
++        };
++        const layout = (typeof this._collectLayoutCharts === 'function' ? this._collectLayoutCharts() : []) || [];
++        layout.forEach((ch) => {
++            if (this._positionTickerMatchesChartSymbol(position, ch)) add(ch);
++        });
++        if (!isBackgroundClose) {
++            add(this._getOrderContextChart());
++            add(this.chart);
++        }
++        return out;
++    }
++
++    /**
++     * B-M10 — total bar-clock resolver for a close timestamp.
++     *
++     * `openTime` is always bar clock: every fill funnels through `_marketFillOpenTimeMs`, which has no
++     * wall-clock fallback. The `|| Date.now()` tail this replaces therefore subtracted a wall-clock
++     * present from a replayed past and wrote multi-decade holding times into the ledger. Every tier
++     * below yields a bar time, so the close is always on the same clock as the open.
++     *
++     * @returns {{ms: number, source: string}|null} null only when the trade has no clock at all.
++     */
++    _resolveCloseBarTimeMs(position, bgCloseTime, evalCandle, currentCandle, isBackgroundClose) {
++        // 1 — the caller's background bar. `0` is a real epoch; the old `||` dropped it.
++        const bg = barTimeMsOrNull(bgCloseTime);
++        if (bg !== null) return { ms: bg, source: 'bgCloseTime' };
++
++        // 2/3 — the candles this close was evaluated against. Both originate at the focused panel,
++        // so they are only this position's clock when the close is not a background close.
++        if (!isBackgroundClose) {
++            const evalT = evalCandle ? barTimeMsOrNull(evalCandle.t) : null;
++            if (evalT !== null) return { ms: evalT, source: 'evalCandle' };
++            const curT = currentCandle ? barTimeMsOrNull(currentCandle.t) : null;
++            if (curT !== null) return { ms: curT, source: 'currentCandle' };
++        }
++
++        // 4/5 — the chart showing this instrument. `fullRawData` is what the playhead indexes into,
++        // so it wins; then `rawData` before `data`, because `data` is resampled and
++        // `_getCurrentCandleForChart` documents why the raw playhead series must not lose to it.
++        const charts = this._closeTimeChartsForPosition(position, isBackgroundClose);
++        for (const ch of charts) {
++            const rs = ch && ch.replaySystem;
++            if (rs && rs.isActive) {
++                const fullT = this._lastBarTimeMs(rs.fullRawData);
++                if (fullT !== null) return { ms: fullT, source: 'fullRawData' };
++            }
++            const rawT = this._lastBarTimeMs(ch && ch.rawData);
++            if (rawT !== null) return { ms: rawT, source: 'rawData' };
++            const dataT = this._lastBarTimeMs(ch && ch.data);
++            if (dataT !== null) return { ms: dataT, source: 'data' };
++        }
++
++        // 6 — no surface shows this instrument (off-screen background pair, e.g. a cross-pair
++        // STOP_OUT, which is the one close path that passes no bgCloseTime). The session replay
++        // playhead is instrument-independent and is still a bar time; it is also what today's code
++        // already reaches through `evalCandle`, so this tier holds the line rather than moving it.
++        const sessionRs = this._playbackReplaySystem();
++        if (sessionRs && sessionRs.isActive) {
++            const sessionT = this._lastBarTimeMs(sessionRs.fullRawData);
++            if (sessionT !== null) return { ms: sessionT, source: 'replayPlayhead' };
++        }
++
++        // 7 — only the trade's own clock is left. A zero-length trade is wrong but bounded and on
++        // the right clock, which a wall clock never is.
++        const openMs = barTimeMsOrNull(position && position.openTime);
++        if (openMs !== null) return { ms: openMs, source: 'openTime' };
++
++        return null;
++    }
++
+     /**
+      * Close position at specific price (for SL/TP hits)
+      */
+@@ -33325,12 +33442,31 @@ class OrderManager {
+         
+         const currentCandle = this.getCurrentCandle();
+         const evalCandle = this._evalCandleForPosition(position, currentCandle) || currentCandle;
+-        // For background (cross-pair) closes, use the background bar's timestamp.
+-        const closeTime = (Number.isFinite(bgCloseTime) ? bgCloseTime : null)
+-            || (evalCandle ? evalCandle.t : Date.now());
+         const posTicker = this._positionTicker(position);
+         const activeTicker = this._getActiveTicker();
+         const isBackgroundClose = !!(posTicker && activeTicker && posTicker !== activeTicker);
++        // Bar clock only — see _resolveCloseBarTimeMs. `openTime` has no wall-clock fallback, so a
++        // wall-clock close here is what produced the multi-decade holding times in the ledger.
++        const closeResolution = this._resolveCloseBarTimeMs(
++            position, bgCloseTime, evalCandle, currentCandle, isBackgroundClose
++        );
++        if (!closeResolution) {
++            // Nothing has been mutated yet, so the position is left exactly as it was and the hit
++            // can re-fire once a bar exists. The caller flags the target before calling
++            // (_pushSplitGroupMultiTpClosesFromHit), so revert it or the engine never retries —
++            // same contract as the partial-close quantity guard below.
++            if (targetId != null && Array.isArray(position.tpTargets)) {
++                const tid = String(targetId);
++                const tgt = position.tpTargets.find((t) => t && (String(t.id) === tid || t.id === targetId));
++                if (tgt) tgt.hit = false;
++            }
++            console.error(
++                `❌ closePositionAtPrice #${orderId}: no bar clock available (no bgCloseTime, no candle, ` +
++                `no loaded bars, no usable openTime) — refusing to date this close; position stays open.`
++            );
++            return;
++        }
++        const closeTime = closeResolution.ms;
+         
+         // Determine if this is a partial close
+         // TP-PARTIAL + slice in (0,1) of original lots. Use numeric check — `percentage && percentage < 1`
+@@ -33675,10 +33811,17 @@ class OrderManager {
+             
+             // IMPORTANT: Add to trade journal immediately (before showing modal)
+             // Calculate additional metadata
++            // GUARD-01: `openTime` is bar clock, but `_marketFillOpenTimeMs` returns its argument
++            // unchanged when there was no fill candle, so it can arrive null/NaN. Subtracting that
++            // coerces the open to epoch 0 and writes a ~50-year holding time. Withhold the duration
++            // rather than fabricate one; the row itself, and its closeTime, are still written.
++            const openTimeMs = barTimeMsOrNull(position.openTime);
+             const openDate = new Date(position.openTime);
+             const closeDate = new Date(closeTime);
+-            const holdingTimeMs = closeTime - position.openTime;
+-            const holdingTimeHours = (holdingTimeMs / (1000 * 60 * 60)).toFixed(2);
++            const holdingTimeMs = openTimeMs !== null ? closeTime - openTimeMs : null;
++            const holdingTimeHours = holdingTimeMs !== null
++                ? (holdingTimeMs / (1000 * 60 * 60)).toFixed(2)
++                : null;
+             
+             const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+             const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+@@ -33695,10 +33838,17 @@ class OrderManager {
+                 // Use first entry's open time and last entry's close time
+                 const firstEntry = scaledInfo.entries[0];
+                 const lastEntry = scaledInfo.entries[scaledInfo.entries.length - 1];
++                // GUARD-01: the old `||` pair dropped a legitimate `0` last-entry close and let a
++                // null open coerce to epoch 0. Same predicate on both ends of the subtraction.
++                const lastCloseMs = barTimeMsOrNull(lastEntry.closeTime);
++                const groupCloseMs = lastCloseMs !== null ? lastCloseMs : closeTime;
++                const firstOpenMs = barTimeMsOrNull(firstEntry.openTime);
+                 const firstOpenDate = new Date(firstEntry.openTime);
+-                const lastCloseDate = new Date(lastEntry.closeTime || closeTime);
+-                const totalHoldingMs = (lastEntry.closeTime || closeTime) - firstEntry.openTime;
+-                const totalHoldingHours = (totalHoldingMs / (1000 * 60 * 60)).toFixed(2);
++                const lastCloseDate = new Date(groupCloseMs);
++                const totalHoldingMs = firstOpenMs !== null ? groupCloseMs - firstOpenMs : null;
++                const totalHoldingHours = totalHoldingMs !== null
++                    ? (totalHoldingMs / (1000 * 60 * 60)).toFixed(2)
++                    : null;
+                 
+                 // Calculate aggregate MFE/MAE
+                 const bestMFE = Math.max(...scaledInfo.entries.map(e => e.mfe || e.openPrice));
+@@ -33731,7 +33881,7 @@ class OrderManager {
+                     entryPrice: avgEntry,
+                     exitPrice: closePrice,
+                     openTime: firstEntry.openTime,
+-                    closeTime: lastEntry.closeTime || closeTime,
++                    closeTime: groupCloseMs,
+                     pnl: totalPnL,
+                     netPnL: totalPnL,
+                     realizedPnL: totalPnL,
+@@ -33751,7 +33901,7 @@ class OrderManager {
+                     riskAmount: totalRisk,
+                     riskPerTrade: totalRisk,
+                     rewardToRiskRatio: null,
+-                    holdingTimeHours: parseFloat(totalHoldingHours),
++                    holdingTimeHours: totalHoldingHours !== null ? parseFloat(totalHoldingHours) : null,
+                     dayOfWeek: dayNames[firstOpenDate.getDay()],
+                     hourOfEntry: firstOpenDate.getHours(),
+                     hourOfExit: lastCloseDate.getHours(),
+@@ -33787,7 +33937,7 @@ class OrderManager {
+                     entries_locked: scaledInfo.entries.some(e => e.entries_locked) || false
+                 };
+                 this._enrichJournalEntryForPersistence(journalEntry, firstEntry, {
+-                    closeTime: lastEntry.closeTime || closeTime,
++                    closeTime: groupCloseMs,
+                     closePrice
+                 });
+                 
+@@ -33812,10 +33962,17 @@ class OrderManager {
+                 // Use first entry's open time and last entry's close time
+                 const firstEntry = splitInfo.entries[0];
+                 const lastEntry = splitInfo.entries[splitInfo.entries.length - 1];
++                // GUARD-01: the old `||` pair dropped a legitimate `0` last-entry close and let a
++                // null open coerce to epoch 0. Same predicate on both ends of the subtraction.
++                const lastCloseMs = barTimeMsOrNull(lastEntry.closeTime);
++                const groupCloseMs = lastCloseMs !== null ? lastCloseMs : closeTime;
++                const firstOpenMs = barTimeMsOrNull(firstEntry.openTime);
+                 const firstOpenDate = new Date(firstEntry.openTime);
+-                const lastCloseDate = new Date(lastEntry.closeTime || closeTime);
+-                const totalHoldingMs = (lastEntry.closeTime || closeTime) - firstEntry.openTime;
+-                const totalHoldingHours = (totalHoldingMs / (1000 * 60 * 60)).toFixed(2);
++                const lastCloseDate = new Date(groupCloseMs);
++                const totalHoldingMs = firstOpenMs !== null ? groupCloseMs - firstOpenMs : null;
++                const totalHoldingHours = totalHoldingMs !== null
++                    ? (totalHoldingMs / (1000 * 60 * 60)).toFixed(2)
++                    : null;
+                 
+                 // Calculate aggregate MFE/MAE
+                 const allMFE = splitInfo.entries.map(e => e.mfe || e.openPrice).filter(v => v);
+@@ -33885,7 +34042,7 @@ class OrderManager {
+                     entryPrice: avgEntry,
+                     exitPrice: lastEntry.closePrice || closePrice,
+                     openTime: firstEntry.openTime,
+-                    closeTime: lastEntry.closeTime || closeTime,
++                    closeTime: groupCloseMs,
+                     pnl: totalPnL,
+                     netPnL: totalPnL,
+                     realizedPnL: totalPnL,
+@@ -33937,7 +34094,7 @@ class OrderManager {
+                         const p = w > 0 ? rSum / w : (firstEntry.plannedRRAtEntry ?? this._computePlannedRRAtEntry(firstEntry));
+                         return p != null && Number.isFinite(p) ? Number(p).toFixed(2) : null;
+                     })(),
+-                    holdingTimeHours: parseFloat(totalHoldingHours),
++                    holdingTimeHours: totalHoldingHours !== null ? parseFloat(totalHoldingHours) : null,
+                     dayOfWeek: dayNames[firstOpenDate.getDay()],
+                     hourOfEntry: firstOpenDate.getHours(),
+                     hourOfExit: lastCloseDate.getHours(),
+@@ -34006,7 +34163,7 @@ class OrderManager {
+                     })()
+                 };
+                 this._enrichJournalEntryForPersistence(journalEntry, firstEntry, {
+-                    closeTime: lastEntry.closeTime || closeTime,
++                    closeTime: groupCloseMs,
+                     closePrice: lastEntry.closePrice || closePrice
+                 });
+                 
+@@ -34088,7 +34245,7 @@ class OrderManager {
+                         const p = position.plannedRRAtEntry ?? this._computePlannedRRAtEntry(position);
+                         return p != null && Number.isFinite(p) ? Number(p).toFixed(2) : rewardToRiskRatio;
+                     })(),
+-                    holdingTimeHours: parseFloat(holdingTimeHours),
++                    holdingTimeHours: holdingTimeHours !== null ? parseFloat(holdingTimeHours) : null,
+                     dayOfWeek: dayNames[openDate.getDay()],
+                     hourOfEntry: openDate.getHours(),
+                     hourOfExit: closeDate.getHours(),

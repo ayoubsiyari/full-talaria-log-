@@ -6053,11 +6053,23 @@ function renderSupportUserCRM(req) {
     if (th.csat_rating) {
       extra += '<div class="crm-item"><div class="k">CSAT</div><div class="v">' + esc(String(th.csat_rating)) + '/5</div></div>';
     }
+    // Server-stamped, so it is shown above the client-supplied context and labelled as such:
+    // triage weighs these two blocks differently and the reader should not have to remember which
+    // is which. "unknown" is rendered as-is — it is not the same answer as 0.
+    if (th.account && typeof th.account === 'object') {
+      const ageRaw = th.account.account_age_days;
+      const age = (typeof ageRaw === 'number') ? (ageRaw + (ageRaw === 1 ? ' day' : ' days')) : String(ageRaw == null ? 'unknown' : ageRaw);
+      const trades = th.account.closed_trades;
+      extra += '<div class="crm-item" style="grid-column:1/-1"><div class="k">Account position (server-stamped)</div><div class="v">'
+        + 'account age: ' + esc(age) + '<br>'
+        + 'closed trades: ' + esc(String(trades == null ? 'unknown' : trades))
+        + '</div></div>';
+    }
     if (th.context && typeof th.context === 'object') {
       const ctxLines = Object.keys(th.context).map(function (k) {
         return esc(k) + ': ' + esc(String(th.context[k]));
       }).join('<br>');
-      extra += '<div class="crm-item" style="grid-column:1/-1"><div class="k">Ticket context</div><div class="v">' + ctxLines + '</div></div>';
+      extra += '<div class="crm-item" style="grid-column:1/-1"><div class="k">Ticket context (client-reported)</div><div class="v">' + ctxLines + '</div></div>';
     }
     if (extra) body.innerHTML += '<div class="crm-grid" style="margin-top:10px">' + extra + '</div>';
   }

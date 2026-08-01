@@ -1,0 +1,108 @@
+{
+  "observedAt": "2026-07-28T23:05:36.847Z",
+  "baseUrl": "http://31.97.192.82:3000",
+  "ruling": "RULING-SOAK-CLASH-AND-GUARD-FIRING-20260728-2345",
+  "loginOk": true,
+  "sessionId": 897,
+  "steps": [
+    {
+      "step": "claim-chart-window",
+      "status": 200,
+      "ok": true,
+      "evicted": 0
+    },
+    {
+      "step": "create-session",
+      "status": 403,
+      "ok": false
+    },
+    {
+      "step": "list-sessions",
+      "status": 200,
+      "count": 5
+    },
+    {
+      "step": "reclaim-probe-session",
+      "id": 895,
+      "deleted": true,
+      "jLen": 0
+    },
+    {
+      "step": "reclaim-probe-session",
+      "id": 894,
+      "deleted": true,
+      "jLen": 0
+    },
+    {
+      "step": "reclaim-probe-session",
+      "id": 893,
+      "deleted": true,
+      "jLen": 0
+    },
+    {
+      "step": "reclaim-probe-session",
+      "id": 892,
+      "deleted": true,
+      "jLen": 0
+    },
+    {
+      "step": "create-session-retry",
+      "status": 200,
+      "ok": true
+    },
+    {
+      "step": "get-state",
+      "status": 200,
+      "ok": true,
+      "journalLen": 0
+    },
+    {
+      "step": "control-unhydrated",
+      "provenance": "unhydrated",
+      "result": {
+        "hotQueued": true,
+        "durableQueued": false,
+        "reason": "journal-unhydrated"
+      },
+      "warnCount": 1,
+      "warnMatched": true
+    },
+    {
+      "step": "live-hydrate-then-persist",
+      "provenance": "hydrated",
+      "provenanceSession": "897",
+      "journalLen": 1,
+      "result": {
+        "hotQueued": true,
+        "durableQueued": true,
+        "sync": true
+      },
+      "warnCount": 0,
+      "warnMatched": false,
+      "durablePatchCount": 1,
+      "networkDurable": [
+        {
+          "status": 200,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "step": "post-write-state",
+      "status": 200,
+      "ok": true,
+      "journalLen": 1
+    },
+    {
+      "step": "delete-session",
+      "status": 200,
+      "ok": true
+    }
+  ],
+  "verdict": "HARNESS_ARTEFACT",
+  "productQuestion": "Does durable journal write suppressed warn fire after live hydrate?",
+  "loginStatus": 200,
+  "createdSession": true,
+  "detail": "After live hydrate, durable write proceeded and suppress warn did not appear. Soak ×50 is a harness artefact.",
+  "outFile": "C:\\Users\\user\\Desktop\\talaria1\\manager-b-plan3\\docs\\plan3\\evidence\\B-M4\\release\\observations\\live-hydration-guard-firing-2026-07-28T23-05-36-847Z.json"
+}

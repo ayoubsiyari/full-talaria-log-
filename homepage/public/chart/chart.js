@@ -801,7 +801,23 @@ const MC_DIAG_COUNTER_FIELDS = [
     'fetchedBars',
     'extendsFromParent',
     'resamples',
+    // M20-Q9 measurement (Manager A, packet mcdiag-resample-measurement).
+    // `resamples` is left exactly as it was — it sums replay ticks and
+    // full-array resampleData() calls into one field and cannot answer
+    // "resamples per tick". These three are separate and never summed:
+    //   replayTicks          — one per replay tick (updateChartData/-Fast)
+    //   fullResamples        — one per _resampleDataFull() body, every caller
+    //                          including the pipeline-internal call site
+    //   incrementalResamples — one per ChartDataPipeline incremental hit
+    'replayTicks',
+    'fullResamples',
+    'incrementalResamples',
+    // `renders` counts every render() entry and has meant that since it was
+    // introduced. FIX 1's paint throttle must NOT narrow it to "frames that
+    // painted", or no cadence number recorded before FIX 1 is comparable with
+    // any number recorded after it. Suppressed frames get their own counter.
     'renders',
+    'backgroundPaintsSuppressed',
     'seams',
     'ownerFetches',
     'ownerBars',
@@ -809,6 +825,66 @@ const MC_DIAG_COUNTER_FIELDS = [
     'handovers',
     'lastFetchMs',
 ];
+
+const M20_Q9_MCDIAG_COUNTER_FIELDS = new Set([
+    'replayTicks',
+    'fullResamples',
+]);
+
+const MC_BACKGROUND_RENDER_CADENCE_DISABLE_SWITCH = '__TALARIA_DISABLE_MC_BACKGROUND_RENDER_CADENCE_V1';
+
+// CPU-CUT-RAF-COALESCE: at most one full canvas paint per animation frame.
+// Absent / falsy ⇒ coalesce ON (default). Truthy ⇒ legacy sync paints.
+// Read per call — never sampled at load.
+const RAF_PAINT_COALESCE_DISABLE_SWITCH = '__TALARIA_DISABLE_RAF_PAINT_COALESCE_V1';
+
+// Frames a background panel keeps re-checking focus after a local pointer/focus
+// event before it gives up on the catch-up paint. The parent only learns about the
+// click via a setTimeout(0) postMessage and then a React commit, so focus lands
+// several frames later; ~1s at 60Hz is generous and still bounded.
+const MC_BACKGROUND_RENDER_CATCHUP_FRAME_BUDGET = 60;
+
+/**
+ * Kill-switch read that climbs self→parent→top (B-0195).
+ *
+ * chart.js is loaded inside every multichart panel realm, so a switch set on the
+ * host window is invisible to an own-window read. That failure mode is silent and
+ * expensive: the flip appears to do nothing, and the honest conclusion "the fix had
+ * no effect" is drawn from a control that never reached the code it was aiming at.
+ * An unreadable cross-origin realm is no instruction, so it falls to the shipped
+ * default rather than away from it.
+ */
+function _talariaDisableFlagTruthy(flagName) {
+    if (typeof window === 'undefined') return false;
+    const killed = (w) => {
+        try {
+            return !!(w && w[flagName]);
+        } catch (_e) {
+            return false;
+        }
+    };
+    if (killed(window)) return true;
+    try {
+        const parent = window.parent && window.parent !== window ? window.parent : null;
+        if (killed(parent)) return true;
+        const top = window.top && window.top !== window && window.top !== parent
+            ? window.top
+            : null;
+        if (killed(top)) return true;
+    } catch (_e) {
+        // Parent chain unreachable; the own-window read above already stands.
+    }
+    return false;
+}
+
+function _talariaM20Q9McDiagCountersDisabled() {
+    try {
+        return typeof window !== 'undefined'
+            && window.__TALARIA_DISABLE_M20_Q9_MCDIAG_COUNTERS_V1 === true;
+    } catch (_e) {
+        return false;
+    }
+}
 
 function _talariaMcDiagPanelIdForWindow(win) {
     try {
@@ -836,7 +912,10 @@ function _talariaMcDiagSnapshot(chart) {
         tf: tf != null ? String(tf) : '',
     };
     for (const field of MC_DIAG_COUNTER_FIELDS) {
-        row[field] = Number(diag?.[field]) || 0;
+        row[field] = _talariaM20Q9McDiagCountersDisabled()
+            && M20_Q9_MCDIAG_COUNTER_FIELDS.has(field)
+            ? null
+            : Number(diag?.[field]) || 0;
     }
     return row;
 }
@@ -896,8 +975,165 @@ function _talariaInstallMcDiagReporter() {
     };
 }
 
+/**
+ * SR-03 focus routing: host chrome resolves "the chart" through the focus
+ * provider — last click / focus, never hover. Installed idempotently here and
+ * in each participating module because the shipping shells load these files in
+ * different orders (favorites-manager.js runs before chart.js in
+ * dist-v9/index.html) and multichart-prod/chart-embed.html never loads chart.js.
+ *
+ * The `window.chart || window.mainChart` chain collapses INTO this resolver
+ * rather than surviving beside it: window.mainChart is written exactly once, in
+ * _talariaInitializeChart, on the line after window.chart and to the same
+ * object, so the chain could never name a different chart.
+ */
+if (typeof window !== 'undefined' && typeof window.__talariaActiveChartV1 !== 'function') {
+    window.__talariaActiveChartV1 = function talariaActiveChartV1() {
+        // Re-read on EVERY call, never captured at registration, so the switch
+        // can be flipped mid-session with no reload. Truthy disables.
+        if (window.__TALARIA_DISABLE_FOCUS_ROUTING_V1) {
+            return window.chart || window.mainChart || null;
+        }
+        if (typeof window.getActiveChart === 'function') {
+            try {
+                const active = window.getActiveChart();
+                if (active) return active;
+            } catch (_e) { /* provider threw: fall back to the host chart */ }
+        }
+        return window.chart || null;
+    };
+}
+
+/**
+ * Trade-action ownership (Policy 3) now lives in modules/trade-attribution.js so a
+ * Node oracle can import it directly — inside chart.js it was only reachable through
+ * a browser realm, and an out-of-browser gate resolved null for every input and went
+ * RED for the wrong reason.
+ *
+ * Deliberately NOT re-implemented here: one implementation, one behaviour. If the
+ * module has not loaded, resolution is unavailable rather than silently different,
+ * and callers must already handle null because null is the documented answer for an
+ * unresolvable record.
+ */
+function _resolveTradeJournalAttribution(order, chartSource) {
+    const impl = (typeof window !== 'undefined' && window.TalariaTradeAttribution)
+        ? window.TalariaTradeAttribution._resolveTradeJournalAttribution
+        : null;
+    return typeof impl === 'function' ? impl(order, chartSource) : null;
+}
+
+/**
+ * ENGINE CENSUS — cross-realm WeakRef registry.
+ *
+ * queryObjects(Chart) cannot answer "how many engines are alive": it enumerates the heap of the
+ * currently selected execution context, and every panel is an iframe with its own realm and its
+ * own Chart binding. A ghost left behind by a CLOSED panel lives in a realm the context picker no
+ * longer lists, so the one object we most want to count is the one that instrument structurally
+ * cannot reach. The list therefore lives on window.top, which every realm can still find and which
+ * outlives panel teardown.
+ *
+ * WeakRef, so a genuinely dead engine drops out on its own and a climbing count is real retention
+ * rather than bookkeeping. Cross-origin top is unreachable: fall back to the local window so a
+ * sandboxed realm still registers somewhere rather than throwing on the constructor path.
+ */
+/**
+ * LIFE-1 kill-switch, name reserved by the round-one roster: __TALARIA_CHART_DESTROY_V1.
+ *
+ * POLARITY: truthy DISABLES destroy() and restores the never-released engine. The name does not
+ * carry DISABLE, unlike every other switch in this tree, so it is spelled out here: an operator
+ * setting it to true is turning the fix OFF. Polarity is kept uniform with the rest of the tree
+ * deliberately — a switch that reverses the house rule is how a negative control ends up
+ * controlling nothing.
+ *
+ * Climbs self -> parent -> top: panels are iframes, and an operator types into the host they see.
+ */
+function _talariaChartDestroyDisabled() {
+    if (typeof window === 'undefined') return false;
+    const killed = (w) => { try { return !!(w && w.__TALARIA_CHART_DESTROY_V1); } catch (_e) { return false; } };
+    if (killed(window)) return true;
+    try {
+        const parent = window.parent && window.parent !== window ? window.parent : null;
+        if (killed(parent)) return true;
+        const top = window.top && window.top !== window && window.top !== parent ? window.top : null;
+        if (killed(top)) return true;
+    } catch (_e) { /* unreachable parent chain: the own-window read above stands */ }
+    return false;
+}
+
+const TALARIA_ENGINE_REGISTRY_KEY = '__talariaEngineRegistry';
+
+function _talariaEngineRegistryHost() {
+    if (typeof window === 'undefined') return null;
+    try {
+        if (window.top) {
+            // Touch a property to force the cross-origin SecurityError here rather than later.
+            void window.top.document;
+            return window.top;
+        }
+    } catch (_e) { /* cross-origin top: this realm keeps its own list */ }
+    return window;
+}
+
+function _talariaEngineRegistry() {
+    const host = _talariaEngineRegistryHost();
+    if (!host) return null;
+    try {
+        let reg = host[TALARIA_ENGINE_REGISTRY_KEY];
+        if (!reg) {
+            reg = { refs: [], registered: 0, createdAt: Date.now(), samples: [] };
+            host[TALARIA_ENGINE_REGISTRY_KEY] = reg;
+        }
+        return reg;
+    } catch (_e) {
+        return null;
+    }
+}
+
+function _talariaRegisterEngine(instance) {
+    if (typeof WeakRef !== 'function') return;
+    const reg = _talariaEngineRegistry();
+    if (!reg) return;
+    try {
+        reg.refs.push(new WeakRef(instance));
+        reg.registered += 1;
+    } catch (_e) { /* registration must never break construction */ }
+}
+
+/**
+ * Live engine count. Compacting here is what makes the number trustworthy: a ref whose deref()
+ * returns undefined is proven collected, so the survivors are retention and not history.
+ * @param {object} [opts] opts.blockingMsPerSec records occupancy alongside the count, so a
+ *   climbing ghost herd and a climbing thread floor can be correlated or cleanly severed.
+ */
+function talariaEngineCensus(opts = {}) {
+    const reg = _talariaEngineRegistry();
+    if (!reg) return null;
+    const kept = [];
+    for (const ref of reg.refs) {
+        let obj = null;
+        try { obj = ref.deref(); } catch (_e) { obj = null; }
+        if (obj) kept.push(ref);
+    }
+    reg.refs = kept;
+    const row = {
+        at: Date.now(),
+        live: kept.length,
+        registered: reg.registered,
+        collected: reg.registered - kept.length,
+        label: opts.label || null,
+        blockingMsPerSec: Number.isFinite(opts.blockingMsPerSec) ? opts.blockingMsPerSec : null
+    };
+    reg.samples.push(row);
+    return row;
+}
+
+if (typeof window !== 'undefined') {
+    window.talariaEngineCensus = talariaEngineCensus;
+}
+
 class Chart {
     constructor(canvasElement = null, svgElement = null, options = {}) {
+        _talariaRegisterEngine(this);
         installChartContextMenuCapture();
         // Support both main chart and panel instances
         if (canvasElement) {
@@ -1197,7 +1433,28 @@ class Chart {
         this._mcFinerPanelOwnerFetchSeq = 0;
         this._mcFinerPanelHostCommitListenerInstalled = false;
         this._mcFinerPanelHostCommitHandler = null;
+        /** Host window the commit listener was registered on (removal target). */
+        this._mcFinerPanelHostCommitTarget = null;
+        this._mcFinerPanelHostCommitUnloadHandler = null;
         this._installFinerPanelSelfOwnerHostCommitListener();
+        this._mcHostCacheClientId = null;
+        this._mcHostCacheFileRefs = new Map();
+        this._mcHostCacheReleaseUnloadHandler = null;
+        this._installMcHostCacheReleaseHook();
+        this._sharedBarStoreClientId = null;
+        this._sharedBarStoreFileRefs = new Set();
+        this._sharedBarStoreReleaseUnloadHandler = null;
+        this._installSharedBarStoreReleaseHook();
+        this._mcBackgroundRenderDirty = false;
+        this._mcBackgroundRenderCatchupListenerInstalled = false;
+        this._mcBackgroundRenderCatchupHandler = null;
+        /** Document the capture listeners were registered on (removal target). */
+        this._mcBackgroundRenderCatchupListenerTarget = null;
+        this._mcBackgroundRenderCatchupReleaseHandler = null;
+        this._mcBackgroundRenderCatchupFrames = 0;
+        /** Set by resize(): the backing store was cleared, so one paint must escape. */
+        this._mcRepaintAfterSurfaceReset = false;
+        this._installMultichartBackgroundRenderCatchupListener();
         /** Coalesce high-frequency pan sync broadcasts to ~1/frame. */
         this._scrollSyncRaf = null;
         this._lastScrollSyncAt = 0;
@@ -1467,10 +1724,10 @@ class Chart {
                     setTimeout(() => this._handleViewportRefresh(), 120);
                 };
 
-                window.addEventListener('resize', this._handleViewportRefresh);
-                window.addEventListener('focus', this._handleViewportRefresh);
-                window.addEventListener('pageshow', this._handleViewportRefresh);
-                document.addEventListener('visibilitychange', this._handleVisibilityRefresh);
+                this._trackListener(window, 'resize', this._handleViewportRefresh);
+                this._trackListener(window, 'focus', this._handleViewportRefresh);
+                this._trackListener(window, 'pageshow', this._handleViewportRefresh);
+                this._trackListener(document, 'visibilitychange', this._handleVisibilityRefresh);
             }
         } else {
             // For panels, still setup canvas right-click context menu
@@ -1493,7 +1750,50 @@ class Chart {
                 }
             });
         }
-        
+
+        // SR-02 RESIZE-01 — panel viewport-resize propagation.
+        //
+        // The window 'resize' registration above sits in the `!this.isPanel`
+        // arm, so panels never got one. The panel-side ResizeObserver in
+        // multichart-prod/embed-bridge.js only calls drawingManager.redrawAll(),
+        // which repaints drawings but never rebuilds the canvas backing store —
+        // that only happens in Chart.resize(). A panel therefore kept a stale
+        // backing store after a viewport change and painted at the old
+        // resolution into a smaller box (measured: CSS box 791x849 -> 449x700,
+        // backing store stayed 791x849).
+        //
+        // Container resize and window resize are different routes: container
+        // resize already reaches Chart.resize() directly. This adds only the
+        // missing window route. Chart.resize() early-returns unless dimensions
+        // actually change, so this is a no-op when nothing moved.
+        if (this.isPanel && !this._handlePanelViewportRefresh) {
+            this._handlePanelViewportRefresh = () => {
+                // Kill-switch read on EVERY call, not at registration, so it can
+                // be flipped mid-session with no reload. Truthy disables the
+                // fix; falsy (undefined/null/false/0/''/NaN) keeps it. Do not
+                // convert this to a `=== true` comparison.
+                try {
+                    if (typeof window !== 'undefined'
+                        && window.__TALARIA_DISABLE_PANEL_VIEWPORT_RESIZE_V1) return;
+                } catch (_) { /* ignore */ }
+                // Same layout-drag suppression the host handler uses: the
+                // multichart splitter drives its own resize path.
+                if (this._multichartLayoutDragging) return;
+                try {
+                    if (typeof window !== "undefined" && window.__multichartLayoutDragging) return;
+                    if (window.parent && window.parent !== window
+                        && window.parent.__multichartLayoutDragging) return;
+                } catch (_) { /* ignore */ }
+                if (this._panelViewportRefreshRaf) return;
+                this._panelViewportRefreshRaf = requestAnimationFrame(() => {
+                    this._panelViewportRefreshRaf = 0;
+                    this.resize();
+                    this.scheduleRender();
+                });
+            };
+            this._trackListener(window, 'resize', this._handlePanelViewportRefresh);
+        }
+
         // Initialize Drawing Tools Manager
         if (!this.isPanel) {
             // Main chart gets its own managers
@@ -2594,7 +2894,11 @@ class Chart {
             fetchedBars: 0,
             extendsFromParent: 0,
             resamples: 0,
+            replayTicks: 0,
+            fullResamples: 0,
+            incrementalResamples: 0,
             renders: 0,
+            backgroundPaintsSuppressed: 0,
             seams: 0,
             ownerFetches: 0,
             ownerBars: 0,
@@ -2613,8 +2917,29 @@ class Chart {
         const originalUpdateChartData = replay.updateChartData;
         replay.updateChartData = function mcDiagUpdateChartDataWrapper(...args) {
             chart._mcDiag && chart._mcDiag.resamples++;
+            if (!_talariaM20Q9McDiagCountersDisabled()) {
+                chart._mcDiag && chart._mcDiag.replayTicks++;
+            }
             return originalUpdateChartData.apply(this, args);
         };
+        // Fast mode (speed >= 60x) ticks through updateChartDataFast, which the
+        // legacy `resamples` wrapper never covered. replayTicks counts both entry
+        // points so "per tick" is well defined at every playback speed; `resamples`
+        // is deliberately NOT incremented here (its semantics stay unchanged).
+        //
+        // Install unconditionally. The Q9 kill-switch is read per call inside the
+        // wrapper; that read is the entire switch. Gating installation here strands
+        // a panel that booted under the switch for the life of the page — delete
+        // cannot re-enter an install-time gate (FLAG-02 / M23 pagehide precedent).
+        if (typeof replay.updateChartDataFast === 'function') {
+            const originalUpdateChartDataFast = replay.updateChartDataFast;
+            replay.updateChartDataFast = function mcDiagUpdateChartDataFastWrapper(...args) {
+                if (!_talariaM20Q9McDiagCountersDisabled()) {
+                    chart._mcDiag && chart._mcDiag.replayTicks++;
+                }
+                return originalUpdateChartDataFast.apply(this, args);
+            };
+        }
         replay._mcDiagUpdateChartDataWrapped = true;
         this._installLazyReplayMasterGuards();
     }
@@ -2819,6 +3144,278 @@ class Chart {
             }
         } catch (_e) { /* ignore */ }
         return null;
+    }
+
+    // Truthiness when the switch is PRESENT. Own realm first, then parent.
+    // Read per call — never sampled at init — so the switch round-trips live.
+    // ABSENT / falsy ⇒ feature ON (default). Truthy ⇒ kill / restore legacy.
+    // FIX1-VISIBILITY (fe9ec1332): skip predicate is visibility, not focus —
+    // never-clicked on-screen panels keep painting. Default ON.
+    _isMultichartBackgroundRenderCadenceDisabled() {
+        try {
+            if (typeof window === 'undefined') return false;
+            if (window[MC_BACKGROUND_RENDER_CADENCE_DISABLE_SWITCH]) return true;
+            const host = window.parent && window.parent !== window ? window.parent : null;
+            return !!(host && host[MC_BACKGROUND_RENDER_CADENCE_DISABLE_SWITCH]);
+        } catch (_e) {
+            return false;
+        }
+    }
+
+    /**
+     * CPU-CUT-RAF-COALESCE: absent/falsy ⇒ ON; truthy ⇒ legacy OFF.
+     * Read per call (never sampled at load) so mid-session flips apply.
+     */
+    _rafPaintCoalesceEnabled() {
+        try {
+            if (typeof window === 'undefined') return true;
+            return !window[RAF_PAINT_COALESCE_DISABLE_SWITCH];
+        } catch (_e) {
+            return true;
+        }
+    }
+
+    /**
+     * Request a coalesced paint (mark dirty; animate() paints once per frame).
+     * Sync escape hatch: pass `{ flush: true }` or call `render()` directly.
+     */
+    _requestRafPaint(opts) {
+        const flush = !!(opts && opts.flush);
+        if (flush || !this._rafPaintCoalesceEnabled()) {
+            this.renderPending = false;
+            this.render();
+            return;
+        }
+        this.renderPending = true;
+    }
+
+    _getMultichartHostWindowForFocus() {
+        try {
+            if (typeof window === 'undefined') return null;
+            if (window.parent && window.parent !== window) return window.parent;
+            return window;
+        } catch (_e) {
+            return null;
+        }
+    }
+
+    _getFocusedMultichartPanelId() {
+        const host = this._getMultichartHostWindowForFocus();
+        if (!host) return null;
+        try {
+            const grid = host.__multichartGrid;
+            if (grid && typeof grid.getFocusedPanelId === 'function') {
+                const id = grid.getFocusedPanelId();
+                if (id != null && id !== '') return String(id);
+            }
+            if (grid && grid.focusedPanelId != null && grid.focusedPanelId !== '') {
+                return String(grid.focusedPanelId);
+            }
+        } catch (_e) { /* ignore */ }
+        try {
+            const mgr = host.__multichartManagerRef || host.__harnessManager || host.__mcManager;
+            if (mgr && mgr.focusedPanelId != null && mgr.focusedPanelId !== '') {
+                return String(mgr.focusedPanelId);
+            }
+        } catch (_e) { /* ignore */ }
+        return null;
+    }
+
+    /**
+     * TRUE when this multichart panel is on-screen for paint purposes.
+     *
+     * Visibility signal (not focus): a tile the user can see must keep painting
+     * whether or not it was ever clicked. `focusedPanelId` defaults to host `A`
+     * and only changes on click — that must not classify never-clicked B/C/D as
+     * "background for life".
+     *
+     * Probe (fail-open → visible on error, so a probe failure never freezes an
+     * on-screen tile):
+     *   - `document.hidden` (tab occluded)
+     *   - canvas `getBoundingClientRect()` non-zero + computed `display` /
+     *     `visibility` not none/hidden
+     *   - embed iframe: `window.frameElement` parent-layout rect + computed
+     *     display/visibility/opacity (display:none / zero-size / opacity:0 ⇒
+     *     not visible)
+     *
+     * Deliberately does NOT use `this.w`/`this.h`: those are internal chart
+     * layout numbers that can remain non-zero while the iframe is display:none,
+     * and zeroing them would trip render()'s min-size early-return before the
+     * paint-only boundary (breaking state compute for hidden tiles).
+     */
+    _isMultichartPanelVisibleForPaint() {
+        try {
+            if (typeof document !== 'undefined' && document.hidden === true) return false;
+
+            const canvas = this.canvas;
+            if (canvas && typeof canvas.getBoundingClientRect === 'function') {
+                const rect = canvas.getBoundingClientRect();
+                if (!(rect && rect.width > 0 && rect.height > 0)) return false;
+                if (typeof window !== 'undefined' && typeof window.getComputedStyle === 'function') {
+                    const cs = window.getComputedStyle(canvas);
+                    if (cs && (cs.display === 'none' || cs.visibility === 'hidden')) return false;
+                }
+            }
+
+            if (typeof this._isMultichartEmbedPanel === 'function' && this._isMultichartEmbedPanel()) {
+                const frame = typeof window !== 'undefined' ? window.frameElement : null;
+                if (frame) {
+                    try {
+                        const parentWin = frame.ownerDocument && frame.ownerDocument.defaultView;
+                        if (parentWin && typeof parentWin.getComputedStyle === 'function') {
+                            const fcs = parentWin.getComputedStyle(frame);
+                            if (fcs) {
+                                if (fcs.display === 'none' || fcs.visibility === 'hidden') return false;
+                                const opacity = Number(fcs.opacity);
+                                if (Number.isFinite(opacity) && opacity <= 0) return false;
+                            }
+                        }
+                    } catch (_styleErr) { /* cross-origin / detached — fall through to rect */ }
+                    if (typeof frame.getBoundingClientRect === 'function') {
+                        const fr = frame.getBoundingClientRect();
+                        if (!(fr && fr.width > 0 && fr.height > 0)) return false;
+                    }
+                }
+            }
+
+            return true;
+        } catch (_e) {
+            return true;
+        }
+    }
+
+    // TRUE => this panel is not visible and render() must skip DRAWING for this
+    // frame. It must never be read as "skip the frame": the frame's state is
+    // still computed, or a hidden panel holds stale scales and time ticks while
+    // a visible panel advances. See the paint boundary in render().
+    //
+    // Predicate is visibility, not focus. Never-clicked on-screen B/C/D must
+    // keep painting; only truly hidden / zero-size / display:none tiles throttle.
+    _shouldSkipMultichartBackgroundRender() {
+        if (this._isMultichartBackgroundRenderCadenceDisabled()) return false;
+        const ownId = this._getMultichartPanelId();
+        if (!ownId) return false;
+        if (this._isMultichartPanelVisibleForPaint()) return false;
+        return true;
+    }
+
+    /**
+     * TRUE when `id` is a panel the grid currently has mounted.
+     *
+     * Nothing resets focusedPanelId when the focused tile goes away (layout shrink,
+     * tile close), and every surviving tile — the host included — would then see
+     * ownId !== focusedId and freeze forever, with no way back except clicking a tile
+     * body. A focus id matching no live panel is not a focus at all. Unknown counts as
+     * live (no grid / no getPanelIds / empty list), so this can only ever UNDO
+     * suppression, never create it.
+     */
+    _isLiveMultichartPanelId(id) {
+        try {
+            const host = this._getMultichartHostWindowForFocus();
+            const grid = host && host.__multichartGrid;
+            if (!grid || typeof grid.getPanelIds !== 'function') return true;
+            const ids = grid.getPanelIds();
+            if (!Array.isArray(ids) || ids.length === 0) return true;
+            const wanted = String(id);
+            for (const pid of ids) {
+                if (String(pid) === wanted) return true;
+            }
+            return false;
+        } catch (_e) {
+            return true;
+        }
+    }
+
+    // FLAG-02: install unconditionally and gate only the EFFECT. Installing behind
+    // the kill switch would mean a boot with the switch on could never reach the
+    // throttled behaviour after the switch is deleted, without a reload.
+    _installMultichartBackgroundRenderCatchupListener() {
+        if (this._mcBackgroundRenderCatchupListenerInstalled) return;
+        this._mcBackgroundRenderCatchupListenerInstalled = true;
+        if (typeof document === 'undefined' || typeof document.addEventListener !== 'function') return;
+        const self = this;
+        this._mcBackgroundRenderCatchupHandler = function mcBackgroundRenderCatchupFromFocus() {
+            self._requestMultichartBackgroundRenderCatchup();
+        };
+        try {
+            document.addEventListener('pointerdown', this._mcBackgroundRenderCatchupHandler, { capture: true, passive: true });
+            document.addEventListener('mousedown', this._mcBackgroundRenderCatchupHandler, { capture: true, passive: true });
+            document.addEventListener('focusin', this._mcBackgroundRenderCatchupHandler, { capture: true, passive: true });
+            this._mcBackgroundRenderCatchupListenerTarget = document;
+        } catch (_e) { /* ignore */ }
+        this._installMultichartBackgroundRenderCatchupReleaseHook();
+    }
+
+    // Chart has no destroy(); a multichart panel is just an iframe removed from the
+    // DOM. `pagehide` on the panel's OWN window is the event that actually fires in
+    // that case — `unload` does not. Same pattern as
+    // _installSharedBarStoreReleaseHook(), which was verified in a real browser.
+    _installMultichartBackgroundRenderCatchupReleaseHook() {
+        try {
+            if (typeof window === 'undefined') return;
+            if (this._mcBackgroundRenderCatchupReleaseHandler) return;
+            if (typeof window.addEventListener !== 'function') return;
+            const self = this;
+            this._mcBackgroundRenderCatchupReleaseHandler = function mcBackgroundRenderCatchupReleaseOnPagehide(ev) {
+                if (ev && ev.persisted === true) return;
+                self._releaseMultichartBackgroundRenderCatchupListener();
+            };
+            window.addEventListener('pagehide', this._mcBackgroundRenderCatchupReleaseHandler);
+        } catch (_e) { /* ignore */ }
+    }
+
+    _releaseMultichartBackgroundRenderCatchupListener() {
+        const target = this._mcBackgroundRenderCatchupListenerTarget;
+        const handler = this._mcBackgroundRenderCatchupHandler;
+        if (target && handler && typeof target.removeEventListener === 'function') {
+            try {
+                target.removeEventListener('pointerdown', handler, { capture: true });
+                target.removeEventListener('mousedown', handler, { capture: true });
+                target.removeEventListener('focusin', handler, { capture: true });
+            } catch (_e) { /* ignore */ }
+        }
+        this._mcBackgroundRenderCatchupListenerTarget = null;
+        this._mcBackgroundRenderCatchupHandler = null;
+        this._mcBackgroundRenderCatchupFrames = 0;
+        try {
+            if (typeof window !== 'undefined'
+                && this._mcBackgroundRenderCatchupReleaseHandler
+                && typeof window.removeEventListener === 'function') {
+                window.removeEventListener('pagehide', this._mcBackgroundRenderCatchupReleaseHandler);
+            }
+        } catch (_e) { /* ignore */ }
+        this._mcBackgroundRenderCatchupReleaseHandler = null;
+    }
+
+    // ARM ONLY — deliberately does not paint.
+    //
+    // panel-cmd-bridge.js posts `panel-focus` to the parent on a setTimeout(0), and
+    // these are capture-phase listeners, so this runs FIRST: the parent still
+    // reports the panel the user just left. Painting here would paint a panel that
+    // is still in the background, which is the exact work FIX 1 exists to avoid.
+    // Arm a bounded frame budget instead and let animate() paint on the first frame
+    // where focus has actually landed on us.
+    _requestMultichartBackgroundRenderCatchup() {
+        try {
+            if (!this._getMultichartPanelId()) return;
+        } catch (_e) {
+            return;
+        }
+        this._mcBackgroundRenderCatchupFrames = MC_BACKGROUND_RENDER_CATCHUP_FRAME_BUDGET;
+    }
+
+    // Driven by the rAF loop that already runs, so there is no timer to own or leak.
+    _tickMultichartBackgroundRenderCatchup() {
+        const budget = this._mcBackgroundRenderCatchupFrames | 0;
+        if (budget <= 0) return;
+        this._mcBackgroundRenderCatchupFrames = budget - 1;
+        if (!this._mcBackgroundRenderDirty) return;
+        // Still not visible for paint: keep waiting rather than painting early.
+        if (this._shouldSkipMultichartBackgroundRender()) return;
+        this._mcBackgroundRenderCatchupFrames = 0;
+        // Per-frame catch-up: coalesce when ON so this paint merges with any other
+        // dirty mark already queued for the same animation frame.
+        this._requestRafPaint();
     }
 
     /**
@@ -3138,10 +3735,138 @@ class Chart {
     // Inspect with window.__talariaBarStoreStats().
     // ─────────────────────────────────────────────────────────────────────
 
+    _mcRawDataCopyDisabled() {
+        try {
+            return !!(typeof window !== 'undefined' && window.__TALARIA_DISABLE_MC_RAWDATA_COPY_V1);
+        } catch (_e) {
+            return false;
+        }
+    }
+
+    _mcIncrementalRawDataCopyDisabled() {
+        try {
+            return !!(typeof window !== 'undefined' && window.__TALARIA_DISABLE_MC_INCREMENTAL_RAWDATA_COPY_V1);
+        } catch (_e) {
+            return false;
+        }
+    }
+
+    _mcRawDataCopyCacheSlot(slotKey) {
+        return slotKey == null ? null : String(slotKey);
+    }
+
+    _mcRawDataCopyCache() {
+        if (!this._mcIncrementalRawDataCopyCache) this._mcIncrementalRawDataCopyCache = new Map();
+        return this._mcIncrementalRawDataCopyCache;
+    }
+
+    _mcRawDataCopyLimit() {
+        return 200000;
+    }
+
+    _mcScalarCloneRawBar(value) {
+        if (!value || typeof value !== 'object') return null;
+        const out = {};
+        for (const k of Object.keys(value)) {
+            const v = value[k];
+            if (v == null || typeof v !== 'object') out[k] = v;
+        }
+        return out;
+    }
+
+    _mcCloneRawDataBars(source) {
+        if (!Array.isArray(source)) return source;
+        const limit = this._mcRawDataCopyLimit();
+        const start = Number.isFinite(limit) && limit > 0
+            ? Math.max(0, source.length - limit)
+            : 0;
+        const out = [];
+        for (let i = start; i < source.length; i += 1) {
+            const cloned = this._mcScalarCloneRawBar(source[i]);
+            if (cloned && Number.isFinite(Number(cloned.t))) out.push(cloned);
+        }
+        return out;
+    }
+
+    _mcRawDataCopyBoundaryTimestamp(source, length) {
+        if (!Array.isArray(source) || length <= 0) return null;
+        const t = Number(source[length - 1]?.t);
+        return Number.isFinite(t) ? t : null;
+    }
+
+    _mcCacheFullRawDataClone(cacheKey, source, out) {
+        this._mcRawDataCopyCache().set(cacheKey, {
+            source,
+            sourceLength: source.length,
+            lastTimestamp: this._mcRawDataCopyBoundaryTimestamp(source, source.length),
+            clone: out,
+        });
+        return out;
+    }
+
+    _mcIncrementalCloneRawDataBars(source, cacheKey) {
+        const limit = this._mcRawDataCopyLimit();
+        if (Number.isFinite(limit) && limit > 0 && source.length > limit) {
+            return this._mcCacheFullRawDataClone(cacheKey, source, this._mcCloneRawDataBars(source));
+        }
+
+        const cache = this._mcRawDataCopyCache().get(cacheKey);
+        const prevLen = cache?.sourceLength ?? -1;
+        const canAppendTail = cache
+            && cache.source === source
+            && source.length >= prevLen
+            && (prevLen === 0 || this._mcRawDataCopyBoundaryTimestamp(source, prevLen) === cache.lastTimestamp);
+
+        if (!canAppendTail) {
+            return this._mcCacheFullRawDataClone(cacheKey, source, this._mcCloneRawDataBars(source));
+        }
+
+        const out = cache.clone;
+        for (let i = prevLen; i < source.length; i += 1) {
+            const cloned = this._mcScalarCloneRawBar(source[i]);
+            if (cloned && Number.isFinite(Number(cloned.t))) out.push(cloned);
+        }
+        cache.sourceLength = source.length;
+        cache.lastTimestamp = this._mcRawDataCopyBoundaryTimestamp(source, source.length);
+        return out;
+    }
+
+    _mcCopySamePairFullRawData(source, slotKey) {
+        if (!Array.isArray(source)) return source;
+        if (this._mcRawDataCopyDisabled()) return source;
+        if (this._mcIncrementalRawDataCopyDisabled()) return this._mcCloneRawDataBars(source);
+        const cacheKey = this._mcRawDataCopyCacheSlot(slotKey);
+        if (!cacheKey) return this._mcCloneRawDataBars(source);
+        return this._mcIncrementalCloneRawDataBars(source, cacheKey);
+    }
+
+    _mcDetachFullRawDataCopy(source) {
+        if (!Array.isArray(source)) return source;
+        return this._mcRawDataCopyDisabled() ? source.slice() : this._mcCloneRawDataBars(source);
+    }
+
+    _mcBarStoreRealmSwitchEnabled() {
+        try {
+            return !!(typeof window !== 'undefined' && window.__TALARIA_DISABLE_MC_BAR_STORE_REALM_V1);
+        } catch (_e) {
+            return false;
+        }
+    }
+
+    _makeBarStoreStatsFn() {
+        return function __talariaBarStoreStats() {
+            return window.__talariaBarStore ? window.__talariaBarStore.stats() : null;
+        };
+    }
+
     /** Resolve the ONE shared store (lazily created on the top same-origin window). */
     _sharedBarStore() {
         if (typeof window === 'undefined') return null;
         if (window.__TALARIA_DISABLE_SHARED_BAR_STORE) return null;
+        // __TALARIA_DISABLE_MC_BAR_STORE_REALM_V1 reverts realm selection only.
+        // Payload cloning and refcount ownership remain active; current normalized
+        // bars/cursors are scalar data, so those guards are safe under flag-on.
+        const legacyRealm = this._mcBarStoreRealmSwitchEnabled();
         let host = window;
         try {
             const top = window.top || window;
@@ -3152,12 +3877,29 @@ class Chart {
             host = window;
         }
         try {
+            if (legacyRealm) {
+                if (!host.__talariaBarStore) {
+                    host.__talariaBarStore = this._createSharedBarStore();
+                    try {
+                        host.__talariaBarStoreStats = function () {
+                            return host.__talariaBarStore ? host.__talariaBarStore.stats() : null;
+                        };
+                    } catch (_s) { /* ignore */ }
+                }
+                return host.__talariaBarStore;
+            }
             if (!host.__talariaBarStore) {
-                host.__talariaBarStore = this._createSharedBarStore();
+                if (host !== window) {
+                    if (!host.chart || typeof host.chart._createSharedBarStore !== 'function') return null;
+                    host.__talariaBarStore = host.chart._createSharedBarStore();
+                } else {
+                    host.__talariaBarStore = this._createSharedBarStore();
+                }
                 try {
-                    host.__talariaBarStoreStats = function () {
-                        return host.__talariaBarStore ? host.__talariaBarStore.stats() : null;
-                    };
+                    const statsOwner = (host.chart && typeof host.chart._makeBarStoreStatsFn === 'function')
+                        ? host.chart
+                        : this;
+                    host.__talariaBarStoreStats = statsOwner._makeBarStoreStatsFn();
                 } catch (_s) { /* ignore */ }
             }
             return host.__talariaBarStore;
@@ -3173,7 +3915,7 @@ class Chart {
     _createSharedBarStore() {
         const MAX_FILES = 12;
         const MAX_BARS_PER_TF = 200000;
-        const files = new Map(); // fileId -> { tfs:Map(tf->{bars,cursors,updatedAt}), lru }
+        const files = new Map(); // fileId -> { tfs:Map(tf->{bars,cursors,updatedAt}), refs:Set(clientId), lru }
         let lruSeq = 0;
 
         const parseTfMs = (tf) => {
@@ -3195,6 +3937,28 @@ class Chart {
             if (oldestId != null) files.delete(oldestId);
         };
 
+        const scalarClone = (value) => {
+            if (!value || typeof value !== 'object') return null;
+            const out = {};
+            for (const k of Object.keys(value)) {
+                const v = value[k];
+                if (v == null || typeof v !== 'object') out[k] = v;
+            }
+            return out;
+        };
+
+        const cloneBarsForStore = (bars) => {
+            const start = Math.max(0, bars.length - MAX_BARS_PER_TF);
+            const out = [];
+            for (let i = start; i < bars.length; i += 1) {
+                const cloned = scalarClone(bars[i]);
+                if (cloned && Number.isFinite(Number(cloned.t))) out.push(cloned);
+            }
+            return out;
+        };
+
+        const cloneCursorsForStore = (cursors) => scalarClone(cursors);
+
         const unionByTime = (existing, incoming) => {
             if (!existing || !existing.length) return incoming.slice();
             if (!incoming || !incoming.length) return existing;
@@ -3215,16 +3979,34 @@ class Chart {
                 if (!id || !key || !Array.isArray(bars) || bars.length === 0) return;
                 if (!parseTfMs(key)) return;
                 let f = files.get(id);
-                if (!f) { f = { tfs: new Map(), lru: ++lruSeq }; files.set(id, f); }
+                if (!f) { f = { tfs: new Map(), refs: new Set(), lru: ++lruSeq }; files.set(id, f); }
                 f.lru = ++lruSeq;
                 const prev = f.tfs.get(key);
-                const mergedBars = prev ? unionByTime(prev.bars, bars) : bars.slice();
+                const storeBars = cloneBarsForStore(bars);
+                if (!storeBars.length) return;
+                const mergedBars = prev ? unionByTime(prev.bars, storeBars) : storeBars;
                 f.tfs.set(key, {
                     bars: mergedBars,
-                    cursors: cursors || (prev && prev.cursors) || null,
+                    cursors: cloneCursorsForStore(cursors) || (prev && prev.cursors) || null,
                     updatedAt: Date.now(),
                 });
                 evict();
+            },
+            retainFile(fileId, clientId) {
+                const id = String(fileId || '');
+                const owner = String(clientId || '');
+                const f = files.get(id);
+                if (!id || !owner || !f) return;
+                f.refs.add(owner);
+                f.lru = ++lruSeq;
+            },
+            releaseFile(fileId, clientId) {
+                const id = String(fileId || '');
+                const owner = String(clientId || '');
+                const f = files.get(id);
+                if (!id || !owner || !f) return;
+                f.refs.delete(owner);
+                if (f.refs.size === 0) files.delete(id);
             },
             /**
              * Best cached window for `wantedTf`: the entry whose resolution is
@@ -3248,7 +4030,7 @@ class Chart {
                     const score = span > 0 ? span / wantMs : e.bars.length;
                     if (score > bestScore) {
                         bestScore = score;
-                        best = { bars: e.bars, tf: tf, cursors: e.cursors };
+                        best = { bars: e.bars.slice(), tf: tf, cursors: e.cursors };
                     }
                 }
                 if (best) f.lru = ++lruSeq;
@@ -3261,7 +4043,13 @@ class Chart {
                 for (const [tf, e] of f.tfs) out[tf] = e.bars.length;
                 return out;
             },
-            clearFile(fileId) { files.delete(String(fileId || '')); },
+            clearFile(fileId, clientId) {
+                if (clientId != null) {
+                    this.releaseFile(fileId, clientId);
+                    return;
+                }
+                files.delete(String(fileId || ''));
+            },
             stats() {
                 const out = { files: files.size, detail: {} };
                 for (const [id, f] of files) {
@@ -3278,6 +4066,181 @@ class Chart {
                 return out;
             },
         };
+    }
+
+    _sharedBarStoreOwnerId() {
+        if (!this._sharedBarStoreClientId) {
+            const rand = Math.random().toString(36).slice(2);
+            this._sharedBarStoreClientId = `chart-${Date.now().toString(36)}-${rand}`;
+        }
+        return this._sharedBarStoreClientId;
+    }
+
+    _mcHostCacheReleaseEnabled() {
+        return !(typeof window !== 'undefined' && window.__TALARIA_DISABLE_MC_HOST_CACHE_RELEASE_V1);
+    }
+
+    _mcHostCacheOwnerId() {
+        if (!this._mcHostCacheClientId) {
+            const rand = Math.random().toString(36).slice(2);
+            this._mcHostCacheClientId = `chart-cache-${Date.now().toString(36)}-${rand}`;
+        }
+        return this._mcHostCacheClientId;
+    }
+
+    _installMcHostCacheReleaseHook() {
+        try {
+            if (typeof window === 'undefined' || this._mcHostCacheReleaseUnloadHandler) return;
+            const self = this;
+            this._mcHostCacheReleaseUnloadHandler = function mcHostCacheReleaseOnPagehide(ev) {
+                if (ev && ev.persisted === true) return;
+                self._releaseMcHostCacheFileRefs();
+            };
+            window.addEventListener('pagehide', this._mcHostCacheReleaseUnloadHandler);
+        } catch (_e) { /* ignore */ }
+    }
+
+    _retainMcHostCacheFile(cacheOwner, kind, fileId) {
+        try {
+            const owner = cacheOwner || this;
+            const id = String(fileId || '');
+            const cacheKind = String(kind || '');
+            if (!owner || !id || !cacheKind) return;
+            const clientId = this._mcHostCacheOwnerId();
+            if (!owner._mcHostCacheFileRefOwners) owner._mcHostCacheFileRefOwners = new Map();
+            const refKey = `${cacheKind}|${id}`;
+            let owners = owner._mcHostCacheFileRefOwners.get(refKey);
+            if (!owners) {
+                owners = new Set();
+                owner._mcHostCacheFileRefOwners.set(refKey, owners);
+            }
+            owners.add(clientId);
+            if (!this._mcHostCacheFileRefs) this._mcHostCacheFileRefs = new Map();
+            this._mcHostCacheFileRefs.set(refKey, { cacheOwner: owner, kind: cacheKind, fileId: id });
+        } catch (_e) { /* best-effort cache ownership only */ }
+    }
+
+    _mcHostCacheSharedWriteOwner(kind) {
+        try {
+            if (typeof this._isMultichartEmbedPanel !== 'function' || !this._isMultichartEmbedPanel()) return null;
+            const host = typeof this._multichartGetHostChart === 'function'
+                ? this._multichartGetHostChart()
+                : null;
+            if (!host || host === this) return null;
+            const cacheKind = String(kind || '');
+            if (cacheKind === 'tf' && this._tfDataCache && this._tfDataCache === host._tfDataCache) return host;
+            if (cacheKind === 'bt' && this._btTfDataCache && this._btTfDataCache === host._btTfDataCache) return host;
+            if (cacheKind === 'smart' && this._smartPrefetchCache && this._smartPrefetchCache === host._smartPrefetchCache) return host;
+            return null;
+        } catch (_e) {
+            return null;
+        }
+    }
+
+    _forgetMcHostCacheFileRefSet(kind, fileId) {
+        try {
+            if (!this._mcHostCacheFileRefOwners) return;
+            this._mcHostCacheFileRefOwners.delete(`${String(kind || '')}|${String(fileId || '')}`);
+        } catch (_e) { /* ignore */ }
+    }
+
+    _smartPrefetchCacheHasFileId(fileId) {
+        const id = String(fileId || '');
+        if (!id || !this._smartPrefetchCache) return false;
+        for (const [key, entry] of this._smartPrefetchCache) {
+            if (entry && String(entry.fileId || '') === id) return true;
+            if (String(key || '').startsWith(`${id}|`)) return true;
+        }
+        return false;
+    }
+
+    _dropMcHostCacheFileRef(ownerId, kind, fileId) {
+        const cacheKind = String(kind || '');
+        const id = String(fileId || '');
+        if (!ownerId || !cacheKind || !id) return;
+        const refKey = `${cacheKind}|${id}`;
+        const owners = this._mcHostCacheFileRefOwners && this._mcHostCacheFileRefOwners.get(refKey);
+        if (owners) {
+            owners.delete(ownerId);
+            if (owners.size > 0) return;
+            this._mcHostCacheFileRefOwners.delete(refKey);
+        }
+        if (cacheKind === 'tf' && this._tfDataCache) {
+            this._tfDataCache.delete(id);
+        } else if (cacheKind === 'bt' && this._btTfDataCache) {
+            this._btTfDataCache.delete(id);
+        } else if (cacheKind === 'smart' && this._smartPrefetchCache) {
+            for (const [key, entry] of Array.from(this._smartPrefetchCache.entries())) {
+                if ((entry && String(entry.fileId || '') === id) || String(key || '').startsWith(`${id}|`)) {
+                    this._smartPrefetchCache.delete(key);
+                }
+            }
+        }
+    }
+
+    _releaseMcHostCacheFileRefs() {
+        if (!this._mcHostCacheReleaseEnabled()) return;
+        const refs = this._mcHostCacheFileRefs;
+        const ownerId = this._mcHostCacheOwnerId();
+        if (refs && refs.size > 0) {
+            for (const ref of refs.values()) {
+                try {
+                    if (ref && ref.cacheOwner && typeof ref.cacheOwner._dropMcHostCacheFileRef === 'function') {
+                        ref.cacheOwner._dropMcHostCacheFileRef(ownerId, ref.kind, ref.fileId);
+                    }
+                } catch (_e) { /* ignore */ }
+            }
+            refs.clear();
+        }
+        try {
+            if (typeof window !== 'undefined' && this._mcHostCacheReleaseUnloadHandler) {
+                window.removeEventListener('pagehide', this._mcHostCacheReleaseUnloadHandler);
+            }
+        } catch (_e) { /* ignore */ }
+        this._mcHostCacheReleaseUnloadHandler = null;
+    }
+
+    _retainSharedBarStoreFile(store, fileId) {
+        try {
+            const id = String(fileId || '');
+            if (!id || !store || typeof store.retainFile !== 'function') return;
+            const owner = this._sharedBarStoreOwnerId();
+            store.retainFile(id, owner);
+            this._sharedBarStoreFileRefs.add(id);
+        } catch (_e) { /* best-effort cache ownership only */ }
+    }
+
+    _installSharedBarStoreReleaseHook() {
+        try {
+            if (typeof window === 'undefined' || this._sharedBarStoreReleaseUnloadHandler) return;
+            const self = this;
+            this._sharedBarStoreReleaseUnloadHandler = function sharedBarStoreReleaseOnPagehide(ev) {
+                if (ev && ev.persisted === true) return;
+                self._releaseSharedBarStoreFileRefs();
+            };
+            window.addEventListener('pagehide', this._sharedBarStoreReleaseUnloadHandler);
+        } catch (_e) { /* ignore */ }
+    }
+
+    _releaseSharedBarStoreFileRefs() {
+        if (this._mcBarStoreRealmSwitchEnabled()) return;
+        const refs = this._sharedBarStoreFileRefs;
+        if (!refs || refs.size === 0) return;
+        let store = null;
+        try { store = this._sharedBarStore(); } catch (_e) { store = null; }
+        if (store && typeof store.clearFile === 'function') {
+            const owner = this._sharedBarStoreOwnerId();
+            for (const fileId of refs) {
+                try { store.clearFile(fileId, owner); } catch (_e) { /* ignore */ }
+            }
+        }
+        refs.clear();
+        try {
+            if (typeof window !== 'undefined' && this._sharedBarStoreReleaseUnloadHandler) {
+                window.removeEventListener('pagehide', this._sharedBarStoreReleaseUnloadHandler);
+            }
+        } catch (_e) { /* ignore */ }
+        this._sharedBarStoreReleaseUnloadHandler = null;
     }
 
     /** Publish just-ingested native bars into the shared store (called from ingest). */
@@ -3299,6 +4262,7 @@ class Chart {
                 ? Object.assign({}, this._serverCursors, { total: this.totalCandles })
                 : { total: this.totalCandles };
             store.put(fileId, tf, bars, cursors);
+            this._retainSharedBarStoreFile(store, fileId);
         } catch (_e) { /* best-effort cache only */ }
     }
 
@@ -3315,6 +4279,7 @@ class Chart {
             if (!store) return null;
             const picked = store.pick(String(fileId), requestTimeframe || this.currentTimeframe || '1m');
             if (!picked || !Array.isArray(picked.bars) || picked.bars.length === 0) return null;
+            this._retainSharedBarStoreFile(store, fileId);
             const bars = picked.bars;
             this._panelFullRawData = bars.slice();
             const c = picked.cursors || {};
@@ -3360,6 +4325,7 @@ class Chart {
                 : 0;
             const pickSpan = Number(picked.bars[picked.bars.length - 1].t) - Number(picked.bars[0].t);
             if (!(pickSpan > localSpan)) return false;
+            this._retainSharedBarStoreFile(store, this.currentFileId);
             this._panelFullRawData = picked.bars.slice();
             if (picked.tf) this._nativeRawFetchTf = picked.tf;
             return true;
@@ -3849,9 +4815,9 @@ class Chart {
 
         const prs = parent.replaySystem;
         if (Array.isArray(parent._panelFullRawData)) {
-            this._panelFullRawData = parent._panelFullRawData;
+            this._panelFullRawData = this._mcCopySamePairFullRawData(parent._panelFullRawData, 'panelFullRawData');
         } else if (prs && Array.isArray(prs.fullRawData) && prs.fullRawData.length > 0) {
-            this._panelFullRawData = prs.fullRawData;
+            this._panelFullRawData = this._mcCopySamePairFullRawData(prs.fullRawData, 'panelFullRawData');
         }
 
         this._commitTimeframeChange(tf);
@@ -3866,7 +4832,7 @@ class Chart {
             replay.tickElapsedMs = prs.tickElapsedMs;
             replay.animatingCandle = prs.animatingCandle;
             if (Array.isArray(prs.fullRawData) && prs.fullRawData.length > 0) {
-                replay.fullRawData = prs.fullRawData;
+                replay.fullRawData = this._mcCopySamePairFullRawData(prs.fullRawData, 'replay.fullRawData');
                 replay.rawTimeframe = prs.rawTimeframe || '1m';
                 replay._fullRawDataMatchesTF = prs._fullRawDataMatchesTF;
             }
@@ -4198,6 +5164,21 @@ class Chart {
             }
         }
         if (options && options.commitTimeframe) {
+            // TF-DOWNSHIFT-ANCHOR: mirror `_loadTimeframeFromServer`'s immediate
+            // fitToView before restore when the new (often short) window is not
+            // under the stale offsetX — otherwise intermediate paints flood
+            // "No candles drawn! All N candles are outside viewport".
+            try {
+                if (typeof this._tfDownshiftAnchorFixEnabled === 'function'
+                    && this._tfDownshiftAnchorFixEnabled()
+                    && Array.isArray(this.data) && this.data.length > 0
+                    && typeof this._viewportHasLoadedBarsOnScreen === 'function'
+                    && !this._viewportHasLoadedBarsOnScreen()
+                    && typeof this.fitToView === 'function') {
+                    this._chartViewRestored = false;
+                    this.fitToView();
+                }
+            } catch (_fitDs) { /* ignore */ }
             try { this._finishTfSwitchViewportRestore(); } catch (_vp) { /* ignore */ }
             this._endTimeframeSwitching();
         }
@@ -4222,7 +5203,74 @@ class Chart {
             };
             parentWin.addEventListener('talariaMcHostDataCommit', this._mcFinerPanelHostCommitHandler);
             this._mcFinerPanelHostCommitListenerInstalled = true;
+            // Remove from the window we actually registered on. `window.parent`
+            // is deliberately not re-read at teardown: a removal aimed at the
+            // wrong window would silently succeed and look like a fix.
+            this._mcFinerPanelHostCommitTarget = parentWin;
+            // The host window outlives this panel, so nothing on the host side
+            // can drop this registration — the panel has to unregister itself.
+            // Removing a panel iframe unloads this document, which fires
+            // pagehide here while parentWin is still reachable. A persisted
+            // pagehide is bfcache: the panel is coming back and must keep
+            // receiving commits, so leave the registration in place.
+            //
+            // Installed unconditionally. The M23 kill-switch is read at the
+            // teardown site, on every call, and that read is the entire switch.
+            // This hook is the only thing that ever reaches teardown — Chart
+            // has no destroy() path — so gating it here would strand a panel
+            // that booted under the switch for the life of the page, in every
+            // later switch state. It costs one listener on the panel's own
+            // window, which dies with this document and adds no panel→host
+            // retention edge; severing that edge is what M23 is for. pagehide,
+            // unlike unload, leaves the document bfcache-eligible.
+            this._mcFinerPanelHostCommitUnloadHandler = function finerPanelHostCommitUnload(ev) {
+                if (ev && ev.persisted === true) return;
+                self._removeFinerPanelSelfOwnerHostCommitListener();
+            };
+            window.addEventListener('pagehide', this._mcFinerPanelHostCommitUnloadHandler);
         } catch (_e) { /* ignore */ }
+    }
+
+    /**
+     * Panel teardown only. Never called while the panel is alive, so live
+     * cross-panel host data commits keep flowing until the document unloads.
+     *
+     * Callers (composed):
+     *   - pagehide backup (M23) — panel document unload
+     *   - MultichartManager.removeChart (ORPHAN-L1) — before iframe death
+     *
+     * Kill-switch (read per call):
+     *   - __TALARIA_DISABLE_M23_HOST_COMMIT_TEARDOWN_V1 === true → no-op (M23)
+     *
+     * ORPHAN-L1 kill (__TALARIA_DISABLE_MC_FINER_HOST_COMMIT_UNREGISTER_V1)
+     * gates MultichartManager.removeChart only — never this helper — so a
+     * truthy panel-realm flag cannot no-op pagehide backup.
+     */
+    _removeFinerPanelSelfOwnerHostCommitListener() {
+        try {
+            if (typeof window !== 'undefined'
+                && window.__TALARIA_DISABLE_M23_HOST_COMMIT_TEARDOWN_V1 === true) {
+                return;
+            }
+        } catch (_e) { /* ignore */ }
+        if (!this._mcFinerPanelHostCommitListenerInstalled) return;
+        this._mcFinerPanelHostCommitListenerInstalled = false;
+        try {
+            if (this._mcFinerPanelHostCommitTarget && this._mcFinerPanelHostCommitHandler) {
+                this._mcFinerPanelHostCommitTarget.removeEventListener(
+                    'talariaMcHostDataCommit',
+                    this._mcFinerPanelHostCommitHandler,
+                );
+            }
+        } catch (_e) { /* host realm already torn down */ }
+        try {
+            if (typeof window !== 'undefined' && this._mcFinerPanelHostCommitUnloadHandler) {
+                window.removeEventListener('pagehide', this._mcFinerPanelHostCommitUnloadHandler);
+            }
+        } catch (_e) { /* ignore */ }
+        this._mcFinerPanelHostCommitTarget = null;
+        this._mcFinerPanelHostCommitHandler = null;
+        this._mcFinerPanelHostCommitUnloadHandler = null;
     }
 
     _applyFinerPanelHostCommit(detail = {}) {
@@ -4512,12 +5560,12 @@ class Chart {
                 if (host && !host._panLoading && typeof host.checkViewportLoadMore === 'function') {
                     try { host.checkViewportLoadMore('backward', true); } catch (_) { /* ignore */ }
                 }
-                if (extended && typeof self.render === 'function') self.render();
+                if (extended) self._requestRafPaint();
                 self._mcHostMasterSyncRaf = requestAnimationFrame(poll);
             } else if (self._multichartPendingMasterResample) {
                 self._flushMultichartPendingMasterResample();
-            } else if (extended && typeof self.render === 'function') {
-                self.render();
+            } else if (extended) {
+                self._requestRafPaint();
             }
         };
         this._mcHostMasterSyncRaf = requestAnimationFrame(poll);
@@ -4715,15 +5763,15 @@ class Chart {
                 replay.tickElapsedMs = prs.tickElapsedMs;
                 replay.animatingCandle = prs.animatingCandle;
                 if (Array.isArray(prs.fullRawData) && prs.fullRawData.length > 0) {
-                    replay.fullRawData = prs.fullRawData;
+                    replay.fullRawData = this._mcCopySamePairFullRawData(prs.fullRawData, 'replay.fullRawData');
                 }
             }
         }
 
         if (Array.isArray(parent._panelFullRawData)) {
-            this._panelFullRawData = parent._panelFullRawData;
+            this._panelFullRawData = this._mcCopySamePairFullRawData(parent._panelFullRawData, 'panelFullRawData');
         } else if (Array.isArray(prs.fullRawData) && prs.fullRawData.length > 0) {
-            this._panelFullRawData = prs.fullRawData;
+            this._panelFullRawData = this._mcCopySamePairFullRawData(prs.fullRawData, 'panelFullRawData');
         }
 
         // Range/Date sync OFF + this panel already booted its own view: it must
@@ -4880,11 +5928,11 @@ class Chart {
             this.rawData = this.rawData.slice();
         }
         if (Array.isArray(this._panelFullRawData) && this._panelFullRawData.length > 0) {
-            this._panelFullRawData = this._panelFullRawData.slice();
+            this._panelFullRawData = this._mcDetachFullRawDataCopy(this._panelFullRawData);
         }
         const replay = this.replaySystem;
         if (replay && Array.isArray(replay.fullRawData) && replay.fullRawData.length > 0) {
-            replay.fullRawData = replay.fullRawData.slice();
+            replay.fullRawData = this._mcDetachFullRawDataCopy(replay.fullRawData);
         }
     }
 
@@ -4905,6 +5953,7 @@ class Chart {
         if (typeof parent._getBtTfDataCache !== 'function') return false;
         const entry = parent._getBtTfDataCache(this.currentFileId, timeframe);
         if (!entry) return false;
+        this._retainMcHostCacheFile(parent, 'bt', this.currentFileId);
         return this._applyBacktestTimeframeCacheEntry(timeframe, entry, 'parent-bt-cache');
     }
 
@@ -4931,6 +5980,7 @@ class Chart {
             if (!normalized || this._getBtTfDataCache(fid, normalized)) return;
             const entry = parent._getBtTfDataCache(fid, normalized);
             if (!entry) return;
+            this._retainMcHostCacheFile(parent, 'bt', fid);
             this._storeBtTfDataCacheEntry(fid, normalized, entry.rawData, {
                 totalCandles: entry.totalCandles,
                 serverCursors: entry.serverCursors,
@@ -4967,14 +6017,15 @@ class Chart {
                 ? prs.fullRawData
                 : null;
             if (!masterRaw || masterRaw.length === 0) return null;
-            this._panelFullRawData = masterRaw;
+            const copiedMasterRaw = this._mcCopySamePairFullRawData(masterRaw, 'panelFullRawData');
+            this._panelFullRawData = copiedMasterRaw;
             const pc = parent._serverCursors || {};
             return {
-                candles: masterRaw,
-                total: Number.isFinite(parent.totalCandles) ? parent.totalCandles : masterRaw.length,
-                returned: masterRaw.length,
-                first_cursor: masterRaw[0]?.t ?? (pc.firstTs ?? null),
-                last_cursor: masterRaw[masterRaw.length - 1]?.t ?? (pc.lastTs ?? null),
+                candles: copiedMasterRaw,
+                total: Number.isFinite(parent.totalCandles) ? parent.totalCandles : copiedMasterRaw.length,
+                returned: copiedMasterRaw.length,
+                first_cursor: copiedMasterRaw[0]?.t ?? (pc.firstTs ?? null),
+                last_cursor: copiedMasterRaw[copiedMasterRaw.length - 1]?.t ?? (pc.lastTs ?? null),
                 has_more_left: pc.hasMoreLeft !== false,
                 has_more_right: pc.hasMoreRight === true,
                 source: 'parent-native-master',
@@ -5679,6 +6730,90 @@ class Chart {
         return run;
     }
 
+    // ─────────────────────────────────────────────────────────────────────
+    // Replay reseed — incremental fullRawData copy
+    //
+    // _reseedReplayFullRawFromLoadedData() re-spread the ENTIRE seed master
+    // (~71k bars) on every call, from ten call sites (eight here plus one each
+    // in panel-cmd-bridge.js and embed-bridge.js) — and several of those re-fire
+    // per replay step while a panel sits at a short master edge.
+    //
+    // Same shape as _mcCopySamePairFullRawData above: keep the array we handed
+    // out and append only the new tail while the seed source is provably the
+    // same, still-growing series. Anything else (source replaced, source
+    // shrunk, boundary moved, destination replaced by someone else) falls back
+    // to the legacy full spread and re-seeds the cache.
+    //
+    // Disable with window.__TALARIA_DISABLE_REPLAY_RESEED_INCREMENTAL_V1 = <truthy>.
+    // ─────────────────────────────────────────────────────────────────────
+
+    _replayReseedIncrementalDisabled() {
+        try {
+            return !!(typeof window !== 'undefined' && window.__TALARIA_DISABLE_REPLAY_RESEED_INCREMENTAL_V1);
+        } catch (_e) {
+            return false;
+        }
+    }
+
+    _replayReseedCopyCacheSlot(slotKey) {
+        if (slotKey == null) return null;
+        return String(slotKey);
+    }
+
+    _replayReseedCopyCache() {
+        if (!this._replayReseedIncrementalCopyCache) this._replayReseedIncrementalCopyCache = new Map();
+        return this._replayReseedIncrementalCopyCache;
+    }
+
+    _replayReseedBoundaryTimestamp(seedSource, length) {
+        if (!Array.isArray(seedSource) || length <= 0) return null;
+        const t = Number(seedSource[length - 1]?.t);
+        return Number.isFinite(t) ? t : null;
+    }
+
+    _cacheReplayReseedCopy(cacheKey, seedSource, out) {
+        this._replayReseedCopyCache().set(cacheKey, {
+            seedSource,
+            seedLength: seedSource.length,
+            lastTimestamp: this._replayReseedBoundaryTimestamp(seedSource, seedSource.length),
+            copy: out,
+        });
+        return out;
+    }
+
+    _replayReseedIncrementalCopy(seedSource, cacheKey, destination) {
+        const cache = this._replayReseedCopyCache().get(cacheKey);
+        const prevLen = cache?.seedLength ?? -1;
+        // cache.copy === destination is load-bearing, not defensive: replay-system.js
+        // reassigns replay.fullRawData behind our back, so handing back the retained
+        // array without it would resurrect a stale series over a newer one.
+        const canAppendTail = cache
+            && cache.copy === destination
+            && cache.seedSource === seedSource
+            && seedSource.length >= prevLen
+            && (prevLen === 0 || this._replayReseedBoundaryTimestamp(seedSource, prevLen) === cache.lastTimestamp);
+
+        if (!canAppendTail) {
+            return this._cacheReplayReseedCopy(cacheKey, seedSource, [...seedSource]);
+        }
+
+        const out = cache.copy;
+        for (let i = prevLen; i < seedSource.length; i += 1) {
+            out.push(seedSource[i]);
+        }
+        cache.seedLength = seedSource.length;
+        cache.lastTimestamp = this._replayReseedBoundaryTimestamp(seedSource, seedSource.length);
+        return out;
+    }
+
+    _reseedReplayCopyArray(seedSource, slotKey, destination) {
+        if (!Array.isArray(seedSource)) return seedSource;
+        if (this._replayReseedIncrementalDisabled()) return [...seedSource];
+        const cacheKey = this._replayReseedCopyCacheSlot(slotKey);
+        if (!cacheKey) return [...seedSource];
+        return this._replayReseedIncrementalCopy(seedSource, cacheKey, destination);
+    }
+
     /**
      * Reseed replay.fullRawData from the chart's current rawData after a pair
      * switch or reload. Multichart iframes mirror replay time from tile A but
@@ -5696,7 +6831,11 @@ class Chart {
         replay.animatingCandle = null;
         replay.tickProgress = 0;
         replay.tickElapsedMs = 0;
-        replay.fullRawData = [...seedSource];
+        replay.fullRawData = this._reseedReplayCopyArray(seedSource, 'replay.fullRawData', replay.fullRawData);
+        // NOT routed through the incremental copy: this.data is the DISPLAY series,
+        // rebuilt by resampleData() on essentially every tick, so its identity
+        // churns and the guard can never hit. See the reseed test's
+        // display-series-cannot-pay cell for the measured hit rate.
         replay.fullData = Array.isArray(this.data) ? [...this.data] : null;
         replay.rawTimeframe = this._nativeRawFetchTf || this.currentTimeframe;
         replay._fullRawDataMatchesTF = false;
@@ -5745,6 +6884,7 @@ class Chart {
             const oldest = cache.keys().next().value;
             if (oldest === undefined) break;
             cache.delete(oldest);
+            this._forgetMcHostCacheFileRefSet(cache === this._btTfDataCache ? 'bt' : 'tf', oldest);
         }
     }
 
@@ -6690,9 +7830,9 @@ class Chart {
             if (!this._replayRawHasWallClockPrefix(master, ts)) return false;
 
             if (Array.isArray(parent._panelFullRawData) && parent._panelFullRawData.length > 0) {
-                this._panelFullRawData = parent._panelFullRawData;
+                this._panelFullRawData = this._mcCopySamePairFullRawData(parent._panelFullRawData, 'panelFullRawData');
             } else {
-                this._panelFullRawData = master.slice();
+                this._panelFullRawData = this._mcCopySamePairFullRawData(master, 'panelFullRawData');
             }
             this._nativeRawFetchTf = parent._nativeRawFetchTf || '1m';
 
@@ -7342,13 +8482,51 @@ class Chart {
         if (!ok) return;
         if (!this._smartPrefetchCache) this._smartPrefetchCache = new Map();
         const key = this._smartCacheKeyFromParams(fileId, params);
+        this._setSmartPrefetchCacheEntry(fileId, key, payload);
+        try {
+            const mcCacheOwner = this._mcHostCacheSharedWriteOwner('smart');
+            if (mcCacheOwner) this._retainMcHostCacheFile(mcCacheOwner, 'smart', fileId);
+        } catch (_e) { /* best-effort cache ownership only */ }
+        this._trimSmartPrefetchCache();
+    }
+
+    _rawResponseTextDropEnabled() {
+        try {
+            return typeof window === 'undefined'
+                || !window.__TALARIA_DISABLE_RAW_RESPONSE_TEXT_DROP_V1;
+        } catch (_) {
+            return true;
+        }
+    }
+
+    _dropRawResponseTextRetainers(payload, normalizedBars = null) {
+        if (!this._rawResponseTextDropEnabled()) return payload;
+        if (!payload || typeof payload !== 'object') return payload;
+        const bars = Array.isArray(normalizedBars) && normalizedBars.length
+            ? normalizedBars
+            : (Array.isArray(payload.candles) && payload.candles.length ? payload.candles : null);
+        if (typeof payload.data === 'string' && bars) {
+            if (bars && (!Array.isArray(payload.candles) || payload.candles.length === 0)) {
+                payload.candles = bars;
+                if (payload.returned == null) payload.returned = bars.length;
+            }
+            payload.data = null;
+        }
+        ['rawJson', 'rawJSON', 'rawText', 'responseText', 'responseBody', 'bodyText'].forEach((key) => {
+            if (typeof payload[key] === 'string') payload[key] = null;
+        });
+        return payload;
+    }
+
+    _setSmartPrefetchCacheEntry(fileId, key, payload) {
+        if (!this._smartPrefetchCache || !key || !payload) return;
+        this._dropRawResponseTextRetainers(payload);
         this._smartPrefetchCache.delete(key);
         this._smartPrefetchCache.set(key, {
             at: Date.now(),
             payload,
             fileId: String(fileId),
         });
-        this._trimSmartPrefetchCache();
     }
 
     /** Bound the /smart|/bars|/candles payload cache (oldest-used dropped first). */
@@ -7357,7 +8535,12 @@ class Chart {
         const max = Number(this._smartCacheMaxEntries) > 0 ? Number(this._smartCacheMaxEntries) : 48;
         while (this._smartPrefetchCache.size > max) {
             const first = this._smartPrefetchCache.keys().next().value;
+            const entry = this._smartPrefetchCache.get(first);
+            const fid = entry && entry.fileId != null ? String(entry.fileId) : '';
             this._smartPrefetchCache.delete(first);
+            if (fid && !this._smartPrefetchCacheHasFileId(fid)) {
+                this._forgetMcHostCacheFileRefSet('smart', fid);
+            }
         }
     }
 
@@ -7414,8 +8597,11 @@ class Chart {
                         // LRU), not a hardcoded 4 — that old cap silently evicted most
                         // prefetched pairs, so switching to the 4th/5th session symbol
                         // still hit the network. delete+set keeps this entry "newest".
-                        this._smartPrefetchCache.delete(key);
-                        this._smartPrefetchCache.set(key, { at: Date.now(), payload: data, fileId: String(e.fileId) });
+                        this._setSmartPrefetchCacheEntry(e.fileId, key, data);
+                        try {
+                            const mcCacheOwner = this._mcHostCacheSharedWriteOwner('smart');
+                            if (mcCacheOwner) this._retainMcHostCacheFile(mcCacheOwner, 'smart', e.fileId);
+                        } catch (_e) { /* best-effort cache ownership only */ }
                         this._trimSmartPrefetchCache();
                     })
                     .catch(() => {});
@@ -7597,8 +8783,11 @@ class Chart {
                     console.info(`[chart] file ${fileId} bar loads via: ${src}`);
                 }
                 if (this._smartPrefetchCache) {
-                    this._smartPrefetchCache.delete(cacheKey);
-                    this._smartPrefetchCache.set(cacheKey, { at: Date.now(), payload: result, fileId: String(fileId) });
+                    this._setSmartPrefetchCacheEntry(fileId, cacheKey, result);
+                    try {
+                        const mcCacheOwner = this._mcHostCacheSharedWriteOwner('smart');
+                        if (mcCacheOwner) this._retainMcHostCacheFile(mcCacheOwner, 'smart', fileId);
+                    } catch (_e) { /* best-effort cache ownership only */ }
                     this._trimSmartPrefetchCache();
                 }
                 return result;
@@ -7687,8 +8876,11 @@ class Chart {
                     console.info(`[chart] file ${fileId} pan loads via: ${src}`);
                 }
                 if (this._smartPrefetchCache) {
-                    this._smartPrefetchCache.delete(cacheKey);
-                    this._smartPrefetchCache.set(cacheKey, { at: Date.now(), payload, fileId: String(fileId) });
+                    this._setSmartPrefetchCacheEntry(fileId, cacheKey, payload);
+                    try {
+                        const mcCacheOwner = this._mcHostCacheSharedWriteOwner('smart');
+                        if (mcCacheOwner) this._retainMcHostCacheFile(mcCacheOwner, 'smart', fileId);
+                    } catch (_e) { /* best-effort cache ownership only */ }
                     this._trimSmartPrefetchCache();
                 }
                 return payload;
@@ -8348,6 +9540,8 @@ class Chart {
             nativeRawFetchTf: this._nativeRawFetchTf || tf,
             ...extra,
         });
+        const mcCacheOwner = this._mcHostCacheSharedWriteOwner('tf');
+        if (mcCacheOwner) this._retainMcHostCacheFile(mcCacheOwner, 'tf', fid);
         while (perFile.size > (this._tfDataCacheMaxPerFile || 5)) {
             const first = perFile.keys().next().value;
             perFile.delete(first);
@@ -8553,6 +9747,8 @@ class Chart {
             } : null,
             nativeRawFetchTf: normalized,
         });
+        const mcCacheOwner = this._mcHostCacheSharedWriteOwner('tf');
+        if (mcCacheOwner) this._retainMcHostCacheFile(mcCacheOwner, 'tf', fid);
         while (perFile.size > (this._tfDataCacheMaxPerFile || 5)) {
             const first = perFile.keys().next().value;
             perFile.delete(first);
@@ -8965,6 +10161,50 @@ class Chart {
         }
     }
 
+    /**
+     * M17-DI2 / TAL-01918: stamp canonical replay mark onto the FORMING last bar only.
+     * Same complete-vs-forming comparison as `_trimBarOhlcToReplayPlayhead`:
+     *   playhead >= periodEnd - 1 → COMPLETE → leave alone.
+     * Indeterminate (non-finite playhead / null periodEnd) preserves tip write.
+     * Kill-switch: window.__TALARIA_DISABLE_COMPLETED_BAR_CLOSE_GUARD_V1
+     * Absent/falsy = guard ON; truthy = unguarded write. Read per call.
+     */
+    _applyCanonicalMarkToFormingBar(mark) {
+        if (!Number.isFinite(mark)) return;
+        if (!Array.isArray(this.data) || !this.data.length) return;
+        const last = this.data[this.data.length - 1];
+        if (!last || typeof last !== 'object') return;
+
+        const guardDisabled = _talariaDisableFlagTruthy(
+            '__TALARIA_DISABLE_COMPLETED_BAR_CLOSE_GUARD_V1',
+        );
+        if (!guardDisabled) {
+            const playhead = typeof this._getReplayPlayheadMs === 'function'
+                ? this._getReplayPlayheadMs()
+                : null;
+            const lastIdx = this.data.length - 1;
+            const barT = Number(last.t);
+            const periodMs = typeof this.parseTimeframe === 'function'
+                ? this.parseTimeframe(this.currentTimeframe)
+                : null;
+            const periodEnd = (typeof this._getBarPeriodEndMs === 'function' && Number.isFinite(barT))
+                ? this._getBarPeriodEndMs(barT, this.data, lastIdx, periodMs)
+                : null;
+            if (Number.isFinite(playhead)
+                && periodEnd != null
+                && Number.isFinite(periodEnd)
+                && playhead >= periodEnd - 1) {
+                return;
+            }
+        }
+
+        last.c = mark;
+        const h = Number(last.h ?? last.high);
+        const l = Number(last.l ?? last.low);
+        if (Number.isFinite(h)) last.h = Math.max(h, mark);
+        if (Number.isFinite(l)) last.l = Math.min(l, mark);
+    }
+
     _measureRawDataStepMs(rawData) {
         if (!Array.isArray(rawData) || rawData.length < 2) return NaN;
         const step = Number(rawData[1].t) - Number(rawData[0].t);
@@ -9048,6 +10288,8 @@ class Chart {
             serverCursors: meta.serverCursors ? { ...meta.serverCursors } : null,
             nativeRawFetchTf: meta.nativeRawFetchTf || tf,
         });
+        const mcCacheOwner = this._mcHostCacheSharedWriteOwner('bt');
+        if (mcCacheOwner) this._retainMcHostCacheFile(mcCacheOwner, 'bt', fid);
         while (perFile.size > (this._btTfDataCacheMaxPerFile || 8)) {
             const first = perFile.keys().next().value;
             perFile.delete(first);
@@ -9819,6 +11061,9 @@ class Chart {
         }
         if (result.data) {
             this.parseCSVChunk(result.data, 0, options);
+            if (Array.isArray(this.rawData) && this.rawData.length) {
+                this._dropRawResponseTextRetainers(result, this.rawData.slice());
+            }
             return true;
         }
         return false;
@@ -13001,6 +14246,15 @@ class Chart {
     initOrderManager() {
         try {
             if (typeof OrderManager !== 'undefined' && this.replaySystem) {
+                // Release the outgoing manager BEFORE replacing it. This method is reached from
+                // initReplaySystem, which has unguarded callers, so without this a second session
+                // leaves the previous manager attached to document/window — two managers acting on
+                // one keypress, the older one holding the previous session's orders.
+                try {
+                    if (this.orderManager && typeof this.orderManager.destroy === 'function') {
+                        this.orderManager.destroy();
+                    }
+                } catch (_destroyErr) { /* never block construction on teardown */ }
                 this.orderManager = new OrderManager(this, this.replaySystem);
             }
         } catch (error) {
@@ -16124,8 +17378,15 @@ class Chart {
     hideSettingsMenu() {
         // Reset pending template
         this._pendingTemplate = null;
-        if (typeof window !== 'undefined' && window.chart) {
-            window.chart._settingsSourceChart = null;
+        // showSettingsMenu() stamps _settingsSourceChart on whichever chart owns
+        // the modal, which with N instances is the focused one, not necessarily
+        // the host. Clear it on the same chart or the stamp leaks.
+        const settingsOwner = (typeof window !== 'undefined'
+            && typeof window.__talariaActiveChartV1 === 'function')
+            ? window.__talariaActiveChartV1()
+            : (typeof window !== 'undefined' ? window.chart : null);
+        if (settingsOwner) {
+            settingsOwner._settingsSourceChart = null;
         }
 
         // For panels, hide the main chart's settings modal
@@ -16157,6 +17418,9 @@ class Chart {
         const targetChart = this._settingsSourceChart || this;
         // In multi-panel mode the main chart is still `window.chart` but has isPanel=true; only that
         // instance must drive global toolbar / body / chart-container chrome — never secondary panels.
+        // SR-03: this is an IDENTITY TEST ("am I the host"), not a target lookup. It is deliberately
+        // NOT routed through the focus provider — resolving it to the focused chart would make every
+        // instance believe it is the host and silently invert the guard. Misread once already.
         const isMainAppChart = typeof window !== 'undefined' && window.chart && targetChart === window.chart;
 
         const toRgbChannels = (color, fallback = '41, 98, 255') => {
@@ -17328,6 +18592,10 @@ class Chart {
             item.classList.add('active', 'loading');
             closeDropdown();
 
+            // SR-03: `targetChart !== window.chart` is an IDENTITY TEST ("the target is a
+            // secondary panel, not the host"), not a target lookup — targetChart is already
+            // resolved through the focus provider above. Routing this too would reduce it to
+            // `x !== x` and loadPanelFileData would never run again. Deliberately NOT routed.
             const loadPromise = (targetChart.isPanel && targetChart !== window.chart && typeof targetChart.loadPanelFileData === 'function')
                 ? targetChart.loadPanelFileData(nextFileId)
                 : ((targetChart.isBacktestMode || targetChart.backtestingSession)
@@ -18237,6 +19505,15 @@ class Chart {
     /** Chart currently driving a chart-body pan (multi-panel: only one at a time). */
     _findActivePanChart() {
         const isPan = (ch) => !!(ch && ch.drag && ch.drag.active && ch.drag.type === 'pan');
+        // SR-03: a gesture belongs to the instance that received pointerdown until
+        // pointerup. Ownership is recorded explicitly when the pointer is captured
+        // rather than re-inferred from whoever also looks active, so a pointer that
+        // crosses a panel boundary — or a focus change mid-drag — cannot hand the
+        // second half of a pan, or a load-more fetch, to a different viewport.
+        if (typeof window !== 'undefined' && !window.__TALARIA_DISABLE_FOCUS_ROUTING_V1) {
+            const owner = window.__talariaGestureOwnerV1;
+            if (isPan(owner)) return owner;
+        }
         if (isPan(this)) return this;
         if (typeof window !== 'undefined' && isPan(window.chart)) return window.chart;
         const pm = typeof window !== 'undefined' ? window.panelManager : null;
@@ -18600,6 +19877,12 @@ class Chart {
 	        }
 
         this._lastResizeDpr = dpr;
+
+        // FIX 1: the canvas.width / canvas.height assignments below reset the backing
+        // store, which CLEARS it. A background multichart panel whose paint is
+        // suppressed would be left blank, so re-arm one unsuppressed paint; the
+        // this.render() at the end of this method spends it.
+        this._mcRepaintAfterSurfaceReset = true;
 
         // Multichart host: remember which bar sits at the right axis BEFORE the
         // width changes. A layout/splitter resize otherwise runs the pixel-based
@@ -19630,13 +20913,35 @@ class Chart {
                     return;
                 }
                 if (rs.isActive && typeof rs.syncReplayViewportToPlayhead === 'function') {
-                    rs.syncReplayViewportToPlayhead(this, {
+                    // TF-DOWNSHIFT-ANCHOR: `_tfSwitchAnchorLock` makes
+                    // syncReplayViewportToPlayhead no-op unless forceRecenter
+                    // (replay-system.js). Empty-draw recovery used to call the
+                    // unforced sync then `return`, so a lock that parked the
+                    // plot off a short destination window (PO: "All 13 candles
+                    // are outside viewport") flooded warnings forever and never
+                    // reached jumpToLatest. Clear the lock + force recenter for
+                    // follow-latest; leave viewportLeft / user-panned alone.
+                    const _tfDsFix = typeof this._tfDownshiftAnchorFixEnabled === 'function'
+                        && this._tfDownshiftAnchorFixEnabled();
+                    const _userOwnsVp = !!(rs.userHasPanned || rs.autoScrollEnabled === false);
+                    if (_tfDsFix && !_userOwnsVp && this._tfSwitchAnchorLock) {
+                        this._clearTfSwitchAnchorLock();
+                    }
+                    const _syncedEmpty = rs.syncReplayViewportToPlayhead(this, {
                         centerPlayhead: true,
                         resetPriceScale: true,
+                        forceRecenter: (_tfDsFix && !_userOwnsVp) ? true : undefined,
                         render: true,
                     });
-                    window.__talariaBl2bLog && window.__talariaBl2bLog('chart.js:_scheduleViewportEmptyRecovery', this, __bl2bBefore, { path: 'syncReplayViewportToPlayhead' });
-                    return;
+                    if (_syncedEmpty) {
+                        window.__talariaBl2bLog && window.__talariaBl2bLog('chart.js:_scheduleViewportEmptyRecovery', this, __bl2bBefore, { path: 'syncReplayViewportToPlayhead' });
+                        return;
+                    }
+                    if (!_tfDsFix || _userOwnsVp) {
+                        window.__talariaBl2bLog && window.__talariaBl2bLog('chart.js:_scheduleViewportEmptyRecovery', this, __bl2bBefore, { path: 'syncReplayViewportToPlayhead' });
+                        return;
+                    }
+                    // Fix ON + follow-latest: fall through to jumpToLatest.
                 }
             }
             this.jumpToLatest();
@@ -25431,6 +26736,12 @@ class Chart {
     _resampleDataFull(data, timeframe) {
         if (!Array.isArray(data) || data.length === 0) return [];
 
+        // Counted HERE, not at resampleData(), so every full resample registers
+        // regardless of caller — including ChartDataPipeline.getResampledSeries's
+        // direct chart._resampleDataFull() call, which bypasses resampleData()
+        // and therefore bypasses the legacy `resamples` field entirely.
+        if (this._mcDiag && !_talariaM20Q9McDiagCountersDisabled()) this._mcDiag.fullResamples++;
+
         const prepared = this._prepareBarsForResampling(data);
         if (prepared.length === 0) return [];
 
@@ -26078,7 +27389,11 @@ class Chart {
 
     /**
      * Schedule a render using requestAnimationFrame for throttling (see animate()).
-     * Immediate render for replay playback and inertia. Wheel zoom and axis zoom coalesce to one paint per frame.
+     * CPU-CUT-RAF-COALESCE (default ON): replay playback and inertia mark dirty and
+     * paint once on the next animation frame (latest state wins). Kill-switch
+     * __TALARIA_DISABLE_RAF_PAINT_COALESCE_V1 restores legacy synchronous paint.
+     * Sync escape: scheduleRender({ flush: true }) or call render() directly.
+     * Wheel zoom and axis zoom coalesce to one paint per frame.
      */
     _isChartViewPanning() {
         // Uncommitted finger-down (click candidate) is not a pan — keep idle ticks/grid.
@@ -27026,6 +28341,10 @@ class Chart {
     }
 
     _releaseDragPointerCapture() {
+        // SR-03: releasing the capture ends this instance's ownership of the gesture.
+        if (typeof window !== 'undefined' && window.__talariaGestureOwnerV1 === this) {
+            window.__talariaGestureOwnerV1 = null;
+        }
         if (this._panPointerCaptureId != null && this.canvas) {
             try {
                 if (typeof this.canvas.releasePointerCapture === 'function') {
@@ -27060,6 +28379,9 @@ class Chart {
         if (!target || typeof target.setPointerCapture !== 'function') return;
         try {
             target.setPointerCapture(e.pointerId);
+            // SR-03: the instance that took the capture owns the gesture until it is
+            // released. Recorded host-wide so every reader resolves the same owner.
+            if (typeof window !== 'undefined') window.__talariaGestureOwnerV1 = this;
             if (target === this.canvas) {
                 this._panPointerCaptureId = e.pointerId;
             } else {
@@ -28427,7 +29749,13 @@ class Chart {
         this._stopChartPanRenderLoop();
     }
 
-    scheduleRender() {
+    scheduleRender(opts) {
+        const flush = !!(opts && opts.flush);
+        if (flush) {
+            this.renderPending = false;
+            this.render();
+            return;
+        }
         if (this._isAxisZoomDragging()) {
             this._scheduleAxisZoomRender();
             return;
@@ -28443,7 +29771,13 @@ class Chart {
             typeof this._panSyncBurstUntil === 'number' &&
             performance.now() < this._panSyncBurstUntil;
 
+        // RAF coalesce ON: mark dirty; animate() paints once per frame with latest state.
+        // Kill-switch OFF: legacy synchronous paint for replay/inertia.
         if (replayPlaying || inertialPan) {
+            if (this._rafPaintCoalesceEnabled()) {
+                this.renderPending = true;
+                return;
+            }
             this.renderPending = false;
             this.render();
             return;
@@ -28648,8 +29982,11 @@ class Chart {
         this.animateZoom();
 
         if (this.renderPending) {
-            this.render();
+            // Clear BEFORE paint so scheduleRender() raised during render() is
+            // not swallowed by a post-paint clear. Also throw-safe: a throwing
+            // render() leaves pending false, so the next scheduleRender re-arms.
             this.renderPending = false;
+            this.render();
 
             // Update follow button visibility after each render (throttled).
             if (this.replaySystem && typeof this.replaySystem.updateAutoScrollIndicator === 'function') {
@@ -28660,6 +29997,11 @@ class Chart {
                 }
             }
         }
+
+        // FIX 1: a background panel the user just clicked repaints from here, on the
+        // first frame where the parent actually reports us as focused. The click
+        // itself cannot do it — see _requestMultichartBackgroundRenderCatchup().
+        this._tickMultichartBackgroundRenderCatchup();
 
         // Keep bar-close countdown on the price axis ticking (TradingView-style).
         // Multichart embed panels are PASSIVE mirrors of host tile A — the host
@@ -28694,12 +30036,252 @@ class Chart {
         }
     }
 
+    /**
+     * Teardown seam. A listener registered with an inline arrow is unremovable by construction —
+     * its reference is never stored — so release has to be arranged at registration time, not at
+     * destroy() time. Callers route through here to keep the handle.
+     */
+    _trackListener(target, type, handler, options) {
+        if (!target || typeof target.addEventListener !== 'function') return handler;
+        target.addEventListener(type, handler, options);
+        (this._managedListeners || (this._managedListeners = []))
+            .push({ target, type, handler, options });
+        return handler;
+    }
+
+    _trackObserver(observer) {
+        if (observer) (this._managedObservers || (this._managedObservers = [])).push(observer);
+        return observer;
+    }
+
+    _trackTimer(id, kind) {
+        if (id != null) (this._managedTimers || (this._managedTimers = [])).push({ id, kind });
+        return id;
+    }
+
+    /**
+     * LIFE-1. Release this engine.
+     *
+     * The reason this is correctness and not hygiene: initReplaySystem builds a fresh OrderManager
+     * with no teardown of the previous one, so after exit-and-re-enter (reset path R3) two managers
+     * are live and BOTH answer the same global keydown. The stale one is not merely wasting memory,
+     * it is acting on the user's input.
+     *
+     * Ordering matters. Children go first, because OrderManager.destroy() reads state this method
+     * is about to null, and the census read afterwards should observe an engine that is already
+     * unreachable from every listener list.
+     */
+    destroy() {
+        if (this._destroyed) return false;
+        if (_talariaChartDestroyDisabled()) return false;
+        this._destroyed = true;
+
+        try {
+            if (this.orderManager && typeof this.orderManager.destroy === 'function') {
+                this.orderManager.destroy();
+            }
+        } catch (_e) { /* a child refusing to die must not strand the parent */ }
+        try {
+            if (this.replaySystem && typeof this.replaySystem.destroy === 'function') {
+                this.replaySystem.destroy();
+            }
+        } catch (_e) { /* as above */ }
+        try {
+            if (this.drawingTools && typeof this.drawingTools.destroy === 'function') {
+                this.drawingTools.destroy();
+            }
+        } catch (_e) { /* as above */ }
+
+        for (const rec of this._managedListeners || []) {
+            try { rec.target.removeEventListener(rec.type, rec.handler, rec.options); } catch (_e) { /* gone */ }
+        }
+        this._managedListeners = [];
+
+        for (const obs of this._managedObservers || []) {
+            try { if (typeof obs.disconnect === 'function') obs.disconnect(); } catch (_e) { /* ignore */ }
+        }
+        this._managedObservers = [];
+
+        for (const t of this._managedTimers || []) {
+            try {
+                if (t.kind === 'interval') clearInterval(t.id);
+                else if (t.kind === 'raf') cancelAnimationFrame(t.id);
+                else clearTimeout(t.id);
+            } catch (_e) { /* ignore */ }
+        }
+        this._managedTimers = [];
+
+        // Drop the series references. This is the MEM-1 half of destroy: without it a released
+        // engine still pins every resident bar it ever held, and the residency slope never bends.
+        this.data = null;
+        this.rawData = null;
+        this.fullData = null;
+        this.fullRawData = null;
+        this._frameDisplaySeries = null;
+        this._resampledCache = null;
+        this._panTimeTickCache = null;
+
+        this.orderManager = null;
+        this.replaySystem = null;
+
+        return true;
+    }
+
+    /**
+     * Stable token for an overlay collection object.
+     *
+     * Length alone cannot see a same-length replacement, and order-manager.js rebuilds
+     * these arrays with .filter() — the array object changes while the count does not.
+     */
+    _overlayCollectionToken(collection) {
+        if (typeof WeakMap !== 'function') return 'x';
+        let tokens = this._overlayCollectionTokens;
+        if (!tokens) {
+            tokens = new WeakMap();
+            this._overlayCollectionTokens = tokens;
+        }
+        let token = tokens.get(collection);
+        if (token === undefined) {
+            token = (this._overlayCollectionTokenSeq || 0) + 1;
+            this._overlayCollectionTokenSeq = token;
+            tokens.set(collection, token);
+        }
+        return token;
+    }
+
+    /**
+     * LAG-1b: dirty key for the render-path order-overlay resync.
+     *
+     * `null` means "cannot decide" — kill-switch on, no order manager, a missing
+     * helper, a non-finite dimension, or a collection that is not an array. The
+     * caller must read null as "resync anyway": a skipped sync leaves stale order
+     * lines and stale unrealised P&L on a money surface, so indeterminate state may
+     * only ever fall towards the redundant call, never towards the cheap one.
+     *
+     * The mark inputs (data tip, `_miLastMarkPrice`, SL/TP/quantity) are part of the
+     * key because updateOrderLines re-prices open positions as well as repositioning
+     * them; a viewport-only key would freeze the P&L numbers between pans.
+     *
+     * Kill-switch: window.__TALARIA_OVERLAY_RESYNC_DIRTY_V1, truthy restores the
+     * unconditional call. Read per call, never sampled at init.
+     */
+    _overlayResyncDirtyKey(visible) {
+        if (_talariaDisableFlagTruthy('__TALARIA_OVERLAY_RESYNC_DIRTY_V1')) return null;
+        try {
+            const om = this.orderManager;
+            if (!om) return null;
+            if (!Array.isArray(visible)) return null;
+            if (!Array.isArray(this.data)) return null;
+            if (typeof this.getCandleSpacing !== 'function') return null;
+
+            const yScale = this.yScale || (this.scales && this.scales.yScale);
+            if (typeof yScale !== 'function'
+                || typeof yScale.domain !== 'function'
+                || typeof yScale.range !== 'function') {
+                return null;
+            }
+            const domain = yScale.domain();
+            const range = yScale.range();
+            if (!Array.isArray(domain) || domain.length < 2
+                || !Array.isArray(range) || range.length < 2) {
+                return null;
+            }
+
+            const margin = this.margin || {};
+            const first = visible.length ? visible[0] : null;
+            const last = visible.length ? visible[visible.length - 1] : null;
+            const tip = this.data.length ? this.data[this.data.length - 1] : null;
+            const geometry = [
+                this.offsetX,
+                this.w,
+                this.h,
+                this.getCandleSpacing(),
+                this.priceZoom,
+                this.priceOffset,
+                margin.l, margin.r, margin.t, margin.b,
+                domain[0], domain[1], range[0], range[1],
+                visible.length,
+                first ? first.t : 0,
+                last ? last.t : 0,
+                this.data.length,
+                this.dataVersion,
+                tip ? tip.t : 0,
+                tip ? tip.c : 0,
+            ];
+            if (!geometry.every((v) => Number.isFinite(v))) return null;
+
+            let key = `${this.currentSymbol}~${this.currentTimeframe}~${geometry.join(',')}`;
+            const collections = [
+                om.orderLines,
+                om.openPositions,
+                om.pendingOrders,
+                om.splitGroupAvgLines,
+                om.orderService ? om.orderService.openPositions : null,
+                om.orderService ? om.orderService.pendingOrders : null,
+            ];
+            for (const collection of collections) {
+                if (collection == null) {
+                    key += ';-';
+                    continue;
+                }
+                if (!Array.isArray(collection)) return null;
+                key += `;${this._overlayCollectionToken(collection)}:${collection.length}`;
+            }
+            for (const collection of collections) {
+                if (!Array.isArray(collection)) continue;
+                for (const row of collection) {
+                    if (!row || typeof row !== 'object') {
+                        key += '|-';
+                        continue;
+                    }
+                    key += `|${row.orderId ?? row.id}:${row.openPrice ?? row.entryPrice}`
+                        + `:${row.stopLoss}:${row.takeProfit}:${row.quantity}`
+                        + `:${row._miLastMarkPrice}`;
+                }
+            }
+            return key;
+        } catch (_e) {
+            return null;
+        }
+    }
+
     render() {
+        this._frameDisplaySeries = null;
+
+        // ── FIX 1: PAINT-ONLY throttle for non-visible multichart panels ─────────
+        //
+        // This must not short-circuit render(). A hidden panel still computes
+        // the entire frame — calculateScales(), the _timeTicks rebuild and its
+        // caches, the adaptive price-axis margin, visible-bar resolution — because
+        // that state is read from outside render(): order-manager.js and
+        // chart-indicators-full.js both call calculateScales() and read
+        // getDisplaySeries(), and _timeTicks is render-built, so a panel that
+        // skipped the frame would hold a stale time axis while a visible panel
+        // advanced. Only the drawing below the paint boundary is suppressed.
+        //
+        // Skip predicate is visibility (`_isMultichartPanelVisibleForPaint`), not
+        // focus. On-screen never-clicked tiles keep painting every frame.
+        //
+        // FIRST-PAINT / SURFACE-RESET ESCAPE: still arms when `hasRenderedData` is
+        // false or resize() cleared the bitmap (`_mcRepaintAfterSurfaceReset`).
+        // Visible panels already paint continuously via the visibility predicate;
+        // the escape covers cold boot before layout settles and a wiped canvas on
+        // a tile that is momentarily classified not-visible.
+        const mcFirstPaintPending = !this.hasRenderedData || this._mcRepaintAfterSurfaceReset === true;
+        const mcPaintSuppressed = !mcFirstPaintPending && this._shouldSkipMultichartBackgroundRender();
+        // `renders` keeps counting every render() entry — see MC_DIAG_COUNTER_FIELDS.
         this._mcDiag && this._mcDiag.renders++;
+        if (mcPaintSuppressed) {
+            this._mcBackgroundRenderDirty = true;
+            this._mcDiag && this._mcDiag.backgroundPaintsSuppressed++;
+        } else if (this._mcBackgroundRenderDirty) {
+            this._mcBackgroundRenderDirty = false;
+        }
         if (this.isLoading && !this._canBypassLoadingRenderFreeze()) {
             // Tab discard / slow load can wipe the canvas while isLoading is still true.
             // Paint a loading placeholder instead of leaving a blank white pane.
-            if ((!this.data || this.data.length === 0)
+            if (!mcPaintSuppressed
+                && (!this.data || this.data.length === 0)
                 && this.w >= 200 && this.h >= 150
                 && typeof this._paintEmptyChartPlaceholder === 'function') {
                 try { this._paintEmptyChartPlaceholder(); } catch (_) { /* ignore */ }
@@ -28716,7 +30298,8 @@ class Chart {
         // committed and the currentTimeframe matches the destination TF.
         if ((this._timeframeSwitching || this._pairSwitchLoading)
             && !this._canBypassDataSwitchRenderFreeze()) {
-            if ((!this.data || this.data.length === 0)
+            if (!mcPaintSuppressed
+                && (!this.data || this.data.length === 0)
                 && this.w >= 200 && this.h >= 150
                 && typeof this._paintEmptyChartPlaceholder === 'function') {
                 const parent = this.canvas && this.canvas.parentElement;
@@ -28729,24 +30312,27 @@ class Chart {
             return;
         }
 
-        this._frameDisplaySeries = null;
-        
         // Ensure minimum dimensions to prevent rendering issues
         if (this.w < 200 || this.h < 150) {
             // Chart is too small to render properly
-            this.ctx.clearRect(0, 0, this.w, this.h);
-            this.ctx.fillStyle = '#050028';
-            this.ctx.fillRect(0, 0, this.w, this.h);
-            // Show message for very small size
-            this.ctx.fillStyle = '#787b86';
-            this.ctx.font = '12px Roboto';
-            this.ctx.textAlign = 'center';
-            this.ctx.fillText('Chart too small', this.w / 2, this.h / 2);
+            if (!mcPaintSuppressed) {
+                this.ctx.clearRect(0, 0, this.w, this.h);
+                this.ctx.fillStyle = '#050028';
+                this.ctx.fillRect(0, 0, this.w, this.h);
+                // Show message for very small size
+                this.ctx.fillStyle = '#787b86';
+                this.ctx.font = '12px Roboto';
+                this.ctx.textAlign = 'center';
+                this.ctx.fillText('Chart too small', this.w / 2, this.h / 2);
+            }
             return;
         }
         
-        // Clear canvas
-        this.ctx.clearRect(0, 0, this.w, this.h);
+        // Clear canvas. Load-bearing under suppression: clearing and then not
+        // redrawing would blank the background panel instead of freezing it.
+        if (!mcPaintSuppressed) {
+            this.ctx.clearRect(0, 0, this.w, this.h);
+        }
         
         const chartViewPanning = this._isChartViewPanning();
         const axisZoomDragging = this._isAxisZoomDragging() && !this._axisZoomFinalizePass;
@@ -28754,7 +30340,7 @@ class Chart {
 
         // If no data: session/file loads → "Loading chart…"; idle → CSV prompt
         if (!this.data || this.data.length === 0) {
-            this._paintEmptyChartPlaceholder();
+            if (!mcPaintSuppressed) this._paintEmptyChartPlaceholder();
             return;
         }
         try {
@@ -28771,8 +30357,12 @@ class Chart {
         if (typeof this._syncAdaptivePriceAxisMargin === 'function' && !skipHeavyChrome) {
             this._syncAdaptivePriceAxisMargin();
         }
+        // NO margin-floor hoist here: _syncAdaptivePriceAxisMargin() already enforces
+        // the floor on both of its exit paths, so a suppressed panel gets it above the
+        // paint boundary anyway. Hoisting it would also fire under skipHeavyChrome,
+        // where pre-FIX-1 single-chart never ran it.
         // Keep separate-panel stack opaque even during lite pan (prevents candle bleed + legend drift).
-        if (typeof this._paintSeparatePanelStackBackground === 'function') {
+        if (!mcPaintSuppressed && typeof this._paintSeparatePanelStackBackground === 'function') {
             this._paintSeparatePanelStackBackground();
         }
 
@@ -28840,12 +30430,13 @@ class Chart {
         
         // Better check: Only show empty placeholder if we truly have no data
         if (visible.length === 0 && this.data.length === 0) {
-            this._paintEmptyChartPlaceholder();
+            if (!mcPaintSuppressed) this._paintEmptyChartPlaceholder();
             return;
         }
         
         // If we have data but chart is scrolled beyond visible range
         if (visible.length === 0 && this.data.length > 0) {
+            if (mcPaintSuppressed) return;
             // Still draw grid, axes, and drawings even when no candles are visible
             // This ensures drawings remain visible when scrolling past chart edges
             this.drawGrid();
@@ -28877,6 +30468,18 @@ class Chart {
         if (!this.hasRenderedData) {
             this.hasRenderedData = true;
         }
+        // The post-resize escape is spent only on a frame that reaches the paint
+        // below; a suppressed frame must never consume it.
+        if (this._mcRepaintAfterSurfaceReset === true && !mcPaintSuppressed) {
+            this._mcRepaintAfterSurfaceReset = false;
+        }
+
+        // ── FIX 1 PAINT BOUNDARY ─────────────────────────────────────────────────
+        // Everything ABOVE this line computes frame state and runs on every panel,
+        // focused or not. Everything BELOW draws to the canvas or positions DOM/SVG
+        // overlays, and is what a background panel skips. Nothing below may mutate
+        // state that a later frame — or an external caller — depends on.
+        if (mcPaintSuppressed) return;
 
         // Fast path while panning, wheel-zooming, or axis-dragging: LOD candles + skip heavy overlays.
         if (interactionFast) {
@@ -29027,7 +30630,16 @@ class Chart {
         // This happens AFTER scales are calculated in render()
         if (this.orderManager) {
             if (typeof this.orderManager.updateOrderLines === 'function') {
-                this.orderManager.updateOrderLines(this);
+                // LAG-1b: a null key is indeterminate and must resync, so the skip
+                // only ever fires on a positively-unchanged overlay/viewport state.
+                const overlayResyncKey = typeof this._overlayResyncDirtyKey === 'function'
+                    ? this._overlayResyncDirtyKey(visible)
+                    : null;
+                if (overlayResyncKey === null
+                    || overlayResyncKey !== this._overlayResyncDirtyKeyLast) {
+                    this.orderManager.updateOrderLines(this);
+                    this._overlayResyncDirtyKeyLast = overlayResyncKey;
+                }
             }
             if (typeof this.orderManager.updatePreviewLinePositions === 'function') {
                 this.orderManager.updatePreviewLinePositions();
@@ -30532,6 +32144,12 @@ class Chart {
         const isEmbedPanel = typeof this._isMultichartEmbedPanel === 'function'
             && this._isMultichartEmbedPanel();
         if (isEmbedPanel) return;
+        // FIX 1: the HOST tile is not an embed panel, so the guard above misses it.
+        // When the host is not visible its render() paint is suppressed while this
+        // countdown would keep region-painting drawCurrentPriceLabel() onto the
+        // frozen canvas — a moving badge on a stale frame.
+        if (typeof this._shouldSkipMultichartBackgroundRender === 'function'
+            && this._shouldSkipMultichartBackgroundRender()) return;
         if (!this.chartSettings || this.chartSettings.showCountdownToBarClose === false) return;
         const now = Number.isFinite(nowCd) ? nowCd : performance.now();
         if (this._lastCountdownRender && now - this._lastCountdownRender <= 1000) return;
@@ -30705,9 +32323,30 @@ class Chart {
     }
 
     /** Replay-mode bar-close countdown (progress through forming candle). */
+    /**
+     * COUNTDOWN-NULL-GUARD — default ON. Kill-switch (truthy):
+     *   window.__TALARIA_DISABLE_COUNTDOWN_NULL_GUARD_V1
+     * restores tip behaviour (unguarded fullRawData[i] dereference that
+     * throws when the bar series is null). Read per call; never sampled
+     * at init. Absent / falsy = guarded degrade to "".
+     */
+    _countdownNullGuardEnabled() {
+        return typeof window === 'undefined'
+            || !window.__TALARIA_DISABLE_COUNTDOWN_NULL_GUARD_V1;
+    }
+
     _getReplayBarCloseCountdownText() {
         const rs = this.replaySystem;
         if (!rs || !rs.isActive) return '';
+        // COUNTDOWN-NULL-GUARD: absent/empty bar series (null/non-array/empty
+        // fullRawData) must degrade to no-countdown rather than throw in
+        // animate() via rs.fullRawData[currentIndex] when currentIndex is
+        // stale (PO b99), or invent a full-length countdown for a zero-bar
+        // series (COUNTDOWN-EMPTY-ARRAY — same 502 empty-spread path).
+        if (this._countdownNullGuardEnabled()
+            && (!Array.isArray(rs.fullRawData) || rs.fullRawData.length === 0)) {
+            return '';
+        }
         const timeframe = this.currentTimeframe || '1m';
         const totalSeconds = this.getTimeframeSeconds(timeframe);
         const displayTfMs = totalSeconds * 1000;
@@ -31358,16 +32997,8 @@ class Chart {
                             if (Number.isFinite(live)) {
                                 this._mcCanonicalReplayMark = live;
                                 // Keep forming-candle close on the same source of truth as the label.
-                                if (Array.isArray(this.data) && this.data.length) {
-                                    const last = this.data[this.data.length - 1];
-                                    if (last && typeof last === 'object') {
-                                        last.c = live;
-                                        const h = Number(last.h ?? last.high);
-                                        const l = Number(last.l ?? last.low);
-                                        if (Number.isFinite(h)) last.h = Math.max(h, live);
-                                        if (Number.isFinite(l)) last.l = Math.min(l, live);
-                                    }
-                                }
+                                // M17-DI2 / TAL-01918: only mutate the forming bar (completed bars untouched).
+                                this._applyCanonicalMarkToFormingBar(live);
                                 return live;
                             }
                         }
@@ -32204,7 +33835,13 @@ class Chart {
     
     updatePriceHoverLine() {
         if (this.isZooming) return;
-        
+
+        // Coalesce ON: merge into the shared per-frame dirty flag (animate paints).
+        if (this._rafPaintCoalesceEnabled()) {
+            this.renderPending = true;
+            return;
+        }
+
         if (this.priceHoverThrottle) return;
         
         this.priceHoverThrottle = requestAnimationFrame(() => {
@@ -33561,6 +35198,53 @@ class Chart {
     }
 
     /**
+     * TF-DOWNSHIFT-ANCHOR kill-switch gate.
+     * Kill-switch: window.__TALARIA_DISABLE_TF_DOWNSHIFT_ANCHOR_FIX_V1
+     *   Absent/falsy => fix ON. Truthy => byte-faithful legacy.
+     */
+    _tfDownshiftAnchorFixEnabled() {
+        try {
+            if (typeof window !== 'undefined'
+                && window.__TALARIA_DISABLE_TF_DOWNSHIFT_ANCHOR_FIX_V1) {
+                return false;
+            }
+        } catch (_tfDsKill) { /* ignore */ }
+        return true;
+    }
+
+    /**
+     * Right-edge TF-switch anchor timestamp for the follow-latest (playhead) path.
+     *
+     * Legacy pinned bar START (`bar.t`). On a downshift that leaves the viewport
+     * up to one OLD bar-duration behind the series edge when remapped onto NEW
+     * bar widths (1H→1m ≈ 59 fine bars). With the fix ON, pin the last inclusive
+     * ms of the bar period so the closest new-TF bar is near the right edge.
+     *
+     * Kill-switch: window.__TALARIA_DISABLE_TF_DOWNSHIFT_ANCHOR_FIX_V1
+     *   Absent/falsy => fix ON (period-end). Truthy => byte-faithful bar-start.
+     * Does NOT alter viewportLeft (user-panned) anchors.
+     */
+    _resolveTfSwitchRightEdgeAnchorTs(bar, barIdx) {
+        if (!bar || !Number.isFinite(bar.t)) return null;
+        // TF-DOWNSHIFT-ANCHOR kill: truthy => legacy bar-start anchor.
+        if (typeof this._tfDownshiftAnchorFixEnabled === 'function'
+            ? !this._tfDownshiftAnchorFixEnabled()
+            : false) {
+            return bar.t;
+        }
+        const periodMs = typeof this._estimateTimeframeStepMs === 'function'
+            ? this._estimateTimeframeStepMs()
+            : null;
+        const endMs = typeof this._getBarPeriodEndMs === 'function'
+            ? this._getBarPeriodEndMs(bar.t, this.data, barIdx, periodMs)
+            : (Number.isFinite(periodMs) && periodMs > 0 ? bar.t + periodMs : null);
+        // Inclusive last ms: prefer final fine bar of the old period over the
+        // first bar of the next period when both exist at an exclusive seam.
+        if (Number.isFinite(endMs) && endMs > bar.t) return endMs - 1;
+        return bar.t;
+    }
+
+    /**
      * Snapshot viewport state before a timeframe switch (old TF still on screen).
      * Preserve the on-screen candle count (e.g. 200 bars on 1m → 200 bars on 1h)
      * and anchor the playhead / last candle at the same pixel X on the new TF.
@@ -33611,7 +35295,8 @@ class Chart {
             const lastIdx = Math.max(0, this.data.length - 1);
             const lastBar = this.data[lastIdx];
             if (lastBar && Number.isFinite(lastBar.t)) {
-                anchorTs = lastBar.t;
+                // TF-DOWNSHIFT-ANCHOR: right-edge playhead uses period-end (not bar start).
+                anchorTs = this._resolveTfSwitchRightEdgeAnchorTs(lastBar, lastIdx);
             }
             const spacing = this.getCandleSpacing();
             anchorScreenX = this.dataIndexToPixel(lastIdx) + spacing / 2;
@@ -33619,7 +35304,10 @@ class Chart {
         if (!Number.isFinite(anchorTs)) {
             const rightBarIdx = Math.max(0, Math.min(this.data.length - 1, Math.floor(rightIdx)));
             const rightBar = this.data[rightBarIdx];
-            if (rightBar && Number.isFinite(rightBar.t)) anchorTs = rightBar.t;
+            if (rightBar && Number.isFinite(rightBar.t)) {
+                // TF-DOWNSHIFT-ANCHOR: live follow-latest right-edge period-end pin.
+                anchorTs = this._resolveTfSwitchRightEdgeAnchorTs(rightBar, rightBarIdx);
+            }
             anchorMode = 'playhead';
         }
         if (Number.isFinite(anchorTs) && !Number.isFinite(anchorScreenX)) {
@@ -33754,7 +35442,22 @@ class Chart {
                     const onScreen = typeof _replay._isReplayPlayheadOnScreen === 'function'
                         ? _replay._isReplayPlayheadOnScreen(this)
                         : true;
-                    if (!onScreen) {
+                    // TF-DOWNSHIFT-ANCHOR: also require loaded bars in the plot.
+                    // `_isReplayPlayheadOnScreen` only probes the LAST candle; a
+                    // short destination window can still paint drawn===0 when the
+                    // preserve-viewport lock is wrong. Drop the lock + recenter.
+                    const barsOnScreen = typeof this._viewportHasLoadedBarsOnScreen === 'function'
+                        ? this._viewportHasLoadedBarsOnScreen()
+                        : true;
+                    const _tfDsFix = typeof this._tfDownshiftAnchorFixEnabled === 'function'
+                        && this._tfDownshiftAnchorFixEnabled();
+                    const needsRecenter = vp.userHasPanned
+                        ? !onScreen
+                        : (_tfDsFix ? (!onScreen || !barsOnScreen) : !onScreen);
+                    if (needsRecenter) {
+                        if (_tfDsFix && !vp.userHasPanned) {
+                            this._clearTfSwitchAnchorLock();
+                        }
                         _replay.userHasPanned = false;
                         _replay.autoScrollEnabled = true;
                         _replay.syncReplayViewportToPlayhead(this, {
@@ -41598,6 +43301,9 @@ if (typeof window !== 'undefined') {
 // Wrapped as a named idempotent function so React can re-trigger it after
 // it mounts the #chartCanvas element.
 async function _talariaInitializeChart() {
+    // SR-03: idempotent boot guard, deliberately NOT routed. This read belongs to the
+    // instance-registry work, not to input routing; converting it would change what
+    // "already booted" means. Left exactly as found.
     if (typeof window !== 'undefined' && window.chart) return window.chart; // idempotent
 
     try {

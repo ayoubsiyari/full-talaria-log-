@@ -282,6 +282,10 @@ class _ClaimDb:
     def close(self):
         pass
 
+    def execute(self, *args, **kwargs):
+        # SET LOCAL lock_timeout (and any other db.execute) is a no-op in the fake.
+        return None
+
 
 def test_claim_kick_oldest_when_at_cap(window_helpers, monkeypatch):
     api = window_helpers
@@ -301,7 +305,7 @@ def test_claim_kick_oldest_when_at_cap(window_helpers, monkeypatch):
         headers = {"user-agent": "pytest"}
 
     body = api._ChartWindowClaimIn(client_id="newestwin22222222")
-    result = asyncio.run(api.chart_window_claim(_Req(), body))
+    result = api.chart_window_claim(_Req(), body)
     assert result["ok"] is True
     assert result["client_id"] == "newestwin22222222"
     assert "oldestwin11111111" in result["evicted_client_ids"]
@@ -323,7 +327,7 @@ def test_claim_under_cap_no_eviction(window_helpers, monkeypatch):
         headers = {"user-agent": "pytest"}
 
     body = api._ChartWindowClaimIn(client_id="secondwin44444444")
-    result = asyncio.run(api.chart_window_claim(_Req(), body))
+    result = api.chart_window_claim(_Req(), body)
     assert result["ok"] is True
     assert result["evicted_client_ids"] == []
     assert db.deleted == []

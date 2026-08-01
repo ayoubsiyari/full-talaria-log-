@@ -1,0 +1,69 @@
+# ASSET-DECODED-BUDGET-V1 — no served image may exceed a stated decoded-size budget.
+#
+# Why this workflow exists. A decoded bitmap costs width x height x 4 bytes in the
+# renderer's image cache, and that cost is independent of how well the file compressed.
+# The V9 design handover shipped brand wordmarks at 4720x2234: 87 KB on disk, 40.2 MB in
+# RAM. Every review looked at file sizes, saw kilobytes, and passed it. 1.67 MB of PNG on
+# disk was decoding to 200 MB of bitmap, and the PO found it in Brave's Task Manager three
+# months later.
+#
+# So this check measures pixels, not bytes. It is deliberately cheap and has no
+# dependencies beyond Node, because a check that is slow or fragile gets skipped, and the
+# next design handover is exactly when it needs to still be running.
+#
+# It triggers on any change under the served image trees, not only on the manifest: the
+# regression this catches arrives as a new or replaced .png, usually in a commit that
+# touches nothing else.
+name: Asset decoded-size budget
+
+on:
+  pull_request:
+    paths:
+      - "homepage/public/**"
+      - "chart v 1.4/chart/**"
+      - "chart v 1.4/talaria-design/**"
+      - "scripts/lib/asset-decoded-budget.mjs"
+      - "scripts/tests/asset-decoded-budget.test.mjs"
+      - "scripts/png-downscale.mjs"
+      - "scripts/resize-brand-assets.mjs"
+      - ".github/workflows/asset-decoded-budget.yml"
+  push:
+    branches:
+      - "manager-a/**"
+      - "manager-b/**"
+      - "manager-c/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: asset-decoded-budget-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  asset-decoded-budget:
+    name: asset decoded-size budget (V1)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      # The gate's own mutants run in the same command as the survey: CELL 6 feeds it a
+      # 4720x2234 wordmark and CELL 7 an unparseable file, so a budget check that has
+      # stopped being able to fail reports RED instead of green.
+      - name: Decoded-size budget check, including its own mutants
+        run: node --test scripts/tests/asset-decoded-budget.test.mjs
+
+      # Reports what would change without writing anything, so the log carries the current
+      # position of every brand asset against the size its own display justifies.
+      - name: Report brand assets against their targets
+        if: always()
+        run: node scripts/resize-brand-assets.mjs
+
+      - name: Resizer self-test
+        if: always()
+        run: node scripts/png-downscale.mjs --selftest

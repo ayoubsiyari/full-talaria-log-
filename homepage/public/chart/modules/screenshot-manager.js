@@ -3,11 +3,39 @@
  * Handles chart screenshot functionality with various options
  */
 
+/**
+ * SR-03 focus routing: host chrome resolves "the chart" through the focus
+ * provider — last click / focus, never hover. Installed idempotently in each
+ * participating file because the shipping shells load them in different orders
+ * (favorites-manager.js runs before chart.js in dist-v9/index.html) and
+ * multichart-prod/chart-embed.html never loads chart.js at all.
+ *
+ * The `window.chart || window.mainChart` chain collapses INTO this resolver
+ * rather than surviving beside it: window.mainChart is written exactly once, in
+ * chart.js _talariaInitializeChart, on the line after window.chart and to the
+ * same object, so the chain could never name a different chart.
+ */
+if (typeof window !== 'undefined' && typeof window.__talariaActiveChartV1 !== 'function') {
+    window.__talariaActiveChartV1 = function talariaActiveChartV1() {
+        // Re-read on EVERY call, never captured at registration, so the switch
+        // can be flipped mid-session with no reload. Truthy disables.
+        if (window.__TALARIA_DISABLE_FOCUS_ROUTING_V1) {
+            return window.chart || window.mainChart || null;
+        }
+        if (typeof window.getActiveChart === 'function') {
+            try {
+                const active = window.getActiveChart();
+                if (active) return active;
+            } catch (_e) { /* provider threw: fall back to the host chart */ }
+        }
+        return window.chart || null;
+    };
+}
+
 class ScreenshotManager {
     constructor(chart) {
         this.chart = chart;
-        this._brandLogoImage = null;
-        this._brandLogoLoadPromise = null;
+        /** Bounds memo only — a few numbers, keyed on the source image's own dimensions. */
         this._brandLogoBounds = null;
         /** @type {Promise<boolean>|null} */
         this._zainFontLoadPromise = null;
@@ -186,44 +214,36 @@ class ScreenshotManager {
         }
     }
 
-    async getBrandLogoImage() {
-        if (this._brandLogoImage && this._brandLogoImage.complete && this._brandLogoImage.naturalWidth > 0) {
-            return this._brandLogoImage;
-        }
-
-        if (this._brandLogoLoadPromise) {
-            return this._brandLogoLoadPromise;
-        }
-
-        const candidates = ['modules/logo-05.png', 'modules/logo-14.png', 'modules/logo-04.png', 'modules/logo-09.png'];
-
-        this._brandLogoLoadPromise = new Promise((resolve) => {
-            const tryLoad = (index) => {
-                if (index >= candidates.length) {
-                    this._brandLogoLoadPromise = null;
-                    resolve(null);
-                    return;
-                }
-
-                const image = new Image();
-                image.decoding = 'async';
-                image.onload = () => {
-                    image.__talariaSource = candidates[index];
-                    this._brandLogoImage = image;
-                    this._brandLogoBounds = null;
-                    this._brandLogoLoadPromise = null;
-                    resolve(image);
-                };
-                image.onerror = () => {
-                    tryLoad(index + 1);
-                };
-                image.src = this.resolveAssetUrl(candidates[index]);
+    /**
+     * Load a brand logo for an export, and hold nothing afterwards.
+     *
+     * What was here: a `getBrandLogoImage()` that walked four candidates, kept the first
+     * on `this._brandLogoImage` for the life of the session, and was called once from
+     * `init()`. Nothing ever read the result — the export paths set `src` on cloned <img>
+     * elements via `resolveAssetUrl()`, and `getVisibleLogoBounds(image)` takes its image
+     * as an argument — so it was a session-long hold of a 3684x2234 bitmap (31.4 MB
+     * decoded) that no code path consumed.
+     *
+     * The export does not need a resident high-resolution copy, so there is no cache to
+     * make smarter: this loads on demand and drops the reference on settle. The caller
+     * owns the image and it becomes collectable as soon as the caller lets go.
+     */
+    async loadBrandLogoForExport(relativePath = 'modules/logo-05.png') {
+        return new Promise((resolve) => {
+            const image = new Image();
+            image.decoding = 'async';
+            const settle = (value) => {
+                image.onload = null;
+                image.onerror = null;
+                resolve(value);
             };
-
-            tryLoad(0);
+            image.onload = () => {
+                image.__talariaSource = relativePath;
+                settle(image);
+            };
+            image.onerror = () => settle(null);
+            image.src = this.resolveAssetUrl(relativePath);
         });
-
-        return this._brandLogoLoadPromise;
     }
 
     getVisibleLogoBounds(image) {
@@ -648,7 +668,10 @@ class ScreenshotManager {
     }
     
     init() {
-        this.getBrandLogoImage();
+        // SCREENSHOT-BRAND-PRELOAD-CUT-V1. No brand image is loaded at init. The preload
+        // that used to be here cost 31.4 MB of decoded image bytes on every page load for
+        // a cache nothing read; see loadBrandLogoForExport() for the full history. Exports
+        // load their own art on demand.
         this.initDropdown();
         this.initKeyboardShortcuts();
     }
@@ -1709,8 +1732,12 @@ class ScreenshotManager {
 }
 
 function initScreenshotManager() {
-    if (window.chart) {
-        window.screenshotManager = new ScreenshotManager(window.chart);
+    // NOTE: this only routes which chart the manager is CONSTRUCTED against.
+    // ScreenshotManager caches it as `this.chart` in its constructor, so capture
+    // does not yet follow focus after boot — see the SR-03 report's residual.
+    const target = window.__talariaActiveChartV1();
+    if (target) {
+        window.screenshotManager = new ScreenshotManager(target);
         return true;
     }
     return false;

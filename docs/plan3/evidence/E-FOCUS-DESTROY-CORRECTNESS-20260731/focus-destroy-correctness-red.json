@@ -1,0 +1,201 @@
+{
+  "signature": "TALARIA_E_FOCUS_DESTROY_CORRECTNESS_V1",
+  "status": "GREEN",
+  "redControls": [
+    {
+      "cell": "FOCUS-KEYBOARD-WINDOW-CHART",
+      "report": {
+        "mode": "windowChartKeyboard",
+        "status": "RED",
+        "keyboard": {
+          "focusedPanelId": "B",
+          "windowChartId": "A",
+          "failures": [
+            {
+              "panelId": "A",
+              "reason": "keyboard-leaked-to-peer",
+              "count": 1
+            },
+            {
+              "panelId": "B",
+              "reason": "keyboard-missed-focused-instance",
+              "count": 0
+            }
+          ],
+          "snapshot": "{\"A\":{\"destroyed\":false,\"indicators\":{\"openingRange\":{\"high\":165,\"low\":90,\"ownerPanelId\":\"A\",\"symbol\":\"XAUUSD\"},\"smaTip\":{\"ownerPanelId\":\"A\",\"symbol\":\"XAUUSD\",\"value\":65}},\"keyboardCount\":1,\"mouseCount\":0,\"mouseX\":null},\"B\":{\"destroyed\":false,\"indicators\":{\"openingRange\":{\"high\":166,\"low\":90,\"ownerPanelId\":\"B\",\"symbol\":\"HOG\"},\"smaTip\":{\"ownerPanelId\":\"B\",\"symbol\":\"HOG\",\"value\":66}},\"keyboardCount\":0,\"mouseCount\":0,\"mouseX\":null},\"C\":{\"destroyed\":false,\"indicators\":{\"openingRange\":{\"high\":167,\"low\":90,\"ownerPanelId\":\"C\",\"symbol\":\"ETHBTC\"},\"smaTip\":{\"ownerPanelId\":\"C\",\"symbol\":\"ETHBTC\",\"value\":67}},\"keyboardCount\":0,\"mouseCount\":0,\"mouseX\":null},\"D\":{\"destroyed\":false,\"indicators\":{\"openingRange\":{\"high\":168,\"low\":90,\"ownerPanelId\":\"D\",\"symbol\":\"BTCEUR\"},\"smaTip\":{\"ownerPanelId\":\"D\",\"symbol\":\"BTCEUR\",\"value\":68}},\"keyboardCount\":0,\"mouseCount\":0,\"mouseX\":null}}"
+        },
+        "mouse": {
+          "focusedPanelId": "C",
+          "windowChartId": "A",
+          "failures": [],
+          "snapshot": "{\"A\":{\"destroyed\":false,\"indicators\":{\"openingRange\":{\"high\":165,\"low\":90,\"ownerPanelId\":\"A\",\"symbol\":\"XAUUSD\"},\"smaTip\":{\"ownerPanelId\":\"A\",\"symbol\":\"XAUUSD\",\"value\":65}},\"keyboardCount\":0,\"mouseCount\":0,\"mouseX\":null},\"B\":{\"destroyed\":false,\"indicators\":{\"openingRange\":{\"high\":166,\"low\":90,\"ownerPanelId\":\"B\",\"symbol\":\"HOG\"},\"smaTip\":{\"ownerPanelId\":\"B\",\"symbol\":\"HOG\",\"value\":66}},\"keyboardCount\":0,\"mouseCount\":0,\"mouseX\":null},\"C\":{\"destroyed\":false,\"indicators\":{\"openingRange\":{\"high\":167,\"low\":90,\"ownerPanelId\":\"C\",\"symbol\":\"ETHBTC\"},\"smaTip\":{\"ownerPanelId\":\"C\",\"symbol\":\"ETHBTC\",\"value\":67}},\"keyboardCount\":0,\"mouseCount\":1,\"mouseX\":428},\"D\":{\"destroyed\":false,\"indicators\":{\"openingRange\":{\"high\":168,\"low\":90,\"ownerPanelId\":\"D\",\"symbol\":\"BTCEUR\"},\"smaTip\":{\"ownerPanelId\":\"D\",\"symbol\":\"BTCEUR\",\"value\":68}},\"keyboardCount\":0,\"mouseCount\":0,\"mouseX\":null}}"
+        }
+      },
+      "expectedFailureReason": "keyboard-missed-focused-instance",
+      "status": "GREEN"
+    },
+    {
+      "cell": "FOCUS-MOUSE-WINDOW-CHART",
+      "report": {
+        "mode": "windowChartMouse",
+        "status": "RED",
+        "keyboard": {
+          "focusedPanelId": "B",
+          "windowChartId": "A",
+          "failures": [],
+          "snapshot": "{\"A\":{\"destroyed\":false,\"indicators\":{\"openingRange\":{\"high\":165,\"low\":90,\"ownerPanelId\":\"A\",\"symbol\":\"XAUUSD\"},\"smaTip\":{\"ownerPanelId\":\"A\",\"symbol\":\"XAUUSD\",\"value\":65}},\"keyboardCount\":0,\"mouseCount\":0,\"mouseX\":null},\"B\":{\"destroyed\":false,\"indicators\":{\"openingRange\":{\"high\":166,\"low\":90,\"ownerPanelId\":\"B\",\"symbol\":\"HOG\"},\"smaTip\":{\"ownerPanelId\":\"B\",\"symbol\":\"HOG\",\"value\":66}},\"keyboardCount\":1,\"mouseCount\":0,\"mouseX\":null},\"C\":{\"destroyed\":false,\"indicators\":{\"openingRange\":{\"high\":167,\"low\":90,\"ownerPanelId\":\"C\",\"symbol\":\"ETHBTC\"},\"smaTip\":{\"ownerPanelId\":\"C\",\"symbol\":\"ETHBTC\",\"value\":67}},\"keyboardCount\":0,\"mouseCount\":0,\"mouseX\":null},\"D\":{\"destroyed\":false,\"indicators\":{\"openingRange\":{\"high\":168,\"low\":90,\"ownerPanelId\":\"D\",\"symbol\":\"BTCEUR\"},\"smaTip\":{\"ownerPanelId\":\"D\",\"symbol\":\"BTCEUR\",\"value\":68}},\"keyboardCount\":0,\"mouseCount\":0,\"mouseX\":null}}"
+        },
+        "mouse": {
+          "focusedPanelId": "C",
+          "windowChartId": "A",
+          "failures": [
+            {
+              "panelId": "A",
+              "reason": "mouse-leaked-to-peer",
+              "count": 1
+            },
+            {
+              "panelId": "C",
+              "reason": "mouse-missed-focused-instance",
+              "count": 0
+            }
+          ],
+          "snapshot": "{\"A\":{\"destroyed\":false,\"indicators\":{\"openingRange\":{\"high\":165,\"low\":90,\"ownerPanelId\":\"A\",\"symbol\":\"XAUUSD\"},\"smaTip\":{\"ownerPanelId\":\"A\",\"symbol\":\"XAUUSD\",\"value\":65}},\"keyboardCount\":0,\"mouseCount\":1,\"mouseX\":1188},\"B\":{\"destroyed\":false,\"indicators\":{\"openingRange\":{\"high\":166,\"low\":90,\"ownerPanelId\":\"B\",\"symbol\":\"HOG\"},\"smaTip\":{\"ownerPanelId\":\"B\",\"symbol\":\"HOG\",\"value\":66}},\"keyboardCount\":0,\"mouseCount\":0,\"mouseX\":null},\"C\":{\"destroyed\":false,\"indicators\":{\"openingRange\":{\"high\":167,\"low\":90,\"ownerPanelId\":\"C\",\"symbol\":\"ETHBTC\"},\"smaTip\":{\"ownerPanelId\":\"C\",\"symbol\":\"ETHBTC\",\"value\":67}},\"keyboardCount\":0,\"mouseCount\":0,\"mouseX\":null},\"D\":{\"destroyed\":false,\"indicators\":{\"openingRange\":{\"high\":168,\"low\":90,\"ownerPanelId\":\"D\",\"symbol\":\"BTCEUR\"},\"smaTip\":{\"ownerPanelId\":\"D\",\"symbol\":\"BTCEUR\",\"value\":68}},\"keyboardCount\":0,\"mouseCount\":0,\"mouseX\":null}}"
+        }
+      },
+      "expectedFailureReason": "mouse-missed-focused-instance",
+      "status": "GREEN"
+    },
+    {
+      "cell": "FOCUS-MOUSE-WRONG-RECT",
+      "report": {
+        "mode": "wrongRectMouse",
+        "status": "RED",
+        "keyboard": {
+          "focusedPanelId": "B",
+          "windowChartId": "A",
+          "failures": [],
+          "snapshot": "{\"A\":{\"destroyed\":false,\"indicators\":{\"openingRange\":{\"high\":165,\"low\":90,\"ownerPanelId\":\"A\",\"symbol\":\"XAUUSD\"},\"smaTip\":{\"ownerPanelId\":\"A\",\"symbol\":\"XAUUSD\",\"value\":65}},\"keyboardCount\":0,\"mouseCount\":0,\"mouseX\":null},\"B\":{\"destroyed\":false,\"indicators\":{\"openingRange\":{\"high\":166,\"low\":90,\"ownerPanelId\":\"B\",\"symbol\":\"HOG\"},\"smaTip\":{\"ownerPanelId\":\"B\",\"symbol\":\"HOG\",\"value\":66}},\"keyboardCount\":1,\"mouseCount\":0,\"mouseX\":null},\"C\":{\"destroyed\":false,\"indicators\":{\"openingRange\":{\"high\":167,\"low\":90,\"ownerPanelId\":\"C\",\"symbol\":\"ETHBTC\"},\"smaTip\":{\"ownerPanelId\":\"C\",\"symbol\":\"ETHBTC\",\"value\":67}},\"keyboardCount\":0,\"mouseCount\":0,\"mouseX\":null},\"D\":{\"destroyed\":false,\"indicators\":{\"openingRange\":{\"high\":168,\"low\":90,\"ownerPanelId\":\"D\",\"symbol\":\"BTCEUR\"},\"smaTip\":{\"ownerPanelId\":\"D\",\"symbol\":\"BTCEUR\",\"value\":68}},\"keyboardCount\":0,\"mouseCount\":0,\"mouseX\":null}}"
+        },
+        "mouse": {
+          "focusedPanelId": "B",
+          "windowChartId": "A",
+          "failures": [
+            {
+              "panelId": "B",
+              "reason": "mouse-coordinate-wrong-instance",
+              "observedMouseX": 1188,
+              "expectedMouseX": -793
+            }
+          ],
+          "snapshot": "{\"A\":{\"destroyed\":false,\"indicators\":{\"openingRange\":{\"high\":165,\"low\":90,\"ownerPanelId\":\"A\",\"symbol\":\"XAUUSD\"},\"smaTip\":{\"ownerPanelId\":\"A\",\"symbol\":\"XAUUSD\",\"value\":65}},\"keyboardCount\":0,\"mouseCount\":0,\"mouseX\":null},\"B\":{\"destroyed\":false,\"indicators\":{\"openingRange\":{\"high\":166,\"low\":90,\"ownerPanelId\":\"B\",\"symbol\":\"HOG\"},\"smaTip\":{\"ownerPanelId\":\"B\",\"symbol\":\"HOG\",\"value\":66}},\"keyboardCount\":0,\"mouseCount\":1,\"mouseX\":1188},\"C\":{\"destroyed\":false,\"indicators\":{\"openingRange\":{\"high\":167,\"low\":90,\"ownerPanelId\":\"C\",\"symbol\":\"ETHBTC\"},\"smaTip\":{\"ownerPanelId\":\"C\",\"symbol\":\"ETHBTC\",\"value\":67}},\"keyboardCount\":0,\"mouseCount\":0,\"mouseX\":null},\"D\":{\"destroyed\":false,\"indicators\":{\"openingRange\":{\"high\":168,\"low\":90,\"ownerPanelId\":\"D\",\"symbol\":\"BTCEUR\"},\"smaTip\":{\"ownerPanelId\":\"D\",\"symbol\":\"BTCEUR\",\"value\":68}},\"keyboardCount\":0,\"mouseCount\":0,\"mouseX\":null}}"
+        }
+      },
+      "expectedFailureReason": "mouse-coordinate-wrong-instance",
+      "status": "GREEN"
+    },
+    {
+      "cell": "FOCUS-MOUSE-BROADCAST",
+      "report": {
+        "mode": "broadcastMouse",
+        "status": "RED",
+        "keyboard": {
+          "focusedPanelId": "B",
+          "windowChartId": "A",
+          "failures": [],
+          "snapshot": "{\"A\":{\"destroyed\":false,\"indicators\":{\"openingRange\":{\"high\":165,\"low\":90,\"ownerPanelId\":\"A\",\"symbol\":\"XAUUSD\"},\"smaTip\":{\"ownerPanelId\":\"A\",\"symbol\":\"XAUUSD\",\"value\":65}},\"keyboardCount\":0,\"mouseCount\":0,\"mouseX\":null},\"B\":{\"destroyed\":false,\"indicators\":{\"openingRange\":{\"high\":166,\"low\":90,\"ownerPanelId\":\"B\",\"symbol\":\"HOG\"},\"smaTip\":{\"ownerPanelId\":\"B\",\"symbol\":\"HOG\",\"value\":66}},\"keyboardCount\":1,\"mouseCount\":0,\"mouseX\":null},\"C\":{\"destroyed\":false,\"indicators\":{\"openingRange\":{\"high\":167,\"low\":90,\"ownerPanelId\":\"C\",\"symbol\":\"ETHBTC\"},\"smaTip\":{\"ownerPanelId\":\"C\",\"symbol\":\"ETHBTC\",\"value\":67}},\"keyboardCount\":0,\"mouseCount\":0,\"mouseX\":null},\"D\":{\"destroyed\":false,\"indicators\":{\"openingRange\":{\"high\":168,\"low\":90,\"ownerPanelId\":\"D\",\"symbol\":\"BTCEUR\"},\"smaTip\":{\"ownerPanelId\":\"D\",\"symbol\":\"BTCEUR\",\"value\":68}},\"keyboardCount\":0,\"mouseCount\":0,\"mouseX\":null}}"
+        },
+        "mouse": {
+          "focusedPanelId": "C",
+          "windowChartId": "A",
+          "failures": [
+            {
+              "panelId": "A",
+              "reason": "mouse-leaked-to-peer",
+              "count": 1
+            },
+            {
+              "panelId": "B",
+              "reason": "mouse-leaked-to-peer",
+              "count": 1
+            },
+            {
+              "panelId": "D",
+              "reason": "mouse-leaked-to-peer",
+              "count": 1
+            }
+          ],
+          "snapshot": "{\"A\":{\"destroyed\":false,\"indicators\":{\"openingRange\":{\"high\":165,\"low\":90,\"ownerPanelId\":\"A\",\"symbol\":\"XAUUSD\"},\"smaTip\":{\"ownerPanelId\":\"A\",\"symbol\":\"XAUUSD\",\"value\":65}},\"keyboardCount\":0,\"mouseCount\":1,\"mouseX\":1188},\"B\":{\"destroyed\":false,\"indicators\":{\"openingRange\":{\"high\":166,\"low\":90,\"ownerPanelId\":\"B\",\"symbol\":\"HOG\"},\"smaTip\":{\"ownerPanelId\":\"B\",\"symbol\":\"HOG\",\"value\":66}},\"keyboardCount\":0,\"mouseCount\":1,\"mouseX\":-793},\"C\":{\"destroyed\":false,\"indicators\":{\"openingRange\":{\"high\":167,\"low\":90,\"ownerPanelId\":\"C\",\"symbol\":\"ETHBTC\"},\"smaTip\":{\"ownerPanelId\":\"C\",\"symbol\":\"ETHBTC\",\"value\":67}},\"keyboardCount\":0,\"mouseCount\":1,\"mouseX\":428},\"D\":{\"destroyed\":false,\"indicators\":{\"openingRange\":{\"high\":168,\"low\":90,\"ownerPanelId\":\"D\",\"symbol\":\"BTCEUR\"},\"smaTip\":{\"ownerPanelId\":\"D\",\"symbol\":\"BTCEUR\",\"value\":68}},\"keyboardCount\":0,\"mouseCount\":1,\"mouseX\":-72}}"
+        }
+      },
+      "expectedFailureReason": "mouse-leaked-to-peer",
+      "status": "GREEN"
+    },
+    {
+      "cell": "DESTROY-NO-DESTROY-RESURRECTS-INDICATOR",
+      "report": {
+        "mode": "noDestroy",
+        "status": "RED",
+        "destroyedPanelId": "C",
+        "failures": [
+          {
+            "panelId": "C",
+            "reason": "destroy-indicator-resurrected",
+            "indicators": {
+              "smaTip": {
+                "ownerPanelId": "C",
+                "symbol": "ETHBTC",
+                "value": 9999,
+                "resurrected": true
+              },
+              "openingRange": {
+                "ownerPanelId": "C",
+                "symbol": "ETHBTC",
+                "high": 167,
+                "low": 90
+              }
+            }
+          }
+        ],
+        "snapshot": "{\"A\":{\"destroyed\":false,\"indicators\":{\"openingRange\":{\"high\":165,\"low\":90,\"ownerPanelId\":\"A\",\"symbol\":\"XAUUSD\"},\"smaTip\":{\"ownerPanelId\":\"A\",\"symbol\":\"XAUUSD\",\"value\":65}},\"keyboardCount\":0,\"mouseCount\":0,\"mouseX\":null},\"B\":{\"destroyed\":false,\"indicators\":{\"openingRange\":{\"high\":166,\"low\":90,\"ownerPanelId\":\"B\",\"symbol\":\"HOG\"},\"smaTip\":{\"ownerPanelId\":\"B\",\"symbol\":\"HOG\",\"value\":66}},\"keyboardCount\":0,\"mouseCount\":0,\"mouseX\":null},\"C\":{\"destroyed\":true,\"indicators\":{\"openingRange\":{\"high\":167,\"low\":90,\"ownerPanelId\":\"C\",\"symbol\":\"ETHBTC\"},\"smaTip\":{\"ownerPanelId\":\"C\",\"resurrected\":true,\"symbol\":\"ETHBTC\",\"value\":9999}},\"keyboardCount\":0,\"mouseCount\":0,\"mouseX\":null},\"D\":{\"destroyed\":false,\"indicators\":{\"openingRange\":{\"high\":168,\"low\":90,\"ownerPanelId\":\"D\",\"symbol\":\"BTCEUR\"},\"smaTip\":{\"ownerPanelId\":\"D\",\"symbol\":\"BTCEUR\",\"value\":68}},\"keyboardCount\":0,\"mouseCount\":0,\"mouseX\":null}}"
+      },
+      "expectedFailureReason": "destroy-indicator-resurrected",
+      "status": "GREEN"
+    }
+  ],
+  "greenControls": [
+    {
+      "cell": "FOCUS-SCOPED-ROUTING",
+      "report": {
+        "mode": "scoped",
+        "status": "GREEN",
+        "keyboard": {
+          "focusedPanelId": "B",
+          "windowChartId": "A",
+          "failures": [],
+          "snapshot": "{\"A\":{\"destroyed\":false,\"indicators\":{\"openingRange\":{\"high\":165,\"low\":90,\"ownerPanelId\":\"A\",\"symbol\":\"XAUUSD\"},\"smaTip\":{\"ownerPanelId\":\"A\",\"symbol\":\"XAUUSD\",\"value\":65}},\"keyboardCount\":0,\"mouseCount\":0,\"mouseX\":null},\"B\":{\"destroyed\":false,\"indicators\":{\"openingRange\":{\"high\":166,\"low\":90,\"ownerPanelId\":\"B\",\"symbol\":\"HOG\"},\"smaTip\":{\"ownerPanelId\":\"B\",\"symbol\":\"HOG\",\"value\":66}},\"keyboardCount\":1,\"mouseCount\":0,\"mouseX\":null},\"C\":{\"destroyed\":false,\"indicators\":{\"openingRange\":{\"high\":167,\"low\":90,\"ownerPanelId\":\"C\",\"symbol\":\"ETHBTC\"},\"smaTip\":{\"ownerPanelId\":\"C\",\"symbol\":\"ETHBTC\",\"value\":67}},\"keyboardCount\":0,\"mouseCount\":0,\"mouseX\":null},\"D\":{\"destroyed\":false,\"indicators\":{\"openingRange\":{\"high\":168,\"low\":90,\"ownerPanelId\":\"D\",\"symbol\":\"BTCEUR\"},\"smaTip\":{\"ownerPanelId\":\"D\",\"symbol\":\"BTCEUR\",\"value\":68}},\"keyboardCount\":0,\"mouseCount\":0,\"mouseX\":null}}"
+        },
+        "mouse": {
+          "focusedPanelId": "C",
+          "windowChartId": "A",
+          "failures": [],
+          "snapshot": "{\"A\":{\"destroyed\":false,\"indicators\":{\"openingRange\":{\"high\":165,\"low\":90,\"ownerPanelId\":\"A\",\"symbol\":\"XAUUSD\"},\"smaTip\":{\"ownerPanelId\":\"A\",\"symbol\":\"XAUUSD\",\"value\":65}},\"keyboardCount\":0,\"mouseCount\":0,\"mouseX\":null},\"B\":{\"destroyed\":false,\"indicators\":{\"openingRange\":{\"high\":166,\"low\":90,\"ownerPanelId\":\"B\",\"symbol\":\"HOG\"},\"smaTip\":{\"ownerPanelId\":\"B\",\"symbol\":\"HOG\",\"value\":66}},\"keyboardCount\":0,\"mouseCount\":0,\"mouseX\":null},\"C\":{\"destroyed\":false,\"indicators\":{\"openingRange\":{\"high\":167,\"low\":90,\"ownerPanelId\":\"C\",\"symbol\":\"ETHBTC\"},\"smaTip\":{\"ownerPanelId\":\"C\",\"symbol\":\"ETHBTC\",\"value\":67}},\"keyboardCount\":0,\"mouseCount\":1,\"mouseX\":428},\"D\":{\"destroyed\":false,\"indicators\":{\"openingRange\":{\"high\":168,\"low\":90,\"ownerPanelId\":\"D\",\"symbol\":\"BTCEUR\"},\"smaTip\":{\"ownerPanelId\":\"D\",\"symbol\":\"BTCEUR\",\"value\":68}},\"keyboardCount\":0,\"mouseCount\":0,\"mouseX\":null}}"
+        }
+      },
+      "status": "GREEN"
+    },
+    {
+      "cell": "DESTROY-WITH-DESTROY-CLEARS-INDICATORS",
+      "report": {
+        "mode": "withDestroy",
+        "status": "GREEN",
+        "destroyedPanelId": "C",
+        "failures": [],
+        "snapshot": "{\"A\":{\"destroyed\":false,\"indicators\":{\"openingRange\":{\"high\":165,\"low\":90,\"ownerPanelId\":\"A\",\"symbol\":\"XAUUSD\"},\"smaTip\":{\"ownerPanelId\":\"A\",\"symbol\":\"XAUUSD\",\"value\":65}},\"keyboardCount\":0,\"mouseCount\":0,\"mouseX\":null},\"B\":{\"destroyed\":false,\"indicators\":{\"openingRange\":{\"high\":166,\"low\":90,\"ownerPanelId\":\"B\",\"symbol\":\"HOG\"},\"smaTip\":{\"ownerPanelId\":\"B\",\"symbol\":\"HOG\",\"value\":66}},\"keyboardCount\":0,\"mouseCount\":0,\"mouseX\":null},\"C\":{\"destroyed\":true,\"indicators\":null,\"keyboardCount\":0,\"mouseCount\":0,\"mouseX\":null},\"D\":{\"destroyed\":false,\"indicators\":{\"openingRange\":{\"high\":168,\"low\":90,\"ownerPanelId\":\"D\",\"symbol\":\"BTCEUR\"},\"smaTip\":{\"ownerPanelId\":\"D\",\"symbol\":\"BTCEUR\",\"value\":68}},\"keyboardCount\":0,\"mouseCount\":0,\"mouseX\":null}}"
+      },
+      "status": "GREEN"
+    }
+  ],
+  "limitation": "Model behavior oracle; wire into real single-realm input routing and Chart.destroy once A lands product code.",
+  "measuredAt": "2026-07-31T15:45:11.397Z"
+}

@@ -1,0 +1,91 @@
+{
+  "tool": "live-surface-probe",
+  "contract": "PRESENT = identified and found. ABSENT = identified and not found. UNDETERMINED = could not identify, with a reason. ABSENT is never inferred from a failure.",
+  "startedAtUtc": "2026-07-28T15:39:36.011Z",
+  "baseUrl": "http://31.97.192.82:3000",
+  "credentialSupplied": false,
+  "readOnly": true,
+  "findings": [
+    {
+      "kind": "module",
+      "url": "http://31.97.192.82:3000/chart/modules/order-manager.js",
+      "status": 200,
+      "transportError": null,
+      "bytes": 2419821,
+      "contentType": "application/javascript",
+      "cache": {
+        "cfCacheStatus": null,
+        "age": null,
+        "etag": "W/\"6a66a9e1-24ec6d\"",
+        "lastModified": "Mon, 27 Jul 2026 00:44:17 GMT",
+        "cacheControl": "max-age=3600, public, must-revalidate"
+      },
+      "stampInUrl": null,
+      "identified": true,
+      "markers": {
+        "journalVouchedFor": {
+          "state": "ABSENT",
+          "occurrences": 0
+        }
+      }
+    },
+    {
+      "kind": "session-endpoint",
+      "url": "http://31.97.192.82:3000/api/sessions/886",
+      "credentialSupplied": false,
+      "status": 401,
+      "transportError": null,
+      "state": "UNDETERMINED",
+      "reason": "HTTP 401: endpoint is reachable and refused an unauthenticated read, which is correct behaviour. Supply --token to read the body.",
+      "sessionName": null,
+      "reachable": true
+    },
+    {
+      "kind": "build-id",
+      "perShell": [
+        {
+          "shell": "/chart/index.html",
+          "status": 200,
+          "state": "UNDETERMINED",
+          "reason": "served, but carries no recognisable build id — an unstamped build cannot be named"
+        },
+        {
+          "shell": "/chart/dist-v9/index.html",
+          "status": 200,
+          "state": "PRESENT",
+          "stamps": [
+            "20260726b75"
+          ],
+          "declaredBuildId": "20260726b75"
+        },
+        {
+          "shell": "/chart/legacy-index.html",
+          "status": 200,
+          "state": "PRESENT",
+          "stamps": [
+            "20260726b75"
+          ],
+          "declaredBuildId": null
+        },
+        {
+          "shell": "/chart/multichart-prod/chart-embed.html",
+          "status": 200,
+          "state": "PRESENT",
+          "stamps": [
+            "20260726b75"
+          ],
+          "declaredBuildId": "20260726b75"
+        }
+      ],
+      "distinctBuildIds": [
+        "20260726b75"
+      ],
+      "coherent": true,
+      "coherenceNote": null
+    }
+  ],
+  "summary": {
+    "verdict": "ABSENT",
+    "exitCode": 1
+  }
+}

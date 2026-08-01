@@ -75,6 +75,26 @@
         return worker;
     }
 
+    /**
+     * REALM-TEARDOWN-RELEASE CUT 5: terminate the blob worker and revoke the
+     * per-realm object URL so the panel realm does not retain it after teardown.
+     */
+    function disposeWorker() {
+        try {
+            if (worker) {
+                try { worker.terminate(); } catch (e) {}
+            }
+        } catch (e) {}
+        worker = null;
+        try {
+            if (workerUrl) {
+                try { URL.revokeObjectURL(workerUrl); } catch (e) {}
+            }
+        } catch (e) {}
+        workerUrl = null;
+        busy = false;
+    }
+
     function dispatchFailure(id, msg) {
         var item = id != null ? dequeueById(id) : dequeueHead();
         while (!item && queue.length) {
@@ -232,6 +252,7 @@
         runCompute: runCompute,
         serializeBarsFromChartData: serializeBarsFromChartData,
         looksLikePineScript: looksLikePineScript,
-        validateCustomScriptSource: validateCustomScriptSource
+        validateCustomScriptSource: validateCustomScriptSource,
+        disposeWorker: disposeWorker
     };
 })(typeof window !== 'undefined' ? window : this);

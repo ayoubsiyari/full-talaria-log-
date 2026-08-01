@@ -16,6 +16,24 @@ function _orderPersistenceV1Enabled() {
     return typeof window === 'undefined' || !window.__TALARIA_DISABLE_ORDER_PERSISTENCE_V1;
 }
 
+/**
+ * B-W18 rollback lever for the B-W16 durable-journal hydration guard — default ON.
+ *
+ * Fail-safe, not a feature flag: ONLY an explicitly recognised affirmative value
+ * disables the guard. Unset, null, '', 0, 'false', 'off' or any typo leaves the
+ * guard ACTIVE, as does an absent `window`. The failure directions are not
+ * symmetric — a guard that silently fails off deletes a user's trade journal.
+ * Recognised disable values (after String/trim/lowercase): '1', 'true', 'yes',
+ * 'on' — the same vocabulary as the backend JOURNAL_SWEEP_PARSE_GUARD_ENABLED
+ * lever, so one incident runbook covers both surfaces.
+ */
+function _bW16HydrationGuardEnabled() {
+    if (typeof window === 'undefined') return true;
+    const kill = window.__TALARIA_DISABLE_B_W16_HYDRATION_GUARD_V1;
+    if (kill === undefined || kill === null) return true;
+    return !['1', 'true', 'yes', 'on'].includes(String(kill).trim().toLowerCase());
+}
+
 /** I16 — build_id + schema_version on persisted order/trade rows — default ON. */
 const ORDER_RECORD_SCHEMA_VERSION = 1;
 
@@ -78,6 +96,41 @@ function _orderLifecycleEventOwnershipV1Enabled() {
         || !window.__TALARIA_DISABLE_ORDER_LIFECYCLE_EVENT_OWNERSHIP_V1;
 }
 
+/** M24: reconcile order ids before minting, so restored stale counters cannot collide. */
+function _m24OrderIdAllocatorV1Enabled() {
+    return typeof window === 'undefined'
+        || !window.__TALARIA_DISABLE_M24_ORDER_ID_ALLOCATOR_V1;
+}
+
+/** M24: stable displayed journal IDs after session hydrate — default ON. */
+function _m24DisplayIdStabilityV1Enabled() {
+    return typeof window === 'undefined' || window.__TALARIA_DISABLE_M24_DISPLAY_ID_STABILITY_V1 !== true;
+}
+
+/** Rayan #8 / M24: stale persisted counters must not skip unused numeric ids after hydrate. */
+function _m24OrderIdGapReconcileV1Enabled() {
+    return typeof window === 'undefined'
+        || window.__TALARIA_DISABLE_M24_ORDER_ID_GAP_RECONCILE_V1 !== true;
+}
+
+/** Synthetic audit for surprise open adoption (strict test mode only). */
+function _orderExplicitPlaceAuditV1Enabled() {
+    return typeof window !== 'undefined'
+        && window.__TALARIA_ORDER_EXPLICIT_PLACE_AUDIT_STRICT === true
+        && window.__TALARIA_DISABLE_ORDER_EXPLICIT_PLACE_AUDIT_V1 !== true;
+}
+
+/**
+ * M23 REPLAY ROLLBACK TRADE-STATE — default ON.
+ * Kill-switch: window.__TALARIA_DISABLE_M23_ROLLBACK_TRADE_CANCEL_V1 = <truthy>
+ * restores tip resurrectOpen / no-confirm cut behaviour. Absent / falsy ⇒
+ * confirm + permanent cancel (no auto-reactivate). Read per call.
+ */
+function _m23RollbackTradeCancelV1Enabled() {
+    return typeof window === 'undefined'
+        || !window.__TALARIA_DISABLE_M23_ROLLBACK_TRADE_CANCEL_V1;
+}
+
 
 /** M19-D: marker redraw processes newly-visible/delta trades only — default ON. */
 function _m19MarkerDeltaV1Enabled() {
@@ -88,6 +141,46 @@ function _m19MarkerDeltaV1Enabled() {
 /** M19-E: guard hot-path console.log behind debug mode — default ON. warn/error untouched. */
 function _m19HotpathLogGuardV1Enabled() {
     return typeof window === 'undefined' || window.__TALARIA_DISABLE_M19_HOTPATH_LOG_GUARD_V1 !== true;
+}
+
+/**
+ * TRADE-EVICT-V1 — release hot screenshot/excursion bytes after the post-exit
+ * playhead bound; restore on rewind behind that playhead (EVICT-02). Default ON.
+ * Kill-switch: window.__TALARIA_DISABLE_TRADE_EVICT_V1 = true
+ * FLAG-01: ABSENT ⇒ enabled. FLAG-02: runtime flip, no reload. FLAG-03: OFF vs product.
+ */
+function _tradeEvictV1Enabled() {
+    return typeof window === 'undefined'
+        || window.__TALARIA_DISABLE_TRADE_EVICT_V1 !== true;
+}
+
+/**
+ * EXCURSION-SINGLE-OWNER-V1 — one authoritative owner for excursion series.
+ *
+ * Authoritative: tradeJournal (cold history). managerClosed and serviceClosed are
+ * the SAME array via bindServiceProp (order-manager ctor); they are not a second
+ * and third heap owner — only a second list pointer. The real duplicate was
+ * journal `.slice()` copies alongside the closed/service row.
+ *
+ * Default ON. Kill-switch: window.__TALARIA_DISABLE_EXCURSION_SINGLE_OWNER_V1 = true
+ * FLAG-01/02/03 same contract as TRADE-EVICT-V1.
+ *
+ * Also hard-caps each live series at `_m19ExcursionTailMaxV1()` after archive+bound
+ * so a census that sums four keys cannot be misread as a single-array cap miss.
+ */
+function _excursionSingleOwnerV1Enabled() {
+    return typeof window === 'undefined'
+        || window.__TALARIA_DISABLE_EXCURSION_SINGLE_OWNER_V1 !== true;
+}
+
+/** Excursion series keys owned by a single list under EXCURSION-SINGLE-OWNER-V1. */
+function _excursionSingleOwnerV1SeriesKeys() {
+    return [
+        'bar_close_r', 'bar_high_r', 'bar_low_r',
+        'post_exit_bar_close_r', 'post_exit_bar_high_r', 'post_exit_bar_low_r',
+        'bar_close_r_archive', 'bar_high_r_archive', 'bar_low_r_archive',
+        'post_exit_bar_close_r_archive', 'post_exit_bar_high_r_archive', 'post_exit_bar_low_r_archive',
+    ];
 }
 
 function _m19HotpathDebugLogsEnabled() {
@@ -183,6 +276,12 @@ function _orderTypeReclassifyV2Enabled() {
     return typeof window === 'undefined' || !window.__TALARIA_DISABLE_ORDER_TYPE_RECLASSIFY_V2;
 }
 
+/** Cluster G / TAL-01904: one full tick away is pending, not market. */
+function _orderTypeOneTickPendingV1Enabled() {
+    return typeof window === 'undefined'
+        || !window.__TALARIA_DISABLE_ORDER_TYPE_ONE_TICK_PENDING_V1;
+}
+
 /** T4 step 6: default ON — live-refresh order type labels during drag; own kill-switch. */
 function _orderTypeLiveLabelFixEnabled() {
     return typeof window === 'undefined' || !window.__TALARIA_DISABLE_ORDERTYPE_LIVE_LABEL_FIX;
@@ -193,7 +292,79 @@ function _orderEntryCloseHitTargetFixEnabled() {
     return typeof window === 'undefined' || !window.__TALARIA_DISABLE_ORDER_ENTRY_CLOSE_HITTARGET_FIX;
 }
 
+/** Cluster G / TAL-01861: cancel badge press blocks a trailing recreated place click. */
+function _orderCancelBeforeConfirmV1Enabled() {
+    return typeof window === 'undefined' || !window.__TALARIA_DISABLE_ORDER_CANCEL_BEFORE_CONFIRM_V1;
+}
+
+/** Cluster G / TAL-01885: keep edge SL/TP rows visible instead of hiding at plot seams. */
+function _orderLineEdgeVisibilityV1Enabled() {
+    return typeof window === 'undefined' || !window.__TALARIA_DISABLE_ORDER_LINE_EDGE_VISIBILITY_V1;
+}
+
+/** Clear pending SL/TP protection from service mirrors as well as the visible row. */
+function _orderPendingProtectionClearV1Enabled() {
+    return typeof window === 'undefined' || window.__TALARIA_DISABLE_ORDER_PENDING_PROTECTION_CLEAR_V1 !== true;
+}
+
+/** Keep preview value-box DOM stable during live label/control refreshes. */
+function _orderStableLabelHoverDomV1Enabled() {
+    return typeof window === 'undefined' || window.__TALARIA_DISABLE_ORDER_STABLE_LABEL_HOVER_DOM_V1 !== true;
+}
+
+/** Cluster G / TAL-01905: omitted seek guard tick must block current candle OHLC. */
+function _orderSeekGuardInfinityV1Enabled() {
+    return typeof window === 'undefined' || !window.__TALARIA_DISABLE_ORDER_SEEK_GUARD_INFINITY_V1;
+}
+
+/** Cluster G / TAL-01750: hover/micro-drags on split handles must not add entries. */
+function _orderSplitEntryHoverStickV1Enabled() {
+    return typeof window === 'undefined' || !window.__TALARIA_DISABLE_ORDER_SPLIT_ENTRY_HOVER_STICK_V1;
+}
+
+/** Cluster G / TAL-01683: risk-based qty updates after apply-on-release SL commit. */
+function _orderRiskQtyOnSlCommitV1Enabled() {
+    return typeof window === 'undefined' || !window.__TALARIA_DISABLE_ORDER_RISK_QTY_ON_SL_COMMIT_V1;
+}
+
+/**
+ * Cluster G / TAL-01697 (+ drag family): feed provisional/preview SL/TP prices into
+ * panel PnL / R:R while apply-on-release withholds input commits until mouseup.
+ */
+function _orderPreviewLiveRecalcV1Enabled() {
+    return typeof window === 'undefined' || !window.__TALARIA_DISABLE_ORDER_PREVIEW_LIVE_RECALC_V1;
+}
+
+/** Cluster G / drag family residual: fixed-risk quantity follows live preview SL. */
+function _orderRiskQtyLivePreviewSlV1Enabled() {
+    return typeof window === 'undefined' || !window.__TALARIA_DISABLE_ORDER_RISK_QTY_LIVE_PREVIEW_SL_V1;
+}
+
+/** Cluster G / drag family: placement waits until preview drag commits or cancels. */
+function _orderBlockPlaceDuringPreviewDragV1Enabled() {
+    return typeof window === 'undefined' || !window.__TALARIA_DISABLE_ORDER_BLOCK_PLACE_DURING_PREVIEW_DRAG_V1;
+}
+
+/** Cluster G / TAL-01699: coincident multi-TP preview rungs must be separately hittable. */
+function _orderMultiTpCoincidentStackV1Enabled() {
+    return typeof window === 'undefined' || !window.__TALARIA_DISABLE_ORDER_MULTI_TP_COINCIDENT_STACK_V1;
+}
+
+/** Cluster G / TAL-01751: BE trigger keeps the preview/place anchor. */
+function _orderBePlaceAnchorV1Enabled() {
+    return typeof window === 'undefined' || !window.__TALARIA_DISABLE_ORDER_BE_PLACE_ANCHOR_V1;
+}
+
+/** Cluster G / TAL-01941: bounded SL trigger diagnostics; no behavior changes. */
+function _orderSlTriggerDiagV1Enabled() {
+    return typeof window === 'undefined' || !window.__TALARIA_DISABLE_ORDER_SL_TRIGGER_DIAG_V1;
+}
+
 const ENTRY_STACK_OFFSET_PX = 16;
+const ORDER_CANCEL_PLACE_SUPPRESS_MS = 450;
+const ORDER_LINE_EDGE_VISIBILITY_PAD_PX = 24;
+const ORDER_SPLIT_HANDLE_MIN_DRAG_PX = 4;
+const MULTI_TP_COINCIDENT_STACK_OFFSET_PX = 6;
 const DEFAULT_SLTP_STEPPER_OFFSET_PIPS = 10;
 
 /** T4 step 9: default ON — lot stepper full recalc + SL/TP stepper seed from entry; own kill-switch. */
@@ -234,6 +405,72 @@ function _orderEntryPendingSlClampFixEnabled() {
 /** T4 step 10: default ON — chart ✕ cancel clears draft + rail state (TAL-00752 #14). */
 function _orderEntryCancelCleanupFixEnabled() {
     return typeof window === 'undefined' || !window.__TALARIA_DISABLE_ORDER_ENTRY_CANCEL_CLEANUP_FIX;
+}
+
+/** Cluster G / TAL-01897: Make-new-order resets stale draft SL/TP levels. */
+function _orderEntryNewDraftLevelsResetV1Enabled() {
+    return typeof window === 'undefined'
+        || !window.__TALARIA_DISABLE_ORDER_ENTRY_NEW_DRAFT_LEVELS_RESET_V1;
+}
+
+/** Cluster G / TP-SL drag family: Make-new-order also clears stale drag constraints. */
+function _orderNewDraftConstraintResetV1Enabled() {
+    return typeof window === 'undefined'
+        || !window.__TALARIA_DISABLE_ORDER_NEW_DRAFT_CONSTRAINT_RESET_V1;
+}
+
+/** Cluster E / TAL-01927: entry screenshots are one-shot per trade across restore. */
+function _orderEntryScreenshotIdempotentV1Enabled() {
+    return typeof window === 'undefined'
+        || !window.__TALARIA_DISABLE_ORDER_ENTRY_SCREENSHOT_IDEMPOTENT_V1;
+}
+
+/** Cluster E / TAL-01927: late entry screenshots must update persisted journal rows. */
+function _orderEntryScreenshotJournalRetentionV1Enabled() {
+    return typeof window === 'undefined'
+        || !window.__TALARIA_DISABLE_ORDER_ENTRY_SCREENSHOT_JOURNAL_RETENTION_V1;
+}
+
+/** Cluster G / TAL-01932: full-size opposing pending orders close, not hedge-open. */
+function _orderPendingCloseNettingV1Enabled() {
+    return typeof window === 'undefined'
+        || !window.__TALARIA_DISABLE_ORDER_PENDING_CLOSE_NETTING_V1;
+}
+
+/** Cluster E / TAL-01903: restored journal rows are the balance/PnL authority. */
+function _orderPnlRestoreStableV1Enabled() {
+    return typeof window === 'undefined'
+        || !window.__TALARIA_DISABLE_ORDER_PNL_RESTORE_STABLE_V1;
+}
+
+/** Cluster G / TAL-01777: pair switches discard drafts from the previous symbol. */
+function _orderPairSwitchDraftRebindV1Enabled() {
+    return typeof window === 'undefined'
+        || !window.__TALARIA_DISABLE_ORDER_PAIR_SWITCH_DRAFT_REBIND_V1;
+}
+
+/** Cluster G / TAL-01807b: pair switch strips + redraws only the active symbol's order visuals. */
+function _orderPairSwitchVisualRebindV1Enabled() {
+    return typeof window === 'undefined'
+        || !window.__TALARIA_DISABLE_ORDER_PAIR_SWITCH_VISUAL_REBIND_V1;
+}
+
+/** Cluster G / TAL-01933: a single TP stays executable after SL trails past it. */
+function _orderSingleTpAfterTrailV1Enabled() {
+    return typeof window === 'undefined'
+        || !window.__TALARIA_DISABLE_ORDER_SINGLE_TP_AFTER_TRAIL_V1;
+}
+
+/** Cluster G / TAL-01809: realized losses cannot drive displayed account balance below zero. */
+function _orderBalanceFloorV1Enabled() {
+    return typeof window === 'undefined'
+        || !window.__TALARIA_DISABLE_ORDER_BALANCE_FLOOR_V1;
+}
+
+/** Cluster G / SEL-01: per-order teardown uses exact classes, not substring prefixes. */
+function _orderSel01ExactTeardownV1Enabled() {
+    return typeof window === 'undefined'
+        || !window.__TALARIA_DISABLE_ORDER_SEL01_EXACT_TEARDOWN_V1;
 }
 
 /** T4 step 10: default ON — SL/TP panel steppers run full recalc path (TAL-00752 #15). */
@@ -330,7 +567,7 @@ function _classifyOrderTypeForPrice(side, price, currentPrice, opts = {}) {
     const entry = Number(price);
     if (!(market > 0) || !(entry > 0)) return opts.fallback || opts.mainOrderType || 'limit';
     const tickSize = Number(opts.tickSize || opts.pipSize || 0.0001);
-    const tolerance = tickSize * ORDER_TYPE_AT_MARKET_TOLERANCE_TICKS;
+    const tolerance = tickSize * (_orderTypeOneTickPendingV1Enabled() ? 0.25 : ORDER_TYPE_AT_MARKET_TOLERANCE_TICKS);
     if (Math.abs(entry - market) <= tolerance) return 'market';
     const s = String(side || 'BUY').toUpperCase();
     if (s === 'BUY') return entry < market ? 'limit' : 'stop';
@@ -718,7 +955,16 @@ class OrderManager {
         this._oiProvisionalDragCtx = null;
         this._oiProvisionalCancelHandlersInstalled = false;
         this._runtimeOrderPersistenceBootstrapped = false;
-        
+
+        /**
+         * B-W16 journal provenance tri-state: 'unhydrated' | 'hydrated' | 'locally-authored'.
+         * Fails closed — "we do not know" must never be treated as "there is nothing",
+         * because a durable write replaces the server journal wholesale.
+         */
+        this._journalProvenance = 'unhydrated';
+        /** Session id 'hydrated' was established for; this instance outlives a session switch. */
+        this._journalProvenanceSession = null;
+
         this.init();
     }
 
@@ -727,6 +973,12 @@ class OrderManager {
     _oiIsProvisionalEditActive() {
         const st = this._orderProvisionalEdit;
         return !!(st && st.phase !== 'idle');
+    }
+
+    _shouldBlockPlaceDuringPreviewDrag() {
+        if (!_orderBlockPlaceDuringPreviewDragV1Enabled()) return false;
+        const st = this._orderProvisionalEdit;
+        return !!this.isDraggingPreviewLine || !!(st && st.phase === 'preview');
     }
 
     _oiBeginProvisionalEdit(opts = {}) {
@@ -767,16 +1019,16 @@ class OrderManager {
         if (this._oiProvisionalCancelHandlersInstalled) return;
         this._oiProvisionalCancelHandlersInstalled = true;
         const self = this;
-        document.addEventListener('keydown', (e) => {
+        this._trackListener(document, 'keydown', (e) => {
             if (e.key !== 'Escape' || !self._oiIsProvisionalEditActive()) return;
             self._oiCancelActiveProvisionalEdit('escape');
         });
         if (_orderProvisionalFocusCancelV1Enabled()) {
-            window.addEventListener('multichartFocusChanged', () => {
+            this._trackListener(window, 'multichartFocusChanged', () => {
                 if (!self._oiIsProvisionalEditActive() && !self.isDraggingPreviewLine) return;
                 self._oiCancelActiveProvisionalEdit('focus-loss');
             });
-            window.addEventListener('blur', () => {
+            this._trackListener(window, 'blur', () => {
                 if (!self._multichartIsEmbedIframe()) return;
                 if (self._oiIsProvisionalEditActive() || self.isDraggingPreviewLine) {
                     self._oiCancelActiveProvisionalEdit('iframe-blur');
@@ -791,6 +1043,10 @@ class OrderManager {
         if (!st || st.phase === 'idle') return;
         const revert = st.committedPrice;
         const ctx = this._oiProvisionalDragCtx;
+        const recalcRiskAfterPreviewSlCancel = _orderRiskQtyLivePreviewSlV1Enabled()
+            && st.phase === 'preview'
+            && st.lineKind === 'sl'
+            && (this.positionSizeMode === 'risk-usd' || this.positionSizeMode === 'risk-percent');
         this._orderProvisionalEdit = _oiCreateProvisionalEditState();
         this._oiProvisionalDragCtx = null;
         this.isDraggingPreviewLine = false;
@@ -822,6 +1078,9 @@ class OrderManager {
             try { this.updateOrderLines(); } catch (e) { /* ignore */ }
         } else if (st.phase === 'preview') {
             try { this.updatePreviewLines(); } catch (e) { /* ignore */ }
+        }
+        if (recalcRiskAfterPreviewSlCancel && typeof this.calculatePositionFromRisk === 'function') {
+            try { this.calculatePositionFromRisk(); } catch (e) { /* ignore */ }
         }
         if (reason) console.log(`↩️ Provisional SL/TP edit cancelled (${reason})`);
         if (this._multichartIsEmbedIframe() && (reason === 'focus-loss' || reason === 'iframe-blur')) {
@@ -902,6 +1161,27 @@ class OrderManager {
         } catch (_e) { /* ignore */ }
     }
 
+    _recalculateRiskQuantityAfterSlCommit() {
+        if (!_orderRiskQtyOnSlCommitV1Enabled()) return;
+        const mode = this.positionSizeMode || 'risk-usd';
+        if (mode !== 'risk-usd' && mode !== 'risk-percent') return;
+        if (typeof this.calculatePositionFromRisk === 'function') {
+            this.calculatePositionFromRisk();
+        }
+    }
+
+    _breakevenFrozenTriggerPrice(settings) {
+        if (!_orderBePlaceAnchorV1Enabled()) return NaN;
+        const n = Number(settings?.triggerPrice);
+        return Number.isFinite(n) && n > 0 ? n : NaN;
+    }
+
+    _resolveBreakevenTriggerPrice(settings, computeFallback) {
+        const frozen = this._breakevenFrozenTriggerPrice(settings);
+        if (Number.isFinite(frozen)) return frozen;
+        return typeof computeFallback === 'function' ? computeFallback() : NaN;
+    }
+
     /** A6-4 Step 4: iframe open-leg commits route to host store. */
     _postHostOrderCommand(cmd, payload) {
         if (typeof window === 'undefined' || !window.parent || window.parent === window) return;
@@ -924,6 +1204,7 @@ class OrderManager {
             lineData.price = committed;
             const slInput = document.getElementById('slPrice');
             if (slInput) slInput.value = formatted;
+            this._recalculateRiskQuantityAfterSlCommit();
         } else if (lineData.label === 'TP') {
             lineData.price = committed;
             const tpInput = document.getElementById('tpPrice');
@@ -1131,6 +1412,92 @@ class OrderManager {
             } catch (e) { /* ignore */ }
         }
         return this.chart;
+    }
+
+    /**
+     * Register a listener on a target that OUTLIVES this manager (window, document, or any node it
+     * does not own), keeping the reference so it can be removed later.
+     *
+     * removeEventListener only detaches when the handler is the SAME function reference, so a
+     * listener installed with an inline arrow is unremovable — not because arrows are special, but
+     * because nobody kept the reference. Keeping it here is what makes teardown possible without
+     * rewriting every handler into a named method, and it stores the capture flag alongside, since
+     * a remove that disagrees on capture silently detaches nothing.
+     */
+    _trackListener(target, type, handler, options) {
+        if (!target || typeof target.addEventListener !== 'function') return handler;
+        target.addEventListener(type, handler, options);
+        if (!this._managedListeners) this._managedListeners = [];
+        this._managedListeners.push({ target, type, handler, options });
+        return handler;
+    }
+
+    /** Same contract for observers, which hold their callback and their observed nodes strongly. */
+    _trackObserver(observer) {
+        if (!observer) return observer;
+        if (!this._managedObservers) this._managedObservers = [];
+        this._managedObservers.push(observer);
+        return observer;
+    }
+
+    /**
+     * Release everything this manager attached to surfaces that outlive it.
+     *
+     * This is not hygiene. initReplaySystem (chart.js) constructs a fresh OrderManager on every
+     * call and abandons the previous one, while that one's document/window listeners stay attached
+     * and keep firing — so a second session gets two managers responding to one keypress, the older
+     * one holding the previous session's orders. Reset (exit a session, enter another in the same
+     * tab) cannot be correct until the outgoing manager stops receiving input.
+     *
+     * Idempotent, and safe to call on a partially constructed instance.
+     */
+    destroy() {
+        if (this._destroyed) return;
+        if (typeof window !== 'undefined' && window.__TALARIA_DISABLE_ORDER_MANAGER_TEARDOWN_V1) return;
+        this._destroyed = true;
+
+        for (const rec of this._managedListeners || []) {
+            try {
+                rec.target.removeEventListener(rec.type, rec.handler, rec.options);
+            } catch (_e) { /* target may already be gone */ }
+        }
+        this._managedListeners = [];
+
+        for (const obs of this._managedObservers || []) {
+            try {
+                if (typeof obs.disconnect === 'function') obs.disconnect();
+            } catch (_e) { /* ignore */ }
+        }
+        this._managedObservers = [];
+
+        try {
+            if (typeof this._m20A1Teardown === 'function') this._m20A1Teardown();
+        } catch (_e) { /* ignore */ }
+    }
+
+    /**
+     * The chart a TRADE ACTION belongs to, resolved from the order record alone.
+     *
+     * Deliberately NOT _getOrderContextChart: that one answers "which chart is the user looking at",
+     * which is the right question for live UI and the wrong one for journaling. A close writes a
+     * permanent record, and whichever panel happens to hold focus at the moment a background position
+     * hits its stop has no bearing on which instrument was traded.
+     *
+     * Returns null when the record does not name a resolvable owner (no sourceFileId, no match, or two
+     * panels showing one file). Callers fall back to the focused-chart reading in that case, so this is
+     * strictly an improvement on the legacy path and never a new failure mode.
+     */
+    _resolveJournalContextChart(order) {
+        if (typeof window === 'undefined') return null;
+        if (window.__TALARIA_DISABLE_JOURNAL_ATTRIBUTION_V1) return null;
+        const resolve = window.TalariaTradeAttribution
+            && window.TalariaTradeAttribution._resolveTradeJournalAttribution;
+        if (typeof resolve !== 'function') return null;
+        try {
+            return resolve(order) || null;
+        } catch (_e) {
+            return null;
+        }
     }
 
     /**
@@ -1939,7 +2306,7 @@ class OrderManager {
         (this.entryMarkers || []).forEach((m) => {
             if (hostChart(m) !== ch) return;
             const ref = m.order || this._orderRefForMarkerOrderId(m.orderId);
-            if (!belongsOnChart(ref)) removeMarkerDom(m);
+            if (!belongsOnChart(ref)) this._disposeEntryMarkerRecord(m);
         });
         this.entryMarkers = (this.entryMarkers || []).filter((m) => {
             if (hostChart(m) !== ch) return true;
@@ -1996,6 +2363,9 @@ class OrderManager {
         this.multiTPAvgLines = (this.multiTPAvgLines || []).filter((g) => g.chart !== chart);
         s.selectAll('.exec-order-connector').remove();
         s.selectAll('.y-axis-pending-highlight,.y-axis-entry-highlight,.y-axis-sl-highlight,.y-axis-tp-highlight,.y-axis-pending-sl-highlight,.y-axis-pending-tp-highlight,.y-axis-pending-be-highlight,.y-axis-price-highlight').remove();
+        // ORPHAN-L4: drop d3 mouseenter/mouseleave before DOM strip so CDP cannot
+        // count detached entry-marker <g> listeners across chart/panel teardown.
+        this._releaseEntryMarkerListenersForChart(chart);
         s.selectAll('g[class*="entry-marker-"], g.entry-marker, .entry-marker').remove();
         s.selectAll('.mfe-mae-marker-root').remove();
         s.selectAll('.exit-marker, [class*="exit-marker-"], .partial-close-marker, [class*="partial-close-marker-"]').remove();
@@ -2091,7 +2461,7 @@ class OrderManager {
         if (this.entryMarkers && this.entryMarkers.length) {
             this.entryMarkers.forEach((m) => {
                 try {
-                    if (m.marker) m.marker.remove();
+                    this._disposeEntryMarkerRecord(m);
                 } catch (e) { /* ignore */ }
             });
             this.entryMarkers = [];
@@ -2150,27 +2520,31 @@ class OrderManager {
     syncOrderVisualsToActiveChart() {
         if (!this.chart || !this.chart.svg) return;
         try {
+            this._cleanupDraftForActiveTickerChange();
             if (this._isMultiPanelLayout()) {
                 this._syncOrderVisualsMultiPanel();
                 return;
             }
 
-            this._dropOrderVisualsNotOnMainChart();
-            // Full strip + reset (same idea as multi-panel): removes orphan SVG and stale DOM refs in
-            // orderLines/slLines/... so a symbol switch cannot leave another pair's visuals on the canvas.
-            this._stripOrderDrawingLayersFromChart(this.chart);
-            this._clearClosedTradeMarkerRegistry();
-            this.entryMarkers = [];
-            this.orderLines = [];
-            this.splitGroupAvgLines = [];
-            this.multiTPAvgLines = [];
-            this.slLines = [];
-            this.tpLines = [];
-            this.beLines = [];
-            this.pendingTargetLines = [];
+            const scopedPairSwitch = _orderPairSwitchVisualRebindV1Enabled();
+            if (scopedPairSwitch) {
+                this._dropOrderVisualsNotOnMainChart();
+                // Full strip + reset (same idea as multi-panel): removes orphan SVG and stale DOM refs in
+                // orderLines/slLines/... so a symbol switch cannot leave another pair's visuals on the canvas.
+                this._stripOrderDrawingLayersFromChart(this.chart);
+                this._clearClosedTradeMarkerRegistry();
+                this.entryMarkers = [];
+                this.orderLines = [];
+                this.splitGroupAvgLines = [];
+                this.multiTPAvgLines = [];
+                this.slLines = [];
+                this.tpLines = [];
+                this.beLines = [];
+                this.pendingTargetLines = [];
+            }
 
             (this.openPositions || []).forEach((pos) => {
-                if (!this._isPositionForActiveChart(pos)) return;
+                if (scopedPairSwitch && !this._isPositionForActiveChart(pos)) return;
                 this.drawOrderLine(pos);
                 this.drawSLTPLines(pos);
                 try {
@@ -2178,7 +2552,7 @@ class OrderManager {
                 } catch (e) { /* scales may not be ready yet */ }
             });
             (this.pendingOrders || []).forEach((po) => {
-                if (!this._positionTickerMatchesChartSymbol(po, this.chart)) return;
+                if (scopedPairSwitch && !this._positionTickerMatchesChartSymbol(po, this.chart)) return;
                 try {
                     this.drawPendingOrderLine(po);
                     this.drawPendingOrderTargets(po);
@@ -2505,6 +2879,50 @@ class OrderManager {
             : (candleOpen > level ? candleOpen : level);      // SELL SL: open gapped above SL
     }
 
+    _recordSlTriggerDiag(position, detail = {}) {
+        if (!_orderSlTriggerDiagV1Enabled()) return false;
+        if (!position || typeof position !== 'object') return false;
+        const row = {
+            at: Date.now(),
+            reason: detail.reason || 'unknown',
+            orderId: position.id,
+            side: position.type,
+            ticker: position.ticker || position.symbol || this._getActiveTicker?.(),
+            sourceFileId: position.sourceFileId ?? position.source_file_id ?? null,
+            stopLoss: Number(position.stopLoss),
+            openPrice: Number(position.openPrice),
+            barTime: detail.barTime ?? detail.t ?? null,
+            guarded: !!detail.guarded,
+            guardTime: position._slNoTriggerBeforeTime ?? null,
+            guardTick: position._slNoTriggerBeforeTick ?? null,
+            skipReason: detail.skipReason || null,
+            rawTouched: !!detail.rawTouched,
+            effectiveExtreme: Number(detail.effectiveExtreme),
+            bidLow: Number(detail.bidLow),
+            bidHigh: Number(detail.bidHigh),
+            askLow: Number(detail.askLow),
+            askHigh: Number(detail.askHigh),
+            midOpen: Number(detail.midOpen),
+            fillPrice: detail.fillPrice != null ? Number(detail.fillPrice) : null,
+        };
+        if (!Array.isArray(this._slTriggerDiag)) this._slTriggerDiag = [];
+        this._slTriggerDiag.push(row);
+        if (this._slTriggerDiag.length > 80) this._slTriggerDiag.splice(0, this._slTriggerDiag.length - 80);
+        try {
+            if (typeof window !== 'undefined') {
+                if (!Array.isArray(window.__talariaOrderSlTriggerDiag)) window.__talariaOrderSlTriggerDiag = [];
+                window.__talariaOrderSlTriggerDiag.push(row);
+                if (window.__talariaOrderSlTriggerDiag.length > 80) {
+                    window.__talariaOrderSlTriggerDiag.splice(0, window.__talariaOrderSlTriggerDiag.length - 80);
+                }
+                if (window.__TALARIA_ORDER_SL_TRIGGER_DIAG_LOGS === true && typeof console !== 'undefined') {
+                    console.info('[TAL-01941 SL diag]', row);
+                }
+            }
+        } catch (_) { /* diagnostics must never affect trading */ }
+        return true;
+    }
+
     /**
      * Executable stop-loss fill: gap-aware open, then price at stop when touched.
      * BUY: if low <= SL, fill at stop price (matches chart line); gap-through-open uses open.
@@ -2619,8 +3037,7 @@ class OrderManager {
                     this._pushSplitGroupSlClosesFromHit(position, fillPx, positionsToClose, queuedSplitSlGroupIds, barTime);
                 } else {
                     const tp = Number.parseFloat(position.takeProfit);
-                    const slBgBuy1 = Number.parseFloat(position.stopLoss);
-                    if (Number.isFinite(tp) && barQ.bidHigh >= tp && (!Number.isFinite(slBgBuy1) || tp > slBgBuy1)) {
+                    if (this._singleTakeProfitExecutable(position, tp, position.stopLoss) && barQ.bidHigh >= tp) {
                         const fillPx = hasOpen ? this._gapFill(tp, bgOpen, true, true) : tp;
                         positionsToClose.push({ id: position.id, closePrice: fillPx, type: 'TP', bgCloseTime: barTime });
                     }
@@ -2655,8 +3072,7 @@ class OrderManager {
                     this._pushSplitGroupSlClosesFromHit(position, fillPx, positionsToClose, queuedSplitSlGroupIds, barTime);
                 } else {
                     const tp = Number.parseFloat(position.takeProfit);
-                    const slBgSell1 = Number.parseFloat(position.stopLoss);
-                    if (Number.isFinite(tp) && barQ.askLow <= tp && (!Number.isFinite(slBgSell1) || tp < slBgSell1)) {
+                    if (this._singleTakeProfitExecutable(position, tp, position.stopLoss) && barQ.askLow <= tp) {
                         const fillPx = hasOpen ? this._gapFill(tp, bgOpen, false, true) : tp;
                         positionsToClose.push({ id: position.id, closePrice: fillPx, type: 'TP', bgCloseTime: barTime });
                     }
@@ -3249,7 +3665,9 @@ class OrderManager {
      */
     _refreshAllGuardsToTimestamp(t, tick) {
         if (!t) return;
-        if (tick === undefined) tick = -1;
+        if (tick === undefined) {
+            tick = _orderSeekGuardInfinityV1Enabled() ? Infinity : -1;
+        }
 
         for (const pos of (this.openPositions || [])) {
             this._seedOrderLifecycleEvent(pos, { t });
@@ -3988,6 +4406,167 @@ class OrderManager {
             'post_exit_bar_close_r_archive', 'post_exit_bar_high_r_archive', 'post_exit_bar_low_r_archive',
             'post_checkpoints', 'trail_sl_path',
         ];
+    }
+
+    /**
+     * TRADE-EVICT-V1 — memory term: per-order base64 screenshots + excursion arrays.
+     * Released from hot closedPositions after post-exit bound; journal keeps cold copy.
+     */
+    _tradeEvictV1HotFieldKeys() {
+        return [
+            'entryScreenshot', 'exitScreenshot', 'entryScreenshots', 'railScreenshots',
+            'screenshot', 'screenshotBase64', 'image', 'chartImage', 'thumbnail', 'preview',
+            'screenshots',
+            'bar_close_r', 'bar_high_r', 'bar_low_r',
+            'post_exit_bar_close_r', 'post_exit_bar_high_r', 'post_exit_bar_low_r',
+            'bar_close_r_archive', 'bar_high_r_archive', 'bar_low_r_archive',
+            'post_exit_bar_close_r_archive', 'post_exit_bar_high_r_archive', 'post_exit_bar_low_r_archive',
+            'post_checkpoints', 'trail_sl_path',
+            'bar_high_r_peak', 'bar_low_r_peak',
+            'post_exit_bar_high_r_peak', 'post_exit_bar_low_r_peak',
+        ];
+    }
+
+    /** Approximate retained hot bytes for EVICT-01 (screenshots + excursion series). */
+    _tradeEvictV1ApproxHotBytes(row) {
+        if (!row || typeof row !== 'object') return 0;
+        let n = 0;
+        for (const k of this._tradeEvictV1HotFieldKeys()) {
+            const v = row[k];
+            if (v == null) continue;
+            if (typeof v === 'string') n += v.length * 2;
+            else if (Array.isArray(v) || typeof v === 'object') {
+                try { n += JSON.stringify(v).length * 2; } catch { /* ignore */ }
+            }
+        }
+        return n;
+    }
+
+    _tradeEvictV1FindJournalRow(tradeId) {
+        const id = Number(tradeId);
+        if (!Number.isFinite(id) || !Array.isArray(this.tradeJournal)) return null;
+        return this.tradeJournal.find((t) => Number(t.tradeId ?? t.id) === id) || null;
+    }
+
+    _tradeEvictV1FindClosedRow(tradeId) {
+        const id = Number(tradeId);
+        if (!Number.isFinite(id) || !Array.isArray(this.closedPositions)) return null;
+        return this.closedPositions.find((p) => Number(p.id) === id) || null;
+    }
+
+    /**
+     * Release hot screenshot/excursion fields after post-exit bound at playhead T.
+     * Keeps id + entry/exit prices/times for canvas arrows. Journal is untouched.
+     */
+    _tradeEvictV1ReleaseHotFields(row, playheadT, meta = {}) {
+        if (!_tradeEvictV1Enabled() || !row || typeof row !== 'object') return false;
+        if (row._tradeEvictV1?.released === true) return false;
+        const t = Number(playheadT);
+        if (!Number.isFinite(t)) return false;
+        for (const k of this._tradeEvictV1HotFieldKeys()) {
+            if (k in row) row[k] = Array.isArray(row[k]) ? null : null;
+        }
+        row._tradeEvictV1 = {
+            released: true,
+            playheadT: t,
+            closeTime: Number(meta.closeTime ?? row.closeTime ?? row.exitTime) || null,
+            postExitTrackingMode: meta.postExitTrackingMode || row.postExitTrackingMode || this.postExitTrackingMode || 'hours',
+            postExitTrackingCandles: Number.parseInt(
+                meta.postExitTrackingCandles ?? row.postExitTrackingCandles ?? this.postExitTrackingCandles ?? 50, 10,
+            ),
+            post_exit_anchor_time: meta.post_exit_anchor_time ?? row.post_exit_anchor_time ?? null,
+            mfeMaeTrackingEndTime: meta.mfeMaeTrackingEndTime ?? row.mfeMaeTrackingEndTime ?? null,
+        };
+        return true;
+    }
+
+    /** Restore hot fields from journal when playhead rewinds behind eviction T (EVICT-02). */
+    _tradeEvictV1RestoreHotFieldsFromJournal(row, journal) {
+        if (!_tradeEvictV1Enabled() || !row || !journal) return false;
+        if (row._tradeEvictV1?.released !== true) return false;
+        for (const k of this._tradeEvictV1HotFieldKeys()) {
+            if (journal[k] == null) continue;
+            row[k] = Array.isArray(journal[k]) ? journal[k].slice() : journal[k];
+        }
+        const prev = row._tradeEvictV1;
+        row._tradeEvictV1 = {
+            ...prev,
+            released: false,
+            restoredAtPlayhead: true,
+        };
+        return true;
+    }
+
+    /**
+     * After post-exit bound completes at playhead T: drop from sampling (caller)
+     * and release hot memory on closedPositions. Journal retains cold copy.
+     */
+    _tradeEvictV1OnBoundComplete(position, playheadT) {
+        if (!_tradeEvictV1Enabled() || !position) return { released: false, bytesBefore: 0, bytesAfter: 0 };
+        const closed = this._tradeEvictV1FindClosedRow(position.id) || position;
+        const bytesBefore = this._tradeEvictV1ApproxHotBytes(closed);
+        const meta = {
+            closeTime: position.closeTime ?? position.exitTime,
+            postExitTrackingMode: position.postExitTrackingMode,
+            postExitTrackingCandles: position.postExitTrackingCandles,
+            post_exit_anchor_time: position.post_exit_anchor_time,
+            mfeMaeTrackingEndTime: position.mfeMaeTrackingEndTime,
+        };
+        this._tradeEvictV1ReleaseHotFields(closed, playheadT, meta);
+        if (closed !== position) this._tradeEvictV1ReleaseHotFields(position, playheadT, meta);
+        const journal = this._tradeEvictV1FindJournalRow(position.id);
+        if (journal && journal._tradeEvictV1?.released !== true) {
+            // Mark journal with eviction playhead metadata only — do not strip cold bytes.
+            journal._tradeEvictV1 = {
+                released: false,
+                cold: true,
+                playheadT: Number(playheadT),
+                closeTime: meta.closeTime ?? null,
+            };
+        }
+        const bytesAfter = this._tradeEvictV1ApproxHotBytes(closed);
+        return { released: true, bytesBefore, bytesAfter, playheadT: Number(playheadT) };
+    }
+
+    /**
+     * EVICT-02: trades evicted at playhead T become live again if playhead < T.
+     * Rehydrates hot fields from journal and re-queues post-exit sampling when still in window.
+     */
+    _tradeEvictV1SyncPlayhead(playheadMs) {
+        if (!_tradeEvictV1Enabled()) return { restored: 0, requeued: 0 };
+        const t = Number(playheadMs);
+        if (!Number.isFinite(t)) return { restored: 0, requeued: 0 };
+        let restored = 0;
+        let requeued = 0;
+        for (const closed of (this.closedPositions || [])) {
+            const ev = closed._tradeEvictV1;
+            if (!ev || ev.released !== true) continue;
+            const boundT = Number(ev.playheadT);
+            if (!Number.isFinite(boundT) || t >= boundT) continue;
+            const journal = this._tradeEvictV1FindJournalRow(closed.id);
+            if (!journal) continue;
+            if (this._tradeEvictV1RestoreHotFieldsFromJournal(closed, journal)) restored += 1;
+
+            // Resume post-exit sampling only while playhead is still inside the window.
+            const closeT = Number(ev.closeTime ?? closed.closeTime);
+            const inPostExit = Number.isFinite(closeT) && t > closeT && t < boundT;
+            const alreadyTracking = (this.mfeMaeTrackingPositions || []).some(
+                (p) => Number(p.id) === Number(closed.id),
+            );
+            if (inPostExit && !alreadyTracking) {
+                this.mfeMaeTrackingPositions.push({
+                    ...closed,
+                    postExitTrackingMode: ev.postExitTrackingMode || this.postExitTrackingMode || 'hours',
+                    postExitTrackingCandles: ev.postExitTrackingCandles ?? this.postExitTrackingCandles ?? 50,
+                    postExitProcessedCandles: 0,
+                    post_exit_anchor_time: ev.post_exit_anchor_time ?? closeT,
+                    mfeMaeTrackingEndTime: ev.mfeMaeTrackingEndTime ?? boundT,
+                    _tradeEvictV1Requeued: true,
+                });
+                requeued += 1;
+            }
+        }
+        return { restored, requeued };
     }
 
     _m19HotPersistHeavyKeySet() {
@@ -5775,9 +6354,14 @@ class OrderManager {
     /**
      * Persist / journal canonical shape: bar_* = live tail only; *_archive =
      * preserved prefix. Never writes reconstructed arrays into bar_*.
+     *
+     * EXCURSION-SINGLE-OWNER-V1: share array object identity with `source` so
+     * journal + closed do not each retain a sliced copy. TRADE-EVICT then nulls
+     * the closed keys and the journal keeps the sole reference.
      */
     _m19AssignCanonicalExcursionStorage(target, source) {
         if (!target || !source || typeof target !== 'object') return target;
+        const share = _excursionSingleOwnerV1Enabled();
         const seriesKeys = [
             'bar_close_r', 'bar_high_r', 'bar_low_r',
             'post_exit_bar_close_r', 'post_exit_bar_high_r', 'post_exit_bar_low_r',
@@ -5785,14 +6369,14 @@ class OrderManager {
         for (let i = 0; i < seriesKeys.length; i++) {
             const k = seriesKeys[i];
             if (Array.isArray(source[k])) {
-                target[k] = source[k].slice();
+                target[k] = share ? source[k] : source[k].slice();
             } else if (target[k] == null) {
                 target[k] = [];
             }
             const archKey = `${k}_archive`;
-            if (source[archKey] != null && target[archKey] == null) {
+            if (source[archKey] != null && (share || target[archKey] == null)) {
                 target[archKey] = Array.isArray(source[archKey])
-                    ? source[archKey].slice()
+                    ? (share ? source[archKey] : source[archKey].slice())
                     : source[archKey];
             }
         }
@@ -5801,11 +6385,76 @@ class OrderManager {
             'post_exit_bar_high_r_peak', 'post_exit_bar_low_r_peak',
             'post_exit_bar_r_count', 'post_exit_bar_r_legacy_pending',
         ].forEach((k) => {
-            if (source[k] != null && target[k] == null) {
+            if (source[k] != null && (share || target[k] == null)) {
                 target[k] = source[k];
             }
         });
         return target;
+    }
+
+    /**
+     * EXCURSION-SINGLE-OWNER-V1 — point journal row at the hot row's excursion
+     * arrays (shared identity). Does not slice.
+     */
+    _excursionSingleOwnerV1ShareFromHot(journalRow, hotRow) {
+        if (!_excursionSingleOwnerV1Enabled() || !journalRow || !hotRow) return false;
+        for (const k of _excursionSingleOwnerV1SeriesKeys()) {
+            if (hotRow[k] == null) continue;
+            journalRow[k] = hotRow[k];
+        }
+        [
+            'bar_high_r_peak', 'bar_low_r_peak', 'bar_r_count', 'bar_r_legacy_pending',
+            'post_exit_bar_high_r_peak', 'post_exit_bar_low_r_peak',
+            'post_exit_bar_r_count', 'post_exit_bar_r_legacy_pending',
+        ].forEach((k) => {
+            if (hotRow[k] != null) journalRow[k] = hotRow[k];
+        });
+        journalRow._excursionSingleOwnerV1 = {
+            authoritative: 'tradeJournal',
+            sharedFromHot: true,
+            aliases: {
+                managerClosed: 'orderService.closedPositions (same array via bindServiceProp)',
+                serviceClosed: 'alias of managerClosed — zero additional bytes',
+            },
+        };
+        return true;
+    }
+
+    /**
+     * EXCURSION-SINGLE-OWNER-V1 — hard-cap every live series at tail max.
+     * Archive+bound already trims; this is the belt that fails closed if a path
+     * skipped the binder (Director 20:45 "cap not binding" kill).
+     */
+    _excursionSingleOwnerV1HardCapLiveTails(position) {
+        if (!_excursionSingleOwnerV1Enabled() || !position) return 0;
+        const max = this._m19ExcursionTailMaxV1();
+        if (!Number.isFinite(max) || max < 1) return 0;
+        let trimmed = 0;
+        const liveKeys = [
+            'bar_close_r', 'bar_high_r', 'bar_low_r',
+            'post_exit_bar_close_r', 'post_exit_bar_high_r', 'post_exit_bar_low_r',
+        ];
+        for (const k of liveKeys) {
+            const arr = position[k];
+            if (!Array.isArray(arr) || arr.length <= max) continue;
+            const removeCount = arr.length - max;
+            arr.copyWithin(0, removeCount);
+            arr.length = max;
+            trimmed += 1;
+        }
+        return trimmed;
+    }
+
+    /** Excursion-only UTF-16 byte estimate for CONF-02 single-owner cell. */
+    _excursionSingleOwnerV1ApproxBytes(row) {
+        if (!row || typeof row !== 'object') return 0;
+        let n = 0;
+        for (const k of _excursionSingleOwnerV1SeriesKeys()) {
+            const v = row[k];
+            if (!Array.isArray(v) || v.length === 0) continue;
+            try { n += JSON.stringify(v).length * 2; } catch { /* ignore */ }
+        }
+        return n;
     }
 
     /**
@@ -6006,6 +6655,8 @@ class OrderManager {
                 bootstrapPostExitPeaks,
             );
         }
+        // EXCURSION-SINGLE-OWNER-V1: belt-and-suspenders live-tail cap (≤256 each).
+        this._excursionSingleOwnerV1HardCapLiveTails(position);
     }
 
     /** Planned risk distance in price units (frozen initial SL vs array base). */
@@ -6209,6 +6860,15 @@ class OrderManager {
     /** SL fill → journal / exports use BE when stop was last set by auto-BE (not trail/manual). */
     _slCloseHitType(position) {
         return position && position._slIsBreakevenPlacement ? 'BE' : 'SL';
+    }
+
+    _singleTakeProfitExecutable(position, takeProfit, stopLoss) {
+        const tp = Number(takeProfit);
+        if (!Number.isFinite(tp) || tp <= 0) return false;
+        if (_orderSingleTpAfterTrailV1Enabled()) return true;
+        const sl = Number(stopLoss);
+        if (!Number.isFinite(sl)) return true;
+        return position && position.type === 'SELL' ? tp < sl : tp > sl;
     }
 
     /**
@@ -6436,8 +7096,15 @@ class OrderManager {
         return true;
     }
 
-    _getActiveInstrumentSettings() {
-        const ticker = this._getActiveTicker();
+    /**
+     * @param {object} [contextChart] price the instrument against THIS chart instead of the focused one.
+     *   Journaling passes the chart the order record names, so a close records the scalars of the pair
+     *   that was actually traded even while another panel holds focus. Every other caller omits it and
+     *   keeps the focused-chart reading, which is correct for live UI.
+     */
+    _getActiveInstrumentSettings(contextChart) {
+        const ticker = (contextChart && this._normalizeTicker(contextChart.currentSymbol))
+            || this._getActiveTicker();
         let base;
         if (this.orderService && typeof this.orderService.getInstrumentSettings === 'function') {
             base = this.orderService.getInstrumentSettings(ticker, {
@@ -6457,7 +7124,12 @@ class OrderManager {
             try {
                 const calc = window.marketCalcEngine.getCalculator(ticker, this.marketType);
                 if (calc && calc.specs && Number.isFinite(calc.specs.pipSize) && calc.specs.pipSize > 0) {
-                    const cc = typeof this.getCurrentCandle === 'function' ? this.getCurrentCandle() : null;
+                    // The mark feeds calcPipValuePerLot, so it must come from the same chart as the
+                    // ticker above — reading the focused chart here is what recorded a 1.08-shaped
+                    // mark against a 156-shaped pair.
+                    const cc = contextChart
+                        ? this._getCurrentCandleForChart(contextChart)
+                        : (typeof this.getCurrentCandle === 'function' ? this.getCurrentCandle() : null);
                     const mark = cc && Number.isFinite(Number.parseFloat(cc.c)) ? Number.parseFloat(cc.c) : undefined;
                     let pv = null;
                     if (typeof calc.calcPipValuePerLot === 'function') {
@@ -6848,6 +7520,43 @@ class OrderManager {
     }
 
     /**
+     * Live entry/SL/TP for panel math during preview drag.
+     * Apply-on-release withholds #tpPrice/#slPrice until mouseup; provisional +
+     * preview line geometry still move every frame — feed those into PnL/R:R.
+     * Only overrides inputs while a provisional edit or preview-line drag is active
+     * so typed panel values still win at rest.
+     */
+    _resolveLivePreviewPanelPrices() {
+        let entryPrice = parseFloat(document.getElementById('orderEntryPrice')?.value || 0);
+        let slPrice = parseFloat(document.getElementById('slPrice')?.value || 0);
+        let tpPrice = this._parseSltpInputPrice(document.getElementById('tpPrice')?.value, 0);
+        if (!_orderPreviewLiveRecalcV1Enabled()) {
+            return { entryPrice, slPrice, tpPrice };
+        }
+        const st = this._orderProvisionalEdit;
+        const previewProvisional = !!(st && st.phase === 'preview');
+        const dragging = !!this.isDraggingPreviewLine || previewProvisional;
+        const provSl = this._oiResolveProvisionalPreviewPrice('sl');
+        const provTp = this._oiResolveProvisionalPreviewPrice('tp');
+        if (Number.isFinite(provSl) && provSl > 0) slPrice = provSl;
+        else if (dragging) {
+            const slLine = Number(this.previewLines?.sl?.price);
+            if (Number.isFinite(slLine) && slLine > 0) slPrice = slLine;
+        }
+        const singlePreviewTp = !(st && st.phase === 'preview' && st.lineKind === 'tp' && st.tpTargetIndex != null);
+        if (singlePreviewTp && Number.isFinite(provTp) && provTp > 0) tpPrice = provTp;
+        else if (singlePreviewTp && dragging) {
+            const tpLine = Number(this.previewLines?.tp?.price);
+            if (Number.isFinite(tpLine) && tpLine > 0) tpPrice = tpLine;
+        }
+        if (dragging) {
+            const entryLine = Number(this.previewLines?.entry?.price);
+            if (Number.isFinite(entryLine) && entryLine > 0) entryPrice = entryLine;
+        }
+        return { entryPrice, slPrice, tpPrice };
+    }
+
+    /**
      * Valid SL vs entry + risk USD (same rules as calculateAdvancedRiskReward).
      * @param {number} entryPrice
      * @param {number} quantity
@@ -6858,7 +7567,10 @@ class OrderManager {
         const slEnabled = document.getElementById('enableSL')?.checked;
         let slPrice = 0;
         if (slEnabled) {
-            const slIn = parseFloat(document.getElementById('slPrice')?.value || 0);
+            const live = _orderPreviewLiveRecalcV1Enabled()
+                ? this._resolveLivePreviewPanelPrices().slPrice
+                : 0;
+            const slIn = live > 0 ? live : parseFloat(document.getElementById('slPrice')?.value || 0);
             if (slIn > 0) slPrice = slIn;
         }
         const slDistance = Math.abs(entryPrice - slPrice);
@@ -7169,6 +7881,22 @@ class OrderManager {
             hotQueued = true;
         }
         if (this.chart && typeof this.chart.queueCriticalSessionStateSave === 'function') {
+            // B-W16: guard BOTH durable exits (A1 rehydrate + legacy unmarked) with one
+            // branch. Admit-list, not a deny-list: an unset or unrecognised provenance
+            // is "we do not know", which must never open a durable write. 'hydrated'
+            // only vouches for the session it was established for — this instance
+            // outlives a session switch (see _m19CommitJournalArray).
+            const journalVouchedFor = this._journalProvenance === 'locally-authored'
+                || (this._journalProvenance === 'hydrated'
+                    && this._journalProvenanceSession === (sessionId != null ? String(sessionId) : null));
+            // B-W18 rollback lever: when the kill is engaged this branch is skipped
+            // entirely and the durable write proceeds exactly as it did pre-B-W16 —
+            // same return shape, no suppression, no warning. The guard condition
+            // itself is unchanged.
+            if (_bW16HydrationGuardEnabled() && !journalVouchedFor) {
+                console.warn("📔 durable journal write suppressed: this session's journal was never hydrated from the server; the in-memory journal may be incomplete and writing it would delete server-side trades. Keeping last durable state.");
+                return Promise.resolve({ hotQueued, durableQueued: false, reason: 'journal-unhydrated' });
+            }
             const rowsHaveRefs = this._m20A1RowsHaveScreenshotRefs(durableJournal);
             // M20-A1 runtime-kill transition: kill flipped AFTER rows were
             // externalized. Durable must NEVER replace the server journal
@@ -7448,7 +8176,7 @@ class OrderManager {
             const equity = Number.parseFloat(accountRuntime.equity);
             const initialBalance = Number.parseFloat(accountRuntime.initialBalance);
             const sessionCurrentTime = Number.parseFloat(accountRuntime.session_current_time);
-            if (Number.isFinite(balance)) this.balance = balance;
+            if (Number.isFinite(balance)) this.balance = this._floorAccountBalance(balance);
             if (Number.isFinite(equity)) this.equity = equity;
             if (Number.isFinite(initialBalance)) this.initialBalance = initialBalance;
             if (Number.isFinite(sessionCurrentTime) && this.orderService?.multiInstrumentSession) {
@@ -7463,6 +8191,7 @@ class OrderManager {
             if (Number.isFinite(orderIdCounter) && orderIdCounter > 0) this.orderIdCounter = orderIdCounter;
             if (Number.isFinite(tradeGroupIdCounter) && tradeGroupIdCounter > 0) this.tradeGroupIdCounter = tradeGroupIdCounter;
         }
+        this._m24ReconcileOrderIdCounter();
 
         // Remove old runtime visuals before rebuilding from restored state.
         this.orderLines = [];
@@ -7571,8 +8300,22 @@ class OrderManager {
             }, 0)
             : 0;
 
-        this.balance = startingBalance + realizedPnL;
+        this.balance = this._floorAccountBalance(startingBalance + realizedPnL);
         this._syncReplayHeaderStatsFromAccount();
+    }
+
+    _floorAccountBalance(value) {
+        const n = Number.parseFloat(value);
+        if (!Number.isFinite(n)) return value;
+        return _orderBalanceFloorV1Enabled() ? Math.max(0, n) : n;
+    }
+
+    _applyRealizedPnLToBalance(pnl) {
+        const current = Number.parseFloat(this.balance);
+        const delta = Number.parseFloat(pnl);
+        const next = (Number.isFinite(current) ? current : 0) + (Number.isFinite(delta) ? delta : 0);
+        this.balance = this._floorAccountBalance(next);
+        return this.balance;
     }
 
     _computeAdvancedAnalytics() {
@@ -8126,6 +8869,142 @@ class OrderManager {
         if (filtered.length < originalLength) {
             console.log(`🧹 Cleaned ${originalLength - filtered.length} duplicate(s) from journal`);
         }
+    }
+
+    _m24ScanOrderIdentityRows(rows, visit) {
+        if (!Array.isArray(rows)) return;
+        rows.forEach((row) => {
+            if (!row || typeof row !== 'object') return;
+            visit(row.id);
+            visit(row.tradeId);
+            visit(row.client_trade_id);
+            if (Array.isArray(row.scaledEntries)) row.scaledEntries.forEach((entry) => visit(entry && entry.id));
+            if (Array.isArray(row.splitEntries)) row.splitEntries.forEach((entry) => visit(entry && entry.id));
+        });
+    }
+
+    _resolveJournalDisplayTradeId(trade, fallbackId = null) {
+        if (!_m24DisplayIdStabilityV1Enabled()) {
+            return trade ? (trade.tradeId || trade.id || fallbackId) : fallbackId;
+        }
+        const fromTrade = this._resolveJournalDisplayTradeIdValue(trade);
+        if (fromTrade != null) return fromTrade;
+        return fallbackId;
+    }
+
+    _resolveJournalDisplayTradeIdValue(trade) {
+        if (!trade || typeof trade !== 'object') return null;
+        const journalTradeId = trade.journal_trade_id ?? trade.journalTradeId;
+        const normalizeCandidate = (value, { allowZero = false } = {}) => {
+            if (value == null) return null;
+            const trimmed = String(value).trim();
+            if (trimmed === '') return null;
+            const withoutHash = trimmed.replace(/^#/, '');
+            const numeric = Number(withoutHash);
+            if (Number.isFinite(numeric) && numeric === 0 && !allowZero) return null;
+            return value;
+        };
+        const isJournalTradeId = (value) => {
+            const candidate = normalizeCandidate(value, { allowZero: true });
+            if (candidate == null || journalTradeId == null) return false;
+            return String(candidate).trim().replace(/^#/, '') === String(journalTradeId).trim().replace(/^#/, '');
+        };
+        const pick = (keys, options = {}) => {
+            for (const key of keys) {
+                const value = normalizeCandidate(trade[key], options);
+                if (value == null) continue;
+                if (options.skipJournalId && isJournalTradeId(value)) continue;
+                return value;
+            }
+            return null;
+        };
+        const stableId = pick(['client_trade_id', 'clientTradeId', 'tradeId']);
+        if (stableId != null) return stableId;
+        const legacyId = pick(['id'], { skipJournalId: true });
+        if (legacyId != null) return legacyId;
+        const userScopedId = pick(['display_trade_id', 'displayTradeId', 'user_trade_id', 'userTradeId']);
+        if (userScopedId != null) return userScopedId;
+        const lastResortId = pick(['tradeId', 'id'], { allowZero: false });
+        if (lastResortId != null) return lastResortId;
+        return null;
+    }
+
+    _resolveJournalExportTradeId(trade, fallbackId = '') {
+        if (!trade || typeof trade !== 'object') return fallbackId;
+        for (const key of ['client_trade_id', 'clientTradeId', 'tradeId', 'id']) {
+            const value = trade[key];
+            if (value == null || String(value).trim() === '') continue;
+            return value;
+        }
+        return fallbackId;
+    }
+
+    _m24ReconcileOrderIdCounter() {
+        if (!_m24OrderIdAllocatorV1Enabled()) return this.orderIdCounter;
+        let maxOrderId = 0;
+        const visit = (id) => {
+            if (typeof id === 'number' && Number.isFinite(id) && id > maxOrderId) {
+                maxOrderId = id;
+            }
+        };
+        this._m24ScanOrderIdentityRows(this.pendingOrders, visit);
+        this._m24ScanOrderIdentityRows(this.openPositions, visit);
+        this._m24ScanOrderIdentityRows(this.closedPositions, visit);
+        this._m24ScanOrderIdentityRows(this.orders, visit);
+        this._m24ScanOrderIdentityRows(this.tradeJournal, visit);
+        this._m24ScanOrderIdentityRows(this.orderService && this.orderService.pendingOrders, visit);
+        this._m24ScanOrderIdentityRows(this.orderService && this.orderService.openPositions, visit);
+        const current = Number.parseInt(this.orderIdCounter, 10);
+        const nextFromRows = Math.max(1, maxOrderId + 1);
+        if (_m24OrderIdAllocatorV1Enabled() && _m24OrderIdGapReconcileV1Enabled()) {
+            this.orderIdCounter = nextFromRows;
+        } else {
+            this.orderIdCounter = Math.max(Number.isFinite(current) && current > 0 ? current : 1, nextFromRows);
+        }
+        return this.orderIdCounter;
+    }
+
+    _allocateOrderId() {
+        if (!_m24OrderIdAllocatorV1Enabled()) return this.orderIdCounter++;
+        const id = this._m24ReconcileOrderIdCounter();
+        this.orderIdCounter = id + 1;
+        return id;
+    }
+
+    _armExplicitPlaceIntent() {
+        if (!_orderExplicitPlaceAuditV1Enabled()) return;
+        this._explicitPlaceIntentDepth = (this._explicitPlaceIntentDepth | 0) + 1;
+    }
+
+    _disarmExplicitPlaceIntent() {
+        if (!_orderExplicitPlaceAuditV1Enabled()) return;
+        this._explicitPlaceIntentDepth = Math.max(0, (this._explicitPlaceIntentDepth | 0) - 1);
+    }
+
+    _assertExplicitPlaceAudit(source) {
+        if (!_orderExplicitPlaceAuditV1Enabled()) return true;
+        const ok = (this._explicitPlaceIntentDepth | 0) > 0
+            || (this._explicitPlaceIntentUntil | 0) > Date.now()
+            || source === 'pending-fill'
+            || source === 'session-restore'
+            || source === 'replay-resurrect';
+        if (ok) return true;
+        this._lastExplicitPlaceAuditViolation = source;
+        if (window.__TALARIA_ORDER_EXPLICIT_PLACE_AUDIT_THROW === true) {
+            throw new Error(`ORDER_EXPLICIT_PLACE_AUDIT:${source}`);
+        }
+        return false;
+    }
+
+    _pushOpenPosition(order, source) {
+        this._assertExplicitPlaceAudit(source || 'direct');
+        if (this.orderService) {
+            this.orderService.registerOpenOrder(order);
+            return;
+        }
+        this.attachStrategyVariablesToOrder(order);
+        this.openPositions.push(order);
+        this.orders.push(order);
     }
 
     /**
@@ -9281,9 +10160,32 @@ class OrderManager {
                 
                 // Render trade items
                 const reversedJournal = this.tradeJournal.slice().reverse();
-                const htmlContent = reversedJournal.map((trade, index) => this.renderTradeListItem(trade, index)).join('');
+                // M20-J1: bound the rendered set to one window (newest first).
+                // A 301-row journal built 301 rows of markup on every call.
+                const j1On = this._m20J1ThumbsEnabled();
+                const windowSize = j1On ? this._m20J1RenderWindow() : reversedJournal.length;
+                const visibleJournal = j1On && reversedJournal.length > windowSize
+                    ? reversedJournal.slice(0, windowSize)
+                    : reversedJournal;
+                const hiddenCount = reversedJournal.length - visibleJournal.length;
+                let htmlContent = visibleJournal.map((trade, index) => this.renderTradeListItem(trade, index)).join('');
+                if (hiddenCount > 0) {
+                    htmlContent += `
+            <div style="padding: 10px; text-align: center;">
+                <button type="button" data-journal-show-more="1" style="
+                    background: rgba(124,58,237,0.15);
+                    color: #c4b5fd;
+                    border: 1px solid rgba(124,58,237,0.4);
+                    border-radius: 6px;
+                    padding: 8px 14px;
+                    font-size: 11px;
+                    font-weight: 600;
+                    cursor: pointer;
+                " onclick="event.stopPropagation(); window.chart.orderManager.expandJournalRenderWindow()">Show more — ${hiddenCount} older trade${hiddenCount === 1 ? '' : 's'}</button>
+            </div>`;
+                }
                 
-                console.log(`✅ Rendered ${reversedJournal.length} trade items for sidebar`);
+                console.log(`✅ Rendered ${visibleJournal.length} trade items for sidebar`);
                 
                 tradeHistoryList.innerHTML = htmlContent;
                 
@@ -9299,6 +10201,16 @@ class OrderManager {
                         tradeHistoryList.addEventListener('click', (e) => {
                             const item = e.target.closest('.trade-history-item');
                             if (!item) return;
+                            // M20-J1: the LIVE row is the richer source (the
+                            // data-trade attribute no longer carries blobs);
+                            // the attribute stays as the fallback.
+                            if (this._m20J1ThumbsEnabled()) {
+                                const liveRow = this._m20J1FindRowByTradeId(item.getAttribute('data-trade-id'));
+                                if (liveRow) {
+                                    this.showTradeDetails(liveRow);
+                                    return;
+                                }
+                            }
                             const tradeData = item.getAttribute('data-trade');
                             if (!tradeData) return;
                             try {
@@ -9404,6 +10316,308 @@ class OrderManager {
         }
     }
 
+    // ═════════════════════════════════════════════════════════════════════
+    // M20-J1 — journal list stops carrying full-resolution screenshots.
+    //
+    // Kill-switch (restores the pre-J1 list markup byte-for-byte):
+    //   window.__TALARIA_DISABLE_JOURNAL_SHOT_THUMBS_V1 = <any truthy value>
+    //
+    // Three independent costs the pre-J1 list paid PER SCREENSHOT PER ROW:
+    //   1. data-trade='<JSON.stringify(trade)>'  — the whole row, screenshots
+    //      and their nested journalEntry/metadata duplicates included;
+    //   2. onclick="...showScreenshotPreview('<data url>', ...)";
+    //   3. <img src="<data url>"> displayed at 60px.
+    // (1) and (2) are STRING cost only — identical data URLs share one entry
+    // in the browser image cache, so they never caused a second decode. (3)
+    // is the decode. J1 removes (1) and (2) outright and replaces (3) with a
+    // small raster; full resolution stays reachable through the existing
+    // M20-A1 blob path (_m20A1ResolveRefBlob / in-row blob) at click time.
+    // ═════════════════════════════════════════════════════════════════════
+
+    /**
+     * FLAG-01/FLAG-02: read fresh on every call, never cached at module load;
+     * ANY truthy kill value (including the string '0') restores the legacy
+     * arm, and only genuinely falsy values leave J1 active.
+     */
+    _m20J1ThumbsEnabled() {
+        try {
+            if (typeof window === 'undefined') return true;
+            return !window.__TALARIA_DISABLE_JOURNAL_SHOT_THUMBS_V1;
+        } catch (_) {
+            return true;
+        }
+    }
+
+    _m20J1Config() {
+        return {
+            maxDim: 240,            // longest thumbnail edge (list shows 60px tall)
+            quality: 0.72,          // JPEG quality for the raster
+            maxCacheEntries: 512,
+            maxCacheBytes: 32 * 1024 * 1024,
+            windowSize: 60,         // rows rendered before "show more"
+            maxInflight: 4,         // concurrent rasterizations
+        };
+    }
+
+    /** Bounded LRU of generated thumbnails, keyed by _m20J1ThumbKey. */
+    _m20J1ThumbCache() {
+        if (!(this.__m20J1ThumbCache instanceof Map)) {
+            this.__m20J1ThumbCache = new Map();
+            this.__m20J1ThumbBytes = 0;
+        }
+        return this.__m20J1ThumbCache;
+    }
+
+    /**
+     * Stable per-(row, role) key. Externalized rows key off the A1 refId so a
+     * thumbnail survives rehydrate; embedded rows key off id + payload length,
+     * which changes if the screenshot is ever replaced.
+     */
+    _m20J1ThumbKey(trade, role) {
+        if (!trade || typeof trade !== 'object' || !role) return null;
+        const refField = role === 'exit' ? 'exitScreenshotRef' : 'entryScreenshotRef';
+        const ref = trade[refField];
+        if (ref && ref.refId) return `r:${ref.refId}`;
+        const shotField = role === 'exit' ? 'exitScreenshot' : 'entryScreenshot';
+        const shot = trade[shotField];
+        if (typeof shot !== 'string' || !shot) return null;
+        const id = trade.tradeId != null ? trade.tradeId : trade.id;
+        if (id == null) return null;
+        return `t:${id}:${role}:${shot.length}`;
+    }
+
+    _m20J1ThumbGet(key) {
+        if (!key) return null;
+        const c = this._m20J1ThumbCache();
+        if (!c.has(key)) return null;
+        const v = c.get(key);
+        c.delete(key);
+        c.set(key, v); // LRU bump
+        return v;
+    }
+
+    _m20J1ThumbPut(key, dataUrl) {
+        if (!key || typeof dataUrl !== 'string' || !dataUrl) return;
+        const cfg = this._m20J1Config();
+        if (dataUrl.length > cfg.maxCacheBytes) return;
+        const c = this._m20J1ThumbCache();
+        if (c.has(key)) {
+            this.__m20J1ThumbBytes -= c.get(key).length;
+            c.delete(key);
+        }
+        c.set(key, dataUrl);
+        this.__m20J1ThumbBytes += dataUrl.length;
+        while (c.size > cfg.maxCacheEntries || this.__m20J1ThumbBytes > cfg.maxCacheBytes) {
+            const oldest = c.keys().next().value;
+            if (oldest === undefined) break;
+            this.__m20J1ThumbBytes -= c.get(oldest).length;
+            c.delete(oldest);
+        }
+    }
+
+    /**
+     * Shared constant placeholder. One string literal for every pending
+     * thumbnail in the list, so N rows cost one string, not N data URLs.
+     */
+    _m20J1PlaceholderSrc() {
+        return 'data:image/svg+xml;charset=utf-8,'
+            + '%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20width%3D%22160%22%20height%3D%2260%22%3E'
+            + '%3Crect%20width%3D%22160%22%20height%3D%2260%22%20fill%3D%22%2321242e%22/%3E%3C/svg%3E';
+    }
+
+    /**
+     * Raster step, isolated so it is the ONLY part that needs a browser.
+     * Returns null (never throws) when no canvas/image API is reachable —
+     * callers then keep showing the placeholder, which is a bounded-memory
+     * degradation rather than a silent fall back to full resolution.
+     */
+    async _m20J1RasterizeThumb(dataUrl, maxDim, quality) {
+        if (typeof dataUrl !== 'string' || !dataUrl) return null;
+        try {
+            const scope = typeof window !== 'undefined' ? window : null;
+            if (!scope || typeof scope.Image !== 'function' || typeof document === 'undefined') return null;
+            const img = await new Promise((resolve) => {
+                const el = new scope.Image();
+                el.onload = () => resolve(el);
+                el.onerror = () => resolve(null);
+                el.src = dataUrl;
+            });
+            if (!img || !img.width || !img.height) return null;
+            const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+            const w = Math.max(1, Math.round(img.width * scale));
+            const h = Math.max(1, Math.round(img.height * scale));
+            const canvas = document.createElement('canvas');
+            canvas.width = w;
+            canvas.height = h;
+            const ctx = canvas.getContext('2d');
+            if (!ctx) return null;
+            ctx.drawImage(img, 0, 0, w, h);
+            const out = canvas.toDataURL('image/jpeg', quality);
+            canvas.width = 0;
+            canvas.height = 0;
+            return this._m20A1IsValidScreenshotDataUrl(out) ? out : null;
+        } catch (_) {
+            return null;
+        }
+    }
+
+    _m20J1ThumbState() {
+        if (!this.__m20J1ThumbState) {
+            this.__m20J1ThumbState = {
+                queue: [],
+                queued: new Set(),
+                inflight: new Set(),
+                failed: new Set(),
+                rerender: null,
+                repaintTimer: null,
+                repaintPending: false,
+            };
+        }
+        return this.__m20J1ThumbState;
+    }
+
+    /**
+     * Queue one thumbnail for generation off the render path. A permanent
+     * failure set means a broken payload is never retried in a loop.
+     */
+    _m20J1ScheduleThumb(key, dataUrl, rerender) {
+        if (!key || typeof dataUrl !== 'string' || !dataUrl) return;
+        const st = this._m20J1ThumbState();
+        if (st.failed.has(key) || st.queued.has(key) || st.inflight.has(key)) return;
+        if (rerender) st.rerender = rerender;
+        st.queued.add(key);
+        st.queue.push({ key, dataUrl });
+        this._m20J1PumpThumbs();
+    }
+
+    /**
+     * Drain the queue at bounded concurrency. Each completion pumps the next
+     * item directly, so a long backlog does not depend on repaint cadence;
+     * repaints are coalesced separately so the list is rebuilt once per batch
+     * rather than once per thumbnail.
+     */
+    _m20J1PumpThumbs() {
+        const st = this._m20J1ThumbState();
+        const cfg = this._m20J1Config();
+        while (st.inflight.size < cfg.maxInflight && st.queue.length) {
+            const item = st.queue.shift();
+            st.queued.delete(item.key);
+            st.inflight.add(item.key);
+            Promise.resolve()
+                .then(() => this._m20J1RasterizeThumb(item.dataUrl, cfg.maxDim, cfg.quality))
+                .then((thumb) => {
+                    st.inflight.delete(item.key);
+                    if (!thumb) {
+                        st.failed.add(item.key);
+                    } else {
+                        this._m20J1ThumbPut(item.key, thumb);
+                        this._m20J1RequestRepaint();
+                    }
+                    this._m20J1PumpThumbs();
+                })
+                .catch(() => {
+                    st.inflight.delete(item.key);
+                    st.failed.add(item.key);
+                    this._m20J1PumpThumbs();
+                });
+        }
+    }
+
+    /** One coalesced list repaint per batch of finished thumbnails. */
+    _m20J1RequestRepaint() {
+        const st = this._m20J1ThumbState();
+        if (st.repaintTimer != null) {
+            st.repaintPending = true;
+            return;
+        }
+        st.repaintTimer = setTimeout(() => {
+            st.repaintTimer = null;
+            const again = st.repaintPending;
+            st.repaintPending = false;
+            try {
+                const fn = st.rerender && typeof st.rerender.fn === 'function' ? st.rerender.fn : null;
+                if (fn) fn();
+            } catch (_) { /* display only */ }
+            if (again) this._m20J1RequestRepaint();
+        }, 250);
+    }
+
+    /**
+     * List <img> source for one (row, role): the cached thumbnail when it
+     * exists, otherwise the shared placeholder plus a scheduled raster. The
+     * full-resolution string is NEVER returned from here.
+     */
+    _m20J1ThumbSrc(trade, role, rerender) {
+        const key = this._m20J1ThumbKey(trade, role);
+        if (!key) return this._m20J1PlaceholderSrc();
+        const cached = this._m20J1ThumbGet(key);
+        if (cached) return cached;
+        const shot = role === 'exit' ? trade.exitScreenshot : trade.entryScreenshot;
+        if (typeof shot === 'string' && shot) this._m20J1ScheduleThumb(key, shot, rerender);
+        return this._m20J1PlaceholderSrc();
+    }
+
+    /** Live journal/closed row for a trade id — the click-time lookup source. */
+    _m20J1FindRowByTradeId(tradeId) {
+        if (tradeId == null) return null;
+        const want = String(tradeId);
+        for (const list of [this.tradeJournal, this.closedPositions]) {
+            if (!Array.isArray(list)) continue;
+            for (const row of list) {
+                if (!row || typeof row !== 'object') continue;
+                const id = row.tradeId != null ? row.tradeId : row.id;
+                if (id != null && String(id) === want) return row;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Click target for the journal list thumbnails. Replaces the pre-J1
+     * handler that inlined the whole base64 payload into an HTML attribute
+     * (which also interpolated attacker-influenced bytes into a quoted JS
+     * string — noted, not fixed here). Full resolution is fetched at click
+     * time: in-row blob first, then the existing A1 IndexedDB path.
+     */
+    showScreenshotPreviewForTrade(tradeId, role, title) {
+        const label = title || (role === 'exit' ? 'Exit Screenshot' : 'Entry Screenshot');
+        const row = this._m20J1FindRowByTradeId(tradeId);
+        if (!row) return;
+        const shot = role === 'exit' ? row.exitScreenshot : row.entryScreenshot;
+        if (typeof shot === 'string' && shot) {
+            this.showScreenshotPreview(shot, label);
+            return;
+        }
+        const ref = role === 'exit' ? row.exitScreenshotRef : row.entryScreenshotRef;
+        if (!ref || !ref.refId || typeof this._m20A1ResolveRefBlob !== 'function') return;
+        const cached = typeof this._m20A1DisplayBlob === 'function'
+            ? this._m20A1DisplayBlob(ref.refId)
+            : null;
+        if (cached) {
+            this.showScreenshotPreview(cached, label);
+            return;
+        }
+        this._m20A1ResolveRefBlob(ref.refId, { cache: true }).then((blob) => {
+            if (blob) this.showScreenshotPreview(blob, label);
+        }).catch(() => { /* preview unavailable — list is unaffected */ });
+    }
+
+    /** Rows currently rendered in the sidebar list (grows via "show more"). */
+    _m20J1RenderWindow() {
+        const cfg = this._m20J1Config();
+        const n = Number(this.__m20J1RenderWindow);
+        return Number.isFinite(n) && n >= cfg.windowSize ? n : cfg.windowSize;
+    }
+
+    /** "Show more" affordance: extend the window by one page and repaint. */
+    expandJournalRenderWindow() {
+        const cfg = this._m20J1Config();
+        this.__m20J1RenderWindow = this._m20J1RenderWindow() + cfg.windowSize;
+        try {
+            this.updateJournalTab();
+        } catch (_) { /* display only */ }
+    }
+
     /**
      * Render a single trade list item
      */
@@ -9420,7 +10634,7 @@ class OrderManager {
         const time = this.formatTimeOnly(trade.closeTime);
         const closeTypeIcon = trade.closeType === 'TP' ? '🎯' : trade.closeType === 'BE' || String(trade.closeType || '').startsWith('BE') ? '⚖️' : trade.closeType === 'SL' ? '🛑' : '✋';
         const hasNotes = trade.preTradeNotes?.reason || trade.postTradeNotes?.reason;
-        const tradeId = trade.tradeId || trade.id;
+        const tradeId = this._resolveJournalDisplayTradeId(trade);
         const pnl = trade.netPnL || trade.pnl || 0;
         const direction = trade.direction || trade.type;
         const entryPrice = trade.entryPrice || trade.openPrice;
@@ -9452,14 +10666,34 @@ class OrderManager {
             margin-left: 4px;
         ">${nSplit}x ENTRIES</span>` : '';
         
-        // Store trade data directly on the element via data attribute
-        const tradeDataJson = JSON.stringify(trade).replace(/"/g, '&quot;');
+        // Store trade data directly on the element via data attribute.
+        // M20-J1: the heavy screenshot fields are dropped from this JSON —
+        // the click handler resolves the LIVE row by id (data-trade-id) and
+        // only falls back to this attribute, so nothing visible is lost.
+        const m20J1On = this._m20J1ThumbsEnabled();
+        // Inline-handler argument: trade ids in this codebase are numeric or
+        // short slugs, so a strict allow-list keeps the value inert inside a
+        // single-quoted JS string nested in an HTML attribute.
+        const m20J1IdArg = String(tradeId != null ? tradeId : '').replace(/[^A-Za-z0-9_.:-]/g, '');
+        const m20J1Rerender = { key: 'journal-tab', fn: () => this.updateJournalTab() };
+        let tradeForAttr = trade;
+        if (m20J1On) {
+            tradeForAttr = { ...trade };
+            delete tradeForAttr.entryScreenshot;
+            delete tradeForAttr.exitScreenshot;
+            delete tradeForAttr.entryScreenshots;
+            delete tradeForAttr.railScreenshots;
+            delete tradeForAttr.journalEntry;
+            delete tradeForAttr.metadata;
+        }
+        const tradeDataJson = JSON.stringify(tradeForAttr).replace(/"/g, '&quot;');
         
         console.log(`   Trade #${tradeId}: ${direction} ${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)}`);
         
         return `
             <div class="trade-history-item" 
                 data-trade-index="${index}"
+                data-trade-id="${tradeId != null ? String(tradeId).replace(/'/g, '&#39;').replace(/"/g, '&quot;') : ''}"
                 data-trade='${tradeDataJson}'
                 style="
                     background: linear-gradient(135deg, ${pnl >= 0 ? 'rgba(34,197,94,0.08)' : 'rgba(239,68,68,0.08)'} 0%, rgba(255,255,255,0.02) 100%);
@@ -9546,9 +10780,11 @@ class OrderManager {
                     ">
                         ${trade.entryScreenshot ? `
                             <div style="position: relative; cursor:default;" 
-                                 onclick="event.stopPropagation(); window.chart.orderManager.showScreenshotPreview('${trade.entryScreenshot}', 'Entry Screenshot')">
+                                 onclick="event.stopPropagation(); ${m20J1On
+                                     ? `window.chart.orderManager.showScreenshotPreviewForTrade('${m20J1IdArg}', 'entry', 'Entry Screenshot')`
+                                     : `window.chart.orderManager.showScreenshotPreview('${trade.entryScreenshot}', 'Entry Screenshot')`}">
                                 <div style="color: #787b86; font-size: 8px; margin-bottom: 2px; text-transform: uppercase; letter-spacing: 0.3px;">Entry</div>
-                                <img src="${trade.entryScreenshot}" style="
+                                <img src="${m20J1On ? this._m20J1ThumbSrc(trade, 'entry', m20J1Rerender) : trade.entryScreenshot}"${m20J1On ? ' loading="lazy" decoding="async"' : ''} style="
                                     width: 100%;
                                     height: 60px;
                                     object-fit: cover;
@@ -9563,9 +10799,11 @@ class OrderManager {
                         ` : ''}
                         ${trade.exitScreenshot ? `
                             <div style="position: relative; cursor:default;"
-                                 onclick="event.stopPropagation(); window.chart.orderManager.showScreenshotPreview('${trade.exitScreenshot}', 'Exit Screenshot')">
+                                 onclick="event.stopPropagation(); ${m20J1On
+                                     ? `window.chart.orderManager.showScreenshotPreviewForTrade('${m20J1IdArg}', 'exit', 'Exit Screenshot')`
+                                     : `window.chart.orderManager.showScreenshotPreview('${trade.exitScreenshot}', 'Exit Screenshot')`}">
                                 <div style="color: #787b86; font-size: 8px; margin-bottom: 2px; text-transform: uppercase; letter-spacing: 0.3px;">Exit</div>
-                                <img src="${trade.exitScreenshot}" style="
+                                <img src="${m20J1On ? this._m20J1ThumbSrc(trade, 'exit', m20J1Rerender) : trade.exitScreenshot}"${m20J1On ? ' loading="lazy" decoding="async"' : ''} style="
                                     width: 100%;
                                     height: 60px;
                                     object-fit: cover;
@@ -9855,7 +11093,7 @@ class OrderManager {
         
         // Handle field name variations
         const pnl = trade.netPnL || trade.pnl || 0;
-        const tradeId = trade.tradeId || trade.id;
+        const tradeId = this._resolveJournalDisplayTradeId(trade);
         const direction = trade.direction || trade.type;
         const entryPrice = trade.entryPrice || trade.openPrice;
         const exitPrice = trade.exitPrice || trade.closePrice;
@@ -11087,7 +12325,7 @@ class OrderManager {
         
         this.tradeJournal.forEach(trade => {
             const row = [
-                trade.tradeId || '',
+                this._resolveJournalExportTradeId(trade, '') || '',
                 trade.direction || '',
                 trade.symbol || '',
                 String(trade.ticker || trade.symbol || '').replace('/', '').toUpperCase(),
@@ -12427,8 +13665,15 @@ class OrderManager {
         }
         
         // Resolve ticker from the order first so background/synced trades are attributed correctly.
-        const symbol = order.ticker || order.symbol || this._getActiveTicker();
-        const instrumentSettings = order.instrument_settings || this._getActiveInstrumentSettings();
+        // The ticker was already order-first; the SCALARS were not, so a row could name one pair and
+        // price it with another's pip size and mark. Both now fall back to the chart the record names
+        // before they fall back to whichever chart has focus.
+        const journalChart = this._resolveJournalContextChart(order);
+        const symbol = order.ticker || order.symbol
+            || (journalChart && this._normalizeTicker(journalChart.currentSymbol))
+            || this._getActiveTicker();
+        const instrumentSettings = order.instrument_settings
+            || this._getActiveInstrumentSettings(journalChart);
 
         const defaultSetup = this._getSessionDefaultTradeSetup();
         const userPre = order.journalEntry?.preTradeNotes;
@@ -17095,10 +18340,28 @@ class OrderManager {
         }
     }
 
+    _clearPreviewLabelGroupForRender(labelGroup) {
+        if (!_orderStableLabelHoverDomV1Enabled()) {
+            labelGroup.selectAll('*').remove();
+            return false;
+        }
+        const node = labelGroup.node?.();
+        if (!node || !node.childNodes) {
+            labelGroup.selectAll('*').remove();
+            return false;
+        }
+        Array.from(node.childNodes).forEach((child) => {
+            if (!child?.classList?.contains?.('order-level-toast-label')) {
+                child.remove?.();
+            }
+        });
+        return true;
+    }
+
     renderPreviewLabel(lineData, overrideY = null) {
         if (!lineData || !lineData.labelGroup) return;
 
-        lineData.labelGroup.selectAll('*').remove();
+        this._clearPreviewLabelGroupForRender(lineData.labelGroup);
 
         const segments = this.composePreviewLabelSegments(lineData.label, lineData.price, lineData.color, lineData.direction);
         const gap = 4;
@@ -17272,6 +18535,10 @@ class OrderManager {
                 levelPrice: lineData.price,
                 onClick: (event) => {
                     event.stopPropagation();
+                    if (self._shouldSuppressEntryPlaceAfterCancel()) {
+                        console.warn('🟦OM-DIAG place ✓ suppressed after cancel badge press');
+                        return;
+                    }
                     console.log('🟦OM-DIAG place ✓ clicked', {
                         label: lineData.label,
                         isMultiEntryMode: self.isMultiEntryMode,
@@ -17290,6 +18557,7 @@ class OrderManager {
                 levelPrice: lineData.price,
                 onClick: (event) => {
                     event.stopPropagation();
+                    self._markEntryCancelBadgePress();
                     self.closeOrderRailFromChartCancel();
                 },
             });
@@ -17396,6 +18664,7 @@ class OrderManager {
         const localY = clientY - wrapRect.top;
         const yScale = ch?.scales?.yScale;
         const badges = groupNode.querySelectorAll('.om-level-ctrl');
+        const restoreTransitions = [];
 
         for (let i = 0; i < badges.length; i++) {
             const el = badges[i];
@@ -17418,8 +18687,18 @@ class OrderManager {
             el.style.transition = 'none';
             el.style.opacity = '1';
             el.style.pointerEvents = 'all';
-            void el.getBoundingClientRect();
-            el.style.transition = prevTransition || 'opacity 0.12s ease';
+            restoreTransitions.push([el, prevTransition || 'opacity 0.12s ease']);
+        }
+        if (!restoreTransitions.length) return;
+        const restore = () => {
+            for (let i = 0; i < restoreTransitions.length; i++) {
+                restoreTransitions[i][0].style.transition = restoreTransitions[i][1];
+            }
+        };
+        if (_orderStableLabelHoverDomV1Enabled() && typeof requestAnimationFrame === 'function') {
+            requestAnimationFrame(restore);
+        } else {
+            restore();
         }
     }
 
@@ -17752,6 +19031,23 @@ class OrderManager {
         }
     }
 
+    _orderInteractionNowMs() {
+        return (typeof performance !== 'undefined' && performance.now)
+            ? performance.now()
+            : Date.now();
+    }
+
+    _markEntryCancelBadgePress(now = this._orderInteractionNowMs()) {
+        if (!_orderCancelBeforeConfirmV1Enabled()) return;
+        this._entryCancelPlaceSuppressUntilMs = now + ORDER_CANCEL_PLACE_SUPPRESS_MS;
+    }
+
+    _shouldSuppressEntryPlaceAfterCancel(now = this._orderInteractionNowMs()) {
+        if (!_orderCancelBeforeConfirmV1Enabled()) return false;
+        const until = Number(this._entryCancelPlaceSuppressUntilMs);
+        return Number.isFinite(until) && now <= until;
+    }
+
     /**
      * Chart preview ✕: close V9 React rail when running in a multichart iframe — toggleOrderPanel()
      * only sees a hidden #orderPanel (never .visible), so it would wrongly take the "open" branch.
@@ -17797,6 +19093,35 @@ class OrderManager {
             const backdrop = document.getElementById('orderPanelBackdrop');
             if (backdrop) backdrop.classList.remove('visible');
         }
+    }
+
+    _cleanupDraftForActiveTickerChange() {
+        const activeTicker = this._normalizeTicker(this._getActiveTicker?.() || '');
+        const previousTicker = this._lastOrderVisualSyncTicker || null;
+        this._lastOrderVisualSyncTicker = activeTicker || previousTicker;
+        if (!_orderPairSwitchDraftRebindV1Enabled()) return false;
+        if (!previousTicker || !activeTicker || previousTicker === activeTicker) return false;
+
+        const panel = typeof document !== 'undefined' ? document.getElementById('orderPanel') : null;
+        const draftOpen = !!(
+            this.previewLines
+            || this._isDraftOrderPreviewActive?.()
+            || panel?.classList?.contains?.('visible')
+            || (typeof window !== 'undefined' && window.__talariaV9OrderRailOpen)
+            || (typeof window !== 'undefined' && window.__talariaMultichartDraftActive)
+        );
+        if (!draftOpen) return false;
+
+        this._draftCancelCleanupFromChart();
+        this._discardUnplacedOrderDraftLevels({ notifyReactRail: true });
+        return true;
+    }
+
+    _shouldIgnoreSplitHandleDrag(dragDeltaPx, priceDistance) {
+        if (!_orderSplitEntryHoverStickV1Enabled()) return false;
+        const px = Math.abs(Number(dragDeltaPx) || 0);
+        const dist = Math.abs(Number(priceDistance) || 0);
+        return px < ORDER_SPLIT_HANDLE_MIN_DRAG_PX || dist < 0.00001;
     }
 
     /**
@@ -18059,7 +19384,11 @@ class OrderManager {
         this.slManuallyPositioned = false;
         this._previewEntryDecoupledFromRR = false;
         this._previewEntryLinkedToRiskReward = false;
-        this._resetMultiEntryStateForNewOrder();
+        if (_orderEntryNewDraftLevelsResetV1Enabled()) {
+            this._discardUnplacedOrderDraftLevels();
+        } else {
+            this._resetMultiEntryStateForNewOrder();
+        }
 
         this.orderType = 'market';
         document.querySelectorAll('.order-type-btn').forEach((b) => {
@@ -19804,7 +21133,12 @@ class OrderManager {
         } else {
             entryPrice = parseFloat(document.getElementById('orderEntryPrice')?.value || 0);
         }
-        const slPrice = parseFloat(document.getElementById('slPrice')?.value || 0);
+        const liveRiskSl = _orderRiskQtyLivePreviewSlV1Enabled()
+            ? this._resolveLivePreviewPanelPrices().slPrice
+            : 0;
+        const slPrice = liveRiskSl > 0
+            ? liveRiskSl
+            : parseFloat(document.getElementById('slPrice')?.value || 0);
         const enableSL = document.getElementById('enableSL')?.checked;
         
         // For lot-size mode, we don't need SL to set position size
@@ -19997,7 +21331,10 @@ class OrderManager {
 
         this._syncPipFromActiveSymbolIfNeeded();
         const quantity = parseFloat(document.getElementById('orderQuantity')?.value || 1);
-        const entryPrice = parseFloat(document.getElementById('orderEntryPrice')?.value || 0);
+        const livePrices = this._resolveLivePreviewPanelPrices();
+        const entryPrice = livePrices.entryPrice > 0
+            ? livePrices.entryPrice
+            : parseFloat(document.getElementById('orderEntryPrice')?.value || 0);
         const multiAvg = (this.isMultiEntryMode && this.multiEntryLevels && this.multiEntryLevels.length > 0)
             ? this._calcMultiEntryAvgPrice()
             : 0;
@@ -20034,14 +21371,19 @@ class OrderManager {
         
         let tpPrice = 0;
         
-        // Calculate TP price (use the first non-zero value)
+        // Prefer live provisional/preview TP during apply-on-release drag (TAL-01697).
         if (tpEnabled) {
-            const tpPriceInput = this._parseSltpInputPrice(document.getElementById('tpPrice')?.value, 0);
+            const tpPriceInput = livePrices.tpPrice > 0
+                ? livePrices.tpPrice
+                : this._parseSltpInputPrice(document.getElementById('tpPrice')?.value, 0);
             
             if (tpPriceInput > 0) {
                 tpPrice = tpPriceInput;
             }
         }
+        const liveSlPrice = livePrices.slPrice > 0
+            ? livePrices.slPrice
+            : 0;
 
         // Multi-entry: TP/SL distances, profit $, and R:R are measured from weighted Avg Entry (not a single leg).
         let effectiveEntryForReward = entryPrice > 0 ? entryPrice : multiAvg;
@@ -20079,7 +21421,9 @@ class OrderManager {
         let { hasValidSL, slDistance, risk } = this._getOrderPanelSlRiskContext(slContextEntry, quantity, minDistance);
 
         if (this.isMultiEntryMode && this.multiEntryLevels && this.multiEntryLevels.length > 0) {
-            const slPx = parseFloat(document.getElementById('slPrice')?.value || 0);
+            const slPx = liveSlPrice > 0
+                ? liveSlPrice
+                : parseFloat(document.getElementById('slPrice')?.value || 0);
             const slEn = document.getElementById('enableSL')?.checked;
             const refEntry = multiAvg > 0 ? multiAvg : (entryPrice || 0);
 
@@ -20111,8 +21455,11 @@ class OrderManager {
             }
         }
 
-        if (hasValidSL && slContextEntry > 0 && slPrice > 0 && quantity > 0 && this.positionSizeMode === 'lot-size') {
-            const netAtSl = this._estimateNetPnLPreview(this.orderSide, slContextEntry, slPrice, quantity);
+        const legacyNamedSlPrice = (typeof slPrice !== 'undefined' && Number.isFinite(Number(slPrice)))
+            ? Number(slPrice)
+            : 0;
+        if (hasValidSL && slContextEntry > 0 && legacyNamedSlPrice > 0 && quantity > 0 && this.positionSizeMode === 'lot-size') {
+            const netAtSl = this._estimateNetPnLPreview(this.orderSide, slContextEntry, legacyNamedSlPrice, quantity);
             if (Number.isFinite(netAtSl) && netAtSl < 0) risk = Math.abs(netAtSl);
         }
         
@@ -20157,7 +21504,9 @@ class OrderManager {
                 if (priceDiff > 0) {
                     // Multi-entry: sum individual level P&Ls for accurate reward
                     if (this.isMultiEntryMode && this.multiEntryLevels && this.multiEntryLevels.length > 0) {
-                        const slPx = parseFloat(document.getElementById('slPrice')?.value || 0);
+                        const slPx = liveSlPrice > 0
+                            ? liveSlPrice
+                            : parseFloat(document.getElementById('slPrice')?.value || 0);
                         const ps = this.pipSize || 0.0001;
                         const pv = this.pipValuePerLot || 10;
                         const minLotR = this.getMarketConfig()?.minSize ?? 0.01;
@@ -22146,7 +23495,8 @@ class OrderManager {
         if (this.previewLines.multipleTPs && Array.isArray(this.previewLines.multipleTPs)) {
             this.previewLines.multipleTPs.forEach(tpLine => {
                 if (tpLine && tpLine.price) {
-                    const tpY = yScale(tpLine.price);
+                    const tpY = yScale(tpLine.price) + (tpLine._stackOffsetY || 0);
+                    const tpHitY = yScale(tpLine.price) + (tpLine._hitStackOffsetY || tpLine._stackOffsetY || 0);
                     
                     // Update line
                     if (tpLine.line) {
@@ -22157,8 +23507,8 @@ class OrderManager {
                     }
                     if (tpLine.hitLine) {
                         tpLine.hitLine
-                            .attr('y1', tpY)
-                            .attr('y2', tpY)
+                            .attr('y1', tpHitY)
+                            .attr('y2', tpHitY)
                             .attr('x2', pc.w);
                     }
 
@@ -22493,8 +23843,18 @@ class OrderManager {
                 if (target.price > 0) {
                     const color = tpColors[Math.min(index, tpColors.length - 1)];
                     const label = `TP${previewTpRank.get(index) ?? index + 1}`;
+                    const hitOffsetY = this._multiTpCoincidentHitOffsetPx(this.tpTargets, index);
                     
-                    const tpLine = this.drawPreviewLine(target.price, color, label, null, true, index, target.id);
+                    const tpLine = this.drawPreviewLine(
+                        target.price,
+                        color,
+                        label,
+                        null,
+                        true,
+                        index,
+                        target.id,
+                        hitOffsetY ? { _hitStackOffsetY: hitOffsetY } : null
+                    );
                     if (tpLine) {
                         this.previewLines.multipleTPs.push(tpLine);
                     }
@@ -22726,6 +24086,10 @@ class OrderManager {
             stackYPx = Number(options._stackOffsetY);
         }
         const lineYPx = y + stackYPx;
+        const hitStackYPx = options?._hitStackOffsetY != null && Number.isFinite(Number(options._hitStackOffsetY))
+            ? Number(options._hitStackOffsetY)
+            : stackYPx;
+        const hitYPx = y + hitStackYPx;
         const hitStrokeWidth = 20;
         const dash = options?.strokeDasharray ?? null;
         const disabled = options?.disabled === true;
@@ -22748,8 +24112,8 @@ class OrderManager {
             .attr('class', 'preview-line-hit')
             .attr('x1', 0)
             .attr('x2', chart.w)
-            .attr('y1', lineYPx)
-            .attr('y2', lineYPx)
+            .attr('y1', hitYPx)
+            .attr('y2', hitYPx)
             .attr('stroke', color)
             .attr('stroke-width', hitStrokeWidth)
             .attr('stroke-dasharray', dash)
@@ -22792,6 +24156,7 @@ class OrderManager {
         if (options?.isSplitEntry) lineData.isSplitEntry = true;
         if (options?.orderType) lineData.orderType = options.orderType;
         if (stackYPx) lineData._stackOffsetY = stackYPx;
+        if (hitStackYPx && hitStackYPx !== stackYPx) lineData._hitStackOffsetY = hitStackYPx;
 
         this.renderPreviewLabel(lineData, lineYPx);
         this.adjustPreviewLineForLabel(lineData);
@@ -23022,7 +24387,8 @@ class OrderManager {
 
                 const chartHeightRaw = ch.h ?? ch.height ?? ch.svg?.attr('height') ?? 0;
                 const chartHeight = Number(chartHeightRaw) || 0;
-                let clampedY = Math.max(0, Math.min(chartHeight, event.y));
+                const dragHitOffsetY = self._previewDragHitOffsetY(lineData, event);
+                let clampedY = Math.max(0, Math.min(chartHeight, event.y - dragHitOffsetY));
                 let newPrice = ch.scales.yScale.invert(clampedY);
 
                 // Tick-grid snap preview Entry / SL / TP lines while dragging so
@@ -23112,7 +24478,7 @@ class OrderManager {
                 lineData.price = newPrice;
                 lineData.line.attr('y1', clampedY).attr('y2', clampedY);
                 if (lineData.hitLine) {
-                    lineData.hitLine.attr('y1', clampedY).attr('y2', clampedY);
+                    lineData.hitLine.attr('y1', clampedY + (Number(lineData._hitStackOffsetY) || 0)).attr('y2', clampedY + (Number(lineData._hitStackOffsetY) || 0));
                 }
 
                 if (_orderSltpApplyOnReleaseFixEnabled()) {
@@ -23700,10 +25066,11 @@ class OrderManager {
                 
                 // Throttled live calculations - show R:R ratio and dollar amounts
                 throttledCalculate(() => {
-                    // Get fresh values from the just-updated inputs
-                    const entryPrice = parseFloat(document.getElementById('orderEntryPrice')?.value || 0);
-                    const slPrice = parseFloat(document.getElementById('slPrice')?.value || 0);
-                    const tpPrice = parseFloat(document.getElementById('tpPrice')?.value || 0);
+                    // Prefer provisional/preview geometry when apply-on-release withholds inputs.
+                    const live = self._resolveLivePreviewPanelPrices();
+                    const entryPrice = live.entryPrice || parseFloat(document.getElementById('orderEntryPrice')?.value || 0);
+                    const slPrice = live.slPrice || parseFloat(document.getElementById('slPrice')?.value || 0);
+                    const tpPrice = live.tpPrice || parseFloat(document.getElementById('tpPrice')?.value || 0);
                     const quantity = parseFloat(document.getElementById('orderQuantity')?.value || 1);
                     
                     if (entryPrice && slPrice && tpPrice) {
@@ -24353,6 +25720,18 @@ class OrderManager {
         this.setEntryMode(false);
     }
 
+    _resetNewDraftConstraintState() {
+        if (!_orderNewDraftConstraintResetV1Enabled()) return;
+        this._orderProvisionalEdit = _oiCreateProvisionalEditState();
+        this._oiProvisionalDragCtx = null;
+        this.isDraggingPreviewLine = false;
+        this._previewEntryDecoupledFromRR = false;
+        this._previewEntryLinkedToRiskReward = false;
+        this._rrExecuteArmed = false;
+        this.tpManuallyPositioned = false;
+        this.slManuallyPositioned = false;
+    }
+
     /**
      * Zero stop/target draft inputs (and multi-TP / multi-entry) when the Place Order
      * panel closes so the next open starts clean. Optionally notifies the V9 React
@@ -24360,6 +25739,7 @@ class OrderManager {
      */
     _discardUnplacedOrderDraftLevels({ notifyReactRail = false } = {}) {
         this.tpTargets = [];
+        this._resetNewDraftConstraintState();
         const tpIn = document.getElementById('tpPrice');
         const slIn = document.getElementById('slPrice');
         if (tpIn) tpIn.value = '0';
@@ -24384,6 +25764,71 @@ class OrderManager {
                 window.dispatchEvent(new CustomEvent('talaria:order-rail-reset-draft'));
             } catch (_e) { /* ignore */ }
         }
+    }
+
+    _orderHasEntryScreenshot(order) {
+        if (!order || typeof order !== 'object') return false;
+        if (order.entryScreenshot) return true;
+        if (order.entryScreenshotRef && order.entryScreenshotRef.refId) return true;
+        if (Array.isArray(order.entryScreenshots) && order.entryScreenshots.length > 0) return true;
+        if (Array.isArray(order.entryScreenshotRefs) && order.entryScreenshotRefs.length > 0) return true;
+        return false;
+    }
+
+    _attachEntryScreenshotToJournalRow(order, screenshot) {
+        if (!_orderEntryScreenshotJournalRetentionV1Enabled()) return false;
+        if (!order || typeof order !== 'object' || !screenshot) return false;
+        const journal = Array.isArray(this.tradeJournal) ? this.tradeJournal : [];
+        if (!journal.length) return false;
+
+        const orderId = order.tradeId != null ? order.tradeId : order.id;
+        if (orderId == null) return false;
+        const row = journal.find((trade) => {
+            if (!trade || typeof trade !== 'object') return false;
+            const tradeId = trade.tradeId != null ? trade.tradeId : trade.id;
+            return tradeId != null && String(tradeId) === String(orderId);
+        });
+        if (!row || this._orderHasEntryScreenshot(row)) return false;
+
+        if (order.entryScreenshotRef && order.entryScreenshotRef.refId) {
+            row.entryScreenshotRef = { ...order.entryScreenshotRef };
+        } else {
+            row.entryScreenshot = screenshot;
+        }
+        row.savedAt = Date.now();
+        return true;
+    }
+
+    _captureEntryScreenshotOnce(order, label = 'order') {
+        const screenshotMgr = (typeof window !== 'undefined' && window.screenshotManager)
+            || this.screenshotManager;
+        if (!screenshotMgr || typeof screenshotMgr.captureChartSnapshot !== 'function') return null;
+        if (_orderEntryScreenshotIdempotentV1Enabled()) {
+            if (this._orderHasEntryScreenshot(order)) return order?.screenshotPromise || null;
+            if (order?.screenshotPromise) return order.screenshotPromise;
+        }
+        const promise = screenshotMgr.captureChartSnapshot().then((screenshot) => {
+            if (screenshot) {
+                if (!_orderEntryScreenshotIdempotentV1Enabled() || !this._orderHasEntryScreenshot(order)) {
+                    order.entryScreenshot = screenshot;
+                }
+                const journalUpdated = this._attachEntryScreenshotToJournalRow(order, screenshot);
+                console.log(`✅ Entry screenshot captured for ${label} #${order.id}`);
+                if (_orderEntryScreenshotIdempotentV1Enabled()
+                    && typeof this._schedulePersistAfterOrderMutation === 'function') {
+                    this._schedulePersistAfterOrderMutation({ critical: true });
+                }
+                if (journalUpdated && typeof this.persistJournal === 'function') {
+                    this.persistJournal();
+                }
+            }
+            return screenshot;
+        }).catch((err) => {
+            console.error('❌ Failed to capture entry screenshot:', err);
+            return null;
+        });
+        if (order && typeof order === 'object') order.screenshotPromise = promise;
+        return promise;
     }
 
     /**
@@ -25365,6 +26810,35 @@ class OrderManager {
         );
         const idx = map.get(levelId) ?? 0;
         return idx * ENTRY_STACK_OFFSET_PX;
+    }
+
+    _multiTpCoincidentHitOffsetPx(targets, targetIndex) {
+        if (!_orderMultiTpCoincidentStackV1Enabled()) return 0;
+        const list = Array.isArray(targets) ? targets : this.tpTargets;
+        if (!list || targetIndex == null || targetIndex < 0 || targetIndex >= list.length) return 0;
+        const target = list[targetIndex];
+        if (!(target && target.price > 0)) return 0;
+        const precision = Math.max(0, Math.min(10, this.getPricePrecision ? this.getPricePrecision(target.price) : 5));
+        const key = Number(target.price).toFixed(precision);
+        const coincident = list
+            .map((t, idx) => ({ t, idx }))
+            .filter(({ t }) => t && t.price > 0 && Number(t.price).toFixed(precision) === key)
+            .map(({ idx }) => idx);
+        const stackIndex = coincident.indexOf(targetIndex);
+        return stackIndex > 0 ? stackIndex * MULTI_TP_COINCIDENT_STACK_OFFSET_PX : 0;
+    }
+
+    _multiTpCoincidentStackYOffsetPx(targetIndex) {
+        return this._multiTpCoincidentHitOffsetPx(this.tpTargets, targetIndex);
+    }
+
+    _previewDragHitOffsetY(lineData, event) {
+        const hitOffsetY = Number(lineData?._hitStackOffsetY);
+        if (!Number.isFinite(hitOffsetY) || hitOffsetY === 0) return 0;
+        const target = event?.sourceEvent?.target;
+        if (target?.classList?.contains?.('preview-line-hit')) return hitOffsetY;
+        if (typeof target?.closest === 'function' && target.closest('.preview-line-hit')) return hitOffsetY;
+        return 0;
     }
 
     /**
@@ -26364,9 +27838,9 @@ class OrderManager {
                 const isTpLine = label === 'TP' || /^TP\d+$/.test(label);
                 const isEntryLine = label === 'Entry' || /^Entry#/.test(label) || /^Entry\s*\(/.test(label);
                 
-                // Only create split if actually moved (no minimum distance requirement)
+                // Only create split if the handle was intentionally dragged.
                 const distance = Math.abs(newPrice - lineData.price);
-                if (distance < 0.00001) {
+                if (self._shouldIgnoreSplitHandleDrag(dragDelta, distance)) {
                     // Didn't move, ignore
                     return;
                 }
@@ -28463,13 +29937,14 @@ class OrderManager {
                     ? this._multiEntryStackYOffsetPx(lineData.multiEntryLevelId)
                     : (lineData._stackOffsetY || 0);
                 const yPixel = ch.scales.yScale(lineData.price) + stackYPx;
+                const hitYPixel = ch.scales.yScale(lineData.price) + (lineData._hitStackOffsetY ?? stackYPx);
                 const translateY = yPixel - (height / 2);
                 lineData.labelGroup.attr('transform', `translate(${fixedX}, ${translateY})`);
                 if (lineData.line) {
                     lineData.line.attr('y1', yPixel).attr('y2', yPixel);
                 }
                 if (lineData.hitLine) {
-                    lineData.hitLine.attr('y1', yPixel).attr('y2', yPixel);
+                    lineData.hitLine.attr('y1', hitYPixel).attr('y2', hitYPixel);
                 }
                 if (stackYPx) lineData._stackOffsetY = stackYPx;
                 this.adjustPreviewLineForLabel(lineData, fixedX, width, height);
@@ -28552,13 +30027,14 @@ class OrderManager {
                     ? this._multiEntryStackYOffsetPx(lineData.multiEntryLevelId)
                     : (lineData._stackOffsetY || 0);
                 const yPixel = ch.scales.yScale(lineData.price) + stackYPx;
+                const hitYPixel = ch.scales.yScale(lineData.price) + (lineData._hitStackOffsetY ?? stackYPx);
                 const translateY = yPixel - (height / 2);
                 lineData.labelGroup.attr('transform', `translate(${currentX}, ${translateY})`);
                 if (lineData.line) {
                     lineData.line.attr('y1', yPixel).attr('y2', yPixel);
                 }
                 if (lineData.hitLine) {
-                    lineData.hitLine.attr('y1', yPixel).attr('y2', yPixel);
+                    lineData.hitLine.attr('y1', hitYPixel).attr('y2', hitYPixel);
                 }
                 if (stackYPx) lineData._stackOffsetY = stackYPx;
                 this.adjustPreviewLineForLabel(lineData, currentX, width, height);
@@ -28730,7 +30206,14 @@ class OrderManager {
      */
     placeAdvancedOrder(options = {}) {
         console.log('🟦OM-DIAG placeAdvancedOrder() CALLED', options);
+        if (_orderExplicitPlaceAuditV1Enabled()) {
+            this._explicitPlaceIntentUntil = Date.now() + 120000;
+        }
         const keepPanelOpen = options.keepPanelOpen === true;
+        if (this._shouldBlockPlaceDuringPreviewDrag()) {
+            console.warn('🟦OM-DIAG place blocked while preview drag is active');
+            return { ok: false, reason: 'preview_drag_active' };
+        }
         if (!this.replaySystem || !this.replaySystem.isActive) {
             alert('Replay mode must be active to place orders');
             return { ok: false, reason: 'replay_not_active' };
@@ -28834,6 +30317,10 @@ class OrderManager {
                         : parseFloat(document.getElementById('breakevenAmount')?.value || 50),
                 pipOffset: parseFloat(document.getElementById('breakevenPipOffset')?.value || 0)
             };
+            const beTriggerPrice = this._computeBreakevenTriggerPriceFromPanelReadonly();
+            if (_orderBePlaceAnchorV1Enabled() && Number.isFinite(beTriggerPrice) && beTriggerPrice > 0) {
+                breakevenSettings.triggerPrice = beTriggerPrice;
+            }
         }
         
         // Get trailing stop settings (step-based system with activation).
@@ -29219,7 +30706,7 @@ class OrderManager {
                         { instrument_settings: activeInstrumentSettings, ticker: activeTicker }
                     );
                     const order = {
-                        id: this.orderIdCounter++,
+                        id: this._allocateOrderId(),
                         symbol: activeTicker,
                         ticker: activeTicker,
                         sourceFileId: this._chartSourceFileId(),
@@ -29295,8 +30782,7 @@ class OrderManager {
                     lotsSum += qtyRounded;
                     placedCount++;
                 } else {
-                    const pendingId = this.orderIdCounter; // will be used by placePendingOrderWithSplit
-                    this.placePendingOrderWithSplit(
+                    const pendingId = this.placePendingOrderWithSplit(
                         level.price,
                         qtyRounded,
                         tpEnabled && tpPrice > 0 ? tpPrice : 0,
@@ -29706,7 +31192,7 @@ class OrderManager {
         const fillInstRef = { instrument_settings: activeInstrumentSettings, ticker: activeTicker };
         entryPrice = this._applyHalfSpreadEntryPrice(entryPrice, this.orderSide, fillInstRef);
         const order = {
-            id: this.orderIdCounter++,
+            id: this._allocateOrderId(),
             symbol: activeTicker,
             ticker: activeTicker,
             sourceFileId: this._chartSourceFileId(),
@@ -29849,19 +31335,8 @@ class OrderManager {
             this.drawEntryMarker(order);
         }, 100);
         
-        // Start screenshot capture immediately and store promise for later await
-        if (window.screenshotManager) {
-            order.screenshotPromise = window.screenshotManager.captureChartSnapshot().then(screenshot => {
-                if (screenshot) {
-                    order.entryScreenshot = screenshot;
-                    console.log('✅ Entry screenshot captured for order #' + order.id);
-                }
-                return screenshot;
-            }).catch(err => {
-                console.error('❌ Failed to capture entry screenshot:', err);
-                return null;
-            });
-        }
+        // Start screenshot capture immediately and store promise for later await.
+        this._captureEntryScreenshotOnce(order, 'order');
         
         this.updatePositionsPanel();
         this.showPositionsPanel();
@@ -29905,7 +31380,7 @@ class OrderManager {
         const activeTicker = this._getActiveTicker();
         const activeInstrumentSettings = this._getActiveInstrumentSettings();
         const pendingOrder = {
-            id: this.orderIdCounter++,
+            id: this._allocateOrderId(),
             symbol: activeTicker,
             ticker: activeTicker,
             sourceFileId: this._chartSourceFileId(),
@@ -29977,7 +31452,7 @@ class OrderManager {
         const activeInstrumentSettings = this._getActiveInstrumentSettings();
         
         const pendingOrder = {
-            id: this.orderIdCounter++,
+            id: this._allocateOrderId(),
             symbol: activeTicker,
             ticker: activeTicker,
             sourceFileId: this._chartSourceFileId(),
@@ -30043,6 +31518,7 @@ class OrderManager {
         this.updatePositionsPanel();
         
         // Don't show panel or close order panel here - that happens in the main function
+        return pendingOrder.id;
     }
     
     /**
@@ -30137,7 +31613,7 @@ class OrderManager {
         if (orderType === 'limit' || orderType === 'stop') {
             // Create PENDING order
             const pendingOrder = {
-                id: this.orderIdCounter++,
+                id: this._allocateOrderId(),
                 symbol: activeTicker,
                 ticker: activeTicker,
                 sourceFileId: this._chartSourceFileId(),
@@ -30180,7 +31656,7 @@ class OrderManager {
         } else {
             // Create MARKET order (immediate execution)
             const order = {
-                id: this.orderIdCounter++,
+                id: this._allocateOrderId(),
                 symbol: activeTicker,
                 ticker: activeTicker,
                 sourceFileId: this._chartSourceFileId(),
@@ -30265,10 +31741,7 @@ class OrderManager {
                     
                     if (finalScreenshotMgr) {
                         console.log('📸 Capturing screenshot for drawing tool order #' + order.id);
-                        finalScreenshotMgr.captureChartSnapshot().then(imageData => {
-                            order.entryScreenshot = imageData;
-                            console.log('✅ Entry screenshot captured for drawing tool order #' + order.id);
-                            
+                        this._captureEntryScreenshotOnce(order, 'drawing tool order')?.then(() => {
                             // IMPORTANT: Show journal modal AFTER screenshot is captured
                             this.showTradeJournalModal(order, false, null);
                         }).catch(err => {
@@ -30347,7 +31820,7 @@ class OrderManager {
         
         const act = this._getActiveTicker();
         const order = {
-            id: this.orderIdCounter++,
+            id: this._allocateOrderId(),
             symbol: act,
             ticker: act,
             sourceFileId: this._chartSourceFileId(),
@@ -30439,7 +31912,7 @@ class OrderManager {
         
         const act = this._getActiveTicker();
         const order = {
-            id: this.orderIdCounter++,
+            id: this._allocateOrderId(),
             symbol: act,
             ticker: act,
             sourceFileId: this._chartSourceFileId(),
@@ -30519,7 +31992,7 @@ class OrderManager {
         const defaultTP = price + (100 * pipSize);
         
         const order = {
-            id: this.orderIdCounter++,
+            id: this._allocateOrderId(),
             symbol: act,
             ticker: act,
             sourceFileId: this._chartSourceFileId(),
@@ -30589,7 +32062,7 @@ class OrderManager {
         const defaultTP = price - (100 * pipSize);
         
         const order = {
-            id: this.orderIdCounter++,
+            id: this._allocateOrderId(),
             symbol: act,
             ticker: act,
             sourceFileId: this._chartSourceFileId(),
@@ -30841,7 +32314,7 @@ class OrderManager {
         position.status = 'CLOSED';
         
         // Update balance
-        this.balance += pnl;
+        this._applyRealizedPnLToBalance(pnl);
         this.equity = this.balance;
         
         // Track prop firm progress
@@ -31358,6 +32831,11 @@ class OrderManager {
      * Update MFE/MAE tracking for closed positions
      */
     updateMfeMaeTracking(currentCandle, high, low) {
+        // EVICT-02: rewind behind eviction playhead T restores hot fields + may re-queue sampling.
+        // Runs even when tracking is empty so scrub/rewind still rehydrates.
+        if (currentCandle && Number.isFinite(Number(currentCandle.t))) {
+            this._tradeEvictV1SyncPlayhead(Number(currentCandle.t));
+        }
         if (this.mfeMaeTrackingEnabled === false) return;
         if (this.mfeMaeTrackingPositions.length === 0) return;
         
@@ -31445,26 +32923,33 @@ class OrderManager {
                 this.tradeJournal[journalIndex].maeTime = position.maeTime;
                 this.tradeJournal[journalIndex].highestPrice = position.highestPrice;
                 this.tradeJournal[journalIndex].lowestPrice = position.lowestPrice;
-                this.tradeJournal[journalIndex].bar_close_r = Array.isArray(position.bar_close_r) ? position.bar_close_r.slice() : [];
-                this.tradeJournal[journalIndex].bar_high_r = Array.isArray(position.bar_high_r) ? position.bar_high_r.slice() : [];
-                this.tradeJournal[journalIndex].bar_low_r = Array.isArray(position.bar_low_r) ? position.bar_low_r.slice() : [];
-                this.tradeJournal[journalIndex].post_exit_bar_close_r = Array.isArray(position.post_exit_bar_close_r) ? position.post_exit_bar_close_r.slice() : [];
-                this.tradeJournal[journalIndex].post_exit_bar_high_r = Array.isArray(position.post_exit_bar_high_r) ? position.post_exit_bar_high_r.slice() : [];
-                this.tradeJournal[journalIndex].post_exit_bar_low_r = Array.isArray(position.post_exit_bar_low_r) ? position.post_exit_bar_low_r.slice() : [];
-                // M19-B additive archive/peaks (I16 — lossless history alongside bounded tails).
-                [
-                    'bar_close_r_archive', 'bar_high_r_archive', 'bar_low_r_archive',
-                    'post_exit_bar_close_r_archive', 'post_exit_bar_high_r_archive', 'post_exit_bar_low_r_archive',
-                    'bar_high_r_peak', 'bar_low_r_peak', 'bar_r_count', 'bar_r_legacy_pending',
-                    'post_exit_bar_high_r_peak', 'post_exit_bar_low_r_peak', 'post_exit_bar_r_count',
-                    'post_exit_bar_r_legacy_pending',
-                ].forEach((k) => {
-                    if (position[k] != null) {
-                        this.tradeJournal[journalIndex][k] = Array.isArray(position[k])
-                            ? position[k].slice()
-                            : position[k];
-                    }
-                });
+                // EXCURSION-SINGLE-OWNER-V1: share array identity with the hot row
+                // (journal becomes sole owner after TRADE-EVICT nulls closed keys).
+                // Kill-switch OFF restores legacy per-series .slice() copies.
+                if (_excursionSingleOwnerV1Enabled()) {
+                    this._excursionSingleOwnerV1ShareFromHot(this.tradeJournal[journalIndex], position);
+                } else {
+                    this.tradeJournal[journalIndex].bar_close_r = Array.isArray(position.bar_close_r) ? position.bar_close_r.slice() : [];
+                    this.tradeJournal[journalIndex].bar_high_r = Array.isArray(position.bar_high_r) ? position.bar_high_r.slice() : [];
+                    this.tradeJournal[journalIndex].bar_low_r = Array.isArray(position.bar_low_r) ? position.bar_low_r.slice() : [];
+                    this.tradeJournal[journalIndex].post_exit_bar_close_r = Array.isArray(position.post_exit_bar_close_r) ? position.post_exit_bar_close_r.slice() : [];
+                    this.tradeJournal[journalIndex].post_exit_bar_high_r = Array.isArray(position.post_exit_bar_high_r) ? position.post_exit_bar_high_r.slice() : [];
+                    this.tradeJournal[journalIndex].post_exit_bar_low_r = Array.isArray(position.post_exit_bar_low_r) ? position.post_exit_bar_low_r.slice() : [];
+                    // M19-B additive archive/peaks (I16 — lossless history alongside bounded tails).
+                    [
+                        'bar_close_r_archive', 'bar_high_r_archive', 'bar_low_r_archive',
+                        'post_exit_bar_close_r_archive', 'post_exit_bar_high_r_archive', 'post_exit_bar_low_r_archive',
+                        'bar_high_r_peak', 'bar_low_r_peak', 'bar_r_count', 'bar_r_legacy_pending',
+                        'post_exit_bar_high_r_peak', 'post_exit_bar_low_r_peak', 'post_exit_bar_r_count',
+                        'post_exit_bar_r_legacy_pending',
+                    ].forEach((k) => {
+                        if (position[k] != null) {
+                            this.tradeJournal[journalIndex][k] = Array.isArray(position[k])
+                                ? position[k].slice()
+                                : position[k];
+                        }
+                    });
+                }
                 this._finalizeExcursionScalars(this.tradeJournal[journalIndex], position, { inTradeOnly: true });
                 // M4-2: post-exit checkpoints
                 this.tradeJournal[journalIndex].post_checkpoints = Array.isArray(position.post_checkpoints) ? position.post_checkpoints.slice() : [];
@@ -31514,8 +32999,19 @@ class OrderManager {
                 
                 console.log(`✅ MFE/MAE tracking completed for Order #${position.id} | MFE: ${position.mfe.toFixed(5)} | MAE: ${position.mae.toFixed(5)}`);
             }
+
+            // TRADE-EVICT-V1: post-exit bound complete at this playhead — release hot bytes.
+            // Journal already holds the cold copy above; canvas keeps entry/exit arrows + id.
+            const playheadT = Number(currentCandle?.t);
+            if (Number.isFinite(playheadT)) {
+                try {
+                    this._tradeEvictV1OnBoundComplete(position, playheadT);
+                } catch (err) {
+                    console.warn('TRADE-EVICT-V1 bound complete failed:', err);
+                }
+            }
             
-            // Remove from tracking array
+            // Remove from tracking array (CPU term: evicted trade cannot be sampled).
             this.mfeMaeTrackingPositions = this.mfeMaeTrackingPositions.filter(p => p.id !== position.id);
         });
     }
@@ -31631,6 +33127,64 @@ class OrderManager {
         });
         return lifecycleEventEvaluated;
     }
+
+    _findFullSizeOpposingPendingClosePosition(pendingOrder) {
+        if (!_orderPendingCloseNettingV1Enabled()) return null;
+        if (!pendingOrder || pendingOrder.isSplitEntry || pendingOrder.scaleWithExisting) return null;
+
+        const direction = String(pendingOrder.direction || '').toUpperCase();
+        if (direction !== 'BUY' && direction !== 'SELL') return null;
+
+        const pendingQty = Number(pendingOrder.quantity);
+        if (!(pendingQty > 0)) return null;
+
+        const pendingTicker = this._normalizeTicker(pendingOrder.ticker || pendingOrder.symbol || this._getActiveTicker());
+        const pendingSource = pendingOrder.sourceFileId != null ? String(pendingOrder.sourceFileId) : null;
+        const candidates = [
+            ...(Array.isArray(this.openPositions) ? this.openPositions : []),
+            ...(Array.isArray(this.orderService?.openPositions) ? this.orderService.openPositions : []),
+        ];
+        const seen = new Set();
+        return candidates.find((position) => {
+            if (!position || seen.has(position.id)) return false;
+            seen.add(position.id);
+            const side = String(position.type || position.direction || '').toUpperCase();
+            if ((direction === 'SELL' && side !== 'BUY') || (direction === 'BUY' && side !== 'SELL')) return false;
+            const positionTicker = this._normalizeTicker(position.ticker || position.symbol || pendingTicker);
+            if (pendingTicker && positionTicker && pendingTicker !== positionTicker) return false;
+            if (pendingSource != null && position.sourceFileId != null && String(position.sourceFileId) !== pendingSource) return false;
+            const positionQty = Number(position.quantity);
+            return Math.abs(positionQty - pendingQty) <= 1e-9;
+        }) || null;
+    }
+
+    _cleanupPendingCloseOrderVisuals(pendingOrder) {
+        if (!pendingOrder || pendingOrder.id == null) return;
+        const oid = pendingOrder.id;
+        this.removePendingOrderLine(oid);
+        this.removePendingSLTPLines(oid);
+        if (pendingOrder.isSplitEntry && pendingOrder.splitGroupId) {
+            this._removeSplitGroupTPAvgIfEmpty(pendingOrder.splitGroupId, oid);
+        } else {
+            this.removeMultiTPAvgLine(oid);
+        }
+        (this._collectLayoutCharts() || [this.chart]).forEach((c) => {
+            if (!c?.svg) return;
+            c.svg.selectAll(`.pending-${oid}`).remove();
+            c.svg.selectAll(`.pending-tp-${oid}`).remove();
+            c.svg.selectAll(`.pending-sl-${oid}`).remove();
+            c.svg.selectAll(`.pending-be-${oid}`).remove();
+        });
+    }
+
+    _executePendingCloseIfNeeded(pendingOrder, closeLevel, currentCandle) {
+        const target = this._findFullSizeOpposingPendingClosePosition(pendingOrder);
+        if (!target) return false;
+        this._cleanupPendingCloseOrderVisuals(pendingOrder);
+        this.closePositionAtPrice(target.id, closeLevel, 'PENDING_CLOSE', null, null, currentCandle?.t);
+        this.showNotification?.(`✅ ${pendingOrder.direction} ${pendingOrder.orderType?.toUpperCase?.() || 'PENDING'} close filled for Order #${target.id} @ ${this.formatPrice(closeLevel)}`, 'success');
+        return true;
+    }
     
     /**
      * Execute a pending order
@@ -31692,6 +33246,10 @@ class OrderManager {
 
         const gapInfo = hadGap ? ` (GAP: ${pendingOrder.entryPrice.toFixed(5)} → ${executionPrice.toFixed(5)})` : '';
         console.log(`✅ Executing ${pendingOrder.orderType.toUpperCase()} ${pendingOrder.direction} Order #${pendingOrder.id} @ ${executionPrice.toFixed(5)}${gapInfo}`);
+
+        if (this._executePendingCloseIfNeeded(pendingOrder, executionPrice, currentCandle)) {
+            return;
+        }
         
         // Create market order from pending order
         const order = {
@@ -31799,14 +33357,7 @@ class OrderManager {
         // NOTE: Pending order already removed from array in checkPendingOrders()
         // to prevent re-execution race conditions
         
-        // Add to open positions
-        if (this.orderService) {
-            this.orderService.registerOpenOrder(order);
-        } else {
-            this.attachStrategyVariablesToOrder(order);
-            this.openPositions.push(order);
-            this.orders.push(order);
-        }
+        this._pushOpenPosition(order, 'pending-fill');
         
         // ═══ SPLIT ENTRY GROUP TRACKING ═══
         if (order.tradeGroupId) {
@@ -31913,19 +33464,8 @@ class OrderManager {
             this.drawEntryMarker(order);
         }, 100);
         
-        // Start screenshot capture immediately and store promise for later await
-        if (window.screenshotManager) {
-            order.screenshotPromise = window.screenshotManager.captureChartSnapshot().then(screenshot => {
-                if (screenshot) {
-                    order.entryScreenshot = screenshot;
-                    console.log('✅ Entry screenshot captured for executed pending order #' + order.id);
-                }
-                return screenshot;
-            }).catch(err => {
-                console.error('❌ Failed to capture entry screenshot:', err);
-                return null;
-            });
-        }
+        // Start screenshot capture immediately and store promise for later await.
+        this._captureEntryScreenshotOnce(order, 'executed pending order');
 
         this._pauseReplayIfPlaying('pending order filled');
         
@@ -31958,6 +33498,11 @@ class OrderManager {
         if (!activeCandle) return;
         if (this.orderService && this.orderService.multiInstrumentSession) {
             this.orderService.multiInstrumentSession.current_time = activeCandle.t;
+        }
+
+        // TRADE-EVICT-V1 / EVICT-02: every tick (including scrub) may restore behind T.
+        if (Number.isFinite(Number(activeCandle.t))) {
+            this._tradeEvictV1SyncPlayhead(Number(activeCandle.t));
         }
         
         let currentCandle = activeCandle;
@@ -32156,8 +33701,11 @@ class OrderManager {
                     const posPipSize = this._getBreakevenUnitSize(position);
                     const triggerEntry = this._beTriggerAnchorEntry(position);
                     const placementEntry = this._getSplitGroupAvgEntry(position);
+                    const frozenTriggerPrice = this._breakevenFrozenTriggerPrice(position.breakevenSettings);
 
-                    if (position.breakevenSettings.mode === 'rr') {
+                    if (Number.isFinite(frozenTriggerPrice)) {
+                        shouldTrigger = barQ.bidHigh >= frozenTriggerPrice;
+                    } else if (position.breakevenSettings.mode === 'rr') {
                         const riskDist = Math.abs(triggerEntry - position.stopLoss);
                         const triggerDist = position.breakevenSettings.value * riskDist;
                         shouldTrigger = (barQ.bidHigh - triggerEntry) >= triggerDist;
@@ -32402,13 +33950,13 @@ class OrderManager {
                     const effLowForSl = (position._trailSlAccLow != null && Number.isFinite(position._trailSlAccLow))
                         ? this._bidFromMid(position._trailSlAccLow, position, (high + low) / 2)
                         : barQ.bidLow;
+                    const rawBuySlTouched = !!(position.stopLoss && effLowForSl <= position.stopLoss);
                     if (!position.tpTargets || position.tpTargets.length === 0) {
                         const slHit = buySLGuarded
                             ? (position.stopLoss && this._tickAnimOverridesGuard(position._slNoTriggerBeforeTick, currentCandle, position.stopLoss, 'below', position))
                             : (position.stopLoss && effLowForSl <= position.stopLoss);
-                        const _slBuy1 = Number(position.stopLoss);
                         const _tpBuy1 = Number(position.takeProfit);
-                        const tpOkBuy = Number.isFinite(_tpBuy1) && _tpBuy1 > 0 && (!Number.isFinite(_slBuy1) || _tpBuy1 > _slBuy1);
+                        const tpOkBuy = this._singleTakeProfitExecutable(position, _tpBuy1, position.stopLoss);
                         const tpHit = buyTPGuarded
                             ? (position.takeProfit && tpOkBuy && this._tickAnimOverridesGuard(position._tpNoTriggerBeforeTick, currentCandle, position.takeProfit, 'above', position))
                             : (position.takeProfit && tpOkBuy && barQ.bidHigh >= position.takeProfit);
@@ -32417,6 +33965,19 @@ class OrderManager {
                             position._slNoTriggerBeforeTick = undefined;
                             const lowFill = position._trailSlAccLow != null ? position._trailSlAccLow : low;
                             const fillPx = this._stopLossFillPrice(position.stopLoss, open, high, lowFill, true, position, currentCandle.t);
+                            this._recordSlTriggerDiag(position, {
+                                reason: 'hit',
+                                barTime: currentCandle.t,
+                                guarded: buySLGuarded,
+                                rawTouched: rawBuySlTouched,
+                                effectiveExtreme: effLowForSl,
+                                bidLow: barQ.bidLow,
+                                bidHigh: barQ.bidHigh,
+                                askLow: barQ.askLow,
+                                askHigh: barQ.askHigh,
+                                midOpen: open,
+                                fillPrice: fillPx,
+                            });
                             const _slBuy = this._slCloseHitType(position);
                             console.log(`   ${_slBuy === 'BE' ? '⚖️ BREAKEVEN' : '🛑 STOP LOSS'} HIT! Closing BUY #${position.id} at ${fillPx.toFixed(5)}${fillPx !== position.stopLoss ? ' (gap fill, SL was ' + position.stopLoss.toFixed(5) + ')' : ''}`);
                             this._pushSplitGroupSlClosesFromHit(position, fillPx, positionsToClose, queuedSplitSlGroupIds);
@@ -32429,6 +33990,19 @@ class OrderManager {
                                 : this._gapFill(position.takeProfit, open, true, true);
                             console.log(`   🎯 TAKE PROFIT HIT! Closing BUY #${position.id} at ${fillPx.toFixed(5)}${fillPx !== position.takeProfit ? ' (gap fill, TP was ' + position.takeProfit.toFixed(5) + ')' : ''}`);
                             positionsToClose.push({ id: position.id, closePrice: fillPx, type: 'TP' });
+                        } else if (buySLGuarded && rawBuySlTouched) {
+                            this._recordSlTriggerDiag(position, {
+                                reason: 'guarded-touch-miss',
+                                barTime: currentCandle.t,
+                                guarded: true,
+                                rawTouched: true,
+                                effectiveExtreme: effLowForSl,
+                                bidLow: barQ.bidLow,
+                                bidHigh: barQ.bidHigh,
+                                askLow: barQ.askLow,
+                                askHigh: barQ.askHigh,
+                                midOpen: open,
+                            });
                         }
                     } else {
                         // For multiple TPs, still check SL
@@ -32440,12 +34014,53 @@ class OrderManager {
                             position._slNoTriggerBeforeTick = undefined;
                             const lowFillM = position._trailSlAccLow != null ? position._trailSlAccLow : low;
                             const fillPx = this._stopLossFillPrice(position.stopLoss, open, high, lowFillM, true, position, currentCandle.t);
+                            this._recordSlTriggerDiag(position, {
+                                reason: 'hit',
+                                barTime: currentCandle.t,
+                                guarded: buySLGuarded,
+                                rawTouched: rawBuySlTouched,
+                                effectiveExtreme: effLowForSl,
+                                bidLow: barQ.bidLow,
+                                bidHigh: barQ.bidHigh,
+                                askLow: barQ.askLow,
+                                askHigh: barQ.askHigh,
+                                midOpen: open,
+                                fillPrice: fillPx,
+                            });
                             const _slT = this._slCloseHitType(position);
                             console.log(`   ${_slT === 'BE' ? '⚖️ BREAKEVEN' : '🛑 STOP LOSS'} HIT! Closing remaining position BUY #${position.id} at ${fillPx.toFixed(5)}${fillPx !== position.stopLoss ? ' (gap fill)' : ''}`);
                             this._pushSplitGroupSlClosesFromHit(position, fillPx, positionsToClose, queuedSplitSlGroupIds);
+                        } else if (buySLGuarded && rawBuySlTouched) {
+                            this._recordSlTriggerDiag(position, {
+                                reason: 'guarded-touch-miss',
+                                barTime: currentCandle.t,
+                                guarded: true,
+                                rawTouched: true,
+                                effectiveExtreme: effLowForSl,
+                                bidLow: barQ.bidLow,
+                                bidHigh: barQ.bidHigh,
+                                askLow: barQ.askLow,
+                                askHigh: barQ.askHigh,
+                                midOpen: open,
+                            });
                         }
                     }
                 } else {
+                    const rawBuySkipTouched = !!(position.stopLoss && barQ.bidLow <= position.stopLoss);
+                    if (rawBuySkipTouched) {
+                        this._recordSlTriggerDiag(position, {
+                            reason: 'skipped-touch',
+                            skipReason: this._shouldSkipSlTpAfterBeThisBar(position, currentCandle.t) ? 'auto-be-same-bar' : 'fill-candle',
+                            barTime: currentCandle.t,
+                            rawTouched: true,
+                            effectiveExtreme: barQ.bidLow,
+                            bidLow: barQ.bidLow,
+                            bidHigh: barQ.bidHigh,
+                            askLow: barQ.askLow,
+                            askHigh: barQ.askHigh,
+                            midOpen: open,
+                        });
+                    }
                     if (this._shouldSkipSlTpAfterBeThisBar(position, currentCandle.t)) {
                         console.log(`   ⏭️ Skipping SL checks for BUY #${position.id} - AUTO_BE on this bar (no same-bar stop-out from new SL)`);
                     } else {
@@ -32474,8 +34089,11 @@ class OrderManager {
                     const posPipSize = this._getBreakevenUnitSize(position);
                     const triggerEntry = this._beTriggerAnchorEntry(position);
                     const placementEntry = this._getSplitGroupAvgEntry(position);
+                    const frozenTriggerPrice = this._breakevenFrozenTriggerPrice(position.breakevenSettings);
 
-                    if (position.breakevenSettings.mode === 'rr') {
+                    if (Number.isFinite(frozenTriggerPrice)) {
+                        shouldTrigger = barQ.askLow <= frozenTriggerPrice;
+                    } else if (position.breakevenSettings.mode === 'rr') {
                         const riskDist = Math.abs(triggerEntry - position.stopLoss);
                         const triggerDist = position.breakevenSettings.value * riskDist;
                         shouldTrigger = (triggerEntry - barQ.askLow) >= triggerDist;
@@ -32715,13 +34333,13 @@ class OrderManager {
                     const effHighForSl = (position._trailSlAccHigh != null && Number.isFinite(position._trailSlAccHigh))
                         ? this._askFromMid(position._trailSlAccHigh, position, (high + low) / 2)
                         : barQ.askHigh;
+                    const rawSellSlTouched = !!(position.stopLoss && effHighForSl >= position.stopLoss);
                     if (!position.tpTargets || position.tpTargets.length === 0) {
                         const slHitSell = sellSLGuarded
                             ? (position.stopLoss && this._tickAnimOverridesGuard(position._slNoTriggerBeforeTick, currentCandle, position.stopLoss, 'above', position))
                             : (position.stopLoss && effHighForSl >= position.stopLoss);
-                        const _slSell1 = Number(position.stopLoss);
                         const _tpSell1 = Number(position.takeProfit);
-                        const tpOkSell = Number.isFinite(_tpSell1) && _tpSell1 > 0 && (!Number.isFinite(_slSell1) || _tpSell1 < _slSell1);
+                        const tpOkSell = this._singleTakeProfitExecutable(position, _tpSell1, position.stopLoss);
                         const tpHitSell = sellTPGuarded
                             ? (position.takeProfit && tpOkSell && this._tickAnimOverridesGuard(position._tpNoTriggerBeforeTick, currentCandle, position.takeProfit, 'below', position))
                             : (position.takeProfit && tpOkSell && barQ.askLow <= position.takeProfit);
@@ -32730,6 +34348,19 @@ class OrderManager {
                             position._slNoTriggerBeforeTick = undefined;
                             const highFill = position._trailSlAccHigh != null ? position._trailSlAccHigh : high;
                             const fillPx = this._stopLossFillPrice(position.stopLoss, open, highFill, low, false, position, currentCandle.t);
+                            this._recordSlTriggerDiag(position, {
+                                reason: 'hit',
+                                barTime: currentCandle.t,
+                                guarded: sellSLGuarded,
+                                rawTouched: rawSellSlTouched,
+                                effectiveExtreme: effHighForSl,
+                                bidLow: barQ.bidLow,
+                                bidHigh: barQ.bidHigh,
+                                askLow: barQ.askLow,
+                                askHigh: barQ.askHigh,
+                                midOpen: open,
+                                fillPrice: fillPx,
+                            });
                             const _slSell = this._slCloseHitType(position);
                             console.log(`   ${_slSell === 'BE' ? '⚖️ BREAKEVEN' : '🛑 STOP LOSS'} HIT! Closing SELL #${position.id} at ${fillPx.toFixed(5)}${fillPx !== position.stopLoss ? ' (gap fill, SL was ' + position.stopLoss.toFixed(5) + ')' : ''}`);
                             this._pushSplitGroupSlClosesFromHit(position, fillPx, positionsToClose, queuedSplitSlGroupIds);
@@ -32742,6 +34373,19 @@ class OrderManager {
                                 : this._gapFill(position.takeProfit, open, false, true);
                             console.log(`   🎯 TAKE PROFIT HIT! Closing SELL #${position.id} at ${fillPx.toFixed(5)}${fillPx !== position.takeProfit ? ' (gap fill, TP was ' + position.takeProfit.toFixed(5) + ')' : ''}`);
                             positionsToClose.push({ id: position.id, closePrice: fillPx, type: 'TP' });
+                        } else if (sellSLGuarded && rawSellSlTouched) {
+                            this._recordSlTriggerDiag(position, {
+                                reason: 'guarded-touch-miss',
+                                barTime: currentCandle.t,
+                                guarded: true,
+                                rawTouched: true,
+                                effectiveExtreme: effHighForSl,
+                                bidLow: barQ.bidLow,
+                                bidHigh: barQ.bidHigh,
+                                askLow: barQ.askLow,
+                                askHigh: barQ.askHigh,
+                                midOpen: open,
+                            });
                         }
                     } else {
                         // For multiple TPs, still check SL
@@ -32753,12 +34397,53 @@ class OrderManager {
                             position._slNoTriggerBeforeTick = undefined;
                             const highFillM = position._trailSlAccHigh != null ? position._trailSlAccHigh : high;
                             const fillPx = this._stopLossFillPrice(position.stopLoss, open, highFillM, low, false, position, currentCandle.t);
+                            this._recordSlTriggerDiag(position, {
+                                reason: 'hit',
+                                barTime: currentCandle.t,
+                                guarded: sellSLGuarded,
+                                rawTouched: rawSellSlTouched,
+                                effectiveExtreme: effHighForSl,
+                                bidLow: barQ.bidLow,
+                                bidHigh: barQ.bidHigh,
+                                askLow: barQ.askLow,
+                                askHigh: barQ.askHigh,
+                                midOpen: open,
+                                fillPrice: fillPx,
+                            });
                             const _slSellM = this._slCloseHitType(position);
                             console.log(`   ${_slSellM === 'BE' ? '⚖️ BREAKEVEN' : '🛑 STOP LOSS'} HIT! Closing remaining position SELL #${position.id} at ${fillPx.toFixed(5)}${fillPx !== position.stopLoss ? ' (gap fill)' : ''}`);
                             this._pushSplitGroupSlClosesFromHit(position, fillPx, positionsToClose, queuedSplitSlGroupIds);
+                        } else if (sellSLGuarded && rawSellSlTouched) {
+                            this._recordSlTriggerDiag(position, {
+                                reason: 'guarded-touch-miss',
+                                barTime: currentCandle.t,
+                                guarded: true,
+                                rawTouched: true,
+                                effectiveExtreme: effHighForSl,
+                                bidLow: barQ.bidLow,
+                                bidHigh: barQ.bidHigh,
+                                askLow: barQ.askLow,
+                                askHigh: barQ.askHigh,
+                                midOpen: open,
+                            });
                         }
                     }
                 } else {
+                    const rawSellSkipTouched = !!(position.stopLoss && barQ.askHigh >= position.stopLoss);
+                    if (rawSellSkipTouched) {
+                        this._recordSlTriggerDiag(position, {
+                            reason: 'skipped-touch',
+                            skipReason: this._shouldSkipSlTpAfterBeThisBar(position, currentCandle.t) ? 'auto-be-same-bar' : 'fill-candle',
+                            barTime: currentCandle.t,
+                            rawTouched: true,
+                            effectiveExtreme: barQ.askHigh,
+                            bidLow: barQ.bidLow,
+                            bidHigh: barQ.bidHigh,
+                            askLow: barQ.askLow,
+                            askHigh: barQ.askHigh,
+                            midOpen: open,
+                        });
+                    }
                     if (this._shouldSkipSlTpAfterBeThisBar(position, currentCandle.t)) {
                         console.log(`   ⏭️ Skipping SL checks for SELL #${position.id} - AUTO_BE on this bar (no same-bar stop-out from new SL)`);
                     } else {
@@ -33384,7 +35069,7 @@ class OrderManager {
         }
         
         // Update balance
-        this.balance += pnl;
+        this._applyRealizedPnLToBalance(pnl);
         this.equity = this.balance;
         
         // Track prop firm progress (for both partial and full closes)
@@ -34610,11 +36295,17 @@ class OrderManager {
                             order.breakevenSettings.value = parseFloat((pips * qUse * bePipVal).toFixed(2));
                         }
                     }
+                    if (_orderBePlaceAnchorV1Enabled()) {
+                        order.breakevenSettings.triggerPrice = newPrice;
+                    }
                     if (order.isSplitEntry && order.splitGroupId) {
                         self._getSplitGroupOpenPositions(order).forEach((sib) => {
                             if (!sib.breakevenSettings || sib.id === order.id) return;
                             sib.breakevenSettings.mode = order.breakevenSettings.mode;
                             sib.breakevenSettings.value = order.breakevenSettings.value;
+                            if (_orderBePlaceAnchorV1Enabled()) {
+                                sib.breakevenSettings.triggerPrice = newPrice;
+                            }
                         });
                     }
                     // Update stored trigger price
@@ -35909,7 +37600,7 @@ class OrderManager {
         const newLegTP = this._collapsedTakeProfitForNewSplitLeg(po);
 
         const newPO = {
-            id: this.orderIdCounter++,
+            id: this._allocateOrderId(),
             symbol: po.symbol || po.ticker,
             ticker: po.ticker || po.symbol,
             sourceFileId: po.sourceFileId,
@@ -38351,9 +40042,11 @@ class OrderManager {
                 ? this._getSplitGroupPendingOrders(pendingOrder)
                 : [pendingOrder];
             const beQtyPend = membersBe.reduce((s, m) => s + (Number(m.quantity) || 0), 0) || (Number(pendingOrder.quantity) || 0);
-            let beTriggerPrice = 0;
+            let beTriggerPrice = this._resolveBreakevenTriggerPrice(pendingOrder.breakevenSettings, () => NaN);
             
-            if (pendingOrder.breakevenSettings.mode === 'rr') {
+            if (Number.isFinite(beTriggerPrice)) {
+                // Place-time preview anchor wins over pending split/average recomputation.
+            } else if (pendingOrder.breakevenSettings.mode === 'rr') {
                 const riskDist = Math.abs(entryPrice - pendingOrder.stopLoss);
                 const profitDistance = pendingOrder.breakevenSettings.value * riskDist;
                 beTriggerPrice = pendingOrder.direction === 'BUY' 
@@ -38437,8 +40130,11 @@ class OrderManager {
         this.pendingTargetLines.forEach((entry) => {
             if (entry.chart !== ch) return;
             entry.targets.forEach((target) => {
-                const y = ch.scales.yScale(target.price);
-                if (!Number.isFinite(y)) return;
+                const rawY = ch.scales.yScale(target.price);
+                if (!Number.isFinite(rawY)) return;
+                const edgeVisibleY = this._orderLineEdgeVisibleY(ch, rawY, target.type);
+                const forceEdgeVisible = Number.isFinite(edgeVisibleY) && edgeVisibleY !== rawY;
+                const y = Number.isFinite(edgeVisibleY) ? edgeVisibleY : rawY;
                 const isDraggable = (target.type === 'TP' || target.type === 'SL' || target.type === 'BE');
 
                 target.line
@@ -38656,7 +40352,7 @@ class OrderManager {
 
                 if (target._tpPlusBadge) { try { target._tpPlusBadge.remove(); } catch (_) {} target._tpPlusBadge = null; }
 
-                const inPlot = this._isOrderYInMainPlot(ch, y);
+                const inPlot = forceEdgeVisible || this._isOrderYInMainPlot(ch, y);
                 if (!inPlot) {
                     target.line.style('display', 'none');
                     labelGroup.style('display', 'none');
@@ -39085,6 +40781,26 @@ class OrderManager {
         );
     }
 
+    _pendingTpPctControlsSelector(orderId) {
+        const oid = String(orderId);
+        if (!_orderSel01ExactTeardownV1Enabled()) {
+            return `[class*="pending-tp-pct"][class*="pending-tp-${oid}"]`;
+        }
+        return [
+            `.pending-tp-pct-control.pending-tp-${oid}`,
+            `.pending-tp-pct-dec.pending-tp-${oid}`,
+            `.pending-tp-pct-inc.pending-tp-${oid}`,
+        ].join(',');
+    }
+
+    _pendingTpDeleteSelector(orderId) {
+        const oid = String(orderId);
+        if (!_orderSel01ExactTeardownV1Enabled()) {
+            return `[class*="pending-tp-delete"][class*="pending-tp-${oid}"]`;
+        }
+        return `.pending-tp-delete.pending-tp-${oid}`;
+    }
+
     removePendingSLTPLines(orderId) {
         if (!this.pendingTargetLines) return;
         const records = this.pendingTargetLines.filter(entry => entry.orderId === orderId);
@@ -39143,9 +40859,9 @@ class OrderManager {
             c.svg.selectAll(`.pending-order-label-box.pending-${orderId}`).remove();
             c.svg.selectAll(`.pending-order-label-text.pending-${orderId}`).remove();
             c.svg.selectAll(`.pending-order-close-btn.pending-${orderId}`).remove();
-            c.svg.selectAll(`.pending-tp-delete.pending-tp-${orderId}`).remove();
+            c.svg.selectAll(this._pendingTpDeleteSelector(orderId)).remove();
             c.svg.selectAll(`.pending-tp-tp-plus-badge.pending-tp-${orderId}`).remove();
-            c.svg.selectAll(`[class*="pending-tp-pct"][class*="pending-tp-${orderId}"]`).remove();
+            c.svg.selectAll(this._pendingTpPctControlsSelector(orderId)).remove();
         });
     }
     
@@ -39417,6 +41133,8 @@ class OrderManager {
     /**
      * keepClosed — finished before cut; resurrectOpen — started before cut, still open at cut;
      * remove — started on/after cut (only the trade(s) you cut forward).
+     * Under M23 rollback-trade-cancel (default ON), callers must not resurrect —
+     * treat resurrectOpen as permanent cancel (remove).
      */
     _classifyTradeAtReplayCutoff(trade, cutoffMs) {
         if (cutoffMs == null || !Number.isFinite(cutoffMs)) return 'remove';
@@ -39426,6 +41144,28 @@ class OrderManager {
         if (exit != null && exit < cutoffMs) return 'keepClosed';
         if (entry != null && entry < cutoffMs) return 'resurrectOpen';
         return 'remove';
+    }
+
+    /** True when M23 permanent-cancel path is active (kill absent/falsy). */
+    _m23RollbackTradeCancelV1Enabled() {
+        return _m23RollbackTradeCancelV1Enabled();
+    }
+
+    /**
+     * True when a selective cut at cutoffMs would permanently cancel executed
+     * trades under M23 (default ON). Kill path always returns false (no confirm).
+     */
+    _replayCutWouldCancelExecutedTrades(cutoffTime) {
+        if (!_m23RollbackTradeCancelV1Enabled()) return false;
+        const cutoffMs = this._replayCutoffMs(cutoffTime);
+        if (cutoffMs == null) {
+            return ((this.openPositions || []).length + (this.closedPositions || []).length) > 0;
+        }
+        if ((this.openPositions || []).length > 0) return true;
+        for (const pos of (this.closedPositions || [])) {
+            if (this._classifyTradeAtReplayCutoff(pos, cutoffMs) !== 'keepClosed') return true;
+        }
+        return false;
     }
 
     /** Re-open a closed leg at the replay cut (strip close fields; keep partials before cut). */
@@ -39461,12 +41201,15 @@ class OrderManager {
      * Close/cancel orders and remove trade visuals on rewind ("Go back").
      * @param {number} [cutoffTime] - If provided, only remove trades that
      *   started on/after this timestamp; trades fully completed before it are
-     *   preserved; trades that were still open at the cut are restored as open.
+     *   preserved; trades that were still open at the cut are restored as open
+     *   only when M23 rollback-trade-cancel is killed. Default ON permanently
+     *   cancels mid-cut executed trades (no resurrect / auto-reactivate).
      *   If omitted, ALL trades and visuals are wiped (legacy behaviour).
      */
     forceCloseAllOrders(cutoffTime) {
         const cutoffMs = this._replayCutoffMs(cutoffTime);
         const selective = cutoffMs != null;
+        const permanentCancel = _m23RollbackTradeCancelV1Enabled();
 
         const allPending = [
             ...(this.pendingOrders || []),
@@ -39486,16 +41229,17 @@ class OrderManager {
                 const kind = this._classifyTradeAtReplayCutoff(pos, cutoffMs);
                 if (kind === 'keepClosed') {
                     preservedClosed.push(pos);
-                } else if (kind === 'resurrectOpen') {
+                } else if (kind === 'resurrectOpen' && !permanentCancel) {
                     resurrectedOpen.push(this._resurrectClosedPositionForReplayCut(pos, cutoffMs));
                     removedClosedIds.add(pos.id);
                 } else {
+                    // remove, or resurrectOpen under M23 permanent-cancel (default ON)
                     removedClosedIds.add(pos.id);
                 }
             });
             (this.openPositions || []).forEach(pos => {
                 const entry = this._effectiveTradeEntryMs(pos);
-                if (entry != null && entry < cutoffMs) {
+                if (!permanentCancel && entry != null && entry < cutoffMs) {
                     preservedOpen.push(pos);
                 } else {
                     removedOpen.push(pos);
@@ -39749,7 +41493,23 @@ class OrderManager {
     /** Replace the journal array (restore / truncate / reorder / filter / hydrate / project). */
     _m19CommitJournalArray(next, reason) {
         this.tradeJournal = Array.isArray(next) ? next : []; // M19-D-JOURNAL-WRITE:commit
+        // B-W16 provenance allowlist: only a successful server hydrate vouches for
+        // completeness. Every other reason (including 'local-backup-hydrate', the
+        // failed-fetch path) leaves provenance untouched — no upgrade, no downgrade.
+        if (reason === 'session-state-hydrate') {
+            this._journalProvenance = 'hydrated';
+            let hydratedSession = null;
+            try {
+                hydratedSession = this.chart && typeof this.chart.getActiveTradingSessionId === 'function'
+                    ? this.chart.getActiveTradingSessionId()
+                    : null;
+            } catch (_) { hydratedSession = null; }
+            this._journalProvenanceSession = hydratedSession != null ? String(hydratedSession) : null;
+        }
         this._m19NoteJournalStructuralMutation(reason || 'journal-replace');
+        if (_orderPnlRestoreStableV1Enabled() && typeof this.recomputeAccountFromJournal === 'function') {
+            this.recomputeAccountFromJournal();
+        }
         return this.tradeJournal;
     }
 
@@ -39792,7 +41552,7 @@ class OrderManager {
         if (this.entryMarkers?.length) {
             this.entryMarkers = this.entryMarkers.filter((m) => {
                 if (openIds.has(String(m.orderId))) return true;
-                removeDom(m);
+                this._disposeEntryMarkerRecord(m);
                 return false;
             });
         }
@@ -40804,6 +42564,45 @@ class OrderManager {
     }
 
     /**
+     * ORPHAN-L4 — default ON. Kill-switch:
+     *   window.__TALARIA_DISABLE_OM_ENTRY_MARKER_LISTENER_RELEASE_V1 = <truthy>
+     * restores legacy orphan mouseenter/mouseleave across entry-marker dispose.
+     * Absent / falsy ⇒ release on. Read per call (never sampled at init).
+     */
+    _omEntryMarkerListenerReleaseEnabled() {
+        return !(typeof window !== 'undefined'
+            && !!window.__TALARIA_DISABLE_OM_ENTRY_MARKER_LISTENER_RELEASE_V1);
+    }
+
+    /** Drop d3 hover listeners from an entry-marker group (when release gate ON). */
+    _releaseEntryMarkerHoverListeners(marker) {
+        if (!this._omEntryMarkerListenerReleaseEnabled()) return;
+        if (!marker || typeof marker.on !== 'function') return;
+        try { marker.on('mouseenter', null); } catch (_) { /* ignore */ }
+        try { marker.on('mouseleave', null); } catch (_) { /* ignore */ }
+    }
+
+    /** Release hover listeners then remove entry-marker DOM for a registry row. */
+    _disposeEntryMarkerRecord(markerData) {
+        if (!markerData) return;
+        this._releaseEntryMarkerHoverListeners(markerData.marker);
+        try {
+            if (markerData.marker?.remove) markerData.marker.remove();
+            else if (markerData.line?.remove) markerData.line.remove();
+        } catch (_) { /* ignore */ }
+    }
+
+    /** Release listeners for all entry markers hosted on `chart` (strip/teardown). */
+    _releaseEntryMarkerListenersForChart(chart) {
+        const ch = chart || this.chart;
+        if (!ch || !this.entryMarkers?.length) return;
+        for (const m of this.entryMarkers) {
+            if ((m.chart || this.chart) !== ch) continue;
+            this._releaseEntryMarkerHoverListeners(m.marker);
+        }
+    }
+
+    /**
      * Draw entry marker on chart (TradingView style — arrow + tick + hover tooltip)
      */
     drawEntryMarker(order, targetChart = null) {
@@ -41371,7 +43170,7 @@ class OrderManager {
             const orderRef = order || this._orderRefForMarkerOrderId(markerData.orderId);
             // No resolvable order → cannot prove it belongs here; hide it.
             if (!orderRef || !this._positionTickerMatchesChartSymbol(orderRef, ch)) {
-                try { if (marker?.remove) marker.remove(); } catch (_) {}
+                try { this._disposeEntryMarkerRecord(markerData); } catch (_) {}
                 return;
             }
 
@@ -41705,11 +43504,11 @@ class OrderManager {
             svg.selectAll(`.pending-be-${oid}`).remove();
             svg.selectAll(`.pending-${oid}`).remove();
             svg.selectAll(`[class*="open-tp-pct"][class*="tp-${oid}"]`).remove();
-            svg.selectAll(`[class*="pending-tp-pct"][class*="pending-tp-${oid}"]`).remove();
-            svg.selectAll(`[class*="pending-tp-delete"][class*="pending-tp-${oid}"]`).remove();
+            svg.selectAll(this._pendingTpPctControlsSelector(oid)).remove();
+            svg.selectAll(this._pendingTpDeleteSelector(oid)).remove();
             svg.selectAll(`.order-${oid}`).remove();
             svg.selectAll(`.exec-order-connector[data-order-id="${oid}"]`).remove();
-            svg.selectAll(`[class*="multi-tp-avg-"][class*="-${oid}"]`).remove();
+            svg.selectAll(`.multi-tp-avg-${oid}`).remove();
         };
         const charts = typeof this._collectLayoutCharts === 'function'
             ? this._collectLayoutCharts()
@@ -42011,6 +43810,33 @@ class OrderManager {
             seenId.add(o.id);
             out.push(o);
         }
+        return out;
+    }
+
+    _pendingProtectionClearRecordsForOrder(seed) {
+        if (!seed) return [];
+        const raw = [];
+        const push = (arr) => {
+            (arr || []).forEach((p) => {
+                if (p && typeof p === 'object') raw.push(p);
+            });
+        };
+        push(this.pendingOrders);
+        push(this.orderService?.pendingOrders);
+        const seedId = seed.id;
+        const splitGroupId = seed.splitGroupId;
+        const isSplit = seed.isSplitEntry && splitGroupId != null;
+        if (seedId == null && !isSplit) return [seed];
+        const seen = new Set();
+        const out = [];
+        raw.forEach((p) => {
+            const sameId = p.id == seedId;
+            const sameSplit = isSplit && p.isSplitEntry && p.splitGroupId == splitGroupId;
+            if (!sameId && !sameSplit) return;
+            if (seen.has(p)) return;
+            seen.add(p);
+            out.push(p);
+        });
         return out;
     }
 
@@ -42807,9 +44633,11 @@ class OrderManager {
             const beQty = this._beChartBreakevenQtyOpen(order);
             const beUnit = this._getBreakevenUnitSize(order);
             const bePipVal = this._getBreakevenPipValue(order);
-            let beTriggerPrice = 0;
+            let beTriggerPrice = this._resolveBreakevenTriggerPrice(order.breakevenSettings, () => NaN);
             
-            if (order.breakevenSettings.mode === 'rr') {
+            if (Number.isFinite(beTriggerPrice)) {
+                // Place-time preview anchor wins over post-fill entry/average recomputation.
+            } else if (order.breakevenSettings.mode === 'rr') {
                 const riskDist = Math.abs(entryPrice - order.stopLoss);
                 const profitDistance = order.breakevenSettings.value * riskDist;
                 beTriggerPrice = order.type === 'BUY'
@@ -43294,7 +45122,12 @@ class OrderManager {
         const po = (this.pendingOrders || []).find(p => p.id == orderId);
         if (!po) return;
 
-        if (po.isSplitEntry && po.splitGroupId) {
+        const clearedRecords = _orderPendingProtectionClearV1Enabled()
+            ? this._pendingProtectionClearRecordsForOrder(po)
+            : null;
+        if (_orderPendingProtectionClearV1Enabled()) {
+            clearedRecords.forEach(m => { m.stopLoss = null; });
+        } else if (po.isSplitEntry && po.splitGroupId) {
             this._getSplitGroupPendingOrders(po).forEach(m => { m.stopLoss = null; });
         } else {
             po.stopLoss = null;
@@ -43303,6 +45136,10 @@ class OrderManager {
         this.removePendingSLTPLines(orderId);
         this.drawPendingOrderTargets(po, this.chart);
         this._drawExecutedOrderConnectors(this.chart);
+        if (_orderPendingProtectionClearV1Enabled()) {
+            if (typeof this._emitPendingMirrorSync === 'function') clearedRecords.forEach(m => this._emitPendingMirrorSync(m));
+            if (typeof this._schedulePendingOrdersPanelRefresh === 'function') this._schedulePendingOrdersPanelRefresh();
+        }
         console.log(`✅ Pending SL removed from order #${orderId}`);
         this.showNotification(`Stop Loss removed from pending order`, 'info');
     }
@@ -43314,7 +45151,12 @@ class OrderManager {
         const po = (this.pendingOrders || []).find(p => p.id == orderId);
         if (!po) return;
 
-        if (po.isSplitEntry && po.splitGroupId) {
+        const clearedRecords = _orderPendingProtectionClearV1Enabled()
+            ? this._pendingProtectionClearRecordsForOrder(po)
+            : null;
+        if (_orderPendingProtectionClearV1Enabled()) {
+            clearedRecords.forEach(m => { m.takeProfit = null; m.tpTargets = null; });
+        } else if (po.isSplitEntry && po.splitGroupId) {
             this._getSplitGroupPendingOrders(po).forEach(m => { m.takeProfit = null; m.tpTargets = null; });
         } else {
             po.takeProfit = null;
@@ -43327,6 +45169,10 @@ class OrderManager {
         const avgKey = `splitgrp_${po.splitGroupId}`;
         const avgIdx = (this.multiTPAvgLines || []).findIndex(g => g.orderId === avgKey || g.orderId === po.id);
         if (avgIdx !== -1) this._destroyMultiTPAvgEntry(avgIdx);
+        if (_orderPendingProtectionClearV1Enabled()) {
+            if (typeof this._emitPendingMirrorSync === 'function') clearedRecords.forEach(m => this._emitPendingMirrorSync(m));
+            if (typeof this._schedulePendingOrdersPanelRefresh === 'function') this._schedulePendingOrdersPanelRefresh();
+        }
         console.log(`✅ Pending TP removed from order #${orderId}`);
         this.showNotification(`Take Profit removed from pending order`, 'info');
     }
@@ -43630,7 +45476,9 @@ class OrderManager {
                     if (priceText) priceText.style('display', 'none');
                 }
                 
-                const y = ch.scales.yScale(displaySlPrice);
+                const rawY = ch.scales.yScale(displaySlPrice);
+                const edgeY = this._orderLineEdgeVisibleY(ch, rawY, 'SL');
+                const y = Number.isFinite(edgeY) ? edgeY : rawY;
                 const draggingThisSl = !!(
                     this._isDraggingOrderLine
                     && this._draggingManagedOpenLineKind === 'sl'
@@ -43946,7 +45794,9 @@ class OrderManager {
                     if (priceText) priceText.style('display', 'none');
                 }
                 
-                const y = ch.scales.yScale(displayTpPrice);
+                const rawY = ch.scales.yScale(displayTpPrice);
+                const edgeY = this._orderLineEdgeVisibleY(ch, rawY, 'TP');
+                const y = Number.isFinite(edgeY) ? edgeY : rawY;
                 
                 if (labelText && labelBox) {
                     const boxH = 22;
@@ -44217,7 +46067,7 @@ class OrderManager {
             this.entryMarkers = this.entryMarkers.filter((m) => {
                 const ch = m.chart || this.chart;
                 if (!isHidden(m.time, ch)) return true;
-                removeDom(m);
+                this._disposeEntryMarkerRecord(m);
                 return false;
             });
         }
@@ -44470,6 +46320,33 @@ class OrderManager {
         return y >= m.t && y <= plotBottom;
     }
 
+    _orderMainPlotYBounds(ch) {
+        if (!ch) return null;
+        const m = ch.margin || { t: 0, b: 0 };
+        const layout = typeof ch._getMainPricePlotLayout === 'function'
+            ? ch._getMainPricePlotLayout()
+            : null;
+        const top = Number.isFinite(m.t) ? m.t : 0;
+        const bottom = layout && Number.isFinite(layout.plotBottom)
+            ? layout.plotBottom
+            : (ch.h - (m.b || 0) - (ch.separateIndicatorPanelHeight || 0));
+        if (!Number.isFinite(top) || !Number.isFinite(bottom) || bottom < top) return null;
+        return { top, bottom };
+    }
+
+    _orderLineEdgeVisibleY(ch, y, type) {
+        if (!_orderLineEdgeVisibilityV1Enabled()) return null;
+        if (!Number.isFinite(y)) return null;
+        const t = String(type || '').toUpperCase();
+        if (t !== 'SL' && t !== 'TP' && t !== 'BE') return null;
+        if (this._isOrderYInMainPlot(ch, y)) return y;
+        const bounds = this._orderMainPlotYBounds(ch);
+        if (!bounds) return null;
+        if (y < bounds.top && y >= bounds.top - ORDER_LINE_EDGE_VISIBILITY_PAD_PX) return bounds.top + 0.5;
+        if (y > bounds.bottom && y <= bounds.bottom + ORDER_LINE_EDGE_VISIBILITY_PAD_PX) return bounds.bottom - 0.5;
+        return null;
+    }
+
     /** Hide order row when its Y maps into the indicator stack; clip when inside main plot. */
     _applyOrderRowMainPlotVisibility(ch, y, parts, clipUrl) {
         if (!parts) return;
@@ -44621,7 +46498,7 @@ class OrderManager {
                         console.log(`   ⚠️ Pending order not found for #${orderId}`);
                         this._disposeOrderLineElements(olEntry);
                         this.orderLines = (this.orderLines || []).filter(
-                            (ol) => !(ol.orderId === orderId && (ol.chart || this.chart) === ch)
+                            (ol) => !(ol.orderId === orderId && ol.isPending && (ol.chart || this.chart) === ch)
                         );
                         return;
                     }
@@ -44632,7 +46509,7 @@ class OrderManager {
                         console.log(`   ⚠️ Position not found for order #${orderId}`);
                         this._disposeOrderLineElements(olEntry);
                         this.orderLines = (this.orderLines || []).filter(
-                            (ol) => !(ol.orderId === orderId && (ol.chart || this.chart) === ch)
+                            (ol) => !(ol.orderId === orderId && !ol.isPending && (ol.chart || this.chart) === ch)
                         );
                         return;
                     }
@@ -45146,8 +47023,9 @@ class OrderManager {
                 shiftBtn(target._deleteBtn);
                 shiftBtn(target._splitBtn);
                 if (Number.isFinite(target.labelDimensions?.width)) {
-                    const hitEnd = minX;
+                    const hitEnd = Number(ch.w) || minX;
                     target.line?.attr('x2', Math.max(0, hitEnd));
+                    target.hitLine?.attr('x2', Math.max(0, hitEnd));
                 }
             });
         });
@@ -46130,7 +48008,7 @@ class OrderManager {
                 this.tradeJournal.forEach(trade => {
                     allTrades.push({
                         type: 'closed',
-                        id: trade.id || trade.tradeId,
+                        id: this._resolveJournalDisplayTradeId(trade),
                         symbol: normalizeTickerSymbol(trade),
                         direction: trade.direction || trade.type,
                         quantity: trade.quantity,
@@ -46259,7 +48137,7 @@ class OrderManager {
             } else {
                 const reversedJournal = this.tradeJournal.slice().reverse();
                 replayPositionsBodyEl.innerHTML = reversedJournal.map((trade, index) => {
-                    const tradeId = trade.tradeId || trade.id;
+                    const tradeId = this._resolveJournalDisplayTradeId(trade);
                     const direction = String(trade.direction || trade.type || '—').toUpperCase();
                     const sideClass = direction === 'SELL' ? 'replay-badge--sell' : 'replay-badge--buy';
                     const quantity = trade.quantity || 0;
@@ -46646,12 +48524,15 @@ class OrderManager {
             clearTimeout(miDockResizeT);
             miDockResizeT = setTimeout(() => applyMiDockAnchorAboveReplay(), 80);
         };
-        window.addEventListener('resize', onReplayDockResize);
-        window.addEventListener('orientationchange', onReplayDockResize);
+        this._trackListener(window, 'resize', onReplayDockResize);
+        this._trackListener(window, 'orientationchange', onReplayDockResize);
         try {
             const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(onReplayDockResize) : null;
             const rtEl = document.getElementById('replayToolbar');
-            if (ro && rtEl) ro.observe(rtEl);
+            if (ro && rtEl) {
+                ro.observe(rtEl);
+                this._trackObserver(ro);
+            }
         } catch (_) {}
 
         // Restore minimized state
@@ -48767,10 +50648,67 @@ class OrderManager {
 
         const innerW = tagW + (detailText ? gap + detailW : 0);
         const totalW = Math.max(o.minWidth || 72, stripeW + padL + innerW + padR);
+        const stableSig = [
+            detailText ? 'detail' : 'tag',
+            height,
+            fontSize,
+            font,
+            onRrTool ? 'rr' : (isPreview ? 'preview' : 'row'),
+            o.smallLabel ? 'small' : 'normal',
+            o.minWidth || '',
+        ].join('|');
+        const existingShell = _orderStableLabelHoverDomV1Enabled()
+            && parentGroup.select
+            && parentGroup.select('.order-level-toast-label');
+        if (existingShell && !existingShell.empty?.()
+            && existingShell.attr('data-stable-label-sig') === stableSig) {
+            existingShell
+                .style('opacity', shellOpacity)
+                .attr('data-stable-label-sig', stableSig);
+            existingShell.select('.order-level-toast-bg')
+                .attr('width', totalW)
+                .attr('height', height)
+                .attr('fill', bgFill)
+                .attr('stroke', th.border)
+                .attr('rx', shellRx);
+            existingShell.select('.order-level-toast-accent')
+                .attr('height', height)
+                .attr('fill', accent)
+                .attr('rx', onRrTool ? 3 : 0);
+            existingShell.select('.order-level-toast-tag')
+                .attr('fill', accent)
+                .attr('font-size', fontSize)
+                .attr('font-family', font)
+                .text(tagText);
+            let detailSel = existingShell.select('.order-level-toast-detail');
+            if (detailText) {
+                if (detailSel.empty?.()) {
+                    detailSel = existingShell.append('text')
+                        .attr('class', 'order-level-toast-detail')
+                        .attr('y', height / 2)
+                        .attr('dy', '0.35em')
+                        .attr('font-weight', '600');
+                }
+                detailSel
+                    .attr('x', stripeW + padL + tagW + gap)
+                    .attr('y', height / 2)
+                    .attr('fill', detailColor)
+                    .attr('font-size', fontSize)
+                    .attr('font-family', font)
+                    .text(detailText);
+            } else if (!detailSel.empty?.()) {
+                detailSel.remove();
+            }
+            return { width: totalW, height };
+        }
+        if (existingShell && !existingShell.empty?.()) {
+            existingShell.remove();
+        }
 
         const shell = parentGroup.append('g')
             .attr('class', 'order-level-toast-label')
             .attr('data-role', 'order-level-toast-shell')
+            .attr('data-stable-label-sig', stableSig)
             .style('opacity', shellOpacity);
 
         shell.append('rect')

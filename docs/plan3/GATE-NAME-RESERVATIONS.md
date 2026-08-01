@@ -554,15 +554,15 @@ Cells:
 | HEAP-CYCLE-INSTRUMENT-COMPLETE | baseline + 3 cycles emit `usedJSHeapSize` after forced GC and `detachedDivCount` from heap snapshot | LIVE |
 | HEAP-CYCLE-DISTINCT-FILEIDS | each cycle expands with distinct harness fileIds 25/27/28/29 | LIVE |
 | HEAP-CYCLE-DETACHED-DIV-STABLE | mean per-cycle Detached HTMLDivElement delta (CDP `detachedness`) or retained `HTMLDivElement` growth after return-to-single ≤ `HEAP_CYCLE_DETACHED_STABLE_MAX=1` (PO leak ≈ +21699/cycle) | LIVE — superior/mandatory |
-| HEAP-CYCLE-HEAP-FLOOR-BOUNDED | mean return-to-single heap floor growth ≤ 8 MiB (PO hand ≈ +13 MB/cycle on canary; sealed fixture still ~50 MB/cycle) | LIVE |
+| HEAP-CYCLE-HEAP-FLOOR-BOUNDED | mean return-to-single floor growth ≤ 8 MiB on the **main-frame JS heap** instrument (`usedJSHeapSize`, top frame; PO hand ≈ +13 MB/cycle on canary; sealed fixture ~50 MB/cycle) | LIVE — **scope caveat 2026-07-30:** main-frame only, blind to panel-realm and worker heaps; cannot grade a panel-realm fix. See `evidence/B-M4/release/PO-HEAP-INSTRUMENT-CORRECTION-20260730.md` |
 | HEAP-CYCLE-PO-WORKLOAD-ARMED | live MultichartGrid cycles must arm 4 panels + ≥3 indicators/panel + host order + live replay playing; layout-only is GATE-01 decorative | LIVE (W74) |
-| HEAP-CYCLE-PO-HAND-SHAPE | report cell: mean≈13 MB/cycle + late jump ≥25 MB on cycle≥4 (PO hand 75/80/72/90/96/141/155) | LIVE (W74) |
+| HEAP-CYCLE-PO-HAND-SHAPE | report cell on the **main-frame JS heap** instrument: mean ≈13 MB/cycle + late jump ≥25 MB on cycle≥4 (PO hand 75/80/72/90/96/141/155, all `usedJSHeapSize` top-frame reads) | LIVE (W74) — same scope caveat |
 | HEAP-CYCLE-BUILD-PIN | `--require-build=` fail-closed if `meta.buildId` mismatches | LIVE (W74) |
 | REPLAY-INTERVAL-BUDGET-V1 | `TALARIA_REPLAY_INTERVAL_BUDGET_V1` | no `setInterval` callback >50ms during armed replay (PO console 55/82/95ms) | LIVE (W74) |
 | HEAP-GROWTH-CENSUS-EMITTED | report includes full constructor delta tables ×3 + A-list + B-list | LIVE — W68 |
 | HEAP-GROWTH-MONOTONIC-HOARDERS | A-list = constructors with sizeDelta>0 in all three cycles, ranked by total bytes | LIVE — W68; triage surface |
 | HEAP-GROWTH-TOP40-CONTEXT | B-list = top ≤40 by total size delta (context only) | LIVE — W68 |
-| HEAP-GROWTH-SURFACE-CALIBRATION | when leak-shaped, require ≥2/4 PO pins (Detached `<div>` ≳5k, UniqueElementData ≳10k, CSSBacking ≳10k, heap ≳28 MB); else report HARNESS-NOT-REAL-PRODUCT first | LIVE — W68; report-first when RED |
+| HEAP-GROWTH-SURFACE-CALIBRATION | when leak-shaped, require ≥2/4 PO pins (Detached `<div>` ≳5k, UniqueElementData ≳10k, CSSBacking ≳10k, **main-frame JS heap** ≳28 MB); else report HARNESS-NOT-REAL-PRODUCT first | LIVE — W68; report-first when RED. Three of the four pins are node/element censuses and are instrument-sound; only the fourth carries the main-frame scope caveat |
 | HEAP-RETAINER-PATHS-AGGREGATED | A-list tops (ExternalStringData, heap number, Object): walk retainer/dominator paths, aggregate identical paths, rank by total self bytes; flag `_tfDataCache`/`_btTfDataCache`/`_smartPrefetchCache` | LIVE — W69 |
 | M26-REGRADE-ON-HEAP-CYCLE | footprint verdict void; INSUFFICIENT while leak remains (M26 correct but insufficient) | LIVE |
 | FIX3-REGRADE-ON-HEAP-CYCLE | footprint verdict void; INSUFFICIENT while leak remains | LIVE |
@@ -575,7 +575,22 @@ Cells:
 W70 retainer harden: path normalize collapses WeakMapPair + script-source; application-preferred reverse climb so ExternalStringData can surface cache holders when present.
 
 Pinned constants: `HEAP_CYCLE_PO_DETACHED_DIVS_PER_CYCLE=21699`, `HEAP_CYCLE_PO_FLOOR_MB=[106,152,204]`, `HEAP_CYCLE_PO_BASELINE_MB=54`.
-PO census pins: UniqueElementData +30565/cycle, HeapVectorBacking\<CSSPropertyValue\> +22209/cycle, ~29 MB comparison total.
+PO census pins: UniqueElementData +30565/cycle, HeapVectorBacking\<CSSPropertyValue\> +22209/cycle, ~29 MB comparison total on the **main-frame JS heap** instrument.
+
+> **SCOPE CORRECTION 2026-07-30 (B).** Every megabyte figure in this section is
+> `performance.memory.usedJSHeapSize` read in the **top frame**. That call is blind to
+> worker heaps (stated in `heap-cycle-browser.mjs`) and does not account for retained
+> panel iframe documents, which is where the multichart leak lives. The figure the PO
+> measures by hand is reported as roughly four times larger. **The detached-node and
+> element-census pins are unaffected and remain the grading instruments;** the
+> megabyte pins are kept for continuity of comparison and must not be quoted as
+> footprint or used to grade a panel-realm fix. Full correction, including the
+> replacement PO command and the decision rule for shared-vs-separate isolates:
+> `docs/plan3/evidence/B-M4/release/PO-HEAP-INSTRUMENT-CORRECTION-20260730.md`.
+
+| Gate | Signature | Implementation | Status |
+|---|---|---|---|
+| HEAP-FIGURE-SCOPE-V1 | `TALARIA_HEAP_FIGURE_SCOPE_V1` | `scripts/lib/heap-figure-scope.mjs`, `scripts/tests/heap-figure-scope.test.mjs`; instrument labels in `scripts/lib/heap-cycle-memory.mjs` (`HEAP_INSTRUMENT_SCOPE_MAIN_FRAME`) and all three `heap-cycle-browser.mjs` session metas | LIVE — 13/13 with two mutants. A size figure sitting near heap/memory language in a release-facing document must name its instrument scope from a closed vocabulary; bare "heap" does not pay for itself. Journals are deliberately out of scope so the historical record is not rewritten to satisfy a lint. First run found four unlabelled figures in this file and five in its own correction notice. |
 
 ## Queue item 11 — Hidden-tab replay regression (W59 / GATE-01)
 
@@ -590,3 +605,178 @@ Cells:
 | HIDDEN-TAB-DOCUMENT-FORCED-HIDDEN | probe forced `document.hidden === true` | LIVE |
 | HIDDEN-TAB-REPLAY-MUST-NOT-ADVANCE | playhead index/timestamp must not advance while hidden | LIVE (RED on unfixed product) |
 | NC-HIDDEN-TAB-PAUSE-SHIM | positive-control pause-on-hidden shim makes the advance cell GREEN | LIVE |
+
+## Queue item 12 — Failed server write count in the support passport (B, PREFS-500 follow-on)
+
+| Name | Signature token | Implementation | Status |
+|---|---|---|---|
+| SERVER-WRITE-FAILURE-LEDGER-V1 | `__TALARIA_DISABLE_SERVER_WRITE_FAILURE_LEDGER_V1` | `chart v 1.4/chart/modules/server-write-failure-ledger.js` (+ `homepage/public` mirror), consumer `homepage/src/app/dashboard/support/supportUi.tsx`, gate `chart v 1.4/chart/modules/server-write-failure-ledger.test.mjs` | LIVE in tree, staged for the stamp after the PO's b104 heap run — 26/26 with five mutants |
+
+Why: `degradedModules[]` announces a module that failed to LOAD. This announces one that
+loaded and then could not SAVE. `/api/chart/preferences` 500ed for at least three hours on
+2026-07-29 and no ticket could have said so, because nothing counted it.
+
+Cells:
+
+| Cell | Asserts | Status |
+|---|---|---|
+| WRITE-FAILURE-COUNTED | a 5xx or transport failure increments the ledger and publishes it | LIVE |
+| WRITE-FAILURE-REACHES-PASSPORT | `buildSupportContext()` carries `failedServerWrites` / `failedServerWriteEndpoints` | LIVE |
+| WRITE-FAILURE-CROSSES-PAGES | chart-realm failure is readable by the dashboard realm that files the ticket | LIVE |
+| WRITE-FAILURE-REALM-CLIMB | panel-realm failure visible on the host; host-side kill-switch flip reaches the panel (B-0185) | LIVE |
+| WRITE-FAILURE-BOUNDED | paths only, query stripped, endpoints capped at 8, count capped at 9999, stale record dropped at 24h | LIVE |
+| WRITE-FAILURE-CLEARED-ON-SUCCESS | one successful write clears the ledger | LIVE |
+| NC-PUBLISHER-REMOVED | ledger that stores nothing ⇒ passport count is 0 | LIVE |
+| NC-HOST-ONLY-SWITCH | non-climbing kill-switch leaves the panel counting | LIVE |
+| NC-NO-STORAGE-MIRROR | same-page still works, ticket realm sees nothing | LIVE |
+| NC-UNBOUNDED-PASSPORT | passport cap removed ⇒ tampered storage widens the ticket | LIVE |
+| NC-NEVER-CLEARED | success that does not clear ⇒ a transient 5xx follows the user | LIVE |
+
+Named residual: the passport reads only the ledger's `localStorage` mirror, never its window
+publication, so that `buildSupportContext()` stays inside the surface set C's
+`SUPPORT-PASSPORT-DEGRADED-MODULES-V1` realm models. Cost: with `localStorage` unavailable the
+count cannot reach a ticket. Asserted as a cell so it is a known limit, not a surprise.
+
+## Queue item 13 — The window claim: a silent construction blocker (B, B-0197)
+
+| Name | Signature token | Implementation | Status |
+|---|---|---|---|
+| CLAIM-FAILURE-LEDGER-V1 | `__TALARIA_DISABLE_CLAIM_FAILURE_LEDGER_V1` | `chart v 1.4/chart/modules/chart-window-limit.js` (+ `homepage/public` mirror), gate `chart v 1.4/chart/modules/claim-failure-ledger.test.mjs` | LIVE — shipped 20260730b107, 26/26 with three mutants |
+| CLAIM-RETRY-DEADLOCK-FIX-V1 | `__TALARIA_DISABLE_CLAIM_RETRY_DEADLOCK_FIX_V1` | same file and gate | LIVE — shipped 20260730b107 |
+
+Why. `chart-window-limit.js` patches `window.fetch` and makes two paths wait on the window
+claim: `/api/file/*` (chart data) and `/api/sessions/{id}/state` (layout restore). When the
+claim does not succeed, the patch answers those with a **synthetic 409** and never touches
+the network — so a claim problem presents as "the chart has no data", with no console line
+and no server-side log. Two defects lived in that path:
+
+1. **401 fails closed and silently.** An expired or not-yet-attached session blocks data and
+   layout restore for the whole page. 404/405 fail *open* by contrast. Now counted into the
+   failed-write ledger, so a canary ticket says so. The claim is a POST, so a non-OK claim
+   genuinely is a failed server write; the blocked reads are consequences and counting each
+   of them would report one cause as dozens.
+2. **The release-race retry could never settle.** It called `claim(true)`, hit the
+   single-flight guard (`claimInFlight` is still true inside the handler) and returned
+   `claimPromise` — the chained promise whose resolution that handler was computing. A promise
+   awaiting its own descendant never settles and never rejects, so `ensureClaimed()` handed a
+   permanently-pending promise to the fetch patch and **every gated request hung forever**.
+   Trigger: a 409 with a kicked detail on the first claim, which is what a reload or a second
+   window produces before the old window's `release` lands — so it fires on some loads and not
+   others, from the same URL. Candidate cause of the nondeterministic document count; routed
+   to C, who owns the frame tree.
+
+Cells:
+
+| Cell | Asserts | Status |
+|---|---|---|
+| CLAIM-401-COUNTED | 401 counted with the real status against `/api/chart/windows/claim` | LIVE |
+| CLAIM-401-FAILS-CLOSED | 401 resolves false, which is why it must be counted | LIVE |
+| CLAIM-5XX-COUNTED | unexpected 5xx counted even though bootstrap soft-fails open | LIVE |
+| CLAIM-405-COUNTED | the nginx wrong-upstream class is counted | LIVE |
+| CLAIM-NO-RESPONSE-COUNTED | offline/abort counted as status 0, not dropped | LIVE |
+| CLAIM-SUCCESS-NOT-COUNTED | a healthy claim adds nothing | LIVE |
+| CLAIM-SUCCESS-DOES-NOT-CLEAR | a healthy claim must not erase failed *preference* writes from the shared record | LIVE |
+| CLAIM-SWITCH-CLIMBS | switch truthy, per call, self → parent → top (B-0185) | LIVE |
+| CLAIM-CLIMB-NOT-A-LEAK | a clean realm chain still counts | LIVE |
+| CLAIM-CROSS-ORIGIN-UNREADABLE | an unreadable realm is unknown, not disabled | LIVE |
+| CLAIM-DIAGNOSTICS-CANNOT-BREAK-CLAIM | absent or throwing ledger leaves the claim decision unchanged | LIVE |
+| CLAIM-PANELS-NEVER-COUNT | panels do not claim, so one cause is not multiplied by panel count | LIVE |
+| CLAIM-RETRY-SETTLES | a 409-kicked claim retries once and settles | LIVE |
+| CLAIM-RETRY-STILL-HAPPENS | the release-race retry still issues a second request | LIVE |
+| CLAIM-GATED-FETCH-SETTLES | a gated `/api/sessions/N/state` fetch settles rather than hanging | LIVE |
+| NC-RETRY-DEADLOCK-RESTORED | with `CLAIM-RETRY-DEADLOCK-FIX` killed the promise stays pending — the negative control reproduces the defect | LIVE |
+| NC-OWN-REALM-PREDICATE | non-climbing switch ignores a host-side flip | LIVE |
+| NC-DROP-401-COUNT | removing the 401 count makes the class silent again | LIVE |
+| NC-COUNT-BLOCKED-READS | counting blocked reads instead of the claim storms the ledger | LIVE |
+
+## SCREENSHOT-BRAND-PRELOAD-CUT-V1 — reserved 2026-07-30 11:47 (B)
+
+| Name | Signature token | Implementation | Status |
+|---|---|---|---|
+| SCREENSHOT-BRAND-PRELOAD-CUT-V1 | `__TALARIA_DISABLE_SCREENSHOT_BRAND_PRELOAD_CUT_V1` | `chart v 1.4/chart/modules/screenshot-manager.js` (+ `homepage/public` mirror), gate `chart v 1.4/chart/modules/screenshot-brand-preload-cut.test.mjs` | LIVE — shipped 20260730b110, 12/12 with two mutants |
+
+Why. `ScreenshotManager`'s constructor called `init()`, which called
+`getBrandLogoImage()`, which fetched `modules/logo-05.png` at 3684x2234 — **31.40 MB of
+decoded image bytes** — on every chart page load. Nothing consumed the result:
+`getBrandLogoImage` has exactly two mentions in the repository, its own definition and
+that call, while the screenshot paths build their own images via `resolveAssetUrl()` and
+`getVisibleLogoBounds(image)` takes its image as a parameter. It was roughly half of the
+measured 63,075K of image cache, spent on the critical path of every load for a memo with
+no reader.
+
+Setting the switch restores the eager preload exactly, so the negative control is real
+(FLAG-02). The read climbs self -> parent -> top because the chart shell can be framed by
+the dashboard, and CELL 6 is a mutant that replaces the climb with an own-realm read and
+proves it fails the parent cell — the B-0185 defect, gated rather than argued.
+
+Paired with a non-flagged pure size reduction in the same packet, per the 10:20 ruling that
+asset size cuts need no switch: `logo-04.png` 2391x2234 -> 1024x957, all four copies
+byte-identical, **20.38 MB -> 3.74 MB of decoded image bytes** and 117 KB -> 35 KB on disk.
+CELL 9 and CELL 10 hold that line so a future re-export cannot quietly restore it.
+
+## ASSET-DECODED-BUDGET-V1 — reserved 2026-07-30 12:20 (B)
+
+| Name | Signature token | Implementation | Status |
+|---|---|---|---|
+| ASSET-DECODED-BUDGET-V1 | n/a — a CI check, not a runtime switch | `scripts/lib/asset-decoded-budget.mjs`, gate `scripts/tests/asset-decoded-budget.test.mjs`, workflow `.github/workflows/asset-decoded-budget.yml` | LIVE — 10/10 with four mutants |
+
+Why. Decoded bitmap cost is `width x height x 4` and is independent of file size, so the
+V9 handover's 4720x2234 wordmarks read as 87 KB in review and cost 40.2 MB each in the
+renderer's image cache. **File-size review cannot see this class of defect.** The check
+measures pixels against a 4 MB per-image decoded budget plus a per-asset target derived
+from the size each asset is actually displayed at, and it **fails closed**: an image it
+cannot parse is a failure, not a skip.
+
+Two budgets, because one is not enough. The global 4 MB ceiling catches a fresh 4720px
+export (CELL 6). The per-asset target catches the realistic regression a global ceiling
+misses — a handover re-exporting `logo-08` at 900px, which is comfortably under 4 MB but
+still 3.5x the size its 80px display justifies (CELL 8). Every target records the displayed
+measurement behind it, and CELL 5 fails if one does not.
+
+## WINDOW-CONTROL-FETCH-TIMEOUT-V1 — reserved 2026-07-30 13:55 (B)
+
+| Name | Signature token | Status |
+|---|---|---|
+| WINDOW-CONTROL-FETCH-TIMEOUT-V1 | `__TALARIA_DISABLE_WINDOW_CONTROL_FETCH_TIMEOUT_V1` | ACTIVE from 20260730b113 |
+
+Bounds the three window-limit control POSTs — claim, heartbeat, release — at 10s with a real
+`AbortController`, and puts an independent 12s ceiling on how long a gated fetch may wait for
+the claim gate. Gate: `window-control-fetch-timeout.test.mjs`, 18 cells including 5 mutants.
+
+One switch covers both ceilings deliberately. They are one defect — an unbounded control POST
+with no definite outcome — and splitting the switch would allow a half-disabled state that
+neither reproduces the original behaviour nor delivers the fix, which is precisely the
+condition FLAG-02 exists to prevent. Flipping it restores the deployed b112 behaviour exactly:
+no signal on the requests, and a claim that hangs forever when the server goes quiet. That
+equivalence is asserted, not assumed — the FLAG-01 cell checks both the hang and the absent
+signal, and the FLAG-02 cell flips it on the host and requires an embedded panel realm to see
+it, because a host-only read would make the switch look inert.
+
+**The timeouts open the gate rather than closing it.** A windows API we cannot reach is not
+evidence that this window lost its slot, so a stall soft-fails open, exactly as the existing
+5xx path does, and is counted in the failed-write ledger as status 0 with one console warning.
+Failing closed would answer every gated URL with a synthetic 409 and show an empty chart,
+which is a worse outcome than the hang and harder to diagnose. A mutant asserts that choice.
+
+**Not applied to the gated request itself.** `/api/file/*` and `/api/sessions/N/state` carry no
+ceiling of ours: chart data downloads are legitimately slow and aborting them would convert a
+slow chart into a broken one. A cell holds that line.
+
+## SCREENSHOT-BRAND-PRELOAD-CUT-V1 — RETIRED 2026-07-30 12:20 (B)
+
+| Name | Signature token | Status |
+|---|---|---|
+| SCREENSHOT-BRAND-PRELOAD-CUT-V1 | `__TALARIA_DISABLE_SCREENSHOT_BRAND_PRELOAD_CUT_V1` | RETIRED in 20260730b111 — the code path it toggled no longer exists |
+
+Shipped in b110 as a guard around `ScreenshotManager.init()`'s brand preload. b111 deletes
+`getBrandLogoImage()`, `_brandLogoImage` and `_brandLogoLoadPromise` outright, because
+the export path never consumed any of it: it sets `src` on cloned `<img>` elements via
+`resolveAssetUrl()`, and `getVisibleLogoBounds(image)` takes its image as an argument.
+There was no cache to make smarter, only a session-long hold of a 31.4 MB bitmap to remove.
+`loadBrandLogoForExport()` replaces it: on demand, and it drops its handlers on settle.
+
+**Retiring rather than keeping the switch is deliberate.** With the path gone there is no
+behaviour to toggle, and a flag that restores a preload nothing reads is theatre. Rollback
+for this cut is the pinned `canary-20260730b110` image, which is what a flag flip would
+have bought and is recorded here so nobody has to guess. The name stays reserved so it is
+not reused for something else.

@@ -43,6 +43,25 @@ export const HEAP_CYCLE_PO_FLOOR_MB = Object.freeze([106, 152, 204, 254, 304, 35
 export const HEAP_CYCLE_PO_BASELINE_MB = 54;
 /** PO canary hand mean ≈13 MB/cycle (2026-07-29). Legacy ~50 was Task Manager / denser residue. */
 export const HEAP_CYCLE_PO_PER_CYCLE_MB = 13;
+
+/**
+ * Scope of every megabyte figure this instrument emits, so a downstream reader cannot
+ * mistake a JS-heap reading for a process footprint.
+ *
+ * `performance.memory` is **per-isolate**, not per-frame. Our panels share the host
+ * renderer's isolate, so a top-frame read DOES include panel-realm JS heap — C proved
+ * it same-instant in W86 by allocating ballast inside panel A and watching the host
+ * reading move by +18 MB. An earlier version of this comment claimed the opposite and
+ * it was wrong; the correction is the withdrawal in §0 of
+ * docs/plan3/evidence/B-M4/release/PO-HEAP-INSTRUMENT-CORRECTION-20260730.md.
+ *
+ * What it genuinely excludes: worker heaps (noted below at the worker census), all
+ * non-JS memory (DOM, CSS, decoded images, GPU buffers), and any realm Chrome placed
+ * in a *different renderer process* — the leading candidate for the still-unexplained
+ * 789 MB hand figure. Also note readings taken with DevTools open are inflated, so a
+ * per-cycle figure measured that way is an UPPER bound on the product rate.
+ */
+export const HEAP_INSTRUMENT_SCOPE_MAIN_FRAME = 'JS heap, host isolate (top-frame usedJSHeapSize; includes panel realms sharing the isolate; excludes worker heaps, non-JS memory, and realms in other renderer processes)';
 /** PO exact expected detached HTMLDivElement growth per cycle. */
 export const HEAP_CYCLE_PO_DETACHED_DIVS_PER_CYCLE = 21_699;
 
@@ -170,6 +189,7 @@ export function synthesizePoLeakHeapCycleReport() {
       cycles: HEAP_CYCLE_COUNT,
       surface: 'dist-v9',
       memoryInstrument: 'usedJSHeapSize+forcedGc',
+      instrumentScope: HEAP_INSTRUMENT_SCOPE_MAIN_FRAME,
       footprintNonGrading: HEAP_FOOTPRINT_NON_GRADING,
       detachedGateMandatory: true,
       growthCensus: true,

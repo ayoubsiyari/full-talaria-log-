@@ -1,0 +1,122 @@
+{
+  "contract": "owner-scoped-pins-v1",
+  "schemaVersionKey": "pref.v1.meta.schemaVersion",
+  "resetQuery": "talPrefReset=1",
+  "killSwitch": "__TALARIA_DISABLE_PREF_OWNER_SCOPED_PINS_V1",
+  "owners": {
+    "primary": "qa-owner-1",
+    "secondary": "qa-owner-2"
+  },
+  "storageKeys": {
+    "timeframes": "pref.v1.pins.timeframes",
+    "tools": "pref.v1.pins.tools",
+    "pinbarOpen": "pref.v1.pinbar.open",
+    "pinbarPos": "pref.v1.pinbar.pos",
+    "schemaVersion": "pref.v1.meta.schemaVersion",
+    "unknownExtension": "pref.v1.pins.__qa_unknown__"
+  },
+  "defaults": {
+    "timeframes": ["1m", "5m", "15m", "1H", "4H", "1D"],
+    "tools": ["Trend Line", "Horizontal Line", "Fib Retracement", "Rectangle", "Text"],
+    "pinbarOpen": false,
+    "pinbarPos": { "x": 50, "y": 80 }
+  },
+  "ownerOnePins": {
+    "timeframes": ["2m", "7m", "3H", "2D"],
+    "tools": ["Ray", "Brush", "Measure"],
+    "pinbarOpen": true,
+    "pinbarPos": { "x": 321, "y": 144 }
+  },
+  "ownerTwoPins": {
+    "timeframes": ["30m", "8H"],
+    "tools": ["Ellipse", "Arrow"],
+    "pinbarOpen": true,
+    "pinbarPos": { "x": 88, "y": 177 }
+  },
+  "concurrentPins": {
+    "timeframes": ["10m", "20m"],
+    "tools": ["Long Position", "Short Position"],
+    "pinbarOpen": false,
+    "pinbarPos": { "x": 412, "y": 39 }
+  },
+  "unknownExtensionValue": {
+    "qa": "preserve-through-known-key-round-trip",
+    "revision": 1
+  },
+  "oversizedPins": {
+    "timeframes": [
+      "QA000m", "QA001m", "QA002m", "QA003m", "QA004m", "QA005m", "QA006m", "QA007m",
+      "QA008m", "QA009m", "QA010m", "QA011m", "QA012m", "QA013m", "QA014m", "QA015m",
+      "QA016m", "QA017m", "QA018m", "QA019m", "QA020m", "QA021m", "QA022m", "QA023m",
+      "QA024m", "QA025m", "QA026m", "QA027m", "QA028m", "QA029m", "QA030m", "QA031m",
+      "QA032m", "QA033m", "QA034m", "QA035m", "QA036m", "QA037m", "QA038m", "QA039m",
+      "QA040m", "QA041m", "QA042m", "QA043m", "QA044m", "QA045m", "QA046m", "QA047m",
+      "QA048m", "QA049m", "QA050m", "QA051m", "QA052m", "QA053m", "QA054m", "QA055m",
+      "QA056m", "QA057m", "QA058m", "QA059m", "QA060m", "QA061m", "QA062m", "QA063m",
+      "QA064m", "QA065m", "QA066m", "QA067m", "QA068m", "QA069m", "QA070m", "QA071m",
+      "QA072m", "QA073m", "QA074m", "QA075m", "QA076m", "QA077m", "QA078m", "QA079m"
+    ]
+  },
+  "cells": [
+    {
+      "id": "B-M15-01",
+      "name": "SAME OWNER, REFRESH",
+      "assertion": "A same-owner remount returns all four previously set pin values, not defaults."
+    },
+    {
+      "id": "B-M15-02",
+      "name": "SAME OWNER, EXIT AND RE-ENTER A SESSION",
+      "assertion": "A same-owner session exit and re-entry returns all four previously set pin values."
+    },
+    {
+      "id": "B-M15-03",
+      "name": "SAME OWNER, NEW SESSION",
+      "assertion": "A newly created session under the same owner starts with the owner's pinned values."
+    },
+    {
+      "id": "B-M15-04",
+      "name": "OWNER ISOLATION",
+      "assertion": "Owner B sees defaults and never Owner A's values; switching back to Owner A restores Owner A's values."
+    },
+    {
+      "id": "B-M15-05",
+      "name": "UNRESOLVED OWNER AT BOOT",
+      "assertion": "No-owner boot reads defaults without writing unscoped keys, then sees scoped values once the owner resolves."
+    },
+    {
+      "id": "B-M15-06",
+      "name": "FAILED OR EMPTY READ IS NOT AUTHORITATIVE",
+      "assertion": "A failed or empty read does not overwrite stored owner-scoped pins with defaults."
+    },
+    {
+      "id": "B-M15-07",
+      "name": "UNKNOWN-KEY PRESERVATION",
+      "assertion": "An unrecognised preference key survives a known-pin-key write round trip."
+    },
+    {
+      "id": "B-M15-08",
+      "name": "SCHEMA VERSION PRESENT",
+      "assertion": "The schema version key is written as a positive integer."
+    },
+    {
+      "id": "B-M15-09",
+      "name": "PER-KEY WRITES, NOT A BLOB",
+      "assertion": "Writing one pin key does not rewrite the other three, and a concurrent writer on another key is not lost."
+    },
+    {
+      "id": "B-M15-10",
+      "name": "BOUNDED SIZE",
+      "assertion": "An absurdly large pin list is rejected or clamped instead of being stored as-is."
+    },
+    {
+      "id": "B-M15-11",
+      "name": "KILL-SWITCH OFF PATH",
+      "assertion": "With the owner-scoped pin kill-switch enabled, pin persistence and schema-version writes stay off."
+    },
+    {
+      "id": "B-M15-12",
+      "name": "RESET PATH",
+      "assertion": "talPrefReset=1 clears all pin keys without requiring the chart to be loaded."
+    }
+  ]
+}

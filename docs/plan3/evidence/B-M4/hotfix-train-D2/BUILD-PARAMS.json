@@ -1,0 +1,54 @@
+{
+  "train": "D-2 standalone hotfix — trade-loss guards",
+  "answers": "DIRECTOR-DISPATCH-BC-20260728-1520 §4 — the cache-stamp bump is INSIDE the train",
+
+  "why_this_file_exists": [
+    "The seal pins source bytes. The cache stamp is not a source byte in this train,",
+    "it is a build argument, so sealing the sources did not put it inside the train.",
+    "Building strictly from the sealed set produced the hazard: with BUILD_ID unset,",
+    "bump-dist-v9-cache.mjs:73 increments the COMMITTED stamp, so this branch yields",
+    "20260724b62 — behind the 20260727b80 already served. Correct bytes, cached URL.",
+    "SAFE-01 applies to this file too: a build parameter that is only written down is",
+    "not enforced. record-build refuses any id not ahead of the floor below."
+  ],
+
+  "required_build_args": {
+    "CHECKPOINT_BUILD": "1",
+    "CHART_BUILD_ID": "20260728b81",
+    "SOURCE_COMMIT_SHA": "b6d94c767892c7134cd1e4b45c9f85a18e5bbb95"
+  },
+
+  "build_command": "docker compose build --build-arg CHECKPOINT_BUILD=1 --build-arg CHART_BUILD_ID=20260728b81 --build-arg SOURCE_COMMIT_SHA=b6d94c767892c7134cd1e4b45c9f85a18e5bbb95 homepage trading-chart",
+
+  "stamp_floor": {
+    "value": "20260727b80",
+    "meaning": "highest stamp known to have been served; a build id must be strictly ahead of it",
+    "enforced_by": "seal-evidence.mjs record-build — refuses at or below the floor",
+    "not_enforced_by": "the image build itself; checkpoint-build-assert.mjs validates SHAPE only, never ordering"
+  },
+
+  "chosen_stamp_rationale": [
+    "20260728b81 is ahead of the floor on both the date field and the sequence field.",
+    "Confirmed absent from `git log --all -S`, so it cannot collide with a warm cache entry."
+  ],
+
+  "no_source_edit_required": {
+    "reason": "homepage/Dockerfile:17 sets ENV BUILD_ID=${CHART_BUILD_ID}, and resolveBuildId consults BUILD_ID before the committed-stamp path, so the divergent committed b61 is overridden inside the image.",
+    "territory_note": "All four shells that load order-manager.js belong to Manager A. The build-arg path needs none of them edited."
+  },
+
+  "covered_by_the_build_arg_path": [
+    "chart/dist-v9/index.html",
+    "talaria-design/live/index.html",
+    "chart/legacy-index.html",
+    "chart/multichart-prod/chart-embed.html default (bump-dist-v9-cache.mjs:260)",
+    "dist-v9/sw.js SW_VERSION (bump-dist-v9-cache.mjs:253)",
+    "homepage/public/chart/* copies, overwritten from source at image build"
+  ],
+
+  "still_not_enforced_anywhere": [
+    "Nothing fails the IMAGE BUILD when a module's content changes and its ?v= does not.",
+    "record-build catches it only after the fact, and only for this train.",
+    "The general gate is Manager C's C-NEXT cache-stamp coherence gate."
+  ]
+}

@@ -1,0 +1,56 @@
+{
+  "stamp": "2026-07-30T21:35:57.885Z",
+  "pair": "conf01",
+  "tfs": "1m,5m,15m,1h",
+  "boot": {
+    "A_topPage": 8,
+    "B_cdp": 8,
+    "C_perRealmFetchWrap": 8,
+    "D_harnessLog": 8,
+    "realms": [
+      {
+        "realm": "/harness/host.html?pair=conf01&panels=4&tf=1m&tfs=1m%2C5m%2C15m%2C1h",
+        "n": 2,
+        "hasGetActiveChart": true
+      },
+      {
+        "realm": "/chart/multichart-prod/chart-embed.html?id=B&tf=5m&fileId=27&multichart=1&panelId=B",
+        "n": 2,
+        "hasGetActiveChart": true
+      },
+      {
+        "realm": "/chart/multichart-prod/chart-embed.html?id=C&tf=15m&fileId=28&multichart=1&panelId=C",
+        "n": 2,
+        "hasGetActiveChart": true
+      },
+      {
+        "realm": "/chart/multichart-prod/chart-embed.html?id=D&tf=1h&fileId=29&multichart=1&panelId=D",
+        "n": 2,
+        "hasGetActiveChart": true
+      }
+    ],
+    "cdpDistinctFrames": 4
+  },
+  "playIn": {
+    "A_topPage": 0,
+    "B_cdp": 0,
+    "C_perRealmFetchWrap": 0,
+    "D_harnessLog": 0
+  },
+  "playCross": {
+    "A_topPage": 0,
+    "B_cdp": 0,
+    "C_perRealmFetchWrap": 0,
+    "D_harnessLog": 0
+  },
+  "verdict": {
+    "trap2_topPageUndercountsAtBoot": false,
+    "boot_topPage_vs_realm": "8 vs 8",
+    "boot_topPage_vs_harness": "8 vs 8",
+    "boot_cdp_vs_realm": "8 vs 8",
+    "boot_cdp_sees_iframe_frames": true,
+    "play_zero_on_live_instruments": true,
+    "b0204_play_zero_stands": true,
+    "note": "B-0204 play-zero stands under MEAS-02. Live instruments (CDP if it sees iframes, per-realm wrap, harness log) agree on zero during play. Trap 2 is about page.on('request') specifically."
+  }
+}

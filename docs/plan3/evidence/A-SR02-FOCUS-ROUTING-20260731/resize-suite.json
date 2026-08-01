@@ -1,0 +1,275 @@
+{
+  "signature": "TALARIA_SR02_RESIZE_PROPAGATION_V1",
+  "chartJsPath": "C:\\Users\\user\\Desktop\\talaria1\\manager-a-focus-routing\\chart v 1.4\\chart\\chart.js",
+  "chartJsBytes": 2002025,
+  "status": "GREEN",
+  "missingNeedles": [],
+  "facts": {
+    "registrations": [
+      {
+        "line": 1570,
+        "hostOnly": true,
+        "panelGuarded": false,
+        "reachableForPanels": false,
+        "handler": "this._handleViewportRefresh"
+      },
+      {
+        "line": 1637,
+        "hostOnly": false,
+        "panelGuarded": true,
+        "reachableForPanels": true,
+        "handler": "this._handlePanelViewportRefresh"
+      }
+    ],
+    "panelResizeRegistered": true,
+    "switchReadPresent": true,
+    "switchReadCount": 1,
+    "strictTrueComparison": false,
+    "earlyReturnConjuncts": [
+      "!sizeChanged",
+      "!dprChanged",
+      "!bufMismatch"
+    ],
+    "earlyReturnIntact": true
+  },
+  "cells": [
+    {
+      "cell": "RESIZE-PANEL-LISTENER-REGISTERED",
+      "status": "GREEN",
+      "detail": {
+        "registrationsFound": [
+          {
+            "line": 1570,
+            "hostOnly": true,
+            "panelGuarded": false,
+            "reachableForPanels": false,
+            "handler": "this._handleViewportRefresh"
+          },
+          {
+            "line": 1637,
+            "hostOnly": false,
+            "panelGuarded": true,
+            "reachableForPanels": true,
+            "handler": "this._handlePanelViewportRefresh"
+          }
+        ],
+        "panelResizeRegistered": true,
+        "listenersInstalled": 2
+      },
+      "reason": null
+    },
+    {
+      "cell": "RESIZE-PANEL-BACKING-STORE-REFLOWS",
+      "status": "GREEN",
+      "detail": {
+        "cssBoxBefore": {
+          "w": 791,
+          "h": 849
+        },
+        "cssBoxAfter": {
+          "w": 449,
+          "h": 700
+        },
+        "backingStoreObserved": {
+          "w": 449,
+          "h": 700
+        },
+        "backingStoreExpected": {
+          "w": 449,
+          "h": 700
+        },
+        "panelResizeCalls": 1
+      },
+      "reason": null
+    },
+    {
+      "cell": "RESIZE-NOOP-MEASURES-NOTHING",
+      "status": "GREEN",
+      "detail": {
+        "renders": 0,
+        "resizeCalls": 2,
+        "earlyReturns": 2,
+        "earlyReturnConjunctsInSource": [
+          "!sizeChanged",
+          "!dprChanged",
+          "!bufMismatch"
+        ],
+        "earlyReturnIntact": true
+      },
+      "reason": null
+    },
+    {
+      "cell": "RESIZE-CONTAINER-ROUTE-UNCHANGED",
+      "status": "GREEN",
+      "detail": {
+        "backingStore": {
+          "w": 449,
+          "h": 700
+        },
+        "expected": {
+          "w": 449,
+          "h": 700
+        },
+        "didWork": true
+      },
+      "reason": null
+    },
+    {
+      "cell": "KILLSWITCH-TRUTHY-DISABLES",
+      "status": "GREEN",
+      "detail": {
+        "rows": [
+          {
+            "value": "1",
+            "disabled": true,
+            "backingStore": {
+              "w": 791,
+              "h": 849
+            }
+          },
+          {
+            "value": "\"yes\"",
+            "disabled": true,
+            "backingStore": {
+              "w": 791,
+              "h": 849
+            }
+          },
+          {
+            "value": "\"true\"",
+            "disabled": true,
+            "backingStore": {
+              "w": 791,
+              "h": 849
+            }
+          },
+          {
+            "value": "{}",
+            "disabled": true,
+            "backingStore": {
+              "w": 791,
+              "h": 849
+            }
+          },
+          {
+            "value": "[]",
+            "disabled": true,
+            "backingStore": {
+              "w": 791,
+              "h": 849
+            }
+          },
+          {
+            "value": "\"0\"",
+            "disabled": true,
+            "backingStore": {
+              "w": 791,
+              "h": 849
+            }
+          }
+        ],
+        "switchInSource": true,
+        "strictTrueComparison": false
+      },
+      "reason": null
+    },
+    {
+      "cell": "KILLSWITCH-FALSY-KEEPS-FIX",
+      "status": "GREEN",
+      "detail": {
+        "rows": [
+          {
+            "value": "undefined",
+            "fixActive": true,
+            "backingStore": {
+              "w": 449,
+              "h": 700
+            }
+          },
+          {
+            "value": "null",
+            "fixActive": true,
+            "backingStore": {
+              "w": 449,
+              "h": 700
+            }
+          },
+          {
+            "value": "false",
+            "fixActive": true,
+            "backingStore": {
+              "w": 449,
+              "h": 700
+            }
+          },
+          {
+            "value": "0",
+            "fixActive": true,
+            "backingStore": {
+              "w": 449,
+              "h": 700
+            }
+          },
+          {
+            "value": "''",
+            "fixActive": true,
+            "backingStore": {
+              "w": 449,
+              "h": 700
+            }
+          },
+          {
+            "value": "NaN",
+            "fixActive": true,
+            "backingStore": {
+              "w": 449,
+              "h": 700
+            }
+          }
+        ]
+      },
+      "reason": null
+    },
+    {
+      "cell": "FLAG02-MIDSESSION-FLIP-NO-RELOAD",
+      "status": "GREEN",
+      "detail": {
+        "afterPhase1": {
+          "w": 600,
+          "h": 500
+        },
+        "afterPhase2": {
+          "w": 600,
+          "h": 500
+        },
+        "afterPhase3": {
+          "w": 449,
+          "h": 700
+        },
+        "listenersAtStart": 1,
+        "listenersAtEnd": 1
+      },
+      "reason": null
+    },
+    {
+      "cell": "FLAG03-OFF-ARM-IS-A-WORKING-PRODUCT",
+      "status": "GREEN",
+      "detail": {
+        "panelMouseX": 1188,
+        "crosshair": {
+          "x": 1188
+        },
+        "keyEvents": 1,
+        "hostBackingStore": {
+          "w": 900,
+          "h": 700
+        },
+        "containerRouteWorked": true
+      },
+      "failures": [],
+      "reason": null
+    }
+  ],
+  "limitation": "No browser in this lane. Behavioural cells are driven by facts extracted from the real chart.js by AST; the mutant battery is the proof that they depend on the shipped bytes.",
+  "measuredAt": "2026-07-31T16:10:18.323Z"
+}

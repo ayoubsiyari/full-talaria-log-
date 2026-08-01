@@ -23,6 +23,8 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import sessionmaker, declarative_base, aliased
 from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.exc import OperationalError
+from starlette.concurrency import run_in_threadpool
 from datetime import datetime, timedelta
 import sys
 import csv
@@ -12382,14 +12384,63 @@ def _sync_trading_session_journal_trades(
     )
     by_client = {str(r.client_trade_id): r for r in existing_rows if r.client_trade_id is not None}
     next_user_tid = _next_user_trade_id(db, uid)
+    # The sweep's inline parse reads only tradeId|id; it is NOT the canonical
+    # four-key session_journal_store.journal_trade_client_id. Naming it in the record
+    # is what makes that divergence visible in production.
+    sweep_resolver = "api_server._sync_trading_session_journal_trades.inline(tradeId|id)"
+    rows_before = len(existing_rows)
+
+    # SAFE-01: classify every incoming id BEFORE any ORM write. A refuse that runs
+    # after upserts have already mutated payload_json / added rows is not a refuse —
+    # it is a partial commit that the PATCH handler will still db.commit(). Pass 1
+    # only reads; pass 2 mutates, and only if the parse guard has already cleared.
     incoming_ids: set[str] = set()
+    unresolved_incoming = 0
+    parsed_entries: list[tuple[str, dict]] = []
     for raw in journal:
         if not isinstance(raw, dict):
+            unresolved_incoming += 1
             continue
         tid = str(raw.get("tradeId") or raw.get("id") or "").strip()
         if not tid:
+            unresolved_incoming += 1
             continue
         incoming_ids.add(tid)
+        parsed_entries.append((tid, raw))
+
+    # B-W18 rollback lever. Read at CALL time, not import time: an incident must be
+    # able to flip this without a reimport or a redeploy, and the acceptance cells
+    # toggle it per-case. Fail-safe, not a feature flag: only an explicitly recognised
+    # negative value disables the guard. Unset, "", or any unrecognised/typo'd value
+    # leaves the guard ACTIVE, because a guard that silently fails off deletes trades.
+    # Recognised disable values (after strip/lower): "0", "false", "no", "off".
+    # NOTE: this deliberately does NOT gate the [JOURNAL-DELETE] record below — when
+    # the guard is off the sweep deletes again, which is exactly when the record matters.
+    parse_guard_enabled = os.getenv(
+        "JOURNAL_SWEEP_PARSE_GUARD_ENABLED", "true"
+    ).strip().lower() not in {"0", "false", "no", "off"}
+
+    if unresolved_incoming and parse_guard_enabled:
+        # Fail closed. An entry whose id did not parse cannot be matched to a stored
+        # row by construction, so we cannot say which stored rows are orphans, and
+        # there is no way to exempt only the offending row. Retain everything — and
+        # write nothing — and report: retention is recoverable, a delete (or a
+        # half-applied upsert) on this path is not.
+        try:
+            print(
+                f"[JOURNAL-SWEEP-REFUSED] session_id={session_id} rows_before={rows_before} "
+                f"rows_after={rows_before} rows_added=0 deleted_count=0 "
+                f"unresolved_incoming={unresolved_incoming} incoming_entries={len(journal)} "
+                f"resolved_ids={len(incoming_ids)} resolver={sweep_resolver} "
+                f"reason=unparsed-incoming-id",
+                flush=True,
+            )
+        except Exception:
+            pass
+        return
+
+    rows_added = 0
+    for tid, raw in parsed_entries:
         # Prefer already-assigned per-user id from payload when valid.
         payload_user_tid = None
         for key in ("user_trade_id", "userTradeId", "display_trade_id"):
@@ -12476,14 +12527,50 @@ def _sync_trading_session_journal_trades(
             payload_json=json.dumps(enriched, separators=(",", ":")),
         )
         db.add(new_row)
+        rows_added += 1
         by_client[tid] = new_row
 
-    if sjs.should_prune_absent_journal_trades(explicit_replace=explicit_replace):
-        q = db.query(TradingSessionJournalTrade).filter(TradingSessionJournalTrade.session_id == session_id)
-        if incoming_ids:
-            q = q.filter(~TradingSessionJournalTrade.client_trade_id.in_(incoming_ids))
-        for orphan in q.all():
-            db.delete(orphan)
+    # rows_before counts the session at entry; the upsert loop above may have added
+    # rows, so the after-count must include them or the record understates the
+    # surviving journal and cannot be reconciled against the table.
+    rows_present = rows_before + rows_added
+
+    # M24: stale/partial chart PATCH journals must not prune omitted SQL rows.
+    # C's branch implemented this same guard independently, in the shorter form
+    # `if should_prune(...): <delete loop>`. Not taken: the [JOURNAL-DELETE] audit
+    # record below reads `orphans`, `deleted_ids`, `rows_present` and `rows_added`,
+    # none of which that form binds, so it would raise NameError on the very path
+    # that is supposed to explain a journal deletion. Same guard call, same
+    # semantics, kept in the shape the surrounding code is written against.
+    if not sjs.should_prune_absent_journal_trades(explicit_replace=explicit_replace):
+        return
+
+    q = db.query(TradingSessionJournalTrade).filter(TradingSessionJournalTrade.session_id == session_id)
+    if incoming_ids:
+        q = q.filter(~TradingSessionJournalTrade.client_trade_id.in_(incoming_ids))
+    orphans = q.all()
+    try:
+        deleted_ids = [str(o.client_trade_id) for o in orphans]
+    except Exception:
+        deleted_ids = []
+    for orphan in orphans:
+        db.delete(orphan)
+
+    if orphans:
+        # Reporting must never be able to abort or roll back the delete above.
+        try:
+            shown = deleted_ids[:50]
+            suffix = "" if len(deleted_ids) <= 50 else f" (+{len(deleted_ids) - 50} more)"
+            print(
+                f"[JOURNAL-DELETE] session_id={session_id} rows_before={rows_before} "
+                f"rows_after={rows_present - len(orphans)} rows_added={rows_added} "
+                f"deleted_count={len(orphans)} "
+                f"resolver={sweep_resolver} "
+                f"deleted_client_trade_ids={shown}{suffix}",
+                flush=True,
+            )
+        except Exception:
+            pass
 
 
 def _google_sheets_service():
@@ -12991,10 +13078,26 @@ def _session_limit_reached_error(current: int, cap: int) -> HTTPException:
     )
 
 
+def _set_local_lock_timeout(db, timeout: str = "3s") -> None:
+    """Bound FOR UPDATE waits so a contended row cannot stall a worker unboundedly.
+
+    Client CONTROL_TIMEOUT_MS is 10s; the server must fail faster than that and louder
+    than a silent hang. SET LOCAL scopes to the current transaction only.
+    """
+    if not _DATABASE_USES_ROW_LOCK:
+        return
+    try:
+        db.execute(text(f"SET LOCAL lock_timeout = '{timeout}'"))
+    except Exception:
+        # sqlite / drivers without SET LOCAL: leave unbounded (dev only).
+        pass
+
+
 def _lock_user_for_session_quota(db, user_id: int) -> User | None:
     """Serialize concurrent session creates per user (PostgreSQL row lock)."""
     q = db.query(User).filter(User.id == user_id)
     if _DATABASE_USES_ROW_LOCK:
+        _set_local_lock_timeout(db)
         q = q.with_for_update()
     return q.first()
 
@@ -14255,8 +14358,14 @@ def _evict_oldest_chart_windows(db, user_id: int, *, need_slots: int) -> list[st
 
 
 @app.post("/api/chart/windows/claim")
-async def chart_window_claim(request: Request, body: _ChartWindowClaimIn):
-    """Register this browser window / installed app against max_sessions (kick-oldest)."""
+def chart_window_claim(request: Request, body: _ChartWindowClaimIn):
+    """Register this browser window / installed app against max_sessions (kick-oldest).
+
+    Sync ``def`` (not ``async def``): the body takes a PostgreSQL ``FOR UPDATE`` row lock
+    via a synchronous SQLAlchemy session. FastAPI runs ``def`` endpoints in the threadpool,
+    so a contended lock cannot stall this worker's event loop (P0, Director 2026-07-30 21:45).
+    ``_lock_user_for_session_quota`` also sets ``lock_timeout`` so the wait itself is bounded.
+    """
     if not AUTH_ENABLED:
         return {
             "ok": True,
@@ -14346,6 +14455,16 @@ async def chart_window_claim(request: Request, body: _ChartWindowClaimIn):
     except HTTPException:
         db.rollback()
         raise
+    except OperationalError as exc:
+        db.rollback()
+        # lock_timeout / deadlock — fail fast and loud instead of wedging a worker.
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "code": "chart_window_claim_busy",
+                "message": "Chart window claim is busy; retry shortly.",
+            },
+        ) from exc
     except Exception as exc:
         db.rollback()
         raise HTTPException(status_code=500, detail="Could not claim chart window.") from exc
@@ -14744,6 +14863,50 @@ def _support_load_ticket_extra(t: SupportThread) -> dict:
 
 def _support_set_ticket_extra(t: SupportThread, data: dict) -> None:
     t.ticket_extra = json.dumps(data, separators=(",", ":"))[:12000]
+
+
+def _support_account_facts(db, user) -> dict:
+    """Where this reporter sits on the account-age / trade-volume axis, stamped by the server.
+
+    Deliberately NOT part of the client's support passport, for three reasons:
+
+    1. Forgery. The passport is assembled in the browser. Account age and trade count change
+       how a ticket is triaged, so a field a user can edit is a field that can jump their
+       queue position. The server already knows both from the authenticated session.
+    2. Coverage. Three code paths open tickets today — SupportInbox, V16SupportChatPopover and
+       the legacy V9 chart, which builds its own context object. "Every report carries its own
+       position" means every, and only the server sees all three.
+    3. Availability. The reports that most need triage context come from broken clients. A
+       browser-side field is missing exactly when it matters.
+
+    Unavailable values are reported as "unknown", never as 0. A new account with no trades and
+    an account whose facts could not be read look identical if both say zero, and the whole
+    point of the axis is telling those two apart.
+    """
+    facts: dict = {}
+
+    created = getattr(user, "created_at", None)
+    if isinstance(created, datetime):
+        # created_at is stored naive UTC (datetime.utcnow default), so compare against utcnow.
+        facts["account_age_days"] = max((datetime.utcnow() - created).days, 0)
+    else:
+        facts["account_age_days"] = "unknown"
+
+    try:
+        # trading_session_journal_trades is the closed-trade record: one row per journal trade,
+        # written when a trade completes. user_id is indexed, so this is a cheap aggregate.
+        facts["closed_trades"] = int(
+            db.query(func.count(TradingSessionJournalTrade.id))
+            .filter(TradingSessionJournalTrade.user_id == int(user.id))
+            .scalar()
+            or 0
+        )
+    except Exception:
+        # A ticket must still open if this count fails. Support losing one field beats a user
+        # who cannot report the outage.
+        facts["closed_trades"] = "unknown"
+
+    return facts
 
 
 def _support_load_tags(t: SupportThread) -> list[str]:
@@ -15399,6 +15562,9 @@ def _support_thread_dict(
         "tags": tags,
         "context": extra.get("context") if isinstance(extra.get("context"), dict) else None,
         "structured": extra.get("structured") if isinstance(extra.get("structured"), dict) else None,
+        # Server-stamped account position; separate from `context` so the trust boundary
+        # stays visible to anything reading a thread.
+        "account": extra.get("account") if isinstance(extra.get("account"), dict) else None,
         "related_thread_id": rel_id,
         "related_ticket_ref": rel_ref,
         "csat_rating": getattr(t, "csat_rating", None),
@@ -15628,6 +15794,9 @@ async def support_create_thread(request: Request):
             extra["structured"] = {
                 str(k)[:64]: str(v)[:2000] for k, v in list(structured_in.items())[:12]
             }
+        # Written after the client-supplied blocks and under its own key, so a crafted
+        # `context` can neither overwrite these nor be mistaken for them.
+        extra["account"] = _support_account_facts(db, user)
         t = SupportThread(
             user_id=user.id,
             subject=subj[: SUPPORT_SUBJECT_MAX],
@@ -25229,7 +25398,22 @@ async def patch_trading_session_state(session_id: int, request: Request):
         raise HTTPException(status_code=422, detail=str(exc))
     user = _require_paid_journal_user(request)
     _enforce_backtest_user_rate(user, "session_patch")
-    db = SessionLocal()
+
+    # Blocking SQLAlchemy + FOR UPDATE must not run on the event loop (P0 pair with
+    # chart_window_claim). Body was already awaited above; the remainder is sync work.
+    def _patch_trading_session_state_db():
+        db = SessionLocal()
+        try:
+            return _patch_trading_session_state_db_locked(
+                db, session_id=session_id, user=user, payload=payload, body_dict=body_dict
+            )
+        finally:
+            db.close()
+
+    return await run_in_threadpool(_patch_trading_session_state_db)
+
+
+def _patch_trading_session_state_db_locked(db, *, session_id: int, user, payload, body_dict: dict):
     try:
         s = db.query(TradingSession).filter(TradingSession.id == session_id).first()
         if not s:
@@ -25239,6 +25423,7 @@ async def patch_trading_session_state(session_id: int, request: Request):
 
         st = _get_or_create_trading_session_state(db, session_id=s.id, user_id=s.user_id)
         if _DATABASE_USES_ROW_LOCK:
+            _set_local_lock_timeout(db)
             st = (
                 db.query(TradingSessionState)
                 .filter(TradingSessionState.session_id == s.id)
@@ -25344,8 +25529,18 @@ async def patch_trading_session_state(session_id: int, request: Request):
         if warning:
             resp["warning"] = warning
         return resp
-    finally:
-        db.close()
+    except HTTPException:
+        db.rollback()
+        raise
+    except OperationalError as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "code": "session_state_busy",
+                "message": "Session state write is busy; retry shortly.",
+            },
+        ) from exc
 
 @app.patch("/api/sessions/{session_id}")
 async def update_trading_session(session_id: int, payload: TradingSessionUpdateIn, request: Request):
@@ -27088,9 +27283,17 @@ if _STATIC_OOPS_DIR.is_dir():
 # and orchestrate sync between them via postMessage. Same pattern as the
 # /chart/modules and /chart/image mounts above.
 _MULTICHART_DIR_PATH = _CHART_ROOT_PATH / "multichart"
-if _MULTICHART_DIR_PATH.is_dir():
+# A14.3 de-route (Director RULING-DEROUTE-INCOMPLETE 2026-07-28 22:25):
+# /chart/multichart/ is a dead prototype (chart-host / shell). Directory may
+# still exist in the tree; must not be served. nginx redirect alone is not
+# enough — this host (and 31.97.192.82:3000) is FastAPI directly.
+# Opt-in only for local archaeology: TALARIA_MOUNT_MULTICHART_SANDBOX=1.
+_MOUNT_MULTICHART_SANDBOX = os.environ.get("TALARIA_MOUNT_MULTICHART_SANDBOX", "").strip() == "1"
+if _MOUNT_MULTICHART_SANDBOX and _MULTICHART_DIR_PATH.is_dir():
     app.mount("/chart/multichart", StaticFiles(directory=str(_MULTICHART_DIR_PATH), html=True), name="chart_multichart")
     print(f"✅ Multichart sandbox mounted at /chart/multichart/ from {_MULTICHART_DIR_PATH}")
+elif _MULTICHART_DIR_PATH.is_dir():
+    print("⛔ Multichart sandbox NOT mounted (de-routed; set TALARIA_MOUNT_MULTICHART_SANDBOX=1 to override)")
 
 # Multichart PRODUCTION foundation (Phase 7.2.1).
 # Static asset mount only — no entry route. The bridge files in this folder

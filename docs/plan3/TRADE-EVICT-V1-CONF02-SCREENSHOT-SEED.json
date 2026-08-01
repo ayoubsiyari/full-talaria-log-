@@ -1,0 +1,30 @@
+{
+  "schema": "talaria.trade-evict-v1.conf02-screenshot-seed.v1",
+  "source": "support-export-full-all-27-07-26 Talaria-Chart-* product captures (n=22)",
+  "cCensus": {
+    "finding": "FINDING-C-CONF02-ORDER-TERMS-MEASURED-AND-TWO-REPLAY-DEFECTS-20260730-1730.md",
+    "screenshotFieldsOnHarness": "0 chars / 0 of 88 rows — unmeasurable via submitOrder (not a zero product cost)",
+    "excursionSamplesPerClosedTrade": 318,
+    "excursionCi": [206, 430],
+    "excursionBytesPerTradeApprox": "~2.5 KB at 8 B/number"
+  },
+  "productScreenshotSeed": {
+    "sampleCount": 22,
+    "medianBinaryBytes": 198857,
+    "medianFile": "2143_Talaria-Chart-1784734858225.jpg",
+    "p25BinaryBytes": 133493,
+    "p75BinaryBytes": 278090,
+    "dataUrlChars": 265167,
+    "approxHotUtf16PerField": 530334,
+    "note": "Median live user Talaria-Chart capture, base64 data-URL char length. C's harness could not attach screenshots; this is the live product payload size used to size the CONF-02 cell."
+  },
+  "conf02": {
+    "closedPositions": 30,
+    "fieldsPerPosition": [
+      "entryScreenshot",
+      "exitScreenshot",
+      "entryScreenshots[0].screenshot",
+      "railScreenshots[0]"
+    ]
+  }
+}

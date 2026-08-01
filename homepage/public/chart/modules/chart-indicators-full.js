@@ -78,6 +78,36 @@
     }
 
     const MAX_ACTIVE_INDICATORS = 10;
+    const INDICATOR_EVICT_V1_MAX_SETTINGS = 32;
+
+    function indicatorEvictV1Enabled() {
+        return typeof global === 'undefined'
+            || global.__TALARIA_DISABLE_INDICATOR_EVICT_V1 !== true;
+    }
+
+    function indicatorEvictTypeKey(indicator) {
+        return indicator && indicator.type != null
+            ? String(indicator.type).toLowerCase()
+            : '';
+    }
+
+    function indicatorEvictPlayhead(chart) {
+        const replay = chart && chart.replaySystem;
+        const candidates = [
+            replay && replay.replayTimestamp,
+            replay && replay.currentTimestamp,
+            replay && replay.currentTime,
+            replay && replay.playheadTime,
+            chart && chart.replayTimestamp,
+            chart && chart.currentTimestamp,
+            chart && chart.currentTime,
+        ];
+        for (let i = 0; i < candidates.length; i++) {
+            const n = Number(candidates[i]);
+            if (Number.isFinite(n)) return n;
+        }
+        return null;
+    }
 
     function isRc6IndicatorLifecycleStoreEnabled() {
         return typeof global.rc6IndicatorLifecycleStoreEnabled === 'function'
@@ -107,6 +137,12 @@
         return typeof global.rc6IndicatorReplayUiSyncV2Enabled === 'function'
             ? global.rc6IndicatorReplayUiSyncV2Enabled(global)
             : global.__TALARIA_RC6_INDICATOR_REPLAY_UI_SYNC_V2 !== false;
+    }
+
+    function _indicatorPerf() {
+        return (typeof window !== 'undefined' && window.__TALARIA_DISABLE_INDICATOR_PERF_BRIDGE_V1 === true)
+            ? null
+            : global.IndicatorPerf;
     }
 
     function pinReplayLegendHoverBeforeRecalc(chart) {
@@ -1404,8 +1440,9 @@
 
     /** Rolling SMA; null until full window of finite values (O(n) sliding window). */
     function rollingSmaNullable(arr, period) {
-        if (global.IndicatorPerf && typeof global.IndicatorPerf.rollingSmaFast === 'function') {
-            return global.IndicatorPerf.rollingSmaFast(arr, period);
+        const perf = _indicatorPerf();
+        if (perf && typeof perf.rollingSmaFast === 'function') {
+            return perf.rollingSmaFast(arr, period);
         }
         const p = Math.max(1, period | 0);
         const n = arr.length;
@@ -1431,8 +1468,9 @@
 
     /** Weighted MA on a nullable numeric series (null until full window). */
     function rollingWmaNullable(arr, period) {
-        if (global.IndicatorPerf && typeof global.IndicatorPerf.rollingWmaFast === 'function') {
-            return global.IndicatorPerf.rollingWmaFast(arr, period);
+        const perf = _indicatorPerf();
+        if (perf && typeof perf.rollingWmaFast === 'function') {
+            return perf.rollingWmaFast(arr, period);
         }
         const p = Math.max(2, period | 0);
         const denom = (p * (p + 1)) / 2;
@@ -5015,13 +5053,15 @@
         let dayHigh = null;
         let dayLow = null;
         let settledStartIdx = null;
+        let settledEndIdx = null;
         let settledHigh = null;
         let settledLow = null;
-        let dayEndIdx = -1;
+        let rangeEndIdx = null;
 
-        function flushDayExtension(endIdx) {
+        function flushRangeWindow() {
             if (settledStartIdx == null || settledHigh == null || settledLow == null) return;
             const mid = (settledHigh + settledLow) / 2;
+            const endIdx = settledEndIdx != null ? settledEndIdx : settledStartIdx;
             for (let j = settledStartIdx; j <= endIdx; j++) {
                 upper[j] = settledHigh;
                 lower[j] = settledLow;
@@ -5033,20 +5073,22 @@
             const dk = dayKeyInTimezone(data[i].t, tz);
             const dec = sessionWallDecimal(data[i].t, tz);
             if (dk !== dayKey) {
-                if (dayKey != null) flushDayExtension(dayEndIdx);
+                if (dayKey != null) flushRangeWindow();
                 dayKey = dk;
                 rangeStartIdx = null;
                 dayHigh = null;
                 dayLow = null;
                 settledStartIdx = null;
+                settledEndIdx = null;
                 settledHigh = null;
                 settledLow = null;
+                rangeEndIdx = null;
             }
-            dayEndIdx = i;
 
             const inWin = isInSessionDecimal(dec, session);
             if (inWin) {
                 if (rangeStartIdx == null) rangeStartIdx = i;
+                rangeEndIdx = i;
                 if (dayHigh == null) {
                     dayHigh = data[i].h;
                     dayLow = data[i].l;
@@ -5058,9 +5100,11 @@
                 settledHigh = dayHigh;
                 settledLow = dayLow;
                 settledStartIdx = rangeStartIdx;
+                settledEndIdx = rangeEndIdx != null ? rangeEndIdx : Math.max(rangeStartIdx, i - 1);
+                flushRangeWindow();
             }
         }
-        if (dayKey != null) flushDayExtension(dayEndIdx);
+        if (dayKey != null) flushRangeWindow();
 
         return { upper: upper, lower: lower, middle: middle };
     }
@@ -6041,6 +6085,9 @@
         chartRef.indicators.active.push(indicator);
         if (typeof chartRef._primeSeparatePanelForNewIndicator === 'function') {
             chartRef._primeSeparatePanelForNewIndicator(indicator, normalizedType);
+        }
+        if (typeof chartRef._restoreEvictedIndicatorSettingsForNewIndicator === 'function') {
+            chartRef._restoreEvictedIndicatorSettingsForNewIndicator(indicator);
         }
         if (typeof chartRef.updateOHLCIndicators === 'function') chartRef.updateOHLCIndicators();
         if (typeof chartRef.scheduleRender === 'function') chartRef.scheduleRender();
@@ -8026,6 +8073,25 @@
         }
     }
 
+    /**
+     * REALM-TEARDOWN-RELEASE CUT 4: terminate the per-realm indicator worker
+     * singleton and reject/clear _workerPending (continuations capture chart).
+     */
+    Chart.prototype._disposeIndicatorWorker = function() {
+        try {
+            if (_indicatorWorkerSingleton) {
+                try { _indicatorWorkerSingleton.terminate(); } catch (_) {}
+            }
+        } catch (_) {}
+        _indicatorWorkerSingleton = null;
+        try {
+            _workerPending.forEach(function(p) {
+                try { p.reject(new Error('worker disposed')); } catch (_) {}
+            });
+            _workerPending.clear();
+        } catch (_) {}
+    };
+
     function recalcMultiPassOverlayMa(chart, indicator) {
         if (!chart || !indicator || !Array.isArray(chart.data) || !chart.data.length) return;
         if (!chart.indicators.data) chart.indicators.data = {};
@@ -8245,7 +8311,7 @@
         if (typeof chart.updateOHLCIndicators === 'function') chart.updateOHLCIndicators();
 
         var id = _workerNextId++;
-        var perf = global.IndicatorPerf;
+        var perf = _indicatorPerf();
         var packed = perf && typeof perf.packBarsCompact === 'function'
             ? perf.packBarsCompact(chart.data)
             : null;
@@ -8361,7 +8427,7 @@
     };
 
     Chart.prototype._indicatorParamsHash = function() {
-        const perf = global.IndicatorPerf;
+        const perf = _indicatorPerf();
         if (perf && typeof perf.hashIndicatorParams === 'function') {
             return perf.hashIndicatorParams(this.indicators && this.indicators.active);
         }
@@ -10602,7 +10668,7 @@
      * @returns true when every series merged; false after a complete rollback.
      */
     function _m19iB62AtomicMergeSet(chart, freshById, tailStart, fromIndex, totalLength) {
-        var perf = global.IndicatorPerf;
+        var perf = _indicatorPerf();
         var merge = perf && typeof perf.mergeIndicatorTailWindow === 'function'
             ? perf.mergeIndicatorTailWindow : null;
         var ids = Object.keys(freshById);
@@ -11529,7 +11595,7 @@
         if (!chart.indicators.data) chart.indicators.data = {};
 
         if (tailMeta) {
-            const perf = global.IndicatorPerf;
+            const perf = _indicatorPerf();
             const mergeWindow = perf && typeof perf.mergeIndicatorTailWindow === 'function'
                 ? perf.mergeIndicatorTailWindow
                 : null;
@@ -11820,7 +11886,7 @@
                 && window.__TALARIA_ENABLE_B70_SINGLE_INDICATOR_OWNER_V1 === true) {
                 _b70ShadowRecordCalculation(this, '_m19iExactTailPaint', 'paint');
             }
-            var perf = global.IndicatorPerf;
+            var perf = _indicatorPerf();
             var totalLen = this.data.length;
             var lookback = perf && typeof perf.estimateTailLookback === 'function'
                 ? perf.estimateTailLookback(this.indicators.active)
@@ -12014,7 +12080,7 @@
      * temporarily behaves like b58 async catch-up for that series only.
      */
     function _m19ifApplyCoherentBridge(chart, indicatorMap, tailStart, fromIndex, totalLen) {
-        var perf = global.IndicatorPerf;
+        var perf = _indicatorPerf();
         var merge = perf && typeof perf.mergeIndicatorTailWindow === 'function'
             ? perf.mergeIndicatorTailWindow
             : null;
@@ -12199,7 +12265,7 @@
             });
         }
 
-        const perf = global.IndicatorPerf;
+        const perf = _indicatorPerf();
         const totalLen = chart.data.length;
         const lookback = perf && typeof perf.estimateTailLookback === 'function'
             ? perf.estimateTailLookback(this.indicators.active)
@@ -12603,7 +12669,7 @@
             }
         }
 
-        const perf = global.IndicatorPerf;
+        const perf = _indicatorPerf();
         const lookback = perf && typeof perf.estimateTailLookback === 'function'
             ? perf.estimateTailLookback(this.indicators.active)
             : 256;
@@ -13449,6 +13515,10 @@
         if (hasVolume) {
             this.chartSettings.showVolume = false;
             this.hideVolumeIndicatorLine();
+        }
+
+        if (typeof this._evictClearedIndicatorSettingsV1 === 'function') {
+            this._evictClearedIndicatorSettingsV1(this.indicators.active);
         }
 
         this.indicators.active = [];
@@ -14392,6 +14462,68 @@ Chart.prototype._getSeparatePanelHeights = function(indicators) {
         }
         store[indicator.id] = DEFAULT_SEPARATE_PANEL_HEIGHT;
         return DEFAULT_SEPARATE_PANEL_HEIGHT;
+    });
+};
+
+Chart.prototype._evictedIndicatorSettingsStoreV1 = function() {
+    if (!this._evictedIndicatorSettingsV1 || !Array.isArray(this._evictedIndicatorSettingsV1)) {
+        this._evictedIndicatorSettingsV1 = [];
+    }
+    return this._evictedIndicatorSettingsV1;
+};
+
+Chart.prototype._rememberEvictedIndicatorPanelHeightV1 = function(indicator, height) {
+    if (!indicatorEvictV1Enabled() || !indicator) return;
+    const key = indicatorEvictTypeKey(indicator);
+    const h = Number(height);
+    if (!key || !Number.isFinite(h) || h < MIN_SEPARATE_PANEL_HEIGHT) return;
+    const store = this._evictedIndicatorSettingsStoreV1();
+    for (let i = store.length - 1; i >= 0; i--) {
+        if (store[i] && store[i].key === key) store.splice(i, 1);
+    }
+    store.push({
+        key,
+        height: Math.max(MIN_SEPARATE_PANEL_HEIGHT, h),
+        playhead: indicatorEvictPlayhead(this),
+    });
+    while (store.length > INDICATOR_EVICT_V1_MAX_SETTINGS) store.shift();
+};
+
+Chart.prototype._restoreEvictedIndicatorSettingsForNewIndicator = function(indicator) {
+    if (!indicatorEvictV1Enabled() || !indicator) return false;
+    const key = indicatorEvictTypeKey(indicator);
+    if (!key || !this._evictedIndicatorSettingsV1) return false;
+    for (let i = this._evictedIndicatorSettingsV1.length - 1; i >= 0; i--) {
+        const entry = this._evictedIndicatorSettingsV1[i];
+        if (!entry || entry.key !== key) continue;
+        if (!this.chartSettings) this.chartSettings = {};
+        if (!this.chartSettings.separatePanelHeights || typeof this.chartSettings.separatePanelHeights !== 'object') {
+            this.chartSettings.separatePanelHeights = {};
+        }
+        this.chartSettings.separatePanelHeights[indicator.id] = entry.height;
+        indicator._evictedSettingsRestoredAtPlayhead = indicatorEvictPlayhead(this);
+        indicator._evictedSettingsSourcePlayhead = entry.playhead;
+        return true;
+    }
+    return false;
+};
+
+Chart.prototype._evictClearedIndicatorSettingsV1 = function(indicators) {
+    if (!indicatorEvictV1Enabled()
+        || !Array.isArray(indicators)
+        || !this.chartSettings
+        || !this.chartSettings.separatePanelHeights
+        || typeof this.chartSettings.separatePanelHeights !== 'object') {
+        return;
+    }
+    const heights = this.chartSettings.separatePanelHeights;
+    indicators.forEach((indicator) => {
+        if (!indicator) return;
+        const saved = Number(heights[indicator.id]);
+        if (Number.isFinite(saved)) {
+            this._rememberEvictedIndicatorPanelHeightV1(indicator, saved);
+        }
+        delete heights[indicator.id];
     });
 };
 

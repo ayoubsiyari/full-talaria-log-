@@ -3,6 +3,12 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <!-- DEPLOY-01: this stub is the fallback when dist-v9 is absent. The build
+       rewrites the id below via bump-dist-v9-cache / CHECKPOINT_BUILD so a
+       served /chart/index.html is always attributable, even on the fallback path.
+       When dist-v9 exists, api_server serves that file for this URL instead. -->
+  <script>window.__TALARIA_CHART_BUILD_ID='20260728b82';try{console.info('[Talaria] chart build',window.__TALARIA_CHART_BUILD_ID);}catch(_){}</script>
+  <meta name="talaria-chart-build-id" content="20260728b82" />
   <title>Chart entry — read me</title>
   <style>
     body { font-family: system-ui, sans-serif; max-width: 42rem; margin: 2rem auto; padding: 0 1rem;
@@ -14,6 +20,8 @@
   </style>
 </head>
 <body>
+  <div id="talaria-build-badge" aria-label="chart build id" style="position:fixed;bottom:4px;left:4px;font:11px ui-monospace,monospace;color:rgba(232,234,237,.55)"></div>
+  <script>(function(){try{var el=document.getElementById('talaria-build-badge');var id=window.__TALARIA_CHART_BUILD_ID;if(el&&id)el.textContent='build '+id;}catch(_){}})();</script>
   <h1>This file is not the live Talaria UI</h1>
   <p>
     <strong>Production / default <code>/chart/index.html</code></strong> is served from
@@ -22,10 +30,20 @@
     run <code>npm run build:live</code>, deploy <code>chart/dist-v9/</code> plus <code>chart/chart.js</code>.
   </p>
   <p>
+    Build id (fallback stub): <code id="build-id">20260728b82</code>
+  </p>
+  <p>
     <strong>Single legacy monolith</strong> (all deferred scripts + <code>v9-chrome.css</code>):
     <a href="/chart/legacy-index.html"><code>/chart/legacy-index.html</code></a>.
     Old URLs <code>/chart/index.v9.html</code> redirect here — no second giant HTML file.
   </p>
   <pre>npm run build:live   # in chart v 1.4/talaria-design/</pre>
+  <script>
+    (function () {
+      var id = window.__TALARIA_CHART_BUILD_ID;
+      var el = document.getElementById('build-id');
+      if (el && id) el.textContent = id;
+    })();
+  </script>
 </body>
 </html>

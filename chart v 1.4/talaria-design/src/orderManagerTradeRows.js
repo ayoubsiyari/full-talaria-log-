@@ -112,6 +112,12 @@ function v9TradeDuration(openMs, closeMs, nowMs = Date.now()) {
   return `${h}h ${m}m`;
 }
 
+function v9ClosedTradeDuration(openMs, closeMs, nowMs = Date.now()) {
+  if (!tradeDurationNormV1Enabled()) return v9TradeDuration(openMs, closeMs, nowMs);
+  if (!Number.isFinite(openMs) || !Number.isFinite(closeMs)) return "—";
+  return v9TradeDuration(openMs, closeMs);
+}
+
 function v9UsdPnLParts(n) {
   if (!Number.isFinite(n)) return { text: "—", pc: null };
   const sign = n >= 0 ? "+" : "-";
@@ -1300,6 +1306,10 @@ function attachTradeMetricsToRow(om, row, order, journal) {
 
 function coalesceTimeMs(...vals) {
   for (const v of vals) {
+    if (tradeDurationNormV1Enabled()) {
+      const normalized = normalizeEpochMs(v, NaN);
+      if (Number.isFinite(normalized)) return normalized;
+    }
     if (typeof v === "number" && Number.isFinite(v)) return v;
     if (typeof v === "string" && v.trim()) {
       const n = Date.parse(v);
@@ -1366,7 +1376,7 @@ function appendJournalOnlyClosedRows(om, rows, theme, ctx) {
       pc: pc ? theme[pc] : theme.tm,
       tp: tpTxt,
       sl: slTxt,
-      dur: v9TradeDuration(tOpen, tClose, rowNowMs),
+      dur: v9ClosedTradeDuration(tOpen, tClose, rowNowMs),
       preTags: extractPreTagsFromSources(j, null),
       postTags: extractPostTagsFromSources(j),
       mae:
@@ -1546,7 +1556,7 @@ export function buildLiveTradeRowsFromOrderManager(om, theme, opts = {}) {
       pc: pc ? theme[pc] : theme.tm,
       tp: tpTxt,
       sl: slTxt,
-      dur: v9TradeDuration(tOpen, tClose),
+      dur: v9ClosedTradeDuration(tOpen, tClose, rowNowMs),
       preTags: [],
       postTags: [],
       mae: o.mae != null && Number.isFinite(Number.parseFloat(o.mae)) ? fmtPx(o.mae) : undefined,

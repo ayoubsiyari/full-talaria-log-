@@ -7,6 +7,20 @@ global.window = {
   addEventListener() {},
   removeEventListener() {},
   location: { href: 'http://local.test/chart?sessionId=synthetic-b75-v5' },
+  /**
+   * This suite characterises the LEGACY TICK path — 1D/1m subdivision, the tick
+   * scheduler, the tick-path cache bound. TICK-OFF-01 makes candle the only
+   * playback mode by default, so without this switch getPlaybackMode() answers
+   * 'candle', startTickAnimation() re-routes into the candle loop, and the
+   * suite both fails and HANGS: the candle loop arms a real setInterval that
+   * this harness has no fake timers to clear.
+   *
+   * Setting it restores the exact mode these cells were written against, so the
+   * legacy characterisation is preserved rather than weakened. The coverage
+   * this suite does NOT provide — what the product does by DEFAULT — belongs to
+   * tick-off-candle-only-playback.test.mjs.
+   */
+  __TALARIA_DISABLE_CANDLE_ONLY_PLAYBACK_V1: true,
 };
 const ReplaySystem = require('./replay-system.js');
 

@@ -1,0 +1,40 @@
+{
+  "tip": "20260728b81",
+  "observedAt": "2026-07-28T21:04:26.389Z",
+  "closure": "CLOSURE-PANEL-SHELL-HEALTHY-20260728-2205",
+  "embeds": [
+    {
+      "rel": "chart v 1.4/chart/multichart-prod/chart-embed.html",
+      "fallback": "20260728b81",
+      "deployGateDeclared": "20260728b81",
+      "atTip": true,
+      "hasIndicatorPerf": true,
+      "hasModulePresence": true,
+      "d3FromCdn": false,
+      "engineScriptStamped": false
+    },
+    {
+      "rel": "homepage/public/chart/multichart-prod/chart-embed.html",
+      "fallback": "20260728b81",
+      "deployGateDeclared": "20260728b81",
+      "atTip": true,
+      "hasIndicatorPerf": true,
+      "hasModulePresence": true,
+      "d3FromCdn": false,
+      "engineScriptStamped": false
+    }
+  ],
+  "bump": {
+    "bumpChartEmbedHtmlDefined": true,
+    "calledWithDistBuildId": true,
+    "rewritesBothTrees": true,
+    "patternMatchesFallbackLiteral": true
+  },
+  "deployGate": {
+    "embedInDefaultShells": true,
+    "engineBuildCheckOnWithDeployGate": true,
+    "declaredRegexExtractsFallback": true
+  },
+  "pass": true,
+  "verdict": "PASS — both trees at b81; bump rewrites fallback; deploy-gate default shells include embed + engine↔shell"
+}

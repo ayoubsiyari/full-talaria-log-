@@ -1,0 +1,24 @@
+﻿
+MONSTER-2 before/after (ms/s at 62.5 events/s):
+  1m @ 25583 bars: 163.8 -> 8.1 ms/s  (saved 155.7)
+  15m @ 25583 bars: 106.8 -> 1.5 ms/s  (saved 105.3)
+  1h @ 25583 bars: 82.9 -> 1.1 ms/s  (saved 81.8)
+  1m @ 36104 bars: 287.5 -> 8.6 ms/s  (saved 278.9)
+✔ C1 CORRECTNESS 1m->1m: cached output deep-equals a full resample on every tick (2682.0192ms)
+✔ C2 CORRECTNESS 1m->15m: multi-bar buckets stay exact under forming-bar mutation (351.985ms)
+✔ C3 CORRECTNESS 1m->1h: exact across a 60-bar bucket (35.7412ms)
+✔ C4 the full-resample rate collapses (this is the fix) (724.6604ms)
+✔ C5 KILL-SWITCH is truthy-disabling and re-read per call (1.332ms)
+✔ C6 FLAG-03 the OFF arm still produces a correct, usable series (25.9751ms)
+✔ C7 falls through to a full resample when the tail bucket does not match (35.3982ms)
+✔ C7b the tail-bucket guard: last bar CROSSING into a new bucket without the length changing must not overwrite the cached tail (2.0597ms)
+✔ C8 MEASUREMENT: publish the before/after in ms/s at 62.5 events/s (13011.5679ms)
+✔ C9 mirror carries the identical pipeline (1.0997ms)
+ℹ tests 10
+ℹ suites 0
+ℹ pass 10
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 17052.3082

@@ -44,6 +44,15 @@ window.loadTimeframeFavorites = function() {
     return window.preferencesSync.get('timeframe_favorites', []);
 };
 
+// Drawing Tool Favorites
+window.saveDrawingToolFavorites = function(favorites) {
+    window.preferencesSync.updatePreference('drawing_tool_favorites', Array.isArray(favorites) ? favorites : []);
+};
+
+window.loadDrawingToolFavorites = function() {
+    return window.preferencesSync.get('drawing_tool_favorites', []);
+};
+
 // Chart Templates
 window.saveChartTemplates = function(templates) {
     window.preferencesSync.updatePreference('chart_templates', templates);

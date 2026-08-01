@@ -3,6 +3,35 @@
  * Manages favorite drawing tools with localStorage persistence
  */
 
+/**
+ * SR-03 focus routing: host chrome resolves "the chart" through the focus
+ * provider — last click / focus, never hover. Installed idempotently in each
+ * participating file because the shipping shells load them in different orders
+ * (this file runs before chart.js in dist-v9/index.html) and
+ * multichart-prod/chart-embed.html never loads chart.js at all.
+ *
+ * The `window.chart || window.mainChart` chain collapses INTO this resolver
+ * rather than surviving beside it: window.mainChart is written exactly once, in
+ * chart.js _talariaInitializeChart, on the line after window.chart and to the
+ * same object, so the chain could never name a different chart.
+ */
+if (typeof window !== 'undefined' && typeof window.__talariaActiveChartV1 !== 'function') {
+    window.__talariaActiveChartV1 = function talariaActiveChartV1() {
+        // Re-read on EVERY call, never captured at registration, so the switch
+        // can be flipped mid-session with no reload. Truthy disables.
+        if (window.__TALARIA_DISABLE_FOCUS_ROUTING_V1) {
+            return window.chart || window.mainChart || null;
+        }
+        if (typeof window.getActiveChart === 'function') {
+            try {
+                const active = window.getActiveChart();
+                if (active) return active;
+            } catch (_e) { /* provider threw: fall back to the host chart */ }
+        }
+        return window.chart || null;
+    };
+}
+
 class FavoritesManager {
     constructor(chart) {
         this.chart = chart;
@@ -386,6 +415,11 @@ class FavoritesManager {
         
         this.init();
     }
+
+    pinsUserPreferenceV1Enabled() {
+        return typeof window === 'undefined'
+            || window.__TALARIA_DISABLE_PINS_USER_PREFS_V1 !== true;
+    }
     
     init() {
         // Load favorites from localStorage
@@ -414,8 +448,18 @@ class FavoritesManager {
     
     loadFavorites() {
         try {
-            const stored = userStorage.getItem(this.storageKey);
-            this.favorites = stored ? JSON.parse(stored) : [];
+            if (this.pinsUserPreferenceV1Enabled()
+                && typeof window !== 'undefined'
+                && typeof window.loadDrawingToolFavorites === 'function') {
+                const synced = window.loadDrawingToolFavorites();
+                if (Array.isArray(synced) && synced.length > 0) {
+                    this.favorites = synced;
+                }
+            }
+            if (!Array.isArray(this.favorites) || this.favorites.length === 0) {
+                const stored = userStorage.getItem(this.storageKey);
+                this.favorites = stored ? JSON.parse(stored) : [];
+            }
             if (Array.isArray(this.favorites)) {
                 const filtered = this.favorites.filter(id => this.toolDefinitions && this.toolDefinitions[id]);
                 if (filtered.length !== this.favorites.length) {
@@ -433,6 +477,11 @@ class FavoritesManager {
     saveFavorites() {
         try {
             userStorage.setItem(this.storageKey, JSON.stringify(this.favorites));
+            if (this.pinsUserPreferenceV1Enabled()
+                && typeof window !== 'undefined'
+                && typeof window.saveDrawingToolFavorites === 'function') {
+                window.saveDrawingToolFavorites(this.favorites);
+            }
             console.log('💾 Saved favorites:', this.favorites);
         } catch (error) {
             console.error('❌ Error saving favorites:', error);
@@ -604,8 +653,8 @@ class FavoritesManager {
     }
     
     activateTool(toolId) {
-        // Directly activate the tool via drawing manager
-        const chart = window.chart || window.mainChart;
+        // Directly activate the tool via drawing manager on the focused chart
+        const chart = window.__talariaActiveChartV1();
         if (chart && chart.drawingManager) {
             chart.drawingManager.setTool(toolId);
             console.log(`🎯 Activated tool: ${toolId}`);

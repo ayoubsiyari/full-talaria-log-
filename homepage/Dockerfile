@@ -25,9 +25,32 @@ COPY ["scripts/checkpoint-build-assert.mjs", "./checkpoint-tools/checkpoint-buil
 COPY ["scripts/lib/checkpoint-provenance.mjs", "./checkpoint-tools/lib/checkpoint-provenance.mjs"]
 COPY ["scripts/lib/homepage-forwarding-contracts.mjs", "./checkpoint-tools/lib/homepage-forwarding-contracts.mjs"]
 COPY ["scripts/lib/homepage-forwarding-contracts.mjs", "/scripts/lib/homepage-forwarding-contracts.mjs"]
+# build:live:chart → preflight:module-contracts resolves ../../scripts from /build/talaria-design → /scripts/
+COPY ["scripts/module-contract-preflight.mjs", "/scripts/module-contract-preflight.mjs"]
+COPY ["scripts/module-contracts.json", "/scripts/module-contracts.json"]
+# soak Fix-E named exemptions — soak at /build/chart/modules imports ../../../scripts/lib → /scripts/lib
+COPY ["scripts/lib/m19-e-hotpath-console-exemptions.mjs", "/scripts/lib/m19-e-hotpath-console-exemptions.mjs"]
 COPY ["chart v 1.4/talaria-design", "./talaria-design/"]
 COPY ["chart v 1.4/chart", "./chart/"]
 COPY ["homepage/public/chart/modules/m20-q6-replay-lifecycle-binding.test.mjs", "/homepage/public/chart/modules/m20-q6-replay-lifecycle-binding.test.mjs"]
+# module-contract-preflight is COPY'd to /scripts (repoRoot would be /). Point it at
+# a reconstructed tree that matches contract inventory/mirror paths.
+COPY ["homepage/public/chart/modules/module-presence-runtime.js", "/contract-root/homepage/public/chart/modules/module-presence-runtime.js"]
+COPY ["homepage/public/chart/modules/indicator-performance.js", "/contract-root/homepage/public/chart/modules/indicator-performance.js"]
+COPY ["homepage/public/chart/dist-v9", "/contract-root/homepage/public/chart/dist-v9"]
+COPY ["homepage/public/chart/multichart-prod", "/contract-root/homepage/public/chart/multichart-prod"]
+# Public mirror of the routed /chart/multichart/ panel shell — required by
+# module-contracts.json rows multichart-panel-shell-{source,public}. Without
+# this COPY the Docker preflight fails closed on a missing owned-stamped surface.
+COPY ["homepage/public/chart/multichart/chart-host.html", "/contract-root/homepage/public/chart/multichart/chart-host.html"]
+RUN mkdir -p "/contract-root/chart v 1.4" \
+  && ln -sfn /build/chart "/contract-root/chart v 1.4/chart" \
+  && ln -sfn /build/talaria-design "/contract-root/chart v 1.4/talaria-design" \
+  # chart/dist-v9 is .dockerignored (rebuilt by vite); seed from committed public mirror
+  # so module-contract-preflight's chart-host inventory exists before build:live:chart.
+  && rm -rf /build/chart/dist-v9 \
+  && cp -a /contract-root/homepage/public/chart/dist-v9 /build/chart/dist-v9
+ENV TALARIA_MODULE_CONTRACT_ROOT=/contract-root
 WORKDIR /build/talaria-design
 ENV NODE_ENV=production
 RUN if [ "$CHECKPOINT_BUILD" = "1" ]; then \
@@ -87,6 +110,10 @@ COPY --from=chart_assets /build/chart/workers ./public/chart/workers
 COPY --from=chart_assets /build/chart/vendor ./public/chart/vendor
 COPY --from=chart_assets /build/chart/fonts ./public/chart/fonts
 COPY --from=chart_assets /build/chart/sw.js ./public/chart/sw.js
+# Design-live shell is a PO-reachable URL (/chart/talaria-design/live/). Without this
+# overwrite, committed homepage/public/chart/talaria-design/live keeps stale ?v= stamps
+# while dist-v9 advances (FIX-ABSENT path 12).
+COPY --from=chart_assets /build/talaria-design/live ./public/chart/talaria-design/live
 
 # V16 dashboard monolith + score engine (imported by TalariaV16.jsx)
 COPY ["Sources Handoff/TalariaV16.jsx", "/app/Sources Handoff/TalariaV16.jsx"]
@@ -136,6 +163,20 @@ LABEL org.opencontainers.image.revision="${SOURCE_COMMIT_SHA}" \
 
 # Copy built static files
 COPY --from=builder /app/homepage/out /usr/share/nginx/html
+
+# Drop the parts of the served chart tree no browser requests: the multichart regression harness,
+# colocated *.test.mjs, and editor backups. Measured on the running b113 image: 36,127,529 ->
+# 17,509,230 bytes, 51% of the served chart tree, with all 132 paths seen in the live access log
+# still resolving. Set STRIP_NONSERVED_CHART_ASSETS=0 to build the unstripped tree — that is the
+# revert, and it needs no file edit. The script fails the build if it removes an entry point.
+ARG STRIP_NONSERVED_CHART_ASSETS=1
+COPY deploy/strip-nonserved-chart-assets.sh /usr/local/bin/strip-nonserved-chart-assets.sh
+RUN chmod +x /usr/local/bin/strip-nonserved-chart-assets.sh \
+    && if [ "$STRIP_NONSERVED_CHART_ASSETS" = "1" ]; then \
+         /usr/local/bin/strip-nonserved-chart-assets.sh /usr/share/nginx/html/chart; \
+       else \
+         echo "strip: SKIPPED (STRIP_NONSERVED_CHART_ASSETS=$STRIP_NONSERVED_CHART_ASSETS)"; \
+       fi
 
 # Copy nginx config (static /chart/ + tile cache — see nginx.local.conf)
 COPY homepage/nginx.local.conf /etc/nginx/conf.d/default.conf

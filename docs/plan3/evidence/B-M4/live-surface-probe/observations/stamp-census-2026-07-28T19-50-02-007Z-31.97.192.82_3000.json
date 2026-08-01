@@ -1,0 +1,754 @@
+{
+  "tool": "stamp-census",
+  "startedAtUtc": "2026-07-28T19:50:02.007Z",
+  "baseUrl": "http://31.97.192.82:3000",
+  "currentDeclared": "20260728b81",
+  "currentObservedMax": "20260726b75",
+  "candidateCount": 33,
+  "rows": [
+    {
+      "route": "/chart/admin-dashboard.html",
+      "status": 307,
+      "transportError": null,
+      "location": "/login/?next=%2Fchart%2Fadmin-dashboard.html",
+      "contentType": null,
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c14",
+      "cacheControl": null,
+      "cfCacheStatus": null,
+      "age": null,
+      "stamps": [],
+      "declaredBuildId": null,
+      "allIds": [],
+      "class": "REDIRECT",
+      "hole": false,
+      "reason": "→ /login/?next=%2Fchart%2Fadmin-dashboard.html"
+    },
+    {
+      "route": "/chart/admin-dashboard.legacy.html",
+      "status": 307,
+      "transportError": null,
+      "location": "/login/?next=%2Fchart%2Fadmin-dashboard.legacy.html",
+      "contentType": null,
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c14",
+      "cacheControl": null,
+      "cfCacheStatus": null,
+      "age": null,
+      "stamps": [],
+      "declaredBuildId": null,
+      "allIds": [],
+      "class": "REDIRECT",
+      "hole": false,
+      "reason": "→ /login/?next=%2Fchart%2Fadmin-dashboard.legacy.html"
+    },
+    {
+      "route": "/chart/admin-datasets.html",
+      "status": 307,
+      "transportError": null,
+      "location": "/login/?next=%2Fchart%2Fadmin-datasets.html",
+      "contentType": null,
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c14",
+      "cacheControl": null,
+      "cfCacheStatus": null,
+      "age": null,
+      "stamps": [],
+      "declaredBuildId": null,
+      "allIds": [],
+      "class": "REDIRECT",
+      "hole": false,
+      "reason": "→ /login/?next=%2Fchart%2Fadmin-datasets.html"
+    },
+    {
+      "route": "/chart/backtesting-clean.html",
+      "status": 307,
+      "transportError": null,
+      "location": "/login/?next=%2Fchart%2Fbacktesting-clean.html",
+      "contentType": null,
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c14",
+      "cacheControl": null,
+      "cfCacheStatus": null,
+      "age": null,
+      "stamps": [],
+      "declaredBuildId": null,
+      "allIds": [],
+      "class": "REDIRECT",
+      "hole": false,
+      "reason": "→ /login/?next=%2Fchart%2Fbacktesting-clean.html"
+    },
+    {
+      "route": "/chart/backtesting.html",
+      "status": 307,
+      "transportError": null,
+      "location": "/login/?next=%2Fchart%2Fbacktesting.html",
+      "contentType": null,
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c14",
+      "cacheControl": null,
+      "cfCacheStatus": null,
+      "age": null,
+      "stamps": [],
+      "declaredBuildId": null,
+      "allIds": [],
+      "class": "REDIRECT",
+      "hole": false,
+      "reason": "→ /login/?next=%2Fchart%2Fbacktesting.html"
+    },
+    {
+      "route": "/chart/chart.js",
+      "status": 200,
+      "transportError": null,
+      "location": null,
+      "contentType": "application/javascript",
+      "bytes": 1945754,
+      "sha256": "873d127c370ea863",
+      "cacheControl": "max-age=3600, public, must-revalidate",
+      "cfCacheStatus": null,
+      "age": null,
+      "stamps": [],
+      "declaredBuildId": "20260726b75",
+      "allIds": [
+        "20260726b75"
+      ],
+      "class": "STAMPED_200",
+      "hole": true,
+      "reason": "serves 20260726b75 below current 20260728b81"
+    },
+    {
+      "route": "/chart/dist-admin/index.html",
+      "status": 307,
+      "transportError": null,
+      "location": "/login/?next=%2Fchart%2Fdist-admin%2Findex.html",
+      "contentType": null,
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c14",
+      "cacheControl": null,
+      "cfCacheStatus": null,
+      "age": null,
+      "stamps": [],
+      "declaredBuildId": null,
+      "allIds": [],
+      "class": "REDIRECT",
+      "hole": false,
+      "reason": "→ /login/?next=%2Fchart%2Fdist-admin%2Findex.html"
+    },
+    {
+      "route": "/chart/dist-v9/",
+      "status": 200,
+      "transportError": null,
+      "location": null,
+      "contentType": "text/html",
+      "bytes": 91682,
+      "sha256": "f15547bd627ca462",
+      "cacheControl": "max-age=3600, public, must-revalidate",
+      "cfCacheStatus": null,
+      "age": null,
+      "stamps": [
+        "20260726b75"
+      ],
+      "declaredBuildId": "20260726b75",
+      "allIds": [
+        "20260726b75"
+      ],
+      "class": "STAMPED_200",
+      "hole": true,
+      "reason": "serves 20260726b75 below current 20260728b81"
+    },
+    {
+      "route": "/chart/dist-v9/index.html",
+      "status": 200,
+      "transportError": null,
+      "location": null,
+      "contentType": "text/html",
+      "bytes": 91682,
+      "sha256": "f15547bd627ca462",
+      "cacheControl": "max-age=3600, public, must-revalidate",
+      "cfCacheStatus": null,
+      "age": null,
+      "stamps": [
+        "20260726b75"
+      ],
+      "declaredBuildId": "20260726b75",
+      "allIds": [
+        "20260726b75"
+      ],
+      "class": "STAMPED_200",
+      "hole": true,
+      "reason": "serves 20260726b75 below current 20260728b81"
+    },
+    {
+      "route": "/chart/dist-v9/sw.js",
+      "status": 200,
+      "transportError": null,
+      "location": null,
+      "contentType": "application/javascript",
+      "bytes": 708,
+      "sha256": "f24c216ba13de5d4",
+      "cacheControl": "max-age=3600, public, must-revalidate",
+      "cfCacheStatus": null,
+      "age": null,
+      "stamps": [],
+      "declaredBuildId": "20260726b75",
+      "allIds": [
+        "20260726b75"
+      ],
+      "class": "STAMPED_200",
+      "hole": true,
+      "reason": "serves 20260726b75 below current 20260728b81"
+    },
+    {
+      "route": "/chart/dist/index.html",
+      "status": 307,
+      "transportError": null,
+      "location": "/login/?next=%2Fchart%2Fdist%2Findex.html",
+      "contentType": null,
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c14",
+      "cacheControl": null,
+      "cfCacheStatus": null,
+      "age": null,
+      "stamps": [],
+      "declaredBuildId": null,
+      "allIds": [],
+      "class": "REDIRECT",
+      "hole": false,
+      "reason": "→ /login/?next=%2Fchart%2Fdist%2Findex.html"
+    },
+    {
+      "route": "/chart/index.html",
+      "status": 307,
+      "transportError": null,
+      "location": "/login/?next=%2Fchart%2Findex.html",
+      "contentType": null,
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c14",
+      "cacheControl": null,
+      "cfCacheStatus": null,
+      "age": null,
+      "stamps": [],
+      "declaredBuildId": null,
+      "allIds": [],
+      "class": "REDIRECT",
+      "hole": false,
+      "reason": "→ /login/?next=%2Fchart%2Findex.html"
+    },
+    {
+      "route": "/chart/index.v9.html",
+      "status": 307,
+      "transportError": null,
+      "location": "/login/?next=%2Fchart%2Findex.v9.html",
+      "contentType": null,
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c14",
+      "cacheControl": null,
+      "cfCacheStatus": null,
+      "age": null,
+      "stamps": [],
+      "declaredBuildId": null,
+      "allIds": [],
+      "class": "REDIRECT",
+      "hole": false,
+      "reason": "→ /login/?next=%2Fchart%2Findex.v9.html"
+    },
+    {
+      "route": "/chart/legacy-index.html",
+      "status": 200,
+      "transportError": null,
+      "location": null,
+      "contentType": "text/html",
+      "bytes": 1418151,
+      "sha256": "5041d6726bd0b2cd",
+      "cacheControl": "max-age=3600, public, must-revalidate",
+      "cfCacheStatus": null,
+      "age": null,
+      "stamps": [
+        "20260726b75"
+      ],
+      "declaredBuildId": null,
+      "allIds": [
+        "20260726b75"
+      ],
+      "class": "STAMPED_200",
+      "hole": true,
+      "reason": "serves 20260726b75 below current 20260728b81"
+    },
+    {
+      "route": "/chart/modules/m20-a-favorites-harness/m20-a-favorites-harness.html",
+      "status": 200,
+      "transportError": null,
+      "location": null,
+      "contentType": "text/html",
+      "bytes": 299,
+      "sha256": "c74dd40efc0ae757",
+      "cacheControl": "max-age=3600, public, must-revalidate",
+      "cfCacheStatus": null,
+      "age": null,
+      "stamps": [],
+      "declaredBuildId": null,
+      "allIds": [],
+      "class": "UNSTAMPED_200",
+      "hole": true,
+      "reason": "HTTP 200 but no recognisable build id"
+    },
+    {
+      "route": "/chart/modules/m21-2-browser-harness/m21-2-browser-harness.html",
+      "status": 200,
+      "transportError": null,
+      "location": null,
+      "contentType": "text/html",
+      "bytes": 947,
+      "sha256": "3cad376a47ae5816",
+      "cacheControl": "max-age=3600, public, must-revalidate",
+      "cfCacheStatus": null,
+      "age": null,
+      "stamps": [],
+      "declaredBuildId": null,
+      "allIds": [],
+      "class": "UNSTAMPED_200",
+      "hole": true,
+      "reason": "HTTP 200 but no recognisable build id"
+    },
+    {
+      "route": "/chart/modules/m21-w6-fixtures/browser-preflight/preflight-host.html",
+      "status": 307,
+      "transportError": null,
+      "location": "/login/?next=%2Fchart%2Fmodules%2Fm21-w6-fixtures%2Fbrowser-preflight%2Fpreflight-host.html",
+      "contentType": null,
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c14",
+      "cacheControl": null,
+      "cfCacheStatus": null,
+      "age": null,
+      "stamps": [],
+      "declaredBuildId": null,
+      "allIds": [],
+      "class": "REDIRECT",
+      "hole": false,
+      "reason": "→ /login/?next=%2Fchart%2Fmodules%2Fm21-w6-fixtures%2Fbrowser-preflight%2Fpreflight-host.html"
+    },
+    {
+      "route": "/chart/modules/m21-w6-fixtures/browser-preflight/preflight-iframe.html",
+      "status": 307,
+      "transportError": null,
+      "location": "/login/?next=%2Fchart%2Fmodules%2Fm21-w6-fixtures%2Fbrowser-preflight%2Fpreflight-iframe.html",
+      "contentType": null,
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c14",
+      "cacheControl": null,
+      "cfCacheStatus": null,
+      "age": null,
+      "stamps": [],
+      "declaredBuildId": null,
+      "allIds": [],
+      "class": "REDIRECT",
+      "hole": false,
+      "reason": "→ /login/?next=%2Fchart%2Fmodules%2Fm21-w6-fixtures%2Fbrowser-preflight%2Fpreflight-iframe.html"
+    },
+    {
+      "route": "/chart/modules/m21-w6-fixtures/lwc-proto-snapshot/lwc-proto-dryrun-client.html",
+      "status": 307,
+      "transportError": null,
+      "location": "/login/?next=%2Fchart%2Fmodules%2Fm21-w6-fixtures%2Flwc-proto-snapshot%2Flwc-proto-dryrun-client.html",
+      "contentType": null,
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c14",
+      "cacheControl": null,
+      "cfCacheStatus": null,
+      "age": null,
+      "stamps": [],
+      "declaredBuildId": null,
+      "allIds": [],
+      "class": "REDIRECT",
+      "hole": false,
+      "reason": "→ /login/?next=%2Fchart%2Fmodules%2Fm21-w6-fixtures%2Flwc-proto-snapshot%2Flwc-proto-dryrun-client.html"
+    },
+    {
+      "route": "/chart/modules/m21-w6-fixtures/lwc-proto-snapshot/lwc-proto.html",
+      "status": 307,
+      "transportError": null,
+      "location": "/login/?next=%2Fchart%2Fmodules%2Fm21-w6-fixtures%2Flwc-proto-snapshot%2Flwc-proto.html",
+      "contentType": null,
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c14",
+      "cacheControl": null,
+      "cfCacheStatus": null,
+      "age": null,
+      "stamps": [],
+      "declaredBuildId": null,
+      "allIds": [],
+      "class": "REDIRECT",
+      "hole": false,
+      "reason": "→ /login/?next=%2Fchart%2Fmodules%2Fm21-w6-fixtures%2Flwc-proto-snapshot%2Flwc-proto.html"
+    },
+    {
+      "route": "/chart/multichart-prod/chart-embed.html",
+      "status": 200,
+      "transportError": null,
+      "location": null,
+      "contentType": "text/html",
+      "bytes": 21557,
+      "sha256": "f8b3128179e0e333",
+      "cacheControl": "max-age=3600, public, must-revalidate",
+      "cfCacheStatus": null,
+      "age": null,
+      "stamps": [
+        "20260726b75"
+      ],
+      "declaredBuildId": "20260726b75",
+      "allIds": [
+        "20260726b75"
+      ],
+      "class": "STAMPED_200",
+      "hole": true,
+      "reason": "serves 20260726b75 below current 20260728b81"
+    },
+    {
+      "route": "/chart/multichart-prod/harness/frozen/m21-vy-ab-baseline-v2.2/runtime/chart/multichart-prod/chart-embed.html",
+      "status": 307,
+      "transportError": null,
+      "location": "/login/?next=%2Fchart%2Fmultichart-prod%2Fharness%2Ffrozen%2Fm21-vy-ab-baseline-v2.2%2Fruntime%2Fchart%2Fmultichart-prod%2Fchart-embed.html",
+      "contentType": null,
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c14",
+      "cacheControl": null,
+      "cfCacheStatus": null,
+      "age": null,
+      "stamps": [],
+      "declaredBuildId": null,
+      "allIds": [],
+      "class": "REDIRECT",
+      "hole": false,
+      "reason": "→ /login/?next=%2Fchart%2Fmultichart-prod%2Fharness%2Ffrozen%2Fm21-vy-ab-baseline-v2.2%2Fruntime%2Fchart%2Fmultichart-prod%2Fchart-embed.html"
+    },
+    {
+      "route": "/chart/multichart-prod/m20-q5-q7-browser-harness/m20-q5-q7-browser-harness.html",
+      "status": 307,
+      "transportError": null,
+      "location": "/login/?next=%2Fchart%2Fmultichart-prod%2Fm20-q5-q7-browser-harness%2Fm20-q5-q7-browser-harness.html",
+      "contentType": null,
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c14",
+      "cacheControl": null,
+      "cfCacheStatus": null,
+      "age": null,
+      "stamps": [],
+      "declaredBuildId": null,
+      "allIds": [],
+      "class": "REDIRECT",
+      "hole": false,
+      "reason": "→ /login/?next=%2Fchart%2Fmultichart-prod%2Fm20-q5-q7-browser-harness%2Fm20-q5-q7-browser-harness.html"
+    },
+    {
+      "route": "/chart/multichart-prod/m20-q5-q7-browser-harness/m20-q5-q7-panel-frame.html",
+      "status": 307,
+      "transportError": null,
+      "location": "/login/?next=%2Fchart%2Fmultichart-prod%2Fm20-q5-q7-browser-harness%2Fm20-q5-q7-panel-frame.html",
+      "contentType": null,
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c14",
+      "cacheControl": null,
+      "cfCacheStatus": null,
+      "age": null,
+      "stamps": [],
+      "declaredBuildId": null,
+      "allIds": [],
+      "class": "REDIRECT",
+      "hole": false,
+      "reason": "→ /login/?next=%2Fchart%2Fmultichart-prod%2Fm20-q5-q7-browser-harness%2Fm20-q5-q7-panel-frame.html"
+    },
+    {
+      "route": "/chart/multichart/chart-host.html",
+      "status": 200,
+      "transportError": null,
+      "location": null,
+      "contentType": "text/html",
+      "bytes": 52302,
+      "sha256": "b8ea70d0232fed4b",
+      "cacheControl": "max-age=3600, public, must-revalidate",
+      "cfCacheStatus": null,
+      "age": null,
+      "stamps": [
+        "20260524a10"
+      ],
+      "declaredBuildId": null,
+      "allIds": [
+        "20260524a10"
+      ],
+      "class": "STAMPED_200",
+      "hole": true,
+      "reason": "serves 20260524a10 below current 20260728b81"
+    },
+    {
+      "route": "/chart/multichart/multichart-shell.html",
+      "status": 200,
+      "transportError": null,
+      "location": null,
+      "contentType": "text/html",
+      "bytes": 41276,
+      "sha256": "bb52cd6128dca5e3",
+      "cacheControl": "max-age=3600, public, must-revalidate",
+      "cfCacheStatus": null,
+      "age": null,
+      "stamps": [],
+      "declaredBuildId": null,
+      "allIds": [],
+      "class": "UNSTAMPED_200",
+      "hole": true,
+      "reason": "HTTP 200 but no recognisable build id"
+    },
+    {
+      "route": "/chart/propfirm-backtest.html",
+      "status": 307,
+      "transportError": null,
+      "location": "/login/?next=%2Fchart%2Fpropfirm-backtest.html",
+      "contentType": null,
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c14",
+      "cacheControl": null,
+      "cfCacheStatus": null,
+      "age": null,
+      "stamps": [],
+      "declaredBuildId": null,
+      "allIds": [],
+      "class": "REDIRECT",
+      "hole": false,
+      "reason": "→ /login/?next=%2Fchart%2Fpropfirm-backtest.html"
+    },
+    {
+      "route": "/chart/sessions.html",
+      "status": 307,
+      "transportError": null,
+      "location": "/login/?next=%2Fchart%2Fsessions.html",
+      "contentType": null,
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c14",
+      "cacheControl": null,
+      "cfCacheStatus": null,
+      "age": null,
+      "stamps": [],
+      "declaredBuildId": null,
+      "allIds": [],
+      "class": "REDIRECT",
+      "hole": false,
+      "reason": "→ /login/?next=%2Fchart%2Fsessions.html"
+    },
+    {
+      "route": "/chart/static/oops.html",
+      "status": 307,
+      "transportError": null,
+      "location": "/login/?next=%2Fchart%2Fstatic%2Foops.html",
+      "contentType": null,
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c14",
+      "cacheControl": null,
+      "cfCacheStatus": null,
+      "age": null,
+      "stamps": [],
+      "declaredBuildId": null,
+      "allIds": [],
+      "class": "REDIRECT",
+      "hole": false,
+      "reason": "→ /login/?next=%2Fchart%2Fstatic%2Foops.html"
+    },
+    {
+      "route": "/chart/sw.js",
+      "status": 200,
+      "transportError": null,
+      "location": null,
+      "contentType": "application/javascript",
+      "bytes": 708,
+      "sha256": "f24c216ba13de5d4",
+      "cacheControl": "max-age=3600, public, must-revalidate",
+      "cfCacheStatus": null,
+      "age": null,
+      "stamps": [],
+      "declaredBuildId": "20260726b75",
+      "allIds": [
+        "20260726b75"
+      ],
+      "class": "STAMPED_200",
+      "hole": true,
+      "reason": "serves 20260726b75 below current 20260728b81"
+    },
+    {
+      "route": "/chart/talaria-design/index.html",
+      "status": 307,
+      "transportError": null,
+      "location": "/login/?next=%2Fchart%2Ftalaria-design%2Findex.html",
+      "contentType": null,
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c14",
+      "cacheControl": null,
+      "cfCacheStatus": null,
+      "age": null,
+      "stamps": [],
+      "declaredBuildId": null,
+      "allIds": [],
+      "class": "REDIRECT",
+      "hole": false,
+      "reason": "→ /login/?next=%2Fchart%2Ftalaria-design%2Findex.html"
+    },
+    {
+      "route": "/chart/talaria-design/live/",
+      "status": 200,
+      "transportError": null,
+      "location": null,
+      "contentType": "text/html",
+      "bytes": 91147,
+      "sha256": "08270a2239f8ecda",
+      "cacheControl": "max-age=3600, public, must-revalidate",
+      "cfCacheStatus": null,
+      "age": null,
+      "stamps": [
+        "20260723b12",
+        "20260723b50"
+      ],
+      "declaredBuildId": "20260723b12",
+      "allIds": [
+        "20260723b12",
+        "20260723b50"
+      ],
+      "class": "STAMPED_200",
+      "hole": true,
+      "reason": "serves 20260723b12,20260723b50 below current 20260728b81"
+    },
+    {
+      "route": "/chart/talaria-design/live/index.html",
+      "status": 200,
+      "transportError": null,
+      "location": null,
+      "contentType": "text/html",
+      "bytes": 91147,
+      "sha256": "08270a2239f8ecda",
+      "cacheControl": "max-age=3600, public, must-revalidate",
+      "cfCacheStatus": null,
+      "age": null,
+      "stamps": [
+        "20260723b12",
+        "20260723b50"
+      ],
+      "declaredBuildId": "20260723b12",
+      "allIds": [
+        "20260723b12",
+        "20260723b50"
+      ],
+      "class": "STAMPED_200",
+      "hole": true,
+      "reason": "serves 20260723b12,20260723b50 below current 20260728b81"
+    }
+  ],
+  "holeCount": 13,
+  "holes": [
+    {
+      "route": "/chart/chart.js",
+      "allIds": [
+        "20260726b75"
+      ],
+      "reason": "serves 20260726b75 below current 20260728b81",
+      "status": 200
+    },
+    {
+      "route": "/chart/dist-v9/",
+      "allIds": [
+        "20260726b75"
+      ],
+      "reason": "serves 20260726b75 below current 20260728b81",
+      "status": 200
+    },
+    {
+      "route": "/chart/dist-v9/index.html",
+      "allIds": [
+        "20260726b75"
+      ],
+      "reason": "serves 20260726b75 below current 20260728b81",
+      "status": 200
+    },
+    {
+      "route": "/chart/dist-v9/sw.js",
+      "allIds": [
+        "20260726b75"
+      ],
+      "reason": "serves 20260726b75 below current 20260728b81",
+      "status": 200
+    },
+    {
+      "route": "/chart/legacy-index.html",
+      "allIds": [
+        "20260726b75"
+      ],
+      "reason": "serves 20260726b75 below current 20260728b81",
+      "status": 200
+    },
+    {
+      "route": "/chart/modules/m20-a-favorites-harness/m20-a-favorites-harness.html",
+      "allIds": [],
+      "reason": "HTTP 200 but no recognisable build id",
+      "status": 200
+    },
+    {
+      "route": "/chart/modules/m21-2-browser-harness/m21-2-browser-harness.html",
+      "allIds": [],
+      "reason": "HTTP 200 but no recognisable build id",
+      "status": 200
+    },
+    {
+      "route": "/chart/multichart-prod/chart-embed.html",
+      "allIds": [
+        "20260726b75"
+      ],
+      "reason": "serves 20260726b75 below current 20260728b81",
+      "status": 200
+    },
+    {
+      "route": "/chart/multichart/chart-host.html",
+      "allIds": [
+        "20260524a10"
+      ],
+      "reason": "serves 20260524a10 below current 20260728b81",
+      "status": 200
+    },
+    {
+      "route": "/chart/multichart/multichart-shell.html",
+      "allIds": [],
+      "reason": "HTTP 200 but no recognisable build id",
+      "status": 200
+    },
+    {
+      "route": "/chart/sw.js",
+      "allIds": [
+        "20260726b75"
+      ],
+      "reason": "serves 20260726b75 below current 20260728b81",
+      "status": 200
+    },
+    {
+      "route": "/chart/talaria-design/live/",
+      "allIds": [
+        "20260723b12",
+        "20260723b50"
+      ],
+      "reason": "serves 20260723b12,20260723b50 below current 20260728b81",
+      "status": 200
+    },
+    {
+      "route": "/chart/talaria-design/live/index.html",
+      "allIds": [
+        "20260723b12",
+        "20260723b50"
+      ],
+      "reason": "serves 20260723b12,20260723b50 below current 20260728b81",
+      "status": 200
+    }
+  ],
+  "summary": {
+    "holeCount": 13,
+    "stamped200": 10,
+    "redirect": 20,
+    "notFound": 0,
+    "authGated": 0,
+    "unstamped200": 3,
+    "undetermined": 0
+  }
+}

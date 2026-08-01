@@ -234,11 +234,24 @@ export function V16SupportChatPopover() {
 
   const toggle = useCallback(() => setOpen((v) => !v), []);
 
-  const disconnectWs = useCallback(() => {
+  const clearPingTimer = useCallback(() => {
     if (pingRef.current) {
       clearInterval(pingRef.current);
       pingRef.current = null;
     }
+  }, []);
+
+  /** Kill-switch: window.__TALARIA_DISABLE_SUPPORT_WS_PING_CLEANUP_V1 = true → legacy immortal ping. */
+  const supportWsPingCleanupV1Enabled = useCallback(() => {
+    try {
+      return !(typeof window !== "undefined" && window.__TALARIA_DISABLE_SUPPORT_WS_PING_CLEANUP_V1);
+    } catch {
+      return true;
+    }
+  }, []);
+
+  const disconnectWs = useCallback(() => {
+    clearPingTimer();
     if (wsRef.current) {
       try {
         wsRef.current.close();
@@ -247,7 +260,7 @@ export function V16SupportChatPopover() {
       }
       wsRef.current = null;
     }
-  }, []);
+  }, [clearPingTimer]);
 
   const loadThreads = useCallback(async () => {
     const data = await supportApi<{ threads: Thread[] }>("/api/support/threads");
@@ -294,7 +307,20 @@ export function V16SupportChatPopover() {
           } catch {
             /* ignore */
           }
+          clearPingTimer();
           pingRef.current = setInterval(() => {
+            if (!supportWsPingCleanupV1Enabled()) {
+              try {
+                ws.send(JSON.stringify({ type: "ping" }));
+              } catch {
+                /* ignore */
+              }
+              return;
+            }
+            if (ws.readyState !== WebSocket.OPEN) {
+              clearPingTimer();
+              return;
+            }
             try {
               ws.send(JSON.stringify({ type: "ping" }));
             } catch {
@@ -338,13 +364,18 @@ export function V16SupportChatPopover() {
           }
         };
         ws.onclose = () => {
-          if (wsRef.current === ws) wsRef.current = null;
+          if (wsRef.current !== ws) return;
+          if (!supportWsPingCleanupV1Enabled()) {
+            wsRef.current = null;
+            return;
+          }
+          disconnectWs();
         };
       } catch {
         /* ignore */
       }
     },
-    [disconnectWs, loadThreads]
+    [disconnectWs, loadThreads, clearPingTimer, supportWsPingCleanupV1Enabled]
   );
 
   const sendReply = async () => {
@@ -469,6 +500,7 @@ export function V16SupportChatPopover() {
     setLoading(true);
     void loadThreads().finally(() => setLoading(false));
     if (!wsRef.current) connectWs(selThread?.id);
+    return () => disconnectWs();
   }, [open, disconnectWs, loadThreads, connectWs, selThread?.id]);
 
   useEffect(() => {

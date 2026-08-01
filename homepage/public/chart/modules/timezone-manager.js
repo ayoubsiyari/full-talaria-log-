@@ -98,6 +98,10 @@ class TimezoneManager {
 
         // Load saved timezone
         this.currentTimezone = this.loadTimezone();
+        this._bootTimezoneGuardActive = this._timezonePersistedBootGuardEnabled()
+            && this._loadedTimezoneFromStorage === true;
+        this._timezoneUserGestureSeen = false;
+        this._installBootTimezoneGuardRelease();
         this._wallClockFmtCache = Object.create(null);
 
         // M20-A bounded notify state (see notifyListeners contract):
@@ -115,13 +119,18 @@ class TimezoneManager {
      * Load timezone from localStorage
      */
     loadTimezone() {
+        this._loadedTimezoneFromStorage = false;
         try {
             const saved = userStorage.getItem(this.STORAGE_KEY);
             if (saved) {
                 const tz = this.timezones.find(t => t.id === saved);
-                if (tz) return tz;
+                if (tz) {
+                    this._loadedTimezoneFromStorage = true;
+                    return tz;
+                }
                 try {
                     new Intl.DateTimeFormat('en-US', { timeZone: saved });
+                    this._loadedTimezoneFromStorage = true;
                     return { id: saved, label: saved.replace(/\//g, ' / '), offset: 0 };
                 } catch (_) { /* invalid stored id */ }
             }
@@ -140,6 +149,32 @@ class TimezoneManager {
         } catch (e) {
             console.warn('Failed to save timezone:', e);
         }
+    }
+
+    _timezonePersistedBootGuardEnabled() {
+        try {
+            return window.__TALARIA_DISABLE_TIMEZONE_PERSISTED_BOOT_GUARD_V1 !== true;
+        } catch (_) {
+            return true;
+        }
+    }
+
+    _installBootTimezoneGuardRelease() {
+        if (!this._bootTimezoneGuardActive || typeof window === 'undefined') return;
+        const release = () => {
+            this._timezoneUserGestureSeen = true;
+            this._bootTimezoneGuardActive = false;
+            try { window.removeEventListener('pointerdown', release, true); } catch (_) {}
+            try { window.removeEventListener('keydown', release, true); } catch (_) {}
+        };
+        try { window.addEventListener('pointerdown', release, { capture: true, once: true }); } catch (_) {}
+        try { window.addEventListener('keydown', release, { capture: true, once: true }); } catch (_) {}
+    }
+
+    _shouldRejectBootTimezoneOverride(timezoneId) {
+        if (!this._bootTimezoneGuardActive || this._timezoneUserGestureSeen) return false;
+        if (!this.currentTimezone || this._loadedTimezoneFromStorage !== true) return false;
+        return timezoneId && timezoneId !== this.currentTimezone.id;
     }
     
     /**
@@ -176,6 +211,10 @@ class TimezoneManager {
             } catch (_) {
                 return false;
             }
+        }
+        if (this._shouldRejectBootTimezoneOverride(tz.id)) {
+            console.warn('🌍 Timezone boot override ignored; preserving stored chart timezone:', this.currentTimezone.id, 'blocked:', tz.id);
+            return false;
         }
         // M20-A: same-timezone set is idempotent — no duplicate save/notify.
         if (this.currentTimezone && this.currentTimezone.id === tz.id) return true;

@@ -28,8 +28,14 @@ const zain = localFont({
 
 /** Browser tab / bookmark icon (transparent mark, no black box). */
 const FAVICON_PATH = "/favicon.png";
-/** Link previews (Discord, X, etc.). */
-const OG_IMAGE_PATH = "/talaria-log.logo.png";
+/**
+ * Link previews (Discord, X, etc.), 1200x631 per the OpenGraph convention.
+ *
+ * JPEG, not PNG: the card is a smooth dark-blue gradient behind the mark. As a PNG it was
+ * 547 KB, and palette reduction — the usual PNG lever — posterises that gradient visibly.
+ * JPEG at q88 with 4:4:4 chroma holds both the gradient and the mark's hard edges at 38 KB.
+ */
+const OG_IMAGE_PATH = "/talaria-log.logo.jpg";
 
 const siteUrl = getSiteUrl();
 const DEFAULT_TITLE = `${SEO_TITLE_EN} | ${SEO_TITLE_AR}`;

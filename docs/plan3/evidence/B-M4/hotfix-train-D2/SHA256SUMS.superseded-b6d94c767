@@ -1,0 +1,8 @@
+9524e0d22b40609124b360da8fbe73186511d528363daa816618f19802d75c31  chart v 1.4/chart/modules/order-manager.js
+5294c4ffde1842e7c0440458432273ca0741c5793bc05731e7c3b95f62e914c4  chart v 1.4/chart/api_server.py
+9469d15a5f2a0eab499e1a8ce053328e91e1251d6f33f8d01bd70edd56199781  chart v 1.4/chart/modules/b-w16-hydration-guard.test.mjs
+e7783e99fb7448ed70fcd0f85230329f6cbf3df9ccda3fc80e6b3c32fc51691d  chart v 1.4/chart/modules/b-w16-hydration-guard.mutants.mjs
+9e76b642031f28709ae318adfc3a313f3c9f40b9f896faeb679dab82586e2c0b  chart v 1.4/chart/modules/b-w18-killswitch.mutants.mjs
+75c3a92571e6a386310254bfd17ce646c25d7923c0f115150e47beac8699c308  chart v 1.4/chart/tests/test_b_w17_journal_sweep_guard.py
+dbfc7cce8b5cb82c5123a47c0f0596cab436240ec7cea75965fab41eeb99312d  docs/plan3/evidence/B-M4/hotfix-train-D2/DEPLOY-NOTE.md
+c209adc77129ddac3cddbb04ba809fdb656067adef289387b7b52f79c0ba705a  docs/plan3/evidence/B-M4/hotfix-train-D2/PO-VERIFICATION.md

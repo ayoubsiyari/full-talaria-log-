@@ -82,11 +82,14 @@ export const DEFAULT_BUG_SWITCHES = [
 ];
 
 export async function bootLayout(browser, srv, opts = {}) {
-  const { pair = 'same', panels = 4, tf = '1m', bug = false, bugSwitches = null, hostFile = null, preDocument = null, orderMcStateConvergeOff = false, armedDrawFocusForwardOff = false, peerDeselectOff = false } = opts;
+  const { pair = 'same', panels = 4, tf = '1m', tfs = null, bug = false, bugSwitches = null, hostFile = null, preDocument = null, orderMcStateConvergeOff = false, armedDrawFocusForwardOff = false, peerDeselectOff = false } = opts;
   const params = new URLSearchParams();
   params.set('pair', pair);
   params.set('panels', String(panels));
   params.set('tf', tf);
+  // CONF-01: comma-separated per-panel timeframes, e.g. '1m,5m,15m,1h'. Omitted by every
+  // pre-existing caller, which keeps them on the single `tf`.
+  if (tfs) params.set('tfs', Array.isArray(tfs) ? tfs.join(',') : String(tfs));
   // Optional: pick the HOST/same-pair instrument (default 25). H-S20 uses the
   // deep 400-day instrument (28) to get a coarse-viewport vs fine-master gap.
   if (hostFile != null) params.set('hostFile', String(hostFile));

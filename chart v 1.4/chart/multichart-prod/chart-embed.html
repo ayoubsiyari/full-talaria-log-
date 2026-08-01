@@ -6,12 +6,14 @@
     <script>
     (function () {
         var p = new URLSearchParams(window.location.search);
-        window.__TALARIA_CHART_BUILD_ID = p.get('v') || '20260727b80';
+        window.__TALARIA_CHART_BUILD_ID = p.get('v') || '20260728b82';
         window.__TALARIA_EMBED_LITE = true;
+        try { console.info('[Talaria] chart build', window.__TALARIA_CHART_BUILD_ID); } catch (_) {}
     })();
     </script>
+    <style>#talaria-build-badge{position:fixed;bottom:2px;left:2px;z-index:99999;font:10px/1.2 ui-monospace,monospace;color:rgba(232,234,237,.45);pointer-events:none;user-select:all}</style>
     <title>Talaria — multichart panel</title>
-    <link rel="stylesheet" href="/chart/fonts/talaria-fonts.css?v=20260727b80" />
+    <link rel="stylesheet" href="/chart/fonts/talaria-fonts.css?v=20260728b82" />
     <style>
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
         html, body { width: 100%; height: 100%; overflow: hidden; background: #07080E; }
@@ -302,16 +304,17 @@
             window.__rejectD3 = reject;
         });
     </script>
-    <script src="/chart/vendor/d3.min.js?v=20260727b80"
+    <script src="/chart/vendor/d3.min.js?v=20260728b82"
             onload="window.__resolveD3 && window.__resolveD3();"
             onerror="window.__rejectD3 && window.__rejectD3(new Error('d3 load failed'));"></script>
-    <script defer src="/chart/vendor/lz-string.min.js?v=20260727b80"></script>
+    <script defer src="/chart/vendor/lz-string.min.js?v=20260728b82"></script>
     <script>
     (function () {
         var V = window.__TALARIA_CHART_BUILD_ID || '';
         var q = V ? ('?v=' + V) : '';
         var paths = [
             '/chart/modules/chart-window-limit.js',
+            '/chart/modules/server-write-failure-ledger.js',
             '/chart/modules/preferences-sync.js',
             '/chart/modules/preferences-init.js',
             '/chart/modules/market-calculations.js',
@@ -343,6 +346,7 @@
             '/chart/modules/timezone-manager.js',
             '/chart/modules/viewport-data-manager.js',
             '/chart/modules/chart-data-pipeline.js',
+            '/chart/modules/trade-attribution.js',
             '/chart/modules/talaria-toast-stack.js',
             '/chart/modules/module-presence-runtime.js',
             '/chart/chart.js',
@@ -375,6 +379,8 @@
     </script>
 </head>
 <body class="multichart-embed">
+    <div id="talaria-build-badge" aria-label="chart build id"></div>
+    <script>(function(){try{var el=document.getElementById('talaria-build-badge');var id=window.__TALARIA_CHART_BUILD_ID;if(el&&id)el.textContent='build '+id;}catch(_){}})();</script>
     <div id="chart-container">
         <div id="chartWrapper" class="chart-wrapper">
             <canvas id="chartCanvas"></canvas>

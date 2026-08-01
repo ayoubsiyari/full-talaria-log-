@@ -1,0 +1,34 @@
+{
+  "observedAt": "2026-07-28T20:11:01.768Z",
+  "finding": "FINDING-MULTICHART-HOST-SHELL-STALE-20260728-2110",
+  "baseUrl": "http://31.97.192.82:3000",
+  "engineTag": "../chart.js",
+  "engineHasQuery": false,
+  "missingIndicatorPerf": true,
+  "missingModulePresence": true,
+  "a10Pins": [
+    "20260524a10",
+    "20260524a10"
+  ],
+  "origin": {
+    "build": "20260726b75",
+    "cacheControl": "max-age=3600, public, must-revalidate",
+    "etag": "\"6a66a9e1-1db09a\""
+  },
+  "coldProfile": {
+    "build": "20260726b75",
+    "engineSrc": "../chart.js",
+    "href": "http://31.97.192.82:3000/chart/multichart/chart-host.html",
+    "readyState": "complete"
+  },
+  "warmProfile": {
+    "build": "20260524a10-SEED",
+    "engineSrc": "../chart.js",
+    "href": "http://127.0.0.1:58450/chart/multichart/chart-host.html",
+    "readyState": "complete"
+  },
+  "proxyChartHits": 1,
+  "diverge": true,
+  "defectOneLive": true,
+  "verdict": "LIVE — cold and warm panel profiles observed different CHART_ENGINE_BUILD"
+}

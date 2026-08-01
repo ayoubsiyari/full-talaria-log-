@@ -40,6 +40,10 @@ import {
     fanOutHostOrderSnapshotToIframes,
     primeReadyPanelsWithHostOrders,
 } from "../../chart/modules/order-host-store.mjs";
+import {
+    MC_SPLITTER_HOVER_BG,
+    mcSplitterRestingBackground,
+} from "./mc-splitter-hairline.mjs";
 
 // Phase 7.2.5: tile id "A" is the HOST tile — it does NOT spawn an iframe.
 // Instead, the parent's existing #chartWrapper (the original main chart with
@@ -55,6 +59,26 @@ const HOST_PANEL_ID = "A";
 const HOST_WRAPPER_ID = "chartWrapper";
 const MULTICHART_GLOBAL_SETTINGS_ROOT_ID = "multichart-global-settings-root";
 const HOST_CONTAINER_ID = "chart-container";
+const MC_GRID_STATE_PURGE_SWITCH = "__TALARIA_DISABLE_MC_GRID_STATE_PURGE_V1";
+const MC_HOST_BUS_RETRY_TIMER_CLEANUP_SWITCH = "__TALARIA_DISABLE_MC_HOST_BUS_RETRY_TIMER_CLEANUP_V1";
+// SPLITTER-BORDERS-B90 hairlines: see ./mc-splitter-hairline.mjs
+// Kill: window.__TALARIA_DISABLE_MC_SPLITTER_HAIRLINE_V1 (truthy → transparent).
+
+function mcGridStatePurgeV1Enabled() {
+    try {
+        return !(typeof window !== "undefined" && window[MC_GRID_STATE_PURGE_SWITCH]);
+    } catch (_) {
+        return true;
+    }
+}
+
+function mcHostBusRetryTimerCleanupV1Enabled() {
+    try {
+        return !(typeof window !== "undefined" && window[MC_HOST_BUS_RETRY_TIMER_CLEANUP_SWITCH]);
+    } catch (_) {
+        return true;
+    }
+}
 
 /** CB-01 diagnostic-only bridge into chart.js's default-off ring logger. */
 function cb01MountSigGridRecord(ch, source, schedule, extra) {
@@ -120,6 +144,47 @@ function persistPanelFileId(panelId, fileId) {
         if (String(map[pid] || "") === fid) return;
         map[pid] = fid;
         sessionStorage.setItem(mcPanelFilePersistStorageKey(), JSON.stringify(map));
+    } catch (_) { /* ignore */ }
+}
+
+/** Drop a tile's persisted pair so the next boot/heal can fall back to the host. */
+function clearPersistedPanelFileId(panelId) {
+    if (!mcPanelFilePersistV1Enabled()) return;
+    const pid = panelId != null ? String(panelId) : "";
+    if (!pid || pid === HOST_PANEL_ID) return;
+    try {
+        const map = readPersistedPanelFileMap();
+        if (!Object.prototype.hasOwnProperty.call(map, pid)) return;
+        delete map[pid];
+        const key = mcPanelFilePersistStorageKey();
+        if (Object.keys(map).length === 0) sessionStorage.removeItem(key);
+        else sessionStorage.setItem(key, JSON.stringify(map));
+    } catch (_) { /* ignore */ }
+}
+
+/**
+ * Keep sessionStorage panel-file map aligned with live iframe tiles.
+ * Orphan / recycled ids left by a broken kill-switch path otherwise survive
+ * F5 and re-poison boots after the switch is removed (PO: 2/3 panels stay dead).
+ */
+function sanitizePersistedPanelFileMap(activeIframeIds) {
+    if (!mcPanelFilePersistV1Enabled()) return;
+    try {
+        const map = readPersistedPanelFileMap();
+        const active = activeIframeIds instanceof Set
+            ? activeIframeIds
+            : new Set(activeIframeIds || []);
+        let changed = false;
+        for (const key of Object.keys(map)) {
+            if (key === HOST_PANEL_ID || !active.has(key)) {
+                delete map[key];
+                changed = true;
+            }
+        }
+        if (!changed) return;
+        const storageKey = mcPanelFilePersistStorageKey();
+        if (Object.keys(map).length === 0) sessionStorage.removeItem(storageKey);
+        else sessionStorage.setItem(storageKey, JSON.stringify(map));
     } catch (_) { /* ignore */ }
 }
 
@@ -2370,6 +2435,13 @@ export default function MultichartGrid({
     useEffect(() => { dataReadyPanelsRef.current = dataReadyPanels; }, [dataReadyPanels]);
     /** Panels that already received the one-time host file/replay sync — avoid re-syncing B when C loads. */
     const hostSyncedPanelsRef = useRef(new Set());
+    /**
+     * Panel ids removed from the live layout in this MultichartGrid lifetime.
+     * Re-adding the same id is a recycle (PO: single→4 recovers via fresh
+     * MultichartGrid remount; recycled B/C/D stay dead). Self-heal belongs on
+     * the re-add/addChart path for these ids — not only a delayed empty check.
+     */
+    const retiredPanelIdsRef = useRef(new Set());
     /** Full boot align / reveal runs once when all panels first have bars. */
     const bootAlignDoneRef = useRef(false);
 
@@ -2431,11 +2503,24 @@ export default function MultichartGrid({
     const [rowFractions, setRowFractions] = useState(initialRowFracs);
     const isDraggingRef = useRef(false);
     const liveDragRef = useRef(null); // { axis: 'col'|'row', fracs: number[] }
+    const activeSplitterDragCleanupRef = useRef(new Set());
+    const panelLoadGenerationRef = useRef(Object.create(null));
+    function bumpPanelLoadGeneration(panelId) {
+        if (!mcGridStatePurgeV1Enabled()) return;
+        panelLoadGenerationRef.current[panelId] =
+            (panelLoadGenerationRef.current[panelId] || 0) + 1;
+    }
+    useEffect(() => () => {
+        const cleanups = Array.from(activeSplitterDragCleanupRef.current);
+        cleanups.reverse().forEach((cleanup) => cleanup());
+    }, []);
     // Reset fractions whenever the layout changes. Must key on layoutId —
     // many layouts share identical cols/rows strings (3l, 3r, 4 all use
     // "1fr 1fr" × "1fr 1fr"); without layoutId, uneven splits from a
     // prior layout persist and squash the right-hand panels in 4-up view.
     useEffect(() => {
+        const cleanups = Array.from(activeSplitterDragCleanupRef.current);
+        cleanups.reverse().forEach((cleanup) => cleanup());
         const cols = parseFrTemplate(layout.cols);
         const rows = parseFrTemplate(layout.rows);
         liveDragRef.current = null;
@@ -2636,6 +2721,7 @@ export default function MultichartGrid({
                     }
                 },
                 onChartBootFailed: function (id, reason, src) {
+                    try { clearPersistedPanelFileId(id); } catch (_) {}
                     setFailedPanels((prev) => {
                         const next = new Map(prev);
                         next.set(id, { reason: reason || "boot failed", src: src || null });
@@ -2800,6 +2886,9 @@ export default function MultichartGrid({
             cancelled = true;
             if (typeof window !== "undefined") {
                 window.__multichartRealData = prevMultichartRealData;
+                if (mcGridStatePurgeV1Enabled() && window.__mcManager === managerRef.current) {
+                    try { delete window.__mcManager; } catch (_) { window.__mcManager = null; }
+                }
             }
             if (managerRef.current) {
                 try { managerRef.current.dispose(); } catch (_) {}
@@ -2842,6 +2931,17 @@ export default function MultichartGrid({
             if (!desiredIframeIds.has(existingId)) {
                 hostSyncedPanelsRef.current.delete(existingId);
                 primedPanelsRef.current.delete(existingId);
+                // Always forget clone/order sync so a recycled panel id re-primes.
+                // Not gated by PURGE-2: the kill-switch restores listener/manager
+                // retainers, but must not revive the legacy "skip re-prime" defect
+                // (PO: three panels black + "No fullRawData available" with switch on).
+                orderSyncedPanelsRef.current.delete(existingId);
+                clonedPanelsRef.current.delete(existingId);
+                // Drop persisted pair for this id — otherwise a broken kill-switch
+                // session leaves sessionStorage fileIds that survive flag removal + F5.
+                clearPersistedPanelFileId(existingId);
+                retiredPanelIdsRef.current.add(existingId);
+                bumpPanelLoadGeneration(existingId);
                 try { mgr.removeChart(existingId); } catch (_) {}
                 if (overlayHoldTimersRef.current[existingId]) {
                     clearTimeout(overlayHoldTimersRef.current[existingId]);
@@ -2941,10 +3041,33 @@ export default function MultichartGrid({
                 next.delete(tile.id);
                 return next;
             });
+            // Recycled-id heal (PO): fresh MultichartGrid remount (layout 1→4)
+            // works; re-using B/C/D after remove stays dead. Before addChart,
+            // drop poisoned persist + in-memory prime marks and boot the host
+            // pair — do not trust resolveBootFileIdForPanel for retired ids.
+            let bootFileId = resolveBootFileIdForPanel(tile.id, effFile);
+            if (retiredPanelIdsRef.current.has(tile.id)) {
+                try { clearPersistedPanelFileId(tile.id); } catch (_) {}
+                try { hostSyncedPanelsRef.current.delete(tile.id); } catch (_) {}
+                try { primedPanelsRef.current.delete(tile.id); } catch (_) {}
+                try { orderSyncedPanelsRef.current.delete(tile.id); } catch (_) {}
+                try { clonedPanelsRef.current.delete(tile.id); } catch (_) {}
+                bumpPanelLoadGeneration(tile.id);
+                bootFileId = effFile;
+                retiredPanelIdsRef.current.delete(tile.id);
+                try {
+                    console.warn(
+                        "[MultichartGrid] recycled-panel heal: re-adding",
+                        tile.id,
+                        "from host fileId",
+                        bootFileId,
+                    );
+                } catch (_) {}
+            }
             const cfg = {
                 id:        tile.id,
                 tf:        effTf,
-                fileId:    resolveBootFileIdForPanel(tile.id, effFile),
+                fileId:    bootFileId,
                 sessionId: sessId,
                 mode:      effMode,
             };
@@ -2978,6 +3101,69 @@ export default function MultichartGrid({
             if (chainTimer) clearTimeout(chainTimer);
         };
     }, [layout.tiles, managerReady]);
+
+    // ─── Boot self-heal for persisted panel poison (PURGE-2 FLAG-03) ───────
+    // A kill-switch session can write sessionStorage panel fileIds + skip
+    // re-prime such that deleting the flag and reloading still leaves tiles
+    // black (PO: only 1/3 recovered; clearActiveDrawingTool timeouts; thrash
+    // loads across many fileIds). Heal once per tile: if still no bars after
+    // settle, drop persisted pair, forget clone/order, load host fileId.
+    const panelBootHealAttemptedRef = useRef(new Set());
+    useEffect(() => {
+        if (!managerReady) return;
+        const iframeIds = layout.tiles
+            .map((t) => t.id)
+            .filter((id) => id !== HOST_PANEL_ID);
+        if (!iframeIds.length) {
+            panelBootHealAttemptedRef.current.clear();
+            return undefined;
+        }
+        try { sanitizePersistedPanelFileMap(new Set(iframeIds)); } catch (_) {}
+
+        const HEAL_WAIT_MS = 4500;
+        const timers = iframeIds.map((pid) => setTimeout(() => {
+            if (dataReadyPanelsRef.current.has(pid)) return;
+            if (panelBootHealAttemptedRef.current.has(pid)) return;
+            panelBootHealAttemptedRef.current.add(pid);
+
+            const hostNt = readHostChartFileAndTf();
+            const hostFid = (initialFileIdRef.current && String(initialFileIdRef.current).trim())
+                || (hostNt.fileId && String(hostNt.fileId).trim())
+                || "";
+            if (!hostFid) return;
+
+            try { clearPersistedPanelFileId(pid); } catch (_) {}
+            try { hostSyncedPanelsRef.current.delete(pid); } catch (_) {}
+            try { primedPanelsRef.current.delete(pid); } catch (_) {}
+            try { orderSyncedPanelsRef.current.delete(pid); } catch (_) {}
+            try { clonedPanelsRef.current.delete(pid); } catch (_) {}
+            bumpPanelLoadGeneration(pid);
+
+            const mgr = managerRef.current;
+            if (!mgr || typeof mgr.sendCommand !== "function") return;
+            if (!mgr.charts || !mgr.charts.has(pid)) return;
+            try {
+                console.warn(
+                    "[MultichartGrid] boot self-heal: panel",
+                    pid,
+                    "had no bars — clearing persisted fileId and loading host",
+                    hostFid,
+                );
+            } catch (_) {}
+            try {
+                mgr.sendCommand(pid, "loadFile", { fileId: hostFid, force: true })
+                    .then(() => {
+                        try { persistPanelFileId(pid, hostFid); } catch (_) {}
+                    })
+                    .catch(() => {});
+            } catch (_) {}
+        }, HEAL_WAIT_MS));
+
+        return () => {
+            timers.forEach((t) => clearTimeout(t));
+        };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [managerReady, layout.tiles]);
 
     // D-016 finest-TF cadence: re-derive min(TF) when panels mount or TF/data settles.
     useEffect(() => {
@@ -5761,12 +5947,16 @@ export default function MultichartGrid({
             }
 
             const ch = getChartForPanelId(pid);
+            const loadGeneration = panelLoadGenerationRef.current[pid] || 0;
+            const panelLoadStillCurrent = () => !mcGridStatePurgeV1Enabled()
+                || (panelLoadGenerationRef.current[pid] || 0) === loadGeneration;
             if (!ch) {
                 const mgr = managerRef.current;
                 if (!mgr || typeof mgr.sendCommand !== "function") {
                     return Promise.reject(new Error("panel chart not ready"));
                 }
                 return mgr.sendCommand(pid, "loadFile", { fileId: fid, force: true }).then((data) => {
+                    if (!panelLoadStillCurrent()) return data;
                     const ch2 = getChartForPanelId(pid);
                     if (ch2 && typeof ch2._finalizeMultichartPanelAfterPairLoad === "function") {
                         try { ch2._finalizeMultichartPanelAfterPairLoad(); } catch (_) {}
@@ -5810,9 +6000,12 @@ export default function MultichartGrid({
             }
 
             const finish = () => {
+                if (!panelLoadStillCurrent()) return null;
+                const currentChart = mcGridStatePurgeV1Enabled() ? getChartForPanelId(pid) : ch;
+                if (mcGridStatePurgeV1Enabled() && !currentChart) return null;
                 try {
-                    if (typeof ch._finalizeMultichartPanelAfterPairLoad === "function") {
-                        ch._finalizeMultichartPanelAfterPairLoad();
+                    if (typeof currentChart._finalizeMultichartPanelAfterPairLoad === "function") {
+                        currentChart._finalizeMultichartPanelAfterPairLoad();
                     }
                 } catch (_) {}
                 try { persistPanelFileId(pid, fid); } catch (_) {}
@@ -7709,7 +7902,10 @@ export default function MultichartGrid({
         let hostOffPendingUpdated = null;
         let hostOffClosed = null;
         let hostOffPendingRemoved = null;
+        let hostBusRetryInterval = null;
+        let orderMirrorDisposed = false;
         function tryInstallHostBus() {
+            if (orderMirrorDisposed && mcGridStatePurgeV1Enabled()) return true;
             const ch = window.chart;
             const svc = ch && ch.orderManager && ch.orderManager.orderService;
             const bus = svc && svc.eventBus;
@@ -7747,9 +7943,12 @@ export default function MultichartGrid({
             // chart.orderManager.orderService may not exist yet (chart
             // boots async). Poll for ~5s, then give up.
             let tries = 0;
-            const id = setInterval(() => {
+            hostBusRetryInterval = setInterval(() => {
                 tries += 1;
-                if (tryInstallHostBus() || tries > 50) clearInterval(id);
+                if (tryInstallHostBus() || tries > 50) {
+                    clearInterval(hostBusRetryInterval);
+                    hostBusRetryInterval = null;
+                }
             }, 100);
         }
 
@@ -8166,6 +8365,14 @@ export default function MultichartGrid({
         document.addEventListener("click", onPlaceOrderClickCapture, true);
 
         return () => {
+            orderMirrorDisposed = true;
+            // Own switch only. The disjunction this replaced could not be
+            // observed on its own — clearing still happened unless PURGE-2 was
+            // also set — which is the welded switch the flag protocol blocks.
+            if (hostBusRetryInterval && mcHostBusRetryTimerCleanupV1Enabled()) {
+                clearInterval(hostBusRetryInterval);
+                hostBusRetryInterval = null;
+            }
             _broadcastClearDraftPreviewImpl = null;
             document.removeEventListener("click", onPlaceOrderClickCapture, true);
             window.removeEventListener("multichart-clear-preview", onMultichartClearPreviewHost);
@@ -8311,7 +8518,31 @@ export default function MultichartGrid({
                 raf = requestAnimationFrame(flush);
             }
             function onPointerMove(e) { onMove(e); }
+            let released = false;
+            function releaseSplitterDragReferences() {
+                if (!mcGridStatePurgeV1Enabled()) return;
+                if (released) return;
+                released = true;
+                if (raf) {
+                    cancelAnimationFrame(raf);
+                    raf = 0;
+                }
+                document.removeEventListener("mousemove", onMove);
+                document.removeEventListener("mouseup", onUp);
+                document.removeEventListener("pointermove", onPointerMove);
+                document.removeEventListener("pointerup", onUp);
+                document.removeEventListener("pointercancel", onUp);
+                document.body.style.cursor = "";
+                document.body.style.userSelect = "";
+                isDraggingRef.current = false;
+                liveDragRef.current = null;
+                try {
+                    thawPanelSurfaces(lockedSurfaces, cellRefs.current[HOST_PANEL_ID], container);
+                } catch (_) {}
+                activeSplitterDragCleanupRef.current.delete(releaseSplitterDragReferences);
+            }
             function onUp(e) {
+                if (released) return;
                 if (captureEl && captureEl.releasePointerCapture && e && e.pointerId != null) {
                     try { captureEl.releasePointerCapture(e.pointerId); } catch (_) {}
                 }
@@ -8324,6 +8555,8 @@ export default function MultichartGrid({
                 document.removeEventListener("pointermove", onPointerMove);
                 document.removeEventListener("pointerup", onUp);
                 document.removeEventListener("pointercancel", onUp);
+                released = true;
+                activeSplitterDragCleanupRef.current.delete(releaseSplitterDragReferences);
                 document.body.style.cursor = "";
                 document.body.style.userSelect = "";
                 isDraggingRef.current = false;
@@ -8357,6 +8590,7 @@ export default function MultichartGrid({
                     });
                 });
             }
+            activeSplitterDragCleanupRef.current.add(releaseSplitterDragReferences);
             document.addEventListener("mousemove", onMove);
             document.addEventListener("mouseup", onUp);
             document.addEventListener("pointermove", onPointerMove);
@@ -8533,10 +8767,11 @@ export default function MultichartGrid({
                 display: "grid",
                 gridTemplateColumns: colsTemplate,
                 gridTemplateRows:    rowsTemplate,
-                // Wider gap (was 1px, now 4px) so the divider line
-                // between panels is unmistakable. Use chart black for the
+                // Wider gap (was 1px, now 4px). Keep chart black for the
                 // gutter — a lighter #2a2e3a flashed as a grey column whenever
                 // host/iframe bitmaps lagged one frame behind CSS reflow.
+                // Visible resting dividers are painted on the splitter hit
+                // targets (SPLITTER-BORDERS-B90 hairlines), not via gutter colour.
                 gap: `${MULTICHART_GRID_GAP_PX}px`,
                 background: "#000000",
                 zIndex: 12,
@@ -8638,6 +8873,12 @@ export default function MultichartGrid({
                                             if (!mgr) return;
                                             const cellEl = cellRefs.current[tile.id];
                                             primedPanelsRef.current.delete(tile.id);
+                                            orderSyncedPanelsRef.current.delete(tile.id);
+                                            clonedPanelsRef.current.delete(tile.id);
+                                            hostSyncedPanelsRef.current.delete(tile.id);
+                                            // Retry must not re-apply poisoned sessionStorage fileIds.
+                                            clearPersistedPanelFileId(tile.id);
+                                            bumpPanelLoadGeneration(tile.id);
                                             try { mgr.removeChart(tile.id); } catch (_) {}
                                             setReadyPanels((prev) => {
                                                 if (!prev.has(tile.id)) return prev;
@@ -8656,15 +8897,13 @@ export default function MultichartGrid({
                                                 const n = new Map(prev); n.delete(tile.id); return n;
                                             });
                                             const hostNt = readHostChartFileAndTf();
+                                            const hostFid = initialFileIdRef.current || hostNt.fileId || null;
                                             if (cellEl) {
                                                 try {
                                                     mgr.addChart({
                                                         id:        tile.id,
                                                         tf:        (initialTimeframeRef.current || hostNt.tf || "1m"),
-                                                        fileId:    resolveBootFileIdForPanel(
-                                                            tile.id,
-                                                            initialFileIdRef.current || hostNt.fileId || null
-                                                        ),
+                                                        fileId:    hostFid,
                                                         sessionId: initialSessionIdRef.current || null,
                                                         mode:      initialModeRef.current || readUrlChartMode(),
                                                     }, cellEl);
@@ -8713,8 +8952,10 @@ export default function MultichartGrid({
                 straddles the 4px gap with ±3px overlap into the
                 cells for a forgiving click target.
 
-                Hover state paints the gap a soft blue so the user
-                sees what they're about to grab. */}
+                Resting state: 1px #2a2e3a hairline (SPLITTER-BORDERS-B90)
+                so dividers stay visible over the black gutter. Kill-switch
+                __TALARIA_DISABLE_MC_SPLITTER_HAIRLINE_V1 → transparent.
+                Hover paints the full hit strip soft blue. */}
             {columnSplittersToRender.map((s) => (
                 <div
                     key={s.key}
@@ -8728,10 +8969,12 @@ export default function MultichartGrid({
                         height: `${s.height}px`,
                         cursor: "col-resize",
                         zIndex: 30,
-                        background: "transparent",
+                        background: mcSplitterRestingBackground("col"),
                     }}
-                    onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(41,98,255,0.45)"; }}
-                    onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+                    onMouseEnter={(e) => { e.currentTarget.style.background = MC_SPLITTER_HOVER_BG; }}
+                    onMouseLeave={(e) => {
+                        e.currentTarget.style.background = mcSplitterRestingBackground("col");
+                    }}
                 />
             ))}
 
@@ -8751,10 +8994,12 @@ export default function MultichartGrid({
                         height: "10px",
                         cursor: "row-resize",
                         zIndex: 30,
-                        background: "transparent",
+                        background: mcSplitterRestingBackground("row"),
                     }}
-                    onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(41,98,255,0.45)"; }}
-                    onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+                    onMouseEnter={(e) => { e.currentTarget.style.background = MC_SPLITTER_HOVER_BG; }}
+                    onMouseLeave={(e) => {
+                        e.currentTarget.style.background = mcSplitterRestingBackground("row");
+                    }}
                 />
             ))}
         </div>

@@ -1,0 +1,74 @@
+{
+  "train": "D-2 standalone hotfix — trade-loss guards",
+  "incident": "INCIDENT-TRADE-LOSS-PUBLIC-20260728.md",
+  "sealedAtUtc": "2026-07-28T13:50:45.934Z",
+  "sealedBy": "Manager B",
+  "sourceCommitSha": "b6d94c767892c7134cd1e4b45c9f85a18e5bbb95",
+  "branch": "manager-b/plan3-20260727",
+  "commits": [
+    "b6d94c767892c7134cd1e4b45c9f85a18e5bbb95 seal: retain superseded SHA256SUMS c22c3a9a7",
+    "75f80b27c1755d6ce10ff9d4c0fd93a282e659fb seal: retain superseded manifest c22c3a9a7 with reason",
+    "4ad968205ef18af5e90166abd4ac515eb1c2a631 seal: cover b-w18-killswitch.mutants.mjs",
+    "c22c3a9a71206fd08617e8a5d964a5c31de9ac23 B-W18: kill-switches for the D-2 hotfix train, defaulting to guard-on",
+    "ea453d156bc0a3d1ac226cfa4cf006c51bb20116 B-4/B-5: hotfix train deploy note, PO verification check, EVID-01 seal tool",
+    "e996842b2270cb4ffd6e0515cf7dd4c3b840a4fd B-W17: never delete on an unparsed id; log every durable journal deletion (12/0)",
+    "05c8fe93e228d825b5742c9b25a8dee7005233a0 Journal B-0112; dispatch B-W17 backend sweep parse-guard + delete logging",
+    "2521a7484c963303040d89f7946e7d747c850460 B-2: tri-state hydration guard on the durable journal write (9/0, VER-04 both halves)"
+  ],
+  "chartEngineBuildInSource": "20260724b61",
+  "buildId": null,
+  "buildIdNote": "null by design: the shipped build id does not exist until the image is built. homepage/Dockerfile stamps it only under CHECKPOINT_BUILD=1. Record it in BUILD-RECORD.json via `record-build` after the build.",
+  "killSwitches": {
+    "client": {
+      "name": "window.__TALARIA_DISABLE_B_W16_HYDRATION_GUARD_V1",
+      "defaultWhenUnset": "guard ON"
+    },
+    "backend": {
+      "name": "JOURNAL_SWEEP_PARSE_GUARD_ENABLED",
+      "defaultWhenUnset": "guard ON (true)"
+    },
+    "deletionLogging": "no kill-switch by design"
+  },
+  "files": {
+    "chart v 1.4/chart/modules/order-manager.js": {
+      "sha256": "9524e0d22b40609124b360da8fbe73186511d528363daa816618f19802d75c31",
+      "bytes": 2423357,
+      "crlfPairs": 0
+    },
+    "chart v 1.4/chart/api_server.py": {
+      "sha256": "5294c4ffde1842e7c0440458432273ca0741c5793bc05731e7c3b95f62e914c4",
+      "bytes": 1063724,
+      "crlfPairs": 0
+    },
+    "chart v 1.4/chart/modules/b-w16-hydration-guard.test.mjs": {
+      "sha256": "9469d15a5f2a0eab499e1a8ce053328e91e1251d6f33f8d01bd70edd56199781",
+      "bytes": 20614,
+      "crlfPairs": 0
+    },
+    "chart v 1.4/chart/modules/b-w16-hydration-guard.mutants.mjs": {
+      "sha256": "e7783e99fb7448ed70fcd0f85230329f6cbf3df9ccda3fc80e6b3c32fc51691d",
+      "bytes": 11886,
+      "crlfPairs": 0
+    },
+    "chart v 1.4/chart/modules/b-w18-killswitch.mutants.mjs": {
+      "sha256": "9e76b642031f28709ae318adfc3a313f3c9f40b9f896faeb679dab82586e2c0b",
+      "bytes": 14191,
+      "crlfPairs": 0
+    },
+    "chart v 1.4/chart/tests/test_b_w17_journal_sweep_guard.py": {
+      "sha256": "75c3a92571e6a386310254bfd17ce646c25d7923c0f115150e47beac8699c308",
+      "bytes": 14327,
+      "crlfPairs": 0
+    },
+    "docs/plan3/evidence/B-M4/hotfix-train-D2/DEPLOY-NOTE.md": {
+      "sha256": "dbfc7cce8b5cb82c5123a47c0f0596cab436240ec7cea75965fab41eeb99312d",
+      "bytes": 7801,
+      "crlfPairs": 0
+    },
+    "docs/plan3/evidence/B-M4/hotfix-train-D2/PO-VERIFICATION.md": {
+      "sha256": "c209adc77129ddac3cddbb04ba809fdb656067adef289387b7b52f79c0ba705a",
+      "bytes": 6133,
+      "crlfPairs": 0
+    }
+  }
+}

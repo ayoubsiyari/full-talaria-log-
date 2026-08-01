@@ -1,0 +1,175 @@
+{
+  "schema": "TALARIA_SERVABLE_SHELLS_FROM_CENSUS_V1",
+  "source": "stamp-census",
+  "standingRule": "This list — not per-gate hardcodes — is the shell inventory for module-presence, reachability, and cache-stamp coherence. Derived from what the server served.",
+  "observedAt": "2026-07-28T19:50:02.007Z",
+  "baseUrl": "http://31.97.192.82:3000",
+  "shellCount": 13,
+  "shells": [
+    {
+      "id": "chart.js",
+      "route": "/chart/chart.js",
+      "relativePath": "homepage/public/chart/chart.js",
+      "role": "engine",
+      "class": "STAMPED_200",
+      "allIds": [
+        "20260726b75"
+      ],
+      "hole": true,
+      "neverBlock": false,
+      "gateRequired": true
+    },
+    {
+      "id": "dist-v9",
+      "route": "/chart/dist-v9/",
+      "relativePath": "homepage/public/chart/dist-v9/index.html",
+      "role": "dist",
+      "class": "STAMPED_200",
+      "allIds": [
+        "20260726b75"
+      ],
+      "hole": true,
+      "neverBlock": false,
+      "gateRequired": true
+    },
+    {
+      "id": "dist-v9-index.html",
+      "route": "/chart/dist-v9/index.html",
+      "relativePath": "homepage/public/chart/dist-v9/index.html",
+      "role": "dist",
+      "class": "STAMPED_200",
+      "allIds": [
+        "20260726b75"
+      ],
+      "hole": true,
+      "neverBlock": false,
+      "gateRequired": true
+    },
+    {
+      "id": "dist-v9-sw.js",
+      "route": "/chart/dist-v9/sw.js",
+      "relativePath": "homepage/public/chart/dist-v9/sw.js",
+      "role": "dist",
+      "class": "STAMPED_200",
+      "allIds": [
+        "20260726b75"
+      ],
+      "hole": true,
+      "neverBlock": false,
+      "gateRequired": true
+    },
+    {
+      "id": "legacy-index.html",
+      "route": "/chart/legacy-index.html",
+      "relativePath": "chart v 1.4/chart/legacy-index.html",
+      "role": "servable",
+      "class": "STAMPED_200",
+      "allIds": [
+        "20260726b75"
+      ],
+      "hole": true,
+      "neverBlock": false,
+      "gateRequired": true
+    },
+    {
+      "id": "modules-m20-a-favorites-harness-m20-a-favorites-harness.html",
+      "route": "/chart/modules/m20-a-favorites-harness/m20-a-favorites-harness.html",
+      "relativePath": "homepage/public/chart/modules/m20-a-favorites-harness/m20-a-favorites-harness.html",
+      "role": "servable",
+      "class": "UNSTAMPED_200",
+      "allIds": [],
+      "hole": true,
+      "neverBlock": false,
+      "gateRequired": true
+    },
+    {
+      "id": "modules-m21-2-browser-harness-m21-2-browser-harness.html",
+      "route": "/chart/modules/m21-2-browser-harness/m21-2-browser-harness.html",
+      "relativePath": "homepage/public/chart/modules/m21-2-browser-harness/m21-2-browser-harness.html",
+      "role": "servable",
+      "class": "UNSTAMPED_200",
+      "allIds": [],
+      "hole": true,
+      "neverBlock": false,
+      "gateRequired": true
+    },
+    {
+      "id": "multichart-prod-chart-embed.html",
+      "route": "/chart/multichart-prod/chart-embed.html",
+      "relativePath": "homepage/public/chart/multichart-prod/chart-embed.html",
+      "role": "embed",
+      "class": "STAMPED_200",
+      "allIds": [
+        "20260726b75"
+      ],
+      "hole": true,
+      "neverBlock": true,
+      "gateRequired": true
+    },
+    {
+      "id": "multichart-chart-host.html",
+      "route": "/chart/multichart/chart-host.html",
+      "relativePath": "homepage/public/chart/multichart/chart-host.html",
+      "role": "multichart-panel-host",
+      "class": "STAMPED_200",
+      "allIds": [
+        "20260524a10"
+      ],
+      "hole": true,
+      "neverBlock": false,
+      "gateRequired": true
+    },
+    {
+      "id": "multichart-multichart-shell.html",
+      "route": "/chart/multichart/multichart-shell.html",
+      "relativePath": "homepage/public/chart/multichart/multichart-shell.html",
+      "role": "multichart-shell",
+      "class": "UNSTAMPED_200",
+      "allIds": [],
+      "hole": true,
+      "neverBlock": false,
+      "gateRequired": true
+    },
+    {
+      "id": "sw.js",
+      "route": "/chart/sw.js",
+      "relativePath": "homepage/public/chart/sw.js",
+      "role": "service-worker",
+      "class": "STAMPED_200",
+      "allIds": [
+        "20260726b75"
+      ],
+      "hole": true,
+      "neverBlock": false,
+      "gateRequired": true
+    },
+    {
+      "id": "talaria-design-live",
+      "route": "/chart/talaria-design/live/",
+      "relativePath": null,
+      "role": "servable",
+      "class": "STAMPED_200",
+      "allIds": [
+        "20260723b12",
+        "20260723b50"
+      ],
+      "hole": true,
+      "neverBlock": false,
+      "gateRequired": true
+    },
+    {
+      "id": "talaria-design-live-index.html",
+      "route": "/chart/talaria-design/live/index.html",
+      "relativePath": null,
+      "role": "servable",
+      "class": "STAMPED_200",
+      "allIds": [
+        "20260723b12",
+        "20260723b50"
+      ],
+      "hole": true,
+      "neverBlock": false,
+      "gateRequired": true
+    }
+  ]
+}

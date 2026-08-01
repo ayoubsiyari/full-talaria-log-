@@ -56,7 +56,10 @@
     "test:heap-cycle-memory": "node --test scripts/tests/heap-cycle-memory.test.mjs scripts/tests/heap-retainer-paths.test.mjs scripts/tests/heap-cycle-po-workload.test.mjs",
     "test:replay-interval-budget": "node --test scripts/tests/replay-interval-budget.test.mjs",
     "preflight:hidden-tab-replay": "node scripts/hidden-tab-replay-gate.mjs --require-browser",
-    "test:hidden-tab-replay": "node --test scripts/tests/hidden-tab-replay-gate.test.mjs"
+    "test:hidden-tab-replay": "node --test scripts/tests/hidden-tab-replay-gate.test.mjs",
+    "test:asset-decoded-budget": "node --test scripts/tests/asset-decoded-budget.test.mjs",
+    "assets:report": "node scripts/resize-brand-assets.mjs",
+    "assets:resize": "node scripts/resize-brand-assets.mjs --apply"
   },
   "dependencies": {
     "dukascopy-node": "^1.46.3",

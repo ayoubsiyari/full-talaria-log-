@@ -2156,7 +2156,32 @@ class LabelTool extends BaseDrawing {
         bind(markerCircle.node());
         if (labelText) bind(labelText.node());
 
-        // Create single resize handle with glow effect
+        // Single resize handle with glow effect. _clearGeometryChildren preserves handle nodes
+        // across a reuse-render, so appending unconditionally grew the group by 3 nodes on every
+        // render. Reuse the preserved group instead; the kill switch restores the legacy append.
+        if (LabelTool.isHandleWipeDisabled()) {
+            this._appendLabelHandleGroup(x, y);
+        } else if (!this._shouldCreateHandles(renderOpts)) {
+            this.group.selectAll('.resize-handle-group').remove();
+        } else if (!this._syncLabelHandleGroup(x, y)) {
+            this.group.selectAll('.resize-handle-group').remove();
+            this._appendLabelHandleGroup(x, y);
+        }
+
+        return this.group;
+    }
+
+    /** Kill switch for the handle-wipe fix: truthy, read per call, never throws. */
+    static isHandleWipeDisabled() {
+        try {
+            return !!(typeof window !== 'undefined'
+                && window.__TALARIA_DISABLE_LABEL_HANDLE_WIPE_V1);
+        } catch (_) {
+            return false;
+        }
+    }
+
+    _appendLabelHandleGroup(x, y) {
         const handleGroup = this.group.append('g')
             .attr('class', 'resize-handle-group')
             .attr('data-point-index', 0);
@@ -2184,7 +2209,37 @@ class LabelTool extends BaseDrawing {
             .style('opacity', this.selected ? 1 : 0)
             .attr('data-point-index', 0);
 
-        return this.group;
+        return handleGroup;
+    }
+
+    /**
+     * Update the handle group preserved by _clearGeometryChildren instead of appending a new one.
+     * Keeping the node identity keeps any live d3 drag binding — and the manager's
+     * _hoverHandleBoundGroupNode cache — attached to a handle that is still in the DOM.
+     * @returns {boolean} true when an existing handle group was updated in place
+     */
+    _syncLabelHandleGroup(x, y) {
+        if (!this.group || this.group.empty()) return false;
+        const existing = this.group.selectAll('.resize-handle-group').nodes();
+        if (!existing.length) return false;
+        // Collapse residue left behind by the legacy append-only path (or by the kill switch).
+        for (let i = 1; i < existing.length; i++) {
+            try { existing[i].parentNode && existing[i].parentNode.removeChild(existing[i]); } catch (_) {}
+        }
+
+        const handleGroup = this.group.select('.resize-handle-group');
+        const glow = handleGroup.select('circle.resize-handle-glow');
+        const handle = handleGroup.select('circle.resize-handle');
+        if (glow.empty() || handle.empty()) return false;
+
+        handleGroup.attr('data-point-index', 0);
+        glow.attr('cx', x).attr('cy', y).attr('opacity', this.selected ? 0.2 : 0);
+        handle.attr('cx', x).attr('cy', y)
+            .style('opacity', this.selected ? 1 : 0)
+            .attr('data-point-index', 0);
+        // Geometry re-appended above this preserved node; keep the handle as the top hit target.
+        handleGroup.raise();
+        return true;
     }
 
     toJSON() {

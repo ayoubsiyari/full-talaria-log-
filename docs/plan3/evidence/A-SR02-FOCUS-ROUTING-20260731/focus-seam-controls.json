@@ -1,0 +1,169 @@
+{
+  "signature": "TALARIA_SR02_FOCUS_SEAM_SOURCE_BOUND_V1",
+  "status": "GREEN",
+  "providers": [
+    {
+      "id": "SHIPPING-SHELL",
+      "rel": "chart v 1.4\\chart\\dist-v9\\index.html",
+      "present": true,
+      "installsProvider": true,
+      "installLine": 1842,
+      "guardedInstall": true,
+      "singletonShim": true,
+      "focusAware": false,
+      "expectFocusAware": false,
+      "matchesExpectation": true,
+      "note": "build output of talaria-design (vite.config.live.js outDir) — not ours to edit"
+    },
+    {
+      "id": "PANEL-SHELL",
+      "rel": "chart v 1.4\\chart\\multichart-prod\\chart-embed.html",
+      "present": true,
+      "installsProvider": true,
+      "installLine": 446,
+      "guardedInstall": true,
+      "singletonShim": true,
+      "focusAware": false,
+      "expectFocusAware": false,
+      "matchesExpectation": true,
+      "note": "panel shell installs the same singleton-returning shim"
+    },
+    {
+      "id": "REACT-GRID",
+      "rel": "chart v 1.4\\talaria-design\\src\\MultichartGrid.jsx",
+      "present": true,
+      "installsProvider": true,
+      "installLine": 7084,
+      "guardedInstall": false,
+      "singletonShim": true,
+      "focusAware": true,
+      "expectFocusAware": true,
+      "matchesExpectation": true,
+      "note": "installs multichartGetActiveChart, genuinely focus-aware, chains to previous provider"
+    }
+  ],
+  "engine": {
+    "filesScanned": 70,
+    "installers": [],
+    "consumerCallSites": 27
+  },
+  "cells": [
+    {
+      "cell": "SEAM-PROVIDER-MATCHER-POSITIVE-CONTROL",
+      "status": "GREEN",
+      "detail": {
+        "providersFound": 3,
+        "rows": [
+          {
+            "id": "SHIPPING-SHELL",
+            "installLine": 1842
+          },
+          {
+            "id": "PANEL-SHELL",
+            "installLine": 446
+          },
+          {
+            "id": "REACT-GRID",
+            "installLine": 7084
+          }
+        ]
+      },
+      "reason": null
+    },
+    {
+      "cell": "SEAM-PROVIDER-EXISTS-IN-HOST-NOT-ENGINE",
+      "status": "GREEN",
+      "detail": {
+        "hostProviders": 3,
+        "engineInstallers": [],
+        "engineConsumerCallSites": 27
+      },
+      "reason": null
+    },
+    {
+      "cell": "SEAM-SHIPPING-PROVIDER-IS-SINGLETON-SHIM",
+      "status": "GREEN",
+      "detail": {
+        "id": "SHIPPING-SHELL",
+        "rel": "chart v 1.4\\chart\\dist-v9\\index.html",
+        "present": true,
+        "installsProvider": true,
+        "installLine": 1842,
+        "guardedInstall": true,
+        "singletonShim": true,
+        "focusAware": false,
+        "expectFocusAware": false,
+        "matchesExpectation": true,
+        "note": "build output of talaria-design (vite.config.live.js outDir) — not ours to edit"
+      },
+      "reason": null
+    },
+    {
+      "cell": "SEAM-FOCUS-AWARE-PROVIDER-ALREADY-EXISTS",
+      "status": "GREEN",
+      "detail": {
+        "id": "REACT-GRID",
+        "rel": "chart v 1.4\\talaria-design\\src\\MultichartGrid.jsx",
+        "present": true,
+        "installsProvider": true,
+        "installLine": 7084,
+        "guardedInstall": false,
+        "singletonShim": true,
+        "focusAware": true,
+        "expectFocusAware": true,
+        "matchesExpectation": true,
+        "note": "installs multichartGetActiveChart, genuinely focus-aware, chains to previous provider"
+      },
+      "reason": null
+    },
+    {
+      "cell": "SEAM-PROVIDER-EXPECTATIONS-HOLD",
+      "status": "GREEN",
+      "detail": {
+        "mismatched": []
+      },
+      "reason": null
+    }
+  ],
+  "eSuite": {
+    "present": true,
+    "signature": "TALARIA_E_FOCUS_DESTROY_CORRECTNESS_V1",
+    "status": "GREEN",
+    "redControls": [
+      {
+        "cell": "FOCUS-KEYBOARD-WINDOW-CHART",
+        "status": "GREEN"
+      },
+      {
+        "cell": "FOCUS-MOUSE-WINDOW-CHART",
+        "status": "GREEN"
+      },
+      {
+        "cell": "FOCUS-MOUSE-WRONG-RECT",
+        "status": "GREEN"
+      },
+      {
+        "cell": "FOCUS-MOUSE-BROADCAST",
+        "status": "GREEN"
+      },
+      {
+        "cell": "DESTROY-NO-DESTROY-RESURRECTS-INDICATOR",
+        "status": "GREEN"
+      }
+    ],
+    "greenControls": [
+      {
+        "cell": "FOCUS-SCOPED-ROUTING",
+        "status": "GREEN"
+      },
+      {
+        "cell": "DESTROY-WITH-DESTROY-CLEARS-INDICATORS",
+        "status": "GREEN"
+      }
+    ],
+    "limitation": "Model behavior oracle; wire into real single-realm input routing and Chart.destroy once A lands product code.",
+    "sourceIndependent": true,
+    "note": "E's oracle reads no product source; it returns GREEN on the unmodified base. Kept as the behavioural specification, extended (not replaced) by the source-bound cells above."
+  },
+  "measuredAt": "2026-07-31T16:10:17.829Z"
+}

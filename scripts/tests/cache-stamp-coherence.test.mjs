@@ -94,7 +94,15 @@ test('coverage hole: excluding /chart/multichart/ wrongly GREENs stamp uniformit
   write('homepage/public/chart/multichart/multichart-shell.html', stale);
   const cell = runShellBuildIdUniformCell(tmp, CACHE_STAMP_SHELLS_WITHOUT_MULTICHART);
   assert.equal(cell.status, 'GREEN', JSON.stringify(cell, null, 2));
-  assert.equal(cell.buildId, '20260727b80');
+  // Build id moves with every ship bump; pin to the sealed baseline, not a literal.
+  // D's side asserted the literal '20260727b80', which nineteen ships have since
+  // invalidated; D's temp-dir cleanup on the next line is kept, because without it
+  // every run of this cell leaks a tmp tree.
+  const baseline = loadBaseline(root);
+  const sealed = baseline?.modules?.['modules/order-manager.js']?.stamp;
+  assert.equal(typeof cell.buildId, 'string');
+  assert.match(cell.buildId, /^\d{8}[ab]\d+$/);
+  assert.equal(cell.buildId, sealed);
   fs.rmSync(tmp, { recursive: true, force: true });
 });
 

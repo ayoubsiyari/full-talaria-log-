@@ -23,6 +23,7 @@ global.window = {};
 const ReplaySystem = require('./replay-system.js');
 const KILL_SWITCH = process.env.TALARIA_DISABLE_ORDER_LIFECYCLE_EVENT_OWNERSHIP_V1 === '1';
 const MONEY_PATH_BATCH_KILL = process.env.TALARIA_DISABLE_ORDER_MONEY_PATH_BATCH_V1 === '1';
+const SEEK_GUARD_KILL = process.env.TALARIA_DISABLE_ORDER_SEEK_GUARD_INFINITY_V1 === '1';
 
 function defaultWindow() {
     const out = KILL_SWITCH
@@ -30,6 +31,9 @@ function defaultWindow() {
         : {};
     if (MONEY_PATH_BATCH_KILL) {
         out.__TALARIA_DISABLE_ORDER_MONEY_PATH_BATCH_V1 = true;
+    }
+    if (SEEK_GUARD_KILL) {
+        out.__TALARIA_DISABLE_ORDER_SEEK_GUARD_INFINITY_V1 = true;
     }
     return out;
 }
@@ -163,6 +167,36 @@ test('viewport and timeframe recomputes cannot replay one market event', () => {
     manager._refreshAllGuardsToTimestamp(replay.replayTimestamp, Infinity);
     assert.equal(manager._claimOrderLifecycleEvent(position, { t: replay.replayTimestamp }), false,
         'TF/seek guard refresh rebases ownership instead of executing the destination OHLC');
+});
+
+test('omitted seek guard tick defaults to strict current-candle barrier', () => {
+    global.window = defaultWindow();
+    const barT = 1_721_600_000_000;
+    const replay = {
+        isActive: true,
+        playbackMode: 'candle',
+        getPlaybackMode: () => 'candle',
+        replayTimestamp: barT,
+        currentIndex: 0,
+        fullRawData: [{ t: barT }],
+        animatingCandle: null,
+    };
+    const manager = orderManagerFor(replay);
+    manager.replaySystem = replay;
+    manager._resolveTickAnimReplaySystem = () => replay;
+    const position = { id: 1, type: 'BUY' };
+    manager.openPositions = [position];
+    manager.pendingOrders = [];
+
+    manager._refreshAllGuardsToTimestamp(barT);
+
+    assert.equal(position._slNoTriggerBeforeTick, Infinity,
+        'seek/panel guard refresh without tick must not default to -1');
+    assert.equal(
+        manager._tickAnimOverridesGuard(position._slNoTriggerBeforeTick, { t: barT, h: 115, l: 95 }, 110, 'above', position),
+        false,
+        'destination candle high/low cannot instantly close a re-armed order',
+    );
 });
 
 test('1m order execution candle survives a 1D display switch', () => {
@@ -357,7 +391,7 @@ function batchedMoneyPathReplay({ stopAtStep = null } = {}) {
     };
 }
 
-test('batched order playback evaluates every hidden fine step and paints once', () => {
+test('batched order playback evaluates every hidden fine step and paints once', async () => {
     global.window = defaultWindow();
     const run = batchedMoneyPathReplay();
 
@@ -365,6 +399,15 @@ test('batched order playback evaluates every hidden fine step and paints once', 
 
     assert.deepEqual(run.evaluated, [1, 2, 3, 4].map((step) => run.t0 + step * 60_000),
         'every retained 1m bar must reach pending/active order evaluation');
+    // LAG-SETINTERVAL-TICK coalesces the tick's single paint onto the next frame
+    // (requestAnimationFrame in the browser, setTimeout(0) here), so the paint lands
+    // after this tick returns. Flush before counting: the invariant this cell owns is
+    // one paint per tick, not whether the paint is synchronous. Counting without the
+    // flush grades the scheduling mode instead, and would go red under the fix while
+    // staying green under __TALARIA_DISABLE_LAG_SETINTERVAL_TICK_V1 — a cell that
+    // only holds in one switch position. Deferral-vs-dropped is pinned where it
+    // belongs, in lag-setinterval-tick.test.mjs.
+    await new Promise((resolve) => setTimeout(resolve, 0));
     assert.equal(run.getPaints(), 1,
         'four money-path evaluations should produce one chart paint, not four');
 });
@@ -504,6 +547,76 @@ test('pending activation also requires a future canonical event', () => {
     manager.checkPendingOrders(candle);
     assert.equal(fills.length, 1, 'the pending order activates on the first future crossing event');
     assert.equal(manager.pendingOrders.length, 0, 'activation removes the pending record exactly once');
+});
+
+test('TAL-01798 CONF-01: peer-panel TF change does not close host open', () => {
+    // Intake: order CLOSED by changing TF in another layout (PO A=1m / B=5m).
+    // Shared OM; host EURUSD 1m open; peer GBPUSD TF recompute must not mint a new
+    // lifecycle event that executes the host row.
+    global.window = defaultWindow();
+    const t0 = 1_721_600_000_000;
+    const hostReplay = {
+        isActive: true,
+        playbackMode: 'candle',
+        getPlaybackMode: () => 'candle',
+        replayTimestamp: t0,
+        currentIndex: 10,
+        fullRawData: [{ t: t0 }],
+        animatingCandle: null,
+    };
+    const manager = orderManagerFor(hostReplay);
+    manager.replaySystem = hostReplay;
+    manager.chart = {
+        currentSymbol: 'EURUSD',
+        currentFileId: 'file-eur',
+        currentTimeframe: '1m',
+    };
+    const peerChart = {
+        currentSymbol: 'GBPUSD',
+        currentFileId: 'file-gbp',
+        currentTimeframe: '1m',
+    };
+    const hostOpen = {
+        id: 77,
+        ticker: 'EURUSD',
+        symbol: 'EURUSD',
+        type: 'BUY',
+        status: 'OPEN',
+        openPrice: 1.1,
+        takeProfit: 1.2,
+    };
+    manager.openPositions = [hostOpen];
+    manager.pendingOrders = [];
+
+    const hostBar1m = { t: t0, o: 1.1, h: 1.11, l: 1.09, c: 1.105 };
+    manager._seedOrderLifecycleEvent(hostOpen, hostBar1m);
+    assert.equal(manager._claimOrderLifecycleEvent(hostOpen, hostBar1m), false,
+        'host placement/seed blocks same-bar close');
+
+    // Peer switches 1m → 5m; resampled display candle has a different `t` than host 1m.
+    peerChart.currentTimeframe = '5m';
+    const peerResampled5m = { t: t0 - 240_000, o: 1.25, h: 1.26, l: 1.24, c: 1.255 };
+    assert.equal(
+        new Set(['EURUSD', 'GBPUSD', 'USDJPY', 'XAUUSD']).has(peerChart.currentSymbol)
+            && peerChart.currentSymbol !== manager.chart.currentSymbol,
+        true,
+        'CONF-01: peer is a different symbol than host',
+    );
+    assert.equal(
+        manager._claimOrderLifecycleEvent(hostOpen, peerResampled5m),
+        false,
+        'TAL-01798: peer TF resample timestamp must not create a host market event',
+    );
+    assert.equal(hostOpen.status, 'OPEN', 'host open stays OPEN after peer TF change');
+    assert.equal(manager.openPositions.length, 1, 'host open row not removed by peer TF change');
+
+    // Real host replay advance still owns exactly one future opportunity.
+    hostReplay.replayTimestamp += 60_000;
+    assert.equal(
+        manager._claimOrderLifecycleEvent(hostOpen, { t: hostReplay.replayTimestamp }),
+        true,
+        'host remains eligible on its own future replay event',
+    );
 });
 
 test('kill-switch reconstructs the stale-candle failure class', () => {

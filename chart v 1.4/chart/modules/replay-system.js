@@ -3,22 +3,192 @@
  * Implements TradingView-style candle-by-candle replay with draggable toolbar
  */
 
+/**
+ * Truthy kill-switch read across self → parent → top.
+ *
+ * Replay (and most panel work) runs inside multichart panel realms — each is
+ * its own window. An operator flipping a switch types into the page they see,
+ * which is the host. A predicate that reads only its own window leaves the
+ * cure running in every panel while truthfully reporting "disabled" on the
+ * host: FLAG-01 and FLAG-02 fail together (B-0185). FIX 1's cadence switch
+ * already climbed; LAG followed in W64; this helper is the shared climb for
+ * the rest of the replay switches. Unreadable cross-origin realms are "no
+ * instruction for us" — fail towards the shipped default, not away from it.
+ * There is no per-realm switch propagation in the tree (A's d7a228725 is not
+ * merged), so the climb has to live in the predicate.
+ */
+function _talariaDisableFlagTruthy(flagName) {
+    if (typeof window === 'undefined') return false;
+    const killed = (w) => {
+        try {
+            return !!(w && w[flagName]);
+        } catch (_e) {
+            return false;
+        }
+    };
+    if (killed(window)) return true;
+    try {
+        const parent = window.parent && window.parent !== window ? window.parent : null;
+        if (killed(parent)) return true;
+        const top = window.top && window.top !== window && window.top !== parent
+            ? window.top
+            : null;
+        if (killed(top)) return true;
+    } catch (_e) {
+        // Parent chain unreachable; the own-window read above already stands.
+    }
+    return false;
+}
+
 /** L2-M2 / TAL-01798: same-symbol panels share one host market mark (default ON). */
 function _mcCanonicalReplayMarkV1Enabled() {
-    return typeof window === 'undefined'
-        || !window.__TALARIA_MC_DISABLE_CANONICAL_REPLAY_MARK_V1;
+    return !_talariaDisableFlagTruthy('__TALARIA_MC_DISABLE_CANONICAL_REPLAY_MARK_V1');
 }
 
 /** M19-H: one replay loop and one heavy refresh per committed TF generation. */
 function _m19hTimeframeCoalesceEnabled() {
-    return typeof window === 'undefined'
-        || window.__TALARIA_DISABLE_M19_H_TF_COALESCE_V1 !== true;
+    return !_talariaDisableFlagTruthy('__TALARIA_DISABLE_M19_H_TF_COALESCE_V1');
 }
 
 /** M19-I-g2: slider speed is literal and 1–100x tick play keeps forming-candle paints. */
 function _m19iTickSpeedCoherenceEnabled() {
-    return typeof window === 'undefined'
-        || window.__TALARIA_DISABLE_M19I_TICK_SPEED_COHERENCE_V1 !== true;
+    return !_talariaDisableFlagTruthy('__TALARIA_DISABLE_M19I_TICK_SPEED_COHERENCE_V1');
+}
+
+/**
+ * Host mirror paint: clear the dirty flag before the synchronous paint so animate() does not
+ * repaint the same state on the next frame. Truthy DISABLES, restoring the double paint.
+ */
+function _mcMirrorPaintCoalesceDisabled() {
+    return _talariaDisableFlagTruthy('__TALARIA_DISABLE_MC_MIRROR_PAINT_COALESCE_V1');
+}
+
+function _m27EngineReleaseV1Enabled() {
+    return !_talariaDisableFlagTruthy('__TALARIA_DISABLE_M27_ENGINE_RELEASE_V1');
+}
+
+function _m28ReplayHiddenPauseV1Enabled() {
+    return !_talariaDisableFlagTruthy('__TALARIA_DISABLE_REPLAY_HIDDEN_PAUSE_V1');
+}
+
+/**
+ * HYG-2 — at most one live timer per managed key (default ON).
+ * Kill-switch: window.__TALARIA_MIRROR_INTERVAL_GUARD_V1 = <truthy> restores the
+ * legacy behaviour where a re-entered setup path installs a second copy of the
+ * same repeating timer and both keep firing. Absent / falsy ⇒ guard active.
+ * Read per call (never sampled at init); climbs self → parent → top.
+ */
+function _mirrorIntervalGuardDisabled() {
+    return _talariaDisableFlagTruthy('__TALARIA_MIRROR_INTERVAL_GUARD_V1');
+}
+
+/**
+ * CPU-CEILING-60X — single-chart high-speed replay paint cadence (default ON).
+ * Kill-switch: window.__TALARIA_DISABLE_SC_REPLAY_PAINT_CADENCE_V1 = <truthy>
+ * restores legacy per-forming-tick sync paint. Absent / falsy ⇒ mitigation on.
+ * Read per call (never sampled at init).
+ */
+function _scReplayPaintCadenceV1Enabled() {
+    return !_talariaDisableFlagTruthy('__TALARIA_DISABLE_SC_REPLAY_PAINT_CADENCE_V1');
+}
+
+/**
+ * LAG-SETINTERVAL-TICK — bound candle-mode setInterval handler (default ON).
+ * Advances playhead inside the interval; coalesces chart paint onto rAF so the
+ * setInterval callback cannot become an unbounded sync unit of work (PO:
+ * `[Violation] 'setInterval' handler took 55–95ms` at 60x).
+ * Kill-switch: window.__TALARIA_DISABLE_LAG_SETINTERVAL_TICK_V1 = <truthy>
+ * restores legacy sync full tick (advance + paint inside setInterval).
+ * Absent / falsy ⇒ mitigation on. Read per call (never sampled at init).
+ */
+function _lagSetIntervalTickV1Enabled() {
+    return !_talariaDisableFlagTruthy('__TALARIA_DISABLE_LAG_SETINTERVAL_TICK_V1');
+}
+
+/**
+ * M17-DI2 / TAL-01918: completed-bar close guard (module-scope).
+ * Same predicate as Chart._applyCanonicalMarkToFormingBar:
+ *   playhead >= periodEnd - 1 → COMPLETE → skip write.
+ * Indeterminate (missing playhead/period helpers or non-finite) ⇒ write
+ * (preserve legacy behaviour for charts without the helper, e.g. m2 harness).
+ * Kill-switch: window.__TALARIA_DISABLE_COMPLETED_BAR_CLOSE_GUARD_V1
+ *
+ * Climbs self→parent→top (B-0195). This module runs in every panel realm, so an
+ * own-window read cannot see a switch set on the host: the flag would read as OFF
+ * in the panels, the guard would stay ON, and the flip would present as "kill-switch
+ * has no effect" — a negative control that controls nothing (FLAG-02).
+ */
+function _completedBarCloseGuardDisabled() {
+    return _talariaDisableFlagTruthy('__TALARIA_DISABLE_COMPLETED_BAR_CLOSE_GUARD_V1');
+}
+
+function _shouldSkipCompletedBarCloseWrite(chart) {
+    if (!chart || !Array.isArray(chart.data) || !chart.data.length) return true;
+    const last = chart.data[chart.data.length - 1];
+    if (!last || typeof last !== 'object') return true;
+    if (_completedBarCloseGuardDisabled()) return false;
+
+    const playhead = typeof chart._getReplayPlayheadMs === 'function'
+        ? chart._getReplayPlayheadMs()
+        : null;
+    const lastIdx = chart.data.length - 1;
+    const barT = Number(last.t);
+    const periodMs = typeof chart.parseTimeframe === 'function'
+        ? chart.parseTimeframe(chart.currentTimeframe)
+        : null;
+    const periodEnd = (typeof chart._getBarPeriodEndMs === 'function' && Number.isFinite(barT))
+        ? chart._getBarPeriodEndMs(barT, chart.data, lastIdx, periodMs)
+        : null;
+    if (Number.isFinite(playhead)
+        && periodEnd != null
+        && Number.isFinite(periodEnd)
+        && playhead >= periodEnd - 1) {
+        return true;
+    }
+    return false;
+}
+
+/** Fallback when chart lacks _applyCanonicalMarkToFormingBar (must not live inside the D-gate slice). */
+function applyCanonicalMarkToFormingBarFallback(chart, mark) {
+    if (!chart || !Number.isFinite(mark)) return;
+    if (!Array.isArray(chart.data) || !chart.data.length) return;
+    const last = chart.data[chart.data.length - 1];
+    if (!last || typeof last !== 'object') return;
+    if (_shouldSkipCompletedBarCloseWrite(chart)) return;
+
+    last.c = mark;
+    const h = Number(last.h ?? last.high);
+    const l = Number(last.l ?? last.low);
+    if (Number.isFinite(h)) last.h = Math.max(h, mark);
+    if (Number.isFinite(l)) last.l = Math.min(l, mark);
+}
+
+/**
+ * Mirror-frame animated-candle tip write (site 4). Routes close through the
+ * chart helper when present, else the module fallback; accompanying h/l/v
+ * apply only when the same completed-bar predicate allows a tip write.
+ */
+function applyAnimatedCandleToFormingBar(chart, animatedCandle) {
+    if (!chart || !animatedCandle) return;
+    if (!Array.isArray(chart.data) || !chart.data.length) return;
+    const last = chart.data[chart.data.length - 1];
+    if (!last || typeof last !== 'object') return;
+    const mark = Number(animatedCandle.c);
+    if (!Number.isFinite(mark)) return;
+
+    if (typeof chart._applyCanonicalMarkToFormingBar === 'function') {
+        chart._applyCanonicalMarkToFormingBar(mark);
+    } else {
+        applyCanonicalMarkToFormingBarFallback(chart, mark);
+    }
+    if (_shouldSkipCompletedBarCloseWrite(chart)) return;
+    if (Number.isFinite(Number(animatedCandle.h))) {
+        last.h = Math.max(Number(last.h), Number(animatedCandle.h));
+    }
+    if (Number.isFinite(Number(animatedCandle.l))) {
+        last.l = Math.min(Number(last.l), Number(animatedCandle.l));
+    }
+    if (animatedCandle.v != null) last.v = animatedCandle.v;
 }
 
 class ReplaySystem {
@@ -43,6 +213,10 @@ class ReplaySystem {
         this._activeTickLoop = 0;
         /** Bumped to invalidate stale candle-by-candle setInterval chains. */
         this._activeCandleLoop = 0;
+        /** LAG-SETINTERVAL-TICK: coalesced rAF paint for candle-mode play. */
+        this._candlePaintRaf = null;
+        this._candlePaintPending = false;
+        this._candlePaintAutoScroll = true;
 
         // === VIRTUAL TIME SYNC: Track replay position by timestamp, not index ===
         // This ensures all timeframes stay in sync when switching
@@ -63,6 +237,8 @@ class ReplaySystem {
         this._tfChangeRestoreTimer = null;
         this._tfChangeSeq = 0;
         this._tfChangeWasPlaying = false;
+        this._replayHiddenPauseWasPlaying = false;
+        this._replayHiddenPauseOnVisibilityChange = null;
 
         // Tick animation state
         this.playbackMode = 'tick'; // 'tick' (animated) | 'candle' (no intra-candle animation)
@@ -305,6 +481,8 @@ class ReplaySystem {
             this.pauseTextEl = this.playPauseBtn.querySelector('.pause-text');
         }
 
+        this._registerReplayHiddenPauseListener();
+
         if (!this.toolbar || !this.replayBtn) {
             if (typeof window !== 'undefined' && window.__TALARIA_EMBED_LITE) {
                 return;
@@ -335,6 +513,135 @@ class ReplaySystem {
                 }
             });
         }
+    }
+
+    _isReplayHiddenPauseEnabled() {
+        return _m28ReplayHiddenPauseV1Enabled();
+    }
+
+    _isReplayPageHidden() {
+        if (!this._isReplayHiddenPauseEnabled()) return false;
+        if (typeof document === 'undefined') return false;
+        return document.hidden === true;
+    }
+
+    _registerReplayHiddenPauseListener() {
+        if (this._replayHiddenPauseOnVisibilityChange) return;
+        if (typeof document === 'undefined' || typeof document.addEventListener !== 'function') return;
+        this._replayHiddenPauseOnVisibilityChange = () => this._handleReplayVisibilityChange();
+        document.addEventListener('visibilitychange', this._replayHiddenPauseOnVisibilityChange);
+    }
+
+    _handleReplayVisibilityChange() {
+        if (this._isReplayPageHidden()) {
+            this._pauseReplayForHiddenPage();
+        } else {
+            this._resumeReplayFromHiddenPage();
+        }
+    }
+
+    _clearReplayHiddenPauseTimers() {
+        this._activeTickLoop = (this._activeTickLoop || 0) + 1;
+        this._activeCandleLoop = (this._activeCandleLoop || 0) + 1;
+        this._cancelDeferredPlayStart();
+        this._cancelCandlePlaybackPaint({ flush: false });
+        if (this._nextCandleTimer) {
+            clearTimeout(this._nextCandleTimer);
+            this._nextCandleTimer = null;
+        }
+        if (this.tickInterval) {
+            clearTimeout(this.tickInterval);
+            this.tickInterval = null;
+        }
+        if (this.playInterval) {
+            clearInterval(this.playInterval);
+            this.playInterval = null;
+        }
+        this.isPlayStarting = false;
+    }
+
+    _managedTimerLedger() {
+        if (!this._managedTimers) this._managedTimers = Object.create(null);
+        return this._managedTimers;
+    }
+
+    /**
+     * Drop the timer recorded under `key`. The record is removed BEFORE the
+     * platform clear runs, so a throwing clear cannot leave the ledger pointing
+     * at a dead handle that a later install would try to clear again.
+     */
+    _clearManagedTimer(key) {
+        const ledger = this._managedTimers;
+        if (!ledger) return false;
+        const entry = ledger[key];
+        if (!entry) return false;
+        delete ledger[key];
+        if (entry.kind === 'interval') clearInterval(entry.handle);
+        else clearTimeout(entry.handle);
+        return true;
+    }
+
+    /**
+     * HYG-2: repeated entry into a setup path must not stack timers. The
+     * previous handle under `key` is cleared first; a clear that throws is
+     * reported but never blocks the install, so the product keeps working.
+     */
+    _installManagedTimer(key, kind, fn, ms) {
+        const install = () => (kind === 'interval' ? setInterval(fn, ms) : setTimeout(fn, ms));
+        if (_mirrorIntervalGuardDisabled()) return install();
+        let clearError = null;
+        try {
+            this._clearManagedTimer(key);
+        } catch (error) {
+            clearError = error;
+        }
+        const handle = install();
+        this._managedTimerLedger()[key] = { kind, handle };
+        if (clearError) {
+            console.warn('⚠️ Managed timer clear failed for', key, clearError);
+        }
+        return handle;
+    }
+
+    _setManagedInterval(key, fn, ms) {
+        return this._installManagedTimer(key, 'interval', fn, ms);
+    }
+
+    _setManagedTimeout(key, fn, ms) {
+        return this._installManagedTimer(key, 'timeout', fn, ms);
+    }
+
+    _pauseReplayForHiddenPage() {
+        if (!this.isActive || !this.isPlaying) {
+            this._replayHiddenPauseWasPlaying = false;
+            return false;
+        }
+        this._replayHiddenPauseWasPlaying = true;
+        this._clearReplayHiddenPauseTimers();
+        this.syncPlayPauseButtonVisuals();
+        return true;
+    }
+
+    _resumeReplayFromHiddenPage() {
+        if (!this._replayHiddenPauseWasPlaying) return false;
+        this._replayHiddenPauseWasPlaying = false;
+        if (this._isReplayPageHidden()
+            || !this.isActive
+            || !this.isPlaying) {
+            return false;
+        }
+        if (this._shouldUseTickAnimation()) {
+            this._preserveTickProgress = !!(this.animatingCandle && this.tickProgress > 0);
+            // No guard refresh here: hidden-pause guarantees no candle advanced while hidden.
+            this.startTickAnimation();
+            return true;
+        }
+        this.animatingCandle = null;
+        this.tickProgress = 0;
+        this.tickElapsedMs = 0;
+        // No guard refresh here: hidden-pause guarantees no candle advanced while hidden.
+        this.startCandleByCandle(false);
+        return true;
     }
 
     attachButtonEvents() {
@@ -405,7 +712,15 @@ class ReplaySystem {
         // V9 mounts `#replayFollow` inside React `#chartWrapper` — can appear after ReplaySystem.setup().
         if (!this.followBtn) {
             let tries = 0;
-            const iv = setInterval(() => {
+            let pollHandle = null;
+            const stopPoll = () => {
+                this._clearManagedTimer('followBtnPoll');
+                if (pollHandle !== null) {
+                    clearInterval(pollHandle);
+                    pollHandle = null;
+                }
+            };
+            pollHandle = this._setManagedInterval('followBtnPoll', () => {
                 tries++;
                 const btn =
                     document.getElementById('replayFollow') ||
@@ -414,12 +729,12 @@ class ReplaySystem {
                     btn.dataset.replayFollowBound = '1';
                     btn.addEventListener('click', () => this.enableAutoScroll());
                     this.followBtn = btn;
-                    clearInterval(iv);
+                    stopPoll();
                     try {
                         this.updateAutoScrollIndicator();
                     } catch (_) {}
                 } else if (tries >= 60) {
-                    clearInterval(iv);
+                    stopPoll();
                 }
             }, 50);
         }
@@ -560,7 +875,31 @@ class ReplaySystem {
     }
 
     getPlaybackMode() {
+        if (this._isCandleOnlyPlaybackEnabled()) return 'candle';
         return this.playbackMode === 'candle' ? 'candle' : 'tick';
+    }
+
+    /**
+     * TICK-OFF-01 — candle is the only playback mode.
+     *
+     * Tick data is simulated: there is no tick feed, so the mode animates a random
+     * intra-candle path. It cost four concurrent animation loops against candle's
+     * one, and 14,709 recalcs that advanced seven candles, for a cosmetic effect.
+     *
+     * Forced at this accessor rather than at the call sites for two reasons. Every
+     * behavioural read of the mode already routes through here, and
+     * startTickAnimation() already re-routes to startCandleByCandle() whenever the
+     * mode is not tick — so this selects a state the product already ships and users
+     * already reach rather than introducing a new one. It also keeps the mode label
+     * honest: syncPlaybackModeControls() reads the same accessor, so the control can
+     * never display "tick" while the engine runs candle.
+     *
+     * this.playbackMode keeps the user's stored preference untouched, so the setting
+     * returns intact when this switch is removed post-canary.
+     */
+    _isCandleOnlyPlaybackEnabled() {
+        return typeof window === 'undefined'
+            || !window.__TALARIA_DISABLE_CANDLE_ONLY_PLAYBACK_V1;
     }
 
     _isReplayIntervalCadenceFixEnabled() {
@@ -718,23 +1057,22 @@ class ReplaySystem {
 
     /** TAL-01612 residual: Auto/sync interval owner = chart TF only (ignore stale #replayTimeframe). */
     _isReplayIntervalOwnerFixEnabled() {
-        return typeof window === 'undefined' || window.__TALARIA_DISABLE_REPLAY_INTERVAL_OWNER_V1 !== true;
+        return !_talariaDisableFlagTruthy('__TALARIA_DISABLE_REPLAY_INTERVAL_OWNER_V1');
     }
 
     /** D-016 V1: candle PLAY uses finest sub-step when host is coarser than a peer. */
     _isFinestTfCandleCadenceFixEnabled() {
-        return typeof window === 'undefined' || window.__TALARIA_DISABLE_FINEST_TF_CANDLE_CADENCE_V1 !== true;
+        return !_talariaDisableFlagTruthy('__TALARIA_DISABLE_FINEST_TF_CANDLE_CADENCE_V1');
     }
 
     /** M19-F: batch chart paints without batching away exact order-lifecycle evaluation. */
     _isOrderMoneyPathBatchEnabled() {
-        return typeof window === 'undefined'
-            || window.__TALARIA_DISABLE_ORDER_MONEY_PATH_BATCH_V1 !== true;
+        return !_talariaDisableFlagTruthy('__TALARIA_DISABLE_ORDER_MONEY_PATH_BATCH_V1');
     }
 
     /** D-016 MC-STEPFWD: manual step uses finest sub-step (replay-system; Grid snap deferred). */
     _isFinestTfStepForwardCadenceFixEnabled() {
-        return typeof window === 'undefined' || window.__TALARIA_DISABLE_FINEST_TF_STEP_FORWARD_CADENCE_V1 !== true;
+        return !_talariaDisableFlagTruthy('__TALARIA_DISABLE_FINEST_TF_STEP_FORWARD_CADENCE_V1');
     }
 
     /** D-009 (A): tick persists when an explicit interval is set; interval bounds step size only. */
@@ -1377,8 +1715,9 @@ class ReplaySystem {
      * restores legacy accumulation of document mousemove/mouseup per float cycle.
      */
     _m20Q6ReplayFloatListenerTeardownEnabled() {
-        return typeof window === 'undefined'
-            || window.__TALARIA_DISABLE_M20_Q6_REPLAY_FLOAT_LISTENER_TEARDOWN_V1 !== true;
+        return !_talariaDisableFlagTruthy(
+            '__TALARIA_DISABLE_M20_Q6_REPLAY_FLOAT_LISTENER_TEARDOWN_V1',
+        );
     }
 
     /** M20-Q6 — drop document mousemove/mouseup pairs registered for floating clones. */
@@ -2781,9 +3120,12 @@ class ReplaySystem {
     }
     
     /**
-     * Rewind replay to a wall-clock cut point and notify multichart panels.
+     * Rewind replay to a bar-timestamp cut point and notify multichart panels.
+     * Order cutoff uses candle.t / replay bar times (not wall-clock Date.now()
+     * or insertion order). M23: when the cut would permanently cancel executed
+     * trades, confirm first unless already confirmed or kill-switch is on.
      * @param {number|string|Date} targetTimestamp
-     * @param {{ sourceChart?: object, candleIndex?: number }} options
+     * @param {{ sourceChart?: object, candleIndex?: number, confirmedTradeCancel?: boolean, onTradeCancelConfirmed?: function }} options
      * @returns {boolean}
      */
     applyReplayCutToWallClock(targetTimestamp, options = {}) {
@@ -2837,8 +3179,36 @@ class ReplaySystem {
             newRawIndex = Math.max(goBackFloor, Math.min(idx, this.fullRawData.length - 1));
         }
 
-        if (this.chart.orderManager && typeof this.chart.orderManager.forceCloseAllOrders === 'function') {
-            this.chart.orderManager.forceCloseAllOrders(orderCutoff);
+        const om = this.chart && this.chart.orderManager;
+        if (om && typeof om._replayCutWouldCancelExecutedTrades === 'function'
+            && om._replayCutWouldCancelExecutedTrades(orderCutoff)
+            && !options.confirmedTradeCancel) {
+            if (typeof om._confirmInChart === 'function') {
+                om._confirmInChart({
+                    title: 'Cancel executed trades?',
+                    message: 'Going back past executed trades permanently cancels them. '
+                        + 'They will not reopen. Place a new order manually to trade again.',
+                    confirmLabel: 'Cancel trades & go back',
+                    cancelLabel: 'Keep trades',
+                    danger: true,
+                    onConfirm: () => {
+                        const ok = this.applyReplayCutToWallClock(targetTimestamp, {
+                            ...options,
+                            confirmedTradeCancel: true,
+                        });
+                        if (ok && typeof options.onTradeCancelConfirmed === 'function') {
+                            try { options.onTradeCancelConfirmed(); } catch (_) { /* ignore */ }
+                        }
+                    },
+                });
+                return false;
+            }
+            // Headless / no dialog: require explicit confirm flag (fail closed).
+            return false;
+        }
+
+        if (om && typeof om.forceCloseAllOrders === 'function') {
+            om.forceCloseAllOrders(orderCutoff);
         }
 
         this.currentIndex = Math.max(newRawIndex, goBackFloor);
@@ -2935,13 +3305,21 @@ class ReplaySystem {
         flashCutLines();
 
         setTimeout(() => {
-            this.applyReplayCutToWallClock(timestamp, { sourceChart, candleIndex });
-            this.exitGoBackMode();
-            try {
-                if (typeof window !== 'undefined') {
-                    window.dispatchEvent(new CustomEvent('talariaReplayRollbackDone'));
-                }
-            } catch (_) { /* ignore */ }
+            const finishGoBack = () => {
+                this.exitGoBackMode();
+                try {
+                    if (typeof window !== 'undefined') {
+                        window.dispatchEvent(new CustomEvent('talariaReplayRollbackDone'));
+                    }
+                } catch (_) { /* ignore */ }
+            };
+            const applied = this.applyReplayCutToWallClock(timestamp, {
+                sourceChart,
+                candleIndex,
+                onTradeCancelConfirmed: finishGoBack,
+            });
+            // Pending confirm returns false — stay in go-back until user confirms/cancels.
+            if (applied) finishGoBack();
         }, 150);
     }
     
@@ -3283,10 +3661,15 @@ class ReplaySystem {
                 if (typeof this.chart.render === 'function') this.chart.render();
             }
             if (++realignAttempts < 8) {
-                setTimeout(realignAfterLayout, realignAttempts <= 3 ? 200 : 500);
+                this._setManagedTimeout(
+                    'enterReplayRealign',
+                    realignAfterLayout,
+                    realignAttempts <= 3 ? 200 : 500,
+                );
             }
         };
         if (!options.skipRealignAfterLayout) {
+            this._clearManagedTimer('enterReplayRealign');
             requestAnimationFrame(realignAfterLayout);
         }
     }
@@ -3806,8 +4189,7 @@ class ReplaySystem {
      * every static playhead install (normal, fast, panel-sync, static-mirror paths).
      */
     _m20Q9PrefixSliceFixEnabled() {
-        return typeof window === 'undefined'
-            || window.__TALARIA_DISABLE_M20_PREFIX_SLICE_V1 !== true;
+        return !_talariaDisableFlagTruthy('__TALARIA_DISABLE_M20_PREFIX_SLICE_V1');
     }
 
     /**
@@ -4454,6 +4836,12 @@ class ReplaySystem {
         const isResumingTick = useTickAnimation && this.animatingCandle && this.tickProgress > 0;
         const preserveTick = !!isResumingTick;
 
+        if (this._isReplayPageHidden()) {
+            this.isPlaying = true;
+            this._pauseReplayForHiddenPage();
+            return;
+        }
+
         // Defer heavy start so the browser can paint a loading spinner on the play control first
         // (daily / large resamples can block the main thread for a noticeable moment).
         this._cancelDeferredPlayStart();
@@ -4503,6 +4891,7 @@ class ReplaySystem {
      * Stop all playback intervals and animations
      */
     stopAllPlayback() {
+        this._cancelCandlePlaybackPaint({ flush: true });
         this._activeTickLoop = (this._activeTickLoop || 0) + 1;
         this._activeCandleLoop = (this._activeCandleLoop || 0) + 1;
         if (this._nextCandleTimer) {
@@ -4539,6 +4928,11 @@ class ReplaySystem {
 
         const cadence = this.getCandlePlaybackCadence();
         const interval = cadence.intervalMs;
+
+        if (this._isReplayPageHidden()) {
+            this._pauseReplayForHiddenPage();
+            return;
+        }
         
         // Optionally advance immediately (used on first play).
         if (startImmediately) {
@@ -4628,8 +5022,9 @@ class ReplaySystem {
 
         let honorExplicit = true;
         try {
-            honorExplicit = !(typeof window !== 'undefined'
-                && window.__TALARIA_DISABLE_REPLAY_EXPLICIT_INTERVAL_STEP_V1 === true);
+            honorExplicit = !_talariaDisableFlagTruthy(
+                '__TALARIA_DISABLE_REPLAY_EXPLICIT_INTERVAL_STEP_V1',
+            );
         } catch (_) { honorExplicit = true; }
         if (honorExplicit && this._hasExplicitReplayStepInterval()) {
             return tf;
@@ -4729,22 +5124,89 @@ class ReplaySystem {
         return false;
     }
 
+    /**
+     * LAG-SETINTERVAL-TICK kill-switch gate (per call).
+     * Absent / falsy ⇒ bound path ON; truthy ⇒ legacy sync full tick.
+     */
+    _lagSetIntervalTickBoundEnabled() {
+        return _lagSetIntervalTickV1Enabled();
+    }
+
+    /** Cancel coalesced candle-mode rAF paint; optionally flush latest state sync. */
+    _cancelCandlePlaybackPaint({ flush = false } = {}) {
+        if (this._candlePaintRaf != null) {
+            if (typeof cancelAnimationFrame === 'function') {
+                try { cancelAnimationFrame(this._candlePaintRaf); } catch (_) { /* ignore */ }
+            } else {
+                try { clearTimeout(this._candlePaintRaf); } catch (_) { /* ignore */ }
+            }
+            this._candlePaintRaf = null;
+        }
+        const pending = this._candlePaintPending === true;
+        this._candlePaintPending = false;
+        if (flush && pending && this.isActive && Array.isArray(this.fullRawData) && this.fullRawData.length) {
+            try {
+                this.updateChartData(this._candlePaintAutoScroll !== false);
+            } catch (_) { /* ignore */ }
+        }
+    }
+
+    /**
+     * Coalesce candle-mode chart paint onto rAF (~display refresh).
+     * Interval handlers only advance playhead; paint is not an unbounded
+     * synchronous unit inside setInterval.
+     */
+    _scheduleCandlePlaybackPaint(autoScroll = true) {
+        this._candlePaintAutoScroll = autoScroll !== false;
+        this._candlePaintPending = true;
+        if (this._candlePaintRaf != null) return;
+        const loopId = this._activeCandleLoop;
+        const run = () => {
+            this._candlePaintRaf = null;
+            if (loopId !== this._activeCandleLoop) {
+                this._candlePaintPending = false;
+                return;
+            }
+            if (!this._candlePaintPending) return;
+            this._candlePaintPending = false;
+            if (!this.isActive || !this.isPlaying) return;
+            try {
+                this.updateChartData(this._candlePaintAutoScroll !== false);
+            } catch (_) { /* ignore */ }
+        };
+        if (typeof requestAnimationFrame === 'function') {
+            this._candlePaintRaf = requestAnimationFrame(run);
+        } else {
+            this._candlePaintRaf = setTimeout(run, 0);
+        }
+    }
+
     /** Advance one candle-mode timer tick (1..N steps, single chart paint). */
     _runCandlePlaybackTick() {
         const { stepsPerTick, orderMoneyPath } = this.getCandlePlaybackCadence();
         const n = Math.max(1, stepsPerTick | 0);
         const evaluateSkippedMoneyPath = orderMoneyPath === true
             && this._isOrderMoneyPathBatchEnabled();
+        // Bound path: advance all steps with skipChartUpdate, paint on rAF.
+        // Kill-switch restores legacy: paint sync on the final step inside the
+        // setInterval handler (unbounded; PO Violation source).
+        const deferPaint = this._lagSetIntervalTickBoundEnabled();
+        let lastAutoScroll = !!this.autoScrollEnabled;
         for (let i = 0; i < n; i++) {
             if (!this.isPlaying || !this.isActive) break;
             if (this._nextCandleTimer) break;
-            const skipChartUpdate = i < n - 1;
+            const skipChartUpdate = deferPaint || i < n - 1;
+            const prevIdx = this.currentIndex;
             this.simpleStepForward({
                 skipChartUpdate,
                 evaluateOrderMoneyPath: evaluateSkippedMoneyPath,
             });
+            lastAutoScroll = this._shouldAutoScrollChartUpdate(prevIdx);
             // Stop batching if playback ended / waiting on forward edge.
             if (!this.isPlaying || this._nextCandleTimer) break;
+        }
+        if (deferPaint && this.isPlaying && this.isActive && !this._nextCandleTimer) {
+            this._scheduleCandlePlaybackPaint(lastAutoScroll);
         }
     }
     
@@ -5914,8 +6376,7 @@ class ReplaySystem {
     
     /** M19-G: bound deterministic replay paths unless the diagnostic kill is set. */
     _isTickPathCacheBoundEnabled() {
-        return typeof window === 'undefined'
-            || window.__TALARIA_DISABLE_M19_TICK_PATH_BOUND_V1 !== true;
+        return !_talariaDisableFlagTruthy('__TALARIA_DISABLE_M19_TICK_PATH_BOUND_V1');
     }
 
     _tickPathCacheMaxEntries() {
@@ -6553,6 +7014,10 @@ class ReplaySystem {
     pause() {
         this._cancelDeferredPlayStart();
         this._viewportLockForPlayback = null;
+
+        // Flush coalesced candle paint before invalidating the loop id so the
+        // paused frame matches the advanced playhead (LAG-SETINTERVAL-TICK).
+        this._cancelCandlePlaybackPaint({ flush: true });
 
         // Set state first
         this.isPlaying = false;
@@ -7713,13 +8178,21 @@ class ReplaySystem {
             this._scheduleReplayIndicatorRecalc();
         } catch (_indErr) { /* ignore */ }
         if (!skipRender && typeof chart.render === 'function') {
-            if (passivePlay || lightPass) {
-                chart.renderPending = false;
-                chart.render();
-            } else {
+            // CLEAR BEFORE PAINTING. This paint satisfies the current dirty state, and render()
+            // does not clear renderPending itself, so setting the flag and then painting left the
+            // coalescer armed: animate() saw renderPending on the next frame and painted the SAME
+            // state again — two host paints per tick, on a setTimeout cadence that is already
+            // asking for more frames than the display can show.
+            //
+            // Clearing first still preserves the case the old ordering was protecting: a
+            // scheduleRender() raised DURING this paint re-arms the flag and correctly earns its
+            // own frame. Same idiom as the rAF coalescer, and as the sibling branch this replaces.
+            if (_mcMirrorPaintCoalesceDisabled() && !(passivePlay || lightPass)) {
                 chart.renderPending = true;
-                chart.render();
+            } else {
+                chart.renderPending = false;
             }
+            chart.render();
         }
         const tp = this.tickProgress || 0;
         if (chart.orderManager && typeof chart.orderManager.updatePositions === 'function'
@@ -8067,11 +8540,10 @@ class ReplaySystem {
 
             const tp = this.tickProgress || 0;
             if (chart.data && chart.data.length > 0 && tp > 1) {
-                const last = chart.data[chart.data.length - 1];
-                last.h = Math.max(last.h, animatedCandle.h);
-                last.l = Math.min(last.l, animatedCandle.l);
-                last.c = animatedCandle.c;
-                last.v = animatedCandle.v;
+                // M17-DI2 / TAL-01918 site 4: forming-tick mirror tip write.
+                // Route animated close (and accompanying h/l/v) through the same
+                // completed-bar guard as canonical-mark sites.
+                applyAnimatedCandleToFormingBar(chart, animatedCandle);
             } else {
                 chart.data = chart.resampleData(sliced, chart.currentTimeframe);
                 // During forming-candle animation, trim collapses the partial bar on
@@ -8218,15 +8690,13 @@ class ReplaySystem {
         }
 
         chart._mcCanonicalReplayMark = mark;
-        if (Array.isArray(chart.data) && chart.data.length) {
-            const last = chart.data[chart.data.length - 1];
-            if (last && typeof last === 'object') {
-                last.c = mark;
-                const h = Number(last.h ?? last.high);
-                const l = Number(last.l ?? last.low);
-                if (Number.isFinite(h)) last.h = Math.max(h, mark);
-                if (Number.isFinite(l)) last.l = Math.min(l, mark);
-            }
+        // M17-DI2 / TAL-01918: only mutate the forming bar (completed bars untouched).
+        // Prefer chart helper; module-scope fallback preserves write when helper absent
+        // (m2 harness) without a tip-close assignment inside this D-gate slice.
+        if (typeof chart._applyCanonicalMarkToFormingBar === 'function') {
+            chart._applyCanonicalMarkToFormingBar(mark);
+        } else {
+            applyCanonicalMarkToFormingBarFallback(chart, mark);
         }
         if (this.animatingCandle && typeof this.animatingCandle === 'object') {
             this.animatingCandle.close = mark;
@@ -9482,17 +9952,21 @@ if (_m20Q6LifecycleRuntimeEnabled()) {
         if (!state || state.captureDepth > 0) {
             return fn();
         }
-        state.captureDepth += 1;
+        // Nothing that can throw may sit between a state mutation and the try: the
+        // extraTargets scan reads caller-supplied `id` getters, and a throw there with
+        // captureDepth already raised would wedge the re-entrancy guard on for the life
+        // of the instance, silently disabling capture for every later effect.
         const priorOwnerRoot = state.captureOwnerRoot || null;
         const explicitOwnerRoot = (extraTargets || []).find((target) => (
             target && target.id === 'replayToolbarClone'
         ));
-        if (explicitOwnerRoot) state.captureOwnerRoot = explicitOwnerRoot;
         const session = {
             records: [],
             targets: new WeakSet(),
             schedulerScopes: new WeakSet(),
         };
+        if (explicitOwnerRoot) state.captureOwnerRoot = explicitOwnerRoot;
+        state.captureDepth += 1;
         try {
             const scope = typeof globalThis !== 'undefined' ? globalThis : null;
             const win = typeof window !== 'undefined' ? window : null;
@@ -9738,6 +10212,7 @@ if (_m20Q6LifecycleRuntimeEnabled()) {
         for (const entry of [...state.events].reverse()) {
             if (!entry.settled) attempt(entry.label, () => m20Q6RemoveEventEntry(entry));
         }
+        instance._replayHiddenPauseOnVisibilityChange = null;
         for (const entry of [...state.managers].reverse()) {
             if (entry.settled) continue;
             attempt(entry.label, () => {
@@ -9820,6 +10295,18 @@ if (_m20Q6LifecycleRuntimeEnabled()) {
             if (state.chart && state.chart.replaySystem === instance) {
                 state.chart.replaySystem = null;
             }
+            if (_m27EngineReleaseV1Enabled()) {
+                const orderManager = state.chart && state.chart.orderManager;
+                if (orderManager && orderManager.replaySystem === instance) {
+                    orderManager.replaySystem = null;
+                }
+                const orderService = orderManager && orderManager.orderService;
+                if (orderService && orderService.replaySystem === instance) {
+                    orderService.replaySystem = null;
+                }
+                instance.fullData = null;
+                instance.fullRawData = null;
+            }
         } else {
             state.phase = 'destroy-pending';
             instance._m20Q6LifecycleState = 'destroy-pending';
@@ -9901,6 +10388,8 @@ if (_m20Q6LifecycleRuntimeEnabled()) {
         setup() {
             const state = m20Q6StateFor(this);
             try {
+                // setup() is not in m20Q6EffectMethods; this override captures raw
+                // setup-time listeners such as replay hidden-pause visibilitychange.
                 return m20Q6CaptureEffects(
                     state,
                     () => M20Q6ImmutableReplaySystem.prototype.setup.call(this),

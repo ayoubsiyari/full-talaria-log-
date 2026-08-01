@@ -123,6 +123,15 @@ docs/plan3/fixtures/*
 # Broadened to match the director_paths grant in TERRITORY.yml: governance and
 # finding documents are tracked; evidence/, probes/ and worker-reports/ stay local.
 !docs/plan3/*.md
+# TEST-01 / TEST-02 wire-audit machine artifacts (narrow — not all plan3 JSON).
+!docs/plan3/WIRE-AUDIT-FIXED-*.json
+!docs/plan3/WIRE-AUDIT-TEST02-*.json
+!docs/plan3/WIRE-RUNTIME-PROBES-*.json
+!docs/plan3/BACKEND-LIVE-PROBE-*.json
+!docs/plan3/TEST01-SKIP-REGISTER-*.json
+!docs/plan3/FIXED-WIRE-MARKERS-*.json
+!docs/plan3/LEDGER-STATUS-COUNT-*.json
+!docs/plan3/TRADE-EVICT-V1-*.json
 
 
 
@@ -134,9 +143,21 @@ docs/plan3/fixtures/*
 .ckpt/
 _evidence/
 .scratch-*
+.scratch-*.tar
+.scratch-*.tar.gz
 
 # PASSPORT-3: emitted by bump-chart-engine-build.mjs at image build, carrying the build id and the
 # source commit SHA. It is a build output, not source — committing it would let a stale SHA sit in the
 # tree and answer for a build that never produced it.
 chart v 1.4/chart/build-info.json
 
+# CKPT-01 retained deployable bytes (large JS); manifests/README stay tracked.
+artifacts/
+!artifacts/ckpt/
+artifacts/ckpt/*
+!artifacts/ckpt/**/
+artifacts/ckpt/**/*
+!artifacts/ckpt/**/SHA256SUMS.txt
+!artifacts/ckpt/**/README.md
+# Wire-audit downloads (multi-MB served modules) — keep local only.
+artifacts/wire-*/
