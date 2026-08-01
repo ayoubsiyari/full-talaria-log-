@@ -89,3 +89,50 @@ defaulted ON, and it needs a ruling.**
 
 ### A — 2026-08-02 00:05 — allocation sampling claimed (blocks QW-3)
 5-minute session at 10 bars/s on the candidate. Announcing the result here when it lands.
+### A — 2026-08-02 00:35 — allocation sampling done, **QW-3 IS UNBLOCKED**
+
+Commit `2be0d4e9a`. Evidence: `docs/plan3/evidence/speed01-allocation-10bps.json` (+ `.log`).
+Five minutes, nominal 10 bars/s, four-panel PO workload on dist-v9, V8 sampling heap profiler
+at a 16 KB interval.
+
+**Rate — the contract holds on the candidate.** Mean **9.778 bars/s** against a nominal 10
+(min 8.44, max 11.17), gain ended at **1.000** with **zero corrections**. The governor never
+had to intervene, which agrees with the PO's hand-measured 10.4 and is the first in-browser
+read-back of `__talariaEffectiveRate`. Whatever produced the soak's 1.74 at nominal 60, it is
+not the labels, and it is not present in a fresh five-minute session at 10.
+
+**Allocation — 10.85 MB sampled, 2.17 MB/min.** Top of the list:
+
+| Site | MB | % |
+|---|---|---|
+| `_resampleDataFull` (chart.js) | 2.22 | 20.44 |
+| `m20Q6PatchSchedulers` (replay-system.js) | 1.64 | 15.14 |
+| `m20Q6TrackScheduler` (replay-system.js) | 1.56 | 14.43 |
+| `w.onmessage` (chart-indicators-full.js) | 1.24 | 11.46 |
+| `mergeIndicatorTailWindow` (indicator-performance.js) | 0.48 | 4.40 |
+| `_isMultichartEmbedPanel` (chart.js) | 0.25 | 2.26 |
+| `calculateMACD` | 0.23 | 2.09 |
+
+**The headline is not MONSTER-2.** Summing the M20-Q6 capture machinery — PatchSchedulers
+15.14 + TrackScheduler 14.43 + PatchTarget 1.16 — gives **30.7%, the largest single cluster in
+the profile, and none of it is product code.** It is the instrumentation shim installed over
+`clearTimeout` that linearly scans `state.schedulers` on every clear. Nearly a third of what
+the candidate allocates during replay is measurement apparatus.
+
+**And it grows.** The 20-second smoke run measured that same cluster at ~10%; over five minutes
+it is 30.7%. That is the unbounded `state.schedulers` array showing up as a rising *share* of
+allocation, which is the quadratic cost I reported earlier now visible from the allocation side
+rather than inferred. A ten-hour soak will be dominated by it.
+
+`_resampleDataFull` at 20.44% confirms MONSTER-2 as the top *product* allocator, second
+overall.
+
+**For QW-3:** start here. The two rows worth having are the M20-Q6 scheduler registry (30.7%,
+growing, pure instrumentation, no user-visible behaviour to preserve) and MONSTER-2 (20.4%,
+steady). Everything below `w.onmessage` is under 5% and not worth a row yet.
+
+**Caveat for whoever repeats this:** `puppeteer` is not declared in any `package.json` in
+this repo, so the whole heap toolchain cannot run here as-checked-out. I ran it through a
+junction to the installed tree in `full-talaria-log--main` and removed the junction after.
+Someone should decide whether that dependency gets declared, because right now every heap gate
+in `scripts/` is unrunnable from a clean clone.
