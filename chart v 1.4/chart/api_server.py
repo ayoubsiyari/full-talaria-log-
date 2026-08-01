@@ -26967,6 +26967,7 @@ if next_static_dir.exists():
 
 # Chart UI (static HTML/JS/CSS) served under /chart
 CHART_ROOT_FILES = {
+    "build-info.json",  # PASSPORT-3: buildId + sourceCommitSha, emitted at image build
     "index.html",
     "index.v9.html",  # redirect stub to the dist-v9 live path
     "backtesting.html",
@@ -27017,6 +27018,26 @@ async def chart_root_files(file_name: str):
         if _DIST_LEGACY_INDEX.is_file():
             return FileResponse(str(_DIST_LEGACY_INDEX))
     legacy_path = _CHART_ROOT_PATH / file_name
+    if file_name == "build-info.json":
+        # PASSPORT-3 — the soak harness reads this every sample alongside the badge and the digest, so
+        # it must never be cached and must never 500 on a non-checkpoint build that produced no file.
+        if not legacy_path.is_file():
+            return JSONResponse(
+                {
+                    "signature": "TALARIA_BUILD_INFO_V1",
+                    "buildId": None,
+                    "sourceCommitSha": None,
+                    "checkpointBuild": False,
+                    "detail": "no build-info.json in this image; not a checkpoint build",
+                },
+                status_code=404,
+                headers={"Cache-Control": "no-store"},
+            )
+        return FileResponse(
+            str(legacy_path),
+            media_type="application/json",
+            headers={"Cache-Control": "no-store"},
+        )
     if file_name == "manifest.webmanifest":
         return FileResponse(str(legacy_path), media_type="application/manifest+json")
     if file_name == "sw.js":

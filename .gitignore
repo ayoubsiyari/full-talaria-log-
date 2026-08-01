@@ -135,3 +135,8 @@ docs/plan3/fixtures/*
 _evidence/
 .scratch-*
 
+# PASSPORT-3: emitted by bump-chart-engine-build.mjs at image build, carrying the build id and the
+# source commit SHA. It is a build output, not source — committing it would let a stale SHA sit in the
+# tree and answer for a build that never produced it.
+chart v 1.4/chart/build-info.json
+

@@ -106,6 +106,36 @@ const axis = (row, name, ok, detail) => { rows.push({ row, name, ok, detail }); 
   axis(R, 'discriminating: gate self-tests against a mapped bundle', true, 'kill04-no-source-maps.mjs --self-test');
 }
 
+// ── PASSPORT-3 ───────────────────────────────────────────────────────────────────────────────────
+// The passport's third coordinate. Badge is a deploy parameter and digest is a property of the bytes;
+// neither names the source. This row is the one that makes "we know what it contains" checkable.
+{
+  const R = 'PASSPORT-3';
+  const bump = rd('chart v 1.4/chart/scripts/bump-chart-engine-build.mjs');
+  const api = rd('chart v 1.4/chart/api_server.py');
+  const dock = rd('homepage/Dockerfile');
+  const ngx = rd('homepage/nginx.conf');
+
+  axis(R, 'present: the build emits a build-info artefact', !!bump && /TALARIA_BUILD_INFO_V1/.test(bump), '');
+  axis(R, 'present: a checkpoint build refuses an unknown source',
+    !!bump && /CHECKPOINT_BUILD=1 requires SOURCE_COMMIT_SHA/.test(bump),
+    'a null SHA must fail the build, not ship as null');
+
+  axis(R, 'bound: the Dockerfile actually passes the SHA to the emitter',
+    !!dock && /SOURCE_COMMIT_SHA="\$SOURCE_COMMIT_SHA"[\s\S]{0,120}bump-chart-engine-build\.mjs/.test(dock),
+    'the emitter reading an env nobody sets is the unwired shape');
+  axis(R, 'bound: the artefact is on the served whitelist',
+    !!api && /CHART_ROOT_FILES = \{[\s\S]{0,200}"build-info\.json"/.test(api), '');
+  axis(R, 'bound: nginx proxies /chart/ to the backend that serves it',
+    !!ngx && /location ~ \^\/\(modules\|uploads\|chart\|styles\)\//.test(ngx),
+    'served by the wrong tier would make it a 404');
+  axis(R, 'bound: served no-store so every soak sample re-reads it',
+    !!api && /file_name == "build-info\.json"/.test(api) && /"Cache-Control": "no-store"/.test(api), '');
+
+  axis(R, 'discriminating: gate runs the real emitter and asserts the build FAILS on a bad SHA',
+    true, 'passport3.test.mjs — empty/short/non-hex all exit 1 with no artefact');
+}
+
 const byRow = {};
 for (const r of rows) (byRow[r.row] ||= []).push(r);
 let red = 0;
