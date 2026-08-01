@@ -82,7 +82,9 @@ try {
   try {
     res = await fetch(url, {
       redirect: 'manual',
-      headers: { accept: 'application/json' },
+      // connection: close so no keep-alive socket outlives the verdict and holds the loop
+      // open once process.exit() is no longer forcing the issue.
+      headers: { accept: 'application/json', connection: 'close' },
       signal: ac.signal,
     });
     bodyText = await res.text();
@@ -151,4 +153,10 @@ if (fail) {
   console.log('\nThe soak must not start against this origin. A passport that cannot be read on the');
   console.log('wire is not a passport, and the harness would record a null SHA for ten hours.');
 }
-process.exit(fail ? 1 : 0);
+// Set the code and let the loop drain rather than process.exit()ing on top of undici's
+// still-closing keep-alive socket. On Windows that races libuv and aborts the process with
+// "Assertion failed: !(handle->flags & UV_HANDLE_CLOSING), src\\win\\async.c" AND exit code
+// -1073740791, reproducibly, AFTER printing 11 passed / 0 failed. A gate that prints a green
+// verdict and hands back a crash code is a false red, and it would have failed the cut on a
+// deployment that was correct. C runs this on Windows too.
+process.exitCode = fail ? 1 : 0;
