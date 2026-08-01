@@ -7900,7 +7900,12 @@ class OrderManager {
             // outlives a session switch (see _m19CommitJournalArray).
             const journalVouchedFor = this._journalProvenance === 'locally-authored'
                 || (this._journalProvenance === 'hydrated'
-                    && this._journalProvenanceSession === (sessionId != null ? String(sessionId) : null));
+                    // LIFE-4 residual (B train reconcile): null === null must not vouch.
+                    // persistJournal warns on missing sessionId but does not return, so both
+                    // sides can be null from the same accessor and grant durable delete authority.
+                    && this._journalProvenanceSession != null
+                    && sessionId != null
+                    && this._journalProvenanceSession === String(sessionId));
             // B-W18 rollback lever: when the kill is engaged this branch is skipped
             // entirely and the durable write proceeds exactly as it did pre-B-W16 —
             // same return shape, no suppression, no warning. The guard condition
