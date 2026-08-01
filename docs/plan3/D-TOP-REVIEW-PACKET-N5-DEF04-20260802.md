@@ -17,7 +17,8 @@ Corrected oracle shape:
 
 Verification:
 
-- `node --test --test-concurrency=1 "chart v 1.4/chart/modules/n5-money-path-collisions.test.mjs"` PASS 5/5.
+- `node --test --test-concurrency=1 "chart v 1.4/chart/modules/n5-money-path-collisions.test.mjs"` PASS 7/7 after TOP review fixes.
+- TOP-review fix: full-close latch is private-only, clears in `finally`, covers both `closePositionAtPrice` and `closePosition`, and the durable mutant discriminates at the production trim default via `journal_by_ticker`.
 
 ## DEF-04 Multi-Timeframe Time Sync
 
@@ -29,5 +30,7 @@ Verification:
 
 Verification recorded on board:
 
-- `node --test --test-concurrency=1 "chart v 1.4/chart/modules/def04-multitf-time-sync.test.mjs"` PASS 4/4.
+- `node --test --test-concurrency=1 "chart v 1.4/chart/modules/def04-multitf-time-sync.test.mjs"` PASS 5/5 after TOP review fixes.
 - Replay gates PASS 108/108.
+
+TOP-review fix: source anchors now bind to the method definition, not call sites; model-only arithmetic cells are labeled as models; a runtime product-binding test drives real `ReplaySystem.applyMultichartMirrorFrame` with a bogus parent index and verifies local timestamp resolution.

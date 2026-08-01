@@ -2,11 +2,15 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createRequire } from 'node:module';
 import test from 'node:test';
 import crypto from 'node:crypto';
 
+const require = createRequire(import.meta.url);
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, '../../..');
+global.window = global.window || {};
+const ReplaySystem = require('./replay-system.js');
 
 const chartReplayPath = path.join(repoRoot, 'chart v 1.4/chart/modules/replay-system.js');
 const homeReplayPath = path.join(repoRoot, 'homepage/public/chart/modules/replay-system.js');
@@ -22,9 +26,12 @@ function sha(text) {
 }
 
 function methodSource(text, name) {
-  const start = text.indexOf(`${name}(`);
+  const marker = `    ${name}(`;
+  const start = text.indexOf(marker);
   assert.notEqual(start, -1, `${name} must exist`);
-  const brace = text.indexOf('{', start);
+  const sigEnd = text.indexOf(') {', start);
+  assert.notEqual(sigEnd, -1, `${name} must have a method signature`);
+  const brace = sigEnd + 2;
   assert.notEqual(brace, -1, `${name} must have a body`);
   let depth = 0;
   for (let i = brace; i < text.length; i++) {
@@ -107,7 +114,7 @@ test('DEF-04 mirrors stay byte-identical for replay and panel bridge', () => {
   assert.equal(homeBridge, chartBridge, `bridge mirror mismatch ${sha(chartBridge)} ${sha(homeBridge)}`);
 });
 
-test('DEF-04 oracle: four panels resolve one epoch playhead to local bar indices', () => {
+test('DEF-04 model: four panels resolve one epoch playhead to local bar indices', () => {
   const minute = 60_000;
   const panels = [
     { tf: '1m', step: minute, data: makeSeries(minute, 600) },
@@ -130,7 +137,57 @@ test('DEF-04 oracle: four panels resolve one epoch playhead to local bar indices
   }
 });
 
-test('DEF-04 oracle: a 4h source advance is expressible as 240 governed 1m steps', () => {
+test('DEF-04 runtime: real mirror frame ignores parent index and resolves local index by timestamp', () => {
+  const minute = 60_000;
+  const fullRawData = makeSeries(minute, 600);
+  const targetTs = fullRawData[240].t;
+  const chart = {
+    currentTimeframe: '1m',
+    rawData: [],
+    data: [],
+    resampleData: (rows) => rows.slice(),
+    _trimLastDataBarToReplayPlayhead() {},
+    bumpDataVersion() {},
+  };
+  const replay = Object.create(ReplaySystem.prototype);
+  Object.assign(replay, {
+    chart,
+    isActive: true,
+    isPlaying: false,
+    currentIndex: 3,
+    sessionStartIndex: 0,
+    replayTimestamp: fullRawData[3].t,
+    fullRawData,
+    tickElapsedMs: 0,
+    tickProgress: 0,
+    animatingCandle: null,
+    autoScrollEnabled: false,
+    _resolveMirrorRawSeries: () => fullRawData,
+    _mirrorSharesHostDataset: () => false,
+    _m20Q9PrefixSliceFixEnabled: () => false,
+    _trimLastDataBarToReplayPlayhead() {},
+    _applyCanonicalReplayMarkFromDetail() {},
+    _finishMultichartMirrorRender() {},
+  });
+  chart.replaySystem = replay;
+
+  const applied = replay.applyMultichartMirrorFrame({
+    timestamp: targetTs,
+    currentIndex: 999,
+    isPlaying: false,
+    tickElapsedMs: 0,
+    tickProgress: 0,
+  });
+
+  assert.equal(applied, true);
+  assert.equal(replay.currentIndex, 240);
+  assert.equal(replay.currentIndex, indexAtOrBefore(fullRawData, targetTs));
+  assert.notEqual(replay.currentIndex, 999);
+  assert.equal(chart.rawData.length, 241);
+  assert.equal(chart.rawData.at(-1).t, targetTs);
+});
+
+test('DEF-04 model: a 4h source advance is expressible as 240 governed 1m steps', () => {
   const minute = 60_000;
   const start = 1_700_000_000_000;
   const end = start + 240 * minute;
