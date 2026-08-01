@@ -26,6 +26,8 @@
     "test:order-registry-eviction": "node --test scripts/tests/order-registry-eviction-invariant.test.mjs",
     "preflight:differential-parity": "node docs/plan3/oracles/differential-parity-oracle-v1.mjs",
     "test:differential-parity": "node --test scripts/tests/differential-parity-oracle.test.mjs",
+    "preflight:entry-levels-cap": "node scripts/entry-levels-cap-gate.mjs",
+    "test:entry-levels-cap": "node --test scripts/tests/entry-levels-cap-gate.test.mjs",
     "preflight:bar-tick-invariants": "node docs/plan3/oracles/bar-tick-invariants-v1.mjs",
     "test:bar-tick-invariants": "node --test scripts/tests/bar-tick-invariants.test.mjs",
     "preflight:teardown-census": "node scripts/teardown-census-gate.mjs",

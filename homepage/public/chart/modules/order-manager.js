@@ -179,6 +179,15 @@ function _m19MarkerDeltaV1Enabled() {
     return typeof window === 'undefined' || window.__TALARIA_DISABLE_M19_MARKER_DELTA_V1 !== true;
 }
 
+/** Entry-level cap for scaling path parity with explicit split entries (default ON). */
+function _entryLevelsCapV1Enabled() {
+    if (typeof window === 'undefined') return true;
+    const v = window.__TALARIA_ENTRY_LEVELS_CAP_V1;
+    if (v === undefined || v === null) return true;
+    const s = String(v).trim().toLowerCase();
+    return !['0', 'false', 'off', 'no'].includes(s);
+}
+
 
 /** M19-E: guard hot-path console.log behind debug mode — default ON. warn/error untouched. */
 function _m19HotpathLogGuardV1Enabled() {
@@ -47509,6 +47518,11 @@ class OrderManager {
         return n < MAX_ENTRY_LEVELS;
     }
 
+    _canAddMoreScaledEntryLevels(currentCount) {
+        if (!_entryLevelsCapV1Enabled()) return true;
+        return this._canAddMoreMultiEntryLevels(currentCount);
+    }
+
     _getEffectiveTpTargetCount(source) {
         if (source?.tpTargets?.length) return source.tpTargets.length;
         if (Number(source?.takeProfit) > 0) return 1;
@@ -50128,9 +50142,6 @@ class OrderManager {
         const existingPos = existingPositions[0];
         const groupId = existingPos.tradeGroupId || this.tradeGroupIdCounter++;
         
-        // Set group ID on new order
-        order.tradeGroupId = groupId;
-        
         // Get or create the group
         let group = this.scaledTrades.get(groupId);
         if (!group) {
@@ -50147,6 +50158,18 @@ class OrderManager {
             };
             this.scaledTrades.set(groupId, group);
         }
+
+        if (!this._canAddMoreScaledEntryLevels(group.entries?.length || 0)) {
+            console.warn(`   ⚠️ Scaling cap reached: maximum ${MAX_ENTRY_LEVELS} entries per group`);
+            order.scaleWithExisting = false;
+            if (typeof this.showNotification === 'function') {
+                this.showNotification(`Maximum ${MAX_ENTRY_LEVELS} scaled entries allowed`, 'warning');
+            }
+            return null;
+        }
+
+        // Set group ID on new order only after the cap check accepts the new entry.
+        order.tradeGroupId = groupId;
         
         // Add new order to group
         group.entries.push(order);
