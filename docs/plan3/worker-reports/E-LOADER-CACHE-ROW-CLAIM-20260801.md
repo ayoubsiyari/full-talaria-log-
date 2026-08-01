@@ -19,3 +19,14 @@ E claims these four rows so A and D do not collide:
 - Keep each row reviewable; B reviews as they land, not as one large batch.
 - After all managers finish their late picks, E reruns the full five-axis
   PROC-3 sweep, including `mutationArtifact`, on the final tip before B cuts.
+
+## Landing Evidence
+
+| Row | Landed commit | Focused evidence |
+| --- | --- | --- |
+| `LEAK-G-BT-TF-PREFETCH` | `d38fb088e` | `node "chart v 1.4/chart/modules/leak-g-bt-tf-prefetch.test.mjs"`: 8/8 pass; mirror byte-identical; mutants killed. |
+| `LEAK-F-SMART-PREFETCH-OTHERS` | `19f26bcb8` | `node "chart v 1.4/chart/modules/leak-f-smart-prefetch-others.test.mjs"`: 7/7 pass; mirror byte-identical; mutants killed. |
+| `LEAK-I-HIGH-LIMIT-BULK` | `54084939b` | `node "chart v 1.4/chart/modules/leak-i-high-limit-bulk.test.mjs"`: 6/6 pass; mirror byte-identical; mutants killed. |
+| `LEAK-A-HOST-CACHES` | `5647e9ec6` | `node "chart v 1.4/chart/modules/leak-a-host-cache-release.test.mjs"`: 8/8 pass; mirror byte-identical; mutants killed. |
+
+`ReadLints` on both mirrors and the four focused test files reported no linter errors after landing.
