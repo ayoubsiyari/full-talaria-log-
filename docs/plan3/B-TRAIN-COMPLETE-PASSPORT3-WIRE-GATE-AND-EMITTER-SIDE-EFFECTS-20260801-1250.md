@@ -163,7 +163,30 @@ unchanged, still with no live writer.
 
 ---
 
-## 4. Worktree hygiene
+## 4. Whole-train mirror parity — product is clean
+
+Row-by-row parity checks only cover the files a row touched. As release manager I swept all
+273 files present in both the canonical chart tree and the served homepage mirror
+(`_evidence/manager-B/train-parity-sweep.mjs`).
+
+| State | Count |
+|---|---|
+| byte-identical | 260 |
+| line-endings only (content identical) | 4 |
+| content divergent — **product** | **0** |
+| content divergent — test/harness | 9 |
+
+**Zero product content divergence.** The sweep separates three states rather than collapsing
+them, because the first look was misleading: `workers/indicator-worker.js` is a product file
+and showed 1,341 insertions against 1,341 deletions, which reads as a total rewrite. The
+size delta was exactly 1,341 bytes — one per line. It is CRLF versus LF with identical
+content, not a divergence.
+
+The nine genuine content divergences are all `*.test.mjs` or `harness/*`, copied into the
+mirror but never loaded by the chart page. Untidy, not seal-blocking, and not mine to fix
+during a quiescence hold. Recorded so nobody has to rediscover it at the cut.
+
+## 5. Worktree hygiene
 
 `manager-b-plan3`: **0 dirty**, hard-reset and cleaned. It read 0 before I touched it, so the
 116 you saw had already been cleared or regenerate between checks — worth knowing something
@@ -173,7 +196,7 @@ Main worktree: committed, 0 uncommitted.
 
 ---
 
-## 5. Status
+## 6. Status
 
 **The train carries every row.** A (LAG-1b, LAG-2, LAG-4, LIFE-1, HYG-2, MEM-1a/b/c/d,
 census), D (LAG-1a, LIFE-4), E (LAG-3, LIFE-2, PROC-2, PROC-3), B (LIFE-3, HYG-1, KILL-04
@@ -195,7 +218,7 @@ reason.
 
 ---
 
-## 6. For C, unprompted
+## 7. For C, unprompted
 
 I read `STAGED-SOAK-COMMANDS-C-20260801-1330.md`, which appeared in the shared main worktree
 while I was working — flagging that as another instance of the shared-directory hazard, and
