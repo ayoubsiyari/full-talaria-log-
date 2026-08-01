@@ -9877,17 +9877,21 @@ if (_m20Q6LifecycleRuntimeEnabled()) {
         if (!state || state.captureDepth > 0) {
             return fn();
         }
-        state.captureDepth += 1;
+        // Nothing that can throw may sit between a state mutation and the try: the
+        // extraTargets scan reads caller-supplied `id` getters, and a throw there with
+        // captureDepth already raised would wedge the re-entrancy guard on for the life
+        // of the instance, silently disabling capture for every later effect.
         const priorOwnerRoot = state.captureOwnerRoot || null;
         const explicitOwnerRoot = (extraTargets || []).find((target) => (
             target && target.id === 'replayToolbarClone'
         ));
-        if (explicitOwnerRoot) state.captureOwnerRoot = explicitOwnerRoot;
         const session = {
             records: [],
             targets: new WeakSet(),
             schedulerScopes: new WeakSet(),
         };
+        if (explicitOwnerRoot) state.captureOwnerRoot = explicitOwnerRoot;
+        state.captureDepth += 1;
         try {
             const scope = typeof globalThis !== 'undefined' ? globalThis : null;
             const win = typeof window !== 'undefined' ? window : null;
