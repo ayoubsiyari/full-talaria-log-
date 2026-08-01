@@ -265,6 +265,13 @@ CSRF_ENABLED = os.getenv("CSRF_ENABLED", "true").strip().lower() in {"1", "true"
 trusted_origins_env = os.getenv("TRUSTED_ORIGINS", "").strip()
 TRUSTED_ORIGINS = {o.strip() for o in trusted_origins_env.split(",") if o.strip()} if trusted_origins_env else set()
 
+# LIFE-3-BFCACHE-DEFEAT-V1 kill-switch. Default ON; TALARIA_DISABLE_BFCACHE_DEFEAT_V1=1 restores the
+# prior no-cache header. Env-driven rather than code-driven so it can be flipped through .env for the
+# OFF arm of per-switch attribution without a rebuild.
+_LIFE3_BFCACHE_DEFEAT_ENABLED = os.getenv("TALARIA_DISABLE_BFCACHE_DEFEAT_V1", "").strip().lower() not in (
+    "1", "true", "yes", "on",
+)
+
 @app.middleware("http")
 async def security_headers_middleware(request: Request, call_next):
     response = await call_next(request)
@@ -284,6 +291,21 @@ async def security_headers_middleware(request: Request, call_next):
             response.headers["Strict-Transport-Security"] = (
                 "max-age=31536000; includeSubDomains; preload"
             )
+        # LIFE-3-BFCACHE-DEFEAT-V1 — a document served no-store is not bfcache-eligible.
+        #
+        # A bfcached chart is a full engine parked invisible: its heap, its decoded bitmaps and its
+        # released window claim all persist, so pressing Back resurrects a page whose slot the server
+        # has already given away. Applied here rather than at either serving route because the shell
+        # reaches the browser three ways (the /chart/{file} route, the /chart/dist-v9 StaticFiles mount,
+        # and nginx) and a header that covers two of three is not a defeat.
+        #
+        # Scoped to chart HTML documents only. JS and CSS keep their 7-day cache - this is about the
+        # document's bfcache eligibility, not about re-downloading the bundle.
+        if _LIFE3_BFCACHE_DEFEAT_ENABLED and path.startswith("/chart"):
+            ctype = response.headers.get("content-type", "")
+            if ctype.startswith("text/html"):
+                response.headers["Cache-Control"] = "no-store, must-revalidate"
+                response.headers["Pragma"] = "no-cache"
 
     for header in ("server", "x-powered-by"):
         if header in response.headers:

@@ -201,6 +201,74 @@
         } catch (_e2) { /* ignore */ }
     }
 
+    /**
+     * LIFE-3 — bfcache defeat. Marker: LIFE-3-BFCACHE-DEFEAT-V1.
+     *
+     * The chart document must never be stored in the back/forward cache. Two reasons, and the second is
+     * the one that put this on the roster:
+     *
+     *   1. Correctness. `pagehide` releases the window claim unconditionally today. A page frozen into
+     *      bfcache is NOT torn down - it comes back. So we hand back our slot, the row is deleted, and
+     *      the restored page's next heartbeat gets 409 chart_window_unknown with everClaimed already
+     *      true, which shows the user "This chart was opened elsewhere - reload to take over" for the
+     *      crime of pressing Back.
+     *   2. Memory. A bfcached chart keeps its entire heap and its decoded bitmaps resident while
+     *      invisible. At the measured ~24 MB per thousand resident bars that is a parked ghost with the
+     *      full weight of a live engine, which is one of the few mechanisms that would produce a floor.
+     *
+     * The primary defeat is `Cache-Control: no-store` on the document, applied server-side - a page
+     * served no-store is not bfcache-eligible. Everything below is the safety net for when that header
+     * does not arrive (a proxy rewrites it, a route is missed, a browser disagrees), and it is also the
+     * instrument that tells us the primary defeat failed instead of failing silently.
+     *
+     * Switch: window.__TALARIA_BFCACHE_DEFEAT_V1 === false restores the old unconditional release.
+     * Default ON, per RELEASE-01 - the switch is an incident brake and the OFF arm for attribution.
+     */
+    function bfcacheDefeatEnabled() {
+        try {
+            return window.__TALARIA_BFCACHE_DEFEAT_V1 !== false;
+        } catch (_e) {
+            return true;
+        }
+    }
+
+    /** Observability: counts survive a bfcache round trip because the document itself does. */
+    var bfcacheStats = { captured: 0, restored: 0, lastCapturedAt: 0, lastRestoredAt: 0, reclaimed: 0 };
+
+    function onPageHide(event) {
+        var persisted = !!(event && event.persisted);
+        if (persisted && bfcacheDefeatEnabled()) {
+            // Frozen, not closed. Releasing here is precisely what makes the restored page look kicked,
+            // so hold the slot and let the server-side heartbeat cutoff reclaim it if we never return.
+            bfcacheStats.captured += 1;
+            bfcacheStats.lastCapturedAt = Date.now();
+            try {
+                console.warn('[LIFE-3-BFCACHE-DEFEAT-V1] document entered bfcache despite no-store; '
+                    + 'holding the window claim so the restore is not mistaken for a takeover');
+            } catch (_e) { /* ignore */ }
+            return;
+        }
+        release();
+    }
+
+    function onPageShow(event) {
+        if (!(event && event.persisted)) return;   // ordinary load; nothing to repair
+        if (!bfcacheDefeatEnabled()) return;
+        bfcacheStats.restored += 1;
+        bfcacheStats.lastRestoredAt = Date.now();
+        try {
+            console.warn('[LIFE-3-BFCACHE-DEFEAT-V1] restored from bfcache - the no-store defeat did not '
+                + 'hold on this route. Re-validating the window claim.');
+        } catch (_e) { /* ignore */ }
+        // The claim may have expired against the server cutoff while we were frozen, so re-establish it
+        // rather than waiting for the next heartbeat to fail and show a false takeover overlay.
+        if (!shouldClaim()) return;
+        bfcacheStats.reclaimed += 1;
+        try {
+            claim(false);
+        } catch (_e2) { /* ignore */ }
+    }
+
     function markApiUnavailable(status) {
         if (apiUnavailable) return;
         // 405 = wrong upstream (method not allowed); 404 = route missing.
@@ -484,7 +552,10 @@
             }, 50);
         }
 
-        window.addEventListener('pagehide', release);
+        // LIFE-3: pagehide must distinguish "closing" from "freezing"; beforeunload only ever means the
+        // former, so it keeps the unconditional release.
+        window.addEventListener('pagehide', onPageHide);
+        window.addEventListener('pageshow', onPageShow);
         window.addEventListener('beforeunload', release);
         document.addEventListener('visibilitychange', function () {
             if (document.visibilityState === 'visible') heartbeat();
@@ -519,5 +590,16 @@
         },
         ensureClaimed: ensureClaimed,
         isBlocked: function () { return !!window.__talariaChartWindowBlocked; },
+        /** LIFE-3-BFCACHE-DEFEAT-V1 — non-zero `captured`/`restored` means the no-store defeat failed. */
+        bfcacheStats: function () {
+            return {
+                enabled: bfcacheDefeatEnabled(),
+                captured: bfcacheStats.captured,
+                restored: bfcacheStats.restored,
+                reclaimed: bfcacheStats.reclaimed,
+                lastCapturedAt: bfcacheStats.lastCapturedAt,
+                lastRestoredAt: bfcacheStats.lastRestoredAt,
+            };
+        },
     };
 })();

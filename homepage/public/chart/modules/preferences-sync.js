@@ -308,9 +308,28 @@ class PreferencesSyncManager {
     }
 
     /**
-     * Save to localStorage immediately
+     * HYG-1-SETTINGS-WRITE-BREAKER-V1 — coalesce local writes per field.
+     *
+     * Kept as a thin front door onto the original body so the field mapping below is untouched: the
+     * breaker holds the latest value per field and replays it through the same switch. Rapid updates
+     * to one field collapse to a single serialise-and-store; different fields never block each other.
+     * Pending values are flushed on pagehide, so nothing queued outlives the document.
      */
     saveToLocalStorage(field, value) {
+        var breaker = (typeof window !== 'undefined') && window.__talariaSettingsWriteBreaker;
+        if (breaker && breaker.isEnabled()) {
+            breaker.write('pref:' + field, value, (_key, latest) => {
+                this._saveToLocalStorageNow(field, latest);
+            });
+            return;
+        }
+        this._saveToLocalStorageNow(field, value);
+    }
+
+    /**
+     * Save to localStorage immediately
+     */
+    _saveToLocalStorageNow(field, value) {
         try {
             switch (field) {
                 case 'tool_defaults':
@@ -408,6 +427,15 @@ class PreferencesSyncManager {
                 return;
             }
 
+            // HYG-1: the circuit is open after repeated transport failures. Retain the payload and
+            // come back — the contract of this breaker is "not now", never "give up". Dropping the
+            // pendingUpdates here would turn a backend outage into silent preference loss.
+            const breaker = (typeof window !== 'undefined') && window.__talariaSettingsWriteBreaker;
+            if (breaker && !breaker.canSend('preferences')) {
+                this._armSyncRetry();
+                return;
+            }
+
             const response = await fetch('/api/chart/preferences', {
                 method: 'POST',
                 headers: {
@@ -422,6 +450,7 @@ class PreferencesSyncManager {
                 const result = await response.json();
                 console.log('✅ Preferences synced to cloud');
                 this.pendingUpdates = {};
+                if (breaker) breaker.recordSuccess('preferences');
             } else if (response.status === 401) {
                 console.warn('⚠️ Not authenticated - preferences saved locally only');
                 this.pendingUpdates = {};
@@ -429,10 +458,29 @@ class PreferencesSyncManager {
                 this._onCloudSubscriptionBlocked();
             } else {
                 console.warn('⚠️ Failed to sync preferences to cloud:', response.statusText);
+                // Previously the payload was retained but nothing ever re-armed the timer, so a single
+                // 5xx stranded the user's preferences until they happened to change another setting.
+                if (breaker) breaker.recordFailure('preferences', response.status);
+                this._armSyncRetry();
             }
         } catch (error) {
             console.warn('⚠️ Error syncing preferences to cloud:', error.message);
+            const breaker = (typeof window !== 'undefined') && window.__talariaSettingsWriteBreaker;
+            if (breaker) breaker.recordFailure('preferences', 0);
+            this._armSyncRetry();
         }
+    }
+
+    /**
+     * HYG-1: re-arm a sync attempt after a retained failure, with a longer delay than the ordinary
+     * 2 s debounce so a persistent outage does not become its own write storm.
+     */
+    _armSyncRetry() {
+        if (this._cloudSubscriptionBlocked) return;
+        if (this.syncTimer) clearTimeout(this.syncTimer);
+        this.syncTimer = setTimeout(() => {
+            this.syncToAPI();
+        }, 15000);
     }
 
     /**
