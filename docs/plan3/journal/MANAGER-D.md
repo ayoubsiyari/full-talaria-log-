@@ -414,3 +414,16 @@ exists — eviction deletes the redundant hot copy, it does not invent a new sto
   discriminating. Added D to E handoff `HANDOFF-D-TO-E-PROC3-LAG1A-LIFE4-20260801.md`.
 - M8 specifically records byte-identical proof for both client mirrors (`chart.js` and `modules/order-manager.js`);
   the prior one-mirror-only miss is now named as a PROC-3 failure mode and not self-certified away.
+
+## 2026-08-01 14:45 — updatePositions zero-order preamble measurement
+
+- Measured PO-named preamble in `OrderManager.updatePositions()` with
+  `scripts/update-positions-preamble-measure.mjs`: 4 chart instances, 7,200 ticks per chart, 28,800 calls per
+  state.
+- States measured: zero orders ever, five closed with zero open, and one open. `_getMultichartParentGuardCandle`
+  and `_tradeEvictV1SyncPlayhead` are separately counted line items.
+- Result: not convicted from the source-level harness. Zero-orders total `updatePositions` self-time was
+  36.688 ms over the two-minute window (0.306 ms/s); named line items were 2.803 ms and 3.074 ms respectively.
+  No money-path fix proposed from this evidence.
+- Caveat: source harness executes real code but not browser DOM/iframe lookup cost. If the sealed browser
+  zero-trade arm shows unexpected occupancy, the named line items are already isolated for live tracing.
