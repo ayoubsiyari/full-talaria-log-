@@ -44,6 +44,7 @@ function balanced(text, anchor) {
 const BOUND = '\n    _boundPreSessionResidency() {';
 const SEARCH = '\n    _lastIndexAtOrBefore(series, ts) {';
 const OLDEST = '\n    _oldestOpenPositionTimestamp() {';
+const WHOLE = '\n    _hasWholeHistoryIndicator() {';
 
 const CAP = Number(src.match(/const PRESESSION_RESIDENCY_BARS = (\d+);/)[1]);
 
@@ -58,11 +59,13 @@ function build({ total = 20_000, sessionStart = 15_000, openPositions = null, wi
     const w = win || (() => { const x = {}; x.parent = x; x.top = x; return x; })();
     const factory = new Function('window', `
         const PRESESSION_RESIDENCY_BARS = ${CAP};
+        ${src.match(/const WHOLE_HISTORY_INDICATOR_TYPES = \[[^\]]*\];/)[0]}
         ${balanced(src, 'function _talariaDisableFlagTruthy(')}
         ${balanced(src, 'function _preSessionResidencyDisabled(')}
         return {
             ${balanced(src, BOUND)},
             ${balanced(src, SEARCH)},
+            ${balanced(src, WHOLE)},
             ${balanced(src, OLDEST)}
         };
     `)(w);
@@ -78,6 +81,41 @@ function build({ total = 20_000, sessionStart = 15_000, openPositions = null, wi
     engine.__win = w;
     return engine;
 }
+
+/**
+ * The whole-history indicator guard is wired into BOTH trims. EVICT-03's gate covers it on
+ * the eviction path; without these cells the wiring on this path would ship untested, which
+ * is exactly the shape PROC-3 exists to catch.
+ */
+test('R0 CORRECTNESS: the bound stands down while a whole-history indicator is active', () => {
+    for (const type of ['obv', 'vwap', 'psar', 'seasonality', 'VWAP']) {
+        const e = build();
+        e.chart.indicators = { active: [{ type: 'ema' }, { type }] };
+        const before = e.fullRawData;
+        const beforeStart = e.sessionStartIndex;
+
+        e._boundPreSessionResidency();
+
+        assert.equal(e.fullRawData, before,
+            `${type} accumulates from the start of the series — trimming changes its value`);
+        assert.equal(e.sessionStartIndex, beforeStart, 'no rebase when no trim happened');
+    }
+});
+
+test('R0b rolling indicators, and no registry at all, still allow the bound', () => {
+    for (const active of [[], [{ type: 'ema' }], [{ type: 'rsi' }, { type: 'bb' }], [null], [{}]]) {
+        const e = build();
+        e.chart.indicators = { active };
+        e._boundPreSessionResidency();
+        assert.equal(e.sessionStartIndex, CAP,
+            `${JSON.stringify(active)} needs only its period, so it must not suppress the saving`);
+    }
+
+    const bare = build();
+    bare.chart.indicators = undefined;
+    bare._boundPreSessionResidency();
+    assert.equal(bare.sessionStartIndex, CAP, 'an absent registry must not suppress the saving');
+});
 
 test('R1 the pre-session prefix is bounded', () => {
     const e = build();

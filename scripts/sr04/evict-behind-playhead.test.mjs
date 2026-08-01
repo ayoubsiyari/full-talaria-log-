@@ -51,6 +51,10 @@ function build(flags = {}) {
     const pred = balanced(src, 'function _evictBehindPlayheadDisabled(');
     const oldest = balanced(src, '_oldestOpenPositionTimestamp()');
     const evict = balanced(src, '_evictBehindPlayhead()');
+    const wholeConst = src.match(/const WHOLE_HISTORY_INDICATOR_TYPES = \[[^\]]*\];/)[0];
+    // Anchor on the definition: the call site inside _evictBehindPlayhead comes first in
+    // the file, and brace-matching from there lifts nonsense that fails as a syntax error.
+    const wholeFn = balanced(src, '\n    _hasWholeHistoryIndicator() {');
 
     const reads = [];
     const truthy = (name) => {
@@ -61,9 +65,11 @@ function build(flags = {}) {
     const factory = new Function('_talariaDisableFlagTruthy', `
         ${contextConst}
         ${slackConst}
+        ${wholeConst}
         ${pred}
         return {
             ${oldest},
+            ${wholeFn},
             ${evict},
             __contextBars: EVICT_CONTEXT_BARS,
             __slackBars: EVICT_SLACK_BARS,
@@ -210,6 +216,43 @@ test('R5c the epoch-zero coercion that made a hole look readable is gone', () =>
         'a hole must be marked unreadable explicitly');
 });
 
+/**
+ * Surfaced while screening the residency-window row (9e0a8ad591) for overlap with this one.
+ * That row classifies obv/vwap/psar/seasonality as whole-history indicators. This row trims
+ * the master those indicators are recomputed from, so without a guard it changes their
+ * plotted values silently once replay has run long enough to start evicting.
+ */
+test('R5d CORRECTNESS: eviction stands down while a whole-history indicator is active', () => {
+    const { proto } = build();
+
+    for (const type of ['obv', 'vwap', 'psar', 'seasonality', 'VWAP', '  Obv  ']) {
+        const rs = makeRs(proto, { count: 60_000, playhead: 50_000, open: [] });
+        rs.chart.indicators = { active: [{ type: 'sma' }, { type }] };
+        const before = rs.fullRawData;
+        rs._evictBehindPlayhead();
+        assert.equal(rs.fullRawData, before,
+            `${JSON.stringify(type)} accumulates from the start of the series — trimming changes its value`);
+    }
+});
+
+test('R5e rolling indicators, and no registry at all, do not block eviction', () => {
+    const { proto } = build();
+    const ctx = proto.__contextBars;
+
+    for (const active of [[], [{ type: 'sma' }], [{ type: 'rsi' }, { type: 'macd' }], [{}], [null]]) {
+        const rs = makeRs(proto, { count: 60_000, playhead: 50_000, open: [] });
+        rs.chart.indicators = { active };
+        rs._evictBehindPlayhead();
+        assert.equal(rs.currentIndex, ctx,
+            `${JSON.stringify(active)} needs only its period, so it must not suppress the saving`);
+    }
+
+    const bare = makeRs(proto, { count: 60_000, playhead: 50_000, open: [] });
+    bare.chart.indicators = undefined;
+    bare._evictBehindPlayhead();
+    assert.equal(bare.currentIndex, ctx, 'an absent registry must not suppress the saving');
+});
+
 test('R6 with no open positions the floor is the context window alone', () => {
     const { proto } = build();
     const ctx = proto.__contextBars;
@@ -243,8 +286,13 @@ test('R8 FLAG: read per eviction, never sampled at construction', () => {
     const factory = new Function('_talariaDisableFlagTruthy', `
         ${contextConst}
         ${slackConst}
+        ${src.match(/const WHOLE_HISTORY_INDICATOR_TYPES = \[[^\]]*\];/)[0]}
         ${balanced(src, 'function _evictBehindPlayheadDisabled(')}
-        return { ${balanced(src, '_oldestOpenPositionTimestamp()')}, ${balanced(src, '_evictBehindPlayhead()')} };
+        return {
+            ${balanced(src, '_oldestOpenPositionTimestamp()')},
+            ${balanced(src, '\n    _hasWholeHistoryIndicator() {')},
+            ${balanced(src, '_evictBehindPlayhead()')}
+        };
     `);
     const proto = factory((name) => { reads.push(name); return disabled; });
 
