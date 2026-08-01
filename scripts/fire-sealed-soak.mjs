@@ -150,6 +150,9 @@ if (REHEARSAL && SEAL_ORIGIN) args.push(`--sealOrigin=${SEAL_ORIGIN}`);
 if ((REHEARSAL || SMOKE) && SAMPLE_MS) args.push(`--sampleMs=${SAMPLE_MS}`);
 // A twenty-minute smoke should not spend its last minute writing a heap snapshot it will never read.
 if (SMOKE) args.push('--endSnapshot=0');
+// N3 rides the smoke only. The ten-hour arms are judged on delivery rate, and punching a deliberate
+// outage into the series that verdict is computed from would be self-inflicted.
+if (SMOKE) args.push('--offlineProbe=1');
 
 console.log(`arm:      ${ARM}`);
 console.log(`digest:   ${DIGEST}`);

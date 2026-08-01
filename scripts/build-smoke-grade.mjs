@@ -33,6 +33,8 @@ const voids = rows.filter((r) => r.__void);
 const errors = rows.filter((r) => r.__error);
 const browserLost = rows.filter((r) => r.__browserLost);
 const final = rows.find((r) => r.__final);
+// The harness writes notes as plain records alongside samples; a sample is the one with an `n`.
+const notes = rows.filter((r) => r.n == null);
 
 const gates = [];
 const gate = (name, state, detail, catches) => gates.push({ name, state, detail, catches });
@@ -118,6 +120,58 @@ gate('the CDP LoAF census is collecting on all realms',
   loafOk >= samples.length - 1 && loafOk > 0 ? 'PASS' : 'WARN',
   `${loafOk}/${samples.length} samples carried a census; over-attributed on ${samples.filter((s) => s.loaf?.overAttributed).length}`,
   'Free naming census all night. A WARN here loses attribution, not the soak.');
+
+// 12. RATE-HOLD must be COMPUTABLE on the smoke. Twenty minutes is far too short to judge a ten-hour
+//     hold, so this grades the INSTRUMENT, not the build: if delivery cannot be read here it cannot be
+//     read tonight, and the headline verdict would come back VOID after ten hours.
+const rated = samples.filter((s) => Number.isFinite(s.deliveredBarsPerSec));
+const rateRoutes = [...new Set(rated.map((s) => s.deliveredRateRoute))];
+gate('delivered bars/s was readable on nearly every sample (the RATE-HOLD input)',
+  rated.length >= samples.length - 2 && rated.length > 0 ? 'PASS' : 'FAIL',
+  rated.length
+    ? `${rated.length}/${samples.length} samples, route ${rateRoutes.join('/')}, ${Math.min(...rated.map((s) => s.deliveredBarsPerSec)).toFixed(2)}-${Math.max(...rated.map((s) => s.deliveredBarsPerSec)).toFixed(2)} bars/s on ${rated[0].deliveredRateTimeframe}`
+    : `NO sample carried a delivered rate (${[...new Set(samples.map((s) => s.deliveredRateWhy))].filter(Boolean).slice(0, 2).join('; ')})`,
+  'RATE-HOLD is the headline verdict. An unreadable rate means a VOID headline after ten hours.');
+
+// 13. The read-back is a WITNESS, so its absence is a WARN and never a FAIL.
+const rb = samples.filter((s) => s.effectiveRateReadbackPresent).length;
+gate("A's __talariaEffectiveRate read-back is present (witness only)",
+  rb > 0 ? 'PASS' : 'WARN',
+  rb > 0 ? `${rb}/${samples.length} samples` : 'absent — SPEED-01 has not landed; RATE-HOLD is judged on measured delivery regardless',
+  'A cross-check on the engine\'s own belief. Never the judge: it is a controller reporting its own setpoint.');
+
+// 14. The pause-probe must have produced a hoard floor, because the memory bar is now judged on it.
+const probes = notes.filter((n) => n.__pauseProbe);
+const goodProbe = probes.filter((p) => p.verdict === 'MEASURED');
+gate('the pause-probe separated froth from hoard',
+  goodProbe.length > 0 ? 'PASS' : (probes.length ? 'FAIL' : 'WARN'),
+  goodProbe.length
+    ? goodProbe.map((p) => `${p.label}: running ${p.runningMB} -> hoard ${p.hoardFloorMB} MB (${p.frothPercentOfRunning}% froth)`).join('; ')
+    : (probes.length ? `probe VOID: ${String(probes[0].why).slice(0, 120)}` : 'no probe ran in this window'),
+  'The memory bar is judged on the hoard floor now, not the running total.');
+
+// 15. N3.
+const off = notes.find((n) => n.__offlineToggle);
+gate('N3: a 30 s outage produced no request storm',
+  !off ? 'WARN' : (off.verdict === 'NO STORM' ? 'PASS' : (off.verdict === 'VOID' ? 'WARN' : 'FAIL')),
+  off ? `${off.verdict} — ${String(off.why).slice(0, 140)}` : 'the offline toggle did not run in this window',
+  'A storm on reconnect is the same defect arriving late.');
+
+// 16. The PO recipe's closing assertion.
+const paint = notes.find((n) => n.__postRefreshPaint);
+gate('all four panels paint after a page refresh',
+  !paint ? 'WARN' : (paint.panelsPainted >= 4 ? 'PASS' : 'FAIL'),
+  paint ? `${paint.panelsPainted}/${paint.chartsAfterRefresh} painted` : 'no post-refresh paint reading',
+  'My own reentry defect produced 0 realms and 0 bars after a fresh navigation; bars in an array are not paint.');
+
+// 17. N4.
+const storeDiff = notes.find((n) => n.__storageDiff);
+gate('N4: storage bytes read at start, end and post-refresh',
+  storeDiff?.startToEnd?.ok ? 'PASS' : 'WARN',
+  storeDiff?.startToEnd?.ok
+    ? `origin usage ${storeDiff.startToEnd.originUsageDeltaMB >= 0 ? '+' : ''}${storeDiff.startToEnd.originUsageDeltaMB} MB over the arm, ${storeDiff.startToPostRefresh ? `${storeDiff.startToPostRefresh.originUsageDeltaMB} MB surviving a refresh` : 'post-refresh not read'}`
+    : 'no storage diff recorded',
+  'Storage surviving a refresh is retention carried BETWEEN sessions; no process gauge can see it.');
 
 // 11. No unhandled harness error.
 gate('no harness error was recorded',

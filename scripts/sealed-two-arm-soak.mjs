@@ -40,6 +40,7 @@ import { computeSeal } from './lib/seal.mjs';
 import { deliveredRate, evaluateRateHold, readEffectiveRateReadback } from './lib/rate-hold.mjs';
 import { pauseProbe } from './lib/pause-probe.mjs';
 import { readStorageCensus, diffStorage } from './lib/storage-census.mjs';
+import { offlineToggle } from './lib/offline-toggle.mjs';
 import { readHostHealth } from './lib/host-health.mjs';
 import { installLoafCensus, readLoafCensus } from './lib/loaf-census.mjs';
 import { evaluateR3, readOldestOpenPositionAge } from './lib/r3-falsifier.mjs';
@@ -64,6 +65,9 @@ const HEAP_CAP_MB = Number(argOf('heapCapMB', '1024'));
 const EVICTION_ACTIVE = argOf('evictionActive', '0') === '1';
 const SNAPSHOT_AT_END = argOf('endSnapshot', '1') !== '0';
 const SNAPSHOT_CAP_MB = Number(argOf('snapshotCapMB', '4096'));
+// N3 rides the smoke, not the ten-hour arms: an outage deliberately punched into a run whose verdict IS
+// delivery rate would put a hole in the series that verdict is computed from.
+const OFFLINE_PROBE = argOf('offlineProbe', '0') === '1';
 
 // TOOL-01, asserted before anything expensive is opened. A cap that was requested but never applied is
 // worse than no cap, because the launch line in the log looks correct.
@@ -317,6 +321,7 @@ let prevRateSample = null;
 const rateSeries = [];
 let storageAtStart = null;
 let r3ProbeDone = false;
+let offlineProbeDone = false;
 const rateExcludedWindows = [];
 // R3 state. The series is rebuilt in-process rather than re-read from disk, so a resumed run starts its
 // falsifier window fresh - a plateau test across a browser restart would be two populations.
@@ -507,6 +512,19 @@ try {
       lastR3Verdict = r3.verdict;
     }
 
+    // N3, inside the smoke: a 30-second outage mid-replay, watching the recovery as closely as the
+    // outage. Runs once, and not on a ten-hour arm - deliberately disturbing the network of a run whose
+    // verdict is delivery rate would put a hole in the series the verdict is computed from.
+    if (OFFLINE_PROBE && !offlineProbeDone && session?.page && rateSeries.length >= 2) {
+      offlineProbeDone = true;
+      log('N3: 30 s offline toggle mid-replay');
+      const off = await offlineToggle(session.page, { log }).catch((e) => ({ verdict: 'VOID', why: `probe threw: ${String(e).slice(0, 160)}` }));
+      run.note({ __offlineToggle: true, segment, at: new Date().toISOString(), ...off });
+      rateExcludedWindows.push({ fromMs: Date.now() - 75000, toMs: Date.now(), why: 'N3 offline toggle' });
+      prevRateSample = null;
+      log(`N3: ${off.verdict} — ${String(off.why).slice(0, 130)}`);
+    }
+
     // PAUSE-PROBE at the R3 checkpoint. Once per arm: it costs ~11 minutes of delivery, and the window is
     // recorded so RATE-HOLD can exclude it rather than read a deliberate pause as a stall.
     if (!r3ProbeDone && r3.verdict && r3.verdict !== 'INSUFFICIENT' && session?.page) {
@@ -570,9 +588,47 @@ try {
     let storageAfterRefresh = null;
     try {
       await session.page.reload({ waitUntil: 'domcontentloaded', timeout: 120000 });
-      await new Promise((r) => setTimeout(r, 20000));
+      await new Promise((r) => setTimeout(r, 45000));
       storageAfterRefresh = await readStorageCensus(session.page);
       run.note({ __storageCensus: true, when: 'post-refresh', ...storageAfterRefresh });
+
+      // THE PO RECIPE'S CLOSING ASSERTION: after a refresh, all four panels PAINT. Bars in an array are
+      // not paint - my own reentry-no-chart defect produced 0 realms and 0 bars after a fresh navigation,
+      // and a panel can hold data and render nothing. So the canvas is sampled for non-uniformity: a
+      // blank canvas is one colour, a painted chart is not.
+      const paint = await Promise.all(session.page.frames().map(async (fr) => {
+        try {
+          return await fr.evaluate(() => {
+            if (!window.chart) return null;
+            const cvs = [...document.querySelectorAll('canvas')].filter((c) => c.width > 50 && c.height > 50);
+            let painted = false; let sampled = 0; let distinct = 0;
+            for (const c of cvs) {
+              try {
+                const ctx = c.getContext('2d');
+                if (!ctx) continue;
+                const d = ctx.getImageData(0, 0, Math.min(c.width, 200), Math.min(c.height, 200)).data;
+                const seen = new Set();
+                for (let i = 0; i < d.length; i += 4 * 97) seen.add(`${d[i]},${d[i + 1]},${d[i + 2]}`);
+                sampled += 1;
+                distinct = Math.max(distinct, seen.size);
+                if (seen.size > 3) { painted = true; break; }
+              } catch (_) { /* tainted or zero-size canvas */ }
+            }
+            return { isHost: window.top === window, bars: Array.isArray(window.chart.data) ? window.chart.data.length : 0, canvases: cvs.length, sampled, distinctColours: distinct, painted };
+          });
+        } catch { return null; }
+      }));
+      const painted = paint.filter((p) => p && p.painted);
+      const withChart = paint.filter(Boolean);
+      run.note({
+        __postRefreshPaint: true,
+        chartsAfterRefresh: withChart.length,
+        panelsPainted: painted.length,
+        perPanel: withChart,
+        verdict: painted.length >= 4 ? 'ALL FOUR PANELS PAINT AFTER REFRESH' : `ONLY ${painted.length} OF ${withChart.length} PANELS PAINT AFTER REFRESH`,
+        method: 'canvas pixel sampling for non-uniformity; a blank canvas is one colour. Bars present in an array is NOT paint.',
+      });
+      log(`post-refresh paint: ${painted.length}/${withChart.length} panels painted`);
     } catch (err) {
       run.note({ __storageCensus: true, when: 'post-refresh', failed: true, why: String(err).slice(0, 160) });
     }

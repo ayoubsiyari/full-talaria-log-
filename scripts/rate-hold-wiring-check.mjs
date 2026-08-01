@@ -17,6 +17,36 @@ const EV = 'c:\\Users\\user\\Desktop\\talaria1\\_evidence\\manager-C';
 const results = [];
 const check = (n, p, d) => { results.push({ name: n, pass: p, detail: d }); console.log(`${p ? 'PASS' : 'FAIL'}  ${n}${d ? ` — ${d}` : ''}`); };
 
+// 0. The unbound-identifier scan, applied to EVERY file on the soak's critical path. I hit this defect a
+//    second time within the hour - `notes` unbound in the smoke grader - in code written after building
+//    the checker for it. A checker aimed at one file only guards one file.
+{
+  const strip = (s) => s
+    .replace(/\/\*[\s\S]*?\*\//g, ' ')
+    .replace(/(^|[^:])\/\/[^\n]*/g, '$1 ')
+    .replace(/`(?:\\.|\$\{[^}]*\}|[^`\\])*`/g, '``')
+    .replace(/'(?:\\.|[^'\\])*'/g, "''")
+    .replace(/"(?:\\.|[^"\\])*"/g, '""');
+  const bound = (u, s) => new RegExp(`(?:const|let|var|function|class)\\s+${u}\\b`).test(s)
+    || new RegExp(`import[^;]*\\b${u}\\b`).test(s)
+    || new RegExp(`process\\.env\\.${u}\\b`).test(s)
+    || new RegExp(`\\b${u}\\s*[:=]`).test(s)
+    || new RegExp(`\\(\\s*(?:[^)]*,\\s*)?${u}\\b`).test(s);   // parameter
+  const files = [
+    'scripts/sealed-two-arm-soak.mjs', 'scripts/fire-sealed-soak.mjs', 'scripts/build-smoke-grade.mjs',
+    'scripts/lib/rate-hold.mjs', 'scripts/lib/pause-probe.mjs', 'scripts/lib/storage-census.mjs', 'scripts/lib/offline-toggle.mjs',
+  ];
+  const offenders = [];
+  for (const f of files) {
+    const code = strip(fs.readFileSync(f, 'utf8'));
+    // Lower-case single-word identifiers are the ones that actually bit: `notes` read like a real name.
+    const ids = new Set([...code.matchAll(/\b([A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+)\b/g)].map((m) => m[1]));
+    for (const id of ids) if (!bound(id, code)) offenders.push(`${f}: ${id}`);
+  }
+  check('no file on the critical path uses an unbound constant', offenders.length === 0,
+    offenders.length ? offenders.join('; ') : `${files.length} files scanned clean`);
+}
+
 // 1. Every identifier the soak's hot path names must exist in the source it imports from.
 {
   const src = fs.readFileSync('scripts/sealed-two-arm-soak.mjs', 'utf8');
