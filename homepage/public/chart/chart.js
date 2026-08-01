@@ -30127,6 +30127,124 @@ class Chart {
         return true;
     }
 
+    /**
+     * Stable token for an overlay collection object.
+     *
+     * Length alone cannot see a same-length replacement, and order-manager.js rebuilds
+     * these arrays with .filter() — the array object changes while the count does not.
+     */
+    _overlayCollectionToken(collection) {
+        if (typeof WeakMap !== 'function') return 'x';
+        let tokens = this._overlayCollectionTokens;
+        if (!tokens) {
+            tokens = new WeakMap();
+            this._overlayCollectionTokens = tokens;
+        }
+        let token = tokens.get(collection);
+        if (token === undefined) {
+            token = (this._overlayCollectionTokenSeq || 0) + 1;
+            this._overlayCollectionTokenSeq = token;
+            tokens.set(collection, token);
+        }
+        return token;
+    }
+
+    /**
+     * LAG-1b: dirty key for the render-path order-overlay resync.
+     *
+     * `null` means "cannot decide" — kill-switch on, no order manager, a missing
+     * helper, a non-finite dimension, or a collection that is not an array. The
+     * caller must read null as "resync anyway": a skipped sync leaves stale order
+     * lines and stale unrealised P&L on a money surface, so indeterminate state may
+     * only ever fall towards the redundant call, never towards the cheap one.
+     *
+     * The mark inputs (data tip, `_miLastMarkPrice`, SL/TP/quantity) are part of the
+     * key because updateOrderLines re-prices open positions as well as repositioning
+     * them; a viewport-only key would freeze the P&L numbers between pans.
+     *
+     * Kill-switch: window.__TALARIA_OVERLAY_RESYNC_DIRTY_V1, truthy restores the
+     * unconditional call. Read per call, never sampled at init.
+     */
+    _overlayResyncDirtyKey(visible) {
+        if (_talariaDisableFlagTruthy('__TALARIA_OVERLAY_RESYNC_DIRTY_V1')) return null;
+        try {
+            const om = this.orderManager;
+            if (!om) return null;
+            if (!Array.isArray(visible)) return null;
+            if (!Array.isArray(this.data)) return null;
+            if (typeof this.getCandleSpacing !== 'function') return null;
+
+            const yScale = this.yScale || (this.scales && this.scales.yScale);
+            if (typeof yScale !== 'function'
+                || typeof yScale.domain !== 'function'
+                || typeof yScale.range !== 'function') {
+                return null;
+            }
+            const domain = yScale.domain();
+            const range = yScale.range();
+            if (!Array.isArray(domain) || domain.length < 2
+                || !Array.isArray(range) || range.length < 2) {
+                return null;
+            }
+
+            const margin = this.margin || {};
+            const first = visible.length ? visible[0] : null;
+            const last = visible.length ? visible[visible.length - 1] : null;
+            const tip = this.data.length ? this.data[this.data.length - 1] : null;
+            const geometry = [
+                this.offsetX,
+                this.w,
+                this.h,
+                this.getCandleSpacing(),
+                this.priceZoom,
+                this.priceOffset,
+                margin.l, margin.r, margin.t, margin.b,
+                domain[0], domain[1], range[0], range[1],
+                visible.length,
+                first ? first.t : 0,
+                last ? last.t : 0,
+                this.data.length,
+                this.dataVersion,
+                tip ? tip.t : 0,
+                tip ? tip.c : 0,
+            ];
+            if (!geometry.every((v) => Number.isFinite(v))) return null;
+
+            let key = `${this.currentSymbol}~${this.currentTimeframe}~${geometry.join(',')}`;
+            const collections = [
+                om.orderLines,
+                om.openPositions,
+                om.pendingOrders,
+                om.splitGroupAvgLines,
+                om.orderService ? om.orderService.openPositions : null,
+                om.orderService ? om.orderService.pendingOrders : null,
+            ];
+            for (const collection of collections) {
+                if (collection == null) {
+                    key += ';-';
+                    continue;
+                }
+                if (!Array.isArray(collection)) return null;
+                key += `;${this._overlayCollectionToken(collection)}:${collection.length}`;
+            }
+            for (const collection of collections) {
+                if (!Array.isArray(collection)) continue;
+                for (const row of collection) {
+                    if (!row || typeof row !== 'object') {
+                        key += '|-';
+                        continue;
+                    }
+                    key += `|${row.orderId ?? row.id}:${row.openPrice ?? row.entryPrice}`
+                        + `:${row.stopLoss}:${row.takeProfit}:${row.quantity}`
+                        + `:${row._miLastMarkPrice}`;
+                }
+            }
+            return key;
+        } catch (_e) {
+            return null;
+        }
+    }
+
     render() {
         this._frameDisplaySeries = null;
 
@@ -30512,7 +30630,16 @@ class Chart {
         // This happens AFTER scales are calculated in render()
         if (this.orderManager) {
             if (typeof this.orderManager.updateOrderLines === 'function') {
-                this.orderManager.updateOrderLines(this);
+                // LAG-1b: a null key is indeterminate and must resync, so the skip
+                // only ever fires on a positively-unchanged overlay/viewport state.
+                const overlayResyncKey = typeof this._overlayResyncDirtyKey === 'function'
+                    ? this._overlayResyncDirtyKey(visible)
+                    : null;
+                if (overlayResyncKey === null
+                    || overlayResyncKey !== this._overlayResyncDirtyKeyLast) {
+                    this.orderManager.updateOrderLines(this);
+                    this._overlayResyncDirtyKeyLast = overlayResyncKey;
+                }
             }
             if (typeof this.orderManager.updatePreviewLinePositions === 'function') {
                 this.orderManager.updatePreviewLinePositions();
