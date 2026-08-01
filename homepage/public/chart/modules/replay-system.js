@@ -122,6 +122,15 @@ function _preSessionResidencyDisabled() {
 const PRESESSION_RESIDENCY_BARS = 1000;
 
 /**
+ * MEM-1d — redundant display-series copy removal (default ON).
+ * Kill-switch: window.__TALARIA_SERIES_DEDUPE_V1 = <truthy> restores the entry-time copy.
+ * Read per decision, never sampled at init.
+ */
+function _seriesDedupeDisabled() {
+    return _talariaDisableFlagTruthy('__TALARIA_SERIES_DEDUPE_V1');
+}
+
+/**
  * CPU-CEILING-60X — single-chart high-speed replay paint cadence (default ON).
  * Kill-switch: window.__TALARIA_DISABLE_SC_REPLAY_PAINT_CADENCE_V1 = <truthy>
  * restores legacy per-forming-tick sync paint. Absent / falsy ⇒ mitigation on.
@@ -1626,6 +1635,26 @@ class ReplaySystem {
         this._evictedBehindPlayheadBars = (this._evictedBehindPlayheadBars || 0) + start;
     }
 
+    /**
+     * MEM-1d — seed the entry-time display-series snapshot.
+     *
+     * fullData has no product reader anywhere in the tree: every product occurrence is a
+     * write or a null-out (see docs/plan3/MEM-1d-consumer-audit.md). The reseed path in
+     * chart.js rebuilds it from this.data on the first tick regardless, so copying the
+     * whole display series at entry duplicates an array nothing consults.
+     *
+     * The field is nulled rather than deleted. Two teardown suites assert it exists and
+     * reaches null, and nulling also avoids the one hazard of simply dropping the write:
+     * a stale snapshot surviving from a previous session.
+     */
+    _seedFullDataSnapshot() {
+        if (_seriesDedupeDisabled()) {
+            this.fullData = Array.isArray(this.chart.data) ? [...this.chart.data] : null;
+            return;
+        }
+        this.fullData = null;
+    }
+
     /** Index of the last bar at or before `ts`, or -1. Series is ascending by `t`. */
     _lastIndexAtOrBefore(series, ts) {
         let lo = 0;
@@ -3024,7 +3053,7 @@ class ReplaySystem {
         
         // Store full datasets
         this.fullRawData = [...this.chart.rawData];
-        this.fullData = [...this.chart.data];
+        this._seedFullDataSnapshot();
         this.rawTimeframe = this.detectRawTimeframeFromData(this.fullRawData);
         this._fullRawDataMatchesTF = false;
         
@@ -3750,7 +3779,7 @@ class ReplaySystem {
         
         // Store full datasets
         this.fullRawData = [...this.chart.rawData];
-        this.fullData = [...this.chart.data];
+        this._seedFullDataSnapshot();
         this.rawTimeframe = this.detectRawTimeframeFromData(this.fullRawData);
         this._fullRawDataMatchesTF = false;
         this._boundPreSessionResidency();
