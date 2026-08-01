@@ -35,6 +35,13 @@ import { loadConf05Indicators } from './lib/conf05-indicators.mjs';
 import { reapOrphanedRenderers } from './lib/find-soak-port.mjs';
 import { readOsFootprints } from './process-memory-census.mjs';
 import { perBarFields, evaluateGauges } from './lib/soak-gauges.mjs';
+import { readBuildInfo, shaChanged } from './lib/build-info.mjs';
+import { computeSeal } from './lib/seal.mjs';
+import { readHostHealth } from './lib/host-health.mjs';
+import { installLoafCensus, readLoafCensus } from './lib/loaf-census.mjs';
+import { evaluateR3, readOldestOpenPositionAge } from './lib/r3-falsifier.mjs';
+import { takeEndOfArmSnapshot } from './lib/end-of-arm-snapshot.mjs';
+import { assertHeapCap } from './lib/heap-cap.mjs';
 
 const argOf = (n, d) => { const h = process.argv.find((a) => a.startsWith(`--${n}=`)); return h ? h.split('=').slice(1).join('=') : d; };
 const ARM = argOf('arm', 'trades');                 // trades | zerotrade
@@ -46,6 +53,18 @@ const ORIGIN = String(argOf('origin', process.env.TEST_VPS_URL || 'http://31.97.
 const EV = 'c:\\Users\\user\\Desktop\\talaria1\\_evidence\\manager-C';
 const OUT = argOf('out', path.join(EV, `SEALED-SOAK-${ARM.toUpperCase()}.jsonl`));
 const EXPECT_DIGEST = argOf('expectDigest', '');    // set to pin the run to one build
+const EXPECT_SHA = argOf('expectSha', '');          // PASSPORT-3: pin the run to one SOURCE COMMIT
+const REQUIRE_SHA = argOf('requireSha', '1') !== '0';
+const HEAP_CAP_MB = Number(argOf('heapCapMB', '1024'));
+// Declared rather than inferred: the R3 falsifier only predicts a plateau when eviction is actually on,
+// and reporting MODEL_VOID against a build without the fix would be a verdict on nothing.
+const EVICTION_ACTIVE = argOf('evictionActive', '0') === '1';
+const SNAPSHOT_AT_END = argOf('endSnapshot', '1') !== '0';
+const SNAPSHOT_CAP_MB = Number(argOf('snapshotCapMB', '4096'));
+
+// TOOL-01, asserted before anything expensive is opened. A cap that was requested but never applied is
+// worse than no cap, because the launch line in the log looks correct.
+const heapCap = assertHeapCap({ capMB: HEAP_CAP_MB, label: `sealed-soak-${ARM}` });
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const log = (m) => console.error(`[soak:${ARM} ${new Date().toISOString()}] ${m}`);
@@ -53,28 +72,16 @@ const log = (m) => console.error(`[soak:${ARM} ${new Date().toISOString()}] ${m}
 // Identical to build-passport.mjs, in the same order. A digest is only comparable across tools if the path
 // set is: my first version hashed four paths and produced a different digest for the same build than the
 // passport's six, which would have looked like a seal break tomorrow.
-const SEAL_PATHS = [
-  '/chart/dist-v9/index.html',
-  '/chart/dist-v9/assets/talaria-v9-live.js',
-  '/chart/dist-v9/sw.js',
-  '/chart/chart.js',
-  '/chart/multichart-prod/multichart-manager.js',
-  '/chart/modules/chart-window-limit.js',
-];
+// Imported, not restated. Two copies of this list already produced two digests for one build.
 
-async function passport() {
-  const parts = [];
-  let badge = null;
-  for (const p of SEAL_PATHS) {
-    try {
-      const res = await fetch(`${ORIGIN}${p}`);
-      const buf = Buffer.from(await res.arrayBuffer());
-      parts.push(`${p}:${crypto.createHash('sha256').update(buf).digest('hex')}`);
-      if (!badge) { const m = String(buf).match(/20\d{6}b\d+/); if (m) badge = m[0]; }
-    } catch (err) { parts.push(`${p}:ERROR`); }
-  }
-  return { badge, digest: crypto.createHash('sha256').update(parts.join('|')).digest('hex').slice(0, 32), at: new Date().toISOString() };
-}
+// Defaults to ORIGIN, so a real soak runs the identical code path and there is no test-only branch here.
+// A dress rehearsal points it at a local mirror it can mutate, which is the only way to exercise mid-run
+// seal drift without changing production bytes. When the two differ the run is stamped REHEARSAL and its
+// artifact is not publishable - a rehearsal must never be mistakable for a measurement.
+const SEAL_ORIGIN = String(argOf('sealOrigin', ORIGIN)).replace(/\/$/, '');
+const IS_REHEARSAL = SEAL_ORIGIN !== ORIGIN;
+
+const passport = () => computeSeal(SEAL_ORIGIN);
 
 /** Liveness by playhead, with bar count recorded alongside so the two routes can be compared. */
 async function readPanels(page) {
@@ -214,6 +221,26 @@ if (EXPECT_DIGEST && seal.digest !== EXPECT_DIGEST) {
   process.exit(2);
 }
 
+// PASSPORT-3. The digest says WHAT the bytes are; the SHA says WHICH COMMIT made them. Without it a
+// ten-hour artifact records a fingerprint nobody can trace back to a tree.
+const buildInfo = await readBuildInfo(SEAL_ORIGIN);
+if (REQUIRE_SHA || EXPECT_SHA) {
+  if (!buildInfo.ok) {
+    console.error(`REFUSING TO START: the source commit SHA is not readable from ${buildInfo.url} [${buildInfo.state}].`);
+    console.error(`  ${buildInfo.why}`);
+    console.error('  Recording sourceCommitSha:null for ten hours would produce an artifact that LOOKS provenanced and is not.');
+    console.error('  Pass --requireSha=0 to measure an unprovenanced build deliberately.');
+    process.exit(3);
+  }
+  if (EXPECT_SHA && buildInfo.sourceCommitSha !== EXPECT_SHA.toLowerCase()) {
+    console.error(`REFUSING TO START: expected source commit ${EXPECT_SHA}, origin was built from ${buildInfo.sourceCommitSha}.`);
+    process.exit(3);
+  }
+} else if (!buildInfo.ok) {
+  log(`WARNING — source commit UNAVAILABLE [${buildInfo.state}]: ${buildInfo.why}`);
+}
+const pinnedSha = buildInfo.ok ? buildInfo.sourceCommitSha : null;
+
 const run = openRun({
   name: `sealed-soak-${ARM}`,
   out: OUT,
@@ -223,7 +250,21 @@ const run = openRun({
     armMeaning: ARM === 'zerotrade' ? 'CONF-05: four panels, E indicators, ZERO trades — bar-driven growth with the trade term absent by construction' : 'CONF-01: four panels, E indicators, governor holding ~20 closes/hour',
     bfcacheState: 'default (enabled) — a long-running session, no reset axis measured here.',
     seal,
+    // PASSPORT-3: badge + digest describe the BYTES; sourceCommitSha names the TREE that produced them.
+    sourceCommitSha: pinnedSha,
+    sourceCommitState: buildInfo.state,
+    sourceCommitWhy: buildInfo.why,
+    sourceBuildId: buildInfo.ok ? buildInfo.buildId : null,
+    checkpointBuild: buildInfo.ok ? buildInfo.checkpointBuild : null,
+    // TOOL-01: recorded so the artifact states the cap it ran under, not just that one was intended.
+    heapCap,
     origin: ORIGIN,
+    sealOrigin: SEAL_ORIGIN,
+    rehearsal: IS_REHEARSAL,
+    publishable: !IS_REHEARSAL,
+    rehearsalWhy: IS_REHEARSAL
+      ? `THROWAWAY. The seal was read from ${SEAL_ORIGIN}, not from the origin the browser booted (${ORIGIN}), so the digest describes a mirror rather than the measured build. This artifact exercises launcher and refusal MECHANICS and carries no publishable measurement.`
+      : null,
     requestedSpeed: SPEED,
     plannedHours: HOURS,
     detach01: 'append-as-taken JSONL with fsync, heartbeat per sample, auto-resume across a browser death with the resume recorded as a segment boundary',
@@ -244,6 +285,11 @@ const t0 = Date.now();
 let session = null;
 const gaugeMisses = { footprint: 0, blocking: 0 };
 let prevSample = null;
+// R3 state. The series is rebuilt in-process rather than re-read from disk, so a resumed run starts its
+// falsifier window fresh - a plateau test across a browser restart would be two populations.
+const r3Series = [];
+let lastR3Verdict = null;
+let keepTheHourUntil = null;
 let nextGovernorAt = Date.now();
 const governorEveryMs = 3_600_000 / Math.max(1, CLOSES_PER_HOUR);
 
@@ -267,11 +313,16 @@ try {
         return rs ? (rs.speed ?? rs.playbackSpeed ?? null) : null;
       }).catch(() => null);
       const panels = await readPanels(session.page);
+      // CDP injection, per segment because a new browser is a new set of documents. Registered for future
+      // documents AND evaluated into the live ones - registration alone reaches nothing that already
+      // exists, which on this soak is every frame that matters.
+      const loafInstall = await installLoafCensus(session.page).catch((e) => ({ onNewDocument: false, liveFramesInjected: 0, error: String(e).slice(0, 150) }));
       run.note({
         __segmentStart: true,
         segment,
         requestedSpeed: SPEED,
         effectiveSpeed: eff,
+        loafInstall: { ...loafInstall, viaProductBytes: false, how: 'Page.addScriptToEvaluateOnNewDocument plus live-frame evaluate. The served bytes are untouched and the digest is unchanged.' },
         speedMismatch: eff != null && Number(eff) !== SPEED ? `Requested ${SPEED}, engine reports ${eff}. Every rate in this segment belongs to ${eff}.` : null,
         panels: panels.length,
         timeframes: panels.map((p) => p.tf),
@@ -320,6 +371,17 @@ try {
 
     const nowSeal = await passport();
     const sealHeld = nowSeal.digest === seal.digest;
+    // PASSPORT-3 re-verified at the SAME cadence as the digest. The digest catches different bytes; the
+    // SHA catches a different source. Neither implies the other, so both, every sample.
+    const nowInfo = await readBuildInfo(SEAL_ORIGIN);
+    const shaDrift = shaChanged(pinnedSha, nowInfo);
+
+    // MANIFEST ADDITIONS, all harness-side. None of these touch the served bytes, so the digest above is
+    // the digest of the build a user gets. An instrument that changed it would defeat SOAK-SEAL through
+    // the instrument instead of the code.
+    const host = readHostHealth();                                    // system headroom + node.exe aggregate
+    const loaf = await readLoafCensus(session.page).catch(() => ({ ok: false, why: 'census read threw' }));
+    const posn = await readOldestOpenPositionAge(session.page).catch(() => ({ route: 'threw', openCount: null, oldestAgeBars: null }));
 
     const residentBars = after.reduce((s, r) => s + r.bars, 0);
     run.append({
@@ -336,8 +398,23 @@ try {
       localSlopeNote: 'localSlopeMbPerKbar is the consecutive-sample slope and is the figure comparable to the published 23.98 / 24.55 / 25.35 MB/kbar. footprintPerKbarLEVEL is NOT - it carries the fixed baseline and falls as bars accumulate. The run-level slope comes from a fit over all samples, not from either field.',
       // LAG — same host, same cadence, so the scorecard has a before/after that is not two computers.
       ...blocking,
+      // HOST HEALTH joined per sample: the crash that cost ten hours was 16,387 MB of node.exe at 99%
+      // system memory, reconstructed afterwards because no sample carried the host beside the browser.
+      host,
+      // LoAF per-script attribution, CDP-injected. This is the ~724 ms/s naming census, collected free all
+      // night rather than in a five-second trace that caught a quiet stretch.
+      loaf,
+      // R3 inputs. Age is read EVERY sample because the falsifier must not have to infer it later.
+      openPositions: posn.openCount,
+      oldestOpenPositionAgeBars: posn.oldestAgeBars,
+      openPositionRoute: posn.route,
+      evictionActive: EVICTION_ACTIVE,
       sealDigestNow: nowSeal.digest,
       sealHeld,
+      sourceCommitNow: nowInfo.ok ? nowInfo.sourceCommitSha : null,
+      sourceCommitStateNow: nowInfo.state,
+      sourceCommitHeld: pinnedSha ? shaDrift === null : null,
+      sourceCommitNote: shaDrift,
       sealNote: sealHeld ? null : 'BUILD CHANGED UNDER THE RUN. Every sample from here belongs to a different build and must not be pooled with earlier ones.',
     });
 
@@ -346,12 +423,42 @@ try {
       log('SEAL BROKEN — stopping');
       break;
     }
+    if (shaDrift) {
+      run.note({ __void: true, segment, why: `${shaDrift} Stopping rather than producing a series across two sources.` });
+      log('SOURCE COMMIT DRIFT — stopping');
+      break;
+    }
     // Carried forward for the next sample's local slope. Reset at a segment boundary by the boot path,
     // because a new browser resets both quantities and a slope across that boundary is two populations.
     if (footprint.footprintTotalMB != null) prevSample = { bars: residentBars, mb: footprint.footprintTotalMB };
 
     if (live < 4) {
       run.note({ __warning: true, segment, why: `Only ${live} of ${after.length} panels live by playhead (bar-count route says ${liveByBars}).` });
+    }
+
+    // R3. Evaluated in the loop so a refuted model costs two hours instead of ten, and never evaluated
+    // without the open-position age beside it - MEM-1a pins bars behind an open position BY DESIGN, so
+    // "no plateau" with an old position open is the scenario, not the model.
+    r3Series.push({ hours: +((Date.now() - t0) / 3600000).toFixed(4), residentBars, footprintTotalMB: footprint.footprintTotalMB, oldestOpenPositionAgeBars: posn.oldestAgeBars, evictionActive: EVICTION_ACTIVE });
+    const r3 = evaluateR3(r3Series);
+    if (r3.verdict !== lastR3Verdict) {
+      run.note({ __r3: true, segment, at: new Date().toISOString(), ...r3 });
+      lastR3Verdict = r3.verdict;
+    }
+    if (r3.verdict === 'MODEL_VOID' && !keepTheHourUntil) {
+      // ABORT THE NIGHT, KEEP THE HOUR.
+      keepTheHourUntil = t0 + r3.keepHoursTarget * 3600000;
+      run.note({
+        __r3Abort: true, segment, at: new Date().toISOString(),
+        why: `${r3.why} ${r3.action}`,
+        stoppingAtHours: r3.keepHoursTarget,
+      });
+      log(`R3 MODEL_VOID — aborting the night, running to ${r3.keepHoursTarget} h to keep the curve`);
+    }
+    if (keepTheHourUntil && Date.now() >= keepTheHourUntil) {
+      run.note({ __final: false, __r3Stop: true, segment, why: `R3 refuted the model; ran on to ${r3.keepHoursTarget} h to capture the true curve, then stopped as ruled.` });
+      log('R3 keep-the-hour target reached — stopping');
+      break;
     }
 
     const gauge = evaluateGauges(gaugeMisses, footprint, blocking);
@@ -363,6 +470,19 @@ try {
       break;
     }
   }
+
+  // END-OF-ARM SNAPSHOT. After the final sample, so it perturbs nothing it measured. A ~1.5 GB renderer
+  // can write multiple GB and can OOM its own tab; disk is checked first, the write is capped, and every
+  // failure is a logged non-event. A lost snapshot must never look like a lost soak.
+  if (SNAPSHOT_AT_END && session?.page) {
+    const snapFile = OUT.replace(/\.jsonl$/, `.heapsnapshot`);
+    log('taking end-of-arm heap snapshot (by-product; failure is a non-event)');
+    const snap = await takeEndOfArmSnapshot(session.page, { outFile: snapFile, capMB: SNAPSHOT_CAP_MB })
+      .catch((e) => ({ attempted: true, ok: false, failedWhy: String(e).slice(0, 200) }));
+    run.note({ __endOfArmSnapshot: true, at: new Date().toISOString(), ...snap });
+    log(`snapshot ${snap.ok ? `written ${snap.mb} MB` : `not taken: ${snap.skippedWhy || snap.failedWhy}`}`);
+  }
+
   run.finish({ completed: true, segments: segment });
 } catch (err) {
   run.note({ __error: true, error: String(err && err.stack ? err.stack : err).slice(0, 600) });

@@ -77,6 +77,47 @@ export function fitTrend(points, { label = '', flatBandPerHour = 0, minSpanHours
   const values = rows.map((p) => p.value);
   const spanHours = rows[n - 1].hours - rows[0].hours;
 
+  // Straightness, on the two statistics FIT-01 is defined over. Two callers already read `runsZScore`
+  // and this function never returned it, so both published `runsZ: null` and `straightEnough: null`
+  // beside an rSquared - a fit quoted without the check that decides whether it may be extrapolated.
+  // r2 does not detect curvature: my withdrawn +513.3 MB/h read rSquared 0.981 AND runs z -6.57.
+  const residuals = rows.map((p) => p.value - (intercept + slope * p.hours));
+  let runs = 1;
+  let pos = 0;
+  for (let i = 0; i < residuals.length; i += 1) {
+    if (residuals[i] >= 0) pos += 1;
+    if (i > 0 && (residuals[i] >= 0) !== (residuals[i - 1] >= 0)) runs += 1;
+  }
+  const neg = n - pos;
+  let runsZScore = null;
+  if (pos > 0 && neg > 0) {
+    const expected = (2 * pos * neg) / n + 1;
+    const variance = (2 * pos * neg * (2 * pos * neg - n)) / (n * n * (n - 1));
+    if (variance > 0) runsZScore = +((runs - expected) / Math.sqrt(variance)).toFixed(2);
+  }
+
+  // How much of the remaining variance a quadratic term buys. A straight series buys ~nothing.
+  let quadraticGain = null;
+  if (n >= 5 && ssRes > 0) {
+    const x2 = rows.map((p) => p.hours * p.hours);
+    const meanX2 = x2.reduce((a, b) => a + b, 0) / n;
+    let s11 = 0; let s12 = 0; let s22 = 0; let s1y = 0; let s2y = 0;
+    for (let i = 0; i < n; i += 1) {
+      const a = rows[i].hours - meanX; const b = x2[i] - meanX2; const yv = rows[i].value - meanY;
+      s11 += a * a; s12 += a * b; s22 += b * b; s1y += a * yv; s2y += b * yv;
+    }
+    const det = s11 * s22 - s12 * s12;
+    if (Math.abs(det) > 1e-12) {
+      const b1 = (s22 * s1y - s12 * s2y) / det;
+      const b2 = (s11 * s2y - s12 * s1y) / det;
+      const a0 = meanY - b1 * meanX - b2 * meanX2;
+      let ssResQ = 0;
+      for (let i = 0; i < n; i += 1) ssResQ += (rows[i].value - (a0 + b1 * rows[i].hours + b2 * x2[i])) ** 2;
+      quadraticGain = +((ssRes - ssResQ) / ssRes).toFixed(3);
+    }
+  }
+  const straightEnough = runsZScore != null ? Math.abs(runsZScore) < 2 : null;
+
   let verdict;
   if (!Number.isFinite(halfWidth)) verdict = 'INSUFFICIENT';
   else if (ciLow > band) verdict = 'CLIMBS';
@@ -98,6 +139,10 @@ export function fitTrend(points, { label = '', flatBandPerHour = 0, minSpanHours
     slopeCi95: [+ciLow.toFixed(3), +ciHigh.toFixed(3)],
     slopeSe: Number.isFinite(slopeSe) ? +slopeSe.toFixed(3) : null,
     rSquared: ssTot > 0 ? +(1 - ssRes / ssTot).toFixed(3) : null,
+    runsZScore,
+    straightEnough,
+    quadraticGain,
+    extrapolable: straightEnough === true && (quadraticGain == null || quadraticGain < 0.1),
     flatBandPerHour: +band.toFixed(3),
     projectedPerHourAt8h: +(slope * 8).toFixed(1),
     verdict,
