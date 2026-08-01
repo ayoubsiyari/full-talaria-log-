@@ -83,6 +83,29 @@ function _mirrorIntervalGuardDisabled() {
 }
 
 /**
+ * EVICT-03 — eviction of bars behind the playhead (default ON).
+ * Kill-switch: window.__TALARIA_EVICT_BEHIND_PLAYHEAD_V1 = <truthy> restores full
+ * history residency. Read per eviction decision, never sampled at init.
+ */
+function _evictBehindPlayheadDisabled() {
+    return _talariaDisableFlagTruthy('__TALARIA_EVICT_BEHIND_PLAYHEAD_V1');
+}
+
+/**
+ * History retained behind the playhead. Sized for indicator warm-up rather than for
+ * the viewport: the longest shipped lookback is far under this, and undersizing it
+ * would silently change indicator values instead of merely costing a refetch.
+ */
+const EVICT_CONTEXT_BARS = 5000;
+
+/**
+ * Minimum evictable prefix before a trim is worth doing. Trimming allocates a new
+ * array, so this amortises the cost across many ticks; without it the eviction would
+ * cost more than the residency it reclaims.
+ */
+const EVICT_SLACK_BARS = 2048;
+
+/**
  * CPU-CEILING-60X — single-chart high-speed replay paint cadence (default ON).
  * Kill-switch: window.__TALARIA_DISABLE_SC_REPLAY_PAINT_CADENCE_V1 = <truthy>
  * restores legacy per-forming-tick sync paint. Absent / falsy ⇒ mitigation on.
@@ -1499,6 +1522,87 @@ class ReplaySystem {
     }
 
     /** Advance playhead one replay step (respects INTERVAL + candle mode). */
+    /**
+     * Earliest entry timestamp among open positions, or null when none is open.
+     * Returns NaN when a position is open but carries no usable openTime, which the
+     * caller treats as "do not evict" — an unreadable entry is not evidence of safety.
+     */
+    _oldestOpenPositionTimestamp() {
+        const manager = this.chart && this.chart.orderManager;
+        const open = manager && Array.isArray(manager.openPositions) ? manager.openPositions : null;
+        if (!open || open.length === 0) return null;
+        let oldest = null;
+        let sawUnreadable = false;
+        for (const position of open) {
+            const t = Number(position && position.openTime);
+            if (!Number.isFinite(t)) {
+                sawUnreadable = true;
+                continue;
+            }
+            if (oldest === null || t < oldest) oldest = t;
+        }
+        if (sawUnreadable) return NaN;
+        return oldest;
+    }
+
+    /**
+     * EVICT-03 — drop bars behind the playhead's context window.
+     *
+     * During forward replay the display is built from a prefix of fullRawData ending at
+     * the playhead, so bars older than the warm-up window have no reader. Dropping them
+     * is reversible: panning back re-enters checkViewportLoadMore, which refetches the
+     * earlier range from the server.
+     *
+     * The floor never advances past the oldest open position's entry bar. Order fills and
+     * SL/TP evaluation resolve against the master by timestamp, so evicting a live
+     * position's entry would change execution, not just what is drawn.
+     *
+     * Both indices that address this array — currentIndex and sessionStartIndex — are
+     * rebased here, which is the same contract capReplayFullRawData already honours.
+     */
+    _evictBehindPlayhead() {
+        const master = this.fullRawData;
+        if (!Array.isArray(master) || master.length === 0) return;
+        const playhead = Number(this.currentIndex);
+        if (!Number.isFinite(playhead) || playhead <= 0) return;
+
+        let start = playhead - EVICT_CONTEXT_BARS;
+        if (start < EVICT_SLACK_BARS) return;
+        if (_evictBehindPlayheadDisabled()) return;
+
+        const floorTs = this._oldestOpenPositionTimestamp();
+        if (Number.isNaN(floorTs)) return;
+        if (floorTs !== null) {
+            let lo = 0;
+            let hi = master.length - 1;
+            let hit = -1;
+            while (lo <= hi) {
+                const mid = (lo + hi) >> 1;
+                const t = Number(master[mid] && master[mid].t);
+                if (!Number.isFinite(t)) {
+                    lo = mid + 1;
+                    continue;
+                }
+                if (t <= floorTs) {
+                    hit = mid;
+                    lo = mid + 1;
+                } else {
+                    hi = mid - 1;
+                }
+            }
+            if (hit >= 0 && hit < start) start = hit;
+        }
+        if (start < EVICT_SLACK_BARS) return;
+
+        this.fullRawData = master.slice(start);
+        this.currentIndex = playhead - start;
+        const sessionStart = Number(this.sessionStartIndex);
+        if (Number.isFinite(sessionStart)) {
+            this.sessionStartIndex = Math.max(0, sessionStart - start);
+        }
+        this._evictedBehindPlayheadBars = (this._evictedBehindPlayheadBars || 0) + start;
+    }
+
     _advanceReplayPlayheadOneStep() {
         // Finest-TF sub-step: +finestMs on the shared clock when host raw is coarser
         // than peer min TF; otherwise +1 raw bar (1m master).
@@ -1519,6 +1623,7 @@ class ReplaySystem {
                 this.replayTimestamp = this.fullRawData[this.currentIndex].t;
                 this.tickElapsedMs = 0;
             }
+            this._evictBehindPlayhead();
             return;
         }
         if (this._shouldStepByReplayInterval()) {
@@ -1539,6 +1644,7 @@ class ReplaySystem {
             this.replayTimestamp = this.fullRawData[this.currentIndex].t;
             this.tickElapsedMs = 0;
         }
+        this._evictBehindPlayhead();
     }
     
     /**
