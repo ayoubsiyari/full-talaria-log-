@@ -2,8 +2,8 @@
 
 ## N5 Money-Path Collisions
 
-- `tier=TOP`
-- `model=GPT-5.5`
+- Author: `tier=mid`, `model=gpt-5.5-medium-fast`
+- Reviewer: `tier=top`, `model=claude-opus-5-thinking-high`
 - TOP review required: full close and durable journal save both write money-path state.
 - Product landing: `078ae7ba1`
 - Oracle repair: `chart v 1.4/chart/modules/n5-money-path-collisions.test.mjs`
@@ -21,8 +21,8 @@ Verification:
 
 ## DEF-04 Multi-Timeframe Time Sync
 
-- `tier=TOP`
-- `model=GPT-5.5`
+- Author: `tier=mid`, `model=gpt-5.5-medium-fast`
+- Reviewer: `tier=top`, `model=claude-opus-5-thinking-high`
 - TOP review required: cross-panel replay/playhead and viewport propagation can change trade execution timing and money-path review context.
 - Product landing recorded on board: `50aac92b4`
 - Oracle: `chart v 1.4/chart/modules/def04-multitf-time-sync.test.mjs`
