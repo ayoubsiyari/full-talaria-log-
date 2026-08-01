@@ -105,5 +105,8 @@
   "dependencies": {
     "dukascopy-node": "^1.46.3",
     "framer-motion": "^12.38.0"
+  },
+  "devDependencies": {
+    "puppeteer": "24.43.1"
   }
 }
