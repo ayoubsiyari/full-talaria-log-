@@ -203,9 +203,21 @@ function hostHtml() {
 </html>`;
 }
 
-async function startLag1aServer({ onReport }) {
-  const orderManagerSource = fs.readFileSync(ORDER_MANAGER_PATH, 'utf8')
-    + '\n;window.__LAG1A_OrderManager = OrderManager;\n';
+function orderManagerSourceUnderTest({ mutant = false } = {}) {
+  let source = fs.readFileSync(ORDER_MANAGER_PATH, 'utf8');
+  if (mutant) {
+    const boundCall = 'let idx = this._findCandleIndexForTimeCached(data, ct, { skipNearestFallback: replayActive });';
+    const revertedCall = 'let idx = this._findCandleIndexForTime(data, ct, { skipNearestFallback: replayActive });';
+    if (!source.includes(boundCall)) {
+      throw new Error('LAG-1a mutant could not find cached marker-index binding');
+    }
+    source = source.replace(boundCall, revertedCall);
+  }
+  return source + '\n;window.__LAG1A_OrderManager = OrderManager;\n';
+}
+
+async function startLag1aServer({ onReport, mutant = false }) {
+  const orderManagerSource = orderManagerSourceUnderTest({ mutant });
   const server = http.createServer(async (request, response) => {
     try {
       const url = new URL(request.url || '/', 'http://127.0.0.1');
@@ -239,6 +251,60 @@ async function startLag1aServer({ onReport }) {
   });
 }
 
+async function runLag1aBrowserPass({
+  browserPath,
+  timeoutMs,
+  runBrowser,
+  mutant,
+  startedAt,
+}) {
+  let server;
+  let resolveReport;
+  const reportPromise = new Promise((resolve) => { resolveReport = resolve; });
+  try {
+    server = await startLag1aServer({ onReport: resolveReport, mutant });
+    const url = `${server.url}/lag1a.html`;
+    const browserRun = await runBrowser({
+      browserPath,
+      url,
+      reportPromise,
+      timeoutMs,
+      profilePrefix: mutant ? 'talaria-lag1a-marker-index-mutant-' : 'talaria-lag1a-marker-index-',
+    });
+    const report = browserRun.report || null;
+    if (!report || browserRun.timedOut) {
+      return {
+        ok: false,
+        status: 'RED',
+        signature: LAG1A_MARKER_INDEX_CACHE_SIGNATURE,
+        error: `no valid /report POST within ${timeoutMs}ms`,
+        report: null,
+        meta: { startedAt, finishedAt: new Date().toISOString(), browserPath, url, mutant, timedOut: true, stderrTail: browserRun.stderrTail || '' },
+      };
+    }
+    const ok = report.status === 'GREEN';
+    return {
+      ok,
+      status: ok ? 'GREEN' : 'RED',
+      signature: LAG1A_MARKER_INDEX_CACHE_SIGNATURE,
+      error: ok ? null : (report.error || 'LAG-1a REGIME-01 gate failed'),
+      report,
+      meta: { startedAt, finishedAt: new Date().toISOString(), browserPath, url, mutant, stderrTail: browserRun.stderrTail || '' },
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      status: 'RED',
+      signature: LAG1A_MARKER_INDEX_CACHE_SIGNATURE,
+      error: String(error?.message || error),
+      report: null,
+      meta: { startedAt, finishedAt: new Date().toISOString(), browserPath, mutant },
+    };
+  } finally {
+    if (server) await server.close().catch(() => {});
+  }
+}
+
 export async function runLag1aMarkerIndexCacheGate({
   requireBrowser = false,
   timeoutMs = 60_000,
@@ -256,51 +322,48 @@ export async function runLag1aMarkerIndexCacheGate({
       meta: { startedAt, browserPath: null, requireBrowser },
     };
   }
-  let server;
-  let resolveReport;
-  const reportPromise = new Promise((resolve) => { resolveReport = resolve; });
-  try {
-    server = await startLag1aServer({ onReport: resolveReport });
-    const url = `${server.url}/lag1a.html`;
-    const browserRun = await runBrowser({
-      browserPath,
-      url,
-      reportPromise,
-      timeoutMs,
-      profilePrefix: 'talaria-lag1a-marker-index-',
-    });
-    const report = browserRun.report || null;
-    if (!report || browserRun.timedOut) {
-      return {
-        ok: false,
-        status: 'RED',
-        signature: LAG1A_MARKER_INDEX_CACHE_SIGNATURE,
-        error: `no valid /report POST within ${timeoutMs}ms`,
-        report: null,
-        meta: { startedAt, finishedAt: new Date().toISOString(), browserPath, url, timedOut: true, stderrTail: browserRun.stderrTail || '' },
-      };
-    }
-    const ok = report.status === 'GREEN';
+
+  const acceptance = await runLag1aBrowserPass({
+    browserPath,
+    timeoutMs,
+    runBrowser,
+    mutant: false,
+    startedAt,
+  });
+  if (!acceptance.ok) {
     return {
-      ok,
-      status: ok ? 'GREEN' : 'RED',
-      signature: LAG1A_MARKER_INDEX_CACHE_SIGNATURE,
-      error: ok ? null : (report.error || 'LAG-1a REGIME-01 gate failed'),
-      report,
-      meta: { startedAt, finishedAt: new Date().toISOString(), browserPath, url, stderrTail: browserRun.stderrTail || '' },
+      ...acceptance,
+      acceptance,
+      mutant: null,
     };
-  } catch (error) {
-    return {
-      ok: false,
-      status: 'RED',
-      signature: LAG1A_MARKER_INDEX_CACHE_SIGNATURE,
-      error: String(error?.message || error),
-      report: null,
-      meta: { startedAt, finishedAt: new Date().toISOString(), browserPath },
-    };
-  } finally {
-    if (server) await server.close().catch(() => {});
   }
+
+  const mutant = await runLag1aBrowserPass({
+    browserPath,
+    timeoutMs,
+    runBrowser,
+    mutant: true,
+    startedAt,
+  });
+  const mutantRed = mutant.status === 'RED'
+    && mutant.report?.regimes?.some((regime) => regime.name === 'LAG-1A-TRADE-HEAVY' && regime.status === 'RED');
+  const ok = mutantRed;
+  return {
+    ok,
+    status: ok ? 'GREEN' : 'RED',
+    signature: LAG1A_MARKER_INDEX_CACHE_SIGNATURE,
+    error: ok ? null : 'LAG-1a mutant did not go RED with cached binding reverted',
+    report: acceptance.report,
+    acceptance,
+    mutant,
+    meta: {
+      startedAt,
+      finishedAt: new Date().toISOString(),
+      browserPath,
+      acceptanceUrl: acceptance.meta?.url || null,
+      mutantUrl: mutant.meta?.url || null,
+    },
+  };
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {

@@ -49,14 +49,44 @@ function goodReport(overrides = {}) {
   };
 }
 
+function mutantRedReport() {
+  return goodReport({
+    status: 'RED',
+    regimes: [
+      {
+        name: 'LAG-ZT-ZERO-TRADE',
+        status: 'GREEN',
+        before: { trades: 0, msPerSecond: 0 },
+        after: { trades: 0, msPerSecond: 0 },
+        noRegression: true,
+        improved: true,
+      },
+      {
+        name: 'LAG-1A-TRADE-HEAVY',
+        status: 'RED',
+        before: { trades: 43, realOrdersOnChart: true, msPerSecond: 34.7 },
+        after: { trades: 43, realOrdersOnChart: true, msPerSecond: 33.9 },
+        noRegression: true,
+        improved: false,
+      },
+    ],
+  });
+}
+
 test('LAG-1a gate accepts both regimes green plus wrong-instrument RED arm', async () => {
+  let calls = 0;
   const result = await runLag1aMarkerIndexCacheGate({
     findBrowser: () => '/fixture/msedge',
-    runBrowser: async () => ({ report: goodReport(), timedOut: false, stderrTail: '' }),
+    runBrowser: async () => {
+      calls += 1;
+      return { report: calls === 1 ? goodReport() : mutantRedReport(), timedOut: false, stderrTail: '' };
+    },
   });
   assert.equal(result.signature, LAG1A_MARKER_INDEX_CACHE_SIGNATURE);
   assert.equal(result.status, 'GREEN');
   assert.equal(result.ok, true);
+  assert.equal(calls, 2);
+  assert.equal(result.mutant.status, 'RED');
 });
 
 test('LAG-1a gate fails when only trade-heavy arm improves', async () => {
@@ -103,6 +133,15 @@ test('LAG-1a gate fails when wrong-instrument arm is not RED-armed', async () =>
     }),
   });
   assert.equal(result.status, 'RED');
+});
+
+test('LAG-1a gate fails when cached-binding-reverted mutant stays GREEN', async () => {
+  const result = await runLag1aMarkerIndexCacheGate({
+    findBrowser: () => '/fixture/msedge',
+    runBrowser: async () => ({ report: goodReport(), timedOut: false, stderrTail: '' }),
+  });
+  assert.equal(result.status, 'RED');
+  assert.match(result.error, /mutant did not go RED/);
 });
 
 test('LAG-1a gate skips without browser unless browser is required', async () => {

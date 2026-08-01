@@ -49,10 +49,11 @@ Run:
 
 Observed D preflight:
 
-- zero-trade arm: 0.0 -> 0.0 ms/s, GREEN.
-- trade-heavy arm: 138.6 -> 4.4 ms/s, GREEN.
+- zero-trade arm: 0.1 -> 0.0 ms/s, GREEN.
+- trade-heavy arm: 92.5 -> 3.9 ms/s, GREEN.
 - wrong-instrument trade arm: RED-armed.
 - trade-heavy arm carries 43 real orders on `chart.orderManager`.
+- source-reverted mutant goes RED: trade-heavy 131.8 -> 170.5 ms/s.
 
 Review ask:
 

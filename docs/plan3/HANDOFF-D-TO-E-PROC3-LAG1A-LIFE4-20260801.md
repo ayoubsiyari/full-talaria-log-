@@ -29,8 +29,9 @@ PROC-3 axes:
 
 Latest D measurement:
 
-- zero-trade: 0.0 -> 0.0 ms/s.
-- trade-heavy: 138.6 -> 4.4 ms/s with 43 real orders on `chart.orderManager`.
+- zero-trade: 0.1 -> 0.0 ms/s.
+- trade-heavy: 92.5 -> 3.9 ms/s with 43 real orders on `chart.orderManager`.
+- source-reverted mutant: RED, trade-heavy 131.8 -> 170.5 ms/s.
 
 ## LIFE-4 / M8
 

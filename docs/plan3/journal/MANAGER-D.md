@@ -399,8 +399,9 @@ exists — eviction deletes the redundant hot copy, it does not invent a new sto
   `chart.data` array via `WeakMap`, rebuilds on bar-array shape changes, and falls back to the legacy scan on
   non-monotonic bar arrays.
 - Added real Edge gate `scripts/lag1a-marker-index-cache-gate.mjs`, reusing the existing Chromium CLI runner.
-  REGIME-01 result: zero-trade 0.0 -> 0.0 ms/s; trade-heavy 138.6 -> 4.4 ms/s with 43 real orders on
-  `chart.orderManager`; wrong-instrument arm remains RED-armed.
+  REGIME-01 result: zero-trade 0.1 -> 0.0 ms/s; trade-heavy 92.5 -> 3.9 ms/s with 43 real orders on
+  `chart.orderManager`; wrong-instrument arm remains RED-armed. Source-reverted mutant went RED:
+  trade-heavy 131.8 -> 170.5 ms/s.
 - Wrote `LAG1A-MARKER-INDEX-CACHE-20260801.md` and B review handoff
   `HANDOFF-D-TO-B-LAG1A-AND-LIFE4-REVIEW-20260801.md`. LIFE-4/M8 remains under B review via the existing
   mirror-write packet.

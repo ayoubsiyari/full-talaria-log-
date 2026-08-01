@@ -41,10 +41,12 @@ Browser:
 
 Result:
 
-- `LAG-ZT-ZERO-TRADE`: 0.0 -> 0.0 ms/s, GREEN, no regression.
-- `LAG-1A-TRADE-HEAVY`: 138.6 -> 4.4 ms/s, GREEN, improvement 134.2 ms/s.
+- `LAG-ZT-ZERO-TRADE`: 0.1 -> 0.0 ms/s, GREEN, no regression.
+- `LAG-1A-TRADE-HEAVY`: 92.5 -> 3.9 ms/s, GREEN, improvement 88.6 ms/s.
 - Trade arm carried 43 real orders on `chart.orderManager`, 6,242 bars, 5,160 marker lookups/s.
 - `NC-LAG1A-WRONG-INSTRUMENT`: RED by construction and RED-armed.
+- Source-reverted mutant (`_chartIndexForCloseMarkerOnChart` bound back to `_findCandleIndexForTime`) went RED:
+  trade-heavy 131.8 -> 170.5 ms/s, no-regression false, improved false.
 
 Focused tests:
 
