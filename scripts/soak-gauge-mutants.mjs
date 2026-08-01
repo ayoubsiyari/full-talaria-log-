@@ -16,6 +16,7 @@ import { spawnSync } from 'node:child_process';
 const SOAK = 'scripts/sealed-two-arm-soak.mjs';
 const GAUGES = 'scripts/lib/soak-gauges.mjs';
 const DETACH = 'scripts/lib/detach01.mjs';
+const FIRE = 'scripts/fire-sealed-soak.mjs';
 
 const MUTANTS = [
   {
@@ -57,14 +58,35 @@ const MUTANTS = [
     apply: (s) => s.replace("const capFlag = heapCapMB ? `--max-old-space-size=${heapCapMB} ` : '';", "const capFlag = ''; // DROPPED"),
     mustFail: ['TOOL-01 reaches the DETACHED child'],
   },
+  {
+    // The 22:00 ruling made executable. b121 served two different source trees seven hours apart, so a
+    // gate that checks the digest and lets the SHA slide would carry a smoke result across a build it
+    // never saw. This mutant deletes exactly that check.
+    name: 'M7 — the smoke TRANSFERS on a moved SHA: the digest is checked and the source commit is not',
+    target: FIRE,
+    oracle: 'scripts/smoke-transfer-selftest.mjs',
+    apply: (s) => s.replace(
+      'if (String(liveInfo.sourceCommitSha).toLowerCase() !== String(smokeSha).toLowerCase()) {',
+      'if (false) { // SHA CHECK REMOVED'),
+    mustFail: ['a SHA that moved after the smoke is a NEW BUILD'],
+  },
+  {
+    name: 'M8 — --expectSha is computed and then never passed to the child (present but unbound)',
+    target: FIRE,
+    oracle: 'scripts/smoke-transfer-selftest.mjs',
+    apply: (s) => s.replace('if (pinnedSha) args.push(`--expectSha=${pinnedSha}`);', '// DROPPED'),
+    mustFail: ['--expectSha reaches the child'],
+  },
 ];
 
 const originals = new Map();
-for (const f of [SOAK, GAUGES, DETACH]) originals.set(f, fs.readFileSync(f, 'utf8'));
+// Derived from the mutants rather than listed by hand. A hand-written list crashed the runner the moment
+// a mutant named a new target, and a target absent from this map is a file that would NOT be restored.
+for (const f of new Set(MUTANTS.map((m) => m.target))) originals.set(f, fs.readFileSync(f, 'utf8'));
 const restoreAll = () => { for (const [f, s] of originals) fs.writeFileSync(f, s); };
 
-const runSelfTest = () => {
-  const r = spawnSync(process.execPath, ['scripts/sealed-soak-selftest.mjs'], { encoding: 'utf8', timeout: 300000 });
+const runSelfTest = (oracle = 'scripts/sealed-soak-selftest.mjs') => {
+  const r = spawnSync(process.execPath, [oracle], { encoding: 'utf8', timeout: 300000 });
   const out = String(r.stdout || '') + String(r.stderr || '');
   return { out, failed: out.split('\n').filter((l) => l.startsWith('FAIL')) };
 };
@@ -87,7 +109,7 @@ try {
       continue;
     }
     fs.writeFileSync(m.target, mutated);
-    const res = runSelfTest();
+    const res = runSelfTest(m.oracle);
     const caught = m.mustFail.filter((needle) => res.failed.some((l) => l.includes(needle)));
     const ok = caught.length === m.mustFail.length;
     if (!ok) allGood = false;

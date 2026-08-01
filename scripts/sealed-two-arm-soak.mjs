@@ -36,6 +36,7 @@ import { reapOrphanedRenderers } from './lib/find-soak-port.mjs';
 import { readOsFootprints } from './process-memory-census.mjs';
 import { perBarFields, evaluateGauges } from './lib/soak-gauges.mjs';
 import { readBuildInfo, shaChanged } from './lib/build-info.mjs';
+import { computeSeal } from './lib/seal.mjs';
 import { readHostHealth } from './lib/host-health.mjs';
 import { installLoafCensus, readLoafCensus } from './lib/loaf-census.mjs';
 import { evaluateR3, readOldestOpenPositionAge } from './lib/r3-falsifier.mjs';
@@ -71,14 +72,7 @@ const log = (m) => console.error(`[soak:${ARM} ${new Date().toISOString()}] ${m}
 // Identical to build-passport.mjs, in the same order. A digest is only comparable across tools if the path
 // set is: my first version hashed four paths and produced a different digest for the same build than the
 // passport's six, which would have looked like a seal break tomorrow.
-const SEAL_PATHS = [
-  '/chart/dist-v9/index.html',
-  '/chart/dist-v9/assets/talaria-v9-live.js',
-  '/chart/dist-v9/sw.js',
-  '/chart/chart.js',
-  '/chart/multichart-prod/multichart-manager.js',
-  '/chart/modules/chart-window-limit.js',
-];
+// Imported, not restated. Two copies of this list already produced two digests for one build.
 
 // Defaults to ORIGIN, so a real soak runs the identical code path and there is no test-only branch here.
 // A dress rehearsal points it at a local mirror it can mutate, which is the only way to exercise mid-run
@@ -87,19 +81,7 @@ const SEAL_PATHS = [
 const SEAL_ORIGIN = String(argOf('sealOrigin', ORIGIN)).replace(/\/$/, '');
 const IS_REHEARSAL = SEAL_ORIGIN !== ORIGIN;
 
-async function passport() {
-  const parts = [];
-  let badge = null;
-  for (const p of SEAL_PATHS) {
-    try {
-      const res = await fetch(`${SEAL_ORIGIN}${p}`);
-      const buf = Buffer.from(await res.arrayBuffer());
-      parts.push(`${p}:${crypto.createHash('sha256').update(buf).digest('hex')}`);
-      if (!badge) { const m = String(buf).match(/20\d{6}b\d+/); if (m) badge = m[0]; }
-    } catch (err) { parts.push(`${p}:ERROR`); }
-  }
-  return { badge, digest: crypto.createHash('sha256').update(parts.join('|')).digest('hex').slice(0, 32), at: new Date().toISOString() };
-}
+const passport = () => computeSeal(SEAL_ORIGIN);
 
 /** Liveness by playhead, with bar count recorded alongside so the two routes can be compared. */
 async function readPanels(page) {

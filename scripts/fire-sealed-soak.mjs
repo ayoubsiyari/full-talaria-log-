@@ -19,6 +19,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { launchDetached, inspectRun } from './lib/detach01.mjs';
+import { computeSeal } from './lib/seal.mjs';
+import { readBuildInfo } from './lib/build-info.mjs';
 
 const argOf = (n, d) => { const h = process.argv.find((a) => a.startsWith(`--${n}=`)); return h ? h.split('=').slice(1).join('=') : d; };
 const ARM = argOf('arm', '');
@@ -30,6 +32,16 @@ const HEAP_CAP = argOf('heapCapMB', '1024');
 const ALLOW_CONCURRENT = process.argv.includes('--allowConcurrent');
 // Rehearsal permits three overrides that are otherwise pinned. Without the flag every parameter below is
 // fixed, so a real firing cannot drift between arms by a stray argument.
+// A BADGE IS NOT A BUILD IDENTITY, and the rule is executable rather than advisory: there is no way to
+// pin a run by badge, and asking to is refused by name.
+if (process.argv.some((a) => a.startsWith('--expectBadge'))) {
+  console.error('REFUSED: there is no --expectBadge. A badge is not a build identity — the origin served');
+  console.error('  20260802b121 under two different source commits on 2026-08-01, seven hours apart.');
+  console.error('  Pin --expectDigest (what the bytes are) and the source commit SHA (which tree made them).');
+  process.exit(2);
+}
+
+const DRY_RUN = process.argv.includes('--dryRun');
 const REHEARSAL = process.argv.includes('--rehearsal');
 // SMOKE: the real harness, the real origin, the real seal — only the duration and the output path differ.
 // 18 late cherry-picks are a regression surface the morning's plan did not carry, and a replay path that
@@ -122,6 +134,7 @@ try {
   logFile = cfg.out.replace(/\.jsonl$/, `.${Date.now()}.log`);
 }
 const HOURS = ((REHEARSAL || SMOKE) && HOURS_OVERRIDE) ? HOURS_OVERRIDE : cfg.hours;
+const pinnedSha = await smokeTransferGate();
 const args = [
   `--arm=${ARM}`, `--hours=${HOURS}`, `--speed=${SPEED}`,
   `--closesPerHour=${cfg.closesPerHour}`, `--origin=${ORIGIN}`,
@@ -129,6 +142,10 @@ const args = [
   '--requireSha=1',                       // PASSPORT-3: refuse rather than record a null for ten hours
   `--heapCapMB=${HEAP_CAP}`,              // TOOL-01
 ];
+// --expectSha existed in the soak and NOTHING EVER PASSED IT, so the run pinned whatever SHA happened to
+// be live at boot instead of the one the smoke validated. Present but unbound — the defect class the
+// binding mutants exist to catch, found in my own launcher.
+if (pinnedSha) args.push(`--expectSha=${pinnedSha}`);
 if (REHEARSAL && SEAL_ORIGIN) args.push(`--sealOrigin=${SEAL_ORIGIN}`);
 if ((REHEARSAL || SMOKE) && SAMPLE_MS) args.push(`--sampleMs=${SAMPLE_MS}`);
 // A twenty-minute smoke should not spend its last minute writing a heap snapshot it will never read.
@@ -188,6 +205,81 @@ if (!resuming) {
   }
 } else {
   console.log('RESUMING the existing series — prior samples are preserved and the restart is recorded as a segment boundary');
+}
+
+/**
+ * SMOKE TRANSFER GATE — a real firing may only run on the build the smoke actually passed.
+ *
+ * RULE, from the 22:00 ruling: pin the DIGEST and the SHA, never the badge. The origin served
+ * `20260802b121` under two different source commits today, seven hours apart. Anything that gated on the
+ * badge would have called those the same build and carried a smoke result across a tree it never saw.
+ *
+ * So: the smoke records the digest and SHA it validated; the fire re-reads the origin and refuses unless
+ * BOTH still match. A changed SHA under an unchanged badge is a new build and the smoke does not transfer.
+ */
+async function smokeTransferGate() {
+  if (REHEARSAL || SMOKE) return '';
+  const gradeFile = path.join(EV, `BUILD-SMOKE-GRADE-${ARM}.json`);
+  if (!fs.existsSync(gradeFile)) {
+    console.error(`REFUSED: no smoke grade at ${gradeFile}.`);
+    console.error('  18 late cherry-picks land before this seal. A ten-hour unattended run does not start');
+    console.error('  on a build that has not been through the harness for twenty minutes first.');
+    process.exit(5);
+  }
+  let grade;
+  try { grade = JSON.parse(fs.readFileSync(gradeFile, 'utf8')); } catch (err) {
+    console.error(`REFUSED: the smoke grade at ${gradeFile} is unreadable (${String(err).slice(0, 120)}).`);
+    process.exit(5);
+  }
+  if (grade.verdict === 'DO NOT FIRE') {
+    console.error(`REFUSED: the smoke graded DO NOT FIRE. Failed gates: ${(grade.gates || []).filter((g) => g.state === 'FAIL').map((g) => g.name).join('; ')}`);
+    process.exit(5);
+  }
+
+  const live = await computeSeal(ORIGIN);
+  const liveInfo = await readBuildInfo(ORIGIN);
+  const smokeDigest = grade.build?.digest ?? null;
+  const smokeSha = grade.build?.sourceCommitSha ?? null;
+
+  if (!smokeDigest || !smokeSha) {
+    console.error('REFUSED: the smoke grade does not carry both a digest and a source commit SHA, so there is');
+    console.error('  nothing to transfer. A badge alone is not a build identity.');
+    process.exit(5);
+  }
+  if (live.digest !== smokeDigest) {
+    console.error(`REFUSED: the smoke passed on digest ${smokeDigest}; the origin now serves ${live.digest}.`);
+    console.error('  Different bytes. The smoke does not transfer — re-run it against the build you intend to measure.');
+    process.exit(5);
+  }
+  if (!liveInfo.ok) {
+    console.error(`REFUSED: the origin's source commit is unreadable [${liveInfo.state}], so the SHA half of the`);
+    console.error('  seal cannot be checked against the smoke.');
+    process.exit(5);
+  }
+  if (String(liveInfo.sourceCommitSha).toLowerCase() !== String(smokeSha).toLowerCase()) {
+    console.error(`REFUSED: SAME BYTES OR NOT, THE SOURCE MOVED. The smoke passed on ${smokeSha};`);
+    console.error(`  the origin is now built from ${liveInfo.sourceCommitSha} (badge ${live.badge}).`);
+    console.error('  A badge is not a build identity — b121 carried two different source trees today.');
+    console.error('  This is a NEW BUILD and the smoke does not transfer.');
+    process.exit(5);
+  }
+  if (DIGEST !== smokeDigest) {
+    console.error(`REFUSED: --expectDigest is ${DIGEST} but the smoke passed on ${smokeDigest}.`);
+    process.exit(5);
+  }
+  const sha = String(liveInfo.sourceCommitSha).toLowerCase();
+  console.log(`smoke transfers: digest ${smokeDigest} and source commit ${sha.slice(0, 12)} both unchanged since the smoke (badge ${live.badge}, not gated on).`);
+  return sha;
+}
+
+// --dryRun runs every gate and stops before launching. This is how the gates get exercised, and how the
+// fire gets verified at 01:00 without spending a launch to find out.
+if (DRY_RUN) {
+  console.log('\nDRY RUN — all gates passed, nothing launched.');
+  console.log(`  arm ${ARM}, digest ${DIGEST}, source commit ${pinnedSha || '(not pinned: rehearsal/smoke)'}`);
+  console.log(`  would run ${HOURS} h at speed ${SPEED}, ${cfg.closesPerHour} closes/h, cap ${HEAP_CAP} MB`);
+  console.log(`  out ${cfg.out}`);
+  process.exit(0);
 }
 
 // Snapshot the pre-launch heartbeat so the launch proof can require it to move, not merely to exist.
