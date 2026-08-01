@@ -838,6 +838,12 @@ const MC_BACKGROUND_RENDER_CADENCE_DISABLE_SWITCH = '__TALARIA_DISABLE_MC_BACKGR
 // Read per call — never sampled at load.
 const RAF_PAINT_COALESCE_DISABLE_SWITCH = '__TALARIA_DISABLE_RAF_PAINT_COALESCE_V1';
 
+// FRAME-01: absent/non-false => governor ON. Explicit false is the rollback.
+// Read per call and climb realms so a host-set rollback reaches iframe panels.
+const FRAME_GOV_SWITCH = '__TALARIA_FRAME_GOV_V1';
+const FRAME_GOV_FOCUSED_INTERVAL_MS = 1000 / 30;
+const FRAME_GOV_NONFOCUSED_INTERVAL_MS = 1000 / 15;
+
 // Frames a background panel keeps re-checking focus after a local pointer/focus
 // event before it gives up on the catch-up paint. The parent only learns about the
 // click via a setTimeout(0) postMessage and then a React commit, so focus lands
@@ -1467,6 +1473,7 @@ class Chart {
         this.bufferSize = 1000; // Buffer size for smooth scrolling
         this.isLoadingChunk = false;
         this.renderPending = false;
+        this._frameGovLastPaintAt = 0;
         this.renderThrottleTimer = null;
         /** Coalesce crosshair + tooltip to one paint per rAF during hover (reduces INP on chartCanvas). */
         this._crosshairTooltipRaf = null;
@@ -3173,6 +3180,62 @@ class Chart {
         } catch (_e) {
             return true;
         }
+    }
+
+    _frameGovEnabled() {
+        const disabled = (w) => {
+            try {
+                return !!(w && Object.prototype.hasOwnProperty.call(w, FRAME_GOV_SWITCH) && w[FRAME_GOV_SWITCH] === false);
+            } catch (_e) {
+                return false;
+            }
+        };
+        if (typeof window === 'undefined') return true;
+        if (disabled(window)) return false;
+        try {
+            const parent = window.parent && window.parent !== window ? window.parent : null;
+            if (disabled(parent)) return false;
+        } catch (_e) { /* ignore */ }
+        try {
+            const topWin = window.top && window.top !== window ? window.top : null;
+            if (disabled(topWin)) return false;
+        } catch (_e) { /* ignore */ }
+        return true;
+    }
+
+    _frameGovInputFastPathActive() {
+        try {
+            if (typeof this._isInteractionFastRender === 'function' && this._isInteractionFastRender()) return true;
+            if (this._pendingCrosshairMoveEvent || this._crosshairTooltipRaf != null) return true;
+            if (typeof this._isChartPanDragging === 'function' && this._isChartPanDragging()) return true;
+        } catch (_e) { /* ignore */ }
+        return false;
+    }
+
+    _frameGovPaintIntervalMs() {
+        if (!this._frameGovEnabled()) return 0;
+        if (this._frameGovInputFastPathActive()) return 0;
+        try {
+            const ownId = typeof this._getMultichartPanelId === 'function' ? this._getMultichartPanelId() : null;
+            if (!ownId) return FRAME_GOV_FOCUSED_INTERVAL_MS;
+            const focusedId = typeof this._getFocusedMultichartPanelId === 'function' ? this._getFocusedMultichartPanelId() : null;
+            return focusedId && String(focusedId) !== String(ownId)
+                ? FRAME_GOV_NONFOCUSED_INTERVAL_MS
+                : FRAME_GOV_FOCUSED_INTERVAL_MS;
+        } catch (_e) {
+            return FRAME_GOV_FOCUSED_INTERVAL_MS;
+        }
+    }
+
+    _frameGovShouldPaint(now) {
+        const interval = this._frameGovPaintIntervalMs();
+        if (!(interval > 0)) return true;
+        const last = Number(this._frameGovLastPaintAt) || 0;
+        return last <= 0 || (now - last) >= interval;
+    }
+
+    _frameGovRecordPaint(now) {
+        if (this._frameGovEnabled()) this._frameGovLastPaintAt = now;
     }
 
     /**
@@ -30239,11 +30302,13 @@ class Chart {
         
         this.animateZoom();
 
-        if (this.renderPending) {
+        const frameGovNow = performance.now();
+        if (this.renderPending && this._frameGovShouldPaint(frameGovNow)) {
             // Clear BEFORE paint so scheduleRender() raised during render() is
             // not swallowed by a post-paint clear. Also throw-safe: a throwing
             // render() leaves pending false, so the next scheduleRender re-arms.
             this.renderPending = false;
+            this._frameGovRecordPaint(frameGovNow);
             this.render();
 
             // Update follow button visibility after each render (throttled).
