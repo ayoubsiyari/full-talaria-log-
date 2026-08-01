@@ -2454,6 +2454,37 @@
         });
     }
 
+    /**
+     * Kill-switch read that climbs self→parent→top (B-0195).
+     *
+     * This file only ever runs inside a panel iframe, so an own-realm read is the
+     * one realm an operator is least likely to be typing into. A switch set on the
+     * host reads as OFF here, the flip looks inert, and the wrong conclusion —
+     * "that fix does nothing" — is drawn from a control that never arrived.
+     * Unreadable realms are no instruction and fall to the shipped default.
+     */
+    function talariaDisableFlagTruthy(flagName) {
+        var killed = function (w) {
+            try {
+                return !!(w && w[flagName]);
+            } catch (_) {
+                return false;
+            }
+        };
+        if (killed(global)) return true;
+        try {
+            var parent = (global.parent && global.parent !== global) ? global.parent : null;
+            if (killed(parent)) return true;
+            var top = (global.top && global.top !== global && global.top !== parent)
+                ? global.top
+                : null;
+            if (killed(top)) return true;
+        } catch (_) {
+            // Parent chain unreachable; the own-realm read above already stands.
+        }
+        return false;
+    }
+
     function applyCanonicalReplayMarkToPanel(ch, mark) {
         try {
             if (typeof global !== 'undefined'
@@ -2475,12 +2506,40 @@
                 return;
             }
             ch._mcCanonicalReplayMark = mark;
-            if (Array.isArray(ch.data) && ch.data.length) {
+            // M17-DI2 / TAL-01918: only mutate the forming bar (completed bars untouched).
+            if (typeof ch._applyCanonicalMarkToFormingBar === 'function') {
+                ch._applyCanonicalMarkToFormingBar(mark);
+            } else if (Array.isArray(ch.data) && ch.data.length) {
                 var last = ch.data[ch.data.length - 1];
                 if (last && typeof last === 'object') {
-                    last.c = mark;
-                    if (Number.isFinite(Number(last.h))) last.h = Math.max(Number(last.h), mark);
-                    if (Number.isFinite(Number(last.l))) last.l = Math.min(Number(last.l), mark);
+                    var guardOff = talariaDisableFlagTruthy(
+                        '__TALARIA_DISABLE_COMPLETED_BAR_CLOSE_GUARD_V1',
+                    );
+                    var skipWrite = false;
+                    if (!guardOff
+                        && typeof ch._getReplayPlayheadMs === 'function'
+                        && typeof ch._getBarPeriodEndMs === 'function') {
+                        var playhead = ch._getReplayPlayheadMs();
+                        var periodMs = typeof ch.parseTimeframe === 'function'
+                            ? ch.parseTimeframe(ch.currentTimeframe)
+                            : null;
+                        var lastIdx = ch.data.length - 1;
+                        var barT = Number(last.t);
+                        var periodEnd = Number.isFinite(barT)
+                            ? ch._getBarPeriodEndMs(barT, ch.data, lastIdx, periodMs)
+                            : null;
+                        if (Number.isFinite(playhead)
+                            && periodEnd != null
+                            && Number.isFinite(periodEnd)
+                            && playhead >= periodEnd - 1) {
+                            skipWrite = true;
+                        }
+                    }
+                    if (!skipWrite) {
+                        last.c = mark;
+                        if (Number.isFinite(Number(last.h))) last.h = Math.max(Number(last.h), mark);
+                        if (Number.isFinite(Number(last.l))) last.l = Math.min(Number(last.l), mark);
+                    }
                 }
             }
         } catch (_) { /* ignore */ }
