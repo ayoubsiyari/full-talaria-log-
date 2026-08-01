@@ -1,0 +1,123 @@
+{
+  "schema": "talaria.prebuild-b-train-close-gates.v1",
+  "tip": "76023722d",
+  "stamp": "20260730b113",
+  "base": null,
+  "wireDir": "artifacts/wire-b113",
+  "om": {
+    "ok": true,
+    "html": false,
+    "len": 2466844,
+    "source": "wire-dir"
+  },
+  "policy": "Gate asserts FIXED state. RED on b113 = discriminator (fix absent). GREEN after B train closes the row.",
+  "expectGreen": false,
+  "results": [
+    {
+      "ticket": "Rayan #8",
+      "freezeGate": true,
+      "green": false,
+      "verdict": "RED",
+      "exitImplies": 1,
+      "checks": [
+        {
+          "needle": "__TALARIA_DISABLE_M24_ORDER_ID_GAP_RECONCILE_V1",
+          "onWire": false
+        },
+        {
+          "needle": "__TALARIA_DISABLE_ORDER_EXPLICIT_PLACE_AUDIT_V1",
+          "onWire": false
+        },
+        {
+          "needle": "_assertExplicitPlaceAudit",
+          "onWire": false
+        }
+      ],
+      "behavioural": {
+        "gap": {
+          "kind": "gap-reconcile-next-mint",
+          "hasProductBytes": false,
+          "pass": false,
+          "redWhenAbsent": true,
+          "detail": "product bytes ABSENT on deployed wire — broken mint-after-gap path still live (RED expected on b113)"
+        },
+        "placeAudit": {
+          "kind": "explicit-place-foreign-symbol-blocked",
+          "hasProductBytes": false,
+          "pass": false,
+          "redWhenAbsent": true,
+          "detail": "place-audit ABSENT on wire — foreign-panel surprise place cannot be blocked on deployed bytes (RED)"
+        }
+      },
+      "tipUnitGatesWhenGreen": [
+        "node \"chart v 1.4/chart/modules/m24-order-id-gap-after-hydrate.test.mjs\"",
+        "node \"chart v 1.4/chart/modules/order-explicit-place-audit.test.mjs\""
+      ],
+      "detail": "b113 discriminator: gap/audit product bytes absent — RED (expected until B train)"
+    },
+    {
+      "ticket": "TAL-01807b",
+      "freezeGate": false,
+      "green": false,
+      "verdict": "RED",
+      "exitImplies": 1,
+      "checks": [
+        {
+          "needle": "__TALARIA_DISABLE_ORDER_PAIR_SWITCH_VISUAL_REBIND_V1",
+          "onWire": false
+        }
+      ],
+      "behavioural": {
+        "kind": "pair-switch-strips-foreign-visuals",
+        "hasProductBytes": false,
+        "pass": false,
+        "redWhenAbsent": true,
+        "detail": "visual-rebind ABSENT on wire — foreign-symbol order visuals can leak across pair switch (RED)"
+      },
+      "tipUnitGatesWhenGreen": [
+        "node \"chart v 1.4/chart/modules/order-pair-switch-visual-rebind.test.mjs\""
+      ],
+      "detail": "b113 discriminator: PAIR_SWITCH_VISUAL_REBIND absent — RED (expected until B train)"
+    },
+    {
+      "ticket": "TAL-01896",
+      "freezeGate": false,
+      "green": false,
+      "verdict": "RED",
+      "exitImplies": 1,
+      "behavioural": {
+        "kind": "duration-norm-bounds-bleed-display",
+        "hasProductBytes": false,
+        "pass": false,
+        "redWhenAbsent": true,
+        "rawBleedHours": 139271,
+        "displayUnderFix": "139271h",
+        "detail": "orderManagerTradeRows NOT served — bleed display path ungoverned on canary (RED)"
+      },
+      "fetches": [
+        {
+          "path": "artifacts/wire-b113",
+          "status": 0,
+          "html": false,
+          "hasMarker": false,
+          "servedAsModule": false
+        }
+      ],
+      "tipUnitGatesWhenGreen": [
+        "node \"chart v 1.4/talaria-design/src/orderManagerTradeRows.test.mjs\"",
+        "node \"chart v 1.4/talaria-design/src/orderManagerTradeRows.red.test.mjs\""
+      ],
+      "detail": "b113 discriminator: delivery-unserved — RED (expected until B train)"
+    }
+  ],
+  "summary": {
+    "allGreen": false,
+    "anyRed": true,
+    "byTicket": {
+      "Rayan #8": "RED",
+      "TAL-01807b": "RED",
+      "TAL-01896": "RED"
+    }
+  },
+  "closeCommandAfterTrain": "node scripts/prebuild-b-train-close-gates.mjs --base <CANARY> --stamp <NEW> --expect-green"
+}

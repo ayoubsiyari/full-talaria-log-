@@ -137,6 +137,15 @@ function _m19MarkerDeltaV1Enabled() {
     return typeof window === 'undefined' || window.__TALARIA_DISABLE_M19_MARKER_DELTA_V1 !== true;
 }
 
+/** LAG-1a: cache marker time->bar index lookups per chart.data array (default ON). */
+function _markerIndexCacheV1Enabled() {
+    if (typeof window === 'undefined') return true;
+    const v = window.__TALARIA_MARKER_INDEX_CACHE_V1;
+    if (v === undefined || v === null) return true;
+    const s = String(v).trim().toLowerCase();
+    return !['0', 'false', 'off', 'no'].includes(s);
+}
+
 
 /** M19-E: guard hot-path console.log behind debug mode — default ON. warn/error untouched. */
 function _m19HotpathLogGuardV1Enabled() {
@@ -162,13 +171,15 @@ function _tradeEvictV1Enabled() {
  * and third heap owner — only a second list pointer. The real duplicate was
  * journal `.slice()` copies alongside the closed/service row.
  *
- * Default ON. Kill-switch: window.__TALARIA_DISABLE_EXCURSION_SINGLE_OWNER_V1 = true
- * FLAG-01/02/03 same contract as TRADE-EVICT-V1.
+ * Kill-switch: window.__TALARIA_DISABLE_EXCURSION_SINGLE_OWNER_V1 = true disables.
+ * FLAG-01: key ABSENT ⇒ feature ON (testable without setting the key to false).
+ * FLAG-02: runtime flip, no reload. FLAG-03: OFF vs product (RED cell).
  *
  * Also hard-caps each live series at `_m19ExcursionTailMaxV1()` after archive+bound
  * so a census that sums four keys cannot be misread as a single-array cap miss.
  */
 function _excursionSingleOwnerV1Enabled() {
+    // ABSENT or any value other than boolean true ⇒ feature enabled.
     return typeof window === 'undefined'
         || window.__TALARIA_DISABLE_EXCURSION_SINGLE_OWNER_V1 !== true;
 }
@@ -957,7 +968,8 @@ class OrderManager {
         this._runtimeOrderPersistenceBootstrapped = false;
 
         /**
-         * B-W16 journal provenance tri-state: 'unhydrated' | 'hydrated' | 'locally-authored'.
+         * B-W16/M8 journal provenance:
+         * 'unhydrated' | 'hydrated' | 'partial-hydrate' | 'locally-authored'.
          * Fails closed — "we do not know" must never be treated as "there is nothing",
          * because a durable write replaces the server journal wholesale.
          */
@@ -41493,9 +41505,10 @@ class OrderManager {
     /** Replace the journal array (restore / truncate / reorder / filter / hydrate / project). */
     _m19CommitJournalArray(next, reason) {
         this.tradeJournal = Array.isArray(next) ? next : []; // M19-D-JOURNAL-WRITE:commit
-        // B-W16 provenance allowlist: only a successful server hydrate vouches for
-        // completeness. Every other reason (including 'local-backup-hydrate', the
-        // failed-fetch path) leaves provenance untouched — no upgrade, no downgrade.
+        // B-W16/M8 provenance allowlist: only a complete full server hydrate
+        // vouches for delete/replace authority. Partial/slim state hydrate is
+        // display-only and explicitly downgrades provenance so omitted rows or
+        // omitted screenshot fields cannot be written back as "user has none".
         if (reason === 'session-state-hydrate') {
             this._journalProvenance = 'hydrated';
             let hydratedSession = null;
@@ -41505,6 +41518,15 @@ class OrderManager {
                     : null;
             } catch (_) { hydratedSession = null; }
             this._journalProvenanceSession = hydratedSession != null ? String(hydratedSession) : null;
+        } else if (reason === 'session-state-partial-hydrate' || reason === 'session-state-slim-hydrate') {
+            this._journalProvenance = 'partial-hydrate';
+            let partialSession = null;
+            try {
+                partialSession = this.chart && typeof this.chart.getActiveTradingSessionId === 'function'
+                    ? this.chart.getActiveTradingSessionId()
+                    : null;
+            } catch (_) { partialSession = null; }
+            this._journalProvenanceSession = partialSession != null ? String(partialSession) : null;
         }
         this._m19NoteJournalStructuralMutation(reason || 'journal-replace');
         if (_orderPnlRestoreStableV1Enabled() && typeof this.recomputeAccountFromJournal === 'function') {
@@ -42084,6 +42106,63 @@ class OrderManager {
      * @param {number} timestamp
      * @param {{ skipNearestFallback?: boolean }} [opts]
      */
+    _markerIndexCacheForData(chartData) {
+        if (!Array.isArray(chartData) || chartData.length === 0) return null;
+        if (!this._markerIndexCacheByData) this._markerIndexCacheByData = new WeakMap();
+        const firstT = Number(chartData[0]?.t);
+        const lastT = Number(chartData[chartData.length - 1]?.t);
+        const prev = this._markerIndexCacheByData.get(chartData);
+        if (prev && prev.length === chartData.length && prev.firstT === firstT && prev.lastT === lastT) {
+            return prev;
+        }
+        const exact = new Map();
+        const starts = [];
+        let monotonic = true;
+        let prevT = -Infinity;
+        for (let i = 0; i < chartData.length; i++) {
+            const t = Number(chartData[i]?.t);
+            if (!Number.isFinite(t)) continue;
+            if (t < prevT) monotonic = false;
+            prevT = t;
+            if (!exact.has(t)) exact.set(t, i);
+            starts.push({ t, i });
+        }
+        const next = { length: chartData.length, firstT, lastT, exact, starts, monotonic };
+        this._markerIndexCacheByData.set(chartData, next);
+        return next;
+    }
+
+    _findCandleIndexForTimeCached(chartData, timestamp, opts = {}) {
+        if (!_markerIndexCacheV1Enabled()) return this._findCandleIndexForTime(chartData, timestamp, opts);
+        const ts = Number(timestamp);
+        if (!Array.isArray(chartData) || chartData.length === 0 || !Number.isFinite(ts)) return -1;
+        const cache = this._markerIndexCacheForData(chartData);
+        if (!cache || !cache.starts.length) return this._findCandleIndexForTime(chartData, timestamp, opts);
+        const exactIdx = cache.exact.get(ts);
+        if (exactIdx !== undefined) return exactIdx;
+        if (!cache.monotonic) return this._findCandleIndexForTime(chartData, timestamp, opts);
+
+        let lo = 0;
+        let hi = cache.starts.length - 1;
+        let best = -1;
+        while (lo <= hi) {
+            const mid = (lo + hi) >> 1;
+            if (cache.starts[mid].t <= ts) {
+                best = mid;
+                lo = mid + 1;
+            } else {
+                hi = mid - 1;
+            }
+        }
+        if (best >= 0) {
+            const row = cache.starts[best];
+            const nextT = best < cache.starts.length - 1 ? cache.starts[best + 1].t : Infinity;
+            if (ts >= row.t && ts < nextT) return row.i;
+        }
+        if (opts.skipNearestFallback) return -1;
+        return this._findCandleIndexForTime(chartData, timestamp, opts);
+    }
+
     _findCandleIndexForTime(chartData, timestamp, opts = {}) {
         if (!Array.isArray(chartData) || chartData.length === 0) return -1;
         const ts = Number(timestamp);
@@ -42176,7 +42255,7 @@ class OrderManager {
             }
         }
 
-        let idx = this._findCandleIndexForTime(data, ct, { skipNearestFallback: replayActive });
+        let idx = this._findCandleIndexForTimeCached(data, ct, { skipNearestFallback: replayActive });
 
         // Tick replay + coarse chart TF: closeTime is raw playhead `t` but chart.data is resampled —
         // period containment can fail until the bucket is appended; anchor to the playhead bucket.

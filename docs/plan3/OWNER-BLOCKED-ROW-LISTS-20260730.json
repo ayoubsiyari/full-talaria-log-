@@ -1,0 +1,40 @@
+{
+  "schema": "talaria.owner-blocked-row-lists.v1",
+  "source": "OWNER-BLOCKED-ROUTING-20260730-2135.md",
+  "total": 21,
+  "counts": { "A": 13, "E": 5, "C": 3 },
+  "A": [
+    "TAL-01865",
+    "TAL-01747",
+    "M20-A timezone sha pin",
+    "TAL-01733",
+    "TAL-01759",
+    "TAL-01799",
+    "TAL-01850",
+    "TAL-01864",
+    "TAL-01893",
+    "TAL-01931",
+    "TAL-01936",
+    "TAL-01891",
+    "TAL-01854"
+  ],
+  "E": [
+    "TAL-01913",
+    "TAL-01914",
+    "TAL-01921",
+    "TAL-01935",
+    "TAL-01938"
+  ],
+  "C": [
+    "TAL-01887",
+    "TAL-01910",
+    "TAL-01939"
+  ],
+  "handoffs": {
+    "A": "docs/plan3/HANDOFF-OWNER-BLOCKED-TO-A-20260730.md",
+    "E": "docs/plan3/HANDOFF-OWNER-BLOCKED-TO-E-20260730.md",
+    "C": "docs/plan3/HANDOFF-OWNER-BLOCKED-TO-C-20260730.md"
+  },
+  "verifiedAgainstLedger": true,
+  "note": "Each owner gets the named list, not only the count."
+}

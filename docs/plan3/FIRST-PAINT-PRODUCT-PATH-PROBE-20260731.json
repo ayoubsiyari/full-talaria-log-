@@ -1,0 +1,66 @@
+{
+  "signature": "TALARIA_FIRST_PAINT_PRODUCT_PATH_PROBE_V1",
+  "measuredAt": "2026-07-31T12:54:26.566Z",
+  "url": "http://127.0.0.1:3000/chart/dist-v9/index.html?mode=backtest&mcLayout=2v",
+  "runs": 3,
+  "verdict": {
+    "status": "UNPROVEN_NO_PRODUCT_PATH",
+    "reason": "target URL did not load product page"
+  },
+  "samples": [
+    {
+      "run": 1,
+      "wallMs": 2119,
+      "gotoError": "net::ERR_CONNECTION_REFUSED at http://127.0.0.1:3000/chart/dist-v9/index.html?mode=backtest&mcLayout=2v",
+      "finalUrl": "chrome-error://chromewebdata/",
+      "title": "127.0.0.1",
+      "buildId": null,
+      "firstPaintMs": null,
+      "firstContentfulPaintMs": null,
+      "domContentLoadedMs": 2068.8000000044703,
+      "loadEventEndMs": 2070.60000000149,
+      "transferSize": 0,
+      "encodedBodySize": 184698,
+      "loginLike": false,
+      "frameCount": 1,
+      "imageCount": 2,
+      "scriptCount": 2
+    },
+    {
+      "run": 2,
+      "wallMs": 2052,
+      "gotoError": "net::ERR_CONNECTION_REFUSED at http://127.0.0.1:3000/chart/dist-v9/index.html?mode=backtest&mcLayout=2v",
+      "finalUrl": "chrome-error://chromewebdata/",
+      "title": "127.0.0.1",
+      "buildId": null,
+      "firstPaintMs": null,
+      "firstContentfulPaintMs": null,
+      "domContentLoadedMs": 2032.7999999970198,
+      "loadEventEndMs": 2037,
+      "transferSize": 0,
+      "encodedBodySize": 184698,
+      "loginLike": false,
+      "frameCount": 1,
+      "imageCount": 2,
+      "scriptCount": 2
+    },
+    {
+      "run": 3,
+      "wallMs": 2055,
+      "gotoError": "net::ERR_CONNECTION_REFUSED at http://127.0.0.1:3000/chart/dist-v9/index.html?mode=backtest&mcLayout=2v",
+      "finalUrl": "chrome-error://chromewebdata/",
+      "title": "127.0.0.1",
+      "buildId": null,
+      "firstPaintMs": 2044,
+      "firstContentfulPaintMs": 2044,
+      "domContentLoadedMs": 2029.3999999985099,
+      "loadEventEndMs": 2032.1000000014901,
+      "transferSize": 0,
+      "encodedBodySize": 184698,
+      "loginLike": false,
+      "frameCount": 1,
+      "imageCount": 2,
+      "scriptCount": 2
+    }
+  ]
+}

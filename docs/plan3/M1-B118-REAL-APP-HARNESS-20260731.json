@@ -1,0 +1,29 @@
+{
+  "signature": "TALARIA_M1_B118_REAL_APP_HARNESS_V1",
+  "measuredAt": "2026-07-31T13:32:08.597Z",
+  "url": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&mcLayout=2v",
+  "expectedBuild": "b118",
+  "buildId": "20260731b118",
+  "finalUrl": "http://31.97.192.82:3000/chart/dist-v9/index.html?mode=backtest&mcLayout=2v",
+  "authProvided": true,
+  "verdict": {
+    "status": "UNPROVEN",
+    "reason": "no-product-images"
+  },
+  "surface": {
+    "imageCount": 0,
+    "fullResolutionImages": 0,
+    "thumbnailImages": 0,
+    "dataUrlImages": 0,
+    "journalLikeImages": 0,
+    "decodedPixelFloorBytes": 0,
+    "maxImageDecodedBytes": 0,
+    "rows": []
+  },
+  "processes": {
+    "rendererPrivate": 158740480,
+    "gpuPrivate": 115662848,
+    "processCount": 8
+  },
+  "caveat": "GREEN_CANDIDATE still requires PO journal-usability confirmation per M1."
+}

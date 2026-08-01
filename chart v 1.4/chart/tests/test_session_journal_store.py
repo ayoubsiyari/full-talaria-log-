@@ -214,3 +214,135 @@ def test_enrich_journal_trade_from_sql_row_adds_global_id():
     assert out["tradeId"] == "1"
     assert out["user_trade_id"] == 7
     assert out["display_trade_id"] == 7
+
+
+class _M8Column:
+    def __eq__(self, _other):
+        return True
+
+    def asc(self):
+        return self
+
+
+class _M8Model:
+    session_id = _M8Column()
+    updated_at = _M8Column()
+    id = _M8Column()
+
+
+class _M8Row:
+    def __init__(self, row_id, payload_json):
+        self.id = row_id
+        self.client_trade_id = str(row_id)
+        self.user_trade_id = row_id
+        self.payload_json = payload_json
+
+
+class _M8Query:
+    def __init__(self, rows):
+        self.rows = rows
+        self.limit_n = None
+
+    def filter(self, *_args, **_kwargs):
+        return self
+
+    def order_by(self, *_args, **_kwargs):
+        return self
+
+    def limit(self, n):
+        self.limit_n = n
+        return self
+
+    def count(self):
+        return len(self.rows)
+
+    def all(self):
+        return self.rows[: self.limit_n]
+
+
+class _M8Db:
+    def __init__(self, rows):
+        self.rows = rows
+
+    def query(self, _model):
+        return _M8Query(self.rows)
+
+
+def test_m8_state_hydrate_strips_heavy_fields_but_keeps_complete_trade_count():
+    rows = [
+        _M8Row(
+            1,
+            '{"tradeId":"1","pnl":10,"entryScreenshot":"data:image/png;base64,A",'
+            '"metadata":{"exitScreenshot":"data:image/png;base64,B","note":"keep"}}',
+        )
+    ]
+    page = sjs.load_state_hydrate_journal_page_from_sql(
+        _M8Db(rows),
+        123,
+        _M8Model,
+        max_rows=10,
+        strip_heavy=True,
+    )
+    assert page["complete"] is True
+    assert page["total_count"] == 1
+    assert page["returned_count"] == 1
+    assert page["heavy_fields_omitted"] is True
+    assert "entryScreenshot" not in page["rows"][0]
+    assert "exitScreenshot" not in page["rows"][0]["metadata"]
+    assert page["rows"][0]["metadata"]["note"] == "keep"
+
+
+def test_m8_state_hydrate_marks_partial_when_row_limit_omits_trades():
+    rows = [
+        _M8Row(1, '{"tradeId":"1"}'),
+        _M8Row(2, '{"tradeId":"2"}'),
+        _M8Row(3, '{"tradeId":"3"}'),
+    ]
+    page = sjs.load_state_hydrate_journal_page_from_sql(
+        _M8Db(rows),
+        123,
+        _M8Model,
+        max_rows=2,
+        strip_heavy=True,
+    )
+    assert page["complete"] is False
+    assert page["total_count"] == 3
+    assert page["returned_count"] == 2
+    assert page["cursor"] == 2
+
+
+def test_m8_state_hydrate_parse_failure_is_not_fake_empty_complete_journal():
+    rows = [_M8Row(1, '{"tradeId":')]
+    page = sjs.load_state_hydrate_journal_page_from_sql(
+        _M8Db(rows),
+        123,
+        _M8Model,
+        max_rows=10,
+        strip_heavy=True,
+    )
+    assert page["complete"] is False
+    assert page["total_count"] == 1
+    assert page["returned_count"] == 0
+    assert page["parse_errors"] == 1
+
+
+def test_m8_state_hydrate_response_metadata_marks_slim_non_full_payload():
+    state = {}
+    sjs.apply_journal_page_to_state_for_response(
+        state,
+        {
+            "rows": [{"tradeId": "1"}],
+            "total_count": 1,
+            "returned_count": 1,
+            "complete": True,
+            "cursor": None,
+            "omitted_heavy_fields": ["entryScreenshot"],
+            "heavy_fields_omitted": True,
+            "parse_errors": 0,
+            "storage": "sql",
+        },
+    )
+    assert state["journal_complete"] is True
+    assert state["journal_hydrate_mode"] == "complete-slim"
+    assert state["journal_heavy_fields_omitted"] is True
+    assert state["m19_hot_persist_trim_v1"] is True

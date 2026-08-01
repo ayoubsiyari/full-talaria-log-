@@ -24830,7 +24830,7 @@ async def get_trading_session_state(session_id: int, request: Request):
 
         st = _get_or_create_trading_session_state(db, session_id=s.id, user_id=s.user_id)
         state = _parse_json_dict(st.state_json)
-        journal = sjs.resolve_session_journal(
+        journal_page = sjs.resolve_session_journal_for_state_hydrate(
             db,
             s.id,
             s.user_id,
@@ -24838,7 +24838,7 @@ async def get_trading_session_state(session_id: int, request: Request):
             journal_trade_model=TradingSessionJournalTrade,
             sync_fn=_sync_trading_session_journal_trades,
         )
-        sjs.apply_journal_to_state_for_response(state, journal)
+        sjs.apply_journal_page_to_state_for_response(state, journal_page)
         # Drawings canonical store: chart_drawings table (per symbol/session). Legacy blob stripped from API.
         if isinstance(state.get('drawings'), list):
             state.pop('drawings', None)
@@ -24847,6 +24847,19 @@ async def get_trading_session_state(session_id: int, request: Request):
                 "drawings": [],
                 "drawings_source": "chart_drawings_api",
                 "journal": state.get("journal") if isinstance(state.get("journal"), list) else [],
+                "journal_complete": bool(state.get("journal_complete")),
+                "journal_count": state.get("journal_count") if isinstance(state.get("journal_count"), int) else 0,
+                "journal_returned_count": state.get("journal_returned_count")
+                if isinstance(state.get("journal_returned_count"), int)
+                else 0,
+                "journal_hydrate_mode": state.get("journal_hydrate_mode") if isinstance(state.get("journal_hydrate_mode"), str) else "unknown",
+                "journal_cursor": state.get("journal_cursor"),
+                "journal_omitted_heavy_fields": state.get("journal_omitted_heavy_fields")
+                if isinstance(state.get("journal_omitted_heavy_fields"), list)
+                else [],
+                "journal_heavy_fields_omitted": bool(state.get("journal_heavy_fields_omitted")),
+                "journal_parse_errors": state.get("journal_parse_errors") if isinstance(state.get("journal_parse_errors"), int) else 0,
+                "m19_hot_persist_trim_v1": bool(state.get("m19_hot_persist_trim_v1")),
                 "journal_by_ticker": state.get("journal_by_ticker")
                 if isinstance(state.get("journal_by_ticker"), dict)
                 else {},

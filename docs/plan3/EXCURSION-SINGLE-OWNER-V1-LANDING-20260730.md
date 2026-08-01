@@ -1,7 +1,10 @@
 # EXCURSION-SINGLE-OWNER-V1 — landing
 
 **2026-07-30** · Manager D · answers Director `e8ba8bdbc` (duration gate RED / excursion kill)  
-**Flag:** `window.__TALARIA_DISABLE_EXCURSION_SINGLE_OWNER_V1` (ABSENT ⇒ ON)  
+**Flag:** `window.__TALARIA_DISABLE_EXCURSION_SINGLE_OWNER_V1`  
+**FLAG-01 (explicit):** when the kill-switch key is **ABSENT**, the **feature is ON**.  
+Enabled predicate: `typeof window === 'undefined' || window.__TALARIA_DISABLE_EXCURSION_SINGLE_OWNER_V1 !== true`.  
+GREEN gate deletes the key and asserts share-from-hot returns true — not only `=== false`.  
 **Grading:** harness GREEN only — **C grades on the wire** (`DECL-01`). Not the memory win.
 
 ## What the gate counted
