@@ -105,3 +105,30 @@ Unchanged from this morning, restated so the whole predicted split is in one pla
 | MEM-1d dedupe | small, entry-time only |
 
 MEM-1a carries the prediction alone, and the whole-history guard is now the condition on it.
+
+## Attempted and aborted: `19445633da` (cpu-ceiling-60x paint cadence)
+
+Attempted at 22:07, aborted at 22:10, tree reset to the committed tip. Recorded because the
+next person to try it will hit the same wall and should not have to rediscover it.
+
+It conflicts in four product files, but the blocking one is a single 30-line hunk in
+`replay-system.js` that is a **semantic collision, not a mechanical one**:
+
+- **HEAD** is my mirror-paint coalescing fix. It clears `chart.renderPending` *before*
+  painting, deliberately. Setting it first left the coalescer armed, `animate()` saw the
+  flag on the next frame and repainted the same state — two host paints per tick.
+- **Incoming** adds the 60x paint budget and, in its non-passive branch, restores
+  `chart.renderPending = true;` immediately before `chart.render()` — precisely the
+  ordering that fix removed.
+
+Taking incoming silently reverts the coalescing fix. Taking HEAD drops the paint budget.
+The correct resolution interleaves them: apply the budget *and* keep clear-before-paint. That
+is a real design decision in the paint path and needs the mirror-paint cadence oracle and the
+60x gate both green, plus mutants, which does not fit before the cut.
+
+The root cause is ordinary: this row was authored against a tip that did not yet have the
+coalescing fix, so the two rows genuinely disagree about `renderPending` ordering. Whoever
+takes it should treat reconciling that ordering as the work, not the conflict markers.
+
+Predicted contribution unchanged at approximately 0 MB for the memory arm, so nothing in
+tonight's verdict turns on it.
