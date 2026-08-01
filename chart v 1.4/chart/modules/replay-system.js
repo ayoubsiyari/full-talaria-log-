@@ -88,7 +88,7 @@ function _mirrorIntervalGuardDisabled() {
  * history residency. Read per eviction decision, never sampled at init.
  */
 function _evictBehindPlayheadDisabled() {
-    return !_talariaDisableFlagTruthy('__TALARIA_EVICT_BEHIND_PLAYHEAD_V1');
+    return _talariaDisableFlagTruthy('__TALARIA_EVICT_BEHIND_PLAYHEAD_V1');
 }
 
 /**
@@ -1567,7 +1567,7 @@ class ReplaySystem {
         if (!Number.isFinite(playhead) || playhead <= 0) return;
 
         let start = playhead - EVICT_CONTEXT_BARS;
-        if (start < 1) return;
+        if (start < EVICT_SLACK_BARS) return;
         if (_evictBehindPlayheadDisabled()) return;
 
         const floorTs = this._oldestOpenPositionTimestamp();
@@ -1592,7 +1592,7 @@ class ReplaySystem {
             }
             if (hit >= 0 && hit < start) start = hit;
         }
-        if (start < 1) return;
+        if (start < EVICT_SLACK_BARS) return;
 
         this.fullRawData = master.slice(start);
         this.currentIndex = playhead - start;

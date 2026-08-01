@@ -81,11 +81,29 @@ const MUTANTS = [
 ];
 
 const digest = (p) => createHash('sha256').update(readFileSync(p)).digest('hex');
+
+/**
+ * Refuse to run against a dirty tree, and restore through git rather than from an
+ * in-memory copy.
+ *
+ * An earlier revision of this file kept the pristine text in a variable. When the run
+ * was interrupted the process died holding the only clean copy, leaving a mutant on
+ * disk — which was then committed. git is the one restore path that survives the
+ * runner being killed, and a clean precondition is what makes it trustworthy.
+ */
+for (const p of MIRRORS) {
+    const dirty = execFileSync('git', ['status', '--porcelain', '--', p], { encoding: 'utf8' }).trim();
+    if (dirty) {
+        console.error(`refusing to run: ${p} has uncommitted changes.`);
+        console.error('this runner restores via `git checkout`, which would discard them.');
+        process.exit(2);
+    }
+}
+
 const baseline = MIRRORS.map(digest);
-const original = MIRRORS.map((p) => readFileSync(p, 'utf8'));
 
 function restore() {
-    MIRRORS.forEach((p, i) => writeFileSync(p, original[i]));
+    execFileSync('git', ['checkout', '--', ...MIRRORS], { stdio: 'pipe' });
 }
 
 function oracleFails() {
@@ -105,8 +123,8 @@ const rows = [];
 
 for (const m of MUTANTS) {
     let count = 0;
-    MIRRORS.forEach((p, i) => {
-        const text = original[i];
+    MIRRORS.forEach((p) => {
+        const text = readFileSync(p, 'utf8');
         if (!text.includes(m.from)) return;
         const next = m.all ? text.split(m.from).join(m.to) : text.replace(m.from, m.to);
         writeFileSync(p, next);
