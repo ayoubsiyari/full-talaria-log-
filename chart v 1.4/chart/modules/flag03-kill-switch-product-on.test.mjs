@@ -40,6 +40,11 @@ const TODAY_SWITCH_HARNESSES = [
     harness: path.join(__dirname, 'm20-j1-journal-shot-thumbs.test.mjs'),
     productCell: 'J1-C12 FLAG-03 working product OFF',
   },
+  {
+    switchName: '__TALARIA_DISABLE_SCALEIN_ENTRY_CAP_V1',
+    harness: path.join(__dirname, 'ma-scalein-entry-cap.test.mjs'),
+    productCell: 'SC-C14 FLAG-03 working product on the OFF arm',
+  },
 ];
 
 function runHarness(file) {

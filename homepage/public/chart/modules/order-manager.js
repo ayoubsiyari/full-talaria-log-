@@ -6,6 +6,25 @@
 const MAX_TP_TARGETS = 5;
 const MAX_ENTRY_LEVELS = 4;
 
+/**
+ * MA-SCALECAP — the manual scale-in path honours MAX_ENTRY_LEVELS.
+ *
+ * `group.entries` on a scaled trade is the entry-levels structure, and it has
+ * two writers: the pre-placement multi-entry ladder (capped via
+ * `_canAddMoreMultiEntryLevels`) and `applyScaling()` (which was not). One
+ * writer enforcing the invariant and one ignoring it is the defect; the cap
+ * itself is not new.
+ *
+ * Default ON. Kill-switch: window.__TALARIA_DISABLE_SCALEIN_ENTRY_CAP_V1 = any
+ * TRUTHY value restores the unbounded legacy behaviour. Truthy, not `=== true`:
+ * `1`, `'yes'` and the string `'0'` all disable it, exactly as an operator
+ * typing a value into the console would expect. Read fresh on every call.
+ */
+function _scaleInEntryCapV1Enabled() {
+    if (typeof window === 'undefined') return true;
+    return !window.__TALARIA_DISABLE_SCALEIN_ENTRY_CAP_V1;
+}
+
 // localStorage key for the no-session runtime order fallback (must match chart.js).
 const ORDER_MANAGER_LOCAL_RUNTIME_KEY = 'chart_orders_runtime_local_v1';
 /** sessionStorage key prefix for A6-2 session-scoped runtime orders (D-019). */
@@ -50326,6 +50345,37 @@ class OrderManager {
         const existingPos = existingPositions[0];
         const groupId = existingPos.tradeGroupId || this.tradeGroupIdCounter++;
         
+        // ═══ ENTRY-LEVEL CAP (MA-SCALECAP) ═══
+        // Same invariant, same predicate, same constant as the pre-placement
+        // multi-entry ladder: a trade carries at most MAX_ENTRY_LEVELS entry
+        // legs. A group with no record yet contributes existingPos as entries[0]
+        // below, so its effective count is 1.
+        //
+        // Reaching the cap refuses the GROUPING, not the order: the caller has
+        // already placed this order and registers it into openPositions either
+        // way, so it simply stays a standalone position with its own journal row
+        // and its own P&L. Nothing is dropped.
+        //
+        // tradeGroupId must NOT be stamped on a refused leg. closePosition()
+        // branches on tradeGroupId and then trusts group.entries, so a leg
+        // carrying a groupId it is not a member of either never reaches the
+        // journal at all (group still open → early return) or lets the group
+        // settle without its P&L. Withholding the stamp is what makes the
+        // refusal non-lossy.
+        if (_scaleInEntryCapV1Enabled()) {
+            const existingGroupForCap = this.scaledTrades.get(groupId);
+            const legCount = existingGroupForCap && Array.isArray(existingGroupForCap.entries)
+                ? existingGroupForCap.entries.length
+                : 1;
+            if (!this._canAddMoreMultiEntryLevels(legCount)) {
+                console.warn(`   ⛔ Group #${groupId} already holds ${legCount} entry level(s) (max ${MAX_ENTRY_LEVELS}) — order #${order.id} stays a standalone position`);
+                // Standalone, but not unprotected: the user asked to add to a
+                // protected position, so the risk plumbing still comes across.
+                this._inheritScaleInProtection(order, existingPos);
+                return null;
+            }
+        }
+        
         // Set group ID on new order
         order.tradeGroupId = groupId;
         
@@ -50358,6 +50408,28 @@ class OrderManager {
         group.totalQuantity = totalQty;
         group.avgEntry = totalCost / totalQty;
         
+        this._inheritScaleInProtection(order, existingPos);
+        
+        console.log(`   ✅ SCALED with position #${existingPos.id}`);
+        console.log(`   Group #${groupId}: ${group.entries.length} entries`);
+        console.log(`   Total Qty: ${totalQty.toFixed(2)} lots`);
+        console.log(`   Avg Entry: ${group.avgEntry.toFixed(5)}`);
+        
+        return group;
+    }
+    
+    /**
+     * Copy the risk plumbing (SL / TP / TP targets / risk amounts) from the
+     * position being scaled into onto the new leg, and draw its lines.
+     *
+     * Extracted from applyScaling so that a leg REFUSED by the entry-level cap
+     * still inherits it. The user asked to add to a protected position; leaving
+     * the refused leg without a stop because the group was full would trade a
+     * bounded structure for an unprotected position.
+     */
+    _inheritScaleInProtection(order, existingPos) {
+        if (!order || !existingPos) return;
+
         // ═══ COPY TP TARGETS FROM EXISTING POSITION ═══
         // So scaled positions get their own partial close markers like split entries
         if (existingPos.tpTargets && existingPos.tpTargets.length > 0 && !order.tpTargets) {
@@ -50370,19 +50442,19 @@ class OrderManager {
             }));
             console.log(`   📊 Copied ${order.tpTargets.length} TP targets from existing position`);
         }
-        
+
         // Copy SL if new order doesn't have one
         if (existingPos.stopLoss && !order.stopLoss) {
             order.stopLoss = existingPos.stopLoss;
             console.log(`   🛑 Copied SL from existing position: ${order.stopLoss.toFixed(5)}`);
         }
-        
+
         // Copy single TP if new order doesn't have one (for non-multiple TP setups)
         if (existingPos.takeProfit && !order.takeProfit && !order.tpTargets) {
             order.takeProfit = existingPos.takeProfit;
             console.log(`   🎯 Copied TP from existing position: ${order.takeProfit.toFixed(5)}`);
         }
-        
+
         // Copy other relevant settings
         if (existingPos.riskAmount && !order.riskAmount) {
             order.riskAmount = existingPos.riskAmount;
@@ -50393,22 +50465,15 @@ class OrderManager {
         if (existingPos.sourceFileId && !order.sourceFileId) {
             order.sourceFileId = existingPos.sourceFileId;
         }
-        
+
         // Draw SL/TP lines for the new scaled position if it inherited them
         if ((order.stopLoss || order.takeProfit || order.tpTargets) && !order._slTPLinesDrawn) {
             console.log(`   📈 Drawing SL/TP lines for scaled position #${order.id}`);
             this.drawSLTPLines(order);
             order._slTPLinesDrawn = true;
         }
-        
-        console.log(`   ✅ SCALED with position #${existingPos.id}`);
-        console.log(`   Group #${groupId}: ${group.entries.length} entries`);
-        console.log(`   Total Qty: ${totalQty.toFixed(2)} lots`);
-        console.log(`   Avg Entry: ${group.avgEntry.toFixed(5)}`);
-        
-        return group;
     }
-    
+
     /**
      * Check if a closed position completes a scaled group
      * If all entries closed, marks group as CLOSED and returns true

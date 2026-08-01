@@ -122,6 +122,16 @@ function _preSessionResidencyDisabled() {
 const PRESESSION_RESIDENCY_BARS = 1000;
 
 /**
+ * Indicators computed from the whole retained history rather than a rolling window.
+ * Trimming the master changes their VALUES, not merely what is on screen, so both trims
+ * stand down while one is active — the same shape as the open-position money floor.
+ *
+ * The classification is taken from the residency-window row (9e0a8ad591), which reached it
+ * independently for the same reason.
+ */
+const WHOLE_HISTORY_INDICATOR_TYPES = ['obv', 'vwap', 'psar', 'seasonality'];
+
+/**
  * MEM-1d — redundant display-series copy removal (default ON).
  * Kill-switch: window.__TALARIA_SERIES_DEDUPE_V1 = <truthy> restores the entry-time copy.
  * Read per decision, never sampled at init.
@@ -1683,6 +1693,7 @@ class ReplaySystem {
         let start = playhead - EVICT_CONTEXT_BARS;
         if (start < EVICT_SLACK_BARS) return;
         if (_evictBehindPlayheadDisabled()) return;
+        if (this._hasWholeHistoryIndicator()) return;
 
         const floorTs = this._oldestOpenPositionTimestamp();
         if (Number.isNaN(floorTs)) return;
@@ -1737,6 +1748,27 @@ class ReplaySystem {
         this.fullData = null;
     }
 
+    /**
+     * True when an indicator whose value depends on the whole retained history is active.
+     *
+     * A rolling indicator only needs its period, so trimming behind it is invisible. OBV,
+     * VWAP, PSAR and seasonality accumulate from the start of the series, so a trimmed
+     * master silently changes the line the user is reading. That is a correctness change,
+     * not a display one, and no amount of memory saving justifies it.
+     */
+    _hasWholeHistoryIndicator() {
+        const chart = this.chart;
+        const active = chart && chart.indicators && Array.isArray(chart.indicators.active)
+            ? chart.indicators.active
+            : null;
+        if (!active || active.length === 0) return false;
+        for (const indicator of active) {
+            const type = String((indicator && indicator.type) || '').toLowerCase().trim();
+            if (type && WHOLE_HISTORY_INDICATOR_TYPES.indexOf(type) >= 0) return true;
+        }
+        return false;
+    }
+
     /** Index of the last bar at or before `ts`, or -1. Series is ascending by `t`. */
     _lastIndexAtOrBefore(series, ts) {
         let lo = 0;
@@ -1785,6 +1817,7 @@ class ReplaySystem {
         let start = sessionStart - PRESESSION_RESIDENCY_BARS;
         if (start < 1) return;
         if (_preSessionResidencyDisabled()) return;
+        if (this._hasWholeHistoryIndicator()) return;
 
         const floorTs = this._oldestOpenPositionTimestamp();
         if (Number.isNaN(floorTs)) return;
