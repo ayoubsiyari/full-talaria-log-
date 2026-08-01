@@ -163,6 +163,112 @@ function _lagSetIntervalTickV1Enabled() {
     return !_talariaDisableFlagTruthy('__TALARIA_DISABLE_LAG_SETINTERVAL_TICK_V1');
 }
 
+/* ===================================================================== *
+ * SPEED-01 / ORDER-01 — the speed governor.
+ *
+ * A speed is a RATE (bars per second), not a timer interval. The old
+ * design picked an interval from the label and never looked again: at
+ * nominal 60 it asked for a 16 ms timer and assumed 62.5 bars/s followed.
+ * When the handler ran long (PO: 55–95 ms) nothing noticed, so a session
+ * could deliver 1.74 bars/s while still reporting "60x". Open loop.
+ *
+ * This closes the loop. The ladder states the target rate, the meter
+ * measures the rate actually delivered, and the corrector moves the
+ * demand until measurement matches the label.
+ * ===================================================================== */
+
+/**
+ * The ten candle speeds, in bars per second. This is the contract: at
+ * `10` the chart is meant to deliver ten bars every wall-clock second.
+ * The UI has CSS for a `0.5` option, so the ladder starts there.
+ */
+const SPEED_GOV_LADDER_BPS = Object.freeze([0.5, 1, 2, 5, 10, 15, 20, 30, 60, 100]);
+
+/** Tick mode offers the same ten plus real time. */
+const SPEED_GOV_REALISTIC = 'REALISTIC';
+
+/**
+ * Tick mode bar duration is `(timeframe_seconds / 4) / N` seconds, so a
+ * 1m bar at 10x runs 1.5 s. REALISTIC is 1:1 with the market clock.
+ */
+const SPEED_GOV_TICK_TF_DIVISOR = 4;
+
+/** Correct only on sustained drift: >5% for >5 s. Both halves matter. */
+const SPEED_GOV_DRIFT_TOLERANCE = 0.05;
+const SPEED_GOV_DRIFT_GRACE_MS = 5000;
+
+/**
+ * Rate is measured over a sliding window. It must be shorter than the
+ * grace window or drift could never be observed as *sustained*, and long
+ * enough that one late frame does not read as a rate collapse.
+ */
+const SPEED_GOV_RATE_WINDOW_MS = 2000;
+
+/** A timer cannot be trusted below ~16 ms; past that we batch instead. */
+const SPEED_GOV_MIN_INTERVAL_MS = 16;
+
+/**
+ * Bounds on the corrector's authority. Without them a momentary stall
+ * reads as near-zero rate and the corrector demands an enormous burst,
+ * which is the very unbounded unit of work that caused the drift.
+ */
+const SPEED_GOV_MIN_GAIN = 0.25;
+const SPEED_GOV_MAX_GAIN = 8;
+
+/**
+ * Ceiling on bars advanced in one timer callback. Latest-state-wins
+ * absorbs missed wall-clock time, but a 30 s hidden-tab stall must not
+ * become a single 1800-bar frame. Sustained shortfall is the corrector's
+ * job, not one frame's.
+ */
+const SPEED_GOV_MAX_CATCHUP_BARS = 240;
+
+/**
+ * SPEED-01 master switch. Positively named and ON by default, per
+ * ORDER-01. Absent ⇒ ON. Explicitly off (`false`, `0`, `'0'`, `'off'`,
+ * `'no'`, `'false'`) ⇒ OFF, restoring the open-loop cadence.
+ *
+ * Climbs self → parent → top: a multichart panel runs in its own realm,
+ * so a switch thrown on the host has to be visible down here.
+ */
+function _speedGovV1Enabled() {
+    if (typeof window === 'undefined') return true;
+    const read = (w) => {
+        try {
+            return w ? w.__TALARIA_SPEED_GOV_V1 : undefined;
+        } catch (_e) {
+            return undefined;
+        }
+    };
+    let raw = read(window);
+    if (raw === undefined) {
+        try {
+            const parent = window.parent && window.parent !== window ? window.parent : null;
+            raw = read(parent);
+            if (raw === undefined) {
+                const top = window.top && window.top !== window && window.top !== parent
+                    ? window.top
+                    : null;
+                raw = read(top);
+            }
+        } catch (_e) {
+            // Parent chain unreachable; the own-window read stands.
+        }
+    }
+    if (raw === undefined || raw === null) return true;
+    if (typeof raw === 'string') {
+        return !['0', 'false', 'off', 'no', ''].includes(raw.trim().toLowerCase());
+    }
+    return !!raw;
+}
+
+/** Monotonic where available; the meter must not move when the wall clock does. */
+function _speedGovNow() {
+    return (typeof performance !== 'undefined' && typeof performance.now === 'function')
+        ? performance.now()
+        : Date.now();
+}
+
 /**
  * M17-DI2 / TAL-01918: completed-bar close guard (module-scope).
  * Same predicate as Chart._applyCanonicalMarkToFormingBar:
@@ -5181,6 +5287,9 @@ class ReplaySystem {
         // Only one candle interval — prefetch / edge resume must not stack timers.
         this._activeCandleLoop = (this._activeCandleLoop || 0) + 1;
         const loopId = this._activeCandleLoop;
+        // A freshly armed clock has no previous tick, so latest-state-wins
+        // must not bill this loop for the gap since the last one.
+        this._speedGovState().lastTickAt = null;
         if (this.playInterval) {
             clearInterval(this.playInterval);
             this.playInterval = null;
@@ -5316,15 +5425,299 @@ class ReplaySystem {
         return 60000;
     }
 
+    /* ----------------------------------------------------------------- *
+     * SPEED-01 / ORDER-01 — governor: ladder, meter, corrector, clock.
+     * ----------------------------------------------------------------- */
+
+    /** Lazily-created governor state. One per replay system. */
+    _speedGovState() {
+        if (!this._speedGov) {
+            this._speedGov = {
+                /** Sliding window of {at, bars} advance samples. */
+                samples: [],
+                /** Corrector output: demand = target * gain. Starts neutral. */
+                gain: 1,
+                /** When the current out-of-tolerance run began; null when in tolerance. */
+                driftSince: null,
+                /** Wall clock of the previous governed tick, for latest-state-wins. */
+                lastTickAt: null,
+                /** Handle of the single owned clock, and what kind it is. */
+                clockHandle: null,
+                clockKind: null,
+                /** Monotonic id so a stale callback can identify itself. */
+                clockEpoch: 0,
+                /** Diagnostics for the oracles and the soak. */
+                corrections: 0,
+                lastEffective: 0,
+            };
+        }
+        return this._speedGov;
+    }
+
+    /** The ten candle speeds, in bars per second. */
+    getSpeedLadderBarsPerSecond() {
+        return SPEED_GOV_LADDER_BPS.slice();
+    }
+
+    /** Tick mode: the same ten, plus real time. */
+    getTickSpeedLadder() {
+        return [...SPEED_GOV_LADDER_BPS, SPEED_GOV_REALISTIC];
+    }
+
+    /**
+     * The rate the current label promises, in bars per second. This is
+     * the number the effective rate is measured against.
+     *
+     * Candle mode reads the label directly — that is what "speeds are
+     * bars per second" means. Tick mode derives its rate from the bar
+     * duration the spec fixes at `(timeframe_seconds / 4) / N`, so the
+     * two modes share a ladder without sharing a rate.
+     */
+    getTargetBarsPerSecond() {
+        if (this.getPlaybackMode() === 'tick') {
+            const durationMs = this.getTickBarDurationMs(this.speed);
+            if (Number.isFinite(durationMs) && durationMs > 0) return 1000 / durationMs;
+            return 1;
+        }
+        const raw = Number(this.speed);
+        if (!Number.isFinite(raw) || raw <= 0) return 1;
+        return raw;
+    }
+
+    /**
+     * Tick mode bar duration, in milliseconds: `(timeframe_seconds / 4) / N`.
+     * REALISTIC runs 1:1 with the market clock instead.
+     */
+    getTickBarDurationMs(speed = this.speed, tfMsOverride = null) {
+        const resolved = Number.isFinite(tfMsOverride) && tfMsOverride > 0
+            ? tfMsOverride
+            : this._resolveReplayStepTimeframeMs();
+        const tfSeconds = (Number.isFinite(resolved) && resolved > 0 ? resolved : 60000) / 1000;
+        if (speed === SPEED_GOV_REALISTIC) return tfSeconds * 1000;
+        const n = Number(speed);
+        if (!Number.isFinite(n) || n <= 0) return tfSeconds * 1000;
+        return ((tfSeconds / SPEED_GOV_TICK_TF_DIVISOR) / n) * 1000;
+    }
+
+    /**
+     * Record bars actually delivered. Called from the playback tick with
+     * the real playhead delta, never with the number we intended to move
+     * — the whole point is to measure what happened, not what was asked.
+     */
+    _speedGovRecordBars(bars, now = _speedGovNow()) {
+        const n = Number(bars);
+        if (!Number.isFinite(n) || n <= 0) return;
+        const gov = this._speedGovState();
+        gov.samples.push({ at: now, bars: n });
+        this._speedGovTrimWindow(now);
+    }
+
+    /** Drop samples that have aged out of the measurement window. */
+    _speedGovTrimWindow(now = _speedGovNow()) {
+        const gov = this._speedGovState();
+        const cutoff = now - SPEED_GOV_RATE_WINDOW_MS;
+        let drop = 0;
+        while (drop < gov.samples.length && gov.samples[drop].at < cutoff) drop++;
+        if (drop > 0) gov.samples.splice(0, drop);
+    }
+
+    /**
+     * Bars per second actually delivered over the measurement window.
+     * Returns 0 before there is enough of a window to divide by, rather
+     * than a fabricated rate from a single sample.
+     */
+    getEffectiveBarsPerSecond(now = _speedGovNow()) {
+        const gov = this._speedGovState();
+        this._speedGovTrimWindow(now);
+        if (gov.samples.length === 0) return 0;
+        const oldest = gov.samples[0].at;
+        const spanMs = now - oldest;
+        if (!(spanMs > 0)) return 0;
+        let bars = 0;
+        for (let i = 0; i < gov.samples.length; i++) bars += gov.samples[i].bars;
+        return (bars * 1000) / spanMs;
+    }
+
+    /**
+     * Publish the effective rate for continuous read-back. The soak's
+     * headline rate-hold verdict reads `__talariaEffectiveRate` directly,
+     * so it is a plain number and it is always current.
+     */
+    _speedGovPublishEffectiveRate(now = _speedGovNow()) {
+        const gov = this._speedGovState();
+        const effective = this.getEffectiveBarsPerSecond(now);
+        gov.lastEffective = effective;
+        if (typeof window === 'undefined') return effective;
+        const detail = {
+            effective,
+            target: this.getTargetBarsPerSecond(),
+            gain: gov.gain,
+            mode: this.getPlaybackMode(),
+            corrections: gov.corrections,
+            playing: !!this.isPlaying,
+            at: now,
+        };
+        const publish = (w) => {
+            try {
+                if (!w) return;
+                w.__talariaEffectiveRate = effective;
+                w.__talariaSpeedGov = detail;
+            } catch (_e) {
+                // Cross-origin realm; the own-window write below still stands.
+            }
+        };
+        publish(window);
+        try {
+            if (window.top && window.top !== window) publish(window.top);
+        } catch (_e) {
+            // Unreachable top; local read-back is enough.
+        }
+        return effective;
+    }
+
+    /**
+     * The corrector. Drift is only actionable when it is both large
+     * (>5%) and sustained (>5 s) — a single slow frame is noise, and
+     * correcting on noise is how a governor starts oscillating.
+     */
+    _speedGovEvaluateDrift(now = _speedGovNow()) {
+        const gov = this._speedGovState();
+        const target = this.getTargetBarsPerSecond();
+        const effective = gov.lastEffective;
+        // No window yet, or stopped: nothing to judge, and no run to keep.
+        if (!this.isPlaying || effective <= 0 || target <= 0) {
+            gov.driftSince = null;
+            return false;
+        }
+        const drift = Math.abs(effective - target) / target;
+        if (drift <= SPEED_GOV_DRIFT_TOLERANCE) {
+            gov.driftSince = null;
+            return false;
+        }
+        if (gov.driftSince === null) {
+            gov.driftSince = now;
+            return false;
+        }
+        if (now - gov.driftSince < SPEED_GOV_DRIFT_GRACE_MS) return false;
+
+        // Sustained and out of tolerance: move demand toward the label.
+        const correction = target / effective;
+        const next = Math.max(
+            SPEED_GOV_MIN_GAIN,
+            Math.min(SPEED_GOV_MAX_GAIN, gov.gain * correction),
+        );
+        const changed = next !== gov.gain;
+        gov.gain = next;
+        gov.driftSince = null;
+        if (changed) gov.corrections++;
+        // The old window described the pre-correction regime; keeping it
+        // would have the next evaluation judge this correction on stale
+        // evidence and immediately correct again.
+        gov.samples.length = 0;
+        return changed;
+    }
+
+    /** Demanded rate, in bars per second, after correction. */
+    _speedGovDemandBarsPerSecond() {
+        const gov = this._speedGovState();
+        return Math.max(0.01, this.getTargetBarsPerSecond() * gov.gain);
+    }
+
+    /**
+     * Clear the meter on any discontinuity (seek, pause, speed change).
+     * Measuring across a discontinuity would attribute the gap to the
+     * playback rate and trigger a correction for something that is not
+     * a rate problem.
+     */
+    _speedGovResetMeter() {
+        const gov = this._speedGovState();
+        gov.samples.length = 0;
+        gov.driftSince = null;
+        gov.lastTickAt = null;
+    }
+
+    /**
+     * Latest-state-wins: the work owed for the wall-clock time that
+     * actually elapsed, not for the interval we hoped for. Missed time is
+     * absorbed here rather than queued, so a late timer never accumulates
+     * a backlog of scheduled callbacks.
+     *
+     * Counted in steps, not bars: with sub-bar stepping one bar is
+     * several steps, and owing bars where the caller spends steps would
+     * quietly run the playhead at a multiple of the labelled rate.
+     */
+    _speedGovOwedSteps(now, intervalMs, stepsPerTick) {
+        const gov = this._speedGovState();
+        const last = gov.lastTickAt;
+        gov.lastTickAt = now;
+        const perTick = Math.max(1, stepsPerTick | 0);
+        if (last === null || !Number.isFinite(last)) return perTick;
+        const elapsed = now - last;
+        const interval = Math.max(1, Number(intervalMs) || SPEED_GOV_MIN_INTERVAL_MS);
+        if (!(elapsed > 0)) return perTick;
+        const owedTicks = Math.max(1, Math.round(elapsed / interval));
+        return Math.min(SPEED_GOV_MAX_CATCHUP_BARS, owedTicks * perTick);
+    }
+
+    /**
+     * Install the one owned clock. Always replaces; never duplicates.
+     * Every stacked-timer bug in this file has had the same shape — a
+     * second installer running before the first handle was cleared — so
+     * installation goes through here and clearing is unconditional.
+     */
+    _speedGovInstallClock(kind, fn, ms) {
+        const gov = this._speedGovState();
+        this._speedGovClearClock();
+        gov.clockEpoch++;
+        const epoch = gov.clockEpoch;
+        gov.clockKind = kind;
+        const guarded = () => {
+            // A callback that outlived its epoch belongs to a replaced
+            // clock and must not touch the playhead.
+            if (epoch !== gov.clockEpoch) return;
+            fn();
+        };
+        gov.clockHandle = kind === 'interval'
+            ? setInterval(guarded, ms)
+            : setTimeout(guarded, ms);
+        return gov.clockHandle;
+    }
+
+    /** Release the owned clock. Safe to call when none is installed. */
+    _speedGovClearClock() {
+        const gov = this._speedGovState();
+        if (gov.clockHandle !== null) {
+            if (gov.clockKind === 'interval') clearInterval(gov.clockHandle);
+            else clearTimeout(gov.clockHandle);
+            gov.clockHandle = null;
+            gov.clockKind = null;
+        }
+        // Bump so any in-flight callback from the released clock is inert.
+        gov.clockEpoch++;
+    }
+
+    /** How many clocks the governor owns. The no-stacking oracle reads this. */
+    _speedGovClockCount() {
+        return this._speedGovState().clockHandle === null ? 0 : 1;
+    }
+
     /**
      * Candle-mode cadence: slider speed ≈ steps/sec.
      * Below ~62 steps/sec use a longer interval (1 step/tick).
      * Above that, keep ~16ms ticks and batch multiple steps so 50x ≠ 100x
      * (old Math.max(20, 1000/speed) made every speed ≥50 identical).
+     *
+     * SPEED-01: when the governor is on, the rate driving this is the
+     * corrected demand rather than the raw label, so a session that has
+     * been running long enough to slow down still delivers the labelled
+     * bars per second.
      */
     getCandlePlaybackCadence() {
-        const speed = Math.max(1, Number(this.speed) || 1);
-        const MIN_INTERVAL_MS = 16;
+        const governed = _speedGovV1Enabled();
+        const speed = governed
+            ? this._speedGovDemandBarsPerSecond()
+            : Math.max(1, Number(this.speed) || 1);
+        const MIN_INTERVAL_MS = SPEED_GOV_MIN_INTERVAL_MS;
         let intervalMs = Math.max(MIN_INTERVAL_MS, Math.floor(1000 / speed));
         let stepsPerTick = Math.max(1, Math.round((speed * intervalMs) / 1000));
         const orderMoneyPath = this.isPlaying && this._getOrderExecutionCadenceMs() != null;
@@ -5447,8 +5840,17 @@ class ReplaySystem {
 
     /** Advance one candle-mode timer tick (1..N steps, single chart paint). */
     _runCandlePlaybackTick() {
-        const { stepsPerTick, orderMoneyPath } = this.getCandlePlaybackCadence();
-        const n = Math.max(1, stepsPerTick | 0);
+        const cadence = this.getCandlePlaybackCadence();
+        const { stepsPerTick, orderMoneyPath } = cadence;
+        const governed = _speedGovV1Enabled();
+        const govNow = governed ? _speedGovNow() : 0;
+        // Latest-state-wins absorbs however much wall clock actually passed.
+        const n = governed
+            ? Math.max(1, this._speedGovOwedSteps(govNow, cadence.intervalMs, stepsPerTick))
+            : Math.max(1, stepsPerTick | 0);
+        // Measured against the playhead, so the meter reports bars delivered
+        // rather than steps attempted.
+        const govStartIndex = governed ? Number(this.currentIndex) : 0;
         const evaluateSkippedMoneyPath = orderMoneyPath === true
             && this._isOrderMoneyPathBatchEnabled();
         // Bound path: advance all steps with skipChartUpdate, paint on rAF.
@@ -5472,6 +5874,31 @@ class ReplaySystem {
         if (deferPaint && this.isPlaying && this.isActive && !this._nextCandleTimer) {
             this._scheduleCandlePlaybackPaint(lastAutoScroll);
         }
+        if (governed) {
+            const delivered = Number(this.currentIndex) - govStartIndex;
+            if (Number.isFinite(delivered) && delivered > 0) {
+                this._speedGovRecordBars(delivered, govNow);
+            }
+            // Read back continuously, then judge: publish first so a
+            // correction is always visible alongside the rate that caused it.
+            this._speedGovPublishEffectiveRate(govNow);
+            if (this._speedGovEvaluateDrift(govNow)) {
+                this._speedGovOnCorrection();
+            }
+        }
+    }
+
+    /**
+     * Re-arm playback at the corrected demand. The clock is replaced, not
+     * added to: `startCandleByCandle` invalidates the previous loop id and
+     * clears the handle before installing, so a correction cannot leave
+     * two timers driving the same playhead.
+     */
+    _speedGovOnCorrection() {
+        if (!this.isPlaying || !this.isActive) return;
+        if (this.getPlaybackMode() !== 'candle') return;
+        // Re-arm without stepping: the current tick has already advanced.
+        this.startCandleByCandle(false);
     }
     
     /**
@@ -6017,8 +6444,17 @@ class ReplaySystem {
         const effectivePlaybackSpeed = this.getEffectivePlaybackSpeed();
         const rawCandlesPerSecond = effectivePlaybackSpeed / rawCandleTimeframeSec;
         
-        // Calculate how long each raw candle should take in REAL time
-        let realTimeCandleDuration = rawCandleTimeframeMs / effectivePlaybackSpeed;
+        // Calculate how long each raw candle should take in REAL time.
+        // SPEED-01/ORDER-01 fixes tick-mode bar duration at
+        // `(timeframe_seconds / 4) / N`, and REALISTIC at 1:1 with the
+        // market clock. The legacy divisor was `tf / N`, i.e. four times
+        // slower than the contract at every rung of the ladder.
+        let realTimeCandleDuration = _speedGovV1Enabled()
+            ? this.getTickBarDurationMs(
+                this.speed === SPEED_GOV_REALISTIC ? SPEED_GOV_REALISTIC : effectivePlaybackSpeed,
+                rawCandleTimeframeMs,
+            )
+            : rawCandleTimeframeMs / effectivePlaybackSpeed;
         const cadenceSubdivisions = this._finestTfCadenceSubdivisions();
         if (cadenceSubdivisions > 1) {
             // D-016: keep selected-panel wall-clock pace; subdivide within one finest bar.
@@ -7287,6 +7723,13 @@ class ReplaySystem {
         this.isPlaying = false;
         this._activeTickLoop = (this._activeTickLoop || 0) + 1;
         this._activeCandleLoop = (this._activeCandleLoop || 0) + 1;
+
+        // Paused time is not slow time. Drop the window, release the owned
+        // clock, and publish once so a reader sees 0 rather than the last
+        // rate from before the pause.
+        this._speedGovClearClock();
+        this._speedGovResetMeter();
+        this._speedGovPublishEffectiveRate();
         
         // Stop active timers first
         if (this._nextCandleTimer) {
@@ -7563,14 +8006,30 @@ class ReplaySystem {
      * Set playback speed
      */
     normalizeSpeed(speed) {
+        const governed = _speedGovV1Enabled();
+        // REALISTIC is a tick-mode speed, not a number, and survives here
+        // so the tick path can resolve it to a 1:1 bar duration.
+        if (governed
+            && typeof speed === 'string'
+            && speed.trim().toUpperCase() === SPEED_GOV_REALISTIC) {
+            return SPEED_GOV_REALISTIC;
+        }
         const n = Number(speed);
         if (!Number.isFinite(n)) return 1;
-        return Math.max(1, Math.min(100, n));
+        // The ladder's floor is 0.5 and the UI ships a 0.5 button; the old
+        // floor of 1 silently turned that button into the 1x button.
+        const floor = governed ? SPEED_GOV_LADDER_BPS[0] : 1;
+        const ceiling = governed
+            ? SPEED_GOV_LADDER_BPS[SPEED_GOV_LADDER_BPS.length - 1]
+            : 100;
+        return Math.max(floor, Math.min(ceiling, n));
     }
 
     /** User-visible speed is the effective speed in both playback modes. */
     getEffectivePlaybackSpeed() {
         const base = this.normalizeSpeed(this.speed);
+        // REALISTIC has no multiplier; numeric callers get the 1:1 rung.
+        if (base === SPEED_GOV_REALISTIC) return 1;
         if (this.getPlaybackMode() === 'tick' && !_m19iTickSpeedCoherenceEnabled()) {
             return Math.min(200, base * 2);
         }
@@ -7579,6 +8038,9 @@ class ReplaySystem {
 
     setSpeed(speed) {
         this.speed = this.normalizeSpeed(speed);
+        // A new target describes a new regime; measurements taken against
+        // the old one would read as drift the instant the label changes.
+        this._speedGovResetMeter();
         
         // Update button UI to show active state
         this.updateSpeedButtonUI(this.speed);
