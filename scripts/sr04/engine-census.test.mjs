@@ -188,8 +188,14 @@ test('E10 the census is reachable from the host console', () => {
         'the operator has to be able to call it without a build step');
 });
 
+/**
+ * Pinned, not HEAD. A GATE-01 cell that reads HEAD passes until the fix is committed and fails
+ * forever after, so it certifies nothing at exactly the moment it matters.
+ */
+const PRE_FIX_SHA = '88840d9ea';
+
 test('E11 GATE-01: unmodified source has no registry at all', () => {
-    const head = execFileSync('git', ['show', 'HEAD:chart v 1.4/chart/chart.js'],
+    const head = execFileSync('git', ['show', `${PRE_FIX_SHA}:chart v 1.4/chart/chart.js`],
         { cwd: REPO, encoding: 'utf8', maxBuffer: 1024 * 1024 * 400 });
     assert.ok(!head.includes('TALARIA_ENGINE_REGISTRY_KEY'),
         'this gate must be RED before the change');

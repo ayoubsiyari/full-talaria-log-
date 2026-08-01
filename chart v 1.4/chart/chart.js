@@ -1036,6 +1036,30 @@ function _resolveTradeJournalAttribution(order, chartSource) {
  * rather than bookkeeping. Cross-origin top is unreachable: fall back to the local window so a
  * sandboxed realm still registers somewhere rather than throwing on the constructor path.
  */
+/**
+ * LIFE-1 kill-switch, name reserved by the round-one roster: __TALARIA_CHART_DESTROY_V1.
+ *
+ * POLARITY: truthy DISABLES destroy() and restores the never-released engine. The name does not
+ * carry DISABLE, unlike every other switch in this tree, so it is spelled out here: an operator
+ * setting it to true is turning the fix OFF. Polarity is kept uniform with the rest of the tree
+ * deliberately — a switch that reverses the house rule is how a negative control ends up
+ * controlling nothing.
+ *
+ * Climbs self -> parent -> top: panels are iframes, and an operator types into the host they see.
+ */
+function _talariaChartDestroyDisabled() {
+    if (typeof window === 'undefined') return false;
+    const killed = (w) => { try { return !!(w && w.__TALARIA_CHART_DESTROY_V1); } catch (_e) { return false; } };
+    if (killed(window)) return true;
+    try {
+        const parent = window.parent && window.parent !== window ? window.parent : null;
+        if (killed(parent)) return true;
+        const top = window.top && window.top !== window && window.top !== parent ? window.top : null;
+        if (killed(top)) return true;
+    } catch (_e) { /* unreachable parent chain: the own-window read above stands */ }
+    return false;
+}
+
 const TALARIA_ENGINE_REGISTRY_KEY = '__talariaEngineRegistry';
 
 function _talariaEngineRegistryHost() {
@@ -1700,10 +1724,10 @@ class Chart {
                     setTimeout(() => this._handleViewportRefresh(), 120);
                 };
 
-                window.addEventListener('resize', this._handleViewportRefresh);
-                window.addEventListener('focus', this._handleViewportRefresh);
-                window.addEventListener('pageshow', this._handleViewportRefresh);
-                document.addEventListener('visibilitychange', this._handleVisibilityRefresh);
+                this._trackListener(window, 'resize', this._handleViewportRefresh);
+                this._trackListener(window, 'focus', this._handleViewportRefresh);
+                this._trackListener(window, 'pageshow', this._handleViewportRefresh);
+                this._trackListener(document, 'visibilitychange', this._handleVisibilityRefresh);
             }
         } else {
             // For panels, still setup canvas right-click context menu
@@ -1767,7 +1791,7 @@ class Chart {
                     this.scheduleRender();
                 });
             };
-            window.addEventListener('resize', this._handlePanelViewportRefresh);
+            this._trackListener(window, 'resize', this._handlePanelViewportRefresh);
         }
 
         // Initialize Drawing Tools Manager
@@ -30010,6 +30034,97 @@ class Chart {
             this.lastFpsUpdate = now;
             this.frameCount = 0;
         }
+    }
+
+    /**
+     * Teardown seam. A listener registered with an inline arrow is unremovable by construction —
+     * its reference is never stored — so release has to be arranged at registration time, not at
+     * destroy() time. Callers route through here to keep the handle.
+     */
+    _trackListener(target, type, handler, options) {
+        if (!target || typeof target.addEventListener !== 'function') return handler;
+        target.addEventListener(type, handler, options);
+        (this._managedListeners || (this._managedListeners = []))
+            .push({ target, type, handler, options });
+        return handler;
+    }
+
+    _trackObserver(observer) {
+        if (observer) (this._managedObservers || (this._managedObservers = [])).push(observer);
+        return observer;
+    }
+
+    _trackTimer(id, kind) {
+        if (id != null) (this._managedTimers || (this._managedTimers = [])).push({ id, kind });
+        return id;
+    }
+
+    /**
+     * LIFE-1. Release this engine.
+     *
+     * The reason this is correctness and not hygiene: initReplaySystem builds a fresh OrderManager
+     * with no teardown of the previous one, so after exit-and-re-enter (reset path R3) two managers
+     * are live and BOTH answer the same global keydown. The stale one is not merely wasting memory,
+     * it is acting on the user's input.
+     *
+     * Ordering matters. Children go first, because OrderManager.destroy() reads state this method
+     * is about to null, and the census read afterwards should observe an engine that is already
+     * unreachable from every listener list.
+     */
+    destroy() {
+        if (this._destroyed) return false;
+        if (_talariaChartDestroyDisabled()) return false;
+        this._destroyed = true;
+
+        try {
+            if (this.orderManager && typeof this.orderManager.destroy === 'function') {
+                this.orderManager.destroy();
+            }
+        } catch (_e) { /* a child refusing to die must not strand the parent */ }
+        try {
+            if (this.replaySystem && typeof this.replaySystem.destroy === 'function') {
+                this.replaySystem.destroy();
+            }
+        } catch (_e) { /* as above */ }
+        try {
+            if (this.drawingTools && typeof this.drawingTools.destroy === 'function') {
+                this.drawingTools.destroy();
+            }
+        } catch (_e) { /* as above */ }
+
+        for (const rec of this._managedListeners || []) {
+            try { rec.target.removeEventListener(rec.type, rec.handler, rec.options); } catch (_e) { /* gone */ }
+        }
+        this._managedListeners = [];
+
+        for (const obs of this._managedObservers || []) {
+            try { if (typeof obs.disconnect === 'function') obs.disconnect(); } catch (_e) { /* ignore */ }
+        }
+        this._managedObservers = [];
+
+        for (const t of this._managedTimers || []) {
+            try {
+                if (t.kind === 'interval') clearInterval(t.id);
+                else if (t.kind === 'raf') cancelAnimationFrame(t.id);
+                else clearTimeout(t.id);
+            } catch (_e) { /* ignore */ }
+        }
+        this._managedTimers = [];
+
+        // Drop the series references. This is the MEM-1 half of destroy: without it a released
+        // engine still pins every resident bar it ever held, and the residency slope never bends.
+        this.data = null;
+        this.rawData = null;
+        this.fullData = null;
+        this.fullRawData = null;
+        this._frameDisplaySeries = null;
+        this._resampledCache = null;
+        this._panTimeTickCache = null;
+
+        this.orderManager = null;
+        this.replaySystem = null;
+
+        return true;
     }
 
     render() {

@@ -145,7 +145,8 @@ test('R1 REGIME-01: exactly one host paint per tick in BOTH regimes', () => {
 });
 
 test('R2 GATE-01: the shipped code BEFORE this change double-paints, in both regimes', () => {
-    const head = execFileSync('git', ['show', 'HEAD:chart v 1.4/chart/modules/replay-system.js'],
+    // Pinned: a HEAD-relative GATE-01 self-invalidates the moment the fix lands.
+    const head = execFileSync('git', ['show', 'b7130540f:chart v 1.4/chart/modules/replay-system.js'],
         { cwd: REPO, encoding: 'utf8', maxBuffer: 1024 * 1024 * 200 });
     for (const regime of REGIMES) {
         const r = runTicks(head, { ticks: 120, trades: regime.trades });
