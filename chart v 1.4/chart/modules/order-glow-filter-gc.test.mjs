@@ -103,7 +103,13 @@ const METHOD_NAMES = [
 const FUNCTION_NAMES = [
   '_orderSel01ExactTeardownV1Enabled',
   '_m24OrderIdAllocatorV1Enabled',
+  '_m24DisplayIdStabilityV1Enabled',
+  '_m24OrderIdGapReconcileV1Enabled',
 ];
+const OPTIONAL_TRUE_FUNCTION_NAMES = new Set([
+  '_m24DisplayIdStabilityV1Enabled',
+  '_m24OrderIdGapReconcileV1Enabled',
+]);
 
 /**
  * `preFix` is set ONLY for the pre-fix base revision, where the seven
@@ -111,7 +117,16 @@ const FUNCTION_NAMES = [
  * a hard error, so a mutant cannot pass by quietly deleting one.
  */
 function harnessSource(text, preFix = false) {
-  const fns = FUNCTION_NAMES.map((n) => functionSource(text, n)).join('\n');
+  const fns = FUNCTION_NAMES.map((n) => {
+    try {
+      return functionSource(text, n);
+    } catch (err) {
+      if (preFix && OPTIONAL_TRUE_FUNCTION_NAMES.has(n)) {
+        return `function ${n}() { return true; }`;
+      }
+      throw err;
+    }
+  }).join('\n');
   const wanted = preFix ? METHOD_NAMES.filter((n) => !GC_METHOD_NAMES.includes(n)) : METHOD_NAMES;
   if (preFix) {
     for (const n of GC_METHOD_NAMES) {

@@ -427,3 +427,17 @@ exists — eviction deletes the redundant hot copy, it does not invent a new sto
   No money-path fix proposed from this evidence.
 - Caveat: source harness executes real code but not browser DOM/iframe lookup cost. If the sealed browser
   zero-trade arm shows unexpected occupancy, the named line items are already isolated for live tracing.
+
+## 2026-08-01 15:45 — late money-path cherry-picks
+
+- Joined PO-ordered late picks after SL/TP preamble measurement. E's claim packet covers only loader/cache rows
+  (`LEAK-G/F/I/A`), so D took the money-path/replay rows with no overlap.
+- Landed `COVER-LOOP-SAFETY`, `COVER-INFLIGHT-WEDGE`, `M17-DI2 / TAL-01918`, and `ORDER-GLOW-GC-V1`.
+  `M23 rollback trade-state` was already present on D tip; cherry-pick resolved empty and was skipped.
+- Integrated cover-loop + inflight wedge in `ensureReplayDataCoversTimestamp`: promise slot ownership, bounded
+  re-dispatch, resume-guard catch, and kill-switch fidelity all remain active.
+- Verification green:
+  cover-loop + inflight + order-glow `85/85`; M17 + M23 `28/28`; chart/order-manager/replay mirrors
+  byte-identical by `git diff --no-index`; no IDE diagnostics on touched files.
+- Published B review/prediction packet:
+  `docs/plan3/HANDOFF-D-TO-B-LATE-MONEY-PICKS-20260801.md`.

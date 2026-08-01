@@ -7910,6 +7910,7 @@ class Chart {
 
                 if (wasPlaying && replay && typeof replay.pause === 'function') {
                     replay.pause();
+                    pausedByCover = true;
                 }
 
                 let result = null;
@@ -8059,7 +8060,7 @@ class Chart {
                         try { replay.updateChartData(false); } catch (_uc) { /* ignore */ }
                     }
                     if (wasPlaying && typeof replay.play === 'function') {
-                        try { replay.play(); } catch (_rp) { /* ignore */ }
+                        try { replay.play(); pausedByCover = false; } catch (_rp) { /* ignore */ }
                     }
                 }
                 if (forceLazyFineMaster
@@ -8070,6 +8071,10 @@ class Chart {
                 }
 
                 return hasWallClockPrefix(this.rawData);
+            } catch (coverErr) {
+                if (!this._coverResumeGuardEnabled()) throw coverErr;
+                console.warn('ensureReplayDataCoversTimestamp: cover failed', coverErr);
+                return false;
             } finally {
                 // COVER-RESUME-GUARD: whatever exit path we left by, hand back the
                 // pause this call took (no payload / generation abort / empty rawData
@@ -8103,10 +8108,14 @@ class Chart {
                 const lastMasterT = Array.isArray(master) && master.length
                     ? Number(master[master.length - 1]?.t)
                     : NaN;
-                if (Number.isFinite(ahead) && Number.isFinite(lastMasterT) && ahead > lastMasterT) {
+                if (Number.isFinite(ahead) && Number.isFinite(lastMasterT) && ahead > lastMasterT
+                    && (!this._coverRedispatchBoundEnabled()
+                        || this._coverRedispatchShouldRearm(captureGeneration, ahead, lastMasterT))) {
                     Promise.resolve().then(() => {
                         try { this.ensureReplayDataCoversTimestamp(ahead); } catch (_e) { /* ignore */ }
                     });
+                } else if (this._coverRedispatchBoundEnabled()) {
+                    this._resetCoverRedispatchBudget();
                 }
             }
         })();
