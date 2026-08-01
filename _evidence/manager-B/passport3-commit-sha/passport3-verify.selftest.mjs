@@ -30,6 +30,16 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const VERIFIER = path.join(__dirname, 'passport3-verify.mjs');
 const GOOD_SHA = 'd7a27f70d494462fb9fcc66ab81851e6fd49c492';
 
+// Watchdog. An earlier revision of this file deadlocked (spawnSync blocked the event loop
+// that had to answer the child's fetch) and survived the shell that launched it, leaving an
+// orphaned node process holding a listening port. On a host about to carry a ten-hour soak
+// that is crash weight, so the run now bounds itself rather than relying on being killed.
+const watchdog = setTimeout(() => {
+  console.log('\n  FATAL self-test exceeded 120s — aborting rather than leaving a bound port');
+  process.exit(1);
+}, 120_000);
+watchdog.unref();
+
 let pass = 0, fail = 0;
 const check = (name, ok, detail) => {
   if (ok) { console.log(`  PASS  ${name}`); pass++; }
@@ -114,5 +124,25 @@ for (const [name, c] of Object.entries(CASES)) {
 
 server.closeAllConnections?.();
 server.close();
+
+// A server that accepts and never answers is the shape that stalls a cut. Distinct from a
+// refused connection, and it must be reported as a timeout rather than hung on.
+{
+  const blackhole = http.createServer(() => { /* accept, never respond */ });
+  await new Promise((r) => blackhole.listen(0, '127.0.0.1', r));
+  const t = Date.now();
+  const r = await run([
+    VERIFIER, '--mode=live', `--origin=http://127.0.0.1:${blackhole.address().port}`,
+    '--timeout=2500',
+  ]);
+  const ms = Date.now() - t;
+  check('unresponsive origin: reports a timeout instead of hanging',
+    /did not respond within/.test(r.out) && r.status === 1, `exit=${r.status} in ${ms}ms`);
+  check('unresponsive origin: returns promptly so the cut is not stalled', ms < 15_000, `${ms}ms`);
+  blackhole.closeAllConnections?.();
+  blackhole.close();
+}
+
+clearTimeout(watchdog);
 console.log(`\n================ SELF-TEST: ${pass} passed, ${fail} failed ================`);
 process.exit(fail ? 1 : 0);

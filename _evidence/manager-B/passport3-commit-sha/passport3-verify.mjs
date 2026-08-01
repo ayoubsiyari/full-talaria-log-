@@ -72,12 +72,28 @@ const check = (name, ok, detail) => {
 const url = `${ORIGIN}${PATH}`;
 console.log(`=== PASSPORT-3 live verification: ${url} ===\n`);
 
+// Hard timeout. This runs at the cut, where a hung origin must report a failure rather than
+// stall the transition and leave a process behind on a host that is about to carry a soak.
+const TIMEOUT_MS = Number(args.timeout || 15_000);
 let res, bodyText;
 try {
-  res = await fetch(url, { redirect: 'manual', headers: { accept: 'application/json' } });
-  bodyText = await res.text();
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(), TIMEOUT_MS);
+  try {
+    res = await fetch(url, {
+      redirect: 'manual',
+      headers: { accept: 'application/json' },
+      signal: ac.signal,
+    });
+    bodyText = await res.text();
+  } finally {
+    clearTimeout(timer);
+  }
 } catch (err) {
-  console.log(`  FATAL could not reach ${url}: ${err.message}`);
+  const timedOut = err.name === 'AbortError';
+  console.log(timedOut
+    ? `  FATAL ${url} did not respond within ${TIMEOUT_MS}ms`
+    : `  FATAL could not reach ${url}: ${err.message}`);
   process.exit(1);
 }
 
