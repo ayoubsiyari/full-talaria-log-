@@ -47,37 +47,6 @@
     var params  = new URLSearchParams(global.location.search);
     var panelId = params.get('panelId') || params.get('id') || ('panel-' + Math.random().toString(36).slice(2, 6));
 
-    /**
-     * Kill-switch read that climbs self→parent→top (B-0195).
-     *
-     * This file only ever runs inside a panel iframe, so an own-realm read is the
-     * one realm an operator is least likely to be typing into. A switch set on the
-     * host reads as OFF here, the flip looks inert, and the wrong conclusion —
-     * "that fix does nothing" — is drawn from a control that never arrived.
-     * Unreadable realms are no instruction and fall to the shipped default.
-     */
-    function talariaDisableFlagTruthy(flagName) {
-        var killed = function (w) {
-            try {
-                return !!(w && w[flagName]);
-            } catch (_) {
-                return false;
-            }
-        };
-        if (killed(global)) return true;
-        try {
-            var parent = (global.parent && global.parent !== global) ? global.parent : null;
-            if (killed(parent)) return true;
-            var top = (global.top && global.top !== global && global.top !== parent)
-                ? global.top
-                : null;
-            if (killed(top)) return true;
-        } catch (_) {
-            // Parent chain unreachable; the own-realm read above already stands.
-        }
-        return false;
-    }
-
     function cb01MountSigBridgeSetTrigger(trigger, details) {
         try {
             var setTrigger = global.__talariaCb01MountSigSetTriggerV1;
@@ -588,6 +557,11 @@
     var coalescedMirrorCatchUpTs = null;
     var coalescedMirrorCatchUpArgs = null;
     var coalescedMirrorCatchUpScheduled = false;
+    // CLUSTER-C-NQ-PAINT-STARVE: coalesce peer paint-arm to one rAF per frame.
+    var clusterCNqPaintArmRaf = null;
+    var clusterCNqPaintArmTs = null;
+    var clusterCNqPaintArmCh = null;
+    var clusterCNqPaintArmEpoch = null;
 
     function isMultichartIframePanel() {
         try {
@@ -2501,43 +2475,160 @@
                 return;
             }
             ch._mcCanonicalReplayMark = mark;
-            // M17-DI2 / TAL-01918: only mutate the forming bar (completed bars untouched).
-            if (typeof ch._applyCanonicalMarkToFormingBar === 'function') {
-                ch._applyCanonicalMarkToFormingBar(mark);
-            } else if (Array.isArray(ch.data) && ch.data.length) {
+            if (Array.isArray(ch.data) && ch.data.length) {
                 var last = ch.data[ch.data.length - 1];
                 if (last && typeof last === 'object') {
-                    var guardOff = talariaDisableFlagTruthy(
-                        '__TALARIA_DISABLE_COMPLETED_BAR_CLOSE_GUARD_V1',
-                    );
-                    var skipWrite = false;
-                    if (!guardOff
-                        && typeof ch._getReplayPlayheadMs === 'function'
-                        && typeof ch._getBarPeriodEndMs === 'function') {
-                        var playhead = ch._getReplayPlayheadMs();
-                        var periodMs = typeof ch.parseTimeframe === 'function'
-                            ? ch.parseTimeframe(ch.currentTimeframe)
-                            : null;
-                        var lastIdx = ch.data.length - 1;
-                        var barT = Number(last.t);
-                        var periodEnd = Number.isFinite(barT)
-                            ? ch._getBarPeriodEndMs(barT, ch.data, lastIdx, periodMs)
-                            : null;
-                        if (Number.isFinite(playhead)
-                            && periodEnd != null
-                            && Number.isFinite(periodEnd)
-                            && playhead >= periodEnd - 1) {
-                            skipWrite = true;
-                        }
-                    }
-                    if (!skipWrite) {
-                        last.c = mark;
-                        if (Number.isFinite(Number(last.h))) last.h = Math.max(Number(last.h), mark);
-                        if (Number.isFinite(Number(last.l))) last.l = Math.min(Number(last.l), mark);
-                    }
+                    last.c = mark;
+                    if (Number.isFinite(Number(last.h))) last.h = Math.max(Number(last.h), mark);
+                    if (Number.isFinite(Number(last.l))) last.l = Math.min(Number(last.l), mark);
                 }
             }
         } catch (_) { /* ignore */ }
+    }
+
+
+    /**
+     * CLUSTER-C-NQ-PAINT-STARVE (TAL-01939 / Rayan #2).
+     * Kill-switch: window.__TALARIA_DISABLE_CLUSTER_C_NQ_PAINT_ARM_V1
+     * Absent/falsy = arm ON; truthy = tip control (furthest-loaded sync paint).
+     * Read per call (truthiness). Must be set in the PANEL realm — a
+     * host-realm-only set does not reach the panel (same as
+     * isPlayEdgeParkAdvanceEnabled / isPlayEagerCoverEnabled; differs from
+     * multichartPanelKeyboardV1EnabledInEmbed which reads parent first).
+     */
+    function isClusterCNqPaintArmEnabled() {
+        try {
+            return !global.__TALARIA_DISABLE_CLUSTER_C_NQ_PAINT_ARM_V1;
+        } catch (_) {
+            return true;
+        }
+    }
+
+    /** FIX1 visibility only — never focusedPanelId. Hidden tiles stay skipped. */
+    function isClusterCNqPaintArmVisible(ch) {
+        try {
+            if (ch && typeof ch._isMultichartPanelVisibleForPaint === 'function') {
+                return !!ch._isMultichartPanelVisibleForPaint();
+            }
+        } catch (_) {}
+        return true;
+    }
+
+    function resolveClusterCNqPaintMaster(ch, rs) {
+        if (ch && Array.isArray(ch._panelFullRawData) && ch._panelFullRawData.length) {
+            return ch._panelFullRawData;
+        }
+        if (rs && Array.isArray(rs.fullRawData) && rs.fullRawData.length) {
+            return rs.fullRawData;
+        }
+        return null;
+    }
+
+    /**
+     * Paint furthest-covered / last-good local slice for a visible independent
+     * peer while ensureReplayDataCoversTimestamp is still in flight. Survives
+     * hung cover: doSeek paint is deferred, but the tile must not freeze for
+     * the whole play window when _panelFullRawData already has a renderable
+     * prefix (including lastT >= hostTs — the tip furthest helper no-oped).
+     */
+    function armClusterCNqPeerPaintSlice(ch, seekTs) {
+        if (!isClusterCNqPaintArmEnabled()) return false;
+        if (!ch || isSameSymbolAsHost(ch)) return false;
+        if (!isClusterCNqPaintArmVisible(ch)) return false;
+        var playing = !!(pendingPlayDesired
+            || (typeof isParentReplayPlaying === 'function' && isParentReplayPlaying())
+            || ch._multichartPassivePlayActive === true);
+        if (!playing) return false;
+        var rs = ch.replaySystem;
+        if (!rs || !rs.isActive) return false;
+        var master = resolveClusterCNqPaintMaster(ch, rs);
+        if (!master || !master.length) return false;
+        var lastT = Number(master[master.length - 1] && master[master.length - 1].t);
+        if (!Number.isFinite(lastT)) return false;
+        var hostTs = Number(seekTs);
+        var paintTs = Number.isFinite(hostTs) ? Math.min(hostTs, lastT) : lastT;
+        if (!Number.isFinite(paintTs)) return false;
+        // Tip furthest helper no-ops when lastT >= hostTs; this arm intentionally
+        // still paints that case WHILE cover is unsettled (the PO). Healthy-path
+        // no-op is epoch invalidation / rAF cancel when doSeek commits — not a
+        // lastT >= ts early return here (that would re-starve the PO).
+
+        var didSlice = false;
+        try {
+            if (typeof rs.applyMultichartMirrorFrame === 'function') {
+                didSlice = !!rs.applyMultichartMirrorFrame({
+                    timestamp: paintTs,
+                    isPlaying: true,
+                    tickProgress: 0,
+                    tickElapsedMs: 0,
+                    hostFileId: readParentHostFileId(),
+                });
+            }
+        } catch (_) { didSlice = false; }
+
+        if (!didSlice) {
+            try {
+                if ((!Array.isArray(rs.fullRawData) || !rs.fullRawData.length) && master) {
+                    rs.fullRawData = master;
+                }
+                if (typeof rs.goToReplayTimestamp === 'function') {
+                    rs.goToReplayTimestamp(paintTs, { preserveVisibleWindow: true });
+                    didSlice = true;
+                }
+            } catch (_) {}
+        }
+
+        if (!didSlice) return false;
+        try {
+            ch.renderPending = true;
+            if (typeof ch.scheduleRender === 'function') {
+                ch.scheduleRender();
+            } else if (typeof ch.render === 'function') {
+                ch.render();
+            }
+        } catch (_) {}
+        return true;
+    }
+
+    function cancelClusterCNqPeerPaintArm(ch) {
+        try {
+            if (ch) {
+                ch._clusterCNqPaintArmEpoch = (Number(ch._clusterCNqPaintArmEpoch) || 0) + 1;
+            }
+        } catch (_) {}
+        if (clusterCNqPaintArmRaf != null) {
+            var caf = global.cancelAnimationFrame || global.clearTimeout;
+            try { caf(clusterCNqPaintArmRaf); } catch (_) {}
+            clusterCNqPaintArmRaf = null;
+        }
+        clusterCNqPaintArmCh = null;
+        clusterCNqPaintArmTs = null;
+        clusterCNqPaintArmEpoch = null;
+    }
+
+    function scheduleClusterCNqPeerPaintArm(ch, seekTs, epoch) {
+        if (!isClusterCNqPaintArmEnabled()) return;
+        if (!ch || isSameSymbolAsHost(ch)) return;
+        clusterCNqPaintArmCh = ch;
+        clusterCNqPaintArmTs = seekTs;
+        clusterCNqPaintArmEpoch = epoch;
+        if (clusterCNqPaintArmRaf != null) return;
+        var raf = global.requestAnimationFrame || function (fn) {
+            return setTimeout(fn, 16);
+        };
+        clusterCNqPaintArmRaf = raf(function () {
+            clusterCNqPaintArmRaf = null;
+            var armCh = clusterCNqPaintArmCh;
+            var armTs = clusterCNqPaintArmTs;
+            var armEpoch = clusterCNqPaintArmEpoch;
+            clusterCNqPaintArmCh = null;
+            clusterCNqPaintArmTs = null;
+            clusterCNqPaintArmEpoch = null;
+            if (!armCh) return;
+            // Cover settled or a newer seek superseded this arm — do not paint.
+            if ((Number(armCh._clusterCNqPaintArmEpoch) || 0) !== armEpoch) return;
+            try { armClusterCNqPeerPaintSlice(armCh, armTs); } catch (_) {}
+        });
     }
 
     function forceReplaySeek(ch, ts, isEnter, onDone) {
@@ -2615,20 +2706,39 @@
                     });
                 } catch (_) {}
             }
+            // Cover committed: invalidate in-flight CLUSTER-C paint arm so a late
+            // rAF cannot re-pin replayTimestamp backwards to a stale armTs (9a)
+            // or add a redundant mirror+render on the healthy fast-cover path (9b).
+            cancelClusterCNqPeerPaintArm(ch);
         }
 
-        // Independent ticker: while /bars catch-up is in flight, paint the furthest
-        // loaded bar immediately so the fine panel does not hard-freeze mid-play.
+        // CLUSTER-C-NQ-PAINT-STARVE: while ensureReplayDataCoversTimestamp is
+        // in flight, doSeek (and its paint) is deferred. Arm paint of the
+        // furthest-covered / last-good local slice for visible independent
+        // peers so Play does not freeze the tile for the whole play window.
+        // Includes lastT >= hostTs (tip furthest helper no-oped that case).
+        // Kill-switch OFF falls back to tip's sync furthest-loaded paint.
+        // Kill-switch: window.__TALARIA_DISABLE_CLUSTER_C_NQ_PAINT_ARM_V1
+        // (PANEL realm — see isClusterCNqPaintArmEnabled.)
         // Do NOT pin host wall-clock ts onto replayTimestamp until cover succeeds —
         // that made the X-axis claim Jul 31 while candles were still Jul 24.
         if (!isEnter && !isSameSymbolAsHost(ch)) {
             try {
-                renderFurthestLoadedMirrorFrame(ch, rs, {
-                    timestamp: ts,
-                    isPlaying: true,
-                    tickProgress: 0,
-                    tickElapsedMs: 0,
-                });
+                if (isClusterCNqPaintArmEnabled()) {
+                    // Bump per-seek epoch BEFORE cover await; arm captures it and
+                    // bails if doSeek commits (or a newer seek supersedes).
+                    ch._clusterCNqPaintArmEpoch = (Number(ch._clusterCNqPaintArmEpoch) || 0) + 1;
+                    scheduleClusterCNqPeerPaintArm(ch, ts, ch._clusterCNqPaintArmEpoch);
+                } else {
+                    // Tip control: the only furthest-loaded paint on the play seek
+                    // path (D-015 returns before the paused-path call sites).
+                    renderFurthestLoadedMirrorFrame(ch, rs, {
+                        timestamp: ts,
+                        isPlaying: true,
+                        tickProgress: 0,
+                        tickElapsedMs: 0,
+                    });
+                }
             } catch (_) {}
         }
 
