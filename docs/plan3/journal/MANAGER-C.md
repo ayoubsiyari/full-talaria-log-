@@ -2132,3 +2132,19 @@ Artifact: `FINDING-C-THE-LOAD-IS-HOST-SIDE-NOT-FOUR-WAY-AND-THE-TOP-COST-IS-AN-I
 Artifact: `FINDING-C-THE-MARKER-COST-IS-TRADES-ONLY-AND-THE-SECOND-REGIME-IS-UNTOUCHED-BY-TOMORROWS-FIX-20260801-0005.md`
 
 **Update 00:22 — a third trace, and the second regime has a slope.** Order-manager stays absent at 35,754 resident bars, 15% MORE than the with-trades comparison carried, so the presence-absence result is not a low-bar artefact. And the zero-trade arm is not a flat floor: blocking rises 159 -> 179 -> 248 ms/s across 12,339 -> 28,229 -> 35,754 bars, with `_m19iB62WindowFp` climbing 11.2% -> 24.9% -> 28.0%. At MORE bars than the with-trades arm, zero-trade blocking is still 38% lower (247.6 against 398.9). **The second regime scales with resident bars on its own, and it is the function that will dominate the profile once the marker lookups are gone.**
+
+---
+
+## 2026-08-01 00:45 — Asked to corroborate my own coefficient, I refuted it
+
+**The arm is the zero-trade arm** — b120, four panels on 1m/5m/15m/1h, two indicators each from E's selection, speed 60 on all four, `closedPositions` = 0 with zero orders and zero open positions.
+
+**But the 856 MB gap is not evidence for my trade coefficient, and testing it properly killed the number.** The comparison had two independent defects: it read a single process's working set against the soak's summed multi-process footprint, and it matched on elapsed time when memory tracks bars. Re-measured on the soak's own gauge at matched bars — 55,518 against 55,336, 0.3% apart — the arm reads **2,747.6 MB against the soak's 2,709.3 MB with 35 closed trades in it. The gap is −38 MB and the zero-trade arm is slightly HEAVIER.** My coefficient predicted 581 MB, CI [413, 750].
+
+**I had already published the numbers that predicted this and did not follow them through.** My per-bar slopes are 23.98 MB/kbar zero-trade and 24.55 with trades — agreeing to 2.3%, which at this bar count predicts a 32 MB gap. That is what was measured. A trade term worth hundreds of megabytes cannot sit inside two slopes that close. I even recorded the mechanism: predictor correlation 0.992, VIF 60.9, and a suppressed −49.7 MB/trade I called unidentified. Holding *hours* does not hold *bars*, and bars are the driver. **+16.61 MB per closed trade was bar-driven growth wearing a trade label.** Withdrawn, along with the univariate +31.06 and the trade half of "bars beat trades 3:1". The element and excursion per-trade counts stand — different instrument, never routed through that fit.
+
+The finding this strengthens: **trades cost CPU, not memory.** The marker family is 4.9% of the main thread with trades and absent without them, while at matched bars the memory is indistinguishable. Trades buy freezes; bars buy memory.
+
+**The 23:13 product edits are not mine.** chart.js, multichart-manager.js and serve.mjs carry 2,113 inserted lines whose content is `__TALARIA_DISABLE_MC_RELEASE_*_V1`, `__TALARIA_DISABLE_M21_1_*_V1` and `__TALARIA_DISABLE_M26_PANEL_REPLAY_DESTROY_V1` — A's release cuts and E's pan/crosshair work, each behind the mandated kill-switch. `chart-window-limit.js` is a **line-ending rewrite with zero content change**; it disappears from the diff under `--ignore-cr-at-eol`. I hold no instrumentation in any product file, deployed or local: my footprint today is `scripts/` and `docs/plan3/` only.
+
+**Committed 48998b343** — 17 files, mine only. I did not sweep the other 417 entries in: 187 are A's and E's in-flight product work, and committing another manager's untested cuts under my name is how instrumentation reaches a train.
