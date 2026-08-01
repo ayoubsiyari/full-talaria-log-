@@ -133,6 +133,15 @@ COPY --from=v9_react /build/chart/workers ./workers
 COPY --from=v9_react /build/chart/vendor ./vendor
 COPY --from=v9_react /build/chart/fonts ./fonts
 COPY --from=v9_react /build/chart/sw.js ./sw.js
+# PASSPORT-3. The emitter writes build-info.json into /build/chart in the v9_react stage,
+# and every COPY above names a specific path, so without this line the passport is created
+# and then thrown away with the build stage. api_server.py serves it from CHART_ROOT, so
+# the file has to arrive in the runtime image or the route 404s no matter how correct the
+# whitelist, the routing and the auth exemption are.
+# The [n] glob is deliberate: on a non-checkpoint build the emitter never runs and the file
+# does not exist, and a plain COPY of a missing path fails the build. A glob that matches
+# nothing is skipped, so dev builds keep working and only checkpoint builds carry a passport.
+COPY --from=v9_react /build/chart/build-info.jso[n] ./
 
 # The legacy minified bundle (dist/) is ONLY a fallback for /chart/index.html when
 # dist-v9 is absent (see api_server.py). dist-v9 is always built above and is the

@@ -110,6 +110,12 @@ COPY --from=chart_assets /build/chart/workers ./public/chart/workers
 COPY --from=chart_assets /build/chart/vendor ./public/chart/vendor
 COPY --from=chart_assets /build/chart/fonts ./public/chart/fonts
 COPY --from=chart_assets /build/chart/sw.js ./public/chart/sw.js
+# PASSPORT-3, same copy-forward as chart Dockerfile.local. nginx proxies /chart/ to the
+# backend, so this mirror is not the path that answers the passport today — it is here so
+# the mirror is complete and a future routing change cannot turn the passport into a 404.
+# Same build, same emitter, so it cannot drift from the backend's copy.
+# [n] glob: absent on non-checkpoint builds, where a plain COPY would fail the build.
+COPY --from=chart_assets /build/chart/build-info.jso[n] ./public/chart/
 # Design-live shell is a PO-reachable URL (/chart/talaria-design/live/). Without this
 # overwrite, committed homepage/public/chart/talaria-design/live keeps stale ?v= stamps
 # while dist-v9 advances (FIX-ABSENT path 12).

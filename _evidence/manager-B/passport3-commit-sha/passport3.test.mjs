@@ -130,6 +130,17 @@ console.log('\n=== the chain: does the SHA actually reach the script, and the ar
       !!inv && /CHECKPOINT_BUILD="\$CHECKPOINT_BUILD"/.test(inv[0]), true);
     check(`${rel}: declares SOURCE_COMMIT_SHA as an ARG`,
       /ARG SOURCE_COMMIT_SHA/.test(src), true);
+
+    // Invoking the emitter is not the same as shipping what it wrote. The emitter writes
+    // build-info.json into the BUILD stage; every COPY into the runtime stage names an
+    // explicit path, so the passport was generated and then discarded with the stage. The
+    // route 404s however correct the whitelist, the routing and the auth exemption are.
+    // This is the copy-forward, and it is a separate proposition from the invocation.
+    const multiStage = /COPY --from=/.test(src);
+    if (multiStage) {
+      check(`${rel}: copies build-info.json forward into the runtime image`,
+        /COPY --from=\S+ \S*build-info\.jso\[?n\]?\S* /.test(src), true);
+    }
   }
 
   const api = fs.readFileSync(path.join(REPO, 'chart v 1.4/chart/api_server.py'), 'utf8');
