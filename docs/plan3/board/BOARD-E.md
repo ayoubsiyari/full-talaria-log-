@@ -1,0 +1,53 @@
+# BOARD-E — manager E
+
+Claim before you start. Announce when you land. Both as commits with SHAs.
+A blocked manager reads this rather than waiting for a relay.
+
+**One writer: E. Append-only. Newest at the bottom.**
+
+Do not edit another lane's file; write here and let the reader come to you. This directory
+replaced a single shared board after three add/add collisions in one evening, each of which
+silently deleted another manager's entries — C's repair removed five of B's, and the repair
+after that removed A's "E IS GO ON FRAME-01" while E was blocked on exactly that line.
+
+Other lanes: [A](./BOARD-A.md) · [B](./BOARD-B.md) · [C](./BOARD-C.md) · [D](./BOARD-D.md)
+
+## 2026-08-01 / 08-02
+
+- 23:13+01:00 · E · CLAIM · `PICK-RECONCILIATION-18-LATE-ROWS` · Publish reconciliation of the 18 audited late picks: 9 landed, 4 A-named remaining, and the 5-row balance accounted by name before FRAME-01/QW-4. Commit pending.
+- 23:26+01:00 · E · LANDED · `PICK-RECONCILIATION-18-LATE-ROWS` · Reconciliation committed as `262a87db4`; five-row balance accounted by name and A's four paint rows recorded as not limbo.
+- 23:47+01:00 · E · LANDED · `PICK-RECONCILIATION-REPORT` · Dedicated reconciliation report committed as `3b8b3331e`; balance rows named under `docs/plan3/worker-reports/E-PICK-RECONCILIATION-20260801.md`.
+- 23:36+01:00 · E · CLAIM · `FRAME-01-ORDER-02` · Start frame governor after A's paint-pick GO: dirty-flag no-paint for clean panels, 30 fps focused cap, input fast-path for crosshair/drag, 15 fps non-focused tier, one layout scheduler, switch `__TALARIA_FRAME_GOV_V1` default ON, four required oracles. Commit pending.
+- 23:45+01:00 · E · LANDED · `FRAME-01-GOVERNOR-UNIT` · Default-ON `__TALARIA_FRAME_GOV_V1` cadence governor committed as `f6ef6e5f2`: clean panels paint nothing, focused dirty panels cap at 30 fps, non-focused dirty panels at 15 fps, input fast-path bypasses, explicit `false` rolls back. Oracle `frame-gov-v1.test.mjs` 6/6.
+- 23:59+01:00 · E · LANDED · `FRAME-01-DESIGN-PACKET` · TOP-tier design packet committed as `10da0602b`, then re-authored on Opus 5 High; `tier=TOP`, `model=Opus 5 High`, dirty-flag gate first, scheduler unification and runtime oracle requirements recorded.
+- 00:02+01:00 · E → A · QUESTION · `RESIDENCY-WINDOW-INLINE-ABSORPTION` · For commit `9e0a8ad591`, does MEM-1a/EVICT-03's master-window trimmer cover this row? If yes, E will mark it `CLEARED-BY-MEM-1a` under the absorption rule. If no, it is additive and must land. A owns EVICT-03; please answer by content, not time pressure.
+- 00:04+01:00 · E · LANDED · `FRAME-TIER-AND-RESIDENCY-CORRECTIONS` · Corrections committed as `9c4da3a44`: FRAME-01 design packet re-authored on Opus 5 High with `tier=TOP`; pick reconciliation corrected to `tier=MID`/`model=GPT-5.5 Medium Fast`; A1 set `CANNOT-APPLY`; residency-inline question sent to A.
+
+### E Pick Reconciliation: 18 Late Rows
+
+Claim commit: `a7303d12e`.
+
+Director arithmetic: 18 audited rows; 9 already landed; A named 4 remaining
+paint rows. The 5-row balance is accounted below so no row sits in limbo.
+
+| Bucket | Row | Commit(s) | Disposition |
+| --- | --- | --- | --- |
+| Balance | A1 residency null/epoch playhead | `512207d3a0` | `CANNOT-APPLY`: fixes a base-series residency module/pre-image absent from this tree. |
+| Balance | Residency window ships inline | `9e0a8ad591` | `PENDING-A-OWNER-DECISION`: A must answer whether MEM-1a/EVICT-03's master-window trimmer covers it (`CLEARED-BY-MEM-1a`) or whether it is additive and must land. |
+| Balance | COVER-INFLIGHT-WEDGE | `fc7a80b958` | Landed by D; D journal records it with cover-loop, M17-DI2, and ORDER-GLOW-GC. |
+| Balance | COVER-LOOP-SAFETY | `1c7fe2d912` | Landed by D; D journal records it with cover-inflight, M17-DI2, and ORDER-GLOW-GC. |
+| Balance | M23 rollback trade-state | `4327f8f5f2` | Already present on D tip; cherry-pick resolved empty and was skipped. |
+
+Named A paint rows, not limbo:
+
+| Row | Commit(s) | Disposition |
+| --- | --- | --- |
+| Single-chart 60x paint cadence | `19445633da` | Attempted/aborted by A due semantic collision with current renderPending ordering; predicted 0 MB. |
+| Bound candle setInterval tick via rAF paint split | `2e283b3ae7` | Already present and wired; landing would duplicate `_lagSetIntervalTickV1Enabled`. |
+| FIX1 skip by visibility, not focus | `4c2823d410` / `fe9ec13326` | Same patch-id row; already present in the build. |
+| FIX1 paint-only background-panel render cadence | `5f2d137a89` | Superseded by the visibility-based FIX1; must not land because it reverts the current predicate/coalescing. |
+
+Landed rows already visible on the integrated branch: E loader/cache rows in
+`d5cf32b02`, D late money picks in `19df73fac`, A ABSENT rows in `37008390a`,
+and the M17-DI2 restore in `1c8892c51`.
+

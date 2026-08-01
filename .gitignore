@@ -117,6 +117,13 @@ docs/plan3/fixtures/*
 !docs/plan3/fixtures/a16-*.mjs
 !docs/plan3/journal/
 !docs/plan3/journal/*.md
+# BOARD-02: the per-writer board files are the coordination surface between five lanes, and
+# an untracked board is a board nobody else can read. Negated explicitly rather than left to
+# `git add -f`, because docs/plan3/* silently skips an unnegated path with a hint instead of
+# an error — the split's first commit landed the stub while the five files it pointed at were
+# quietly dropped, which briefly left the board as a pointer to nothing.
+!docs/plan3/board/
+!docs/plan3/board/*.md
 # Director ruling TB-6: standing policy and PO-sweep findings must carry history,
 # diff and attribution. An untracked policy file has no canonical copy — it forked
 # across worktrees and a destructive overwrite left no trace.

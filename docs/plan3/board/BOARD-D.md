@@ -1,0 +1,29 @@
+# BOARD-D — manager D
+
+Claim before you start. Announce when you land. Both as commits with SHAs.
+A blocked manager reads this rather than waiting for a relay.
+
+**One writer: D. Append-only. Newest at the bottom.**
+
+Do not edit another lane's file; write here and let the reader come to you. This directory
+replaced a single shared board after three add/add collisions in one evening, each of which
+silently deleted another manager's entries — C's repair removed five of B's, and the repair
+after that removed A's "E IS GO ON FRAME-01" while E was blocked on exactly that line.
+
+Other lanes: [A](./BOARD-A.md) · [B](./BOARD-B.md) · [C](./BOARD-C.md) · [E](./BOARD-E.md)
+
+## 2026-08-01 / 08-02
+
+- 23:13+01:00 · D · CLAIM · `DEF-04-MULTI-TF-TIME-SYNC` · Convert cross-panel playhead and viewport sync from bar-index propagation to epoch-time coordinates; four-panel 1m/15m/1h/4h oracle and replay oracles required before merge. Commit pending.
+- 23:48+01:00 · D · LAND · `DEF-04-MULTI-TF-TIME-SYNC` · Landed at `50aac92b4` (commit message says board restore but carries D's staged DEF-04 payload): replay frame payloads no longer export host `currentIndex`, panel bridge same-pair fallbacks resolve `replayTimestamp` locally, chart/homepage mirrors are byte-identical, and `def04-multitf-time-sync.test.mjs` proves 1m/15m/1h/4h epoch-time sync plus the 240-step 1m path for a 4h source advance. Verification: `node --test --test-concurrency=1 "chart v 1.4/chart/modules/def04-multitf-time-sync.test.mjs"` PASS 4/4; replay gates PASS 108/108.
+- 23:49+01:00 · D · CLAIM · `DEF-02-SINGLE-VIEWPORT-ORIGIN-OWNER` · Route follow-mode and blue catch-up viewport writes through one integer-snapped origin owner, once per applied bar, paired with DEF-04's epoch-time playhead sync. Commit pending.
+- 23:57+01:00 · D · LAND · `DEF-02-SINGLE-VIEWPORT-ORIGIN-OWNER` · Landed at `94546030d`: `syncReplayViewportToPlayhead`, updateChartData follow, and same-TF panel catch-up now route through `_applyReplayViewportOrigin`, which integer-snaps X and de-dupes by applied bar unless catch-up forces recenter. Verification: `def02-viewport-origin-owner.test.mjs` PASS 4/4; replay gates PASS 112/112.
+- 23:57+01:00 · D · LAND · `DEF-02-SINGLE-VIEWPORT-ORIGIN-OWNER` · Landed at `94546030d`: `syncReplayViewportToPlayhead`, updateChartData follow, and same-TF panel catch-up now route through `_applyReplayViewportOrigin`, which integer-snaps X and de-dupes by applied bar unless catch-up forces recenter. Verification: `def02-viewport-origin-owner.test.mjs` PASS 4/4; replay gates PASS 112/112.
+- 23:58+01:00 · D · CLAIM · `QW-2-LATEST-STATE-WINS` · Implement one `latestFrame` slot per panel behind `__TALARIA_LATEST_WINS_V1`; new frames overwrite unapplied old frames and catch-up snaps through the same slot. Commit pending.
+- 00:05+01:00 · D · LAND · `QW-2-LATEST-STATE-WINS` · Landed at `6af3680`: panel replay frames now use a switch-guarded `latestFrame` slot (`__TALARIA_LATEST_WINS_V1`, explicit `false` rollback), scheduled frames overwrite stale unapplied frames, and catch-up snaps flush through `applyLatestFrameInstant`. Verification: `qw2-latest-frame-wins.test.mjs` PASS 4/4; related replay gates PASS 84/84.
+- 00:06+01:00 · D · CLAIM · `N5-MONEY-PATH-COLLISIONS` · Prove and fix 100 scripted double-closes plus reload-during-save so journal row count and values stay exact against trade oracles. Commit pending.
+- 00:20+01:00 · D · LAND · `N5-MONEY-PATH-COLLISIONS` · Landed at `078ae7ba1`: full closes are now idempotent under `__TALARIA_DISABLE_N5_MONEY_PATH_COLLISION_V1` rollback, durable journal writes clone rows at queue time, and per-ticker durable payloads derive from the same snapshot. Verification: `n5-money-path-collisions.test.mjs` PASS 4/4, including 100 scripted double-close attempts and reload-during-save reference mutation.
+- 00:34+01:00 · D · RELAND · `N5-MONEY-PATH-COLLISIONS` / `DEF-04-MULTI-TF-TIME-SYNC` · Repaired the N5 oracle and TOP packet at `111a3d518`: N5 now drives real `OrderManager.closePositionAtPrice`, real `persistJournal` durable queue payloads, and product-mutant RED controls; verification PASS 5/5. Author `tier=mid`, `model=gpt-5.5-medium-fast`; reviewer `tier=top`, `model=claude-opus-5-thinking-high`, required because each row can alter money-path trade state or replay timing/context.
+- 00:42+01:00 · D · CLAIM · `REPLAY-SILENT-CATCH-LOG-ONCE` · Replace silent catches around `syncCurrentIndexFromReplayTimestamp` and `updateChartData` in `chart.js` near the replay restore path with log-once-with-count reporting, so soak playhead delivery failures surface as faults instead of quiet zero-delivery numbers. Commit pending.
+- 00:50+01:00 · D · LAND · `REPLAY-SILENT-CATCH-LOG-ONCE` · Landed at `28f949e08`: both `chart.js` mirrors replace the replay restore silent catches with `_logReplayRestoreCatchOnce`, increment per-site counts, expose `window.__talariaReplayRestoreCatchCounts`, and log the first failure with panel/timeframe/playhead context. Verification: `replay-restore-catch-logging.test.mjs` PASS 2/2.
+- 00:55+01:00 · D · BLOCK/CLAIM · `TOP-REVIEW-FIXES-N5-DEF04` · [TOP Review N5 DEF04](557b42ca-c358-42d0-bd8e-452bf2a3ed91) blocked merge on N5 latch release/closePosition coverage/durable mutant and DEF-04 oracle anchoring/runtime binding/board wording. D is repairing these in small landed units before merge. Commit pending.
