@@ -142,3 +142,24 @@ thousand bars**, or the run produces a meaningless headline number.
 between 5,000 and 7,048 within about 1.2 hours instead of climbing past 7,000. If they keep
 climbing, eviction is not engaging in that configuration and every figure in this document is
 void. That check costs 5% of the run and protects the other 95%.
+
+## Amendment, 21:40 — the prediction has a configuration precondition
+
+Both trims now stand down while a whole-history indicator (obv, vwap, psar, seasonality) is
+active, because those indicators accumulate from the start of the series and a trimmed master
+silently changes the values they plot. See commit `9fd71a460`.
+
+This is a correctness fix, but it puts a precondition on every number above. **With any of
+those four indicators enabled, both EVICT-03 and the pre-session bound are inert, residency
+grows exactly as it did before today, and the 552 MB figure is void.** The prediction assumes
+a chart with no whole-history indicator active.
+
+Two things follow for tonight:
+
+- **The run must record which indicators are enabled**, in the passport alongside bar count
+  and trade count. A soak with VWAP on is not a measurement of these rows, and without the
+  record there is no way to tell that afterwards from the numbers alone.
+- **The 75-minute falsifier above gains a second reading.** If resident bars keep climbing
+  past 7,000, the first thing to check is no longer "eviction is broken" but "is a
+  whole-history indicator active in this configuration". Those two causes look identical in
+  the footprint trace and are told apart only by the indicator list.
