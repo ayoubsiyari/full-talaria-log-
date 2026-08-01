@@ -33,7 +33,7 @@ import { openRun, inspectRun } from './lib/detach01.mjs';
 import { bootConf01Session, cycleTrades } from './lib/conf01-session.mjs';
 import { loadConf05Indicators } from './lib/conf05-indicators.mjs';
 import { reapOrphanedRenderers } from './lib/find-soak-port.mjs';
-import { readOsFootprints } from './process-memory-census.mjs';
+import { readFootprint } from './lib/footprint.mjs';
 import { perBarFields, evaluateGauges } from './lib/soak-gauges.mjs';
 import { readBuildInfo, shaChanged } from './lib/build-info.mjs';
 import { computeSeal } from './lib/seal.mjs';
@@ -146,42 +146,9 @@ async function readPanels(page) {
    * The renderer split rides along because 96.8% of renderer memory sits in ONE process here, and a total
    * that silently became four-way would change what the number means without changing its value.
    */
-  async function readFootprint(browser) {
-    try {
-      const cdp = await browser.target().createCDPSession();
-      const info = await cdp.send('SystemInfo.getProcessInfo');
-      await cdp.detach().catch(() => {});
-      const procs = info.processInfo || [];
-      const fps = await readOsFootprints(procs.map((p) => p.id));
-      let total = 0;
-      let pageRenderer = 0;
-      let rendererCount = 0;
-      const byType = {};
-      for (const p of procs) {
-        const fp = fps[p.id];
-        if (!fp) continue;
-        total += fp.privateMB;
-        const key = /renderer/i.test(p.type) ? 'renderer' : (/gpu/i.test(p.type) ? 'gpu' : (/browser/i.test(p.type) ? 'browser' : 'other'));
-        byType[key] = +((byType[key] || 0) + fp.privateMB).toFixed(1);
-        if (/renderer/i.test(p.type)) {
-          rendererCount += 1;
-          if (fp.privateMB > pageRenderer) pageRenderer = fp.privateMB;
-        }
-      }
-      // A footprint of zero is what this platform returns when the read fails, and zero is a number that
-      // would fit a slope quite happily. Null it instead.
-      if (!(total > 0)) return { footprintTotalMB: null, footprintReadFailed: true };
-      return {
-        footprintTotalMB: +total.toFixed(1),
-        footprintByType: byType,
-        pageRendererMB: +pageRenderer.toFixed(1),
-        rendererProcesses: rendererCount,
-        processesSeen: procs.length,
-      };
-    } catch (err) {
-      return { footprintTotalMB: null, footprintReadFailed: String(err && err.message).slice(0, 90) };
-    }
-  }
+  // readFootprint now lives in lib/footprint.mjs. N1 must read the SAME gauge as the soak: a
+  // heavy-vs-fresh comparison across two subtly different implementations would measure the
+  // difference between the implementations.
 
   /**
    * Blocking ms/s on the same definition as the trace calibration and the twelve-minute frequency run:
