@@ -100,7 +100,9 @@
     "preflight:m19i-b62-window-fp-regime": "node docs/plan3/oracles/m19i-b62-window-fp-regime-v1.mjs",
     "test:m19i-b62-window-fp-regime": "npm run preflight:m19i-b62-window-fp-regime",
     "preflight:proc3-unwired-fix-sweep": "node docs/plan3/oracles/proc3-unwired-fix-sweep-v1.mjs",
-    "test:proc3-unwired-fix-sweep": "npm run preflight:proc3-unwired-fix-sweep"
+    "test:proc3-unwired-fix-sweep": "npm run preflight:proc3-unwired-fix-sweep",
+    "preflight:frame01-playback-governor": "node docs/plan3/oracles/frame01-playback-governor-v1.mjs",
+    "test:frame01-playback-governor": "npm run preflight:frame01-playback-governor"
   },
   "dependencies": {
     "dukascopy-node": "^1.46.3",

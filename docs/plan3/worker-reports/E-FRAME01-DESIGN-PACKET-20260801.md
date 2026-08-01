@@ -3,8 +3,10 @@
 **Manager:** E  
 **Date:** 2026-08-01  
 **Row:** `FRAME-01-ORDER-02`  
-**tier=TOP**  
-**model=Opus 5 High**
+**authorTier=MID**  
+**authorModel=GPT-5.5 Medium Fast**  
+**reviewerTier=TOP**  
+**reviewerModel=Opus 5 High**
 
 This is a **design packet, not a patch**. No implementation bytes are prewritten here and none
 are implied. What follows is the contract an implementer must satisfy, the order the units must
@@ -13,12 +15,12 @@ draft of this packet got wrong.
 
 ---
 
-## 0. Three corrections to the row's own premise
+## 0. Defect Statement and Two Corrections
 
 The row as claimed on the board, and the first version of this packet, both aimed at the wrong
 number in the wrong condition and graded it with a model harness that cannot see the defect.
-All three are corrected here before any design is stated, because each of them changes what
-gets built.
+The playback exemption is now recorded as a **defect**, not a design note. The static-condition
+green is recorded as a VAC-01 instance because it never exercised the soak path.
 
 ### 0.1 The headline metric was measured in a different condition than it was stated in
 
@@ -45,7 +47,7 @@ healthy and is kept only as a **regression lock at 0**, never as the win. Any re
 claims FRAME-01 took idle paints "from 131 to near zero" is claiming credit for a number the
 build already had.
 
-### 0.2 The landed governor is exempt by construction in exactly the condition that is broken
+### 0.2 DEFECT: playback is classified input-fast, so the governor is exempt during the soak workload
 
 `f6ef6e5f2` landed a real cadence governor, and the cadence logic is correct on its own terms.
 But read the fast-path predicate against the defect condition
@@ -59,13 +61,13 @@ But read the fast-path predicate against the defect condition
 
 So while replay is playing, the interval is 0, `_frameGovShouldPaint()` always returns true, and
 **the governor caps nothing**. The measured defect is *host-realm paints/s at 1x **while
-playing***. The landed unit is switched off, by its own logic, for the entire duration of the
-condition it was built to bound.
+playing***, which is also the only workload the soak runs. The landed unit is switched off, by
+its own logic, for the entire duration of the condition it was built to bound.
 
-This is a source read, not a runtime measurement. Per BIND-01 it is a
-`RESOLVER_PRESENT_BUT_UNCALLED` hypothesis and it must be **confirmed at runtime** by oracle
-`O-BIND` below before it is treated as fact. But the design must be authored on the assumption
-that it is true, because if it is true, nothing shipped so far touches the defect.
+Tracked defect: `FRAME-01-PLAYBACK-GOVERNOR-EXEMPTION`.
+Tracked oracle: `preflight:frame01-playback-governor`.
+Expected state today: **RED**. It fails until replay playback is governed by the focused/non-focused
+cadence tier instead of being classified as input-fast.
 
 ### 0.3 The landed oracle is a model oracle and cannot observe the other paint authorities
 
