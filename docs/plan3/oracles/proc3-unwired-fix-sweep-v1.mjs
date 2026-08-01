@@ -2,10 +2,51 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import vm from 'node:vm';
 
 const __filename = fileURLToPath(import.meta.url);
 const repoRoot = path.resolve(path.dirname(__filename), '../../..');
 const SIGNATURE = 'TALARIA_PROC3_UNWIRED_FIX_SWEEP_V1';
+const FILE_INTEGRITY_REF = process.env.PROC3_FILE_INTEGRITY_REF
+  || process.env.PROC3_INTEGRATED_REF
+  || 'HEAD';
+const PRODUCT_FILE_INTEGRITY_PAIRS = [
+  {
+    id: 'chart-js-mirrors',
+    primary: 'chart v 1.4/chart/chart.js',
+    mirror: 'homepage/public/chart/chart.js',
+    minLines: 40000,
+  },
+  {
+    id: 'order-manager-js-mirrors',
+    primary: 'chart v 1.4/chart/modules/order-manager.js',
+    mirror: 'homepage/public/chart/modules/order-manager.js',
+    minLines: 48000,
+  },
+  {
+    id: 'chart-indicators-full-js-mirrors',
+    primary: 'chart v 1.4/chart/modules/chart-indicators-full.js',
+    mirror: 'homepage/public/chart/modules/chart-indicators-full.js',
+    minLines: 20000,
+  },
+  {
+    id: 'replay-system-js-mirrors',
+    primary: 'chart v 1.4/chart/modules/replay-system.js',
+    mirror: 'homepage/public/chart/modules/replay-system.js',
+    minLines: 9000,
+  },
+];
+const FILE_INTEGRITY_NEUTERED_GUARDS = [
+  {
+    id: 'if-false-and-guard-neuter',
+    pattern: /\bif\s*\(\s*false\s*&&/,
+  },
+  {
+    id: 'return-true-short-circuit-neuter',
+    pattern: /\breturn\s+true\s*;\s*(?:(?:\/\/|\/\*)[^\n]*)?(?:short[- ]?circuit|neuter|mutant|bypass|guard disabled|guard neuter)/i,
+  },
+];
+const fileIntegrityCache = new Map();
 
 function readRel(relPath, ref = 'HEAD') {
   if (ref && ref !== 'WORKTREE') {
@@ -13,7 +54,7 @@ function readRel(relPath, ref = 'HEAD') {
       return execFileSync('git', ['show', `${ref}:${relPath}`], {
         cwd: repoRoot,
         encoding: 'utf8',
-        maxBuffer: 20 * 1024 * 1024,
+        maxBuffer: 100 * 1024 * 1024,
       });
     } catch (_) {
       return '';
@@ -28,6 +69,16 @@ function lineOf(text, needle) {
   const idx = text.indexOf(needle);
   if (idx < 0) return null;
   return text.slice(0, idx).split(/\r?\n/).length;
+}
+
+function lineOfRegex(text, pattern) {
+  const match = pattern.exec(text);
+  if (!match) return null;
+  return text.slice(0, match.index).split(/\r?\n/).length;
+}
+
+function lineCount(text) {
+  return text.split(/\r?\n/).length;
 }
 
 function presentAny(files, needles, ref) {
@@ -75,6 +126,85 @@ function noMutationArtifacts(files, artifacts = [], ref) {
     }
   }
   return { ok: hits.length === 0, hits };
+}
+
+function fileIntegrity(ref = FILE_INTEGRITY_REF) {
+  if (fileIntegrityCache.has(ref)) return fileIntegrityCache.get(ref);
+  const hits = [];
+  const checked = [];
+  for (const pair of PRODUCT_FILE_INTEGRITY_PAIRS) {
+    const primaryText = readRel(pair.primary, ref);
+    const mirrorText = readRel(pair.mirror, ref);
+    const files = [
+      { role: 'primary', path: pair.primary, text: primaryText },
+      { role: 'mirror', path: pair.mirror, text: mirrorText },
+    ];
+    for (const file of files) {
+      checked.push(file.path);
+      if (!file.text) {
+        hits.push({ id: 'file-missing', pair: pair.id, path: file.path, ref });
+        continue;
+      }
+      const lines = lineCount(file.text);
+      if (lines < pair.minLines) {
+        hits.push({
+          id: 'line-count-below-sanity-floor',
+          pair: pair.id,
+          path: file.path,
+          ref,
+          lines,
+          minLines: pair.minLines,
+        });
+      }
+      try {
+        new vm.Script(file.text, { filename: file.path });
+      } catch (error) {
+        hits.push({
+          id: 'parse-failed',
+          pair: pair.id,
+          path: file.path,
+          ref,
+          message: error && error.message ? error.message : String(error),
+        });
+      }
+      for (const guard of FILE_INTEGRITY_NEUTERED_GUARDS) {
+        const line = lineOfRegex(file.text, guard.pattern);
+        if (line != null) {
+          hits.push({
+            id: guard.id,
+            pair: pair.id,
+            path: file.path,
+            ref,
+            line,
+          });
+        }
+      }
+    }
+    if (primaryText && mirrorText) {
+      const primaryLines = lineCount(primaryText);
+      const mirrorLines = lineCount(mirrorText);
+      if (primaryLines !== mirrorLines) {
+        hits.push({
+          id: 'mirror-line-count-mismatch',
+          pair: pair.id,
+          ref,
+          primary: pair.primary,
+          mirror: pair.mirror,
+          primaryLines,
+          mirrorLines,
+        });
+      }
+    }
+  }
+  const result = {
+    ok: hits.length === 0,
+    ref,
+    checked: [...new Set(checked)],
+    minLineFloors: PRODUCT_FILE_INTEGRITY_PAIRS.map(({ id, minLines }) => ({ id, minLines })),
+    hits,
+  };
+  fileIntegrityCache.set(ref, result);
+  return result;
 }
 
 function boolAxis(ok, evidence = {}) {
@@ -387,7 +517,8 @@ function evaluateRow(row) {
     evidence: row.discriminatingEvidence || null,
   });
   const mutationArtifact = noMutationArtifacts(row.files, row.mutationArtifacts, ref);
-  const axes = { present, bound, mirrored: mirror, discriminating, mutationArtifact };
+  const integrity = fileIntegrity();
+  const axes = { present, bound, mirrored: mirror, discriminating, mutationArtifact, fileIntegrity: integrity };
   const status = Object.values(axes).every((axis) => axis.ok) ? 'GREEN' : 'RED';
   return {
     row: row.row,
@@ -413,14 +544,14 @@ export function runProc3UnwiredFixSweep() {
   return {
     signature: SIGNATURE,
     status: returns.length === 0 ? 'GREEN' : 'RED',
-    scope: '09:15 roster plus known unwired/mutation examples; fail-closed until train-tip code/gates prove all five axes',
-    axes: ['present', 'bound', 'mirrored', 'discriminating', 'mutationArtifact'],
+    scope: '09:15 roster plus known unwired/mutation examples; fail-closed until train-tip code/gates prove all six axes',
+    axes: ['present', 'bound', 'mirrored', 'discriminating', 'mutationArtifact', 'fileIntegrity'],
     rows,
     returns,
   };
 }
 
-if (import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const report = runProc3UnwiredFixSweep();
   console.log(JSON.stringify(report, null, 2));
   process.exit(report.status === 'GREEN' ? 0 : 1);

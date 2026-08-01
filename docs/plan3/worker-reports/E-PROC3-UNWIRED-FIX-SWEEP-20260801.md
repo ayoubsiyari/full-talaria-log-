@@ -12,17 +12,43 @@ The process exits `1` because calibration rows are intentionally RED. Every live
 seal row is `GREEN`.
 
 PROC-3 is SHA-aware and reads landed owner rows from the shared object store with
-`git show <sha>:<path>`. The final seal sweep uses five axes:
+`git show <sha>:<path>`. The final integrated-tip re-sweep uses six axes:
 
 - `present`
 - `bound`
 - `mirrored`
 - `discriminating`
 - `mutationArtifact` (no known mutation artifact in product files)
+- `fileIntegrity` (parse checks, line-count sanity, and neutered-guard scans on
+  committed product mirrors)
+
+## File Integrity Axis
+
+Added before the B integrated-tip run after the 14:55 truncation/mutation event.
+The axis reads `PROC3_FILE_INTEGRITY_REF`, then `PROC3_INTEGRATED_REF`, then
+`HEAD`; this keeps the final gate pointed at B's integrated tip rather than E's
+branch when the release train is ready.
+
+Committed product mirrors checked by the axis:
+
+| Pair | Minimum line count per mirror |
+| --- | --- |
+| `chart.js` | 40,000 |
+| `order-manager.js` | 48,000 |
+| `chart-indicators-full.js` | 20,000 |
+| `replay-system.js` | 9,000 |
+
+The axis fails on missing files, parse failures, primary/mirror line-count
+mismatches, line counts below the sanity floor, `if (false && ...)`, and obvious
+`return true` short-circuit guard neuters. Focused check on committed E `HEAD`
+reported `integrityFailureCount: 0`; only the intentional calibration rows
+remained RED.
 
 ## Final Seal Table
 
 `Y/N` means `present / bound / mirrored / discriminating / no mutation artifact`.
+The table below is the prior five-axis seal table; the B integrated-tip re-sweep
+will add `fileIntegrity` as the sixth axis.
 
 | Row | Owner | Ref | Status | P | B | M | D | Mut | Return |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
