@@ -152,6 +152,58 @@ managers:
         authority: A16.1 - each manager holds a positive grant to its own journal; the
           journals block alone conferred no write right, so A and B were unowned
     denied_paths:
+      - pattern: chart v 1.4/talaria-design/src/**
+        reason: granted to B on specificity - live host source and its sweeps
+        provenance: ruling
+        authority: director 20260729 20:20
+      - pattern: chart v 1.4/chart/modules/order-manager.js
+        reason: order mechanics belong to B and D, not A
+        provenance: ruling
+        authority: TB-1 default plus the 20260729 20:20 D grant
+      - pattern: chart v 1.4/chart/modules/chart-indicators-full.js
+        reason: granted to E on specificity - indicator lifecycle and eviction
+        provenance: ruling
+        authority: director 20260730 17:05
+      - pattern: homepage/public/chart/modules/chart-indicators-full.js
+        reason: granted to E on specificity - generated mirror of the above
+        provenance: ruling
+        authority: director 20260730 17:05
+      - pattern: chart v 1.4/chart/modules/indicator-ui.js
+        reason: granted to E on specificity - indicator delete path
+        provenance: ruling
+        authority: director 20260730 17:05
+      - pattern: homepage/public/chart/modules/indicator-ui.js
+        reason: granted to E on specificity - generated mirror
+        provenance: ruling
+        authority: director 20260730 17:05
+      - pattern: chart v 1.4/chart/modules/talaria-ratio-gap-indicator.js
+        reason: granted to E on specificity - overlay labels and info cells
+        provenance: ruling
+        authority: director 20260730 21:30 - second-half overlay grant, ROUTE-01
+      - pattern: homepage/public/chart/modules/talaria-ratio-gap-indicator.js
+        reason: granted to E on specificity - generated mirror of the above
+        provenance: ruling
+        authority: director 20260730 21:30
+      - pattern: chart v 1.4/chart/modules/talaria-fvg-indicator.js
+        reason: granted to E on specificity - FVG overlay boxes and tags
+        provenance: ruling
+        authority: director 20260730 21:30 - second-half overlay grant, ROUTE-01
+      - pattern: homepage/public/chart/modules/talaria-fvg-indicator.js
+        reason: granted to E on specificity - generated mirror of the above
+        provenance: ruling
+        authority: director 20260730 21:30
+      - pattern: chart v 1.4/chart/modules/chart-window-limit.js
+        reason: granted to B on specificity - both window-claim P0s are B's
+        provenance: ruling
+        authority: director 20260730 17:25
+      - pattern: homepage/public/chart/modules/chart-window-limit.js
+        reason: granted to B on specificity - generated mirror
+        provenance: ruling
+        authority: director 20260730 17:25
+      - pattern: chart v 1.4/chart/modules/window-control-socket-*.test.mjs
+        reason: granted to B on specificity - the socket-release gates
+        provenance: ruling
+        authority: director 20260730 17:25
       - pattern: docs/plan3/journal/MANAGER-B.md
         reason: another manager's journal
         provenance: ruling
@@ -190,7 +242,64 @@ managers:
       - pattern: docs/plan3/journal/MANAGER-B.md
         provenance: ruling
         authority: A16.1
+      - pattern: homepage/nginx.local.conf
+        provenance: ruling
+        authority: director 20260729 18:01 - explicit grant of the /api/file proxy
+          buffering finding. The preflight reported this path unowned, which is why
+          a user-visible load cost survived to canary: it fell between territories.
+          Scope is the proxy behaviour of the chart data routes; the auth,
+          rate-limit and security-header directives in this file stay off limits.
+      - pattern: homepage/nginx-bigjson-buffering.test.mjs
+        provenance: ruling
+        authority: same grant - the gate that holds the above
+      - pattern: chart v 1.4/talaria-design/src/**
+        provenance: ruling
+        authority: director 20260729 20:20 - recording a grant B has been working
+          under since the splitter-borders and ws-ping-cleanup packets. Wins on
+          specificity over A's talaria-design/** template grant. B authors the
+          live host source and its sweeps; A retains the rest of the template tree.
+      - pattern: homepage/public/chart/talaria-design/**
+        provenance: ruling
+        authority: same grant - generated mirror of the above
+      - pattern: chart v 1.4/chart/modules/chart-window-limit.js
+        provenance: ruling
+        authority: director 20260730 17:25 - both window-claim P0s were routed to B while
+          this path sat in nobody's grant. Third occurrence today of routing work without
+          granting the path. Carved out of A's modules grant on specificity. B correctly
+          reported the gap rather than relocating the gate to deploy/ to dodge the
+          preflight, which would have hidden it.
+      - pattern: homepage/public/chart/modules/chart-window-limit.js
+        provenance: ruling
+        reason: generated product mirror; B owns both sides or neither
+      - pattern: chart v 1.4/chart/modules/window-control-socket-*.test.mjs
+        provenance: ruling
+        authority: same grant - the socket-release gates that hold the P0 fix
+      - pattern: homepage/public/chart/modules/window-control-socket-*.test.mjs
+        provenance: ruling
+        reason: generated mirror of the gate files
+      - pattern: homepage/Dockerfile
+        provenance: ruling
+        authority: director 20260730 17:25 - B owns the train assembly and the deploy gate
+          (RULING-MANAGER-E-TIER... section 4). The reproducible-build blocker was a missing
+          COPY in this file and B could not author the fix inside its own territory.
+      - pattern: chart v 1.4/chart/scripts/build-chart-client-bundle.mjs
+        provenance: ruling
+        authority: same grant - build assembly
+      - pattern: homepage/public/chart/scripts/build-chart-client-bundle.mjs
+        provenance: ruling
+        reason: generated mirror
+      - pattern: chart v 1.4/chart/scripts/bump-chart-engine-build.mjs
+        provenance: ruling
+        authority: same grant - the cache-stamp bump; a fix does not ship until the stamp
+          moves, which makes this file load-bearing for every landing
+      - pattern: scripts/checkpoint-build-assert.mjs
+        provenance: ruling
+        authority: same grant - CHECKPOINT_BUILD reproducibility assertion
     denied_paths:
+      - pattern: chart v 1.4/talaria-design/src/orderManagerTradeRows.js
+        reason: carved out to D for TAL-01896; order trade-row rendering is D's subject matter
+        provenance: ruling
+        authority: director 20260729 20:20
       - pattern: chart v 1.4/chart/chart.js
         reason: A11.3 - V6 order-line paint and drag preview must not be authored in chart.js by B until the ownership audit reports
         provenance: ruling
@@ -328,6 +437,76 @@ managers:
         authority: PLAN3-PHASE-4 - chart.js has exactly one writer at a time
       - pattern: chart v 1.4/chart/modules/**
         reason: product code belongs to A
+  # D was stood up on 20260729 and shipped money-path code all day with no entry in
+  # this file. Every D packet was therefore unowned to the preflight, and the B/D
+  # overlap on order-manager.js went unrecorded until the Director found it by trial
+  # merge at 20:20. Recording it late does not make it safe retroactively; the merge
+  # reconciliation named in the B and D dispatches is the control that does.
+  - id: D
+    role: trade correctness, order mechanics, preference and timezone persistence
+    deploy_surface: none - D merges through B's train and deploys nowhere itself
+    provenance: ruling
+    authority: CHARTER-D-TRADE-CORRECTNESS-20260729-1310.md
+    owned_rows:
+      - M24
+      - M14
+      - Cluster-G
+      - Cluster-E
+    owned_paths:
+      - pattern: chart v 1.4/chart/modules/order-manager.js
+        provenance: ruling
+        authority: director 20260729 20:20 - CO-OWNED WITH B and the only such path in
+          this file. D authors order mechanics (Cluster G); B's remaining interest is
+          the shipped M23 replay-rollback cancel. Neither may author here without
+          reading the other's branch first. Reconciliation duty sits with B as release
+          manager. Co-ownership is a transitional state, not a design - it collapses to
+          D alone once B's M23 change is merged into the train.
+      - pattern: chart v 1.4/chart/modules/timezone-manager.js
+        provenance: ruling
+        authority: director 20260729 20:20 - TAL-01865/01747 timezone persistence
+      - pattern: chart v 1.4/chart/modules/v9-theme-bridge.js
+        provenance: ruling
+        authority: same - the V9 snapshot path that overwrote persisted timezone
+      - pattern: chart v 1.4/chart/modules/drawing-tools-manager.js
+        provenance: ruling
+        authority: same - M14 Fibonacci settings
+      - pattern: chart v 1.4/chart/modules/favorites-manager.js
+        provenance: ruling
+        authority: same
+      - pattern: chart v 1.4/talaria-design/src/orderManagerTradeRows.js
+        provenance: ruling
+        authority: director 20260729 20:20 - TAL-01896 carve-out from A's template
+          grant and B's src grant. This one file only.
+      - pattern: homepage/public/chart/modules/order-manager.js
+        provenance: ruling
+        authority: generated mirror; same co-ownership terms as the canonical file
+      - pattern: homepage/public/chart/modules/timezone-manager.js
+        provenance: ruling
+      - pattern: homepage/public/chart/modules/v9-theme-bridge.js
+        provenance: ruling
+      - pattern: homepage/public/chart/modules/drawing-tools-manager.js
+        provenance: ruling
+      - pattern: homepage/public/chart/modules/favorites-manager.js
+        provenance: ruling
+      - pattern: docs/plan3/journal-D.md
+        provenance: ruling
+        authority: A16.1 - D's journal predates the journal/ convention and keeps its path
+    denied_paths:
+      - pattern: chart v 1.4/chart/chart.js
+        reason: A11.3 applied to D - order mechanics are not authored in chart.js
+        provenance: ruling
+        authority: CHARTER-D - explicitly written to avoid collision with A's chart.js work
+      - pattern: chart v 1.4/chart/modules/replay-system.js
+        reason: A's engine
+        provenance: ruling
+        authority: CHARTER-D
+      - pattern: chart v 1.4/chart/modules/preferences-sync.js
+        reason: B's A4 preference persistence contract; D's 20260729 writes here were
+          outside grant and are reconciled through B's merge, not ratified
+        provenance: ruling
+        authority: director 20260729 20:20
+      - pattern: chart v 1.4/chart/modules/preferences-init.js
+        reason: same
         provenance: ruling
       - pattern: docs/plan3/journal/MANAGER-A.md
         reason: another manager's journal
@@ -382,6 +561,61 @@ managers:
       - pattern: chart v 1.4/chart/modules/chart-indicators-full.js
         reason: E confirmed this file live on 20260730 but it remains A's; E writes oracles
           against it and does not edit it. Prevents the collision that NOTE-E-IS-ABOUT-TO-FIX-POSSIBLY-DEAD-CODE flagged
+
+  - id: E
+    role: indicator lifecycle and eviction, chart overlay labels
+    deploy_surface: none - lands through B's train
+    provenance: ruling
+    authority: PLAN-FULL-EVICTION-CANARY-SUNDAY-1800-20260730-1620.md section 4
+    owned_rows:
+      - INDICATOR-EVICT-V1
+    owned_paths:
+      - pattern: chart v 1.4/chart/modules/chart-indicators-full.js
+        provenance: ruling
+        authority: director 20260730 17:05 - verified indicator lifecycle site; removeIndicator
+          and clearIndicators both live here, carved out of A's modules grant on specificity
+      - pattern: homepage/public/chart/modules/chart-indicators-full.js
+        provenance: ruling
+        reason: generated product mirror of the above; E owns both sides or neither
+      - pattern: chart v 1.4/chart/modules/indicator-ui.js
+        provenance: ruling
+        authority: director 20260730 17:05 - indicator delete path at :3077
+      - pattern: homepage/public/chart/modules/indicator-ui.js
+        provenance: ruling
+        reason: generated product mirror
+      - pattern: chart v 1.4/chart/modules/talaria-ratio-gap-indicator.js
+        provenance: ruling
+        authority: director 20260730 21:30 - second-half overlay grant against the sites E
+          named - PDR/GAP/OR/IB labels and info cells; canvas draw paths so not DOM producers,
+          granted for the overlay ticket cluster rather than the element hunt
+      - pattern: homepage/public/chart/modules/talaria-ratio-gap-indicator.js
+        provenance: ruling
+        reason: generated product mirror; E owns both sides or neither
+      - pattern: chart v 1.4/chart/modules/talaria-fvg-indicator.js
+        provenance: ruling
+        authority: director 20260730 21:30 - second-half overlay grant; FVG boxes and tags
+      - pattern: homepage/public/chart/modules/talaria-fvg-indicator.js
+        provenance: ruling
+        reason: generated product mirror; E owns both sides or neither
+      - pattern: docs/plan3/journal/MANAGER-E.md
+        provenance: ruling
+        authority: A16.1 - each manager holds a positive grant to its own journal
+    denied_paths:
+      - pattern: chart v 1.4/chart/chart.js
+        reason: A is rewriting the base-series data and storage paths here through freeze;
+          a second writer in this file would collide with the memory landing
+        provenance: ruling
+        authority: director 20260730 17:05
+      - pattern: homepage/public/chart/chart.js
+        reason: as above, generated mirror
+        provenance: ruling
+      - pattern: chart v 1.4/chart/multichart-prod/panel-cmd-bridge.js
+        reason: multichart bridge is A's; it calls removeIndicator at :3727 so E coordinates
+          with A rather than owning it
+        provenance: ruling
+        authority: director 20260730 17:05
+      - pattern: chart v 1.4/chart/modules/order-manager.js
+        reason: order mechanics belong to B and D
         provenance: ruling
       - pattern: docs/plan3/journal/MANAGER-A.md
         reason: another manager's journal
@@ -395,6 +629,12 @@ managers:
       - pattern: docs/plan3/journal/MANAGER-D.md
         reason: another manager's journal
         provenance: ruling
+
+    # NOT YET GRANTED (director 20260730 17:05): E's overlay rows - daily-open lines,
+    # indicator labels, ORB and session labels, multichart layout shell - have not had
+    # their file sites read by the Director. BRIEF-03: granting a path the Director has
+    # not read is how B was granted journal-backend/ while the code was in api_server.py.
+    # E reports the exact sites; the grant follows within the hour of that report.
 
 # Open questions for the Director. Each is operative as written above until ruled.
 open_rulings:

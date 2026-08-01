@@ -1,0 +1,154 @@
+{
+  "evidenceClass": "manager-e-pre-session-warmup-buckets-red-v1",
+  "capturedAt": "2026-07-31T11:30:25.806Z",
+  "source": {
+    "chartPath": "C:\\Users\\user\\Desktop\\talaria1\\manager-e-indicator-eviction\\chart v 1.4\\chart\\chart.js",
+    "markers": {
+      "weeklyBucketBars": 26,
+      "dailyBucketBars": 45,
+      "intradayBucketBars": 80,
+      "oneHourAndFinerBucketBars": 320,
+      "backtestMasterTimeframe": "1m"
+    }
+  },
+  "contract": {
+    "formula": "min(5000, max(120, max(50, maxIndicatorParam) * 4 + 64))",
+    "requiredFloor": 264,
+    "requiredSma200": 864,
+    "note": "empty-indicator early return is 50; this gate covers non-empty indicator correctness"
+  },
+  "greenTarget": {
+    "boundedFamilies": [
+      "Compute requiredDisplayWarmupBars from active indicators, not from fixed timeframe buckets.",
+      "When request timeframe equals display timeframe, pre-session source bars must be >= requiredDisplayWarmupBars.",
+      "When a 1m master is requested for a coarser display timeframe, pre-session source bars must be >= ceil(requiredDisplayWarmupBars * displayTfMs / requestTfMs).",
+      "VWAP/OBV/PSAR/seasonality are outside the bar-window rule and require anchors/checkpoints from the contract."
+    ]
+  },
+  "rows": [
+    {
+      "bucket": "weekly+",
+      "exampleTf": "1w",
+      "sourceLookbackBars": 26,
+      "displayMinutes": 10080,
+      "mode": "direct-display-tf",
+      "requestMinutes": 10080,
+      "effectiveDisplayBars": 26,
+      "requiredSourceBarsFloor": 264,
+      "requiredSourceBarsSma200": 864,
+      "floorDeficitBars": 238,
+      "sma200DeficitBars": 838
+    },
+    {
+      "bucket": "daily",
+      "exampleTf": "1d",
+      "sourceLookbackBars": 45,
+      "displayMinutes": 1440,
+      "mode": "direct-display-tf",
+      "requestMinutes": 1440,
+      "effectiveDisplayBars": 45,
+      "requiredSourceBarsFloor": 264,
+      "requiredSourceBarsSma200": 864,
+      "floorDeficitBars": 219,
+      "sma200DeficitBars": 819
+    },
+    {
+      "bucket": "1h<tf<1d",
+      "exampleTf": "4h-direct",
+      "sourceLookbackBars": 80,
+      "displayMinutes": 240,
+      "mode": "direct-display-tf",
+      "requestMinutes": 240,
+      "effectiveDisplayBars": 80,
+      "requiredSourceBarsFloor": 264,
+      "requiredSourceBarsSma200": 864,
+      "floorDeficitBars": 184,
+      "sma200DeficitBars": 784
+    },
+    {
+      "bucket": "<=1h",
+      "exampleTf": "1h-direct",
+      "sourceLookbackBars": 320,
+      "displayMinutes": 60,
+      "mode": "direct-display-tf",
+      "requestMinutes": 60,
+      "effectiveDisplayBars": 320,
+      "requiredSourceBarsFloor": 264,
+      "requiredSourceBarsSma200": 864,
+      "floorDeficitBars": 0,
+      "sma200DeficitBars": 544
+    },
+    {
+      "mode": "backtest-1m-master-resample",
+      "bucket": "<=1h source bucket forced by requestTimeframe=1m",
+      "sourceLookbackBars": 320,
+      "sourceLookbackMinutes": 320,
+      "requestMinutes": 1,
+      "exampleTf": "1m",
+      "displayMinutes": 1,
+      "effectiveDisplayBars": 320,
+      "requiredSourceBarsFloor": 264,
+      "requiredSourceBarsSma200": 864,
+      "floorDeficitBars": 0,
+      "sma200DeficitBars": 544
+    },
+    {
+      "mode": "backtest-1m-master-resample",
+      "bucket": "<=1h source bucket forced by requestTimeframe=1m",
+      "sourceLookbackBars": 320,
+      "sourceLookbackMinutes": 320,
+      "requestMinutes": 1,
+      "exampleTf": "5m",
+      "displayMinutes": 5,
+      "effectiveDisplayBars": 64,
+      "requiredSourceBarsFloor": 1320,
+      "requiredSourceBarsSma200": 4320,
+      "floorDeficitBars": 200,
+      "sma200DeficitBars": 800
+    },
+    {
+      "mode": "backtest-1m-master-resample",
+      "bucket": "<=1h source bucket forced by requestTimeframe=1m",
+      "sourceLookbackBars": 320,
+      "sourceLookbackMinutes": 320,
+      "requestMinutes": 1,
+      "exampleTf": "15m",
+      "displayMinutes": 15,
+      "effectiveDisplayBars": 21.333333333333332,
+      "requiredSourceBarsFloor": 3960,
+      "requiredSourceBarsSma200": 12960,
+      "floorDeficitBars": 242.66666666666666,
+      "sma200DeficitBars": 842.6666666666666
+    },
+    {
+      "mode": "backtest-1m-master-resample",
+      "bucket": "<=1h source bucket forced by requestTimeframe=1m",
+      "sourceLookbackBars": 320,
+      "sourceLookbackMinutes": 320,
+      "requestMinutes": 1,
+      "exampleTf": "1h",
+      "displayMinutes": 60,
+      "effectiveDisplayBars": 5.333333333333333,
+      "requiredSourceBarsFloor": 15840,
+      "requiredSourceBarsSma200": 51840,
+      "floorDeficitBars": 258.6666666666667,
+      "sma200DeficitBars": 858.6666666666666
+    },
+    {
+      "mode": "backtest-1m-master-resample",
+      "bucket": "<=1h source bucket forced by requestTimeframe=1m",
+      "sourceLookbackBars": 320,
+      "sourceLookbackMinutes": 320,
+      "requestMinutes": 1,
+      "exampleTf": "4h",
+      "displayMinutes": 240,
+      "effectiveDisplayBars": 1.3333333333333333,
+      "requiredSourceBarsFloor": 63360,
+      "requiredSourceBarsSma200": 207360,
+      "floorDeficitBars": 262.6666666666667,
+      "sma200DeficitBars": 862.6666666666666
+    }
+  ],
+  "verdict": "RED",
+  "reason": "current backtest initial fetch buckets provide fewer display warm-up bars than the indicator contract requires"
+}

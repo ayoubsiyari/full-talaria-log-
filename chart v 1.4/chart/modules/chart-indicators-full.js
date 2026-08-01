@@ -5031,8 +5031,25 @@
         };
     }
 
+    /** Temporary OR-owner bisect: strict true disables chart-indicators-full openingrange calc/draw. */
+    function _talariaFullOrPathDisabledV1() {
+        try {
+            if (typeof global !== 'undefined' && global.__TALARIA_DISABLE_FULL_OR_V1 === true) return true;
+            if (typeof window !== 'undefined' && window.__TALARIA_DISABLE_FULL_OR_V1 === true) return true;
+        } catch (_) {}
+        return false;
+    }
+
     /** Per-day opening range in chart wall-clock window; bands appear only after the window closes (flat final high/low). */
     function calculateOpeningRange(data, params) {
+        if (_talariaFullOrPathDisabledV1()) {
+            const n = Array.isArray(data) ? data.length : 0;
+            return {
+                upper: new Array(n).fill(null),
+                lower: new Array(n).fill(null),
+                middle: new Array(n).fill(null)
+            };
+        }
         const resolved = typeof params === 'number'
             ? { rangeStart: '00:00', rangeEnd: (function (m) {
                 const mins = Math.max(1, Math.floor(m));
@@ -8039,6 +8056,46 @@
     var _workerLoadFailed = false;
     var _workerPending = new Map(); // id → { resolve, reject }
     var _workerNextId = 0;
+    var _indicatorWorkerTerminateHookInstalled = false;
+
+    function _indicatorWorkerTerminateEnabled() {
+        return typeof window !== 'undefined'
+            && window.__TALARIA_WORKER_TERMINATE_V1 === true;
+    }
+
+    function _terminateIndicatorWorkerV1(reason) {
+        if (!_indicatorWorkerTerminateEnabled()) return false;
+        var worker = _indicatorWorkerSingleton;
+        _indicatorWorkerSingleton = null;
+        _workerLoadFailed = false;
+        _workerPending.forEach(function(p) {
+            try { p.reject(new Error('indicator worker terminated: ' + (reason || 'cycle-close'))); } catch (_) {}
+        });
+        _workerPending.clear();
+        if (worker && typeof worker.terminate === 'function') {
+            try { worker.terminate(); } catch (_) {}
+            return true;
+        }
+        return false;
+    }
+
+    function _installIndicatorWorkerTerminateHook() {
+        if (_indicatorWorkerTerminateHookInstalled
+            || typeof window === 'undefined'
+            || typeof window.addEventListener !== 'function') return;
+        _indicatorWorkerTerminateHookInstalled = true;
+        try {
+            window.__talariaTerminateIndicatorWorkerV1 = _terminateIndicatorWorkerV1;
+            window.addEventListener('pagehide', function() {
+                _terminateIndicatorWorkerV1('pagehide');
+            });
+            window.addEventListener('beforeunload', function() {
+                _terminateIndicatorWorkerV1('beforeunload');
+            });
+        } catch (_) {}
+    }
+
+    _installIndicatorWorkerTerminateHook();
 
     function _getIndicatorWorker() {
         if (_workerLoadFailed) return null;
@@ -10512,6 +10569,36 @@
         }
     }
 
+    var _m19iB62WindowFpMemo = (typeof WeakMap !== 'undefined') ? new WeakMap() : null;
+
+    function _m19iIndicatorFpMemoEnabled() {
+        return typeof window !== 'undefined'
+            && window.__TALARIA_INDICATOR_FP_MEMO_V1 === true;
+    }
+
+    function _m19iB62WindowIdentity(data, from, to) {
+        var last = data && data[to - 1] || {};
+        return [
+            from,
+            to,
+            data ? data.length : 0,
+            last.t, last.o, last.h, last.l, last.c, last.v
+        ].join('|');
+    }
+
+    function _m19iB62WindowFpCompute(data, from, to) {
+        var h = 0x811c9dc5;
+        for (var i = from; i < to; i++) {
+            var b = data[i] || {};
+            var s = b.t + '|' + b.o + '|' + b.h + '|' + b.l + '|' + b.c + '|' + b.v + ';';
+            for (var j = 0; j < s.length; j++) {
+                h ^= s.charCodeAt(j);
+                h = Math.imul(h, 0x01000193) >>> 0;
+            }
+        }
+        return h >>> 0;
+    }
+
     /**
      * B62-1 window fingerprint (corrected): FNV-1a content hash over exactly
      * the bars [tailStart..totalLength) the worker computed from — a
@@ -10524,22 +10611,25 @@
      * space here is a content HASH, not a counter — no wrap/reuse concern.)
      */
     function _m19iB62WindowFp(data, tailStart, totalLength) {
-        var h = 0x811c9dc5;
         if (!Array.isArray(data)) return null;
         var safeTailStart = _m19iB62SafeNonnegativeInteger(tailStart);
         var safeTotalLength = _m19iB62SafeNonnegativeInteger(totalLength);
         if (safeTailStart == null || safeTotalLength == null) return null;
         var from = Math.max(0, safeTailStart);
         var to = Math.min(safeTotalLength, data.length);
-        for (var i = from; i < to; i++) {
-            var b = data[i] || {};
-            var s = b.t + '|' + b.o + '|' + b.h + '|' + b.l + '|' + b.c + '|' + b.v + ';';
-            for (var j = 0; j < s.length; j++) {
-                h ^= s.charCodeAt(j);
-                h = Math.imul(h, 0x01000193) >>> 0;
+        if (_m19iIndicatorFpMemoEnabled() && _m19iB62WindowFpMemo) {
+            var byWindow = _m19iB62WindowFpMemo.get(data);
+            if (!byWindow) {
+                byWindow = new Map();
+                _m19iB62WindowFpMemo.set(data, byWindow);
             }
+            var identity = _m19iB62WindowIdentity(data, from, to);
+            if (byWindow.has(identity)) return byWindow.get(identity);
+            var memoFp = _m19iB62WindowFpCompute(data, from, to);
+            byWindow.set(identity, memoFp);
+            return memoFp;
         }
-        return h >>> 0;
+        return _m19iB62WindowFpCompute(data, from, to);
     }
 
     function _m19iB62TailToken(chart, tailStart, totalLength) {
@@ -17037,6 +17127,7 @@ Chart.prototype._resolveIndicatorBandLineColor = function(color, opacityPct) {
 };
 
 Chart.prototype.drawOpeningRange = function(bands, style, startIndex, endIndex) {
+    if (_talariaFullOrPathDisabledV1()) return;
     if (!bands || !bands.upper) return;
     style = style || {};
     const resolve = this._resolveIndicatorBandLineColor.bind(this);
