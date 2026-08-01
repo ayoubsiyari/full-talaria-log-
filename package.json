@@ -40,7 +40,11 @@
     "preflight:trade-attribution-correctness": "node docs/plan3/oracles/trade-attribution-correctness-v1.mjs",
     "test:trade-attribution-correctness": "npm run preflight:trade-attribution-correctness",
     "preflight:destroy-indicator-correctness": "node docs/plan3/oracles/destroy-indicator-correctness-v1.mjs",
-    "test:destroy-indicator-correctness": "npm run preflight:destroy-indicator-correctness"
+    "test:destroy-indicator-correctness": "npm run preflight:destroy-indicator-correctness",
+    "preflight:m19i-b62-window-fp-regime": "node docs/plan3/oracles/m19i-b62-window-fp-regime-v1.mjs",
+    "test:m19i-b62-window-fp-regime": "npm run preflight:m19i-b62-window-fp-regime",
+    "preflight:proc3-unwired-fix-sweep": "node docs/plan3/oracles/proc3-unwired-fix-sweep-v1.mjs",
+    "test:proc3-unwired-fix-sweep": "npm run preflight:proc3-unwired-fix-sweep"
   },
   "dependencies": {
     "dukascopy-node": "^1.46.3",

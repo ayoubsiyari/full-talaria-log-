@@ -75,6 +75,9 @@ function inspectOrderManager(relPath) {
     hasSaveTradeToJournal: /async saveTradeToJournal\(order, closeData, postTradeNotes\)/.test(text),
     hasGetCurrentCandleCalls: /this\.getCurrentCandle\(\)/.test(text),
     managerResolverLine: findLine(text, `${ATTRIBUTION_RESOLVER}(order`),
+    resolverBindingLine: findLine(text, `window.${ATTRIBUTION_RESOLVER}(`)
+      || findLine(text, `globalThis.${ATTRIBUTION_RESOLVER}(`)
+      || findLine(text, `${ATTRIBUTION_RESOLVER}.call(`),
     orderFirstSymbolLine: findLine(text, 'const symbol = order.ticker || order.symbol || this._getActiveTicker();'),
     closeDataExitPriceLine: findLine(text, 'exitPrice: closeData.closePrice'),
     sourceFileLine: findLine(text, 'sourceFileId: order.sourceFileId ?? order.source_file_id ?? null'),
@@ -732,6 +735,47 @@ function classifyResolverExecution({ resolverTreeState, orderRecordReport, resol
   return RESOLVER_CALLED_AND_CORRECT;
 }
 
+function runResolverBindingControls(staticSurface, resolverTreeState) {
+  const entries = [staticSurface.source, staticSurface.publicMirror];
+  const boundEntries = entries.filter((entry) => entry.resolverBindingLine);
+  const resolverPresent = resolverTreeState.state === RESOLVER_PRESENT_IN_TREE;
+  const presentButUnbound = resolverPresent && boundEntries.length === 0;
+  return [
+    {
+      cell: 'TRADE-RESOLVER-PRESENT-AND-BOUND',
+      status: presentButUnbound ? 'RED' : 'GREEN',
+      state: presentButUnbound ? RESOLVER_PRESENT_BUT_UNCALLED : resolverTreeState.state,
+      reason: presentButUnbound ? 'trade-attribution-resolver-present-but-unbound' : null,
+      expected: 'If the resolver exists in chart.js, the product journal close path must call it.',
+      inspectedPaths: entries.map((entry) => ({
+        path: entry.path,
+        resolverBindingLine: entry.resolverBindingLine,
+      })),
+    },
+  ];
+}
+
+function runResolverBindingRedControl(staticSurface) {
+  const syntheticSurface = {
+    ...staticSurface,
+    source: { ...staticSurface.source, resolverBindingLine: null },
+    publicMirror: { ...staticSurface.publicMirror, resolverBindingLine: null },
+  };
+  const syntheticTreeState = { state: RESOLVER_PRESENT_IN_TREE, failures: [] };
+  const report = runResolverBindingControls(syntheticSurface, syntheticTreeState)[0];
+  return {
+    cell: 'TRADE-RESOLVER-PRESENT-BUT-UNBOUND-RED',
+    status: report.status === 'RED'
+      && report.state === RESOLVER_PRESENT_BUT_UNCALLED
+      && report.reason === 'trade-attribution-resolver-present-but-unbound'
+      ? 'GREEN'
+      : 'RED',
+    expected: 'RED',
+    expectedReason: 'trade-attribution-resolver-present-but-unbound',
+    report,
+  };
+}
+
 function runControl(cell, report, expected = 'GREEN', expectedReason = null) {
   const status = expected === 'GREEN'
     ? (report.status === 'GREEN' ? 'GREEN' : 'RED')
@@ -761,6 +805,10 @@ export async function runTradeAttributionCorrectnessOracle() {
     runControl('TRADE-RESOLVER-DESTROYED-OWNER-NULL', await runResolverContractCase('destroyedOwnerNull'), 'GREEN'),
     runControl('TRADE-RESOLVER-KILL-SWITCH', await runResolverContractCase('killSwitch'), 'GREEN'),
   ];
+  const resolverBindingControls = runResolverBindingControls(staticSurface, resolverTreeState);
+  const resolverBindingRedControls = [
+    runResolverBindingRedControl(staticSurface),
+  ];
   const greenControls = [
     runControl('TRADE-JOURNAL-ORDER-RECORD-ATTRIBUTION', await runTradeAttributionCase('orderRecord'), 'GREEN'),
   ];
@@ -778,6 +826,8 @@ export async function runTradeAttributionCorrectnessOracle() {
 
   const status = staticFailures.length === 0
     && resolverContractControls.every((control) => control.status === 'GREEN')
+    && resolverBindingControls.every((control) => control.status === 'GREEN')
+    && resolverBindingRedControls.every((control) => control.status === 'GREEN')
     && greenControls.every((control) => control.status === 'GREEN')
     && redControls.every((control) => control.status === 'GREEN')
     ? 'GREEN'
@@ -792,6 +842,8 @@ export async function runTradeAttributionCorrectnessOracle() {
     resolverExecutionState,
     resolverContract: ATTRIBUTION_RESOLVER_CONTRACT,
     resolverContractControls,
+    resolverBindingControls,
+    resolverBindingRedControls,
     greenControls,
     redControls,
     limitation: 'Node differential oracle over real OrderManager.saveTradeToJournal. It does not execute browser order close UI; A must make the named resolver import-free/Node-safe or this gate remains RED.',
