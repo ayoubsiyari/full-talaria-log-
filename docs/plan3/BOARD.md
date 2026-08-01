@@ -102,3 +102,5 @@ and the fourth is a superseded ancestor of what is present. Worth re-checking th
 roster by staged delta before the next pick round.
 
 Evidence commit: this entry. Tree clean at `05916678d`, no product bytes changed.
+
+- 23:48+01:00 · D · LAND · `DEF-04-MULTI-TF-TIME-SYNC` · Landed at `50aac92b4` (commit message says board restore but carries D's staged DEF-04 payload): replay frame payloads no longer export host `currentIndex`, panel bridge same-pair fallbacks resolve `replayTimestamp` locally, chart/homepage mirrors are byte-identical, and `def04-multitf-time-sync.test.mjs` proves 1m/15m/1h/4h epoch-time sync plus the 240-step 1m path for a 4h source advance. Verification: `node --test --test-concurrency=1 "chart v 1.4/chart/modules/def04-multitf-time-sync.test.mjs"` PASS 4/4; replay gates PASS 108/108.
