@@ -131,15 +131,25 @@ console.log('\n=== the chain: does the SHA actually reach the script, and the ar
     check(`${rel}: declares SOURCE_COMMIT_SHA as an ARG`,
       /ARG SOURCE_COMMIT_SHA/.test(src), true);
 
-    // Invoking the emitter is not the same as shipping what it wrote. The emitter writes
-    // build-info.json into the BUILD stage; every COPY into the runtime stage names an
-    // explicit path, so the passport was generated and then discarded with the stage. The
-    // route 404s however correct the whitelist, the routing and the auth exemption are.
-    // This is the copy-forward, and it is a separate proposition from the invocation.
-    const multiStage = /COPY --from=/.test(src);
-    if (multiStage) {
-      check(`${rel}: copies build-info.json forward into the runtime image`,
-        /COPY --from=\S+ \S*build-info\.jso\[?n\]?\S* /.test(src), true);
+    // Invoking the emitter is not the same as shipping what it wrote, and shipping it to
+    // MORE than one image is its own defect.
+    //
+    // The emitter writes build-info.json into the BUILD stage. Every COPY into a runtime
+    // stage names an explicit path, so without a copy-forward the passport is generated
+    // and discarded, and the route 404s however correct the whitelist, the routing and
+    // the auth exemption are. That is the chart image's obligation: it holds api_server.py,
+    // which serves the file with no-store.
+    //
+    // The homepage image must NOT carry a copy. When it did, nginx answered /chart/build-
+    // info.json from the static tier under the asset policy (max-age=3600, public) instead
+    // of proxying to the backend, and a cacheable passport can keep asserting a SHA after
+    // the bytes changed. Exactly one tier answers.
+    const copiesForward = /COPY --from=\S+ \S*build-info\.jso\[?n\]?\S*/.test(src);
+    const servesPassport = rel.includes('chart/Dockerfile');
+    if (servesPassport) {
+      check(`${rel}: copies build-info.json forward (this image serves it)`, copiesForward, true);
+    } else {
+      check(`${rel}: does NOT copy build-info.json (one tier owns the passport)`, copiesForward, false);
     }
   }
 
@@ -182,6 +192,25 @@ console.log('\n=== the chain: does the SHA actually reach the script, and the ar
   // the passport is redirected to /login/ and a redirect-following client gets ~29 KB of
   // app-shell HTML under a 200. nginx was right, the handler was right, the whitelist was
   // right, and the route was still unreadable. The harness reads this with no credentials.
+  // The tier that actually answered the passport, and the one the earlier routing checks
+  // read the wrong file for. homepage/Dockerfile bakes nginx.local.conf as default.conf --
+  // NOT nginx.conf, which is what those checks were reading. nginx.local.conf's ^~ /chart/
+  // block does try_files $uri first and carries expires 1h + "public, must-revalidate", so
+  // live verification came back 200 with the right build id, the right SHA, and max-age=3600.
+  const local = fs.readFileSync(path.join(REPO, 'homepage/nginx.local.conf'), 'utf8');
+  const exact = local.match(/location = \/chart\/build-info\.json \{[\s\S]*?\n    \}/);
+  check('the deployed nginx config pins the passport in an exact-match location',
+    !!exact, true);
+  check('...which outranks the ^~ /chart/ prefix and its 1h TTL',
+    !!exact && /proxy_pass http:\/\/trading-chart:8000/.test(exact[0]), true);
+  check('...hides the upstream Cache-Control so there is exactly one',
+    !!exact && /proxy_hide_header Cache-Control/.test(exact[0]), true);
+  check('...and forces no-store',
+    !!exact && /add_header Cache-Control "no-store" always/.test(exact[0]), true);
+  check('the homepage image bakes nginx.local.conf, which is the file checked above',
+    /COPY homepage\/nginx\.local\.conf \/etc\/nginx\/conf\.d\/default\.conf/
+      .test(fs.readFileSync(path.join(REPO, 'homepage/Dockerfile'), 'utf8')), true);
+
   const publicSet = api.slice(api.indexOf('public_paths = {'), api.indexOf('public_prefixes'));
   check('the passport is exempt from auth, so an anonymous harness can read it',
     /"\/chart\/build-info\.json"/.test(publicSet), true);

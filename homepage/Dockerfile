@@ -110,12 +110,18 @@ COPY --from=chart_assets /build/chart/workers ./public/chart/workers
 COPY --from=chart_assets /build/chart/vendor ./public/chart/vendor
 COPY --from=chart_assets /build/chart/fonts ./public/chart/fonts
 COPY --from=chart_assets /build/chart/sw.js ./public/chart/sw.js
-# PASSPORT-3, same copy-forward as chart Dockerfile.local. nginx proxies /chart/ to the
-# backend, so this mirror is not the path that answers the passport today — it is here so
-# the mirror is complete and a future routing change cannot turn the passport into a 404.
-# Same build, same emitter, so it cannot drift from the backend's copy.
-# [n] glob: absent on non-checkpoint builds, where a plain COPY would fail the build.
-COPY --from=chart_assets /build/chart/build-info.jso[n] ./public/chart/
+# PASSPORT-3 deliberately does NOT copy build-info.json into this mirror.
+#
+# It was copied here once, for "mirror completeness", and that single line moved which
+# tier answers the passport. With the file present, nginx served it from the static tier
+# under the asset policy — max-age=3600, public — instead of proxying to the backend that
+# sets no-store. Live verification caught it: correct build id, correct SHA, cacheable for
+# an hour. A passport the reader may cache is one that can keep asserting a SHA after the
+# bytes behind it have changed, which is the failure the no-store rule exists to prevent.
+#
+# One tier owns this file: api_server.py in the trading-chart image, which serves it with
+# no-store. A second copy is not redundancy, it is a second answer that can drift and, as
+# shown here, can silently win the route.
 # Design-live shell is a PO-reachable URL (/chart/talaria-design/live/). Without this
 # overwrite, committed homepage/public/chart/talaria-design/live keeps stale ?v= stamps
 # while dist-v9 advances (FIX-ABSENT path 12).
