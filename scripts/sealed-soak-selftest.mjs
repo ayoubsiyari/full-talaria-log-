@@ -156,14 +156,26 @@ check('a slope over a trivial bar delta is withheld rather than published as noi
     /LOOKS provenanced and is not/.test(err), err.split('\n').find((l) => /provenanced/.test(l))?.trim().slice(0, 90));
 }
 
-// 7e. PASSPORT-3's reader must distinguish the LIVE failure from success. b120 serves the app shell with
-//     a 200, and a reader that trusts res.ok reports a healthy passport for a page of login HTML.
+// 7e. PASSPORT-3's reader must classify a 200 carrying app-shell HTML as SPA_FALLBACK rather than as a
+//     healthy passport. This used to point at the LIVE origin and assert SPA_FALLBACK — which passed only
+//     while the route was broken, and inverted to FAIL the moment B's b121 cut fixed it. A suite whose
+//     green depends on a production defect is worse than no test, so the failure shape now comes from a
+//     local fixture and the live origin is RECORDED, never asserted.
 {
   const { readBuildInfo } = await import('./lib/build-info.mjs');
-  const live = await readBuildInfo('http://31.97.192.82:3000');
+  const http = await import('node:http');
+  const shell = '<!doctype html><html><head><title>Talaria</title></head><body><div id="root"></div></body></html>';
+  const srv = http.createServer((_, res) => { res.writeHead(200, { 'content-type': 'text/html' }); res.end(shell); });
+  await new Promise((r) => srv.listen(0, '127.0.0.1', r));
+  const port = srv.address().port;
+  const fake = await readBuildInfo(`http://127.0.0.1:${port}`);
+  await new Promise((r) => srv.close(r));
   check('a 200 carrying HTML is reported as SPA_FALLBACK, not as a passport',
-    live.ok === false && live.state === 'SPA_FALLBACK' && live.sourceCommitSha === null,
-    `state=${live.state} ok=${live.ok}`);
+    fake.ok === false && fake.state === 'SPA_FALLBACK' && fake.sourceCommitSha === null,
+    `state=${fake.state} ok=${fake.ok}`);
+
+  const live = await readBuildInfo('http://31.97.192.82:3000').catch(() => ({ state: 'UNREACHABLE', ok: false }));
+  results.push({ pass: true, name: `live origin passport state RECORDED (not asserted): ${live.state}${live.ok ? ` sha ${String(live.sourceCommitSha).slice(0, 12)}` : ''}`, detail: 'Recorded so the suite reports what production serves without its own green depending on it.' });
 }
 
 const passed = results.filter((r) => r.pass).length;
