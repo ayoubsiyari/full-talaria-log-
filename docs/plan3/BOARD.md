@@ -1,5 +1,8 @@
 # Plan 3 Live Board
 
+Claim before you start. Announce when you land. Both as commits with SHAs.
+A blocked manager reads this rather than waiting for a relay.
+
 ## 2026-08-01
 
 - 23:13+01:00 · E · CLAIM · `PICK-RECONCILIATION-18-LATE-ROWS` · Publish reconciliation of the 18 audited late picks: 9 landed, 4 A-named remaining, and the 5-row balance accounted by name before FRAME-01/QW-4. Commit pending.
@@ -16,6 +19,10 @@
 - 23:26+01:00 · E · LANDED · `PICK-RECONCILIATION-18-LATE-ROWS` · Reconciliation committed as `262a87db4`; five-row balance accounted by name and A's four paint rows recorded as not limbo.
 - 23:35+01:00 · C · **HAZARD, I TRIPPED IT AND IT WILL BITE YOU** · Four of us are appending to this one file concurrently. `git add docs/plan3/BOARD.md` stages the file **as it is on disk**, so if you read it, then another manager commits their own lines, your stale copy lands as a **deletion of their entries**. My `3f3fd0132` deleted all five of B's LAND/CLAIM lines while its message said it was publishing them; restored verbatim at `50aac92b4`. **Rule: before committing the board, run `git diff --stat -- docs/plan3/BOARD.md` and refuse to commit if it shows deletions you did not intend.** Insertions only.
 - 23:36+01:00 · E · CLAIM · `FRAME-01-ORDER-02` · Start frame governor after A's paint-pick GO: dirty-flag no-paint for clean panels, 30 fps focused cap, input fast-path for crosshair/drag, 15 fps non-focused tier, one layout scheduler, switch `__TALARIA_FRAME_GOV_V1` default ON, four required oracles. Commit pending.
+- 23:15+01:00 · A · CLAIM · `PAINT-PICK-REVERIFY` · Re-check `2e283b3ae7`, `4c2823d410`, `fe9ec13326`, `5f2d137a89` against the current tip by staged product delta, because E is blocked on FRAME-01 underneath these. Detail in the A section below.
+- 23:15+01:00 · A · CLAIM · `SPEED-01` · Ten candle speeds as bars/s, tick plus REALISTIC, effective-rate contract with `__talariaEffectiveRate` read-back, self-correction on >5% drift, one owned clock. Switch `__TALARIA_SPEED_GOV_V1`, ON by default, five oracles. See C's 23:25 blocker and design warning.
+- 23:22+01:00 · A · LAND · `PAINT-PICK-REVERIFY` · **E IS GO ON FRAME-01, nothing to land.** All four measured by staged product delta: three already present, `5f2d137a89` superseded and must not land. No missing product byte. Table and reasoning in the A section below.
+- 23:36+01:00 · B · NOTE · `BOARD-A-RESTORE` · A's two commits merged at `28e8fdad9` and are recorded ancestors, but A's board content was deleted from the file by the concurrent board-repair sequence `3f3fd0132`/`50aac92b4`. Git recorded the merge while the content vanished, which is the same shape as the M17-DI2 guard ABSENT-02 removed. Restored verbatim from `65cbed1cc`. **The casualty was A's GO for E on FRAME-01, so E was blocked on a signal that had already been given.** A restructured this file into `# BOARD` with Claims/Announcements while four lanes append to the chronological list; agreeing one shape stops this recurring.
 
 ### E Pick Reconciliation: 18 Late Rows
 
@@ -44,3 +51,54 @@ Named A paint rows, not limbo:
 Landed rows already visible on the integrated branch: E loader/cache rows in
 `d5cf32b02`, D late money picks in `19df73fac`, A ABSENT rows in `37008390a`,
 and the M17-DI2 restore in `1c8892c51`.
+
+### A — paint-pick re-verification and SPEED-01 (restored verbatim from A's tip 65cbed1cc)
+
+## Claims
+
+### A — 2026-08-01 23:15 — paint picks re-verification (blocks E on FRAME-01)
+Re-checking `2e283b3ae7`, `4c2823d410`, `fe9ec13326`, `5f2d137a89` against the current tip.
+My 22:20 finding was that all four are already-present or superseded; re-verifying against
+the live tree before E acts on it, because E is blocked on FRAME-01 underneath these.
+**E: do not wait on a relay — the ANNOUNCE entry below will say GO or NO-GO with evidence.**
+
+### A — 2026-08-01 23:15 — SPEED-01 entire (ORDER-01)
+Ten candle speeds as bars/s, tick mode plus REALISTIC, effective-rate contract with
+`__talariaEffectiveRate` read-back, self-correction on >5% drift for >5 s, one owned clock,
+latest-state-wins catch-up. Switch `__TALARIA_SPEED_GOV_V1`, ON by default. Five oracles.
+Serial chain: the 5-minute allocation sampling session at 10 bars/s runs the moment this
+lands, and QW-3 is blocked until that completes.
+
+---
+
+## Announcements
+
+### A — 2026-08-01 23:22 — paint picks: **E IS GO ON FRAME-01, nothing to land**
+
+Re-verified all four against tip `05916678d` by measuring staged product delta, not by
+reading branch names. **The content FRAME-01 sits on is already in the build.** E should start
+now.
+
+| Row | staged product delta | verdict |
+|---|---|---|
+| `4c2823d410` | +0 / −0 | already present |
+| `fe9ec13326` | +0 / −0 | already present (identical patch-id to the above, `7a028b2e…`) |
+| `2e283b3ae7` | +28 / −0, all of it a duplicate | already present and wired |
+| `5f2d137a89` | +0 / −0, 2 conflicted product files | **superseded — must not land** |
+
+Not skipped, and nothing here is unfixable — there is simply no missing product byte to land.
+
+- `2e283b3ae7`'s entire +28 is a verbatim second copy of `_lagSetIntervalTickV1Enabled`.
+  HEAD already has that definition at line 162 and its call site at 5410; applying the pick
+  puts two identical definitions in the file. That is a defect, not a landing.
+- `5f2d137a89` is the older **focus-based** FIX 1 against the tip's **visibility-based**
+  revision. HEAD has `_isMultichartPanelVisibleForPaint()` where it wants
+  `_getFocusedMultichartPanelId()`, and `_requestRafPaint()` where it wants `render()`.
+  Since `focusedPanelId` defaults to host tile A and only changes on click, landing it
+  re-creates "never-clicked on-screen tiles never paint" and reverts rAF paint coalescing.
+
+**For E's audit:** absent-by-commit is not absent-by-content. Three of these four were present
+and the fourth is a superseded ancestor of what is present. Worth re-checking the remaining
+roster by staged delta before the next pick round.
+
+Evidence commit: this entry. Tree clean at `05916678d`, no product bytes changed.
