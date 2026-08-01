@@ -4205,6 +4205,55 @@ class ReplaySystem {
         return centerX - (targetViewIndex * candleSpacing) - candleSpacing / 2;
     }
 
+    _replayViewportOriginBarKey(chartInstance, mode) {
+        const chart = chartInstance || this.chart;
+        const data = chart && Array.isArray(chart.data) ? chart.data : null;
+        const last = data && data.length ? data[data.length - 1] : null;
+        const barT = last && Number.isFinite(Number(last.t))
+            ? Number(last.t)
+            : (Number.isFinite(this.replayTimestamp) ? Number(this.replayTimestamp) : Number(this.currentIndex));
+        return `${mode || 'follow'}:${barT}`;
+    }
+
+    _resolveReplayViewportOrigin(chartInstance = this.chart, opts = {}) {
+        if (!chartInstance) return null;
+        let offsetX = Number(opts.offsetX);
+        if (!Number.isFinite(offsetX)) {
+            if (opts.centerPlayhead) {
+                offsetX = this.getReplayCenterPlayheadOffset(chartInstance);
+            } else {
+                const st = this.getReplayAutoScrollState(chartInstance);
+                offsetX = st && Number.isFinite(st.offsetX) ? st.offsetX : NaN;
+            }
+        }
+        if (!Number.isFinite(offsetX)) return null;
+        return {
+            offsetX: Math.round(offsetX),
+            mode: opts.centerPlayhead ? 'center' : (opts.mode || 'follow'),
+        };
+    }
+
+    _applyReplayViewportOrigin(chartInstance = this.chart, opts = {}) {
+        const origin = this._resolveReplayViewportOrigin(chartInstance, opts);
+        if (!origin) return false;
+        const key = this._replayViewportOriginBarKey(chartInstance, origin.mode);
+        const last = chartInstance._replayViewportOriginOwnerLast;
+        if (opts.force !== true && last && last.key === key && last.offsetX === origin.offsetX) {
+            return false;
+        }
+        chartInstance.offsetX = origin.offsetX;
+        chartInstance._replayViewportOriginOwnerLast = {
+            key,
+            offsetX: origin.offsetX,
+            source: opts.source || origin.mode,
+        };
+        chartInstance._replayViewportOriginOwnerWrites = (chartInstance._replayViewportOriginOwnerWrites | 0) + 1;
+        if (typeof chartInstance.constrainOffset === 'function') {
+            chartInstance.constrainOffset();
+        }
+        return true;
+    }
+
     /**
      * True when the user deliberately moved/zoomed the viewport away from replay follow.
      * Uses flags plus offset comparison so wheel / time-axis zoom count even without drag-pan.
@@ -4353,17 +4402,13 @@ class ReplaySystem {
             return false;
         }
 
-        let offsetX = null;
-        if (opts.centerPlayhead) {
-            offsetX = this.getReplayCenterPlayheadOffset(chartInstance);
-        } else {
-            const st = this.getReplayAutoScrollState(chartInstance);
-            if (st && Number.isFinite(st.offsetX)) offsetX = st.offsetX;
-        }
-        if (!Number.isFinite(offsetX)) return false;
-
         var __bl2bBefore = window.__talariaBl2bSnap && window.__talariaBl2bSnap(chartInstance);
-        chartInstance.offsetX = offsetX;
+        const appliedOrigin = this._applyReplayViewportOrigin(chartInstance, {
+            centerPlayhead: !!opts.centerPlayhead,
+            force: opts.forceRecenter === true,
+            source: opts.source || 'syncReplayViewportToPlayhead',
+        });
+        if (!appliedOrigin) return false;
         // BL-2b (price-axis independence, SECONDARY sink): a HOST-originated replay
         // frame/seek must not wipe an embed panel's own Y-state (autoScale/priceZoom/
         // priceOffset/manualRange). The panel keeps autoscaling its OWN visible bars
@@ -4381,9 +4426,6 @@ class ReplaySystem {
             if (chartInstance.priceScale) {
                 chartInstance.priceScale.autoScale = true;
             }
-        }
-        if (typeof chartInstance.constrainOffset === 'function') {
-            chartInstance.constrainOffset();
         }
         if (opts.render !== false) {
             chartInstance.renderPending = true;
@@ -6588,16 +6630,10 @@ class ReplaySystem {
         
         // Auto-scroll if enabled
         if (this.autoScrollEnabled && !this._viewportLockForPlayback && !this.userHasPanned) {
-            const autoScrollState = this.getReplayAutoScrollState(this.chart);
-            if (autoScrollState) {
-                this.chart.offsetX = autoScrollState.offsetX;
-            }
+            this._applyReplayViewportOrigin(this.chart, { source: 'updateChartData' });
         } else if (this.autoScrollEnabled && !this._viewportLockForPlayback
             && !this._replayUserOwnsViewport(this.chart)) {
-            const autoScrollState = this.getReplayAutoScrollState(this.chart);
-            if (autoScrollState) {
-                this.chart.offsetX = autoScrollState.offsetX;
-            }
+            this._applyReplayViewportOrigin(this.chart, { source: 'updateChartData-recover' });
         }
         
         // Update UI

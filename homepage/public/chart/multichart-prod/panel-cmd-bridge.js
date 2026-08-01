@@ -1820,13 +1820,21 @@
                         // Same device-pixel column — keep X stable, but still paint once.
                         // Mirror may have skipped its render (defer-to-eased) so tick
                         // candle morph must happen here; a second X paint is what shook B.
-                        ch.offsetX = appliedSt;
-                        if (typeof ch.constrainOffset === 'function') ch.constrainOffset();
+                        if (typeof rs._applyReplayViewportOrigin === 'function') {
+                            rs._applyReplayViewportOrigin(ch, { offsetX: appliedSt, source: 'same-tf-eased-follow' });
+                        } else {
+                            ch.offsetX = appliedSt;
+                            if (typeof ch.constrainOffset === 'function') ch.constrainOffset();
+                        }
                         ch.renderPending = false;
                         if (typeof ch.render === 'function') ch.render();
                     } else {
-                        ch.offsetX = easedOffsetX;
-                        if (typeof ch.constrainOffset === 'function') ch.constrainOffset();
+                        if (typeof rs._applyReplayViewportOrigin === 'function') {
+                            rs._applyReplayViewportOrigin(ch, { offsetX: easedOffsetX, source: 'same-tf-eased-follow' });
+                        } else {
+                            ch.offsetX = easedOffsetX;
+                            if (typeof ch.constrainOffset === 'function') ch.constrainOffset();
+                        }
                         ch._mcPlayFollowAppliedOffsetX = Number(ch.offsetX);
                         ch._mcPlayFollowRenders = (ch._mcPlayFollowRenders | 0) + 1;
                         ch.renderPending = false;
@@ -1837,7 +1845,11 @@
                         ? rs.getReplayAutoScrollState(ch)
                         : null;
                     if (followSt && Number.isFinite(followSt.offsetX)) {
-                        ch.offsetX = followSt.offsetX;
+                        if (typeof rs._applyReplayViewportOrigin === 'function') {
+                            rs._applyReplayViewportOrigin(ch, { offsetX: followSt.offsetX, source: 'same-tf-follow-fallback' });
+                        } else {
+                            ch.offsetX = followSt.offsetX;
+                        }
                     } else if (rangeSyncOn && Number.isFinite(payload.hostOffsetX)) {
                         ch.offsetX = Number(payload.hostOffsetX);
                     } else if (rangeSyncOn && Number.isFinite(pc.offsetX)) {
