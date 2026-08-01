@@ -106,6 +106,31 @@ const EVICT_CONTEXT_BARS = 5000;
 const EVICT_SLACK_BARS = 2048;
 
 /**
+ * MEM-1c — pre-session residency bound (default ON).
+ * Kill-switch: window.__TALARIA_PRESESSION_RESIDENCY_V1 = <truthy> restores the full
+ * pre-session prefix. Read per bound decision, never sampled at init.
+ */
+function _preSessionResidencyDisabled() {
+    return _talariaDisableFlagTruthy('__TALARIA_PRESESSION_RESIDENCY_V1');
+}
+
+/**
+ * History retained before the session floor. Sized against the shipped warm-up window
+ * (bounded elsewhere at 264 bars) with substantial headroom, because undersizing this
+ * changes indicator values rather than merely costing a pan-left refetch.
+ */
+const PRESESSION_RESIDENCY_BARS = 1000;
+
+/**
+ * MEM-1d — redundant display-series copy removal (default ON).
+ * Kill-switch: window.__TALARIA_SERIES_DEDUPE_V1 = <truthy> restores the entry-time copy.
+ * Read per decision, never sampled at init.
+ */
+function _seriesDedupeDisabled() {
+    return _talariaDisableFlagTruthy('__TALARIA_SERIES_DEDUPE_V1');
+}
+
+/**
  * CPU-CEILING-60X — single-chart high-speed replay paint cadence (default ON).
  * Kill-switch: window.__TALARIA_DISABLE_SC_REPLAY_PAINT_CADENCE_V1 = <truthy>
  * restores legacy per-forming-tick sync paint. Absent / falsy ⇒ mitigation on.
@@ -1534,7 +1559,14 @@ class ReplaySystem {
         let oldest = null;
         let sawUnreadable = false;
         for (const position of open) {
-            const t = Number(position && position.openTime);
+            // A hole in the array is unreadable, not an entry at epoch zero: `position &&
+            // position.openTime` yields null there, and Number(null) is a finite 0 that
+            // would silently drop the floor and expose the entry bar to eviction.
+            if (!position) {
+                sawUnreadable = true;
+                continue;
+            }
+            const t = Number(position.openTime);
             if (!Number.isFinite(t)) {
                 sawUnreadable = true;
                 continue;
@@ -1601,6 +1633,98 @@ class ReplaySystem {
             this.sessionStartIndex = Math.max(0, sessionStart - start);
         }
         this._evictedBehindPlayheadBars = (this._evictedBehindPlayheadBars || 0) + start;
+    }
+
+    /**
+     * MEM-1d — seed the entry-time display-series snapshot.
+     *
+     * fullData has no product reader anywhere in the tree: every product occurrence is a
+     * write or a null-out (see docs/plan3/MEM-1d-consumer-audit.md). The reseed path in
+     * chart.js rebuilds it from this.data on the first tick regardless, so copying the
+     * whole display series at entry duplicates an array nothing consults.
+     *
+     * The field is nulled rather than deleted. Two teardown suites assert it exists and
+     * reaches null, and nulling also avoids the one hazard of simply dropping the write:
+     * a stale snapshot surviving from a previous session.
+     */
+    _seedFullDataSnapshot() {
+        if (_seriesDedupeDisabled()) {
+            this.fullData = Array.isArray(this.chart.data) ? [...this.chart.data] : null;
+            return;
+        }
+        this.fullData = null;
+    }
+
+    /** Index of the last bar at or before `ts`, or -1. Series is ascending by `t`. */
+    _lastIndexAtOrBefore(series, ts) {
+        let lo = 0;
+        let hi = series.length - 1;
+        let hit = -1;
+        while (lo <= hi) {
+            const mid = (lo + hi) >> 1;
+            const t = Number(series[mid] && series[mid].t);
+            if (!Number.isFinite(t)) {
+                lo = mid + 1;
+                continue;
+            }
+            if (t <= ts) {
+                hit = mid;
+                lo = mid + 1;
+            } else {
+                hi = mid - 1;
+            }
+        }
+        return hit;
+    }
+
+    /**
+     * MEM-1c — bound pre-session history at replay entry.
+     *
+     * Bars before the session floor exist only to warm indicators up. Replay never steps
+     * onto them and they are off-screen unless the user pans left, which refetches — so
+     * the bound is reversible in the same sense EVICT-03 is. The boot fetch pulls far more
+     * history than the warm-up window consumes.
+     *
+     * This is the load-time complement of EVICT-03: that trims behind the playhead as
+     * replay advances, this trims behind the session floor once, at entry.
+     *
+     * fullRawData and chart.rawData are the same content at this point (the former is a
+     * fresh copy of the latter), so both are trimmed to the same offset. Trimming only the
+     * copy would free array slots while the bar objects stayed reachable through
+     * chart.rawData, which is residency in name only. dataVersion is bumped so derived
+     * resample and display caches keyed on it rebuild against the shorter master.
+     */
+    _boundPreSessionResidency() {
+        const master = this.fullRawData;
+        if (!Array.isArray(master) || master.length === 0) return;
+        const sessionStart = Number(this.sessionStartIndex);
+        if (!Number.isFinite(sessionStart)) return;
+
+        let start = sessionStart - PRESESSION_RESIDENCY_BARS;
+        if (start < 1) return;
+        if (_preSessionResidencyDisabled()) return;
+
+        const floorTs = this._oldestOpenPositionTimestamp();
+        if (Number.isNaN(floorTs)) return;
+        if (floorTs !== null) {
+            const hit = this._lastIndexAtOrBefore(master, floorTs);
+            if (hit >= 0 && hit < start) start = hit;
+        }
+        if (start < 1) return;
+
+        const chart = this.chart;
+        const rawIsSameContent = chart
+            && Array.isArray(chart.rawData)
+            && chart.rawData.length === master.length;
+        if (!rawIsSameContent) return;
+
+        this.fullRawData = master.slice(start);
+        chart.rawData = chart.rawData.slice(start);
+        this.sessionStartIndex = Math.max(0, sessionStart - start);
+        const cursor = Number(this.currentIndex);
+        if (Number.isFinite(cursor)) this.currentIndex = Math.max(0, cursor - start);
+        if (Number.isFinite(Number(chart.dataVersion))) chart.dataVersion = Number(chart.dataVersion) + 1;
+        this._preSessionEvictedBars = (this._preSessionEvictedBars || 0) + start;
     }
 
     _advanceReplayPlayheadOneStep() {
@@ -2929,7 +3053,7 @@ class ReplaySystem {
         
         // Store full datasets
         this.fullRawData = [...this.chart.rawData];
-        this.fullData = [...this.chart.data];
+        this._seedFullDataSnapshot();
         this.rawTimeframe = this.detectRawTimeframeFromData(this.fullRawData);
         this._fullRawDataMatchesTF = false;
         
@@ -3655,9 +3779,10 @@ class ReplaySystem {
         
         // Store full datasets
         this.fullRawData = [...this.chart.rawData];
-        this.fullData = [...this.chart.data];
+        this._seedFullDataSnapshot();
         this.rawTimeframe = this.detectRawTimeframeFromData(this.fullRawData);
         this._fullRawDataMatchesTF = false;
+        this._boundPreSessionResidency();
         
         // === INITIALIZE VIRTUAL TIMESTAMP TRACKING ===
         this.replayStartTimestamp = this.fullRawData[0].t;
