@@ -6540,3 +6540,41 @@ verdict below n=3, and the sweep interleaves bar counts so drift over a run cann
 One honest gap: the cv is measured zero-trade. A session doing marker work every event may be noisier, so
 the repeat counts are a floor rather than a promise. The oracle takes the larger of observed and floor,
 so it degrades safely, and I asked the first trade-bearing gate to report its own cv.
+
+## B-0237 — declined the opportunistic A/B, and found a 3x error in my own cost table while pricing it
+
+Director offered the flag A/B before 04:00. Answer is no, but not for the reason I expected, and pricing
+it turned up an error in a table the Director is about to rule on.
+
+I assumed a repeat costs 120 s. It costs 39 s — the falsifier ran 8 windows in 309 s wall clock, and
+WINDOW_MS is 25000, which is also the window length the 7.3% cv was measured at. So every row of my
+margin table was overstated by roughly 3x. That flips my own recommendation: a full two-regime A/B at a
+5% margin is 55 minutes, not two and a half hours. I had argued for the looser 10% bar on arithmetic that
+was wrong, and a bar set loose for a false reason is the kind that stays loose forever. Corrected the
+table and reversed the recommendation against myself. Left the oracle defaulting to 10% until the
+Director rules, because a default that changes twice in one night is worse than one that disagrees with
+me.
+
+So time was never the constraint — a one-regime powered A/B is about 15 minutes against the 48 I had.
+The real blockers are both about not knowing enough. First, I cannot identify which flag C tested; that
+document is not in any repo I have synced, and running a different flag is a new experiment, not C's
+made powered. Second, I have no trade-bearing session stamped, so what I could deliver tonight is
+zero-trade only — half the regimes, filed hours after I wrote the policy saying that is a fail. Note the
+asymmetry though: zero-trade is precisely the arm C cannot easily produce, so this is a division of
+labour rather than a dead end.
+
+Built the runner instead, since preparation costs no host time. Parameterised on the flag, refuses to
+guess it, refuses n<3, verifies the flag in the RUNNING CONTAINER rather than in the .env we just wrote,
+restores in place with a checksum-verified trap after each arm, and hands its numbers to the oracle
+instead of eyeballing them. It also prints a warning that its result says nothing about the
+trade-bearing regime, so nobody can quote half a gate as a whole one. Both guards fire, both files pass
+syntax.
+
+Also checked the host before answering rather than after: chart container at 0.91% CPU, zero request
+lines in two minutes, no browser or node processes. C's soak is not driving the app right now. Did not
+read that as "soak finished" — zero log lines is the ambiguous signal I have been caught by twice, and
+container CPU is the load-bearing observation.
+
+One clock note worth more than it sounds: the host runs UTC and is an hour behind my local. "04:00"
+means 03:00 on the box. If C is reading the same phrase off a different clock we get an hour of overlap
+between a soak and a deploy, which is the exact collision the exclusive window exists to prevent.

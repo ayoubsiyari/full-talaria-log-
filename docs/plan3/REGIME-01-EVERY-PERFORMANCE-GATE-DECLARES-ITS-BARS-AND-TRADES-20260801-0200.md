@@ -143,20 +143,25 @@ implementation did.
 
 ### The margin is a judgement, and here is its price
 
-How much drift counts as "did not worsen" is the Director's to set. The cost in repeats, at cv 7.3%,
-for a flat arm to certify:
+*(table corrected 03:15 — my first version assumed a 120 s repeat and overstated every row by ~3x. The
+measured repeat is **39 s**: the falsifier ran 8 windows in 309 s wall clock at `WINDOW_MS=25000`, which
+is also the window length the 7.3% cv was measured at. Correcting it flips my own recommendation.)*
 
-| margin | repeats/arm | windows | wall clock | |
+| margin | repeats/arm | full REGIME-01 (4 cells) | one regime (2 cells) | |
 |---|---|---|---|---|
-| 2% | 107 | 428 | 856 min | impractical |
-| 5% | 18 | 72 | 144 min | expensive but possible |
-| **10%** | **5** | **20** | **40 min** | **recommended** |
-| 15% | 2 (floored to 3) | 12 | 24 min | weak |
+| 2% | 107 | 286 min | 147 min | impractical |
+| **5%** | **18** | **55 min** | **31 min** | **recommended** |
+| 10% | 5 | 21 min | 15 min | fallback for shared slots |
+| 15% | 3 (floored) | 13 min | 11 min | weak |
 
-**Recommendation: 10%**, defaulted in the oracle pending your ruling. It is the widest margin still
-meaningfully tighter than the ~21% a single run silently allows, and it fits a 40-minute slot. A 5% bar
-needs two and a half hours per fix and will be the first thing dropped on a release night; a 10% bar that
-actually runs is worth more than a 5% bar that gets skipped.
+**Revised recommendation: 5%.** A full two-regime A/B at a 5% margin is about **55 minutes**, not the two
+and a half hours I claimed, and that fits inside an exclusive window. 10% stays available as the fallback
+when a fix has to be graded in a shared slot.
+
+I argued for 10% off arithmetic that was wrong by a factor of three, and a bar set loose for a reason
+that turns out to be false is the kind that quietly stays loose forever. The oracle still defaults to
+10% until you rule, because I would rather the default disagree with me than change under people twice
+in one night.
 
 **Minimum n=3 regardless**, since below that the run's own spread cannot be estimated at all.
 
