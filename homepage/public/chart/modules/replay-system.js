@@ -55,6 +55,14 @@ function _m19iTickSpeedCoherenceEnabled() {
     return !_talariaDisableFlagTruthy('__TALARIA_DISABLE_M19I_TICK_SPEED_COHERENCE_V1');
 }
 
+/**
+ * Host mirror paint: clear the dirty flag before the synchronous paint so animate() does not
+ * repaint the same state on the next frame. Truthy DISABLES, restoring the double paint.
+ */
+function _mcMirrorPaintCoalesceDisabled() {
+    return _talariaDisableFlagTruthy('__TALARIA_DISABLE_MC_MIRROR_PAINT_COALESCE_V1');
+}
+
 function _m27EngineReleaseV1Enabled() {
     return !_talariaDisableFlagTruthy('__TALARIA_DISABLE_M27_ENGINE_RELEASE_V1');
 }
@@ -8095,13 +8103,21 @@ class ReplaySystem {
             this._scheduleReplayIndicatorRecalc();
         } catch (_indErr) { /* ignore */ }
         if (!skipRender && typeof chart.render === 'function') {
-            if (passivePlay || lightPass) {
-                chart.renderPending = false;
-                chart.render();
-            } else {
+            // CLEAR BEFORE PAINTING. This paint satisfies the current dirty state, and render()
+            // does not clear renderPending itself, so setting the flag and then painting left the
+            // coalescer armed: animate() saw renderPending on the next frame and painted the SAME
+            // state again — two host paints per tick, on a setTimeout cadence that is already
+            // asking for more frames than the display can show.
+            //
+            // Clearing first still preserves the case the old ordering was protecting: a
+            // scheduleRender() raised DURING this paint re-arms the flag and correctly earns its
+            // own frame. Same idiom as the rAF coalescer, and as the sibling branch this replaces.
+            if (_mcMirrorPaintCoalesceDisabled() && !(passivePlay || lightPass)) {
                 chart.renderPending = true;
-                chart.render();
+            } else {
+                chart.renderPending = false;
             }
+            chart.render();
         }
         const tp = this.tickProgress || 0;
         if (chart.orderManager && typeof chart.orderManager.updatePositions === 'function'
