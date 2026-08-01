@@ -1159,6 +1159,9 @@ class Chart {
             throw new Error('Canvas element not found. Make sure the HTML is loaded.');
         }
         this.ctx = this.canvas.getContext('2d');
+        // DEF-05(a): installed at the point of acquisition, so no code path can own a
+        // context that has no recovery attached to it.
+        this._installCanvasContextRecovery();
         
         if (svgElement) {
             this.svg = d3.select(svgElement);
@@ -30370,6 +30373,96 @@ class Chart {
         (this._managedListeners || (this._managedListeners = []))
             .push({ target, type, handler, options });
         return handler;
+    }
+
+    /**
+     * DEF-05(a) CANVAS-CONTEXT-RECOVERY — default ON. Truthy
+     * `window.__TALARIA_DISABLE_CANVAS_CONTEXT_RECOVERY_V1` restores the previous
+     * behaviour, where a lost backing store left the panel black until reload.
+     */
+    _canvasContextRecoveryV1Enabled() {
+        return !_talariaDisableFlagTruthy('__TALARIA_DISABLE_CANVAS_CONTEXT_RECOVERY_V1');
+    }
+
+    /**
+     * DEF-05(a): survive loss of the 2D backing store.
+     *
+     * This is the three-black-panels-after-refresh death. The browser may discard a
+     * canvas backing store under GPU pressure -- which a four-up grid plus a ten-hour
+     * soak is an efficient way to produce -- and the page is expected to repaint
+     * itself afterwards. This one could not: `this.ctx` is acquired exactly once in
+     * the constructor and `resize()` reuses it rather than re-acquiring, so after a
+     * loss every subsequent draw went to a dead context and the panel stayed black
+     * with no error and nothing in the console.
+     *
+     * ON THE WEBGL HALF OF THIS ROW, which is not implemented and should not be:
+     * there is no WebGL in this codebase. Every rendering context in the served
+     * bundle is getContext('2d') -- the main canvas here, the indicator layer cache,
+     * the compare panes, and the screenshot scratch canvases. `webglcontextlost` only
+     * fires on a WebGL context, so listeners for it would be present, mirrored, and
+     * incapable of ever firing: a fix bound to nothing, which is the ABSENT class
+     * PROC-3 exists to catch. The 2D pair below is the whole of the real defect.
+     *
+     * preventDefault() on contextlost is load-bearing and not defensive habit: the
+     * spec only fires contextrestored if the lost event was cancelled. Without it
+     * this handler would observe the death and never be told about the recovery.
+     */
+    _installCanvasContextRecovery() {
+        if (!this.canvas || this._canvasContextRecoveryInstalled) return;
+        if (!this._canvasContextRecoveryV1Enabled()) return;
+        this._canvasContextRecoveryInstalled = true;
+        this._canvasContextLost = false;
+
+        this._trackListener(this.canvas, 'contextlost', (e) => {
+            try {
+                e.preventDefault();
+                this._canvasContextLost = true;
+                console.warn('⚠️ Chart canvas context lost; awaiting restore');
+            } catch (_e) { /* nothing useful to do while the surface is gone */ }
+        });
+
+        this._trackListener(this.canvas, 'contextrestored', () => {
+            try {
+                this._recoverCanvasContext();
+            } catch (_e) {
+                // A failed recovery must not throw into the event loop; the panel is
+                // no worse off than before the attempt.
+            }
+        });
+    }
+
+    /**
+     * DEF-05(a): re-acquire the 2D context and repaint.
+     *
+     * A restored canvas comes back with a cleared backing store and an identity
+     * transform, so re-acquiring alone would paint at 1x on a HiDPI display. The DPR
+     * rescale here is the same pair resize() applies, kept deliberately in step with
+     * it. The indicator layer cache holds its own context off the same lost surface,
+     * so it is dropped and left for _ensureIndicatorLayerCache to rebuild rather than
+     * repaired in place.
+     */
+    _recoverCanvasContext() {
+        if (!this.canvas) return false;
+        const ctx = this.canvas.getContext('2d');
+        if (!ctx) return false;
+        this.ctx = ctx;
+
+        const dpr = window.devicePixelRatio || 1;
+        try {
+            this.ctx.setTransform(1, 0, 0, 1, 0, 0);
+            this.ctx.scale(dpr, dpr);
+        } catch (_e) { /* a context that refuses a transform will refuse the paint too */ }
+
+        try {
+            this._indLayerCanvas = null;
+            this._indLayerCtx = null;
+        } catch (_e) { /* no cache to drop */ }
+
+        this._canvasContextLost = false;
+        this.renderPending = false;
+        this.render();
+        console.log('✅ Chart canvas context restored and repainted');
+        return true;
     }
 
     _trackObserver(observer) {
