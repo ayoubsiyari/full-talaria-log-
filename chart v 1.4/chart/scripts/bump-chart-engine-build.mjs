@@ -4,23 +4,37 @@
  * Override: BUILD_ID=20260629b2 npm run version:bump
  * Inspect without mutating: node bump-chart-engine-build.mjs --dry-run
  *
- * ── THREE PRODUCT SIDE EFFECTS. THIS SCRIPT IS NOT A VERIFIER. ───────────────────────────
+ * ── TWO PRODUCT SIDE EFFECTS. THIS SCRIPT IS NOT A VERIFIER. ────────────────────────────
  *
- * Running it writes to the tree in three places:
+ * Running it writes to the tree in two places:
  *
  *   1. chart.js          — rewrites `const CHART_ENGINE_BUILD = '…'`
- *   2. package.json      — bumps the patch version (1.4.31 → 1.4.32 → …), UNCONDITIONALLY,
- *                          once per invocation
- *   3. build-info.json   — PASSPORT-3: buildId + sourceCommitSha (added 2026-08-01)
+ *   2. build-info.json   — PASSPORT-3: buildId + sourceCommitSha
  *
- * Effects 1 and 2 predate PASSPORT-3; effect 3 is new. All three are declared here because
- * C found six verifier runs had walked the version 1.4.31 → 1.4.37 in a tree that was
- * supposed to be quiescent. Anything that wants to CHECK this emitter must pass --dry-run;
- * a tree that moves when you look at it cannot be sealed, and a version that advances six
- * times without a build is a false provenance signal of exactly the kind PASSPORT-3 exists
- * to remove.
+ * Anything that wants to CHECK this emitter must pass --dry-run: a tree that moves when you
+ * look at it cannot be sealed. --dry-run computes everything, writes nothing, and prints the
+ * build-info it would emit.
  *
- * --dry-run computes everything, writes nothing, and prints the build-info it would emit.
+ * ── REMOVED 2026-08-01: the package.json patch bump ─────────────────────────────────────
+ *
+ * There was a third effect. Every invocation bumped chart/package.json's patch version
+ * unconditionally, and C found six verifier runs had walked it 1.4.31 → 1.4.37 in a tree
+ * that was supposed to be quiescent. It is gone rather than documented, for three reasons:
+ *
+ *   Nothing reads it. The only references to that version in the entire repository are the
+ *   npm scripts that invoke THIS script. No consumer, no import, no served artefact.
+ *
+ *   It made builds non-reproducible. Build the same commit twice and you got two different
+ *   trees, differing in a field carrying no information about either.
+ *
+ *   It was a false provenance signal, which is the precise thing PASSPORT-3 exists to
+ *   remove. 1.4.37 next to 1.4.31 implies six releases; there were zero, and the committed
+ *   value never left 1.4.31. Build identity is buildId plus sourceCommitSha, both of which
+ *   are validated, both of which reach the wire. A third, weaker, unvalidated identity that
+ *   advances when someone merely LOOKS at the emitter is worse than no identity at all.
+ *
+ * passport3.test.mjs asserts package.json is byte-identical after a real run, and that
+ * assertion is shown going red when the bump is restored.
  */
 import fs from 'fs';
 import path from 'path';
@@ -29,7 +43,6 @@ import { fileURLToPath } from 'url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
 const CHART_JS = path.join(ROOT, 'chart.js');
-const PKG_JSON = path.join(ROOT, 'package.json');
 const BUILD_INFO = path.join(ROOT, 'build-info.json');
 
 const BUILD_RE = /const CHART_ENGINE_BUILD = '([^']+)';/;
@@ -47,13 +60,6 @@ function incrementBuildId(id) {
     const m = /^(\d{8})([ab])(\d+)$/i.exec(String(id || '').trim());
     if (m) return `${m[1]}${m[2]}${parseInt(m[3], 10) + 1}`;
     return `${defaultBuildId()}2`;
-}
-
-function bumpPatchVersion(version) {
-    const parts = String(version || '0.0.0').split('.').map((n) => parseInt(n, 10) || 0);
-    while (parts.length < 3) parts.push(0);
-    parts[2] += 1;
-    return parts.join('.');
 }
 
 const DRY_RUN = process.argv.includes('--dry-run');
@@ -76,15 +82,7 @@ function main() {
     const nextBuild = process.env.BUILD_ID?.trim() || incrementBuildId(match[1]);
     const after = before.replace(BUILD_RE, `const CHART_ENGINE_BUILD = '${nextBuild}';`);
     if (!DRY_RUN) fs.writeFileSync(CHART_JS, after, 'utf8');
-    console.log('[bump-chart-engine-build] (1/3) CHART_ENGINE_BUILD:', match[1], '→', nextBuild);
-
-    if (fs.existsSync(PKG_JSON)) {
-        const pkg = JSON.parse(fs.readFileSync(PKG_JSON, 'utf8'));
-        const prev = pkg.version || '0.0.0';
-        pkg.version = bumpPatchVersion(prev);
-        if (!DRY_RUN) fs.writeFileSync(PKG_JSON, `${JSON.stringify(pkg, null, 2)}\n`, 'utf8');
-        console.log('[bump-chart-engine-build] (2/3) package.json version:', prev, '→', pkg.version);
-    }
+    console.log('[bump-chart-engine-build] (1/2) CHART_ENGINE_BUILD:', match[1], '→', nextBuild);
 
     writeBuildInfo(nextBuild);
 }
@@ -127,7 +125,7 @@ function writeBuildInfo(buildId) {
         builtAt: new Date().toISOString(),
     };
     if (!DRY_RUN) fs.writeFileSync(BUILD_INFO, `${JSON.stringify(info, null, 2)}\n`, 'utf8');
-    console.log('[bump-chart-engine-build] (3/3) build-info.json:', info.buildId, info.sourceCommitSha || '(no sha - non-checkpoint build)');
+    console.log('[bump-chart-engine-build] (2/2) build-info.json:', info.buildId, info.sourceCommitSha || '(no sha - non-checkpoint build)');
     if (DRY_RUN) console.log(JSON.stringify(info, null, 2));
 }
 

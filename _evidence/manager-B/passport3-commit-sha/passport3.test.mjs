@@ -50,9 +50,12 @@ function runBump(env) {
   const infoPath = path.join(chartDir, 'build-info.json');
   const info = fs.existsSync(infoPath) ? JSON.parse(fs.readFileSync(infoPath, 'utf8')) : null;
   const out = (r.stdout || '') + (r.stderr || '');
+  // Captured so the emitter's side-effect surface can be asserted, not just its artefact.
+  const pkgAfter = fs.readFileSync(path.join(chartDir, 'package.json'), 'utf8');
   fs.rmSync(tmp, { recursive: true, force: true });
-  return { code: r.status, info, out };
+  return { code: r.status, info, out, pkgAfter };
 }
+const PKG_BEFORE = JSON.stringify({ name: 'x', version: '1.0.0' }, null, 2);
 
 console.log('=== a checkpoint build REFUSES to produce an artefact with an unknown source ===');
 {
@@ -92,6 +95,60 @@ console.log('\n=== a dev build still works, and is honestly labelled ===');
   check('non-checkpoint build succeeds without a SHA', r.code, 0);
   check('and records the SHA as null rather than inventing one', r.info && r.info.sourceCommitSha, null);
   check('and does not claim to be a checkpoint build', r.info && r.info.checkpointBuild, false);
+}
+
+console.log('\n=== the emitter has exactly two side effects, and package.json is not one of them ===');
+{
+  // C found six verifier runs had walked chart/package.json 1.4.31 -> 1.4.37 in a tree that
+  // was supposed to be quiescent. The bump was removed rather than documented: nothing in the
+  // repository reads that version, it made the same commit build to two different trees, and a
+  // version that advances when someone merely LOOKS at the emitter is a false provenance
+  // signal -- the exact class PASSPORT-3 exists to remove. Identity is buildId + sourceCommitSha.
+  const r = runBump({ CHECKPOINT_BUILD: '1', BUILD_ID: '20260802b122', SOURCE_COMMIT_SHA: GOOD_SHA });
+  check('a real checkpoint run still succeeds', r.code, 0);
+  check('and leaves package.json byte-identical', r.pkgAfter, PKG_BEFORE);
+  check('and the version specifically has not moved', JSON.parse(r.pkgAfter).version, '1.0.0');
+  check('the run log declares two effects, not three', /\(1\/2\)/.test(r.out) && /\(2\/2\)/.test(r.out), true);
+  check('and never mentions writing package.json', /package\.json version:/.test(r.out), false);
+
+  // Static: the write itself is gone, not merely skipped behind a flag that could flip back.
+  const src = fs.readFileSync(SCRIPT, 'utf8');
+  check('no writeFileSync targets package.json anywhere in the emitter',
+    /writeFileSync\(\s*PKG_JSON/.test(src), false);
+  check('and the bumpPatchVersion helper is gone rather than left for rewiring',
+    /function bumpPatchVersion/.test(src), false);
+}
+
+console.log('\n=== discriminating: the package.json assertion goes red if the bump comes back ===');
+{
+  // BIND-01. A removal is only verified if its absence is what the gate detects, so restore the
+  // bump in a sandboxed copy of the emitter and confirm the same predicate fails.
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'passport3-mutant-'));
+  const chartDir = path.join(tmp, 'chart');
+  fs.mkdirSync(path.join(chartDir, 'scripts'), { recursive: true });
+  const mutant = fs.readFileSync(SCRIPT, 'utf8').replace(
+    '    writeBuildInfo(nextBuild);',
+    `    {
+        const PKG = path.join(ROOT, 'package.json');
+        const pkg = JSON.parse(fs.readFileSync(PKG, 'utf8'));
+        const p = String(pkg.version).split('.').map(Number); p[2] += 1;
+        pkg.version = p.join('.');
+        if (!DRY_RUN) fs.writeFileSync(PKG, \`\${JSON.stringify(pkg, null, 2)}\\n\`, 'utf8');
+    }
+    writeBuildInfo(nextBuild);`);
+  check('the mutant emitter actually differs from the real one', mutant.length > fs.readFileSync(SCRIPT, 'utf8').length, true);
+  fs.writeFileSync(path.join(chartDir, 'scripts', 'bump.mjs'), mutant);
+  fs.writeFileSync(path.join(chartDir, 'chart.js'), "const CHART_ENGINE_BUILD = '20260724b61';\n");
+  fs.writeFileSync(path.join(chartDir, 'package.json'), PKG_BEFORE);
+  const r = spawnSync(process.execPath, [path.join(chartDir, 'scripts', 'bump.mjs')], {
+    env: { ...process.env, BUILD_ID: '20260802b122', SOURCE_COMMIT_SHA: GOOD_SHA, CHECKPOINT_BUILD: '1' },
+    encoding: 'utf8',
+  });
+  const pkgAfter = fs.readFileSync(path.join(chartDir, 'package.json'), 'utf8');
+  fs.rmSync(tmp, { recursive: true, force: true });
+  check('the mutant run succeeds, so this is not a crash being mistaken for a catch', r.status, 0);
+  check('and a tree whose package.json moved is caught', pkgAfter === PKG_BEFORE, false);
+  check('specifically: the mutant walked the version', JSON.parse(pkgAfter).version, '1.0.1');
 }
 
 console.log('\n=== the chain: does the SHA actually reach the script, and the artefact reach the wire? ===');
