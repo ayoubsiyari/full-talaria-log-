@@ -18,7 +18,38 @@
         
         console.log('✅ User preferences initialized');
     } catch (error) {
+        // DEF-05(b)/DEF-07: announce readiness anyway, on defaults.
+        //
+        // This catch used to log and stop. Every consumer that waits for
+        // preferencesLoaded before it proceeds then waits for the rest of the
+        // session, because nothing else in the page ever dispatches it. Swallowing
+        // the error was not the defect; swallowing the *event* was.
+        //
+        // loadFromLocalStorage() returns the same per-field defaults the success
+        // path merges into, so a consumer reading preferences here sees a populated
+        // object rather than null, and detail is never undefined.
         console.error('❌ Failed to initialize preferences:', error);
+        try {
+            const sync = window.preferencesSync;
+            if (sync && !sync.isLoaded) {
+                sync.preferences = sync.loadFromLocalStorage();
+                sync.isLoaded = true;
+            }
+            window.dispatchEvent(new CustomEvent('preferencesLoaded', {
+                detail: (sync && sync.preferences) || {}
+            }));
+            console.log('✅ User preferences initialized on defaults');
+        } catch (fallbackError) {
+            // Defaults themselves failed, which means storage is unavailable. Still
+            // release the waiters: a panel painting with built-in defaults beats a
+            // panel that never paints.
+            console.error('❌ Preferences defaults unavailable:', fallbackError);
+            try {
+                window.dispatchEvent(new CustomEvent('preferencesLoaded', { detail: {} }));
+            } catch (_e) {
+                // No window to dispatch on; nothing is waiting either.
+            }
+        }
     }
 })();
 

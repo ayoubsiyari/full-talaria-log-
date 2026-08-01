@@ -57,6 +57,70 @@ class PreferencesSyncManager {
         return true;
     }
 
+    /**
+     * DEF-05(b)/DEF-07 PREFS-BOOTSTRAP-TIMEOUT — default ON. Truthy
+     * `window.__TALARIA_DISABLE_PREFS_BOOTSTRAP_TIMEOUT_V1` restores the previous
+     * behaviour of awaiting the cloud GET with no bound at all.
+     *
+     * Every *failure* of the preferences GET already lands on defaults: 403, 5xx,
+     * a non-ok response and a thrown transport error all fall through to
+     * loadFromLocalStorage() and set isLoaded. A request that simply never settles
+     * did not, and that is the whole defect. A hung GET leaves preferences null and
+     * isLoaded false for the lifetime of the page, and because loadPreferences() is
+     * single-flight, _inflightLoad never clears, so every later caller awaits the
+     * same dead promise. Nothing ever dispatches preferencesLoaded, so a consumer
+     * waiting on readiness waits for the rest of the session.
+     *
+     * Late and failed are the same event to a user staring at an unpainted panel,
+     * so they get the same answer here: proceed on defaults.
+     *
+     * Read across realms for the same reason the failure cap is: every multichart
+     * panel is its own window running its own manager, so a switch flipped on the
+     * host must reach the panels.
+     */
+    prefsBootstrapTimeoutV1Enabled() {
+        if (typeof window === 'undefined') return true;
+        const killed = (w) => {
+            try {
+                return !!(w && w.__TALARIA_DISABLE_PREFS_BOOTSTRAP_TIMEOUT_V1);
+            } catch (_e) {
+                return false;
+            }
+        };
+        if (killed(window)) return false;
+        try {
+            const parent = window.parent && window.parent !== window ? window.parent : null;
+            if (killed(parent)) return false;
+            const top = window.top && window.top !== window && window.top !== parent
+                ? window.top
+                : null;
+            if (killed(top)) return false;
+        } catch (_e) {
+            // Parent chain unreachable; the own-window read above already stands.
+        }
+        return true;
+    }
+
+    /**
+     * How long the bootstrap GET may take before we proceed on defaults.
+     * Overridable via `window.__TALARIA_PREFS_BOOTSTRAP_TIMEOUT_MS` so the cold-load
+     * oracle can drive the late path deterministically instead of waiting on a real
+     * slow network. Clamped: a zero or negative override would make every load take
+     * the timeout branch, which is a different bug from the one being fixed.
+     */
+    _prefsBootstrapTimeoutMs() {
+        const DEFAULT_MS = 4000;
+        try {
+            const raw = typeof window !== 'undefined'
+                ? Number(window.__TALARIA_PREFS_BOOTSTRAP_TIMEOUT_MS)
+                : NaN;
+            if (Number.isFinite(raw) && raw > 0) return raw;
+        } catch (_e) {
+            // Unreadable override; the shipped default stands.
+        }
+        return DEFAULT_MS;
+    }
+
     /** True once this realm has given up on the cloud endpoint for this session. */
     _cloudCallsSuspended() {
         if (!this.prefsCloudFailureCapV1Enabled()) return false;
@@ -155,17 +219,39 @@ class PreferencesSyncManager {
     }
 
     async _loadPreferencesOnce() {
+        // DEF-05(b)/DEF-07: bounds the bootstrap GET. Declared out here so the finally
+        // below can clear it on every exit; a timer left armed would abort a later
+        // request on this manager and would keep a handle alive for the soak to find.
+        let bootstrapTimer = null;
         try {
             const token = localStorage.getItem('token');
             
             if (token && !this._cloudSubscriptionBlocked && !this._cloudCallsSuspended()) {
+                // DEF-05(b)/DEF-07: abort a GET that never settles, so the late case
+                // reaches the same defaults the failure cases already reach. The abort
+                // throws into the catch below, which is the proven fallback path rather
+                // than a second one written alongside it.
+                const bound = this.prefsBootstrapTimeoutV1Enabled()
+                    && typeof AbortController !== 'undefined';
+                const controller = bound ? new AbortController() : null;
+                if (controller) {
+                    bootstrapTimer = setTimeout(() => {
+                        try {
+                            controller.abort();
+                        } catch (_e) {
+                            // Already settled or aborted; the fetch result stands.
+                        }
+                    }, this._prefsBootstrapTimeoutMs());
+                }
+
                 // Try loading from API
                 const response = await fetch('/api/chart/preferences', {
                     method: 'GET',
                     headers: {
                         'Authorization': `Bearer ${token}`
                     },
-                    credentials: 'include'
+                    credentials: 'include',
+                    ...(controller ? { signal: controller.signal } : {})
                 });
 
                 if (response.status === 403) {
@@ -199,11 +285,26 @@ class PreferencesSyncManager {
             return this.preferences;
 
         } catch (error) {
-            this._noteCloudFailure((error && error.message) || 'transport error');
-            console.warn('⚠️ Error loading preferences from cloud:', error.message);
+            const aborted = !!(error && (error.name === 'AbortError' || error.code === 20));
+            this._noteCloudFailure(
+                aborted
+                    ? 'bootstrap timeout after ' + this._prefsBootstrapTimeoutMs() + 'ms'
+                    : ((error && error.message) || 'transport error'),
+            );
+            if (aborted) {
+                console.warn(
+                    '⚠️ Preferences cloud GET exceeded '
+                    + this._prefsBootstrapTimeoutMs()
+                    + 'ms; proceeding on defaults',
+                );
+            } else {
+                console.warn('⚠️ Error loading preferences from cloud:', error.message);
+            }
             this.preferences = this.loadFromLocalStorage();
             this.isLoaded = true;
             return this.preferences;
+        } finally {
+            if (bootstrapTimer !== null) clearTimeout(bootstrapTimer);
         }
     }
 
