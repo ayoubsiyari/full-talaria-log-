@@ -27,6 +27,10 @@ function run(args) {
 }
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+// This file tests the LIVE reader, which is the one the cut runs. C's scripts/passport3-verify.mjs
+// is a different tool with the same stem: it proves the emitter/reader contract end to end, but its
+// live path accepts neither --expect-build nor --expect-sha. Pointing this binding at C's file makes
+// the cut command's expected build and SHA silently ignored, which passes while checking nothing.
 const VERIFIER = path.join(__dirname, 'passport3-verify.mjs');
 const GOOD_SHA = 'd7a27f70d494462fb9fcc66ab81851e6fd49c492';
 

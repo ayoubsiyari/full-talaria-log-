@@ -16,6 +16,14 @@
  *                    cut and the transition is witnessed rather than inferred.
  *
  * The reader under test is the one the soak imports. No second implementation.
+ *
+ * NOT the same tool as _evidence/manager-B/passport3-commit-sha/passport3-verify.mjs, despite the
+ * shared stem. That one is the cut-time CLI: it takes --expect-build, --expect-sha and a bounded
+ * --timeout, and it is what `npm run passport3:live` invokes. This file takes none of those, so
+ * pointing passport3:live here makes the cut's expected build and SHA silently ignored and the
+ * gate passes while checking neither. B nearly made that substitution during the C integration on
+ * the reasoning that this file is the larger of the two. Keep the npm bindings as they are:
+ * passport3:contract runs this, passport3:live runs the CLI.
  */
 import fs from 'node:fs';
 import path from 'node:path';

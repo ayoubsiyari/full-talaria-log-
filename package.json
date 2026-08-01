@@ -5,6 +5,7 @@
   "scripts": {
     "passport3:repo": "node \"_evidence/manager-B/passport3-commit-sha/passport3.test.mjs\"",
     "passport3:live": "node \"_evidence/manager-B/passport3-commit-sha/passport3-verify.mjs\" --mode=live",
+    "passport3:contract": "node \"scripts/passport3-verify.mjs\" --mode=contract",
     "passport3:selftest": "node \"_evidence/manager-B/passport3-commit-sha/passport3-verify.selftest.mjs\"",
     "preflight:territory": "node scripts/territory-preflight.mjs",
     "test:territory": "node --test scripts/tests/territory-preflight.test.mjs",
