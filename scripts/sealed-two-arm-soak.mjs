@@ -37,6 +37,9 @@ import { readOsFootprints } from './process-memory-census.mjs';
 import { perBarFields, evaluateGauges } from './lib/soak-gauges.mjs';
 import { readBuildInfo, shaChanged } from './lib/build-info.mjs';
 import { computeSeal } from './lib/seal.mjs';
+import { deliveredRate, evaluateRateHold, readEffectiveRateReadback } from './lib/rate-hold.mjs';
+import { pauseProbe } from './lib/pause-probe.mjs';
+import { readStorageCensus, diffStorage } from './lib/storage-census.mjs';
 import { readHostHealth } from './lib/host-health.mjs';
 import { installLoafCensus, readLoafCensus } from './lib/loaf-census.mjs';
 import { evaluateR3, readOldestOpenPositionAge } from './lib/r3-falsifier.mjs';
@@ -83,6 +86,22 @@ const IS_REHEARSAL = SEAL_ORIGIN !== ORIGIN;
 
 const passport = () => computeSeal(SEAL_ORIGIN);
 
+/**
+ * Bars/s is meaningless without saying bars of WHAT. The host panel's own timeframe is the denominator,
+ * derived from the engine's label rather than assumed to be 1m — the PO recipe runs mixed timeframes, and
+ * a hard-coded 60 would silently report a 15m panel's delivery at 15x its true rate.
+ */
+function tfSeconds(tf) {
+  if (tf == null) return null;
+  const s = String(tf).trim().toLowerCase();
+  const m = s.match(/^(\d+)\s*(s|m|h|d|w)?$/);
+  if (!m) return null;
+  const n = Number(m[1]);
+  const unit = m[2] || 'm';
+  const mult = { s: 1, m: 60, h: 3600, d: 86400, w: 604800 }[unit];
+  return mult ? n * mult : null;
+}
+
 /** Liveness by playhead, with bar count recorded alongside so the two routes can be compared. */
 async function readPanels(page) {
   const rows = [];
@@ -100,6 +119,13 @@ async function readPanels(page) {
           tf: ch.currentTimeframe != null ? String(ch.currentTimeframe) : (ch.timeframe ?? null),
         bars: Array.isArray(ch.data) ? ch.data.length : 0,
         playhead: [rs?.replayTimestamp, rs?.currentTime, rs?.replayIndex].map(Number).find((v) => Number.isFinite(v)) ?? null,
+        // RATE-HOLD needs a quantity whose UNIT is known. The `playhead` field above is whichever of
+        // three fields answered first - epoch milliseconds or a bar index - which is fine for "did it
+        // move" and catastrophic for "how fast". Kept separate and named.
+        playheadMs: Number.isFinite(Number(rs?.replayTimestamp)) ? Number(rs.replayTimestamp) : null,
+        replayIndex: Number.isFinite(Number(rs?.currentIndex)) ? Number(rs.currentIndex)
+          : (Number.isFinite(Number(rs?.replayIndex)) ? Number(rs.replayIndex) : null),
+        playing: !!rs?.isPlaying,
       };
     }).catch(() => null);
     if (r) rows.push(r);
@@ -285,6 +311,13 @@ const t0 = Date.now();
 let session = null;
 const gaugeMisses = { footprint: 0, blocking: 0 };
 let prevSample = null;
+// RATE-HOLD state. Same reasoning as R3 below: a delivery ratio spanning a browser restart would compare
+// a warmed session against a cold one, so the series is in-process and a resume starts it fresh.
+let prevRateSample = null;
+const rateSeries = [];
+let storageAtStart = null;
+let r3ProbeDone = false;
+const rateExcludedWindows = [];
 // R3 state. The series is rebuilt in-process rather than re-read from disk, so a resumed run starts its
 // falsifier window fresh - a plateau test across a browser restart would be two populations.
 const r3Series = [];
@@ -317,6 +350,12 @@ try {
       // documents AND evaluated into the live ones - registration alone reaches nothing that already
       // exists, which on this soak is every frame that matters.
       const loafInstall = await installLoafCensus(session.page).catch((e) => ({ onNewDocument: false, liveFramesInjected: 0, error: String(e).slice(0, 150) }));
+      // N4, reading one of three. Taken at the first segment only: a resumed segment's "start" is a warm
+      // origin, and calling that arm start would understate growth by everything the first segment wrote.
+      if (!storageAtStart) {
+        storageAtStart = await readStorageCensus(session.page).catch((e) => ({ error: String(e).slice(0, 150) }));
+        run.note({ __storageCensus: true, when: 'arm-start', segment, ...storageAtStart });
+      }
       run.note({
         __segmentStart: true,
         segment,
@@ -384,10 +423,32 @@ try {
     const posn = await readOldestOpenPositionAge(session.page).catch(() => ({ route: 'threw', openCount: null, oldestAgeBars: null }));
 
     const residentBars = after.reduce((s, r) => s + r.bars, 0);
+
+    // RATE-HOLD, the headline verdict. Delivery is measured on the HOST panel's continuous clock, because
+    // the host carries 86% of resident bars and a per-panel governor can hold one panel while starving
+    // three. The read-back rides along as a witness and is never the judge - see lib/rate-hold.mjs.
+    const hostPanel = after.find((r) => r.isHost) || after[0] || {};
+    const rateSample = { atMs: Date.now(), replayTimestamp: hostPanel.playheadMs, replayIndex: hostPanel.replayIndex };
+    const hostTfSec = tfSeconds(hostPanel.tf);
+    const rate = (prevRateSample && hostTfSec)
+      ? deliveredRate(prevRateSample, rateSample, { baseTimeframeSec: hostTfSec })
+      : { ok: false, why: prevRateSample ? `host panel timeframe unreadable (${hostPanel.tf}) — bars/s has no denominator` : 'first sample' };
+    prevRateSample = rateSample;
+    if (rate.ok) rateSeries.push({ hours: +((Date.now() - t0) / 3600000).toFixed(4), barsPerSec: rate.barsPerSec, speed: SPEED });
+    const rateReadback = await readEffectiveRateReadback(session.page).catch(() => ({ present: false, readError: true }));
+
     run.append({
       segment,
       hours: +((Date.now() - t0) / 3600000).toFixed(4),
       residentBars,
+      // RATE-HOLD inputs, per sample.
+      deliveredBarsPerSec: rate.ok ? rate.barsPerSec : null,
+      deliveredRateRoute: rate.ok ? rate.route : null,
+      deliveredRateTimeframe: hostPanel.tf ?? null,
+      deliveredRateTimeframeSec: hostTfSec,
+      deliveredRateWhy: rate.ok ? null : rate.why,
+      effectiveRateReadback: rateReadback.present ? rateReadback.values?.[0]?.barsPerSec ?? null : null,
+      effectiveRateReadbackPresent: rateReadback.present,
       perPanelBars: after.map((r) => r.bars),
       panelsLive: live,
       panelsLiveByBarCountOnly: liveByBars,
@@ -445,6 +506,23 @@ try {
       run.note({ __r3: true, segment, at: new Date().toISOString(), ...r3 });
       lastR3Verdict = r3.verdict;
     }
+
+    // PAUSE-PROBE at the R3 checkpoint. Once per arm: it costs ~11 minutes of delivery, and the window is
+    // recorded so RATE-HOLD can exclude it rather than read a deliberate pause as a stall.
+    if (!r3ProbeDone && r3.verdict && r3.verdict !== 'INSUFFICIENT' && session?.page) {
+      r3ProbeDone = true;
+      log('pause-probe at the R3 checkpoint — separating froth from hoard');
+      const probe = await pauseProbe(session.page, {
+        readFootprint: () => readFootprint(session.browser),
+        label: `r3-checkpoint-${ARM}`,
+        log,
+      }).catch((e) => ({ verdict: 'VOID', why: `probe threw: ${String(e).slice(0, 160)}` }));
+      run.note({ __pauseProbe: true, segment, at: new Date().toISOString(), ...probe });
+      // The probe's own span is not a delivery measurement.
+      rateExcludedWindows.push({ fromMs: Date.now() - (probe.probeSpanSec ?? 0) * 1000, toMs: Date.now(), why: 'pause-probe' });
+      prevRateSample = null;
+      log(`pause-probe: ${probe.verdict} — ${String(probe.why).slice(0, 120)}`);
+    }
     if (r3.verdict === 'MODEL_VOID' && !keepTheHourUntil) {
       // ABORT THE NIGHT, KEEP THE HOUR.
       keepTheHourUntil = t0 + r3.keepHoursTarget * 3600000;
@@ -473,6 +551,52 @@ try {
 
   // END-OF-ARM SNAPSHOT. After the final sample, so it perturbs nothing it measured. A ~1.5 GB renderer
   // can write multiple GB and can OOM its own tab; disk is checked first, the write is capped, and every
+  // END-OF-ARM PAUSE-PROBE, before the snapshot: the snapshot is a stop-the-world event and would drain
+  // the very froth the probe exists to measure. Order matters and is deliberate.
+  if (session?.page) {
+    log('end-of-arm pause-probe');
+    const endProbe = await pauseProbe(session.page, {
+      readFootprint: () => readFootprint(session.browser),
+      label: `end-of-arm-${ARM}`,
+      log,
+    }).catch((e) => ({ verdict: 'VOID', why: `probe threw: ${String(e).slice(0, 160)}` }));
+    run.note({ __pauseProbe: true, when: 'end-of-arm', at: new Date().toISOString(), ...endProbe });
+    log(`end-of-arm pause-probe: ${endProbe.verdict} — hoard floor ${endProbe.hoardFloorMB ?? '?'} MB`);
+
+    // N4, readings two and three. The post-refresh read is the one that matters: it separates what the
+    // session accumulated from what the ORIGIN keeps, which no process-memory gauge can see.
+    const storageAtEnd = await readStorageCensus(session.page).catch((e) => ({ error: String(e).slice(0, 150) }));
+    run.note({ __storageCensus: true, when: 'arm-end', ...storageAtEnd });
+    let storageAfterRefresh = null;
+    try {
+      await session.page.reload({ waitUntil: 'domcontentloaded', timeout: 120000 });
+      await new Promise((r) => setTimeout(r, 20000));
+      storageAfterRefresh = await readStorageCensus(session.page);
+      run.note({ __storageCensus: true, when: 'post-refresh', ...storageAfterRefresh });
+    } catch (err) {
+      run.note({ __storageCensus: true, when: 'post-refresh', failed: true, why: String(err).slice(0, 160) });
+    }
+    run.note({
+      __storageDiff: true,
+      startToEnd: diffStorage(storageAtStart, storageAtEnd, { labelA: 'arm-start', labelB: 'arm-end' }),
+      endToPostRefresh: storageAfterRefresh ? diffStorage(storageAtEnd, storageAfterRefresh, { labelA: 'arm-end', labelB: 'post-refresh' }) : null,
+      startToPostRefresh: storageAfterRefresh ? diffStorage(storageAtStart, storageAfterRefresh, { labelA: 'arm-start', labelB: 'post-refresh' }) : null,
+      readingNote: 'Storage surviving a refresh is retention the user carries BETWEEN sessions. Process-memory gauges cannot see it, so this is a different quantity from every MB figure published so far and must not be added to them.',
+    });
+  }
+
+  // RATE-HOLD verdict, computed at the end over the whole arm.
+  {
+    const verdict = evaluateRateHold(rateSeries);
+    run.note({
+      __rateHold: true, at: new Date().toISOString(), arm: ARM, ...verdict,
+      samplesUsed: rateSeries.length,
+      excludedWindows: rateExcludedWindows,
+      judgedOn: 'MEASURED delivery (host panel simulated clock over wall time). A read-back, if present, is recorded per sample as a witness and is never the judge.',
+    });
+    log(`RATE-HOLD: ${verdict.verdict} — ${String(verdict.why).slice(0, 140)}`);
+  }
+
   // failure is a logged non-event. A lost snapshot must never look like a lost soak.
   if (SNAPSHOT_AT_END && session?.page) {
     const snapFile = OUT.replace(/\.jsonl$/, `.heapsnapshot`);
