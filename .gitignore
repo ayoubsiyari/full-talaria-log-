@@ -126,3 +126,12 @@ docs/plan3/fixtures/*
 
 
 
+
+# PROC-1 (TREE-01), 2026-08-01: these accumulate in the shared main worktree and made it
+# impossible to tell a mystery build from a clean one. Checkpoints and evidence are derived or
+# archival; scratch probes are throwaway. Ignored so the tree STAYS clean rather than needing
+# another sweep.
+.ckpt/
+_evidence/
+.scratch-*
+
