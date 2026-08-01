@@ -72,6 +72,17 @@ function _m28ReplayHiddenPauseV1Enabled() {
 }
 
 /**
+ * HYG-2 — at most one live timer per managed key (default ON).
+ * Kill-switch: window.__TALARIA_MIRROR_INTERVAL_GUARD_V1 = <truthy> restores the
+ * legacy behaviour where a re-entered setup path installs a second copy of the
+ * same repeating timer and both keep firing. Absent / falsy ⇒ guard active.
+ * Read per call (never sampled at init); climbs self → parent → top.
+ */
+function _mirrorIntervalGuardDisabled() {
+    return _talariaDisableFlagTruthy('__TALARIA_MIRROR_INTERVAL_GUARD_V1');
+}
+
+/**
  * CPU-CEILING-60X — single-chart high-speed replay paint cadence (default ON).
  * Kill-switch: window.__TALARIA_DISABLE_SC_REPLAY_PAINT_CADENCE_V1 = <truthy>
  * restores legacy per-forming-tick sync paint. Absent / falsy ⇒ mitigation on.
@@ -549,6 +560,57 @@ class ReplaySystem {
         this.isPlayStarting = false;
     }
 
+    _managedTimerLedger() {
+        if (!this._managedTimers) this._managedTimers = Object.create(null);
+        return this._managedTimers;
+    }
+
+    /**
+     * Drop the timer recorded under `key`. The record is removed BEFORE the
+     * platform clear runs, so a throwing clear cannot leave the ledger pointing
+     * at a dead handle that a later install would try to clear again.
+     */
+    _clearManagedTimer(key) {
+        const ledger = this._managedTimers;
+        if (!ledger) return false;
+        const entry = ledger[key];
+        if (!entry) return false;
+        delete ledger[key];
+        if (entry.kind === 'interval') clearInterval(entry.handle);
+        else clearTimeout(entry.handle);
+        return true;
+    }
+
+    /**
+     * HYG-2: repeated entry into a setup path must not stack timers. The
+     * previous handle under `key` is cleared first; a clear that throws is
+     * reported but never blocks the install, so the product keeps working.
+     */
+    _installManagedTimer(key, kind, fn, ms) {
+        const install = () => (kind === 'interval' ? setInterval(fn, ms) : setTimeout(fn, ms));
+        if (_mirrorIntervalGuardDisabled()) return install();
+        let clearError = null;
+        try {
+            this._clearManagedTimer(key);
+        } catch (error) {
+            clearError = error;
+        }
+        const handle = install();
+        this._managedTimerLedger()[key] = { kind, handle };
+        if (clearError) {
+            console.warn('⚠️ Managed timer clear failed for', key, clearError);
+        }
+        return handle;
+    }
+
+    _setManagedInterval(key, fn, ms) {
+        return this._installManagedTimer(key, 'interval', fn, ms);
+    }
+
+    _setManagedTimeout(key, fn, ms) {
+        return this._installManagedTimer(key, 'timeout', fn, ms);
+    }
+
     _pauseReplayForHiddenPage() {
         if (!this.isActive || !this.isPlaying) {
             this._replayHiddenPauseWasPlaying = false;
@@ -650,7 +712,15 @@ class ReplaySystem {
         // V9 mounts `#replayFollow` inside React `#chartWrapper` — can appear after ReplaySystem.setup().
         if (!this.followBtn) {
             let tries = 0;
-            const iv = setInterval(() => {
+            let pollHandle = null;
+            const stopPoll = () => {
+                this._clearManagedTimer('followBtnPoll');
+                if (pollHandle !== null) {
+                    clearInterval(pollHandle);
+                    pollHandle = null;
+                }
+            };
+            pollHandle = this._setManagedInterval('followBtnPoll', () => {
                 tries++;
                 const btn =
                     document.getElementById('replayFollow') ||
@@ -659,12 +729,12 @@ class ReplaySystem {
                     btn.dataset.replayFollowBound = '1';
                     btn.addEventListener('click', () => this.enableAutoScroll());
                     this.followBtn = btn;
-                    clearInterval(iv);
+                    stopPoll();
                     try {
                         this.updateAutoScrollIndicator();
                     } catch (_) {}
                 } else if (tries >= 60) {
-                    clearInterval(iv);
+                    stopPoll();
                 }
             }, 50);
         }
@@ -3591,10 +3661,15 @@ class ReplaySystem {
                 if (typeof this.chart.render === 'function') this.chart.render();
             }
             if (++realignAttempts < 8) {
-                setTimeout(realignAfterLayout, realignAttempts <= 3 ? 200 : 500);
+                this._setManagedTimeout(
+                    'enterReplayRealign',
+                    realignAfterLayout,
+                    realignAttempts <= 3 ? 200 : 500,
+                );
             }
         };
         if (!options.skipRealignAfterLayout) {
+            this._clearManagedTimer('enterReplayRealign');
             requestAnimationFrame(realignAfterLayout);
         }
     }
