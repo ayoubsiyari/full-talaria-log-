@@ -45,6 +45,8 @@
     "test:m8-load-toll-budget": "node --test scripts/tests/m8-load-toll-budget-gate.test.mjs",
     "preflight:reset-gates": "node scripts/reset-gates.mjs",
     "test:reset-gates": "node --test scripts/tests/reset-gates.test.mjs",
+    "preflight:lag1a-marker-index-cache": "node scripts/lag1a-marker-index-cache-gate.mjs --require-browser",
+    "test:lag1a-marker-index-cache": "node --test scripts/tests/lag1a-marker-index-cache-gate.test.mjs",
     "preflight:m1-b118-real-app": "node scripts/m1-b118-real-app-harness.mjs --dry-run",
     "test:m1-b118-real-app": "node --test scripts/tests/m1-b118-real-app-harness.test.mjs",
     "watch:m1-b118-real-app": "node scripts/m1-b118-real-app-harness.mjs --wait",

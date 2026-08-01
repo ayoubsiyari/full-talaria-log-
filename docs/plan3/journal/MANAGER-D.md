@@ -389,3 +389,27 @@ exists — eviction deletes the redundant hot copy, it does not invent a new sto
   different questions. M1 now has two board verdicts rather than one overloaded classifier.
 - The 4.85 MB-per-screenshot figure remains a live lead for C's V8/shared-isolate renderer attribution,
   but it is not confirmed as the renderer residual cause.
+
+## 2026-08-01 09:15 — LAG-1a marker index cache
+
+- Read Director ruling `RULING-KILL-ROSTER-ROUND-ONE-ADMITTED-20260801-0915.md`. D owns only the
+  `_chartIndexForCloseMarkerOnChart` callee in `order-manager.js`; A owns the `chart.js` caller-side row and
+  dashboard sync.
+- Implemented `__TALARIA_MARKER_INDEX_CACHE_V1` in both order-manager mirrors. The cache is keyed by
+  `chart.data` array via `WeakMap`, rebuilds on bar-array shape changes, and falls back to the legacy scan on
+  non-monotonic bar arrays.
+- Added real Edge gate `scripts/lag1a-marker-index-cache-gate.mjs`, reusing the existing Chromium CLI runner.
+  REGIME-01 result: zero-trade 0.0 -> 0.0 ms/s; trade-heavy 138.6 -> 4.4 ms/s with 43 real orders on
+  `chart.orderManager`; wrong-instrument arm remains RED-armed.
+- Wrote `LAG1A-MARKER-INDEX-CACHE-20260801.md` and B review handoff
+  `HANDOFF-D-TO-B-LAG1A-AND-LIFE4-REVIEW-20260801.md`. LIFE-4/M8 remains under B review via the existing
+  mirror-write packet.
+
+## 2026-08-01 09:35 — PROC-3 addendum for D rows
+
+- Read Director ruling `RULING-FULL-ROSTER-BEFORE-SEAL-SOAK-01-QUIESCENCE-AND-KILL-04-20260801-0935.md`.
+  KILL-04 does not apply to D's LAG-1a or LIFE-4/M8 rows because both are money-path.
+- Updated LAG-1a and M8 reports/handoffs to state E's PROC-3 axes explicitly: present, bound, mirrored,
+  discriminating. Added D to E handoff `HANDOFF-D-TO-E-PROC3-LAG1A-LIFE4-20260801.md`.
+- M8 specifically records byte-identical proof for both client mirrors (`chart.js` and `modules/order-manager.js`);
+  the prior one-mirror-only miss is now named as a PROC-3 failure mode and not self-certified away.

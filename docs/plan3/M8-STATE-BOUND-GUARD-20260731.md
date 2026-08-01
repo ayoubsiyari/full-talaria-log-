@@ -33,6 +33,22 @@ Production `/chart` assets are served by `chart v 1.4/chart/api_server.py`. The 
 
 The safety proof is provenance-based: missing rows or omitted heavy fields from state hydrate never upgrade `OrderManager` to durable replace/delete authority. Therefore a failed or partial fetch cannot be interpreted as an empty journal and cannot authorize a later write that deletes omitted SQL rows.
 
+## PROC-3 Packet
+
+- Present: M8 state-bound backend helpers and client hydrate provenance guards exist in the changed files.
+- Bound: `GET /api/sessions/{id}/state` calls `resolve_session_journal_for_state_hydrate` and applies the
+  bounded metadata through `apply_journal_page_to_state_for_response`; client hydrate consumes that metadata
+  before assigning journal provenance.
+- Mirrored: both client mirrors are byte-identical for the guarded files:
+  - `git diff --no-index --quiet "chart v 1.4/chart/chart.js" "homepage/public/chart/chart.js"` passed.
+  - `git diff --no-index --quiet "chart v 1.4/chart/modules/order-manager.js" "homepage/public/chart/modules/order-manager.js"` passed.
+  - `npm run test:m8-state-bound` includes `M8 client mirrors are identical for chart and order-manager guards`.
+- Discriminating: `npm run preflight:m8-state-bound` checks failed/partial hydrate cannot become empty-history
+  durable authority and includes `M8-CLIENT-MIRRORS-IDENTICAL`.
+
+KILL-04 does not apply to this row. LIFE-4/M8 touches journal/delete authority and remains money-path:
+B review plus E PROC-3 before seal.
+
 ## Validation
 
 Run:

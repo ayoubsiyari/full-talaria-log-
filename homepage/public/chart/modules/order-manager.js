@@ -137,6 +137,15 @@ function _m19MarkerDeltaV1Enabled() {
     return typeof window === 'undefined' || window.__TALARIA_DISABLE_M19_MARKER_DELTA_V1 !== true;
 }
 
+/** LAG-1a: cache marker time->bar index lookups per chart.data array (default ON). */
+function _markerIndexCacheV1Enabled() {
+    if (typeof window === 'undefined') return true;
+    const v = window.__TALARIA_MARKER_INDEX_CACHE_V1;
+    if (v === undefined || v === null) return true;
+    const s = String(v).trim().toLowerCase();
+    return !['0', 'false', 'off', 'no'].includes(s);
+}
+
 
 /** M19-E: guard hot-path console.log behind debug mode — default ON. warn/error untouched. */
 function _m19HotpathLogGuardV1Enabled() {
@@ -41633,6 +41642,63 @@ class OrderManager {
      * @param {number} timestamp
      * @param {{ skipNearestFallback?: boolean }} [opts]
      */
+    _markerIndexCacheForData(chartData) {
+        if (!Array.isArray(chartData) || chartData.length === 0) return null;
+        if (!this._markerIndexCacheByData) this._markerIndexCacheByData = new WeakMap();
+        const firstT = Number(chartData[0]?.t);
+        const lastT = Number(chartData[chartData.length - 1]?.t);
+        const prev = this._markerIndexCacheByData.get(chartData);
+        if (prev && prev.length === chartData.length && prev.firstT === firstT && prev.lastT === lastT) {
+            return prev;
+        }
+        const exact = new Map();
+        const starts = [];
+        let monotonic = true;
+        let prevT = -Infinity;
+        for (let i = 0; i < chartData.length; i++) {
+            const t = Number(chartData[i]?.t);
+            if (!Number.isFinite(t)) continue;
+            if (t < prevT) monotonic = false;
+            prevT = t;
+            if (!exact.has(t)) exact.set(t, i);
+            starts.push({ t, i });
+        }
+        const next = { length: chartData.length, firstT, lastT, exact, starts, monotonic };
+        this._markerIndexCacheByData.set(chartData, next);
+        return next;
+    }
+
+    _findCandleIndexForTimeCached(chartData, timestamp, opts = {}) {
+        if (!_markerIndexCacheV1Enabled()) return this._findCandleIndexForTime(chartData, timestamp, opts);
+        const ts = Number(timestamp);
+        if (!Array.isArray(chartData) || chartData.length === 0 || !Number.isFinite(ts)) return -1;
+        const cache = this._markerIndexCacheForData(chartData);
+        if (!cache || !cache.starts.length) return this._findCandleIndexForTime(chartData, timestamp, opts);
+        const exactIdx = cache.exact.get(ts);
+        if (exactIdx !== undefined) return exactIdx;
+        if (!cache.monotonic) return this._findCandleIndexForTime(chartData, timestamp, opts);
+
+        let lo = 0;
+        let hi = cache.starts.length - 1;
+        let best = -1;
+        while (lo <= hi) {
+            const mid = (lo + hi) >> 1;
+            if (cache.starts[mid].t <= ts) {
+                best = mid;
+                lo = mid + 1;
+            } else {
+                hi = mid - 1;
+            }
+        }
+        if (best >= 0) {
+            const row = cache.starts[best];
+            const nextT = best < cache.starts.length - 1 ? cache.starts[best + 1].t : Infinity;
+            if (ts >= row.t && ts < nextT) return row.i;
+        }
+        if (opts.skipNearestFallback) return -1;
+        return this._findCandleIndexForTime(chartData, timestamp, opts);
+    }
+
     _findCandleIndexForTime(chartData, timestamp, opts = {}) {
         if (!Array.isArray(chartData) || chartData.length === 0) return -1;
         const ts = Number(timestamp);
@@ -41725,7 +41791,7 @@ class OrderManager {
             }
         }
 
-        let idx = this._findCandleIndexForTime(data, ct, { skipNearestFallback: replayActive });
+        let idx = this._findCandleIndexForTimeCached(data, ct, { skipNearestFallback: replayActive });
 
         // Tick replay + coarse chart TF: closeTime is raw playhead `t` but chart.data is resampled —
         // period containment can fail until the bucket is appended; anchor to the playhead bucket.
