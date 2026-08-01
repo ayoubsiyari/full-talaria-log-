@@ -16,6 +16,6 @@
     "serve": "node serve.mjs"
   },
   "devDependencies": {
-    "puppeteer": "^24.10.2"
+    "puppeteer": "24.43.1"
   }
 }

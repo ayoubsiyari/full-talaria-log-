@@ -35,6 +35,8 @@ import { loadConf05Indicators } from './lib/conf05-indicators.mjs';
 import { reapOrphanedRenderers } from './lib/find-soak-port.mjs';
 import { readOsFootprints } from './process-memory-census.mjs';
 import { perBarFields, evaluateGauges } from './lib/soak-gauges.mjs';
+import { readBuildInfo, shaChanged } from './lib/build-info.mjs';
+import { assertHeapCap } from './lib/heap-cap.mjs';
 
 const argOf = (n, d) => { const h = process.argv.find((a) => a.startsWith(`--${n}=`)); return h ? h.split('=').slice(1).join('=') : d; };
 const ARM = argOf('arm', 'trades');                 // trades | zerotrade
@@ -46,6 +48,13 @@ const ORIGIN = String(argOf('origin', process.env.TEST_VPS_URL || 'http://31.97.
 const EV = 'c:\\Users\\user\\Desktop\\talaria1\\_evidence\\manager-C';
 const OUT = argOf('out', path.join(EV, `SEALED-SOAK-${ARM.toUpperCase()}.jsonl`));
 const EXPECT_DIGEST = argOf('expectDigest', '');    // set to pin the run to one build
+const EXPECT_SHA = argOf('expectSha', '');          // PASSPORT-3: pin the run to one SOURCE COMMIT
+const REQUIRE_SHA = argOf('requireSha', '1') !== '0';
+const HEAP_CAP_MB = Number(argOf('heapCapMB', '1024'));
+
+// TOOL-01, asserted before anything expensive is opened. A cap that was requested but never applied is
+// worse than no cap, because the launch line in the log looks correct.
+const heapCap = assertHeapCap({ capMB: HEAP_CAP_MB, label: `sealed-soak-${ARM}` });
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const log = (m) => console.error(`[soak:${ARM} ${new Date().toISOString()}] ${m}`);
@@ -214,6 +223,26 @@ if (EXPECT_DIGEST && seal.digest !== EXPECT_DIGEST) {
   process.exit(2);
 }
 
+// PASSPORT-3. The digest says WHAT the bytes are; the SHA says WHICH COMMIT made them. Without it a
+// ten-hour artifact records a fingerprint nobody can trace back to a tree.
+const buildInfo = await readBuildInfo(ORIGIN);
+if (REQUIRE_SHA || EXPECT_SHA) {
+  if (!buildInfo.ok) {
+    console.error(`REFUSING TO START: the source commit SHA is not readable from ${buildInfo.url} [${buildInfo.state}].`);
+    console.error(`  ${buildInfo.why}`);
+    console.error('  Recording sourceCommitSha:null for ten hours would produce an artifact that LOOKS provenanced and is not.');
+    console.error('  Pass --requireSha=0 to measure an unprovenanced build deliberately.');
+    process.exit(3);
+  }
+  if (EXPECT_SHA && buildInfo.sourceCommitSha !== EXPECT_SHA.toLowerCase()) {
+    console.error(`REFUSING TO START: expected source commit ${EXPECT_SHA}, origin was built from ${buildInfo.sourceCommitSha}.`);
+    process.exit(3);
+  }
+} else if (!buildInfo.ok) {
+  log(`WARNING — source commit UNAVAILABLE [${buildInfo.state}]: ${buildInfo.why}`);
+}
+const pinnedSha = buildInfo.ok ? buildInfo.sourceCommitSha : null;
+
 const run = openRun({
   name: `sealed-soak-${ARM}`,
   out: OUT,
@@ -223,6 +252,14 @@ const run = openRun({
     armMeaning: ARM === 'zerotrade' ? 'CONF-05: four panels, E indicators, ZERO trades — bar-driven growth with the trade term absent by construction' : 'CONF-01: four panels, E indicators, governor holding ~20 closes/hour',
     bfcacheState: 'default (enabled) — a long-running session, no reset axis measured here.',
     seal,
+    // PASSPORT-3: badge + digest describe the BYTES; sourceCommitSha names the TREE that produced them.
+    sourceCommitSha: pinnedSha,
+    sourceCommitState: buildInfo.state,
+    sourceCommitWhy: buildInfo.why,
+    sourceBuildId: buildInfo.ok ? buildInfo.buildId : null,
+    checkpointBuild: buildInfo.ok ? buildInfo.checkpointBuild : null,
+    // TOOL-01: recorded so the artifact states the cap it ran under, not just that one was intended.
+    heapCap,
     origin: ORIGIN,
     requestedSpeed: SPEED,
     plannedHours: HOURS,
@@ -320,6 +357,10 @@ try {
 
     const nowSeal = await passport();
     const sealHeld = nowSeal.digest === seal.digest;
+    // PASSPORT-3 re-verified at the SAME cadence as the digest. The digest catches different bytes; the
+    // SHA catches a different source. Neither implies the other, so both, every sample.
+    const nowInfo = await readBuildInfo(ORIGIN);
+    const shaDrift = shaChanged(pinnedSha, nowInfo);
 
     const residentBars = after.reduce((s, r) => s + r.bars, 0);
     run.append({
@@ -338,12 +379,21 @@ try {
       ...blocking,
       sealDigestNow: nowSeal.digest,
       sealHeld,
+      sourceCommitNow: nowInfo.ok ? nowInfo.sourceCommitSha : null,
+      sourceCommitStateNow: nowInfo.state,
+      sourceCommitHeld: pinnedSha ? shaDrift === null : null,
+      sourceCommitNote: shaDrift,
       sealNote: sealHeld ? null : 'BUILD CHANGED UNDER THE RUN. Every sample from here belongs to a different build and must not be pooled with earlier ones.',
     });
 
     if (!sealHeld) {
       run.note({ __void: true, segment, why: `Served build changed mid-run: ${seal.digest} -> ${nowSeal.digest}. Stopping rather than producing a series across two builds.` });
       log('SEAL BROKEN — stopping');
+      break;
+    }
+    if (shaDrift) {
+      run.note({ __void: true, segment, why: `${shaDrift} Stopping rather than producing a series across two sources.` });
+      log('SOURCE COMMIT DRIFT — stopping');
       break;
     }
     // Carried forward for the next sample's local slope. Reset at a segment boundary by the boot path,

@@ -21,15 +21,40 @@ import { spawnSync } from 'node:child_process';
  * On Windows the parent becomes WmiPrvSE; a plain spawn (even `detached: true`) stays in the console's job
  * and dies with it, which is exactly how measurement time was lost twice tonight.
  */
-export function launchDetached(scriptRelPath, args = [], { cwd = process.cwd(), logFile = null } = {}) {
+export function launchDetached(scriptRelPath, args = [], { cwd = process.cwd(), logFile = null, heapCapMB = 1024 } = {}) {
   const node = process.execPath;
   const quoted = [scriptRelPath, ...args].map((a) => (/\s/.test(a) ? `"${a}"` : a)).join(' ');
   const redirect = logFile ? ` > "${logFile}" 2>&1` : '';
-  const command = `cmd.exe /c cd /d "${cwd}" && "${node}" ${quoted}${redirect}`;
-  const ps = `$r = Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{ CommandLine = ${JSON.stringify(command)} }; Write-Output "$($r.ReturnValue) $($r.ProcessId)"`;
-  const res = spawnSync('powershell', ['-NoProfile', '-Command', ps], { encoding: 'utf8' });
+  // TOOL-01: the cap is applied HERE rather than left to each launch site, because "every long-running
+  // harness process" is a rule that fails the moment one call site forgets. The launched process asserts
+  // the limit V8 actually applied, so a cap that is passed but inert is loud rather than silent.
+  const capFlag = heapCapMB ? `--max-old-space-size=${heapCapMB} ` : '';
+  const command = `cmd.exe /c cd /d "${cwd}" && "${node}" ${capFlag}${quoted}${redirect}`;
+
+  // The command contains double quotes (paths with spaces) and a redirect. Interpolating it into a
+  // -Command string with JSON.stringify produces backslash-escaped quotes, which PowerShell does NOT
+  // understand as escapes - it uses backtick or doubled quotes - so the string terminates early and the
+  // call fails. -EncodedCommand takes base64 UTF-16LE and has no quoting surface at all.
+  //
+  // This is why the primitive silently never worked: every detached run so far was launched by a
+  // hand-rolled WMI call typed at the shell, and the self-test covered append/heartbeat/resume but never
+  // launchDetached itself. Present, not bound, in the one function the crash-survival story rests on.
+  const psSource = `$ErrorActionPreference='Stop'
+$r = Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{ CommandLine = @'
+${command}
+'@ }
+Write-Output "$($r.ReturnValue) $($r.ProcessId)"`;
+  const encoded = Buffer.from(psSource, 'utf16le').toString('base64');
+  const res = spawnSync('powershell', ['-NoProfile', '-NonInteractive', '-EncodedCommand', encoded], { encoding: 'utf8' });
   const [rv, pid] = String(res.stdout || '').trim().split(/\s+/);
-  return { ok: rv === '0', launcherPid: Number(pid) || null, command };
+  const ok = rv === '0';
+  return {
+    ok,
+    launcherPid: Number(pid) || null,
+    command,
+    // A launcher that fails silently is how a ten-hour run becomes an empty file, so the reason travels.
+    error: ok ? null : `Win32_Process.Create returned ${rv || '(no output)'}; stderr: ${String(res.stderr || '').trim().slice(0, 300)}`,
+  };
 }
 
 /**

@@ -22,7 +22,11 @@ const check = (name, pass, detail) => { results.push({ name, pass, detail }); co
 for (const f of [OUT, OUT.replace(/\.jsonl$/, '.heartbeat.json')]) { try { fs.unlinkSync(f); } catch { /* fresh */ } }
 
 // 1. A run pinned to a digest that is not what is served must refuse to start.
+// The cap flag is required here because TOOL-01 now asserts BEFORE the digest check, so an uncapped
+// invocation exits 4 and never reaches the refusal this pair is testing. Adding a guard reorders the
+// failure modes, and a test written against the old order silently checks the wrong one.
 const res = spawnSync(process.execPath, [
+  '--max-old-space-size=1024',
   'scripts/sealed-two-arm-soak.mjs', '--arm=zerotrade', '--hours=0.01',
   '--expectDigest=deadbeefdeadbeefdeadbeefdeadbeef', `--out=${OUT}`,
 ], { encoding: 'utf8', timeout: 120000 });
@@ -104,6 +108,63 @@ check('the slope field is a SLOPE, not the level wearing the published unit',
 const f3 = perBarFields(1430.0, 8090, { bars: 8077, mb: 1427.8 });
 check('a slope over a trivial bar delta is withheld rather than published as noise',
   f3.localSlopeMbPerKbar === null, `13 bars apart -> slope=${f3.localSlopeMbPerKbar}`);
+
+// 7. BINDING — TOOL-01 and PASSPORT-3. These do not grep for an import line, because a static reference
+//    is exactly what PROC-3 says is not binding. Each one runs the real entry point and requires the
+//    behaviour that only exists if the module is actually called.
+
+// 7a. TOOL-01 bound: an UNCAPPED launch of the soak must refuse, before it opens a browser.
+{
+  const r = spawnSync(process.execPath, ['scripts/sealed-two-arm-soak.mjs', '--arm=zerotrade', '--hours=0.01'], { encoding: 'utf8', timeout: 120000 });
+  const err = String(r.stderr || '');
+  check('TOOL-01 is BOUND: an uncapped soak refuses to start',
+    r.status === 4 && /HEAP CAP \(TOOL-01\)/.test(err), `exit ${r.status}`);
+  check('and it names the limit V8 actually applied, not the one requested',
+    /old-space limit of \d+ MB/.test(err), err.split('\n')[1]?.trim().slice(0, 96));
+}
+
+// 7b. TOOL-01 bound the other way: a CORRECTLY capped launch must get past the cap and fail later, on
+//     the digest. A cap check that refuses valid work is as broken as one that passes invalid work.
+{
+  const r = spawnSync(process.execPath, ['--max-old-space-size=1024', 'scripts/sealed-two-arm-soak.mjs', '--arm=zerotrade', '--hours=0.01', '--expectDigest=deadbeefdeadbeefdeadbeefdeadbeef'], { encoding: 'utf8', timeout: 120000 });
+  check('a correctly capped soak passes the cap check and proceeds',
+    r.status !== 4 && !/HEAP CAP/.test(String(r.stderr)), `exit ${r.status} (2 = digest refusal, which is past the cap)`);
+}
+
+// 7c. TOOL-01 bound through the LAUNCH PATH: the child reports its own V8 limit, so a flag that is
+//     constructed and then dropped cannot pass this.
+{
+  const r = spawnSync(process.execPath, ['scripts/detach-cap-check.mjs', '512'], { encoding: 'utf8', timeout: 90000 });
+  const out = String(r.stdout || '');
+  check('TOOL-01 reaches the DETACHED child: it runs under the cap it was launched with',
+    r.status === 0 && /CAP APPLIED IN THE DETACHED CHILD/.test(out),
+    out.split('\n').find((l) => /child V8 heap limit/.test(l))?.trim() || `exit ${r.status}`);
+  check('and launchDetached reports a launch FAILURE rather than returning quietly',
+    /export function launchDetached/.test(fs.readFileSync('scripts/lib/detach01.mjs', 'utf8'))
+      && /error: ok \? null :/.test(fs.readFileSync('scripts/lib/detach01.mjs', 'utf8')),
+    'a launcher that fails silently is how a ten-hour run becomes an empty file');
+}
+
+// 7d. PASSPORT-3 bound: with the SHA required and an origin that cannot serve it, the soak must refuse
+//     with exit 3 — the SHA path, distinct from the digest path (exit 2) and the cap path (exit 4).
+{
+  const r = spawnSync(process.execPath, ['--max-old-space-size=1024', 'scripts/sealed-two-arm-soak.mjs', '--arm=zerotrade', '--hours=0.01', '--origin=http://127.0.0.1:9', '--requireSha=1'], { encoding: 'utf8', timeout: 120000 });
+  const err = String(r.stderr || '');
+  check('PASSPORT-3 is BOUND: the soak refuses when the source commit is unreadable',
+    r.status === 3 && /source commit SHA is not readable/.test(err), `exit ${r.status}`);
+  check('and it refuses rather than recording sourceCommitSha:null for ten hours',
+    /LOOKS provenanced and is not/.test(err), err.split('\n').find((l) => /provenanced/.test(l))?.trim().slice(0, 90));
+}
+
+// 7e. PASSPORT-3's reader must distinguish the LIVE failure from success. b120 serves the app shell with
+//     a 200, and a reader that trusts res.ok reports a healthy passport for a page of login HTML.
+{
+  const { readBuildInfo } = await import('./lib/build-info.mjs');
+  const live = await readBuildInfo('http://31.97.192.82:3000');
+  check('a 200 carrying HTML is reported as SPA_FALLBACK, not as a passport',
+    live.ok === false && live.state === 'SPA_FALLBACK' && live.sourceCommitSha === null,
+    `state=${live.state} ok=${live.ok}`);
+}
 
 const passed = results.filter((r) => r.pass).length;
 fs.writeFileSync(EV + 'SEALED-SOAK-SELFTEST-20260801.json', JSON.stringify({
