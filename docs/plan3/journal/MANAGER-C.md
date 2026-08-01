@@ -2162,3 +2162,30 @@ The finding this strengthens: **trades cost CPU, not memory.** The marker family
 **DETACH-01 built and proved against the failure it exists for**: WmiPrvSE parent, fsync'd append-as-taken JSONL, write-then-rename heartbeat, resume across a torn final line. Self-test simulates a hard kill mid-write and recovers 2 samples while skipping 1 torn line. `inspectRun()` tells ALIVE from COMPLETED from DEAD OR STALLED without a process.
 
 Artifact: `FINDING-C-THE-ARENA-IS-THREE-WAY-NOT-V8-ONLY-AND-MY-BUILD-COMES-FROM-A-REMOTE-ORIGIN-20260801-0120.md`
+
+## 2026-08-01 03:45 - The confirmation failed, and it failed on the part I had marked verified
+
+**Powered A/B: the kill-switch does not move the freeze.** 393 closed trades x 7,145 bars = 2,807,985 driving
+product, 1.00x the freeze I dissected, regime verified at 49.8 freezes/min BEFORE the flag was touched.
+Flipped in 4/4 realms: blocking 908.0 -> 913.4 ms/s (-0.6%). Acceptance was "31.8% falls toward zero".
+
+Power came from the TRADE axis, not more hours - the cost is trades x bars, so 393 trades in nine minutes
+buys what 65,000 bars would have needed three hours to buy. That is the answer to "what power do you need".
+
+**Why it is inert, named:** the flag is read live per call, so timing is not the excuse.
+_syncOrderOverlaysDuringPan has FOUR call sites (9116, 27389, 30012, 30112) and the flag guards 30112, which
+sits inside the pan/interaction-lite early-return path. I checked that 30012 returns and concluded 30112 must
+be the hot one - but 30112 returns too, and a V8 profile names the FUNCTION, not the call site. I filled that
+gap by reasoning and wrote "verified, not assumed".
+
+**Free by-product, and it is the cleanest trade-axis isolation I have:** 49 identical batches, 94 -> 357
+trades at held bars, 6.0 -> 23.3 s. 3.80x trades, 1.03x bars, 3.88x time - linear in trades. A CPU claim; it
+does not revive the memory coefficient I withdrew at 00:45.
+
+**Arena correction published:** 41.1% of per-bar growth is outside V8. My 20:41 "remaining split is INSIDE
+v8" is withdrawn, and the heap-by-constructor plan built on it would have been blind to 11.4 of every 27.8 KB
+per bar. Open and named: blink_gc grew 212.5 MB against my own "growth is not retained DOM".
+
+**DETACH-01 staged, 8/8.** The self-test found that my crash-survival primitive could not survive a crash:
+after a torn write the file has no trailing newline, so the first record on resume concatenated onto the
+fragment and destroyed itself - and that record is the segment boundary marker.
