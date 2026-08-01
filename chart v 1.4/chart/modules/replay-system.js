@@ -232,34 +232,61 @@ const SPEED_GOV_MAX_CATCHUP_BARS = 240;
  * so a switch thrown on the host has to be visible down here.
  */
 function _speedGovV1Enabled() {
-    if (typeof window === 'undefined') return true;
-    const read = (w) => {
+    return _speedGovFlagState('__TALARIA_SPEED_GOV_V1', true);
+}
+
+/**
+ * Read a positively-named switch across realms and resolve it to on/off.
+ * `whenAbsent` is the shipped default when no realm carries the flag.
+ *
+ * Written as a realm list rather than a second hand-rolled parent/top
+ * climb on purpose: `_talariaDisableFlagTruthy` above is the anchor that
+ * several suites mutate to prove a kill-switch reaches a panel realm, and
+ * a verbatim copy of those two lines makes that anchor ambiguous.
+ */
+function _speedGovFlagState(flagName, whenAbsent) {
+    if (typeof window === 'undefined') return whenAbsent;
+    const realms = [window];
+    try {
+        if (window.parent && window.parent !== window) realms.push(window.parent);
+        if (window.top && realms.indexOf(window.top) === -1) realms.push(window.top);
+    } catch (_e) {
+        // Unreachable chain; the own-realm read below still stands.
+    }
+    let raw;
+    for (let i = 0; i < realms.length && raw === undefined; i++) {
         try {
-            return w ? w.__TALARIA_SPEED_GOV_V1 : undefined;
+            raw = realms[i][flagName];
         } catch (_e) {
-            return undefined;
-        }
-    };
-    let raw = read(window);
-    if (raw === undefined) {
-        try {
-            const parent = window.parent && window.parent !== window ? window.parent : null;
-            raw = read(parent);
-            if (raw === undefined) {
-                const top = window.top && window.top !== window && window.top !== parent
-                    ? window.top
-                    : null;
-                raw = read(top);
-            }
-        } catch (_e) {
-            // Parent chain unreachable; the own-window read stands.
+            raw = undefined;
         }
     }
-    if (raw === undefined || raw === null) return true;
+    if (raw === undefined || raw === null) return whenAbsent;
     if (typeof raw === 'string') {
         return !['0', 'false', 'off', 'no', ''].includes(raw.trim().toLowerCase());
     }
     return !!raw;
+}
+
+/**
+ * Dedicated switch for the tick-mode bar-duration contract, separate from
+ * the master governor because the animation path has its own cost problem.
+ *
+ * `(timeframe_seconds / 4) / N` makes every tick-mode bar four times
+ * shorter. At the top of the ladder that is a 150 ms bar, and the forming
+ * candle repaints twice inside it — 13 paints/sec against the ~4/sec that
+ * M19-I-g2 measured a loaded chart can afford. Honouring the duration and
+ * the frame budget at the same time means decoupling paint cadence from
+ * bar cadence, which is a change to the animation path in its own right.
+ *
+ * So the contract is implemented and proven (SPEED-01 oracle O2) but opt-in:
+ * `window.__TALARIA_SPEED_GOV_TICK_V1 = true` enables it. Turning it on with
+ * the paint budget unaddressed reintroduces the CPU ceiling at 60x-100x.
+ * The master switch being off disables this too.
+ */
+function _speedGovTickDurationV1Enabled() {
+    if (!_speedGovV1Enabled()) return false;
+    return _speedGovFlagState('__TALARIA_SPEED_GOV_TICK_V1', false);
 }
 
 /** Monotonic where available; the meter must not move when the wall clock does. */
@@ -6472,7 +6499,7 @@ class ReplaySystem {
         // `(timeframe_seconds / 4) / N`, and REALISTIC at 1:1 with the
         // market clock. The legacy divisor was `tf / N`, i.e. four times
         // slower than the contract at every rung of the ladder.
-        let realTimeCandleDuration = _speedGovV1Enabled()
+        let realTimeCandleDuration = _speedGovTickDurationV1Enabled()
             ? this.getTickBarDurationMs(
                 this.speed === SPEED_GOV_REALISTIC ? SPEED_GOV_REALISTIC : effectivePlaybackSpeed,
                 rawCandleTimeframeMs,

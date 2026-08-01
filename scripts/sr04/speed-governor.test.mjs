@@ -109,6 +109,8 @@ function build({ win, timers, mutate = (s) => s, source = src } = {}) {
         const SPEED_GOV_MAX_GAIN = ${MAX_GAIN};
         const SPEED_GOV_MAX_CATCHUP_BARS = ${MAX_CATCHUP};
         ${balanced(source, 'function _speedGovV1Enabled(')}
+        ${balanced(source, 'function _speedGovFlagState(')}
+        ${balanced(source, 'function _speedGovTickDurationV1Enabled(')}
         ${balanced(source, 'function _speedGovNow(')}
         return {
             ${METHODS.map((m) => balanced(source, m)).join(',\n            ')}
@@ -271,12 +273,44 @@ test('O2 REALISTIC runs one bar per timeframe, 1:1 with the market clock', () =>
 
 test('O2 the shipped tick path uses the contracted duration, not the legacy divisor', () => {
     // The legacy line divided by N alone, making every rung four times too slow.
-    const at = soleIndexOf(src, 'let realTimeCandleDuration = _speedGovV1Enabled()');
+    const at = soleIndexOf(src, 'let realTimeCandleDuration = _speedGovTickDurationV1Enabled()');
     const region = src.slice(at, at + 500);
     assert.ok(region.includes('this.getTickBarDurationMs('),
         'the tick path must take its duration from the contracted formula');
     assert.ok(region.includes('rawCandleTimeframeMs / effectivePlaybackSpeed'),
-        'the kill-switch must still restore the legacy divisor');
+        'the switch must still restore the legacy divisor');
+});
+
+test('O2 the tick-duration contract has its own switch, and it is opt-in', () => {
+    const realm = (gov, tick) => {
+        const w = {};
+        if (gov !== undefined) w.__TALARIA_SPEED_GOV_V1 = gov;
+        if (tick !== undefined) w.__TALARIA_SPEED_GOV_TICK_V1 = tick;
+        w.parent = w;
+        w.top = w;
+        return w;
+    };
+    const state = (gov, tick) => {
+        const body = `
+            ${balanced(src, 'function _speedGovV1Enabled(')}
+            ${balanced(src, 'function _speedGovFlagState(')}
+            ${balanced(src, 'function _speedGovTickDurationV1Enabled(')}
+            return _speedGovTickDurationV1Enabled();
+        `;
+        return new Function('window', body)(realm(gov, tick));
+    };
+
+    // Opt-in, unlike the master switch: honouring (tf/4)/N at the top of the
+    // ladder puts forming-candle paints at 75 ms against a ~240 ms budget,
+    // which is the CPU ceiling M19-I-g2 exists to hold.
+    assert.equal(state(undefined, undefined), false, 'absent means off for the tick contract');
+    assert.equal(state(undefined, true), true, 'setting it opts in');
+    assert.equal(state(undefined, 'on'), true);
+    assert.equal(state(undefined, false), false);
+
+    // And it is subordinate: killing the governor kills the tick contract too.
+    assert.equal(state(false, true), false,
+        'the master switch must disable everything below it');
 });
 
 test('O2 MUTANT: dropping the /4 divisor goes red', () => {
