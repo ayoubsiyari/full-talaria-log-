@@ -1022,8 +1022,94 @@ function _resolveTradeJournalAttribution(order, chartSource) {
     return typeof impl === 'function' ? impl(order, chartSource) : null;
 }
 
+/**
+ * ENGINE CENSUS — cross-realm WeakRef registry.
+ *
+ * queryObjects(Chart) cannot answer "how many engines are alive": it enumerates the heap of the
+ * currently selected execution context, and every panel is an iframe with its own realm and its
+ * own Chart binding. A ghost left behind by a CLOSED panel lives in a realm the context picker no
+ * longer lists, so the one object we most want to count is the one that instrument structurally
+ * cannot reach. The list therefore lives on window.top, which every realm can still find and which
+ * outlives panel teardown.
+ *
+ * WeakRef, so a genuinely dead engine drops out on its own and a climbing count is real retention
+ * rather than bookkeeping. Cross-origin top is unreachable: fall back to the local window so a
+ * sandboxed realm still registers somewhere rather than throwing on the constructor path.
+ */
+const TALARIA_ENGINE_REGISTRY_KEY = '__talariaEngineRegistry';
+
+function _talariaEngineRegistryHost() {
+    if (typeof window === 'undefined') return null;
+    try {
+        if (window.top) {
+            // Touch a property to force the cross-origin SecurityError here rather than later.
+            void window.top.document;
+            return window.top;
+        }
+    } catch (_e) { /* cross-origin top: this realm keeps its own list */ }
+    return window;
+}
+
+function _talariaEngineRegistry() {
+    const host = _talariaEngineRegistryHost();
+    if (!host) return null;
+    try {
+        let reg = host[TALARIA_ENGINE_REGISTRY_KEY];
+        if (!reg) {
+            reg = { refs: [], registered: 0, createdAt: Date.now(), samples: [] };
+            host[TALARIA_ENGINE_REGISTRY_KEY] = reg;
+        }
+        return reg;
+    } catch (_e) {
+        return null;
+    }
+}
+
+function _talariaRegisterEngine(instance) {
+    if (typeof WeakRef !== 'function') return;
+    const reg = _talariaEngineRegistry();
+    if (!reg) return;
+    try {
+        reg.refs.push(new WeakRef(instance));
+        reg.registered += 1;
+    } catch (_e) { /* registration must never break construction */ }
+}
+
+/**
+ * Live engine count. Compacting here is what makes the number trustworthy: a ref whose deref()
+ * returns undefined is proven collected, so the survivors are retention and not history.
+ * @param {object} [opts] opts.blockingMsPerSec records occupancy alongside the count, so a
+ *   climbing ghost herd and a climbing thread floor can be correlated or cleanly severed.
+ */
+function talariaEngineCensus(opts = {}) {
+    const reg = _talariaEngineRegistry();
+    if (!reg) return null;
+    const kept = [];
+    for (const ref of reg.refs) {
+        let obj = null;
+        try { obj = ref.deref(); } catch (_e) { obj = null; }
+        if (obj) kept.push(ref);
+    }
+    reg.refs = kept;
+    const row = {
+        at: Date.now(),
+        live: kept.length,
+        registered: reg.registered,
+        collected: reg.registered - kept.length,
+        label: opts.label || null,
+        blockingMsPerSec: Number.isFinite(opts.blockingMsPerSec) ? opts.blockingMsPerSec : null
+    };
+    reg.samples.push(row);
+    return row;
+}
+
+if (typeof window !== 'undefined') {
+    window.talariaEngineCensus = talariaEngineCensus;
+}
+
 class Chart {
     constructor(canvasElement = null, svgElement = null, options = {}) {
+        _talariaRegisterEngine(this);
         installChartContextMenuCapture();
         // Support both main chart and panel instances
         if (canvasElement) {
