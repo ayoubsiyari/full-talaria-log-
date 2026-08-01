@@ -4824,6 +4824,27 @@ class Chart {
         }
     }
 
+    _logReplayRestoreCatchOnce(site, error, detail = {}) {
+        const key = String(site || 'unknown');
+        if (!this._replayRestoreCatchCounts) this._replayRestoreCatchCounts = Object.create(null);
+        const count = (this._replayRestoreCatchCounts[key] || 0) + 1;
+        this._replayRestoreCatchCounts[key] = count;
+        if (typeof window !== 'undefined') {
+            const bucket = window.__talariaReplayRestoreCatchCounts || (window.__talariaReplayRestoreCatchCounts = {});
+            bucket[key] = (bucket[key] || 0) + 1;
+        }
+        if (count !== 1) return;
+        console.warn('[replay-restore] caught replay restore failure', {
+            site: key,
+            count,
+            panelId: this.panelId || this._panelId || null,
+            symbol: this.currentSymbol || null,
+            timeframe: this.currentTimeframe || null,
+            replayTimestamp: detail.replayTimestamp ?? null,
+            error
+        });
+    }
+
     /**
      * Same-pair iframe: after host tile A finished a TF switch, clone its committed
      * bars + viewport instantly (no /smart). Safe only when native fetch TF matches.
@@ -4913,10 +4934,22 @@ class Chart {
             }
             if (Number.isFinite(replay.replayTimestamp)
                 && typeof replay.syncCurrentIndexFromReplayTimestamp === 'function') {
-                try { replay.syncCurrentIndexFromReplayTimestamp(replay.replayTimestamp); } catch (_si) { /* ignore */ }
+                try {
+                    replay.syncCurrentIndexFromReplayTimestamp(replay.replayTimestamp);
+                } catch (e) {
+                    this._logReplayRestoreCatchOnce('syncCurrentIndexFromReplayTimestamp', e, {
+                        replayTimestamp: replay.replayTimestamp
+                    });
+                }
             }
             if (typeof replay.updateChartData === 'function') {
-                try { replay.updateChartData(false); } catch (_uc) { /* ignore */ }
+                try {
+                    replay.updateChartData(false);
+                } catch (e) {
+                    this._logReplayRestoreCatchOnce('updateChartData', e, {
+                        replayTimestamp: replay.replayTimestamp
+                    });
+                }
             }
         }
 
