@@ -62,6 +62,21 @@ function mirrored(primary, mirror, needles, ref) {
   };
 }
 
+function noMutationArtifacts(files, artifacts = [], ref) {
+  if (!artifacts.length) return { ok: true, reason: 'no-row-specific-product-mutation-artifacts' };
+  const hits = [];
+  for (const relPath of files) {
+    const text = readRel(relPath, ref);
+    if (!text) continue;
+    for (const artifact of artifacts) {
+      if (text.includes(artifact.needle)) {
+        hits.push({ id: artifact.id, path: relPath, needle: artifact.needle });
+      }
+    }
+  }
+  return { ok: hits.length === 0, hits };
+}
+
 function boolAxis(ok, evidence = {}) {
   return { ok: !!ok, ...evidence };
 }
@@ -81,13 +96,13 @@ const ROWS = [
   {
     row: 'LAG-1b',
     owner: 'A',
-    ref: 'a88f0551b',
+    ref: '13cc48890',
     files: ['chart v 1.4/chart/chart.js', 'homepage/public/chart/chart.js'],
     present: ['__TALARIA_OVERLAY_RESYNC_DIRTY_V1'],
     bound: ['__TALARIA_OVERLAY_RESYNC_DIRTY_V1'],
     mirror: ['chart v 1.4/chart/chart.js', 'homepage/public/chart/chart.js'],
-    discriminating: false,
-    note: 'Four-call-site kill-switch example; requires all live call sites bound, not one static guard.',
+    discriminating: true,
+    discriminatingEvidence: '13cc48890 adds C13 in-memory neutering cells; gate goes RED when the fix is inert/reverted while the suite remains present.',
   },
   {
     row: 'LAG-2',
@@ -125,40 +140,61 @@ const ROWS = [
   {
     row: 'MEM-1a',
     owner: 'A',
-    ref: '41c34d1ea',
+    ref: '50b5a3867',
     files: ['chart v 1.4/chart/modules/replay-system.js', 'homepage/public/chart/modules/replay-system.js'],
     present: ['__TALARIA_EVICT_BEHIND_PLAYHEAD_V1'],
     bound: ['_evictBehindPlayhead()', '_evictBehindPlayheadDisabled()'],
     mirror: ['chart v 1.4/chart/modules/replay-system.js', 'homepage/public/chart/modules/replay-system.js'],
     discriminating: true,
-    discriminatingEvidence: '41c34d1ea carries scripts/sr04/evict-behind-playhead.test.mjs and evict-behind-playhead-mutants.mjs.',
+    discriminatingEvidence: '50b5a3867 restores the primary mirror and carries scripts/sr04/evict-behind-playhead.test.mjs and evict-behind-playhead-mutants.mjs.',
+    mutationArtifacts: [
+      {
+        id: 'MEM-1a-inverted-kill-switch',
+        needle: "return !_talariaDisableFlagTruthy('__TALARIA_EVICT_BEHIND_PLAYHEAD_V1');",
+      },
+      {
+        id: 'MEM-1a-slack-threshold-removed',
+        needle: 'if (start < 1) return;',
+      },
+    ],
   },
   {
     row: 'MEM-1b',
     owner: 'A',
-    files: ['chart v 1.4/chart/chart.js', 'homepage/public/chart/chart.js'],
+    ref: '0c458b1a1',
+    files: ['chart v 1.4/chart/modules/order-manager.js', 'homepage/public/chart/modules/order-manager.js'],
     present: ['__TALARIA_SERIES_LRU_V1'],
-    bound: ['__TALARIA_SERIES_LRU_V1'],
-    mirror: ['chart v 1.4/chart/chart.js', 'homepage/public/chart/chart.js'],
-    discriminating: false,
+    bound: ['_capOrderExecutionSeriesPerFile(perFile)', '_retainCurrentOrderExecutionSeries()'],
+    mirror: ['chart v 1.4/chart/modules/order-manager.js', 'homepage/public/chart/modules/order-manager.js'],
+    discriminating: true,
+    discriminatingEvidence: '0c458b1a1 carries scripts/sr04/series-lru-caps.test.mjs 11/11 with GATE-01 pinned to 13cc48890.',
   },
   {
     row: 'MEM-1c',
     owner: 'A',
-    files: ['chart v 1.4/chart/chart.js', 'homepage/public/chart/chart.js'],
+    ref: 'ca5b82b7b',
+    files: ['chart v 1.4/chart/modules/replay-system.js', 'homepage/public/chart/modules/replay-system.js'],
     present: ['__TALARIA_PRESESSION_RESIDENCY_V1'],
-    bound: ['__TALARIA_PRESESSION_RESIDENCY_V1'],
-    mirror: ['chart v 1.4/chart/chart.js', 'homepage/public/chart/chart.js'],
-    discriminating: false,
+    bound: ['PRESESSION_RESIDENCY_BARS', 'bound pre-session history at replay entry'],
+    mirror: ['chart v 1.4/chart/modules/replay-system.js', 'homepage/public/chart/modules/replay-system.js'],
+    discriminating: true,
+    discriminatingEvidence: 'ca5b82b7b carries scripts/sr04/presession-residency.test.mjs 17/17 plus EVICT-03 regression cells.',
   },
   {
     row: 'MEM-1d',
     owner: 'A',
-    files: ['chart v 1.4/chart/chart.js', 'homepage/public/chart/chart.js'],
+    ref: 'db8d57ae0',
+    files: [
+      'chart v 1.4/chart/modules/replay-system.js',
+      'homepage/public/chart/modules/replay-system.js',
+      'scripts/sr04/series-dedupe.test.mjs',
+      'docs/plan3/MEM-1d-consumer-audit.md',
+    ],
     present: ['__TALARIA_SERIES_DEDUPE_V1'],
-    bound: ['__TALARIA_SERIES_DEDUPE_V1'],
-    mirror: ['chart v 1.4/chart/chart.js', 'homepage/public/chart/chart.js'],
-    discriminating: false,
+    bound: ['R1 AUDIT: fullData still has no product reader', 'Positive control'],
+    mirror: ['chart v 1.4/chart/modules/replay-system.js', 'homepage/public/chart/modules/replay-system.js'],
+    discriminating: true,
+    discriminatingEvidence: 'db8d57ae0 carries scripts/sr04/series-dedupe.test.mjs 12/12; R1 re-runs the live product scan and includes positive controls.',
   },
   {
     row: 'LIFE-1',
@@ -261,7 +297,7 @@ const ROWS = [
   {
     row: 'ATTRIB-A-live',
     owner: 'A',
-    ref: '41c34d1ea',
+    ref: '50b5a3867',
     files: [
       'chart v 1.4/chart/modules/order-manager.js',
       'homepage/public/chart/modules/order-manager.js',
@@ -281,7 +317,7 @@ const ROWS = [
     ],
     mirror: ['chart v 1.4/chart/modules/order-manager.js', 'homepage/public/chart/modules/order-manager.js'],
     discriminating: true,
-    discriminatingEvidence: '41c34d1ea carries scripts/sr04/journal-attribution-call-site.test.mjs C10/C11/C12 and trade-attribution-resolver.test.mjs.',
+    discriminatingEvidence: '50b5a3867 carries scripts/sr04/journal-attribution-call-site.test.mjs C10/C11/C12 and trade-attribution-resolver.test.mjs.',
   },
   {
     row: 'KNOWN-A-resolver',
@@ -293,6 +329,28 @@ const ROWS = [
     mirror: ['chart v 1.4/chart/chart.js', 'homepage/public/chart/chart.js'],
     discriminating: true,
     discriminatingEvidence: 'trade-attribution-correctness-v1 now has resolver-present-but-unbound RED arm',
+  },
+  {
+    row: 'KNOWN-MEM-1a-mutant-artifact',
+    owner: 'A',
+    ref: '41c34d1ea',
+    files: ['chart v 1.4/chart/modules/replay-system.js', 'homepage/public/chart/modules/replay-system.js'],
+    present: ['__TALARIA_EVICT_BEHIND_PLAYHEAD_V1'],
+    bound: ['_evictBehindPlayhead()', '_evictBehindPlayheadDisabled()'],
+    mirror: ['chart v 1.4/chart/modules/replay-system.js', 'homepage/public/chart/modules/replay-system.js'],
+    discriminating: true,
+    discriminatingEvidence: 'Known bad MEM-1a product commit; fifth axis must catch the mutant artifact even when the original four axes look wired.',
+    mutationArtifacts: [
+      {
+        id: 'MEM-1a-inverted-kill-switch',
+        needle: "return !_talariaDisableFlagTruthy('__TALARIA_EVICT_BEHIND_PLAYHEAD_V1');",
+      },
+      {
+        id: 'MEM-1a-slack-threshold-removed',
+        needle: 'if (start < 1) return;',
+      },
+    ],
+    note: 'Known example: 41c34d1ea shipped a mutation artifact into the primary product file.',
   },
   {
     row: 'KNOWN-overlay-kill-switch-four-call-sites',
@@ -328,7 +386,8 @@ function evaluateRow(row) {
   const discriminating = boolAxis(row.discriminating, {
     evidence: row.discriminatingEvidence || null,
   });
-  const axes = { present, bound, mirrored: mirror, discriminating };
+  const mutationArtifact = noMutationArtifacts(row.files, row.mutationArtifacts, ref);
+  const axes = { present, bound, mirrored: mirror, discriminating, mutationArtifact };
   const status = Object.values(axes).every((axis) => axis.ok) ? 'GREEN' : 'RED';
   return {
     row: row.row,
@@ -354,8 +413,8 @@ export function runProc3UnwiredFixSweep() {
   return {
     signature: SIGNATURE,
     status: returns.length === 0 ? 'GREEN' : 'RED',
-    scope: '09:15 roster plus 09:35 known unwired-fix examples; fail-closed until train-tip code/gates prove all four axes',
-    axes: ['present', 'bound', 'mirrored', 'discriminating'],
+    scope: '09:15 roster plus known unwired/mutation examples; fail-closed until train-tip code/gates prove all five axes',
+    axes: ['present', 'bound', 'mirrored', 'discriminating', 'mutationArtifact'],
     rows,
     returns,
   };
