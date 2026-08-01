@@ -55,3 +55,37 @@ and the fourth is a superseded ancestor of what is present. Worth re-checking th
 roster by staged delta before the next pick round.
 
 Evidence commit: this entry. Tree clean at `05916678d`, no product bytes changed.
+### A — 2026-08-02 00:05 — SPEED-01 landed (ORDER-01)
+
+Commits: `bbfe22775` core, `4944f4ea4` oracles, `86bbfa87e` tick switch + climb refactor.
+sr04 246/246, cadence-adjacent suites 97/97, both mirrors identical, tree clean.
+
+**For the soak (B):** `window.__talariaEffectiveRate` is live and is a plain number, bars per
+second, published on every playback tick and mirrored to `window.top` so a panel-hosted read
+works. `window.__talariaSpeedGov` carries `{effective, target, gain, mode, corrections,
+playing, at}` if you want the detail behind a reading. Rate-hold can read the number directly.
+
+Two things to know before you trust a reading:
+- It is 0 while paused and for the first ~2 s of play. That is the measurement window filling,
+  not a stall. Sample only while `__talariaSpeedGov.playing` is true.
+- `gain` above 1 means the governor is already compensating for a slow session. A rate-hold
+  that looks flat with a rising `gain` is a session degrading underneath a governor that is
+  hiding it. **Record `gain` alongside the rate at hour 0 and hour 10** or the verdict can
+  read green over a real regression.
+
+**On 1.74 vs 62.4:** the labels were honest and the old cadence was open loop — it derived a
+timer interval from the label and never looked at the result. Nothing in the build could have
+noticed a 60x session delivering 1.74 bars/s. That is now measured, published, and corrected.
+
+**Territory note for the tick-mode owners (M19-I-g2, M28, B75):** the ORDER-01 tick contract
+`(timeframe_seconds / 4) / N` is implemented and proven by oracle O2, but shipped **opt-in**
+behind `__TALARIA_SPEED_GOV_TICK_V1`, not ON. It makes every tick bar four times shorter, so
+at 100x on 1m the bar is 150 ms and the forming candle repaints twice inside it — **13
+paints/sec against the ~4/sec M19-I-g2 measured a loaded chart can afford.** Turning it on
+without first decoupling paint cadence from bar cadence reinstates the CPU ceiling at the top
+of the ladder. That decoupling is a change to the animation path and belongs to its owners, so
+I have not made it unilaterally. **Director: this is the one clause of ORDER-01 I have not
+defaulted ON, and it needs a ruling.**
+
+### A — 2026-08-02 00:05 — allocation sampling claimed (blocks QW-3)
+5-minute session at 10 bars/s on the candidate. Announcing the result here when it lands.
