@@ -171,6 +171,45 @@ test('R5 MONEY PATH: an open position with an unreadable entry blocks eviction e
         'an entry we cannot read is not evidence that eviction is safe — it must block the trim');
 });
 
+/**
+ * The floor this row shipped with was amended by MEM-1c (ca5b82b7b), so this cell exists to
+ * keep EVICT-03's own gate describing the build that actually ships rather than the one
+ * that landed at 50b5a3867. Without it the suite is green for the wrong reason: it simply
+ * never exercises the case that changed.
+ */
+test('R5b MONEY PATH: a hole in openPositions blocks eviction, it is not an entry at epoch zero', () => {
+    const { proto } = build();
+
+    for (const hole of [null, undefined, false, 0, '']) {
+        const rs = makeRs(proto, { count: 60_000, playhead: 50_000, open: [hole] });
+        const before = rs.fullRawData;
+        rs._evictBehindPlayhead();
+        assert.equal(rs.fullRawData, before,
+            `a hole (${JSON.stringify(hole)}) must read as unreadable, not as a timestamp`);
+    }
+
+    // A hole beside a real position must not be swallowed by the real one either.
+    const master = bars(60_000);
+    const rs = makeRs(proto, {
+        count: 60_000,
+        playhead: 50_000,
+        open: [{ openTime: master[49_000].t }, null],
+    });
+    const before = rs.fullRawData;
+    rs._evictBehindPlayhead();
+    assert.equal(rs.fullRawData, before,
+        'one unreadable entry taints the whole read — a readable sibling is not a floor for both');
+});
+
+test('R5c the epoch-zero coercion that made a hole look readable is gone', () => {
+    // `Number(position && position.openTime)` is Number(null) for a hole: a finite 0, which
+    // no bar precedes, so the floor evaluated to "nothing is protected" instead of abstaining.
+    assert.ok(!src.includes('const t = Number(position && position.openTime);'),
+        'the coercion must not return; it silently removes the money floor');
+    assert.match(src, /if \(!position\) \{\s*sawUnreadable = true;/,
+        'a hole must be marked unreadable explicitly');
+});
+
 test('R6 with no open positions the floor is the context window alone', () => {
     const { proto } = build();
     const ctx = proto.__contextBars;
