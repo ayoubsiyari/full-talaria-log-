@@ -83,6 +83,8 @@ const METHODS = [
     '\n    _speedGovClearClock() {',
     '\n    _speedGovClockCount() {',
     '\n    getCandlePlaybackCadence() {',
+    '\n    normalizeSpeed(speed) {',
+    '\n    migrateStoredSpeed(stored) {',
 ];
 
 /**
@@ -111,6 +113,7 @@ function build({ win, timers, mutate = (s) => s, source = src } = {}) {
         ${balanced(source, 'function _speedGovV1Enabled(')}
         ${balanced(source, 'function _speedGovFlagState(')}
         ${balanced(source, 'function _speedGovTickDurationV1Enabled(')}
+        ${balanced(source, 'function _speedGovNearestRung(')}
         ${balanced(source, 'function _speedGovNow(')}
         return {
             ${METHODS.map((m) => balanced(source, m)).join(',\n            ')}
@@ -167,15 +170,19 @@ function feed(engine, { bars, overMs, startAt = 1000 }) {
 // O1 — rate. A speed is bars per second, and the meter reports what was delivered.
 // ---------------------------------------------------------------------------
 
-test('O1 the ladder is ten speeds, stated in bars per second', () => {
+test('O1 the ladder is exactly 1 to 10, nothing above and nothing between', () => {
     const { engine } = build();
     const ladder = engine.getSpeedLadderBarsPerSecond();
-    assert.equal(ladder.length, 10, 'ORDER-01 specifies ten candle speeds');
-    assert.deepEqual(ladder, [...ladder].sort((a, b) => a - b), 'ladder must ascend');
-    assert.ok(ladder.every((n) => Number.isFinite(n) && n > 0), 'every rung is a rate');
-    // The two rungs the PO hand-measured must exist, or the measurement is unanchored.
-    assert.ok(ladder.includes(10), 'PO measured the 10x rung at 10.4 bars/s');
-    assert.ok(ladder.includes(60), 'PO measured the 60x rung at 62.4 bars/s');
+    assert.deepEqual(ladder, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+        'ORDER-01 §5: exactly the integers 1 through 10');
+    assert.equal(ladder.length, 10, 'ten candle speeds');
+    // Stated as three separate properties because §5 states three.
+    assert.ok(ladder.every((n) => Number.isInteger(n)), 'nothing between the rungs');
+    assert.ok(Math.max(...ladder) === 10, 'nothing above 10');
+    for (const gone of [15, 20, 25, 30, 50, 60, 70, 80, 90, 100, 86400, 0.5]) {
+        assert.ok(!ladder.includes(gone),
+            `${gone} is a setting the order exists to remove, and must not be offered`);
+    }
 });
 
 test('O1 a speed of N means N bars per second, measured off the playhead', () => {
@@ -190,13 +197,24 @@ test('O1 a speed of N means N bars per second, measured off the playhead', () =>
 
 test('O1 the meter reports the delivered rate, not the requested one', () => {
     const { engine } = build();
-    engine.speed = 60;
-    // The 60x session that actually delivered 1.74 bars/s. The label is 60;
-    // the instrument must say 1.74, which is the entire point of the row.
+    engine.speed = 10;
+    // The shape of the soak's collapsed session: asked for the top rung,
+    // delivered 1.74 bars/s. The instrument must say 1.74.
     const now = feed(engine, { bars: 3, overMs: 1724 });
     const effective = engine.getEffectiveBarsPerSecond(now);
     assert.ok(effective < 5, `a collapsed session must read low, got ${effective}`);
-    assert.equal(engine.getTargetBarsPerSecond(), 60, 'the label is unchanged');
+    assert.equal(engine.getTargetBarsPerSecond(), 10, 'the label is unchanged');
+});
+
+test('O1 a target above the ladder is never reported, however it got there', () => {
+    // `this.speed` is assigned directly by restore paths and by
+    // window._pendingReplaySpeed, not only through setSpeed.
+    const { engine } = build();
+    engine.speed = 60;
+    assert.equal(engine.getTargetBarsPerSecond(), 10,
+        'a stale 60 must not have the governor chase a rate the selector cannot ask for');
+    engine.speed = 86400;
+    assert.equal(engine.getTargetBarsPerSecond(), 10);
 });
 
 test('O1 the effective rate is published continuously for read-back', () => {
@@ -233,6 +251,80 @@ test('O1 the meter divides bars by the gaps between them, not by one gap too few
         `an exactly-on-rate scene must read exactly on rate, got ${effective}`);
     assert.ok(Math.abs(effective - 10) / 10 < TOLERANCE,
         'meter bias must not by itself exceed the correction threshold');
+});
+
+// ---------------------------------------------------------------------------
+// §5 — the selector offers 1-10, and legacy stored speeds migrate onto it.
+// ---------------------------------------------------------------------------
+
+test('§5 every legacy shipped speed migrates to the nearest surviving rung', () => {
+    const { engine } = build();
+    // Left column is every value the three shipped ladders could store.
+    const cases = [
+        // legacy shell slider
+        [1, 1], [2, 2], [5, 5], [10, 10], [30, 10], [60, 10], [120, 10],
+        [300, 10], [900, 10], [1800, 10], [3600, 10], [7200, 10],
+        [14400, 10], [43200, 10], [86400, 10],
+        // V9 React slider
+        [3, 3], [15, 10], [20, 10], [25, 10], [50, 10], [70, 10],
+        [80, 10], [90, 10], [100, 10],
+        // engine ladder as previously shipped
+        [0.5, 1],
+        // the two defaults that were actually persisted in the field
+        [30, 10], [60, 10],
+    ];
+    for (const [stored, expected] of cases) {
+        assert.equal(engine.migrateStoredSpeed(stored), expected,
+            `a stored ${stored} must land on ${expected}, not on a dead setting`);
+    }
+});
+
+test('§5 migration snaps to the nearest rung rather than truncating', () => {
+    const { engine } = build();
+    assert.equal(engine.migrateStoredSpeed(4.4), 4);
+    assert.equal(engine.migrateStoredSpeed(4.6), 5);
+    assert.equal(engine.migrateStoredSpeed(0.1), 1, 'below the floor lands on the floor');
+    assert.equal(engine.migrateStoredSpeed(-5), 1);
+    // Ties go down: the order's direction is downward.
+    assert.equal(engine.migrateStoredSpeed(4.5), 4, 'a tie resolves to the slower rung');
+});
+
+test('§5 migration is total: junk yields a rung, never NaN or a throw', () => {
+    const { engine } = build();
+    for (const junk of [null, undefined, '', 'fast', {}, [], NaN, Infinity, -Infinity]) {
+        const out = engine.migrateStoredSpeed(junk);
+        assert.ok(engine.getSpeedLadderBarsPerSecond().includes(out),
+            `${JSON.stringify(junk)} yielded ${out}, which is not on the ladder`);
+    }
+});
+
+test('§5 migration is idempotent, so a restore loop cannot walk the speed down', () => {
+    const { engine } = build();
+    for (const rung of engine.getSpeedLadderBarsPerSecond()) {
+        assert.equal(engine.migrateStoredSpeed(engine.migrateStoredSpeed(rung)), rung);
+    }
+});
+
+test('§5 the shipped default is on the ladder', () => {
+    const declared = src.match(/this\.speed = _speedGovNearestRung\((\d+)\);/);
+    assert.ok(declared, 'the constructor default must be taken from the ladder');
+    const { engine } = build();
+    assert.ok(engine.getSpeedLadderBarsPerSecond().includes(
+        engine.migrateStoredSpeed(Number(declared[1]))),
+    'the default must resolve onto a rung the selector offers');
+});
+
+test('§5 MUTANT: a clamp instead of a snap goes red on the sub-1 case', () => {
+    const { engine } = build({
+        mutate: (s) => s.replace(
+            'return _speedGovNearestRung(n);',
+            'return Math.max(1, Math.min(10, n));',
+        ),
+    });
+    // A clamp agrees with a snap on everything above the ladder, which is why
+    // the sub-rung cases are the ones that discriminate.
+    assert.equal(engine.migrateStoredSpeed(4.6), 4.6,
+        'the mutant must leave a between-rung value alone; if it snaps, §5 is vacuous');
 });
 
 test('O1 MUTANT: a meter that reports the request instead of the delivery goes red', () => {
@@ -664,23 +756,23 @@ test('the switch is ON by default and OFF only when explicitly disabled', () => 
         w.top = w;
         return w;
     };
-    const on = (v) => build({ win: realm(v) }).engine.getCandlePlaybackCadence();
+    // A stale 60 is the discriminator: governed it migrates to the 10 rung
+    // (100 ms interval), ungoverned it is taken literally (16 ms interval).
+    const intervalAt60 = (v) => {
+        const { engine } = build({ win: realm(v) });
+        engine.speed = 60;
+        return engine.getCandlePlaybackCadence().intervalMs;
+    };
 
     // Absent means on: a governor that has to be switched on is a governor nobody runs.
-    const { engine: dflt } = build({ win: realm(undefined) });
-    dflt.speed = 0.5;
-    assert.ok(dflt.getCandlePlaybackCadence().intervalMs > 1000,
-        'default-ON must honour the 0.5 rung');
+    assert.equal(intervalAt60(undefined), 100, 'default-ON must migrate 60 onto the ladder');
 
     for (const off of [false, 0, '0', 'off', 'no', 'false', 'OFF']) {
-        const { engine } = build({ win: realm(off) });
-        engine.speed = 0.5;
-        // Ungoverned, 0.5 is clamped up to 1, so the interval is ~1000 ms not ~2000 ms.
-        assert.ok(engine.getCandlePlaybackCadence().intervalMs <= 1000,
-            `explicitly-off value ${JSON.stringify(off)} must restore legacy clamping`);
+        assert.equal(intervalAt60(off), 16,
+            `explicitly-off value ${JSON.stringify(off)} must restore the literal legacy speed`);
     }
     for (const truthy of [true, 1, 'on', 'yes']) {
-        assert.ok(on(truthy).intervalMs > 0);
+        assert.equal(intervalAt60(truthy), 100);
     }
 });
 
@@ -690,8 +782,8 @@ test('the switch is read from the host realm when a panel has none of its own', 
     top.top = top;
     const panel = { parent: top, top };
     const { engine } = build({ win: panel });
-    engine.speed = 0.5;
-    assert.ok(engine.getCandlePlaybackCadence().intervalMs <= 1000,
+    engine.speed = 60;
+    assert.equal(engine.getCandlePlaybackCadence().intervalMs, 16,
         'a switch thrown on the host must reach a panel in its own realm');
 });
 

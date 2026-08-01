@@ -178,11 +178,16 @@ function _lagSetIntervalTickV1Enabled() {
  * ===================================================================== */
 
 /**
- * The ten candle speeds, in bars per second. This is the contract: at
- * `10` the chart is meant to deliver ten bars every wall-clock second.
- * The UI has CSS for a `0.5` option, so the ladder starts there.
+ * The ten candle speeds, in bars per second: 1 through 10, nothing above
+ * and nothing between. This is the contract — at `10` the chart delivers
+ * ten bars every wall-clock second.
+ *
+ * ORDER-01 §5 removes everything above 10. The shipped ladders offered
+ * 60x and, in the legacy shell, up to 86400x; those are the settings the
+ * order exists to take away, so a speed outside this list is not a
+ * preference to honour but a stored value to migrate.
  */
-const SPEED_GOV_LADDER_BPS = Object.freeze([0.5, 1, 2, 5, 10, 15, 20, 30, 60, 100]);
+const SPEED_GOV_LADDER_BPS = Object.freeze([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
 
 /** Tick mode offers the same ten plus real time. */
 const SPEED_GOV_REALISTIC = 'REALISTIC';
@@ -289,6 +294,28 @@ function _speedGovTickDurationV1Enabled() {
     return _speedGovFlagState('__TALARIA_SPEED_GOV_TICK_V1', false);
 }
 
+/**
+ * Snap an arbitrary speed onto the ladder. Nearest rung, not a clamp: a
+ * clamp would land every legacy value above 10 on exactly 10, which is
+ * right for 60 but hides that 86400 was ever selected. Ties go to the
+ * slower rung, because the order's direction is downward.
+ */
+function _speedGovNearestRung(value) {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return SPEED_GOV_LADDER_BPS[0];
+    let best = SPEED_GOV_LADDER_BPS[0];
+    let bestGap = Math.abs(n - best);
+    for (let i = 1; i < SPEED_GOV_LADDER_BPS.length; i++) {
+        const rung = SPEED_GOV_LADDER_BPS[i];
+        const gap = Math.abs(n - rung);
+        if (gap < bestGap) {
+            best = rung;
+            bestGap = gap;
+        }
+    }
+    return best;
+}
+
 /** Monotonic where available; the meter must not move when the wall clock does. */
 function _speedGovNow() {
     return (typeof performance !== 'undefined' && typeof performance.now === 'function')
@@ -388,7 +415,10 @@ class ReplaySystem {
         this.isActive = false;
         this.isPlaying = false;
         this.currentIndex = 0;
-        this.speed = 60;
+        // ORDER-01 §5: the shipped default was 60, which is no longer a rung.
+        // Taken from the ladder rather than written as a literal so the
+        // default cannot drift off the list the selector offers.
+        this.speed = _speedGovNearestRung(60);
         this.playInterval = null;
         this.fullRawData = null;
         this.fullData = null;
@@ -5518,7 +5548,11 @@ class ReplaySystem {
         }
         const raw = Number(this.speed);
         if (!Number.isFinite(raw) || raw <= 0) return 1;
-        return raw;
+        // Normalise here too. A speed can reach `this.speed` without passing
+        // through setSpeed — restore paths and `window._pendingReplaySpeed`
+        // both assign it — and a stale 60 read as a target would have the
+        // governor chase a rate the selector can no longer ask for.
+        return _speedGovV1Enabled() ? _speedGovNearestRung(raw) : raw;
     }
 
     /**
@@ -8066,13 +8100,18 @@ class ReplaySystem {
         }
         const n = Number(speed);
         if (!Number.isFinite(n)) return 1;
-        // The ladder's floor is 0.5 and the UI ships a 0.5 button; the old
-        // floor of 1 silently turned that button into the 1x button.
-        const floor = governed ? SPEED_GOV_LADDER_BPS[0] : 1;
-        const ceiling = governed
-            ? SPEED_GOV_LADDER_BPS[SPEED_GOV_LADDER_BPS.length - 1]
-            : 100;
-        return Math.max(floor, Math.min(ceiling, n));
+        if (!governed) return Math.max(1, Math.min(100, n));
+        return _speedGovNearestRung(n);
+    }
+
+    /**
+     * ORDER-01 §5 migration. A returning user's stored speed is very often
+     * a rung that no longer exists — 60 and 30 were the two shipped
+     * defaults, and the legacy slider went to 86400. Snapping to the
+     * nearest surviving rung is what keeps them off a dead setting.
+     */
+    migrateStoredSpeed(stored) {
+        return this.normalizeSpeed(stored);
     }
 
     /** User-visible speed is the effective speed in both playback modes. */
