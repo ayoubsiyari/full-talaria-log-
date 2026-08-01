@@ -8132,6 +8132,115 @@ class Chart {
     }
 
     /**
+     * COVER-REDISPATCH-BOUND: cap the self-re-dispatch chain that
+     * ensureReplayDataCoversTimestamp arms from its finally block. A cover that
+     * finished short of the forward target re-armed itself on a microtask with no
+     * limit, no cooldown and no generation check, and _fetchIndependentReplayBridge
+     * caps its walk at 24 sequential /bars chunks — so any target the walk cannot
+     * reach (or that the server has no bars for) spawned an endless fetch storm.
+     * Kill-switch: window.__TALARIA_DISABLE_COVER_REDISPATCH_BOUND_V1 — truthy
+     * restores the unbounded re-dispatch. Absent ⇒ fix ON; truthiness (not === true);
+     * read per call, never sampled at init.
+     */
+    _coverRedispatchBoundEnabled() {
+        try {
+            return typeof window === 'undefined'
+                || !window.__TALARIA_DISABLE_COVER_REDISPATCH_BOUND_V1;
+        } catch (_e) {
+            return true;
+        }
+    }
+
+    /**
+     * Consecutive self-re-dispatches allowed for ONE forward target that is making
+     * no progress. Genuine progress resets the budget, so a legitimately advancing
+     * cover chain is never capped by this number.
+     */
+    _coverRedispatchMaxAttempts() {
+        return 6;
+    }
+
+    _resetCoverRedispatchBudget() {
+        this._coverRedispatchWasted = 0;
+        this._coverRedispatchGeneration = null;
+        this._coverRedispatchTargetTs = null;
+        this._coverRedispatchBaselineT = null;
+    }
+
+    /**
+     * Budget gate for one self-re-dispatch of ensureReplayDataCoversTimestamp.
+     *  - superseded generation / timeframe switch / pair switch ⇒ never re-arm
+     *  - master moved closer to the target ⇒ genuine progress, budget resets
+     *  - a different forward target only RE-KEYS the budget; it does not refill it,
+     *    because the host playhead bumps the target inside almost every inflight
+     *    cover (panel-cmd-bridge scheduleMirrorCatchUp fires per mirror frame) and
+     *    refilling on that alone left the bound inert in the one regime it exists
+     *    for: an independent-symbol panel catching up during Play
+     *  - otherwise consume one attempt and stop at _coverRedispatchMaxAttempts()
+     * Stopping clears the budget so a later externally-driven cover for the same
+     * target starts fresh instead of being permanently starved.
+     * @param {number} captureGeneration generation captured by the finishing call
+     * @param {number} ahead forward target that is still uncovered
+     * @param {number} lastMasterT last master bar t observed by the finishing call
+     * @returns {boolean} true when the chain may re-arm
+     */
+    _coverRedispatchShouldRearm(captureGeneration, ahead, lastMasterT) {
+        const currentGeneration = this._ensureReplayDataGeneration || 0;
+        if (captureGeneration !== currentGeneration
+            || this._timeframeSwitching
+            || this._pairSwitchLoading) {
+            this._resetCoverRedispatchBudget();
+            return false;
+        }
+        const sameTarget = this._coverRedispatchGeneration === currentGeneration
+            && this._coverRedispatchTargetTs === ahead;
+        if (!sameTarget) {
+            // A target that only moved forward is not progress: re-key the budget to
+            // it and re-baseline the frontier, but refill the attempts solely when the
+            // master frontier itself moved (or has never been observed).
+            if (!Number.isFinite(this._coverRedispatchBaselineT)
+                || (Number.isFinite(lastMasterT)
+                    && lastMasterT > this._coverRedispatchBaselineT)) {
+                this._coverRedispatchWasted = 0;
+            }
+            this._coverRedispatchGeneration = currentGeneration;
+            this._coverRedispatchTargetTs = ahead;
+            this._coverRedispatchBaselineT = lastMasterT;
+        } else if (Number.isFinite(lastMasterT)
+            && (!Number.isFinite(this._coverRedispatchBaselineT)
+                || lastMasterT > this._coverRedispatchBaselineT)) {
+            this._coverRedispatchWasted = 0;
+            this._coverRedispatchBaselineT = lastMasterT;
+        }
+        if ((this._coverRedispatchWasted || 0) >= this._coverRedispatchMaxAttempts()) {
+            this._resetCoverRedispatchBudget();
+            return false;
+        }
+        this._coverRedispatchWasted = (this._coverRedispatchWasted || 0) + 1;
+        return true;
+    }
+
+    /**
+     * COVER-RESUME-GUARD: ensureReplayDataCoversTimestamp pauses a playing replay
+     * before its /bars fetch but only resumed it on the single success path — no
+     * payload, generation/timeframe/pair abort, empty rawData and any throw all
+     * left replay paused for good (a freeze on the host tile / single chart), and
+     * the throw also rejected the returned promise because the body is try/finally
+     * with no catch.
+     * Kill-switch: window.__TALARIA_DISABLE_COVER_RESUME_GUARD_V1 — truthy restores
+     * the pause-without-resume tip (throw rejects again). Absent ⇒ fix ON;
+     * truthiness (not === true); read per call, never sampled at init.
+     */
+    _coverResumeGuardEnabled() {
+        try {
+            return typeof window === 'undefined'
+                || !window.__TALARIA_DISABLE_COVER_RESUME_GUARD_V1;
+        } catch (_e) {
+            return true;
+        }
+    }
+
+    /**
      * Multichart hard guard: refetch a playhead-centered window when the
      * currently loaded rawData does not contain targetTs. Without this,
      * goToReplayTimestamp clamps to the nearest loaded bar (often session
@@ -8220,7 +8329,40 @@ class Chart {
         const wasActive = !!(replay && replay.isActive);
         const wasPlaying = !!(replay && replay.isPlaying);
 
-        this._ensureReplayDataInflight = (async () => {
+        // COVER-INFLIGHT-WEDGE: the slot below was installed AFTER the body had already
+        // run (`this._ensureReplayDataInflight = (async () => { … })()`). Every exit the
+        // body can take BEFORE its first await — generation superseded /
+        // _timeframeSwitching / _pairSwitchLoading, a parent master that already covers
+        // ts, or any synchronous throw — settles the promise first, so the body's finally
+        // cleared the slot and the assignment then RE-INSTALLED an already-settled
+        // promise. Nothing cleared it again (the only other writers are
+        // _beginTimeframeSwitching / _evictPanelMasterData and the constructor/reset
+        // sites; _endTimeframeSwitching and _endPairSwitchLoading clear nothing), so
+        // every later cover short-circuited on the truthy slot and got that stale
+        // result: replay data acquisition never fetched again. Invariant restored here —
+        // the slot never holds a settled promise, and only the call that installed a
+        // promise may clear it.
+        // Kill-switch: window.__TALARIA_DISABLE_COVER_INFLIGHT_WEDGE_V1 — truthy restores
+        // the unconditional re-install (wedge included). Absent ⇒ fix ON; truthiness (not
+        // === true). Read per call, then held for the whole call so this install and its
+        // own finally always agree even if the flag flips while the cover is in flight.
+        let wedgeGuardOn = true;
+        try {
+            wedgeGuardOn = typeof window === 'undefined'
+                || !window.__TALARIA_DISABLE_COVER_INFLIGHT_WEDGE_V1;
+        } catch (_e) { /* ignore */ }
+        // Set by the finally below; read after the IIFE returns to tell a body that
+        // suspended at its first await (publish it — concurrent callers must coalesce
+        // onto it) from one that already settled (publishing it wedges the slot with a
+        // stale result forever).
+        let coverSettled = false;
+        let coverInflight = null;
+
+        coverInflight = (async () => {
+            // COVER-RESUME-GUARD: true only while THIS call owns a pause it has not
+            // handed back yet, so the finally can never double-play a replay that
+            // the success path already resumed.
+            let pausedByCover = false;
             try {
                 if (captureGeneration !== (this._ensureReplayDataGeneration || 0)
                     || this._timeframeSwitching
@@ -8234,6 +8376,7 @@ class Chart {
 
                 if (wasPlaying && replay && typeof replay.pause === 'function') {
                     replay.pause();
+                    pausedByCover = true;
                 }
 
                 let result = null;
@@ -8383,7 +8526,7 @@ class Chart {
                         try { replay.updateChartData(false); } catch (_uc) { /* ignore */ }
                     }
                     if (wasPlaying && typeof replay.play === 'function') {
-                        try { replay.play(); } catch (_rp) { /* ignore */ }
+                        try { replay.play(); pausedByCover = false; } catch (_rp) { /* ignore */ }
                     }
                 }
                 if (forceLazyFineMaster
@@ -8394,8 +8537,35 @@ class Chart {
                 }
 
                 return hasWallClockPrefix(this.rawData);
+            } catch (coverErr) {
+                if (!this._coverResumeGuardEnabled()) throw coverErr;
+                console.warn('ensureReplayDataCoversTimestamp: cover failed', coverErr);
+                return false;
             } finally {
-                this._ensureReplayDataInflight = null;
+                // COVER-RESUME-GUARD: whatever exit path we left by, hand back the
+                // pause this call took (no payload / generation abort / empty rawData
+                // / throw all used to leave replay paused forever).
+                if (this._coverResumeGuardEnabled()
+                    && pausedByCover
+                    && replay
+                    && typeof replay.play === 'function') {
+                    try { replay.play(); pausedByCover = false; } catch (_rp) { /* ignore */ }
+                }
+                // COVER-INFLIGHT-WEDGE: clear only the promise THIS call published.
+                // coverInflight is still null when the body settled before its first
+                // await (nothing was published yet, and the assignment after the IIFE
+                // keeps the slot clear), and a slot already re-armed by a later call
+                // belongs to that call's finally — clearing it there orphaned a live
+                // cover and made the next caller open a redundant fetch.
+                if (wedgeGuardOn) {
+                    coverSettled = true;
+                    if (coverInflight !== null
+                        && this._ensureReplayDataInflight === coverInflight) {
+                        this._ensureReplayDataInflight = null;
+                    }
+                } else {
+                    this._ensureReplayDataInflight = null;
+                }
                 const ahead = this._ensureReplayDataTargetTs;
                 this._ensureReplayDataTargetTs = null;
                 const master = this._isIndependentMultichartPair()
@@ -8404,15 +8574,27 @@ class Chart {
                 const lastMasterT = Array.isArray(master) && master.length
                     ? Number(master[master.length - 1]?.t)
                     : NaN;
-                if (Number.isFinite(ahead) && Number.isFinite(lastMasterT) && ahead > lastMasterT) {
+                if (Number.isFinite(ahead) && Number.isFinite(lastMasterT) && ahead > lastMasterT
+                    && (!this._coverRedispatchBoundEnabled()
+                        || this._coverRedispatchShouldRearm(captureGeneration, ahead, lastMasterT))) {
                     Promise.resolve().then(() => {
                         try { this.ensureReplayDataCoversTimestamp(ahead); } catch (_e) { /* ignore */ }
                     });
+                } else if (this._coverRedispatchBoundEnabled()) {
+                    this._resetCoverRedispatchBudget();
                 }
             }
         })();
 
-        return this._ensureReplayDataInflight;
+        // COVER-INFLIGHT-WEDGE: publish only a cover that is genuinely in flight. The
+        // returned promise is the local one either way, so an early exit still reports
+        // its own result (and still rejects when the resume guard is off) — only the
+        // coalescing slot is left clear.
+        if (!wedgeGuardOn || !coverSettled) {
+            this._ensureReplayDataInflight = coverInflight;
+        }
+
+        return coverInflight;
     }
     
     /**

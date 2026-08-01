@@ -414,3 +414,30 @@ exists — eviction deletes the redundant hot copy, it does not invent a new sto
   discriminating. Added D to E handoff `HANDOFF-D-TO-E-PROC3-LAG1A-LIFE4-20260801.md`.
 - M8 specifically records byte-identical proof for both client mirrors (`chart.js` and `modules/order-manager.js`);
   the prior one-mirror-only miss is now named as a PROC-3 failure mode and not self-certified away.
+
+## 2026-08-01 14:45 — updatePositions zero-order preamble measurement
+
+- Measured PO-named preamble in `OrderManager.updatePositions()` with
+  `scripts/update-positions-preamble-measure.mjs`: 4 chart instances, 7,200 ticks per chart, 28,800 calls per
+  state.
+- States measured: zero orders ever, five closed with zero open, and one open. `_getMultichartParentGuardCandle`
+  and `_tradeEvictV1SyncPlayhead` are separately counted line items.
+- Result: not convicted from the source-level harness. Zero-orders total `updatePositions` self-time was
+  36.688 ms over the two-minute window (0.306 ms/s); named line items were 2.803 ms and 3.074 ms respectively.
+  No money-path fix proposed from this evidence.
+- Caveat: source harness executes real code but not browser DOM/iframe lookup cost. If the sealed browser
+  zero-trade arm shows unexpected occupancy, the named line items are already isolated for live tracing.
+
+## 2026-08-01 15:45 — late money-path cherry-picks
+
+- Joined PO-ordered late picks after SL/TP preamble measurement. E's claim packet covers only loader/cache rows
+  (`LEAK-G/F/I/A`), so D took the money-path/replay rows with no overlap.
+- Landed `COVER-LOOP-SAFETY`, `COVER-INFLIGHT-WEDGE`, `M17-DI2 / TAL-01918`, and `ORDER-GLOW-GC-V1`.
+  `M23 rollback trade-state` was already present on D tip; cherry-pick resolved empty and was skipped.
+- Integrated cover-loop + inflight wedge in `ensureReplayDataCoversTimestamp`: promise slot ownership, bounded
+  re-dispatch, resume-guard catch, and kill-switch fidelity all remain active.
+- Verification green:
+  cover-loop + inflight + order-glow `85/85`; M17 + M23 `28/28`; chart/order-manager/replay mirrors
+  byte-identical by `git diff --no-index`; no IDE diagnostics on touched files.
+- Published B review/prediction packet:
+  `docs/plan3/HANDOFF-D-TO-B-LATE-MONEY-PICKS-20260801.md`.
