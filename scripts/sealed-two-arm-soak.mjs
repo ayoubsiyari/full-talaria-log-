@@ -31,6 +31,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { openRun, inspectRun } from './lib/detach01.mjs';
 import { bootConf01Session, cycleTrades } from './lib/conf01-session.mjs';
+import { HEAP_CYCLE_DATASET_MODE_SAME_SYMBOL } from './lib/heap-cycle-dataset-config.mjs';
 import { loadConf05Indicators } from './lib/conf05-indicators.mjs';
 import { reapOrphanedRenderers } from './lib/find-soak-port.mjs';
 import { readFootprint } from './lib/footprint.mjs';
@@ -388,11 +389,15 @@ try {
       reapOrphanedRenderers();
       const eSel = loadConf05Indicators();
       log(`booting segment ${segment}`);
+      // same-symbol: one file at 1m/5m/15m/1h so multi-TF sync has a common window.
+      // distinct-four-files parked 3/4 panels at masterLen-1 for every prior CONF-01 measurement.
       session = await bootConf01Session({
         indicators: eSel.pairs,
         replaySpeed: SPEED,
         placeOrder: ARM !== 'zerotrade',
         label: `sealed-soak-${ARM}`,
+        datasetMode: HEAP_CYCLE_DATASET_MODE_SAME_SYMBOL,
+        requireDeliveringPanels: 4,
       });
       /**
        * What speed the engine believes it is running, read by several routes with the answering route

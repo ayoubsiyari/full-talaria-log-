@@ -472,3 +472,25 @@ Artifacts: `_evidence/manager-C/a8-hoard-slope-2026-08-02T12-13-51-028Z{,-REGRAD
   **So this is my harness, not a product defect.** `bootConf01Session` runs `datasets mode=distinct` to give each panel its own file, and nothing has ever asserted the four files cover the same period. They do not, and have not in any measurement I have published. The product's behaviour under non-overlapping data is arguably still wrong — silently pinning is worse than saying "no data at this time for this timeframe" — but that is a separate, lower-priority observation and I am not booking it as the cause.
 
   **What changes:** the fix is to seed four timeframes over a common window, which is a harness change I own and can make before the soak fires. Everything in the entry above stands unchanged — three panels inert in every measurement, the MB/kbar denominator coming from one panel, the sawtooth being the 1m window sliding, the 58 MB withdrawn. Only the attribution moves, and it moves toward me.
+
+- 20:20+01:00 · C · **HEAP-CONSTRUCTOR CENSUS + BLINK DETAIL LANDED. CANVAS/DOM HYPOTHESIS NOT THE GROWTH DRIVER ON THIS WINDOW. FORCED-GC SLOPE MEASURED, NOT GUESSED. SOAK BLOCKER STILL OPEN.** · Artifact `_evidence/manager-C/hoard-constructor-run3/report.json` (salvaged after retainer OOM); instruments `scripts/hoard-constructor-census.mjs`, `scripts/lib/blink-allocator-detail.mjs`; snapshot writer fix in `scripts/lib/end-of-arm-snapshot.mjs` (finished-event race that dropped 189 MB to a 0-byte file). Self-test 13/13.
+
+  **PLAIN STATEMENTS, AS ORDERED.**
+  1. Every previously published floor LEVEL is inflated by the ~281.7 MB a real `HeapProfiler.collectGarbage` takes.
+  2. The 22.89 MB/kbar pause-and-wait slope is **not** assumed to survive re-basing. Forced GC at both drains on this short one-panel leg: **700.1 → 810.2 MB over 2,025 bars = 54.37 MB/kbar**. Short leg + one-panel denominator — do not quote as the ten-hour figure. The slope question is answered as "measured higher under forced GC on this window," not as "22.89 still holds."
+  3. Dataset-exhaustion soak blocker remains OPEN (see below).
+
+  **HYPOTHESIS (detached canvas / retained DOM) — NOT SUPPORTED as the growth driver here.**
+  - `canvas` allocator root flat **8.34 → 8.34 MB**
+  - DOM nodes **fell** 12,254 → 11,671
+  - Detached `<canvas>` in the heap snapshot: **4 instances / ~0.002 MB**
+  - `blink_gc` **+6.75 MB**, `partition_alloc` **+3.2 MB** — together ~10 MB against a **+110 MB** OS floor
+  - Where the +110 went (allocator roots): **v8 +22.2, gpu +15.0, shared_memory +14.4, malloc +8.0, blink_gc +6.75, partition_alloc +3.2; cc −9.6**
+
+  **JS constructors (top five growers by self_size):** Object +7.5, system/Context +5.8, **m20Q6CapturedClear +3.6** (117k new instances), timeout: +2.1, concatenated string +2.1. Total positive JS self_size growth ~26 MB against +110 OS — snapshot confirms the walk's finding that most of the floor is outside V8 live objects.
+
+  **Retainer paths (top growers):** m20Q6CapturedClear / timeout / concatenated-string all route through `Chart.mainChart → WeakMapPair → Array[schedulers]` — the m20Q6 scheduler table is accumulating, not canvases. Object retainers mix Detached React button props (DevTools-visible) with chart event maps; not canvas backing stores.
+
+  **Blink detail for the 212 MB question:** this 12-min leg does not reproduce +212 MB Oilpan (wrong timescale). When blink_gc did grow (+6.75), the children were `blink_gc/main/heap/NormalPageSpace3` pages, not a named Canvas bucket. The detail instrument is now in place for a longer pair.
+
+  **SOAK BLOCKER (not lost):** `datasetMode: 'same-symbol'` added — one file at 1m/5m/15m/1h for a common market-time window. Sealed soak now boots with it and `requireDeliveringPanels: 4` (refuses rather than measuring a one-panel workload). Live verification of 4/4 delivery under that mode is the remaining gate before fire.

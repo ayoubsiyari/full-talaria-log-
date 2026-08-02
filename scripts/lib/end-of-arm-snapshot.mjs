@@ -9,6 +9,12 @@
  *  - any failure is recorded as a logged NON-EVENT with its reason, and the arm still closes green.
  *
  * The snapshot is a by-product. The series is the measurement.
+ *
+ * WRITE DISCIPLINE: do NOT end a write stream on reportHeapSnapshotProgress.finished. On this host that
+ * event fires while chunks are still in flight; ending early produced "198 MB counted from the wire,
+ * 0 bytes on disk" — the exact false-success class an earlier rewrite of this helper was meant to stop.
+ * Chunks are appended synchronously; the take promise settles; a short settle waits for trailers; then
+ * bytes on disk are verified against the wire count.
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -56,42 +62,52 @@ export async function takeEndOfArmSnapshot(page, {
   let written = 0;
   let aborted = false;
   try {
+    fs.mkdirSync(path.dirname(outFile), { recursive: true });
+    fs.writeFileSync(outFile, '');
     session = await page.target().createCDPSession();
-    const stream = fs.createWriteStream(outFile);
-    let resolveDone; let rejectDone;
-    const done = new Promise((res, rej) => { resolveDone = res; rejectDone = rej; });
-
+    let progressFinished = false;
     const onChunk = (ev) => {
-      if (aborted) return;
-      written += Buffer.byteLength(ev.chunk, 'utf8');
-      if (written > capMB * MB) {
+      if (aborted || !ev?.chunk) return;
+      const n = Buffer.byteLength(ev.chunk, 'utf8');
+      if (written + n > capMB * MB) {
         aborted = true;
-        result.failedWhy = `write passed the ${capMB} MB cap and was aborted cleanly at ${(written / MB).toFixed(0)} MB. A partial snapshot is discarded rather than published.`;
-        stream.end();
-        rejectDone(new Error('cap'));
+        result.failedWhy = `write passed the ${capMB} MB cap and was aborted cleanly at ${((written + n) / MB).toFixed(0)} MB. A partial snapshot is discarded rather than published.`;
         return;
       }
-      stream.write(ev.chunk);
+      fs.appendFileSync(outFile, ev.chunk);
+      written += n;
     };
     session.on('HeapProfiler.addHeapSnapshotChunk', onChunk);
-    // Resolve on the stream's CLOSE, not on end(). The first version resolved the moment end() was called,
-    // so the process went on to finish the run and exit while the write stream still held everything in
-    // its buffer - and it reported ok:true with "386.8 MB written" beside a 0-byte file on disk. A
-    // by-product that lies about existing is worse than one that is missing.
-    stream.on('close', () => resolveDone());
-    stream.on('error', (e) => rejectDone(e));
-    session.on('HeapProfiler.reportHeapSnapshotProgress', (p) => { if (p.finished) stream.end(); });
+    session.on('HeapProfiler.reportHeapSnapshotProgress', (p) => {
+      if (p?.finished) progressFinished = true;
+    });
 
     await session.send('HeapProfiler.enable');
-    const take = session.send('HeapProfiler.takeHeapSnapshot', { reportProgress: true, captureNumericValue: false });
     await Promise.race([
-      Promise.all([take, done]),
+      session.send('HeapProfiler.takeHeapSnapshot', { reportProgress: true, captureNumericValue: false }),
       new Promise((_, rej) => setTimeout(() => rej(new Error(`timed out after ${timeoutMs} ms`)), timeoutMs)),
     ]);
+    for (let i = 0; i < 20 && !progressFinished; i++) {
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    await new Promise((r) => setTimeout(r, 250));
+    session.off('HeapProfiler.addHeapSnapshotChunk', onChunk);
 
-    // Verify the artifact rather than trusting the counter that produced it.
     const onDisk = fs.existsSync(outFile) ? fs.statSync(outFile).size : 0;
-    if (onDisk === 0 || onDisk < written * 0.99) {
+    if (aborted) {
+      result.ok = false;
+      result.file = null;
+      result.bytesCounted = written;
+      result.bytesOnDisk = onDisk;
+      try { fs.rmSync(outFile, { force: true }); } catch { /* nothing further */ }
+    } else if (written === 0 || onDisk === 0) {
+      result.ok = false;
+      result.bytesCounted = written;
+      result.bytesOnDisk = onDisk;
+      result.failedWhy = `takeHeapSnapshot produced wire=${written} disk=${onDisk}. Nothing usable to publish.`;
+      try { fs.rmSync(outFile, { force: true }); } catch { /* nothing further */ }
+      result.file = null;
+    } else if (onDisk < written * 0.99) {
       result.ok = false;
       result.bytesCounted = written;
       result.bytesOnDisk = onDisk;
@@ -103,6 +119,7 @@ export async function takeEndOfArmSnapshot(page, {
       result.file = outFile;
       result.bytes = onDisk;
       result.mb = +(onDisk / MB).toFixed(1);
+      result.progressFinished = progressFinished;
     }
   } catch (err) {
     // Includes the tab dying mid-snapshot, which is an expected outcome on a 1.5 GB renderer.

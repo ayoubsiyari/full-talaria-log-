@@ -21,10 +21,18 @@ export const HEAP_CYCLE_DISTINCT_TIMEFRAMES = Object.freeze(['1m', '5m', '15m', 
 
 export const HEAP_CYCLE_DATASET_MODE_DISTINCT = 'distinct';
 export const HEAP_CYCLE_DATASET_MODE_IDENTICAL = 'identical';
+/**
+ * Same underlying file (symbol) at four timeframes. Distinct as (fileId|tf) pairs —
+ * four independent resample/pipeline states — but a SHARED market-time window so
+ * multi-TF playhead sync can advance every panel. `distinct` with four different
+ * files whose ranges do not overlap parks three panels on their last bar forever.
+ */
+export const HEAP_CYCLE_DATASET_MODE_SAME_SYMBOL = 'same-symbol';
 
 export const HEAP_CYCLE_DATASET_MODES = Object.freeze([
   HEAP_CYCLE_DATASET_MODE_DISTINCT,
   HEAP_CYCLE_DATASET_MODE_IDENTICAL,
+  HEAP_CYCLE_DATASET_MODE_SAME_SYMBOL,
 ]);
 
 function datasetKey(fileId, timeframe) {
@@ -34,8 +42,9 @@ function datasetKey(fileId, timeframe) {
 /**
  * Build the per-panel dataset plan for one cycle.
  *
- * distinct  → panel i gets fileIds[i] at timeframes[i] (4 independent datasets)
- * identical → every panel gets fileIds[0] at timeframes[0] (1 shared dataset)
+ * distinct     → panel i gets fileIds[i] at timeframes[i] (4 independent datasets)
+ * identical    → every panel gets fileIds[0] at timeframes[0] (1 shared dataset)
+ * same-symbol  → every panel gets fileIds[0] at timeframes[i] (4 TF views of one window)
  *
  * @returns {{ mode: string, expectedDistinctDatasets: number, panels: Array<{panelId: string, fileId: (number|string), timeframe: string}> }}
  */
@@ -61,6 +70,9 @@ export function buildDatasetPlan({
   const panels = panelIds.map((panelId, index) => {
     if (normalizedMode === HEAP_CYCLE_DATASET_MODE_IDENTICAL) {
       return { panelId, fileId: ids[0], timeframe: String(tfs[0]) };
+    }
+    if (normalizedMode === HEAP_CYCLE_DATASET_MODE_SAME_SYMBOL) {
+      return { panelId, fileId: ids[0], timeframe: String(tfs[index % tfs.length]) };
     }
     return {
       panelId,

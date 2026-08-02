@@ -1,17 +1,19 @@
 /**
  * CONF01-SESSION-V1 — boot and PROVE the reference configuration.
  *
- * CONF-01: four panels, four different symbols, four different timeframes,
- * indicators loaded, orders open. Same-pair measurements carry no acceptance
- * weight, so an instrument that cannot prove which configuration it measured
- * cannot publish a number. This module boots the configuration and returns a
- * compliance verdict that every C-owned instrument must attach to its report.
+ * CONF-01 historically meant four panels / four symbols / four timeframes. That
+ * plan is still available as `datasetMode: 'distinct'`, and it remains the right
+ * stress for residue that scales with independent bar stores. It is NOT a valid
+ * soak workload: when the four files do not share a market-time window, multi-TF
+ * sync parks every non-host panel on its last bar and RATE-HOLD never reaches
+ * four live panels. For any run that needs 4/4 delivering, use
+ * `datasetMode: 'same-symbol'` — one file, four timeframes, common window.
  *
  * The verdict is not cosmetic. A host timeframe pick fans out to every panel when
  * Interval sync is on, which silently collapses four datasets back to one — the
  * exact way a "distinct" harness can end up measuring the cheap path. Observed
  * per-panel (fileId, timeframe) pairs are read back from the product and graded
- * against the plan.
+ * against the plan. Delivery is graded separately when requireDeliveringPanels > 0.
  */
 import {
   applyDatasetPlan,
@@ -25,6 +27,7 @@ import {
 } from './heap-cycle-browser.mjs';
 import {
   HEAP_CYCLE_DATASET_MODE_DISTINCT,
+  HEAP_CYCLE_DATASET_MODE_SAME_SYMBOL,
   HEAP_CYCLE_DISTINCT_TIMEFRAMES,
   buildDatasetPlan,
 } from './heap-cycle-dataset-config.mjs';
@@ -248,6 +251,11 @@ export async function bootConf01Session({
    */
   panelIds = CONF01_PANEL_IDS,
   datasetMode = HEAP_CYCLE_DATASET_MODE_DISTINCT,
+  /**
+   * When > 0, boot refuses (throws) unless this many panels advance their playhead
+   * after arming. Soak arms must pass 4; residue / distinct-symbol arms leave 0.
+   */
+  requireDeliveringPanels = 0,
   preloadScript = null,
   originOverride = null,
   skipLogin = false,
@@ -421,12 +429,32 @@ export async function bootConf01Session({
     state,
   });
 
+  const delivering = {
+    required: requireDeliveringPanels,
+    advancingPanels: state.advancingPanels ?? null,
+    datasetMode,
+    ok: requireDeliveringPanels <= 0
+      || (Number(state.advancingPanels) >= requireDeliveringPanels),
+  };
+  if (!delivering.ok) {
+    // Close the browser rather than hand the caller a one-panel soak wearing a four-panel label.
+    try { await browser.close(); } catch (_) {}
+    throw new Error(
+      `CONF-01 delivery gate: ${state.advancingPanels}/${panelIds.length} panels advancing `
+      + `(required ${requireDeliveringPanels}) under datasetMode=${datasetMode}. `
+      + `Non-overlapping distinct files park followers at masterLen-1 under multi-TF sync; `
+      + `use datasetMode='${HEAP_CYCLE_DATASET_MODE_SAME_SYMBOL}' for a common market-time window.`,
+    );
+  }
+
   return {
     browser, page, cdp, browserCdp, url, origin,
     conf01: {
       ...compliance,
       buildId,
       replaySpeed,
+      datasetMode,
+      delivering,
       // ORDER-01B: both knobs, and what the engine did with the step. A run
       // labelled with only a speed cannot be compared against another run.
       stepSeconds,

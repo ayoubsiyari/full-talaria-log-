@@ -27,6 +27,16 @@ test('unit: identical mode plans one shared dataset (the cheap configuration)', 
   assert.deepEqual(new Set(plan.panels.map((p) => p.timeframe)), new Set(['1m']));
 });
 
+test('unit: same-symbol mode plans one file at four timeframes (common window)', () => {
+  const plan = buildDatasetPlan({ mode: 'same-symbol', fileIds: FILE_IDS });
+  assert.equal(plan.expectedDistinctDatasets, 4);
+  assert.deepEqual(new Set(plan.panels.map((p) => p.fileId)), new Set([11]));
+  assert.deepEqual(
+    plan.panels.map((p) => p.timeframe),
+    [...HEAP_CYCLE_DISTINCT_TIMEFRAMES],
+  );
+});
+
 test('unit: unknown dataset mode is refused rather than silently defaulted', () => {
   assert.throws(
     () => buildDatasetPlan({ mode: 'four-panels', fileIds: FILE_IDS }),
