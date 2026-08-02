@@ -8546,6 +8546,21 @@
         this._indLayerCacheKey = null;
     };
 
+    Chart.prototype._releaseIndicatorLayerCanvas = function() {
+        try {
+            if (this._indLayerCanvas) {
+                this._indLayerCanvas.width = 0;
+                this._indLayerCanvas.height = 0;
+            }
+        } catch (_) {}
+        this._indLayerCanvas = null;
+        this._indLayerCtx = null;
+        this._indLayerCacheKey = null;
+        this._indLayerDpr = null;
+        this._indLayerCssW = null;
+        this._indLayerCssH = null;
+    };
+
     Chart.prototype._ensureIndicatorLayerCache = function() {
         if (!this._indLayerCanvas) {
             this._indLayerCanvas = document.createElement('canvas');

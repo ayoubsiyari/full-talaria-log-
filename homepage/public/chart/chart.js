@@ -6773,6 +6773,9 @@ class Chart {
         this._trimFileIdCacheLru(this._btTfDataCache);
 
         if (switchingPair) {
+            if (typeof this._releaseIndicatorLayerCanvas === 'function') {
+                this._releaseIndicatorLayerCanvas();
+            }
             this.rawData = [];
             this.data = [];
             this._panelFullRawData = null;
@@ -11886,6 +11889,9 @@ class Chart {
                 }
             }
             if (switchingPair) {
+                if (typeof this._releaseIndicatorLayerCanvas === 'function') {
+                    this._releaseIndicatorLayerCanvas();
+                }
                 this._evictPanelMasterData();
                 pairSwitchLoadSeq = ++this._pairSwitchLoadSeq;
                 try {
@@ -12510,6 +12516,10 @@ class Chart {
                 this.loadedRanges = new Map();
             } else {
                 this.loadedRanges.clear();
+            }
+
+            if (panelSwitchingPair && typeof this._releaseIndicatorLayerCanvas === 'function') {
+                this._releaseIndicatorLayerCanvas();
             }
 
             // Match main chart: file id + symbol before ingest so order/drawing logic never sees a mismatched pair.
