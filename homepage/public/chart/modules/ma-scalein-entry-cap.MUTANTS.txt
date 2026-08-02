@@ -1,0 +1,71 @@
+﻿MA-SCALECAP mutant run
+targets:
+  chart v 1.4\chart\modules\order-manager.js  a43419a765c45588
+  homepage\public\chart\modules\order-manager.js  a43419a765c45588
+
+baseline (unmutated): status=0 pass=22 failed=[]
+
+MUT-01 KILLED — cap removed — the guard is short-circuited away entirely
+  failing cells: SC-C1, SC-C3, SC-C4, SC-C5, SC-C7, SC-C8, SC-C9, SC-C11, SC-C13, SC-C16, SC-C17, SC-C19, SC-C21, SC-C20
+
+MUT-02 KILLED — off-by-one in the shared cap predicate (`<` becomes `<=`, allows a 5th level)
+  failing cells: SC-C1, SC-C3, SC-C4, SC-C5, SC-C7, SC-C8, SC-C9, SC-C11, SC-C13, SC-C16, SC-C17, SC-C18, SC-C19, SC-C21, SC-C20
+
+MUT-03 KILLED — off-by-one at the cap boundary in applyScaling (leg count under-reported by one)
+  failing cells: SC-C1, SC-C3, SC-C4, SC-C5, SC-C7, SC-C8, SC-C9, SC-C11, SC-C13, SC-C16, SC-C17, SC-C19, SC-C21, SC-C20
+
+MUT-04 KILLED — kill-switch polarity inverted (cap active only WHEN disabled)
+  failing cells: SC-C1, SC-C3, SC-C4, SC-C5, SC-C7, SC-C8, SC-C9, SC-C11, SC-C13, SC-C16, SC-C19, SC-C21, SC-C20
+
+MUT-05 KILLED — kill-switch uses `!== true` instead of truthy semantics (FLAG-02 defect)
+  failing cells: SC-C13, SC-C16
+
+MUT-06 KILLED — kill-switch memoised on first call (FLAG-01 defect)
+  failing cells: SC-C13, SC-C16
+
+MUT-07 KILLED — `entries` capped but `entryScreenshots` collected from an UNBOUNDED source (desynchronisation hazard)
+  failing cells: SC-C9, SC-C10, SC-C11
+
+MUT-08 KILLED — refused leg is still stamped with tradeGroupId (orphan leg — its P&L never reaches the journal)
+  failing cells: SC-C4, SC-C5, SC-C21
+
+MUT-09 KILLED — guard is evaluated but the refusal is not enforced (falls through and pushes anyway)
+  failing cells: SC-C1, SC-C3, SC-C4, SC-C5, SC-C7, SC-C8, SC-C9, SC-C11, SC-C13, SC-C16, SC-C17, SC-C21, SC-C20
+
+MUT-10 KILLED — cap defaults OFF when there is no `window` (fails open outside the browser)
+  failing cells: SC-C17
+
+MUT-11 KILLED — refusal becomes silent — no operator-visible trace that a leg was left standalone
+  failing cells: SC-C19
+
+MUT-12 KILLED — refused leg loses the SL/TP/risk inheritance (standalone AND unprotected)
+  failing cells: SC-C21
+
+MUT-13 KILLED — inheritance clobbers a stop the order already had
+  failing cells: SC-C22
+
+MUT-NC NOT_APPLIED — needle match counts: chart=0 chart=0 (expected 1 in each)
+MUT-NC negative control behaved correctly (NOT_APPLIED).
+
+─── mutant table ───
+| mutant | result | killed by (named behavioural cell) | what it breaks |
+| --- | --- | --- | --- |
+| MUT-01 | KILLED | SC-C1, SC-C3, SC-C4, SC-C5, SC-C7, SC-C8, SC-C9, SC-C11, SC-C13, SC-C16, SC-C17, SC-C19, SC-C21, SC-C20 | cap removed — the guard is short-circuited away entirely |
+| MUT-02 | KILLED | SC-C1, SC-C3, SC-C4, SC-C5, SC-C7, SC-C8, SC-C9, SC-C11, SC-C13, SC-C16, SC-C17, SC-C18, SC-C19, SC-C21, SC-C20 | off-by-one in the shared cap predicate (`<` becomes `<=`, allows a 5th level) |
+| MUT-03 | KILLED | SC-C1, SC-C3, SC-C4, SC-C5, SC-C7, SC-C8, SC-C9, SC-C11, SC-C13, SC-C16, SC-C17, SC-C19, SC-C21, SC-C20 | off-by-one at the cap boundary in applyScaling (leg count under-reported by one) |
+| MUT-04 | KILLED | SC-C1, SC-C3, SC-C4, SC-C5, SC-C7, SC-C8, SC-C9, SC-C11, SC-C13, SC-C16, SC-C19, SC-C21, SC-C20 | kill-switch polarity inverted (cap active only WHEN disabled) |
+| MUT-05 | KILLED | SC-C13, SC-C16 | kill-switch uses `!== true` instead of truthy semantics (FLAG-02 defect) |
+| MUT-06 | KILLED | SC-C13, SC-C16 | kill-switch memoised on first call (FLAG-01 defect) |
+| MUT-07 | KILLED | SC-C9, SC-C10, SC-C11 | `entries` capped but `entryScreenshots` collected from an UNBOUNDED source (desynchronisation hazard) |
+| MUT-08 | KILLED | SC-C4, SC-C5, SC-C21 | refused leg is still stamped with tradeGroupId (orphan leg — its P&L never reaches the journal) |
+| MUT-09 | KILLED | SC-C1, SC-C3, SC-C4, SC-C5, SC-C7, SC-C8, SC-C9, SC-C11, SC-C13, SC-C16, SC-C17, SC-C21, SC-C20 | guard is evaluated but the refusal is not enforced (falls through and pushes anyway) |
+| MUT-10 | KILLED | SC-C17 | cap defaults OFF when there is no `window` (fails open outside the browser) |
+| MUT-11 | KILLED | SC-C19 | refusal becomes silent — no operator-visible trace that a leg was left standalone |
+| MUT-12 | KILLED | SC-C21 | refused leg loses the SL/TP/risk inheritance (standalone AND unprotected) |
+| MUT-13 | KILLED | SC-C22 | inheritance clobbers a stop the order already had |
+| MUT-NC | NOT_APPLIED | — | NEGATIVE CONTROL — needle intentionally absent; MUST report NOT_APPLIED |
+
+all targets restored and SHA-256 verified against the pre-run hash:
+  chart v 1.4\chart\modules\order-manager.js  a43419a765c4558873ba90c18e62aa53d9bd84fc17d7d2cf0da827983581b9ab
+  homepage\public\chart\modules\order-manager.js  a43419a765c4558873ba90c18e62aa53d9bd84fc17d7d2cf0da827983581b9ab
+MUTANT RUN GREEN

@@ -1,0 +1,30 @@
+﻿✔ SC-C1 unbounded growth gate: 12 scale-ins cannot exceed MAX_ENTRY_LEVELS legs (3.2187ms)
+✔ SC-C2 cap boundary: the 4th leg is ACCEPTED (0.5756ms)
+✔ SC-C3 cap boundary: the 5th leg is REFUSED and the group stays at 4 (0.3715ms)
+✔ SC-C4 refused leg carries NO tradeGroupId (orphan / silent-drop guard) (0.3823ms)
+✔ SC-C5 refused leg is routed down the STANDALONE close path (0.746ms)
+✔ SC-C6 refused leg is a WORKING position with its own usable fields (0.3971ms)
+✔ SC-C7 accepted legs keep a correct weighted average and total quantity (0.4999ms)
+✔ SC-C8 lazily-formed group (existing position had no groupId) also tops out at 4 (0.3057ms)
+✔ SC-C9 aggregate journal entryScreenshots is bounded by the same cap (2.688ms)
+✔ SC-C10 entryScreenshots stays index- and orderId-aligned with entries (1.0065ms)
+✔ SC-C11 a REFUSED leg's screenshot never lands in the group aggregate (0.6906ms)
+✔ SC-C12 every ACCEPTED leg with a screenshot is represented (no silent drop) (0.5066ms)
+✔ SC-C13 FLAG-02 TRUTHY semantics across all twelve values (0.9556ms)
+✔ SC-C14 FLAG-03 working product on the OFF arm: a scale-in still produces a usable entry (0.5834ms)
+✔ SC-C15 FLAG-03 working product on the ON arm: accepted legs inherit SL/TP normally (1.0499ms)
+✔ SC-C16 FLAG-01 the switch is read FRESH on every call, never memoised (0.2168ms)
+✔ SC-C17 the cap defaults ON when there is no window at all (0.1861ms)
+✔ SC-C18 the shared cap predicate agrees with the ladder at every boundary (0.1412ms)
+✔ SC-C19 a refusal is reported, not silent (0.2521ms)
+✔ SC-C21 a REFUSED leg is standalone but NOT unprotected (0.4155ms)
+✔ SC-C22 refused-leg inheritance never overwrites the order's own levels (0.2352ms)
+✔ SC-C20 the opposite-side scale-in is unaffected by a full BUY group (0.2416ms)
+ℹ tests 22
+ℹ suites 0
+ℹ pass 22
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 204.6712
