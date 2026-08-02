@@ -477,6 +477,19 @@ const PANEL_CMD_NO_REPLY = new Set([
     "setV9PanelEmbed",
 ]);
 
+/**
+ * SHELL-PLAY-01: the host `play` override calls through on the live receiver and
+ * refuses to announce a start the host did not make.
+ * Kill: window.__TALARIA_DISABLE_SHELL_PLAY_RECEIVER_FIX_V1.
+ */
+function shellPlayReceiverFixV1Enabled() {
+    try {
+        return !(typeof window !== "undefined" && window.__TALARIA_DISABLE_SHELL_PLAY_RECEIVER_FIX_V1);
+    } catch (_) {
+        return true;
+    }
+}
+
 function sendPanelCmd(mgr, panelId, cmd, args) {
     if (!mgr || !panelId) return;
     const payload = args && typeof args === "object" ? args : {};
@@ -4365,10 +4378,25 @@ export default function MultichartGrid({
 
                 // ── play → broadcast replayPlay {speed, mode} ──
                 if (typeof patchedRs.play === "function") {
-                    patchOriginalPlay = patchedRs.play.bind(patchedRs);
-                    patchedRs.play = function () {
-                        const result = patchOriginalPlay();
+                    // Keep the UNBOUND method. Binding to the instance captured at
+                    // patch time meant the override drove `patchedRs` while the
+                    // telemetry below described `this` — so once those diverged it
+                    // started a stale engine and broadcast the live engine's knobs.
+                    // Panels then played correctly while the host never moved, which
+                    // is the SHELL_PLAY_OVERRIDE_INERT signature. Restoring on
+                    // cleanup also puts the real method back, not a bound copy.
+                    const patchedRsAtPatch = patchedRs;
+                    patchOriginalPlay = patchedRs.play;
+                    patchedRs.play = function (...args) {
+                        const result = shellPlayReceiverFixV1Enabled()
+                            ? patchOriginalPlay.apply(this, args)
+                            : patchOriginalPlay.call(patchedRsAtPatch);
                         try {
+                            // play() sets isPlayStarting synchronously before its
+                            // two-frame arm; every early return (inactive, window
+                            // blocked, at session end) leaves both flags clear.
+                            const started = !!(this.isPlaying || this.isPlayStarting);
+                            this.__shellPlayOverrideInert = !started;
                             const speed = Number(this.speed) || 1;
                             const mode = (typeof this.getPlaybackMode === "function")
                                 ? this.getPlaybackMode()
@@ -4377,6 +4405,12 @@ export default function MultichartGrid({
                             broadcastToIframes("replaySetStepTf", {
                                 tf: stf == null ? null : stf,
                             });
+                            // Never march the panels on a start the host did not
+                            // make. A silent divergence here reads as an engine bug
+                            // in whichever panel is inspected first.
+                            if (!started && shellPlayReceiverFixV1Enabled()) {
+                                return result;
+                            }
                             broadcastToIframes("replayPlay", { speed, mode });
                             // Defer one frame so play() finishes arming the loop, then
                             // mirror the exact host slice to iframes (not replayTick seek).

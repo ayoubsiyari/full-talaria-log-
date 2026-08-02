@@ -145,6 +145,8 @@
     "test:toolbar-pin-restore": "npm run preflight:toolbar-pin-restore",
     "preflight:drawing-import-coordinate": "node --test --test-concurrency=1 \"chart v 1.4/chart/modules/drawing-import-coordinate.test.mjs\"",
     "test:drawing-import-coordinate": "npm run preflight:drawing-import-coordinate",
+    "preflight:shell-play-override-receiver": "node --test --test-concurrency=1 \"chart v 1.4/chart/modules/shell-play-override-receiver.test.mjs\"",
+    "test:shell-play-override-receiver": "npm run preflight:shell-play-override-receiver",
     "preflight:generate-path-waypoints": "node --test \"chart v 1.4/chart/modules/generate-path-waypoints.test.mjs\"",
     "test:generate-path-waypoints": "npm run preflight:generate-path-waypoints",
     "preflight:order-stable-label-hover-dom": "node \"chart v 1.4/chart/modules/order-stable-label-hover-dom.test.mjs\"",
