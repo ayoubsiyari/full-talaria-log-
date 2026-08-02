@@ -146,6 +146,167 @@ export function assessDatasetDistinctness(plan, observed) {
 }
 
 /**
+ * CONF01-COMMON-WINDOW-V1 — A's hand-across (docs/plan3/A-TO-C-CONF01-COMMON-WINDOW.md).
+ *
+ * FOUR DISTINCT (fileId, tf) PAIRS IS NECESSARY AND NOT SUFFICIENT. `assessDatasetDistinctness`
+ * above grades identity; it cannot see calendar. Measured under a plan that only asserted identity:
+ * the 1m host held 18–23 Jun while the peers held 17 Apr – 18 May, so multi-TF sync resolved
+ * `_findLastRawIndexAtOrBefore(peerData, hostTs)` to the final bar on every tick — the 1999/2000,
+ * 3909/3910 and 2493/2494 pins. Three inert tenants under a four-panel label.
+ *
+ * The existing delivery gate catches this, but only as a SYMPTOM and only after arming: it counts
+ * panels that failed to advance. This grades the CAUSE, before arming, from the loaded ranges.
+ *
+ * THREE OUTCOMES, KEPT DISTINCT ON PURPOSE (BIND-01). A gate that cannot say which of these it saw
+ * sends people to debug the wrong thing:
+ *   WINDOW_UNREADABLE   the ranges could not be read — a broken extraction point, NOT evidence
+ *                       about the data. Fails closed, but must never be reported as "no overlap".
+ *   NO_COMMON_WINDOW    ranges read cleanly and genuinely do not share the host's session start.
+ *                       This is the live defect A measured.
+ *   COMMON_WINDOW_OK    every panel's [dataFirst, dataLast] contains the host session start.
+ */
+export const CONF01_COMMON_WINDOW_SIGNATURE = 'CONF01-COMMON-WINDOW-V1';
+
+const DAY_MS = 86_400_000;
+
+/** Strict: only a finite number is a timestamp. `null`, `''` and `undefined` are unreadable. */
+function ms(value) {
+  if (value == null || value === '') return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+const isoOrNull = (v) => (v == null ? null : new Date(v).toISOString());
+
+/**
+ * @param {{hostSessionStartMs: number, panels: Array<{panelId?: string, timeframe?: string,
+ *   fileId?: any, dataFirstMs?: number, dataLastMs?: number}>, requiredRunwayMs?: number}} input
+ */
+export function assessCommonWindow({ hostSessionStartMs, panels = [], requiredRunwayMs = 0 } = {}) {
+  const rows = Array.isArray(panels) ? panels : [];
+  const start = ms(hostSessionStartMs);
+  const runway = Math.max(0, Number(requiredRunwayMs) || 0);
+
+  const graded = rows.map((p) => {
+    const first = ms(p?.dataFirstMs);
+    const last = ms(p?.dataLastMs);
+    const readable = first != null && last != null;
+    const covers = readable && start != null && start >= first && start <= last;
+    return {
+      panelId: p?.panelId ?? null,
+      timeframe: p?.timeframe ?? null,
+      fileId: p?.fileId ?? null,
+      dataFirstMs: first,
+      dataLastMs: last,
+      dataFirstIso: isoOrNull(first),
+      dataLastIso: isoOrNull(last),
+      readable,
+      coversHostSessionStart: covers,
+      // Signed: positive means the host starts AFTER this panel's data ends, which is A's case.
+      shortByDays: readable && start != null && !covers
+        ? Number(((start > last ? start - last : first - start) / DAY_MS).toFixed(2))
+        : null,
+    };
+  });
+
+  const unreadable = graded.filter((g) => !g.readable);
+  const base = {
+    signature: CONF01_COMMON_WINDOW_SIGNATURE,
+    hostSessionStartMs: start,
+    hostSessionStartIso: isoOrNull(start),
+    panelsRequested: rows.length,
+    panelsReadable: graded.length - unreadable.length,
+    panels: graded,
+    requiredRunwayMs: runway,
+  };
+
+  if (rows.length === 0) {
+    return { ...base, state: 'WINDOW_UNREADABLE', ok: false, reason: 'no panel ranges supplied; nothing was graded' };
+  }
+  if (unreadable.length > 0) {
+    return {
+      ...base,
+      state: 'WINDOW_UNREADABLE',
+      ok: false,
+      reason: `could not read the loaded range for ${unreadable.length}/${rows.length} panel(s) `
+        + `(${unreadable.map((u) => u.panelId ?? u.timeframe ?? '?').join(', ')}). `
+        + 'This is a broken read, not a statement about the data — do not report it as a window failure.',
+    };
+  }
+  if (start == null) {
+    return { ...base, state: 'NO_HOST_SESSION_START', ok: false, reason: 'host session start was not readable; the gate has no reference point to grade against' };
+  }
+
+  const intersectionStartMs = Math.max(...graded.map((g) => g.dataFirstMs));
+  const intersectionEndMs = Math.min(...graded.map((g) => g.dataLastMs));
+  const intersectionMs = Math.max(0, intersectionEndMs - intersectionStartMs);
+  const withIntersection = {
+    ...base,
+    intersectionStartMs,
+    intersectionEndMs,
+    intersectionStartIso: isoOrNull(intersectionStartMs),
+    intersectionEndIso: isoOrNull(intersectionEndMs),
+    intersectionMs,
+    intersectionDays: Number((intersectionMs / DAY_MS).toFixed(2)),
+  };
+
+  const missing = graded.filter((g) => !g.coversHostSessionStart);
+  if (missing.length > 0) {
+    return {
+      ...withIntersection,
+      state: 'NO_COMMON_WINDOW',
+      ok: false,
+      offendingPanels: missing,
+      reason: `${missing.length}/${rows.length} panel(s) do not hold the host session start `
+        + `${isoOrNull(start)}: ${missing.map((m) => `${m.timeframe ?? m.panelId} file ${m.fileId} covers `
+        + `${m.dataFirstIso} -> ${m.dataLastIso}, short by ${m.shortByDays} days`).join('; ')}`,
+    };
+  }
+  // Runway is graded from the host start forward: bars behind it cannot be replayed into.
+  const runwayAheadMs = intersectionEndMs - start;
+  if (runway > 0 && runwayAheadMs < runway) {
+    return {
+      ...withIntersection,
+      state: 'INSUFFICIENT_RUNWAY',
+      ok: false,
+      runwayAheadMs,
+      reason: `every panel holds the host session start, but only ${(runwayAheadMs / DAY_MS).toFixed(2)} days `
+        + `of shared data lie ahead of it (required ${(runway / DAY_MS).toFixed(2)}). The session would run off the common window.`,
+    };
+  }
+  return {
+    ...withIntersection,
+    state: 'COMMON_WINDOW_OK',
+    ok: true,
+    runwayAheadMs,
+    reason: `all ${rows.length} panels hold the host session start; shared window `
+      + `${isoOrNull(intersectionStartMs)} -> ${isoOrNull(intersectionEndMs)} (${withIntersection.intersectionDays} days)`,
+  };
+}
+
+/**
+ * FAIL CLOSED. A's requirement is that boot does not arm under a broken window, so this throws
+ * rather than returning a flag a caller can forget to read.
+ *
+ * The message pushes toward fixing the SEED rather than relabelling the arm as one-panel: the
+ * 1,024 MB bar is written against four live panels, and a run relabelled down is not comparable
+ * to it.
+ */
+export function assertCommonWindow(assessment) {
+  if (assessment?.ok === true) return assessment;
+  const state = assessment?.state || 'WINDOW_UNREADABLE';
+  const fix = state === 'WINDOW_UNREADABLE'
+    ? 'Fix the range read before drawing any conclusion about the dataset.'
+    : `Fix the seed — pick files/fetch windows that overlap, or use datasetMode='${HEAP_CYCLE_DATASET_MODE_SAME_SYMBOL}'. `
+      + 'Do NOT relabel the arm as one-panel: the 1,024 MB bar is written against four live panels.';
+  const error = new Error(`CONF-01 common-window gate [${state}]: ${assessment?.reason || 'no reason recorded'}. ${fix}`);
+  error.name = 'CommonWindowRefusal';
+  error.state = state;
+  error.assessment = assessment;
+  throw error;
+}
+
+/**
  * Worst-case distinctness across every cycle: the run may only claim the
  * configuration its weakest cycle actually held.
  */

@@ -29,6 +29,8 @@ import {
   HEAP_CYCLE_DATASET_MODE_DISTINCT,
   HEAP_CYCLE_DATASET_MODE_SAME_SYMBOL,
   HEAP_CYCLE_DISTINCT_TIMEFRAMES,
+  assertCommonWindow,
+  assessCommonWindow,
   buildDatasetPlan,
 } from './heap-cycle-dataset-config.mjs';
 import { armHeapCyclePoWorkload } from './heap-cycle-po-workload.mjs';
@@ -38,6 +40,53 @@ export const CONF01_SIGNATURE = 'CONF01-SESSION-V1';
 export const CONF01_PANEL_IDS = Object.freeze(['A', 'B', 'C', 'D']);
 const DEFAULT_ORIGIN = 'http://31.97.192.82:3000';
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * Read each panel's LOADED CALENDAR RANGE and the host's session start, for the common-window gate.
+ *
+ * Reads the same fields `scripts/session-start-probe.mjs` measured the original defect with, so the
+ * gate grades the quantity that was actually observed rather than a proxy. A frame that cannot be
+ * read contributes a row with null bounds, which the assessor reports as WINDOW_UNREADABLE — the
+ * read failing must never look like the data failing.
+ */
+export async function readPanelWindows(page) {
+  const panels = [];
+  for (const frame of page.frames()) {
+    let row = null;
+    try {
+      row = await frame.evaluate(() => {
+        const w = window;
+        const chart = w.chart || null;
+        const rs = w.replaySystem || (chart && chart.replaySystem) || null;
+        if (!rs && !chart) return null;
+        const rd = (rs && Array.isArray(rs.fullRawData) && rs.fullRawData.length)
+          ? rs.fullRawData
+          : (chart && Array.isArray(chart.rawData) ? chart.rawData : null);
+        const at = (bar) => (bar && (bar.t ?? bar.time) != null ? Number(bar.t ?? bar.time) : null);
+        const ssIdx = rs ? rs.sessionStartIndex : null;
+        const ssBar = (rd && Number.isFinite(Number(ssIdx))) ? rd[Number(ssIdx)] : null;
+        return {
+          timeframe: chart ? (chart.currentTimeframe ?? null) : null,
+          fileId: (chart && (chart.currentFileId ?? chart.fileId ?? chart.datasetId)) ?? null,
+          bars: rd ? rd.length : null,
+          dataFirstMs: rd && rd.length ? at(rd[0]) : null,
+          dataLastMs: rd && rd.length ? at(rd[rd.length - 1]) : null,
+          sessionStartMs: at(ssBar),
+          isHost: !(chart && chart._multichartPassivePlayActive),
+        };
+      });
+    } catch { row = null; }
+    if (row) panels.push({ panelId: `f${panels.length}`, ...row });
+  }
+  const host = panels.find((p) => p.isHost && p.sessionStartMs != null)
+    || panels.find((p) => p.sessionStartMs != null)
+    || null;
+  return {
+    panels,
+    hostPanelId: host ? host.panelId : null,
+    hostSessionStartMs: host ? host.sessionStartMs : null,
+  };
+}
 
 /**
  * Read CONF-01 state from the product itself, twice, so playback is judged by the
@@ -412,6 +461,23 @@ export async function bootConf01Session({
   await sleep(settleMs);
 
   const observed = await readPanelDatasets(page, panelIds).catch(() => []);
+
+  // CONF-01 COMMON-WINDOW GATE (A's hand-across). Graded BEFORE the delivery gate on purpose:
+  // a non-overlapping seed shows up as parked followers, so delivery would refuse first and
+  // report the symptom. This names the cause — which panel holds which calendar range — so the
+  // fix goes to the seed instead of to a re-arm.
+  const windows = await readPanelWindows(page).catch((error) => ({
+    unreadable: true, error: String(error?.message || error), panels: [],
+  }));
+  const commonWindow = assessCommonWindow({
+    hostSessionStartMs: windows.hostSessionStartMs,
+    panels: windows.panels,
+  });
+  if (!commonWindow.ok) {
+    try { await browser.close(); } catch (_) {}
+    assertCommonWindow(commonWindow);
+  }
+
   let state = await readConf01State(page);
   // Peers cannot follow a host replay master when the symbols differ (the sixteen
   // same-pair guards all return false), so each panel must be armed in its own
@@ -433,6 +499,7 @@ export async function bootConf01Session({
     required: requireDeliveringPanels,
     advancingPanels: state.advancingPanels ?? null,
     datasetMode,
+    commonWindowState: commonWindow.state,
     ok: requireDeliveringPanels <= 0
       || (Number(state.advancingPanels) >= requireDeliveringPanels),
   };

@@ -572,6 +572,30 @@ Artifacts: `_evidence/manager-C/a8-hoard-slope-2026-08-02T12-13-51-028Z{,-REGRAD
 
   **The confound, stated because it is mine.** The `after` sample is taken *after a pair switch to file 27*, so the same window also loads a new dataset. Some of `malloc +6.46` and `v8 +2.51` is bar data, not canvas mechanism. That inflates the renderer side and therefore **understates** the combined reclaim — 19.6 is a floor on the fix value, not a ceiling. The clean disambiguation is a linked-pane-removal-only arm with no pair switch, which isolates release from data load. **Queued, not run** — see scheduling below.
 
+- 00:24+01:00 · C · **ITEM 11 COMMON-WINDOW: BUILT, BOUND, AND RED ON A'S MEASURED SEED. 11/11 SELF-TESTS, NO HOST.** · `CONF01-COMMON-WINDOW-V1` in `scripts/lib/heap-cycle-dataset-config.mjs`, gate bound in `conf01-session.mjs`, tests in `scripts/conf01-common-window.selftest.mjs`. A's requirement (`A-TO-C-CONF01-COMMON-WINDOW.md`) is met as written: fail closed unless every panel's loaded range contains the host session start.
+
+  **A — the gate is RED on your table, from your numbers.** 1m host 677 covering 18–23 Jun against peers 673/670/669 ending 18 May returns `NO_COMMON_WINDOW`, names all three peers and reports each **short by 31 days**. There is a companion test asserting that the same seed has four genuinely distinct fileIds and is *still* refused, which is your "necessary and not sufficient" written as an executable claim rather than a comment.
+
+  **Graded BEFORE the delivery gate, deliberately.** A non-overlapping seed surfaces as parked followers, so the existing `requireDeliveringPanels` check would refuse first and report **the symptom** — "1/4 panels advancing" sends someone to look at arming and re-arm loops. The new gate refuses on **the cause** and prints which panel holds which calendar range, so the fix goes to the seed. The delivery gate stays exactly as it is; it now also carries `commonWindowState` so an artifact records which of the two spoke.
+
+  **Three outcomes kept distinct, per BIND-01, because collapsing them is how a gate misdirects:**
+
+  | state | means | fix points at |
+  |---|---|---|
+  | `WINDOW_UNREADABLE` | the ranges could not be read | **the read** — explicitly *not* reported as a window failure |
+  | `NO_HOST_SESSION_START` | no reference point to grade against | the host read |
+  | `NO_COMMON_WINDOW` | ranges read cleanly, genuinely disjoint | **the seed** |
+  | `INSUFFICIENT_RUNWAY` | start is held but the shared window ends too soon | the seed, before the session runs off the end |
+  | `COMMON_WINDOW_OK` | every panel holds the start; shared window reported | — |
+
+  A broken extraction point returning "no overlap" would have sent A back to the file picker over a null read. The refusal messages differ accordingly: unreadable says *fix the range read*, disjoint says *fix the seed*. **And the seed-fix message refuses the tempting workaround explicitly — "do NOT relabel the arm as one-panel: the 1,024 MB bar is written against four live panels"** — because a run relabelled down is not comparable to the bar it is meant to be measured against.
+
+  Edge cases pinned by test: empty-string and `undefined` timestamps read as unreadable rather than epoch 0, an inclusive boundary (start exactly on the last bar still counts as held), and zero panels failing closed instead of passing vacuously.
+
+  **What this unblocks.** Dataset exhaustion stops being a blocker and becomes config: a bad seed is refused at boot with the calendar printed, instead of producing a four-panel-labelled soak with three inert tenants that only shows up later as an MB/kbar number nobody can trust.
+
+  **Machine:** A's `c02-pairswitch-pane-measure` has cleared. **E's `v8-monotone-heap-diff` (pid 25660) is the only run left holding the box**, and b125 goes the moment it does.
+
 - 00:12+01:00 · C · **POST-DEPLOY ORDER REGISTERED AND ENFORCED — B FIRST, NOT A. ONE CONSIDERED DISAGREEMENT WITH THE DIRECTOR'S INSTINCT.** · Printable with `node scripts/measurement-queue.mjs order`.
 
   **1. B's rebuild-constraint goes first, ahead of A's discriminator.** The Director's instinct was A first, on the grounds that SHELL-PLAY-01 is an open seal row and the rest is confirmation. That reasoning is right about *value* and I am ordering on *dependency* instead.
