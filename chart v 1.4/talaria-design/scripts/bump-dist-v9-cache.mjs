@@ -338,11 +338,7 @@ function main() {
   // CLEAN-TREE-01, same rule one step earlier: this script is the first writer
   // in the chain, so a build that would compile another lane's uncommitted
   // source has to die here rather than be detected in the artefact afterwards.
-  const treeState = assertCleanBuildInputs();
-  if (treeState.overridden) {
-    console.warn("[bump-dist-v9-cache] !! dirty build inputs, provenance waived:", treeState.reason);
-    console.warn(`[bump-dist-v9-cache] !! ${treeState.offenders.length} uncommitted input(s); ${buildId} will not be reproducible.`);
-  }
+  assertCleanBuildInputs();
 
   console.log(`[bump-dist-v9-cache] build id ${buildId} (from ${buildIdSource})`);
 

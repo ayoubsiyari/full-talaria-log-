@@ -5,11 +5,16 @@
  * when uncommitted source could reach the bundle, NOT refuse on the board and
  * gate churn that fills this tree, and write nothing when it refuses.
  *
- * The refusal cells are paired with a waiver arm that runs the same sandbox
- * build with the guard stood down. If the build writes when waived and refuses
- * when not, the refusal is caused by the guard rather than by the sandbox being
- * broken — a gate whose red survives removing the thing under test is measuring
- * its own harness.
+ * The refusal cells are paired with a clean arm that runs the SAME sandbox
+ * build with the one variable flipped: the offending file committed. If that
+ * build writes and the dirty one refuses, the refusal is caused by the guard
+ * rather than by the sandbox being broken — a gate whose red survives removing
+ * the thing under test is measuring its own harness.
+ *
+ * That arm used to work by standing the guard down through a waiver. The waiver
+ * is gone by ruling (a bypass in the same tooling makes the gate advisory), so
+ * the discriminator is now committed-vs-dirty, which is both a truer A/B and
+ * one that cannot be reached for at 3am.
  */
 import assert from 'node:assert/strict';
 import test from 'node:test';
@@ -121,18 +126,32 @@ test('CLEANTREE: a rename is caught by either side', () => {
   assert.equal(offendingEntries(moved).length, 1, 'source of a rename out of a governed root must count');
 });
 
-test('CLEANTREE: the waiver costs a stated reason, not a flag', () => {
+test('CLEANTREE: there is no waiver — the refusal cannot be bought off with an env var', () => {
+  // Ruled out deliberately: provenance is a seal gate, and a bypass shipped in
+  // the same tooling is what turns a gate into advice. This cell exists so the
+  // waiver cannot come back quietly, and it fails loudly if anyone re-adds one.
   const raw = z(' M chart v 1.4/talaria-design/src/panelStateStorage.js');
-  const err = capture(() => assertCleanBuildInputs({ raw, env: { TALARIA_ALLOW_DIRTY_BUILD: '1' } }));
-  assert.ok(err instanceof DirtyTreeRefusal);
-  assert.equal(err.reason, 'OVERRIDE_UNJUSTIFIED');
+  const attempts = [
+    { TALARIA_ALLOW_DIRTY_BUILD: '1' },
+    { TALARIA_ALLOW_DIRTY_BUILD: 'PO waived: D mid-commit on the money path' },
+    { TALARIA_ALLOW_DIRTY_BUILD: 'true', FORCE: '1', CI: '1' },
+  ];
+  for (const env of attempts) {
+    const err = capture(() => assertCleanBuildInputs({ raw, env }));
+    assert.ok(
+      err instanceof DirtyTreeRefusal,
+      `a dirty tree was allowed through with env ${JSON.stringify(env)}`,
+    );
+    assert.equal(err.reason, 'DIRTY_BUILD_INPUTS');
+  }
 
-  const ok = assertCleanBuildInputs({
-    raw,
-    env: { TALARIA_ALLOW_DIRTY_BUILD: 'PO waived: D mid-commit on the money path' },
-  });
-  assert.equal(ok.overridden, true);
-  assert.equal(ok.clean, false, 'a waived build is not a clean build and must not report as one');
+  // And the escape hatch is not merely inert, it is absent from the source.
+  const src = fs.readFileSync(path.join(REPO, 'scripts/clean-build-tree-guard.mjs'), 'utf8');
+  const live = src
+    .split('\n')
+    .filter((l) => !l.trimStart().startsWith('//') && !l.trimStart().startsWith('*'))
+    .join('\n');
+  assert.doesNotMatch(live, /TALARIA_ALLOW_DIRTY_BUILD/, 'the waiver env var is still read');
 });
 
 test('BINDING: build:chart-v9 reaches the guard before anything that writes', () => {
@@ -252,20 +271,27 @@ test('CLEANTREE: the real first writer refuses with exit 2 and writes nothing', 
   assert.match(before, /20260101a1/, 'sanity: the sandbox stamp is the original');
 });
 
-test('CLEANTREE: waived, the same sandbox build does write — so the refusal is load-bearing', (t) => {
+test('CLEANTREE: commit that same edit and the same build writes — the refusal is load-bearing', (t) => {
   const { root, design } = makeSandbox();
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
 
   const liveIndex = path.join(design, 'live', 'index.html');
-  fs.writeFileSync(path.join(design, 'src', 'someSource.js'), 'export const a = 2;\n');
+  const git = (...a) => execFileSync('git', a, { cwd: root, stdio: 'pipe' });
 
-  const res = runBump(root, design, {
-    TALARIA_ALLOW_DIRTY_BUILD: 'gate arm: proving the refusal is what stops the write',
-  });
-  assert.equal(res.status, 0, `expected the waived build to proceed, got ${res.status}\n${res.stderr}`);
-  const after = fs.readFileSync(liveIndex, 'utf8');
-  assert.match(after, /20260802zzz9/, 'the waived build should have stamped');
-  assert.match(res.stderr + res.stdout, /provenance waived/i, 'a waived build must say so');
+  // Byte-for-byte the edit that was refused in the cell above. The ONLY
+  // variable between the two runs is whether it is committed, so a write here
+  // proves the refusal there came from the guard and not from a broken sandbox.
+  fs.writeFileSync(path.join(design, 'src', 'someSource.js'), 'export const a = 2;\n');
+  git('add', '-A');
+  git('commit', '-qm', 'the same edit, committed');
+
+  const res = runBump(root, design, {});
+  assert.equal(res.status, 0, `expected the clean build to proceed, got ${res.status}\n${res.stderr}`);
+  assert.match(
+    fs.readFileSync(liveIndex, 'utf8'),
+    /20260802zzz9/,
+    'the clean build should have stamped',
+  );
 });
 
 test('CLEANTREE: a committed sandbox builds without a waiver', (t) => {

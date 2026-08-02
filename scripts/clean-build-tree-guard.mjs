@@ -148,23 +148,9 @@ export function assertCleanBuildInputs({ cwd = REPO_ROOT, env = process.env, raw
   const offenders = offendingEntries(entries);
   if (offenders.length === 0) return { clean: true, offenders: [] };
 
-  const override = String(env.TALARIA_ALLOW_DIRTY_BUILD || '').trim();
-  if (override) {
-    // Not a silent bypass: it costs a stated reason and it is printed every time.
-    if (override.length < 12) {
-      throw new DirtyTreeRefusal(
-        'OVERRIDE_UNJUSTIFIED',
-        [
-          '[clean-build-tree] REFUSING TO BUILD — TALARIA_ALLOW_DIRTY_BUILD needs a reason, not a flag.',
-          `  Got ${JSON.stringify(override)}. Give the reason you are shipping unreproducible bytes:`,
-          '  TALARIA_ALLOW_DIRTY_BUILD="hotfix, D mid-commit, provenance waived by PO" npm run build:chart-v9',
-        ].join('\n'),
-        offenders.map((o) => o.path),
-      );
-    }
-    return { clean: false, overridden: true, reason: override, offenders };
-  }
-
+  // No waiver, by ruling. Provenance is a seal gate as of this evening, and a
+  // bypass living in the same tooling is what makes a gate advisory. A case
+  // that genuinely needs one can argue for it in daylight.
   const lines = offenders.slice(0, 40).map((o) => `    ${describe(o.xy).padEnd(9)} ${o.path}`);
   const more = offenders.length > 40 ? [`    ... and ${offenders.length - 40} more`] : [];
 
@@ -202,15 +188,6 @@ if (isMain) {
   }
   try {
     const res = assertCleanBuildInputs();
-    if (res.overridden) {
-      console.warn('');
-      console.warn('  !!  BUILDING ON A DIRTY TREE — PROVENANCE WAIVED');
-      console.warn(`  !!  reason: ${res.reason}`);
-      console.warn(`  !!  ${res.offenders.length} uncommitted build input(s); this bundle will not be`);
-      console.warn('  !!  reproducible from the SHA it is stamped with.');
-      console.warn('');
-      process.exit(0);
-    }
     if (res.unverifiable) {
       console.log('[clean-build-tree] no git working tree here (Docker/CI); nothing to contaminate.');
       process.exit(0);

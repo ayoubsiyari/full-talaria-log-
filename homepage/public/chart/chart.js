@@ -4280,7 +4280,18 @@ class Chart {
     _createSharedBarStore() {
         const MAX_FILES = 12;
         const MAX_BARS_PER_TF = 200000;
-        const MAX_TFS_PER_FILE = 4;
+        // Headroom above realistic usage, not a tight fit — the eviction here is
+        // LRU, so a cap set AT normal usage does not save memory, it just makes a
+        // common action thrash. The standard configuration is four timeframes, and
+        // the multichart layout goes to eight panels (slots A-H), so eight tiles on
+        // one symbol at eight timeframes is a supported one-click state with no
+        // leak involved. A cap of 4 would evict a live panel's data the moment a
+        // user opened a 5-panel layout and then refetch it on the next redraw.
+        // Eight clears both. The bound that matters still holds: 12 files x 8 tfs
+        // x 200k bars, and it is the file cap that carries most of it.
+        // If you are tuning this, the number to beat is the panel maximum, not the
+        // default timeframe count.
+        const MAX_TFS_PER_FILE = 8;
         const files = new Map(); // fileId -> { tfs:Map(tf->{bars,cursors,updatedAt,lru}), refs:Set(clientId), lru }
         let lruSeq = 0;
 

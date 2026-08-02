@@ -48,6 +48,17 @@ function lift(source, header, label) {
 
 const STORE_BODY = lift(chartSrc, '    _createSharedBarStore()', '_createSharedBarStore');
 
+/**
+ * Read the cap from the product rather than restating it. A gate that hardcodes
+ * the number it is checking goes red on a legitimate retune and tells you
+ * nothing about whether the cap still WORKS. The policy — what the number has
+ * to clear and why — is asserted separately below, so a retune that breaks the
+ * reasoning still fails.
+ */
+const capMatch = STORE_BODY.match(/const\s+MAX_TFS_PER_FILE\s*=\s*(\d+)\s*;/);
+assert.ok(capMatch, 'RESOLVER_ABSENT_FROM_TREE: MAX_TFS_PER_FILE');
+const CAP = Number(capMatch[1]);
+
 function makeStore(flags = {}) {
   const ctx = vm.createContext({
     Map, Set, String, Number, Math, Date, Object, Array, console,
@@ -95,29 +106,59 @@ test('BARSTORE-1: anti-vacuity — with the cap killed, every timeframe is retai
   assert.equal(tfCount(store, 'F'), TFS.length, 'kill switch did not restore uncapped growth');
 });
 
-test('BARSTORE-1: green — timeframes per file are capped at 4', () => {
+test(`BARSTORE-1: green — timeframes per file are capped at ${CAP}`, () => {
+  assert.ok(TFS.length > CAP, `fixture cannot exercise a cap of ${CAP} with only ${TFS.length} timeframes`);
   const store = makeStore();
   TFS.forEach((tf) => store.put('F', tf, barsFor(tf)));
   const n = tfCount(store, 'F');
-  assert.equal(n, 4, `expected the cap to hold at 4, saw ${n}`);
+  assert.equal(n, CAP, `expected the cap to hold at ${CAP}, saw ${n}`);
 });
 
 test('BARSTORE-1: the cap is LRU — the least recently written timeframe is the victim', () => {
   const store = makeStore();
-  ['1m', '2m', '3m', '5m'].forEach((tf) => store.put('F', tf, barsFor(tf)));
-  store.put('F', '10m', barsFor('10m'));
-  assert.equal(present(store, 'F', '1m'), false, '1m survived while a newer timeframe was evicted');
-  assert.ok(present(store, 'F', '10m'), 'the newest timeframe was evicted');
-  assert.equal(tfCount(store, 'F'), 4);
+  const filled = TFS.slice(0, CAP);
+  const overflow = TFS[CAP];
+  filled.forEach((tf) => store.put('F', tf, barsFor(tf)));
+  store.put('F', overflow, barsFor(overflow));
+  assert.equal(present(store, 'F', filled[0]), false, `${filled[0]} survived while a newer timeframe was evicted`);
+  assert.ok(present(store, 'F', overflow), 'the newest timeframe was evicted');
+  assert.equal(tfCount(store, 'F'), CAP);
+});
+
+/**
+ * The ruling was a reason, not a number: the cap must sit ABOVE realistic usage,
+ * because LRU eviction at the usage boundary buys no memory and costs a refetch
+ * on a common action. The binding number is the multichart panel maximum — eight
+ * tiles can show one file at eight timeframes with nothing leaking — so this
+ * reads that maximum out of the shell and holds the cap to it.
+ */
+test('BARSTORE-1: policy — the cap clears the most timeframes one file can legitimately hold', () => {
+  const gridSrc = fs.readFileSync(path.join(ROOT, 'chart v 1.4/talaria-design/src/MultichartGrid.jsx'), 'utf8');
+  const templates = gridSrc.match(/const\s+LAYOUT_TEMPLATES\s*=\s*\{[\s\S]*?\n\};/);
+  assert.ok(templates, 'ANCHOR_BROKEN: LAYOUT_TEMPLATES');
+
+  const maxPanels = Math.max(
+    ...[...templates[0].matchAll(/tiles:\s*\[([\s\S]*?)\]/g)]
+      .map((m) => (m[1].match(/id:\s*"/g) || []).length),
+  );
+  assert.ok(maxPanels >= 8, `expected the layout to reach 8 panels, saw ${maxPanels}`);
+  assert.ok(
+    CAP >= maxPanels,
+    `MAX_TFS_PER_FILE=${CAP} is below the ${maxPanels}-panel layout maximum: opening that layout on one `
+    + 'symbol would evict a visible panel\'s data and refetch it on the next redraw. Raise the cap or '
+    + 'change the reasoning recorded beside the constant.',
+  );
 });
 
 test('BARSTORE-1: a served timeframe is not the next victim', () => {
   const store = makeStore();
-  ['1m', '2m', '3m', '5m'].forEach((tf) => store.put('F', tf, barsFor(tf)));
-  store.pick('F', '1m'); // 1m becomes most recently used
-  store.put('F', '10m', barsFor('10m'));
-  assert.ok(present(store, 'F', '1m'), 'an actively served timeframe was evicted');
-  assert.equal(present(store, 'F', '2m'), false, 'the true LRU victim survived');
+  const filled = TFS.slice(0, CAP);
+  const overflow = TFS[CAP];
+  filled.forEach((tf) => store.put('F', tf, barsFor(tf)));
+  store.pick('F', filled[0]); // the oldest write becomes most recently used
+  store.put('F', overflow, barsFor(overflow));
+  assert.ok(present(store, 'F', filled[0]), 'an actively served timeframe was evicted');
+  assert.equal(present(store, 'F', filled[1]), false, 'the true LRU victim survived');
 });
 
 test('BARSTORE-2: mutant — with refcount eviction killed, a retained file is dropped', () => {
