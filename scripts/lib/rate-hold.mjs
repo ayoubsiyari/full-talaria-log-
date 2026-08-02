@@ -68,6 +68,67 @@ export function deliveredRate(prev, next, { baseTimeframeSec = 60 } = {}) {
   };
 }
 
+/**
+ * Where the workload demonstrably started. Returns the boundary AND how it was decided, because a
+ * baseline that silently relocates is worse than one anchored at t=0 — at least the fixed window was
+ * predictable. Every field here exists to be read back off the artifact afterwards.
+ */
+export function findWarmupBoundary(usable, { expectedLivePanels = 4, warmupHoldSamples = 3 } = {}) {
+  const withCount = usable.filter((s) => Number.isFinite(s.livePanels));
+  if (!withCount.length) {
+    return {
+      state: 'UNDETERMINED_NO_PANEL_FIELD',
+      audited: false,
+      boundaryHours: null,
+      expectedLivePanels,
+      warmupHoldSamples,
+      note: 'no sample carries livePanels, so the reference window could not be held to a live-panel count. The verdict still computes on the declared time window, but a ten-hour arm must NOT be graded this way — the run-level gate refuses an unaudited boundary.',
+    };
+  }
+
+  // "Reached and held": the first index opening an unbroken run of warmupHoldSamples at or above the
+  // expected count. One sample touching 4 during boot is not the workload starting.
+  let boundaryIdx = -1;
+  let longestRun = 0;
+  let run = 0;
+  for (let i = 0; i < usable.length; i += 1) {
+    const c = usable[i].livePanels;
+    if (Number.isFinite(c) && c >= expectedLivePanels) {
+      run += 1;
+      if (run > longestRun) longestRun = run;
+      if (run >= warmupHoldSamples && boundaryIdx === -1) boundaryIdx = i - (warmupHoldSamples - 1);
+    } else {
+      run = 0;
+    }
+  }
+
+  const peak = Math.max(...withCount.map((s) => s.livePanels));
+  if (boundaryIdx === -1) {
+    return {
+      state: 'NEVER_REACHED', audited: true, boundaryHours: null,
+      expectedLivePanels, warmupHoldSamples,
+      peakLivePanels: peak, longestRunAtCount: longestRun,
+      livePanelsSeries: usable.map((s) => s.livePanels ?? null).slice(0, 40),
+    };
+  }
+
+  const excluded = usable.slice(0, boundaryIdx);
+  return {
+    state: boundaryIdx === 0 ? 'LIVE_FROM_FIRST_SAMPLE' : 'WARMUP_EXCLUDED',
+    audited: true,
+    boundaryHours: +usable[boundaryIdx].hours.toFixed(4),
+    boundarySampleIndex: boundaryIdx,
+    expectedLivePanels,
+    warmupHoldSamples,
+    samplesExcluded: excluded.length,
+    excludedLivePanels: excluded.map((s) => s.livePanels ?? null),
+    excludedHours: excluded.map((s) => +Number(s.hours).toFixed(4)),
+    peakLivePanels: peak,
+    decidedBy: `first sample opening ${warmupHoldSamples} consecutive samples at >= ${expectedLivePanels} live panels`,
+    livePanelsSeries: usable.map((s) => s.livePanels ?? null).slice(0, 40),
+  };
+}
+
 const median = (xs) => {
   const s = xs.filter((x) => Number.isFinite(x)).slice().sort((a, b) => a - b);
   if (!s.length) return null;
@@ -91,6 +152,21 @@ export function evaluateRateHold(samples, {
   // Legacy series only: converts bars/s to market-seconds. Explicit rather than defaulted, because
   // assuming a timeframe silently rescales the verdict by that timeframe.
   assumeDenominatorSec = null,
+  /**
+   * WARM-UP EXCLUSION. B's shakedown read livePanels=0 on early samples before they settled to 4, and a
+   * fixed 0.05-0.25 h baseline window has no way to know that: it would anchor the entire ten-hour
+   * comparison to a chart that was not yet running the workload, then grade hour 10 against it.
+   *
+   * The reference window now OPENS at the warm-up boundary — the first sample beginning an unbroken run
+   * of `warmupHoldSamples` samples at the expected live-panel count. Reaching the count once is not
+   * enough; it must hold, or a single lucky sample during boot becomes the anchor.
+   *
+   * PANELS DYING LATE IS NOT WARM-UP AND MUST NOT BE EXCLUDED. A panel lost at hour six is the defect
+   * this instrument exists to catch, so the boundary only ever moves the START of the baseline; nothing
+   * after it is trimmed, and the live count in the final window is reported rather than filtered.
+   */
+  expectedLivePanels = 4,
+  warmupHoldSamples = 3,
 } = {}) {
   /**
    * Judged on MARKET-SECONDS PER WALL-SECOND. Samples are read on the new field with a fall-back to the
@@ -154,11 +230,29 @@ export function evaluateRateHold(samples, {
   }
 
   const lastHour = usable[usable.length - 1].hours;
-  const base = usable.filter((s) => s.hours >= baselineFromHours && s.hours <= baselineToHours);
+
+  const warmup = findWarmupBoundary(usable, { expectedLivePanels, warmupHoldSamples });
+  if (warmup.state === 'NEVER_REACHED') {
+    return {
+      verdict: 'VOID', publishable: false, warmupExclusion: warmup,
+      why: `live panels never reached and held ${expectedLivePanels} (best run was ${warmup.longestRunAtCount} consecutive samples, peak ${warmup.peakLivePanels}). There is no point in the series where the workload was demonstrably running, so there is nothing to anchor hour 0 to.`,
+    };
+  }
+
+  // The window keeps its declared WIDTH and slides to open at the boundary, so a slow boot costs
+  // reference samples rather than silently poisoning them.
+  const baselineWidthHours = baselineToHours - baselineFromHours;
+  const effFrom = Math.max(baselineFromHours, warmup.boundaryHours ?? 0);
+  const effTo = effFrom + baselineWidthHours;
+
+  const base = usable.filter((s) => s.hours >= effFrom && s.hours <= effTo);
   const fin = usable.filter((s) => s.hours >= lastHour - finalWindowHours);
 
   if (base.length < minSamplesPerWindow) {
-    return { verdict: 'VOID', why: `baseline window ${baselineFromHours}-${baselineToHours} h holds ${base.length} samples, need ${minSamplesPerWindow}.`, publishable: false };
+    return {
+      verdict: 'VOID', publishable: false, warmupExclusion: warmup,
+      why: `baseline window ${effFrom.toFixed(3)}-${effTo.toFixed(3)} h (opened at the warm-up boundary, ${warmup.state}) holds ${base.length} samples, need ${minSamplesPerWindow}.`,
+    };
   }
   if (fin.length < minSamplesPerWindow) {
     return { verdict: 'VOID', why: `final window (last ${finalWindowHours} h) holds ${fin.length} samples, need ${minSamplesPerWindow}.`, publishable: false };
@@ -183,12 +277,17 @@ export function evaluateRateHold(samples, {
     baselineBarsPerSec: denominators.size === 1 ? +(b / [...denominators][0]).toFixed(4) : (assumeDenominatorSec ? +(b / assumeDenominatorSec).toFixed(4) : null),
     finalBarsPerSec: denominators.size === 1 ? +(f / [...denominators][0]).toFixed(4) : (assumeDenominatorSec ? +(f / assumeDenominatorSec).toFixed(4) : null),
     rateUnitsSeen: [...new Set(usable.map((s) => s.rateUnit))],
-    baselineWindow: `${baselineFromHours}-${baselineToHours} h (${base.length} samples, median)`,
+    baselineWindow: `${effFrom.toFixed(3)}-${effTo.toFixed(3)} h (${base.length} samples, median)`,
     finalWindow: `last ${finalWindowHours} h (${fin.length} samples, median)`,
+    warmupExclusion: warmup,
+    // Recorded, never filtered: panels lost late are the defect, not warm-up. If this is below the
+    // expected count the FAIL is real and its cause is named.
+    finalWindowLivePanels: fin.map((s) => s.livePanels ?? null),
+    baselineWindowLivePanels: base.map((s) => s.livePanels ?? null),
     hoursCovered: +lastHour.toFixed(2),
     speed: [...speeds][0] ?? null,
     naiveFirstSampleRatio: naive,
-    baselineNote: 'Baseline is a SETTLED window, not the first sample. Delivered rate falls steeply during warm-up (20.6 -> 9.19 bars/s measured), so a t=0 anchor grades every build against a transient. naiveFirstSampleRatio is published so the choice is auditable.',
+    baselineNote: `Baseline is a SETTLED window opened at the warm-up boundary (${warmup.state}${warmup.boundaryHours != null ? ` at ${warmup.boundaryHours} h, ${warmup.samplesExcluded ?? 0} samples excluded` : ''}), not the first sample. Two separate hazards: delivered rate falls steeply during warm-up (20.6 -> 9.19 bars/s measured), and panels read livePanels=0 before they settle, so a t=0 anchor grades hour 10 against a chart that was not running the workload. naiveFirstSampleRatio is published so the choice is auditable.`,
     why: ratio >= 1 - tolerance
       ? `Delivery held: ${(+f.toFixed(2))} market-s/wall-s at ${lastHour.toFixed(1)} h against ${(+b.toFixed(2))} at hour 0, ratio ${ratio.toFixed(3)} within the 5% bar.`
       : `Delivery DECAYED: ${(+f.toFixed(2))} market-s/wall-s at ${lastHour.toFixed(1)} h against ${(+b.toFixed(2))} at hour 0 — ${((1 - ratio) * 100).toFixed(1)}% lost, bar is 5%.`,

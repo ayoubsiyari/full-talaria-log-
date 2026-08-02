@@ -38,20 +38,27 @@ const MINUTES = Number(argOf('minutes', '40'));
 const SPEED = Number(argOf('speed', '10'));
 const KILL_AT_MIN = Number(argOf('killAtMin', '12'));   // 0 disables the resume exercise
 const MECHANICAL_ONLY = process.argv.includes('--mechanicalOnly');
+/**
+ * --gradeOnly=<jsonl> grades an existing or synthetic artifact and launches nothing, so the gate block
+ * below can be executed in a second instead of only at the end of a real soak. Every origin pre-flight
+ * is skipped with it: there is no build to pin when nothing is being run, and making the self-test
+ * depend on the live origin is how I once wrote a test that was green only because production was broken.
+ */
+const GRADE_ONLY = argOf('gradeOnly', '');
 const log = (m) => console.log(`[${new Date().toISOString().slice(11, 19)}] ${m}`);
 
-const seal = await computeSeal(ORIGIN);
-const info = await readBuildInfo(ORIGIN);
-log(`origin serves badge ${seal.badge}, digest ${seal.digest.slice(0, 12)}, sha ${String(info.sourceCommitSha).slice(0, 12)}`);
+const seal = GRADE_ONLY ? { badge: 'GRADE-ONLY', digest: '0'.repeat(32), ok: true } : await computeSeal(ORIGIN);
+const info = GRADE_ONLY ? { sourceCommitSha: '0'.repeat(40), ok: true, state: 'GRADE-ONLY' } : await readBuildInfo(ORIGIN);
+log(GRADE_ONLY ? 'GRADE-ONLY: origin pre-flight skipped, nothing will be launched' : `origin serves badge ${seal.badge}, digest ${seal.digest.slice(0, 12)}, sha ${String(info.sourceCommitSha).slice(0, 12)}`);
 
-if (!CONFIRM_BADGE) {
+if (!GRADE_ONLY && !CONFIRM_BADGE) {
   console.error('\nREFUSED: pass --confirmBadge=<badge> naming the build you intend to rehearse.');
   console.error(`  The origin currently serves ${seal.badge}.`);
   console.error('  The badge is not the pin — the digest and source commit are, and both are read from the origin');
   console.error('  and passed to the soak. This flag exists only so a rehearsal cannot silently run the wrong build.');
   process.exit(2);
 }
-if (seal.badge !== CONFIRM_BADGE) {
+if (!GRADE_ONLY && seal.badge !== CONFIRM_BADGE) {
   console.error(`\nREFUSED: you named ${CONFIRM_BADGE}; the origin serves ${seal.badge}.`);
   process.exit(2);
 }
@@ -63,7 +70,9 @@ if (seal.badge !== CONFIRM_BADGE) {
  * short of where it is read: roster switches present in the tree and absent from the build, and a b122
  * deploy read mid-flight while one file was still the old copy.
  */
-const cap = await checkSpeed01Served(ORIGIN);
+const cap = GRADE_ONLY
+  ? { ok: true, state: 'GRADE-ONLY (served check skipped)', bytes: 0, missing: [], present: [], servedPctOfLocal: null }
+  : await checkSpeed01Served(ORIGIN);
 log(`SPEED-01 in served bytes: ${cap.state}${cap.bytes ? ` (${cap.bytes.toLocaleString()} B, ${cap.servedPctOfLocal}% of local mirror)` : ''}`);
 if (!cap.ok) {
   console.error(`\nREFUSED: the served build does not carry SPEED-01 — ${cap.state}.`);
@@ -72,10 +81,10 @@ if (!cap.ok) {
   console.error('  Measuring a build without the ladder at "10 bars/s" would produce a real-looking artifact about the wrong build.');
   process.exit(4);
 }
-const capDigest = await capabilityDigest(ORIGIN);
+const capDigest = GRADE_ONLY ? { digest: '0'.repeat(32), files: [] } : await capabilityDigest(ORIGIN);
 log(`capability digest ${capDigest.digest.slice(0, 16)} over ${capDigest.files.length} engine files the seal does not cover`);
 
-if (!info.ok || !/^[a-f0-9]{40}$/.test(String(info.sourceCommitSha || ''))) {
+if (!GRADE_ONLY && (!info.ok || !/^[a-f0-9]{40}$/.test(String(info.sourceCommitSha || '')))) {
   console.error(`\nREFUSED: the origin does not expose a usable source commit (state ${info.state}).`);
   console.error('  A rehearsal that cannot pass --expectSha has not rehearsed the thing most likely to fail.');
   process.exit(3);
@@ -94,7 +103,7 @@ if (!info.ok || !/^[a-f0-9]{40}$/.test(String(info.sourceCommitSha || ''))) {
  * RESUMING and the samples must continue into a second segment in the SAME file.
  */
 const hours = (MINUTES / 60).toFixed(4);
-const out = path.join(EV, 'REHEARSAL-SOAK-TRADES.jsonl');   // the launcher's own --rehearsal path
+let out = path.join(EV, 'REHEARSAL-SOAK-TRADES.jsonl');   // the launcher's own --rehearsal path (--gradeOnly retargets it)
 const launcher = path.join(process.cwd(), 'scripts', 'fire-sealed-soak.mjs');
 const launchArgs = [
   launcher, '--arm=trades', '--rehearsal', `--hours=${hours}`, `--speed=${SPEED}`,
@@ -128,11 +137,13 @@ const started = Date.now();
 let killedOnce = false;
 let resumeAnnounced = false;
 
-const first = await runLauncher(['--fresh']);
-log(`launcher exited ${first.code}`);
+if (GRADE_ONLY) out = GRADE_ONLY;
+
+const first = GRADE_ONLY ? { code: 0, out: '' } : await runLauncher(['--fresh']);
+log(GRADE_ONLY ? `GRADE-ONLY: grading ${out} without launching` : `launcher exited ${first.code}`);
 if (first.code !== 0) { log('the launch itself failed — nothing to rehearse'); }
 
-if (first.code === 0 && KILL_AT_MIN > 0) {
+if (!GRADE_ONLY && first.code === 0 && KILL_AT_MIN > 0) {
   await new Promise((r) => setTimeout(r, KILL_AT_MIN * 60000));
   const pids = findSoakPid();
   if (pids.length) {
@@ -151,7 +162,7 @@ if (first.code === 0 && KILL_AT_MIN > 0) {
 
 // Wait out the remainder, then confirm the run has actually stopped before grading its file.
 const waitUntil = started + (MINUTES + 3) * 60000;
-while (Date.now() < waitUntil && findSoakPid().length) await new Promise((r) => setTimeout(r, 30000));
+while (!GRADE_ONLY && Date.now() < waitUntil && findSoakPid().length) await new Promise((r) => setTimeout(r, 30000));
 const exitCode = findSoakPid().length ? 'still-running' : 0;
 log(`run finished after ${((Date.now() - started) / 60000).toFixed(1)} min`);
 
@@ -209,6 +220,20 @@ const liveCounts = samples.map((s) => s.livePanels).filter(Number.isFinite);
 const medianLive = liveCounts.length ? liveCounts.slice().sort((a, b) => a - b)[Math.floor(liveCounts.length / 2)] : null;
 gate('per-panel delivery was measured at all', liveCounts.length > 0, liveCounts.length ? `${liveCounts.length} samples carry livePanels` : 'no per-panel rates — the run cannot say whether panels were parked');
 gate('four panels were live, not one', medianLive === 4, medianLive == null ? 'unmeasured' : `median ${medianLive} of 4 live (per-sample: ${liveCounts.join(',')})`);
+
+/**
+ * The hour-0 reference must be anchored AFTER the panels came up. B's shakedown read livePanels=0 on
+ * early samples; anchoring there would grade hour 10 against a chart that was not running the workload,
+ * and the resulting hold ratio would look excellent for the worst possible reason.
+ */
+const rh = rows.find((r) => r.__rateHold) || {};
+const warm = rh.warmupExclusion || null;
+gate('the RATE-HOLD reference window declares a warm-up boundary',
+  warm != null && warm.audited === true,
+  warm == null ? 'no warmupExclusion on the verdict — this build of the grader predates the boundary' : `state ${warm.state}, audited=${warm.audited}`);
+gate('the reference window opened only once panels were live and holding',
+  warm != null && (warm.state === 'WARMUP_EXCLUDED' || warm.state === 'LIVE_FROM_FIRST_SAMPLE'),
+  warm == null ? 'unmeasured' : `${warm.state}${warm.boundaryHours != null ? ` at ${warm.boundaryHours} h` : ''}, ${warm.samplesExcluded ?? 0} warm-up samples excluded (live counts before the boundary: ${JSON.stringify(warm.excludedLivePanels ?? [])})`);
 const perPanelMeans = {};
 for (const s of samples) for (const p of (s.panelRates || [])) {
   const v = Number.isFinite(p.marketSecPerWallSec) ? p.marketSecPerWallSec : p.barsPerSec;
