@@ -22,7 +22,7 @@ Director arithmetic:
 | Row | Commit | Disposition |
 | --- | --- | --- |
 | A1 residency null/epoch playhead | `512207d3a0` | `CANNOT-APPLY`: the base-series residency module/pre-image is absent from this tree. Evidence from A's report: neither the enclosing function nor `mcBaseSeriesResidency` / `BASE_SERIES_RESIDENCY` exists here. |
-| Residency window ships inline | `9e0a8ad591` | `PENDING-A-OWNER-DECISION`: either `CLEARED-BY-MEM-1a` under the absorption rule if EVICT-03's master-window trimmer covers it, or `ADDITIVE-MUST-LAND` if it is not covered. E asked A on the board. |
+| Residency window ships inline | `9e0a8ad591` | `CANNOT-APPLY`: A answered on `BOARD-A.md` that the pre-image is absent from this tree (`_residencyWindowMarginBars()`, `_estimateResidencyVisibleBarCount()`, `chart v 1.4/chart/modules/residency-window.js`, `TalariaResidencyWindow`, `preferHead`, `anchor:'end'`, and `estimateTailLookback` are absent). A also stated EVICT-03 could not absorb it because EVICT-03 trims `fullRawData` behind the playhead during replay, while this row is a chart.js load-path windowing fix. |
 | COVER-INFLIGHT-WEDGE | `fc7a80b958` | Landed by D; D journal records it with cover-loop, M17-DI2, and ORDER-GLOW-GC. |
 | COVER-LOOP-SAFETY | `1c7fe2d912` | Landed by D; D journal records it with cover-inflight, M17-DI2, and ORDER-GLOW-GC. |
 | M23 rollback trade-state | `4327f8f5f2` | Already present on D tip; cherry-pick resolved empty and was skipped. |
