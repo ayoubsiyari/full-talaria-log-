@@ -121,6 +121,8 @@
     "preflight:drawing-market-time-persist": "node --test --test-concurrency=1 \"chart v 1.4/chart/modules/drawing-market-time-persist.test.mjs\"",
     "test:drawing-market-time-persist": "npm run preflight:drawing-market-time-persist",
     "a3:canary": "node scripts/a3-speed-fill-journal-parity-canary.mjs",
+    "a3:daily-canary": "node scripts/a3-daily-money-path-boundary-canary.mjs",
+    "a3:daily-canary:selftest": "node scripts/a3-daily-money-path-boundary-canary.mjs --selftest",
     "preflight:qw3-allocation-pool": "node scripts/qw3-allocation-pool.mjs",
     "test:qw3-allocation-pool": "node --test scripts/tests/qw3-allocation-pool.test.mjs",
     "preflight:qw3-resample-cache-keep": "node --test \"chart v 1.4/chart/modules/qw3-resample-cache-keep.test.mjs\"",
