@@ -449,6 +449,41 @@ const ROWS = [
     discriminating: true,
     discriminatingEvidence: '50b5a3867 carries scripts/sr04/journal-attribution-call-site.test.mjs C10/C11/C12 and trade-attribution-resolver.test.mjs.',
   },
+  // Added by B (integration) 2026-08-02. E landed two rows after the 09:15 roster was
+  // frozen, so a GREEN sweep said nothing about them — they were inheriting a
+  // no-regression result rather than earning a pass. Both are on the seal tip, so both
+  // are swept here. Their axes are recorded as measured, not as claimed: `discriminating`
+  // is false on both, and that is the finding rather than a bookkeeping gap.
+  {
+    row: 'E-FORMING-A8',
+    owner: 'E',
+    ref: 'HEAD',
+    files: [
+      'chart v 1.4/chart/modules/replay-system.js',
+      'homepage/public/chart/modules/replay-system.js',
+      'chart v 1.4/chart/chart.js',
+      'homepage/public/chart/chart.js',
+    ],
+    present: ['__talariaFormingSim', '_deriveStepClockFormingCandle', 'skipToBarClose('],
+    bound: ['this._deriveStepClockFormingCandle(target, ticksNeeded)'],
+    mirror: ['chart v 1.4/chart/modules/replay-system.js', 'homepage/public/chart/modules/replay-system.js'],
+    discriminating: false,
+    discriminatingEvidence: 'RED on the discriminating axis, measured not assumed. forming-renderer-step-clock.test.mjs is 6/6, but every cell is assert.match(source, /regex/) against lifted method text — the gate never executes the product, so it cannot go RED on a helper that returns wrong numbers. Demonstrated rather than argued: the gate stays 6/6 on a tip where B reproduced a live cachedPath clobber reaching this row (_evidence/manager-B/review/e-waypoint-cachedpath-alias-probe.mjs). Needs one executing cell that goes RED when _deriveStepClockFormingCandle is inert or wrong.',
+  },
+  {
+    row: 'E-WAYPOINT-PATH',
+    owner: 'E',
+    ref: 'HEAD',
+    files: [
+      'chart v 1.4/chart/modules/replay-system.js',
+      'homepage/public/chart/modules/replay-system.js',
+    ],
+    present: ['_pathWaypointScratch', '_tickPathScratch', '__TALARIA_DISABLE_M19_TICK_PATH_BOUND_V1'],
+    bound: ['this.generatePath(candle, n)'],
+    mirror: ['chart v 1.4/chart/modules/replay-system.js', 'homepage/public/chart/modules/replay-system.js'],
+    discriminating: false,
+    discriminatingEvidence: 'RED on the discriminating axis. generate-path-waypoints.test.mjs is 5/5 and does execute the product, which is more than the A8 gate does, and it carries one mutant — but that mutant only proves the generator does not reach order-resolution state. Nothing goes RED when path generation itself is wrong, and the suite is green on a tip where a retained cachedPath is provably rewritten in place. Kill switch __TALARIA_DISABLE_M19_TICK_PATH_BOUND_V1 predates the row and is not exercised by it.',
+  },
   {
     row: 'KNOWN-A-resolver',
     owner: 'A',
