@@ -35,13 +35,42 @@ const check = (name, got, want) => {
 const GOOD_SHA = '96af370130123456789abcdef0123456789abcde';
 
 /** Build a throwaway chart/ dir with just enough for the script to run, then invoke it. */
-function runBump(env) {
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'passport3-'));
-  const chartDir = path.join(tmp, 'chart');
-  fs.mkdirSync(path.join(chartDir, 'scripts'), { recursive: true });
-  fs.copyFileSync(SCRIPT, path.join(chartDir, 'scripts', 'bump.mjs'));
-  fs.writeFileSync(path.join(chartDir, 'chart.js'), "const CHART_ENGINE_BUILD = '20260724b61';\n");
+/**
+ * The sandbox is a miniature of the REAL two-mirror layout, not a bare temp dir.
+ *
+ * The emitter now runs C's pre-cut integrity gate before it will emit anything,
+ * and that gate resolves its mirrors by walking two levels up from the chart
+ * directory and requiring `chart v 1.4/chart` and `homepage/public/chart` to
+ * both be there. A fixture of the old shape (`<tmp>/chart` holding only the one
+ * copied script) failed three ways in sequence: the gate file was not copied at
+ * all, then its `scripts/lib` dependency was not, and then the gate ran and
+ * correctly refused a tree with zero files in it. Each of those made every cell
+ * in this file red while the emitter was in fact healthy — the b122 image built
+ * with this same emitter.
+ *
+ * So the fixture mirrors the real layout in miniature and copies the whole
+ * `scripts/` tree rather than one file. That keeps the emitter running against
+ * its real dependencies instead of against a stub of them, which is the only
+ * version of this test worth having.
+ */
+function makeSandbox(prefix) {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
+  const chartDir = path.join(tmp, 'chart v 1.4', 'chart');
+  const mirrorDir = path.join(tmp, 'homepage', 'public', 'chart');
+  fs.mkdirSync(path.join(chartDir, 'modules'), { recursive: true });
+  fs.mkdirSync(path.join(mirrorDir, 'modules'), { recursive: true });
+  fs.cpSync(path.dirname(SCRIPT), path.join(chartDir, 'scripts'), { recursive: true });
+  for (const dir of [chartDir, mirrorDir]) {
+    fs.writeFileSync(path.join(dir, 'chart.js'), "const CHART_ENGINE_BUILD = '20260724b61';\n");
+    fs.writeFileSync(path.join(dir, 'modules', 'sample.js'), 'export const sample = 1;\n');
+  }
   fs.writeFileSync(path.join(chartDir, 'package.json'), JSON.stringify({ name: 'x', version: '1.0.0' }, null, 2));
+  return { tmp, chartDir };
+}
+
+function runBump(env) {
+  const { tmp, chartDir } = makeSandbox('passport3-');
+  fs.copyFileSync(SCRIPT, path.join(chartDir, 'scripts', 'bump.mjs'));
 
   const r = spawnSync(process.execPath, [path.join(chartDir, 'scripts', 'bump.mjs')], {
     env: { ...process.env, BUILD_ID: '', SOURCE_COMMIT_SHA: '', CHECKPOINT_BUILD: '', ...env },
@@ -123,9 +152,7 @@ console.log('\n=== discriminating: the package.json assertion goes red if the bu
 {
   // BIND-01. A removal is only verified if its absence is what the gate detects, so restore the
   // bump in a sandboxed copy of the emitter and confirm the same predicate fails.
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'passport3-mutant-'));
-  const chartDir = path.join(tmp, 'chart');
-  fs.mkdirSync(path.join(chartDir, 'scripts'), { recursive: true });
+  const { tmp, chartDir } = makeSandbox('passport3-mutant-');
   const mutant = fs.readFileSync(SCRIPT, 'utf8').replace(
     '    writeBuildInfo(nextBuild);',
     `    {
@@ -138,7 +165,6 @@ console.log('\n=== discriminating: the package.json assertion goes red if the bu
     writeBuildInfo(nextBuild);`);
   check('the mutant emitter actually differs from the real one', mutant.length > fs.readFileSync(SCRIPT, 'utf8').length, true);
   fs.writeFileSync(path.join(chartDir, 'scripts', 'bump.mjs'), mutant);
-  fs.writeFileSync(path.join(chartDir, 'chart.js'), "const CHART_ENGINE_BUILD = '20260724b61';\n");
   fs.writeFileSync(path.join(chartDir, 'package.json'), PKG_BEFORE);
   const r = spawnSync(process.execPath, [path.join(chartDir, 'scripts', 'bump.mjs')], {
     env: { ...process.env, BUILD_ID: '20260802b122', SOURCE_COMMIT_SHA: GOOD_SHA, CHECKPOINT_BUILD: '1' },
