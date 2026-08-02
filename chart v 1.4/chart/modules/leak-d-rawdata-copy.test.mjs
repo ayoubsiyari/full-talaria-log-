@@ -42,6 +42,15 @@ function methodSource(text, name) {
 
 const METHODS = [
   '_mcRawDataCopyDisabled',
+  // A second, separate switch added with the incremental copy path, which
+  // _mcCopySamePairFullRawData calls. Lifted rather than stubbed: it is a pure flag read, so
+  // the real one costs nothing and keeps the kill-switch semantics under test here honest.
+  '_mcIncrementalRawDataCopyDisabled',
+  '_mcRawDataCopyCacheSlot',
+  '_mcIncrementalCloneRawDataBars',
+  '_mcRawDataCopyCache',
+  '_mcCacheFullRawDataClone',
+  '_mcRawDataCopyBoundaryTimestamp',
   '_mcRawDataCopyLimit',
   '_mcScalarCloneRawBar',
   '_mcCloneRawDataBars',
@@ -522,9 +531,17 @@ test('Leak D: structural call-site and neuter-red coverage', () => {
   const mutants = [
     {
       name: 'same-pair-helper-returns-alias',
+      // Re-anchored: the incremental copy path rewrote _mcCopySamePairFullRawData from a
+      // single ternary into a cache-slot chain, so the old needle matched nothing and this
+      // mutant silently stopped being applied. The mutation is unchanged in intent -- hand
+      // back the caller's own array instead of a copy, which is the leak this row fixed.
       source: replaceOne(
         SOURCE,
-        'return this._mcRawDataCopyDisabled() ? source : this._mcCloneRawDataBars(source);',
+        `if (this._mcRawDataCopyDisabled()) return source;
+        if (this._mcIncrementalRawDataCopyDisabled()) return this._mcCloneRawDataBars(source);
+        const cacheKey = this._mcRawDataCopyCacheSlot(slotKey);
+        if (!cacheKey) return this._mcCloneRawDataBars(source);
+        return this._mcIncrementalCloneRawDataBars(source, cacheKey);`,
         'return source;',
         'same-pair helper mutant',
       ),
@@ -568,7 +585,9 @@ test('Leak D: structural call-site and neuter-red coverage', () => {
     {
       name: 'viewport-panel-site-aliased',
       source: (() => {
-        const needle = 'this._panelFullRawData = this._mcCopySamePairFullRawData(parent._panelFullRawData);';
+        // The call sites gained a cache-slot argument with the incremental copy path; still
+        // three of them, so the count below is unchanged and remains a real check.
+        const needle = "this._panelFullRawData = this._mcCopySamePairFullRawData(parent._panelFullRawData, 'panelFullRawData');";
         assert.equal(SOURCE.split(needle).length - 1, 3, 'parent panel alias mutant anchor count');
         return SOURCE.split(needle).join('this._panelFullRawData = parent._panelFullRawData;');
       })(),
@@ -577,7 +596,7 @@ test('Leak D: structural call-site and neuter-red coverage', () => {
       name: 'sync-from-parent-master-site-aliased',
       source: replaceOne(
         SOURCE,
-        '            if (Array.isArray(parent._panelFullRawData) && parent._panelFullRawData.length > 0) {\n                this._panelFullRawData = this._mcCopySamePairFullRawData(parent._panelFullRawData);\n            } else {\n                this._panelFullRawData = this._mcCopySamePairFullRawData(master);\n            }',
+        '            if (Array.isArray(parent._panelFullRawData) && parent._panelFullRawData.length > 0) {\n                this._panelFullRawData = this._mcCopySamePairFullRawData(parent._panelFullRawData, \'panelFullRawData\');\n            } else {\n                this._panelFullRawData = this._mcCopySamePairFullRawData(master, \'panelFullRawData\');\n            }',
         '            if (Array.isArray(parent._panelFullRawData) && parent._panelFullRawData.length > 0) {\n                this._panelFullRawData = parent._panelFullRawData;\n            } else {\n                this._panelFullRawData = master.slice();\n            }',
         'sync-from-parent mutant',
       ),
