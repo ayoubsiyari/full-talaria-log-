@@ -915,6 +915,19 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState, 
     const modeType = sessTradingMode === "prop" ? "propfirm" : "standard";
     const tickers = (newSessTickers.length > 0 ? [...newSessTickers] : [primary]).slice(0, maxTickersCap);
 
+    // Trading and supporting are mutually exclusive. The pickers prevent an
+    // overlap being created, and this is the backstop for one arriving any other
+    // way. It matters beyond duplication: the instruments merge below spreads
+    // supportInstruments last, so an overlapping pair would be rewritten as
+    // view_only/tradable:false and the user would silently lose the ability to
+    // trade a pair they explicitly chose to trade. Trading wins.
+    // Case-insensitive, matching the server's normalization, so a draft carrying
+    // different casing cannot slip an overlap past this backstop.
+    const tradingSet = new Set(tickers.map((s) => String(s || "").trim().toUpperCase()));
+    const supportTickers = newSessSupportTickers.filter(
+      (s) => !tradingSet.has(String(s || "").trim().toUpperCase())
+    );
+
     const resolved = await resolveInstrumentsForTickers(tickers);
     if (!resolved.primaryFileId) {
       const miss = resolved.missing.length ? resolved.missing.join(", ") : tickers.join(", ");
@@ -928,8 +941,8 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState, 
       );
     }
 
-    const supportResolved = newSessSupportTickers.length
-      ? await resolveInstrumentsForTickers(newSessSupportTickers)
+    const supportResolved = supportTickers.length
+      ? await resolveInstrumentsForTickers(supportTickers)
       : {
           instruments: {} as Record<string, Record<string, unknown>>,
           files: [] as { id: string | number; name: string }[],
@@ -1035,7 +1048,7 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState, 
       strategy_id: resolvedStrategyId,
       ...(strategyVariables.length ? { strategy_variables: strategyVariables } : {}),
       tickers: newSessTickers,
-      supporting_tickers: newSessSupportTickers,
+      supporting_tickers: supportTickers,
       asset_class: newSessAssetClass,
       trading_mode: sessTradingMode,
       symbol: newSessTickers.length === 1 ? newSessTickers[0] : newSessTickers.length > 1 ? `${newSessTickers.length} symbols` : primary,
@@ -1049,7 +1062,7 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState, 
           fileId: instruments[normSessionSym(sym)]?.fileId,
           tradable: true,
         })),
-        ...newSessSupportTickers.map((sym) => ({
+        ...supportTickers.map((sym) => ({
           symbolName: sym,
           fileId: instruments[normSessionSym(sym)]?.fileId,
           view_only: true,
@@ -1708,14 +1721,20 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState, 
                                           const symQ=normalizeSearchQuery(newSessSymPickerSearch);
                                           const pool=allSymbols.filter(s=>s.cat===catKey&&(!symQ||s.sym.toLowerCase().includes(symQ)));
                                           if(pool.length===0)return <div style={{padding:"8px 10px",fontSize:10,color:c.tm,fontFamily:F}}>No results</div>;
+                                          // Trading and supporting are mutually exclusive: a pair cannot be
+                                          // both traded and watched for context. Shown dimmed and labelled
+                                          // rather than hidden, so the pair does not appear to be missing.
+                                          const takenBySupport=new Set(newSessSupportTickers);
                                           return pool.map(s=>{
                                             const isChk=newSessTickers.includes(s.sym);
+                                            const isBlocked=!isChk&&takenBySupport.has(s.sym);
                                             const hk="spick_"+s.sym;const isH=hov===hk;
-                                            const bCol=isChk?c.acL:isH?c.tx:c.ts;
+                                            const bCol=isChk?c.acL:isBlocked?c.tm:isH?c.tx:c.ts;
                                             return(
-                                              <div key={s.sym} onClick={()=>{if(isChk){setNewSessTickers(p=>p.filter(x=>x!==s.sym));}else if(newSessTickers.length<maxTickersCap){setNewSessTickers(p=>[...p,s.sym]);}}}
+                                              <div key={s.sym} title={isBlocked?`${s.sym} is already a supporting symbol. Remove it from Supporting to trade it.`:undefined}
+                                                onClick={()=>{if(isBlocked)return;if(isChk){setNewSessTickers(p=>p.filter(x=>x!==s.sym));}else if(newSessTickers.length<maxTickersCap){setNewSessTickers(p=>[...p,s.sym]);}}}
                                                 onMouseEnter={()=>setHov(hk)} onMouseLeave={()=>setHov(null)}
-                                                style={{display:"flex",alignItems:"center",padding:"4px 8px",gap:6,cursor:"default",opacity:!isChk&&newSessTickers.length>=maxTickersCap?0.35:1,background:isH&&(isChk||newSessTickers.length<maxTickersCap)?"rgba(255,255,255,0.04)":"transparent",transition:"background 0.08s,opacity 0.1s"}}>
+                                                style={{display:"flex",alignItems:"center",padding:"4px 8px",gap:6,cursor:isBlocked?"not-allowed":"default",opacity:isBlocked?0.3:(!isChk&&newSessTickers.length>=maxTickersCap?0.35:1),background:isH&&!isBlocked&&(isChk||newSessTickers.length<maxTickersCap)?"rgba(255,255,255,0.04)":"transparent",transition:"background 0.08s,opacity 0.1s"}}>
                                                 <svg width={10} height={10} style={{display:"block",overflow:"visible",flexShrink:0}}>
                                                   <path d="M0.8,4 L0.8,0.8 L4,0.8" stroke={bCol} strokeWidth={1.3} fill="none" strokeLinecap="square"/>
                                                   <path d="M6,9.2 L9.2,9.2 L9.2,6" stroke={bCol} strokeWidth={1.3} fill="none" strokeLinecap="square"/>
@@ -1816,14 +1835,19 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState, 
                                           const supQ=normalizeSearchQuery(newSessSupPickerSearch);
                                           const pool=allSymbols.filter(s=>s.cat===catKey&&(!supQ||s.sym.toLowerCase().includes(supQ)));
                                           if(pool.length===0)return <div style={{padding:"8px 10px",fontSize:10,color:c.tm,fontFamily:F}}>No results</div>;
+                                          // Mirror of the trading picker's exclusion. A pair already being
+                                          // traded cannot also be view-only supporting context.
+                                          const takenByTrading=new Set(newSessTickers);
                                           return pool.map(s=>{
                                             const isChk=newSessSupportTickers.includes(s.sym);
+                                            const isBlocked=!isChk&&takenByTrading.has(s.sym);
                                             const hk="suppick_"+s.sym;const isH=hov===hk;
-                                            const bCol=isChk?"rgba(232,194,82,0.9)":isH?c.tx:c.ts;
+                                            const bCol=isChk?"rgba(232,194,82,0.9)":isBlocked?c.tm:isH?c.tx:c.ts;
                                             return(
-                                              <div key={s.sym} onClick={()=>{if(isChk){setNewSessSupportTickers(p=>p.filter(x=>x!==s.sym));}else if(newSessSupportTickers.length<maxSupportingCap){setNewSessSupportTickers(p=>[...p,s.sym]);}}}
+                                              <div key={s.sym} title={isBlocked?`${s.sym} is already a trading symbol. Remove it from Symbols to use it as supporting context.`:undefined}
+                                                onClick={()=>{if(isBlocked)return;if(isChk){setNewSessSupportTickers(p=>p.filter(x=>x!==s.sym));}else if(newSessSupportTickers.length<maxSupportingCap){setNewSessSupportTickers(p=>[...p,s.sym]);}}}
                                                 onMouseEnter={()=>setHov(hk)} onMouseLeave={()=>setHov(null)}
-                                                style={{display:"flex",alignItems:"center",padding:"4px 8px",gap:6,cursor:"default",opacity:!isChk&&newSessSupportTickers.length>=maxSupportingCap?0.35:1,background:isH&&(isChk||newSessSupportTickers.length<maxSupportingCap)?"rgba(255,255,255,0.04)":"transparent",transition:"background 0.08s,opacity 0.1s"}}>
+                                                style={{display:"flex",alignItems:"center",padding:"4px 8px",gap:6,cursor:isBlocked?"not-allowed":"default",opacity:isBlocked?0.3:(!isChk&&newSessSupportTickers.length>=maxSupportingCap?0.35:1),background:isH&&!isBlocked&&(isChk||newSessSupportTickers.length<maxSupportingCap)?"rgba(255,255,255,0.04)":"transparent",transition:"background 0.08s,opacity 0.1s"}}>
                                                 <svg width={10} height={10} style={{display:"block",overflow:"visible",flexShrink:0}}>
                                                   <path d="M0.8,4 L0.8,0.8 L4,0.8" stroke={bCol} strokeWidth={1.3} fill="none" strokeLinecap="square"/>
                                                   <path d="M6,9.2 L9.2,9.2 L9.2,6" stroke={bCol} strokeWidth={1.3} fill="none" strokeLinecap="square"/>

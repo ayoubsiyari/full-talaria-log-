@@ -13073,6 +13073,21 @@ def _session_config_ticker_counts(config: dict | None) -> tuple[int, int]:
     return len(tickers), len(supporting)
 
 
+def _session_config_ticker_overlap(config: dict | None) -> list[str]:
+    """Symbols asked to be both traded and supporting.
+
+    These two sets are mutually exclusive by definition: supporting symbols are
+    view-only context. An overlap is not a harmless duplicate — session config
+    merges the supporting instruments over the tradable ones, so a symbol in
+    both ends up view_only/tradable:false and the user quietly loses the ability
+    to trade a symbol they chose to trade.
+    """
+    cfg = config if isinstance(config, dict) else {}
+    tickers = set(_normalize_symbol_list(cfg.get("tickers")))
+    supporting = _normalize_symbol_list(cfg.get("supporting_tickers"))
+    return [sym for sym in supporting if sym in tickers]
+
+
 def _count_user_trading_sessions(db, user_id: int) -> int:
     try:
         return int(
@@ -13158,6 +13173,18 @@ def _enforce_backtest_limits(
     """Validate ticker caps; on create also enforce session count under user row lock."""
     if is_create:
         user = _check_session_create_quota(db, user)
+    # Checked ahead of the bypass: mutual exclusion is a correctness invariant of
+    # the config, not an entitlement cap, so it holds for every user including
+    # those exempt from ticker limits.
+    overlap = _session_config_ticker_overlap(config)
+    if overlap:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"{', '.join(overlap)} cannot be both a trading and a supporting symbol. "
+                "Supporting symbols are view-only context; remove the overlap and try again."
+            ),
+        )
     if _user_bypasses_backtest_limits(user):
         return user
     limits = _user_backtest_limits(user, db)
