@@ -25,6 +25,7 @@ import {
   isGotoCalendarDayDisabled,
 } from "./gotoMenuHelpers.js";
 import { loadIndPinned, saveIndPinned } from "./indicatorPinStorage.js";
+import { loadPanelStates, readPanelStateBlob, updatePanelStateBlob } from "./panelStateStorage.js";
 import { loadTfPinned, saveTfPinned, loadToolPinned, saveToolPinned } from "./toolbarPinStorage.js";
 import TradePathCloudPanel from "./TradePathCloudPanel.jsx";
 import { extractPathFieldsFromJournal } from "./tradePathCloudUtils.js";
@@ -14863,7 +14864,15 @@ const TalariaV8bLive = () => {
   // Phase 7.2.2: which iframe in <MultichartGrid> currently has focus.
   // Single-chart layouts ignore this; multi-panel layouts highlight the
   // focused tile and (in Phase 7.2.4) route topbar/leftbar actions to it.
-  const [focusedPanelId, setFocusedPanelId] = useState("A");
+  // TAL-01865: a refresh returns to the tile the user was working in. Resolved
+  // lazily so a corrupt or foreign-session blob falls back to the host tile.
+  const [focusedPanelId, setFocusedPanelId] = useState(() => {
+    try {
+      return loadPanelStates(v9CurrentChartSessionId()).focusedPanelId || "A";
+    } catch (_) {
+      return "A";
+    }
+  });
   // Phase 7.2.3: TradingView-style topbar layout dropdown (replaces the
   // deleted topbar layout entry). Anchor ref lets us position the popover
   // directly below the button so it lines up like TradingView.
@@ -15567,24 +15576,23 @@ const TalariaV8bLive = () => {
   useEffect(() => {
     if (!layoutPersistV2Enabled()) return;
     try {
-      const raw = localStorage.getItem("chart_panel_state");
-      if (!raw) return;
-      const state = JSON.parse(raw);
+      // Read through the shared store, not raw localStorage: the per-panel
+      // slices live in this same blob, and two readers on two physical keys
+      // (scoped vs unscoped) would drift a layout away from its own panels.
+      const state = readPanelStateBlob();
+      if (!state || Object.keys(state).length === 0) return;
       const curSid = v9CurrentChartSessionId();
-      const savedSid = state && state.sessionId != null ? String(state.sessionId).trim() : "";
+      const savedSid = state.sessionId != null ? String(state.sessionId).trim() : "";
       if (savedSid && curSid && savedSid !== curSid) {
-        try {
-          localStorage.setItem(
-            "chart_panel_state",
-            JSON.stringify({
-              ...state,
-              layout: "1",
-              selectedPanelIndex: 0,
-              panels: [],
-              sessionId: curSid,
-            })
-          );
-        } catch (_) { /* ignore */ }
+        updatePanelStateBlob((blob) => {
+          blob.layout = "1";
+          blob.selectedPanelIndex = 0;
+          blob.panels = [];
+          // The per-panel slices belong to the session that made them.
+          blob.panelsById = {};
+          blob.focusedPanelId = null;
+          blob.sessionId = curSid;
+        });
         return;
       }
       const layoutId = state && state.layout != null ? String(state.layout) : null;
@@ -15697,17 +15705,12 @@ const TalariaV8bLive = () => {
     if (layoutPersistV2Enabled()) {
       try {
         const sid = v9CurrentChartSessionId();
-        let blob = { layout: id, selectedPanelIndex: 0, panels: [], sessionId: sid || null };
-        const raw = localStorage.getItem("chart_panel_state");
-        if (raw) {
-          try {
-            const prev = JSON.parse(raw);
-            if (prev && typeof prev === "object") {
-              blob = { ...prev, layout: id, sessionId: sid || prev.sessionId || null };
-            }
-          } catch (_) { /* ignore corrupt */ }
-        }
-        localStorage.setItem("chart_panel_state", JSON.stringify(blob));
+        updatePanelStateBlob((blob) => {
+          blob.layout = id;
+          blob.sessionId = sid || blob.sessionId || null;
+          if (blob.selectedPanelIndex == null) blob.selectedPanelIndex = 0;
+          if (!Array.isArray(blob.panels)) blob.panels = [];
+        });
         try {
           const pm = window.panelManager;
           if (pm && typeof pm.savePanelState === "function") pm.savePanelState();

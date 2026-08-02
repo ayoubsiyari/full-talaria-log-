@@ -44,6 +44,13 @@ import {
     MC_SPLITTER_HOVER_BG,
     mcSplitterRestingBackground,
 } from "./mc-splitter-hairline.mjs";
+import {
+    loadPanelState,
+    loadPanelStates,
+    prunePanelStates,
+    savePanelState,
+    saveFocusedPanelId,
+} from "./panelStateStorage.js";
 
 // Phase 7.2.5: tile id "A" is the HOST tile — it does NOT spawn an iframe.
 // Instead, the parent's existing #chartWrapper (the original main chart with
@@ -188,6 +195,158 @@ function sanitizePersistedPanelFileMap(activeIframeIds) {
     } catch (_) { /* ignore */ }
 }
 
+/**
+ * TAL-01865 per-panel slice. Kill: `__TALARIA_DISABLE_PANEL_STATE_PERSIST_V1`.
+ */
+function panelStatePersistV1Enabled() {
+    try {
+        return !(typeof window !== "undefined" && window.__TALARIA_DISABLE_PANEL_STATE_PERSIST_V1);
+    } catch (_) {
+        return true;
+    }
+}
+
+/** Same session accessor the panel-file map uses, so both agree on scoping. */
+function panelStateSessionId() {
+    try {
+        const ch = typeof window !== "undefined" ? window.chart : null;
+        const sid = ch && typeof ch.getActiveTradingSessionId === "function"
+            ? ch.getActiveTradingSessionId()
+            : null;
+        return sid != null && String(sid).trim() !== "" ? String(sid).trim() : null;
+    } catch (_) {
+        return null;
+    }
+}
+
+/** Live engine for a tile: the host chart in-process, else the iframe's. */
+function liveChartForPanel(mgr, panelId) {
+    try {
+        if (panelId === HOST_PANEL_ID) return (typeof window !== "undefined" && window.chart) || null;
+        const entry = mgr && mgr.charts && typeof mgr.charts.get === "function"
+            ? mgr.charts.get(panelId)
+            : null;
+        const win = entry && entry.iframe && entry.iframe.contentWindow;
+        return (win && win.chart) || null;
+    } catch (_) {
+        return null; // cross-origin or torn-down frame
+    }
+}
+
+function capturePanelZoomAndScale(patch, ch) {
+    if (!ch) return;
+    try {
+        const cw = Number(ch.candleWidth);
+        // Pixels per bar is a zoom level, not a position — index-independent,
+        // so it survives a bar reload where an offsetX would not.
+        if (Number.isFinite(cw) && cw > 0) patch.candleWidth = cw;
+        const ps = ch.priceScale;
+        if (!ps) return;
+        const mode = ps.mode != null ? String(ps.mode).toLowerCase() : null;
+        if (mode === "log" || mode === "linear") patch.priceScaleMode = mode;
+        if (typeof ps.autoScale === "boolean") {
+            patch.priceScaleAuto = ps.autoScale;
+            if (ps.autoScale === false) {
+                const mn = Number(ps.min);
+                const mx = Number(ps.max);
+                if (Number.isFinite(mn) && Number.isFinite(mx) && mx > mn) {
+                    patch.priceScaleMin = mn;
+                    patch.priceScaleMax = mx;
+                }
+            }
+        }
+    } catch (_) { /* ignore */ }
+}
+
+/** Assemble one tile's persistable slice. Returns null when there is nothing yet. */
+function capturePanelStateSnapshot(mgr, panelId) {
+    const patch = {};
+    try {
+        const entry = mgr && mgr.charts && typeof mgr.charts.get === "function"
+            ? mgr.charts.get(panelId)
+            : null;
+        if (panelId === HOST_PANEL_ID) {
+            const ch = typeof window !== "undefined" ? window.chart : null;
+            if (ch) {
+                if (ch.currentFileId != null) patch.fileId = ch.currentFileId;
+                if (ch.currentSymbol != null) patch.symbol = ch.currentSymbol;
+                if (ch.currentTimeframe != null) patch.timeframe = ch.currentTimeframe;
+                if (ch.chartSettings && ch.chartSettings.chartType) {
+                    patch.chartType = ch.chartSettings.chartType;
+                }
+            }
+        } else {
+            const st = entry && entry.state;
+            if (st) {
+                if (st.fileId != null) patch.fileId = st.fileId;
+                if (st.symbol != null) patch.symbol = st.symbol;
+                if (st.timeframe != null) patch.timeframe = st.timeframe;
+                if (st.chartType != null) patch.chartType = st.chartType;
+            }
+        }
+        // Viewport travels as a market-time window for every tile: the manager
+        // caches it from scroll-sync in seconds already, and a restored bar
+        // index would land in the wrong place once bars reload (DEF-04).
+        const st = entry && entry.state;
+        if (st) {
+            const s = Number(st.visibleStartSec);
+            const e = Number(st.visibleEndSec);
+            if (Number.isFinite(s) && Number.isFinite(e) && e > s) {
+                patch.viewStartSec = s;
+                patch.viewEndSec = e;
+            }
+        }
+        capturePanelZoomAndScale(patch, liveChartForPanel(mgr, panelId));
+    } catch (_) {
+        return null;
+    }
+    return Object.keys(patch).length > 0 ? patch : null;
+}
+
+const panelStateWriteTimers = Object.create(null);
+const panelStateLastKey = Object.create(null);
+const PANEL_STATE_WRITE_DEBOUNCE_MS = 700;
+
+/**
+ * Persist a tile's slice, coalesced. Scroll sync reports per frame and a
+ * storage write per frame is a soak-visible regression, so writes are
+ * debounced and skipped entirely when nothing changed.
+ */
+function schedulePanelStatePersist(mgr, panelId, { immediate = false } = {}) {
+    if (!panelStatePersistV1Enabled()) return;
+    const pid = panelId != null ? String(panelId) : "";
+    if (!pid) return;
+    const run = () => {
+        delete panelStateWriteTimers[pid];
+        const patch = capturePanelStateSnapshot(mgr, pid);
+        if (!patch) return;
+        let key = "";
+        try { key = JSON.stringify(patch); } catch (_) { return; }
+        if (panelStateLastKey[pid] === key) return;
+        panelStateLastKey[pid] = key;
+        try { savePanelState(pid, patch, panelStateSessionId()); } catch (_) { /* ignore */ }
+    };
+    if (immediate) {
+        if (panelStateWriteTimers[pid]) {
+            clearTimeout(panelStateWriteTimers[pid]);
+            delete panelStateWriteTimers[pid];
+        }
+        run();
+        return;
+    }
+    if (panelStateWriteTimers[pid]) return; // trailing edge already armed
+    panelStateWriteTimers[pid] = setTimeout(run, PANEL_STATE_WRITE_DEBOUNCE_MS);
+}
+
+/** Unmount must not leave a pending write holding a dead manager. */
+function cancelPanelStatePersistTimers() {
+    Object.keys(panelStateWriteTimers).forEach((pid) => {
+        try { clearTimeout(panelStateWriteTimers[pid]); } catch (_) {}
+        delete panelStateWriteTimers[pid];
+    });
+    Object.keys(panelStateLastKey).forEach((pid) => { delete panelStateLastKey[pid]; });
+}
+
 /** Boot iframe tiles on their last independent pair (else host/fallback fileId). */
 function resolveBootFileIdForPanel(panelId, fallbackFileId) {
     const fb = fallbackFileId != null ? String(fallbackFileId).trim() : "";
@@ -196,6 +355,27 @@ function resolveBootFileIdForPanel(panelId, fallbackFileId) {
         const map = readPersistedPanelFileMap();
         const saved = map[panelId] != null ? String(map[panelId]).trim() : "";
         if (saved) return saved;
+    } catch (_) { /* ignore */ }
+    // The sessionStorage map above dies with the tab; the panel-state blob
+    // survives it, so it is the second source rather than a competing one.
+    if (panelStatePersistV1Enabled()) {
+        try {
+            const stored = loadPanelState(panelId, panelStateSessionId());
+            const fid = stored && stored.fileId != null ? String(stored.fileId).trim() : "";
+            if (fid) return fid;
+        } catch (_) { /* ignore */ }
+    }
+    return fb || null;
+}
+
+/** Last timeframe this tile was on, for boot. Null when nothing is stored. */
+function resolveBootTimeframeForPanel(panelId, fallbackTf) {
+    const fb = fallbackTf != null ? String(fallbackTf).trim() : "";
+    if (!panelStatePersistV1Enabled()) return fb || null;
+    try {
+        const stored = loadPanelState(panelId, panelStateSessionId());
+        const tf = stored && stored.timeframe != null ? String(stored.timeframe).trim() : "";
+        if (tf) return tf;
     } catch (_) { /* ignore */ }
     return fb || null;
 }
@@ -3013,6 +3193,11 @@ export default function MultichartGrid({
             hostViewportFrozenRef.current = true;
             syncHostViewportFrozenFlag(true);
         }
+        // Slot letters are positional and get recycled, so a shrunk layout must
+        // not leave D's state waiting to be inherited by a future, unrelated D.
+        if (panelStatePersistV1Enabled()) {
+            try { prunePanelStates(layout.tiles.map((t) => t.id)); } catch (_) {}
+        }
 
         // ─── Serialized panel boot (host-paint-first) ─────────────────────
         // Pre-Phase-6 mitigation for "chart A builds candle-by-candle when I
@@ -3059,6 +3244,7 @@ export default function MultichartGrid({
             // drop poisoned persist + in-memory prime marks and boot the host
             // pair — do not trust resolveBootFileIdForPanel for retired ids.
             let bootFileId = resolveBootFileIdForPanel(tile.id, effFile);
+            let bootTf = resolveBootTimeframeForPanel(tile.id, effTf);
             if (retiredPanelIdsRef.current.has(tile.id)) {
                 try { clearPersistedPanelFileId(tile.id); } catch (_) {}
                 try { hostSyncedPanelsRef.current.delete(tile.id); } catch (_) {}
@@ -3067,6 +3253,8 @@ export default function MultichartGrid({
                 try { clonedPanelsRef.current.delete(tile.id); } catch (_) {}
                 bumpPanelLoadGeneration(tile.id);
                 bootFileId = effFile;
+                // A retired id's stored slice is as poisoned as its file pair.
+                bootTf = effTf;
                 retiredPanelIdsRef.current.delete(tile.id);
                 try {
                     console.warn(
@@ -3079,7 +3267,7 @@ export default function MultichartGrid({
             }
             const cfg = {
                 id:        tile.id,
-                tf:        effTf,
+                tf:        bootTf || effTf,
                 fileId:    bootFileId,
                 sessionId: sessId,
                 mode:      effMode,
@@ -4993,9 +5181,39 @@ export default function MultichartGrid({
         } catch (_) {}
     }
 
+    // A pending panel-state write must not outlive the grid that armed it.
+    useEffect(() => () => { cancelPanelStatePersistTimers(); }, []);
+
+    // Restore each tile's stored chart type once its bridge is up. Chart type is
+    // not carried in the boot URL, and the engine's own `chartSettings` is a
+    // single shared key every panel writes, so the last panel to change type
+    // would otherwise decide the type for all of them on the next boot.
+    const chartTypeRestoredRef = useRef(new Set());
+    useEffect(() => {
+        if (!panelStatePersistV1Enabled()) return;
+        const mgr = managerRef.current;
+        if (!mgr || typeof mgr.sendCommand !== "function") return;
+        const sid = panelStateSessionId();
+        readyPanels.forEach((pid) => {
+            if (!pid || pid === HOST_PANEL_ID) return;
+            if (chartTypeRestoredRef.current.has(pid)) return;
+            let stored = null;
+            try { stored = loadPanelState(pid, sid); } catch (_) { return; }
+            const ct = stored && stored.chartType ? String(stored.chartType) : "";
+            if (!ct) return;
+            chartTypeRestoredRef.current.add(pid);
+            try {
+                mgr.sendCommand(pid, "setChartType", { chartType: ct }).catch(() => {});
+            } catch (_) { /* ignore */ }
+        });
+    }, [readyPanels]);
+
     // Fire when the focused id changes.
     useEffect(() => {
         if (!focusedPanelId) return;
+        if (panelStatePersistV1Enabled()) {
+            try { saveFocusedPanelId(focusedPanelId, panelStateSessionId()); } catch (_) {}
+        }
         // Defer one tick: when the user just clicked an iframe, the
         // panel-focus message arrives in the same task as the iframe's
         // chart event handler, which may then post a fresh chart-state
@@ -5106,6 +5324,11 @@ export default function MultichartGrid({
     //       (effect above); iframe tf/fileId arrive via sync-bridge
     //       `chart-state` postMessage.
     onStateAnyRef.current = (id, state) => {
+        // TAL-01865: capture this tile's identity + configuration before the
+        // host-echo return below, which skips tile A entirely — the host's own
+        // symbol and timeframe have to persist too.
+        schedulePanelStatePersist(managerRef.current, id);
+
         // Hide the tile loading overlay only once bars exist AND the iframe's
         // viewport settle window has elapsed — bridge-ready fires before
         // loadFileData finishes (empty-chart flash), and "first bars" fires
