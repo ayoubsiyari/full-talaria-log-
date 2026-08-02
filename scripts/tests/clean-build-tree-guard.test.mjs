@@ -87,6 +87,47 @@ test('CLEANTREE: build outputs do not count as inputs', () => {
   assert.equal(assertCleanBuildInputs({ raw, env: {} }).clean, true);
 });
 
+test('CLEANTREE: the served mirror is a build OUTPUT and must stay ungoverned', () => {
+  // Reasoning recorded because the scope looks wrong until you check it, and
+  // "fixing" it would refuse on ~109 untracked files and block a cut.
+  //
+  // `homepage/public/chart/` is written BY the build: sync-v9-to-homepage.mjs
+  // copies dist-v9, chart.js, compare-overlay.js, modules, vendor and fonts
+  // into it from `chart v 1.4/`. Governing an output means refusing on files
+  // the build itself is about to overwrite. The provenance hazard lives in the
+  // INPUTS — the tree the bundle is compiled from — which is why the roots are
+  // the three under `chart v 1.4/` and not the served copy.
+  for (const p of [
+    'homepage/public/chart/chart.js',
+    'homepage/public/chart/sw.js',
+    'homepage/public/chart/modules/compare-overlay.js',
+    'homepage/public/chart/dist-v9/assets/index.js',
+  ]) {
+    assert.equal(isBuildInput(p), false, `${p} is a build output and must not be governed`);
+  }
+
+  // The inputs those outputs are generated FROM must be governed, or the guard
+  // is watching nothing. This is the arm that makes the exclusion safe.
+  for (const p of [
+    'chart v 1.4/chart/chart.js',
+    'chart v 1.4/chart/modules/compare-overlay.js',
+    'chart v 1.4/talaria-design/src/MultichartGrid.jsx',
+  ]) {
+    assert.equal(isBuildInput(p), true, `${p} is a build input and must be governed`);
+  }
+
+  const syncSrc = fs.readFileSync(
+    path.join(REPO, 'chart v 1.4/talaria-design/scripts/sync-v9-to-homepage.mjs'),
+    'utf8',
+  );
+  assert.match(
+    syncSrc,
+    /homepage\/public\/chart/,
+    'ANCHOR_BROKEN: sync no longer writes the served mirror — if the mirror stopped being '
+    + 'generated it would become a hand-maintained input and would need governing',
+  );
+});
+
 test('CLEANTREE: every governed root is actually governed', () => {
   // Anti-vacuity: the roots list must not silently shrink to nothing.
   assert.ok(BUILD_INPUT_ROOTS.length >= 3);
@@ -95,7 +136,12 @@ test('CLEANTREE: every governed root is actually governed', () => {
   }
 });
 
-test('CLEANTREE: engine source and its served mirror both count', () => {
+// Renamed: this was "engine source and its served mirror both count", which
+// names a mirror it never tests. The served mirror is a build OUTPUT and is
+// deliberately ungoverned — see the dedicated cell above. The old name cost me
+// several minutes reading the scope backwards, and would have cost the next
+// person the same on seal night.
+test('CLEANTREE: engine, its modules and the shell source all count; tooling and boards do not', () => {
   assert.equal(isBuildInput('chart v 1.4/chart/modules/replay-system.js'), true);
   assert.equal(isBuildInput('chart v 1.4/chart/chart.js'), true);
   assert.equal(isBuildInput('chart v 1.4/talaria-design/src/MultichartGrid.jsx'), true);
