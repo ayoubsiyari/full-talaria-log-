@@ -115,6 +115,7 @@ function makeOm() {
   });
   om._orderLevelLabelFontFamily = () => 'Inter, sans-serif';
   om._orderLevelDetailColor = () => '#22c55e';
+  om.getMarketConfig = () => ({ positionLabel: 'Lots' });
   return om;
 }
 
@@ -169,6 +170,54 @@ function makeOm() {
 
 {
   const om = makeOm();
+  const group = new FakeSelection(new FakeNode('g'));
+  const stopDims = om._buildOrderLevelToastLabelInGroup(group, {
+    tagText: 'STOP BUY 1 Lots',
+    detailText: '+$10.00 (1 Lots)',
+    detailColor: '#22c55e',
+    accent: '#22c55e',
+    isPreview: true,
+  });
+  const limitDims = om._buildOrderLevelToastLabelInGroup(group, {
+    tagText: 'LIMIT SELL 100 Lots',
+    detailText: '-$999.99 (100 Lots)',
+    detailColor: '#ef4444',
+    accent: '#ef4444',
+    isPreview: true,
+  });
+  assert.equal(stopDims.width, limitDims.width, 'toast shell width is fixed across stop/limit content changes');
+  assert.equal(stopDims.height, limitDims.height, 'toast shell height is fixed across content changes');
+  assert.equal(
+    group.select('.order-level-toast-label').select('.order-level-toast-detail').attr('x'),
+    '139',
+    'detail column does not move with tag text width',
+  );
+}
+
+{
+  const om = makeOm();
+  om.orderType = 'limit';
+  om.orderSide = 'BUY';
+  global.window = {};
+  global.document = {
+    getElementById: (id) => {
+      if (id === 'orderQuantity') return { value: '1' };
+      if (id === 'orderEntryPrice') return { value: '100' };
+      return null;
+    },
+  };
+  const entrySegs = om.composePreviewLabelSegments('Entry', 100, '#2962ff', 'BUY');
+  assert.equal(entrySegs[0].text, 'LIMIT BUY 1 Lots', 'entry size includes unit');
+  om._getReferenceEntryForOrderMath = () => 100;
+  om.estimatePnLForPriceLevel = () => 12.34;
+  const info = om._formatTpSlInfoText('TP', 101);
+  assert.equal(info, '+$12.34 (1 Lots)', 'TP/SL detail uses consistent brackets and size unit');
+  delete global.document;
+  delete global.window;
+}
+
+{
+  const om = makeOm();
   let rafCalls = 0;
   global.requestAnimationFrame = (fn) => { rafCalls += 1; fn(); return rafCalls; };
   const badge = new FakeNode('g');
@@ -193,6 +242,22 @@ function makeOm() {
   assert.equal(badge.bboxCount, 1, 'stable path avoids the old extra forced layout read per badge');
   assert.equal(rafCalls, 1, 'transitions restore once as a batch');
   delete global.requestAnimationFrame;
+}
+
+{
+  const om = makeOm();
+  om.isDraggingPreviewLine = true;
+  const badge = new FakeNode('g');
+  badge.setAttribute('class', 'om-level-ctrl om-ctrl-hover');
+  badge.styles.opacity = '1';
+  badge.styles.pointerEvents = 'all';
+  const groupNode = new FakeNode('g');
+  groupNode.children.push(badge);
+  badge.parent = groupNode;
+  om._applyImmediateLevelCtrlHoverForGroup(groupNode, {});
+  assert.equal(badge.styles.opacity, '0', 'dragging hides hover controls');
+  assert.equal(badge.styles.pointerEvents, 'none', 'drag-hidden controls cannot be clicked');
+  assert.equal(badge.classList.contains('om-ctrl-hover'), false, 'dragging clears active hover state');
 }
 
 console.log('GREEN - stable preview labels and hover controls update without rebuild shimmer');
