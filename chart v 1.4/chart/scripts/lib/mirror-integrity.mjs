@@ -30,11 +30,24 @@ import path from 'node:path';
 import os from 'node:os';
 import { execFileSync } from 'node:child_process';
 
-/** Canonical first. The canonical mirror is required; others are checked when present. */
-export const MIRRORS = [
-  { name: 'canonical', root: 'chart v 1.4/chart', required: true },
-  { name: 'homepage', root: 'homepage/public/chart', required: false },
-];
+/**
+ * The canonical mirror is required; the homepage mirror is checked when present.
+ *
+ * Two layouts must both work. From the repo root the mirrors sit at their usual paths. Inside the
+ * checkpoint image the build runs `node /build/chart/scripts/bump-chart-engine-build.mjs`, so the
+ * working root IS the canonical mirror and the homepage tree is not in the context at all. A gate that
+ * only understood the first layout would throw inside the very build it is meant to protect.
+ */
+export function resolveMirrors(repoRoot) {
+  const looksLikeChartTree = (d) => fs.existsSync(path.join(d, 'chart.js')) && fs.existsSync(path.join(d, 'modules'));
+  const out = [];
+  const canonicalAtRepo = path.join(repoRoot, 'chart v 1.4/chart');
+  if (fs.existsSync(canonicalAtRepo)) out.push({ name: 'canonical', root: 'chart v 1.4/chart', required: true });
+  else if (looksLikeChartTree(repoRoot)) out.push({ name: 'canonical', root: '.', required: true });
+  else out.push({ name: 'canonical', root: 'chart v 1.4/chart', required: true });   // absent: reported as missing
+  if (fs.existsSync(path.join(repoRoot, 'homepage/public/chart'))) out.push({ name: 'homepage', root: 'homepage/public/chart', required: false });
+  return out;
+}
 
 /**
  * Everything the browser actually loads. Not just the seven critical-path files: B found NINE chopped,
@@ -96,11 +109,18 @@ function firstErrorLine(stderr) {
 
 const countLines = (buf) => { let n = 0; for (let i = 0; i < buf.length; i++) if (buf[i] === 10) n++; return n + (buf.length && buf[buf.length - 1] !== 10 ? 1 : 0); };
 
-/** The committed state of a path, or null when git is unavailable or the path is not tracked. */
-export function headBaseline(repoRoot, relPath) {
+/**
+ * The committed state of a file, or null when git is unavailable or the path is untracked.
+ *
+ * Resolved RELATIVE TO THE FILE rather than by building a repo-relative path, because the gate runs
+ * under two layouts. Asking for `HEAD:chart.js` from the repo root finds nothing when the file actually
+ * lives at `chart v 1.4/chart/chart.js`, and the size net would then vanish silently while the gate
+ * still printed PASSED - protection that is absent but looks present, which is worse than none.
+ */
+export function headBaseline(fileAbsPath) {
   try {
-    const buf = execFileSync('git', ['show', `HEAD:${relPath.replace(/\\/g, '/')}`], {
-      cwd: repoRoot, maxBuffer: 64 * 1024 * 1024, stdio: ['ignore', 'pipe', 'ignore'],
+    const buf = execFileSync('git', ['show', `HEAD:./${path.basename(fileAbsPath)}`], {
+      cwd: path.dirname(fileAbsPath), maxBuffer: 64 * 1024 * 1024, stdio: ['ignore', 'pipe', 'ignore'],
     });
     return { bytes: buf.length, lines: countLines(buf) };
   } catch {
@@ -118,7 +138,8 @@ export function enumerateFiles(repoRoot, mirrorRoot) {
       if (!s.pattern.test(n)) continue;
       const abs = path.join(dir, n);
       try { if (!fs.statSync(abs).isFile()) continue; } catch { continue; }
-      out.push({ abs, rel: path.posix.join(mirrorRoot, s.dir === '.' ? '' : s.dir, n).replace(/\/+/g, '/') });
+      const relInMirror = path.posix.join(s.dir === '.' ? '' : s.dir, n).replace(/^\/+/, '');
+      out.push({ abs, relInMirror, rel: path.posix.join(mirrorRoot === '.' ? '' : mirrorRoot, relInMirror).replace(/^\/+/, '') });
     }
   }
   return out.sort((a, b) => a.rel.localeCompare(b.rel));
@@ -132,7 +153,7 @@ export function checkMirrors({ repoRoot, baselineManifest = null, log = () => {}
   const reasons = [];
   const perMirror = {};
 
-  for (const m of MIRRORS) {
+  for (const m of resolveMirrors(repoRoot)) {
     const root = path.join(repoRoot, m.root);
     if (!fs.existsSync(root)) {
       if (m.required) reasons.push(`the ${m.name} mirror is missing entirely at ${m.root} — refusing to cut against a tree that is not there`);
@@ -147,7 +168,7 @@ export function checkMirrors({ repoRoot, baselineManifest = null, log = () => {}
     log(`${m.name}: ${files.length} files`);
 
     for (const f of files) {
-      const check = { mirror: m.name, path: f.rel };
+      const check = { mirror: m.name, path: f.rel, relInMirror: f.relInMirror };
       let buf;
       try { buf = fs.readFileSync(f.abs); } catch (err) {
         check.readFailed = String(err).slice(0, 120);
@@ -173,8 +194,9 @@ export function checkMirrors({ repoRoot, baselineManifest = null, log = () => {}
         checks.push(check); continue;
       }
 
-      const base = headBaseline(repoRoot, f.rel) || (baselineManifest && baselineManifest[f.rel]) || null;
-      check.baseline = base ? { lines: base.lines, bytes: base.bytes, source: headBaseline(repoRoot, f.rel) ? 'git HEAD' : 'manifest' } : null;
+      const fromGit = headBaseline(f.abs);
+      const base = fromGit || (baselineManifest && baselineManifest[f.rel]) || null;
+      check.baseline = base ? { lines: base.lines, bytes: base.bytes, source: fromGit ? 'git HEAD' : 'manifest' } : null;
       if (base && base.lines > 0) {
         const ratio = check.lines / base.lines;
         check.lineRatioVsBaseline = +ratio.toFixed(4);
@@ -192,22 +214,22 @@ export function checkMirrors({ repoRoot, baselineManifest = null, log = () => {}
   }
 
   // Parity, kept because it catches a one-sided truncation BEFORE the sync copies it over the good side.
-  const canonical = new Map(checks.filter((c) => c.mirror === 'canonical').map((c) => [c.path.replace(/^chart v 1\.4\/chart\//, ''), c]));
+  const canonical = new Map(checks.filter((c) => c.mirror === 'canonical').map((c) => [c.relInMirror, c]));
   const homepage = checks.filter((c) => c.mirror === 'homepage');
   let comparedPairs = 0;
   const divergent = [];
   for (const h of homepage) {
-    const key = h.path.replace(/^homepage\/public\/chart\//, '');
-    const c = canonical.get(key);
+    const c = canonical.get(h.relInMirror);
     if (!c || c.bytes == null || h.bytes == null) continue;
     comparedPairs += 1;
-    if (c.bytes !== h.bytes) divergent.push({ file: key, canonicalBytes: c.bytes, homepageBytes: h.bytes });
+    if (c.bytes !== h.bytes) divergent.push({ file: h.relInMirror, canonicalBytes: c.bytes, homepageBytes: h.bytes });
   }
 
   const totalFiles = checks.length;
   const parseFailures = checks.filter((c) => c.parses === false).length;
   const shrunk = checks.filter((c) => c.blocked === 'shrank against its committed state').length;
   const empty = checks.filter((c) => c.blocked === 'empty file').length;
+  const withBaseline = checks.filter((c) => c.baseline).length;
 
   if (totalFiles === 0) reasons.push('ZERO files were checked — the gate found nothing to inspect and must block rather than report a pass');
 
@@ -229,6 +251,18 @@ export function checkMirrors({ repoRoot, baselineManifest = null, log = () => {}
       },
       baselineSource: checks.find((c) => c.baseline)?.baseline?.source ?? 'none available',
       filesWithoutBaseline: checks.filter((c) => c.baselineMissing).length,
+      /**
+       * Which of the two nets is actually live. Inside a build image there may be no git history, in
+       * which case the size comparison has nothing to compare against and only the parse net runs. That
+       * is a real reduction in cover and it must be VISIBLE: an instrument has to state the fraction of
+       * the system it can see, or a green result will be read as more protection than it is.
+       */
+      parseNetActive: totalFiles > 0,
+      sizeNetActive: withBaseline > 0,
+      sizeNetCoverage: totalFiles > 0 ? `${withBaseline}/${totalFiles} files have a committed baseline` : 'none',
+      degraded: totalFiles > 0 && withBaseline === 0
+        ? 'NO committed baseline was available for any file, so a truncation that still parses would NOT be caught. Only the parse net ran.'
+        : null,
     },
   };
 }

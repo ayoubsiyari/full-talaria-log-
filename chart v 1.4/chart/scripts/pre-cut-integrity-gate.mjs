@@ -15,7 +15,9 @@ import { checkMirrors } from './lib/mirror-integrity.mjs';
 
 const here = path.dirname(url.fileURLToPath(import.meta.url));
 const argOf = (n, d) => { const p = process.argv.find((a) => a.startsWith(`--${n}=`)); return p ? p.split('=').slice(1).join('=') : d; };
-const REPO = path.resolve(argOf('repo', path.join(here, '..')));
+// Default to the repo root when this lives in the chart tree, so a bare run still sees both mirrors.
+const DEFAULT_REPO = fs.existsSync(path.resolve(here, '../../../homepage/public/chart')) ? path.resolve(here, '../../..') : path.resolve(here, '..');
+const REPO = path.resolve(argOf('repo', DEFAULT_REPO));
 const EV = argOf('evidence', 'c:\\Users\\user\\Desktop\\talaria1\\_evidence\\manager-C');
 const QUIET = process.argv.includes('--quiet');
 

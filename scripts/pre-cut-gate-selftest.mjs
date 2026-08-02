@@ -14,7 +14,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { execFileSync } from 'node:child_process';
-import { checkMirrors, parseCheck } from './lib/mirror-integrity.mjs';
+import { checkMirrors, parseCheck } from '../chart v 1.4/chart/scripts/lib/mirror-integrity.mjs';
 
 const EV = 'c:\\Users\\user\\Desktop\\talaria1\\_evidence\\manager-C';
 const results = [];
@@ -139,8 +139,10 @@ const CANON = (r, ...p) => path.join(r, 'chart v 1.4', 'chart', ...p);
 {
   const r = makeTree();
   const f = CANON(r, 'chart.js');
-  const lines = fs.readFileSync(f, 'utf8').split('\n');
-  fs.writeFileSync(f, lines.slice(0, Math.floor(lines.length * 0.90)).join('\n') + '\n}\n');  // a 10% deletion
+  // A deletion of WHOLE functions, so the file still parses. Chopping at an arbitrary line and pasting a
+  // brace on the end produces a syntax error, which would re-test the parse net and leave the size net
+  // for ordinary edits unexercised - the case that decides whether this gate survives its first week.
+  fs.writeFileSync(f, bigScript(360));   // 400 -> 360 functions, a clean 10% deletion
   const res = checkMirrors({ repoRoot: r });
   const c = res.checks.find((x) => /chart v 1\.4\/chart\/chart\.js$/.test(x.path));
   check('a 10% deletion does not block but is WARNED', !res.blocked && !!c?.warn, c?.warn || (res.blocked ? `blocked: ${res.reasons[0]}` : 'no warning recorded'));
@@ -154,14 +156,14 @@ const CANON = (r, ...p) => path.join(r, 'chart v 1.4', 'chart', ...p);
   fs.writeFileSync(CANON(r, 'chart.js'), buf.subarray(0, Math.floor(buf.length * 0.25)));
   let code = 0;
   try {
-    execFileSync(process.execPath, [path.join(process.cwd(), 'scripts', 'pre-cut-integrity-gate.mjs'), `--repo=${r}`, `--evidence=${path.join(r, 'ev')}`, '--quiet'], { stdio: ['ignore', 'pipe', 'pipe'] });
+    execFileSync(process.execPath, [path.join(process.cwd(), 'chart v 1.4', 'chart', 'scripts', 'pre-cut-integrity-gate.mjs'), `--repo=${r}`, `--evidence=${path.join(r, 'ev')}`, '--quiet'], { stdio: ['ignore', 'pipe', 'pipe'] });
   } catch (err) { code = err.status; }
   check('the CLI EXITS 1 on a corrupt tree (blocks, does not merely report)', code === 1, `exit ${code}`);
 
   const r2 = makeTree();
   let code2 = 1;
   try {
-    execFileSync(process.execPath, [path.join(process.cwd(), 'scripts', 'pre-cut-integrity-gate.mjs'), `--repo=${r2}`, `--evidence=${path.join(r2, 'ev')}`, '--quiet'], { stdio: ['ignore', 'pipe', 'pipe'] });
+    execFileSync(process.execPath, [path.join(process.cwd(), 'chart v 1.4', 'chart', 'scripts', 'pre-cut-integrity-gate.mjs'), `--repo=${r2}`, `--evidence=${path.join(r2, 'ev')}`, '--quiet'], { stdio: ['ignore', 'pipe', 'pipe'] });
     code2 = 0;
   } catch (err) { code2 = err.status; }
   check('the CLI EXITS 0 on an intact tree', code2 === 0, `exit ${code2}`);

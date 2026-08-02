@@ -39,6 +39,7 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { spawnSync } from 'child_process';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
@@ -64,6 +65,54 @@ function incrementBuildId(id) {
 
 const DRY_RUN = process.argv.includes('--dry-run');
 
+/**
+ * PRE-CUT INTEGRITY GATE. Runs before anything is written, including under --dry-run.
+ *
+ * Truncation hit two worktrees in one day: A lost both mirrors, and B found nine files chopped at
+ * ~521 KB with chart.js at 10,398 lines. Both were caught by hand. What we cannot survive is shipping
+ * it, because a ten-hour soak against corrupt bytes does not read as a fault - it reads as a product
+ * verdict, and the wrong thing gets fixed.
+ *
+ * The existing layout assert compares the two mirrors byte-for-byte, but it runs AFTER
+ * build:live:chart, which syncs canonical onto homepage. A truncated canonical is copied over the good
+ * mirror and the two agree perfectly, so parity reports green on exactly this case. This gate is
+ * absolute rather than relative: every script the browser loads must parse, and none may have lost a
+ * quarter of its lines against its own committed state.
+ *
+ * It BLOCKS. A gate that reports and proceeds is a log line.
+ */
+function preCutIntegrityGate() {
+    if (process.env.SKIP_PRECUT_INTEGRITY === '1') {
+        console.warn('[bump-chart-engine-build] PRE-CUT INTEGRITY GATE SKIPPED by SKIP_PRECUT_INTEGRITY=1.');
+        console.warn('[bump-chart-engine-build] This build is NOT covered against truncation. Do not soak against it.');
+        return;
+    }
+    const gate = path.join(__dirname, 'pre-cut-integrity-gate.mjs');
+    // From the repo the homepage mirror is two levels up and both mirrors get checked. Inside the
+    // checkpoint image only the chart tree is present, so the canonical mirror is the root itself and
+    // the gate reports the homepage mirror as simply absent rather than failing on it.
+    const repoRoot = fs.existsSync(path.resolve(ROOT, '../../homepage/public/chart'))
+        ? path.resolve(ROOT, '../..')
+        : ROOT;
+    // Fail closed. A gate that is absent has not passed, and the whole reason it exists is that a
+    // missing check is indistinguishable from a passing one once the artifact ships.
+    if (!fs.existsSync(gate)) {
+        console.error('[bump-chart-engine-build] Pre-cut integrity gate is MISSING at', gate);
+        console.error('[bump-chart-engine-build] Refusing to cut: an absent gate has not passed.');
+        process.exit(1);
+    }
+    const res = spawnSync(process.execPath, [gate, `--repo=${repoRoot}`], { stdio: 'inherit' });
+    if (res.error) {
+        console.error('[bump-chart-engine-build] Pre-cut integrity gate could not run:', res.error.message);
+        process.exit(1);
+    }
+    if (res.status !== 0) {
+        console.error(`[bump-chart-engine-build] Pre-cut integrity gate BLOCKED the cut (exit ${res.status}).`);
+        console.error('[bump-chart-engine-build] The tree is not fit to build. Restore the affected files first.');
+        process.exit(1);
+    }
+}
+
 function main() {
     if (!fs.existsSync(CHART_JS)) {
         console.error('[bump-chart-engine-build] Missing chart.js');
@@ -76,6 +125,8 @@ function main() {
         console.error('[bump-chart-engine-build] CHART_ENGINE_BUILD not found in chart.js');
         process.exit(1);
     }
+
+    preCutIntegrityGate();
 
     if (DRY_RUN) console.log('[bump-chart-engine-build] --dry-run: no file will be written');
 
