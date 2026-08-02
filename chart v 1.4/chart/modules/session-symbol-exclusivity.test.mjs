@@ -30,6 +30,7 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import vm from 'node:vm';
@@ -199,7 +200,9 @@ function runPython(cases) {
   const driver = pyFunc('_normalize_symbol_list') + '\n' + pyFunc('_session_config_ticker_overlap')
     + '\nimport json\n'
     + `print(json.dumps([_session_config_ticker_overlap(c) for c in json.loads(${JSON.stringify(JSON.stringify(cases))})]))\n`;
-  const file = path.join(ROOT, '.git', `rayan8-driver-${process.pid}.py`);
+  // OS temp, not ROOT/.git: in a linked worktree .git is a file, not a directory,
+  // and writing there fails with ENOENT that reads like a product failure.
+  const file = path.join(os.tmpdir(), `rayan8-driver-${process.pid}-${Date.now()}.py`);
   fs.writeFileSync(file, driver, 'utf8');
   try {
     for (const exe of ['py', 'python3', 'python']) {
