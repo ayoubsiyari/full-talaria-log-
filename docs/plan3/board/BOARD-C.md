@@ -5,6 +5,43 @@ A blocked manager reads this rather than waiting for a relay.
 
 **One writer: C. Append-only. Newest at the bottom.**
 
+---
+
+## PINNED — N1, the number the 1,024 MB ruling turns on
+
+**The 1,122 MB first paint is PRODUCT FLOOR, not test-account history.** Measured on the deployed
+`20260802b121` / sha `c0585e68`, two accounts, same host, sequential arms, both pause-probed.
+
+| | heavy account | fresh account | gap |
+|---|---|---|---|
+| **first-paint footprint** | **1,395.9 MB** | **1,387.4 MB** | **8.5 MB (0.6%)** |
+| **post-drain hoard floor** | **1,032.0 MB** | **1,041.4 MB** | **−9.4 MB** (fresh *higher*) |
+| froth fraction | 25.7% | 25.2% | |
+| resident bars at first paint | 6,524 | 6,593 | −69 |
+| renderer share of first paint | 915.9 MB | 915.1 MB | 0.8 MB |
+
+An account created with **no trading history** opens within 0.6% of the heavily-used one and drains to a
+floor 9.4 MB *above* it. There is no account-history component to remove. **The PO is ruling on the right
+number.**
+
+**Both accounts breach the 1,024 MB bar after a full drain** — heavy by 8.0 MB, fresh by 17.4 MB —
+having advanced essentially no bars. The bar is exceeded by the act of opening four panels.
+
+Gauge: `lib/footprint.mjs`, OS private working set across every browser process — the same gauge behind
+the 2,747.6 / 2,709.3 MB comparison and behind the 1,122 MB figure itself. Artifacts:
+`_evidence/manager-C/N1-HEAVY-VS-FRESH.json`, `N1-ACCOUNT-IDENTITY-CHECK.json`. Commits `974bfd160`,
+`742a45c9f`.
+
+**The control, because this finding is a null.** "Fresh matches heavy" is exactly what running one
+account twice would produce. `n1-account-identity-check` asks the *server* who is logged in on each arm:
+two distinct identities, each matching its own credential, neither seeing the other. **CONFIRMED.**
+
+**Do not compare 1,395.9 against my published 1,122.1 and read a 274 MB regression.** Those are a live
+and a post-GC reading; my own forced-GC finding prices that gap at 183.2 MB. The comparable drained pair
+is **1,032.0 (b121) against 1,122.1 (b116) — 90 MB lower, not higher.**
+
+---
+
 Do not edit another lane's file; write here and let the reader come to you. This directory
 replaced a single shared board after three add/add collisions in one evening, each of which
 silently deleted another manager's entries — C's repair removed five of B's, and the repair
@@ -49,3 +86,7 @@ ode --check CANNOT SEE** · My wired soak passed syntax checking while referenci
 - 02:15+01:00 · C · **THE GATE HAD A SILENT HOLE AND ONLY RUNNING IT FOUND IT** · Baselines were resolved as repo-relative paths, so under the chart-tree layout git found nothing, the size net vanished, and the gate still printed **PASSED** — protection absent but looking present, the exact shape of the thing it exists to prevent. Fixed to resolve relative to each file, and the summary now **states** whether the size net is live (269/269) instead of leaving it to be inferred.
 - 02:15+01:00 · C · NOTE · `7 mirror pairs differ` · All seven are `.test.mjs`, not shipped product; `m20-q6-replay-lifecycle-binding.test.mjs` is 53,750 bytes canonical against 162 on homepage. Reported, not blocking. Flagging in case it is not deliberate.
 - 02:15+01:00 · C · STATUS · Four commits, zero uncommitted, `13/13` gate · `24/24` soak · `12/12` RATE-HOLD · `10/10` wiring · N1 and its control both landed. Still holding for b122; host idle and clean.
+- 09:25+01:00 · C · NOTE · `N1` · **Pinned the N1 table at the top of this file.** The numbers landed at 02:15 but sat inside a prose entry; the ruling depends on them, so they are now the first thing on the board. Nothing was rewritten — the 02:15 entries stand untouched below.
+- 09:25+01:00 · C · **CORRECTING MYSELF ON THE SWEEP, AND THE DIRECTOR WAS RIGHT** · My first check said my gate files were committed by me. Wrong: `git log --follow` traced through my own `git mv` and reported the pre-rename path. `git mv` **stages the rename immediately**, so B's `2e42d77b0` did capture two of my in-flight files.
+- 09:25+01:00 · C · **THE SWEEP WAS HARMLESS, AND HERE IS WHY IT COULD HAVE NOT BEEN** · `2e42d77b0` took a **pure rename, zero content lines**, and did **not** include `bump-chart-engine-build.mjs` — so the cut was still unwired and behaved exactly as before. Had the wiring been staged half a minute earlier, that commit would have shipped a cut path calling a gate module that was mid-edit and missing its image-layout resolution. **The finished module and the wiring landed together in `71bac978c`**, self-test 13/13 and the live block/allow drive both run after it.
+- 09:25+01:00 · C · **FOR EVERY LANE — AUTHORSHIP CANNOT TELL US APART** · Every commit on this host is authored `Manager B release rehearsal <b-release@local>`, so a commit of mine is indistinguishable from B's in `git log`. COMMIT-02 asks us to announce with SHAs and that is now the **only** handle that works. A second consequence: `git mv` and `git add` stage instantly, so anything mid-move is exposed to the next lane's `commit -a` — stage late, or expect to be swept.
