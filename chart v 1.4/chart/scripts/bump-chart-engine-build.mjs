@@ -111,14 +111,32 @@ function preCutIntegrityGate() {
         console.error('[bump-chart-engine-build] Refusing to cut: an absent gate has not passed.');
         process.exit(1);
     }
-    const res = spawnSync(process.execPath, [gate, `--repo=${repoRoot}`], { stdio: 'inherit' });
+    // Captured rather than inherited so the gate's OWN verdict can be read back. A crashing
+    // gate and a blocking gate both exit 1, so exit status alone cannot tell them apart, and
+    // conflating them prints "restore the affected files" at somebody who has a perfectly
+    // healthy tree and a broken harness. That happened: a missing `scripts/lib` dependency
+    // made the gate die on import and this line sent the reader looking for damaged product
+    // files. BIND-01 — a broken anchor must report a distinct state, not borrow the red that
+    // means "the tree is bad". The cost is that gate output appears in one block at the end
+    // of the step instead of streaming; worth it to never mis-route a 03:00 diagnosis again.
+    const res = spawnSync(process.execPath, [gate, `--repo=${repoRoot}`], { encoding: 'utf8' });
+    if (res.stdout) process.stdout.write(res.stdout);
+    if (res.stderr) process.stderr.write(res.stderr);
     if (res.error) {
         console.error('[bump-chart-engine-build] Pre-cut integrity gate could not run:', res.error.message);
         process.exit(1);
     }
     if (res.status !== 0) {
-        console.error(`[bump-chart-engine-build] Pre-cut integrity gate BLOCKED the cut (exit ${res.status}).`);
-        console.error('[bump-chart-engine-build] The tree is not fit to build. Restore the affected files first.');
+        const reachedVerdict = /CUT BLOCKED/.test(`${res.stdout || ''}${res.stderr || ''}`);
+        if (reachedVerdict) {
+            console.error(`[bump-chart-engine-build] Pre-cut integrity gate BLOCKED the cut (exit ${res.status}).`);
+            console.error('[bump-chart-engine-build] The tree is not fit to build. Restore the affected files first.');
+        } else {
+            console.error(`[bump-chart-engine-build] Pre-cut integrity gate FAILED TO REACH A VERDICT (exit ${res.status}).`);
+            console.error('[bump-chart-engine-build] It never printed CUT BLOCKED or a pass, so it did not inspect the tree.');
+            console.error('[bump-chart-engine-build] This is a broken gate, NOT evidence that the product files are damaged.');
+            console.error('[bump-chart-engine-build] Check the gate and its scripts/lib dependencies before touching product.');
+        }
         process.exit(1);
     }
 }

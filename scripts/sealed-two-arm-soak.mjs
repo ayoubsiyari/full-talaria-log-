@@ -547,7 +547,16 @@ try {
       ? deliveredRate(prevRateSample, rateSample, { baseTimeframeSec: hostTfSec })
       : { ok: false, why: prevRateSample ? `host panel timeframe unreadable (${hostPanel.tf}) — bars/s has no denominator` : 'first sample' };
     prevRateSample = rateSample;
-    if (rate.ok) rateSeries.push({ hours: +((Date.now() - t0) / 3600000).toFixed(4), marketSecPerWallSec: rate.marketSecPerWallSec, barsPerSec: rate.barsPerSec, barsPerSecDenominatorSec: rate.barsPerSecDenominatorSec, speed: SPEED });
+    /**
+     * The live-panel count is computed ~40 lines below this push, so until now the RATE-HOLD series
+     * carried NO panel information and its baseline could open on samples reading livePanels=0. The
+     * entry is held here and the count is attached once measured, rather than moving the rate
+     * computation, which would change what the primary gauge measures to fix a bookkeeping order.
+     */
+    const rateEntry = rate.ok
+      ? { hours: +((Date.now() - t0) / 3600000).toFixed(4), marketSecPerWallSec: rate.marketSecPerWallSec, barsPerSec: rate.barsPerSec, barsPerSecDenominatorSec: rate.barsPerSecDenominatorSec, speed: SPEED, livePanels: null }
+      : null;
+    if (rateEntry) rateSeries.push(rateEntry);
     const rateReadback = await readEffectiveRateReadback(session.page).catch(() => ({ present: false, readError: true }));
 
     /**
@@ -587,6 +596,9 @@ try {
     prevPanels = after.map((p) => ({ id: p.id, playheadMs: p.playheadMs, replayIndex: p.replayIndex, atMs: Date.now() }));
     const livePanels = panelRates.filter((p) => Number.isFinite(p.marketSecPerWallSec) && p.marketSecPerWallSec > 0).length;
     const measurablePanels = panelRates.filter((p) => Number.isFinite(p.marketSecPerWallSec)).length;
+    // Attaches to the entry pushed above, so RATE-HOLD can refuse to anchor its reference window on
+    // samples taken before the panels were up.
+    if (rateEntry) rateEntry.livePanels = livePanels;
 
     run.append({
       segment,
