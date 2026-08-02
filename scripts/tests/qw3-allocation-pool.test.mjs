@@ -20,14 +20,14 @@ function writePacket(dir, name, { totalSampledMb, rate, sites }) {
   return file;
 }
 
-test('QW-3 pool: aggregates default scheduler and resample rows across packets', () => {
+test('QW-3 pool: aggregates default indicator-worker and resample rows across packets', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'qw3-pool-'));
   const a = writePacket(dir, 'a.json', {
     totalSampledMb: 10,
     rate: 9.8,
     sites: [
-      { site: 'PatchSchedulers @ m20-q6.js:10', mb: 2.5, pct: 25 },
-      { site: 'TrackScheduler @ m20-q6.js:11', mb: 0.5, pct: 5 },
+      { site: 'w.onmessage @ chart-indicators-full.js:10', mb: 1.5, pct: 15 },
+      { site: 'mergeIndicatorTailWindow @ indicator-performance.js:11', mb: 0.5, pct: 5 },
       { site: '_resampleDataFull @ chart.js:1', mb: 2, pct: 20 },
       { site: 'small @ chart.js:2', mb: 1, pct: 10 },
     ],
@@ -36,8 +36,8 @@ test('QW-3 pool: aggregates default scheduler and resample rows across packets',
     totalSampledMb: 20,
     rate: 10.2,
     sites: [
-      { site: 'InertableScheduledCallback @ m20-q6.js:12', mb: 6, pct: 30 },
-      { site: 'PatchTarget @ m20-q6.js:13', mb: 1, pct: 5 },
+      { site: 'w.onmessage @ chart-indicators-full.js:12', mb: 2, pct: 10 },
+      { site: 'finishWorkerPass @ chart-indicators-full.js:13', mb: 1, pct: 5 },
       { site: '_resampleDataFull @ chart.js:1', mb: 3, pct: 15 },
     ],
   });
@@ -48,11 +48,11 @@ test('QW-3 pool: aggregates default scheduler and resample rows across packets',
   assert.equal(report.totalSampledMb, 30);
   assert.equal(report.rateMean, 10);
 
-  const scheduler = report.rows.find((row) => row.label === 'M20-Q6 scheduler registry');
+  const indicatorWorker = report.rows.find((row) => row.label === 'Indicator worker result path');
   const resample = report.rows.find((row) => row.label === 'MONSTER-2 _resampleDataFull');
-  assert.equal(scheduler.pooledMb, 10);
-  assert.equal(scheduler.pooledPct, 33.33);
-  assert.equal(scheduler.runsWithMatch, 2);
+  assert.equal(indicatorWorker.pooledMb, 5);
+  assert.equal(indicatorWorker.pooledPct, 16.67);
+  assert.equal(indicatorWorker.runsWithMatch, 2);
   assert.equal(resample.pooledMb, 5);
   assert.equal(resample.pooledPct, 16.67);
 });

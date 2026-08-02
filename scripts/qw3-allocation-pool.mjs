@@ -3,9 +3,9 @@
  * QW-3 allocation pooling harness.
  *
  * Read-only: consumes A's V8 sampling allocation JSON packets and pools named
- * stack clusters across runs. Defaults to the two rows A named on BOARD-A:
- * M20-Q6 scheduler registry and MONSTER-2 / _resampleDataFull. Additional
- * top-stack rows can be supplied with:
+ * stack clusters across runs. Defaults to D's QW-3 rows from A's sealed 10 b/s
+ * packets: indicator worker result path and MONSTER-2 / _resampleDataFull.
+ * Additional top-stack rows can be supplied with:
  *   --stack="label::regex one|regex two"
  */
 import fs from 'node:fs';
@@ -16,18 +16,17 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, '..');
 
 const DEFAULT_INPUTS = [
-  'docs/plan3/evidence/speed01-allocation-10bps.json',
-  'docs/plan3/evidence/speed01-allocation-10bps-r2.json',
+  'docs/plan3/evidence/speed01-allocation-sealed-10bps-baseline.json',
+  'docs/plan3/evidence/speed01-allocation-sealed-10bps-r2.json',
 ];
 
 const DEFAULT_STACKS = [
   {
-    label: 'M20-Q6 scheduler registry',
+    label: 'Indicator worker result path',
     patterns: [
-      /PatchSchedulers/i,
-      /TrackScheduler/i,
-      /InertableScheduledCallback/i,
-      /PatchTarget/i,
+      /w\.onmessage/i,
+      /mergeIndicatorTailWindow/i,
+      /finishWorkerPass/i,
     ],
   },
   {
@@ -89,6 +88,7 @@ function readPacket(file) {
     finishedAt: packet.finishedAt || null,
     nominalBarsPerSecond: packet.nominalBarsPerSecond ?? null,
     effectiveRateMean: packet.effectiveRate?.mean ?? null,
+    replayDutyCycle: packet.replayLiveness?.dutyCycle ?? null,
     totalSampledMb: totalMb,
     topSites,
   };
@@ -122,6 +122,7 @@ export function poolAllocationPackets({ inputs = DEFAULT_INPUTS, stacks = DEFAUL
       finishedAt: p.finishedAt,
       nominalBarsPerSecond: p.nominalBarsPerSecond,
       effectiveRateMean: p.effectiveRateMean,
+      replayDutyCycle: p.replayDutyCycle,
       totalSampledMb: p.totalSampledMb,
     })),
   };
@@ -185,6 +186,8 @@ async function main() {
   }
   console.log(`QW-3 allocation pool: ${report.status}`);
   console.log(`packets=${report.packetCount} sampled=${report.totalSampledMb} MB rateMean=${report.rateMean ?? 'n/a'}`);
+  const duty = report.packets.map((p) => p.replayDutyCycle).filter((n) => Number.isFinite(Number(n)));
+  if (duty.length) console.log(`dutyCycle=${duty.map((n) => Number(n).toFixed(2)).join(',')}`);
   for (const row of report.rows) {
     console.log(`${row.pooledMb.toFixed(2).padStart(7)} MB ${String(row.pooledPct).padStart(6)}% ${row.label}`);
   }
