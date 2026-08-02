@@ -151,6 +151,8 @@
     "test:panel-state-roundtrip": "npm run preflight:panel-state-roundtrip",
     "preflight:panel-state-binding": "node --test --test-concurrency=1 \"chart v 1.4/chart/modules/panel-state-binding.test.mjs\"",
     "test:panel-state-binding": "npm run preflight:panel-state-binding",
+    "preflight:shell-play-shipped-equivalence": "node --test --test-concurrency=1 \"chart v 1.4/chart/modules/shell-play-shipped-equivalence.test.mjs\"",
+    "test:shell-play-shipped-equivalence": "npm run preflight:shell-play-shipped-equivalence",
     "preflight:generate-path-waypoints": "node --test \"chart v 1.4/chart/modules/generate-path-waypoints.test.mjs\"",
     "test:generate-path-waypoints": "npm run preflight:generate-path-waypoints",
     "preflight:order-stable-label-hover-dom": "node \"chart v 1.4/chart/modules/order-stable-label-hover-dom.test.mjs\"",
