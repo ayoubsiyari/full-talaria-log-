@@ -232,11 +232,17 @@ test('engine: the ladder constant is 1-10 in both mirrors', () => {
     }
 });
 
-test('engine: leaving tick mode moves REALISTIC onto a candle rung', () => {
+test('engine: the tick→candle demotion survives only for the switched-off path', () => {
+    // ORDER-01B removes the reason for the demotion rather than the demotion:
+    // REALISTIC is a preset on both knobs and means the same thing in either
+    // mode, so there is nothing to strand the user on. With the step knob
+    // switched off the old hazard is live again and the demotion must remain.
     for (const p of [ENGINE, ENGINE_MIRROR]) {
         const body = balanced(read(p), '    setPlaybackMode(mode, { restartPlayback = true } = {}) {');
         assert.ok(body.includes("normalizedMode === 'candle' && this.speed === SPEED_GOV_REALISTIC"),
             `tick→candle must not strand the user on REALISTIC (${p})`);
+        assert.ok(body.includes('!_order01bStepV1Enabled()'),
+            `the demotion must be scoped to the switched-off path (${p})`);
     }
 });
 

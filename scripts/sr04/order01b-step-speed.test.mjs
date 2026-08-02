@@ -65,8 +65,22 @@ const METHODS = [
     '\n    getMarketSecondsPerWallSecond() {',
     '\n    getCandlePlaybackCadence() {',
     '\n    normalizeSpeed(speed) {',
+    '\n    migrateStoredSpeed(stored) {',
     '\n    timeframeToMs(tf) {',
     '\n    _hasExplicitReplayStepInterval() {',
+    '\n    getSpeedLadderBarsPerSecond() {',
+    '\n    getTickSpeedLadder() {',
+    '\n    applyRealisticPreset() {',
+    '\n    isRealisticPresetActive() {',
+    '\n    getTargetBarsPerSecond() {',
+    '\n    getTickBarDurationMs(speed = this.speed, tfMsOverride = null) {',
+    '\n    _speedGovState() {',
+    '\n    _speedGovRecordBars(bars, now = _speedGovNow()) {',
+    '\n    _speedGovTrimWindow(now = _speedGovNow()) {',
+    '\n    getEffectiveBarsPerSecond(now = _speedGovNow()) {',
+    '\n    getEffectiveMarketSecondsPerWallSecond(now = _speedGovNow()) {',
+    '\n    _speedGovPublishEffectiveRate(now = _speedGovNow()) {',
+    '\n    _speedGovTargetRate() {',
 ];
 
 /**
@@ -84,10 +98,13 @@ function build({ mutate = (s) => s, tfSeconds = 60, rawSeconds = 60, flags = {} 
         ${src.match(/const SPEED_GOV_LADDER_BPS = Object\.freeze\(\[[^\]]*\]\);/)[0]}
         ${src.match(/const SPEED_GOV_REALISTIC = '[^']*';/)[0]}
         ${src.match(/const SPEED_GOV_MIN_INTERVAL_MS = \d+;/)[0]}
+        ${src.match(/const SPEED_GOV_TICK_TF_DIVISOR = \d+;/)[0]}
+        ${src.match(/const SPEED_GOV_RATE_WINDOW_MS = \d+;/)[0]}
         ${src.match(/const ORDER01B_STEP_CANDIDATE_SECONDS = Object\.freeze\(\[[^\]]*\]\);/)[0]}
         ${balanced(src, 'function _speedGovFlagState(')}
         ${balanced(src, 'function _speedGovV1Enabled(')}
         ${balanced(src, 'function _speedGovNearestRung(')}
+        ${balanced(src, 'function _speedGovNow(')}
         ${balanced(src, 'function _order01bStepV1Enabled(')}
         ${balanced(src, 'function _order01bStepLabel(')}
         return {
@@ -118,6 +135,12 @@ function build({ mutate = (s) => s, tfSeconds = 60, rawSeconds = 60, flags = {} 
     engine._isFinestTfCadenceSubStepActive = () => false;
     engine._finestTfCadenceSubdivisions = () => 1;
     engine._speedGovDemandBarsPerSecond = function () { return Number(this.speed) || 1; };
+    engine._mode = 'candle';
+    engine.getPlaybackMode = function () { return this._mode; };
+    // The shipped setSpeed re-arms timers and touches the toolbar. The preset's
+    // contract is which values the two knobs end up holding, so the scene keeps
+    // the normalising assignment and drops the DOM.
+    engine.setSpeed = function (speed) { this.speed = this.normalizeSpeed(speed); };
     return { engine, win: w };
 }
 
@@ -466,6 +489,153 @@ test('S8 the seconds unit reaches both mirrors', () => {
         assert.ok(/mo\|w\|d\|h\|m\|s/.test(body), `${name} cannot parse a seconds timeframe`);
         assert.ok(body.includes("case 's': return num * 1000;"), `${name} has no seconds case`);
     }
+});
+
+// ---------------------------------------------------------------------------
+// S9 — REALISTIC. Off the ladder, onto both knobs.
+// ---------------------------------------------------------------------------
+
+test('S9 the tick ladder is the same ten, with no string on it', () => {
+    const { engine } = build();
+    const tick = engine.getTickSpeedLadder();
+    assert.deepEqual(tick, engine.getSpeedLadderBarsPerSecond());
+    assert.ok(tick.every((v) => typeof v === 'number'),
+        'a rung that is not a speed forces every consumer to branch on a string');
+});
+
+test('S9 the preset is one market second per wall second', () => {
+    const { engine } = build({ tfSeconds: 60 });
+    engine.speed = 10;
+    assert.equal(engine.applyRealisticPreset(), true);
+    assert.equal(engine.getTargetStepsPerWallSecond(), 1);
+    assert.equal(engine.getStepSeconds(), 1);
+    assert.equal(engine.getMarketSecondsPerWallSecond(), 1,
+        'real time is one second of market per second of wall clock, exactly');
+    assert.equal(engine.isRealisticPresetActive(), true);
+});
+
+test('S9 the preset means the same thing on any timeframe', () => {
+    // As a ladder rung it could not: it existed only in tick mode, and leaving
+    // tick mode had to demote the user off it.
+    for (const tf of [60, 300, 3600]) {
+        const { engine } = build({ tfSeconds: tf });
+        engine.applyRealisticPreset();
+        assert.equal(engine.getMarketSecondsPerWallSecond(), 1, `${tf}s chart`);
+    }
+});
+
+test('S9 a stored REALISTIC comes back as real time, not as the number one', () => {
+    // Normalising alone would leave a returning user at one bar a second —
+    // sixty times faster on a 1m chart than the setting they chose.
+    const { engine } = build({ tfSeconds: 60 });
+    engine.speed = 10;
+    assert.equal(engine.migrateStoredSpeed('REALISTIC'), 1);
+    assert.equal(engine.getStepSeconds(), 1, 'the step is half of what REALISTIC meant');
+    assert.equal(engine.getMarketSecondsPerWallSecond(), 1);
+});
+
+test('S9 a stored numeric speed still migrates onto a rung', () => {
+    const { engine } = build({ tfSeconds: 60 });
+    for (const [stored, expected] of [[60, 10], [86400, 10], [4.4, 4], [3, 3]]) {
+        assert.equal(engine.migrateStoredSpeed(stored), expected);
+    }
+});
+
+test('S9 MUTANT: migrating REALISTIC as a bare number loses the step', () => {
+    const { engine } = build({
+        tfSeconds: 60,
+        mutate: (s) => s.replace('            this.applyRealisticPreset();\n', ''),
+    });
+    engine.migrateStoredSpeed('REALISTIC');
+    assert.equal(engine.getStepSeconds(), 60,
+        'the mutant must leave the step at one bar; if not, S9 proves nothing');
+});
+
+// ---------------------------------------------------------------------------
+// S10 — the published rate, and the unit it is in.
+// ---------------------------------------------------------------------------
+
+/** Feed the meter market seconds at a chosen wall rate. */
+function feed(engine, { amount, overMs, samples = 10, startAt = 1000 }) {
+    const per = overMs / samples;
+    for (let i = 1; i <= samples; i += 1) {
+        engine._speedGovRecordBars(amount / samples, startAt + i * per);
+    }
+    return startAt + samples * per;
+}
+
+test('S10 the published rate is market seconds per wall second', () => {
+    const { engine, win } = build({ tfSeconds: 60 });
+    engine.speed = 10;
+    // Ten steps a second of one market minute each: 600 market seconds a second.
+    const now = feed(engine, { amount: 600, overMs: 1000 });
+    engine._speedGovPublishEffectiveRate(now);
+    assert.equal(typeof win.__talariaEffectiveRate, 'number');
+    assert.ok(Math.abs(win.__talariaEffectiveRate - 600) < 30,
+        `expected ~600 market s/s, got ${win.__talariaEffectiveRate}`);
+    assert.equal(win.__talariaSpeedGov.unit, 'market-seconds-per-wall-second',
+        'a reader that assumes bars per second would call a healthy 600 a sixtyfold overrun');
+    assert.equal(win.__talariaSpeedGov.target, 600);
+    assert.equal(win.__talariaSpeedGov.stepSeconds, 60);
+    assert.equal(win.__talariaSpeedGov.stepsPerWallSecond, 10);
+});
+
+test('S10 target and effective are always in the same unit', () => {
+    // Drift is a ratio, and a ratio between two different units is a
+    // correction against nothing.
+    const { engine } = build({ tfSeconds: 60 });
+    engine.speed = 10;
+    engine.setStepSeconds(1);
+    assert.equal(engine._speedGovTargetRate(), 10);
+    const now = feed(engine, { amount: 10, overMs: 1000 });
+    assert.ok(Math.abs(engine.getEffectiveMarketSecondsPerWallSecond(now) - 10) < 0.6);
+});
+
+test('S10 both modes report the same target from the same rung', () => {
+    const { engine } = build({ tfSeconds: 60 });
+    engine.speed = 10;
+    engine._mode = 'candle';
+    const candle = engine.getTargetBarsPerSecond();
+    engine._mode = 'tick';
+    assert.equal(engine.getTargetBarsPerSecond(), candle,
+        'one ladder, one meaning: the same rung meant four different things before');
+});
+
+test('S10 the switched-off path still publishes bars per second', () => {
+    const { engine, win } = build({
+        tfSeconds: 60,
+        flags: { __TALARIA_DISABLE_ORDER01B_STEP_V1: true },
+    });
+    engine.speed = 10;
+    const now = feed(engine, { amount: 10, overMs: 1000 });
+    engine._speedGovPublishEffectiveRate(now);
+    assert.equal(win.__talariaSpeedGov.unit, 'bars-per-second');
+    assert.equal(win.__talariaSpeedGov.stepSeconds, null);
+});
+
+test('S10 MUTANT: publishing without the unit leaves the reader guessing', () => {
+    const { engine, win } = build({
+        tfSeconds: 60,
+        mutate: (s) => s.replace(
+            "unit: order01b ? 'market-seconds-per-wall-second' : 'bars-per-second',",
+            'unit: undefined,'),
+    });
+    engine.speed = 10;
+    engine._speedGovPublishEffectiveRate(feed(engine, { amount: 600, overMs: 1000 }));
+    assert.equal(win.__talariaSpeedGov.unit, undefined,
+        'the mutant must drop the unit; if not, S10 proves nothing');
+});
+
+test('S10 MUTANT: a bar-counting meter reads zero once a step is sub-bar', () => {
+    // The regression this guards: with a step finer than a bar the index stops
+    // moving on most steps, so an index-based meter reports a stalled replay
+    // and the corrector chases a shortfall that is not there.
+    const tick = src.match(/\n    _runCandlePlaybackTick\(\) \{[\s\S]*?\n    \}/);
+    assert.ok(tick, 'the candle playback tick must exist');
+    assert.ok(tick[0].includes('govStartTs'),
+        'the tick must measure market time, not bar indices');
+    assert.ok(tick[0].includes('this.getStepSeconds()'),
+        'the fallback must convert bars to market time with the step');
 });
 
 test('S8 a seconds timeframe really parses', () => {
