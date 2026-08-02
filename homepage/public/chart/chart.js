@@ -4838,10 +4838,18 @@ class Chart {
             }
             if (Number.isFinite(replay.replayTimestamp)
                 && typeof replay.syncCurrentIndexFromReplayTimestamp === 'function') {
-                try { replay.syncCurrentIndexFromReplayTimestamp(replay.replayTimestamp); } catch (_si) { /* ignore */ }
+                try {
+                    replay.syncCurrentIndexFromReplayTimestamp(replay.replayTimestamp);
+                } catch (_si) {
+                    this._reportSwallowedFault('mirror-host-tf:syncCurrentIndexFromReplayTimestamp', _si);
+                }
             }
             if (typeof replay.updateChartData === 'function') {
-                try { replay.updateChartData(false); } catch (_uc) { /* ignore */ }
+                try {
+                    replay.updateChartData(false);
+                } catch (_uc) {
+                    this._reportSwallowedFault('mirror-host-tf:updateChartData', _uc);
+                }
             }
         }
 
@@ -4904,6 +4912,63 @@ class Chart {
         if (typeof this.render === 'function') this.render();
         this._logTfSwitch('host-mirror-tf', { to: tf, bars: this.data.length });
         return true;
+    }
+
+    /**
+     * Report a swallowed fault once, then count the rest.
+     *
+     * The catches these are called from exist so one panel cannot be taken
+     * down by a mirror-path failure, and that is still worth having. What is
+     * not worth having is silence. `replayTimestamp` is the exact quantity
+     * the soak's rate-hold verdict reads: if a throw stops the playhead,
+     * delivery reads zero and the run records a *number* rather than a
+     * fault, which is a day of misdiagnosis.
+     *
+     * Once, because a per-tick failure over a ten-hour arm would otherwise
+     * drown the console and cost more than the fault. Counted always, and
+     * published so the soak can assert `__talariaSwallowed` is empty instead
+     * of trusting that it never looked.
+     *
+     * No kill-switch and no control flow: the catch still swallows exactly
+     * what it swallowed before, so there is nothing to fall back to.
+     */
+    _reportSwallowedFault(tag, err) {
+        try {
+            if (typeof window === 'undefined' || !window) return;
+            const record = (host, andLog) => {
+                const reg = host.__talariaSwallowed
+                    || (host.__talariaSwallowed = Object.create(null));
+                const rec = reg[tag] || (reg[tag] = {
+                    count: 0,
+                    firstAt: Date.now(),
+                    message: null,
+                    stack: null,
+                });
+                rec.count++;
+                rec.lastAt = Date.now();
+                if (rec.message === null) {
+                    rec.message = (err && err.message) ? String(err.message) : String(err);
+                    rec.stack = (err && err.stack) ? String(err.stack) : null;
+                    if (andLog) {
+                        console.error(
+                            `[talaria] swallowed fault at ${tag} — logged once, still counting:`,
+                            err,
+                        );
+                    }
+                }
+            };
+            record(window, true);
+            // Mirror into the outer frame so a harness watching one window sees
+            // panel faults too. Counts aggregate across panels under one tag;
+            // per-panel attribution stays in each panel's own registry.
+            try {
+                if (window.top && window.top !== window) record(window.top, false);
+            } catch (_top) {
+                // Cross-origin outer frame; the own-window record still stands.
+            }
+        } catch (_e) {
+            // A reporter that throws would defeat the catch it reports from.
+        }
     }
 
     /** Same-pair iframe B/C/D — same fileId as host tile A. */
@@ -6845,7 +6910,11 @@ class Chart {
         // that clamps/snaps the next seek to the wrong date (esp. independent pairs).
         if (Number.isFinite(keepTs)
             && typeof replay.syncCurrentIndexFromReplayTimestamp === 'function') {
-            try { replay.syncCurrentIndexFromReplayTimestamp(keepTs); } catch (_e) { /* ignore */ }
+            try {
+                replay.syncCurrentIndexFromReplayTimestamp(keepTs);
+            } catch (_e) {
+                this._reportSwallowedFault('window-replace:syncCurrentIndexFromReplayTimestamp', _e);
+            }
         } else if (replay.currentIndex >= replay.fullRawData.length) {
             replay.currentIndex = Math.max(0, replay.fullRawData.length - 1);
         }
@@ -8345,10 +8414,18 @@ class Chart {
                         : ts;
                     if (Number.isFinite(rematchTs)
                         && typeof replay.syncCurrentIndexFromReplayTimestamp === 'function') {
-                        try { replay.syncCurrentIndexFromReplayTimestamp(rematchTs); } catch (_rm) { /* ignore */ }
+                        try {
+                            replay.syncCurrentIndexFromReplayTimestamp(rematchTs);
+                        } catch (_rm) {
+                            this._reportSwallowedFault('master-replace:syncCurrentIndexFromReplayTimestamp', _rm);
+                        }
                     }
                     if (typeof replay.updateChartData === 'function') {
-                        try { replay.updateChartData(false); } catch (_uc) { /* ignore */ }
+                        try {
+                            replay.updateChartData(false);
+                        } catch (_uc) {
+                            this._reportSwallowedFault('master-replace:updateChartData', _uc);
+                        }
                     }
                     if (wasPlaying && typeof replay.play === 'function') {
                         try { replay.play(); } catch (_rp) { /* ignore */ }
@@ -23811,7 +23888,11 @@ class Chart {
                     // currentIndex after a full replace snaps seek to whatever remains.
                     if (Number.isFinite(keepTs)
                         && typeof rs.syncCurrentIndexFromReplayTimestamp === 'function') {
-                        try { rs.syncCurrentIndexFromReplayTimestamp(keepTs); } catch (_e) { /* ignore */ }
+                        try {
+                            rs.syncCurrentIndexFromReplayTimestamp(keepTs);
+                        } catch (_e) {
+                            this._reportSwallowedFault('window-replace-rs:syncCurrentIndexFromReplayTimestamp', _e);
+                        }
                     } else {
                         const n = rs.fullRawData.length;
                         if (rs.currentIndex >= n) rs.currentIndex = Math.max(0, n - 1);
