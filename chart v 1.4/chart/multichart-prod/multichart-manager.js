@@ -94,6 +94,19 @@
     }
 
     /**
+     * HOSTCACHE-1: removeChart drops the panel's refcounts on the host-shared
+     * tf/bt/smart data caches. Default ON by absent property.
+     * Kill: window.__TALARIA_DISABLE_MC_HOST_CACHE_RELEASE_ON_REMOVE_V1.
+     */
+    function mcHostCacheReleaseOnRemoveV1Enabled() {
+        try {
+            return !(global && global.__TALARIA_DISABLE_MC_HOST_CACHE_RELEASE_ON_REMOVE_V1);
+        } catch (_) {
+            return true;
+        }
+    }
+
+    /**
      * ORPHAN-L2: removeChart always releases the iframe `load` listener for
      * iframe panels (independent of PURGE-1). Default ON by absent property.
      * Kill: window.__TALARIA_DISABLE_MC_IFRAME_LOAD_LISTENER_RELEASE_V1 — truthiness; per call.
@@ -630,6 +643,21 @@
     }
 
     /**
+     * HOSTCACHE-1: the panel's own pagehide handler is the only other caller, and
+     * ORPHAN-L1 already established it is a backup rather than the reliable path.
+     * Unreleased refs here are unreclaimable, not merely late: the pinned owner id
+     * belongs to a dead realm, and these caches have no LRU backstop — entries leave
+     * only at refcount zero or a boot-time clear().
+     */
+    function releasePanelHostCacheRefsOnRemove(entry) {
+        if (!mcHostCacheReleaseOnRemoveV1Enabled()) return;
+        const panelChart = mcResolvePanelChart(entry);
+        if (panelChart && typeof panelChart._releaseMcHostCacheFileRefs === 'function') {
+            panelChart._releaseMcHostCacheFileRefs();
+        }
+    }
+
+    /**
      * Add a chart by spawning an iframe.
      * @param {{id:string, symbol:string, tf:string, days?:number}} cfg
      * @param {HTMLElement} mountEl  - the cell element to mount the iframe into
@@ -831,6 +859,12 @@
         } catch (err) {
             const message = err && err.message ? ': ' + err.message : '';
             this._log('error', 'removeChart ' + id + ' shared bar-store release failed' + message);
+        }
+        try {
+            releasePanelHostCacheRefsOnRemove(c);
+        } catch (err) {
+            const message = err && err.message ? ': ' + err.message : '';
+            this._log('error', 'removeChart ' + id + ' host cache ref release failed' + message);
         }
         try {
             const panelChart = mcResolvePanelChart(c);

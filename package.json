@@ -133,6 +133,8 @@
     "test:session-symbol-exclusivity": "npm run preflight:session-symbol-exclusivity",
     "preflight:supporting-symbol-surface": "node --test --test-concurrency=1 \"chart v 1.4/chart/modules/supporting-symbol-surface.test.mjs\"",
     "test:supporting-symbol-surface": "npm run preflight:supporting-symbol-surface",
+    "preflight:hostcache-panel-teardown-release": "node --test --test-concurrency=1 \"chart v 1.4/chart/modules/hostcache-panel-teardown-release.test.mjs\"",
+    "test:hostcache-panel-teardown-release": "npm run preflight:hostcache-panel-teardown-release",
     "preflight:generate-path-waypoints": "node --test \"chart v 1.4/chart/modules/generate-path-waypoints.test.mjs\"",
     "test:generate-path-waypoints": "npm run preflight:generate-path-waypoints",
     "preflight:order-stable-label-hover-dom": "node \"chart v 1.4/chart/modules/order-stable-label-hover-dom.test.mjs\"",
