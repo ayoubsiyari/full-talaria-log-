@@ -1,0 +1,655 @@
+{
+  "signature": "TALARIA_ORDER01B_READBACK_CANARY_V1",
+  "at": "2026-08-02T20:12:28.840Z",
+  "condition": {
+    "speed": 10,
+    "step": "1s",
+    "stepSeconds": 1
+  },
+  "verdict": {
+    "state": "SHELL_PLAY_OVERRIDE_INERT",
+    "why": "top: play() as installed on the instance started nothing across 2 attempts, while the engine's own play on the same object started playback with a live timer. The engine is fine; the entry point in front of it is not. Identity of the override is in observed.playIdentity."
+  },
+  "checks": [
+    {
+      "ok": true,
+      "label": "the served engine could be read back over the wire",
+      "detail": "http://127.0.0.1:56994/chart/modules/replay-system.js?v=20260802b124 (545015 bytes)"
+    },
+    {
+      "ok": true,
+      "label": "the served engine carries ORDER-01B",
+      "detail": "all 4 markers present"
+    },
+    {
+      "ok": true,
+      "label": "replay is armed and playing",
+      "detail": "playing=3"
+    },
+    {
+      "ok": true,
+      "label": "the engine accepted the step it was asked for",
+      "detail": "no refusals"
+    },
+    {
+      "ok": false,
+      "label": "replay actually moved during the reading window",
+      "detail": "0s of market time"
+    },
+    {
+      "ok": true,
+      "label": "no realm stopped playing during the window",
+      "detail": "all realms still playing"
+    }
+  ],
+  "observed": {
+    "pageErrors": [
+      "console: Failed to load resource: the server responded with a status of 404 (Not Found)",
+      "console: WebSocket connection to 'ws://127.0.0.1:56994/ws/support' failed: Error during WebSocket handshake: Unexpected response code: 404",
+      "console: Failed to load resource: the server responded with a status of 404 (Not Found)"
+    ],
+    "servedEngine": {
+      "fetched": true,
+      "urls": [
+        "http://127.0.0.1:56994/chart/modules/replay-system.js?v=20260802b124"
+      ],
+      "bytes": 545015,
+      "present": [
+        "ORDER01B_STEP_CANDIDATE_SECONDS",
+        "getMarketSecondsPerWallSecond",
+        "market-seconds-per-wall-second",
+        "_waitAtLoadedEdgeWhenServerHasMore"
+      ],
+      "missing": []
+    },
+    "workload": {
+      "armed": true,
+      "observedPlaying": 3,
+      "stepRefusals": [],
+      "panels": [
+        {
+          "id": "A",
+          "replay": {
+            "ok": true,
+            "isActive": true,
+            "requestedSpeed": 10,
+            "effectiveSpeed": 10,
+            "speedRoute": "getTargetBarsPerSecond()",
+            "speedSetError": null,
+            "speedHonoured": true,
+            "requestedStepSeconds": 1,
+            "effectiveStepSeconds": 1,
+            "stepSetError": null,
+            "stepHonoured": true,
+            "marketSecondsPerWallSecond": 10
+          }
+        },
+        {
+          "id": "B",
+          "replay": {
+            "ok": true,
+            "isActive": true,
+            "requestedSpeed": 10,
+            "effectiveSpeed": 10,
+            "speedRoute": "getTargetBarsPerSecond()",
+            "speedSetError": null,
+            "speedHonoured": true,
+            "requestedStepSeconds": 1,
+            "effectiveStepSeconds": 1,
+            "stepSetError": null,
+            "stepHonoured": true,
+            "marketSecondsPerWallSecond": 10
+          }
+        },
+        {
+          "id": "C",
+          "replay": {
+            "ok": true,
+            "isActive": true,
+            "requestedSpeed": 10,
+            "effectiveSpeed": 10,
+            "speedRoute": "getTargetBarsPerSecond()",
+            "speedSetError": null,
+            "speedHonoured": true,
+            "requestedStepSeconds": 1,
+            "effectiveStepSeconds": 1,
+            "stepSetError": null,
+            "stepHonoured": true,
+            "marketSecondsPerWallSecond": 10
+          }
+        },
+        {
+          "id": "D",
+          "replay": {
+            "ok": true,
+            "isActive": true,
+            "requestedSpeed": 10,
+            "effectiveSpeed": 10,
+            "speedRoute": "getTargetBarsPerSecond()",
+            "speedSetError": null,
+            "speedHonoured": true,
+            "requestedStepSeconds": 1,
+            "effectiveStepSeconds": 1,
+            "stepSetError": null,
+            "stepHonoured": true,
+            "marketSecondsPerWallSecond": 10
+          }
+        }
+      ]
+    },
+    "armedAt": [
+      {
+        "realm": "top",
+        "currentIndex": 1880,
+        "rawBars": 1881,
+        "fromEnd": 0,
+        "playing": false
+      },
+      {
+        "realm": "panel",
+        "currentIndex": 2724,
+        "rawBars": 4000,
+        "fromEnd": 1275,
+        "playing": true
+      },
+      {
+        "realm": "panel",
+        "currentIndex": 2724,
+        "rawBars": 4000,
+        "fromEnd": 1275,
+        "playing": true
+      },
+      {
+        "realm": "panel",
+        "currentIndex": 2724,
+        "rawBars": 4000,
+        "fromEnd": 1275,
+        "playing": true
+      }
+    ],
+    "playhead": [
+      {
+        "realm": "top",
+        "playingBefore": false,
+        "playingAfter": false,
+        "marketSecAdvanced": 0,
+        "marketPerWall": 0,
+        "diagnosis": {
+          "active": true,
+          "mode": "candle",
+          "currentIndex": 1880,
+          "rawBars": 1881,
+          "atLastBar": true,
+          "noOpAtEnd": false,
+          "subBarMode": true,
+          "edgeWait": false,
+          "hasMoreRight": true,
+          "windowBlocked": false,
+          "playStarting": false,
+          "hidden": false,
+          "timer": false,
+          "interval": false,
+          "edgeWaits": null,
+          "probeRetries": 0,
+          "panLoading": true,
+          "fileId": 25,
+          "sessionEnd": null,
+          "playheadAtSessionEnd": null
+        }
+      },
+      {
+        "realm": "panel",
+        "playingBefore": true,
+        "playingAfter": true,
+        "marketSecAdvanced": 80,
+        "marketPerWall": 10,
+        "diagnosis": null
+      },
+      {
+        "realm": "panel",
+        "playingBefore": true,
+        "playingAfter": true,
+        "marketSecAdvanced": 80,
+        "marketPerWall": 10,
+        "diagnosis": null
+      },
+      {
+        "realm": "panel",
+        "playingBefore": true,
+        "playingAfter": true,
+        "marketSecAdvanced": 80,
+        "marketPerWall": 10,
+        "diagnosis": null
+      }
+    ],
+    "revived": [
+      {
+        "realm": "top",
+        "viaInstanceProperty": [
+          {
+            "attempt": 1,
+            "playing": false,
+            "timer": false,
+            "advancedSec": 0
+          },
+          {
+            "attempt": 2,
+            "playing": false,
+            "timer": false,
+            "advancedSec": 0
+          }
+        ],
+        "viaClassMethod": {
+          "playing": true,
+          "timer": true,
+          "advancedSec": 5
+        }
+      },
+      {
+        "realm": "panel",
+        "viaInstanceProperty": [
+          {
+            "attempt": 1,
+            "playing": false,
+            "timer": false,
+            "advancedSec": 16
+          },
+          {
+            "attempt": 2,
+            "playing": false,
+            "timer": false,
+            "advancedSec": 11
+          }
+        ],
+        "viaClassMethod": {
+          "playing": false,
+          "timer": false,
+          "advancedSec": 12
+        }
+      },
+      {
+        "realm": "panel",
+        "viaInstanceProperty": [
+          {
+            "attempt": 1,
+            "playing": false,
+            "timer": false,
+            "advancedSec": 12
+          },
+          {
+            "attempt": 2,
+            "playing": true,
+            "timer": true,
+            "advancedSec": 3
+          }
+        ]
+      },
+      {
+        "realm": "panel",
+        "viaInstanceProperty": [
+          {
+            "attempt": 1,
+            "playing": true,
+            "timer": true,
+            "advancedSec": 3
+          }
+        ]
+      }
+    ],
+    "finishLog": [],
+    "patchState": {
+      "sameChart": true,
+      "sameReplaySystem": true,
+      "stillWrapped": false,
+      "iframes": 3
+    },
+    "trace": {
+      "total": 6877,
+      "counts": {
+        "getPlaybackMode": 6755,
+        "_isReplayPageHidden": 31,
+        "_playWouldBeNoOpAtSessionEnd": 2,
+        "_shouldUseTickAnimation": 1,
+        "_capturePlaybackViewportLock": 1,
+        "stopAllPlayback": 1,
+        "startCandleByCandle": 1,
+        "_runCandlePlaybackTick": 16,
+        "simpleStepForward": 69
+      },
+      "firstInOrder": [
+        "getPlaybackMode",
+        "getPlaybackMode",
+        "getPlaybackMode",
+        "getPlaybackMode",
+        "getPlaybackMode",
+        "getPlaybackMode",
+        "getPlaybackMode",
+        "getPlaybackMode",
+        "getPlaybackMode",
+        "getPlaybackMode",
+        "getPlaybackMode",
+        "getPlaybackMode",
+        "getPlaybackMode",
+        "getPlaybackMode",
+        "getPlaybackMode",
+        "getPlaybackMode",
+        "getPlaybackMode",
+        "getPlaybackMode",
+        "getPlaybackMode",
+        "getPlaybackMode",
+        "_isReplayPageHidden",
+        "getPlaybackMode",
+        "getPlaybackMode",
+        "getPlaybackMode"
+      ],
+      "threw": []
+    },
+    "playIdentity": {
+      "ownProperty": true,
+      "isPrototypeMethod": false,
+      "name": "",
+      "head": "function(...ue){const Ee=oM()?rr.apply(this,ue):rr.call(ve);try{const it=!!(this.isPlaying||this.isPlayStarting);this.__shellPlayOverrideInert=!it;const $e=Number(this.speed)||1,Qe=typeof this.getPlaybackMode==\"function\"?this.getPlaybackMod",
+      "full": "function(...ue){const Ee=oM()?rr.apply(this,ue):rr.call(ve);try{const it=!!(this.isPlaying||this.isPlayStarting);this.__shellPlayOverrideInert=!it;const $e=Number(this.speed)||1,Qe=typeof this.getPlaybackMode==\"function\"?this.getPlaybackMode():this.playbackMode||\"tick\",Dt=rf(this);if(bt(\"replaySetStepTf\",{tf:Dt??null}),!it&&oM())return Ee;bt(\"replayPlay\",{speed:$e,mode:Qe});const Kt=this;requestAnimationFrame(()=>{requestAnimationFrame(()=>{try{typeof Kt._multichartBroadcastReplayFrame==\"function\"&&Kt._multichartBroadcastReplayFrame()}catch{}})})}catch{}return Ee}"
+    },
+    "playLog": [
+      {
+        "at": 7881,
+        "active": true,
+        "windowBlocked": false,
+        "hidden": false,
+        "index": 2010,
+        "len": 4000,
+        "subBar": true,
+        "playingOnReturn": false
+      },
+      {
+        "at": 11119,
+        "active": true,
+        "windowBlocked": false,
+        "hidden": false,
+        "index": 1999,
+        "len": 2000,
+        "subBar": true,
+        "playingOnReturn": false
+      },
+      {
+        "at": 14411,
+        "active": true,
+        "windowBlocked": false,
+        "hidden": false,
+        "index": 1999,
+        "len": 2000,
+        "subBar": true,
+        "playingOnReturn": false
+      },
+      {
+        "at": 14611,
+        "active": true,
+        "windowBlocked": false,
+        "hidden": false,
+        "index": 1999,
+        "len": 2000,
+        "subBar": true,
+        "playingOnReturn": false
+      },
+      {
+        "at": 14850,
+        "active": true,
+        "windowBlocked": false,
+        "hidden": false,
+        "index": 1999,
+        "len": 2000,
+        "subBar": true,
+        "playingOnReturn": false
+      },
+      {
+        "at": 15085,
+        "active": true,
+        "windowBlocked": false,
+        "hidden": false,
+        "index": 1999,
+        "len": 2000,
+        "subBar": true,
+        "playingOnReturn": false
+      },
+      {
+        "at": 15321,
+        "active": true,
+        "windowBlocked": false,
+        "hidden": false,
+        "index": 1999,
+        "len": 2000,
+        "subBar": true,
+        "playingOnReturn": false
+      },
+      {
+        "at": 15468,
+        "active": true,
+        "windowBlocked": false,
+        "hidden": false,
+        "index": 1999,
+        "len": 2000,
+        "subBar": true,
+        "playingOnReturn": false
+      },
+      {
+        "at": 15586,
+        "active": true,
+        "windowBlocked": false,
+        "hidden": false,
+        "index": 1999,
+        "len": 2000,
+        "subBar": true,
+        "playingOnReturn": false
+      },
+      {
+        "at": 15698,
+        "active": true,
+        "windowBlocked": false,
+        "hidden": false,
+        "index": 1999,
+        "len": 2000,
+        "subBar": true,
+        "playingOnReturn": false
+      },
+      {
+        "at": 15814,
+        "active": true,
+        "windowBlocked": false,
+        "hidden": false,
+        "index": 1999,
+        "len": 2000,
+        "subBar": true,
+        "playingOnReturn": false
+      },
+      {
+        "at": 15929,
+        "active": true,
+        "windowBlocked": false,
+        "hidden": false,
+        "index": 1999,
+        "len": 2000,
+        "subBar": true,
+        "playingOnReturn": false
+      },
+      {
+        "at": 16085,
+        "active": true,
+        "windowBlocked": false,
+        "hidden": false,
+        "index": 1999,
+        "len": 2000,
+        "subBar": true,
+        "playingOnReturn": false
+      },
+      {
+        "at": 16217,
+        "active": true,
+        "windowBlocked": false,
+        "hidden": false,
+        "index": 1999,
+        "len": 2000,
+        "subBar": true,
+        "playingOnReturn": false
+      },
+      {
+        "at": 16353,
+        "active": true,
+        "windowBlocked": false,
+        "hidden": false,
+        "index": 1999,
+        "len": 2000,
+        "subBar": true,
+        "playingOnReturn": false
+      },
+      {
+        "at": 16469,
+        "active": true,
+        "windowBlocked": false,
+        "hidden": false,
+        "index": 1999,
+        "len": 2000,
+        "subBar": true,
+        "playingOnReturn": false
+      },
+      {
+        "at": 16587,
+        "active": true,
+        "windowBlocked": false,
+        "hidden": false,
+        "index": 1999,
+        "len": 2000,
+        "subBar": true,
+        "playingOnReturn": false
+      },
+      {
+        "at": 16708,
+        "active": true,
+        "windowBlocked": false,
+        "hidden": false,
+        "index": 1965,
+        "len": 1966,
+        "subBar": true,
+        "playingOnReturn": false
+      },
+      {
+        "at": 16858,
+        "active": true,
+        "windowBlocked": false,
+        "hidden": false,
+        "index": 1880,
+        "len": 1881,
+        "subBar": true,
+        "playingOnReturn": false
+      },
+      {
+        "at": 17060,
+        "active": true,
+        "windowBlocked": false,
+        "hidden": false,
+        "index": 1880,
+        "len": 1881,
+        "subBar": true,
+        "playingOnReturn": false
+      },
+      {
+        "at": 17249,
+        "active": true,
+        "windowBlocked": false,
+        "hidden": false,
+        "index": 1880,
+        "len": 1881,
+        "subBar": true,
+        "playingOnReturn": false
+      },
+      {
+        "at": 17441,
+        "active": true,
+        "windowBlocked": false,
+        "hidden": false,
+        "index": 1880,
+        "len": 1881,
+        "subBar": true,
+        "playingOnReturn": false
+      },
+      {
+        "at": 17621,
+        "active": true,
+        "windowBlocked": false,
+        "hidden": false,
+        "index": 1880,
+        "len": 1881,
+        "subBar": true,
+        "playingOnReturn": false
+      },
+      {
+        "at": 17806,
+        "active": true,
+        "windowBlocked": false,
+        "hidden": false,
+        "index": 1880,
+        "len": 1881,
+        "subBar": true,
+        "playingOnReturn": false
+      },
+      {
+        "at": 18023,
+        "active": true,
+        "windowBlocked": false,
+        "hidden": false,
+        "index": 1880,
+        "len": 1881,
+        "subBar": true,
+        "playingOnReturn": false
+      },
+      {
+        "at": 18210,
+        "active": true,
+        "windowBlocked": false,
+        "hidden": false,
+        "index": 1880,
+        "len": 1881,
+        "subBar": true,
+        "playingOnReturn": false
+      },
+      {
+        "at": 26467,
+        "active": true,
+        "windowBlocked": false,
+        "hidden": false,
+        "index": 1880,
+        "len": 1881,
+        "subBar": true,
+        "playingOnReturn": false
+      },
+      {
+        "at": 27668,
+        "active": true,
+        "windowBlocked": false,
+        "hidden": false,
+        "index": 1880,
+        "len": 1881,
+        "subBar": true,
+        "playingOnReturn": false
+      }
+    ],
+    "noOpLog": [
+      {
+        "at": 26464,
+        "answer": false,
+        "index": 1880,
+        "cursorsPresent": true,
+        "hasMoreRight": true,
+        "panLoading": true
+      },
+      {
+        "at": 28869,
+        "answer": false,
+        "index": 1880,
+        "cursorsPresent": true,
+        "hasMoreRight": true,
+        "panLoading": true
+      }
+    ]
+  }
+}

@@ -153,6 +153,12 @@
             cache.sourceLen = source.length;
             cache.dataVersion = dv;
             cache.result = full;
+            let seedMaxRawT = -Infinity;
+            for (let i = 0; i < source.length; i++) {
+                const st = source[i] && source[i].t;
+                if (Number.isFinite(st) && st > seedMaxRawT) seedMaxRawT = st;
+            }
+            cache.maxRawT = seedMaxRawT;
             return full;
         }
 
@@ -173,7 +179,7 @@
             const lastRaw = source[source.length - 1];
             if (!lastRaw || !Number.isFinite(lastRaw.t)) return null;
 
-            const bucketStart = Math.floor(lastRaw.t / timeframeMs) * timeframeMs;
+            const bucketStart = chart._sessionBucketStart(lastRaw.t, tf, timeframeMs);
             const lastBucket = prevResampled[prevResampled.length - 1];
             if (!lastBucket || lastBucket.t !== bucketStart) return null;
 
@@ -184,7 +190,7 @@
             while (firstIdx > 0) {
                 const prev = source[firstIdx - 1];
                 if (!prev || !Number.isFinite(prev.t)) break;
-                if (Math.floor(prev.t / timeframeMs) * timeframeMs !== bucketStart) break;
+                if (chart._sessionBucketStart(prev.t, tf, timeframeMs) !== bucketStart) break;
                 firstIdx--;
             }
 
@@ -211,10 +217,17 @@
             const lastRaw = source[source.length - 1];
             if (!lastRaw || !Number.isFinite(lastRaw.t)) return null;
 
+            const cache = this._resampleCache;
+            const maxRawT = cache ? cache.maxRawT : undefined;
+            // Fail closed: an unseeded maximum cannot prove ordering.
+            if (!Number.isFinite(maxRawT)) return null;
+            if (lastRaw.t < maxRawT) return null;
+            cache.maxRawT = lastRaw.t;
+
             const timeframeMs = chart.parseTimeframe(tf);
             if (!Number.isFinite(timeframeMs) || timeframeMs <= 0) return null;
 
-            const bucketStart = Math.floor(lastRaw.t / timeframeMs) * timeframeMs;
+            const bucketStart = chart._sessionBucketStart(lastRaw.t, tf, timeframeMs);
             const out = prevResampled.slice();
             const lastBucket = out[out.length - 1];
 

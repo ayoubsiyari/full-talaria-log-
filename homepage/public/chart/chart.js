@@ -442,7 +442,7 @@ const TV_CANDLE_BODY_SLOT_RATIO = 0.8;
 /** Zoomed-out horizontal slot: 1px body + 1px gutter between bars (TradingView-style). */
 const TV_ZOOMED_OUT_SLOT_PX = 2;
 /** Bump with bump-dist-v9-cache / build:live:chart — check DevTools console on load. */
-const CHART_ENGINE_BUILD = '20260802b123';
+const CHART_ENGINE_BUILD = '20260802b124';
 
 /**
  * CB-01 mount/symbol diagnostic signature logger.
@@ -27730,11 +27730,11 @@ class Chart {
         const resampled = [];
         
         let currentCandle = null;
-        let currentBucketStart = Math.floor(prepared[0].t / timeframeMs) * timeframeMs;
+        let currentBucketStart = this._sessionBucketStart(prepared[0].t, timeframe, timeframeMs);
         
         for (let i = 0; i < prepared.length; i++) {
             const candle = prepared[i];
-            const candleBucket = Math.floor(candle.t / timeframeMs) * timeframeMs;
+            const candleBucket = this._sessionBucketStart(candle.t, timeframe, timeframeMs);
             
             if (candleBucket !== currentBucketStart) {
                 if (currentCandle) {
@@ -27766,6 +27766,70 @@ class Chart {
         }
         
         return resampled;
+    }
+
+    /**
+     * Session-calendar bucket boundary — the SINGLE boundary implementation for
+     * both resample paths (chart-data-pipeline.js _tryIncrementalResample calls
+     * this same method). Correctness-class dependency per §A4c: if the module is
+     * absent the legacy epoch floor is used and the loss is announced.
+     *
+     * Instrument class (not the timezone dropdown) decides the session open.
+     * FX daily/weekly open at 17:00 America/New_York; the dropdown only relabels.
+     */
+    _sessionBucketStart(timestampMs, timeframe, timeframeMs) {
+        const SC = (typeof SessionCalendar !== 'undefined' && SessionCalendar)
+            || (typeof window !== 'undefined' && window.SessionCalendar)
+            || null;
+        if (!SC || typeof SC.bucketStart !== 'function') {
+            if (typeof window !== 'undefined' && typeof window.__talariaMarkMissingModule === 'function') {
+                window.__talariaMarkMissingModule('SessionCalendar');
+            }
+            return Math.floor(timestampMs / timeframeMs) * timeframeMs;
+        }
+        const instrumentClass = this._sessionInstrumentClass();
+        if (!instrumentClass) {
+            // Instrument identity not established. Keep today's grid — guessing a
+            // session for an unidentified dataset would move displayed values on
+            // no evidence — but ANNOUNCE it (§A4c).
+            if (SC.classifyTimeframe(timeframe).handled
+                && typeof window !== 'undefined'
+                && typeof window.__talariaMarkMissingModule === 'function') {
+                window.__talariaMarkMissingModule('SessionCalendar.unresolved-instrument');
+            }
+            return SC.epochAlignedBucketStart(timestampMs, timeframeMs);
+        }
+        return SC.bucketStart(timestampMs, timeframe, {
+            timeframeMs: timeframeMs,
+            instrumentClass: instrumentClass,
+        });
+    }
+
+    /**
+     * Instrument class for session bucketing, or null when identity is unknown.
+     *
+     * `currentSymbol` is a display label, not a ticker. Classification is
+     * delegated to MarketCalculationEngine (gated on `isRegistered()`).
+     * Memoised per symbol+engine; only cacheable answers are stored so a
+     * late-arriving registry cannot poison the chart into permanent epoch mode.
+     */
+    _sessionInstrumentClass() {
+        const symbol = (typeof this.currentSymbol === 'string') ? this.currentSymbol : '';
+        const SC = (typeof SessionCalendar !== 'undefined' && SessionCalendar)
+            || (typeof window !== 'undefined' && window.SessionCalendar)
+            || null;
+        const engine = (typeof window !== 'undefined' && window.marketCalcEngine) || null;
+        if (this._sessionClassCacheKey === symbol && this._sessionClassCacheEngine === engine) {
+            return this._sessionClassCache;
+        }
+        if (!SC || typeof SC.resolveIdentity !== 'function') return null;
+        const identity = SC.resolveIdentity(engine, symbol);
+        if (identity.cacheable) {
+            this._sessionClassCacheKey = symbol;
+            this._sessionClassCacheEngine = engine;
+            this._sessionClassCache = identity.instrumentClass;
+        }
+        return identity.instrumentClass;
     }
     
     /**

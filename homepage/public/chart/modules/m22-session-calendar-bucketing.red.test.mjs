@@ -1520,7 +1520,7 @@ cellTest('cellM4: all six chart.js shells, asserted on declared load order not p
     for (const rel of shells.filter((r) => r.startsWith('chart v 1.4/'))) {
         const mirror = rel.replace('chart v 1.4/chart/', 'homepage/public/chart/');
         // homepage/public/chart/legacy-index.html is status=removed — no mirror pair.
-        if (!shells.includes(mirror)) {
+        if (!H.readRepoExists?.(mirror) && !shells.includes(mirror)) {
             note('M4', `no-homepage-mirror:${rel.split('/').pop()}`, true,
                 'source shell retained; homepage mirror removed by module-contracts');
             continue;

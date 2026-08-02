@@ -6874,7 +6874,7 @@ class ReplaySystem {
             const currentTimestamp = Number.isFinite(this.replayTimestamp)
                 ? this.replayTimestamp
                 : this.fullRawData[this.currentIndex].t;
-            const currentBucket = this._replayBucketStart(currentTimestamp, tfMs);
+            const currentBucket = this._replayBucketStart(currentTimestamp, tfMs, selectedTimeframe);
             const targetTimestamp = currentBucket + tfMs;
             const targetIndex = this._firstRawIndexAtOrAfter(targetTimestamp, this.currentIndex + 1);
             return Math.min(Math.max(targetIndex, this.currentIndex + 1), this.fullRawData.length - 1);
@@ -6887,7 +6887,7 @@ class ReplaySystem {
 
         if (tfMs && tfMs > this._getRawBarPeriodMs()) {
             const currentTimestamp = this.fullRawData[this.currentIndex].t;
-            const currentBucket = this._replayBucketStart(currentTimestamp, tfMs);
+            const currentBucket = this._replayBucketStart(currentTimestamp, tfMs, selectedTimeframe);
             const targetTimestamp = currentBucket + tfMs;
             const targetIndex = this._firstRawIndexAtOrAfter(targetTimestamp, this.currentIndex + 1);
             return Math.min(Math.max(targetIndex, this.currentIndex + 1), this.fullRawData.length - 1);
@@ -6896,11 +6896,29 @@ class ReplaySystem {
         return Math.min(this.currentIndex + stepBars, this.fullRawData.length - 1);
     }
 
-    /** Bucket start for replay step/resample (matches chart resampleData). */
-    _replayBucketStart(ts, tfMs) {
+    /**
+     * Bucket start for replay step/resample (matches chart resampleData /
+     * `_sessionBucketStart`). Daily and weekly must use the instrument session
+     * open, not the UTC epoch floor — otherwise stepping walks an epoch grid
+     * over session-bucketed bars.
+     */
+    _replayBucketStart(ts, tfMs, timeframe) {
         const t = Number(ts);
         const ms = Number(tfMs);
         if (!Number.isFinite(t) || !Number.isFinite(ms) || ms <= 0) return t;
+        const chart = this.chart;
+        const tf = timeframe
+            || (typeof this._resolveReplayStepTimeframeForStep === 'function'
+                ? this._resolveReplayStepTimeframeForStep()
+                : null)
+            || (typeof this._resolveReplayStepTimeframe === 'function'
+                ? this._resolveReplayStepTimeframe()
+                : null)
+            || (chart && chart.currentTimeframe)
+            || null;
+        if (tf && chart && typeof chart._sessionBucketStart === 'function') {
+            return chart._sessionBucketStart(t, tf, ms);
+        }
         return Math.floor(t / ms) * ms;
     }
 
@@ -6957,7 +6975,7 @@ class ReplaySystem {
         const tfMs = selectedTimeframe ? this.timeframeToMs(selectedTimeframe) : null;
         if (tfMs && tfMs > this._getRawBarPeriodMs()) {
             const currentTimestamp = this.fullRawData[this.currentIndex].t;
-            const currentBucket = this._replayBucketStart(currentTimestamp, tfMs);
+            const currentBucket = this._replayBucketStart(currentTimestamp, tfMs, selectedTimeframe);
             const targetIndex = this._lastRawIndexAtOrBeforeTs(currentBucket - 1);
             return Math.max(minIdx, Math.min(targetIndex, this.currentIndex - 1));
         }

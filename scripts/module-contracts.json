@@ -61,6 +61,49 @@
         "homepage/public/chart/modules/indicator-performance.js"
       ],
       "script": "/chart/modules/indicator-performance.js"
+    },
+    {
+      "id": "SessionCalendar",
+      "version": "20260728b83",
+      "provides": [
+        "bucketStart",
+        "epochAlignedBucketStart",
+        "sessionLabel",
+        "openLocalTime",
+        "classifyTimeframe",
+        "resolveInstrumentClass",
+        "classFromMarketType",
+        "classFromRegistry",
+        "resolveIdentity",
+        "normaliseAnchor",
+        "namedAnchor",
+        "namedAnchors",
+        "instrumentClasses",
+        "describeClass",
+        "explain",
+        "isEnabled",
+        "resetCaches",
+        "stats"
+      ],
+      "requiredSurfaces": [
+        "host",
+        "panel"
+      ],
+      "class": "correctness",
+      "order": {
+        "after": [
+          "/chart/modules/module-presence-runtime.js",
+          "/chart/modules/market-calculations.js"
+        ],
+        "before": [
+          "/chart/chart.js"
+        ]
+      },
+      "source": "chart v 1.4/chart/modules/session-calendar.js",
+      "mirrors": [
+        "homepage/public/chart/modules/session-calendar.js"
+      ],
+      "script": "/chart/modules/session-calendar.js"
     }
   ],
   "inventory": [
