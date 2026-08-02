@@ -7861,6 +7861,17 @@ class ReplaySystem {
         const n = this.ticksPerCandle || 72;
         return this.generatePath(candle, n, this._getRetainedTickPathBuffer(slot));
     }
+
+    _releaseTickPathScratchBuffers() {
+        this._retainedTickPathBuffers = null;
+        this._tickPathScratch = null;
+        this._pathWaypointScratch = null;
+        this._aggregateTickPathScratch = null;
+        this._independentPairPathScratch = null;
+        if (this.animatingCandle) this.animatingCandle.cachedPath = null;
+        const saved = this._savedTickState && this._savedTickState.animatingCandle;
+        if (saved) saved.cachedPath = null;
+    }
     
     /**
      * Get aggregated tick path for higher timeframe candle
@@ -11975,6 +11986,11 @@ if (_m20Q6LifecycleRuntimeEnabled()) {
             if (state.chart && state.chart.replaySystem === instance) {
                 state.chart.replaySystem = null;
             }
+            attempt('tick-path-scratch', () => {
+                if (typeof instance._releaseTickPathScratchBuffers === 'function') {
+                    instance._releaseTickPathScratchBuffers();
+                }
+            });
             if (_m27EngineReleaseV1Enabled()) {
                 const orderManager = state.chart && state.chart.orderManager;
                 if (orderManager && orderManager.replaySystem === instance) {

@@ -55,6 +55,23 @@ function makeReplay(symbol = 'EURUSD') {
   return replay;
 }
 
+function pathSlotCensus(replay) {
+  const retained = replay._retainedTickPathBuffers
+    ? Object.keys(replay._retainedTickPathBuffers).length
+    : 0;
+  const transient = [
+    replay._tickPathScratch,
+    replay._pathWaypointScratch,
+    replay._aggregateTickPathScratch,
+    replay._independentPairPathScratch,
+  ].filter(Boolean).length;
+  const cached = (replay.animatingCandle && replay.animatingCandle.cachedPath ? 1 : 0)
+    + (replay._savedTickState
+      && replay._savedTickState.animatingCandle
+      && replay._savedTickState.animatingCandle.cachedPath ? 1 : 0);
+  return { retained, transient, cached, total: retained + transient + cached };
+}
+
 test('A1: waypoints are open, transcript event levels, close in order', () => {
   const replay = makeReplay('EURUSD');
   const candle = {
@@ -198,6 +215,54 @@ test('A4: cachedPath retainers use retained slots, not transient getTickPath scr
   }
 });
 
+test('A4: retained slot census returns to zero across panel churn', () => {
+  for (let cycle = 0; cycle < 32; cycle++) {
+    const replay = makeReplay(`NQ-${cycle}`);
+    replay.ticksPerCandle = 8;
+    replay.currentTicksPerCandle = 8;
+    replay.sessionStartIndex = 0;
+    const firstBar = { symbol: `NQ-${cycle}`, t: 1000, o: 100, h: 112, l: 98, c: 106, v: 1, resolvedEventLevels: [109] };
+    const secondBar = { symbol: `NQ-${cycle}`, t: 2000, o: 200, h: 212, l: 198, c: 206, v: 1, resolvedEventLevels: [209] };
+    replay.fullRawData = [firstBar, secondBar];
+
+    const retained = replay.getRetainedTickPath(firstBar, 'animatingCandle');
+    replay.getRetainedTickPath(firstBar, 'savedTickState');
+    replay.getRetainedTickPath(secondBar, 'restoreAnimatingCandle');
+    replay.getTickPath(secondBar);
+    replay.getAggregatedTickPath(1000, 2000);
+    replay._buildIndependentPairAnimatedCandle(replay.fullRawData, 1500, {
+      tickElapsedMs: 1,
+      tickProgress: 2,
+      ticksPerCandle: 8,
+    });
+    replay.animatingCandle = { target: firstBar, cachedPath: retained };
+    replay._savedTickState = { animatingCandle: { target: firstBar, cachedPath: replay.getRetainedTickPath(firstBar, 'savedTickState') } };
+
+    const warm = pathSlotCensus(replay);
+    assert.equal(warm.retained, 3, 'cycle warms exactly the three retained path slots');
+    assert.ok(warm.transient >= 3, 'cycle warms transient path scratches too');
+    assert.ok(warm.cached >= 2, 'cycle has cachedPath retainers before release');
+
+    replay._releaseTickPathScratchBuffers();
+    assert.deepEqual(pathSlotCensus(replay), { retained: 0, transient: 0, cached: 0, total: 0 },
+      'destroy/release leaves no retained path slots for the next panel cycle');
+  }
+});
+
+test('A4: replay destroy lifecycle releases path slot buffers', () => {
+  const release = methodSource(replaySource, '_releaseTickPathScratchBuffers');
+  assert.match(release, /this\._retainedTickPathBuffers = null/, 'retained slot map must be nulled');
+  assert.match(release, /this\._tickPathScratch = null/, 'transient path scratch must be nulled');
+  assert.match(release, /this\._pathWaypointScratch = null/, 'waypoint scratch must be nulled');
+  assert.match(release, /this\._aggregateTickPathScratch = null/, 'aggregate scratch must be nulled');
+  assert.match(release, /this\._independentPairPathScratch = null/, 'peer scratch must be nulled');
+  assert.match(release, /animatingCandle\) this\.animatingCandle\.cachedPath = null/,
+    'live cachedPath retainer must be severed');
+  assert.match(replaySource, /attempt\('tick-path-scratch'[\s\S]*?_releaseTickPathScratchBuffers/,
+    'M20 lifecycle destroy drain must call the path slot release helper');
+  assert.equal(replaySource, replayMirrorSource, 'replay mirror must be byte-identical');
+});
+
 test('A6: path code has no import or reachability into order-resolution state', () => {
   assert.equal(replaySource, replayMirrorSource, 'replay mirror must be byte-identical');
   const methods = {
@@ -206,6 +271,7 @@ test('A6: path code has no import or reachability into order-resolution state', 
     collectPathWaypoints: methodSource(replaySource, '_collectPathWaypoints'),
     getTickPath: methodSource(replaySource, 'getTickPath'),
     getRetainedTickPath: methodSource(replaySource, 'getRetainedTickPath'),
+    releaseTickPathScratchBuffers: methodSource(replaySource, '_releaseTickPathScratchBuffers'),
   };
   assertPathHasNoOrderReach(methods);
 
