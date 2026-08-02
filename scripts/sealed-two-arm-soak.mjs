@@ -61,9 +61,14 @@ const SAMPLE_MS = Number(argOf('sampleMs', '180000'));
  * correct ten-hour arm and writes 60 into every record of it. That is the same defect that ran a soak at
  * 60 under a 5x label - a speed argument silently discarded - and it cost that entire run.
  *
- * Note the UNIT changed with the ladder, not just the range. The old number was a time multiplier: 60
- * meant sixty simulated seconds per wall second, which on a 1m chart is 1 bar/s. The new number is bars
- * per second directly, so 10 means 10 bars/s - about ten times the old default's delivery, not a sixth.
+ * CORRECTED after measuring: I first wrote here that the UNIT changed with the ladder. It did not. The
+ * slider was already candles per second - my own S1 finding has the engine intending 1.00 candles/s at
+ * 1x - so SPEED-01 narrowed the RANGE and left the unit alone.
+ *
+ * That matters for what this arm will collect. Speed 60 meant 60 bars/s REQUESTED and delivered only
+ * ~12.8, starved to a fifth. Speed 10 delivered 9.54 on the b121 shakeout, 95% of request. So the new
+ * envelope costs about a quarter of the old DELIVERED throughput, not six-sevenths of it, and per-bar
+ * figures from the speed-60 runs stay comparable with what this arm will produce.
  */
 const SPEED_LADDER = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
 const SPEED = Number(argOf('speed', '10'));

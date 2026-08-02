@@ -60,45 +60,79 @@ if (!info.ok || !/^[a-f0-9]{40}$/.test(String(info.sourceCommitSha || ''))) {
   process.exit(3);
 }
 
+/**
+ * DRIVEN THROUGH THE REAL LAUNCHER, which the first version of this script did not do.
+ *
+ * It spawned sealed-two-arm-soak.mjs directly, killed it, and then graded auto-resume as FAILED. Resume
+ * does not live in the soak - it lives in fire-sealed-soak.mjs, which decides on RELAUNCH whether to
+ * join an existing series or archive it. So the first run bypassed the machinery it claimed to test and
+ * reported its absence as a defect in the harness. That is the vacuous-test shape I have now published
+ * on three times: the test must call the code the real path calls, not a restatement of it.
+ *
+ * The resume exercise is therefore launch -> kill the soak child -> RELAUNCH -> the launcher must say
+ * RESUMING and the samples must continue into a second segment in the SAME file.
+ */
 const hours = (MINUTES / 60).toFixed(4);
-const out = path.join(EV, `REHEARSAL-${seal.badge}-${Date.now()}.jsonl`);
-const args = [
-  '--max-old-space-size=1024', path.join(process.cwd(), 'scripts', 'sealed-two-arm-soak.mjs'),
-  '--arm=trades', `--hours=${hours}`, `--speed=${SPEED}`, '--sampleMs=120000',
-  `--expectDigest=${seal.digest}`, `--expectSha=${info.sourceCommitSha}`,
-  `--origin=${ORIGIN}`, `--out=${out}`, '--heapCapMB=1024', '--endSnapshot=0',
+const out = path.join(EV, 'REHEARSAL-SOAK-TRADES.jsonl');   // the launcher's own --rehearsal path
+const launcher = path.join(process.cwd(), 'scripts', 'fire-sealed-soak.mjs');
+const launchArgs = [
+  launcher, '--arm=trades', '--rehearsal', `--hours=${hours}`, `--speed=${SPEED}`,
+  '--sampleMs=120000', `--expectDigest=${seal.digest}`, `--expectSha=${info.sourceCommitSha}`,
+  `--origin=${ORIGIN}`, `--heapCapMB=1024`,
 ];
-log(`rehearsing ${MINUTES} min at ${SPEED} bars/s`);
+log(`rehearsing ${MINUTES} min at ${SPEED} bars/s, through fire-sealed-soak`);
 log(`  digest pinned ${seal.digest.slice(0, 16)}   sha pinned ${info.sourceCommitSha.slice(0, 16)}`);
 if (MECHANICAL_ONLY) {
-  log('  MECHANICAL ONLY: this build predates SPEED-01, so the speed number does not carry the new unit.');
-  log('  What is being proven here is that the chain RUNS off 60 — gauges, gates, resume — not any rate.');
+  log('  MECHANICAL ONLY: proving the chain RUNS at this envelope — gauges, gates, resume.');
 }
+
+const runLauncher = (extra = []) => new Promise((resolve) => {
+  const c = spawn(process.execPath, [...launchArgs, ...extra], { stdio: ['ignore', 'pipe', 'pipe'] });
+  let buf = '';
+  c.stdout.on('data', (d) => { buf += d; process.stdout.write(d); });
+  c.stderr.on('data', (d) => { buf += d; process.stderr.write(d); });
+  c.on('exit', (code) => resolve({ code, out: buf }));
+});
+
+// Find the detached soak child the launcher started, so the kill hits the run and not the launcher.
+const findSoakPid = () => {
+  try {
+    const ps = `Get-CimInstance Win32_Process -Filter "Name='node.exe'" | Where-Object { $_.CommandLine -like '*sealed-two-arm-soak*' } | ForEach-Object { $_.ProcessId }`;
+    const r = execFileSync('powershell', ['-NoProfile', '-NonInteractive', '-Command', ps], { encoding: 'utf8', timeout: 20000 });
+    return String(r).trim().split(/\s+/).filter(Boolean).map(Number);
+  } catch { return []; }
+};
 
 const started = Date.now();
 let killedOnce = false;
-let child = spawn(process.execPath, args, { stdio: ['ignore', 'pipe', 'pipe'] });
-const lines = [];
-const attach = (c) => {
-  c.stdout.on('data', (d) => process.stdout.write(d));
-  c.stderr.on('data', (d) => { const s = String(d); lines.push(s); process.stderr.write(d); });
-};
-attach(child);
+let resumeAnnounced = false;
 
-// The resume exercise. A kill is the only way to find out whether resume works; "tested" became
-// "exercised" once before and it cost three launcher defects to discover.
-if (KILL_AT_MIN > 0) {
-  setTimeout(() => {
-    if (child && !child.killed) {
-      killedOnce = true;
-      log(`KILLING the run at +${KILL_AT_MIN} min on purpose — auto-resume must record a segment boundary and continue`);
-      try { execFileSync('taskkill', ['/PID', String(child.pid), '/T', '/F'], { stdio: 'ignore' }); } catch { /* already gone */ }
-    }
-  }, KILL_AT_MIN * 60000);
+const first = await runLauncher(['--fresh']);
+log(`launcher exited ${first.code}`);
+if (first.code !== 0) { log('the launch itself failed — nothing to rehearse'); }
+
+if (first.code === 0 && KILL_AT_MIN > 0) {
+  await new Promise((r) => setTimeout(r, KILL_AT_MIN * 60000));
+  const pids = findSoakPid();
+  if (pids.length) {
+    killedOnce = true;
+    log(`KILLING soak pid ${pids.join(', ')} at +${KILL_AT_MIN} min on purpose`);
+    for (const pid of pids) { try { execFileSync('taskkill', ['/PID', String(pid), '/T', '/F'], { stdio: 'ignore' }); } catch { /* gone */ } }
+    await new Promise((r) => setTimeout(r, 20000));
+    log('RELAUNCHING — the launcher must RESUME the series, not archive it');
+    const second = await runLauncher([]);
+    resumeAnnounced = /RESUMING the existing series/.test(second.out);
+    log(`relaunch exited ${second.code}, resume announced: ${resumeAnnounced}`);
+  } else {
+    log('no soak child found to kill — the resume exercise did not happen');
+  }
 }
 
-const exitCode = await new Promise((resolve) => child.on('exit', (c) => resolve(c)));
-log(`child exited ${exitCode} after ${((Date.now() - started) / 60000).toFixed(1)} min`);
+// Wait out the remainder, then confirm the run has actually stopped before grading its file.
+const waitUntil = started + (MINUTES + 3) * 60000;
+while (Date.now() < waitUntil && findSoakPid().length) await new Promise((r) => setTimeout(r, 30000));
+const exitCode = findSoakPid().length ? 'still-running' : 0;
+log(`run finished after ${((Date.now() - started) / 60000).toFixed(1)} min`);
 
 // Read what the run actually wrote, rather than what the log said.
 let rows = [];
@@ -125,8 +159,10 @@ gate('blocking ms/s read', samples.some((s) => Number.isFinite(s.blockingMsPerSe
 gate('frame rate read (FRAME-01)', frames.length > 0, frames.length ? `mean ${mean(frames)} fps over ${frames.length} samples` : 'NO frame rate on any sample');
 gate('delivered bars/s computed at the new envelope', rates.length > 0, rates.length ? `mean ${mean(rates)} bars/s, requested ${SPEED}` : 'RATE-HOLD had no computable input');
 if (KILL_AT_MIN > 0) {
+  gate('the launcher announced RESUME rather than archiving', resumeAnnounced, resumeAnnounced ? 'RESUMING printed on relaunch' : 'the launcher did not resume');
   gate('the deliberate kill was followed by auto-resume', killedOnce && segStarts.length >= 2, `${segStarts.length} segment starts, killed=${killedOnce}`);
   gate('the series continued past the kill', killedOnce && samples.length > 0 && Math.max(...samples.map((s) => s.segment || 1)) >= 2, `highest segment ${samples.length ? Math.max(...samples.map((s) => s.segment || 1)) : 0}`);
+  gate('the pre-kill samples survived the relaunch', samples.filter((s) => (s.segment || 1) === 1).length > 0, `${samples.filter((s) => (s.segment || 1) === 1).length} samples from segment 1 still present`);
 }
 gate('no VOID was recorded', voids.length === 0, voids.length ? voids.map((v) => String(v.why).slice(0, 90)).join(' | ') : 'none');
 

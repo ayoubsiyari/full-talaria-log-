@@ -883,16 +883,24 @@ export async function probePanelAdvanceRates(page, { windowMs = 6_000, replaySpe
     const barsPerSec = b.idx != null && a.idx != null ? (a.idx - b.idx) / wallSec : null;
     const tfSec = tfSeconds(a.timeframe);
     /**
-     * SPEED-01 CHANGED THE UNIT, NOT JUST THE RANGE, AND THIS LINE ENCODED THE OLD ONE.
+     * THIS LINE WAS ALWAYS WRONG, AND MY FIRST EXPLANATION FOR FIXING IT WAS ALSO WRONG.
      *
-     * The old slider was a time multiplier: 60 meant sixty simulated seconds per wall second, so bars/s
-     * was `speed / timeframeSeconds` and 60 on a 1m chart was 1 bar/s. The ladder is now the integers
-     * 1..10 in BARS PER SECOND directly, so the expectation is the speed itself and the conversion runs
-     * the other way. Left as written, every `rateRatio` on a 1m chart would read 60x its true value and
-     * a starved panel would grade as healthy.
+     * I changed it believing SPEED-01 had changed the unit from a time multiplier to bars per second.
+     * It had not. My own settled S1 finding says the slider was ALREADY candles per second - the engine
+     * intends 1.00 candles/s at 1x and measured 1.04 - so SPEED-01 changed the RANGE (max 10) and left
+     * the unit alone. The right fix for the wrong reason.
      *
-     * The convention is recorded on the result rather than assumed, because six scripts call this and an
-     * artifact that does not name its unit is the defect I withdrew two headlines for.
+     * What this line actually was, then, is a latent defect of its own: dividing by the timeframe made
+     * the expectation 0.167 bars/s on a 1m chart at speed 10, against 9.54 measured. Every rateRatio
+     * built on it was ~57x out, and a starved panel reading a fifth of its requested rate would still
+     * have graded healthy. It reaches one published field - replay-speed-calibration's
+     * asArmedEffectiveMultipleOfRequested - so figures quoting THAT field are suspect; the S1 curve I
+     * published is not, because that script computes its expectation inline.
+     *
+     * MEASURED, not reasoned: the b121 shakeout requested 10 and delivered 9.541 bars/s.
+     *
+     * speedUnit is recorded on the result because six scripts call this, and an artifact that does not
+     * name its unit is the defect I withdrew two headlines for.
      */
     const expectedBarsPerSec = speedUnit === 'barsPerSecond'
       ? replaySpeed
