@@ -494,3 +494,57 @@ Artifacts: `_evidence/manager-C/a8-hoard-slope-2026-08-02T12-13-51-028Z{,-REGRAD
   **Blink detail for the 212 MB question:** this 12-min leg does not reproduce +212 MB Oilpan (wrong timescale). When blink_gc did grow (+6.75), the children were `blink_gc/main/heap/NormalPageSpace3` pages, not a named Canvas bucket. The detail instrument is now in place for a longer pair.
 
   **SOAK BLOCKER (not lost):** `datasetMode: 'same-symbol'` added — one file at 1m/5m/15m/1h for a common market-time window. Sealed soak now boots with it and `requireDeliveringPanels: 4` (refuses rather than measuring a one-panel workload). Live verification of 4/4 delivery under that mode is the remaining gate before fire.
+
+- 21:30+01:00 · C · **blink_gc 212 vs E's 13 RECONCILED — 212.5 WITHDRAWN AS ADVISOR-QUOTABLE. NO NEW ARENA INSTRUMENT. FORCED-GC FLOOR RE-BASE IS THE OPEN LANE.** · Correction `docs/plan3/CORRECTION-C-BLINK-GC-212-VS-E-13-RECONCILED-20260802.md` (advisor report §8 note updated to point here).
+
+  **The conflict was a kind/condition mix, not two readings of one number.**
+  | Figure | Kind | Condition | Advisor |
+  |---|---|---|---|
+  | **212.5 MB** | GROWTH (Δ) | soak pair ~21k→60k bars, b120 | **WITHDRAWN** — second dump missing from disk; never a level; not E's session |
+  | **401.1 MB** | LEVEL | dump A still on disk, same soak pid, ~63k bars | historical only |
+  | **115.4 MB** | LEVEL | CONF-01 drained tonight b122 | that condition only |
+  | **13.00 MB** | LEVEL | E arena-reclaim (renderer private ~263, JS 12.8) | **stands** — E owns the row |
+
+  Naming trap: tonight's drained dump also has **`blink_objects` 13.45 MB**, a separate memory-infra root from `blink_gc`. Do not treat those names as interchangeable when reconciling with E's 13.00.
+
+  **Arena tooling:** I am not building a parallel per-arena dump path. E already has memory-infra dumps working and used them for the 61.5 MB reclaim. Attribution inside `partition_alloc` / `malloc` remains E's row.
+
+  **Published slopes NON-QUOTABLE until forced-GC re-base lands:** 22.89 and the running cluster (23.98 / 24.55 / 25.35). Pause releases nothing; floors were froth-inflated. Instrument for the re-base: `scripts/forced-gc-hoard-slope.mjs` — same-symbol, requireDeliveringPanels=4, `HeapProfiler.collectGarbage` at both drains, MB/kbar on bars delivered. **Nothing on the slope is quotable until that artifact returns MEASURED.** (The prior entry's "detail instrument for a longer Oilpan pair" is not a C build of a new arena framework — allocator dumps stay on E's path; C's blink detail helper is only for reading dumps E's tooling already produces.)
+
+  **Common-window re-verified live:** `_evidence/manager-C/same-symbol-delivery-run1.json` → `FOUR_OF_FOUR_DELIVERING` (file 677 @ 1m/5m/15m/1h, ~+450 each in 45s). Forced-GC slope run1 is on the wire.
+
+- 21:40+01:00 · C · **CLAIM · `ARENA-TIMESERIES` + `COMBINED-CANVAS-FIX-BASELINE`** · Top row per Director: floor and slope are different problems; every prior arena number is an event delta. C owns long-run measurement → take E's memory-infra dump path as a multi-hour time series and say which arenas grow. Instruments: `scripts/arena-timeseries.mjs` (reuses `process-memory-census.collectMemoryDump`, same-symbol, 4/4 delivering), `scripts/combined-canvas-fix-baseline.mjs` (indicator-layer + linked-pane in ONE session — do not add 61.52+53.72). Forced-GC floor re-base still ahead of any MB/kbar quote. Self-test `arena-timeseries.selftest.mjs` 3/3.
+
+- 21:40+01:00 · C → E · **SEND · `ARENA-TIMESERIES-OWNERSHIP`** ·
+
+  **Taking your dump path for the long run. Not building a parallel arena instrument.**
+
+  1. **What C is doing.** Sampling every memory-infra root across a multi-hour same-symbol CONF-01 play session via your `collectMemoryDump` / `summariseAllocators` path (`scripts/arena-timeseries.mjs`). Live samples every 10 min; forced-GC samples at start/end and every 3rd tick so floor vs froth can be separated. The question this answers: which arenas grow over hours. That single ranking decides whether remaining fixes target floor (large steady cost, e.g. your partition_alloc 91.98 with +0.996 on pair switch) or slope (roots that climb).
+
+  2. **What stays yours.** Attribution *inside* `partition_alloc` / `malloc` (bucket → product owner) remains E's row. C will only report which roots grow and by how much. If the time series names `partition_alloc` or `malloc` as a grower, that is your cue to go one level deeper — not C inventing a second child-attribution tool.
+
+  3. **Combined-fix baseline.** Measuring indicator-layer reclaim + linked-pane reclaim once, same build, same session (`scripts/combined-canvas-fix-baseline.mjs`). Will not quote 61.52+53.72. Artifact under `_evidence/manager-C/combined-canvas-fix-*.json`; you may mirror or reprice if your harness knobs differ — the form is peak→after totalPrivate with both release paths fired before the after sample.
+
+  4. **Still non-quotable.** 22.89 and the running cluster stay non-quotable until forced-GC floor re-base on common-window lands. Arena growth identity can be published without that; the soak MB/kbar cannot.
+
+  5. **Ask.** Confirm the dump entry point above is the one you want long-run measurement to bind to. If you have a preferred sample interval / drain cadence for arena series, say so before the first full run finishes and I will re-cut.
+
+- 21:42+01:00 · C · **MEASURED · `COMBINED-CANVAS-FIX-BASELINE` — 19.6 MB, NOT 115** · Artifact `_evidence/manager-C/combined-canvas-fix-run2.json` (run1 discarded as settle-noise: −25.6 MB / after > peak). One session, both release paths fired, forced GC at each sample:
+
+  | | Peak | After | Reclaimed |
+  |---|---:|---:|---:|
+  | **totalPrivate** | 527.02 | 507.42 | **19.6 MB** |
+  | GPU private | — | — | 35.07 MB |
+  | renderer private | — | — | −11.96 MB (grew) |
+
+  Structural release held: linked-pane canvases 4→0, ind layers 4→1 (host residual matches E). **Do not quote 61.52+53.72=115.24.** Composition is not linear; the combined number on this build is **19.6 MB total-private**. Arena time series is on the wire (3h, 10 min samples, E's dump path).
+
+- 21:48+01:00 · C · **FORCED-GC SLOPE RUN1 ABORTED BY ME — MY OWN CONCURRENCY STALLED IT. NOT A PRODUCT FINDING.** · Slope run1 booted 20:35, floor A **742.8 MB** drained, then the host playhead froze at index **3,508** from t+4m onward (`rate=0` at t+6m and t+8m) — from the minute the arena time-series session booted on the same machine. Two four-panel Chrome sessions on one host is contention, and a stalled leg biases retention DOWNWARD: floor B would have read flat and could have been misread as "no retention." I killed the slope run rather than publish a floor pair taken across my own interference. **No slope number from run1.** Sequencing correction: arena time series (Director's top row) runs alone to completion; forced-GC floor re-base re-fires solo after it. 22.89 and the running cluster remain non-quotable.
+
+  First arena samples are already informative and were taken while the slope session was still up, so treat the absolute levels as loaded-host: live `total 1005.51 / ren 652.83 / gpu 248 · pa 66.75 · malloc 83.15 · v8 50.79 · blink_gc 143.21 · canvas 12.51`; drained at the same moment `total 798.89 · pa 49.51 · malloc 81.19 · v8 50.81 · blink_gc 119.69`. Note `pa` drops 17 MB and `blink_gc` 24 MB on collection while `malloc` and `v8` barely move — early sign that the arenas differ in how much of their level is froth versus floor. Growth ranking, not these levels, is the deliverable.
+
+- 21:34+01:00 · B → C · **THE REBUILD CONSTRAINT IS NOW A CHECK, NOT A LIST** · `npm run rebuild-constraint` (host: mine, `c:\Users\user\Desktop\talaria1\full-talaria-log--main`). The deployed surface is `20260802b122` / source `1c69bebb4`, which is **10:13 this morning and 123 commits behind my tip**, so the PO is right that nothing there can be cited about tonight. Five rows must be carried: A's daily bucketing (`c0c013b9c`), D's M24 order counters (`47b1c5f05`), and my SHELL-PLAY-01, panel slice and toolbar pins (`419bb433f`). Each has a marker greppable in **served bytes**, and `--base=http://host` runs the same check against the deployed door after you ship — including the content-type arm, so an HTML answer to a `.js` path reports *wrong door*, not *bad build*.
+- 21:34+01:00 · B → C · GATE · `rebuild-constraint:markers` PASS 6/6 · Discrimination is against the **deployed commit**, not the marker's own parent, because the claim being tested is "the canary does not carry this". All six markers are absent at `1c69bebb4` and present at my tip. One I had to throw away and it is worth naming: `_replayBucketStart` looked like the obvious anchor for A's row and it is **present at the deployed commit** — the method predates today and A only taught it the session open. It would have passed on the stale canary and told you the rebuild had landed when it had not. Replaced with `chart._sessionBucketStart`, which is genuinely new.
+- 21:34+01:00 · B → C/PO · **BLOCKING FOR THE PASSPORT: A BUNDLE THAT ITS OWN SOURCE SHA CANNOT PRODUCE** · `rebuild-constraint:provenance` at `c0c013b9c` exits 2. The committed bundle there contains `__TALARIA_DISABLE_PANEL_STATE_PERSIST_V1`, and that string is in **zero** source files at that commit — `git grep` across the tree with `dist` excluded returns NONE. `c0c013b9c` is not a merge (single parent `8d0ed5579`) and my panel-slice commit `419bb433f` is **not** an ancestor of it, so the code was not inherited. It was compiled off the shared filesystem: the V9 build reads the working **tree**, and my panel-slice source was on disk uncommitted when A's build ran. **The consequence is yours, not A's:** PASSPORT-3's third coordinate names a commit that would not reproduce the bytes it is stamped on. Same badge, same digest, same source SHA, different bundle. That is the coordinate we added specifically so the digest could be trusted.
+- 21:34+01:00 · B → C · **SO THE CONSTRAINT HAS A SECOND CLAUSE: BUILD FROM A CLEAN TREE** · Carrying the commits is necessary and not sufficient. Please run `npm run rebuild-constraint:provenance` **after** the build and **before** you stamp; exit 0 means every compiled marker traces to product source in the same tree. It is green at my tip and red at `c0c013b9c`, so the green is load-bearing rather than a check that cannot fail. Board notes and gate files are excluded from counting as owners on purpose — a `BOARD-B.md` mention must not be allowed to explain a compiled byte. The tree is at 143 dirty files across several lanes right now, which is exactly the condition that produced this.
+- 21:34+01:00 · B → C · **CORRECTION TO MY 19:58 REQUEST, IN YOUR FAVOUR** · I told you the rebuild carried four rows that could not reach users without it. That was wrong about three of them. A's `c0c013b9c` build already compiled my toolbar pins, panel slice and SHELL-PLAY-01 into the committed bundle — `rebuild-constraint` reports all five rows CARRIED in the tree today. They are in the bytes **by accident**, via the same uncommitted-disk sweep described above, which is why I am not treating it as good news. What your rebuild has to move is the **deployed** surface, and what it has to add is a build whose provenance is defensible. Nothing is waiting on you to compile it.
