@@ -13862,6 +13862,14 @@ body.light-mode .template-save-dialog .dialog-title {
 
                             const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.85);
 
+                            // Last read of the compress scratch; drop its backing
+                            // store now rather than leaving it to a later collection.
+                            if (!window.__TALARIA_DISABLE_SCRATCH_CANVAS_RELEASE_V1) {
+
+                                try { canvas.width = 0; canvas.height = 0; } catch (_) {}
+
+                            }
+
 
 
                             if (img.width > 0 && img.height > 0) {

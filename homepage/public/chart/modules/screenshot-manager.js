@@ -331,8 +331,23 @@ class ScreenshotManager {
                 sourceHeight: image.naturalHeight
             };
 
+        this._releaseScratchCanvas(scratch);
         this._brandLogoBounds = bounds;
         return bounds;
+    }
+
+    /**
+     * Release a scratch canvas at its last read. A dropped canvas keeps its
+     * backing store in native memory, which V8 has no pressure signal for, so it
+     * can stay resident well past the point the JS reference goes away.
+     */
+    _releaseScratchCanvas(canvas) {
+        if (!canvas) return;
+        if (typeof window !== 'undefined' && window.__TALARIA_DISABLE_SCRATCH_CANVAS_RELEASE_V1) return;
+        try {
+            canvas.width = 0;
+            canvas.height = 0;
+        } catch (_) { /* ignore */ }
     }
 
     /**
@@ -1511,6 +1526,7 @@ class ScreenshotManager {
 
                 this._addOHLCOverlayFromDoc(panelCanvas, panelDoc, scale);
                 ctx.drawImage(panelCanvas, dx, dy, dw, dh);
+                this._releaseScratchCanvas(panelCanvas);
             } catch (e) {
                 console.warn('[screenshot] panel capture failed:', e && e.message);
             }
@@ -1637,6 +1653,10 @@ class ScreenshotManager {
                 }
             }
             
+            // The snapshot canvas is never read again past this point — only the
+            // data URL leaves this function.
+            this._releaseScratchCanvas(canvas);
+
             // Verify it's a valid data URL
             if (!dataUrl || !dataUrl.startsWith('data:image')) {
                 console.error('❌ Invalid data URL generated');
