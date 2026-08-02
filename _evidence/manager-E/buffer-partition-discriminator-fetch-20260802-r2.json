@@ -1,0 +1,612 @@
+{
+  "signature": "BUFFER-PARTITION-DISCRIMINATOR-V1",
+  "at": "2026-08-02T22:30:54.394Z",
+  "method": {
+    "arms": [
+      "idle-control",
+      "fetch-only",
+      "render-only",
+      "indicator-only"
+    ],
+    "settleMs": 120000,
+    "iterations": 60,
+    "allocator": "PID-marked memory-infra detailed dump from the page renderer before, post-operation, and post-settle for each arm"
+  },
+  "arms": [
+    {
+      "label": "fetch-only",
+      "startedAt": "2026-08-02T22:30:54.410Z",
+      "boot": {
+        "hostChart": true,
+        "iframeCharts": 3,
+        "iframeCount": 3
+      },
+      "before": {
+        "label": "before",
+        "at": "2026-08-02T22:31:00.996Z",
+        "process": {
+          "totalPrivateMB": 544.84,
+          "rendererPrivateMB": 271.26,
+          "gpuPrivateMB": 185.65,
+          "processes": [
+            {
+              "pid": 5780,
+              "type": "browser",
+              "privateMB": 54.75
+            },
+            {
+              "pid": 35376,
+              "type": "renderer",
+              "privateMB": 18.49
+            },
+            {
+              "pid": 34532,
+              "type": "renderer",
+              "privateMB": 21.04
+            },
+            {
+              "pid": 25952,
+              "type": "renderer",
+              "privateMB": 210.43
+            },
+            {
+              "pid": 36804,
+              "type": "renderer",
+              "privateMB": 21.3
+            },
+            {
+              "pid": 35000,
+              "type": "GPU",
+              "privateMB": 185.65
+            },
+            {
+              "pid": 10432,
+              "type": "network.mojom.NetworkService",
+              "privateMB": 21.82
+            },
+            {
+              "pid": 11092,
+              "type": "storage.mojom.StorageService",
+              "privateMB": 11.36
+            }
+          ]
+        },
+        "allocatorCoverage": {
+          "pagePid": 25952,
+          "pagePidFallback": false,
+          "hasPageAllocator": true
+        },
+        "rootsMB": {
+          "blink_gc": 13,
+          "blink_objects": 8.602,
+          "canvas": 12.726,
+          "cc": 10.656,
+          "gpu": 4.125,
+          "malloc": 51.83,
+          "partition_alloc": 122.414,
+          "shared_memory": 4.805,
+          "site_storage": 0,
+          "skia": 0.1,
+          "sqlite": 0.147,
+          "v8": 14.383,
+          "web_cache": 0.169
+        },
+        "partitionBufferMB": 122.391,
+        "partitionBufferTop": [
+          {
+            "name": "partition_alloc/partitions/buffer",
+            "mb": 122.391
+          },
+          {
+            "name": "partition_alloc/partitions/buffer/buckets",
+            "mb": 122.391
+          },
+          {
+            "name": "partition_alloc/partitions/buffer/buckets/bucket_0081920",
+            "mb": 7.266
+          },
+          {
+            "name": "partition_alloc/partitions/buffer/buckets/bucket_0458752",
+            "mb": 6.563
+          },
+          {
+            "name": "partition_alloc/partitions/buffer/buckets/bucket_0163840",
+            "mb": 5.625
+          },
+          {
+            "name": "partition_alloc/partitions/buffer/buckets/bucket_0327680",
+            "mb": 5.625
+          },
+          {
+            "name": "partition_alloc/partitions/buffer/buckets/bucket_0655360",
+            "mb": 5.625
+          },
+          {
+            "name": "partition_alloc/partitions/buffer/buckets/directMap_13",
+            "mb": 4.852
+          },
+          {
+            "name": "partition_alloc/partitions/buffer/buckets/directMap_19",
+            "mb": 4.852
+          },
+          {
+            "name": "partition_alloc/partitions/buffer/buckets/directMap_2",
+            "mb": 4.852
+          },
+          {
+            "name": "partition_alloc/partitions/buffer/buckets/directMap_5",
+            "mb": 4.852
+          },
+          {
+            "name": "partition_alloc/partitions/buffer/buckets/bucket_0786432",
+            "mb": 4.5
+          }
+        ]
+      },
+      "operation": [
+        {
+          "ok": true,
+          "fetches": 60,
+          "approxPayloadBytes": 7060697,
+          "anchorFirstT": 1785589860000,
+          "anchorLastT": 1785709800000,
+          "smartCacheSize": 48,
+          "barsInflightSize": 0
+        },
+        {
+          "ok": true,
+          "fetches": 60,
+          "approxPayloadBytes": 7060697,
+          "anchorFirstT": 1785589860000,
+          "anchorLastT": 1785709800000,
+          "smartCacheSize": 48,
+          "barsInflightSize": 0
+        },
+        {
+          "ok": true,
+          "fetches": 60,
+          "approxPayloadBytes": 7060697,
+          "anchorFirstT": 1785589860000,
+          "anchorLastT": 1785709800000,
+          "smartCacheSize": 48,
+          "barsInflightSize": 0
+        },
+        {
+          "ok": true,
+          "fetches": 60,
+          "approxPayloadBytes": 7060697,
+          "anchorFirstT": 1785589860000,
+          "anchorLastT": 1785709800000,
+          "smartCacheSize": 48,
+          "barsInflightSize": 0
+        }
+      ],
+      "postOperationAt": "2026-08-02T22:31:02.759Z",
+      "postOperation": {
+        "label": "post-operation",
+        "at": "2026-08-02T22:31:07.707Z",
+        "process": {
+          "totalPrivateMB": 515.03,
+          "rendererPrivateMB": 295.47,
+          "gpuPrivateMB": 91.91,
+          "processes": [
+            {
+              "pid": 5780,
+              "type": "browser",
+              "privateMB": 77.31
+            },
+            {
+              "pid": 35376,
+              "type": "renderer",
+              "privateMB": 18.41
+            },
+            {
+              "pid": 34532,
+              "type": "renderer",
+              "privateMB": 20.46
+            },
+            {
+              "pid": 25952,
+              "type": "renderer",
+              "privateMB": 236.37
+            },
+            {
+              "pid": 36804,
+              "type": "renderer",
+              "privateMB": 20.23
+            },
+            {
+              "pid": 35000,
+              "type": "GPU",
+              "privateMB": 91.91
+            },
+            {
+              "pid": 10432,
+              "type": "network.mojom.NetworkService",
+              "privateMB": 21.99
+            },
+            {
+              "pid": 11092,
+              "type": "storage.mojom.StorageService",
+              "privateMB": 11.37
+            },
+            {
+              "pid": 28908,
+              "type": "tracing.mojom.TracingService",
+              "privateMB": 16.98
+            }
+          ]
+        },
+        "allocatorCoverage": {
+          "pagePid": 25952,
+          "pagePidFallback": false,
+          "hasPageAllocator": true
+        },
+        "rootsMB": {
+          "blink_gc": 13.5,
+          "blink_objects": 8.689,
+          "canvas": 10.51,
+          "cc": 5.828,
+          "gpu": 4.125,
+          "malloc": 43.715,
+          "partition_alloc": 121.914,
+          "shared_memory": 5.637,
+          "site_storage": 0,
+          "skia": 0.1,
+          "sqlite": 0.164,
+          "v8": 40.66,
+          "web_cache": 0.169
+        },
+        "partitionBufferMB": 121.891,
+        "partitionBufferTop": [
+          {
+            "name": "partition_alloc/partitions/buffer",
+            "mb": 121.891
+          },
+          {
+            "name": "partition_alloc/partitions/buffer/buckets",
+            "mb": 121.891
+          },
+          {
+            "name": "partition_alloc/partitions/buffer/buckets/bucket_0163840",
+            "mb": 13.594
+          },
+          {
+            "name": "partition_alloc/partitions/buffer/buckets/bucket_0131072",
+            "mb": 7.875
+          },
+          {
+            "name": "partition_alloc/partitions/buffer/buckets/bucket_0114688",
+            "mb": 7.328
+          },
+          {
+            "name": "partition_alloc/partitions/buffer/buckets/bucket_0458752",
+            "mb": 5.25
+          },
+          {
+            "name": "partition_alloc/partitions/buffer/buckets/bucket_0098304",
+            "mb": 4.875
+          },
+          {
+            "name": "partition_alloc/partitions/buffer/buckets/directMap_13",
+            "mb": 4.852
+          },
+          {
+            "name": "partition_alloc/partitions/buffer/buckets/directMap_19",
+            "mb": 4.852
+          },
+          {
+            "name": "partition_alloc/partitions/buffer/buckets/directMap_2",
+            "mb": 4.852
+          },
+          {
+            "name": "partition_alloc/partitions/buffer/buckets/directMap_5",
+            "mb": 4.852
+          },
+          {
+            "name": "partition_alloc/partitions/buffer/buckets/bucket_0655360",
+            "mb": 4.375
+          }
+        ]
+      },
+      "after": {
+        "label": "post-settle",
+        "at": "2026-08-02T22:33:12.651Z",
+        "process": {
+          "totalPrivateMB": 503.47,
+          "rendererPrivateMB": 291.45,
+          "gpuPrivateMB": 92.98,
+          "processes": [
+            {
+              "pid": 5780,
+              "type": "browser",
+              "privateMB": 73.73
+            },
+            {
+              "pid": 35376,
+              "type": "renderer",
+              "privateMB": 17.7
+            },
+            {
+              "pid": 34532,
+              "type": "renderer",
+              "privateMB": 20.84
+            },
+            {
+              "pid": 25952,
+              "type": "renderer",
+              "privateMB": 231.71
+            },
+            {
+              "pid": 36804,
+              "type": "renderer",
+              "privateMB": 21.2
+            },
+            {
+              "pid": 35000,
+              "type": "GPU",
+              "privateMB": 92.98
+            },
+            {
+              "pid": 10432,
+              "type": "network.mojom.NetworkService",
+              "privateMB": 18.14
+            },
+            {
+              "pid": 11092,
+              "type": "storage.mojom.StorageService",
+              "privateMB": 11.25
+            },
+            {
+              "pid": 28908,
+              "type": "tracing.mojom.TracingService",
+              "privateMB": 15.92
+            }
+          ]
+        },
+        "allocatorCoverage": {
+          "pagePid": 25952,
+          "pagePidFallback": false,
+          "hasPageAllocator": true
+        },
+        "rootsMB": {
+          "blink_gc": 13.5,
+          "blink_objects": 8.6,
+          "canvas": 10.51,
+          "cc": 5.828,
+          "gpu": 4.125,
+          "malloc": 37.392,
+          "partition_alloc": 121.914,
+          "shared_memory": 6.406,
+          "site_storage": 0,
+          "skia": 0.1,
+          "sqlite": 0.164,
+          "v8": 40.91,
+          "web_cache": 0.169
+        },
+        "partitionBufferMB": 121.891,
+        "partitionBufferTop": [
+          {
+            "name": "partition_alloc/partitions/buffer",
+            "mb": 121.891
+          },
+          {
+            "name": "partition_alloc/partitions/buffer/buckets",
+            "mb": 121.891
+          },
+          {
+            "name": "partition_alloc/partitions/buffer/buckets/bucket_0163840",
+            "mb": 13.594
+          },
+          {
+            "name": "partition_alloc/partitions/buffer/buckets/bucket_0131072",
+            "mb": 7.875
+          },
+          {
+            "name": "partition_alloc/partitions/buffer/buckets/bucket_0114688",
+            "mb": 7.328
+          },
+          {
+            "name": "partition_alloc/partitions/buffer/buckets/bucket_0458752",
+            "mb": 5.25
+          },
+          {
+            "name": "partition_alloc/partitions/buffer/buckets/bucket_0098304",
+            "mb": 4.875
+          },
+          {
+            "name": "partition_alloc/partitions/buffer/buckets/directMap_13",
+            "mb": 4.852
+          },
+          {
+            "name": "partition_alloc/partitions/buffer/buckets/directMap_19",
+            "mb": 4.852
+          },
+          {
+            "name": "partition_alloc/partitions/buffer/buckets/directMap_2",
+            "mb": 4.852
+          },
+          {
+            "name": "partition_alloc/partitions/buffer/buckets/directMap_5",
+            "mb": 4.852
+          },
+          {
+            "name": "partition_alloc/partitions/buffer/buckets/bucket_0655360",
+            "mb": 4.375
+          }
+        ]
+      },
+      "summary": {
+        "partitionBufferBeforeMB": 122.391,
+        "partitionBufferPostOperationMB": 121.891,
+        "partitionBufferAfterSettleMB": 121.891,
+        "partitionBufferPostOperationDeltaMB": -0.5,
+        "partitionBufferAfterSettleDeltaMB": -0.5,
+        "totalPrivatePostOperationDeltaMB": -29.81,
+        "totalPrivateAfterSettleDeltaMB": -41.37,
+        "rendererPrivatePostOperationDeltaMB": 24.21,
+        "rendererPrivateAfterSettleDeltaMB": 20.19,
+        "gpuPrivatePostOperationDeltaMB": -93.74,
+        "gpuPrivateAfterSettleDeltaMB": -92.67,
+        "bufferBucketPostOperationDeltas": [
+          {
+            "name": "partition_alloc/partitions/buffer/buckets/bucket_0163840",
+            "beforeMB": 5.625,
+            "afterMB": 13.594,
+            "deltaMB": 7.969
+          },
+          {
+            "name": "partition_alloc/partitions/buffer/buckets/bucket_0131072",
+            "beforeMB": 0,
+            "afterMB": 7.875,
+            "deltaMB": 7.875
+          },
+          {
+            "name": "partition_alloc/partitions/buffer/buckets/bucket_0114688",
+            "beforeMB": 0,
+            "afterMB": 7.328,
+            "deltaMB": 7.328
+          },
+          {
+            "name": "partition_alloc/partitions/buffer/buckets/bucket_0081920",
+            "beforeMB": 7.266,
+            "afterMB": 0,
+            "deltaMB": -7.266
+          },
+          {
+            "name": "partition_alloc/partitions/buffer/buckets/bucket_0327680",
+            "beforeMB": 5.625,
+            "afterMB": 0,
+            "deltaMB": -5.625
+          },
+          {
+            "name": "partition_alloc/partitions/buffer/buckets/bucket_0098304",
+            "beforeMB": 0,
+            "afterMB": 4.875,
+            "deltaMB": 4.875
+          },
+          {
+            "name": "partition_alloc/partitions/buffer/buckets/bucket_0786432",
+            "beforeMB": 4.5,
+            "afterMB": 0,
+            "deltaMB": -4.5
+          },
+          {
+            "name": "partition_alloc/partitions/buffer/buckets/bucket_0458752",
+            "beforeMB": 6.563,
+            "afterMB": 5.25,
+            "deltaMB": -1.313
+          },
+          {
+            "name": "partition_alloc/partitions/buffer/buckets/bucket_0655360",
+            "beforeMB": 5.625,
+            "afterMB": 4.375,
+            "deltaMB": -1.25
+          },
+          {
+            "name": "partition_alloc/partitions/buffer",
+            "beforeMB": 122.391,
+            "afterMB": 121.891,
+            "deltaMB": -0.5
+          },
+          {
+            "name": "partition_alloc/partitions/buffer/buckets",
+            "beforeMB": 122.391,
+            "afterMB": 121.891,
+            "deltaMB": -0.5
+          },
+          {
+            "name": "partition_alloc/partitions/buffer/buckets/directMap_13",
+            "beforeMB": 4.852,
+            "afterMB": 4.852,
+            "deltaMB": 0
+          }
+        ],
+        "bufferBucketAfterSettleDeltas": [
+          {
+            "name": "partition_alloc/partitions/buffer/buckets/bucket_0163840",
+            "beforeMB": 5.625,
+            "afterMB": 13.594,
+            "deltaMB": 7.969
+          },
+          {
+            "name": "partition_alloc/partitions/buffer/buckets/bucket_0131072",
+            "beforeMB": 0,
+            "afterMB": 7.875,
+            "deltaMB": 7.875
+          },
+          {
+            "name": "partition_alloc/partitions/buffer/buckets/bucket_0114688",
+            "beforeMB": 0,
+            "afterMB": 7.328,
+            "deltaMB": 7.328
+          },
+          {
+            "name": "partition_alloc/partitions/buffer/buckets/bucket_0081920",
+            "beforeMB": 7.266,
+            "afterMB": 0,
+            "deltaMB": -7.266
+          },
+          {
+            "name": "partition_alloc/partitions/buffer/buckets/bucket_0327680",
+            "beforeMB": 5.625,
+            "afterMB": 0,
+            "deltaMB": -5.625
+          },
+          {
+            "name": "partition_alloc/partitions/buffer/buckets/bucket_0098304",
+            "beforeMB": 0,
+            "afterMB": 4.875,
+            "deltaMB": 4.875
+          },
+          {
+            "name": "partition_alloc/partitions/buffer/buckets/bucket_0786432",
+            "beforeMB": 4.5,
+            "afterMB": 0,
+            "deltaMB": -4.5
+          },
+          {
+            "name": "partition_alloc/partitions/buffer/buckets/bucket_0458752",
+            "beforeMB": 6.563,
+            "afterMB": 5.25,
+            "deltaMB": -1.313
+          },
+          {
+            "name": "partition_alloc/partitions/buffer/buckets/bucket_0655360",
+            "beforeMB": 5.625,
+            "afterMB": 4.375,
+            "deltaMB": -1.25
+          },
+          {
+            "name": "partition_alloc/partitions/buffer",
+            "beforeMB": 122.391,
+            "afterMB": 121.891,
+            "deltaMB": -0.5
+          },
+          {
+            "name": "partition_alloc/partitions/buffer/buckets",
+            "beforeMB": 122.391,
+            "afterMB": 121.891,
+            "deltaMB": -0.5
+          },
+          {
+            "name": "partition_alloc/partitions/buffer/buckets/directMap_13",
+            "beforeMB": 4.852,
+            "afterMB": 4.852,
+            "deltaMB": 0
+          }
+        ]
+      }
+    }
+  ],
+  "ranking": [
+    {
+      "label": "fetch-only",
+      "postOperationDeltaMB": -0.5,
+      "afterSettleDeltaMB": -0.5,
+      "controlAdjustedPostOperationDeltaMB": -0.5,
+      "controlAdjustedAfterSettleDeltaMB": -0.5,
+      "error": null
+    }
+  ]
+}

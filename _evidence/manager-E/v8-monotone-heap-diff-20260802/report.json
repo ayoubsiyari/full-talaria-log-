@@ -1,0 +1,1561 @@
+{
+  "signature": "V8-MONOTONE-HEAP-DIFF-30M",
+  "startedAt": "2026-08-02T22:55:05.147Z",
+  "condition": {
+    "surface": "thin-host four-panel harness",
+    "hostFile": 25,
+    "pairSwitches": 0,
+    "waitMin": 30,
+    "snapshotCapMB": 3072,
+    "topN": 25,
+    "note": "Two snapshots are captured from one persistent page target after forced collection. This is a V8 attribution run, not a soak verdict."
+  },
+  "moments": {
+    "A": {
+      "at": "2026-08-02T22:55:13.232Z",
+      "metrics": {
+        "label": "A-post-gc",
+        "at": "2026-08-02T22:55:10.607Z",
+        "jsHeapUsedMB": 13.03,
+        "jsHeapTotalMB": 14.004,
+        "documents": 4,
+        "frames": 4,
+        "nodes": 6309,
+        "jsEventListeners": 1478,
+        "detachedDomNodes": null
+      },
+      "playhead": [
+        {
+          "realm": "host",
+          "isPlaying": false,
+          "currentIndex": 0,
+          "replayTimestamp": null,
+          "dataLength": 2000,
+          "rawLength": 2000
+        },
+        {
+          "realm": "frame-0",
+          "isPlaying": false,
+          "currentIndex": 0,
+          "replayTimestamp": null,
+          "dataLength": 2000,
+          "rawLength": 2000
+        },
+        {
+          "realm": "frame-1",
+          "isPlaying": false,
+          "currentIndex": 0,
+          "replayTimestamp": null,
+          "dataLength": 2000,
+          "rawLength": 2000
+        },
+        {
+          "realm": "frame-2",
+          "isPlaying": false,
+          "currentIndex": 0,
+          "replayTimestamp": null,
+          "dataLength": 2000,
+          "rawLength": 2000
+        }
+      ],
+      "snapMeta": {
+        "attempted": true,
+        "ok": true,
+        "file": "_evidence\\manager-E\\v8-monotone-heap-diff-20260802\\A.heapsnapshot",
+        "bytes": 72571422,
+        "elapsedMs": 1793,
+        "skippedWhy": null,
+        "failedWhy": null,
+        "note": "End-of-arm snapshot is a by-product taken after the final sample. Its absence is a logged non-event and does NOT invalidate the arm.",
+        "freeDiskMB": 287529,
+        "mb": 69.2,
+        "progressFinished": true
+      }
+    },
+    "B": {
+      "at": "2026-08-02T23:25:18.983Z",
+      "metrics": {
+        "label": "B-post-gc",
+        "at": "2026-08-02T23:25:16.554Z",
+        "jsHeapUsedMB": 11.501,
+        "jsHeapTotalMB": 12.5,
+        "documents": 4,
+        "frames": 4,
+        "nodes": 6309,
+        "jsEventListeners": 1502,
+        "detachedDomNodes": null
+      },
+      "playhead": [
+        {
+          "realm": "host",
+          "isPlaying": false,
+          "currentIndex": 0,
+          "replayTimestamp": null,
+          "dataLength": 2000,
+          "rawLength": 2000
+        },
+        {
+          "realm": "frame-0",
+          "isPlaying": false,
+          "currentIndex": 0,
+          "replayTimestamp": null,
+          "dataLength": 2000,
+          "rawLength": 2000
+        },
+        {
+          "realm": "frame-1",
+          "isPlaying": false,
+          "currentIndex": 0,
+          "replayTimestamp": null,
+          "dataLength": 2000,
+          "rawLength": 2000
+        },
+        {
+          "realm": "frame-2",
+          "isPlaying": false,
+          "currentIndex": 0,
+          "replayTimestamp": null,
+          "dataLength": 2000,
+          "rawLength": 2000
+        }
+      ],
+      "snapMeta": {
+        "attempted": true,
+        "ok": true,
+        "file": "_evidence\\manager-E\\v8-monotone-heap-diff-20260802\\B.heapsnapshot",
+        "bytes": 70870366,
+        "elapsedMs": 1871,
+        "skippedWhy": null,
+        "failedWhy": null,
+        "note": "End-of-arm snapshot is a by-product taken after the final sample. Its absence is a logged non-event and does NOT invalidate the arm.",
+        "freeDiskMB": 287259,
+        "mb": 67.6,
+        "progressFinished": true
+      }
+    }
+  },
+  "heartbeats": [
+    {
+      "at": "2026-08-02T23:00:13.241Z",
+      "elapsedMin": 5
+    },
+    {
+      "at": "2026-08-02T23:05:13.247Z",
+      "elapsedMin": 10
+    },
+    {
+      "at": "2026-08-02T23:10:13.250Z",
+      "elapsedMin": 15
+    },
+    {
+      "at": "2026-08-02T23:15:13.256Z",
+      "elapsedMin": 20
+    },
+    {
+      "at": "2026-08-02T23:20:13.262Z",
+      "elapsedMin": 25
+    },
+    {
+      "at": "2026-08-02T23:25:13.236Z",
+      "elapsedMin": 30
+    }
+  ],
+  "boot": {
+    "hostChart": true,
+    "iframeCharts": 3,
+    "iframeCount": 3,
+    "urls": [
+      "http://127.0.0.1:64564/harness/host.html?pair=same&panels=4&tf=1m&hostFile=25",
+      "http://127.0.0.1:64564/chart/multichart-prod/chart-embed.html?id=B&tf=1m&fileId=25&multichart=1&panelId=B",
+      "http://127.0.0.1:64564/chart/multichart-prod/chart-embed.html?id=C&tf=1m&fileId=25&multichart=1&panelId=C",
+      "http://127.0.0.1:64564/chart/multichart-prod/chart-embed.html?id=D&tf=1m&fileId=25&multichart=1&panelId=D"
+    ]
+  },
+  "replayStart": [
+    {
+      "realm": "host",
+      "ok": true,
+      "isPlaying": false,
+      "currentIndex": 0,
+      "replayTimestamp": null
+    },
+    {
+      "realm": "frame-0",
+      "ok": true,
+      "isPlaying": false,
+      "currentIndex": 0,
+      "replayTimestamp": null
+    },
+    {
+      "realm": "frame-1",
+      "ok": true,
+      "isPlaying": false,
+      "currentIndex": 0,
+      "replayTimestamp": null
+    },
+    {
+      "realm": "frame-2",
+      "ok": true,
+      "isPlaying": false,
+      "currentIndex": 0,
+      "replayTimestamp": null
+    }
+  ],
+  "preAPlayhead": [
+    {
+      "realm": "host",
+      "isPlaying": false,
+      "currentIndex": 0,
+      "replayTimestamp": null,
+      "dataLength": 2000,
+      "rawLength": 2000
+    },
+    {
+      "realm": "frame-0",
+      "isPlaying": false,
+      "currentIndex": 0,
+      "replayTimestamp": null,
+      "dataLength": 2000,
+      "rawLength": 2000
+    },
+    {
+      "realm": "frame-1",
+      "isPlaying": false,
+      "currentIndex": 0,
+      "replayTimestamp": null,
+      "dataLength": 2000,
+      "rawLength": 2000
+    },
+    {
+      "realm": "frame-2",
+      "isPlaying": false,
+      "currentIndex": 0,
+      "replayTimestamp": null,
+      "dataLength": 2000,
+      "rawLength": 2000
+    }
+  ],
+  "replayResumeAfterA": [
+    {
+      "realm": "host",
+      "ok": true,
+      "isPlaying": false,
+      "currentIndex": 0,
+      "replayTimestamp": null
+    },
+    {
+      "realm": "frame-0",
+      "ok": true,
+      "isPlaying": false,
+      "currentIndex": 0,
+      "replayTimestamp": null
+    },
+    {
+      "realm": "frame-1",
+      "ok": true,
+      "isPlaying": false,
+      "currentIndex": 0,
+      "replayTimestamp": null
+    },
+    {
+      "realm": "frame-2",
+      "ok": true,
+      "isPlaying": false,
+      "currentIndex": 0,
+      "replayTimestamp": null
+    }
+  ],
+  "constructorGrowth": {
+    "totalPositiveSizeDeltaMB": 0.116,
+    "totalNetSizeDeltaMB": -1.42,
+    "topGrowers": [
+      {
+        "constructor": "system / InstructionStream",
+        "countBefore": 567,
+        "countAfter": 599,
+        "countDelta": 32,
+        "sizeBeforeMB": 0.68,
+        "sizeAfterMB": 0.734,
+        "sizeDeltaMB": 0.054
+      },
+      {
+        "constructor": "system / UncompiledDataWithoutPreparseData",
+        "countBefore": 13052,
+        "countAfter": 13846,
+        "countDelta": 794,
+        "sizeBeforeMB": 0.249,
+        "sizeAfterMB": 0.264,
+        "sizeDeltaMB": 0.015
+      },
+      {
+        "constructor": "system / WeakFixedArray",
+        "countBefore": 907,
+        "countAfter": 1245,
+        "countDelta": 338,
+        "sizeBeforeMB": 0.138,
+        "sizeAfterMB": 0.146,
+        "sizeDeltaMB": 0.008
+      },
+      {
+        "constructor": "system / ProtectedFixedArray",
+        "countBefore": 91,
+        "countAfter": 137,
+        "countDelta": 46,
+        "sizeBeforeMB": 0.01,
+        "sizeAfterMB": 0.017,
+        "sizeDeltaMB": 0.007
+      },
+      {
+        "constructor": "system / WeakArrayList",
+        "countBefore": 248,
+        "countAfter": 365,
+        "countDelta": 117,
+        "sizeBeforeMB": 0.01,
+        "sizeAfterMB": 0.017,
+        "sizeDeltaMB": 0.006
+      },
+      {
+        "constructor": "system / DescriptorArray",
+        "countBefore": 4520,
+        "countAfter": 4544,
+        "countDelta": 24,
+        "sizeBeforeMB": 0.647,
+        "sizeAfterMB": 0.65,
+        "sizeDeltaMB": 0.003
+      },
+      {
+        "constructor": "system / Map",
+        "countBefore": 17574,
+        "countAfter": 17649,
+        "countDelta": 75,
+        "sizeBeforeMB": 0.663,
+        "sizeAfterMB": 0.666,
+        "sizeDeltaMB": 0.003
+      },
+      {
+        "constructor": "(object properties)",
+        "countBefore": 357,
+        "countAfter": 363,
+        "countDelta": 6,
+        "sizeBeforeMB": 0.558,
+        "sizeAfterMB": 0.56,
+        "sizeDeltaMB": 0.003
+      },
+      {
+        "constructor": "system / FeedbackVector",
+        "countBefore": 923,
+        "countAfter": 932,
+        "countDelta": 9,
+        "sizeBeforeMB": 0.143,
+        "sizeAfterMB": 0.145,
+        "sizeDeltaMB": 0.002
+      },
+      {
+        "constructor": "system / LoadHandler",
+        "countBefore": 1796,
+        "countAfter": 1927,
+        "countDelta": 131,
+        "sizeBeforeMB": 0.028,
+        "sizeAfterMB": 0.03,
+        "sizeDeltaMB": 0.002
+      },
+      {
+        "constructor": "system / Code",
+        "countBefore": 567,
+        "countAfter": 599,
+        "countDelta": 32,
+        "sizeBeforeMB": 0.035,
+        "sizeAfterMB": 0.037,
+        "sizeDeltaMB": 0.002
+      },
+      {
+        "constructor": "IDBOpenDBRequest",
+        "countBefore": 4,
+        "countAfter": 13,
+        "countDelta": 9,
+        "sizeBeforeMB": 0,
+        "sizeAfterMB": 0.001,
+        "sizeDeltaMB": 0.001
+      },
+      {
+        "constructor": "system / AccessorPair",
+        "countBefore": 7334,
+        "countAfter": 7421,
+        "countDelta": 87,
+        "sizeBeforeMB": 0.084,
+        "sizeAfterMB": 0.085,
+        "sizeDeltaMB": 0.001
+      },
+      {
+        "constructor": "system / TrustedWeakFixedArray",
+        "countBefore": 46,
+        "countAfter": 69,
+        "countDelta": 23,
+        "sizeBeforeMB": 0.001,
+        "sizeAfterMB": 0.002,
+        "sizeDeltaMB": 0.001
+      },
+      {
+        "constructor": "IDBDatabase",
+        "countBefore": 4,
+        "countAfter": 13,
+        "countDelta": 9,
+        "sizeBeforeMB": 0,
+        "sizeAfterMB": 0.001,
+        "sizeDeltaMB": 0.001
+      },
+      {
+        "constructor": "system / FeedbackCell",
+        "countBefore": 33290,
+        "countAfter": 33338,
+        "countDelta": 48,
+        "sizeBeforeMB": 0.508,
+        "sizeAfterMB": 0.509,
+        "sizeDeltaMB": 0.001
+      },
+      {
+        "constructor": "PerformanceLongAnimationFrameTiming",
+        "countBefore": 9,
+        "countAfter": 13,
+        "countDelta": 4,
+        "sizeBeforeMB": 0.001,
+        "sizeAfterMB": 0.002,
+        "sizeDeltaMB": 0.001
+      },
+      {
+        "constructor": "EventListener",
+        "countBefore": 1524,
+        "countAfter": 1542,
+        "countDelta": 18,
+        "sizeBeforeMB": 0.048,
+        "sizeAfterMB": 0.048,
+        "sizeDeltaMB": 0.001
+      },
+      {
+        "constructor": "V8EventHandlerNonNull",
+        "countBefore": 297,
+        "countAfter": 312,
+        "countDelta": 15,
+        "sizeBeforeMB": 0.009,
+        "sizeAfterMB": 0.01,
+        "sizeDeltaMB": 0
+      },
+      {
+        "constructor": "system / PrototypeInfo",
+        "countBefore": 1007,
+        "countAfter": 1019,
+        "countDelta": 12,
+        "sizeBeforeMB": 0.038,
+        "sizeAfterMB": 0.039,
+        "sizeDeltaMB": 0
+      },
+      {
+        "constructor": "system / ClosureFeedbackCellArray",
+        "countBefore": 1560,
+        "countAfter": 1584,
+        "countDelta": 24,
+        "sizeBeforeMB": 0.038,
+        "sizeAfterMB": 0.039,
+        "sizeDeltaMB": 0
+      },
+      {
+        "constructor": "system / CodeWrapper",
+        "countBefore": 3037,
+        "countAfter": 3069,
+        "countDelta": 32,
+        "sizeBeforeMB": 0.004,
+        "sizeAfterMB": 0.005,
+        "sizeDeltaMB": 0
+      },
+      {
+        "constructor": "system / PropertyArray",
+        "countBefore": 4701,
+        "countAfter": 4713,
+        "countDelta": 12,
+        "sizeBeforeMB": 0.146,
+        "sizeAfterMB": 0.147,
+        "sizeDeltaMB": 0
+      },
+      {
+        "constructor": "system / TransitionArray",
+        "countBefore": 407,
+        "countAfter": 410,
+        "countDelta": 3,
+        "sizeBeforeMB": 0.016,
+        "sizeAfterMB": 0.017,
+        "sizeDeltaMB": 0
+      },
+      {
+        "constructor": "system / SharedFunctionInfoWrapper",
+        "countBefore": 45,
+        "countAfter": 68,
+        "countDelta": 23,
+        "sizeBeforeMB": 0,
+        "sizeAfterMB": 0.001,
+        "sizeDeltaMB": 0
+      }
+    ],
+    "topShrinking": [
+      {
+        "constructor": "system / BytecodeArray",
+        "countBefore": 2463,
+        "countAfter": 563,
+        "countDelta": -1900,
+        "sizeBeforeMB": 0.688,
+        "sizeAfterMB": 0.156,
+        "sizeDeltaMB": -0.531
+      },
+      {
+        "constructor": "system / ExternalStringData",
+        "countBefore": 1615,
+        "countAfter": 966,
+        "countDelta": -649,
+        "sizeBeforeMB": 42.854,
+        "sizeAfterMB": 42.47,
+        "sizeDeltaMB": -0.384
+      },
+      {
+        "constructor": "system / ObjectBoilerplateDescription",
+        "countBefore": 3358,
+        "countAfter": 183,
+        "countDelta": -3175,
+        "sizeBeforeMB": 0.173,
+        "sizeAfterMB": 0.007,
+        "sizeDeltaMB": -0.166
+      },
+      {
+        "constructor": "(constant pool)",
+        "countBefore": 2397,
+        "countAfter": 538,
+        "countDelta": -1859,
+        "sizeBeforeMB": 0.155,
+        "sizeAfterMB": 0.03,
+        "sizeDeltaMB": -0.125
+      },
+      {
+        "constructor": "system / FeedbackMetadata",
+        "countBefore": 2437,
+        "countAfter": 554,
+        "countDelta": -1883,
+        "sizeBeforeMB": 0.11,
+        "sizeAfterMB": 0.023,
+        "sizeDeltaMB": -0.087
+      },
+      {
+        "constructor": "system / SharedFunctionInfo",
+        "countBefore": 2809,
+        "countAfter": 1889,
+        "countDelta": -920,
+        "sizeBeforeMB": 0.127,
+        "sizeAfterMB": 0.085,
+        "sizeDeltaMB": -0.042
+      },
+      {
+        "constructor": "system / ScopeInfo",
+        "countBefore": 3719,
+        "countAfter": 2933,
+        "countDelta": -786,
+        "sizeBeforeMB": 0.182,
+        "sizeAfterMB": 0.153,
+        "sizeDeltaMB": -0.029
+      },
+      {
+        "constructor": "system / TrustedByteArray",
+        "countBefore": 1787,
+        "countAfter": 1346,
+        "countDelta": -441,
+        "sizeBeforeMB": 0.153,
+        "sizeAfterMB": 0.13,
+        "sizeDeltaMB": -0.023
+      },
+      {
+        "constructor": "(constant elements)",
+        "countBefore": 542,
+        "countAfter": 79,
+        "countDelta": -463,
+        "sizeBeforeMB": 0.02,
+        "sizeAfterMB": 0.002,
+        "sizeDeltaMB": -0.018
+      },
+      {
+        "constructor": "system / BytecodeWrapper",
+        "countBefore": 2463,
+        "countAfter": 563,
+        "countDelta": -1900,
+        "sizeBeforeMB": 0.019,
+        "sizeAfterMB": 0.004,
+        "sizeDeltaMB": -0.014
+      },
+      {
+        "constructor": "system / ArrayBoilerplateDescription",
+        "countBefore": 656,
+        "countAfter": 89,
+        "countDelta": -567,
+        "sizeBeforeMB": 0.007,
+        "sizeAfterMB": 0.001,
+        "sizeDeltaMB": -0.006
+      },
+      {
+        "constructor": "DOMTimer",
+        "countBefore": 23,
+        "countAfter": 0,
+        "countDelta": -23,
+        "sizeBeforeMB": 0.005,
+        "sizeAfterMB": 0,
+        "sizeDeltaMB": -0.005
+      },
+      {
+        "constructor": "heap number",
+        "countBefore": 64282,
+        "countAfter": 63932,
+        "countDelta": -350,
+        "sizeBeforeMB": 0.736,
+        "sizeAfterMB": 0.732,
+        "sizeDeltaMB": -0.004
+      },
+      {
+        "constructor": "(concatenated string)",
+        "countBefore": 2971,
+        "countAfter": 2868,
+        "countDelta": -103,
+        "sizeBeforeMB": 0.057,
+        "sizeAfterMB": 0.055,
+        "sizeDeltaMB": -0.002
+      },
+      {
+        "constructor": "system / SharedFunctionInfo / action",
+        "countBefore": 118,
+        "countAfter": 78,
+        "countDelta": -40,
+        "sizeBeforeMB": 0.005,
+        "sizeAfterMB": 0.004,
+        "sizeDeltaMB": -0.002
+      },
+      {
+        "constructor": "ScheduledAction",
+        "countBefore": 23,
+        "countAfter": 0,
+        "countDelta": -23,
+        "sizeBeforeMB": 0.001,
+        "sizeAfterMB": 0,
+        "sizeDeltaMB": -0.001
+      },
+      {
+        "constructor": "<div>",
+        "countBefore": 934,
+        "countAfter": 921,
+        "countDelta": -13,
+        "sizeBeforeMB": 0.104,
+        "sizeAfterMB": 0.103,
+        "sizeDeltaMB": -0.001
+      },
+      {
+        "constructor": "\n            <div style=\"padding: 10px; text-align: center;\">\n                <button type=\"button\" data-journal-show-more=\"1\" style=\"\n                    background: rgba(124,58,237,0.15);\n                    color: #c4b5fd;\n                    border: 1px solid rgba(124,58,237,0.4);\n                    border-radius: 6px;\n                    padding: 8px 14px;\n                    font-size: 11px;\n                    font-weight: 600;\n                    cursor: pointer;\n                \" onclick=\"event.stopPropagation(); window.chart.orderManager.expandJournalRenderWindow()\">Show more — ",
+        "countBefore": 1,
+        "countAfter": 0,
+        "countDelta": -1,
+        "sizeBeforeMB": 0.001,
+        "sizeAfterMB": 0,
+        "sizeDeltaMB": -0.001
+      },
+      {
+        "constructor": "<span>",
+        "countBefore": 363,
+        "countAfter": 354,
+        "countDelta": -9,
+        "sizeBeforeMB": 0.036,
+        "sizeAfterMB": 0.035,
+        "sizeDeltaMB": -0.001
+      },
+      {
+        "constructor": "\n.talaria-qw4-soak-hud {\n  position: fixed;\n  right: 12px;\n  bottom: 12px;\n  z-index: 2147483000;\n  min-width: 260px;\n  padding: 10px 12px;\n  border: 1px solid rgba(125, 211, 252, 0.35);\n  border-radius: 10px;\n  background: rgba(6, 10, 20, 0.88);\n  color: #d7e8ff;\n  box-shadow: 0 12px 30px rgba(0,0,0,0.35);\n  font: 11px/1.35 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;\n  pointer-events: none;\n  backdrop-filter: blur(8px);\n}\n.talaria-qw4-soak-hud__title {\n  display: flex;\n  justify-content: space-between;\n  gap: 12px;\n  margin-bottom: 8px;\n  color: #7dd3fc;\n  font-weight: 700;\n  letter-spacing: 0.04em;\n  text-transform: uppercase;\n}\n.talaria-qw4-soak-hud__row {\n  display: flex;\n  justify-content: space-between;\n  gap: 12px;\n  padding: 2px 0;\n}\n.talaria-qw4-soak-hud__label { color: #9aa8bc; }\n.talaria-qw4-soak-hud__value { color: #f8fbff; text-align: right; }\n.talaria-qw4-soak-hud__bad { color: #fb7185; }\n.talaria-qw4-soak-hud__ok { color: #86efac; }\n",
+        "countBefore": 1,
+        "countAfter": 0,
+        "countDelta": -1,
+        "sizeBeforeMB": 0.001,
+        "sizeAfterMB": 0,
+        "sizeDeltaMB": -0.001
+      },
+      {
+        "constructor": "\n<div class=\"talaria-qw4-soak-hud__title\"><span>SOAK HUD</span><span data-qw4=\"age\">0s</span></div>\n<div class=\"talaria-qw4-soak-hud__row\"><span class=\"talaria-qw4-soak-hud__label\">rate</span><span class=\"talaria-qw4-soak-hud__value\" data-qw4=\"rate\">--</span></div>\n<div class=\"talaria-qw4-soak-hud__row\"><span class=\"talaria-qw4-soak-hud__label\">rate hold</span><span class=\"talaria-qw4-soak-hud__value\" data-qw4=\"hold\">--</span></div>\n<div class=\"talaria-qw4-soak-hud__row\"><span class=\"talaria-qw4-soak-hud__label\">heap</span><span class=\"talaria-qw4-soak-hud__value\" data-qw4=\"heap\">--</span></div>\n<div class=\"talaria-qw4-soak-hud__row\"><span class=\"talaria-qw4-soak-hud__label\">frame interval</span><span class=\"talaria-qw4-soak-hud__value\" data-qw4=\"frame\">--</span></div>\n<div class=\"talaria-qw4-soak-hud__row\"><span class=\"talaria-qw4-soak-hud__label\">restore catches</span><span class=\"talaria-qw4-soak-hud__value\" data-qw4=\"catches\">0</span></div>\n",
+        "countBefore": 1,
+        "countAfter": 0,
+        "countDelta": -1,
+        "sizeBeforeMB": 0.001,
+        "sizeAfterMB": 0,
+        "sizeDeltaMB": -0.001
+      },
+      {
+        "constructor": "V8Function",
+        "countBefore": 23,
+        "countAfter": 0,
+        "countDelta": -23,
+        "sizeBeforeMB": 0.001,
+        "sizeAfterMB": 0,
+        "sizeDeltaMB": -0.001
+      },
+      {
+        "constructor": ".action",
+        "countBefore": 74,
+        "countAfter": 38,
+        "countDelta": -36,
+        "sizeBeforeMB": 0.001,
+        "sizeAfterMB": 0.001,
+        "sizeDeltaMB": -0.001
+      },
+      {
+        "constructor": ".onclick",
+        "countBefore": 56,
+        "countAfter": 24,
+        "countDelta": -32,
+        "sizeBeforeMB": 0.001,
+        "sizeAfterMB": 0,
+        "sizeDeltaMB": -0.001
+      },
+      {
+        "constructor": "system / PreparseData",
+        "countBefore": 1265,
+        "countAfter": 1246,
+        "countDelta": -19,
+        "sizeBeforeMB": 0.053,
+        "sizeAfterMB": 0.053,
+        "sizeDeltaMB": 0
+      }
+    ]
+  },
+  "retainerPaths": {
+    "signature": "TALARIA_HEAP_RETAINER_PATHS_V1",
+    "meta": {
+      "ranking": "aggregated-identical-paths-by-total-self-bytes",
+      "note": "One line per distinct retainer path; element indices collapsed to []. Dominator approx via BFS spanning tree from GC roots.",
+      "maxDepth": 16,
+      "topPaths": 12,
+      "samplePerCtor": 3000,
+      "cacheSuspectTokens": [
+        "_tfDataCache",
+        "_btTfDataCache",
+        "_smartPrefetchCache",
+        "_btTfCache",
+        "smartPrefetch",
+        "__talariaBarStore",
+        "fullRawData",
+        "rawData"
+      ]
+    },
+    "byConstructor": [
+      {
+        "constructor": "system / InstructionStream",
+        "instanceCount": 599,
+        "sampledCount": 599,
+        "totalSelfBytes": 769152,
+        "pathCount": 394,
+        "paths": [
+          {
+            "path": "synthetic → system / NativeContext / http://127.0.0.1:64564[] → Window [JSGlobalObject] / http://127.0.0.1:64564[global_object] → Chart → Object[prototype] → calculateScales → system / Code[code] → system / InstructionStream[instruction_stream]",
+            "instanceCount": 2,
+            "totalSelfBytes": 57856,
+            "suspectTokens": [],
+            "class": "application"
+          },
+          {
+            "path": "synthetic → system / NativeContext / http://127.0.0.1:64564[] → Window [JSGlobalObject] / http://127.0.0.1:64564[global_object] → Chart → Object[prototype] → _buildTimeTicksClockAligned → system / Code[code] → system / InstructionStream[instruction_stream]",
+            "instanceCount": 2,
+            "totalSelfBytes": 48768,
+            "suspectTokens": [],
+            "class": "application"
+          },
+          {
+            "path": "synthetic → system / NativeContext / http://127.0.0.1:64564[] → Window [JSGlobalObject] / http://127.0.0.1:64564[global_object] → Chart → Object[prototype] → drawCandlesticks → system / Code[code] → system / InstructionStream[instruction_stream]",
+            "instanceCount": 2,
+            "totalSelfBytes": 27904,
+            "suspectTokens": [],
+            "class": "application"
+          },
+          {
+            "path": "synthetic → system / NativeContext / http://127.0.0.1:64564[] → Window [JSGlobalObject] / http://127.0.0.1:64564[global_object] → Chart → Object[prototype] → getPriceDecimals → system / Code[code] → system / InstructionStream[instruction_stream]",
+            "instanceCount": 2,
+            "totalSelfBytes": 15872,
+            "suspectTokens": [],
+            "class": "application"
+          },
+          {
+            "path": "ChartDataPipeline → Chart[chart] → Array[_managedListeners] → (object elements)[elements] → Object[] → Window / http://127.0.0.1:64564[target] → system / Map[map] → Window [JSGlobalObject] / http://127.0.0.1:64564[prototype] → MultichartManager[__multichartManagerRef] → system / Map[map] → system / Map[back_pointer] → Object[prototype] → closure[_onWindowMessage] → system / Code[code] → system / InstructionStream[instruction_stream]",
+            "instanceCount": 1,
+            "totalSelfBytes": 15744,
+            "suspectTokens": [],
+            "class": "application"
+          },
+          {
+            "path": "synthetic → system / NativeContext / http://127.0.0.1:64564[] → Window [JSGlobalObject] / http://127.0.0.1:64564[global_object] → Chart → Object[prototype] → animate → system / Code[code] → system / InstructionStream[instruction_stream]",
+            "instanceCount": 4,
+            "totalSelfBytes": 15168,
+            "suspectTokens": [],
+            "class": "application"
+          },
+          {
+            "path": "synthetic → system / NativeContext / http://127.0.0.1:64564[] → Window [JSGlobalObject] / http://127.0.0.1:64564[global_object] → Chart → Object[prototype] → drawAxes → system / Code[code] → system / InstructionStream[instruction_stream]",
+            "instanceCount": 1,
+            "totalSelfBytes": 12096,
+            "suspectTokens": [],
+            "class": "application"
+          },
+          {
+            "path": "synthetic → system / NativeContext / http://127.0.0.1:64564[] → Window [JSGlobalObject] / http://127.0.0.1:64564[global_object] → Chart[mainChart] → OrderManager[orderManager] → Object[__proto__] → _reconcileOrderLineDomForChart → system / Code[code] → system / InstructionStream[instruction_stream]",
+            "instanceCount": 1,
+            "totalSelfBytes": 11456,
+            "suspectTokens": [],
+            "class": "application"
+          },
+          {
+            "path": "synthetic → system / NativeContext / http://127.0.0.1:64564[] → Window [JSGlobalObject] / http://127.0.0.1:64564[global_object] → Chart → Object[prototype] → _pickPipAlignedYTicks → system / Code[code] → system / InstructionStream[instruction_stream]",
+            "instanceCount": 2,
+            "totalSelfBytes": 11008,
+            "suspectTokens": [],
+            "class": "application"
+          },
+          {
+            "path": "ChartDataPipeline → Chart[chart] → Array[_managedListeners] → (object elements)[elements] → Object[] → Window / http://127.0.0.1:64564[target] → system / Map[map] → Window [JSGlobalObject] / http://127.0.0.1:64564[prototype] → m20Q6InstallCapturePatches → system / Code[code] → system / InstructionStream[instruction_stream]",
+            "instanceCount": 2,
+            "totalSelfBytes": 10624,
+            "suspectTokens": [],
+            "class": "application"
+          },
+          {
+            "path": "synthetic → system / NativeContext / http://127.0.0.1:64564[] → Window [JSGlobalObject] / http://127.0.0.1:64564[global_object] → m20Q6InstallCapturePatches → system / Code[code] → system / InstructionStream[instruction_stream]",
+            "instanceCount": 2,
+            "totalSelfBytes": 10624,
+            "suspectTokens": [],
+            "class": "application"
+          },
+          {
+            "path": "synthetic → system / NativeContext / http://127.0.0.1:64564[] → Window [JSGlobalObject] / http://127.0.0.1:64564[global_object] → Chart → Object[prototype] → closure[drawOverlayIndicatorPriceLabels] → system / Code[code] → system / InstructionStream[instruction_stream]",
+            "instanceCount": 1,
+            "totalSelfBytes": 10368,
+            "suspectTokens": [],
+            "class": "application"
+          }
+        ],
+        "classBytes": {
+          "script-source": 0,
+          "cache-suspect": 5248,
+          "network-ish": 384,
+          "application": 763520
+        },
+        "cacheSuspectHits": []
+      },
+      {
+        "constructor": "system / UncompiledDataWithoutPreparseData",
+        "instanceCount": 3000,
+        "sampledCount": 3000,
+        "totalSelfBytes": 60000,
+        "pathCount": 2726,
+        "paths": [
+          {
+            "path": "closure → system / Context[context] → Object[n] → a → system / SharedFunctionInfo / a[shared] → system / UncompiledDataWithoutPreparseData[trusted_function_data]",
+            "instanceCount": 4,
+            "totalSelfBytes": 80,
+            "suspectTokens": [],
+            "class": "application"
+          },
+          {
+            "path": "closure → system / Context[context] → Object[n] → A → system / SharedFunctionInfo / A[shared] → system / UncompiledDataWithoutPreparseData[trusted_function_data]",
+            "instanceCount": 4,
+            "totalSelfBytes": 80,
+            "suspectTokens": [],
+            "class": "application"
+          },
+          {
+            "path": "closure → system / Context[context] → Object[n] → b → system / SharedFunctionInfo / b[shared] → system / UncompiledDataWithoutPreparseData[trusted_function_data]",
+            "instanceCount": 4,
+            "totalSelfBytes": 80,
+            "suspectTokens": [],
+            "class": "application"
+          },
+          {
+            "path": "closure → system / Context[context] → Object[n] → B → system / SharedFunctionInfo / B[shared] → system / UncompiledDataWithoutPreparseData[trusted_function_data]",
+            "instanceCount": 4,
+            "totalSelfBytes": 80,
+            "suspectTokens": [],
+            "class": "application"
+          },
+          {
+            "path": "closure → system / Context[context] → Object[n] → p → system / SharedFunctionInfo / p[shared] → system / UncompiledDataWithoutPreparseData[trusted_function_data]",
+            "instanceCount": 4,
+            "totalSelfBytes": 80,
+            "suspectTokens": [],
+            "class": "application"
+          },
+          {
+            "path": "closure → system / Context[context] → Object[n] → q → system / SharedFunctionInfo / q[shared] → system / UncompiledDataWithoutPreparseData[trusted_function_data]",
+            "instanceCount": 4,
+            "totalSelfBytes": 80,
+            "suspectTokens": [],
+            "class": "application"
+          },
+          {
+            "path": "system / InstructionStream → system / Code[code] → system / BytecodeArray[interpreter_data] → (constant pool)[] → system / SharedFunctionInfo[] → system / UncompiledDataWithoutPreparseData[trusted_function_data]",
+            "instanceCount": 4,
+            "totalSelfBytes": 80,
+            "suspectTokens": [],
+            "class": "application"
+          },
+          {
+            "path": "C++ Persistent roots → (large-string-label)→ InternalNode[] → InternalNode[] → Detached <input>[] → InternalNode[] → InternalNode[] → InternalNode[] → InternalNode[] → EventListener[] → V8EventListener[] → closure[] → system / SharedFunctionInfo[shared] → system / UncompiledDataWithoutPreparseData[trusted_function_data]",
+            "instanceCount": 3,
+            "totalSelfBytes": 60,
+            "suspectTokens": [],
+            "class": "application"
+          },
+          {
+            "path": "synthetic → system / NativeContext / http://127.0.0.1:64564[] → Window [JSGlobalObject] / http://127.0.0.1:64564[global_object] → Detached HTMLDocument[<symbol Window#DocumentCachedAccessor>] → InternalNode[] → InternalNode[] → InternalNode[] → InternalNode[] → InternalNode[] → EventListener[] → V8EventListener[] → closure[] → system / SharedFunctionInfo[shared] → system / UncompiledDataWithoutPreparseData[trusted_function_data]",
+            "instanceCount": 3,
+            "totalSelfBytes": 60,
+            "suspectTokens": [],
+            "class": "application"
+          },
+          {
+            "path": "system / Context → Detached <script>[extension] → InternalNode[] → InternalNode[] → InternalNode[] → EventListener[] → V8EventHandlerNonNull[] → onload[] → system / SharedFunctionInfo / onload[shared] → system / UncompiledDataWithoutPreparseData[trusted_function_data]",
+            "instanceCount": 3,
+            "totalSelfBytes": 60,
+            "suspectTokens": [],
+            "class": "application"
+          },
+          {
+            "path": "system / Map → Window [JSGlobalObject] / http://127.0.0.1:64564[prototype] → Window / http://127.0.0.1:64564[<symbol V8PrivateProperty::CachedAccessor::kWindowProxy>] → InternalNode[] → InternalNode[] → InternalNode[] → InternalNode[] → InternalNode[] → EventListener[] → V8EventListener[] → closure[] → system / SharedFunctionInfo[shared] → system / UncompiledDataWithoutPreparseData[trusted_function_data]",
+            "instanceCount": 3,
+            "totalSelfBytes": 60,
+            "suspectTokens": [],
+            "class": "application"
+          },
+          {
+            "path": "C++ Persistent roots → (large-string-label)→ InternalNode[] → InternalNode[] → Detached <input>[] → InternalNode[] → InternalNode[] → InternalNode[] → EventListener[] → V8EventListener[] → closure[] → system / SharedFunctionInfo[shared] → system / UncompiledDataWithoutPreparseData[trusted_function_data]",
+            "instanceCount": 2,
+            "totalSelfBytes": 40,
+            "suspectTokens": [],
+            "class": "application"
+          }
+        ],
+        "classBytes": {
+          "script-source": 0,
+          "cache-suspect": 0,
+          "network-ish": 940,
+          "application": 59060
+        },
+        "cacheSuspectHits": []
+      },
+      {
+        "constructor": "system / WeakFixedArray",
+        "instanceCount": 1245,
+        "sampledCount": 1245,
+        "totalSelfBytes": 153352,
+        "pathCount": 164,
+        "paths": [
+          {
+            "path": "system / Script → (script-source) → system / ExternalStringData[backing_store]",
+            "instanceCount": 128,
+            "totalSelfBytes": 119148,
+            "suspectTokens": [],
+            "class": "script-source"
+          },
+          {
+            "path": "synthetic → system / NativeContext / http://127.0.0.1:64564[] → Window [JSGlobalObject] / http://127.0.0.1:64564[global_object] → Chart → Object[prototype] → calculateScales → system / FeedbackCell[feedback_cell] → system / FeedbackVector[value] → system / WeakFixedArray[]",
+            "instanceCount": 180,
+            "totalSelfBytes": 4320,
+            "suspectTokens": [],
+            "class": "application"
+          },
+          {
+            "path": "synthetic → system / NativeContext / http://127.0.0.1:64564[] → system / WeakFixedArray[map_cache]",
+            "instanceCount": 7,
+            "totalSelfBytes": 3640,
+            "suspectTokens": [],
+            "class": "application"
+          },
+          {
+            "path": "synthetic → system / NativeContext / http://127.0.0.1:64564[] → system / WeakFixedArray[normalized_map_cache]",
+            "instanceCount": 7,
+            "totalSelfBytes": 1848,
+            "suspectTokens": [],
+            "class": "application"
+          },
+          {
+            "path": "synthetic → system / NativeContext / http://127.0.0.1:64564[] → Window [JSGlobalObject] / http://127.0.0.1:64564[global_object] → Chart → Object[prototype] → drawAxes → system / FeedbackCell[feedback_cell] → system / FeedbackVector[value] → system / WeakFixedArray[]",
+            "instanceCount": 73,
+            "totalSelfBytes": 1752,
+            "suspectTokens": [],
+            "class": "application"
+          },
+          {
+            "path": "synthetic → system / NativeContext / http://127.0.0.1:64564[] → Window [JSGlobalObject] / http://127.0.0.1:64564[global_object] → Chart[mainChart] → OrderManager[orderManager] → Object[__proto__] → _ensureInstrumentCostFieldsMaterialized → system / FeedbackCell[feedback_cell] → system / FeedbackVector[value] → system / WeakFixedArray[]",
+            "instanceCount": 40,
+            "totalSelfBytes": 1056,
+            "suspectTokens": [],
+            "class": "application"
+          },
+          {
+            "path": "synthetic → system / NativeContext / http://127.0.0.1:64564[] → Window [JSGlobalObject] / http://127.0.0.1:64564[global_object] → Chart → Object[prototype] → _pickPipAlignedYTicks → system / FeedbackCell[feedback_cell] → system / FeedbackVector[value] → system / WeakFixedArray[]",
+            "instanceCount": 38,
+            "totalSelfBytes": 1000,
+            "suspectTokens": [],
+            "class": "application"
+          },
+          {
+            "path": "synthetic → system / NativeContext / http://127.0.0.1:64564[] → Window [JSGlobalObject] / http://127.0.0.1:64564[global_object] → Chart → Object[prototype] → drawCandlesticks → system / FeedbackCell[feedback_cell] → system / FeedbackVector[value] → system / WeakFixedArray[]",
+            "instanceCount": 37,
+            "totalSelfBytes": 888,
+            "suspectTokens": [],
+            "class": "application"
+          },
+          {
+            "path": "synthetic → system / NativeContext / http://127.0.0.1:64564[] → Window [JSGlobalObject] / http://127.0.0.1:64564[global_object] → Chart → Object[prototype] → animate → system / FeedbackCell[feedback_cell] → system / FeedbackVector[value] → system / WeakFixedArray[]",
+            "instanceCount": 27,
+            "totalSelfBytes": 648,
+            "suspectTokens": [],
+            "class": "application"
+          },
+          {
+            "path": "synthetic → system / NativeContext / http://127.0.0.1:64564[] → Window [JSGlobalObject] / http://127.0.0.1:64564[global_object] → Chart → Object[prototype] → _syncOhlcLegendMaxWidth → system / FeedbackCell[feedback_cell] → system / FeedbackVector[value] → system / WeakFixedArray[]",
+            "instanceCount": 22,
+            "totalSelfBytes": 640,
+            "suspectTokens": [],
+            "class": "application"
+          },
+          {
+            "path": "synthetic → system / NativeContext / http://127.0.0.1:64564[] → Window [JSGlobalObject] / http://127.0.0.1:64564[global_object] → Chart → Object[prototype] → _overlayResyncDirtyKey → system / FeedbackCell[feedback_cell] → system / FeedbackVector[value] → system / WeakFixedArray[]",
+            "instanceCount": 24,
+            "totalSelfBytes": 576,
+            "suspectTokens": [],
+            "class": "application"
+          },
+          {
+            "path": "synthetic → system / NativeContext / http://127.0.0.1:64564[] → Window [JSGlobalObject] / http://127.0.0.1:64564[global_object] → Chart → Object[prototype] → _shouldUseDisplayPipeline → system / FeedbackCell[feedback_cell] → system / FeedbackVector[value] → system / WeakFixedArray[]",
+            "instanceCount": 20,
+            "totalSelfBytes": 560,
+            "suspectTokens": [],
+            "class": "application"
+          }
+        ],
+        "classBytes": {
+          "script-source": 119148,
+          "cache-suspect": 0,
+          "network-ish": 0,
+          "application": 34204
+        },
+        "cacheSuspectHits": []
+      },
+      {
+        "constructor": "system / ProtectedFixedArray",
+        "instanceCount": 137,
+        "sampledCount": 137,
+        "totalSelfBytes": 18204,
+        "pathCount": 55,
+        "paths": [
+          {
+            "path": "system / InstructionStream → system / Code[code] → system / ProtectedFixedArray[deoptimization_data]",
+            "instanceCount": 13,
+            "totalSelfBytes": 3404,
+            "suspectTokens": [],
+            "class": "application"
+          },
+          {
+            "path": "synthetic → system / NativeContext / http://127.0.0.1:64564[] → Window [JSGlobalObject] / http://127.0.0.1:64564[global_object] → Chart → Object[prototype] → animate → system / Code[code] → system / ProtectedFixedArray[deoptimization_data]",
+            "instanceCount": 4,
+            "totalSelfBytes": 3284,
+            "suspectTokens": [],
+            "class": "application"
+          },
+          {
+            "path": "synthetic → system / NativeContext / http://127.0.0.1:64564[] → Window [JSGlobalObject] / http://127.0.0.1:64564[global_object] → Chart → Object[prototype] → _tickBarCloseCountdown → system / Code[code] → system / ProtectedFixedArray[deoptimization_data]",
+            "instanceCount": 4,
+            "totalSelfBytes": 1148,
+            "suspectTokens": [],
+            "class": "application"
+          },
+          {
+            "path": "synthetic → system / NativeContext / http://127.0.0.1:64564[] → Window [JSGlobalObject] / http://127.0.0.1:64564[global_object] → Chart → Object[prototype] → _significantDecimals → system / Code[code] → system / ProtectedFixedArray[deoptimization_data]",
+            "instanceCount": 4,
+            "totalSelfBytes": 1136,
+            "suspectTokens": [],
+            "class": "application"
+          },
+          {
+            "path": "synthetic → system / NativeContext / http://127.0.0.1:64564[] → Window [JSGlobalObject] / http://127.0.0.1:64564[global_object] → Chart → Object[prototype] → _normalizeCandlesFromApi → system / Code[code] → system / ProtectedFixedArray[deoptimization_data]",
+            "instanceCount": 1,
+            "totalSelfBytes": 800,
+            "suspectTokens": [],
+            "class": "application"
+          },
+          {
+            "path": "synthetic → system / NativeContext / http://127.0.0.1:64564[] → Window [JSGlobalObject] / http://127.0.0.1:64564[global_object] → Chart → Object[prototype] → _shouldSkipMultichartBackgroundRender → system / Code[code] → system / ProtectedFixedArray[deoptimization_data]",
+            "instanceCount": 1,
+            "totalSelfBytes": 704,
+            "suspectTokens": [],
+            "class": "application"
+          },
+          {
+            "path": "synthetic → system / NativeContext / http://127.0.0.1:64564[] → Window [JSGlobalObject] / http://127.0.0.1:64564[global_object] → Chart → Object[prototype] → _prepareBarsForResampling → system / Code[code] → system / ProtectedFixedArray[deoptimization_data]",
+            "instanceCount": 1,
+            "totalSelfBytes": 668,
+            "suspectTokens": [],
+            "class": "application"
+          },
+          {
+            "path": "synthetic → system / NativeContext / http://127.0.0.1:64564[] → Window [JSGlobalObject] / http://127.0.0.1:64564[global_object] → Chart[mainChart] → l[xScale] → system / Code[code] → system / ProtectedFixedArray[deoptimization_data]",
+            "instanceCount": 2,
+            "totalSelfBytes": 568,
+            "suspectTokens": [],
+            "class": "application"
+          },
+          {
+            "path": "synthetic → system / NativeContext / http://127.0.0.1:64564[] → Window [JSGlobalObject] / http://127.0.0.1:64564[global_object] → Chart → Object[prototype] → _isMultichartEmbedPanel → system / Code[code] → system / ProtectedFixedArray[deoptimization_data]",
+            "instanceCount": 4,
+            "totalSelfBytes": 548,
+            "suspectTokens": [],
+            "class": "application"
+          },
+          {
+            "path": "synthetic → system / NativeContext / http://127.0.0.1:64564[] → Window [JSGlobalObject] / http://127.0.0.1:64564[global_object] → Chart → Object[prototype] → volumeFromOhlcBar[_volumeFromOhlcBar] → system / Code[code] → system / ProtectedFixedArray[deoptimization_data]",
+            "instanceCount": 4,
+            "totalSelfBytes": 512,
+            "suspectTokens": [],
+            "class": "application"
+          },
+          {
+            "path": "synthetic → system / NativeContext / http://127.0.0.1:64564[] → Window [JSGlobalObject] / http://127.0.0.1:64564[global_object] → Chart[mainChart] → Vn[svg] → Object[__proto__] → selectAll → system / Code[code] → system / ProtectedFixedArray[deoptimization_data]",
+            "instanceCount": 1,
+            "totalSelfBytes": 452,
+            "suspectTokens": [],
+            "class": "application"
+          },
+          {
+            "path": "synthetic → system / NativeContext / http://127.0.0.1:64564[] → Window [JSGlobalObject] / http://127.0.0.1:64564[global_object] → Chart → Object[prototype] → _isMultichartPanelVisibleForPaint → system / Code[code] → system / ProtectedFixedArray[deoptimization_data]",
+            "instanceCount": 1,
+            "totalSelfBytes": 428,
+            "suspectTokens": [],
+            "class": "application"
+          }
+        ],
+        "classBytes": {
+          "script-source": 0,
+          "cache-suspect": 332,
+          "network-ish": 0,
+          "application": 17872
+        },
+        "cacheSuspectHits": []
+      },
+      {
+        "constructor": "system / WeakArrayList",
+        "instanceCount": 365,
+        "sampledCount": 365,
+        "totalSelfBytes": 17364,
+        "pathCount": 142,
+        "paths": [
+          {
+            "path": "system / Map → system / Map[back_pointer] → system / Map[back_pointer] → system / Map[back_pointer] → system / Map[back_pointer] → system / Map[back_pointer] → system / Map[back_pointer] → system / Map[back_pointer] → system / Map[back_pointer] → system / Map[back_pointer] → system / Map[back_pointer] → system / Map[back_pointer] → system / Map[back_pointer] → system / Map[back_pointer] → system / Map[back_pointer] → system / WeakArrayList[dependent_code]",
+            "instanceCount": 47,
+            "totalSelfBytes": 1356,
+            "suspectTokens": [],
+            "class": "application"
+          },
+          {
+            "path": "synthetic → system / NativeContext / http://127.0.0.1:64564[] → system / WeakArrayList[retained_maps]",
+            "instanceCount": 3,
+            "totalSelfBytes": 1080,
+            "suspectTokens": [],
+            "class": "application"
+          },
+          {
+            "path": "synthetic → system / NativeContext / http://127.0.0.1:64564[] → system / Map[object_function_prototype_map] → system / PrototypeInfo[prototype_info] → system / WeakArrayList[]",
+            "instanceCount": 7,
+            "totalSelfBytes": 988,
+            "suspectTokens": [],
+            "class": "application"
+          },
+          {
+            "path": "ChartDataPipeline → Chart[chart] → Array[_managedListeners] → (object elements)[elements] → Object[] → Window / http://127.0.0.1:64564[target] → system / Map[map] → Window [JSGlobalObject] / http://127.0.0.1:64564[prototype] → (object properties)[properties] → system / PropertyCell[] → system / WeakArrayList[dependent_code]",
+            "instanceCount": 22,
+            "totalSelfBytes": 980,
+            "suspectTokens": [],
+            "class": "application"
+          },
+          {
+            "path": "ChartDataPipeline → Chart[chart] → Array[_managedListeners] → (object elements)[elements] → Object[] → Window / http://127.0.0.1:64564[target] → system / Map[map] → Window [JSGlobalObject] / http://127.0.0.1:64564[prototype] → Object[IndicatorPerf] → mergeIndicatorTailWindow → system / NativeContext / http://127.0.0.1:64564[context] → system / WeakArrayList[retained_maps]",
+            "instanceCount": 1,
+            "totalSelfBytes": 852,
+            "suspectTokens": [],
+            "class": "application"
+          },
+          {
+            "path": "(Strong root list) → system / WeakArrayList[script_list]",
+            "instanceCount": 1,
+            "totalSelfBytes": 844,
+            "suspectTokens": [],
+            "class": "application"
+          },
+          {
+            "path": "synthetic → system / NativeContext / http://127.0.0.1:64564[] → Window [JSGlobalObject] / http://127.0.0.1:64564[global_object] → (object properties)[properties] → system / PropertyCell[] → system / WeakArrayList[dependent_code]",
+            "instanceCount": 18,
+            "totalSelfBytes": 584,
+            "suspectTokens": [],
+            "class": "application"
+          },
+          {
+            "path": "(Strong root list) → system / PropertyCell[no_undetectable_objects_protector] → system / WeakArrayList[dependent_code]",
+            "instanceCount": 1,
+            "totalSelfBytes": 576,
+            "suspectTokens": [],
+            "class": "application"
+          },
+          {
+            "path": "ChartDataPipeline → Chart[chart] → Array[_managedListeners] → (object elements)[elements] → Object[] → Window / http://127.0.0.1:64564[target] → system / Map[map] → Window [JSGlobalObject] / http://127.0.0.1:64564[prototype] → WebAssembly → Suspending → system / Map[initial_map] → WebAssembly.Suspending[prototype] → system / Map[map] → Object[prototype] → system / Map[map] → system / PrototypeInfo[prototype_info] → system / WeakArrayList[]",
+            "instanceCount": 1,
+            "totalSelfBytes": 292,
+            "suspectTokens": [],
+            "class": "application"
+          },
+          {
+            "path": "synthetic → system / NativeContext / http://127.0.0.1:64564[] → array[fast_template_instantiations_cache] → Document[] → Document[prototype] → system / Map[map] → system / WeakArrayList[dependent_code]",
+            "instanceCount": 4,
+            "totalSelfBytes": 252,
+            "suspectTokens": [],
+            "class": "application"
+          },
+          {
+            "path": "synthetic → system / NativeContext / http://127.0.0.1:64564[] → array[fast_template_instantiations_cache] → DOMTokenList[] → DOMTokenList (prototype) / http://127.0.0.1:64564[prototype] → system / Map[map] → system / WeakArrayList[dependent_code]",
+            "instanceCount": 4,
+            "totalSelfBytes": 252,
+            "suspectTokens": [],
+            "class": "application"
+          },
+          {
+            "path": "synthetic → system / NativeContext / http://127.0.0.1:64564[] → array[fast_template_instantiations_cache] → Element[] → Element[prototype] → system / Map[map] → system / WeakArrayList[dependent_code]",
+            "instanceCount": 4,
+            "totalSelfBytes": 252,
+            "suspectTokens": [],
+            "class": "application"
+          }
+        ],
+        "classBytes": {
+          "script-source": 0,
+          "cache-suspect": 568,
+          "network-ish": 0,
+          "application": 16796
+        },
+        "cacheSuspectHits": []
+      },
+      {
+        "constructor": "system / DescriptorArray",
+        "instanceCount": 3000,
+        "sampledCount": 3000,
+        "totalSelfBytes": 606444,
+        "pathCount": 1531,
+        "paths": [
+          {
+            "path": "synthetic → system / NativeContext / http://127.0.0.1:64564[] → array[fast_template_instantiations_cache] → Window (internal cache) / http://127.0.0.1:64564[] → system / Map[map] → system / DescriptorArray[descriptors]",
+            "instanceCount": 7,
+            "totalSelfBytes": 69188,
+            "suspectTokens": [],
+            "class": "application"
+          },
+          {
+            "path": "synthetic → system / NativeContext / http://127.0.0.1:64564[] → Window [JSGlobalObject] / http://127.0.0.1:64564[global_object] → Object[d3] → system / Map[map] → system / DescriptorArray[descriptors]",
+            "instanceCount": 2,
+            "totalSelfBytes": 17152,
+            "suspectTokens": [],
+            "class": "application"
+          },
+          {
+            "path": "synthetic → system / NativeContext / http://127.0.0.1:64564[] → Window [JSGlobalObject] / http://127.0.0.1:64564[global_object] → Chart[mainChart] → system / Map[map] → system / DescriptorArray[descriptors]",
+            "instanceCount": 4,
+            "totalSelfBytes": 13028,
+            "suspectTokens": [],
+            "class": "application"
+          },
+          {
+            "path": "synthetic → system / NativeContext / http://127.0.0.1:64564[] → array[fast_template_instantiations_cache] → Document[] → Document[prototype] → system / Map[map] → system / DescriptorArray[descriptors]",
+            "instanceCount": 4,
+            "totalSelfBytes": 12224,
+            "suspectTokens": [],
+            "class": "application"
+          },
+          {
+            "path": "synthetic → system / NativeContext / http://127.0.0.1:64564[] → Window [JSGlobalObject] / http://127.0.0.1:64564[global_object] → M20Q6ReplaySystem[ReplaySystem] → ReplaySystem[__proto__] → Object[prototype] → system / Map[map] → system / DescriptorArray[descriptors]",
+            "instanceCount": 3,
+            "totalSelfBytes": 11688,
+            "suspectTokens": [],
+            "class": "application"
+          },
+          {
+            "path": "synthetic → system / NativeContext / http://127.0.0.1:64564[] → Window [JSGlobalObject] / http://127.0.0.1:64564[global_object] → DrawingToolsManager[drawingManager] → Object[__proto__] → system / Map[map] → system / DescriptorArray[descriptors]",
+            "instanceCount": 2,
+            "totalSelfBytes": 10048,
+            "suspectTokens": [],
+            "class": "application"
+          },
+          {
+            "path": "ChartDataPipeline → Chart[chart] → Array[_managedListeners] → (object elements)[elements] → Object[] → Window / http://127.0.0.1:64564[target] → system / Map[map] → Window [JSGlobalObject] / http://127.0.0.1:64564[prototype] → Object[IndicatorPerf] → mergeIndicatorTailWindow → system / NativeContext / http://127.0.0.1:64564[context] → array[fast_template_instantiations_cache] → Window (internal cache) / http://127.0.0.1:64564[] → system / Map[map] → system / DescriptorArray[descriptors]",
+            "instanceCount": 1,
+            "totalSelfBytes": 9884,
+            "suspectTokens": [],
+            "class": "application"
+          },
+          {
+            "path": "ChartDataPipeline → Chart[chart] → Array[_managedListeners] → (object elements)[elements] → Object[] → Window / http://127.0.0.1:64564[target] → system / Map[map] → Window [JSGlobalObject] / http://127.0.0.1:64564[prototype] → Object[d3] → system / Map[map] → system / DescriptorArray[descriptors]",
+            "instanceCount": 1,
+            "totalSelfBytes": 8576,
+            "suspectTokens": [],
+            "class": "application"
+          },
+          {
+            "path": "ChartDataPipeline → Chart[chart] → Array[_managedListeners] → (object elements)[elements] → Object[] → Window / http://127.0.0.1:64564[target] → system / Map[map] → Window [JSGlobalObject] / http://127.0.0.1:64564[prototype] → Object[d3] → system / Map[map] → system / Map[back_pointer] → system / DescriptorArray[descriptors]",
+            "instanceCount": 1,
+            "totalSelfBytes": 8576,
+            "suspectTokens": [],
+            "class": "application"
+          },
+          {
+            "path": "synthetic → system / NativeContext / http://127.0.0.1:64564[] → array[fast_template_instantiations_cache] → Element[] → Element[prototype] → system / Map[map] → system / DescriptorArray[descriptors]",
+            "instanceCount": 4,
+            "totalSelfBytes": 7424,
+            "suspectTokens": [],
+            "class": "application"
+          },
+          {
+            "path": "synthetic → system / NativeContext / http://127.0.0.1:64564[] → Window [JSGlobalObject] / http://127.0.0.1:64564[global_object] → Chart[mainChart] → OrderManager[orderManager] → system / Map[map] → system / DescriptorArray[descriptors]",
+            "instanceCount": 4,
+            "totalSelfBytes": 7328,
+            "suspectTokens": [],
+            "class": "application"
+          },
+          {
+            "path": "synthetic → system / NativeContext / http://127.0.0.1:64564[] → array[fast_template_instantiations_cache] → HTMLElement[] → HTMLElement (prototype) / http://127.0.0.1:64564[prototype] → system / Map[map] → system / DescriptorArray[descriptors]",
+            "instanceCount": 4,
+            "totalSelfBytes": 6896,
+            "suspectTokens": [],
+            "class": "application"
+          }
+        ],
+        "classBytes": {
+          "script-source": 0,
+          "cache-suspect": 644,
+          "network-ish": 5876,
+          "application": 599924
+        },
+        "cacheSuspectHits": []
+      },
+      {
+        "constructor": "system / Map",
+        "instanceCount": 3000,
+        "sampledCount": 3000,
+        "totalSelfBytes": 120000,
+        "pathCount": 1422,
+        "paths": [
+          {
+            "path": "system / Map → system / Map[back_pointer] → system / Map[back_pointer] → system / Map[back_pointer] → system / Map[back_pointer] → system / Map[back_pointer] → system / Map[back_pointer] → system / Map[back_pointer] → system / Map[back_pointer] → system / Map[back_pointer] → system / Map[back_pointer] → system / Map[back_pointer] → system / Map[back_pointer] → system / Map[back_pointer] → system / Map[back_pointer] → system / Map[back_pointer]",
+            "instanceCount": 716,
+            "totalSelfBytes": 28640,
+            "suspectTokens": [],
+            "class": "application"
+          },
+          {
+            "path": "synthetic → system / NativeContext / http://127.0.0.1:64564[] → array[fast_template_instantiations_cache] → closure[] → system / Map[initial_map]",
+            "instanceCount": 7,
+            "totalSelfBytes": 280,
+            "suspectTokens": [],
+            "class": "application"
+          },
+          {
+            "path": "synthetic → system / NativeContext / http://127.0.0.1:64564[] → array[fast_template_instantiations_cache] → Window (internal cache) / http://127.0.0.1:64564[] → system / Map[map]",
+            "instanceCount": 6,
+            "totalSelfBytes": 240,
+            "suspectTokens": [],
+            "class": "application"
+          },
+          {
+            "path": "synthetic → system / NativeContext / http://127.0.0.1:64564[] → system / Map[js_array_packed_elements_map]",
+            "instanceCount": 6,
+            "totalSelfBytes": 240,
+            "suspectTokens": [],
+            "class": "application"
+          },
+          {
+            "path": "synthetic → system / NativeContext / http://127.0.0.1:64564[] → system / Map[meta_map]",
+            "instanceCount": 6,
+            "totalSelfBytes": 240,
+            "suspectTokens": [],
+            "class": "application"
+          },
+          {
+            "path": "synthetic → system / NativeContext / http://127.0.0.1:64564[] → system / Map[strict_function_map]",
+            "instanceCount": 6,
+            "totalSelfBytes": 240,
+            "suspectTokens": [],
+            "class": "application"
+          },
+          {
+            "path": "synthetic → system / NativeContext / http://127.0.0.1:64564[] → system / Map[strict_function_without_prototype_map]",
+            "instanceCount": 6,
+            "totalSelfBytes": 240,
+            "suspectTokens": [],
+            "class": "application"
+          },
+          {
+            "path": "Object → system / Map[map] → system / Map[back_pointer] → system / Map[back_pointer] → system / Map[back_pointer] → system / Map[back_pointer] → system / Map[back_pointer] → system / Map[back_pointer] → system / Map[back_pointer] → system / Map[back_pointer] → system / Map[back_pointer] → system / Map[back_pointer] → system / Map[back_pointer] → system / Map[back_pointer] → system / Map[back_pointer] → system / Map[back_pointer]",
+            "instanceCount": 5,
+            "totalSelfBytes": 200,
+            "suspectTokens": [],
+            "class": "application"
+          },
+          {
+            "path": "synthetic → system / NativeContext / http://127.0.0.1:64564[] → Float64Array[float64_array_fun] → system / Map[initial_map]",
+            "instanceCount": 5,
+            "totalSelfBytes": 200,
+            "suspectTokens": [],
+            "class": "application"
+          },
+          {
+            "path": "synthetic → system / NativeContext / http://127.0.0.1:64564[] → system / Map[bound_function_without_constructor_map]",
+            "instanceCount": 5,
+            "totalSelfBytes": 200,
+            "suspectTokens": [],
+            "class": "application"
+          },
+          {
+            "path": "synthetic → system / NativeContext / http://127.0.0.1:64564[] → system / Map[function_context_map]",
+            "instanceCount": 5,
+            "totalSelfBytes": 200,
+            "suspectTokens": [],
+            "class": "application"
+          },
+          {
+            "path": "synthetic → system / NativeContext / http://127.0.0.1:64564[] → system / Map[generator_function_map]",
+            "instanceCount": 5,
+            "totalSelfBytes": 200,
+            "suspectTokens": [],
+            "class": "application"
+          }
+        ],
+        "classBytes": {
+          "script-source": 0,
+          "cache-suspect": 280,
+          "network-ish": 1360,
+          "application": 118360
+        },
+        "cacheSuspectHits": []
+      },
+      {
+        "constructor": "(object properties)",
+        "instanceCount": 363,
+        "sampledCount": 363,
+        "totalSelfBytes": 587660,
+        "pathCount": 159,
+        "paths": [
+          {
+            "path": "synthetic → system / NativeContext / http://127.0.0.1:64564[] → array[fast_template_instantiations_cache] → closure[] → Window (prototype) / http://127.0.0.1:64564[prototype] → (object properties)[properties]",
+            "instanceCount": 7,
+            "totalSelfBytes": 172256,
+            "suspectTokens": [],
+            "class": "application"
+          },
+          {
+            "path": "synthetic → system / NativeContext / http://127.0.0.1:64564[] → Window [JSGlobalObject] / http://127.0.0.1:64564[global_object] → Chart → Object[prototype] → (object properties)[properties]",
+            "instanceCount": 4,
+            "totalSelfBytes": 98432,
+            "suspectTokens": [],
+            "class": "application"
+          },
+          {
+            "path": "synthetic → system / NativeContext / http://127.0.0.1:64564[] → Window [JSGlobalObject] / http://127.0.0.1:64564[global_object] → Chart[mainChart] → OrderManager[orderManager] → Object[__proto__] → (object properties)[properties]",
+            "instanceCount": 4,
+            "totalSelfBytes": 98432,
+            "suspectTokens": [],
+            "class": "application"
+          },
+          {
+            "path": "synthetic → system / NativeContext / http://127.0.0.1:64564[] → Window [JSGlobalObject] / http://127.0.0.1:64564[global_object] → (object properties)[properties]",
+            "instanceCount": 5,
+            "totalSelfBytes": 57484,
+            "suspectTokens": [],
+            "class": "application"
+          },
+          {
+            "path": "ChartDataPipeline → Chart[chart] → Array[_managedListeners] → (object elements)[elements] → Object[] → Window / http://127.0.0.1:64564[target] → system / Map[map] → Window [JSGlobalObject] / http://127.0.0.1:64564[prototype] → (object properties)[properties]",
+            "instanceCount": 2,
+            "totalSelfBytes": 32824,
+            "suspectTokens": [],
+            "class": "application"
+          },
+          {
+            "path": "ChartDataPipeline → Chart[chart] → Array[_managedListeners] → (object elements)[elements] → Object[] → Window / http://127.0.0.1:64564[target] → system / Map[map] → Window [JSGlobalObject] / http://127.0.0.1:64564[prototype] → Object[IndicatorPerf] → mergeIndicatorTailWindow → system / NativeContext / http://127.0.0.1:64564[context] → array[fast_template_instantiations_cache] → Window (internal cache) / http://127.0.0.1:64564[] → system / Map[map] → Window (prototype) / http://127.0.0.1:64564[prototype] → (object properties)[properties]",
+            "instanceCount": 1,
+            "totalSelfBytes": 24608,
+            "suspectTokens": [],
+            "class": "application"
+          },
+          {
+            "path": "synthetic → system / NativeContext / http://127.0.0.1:64564[] → Window [JSGlobalObject] / http://127.0.0.1:64564[global_object] → Object[d3] → T[Adder] → system / Context[context] → Object[ke] → (object properties)[properties]",
+            "instanceCount": 3,
+            "totalSelfBytes": 9312,
+            "suspectTokens": [],
+            "class": "application"
+          },
+          {
+            "path": "ChartDataPipeline → Chart[chart] → Array[_managedListeners] → (object elements)[elements] → Object[] → Window / http://127.0.0.1:64564[target] → Window [JSGlobalProxy] / http://127.0.0.1:64564[part of key -> value pair in ephemeron table] → system / Map[map] → Window [JSGlobalObject] / http://127.0.0.1:64564[prototype] → (object properties)[properties]",
+            "instanceCount": 1,
+            "totalSelfBytes": 8220,
+            "suspectTokens": [],
+            "class": "application"
+          },
+          {
+            "path": "Array → (object elements)[elements] → Object[] → Window / http://127.0.0.1:64564[target] → system / Map[map] → Window [JSGlobalObject] / http://127.0.0.1:64564[prototype] → Chart[mainChart] → Object[scales] → l[yScale] → closure[nice] → system / Context[context] → system / Context[previous] → Object[ke] → (object properties)[properties]",
+            "instanceCount": 1,
+            "totalSelfBytes": 3104,
+            "suspectTokens": [],
+            "class": "application"
+          },
+          {
+            "path": "synthetic → system / NativeContext / http://127.0.0.1:64564[] → array[fast_template_instantiations_cache] → Event[] → Event (prototype) / http://127.0.0.1:64564[prototype] → (object properties)[properties]",
+            "instanceCount": 3,
+            "totalSelfBytes": 2400,
+            "suspectTokens": [],
+            "class": "application"
+          },
+          {
+            "path": "synthetic → system / NativeContext / http://127.0.0.1:64564[] → Window [JSGlobalObject] / http://127.0.0.1:64564[global_object] → Object[d3] → go[transition] → Object[prototype] → (object properties)[properties]",
+            "instanceCount": 3,
+            "totalSelfBytes": 2400,
+            "suspectTokens": [],
+            "class": "application"
+          },
+          {
+            "path": "system / Map → Node[constructor] → (object properties)[properties]",
+            "instanceCount": 3,
+            "totalSelfBytes": 2400,
+            "suspectTokens": [],
+            "class": "application"
+          }
+        ],
+        "classBytes": {
+          "script-source": 0,
+          "cache-suspect": 0,
+          "network-ish": 1664,
+          "application": 585996
+        },
+        "cacheSuspectHits": []
+      }
+    ]
+  },
+  "interpretation": {
+    "answer": "WARM_UP_PLATEAU_NOT_NAMED_V8_RETAINER",
+    "basis": [
+      "Forced-GC JS heap used decreased from 13.030 MB to 11.501 MB over the 30-minute gap.",
+      "Heap snapshot size decreased from 69.2 MB to 67.6 MB.",
+      "Constructor self-size net delta was -1.420 MB; total positive constructor growth was only +0.116 MB.",
+      "Top positive deltas are V8 code/metadata internals, led by system / InstructionStream +0.054 MB; no Map/listener/closure/cache retainer owns a multi-MB slope.",
+      "Documents, frames, and nodes were flat at 4/4/6309; JS event listeners rose only 1478 to 1502 (+24)."
+    ],
+    "caveat": "This thin-host run did not enter replay playback; every panel stayed at currentIndex 0. It still covers the zero-pair-switch, no-bar-denominator V8-retention shape, but it is not a full soak reproduction.",
+    "queueConclusion": "Under C's caveat, this is the warm-up plateau/floor-story answer, not an inconclusive V8 retainer hunt."
+  },
+  "verdict": "CAPTURED"
+}
