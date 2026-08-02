@@ -25,6 +25,7 @@ import {
   isGotoCalendarDayDisabled,
 } from "./gotoMenuHelpers.js";
 import { loadIndPinned, saveIndPinned } from "./indicatorPinStorage.js";
+import { loadTfPinned, saveTfPinned, loadToolPinned, saveToolPinned } from "./toolbarPinStorage.js";
 import TradePathCloudPanel from "./TradePathCloudPanel.jsx";
 import { extractPathFieldsFromJournal } from "./tradePathCloudUtils.js";
 import {
@@ -12036,7 +12037,7 @@ const TalariaV8bLive = () => {
   const [hov, setHov] = useState(null);
   const [btnPressed, setBtnPressed] = useState(null);
   const [dropdown, setDropdown] = useState(null);
-  const [toolPinned, setToolPinned] = useState(["Trend Line","Horizontal Line","Fib Retracement","Rectangle","Text"]); // start open so user can see it
+  const [toolPinned, setToolPinned] = useState(() => loadToolPinned()); // start open so user can see it
   const [dialog, setDialog] = useState(false);
   const [dlgTab, setDlgTab] = useState("style");
   const [tickCandle, setTickCandle] = useState("candle");
@@ -12441,7 +12442,7 @@ const TalariaV8bLive = () => {
   const [layoutSync, setLayoutSync] = useState({ crosshair: true, time: false, drawings: true, symbol: false, interval: false, dateRange: false, indicators: false, chartType: false });
   const [tfOpen, setTfOpen] = useState(false);
   const [tfCat, setTfCat] = useState(null);
-  const [tfPinned, setTfPinned] = useState(["1m","5m","15m","1H","4H","1D"]);
+  const [tfPinned, setTfPinned] = useState(() => loadTfPinned());
   const [tfCustomVal, setTfCustomVal] = useState("");
   const [tfCustomErr, setTfCustomErr] = useState("");
   const [tfEditMode, setTfEditMode] = useState(false);
@@ -17413,6 +17414,14 @@ const TalariaV8bLive = () => {
   useEffect(() => {
     saveIndPinned(indPinned);
   }, [indPinned]);
+
+  useEffect(() => {
+    saveTfPinned(tfPinned);
+  }, [tfPinned]);
+
+  useEffect(() => {
+    saveToolPinned(toolPinned);
+  }, [toolPinned]);
 
   // Always use effective zoom 1: CSS `zoom` on the shell broke hit-testing vs visually
   // stacked layers (left rail, floating bars) in Chromium — clicks registered on #chart-container
