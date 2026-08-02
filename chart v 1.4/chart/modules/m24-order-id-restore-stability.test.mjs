@@ -5,6 +5,9 @@
  */
 import { createRequire } from 'node:module';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const require = createRequire(import.meta.url);
 const OrderManager = require('./order-manager.js');
@@ -95,5 +98,86 @@ assert.equal(
   'kill-switch restores legacy tradeId display'
 );
 delete global.window;
+
+const MODULE_DIR = path.dirname(fileURLToPath(import.meta.url));
+const ROOT = path.resolve(MODULE_DIR, '..', '..', '..');
+const CHART_JS = path.join(ROOT, 'chart v 1.4', 'chart', 'chart.js');
+const CHART_SOURCE = fs.readFileSync(CHART_JS, 'utf8');
+
+function chartMethodSource(name) {
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const match = CHART_SOURCE.match(new RegExp(
+    `^    ${escaped}\\s*\\([^]*?(?=^    (?:async\\s+)?[A-Za-z_$][\\w$]*\\s*\\(|^})`,
+    'm',
+  ));
+  if (!match) throw new Error(`method ${name} missing from chart.js`);
+  return match[0].replace(/\n+$/, '\n');
+}
+
+function makeQuotaBackupHarness() {
+  const writes = [];
+  const quota = new Error('quota full');
+  quota.name = 'QuotaExceededError';
+  global.userStorage = {
+    setItem(key, value) {
+      if (writes.length === 0) {
+        writes.push({ key, quota: true });
+        throw quota;
+      }
+      writes.push({ key, value: JSON.parse(value) });
+    },
+    removeItem() {},
+  };
+  const source = `
+class ChartHarness {
+  getActiveTradingSessionId() { return 'session-m24'; }
+  _getOrderManagerForSessionPersistence() { return this.orderManager; }
+  _normalizeBacktestTimeframe(tf) { return tf || null; }
+  _tradingSessionLocalBackupKey(sessionId) { return 'legacy:' + sessionId; }
+  _tradingSessionLocalBackupHotKey(sessionId) { return 'hot:' + sessionId; }
+  _tradingSessionLocalBackupDurableKey(sessionId) { return 'durable:' + sessionId; }
+  _snapshotIndicatorsForSessionBackup() { return []; }
+${chartMethodSource('_writeTradingSessionLocalBackup')}
+}
+globalThis.__M24ChartHarness = ChartHarness;
+`;
+  // eslint-disable-next-line no-new-func
+  Function(source)();
+  const chart = new globalThis.__M24ChartHarness();
+  chart.orderManager = {
+    balance: 10025,
+    equity: 10030,
+    initialBalance: 10000,
+    orderIdCounter: 188,
+    tradeGroupIdCounter: 9,
+    _m19PersistTrimV1Enabled: () => true,
+  };
+  chart.currentTimeframe = '1m';
+  chart.currentFileId = 'EURUSD';
+  chart.replaySystem = null;
+  return { chart, writes };
+}
+
+{
+  const { chart, writes } = makeQuotaBackupHarness();
+  chart._writeTradingSessionLocalBackup({ slim: true });
+  assert.equal(writes.length, 2, 'QuotaExceededError must retry once with minimal backup');
+  assert.deepEqual(
+    writes[1].value.order_counters,
+    { orderIdCounter: 188, tradeGroupIdCounter: 9 },
+    'quota retry minimal backup must preserve counters so restore cannot re-mint an existing order id',
+  );
+  assert.deepEqual(
+    writes[1].value.account_runtime,
+    { balance: 10025, equity: 10030, initialBalance: 10000 },
+    'quota retry still preserves account snapshot',
+  );
+  assert.equal(writes[1].value.journal, undefined, 'quota retry remains minimal');
+  assert.equal(writes[1].value.pending_orders, undefined, 'quota retry remains minimal');
+  assert.equal(writes[1].value.open_positions, undefined, 'quota retry remains minimal');
+  assert.equal(writes[1].value.closed_positions, undefined, 'quota retry remains minimal');
+  delete global.userStorage;
+  delete globalThis.__M24ChartHarness;
+}
 
 console.log('GREEN - session hydrate preserves displayed trade id');

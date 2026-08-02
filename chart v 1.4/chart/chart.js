@@ -13451,6 +13451,10 @@ class Chart {
                     equity: om.equity,
                     initialBalance: om.initialBalance,
                 };
+                payload.order_counters = {
+                    orderIdCounter: om.orderIdCounter,
+                    tradeGroupIdCounter: om.tradeGroupIdCounter,
+                };
             }
             const tf = this._normalizeBacktestTimeframe(this.currentTimeframe);
             // Host only: this backup is keyed by session and not by panel, so a
