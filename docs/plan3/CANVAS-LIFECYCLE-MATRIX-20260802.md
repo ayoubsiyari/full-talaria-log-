@@ -58,7 +58,7 @@ Instrument pattern: E’s `scripts/arena-reclaim-measure.mjs` / ind-layer arena 
 | ID | File:line | Kind | Purpose | Pair switch | Panel removal | Destroy | Notes / owner hint |
 |---|---|---|---|---|---|---|---|
 | C01 | `chart-indicators-full.js:8566` | indicator layer | `_indLayerCanvas` HiDPI cache | **Y** (E `8d0ed5579`) | iframe death → destroy path | **Y** (`chart.js` destroy zeros) | **DONE by E** (−61.5 MB private). Host recreates one layer after switch (steady, not per-paint). Residual open if host layer still priced high. |
-| C02 | `compare-overlay.js:1207` | compare pane | linked-pane canvas per compare id | **?** (pane teardown path exists; pair-switch of *main* symbol may not walk panes) | **Y** `_releaseLinkedPaneResources` | via pane teardown | E priced linked-pane release at **−53.72 MB** total-private (separate event). Confirm pair-switch coverage before a second cut. |
+| C02 | `compare-overlay.js:1207` | compare pane | linked-pane canvas per compare id | **N** — measured, and **correctly so** | **Y** `_releaseLinkedPaneResources` | via pane teardown | **CLOSED 21:45.** Pair switch does not walk the panes, but it does not *invalidate* them either: a pane is user-created state naming another instrument, not a derived cache. Cost of four panes is **+10.3 MB** total private, not fifty. E's **−53.72 MB** does not replicate — see BOARD-A 21:45. |
 | C03 | `panel-managerv2.js:1930` | main (legacy panel) | `panelCanvas${index}` | **N** observed | DOM remove only; **no** `width=0` at create site | **N** explicit | **latent** — not loaded by dist-v9 / chart-embed. Hygiene if that shell returns. |
 | C04 | `TalariaV8bLive.jsx:37249` | main chart | V9 `#chartCanvas` | **N** (same element reused) | iframe/`destroy` | **Y** `chart.js` `this.canvas.width=0` | Not recreated on pair switch. Cost is residency of the live surface, not abandon-on-switch. |
 | C05 | `multichart-prod/chart-embed.html:387` | main chart | per-iframe `#chartCanvas` | **N** (reuse) | **Y** iframe remove → Chart destroy | **Y** | Four panels ⇒ four live surfaces. Panel removal is the release event. |
@@ -70,10 +70,10 @@ Instrument pattern: E’s `scripts/arena-reclaim-measure.mjs` / ind-layer arena 
 | ID | File:line | Kind | Purpose | Pair switch | Panel removal | Destroy | Explicit zero? |
 |---|---|---|---|---|---|---|---|
 | C08 | `order-manager.js:10875` | screenshot | journal thumb JPEG (`_m20J1RasterizeThumb`) | n/a | n/a | n/a | **Y** — `width=0` immediately after `toDataURL` |
-| C09 | `screenshot-manager.js:262` | scratch | brand-logo alpha bounds | n/a | n/a | n/a | **N** — GC-only |
-| C10 | `screenshot-manager.js:1385` | scratch | `captureCanvasDirect` composite | n/a | n/a | n/a | **N** — returned to caller, GC-only |
-| C11 | `screenshot-manager.js:1474` | scratch | `captureMultichartComposite` | n/a | n/a | n/a | **N** — GC-only |
-| C12 | `drawing-tools-ui.js:13819` | scratch | image-tool upload compress | n/a | n/a | n/a | **N** — GC-only |
+| C09 | `screenshot-manager.js:262` | scratch | brand-logo alpha bounds | n/a | n/a | n/a | **Y** — `_releaseScratchCanvas` after `getImageData` (landed 21:55) |
+| C10 | `screenshot-manager.js:1385` | scratch | `captureCanvasDirect` composite | n/a | n/a | n/a | **Y at the `captureChartSnapshot` consumer** (landed 21:55). Interactive `download`/`copy`/`link`/`tab`/`preview` consumers deliberately left alone — they still read the canvas after the call returns |
+| C11 | `screenshot-manager.js:1474` | scratch | `captureMultichartComposite` | n/a | n/a | n/a | **Y** — each per-panel scratch right after it is composited, 4 per capture at four panels (landed 21:55) |
+| C12 | `drawing-tools-ui.js:13819` | scratch | image-tool upload compress | n/a | n/a | n/a | **Y** — after `toDataURL` (landed 21:55) |
 
 ### C. Text-measure (E-reserved — do not take)
 
@@ -106,8 +106,8 @@ All in `drawing-tools-text.js`. Created inside render/measure helpers, never ass
 | Releases on pair switch | C01 (landed) | 1 |
 | Releases on panel removal / pane teardown | C02, C05 (iframe destroy) | 2+ |
 | Releases on Chart.destroy only (not pair switch) | C04, C06, C07; C01 also | main surfaces |
-| Explicit immediate zero (scratch) | C08 | 1 |
-| GC-only ephemeral | C09–C23 | 15 |
+| Explicit immediate zero (scratch) | C08, **C09–C12 (landed 21:55)** | 5 |
+| GC-only ephemeral | C13–C23 (E-reserved) | 11 |
 | Latent / not on V9 path | C03 | 1 |
 
 **The structural lesson from C01:** the expensive class is **retained canvases that survive pair switch**. Destroy-only release is how a constantly switching session keeps paying GPU×N.
