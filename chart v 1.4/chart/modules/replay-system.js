@@ -273,6 +273,16 @@ function _order01bStepV1Enabled() {
  * a step is. Two sources of truth for one number is how the cadence ends up
  * derived from one control and the playhead advanced by the other.
  */
+/** FNV-1a over a string. The slow path of `_pathSeed`, kept in one place. */
+function _order01bHashText(text) {
+    let hash = 2166136261;
+    for (let i = 0; i < text.length; i++) {
+        hash ^= text.charCodeAt(i);
+        hash = Math.imul(hash, 16777619);
+    }
+    return hash >>> 0;
+}
+
 function _order01bStepLabel(seconds) {
     const n = Math.round(Number(seconds));
     if (!Number.isFinite(n) || n <= 0) return null;
@@ -7949,11 +7959,34 @@ class ReplaySystem {
         return currentRaw ? currentRaw.c : null;
     }
     
+    /**
+     * FNV-1a over `symbol:timestamp`, without building `symbol:timestamp`.
+     *
+     * The string was one allocation per bar on the forming path — small, and
+     * paid on every bar of every panel for the whole session. The digits of a
+     * non-negative safe integer can be fed to the hash straight out of the
+     * arithmetic, which is the case every real timestamp takes. Anything else
+     * falls back to the literal string, so the seed is bit-identical either
+     * way and no path already in the field changes the candles it draws.
+     */
     _pathSeed(symbol, timestamp) {
-        const text = `${symbol || ''}:${Number(timestamp) || 0}`;
+        const time = Number(timestamp) || 0;
+        if (!Number.isSafeInteger(time) || time < 0) {
+            return _order01bHashText(`${symbol || ''}:${time}`);
+        }
         let hash = 2166136261;
-        for (let i = 0; i < text.length; i++) {
-            hash ^= text.charCodeAt(i);
+        const sym = symbol || '';
+        for (let i = 0; i < sym.length; i++) {
+            hash ^= sym.charCodeAt(i);
+            hash = Math.imul(hash, 16777619);
+        }
+        hash ^= 58; // ':'
+        hash = Math.imul(hash, 16777619);
+        // Digits most-significant first, matching what String(time) would give.
+        let divisor = 1;
+        while (Math.floor(time / divisor) >= 10) divisor *= 10;
+        for (let d = divisor; d >= 1; d /= 10) {
+            hash ^= 48 + (Math.floor(time / d) % 10);
             hash = Math.imul(hash, 16777619);
         }
         return hash >>> 0;
@@ -8011,7 +8044,10 @@ class ReplaySystem {
         const symbol = candle && (candle.symbol || candle.ticker || candle.currentSymbol)
             || (this.chart && this.chart.currentSymbol)
             || '';
-        const rng = this.createSeededRandom(this._pathSeed(symbol, candle && candle.t));
+        // The LCG is inlined rather than taken from `createSeededRandom`: a
+        // closure per bar is a closure per bar, and the walk below is the only
+        // consumer. Same constants, same sequence.
+        let rngState = this._pathSeed(symbol, candle && candle.t);
         const amplitude = range * 0.15;
         const waypoints = this._collectPathWaypoints(candle, open, close);
         const lastWp = Math.max(1, waypoints.length - 1);
@@ -8032,7 +8068,9 @@ class ReplaySystem {
             let walk = 0;
             for (let i = startIdx + 1; i < endIdx; i++) {
                 const t = (i - startIdx) / span;
-                walk = (walk * 0.55) + ((rng() - 0.5) * 2 * amplitude * 0.45);
+                rngState = (rngState * 1103515245 + 12345) & 0x7fffffff;
+                const r = rngState / 0x7fffffff;
+                walk = (walk * 0.55) + ((r - 0.5) * 2 * amplitude * 0.45);
                 const taper = Math.sin(Math.PI * t);
                 const base = start + (end - start) * t;
                 path[i] = Math.max(segMin, Math.min(segMax, base + walk * taper));
