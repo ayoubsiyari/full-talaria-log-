@@ -133,7 +133,9 @@
     "preflight:supporting-symbol-surface": "node --test --test-concurrency=1 \"chart v 1.4/chart/modules/supporting-symbol-surface.test.mjs\"",
     "test:supporting-symbol-surface": "npm run preflight:supporting-symbol-surface",
     "preflight:generate-path-waypoints": "node --test \"chart v 1.4/chart/modules/generate-path-waypoints.test.mjs\"",
-    "test:generate-path-waypoints": "npm run preflight:generate-path-waypoints"
+    "test:generate-path-waypoints": "npm run preflight:generate-path-waypoints",
+    "preflight:order-stable-label-hover-dom": "node \"chart v 1.4/chart/modules/order-stable-label-hover-dom.test.mjs\"",
+    "test:order-stable-label-hover-dom": "npm run preflight:order-stable-label-hover-dom"
   },
   "dependencies": {
     "dukascopy-node": "^1.46.3",

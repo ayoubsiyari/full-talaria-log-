@@ -18199,6 +18199,14 @@ class OrderManager {
         return Math.round(numeric * 100) % 100 === 0 ? numeric.toFixed(0) : numeric.toFixed(2);
     }
 
+    _orderLevelQuantityUnit() {
+        return this.getMarketConfig?.()?.positionLabel || 'Lots';
+    }
+
+    _formatOrderQuantityWithUnit(value) {
+        return `${this.formatQuantity(value)} ${this._orderLevelQuantityUnit()}`;
+    }
+
     composePreviewLabelSegments(label, price, color, direction) {
         // Ensure price is valid
         if (price === undefined || price === null || !Number.isFinite(price)) {
@@ -18221,7 +18229,7 @@ class OrderManager {
                 const level = this.multiEntryLevels[0];
                 const slPrice = parseFloat(document.getElementById('slPrice')?.value || 0);
                 const lotSize = level ? this._calcLevelLotSize(level, slPrice, this.pipSize, this.pipValuePerLot) : '0.00';
-                const fullLabel = `${orderTypeRaw.toUpperCase()} ${sideUpper} ${lotSize}`;
+                const fullLabel = `${orderTypeRaw.toUpperCase()} ${sideUpper} ${this._formatOrderQuantityWithUnit(lotSize)}`;
                 return [
                     {
                         text: fullLabel,
@@ -18232,7 +18240,7 @@ class OrderManager {
                         minWidth: 104
                     },
                     {
-                        text: lotSize,
+                        text: this._formatOrderQuantityWithUnit(lotSize),
                         fill: '#0f172a',
                         stroke: color,
                         textColor: '#ffffff',
@@ -18243,7 +18251,7 @@ class OrderManager {
                 ];
             }
 
-            const fullLabel = `${orderTypeRaw.toUpperCase()} ${sideUpper} ${this.formatQuantity(quantity)}`;
+            const fullLabel = `${orderTypeRaw.toUpperCase()} ${sideUpper} ${this._formatOrderQuantityWithUnit(quantity)}`;
             return [
                 {
                     text: fullLabel,
@@ -18278,7 +18286,7 @@ class OrderManager {
                     minWidth: 64
                 },
                 {
-                    text: this.formatQuantity(totalLots),
+                    text: this._formatOrderQuantityWithUnit(totalLots),
                     fill: '#0f172a',
                     stroke: accent,
                     textColor: '#fde68a',
@@ -18307,7 +18315,7 @@ class OrderManager {
             const slPrice = parseFloat(document.getElementById('slPrice')?.value || 0);
             const lotSize = level ? this._calcLevelLotSize(level, slPrice, this.pipSize, this.pipValuePerLot) : '0.00';
 
-            const fullLabel = `${splitOrderType} ${sideUpper} ${lotSize}`;
+            const fullLabel = `${splitOrderType} ${sideUpper} ${this._formatOrderQuantityWithUnit(lotSize)}`;
             
             return [
                 {
@@ -18319,7 +18327,7 @@ class OrderManager {
                     minWidth: 104
                 },
                 {
-                    text: lotSize,
+                    text: this._formatOrderQuantityWithUnit(lotSize),
                     fill: '#0f172a',
                     stroke: color,
                     textColor: '#ffffff',
@@ -18935,6 +18943,10 @@ class OrderManager {
         const detailSel = lineData.labelGroup.select('.order-level-toast-detail');
         lineData.priceText = detailSel.empty() ? null : detailSel;
         this.positionPreviewLabel(lineData, overrideY);
+        const groupNode = lineData.labelGroup.node?.();
+        if (this._setOrderLevelControlsHiddenForDrag(groupNode, this._shouldHideOrderLevelControlsDuringDrag())) {
+            return;
+        }
         // Controls were just recreated at opacity:0. A live preview (e.g. MARKET entry
         // following price) re-renders on every tick, so without this the buttons keep
         // resetting to 0 and only fade back via a throttled rAF — they blink and can't
@@ -18997,6 +19009,9 @@ class OrderManager {
      */
     _applyImmediateLevelCtrlHoverForGroup(groupNode, ch) {
         if (!groupNode) return;
+        if (this._setOrderLevelControlsHiddenForDrag(groupNode, this._shouldHideOrderLevelControlsDuringDrag())) {
+            return;
+        }
         const container = ch?.svg?.node?.()?.parentElement;
         if (!container || !container.__omInside) return;
         const clientY = container.__omY;
@@ -27481,7 +27496,7 @@ class OrderManager {
 
         const formatSigned = (pnl, lots) => {
             const sign = pnl >= 0 ? '+' : '-';
-            return `${sign}$${Math.abs(pnl).toFixed(2)}  (${this.formatQuantity(lots)})`;
+            return `${sign}$${Math.abs(pnl).toFixed(2)} (${this._formatOrderQuantityWithUnit(lots)})`;
         };
 
         // Multi-entry: sum each valid level's individual PnL (skip disabled levels)
@@ -27602,7 +27617,7 @@ class OrderManager {
 
         if (!(lots > 0)) return fallback;
         const sign = pnl >= 0 ? '+' : '-';
-        return `${sign}$${Math.abs(pnl).toFixed(2)}  (${this.formatQuantity(lots)})`;
+        return `${sign}$${Math.abs(pnl).toFixed(2)} (${this._formatOrderQuantityWithUnit(lots)})`;
     }
 
     _getReferenceEntryForOrderMath() {
@@ -51219,6 +51234,47 @@ class OrderManager {
         return "'Exo 2', Roboto, sans-serif";
     }
 
+    _orderLevelLabelFontSize() {
+        return '11px';
+    }
+
+    _orderLevelToastWidth() {
+        return 260;
+    }
+
+    _orderLevelToastTagColumnWidth() {
+        return 116;
+    }
+
+    _shouldHideOrderLevelControlsDuringDrag() {
+        return !!(
+            this.isDraggingPreviewLine
+            || this._isDraggingOrderLine
+            || this._isDraggingPendingTarget
+            || this._draggingManagedOpenLineKind
+            || this._draggingManagedOpenOrderId
+        );
+    }
+
+    _setOrderLevelControlsHiddenForDrag(groupNode, hidden) {
+        const controls = groupNode?.querySelectorAll?.('.om-level-ctrl');
+        if (!controls || !controls.length) return false;
+        for (let i = 0; i < controls.length; i++) {
+            const el = controls[i];
+            if (!el?.style) continue;
+            if (hidden) {
+                el.style.transition = 'none';
+                el.style.opacity = '0';
+                el.style.pointerEvents = 'none';
+                el.classList?.remove?.('om-ctrl-hover');
+                el.setAttribute?.('data-drag-hidden', 'true');
+            } else if (el.getAttribute?.('data-drag-hidden') === 'true') {
+                el.removeAttribute?.('data-drag-hidden');
+            }
+        }
+        return hidden;
+    }
+
     _orderLevelDetailColor(detailText, fallbackAccent) {
         const t = String(detailText || '');
         const th = this._tradeMarkerToastTheme();
@@ -51235,12 +51291,11 @@ class OrderManager {
         const o = opts || {};
         const th = this._tradeMarkerToastTheme();
         const isPreview = !!o.isPreview;
-        const height = o.height || (o.smallLabel ? 20 : 24);
+        const height = 24;
         const padL = 14;
-        const padR = 10;
         const stripeW = 3;
         const gap = 6;
-        const fontSize = o.smallLabel ? '10px' : '11px';
+        const fontSize = this._orderLevelLabelFontSize();
         const accent = o.accent || th.accentDefault;
         const tagText = String(o.tagText || '');
         const detailText = o.detailText != null && o.detailText !== '' ? String(o.detailText) : null;
@@ -51253,26 +51308,18 @@ class OrderManager {
         const shellRx = onRrTool ? 3 : 0;
         const font = this._orderLevelLabelFontFamily();
 
-        const measure = parentGroup.append('text').style('visibility', 'hidden').attr('font-size', fontSize).attr('font-family', font);
-        measure.attr('font-weight', '700').text(tagText);
-        const tagW = measure.node()?.getBBox()?.width || 40;
-        let detailW = 0;
-        if (detailText) {
-            measure.attr('font-weight', '600').text(detailText);
-            detailW = measure.node()?.getBBox()?.width || 0;
-        }
-        measure.remove();
-
-        const innerW = tagW + (detailText ? gap + detailW : 0);
-        const totalW = Math.max(o.minWidth || 72, stripeW + padL + innerW + padR);
+        const tagColW = this._orderLevelToastTagColumnWidth();
+        const totalW = this._orderLevelToastWidth();
+        const detailX = stripeW + padL + tagColW + gap;
         const stableSig = [
             detailText ? 'detail' : 'tag',
             height,
             fontSize,
             font,
             onRrTool ? 'rr' : (isPreview ? 'preview' : 'row'),
-            o.smallLabel ? 'small' : 'normal',
-            o.minWidth || '',
+            'fixed',
+            tagColW,
+            totalW,
         ].join('|');
         const existingShell = _orderStableLabelHoverDomV1Enabled()
             && parentGroup.select
@@ -51307,7 +51354,7 @@ class OrderManager {
                         .attr('font-weight', '600');
                 }
                 detailSel
-                    .attr('x', stripeW + padL + tagW + gap)
+                    .attr('x', detailX)
                     .attr('y', height / 2)
                     .attr('fill', detailColor)
                     .attr('font-size', fontSize)
@@ -51358,7 +51405,7 @@ class OrderManager {
         if (detailText) {
             shell.append('text')
                 .attr('class', 'order-level-toast-detail')
-                .attr('x', stripeW + padL + tagW + gap)
+                .attr('x', detailX)
                 .attr('y', height / 2)
                 .attr('dy', '0.35em')
                 .attr('fill', detailColor)
@@ -51453,12 +51500,12 @@ class OrderManager {
         const stripeW = 3;
 
         labelBox?.attr('fill', th.bg).attr('stroke', th.border).attr('stroke-width', 1).attr('rx', 0).style('opacity', op);
-        labelText?.attr('fill', accent).attr('font-family', font).attr('font-weight', '700');
+        labelText?.attr('fill', accent).attr('font-family', font).attr('font-size', this._orderLevelLabelFontSize()).attr('font-weight', '700');
         labelAccent?.attr('fill', accent).attr('width', stripeW).style('opacity', op);
 
         if (pnlBox && pnlText) {
             pnlBox.attr('fill', th.bg).attr('stroke', th.border).attr('stroke-width', 1).attr('rx', 0).style('opacity', op);
-            pnlText.attr('font-family', font).attr('font-weight', '600');
+            pnlText.attr('font-family', font).attr('font-size', this._orderLevelLabelFontSize()).attr('font-weight', '600');
             pnlAccent?.attr('fill', accent).attr('width', stripeW).style('opacity', op);
         }
     }
