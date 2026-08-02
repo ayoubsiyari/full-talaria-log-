@@ -6877,7 +6877,7 @@ class ReplaySystem {
             if (!this._preserveTickProgress || !this.animatingCandle) {
                 // Pre-fetch the tick path so the very first render already
                 // shows a small movement from open (avoids a flat doji flash).
-                const prePath = this.getTickPath(targetCandle);
+                const prePath = this.getRetainedTickPath(targetCandle, 'animatingCandle');
                 const seed0 = (prePath && prePath.length > 0) ? prePath[0] : targetCandle.o;
                 this.animatingCandle = {
                     target: targetCandle,
@@ -7121,7 +7121,7 @@ class ReplaySystem {
 
         if (progress < count) {
             if (!target.cachedPath) {
-                target.cachedPath = this.getTickPath(tc);
+                target.cachedPath = this.getRetainedTickPath(tc, 'animatingCandle');
             }
             const pathSpan = Math.max(0, target.cachedPath.length - 1);
             const tickSpan = Math.max(1, count - 1);
@@ -7582,6 +7582,18 @@ class ReplaySystem {
         cache[candle.t] = Array.prototype.slice.call(path);
         return path;
     }
+
+    _getRetainedTickPathBuffer(slot = 'default') {
+        const key = String(slot || 'default');
+        const buffers = this._retainedTickPathBuffers || (this._retainedTickPathBuffers = Object.create(null));
+        return buffers[key] || (buffers[key] = []);
+    }
+
+    getRetainedTickPath(candle, slot = 'default') {
+        if (!candle || !candle.t) return null;
+        const n = this.ticksPerCandle || 72;
+        return this.generatePath(candle, n, this._getRetainedTickPathBuffer(slot));
+    }
     
     /**
      * Get aggregated tick path for higher timeframe candle
@@ -7604,7 +7616,11 @@ class ReplaySystem {
         // Concatenate tick paths from all raw candles
         const aggregatedPath = [];
         for (const rawCandle of rawCandles) {
-            const tickPath = this.getTickPath(rawCandle);
+            const tickPath = this.generatePath(
+                rawCandle,
+                this.ticksPerCandle || 72,
+                this._aggregateTickPathScratch || (this._aggregateTickPathScratch = []),
+            );
             if (tickPath) {
                 aggregatedPath.push(...tickPath);
             }
@@ -7632,7 +7648,10 @@ class ReplaySystem {
         if (tickAnimActive && this.animatingCandle) {
             if (this.tickProgress > 0) {
                 if (!this.animatingCandle.cachedPath) {
-                    this.animatingCandle.cachedPath = this.getTickPath(this.animatingCandle.target || this.animatingCandle);
+                    this.animatingCandle.cachedPath = this.getRetainedTickPath(
+                        this.animatingCandle.target || this.animatingCandle,
+                        'animatingCandle',
+                    );
                 }
                 const path = this.animatingCandle.cachedPath;
                 const pathIndex = Math.min(Math.max(0, this.tickProgress - 1), path.length - 1);
@@ -8113,8 +8132,8 @@ class ReplaySystem {
 
         const tc = anim.target || anim;
         let path = anim.cachedPath;
-        if ((!path || !path.length) && typeof this.getTickPath === 'function') {
-            path = this.getTickPath(tc);
+        if ((!path || !path.length) && typeof this.getRetainedTickPath === 'function') {
+            path = this.getRetainedTickPath(tc, 'savedTickState');
         }
         if (!path || !path.length) return;
 
@@ -9096,7 +9115,13 @@ class ReplaySystem {
             || this.ticksPerCandle
             || 72;
         const tp = Math.max(0, Math.min(Number(this.tickProgress) || 0, ticksNeeded));
-        const path = typeof this.getTickPath === 'function' ? this.getTickPath(panelBar) : null;
+        const path = typeof this.generatePath === 'function'
+            ? this.generatePath(
+                panelBar,
+                ticksNeeded,
+                this._independentPairPathScratch || (this._independentPairPathScratch = []),
+            )
+            : null;
         let currentPrice = Number(panelBar.c);
         if (path && path.length > 0 && tp > 0) {
             const pathIndex = Math.min(tp - 1, path.length - 1);
@@ -10270,7 +10295,7 @@ class ReplaySystem {
 
                 const nextCandle = this.fullRawData[this.currentIndex + 1];
                 if (nextCandle && savedTickProgress > 0) {
-                    const tickPath = this.getTickPath(nextCandle);
+                    const tickPath = this.getRetainedTickPath(nextCandle, 'restoreAnimatingCandle');
                     const pathIndex = Math.min(savedTickProgress - 1, tickPath.length - 1);
                     const currentPrice = pathIndex >= 0 ? tickPath[pathIndex] : nextCandle.o;
 
