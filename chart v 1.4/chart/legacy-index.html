@@ -41421,7 +41421,7 @@
 
                             </div>
 
-                            <input type="range" id="replaySpeedSlider" class="speed-slider-input" min="0" max="14" step="1" value="0">
+                            <input type="range" id="replaySpeedSlider" class="speed-slider-input" min="0" max="9" step="1" value="0">
 
                         </div>
 
@@ -51461,19 +51461,82 @@
 
             
 
-            // Speed values mapped to slider positions
+            /**
+             * ORDER-01 §5 — the speeds this shell is allowed to offer.
+             *
+             * Asks the engine first so there is one ladder rather than a
+             * fourth. This shell, the V9 toolbar and replay-system.js each
+             * carried their own list, which is exactly how 60x stayed on
+             * screen after the engine stopped offering it. The literal below
+             * is only for the window before the chart exists.
+             */
+            function talariaOfferedSpeeds() {
 
-            // 1x = real time, 60x = 1m bar/sec, 300x = 5m bar/sec, etc.
+                const rs = window.chart && window.chart.replaySystem;
 
-            const speedValues = [1, 2, 5, 10, 30, 60, 120, 300, 900, 1800, 3600, 7200, 14400, 43200, 86400];
+                let values = null;
 
-            const speedLabels = [
+                try {
 
-                '1x', '2x', '5x', '10x', '30x', '60x', '120x', '300x', '900x', '1800x', '3600x', '7200x', '14400x', '43200x', '86400x'
+                    const tick = rs && typeof rs.getPlaybackMode === 'function'
+                        && rs.getPlaybackMode() === 'tick';
 
-            ];
+                    if (rs && tick && typeof rs.getTickSpeedLadder === 'function') {
 
-            const speedRates = new Array(speedValues.length).fill('');
+                        values = rs.getTickSpeedLadder();
+
+                    } else if (rs && typeof rs.getSpeedLadderBarsPerSecond === 'function') {
+
+                        values = rs.getSpeedLadderBarsPerSecond();
+
+                    }
+
+                } catch (_e) {
+
+                    values = null;
+
+                }
+
+                if (!Array.isArray(values) || !values.length) {
+
+                    values = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+
+                }
+
+                return {
+
+                    values: values,
+
+                    labels: values.map(function (v) {
+
+                        return v === 'REALISTIC' ? 'REAL' : (v + 'x');
+
+                    }),
+
+                    rates: values.map(function (v) {
+
+                        return v === 'REALISTIC'
+                            ? '(real time)'
+                            : ('(' + v + ' bar' + (v === 1 ? '' : 's') + '/sec)');
+
+                    })
+
+                };
+
+            }
+
+            // ORDER-01 §5: the offered speeds are 1-10 bars per second in
+            // candle mode, and the same ten plus REALISTIC in tick mode.
+            // Nothing above 10, nothing between. The ladder this replaced ran
+            // to 86400x and defaulted to 60x.
+
+            let __speedLadder = talariaOfferedSpeeds();
+
+            let speedValues = __speedLadder.values;
+
+            let speedLabels = __speedLadder.labels;
+
+            let speedRates = __speedLadder.rates;
 
             
 
@@ -51487,9 +51550,54 @@
 
             
 
-            let currentIndex = 5;
+            // Default was index 5 of the old ladder, i.e. 60x. The migrated
+            // default is the top surviving rung; indexOf keeps it honest if
+            // the ladder ever changes again.
+            let currentIndex = Math.max(0, speedValues.indexOf(10));
 
-            const maxIndex = 14;
+            let maxIndex = speedValues.length - 1;
+
+            /**
+             * Rebuild the slider when the playback mode changes, because tick
+             * mode offers one more position (REALISTIC) than candle mode.
+             * Keeps the current speed if it survives the change.
+             */
+            function refreshSpeedLadderUI() {
+
+                const previous = speedValues[currentIndex];
+
+                const next = talariaOfferedSpeeds();
+
+                speedValues = next.values;
+
+                speedLabels = next.labels;
+
+                speedRates = next.rates;
+
+                maxIndex = speedValues.length - 1;
+
+                const rangeEl = document.getElementById('replaySpeedSlider');
+
+                if (rangeEl) rangeEl.max = String(maxIndex);
+
+                let idx = speedValues.indexOf(previous);
+
+                if (idx < 0) idx = Math.max(0, speedValues.indexOf(10));
+
+                setSpeedByIndex(idx, false);
+
+            }
+
+            window.__talariaRefreshSpeedLadder = refreshSpeedLadderUI;
+
+            document.addEventListener('click', function (e) {
+
+                const opt = e.target && e.target.closest && e.target.closest('.replay-mode-option');
+
+                // After the toggle has actually flipped the mode, not before.
+                if (opt) setTimeout(refreshSpeedLadderUI, 0);
+
+            }, true);
 
             
 
@@ -52407,13 +52515,16 @@
 
                     // Speed values (same as original)
 
-                    const speedValues = [1, 2, 5, 10, 30, 60, 120, 300, 900, 1800, 3600, 7200, 14400, 43200, 86400];
+                    // ORDER-01 §5, same ladder as the docked slider (see talariaOfferedSpeeds).
+            const __cloneLadder = talariaOfferedSpeeds();
 
-                    const speedLabels = ['1x', '2x', '5x', '10x', '30x', '60x', '120x', '300x', '900x', '1800x', '3600x', '7200x', '14400x', '43200x', '86400x'];
+            const speedValues = __cloneLadder.values;
 
-                    const speedRates = ['(real time)', '(2 sec for 1sec)', '', '', '', '(1m bar/sec)', '', '(5m bar/sec)', '(15m bar/sec)', '(30m bar/sec)', '(1h bar/sec)', '(2h/sec)', '(4h/sec)', '(12h/sec)', '(1D bar/sec)'];
+                    const speedLabels = __cloneLadder.labels;
 
-                    const maxIndex = 14;
+                    const speedRates = __cloneLadder.rates;
+
+                    const maxIndex = speedValues.length - 1;
 
                     
 
