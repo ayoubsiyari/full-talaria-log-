@@ -37,13 +37,29 @@ export function deliveredRate(prev, next, { baseTimeframeSec = 60 } = {}) {
   // interval is not a delivery measurement and must not be averaged into one.
   if (simMs != null && simMs < 0) return { ok: false, why: 'playhead moved backwards — re-seek or wrap, not delivery' };
 
-  const bySim = simMs != null ? (simMs / 1000 / baseTimeframeSec) / wallSec : null;
+  /**
+   * THE UNIT IS MARKET-SECONDS DELIVERED PER WALL-SECOND, and bars/s is now derived display.
+   *
+   * The quantity was always this: the primary route divides simulated-time advance by wall time, then
+   * divided AGAIN by the timeframe to express it as bars. Dropping that second division is the whole
+   * change - the measurement did not move, only what it is called.
+   *
+   * It is the better unit because it survives a timeframe change and the amendment's sub-TF stepping,
+   * both of which alter what "a bar" means while leaving market time alone. A bars/s series that spans a
+   * step change silently compares two different denominators.
+   */
+  const marketSecPerWallSec = simMs != null ? (simMs / 1000) / wallSec : null;
+  const bySim = marketSecPerWallSec != null ? marketSecPerWallSec / baseTimeframeSec : null;
   const byIndex = idxDelta != null && idxDelta >= 0 ? idxDelta / wallSec : null;
 
   return {
-    ok: bySim != null || byIndex != null,
+    ok: marketSecPerWallSec != null || byIndex != null,
+    // PRIMARY, and the judged quantity.
+    marketSecPerWallSec: marketSecPerWallSec != null ? +marketSecPerWallSec.toFixed(4) : null,
+    // DERIVED DISPLAY. Carries its denominator so it can never be read without one.
     barsPerSec: bySim != null ? +bySim.toFixed(4) : (byIndex != null ? +byIndex.toFixed(4) : null),
-    route: bySim != null ? 'simulated-time' : (byIndex != null ? 'replay-index' : null),
+    barsPerSecDenominatorSec: baseTimeframeSec,
+    route: marketSecPerWallSec != null ? 'simulated-time' : (byIndex != null ? 'replay-index' : null),
     bySimulatedTime: bySim != null ? +bySim.toFixed(4) : null,
     byReplayIndex: byIndex != null ? +byIndex.toFixed(4) : null,
     wallSec: +wallSec.toFixed(2),
@@ -70,8 +86,61 @@ export function evaluateRateHold(samples, {
   finalWindowHours = 0.5,
   tolerance = 0.05,
   minSamplesPerWindow = 3,
+  // Legacy series only: converts bars/s to market-seconds. Explicit rather than defaulted, because
+  // assuming a timeframe silently rescales the verdict by that timeframe.
+  assumeDenominatorSec = null,
 } = {}) {
-  const usable = (samples || []).filter((s) => Number.isFinite(s.barsPerSec) && Number.isFinite(s.hours));
+  /**
+   * Judged on MARKET-SECONDS PER WALL-SECOND. Samples are read on the new field with a fall-back to the
+   * derived one, so a series recorded before the unit settled is still gradeable - but the fall-back
+   * needs the timeframe to convert, and a mixed-denominator series is refused below rather than averaged.
+   */
+  /**
+   * THE PRIMARY AND THE DISPLAY MUST AGREE.
+   *
+   * Now that bars/s is derived, a sample can carry both fields and have them contradict - and the judge
+   * would silently believe the primary while a reader believed the display. Caught this on my own drive
+   * script the moment the unit changed: fixtures that decayed only bars/s produced "0% lost, ratio 1" on
+   * a series built to lose half its delivery. In an artifact that is a wrong verdict with no symptom.
+   */
+  const inconsistent = (samples || []).filter((s) => Number.isFinite(s.marketSecPerWallSec)
+    && Number.isFinite(s.barsPerSec) && Number.isFinite(s.barsPerSecDenominatorSec)
+    && Math.abs(s.barsPerSec * s.barsPerSecDenominatorSec - s.marketSecPerWallSec) > Math.max(0.01, 0.01 * Math.abs(s.marketSecPerWallSec)));
+  if (inconsistent.length) {
+    const e = inconsistent[0];
+    return {
+      verdict: 'VOID', publishable: false,
+      why: `${inconsistent.length} samples disagree between the primary unit and its derived display (e.g. marketSecPerWallSec ${e.marketSecPerWallSec} vs barsPerSec ${e.barsPerSec} x ${e.barsPerSecDenominatorSec} s = ${(e.barsPerSec * e.barsPerSecDenominatorSec).toFixed(2)}). One of the two was written by something that does not know about the other.`,
+    };
+  }
+
+  const mapped = (samples || []).map((s) => {
+    if (Number.isFinite(s.marketSecPerWallSec)) return { ...s, rate: s.marketSecPerWallSec, rateUnit: 'marketSecPerWallSec' };
+    // A legacy series carries bars/s with no denominator. It is CONVERTIBLE, not unusable - but only
+    // with a timeframe, and inventing one would silently rescale the verdict. Marked, then refused
+    // below by name rather than dropped by a filter, because a sample that vanishes from a median is
+    // the quietest way to get a wrong answer.
+    const denom = Number.isFinite(s.barsPerSecDenominatorSec) ? s.barsPerSecDenominatorSec : assumeDenominatorSec;
+    if (Number.isFinite(s.barsPerSec) && Number.isFinite(denom)) {
+      return { ...s, rate: s.barsPerSec * denom, rateUnit: Number.isFinite(s.barsPerSecDenominatorSec) ? 'derived-from-barsPerSec' : 'derived-with-assumed-denominator' };
+    }
+    return { ...s, rate: null, rateUnit: Number.isFinite(s.barsPerSec) ? 'barsPerSec-without-denominator' : 'unreadable' };
+  });
+  const unconvertible = mapped.filter((s) => s.rate == null && s.rateUnit === 'barsPerSec-without-denominator');
+  if (unconvertible.length && unconvertible.length === mapped.filter((s) => s.rate == null || Number.isFinite(s.rate)).length - mapped.filter((s) => Number.isFinite(s.rate)).length) {
+    return {
+      verdict: 'VOID', publishable: false,
+      why: `${unconvertible.length} samples carry barsPerSec with no base timeframe, so they cannot be converted to market-seconds. Pass assumeDenominatorSec to grade a legacy series, and say so when publishing it.`,
+    };
+  }
+  const usable = mapped.filter((s) => Number.isFinite(s.rate) && Number.isFinite(s.hours));
+
+  // A step or timeframe change alters what a bar IS. Market time is immune, but a series whose samples
+  // were recorded against different denominators cannot be pooled without saying so.
+  const denominators = new Set(usable.map((s) => s.barsPerSecDenominatorSec).filter((v) => v != null));
+  if (denominators.size > 1) {
+    return { verdict: 'VOID', why: `the base timeframe changed mid-run (${[...denominators].join(', ')} s); bars/s spans two denominators. Market-seconds are comparable but the display unit is not.`, publishable: false };
+  }
   if (usable.length < minSamplesPerWindow * 2) {
     return { verdict: 'VOID', why: `only ${usable.length} usable samples; RATE-HOLD needs two populated windows.`, publishable: false };
   }
@@ -93,20 +162,25 @@ export function evaluateRateHold(samples, {
     return { verdict: 'VOID', why: `final window (last ${finalWindowHours} h) holds ${fin.length} samples, need ${minSamplesPerWindow}.`, publishable: false };
   }
 
-  const b = median(base.map((s) => s.barsPerSec));
-  const f = median(fin.map((s) => s.barsPerSec));
+  const b = median(base.map((s) => s.rate));
+  const f = median(fin.map((s) => s.rate));
   if (!(b > 0)) return { verdict: 'VOID', why: `baseline rate is ${b}; a ratio against zero says nothing.`, publishable: false };
 
   const ratio = f / b;
-  const naive = usable[0].barsPerSec > 0 ? +(f / usable[0].barsPerSec).toFixed(4) : null;
+  const naive = usable[0].rate > 0 ? +(f / usable[0].rate).toFixed(4) : null;
 
   return {
     verdict: ratio >= 1 - tolerance ? 'RATE-HOLD PASS' : 'RATE-HOLD FAIL',
     publishable: true,
     holdRatio: +ratio.toFixed(4),
     lostPercent: +((1 - ratio) * 100).toFixed(1),
-    baselineBarsPerSec: +b.toFixed(3),
-    finalBarsPerSec: +f.toFixed(3),
+    unit: 'market-seconds delivered per wall-second',
+    baselineMarketSecPerWallSec: +b.toFixed(3),
+    finalMarketSecPerWallSec: +f.toFixed(3),
+    // Derived display, and null when the denominator is unknown rather than guessed.
+    baselineBarsPerSec: denominators.size === 1 ? +(b / [...denominators][0]).toFixed(4) : (assumeDenominatorSec ? +(b / assumeDenominatorSec).toFixed(4) : null),
+    finalBarsPerSec: denominators.size === 1 ? +(f / [...denominators][0]).toFixed(4) : (assumeDenominatorSec ? +(f / assumeDenominatorSec).toFixed(4) : null),
+    rateUnitsSeen: [...new Set(usable.map((s) => s.rateUnit))],
     baselineWindow: `${baselineFromHours}-${baselineToHours} h (${base.length} samples, median)`,
     finalWindow: `last ${finalWindowHours} h (${fin.length} samples, median)`,
     hoursCovered: +lastHour.toFixed(2),

@@ -19,14 +19,23 @@ const holding = [];
 for (let i = 0; i <= 120; i++) {
   const h = i * (10 / 120);
   const warm = h < 0.05 ? 20.6 - (h / 0.05) * 10.4 : 10.2;   // 20.6 -> 10.2 inside the first 3 min
-  holding.push({ hours: h, barsPerSec: warm + (i % 3) * 0.02, speed: 60 });
+  holding.push({ hours: h, marketSecPerWallSec: (warm + (i % 3) * 0.02) * 60, barsPerSec: warm + (i % 3) * 0.02, barsPerSecDenominatorSec: 60, speed: 60 });
 }
 
-// The complaint: delivery halves over ten hours.
-const decaying = holding.map((s) => ({ ...s, barsPerSec: s.hours < 0.05 ? s.barsPerSec : 10.2 * (1 - 0.5 * (s.hours / 10)) }));
+/**
+ * Fixtures set BOTH fields from one figure, via a helper.
+ *
+ * The first version of these mutated only bars/s, which is now derived display - so the judge read the
+ * untouched primary and scored a series built to lose half its delivery as "0% lost, ratio 1". The
+ * library now refuses that disagreement outright; these are written so the disagreement cannot arise.
+ */
+const atRate = (s, barsPerSec) => ({ ...s, barsPerSec, marketSecPerWallSec: barsPerSec * s.barsPerSecDenominatorSec });
 
-// The catastrophe the PO's numbers hint at: 60x nominal collapsing to ~1.7 bars/s.
-const collapsing = holding.map((s) => ({ ...s, barsPerSec: s.hours < 0.05 ? s.barsPerSec : Math.max(1.74, 10.2 * Math.exp(-s.hours / 2)) }));
+// The complaint: delivery halves over ten hours.
+const decaying = holding.map((s) => (s.hours < 0.05 ? s : atRate(s, 10.2 * (1 - 0.5 * (s.hours / 10)))));
+
+// The catastrophe the PO's numbers hint at: nominal collapsing to ~1.7 bars/s.
+const collapsing = holding.map((s) => (s.hours < 0.05 ? s : atRate(s, Math.max(1.74, 10.2 * Math.exp(-s.hours / 2)))));
 
 {
   const r = evaluateRateHold(holding);
@@ -49,7 +58,7 @@ const collapsing = holding.map((s) => ({ ...s, barsPerSec: s.hours < 0.05 ? s.ba
 }
 {
   // 5% is the bar: 4% lost must pass, 6% lost must fail, or the threshold is decorative.
-  const near = (loss) => holding.map((s) => ({ ...s, barsPerSec: s.hours < 0.05 ? s.barsPerSec : 10.2 * (s.hours > 5 ? 1 - loss : 1) }));
+  const near = (loss) => holding.map((s) => (s.hours < 0.05 ? s : atRate(s, 10.2 * (s.hours > 5 ? 1 - loss : 1))));
   const a = evaluateRateHold(near(0.04));
   const b = evaluateRateHold(near(0.06));
   check('the 5% bar discriminates: 4% lost passes, 6% lost fails',

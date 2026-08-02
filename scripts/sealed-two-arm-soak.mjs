@@ -547,7 +547,7 @@ try {
       ? deliveredRate(prevRateSample, rateSample, { baseTimeframeSec: hostTfSec })
       : { ok: false, why: prevRateSample ? `host panel timeframe unreadable (${hostPanel.tf}) — bars/s has no denominator` : 'first sample' };
     prevRateSample = rateSample;
-    if (rate.ok) rateSeries.push({ hours: +((Date.now() - t0) / 3600000).toFixed(4), barsPerSec: rate.barsPerSec, speed: SPEED });
+    if (rate.ok) rateSeries.push({ hours: +((Date.now() - t0) / 3600000).toFixed(4), marketSecPerWallSec: rate.marketSecPerWallSec, barsPerSec: rate.barsPerSec, barsPerSecDenominatorSec: rate.barsPerSecDenominatorSec, speed: SPEED });
     const rateReadback = await readEffectiveRateReadback(session.page).catch(() => ({ present: false, readError: true }));
 
     /**
