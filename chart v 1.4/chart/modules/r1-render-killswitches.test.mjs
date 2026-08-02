@@ -245,22 +245,45 @@ test('R1 M23 production default with absent flag behaves as flag-off', () => {
   assert.equal(env.hostCount(), 0);
 });
 
+/**
+ * The claim under test is that the kill-switch restores prior *behaviour*: the host
+ * registration is permanent again and commits keep arriving, exactly as before M23.
+ *
+ * This cell used to assert `pagehideCount() === 0` and null state fields, which encoded an
+ * earlier design where the install itself was gated on the switch. The product changed on
+ * 07-29 (`0454ab069`) to install unconditionally and read the switch at the teardown site,
+ * one day after this cell was written (`6872d3c6f`), and the cell was never updated. It has
+ * been asserting a superseded implementation detail ever since.
+ *
+ * The unconditional install is deliberate and the reasoning holds: teardown is the only path
+ * that ever reaches the switch, Chart has no destroy(), so gating the install would strand a
+ * panel that booted under the switch for the life of the page even after a later flip. What
+ * that costs is one listener on the panel's own window, which dies with the document and
+ * creates no panel->host retention edge -- and severing that edge is the whole point of M23.
+ *
+ * So the residue is asserted to be *inert* rather than absent, which is the honest form of
+ * the claim: the handler may exist, but firing it must change nothing while the switch is on.
+ */
 test('R1 M23 kill-switch restores prior permanent host listener exactly', () => {
   const env = makePanel({ kill: true });
   note('m23-kill-host-listener-installed', env.hostCount() === 1, `host=${env.hostCount()}`);
-  note('m23-kill-no-pagehide-handler', env.pagehideCount() === 0, `pagehide=${env.pagehideCount()}`);
   assert.equal(env.hostCount(), 1, 'prior behaviour registered on the host');
-  assert.equal(env.pagehideCount(), 0, 'prior behaviour installed no panel pagehide teardown');
-  assert.equal(env.chart._mcFinerPanelHostCommitTarget, null);
-  assert.equal(env.chart._mcFinerPanelHostCommitUnloadHandler, null);
 
+  // Installed unconditionally by design; the switch lives at the teardown site.
+  note('m23-kill-pagehide-installed-but-inert', env.pagehideCount() === 1, `pagehide=${env.pagehideCount()}`);
+  assert.equal(env.pagehideCount(), 1, 'hook installed unconditionally so a mid-session flip is honoured');
+  assert.ok(env.chart._mcFinerPanelHostCommitTarget, 'teardown target recorded at install');
+  assert.ok(env.chart._mcFinerPanelHostCommitUnloadHandler, 'unload handler recorded at install');
+
+  // The behavioural claim: neither an explicit teardown nor a real pagehide may drop the
+  // host registration while the switch is on, and commits must still be delivered.
   env.chart._removeFinerPanelSelfOwnerHostCommitListener();
   simulateFrameRemove(env);
   env.commit(1);
   note('m23-kill-removal-has-no-effect', env.hostCount() === 1, `host=${env.hostCount()}`);
   note('m23-kill-commit-still-delivers', env.chart.__commits.length === 1, `commits=${env.chart.__commits.length}`);
-  assert.equal(env.hostCount(), 1);
-  assert.equal(env.chart.__commits.length, 1);
+  assert.equal(env.hostCount(), 1, 'kill-switch must leave the host registration permanent');
+  assert.equal(env.chart.__commits.length, 1, 'commits still delivered after pagehide under kill');
 });
 
 test('R1 M23 mid-session flip is read by teardown call, not stranded at install', () => {
@@ -321,13 +344,22 @@ test('R1 M20-Q9 production default with absent flag behaves as flag-off', () => 
   assert.equal(chart._mcDiag.fullResamples, 1);
 });
 
-test('R1 M20-Q9 kill-switch installs no updateChartDataFast wrapper and reports only switched counters as null', () => {
+/**
+ * Same correction as the M23 cell above, and the product says so in as many words: the
+ * wrapper is installed unconditionally because it "cannot re-enter an install-time gate
+ * (FLAG-02 / M23 pagehide precedent)" (chart.js, _mcDiagWrapReplaySystem). The switch is read
+ * inside the wrapper on every call, so the kill-switch claim is that the wrapper is *inert*,
+ * not that it is absent. Asserting absence tested an install-time gate the product
+ * deliberately does not have.
+ */
+test('R1 M20-Q9 kill-switch leaves the updateChartDataFast wrapper inert and reports only switched counters as null', () => {
   const env = makeDiagChart({ kill: true });
   const { chart } = env;
   chart._mcDiagWrapReplaySystem();
 
-  note('m20q9-kill-no-fast-wrapper', chart.replaySystem.updateChartDataFast === env.originalFast);
-  assert.equal(chart.replaySystem.updateChartDataFast, env.originalFast);
+  note('m20q9-kill-fast-wrapper-installed-but-inert', chart.replaySystem.updateChartDataFast !== env.originalFast);
+  assert.notEqual(chart.replaySystem.updateChartDataFast, env.originalFast,
+    'wrapper installed unconditionally so a mid-session flip is honoured');
   assert.notEqual(chart.replaySystem.updateChartData, env.originalSlow, 'legacy resamples wrapper is not part of Q9');
 
   chart.replaySystem.updateChartData(false);
@@ -395,8 +427,10 @@ function m23KillPriorPass(source) {
   env.chart._removeFinerPanelSelfOwnerHostCommitListener();
   simulateFrameRemove(env);
   env.commit(1);
+  // pagehideCount is 1, not 0: the hook is installed unconditionally and the switch is read
+  // at teardown. What must hold under kill is that it changed nothing -- see the cell above.
   return env.hostCount() === 1
-    && env.pagehideCount() === 0
+    && env.pagehideCount() === 1
     && env.chart.__commits.length === 1;
 }
 
@@ -439,7 +473,9 @@ function m20KillPriorPass(source) {
   chart._resampleDataFull([{ t: 1, o: 1, h: 1, l: 1, c: 1 }], '1m');
   chart._mcDiag.incrementalResamples++;
   const row = env.snapshot();
-  return chart.replaySystem.updateChartDataFast === env.originalFast
+  // Wrapper present but inert, as in the kill cell above: the switch is read inside it on
+  // every call, so what proves the kill is that the counters did not move.
+  return chart.replaySystem.updateChartDataFast !== env.originalFast
     && chart._mcDiag.replayTicks === 0
     && chart._mcDiag.fullResamples === 0
     && chart._mcDiag.incrementalResamples === 1
@@ -470,7 +506,10 @@ function m23DeletedReadMutant() {
     SOURCE,
     `&& window.${M23_SWITCH} === true`,
     '&& false',
-    2,
+    // One read site, not two: the install stopped consulting the switch on 07-29
+    // (0454ab069) and only the teardown reads it now. Kept as an exact count so that a
+    // future site appearing or vanishing fails loudly instead of silently not mutating.
+    1,
     'M23 deleted read',
   );
 }
@@ -480,7 +519,7 @@ function m23InvertedReadMutant() {
     SOURCE,
     `&& window.${M23_SWITCH} === true`,
     `&& window.${M23_SWITCH} !== true`,
-    2,
+    1,
     'M23 inverted read',
   );
 }
@@ -490,23 +529,44 @@ function m23InvertedDefaultingMutant() {
     SOURCE,
     `&& window.${M23_SWITCH} === true`,
     `&& window.${M23_SWITCH} !== false`,
-    2,
+    1,
     'M23 inverted defaulting read',
   );
 }
 
+/**
+ * Sampled-once mutant, re-expressed against the teardown site.
+ *
+ * It used to cache the flag at the install site, but since 07-29 the install does not read
+ * the flag at all, so that anchor matched nothing and the mutant stopped being constructed.
+ * The property it protects is unchanged and still worth a mutant: the switch must be read on
+ * every teardown call, so that a mid-session flip is honoured rather than frozen at boot.
+ * Caching it on first call is exactly the regression that would break that, and the
+ * mid-session flip cell is what kills this.
+ */
 function m23SampledOnceMutant() {
-  const installNeedle = `            this._mcFinerPanelHostCommitListenerInstalled = true;
-            if (typeof window !== 'undefined'
-                && window.${M23_SWITCH} === true) {`;
+  // The sample has to be taken at install, not at first teardown. Caching on the first
+  // teardown call is indistinguishable from reading live in the mid-session scenario,
+  // because that call already happens after the flip -- a weaker mutant that the oracle
+  // rightly refuses to kill. Anchored on the install line that still exists, since the
+  // install stopped reading the flag on 07-29.
+  const installNeedle = `            this._mcFinerPanelHostCommitListenerInstalled = true;`;
   const installReplacement = `            this._mcFinerPanelHostCommitListenerInstalled = true;
-            this.__r1M23TeardownDisabledAtInstall = typeof window !== 'undefined'
-                && window.${M23_SWITCH} === true;
-            if (this.__r1M23TeardownDisabledAtInstall) {`;
+            this.__r1M23SampledAtInstall = typeof window !== 'undefined'
+                && window.${M23_SWITCH} === true;`;
   let mutated = replaceOneChecked(SOURCE, installNeedle, installReplacement, 'M23 sampled install');
   const removeNeedle = `            if (typeof window !== 'undefined'
-                && window.${M23_SWITCH} === true) {`;
-  mutated = replaceOneChecked(mutated, removeNeedle, '            if (this.__r1M23TeardownDisabledAtInstall === true) {', 'M23 sampled remove');
+                && window.${M23_SWITCH} === true) {
+                return;
+            }`;
+  mutated = replaceOneChecked(
+    mutated,
+    removeNeedle,
+    `            if (this.__r1M23SampledAtInstall === true) {
+                return;
+            }`,
+    'M23 sampled remove',
+  );
   return mutated;
 }
 
