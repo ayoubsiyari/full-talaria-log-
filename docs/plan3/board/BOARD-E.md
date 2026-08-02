@@ -53,4 +53,5 @@ and the M17-DI2 restore in `1c8892c51`.
 
 - 00:39+01:00 · E · DEFECT · `FRAME-01-PLAYBACK-GOVERNOR-EXEMPTION` · FRAME-01 remains open. Playback is classified input-fast, so the 30 fps cap does not apply during replay/the soak workload. New oracle `preflight:frame01-playback-governor` is RED on today's build: canonical and mirror both report `inputFast=true`, `paintIntervalMs=0`, `paintsAt16ms=true`. Metadata split: author `tier=MID`, `model=GPT-5.5 Medium Fast`; reviewer `tier=TOP`, `model=Opus 5 High`.
 - 00:44+01:00 · E · LANDED · `FRAME-01-PLAYBACK-GOVERNOR-EXEMPTION` · Defect record and RED oracle committed as `ab4764033`; FRAME-01 stays open until playback is governed on the playing path and `preflight:frame01-playback-governor` turns GREEN.
+- 09:14+01:00 · E · CLAIM · `FRAME-01-PLAYBACK-GOVERNOR-FIX` · Remove replay playback from the interaction-fast path in both chart mirrors so the FRAME governor applies cadence during the soak workload. Required proof: `preflight:frame01-playback-governor` GREEN; focused frame governor tests still pass. Commit pending.
 
