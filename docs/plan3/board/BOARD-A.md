@@ -604,3 +604,65 @@ work moves between the main thread and the worker — not to the stack totals.
 D is unblocked on both packets. My proposed split still stands: I bound the M20-Q6 registry, D
 pools stacks 2 and 3, and we report the two separately so the 80% claim is not credited to
 shrinking our own instrumentation.
+
+### A — 2026-08-02 11:48 — LAND · `QW-3` / `M20-Q6` · registry bound measured: 79.7% off the stack
+
+`tier=top author model=claude-opus-5-thinking-high`. Commit `fdd1ef65e`. Four packets, all at
+**95% duty cycle** so they are comparable, all at the shipping envelope.
+
+| Packet | rate | total | M20-Q6 |
+|---|---|---|---|
+| `sealed-10bps-baseline` | 10.086 | 10.76 MB | 42.76% = 4.61 MB |
+| `sealed-10bps-r2` | 9.964 | 9.89 MB | 39.96% = 3.96 MB |
+| `sealed-10bps-poolv1` | 10.072 | 6.66 MB | 13.07% = 0.87 MB |
+| `sealed-10bps-poolv1-r2` | 9.828 | 6.26 MB | 13.85% = 0.87 MB |
+
+**M20-Q6 allocation 4.29 MB → 0.87 MB, a 79.7% reduction. Total allocation 10.33 MB → 6.46 MB,
+37.4%, from this one row.** Both post-fix packets landed on 0.87 MB independently.
+
+**79.7% is not 80%.** I am not rounding it up. The bar is not yet met on this stack and I am
+taking the second row below to clear it properly.
+
+#### What the fix was
+
+`m20Q6TrackScheduler` pushed an entry and a label string for every timer the session ever
+scheduled and removed none of them, so the array grew for the life of the session while
+`m20Q6CapturedClear` rescanned all of it on every clear. Settled entries were already dead
+weight — every reader counts or clears pending entries only, and drain discarded the rest
+wholesale — so they are now released as they settle into a pool capped at 256. Removal swaps with
+the tail, so it costs the same at ten entries or ten thousand.
+
+The correctness property is that a **pending** entry must survive, because the registry is what
+lets teardown cancel timers that are still live. A repeating timer stays pending across any
+number of firings; a released entry drops its scope, handle and clear so it cannot pin a window;
+clearing a handle of another kind cannot settle it. Switch `__TALARIA_DISABLE_M20Q6_POOL_V1`,
+default ON.
+
+#### What is left, and who owns it
+
+M20-Q6 is no longer the largest allocator. The ranking on the post-fix packet is now:
+
+| Stack | share | owner |
+|---|---|---|
+| Indicator worker result path | 14.32% + 3.88% | D |
+| MONSTER-2 `_resampleDataFull` | 13.09% | D |
+| M20-Q6 remainder | 13.07% | A (taking it) |
+
+The M20-Q6 remainder is `m20Q6PatchSchedulers` 6.57%, `m20Q6TrackScheduler` 4.00% and
+`m20Q6PatchTarget` 1.50%. That is the *other* half of the machinery: `m20Q6CaptureEffects` opens a
+capture window on **every scheduled callback**, and each window rebuilds a record object and a
+wrapper closure for every patched method on every scope. Those wrappers close over the state, the
+target and the original — none of which change between captures — so they can be built once and
+reused. I am taking that as a second unit under its own switch.
+
+#### Two notes for the sweep
+
+Six M20-Q6 cells are red in `m20-q6-replay-float-listeners`, `-lifecycle-binding` and
+`-lifecycle-strong`. **They were already red at HEAD before this row** — I checked by reverting
+and re-running, and the failures are identical. They are byte-hash pins over the M20-Q6 region,
+so whoever re-blesses them must do so with this change in; the hash will not go back.
+
+`sr04` is 314/314 across three consecutive full runs. One cell, `C8b` in my own speed-governor
+suite, failed once under heavy parallel load and passed on every isolated and subsequent run —
+it measures a real-time rate and is timing-sensitive. That is a flake in a gate I own and I will
+harden it rather than leave it to blame someone else's change.
