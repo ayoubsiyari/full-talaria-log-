@@ -442,7 +442,7 @@ const TV_CANDLE_BODY_SLOT_RATIO = 0.8;
 /** Zoomed-out horizontal slot: 1px body + 1px gutter between bars (TradingView-style). */
 const TV_ZOOMED_OUT_SLOT_PX = 2;
 /** Bump with bump-dist-v9-cache / build:live:chart — check DevTools console on load. */
-const CHART_ENGINE_BUILD = '20260724b61';
+const CHART_ENGINE_BUILD = '20260728b85';
 
 /**
  * CB-01 mount/symbol diagnostic signature logger.
@@ -843,6 +843,7 @@ const RAF_PAINT_COALESCE_DISABLE_SWITCH = '__TALARIA_DISABLE_RAF_PAINT_COALESCE_
 const FRAME_GOV_SWITCH = '__TALARIA_FRAME_GOV_V1';
 const FRAME_GOV_FOCUSED_INTERVAL_MS = 1000 / 30;
 const FRAME_GOV_NONFOCUSED_INTERVAL_MS = 1000 / 15;
+const QW4_SOAK_HUD_SWITCH = '__TALARIA_QW4_SOAK_HUD_V1';
 
 // Frames a background panel keeps re-checking focus after a local pointer/focus
 // event before it gives up on the catch-up paint. The parent only learns about the
@@ -879,6 +880,27 @@ function _talariaDisableFlagTruthy(flagName) {
         if (killed(top)) return true;
     } catch (_e) {
         // Parent chain unreachable; the own-window read above already stands.
+    }
+    return false;
+}
+
+function _talariaQw4SoakHudEnabled() {
+    if (typeof window === 'undefined') return false;
+    const enabled = (w) => {
+        try {
+            return !!(w && w[QW4_SOAK_HUD_SWITCH] === true);
+        } catch (_e) {
+            return false;
+        }
+    };
+    if (enabled(window)) return true;
+    try {
+        const parent = window.parent && window.parent !== window ? window.parent : null;
+        if (enabled(parent)) return true;
+        const top = window.top && window.top !== window && window.top !== parent ? window.top : null;
+        if (enabled(top)) return true;
+    } catch (_e) {
+        // Unreadable parent chain; own-window value already stands.
     }
     return false;
 }
@@ -1197,6 +1219,7 @@ class Chart {
             .style('opacity', '0');
         this._mcDiag = null;
         this._ensureMcDiag();
+        this._ensureQw4SoakDiagnosticsHud();
         this.rawData = []; // Store raw data - will be populated from CSV
         this.data = []; // Working data (resampled based on timeframe)
         this.dataVersion = 0; // Increment whenever data changes (used for caching)

@@ -115,6 +115,28 @@ assert.equal(
     'drawing-tool favorite manager must load user-level preference pins',
 );
 
+// B: the kill-switch must answer to the vocabulary operators actually use. The
+// runbooks and bisect scripts set switches with `= 1`, so a predicate written as
+// `!== true` would leave this fix ON for someone who believes they turned it off.
+// Read per call, so flipping the live context is enough — no reload.
+for (const truthy of [1, '1', 'true', 'on', {}]) {
+    context.window.__TALARIA_DISABLE_PINS_USER_PREFS_V1 = truthy;
+    assert.equal(
+        preferencesSync.pinsUserPreferenceV1Enabled(),
+        false,
+        `any truthy kill-switch value must disable the fix (got ${JSON.stringify(truthy)})`,
+    );
+}
+for (const falsy of [undefined, null, false, 0, '']) {
+    context.window.__TALARIA_DISABLE_PINS_USER_PREFS_V1 = falsy;
+    assert.equal(
+        preferencesSync.pinsUserPreferenceV1Enabled(),
+        true,
+        `falsy / absent must leave the fix ON (got ${JSON.stringify(falsy)})`,
+    );
+}
+context.window.__TALARIA_DISABLE_PINS_USER_PREFS_V1 = disabled;
+
 console.log(disabled
     ? 'RED - switch OFF keeps pins local-only / empty-cloud destructive behavior'
     : 'GREEN - pins persist as user-level preferences');

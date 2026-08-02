@@ -60,11 +60,13 @@ function distributeExcursionSamples(total) {
   };
 }
 
+const SYMBOLS = ['EURUSD', 'GBPUSD', 'USDJPY', 'XAUUSD'];
+
 function fatClosed(id, shot, excursion) {
   return {
     id,
     tradeId: id,
-    ticker: ['EURUSD', 'GBPUSD', 'USDJPY', 'XAUUSD'][id % 4],
+    ticker: SYMBOLS[id % 4],
     type: id % 2 ? 'BUY' : 'SELL',
     status: 'CLOSED',
     openTime: 1_000_000 + id * 60_000,
@@ -89,11 +91,37 @@ function fatClosed(id, shot, excursion) {
   };
 }
 
+/** CONF-02 also carries live open positions (not yet eligible for eviction). */
+function fatOpen(id, shot, excursion) {
+  const inTrade = {
+    bar_close_r: excursion.bar_close_r,
+    bar_high_r: excursion.bar_high_r,
+    bar_low_r: excursion.bar_low_r,
+  };
+  return {
+    id,
+    tradeId: id,
+    ticker: SYMBOLS[id % 4],
+    type: 'BUY',
+    status: 'OPEN',
+    openTime: 2_500_000 + id * 60_000,
+    openPrice: 1.1,
+    quantity: 0.1,
+    entryScreenshot: shot,
+    entryScreenshots: [{ screenshot: shot }],
+    railScreenshots: [shot],
+    ...inTrade,
+    trail_sl_path: [1.1, 1.101],
+  };
+}
+
 const { seed, path: seedPath } = loadSeed();
 const CLOSED = Number(seed.conf02?.closedPositions || 30);
+const OPEN = Number(seed.conf02?.openPositions || 4);
 const SAMPLE_N = Number(seed.cCensus?.excursionSamplesPerClosedTrade || 318);
 const SHOT_CHARS = Number(seed.productScreenshotSeed?.dataUrlChars || 265167);
 assert.ok(CLOSED >= 30, 'CONF-02 requires ≥30 closed positions');
+assert.ok(OPEN >= 1, 'CONF-02 requires open positions alongside closed accumulation');
 assert.ok(SHOT_CHARS > 50_000, 'screenshot seed must be product-sized, not the 8 KB synthetic');
 
 const shot = makeDataUrl(SHOT_CHARS);
@@ -104,6 +132,7 @@ global.window = {};
 const om = Object.create(OrderManager.prototype);
 om.tradeJournal = [];
 om.closedPositions = [];
+om.openPositions = [];
 om.mfeMaeTrackingPositions = [];
 om.postExitTrackingMode = 'candles';
 om.postExitTrackingCandles = 50;
@@ -114,7 +143,7 @@ om.showNotification = () => {};
 om._finalizeExcursionScalars = () => {};
 om._m19MaxExcursionR = () => 0;
 
-let bytesBefore = 0;
+let closedBytesBefore = 0;
 for (let i = 1; i <= CLOSED; i += 1) {
   const closed = fatClosed(i, shot, excursion);
   const journal = {
@@ -133,22 +162,36 @@ for (let i = 1; i <= CLOSED; i += 1) {
   };
   om.closedPositions.push(closed);
   om.tradeJournal.push(journal);
-  bytesBefore += om._tradeEvictV1ApproxHotBytes(closed);
+  closedBytesBefore += om._tradeEvictV1ApproxHotBytes(closed);
 }
 
-const perTradeBefore = Math.round(bytesBefore / CLOSED);
-let bytesAfter = 0;
+let openBytes = 0;
+for (let i = 1; i <= OPEN; i += 1) {
+  const open = fatOpen(10_000 + i, shot, excursion);
+  om.openPositions.push(open);
+  openBytes += om._tradeEvictV1ApproxHotBytes(open);
+}
+
+const bytesBefore = closedBytesBefore + openBytes;
+const perClosedBefore = Math.round(closedBytesBefore / CLOSED);
+
+let closedBytesAfter = 0;
 let released = 0;
 const boundT = 2_000_000;
 for (const closed of om.closedPositions) {
   const r = om._tradeEvictV1OnBoundComplete(closed, boundT);
   if (r.released) released += 1;
-  bytesAfter += om._tradeEvictV1ApproxHotBytes(closed);
+  closedBytesAfter += om._tradeEvictV1ApproxHotBytes(closed);
 }
+// Open positions are not past the post-exit bound — must retain hot bytes.
+const openBytesAfter = om.openPositions.reduce((n, p) => n + om._tradeEvictV1ApproxHotBytes(p), 0);
+const bytesAfter = closedBytesAfter + openBytesAfter;
 
 assert.equal(released, CLOSED, 'every CONF-02 closed position must release');
+assert.equal(openBytesAfter, openBytes, 'open positions must not be evicted');
 assert.ok(bytesAfter < bytesBefore, 'EVICT-01: retained hot bytes must fall');
 assert.ok(bytesBefore > 1_000_000, 'CONF-02 scale must exceed the superseded 98,306 figure by orders of magnitude');
+assert.ok(closedBytesAfter === 0, 'closed hot fields fully released');
 
 // Cold retrieval still intact on journal (step-1 half of EVICT-01).
 assert.ok(om.tradeJournal.every((j) => typeof j.entryScreenshot === 'string' && j.entryScreenshot.length > 1000));
@@ -156,7 +199,7 @@ assert.ok(om.tradeJournal.every((j) => Array.isArray(j.bar_close_r) && j.bar_clo
 
 const tip = execSync('git rev-parse --short HEAD', { cwd: root, encoding: 'utf8' }).trim();
 const out = {
-  schema: 'talaria.trade-evict-v1.conf02-bytes.v1',
+  schema: 'talaria.trade-evict-v1.conf02-bytes.v2',
   tip,
   supersedes: {
     figure: '98306 → 0',
@@ -168,6 +211,7 @@ const out = {
   seedPath: seedPath.replace(/\\/g, '/'),
   conf02: {
     closedPositions: CLOSED,
+    openPositions: OPEN,
     excursionSamplesPerTradeFromC: SAMPLE_N,
     screenshotDataUrlChars: SHOT_CHARS,
     screenshotFieldsPerPosition: seed.conf02?.fieldsPerPosition || [],
@@ -176,8 +220,12 @@ const out = {
     before: bytesBefore,
     after: bytesAfter,
     delta: bytesBefore - bytesAfter,
-    perClosedTradeBefore: perTradeBefore,
-    perClosedTradeAfter: Math.round(bytesAfter / CLOSED),
+    closedBefore: closedBytesBefore,
+    closedAfter: closedBytesAfter,
+    openBefore: openBytes,
+    openAfter: openBytesAfter,
+    perClosedTradeBefore: perClosedBefore,
+    perClosedTradeAfter: Math.round(closedBytesAfter / CLOSED),
   },
   method: '_tradeEvictV1ApproxHotBytes (UTF-16 char×2 for strings; JSON×2 for arrays)',
 };
@@ -197,19 +245,22 @@ writeFileSync(mdPath, `# TRADE-EVICT-V1 — CONF-02 EVICT-01 byte cell
 
 | | Bytes |
 |---|---:|
-| Before eviction (${CLOSED} closed) | **${bytesBefore.toLocaleString('en-US')}** |
-| After eviction | **${bytesAfter.toLocaleString('en-US')}** |
-| Delta | **${(bytesBefore - bytesAfter).toLocaleString('en-US')}** |
-| Per closed trade (before) | **${perTradeBefore.toLocaleString('en-US')}** |
+| Before (${CLOSED} closed + ${OPEN} open) | **${bytesBefore.toLocaleString('en-US')}** |
+| After (closed released; open retained) | **${bytesAfter.toLocaleString('en-US')}** |
+| Delta (closed-path release) | **${(bytesBefore - bytesAfter).toLocaleString('en-US')}** |
+| Closed before → after | **${closedBytesBefore.toLocaleString('en-US')} → ${closedBytesAfter.toLocaleString('en-US')}** |
+| Open (unchanged) | **${openBytes.toLocaleString('en-US')}** |
+| Per closed trade (before) | **${perClosedBefore.toLocaleString('en-US')}** |
 
 ## Payload provenance
 
 | Input | Source |
 |---|---|
 | Closed count | CONF-02 ≥30 |
+| Open count | ${OPEN} (CONF-01 four-symbol live book alongside accumulation) |
 | Excursion samples/trade | C live census **${SAMPLE_N}** (FINDING-C-CONF02 …-1730) |
 | Screenshot field size | Median product \`Talaria-Chart-*\` capture → **${SHOT_CHARS.toLocaleString('en-US')}** data-URL chars (C harness measured 0 via submitOrder — unmeasurable, not zero) |
-| Fields/position | entryScreenshot, exitScreenshot, entryScreenshots[0], railScreenshots[0] |
+| Fields/closed position | entryScreenshot, exitScreenshot, entryScreenshots[0], railScreenshots[0] |
 
 ## Not claimed
 
@@ -221,9 +272,12 @@ console.log(JSON.stringify({
   before: bytesBefore,
   after: bytesAfter,
   delta: bytesBefore - bytesAfter,
-  perTradeBefore,
+  closedBefore: closedBytesBefore,
+  openBytes,
+  perClosedBefore,
   closed: CLOSED,
+  open: OPEN,
   outPath,
   mdPath,
 }, null, 2));
-console.log(`GREEN — CONF-02 EVICT-01 bytes ${bytesBefore} → ${bytesAfter} (supersedes 98306)`);
+console.log(`GREEN — CONF-02 EVICT-01 bytes ${bytesBefore} → ${bytesAfter} (closed ${closedBytesBefore}→0; open retained ${openBytes}; supersedes 98306)`);

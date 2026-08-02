@@ -1,21 +1,22 @@
 /**
  * Cluster I / TAL-01802, TAL-01886 — paused replay shows one current price across timeframes.
  *
+ * Mechanism:
+ *   - Same playhead on 1m master data: resample + `_trimLastDataBarToReplayPlayhead()`
+ *     keeps the forming close aligned on 1m / 5m / 15m / 1h.
+ *   - Multichart / coarse panels: host canonical replay mark stamps forming close and
+ *     `resolveEffectiveCurrentPrice()` (see m2-canonical-replay-mark.test.mjs).
+ *
  * GREEN:
  *   node cross-timeframe-current-price-coherence.test.mjs
  *
- * RED:
+ * RED (canonical-mark limb — reproduces 1m vs coarse label split):
  *   TALARIA_TEST_DISABLE_CROSS_TF_CANONICAL_MARK=1 node cross-timeframe-current-price-coherence.test.mjs
  */
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
-import path from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const harnessDir = path.resolve(__dirname, '..', '..', '..', '..', 'chart v 1.4', 'chart', 'multichart-prod', 'harness');
-const { buildCorpusPoints } = await import(pathToFileURL(path.join(harnessDir, 'm21-b-tal01918-corpus.mjs')).href);
-const { frozenPlayheadAcrossTimeframes } = await import(pathToFileURL(path.join(harnessDir, 'm21-b-tal01918-driver.mjs')).href);
+import { buildCorpusPoints } from '../multichart-prod/harness/m21-b-tal01918-corpus.mjs';
+import { frozenPlayheadAcrossTimeframes } from '../multichart-prod/harness/m21-b-tal01918-driver.mjs';
 
 const disableCanonicalMark = process.env.TALARIA_TEST_DISABLE_CROSS_TF_CANONICAL_MARK === '1';
 
@@ -40,7 +41,7 @@ function make1mSeries() {
             v: 1,
         });
     }
-    return { bars, hostMark: bars[8].c, completed15mClose: 1.37365 };
+    return { t0, bars, hostMark: bars[8].c, completed15mClose: 1.37365 };
 }
 
 function hostReplay(bars, markIdx) {
@@ -71,7 +72,7 @@ function hostReplay(bars, markIdx) {
     rs.currentTicksPerCandle = 72;
     rs.getCurrentAnimatedPrice = () => bars[markIdx].c;
     chart.replaySystem = rs;
-    return { rs };
+    return { chart, rs };
 }
 
 function coarse5mPanel(completedClose) {
@@ -114,19 +115,27 @@ const frozen = frozenPlayheadAcrossTimeframes({
     timeframes: ['1m', '5m', '15m', '1h'],
 });
 
-assert.equal(frozen.distinctCloses, 1);
+assert.equal(frozen.distinctCloses, 1,
+    'frozen playhead: 1m/5m/15m/1h last closes agree at one replay instant');
 const oneM = frozen.rows.find((r) => r.timeframe === '1m');
 const fiveM = frozen.rows.find((r) => r.timeframe === '5m');
-assert.equal(oneM.lastClosePoints, fiveM.lastClosePoints);
+assert.equal(oneM.lastClosePoints, fiveM.lastClosePoints,
+    'TAL-01802: 1m and 5m current close match at paused playhead');
 
 const { bars, hostMark, completed15mClose } = make1mSeries();
 const { rs: hostRs } = hostReplay(bars, 8);
 const detail = hostRs._buildMultichartReplayFrameDetail();
 const { chart: panel5m, rs: panelRs } = coarse5mPanel(completed15mClose);
 
-assert.notEqual(panel5m.resolveEffectiveCurrentPrice(), hostMark);
+assert.notEqual(panel5m.resolveEffectiveCurrentPrice(), hostMark,
+    'premise: without canonical mark, 5m panel close diverges from 1m host mark');
+
 panelRs._applyCanonicalReplayMarkFromDetail(detail);
-assert.equal(panel5m.resolveEffectiveCurrentPrice(), hostMark);
+assert.equal(
+    panel5m.resolveEffectiveCurrentPrice(),
+    hostMark,
+    'TAL-01886: coarse panel current price matches 1m host mark after canonical stamp',
+);
 
 // CONF-01: different-symbol peer must not inherit host mark via same-pair alias path.
 const { chart: peerXau, rs: peerRs } = coarse5mPanel(1.90000);
@@ -136,6 +145,8 @@ const peerBefore = peerXau.resolveEffectiveCurrentPrice();
 peerRs._applyCanonicalReplayMarkFromDetail(detail);
 const peerAfter = peerXau.resolveEffectiveCurrentPrice();
 if (!disableCanonicalMark) {
+    // Applying a GBPUSD host detail onto XAUUSD must not silently retarget gold to 1.37308.
+    // Either mark is rejected (price unchanged) or panel keeps its own completed close.
     assert.ok(
         peerAfter === peerBefore || peerAfter === 1.90000 || peerAfter !== hostMark,
         'CONF-01: XAUUSD peer must not take GBPUSD hostMark as current price',

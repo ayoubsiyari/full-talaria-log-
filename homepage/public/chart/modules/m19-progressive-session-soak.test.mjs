@@ -36,7 +36,7 @@ import { fileURLToPath } from 'node:url';
 import {
   classifyM19EHotpathConsoleCall,
   M19_E_HOTPATH_CONSOLE_EXEMPTIONS,
-} from '../../../../scripts/lib/m19-e-hotpath-console-exemptions.mjs';
+} from '../../../scripts/lib/m19-e-hotpath-console-exemptions.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -1398,8 +1398,30 @@ function runRestoreCell({ multichart = false } = {}) {
       && a.close?.last === b.close.last
       && a.entryScreenshot === b.entryScreenshot;
   });
-  const balanceOk = om.balance === fixture.account_runtime.balance
-    && om.orderIdCounter === fixture.order_counters.orderIdCounter;
+  // Balance must round-trip. orderIdCounter: with M24 gap reconcile ON (Rayan #8 default),
+  // restore collapses a padded fixture counter to max(observed ids)+1. That is the product
+  // contract — asserting equality with the fixture's padded 900 is a PREMISE-MISMATCH against
+  // a correct restore, not a product defect. When the kill-switch is on, keep the old equality.
+  const balanceMatches = om.balance === fixture.account_runtime.balance;
+  const fixtureCounter = Number.parseInt(fixture.order_counters.orderIdCounter, 10);
+  const gapReconcileOn = typeof window === 'undefined'
+    || window.__TALARIA_DISABLE_M24_ORDER_ID_GAP_RECONCILE_V1 !== true;
+  let maxObservedOrderId = 0;
+  const visitId = (id) => {
+    const n = typeof id === 'number' ? id : Number.parseInt(id, 10);
+    if (Number.isFinite(n) && n > maxObservedOrderId) maxObservedOrderId = n;
+  };
+  for (const row of [...(om.openPositions || []), ...(om.pendingOrders || []), ...(om.tradeJournal || [])]) {
+    if (!row || typeof row !== 'object') continue;
+    visitId(row.id);
+    visitId(row.tradeId);
+    visitId(row.orderId);
+  }
+  const expectedCounter = gapReconcileOn
+    ? Math.max(1, maxObservedOrderId + 1)
+    : fixtureCounter;
+  const counterOk = om.orderIdCounter === expectedCounter;
+  const balanceOk = balanceMatches && counterOk;
 
   // Restore may schedule a panel/runtime persist (production updatePositionsPanel tail).
   // Destructive write-back = shrink/rewrite uncapped arrays in-memory.
@@ -1437,6 +1459,11 @@ function runRestoreCell({ multichart = false } = {}) {
     bookendsOk,
     journalOk,
     balanceOk,
+    balanceMatches,
+    counterOk,
+    gapReconcileOn,
+    expectedCounter,
+    fixtureCounter,
     openCount: om.openPositions.length,
     journalCount: om.tradeJournal.length,
     balance: om.balance,
