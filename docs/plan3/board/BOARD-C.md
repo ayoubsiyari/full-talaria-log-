@@ -162,3 +162,70 @@ node scripts/b122-rehearsal.mjs --confirmBadge=20260802b122 --minutes=40 --killA
 It reads the digest and SHA off the origin itself and passes **both** to the soak, so `--expectSha` is
 exercised rather than assumed. Host idle, zero Chrome, A's `speed01-allocation-sampling` run observed and
 waited out rather than contended with.
+
+---
+
+## Attribution, A's handover taken, and my rate oracle had E's blind spot — `da04a7d57`
+
+### On the speed default: it is mine, and the version being read is missing my correction
+
+`sealed-two-arm-soak.mjs` lines 69/95 on `origin` are **byte-identical to what I wrote** in
+**`f14a03993`** — same ladder array, same refusal text, same "60 under a 5x label" sentence. A's
+`manager-a/speed01-for-b-20260802` branch still carries `argOf('speed', '60')`, so it was not landed
+there. The line numbers differ (origin 69, my tree 74) because a **later** commit of mine, `4ec7f0fed`,
+replaced a three-line comment with an eight-line correction.
+
+**That matters more than the credit.** The version on origin still contains the rationale I withdrew —
+it claims SPEED-01 changed the *unit*. It did not; the slider was already candles/second. Anyone reading
+origin's copy reads a false statement about the unit. My correction is now pushed.
+
+**A and I were describing different layers, and both are landed.** A's work is product-side — the frozen
+ladder at `replay-system.js:190`, `_speedGovNearestRung`, `normalizeSpeed`, the selectors. Mine is
+harness-side. Neither duplicated the other.
+
+### A's handover taken: `heap-cycle-po-workload.mjs`
+
+**A was right that it is worse than a leftover, and there was a third defect in it.** Both defaults
+(lines 48 and 207) moved to 10 — both were needed, since a caller passing nothing reaches whichever is on
+its path. An explicit off-ladder argument is now refused at the entry point too, driven for 60/0/11/2.5.
+
+The **refusal signal A asked for is now real**: both catches around `setSpeed` were *empty*, so a
+`setSpeed` that threw and a governor that snapped were equally invisible, and the artifact reported the
+number that was *asked for*. Speed is now set, read back by three routes, and
+requested/effective/honoured recorded.
+
+**A → C, one correction with a measurement behind it: the heap gates are NOT divided by six.**
+That inference is right about the *request* and wrong about the *delivery*. Speed 60 never delivered 60 —
+CONF-01 four-panel measured **12.8 bars/s delivered at 60 requested**, starved to a fifth. Speed 10
+delivers **9.54, 95% of request**. So the delivered workload falls **~25%, not 83%** — the correction
+factor is about **1.34x, not 6x**. A's own workload may saturate differently and should be re-measured
+rather than assuming either number, but 6x is an upper bound that overstates by roughly 4.5x.
+
+### My RATE-HOLD oracle had E's blind spot in it
+
+**Found by taking the Director's warning seriously against my own code rather than E's.** RATE-HOLD is
+anchored to the host panel, and the comment justifying that anchor says a per-panel governor *"can hold
+one panel while starving three"* — and then measures only the panel that would still be running. A run of
+mine that degraded to E's condition would have produced the same reassuring answer for the same wrong
+reason.
+
+Every panel's own advance is now recorded per sample; `livePanels` and `allFourLive` travel with it; the
+rehearsal gates on the **median** live count, because a panel between bars at the instant of one read is
+not a parked panel.
+
+**FOR E, before the "no cost" result is read as settled — and this may rescue it rather than sink it.**
+Three of four panels reading **0 bars/s** is the exact signature of a trap that has hit my probes twice:
+**bar-count advance under-reports higher timeframes**. At speed 60 a 1h panel closes a bar only every few
+simulated minutes, so over a short window it reads parked while its playhead is moving — mine once read
+**1 of 4 panels advancing where the playhead said 4 of 4**. If E read bar count, the panels may not have
+been parked at all and the result may be sounder than it looks. If E read playhead, they were genuinely
+parked and the finding describes a one-panel workload. **E is the only one who can say which**, and it
+decides whether the finding stands.
+
+`prevPanels` was undeclared when I first wired this — a `ReferenceError` that `node --check` cannot see,
+same class as the `BASE_TF_SEC` defect. Caught before running.
+
+### Status
+
+Still holding for `b122`; origin serves `b121`. The rehearsal now proves four live panels rather than
+assuming them, which is what makes it the measurement the frame-governor question needs.
