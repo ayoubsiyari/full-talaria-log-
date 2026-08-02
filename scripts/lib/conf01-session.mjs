@@ -249,13 +249,15 @@ export async function bootConf01Session({
   panelIds = CONF01_PANEL_IDS,
   datasetMode = HEAP_CYCLE_DATASET_MODE_DISTINCT,
   preloadScript = null,
+  originOverride = null,
+  skipLogin = false,
   /** Only the backgrounded-tab scenario sets this. See the launch args for why. */
   allowBackgroundThrottling = false,
 } = {}) {
-  const origin = String(process.env.TEST_VPS_URL || DEFAULT_ORIGIN).replace(/\/$/, '');
+  const origin = String(originOverride || process.env.TEST_VPS_URL || DEFAULT_ORIGIN).replace(/\/$/, '');
   const email = String(process.env.TEST_EMAIL || '').trim();
   const password = String(process.env.TEST_PASSWORD || '').trim();
-  if (!email || !password) throw new Error('CONF-01 session requires TEST_EMAIL and TEST_PASSWORD');
+  if (!skipLogin && (!email || !password)) throw new Error('CONF-01 session requires TEST_EMAIL and TEST_PASSWORD');
 
   const puppeteer = await loadPuppeteer();
   const browser = await puppeteer.launch({
@@ -298,7 +300,11 @@ export async function bootConf01Session({
   page.on('requestfinished', (req) => { inFlight.delete(req.url()); refreshInFlight(); });
   page.on('requestfailed', (req) => { inFlight.delete(req.url()); refreshInFlight(); });
   const browserCdp = await browser.target().createCDPSession();
-  await uiLoginDeployed(page, origin, email, password);
+  if (skipLogin) {
+    await page.goto(`${origin}/`, { waitUntil: 'domcontentloaded', timeout: 180_000 }).catch(() => {});
+  } else {
+    await uiLoginDeployed(page, origin, email, password);
+  }
   await page.evaluate(() => {
     localStorage.setItem('_uid', '1');
     if (!localStorage.getItem('u1_backtestingSession')) {
@@ -317,6 +323,7 @@ export async function bootConf01Session({
   if (preloadScript) await page.evaluateOnNewDocument(preloadScript);
   await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 180_000 });
   if (/\/login\/?/i.test(new URL(page.url()).pathname)) {
+    if (skipLogin) throw new Error('CONF-01 skipLogin surface redirected to /login');
     await dismissCookieBanner(page);
     await uiLoginDeployed(page, origin, email, password);
     await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 180_000 });

@@ -1,0 +1,310 @@
+{
+  "signature": "TALARIA_ORDER01B_READBACK_CANARY_V1",
+  "at": "2026-08-02T16:58:17.365Z",
+  "condition": {
+    "speed": 10,
+    "step": "TF",
+    "stepSeconds": null
+  },
+  "verdict": {
+    "state": "PUBLISH_CORRECT",
+    "why": "read-back 616.9816864157092 market-s/wall-s at speed 10 x step 60s"
+  },
+  "checks": [
+    {
+      "ok": true,
+      "label": "the served engine could be read back over the wire",
+      "detail": "http://127.0.0.1:58453/chart/modules/replay-system.js?v=20260802b123 (542609 bytes)"
+    },
+    {
+      "ok": true,
+      "label": "the served engine carries ORDER-01B",
+      "detail": "all 4 markers present"
+    },
+    {
+      "ok": true,
+      "label": "replay is armed and playing",
+      "detail": "playing=4"
+    },
+    {
+      "ok": true,
+      "label": "the engine accepted the step it was asked for",
+      "detail": "no refusals"
+    },
+    {
+      "ok": true,
+      "label": "replay actually moved during the reading window",
+      "detail": "4680s of market time"
+    },
+    {
+      "ok": true,
+      "label": "no realm stopped playing during the window",
+      "detail": "all realms still playing"
+    },
+    {
+      "ok": true,
+      "label": "__talariaEffectiveRate reads back a finite number on the harness frame",
+      "detail": "type=number value=616.9816864157092"
+    },
+    {
+      "ok": true,
+      "label": "the reading is a live rate, not a zero placeholder",
+      "detail": "616.9816864157092"
+    },
+    {
+      "ok": true,
+      "label": "the reading names its unit, and the unit is market seconds per wall second",
+      "detail": "unit=market-seconds-per-wall-second"
+    },
+    {
+      "ok": true,
+      "label": "the reading equals speed x step, within governor tolerance",
+      "detail": "expected ~600 (10 x 60s), saw 616.9816864157092, ratio 1.028"
+    },
+    {
+      "ok": true,
+      "label": "the scalar is market seconds, not the bars-per-second it used to be",
+      "detail": "bars/s would read ~10; market-s/wall-s reads 616.9816864157092 on a 60s timeframe"
+    },
+    {
+      "ok": true,
+      "label": "panel frames publish too, or there are no panel frames",
+      "detail": "3 of 3 panel frames"
+    }
+  ],
+  "observed": {
+    "pageErrors": [
+      "console: Failed to load resource: the server responded with a status of 404 (Not Found)",
+      "console: WebSocket connection to 'ws://127.0.0.1:58453/ws/support' failed: Error during WebSocket handshake: Unexpected response code: 404",
+      "console: Failed to load resource: the server responded with a status of 404 (Not Found)"
+    ],
+    "servedEngine": {
+      "fetched": true,
+      "urls": [
+        "http://127.0.0.1:58453/chart/modules/replay-system.js?v=20260802b123"
+      ],
+      "bytes": 542609,
+      "present": [
+        "ORDER01B_STEP_CANDIDATE_SECONDS",
+        "getMarketSecondsPerWallSecond",
+        "market-seconds-per-wall-second",
+        "_waitAtLoadedEdgeWhenServerHasMore"
+      ],
+      "missing": []
+    },
+    "workload": {
+      "armed": true,
+      "observedPlaying": 4,
+      "stepRefusals": [],
+      "panels": [
+        {
+          "id": "A",
+          "replay": {
+            "ok": true,
+            "isActive": true,
+            "requestedSpeed": 10,
+            "effectiveSpeed": 10,
+            "speedRoute": "getTargetBarsPerSecond()",
+            "speedSetError": null,
+            "speedHonoured": true,
+            "requestedStepSeconds": null,
+            "effectiveStepSeconds": 60,
+            "stepSetError": null,
+            "stepHonoured": null,
+            "marketSecondsPerWallSecond": 600
+          }
+        },
+        {
+          "id": "B",
+          "replay": {
+            "ok": true,
+            "isActive": true,
+            "requestedSpeed": 10,
+            "effectiveSpeed": 10,
+            "speedRoute": "getTargetBarsPerSecond()",
+            "speedSetError": null,
+            "speedHonoured": true,
+            "requestedStepSeconds": null,
+            "effectiveStepSeconds": 60,
+            "stepSetError": null,
+            "stepHonoured": null,
+            "marketSecondsPerWallSecond": 600
+          }
+        },
+        {
+          "id": "C",
+          "replay": {
+            "ok": true,
+            "isActive": true,
+            "requestedSpeed": 10,
+            "effectiveSpeed": 10,
+            "speedRoute": "getTargetBarsPerSecond()",
+            "speedSetError": null,
+            "speedHonoured": true,
+            "requestedStepSeconds": null,
+            "effectiveStepSeconds": 60,
+            "stepSetError": null,
+            "stepHonoured": null,
+            "marketSecondsPerWallSecond": 600
+          }
+        },
+        {
+          "id": "D",
+          "replay": {
+            "ok": true,
+            "isActive": true,
+            "requestedSpeed": 10,
+            "effectiveSpeed": 10,
+            "speedRoute": "getTargetBarsPerSecond()",
+            "speedSetError": null,
+            "speedHonoured": true,
+            "requestedStepSeconds": null,
+            "effectiveStepSeconds": 60,
+            "stepSetError": null,
+            "stepHonoured": null,
+            "marketSecondsPerWallSecond": 600
+          }
+        }
+      ]
+    },
+    "armedAt": [
+      {
+        "realm": "top",
+        "currentIndex": 2152,
+        "rawBars": 4000,
+        "fromEnd": 1847,
+        "playing": true
+      },
+      {
+        "realm": "panel",
+        "currentIndex": 2151,
+        "rawBars": 4000,
+        "fromEnd": 1848,
+        "playing": true
+      },
+      {
+        "realm": "panel",
+        "currentIndex": 2151,
+        "rawBars": 4000,
+        "fromEnd": 1848,
+        "playing": true
+      },
+      {
+        "realm": "panel",
+        "currentIndex": 2152,
+        "rawBars": 4000,
+        "fromEnd": 1847,
+        "playing": true
+      }
+    ],
+    "playhead": [
+      {
+        "realm": "top",
+        "playingBefore": true,
+        "playingAfter": true,
+        "marketSecAdvanced": 4680,
+        "marketPerWall": 583.36,
+        "diagnosis": null
+      },
+      {
+        "realm": "panel",
+        "playingBefore": true,
+        "playingAfter": true,
+        "marketSecAdvanced": 4680,
+        "marketPerWall": 583.36,
+        "diagnosis": null
+      },
+      {
+        "realm": "panel",
+        "playingBefore": true,
+        "playingAfter": true,
+        "marketSecAdvanced": 4680,
+        "marketPerWall": 583.36,
+        "diagnosis": null
+      },
+      {
+        "realm": "panel",
+        "playingBefore": true,
+        "playingAfter": true,
+        "marketSecAdvanced": 4680,
+        "marketPerWall": 583.36,
+        "diagnosis": null
+      }
+    ],
+    "revived": [],
+    "readBack": [
+      {
+        "realm": "top",
+        "type": "number",
+        "value": 616.9816864157092,
+        "gov": {
+          "unit": "market-seconds-per-wall-second",
+          "stepSeconds": 60,
+          "stepsPerWallSecond": 10,
+          "target": 600,
+          "effective": 616.9816864157092
+        },
+        "engine": {
+          "stepSeconds": 60,
+          "marketPerWall": 600,
+          "stepsPerWall": 10,
+          "tf": 60
+        }
+      },
+      {
+        "realm": "panel",
+        "type": "number",
+        "value": 617.1932402645114,
+        "gov": {
+          "unit": "market-seconds-per-wall-second",
+          "stepSeconds": 60,
+          "stepsPerWallSecond": 10,
+          "target": 600,
+          "effective": 617.1932402645114
+        },
+        "engine": {
+          "stepSeconds": 60,
+          "marketPerWall": 600,
+          "stepsPerWall": 10,
+          "tf": 60
+        }
+      },
+      {
+        "realm": "panel",
+        "type": "number",
+        "value": 617.1932402645114,
+        "gov": {
+          "unit": "market-seconds-per-wall-second",
+          "stepSeconds": 60,
+          "stepsPerWallSecond": 10,
+          "target": 600,
+          "effective": 617.1932402645114
+        },
+        "engine": {
+          "stepSeconds": 60,
+          "marketPerWall": 600,
+          "stepsPerWall": 10,
+          "tf": 60
+        }
+      },
+      {
+        "realm": "panel",
+        "type": "number",
+        "value": 615.8357771260997,
+        "gov": {
+          "unit": "market-seconds-per-wall-second",
+          "stepSeconds": 60,
+          "stepsPerWallSecond": 10,
+          "target": 600,
+          "effective": 615.8357771260997
+        },
+        "engine": {
+          "stepSeconds": 60,
+          "marketPerWall": 600,
+          "stepsPerWall": 10,
+          "tf": 60
+        }
+      }
+    ]
+  }
+}

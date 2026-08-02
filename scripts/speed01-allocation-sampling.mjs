@@ -147,6 +147,13 @@ async function readRate(page) {
           mode: w.__talariaSpeedGov.mode,
           corrections: w.__talariaSpeedGov.corrections,
           playing: w.__talariaSpeedGov.playing,
+          /**
+           * ORDER-01B: the scalar changed meaning. Carried per reading rather
+           * than assumed once, because the packets already written say 10.086
+           * and 597.309 for the same workload and neither states a unit.
+           */
+          unit: w.__talariaSpeedGov.unit ?? null,
+          stepSeconds: w.__talariaSpeedGov.stepSeconds ?? null,
         }
         : null,
       heapMb: (w.performance && w.performance.memory)
@@ -319,6 +326,11 @@ async function main() {
 
   const rated = readings.filter((r) => typeof r.rate === 'number' && r.rate > 0);
   const rates = rated.map((r) => r.rate);
+  // Whatever the engine called it. Packets written before ORDER-01B carry no
+  // unit at all, so absence is reported as such rather than back-filled with a
+  // guess.
+  const rateUnit = rated.find((r) => r.gov && r.gov.unit)?.gov.unit
+    ?? (rated.length ? 'unstated-by-engine' : null);
   const mean = rates.length ? rates.reduce((a, b) => a + b, 0) / rates.length : null;
 
   // Share of the window that actually had replay running. Reporting mean rate
@@ -350,6 +362,7 @@ async function main() {
     profileCoverageMs: coveredMs,
     samplingIntervalBytes: SAMPLING_INTERVAL,
     effectiveRate: {
+      unit: rateUnit,
       mean: mean === null ? null : Number(mean.toFixed(3)),
       min: rates.length ? Number(Math.min(...rates).toFixed(3)) : null,
       max: rates.length ? Number(Math.max(...rates).toFixed(3)) : null,
@@ -389,7 +402,7 @@ async function main() {
   console.log('\n===== SPEED-01 allocation sampling =====');
   console.log(`nominal ${BARS_PER_SECOND} steps/s at step=`
     + `${STEP_SECONDS === null ? 'TF' : `${STEP_SECONDS}s`} over ${Math.round(SAMPLE_MS / 1000)}s`);
-  console.log(`effective rate: mean=${report.effectiveRate.mean} `
+  console.log(`effective rate: mean=${report.effectiveRate.mean} ${report.effectiveRate.unit} `
     + `min=${report.effectiveRate.min} max=${report.effectiveRate.max} `
     + `gain=${report.effectiveRate.gainAtEnd} corrections=${report.effectiveRate.corrections}`);
   console.log(`replay live for ${Math.round((report.replayLiveness.dutyCycle ?? 0) * 100)}% `

@@ -266,6 +266,25 @@ function _order01bStepV1Enabled() {
     return !_speedGovFlagState('__TALARIA_DISABLE_ORDER01B_STEP_V1', false);
 }
 
+/**
+ * Sub-bar forward prefetch. Absent ⇒ the sub-bar path asks for more data the
+ * way the bar path always has; truthy ⇒ it goes back to stopping at the end of
+ * the loaded window. Its own switch rather than the master one, because a
+ * measurement that wants the step knob without the extra fetch should not have
+ * to turn the whole feature off to get it.
+ */
+function _loadedEdgeWaitDisabled() {
+    return _speedGovFlagState('__TALARIA_DISABLE_LOADED_EDGE_WAIT_V1', false);
+}
+
+/**
+ * How many consecutive edge waits a sub-bar step may take before it accepts
+ * that the session really has ended. At the adaptive retry delay (60-450 ms)
+ * this is tens of seconds of patience — long enough to cover a slow forward
+ * load, short enough that a server which never delivers still ends the run.
+ */
+const LOADED_EDGE_WAIT_LIMIT = 240;
+
 /** FNV-1a over a string. The slow path of `_pathSeed`, kept in one place. */
 function _order01bHashText(text) {
     let hash = 2166136261;
@@ -1927,6 +1946,7 @@ class ReplaySystem {
         this.replayTimestamp = this.fullRawData[this.currentIndex].t;
         this.tickElapsedMs = 0;
         this.edgeProbeRetryCount = 0;
+        this._loadedEdgeWaits = 0;
         this._replayForwardEdgeWait = false;
         return true;
     }
@@ -1993,6 +2013,7 @@ class ReplaySystem {
         }
         this.tickElapsedMs = 0;
         this.edgeProbeRetryCount = 0;
+        this._loadedEdgeWaits = 0;
         this._replayForwardEdgeWait = false;
         try { this._publishMarketTimeCursor(); } catch (_ePub) { /* ignore */ }
         return true;
@@ -2086,6 +2107,36 @@ class ReplaySystem {
             this.sessionStartIndex = Math.max(0, sessionStart - start);
         }
         this._evictedBehindPlayheadBars = (this._evictedBehindPlayheadBars || 0) + start;
+    }
+
+    /**
+     * PAUSE-DRAIN — pause is the natural boundary where replay can release old
+     * prefixes and derived caches without racing the play loop.
+     */
+    _drainReplayResidencyOnPause() {
+        if (!this.isActive || !Array.isArray(this.fullRawData) || this.fullRawData.length === 0) return;
+
+        const before = this.fullRawData;
+        const beforeLen = before.length;
+        this._evictBehindPlayhead();
+        const evicted = this.fullRawData !== before || this.fullRawData.length !== beforeLen;
+
+        if (typeof this._invalidatePlayheadPrefixes === 'function') {
+            this._invalidatePlayheadPrefixes();
+        }
+
+        const chart = this.chart;
+        const pipeline = chart && chart.dataPipeline;
+        if (pipeline && typeof pipeline.invalidateResampleCache === 'function') {
+            pipeline.invalidateResampleCache();
+        } else if (pipeline && typeof pipeline.invalidatePanDisplayCache === 'function') {
+            pipeline.invalidatePanDisplayCache();
+        }
+        if (chart && chart.displaySeries !== undefined) chart.displaySeries = null;
+
+        if (evicted && typeof this.updateChartData === 'function') {
+            try { this.updateChartData(false); } catch (_e) { /* pause must not fail closed on a drain */ }
+        }
     }
 
     /**
@@ -2217,6 +2268,7 @@ class ReplaySystem {
                 this.currentIndex++;
             }
             this.edgeProbeRetryCount = 0;
+            this._loadedEdgeWaits = 0;
             this._replayForwardEdgeWait = false;
             if (this.fullRawData && this.fullRawData[this.currentIndex]) {
                 this.replayTimestamp = this.fullRawData[this.currentIndex].t;
@@ -2238,6 +2290,7 @@ class ReplaySystem {
             this.currentIndex++;
         }
         this.edgeProbeRetryCount = 0;
+        this._loadedEdgeWaits = 0;
         this._replayForwardEdgeWait = false;
         if (this.fullRawData && this.fullRawData[this.currentIndex]) {
             this.replayTimestamp = this.fullRawData[this.currentIndex].t;
@@ -5455,6 +5508,10 @@ class ReplaySystem {
             }
             return true;
         }
+        // The probe declining is not the server saying there is nothing left.
+        if (this._waitAtLoadedEdgeWhenServerHasMore(retryFn)) {
+            return true;
+        }
         const sessionEndMs = this._getBacktestSessionEndMs();
         if (sessionEndMs != null && !this._playheadReachedSessionEnd(sessionEndMs)) {
             this._replayForwardEdgeWait = true;
@@ -5491,6 +5548,14 @@ class ReplaySystem {
             }
         }
         if (this.tryRequestForwardDataProbe()) return false;
+        // That probe reports whether a load request was accepted, which a
+        // coalesced or cooled-down request is not, and this function's answer
+        // is what refuses Play outright and tells the user the backtest is
+        // over. Measured parked on the last loaded bar with `hasMoreRight`
+        // true: Play never started, no timer, playhead frozen. The server
+        // claiming more bars is enough to let the play loop start and do its
+        // own bounded waiting at the edge.
+        if (!_loadedEdgeWaitDisabled() && this._hasMoreForwardDataOnServer()) return false;
         return true;
     }
 
@@ -6666,6 +6731,10 @@ class ReplaySystem {
             this.updateChartData(shouldAutoScroll);
         };
         if (this._isSubBarStepMode()) {
+            // Before any end-of-data verdict: stepping in market seconds gives
+            // dozens of ticks inside the final bar, and every one of them is a
+            // chance to ask for the next window rather than stop at it.
+            if (!_loadedEdgeWaitDisabled()) this._requestForwardPrefetchIfNear();
             if (this.currentIndex >= this.fullRawData.length - 1) {
                 const ts = Number.isFinite(this.replayTimestamp) ? this.replayTimestamp : NaN;
                 const rawMs = this._getRawBarPeriodMs();
@@ -6673,22 +6742,21 @@ class ReplaySystem {
                 const atEnd = lastBar && Number.isFinite(ts)
                     && ts >= lastBar.t + rawMs * 0.99;
                 if (atEnd) {
-                    if (this._handleForwardEdgeWhilePlaying(() => {
-                        if (this.isPlaying) this.simpleStepForward();
-                    })) return;
+                    const retry = () => { if (this.isPlaying) this.simpleStepForward(); };
+                    if (this._handleForwardEdgeWhilePlaying(retry)) return;
                     this._finishPlaybackAtSessionEnd();
                     return;
                 }
             }
             const prevIdx = this.currentIndex;
             if (!this._advanceSubBarStepForward()) {
-                if (this._handleForwardEdgeWhilePlaying(() => {
-                    if (this.isPlaying) this.simpleStepForward();
-                })) return;
+                const retry = () => { if (this.isPlaying) this.simpleStepForward(); };
+                if (this._handleForwardEdgeWhilePlaying(retry)) return;
                 this._finishPlaybackAtSessionEnd();
                 return;
             }
             this.edgeProbeRetryCount = 0;
+            this._loadedEdgeWaits = 0;
             this._replayForwardEdgeWait = false;
             paint(this._shouldAutoScrollChartUpdate(prevIdx));
             return;
@@ -6725,12 +6793,7 @@ class ReplaySystem {
         }
         
         // Proactively request more data using speed-aware threshold
-        const remainingCandles = this.fullRawData.length - this.currentIndex;
-        const preloadThreshold = this.getForwardPrefetchThreshold();
-        if (remainingCandles < preloadThreshold &&
-            this.chart._serverCursors && this.chart._serverCursors.hasMoreRight) {
-            this.chart.checkViewportLoadMore('forward');
-        }
+        this._requestForwardPrefetchIfNear();
 
         // After mid-play master trim/replace, currentIndex can briefly disagree with
         // replayTimestamp. Rematch before advancing so calculateNextIndex cannot
@@ -6753,6 +6816,7 @@ class ReplaySystem {
         const targetIndex = this.calculateNextIndex();
         this.currentIndex = targetIndex;
         this.edgeProbeRetryCount = 0;
+        this._loadedEdgeWaits = 0;
         this._replayForwardEdgeWait = false;
 
         if (this.fullRawData && this.fullRawData[this.currentIndex]) {
@@ -6906,6 +6970,74 @@ class ReplaySystem {
      * Keeps enough buffered candles based on current replay speed so
      * pan-loading can finish before playback reaches the edge.
      */
+    /**
+     * ORDER-01B: ask for more forward data when the playhead is near the end of
+     * what is loaded.
+     *
+     * The bar-stepping path has always done this. The sub-bar branch of
+     * `simpleStepForward` returns before reaching it, so a session stepping in
+     * market seconds walked to the end of the loaded window without ever
+     * asking for more and called it the end of the session — measured in a
+     * browser at step=1s: three panels advanced 59 s, exactly the remainder of
+     * the bar they were in, and stopped, while the same session at step=TF
+     * streamed on. Shared between both callers so they cannot drift again.
+     *
+     * Kill-switch `__TALARIA_DISABLE_LOADED_EDGE_WAIT_V1` restores the
+     * sub-bar path's old silence, for anyone measuring the cost of the fetch.
+     */
+    /** Whether the server still has bars to the right of what is loaded. */
+    _hasMoreForwardDataOnServer() {
+        const cursors = this.chart && this.chart._serverCursors;
+        return !!(cursors && cursors.hasMoreRight);
+    }
+
+    /**
+     * Wait at the loaded edge rather than call it the end of the session.
+     *
+     * `tryRequestForwardDataProbe` judges a probe by the return value of
+     * `checkViewportLoadMore`, which is falsy for a refused or coalesced load —
+     * so a session with more data on the server can be told there is none.
+     *
+     * The belief that the bar path heals itself, because the next Play steps
+     * again, is wrong: `_playWouldBeNoOpAtSessionEnd` asks the same probe, so
+     * the next Play is refused too and the user is told the backtest is over.
+     * Measured in a browser, chart parked on its last loaded bar with
+     * `hasMoreRight` true: at step=TF, Play never starts — no timer, no tick,
+     * playhead frozen for the whole window.
+     *
+     * `hasMoreRight` is the server's own answer and does not care whether this
+     * particular request was accepted, so it is the thing to wait on.
+     *
+     * Bounded by its own counter. The shared probe resets its retry count
+     * whenever the server claims more data — exactly the condition here — so
+     * borrowing that counter would spin forever against a server that never
+     * delivers.
+     */
+    _waitAtLoadedEdgeWhenServerHasMore(retryFn) {
+        if (_loadedEdgeWaitDisabled()) return false;
+        if (!this._hasMoreForwardDataOnServer()) return false;
+        const waits = Number(this._loadedEdgeWaits) || 0;
+        if (waits >= LOADED_EDGE_WAIT_LIMIT) return false;
+        this._loadedEdgeWaits = waits + 1;
+        this._requestForwardPrefetchIfNear();
+        this._replayForwardEdgeWait = true;
+        if (this.isPlaying && !this._nextCandleTimer && typeof retryFn === 'function') {
+            this.scheduleForwardEdgeRetry(retryFn);
+        }
+        return true;
+    }
+
+    _requestForwardPrefetchIfNear() {
+        if (!Array.isArray(this.fullRawData)) return;
+        const remainingCandles = this.fullRawData.length - this.currentIndex;
+        const preloadThreshold = this.getForwardPrefetchThreshold();
+        if (remainingCandles < preloadThreshold
+            && this.chart && this.chart._serverCursors
+            && this.chart._serverCursors.hasMoreRight) {
+            this.chart.checkViewportLoadMore('forward');
+        }
+    }
+
     getForwardPrefetchThreshold() {
         const floor = Math.max(0, this.sessionStartIndex || 0);
         const bufferLen = Array.isArray(this.fullRawData)
@@ -8455,6 +8587,8 @@ class ReplaySystem {
         
         // Update button UI immediately
         this.syncPlayPauseButtonVisuals();
+
+        this._drainReplayResidencyOnPause();
 
         // Full-quality paint once play stops (play path uses lite render for speed).
         this._flushReplayIndicatorRecalc();
