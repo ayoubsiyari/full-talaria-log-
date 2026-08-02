@@ -162,7 +162,8 @@ const samples = rows.filter((r) => r.n != null);
 const segStarts = rows.filter((r) => r.__segmentStart);
 const voids = rows.filter((r) => r.__void);
 const frames = samples.map((s) => s.hostFramesPerSec).filter((v) => Number.isFinite(v));
-const rates = samples.map((s) => s.deliveredBarsPerSec).filter((v) => Number.isFinite(v));
+const rates = samples.map((s) => s.marketSecPerWallSec).filter((v) => Number.isFinite(v));
+const barsRates = samples.map((s) => s.deliveredBarsPerSec).filter((v) => Number.isFinite(v));
 const bpf = samples.map((s) => s.barsPerFrame).filter((v) => Number.isFinite(v));
 const mean = (xs) => (xs.length ? +(xs.reduce((a, b) => a + b, 0) / xs.length).toFixed(3) : null);
 
@@ -190,7 +191,7 @@ gate('the SPEED-01 gate passed against a live engine', segStarts.length > 0 && s
 gate('footprint read on every sample', samples.length > 0 && samples.every((s) => Number.isFinite(s.footprintTotalMB)), `${samples.filter((s) => Number.isFinite(s.footprintTotalMB)).length}/${samples.length}`);
 gate('blocking ms/s read', samples.some((s) => Number.isFinite(s.blockingMsPerSec)), `${samples.filter((s) => Number.isFinite(s.blockingMsPerSec)).length} samples`);
 gate('frame rate read (FRAME-01)', frames.length > 0, frames.length ? `mean ${mean(frames)} fps over ${frames.length} samples` : 'NO frame rate on any sample');
-gate('delivered bars/s computed at the new envelope', rates.length > 0, rates.length ? `mean ${mean(rates)} bars/s, requested ${SPEED}` : 'RATE-HOLD had no computable input');
+gate('market-seconds/wall-second computed at the new envelope', rates.length > 0, rates.length ? `mean ${mean(rates)} mkt-s/wall-s (derived bars/s ${mean(barsRates)}), requested ${SPEED}` : 'RATE-HOLD had no computable input');
 
 /**
  * FOUR LIVE PANELS, gated rather than assumed.
@@ -210,10 +211,11 @@ gate('per-panel delivery was measured at all', liveCounts.length > 0, liveCounts
 gate('four panels were live, not one', medianLive === 4, medianLive == null ? 'unmeasured' : `median ${medianLive} of 4 live (per-sample: ${liveCounts.join(',')})`);
 const perPanelMeans = {};
 for (const s of samples) for (const p of (s.panelRates || [])) {
-  if (!Number.isFinite(p.barsPerSec)) continue;
-  (perPanelMeans[`${p.id} (${p.tf})`] ||= []).push(p.barsPerSec);
+  const v = Number.isFinite(p.marketSecPerWallSec) ? p.marketSecPerWallSec : p.barsPerSec;
+  if (!Number.isFinite(v)) continue;
+  (perPanelMeans[`${p.id} (${p.tf})`] ||= []).push(v);
 }
-console.log('  per-panel delivered bars/s:');
+console.log('  per-panel market-s/wall-s (primary):');
 for (const [k, v] of Object.entries(perPanelMeans)) console.log(`    ${k.padEnd(22)} ${mean(v)}`);
 if (KILL_AT_MIN > 0) {
   gate('the launcher announced RESUME rather than archiving', resumeAnnounced, resumeAnnounced ? 'RESUMING printed on relaunch' : 'the launcher did not resume');

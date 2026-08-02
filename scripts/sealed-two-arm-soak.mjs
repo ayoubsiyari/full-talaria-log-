@@ -568,24 +568,35 @@ try {
     const panelRates = after.map((p) => {
       const prevP = (prevPanels || []).find((q) => q.id === p.id);
       const tfSec = tfSeconds(p.tf);
-      if (!prevP || !tfSec) return { id: p.id, tf: p.tf, barsPerSec: null, why: prevP ? 'timeframe unreadable' : 'first sample' };
+      if (!prevP || !tfSec) return { id: p.id, tf: p.tf, marketSecPerWallSec: null, barsPerSec: null, why: prevP ? 'timeframe unreadable' : 'first sample' };
       const r = deliveredRate(
         { atMs: prevP.atMs, replayTimestamp: prevP.playheadMs, replayIndex: prevP.replayIndex },
         { atMs: Date.now(), replayTimestamp: p.playheadMs, replayIndex: p.replayIndex },
         { baseTimeframeSec: tfSec },
       );
-      return { id: p.id, tf: p.tf, barsPerSec: r.ok ? r.barsPerSec : null, why: r.ok ? null : r.why };
+      return {
+        id: p.id, tf: p.tf,
+        // PRIMARY unit. Live-panel detection reads THIS, never bars/s: a 1h panel delivering market
+        // time can sit between bars for minutes and would look parked on a bars/s > 0 test.
+        marketSecPerWallSec: r.ok ? r.marketSecPerWallSec : null,
+        barsPerSec: r.ok ? r.barsPerSec : null,
+        barsPerSecDenominatorSec: tfSec,
+        why: r.ok ? null : r.why,
+      };
     });
     prevPanels = after.map((p) => ({ id: p.id, playheadMs: p.playheadMs, replayIndex: p.replayIndex, atMs: Date.now() }));
-    const livePanels = panelRates.filter((p) => Number.isFinite(p.barsPerSec) && p.barsPerSec > 0).length;
-    const measurablePanels = panelRates.filter((p) => Number.isFinite(p.barsPerSec)).length;
+    const livePanels = panelRates.filter((p) => Number.isFinite(p.marketSecPerWallSec) && p.marketSecPerWallSec > 0).length;
+    const measurablePanels = panelRates.filter((p) => Number.isFinite(p.marketSecPerWallSec)).length;
 
     run.append({
       segment,
       hours: +((Date.now() - t0) / 3600000).toFixed(4),
       residentBars,
       // RATE-HOLD inputs, per sample.
+      // RATE-HOLD primary unit: market-seconds delivered per wall-second. bars/s is derived display.
+      marketSecPerWallSec: rate.ok ? rate.marketSecPerWallSec : null,
       deliveredBarsPerSec: rate.ok ? rate.barsPerSec : null,
+      barsPerSecDenominatorSec: rate.ok ? rate.barsPerSecDenominatorSec : hostTfSec,
       deliveredRateRoute: rate.ok ? rate.route : null,
       deliveredRateTimeframe: hostPanel.tf ?? null,
       deliveredRateTimeframeSec: hostTfSec,
@@ -613,7 +624,9 @@ try {
       // FRAME-01 coupling, stated per sample rather than reconstructed afterwards. If bar advance is
       // tied to paint this ratio pins near a constant; if delivery is independent of the frame cap it
       // wanders. Recorded raw so the question is answerable either way from the artifact alone.
-      barsPerFrame: (rate.ok && Number(frameRate.hostFramesPerSec) > 0)
+      marketSecPerFrame: (rate.ok && Number(frameRate.hostFramesPerSec) > 0 && Number.isFinite(rate.marketSecPerWallSec))
+        ? +(rate.marketSecPerWallSec / frameRate.hostFramesPerSec).toFixed(4) : null,
+      barsPerFrame: (rate.ok && Number(frameRate.hostFramesPerSec) > 0 && Number.isFinite(rate.barsPerSec))
         ? +(rate.barsPerSec / frameRate.hostFramesPerSec).toFixed(4) : null,
       // HOST HEALTH joined per sample: the crash that cost ten hours was 16,387 MB of node.exe at 99%
       // system memory, reconstructed afterwards because no sample carried the host beside the browser.

@@ -1,10 +1,12 @@
 /**
- * RATE-HOLD — the headline verdict. Effective bars/s at end of arm within 5% of hour 0.
+ * RATE-HOLD — the headline verdict. Market-seconds delivered per wall-second at end of arm within 5%
+ * of the settled hour-0 window.
  *
  * WHY THIS REPLACES MEGABYTES: for weeks every gauge has been a proxy — blocking ms/s, freeze cadence,
- * heap slope — and none of them is the complaint. The complaint is that the chart stops delivering bars.
- * A hold RATIO is also comparable across envelopes, which is why it dissolves the baseline argument: it
- * does not matter whether the session runs at 60 bars/s or 10, only whether it still does at hour 10.
+ * heap slope — and none of them is the complaint. The complaint is that the chart stops delivering
+ * market time. A hold RATIO is also comparable across envelopes, which is why it dissolves the baseline
+ * argument: it does not matter whether the session runs at 600 or 60 market-s/wall-s, only whether it
+ * still does at hour 10. Bars/s is derived display and must carry its timeframe denominator.
  *
  * TWO ROUTES, AND THE JUDGE IS THE MEASURED ONE.
  *
@@ -188,8 +190,8 @@ export function evaluateRateHold(samples, {
     naiveFirstSampleRatio: naive,
     baselineNote: 'Baseline is a SETTLED window, not the first sample. Delivered rate falls steeply during warm-up (20.6 -> 9.19 bars/s measured), so a t=0 anchor grades every build against a transient. naiveFirstSampleRatio is published so the choice is auditable.',
     why: ratio >= 1 - tolerance
-      ? `Delivery held: ${(+f.toFixed(2))} bars/s at ${lastHour.toFixed(1)} h against ${(+b.toFixed(2))} at hour 0, ratio ${ratio.toFixed(3)} within the 5% bar.`
-      : `Delivery DECAYED: ${(+f.toFixed(2))} bars/s at ${lastHour.toFixed(1)} h against ${(+b.toFixed(2))} at hour 0 — ${((1 - ratio) * 100).toFixed(1)}% lost, bar is 5%.`,
+      ? `Delivery held: ${(+f.toFixed(2))} market-s/wall-s at ${lastHour.toFixed(1)} h against ${(+b.toFixed(2))} at hour 0, ratio ${ratio.toFixed(3)} within the 5% bar.`
+      : `Delivery DECAYED: ${(+f.toFixed(2))} market-s/wall-s at ${lastHour.toFixed(1)} h against ${(+b.toFixed(2))} at hour 0 — ${((1 - ratio) * 100).toFixed(1)}% lost, bar is 5%.`,
   };
 }
 
@@ -208,9 +210,18 @@ export async function readEffectiveRateReadback(page) {
         let val = raw;
         if (typeof raw === 'function') { try { val = raw(); } catch (e) { return { present: true, callFailed: String(e).slice(0, 80) }; } }
         if (val && typeof val === 'object') {
-          return { present: true, shape: 'object', barsPerSec: Number(val.barsPerSec ?? val.rate ?? val.effective ?? NaN), keys: Object.keys(val).slice(0, 8) };
+          const market = Number(val.marketSecPerWallSec ?? val.marketSecondsPerWallSecond ?? NaN);
+          const bars = Number(val.barsPerSec ?? val.rate ?? val.effective ?? NaN);
+          return {
+            present: true, shape: 'object',
+            // Witness may speak either unit; prefer the settled primary when present.
+            marketSecPerWallSec: Number.isFinite(market) ? market : null,
+            barsPerSec: Number.isFinite(bars) ? bars : null,
+            keys: Object.keys(val).slice(0, 8),
+          };
         }
-        return { present: true, shape: typeof val, barsPerSec: Number(val) };
+        const n = Number(val);
+        return { present: true, shape: typeof val, marketSecPerWallSec: null, barsPerSec: Number.isFinite(n) ? n : null };
       });
       if (v?.present) out.push({ url: String(fr.url()).slice(0, 90), ...v });
     } catch { /* a frame can navigate mid-read; it is a witness, not the judge */ }

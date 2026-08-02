@@ -291,3 +291,61 @@ E's re-run confirming `currentIndex` pinned at the resident tail while passive t
 ~597 sim-sec/s is the same mechanism my probes were caught by twice. Worth noting it is now **three**
 independent instruments that have hit it, which makes it a property of the engine's index semantics
 rather than anyone's harness bug — bar count is a *resident-window* position, not a playback clock.
+
+
+---
+
+## A8 PRE-AMENDMENT BASELINE — RELEASED · `20260802b122` / sha `1c69bebb`
+
+**A and E may land.** The perishable tree is captured. Identity is pinned; the playing-window
+numbers below are the A8 cost-neutrality comparison baseline.
+
+| | |
+|---|---|
+| **build** | `20260802b122` |
+| **source commit** | `1c69bebb496f…` |
+| **seal digest** | `5f0378407c214999ec822eb6a17e165e` |
+| **capability digest** | `46a13e041688b83e84021e048d86d93c` |
+| **condition** | speed 10, step=TF (confirmed by absence of sub-TF API), 4 panels, 2 indicators, **zero trades** |
+| **artifact** | `_evidence/manager-C/a8-preamendment-baseline-2026-08-02T10-52-31-028Z.json` |
+| **playing-window salvage** | `_evidence/manager-C/a8-preamendment-baseline-PLAYING-WINDOW.json` |
+
+### Headline — PLAYING WINDOW ONLY (samples n=2..8, ~6 wall minutes)
+
+| gauge | value |
+|---|---|
+| **blocking** | **567.9 ms/s** median |
+| **allocation rate** | **0.22 MB/s** median |
+| **delivery** | **618 market-s/wall-s** median (~10.3 bars/s on 1m — derived display) |
+| **heap slope** | **+5.5 MB per 1,000 resident bars** CI[−38.4, +49.4] · r² 0.02 · **not extrapolable** |
+
+**Do not quote the parent artifact's full-run medians.** Replay stalled at ~8 min (n=9 onward):
+resident bars pinned at 3,506, delivery → 0, blocking → 0, alloc collapsed. Pooling the stalled
+tail produces `blocking=0 / alloc=0.05 / rate=0` and a nonsense negative heap slope. Those figures
+are VOID. Cost-neutrality compares against the playing window under the same envelope.
+
+**Caveats, named so they cannot be papered over:**
+1. The playing window is six minutes. The per-kbar CI includes zero; use it as a same-envelope
+   comparison baseline, not a projection.
+2. Host resident bars were non-monotonic (3,790 → 881 between n=3 and n=4) — likely a reseed —
+   which is why the per-kbar fit is nearly flat noise while MB/h still climbs.
+3. Parent `preAmendment=false` was a **census false positive** on pre-existing `stepMs` (TF-step
+   duration in `replay-system.js`). Amendment-specific tokens
+   (`animationContract` / `puppet` / `resolveBar` / `newsreader` / `SIM_TAG` / `setStepSeconds`)
+   are **absent**. Identity is the digests above, not that boolean.
+
+**Amendment-token census (corrected):** served replay-system + chart.js carry no animation-contract
+surface. `step=TF` confirmed by absence of any sub-TF stepping API.
+
+### Also landed with this release (harness-only, zero product bytes)
+
+- **RATE-HOLD unit settled:** market-seconds delivered per wall-second is the judged quantity;
+  bars/s is derived display with its timeframe denominator. Soak sample fields, live-panel detection,
+  and the verdict prose now speak the primary unit. Controller read-back remains witness only.
+- **Oracle 3 rewritten as a ROUTING oracle** (`docs/plan3/oracles/animation-contract-o3-routing.mjs`):
+  1m-floor at step=1s → puppet + SIM tag, resolveBar untouched. The PO's first draft (1m-floor offers
+  no sub-minute step) forbade the amendment's central feature and is withdrawn. Pre-amendment reading
+  is `RESOLVER_ABSENT_FROM_TREE` — correct, not a product defect.
+- **A7 newsreader trap named:** with 1m the floor everywhere (PO Q3), the newsreader half is
+  unreachable in production and will pass vacuously unless exercised with `--fixture=subminute-floor`.
+  The oracle VOIDs that half without the fixture rather than greening it.
