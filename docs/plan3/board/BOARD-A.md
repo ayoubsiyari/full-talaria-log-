@@ -909,6 +909,51 @@ makes REALISTIC reachable on timeframes that cannot serve a 1s step. It also str
 boundary — the drawn path is the renderer E now owns. Not deleted, and I am flagging it rather than
 cutting a fallback out from under a preset.
 
+### A — 2026-08-02 18:30 — LAND · `TZ-01` · tool labels read the chart's zone; candles verified separately
+
+`tier=top author model=claude-opus-5-thinking-high`. Commit `bbc0f61fd`. Pre-seal row from the
+PO's b122 pass, and it was a correctness bug rather than a display one.
+
+The axis badges formatted with `new Date(t).getHours()` — the browser's zone — while the crosshair
+and the time axis go through `convertToTimezone`, which returns a Date whose **UTC** fields are the
+selected zone's wall clock. Hence one instant with two times: crosshair `24 Jul 2011 16:04`, a
+vertical line on that same first candle `24 Jul 2011 22:00`. Three badge sites carried the same
+eight lines copied out, so all three drifted together; they now share one formatter,
+`BaseDrawing.formatAxisTimeLabel`, which reads the same clock and picks up Settings → Time format
+for free. The OHLC table tool had the identical defect in a zone-less `toLocaleDateString` and is
+fixed the same way.
+
+Verified in a browser with **the browser's own zone pinned to Europe/Berlin**, so a label still
+reading local time could not coincide with a pass. Badge and crosshair agree in New York, Tokyo,
+Kolkata and UTC — including the half-hour offset and Tokyo's roll into the next day. 7/7 in
+`tz01-label-basis-canary`; 11 cells in the oracle across both trees.
+
+#### The candles, which is the half that cannot be seen
+
+| Timeframe | What a bar contains | Verdict |
+|---|---|---|
+| any step dividing an hour (incl. the reported 1m) | identical in every zone | **correct** — a zone offset is a whole number of minutes, so the same instants bucket the same way |
+| daily and above | a **UTC** day in every zone | **a real limit** — measured live via `_resampleDataFull(src, '1d')`: first bar opens `2026-07-30T00:00:00Z` in all four zones |
+
+So the reported session's **bars were never wrong — only their labels were.** At daily and above a
+New York trader's candle contains a UTC day; `session-calendar.js` implements zone-aware bucketing
+but is not wired into the live resample. **Reported, not changed**: moving that boundary changes
+what every daily bar contains, which is not something to do quietly before a seal. If the PO wants
+it, it is a scoped piece of work with its own verification, not a line in this fix.
+
+#### Two things for other lanes
+
+The oracle runs the shipped formatters lifted out of the product files, not a restatement, and
+carries a CONTROL cell that goes red on the pre-fix formatter in every zone but the browser's — the
+one zone where the old code looked right, which is why it shipped. It caught the `chart v 1.4`
+mirror as `RESOLVER_PRESENT_BUT_UNCALLED` before that tree was fixed.
+
+`m20-a-timezone-listener-api.red.test.mjs` has three cells failing on this tip — the provenance cell
+and two `RED(head-blob)` cells. Confirmed pre-existing by stashing my changes and re-running: they
+fail identically without them. They recover a blob from git HEAD, and history has moved underneath
+them, so this is a **broken anchor rather than a live defect**. Flagging to whoever owns M20-A
+rather than adjusting someone else's gate.
+
 #### Handover boundary with E
 
 `generatePath` and oracles A1, A4 and A6 are E's, together with the renderer that consumes the
