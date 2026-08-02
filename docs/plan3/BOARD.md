@@ -218,3 +218,52 @@ oracle executes the shell's ladder helper in a `vm` rather than pattern-matching
 surface separately — a single ladder assertion goes green while a second surface stays stale,
 which is the failure that already happened once here — and parses the shell's script block,
 because the ladder edits sit in a 61k-line inline script that nothing else in the suite compiles.
+
+### A — 2026-08-02 01:05 — QW-3 allocation sampling done, twice. **QW-3 is unblocked.**
+
+`tier=top author model=claude-opus-5-thinking-high`. Measurement packet, no product change; the
+rate figures below are read-back from the money-path data clock, so they carry the same TIER-01
+caveat as the governor itself.
+
+Two independent five-minute sessions at a nominal 10 bars/s, four-panel PO workload on dist-v9,
+V8 sampling heap profiler at a 16 KB interval. Run 1 was on the pre-§5 tip; run 2 is on
+`dd166616e`, after the ladder became 1–10. Evidence:
+`docs/plan3/evidence/speed01-allocation-10bps{,-r2}.{json,log}`.
+
+| | rate (mean) | corrections | allocated | M20-Q6 cluster | `_resampleDataFull` |
+|---|---|---|---|---|---|
+| run 1 (pre-§5) | 9.778 | 0 | 10.85 MB (2.17/min) | 31.51% | 20.44% |
+| run 2 (post-§5) | 9.867 | 2 | 11.80 MB (2.36/min) | **36.15%** | 17.59% |
+
+**The rate contract holds, and in run 2 the loop is visibly closed.** Run 1 never needed to
+intervene. Run 2 drifted, corrected twice, and settled at a gain of 1.006 — that is the corrector
+doing its job in a real browser rather than an oracle, which is the first time we have seen it.
+Neither run reproduces anything like the soak's 1.74 bars/s at nominal 60, and 60 is no longer a
+setting anyone can select.
+
+**The largest allocator is not product code.** Summing the M20-Q6 capture machinery —
+`PatchSchedulers`, `TrackScheduler`, `InertableScheduledCallback`, `PatchTarget` — gives
+**36.15% of everything the candidate allocates during replay**, and it is instrumentation. It is
+the shim installed over `clearTimeout` that linearly scans `state.schedulers` on every clear.
+
+**And it is growing in front of us.** The 20-second smoke run put that cluster near 10%; run 1
+over five minutes put it at 31.5%; run 2 at 36.2%. That rising *share* is the unbounded
+`state.schedulers` array seen from the allocation side rather than inferred from the lag work. A
+ten-hour soak will be dominated by it. `_resampleDataFull` fell 20.4% → 17.6% between runs, which
+is what a steady allocator looks like when a growing one crowds it out.
+
+**For QW-3, the two rows worth having, in this order:**
+
+1. **The M20-Q6 scheduler registry.** 36% and climbing, pure instrumentation, no user-visible
+   behaviour to preserve. I have a pruning fix for this already written and reverted — it made the
+   registry amortised O(1) but broke existing invariants in the M20-Q6 suite, so it was parked for
+   a ruling rather than landed. Whoever takes this row should start from that revert, not from
+   scratch.
+2. **MONSTER-2 / `_resampleDataFull`.** ~18–20%, steady, top *product* allocator.
+
+Everything below `w.onmessage` (12%) is under 7% and not worth a row yet.
+
+**Caveat on repeatability.** `puppeteer` is undeclared in every `package.json` here, so the whole
+heap toolchain in `scripts/` is unrunnable from a clean clone. Both runs went through a junction
+to an installed tree in `full-talaria-log--main`, removed afterwards. Combined with the missing
+vite toolchain, two separate build dependencies are undeclared and someone owns deciding that.
