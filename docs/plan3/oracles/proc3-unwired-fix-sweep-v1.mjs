@@ -481,8 +481,8 @@ const ROWS = [
     present: ['_pathWaypointScratch', '_tickPathScratch', '__TALARIA_DISABLE_M19_TICK_PATH_BOUND_V1'],
     bound: ['this.generatePath(candle, n)'],
     mirror: ['chart v 1.4/chart/modules/replay-system.js', 'homepage/public/chart/modules/replay-system.js'],
-    discriminating: false,
-    discriminatingEvidence: 'RED on the discriminating axis. generate-path-waypoints.test.mjs is 5/5 and does execute the product, which is more than the A8 gate does, and it carries one mutant — but that mutant only proves the generator does not reach order-resolution state. Nothing goes RED when path generation itself is wrong, and the suite is green on a tip where a retained cachedPath is provably rewritten in place. Kill switch __TALARIA_DISABLE_M19_TICK_PATH_BOUND_V1 predates the row and is not exercised by it.',
+    discriminating: true,
+    discriminatingEvidence: 'CLOSED at f3ecb494f, upgraded from RED. B first marked this row RED: the suite executed the product but its only mutant proved the generator does not reach order-resolution state, and it was green on a tip where a retained cachedPath was provably rewritten in place. E then added three A4 cells that assert the retained head value is unchanged after transient, independent-pair and aggregate generation, each with its own anti-vacuity control, plus a static sweep that no retain site takes the shared scratch. These are discriminating against the real defect rather than by assertion: B measured the pre-fix retained head moving 100 -> 200, which is exactly the equality the new cells check, so the reverted code fails them. Independently re-verified by _evidence/manager-B/review/e-waypoint-cachedpath-alias-probe.mjs, 5/5 with its anti-vacuity cell passing.',
   },
   {
     row: 'KNOWN-A-resolver',
