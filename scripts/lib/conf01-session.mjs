@@ -814,7 +814,12 @@ export async function measureOrderLoopCost(page, { windowMs = 10_000 } = {}) {
  * timeframe and the selected speed imply. Answers whether a peer respects the
  * speed selector or races through its data at frame rate.
  */
-export async function probePanelAdvanceRates(page, { windowMs = 6_000, replaySpeed = 10, speedUnit = 'barsPerSecond' } = {}) {
+export async function probePanelAdvanceRates(page, {
+  windowMs = 6_000,
+  replaySpeed = 10,
+  speedUnit = 'barsPerSecond',
+  baseTimeframeSec = 60,
+} = {}) {
   const tfSeconds = (tf) => {
     const m = String(tf || '').match(/^(\d+)\s*([smhdw])$/i);
     if (!m) return null;
@@ -840,8 +845,10 @@ export async function probePanelAdvanceRates(page, { windowMs = 6_000, replaySpe
             .filter((k) => typeof rs[k] === 'function'),
           idx: rs.currentIndex != null ? Number(rs.currentIndex) : null,
           bars: Array.isArray(ch.data) ? ch.data.length : null,
+          fullRawBars: Array.isArray(rs.fullRawData) ? rs.fullRawData.length : null,
           ts: Number.isFinite(Number(rs.replayTimestamp)) ? Number(rs.replayTimestamp) : null,
           playing: !!rs.isPlaying,
+          passivePlay: !!ch._multichartPassivePlayActive,
           at: Date.now(),
         };
       }).catch(() => null);
@@ -880,32 +887,28 @@ export async function probePanelAdvanceRates(page, { windowMs = 6_000, replaySpe
     const fps = fc && fc.wallMs ? +(fc.frames / (fc.wallMs / 1000)).toFixed(2) : null;
     const b = before[i] || {};
     const wallSec = (a.at - (b.at || a.at)) / 1000 || windowMs / 1000;
-    const barsPerSec = b.idx != null && a.idx != null ? (a.idx - b.idx) / wallSec : null;
+    const indexDelta = b.idx != null && a.idx != null ? a.idx - b.idx : null;
+    const indexBarsPerSec = indexDelta != null && indexDelta >= 0 ? indexDelta / wallSec : null;
     const tfSec = tfSeconds(a.timeframe);
     /**
-     * THIS LINE WAS ALWAYS WRONG, AND MY FIRST EXPLANATION FOR FIXING IT WAS ALSO WRONG.
-     *
-     * I changed it believing SPEED-01 had changed the unit from a time multiplier to bars per second.
-     * It had not. My own settled S1 finding says the slider was ALREADY candles per second - the engine
-     * intends 1.00 candles/s at 1x and measured 1.04 - so SPEED-01 changed the RANGE (max 10) and left
-     * the unit alone. The right fix for the wrong reason.
-     *
-     * What this line actually was, then, is a latent defect of its own: dividing by the timeframe made
-     * the expectation 0.167 bars/s on a 1m chart at speed 10, against 9.54 measured. Every rateRatio
-     * built on it was ~57x out, and a starved panel reading a fifth of its requested rate would still
-     * have graded healthy. It reaches one published field - replay-speed-calibration's
-     * asArmedEffectiveMultipleOfRequested - so figures quoting THAT field are suspect; the S1 curve I
-     * published is not, because that script computes its expectation inline.
-     *
-     * MEASURED, not reasoned: the b121 shakeout requested 10 and delivered 9.541 bars/s.
-     *
-     * speedUnit is recorded on the result because six scripts call this, and an artifact that does not
-     * name its unit is the defect I withdrew two headlines for.
+     * RATE-HOLD counts delivered bars/s from replayTimestamp over wall time, not a sum
+     * across panels. For each panel this is local panel bars/s:
+     *   replayTimestamp delta / panel timeframe / wall time.
+     * The host 1m panel therefore reports the headline 1m/base bars/s. Larger-timeframe
+     * passive peers legitimately report fewer local bars/s while sharing the same simulated
+     * clock advance. currentIndex is kept as a witness only because passive peers can sit at
+     * the resident tail while their replayTimestamp continues to advance.
      */
+    const timestampDeltaMs = b.ts != null && a.ts != null ? a.ts - b.ts : null;
+    const timestampBarsPerSec = timestampDeltaMs != null && timestampDeltaMs >= 0 && tfSec
+      ? (timestampDeltaMs / 1000 / tfSec) / wallSec
+      : null;
+    const barsPerSec = timestampBarsPerSec != null ? timestampBarsPerSec : indexBarsPerSec;
+    const barsPerSecRoute = timestampBarsPerSec != null ? 'replayTimestamp' : (indexBarsPerSec != null ? 'currentIndex' : null);
     const expectedBarsPerSec = speedUnit === 'barsPerSecond'
-      ? replaySpeed
+      ? (tfSec ? replaySpeed * (baseTimeframeSec / tfSec) : null)
       : (tfSec ? replaySpeed / tfSec : null);
-    const simMsPerSec = b.ts != null && a.ts != null ? (a.ts - b.ts) / wallSec : null;
+    const simMsPerSec = timestampDeltaMs != null ? timestampDeltaMs / wallSec : null;
     return {
       timeframe: a.timeframe,
       fileId: a.fileId,
@@ -914,17 +917,27 @@ export async function probePanelAdvanceRates(page, { windowMs = 6_000, replaySpe
       playbackSpeedField: a.playbackSpeedField,
       speedSetters: a.speedSetters,
       bars: a.bars,
+      fullRawBars: a.fullRawBars,
       idxFrom: b.idx ?? null,
       idxTo: a.idx ?? null,
+      indexDelta,
+      timestampDeltaMs,
+      passivePlay: a.passivePlay,
       barsPerSec: barsPerSec != null ? +barsPerSec.toFixed(3) : null,
+      barsPerSecRoute,
+      indexBarsPerSec: indexBarsPerSec != null ? +indexBarsPerSec.toFixed(3) : null,
+      timestampBarsPerSec: timestampBarsPerSec != null ? +timestampBarsPerSec.toFixed(3) : null,
       expectedBarsPerSec: expectedBarsPerSec != null ? +expectedBarsPerSec.toFixed(3) : null,
       framesPerSec: fps,
       barsPerFrame: fps && barsPerSec != null ? +(barsPerSec / fps).toFixed(3) : null,
       rateRatio: barsPerSec != null && expectedBarsPerSec ? +(barsPerSec / expectedBarsPerSec).toFixed(2) : null,
       simSecPerWallSec: simMsPerSec != null ? +(simMsPerSec / 1000).toFixed(1) : null,
-      expectedSimSecPerWallSec: speedUnit === 'barsPerSecond' ? (tfSec ? replaySpeed * tfSec : null) : replaySpeed,
+      expectedSimSecPerWallSec: speedUnit === 'barsPerSecond' ? replaySpeed * baseTimeframeSec : replaySpeed,
       speedUnit,
-      atEnd: a.bars != null && a.idx != null ? a.idx >= a.bars - 2 : null,
+      baseTimeframeSec,
+      atResidentTail: a.bars != null && a.idx != null ? a.idx >= a.bars - 2 : null,
+      atFullRawTail: a.fullRawBars != null && a.idx != null ? a.idx >= a.fullRawBars - 2 : null,
+      atEnd: a.fullRawBars != null && a.idx != null ? a.idx >= a.fullRawBars - 2 : (a.bars != null && a.idx != null ? a.idx >= a.bars - 2 : null),
     };
   });
 }
