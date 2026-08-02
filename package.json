@@ -109,6 +109,8 @@
     "test:a2-resolvebar-transcript": "npm run preflight:a2-resolvebar-transcript",
     "preflight:a3-speed-fill-journal-parity": "node --test --test-concurrency=1 \"chart v 1.4/chart/modules/a3-speed-fill-journal-parity.test.mjs\"",
     "test:a3-speed-fill-journal-parity": "npm run preflight:a3-speed-fill-journal-parity",
+    "preflight:analysis-only-symbol-order-gate": "node --test --test-concurrency=1 \"chart v 1.4/chart/modules/analysis-only-symbol-order-gate.test.mjs\"",
+    "test:analysis-only-symbol-order-gate": "npm run preflight:analysis-only-symbol-order-gate",
     "a3:canary": "node scripts/a3-speed-fill-journal-parity-canary.mjs",
     "preflight:qw3-allocation-pool": "node scripts/qw3-allocation-pool.mjs",
     "test:qw3-allocation-pool": "node --test scripts/tests/qw3-allocation-pool.test.mjs",
@@ -122,6 +124,8 @@
     "test:order-01b-market-cursor": "npm run preflight:order-01b-market-cursor",
     "preflight:def04-multitf-time-sync": "node --test --test-concurrency=1 \"chart v 1.4/chart/modules/def04-multitf-time-sync.test.mjs\"",
     "test:def04-multitf-time-sync": "npm run preflight:def04-multitf-time-sync",
+    "preflight:session-symbol-restore": "node --test --test-concurrency=1 \"chart v 1.4/chart/modules/session-symbol-restore.test.mjs\"",
+    "test:session-symbol-restore": "npm run preflight:session-symbol-restore",
     "preflight:generate-path-waypoints": "node --test \"chart v 1.4/chart/modules/generate-path-waypoints.test.mjs\"",
     "test:generate-path-waypoints": "npm run preflight:generate-path-waypoints"
   },

@@ -2700,7 +2700,13 @@ class Chart {
             console.warn('⚠️ Missing data source for instruments:', missingInstrumentData);
             alert(`No data loaded for: ${missingInstrumentData.join(', ')}. Please load data or remove these instruments from the session.`);
         }
-        const fileId = urlParams.get('fileId') || this.getPrimarySessionFileId(session);
+        // Last-viewed pair sits between the explicit URL request and the
+        // session's primary instrument: an explicit ?fileId is a deliberate
+        // instruction and still wins, but a plain refresh should return the
+        // user to the pair they were actually looking at rather than to
+        // whichever instrument happens to be first in the session.
+        const savedSessionFileId = this._getSavedSessionFileId(this.getActiveTradingSessionId(), session);
+        const fileId = urlParams.get('fileId') || savedSessionFileId || this.getPrimarySessionFileId(session);
         
         if (!fileId) {
             console.error('❌ No file ID provided');
@@ -12195,6 +12201,16 @@ class Chart {
                 selectedSymbol: targetTicker,
             });
 
+            // The pair switch is the event that decides where a refresh lands,
+            // so it has to reach storage by itself. Previously the file id only
+            // travelled as a passenger on a pan or zoom save, so switching pair
+            // and refreshing without touching the viewport restored the session's
+            // primary instrument and silently discarded the switch.
+            if (!this.isPanel && this._sessionSymbolRestoreEnabled()) {
+                try { this.scheduleChartViewSave(); } catch (_cvSave) { /* ignore */ }
+                try { this._writeTradingSessionLocalBackupThrottled({ force: true }); } catch (_cvBackup) { /* ignore */ }
+            }
+
             return true;
         } catch (error) {
             cb01MountSigV1Record(this, 'chart.js:Chart.loadFileData:error', 'microtask');
@@ -13366,8 +13382,15 @@ class Chart {
                 };
             }
             const tf = this._normalizeBacktestTimeframe(this.currentTimeframe);
-            if (tf) {
-                payload.chartView = { timeframe: tf };
+            // Host only: this backup is keyed by session and not by panel, so a
+            // panel writing the pair here would decide the host's boot symbol.
+            const viewFileId = (!this.isPanel && this.currentFileId !== null && this.currentFileId !== undefined)
+                ? String(this.currentFileId)
+                : null;
+            if (tf || viewFileId) {
+                payload.chartView = {};
+                if (tf) payload.chartView.timeframe = tf;
+                if (viewFileId) payload.chartView.fileId = viewFileId;
             }
             if (this.replaySystem && this.replaySystem.isActive) {
                 payload.replay = {
@@ -13460,6 +13483,77 @@ class Chart {
             }
         } catch (_e) { /* ignore */ }
         return true;
+    }
+
+    _sessionSymbolRestoreEnabled() {
+        try {
+            if (typeof window !== 'undefined' && window.__TALARIA_SESSION_SYMBOL_RESTORE === false) {
+                return false;
+            }
+        } catch (_e) { /* ignore */ }
+        return true;
+    }
+
+    /**
+     * Every fileId the session legitimately owns, as strings.
+     *
+     * A saved fileId is only safe to restore if the session still contains it.
+     * Sessions get edited between visits, so a pair the user was last viewing
+     * can be gone by the next load, and honouring it would boot the chart onto
+     * an instrument this session cannot trade.
+     */
+    _sessionFileIdSet(session) {
+        const ids = new Set();
+        if (!session) return ids;
+        const add = (v) => {
+            if (v === null || v === undefined) return;
+            const s = String(v).trim();
+            if (s) ids.add(s);
+        };
+        add(session.fileId);
+        const instruments = session.instruments || {};
+        const tickers = Array.isArray(session.instrumentTickers)
+            ? session.instrumentTickers
+            : Object.keys(instruments);
+        tickers.forEach((t) => {
+            const row = instruments[t];
+            if (!row) return;
+            add(row.fileId);
+            add(row.datasetId);
+            add(row.sourceFileId);
+        });
+        return ids;
+    }
+
+    /**
+     * The pair the user was last looking at, if this session still owns it.
+     *
+     * Returns null rather than a guess: the caller falls back to the session's
+     * primary instrument, which is the pre-existing behaviour.
+     */
+    _getSavedSessionFileId(sessionId, session) {
+        if (!sessionId) return null;
+        if (!this._sessionSymbolRestoreEnabled()) return null;
+        // Host only. The local backup is keyed by session, not by panel, so a
+        // multichart panel restoring from it would boot onto whichever pair was
+        // switched last in any panel. Panels already resolve their own file id
+        // from the panel state map and the ?fileId parameter.
+        if (this.isPanel) return null;
+        try {
+            const backup = this._readTradingSessionLocalBackup(sessionId);
+            const raw = backup && backup.chartView ? backup.chartView.fileId : null;
+            if (raw === null || raw === undefined) return null;
+            const saved = String(raw).trim();
+            if (!saved) return null;
+            const owned = this._sessionFileIdSet(session);
+            // An empty set means the session carries no instrument file ids at
+            // all, so there is nothing to validate against and no basis to
+            // override the primary.
+            if (owned.size === 0 || !owned.has(saved)) return null;
+            return saved;
+        } catch (_e) {
+            return null;
+        }
     }
 
     _parseReplayRestoreTimestamp(replay) {
