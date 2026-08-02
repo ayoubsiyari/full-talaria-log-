@@ -1139,9 +1139,19 @@ class CompareOverlay {
                 canvas.height = 0;
             } catch (_) {}
         }
-        if (pane) pane.svg = null;
+        if (pane) {
+            pane.svg = null;
+            pane.crosshair = null;
+            pane.drawings = null;
+        }
         const wrapper = document.getElementById(`linkedPaneWrapper_${paneId}`);
         if (wrapper) wrapper.remove();
+        // Drop the shared container once the last pane is gone so it cannot retain layout DOM.
+        if (!Array.isArray(this.linkedPanes) || this.linkedPanes.length === 0) {
+            const containerId = `linkedPanesContainer_${this.scopeKey}`;
+            const container = document.getElementById(containerId);
+            if (container) container.remove();
+        }
     }
     
     renderLinkedPanes() {
@@ -1296,7 +1306,7 @@ class CompareOverlay {
                 wrapper.appendChild(resizeHandle);
 
                 // Drag-to-resize linked pane height (same row-resize feel as multi-panel)
-                resizeHandle.addEventListener('mousedown', (e) => {
+                this._trackLinkedPaneListener(pane, resizeHandle, 'mousedown', (e) => {
                     e.preventDefault();
                     e.stopPropagation();
                     const startY = e.clientY;
@@ -1318,8 +1328,9 @@ class CompareOverlay {
                         document.removeEventListener('mousemove', onMove);
                         document.removeEventListener('mouseup', onUp);
                     };
-                    document.addEventListener('mousemove', onMove);
-                    document.addEventListener('mouseup', onUp);
+                    // Track temporary drag listeners so pane removal mid-drag cannot retain the wrapper.
+                    this._trackLinkedPaneListener(pane, document, 'mousemove', onMove);
+                    this._trackLinkedPaneListener(pane, document, 'mouseup', onUp);
                 });
                 
                 wrapper.appendChild(canvas);
@@ -2065,7 +2076,7 @@ class CompareOverlay {
         };
         
         // Mouse move
-        canvas.addEventListener('mousemove', (e) => {
+        this._trackLinkedPaneListener(pane, canvas, 'mousemove', (e) => {
             const rect = canvas.getBoundingClientRect();
             const my = e.clientY - rect.top;
             const chartHeight = rect.height - margin.t - margin.b;
@@ -2121,7 +2132,7 @@ class CompareOverlay {
         });
         
         // Mouse down - start drag (price axis only, chart area handled by combinedDrag)
-        canvas.addEventListener('mousedown', (e) => {
+        this._trackLinkedPaneListener(pane, canvas, 'mousedown', (e) => {
             if (isOverPriceAxis(e)) {
                 // Y-axis: zoom mode
                 dragState.isDragging = true;
@@ -2146,7 +2157,7 @@ class CompareOverlay {
         this._trackLinkedPaneListener(pane, document, 'mouseup', endDrag);
         
         // Double-click - reset to auto-scale
-        canvas.addEventListener('dblclick', (e) => {
+        this._trackLinkedPaneListener(pane, canvas, 'dblclick', (e) => {
             if (isOverPriceAxis(e) || isInChartArea(e)) {
                 pane.autoScale = true;
                 pane.priceZoom = 1.0;
@@ -2156,13 +2167,13 @@ class CompareOverlay {
         });
         
         // Right-click - show settings menu
-        canvas.addEventListener('contextmenu', (e) => {
+        this._trackLinkedPaneListener(pane, canvas, 'contextmenu', (e) => {
             e.preventDefault();
             this.showPaneContextMenu(pane, e.clientX, e.clientY);
         });
         
         // Horizontal scroll - sync with main chart
-        canvas.addEventListener('wheel', (e) => {
+        this._trackLinkedPaneListener(pane, canvas, 'wheel', (e) => {
             if (isOverPriceAxis(e)) {
                 // Match main chart: wheel on price axis zooms vertical scale
                 e.preventDefault();
@@ -2246,7 +2257,7 @@ class CompareOverlay {
         };
         
         // Override mousedown to capture starting position
-        canvas.addEventListener('mousedown', (e) => {
+        this._trackLinkedPaneListener(pane, canvas, 'mousedown', (e) => {
             const toolActive = isDrawingToolActive();
             const currentTool = getCurrentTool();
             console.log('📊 Pane mousedown - toolActive:', toolActive, 'currentTool:', currentTool);
@@ -2333,7 +2344,7 @@ class CompareOverlay {
         });
         
         // Handle drawing preview during mouse move (for trendline/rectangle)
-        canvas.addEventListener('mousemove', (e) => {
+        this._trackLinkedPaneListener(pane, canvas, 'mousemove', (e) => {
             if (paneDrawing.active && (paneDrawing.tool === 'trendline' || paneDrawing.tool === 'rectangle')) {
                 // Store current end position for preview
                 const data = getDataFromMouse(e);
@@ -2346,7 +2357,7 @@ class CompareOverlay {
         });
         
         // Finish drawing on mouse up
-        canvas.addEventListener('mouseup', (e) => {
+        this._trackLinkedPaneListener(pane, canvas, 'mouseup', (e) => {
             if (paneDrawing.active && (paneDrawing.tool === 'trendline' || paneDrawing.tool === 'rectangle')) {
                 const data = getDataFromMouse(e);
                 
@@ -2383,7 +2394,7 @@ class CompareOverlay {
         });
         
         // Handle free movement - both horizontal AND vertical at same time
-        document.addEventListener('mousemove', (e) => {
+        this._trackLinkedPaneListener(pane, document, 'mousemove', (e) => {
             const rect = canvas.getBoundingClientRect();
             const mx = e.clientX - rect.left;
             const my = e.clientY - rect.top;
@@ -2441,7 +2452,7 @@ class CompareOverlay {
         });
         
         // Mouse leave - hide crosshair
-        canvas.addEventListener('mouseleave', () => {
+        this._trackLinkedPaneListener(pane, canvas, 'mouseleave', () => {
             pane.crosshair = null;
             this.renderLinkedPanes();
         });
