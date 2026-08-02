@@ -1,0 +1,475 @@
+{
+  "row": "SPEED-01 allocation sampling",
+  "startedAt": "2026-08-02T12:15:49.731Z",
+  "finishedAt": "2026-08-02T12:21:19.125Z",
+  "nominalBarsPerSecond": 10,
+  "sampleMs": 300000,
+  "profileCoverageMs": 300000,
+  "samplingIntervalBytes": 16384,
+  "effectiveRate": {
+    "mean": 9.953,
+    "min": 9.327,
+    "max": 10.592,
+    "readings": 20,
+    "withRate": 19,
+    "gainAtEnd": 1,
+    "corrections": 0
+  },
+  "replayLiveness": {
+    "dutyCycle": 0.95,
+    "liveReadings": 19,
+    "totalReadings": 20,
+    "panelRestarts": 0,
+    "note": "dutyCycle below 1 means part of the window had no replay running; allocation shares are diluted by exactly that fraction and two samples are only comparable at similar duty cycles"
+  },
+  "heapMb": {
+    "first": 115,
+    "last": 162
+  },
+  "totalSampledMb": 5.21,
+  "allocationMbPerMinute": 1.04,
+  "topSites": [
+    {
+      "site": "_resampleDataFull @ chart.js?v=20260728b85:27347",
+      "mb": 0.82,
+      "pct": 15.73
+    },
+    {
+      "site": "w.onmessage @ chart-indicators-full.js?v=20260728b85:8105",
+      "mb": 0.77,
+      "pct": 14.84
+    },
+    {
+      "site": "push @ (no url):-1",
+      "mb": 0.45,
+      "pct": 8.55
+    },
+    {
+      "site": "isSafeInteger @ (no url):-1",
+      "mb": 0.25,
+      "pct": 4.72
+    },
+    {
+      "site": "get @ (no url):-1",
+      "mb": 0.22,
+      "pct": 4.28
+    },
+    {
+      "site": "V8 @ talaria-v9-live.js?v=20260728b85:16",
+      "mb": 0.22,
+      "pct": 4.26
+    },
+    {
+      "site": "parseFloat @ (no url):-1",
+      "mb": 0.16,
+      "pct": 3.12
+    },
+    {
+      "site": "m20Q6CapturedQuery @ replay-system.js?v=20260728b85:11061",
+      "mb": 0.12,
+      "pct": 2.28
+    },
+    {
+      "site": "finishWorkerPass @ chart-indicators-full.js?v=20260728b85:8284",
+      "mb": 0.11,
+      "pct": 2.19
+    },
+    {
+      "site": "j7 @ talaria-v9-live.js?v=20260728b85:142",
+      "mb": 0.1,
+      "pct": 1.87
+    },
+    {
+      "site": "(IDLE_EXTERNAL) @ (no url):-1",
+      "mb": 0.08,
+      "pct": 1.58
+    },
+    {
+      "site": "(anonymous) @ talaria-v9-live.js?v=20260728b85:225",
+      "mb": 0.08,
+      "pct": 1.5
+    },
+    {
+      "site": "seriesValueAt @ indicator-performance.js?v=20260728b85:215",
+      "mb": 0.08,
+      "pct": 1.5
+    },
+    {
+      "site": "_installPlayheadPrefix @ replay-system.js?v=20260728b85:4917",
+      "mb": 0.07,
+      "pct": 1.3
+    },
+    {
+      "site": "t4 @ talaria-v9-live.js?v=20260728b85:143",
+      "mb": 0.06,
+      "pct": 1.21
+    },
+    {
+      "site": "(anonymous) @ chart-indicators-full.js?v=20260728b85:8304",
+      "mb": 0.06,
+      "pct": 1.16
+    },
+    {
+      "site": "(anonymous) @ indicator-ui.js?v=20260728b85:2935",
+      "mb": 0.06,
+      "pct": 1.08
+    },
+    {
+      "site": "(anonymous) @ (no url):0",
+      "mb": 0.06,
+      "pct": 1.06
+    },
+    {
+      "site": "(anonymous) @ chart.js?v=20260728b85:27277",
+      "mb": 0.05,
+      "pct": 0.98
+    },
+    {
+      "site": "_m19iB62GenOf @ chart-indicators-full.js?v=20260728b85:10541",
+      "mb": 0.05,
+      "pct": 0.96
+    },
+    {
+      "site": "m20Q6PatchTarget @ replay-system.js?v=20260728b85:10990",
+      "mb": 0.05,
+      "pct": 0.95
+    },
+    {
+      "site": "_reseedReplayFullRawFromLoadedData @ chart.js?v=20260728b85:7167",
+      "mb": 0.05,
+      "pct": 0.93
+    },
+    {
+      "site": "assign @ (no url):-1",
+      "mb": 0.05,
+      "pct": 0.9
+    },
+    {
+      "site": "m20Q6InertableScheduledCallback @ replay-system.js?v=20260728b85:11185",
+      "mb": 0.04,
+      "pct": 0.8
+    },
+    {
+      "site": "forEach @ (no url):-1",
+      "mb": 0.03,
+      "pct": 0.66
+    },
+    {
+      "site": "String @ (no url):-1",
+      "mb": 0.03,
+      "pct": 0.65
+    },
+    {
+      "site": "Number @ (no url):-1",
+      "mb": 0.03,
+      "pct": 0.63
+    },
+    {
+      "site": "isFinite @ (no url):-1",
+      "mb": 0.03,
+      "pct": 0.62
+    },
+    {
+      "site": "sort @ (no url):-1",
+      "mb": 0.03,
+      "pct": 0.62
+    },
+    {
+      "site": "join @ (no url):-1",
+      "mb": 0.03,
+      "pct": 0.61
+    },
+    {
+      "site": "_normalizeViewportBarRange @ chart.js?v=20260728b85:28414",
+      "mb": 0.03,
+      "pct": 0.61
+    },
+    {
+      "site": "set @ (no url):-1",
+      "mb": 0.03,
+      "pct": 0.61
+    },
+    {
+      "site": "_scheduleReplayPanLoadLeft @ chart.js?v=20260728b85:30268",
+      "mb": 0.03,
+      "pct": 0.6
+    },
+    {
+      "site": "De @ talaria-v9-live.js?v=20260728b85:37",
+      "mb": 0.03,
+      "pct": 0.6
+    },
+    {
+      "site": "oE @ talaria-v9-live.js?v=20260728b85:37",
+      "mb": 0.03,
+      "pct": 0.6
+    },
+    {
+      "site": "calculateMACD @ chart-indicators-full.js?v=20260728b85:1861",
+      "mb": 0.03,
+      "pct": 0.6
+    },
+    {
+      "site": "charCodeAt @ (no url):-1",
+      "mb": 0.03,
+      "pct": 0.54
+    },
+    {
+      "site": "selectAll @ d3.min.js?v=20260728b85:1",
+      "mb": 0.02,
+      "pct": 0.45
+    },
+    {
+      "site": "applyEyeState @ indicator-ui.js?v=20260728b85:3032",
+      "mb": 0.02,
+      "pct": 0.43
+    },
+    {
+      "site": "_trimLastDataBarToReplayPlayhead @ chart.js?v=20260728b85:10727",
+      "mb": 0.02,
+      "pct": 0.43
+    }
+  ],
+  "readings": [
+    {
+      "atMs": 15388,
+      "rate": 9.598310697303544,
+      "gov": {
+        "target": 10,
+        "gain": 1,
+        "mode": "candle",
+        "corrections": 0,
+        "playing": true
+      },
+      "heapMb": 115
+    },
+    {
+      "atMs": 30823,
+      "rate": 10.204081632653061,
+      "gov": {
+        "target": 10,
+        "gain": 1,
+        "mode": "candle",
+        "corrections": 0,
+        "playing": true
+      },
+      "heapMb": 94
+    },
+    {
+      "atMs": 46347,
+      "rate": 10.59224463476875,
+      "gov": {
+        "target": 10,
+        "gain": 1,
+        "mode": "candle",
+        "corrections": 0,
+        "playing": true
+      },
+      "heapMb": 91
+    },
+    {
+      "atMs": 61752,
+      "rate": 9.326526605130672,
+      "gov": {
+        "target": 10,
+        "gain": 0.9196086956495825,
+        "mode": "candle",
+        "corrections": 1,
+        "playing": true
+      },
+      "heapMb": 105
+    },
+    {
+      "atMs": 77213,
+      "rate": 10.350018818172499,
+      "gov": {
+        "target": 10,
+        "gain": 1,
+        "mode": "candle",
+        "corrections": 0,
+        "playing": true
+      },
+      "heapMb": 148
+    },
+    {
+      "atMs": 92494,
+      "rate": 9.558858672288146,
+      "gov": {
+        "target": 10,
+        "gain": 1,
+        "mode": "candle",
+        "corrections": 0,
+        "playing": true
+      },
+      "heapMb": 149
+    },
+    {
+      "atMs": 107789,
+      "rate": 9.728099615782371,
+      "gov": {
+        "target": 10,
+        "gain": 1,
+        "mode": "candle",
+        "corrections": 0,
+        "playing": true
+      },
+      "heapMb": 128
+    },
+    {
+      "atMs": 123056,
+      "rate": 9.80728681411721,
+      "gov": {
+        "target": 10,
+        "gain": 1,
+        "mode": "candle",
+        "corrections": 0,
+        "playing": true
+      },
+      "heapMb": 104
+    },
+    {
+      "atMs": 138499,
+      "rate": 9.486765961470319,
+      "gov": {
+        "target": 10,
+        "gain": 0.9196086956495825,
+        "mode": "candle",
+        "corrections": 1,
+        "playing": true
+      },
+      "heapMb": 64
+    },
+    {
+      "atMs": 153785,
+      "rate": 9.760382607026585,
+      "gov": {
+        "target": 10,
+        "gain": 1,
+        "mode": "candle",
+        "corrections": 0,
+        "playing": true
+      },
+      "heapMb": 105
+    },
+    {
+      "atMs": 169271,
+      "rate": 10.196649672250546,
+      "gov": {
+        "target": 10,
+        "gain": 1,
+        "mode": "candle",
+        "corrections": 0,
+        "playing": true
+      },
+      "heapMb": 153
+    },
+    {
+      "atMs": 184417,
+      "rate": 0,
+      "gov": {
+        "target": 10,
+        "gain": 1,
+        "mode": "candle",
+        "corrections": 0,
+        "playing": false
+      },
+      "heapMb": 56
+    },
+    {
+      "atMs": 200221,
+      "rate": 10.485844110513307,
+      "gov": {
+        "target": 10,
+        "gain": 1,
+        "mode": "candle",
+        "corrections": 0,
+        "playing": true
+      },
+      "heapMb": 137
+    },
+    {
+      "atMs": 215600,
+      "rate": 9.614460148048911,
+      "gov": {
+        "target": 10,
+        "gain": 1,
+        "mode": "candle",
+        "corrections": 0,
+        "playing": true
+      },
+      "heapMb": 130
+    },
+    {
+      "atMs": 230979,
+      "rate": 10.127803231251507,
+      "gov": {
+        "target": 10,
+        "gain": 1,
+        "mode": "candle",
+        "corrections": 0,
+        "playing": true
+      },
+      "heapMb": 135
+    },
+    {
+      "atMs": 246572,
+      "rate": 10.09324233389876,
+      "gov": {
+        "target": 10,
+        "gain": 1,
+        "mode": "candle",
+        "corrections": 0,
+        "playing": true
+      },
+      "heapMb": 166
+    },
+    {
+      "atMs": 262109,
+      "rate": 10.398098633423439,
+      "gov": {
+        "target": 10,
+        "gain": 1,
+        "mode": "candle",
+        "corrections": 0,
+        "playing": true
+      },
+      "heapMb": 89
+    },
+    {
+      "atMs": 277690,
+      "rate": 9.792492422476101,
+      "gov": {
+        "target": 10,
+        "gain": 1,
+        "mode": "candle",
+        "corrections": 0,
+        "playing": true
+      },
+      "heapMb": 68
+    },
+    {
+      "atMs": 293230,
+      "rate": 10.09313208238286,
+      "gov": {
+        "target": 10,
+        "gain": 1,
+        "mode": "candle",
+        "corrections": 0,
+        "playing": true
+      },
+      "heapMb": 81
+    },
+    {
+      "atMs": 300000,
+      "rate": 9.896981420706503,
+      "gov": {
+        "target": 10,
+        "gain": 1,
+        "mode": "candle",
+        "corrections": 0,
+        "playing": true
+      },
+      "heapMb": 162
+    }
+  ]
+}

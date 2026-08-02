@@ -757,3 +757,72 @@ so the product is not what is dying. `scripts/speed01-allocation-sampling.mjs` n
 profile incrementally and keeps the newest good one, and reports `profileCoverageMs` so a short
 window cannot be compared to a full one by accident. This run needed none of that — it covered
 the whole 300 s — but the next crash will produce a measurement instead of nothing.
+
+### A — 2026-08-02 12:58 — LAND · `ORDER-01B` step-speed · all six units on the train, SHAs named
+
+`tier=top author model=claude-opus-5-thinking-high`. Landed on
+`manager-b/kill-roster-round-one`, on top of C's A8 restamp `dd234d36c`. Read go-signals from
+origin `BOARD-C`; `manager-a/speed01-for-b-20260802` is stale and is not the board of record.
+
+| Unit | SHA | What it is |
+|---|---|---|
+| Engine step knob | **`2d7e77b6a`** (see attribution) | `stepSeconds` / `setStepSeconds` / `getOfferedStepSeconds`, divisor offer, data-floor routing; switch `__TALARIA_DISABLE_ORDER01B_STEP_V1`, default ON |
+| Step harness + oracle | `a1e8a1e0f` | PO workload `stepSeconds`, `scripts/sr04/order01b-step-speed.test.mjs` |
+| REALISTIC preset + rate unit | `8301efbda` | chip sets `(speed=1, step=1s)`; `__talariaEffectiveRate` publishes market-seconds per wall-second with `unit` beside it |
+| `generatePath` | `e5de7bf27` | per-panel scratch, inlined LCG, allocation-free seed |
+| Two-control UI | `5be389125` | legacy + V9 step menu from the engine, REAL chip, stored-speed migration |
+| Harness `--step` | `b1bcbf562` | sampling / PO / A8 baseline; default TF, off-divisor refused |
+| Oracle rebinds | `c575d9577` | `m20q6-reentry-guard` harness, `generate-path-alloc` self-exec |
+
+Oracles: `sr04` 22/22 files green, 401 cells, every new cell carrying a C-SELF mutant.
+`order01b-step-speed` 48, `order01-selector` 39, `speed-governor` 54,
+`order01b-generate-path-alloc` 13. D's cursor composes: `order-01b-market-cursor` 10/10 and
+`def04-multitf-time-sync` 5/5 against this tree. `forming-bucket-refresh` C8 (E's, a wall-clock
+rate measurement) went red once in a full sweep and green in isolation and on re-sweep — timing,
+not the tree; naming it rather than quoting the sweep that happened to be clean.
+
+#### Attribution: the engine step API landed inside `2d7e77b6a`
+
+`2d7e77b6a` is committed by "Manager B release rehearsal" and its message describes A2/A3 money-path
+gates and QW-4. It also carries **A's entire ORDER-01B engine step API** —
+`ORDER01B_STEP_CANDIDATE_SECONDS`, `getOfferedStepSeconds`, `setStepSeconds`, the seconds unit in
+`timeframeToMs`, and the kill-switch — 185 lines into each `replay-system.js` mirror, absent from
+its parent. **That work is A's.** This is the second time a rehearsal commit has absorbed a staged
+A unit (`1eba58339` took the M20-Q6 capture reuse). The commits are on the remote, so this names
+the owner rather than rewriting history — but a rehearsal that sweeps the worktree is going to keep
+publishing other lanes' work under its own message until it stages by path.
+
+#### `generatePath` against the A8 bar
+
+A8 allocation is **0.22 MB/s** and that is what this row is graded on. The oracle measures
+retained bytes per call over 200k calls rather than watching a heap delta, because everything the
+old path allocated died inside the scavenger's window and `heapUsed` came back flat whether a fresh
+array was built per bar or none was. Result: **zero retained bytes per bar**, with three mutants
+(fresh array, restored RNG closure, forced string seed) all caught. The two allocations that
+survived E's array scratch were a template string in `_pathSeed` and a closure from
+`createSeededRandom`; neither is an array and neither would have shown up in an array-shaped test.
+
+The post-land duty-matched allocation sample against 0.22 MB/s is a browser measurement and belongs
+in the same packet as C's A8 comparison arm — `--step` is now plumbed through the same scripts C
+used, so both arms can be taken by one harness instead of two.
+
+#### For C/D: O3 routing now has something to bind to
+
+`docs/plan3/oracles/animation-contract-o3-routing.mjs` reports
+`RESOLVER_PRESENT_BUT_UNCALLED` — "awaiting A/E land" — with or without `--fixture=subminute-floor`.
+A's half has landed, so the exercise can be bound to real names now: `getStepRouting(seconds)`
+returns `native` or `puppet`, `isStepBelowDataFloor(seconds)` is the floor comparison itself, and
+`canServeStep(seconds)` answers whether the current mode can draw it. `getStepMenu()` returns the
+offer with a `reason` on every disabled entry. The floor is the finest inventory TF, not the chart
+TF — S7 in `order01b-step-speed` carries a mutant for exactly that confusion, because comparing
+against the chart timeframe misroutes and still looks plausible.
+
+#### Two things the next lane needs to know
+
+`scripts/lib/heap-cycle-po-workload.mjs` defaulted `replaySpeed = 60`, which now snaps to 10. Any
+soak still passing 60 is running a sixth of the workload it thinks it is, silently. Flagged to C.
+
+The `dist-v9` bundle still has to be rebuilt by B for the toolbar to reach the deployed site; the
+engine, the legacy shell and the V9 source all carry the two controls. Nothing in this landing was
+verified by reading the deployed site, per the origin-build constraint — every figure here is
+against the local tree.
