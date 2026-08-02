@@ -23,6 +23,16 @@ test('classification separates measurements from tooling and infrastructure', ()
   assert.equal(scriptNameOf('node scripts/pair-switch-arena-accumulation.mjs --switches=10'), 'pair-switch-arena-accumulation.mjs');
 });
 
+test('a build counts as contention even though it launches no browser', () => {
+  // The b125 decision: a vite build during E's V8 attribution would perturb the GC behaviour
+  // being measured. A browser-scoped queue would have called this clear.
+  assert.equal(classifyProcess('node node_modules/vite/bin/vite.js build'), 'heavy');
+  assert.equal(classifyProcess('npm.cmd run build:live'), 'heavy');
+  const v = evaluate({ state: { claim: null }, procs: [proc(500, 'node node_modules/vite/bin/vite.js build')], owner: 'E', self: 1 });
+  assert.equal(v.state, 'UNCLAIMED_RUN_DETECTED');
+  assert.equal(v.mayRun, false);
+});
+
 test('a quiet machine with no claim is clear', () => {
   const v = evaluate({ state: { claim: null }, procs: [], owner: 'D', self: 1 });
   assert.equal(v.state, 'QUEUE_CLEAR');

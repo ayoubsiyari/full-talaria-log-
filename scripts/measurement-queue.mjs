@@ -48,11 +48,20 @@ const NOT_A_MEASUREMENT = /measurement-queue\.mjs|-conform\.mjs|\.selftest\.mjs|
  */
 const IS_MEASUREMENT = /\bscripts[\\/][\w.-]+\.mjs/;
 const IS_INFRASTRUCTURE = /serve\.mjs|api[_-]server|harness[\\/]serve|[\w-]*watch[\w-]*\.mjs|[\w-]*-monitor\.mjs/;
+/**
+ * HEAVY work that launches no browser but ruins a reading anyway. Found by living it: the b125
+ * vite build came up for decision while E's V8 attribution was mid-run, and "a build is not a
+ * Chrome-launching run" is true and beside the point — a build saturates CPU and memory on the
+ * same box, and memory pressure changes exactly the GC behaviour a V8 measurement is reading.
+ * A queue scoped to browsers would have waved it through.
+ */
+const IS_HEAVY = /\bvite\b|\besbuild\b|\btsc\b|\bwebpack\b|npm(\.cmd)?\s+run\s+build|\brollup\b/;
 
 export function classifyProcess(cmdLine) {
   const c = String(cmdLine || '');
   if (!c) return 'unknown';
   if (NOT_A_MEASUREMENT.test(c)) return 'tooling';
+  if (IS_HEAVY.test(c)) return 'heavy';
   if (IS_INFRASTRUCTURE.test(c)) return 'infrastructure';
   if (IS_MEASUREMENT.test(c)) return 'measurement';
   return 'other';
@@ -109,8 +118,8 @@ export function evaluate({ state, procs, owner = null, self = process.pid }) {
     return { state: 'MACHINE_UNREADABLE', mayRun: false, foreign: [], reason: 'could not read the process list; refusing to call the machine clear' };
   }
   const foreign = procs
-    .filter((p) => p.pid !== self && classifyProcess(p.cmd) === 'measurement')
-    .map((p) => ({ pid: p.pid, script: scriptNameOf(p.cmd) }));
+    .filter((p) => p.pid !== self && ['measurement', 'heavy'].includes(classifyProcess(p.cmd)))
+    .map((p) => ({ pid: p.pid, script: scriptNameOf(p.cmd), kind: classifyProcess(p.cmd) }));
 
   const claim = state?.claim || null;
   const claimLive = claim ? pidAlive(claim.pid, procs) : false;
