@@ -183,6 +183,38 @@ async function readPanels(page) {
    * Installed and DISCONNECTED per sample. Over ten hours a persistent observer would accumulate entries
    * inside the very process whose memory slope is the measurement - the instrument would become the leak.
    */
+  /**
+   * Host frame rate, counted from requestAnimationFrame over a short window.
+   *
+   * FRAME-01 caps playback at 30 fps. If bar advance is coupled to paint at all, that cap becomes a
+   * ceiling on delivered bars/s - the exact number RATE-HOLD grades - and at 10 bars/s requested there
+   * is nominally headroom. The danger is not the cap itself but the cap PLUS dropped frames: if a bar
+   * advances once per rendered frame and the frame rate sags under load, delivery falls below the
+   * requested rate and the soak records a decay that is a paint artefact rather than a memory effect.
+   *
+   * Counted rather than inferred, and nothing is wrapped: wrapping render() to count paints would put
+   * my instrument inside the hot path I am measuring for ten hours. rAF observes from outside.
+   */
+  async function measureFrameRate(page, windowMs = 3000) {
+    try {
+      return await page.evaluate((ms) => new Promise((resolve) => {
+        let frames = 0;
+        const t0 = performance.now();
+        const tick = () => { frames += 1; if (performance.now() - t0 < ms) requestAnimationFrame(tick); else finish(); };
+        const finish = () => {
+          const elapsed = (performance.now() - t0) / 1000;
+          resolve({ hostFramesPerSec: elapsed > 0 ? +(frames / elapsed).toFixed(2) : null, framesCounted: frames, windowSec: +elapsed.toFixed(2) });
+        };
+        requestAnimationFrame(tick);
+        // A backstop, because a fully starved main thread never fires rAF at all and this would then
+        // hang the sample loop rather than reporting the starvation it exists to detect.
+        setTimeout(() => { if (frames === 0) resolve({ hostFramesPerSec: 0, framesCounted: 0, windowSec: ms / 1000, note: 'no animation frame fired in the window' }); }, ms + 2000);
+      }), windowMs);
+    } catch (err) {
+      return { hostFramesPerSec: null, frameRateNote: String(err).slice(0, 100) };
+    }
+  }
+
   async function measureBlocking(page, windowMs) {
     const installed = await page.evaluate(() => {
       if (window.__C_SOAK_LT) return 'already-installed';
@@ -419,13 +451,15 @@ try {
     let before = null;
     let after = null;
     let blocking = {};
+    let frameRate = {};
     let footprint = {};
     try {
       before = await readPanels(session.page);
       // The liveness window already costs 20 s of wall clock. Blocking is observed ACROSS it rather than
       // after it, so the lag series is free and lands at exactly the same cadence as the memory series.
-      blocking = await measureBlocking(session.page.mainFrame(), 20000);
-      after = await readPanels(session.page);
+    blocking = await measureBlocking(session.page.mainFrame(), 20000);
+    frameRate = await measureFrameRate(session.page.mainFrame(), 3000);
+    after = await readPanels(session.page);
       footprint = await readFootprint(session.browser);
     } catch (err) {
       log(`sample read failed (${String(err).slice(0, 80)}) — treating as a dead browser and resuming`);
@@ -500,6 +534,12 @@ try {
       localSlopeNote: 'localSlopeMbPerKbar is the consecutive-sample slope and is the figure comparable to the published 23.98 / 24.55 / 25.35 MB/kbar. footprintPerKbarLEVEL is NOT - it carries the fixed baseline and falls as bars accumulate. The run-level slope comes from a fit over all samples, not from either field.',
       // LAG — same host, same cadence, so the scorecard has a before/after that is not two computers.
       ...blocking,
+      ...frameRate,
+      // FRAME-01 coupling, stated per sample rather than reconstructed afterwards. If bar advance is
+      // tied to paint this ratio pins near a constant; if delivery is independent of the frame cap it
+      // wanders. Recorded raw so the question is answerable either way from the artifact alone.
+      barsPerFrame: (rate.ok && Number(frameRate.hostFramesPerSec) > 0)
+        ? +(rate.barsPerSec / frameRate.hostFramesPerSec).toFixed(4) : null,
       // HOST HEALTH joined per sample: the crash that cost ten hours was 16,387 MB of node.exe at 99%
       // system memory, reconstructed afterwards because no sample carried the host beside the browser.
       host,

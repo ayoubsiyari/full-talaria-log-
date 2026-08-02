@@ -39,7 +39,35 @@ if (!fs.existsSync(OUT)) {
 }
 
 let last = null;
+let polls = 0;
 process.on('SIGTERM', () => { append({ stoppedAt: new Date().toISOString(), why: 'SIGTERM' }); process.exit(0); });
+
+/**
+ * A HEARTBEAT, because this watcher writes only on transitions and that made its silence ambiguous.
+ *
+ * It ran for hours with no entry after 22:44, which is exactly what "no cut has happened" looks like and
+ * exactly what "the process died" looks like. I read that silence as the reassuring one and told the
+ * Director the build was being watched when it was not. An instrument whose healthy state and whose
+ * absence produce identical output cannot be trusted to report either.
+ *
+ * Written separately from the transition log so the evidence stream stays clean: a heartbeat every two
+ * minutes for ten hours would bury four real transitions in three hundred lines of nothing happening.
+ */
+const HEARTBEAT = path.join(EV, 'BUILD-IDENTITY-WATCH-HEARTBEAT.json');
+const beat = (rec) => {
+  try {
+    fs.writeFileSync(HEARTBEAT, JSON.stringify({
+      signature: 'BUILD-IDENTITY-WATCH-HEARTBEAT-V1',
+      pid: process.pid,
+      at: new Date().toISOString(),
+      polls,
+      origin: ORIGIN,
+      lastReading: rec ? { badge: rec.badge, digest: rec.digest, sourceCommitSha: rec.sourceCommitSha, unreachable: !!rec.unreachable } : null,
+      watchingFor: WATCH_FOR || null,
+      readMe: 'If this file is more than a few minutes stale, the watcher is DEAD and nothing is observing the origin. Silence in the transition log means nothing on its own.',
+    }, null, 1));
+  } catch { /* the heartbeat must never be the thing that kills the watcher */ }
+};
 
 for (;;) {
   const at = new Date().toISOString();
@@ -55,6 +83,9 @@ for (;;) {
   } catch (err) {
     rec = { at, unreachable: true, why: String(err).slice(0, 200) };
   }
+
+  polls += 1;
+  beat(rec);
 
   const key = `${rec.badge}|${rec.digest}|${rec.sourceCommitSha}|${rec.unreachable ? 'down' : 'up'}`;
   if (key !== last) {
