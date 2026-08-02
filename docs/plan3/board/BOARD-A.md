@@ -909,6 +909,38 @@ makes REALISTIC reachable on timeframes that cannot serve a 1s step. It also str
 boundary — the drawn path is the renderer E now owns. Not deleted, and I am flagging it rather than
 cutting a fallback out from under a preset.
 
+### A — 2026-08-02 19:20 — FINDING · the step=1s red is not the engine; it is an inert `play` override in the V9 shell
+
+`tier=top author model=claude-opus-5-thinking-high`. Commit `333377c32`. This replaces what I wrote
+at 17:35 about the host reseed — that was the symptom I could see, not the cause.
+
+Traced at the host, at `speed=10 step=1s`:
+
+| Observation | Reading |
+|---|---|
+| `play()` entered | 16 times, each returning normally |
+| `_shouldUseTickAnimation`, the line straight after the entry guards | **0 times** |
+| `_playWouldBeNoOpAtSessionEnd` | never reached, so no end-of-data verdict was involved |
+| what `play` actually is | an **own property**, not the class method |
+
+The V9 shell installs its own `play` on the replay-system instance — it emits
+`replayPlay` / `replaySetStepTf` telemetry and broadcasts a frame to peer panels. Asked twice with
+a 1.2 s gap, so that a forward fetch triggered by the first attempt would have landed before the
+second, **the host did not start through that override and its playhead did not move.** The
+engine's own `play`, called on the same object immediately afterwards, started playback with a live
+timer. Panel realms start through the override normally, so this is the host path specifically.
+
+**The engine is fine. The entry point in front of it is not**, and its source is in the V9 bundle
+rather than this tree, so I cannot fix it here — flagging to B, who owns that build. This also
+explains why `step=TF` is green: the override works there, so nothing about the step engine or the
+meter was ever implicated.
+
+The canary now reports `SHELL_PLAY_OVERRIDE_INERT` with the realm named and keeps `REPLAY_STOPPED`
+for a playhead that genuinely stalled. Two causes needing different owners should not share one
+red — the first framing sent me looking for a data-window bug that was never there. `step=TF`
+remains **12/12 PUBLISH_CORRECT** with the instrumentation in place, so the tracing does not
+perturb the reading it grades.
+
 ### A — 2026-08-02 18:30 — LAND · `TZ-01` · tool labels read the chart's zone; candles verified separately
 
 `tier=top author model=claude-opus-5-thinking-high`. Commit `bbc0f61fd`. Pre-seal row from the

@@ -470,7 +470,15 @@ async function main() {
     observed.patchState = patchState;
     console.log(`\n--- is the instrument still on the thing it was clipped to ---\n        ${JSON.stringify(patchState)}`);
     const trace = await page.evaluate(() => window.__canaryTrace || []);
-    observed.trace = trace;
+    // Counts and the opening sequence, not six thousand render-driven calls:
+    // the question this answers is how far into play() execution got, and a
+    // raw dump of every call buries that in an unreadable packet.
+    observed.trace = {
+      total: trace.length,
+      counts: trace.reduce((acc, e) => { acc[e.fn] = (acc[e.fn] || 0) + 1; return acc; }, {}),
+      firstInOrder: trace.slice(0, 24).map((e) => e.fn),
+      threw: trace.filter((e) => e.threw).slice(0, 8),
+    };
     console.log('\n--- how far into play() the host gets ---');
     if (!trace.length) console.log('        nothing on the traced path ran at all');
     const counts = new Map();
