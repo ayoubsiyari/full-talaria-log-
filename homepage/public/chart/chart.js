@@ -13502,6 +13502,57 @@ class Chart {
      * can be gone by the next load, and honouring it would boot the chart onto
      * an instrument this session cannot trade.
      */
+    _replayRestoreViewportAlignEnabled() {
+        try {
+            if (typeof window !== 'undefined' && window.__TALARIA_REPLAY_RESTORE_VIEWPORT_ALIGN === false) {
+                return false;
+            }
+        } catch (_e) { /* ignore */ }
+        return true;
+    }
+
+    /**
+     * Put the viewport on the restored playhead, once, at the end of session restore.
+     *
+     * Three separate paths can each leave the playhead correct and the viewport
+     * stranded at the session start:
+     *   - the sync beside applyPersistedState is skipped whenever the playhead
+     *     was already applied and the incoming state agrees with it;
+     *   - the offset realign below it sits inside the `state.chartView` branch
+     *     despite its own comment saying it should always run, so a session that
+     *     never saved a chartView never gets it;
+     *   - an unforced syncReplayViewportToPlayhead declines to act when
+     *     _replayUserOwnsViewport() is true, and that predicate reads "offsetX is
+     *     far from the playhead" as evidence the user owns the viewport. At boot
+     *     nobody has touched anything, so the further wrong the viewport is, the
+     *     more certain the sync is to refuse to correct it.
+     *
+     * That is why pressing play appeared to repair the restore: play() passes
+     * forceRecenter and bypasses the predicate. This does the same thing at the
+     * point the state is restored, instead of waiting for playback to resume.
+     *
+     * Forcing is limited to the case where replay does not believe the user has
+     * actually panned, so a genuine manual viewport is still honoured.
+     */
+    _alignReplayViewportAfterRestore() {
+        const replay = this.replaySystem;
+        if (!replay || !replay.isActive) return false;
+        if (!this._replayRestoreViewportAlignEnabled()) return false;
+        if (typeof replay.syncReplayViewportToPlayhead !== 'function') return false;
+        const userReallyPanned = !!replay.userHasPanned || replay.autoScrollEnabled === false;
+        try {
+            return replay.syncReplayViewportToPlayhead(this, {
+                centerPlayhead: false,
+                resetPriceScale: true,
+                render: true,
+                forceRecenter: !userReallyPanned,
+                source: 'sessionRestoreAlign',
+            });
+        } catch (_align) {
+            return false;
+        }
+    }
+
     _sessionFileIdSet(session) {
         const ids = new Set();
         if (!session) return ids;
@@ -14260,6 +14311,12 @@ class Chart {
                 this._pendingChartViewSanityCheck = true;
                 this.scheduleRender();
             }
+
+            // Runs whether or not the branches above took their own sync, and
+            // whether or not this session ever saved a chartView. Restoring the
+            // playhead value without landing the viewport on it is what produced
+            // "opens at the backtest start, jumps to the right place on play".
+            this._alignReplayViewportAfterRestore();
 
             // Restore chart settings (colors, type, etc.)
             if (state.chartSettings && typeof state.chartSettings === 'object') {

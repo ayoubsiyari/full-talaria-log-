@@ -126,6 +126,8 @@
     "test:def04-multitf-time-sync": "npm run preflight:def04-multitf-time-sync",
     "preflight:session-symbol-restore": "node --test --test-concurrency=1 \"chart v 1.4/chart/modules/session-symbol-restore.test.mjs\"",
     "test:session-symbol-restore": "npm run preflight:session-symbol-restore",
+    "preflight:replay-restore-viewport-align": "node --test --test-concurrency=1 \"chart v 1.4/chart/modules/replay-restore-viewport-align.test.mjs\"",
+    "test:replay-restore-viewport-align": "npm run preflight:replay-restore-viewport-align",
     "preflight:generate-path-waypoints": "node --test \"chart v 1.4/chart/modules/generate-path-waypoints.test.mjs\"",
     "test:generate-path-waypoints": "npm run preflight:generate-path-waypoints"
   },
