@@ -4825,24 +4825,50 @@ class Chart {
     }
 
     _logReplayRestoreCatchOnce(site, error, detail = {}) {
-        const key = String(site || 'unknown');
-        if (!this._replayRestoreCatchCounts) this._replayRestoreCatchCounts = Object.create(null);
-        const count = (this._replayRestoreCatchCounts[key] || 0) + 1;
-        this._replayRestoreCatchCounts[key] = count;
-        if (typeof window !== 'undefined') {
-            const bucket = window.__talariaReplayRestoreCatchCounts || (window.__talariaReplayRestoreCatchCounts = {});
-            bucket[key] = (bucket[key] || 0) + 1;
+        // Wrapped whole. This runs *inside* a catch on the replay-timestamp
+        // path, so anything that escapes here escapes the catch it is
+        // reporting from and takes the panel down — the opposite of the
+        // containment those catches exist to provide.
+        try {
+            const key = String(site || 'unknown');
+            if (!this._replayRestoreCatchCounts) this._replayRestoreCatchCounts = Object.create(null);
+            const count = (this._replayRestoreCatchCounts[key] || 0) + 1;
+            this._replayRestoreCatchCounts[key] = count;
+            if (typeof window !== 'undefined') {
+                // Null-prototype: the soak asserts this bucket is empty, and a
+                // plain object answers to `toString` and `constructor` as
+                // though they were sites that had faulted.
+                const claim = (host) => {
+                    const bucket = host.__talariaReplayRestoreCatchCounts
+                        || (host.__talariaReplayRestoreCatchCounts = Object.create(null));
+                    bucket[key] = (bucket[key] || 0) + 1;
+                };
+                claim(window);
+                // Panels report into their own realm; a soak watching the host
+                // or the outer frame would otherwise see an empty bucket and
+                // read it as health.
+                for (const hop of ['parent', 'top']) {
+                    try {
+                        const w = window[hop];
+                        if (w && w !== window) claim(w);
+                    } catch (_x) {
+                        // Cross-origin realm; the local count still stands.
+                    }
+                }
+            }
+            if (count !== 1) return;
+            console.warn('[replay-restore] caught replay restore failure', {
+                site: key,
+                count,
+                panelId: this.panelId || this._panelId || null,
+                symbol: this.currentSymbol || null,
+                timeframe: this.currentTimeframe || null,
+                replayTimestamp: detail.replayTimestamp ?? null,
+                error
+            });
+        } catch (_report) {
+            // Reporting is best-effort; the swallow it guards is not optional.
         }
-        if (count !== 1) return;
-        console.warn('[replay-restore] caught replay restore failure', {
-            site: key,
-            count,
-            panelId: this.panelId || this._panelId || null,
-            symbol: this.currentSymbol || null,
-            timeframe: this.currentTimeframe || null,
-            replayTimestamp: detail.replayTimestamp ?? null,
-            error
-        });
     }
 
     /**
@@ -6953,7 +6979,11 @@ class Chart {
         // that clamps/snaps the next seek to the wrong date (esp. independent pairs).
         if (Number.isFinite(keepTs)
             && typeof replay.syncCurrentIndexFromReplayTimestamp === 'function') {
-            try { replay.syncCurrentIndexFromReplayTimestamp(keepTs); } catch (_e) { /* ignore */ }
+            try {
+                replay.syncCurrentIndexFromReplayTimestamp(keepTs);
+            } catch (_e) {
+                this._logReplayRestoreCatchOnce('window-replace:syncCurrentIndexFromReplayTimestamp', _e, { replayTimestamp: keepTs });
+            }
         } else if (replay.currentIndex >= replay.fullRawData.length) {
             replay.currentIndex = Math.max(0, replay.fullRawData.length - 1);
         }
@@ -8619,10 +8649,18 @@ class Chart {
                         : ts;
                     if (Number.isFinite(rematchTs)
                         && typeof replay.syncCurrentIndexFromReplayTimestamp === 'function') {
-                        try { replay.syncCurrentIndexFromReplayTimestamp(rematchTs); } catch (_rm) { /* ignore */ }
+                        try {
+                            replay.syncCurrentIndexFromReplayTimestamp(rematchTs);
+                        } catch (_rm) {
+                            this._logReplayRestoreCatchOnce('master-replace:syncCurrentIndexFromReplayTimestamp', _rm, { replayTimestamp: rematchTs });
+                        }
                     }
                     if (typeof replay.updateChartData === 'function') {
-                        try { replay.updateChartData(false); } catch (_uc) { /* ignore */ }
+                        try {
+                            replay.updateChartData(false);
+                        } catch (_uc) {
+                            this._logReplayRestoreCatchOnce('master-replace:updateChartData', _uc, { replayTimestamp: rematchTs });
+                        }
                     }
                     if (wasPlaying && typeof replay.play === 'function') {
                         try { replay.play(); pausedByCover = false; } catch (_rp) { /* ignore */ }
@@ -24168,7 +24206,11 @@ class Chart {
                     // currentIndex after a full replace snaps seek to whatever remains.
                     if (Number.isFinite(keepTs)
                         && typeof rs.syncCurrentIndexFromReplayTimestamp === 'function') {
-                        try { rs.syncCurrentIndexFromReplayTimestamp(keepTs); } catch (_e) { /* ignore */ }
+                        try {
+                            rs.syncCurrentIndexFromReplayTimestamp(keepTs);
+                        } catch (_e) {
+                            this._logReplayRestoreCatchOnce('window-replace-rs:syncCurrentIndexFromReplayTimestamp', _e, { replayTimestamp: keepTs });
+                        }
                     } else {
                         const n = rs.fullRawData.length;
                         if (rs.currentIndex >= n) rs.currentIndex = Math.max(0, n - 1);
