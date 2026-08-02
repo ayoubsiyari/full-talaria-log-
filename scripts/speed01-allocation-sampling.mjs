@@ -74,6 +74,50 @@ function aggregateSamplingProfile(head) {
   return { total, sites };
 }
 
+/**
+ * Rewind and resume any panel whose replay has stopped.
+ *
+ * Returns how many panels needed reviving, so the report can say plainly how
+ * often the workload had to be nursed rather than presenting an uninterrupted
+ * run it did not have.
+ */
+async function restartStalledPanels(page, barsPerSecond) {
+  let revived = 0;
+  for (const frame of page.frames()) {
+    try {
+      const did = await frame.evaluate((speed) => {
+        // Same handle the PO workload arms through; window.replaySystem is not
+        // the one the panels expose.
+        const chart = window.chart;
+        const rs = chart && chart.replaySystem;
+        if (!rs) return false;
+        // Deliberately not gated on isPlaying. A replay that has consumed its
+        // loaded bars still reports isPlaying true while the playhead no longer
+        // advances, which is exactly the stall we are here to clear.
+        try {
+          if (typeof rs.goToReplayTimestamp === 'function'
+            && Array.isArray(chart.data) && chart.data.length > 50) {
+            const mark = chart.data[Math.floor(chart.data.length * 0.2)];
+            if (mark && mark.t != null) rs.goToReplayTimestamp(Number(mark.t));
+          }
+          if (typeof rs.setSpeed === 'function') rs.setSpeed(speed);
+          if (!rs.isPlaying) {
+            if (typeof rs.play === 'function') rs.play();
+            else if (typeof rs.togglePlay === 'function') rs.togglePlay();
+          }
+        } catch (_e) {
+          return false;
+        }
+        return !!rs.isPlaying;
+      }, barsPerSecond);
+      if (did) revived += 1;
+    } catch (_e) {
+      // Detached or cross-origin frame; the others still answer.
+    }
+  }
+  return revived;
+}
+
 /** Read the governor's published rate from whichever realm carries it. */
 async function readRate(page) {
   const probe = () => {
@@ -135,6 +179,7 @@ async function main() {
   const readings = [];
   let profile = null;
   let workload = null;
+  let restarts = 0;
 
   try {
     const page = await browser.newPage();
@@ -188,6 +233,17 @@ async function main() {
       log(`t+${Math.round((SAMPLE_MS - (deadline - Date.now())) / 1000)}s `
         + `rate=${r.rate === null ? 'n/a' : r.rate.toFixed(2)} `
         + `gain=${r.gov ? r.gov.gain.toFixed(3) : 'n/a'} heap=${r.heapMb ?? 'n/a'}MB`);
+
+      // Replay runs out of loaded bars well inside a five-minute window and
+      // simply stops, which turns the tail of the sample into dead air that
+      // dilutes every site's share. Rewind and resume so the profiler sees
+      // replay allocation for the whole window; without this the baseline and
+      // any post-pooling re-sample differ by how early each one stalled.
+      if (r.rate !== null && r.rate <= 0.01) {
+        const revived = await restartStalledPanels(page, BARS_PER_SECOND);
+        restarts += revived;
+        if (revived) log(`  replay had stalled; rewound and resumed ${revived} panel(s)`);
+      }
     }
 
     const res = await cdp.send('HeapProfiler.getSamplingProfile');
@@ -202,6 +258,16 @@ async function main() {
   const rated = readings.filter((r) => typeof r.rate === 'number' && r.rate > 0);
   const rates = rated.map((r) => r.rate);
   const mean = rates.length ? rates.reduce((a, b) => a + b, 0) / rates.length : null;
+
+  // Share of the window that actually had replay running. Reporting mean rate
+  // over only the non-zero readings, as this did, hides a stalled tail
+  // completely: a run that died a third of the way in still reports a healthy
+  // mean. Any comparison across two samples is meaningless unless both ran
+  // replay for the same share of their window, so this figure gates the claim.
+  const liveReadings = readings.filter((r) => typeof r.rate === 'number' && r.rate > 0.01);
+  const dutyCycle = readings.length
+    ? Number((liveReadings.length / readings.length).toFixed(3))
+    : null;
 
   const report = {
     row: 'SPEED-01 allocation sampling',
@@ -218,6 +284,15 @@ async function main() {
       withRate: rated.length,
       gainAtEnd: rated.length ? rated[rated.length - 1].gov?.gain ?? null : null,
       corrections: rated.length ? rated[rated.length - 1].gov?.corrections ?? null : null,
+    },
+    replayLiveness: {
+      dutyCycle,
+      liveReadings: liveReadings.length,
+      totalReadings: readings.length,
+      panelRestarts: restarts,
+      note: 'dutyCycle below 1 means part of the window had no replay running; '
+        + 'allocation shares are diluted by exactly that fraction and two samples '
+        + 'are only comparable at similar duty cycles',
     },
     heapMb: {
       first: readings.find((r) => r.heapMb !== null)?.heapMb ?? null,
@@ -243,6 +318,9 @@ async function main() {
   console.log(`effective rate: mean=${report.effectiveRate.mean} `
     + `min=${report.effectiveRate.min} max=${report.effectiveRate.max} `
     + `gain=${report.effectiveRate.gainAtEnd} corrections=${report.effectiveRate.corrections}`);
+  console.log(`replay live for ${Math.round((report.replayLiveness.dutyCycle ?? 0) * 100)}% `
+    + `of the window (${report.replayLiveness.liveReadings}/${report.replayLiveness.totalReadings} `
+    + `readings, ${report.replayLiveness.panelRestarts} panel restart(s))`);
   console.log(`heap: ${report.heapMb.first} MB -> ${report.heapMb.last} MB`);
   console.log(`allocated: ${report.totalSampledMb} MB (${report.allocationMbPerMinute} MB/min)`);
   console.log('\ntop allocation sites:');
