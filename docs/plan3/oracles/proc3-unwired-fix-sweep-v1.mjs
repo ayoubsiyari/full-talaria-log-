@@ -467,8 +467,8 @@ const ROWS = [
     present: ['__talariaFormingSim', '_deriveStepClockFormingCandle', 'skipToBarClose('],
     bound: ['this._deriveStepClockFormingCandle(target, ticksNeeded)'],
     mirror: ['chart v 1.4/chart/modules/replay-system.js', 'homepage/public/chart/modules/replay-system.js'],
-    discriminating: false,
-    discriminatingEvidence: 'RED on the discriminating axis, measured not assumed. forming-renderer-step-clock.test.mjs is 6/6, but every cell is assert.match(source, /regex/) against lifted method text — the gate never executes the product, so it cannot go RED on a helper that returns wrong numbers. Demonstrated rather than argued: the gate stays 6/6 on a tip where B reproduced a live cachedPath clobber reaching this row (_evidence/manager-B/review/e-waypoint-cachedpath-alias-probe.mjs). Needs one executing cell that goes RED when _deriveStepClockFormingCandle is inert or wrong.',
+    discriminating: true,
+    discriminatingEvidence: 'CLOSED by _evidence/manager-B/review/e-forming-a8-step-clock-discriminating.mjs, 5/5. E\'s own forming-renderer-step-clock.test.mjs is 6/6 but every cell is assert.match(source, /regex/) against lifted method text — it proves shape, never behaviour, and cannot go RED on a helper returning wrong numbers. B added the executing cell: it walks _deriveStepClockFormingCandle across 25 clock positions (23 distinct prices, closing exactly on the real close, never escaping the bar high/low), with an anti-vacuity control asserting the underlying path actually varies. The axis is closed by a real mutant arm rather than by assertion — the helper is rebuilt with its step-clock read frozen and collapses to a single price, so the behavioural cell provably goes RED on a clock-blind implementation. A mutant whose anchor fails to apply reports as its own distinct state rather than as a product verdict.',
   },
   {
     row: 'E-WAYPOINT-PATH',
