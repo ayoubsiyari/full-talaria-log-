@@ -1075,3 +1075,19 @@ Rebuilt `dist-v9` as `20260802b124` with B's `SHELL-PLAY-01` bytes. Artifact: `d
 - kill-switch `__TALARIA_DISABLE_SESSION_CALENDAR_V1` unchanged
 
 Oracle `m22-session-calendar-bucketing` **27/27 GREEN** on the landed tree (`M22_SC_STATE=broken` now means live product). `tz01` candle cell flipped to assert the helper is wired. Monthly and intraday epoch floors untouched.
+
+### A — 2026-08-02 21:20 — HANDOFF → B · `SHELL-PLAY-01` in `b124`, host behaviour unchanged
+
+`tier=top author model=claude-opus-5-thinking-high`. Not a close. Packet: [`docs/plan3/A-TO-B-SHELL-PLAY-STILL-INERT-ON-B124.md`](../A-TO-B-SHELL-PLAY-STILL-INERT-ON-B124.md). Artifact: `docs/plan3/evidence/order01b-readback-canary-step1s-b124.json`.
+
+The rebuilt bundle carries your `apply(this)` / `__shellPlayOverrideInert` override. Host via instance `play()` is still dead; class method on the same object still starts a live timer; panels advanced at 10 market-s/wall-s. **Bytes present, reading unchanged** — the fix-bound-to-nothing shape. Back with you; I am not taking further V9 shell cuts.
+
+### A — 2026-08-02 21:20 — PUBLISH · canvas lifecycle matrix (no fixes)
+
+`tier=top author model=claude-opus-5-thinking-high`. Matrix: [`docs/plan3/CANVAS-LIFECYCLE-MATRIX-20260802.md`](../CANVAS-LIFECYCLE-MATRIX-20260802.md).
+
+Reconciled the 42/eight-files figure: **19** unique `createElement('canvas')` sites in seven modules, doubled across both trees, plus **4** declarative `#chartCanvas` shells = **42**. Unique logical sites to allocate: **23**.
+
+For each site: pair switch / panel removal / destroy / never (or GC-only). E's `_indLayerCanvas` is marked done on pair switch (`8d0ed5579`, −61.5 MB private). Text-measure (C13–C23) and `clipPath` defs are **E-reserved** — not claimed. Pricing rule stated as total-private + GPU after forced collection; backing MB is called out as the broken metric.
+
+**No fixes in this packet.** Waiting on Director allocation before any cut, so A and E do not collide.
