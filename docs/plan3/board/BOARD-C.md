@@ -541,6 +541,112 @@ Artifacts: `_evidence/manager-C/a8-hoard-slope-2026-08-02T12-13-51-028Z{,-REGRAD
 
 - 21:48+01:00 · C · **FORCED-GC SLOPE RUN1 ABORTED BY ME — MY OWN CONCURRENCY STALLED IT. NOT A PRODUCT FINDING.** · Slope run1 booted 20:35, floor A **742.8 MB** drained, then the host playhead froze at index **3,508** from t+4m onward (`rate=0` at t+6m and t+8m) — from the minute the arena time-series session booted on the same machine. Two four-panel Chrome sessions on one host is contention, and a stalled leg biases retention DOWNWARD: floor B would have read flat and could have been misread as "no retention." I killed the slope run rather than publish a floor pair taken across my own interference. **No slope number from run1.** Sequencing correction: arena time series (Director's top row) runs alone to completion; forced-GC floor re-base re-fires solo after it. 22.89 and the running cluster remain non-quotable.
 
+- 22:58+01:00 · C · **THE 19.6 IS NET OF AN ARENA SWAP, AND THE SWAP IS COMPOSITOR RE-RASTER — NOT SOFTWARE FALLBACK. CANVAS LANE IS WORTH CONTINUING, WITH ONE CONFOUND I OWN.** · Artifact `_evidence/manager-C/combined-canvas-fix-run2.json`, renderer allocator roots peak→after.
+
+  **Process split:** GPU private **161.39 → 126.32** (−35.07). Renderer private **237.55 → 249.51** (+11.96). Total 527.02 → 507.42 (−19.6).
+
+  **Renderer arena deltas, peak→after:**
+
+  | arena | peak | after | Δ |
+  |---|---:|---:|---:|
+  | shared_memory | 7.63 | 14.27 | **+6.64** |
+  | malloc | 38.82 | 45.27 | +6.46 |
+  | **canvas** | 15.35 | 9.69 | **−5.67** |
+  | cc | 8.91 | 13.65 | **+4.74** |
+  | gpu (renderer-side) | 3.19 | 7.19 | +4.00 |
+  | discardable | 0 | 2.64 | +2.64 |
+  | v8 | 14.39 | 16.90 | +2.51 |
+  | blink_gc | 14.00 | 15.38 | +1.38 |
+  | partition_alloc | 93.50 | 94.48 | +0.98 |
+
+  **Ruling out the candidates by signature, not by preference.**
+  - **Software fallback: RULED OUT.** A fallback to CPU-backed canvas would make the renderer's own `canvas` arena *rise*. It **fell 5.67 MB**. The backing stores genuinely went away; they were not re-created on the CPU.
+  - **Readback (GPU→CPU pixel copy): NOT SUPPORTED as the driver.** A readback of ~35 MB of texture would land as a large `malloc`/`shared_memory` spike proportional to the texture freed. What grew is 14 MB across three compositor-shaped arenas, not 35 MB in one buffer arena.
+  - **Layer recreation churn: SMALL, NOT THE DRIVER.** The host recreated one indicator layer (4→1, matching E's known residual). One layer at this geometry is ~0.4–2.2 MB backing, not 12.
+  - **Compositor re-raster: BEST SUPPORTED.** `cc` + `shared_memory` + `discardable` = **+14.02 MB**, which more than covers the +11.96 renderer rise on its own. That is the shape of content losing its accelerated layer and being re-rastered into renderer-held compositor tiles and shared-memory buffers.
+
+  **Consequence for the lane: continue it.** 35 MB left the GPU process; ~14 MB reappeared as compositor tiles in the renderer. The exchange rate is roughly 2.5:1 in our favour, and compositor tiles are discardable under pressure in a way GPU textures are not. This is a real win being under-reported by the net figure, not an accounting illusion.
+
+  **The confound, stated because it is mine.** The `after` sample is taken *after a pair switch to file 27*, so the same window also loads a new dataset. Some of `malloc +6.46` and `v8 +2.51` is bar data, not canvas mechanism. That inflates the renderer side and therefore **understates** the combined reclaim — 19.6 is a floor on the fix value, not a ceiling. The clean disambiguation is a linked-pane-removal-only arm with no pair switch, which isolates release from data load. **Queued, not run** — see scheduling below.
+
+- 23:35+01:00 · C · **D'S CONTROL TAKEN, NOT DUPLICATED — AND IT CORRECTS MY COMPOSITOR RE-RASTER CAUSAL CLAIM. SWITCH COUNT NOW DERIVED PER SAMPLE ON THE LIVE SERIES.** · D's artifact `_evidence/manager-C/combined-canvas-fix-control-no-release-20260802.json` (`COMBINED-CANVAS-FIX-BASELINE-V2`, `--arm=no-release-control`).
+
+  **No duplicate from me.** I never built a control arm and have none in flight. D's is the control of record.
+
+  **1. THE CORRECTION, AND IT IS AGAINST MY OWN PUBLISHED EXPLANATION.** I attributed the renderer-private rise to compositor re-raster *caused by releasing GPU-backed canvases*. D's control disables both release hooks and the renderer still grows:
+
+  | | renderer-private | GPU | totalPrivate reclaimed |
+  |---|---:|---:|---:|
+  | C, fixes ON | **−11.96** (grew 11.96) | −35.07 | 19.6 |
+  | D, control, fixes OFF | **−12.70** (grew 12.70) | −19.16 | 0.8 |
+
+  **The renderer growth is essentially identical with the fixes on and off, so it is not caused by the release.** It is a cost of the pair switch itself. The arena shapes say the same thing: `cc`, `shared_memory`, `discardable` and `gpu` grow in the control too. **Withdrawing the causal half of my 22:58 entry** — the arenas that grow are still the compositor-shaped ones, but "releasing a GPU-backed canvas grows renderer memory" is not what the evidence says. The correct statement is that a **pair switch** grows renderer memory by ~12–13 MB whether or not anything is released. That is D's slope candidate, and my treated arm independently reproduces it at 11.96.
+
+  **2. RECONCILIATION, INCLUDING A MISMATCH I WILL NOT PAPER OVER.** Naively, fix effect = 19.6 − 0.8 = 18.8 MB total-private. **I am not publishing that yet**, because the two arms are not a matched pair: my quotable 19.6 comes from **run2, which has the settle sleeps**; D's control matches my **run1 protocol, which does not**. My own run1 treated arm read **−25.59** on that protocol. Comparing across protocols is how a settle artifact becomes a fix number. **What the pair needs is to be run as ABBA arms under the settle protocol** — items 2 and 3, both now built and self-tested. D owns the control arm, so I am proposing that sequencing rather than running it.
+
+  **A second thing to confirm before anyone leans on the pair.** D's control's `cc` 5.922→12.743, `shared_memory` 7.625→14.273, `gpu` +4.000 and `discardable` 0→2.637 are **identical to three decimals to my run1**, including the before-values, across what should be two separate browser launches. That is either a genuinely deterministic allocation path at those stages or a baseline carried over rather than re-measured. **D: please confirm the control was a fresh launch.** If it was, the determinism is itself a useful finding; if it was not, the control's before-sample needs re-taking. I would rather ask than build on it.
+
+  **3. SWITCH COUNT IS NOW A DENOMINATOR ON THE LIVE SERIES — recovered without touching the run.** Every sample already recorded each panel's `fileId`, so switches are derivable retroactively. The conformer now emits `pairSwitchesSinceLastSample`, `pairSwitchesCumulative`, `pairSwitchChanges` and `panelDatasets` per row. Normalisation mattered: the host records `fileId` as a number and peers as strings, so a raw comparison would have reported four switches per sample — pure noise.
+
+  **Measured on the run so far: `ZERO_SWITCHES_MEASURED`, 0 across all 8 rows, all four panels on `677` throughout.** "Designed to be zero" and "measured zero" are different claims and only the measured one is usable. **This makes my series the zero-switch control arm for D's accumulation test**: growth-from-replay with switches held at zero, against D's growth-from-switching. Read together they separate the two slopes; read alone neither covers the other.
+
+  **4. Priorities: I agree it changes the reading, not my dates.** If ~12.7 MB per switch accumulates across hundreds of switches, that dwarfs anything in my canvas lane and it is a slope, not a floor. Interim from my series, six live samples, not a result: `v8` is the only monotonic grower at zero switches (**50.79 → 80.56 MB in 50 min**) while `partition_alloc`, `malloc` and `blink_gc` wobble without trend. If that holds, replay-growth is V8 and switch-growth is compositor/native — two different defects needing two different fixes, which is exactly the floor/slope split the checklist was built to resolve.
+
+- 23:20+01:00 · C · **MONDAY INSTRUMENT ITEMS 1, 2, 3, 4, 9 BUILT AND SELF-TESTED 20/20. ITEM 11 ALREADY GREEN. `ARENA-COLUMNS` CONFORMED ON THE LIVE RUN, NOT REBUILT.** · Checklist per `RULING-INSTRUMENT-CHECKLIST-OWNERS-DATES-AND-THE-FIRE-WINDOW-20260802-2215.md`. Accepting the four-item move to E; C keeps protocol, calibration and every quoted number. Self-test `scripts/instrument-checklist.selftest.mjs` **20/20**, `node --check` clean on all five modules plus the soak.
+
+  | # | Item | State | Where |
+  |---:|---|---|---|
+  | 1 | ARENA-COLUMNS, soak row format, one populated run | **BUILT + POPULATED** | `scripts/lib/arena-columns.mjs`, `scripts/arena-timeseries-conform.mjs` |
+  | 2 | SETTLE-PROTOCOL event→settle 2–3 min→collect→read | **BUILT** | `scripts/lib/settle-protocol.mjs` |
+  | 3 | DRIFT-ABBA paired arms, full vector | **BUILT** | `scripts/lib/abba-drift.mjs` |
+  | 4 | TOTAL-01 wired into reporting | **BUILT + ENFORCED IN CODE** | `arena-columns.quoteArenaDelta` |
+  | 9 | Forced-GC pause-probe; pause-and-wait retired | **BUILT + WIRED** | `scripts/lib/forced-gc-pause-probe.mjs`, soak call sites swapped |
+  | 11 | Common-window dataset | **GREEN earlier tonight** | `same-symbol`, 4/4 verified live |
+
+  **Item 1 — conformed, not rebuilt, exactly as ruled.** `arena-timeseries-conform.mjs` reshapes the running artifact into soak rows after the fact, so the multi-hour run is not thrown away. Column names match `sealed-two-arm-soak` (`hours`, `residentBars`, `footprintTotalMB`) so both series read with one reader. Proven populated on the **partial** artifact while the run is still up: **8 rows (6 live, 2 drained)**. Arena columns are also now emitted by the soak's own 3-min sampler.
+
+  **Item 4 — TOTAL-01 is enforced by code, not by convention.** `quoteArenaDelta()` returns `REFUSED_NO_TOTAL_ROW` rather than a number when either endpoint lacks its total, `REFUSED_TOTAL_BASIS_MISMATCH` when the two totals were taken on different bases, and `REFUSED_ARENA_ABSENT` when an arena is missing (absent is not zero). **This is the 212 MB failure mode turned into a compile-time-ish guard**, and it is covered by a test that names it. It caught two live bugs in my own code during the build: `Number(null)` is `0`, so my first `hasTotalRow` accepted a row with no total, and my first `num()` read an absent arena as a real zero. Both would have let exactly the class of claim I withdrew tonight pass as quotable.
+
+  **Item 3 — why the equal-duration control arm alone is insufficient, demonstrated rather than asserted.** One ABBA block cancels drift linear in slot index exactly (A at slots {0,3}, B at {1,2}, equal mean slot). It does **not** cancel curvature. **Two blocks mirrored — ABBA then BAAB — balance both**: A={0,3,5,6}, B={1,2,4,7}, and both have sum(t)=14 *and* sum(t²)=70. The self-test drives a deliberately quadratic session drift and recovers a known −20 MB effect **exactly**, while the naive first-A-against-first-B estimate on the same data is off by more than 5 MB. Every reading carries the full arena vector, so a fix that moves memory between arenas cannot hide in a single-metric summary.
+
+  **Item 9 — the retirement is evidenced per run, not cited.** The new probe takes **both** readings in one pass: `pause-only-60s` (what the retired instrument would have called the floor) and `after-forced-collection` (the real floor), and reports `pauseAndWaitInflationMB` as their difference. It also **VOIDs itself** if the forced collection did not actually run, rather than silently degenerating into the instrument it replaces. Soak now imports it at both call sites; the self-test asserts the old import is gone.
+
+- 23:22+01:00 · C · **COV-01 SIZED EARLY, AND I FOUND A BASIS DEFECT IN MY OWN COVERAGE FIGURE BEFORE QUOTING IT** ·
+
+  First conformed coverage reading: named arenas cover **47.86–61.77%** of total private. Target is ≥95%. That is a very large gap and it is **not** all unattributed memory — **part of it is my own basis error, and I am naming it before it becomes a finding.**
+
+  **The defect:** I summed allocator roots from **one process** (the heaviest renderer) and divided by **all-Chrome-process private**. The GPU process alone is 194–248 MB in this run and contributes essentially nothing to that numerator. So the shortfall is partly real unattributed memory and partly a numerator that never had the other processes in it. **The 47.9–61.8% figure is therefore a floor on true coverage, not a measurement of it, and it must not be quoted as "we can only see half the footprint."**
+
+  **What item 7 must do, now specified:** either (a) sum arenas across **every** process and compare to all-process private, or (b) compare the renderer's arenas to the **renderer's own** private. Both are legitimate; mixing them is not. TOTAL-01's `totalBasis` column already exists to make that mixing impossible going forward, and the refusal path is tested.
+
+- 23:24+01:00 · C → E · **SEND · `ITEM-6-TO-ITEM-7-HANDOFF`, RAISED SUNDAY NIGHT SO IT IS NOT DISCOVERED TUESDAY** ·
+
+  The Director's serial chain is **6 → 7 → 13** and it sets the fire date. Item 7 (COV-01) is mine and cannot start until your item 6 detail dumps parse into named rows, so I am asking now rather than Monday afternoon.
+
+  1. **What I need from item 6, concretely.** Detail dumps at the four scheduled moments, parsed to named shelf/book rows, **for every process — renderer(s) AND the GPU process — not just the heaviest renderer.** My coverage numerator is currently single-process and that alone could account for a large part of the 38–52 point shortfall. If your parse is renderer-only I will calibrate against renderer-private instead, but I need to know which before Tuesday, not during.
+  2. **Column contract, so we do not integrate twice.** I will consume roots as a flat `{ arenaName: MB }` map per pid — the shape `summariseAllocators` already returns. If your named shelf/book rows are children (`partition_alloc/partitions/buffer/...`), give me the parent root total alongside, or coverage will double-count children against roots.
+  3. **TOTAL-01 applies to your rows too.** `scripts/lib/arena-columns.mjs` is importable and refuses any single-arena delta without a total row and matching basis. Please emit your dumps' totals with them; if you use `arenaColumns()` directly we get identical columns for free and the two series concatenate.
+  4. **Your item 8 gets the settle for free.** `scripts/lib/settle-protocol.mjs` exports `readUnderSettleProtocol()` — event → settle 2–3 min → forced collection → read, with compliance graded on every reading. GATE-01's capability proof is specified "under settle, full vector", so importing this makes your item and my item 2 the same protocol by construction rather than by agreement.
+  5. **Not blocking you on anything.** Nothing in items 1/2/3/4/9 waits on E.
+
+- 23:02+01:00 · C · **PROVENANCE CHECK ON MY OWN TOP ROW: THE ARENA SERIES IS CLEAN AND NOW PINNED TO BYTES. THE 19.6 COMBINED-FIX IS NOT, AND I AM CAVEATING IT.** · Acknowledging B's finding (V9 compiles the working tree while stamping the commit SHA; already bit us at `c0c013b9c`). **No rebuild request from me** — holding until the tree is clean and B's provenance gate is green. Taking B's correction that three of four rows are already compiled into the committed bundle by that same accident; nothing was waiting on me to compile.
+
+  **1. Arena time series — CLEAN FOOTING.** The series boots `bootConf01Session` against the **deployed origin** `http://31.97.192.82:3000`, not the local harness. My 153 dirty working-tree entries cannot enter it. Recorded identity: badge **`20260802b122`**, sourceCommit **`1c69bebb496f1fb3bdf4f90317dae84d1507d427`**.
+
+  **Because B has shown the stamped SHA can lie, a SHA is not provenance — bytes are.** I pulled a build passport against the live origin *while the series is still running*: `_evidence/manager-C/arena-run1-passport.json`, combined digest **`5f0378407c214999ec822eb6a17e165e`** over 6 served files (`dist-v9/index.html 069790f8fb1a`, `dist-v9/assets/talaria-v9-live.js 1c21fd3b2a59`, `dist-v9/sw.js e14123342fb2`, `chart.js 95720ce6b85f`, `multichart-manager.js 878a2f9ee7c7`, `chart-window-limit.js 4da262bfbd7b`). Verdict SEALABLE. **The arena result is therefore reproducible against named bytes even if b122's stamped SHA turns out not to describe what was compiled** — a re-cut under the same label is now detectable. This digest must be merged into the artifact at publish.
+
+  **2. Combined-fix 19.6 — PROVENANCE-CAVEATED, and this one is on me.** That run used the **local harness** (`startServer` over the working tree), and the tree is dirty in files the harness serves: `chart v 1.4/chart/index.html`, `modules/drawing-tools-ui.js`, `modules/screenshot-manager.js`, `sw.js`, plus `harness/serve.mjs`. **19.6 MB has no defensible provenance and must be re-cut after the rebuild** before it is quoted as a build figure.
+
+  **What survives the caveat, and why.** The canvas-release path itself is **clean in the tree** — `compare-overlay.js`, `chart.js`, `chart-main.js`, `harness/host.html` and `harness-lib.mjs` all show no modification. The dirty files are drawing-tools UI, screenshot manager, index/sw. So the **mechanism** finding (canvas arena falls, `cc`/`shared_memory`/`discardable` rise → compositor re-raster) rests on arenas that no dirty file touches, and I am not withdrawing it. **The megabyte figure is what needs re-cutting, not the shape.** Stated in that order so nobody reads a shape retraction into a number caveat.
+
+- 22:58+01:00 · C · **SCHEDULING: NO CONTROL ARM FROM ME, AND I WILL ANNOUNCE THE MOMENT THE ARENA SERIES CLEARS** ·
+
+  1. **D's no-release control arm stands alone.** I have **no control arm in flight and never started one** — the only C processes running tonight are `arena-timeseries.mjs` (one node pid, one Chrome session) and nothing else. There will be no second artifact from C to disagree with D's. If 19.6 needs re-basing against drift, that re-base is D's number and I will quote D's rather than produce my own.
+  2. **D's hold on the pair-switch accumulation test is correct and I am the blocker.** A second Chrome would contaminate my series — I proved that to myself an hour ago by stalling my own slope run at index 3,508 with exactly that mistake. **I will post a `RUN CLEAR — D MAY FIRE` line here the minute the series finishes**, and I have a watcher on the artifact so the announcement does not wait on me noticing. Expected clear ~00:45+01:00 (19 samples, 10-min cadence, started 21:45+01:00).
+  3. **SCOPE LIMIT ON MY OWN SERIES, stated before anyone reads it wrong.** The run is `datasetMode: same-symbol` — one file at four timeframes. **It exercises zero pair switches.** It answers *growth-from-replay* over hours. It does **not** answer *growth-from-switching*, which is precisely D's pair-switch accumulation test. Neither result may be quoted as covering the other, and the arena growth ranking I publish will carry this sentence.
+
+  **Interim, six of nineteen samples, NOT a result:** `v8` is climbing monotonically on the live series — 50.79 → 55.93 → 64.62 → 72.90 → 76.81 → **80.56** across 50 minutes. `partition_alloc` (57.9–76.0) and `malloc` (83–94) wobble without trend; `blink_gc` sits 120–129. If that holds to nineteen samples, the replay-growth arena is V8 and the large native arenas are floor, not slope — which is the floor/slope split the Director asked for. Not quotable until the run completes and the drained series agrees.
+
   First arena samples are already informative and were taken while the slope session was still up, so treat the absolute levels as loaded-host: live `total 1005.51 / ren 652.83 / gpu 248 · pa 66.75 · malloc 83.15 · v8 50.79 · blink_gc 143.21 · canvas 12.51`; drained at the same moment `total 798.89 · pa 49.51 · malloc 81.19 · v8 50.81 · blink_gc 119.69`. Note `pa` drops 17 MB and `blink_gc` 24 MB on collection while `malloc` and `v8` barely move — early sign that the arenas differ in how much of their level is froth versus floor. Growth ranking, not these levels, is the deliverable.
 
 - 21:34+01:00 · B → C · **THE REBUILD CONSTRAINT IS NOW A CHECK, NOT A LIST** · `npm run rebuild-constraint` (host: mine, `c:\Users\user\Desktop\talaria1\full-talaria-log--main`). The deployed surface is `20260802b122` / source `1c69bebb4`, which is **10:13 this morning and 123 commits behind my tip**, so the PO is right that nothing there can be cited about tonight. Five rows must be carried: A's daily bucketing (`c0c013b9c`), D's M24 order counters (`47b1c5f05`), and my SHELL-PLAY-01, panel slice and toolbar pins (`419bb433f`). Each has a marker greppable in **served bytes**, and `--base=http://host` runs the same check against the deployed door after you ship — including the content-type arm, so an HTML answer to a `.js` path reports *wrong door*, not *bad build*.
