@@ -174,6 +174,16 @@ function _m24OrderIdGapReconcileV1Enabled() {
         || window.__TALARIA_DISABLE_M24_ORDER_ID_GAP_RECONCILE_V1 !== true;
 }
 
+/**
+ * ORDER-01B: global market-time cursor + resolveBar money path (default ON).
+ * Explicit `__TALARIA_DISABLE_GLOBAL_MARKET_TIME_CURSOR_V1 === true` restores
+ * interim DEF-04/D-016 playhead sync and legacy candle resolution.
+ */
+function _order01bMarketTimeCursorV1Enabled() {
+    return typeof window === 'undefined'
+        || window.__TALARIA_DISABLE_GLOBAL_MARKET_TIME_CURSOR_V1 !== true;
+}
+
 /** N5: idempotent full closes and immutable durable journal snapshots, default ON. */
 function _n5MoneyPathCollisionV1Enabled() {
     return typeof window === 'undefined'
@@ -880,6 +890,10 @@ class OrderManager {
         
         // SPLIT ENTRY TRACKING (for split entries placed at once)
         this.splitTrades = new Map(); // Map of splitGroupId -> {entries: [], status, totalPnL, ...}
+
+        // ORDER-01B: bar-close transcripts (consumed + dropped at bar-close boundary).
+        this._barCloseTranscripts = new Map();
+        this._barCloseTranscriptActiveKey = null;
 
         // M20-A1: same-origin logout privacy-clean bridge (dashboard shell →
         // chart). Listener only — zero IndexedDB traffic until a validated
@@ -2061,12 +2075,220 @@ class OrderManager {
     }
 
     /**
+     * ORDER-01B resolveBar: immutable event bar from real raw/retained series at
+     * cursor market time. Never reads `animatingCandle` — animation must not feed
+     * the money path. Reuses the finest retained series when available.
+     *
+     * @param {number|null} marketTimeMs cursor market time (ms)
+     * @param {{ chart?: *, series?: Array, cadenceMs?: number }|null} options
+     * @returns {object|null} frozen-ish bar copy with `_orderLifecycleEventKey`
+     */
+    resolveBar(marketTimeMs, options = null) {
+        if (!_order01bMarketTimeCursorV1Enabled()) return null;
+        const opts = options && typeof options === 'object' ? options : {};
+        const chart = opts.chart || this._getOrderContextChart() || this.chart;
+        const rs = (chart && chart.replaySystem) || this._playbackReplaySystem();
+        // null/undefined must not coerce via Number(null) === 0.
+        let playhead = marketTimeMs == null ? NaN : Number(marketTimeMs);
+        if (!Number.isFinite(playhead) && rs) {
+            const cursor = typeof rs.getMarketTimeCursor === 'function'
+                ? rs.getMarketTimeCursor()
+                : rs._marketTimeCursor;
+            if (cursor && Number.isFinite(Number(cursor.marketTimeMs))) {
+                playhead = Number(cursor.marketTimeMs);
+            } else {
+                playhead = Number(rs.replayTimestamp);
+            }
+        }
+        if (!Number.isFinite(playhead)) return null;
+
+        let series = Array.isArray(opts.series) ? opts.series : null;
+        let cadenceMs = Number(opts.cadenceMs);
+        if (!series) {
+            const ctx = this._orderExecutionSeriesContext(chart);
+            if (ctx && Array.isArray(ctx.series) && ctx.series.length) {
+                series = ctx.series;
+                if (!Number.isFinite(cadenceMs) || cadenceMs <= 0) cadenceMs = Number(ctx.cadenceMs);
+            }
+        }
+        if (!series || !series.length) {
+            series = rs && Array.isArray(rs.fullRawData) ? rs.fullRawData : null;
+        }
+        if (!series || !series.length) return null;
+
+        let lo = 0;
+        let hi = series.length - 1;
+        let found = -1;
+        while (lo <= hi) {
+            const mid = (lo + hi) >> 1;
+            const t = Number(series[mid]?.t);
+            if (Number.isFinite(t) && t <= playhead) {
+                found = mid;
+                lo = mid + 1;
+            } else {
+                hi = mid - 1;
+            }
+        }
+        if (found < 0) return null;
+        const source = series[found];
+        const close = Number.parseFloat(source?.c ?? source?.close);
+        if (!Number.isFinite(close)) return null;
+        // Keep the shipping candle shape ({t,o,h,l,c,...}) — do not invent
+        // open/high/low/close aliases that break exact object equality gates.
+        const candle = Object.assign({}, source, { c: close });
+        try {
+            Object.defineProperty(candle, '_orderLifecycleEventKey', {
+                value: `replay:${Number(source.t)}`,
+                configurable: true,
+                enumerable: false,
+            });
+            Object.defineProperty(candle, '_resolveBarSource', {
+                value: 'raw_or_retained',
+                configurable: true,
+                enumerable: false,
+            });
+        } catch (_e) {
+            candle._orderLifecycleEventKey = `replay:${Number(source.t)}`;
+            candle._resolveBarSource = 'raw_or_retained';
+        }
+        return candle;
+    }
+
+    /** Active cursor market time, or replayTimestamp alias, or null. */
+    _order01bMarketTimeMs(replay = null) {
+        if (!_order01bMarketTimeCursorV1Enabled()) return null;
+        const rs = replay || this._playbackReplaySystem() || this.replaySystem;
+        if (!rs) return null;
+        const cursor = typeof rs.getMarketTimeCursor === 'function'
+            ? rs.getMarketTimeCursor()
+            : rs._marketTimeCursor;
+        if (cursor && Number.isFinite(Number(cursor.marketTimeMs))) {
+            return Number(cursor.marketTimeMs);
+        }
+        const ts = Number(rs.replayTimestamp);
+        return Number.isFinite(ts) ? ts : null;
+    }
+
+    _ensureBarCloseTranscriptMap() {
+        if (!this._barCloseTranscripts || typeof this._barCloseTranscripts.set !== 'function') {
+            this._barCloseTranscripts = new Map();
+        }
+        return this._barCloseTranscripts;
+    }
+
+    /**
+     * Record an intra-bar money-path event onto the active bar-close transcript.
+     * Events are derived from resolveBar / real series — never animation path tips.
+     */
+    _recordBarCloseTranscriptEvent(kind, payload = null) {
+        if (!_order01bMarketTimeCursorV1Enabled()) return null;
+        const map = this._ensureBarCloseTranscriptMap();
+        const key = this._barCloseTranscriptActiveKey;
+        if (key == null) return null;
+        let bucket = map.get(key);
+        if (!bucket) {
+            bucket = { barKey: key, events: [], openedAt: Date.now() };
+            map.set(key, bucket);
+        }
+        const event = {
+            kind: String(kind || 'unknown'),
+            at: Date.now(),
+            payload: payload && typeof payload === 'object' ? Object.assign({}, payload) : payload,
+        };
+        bucket.events.push(event);
+        return event;
+    }
+
+    /**
+     * Consume the transcript for a closed bar and drop it. Returning a retained
+     * transcript after this call is a product defect (oracle census RED).
+     */
+    _consumeBarCloseTranscript(barKey) {
+        if (!_order01bMarketTimeCursorV1Enabled()) return null;
+        const map = this._ensureBarCloseTranscriptMap();
+        const key = barKey != null ? String(barKey) : null;
+        if (key == null) return null;
+        const bucket = map.get(key) || null;
+        map.delete(key);
+        if (this._barCloseTranscriptActiveKey === key) {
+            this._barCloseTranscriptActiveKey = null;
+        }
+        return bucket;
+    }
+
+    /** Census of transcripts still retained after their bar-close boundary. */
+    _censusRetainedBarCloseTranscripts() {
+        const map = this._ensureBarCloseTranscriptMap();
+        return {
+            retained: map.size,
+            keys: [...map.keys()],
+            activeKey: this._barCloseTranscriptActiveKey,
+        };
+    }
+
+    /**
+     * Advance / close bar-close transcript ownership when the money-path bar key changes.
+     * Prior bar transcript is consumed and dropped at the boundary.
+     */
+    _syncBarCloseTranscriptForCandle(candle) {
+        if (!_order01bMarketTimeCursorV1Enabled()) return null;
+        const key = candle && typeof candle._orderLifecycleEventKey === 'string'
+            ? candle._orderLifecycleEventKey
+            : (candle && Number.isFinite(Number(candle.t)) ? `replay:${Number(candle.t)}` : null);
+        if (key == null) return null;
+        const prev = this._barCloseTranscriptActiveKey;
+        if (prev != null && prev !== key) {
+            this._consumeBarCloseTranscript(prev);
+        }
+        this._barCloseTranscriptActiveKey = key;
+        const map = this._ensureBarCloseTranscriptMap();
+        if (!map.has(key)) {
+            map.set(key, { barKey: key, events: [], openedAt: Date.now() });
+        }
+        return key;
+    }
+
+    /**
      * Resolve the exact fine-feed bar at the replay clock. Returning this instead
      * of a resampled 1D candle prevents daily low/high ordering from fabricating
      * a limit fill followed by a gap TP at the next day's open.
      */
     _getOrderExecutionCandleForChart(chart) {
         const ctx = this._orderExecutionSeriesContext(chart);
+        if (_order01bMarketTimeCursorV1Enabled()) {
+            const ch = (ctx && ctx.chart) || chart || this._getOrderContextChart() || this.chart;
+            const rs = (ch && ch.replaySystem) || (ctx && ctx.replay) || this._playbackReplaySystem();
+            const marketTimeMs = this._order01bMarketTimeMs(rs);
+            if (ctx && Array.isArray(ctx.series) && ctx.series.length) {
+                const resolved = this.resolveBar(marketTimeMs, {
+                    chart: ch,
+                    series: ctx.series,
+                    cadenceMs: ctx.cadenceMs,
+                });
+                if (resolved) return resolved;
+            }
+            // When a finer retained series is absent but money-path ownership is
+            // live, still resolve from fullRawData — never fall through to
+            // animatingCandle for execution bars.
+            if (_orderLifecycleEventOwnershipV1Enabled() && rs && rs.isActive) {
+                const isLive = (record, pending = false) => {
+                    if (!record || typeof record !== 'object') return false;
+                    const status = String(record.status || '').toUpperCase();
+                    if (pending) return !['CANCELLED', 'CANCELED', 'FILLED', 'EXECUTED', 'CLOSED'].includes(status);
+                    return !['CANCELLED', 'CANCELED', 'CLOSED'].includes(status);
+                };
+                const ownsMoneyPath = (this.pendingOrders || []).some((o) => isLive(o, true))
+                    || (this.openPositions || []).some((o) => isLive(o, false))
+                    || (this.mfeMaeTrackingPositions || []).some((o) => isLive(o, false));
+                if (ownsMoneyPath && Array.isArray(rs.fullRawData) && rs.fullRawData.length) {
+                    const resolved = this.resolveBar(marketTimeMs, {
+                        chart: ch,
+                        series: rs.fullRawData,
+                    });
+                    if (resolved) return resolved;
+                }
+            }
+        }
         if (!ctx) return null;
         const playhead = Number(ctx.replay.replayTimestamp);
         if (!Number.isFinite(playhead)) return null;
@@ -33636,10 +33858,27 @@ class OrderManager {
         }
         this._oiMaybeCancelProvisionalOnReplayStop();
         const parentGuardCandle = this._getMultichartParentGuardCandle();
+        // ORDER-01B: resolveBar supplies the real-series event bar for transcripts.
+        // Candle selection still uses getCurrentCandle / _getOrderExecutionCandleForChart
+        // (resolveBar-backed when a finest retained series is present).
+        let resolvedMoneyCandle = null;
+        if (_order01bMarketTimeCursorV1Enabled()) {
+            try {
+                const marketTimeMs = this._order01bMarketTimeMs();
+                resolvedMoneyCandle = this.resolveBar(marketTimeMs, {
+                    chart: this._getOrderContextChart() || this.chart,
+                });
+            } catch (_eResolve) {
+                resolvedMoneyCandle = null;
+            }
+        }
         // Focused/active candle (may be peer tile). Per-position path rebinds
         // to this.chart OHLC for local orders so EUR never marks off GBP.
         const activeCandle = parentGuardCandle || this.getCurrentCandle();
         if (!activeCandle) return;
+        try {
+            this._syncBarCloseTranscriptForCandle(resolvedMoneyCandle || activeCandle);
+        } catch (_eTx) { /* ignore */ }
         if (this.orderService && this.orderService.multiInstrumentSession) {
             this.orderService.multiInstrumentSession.current_time = activeCandle.t;
         }
@@ -33657,6 +33896,13 @@ class OrderManager {
         
         // Check and execute pending orders
         let lifecycleEventEvaluated = this.checkPendingOrders(activeCandle) === true;
+        try {
+            this._recordBarCloseTranscriptEvent('pending_eval', {
+                barT: Number((resolvedMoneyCandle || activeCandle).t),
+                evaluated: lifecycleEventEvaluated === true,
+                source: (resolvedMoneyCandle && resolvedMoneyCandle._resolveBarSource) || 'legacy',
+            });
+        } catch (_eRec) { /* ignore */ }
 
         // Keep preview order lines tracking the current price during replay
         this._syncPreviewToReplayPrice();

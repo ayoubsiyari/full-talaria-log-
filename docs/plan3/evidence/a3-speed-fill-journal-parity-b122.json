@@ -1,0 +1,814 @@
+{
+  "signature": "A3-SPEED-FILL-JOURNAL-PARITY-V1",
+  "at": "2026-08-02T12:36:30.598Z",
+  "origin": "http://31.97.192.82:3000",
+  "expectedCoordinates": {
+    "badge": "20260802b122",
+    "digest": "5f0378407c214999ec822eb6a17e165e",
+    "sourceCommitSha": "1c69bebb496f1fb3bdf4f90317dae84d1507d427"
+  },
+  "surface": {
+    "origin": "http://31.97.192.82:3000",
+    "badge": "20260802b122",
+    "digest": "5f0378407c214999ec822eb6a17e165e",
+    "sourceCommitSha": "1c69bebb496f1fb3bdf4f90317dae84d1507d427",
+    "sealOk": true,
+    "buildInfoOk": true,
+    "buildInfoState": "OK"
+  },
+  "identity": {
+    "ok": true,
+    "pairs": [
+      {
+        "name": "badge",
+        "expected": "20260802b122",
+        "observed": "20260802b122",
+        "equal": true
+      },
+      {
+        "name": "digest",
+        "expected": "5f0378407c214999ec822eb6a17e165e",
+        "observed": "5f0378407c214999ec822eb6a17e165e",
+        "equal": true
+      },
+      {
+        "name": "sourceCommitSha",
+        "expected": "1c69bebb496f1fb3bdf4f90317dae84d1507d427",
+        "observed": "1c69bebb496f1fb3bdf4f90317dae84d1507d427",
+        "equal": true
+      }
+    ]
+  },
+  "playbackCoordinates": [
+    1,
+    5,
+    10
+  ],
+  "surfaceLabel": "canary 20260802b122 @ http://31.97.192.82:3000/chart/dist-v9",
+  "scenario": {
+    "startIdx": 1400,
+    "hitIdx": 1403,
+    "direction": "BUY",
+    "entry": 1.14502,
+    "target": 1.14546,
+    "delta": 0.00017175299999999997,
+    "startT": 1781856060000,
+    "fileId": "677",
+    "symbol": "EURUSD",
+    "timeframe": "1m"
+  },
+  "pageBuildDiscover": "20260802b122",
+  "arms": [
+    {
+      "speed": 1,
+      "status": "OBSERVED",
+      "setup": {
+        "ok": true,
+        "speed": 1,
+        "chosen": {
+          "startIdx": 1400,
+          "hitIdx": 1403,
+          "direction": "BUY",
+          "entry": 1.14502,
+          "target": 1.14546,
+          "delta": 0.00017175299999999997,
+          "startT": 1781856060000,
+          "fileId": "677",
+          "symbol": "EURUSD",
+          "timeframe": "1m"
+        },
+        "submitted": {
+          "id": 1,
+          "orderId": null
+        },
+        "speedField": 1,
+        "index": 1400,
+        "replayTimestamp": 1781856060000,
+        "build": "20260802b122"
+      },
+      "finalState": {
+        "index": 2011,
+        "replayTimestamp": 1781892720000,
+        "speed": 1,
+        "playing": false,
+        "managerOpen": 0,
+        "managerClosed": 1,
+        "managerJournal": 1,
+        "serviceClosed": 1
+      },
+      "raw": {
+        "build": "20260802b122",
+        "managerClosed": [
+          {
+            "id": 1,
+            "tradeId": null,
+            "orderId": null,
+            "ticker": "EURUSD",
+            "direction": "BUY",
+            "status": "CLOSED",
+            "entryPrice": 1.14502,
+            "openPrice": 1.14502,
+            "closePrice": 1.14744,
+            "pnl": 242.00000000000887,
+            "quantity": 1,
+            "openTime": 1781856060000,
+            "closeTime": 1781892720000,
+            "closeReason": null,
+            "takeProfit": 1.14546,
+            "stopLoss": 1.087769
+          }
+        ],
+        "managerJournal": [
+          {
+            "id": 1,
+            "tradeId": 1,
+            "orderId": null,
+            "ticker": "EURUSD",
+            "direction": "BUY",
+            "status": "closed",
+            "entryPrice": 1.14502,
+            "openPrice": 1.14502,
+            "closePrice": 1.14744,
+            "pnl": 242.00000000000887,
+            "quantity": 1,
+            "openTime": 1781856060000,
+            "closeTime": 1781892720000,
+            "closeReason": null,
+            "takeProfit": 1.14546,
+            "stopLoss": 1.087769
+          }
+        ],
+        "serviceClosed": [
+          {
+            "id": 1,
+            "tradeId": null,
+            "orderId": null,
+            "ticker": "EURUSD",
+            "direction": "BUY",
+            "status": "CLOSED",
+            "entryPrice": 1.14502,
+            "openPrice": 1.14502,
+            "closePrice": 1.14744,
+            "pnl": 242.00000000000887,
+            "quantity": 1,
+            "openTime": 1781856060000,
+            "closeTime": 1781892720000,
+            "closeReason": null,
+            "takeProfit": 1.14546,
+            "stopLoss": 1.087769
+          }
+        ],
+        "openPositions": []
+      },
+      "normalized": {
+        "closed": [
+          {
+            "ticker": "EURUSD",
+            "direction": "BUY",
+            "status": "CLOSED",
+            "entryPrice": 1.14502,
+            "openPrice": 1.14502,
+            "closePrice": 1.14744,
+            "pnl": 242,
+            "quantity": 1,
+            "openTime": 1781856060000,
+            "closeTime": 1781892720000,
+            "closeReason": null,
+            "takeProfit": 1.14546,
+            "stopLoss": 1.087769
+          }
+        ],
+        "journal": [
+          {
+            "ticker": "EURUSD",
+            "direction": "BUY",
+            "status": "CLOSED",
+            "entryPrice": 1.14502,
+            "openPrice": 1.14502,
+            "closePrice": 1.14744,
+            "pnl": 242,
+            "quantity": 1,
+            "openTime": 1781856060000,
+            "closeTime": 1781892720000,
+            "closeReason": null,
+            "takeProfit": 1.14546,
+            "stopLoss": 1.087769
+          }
+        ],
+        "serviceClosed": [
+          {
+            "ticker": "EURUSD",
+            "direction": "BUY",
+            "status": "CLOSED",
+            "entryPrice": 1.14502,
+            "openPrice": 1.14502,
+            "closePrice": 1.14744,
+            "pnl": 242,
+            "quantity": 1,
+            "openTime": 1781856060000,
+            "closeTime": 1781892720000,
+            "closeReason": null,
+            "takeProfit": 1.14546,
+            "stopLoss": 1.087769
+          }
+        ]
+      },
+      "transcripts": {
+        "fills": [
+          {
+            "ticker": "EURUSD",
+            "direction": "BUY",
+            "status": "CLOSED",
+            "entryPrice": 1.14502,
+            "openPrice": 1.14502,
+            "closePrice": 1.14744,
+            "pnl": 242,
+            "quantity": 1,
+            "openTime": 1781856060000,
+            "closeTime": 1781892720000,
+            "closeReason": null,
+            "takeProfit": 1.14546,
+            "stopLoss": 1.087769
+          }
+        ],
+        "journal": [
+          {
+            "ticker": "EURUSD",
+            "direction": "BUY",
+            "status": "CLOSED",
+            "entryPrice": 1.14502,
+            "openPrice": 1.14502,
+            "closePrice": 1.14744,
+            "pnl": 242,
+            "quantity": 1,
+            "openTime": 1781856060000,
+            "closeTime": 1781892720000,
+            "closeReason": null,
+            "takeProfit": 1.14546,
+            "stopLoss": 1.087769
+          }
+        ],
+        "money": [
+          {
+            "ticker": "EURUSD",
+            "direction": "BUY",
+            "status": "CLOSED",
+            "entryPrice": 1.14502,
+            "openPrice": 1.14502,
+            "closePrice": 1.14744,
+            "pnl": 242,
+            "quantity": 1,
+            "openTime": 1781856060000,
+            "closeTime": 1781892720000,
+            "closeReason": null,
+            "takeProfit": 1.14546,
+            "stopLoss": 1.087769
+          }
+        ],
+        "digests": {
+          "fills": "357f693c501c3ab6921b1c1c520ada27b26a92960009cf7967026fd200fad7ac",
+          "journal": "357f693c501c3ab6921b1c1c520ada27b26a92960009cf7967026fd200fad7ac",
+          "money": "357f693c501c3ab6921b1c1c520ada27b26a92960009cf7967026fd200fad7ac"
+        }
+      },
+      "digest": "dcb329e4e22f536b10ab1b0b5256ef4228debdff4fc8f53eb9fc2427ef510dc6"
+    },
+    {
+      "speed": 5,
+      "status": "OBSERVED",
+      "setup": {
+        "ok": true,
+        "speed": 5,
+        "chosen": {
+          "startIdx": 1400,
+          "hitIdx": 1403,
+          "direction": "BUY",
+          "entry": 1.14502,
+          "target": 1.14546,
+          "delta": 0.00017175299999999997,
+          "startT": 1781856060000,
+          "fileId": "677",
+          "symbol": "EURUSD",
+          "timeframe": "1m"
+        },
+        "submitted": {
+          "id": 2,
+          "orderId": null
+        },
+        "speedField": 5,
+        "index": 1400,
+        "replayTimestamp": 1781856060000,
+        "build": "20260802b122"
+      },
+      "finalState": {
+        "index": 2011,
+        "replayTimestamp": 1781892720000,
+        "speed": 5,
+        "playing": false,
+        "managerOpen": 0,
+        "managerClosed": 1,
+        "managerJournal": 1,
+        "serviceClosed": 1
+      },
+      "raw": {
+        "build": "20260802b122",
+        "managerClosed": [
+          {
+            "id": 2,
+            "tradeId": null,
+            "orderId": null,
+            "ticker": "EURUSD",
+            "direction": "BUY",
+            "status": "CLOSED",
+            "entryPrice": 1.14502,
+            "openPrice": 1.14502,
+            "closePrice": 1.14744,
+            "pnl": 242.00000000000887,
+            "quantity": 1,
+            "openTime": 1781856060000,
+            "closeTime": 1781892720000,
+            "closeReason": null,
+            "takeProfit": 1.14546,
+            "stopLoss": 1.087769
+          }
+        ],
+        "managerJournal": [
+          {
+            "id": 2,
+            "tradeId": 2,
+            "orderId": null,
+            "ticker": "EURUSD",
+            "direction": "BUY",
+            "status": "closed",
+            "entryPrice": 1.14502,
+            "openPrice": 1.14502,
+            "closePrice": 1.14744,
+            "pnl": 242.00000000000887,
+            "quantity": 1,
+            "openTime": 1781856060000,
+            "closeTime": 1781892720000,
+            "closeReason": null,
+            "takeProfit": 1.14546,
+            "stopLoss": 1.087769
+          }
+        ],
+        "serviceClosed": [
+          {
+            "id": 2,
+            "tradeId": null,
+            "orderId": null,
+            "ticker": "EURUSD",
+            "direction": "BUY",
+            "status": "CLOSED",
+            "entryPrice": 1.14502,
+            "openPrice": 1.14502,
+            "closePrice": 1.14744,
+            "pnl": 242.00000000000887,
+            "quantity": 1,
+            "openTime": 1781856060000,
+            "closeTime": 1781892720000,
+            "closeReason": null,
+            "takeProfit": 1.14546,
+            "stopLoss": 1.087769
+          }
+        ],
+        "openPositions": []
+      },
+      "normalized": {
+        "closed": [
+          {
+            "ticker": "EURUSD",
+            "direction": "BUY",
+            "status": "CLOSED",
+            "entryPrice": 1.14502,
+            "openPrice": 1.14502,
+            "closePrice": 1.14744,
+            "pnl": 242,
+            "quantity": 1,
+            "openTime": 1781856060000,
+            "closeTime": 1781892720000,
+            "closeReason": null,
+            "takeProfit": 1.14546,
+            "stopLoss": 1.087769
+          }
+        ],
+        "journal": [
+          {
+            "ticker": "EURUSD",
+            "direction": "BUY",
+            "status": "CLOSED",
+            "entryPrice": 1.14502,
+            "openPrice": 1.14502,
+            "closePrice": 1.14744,
+            "pnl": 242,
+            "quantity": 1,
+            "openTime": 1781856060000,
+            "closeTime": 1781892720000,
+            "closeReason": null,
+            "takeProfit": 1.14546,
+            "stopLoss": 1.087769
+          }
+        ],
+        "serviceClosed": [
+          {
+            "ticker": "EURUSD",
+            "direction": "BUY",
+            "status": "CLOSED",
+            "entryPrice": 1.14502,
+            "openPrice": 1.14502,
+            "closePrice": 1.14744,
+            "pnl": 242,
+            "quantity": 1,
+            "openTime": 1781856060000,
+            "closeTime": 1781892720000,
+            "closeReason": null,
+            "takeProfit": 1.14546,
+            "stopLoss": 1.087769
+          }
+        ]
+      },
+      "transcripts": {
+        "fills": [
+          {
+            "ticker": "EURUSD",
+            "direction": "BUY",
+            "status": "CLOSED",
+            "entryPrice": 1.14502,
+            "openPrice": 1.14502,
+            "closePrice": 1.14744,
+            "pnl": 242,
+            "quantity": 1,
+            "openTime": 1781856060000,
+            "closeTime": 1781892720000,
+            "closeReason": null,
+            "takeProfit": 1.14546,
+            "stopLoss": 1.087769
+          }
+        ],
+        "journal": [
+          {
+            "ticker": "EURUSD",
+            "direction": "BUY",
+            "status": "CLOSED",
+            "entryPrice": 1.14502,
+            "openPrice": 1.14502,
+            "closePrice": 1.14744,
+            "pnl": 242,
+            "quantity": 1,
+            "openTime": 1781856060000,
+            "closeTime": 1781892720000,
+            "closeReason": null,
+            "takeProfit": 1.14546,
+            "stopLoss": 1.087769
+          }
+        ],
+        "money": [
+          {
+            "ticker": "EURUSD",
+            "direction": "BUY",
+            "status": "CLOSED",
+            "entryPrice": 1.14502,
+            "openPrice": 1.14502,
+            "closePrice": 1.14744,
+            "pnl": 242,
+            "quantity": 1,
+            "openTime": 1781856060000,
+            "closeTime": 1781892720000,
+            "closeReason": null,
+            "takeProfit": 1.14546,
+            "stopLoss": 1.087769
+          }
+        ],
+        "digests": {
+          "fills": "357f693c501c3ab6921b1c1c520ada27b26a92960009cf7967026fd200fad7ac",
+          "journal": "357f693c501c3ab6921b1c1c520ada27b26a92960009cf7967026fd200fad7ac",
+          "money": "357f693c501c3ab6921b1c1c520ada27b26a92960009cf7967026fd200fad7ac"
+        }
+      },
+      "digest": "dcb329e4e22f536b10ab1b0b5256ef4228debdff4fc8f53eb9fc2427ef510dc6"
+    },
+    {
+      "speed": 10,
+      "status": "OBSERVED",
+      "setup": {
+        "ok": true,
+        "speed": 10,
+        "chosen": {
+          "startIdx": 1400,
+          "hitIdx": 1403,
+          "direction": "BUY",
+          "entry": 1.14502,
+          "target": 1.14546,
+          "delta": 0.00017175299999999997,
+          "startT": 1781856060000,
+          "fileId": "677",
+          "symbol": "EURUSD",
+          "timeframe": "1m"
+        },
+        "submitted": {
+          "id": 3,
+          "orderId": null
+        },
+        "speedField": 10,
+        "index": 1400,
+        "replayTimestamp": 1781856060000,
+        "build": "20260802b122"
+      },
+      "finalState": {
+        "index": 2011,
+        "replayTimestamp": 1781892720000,
+        "speed": 10,
+        "playing": false,
+        "managerOpen": 0,
+        "managerClosed": 1,
+        "managerJournal": 1,
+        "serviceClosed": 1
+      },
+      "raw": {
+        "build": "20260802b122",
+        "managerClosed": [
+          {
+            "id": 3,
+            "tradeId": null,
+            "orderId": null,
+            "ticker": "EURUSD",
+            "direction": "BUY",
+            "status": "CLOSED",
+            "entryPrice": 1.14502,
+            "openPrice": 1.14502,
+            "closePrice": 1.14744,
+            "pnl": 242.00000000000887,
+            "quantity": 1,
+            "openTime": 1781856060000,
+            "closeTime": 1781892720000,
+            "closeReason": null,
+            "takeProfit": 1.14546,
+            "stopLoss": 1.087769
+          }
+        ],
+        "managerJournal": [
+          {
+            "id": 3,
+            "tradeId": 3,
+            "orderId": null,
+            "ticker": "EURUSD",
+            "direction": "BUY",
+            "status": "closed",
+            "entryPrice": 1.14502,
+            "openPrice": 1.14502,
+            "closePrice": 1.14744,
+            "pnl": 242.00000000000887,
+            "quantity": 1,
+            "openTime": 1781856060000,
+            "closeTime": 1781892720000,
+            "closeReason": null,
+            "takeProfit": 1.14546,
+            "stopLoss": 1.087769
+          }
+        ],
+        "serviceClosed": [
+          {
+            "id": 3,
+            "tradeId": null,
+            "orderId": null,
+            "ticker": "EURUSD",
+            "direction": "BUY",
+            "status": "CLOSED",
+            "entryPrice": 1.14502,
+            "openPrice": 1.14502,
+            "closePrice": 1.14744,
+            "pnl": 242.00000000000887,
+            "quantity": 1,
+            "openTime": 1781856060000,
+            "closeTime": 1781892720000,
+            "closeReason": null,
+            "takeProfit": 1.14546,
+            "stopLoss": 1.087769
+          }
+        ],
+        "openPositions": []
+      },
+      "normalized": {
+        "closed": [
+          {
+            "ticker": "EURUSD",
+            "direction": "BUY",
+            "status": "CLOSED",
+            "entryPrice": 1.14502,
+            "openPrice": 1.14502,
+            "closePrice": 1.14744,
+            "pnl": 242,
+            "quantity": 1,
+            "openTime": 1781856060000,
+            "closeTime": 1781892720000,
+            "closeReason": null,
+            "takeProfit": 1.14546,
+            "stopLoss": 1.087769
+          }
+        ],
+        "journal": [
+          {
+            "ticker": "EURUSD",
+            "direction": "BUY",
+            "status": "CLOSED",
+            "entryPrice": 1.14502,
+            "openPrice": 1.14502,
+            "closePrice": 1.14744,
+            "pnl": 242,
+            "quantity": 1,
+            "openTime": 1781856060000,
+            "closeTime": 1781892720000,
+            "closeReason": null,
+            "takeProfit": 1.14546,
+            "stopLoss": 1.087769
+          }
+        ],
+        "serviceClosed": [
+          {
+            "ticker": "EURUSD",
+            "direction": "BUY",
+            "status": "CLOSED",
+            "entryPrice": 1.14502,
+            "openPrice": 1.14502,
+            "closePrice": 1.14744,
+            "pnl": 242,
+            "quantity": 1,
+            "openTime": 1781856060000,
+            "closeTime": 1781892720000,
+            "closeReason": null,
+            "takeProfit": 1.14546,
+            "stopLoss": 1.087769
+          }
+        ]
+      },
+      "transcripts": {
+        "fills": [
+          {
+            "ticker": "EURUSD",
+            "direction": "BUY",
+            "status": "CLOSED",
+            "entryPrice": 1.14502,
+            "openPrice": 1.14502,
+            "closePrice": 1.14744,
+            "pnl": 242,
+            "quantity": 1,
+            "openTime": 1781856060000,
+            "closeTime": 1781892720000,
+            "closeReason": null,
+            "takeProfit": 1.14546,
+            "stopLoss": 1.087769
+          }
+        ],
+        "journal": [
+          {
+            "ticker": "EURUSD",
+            "direction": "BUY",
+            "status": "CLOSED",
+            "entryPrice": 1.14502,
+            "openPrice": 1.14502,
+            "closePrice": 1.14744,
+            "pnl": 242,
+            "quantity": 1,
+            "openTime": 1781856060000,
+            "closeTime": 1781892720000,
+            "closeReason": null,
+            "takeProfit": 1.14546,
+            "stopLoss": 1.087769
+          }
+        ],
+        "money": [
+          {
+            "ticker": "EURUSD",
+            "direction": "BUY",
+            "status": "CLOSED",
+            "entryPrice": 1.14502,
+            "openPrice": 1.14502,
+            "closePrice": 1.14744,
+            "pnl": 242,
+            "quantity": 1,
+            "openTime": 1781856060000,
+            "closeTime": 1781892720000,
+            "closeReason": null,
+            "takeProfit": 1.14546,
+            "stopLoss": 1.087769
+          }
+        ],
+        "digests": {
+          "fills": "357f693c501c3ab6921b1c1c520ada27b26a92960009cf7967026fd200fad7ac",
+          "journal": "357f693c501c3ab6921b1c1c520ada27b26a92960009cf7967026fd200fad7ac",
+          "money": "357f693c501c3ab6921b1c1c520ada27b26a92960009cf7967026fd200fad7ac"
+        }
+      },
+      "digest": "dcb329e4e22f536b10ab1b0b5256ef4228debdff4fc8f53eb9fc2427ef510dc6"
+    }
+  ],
+  "comparison": {
+    "ok": true,
+    "reason": "byte-equal-across-coordinates",
+    "pairs": [
+      {
+        "name": "fills",
+        "equal": true,
+        "digests": [
+          "357f693c501c3ab6921b1c1c520ada27b26a92960009cf7967026fd200fad7ac",
+          "357f693c501c3ab6921b1c1c520ada27b26a92960009cf7967026fd200fad7ac",
+          "357f693c501c3ab6921b1c1c520ada27b26a92960009cf7967026fd200fad7ac"
+        ],
+        "anchorDigest": "357f693c501c3ab6921b1c1c520ada27b26a92960009cf7967026fd200fad7ac"
+      },
+      {
+        "name": "journal",
+        "equal": true,
+        "digests": [
+          "357f693c501c3ab6921b1c1c520ada27b26a92960009cf7967026fd200fad7ac",
+          "357f693c501c3ab6921b1c1c520ada27b26a92960009cf7967026fd200fad7ac",
+          "357f693c501c3ab6921b1c1c520ada27b26a92960009cf7967026fd200fad7ac"
+        ],
+        "anchorDigest": "357f693c501c3ab6921b1c1c520ada27b26a92960009cf7967026fd200fad7ac"
+      },
+      {
+        "name": "money",
+        "equal": true,
+        "digests": [
+          "357f693c501c3ab6921b1c1c520ada27b26a92960009cf7967026fd200fad7ac",
+          "357f693c501c3ab6921b1c1c520ada27b26a92960009cf7967026fd200fad7ac",
+          "357f693c501c3ab6921b1c1c520ada27b26a92960009cf7967026fd200fad7ac"
+        ],
+        "anchorDigest": "357f693c501c3ab6921b1c1c520ada27b26a92960009cf7967026fd200fad7ac"
+      }
+    ],
+    "anchorDigests": {
+      "fills": "357f693c501c3ab6921b1c1c520ada27b26a92960009cf7967026fd200fad7ac",
+      "journal": "357f693c501c3ab6921b1c1c520ada27b26a92960009cf7967026fd200fad7ac",
+      "money": "357f693c501c3ab6921b1c1c520ada27b26a92960009cf7967026fd200fad7ac"
+    },
+    "speeds": [
+      1,
+      5,
+      10
+    ],
+    "closedCounts": [
+      1,
+      1,
+      1
+    ],
+    "journalCounts": [
+      1,
+      1,
+      1
+    ],
+    "moneyFieldsBySpeed": {
+      "1": {
+        "ticker": "EURUSD",
+        "direction": "BUY",
+        "status": "CLOSED",
+        "entryPrice": 1.14502,
+        "openPrice": 1.14502,
+        "closePrice": 1.14744,
+        "pnl": 242,
+        "quantity": 1,
+        "openTime": 1781856060000,
+        "closeTime": 1781892720000,
+        "closeReason": null,
+        "takeProfit": 1.14546,
+        "stopLoss": 1.087769
+      },
+      "5": {
+        "ticker": "EURUSD",
+        "direction": "BUY",
+        "status": "CLOSED",
+        "entryPrice": 1.14502,
+        "openPrice": 1.14502,
+        "closePrice": 1.14744,
+        "pnl": 242,
+        "quantity": 1,
+        "openTime": 1781856060000,
+        "closeTime": 1781892720000,
+        "closeReason": null,
+        "takeProfit": 1.14546,
+        "stopLoss": 1.087769
+      },
+      "10": {
+        "ticker": "EURUSD",
+        "direction": "BUY",
+        "status": "CLOSED",
+        "entryPrice": 1.14502,
+        "openPrice": 1.14502,
+        "closePrice": 1.14744,
+        "pnl": 242,
+        "quantity": 1,
+        "openTime": 1781856060000,
+        "closeTime": 1781892720000,
+        "closeReason": null,
+        "takeProfit": 1.14546,
+        "stopLoss": 1.087769
+      }
+    },
+    "pageBuilds": [
+      "20260802b122",
+      "20260802b122",
+      "20260802b122"
+    ]
+  },
+  "verdict": "PASSED"
+}

@@ -239,6 +239,50 @@ const SPEED_GOV_RATE_WINDOW_MS = 2000;
 const SPEED_GOV_MIN_INTERVAL_MS = 16;
 
 /**
+ * ORDER-01B — the market seconds one step may cover.
+ *
+ * The speed ladder answers "how often", and on its own it could never answer
+ * "how far": ten steps a second across one-minute bars and ten steps a second
+ * across one-second bars are the same speed and sixty times apart in market
+ * time. The step knob is the second half of that sentence.
+ *
+ * Only divisors of the chart timeframe are offered, and only from this list. A
+ * step that does not divide the timeframe evenly leaves a ragged remainder in
+ * every bar, so the forming candle would close early or late by that remainder
+ * — visible immediately as a playhead that drifts off the bar boundary.
+ */
+const ORDER01B_STEP_CANDIDATE_SECONDS = Object.freeze([
+    1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 900, 1800,
+    3600, 7200, 14400, 21600, 43200, 86400,
+]);
+
+/**
+ * ORDER-01B master switch. Negatively named, unlike the SPEED-01 governor
+ * flag, because the reinterpretation is the shipped behaviour and the switch
+ * exists only to get back to the old one: absent ⇒ the step knob is live;
+ * truthy ⇒ a step is one chart bar again and `setStepSeconds` refuses.
+ */
+function _order01bStepV1Enabled() {
+    return !_speedGovFlagState('__TALARIA_DISABLE_ORDER01B_STEP_V1', false);
+}
+
+/**
+ * Timeframe string for a step, in the vocabulary `timeframeToMs` already
+ * parses. The step knob writes the same `stepTimeframeOverride` the INTERVAL
+ * popup writes — deliberately, so the two controls cannot disagree about what
+ * a step is. Two sources of truth for one number is how the cadence ends up
+ * derived from one control and the playhead advanced by the other.
+ */
+function _order01bStepLabel(seconds) {
+    const n = Math.round(Number(seconds));
+    if (!Number.isFinite(n) || n <= 0) return null;
+    if (n % 86400 === 0) return `${n / 86400}d`;
+    if (n % 3600 === 0) return `${n / 3600}h`;
+    if (n % 60 === 0) return `${n / 60}m`;
+    return `${n}s`;
+}
+
+/**
  * Bounds on the corrector's authority. Without them a momentary stall
  * reads as near-zero rate and the corrector demands an enormous burst,
  * which is the very unbounded unit of work that caused the drift.
@@ -5756,6 +5800,129 @@ class ReplaySystem {
     }
 
     /* ----------------------------------------------------------------- *
+     * ORDER-01B — the step knob: how far one step moves the market clock.
+     * ----------------------------------------------------------------- */
+
+    /** The chart timeframe in seconds: the coarsest step, and the default. */
+    getChartTimeframeSeconds() {
+        const tf = this.chart && this.chart.currentTimeframe;
+        const ms = tf ? this.timeframeToMs(tf) : null;
+        if (Number.isFinite(ms) && ms > 0) return Math.round(ms / 1000);
+        const raw = this._getRawBarPeriodMs();
+        return Number.isFinite(raw) && raw > 0 ? Math.round(raw / 1000) : 60;
+    }
+
+    /**
+     * The finest step the loaded inventory can actually render, in seconds.
+     * Below this there is no bar to advance onto, so the step has to be drawn
+     * by the simulated path rather than read out of data.
+     */
+    getDataFloorSeconds() {
+        const raw = this._getRawBarPeriodMs();
+        return Number.isFinite(raw) && raw > 0 ? Math.round(raw / 1000) : 60;
+    }
+
+    /**
+     * The steps the knob may offer: divisors of the chart timeframe, coarsest
+     * last, always including the timeframe itself. The timeframe is appended
+     * even when it is not a listed candidate, because "one bar per step" must
+     * remain reachable on any timeframe — that is the setting the whole
+     * pre-ORDER-01B product ran at.
+     */
+    getOfferedStepSeconds() {
+        const tfSeconds = this.getChartTimeframeSeconds();
+        const out = [];
+        for (const candidate of ORDER01B_STEP_CANDIDATE_SECONDS) {
+            if (candidate > tfSeconds) break;
+            if (tfSeconds % candidate === 0) out.push(candidate);
+        }
+        if (out.indexOf(tfSeconds) === -1) out.push(tfSeconds);
+        return out;
+    }
+
+    /** A step finer than the inventory must be drawn, not read. */
+    isStepBelowDataFloor(seconds = this.getStepSeconds()) {
+        return Number(seconds) < this.getDataFloorSeconds();
+    }
+
+    /** How the current step is served: out of data, or by the simulated path. */
+    getStepRouting() {
+        const stepSeconds = this.getStepSeconds();
+        return {
+            stepSeconds,
+            dataFloorSeconds: this.getDataFloorSeconds(),
+            route: this.isStepBelowDataFloor(stepSeconds) ? 'puppet' : 'native',
+        };
+    }
+
+    /** Menu label for a step, in the same vocabulary the INTERVAL popup uses. */
+    getStepLabel(seconds = this.getStepSeconds()) {
+        return _order01bStepLabel(seconds);
+    }
+
+    /**
+     * Market seconds advanced by one step. Defaults to the chart timeframe,
+     * which makes `speed` mean bars per second exactly as it did before the
+     * knob existed — the soak at `speed=10, step=TF` is arithmetically the
+     * old ten-bars-a-second run, not a new regime with the same name.
+     */
+    getStepSeconds() {
+        if (!_order01bStepV1Enabled()) return this.getChartTimeframeSeconds();
+        const ms = this._resolveReplayStepTimeframeMs();
+        if (Number.isFinite(ms) && ms > 0) return ms / 1000;
+        return this.getChartTimeframeSeconds();
+    }
+
+    /**
+     * Choose the step. Returns false for a step that is not on offer rather
+     * than snapping to the nearest one: snapping is right for a user dragging
+     * a slider and wrong for every programmatic caller, which would otherwise
+     * record the step it asked for and run at a different one.
+     */
+    setStepSeconds(seconds) {
+        if (!_order01bStepV1Enabled()) return false;
+        const n = Number(seconds);
+        if (!Number.isFinite(n) || n <= 0) return false;
+        if (this.getOfferedStepSeconds().indexOf(n) === -1) return false;
+        const label = _order01bStepLabel(n);
+        if (!label) return false;
+
+        this.stepTimeframeOverride = label;
+        // A new step is a new regime: market time per tick changes, so the
+        // rate window describes something that is no longer running.
+        this._speedGovResetMeter();
+        if (this.isPlaying && typeof this._restartPlaybackAfterControlChange === 'function') {
+            this._restartPlaybackAfterControlChange(true);
+        }
+        return true;
+    }
+
+    /**
+     * True once the user has actually chosen a step. Absent a choice the
+     * product behaves exactly as it did before ORDER-01B, which is what keeps
+     * the A8 baseline a valid comparison.
+     */
+    _order01bHasExplicitStep() {
+        return !!(_order01bStepV1Enabled() && this._hasExplicitReplayStepInterval());
+    }
+
+    /** Steps per wall-second: the ladder value, which is what speed now means. */
+    getTargetStepsPerWallSecond() {
+        const base = this.normalizeSpeed(this.speed);
+        const n = Number(base);
+        return Number.isFinite(n) && n > 0 ? n : 1;
+    }
+
+    /**
+     * The rate the two knobs promise together, in market seconds per wall
+     * second. This is the number a user can check against a clock, and the
+     * one `__talariaEffectiveRate` is measured against.
+     */
+    getMarketSecondsPerWallSecond() {
+        return this.getTargetStepsPerWallSecond() * this.getStepSeconds();
+    }
+
+    /* ----------------------------------------------------------------- *
      * SPEED-01 / ORDER-01 — governor: ladder, meter, corrector, clock.
      * ----------------------------------------------------------------- */
 
@@ -6084,6 +6251,16 @@ class ReplaySystem {
         let intervalMs = Math.max(MIN_INTERVAL_MS, Math.floor(1000 / speed));
         let stepsPerTick = Math.max(1, Math.round((speed * intervalMs) / 1000));
         const orderMoneyPath = this.isPlaying && this._getOrderExecutionCadenceMs() != null;
+
+        // ORDER-01B: with a step chosen, the ladder is steps per wall-second
+        // and nothing downstream may add steps to a tick. The finest-TF
+        // subdivision below exists to keep a coarse host in step with a finer
+        // peer, and it multiplies steps per tick to do it — correct when a
+        // step is one bar of whatever the panel shows, and a silent multiple
+        // of the promised rate once the user has said how far a step goes.
+        if (this._order01bHasExplicitStep()) {
+            return { intervalMs, stepsPerTick: 1, orderMoneyPath };
+        }
         // Kill-switch restores the safe-but-slow legacy path: one exact fine event
         // and one chart paint per timer tick whenever an order owns the money path.
         if (orderMoneyPath && !this._isOrderMoneyPathBatchEnabled()) {
@@ -6701,14 +6878,18 @@ class ReplaySystem {
         if (tfLower === 'w') return 7 * 24 * 60 * 60 * 1000;
         if (tfLower === 'mo') return 30 * 24 * 60 * 60 * 1000;
 
-        // Parse number + unit (supports m/h/d/w/mo)
-        const match = tfLower.match(/^(\d+)\s*(mo|w|d|h|m)$/);
+        // Parse number + unit (supports s/m/h/d/w/mo).
+        // Seconds are here for the ORDER-01B step knob: a sub-minute step has
+        // no timeframe spelling without them, and the step writes the same
+        // `stepTimeframeOverride` string the INTERVAL popup does.
+        const match = tfLower.match(/^(\d+)\s*(mo|w|d|h|m|s)$/);
         if (!match) return null;
 
         const num = parseInt(match[1], 10);
         const unit = match[2];
 
         switch (unit) {
+            case 's': return num * 1000;
             case 'm': return num * 60 * 1000;
             case 'h': return num * 60 * 60 * 1000;
             case 'd': return num * 24 * 60 * 60 * 1000;
