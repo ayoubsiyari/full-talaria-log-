@@ -117,6 +117,18 @@ function preChangeSource(rel, marker) {
 
 const PRE = preChangeSource(SYNC_REL, COALESCE_MARKER);
 
+/**
+ * replay-system.js as it stood immediately before the QW-3 registry bound.
+ *
+ * Part A's attribution is a claim about the bytes the row was filed against, so it
+ * is pinned there. Asserting it against today's file would make the cells fail the
+ * moment the defect is fixed, which is backwards.
+ */
+const REPLAY_PRE_QW3 = execFileSync(
+    'git', ['show', `189a360ec:${REPLAY_REL}`],
+    { cwd: REPO, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 },
+);
+
 /* ------------------------------------------------------------------ the m20Q6 scheduler harness */
 
 /**
@@ -126,18 +138,36 @@ const PRE = preChangeSource(SYNC_REL, COALESCE_MARKER);
  * `m20Q6CapturedClear`, which is the whole point of the row.
  */
 function makeHarness() {
+    // The registry bound (QW-3) added a switch, a pool cap and a release path that
+    // m20Q6TrackScheduler now calls. Lifting the tracker without them compiles and
+    // then throws at the first timer, so they are lifted here rather than stubbed:
+    // a stub would let this suite pass against a registry that no longer bounds.
+    const poolCap = REPLAY_SRC.match(/const M20Q6_SCHEDULER_POOL_CAP = \d+;/)[0];
     const pieces = [
+        poolCap,
+        // These two are module-level, not inside the m20Q6 IIFE.
+        extractFunction(REPLAY_SRC, '_talariaDisableFlagTruthy', { indent: '' }),
+        extractFunction(REPLAY_SRC, '_m20Q6SchedulerPoolV1Enabled', { indent: '' }),
+        extractFunction(REPLAY_SRC, 'm20Q6SchedulerLabel'),
+        extractFunction(REPLAY_SRC, 'm20Q6ReleaseScheduler'),
         extractFunction(REPLAY_SRC, 'm20Q6RestoreOwnProperty'),
         extractFunction(REPLAY_SRC, 'm20Q6TrackScheduler'),
         extractFunction(REPLAY_SRC, 'm20Q6PatchSchedulers'),
     ].join('\n\n');
 
     // eslint-disable-next-line no-new-func
-    const factory = new Function('m20Q6CaptureEffects',
+    const factory = new Function('m20Q6CaptureEffects', 'window',
         `${pieces}\nreturn { m20Q6PatchSchedulers, m20Q6RestoreOwnProperty, m20Q6TrackScheduler };`);
 
     let api = null;
-    const state = { schedulers: [], acceptCallbacks: true, captureDepth: 0, instance: null };
+    const state = {
+        schedulers: [],
+        schedulerSerial: 0,
+        schedulerPool: [],
+        acceptCallbacks: true,
+        captureDepth: 0,
+        instance: null,
+    };
 
     function captureEffects(st, fn) {
         if (!st || st.captureDepth > 0) return fn();
@@ -154,7 +184,10 @@ function makeHarness() {
         }
     }
 
-    api = factory((st, fn) => captureEffects(st, fn));
+    const win = {};
+    win.parent = win;
+    win.top = win;
+    api = factory((st, fn) => captureEffects(st, fn), win);
 
     const clock = { now: 1_700_000_000_000 };
     const timers = [];
@@ -348,22 +381,34 @@ test('R2 ATTRIBUTION: m20Q6CapturedClear is the patched clearTimeout, not replay
     const patch = extractFunction(REPLAY_SRC, 'm20Q6PatchSchedulers');
     assert.match(patch, /\['clearTimeout', 'timeout'\]/);
     assert.match(patch, /function m20Q6CapturedClear\(handle\)/);
-    assert.match(patch, /for \(const entry of state\.schedulers\)/,
-        'the cost is a linear scan of state.schedulers');
+
+    // The scan this row attributed the cost to was real, and is pinned against the
+    // bytes the row was filed against rather than against today's file.
+    const patchPre = extractFunction(REPLAY_PRE_QW3, 'm20Q6PatchSchedulers');
+    assert.match(patchPre, /for \(const entry of state\.schedulers\)/,
+        'the attributed cost was a forward linear scan of state.schedulers');
+    assert.ok(!/for \(const entry of state\.schedulers\)/.test(patch),
+        'and QW-3 has since removed it; if it is back, the registry bound was reverted');
 });
 
-test('R3 ATTRIBUTION: state.schedulers is pruned only at teardown, so the scan grows without bound', () => {
-    const prunes = [...REPLAY_SRC.matchAll(/state\.schedulers = state\.schedulers\.filter/g)];
-    assert.equal(prunes.length, 1, 'exactly one prune site');
-    assert.equal(enclosingMethod(REPLAY_SRC, prunes[0].index), 'm20Q6DrainState');
+test('R3 ATTRIBUTION: the registry grew without bound, and QW-3 bounded it', () => {
+    // The finding, against the bytes it was filed against: one prune site, at teardown.
+    const prunesPre = [...REPLAY_PRE_QW3.matchAll(/state\.schedulers = state\.schedulers\.filter/g)];
+    assert.equal(prunesPre.length, 1, 'exactly one prune site before QW-3');
+    assert.equal(enclosingMethod(REPLAY_PRE_QW3, prunesPre[0].index), 'm20Q6DrainState');
 
-    const pre = runSession(PRE.src, { ticks: 1200, quietMs: 0 });
-    assert.equal(pre.schedulersRetained, 1200,
-        'one retained scheduler entry per tick — the array only ever grows during a session');
-    // Quadratic, not linear: total scan iterations ≈ n²/2.
-    const n = pre.capturedClearEntries;
-    assert.ok(pre.capturedClearScanIterations > (n * n) / 4,
-        `scan cost must be quadratic in session length (n=${n}, iters=${pre.capturedClearScanIterations})`);
+    // The fix, measured through the same harness that measured the defect. The
+    // registry now releases entries as they settle, so a long session neither
+    // retains an entry per tick nor pays a quadratic scan.
+    const now = runSession(PRE.src, { ticks: 1200, quietMs: 0 });
+    assert.ok(now.schedulersRetained < 64,
+        'retention must track live timers, not tick count '
+        + `(retained ${now.schedulersRetained} across 1200 ticks)`);
+    const n = now.capturedClearEntries;
+    assert.ok(n > 0, 'the clear path must still be exercised, or this proves nothing');
+    assert.ok(now.capturedClearScanIterations < n * 64,
+        'scan cost must now be linear in live timers rather than quadratic in session length '
+        + `(n=${n}, iters=${now.capturedClearScanIterations})`);
 });
 
 test('R4 ATTRIBUTION: no innerHTML write is reachable from the replayVirtualTimeChanged path', () => {
