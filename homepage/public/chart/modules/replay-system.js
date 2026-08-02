@@ -7098,6 +7098,70 @@ class ReplaySystem {
             }
         }, tickInterval);
     }
+
+    /**
+     * Derive the current forming candle from existing replay step-clock state.
+     * This produces data only; it does not install a timer, rAF, or paint loop.
+     */
+    _deriveStepClockFormingCandle(target, ticksNeeded) {
+        if (!target || !target.target) return null;
+        const tc = target.target;
+        const count = Math.max(1, Number(ticksNeeded) || this.currentTicksPerCandle || this.ticksPerCandle || 72);
+        const progress = Math.max(0, Math.min(Number(this.tickProgress) || 0, count));
+        const open = Number(tc.o);
+        const close = Number(tc.c);
+        const high = Number(tc.h);
+        const low = Number(tc.l);
+        if (![open, close, high, low].every(Number.isFinite)) return null;
+
+        let currentPrice = close;
+        let currentHigh = high;
+        let currentLow = low;
+        let currentVolume = Number(tc.v) || 0;
+
+        if (progress < count) {
+            if (!target.cachedPath) {
+                target.cachedPath = this.getTickPath(tc);
+            }
+            const pathSpan = Math.max(0, target.cachedPath.length - 1);
+            const tickSpan = Math.max(1, count - 1);
+            const pathIndex = Math.min(
+                pathSpan,
+                Math.floor((Math.max(0, progress - 1) * pathSpan) / tickSpan),
+            );
+            currentPrice = target.cachedPath[pathIndex];
+            currentPrice = Math.max(low, Math.min(high, currentPrice));
+            currentHigh = Math.max(target.high, currentPrice);
+            currentLow = Math.min(target.low, currentPrice);
+
+            if (!target._volumeCurve) {
+                const vRng = this.createSeededRandom(tc.t + 7919);
+                const curve = new Array(count);
+                let sum = 0;
+                for (let vi = 0; vi < count; vi++) {
+                    let tickVol = 0.5 + vRng() * 1.0;
+                    if (vRng() < 0.20) tickVol *= 2 + vRng() * 2;
+                    sum += tickVol;
+                    curve[vi] = sum;
+                }
+                for (let vi = 0; vi < count; vi++) curve[vi] /= sum;
+                target._volumeCurve = curve;
+            }
+            const volIdx = Math.min(Math.max(0, progress - 1), count - 1);
+            currentVolume = target.targetVolume * target._volumeCurve[volIdx];
+        }
+
+        return {
+            t: target.t,
+            o: target.open,
+            h: currentHigh,
+            l: currentLow,
+            c: currentPrice,
+            v: currentVolume,
+            __talariaFormingSim: true,
+            __talariaFormingSimSource: 'step-clock',
+        };
+    }
     
     /**
      * Animate a single tick using CACHED deterministic tick paths
@@ -7145,64 +7209,15 @@ class ReplaySystem {
         }
         
         const target = this.animatingCandle;
-        const tc = target.target; // target candle
-        const open = tc.o;
-        const close = tc.c;
-        const high = tc.h;
-        const low = tc.l;
-        const range = high - low;
-        
-        if (this.tickProgress < ticksNeeded) {
-            // === USE CACHED TICK PATH for deterministic animation ===
-            // Get path from cache (uses candle timestamp as key)
-            if (!target.cachedPath) {
-                target.cachedPath = this.getTickPath(tc);
-            }
-            
-            // Get price from cached path (deterministic across all timeframes)
-            // Frame-budgeted high speeds use fewer ticks; sample the whole cached
-            // path instead of truncating it to the first N points.
-            const pathSpan = Math.max(0, target.cachedPath.length - 1);
-            const tickSpan = Math.max(1, ticksNeeded - 1);
-            const pathIndex = Math.min(
-                pathSpan,
-                Math.floor(((this.tickProgress - 1) * pathSpan) / tickSpan),
-            );
-            let currentPrice = target.cachedPath[pathIndex];
-            
-            // NO random noise - keep it deterministic!
-            // The cached path already has realistic movement built in
-            currentPrice = Math.max(low, Math.min(high, currentPrice));
-            
-            // Update candle values
-            target.close = currentPrice;
-            target.high = Math.max(target.high, currentPrice);
-            target.low = Math.min(target.low, currentPrice);
-            
-            // Volume arrives in bursts, not linearly. A cumulative curve
-            // is generated once per candle so the profile is deterministic.
-            if (!target._volumeCurve) {
-                const vRng = this.createSeededRandom(tc.t + 7919);
-                const curve = new Array(ticksNeeded);
-                let sum = 0;
-                for (let vi = 0; vi < ticksNeeded; vi++) {
-                    let tickVol = 0.5 + vRng() * 1.0;
-                    if (vRng() < 0.20) tickVol *= 2 + vRng() * 2;
-                    sum += tickVol;
-                    curve[vi] = sum;
-                }
-                for (let vi = 0; vi < ticksNeeded; vi++) curve[vi] /= sum;
-                target._volumeCurve = curve;
-            }
-            const volIdx = Math.min(this.tickProgress - 1, ticksNeeded - 1);
-            target.volume = target.targetVolume * target._volumeCurve[volIdx];
-            
-        } else {
-            // Final tick: set exact target values
-            target.close = close;
-            target.high = high;
-            target.low = low;
-            target.volume = tc.v || 0;
+        const formingCandle = this._deriveStepClockFormingCandle(target, ticksNeeded);
+        if (formingCandle) {
+            target.close = formingCandle.c;
+            target.high = formingCandle.h;
+            target.low = formingCandle.l;
+            target.volume = formingCandle.v;
+            target.__talariaFormingSim = true;
+            target.__talariaFormingSimSource = 'step-clock';
+            this._lastStepClockFormingCandle = formingCandle;
         }
         
         // Update chart with animated candle
@@ -9858,6 +9873,8 @@ class ReplaySystem {
                 l: ac.low,
                 c: ac.close,
                 v: ac.volume || 0,
+                __talariaFormingSim: ac.__talariaFormingSim === true,
+                __talariaFormingSimSource: ac.__talariaFormingSimSource || 'step-clock',
             };
         }
         // Candle-mode frames previously omitted animatedCandle, so coarse peers sought

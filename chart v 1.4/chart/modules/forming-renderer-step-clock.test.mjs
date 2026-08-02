@@ -71,6 +71,23 @@ test('A5 product wiring: forming SIM tag is present in canonical and mirror file
   assert.equal(replaySource, replayMirrorSource, 'replay mirror must be byte-identical');
 });
 
+test('A5 product wiring: interpolation is derived from the step clock helper', () => {
+  const helper = methodSource(replaySource, '_deriveStepClockFormingCandle');
+  const animateTick = methodSource(replaySource, 'animateTick');
+  const frameDetail = methodSource(replaySource, '_buildMultichartReplayFrameDetail');
+
+  assert.match(helper, /Number\(this\.tickProgress\)/, 'helper must read step-clock progress');
+  assert.match(helper, /target\.cachedPath = this\.getTickPath\(tc\)/, 'helper derives deterministic price path');
+  assert.match(helper, /__talariaFormingSimSource:\s*'step-clock'/, 'helper stamps SIM source');
+  assert.match(animateTick, /this\._deriveStepClockFormingCandle\(target,\s*ticksNeeded\)/);
+  assert.doesNotMatch(animateTick, /const tc = target\.target/, 'tick derivation must not stay inline');
+  assert.match(frameDetail, /__talariaFormingSimSource:\s*ac\.__talariaFormingSimSource \|\| 'step-clock'/);
+
+  for (const driver of [/\bsetInterval\s*\(/, /\bsetTimeout\s*\(/, /\brequestAnimationFrame\s*\(/]) {
+    assert.doesNotMatch(helper, driver, 'step-clock helper must not install a driver');
+  }
+});
+
 test('A5 product wiring: replay/forming paints are dirty-scheduled while playing', () => {
   const replayUpdate = methodSource(replaySource, '_renderReplayChartUpdate');
   assert.match(replayUpdate, /_requestRafPaint\(\{\s*flush:\s*!this\.isPlaying\s*\}\)/);
