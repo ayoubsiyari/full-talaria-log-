@@ -12964,6 +12964,12 @@ class Chart {
                 durable.closed_positions, hot.closed_positions, om
             );
         }
+        for (const key of ['journal_by_ticker', 'per_instrument_stats']) {
+            if (!Object.prototype.hasOwnProperty.call(hot, key)
+                && Object.prototype.hasOwnProperty.call(durable, key)) {
+                out[key] = durable[key];
+            }
+        }
         out.savedAt = ha;
         // Prefer more advanced replay playhead when both present.
         if (durable.replay && hot.replay
