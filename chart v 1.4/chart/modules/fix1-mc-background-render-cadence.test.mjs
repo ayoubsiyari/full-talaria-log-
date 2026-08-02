@@ -406,6 +406,7 @@ ${body}
     // the pre-governor cadence its counts assume. The governor is covered by
     // frame-gov-v1.test.mjs; admitting it here would make paint counts wall-clock dependent.
     _frameGovShouldPaint() { return true; }
+    _frameGovRecordPaint() {}
     _clearPanTimeTickCache() { this._panTimeTickCache = null; }
     _m20Q2CountdownIdleFixEnabled() { return true; }
     _getBarCloseCountdownText() { return this.__countdownText; }
