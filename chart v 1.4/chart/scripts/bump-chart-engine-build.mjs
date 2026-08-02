@@ -91,8 +91,18 @@ function preCutIntegrityGate() {
     // From the repo the homepage mirror is two levels up and both mirrors get checked. Inside the
     // checkpoint image only the chart tree is present, so the canonical mirror is the root itself and
     // the gate reports the homepage mirror as simply absent rather than failing on it.
-    const repoRoot = fs.existsSync(path.resolve(ROOT, '../../homepage/public/chart'))
-        ? path.resolve(ROOT, '../..')
+    //
+    // Climb only when BOTH mirrors are up there, because the presence of one of them does not make a
+    // directory the repo. Inside the homepage image the chart tree is /build/chart, so two levels up is
+    // `/` — and /homepage/public/chart genuinely exists there, so testing the homepage mirror alone
+    // elected `/` as the repo root. resolveMirrors() then looked for `chart v 1.4/chart` under `/`,
+    // did not find it, and blocked the build reporting the canonical mirror missing. The tree was
+    // intact; only the root was wrong. Requiring both means an unrecognised layout falls back to ROOT,
+    // where resolveMirrors() sees a chart tree and scans it as the canonical mirror.
+    const twoUp = path.resolve(ROOT, '../..');
+    const repoRoot = (fs.existsSync(path.join(twoUp, 'chart v 1.4/chart'))
+        && fs.existsSync(path.join(twoUp, 'homepage/public/chart')))
+        ? twoUp
         : ROOT;
     // Fail closed. A gate that is absent has not passed, and the whole reason it exists is that a
     // missing check is indistinguishable from a passing one once the artifact ships.
