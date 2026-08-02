@@ -3098,6 +3098,16 @@ class BaseDrawing {
     /**
      * Destroy and cleanup
      */
+    _removeOwnedSvgDefs() {
+        if (!this.chart?.svg || !this.id) return;
+        try {
+            const suffix = `-${this.id}`;
+            this.chart.svg.selectAll('defs marker').filter(function() {
+                return String(this.getAttribute('id') || '').endsWith(suffix);
+            }).remove();
+        } catch (_) {}
+    }
+
     destroy() {
         // Hide axis highlights before removing the drawing
         this.hideAxisHighlights();
@@ -3106,6 +3116,7 @@ class BaseDrawing {
         if (this.chart?.svg) {
             this.chart.svg.selectAll(`.drawings-labels [data-id="${this.id}"]`).remove();
         }
+        this._removeOwnedSvgDefs();
         
         if (this.group) {
             this.group.remove();
