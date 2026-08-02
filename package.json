@@ -104,7 +104,9 @@
     "preflight:frame01-playback-governor": "node docs/plan3/oracles/frame01-playback-governor-v1.mjs",
     "test:frame01-playback-governor": "npm run preflight:frame01-playback-governor",
     "preflight:qw4-soak-diagnostics-hud": "node --test \"chart v 1.4/chart/modules/qw4-soak-diagnostics-hud.test.mjs\"",
-    "test:qw4-soak-diagnostics-hud": "npm run preflight:qw4-soak-diagnostics-hud"
+    "test:qw4-soak-diagnostics-hud": "npm run preflight:qw4-soak-diagnostics-hud",
+    "preflight:qw3-allocation-pool": "node scripts/qw3-allocation-pool.mjs",
+    "test:qw3-allocation-pool": "node --test scripts/tests/qw3-allocation-pool.test.mjs"
   },
   "dependencies": {
     "dukascopy-node": "^1.46.3",
