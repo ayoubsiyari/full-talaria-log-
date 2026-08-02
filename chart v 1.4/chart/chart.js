@@ -10787,6 +10787,8 @@ class Chart {
         const l = Number(last.l ?? last.low);
         if (Number.isFinite(h)) last.h = Math.max(h, mark);
         if (Number.isFinite(l)) last.l = Math.min(l, mark);
+        last.__talariaFormingSim = true;
+        last.__talariaFormingSimSource = 'canonical-mark';
     }
 
     _measureRawDataStepMs(rawData) {

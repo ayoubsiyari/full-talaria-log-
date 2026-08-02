@@ -110,7 +110,9 @@
     "preflight:qw3-resample-cache-keep": "node --test \"chart v 1.4/chart/modules/qw3-resample-cache-keep.test.mjs\"",
     "test:qw3-resample-cache-keep": "npm run preflight:qw3-resample-cache-keep",
     "preflight:qw3-indicator-worker-transfer": "node --test \"chart v 1.4/chart/modules/qw3-indicator-worker-transfer.test.mjs\"",
-    "test:qw3-indicator-worker-transfer": "npm run preflight:qw3-indicator-worker-transfer"
+    "test:qw3-indicator-worker-transfer": "npm run preflight:qw3-indicator-worker-transfer",
+    "preflight:forming-renderer-step-clock": "node --test \"chart v 1.4/chart/modules/forming-renderer-step-clock.test.mjs\"",
+    "test:forming-renderer-step-clock": "npm run preflight:forming-renderer-step-clock"
   },
   "dependencies": {
     "dukascopy-node": "^1.46.3",
