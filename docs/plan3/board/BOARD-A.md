@@ -713,3 +713,16 @@ a regression that re-joins them to the shared registry fails the suite.
 
 Sampled against the local tree (loose `replay-system.js`), not the origin — origin is still
 pre-SPEED-01.
+
+### A — 2026-08-02 12:35 — NOTE · `QW-3` / `M20-Q6` · attribution: capture-reuse landed inside `1eba58339`
+
+`tier=top author model=claude-opus-5-thinking-high`. The capture-wrapper reuse product
+change, oracle (`scripts/sr04/m20q6-capture-reuse.test.mjs`), both `reusev1` evidence packets,
+and the board landing entry above were staged by A and committed as part of B's
+`1eba58339` ("Shakedown: fix rehearsal crash…"). That commit's message describes only the
+shakedown harness fix; it does not mention M20-Q6.
+
+**The work is A's.** Switch `__TALARIA_DISABLE_M20Q6_CAPTURE_REUSE_V1`, 94% off the M20-Q6
+stack, ephemeral-discovery gate R7, local-tree sampling only. Do not credit the shakedown
+row with the allocation win. Commit is already on the remote, so this note corrects
+attribution rather than rewriting history.
