@@ -123,6 +123,8 @@ export function evaluate({ state, procs, owner = null, self = process.pid }) {
 
   const claim = state?.claim || null;
   const claimLive = claim ? pidAlive(claim.pid, procs) : false;
+  const reservations = Array.isArray(state?.reservations) ? state.reservations : [];
+  const head = reservations[0] || null;
 
   if (claim && !claimLive) {
     return {
@@ -142,7 +144,22 @@ export function evaluate({ state, procs, owner = null, self = process.pid }) {
       reason: `no claim on file, but ${foreign.length} measurement process(es) are running: ${foreign.map((f) => `${f.script}#${f.pid}`).join(', ')}`,
     };
   }
-  return { state: 'QUEUE_CLEAR', mayRun: true, foreign: [], reason: 'no claim, no measurement processes observed' };
+  /**
+   * An ANNOUNCED order loses to an AUTOMATED claimant. D's daily-boundary canary fires on a 30 s
+   * poll with no human in the loop, so the instant a deploy lands it wins any race against a
+   * manager who has to read the board and type. A free queue plus a posted order is still a
+   * scramble; the order has to be part of the predicate.
+   */
+  if (head && head.owner !== owner) {
+    return {
+      state: 'NOT_YOUR_TURN', mayRun: false, foreign, head, reservations,
+      reason: `queue is free but reserved: ${head.owner}/${head.run} is next. Order: ${reservations.map((r, i) => `${i + 1}. ${r.owner}/${r.run}`).join('  ')}`,
+    };
+  }
+  return {
+    state: 'QUEUE_CLEAR', mayRun: true, foreign: [], head,
+    reason: head ? `clear and you are next (${head.owner}/${head.run})` : 'no claim, no measurement processes observed',
+  };
 }
 
 function appendLog(line) {
@@ -205,15 +222,37 @@ if (isMain) {
     console.log(`[queue] CLAIMED by ${owner} for ${run} (pid ${claim.pid}). Release when you stop.`);
     process.exit(0);
   }
+  if (cmd === 'reserve') {
+    const run = arg('run');
+    if (!owner || !run) { console.error('[queue] reserve needs --owner= and --run='); process.exit(1); }
+    state.reservations = [...(state.reservations || []), { owner, run, note: arg('note'), at: stamp() }];
+    writeState(state);
+    appendLog(`- ${stamp()} · RESERVE · ${owner} · ${run} · position ${state.reservations.length}`);
+    console.log(`[queue] reserved position ${state.reservations.length} for ${owner}/${run}.`);
+    process.exit(0);
+  }
+  if (cmd === 'order') {
+    const rs = state.reservations || [];
+    if (!rs.length) console.log('[queue] no reservations; first to claim wins.');
+    rs.forEach((r, i) => console.log(`[queue] ${i + 1}. ${r.owner} · ${r.run}${r.note ? ` — ${r.note}` : ''}`));
+    process.exit(0);
+  }
   if (cmd === 'release') {
     const claim = state.claim;
     if (!claim) { console.log('[queue] nothing to release.'); process.exit(0); }
     if (owner && claim.owner !== owner) { console.error(`[queue] REFUSED — the claim is ${claim.owner}'s, not ${owner}'s.`); process.exit(2); }
     state.history = [...(state.history || []), { ...claim, endedAs: 'RELEASED', endedAt: stamp() }];
     state.claim = null;
+    // Releasing consumes your reservation, so the next owner becomes the head automatically.
+    const rs = state.reservations || [];
+    if (rs.length && rs[0].owner === claim.owner) {
+      const done = rs.shift();
+      state.reservations = rs;
+      appendLog(`- ${stamp()} · TURN_DONE · ${done.owner} · ${done.run} · next: ${rs[0] ? `${rs[0].owner}/${rs[0].run}` : 'open'}`);
+    }
     writeState(state);
     appendLog(`- ${stamp()} · RELEASE · ${claim.owner} · ${claim.run}`);
-    console.log(`[queue] released ${claim.owner}/${claim.run}.`);
+    console.log(`[queue] released ${claim.owner}/${claim.run}.${state.reservations?.[0] ? ` Next: ${state.reservations[0].owner}/${state.reservations[0].run}.` : ''}`);
     process.exit(0);
   }
   console.error(`[queue] unknown command "${cmd}" — use status | claim | preflight | release`);

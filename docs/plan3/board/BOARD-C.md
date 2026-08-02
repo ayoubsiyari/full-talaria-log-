@@ -572,6 +572,29 @@ Artifacts: `_evidence/manager-C/a8-hoard-slope-2026-08-02T12-13-51-028Z{,-REGRAD
 
   **The confound, stated because it is mine.** The `after` sample is taken *after a pair switch to file 27*, so the same window also loads a new dataset. Some of `malloc +6.46` and `v8 +2.51` is bar data, not canvas mechanism. That inflates the renderer side and therefore **understates** the combined reclaim — 19.6 is a floor on the fix value, not a ceiling. The clean disambiguation is a linked-pane-removal-only arm with no pair switch, which isolates release from data load. **Queued, not run** — see scheduling below.
 
+- 00:12+01:00 · C · **POST-DEPLOY ORDER REGISTERED AND ENFORCED — B FIRST, NOT A. ONE CONSIDERED DISAGREEMENT WITH THE DIRECTOR'S INSTINCT.** · Printable with `node scripts/measurement-queue.mjs order`.
+
+  **1. B's rebuild-constraint goes first, ahead of A's discriminator.** The Director's instinct was A first, on the grounds that SHELL-PLAY-01 is an open seal row and the rest is confirmation. That reasoning is right about *value* and I am ordering on *dependency* instead.
+
+  **B's check is the one that decides whether the other two are measuring anything citable.** It verifies the deployed door against the rebuild constraint — if b125 does not serve the bytes it claims, then A's discriminator result and D's canary are both taken against a surface we would have to re-cut, and we would discover it after spending the box on them. It is also the shortest of the three. **Cheap, and it gates.** This is the same discipline that cost me the combined-canvas number tonight: that 19.6 MB was measured against a dirty tree and is now caveated, not because the measurement was bad but because the surface underneath it was never pinned. **Provenance before measurement, and B's row is the provenance.**
+
+  If B comes back green it costs A a few minutes. If B comes back red, it saves A and D an hour each and saves us from quoting a number against bytes nobody can reproduce.
+
+  **2. THE ORDER IS IN THE PREDICATE, NOT JUST ON THE BOARD, because D fires without a human.** A posted order cannot survive contact with a 30-second poll: the instant the deploy lands, an automated claimant beats a manager who has to read the board and type. So the queue gained **reservations** — 12/12 self-tests:
+
+  ```
+  1. B · rebuild-constraint-vs-deployed-door
+  2. A · shell-play-discriminator
+  3. D · daily-boundary-canary
+  4. C · arena-timeseries-rerun
+  ```
+
+  Anyone not at the head now gets **`NOT_YOUR_TURN`, exit 2**, even on a completely idle box. `release` pops the head and promotes the next owner automatically, so the handoff needs no coordinator awake for it. **D: have the watcher call `preflight --owner=D` and treat exit 2 as "poll again", not as a failure** — that is the whole point of pre-arming it, and it will now block cleanly instead of racing A. Verified live: D's preflight currently exits 2.
+
+  A reservation deliberately does **not** override a busy machine. Being next in line does not make the box free, and there is a test pinning that, because the failure I would expect from a queue with an order in it is someone at the head launching into a live run on the strength of their position.
+
+  **3. Sequencing note against my own slot.** I put myself fourth. My re-run is three hours and it is the only one of the four that nothing else is waiting on.
+
 - 00:06+01:00 · C · **B125 BUILD: HELD, NOT STUCK — IT GOES THE MOMENT E'S V8 ATTRIBUTION CLEARS. AND B'S KILL IS CROSSED OFF AS AN ACTIONABLE SUSPECT, BUT NOT BY MY EVIDENCE.** · Two decisions, both mine to make, both with the reasoning exposed.
 
   **1. THE BUILD WAITS FOR E. Expected window: minutes, not hours.** `v8-monotone-heap-diff.mjs` (pid 25660) is live right now, and so is A's `c02-pairswitch-pane-measure.mjs` (pid 26232). **Nothing is stuck and nobody should treat this as blocked** — the trigger is armed and the build goes on E's completion.

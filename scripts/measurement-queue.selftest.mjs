@@ -78,6 +78,26 @@ test('an orphaned child keeps the queue held even though its shell exited', () =
   assert.equal(v.mayRun, false);
 });
 
+test('a free queue with a reservation is not open season — the timer-driven claimant must wait', () => {
+  // D's canary polls every 30 s with no human; A has to read the board and type. Without the
+  // order in the predicate, D wins every deploy race regardless of what was posted.
+  const state = { claim: null, reservations: [{ owner: 'B', run: 'rebuild-constraint' }, { owner: 'A', run: 'shell-play' }, { owner: 'D', run: 'daily-boundary-canary' }] };
+  const d = evaluate({ state, procs: [], owner: 'D', self: 1 });
+  assert.equal(d.state, 'NOT_YOUR_TURN');
+  assert.equal(d.mayRun, false);
+  assert.equal(d.head.owner, 'B');
+  const b = evaluate({ state, procs: [], owner: 'B', self: 1 });
+  assert.equal(b.state, 'QUEUE_CLEAR');
+  assert.equal(b.mayRun, true);
+});
+
+test('a reservation does not override an actually busy machine', () => {
+  const state = { claim: null, reservations: [{ owner: 'B', run: 'rebuild-constraint' }] };
+  const v = evaluate({ state, procs: [MEASURE(1, 'v8-monotone-heap-diff.mjs')], owner: 'B', self: 9 });
+  assert.equal(v.state, 'UNCLAIMED_RUN_DETECTED');
+  assert.equal(v.mayRun, false, 'being next in line does not make a busy box free');
+});
+
 test('an unreadable process list refuses rather than reporting clear', () => {
   const v = evaluate({ state: { claim: null }, procs: null, owner: 'D', self: 1 });
   assert.equal(v.state, 'MACHINE_UNREADABLE');

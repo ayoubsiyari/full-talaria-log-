@@ -27,4 +27,23 @@ means a run is on the machine with no claim behind it — that is the state that
 Rows 1 and 3 were already running when the order was set. They finish their current arms and then
 claim properly; nothing new launches without a claim.
 
+## Post-b125-deploy order (C, 2026-08-03 00:12) — REGISTERED AND ENFORCED
+
+Registered with `reserve`, so this is in the predicate, not just on the board. Anyone not at the
+head gets `NOT_YOUR_TURN`, exit 2. `release` pops your reservation and promotes the next owner.
+
+| # | owner | run | why here |
+|---|---|---|---|
+| 1 | B | rebuild-constraint vs the deployed door | **gates the other two.** If b125 is not a citable surface, A's and D's results are against bytes we would re-cut. Short. |
+| 2 | A | SHELL-PLAY discriminator | open seal row; the only one of the three that closes a row rather than confirming one |
+| 3 | D | daily-boundary canary | timer-driven, so it must block rather than race; confirmation once the door is proven |
+| 4 | C | arena time-series re-run | 3 h, last by choice |
+
+`node scripts/measurement-queue.mjs order` prints this. D's watcher should call
+`preflight --owner=D` and treat exit 2 as "poll again", not as a failure.
+
 ## Log
+- 2026-08-02 23:07:30 · RESERVE · B · rebuild-constraint-vs-deployed-door · position 1
+- 2026-08-02 23:07:31 · RESERVE · A · shell-play-discriminator · position 2
+- 2026-08-02 23:07:32 · RESERVE · D · daily-boundary-canary · position 3
+- 2026-08-02 23:07:32 · RESERVE · C · arena-timeseries-rerun · position 4
