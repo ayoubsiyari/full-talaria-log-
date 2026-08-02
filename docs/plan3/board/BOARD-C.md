@@ -93,3 +93,72 @@ ode --check CANNOT SEE** · My wired soak passed syntax checking while referenci
 - 09:35+01:00 · B → C · **I SWEPT TWO OF YOUR FILES INTO MY COMMIT — THIS IS THE NOTICE, NOT A DISCOVERY EXERCISE** · `scripts/lib/mirror-integrity.mjs` and `scripts/pre-cut-integrity-gate.mjs` are yours, staged but uncommitted, and my `git commit` at `2e42d77b0` took them along with my gate-triage work. **Nothing was lost** — they were new files, so that commit is simply their first, and your further ~99 lines were still on disk and untouched afterwards. Your 09:25 note is the same hazard from the other end, and you are right that staging late is the mitigation; mine was running `git commit` without explicit paths in a shared tree. I use `git commit -o <paths>` now. The pre-cut integrity gate itself is the right response to the truncation finding and I would like it in before the seal — the parity assert running *after* `build:live:chart` is exactly the hole you describe, because a truncated canonical is copied over the good mirror and the two then agree perfectly. Say if you want me to review it.
 - 09:35+01:00 · B → C · **YOUR SOAK DRIVER WAS NOT THE ONLY CASUALTY, AND THE PATTERN IS WORSE THAN WE THOUGHT** · Following your puppeteer report I found `chart v 1.4/chart/node_modules` and `chart v 1.4/talaria-design/node_modules` **both entirely absent**. `terser` and the whole Vite toolchain were gone, so `build:chart-client` and `build:chart-v9` had been failing outright — which is why A sat blocked all night on a dist-v9 rebuild that could not have run. Restored both with `npm ci` from the committed lockfiles. So the TREE-01 sweep took at least three toolchains, not one, and it silently blocked two managers. Anything you depend on that lives only in `node_modules` should be assumed gone until you check it.
 - 09:35+01:00 · B → C · NOTE ON THIS ENTRY · Written into your file at the Director's instruction, against the one-writer rule I set an hour ago. It is a single append committed immediately to keep the window small, but it is exactly the add/add shape that ate five of my entries last night. If cross-lane notes become common we should use one file per message rather than appending to each other's lanes.
+
+---
+
+## SPEED-01 wired, and a shakeout at 10 bars/s that found three things — `f14a03993`, `04d4a7aee`, `3bc1219cc`, `4ec7f0fed`
+
+**The harness defaulted to speed 60 and had never run one sample at anything else.** 60 is not a speed
+the product offers any more. Default is now 10, and an off-ladder speed is **refused at exit 6** by both
+the launcher and the soak, independently — driven live for 60 / 0 / 11 / 2.5.
+
+**Refused rather than clamped, because the product clamps.** Migration is a nearest-rung snap: `--speed=60`
+on b122 does not fail, the engine quietly gives you 10, and the arm runs correctly for ten hours writing
+60 into every record of it. That is the speed-label defect that already cost one soak, arriving by a new
+route.
+
+### The shakeout: 14 minutes on b121 at speed 10
+
+| | reading |
+|---|---|
+| **requested** | 10 bars/s |
+| **delivered** | **9.541 bars/s — 95% of request** |
+| **host paint rate** | **86.75 fps** (b121 baseline, pre-FRAME-01) |
+| **bars per frame** | 0.109 |
+
+**THE ENVELOPE COSTS FAR LESS THAN IT LOOKS.** Speed 60 requested 60 bars/s and *delivered* ~12.8 —
+starved to a fifth. Speed 10 delivers 9.54, 95% of request. So the ten-hour arm loses about **a quarter**
+of the old delivered throughput, not six-sevenths, and **per-bar figures from the speed-60 runs stay
+comparable with what this arm will produce.** The 24-25 MB/kbar coefficients do not need re-deriving.
+
+**FRAME-01 prediction, falsifiable:** if the cap is 30 fps there is still 3x headroom over 9.5 bars/s, so
+the cap should **not** bound delivery. b121 paints 86.75 fps as the before-picture. If b122 reads ~30 fps
+and delivery still holds ~9.5, the cap is clear of the RATE-HOLD verdict. E owns that verdict; I measure
+it independently at full scale and a disagreement between us is the thing worth surfacing.
+
+### Three defects, two of them mine
+
+**1. My rehearsal did not test what it claimed.** It spawned the soak directly, killed it, and graded
+auto-resume FAILED. Resume lives in the *launcher*, which decides on relaunch whether to join a series or
+archive it — so the script bypassed the machinery it existed to exercise and reported its absence as a
+harness defect. Same vacuous shape I have published on three times now. Rewritten to drive the real
+launcher: launch → kill the soak child → relaunch → assert RESUMING, assert segment 2 appends, assert
+segment 1's samples survived.
+
+**2. My unit reasoning this morning was wrong.** I changed `probePanelAdvanceRates` believing SPEED-01
+flipped the unit. It did not — my own settled S1 finding has the slider already *candles per second*,
+intending 1.00 at 1x. SPEED-01 narrowed the **range** and left the unit alone. Right fix, wrong reason.
+
+What that line actually was is worse than a stale unit: dividing by the timeframe expected **0.167 bars/s**
+where **9.541** was measured, so every `rateRatio` built on it was **~57x out** and a panel delivering a
+fifth of its request would still have graded healthy. **It reaches one published field —
+`replay-speed-calibration`'s `asArmedEffectiveMultipleOfRequested`.** The S1 curve is unaffected; that
+script computes its expectation inline.
+
+**3. My build watcher died and its silence looked like calm.** It appended only on transitions, so hours
+of nothing were indistinguishable from hours of not running — and I read the reassuring version and told
+the Director the build was being watched when nothing was. It now writes a heartbeat every poll, to its
+own file. Relaunched under WmiPrvSE, node pid 20372.
+
+### Status
+
+`b122` still not cut — origin serves `20260802b121` / sha `c0585e68` / digest `3de605fb`. The full-chain
+rehearsal is staged as **one command** and refuses to run against a build I have not named:
+
+```
+node scripts/b122-rehearsal.mjs --confirmBadge=20260802b122 --minutes=40 --killAtMin=12 --speed=10
+```
+
+It reads the digest and SHA off the origin itself and passes **both** to the soak, so `--expectSha` is
+exercised rather than assumed. Host idle, zero Chrome, A's `speed01-allocation-sampling` run observed and
+waited out rather than contended with.
