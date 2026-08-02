@@ -666,3 +666,50 @@ so whoever re-blesses them must do so with this change in; the hash will not go 
 suite, failed once under heavy parallel load and passed on every isolated and subsequent run —
 it measures a real-time rate and is timing-sensitive. That is a flake in a gate I own and I will
 harden it rather than leave it to blame someone else's change.
+
+### A — 2026-08-02 12:25 — LAND · `QW-3` / `M20-Q6` · capture-wrapper reuse: M20-Q6 stack now ~92% off
+
+`tier=top author model=claude-opus-5-thinking-high`. Director ruled: bind the scheduler
+registry myself, do not hand M20-Q6 to D. The registry bound (`fdd1ef65e`) measured 79.7% —
+short of 80 on this stack alone. This is the second unit: capture wrappers installed once and
+reused.
+
+Switch: `__TALARIA_DISABLE_M20Q6_CAPTURE_REUSE_V1`, default ON (reuse active). Oracle:
+`scripts/sr04/m20q6-capture-reuse.test.mjs` (9 cells, including C-SELF and an ephemeral-discovery
+cell that exists because the first shape of this fix was wrong).
+
+#### Measurement at the shipping envelope, 95% duty, local tree only
+
+| Packet | rate | total | M20-Q6 cluster |
+|---|---|---|---|
+| baseline (pre-pool) | 10.086 / 9.964 | 10.33 MB mean | **4.29 MB** |
+| poolv1 | 10.072 / 9.828 | 6.46 MB mean | **0.87 MB** (79.7% off) |
+| reusev1 | 9.974 | 5.42 MB | **0.34 MB** |
+| reusev1-r2 | 10.197 | 6.54 MB | **0.18 MB** |
+
+Mean M20-Q6 after reuse: **0.26 MB**, a **94%** reduction off the 4.29 MB baseline. Both packets
+at 95% duty. Post-reuse ranking is D's two stacks first (`_resampleDataFull`, indicator
+`w.onmessage`); M20-Q6 is out of the top five. `m20Q6PatchSchedulers` / `m20Q6TrackScheduler` are
+gone from the top twenty.
+
+**≥80% on the M20-Q6 stack is met.** The joint ≥80% re-sample across all three stacks still waits
+on D finishing stacks 2 and 3 — that is one step at the end, as ruled.
+
+#### What it is
+
+`m20Q6CaptureEffects` was rebuilding a record and a wrapper closure for every patched method on
+every scope on every scheduled callback. Wrappers for stable scopes (document, window,
+globalThis, instance, schedulers, timezone) are now claimed once into a realm-shared registry,
+routed by an active-capture pointer so two instances do not nest wrappers, and restored on drain
+when the last owner leaves. Outside a capture window the wrappers are transparent.
+
+#### What almost shipped and must not
+
+The first shape permanently claimed **every DOM node** `querySelector` returned during capture.
+One five-minute sample allocated **358 MB**, with `m20Q6PatchTarget` / `Set` / `Map` /
+`m20Q6ClaimSharedPatch` at the top. That packet was discarded. Discoveries and `extraTargets` are
+now **ephemeral**: patched for the capture window only, restored in `finally`, and gated by R7 so
+a regression that re-joins them to the shared registry fails the suite.
+
+Sampled against the local tree (loose `replay-system.js`), not the origin — origin is still
+pre-SPEED-01.

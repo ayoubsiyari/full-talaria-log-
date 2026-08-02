@@ -1,0 +1,114 @@
+﻿[speed01-alloc] 2026-08-02T11:16:04.096Z harness at http://127.0.0.1:56584
+[speed01-alloc] 2026-08-02T11:16:04.708Z booting candidate
+[api] GET /api/auth/me
+[api] POST /api/chart/windows/claim
+[api] GET /api/auth/me
+[api] GET /api/notifications?limit=50
+[api] GET /api/files
+[api] GET /api/files
+[api] GET /api/auth/me
+[api] GET /api/file/25/bars?resolution=1m&limit=2000&from=1785549365479&to=1785669365479
+[api] GET /api/finnhub/calendar/economic?from=2026-08-01&to=2026-08-08
+[api] GET /api/file/25/candles?timeframe=1m&limit=2000&direction=backward&cursor=1785549420000
+[api] GET /api/file/25/tile-meta/1m
+[speed01-alloc] 2026-08-02T11:16:05.782Z candidate ready
+node : [heap-cycle 2026-08-02T11:16:05.782Z] layout UI → 4 (li=0)
+At C:\Users\user\AppData\Local\Temp\ps-script-96073c12-b776-440d-b540-ae038e23414a.ps1:87 char:384
++ ... 1_BPS="10"; node scripts/speed01-allocation-sampling.mjs 2>&1 | Out-F ...
++                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: ([heap-cycle 202...t UI → 4 (li=0):String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+[api] GET /api/finnhub/calendar/economic?from=2026-07-30&to=2026-08-08
+[api] GET /api/file/25/bars?resolution=5m&limit=2000&from=1784986020000&to=1785586020000
+[api] GET /api/file/25/bars?resolution=15m&limit=2000&from=1783858020000&to=1785658020000
+[api] GET /api/file/25/bars?resolution=1h&limit=2000&from=1778782020000&to=1785982020000
+[api] GET /api/auth/me
+[api] GET /api/files
+[api] GET /api/auth/me
+[api] GET /api/files
+[api] GET /api/auth/me
+[api] GET /api/files
+[speed01-alloc] 2026-08-02T11:16:12.558Z arming PO workload at 10 bars/s
+[heap-cycle-po-workload 2026-08-02T11:16:12.558Z] arm panel A: wait ready
+[heap-cycle-po-workload 2026-08-02T11:16:12.680Z] arm panel A: ok=true ind=4 replay=true playing=true
+[heap-cycle-po-workload 2026-08-02T11:16:12.681Z] arm panel B: wait ready
+[heap-cycle-po-workload 2026-08-02T11:16:16.149Z] arm panel B: ok=true ind=4 replay=true playing=true
+[heap-cycle-po-workload 2026-08-02T11:16:16.150Z] arm panel C: wait ready
+[heap-cycle-po-workload 2026-08-02T11:16:19.629Z] arm panel C: ok=true ind=4 replay=true playing=true
+[heap-cycle-po-workload 2026-08-02T11:16:19.629Z] arm panel D: wait ready
+[heap-cycle-po-workload 2026-08-02T11:16:19.869Z] arm panel D: ok=true ind=4 replay=true playing=true
+[heap-cycle-po-workload 2026-08-02T11:16:19.916Z] order ok=true openCount=1
+[heap-cycle-po-workload 2026-08-02T11:16:24.160Z] play hold done observedPlaying=4
+[speed01-alloc] 2026-08-02T11:16:24.161Z workload armed, playing=4
+[speed01-alloc] 2026-08-02T11:16:29.434Z sampling for 300s
+[api] POST /api/chart/windows/heartbeat
+[speed01-alloc] 2026-08-02T11:16:45.165Z t+16s rate=10.18 gain=1.000 heap=81MB
+[api] POST /api/chart/windows/heartbeat
+[speed01-alloc] 2026-08-02T11:17:00.516Z t+31s rate=10.22 gain=1.041 heap=75MB
+[speed01-alloc] 2026-08-02T11:17:15.933Z t+46s rate=10.02 gain=1.041 heap=138MB
+[api] POST /api/chart/windows/heartbeat
+[speed01-alloc] 2026-08-02T11:17:31.171Z t+62s rate=10.82 gain=1.041 heap=102MB
+[api] POST /api/chart/windows/heartbeat
+[speed01-alloc] 2026-08-02T11:17:46.514Z t+77s rate=11.23 gain=1.041 heap=145MB
+[speed01-alloc] 2026-08-02T11:18:01.833Z t+92s rate=9.98 gain=1.000 heap=78MB
+[api] POST /api/chart/windows/heartbeat
+[api] GET /api/file/25/candles?timeframe=1m&limit=1504&direction=forward&cursor=1785669360000
+[api] GET /api/file/25/candles?timeframe=1m&limit=1504&direction=forward&cursor=1785669360000
+[api] GET /api/file/25/candles?timeframe=1m&limit=1504&direction=forward&cursor=1785669360000
+[speed01-alloc] 2026-08-02T11:18:17.198Z t+108s rate=9.98 gain=1.041 heap=133MB
+[speed01-alloc] 2026-08-02T11:18:32.529Z t+123s rate=11.12 gain=1.041 heap=102MB
+[api] GET /api/finnhub/calendar/economic?from=2026-07-30&to=2026-08-09
+[api] POST /api/chart/windows/heartbeat
+[speed01-alloc] 2026-08-02T11:18:47.752Z t+138s rate=9.73 gain=0.985 heap=163MB
+[api] GET /api/file/25/candles?timeframe=1m&limit=1504&direction=forward&cursor=1785669360000
+[api] POST /api/chart/windows/heartbeat
+[speed01-alloc] 2026-08-02T11:19:02.943Z t+153s rate=9.99 gain=0.985 heap=127MB
+[speed01-alloc] 2026-08-02T11:19:18.224Z t+169s rate=9.50 gain=0.985 heap=181MB
+[api] POST /api/chart/windows/heartbeat
+[speed01-alloc] 2026-08-02T11:19:33.228Z t+184s rate=7.46 gain=0.985 heap=83MB
+[speed01-alloc] 2026-08-02T11:19:48.231Z t+199s rate=0.00 gain=0.985 heap=68MB
+[api] POST /api/chart/windows/heartbeat
+[speed01-alloc] 2026-08-02T11:20:03.638Z t+214s rate=9.66 gain=1.000 heap=145MB
+[api] POST /api/chart/windows/heartbeat
+[speed01-alloc] 2026-08-02T11:20:19.026Z t+230s rate=10.80 gain=1.000 heap=147MB
+[speed01-alloc] 2026-08-02T11:20:34.317Z t+245s rate=9.56 gain=1.000 heap=160MB
+[api] POST /api/chart/windows/heartbeat
+[speed01-alloc] 2026-08-02T11:20:49.713Z t+260s rate=9.63 gain=1.000 heap=130MB
+[speed01-alloc] 2026-08-02T11:21:04.935Z t+275s rate=9.69 gain=1.000 heap=140MB
+[api] POST /api/chart/windows/heartbeat
+[speed01-alloc] 2026-08-02T11:21:20.219Z t+291s rate=10.35 gain=1.000 heap=92MB
+[speed01-alloc] 2026-08-02T11:21:29.739Z t+300s rate=9.57 gain=1.000 heap=143MB
+[api] POST /api/chart/windows/heartbeat
+[speed01-alloc] 2026-08-02T11:21:30.061Z sampled 5.42 MB across 76 call frames
+
+===== SPEED-01 allocation sampling =====
+nominal 10 bars/s over 300s
+effective rate: mean=9.974 min=7.463 max=11.229 gain=1 corrections=0
+replay live for 95% of the window (19/20 readings, 0 panel restart(s))
+heap: 81 MB -> 143 MB
+allocated: 5.42 MB (1.08 MB/min)
+
+top allocation sites:
+       0.9 MB  16.57%  _resampleDataFull @ chart.js?v=20260728b85:27345
+      0.73 MB  13.56%  w.onmessage @ chart-indicators-full.js?v=20260728b85:8105
+      0.49 MB      9%  isSafeInteger @ (no url):-1
+       0.3 MB   5.48%  push @ (no url):-1
+      0.19 MB   3.48%  Number @ (no url):-1
+      0.15 MB   2.79%  isNaN @ (no url):-1
+      0.14 MB    2.5%  m20Q6CapturedQuery @ replay-system.js?v=20260728b85:10988
+      0.14 MB    2.5%  mergeIndicatorTailWindow @ indicator-performance.js?v=20260728b85:193
+      0.11 MB   2.11%  imul @ (no url):-1
+      0.11 MB   1.98%  m20Q6InertableScheduledCallback @ replay-system.js?v=20260728b85:11112
+       0.1 MB   1.83%  (IDLE_EXTERNAL) @ (no url):-1
+      0.08 MB   1.47%  sort @ (no url):-1
+      0.07 MB   1.34%  forEach @ (no url):-1
+      0.07 MB   1.26%  _m19iB62GenOf @ chart-indicators-full.js?v=20260728b85:10541
+      0.07 MB   1.21%  (anonymous) @ talaria-v9-live.js?v=20260728b85:142
+      0.06 MB   1.16%  m20Q6PatchTarget @ replay-system.js?v=20260728b85:10917
+      0.06 MB   1.15%  V8 @ talaria-v9-live.js?v=20260728b85:16
+      0.06 MB   1.08%  isArray @ (no url):-1
+      0.06 MB   1.03%  talariaRebuildOhlcIndicatorLegend @ indicator-ui.js?v=20260728b85:3173
+      0.06 MB   1.02%  _isMultichartEmbedPanel @ chart.js?v=20260728b85:2914
+
+written to docs\plan3\evidence\speed01-allocation-sealed-10bps-reusev1.json

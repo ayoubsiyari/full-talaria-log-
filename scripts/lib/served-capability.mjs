@@ -109,15 +109,24 @@ export async function readSpeed01Runtime(frame) {
     const rs = window.chart && window.chart.replaySystem;
     const out = { hasReplaySystem: !!rs, ladder: null, ladderSource: null, hasNearestRung: null, hasTargetGetter: null, govFlag: null, resource: null };
     if (rs) {
+      // Product surface (SPEED-01): getSpeedLadderBarsPerSecond() / getTickSpeedLadder().
+      // The ladder constant and _speedGovNearestRung are module-private; they are NOT on the
+      // instance. A probe that only looked for getSpeedLadder() / rs._speedGovNearestRung
+      // reported "this build has no governor" on a live b122 whose getTargetBarsPerSecond()
+      // was already delivering the requested 10 bars/s — a false red that would have blocked
+      // the soak on a working build. Prefer the real getters; keep the old names as fallbacks.
       for (const [name, get] of [
+        ['getSpeedLadderBarsPerSecond()', () => (typeof rs.getSpeedLadderBarsPerSecond === 'function' ? rs.getSpeedLadderBarsPerSecond() : undefined)],
+        ['getTickSpeedLadder()', () => (typeof rs.getTickSpeedLadder === 'function' ? rs.getTickSpeedLadder() : undefined)],
+        ['getSpeedLadder()', () => (typeof rs.getSpeedLadder === 'function' ? rs.getSpeedLadder() : undefined)],
         ['SPEED_GOV_LADDER_BPS', () => rs.SPEED_GOV_LADDER_BPS ?? rs.constructor?.SPEED_GOV_LADDER_BPS],
         ['speedLadder', () => rs.speedLadder],
-        ['getSpeedLadder()', () => (typeof rs.getSpeedLadder === 'function' ? rs.getSpeedLadder() : undefined)],
       ]) {
         let v; try { v = get(); } catch (_) { continue; }
         if (Array.isArray(v) && v.length) { out.ladder = v.slice(0, 20); out.ladderSource = name; break; }
       }
-      out.hasNearestRung = typeof rs._speedGovNearestRung === 'function';
+      out.hasNearestRung = typeof rs._speedGovNearestRung === 'function'
+        || typeof rs.getSpeedLadderBarsPerSecond === 'function';
       out.hasTargetGetter = typeof rs.getTargetBarsPerSecond === 'function';
     }
     try { out.govFlag = window.__TALARIA_SPEED_GOV_V1 ?? null; } catch (_) { out.govFlag = null; }
@@ -136,7 +145,12 @@ export function gradeRuntimeLadder(runtime, expected = [1, 2, 3, 4, 5, 6, 7, 8, 
   // so their presence is accepted as evidence when the array itself is not reachable from outside.
   if (!Array.isArray(runtime.ladder)) {
     const ok = runtime.hasNearestRung === true && runtime.hasTargetGetter === true;
-    return { ok, why: ok ? 'ladder array not exposed, but the snap function and target getter are both live' : 'no ladder array, no snap function, no target getter — this build has no governor' };
+    if (ok) return { ok: true, why: 'ladder array not exposed, but the snap function and target getter are both live' };
+    const missing = [
+      runtime.hasNearestRung === true ? null : 'nearest-rung/ladder accessor',
+      runtime.hasTargetGetter === true ? null : 'getTargetBarsPerSecond',
+    ].filter(Boolean).join(' + ');
+    return { ok: false, why: `ladder array not reachable; missing ${missing || 'governor accessors'}` };
   }
   const same = runtime.ladder.length === expected.length && runtime.ladder.every((v, i) => Number(v) === expected[i]);
   return { ok: same, why: same ? null : `ladder is [${runtime.ladder.join(',')}], expected [${expected.join(',')}]` };

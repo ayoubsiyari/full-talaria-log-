@@ -85,6 +85,19 @@ function _m20Q6SchedulerPoolV1Enabled() {
 }
 
 /**
+ * M20-Q6 — capture wrappers are installed once and reused (default ON).
+ *
+ * Kill-switch: window.__TALARIA_DISABLE_M20Q6_CAPTURE_REUSE_V1 = <truthy>
+ * restores the legacy capture window, which rebuilds a record object and a
+ * wrapper closure for every patched method on every scope on every scheduled
+ * callback. Absent / falsy ⇒ reuse active.
+ * Read per call (never sampled at init); climbs self → parent → top.
+ */
+function _m20Q6CaptureReuseV1Enabled() {
+    return !_talariaDisableFlagTruthy('__TALARIA_DISABLE_M20Q6_CAPTURE_REUSE_V1');
+}
+
+/**
  * HYG-2 — at most one live timer per managed key (default ON).
  * Kill-switch: window.__TALARIA_MIRROR_INTERVAL_GUARD_V1 = <truthy> restores the
  * legacy behaviour where a re-entered setup path installs a second copy of the
@@ -1626,6 +1639,102 @@ class ReplaySystem {
         }
     }
 
+    /**
+     * ORDER-01B: global market-time cursor (default ON).
+     * Explicit `__TALARIA_DISABLE_GLOBAL_MARKET_TIME_CURSOR_V1 === true` restores
+     * the interim DEF-04/D-016 replayTimestamp pin path without a second clock owner.
+     */
+    _isGlobalMarketTimeCursorEnabled() {
+        return typeof window === 'undefined'
+            || window.__TALARIA_DISABLE_GLOBAL_MARKET_TIME_CURSOR_V1 !== true;
+    }
+
+    /** Snapshot of the single host-owned market-time cursor, or null when disabled/unset. */
+    getMarketTimeCursor() {
+        if (!this._isGlobalMarketTimeCursorEnabled()) return null;
+        return this._marketTimeCursor;
+    }
+
+    /**
+     * Publish the host cursor from the current replayTimestamp / finest cadence.
+     * Keeps `replayTimestamp` as the wire-compatible alias of `marketTimeMs`.
+     */
+    _publishMarketTimeCursor(extra = null) {
+        if (!this._isGlobalMarketTimeCursorEnabled()) {
+            this._marketTimeCursor = null;
+            return null;
+        }
+        const marketTimeMs = Number(this.replayTimestamp);
+        if (!Number.isFinite(marketTimeMs)) {
+            this._marketTimeCursor = null;
+            return null;
+        }
+        this._marketTimeCursorSequence = (Number(this._marketTimeCursorSequence) || 0) + 1;
+        let cadenceMs = this._getFinestReplayCadenceMs();
+        if (!Number.isFinite(cadenceMs) || cadenceMs <= 0) {
+            cadenceMs = this._getSelectedReplayCadenceMs();
+        }
+        if (!Number.isFinite(cadenceMs) || cadenceMs <= 0) {
+            cadenceMs = this._getRawBarPeriodMs();
+        }
+        let sourcePanelId = 'host';
+        try {
+            if (this.chart && this.chart._multichartPanelId != null) {
+                sourcePanelId = String(this.chart._multichartPanelId);
+            } else if (typeof window !== 'undefined' && window.__multichartActivePanelId != null) {
+                sourcePanelId = String(window.__multichartActivePanelId);
+            }
+        } catch (_e) { /* ignore */ }
+        const cursor = {
+            marketTimeMs,
+            cadenceMs: Number.isFinite(cadenceMs) && cadenceMs > 0 ? cadenceMs : null,
+            sequence: this._marketTimeCursorSequence,
+            sourcePanelId,
+            isPlaying: !!this.isPlaying,
+            tickElapsedMs: Number(this.tickElapsedMs) || 0,
+            tickProgress: Number(this.tickProgress) || 0,
+        };
+        if (extra && typeof extra === 'object') {
+            if (Number.isFinite(Number(extra.tickElapsedMs))) cursor.tickElapsedMs = Number(extra.tickElapsedMs);
+            if (Number.isFinite(Number(extra.tickProgress))) cursor.tickProgress = Number(extra.tickProgress);
+            if (extra.sourcePanelId != null) cursor.sourcePanelId = String(extra.sourcePanelId);
+            if (extra.isPlaying != null) cursor.isPlaying = !!extra.isPlaying;
+        }
+        this._marketTimeCursor = cursor;
+        return cursor;
+    }
+
+    /**
+     * Consume a host cursor (or frame detail carrying one). Panels resolve local
+     * currentIndex from marketTimeMs; they must not invent a second clock.
+     * @returns {boolean} true when cursor time was applied
+     */
+    _consumeMarketTimeCursor(cursorOrDetail) {
+        if (!this._isGlobalMarketTimeCursorEnabled()) return false;
+        const cursor = cursorOrDetail && cursorOrDetail.marketTimeCursor
+            ? cursorOrDetail.marketTimeCursor
+            : cursorOrDetail;
+        if (!cursor || typeof cursor !== 'object') return false;
+        const ts = Number(cursor.marketTimeMs);
+        if (!Number.isFinite(ts)) return false;
+        this.replayTimestamp = ts;
+        this._marketTimeCursor = {
+            marketTimeMs: ts,
+            cadenceMs: Number.isFinite(Number(cursor.cadenceMs)) ? Number(cursor.cadenceMs) : null,
+            sequence: Number.isFinite(Number(cursor.sequence))
+                ? Number(cursor.sequence)
+                : (Number(this._marketTimeCursorSequence) || 0),
+            sourcePanelId: cursor.sourcePanelId != null ? String(cursor.sourcePanelId) : null,
+            isPlaying: !!cursor.isPlaying,
+            tickElapsedMs: Number(cursor.tickElapsedMs) || 0,
+            tickProgress: Number(cursor.tickProgress) || 0,
+        };
+        if (Number.isFinite(Number(cursor.sequence))) {
+            this._marketTimeCursorSequence = Number(cursor.sequence);
+        }
+        return true;
+    }
+
     /** Milliseconds of market time per finest-TF clock tick (min TF across panels). */
     _getFinestReplayCadenceMs() {
         if (!this._isFinestTfReplayCadenceEnabled()) return null;
@@ -1820,6 +1929,7 @@ class ReplaySystem {
         this.tickElapsedMs = 0;
         this.edgeProbeRetryCount = 0;
         this._replayForwardEdgeWait = false;
+        try { this._publishMarketTimeCursor(); } catch (_ePub) { /* ignore */ }
         return true;
     }
 
@@ -7018,6 +7128,7 @@ class ReplaySystem {
             const baseT = Number(this.fullRawData[this.currentIndex]?.t);
             if (Number.isFinite(baseT)) {
                 this.replayTimestamp = baseT + this.tickElapsedMs;
+                try { this._publishMarketTimeCursor(); } catch (_ePub) { /* ignore */ }
             }
         }
         
@@ -9364,8 +9475,14 @@ class ReplaySystem {
         const ts = Number(detail.timestamp);
         if (!Number.isFinite(ts)) return false;
 
-        // D-016 parity: shared virtual market timestamp (finest-TF clock).
-        if (detail.isPlaying
+        // ORDER-01B: when the global cursor is active, consume the host cursor
+        // (or fall back to the frame timestamp). Disable restores interim D-016 pin.
+        if (this._isGlobalMarketTimeCursorEnabled()) {
+            if (!this._consumeMarketTimeCursor(detail)) {
+                this.replayTimestamp = ts;
+                try { this._publishMarketTimeCursor({ isPlaying: !!detail.isPlaying }); } catch (_ePub) { /* ignore */ }
+            }
+        } else if (detail.isPlaying
             && !(typeof window !== 'undefined'
                 && window.__TALARIA_MC_DISABLE_FINEST_TF_REPLAY_CADENCE)) {
             this.replayTimestamp = ts;
@@ -9682,8 +9799,15 @@ class ReplaySystem {
      * Build replay frame payload for multichart mirror sync (host + iframes).
      */
     _buildMultichartReplayFrameDetail() {
+        let cursor = null;
+        if (typeof this._publishMarketTimeCursor === 'function') {
+            try { cursor = this._publishMarketTimeCursor(); } catch (_ePub) { cursor = null; }
+        }
+        const wireTs = cursor && Number.isFinite(Number(cursor.marketTimeMs))
+            ? Number(cursor.marketTimeMs)
+            : this.replayTimestamp;
         const detail = {
-            timestamp: this.replayTimestamp,
+            timestamp: wireTs,
             tickProgress: this.tickProgress,
             tickElapsedMs: this.tickElapsedMs,
             isPlaying: !!this.isPlaying,
@@ -9692,6 +9816,8 @@ class ReplaySystem {
                 : null,
             ticksPerCandle: this.currentTicksPerCandle || this.ticksPerCandle || 72,
         };
+        // ORDER-01B: carry the single host cursor; panels must not re-own market time.
+        if (cursor) detail.marketTimeCursor = cursor;
         if (this.chart && this.autoScrollEnabled && !this.userHasPanned
                 && Number.isFinite(this.chart.offsetX)) {
             detail.hostOffsetX = this.chart.offsetX;
@@ -10532,6 +10658,14 @@ if (_m20Q6LifecycleRuntimeEnabled()) {
     // Deep enough to cover the timers in flight at any instant during replay,
     // shallow enough that the pool itself is not the leak it replaces.
     const M20Q6_SCHEDULER_POOL_CAP = 256;
+    // Shared across instances in one realm: document/window are one object, and
+    // two ReplaySystems must not nest wrappers on the same property. Owners is
+    // a refcount; the native descriptor is restored when the last owner drains.
+    const m20Q6SharedPatches = new WeakMap();
+    // Which state is inside an outermost captureEffects call. Reused wrappers
+    // consult this rather than closing over a single state, so a shared
+    // document/window patch routes into whichever instance is capturing.
+    let m20Q6ActiveCaptureState = null;
 
     const m20Q6EffectMethods = [
         'attachButtonEvents',
@@ -10728,62 +10862,176 @@ if (_m20Q6LifecycleRuntimeEnabled()) {
         return { result, entry };
     }
 
-    function m20Q6PatchTarget(state, target, session) {
-        if (!target || (typeof target !== 'object' && typeof target !== 'function')) return;
-        if (session.targets.has(target)) return;
-        session.targets.add(target);
-
-        if (typeof target.addEventListener === 'function') {
-            const descriptor = Object.getOwnPropertyDescriptor(target, 'addEventListener');
-            const original = target.addEventListener;
-            const record = {
-                target,
-                name: 'addEventListener',
-                hadOwn: !!descriptor,
-                descriptor,
-                wrapper: null,
-            };
-            record.wrapper = function m20Q6CapturedAddEventListener(type, listener, options) {
-                return m20Q6AddEvent(
-                    state,
-                    target,
-                    type,
-                    listener,
-                    options,
-                    `captured:${String(type)}`,
-                    original,
-                ).result;
-            };
-            Object.defineProperty(target, 'addEventListener', {
-                value: record.wrapper,
+    /**
+     * Install a patched own-property on a target, shared across instances in
+     * the realm. First installer builds the wrapper; later owners just join
+     * the refcount. `makeWrapper(original)` is called at most once per
+     * (target, name).
+     */
+    function m20Q6ClaimSharedPatch(state, target, name, makeWrapper) {
+        let byName = m20Q6SharedPatches.get(target);
+        if (!byName) {
+            byName = new Map();
+            m20Q6SharedPatches.set(target, byName);
+        }
+        let shared = byName.get(name);
+        if (!shared) {
+            const descriptor = Object.getOwnPropertyDescriptor(target, name);
+            const original = target[name];
+            const wrapper = makeWrapper(original);
+            Object.defineProperty(target, name, {
+                value: wrapper,
                 configurable: true,
                 writable: true,
             });
-            session.records.push(record);
+            shared = {
+                target,
+                name,
+                hadOwn: !!descriptor,
+                descriptor,
+                wrapper,
+                owners: new Set(),
+            };
+            byName.set(name, shared);
+        }
+        if (!shared.owners.has(state)) {
+            shared.owners.add(state);
+            state.patchRecords.push(shared);
+        }
+        return shared;
+    }
+
+    function m20Q6ReleaseSharedPatches(state) {
+        if (!state || !state.patchRecords || !state.patchRecords.length) return;
+        for (const shared of state.patchRecords) {
+            shared.owners.delete(state);
+            if (shared.owners.size) continue;
+            m20Q6RestoreOwnProperty(shared.target, shared.name, shared);
+            const byName = m20Q6SharedPatches.get(shared.target);
+            if (!byName) continue;
+            byName.delete(shared.name);
+            if (byName.size === 0) m20Q6SharedPatches.delete(shared.target);
+        }
+        state.patchRecords.length = 0;
+    }
+
+    function m20Q6PatchTarget(state, target, session, ephemeral = false) {
+        if (!target || (typeof target !== 'object' && typeof target !== 'function')) return;
+        // Permanent reuse claims are remembered on session.targets for the life
+        // of the state. Ephemeral discoveries (query results, extraTargets) use a
+        // per-capture set and are restored in finally — claiming every DOM node
+        // into the shared registry permanently was measured at hundreds of MB.
+        if (ephemeral) {
+            if (!session.ephemeralTargets) session.ephemeralTargets = new WeakSet();
+            if (session.ephemeralTargets.has(target)) return;
+            session.ephemeralTargets.add(target);
+        } else {
+            if (session.targets.has(target)) return;
+            session.targets.add(target);
+        }
+        const reuse = !!session.reuse && !ephemeral;
+
+        if (typeof target.addEventListener === 'function') {
+            if (reuse) {
+                m20Q6ClaimSharedPatch(state, target, 'addEventListener', (original) => (
+                    function m20Q6CapturedAddEventListener(type, listener, options) {
+                        const active = m20Q6ActiveCaptureState;
+                        if (!active) {
+                            return original.call(target, type, listener, options);
+                        }
+                        return m20Q6AddEvent(
+                            active,
+                            target,
+                            type,
+                            listener,
+                            options,
+                            `captured:${String(type)}`,
+                            original,
+                        ).result;
+                    }
+                ));
+            } else {
+                const descriptor = Object.getOwnPropertyDescriptor(target, 'addEventListener');
+                const original = target.addEventListener;
+                const record = {
+                    target,
+                    name: 'addEventListener',
+                    hadOwn: !!descriptor,
+                    descriptor,
+                    wrapper: null,
+                };
+                record.wrapper = function m20Q6CapturedAddEventListener(type, listener, options) {
+                    const owner = m20Q6ActiveCaptureState || state;
+                    return m20Q6AddEvent(
+                        owner,
+                        target,
+                        type,
+                        listener,
+                        options,
+                        `captured:${String(type)}`,
+                        original,
+                    ).result;
+                };
+                Object.defineProperty(target, 'addEventListener', {
+                    value: record.wrapper,
+                    configurable: true,
+                    writable: true,
+                });
+                session.records.push(record);
+            }
         }
 
         const queryMethods = ['getElementById', 'querySelector', 'querySelectorAll', 'createElement'];
         for (const name of queryMethods) {
             if (typeof target[name] !== 'function') continue;
-            const descriptor = Object.getOwnPropertyDescriptor(target, name);
-            const original = target[name];
-            const record = { target, name, hadOwn: !!descriptor, descriptor, wrapper: null };
-            record.wrapper = function m20Q6CapturedQuery(...args) {
-                const value = original.apply(this, args);
-                if (value && typeof value !== 'string' && typeof value[Symbol.iterator] === 'function'
-                    && typeof value.addEventListener !== 'function') {
-                    for (const item of value) m20Q6PatchTarget(state, item, session);
-                } else {
-                    m20Q6PatchTarget(state, value, session);
-                }
-                return value;
-            };
-            Object.defineProperty(target, name, {
-                value: record.wrapper,
-                configurable: true,
-                writable: true,
-            });
-            session.records.push(record);
+            if (reuse) {
+                m20Q6ClaimSharedPatch(state, target, name, (original) => (
+                    function m20Q6CapturedQuery(...args) {
+                        const value = original.apply(this, args);
+                        const active = m20Q6ActiveCaptureState;
+                        if (!active) return value;
+                        const activeSession = active._reuseSession;
+                        if (!activeSession) return value;
+                        // Discoveries are ephemeral: patched for this capture
+                        // only, restored in finally. They must not join the
+                        // shared registry.
+                        if (value && typeof value !== 'string' && typeof value[Symbol.iterator] === 'function'
+                            && typeof value.addEventListener !== 'function') {
+                            for (const item of value) {
+                                m20Q6PatchTarget(active, item, activeSession, true);
+                            }
+                        } else {
+                            m20Q6PatchTarget(active, value, activeSession, true);
+                        }
+                        return value;
+                    }
+                ));
+            } else {
+                const descriptor = Object.getOwnPropertyDescriptor(target, name);
+                const original = target[name];
+                const record = { target, name, hadOwn: !!descriptor, descriptor, wrapper: null };
+                record.wrapper = function m20Q6CapturedQuery(...args) {
+                    const value = original.apply(this, args);
+                    const owner = m20Q6ActiveCaptureState || state;
+                    const sess = (owner && owner._reuseSession) || session;
+                    const childEphemeral = !!sess.reuse || ephemeral;
+                    if (value && typeof value !== 'string' && typeof value[Symbol.iterator] === 'function'
+                        && typeof value.addEventListener !== 'function') {
+                        for (const item of value) {
+                            m20Q6PatchTarget(owner, item, sess, childEphemeral);
+                        }
+                    } else {
+                        m20Q6PatchTarget(owner, value, sess, childEphemeral);
+                    }
+                    return value;
+                };
+                Object.defineProperty(target, name, {
+                    value: record.wrapper,
+                    configurable: true,
+                    writable: true,
+                });
+                session.records.push(record);
+            }
         }
     }
 
@@ -10895,6 +11143,7 @@ if (_m20Q6LifecycleRuntimeEnabled()) {
         if (!scope || (typeof scope !== 'object' && typeof scope !== 'function')) return;
         if (session.schedulerScopes.has(scope)) return;
         session.schedulerScopes.add(scope);
+        const reuse = !!session.reuse;
         const specs = [
             ['setTimeout', 'timeout'],
             ['setInterval', 'interval'],
@@ -10903,18 +11152,32 @@ if (_m20Q6LifecycleRuntimeEnabled()) {
         ];
         for (const [name, kind] of specs) {
             if (typeof scope[name] !== 'function') continue;
-            const descriptor = Object.getOwnPropertyDescriptor(scope, name);
-            const original = scope[name];
-            const record = { target: scope, name, hadOwn: !!descriptor, descriptor, wrapper: null };
-            record.wrapper = function m20Q6CapturedScheduler(callback, delay, ...rest) {
-                return m20Q6TrackScheduler(state, scope, kind, callback, delay, rest, original);
-            };
-            Object.defineProperty(scope, name, {
-                value: record.wrapper,
-                configurable: true,
-                writable: true,
-            });
-            session.records.push(record);
+            if (reuse) {
+                m20Q6ClaimSharedPatch(state, scope, name, (original) => (
+                    function m20Q6CapturedScheduler(callback, delay, ...rest) {
+                        const active = m20Q6ActiveCaptureState;
+                        if (!active) {
+                            return original.call(scope, callback, delay, ...rest);
+                        }
+                        return m20Q6TrackScheduler(
+                            active, scope, kind, callback, delay, rest, original,
+                        );
+                    }
+                ));
+            } else {
+                const descriptor = Object.getOwnPropertyDescriptor(scope, name);
+                const original = scope[name];
+                const record = { target: scope, name, hadOwn: !!descriptor, descriptor, wrapper: null };
+                record.wrapper = function m20Q6CapturedScheduler(callback, delay, ...rest) {
+                    return m20Q6TrackScheduler(state, scope, kind, callback, delay, rest, original);
+                };
+                Object.defineProperty(scope, name, {
+                    value: record.wrapper,
+                    configurable: true,
+                    writable: true,
+                });
+                session.records.push(record);
+            }
         }
         const clearSpecs = [
             ['clearTimeout', 'timeout'],
@@ -10923,36 +11186,95 @@ if (_m20Q6LifecycleRuntimeEnabled()) {
         ];
         for (const [name, kind] of clearSpecs) {
             if (typeof scope[name] !== 'function') continue;
-            const descriptor = Object.getOwnPropertyDescriptor(scope, name);
-            const original = scope[name];
-            const record = { target: scope, name, hadOwn: !!descriptor, descriptor, wrapper: null };
-            record.wrapper = function m20Q6CapturedClear(handle) {
-                const result = original.call(scope, handle);
-                const pooled = _m20Q6SchedulerPoolV1Enabled();
-                const list = state.schedulers;
-                // Backwards, because releasing swaps the tail into the current
-                // slot; anything moved down has already been visited.
-                for (let i = list.length - 1; i >= 0; i--) {
-                    const entry = list[i];
-                    if (entry.scope === scope && entry.schedulerKind === kind && entry.handle === handle) {
-                        entry.pending = false;
-                        if (pooled) m20Q6ReleaseScheduler(state, entry);
+            if (reuse) {
+                // Clears always settle against every owner that tracked the
+                // handle: a timer scheduled under instance A must still be
+                // releasable after A has left the capture window.
+                m20Q6ClaimSharedPatch(state, scope, name, (original) => (
+                    function m20Q6CapturedClear(handle) {
+                        const result = original.call(scope, handle);
+                        const pooled = _m20Q6SchedulerPoolV1Enabled();
+                        const byName = m20Q6SharedPatches.get(scope);
+                        const shared = byName && byName.get(name);
+                        const owners = shared ? shared.owners : null;
+                        if (!owners) return result;
+                        for (const owner of owners) {
+                            const list = owner.schedulers;
+                            for (let i = list.length - 1; i >= 0; i--) {
+                                const entry = list[i];
+                                if (entry.scope === scope
+                                    && entry.schedulerKind === kind
+                                    && entry.handle === handle) {
+                                    entry.pending = false;
+                                    if (pooled) m20Q6ReleaseScheduler(owner, entry);
+                                }
+                            }
+                        }
+                        return result;
                     }
-                }
-                return result;
-            };
-            Object.defineProperty(scope, name, {
-                value: record.wrapper,
-                configurable: true,
-                writable: true,
-            });
-            session.records.push(record);
+                ));
+            } else {
+                const descriptor = Object.getOwnPropertyDescriptor(scope, name);
+                const original = scope[name];
+                const record = { target: scope, name, hadOwn: !!descriptor, descriptor, wrapper: null };
+                record.wrapper = function m20Q6CapturedClear(handle) {
+                    const result = original.call(scope, handle);
+                    const pooled = _m20Q6SchedulerPoolV1Enabled();
+                    const list = state.schedulers;
+                    // Backwards, because releasing swaps the tail into the current
+                    // slot; anything moved down has already been visited.
+                    for (let i = list.length - 1; i >= 0; i--) {
+                        const entry = list[i];
+                        if (entry.scope === scope && entry.schedulerKind === kind && entry.handle === handle) {
+                            entry.pending = false;
+                            if (pooled) m20Q6ReleaseScheduler(state, entry);
+                        }
+                    }
+                    return result;
+                };
+                Object.defineProperty(scope, name, {
+                    value: record.wrapper,
+                    configurable: true,
+                    writable: true,
+                });
+                session.records.push(record);
+            }
         }
     }
 
     function m20Q6PatchTimezoneManager(state, session) {
         const manager = typeof window !== 'undefined' ? window.timezoneManager : null;
         if (!manager || typeof manager.addListener !== 'function') return;
+        const reuse = !!session.reuse;
+        if (reuse) {
+            m20Q6ClaimSharedPatch(state, manager, 'addListener', (add) => (
+                function m20Q6CapturedTimezoneAdd(listener) {
+                    const active = m20Q6ActiveCaptureState;
+                    if (!active) return add.call(manager, listener);
+                    const entry = {
+                        kind: 'manager',
+                        label: 'timezone-manager-listener',
+                        manager,
+                        listener,
+                        wrapped: (...args) => (
+                            active.acceptCallbacks && typeof listener === 'function'
+                                ? listener(...args)
+                                : undefined
+                        ),
+                        remove: manager.removeListener,
+                        installed: false,
+                        uncertain: true,
+                        settled: false,
+                    };
+                    active.managers.push(entry);
+                    const result = add.call(manager, entry.wrapped);
+                    entry.installed = true;
+                    entry.uncertain = false;
+                    return result;
+                }
+            ));
+            return;
+        }
         const descriptor = Object.getOwnPropertyDescriptor(manager, 'addListener');
         const add = manager.addListener;
         const record = {
@@ -10992,6 +11314,24 @@ if (_m20Q6LifecycleRuntimeEnabled()) {
         session.records.push(record);
     }
 
+    function m20Q6InstallCapturePatches(state, session, extraTargets) {
+        const scope = typeof globalThis !== 'undefined' ? globalThis : null;
+        const win = typeof window !== 'undefined' ? window : null;
+        m20Q6PatchTarget(state, typeof document !== 'undefined' ? document : null, session);
+        m20Q6PatchTarget(state, win, session);
+        m20Q6PatchTarget(state, state.instance, session);
+        for (const value of Object.values(state.instance || {})) {
+            if (value && (typeof value.addEventListener === 'function'
+                || typeof value.querySelector === 'function')) {
+                m20Q6PatchTarget(state, value, session);
+            }
+        }
+        for (const target of extraTargets || []) m20Q6PatchTarget(state, target, session, true);
+        m20Q6PatchSchedulers(state, scope, session);
+        if (win !== scope) m20Q6PatchSchedulers(state, win, session);
+        m20Q6PatchTimezoneManager(state, session);
+    }
+
     function m20Q6CaptureEffects(state, fn, extraTargets = []) {
         if (!state || state.captureDepth > 0) {
             return fn();
@@ -11004,35 +11344,49 @@ if (_m20Q6LifecycleRuntimeEnabled()) {
         const explicitOwnerRoot = (extraTargets || []).find((target) => (
             target && target.id === 'replayToolbarClone'
         ));
-        const session = {
-            records: [],
-            targets: new WeakSet(),
-            schedulerScopes: new WeakSet(),
-        };
+        const reuse = _m20Q6CaptureReuseV1Enabled();
+        // Reuse keeps one session for the life of the state so the WeakSets
+        // remember what is already claimed and a steady-state capture allocates
+        // nothing for patch bookkeeping. Legacy still builds a fresh session
+        // every call because it restores every record in finally.
+        let session;
+        if (reuse) {
+            session = state._reuseSession || {
+                records: [],
+                targets: new WeakSet(),
+                schedulerScopes: new WeakSet(),
+                reuse: true,
+            };
+            state._reuseSession = session;
+        } else {
+            session = {
+                records: [],
+                targets: new WeakSet(),
+                schedulerScopes: new WeakSet(),
+                reuse: false,
+            };
+        }
         if (explicitOwnerRoot) state.captureOwnerRoot = explicitOwnerRoot;
         state.captureDepth += 1;
+        const priorActive = m20Q6ActiveCaptureState;
+        if (reuse) m20Q6ActiveCaptureState = state;
+        // Ephemeral discoveries must not accumulate across captures: a fresh
+        // WeakSet and a cleared records list each time, even when the reuse
+        // session itself is retained on the state.
+        session.ephemeralTargets = new WeakSet();
+        session.records.length = 0;
         try {
-            const scope = typeof globalThis !== 'undefined' ? globalThis : null;
-            const win = typeof window !== 'undefined' ? window : null;
-            m20Q6PatchTarget(state, typeof document !== 'undefined' ? document : null, session);
-            m20Q6PatchTarget(state, win, session);
-            m20Q6PatchTarget(state, state.instance, session);
-            for (const value of Object.values(state.instance || {})) {
-                if (value && (typeof value.addEventListener === 'function'
-                    || typeof value.querySelector === 'function')) {
-                    m20Q6PatchTarget(state, value, session);
-                }
-            }
-            for (const target of extraTargets || []) m20Q6PatchTarget(state, target, session);
-            m20Q6PatchSchedulers(state, scope, session);
-            if (win !== scope) m20Q6PatchSchedulers(state, win, session);
-            m20Q6PatchTimezoneManager(state, session);
+            m20Q6InstallCapturePatches(state, session, extraTargets);
             return fn();
         } finally {
+            // Shared reuse patches stay installed; only the ephemeral records
+            // from this capture (query discoveries / extraTargets) restore.
             for (let i = session.records.length - 1; i >= 0; i--) {
                 const record = session.records[i];
                 m20Q6RestoreOwnProperty(record.target, record.name, record);
             }
+            session.records.length = 0;
+            if (reuse) m20Q6ActiveCaptureState = priorActive;
             state.captureDepth -= 1;
             state.captureOwnerRoot = priorOwnerRoot;
         }
@@ -11139,10 +11493,14 @@ if (_m20Q6LifecycleRuntimeEnabled()) {
             schedulers: [],
             schedulerSerial: 0,
             schedulerPool: [],
+            // Shared capture-wrapper claims this instance owns; released on drain
+            // so a destroyed engine cannot leave document/window patched.
+            patchRecords: [],
             managers: [],
             page: null,
             lastReport: null,
             constructionError: null,
+            _reuseSession: null,
         };
         m20Q6States.set(instance, state);
         instance._m20Q6LifecycleState = 'constructing';
@@ -11335,6 +11693,10 @@ if (_m20Q6LifecycleRuntimeEnabled()) {
         }
 
         if (!errors.length && pending === 0 && !state.page) {
+            // Drop shared capture wrappers before publishing destroyed: a
+            // drained engine must not keep intercepting document/window APIs
+            // for a state that will never capture again.
+            attempt('capture-reuse-patches', () => m20Q6ReleaseSharedPatches(state));
             state.phase = 'destroyed';
             instance._m20Q6LifecycleState = 'destroyed';
             if (state.chart && m20Q6ChartOwners.get(state.chart) === state) {

@@ -1,0 +1,474 @@
+{
+  "row": "SPEED-01 allocation sampling",
+  "startedAt": "2026-08-02T11:16:04.653Z",
+  "finishedAt": "2026-08-02T11:21:30.439Z",
+  "nominalBarsPerSecond": 10,
+  "sampleMs": 300000,
+  "samplingIntervalBytes": 16384,
+  "effectiveRate": {
+    "mean": 9.974,
+    "min": 7.463,
+    "max": 11.229,
+    "readings": 20,
+    "withRate": 19,
+    "gainAtEnd": 1,
+    "corrections": 0
+  },
+  "replayLiveness": {
+    "dutyCycle": 0.95,
+    "liveReadings": 19,
+    "totalReadings": 20,
+    "panelRestarts": 0,
+    "note": "dutyCycle below 1 means part of the window had no replay running; allocation shares are diluted by exactly that fraction and two samples are only comparable at similar duty cycles"
+  },
+  "heapMb": {
+    "first": 81,
+    "last": 143
+  },
+  "totalSampledMb": 5.42,
+  "allocationMbPerMinute": 1.08,
+  "topSites": [
+    {
+      "site": "_resampleDataFull @ chart.js?v=20260728b85:27345",
+      "mb": 0.9,
+      "pct": 16.57
+    },
+    {
+      "site": "w.onmessage @ chart-indicators-full.js?v=20260728b85:8105",
+      "mb": 0.73,
+      "pct": 13.56
+    },
+    {
+      "site": "isSafeInteger @ (no url):-1",
+      "mb": 0.49,
+      "pct": 9
+    },
+    {
+      "site": "push @ (no url):-1",
+      "mb": 0.3,
+      "pct": 5.48
+    },
+    {
+      "site": "Number @ (no url):-1",
+      "mb": 0.19,
+      "pct": 3.48
+    },
+    {
+      "site": "isNaN @ (no url):-1",
+      "mb": 0.15,
+      "pct": 2.79
+    },
+    {
+      "site": "m20Q6CapturedQuery @ replay-system.js?v=20260728b85:10988",
+      "mb": 0.14,
+      "pct": 2.5
+    },
+    {
+      "site": "mergeIndicatorTailWindow @ indicator-performance.js?v=20260728b85:193",
+      "mb": 0.14,
+      "pct": 2.5
+    },
+    {
+      "site": "imul @ (no url):-1",
+      "mb": 0.11,
+      "pct": 2.11
+    },
+    {
+      "site": "m20Q6InertableScheduledCallback @ replay-system.js?v=20260728b85:11112",
+      "mb": 0.11,
+      "pct": 1.98
+    },
+    {
+      "site": "(IDLE_EXTERNAL) @ (no url):-1",
+      "mb": 0.1,
+      "pct": 1.83
+    },
+    {
+      "site": "sort @ (no url):-1",
+      "mb": 0.08,
+      "pct": 1.47
+    },
+    {
+      "site": "forEach @ (no url):-1",
+      "mb": 0.07,
+      "pct": 1.34
+    },
+    {
+      "site": "_m19iB62GenOf @ chart-indicators-full.js?v=20260728b85:10541",
+      "mb": 0.07,
+      "pct": 1.26
+    },
+    {
+      "site": "(anonymous) @ talaria-v9-live.js?v=20260728b85:142",
+      "mb": 0.07,
+      "pct": 1.21
+    },
+    {
+      "site": "m20Q6PatchTarget @ replay-system.js?v=20260728b85:10917",
+      "mb": 0.06,
+      "pct": 1.16
+    },
+    {
+      "site": "V8 @ talaria-v9-live.js?v=20260728b85:16",
+      "mb": 0.06,
+      "pct": 1.15
+    },
+    {
+      "site": "isArray @ (no url):-1",
+      "mb": 0.06,
+      "pct": 1.08
+    },
+    {
+      "site": "talariaRebuildOhlcIndicatorLegend @ indicator-ui.js?v=20260728b85:3173",
+      "mb": 0.06,
+      "pct": 1.03
+    },
+    {
+      "site": "_isMultichartEmbedPanel @ chart.js?v=20260728b85:2914",
+      "mb": 0.06,
+      "pct": 1.02
+    },
+    {
+      "site": "assign @ (no url):-1",
+      "mb": 0.05,
+      "pct": 1.01
+    },
+    {
+      "site": "isFinite @ (no url):-1",
+      "mb": 0.05,
+      "pct": 1
+    },
+    {
+      "site": "(JS) @ (no url):-1",
+      "mb": 0.05,
+      "pct": 1
+    },
+    {
+      "site": "_trimLastDataBarToReplayPlayhead @ chart.js?v=20260728b85:10727",
+      "mb": 0.05,
+      "pct": 0.95
+    },
+    {
+      "site": "applyScaleLineStyle @ chart.js?v=20260728b85:31548",
+      "mb": 0.05,
+      "pct": 0.93
+    },
+    {
+      "site": "Chart._syncSeparateIndicatorPanelHeightEstimate @ chart-indicators-full.js?v=20260728b85:14502",
+      "mb": 0.05,
+      "pct": 0.92
+    },
+    {
+      "site": "_indicatorDataFingerprint @ chart-indicators-full.js?v=20260728b85:8596",
+      "mb": 0.05,
+      "pct": 0.91
+    },
+    {
+      "site": "join @ (no url):-1",
+      "mb": 0.05,
+      "pct": 0.91
+    },
+    {
+      "site": "parseFloat @ (no url):-1",
+      "mb": 0.05,
+      "pct": 0.89
+    },
+    {
+      "site": "hasOwnProperty @ (no url):-1",
+      "mb": 0.05,
+      "pct": 0.87
+    },
+    {
+      "site": "j7 @ talaria-v9-live.js?v=20260728b85:142",
+      "mb": 0.05,
+      "pct": 0.87
+    },
+    {
+      "site": "Q5 @ talaria-v9-live.js?v=20260728b85:37",
+      "mb": 0.05,
+      "pct": 0.87
+    },
+    {
+      "site": "_reseedReplayFullRawFromLoadedData @ chart.js?v=20260728b85:7167",
+      "mb": 0.05,
+      "pct": 0.85
+    },
+    {
+      "site": "isLightColor @ chart.js?v=20260728b85:34070",
+      "mb": 0.04,
+      "pct": 0.74
+    },
+    {
+      "site": "_getYPriceTicks @ chart.js?v=20260728b85:33442",
+      "mb": 0.04,
+      "pct": 0.73
+    },
+    {
+      "site": "_shouldUseDisplayPipeline @ chart.js?v=20260728b85:27299",
+      "mb": 0.03,
+      "pct": 0.64
+    },
+    {
+      "site": "get @ (no url):-1",
+      "mb": 0.03,
+      "pct": 0.61
+    },
+    {
+      "site": "talariaFillLegendValueSpan @ indicator-ui.js?v=20260728b85:2901",
+      "mb": 0.03,
+      "pct": 0.6
+    },
+    {
+      "site": "m20Q6CapturedScheduler @ replay-system.js?v=20260728b85:11156",
+      "mb": 0.03,
+      "pct": 0.59
+    },
+    {
+      "site": "seriesValueAt @ indicator-performance.js?v=20260728b85:215",
+      "mb": 0.03,
+      "pct": 0.58
+    }
+  ],
+  "readings": [
+    {
+      "atMs": 15657,
+      "rate": 10.182805605406752,
+      "gov": {
+        "target": 10,
+        "gain": 1,
+        "mode": "candle",
+        "corrections": 0,
+        "playing": true
+      },
+      "heapMb": 81
+    },
+    {
+      "atMs": 31008,
+      "rate": 10.22257330045472,
+      "gov": {
+        "target": 10,
+        "gain": 1.0408572512092196,
+        "mode": "candle",
+        "corrections": 2,
+        "playing": true
+      },
+      "heapMb": 75
+    },
+    {
+      "atMs": 46425,
+      "rate": 10.016846514606316,
+      "gov": {
+        "target": 10,
+        "gain": 1.0408572512092196,
+        "mode": "candle",
+        "corrections": 2,
+        "playing": true
+      },
+      "heapMb": 138
+    },
+    {
+      "atMs": 61663,
+      "rate": 10.824108241082412,
+      "gov": {
+        "target": 10,
+        "gain": 1.0408572512092196,
+        "mode": "candle",
+        "corrections": 2,
+        "playing": true
+      },
+      "heapMb": 102
+    },
+    {
+      "atMs": 77006,
+      "rate": 11.229120853428842,
+      "gov": {
+        "target": 10,
+        "gain": 1.0408572512092196,
+        "mode": "candle",
+        "corrections": 2,
+        "playing": true
+      },
+      "heapMb": 145
+    },
+    {
+      "atMs": 92325,
+      "rate": 9.978617248752673,
+      "gov": {
+        "target": 10,
+        "gain": 1,
+        "mode": "candle",
+        "corrections": 0,
+        "playing": true
+      },
+      "heapMb": 78
+    },
+    {
+      "atMs": 107690,
+      "rate": 9.978546125844304,
+      "gov": {
+        "target": 10,
+        "gain": 1.0408572512092196,
+        "mode": "candle",
+        "corrections": 2,
+        "playing": true
+      },
+      "heapMb": 133
+    },
+    {
+      "atMs": 123021,
+      "rate": 11.124546553808948,
+      "gov": {
+        "target": 10,
+        "gain": 1.0408572512092196,
+        "mode": "candle",
+        "corrections": 2,
+        "playing": true
+      },
+      "heapMb": 102
+    },
+    {
+      "atMs": 138244,
+      "rate": 9.726725335803613,
+      "gov": {
+        "target": 10,
+        "gain": 0.9849348298019324,
+        "mode": "candle",
+        "corrections": 3,
+        "playing": true
+      },
+      "heapMb": 163
+    },
+    {
+      "atMs": 153435,
+      "rate": 9.991911309877823,
+      "gov": {
+        "target": 10,
+        "gain": 0.9849348298019324,
+        "mode": "candle",
+        "corrections": 3,
+        "playing": true
+      },
+      "heapMb": 127
+    },
+    {
+      "atMs": 168716,
+      "rate": 9.495774380387285,
+      "gov": {
+        "target": 10,
+        "gain": 0.9849348298019324,
+        "mode": "candle",
+        "corrections": 3,
+        "playing": true
+      },
+      "heapMb": 181
+    },
+    {
+      "atMs": 183720,
+      "rate": 7.463429196946086,
+      "gov": {
+        "target": 10,
+        "gain": 0.9849348298019324,
+        "mode": "candle",
+        "corrections": 3,
+        "playing": true
+      },
+      "heapMb": 83
+    },
+    {
+      "atMs": 198723,
+      "rate": 0,
+      "gov": {
+        "target": 10,
+        "gain": 0.9849348298019324,
+        "mode": "candle",
+        "corrections": 3,
+        "playing": false
+      },
+      "heapMb": 68
+    },
+    {
+      "atMs": 214130,
+      "rate": 9.664637092918918,
+      "gov": {
+        "target": 10,
+        "gain": 1,
+        "mode": "candle",
+        "corrections": 0,
+        "playing": true
+      },
+      "heapMb": 145
+    },
+    {
+      "atMs": 229518,
+      "rate": 10.803909050745077,
+      "gov": {
+        "target": 10,
+        "gain": 1,
+        "mode": "candle",
+        "corrections": 0,
+        "playing": true
+      },
+      "heapMb": 147
+    },
+    {
+      "atMs": 244809,
+      "rate": 9.559315552992787,
+      "gov": {
+        "target": 10,
+        "gain": 1,
+        "mode": "candle",
+        "corrections": 0,
+        "playing": true
+      },
+      "heapMb": 160
+    },
+    {
+      "atMs": 260205,
+      "rate": 9.634375451652843,
+      "gov": {
+        "target": 10,
+        "gain": 1,
+        "mode": "candle",
+        "corrections": 0,
+        "playing": true
+      },
+      "heapMb": 130
+    },
+    {
+      "atMs": 275427,
+      "rate": 9.694619486185168,
+      "gov": {
+        "target": 10,
+        "gain": 1,
+        "mode": "candle",
+        "corrections": 0,
+        "playing": true
+      },
+      "heapMb": 140
+    },
+    {
+      "atMs": 290711,
+      "rate": 10.34709810928848,
+      "gov": {
+        "target": 10,
+        "gain": 1,
+        "mode": "candle",
+        "corrections": 0,
+        "playing": true
+      },
+      "heapMb": 92
+    },
+    {
+      "atMs": 300000,
+      "rate": 9.568462348087017,
+      "gov": {
+        "target": 10,
+        "gain": 1,
+        "mode": "candle",
+        "corrections": 0,
+        "playing": true
+      },
+      "heapMb": 143
+    }
+  ]
+}

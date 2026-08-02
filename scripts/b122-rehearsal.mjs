@@ -184,7 +184,7 @@ const swServed = runtimeLadder[0]?.resource?.fromServiceWorker;
 gate('replay-system.js was not served from a stale service-worker cache', swServed !== true, swServed === true ? 'SERVED FROM SERVICE WORKER — the page may be running cached bytes' : `transferSize ${runtimeLadder[0]?.resource?.transferSize ?? 'unread'}`);
 
 gate('the run produced samples', samples.length >= 3, `${samples.length} samples`);
-gate('the seal was pinned by BOTH digest and source commit', args.some((a) => a.startsWith('--expectDigest=')) && args.some((a) => a.startsWith('--expectSha=')), 'both flags present on the child command line');
+gate('the seal was pinned by BOTH digest and source commit', launchArgs.some((a) => a.startsWith('--expectDigest=')) && launchArgs.some((a) => a.startsWith('--expectSha=')), 'both flags present on the child command line');
 gate('every sample re-verified the seal and it held', samples.length > 0 && samples.every((s) => s.sealHeld !== false), `${samples.filter((s) => s.sealHeld !== false).length}/${samples.length}`);
 gate('the source commit held on every sample', samples.length > 0 && samples.every((s) => s.sourceCommitHeld !== false), `${samples.filter((s) => s.sourceCommitHeld !== false).length}/${samples.length}`);
 gate('the SPEED-01 gate passed against a live engine', segStarts.length > 0 && segStarts.every((s) => s.effectiveSpeed != null), segStarts.map((s) => `${s.requestedSpeed}->${s.effectiveSpeed} via ${s.effectiveSpeedRoute}`).join('; ') || 'no segment start recorded');
