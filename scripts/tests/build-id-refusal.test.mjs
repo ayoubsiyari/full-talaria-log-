@@ -34,6 +34,25 @@ const SYNC = path.resolve(
 );
 const LIVE_INDEX = path.resolve(repoRoot, 'chart v 1.4/talaria-design/live/index.html');
 
+/**
+ * Stage the script at its real depth inside a sandbox, with the sibling modules
+ * it imports. A flat copy resolves `../../../scripts/...` outside the sandbox
+ * and the test then reports a module-not-found where it means to report a
+ * refusal — the harness failing in the costume of the thing under test.
+ */
+function stageScript(sandbox, write) {
+  const scriptDir = path.join(sandbox, 'repo', 'talaria-design', 'scripts');
+  fs.mkdirSync(scriptDir, { recursive: true });
+  fs.mkdirSync(path.join(sandbox, 'scripts'), { recursive: true });
+  fs.copyFileSync(
+    path.resolve(repoRoot, 'scripts/clean-build-tree-guard.mjs'),
+    path.join(sandbox, 'scripts', 'clean-build-tree-guard.mjs'),
+  );
+  const dest = path.join(scriptDir, 'bump-dist-v9-cache.mjs');
+  write(dest);
+  return dest;
+}
+
 /** BIND-01: absence of the file is a different state from a broken anchor inside it. */
 function readScript() {
   if (!fs.existsSync(SCRIPT)) {
@@ -253,10 +272,7 @@ test('exit 2 is a refusal and stays distinct from an ordinary failure', () => {
   // (`../../chart`, `../../../homepage`) lands in the sandbox. Handing a real
   // build id to the real script would stamp the working tree.
   const sandbox = fs.mkdtempSync(path.join(os.tmpdir(), 'build-id-exit-'));
-  const scriptDir = path.join(sandbox, 'repo', 'talaria-design', 'scripts');
-  fs.mkdirSync(scriptDir, { recursive: true });
-  const copy = path.join(scriptDir, 'bump-dist-v9-cache.mjs');
-  fs.copyFileSync(SCRIPT, copy);
+  const copy = stageScript(sandbox, (dest) => fs.copyFileSync(SCRIPT, dest));
 
   const run = spawnSync(process.execPath, [copy, '--dist'], {
     env: { ...process.env, BUILD_ID: '20260802b999' },
@@ -296,8 +312,9 @@ test('MUTANT: restoring the derive-from-committed-stamp fallback removes the ref
   return { id: "20260802b1", source: "DEFAULT" };
 }`;
 
-  const mutantPath = path.join(sandbox, 'bump-dist-v9-cache.mjs');
-  fs.writeFileSync(mutantPath, source.slice(0, fn.start) + preFix + source.slice(fn.end), 'utf8');
+  const mutantPath = stageScript(sandbox, (dest) => {
+    fs.writeFileSync(dest, source.slice(0, fn.start) + preFix + source.slice(fn.end), 'utf8');
+  });
 
   return import(pathToFileURL(mutantPath).href).then((mutant) => {
     // The whole point: with the fallback back in place, the empty-BUILD_ID

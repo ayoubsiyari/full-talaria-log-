@@ -38,6 +38,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { isBuildInput } from './clean-build-tree-guard.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
@@ -211,11 +212,10 @@ function proveProvenance() {
     return 1;
   }
   // A board note or a gate that mentions the string must not be allowed to
-  // explain a compiled byte. Only product source counts as an owner.
-  const isProductSource = (f) => !/\.md$/i.test(f)
-    && !/\.(test|spec|mutants|red)\.[cm]?js$/i.test(f)
-    && !/[\\/](b-fixtures|evidence|harness)[\\/]/i.test(f)
-    && !/[\\/]docs[\\/]/i.test(f);
+  // explain a compiled byte. Shared with the clean-tree guard so the set this
+  // check calls "source" is exactly the set that guard refuses to build dirty:
+  // if they drifted apart, one tool would clear work the other had flagged.
+  const isProductSource = isBuildInput;
 
   let unexplained = 0;
   for (const marker of PROVENANCE) {

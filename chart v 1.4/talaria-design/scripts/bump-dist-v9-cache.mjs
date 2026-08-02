@@ -17,6 +17,10 @@
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
+import {
+  assertCleanBuildInputs,
+  DirtyTreeRefusal,
+} from "../../../scripts/clean-build-tree-guard.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, "../../..");
@@ -330,6 +334,16 @@ function main() {
 
   // Resolve before the first write: a half-stamped tree is worse than an unstamped one.
   const { id: buildId, source: buildIdSource } = resolveBuildId();
+
+  // CLEAN-TREE-01, same rule one step earlier: this script is the first writer
+  // in the chain, so a build that would compile another lane's uncommitted
+  // source has to die here rather than be detected in the artefact afterwards.
+  const treeState = assertCleanBuildInputs();
+  if (treeState.overridden) {
+    console.warn("[bump-dist-v9-cache] !! dirty build inputs, provenance waived:", treeState.reason);
+    console.warn(`[bump-dist-v9-cache] !! ${treeState.offenders.length} uncommitted input(s); ${buildId} will not be reproducible.`);
+  }
+
   console.log(`[bump-dist-v9-cache] build id ${buildId} (from ${buildIdSource})`);
 
   let touched = 0;
@@ -406,7 +420,7 @@ if (isMain) {
   try {
     main();
   } catch (error) {
-    if (error instanceof BuildIdRefusal) {
+    if (error instanceof BuildIdRefusal || error instanceof DirtyTreeRefusal) {
       // Distinct from a crash: the tree is untouched and the operator has an action.
       console.error(error.message);
       process.exit(2);
