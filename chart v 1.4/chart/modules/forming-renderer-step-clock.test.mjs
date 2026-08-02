@@ -78,14 +78,33 @@ test('A5 product wiring: interpolation is derived from the step clock helper', (
 
   assert.match(helper, /Number\(this\.tickProgress\)/, 'helper must read step-clock progress');
   assert.match(helper, /target\.cachedPath = this\.getTickPath\(tc\)/, 'helper derives deterministic price path');
-  assert.match(helper, /__talariaFormingSimSource:\s*'step-clock'/, 'helper stamps SIM source');
+  assert.match(helper, /__talariaFormingSimSource\s*=\s*'step-clock'/, 'helper stamps SIM source');
+  assert.match(helper, /this\._formingCandleScratch/, 'helper must reuse per-panel scratch');
+  assert.doesNotMatch(helper, /new Array|\[\.\.\.|\.slice\s*\(|Array\.from\s*\(/,
+    'renderer helper must not allocate arrays or copy waypoint buffers');
   assert.match(animateTick, /this\._deriveStepClockFormingCandle\(target,\s*ticksNeeded\)/);
   assert.doesNotMatch(animateTick, /const tc = target\.target/, 'tick derivation must not stay inline');
-  assert.match(frameDetail, /__talariaFormingSimSource:\s*ac\.__talariaFormingSimSource \|\| 'step-clock'/);
+  assert.match(frameDetail, /__talariaFormingSimSource\s*=\s*ac\.__talariaFormingSimSource \|\| 'step-clock'/);
+  assert.match(frameDetail, /detail\.animatedCandle = frame/, 'frame payload must consume scratch object');
+  assert.doesNotMatch(frameDetail, /detail\.animatedCandle = \{\s*t:/,
+    'frame payload must not copy forming candle into a per-frame object');
 
   for (const driver of [/\bsetInterval\s*\(/, /\bsetTimeout\s*\(/, /\brequestAnimationFrame\s*\(/]) {
     assert.doesNotMatch(helper, driver, 'step-clock helper must not install a driver');
   }
+});
+
+test('skip-to-bar-close collapses remaining waypoints without re-resolving', () => {
+  const skipToClose = methodSource(replaySource, 'skipToBarClose');
+  assert.match(skipToClose, /this\.tickProgress = ticksNeeded/, 'cursor snaps to boundary tick');
+  assert.match(skipToClose, /this\._deriveStepClockFormingCandle\(target,\s*ticksNeeded\)/);
+  assert.match(skipToClose, /this\.completeTickAnimation\(\)/, 'bar close commits through existing completion path');
+  assert.ok(
+    skipToClose.indexOf('this._deriveStepClockFormingCandle') < skipToClose.indexOf('this.completeTickAnimation()'),
+    'skip must derive boundary state before completing the bar',
+  );
+  assert.doesNotMatch(skipToClose, /getTickPath|generateRandomPath|startTickAnimation|scheduleNextTick/,
+    'skip-to-close must not re-resolve waypoints or install another driver');
 });
 
 test('A5 product wiring: replay/forming paints are dirty-scheduled while playing', () => {

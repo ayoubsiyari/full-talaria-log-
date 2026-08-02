@@ -7134,33 +7134,60 @@ class ReplaySystem {
             currentHigh = Math.max(target.high, currentPrice);
             currentLow = Math.min(target.low, currentPrice);
 
-            if (!target._volumeCurve) {
-                const vRng = this.createSeededRandom(tc.t + 7919);
-                const curve = new Array(count);
-                let sum = 0;
-                for (let vi = 0; vi < count; vi++) {
-                    let tickVol = 0.5 + vRng() * 1.0;
-                    if (vRng() < 0.20) tickVol *= 2 + vRng() * 2;
-                    sum += tickVol;
-                    curve[vi] = sum;
-                }
-                for (let vi = 0; vi < count; vi++) curve[vi] /= sum;
-                target._volumeCurve = curve;
-            }
             const volIdx = Math.min(Math.max(0, progress - 1), count - 1);
-            currentVolume = target.targetVolume * target._volumeCurve[volIdx];
+            const vRng = this.createSeededRandom(tc.t + 7919);
+            let prefix = 0;
+            let total = 0;
+            for (let vi = 0; vi < count; vi++) {
+                let tickVol = 0.5 + vRng() * 1.0;
+                if (vRng() < 0.20) tickVol *= 2 + vRng() * 2;
+                total += tickVol;
+                if (vi <= volIdx) {
+                    prefix = total;
+                }
+            }
+            const fraction = total > 0 ? prefix / total : progress / count;
+            currentVolume = target.targetVolume * fraction;
         }
 
-        return {
-            t: target.t,
-            o: target.open,
-            h: currentHigh,
-            l: currentLow,
-            c: currentPrice,
-            v: currentVolume,
-            __talariaFormingSim: true,
-            __talariaFormingSimSource: 'step-clock',
-        };
+        const scratch = this._formingCandleScratch || (this._formingCandleScratch = {});
+        scratch.t = target.t;
+        scratch.o = target.open;
+        scratch.h = currentHigh;
+        scratch.l = currentLow;
+        scratch.c = currentPrice;
+        scratch.v = currentVolume;
+        scratch.__talariaFormingSim = true;
+        scratch.__talariaFormingSimSource = 'step-clock';
+        return scratch;
+    }
+
+    skipToBarClose() {
+        if (!this.isActive || !this.isPlaying || !this.animatingCandle) return false;
+        const target = this.animatingCandle;
+        const ticksNeeded = this.currentTicksPerCandle || this.ticksPerCandle || 72;
+        this.tickProgress = ticksNeeded;
+        const rawCandleIntervalMs = this.fullRawData && this.fullRawData.length > 1
+            ? (this.fullRawData[1].t - this.fullRawData[0].t)
+            : 60000;
+        this.tickElapsedMs = Math.max(0, Number(rawCandleIntervalMs) || 0);
+        if (this._isFinestTfReplayCadenceEnabled() && Array.isArray(this.fullRawData)) {
+            const baseT = Number(this.fullRawData[this.currentIndex]?.t);
+            if (Number.isFinite(baseT)) this.replayTimestamp = baseT + this.tickElapsedMs;
+        }
+
+        const formingCandle = this._deriveStepClockFormingCandle(target, ticksNeeded);
+        if (!formingCandle) return false;
+        target.close = formingCandle.c;
+        target.high = formingCandle.h;
+        target.low = formingCandle.l;
+        target.volume = formingCandle.v;
+        target.__talariaFormingSim = true;
+        target.__talariaFormingSimSource = 'step-clock';
+        this._lastStepClockFormingCandle = formingCandle;
+        this.updateChartWithAnimatedCandle();
+        this.completeTickAnimation();
+        return true;
     }
     
     /**
@@ -9866,16 +9893,18 @@ class ReplaySystem {
         }
         if (this.animatingCandle && !this.fastMode && this.getPlaybackMode() === 'tick') {
             const ac = this.animatingCandle;
-            detail.animatedCandle = {
-                t: ac.t,
-                o: ac.open,
-                h: ac.high,
-                l: ac.low,
-                c: ac.close,
-                v: ac.volume || 0,
-                __talariaFormingSim: ac.__talariaFormingSim === true,
-                __talariaFormingSimSource: ac.__talariaFormingSimSource || 'step-clock',
-            };
+            const frame = this._lastStepClockFormingCandle || (this._formingFrameScratch || (this._formingFrameScratch = {}));
+            if (frame !== this._lastStepClockFormingCandle) {
+                frame.t = ac.t;
+                frame.o = ac.open;
+                frame.h = ac.high;
+                frame.l = ac.low;
+                frame.c = ac.close;
+                frame.v = ac.volume || 0;
+                frame.__talariaFormingSim = ac.__talariaFormingSim === true;
+                frame.__talariaFormingSimSource = ac.__talariaFormingSimSource || 'step-clock';
+            }
+            detail.animatedCandle = frame;
         }
         // Candle-mode frames previously omitted animatedCandle, so coarse peers sought
         // onto a completed TF close (TAL-01798). Always publish the host market mark.
