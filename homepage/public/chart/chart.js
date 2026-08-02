@@ -27852,7 +27852,6 @@ class Chart {
 
     /** Pan, inertia, wheel burst, axis drag, or panel resize — lightweight paint until interaction settles. */
     _isInteractionFastRender() {
-        if (this._isReplayPlaybackRendering()) return true;
         if (this._chartPanRenderLoopActive) return true;
         if (this._isPanSyncFollowBurst()) return true;
         if (this._isChartViewPanning()) return true;
